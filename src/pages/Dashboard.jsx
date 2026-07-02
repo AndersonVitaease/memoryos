@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { Plus, FolderOpen, FileText, MessageSquare, Brain } from "lucide-react";
+import { Plus, FolderOpen, FileText, Users, Brain } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ProjectCard from "@/components/projects/ProjectCard";
 import CreateProjectDialog from "@/components/projects/CreateProjectDialog";
@@ -8,7 +8,7 @@ import CreateProjectDialog from "@/components/projects/CreateProjectDialog";
 export default function Dashboard() {
   const [projects, setProjects] = useState([]);
   const [documents, setDocuments] = useState([]);
-  const [messages, setMessages] = useState([]);
+  const [people, setPeople] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [user, setUser] = useState(null);
@@ -19,15 +19,15 @@ export default function Dashboard() {
 
   const loadData = async () => {
     setLoading(true);
-    const [p, d, m, u] = await Promise.all([
+    const [p, d, peopleData, u] = await Promise.all([
       base44.entities.Project.list("-created_date", 20),
       base44.entities.Document.list("-created_date", 5),
-      base44.entities.ChatMessage.filter({ role: "user" }, "-created_date", 5),
+      base44.entities.Person.list("-created_date", 5),
       base44.auth.me(),
     ]);
     setProjects(p);
     setDocuments(d);
-    setMessages(m);
+    setPeople(peopleData);
     setUser(u);
     setLoading(false);
   };
@@ -57,7 +57,7 @@ export default function Dashboard() {
         {[
           { label: "Projetos", value: projects.length, icon: FolderOpen, color: "bg-violet-50 text-violet-600" },
           { label: "Arquivos", value: documents.length, icon: FileText, color: "bg-blue-50 text-blue-600" },
-          { label: "Conversas", value: messages.length, icon: MessageSquare, color: "bg-emerald-50 text-emerald-600" },
+          { label: "Pessoas", value: people.length, icon: Users, color: "bg-emerald-50 text-emerald-600" },
         ].map((stat) => (
           <div key={stat.label} className="bg-white rounded-2xl border border-zinc-200/80 p-5">
             <div className="flex items-center justify-between">

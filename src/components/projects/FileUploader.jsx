@@ -14,7 +14,7 @@ function getFileType(name) {
   return "other";
 }
 
-export default function FileUploader({ projectId, onUploaded }) {
+export default function FileUploader({ projectId, folderId, onUploaded }) {
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef(null);
@@ -47,6 +47,7 @@ export default function FileUploader({ projectId, onUploaded }) {
 
       await base44.entities.Document.create({
         project_id: projectId,
+        folder_id: folderId || undefined,
         name: file.name,
         file_url,
         file_type: fileType,

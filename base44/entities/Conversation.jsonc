@@ -1,0 +1,25 @@
+{
+  "name": "Conversation",
+  "type": "object",
+  "properties": {
+    "project_id": {
+      "type": "string",
+      "description": "ID do projeto ao qual pertence"
+    },
+    "name": {
+      "type": "string",
+      "description": "Nome da conversa"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "IDs das tags associadas"
+    }
+  },
+  "required": [
+    "project_id",
+    "name"
+  ]
+}

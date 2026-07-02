@@ -1,0 +1,39 @@
+{
+  "name": "Message",
+  "type": "object",
+  "properties": {
+    "conversation_id": {
+      "type": "string",
+      "description": "ID da conversa \u00e0 qual pertence"
+    },
+    "project_id": {
+      "type": "string",
+      "description": "ID do projeto (para isolamento de dados)"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "user",
+        "assistant"
+      ],
+      "description": "Autor da mensagem: Usu\u00e1rio ou IA"
+    },
+    "content": {
+      "type": "string",
+      "description": "Texto da mensagem"
+    },
+    "sources_used": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "IDs dos documentos usados como contexto"
+    }
+  },
+  "required": [
+    "conversation_id",
+    "project_id",
+    "role",
+    "content"
+  ]
+}

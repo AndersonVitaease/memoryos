@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { base44 } from "@/api/base44Client";
 
 const colors = [
@@ -19,16 +20,18 @@ export default function CreateProjectDialog({ open, onOpenChange, onCreated }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [color, setColor] = useState("violet");
+  const [type, setType] = useState("pessoal");
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!name.trim()) return;
     setLoading(true);
-    const project = await base44.entities.Project.create({ name: name.trim(), description: description.trim(), color });
+    const project = await base44.entities.Project.create({ name: name.trim(), description: description.trim(), color, type });
     setName("");
     setDescription("");
     setColor("violet");
+    setType("pessoal");
     setLoading(false);
     onOpenChange(false);
     onCreated?.(project);
@@ -48,6 +51,19 @@ export default function CreateProjectDialog({ open, onOpenChange, onCreated }) {
           <div>
             <Label>Descrição (opcional)</Label>
             <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Descreva o projeto..." className="mt-1.5" rows={3} />
+          </div>
+          <div>
+            <Label>Tipo</Label>
+            <Select value={type} onValueChange={setType}>
+              <SelectTrigger className="mt-1.5"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="pessoal">Pessoal</SelectItem>
+                <SelectItem value="empresa">Empresa</SelectItem>
+                <SelectItem value="condominio">Condomínio</SelectItem>
+                <SelectItem value="turismo">Turismo</SelectItem>
+                <SelectItem value="outro">Outro</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <Label>Cor</Label>

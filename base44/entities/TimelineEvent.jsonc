@@ -1,0 +1,39 @@
+{
+  "name": "TimelineEvent",
+  "type": "object",
+  "properties": {
+    "project_id": {
+      "type": "string",
+      "description": "ID do projeto ao qual pertence"
+    },
+    "title": {
+      "type": "string",
+      "description": "T\u00edtulo do evento"
+    },
+    "description": {
+      "type": "string",
+      "description": "Descri\u00e7\u00e3o do evento"
+    },
+    "event_date": {
+      "type": "string",
+      "format": "date",
+      "description": "Data do evento"
+    },
+    "category": {
+      "type": "string",
+      "description": "Categoria do evento (ex: Vendas, Fornecedor, Produto)"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "IDs das tags associadas"
+    }
+  },
+  "required": [
+    "project_id",
+    "title",
+    "event_date"
+  ]
+}

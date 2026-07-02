@@ -6,6 +6,10 @@
       "type": "string",
       "description": "ID do projeto ao qual pertence"
     },
+    "folder_id": {
+      "type": "string",
+      "description": "ID da pasta onde o arquivo est\u00e1 organizado"
+    },
     "name": {
       "type": "string",
       "description": "Nome do arquivo"
@@ -27,11 +31,22 @@
     },
     "extracted_text": {
       "type": "string",
-      "description": "Texto extra\u00eddo do arquivo"
+      "description": "Texto extra\u00eddo do arquivo para busca"
     },
     "size_bytes": {
       "type": "number",
       "description": "Tamanho do arquivo em bytes"
+    },
+    "tags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "IDs das tags associadas"
+    },
+    "summary": {
+      "type": "string",
+      "description": "Resumo autom\u00e1tico do conte\u00fado (preparado para IA)"
     }
   },
   "required": [

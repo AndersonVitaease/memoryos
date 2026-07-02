@@ -1,0 +1,22 @@
+{
+  "name": "Tag",
+  "type": "object",
+  "properties": {
+    "project_id": {
+      "type": "string",
+      "description": "ID do projeto ao qual pertence"
+    },
+    "name": {
+      "type": "string",
+      "description": "Nome da tag"
+    },
+    "color": {
+      "type": "string",
+      "description": "Cor da tag para identifica\u00e7\u00e3o visual"
+    }
+  },
+  "required": [
+    "project_id",
+    "name"
+  ]
+}
