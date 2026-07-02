@@ -1,0 +1,43 @@
+{
+  "name": "Document",
+  "type": "object",
+  "properties": {
+    "project_id": {
+      "type": "string",
+      "description": "ID do projeto ao qual pertence"
+    },
+    "name": {
+      "type": "string",
+      "description": "Nome do arquivo"
+    },
+    "file_url": {
+      "type": "string",
+      "description": "URL do arquivo armazenado"
+    },
+    "file_type": {
+      "type": "string",
+      "enum": [
+        "pdf",
+        "docx",
+        "txt",
+        "image",
+        "other"
+      ],
+      "description": "Tipo do arquivo"
+    },
+    "extracted_text": {
+      "type": "string",
+      "description": "Texto extra\u00eddo do arquivo"
+    },
+    "size_bytes": {
+      "type": "number",
+      "description": "Tamanho do arquivo em bytes"
+    }
+  },
+  "required": [
+    "project_id",
+    "name",
+    "file_url",
+    "file_type"
+  ]
+}

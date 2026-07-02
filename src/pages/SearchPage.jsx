@@ -1,0 +1,114 @@
+import React, { useState } from "react";
+import { base44 } from "@/api/base44Client";
+import { Search, FileText, Loader2, Brain } from "lucide-react";
+import { Link } from "react-router-dom";
+import ReactMarkdown from "react-markdown";
+
+export default function SearchPage() {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState(null);
+  const [answer, setAnswer] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleSearch = async (e) => {
+    e.preventDefault();
+    if (!query.trim() || loading) return;
+    setLoading(true);
+    setResults(null);
+    setAnswer("");
+
+    // Get all user documents
+    const docs = await base44.entities.Document.list("-created_date", 100);
+    const docsWithText = docs.filter((d) => d.extracted_text);
+
+    // Build context
+    let context = "";
+    const matchedDocs = [];
+    for (const doc of docsWithText) {
+      const chunk = doc.extracted_text.substring(0, 2000);
+      if ((context + chunk).length > 10000) break;
+      context += `\n\n--- Documento: ${doc.name} (Projeto ID: ${doc.project_id}) ---\n${chunk}`;
+      matchedDocs.push(doc);
+    }
+
+    const prompt = `Você é um sistema de busca inteligente. O usuário está procurando informações nos seus documentos.
+
+DOCUMENTOS DISPONÍVEIS:${context}
+
+PERGUNTA: ${query.trim()}
+
+Responda de forma clara e objetiva. Indique de qual documento veio a informação. Se não encontrar, diga que não encontrou nos documentos disponíveis.
+Responda em português brasileiro.`;
+
+    const response = await base44.integrations.Core.InvokeLLM({ prompt });
+
+    setAnswer(response);
+    setResults(matchedDocs);
+    setLoading(false);
+  };
+
+  return (
+    <div className="p-6 lg:p-10 max-w-4xl mx-auto">
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-zinc-900 font-heading">Pesquisa Inteligente</h1>
+        <p className="text-sm text-zinc-500 mt-1">Encontre qualquer informação nos seus documentos.</p>
+      </div>
+
+      {/* Search input */}
+      <form onSubmit={handleSearch} className="mb-8">
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Ex: Qual era a última fórmula da arginina?"
+            className="w-full pl-12 pr-4 py-4 rounded-2xl border border-zinc-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 transition-all bg-white"
+            disabled={loading}
+          />
+          {loading && <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-violet-500 animate-spin" />}
+        </div>
+      </form>
+
+      {/* Results */}
+      {answer && (
+        <div className="space-y-6">
+          <div className="bg-white rounded-2xl border border-zinc-200/80 p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Brain className="w-5 h-5 text-violet-500" />
+              <h3 className="font-semibold text-zinc-900 font-heading">Resposta</h3>
+            </div>
+            <div className="prose prose-sm prose-zinc max-w-none">
+              <ReactMarkdown>{answer}</ReactMarkdown>
+            </div>
+          </div>
+
+          {results && results.length > 0 && (
+            <div>
+              <h3 className="text-sm font-medium text-zinc-500 mb-3">Documentos consultados</h3>
+              <div className="bg-white rounded-2xl border border-zinc-200/80 divide-y divide-zinc-100">
+                {results.map((doc) => (
+                  <Link key={doc.id} to={`/projects/${doc.project_id}`} className="flex items-center gap-3 px-5 py-3.5 hover:bg-zinc-50 transition">
+                    <FileText className="w-4 h-4 text-zinc-400" />
+                    <div>
+                      <p className="text-sm font-medium text-zinc-700">{doc.name}</p>
+                      <p className="text-xs text-zinc-400">{doc.file_type?.toUpperCase()}</p>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!answer && !loading && (
+        <div className="text-center py-16">
+          <div className="w-16 h-16 rounded-2xl bg-violet-50 flex items-center justify-center mx-auto mb-4">
+            <Search className="w-8 h-8 text-violet-400" />
+          </div>
+          <p className="text-zinc-400 text-sm">Pergunte qualquer coisa. O sistema buscará em todos os seus documentos.</p>
+        </div>
+      )}
+    </div>
+  );
+}
