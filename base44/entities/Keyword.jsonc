@@ -1,0 +1,23 @@
+{
+  "name": "Keyword",
+  "type": "object",
+  "properties": {
+    "document_id": {
+      "type": "string",
+      "description": "ID do documento de origem"
+    },
+    "project_id": {
+      "type": "string",
+      "description": "ID do projeto (isolamento de dados)"
+    },
+    "keyword": {
+      "type": "string",
+      "description": "Palavra-chave extra\u00edda do documento"
+    }
+  },
+  "required": [
+    "document_id",
+    "project_id",
+    "keyword"
+  ]
+}

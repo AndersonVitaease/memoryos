@@ -1,8 +1,25 @@
-import React from "react";
-import { FileText, Users, Calendar, FolderOpen } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { FileText, Users, Calendar, FolderOpen, Brain, Tag as TagIcon, Database } from "lucide-react";
 import moment from "moment";
+import { base44 } from "@/api/base44Client";
 
 export default function ProjectOverview({ project, documents, folders, people, events }) {
+  const [entities, setEntities] = useState([]);
+  const [keywords, setKeywords] = useState([]);
+
+  useEffect(() => {
+    if (!project?.id) return;
+    Promise.all([
+      base44.entities.KnowledgeEntity.filter({ project_id: project.id }, "created_date", 5),
+      base44.entities.Keyword.filter({ project_id: project.id }, "created_date", 10),
+    ]).then(([ents, kws]) => {
+      setEntities(ents);
+      setKeywords(kws);
+    });
+  }, [project?.id]);
+
+  const processedDocs = documents.filter((d) => d.processing_status === "completed");
+
   const stats = [
     { label: "Arquivos", value: documents.length, icon: FileText, color: "bg-blue-50 text-blue-600" },
     { label: "Pastas", value: folders.length, icon: FolderOpen, color: "bg-amber-50 text-amber-600" },
@@ -12,6 +29,37 @@ export default function ProjectOverview({ project, documents, folders, people, e
 
   return (
     <div className="space-y-8 max-w-4xl mx-auto p-6 lg:p-10">
+      {/* Knowledge status */}
+      <div className="bg-gradient-to-br from-violet-50 to-indigo-50 rounded-2xl border border-violet-100 p-5">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center">
+            <Brain className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-zinc-800 font-heading">Banco de Conhecimento</h3>
+            <p className="text-xs text-zinc-500">{processedDocs.length} de {documents.length} documentos indexados</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-3 mt-4">
+          <div className="bg-white/60 rounded-xl p-3 text-center">
+            <Database className="w-4 h-4 text-violet-500 mx-auto mb-1" />
+            <p className="text-lg font-bold text-zinc-800">{entities.length}</p>
+            <p className="text-xs text-zinc-500">Entidades</p>
+          </div>
+          <div className="bg-white/60 rounded-xl p-3 text-center">
+            <TagIcon className="w-4 h-4 text-violet-500 mx-auto mb-1" />
+            <p className="text-lg font-bold text-zinc-800">{keywords.length}</p>
+            <p className="text-xs text-zinc-500">Palavras-chave</p>
+          </div>
+          <div className="bg-white/60 rounded-xl p-3 text-center">
+            <FileText className="w-4 h-4 text-violet-500 mx-auto mb-1" />
+            <p className="text-lg font-bold text-zinc-800">{processedDocs.length}</p>
+            <p className="text-xs text-zinc-500">Indexados</p>
+          </div>
+        </div>
+      </div>
+
+      {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         {stats.map((s) => (
           <div key={s.label} className="bg-white rounded-xl border border-zinc-200/80 p-4">
@@ -24,6 +72,7 @@ export default function ProjectOverview({ project, documents, folders, people, e
         ))}
       </div>
 
+      {/* Recent events */}
       {events.length > 0 && (
         <div>
           <h3 className="text-sm font-medium text-zinc-500 mb-3">Eventos recentes</h3>

@@ -6,44 +6,58 @@ import ReactMarkdown from "react-markdown";
 
 export default function SearchPage() {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState(null);
   const [answer, setAnswer] = useState("");
+  const [sources, setSources] = useState([]);
   const [loading, setLoading] = useState(false);
 
   const handleSearch = async (e) => {
     e.preventDefault();
     if (!query.trim() || loading) return;
     setLoading(true);
-    setResults(null);
     setAnswer("");
+    setSources([]);
 
-    // Get all user documents
-    const docs = await base44.entities.Document.list("-created_date", 100);
-    const docsWithText = docs.filter((d) => d.extracted_text);
+    // Buscar toda a base de conhecimento do usuário
+    const [docs, entities, keywords] = await Promise.all([
+      base44.entities.Document.filter({ processing_status: "completed" }, "-created_date", 100),
+      base44.entities.KnowledgeEntity.list("-created_date", 200),
+      base44.entities.Keyword.list("-created_date", 200),
+    ]);
 
-    // Build context
+    // Construir contexto a partir de resumos e textos extraídos
     let context = "";
     const matchedDocs = [];
-    for (const doc of docsWithText) {
-      const chunk = doc.extracted_text.substring(0, 2000);
-      if ((context + chunk).length > 10000) break;
-      context += `\n\n--- Documento: ${doc.name} (Projeto ID: ${doc.project_id}) ---\n${chunk}`;
+    for (const doc of docs) {
+      const content = doc.summary || doc.extracted_text?.substring(0, 2000) || "";
+      if (!content) continue;
+      if ((context + content).length > 10000) break;
+      context += `\n\n--- ${doc.name} (Projeto: ${doc.project_id}, Categoria: ${doc.category || "sem categoria"}) ---\n${content}`;
       matchedDocs.push(doc);
     }
 
-    const prompt = `Você é um sistema de busca inteligente. O usuário está procurando informações nos seus documentos.
+    // Entidades para lookup rápido
+    let entityContext = "";
+    if (entities.length) {
+      entityContext = "\n\nENTIDADES CONHECIDAS:\n" +
+        entities.slice(0, 100).map((e) => `- ${e.type}: ${e.value}`).join("\n");
+    }
 
-DOCUMENTOS DISPONÍVEIS:${context}
+    const prompt = `Você é o sistema de busca inteligente do MemoryOS.
+O usuário está procurando informações na sua base de conhecimento.
+
+BASE DE CONHECIMENTO:${context}
+${entityContext}
 
 PERGUNTA: ${query.trim()}
 
-Responda de forma clara e objetiva. Indique de qual documento veio a informação. Se não encontrar, diga que não encontrou nos documentos disponíveis.
-Responda em português brasileiro.`;
+Responda de forma clara e objetiva em português brasileiro.
+Indique de qual documento ou projeto veio a informação quando relevante.
+Se não encontrar a informação, diga que não está na memória do sistema.`;
 
     const response = await base44.integrations.Core.InvokeLLM({ prompt });
 
     setAnswer(response);
-    setResults(matchedDocs);
+    setSources(matchedDocs);
     setLoading(false);
   };
 
@@ -51,17 +65,16 @@ Responda em português brasileiro.`;
     <div className="p-6 lg:p-10 max-w-4xl mx-auto">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-zinc-900 font-heading">Pesquisa Inteligente</h1>
-        <p className="text-sm text-zinc-500 mt-1">Encontre qualquer informação nos seus documentos.</p>
+        <p className="text-sm text-zinc-500 mt-1">Encontre qualquer informação na sua base de conhecimento.</p>
       </div>
 
-      {/* Search input */}
       <form onSubmit={handleSearch} className="mb-8">
         <div className="relative">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-zinc-400" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Ex: Qual era a última fórmula da arginina?"
+            placeholder="Ex: Quando fechamos contrato com esse fornecedor?"
             className="w-full pl-12 pr-4 py-4 rounded-2xl border border-zinc-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 transition-all bg-white"
             disabled={loading}
           />
@@ -69,7 +82,6 @@ Responda em português brasileiro.`;
         </div>
       </form>
 
-      {/* Results */}
       {answer && (
         <div className="space-y-6">
           <div className="bg-white rounded-2xl border border-zinc-200/80 p-6">
@@ -82,16 +94,16 @@ Responda em português brasileiro.`;
             </div>
           </div>
 
-          {results && results.length > 0 && (
+          {sources.length > 0 && (
             <div>
-              <h3 className="text-sm font-medium text-zinc-500 mb-3">Documentos consultados</h3>
+              <h3 className="text-sm font-medium text-zinc-500 mb-3">Fontes consultadas ({sources.length})</h3>
               <div className="bg-white rounded-2xl border border-zinc-200/80 divide-y divide-zinc-100">
-                {results.map((doc) => (
+                {sources.map((doc) => (
                   <Link key={doc.id} to={`/projects/${doc.project_id}`} className="flex items-center gap-3 px-5 py-3.5 hover:bg-zinc-50 transition">
                     <FileText className="w-4 h-4 text-zinc-400" />
-                    <div>
+                    <div className="flex-1">
                       <p className="text-sm font-medium text-zinc-700">{doc.name}</p>
-                      <p className="text-xs text-zinc-400">{doc.file_type?.toUpperCase()}</p>
+                      <p className="text-xs text-zinc-400">{doc.file_type?.toUpperCase()} · {doc.category || "sem categoria"}</p>
                     </div>
                   </Link>
                 ))}
@@ -106,7 +118,7 @@ Responda em português brasileiro.`;
           <div className="w-16 h-16 rounded-2xl bg-violet-50 flex items-center justify-center mx-auto mb-4">
             <Search className="w-8 h-8 text-violet-400" />
           </div>
-          <p className="text-zinc-400 text-sm">Pergunte qualquer coisa. O sistema buscará em todos os seus documentos.</p>
+          <p className="text-zinc-400 text-sm">Pergunte qualquer coisa. O sistema buscará em toda a sua base de conhecimento.</p>
         </div>
       )}
     </div>

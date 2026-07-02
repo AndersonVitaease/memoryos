@@ -1,0 +1,46 @@
+{
+  "name": "KnowledgeEntity",
+  "type": "object",
+  "properties": {
+    "document_id": {
+      "type": "string",
+      "description": "ID do documento de origem"
+    },
+    "project_id": {
+      "type": "string",
+      "description": "ID do projeto (isolamento de dados)"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "pessoa",
+        "empresa",
+        "organizacao",
+        "produto",
+        "local",
+        "data",
+        "horario",
+        "numero",
+        "valor_monetario",
+        "telefone",
+        "email",
+        "site"
+      ],
+      "description": "Tipo da entidade extra\u00edda"
+    },
+    "value": {
+      "type": "string",
+      "description": "Valor da entidade (ex: nome da pessoa, empresa, valor monet\u00e1rio)"
+    },
+    "context": {
+      "type": "string",
+      "description": "Trecho do documento onde a entidade foi mencionada"
+    }
+  },
+  "required": [
+    "document_id",
+    "project_id",
+    "type",
+    "value"
+  ]
+}

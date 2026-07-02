@@ -25,6 +25,7 @@
         "docx",
         "txt",
         "image",
+        "spreadsheet",
         "other"
       ],
       "description": "Tipo do arquivo"
@@ -46,7 +47,34 @@
     },
     "summary": {
       "type": "string",
-      "description": "Resumo autom\u00e1tico do conte\u00fado (preparado para IA)"
+      "description": "Resumo inteligente do conte\u00fado gerado pela IA"
+    },
+    "processing_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "processing",
+        "completed",
+        "failed"
+      ],
+      "default": "pending",
+      "description": "Status do processamento do Memory Engine"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "contrato",
+        "financeiro",
+        "marketing",
+        "produto",
+        "juridico",
+        "comercial",
+        "atendimento",
+        "reuniao",
+        "planejamento",
+        "outro"
+      ],
+      "description": "Categoria do documento classificada automaticamente"
     }
   },
   "required": [
