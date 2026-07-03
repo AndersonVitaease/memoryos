@@ -1,0 +1,35 @@
+{
+  "name": "Topic",
+  "type": "object",
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "description": "Sess\u00e3o onde o assunto surgiu"
+    },
+    "project_id": {
+      "type": "string",
+      "description": "Projeto relacionado (opcional)"
+    },
+    "name": {
+      "type": "string",
+      "description": "Nome do assunto/tema"
+    },
+    "description": {
+      "type": "string",
+      "description": "Descri\u00e7\u00e3o do assunto"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "historical",
+        "archived"
+      ],
+      "default": "active",
+      "description": "Estado do assunto"
+    }
+  },
+  "required": [
+    "name"
+  ]
+}

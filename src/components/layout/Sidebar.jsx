@@ -1,13 +1,13 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, FolderOpen, MessageSquare, Search, Upload, LogOut, Brain } from "lucide-react";
+import { Brain, FolderOpen, Search, LogOut, MessageSquare } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 
 const navItems = [
-  { label: "Dashboard", icon: LayoutDashboard, path: "/" },
+  { label: "Conversar", icon: MessageSquare, path: "/" },
+  { label: "Memória", icon: Brain, path: "/memory" },
   { label: "Projetos", icon: FolderOpen, path: "/projects" },
-  { label: "Chat", icon: MessageSquare, path: "/chat" },
-  { label: "Pesquisa", icon: Search, path: "/search" },
+  { label: "Pesquisar", icon: Search, path: "/search" },
 ];
 
 export default function Sidebar() {

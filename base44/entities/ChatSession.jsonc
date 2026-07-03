@@ -1,0 +1,41 @@
+{
+  "name": "ChatSession",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "T\u00edtulo da sess\u00e3o (auto-gerado)"
+    },
+    "summary": {
+      "type": "string",
+      "description": "Resumo incremental atualizado a cada lote de mensagens"
+    },
+    "project_id": {
+      "type": "string",
+      "description": "Projeto relacionado (opcional)"
+    },
+    "message_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Contagem de mensagens"
+    },
+    "last_message_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Data da \u00faltima mensagem"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "historical",
+        "archived"
+      ],
+      "default": "active",
+      "description": "Camada de mem\u00f3ria"
+    }
+  },
+  "required": [
+    "title"
+  ]
+}

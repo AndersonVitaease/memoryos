@@ -12,10 +12,10 @@ import Login from '@/pages/Login';
 import Register from '@/pages/Register';
 import ForgotPassword from '@/pages/ForgotPassword';
 import ResetPassword from '@/pages/ResetPassword';
-import Dashboard from '@/pages/Dashboard';
+import ChatPage from '@/pages/ChatPage';
+import Memory from '@/pages/Memory';
 import Projects from '@/pages/Projects';
 import ProjectDetail from '@/pages/ProjectDetail';
-import Chat from '@/pages/Chat';
 import SearchPage from '@/pages/SearchPage';
 
 const AuthenticatedApp = () => {
@@ -46,10 +46,10 @@ const AuthenticatedApp = () => {
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
         <Route element={<AppLayout />}>
-          <Route path="/" element={<Dashboard />} />
+          <Route path="/" element={<ChatPage />} />
+          <Route path="/memory" element={<Memory />} />
           <Route path="/projects" element={<Projects />} />
           <Route path="/projects/:id" element={<ProjectDetail />} />
-          <Route path="/chat" element={<Chat />} />
           <Route path="/search" element={<SearchPage />} />
         </Route>
       </Route>

@@ -1,8 +1,9 @@
 import React, { useState } from "react";
-import { base44 } from "@/api/base44Client";
 import { Search, FileText, Loader2, Brain } from "lucide-react";
 import { Link } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
+import { retrieveContext } from "@/lib/contextRetrieval";
+import { base44 } from "@/api/base44Client";
 
 export default function SearchPage() {
   const [query, setQuery] = useState("");
@@ -17,36 +18,13 @@ export default function SearchPage() {
     setAnswer("");
     setSources([]);
 
-    // Buscar toda a base de conhecimento do usuário
-    const [docs, entities, keywords] = await Promise.all([
-      base44.entities.Document.filter({ processing_status: "completed" }, "-created_date", 100),
-      base44.entities.KnowledgeEntity.list("-created_date", 200),
-      base44.entities.Keyword.list("-created_date", 200),
-    ]);
-
-    // Construir contexto a partir de resumos e textos extraídos
-    let context = "";
-    const matchedDocs = [];
-    for (const doc of docs) {
-      const content = doc.summary || doc.extracted_text?.substring(0, 2000) || "";
-      if (!content) continue;
-      if ((context + content).length > 10000) break;
-      context += `\n\n--- ${doc.name} (Projeto: ${doc.project_id}, Categoria: ${doc.category || "sem categoria"}) ---\n${content}`;
-      matchedDocs.push(doc);
-    }
-
-    // Entidades para lookup rápido
-    let entityContext = "";
-    if (entities.length) {
-      entityContext = "\n\nENTIDADES CONHECIDAS:\n" +
-        entities.slice(0, 100).map((e) => `- ${e.type}: ${e.value}`).join("\n");
-    }
+    // Usa o sistema de recuperação inteligente de contexto
+    const { context, sources: retrievedSources } = await retrieveContext(query.trim(), null, null);
 
     const prompt = `Você é o sistema de busca inteligente do MemoryOS.
-O usuário está procurando informações na sua base de conhecimento.
+O usuário está procurando informações na base de conhecimento.
 
-BASE DE CONHECIMENTO:${context}
-${entityContext}
+${context ? `CONHECIMENTO RECUPERADO:\n${context}` : "Nenhum conhecimento encontrado na memória do sistema."}
 
 PERGUNTA: ${query.trim()}
 
@@ -57,7 +35,7 @@ Se não encontrar a informação, diga que não está na memória do sistema.`;
     const response = await base44.integrations.Core.InvokeLLM({ prompt });
 
     setAnswer(response);
-    setSources(matchedDocs);
+    setSources(retrievedSources);
     setLoading(false);
   };
 
@@ -65,7 +43,7 @@ Se não encontrar a informação, diga que não está na memória do sistema.`;
     <div className="p-6 lg:p-10 max-w-4xl mx-auto">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-zinc-900 font-heading">Pesquisa Inteligente</h1>
-        <p className="text-sm text-zinc-500 mt-1">Encontre qualquer informação na sua base de conhecimento.</p>
+        <p className="text-sm text-zinc-500 mt-1">Busque em toda a sua memória — documentos, conversas e conhecimento extraído.</p>
       </div>
 
       <form onSubmit={handleSearch} className="mb-8">
@@ -98,12 +76,16 @@ Se não encontrar a informação, diga que não está na memória do sistema.`;
             <div>
               <h3 className="text-sm font-medium text-zinc-500 mb-3">Fontes consultadas ({sources.length})</h3>
               <div className="bg-white rounded-2xl border border-zinc-200/80 divide-y divide-zinc-100">
-                {sources.map((doc) => (
-                  <Link key={doc.id} to={`/projects/${doc.project_id}`} className="flex items-center gap-3 px-5 py-3.5 hover:bg-zinc-50 transition">
+                {sources.map((src) => (
+                  <Link
+                    key={src.id}
+                    to={`/projects/${src.project_id || ""}`}
+                    className="flex items-center gap-3 px-5 py-3.5 hover:bg-zinc-50 transition"
+                  >
                     <FileText className="w-4 h-4 text-zinc-400" />
                     <div className="flex-1">
-                      <p className="text-sm font-medium text-zinc-700">{doc.name}</p>
-                      <p className="text-xs text-zinc-400">{doc.file_type?.toUpperCase()} · {doc.category || "sem categoria"}</p>
+                      <p className="text-sm font-medium text-zinc-700">{src.name}</p>
+                      <p className="text-xs text-zinc-400">{src.type}</p>
                     </div>
                   </Link>
                 ))}
@@ -118,7 +100,7 @@ Se não encontrar a informação, diga que não está na memória do sistema.`;
           <div className="w-16 h-16 rounded-2xl bg-violet-50 flex items-center justify-center mx-auto mb-4">
             <Search className="w-8 h-8 text-violet-400" />
           </div>
-          <p className="text-zinc-400 text-sm">Pergunte qualquer coisa. O sistema buscará em toda a sua base de conhecimento.</p>
+          <p className="text-zinc-400 text-sm">Pergunte qualquer coisa. O sistema buscará em toda a sua memória.</p>
         </div>
       )}
     </div>

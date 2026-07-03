@@ -1,102 +1,83 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Send, Loader2, FileText, Brain } from "lucide-react";
+import { Send, Loader2, Brain } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import ReactMarkdown from "react-markdown";
+import { getOrCreateActiveSession, shouldProcessBatch, processConversationBatch } from "@/lib/conversationEngine";
+import { retrieveContext } from "@/lib/contextRetrieval";
 
 export default function ChatInterface({ projectId, projectName }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
+  const [session, setSession] = useState(null);
   const bottomRef = useRef(null);
 
-  useEffect(() => { loadMessages(); }, [projectId]);
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
+  useEffect(() => { init(); }, [projectId]);
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, loading]);
 
-  const loadMessages = async () => {
+  const init = async () => {
     setInitialLoading(true);
-    const msgs = await base44.entities.Message.filter({ project_id: projectId }, "created_date", 100);
+    const activeSession = await getOrCreateActiveSession(projectId);
+    setSession(activeSession);
+    const msgs = await base44.entities.Message.filter({ session_id: activeSession.id }, "created_date", 100);
     setMessages(msgs);
     setInitialLoading(false);
   };
 
   const sendMessage = async (e) => {
     e.preventDefault();
-    if (!input.trim() || loading) return;
-
     const userMsg = input.trim();
-    setInput("");
+    if (!userMsg || loading || !session) return;
 
-    const savedUserMsg = await base44.entities.Message.create({
-      project_id: projectId,
-      conversation_id: projectId, // single conversation per project for now
-      role: "user",
-      content: userMsg,
-    });
-    setMessages((prev) => [...prev, savedUserMsg]);
+    setInput("");
     setLoading(true);
 
-    // Fetch knowledge base for context
-    const [docs, entities, keywords] = await Promise.all([
-      base44.entities.Document.filter({ project_id: projectId, processing_status: "completed" }, "-created_date", 50),
-      base44.entities.KnowledgeEntity.filter({ project_id: projectId }, "created_date", 100),
-      base44.entities.Keyword.filter({ project_id: projectId }, "created_date", 100),
-    ]);
+    const savedUserMsg = await base44.entities.Message.create({
+      session_id: session.id,
+      project_id: projectId,
+      role: "user",
+      content: userMsg,
+      memory_tier: "active",
+    });
+    setMessages((prev) => [...prev, savedUserMsg]);
 
-    // Build context from document summaries + extracted text
-    let context = "";
-    const usedDocIds = [];
-    for (const doc of docs) {
-      const docContent = doc.summary || doc.extracted_text?.substring(0, 1500) || "";
-      if (!docContent) continue;
-      if ((context + docContent).length > 8000) break;
-      context += `\n\n--- ${doc.name} (${doc.category || "sem categoria"}) ---\n${docContent}`;
-      usedDocIds.push(doc.id);
-    }
+    const { context, sources, recentMessages } = await retrieveContext(userMsg, session.id, projectId);
 
-    // Add entities for quick lookup
-    let entityContext = "";
-    if (entities.length) {
-      entityContext = "\n\nENTIDADES CONHECIDAS NO PROJETO:\n" +
-        entities.slice(0, 50).map((e) => `- ${e.type}: ${e.value}`).join("\n");
-    }
-
-    let keywordContext = "";
-    if (keywords.length) {
-      keywordContext = "\n\nPALAVRAS-CHAVE DO PROJETO: " +
-        keywords.slice(0, 50).map((k) => k.keyword).join(", ");
-    }
-
-    // Recent conversation history
-    const recentMsgs = messages.slice(-10);
-    let conversationHistory = recentMsgs
+    const historyText = recentMessages
       .map((m) => `${m.role === "user" ? "Usuário" : "Assistente"}: ${m.content}`)
-      .join("\n");
+      .join("\n\n");
 
-    const prompt = `Você é a memória inteligente do projeto "${projectName}".
-Responda com base no conhecimento extraído dos documentos.
-Se a informação não estiver no conhecimento disponível, diga que não encontrou na memória do projeto.
+    const prompt = `Você é o MemoryOS — a memória permanente do projeto "${projectName}".
+Responda com contexto, histórico e conhecimento. Nunca peça que o usuário resuma ou recupere contexto.
 Responda sempre em português brasileiro.
 
-${context ? `CONHECIMENTO DOS DOCUMENTOS:${context}` : "Nenhum documento processado neste projeto ainda."}
-${entityContext}
-${keywordContext}
+${context ? `## CONHECIMENTO RECUPERADO\n${context}` : "## CONHECIMENTO RECUPERADO\n(Ainda não há conhecimento suficiente.)"}
 
-${conversationHistory ? `HISTÓRICO RECENTE:\n${conversationHistory}` : ""}
+${historyText ? `## CONVERSA RECENTE\n${historyText}` : ""}
 
-Pergunta: ${userMsg}`;
+## PERGUNTA
+${userMsg}`;
 
     const response = await base44.integrations.Core.InvokeLLM({ prompt });
 
     const savedAssistant = await base44.entities.Message.create({
+      session_id: session.id,
       project_id: projectId,
-      conversation_id: projectId,
       role: "assistant",
       content: response,
-      sources_used: usedDocIds,
+      sources_used: sources.map((s) => s.id),
+      memory_tier: "active",
     });
     setMessages((prev) => [...prev, savedAssistant]);
     setLoading(false);
+
+    // Processar lote em background
+    const allMessages = [...messages, savedUserMsg, savedAssistant];
+    const userMessageCount = allMessages.filter((m) => m.role === "user").length;
+    if (shouldProcessBatch(userMessageCount)) {
+      processConversationBatch(session, allMessages, projectId).catch(() => {});
+    }
   };
 
   if (initialLoading) {
@@ -112,33 +93,35 @@ Pergunta: ${userMsg}`;
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.length === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-center">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-100 to-indigo-100 flex items-center justify-center mb-4">
-              <Brain className="w-8 h-8 text-violet-500" />
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center mb-4 shadow-lg shadow-violet-200">
+              <Brain className="w-8 h-8 text-white" />
             </div>
             <h3 className="font-semibold text-zinc-700 font-heading">Converse com a memória do projeto</h3>
             <p className="text-sm text-zinc-400 mt-1 max-w-sm">
-              A IA responde usando o conhecimento extraído dos seus documentos.
+              O MemoryOS organiza e preserva todo o conhecimento automaticamente.
             </p>
           </div>
         )}
         {messages.map((msg) => (
           <div key={msg.id} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-            <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm ${
+            <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${
               msg.role === "user"
                 ? "bg-zinc-900 text-white rounded-br-md"
-                : "bg-white border border-zinc-200 text-zinc-700 rounded-bl-md"
+                : "bg-white border border-zinc-200 text-zinc-700 rounded-bl-md shadow-sm"
             }`}>
               {msg.role === "assistant" ? (
-                <div className="prose prose-sm prose-zinc max-w-none">
+                <div className="prose prose-sm prose-zinc max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
                   <ReactMarkdown>{msg.content}</ReactMarkdown>
                 </div>
-              ) : msg.content}
+              ) : (
+                <p className="whitespace-pre-wrap">{msg.content}</p>
+              )}
             </div>
           </div>
         ))}
         {loading && (
           <div className="flex justify-start">
-            <div className="bg-white border border-zinc-200 rounded-2xl rounded-bl-md px-4 py-3">
+            <div className="bg-white border border-zinc-200 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm">
               <div className="flex items-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin text-violet-500" />
                 <span className="text-sm text-zinc-400">Consultando a memória...</span>
@@ -150,15 +133,22 @@ Pergunta: ${userMsg}`;
       </div>
 
       <form onSubmit={sendMessage} className="p-4 border-t border-zinc-200 bg-white">
-        <div className="flex items-center gap-2">
-          <input
+        <div className="flex items-end gap-2">
+          <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Faça uma pergunta sobre seus documentos..."
-            className="flex-1 px-4 py-2.5 rounded-xl border border-zinc-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 transition-all"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+              }
+            }}
+            placeholder="Converse com sua memória..."
+            rows={1}
+            className="flex-1 resize-none px-4 py-3 rounded-2xl border border-zinc-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 transition-all bg-white max-h-32"
             disabled={loading}
           />
-          <button type="submit" disabled={loading || !input.trim()} className="p-2.5 rounded-xl bg-zinc-900 text-white hover:bg-zinc-800 disabled:opacity-40 transition-all">
+          <button type="submit" disabled={loading || !input.trim()} className="p-3 rounded-2xl bg-zinc-900 text-white hover:bg-zinc-800 disabled:opacity-30 transition-all">
             <Send className="w-4 h-4" />
           </button>
         </div>
