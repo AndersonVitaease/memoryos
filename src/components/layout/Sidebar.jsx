@@ -1,12 +1,13 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Brain, FolderOpen, Search, LogOut, MessageSquare } from "lucide-react";
+import { Brain, FolderOpen, Search, LogOut, MessageSquare, Home as HomeIcon } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 
 const navItems = [
-  { label: "Conversar", icon: MessageSquare, path: "/" },
+  { label: "Início", icon: HomeIcon, path: "/" },
+  { label: "Conversar", icon: MessageSquare, path: "/chat" },
   { label: "Memória", icon: Brain, path: "/memory" },
-  { label: "Projetos", icon: FolderOpen, path: "/projects" },
+  { label: "Espaços", icon: FolderOpen, path: "/projects" },
   { label: "Pesquisar", icon: Search, path: "/search" },
 ];
 
