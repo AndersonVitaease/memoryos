@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Send, Loader2, Brain, Sparkles, ChevronDown, ChevronUp, Mic, Square, Radio, Hand, Volume2 } from "lucide-react";
+import { Send, Loader2, Brain, Sparkles, ChevronDown, ChevronUp, Radio, Volume2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import ReactMarkdown from "react-markdown";
 import { getOrCreateActiveSession, shouldProcessBatch, processConversationBatch } from "@/lib/conversationEngine";
@@ -16,33 +16,51 @@ export default function ChatPage() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [session, setSession] = useState(null);
   const [showSummary, setShowSummary] = useState(false);
-  const [voiceMode, setVoiceMode] = useState(false);
-  const [handsFree, setHandsFree] = useState(false);
+  const [continuousMode, setContinuousMode] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState(null);
   const bottomRef = useRef(null);
 
   const tts = useTextToSpeech();
 
   const {
-    isListening,
-    interimText: voiceInterim,
     isSupported: voiceSupported,
     startListening,
     stopListening,
+    abortListening,
   } = useVoiceRecognition({
-    onResult: (text) => {
+    continuous: true,
+    onResult: async (text) => {
       setInput("");
-      if (text.trim()) sendAndReceive(text, { viaVoice: true });
+      if (!text.trim()) {
+        setVoiceStatus(null);
+        return;
+      }
+      setVoiceStatus("sending");
+      await sendAndReceive(text, { viaVoice: true });
+      setVoiceStatus(null);
     },
     onInterim: (text) => setInput(text),
+    onEnd: () => {
+      setVoiceStatus((prev) => (prev === "transcribing" ? null : prev));
+      setInput("");
+    },
   });
 
-  const toggleHandsFree = () => {
-    const next = !handsFree;
-    setHandsFree(next);
-    if (!next) {
-      stopListening();
-      tts.stopSpeaking();
-    }
+  const handlePressStart = () => {
+    tts.stopSpeaking();
+    startListening();
+    setVoiceStatus("listening");
+  };
+
+  const handlePressEnd = () => {
+    stopListening();
+    setVoiceStatus("transcribing");
+  };
+
+  const handleCancel = () => {
+    abortListening();
+    setVoiceStatus(null);
+    setInput("");
   };
 
   useEffect(() => { init(); }, []);
@@ -211,13 +229,9 @@ ${userMsg}`;
 
     const responseText = typeof response === "string" ? response : String(response);
 
-    // TTS — reproduz resposta em voz quando via voz ou mãos livres
-    if (!skipTTS && (viaVoice || handsFree)) {
-      tts.speak(responseText, {
-        onEnd: () => {
-          if (handsFree || viaVoice) startListening();
-        },
-      });
+    // TTS — reproduz resposta em voz quando a mensagem foi enviada por voz
+    if (!skipTTS && viaVoice) {
+      tts.speak(responseText);
     }
 
     // Processar lote em background (a cada 5 mensagens alternadas = 10 total)
@@ -334,43 +348,46 @@ ${userMsg}`;
         </div>
       </div>
 
-      {/* TTS indicator */}
-      {tts.isSpeaking && (
-        <div className="border-t border-zinc-100 bg-emerald-50/50 px-4 lg:px-6 py-2 flex items-center gap-2">
-          <Volume2 className="w-4 h-4 text-emerald-500 animate-pulse" />
-          <span className="text-xs text-emerald-600 font-medium">Falando...</span>
-          <button
-            type="button"
-            onClick={() => tts.stopSpeaking()}
-            className="ml-auto text-xs text-emerald-600 hover:text-emerald-700 font-medium"
-          >
-            Parar
-          </button>
+      {/* Voice status indicator */}
+      {(voiceStatus || tts.isSpeaking) && (
+        <div className={`border-t px-4 lg:px-6 py-2 flex items-center gap-2 ${
+          voiceStatus === "listening" ? "bg-red-50 border-red-100" :
+          tts.isSpeaking && !voiceStatus ? "bg-emerald-50/50 border-zinc-100" :
+          "bg-violet-50 border-violet-100"
+        }`}>
+          {voiceStatus === "listening" && (<>
+            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" />
+            <span className="text-xs text-red-600 font-medium">Ouvindo...</span>
+            {input && <span className="text-xs text-red-400 truncate ml-1">{input}</span>}
+          </>)}
+          {voiceStatus === "transcribing" && (<>
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-violet-500 shrink-0" />
+            <span className="text-xs text-violet-600 font-medium">Transcrevendo...</span>
+          </>)}
+          {voiceStatus === "sending" && (<>
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-violet-500 shrink-0" />
+            <span className="text-xs text-violet-600 font-medium">Enviando...</span>
+          </>)}
+          {!voiceStatus && tts.isSpeaking && (<>
+            <Volume2 className="w-4 h-4 text-emerald-500 animate-pulse shrink-0" />
+            <span className="text-xs text-emerald-600 font-medium">Falando...</span>
+            <button type="button" onClick={() => tts.stopSpeaking()} className="ml-auto text-xs text-emerald-600 hover:text-emerald-700 font-medium">Parar</button>
+          </>)}
         </div>
       )}
 
       {/* Input — fixo na parte inferior */}
       <div className="border-t border-zinc-200 bg-white px-3 sm:px-4 lg:px-6 py-3 lg:py-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
         <form onSubmit={sendMessage} className="max-w-3xl mx-auto">
-          {/* Toggles: Modo Voz + Mãos Livres */}
+          {/* Conversa Contínua — modo separado para longas conversas por voz */}
           <div className="flex items-center gap-2 mb-2">
             <button
               type="button"
-              onClick={() => { setVoiceMode(true); stopListening(); }}
+              onClick={() => { setContinuousMode(true); stopListening(); }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-zinc-400 hover:text-violet-600 hover:bg-violet-50 transition"
             >
               <Radio className="w-3.5 h-3.5" />
-              Modo Voz
-            </button>
-            <button
-              type="button"
-              onClick={toggleHandsFree}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition ${
-                handsFree ? "bg-violet-100 text-violet-700" : "text-zinc-400 hover:text-zinc-600"
-              }`}
-            >
-              <Hand className="w-3.5 h-3.5" />
-              Mãos Livres
+              Conversa Contínua
             </button>
           </div>
 
@@ -384,24 +401,25 @@ ${userMsg}`;
                   sendMessage();
                 }
               }}
-              placeholder={isListening ? "Ouvindo..." : "Converse com sua memória..."}
+              placeholder="Converse com sua memória..."
               rows={1}
               className={`flex-1 resize-none px-4 py-3 rounded-2xl border text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 transition-all bg-white max-h-32 ${
-                isListening ? "border-violet-400 bg-violet-50" : "border-zinc-200"
+                voiceStatus === "listening" ? "border-red-300 bg-red-50/30" : "border-zinc-200"
               }`}
-              readOnly={isListening}
+              readOnly={voiceStatus === "listening"}
               disabled={loading}
             />
             {voiceSupported && (
               <VoiceButton
-                isListening={isListening}
-                onToggle={() => (isListening ? stopListening() : startListening())}
                 disabled={loading}
+                onPressStart={handlePressStart}
+                onPressEnd={handlePressEnd}
+                onCancel={handleCancel}
               />
             )}
             <button
               type="submit"
-              disabled={loading || (!input.trim() && !isListening)}
+              disabled={loading || !input.trim()}
               className="p-3 rounded-2xl bg-zinc-900 text-white hover:bg-zinc-800 disabled:opacity-30 transition-all"
             >
               <Send className="w-4 h-4" />
@@ -410,12 +428,12 @@ ${userMsg}`;
         </form>
       </div>
 
-      {/* Voice Mode overlay */}
-      {voiceMode && (
+      {/* Conversa Contínua — overlay para longas conversas por voz */}
+      {continuousMode && (
         <VoiceMode
           onSendAndReceive={(text) => sendAndReceive(text, { skipTTS: true })}
           onClose={() => {
-            setVoiceMode(false);
+            setContinuousMode(false);
             stopListening();
             tts.stopSpeaking();
           }}
