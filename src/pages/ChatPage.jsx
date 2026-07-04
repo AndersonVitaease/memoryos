@@ -1,9 +1,13 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Send, Loader2, Brain, Sparkles, ChevronDown, ChevronUp } from "lucide-react";
+import { Send, Loader2, Brain, Sparkles, ChevronDown, ChevronUp, Mic, Square, Radio, Hand, Volume2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import ReactMarkdown from "react-markdown";
 import { getOrCreateActiveSession, shouldProcessBatch, processConversationBatch } from "@/lib/conversationEngine";
 import { runMemoryPipeline } from "@/lib/memoryPipeline";
+import { useVoiceRecognition } from "@/hooks/useVoiceRecognition";
+import { useTextToSpeech } from "@/hooks/useTextToSpeech";
+import VoiceButton from "@/components/chat/VoiceButton";
+import VoiceMode from "@/components/chat/VoiceMode";
 
 export default function ChatPage() {
   const [messages, setMessages] = useState([]);
@@ -12,7 +16,34 @@ export default function ChatPage() {
   const [initialLoading, setInitialLoading] = useState(true);
   const [session, setSession] = useState(null);
   const [showSummary, setShowSummary] = useState(false);
+  const [voiceMode, setVoiceMode] = useState(false);
+  const [handsFree, setHandsFree] = useState(false);
   const bottomRef = useRef(null);
+
+  const tts = useTextToSpeech();
+
+  const {
+    isListening,
+    interimText: voiceInterim,
+    isSupported: voiceSupported,
+    startListening,
+    stopListening,
+  } = useVoiceRecognition({
+    onResult: (text) => {
+      setInput("");
+      if (text.trim()) sendAndReceive(text, { viaVoice: true });
+    },
+    onInterim: (text) => setInput(text),
+  });
+
+  const toggleHandsFree = () => {
+    const next = !handsFree;
+    setHandsFree(next);
+    if (!next) {
+      stopListening();
+      tts.stopSpeaking();
+    }
+  };
 
   useEffect(() => { init(); }, []);
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, loading]);
@@ -26,12 +57,9 @@ export default function ChatPage() {
     setInitialLoading(false);
   };
 
-  const sendMessage = async (e) => {
-    e?.preventDefault();
-    const userMsg = input.trim();
-    if (!userMsg || loading || !session) return;
+  const sendAndReceive = async (userMsg, { viaVoice = false, skipTTS = false } = {}) => {
+    if (!userMsg || !userMsg.trim() || loading || !session) return null;
 
-    setInput("");
     setLoading(true);
 
     // Salvar mensagem do usuário
@@ -141,6 +169,17 @@ ${userMsg}`;
     setMessages((prev) => [...prev, savedAssistant]);
     setLoading(false);
 
+    const responseText = typeof response === "string" ? response : String(response);
+
+    // TTS — reproduz resposta em voz quando via voz ou mãos livres
+    if (!skipTTS && (viaVoice || handsFree)) {
+      tts.speak(responseText, {
+        onEnd: () => {
+          if (handsFree || viaVoice) startListening();
+        },
+      });
+    }
+
     // Processar lote em background (a cada 5 mensagens alternadas = 10 total)
     const allMessages = [...messages, savedUserMsg, savedAssistant];
     const userMessageCount = allMessages.filter((m) => m.role === "user").length;
@@ -162,6 +201,16 @@ ${userMsg}`;
         }
       }).catch(() => { /* silent — processamento em background */ });
     }
+
+    return responseText;
+  };
+
+  const sendMessage = async (e) => {
+    e?.preventDefault();
+    const text = input.trim();
+    if (!text || loading || !session) return;
+    setInput("");
+    await sendAndReceive(text);
   };
 
   if (initialLoading) {
@@ -245,9 +294,46 @@ ${userMsg}`;
         </div>
       </div>
 
+      {/* TTS indicator */}
+      {tts.isSpeaking && (
+        <div className="border-t border-zinc-100 bg-emerald-50/50 px-4 lg:px-6 py-2 flex items-center gap-2">
+          <Volume2 className="w-4 h-4 text-emerald-500 animate-pulse" />
+          <span className="text-xs text-emerald-600 font-medium">Falando...</span>
+          <button
+            type="button"
+            onClick={() => tts.stopSpeaking()}
+            className="ml-auto text-xs text-emerald-600 hover:text-emerald-700 font-medium"
+          >
+            Parar
+          </button>
+        </div>
+      )}
+
       {/* Input — fixo na parte inferior */}
       <div className="border-t border-zinc-200 bg-white px-3 sm:px-4 lg:px-6 py-3 lg:py-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
         <form onSubmit={sendMessage} className="max-w-3xl mx-auto">
+          {/* Toggles: Modo Voz + Mãos Livres */}
+          <div className="flex items-center gap-2 mb-2">
+            <button
+              type="button"
+              onClick={() => { setVoiceMode(true); stopListening(); }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-zinc-400 hover:text-violet-600 hover:bg-violet-50 transition"
+            >
+              <Radio className="w-3.5 h-3.5" />
+              Modo Voz
+            </button>
+            <button
+              type="button"
+              onClick={toggleHandsFree}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition ${
+                handsFree ? "bg-violet-100 text-violet-700" : "text-zinc-400 hover:text-zinc-600"
+              }`}
+            >
+              <Hand className="w-3.5 h-3.5" />
+              Mãos Livres
+            </button>
+          </div>
+
           <div className="flex items-end gap-2">
             <textarea
               value={input}
@@ -258,14 +344,24 @@ ${userMsg}`;
                   sendMessage();
                 }
               }}
-              placeholder="Converse com sua memória..."
+              placeholder={isListening ? "Ouvindo..." : "Converse com sua memória..."}
               rows={1}
-              className="flex-1 resize-none px-4 py-3 rounded-2xl border border-zinc-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 transition-all bg-white max-h-32"
+              className={`flex-1 resize-none px-4 py-3 rounded-2xl border text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 transition-all bg-white max-h-32 ${
+                isListening ? "border-violet-400 bg-violet-50" : "border-zinc-200"
+              }`}
+              readOnly={isListening}
               disabled={loading}
             />
+            {voiceSupported && (
+              <VoiceButton
+                isListening={isListening}
+                onToggle={() => (isListening ? stopListening() : startListening())}
+                disabled={loading}
+              />
+            )}
             <button
               type="submit"
-              disabled={loading || !input.trim()}
+              disabled={loading || (!input.trim() && !isListening)}
               className="p-3 rounded-2xl bg-zinc-900 text-white hover:bg-zinc-800 disabled:opacity-30 transition-all"
             >
               <Send className="w-4 h-4" />
@@ -273,6 +369,18 @@ ${userMsg}`;
           </div>
         </form>
       </div>
+
+      {/* Voice Mode overlay */}
+      {voiceMode && (
+        <VoiceMode
+          onSendAndReceive={(text) => sendAndReceive(text, { skipTTS: true })}
+          onClose={() => {
+            setVoiceMode(false);
+            stopListening();
+            tts.stopSpeaking();
+          }}
+        />
+      )}
     </div>
   );
 }
