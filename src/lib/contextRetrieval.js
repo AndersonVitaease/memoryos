@@ -15,7 +15,7 @@ import { base44 } from "@/api/base44Client";
  */
 
 const MAX_CONTEXT_CHARS = 8000;
-const RECENT_MESSAGES_COUNT = 6;
+const RECENT_MESSAGES_COUNT = 20;
 
 /**
  * Extrai palavras-chave de uma pergunta usando LLM (rápido, schema simples).
@@ -149,5 +149,6 @@ export async function retrieveContext(question, sessionId, projectId) {
     sources,
     recentMessages: sortedRecent,
     sessionSummary,
+    hasMemory: recentMessages.length > 0 || !!sessionSummary || allEntities.length > 0 || allKeywords.length > 0,
   };
 }

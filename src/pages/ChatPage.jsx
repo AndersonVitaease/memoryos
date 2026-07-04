@@ -43,28 +43,37 @@ export default function ChatPage() {
     });
     setMessages((prev) => [...prev, savedUserMsg]);
 
-    // Recuperar contexto relevante (não carrega tudo — apenas o necessário)
-    const { context, sources, recentMessages } = await retrieveContext(
+    // Recuperar conhecimento extraído (resumo, entidades, documentos, keywords)
+    const { context, sources, sessionSummary, hasMemory } = await retrieveContext(
       userMsg,
       session.id,
       session.project_id
     );
 
-    // Histórico recente (apenas últimas mensagens)
-    const historyText = recentMessages
+    // Usar histórico completo da sessão (já carregado no estado), não apenas amostra
+    const historyMessages = [...messages, savedUserMsg].slice(-30);
+    const historyText = historyMessages
       .map((m) => `${m.role === "user" ? "Usuário" : "Assistente"}: ${m.content}`)
       .join("\n\n");
+    const totalMessages = messages.length + 1;
 
-    // Construir prompt focado
+    // Construir prompt com consciência de memória
     const prompt = `Você é o MemoryOS — a memória permanente do usuário.
-Sua função é responder com contexto, histórico e conhecimento — nunca pedir que o usuário resuma ou recupere contexto.
 
-Responda sempre em português brasileiro, de forma natural e direta.
-Se o conhecimento abaixo não contiver a resposta, diga o que você sabe e o que não encontrou na memória.
+## ESTADO DA MEMÓRIA
+${hasMemory ? `- Esta conversa possui ${totalMessages} mensagens preservadas.` : "- Esta é uma nova conversa, sem memória anterior ainda."}
+${sessionSummary ? "- Existe um resumo da conversa disponível abaixo." : ""}
 
-${context ? `## CONHECIMENTO RECUPERADO\n${context}` : "## CONHECIMENTO RECUPERADO\n(Ainda não há conhecimento suficiente na memória.)"}
+## REGRAS DE COMPORTAMENTO
+1. Você TEM acesso à memória do usuário. Use-a sempre.
+2. NUNCA diga "não consigo lembrar" ou "não tenho acesso a conversas passadas" quando há memória carregada.
+3. Se encontrar a informação na memória, responda naturalmente como uma memória viva.
+4. Se a memória for parcial, diga o que sabe e explique que parte do histórico está disponível.
+5. Se genuinamente não existir conhecimento sobre o tema, diga apenas: "Isso ainda não está na sua memória."
 
-${historyText ? `## CONVERSA RECENTE\n${historyText}` : ""}
+${context ? `## CONHECIMENTO RECUPERADO\n${context}` : ""}
+
+${historyText ? `## HISTÓRICO DA CONVERSA\n${historyText}` : ""}
 
 ## PERGUNTA ATUAL
 ${userMsg}`;
