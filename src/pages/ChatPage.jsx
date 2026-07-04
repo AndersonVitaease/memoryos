@@ -71,9 +71,13 @@ export default function ChatPage() {
       session.project_id
     );
 
-    // === SKILLS DETECTION ===
-    // Identifica o domínio da pergunta e carrega especialistas relevantes
-    const activeSkills = detectSkills(userMsg);
+    // === CONTEXT-AWARE SKILLS ENGINE ===
+    // Analisa a mensagem + toda a memória recuperada para escolher especialistas
+    const activeSkills = detectSkills(userMsg, {
+      sessionSummary,
+      context,
+      sources,
+    });
     const skillsPrompt = buildSkillsPrompt(activeSkills);
 
     // Histórico da conversa atual (do estado, não do banco)

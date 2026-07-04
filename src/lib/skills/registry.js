@@ -4,6 +4,7 @@ import projectManagement from "./specialists/projectManagement";
 import tech from "./specialists/tech";
 import marketing from "./specialists/marketing";
 import hr from "./specialists/hr";
+import supplementProduction from "./specialists/supplementProduction";
 
 /**
  * Registro central de Skills (Especialistas).
@@ -22,4 +23,5 @@ export const SKILLS = [
   tech,
   marketing,
   hr,
+  supplementProduction,
 ];
