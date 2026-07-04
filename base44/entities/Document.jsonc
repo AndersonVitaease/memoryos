@@ -4,7 +4,11 @@
   "properties": {
     "project_id": {
       "type": "string",
-      "description": "ID do projeto ao qual pertence"
+      "description": "ID do projeto ao qual pertence (opcional)"
+    },
+    "session_id": {
+      "type": "string",
+      "description": "ID da sess\u00e3o de chat onde o conte\u00fado foi adicionado"
     },
     "folder_id": {
       "type": "string",
@@ -12,7 +16,7 @@
     },
     "name": {
       "type": "string",
-      "description": "Nome do arquivo"
+      "description": "Nome do arquivo ou t\u00edtulo do conte\u00fado"
     },
     "file_url": {
       "type": "string",
@@ -26,13 +30,30 @@
         "txt",
         "image",
         "spreadsheet",
+        "audio",
+        "link",
+        "text",
         "other"
       ],
-      "description": "Tipo do arquivo"
+      "description": "Tipo do conte\u00fado"
+    },
+    "source_type": {
+      "type": "string",
+      "enum": [
+        "file",
+        "link",
+        "text"
+      ],
+      "default": "file",
+      "description": "Origem do conte\u00fado"
+    },
+    "original_url": {
+      "type": "string",
+      "description": "URL original (para links)"
     },
     "extracted_text": {
       "type": "string",
-      "description": "Texto extra\u00eddo do arquivo para busca"
+      "description": "Texto extra\u00eddo do conte\u00fado para busca"
     },
     "size_bytes": {
       "type": "number",
@@ -58,7 +79,7 @@
         "failed"
       ],
       "default": "pending",
-      "description": "Status do processamento do Memory Engine"
+      "description": "Status do processamento"
     },
     "category": {
       "type": "string",
@@ -78,9 +99,7 @@
     }
   },
   "required": [
-    "project_id",
     "name",
-    "file_url",
     "file_type"
   ]
 }

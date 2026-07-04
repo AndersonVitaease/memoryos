@@ -1,12 +1,17 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Send, Loader2, Brain, Sparkles, ChevronDown, ChevronUp, Radio, Volume2, X } from "lucide-react";
+import { Send, Loader2, Brain, Sparkles, ChevronDown, ChevronUp, Radio, Volume2, X, Paperclip } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import ReactMarkdown from "react-markdown";
 import { getOrCreateActiveSession, shouldProcessBatch, processConversationBatch } from "@/lib/conversationEngine";
 import { runMemoryPipeline } from "@/lib/memoryPipeline";
 import { useVoicePipeline } from "@/hooks/useVoicePipeline";
+import { ingestKnowledge, ACCEPT_MAP } from "@/lib/knowledgeIngestionPipeline";
 import VoiceButton from "@/components/chat/VoiceButton";
 import VoiceMode from "@/components/chat/VoiceMode";
+import AttachmentMenu from "@/components/chat/AttachmentMenu";
+import ProcessingBubble from "@/components/chat/ProcessingBubble";
+import PasteTextDialog from "@/components/chat/PasteTextDialog";
+import LinkDialog from "@/components/chat/LinkDialog";
 
 export default function ChatPage() {
   const [messages, setMessages] = useState([]);
@@ -16,7 +21,13 @@ export default function ChatPage() {
   const [session, setSession] = useState(null);
   const [showSummary, setShowSummary] = useState(false);
   const [continuousMode, setContinuousMode] = useState(false);
+  const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
+  const [processingItems, setProcessingItems] = useState([]);
+  const [pasteDialogOpen, setPasteDialogOpen] = useState(false);
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const bottomRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const fileInputTypeRef = useRef(null);
 
   const pipeline = useVoicePipeline({
     onSend: async (text, { setPhase }) => {
@@ -219,6 +230,105 @@ ${userMsg}`;
     return responseText;
   };
 
+  const runIngestion = async ({ type, file, url, text }) => {
+    if (!session) return;
+    const itemId = `ingestion-${Date.now()}`;
+    const displayName = file?.name || url || "Texto colado";
+
+    setProcessingItems((prev) => [
+      ...prev,
+      { id: itemId, name: displayName, type, stage: "receiving", error: null },
+    ]);
+
+    // Salvar mensagem do usuário (registro do conteúdo adicionado)
+    const userMsg = await base44.entities.Message.create({
+      session_id: session.id,
+      role: "user",
+      content: type === "link" ? `📎 ${url}` : `📎 ${displayName}`,
+      memory_tier: "active",
+    });
+    setMessages((prev) => [...prev, userMsg]);
+
+    try {
+      const result = await ingestKnowledge({
+        type,
+        file,
+        url,
+        text,
+        name: displayName,
+        sessionId: session.id,
+        projectId: session.project_id,
+        onStage: (stage) => {
+          setProcessingItems((prev) =>
+            prev.map((item) => (item.id === itemId ? { ...item, stage } : item))
+          );
+        },
+      });
+
+      const stats = result.stats;
+      const statsLines = [];
+      if (stats.entities > 0) statsLines.push(`✓ ${stats.entities} entidades identificadas`);
+      if (stats.keywords > 0) statsLines.push(`✓ ${stats.keywords} palavras-chave extraídas`);
+      if (stats.decisions > 0) statsLines.push(`✓ ${stats.decisions} decisões registradas`);
+      if (stats.tasks > 0) statsLines.push(`✓ ${stats.tasks} tarefas identificadas`);
+      if (stats.topics > 0) statsLines.push(`✓ ${stats.topics} assuntos catalogados`);
+
+      const completionText = `**${result.displayName}** processado.\n\n✓ Resumo criado.\n${statsLines.join("\n")}\n\nEste conteúdo agora faz parte da sua memória permanente.`;
+
+      const assistantMsg = await base44.entities.Message.create({
+        session_id: session.id,
+        role: "assistant",
+        content: completionText,
+        memory_tier: "active",
+      });
+      setMessages((prev) => [...prev, assistantMsg]);
+
+      setProcessingItems((prev) => prev.filter((item) => item.id !== itemId));
+    } catch (err) {
+      setProcessingItems((prev) =>
+        prev.map((item) =>
+          item.id === itemId ? { ...item, error: "Erro ao processar conteúdo." } : item
+        )
+      );
+
+      const errorMsg = await base44.entities.Message.create({
+        session_id: session.id,
+        role: "assistant",
+        content: `Não consegui processar **${displayName}**. Ocorreu um erro durante o processamento. Tente novamente.`,
+        memory_tier: "active",
+      });
+      setMessages((prev) => [...prev, errorMsg]);
+
+      setTimeout(() => {
+        setProcessingItems((prev) => prev.filter((item) => item.id !== itemId));
+      }, 3000);
+    }
+  };
+
+  const handleAttachmentSelect = (type) => {
+    setAttachmentMenuOpen(false);
+    if (type === "text") {
+      setPasteDialogOpen(true);
+      return;
+    }
+    if (type === "link") {
+      setLinkDialogOpen(true);
+      return;
+    }
+    fileInputTypeRef.current = type;
+    if (fileInputRef.current) {
+      fileInputRef.current.accept = ACCEPT_MAP[type] || "";
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    await runIngestion({ type: fileInputTypeRef.current, file });
+  };
+
   const sendMessage = async (e) => {
     e?.preventDefault();
     const text = input.trim();
@@ -304,6 +414,10 @@ ${userMsg}`;
               </div>
             </div>
           )}
+
+          {processingItems.map((item) => (
+            <ProcessingBubble key={item.id} item={item} />
+          ))}
           <div ref={bottomRef} />
         </div>
       </div>
@@ -358,6 +472,22 @@ ${userMsg}`;
           </div>
 
           <div className="flex items-end gap-2">
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setAttachmentMenuOpen(!attachmentMenuOpen)}
+                disabled={loading}
+                className="p-3 rounded-2xl bg-zinc-100 text-zinc-600 hover:bg-zinc-200 disabled:opacity-30 transition-all shrink-0"
+              >
+                <Paperclip className="w-5 h-5" />
+              </button>
+              {attachmentMenuOpen && (
+                <AttachmentMenu
+                  onSelect={handleAttachmentSelect}
+                  onClose={() => setAttachmentMenuOpen(false)}
+                />
+              )}
+            </div>
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -393,6 +523,28 @@ ${userMsg}`;
           </div>
         </form>
       </div>
+
+      {/* Hidden file input for attachments */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+
+      {/* Paste text dialog */}
+      <PasteTextDialog
+        open={pasteDialogOpen}
+        onOpenChange={setPasteDialogOpen}
+        onSubmit={(text) => runIngestion({ type: "text", text })}
+      />
+
+      {/* Link dialog */}
+      <LinkDialog
+        open={linkDialogOpen}
+        onOpenChange={setLinkDialogOpen}
+        onSubmit={(url) => runIngestion({ type: "link", url })}
+      />
 
       {/* Conversa Contínua — overlay para longas conversas por voz */}
       {continuousMode && (
