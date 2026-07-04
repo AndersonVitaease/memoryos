@@ -9,8 +9,8 @@ export default function GreetingBlock({ user, activeSession }) {
   const firstName = getFirstName(user);
 
   return (
-    <div className="mb-10">
-      <h1 className="text-3xl font-bold text-zinc-900 font-heading tracking-tight">
+    <div className="mb-8 sm:mb-10">
+      <h1 className="text-2xl sm:text-3xl font-bold text-zinc-900 font-heading tracking-tight">
         {greeting}{firstName ? `, ${firstName}` : ""}.
       </h1>
       <p className="text-zinc-400 mt-1">Bem-vindo de volta.</p>
@@ -19,7 +19,7 @@ export default function GreetingBlock({ user, activeSession }) {
         onClick={() => navigate("/chat")}
         className="mt-6 w-full text-left group"
       >
-        <div className="bg-gradient-to-br from-zinc-900 to-zinc-800 rounded-2xl p-6 transition-all group-hover:shadow-lg group-hover:shadow-zinc-200/60">
+        <div className="bg-gradient-to-br from-zinc-900 to-zinc-800 rounded-2xl p-5 sm:p-6 transition-all group-hover:shadow-lg group-hover:shadow-zinc-200/60">
           <div className="flex items-center justify-between gap-4">
             <div className="flex-1 min-w-0">
               {activeSession?.summary ? (

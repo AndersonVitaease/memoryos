@@ -23,14 +23,14 @@ export default function Projects() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex items-center justify-center h-[calc(100vh-3.5rem)] lg:h-screen">
         <div className="w-8 h-8 border-4 border-zinc-200 border-t-violet-600 rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="p-6 lg:p-10 max-w-6xl mx-auto">
+    <div className="p-4 sm:p-6 lg:p-10 max-w-6xl mx-auto w-full">
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold text-zinc-900 font-heading">Projetos</h1>

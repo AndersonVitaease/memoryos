@@ -40,7 +40,7 @@ Se não encontrar a informação, diga que não está na memória do sistema.`;
   };
 
   return (
-    <div className="p-6 lg:p-10 max-w-4xl mx-auto">
+    <div className="p-4 sm:p-6 lg:p-10 max-w-4xl mx-auto w-full">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-zinc-900 font-heading">Pesquisa Inteligente</h1>
         <p className="text-sm text-zinc-500 mt-1">Busque em toda a sua memória — documentos, conversas e conhecimento extraído.</p>

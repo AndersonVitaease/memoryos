@@ -3,7 +3,7 @@ import { Send, Loader2, Brain, Sparkles, ChevronDown, ChevronUp } from "lucide-r
 import { base44 } from "@/api/base44Client";
 import ReactMarkdown from "react-markdown";
 import { getOrCreateActiveSession, shouldProcessBatch, processConversationBatch } from "@/lib/conversationEngine";
-import { retrieveContext } from "@/lib/contextRetrieval";
+import { runMemoryPipeline } from "@/lib/memoryPipeline";
 
 export default function ChatPage() {
   const [messages, setMessages] = useState([]);
@@ -43,19 +43,27 @@ export default function ChatPage() {
     });
     setMessages((prev) => [...prev, savedUserMsg]);
 
-    // Recuperar conhecimento extraído (resumo, entidades, documentos, keywords)
-    const { context, sources, sessionSummary, hasMemory } = await retrieveContext(
+    // === MEMORY RETRIEVAL PIPELINE ===
+    // Etapa obrigatória: consulta todo o banco antes de responder
+    const { context, sources, sessionSummary } = await runMemoryPipeline(
       userMsg,
       session.id,
       session.project_id
     );
 
-    // Usar histórico completo da sessão (já carregado no estado), não apenas amostra
+    // Histórico da conversa atual (do estado, não do banco)
     const historyMessages = [...messages, savedUserMsg].slice(-30);
     const historyText = historyMessages
       .map((m) => `${m.role === "user" ? "Usuário" : "Assistente"}: ${m.content}`)
       .join("\n\n");
     const totalMessages = messages.length + 1;
+    const hasStructuredMemory = context.length > 0 || sources.length > 0;
+
+    // Lista de fontes consultadas pelo pipeline
+    const sourceTypes = [...new Set(sources.map((s) => s.type))];
+    const sourcesText = sourceTypes.length > 0
+      ? sourceTypes.map((t) => `- ${t} (${sources.filter((s) => s.type === t).length} registros)`).join("\n")
+      : "Nenhuma fonte estruturada encontrada no banco.";
 
     // Construir prompt com o system prompt oficial do MemoryOS
     const prompt = `Você é o MemoryOS.
@@ -104,10 +112,16 @@ Sempre priorize o conhecimento armazenado pelo MemoryOS antes de responder.
 Quando a memória disponível não for suficiente para responder completamente, informe exatamente o que você sabe, o que ainda não sabe e quais informações adicionais seriam necessárias. Nunca finja que sabe e nunca ignore a memória existente.
 
 ## ESTADO DA MEMÓRIA
-${hasMemory ? `- Esta conversa possui ${totalMessages} mensagens preservadas.` : "- Esta é uma nova conversa, sem memória anterior ainda."}
+- Esta conversa possui ${totalMessages} mensagens preservadas.
 ${sessionSummary ? "- Existe um resumo da conversa disponível abaixo." : ""}
+${hasStructuredMemory ? `- Memória estruturada recuperada do banco: ${sources.length} registros de ${sourceTypes.length} fontes.` : "- Nenhuma memória estruturada encontrada no banco para esta pergunta."}
 
-${context ? `## CONHECIMENTO RECUPERADO\n${context}` : ""}
+## FONTES CONSULTADAS PELO PIPELINE
+${sourcesText}
+
+${context ? `## MEMÓRIA ESTRUTURADA RECUPERADA\n${context}` : ""}
+
+${sessionSummary ? `## RESUMO DA SESSÃO ATUAL\n${sessionSummary}` : ""}
 
 ${historyText ? `## HISTÓRICO DA CONVERSA\n${historyText}` : ""}
 
@@ -152,29 +166,29 @@ ${userMsg}`;
 
   if (initialLoading) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex items-center justify-center h-[calc(100vh-3.5rem)] lg:h-screen">
         <div className="w-8 h-8 border-4 border-zinc-200 border-t-violet-600 rounded-full animate-spin" />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-56px)] lg:h-screen">
+    <div className="flex flex-col h-[calc(100vh-3.5rem)] lg:h-screen">
       {/* Session header with rolling summary toggle */}
       {session?.summary && (
         <div className="border-b border-zinc-100 bg-white">
           <button
             onClick={() => setShowSummary(!showSummary)}
-            className="w-full flex items-center gap-2 px-6 py-2.5 text-left hover:bg-zinc-50 transition"
+            className="w-full flex items-center gap-2 px-4 lg:px-6 py-2.5 text-left hover:bg-zinc-50 transition"
           >
-            <Sparkles className="w-3.5 h-3.5 text-violet-500" />
-            <span className="text-xs font-medium text-zinc-500">
-              Memória da conversa ativa — {messages.length} mensagens preservadas
+            <Sparkles className="w-3.5 h-3.5 text-violet-500 shrink-0" />
+            <span className="text-xs font-medium text-zinc-500 truncate">
+              Memória ativa — {messages.length} mensagens
             </span>
-            {showSummary ? <ChevronUp className="w-3.5 h-3.5 text-zinc-400 ml-auto" /> : <ChevronDown className="w-3.5 h-3.5 text-zinc-400 ml-auto" />}
+            {showSummary ? <ChevronUp className="w-3.5 h-3.5 text-zinc-400 ml-auto shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 text-zinc-400 ml-auto shrink-0" />}
           </button>
           {showSummary && (
-            <div className="px-6 pb-4">
+            <div className="px-4 lg:px-6 pb-4">
               <div className="bg-violet-50/50 rounded-xl p-4 border border-violet-100">
                 <p className="text-xs font-semibold text-violet-600 uppercase tracking-wide mb-2">Resumo da Memória</p>
                 <p className="text-sm text-zinc-600 whitespace-pre-wrap">{session.summary}</p>
@@ -185,8 +199,8 @@ ${userMsg}`;
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 lg:px-6 py-6">
-        <div className="max-w-3xl mx-auto space-y-4">
+      <div className="flex-1 overflow-y-auto px-3 sm:px-4 lg:px-6 py-4 lg:py-6">
+        <div className="max-w-3xl mx-auto space-y-3 lg:space-y-4">
           {messages.length === 0 && (
             <div className="flex flex-col items-center justify-center h-full text-center py-20">
               <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center mb-4 shadow-lg shadow-violet-200">
@@ -231,8 +245,8 @@ ${userMsg}`;
         </div>
       </div>
 
-      {/* Input */}
-      <div className="border-t border-zinc-200 bg-white px-4 lg:px-6 py-4">
+      {/* Input — fixo na parte inferior */}
+      <div className="border-t border-zinc-200 bg-white px-3 sm:px-4 lg:px-6 py-3 lg:py-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
         <form onSubmit={sendMessage} className="max-w-3xl mx-auto">
           <div className="flex items-end gap-2">
             <textarea

@@ -11,50 +11,52 @@ const navItems = [
   { label: "Pesquisar", icon: Search, path: "/search" },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ onNavigate }) {
   const location = useLocation();
 
   return (
-    <aside className="fixed left-0 top-0 bottom-0 w-64 bg-zinc-950 text-white flex flex-col z-40">
-      <div className="p-6 border-b border-zinc-800">
-        <Link to="/" className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center">
+    <aside className="h-full w-64 bg-zinc-950 text-white flex flex-col">
+      <div className="p-5 border-b border-zinc-800 shrink-0">
+        <Link to="/" onClick={onNavigate} className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shrink-0">
             <Brain className="w-5 h-5 text-white" />
           </div>
-          <div>
-            <h1 className="text-lg font-bold tracking-tight font-heading">MemoryOS</h1>
-            <p className="text-[11px] text-zinc-500 -mt-0.5">Memória inteligente</p>
+          <div className="min-w-0">
+            <h1 className="text-base font-bold tracking-tight font-heading truncate">MemoryOS</h1>
+            <p className="text-[11px] text-zinc-500 -mt-0.5 truncate">Memória inteligente</p>
           </div>
         </Link>
       </div>
 
-      <nav className="flex-1 p-4 space-y-1">
+      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
         {navItems.map((item) => {
-          const isActive = location.pathname === item.path || 
+          const isActive =
+            location.pathname === item.path ||
             (item.path !== "/" && location.pathname.startsWith(item.path));
           return (
             <Link
               key={item.path}
               to={item.path}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+              onClick={onNavigate}
+              className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-all ${
                 isActive
                   ? "bg-violet-600/20 text-violet-300"
                   : "text-zinc-400 hover:text-white hover:bg-zinc-800/60"
               }`}
             >
-              <item.icon className="w-4.5 h-4.5" />
+              <item.icon className="w-5 h-5 shrink-0" />
               {item.label}
             </Link>
           );
         })}
       </nav>
 
-      <div className="p-4 border-t border-zinc-800">
+      <div className="p-3 border-t border-zinc-800 shrink-0">
         <button
           onClick={() => base44.auth.logout("/")}
-          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-zinc-500 hover:text-red-400 hover:bg-zinc-800/60 transition-all w-full"
+          className="flex items-center gap-3 px-3 py-3 rounded-lg text-sm text-zinc-500 hover:text-red-400 hover:bg-zinc-800/60 transition-all w-full"
         >
-          <LogOut className="w-4.5 h-4.5" />
+          <LogOut className="w-5 h-5 shrink-0" />
           Sair
         </button>
       </div>

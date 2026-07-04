@@ -40,7 +40,7 @@ export default function Home() {
 
   if (isEmpty) {
     return (
-      <div className="flex flex-col items-center justify-center h-[calc(100vh-56px)] lg:h-screen text-center px-6">
+      <div className="flex flex-col items-center justify-center h-[calc(100vh-3.5rem)] lg:h-screen text-center px-6">
         <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center mb-5 shadow-lg shadow-violet-200">
           <Brain className="w-8 h-8 text-white" />
         </div>
@@ -59,7 +59,7 @@ export default function Home() {
   }
 
   return (
-    <div className="p-6 lg:p-10 max-w-3xl mx-auto">
+    <div className="p-4 sm:p-6 lg:p-10 max-w-3xl mx-auto w-full">
       <GreetingBlock user={user} activeSession={activeSessions[0]} />
       <SinceLastVisit sinceLastVisit={sinceLastVisit} pendingTasks={pendingTasks} />
       <MemorySpaces spaces={spaces} />
