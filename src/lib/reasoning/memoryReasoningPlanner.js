@@ -4,6 +4,7 @@ import { detectSkills } from "@/lib/skills/detector";
 import { detectGoal } from "@/lib/reasoning/goalDetector";
 import { buildReasoningContext } from "@/lib/reasoning/contextBuilder";
 import { synthesizeResponse } from "@/lib/reasoning/memorySynthesizer";
+import { orchestrateCapabilities } from "@/lib/reasoning/capabilityOrchestrator";
 
 /**
  * Memory Reasoning Planner (MRP)
@@ -14,9 +15,10 @@ import { synthesizeResponse } from "@/lib/reasoning/memorySynthesizer";
  *   Usuário
  *     → Memory Retrieval Pipeline (reutilizado)
  *     → Memory Reasoning Planner (esta camada)
+ *       → Capability Orchestrator (decide e executa capacidades)
  *       → Context-Aware Skills Engine (reutilizada)
  *       → Goal Detector
- *       → Context Builder
+ *       → Context Builder (inclui resultados das capacidades)
  *     → LLM (UMA ÚNICA CHAMADA)
  *     → Memory Synthesizer
  *     → Resposta Final
@@ -54,8 +56,20 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
   // Identifica qual problema o usuário está tentando resolver.
   const goal = detectGoal(userMsg);
 
-  // === ETAPA 4: CONTEXT BUILDER ===
-  // Monta um único contexto estruturado com: memória, especialistas, objetivo, estratégia.
+  // === ETAPA 4: CAPABILITY ORCHESTRATOR ===
+  // Decide e executa capacidades: web search, cálculo determinístico, documentos.
+  // Resultados são injetados no Context Builder — NÃO chamam o LLM para responder.
+  const capabilityResult = await orchestrateCapabilities({
+    message: userMsg,
+    memory,
+    goal,
+    sessionId: session.id,
+    projectId: session.project_id,
+  });
+
+  // === ETAPA 5: CONTEXT BUILDER ===
+  // Monta um único contexto estruturado com: memória, especialistas, objetivo,
+  // estratégia e resultados das capacidades executadas.
   const historyText = historyMessages
     .map((m) => `${m.role === "user" ? "Usuário" : "Assistente"}: ${m.content}`)
     .join("\n\n");
@@ -68,14 +82,19 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
     goal,
     historyText,
     totalMessages,
+    capabilities: capabilityResult.capabilities,
+    capabilityResults: capabilityResult.capabilityResults,
+    needsMoreInfo: capabilityResult.needsMoreInfo,
+    missingInfoHint: capabilityResult.missingInfoHint,
   });
 
-  // === ETAPA 5: UMA ÚNICA CHAMADA AO LLM ===
-  // Todos os especialistas, memória, objetivo e estratégia estão neste prompt.
+  // === ETAPA 6: UMA ÚNICA CHAMADA AO LLM ===
+  // Todos os especialistas, memória, objetivo, estratégia e resultados de capacidades
+  // estão neste único prompt. O LLM nunca é chamado por capacidade ou especialista.
   setPhase?.("generating");
   const rawResponse = await base44.integrations.Core.InvokeLLM({ prompt });
 
-  // === ETAPA 6: MEMORY SYNTHESIZER ===
+  // === ETAPA 7: MEMORY SYNTHESIZER ===
   // Síntese determinística (sem LLM): elimina repetições, melhora fluidez.
   const response = synthesizeResponse(
     typeof rawResponse === "string" ? rawResponse : String(rawResponse)
@@ -83,8 +102,12 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
 
   const responseTimeMs = Date.now() - startTime;
 
-  // === ETAPA 7: REGISTRO DE RACIOCÍNIO (APRENDIZADO) ===
+  // === ETAPA 8: REGISTRO DE RACIOCÍNIO (APRENDIZADO) ===
   // Metadados para otimização futura. Lightweight, não bloqueia a resposta.
+  const activeCapabilities = Object.entries(capabilityResult.capabilities || {})
+    .filter(([_, active]) => active)
+    .map(([cap]) => cap);
+
   const plan = {
     goal: goal.id,
     goalLabel: goal.label,
@@ -93,6 +116,9 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
     skillsCount: skills.length,
     sourcesCount: sources.length,
     contextLength: context ? context.length : 0,
+    capabilities: activeCapabilities,
+    capabilitiesCount: activeCapabilities.length,
+    needsMoreInfo: capabilityResult.needsMoreInfo,
     responseTimeMs,
   };
 
@@ -104,6 +130,9 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
         skills_count: plan.skillsCount,
         skill_ids: plan.skills.map((s) => s.id).join(",") || null,
         sources_count: plan.sourcesCount,
+        capabilities: activeCapabilities.join(",") || null,
+        capabilities_count: plan.capabilitiesCount,
+        needs_more_info: plan.needsMoreInfo,
         response_time_ms: plan.responseTimeMs,
       },
     });

@@ -8,6 +8,8 @@
  * - Objetivo do usuário
  * - Estratégia de resposta
  * - Detecção de conflitos
+ * - Resultados de capacidades executadas (web search, cálculo, documentos)
+ * - Detecção de informação insuficiente
  *
  * Reutiliza 100% do contexto já recuperado pelo Memory Pipeline.
  * Não faz consultas adicionais ao banco.
@@ -25,10 +27,67 @@ import { buildSkillsPrompt } from "@/lib/skills/detector";
  * @param {Object} params.goal - Objetivo detectado (resultado de detectGoal)
  * @param {string} params.historyText - Histórico da conversa formatado
  * @param {number} params.totalMessages - Total de mensagens na sessão
+ * @param {Object} params.capabilities - Capacidades ativas { web_search, calculation, documents, ... }
+ * @param {Object} params.capabilityResults - Resultados executados { webSearch, calculation, documents }
+ * @param {boolean} params.needsMoreInfo - Se faltam informações para responder
+ * @param {string} params.missingInfoHint - Descrição do que falta
  * @returns {string} - Prompt completo pronto para UMA chamada ao LLM
  */
-export function buildReasoningContext({ userMsg, memory, skills, goal, historyText, totalMessages }) {
+export function buildReasoningContext({ userMsg, memory, skills, goal, historyText, totalMessages, capabilities, capabilityResults, needsMoreInfo, missingInfoHint }) {
   const { context, sources, sessionSummary } = memory;
+
+  // === BLOCO DE CAPACIDADES EXECUTADAS ===
+  // Resultados brutos de web search, cálculo determinístico e documentos consultados.
+  // O LLM usa esses dados como contexto — não responde em nome deles.
+  const capabilityBlocks = [];
+
+  if (capabilityResults?.webSearch && !capabilityResults.webSearch.error) {
+    const ws = capabilityResults.webSearch;
+    const factsText = ws.facts?.length > 0
+      ? ws.facts.map((f) => `- ${f}`).join("\n")
+      : "- Nenhum fato objetivo encontrado.";
+    const sourcesWsText = ws.sources?.length > 0
+      ? ws.sources.map((s) => `- ${s}`).join("\n")
+      : "";
+    const divText = ws.divergences?.length > 0
+      ? ws.divergences.map((d) => `- ${d}`).join("\n")
+      : "";
+    capabilityBlocks.push(
+      `## PESQUISA WEB (executada automaticamente)\n` +
+      `### Fatos encontrados\n${factsText}\n` +
+      (sourcesWsText ? `\n### Fontes consultadas\n${sourcesWsText}\n` : "") +
+      (divText ? `\n### Divergências entre fontes\n${divText}\n` : "")
+    );
+  }
+
+  if (capabilityResults?.calculation) {
+    const calc = capabilityResults.calculation;
+    capabilityBlocks.push(
+      `## CÁLCULO DETERMINÍSTICO (executado automaticamente)\n` +
+      `- Expressão: ${calc.expression}\n` +
+      `- Resultado: ${calc.result}\n` +
+      `\nUse este resultado como base. Apresente o raciocínio ao usuário.`
+    );
+  }
+
+  if (capabilityResults?.documents?.length > 0) {
+    const docsText = capabilityResults.documents
+      .map((d) => `- ${d.name}${d.category ? ` (${d.category})` : ""}${d.summary ? `: ${d.summary.substring(0, 150)}` : ""}`)
+      .join("\n");
+    capabilityBlocks.push(
+      `## DOCUMENTOS CONSULTADOS (automaticamente)\n${docsText}`
+    );
+  }
+
+  // === INSTRUÇÃO DE INFORMAÇÃO INSUFICIENTE ===
+  // Se o Orchestrator detectou que faltam dados, instrui o LLM a solicitar.
+  const needsMoreInfoBlock = needsMoreInfo
+    ? `## ATENÇÃO: INFORMAÇÃO INSUFICIENTE\n` +
+      `O Capability Orchestrator detectou que não há dados suficientes para responder completamente.\n` +
+      `${missingInfoHint}\n\n` +
+      `INSTRUÇÃO: Não invente valores ou suposições técnicas. Solicite ao usuário EXATAMENTE ` +
+      `a informação necessária, de forma natural e conversacional. Explique por que precisa dela.`
+    : "";
 
   const sourceTypes = [...new Set(sources.map((s) => s.type))];
   const sourcesText = sourceTypes.length > 0
@@ -149,6 +208,6 @@ ${sessionSummary ? `## RESUMO DA CONVERSA\n${sessionSummary}` : ""}
 
 ${historyText ? `## HISTÓRICO DA CONVERSA\n${historyText}` : ""}
 
-## O QUE O USUÁRIO ACABOU DE DIZER
+${needsMoreInfoBlock ? `${needsMoreInfoBlock}\n\n---\n` : ""}${capabilityBlocks.length > 0 ? `${capabilityBlocks.join("\n\n---\n\n")}\n\n---\n` : ""}## O QUE O USUÁRIO ACABOU DE DIZER
 ${userMsg}`;
 }
