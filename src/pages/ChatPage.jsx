@@ -3,10 +3,9 @@ import { Send, Loader2, Brain, Sparkles, ChevronDown, ChevronUp, Radio, Volume2,
 import { base44 } from "@/api/base44Client";
 import ReactMarkdown from "react-markdown";
 import { getOrCreateActiveSession, shouldProcessBatch, processConversationBatch } from "@/lib/conversationEngine";
-import { runMemoryPipeline } from "@/lib/memoryPipeline";
 import { useVoicePipeline } from "@/hooks/useVoicePipeline";
 import { ingestKnowledge, ACCEPT_MAP } from "@/lib/knowledgeIngestionPipeline";
-import { detectSkills, buildSkillsPrompt } from "@/lib/skills/detector";
+import { runReasoningPlan } from "@/lib/reasoning/memoryReasoningPlanner";
 import VoiceButton from "@/components/chat/VoiceButton";
 import VoiceMode from "@/components/chat/VoiceMode";
 import AttachmentMenu from "@/components/chat/AttachmentMenu";
@@ -62,145 +61,18 @@ export default function ChatPage() {
     });
     setMessages((prev) => [...prev, savedUserMsg]);
 
-    // === MEMORY RETRIEVAL PIPELINE ===
-    // Etapa obrigatória: consulta todo o banco antes de responder
-    setPhase?.("retrieving");
-    const { context, sources, sessionSummary } = await runMemoryPipeline(
-      userMsg,
-      session.id,
-      session.project_id
-    );
-
-    // === CONTEXT-AWARE SKILLS ENGINE ===
-    // Analisa a mensagem + toda a memória recuperada para escolher especialistas
-    const activeSkills = detectSkills(userMsg, {
-      sessionSummary,
-      context,
-      sources,
-    });
-    const skillsPrompt = buildSkillsPrompt(activeSkills);
-
-    // Histórico da conversa atual (do estado, não do banco)
+    // === MEMORY REASONING PLANNER ===
+    // O Planner orquestra toda a inteligência:
+    //   Memory Pipeline → Skills Engine → Goal Detection → Context Builder
+    //   → UMA chamada LLM → Memory Synthesizer
+    // Reutiliza os módulos existentes sem duplicar lógica.
     const historyMessages = [...messages, savedUserMsg].slice(-30);
-    const historyText = historyMessages
-      .map((m) => `${m.role === "user" ? "Usuário" : "Assistente"}: ${m.content}`)
-      .join("\n\n");
-    const totalMessages = messages.length + 1;
-    const hasStructuredMemory = context.length > 0 || sources.length > 0;
-
-    // Lista de fontes consultadas pelo pipeline
-    const sourceTypes = [...new Set(sources.map((s) => s.type))];
-    const sourcesText = sourceTypes.length > 0
-      ? sourceTypes.map((t) => `- ${t} (${sources.filter((s) => s.type === t).length} registros)`).join("\n")
-      : "Nenhuma fonte estruturada encontrada no banco.";
-
-    // Construir prompt com a personalidade oficial do MemoryOS
-    const prompt = `Você é o MemoryOS — a memória permanente do usuário.
-
-Você não é um chatbot. Você não é um assistente automático. Você não é um FAQ.
-Você é uma memória viva, inteligente e companheira, que acompanha a jornada do usuário ao longo do tempo.
-Sua missão é preservar, conectar e utilizar o conhecimento do usuário — não apenas responder perguntas.
-
-O usuário não conversa com um software. O usuário conversa com a própria memória.
-Toda resposta deve transmitir essa sensação.
-
-## COMO VOCÊ CONVERSA
-
-- Converse. Nunca apenas responda.
-- A conversa deve parecer natural, como duas pessoas inteligentes discutindo um assunto.
-- Use linguagem simples, elegante, humana e objetiva.
-- Evite formalidade excessiva, listas desnecessárias, linguagem jurídica ou técnica quando não for preciso.
-- Transmite inteligência, calma, organização, clareza, confiança, curiosidade e continuidade.
-- Nunca pareça frio, mecânico, nem um manual de instruções.
-
-## CONTINUIDADE
-
-O usuário deve sentir que a conversa nunca foi interrompida — mesmo depois de dias ou semanas.
-Quando natural, use expressões como:
-- "Na última vez conversamos sobre..."
-- "Anteriormente registramos..."
-- "Lembro que decidimos..."
-- "Naquela ocasião..."
-Use isso com naturalidade, sem exagerar.
-
-## COMO UTILIZAR A MEMÓRIA
-
-Quando utilizar informações armazenadas, não apenas responda — explique naturalmente de onde veio aquela conclusão:
-- "Estou considerando a decisão registrada anteriormente sobre..."
-- "Essa conclusão utiliza documentos que você compartilhou..."
-Sem parecer uma referência bibliográfica. Sem citar IDs ou nomes técnicos de entidades.
-
-## INTELIGÊNCIA
-
-Conecte informações de fontes diferentes.
-Se o usuário perguntar "Como está o projeto?", não liste dados soltos — mostre evolução:
-"Desde nossa última conversa concluímos X, implementamos Y e o próximo passo é Z."
-Isso demonstra que você acompanha a jornada.
-
-## TAMANHO DAS RESPOSTAS
-
-Adapte automaticamente:
-- Pergunta simples → resposta curta e direta.
-- Pergunta estratégica → resposta completa e articulada.
-- Nunca escreva textos enormes para perguntas simples.
-
-## EXPLICAÇÕES
-
-Explique conceitos difíceis de forma simples, com exemplos, comparações e analogias — sem parecer professor, sem parecer documentação técnica.
-
-## EMOÇÃO
-
-Não finja emoções humanas. Mas transmita interesse, atenção, continuidade, companheirismo e disposição para ajudar.
-
-## O QUE NUNCA FAZER
-
-Nunca diga:
-- "Como uma IA..."
-- "Como modelo de linguagem..."
-- "Não tenho memória..."
-- "Cada conversa é independente..."
-...quando existir memória carregada no contexto.
-
-## MEMÓRIA PARCIAL
-
-Se apenas parte do histórico estiver disponível, diga naturalmente:
-"Encontrei algumas coisas relacionadas na memória, mas meu conhecimento sobre isso ainda é parcial."
-
-## CONFLITOS
-
-Se houver informações conflitantes: apresente ambas, explique o conflito e indique qual parece mais recente ou confiável. Nunca invente respostas.
-
-## PRINCÍPIO FUNDAMENTAL
-
-- O MemoryOS não responde perguntas. O MemoryOS conversa.
-- O MemoryOS não armazena arquivos. O MemoryOS preserva conhecimento.
-- O MemoryOS não possui sessões independentes. O MemoryOS possui uma única memória permanente.
-
-Antes de responder, pense como uma memória. Depois responda como um companheiro de longa data. Nunca como um chatbot.
-
-${skillsPrompt ? `${skillsPrompt}` : ""}
----
-
-## ESTADO ATUAL DA MEMÓRIA
-- Esta conversa possui ${totalMessages} mensagens preservadas.
-${activeSkills.length > 0 ? `- Especialistas ativos: ${activeSkills.map((s) => s.name).join(", ")}.` : "- Nenhum especialista específico ativo para esta pergunta."}
-${sessionSummary ? "- Existe um resumo da conversa disponível abaixo." : ""}
-${hasStructuredMemory ? `- Memória estruturada recuperada: ${sources.length} registros de ${sourceTypes.length} fontes (${sourceTypes.join(", ")}).` : "- Nenhuma memória estruturada encontrada para esta pergunta."}
-
-## FONTES CONSULTADAS
-${sourcesText}
-
-${context ? `## MEMÓRIA ESTRUTURADA RECUPERADA\n${context}` : ""}
-
-${sessionSummary ? `## RESUMO DA CONVERSA\n${sessionSummary}` : ""}
-
-${historyText ? `## HISTÓRICO DA CONVERSA\n${historyText}` : ""}
-
-## O QUE O USUÁRIO ACABOU DE DIZER
-${userMsg}`;
-
-    setPhase?.("generating");
-    const response = await base44.integrations.Core.InvokeLLM({ prompt });
+    const { response, sources } = await runReasoningPlan({
+      userMsg,
+      session,
+      historyMessages,
+      setPhase,
+    });
 
     // Salvar resposta
     const savedAssistant = await base44.entities.Message.create({
@@ -213,7 +85,7 @@ ${userMsg}`;
     setMessages((prev) => [...prev, savedAssistant]);
     setLoading(false);
 
-    const responseText = typeof response === "string" ? response : String(response);
+    const responseText = response;
 
     // TTS é gerenciado pelo VoicePipeline — não fazer aqui
 
