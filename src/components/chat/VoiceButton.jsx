@@ -1,26 +1,16 @@
 import React, { useRef, useState } from "react";
 import { Mic, X } from "lucide-react";
 
-const CANCEL_THRESHOLD = 80; // pixels deslizados para cancelar
-
-function vibrate(pattern) {
-  if (typeof navigator !== "undefined" && navigator.vibrate) {
-    navigator.vibrate(pattern);
-  }
-}
+const CANCEL_THRESHOLD = 80;
 
 /**
  * Botão Push-to-Talk.
  *
- * - Pressionar: inicia captura de voz + vibra
- * - Segurar: animação pulsante do microfone
- * - Soltar: finaliza reconhecimento + envia + vibra
- * - Deslizar para o lado/cima: cancela e descarta (estilo WhatsApp)
+ * - Pressionar e segurar: inicia captura (onPressStart)
+ * - Soltar: finaliza e envia (onPressEnd)
+ * - Deslizar para o lado/cima: cancela e descarta (onCancel)
  *
- * Props:
- * - onPressStart(): chamado ao pressionar
- * - onPressEnd(): chamado ao soltar (sem cancelar)
- * - onCancel(): chamado ao cancelar deslizando
+ * Haptics/sons são gerenciados pelo pipeline (onPressStart/onPressEnd disparam o feedback).
  */
 export default function VoiceButton({ disabled, onPressStart, onPressEnd, onCancel }) {
   const [isRecording, setIsRecording] = useState(false);
@@ -38,7 +28,6 @@ export default function VoiceButton({ disabled, onPressStart, onPressEnd, onCanc
     setIsRecording(true);
     recordingRef.current = true;
     setIsCanceling(false);
-    vibrate(50);
     onPressStart?.();
   };
 
@@ -51,11 +40,10 @@ export default function VoiceButton({ disabled, onPressStart, onPressEnd, onCanc
   };
 
   const finish = (e, canceled) => {
-    if (!recordingRef.current || e?.pointerId !== pointerId.current) return;
+    if (!recordingRef.current || (e && e.pointerId !== pointerId.current)) return;
     try { e?.currentTarget?.releasePointerCapture?.(pointerId.current); } catch (_) {}
     recordingRef.current = false;
     setIsRecording(false);
-    vibrate(30);
     if (canceled) {
       setIsCanceling(false);
       onCancel?.();
@@ -65,6 +53,7 @@ export default function VoiceButton({ disabled, onPressStart, onPressEnd, onCanc
   };
 
   const handlePointerUp = (e) => finish(e, isCanceling);
+
   const handlePointerCancel = () => {
     if (!recordingRef.current) return;
     recordingRef.current = false;

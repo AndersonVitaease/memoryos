@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { X, Brain, Loader2, Mic, Volume2 } from "lucide-react";
 import { useVoiceRecognition } from "@/hooks/useVoiceRecognition";
 import { useTextToSpeech } from "@/hooks/useTextToSpeech";
+import { useHaptics } from "@/hooks/useHaptics";
 import ReactMarkdown from "react-markdown";
 
 /**
@@ -22,9 +23,11 @@ export default function VoiceMode({ onSendAndReceive, onClose }) {
   const [aiText, setAiText] = useState("");
 
   const tts = useTextToSpeech();
+  const haptics = useHaptics();
 
   const handleResult = (text) => {
     if (!text.trim()) return;
+    haptics.feedback("end");
     setPhase("processing");
     setInterimText("");
 
@@ -57,6 +60,7 @@ export default function VoiceMode({ onSendAndReceive, onClose }) {
   });
 
   useEffect(() => {
+    haptics.feedback("start");
     startListening();
     return () => {
       stopListening();

@@ -1,16 +1,12 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 
 /**
- * Hook para reconhecimento de voz (Speech-to-Text) via Web Speech API.
+ * Hook para reconhecimento de voz via Web Speech API.
  *
- * Modos:
- * - continuous=false (padrão): detecta fim da fala automaticamente, entrega resultado imediatamente
- * - continuous=true (push-to-talk): acumula fala enquanto ativo, entrega tudo ao parar
+ * Safari-safe: cria uma instância fresca de SpeechRecognition a cada startListening().
+ * Reutilizado pelo VoiceMode (Conversa Contínua).
  *
- * Retorna:
- * - isListening, interimText, isSupported
- * - startListening(), stopListening() (entrega resultado acumulado)
- * - abortListening() (descarta tudo, não entrega resultado)
+ * Retorna: isListening, interimText, isSupported, startListening, stopListening, abortListening
  */
 export function useVoiceRecognition({ onResult, onInterim, onEnd, continuous = false } = {}) {
   const [isListening, setIsListening] = useState(false);
@@ -27,15 +23,33 @@ export function useVoiceRecognition({ onResult, onInterim, onEnd, continuous = f
 
   useEffect(() => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) {
-      setIsSupported(false);
-      return;
+    if (!SR) setIsSupported(false);
+    return () => { cleanup(); };
+  }, []);
+
+  const cleanup = useCallback(() => {
+    const rec = recognitionRef.current;
+    if (rec) {
+      try { rec.onresult = null; rec.onerror = null; rec.onend = null; rec.abort(); } catch (e) { /* noop */ }
+      recognitionRef.current = null;
     }
+  }, []);
+
+  const startListening = useCallback(() => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+
+    // Instância fresca a cada chamada (Safari-safe)
+    cleanup();
 
     const rec = new SR();
     rec.continuous = continuous;
     rec.interimResults = true;
     rec.lang = "pt-BR";
+
+    accumulatedRef.current = "";
+    abortRef.current = false;
+    setInterimText("");
 
     rec.onresult = (e) => {
       let interim = "";
@@ -72,41 +86,32 @@ export function useVoiceRecognition({ onResult, onInterim, onEnd, continuous = f
 
     rec.onerror = (e) => {
       if (e.error === "no-speech" || e.error === "aborted") return;
+      if (e.error === "not-allowed" || e.error === "service-not-allowed") return;
       console.error("Voice recognition error:", e.error);
     };
 
     recognitionRef.current = rec;
 
-    return () => {
-      try { rec.stop(); } catch (err) { /* noop */ }
-    };
-  }, [continuous]);
-
-  const startListening = useCallback(() => {
-    if (!recognitionRef.current) return;
-    accumulatedRef.current = "";
-    abortRef.current = false;
-    setInterimText("");
     try {
-      recognitionRef.current.start();
+      rec.start();
       setIsListening(true);
     } catch (err) { /* already started */ }
-  }, []);
+  }, [continuous, cleanup]);
 
   const stopListening = useCallback(() => {
-    if (!recognitionRef.current) return;
-    try { recognitionRef.current.stop(); } catch (err) { /* noop */ }
+    const rec = recognitionRef.current;
+    if (!rec) return;
+    try { rec.stop(); } catch (err) { /* noop */ }
     setIsListening(false);
   }, []);
 
   const abortListening = useCallback(() => {
     abortRef.current = true;
     accumulatedRef.current = "";
-    if (!recognitionRef.current) return;
-    try { recognitionRef.current.abort(); } catch (err) { /* noop */ }
+    cleanup();
     setIsListening(false);
     setInterimText("");
-  }, []);
+  }, [cleanup]);
 
   return { isListening, interimText, isSupported, startListening, stopListening, abortListening };
 }

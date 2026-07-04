@@ -1,11 +1,10 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Send, Loader2, Brain, Sparkles, ChevronDown, ChevronUp, Radio, Volume2 } from "lucide-react";
+import { Send, Loader2, Brain, Sparkles, ChevronDown, ChevronUp, Radio, Volume2, X } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import ReactMarkdown from "react-markdown";
 import { getOrCreateActiveSession, shouldProcessBatch, processConversationBatch } from "@/lib/conversationEngine";
 import { runMemoryPipeline } from "@/lib/memoryPipeline";
-import { useVoiceRecognition } from "@/hooks/useVoiceRecognition";
-import { useTextToSpeech } from "@/hooks/useTextToSpeech";
+import { useVoicePipeline } from "@/hooks/useVoicePipeline";
 import VoiceButton from "@/components/chat/VoiceButton";
 import VoiceMode from "@/components/chat/VoiceMode";
 
@@ -17,51 +16,13 @@ export default function ChatPage() {
   const [session, setSession] = useState(null);
   const [showSummary, setShowSummary] = useState(false);
   const [continuousMode, setContinuousMode] = useState(false);
-  const [voiceStatus, setVoiceStatus] = useState(null);
   const bottomRef = useRef(null);
 
-  const tts = useTextToSpeech();
-
-  const {
-    isSupported: voiceSupported,
-    startListening,
-    stopListening,
-    abortListening,
-  } = useVoiceRecognition({
-    continuous: true,
-    onResult: async (text) => {
-      setInput("");
-      if (!text.trim()) {
-        setVoiceStatus(null);
-        return;
-      }
-      setVoiceStatus("sending");
-      await sendAndReceive(text, { viaVoice: true });
-      setVoiceStatus(null);
-    },
-    onInterim: (text) => setInput(text),
-    onEnd: () => {
-      setVoiceStatus((prev) => (prev === "transcribing" ? null : prev));
-      setInput("");
+  const pipeline = useVoicePipeline({
+    onSend: async (text, { setPhase }) => {
+      return await sendAndReceive(text, { setPhase });
     },
   });
-
-  const handlePressStart = () => {
-    tts.stopSpeaking();
-    startListening();
-    setVoiceStatus("listening");
-  };
-
-  const handlePressEnd = () => {
-    stopListening();
-    setVoiceStatus("transcribing");
-  };
-
-  const handleCancel = () => {
-    abortListening();
-    setVoiceStatus(null);
-    setInput("");
-  };
 
   useEffect(() => { init(); }, []);
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, loading]);
@@ -75,7 +36,7 @@ export default function ChatPage() {
     setInitialLoading(false);
   };
 
-  const sendAndReceive = async (userMsg, { viaVoice = false, skipTTS = false } = {}) => {
+  const sendAndReceive = async (userMsg, { setPhase } = {}) => {
     if (!userMsg || !userMsg.trim() || loading || !session) return null;
 
     setLoading(true);
@@ -91,6 +52,7 @@ export default function ChatPage() {
 
     // === MEMORY RETRIEVAL PIPELINE ===
     // Etapa obrigatória: consulta todo o banco antes de responder
+    setPhase?.("retrieving");
     const { context, sources, sessionSummary } = await runMemoryPipeline(
       userMsg,
       session.id,
@@ -214,6 +176,7 @@ ${historyText ? `## HISTÓRICO DA CONVERSA\n${historyText}` : ""}
 ## O QUE O USUÁRIO ACABOU DE DIZER
 ${userMsg}`;
 
+    setPhase?.("generating");
     const response = await base44.integrations.Core.InvokeLLM({ prompt });
 
     // Salvar resposta
@@ -229,10 +192,7 @@ ${userMsg}`;
 
     const responseText = typeof response === "string" ? response : String(response);
 
-    // TTS — reproduz resposta em voz quando a mensagem foi enviada por voz
-    if (!skipTTS && viaVoice) {
-      tts.speak(responseText);
-    }
+    // TTS é gerenciado pelo VoicePipeline — não fazer aqui
 
     // Processar lote em background (a cada 5 mensagens alternadas = 10 total)
     const allMessages = [...messages, savedUserMsg, savedAssistant];
@@ -348,31 +308,37 @@ ${userMsg}`;
         </div>
       </div>
 
-      {/* Voice status indicator */}
-      {(voiceStatus || tts.isSpeaking) && (
+      {/* Voice pipeline status indicator */}
+      {(pipeline.state !== "idle" || pipeline.error) && (
         <div className={`border-t px-4 lg:px-6 py-2 flex items-center gap-2 ${
-          voiceStatus === "listening" ? "bg-red-50 border-red-100" :
-          tts.isSpeaking && !voiceStatus ? "bg-emerald-50/50 border-zinc-100" :
+          pipeline.state === "listening" ? "bg-red-50 border-red-100" :
+          pipeline.state === "speaking" ? "bg-emerald-50/50 border-zinc-100" :
+          pipeline.error ? "bg-red-50 border-red-100" :
           "bg-violet-50 border-violet-100"
         }`}>
-          {voiceStatus === "listening" && (<>
+          {pipeline.state === "listening" && (<>
             <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" />
-            <span className="text-xs text-red-600 font-medium">Ouvindo...</span>
-            {input && <span className="text-xs text-red-400 truncate ml-1">{input}</span>}
+            <span className="text-xs text-red-600 font-medium">{pipeline.phaseLabel}</span>
+            {pipeline.interimText && <span className="text-xs text-red-400 truncate ml-1">{pipeline.interimText}</span>}
           </>)}
-          {voiceStatus === "transcribing" && (<>
+          {(pipeline.state === "transcribing" || pipeline.state === "retrieving" || pipeline.state === "generating") && (<>
             <Loader2 className="w-3.5 h-3.5 animate-spin text-violet-500 shrink-0" />
-            <span className="text-xs text-violet-600 font-medium">Transcrevendo...</span>
+            <span className="text-xs text-violet-600 font-medium">{pipeline.phaseLabel}</span>
           </>)}
-          {voiceStatus === "sending" && (<>
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-violet-500 shrink-0" />
-            <span className="text-xs text-violet-600 font-medium">Enviando...</span>
-          </>)}
-          {!voiceStatus && tts.isSpeaking && (<>
+          {pipeline.state === "speaking" && (<>
             <Volume2 className="w-4 h-4 text-emerald-500 animate-pulse shrink-0" />
-            <span className="text-xs text-emerald-600 font-medium">Falando...</span>
-            <button type="button" onClick={() => tts.stopSpeaking()} className="ml-auto text-xs text-emerald-600 hover:text-emerald-700 font-medium">Parar</button>
+            <span className="text-xs text-emerald-600 font-medium">{pipeline.phaseLabel}</span>
+            <button type="button" onClick={pipeline.stopSpeaking} className="ml-auto text-xs text-emerald-600 hover:text-emerald-700 font-medium">Parar</button>
           </>)}
+          {pipeline.error && (
+            <span className="text-xs text-red-600 font-medium truncate">{pipeline.error.message}</span>
+          )}
+          {(pipeline.isProcessing || pipeline.state === "speaking") && !pipeline.error && (
+            <button type="button" onClick={pipeline.cancel} className="ml-auto flex items-center gap-1 text-xs text-zinc-400 hover:text-red-500 font-medium transition">
+              <X className="w-3 h-3" />
+              Cancelar
+            </button>
+          )}
         </div>
       )}
 
@@ -383,7 +349,7 @@ ${userMsg}`;
           <div className="flex items-center gap-2 mb-2">
             <button
               type="button"
-              onClick={() => { setContinuousMode(true); stopListening(); }}
+              onClick={() => setContinuousMode(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-zinc-400 hover:text-violet-600 hover:bg-violet-50 transition"
             >
               <Radio className="w-3.5 h-3.5" />
@@ -404,17 +370,17 @@ ${userMsg}`;
               placeholder="Converse com sua memória..."
               rows={1}
               className={`flex-1 resize-none px-4 py-3 rounded-2xl border text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 transition-all bg-white max-h-32 ${
-                voiceStatus === "listening" ? "border-red-300 bg-red-50/30" : "border-zinc-200"
+                pipeline.isListening ? "border-red-300 bg-red-50/30" : "border-zinc-200"
               }`}
-              readOnly={voiceStatus === "listening"}
+              readOnly={pipeline.isListening}
               disabled={loading}
             />
-            {voiceSupported && (
+            {pipeline.isSupported && (
               <VoiceButton
-                disabled={loading}
-                onPressStart={handlePressStart}
-                onPressEnd={handlePressEnd}
-                onCancel={handleCancel}
+                disabled={loading || pipeline.isProcessing}
+                onPressStart={pipeline.startCapture}
+                onPressEnd={pipeline.stopCapture}
+                onCancel={pipeline.cancel}
               />
             )}
             <button
@@ -431,11 +397,10 @@ ${userMsg}`;
       {/* Conversa Contínua — overlay para longas conversas por voz */}
       {continuousMode && (
         <VoiceMode
-          onSendAndReceive={(text) => sendAndReceive(text, { skipTTS: true })}
+          onSendAndReceive={(text) => sendAndReceive(text)}
           onClose={() => {
             setContinuousMode(false);
-            stopListening();
-            tts.stopSpeaking();
+            pipeline.stopSpeaking();
           }}
         />
       )}
