@@ -6,6 +6,7 @@ import { getOrCreateActiveSession, shouldProcessBatch, processConversationBatch 
 import { runMemoryPipeline } from "@/lib/memoryPipeline";
 import { useVoicePipeline } from "@/hooks/useVoicePipeline";
 import { ingestKnowledge, ACCEPT_MAP } from "@/lib/knowledgeIngestionPipeline";
+import { detectSkills, buildSkillsPrompt } from "@/lib/skills/detector";
 import VoiceButton from "@/components/chat/VoiceButton";
 import VoiceMode from "@/components/chat/VoiceMode";
 import AttachmentMenu from "@/components/chat/AttachmentMenu";
@@ -69,6 +70,11 @@ export default function ChatPage() {
       session.id,
       session.project_id
     );
+
+    // === SKILLS DETECTION ===
+    // Identifica o domínio da pergunta e carrega especialistas relevantes
+    const activeSkills = detectSkills(userMsg);
+    const skillsPrompt = buildSkillsPrompt(activeSkills);
 
     // Histórico da conversa atual (do estado, não do banco)
     const historyMessages = [...messages, savedUserMsg].slice(-30);
@@ -168,10 +174,12 @@ Se houver informações conflitantes: apresente ambas, explique o conflito e ind
 
 Antes de responder, pense como uma memória. Depois responda como um companheiro de longa data. Nunca como um chatbot.
 
+${skillsPrompt ? `${skillsPrompt}` : ""}
 ---
 
 ## ESTADO ATUAL DA MEMÓRIA
 - Esta conversa possui ${totalMessages} mensagens preservadas.
+${activeSkills.length > 0 ? `- Especialistas ativos: ${activeSkills.map((s) => s.name).join(", ")}.` : "- Nenhum especialista específico ativo para esta pergunta."}
 ${sessionSummary ? "- Existe um resumo da conversa disponível abaixo." : ""}
 ${hasStructuredMemory ? `- Memória estruturada recuperada: ${sources.length} registros de ${sourceTypes.length} fontes (${sourceTypes.join(", ")}).` : "- Nenhuma memória estruturada encontrada para esta pergunta."}
 
