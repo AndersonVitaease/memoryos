@@ -15,23 +15,19 @@
 import { createCapability } from "./baseCapability";
 import { successResponse } from "./requestResponse";
 
-const DOC_GLOB = import.meta.glob("/src/docs/00-official-library/*.md", {
-  query: "?raw",
-  import: "default",
-  eager: true,
-});
+import mvDoc from "@/docs/00-official-library/MV-MemoryOS-Vision.md?raw";
+import mpsDoc from "@/docs/00-official-library/MPS-MemoryOS-Product-Specification.md?raw";
+import masDoc from "@/docs/00-official-library/MAS-MemoryOS-Architecture-Specification.md?raw";
+import mesDoc from "@/docs/00-official-library/MES-MemoryOS-Engineering-Specification.md?raw";
+import auditorDoc from "@/docs/00-official-library/Architecture-Auditor-Specialist.md?raw";
 
-const DOC_ORDER = [
-  "MV-MemoryOS-Vision",
-  "MPS-MemoryOS-Product-Specification",
-  "MAS-MemoryOS-Architecture-Specification",
-  "MES-MemoryOS-Engineering-Specification",
-  "Architecture-Auditor-Specialist",
-];
-
-function docKey(name) {
-  return `/src/docs/00-official-library/${name}.md`;
-}
+const DOCS = {
+  "MV-MemoryOS-Vision": mvDoc,
+  "MPS-MemoryOS-Product-Specification": mpsDoc,
+  "MAS-MemoryOS-Architecture-Specification": masDoc,
+  "MES-MemoryOS-Engineering-Specification": mesDoc,
+  "Architecture-Auditor-Specialist": auditorDoc,
+};
 
 export const OfficialLibraryReaderCapability = createCapability({
   id: "official-library-reader",
@@ -39,17 +35,10 @@ export const OfficialLibraryReaderCapability = createCapability({
   version: "1.0",
   validate: async () => true,
   execute: async () => {
-    const docs = {};
-    for (const name of DOC_ORDER) {
-      const key = docKey(name);
-      if (DOC_GLOB[key]) {
-        docs[name] = DOC_GLOB[key];
-      }
-    }
     return successResponse({
-      docs,
-      docCount: Object.keys(docs).length,
-      docNames: Object.keys(docs),
+      docs: DOCS,
+      docCount: Object.keys(DOCS).length,
+      docNames: Object.keys(DOCS),
     });
   },
 });
