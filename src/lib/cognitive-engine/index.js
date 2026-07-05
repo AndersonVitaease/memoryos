@@ -222,3 +222,34 @@ export {
 } from "./learning/learningEngine";
 
 export { runLearningTests, LEARNING_TEST_CASES } from "./learning/learningTests";
+
+// === Sprint 21 ===
+export {
+  buildMemoryUpdateProposal,
+  buildKnowledgeItem,
+  buildSuggestedMemory,
+  buildConflict,
+  validateMemoryUpdateProposal,
+  validateKnowledgeItem,
+  MEMORY_UPDATE_PROPOSAL_FIELDS,
+  KNOWLEDGE_ITEM_FIELDS,
+  PROPOSAL_TYPES,
+  PROPOSAL_PRIORITIES,
+  PROPOSAL_CONFIDENCE_LEVELS,
+} from "@/lib/memory-integration/memoryUpdateProposal";
+
+export {
+  createProposal,
+  extractKnowledge,
+  classifyKnowledge,
+  prioritizeKnowledge,
+  detectConflicts as detectProposalConflicts,
+  calculateProposalConfidence,
+  describeProposal,
+  validateProposal,
+  getStats as getMemoryIntegrationStats,
+  getDecisionLog as getMemoryIntegrationDecisionLog,
+  _resetForTests as _resetMemoryIntegrationForTests,
+} from "@/lib/memory-integration/memoryIntegrationEngine";
+
+export { runMemoryIntegrationTests, MEMORY_INTEGRATION_TEST_CASES } from "@/lib/memory-integration/memoryIntegrationTests";
