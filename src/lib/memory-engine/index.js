@@ -1,26 +1,34 @@
 /**
- * Memory Engine (Fase 2 · Sprint 1)
+ * Memory Engine (Fase 2)
  *
  * Camada de inteligência de memória do MemoryOS.
  * A Fase 1 (Fundação Arquitetural) está congelada — nenhuma alteração
  * nos componentes existentes.
  *
- * Sprint 1 — Memory Classifier Estabilizado:
+ * Sprint 1 — Memory Classifier Estabilizado (CONGELADO):
  *   - Pipeline de três níveis: Fast Path → Rule Engine → LLM
  *   - decisionSource em todas as respostas
  *   - reasonCode em todas as respostas
  *   - Observabilidade interna (logs, sem persistência)
  *   - Bateria de 45 testes
  *
- * Módulos NÃO implementados (próximas sprints):
- *   Memory Store, Memory Retrieval, Memory Relationships,
- *   Memory Consolidation, Memory Versioning, Memory Lifecycle,
- *   Embeddings, Busca Semântica, Persistência.
+ * Sprint 2 — Memory Record & Memory Store:
+ *   - Contrato oficial Memory Record
+ *   - Conceito Memory Intent
+ *   - Suporte a expires (memórias temporárias)
+ *   - Memory Store: create(), getById(), list(), count()
+ *   - Validações antes da persistência
+ *   - Observabilidade: memoryCreated, memoryRejected, processingTime, storeSize
+ *   - Persistência local temporária (validação de fluxo)
+ *   - Bateria de 10 testes (5 oficiais + 5 complementares)
  *
- * Interface pública (usada pelo Core):
- *   MemoryEngine.classify({ userMessage, conversationHistory, currentContext })
+ * Interface pública:
+ *   Sprint 1: MemoryEngine.classify(...)
+ *   Sprint 2: MemoryStore.create(record), .getById(id), .list(), .count()
+ *             buildMemoryRecord(...), validateMemoryRecord(record)
  */
 
+// === Sprint 1 (congelado) ===
 export {
   classify,
   MEMORY_TYPES,
@@ -31,3 +39,23 @@ export {
 } from "./classifier";
 
 export { runClassifierTests, TEST_BATTERY } from "./tests";
+
+// === Sprint 2 ===
+export { MEMORY_INTENTS, memoryTypeToIntent } from "./memoryIntents";
+
+export {
+  buildMemoryRecord,
+  validateMemoryRecord,
+  MEMORY_RECORD_FIELDS,
+} from "./memoryRecord";
+
+export {
+  create,
+  getById,
+  list,
+  count,
+  getStats,
+  _resetForTests,
+} from "./memoryStore";
+
+export { runStoreTests, STORE_TEST_CASES } from "./storeTests";
