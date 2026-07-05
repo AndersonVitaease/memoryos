@@ -1,26 +1,33 @@
 /**
- * Memory Engine (Fase 2)
+ * Memory Engine (Fase 2 · Sprint 1)
  *
- * Nova camada do MemoryOS responsável pela inteligência de memória.
+ * Camada de inteligência de memória do MemoryOS.
  * A Fase 1 (Fundação Arquitetural) está congelada — nenhuma alteração
  * nos componentes existentes.
  *
- * Módulos implementados:
- *   - Memory Classifier (Módulo 1): decide se uma informação deve se tornar memória.
+ * Sprint 1 — Memory Classifier Estabilizado:
+ *   - Pipeline de três níveis: Fast Path → Rule Engine → LLM
+ *   - decisionSource em todas as respostas
+ *   - reasonCode em todas as respostas
+ *   - Observabilidade interna (logs, sem persistência)
+ *   - Bateria de 45 testes
  *
- * Módulos NÃO implementados nesta fase:
- *   - Memory Store
- *   - Memory Retrieval
- *   - Memory Relationships
- *   - Memory Consolidation
- *   - Memory Versioning
- *   - Memory Lifecycle
- *   - Ranking / Embeddings / Busca Semântica / Persistência
+ * Módulos NÃO implementados (próximas sprints):
+ *   Memory Store, Memory Retrieval, Memory Relationships,
+ *   Memory Consolidation, Memory Versioning, Memory Lifecycle,
+ *   Embeddings, Busca Semântica, Persistência.
  *
  * Interface pública (usada pelo Core):
  *   MemoryEngine.classify({ userMessage, conversationHistory, currentContext })
- *     → { shouldRemember, memoryType, confidence, reason, suggestedTitle, tags, importance }
  */
 
-export { classify, MEMORY_TYPES } from "./classifier";
-export { runClassifierTests, CLASSIFIER_TEST_CASES } from "./tests";
+export {
+  classify,
+  MEMORY_TYPES,
+  DECISION_SOURCES,
+  REASON_CODES,
+  getDecisionLog,
+  clearDecisionLog,
+} from "./classifier";
+
+export { runClassifierTests, TEST_BATTERY } from "./tests";

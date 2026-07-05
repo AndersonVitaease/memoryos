@@ -1,31 +1,37 @@
 /**
- * Memory Classifier (Memory Engine · Fase 2 · Módulo 1)
+ * Memory Classifier (Sprint 1 · Estabilização)
  *
- * Responsabilidade única:
- *   Decidir se uma informação deve ou não se tornar uma memória permanente.
+ * Pipeline de decisão de três níveis:
  *
- * O que NÃO faz:
- *   - Não grava memória
- *   - Não consulta banco
- *   - Não faz busca
- *   - Não altera nenhum componente da Fase 1
+ *   Mensagem → Fast Path → Rule Engine → LLM → Resultado
  *
- * Fluxo:
- *   Usuário → Core → Memory Engine → Memory Classifier → Resultado da Classificação
+ * Cada nível só é acionado quando o anterior não consegue decidir com segurança.
  *
- * Contrato de saída:
+ * Contrato de saída (enriquecido com decisionSource e reasonCode):
  *   {
  *     shouldRemember: boolean,
+ *     decisionSource: "fast_path" | "rule_engine" | "llm",
  *     memoryType: string,
+ *     reasonCode: string,
  *     confidence: "low" | "medium" | "high",
+ *     importance: "low" | "medium" | "high",
  *     reason: string,
  *     suggestedTitle: string,
  *     tags: string[],
- *     importance: "low" | "medium" | "high"
  *   }
+ *
+ * Observabilidade:
+ *   Cada decisão registra internamente: decisionSource, reasonCode,
+ *   confidence e tempo de processamento (ms). Nenhum dado é persistido.
+ *
+ * Independência:
+ *   Este módulo NÃO grava memória, NÃO consulta banco, NÃO busca,
+ *   NÃO altera nenhum componente da Fase 1.
  */
 
 import { base44 } from "@/api/base44Client";
+import { evaluateFastPath } from "./fastPath";
+import { evaluateRuleEngine } from "./ruleEngine";
 
 export const MEMORY_TYPES = [
   "user_profile",
@@ -44,40 +50,64 @@ export const MEMORY_TYPES = [
   "other",
 ];
 
+export const DECISION_SOURCES = ["fast_path", "rule_engine", "llm"];
+
+export const REASON_CODES = [
+  "GREETING",
+  "FAREWELL",
+  "THANKS",
+  "CASUAL_CHAT",
+  "SIMPLE_QUESTION",
+  "CONFIRMATION",
+  "USER_PREFERENCE",
+  "USER_PROFILE",
+  "PROJECT",
+  "PROJECT_DECISION",
+  "PROJECT_GOAL",
+  "PROJECT_REQUIREMENT",
+  "ORGANIZATION",
+  "TASK",
+  "CONTACT",
+  "DOCUMENT",
+  "KNOWLEDGE",
+  "FACT",
+  "OTHER",
+];
+
 const VALID_CONFIDENCE = ["low", "medium", "high"];
 const VALID_IMPORTANCE = ["low", "medium", "high"];
 
-/**
- * Pre-filtro determinístico para mensagens óbvias que NÃO devem gerar memória.
- * Evita chamadas desnecessárias ao LLM para saudações, agradecimentos, cálculos, etc.
- */
-const CASUAL_PATTERNS = [
-  /^(bom dia|boa tarde|boa noite|ol[áa]|ola|oi|hey|hello|hi|eai|e a[ií])\b[!.?\s]*$/i,
-  /^(obrigad[oa]|valeu|thanks|thank you|thx|vlw|agradecido)\b[!.?\s]*$/i,
-  /^(tchau|at[ée]\s+mais|at[ée]\s+logo|bye|adeus)\b[!.?\s]*$/i,
-  /^(ok|sim|n[ãa]o|ah|eh|hum|mmm|certo|beleza|blz|claro|com certeza)\b[!.?\s]*$/i,
-  /^(conte|conta)\s+(uma\s+)?(piada|jogo|hist[óo]ria)/i,
-  /^(qual\s+(é\s+)?o\s+clima|como\s+(est[áa]|t[áa]|vai)\s+(o\s+)?clima)/i,
-  /^(qual\s+(é\s+)?a\s+previs[ãa]o)/i,
-];
+// === Observabilidade (logs internos, sem persistência) ===
+const _logBuffer = [];
+const _MAX_LOG = 200;
 
-const MATH_PATTERN = /^(quanto\s+(é|e|s[ãa]o|sao)\s+)?[\d\s\+\-\*\/x×÷()]+=?\s*\??$/i;
-
-function isObviousNonMemory(message) {
-  const msg = (message || "").trim();
-  if (!msg) return true;
-  if (msg.length < 4) return true;
-  if (CASUAL_PATTERNS.some((p) => p.test(msg))) return true;
-  if (MATH_PATTERN.test(msg)) return true;
-  return false;
+function _logDecision(entry) {
+  _logBuffer.push(entry);
+  if (_logBuffer.length > _MAX_LOG) _logBuffer.shift();
+  // eslint-disable-next-line no-console
+  console.debug("[MemoryClassifier]", entry);
 }
 
+/**
+ * Retorna os logs internos (para relatórios e depuração).
+ * Não persiste — apenas memória volátil do módulo.
+ */
+export function getDecisionLog() {
+  return [..._logBuffer];
+}
+
+export function clearDecisionLog() {
+  _logBuffer.length = 0;
+}
+
+// === Esquema JSON para o LLM ===
 const CLASSIFICATION_SCHEMA = {
   type: "object",
   properties: {
     shouldRemember: { type: "boolean" },
     memoryType: { type: "string", enum: MEMORY_TYPES },
     confidence: { type: "string", enum: VALID_CONFIDENCE },
+    reasonCode: { type: "string", enum: REASON_CODES },
     reason: { type: "string" },
     suggestedTitle: { type: "string" },
     tags: { type: "array", items: { type: "string" } },
@@ -87,6 +117,7 @@ const CLASSIFICATION_SCHEMA = {
     "shouldRemember",
     "memoryType",
     "confidence",
+    "reasonCode",
     "reason",
     "suggestedTitle",
     "tags",
@@ -94,7 +125,7 @@ const CLASSIFICATION_SCHEMA = {
   ],
 };
 
-function buildPrompt({ userMessage, conversationHistory, currentContext }) {
+function buildLLMPrompt({ userMessage, conversationHistory, currentContext }) {
   const historyText = (conversationHistory || [])
     .slice(-6)
     .map((m) => `${m.role === "user" ? "Usuário" : "MemoryOS"}: ${m.content}`)
@@ -125,28 +156,28 @@ Você NÃO grava memória. NÃO consulta banco. NÃO faz busca. Apenas classific
 - Contexto de conversa relevante para o futuro
 
 ### NÃO devem gerar memória (shouldRemember = false):
-- Saudações ("Bom dia", "Olá")
-- Agradecimentos ("Obrigado")
-- Perguntas matemáticas temporárias ("Quanto é 2+2?")
+- Saudações, agradecimentos, despedidas
+- Perguntas matemáticas temporárias
 - Pedidos de piada, clima, ou conteúdo casual
 - Mensagens casuais sem informação permanente
-- Pequenas conversas sem valor futuro
 
 ## MEMORY TYPES disponíveis
 ${MEMORY_TYPES.join(", ")}
 
+## REASON CODES disponíveis
+${REASON_CODES.join(", ")}
+
 ## IMPORTÂNCIA
 - low: Informação útil mas pouco recorrente.
 - medium: Informação relevante para o contexto.
-- high: Informação estrutural que deve permanecer disponível para consultas futuras.
+- high: Informação estrutural que deve permanecer disponível.
 
 ## INSTRUÇÕES
 - Analise a mensagem do usuário abaixo.
 - Decida se deve ser lembrada.
-- Se sim, classifique o tipo, importância, tags e sugira um título conciso.
-- Se não, preencha: memoryType: "other", importance: "low", tags: [], suggestedTitle: "".
+- Se sim, classifique tipo, importância, tags, reasonCode e sugira um título.
+- Se não, preencha: memoryType: "other", importance: "low", reasonCode: "OTHER", tags: [], suggestedTitle: "".
 - O reason deve ser breve e objetivo, em português.
-- confidence reflete o quão certo você está da decisão.
 
 ${historyText ? `## HISTÓRICO DA CONVERSA\n${historyText}\n` : ""}
 ${contextText ? `## CONTEXTO ATUAL\n${contextText}\n` : ""}
@@ -159,46 +190,74 @@ Responda apenas com o JSON de classificação.`;
 /**
  * Classifica se uma mensagem deve se tornar memória permanente.
  *
+ * Pipeline: Fast Path → Rule Engine → LLM
+ *
  * @param {Object} input
  * @param {string} input.userMessage - Mensagem atual do usuário
- * @param {Array<{role: string, content: string}>} [input.conversationHistory] - Histórico recente
- * @param {string|Object} [input.currentContext] - Contexto recuperado pelo Core
- * @returns {Promise<Object>} Resultado da classificação conforme contrato
+ * @param {Array<{role: string, content: string}>} [input.conversationHistory]
+ * @param {string|Object} [input.currentContext]
+ * @returns {Promise<Object>} Decisão conforme contrato oficial
  */
 export async function classify({ userMessage, conversationHistory = [], currentContext = null }) {
   if (!userMessage || typeof userMessage !== "string") {
     throw new Error("MemoryClassifier: userMessage é obrigatório (string).");
   }
 
-  // Fast path: mensagens óbvias que não geram memória pulam o LLM.
-  if (isObviousNonMemory(userMessage)) {
-    return {
-      shouldRemember: false,
-      memoryType: "other",
-      confidence: "high",
-      reason: "Mensagem casual ou temporária — não contém informação permanente.",
-      suggestedTitle: "",
-      tags: [],
-      importance: "low",
-    };
+  const startTime = Date.now();
+
+  // === NÍVEL 1: FAST PATH ===
+  const fastResult = evaluateFastPath(userMessage);
+  if (fastResult) {
+    const result = { ...fastResult, decisionSource: "fast_path" };
+    _logDecision({
+      decisionSource: "fast_path",
+      reasonCode: result.reasonCode,
+      confidence: result.confidence,
+      processingTimeMs: Date.now() - startTime,
+    });
+    return result;
   }
 
-  const prompt = buildPrompt({ userMessage, conversationHistory, currentContext });
+  // === NÍVEL 2: RULE ENGINE ===
+  const ruleResult = evaluateRuleEngine(userMessage);
+  if (ruleResult) {
+    const result = { ...ruleResult, decisionSource: "rule_engine" };
+    _logDecision({
+      decisionSource: "rule_engine",
+      reasonCode: result.reasonCode,
+      confidence: result.confidence,
+      processingTimeMs: Date.now() - startTime,
+    });
+    return result;
+  }
 
-  const result = await base44.integrations.Core.InvokeLLM({
+  // === NÍVEL 3: LLM (FALLBACK) ===
+  const prompt = buildLLMPrompt({ userMessage, conversationHistory, currentContext });
+  const raw = await base44.integrations.Core.InvokeLLM({
     prompt,
     response_json_schema: CLASSIFICATION_SCHEMA,
   });
 
-  return {
-    shouldRemember: Boolean(result.shouldRemember),
-    memoryType: MEMORY_TYPES.includes(result.memoryType) ? result.memoryType : "other",
-    confidence: VALID_CONFIDENCE.includes(result.confidence) ? result.confidence : "low",
-    reason: result.reason || "",
-    suggestedTitle: result.suggestedTitle || "",
-    tags: Array.isArray(result.tags) ? result.tags : [],
-    importance: VALID_IMPORTANCE.includes(result.importance) ? result.importance : "low",
+  const result = {
+    shouldRemember: Boolean(raw.shouldRemember),
+    memoryType: MEMORY_TYPES.includes(raw.memoryType) ? raw.memoryType : "other",
+    confidence: VALID_CONFIDENCE.includes(raw.confidence) ? raw.confidence : "low",
+    reasonCode: REASON_CODES.includes(raw.reasonCode) ? raw.reasonCode : "OTHER",
+    reason: raw.reason || "",
+    suggestedTitle: raw.suggestedTitle || "",
+    tags: Array.isArray(raw.tags) ? raw.tags : [],
+    importance: VALID_IMPORTANCE.includes(raw.importance) ? raw.importance : "low",
+    decisionSource: "llm",
   };
+
+  _logDecision({
+    decisionSource: "llm",
+    reasonCode: result.reasonCode,
+    confidence: result.confidence,
+    processingTimeMs: Date.now() - startTime,
+  });
+
+  return result;
 }
 
-export default { classify, MEMORY_TYPES };
+export default { classify, MEMORY_TYPES, DECISION_SOURCES, REASON_CODES, getDecisionLog, clearDecisionLog };
