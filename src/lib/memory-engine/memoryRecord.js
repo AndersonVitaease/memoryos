@@ -36,6 +36,8 @@
  *     revision: number,
  *     relations: array,
  *     source: "conversation" | "future_gmail" | "future_document" | "future_web" | "future_whatsapp"
+ *     // === Sprint 4 ===
+ *     lastAccessedAt: string | null
  *   }
  */
 
@@ -175,6 +177,8 @@ export function buildMemoryRecord({ classification, originalMessage, userId, con
     revision: DEFAULT_REVISION,
     relations: DEFAULT_RELATIONS,
     source: MEMORY_SOURCES.includes(source) ? source : DEFAULT_SOURCE,
+    // === Sprint 4: Controle de acesso ===
+    lastAccessedAt: null,
   };
 }
 
@@ -242,6 +246,8 @@ export const MEMORY_RECORD_FIELDS = [
   "revision",
   "relations",
   "source",
+  // === Sprint 4 ===
+  "lastAccessedAt",
 ];
 
 /**
@@ -261,6 +267,7 @@ export function normalizeLegacyRecord(record) {
     revision: typeof record.revision === "number" ? record.revision : DEFAULT_REVISION,
     relations: Array.isArray(record.relations) ? record.relations : DEFAULT_RELATIONS,
     source: MEMORY_SOURCES.includes(record.source) ? record.source : DEFAULT_SOURCE,
+    lastAccessedAt: record.lastAccessedAt !== undefined ? record.lastAccessedAt : null,
   };
 }
 
