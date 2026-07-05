@@ -220,3 +220,27 @@ export {
 } from "./memoryEmbeddingManager";
 
 export { runEmbeddingTests, EMBEDDING_TEST_CASES } from "./embeddingTests";
+
+// === Sprint 11 ===
+export {
+  buildMemoryVectorIndex,
+  validateMemoryVectorIndex,
+  INDEX_FIELDS,
+  INDEX_STATUSES,
+  DEFAULT_INDEX_STATUS,
+} from "./memoryVectorIndex";
+
+export {
+  setEmbeddingRegistry,
+  createIndex,
+  addToIndex,
+  removeFromIndex,
+  rebuildIndex,
+  validateIndex,
+  getIndexStats,
+  getStats as getVectorIndexStats,
+  getDecisionLog as getVectorIndexDecisionLog,
+  _resetForTests as _resetVectorIndexForTests,
+} from "./memoryVectorIndexManager";
+
+export { runVectorIndexTests, VECTOR_INDEX_TEST_CASES } from "./vectorIndexTests";

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Brain, Cpu, Database, Search, Activity, GitMerge, GitBranch, Network, Sparkles, Boxes } from "lucide-react";
+import { Brain, Cpu, Database, Search, Activity, GitMerge, GitBranch, Network, Sparkles, Boxes, Grid3x3 } from "lucide-react";
 import StoreTestRunner from "@/components/memory-engine/StoreTestRunner";
 import RetrievalTestRunner from "@/components/memory-engine/RetrievalTestRunner";
 import ContextTestRunner from "@/components/memory-engine/ContextTestRunner";
@@ -9,6 +9,7 @@ import VersioningTestRunner from "@/components/memory-engine/VersioningTestRunne
 import RelationshipsTestRunner from "@/components/memory-engine/RelationshipsTestRunner";
 import SemanticTestRunner from "@/components/memory-engine/SemanticTestRunner";
 import EmbeddingTestRunner from "@/components/memory-engine/EmbeddingTestRunner";
+import VectorIndexTestRunner from "@/components/memory-engine/VectorIndexTestRunner";
 import { runClassifierTests, TEST_BATTERY } from "@/lib/memory-engine";
 import {
   Play,
@@ -30,10 +31,11 @@ const TABS = [
   { id: "sprint8", label: "Sprint 8 · Relationships", icon: Network },
   { id: "sprint9", label: "Sprint 9 · Semantic", icon: Sparkles },
   { id: "sprint10", label: "Sprint 10 · Embeddings", icon: Boxes },
+  { id: "sprint11", label: "Sprint 11 · Vector Index", icon: Grid3x3 },
 ];
 
 export default function MemoryEngine() {
-  const [tab, setTab] = useState("sprint10");
+  const [tab, setTab] = useState("sprint11");
 
   return (
     <div className="max-w-4xl mx-auto px-4 lg:px-6 py-8 lg:py-12 pb-20">
@@ -103,6 +105,8 @@ export default function MemoryEngine() {
         <RelationshipsTestRunner />
       ) : tab === "sprint10" ? (
         <EmbeddingTestRunner />
+      ) : tab === "sprint11" ? (
+        <VectorIndexTestRunner />
       ) : (
         <SemanticTestRunner />
       )}
