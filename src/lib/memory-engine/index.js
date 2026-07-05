@@ -143,3 +143,27 @@ export {
 } from "./memoryVersioningManager";
 
 export { runVersioningTests, VERSIONING_TEST_CASES } from "./versioningTests";
+
+// === Sprint 8 ===
+export {
+  buildRelationship,
+  validateRelationship,
+  RELATION_TYPES,
+  RELATIONSHIP_FIELDS,
+} from "./memoryRelationship";
+
+export {
+  createRelationship,
+  removeRelationship,
+  getRelationships,
+  getParents,
+  getChildren,
+  getRelated,
+  countRelationships,
+  expand,
+  getStats as getRelationshipsStats,
+  getDecisionLog as getRelationshipsDecisionLog,
+  _resetForTests as _resetRelationshipsForTests,
+} from "./memoryRelationshipsManager";
+
+export { runRelationshipsTests, RELATIONSHIPS_TEST_CASES } from "./relationshipsTests";
