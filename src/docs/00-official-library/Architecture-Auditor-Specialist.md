@@ -1,6 +1,6 @@
 # Architecture Auditor Specialist
 
-**Versão:** 1.0
+**Versão:** 2.0
 **Status:** Oficial
 **Tipo:** Especialista Oficial
 
@@ -16,117 +16,196 @@ Sua missão é auditar automaticamente o projeto utilizando como referência a B
 
 ## 2. Definição
 
-O Architecture Auditor é um Especialista que compara a implementação atual do projeto com os documentos oficiais (MV, MPS, MAS, MES e este documento), identificando divergências entre o código e a documentação.
+O Architecture Auditor é um **Specialist**. Como todo Specialist do MemoryOS (MAS §4.3, MES §18), ele:
+
+- interpreta;
+- analisa;
+- compara;
+- recomenda.
+
+Ele nunca executa responsabilidades pertencentes a outras camadas.
 
 Ele nunca altera código automaticamente.
 
 Ele apenas analisa e produz recomendações.
 
-## 3. Responsabilidades
+## 3. Separação de Responsabilidades
 
-O Architecture Auditor deve:
+O Specialist **NÃO** acessa diretamente:
 
-- Ler automaticamente os documentos oficiais da Biblioteca Oficial.
-- Comparar a implementação atual do projeto com esses documentos.
-- Identificar divergências entre o código e a documentação.
-- Gerar um MemoryOS Architecture Compliance Report (MACR).
-- Recomendar correções objetivas e específicas.
+- filesystem;
+- `fs`;
+- `glob`;
+- `path`;
+- diretórios;
+- arquivos;
+- a Biblioteca Oficial.
 
-## 4. Princípios do Auditor
+Essas responsabilidades pertencem às **Capabilities** (MAS §4.4). O Specialist apenas solicita essas capacidades.
 
-1. A Biblioteca Oficial é a fonte da verdade. O código deve conformar-se a ela — não o contrário.
-2. O auditor nunca altera código. Apenas identifica divergências e recomenda correções.
-3. Cada violação deve citar o documento oficial e a seção violados.
-4. O auditor é objetivo e específico. Não generaliza — aponta o arquivo e a linha de raciocínio.
-5. O auditor nunca executa integrações, nunca acessa sistemas externos e nunca toma decisões de negócio.
+## 4. Capabilities Oficiais
 
-## 5. Interface Oficial
+O Architecture Auditor orquestra quatro Capabilities oficiais:
 
-Conforme o MES §18, todo Specialist deve implementar a interface oficial:
+### 4.1 ProjectReaderCapability
 
-- `analyze()` — Executa a auditoria e produz o MACR.
-- `advise()` — Extrai recomendações do MACR.
-- `confidence()` — Retorna o nível de confiança da auditoria.
+Responsável por:
 
-## 6. MACR — MemoryOS Architecture Compliance Report
+- ler projeto;
+- ler módulo;
+- ler pasta;
+- ler arquivo;
+- ler Pull Request.
 
-O relatório oficial produzido pelo Architecture Auditor.
+Ela é a **única** responsável por acessar o código.
 
-### Estrutura
+### 4.2 OfficialLibraryReaderCapability
+
+Responsável por carregar automaticamente a Biblioteca Oficial (`docs/00-official-library/`).
+
+Documentos:
+
+- MV
+- MPS
+- MAS
+- MES
+- Architecture Auditor Specialist
+
+O Specialist nunca abre esses arquivos diretamente.
+
+### 4.3 CodeAnalyzerCapability
+
+Responsável por:
+
+- dividir o projeto em módulos;
+- comparar código e documentação;
+- identificar violações;
+- consolidar resultados.
+
+Ela **nunca** gera relatórios.
+
+### 4.4 ReportBuilderCapability
+
+Responsável por gerar o MemoryOS Architecture Compliance Report (MACR).
+
+Ela recebe apenas o resultado consolidado da análise.
+
+## 5. Interface Oficial do Specialist
+
+Conforme MES §18, o Specialist implementa apenas:
+
+```
+interface Specialist {
+  analyze()
+  advise()
+  confidence()
+}
+```
+
+Nenhum método adicional para acesso direto ao projeto deve existir dentro do Specialist.
+
+## 6. Interface Oficial das Capabilities
+
+Conforme MES §19, toda Capability implementa:
+
+```
+interface Capability<TInput, TOutput> {
+  id: string
+  name: string
+  execute(input: TInput): Promise<TOutput>
+  validate(input: TInput): Promise<boolean>
+}
+```
+
+Nenhuma Capability deve utilizar interfaces próprias.
+
+## 7. Fluxo Oficial
+
+```
+Usuário
+  ↓
+Architecture Auditor (Specialist)
+  ↓
+ProjectReaderCapability
+  ↓
+OfficialLibraryReaderCapability
+  ↓
+CodeAnalyzerCapability
+  ↓
+ReportBuilderCapability
+  ↓
+MACR
+  ↓
+Usuário
+```
+
+Esse fluxo substitui qualquer implementação onde o Specialist leia arquivos diretamente.
+
+## 8. Pipeline de Auditoria
+
+A análise substitui a chamada única ao LLM por um pipeline escalável:
+
+```
+Projeto
+  ↓
+Indexação
+  ↓
+Divisão em módulos
+  ↓
+Análise módulo por módulo
+  ↓
+Consolidação
+  ↓
+Geração do MACR
+```
+
+O sistema está preparado para projetos grandes, dividindo o código em lotes que respeitam o orçamento de contexto do LLM.
+
+## 9. Níveis de Auditoria
+
+O Architecture Auditor suporta quatro níveis, todos utilizando exatamente o mesmo pipeline:
+
+1. **Arquivo** — um arquivo específico.
+2. **Pasta/Módulo** — uma pasta ou módulo.
+3. **Projeto Completo** — todo o projeto.
+4. **Pull Request** — arquivos alterados.
+
+## 10. MACR — MemoryOS Architecture Compliance Report
+
+Formato oficial:
 
 | Campo | Descrição |
 |---|---|
-| **Resultado Geral** | Resumo executivo da auditoria |
-| **Pontuação por Categoria** | Pontuação (0–10) para cada categoria auditada |
-| **Violações Encontradas** | Lista de divergências identificadas |
-| **Documento e Seção Violados** | Referência ao documento oficial e seção violados |
-| **Correções Recomendadas** | Ação específica para corrigir cada violação |
-| **Dívida Técnica** | Itens de dívida técnica identificados |
-| **Melhorias Sugeridas** | Recomendações não obrigatórias, mas sugeridas |
-| **Conclusão Final** | Avaliação geral da conformidade do projeto |
+| **Resultado Geral** | Veredito da auditoria |
+| **Resumo Executivo** | Síntese dos achados relevantes |
+| **Pontuação por categoria** | Pontuação (0–10) por categoria |
+| **Violações** | Lista de divergências |
+| **Documento violado** | Documento oficial violado (ex: MAS, MES) |
+| **Seção violada** | Seção violada (ex: §4.1) |
+| **Impacto** | Descrição do impacto da violação |
+| **Correção recomendada** | Ação específica para corrigir |
+| **Prioridade** | crítica, alta, média ou baixa |
+| **Riscos arquiteturais** | Riscos identificados |
+| **Dívida técnica** | Itens de dívida técnica |
+| **Melhorias recomendadas** | Recomendações não obrigatórias |
+| **Documentação a atualizar** | Documentos que precisam ser atualizados |
+| **Conclusão** | Avaliação geral da conformidade |
 
-### Severidade das Violações
-
-- **Crítica** — Violação de princípio arquitetural permanente (MAS §13).
-- **Alta** — Quebra de separação de responsabilidades.
-- **Média** — Divergência de padrão de engenharia (MES).
-- **Baixa** — Melhoria de aderência.
-
-## 7. Categorias de Auditoria
-
-O MACR deve pontuar as seguintes categorias:
-
-1. Separação de Responsabilidades (MAS §3, §6)
-2. Independência do Core (MAS §4.1, MES §2.5)
-3. Service Layer (MAS §4.5)
-4. Connector Manager (MAS §4.8)
-5. Specialists (MAS §4.3)
-6. Capability Layer (MAS §4.4)
-7. Memory Layer (MAS §4.2)
-8. Observabilidade & Eventos (MES §21, §22)
-9. Segurança & Privacidade (MES §24)
-10. Engineering Standards (MES §2)
-
-## 8. Fluxo de Auditoria
-
-```
-Executar Auditoria
-  ↓
-Carregar Biblioteca Oficial (MV, MPS, MAS, MES, Architecture Auditor)
-  ↓
-Coletar Código-Fonte do Projeto
-  ↓
-Construir Prompt de Auditoria
-  ↓
-Analisar Conformidade (UMA chamada ao LLM)
-  ↓
-Gerar MACR
-  ↓
-Apresentar Recomendações ao Usuário
-```
-
-## 9. Restrições
+## 11. Restrições
 
 O Architecture Auditor **nunca**:
 
 - Altera código automaticamente.
+- Acessa filesystem diretamente.
+- Acessa a Biblioteca Oficial diretamente.
+- Gera relatórios (responsabilidade do ReportBuilder).
 - Executa integrações.
 - Acessa sistemas externos.
 - Toma decisões de negócio.
 - Modifica a memória do usuário.
 - Substitui a revisão humana.
 
-## 10. Biblioteca de Referência
-
-O auditor utiliza como referência os seguintes documentos oficiais:
-
-1. **MV** — MemoryOS Vision
-2. **MPS** — MemoryOS Product Specification
-3. **MAS** — MemoryOS Architecture Specification
-4. **MES** — MemoryOS Engineering Specification
-5. **Architecture Auditor Specialist** (este documento)
-
-## 11. Confiança
+## 12. Confiança
 
 O nível de confiança da auditoria é calculado com base em:
 
@@ -135,21 +214,24 @@ O nível de confiança da auditoria é calculado com base em:
 
 A confiança máxima é 95%, pois a auditoria é automatizada e não substitui a revisão humana.
 
-## 12. Quando Executar
+## 13. Página de Auditoria
 
-A auditoria deve ser executada:
+A página "Auditoria" utiliza o Architecture Auditor **apenas** através da interface oficial do Specialist (`analyze()`).
 
-- Antes de publicar uma nova versão.
-- Após mudanças arquiteturais significativas.
-- Periodicamente, para verificar a conformidade contínua.
-- Quando solicitado pelo usuário.
+Ela **nunca** acessa diretamente:
 
-## 13. Declaração Oficial
+- filesystem;
+- Biblioteca Oficial;
+- Capabilities.
 
-O Architecture Auditor é o primeiro Especialista Oficial do MemoryOS. Ele audita o projeto contra a Biblioteca Oficial, identificando divergências entre o código e a documentação, e produzindo um MemoryOS Architecture Compliance Report (MACR) com pontuações, violações, correções recomendadas, dívida técnica, melhorias sugeridas e conclusão final. O auditor nunca altera código automaticamente — apenas analisa e produz recomendações.
+Toda orquestração acontece pelo Specialist, que por sua vez orquestra as Capabilities.
+
+## 14. Declaração Oficial
+
+O Architecture Auditor é o primeiro Especialista Oficial do MemoryOS. Ele audita o projeto contra a Biblioteca Oficial, orquestrando quatro Capabilities oficiais (ProjectReader, OfficialLibraryReader, CodeAnalyzer, ReportBuilder) num pipeline modular e escalável. O Specialist implementa apenas `analyze()`, `advise()` e `confidence()`, nunca acessando arquivos diretamente. Ele nunca altera código — apenas analisa e produz recomendações no formato MACR oficial.
 
 ---
 
 **Documento Oficial:** Architecture Auditor Specialist
-**Versão:** 1.0
+**Versão:** 2.0
 **Status:** Aprovado
