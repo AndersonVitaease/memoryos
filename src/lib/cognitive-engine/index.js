@@ -194,3 +194,31 @@ export {
 } from "./execution/executionEngine";
 
 export { runExecutionTests, EXECUTION_TEST_CASES } from "./execution/executionTests";
+
+// === Sprint 20 ===
+export {
+  buildLearningResult,
+  buildObservation,
+  buildLesson,
+  buildRecommendation,
+  validateLearningResult,
+  LEARNING_RESULT_FIELDS,
+  LEARNING_STATUSES,
+  LEARNING_CONFIDENCE_LEVELS,
+} from "./learning/learningResult";
+
+export {
+  analyzeExecution,
+  extractLessons,
+  identifyStrengths,
+  identifyWeaknesses,
+  calculateLearningConfidence,
+  generateRecommendations,
+  describeLearning,
+  validateLearning,
+  getStats as getLearningStats,
+  getDecisionLog as getLearningDecisionLog,
+  _resetForTests as _resetLearningForTests,
+} from "./learning/learningEngine";
+
+export { runLearningTests, LEARNING_TEST_CASES } from "./learning/learningTests";
