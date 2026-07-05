@@ -77,14 +77,27 @@ export function buildReasoningContext({ userMsg, memory, skills, goal, historyTe
     const docsList = lib.docNames.length > 0
       ? lib.docNames.map((d) => `- ${d}`).join("\n")
       : "- Nenhum documento carregado.";
+
+    // Documentos selecionados com conteúdo completo
+    const selectedBlock = lib.selectedDocs?.length > 0
+      ? lib.selectedDocs.map((d) =>
+          `### ${d.name}\n\n${d.content}`
+        ).join("\n\n---\n\n")
+      : "";
+
     capabilityBlocks.push(
       `## BIBLIOTECA OFICIAL DO MEMORYOS (consultada automaticamente)\n` +
       `- Estado: ${lib.ready ? "Carregada" : "Não carregada"}\n` +
       `- Versão do Manager: ${lib.version}\n` +
-      `- Documentos disponíveis (${lib.docCount}):\n${docsList}\n\n` +
-      `Utilize estas informações para responder sobre a Biblioteca Oficial. ` +
-      `Se o usuário perguntar sobre versão, conteúdo ou disponibilidade, ` +
-      `use os dados acima — não diga que a Biblioteca não está carregada se o estado for "Carregada".`
+      `- Documentos disponíveis (${lib.docCount}):\n${docsList}\n` +
+      `- Documentos selecionados para esta consulta: ${lib.selectedDocs?.length || 0}\n\n` +
+      (selectedBlock
+        ? `## CONTEÚDO DOS DOCUMENTOS OFICIAIS SELECIONADOS\n\n` +
+          `Utilize o conteúdo completo abaixo como fonte autoritativa para responder à pergunta do usuário. ` +
+          `Cite trechos relevantes quando apropriado, de forma natural e conversacional.\n\n` +
+          `---\n\n${selectedBlock}`
+        : "Nenhum documento específico foi selecionado para esta consulta. " +
+          "Se a pergunta exigir conteúdo da Biblioteca Oficial, indique qual documento seria necessário.")
     );
   }
 
