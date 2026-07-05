@@ -20,7 +20,12 @@
  * Pesquisa web NÃO é feita se a memória já contém informação suficiente.
  */
 
+import { OFFICIAL_LIBRARY_KEYWORDS } from "./capabilities/officialLibraryCapability";
+
 const CAPABILITY_RULES = {
+  official_library: {
+    keywords: OFFICIAL_LIBRARY_KEYWORDS,
+  },
   web_search: {
     keywords: [
       "pesquise", "pesquisar", "pesquisa", "internet", "web", "google",
@@ -101,11 +106,19 @@ export function detectCapabilities(message, memory = {}, goal = {}) {
     calculation: false,
     comparison: false,
     planning: false,
+    official_library: false,
     specialists: true, // Skills Engine decide independentemente
     needs_more_info: false,
   };
 
   const matchedReasons = {};
+
+  // === OFFICIAL_LIBRARY: pergunta sobre a Biblioteca Oficial do MemoryOS ===
+  const libMatch = matchKeywords(normalized, CAPABILITY_RULES.official_library.keywords);
+  if (libMatch.length > 0) {
+    capabilities.official_library = true;
+    matchedReasons.official_library = `Mencionou: ${libMatch.slice(0, 3).join(", ")}`;
+  }
 
   // === DOCUMENTS: mencionou arquivo/PDF/documento OU existem documentos nas fontes ===
   const docKeywordMatch = matchKeywords(normalized, CAPABILITY_RULES.documents.keywords);

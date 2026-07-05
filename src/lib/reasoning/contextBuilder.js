@@ -72,12 +72,19 @@ export function buildReasoningContext({ userMsg, memory, skills, goal, historyTe
     );
   }
 
-  if (capabilityResults?.documents?.length > 0) {
-    const docsText = capabilityResults.documents
-      .map((d) => `- ${d.name}${d.category ? ` (${d.category})` : ""}${d.summary ? `: ${d.summary.substring(0, 150)}` : ""}`)
-      .join("\n");
+  if (capabilityResults?.officialLibrary && !capabilityResults.officialLibrary.error) {
+    const lib = capabilityResults.officialLibrary;
+    const docsList = lib.docNames.length > 0
+      ? lib.docNames.map((d) => `- ${d}`).join("\n")
+      : "- Nenhum documento carregado.";
     capabilityBlocks.push(
-      `## DOCUMENTOS CONSULTADOS (automaticamente)\n${docsText}`
+      `## BIBLIOTECA OFICIAL DO MEMORYOS (consultada automaticamente)\n` +
+      `- Estado: ${lib.ready ? "Carregada" : "Não carregada"}\n` +
+      `- Versão do Manager: ${lib.version}\n` +
+      `- Documentos disponíveis (${lib.docCount}):\n${docsList}\n\n` +
+      `Utilize estas informações para responder sobre a Biblioteca Oficial. ` +
+      `Se o usuário perguntar sobre versão, conteúdo ou disponibilidade, ` +
+      `use os dados acima — não diga que a Biblioteca não está carregada se o estado for "Carregada".`
     );
   }
 

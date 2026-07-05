@@ -95,6 +95,7 @@ export async function orchestrateCapabilities({ message, memory, goal, sessionId
     documents: capabilities.documents,
     web_search: capabilities.web_search,
     calculation: capabilities.calculation,
+    official_library: capabilities.official_library,
   };
 
   const hasExecutable = Object.values(execCapabilities).some(Boolean);

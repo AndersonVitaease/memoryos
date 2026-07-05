@@ -1,4 +1,5 @@
 import { base44 } from "@/api/base44Client";
+import { executeOfficialLibraryQuery } from "./capabilities/officialLibraryCapability";
 
 /**
  * Capability Executor
@@ -159,6 +160,13 @@ export async function executeCapabilities(capabilities, { message, sessionId, pr
 
   if (capabilities.documents) {
     tasks.documents = executeDocumentQuery(sessionId, projectId).catch(() => []);
+  }
+
+  if (capabilities.official_library) {
+    tasks.officialLibrary = executeOfficialLibraryQuery(message).catch((err) => ({
+      error: true,
+      message: err?.message || "Falha ao consultar Biblioteca Oficial",
+    }));
   }
 
   const keys = Object.keys(tasks);
