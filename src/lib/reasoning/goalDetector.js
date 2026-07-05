@@ -75,6 +75,19 @@ const GOALS = [
     keywords: ["analise", "análise", "insights", "padrões", "tendências", "o que você acha", "sua opinião", "conclusão", "síntese geral"],
     strategy: "Sintetize insights a partir da memória recuperada. Conecte informações de fontes diferentes. Gere conhecimento novo a partir de padrões.",
   },
+  {
+    id: "audit_architecture",
+    label: "Auditar Arquitetura",
+    keywords: [
+      "auditoria arquitetural", "auditoria de arquitetura", "auditar arquitetura",
+      "audite a arquitetura", "faça uma auditoria", "execute uma auditoria",
+      "rodar auditoria", "iniciar auditoria", "architecture auditor",
+      "conformidade arquitetural", "conformidade da arquitetura",
+      "macr", "compliance report", "relatório de conformidade",
+      "auditar o projeto", "auditoria do projeto", "audit the project",
+    ],
+    strategy: "Delegar ao Architecture Auditor Specialist oficial. NÃO responder diretamente — o Specialist executa o pipeline completo de auditoria (ProjectReader → OfficialLibraryReader → CodeAnalyzer → ReportBuilder) e retorna o MACR.",
+  },
 ];
 
 const DEFAULT_GOAL = {

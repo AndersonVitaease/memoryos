@@ -5,6 +5,8 @@ import { detectGoal } from "@/lib/reasoning/goalDetector";
 import { buildReasoningContext } from "@/lib/reasoning/contextBuilder";
 import { synthesizeResponse } from "@/lib/reasoning/memorySynthesizer";
 import { orchestrateCapabilities } from "@/lib/reasoning/capabilityOrchestrator";
+import architectureAuditor from "@/lib/specialists/architectureAuditor";
+import { formatMacrForChat } from "@/lib/reasoning/macrFormatter";
 
 /**
  * Memory Reasoning Planner (MRP)
@@ -55,6 +57,60 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
   // === ETAPA 3: GOAL DETECTION ===
   // Identifica qual problema o usuário está tentando resolver.
   const goal = detectGoal(userMsg);
+
+  // === ETAPA 3.5: SPECIALIST ROUTING ===
+  // Se o objetivo é auditoria arquitetural, delega ao Architecture Auditor
+  // Specialist oficial. O Specialist executa seu próprio pipeline (com seu
+  // próprio AIProvider) e retorna o MACR — o LLM genérico do chat NÃO é chamado.
+  // Isto garante conformidade com MAS §4.3 (Specialists são oficiais e estáveis).
+  if (goal.id === "audit_architecture") {
+    setPhase?.("analyzing");
+    try {
+      const result = await architectureAuditor.analyze({
+        scope: { level: "project" },
+        onStage: (stage) => {
+          if (stage === "done") setPhase?.("generating");
+          else setPhase?.(stage);
+        },
+      });
+      const response = formatMacrForChat(result.macr, result.metadata);
+      const responseTimeMs = Date.now() - startTime;
+      const plan = {
+        goal: goal.id,
+        goalLabel: goal.label,
+        strategy: goal.strategy,
+        specialist: architectureAuditor.id,
+        specialistVersion: architectureAuditor.version,
+        skills: [],
+        skillsCount: 0,
+        sourcesCount: 0,
+        contextLength: 0,
+        capabilities: [],
+        capabilitiesCount: 0,
+        needsMoreInfo: false,
+        service: null,
+        responseTimeMs,
+        routedToSpecialist: true,
+      };
+      try {
+        base44.analytics.track({
+          eventName: "mrp_specialist_routed",
+          properties: {
+            specialist: architectureAuditor.id,
+            specialist_version: architectureAuditor.version,
+            response_time_ms: responseTimeMs,
+          },
+        });
+      } catch {
+        // analytics é opcional
+      }
+      return { response, plan, sources: [] };
+    } catch (err) {
+      // Em caso de falha no Specialist, informa o usuário — NÃO cai para o LLM genérico.
+      const response = `## ⚠️ Auditoria Arquitetural — Erro\n\nNão foi possível concluir a auditoria através do Architecture Auditor Specialist.\n\n**Erro:** ${err.message || "Falha desconhecida"}\n\nO Specialist oficial foi invocado, mas encontrou um problema durante a execução do pipeline (ProjectReader → OfficialLibraryReader → CodeAnalyzer → ReportBuilder). Tente novamente.`;
+      return { response, plan: { goal: goal.id, specialist: architectureAuditor.id, error: err.message }, sources: [] };
+    }
+  }
 
   // === ETAPA 4: CAPABILITY ORCHESTRATOR ===
   // Decide e executa capacidades: web search, cálculo determinístico, documentos.
