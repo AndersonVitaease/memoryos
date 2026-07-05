@@ -130,3 +130,33 @@ export {
 } from "./decisionEngine";
 
 export { runDecisionTests, DECISION_TEST_CASES } from "./decisionTests";
+
+// === Sprint 18 ===
+export {
+  buildPlanResult,
+  buildPlanStep,
+  validatePlanResult,
+  validatePlanStep,
+  PLAN_RESULT_FIELDS,
+  PLAN_STEP_FIELDS,
+  PLAN_PRIORITY_LEVELS,
+  PLAN_CONFIDENCE_LEVELS,
+} from "./planning/planResult";
+
+export {
+  createPlan as createPlanningPlan,
+  decomposeGoal,
+  orderSteps,
+  detectDependencies,
+  estimateCost,
+  estimateTime,
+  generateFallback,
+  optimizePlan,
+  describePlan as describePlanningPlan,
+  validatePlan as validatePlanningPlan,
+  getStats as getPlanningStats,
+  getDecisionLog as getPlanningDecisionLog,
+  _resetForTests as _resetPlanningForTests,
+} from "./planning/planningEngine";
+
+export { runPlanningTests, PLANNING_TEST_CASES } from "./planning/planningTests";
