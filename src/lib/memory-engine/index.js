@@ -88,3 +88,23 @@ export {
 } from "./memoryContextBuilder";
 
 export { runContextBuilderTests, CONTEXT_TEST_CASES } from "./contextBuilderTests";
+
+// === Sprint 5 ===
+export {
+  archive,
+  expire,
+  supersede,
+  activate,
+  processExpirations,
+  recordAccess,
+  listByStatus,
+  listActive,
+  listExpired,
+  listArchived,
+  listSuperseded,
+  cleanupPreview,
+  getStats as getLifecycleStats,
+  _resetForTests as _resetLifecycleForTests,
+} from "./memoryLifecycleManager";
+
+export { runLifecycleTests, LIFECYCLE_TEST_CASES } from "./lifecycleTests";

@@ -179,6 +179,8 @@ export function buildMemoryRecord({ classification, originalMessage, userId, con
     source: MEMORY_SOURCES.includes(source) ? source : DEFAULT_SOURCE,
     // === Sprint 4: Controle de acesso ===
     lastAccessedAt: null,
+    // === Sprint 5: Lifecycle ===
+    accessCount: 0,
   };
 }
 
@@ -248,6 +250,8 @@ export const MEMORY_RECORD_FIELDS = [
   "source",
   // === Sprint 4 ===
   "lastAccessedAt",
+  // === Sprint 5 ===
+  "accessCount",
 ];
 
 /**
@@ -268,6 +272,7 @@ export function normalizeLegacyRecord(record) {
     relations: Array.isArray(record.relations) ? record.relations : DEFAULT_RELATIONS,
     source: MEMORY_SOURCES.includes(record.source) ? record.source : DEFAULT_SOURCE,
     lastAccessedAt: record.lastAccessedAt !== undefined ? record.lastAccessedAt : null,
+    accessCount: typeof record.accessCount === "number" ? record.accessCount : 0,
   };
 }
 

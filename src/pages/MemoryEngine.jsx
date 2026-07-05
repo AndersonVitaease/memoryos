@@ -1,8 +1,9 @@
 import React, { useState } from "react";
-import { Brain, Cpu, Database, Search } from "lucide-react";
+import { Brain, Cpu, Database, Search, Activity } from "lucide-react";
 import StoreTestRunner from "@/components/memory-engine/StoreTestRunner";
 import RetrievalTestRunner from "@/components/memory-engine/RetrievalTestRunner";
 import ContextTestRunner from "@/components/memory-engine/ContextTestRunner";
+import LifecycleTestRunner from "@/components/memory-engine/LifecycleTestRunner";
 import { runClassifierTests, TEST_BATTERY } from "@/lib/memory-engine";
 import {
   Play,
@@ -18,10 +19,11 @@ const TABS = [
   { id: "sprint2", label: "Sprint 2 · Memory Store", icon: Database },
   { id: "sprint3", label: "Sprint 3 · Retrieval", icon: Search },
   { id: "sprint4", label: "Sprint 4 · Context Builder", icon: Layers },
+  { id: "sprint5", label: "Sprint 5 · Lifecycle", icon: Activity },
 ];
 
 export default function MemoryEngine() {
-  const [tab, setTab] = useState("sprint4");
+  const [tab, setTab] = useState("sprint5");
 
   return (
     <div className="max-w-4xl mx-auto px-4 lg:px-6 py-8 lg:py-12 pb-20">
@@ -79,8 +81,10 @@ export default function MemoryEngine() {
         <StoreTestRunner />
       ) : tab === "sprint3" ? (
         <RetrievalTestRunner />
-      ) : (
+      ) : tab === "sprint4" ? (
         <ContextTestRunner />
+      ) : (
+        <LifecycleTestRunner />
       )}
     </div>
   );
