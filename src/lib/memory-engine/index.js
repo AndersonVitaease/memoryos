@@ -26,6 +26,8 @@
  *   Sprint 1: MemoryEngine.classify(...)
  *   Sprint 2: MemoryStore.create(record), .getById(id), .list(), .count()
  *             buildMemoryRecord(...), validateMemoryRecord(record)
+ *   Sprint 7: applyProposal(proposal, record), getLatest(key), getRevision(key, rev),
+ *             getHistory(key), countRevisions(key), buildProposal(...)
  */
 
 // === Sprint 1 (congelado) ===
@@ -120,3 +122,24 @@ export {
 } from "./memoryConsolidationManager";
 
 export { runConsolidationTests, CONSOLIDATION_TEST_CASES } from "./consolidationTests";
+
+// === Sprint 7 ===
+export {
+  buildProposal,
+  validateProposal,
+  PROPOSAL_ACTIONS,
+  PROPOSAL_FIELDS,
+} from "./consolidationProposal";
+
+export {
+  applyProposal,
+  getLatest,
+  getRevision,
+  getHistory,
+  countRevisions,
+  getStats as getVersioningStats,
+  getDecisionLog as getVersioningDecisionLog,
+  _resetForTests as _resetVersioningForTests,
+} from "./memoryVersioningManager";
+
+export { runVersioningTests, VERSIONING_TEST_CASES } from "./versioningTests";
