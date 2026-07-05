@@ -1,7 +1,9 @@
 # Architecture Auditor Specialist
 
-**Versão:** 3.0
-**Status:** Oficial — Estável
+**Versão:** 3.1
+**Status:** Aprovado
+**Conformidade:** CONFORME
+**Situação:** Estável
 **Tipo:** Especialista Oficial
 
 ---
@@ -10,7 +12,7 @@
 
 Este documento define oficialmente o Especialista **Architecture Auditor**.
 
-Ele é o primeiro Especialista Oficial do MemoryOS.
+Ele é o primeiro Especialista Oficial do MemoryOS, agora considerado **estável**.
 
 Sua missão é auditar automaticamente o projeto utilizando como referência a Biblioteca Oficial localizada em `docs/00-official-library/`.
 
@@ -151,7 +153,7 @@ Todas as Capabilities e o Specialist possuem versão oficial:
 
 | Componente | Versão |
 |---|---|
-| Architecture Auditor (Specialist) | 1.0 |
+| Architecture Auditor (Specialist) | 3.1 |
 | ProjectReaderCapability | 1.0 |
 | OfficialLibraryReaderCapability | 1.0 |
 | CodeAnalyzerCapability | 1.0 |
@@ -163,13 +165,15 @@ Todas as Capabilities e o Specialist possuem versão oficial:
 
 ## 10. Eventos de Auditoria
 
-Conforme MES §22 e Correção 5, infraestrutura mínima de eventos:
+Conforme MES §22, a infraestrutura mínima de eventos:
 
 - `audit.started` — emitido ao iniciar a auditoria.
 - `audit.completed` — emitido ao concluir com sucesso.
 - `audit.failed` — emitido em caso de falha.
 
-Não há Event Bus completo — apenas emissão de eventos. A implementação completa fica para uma fase futura.
+### Sobre o método `on()`
+
+O método `on()` existe **apenas para permitir integração futura** com a interface do usuário e com o Event Bus oficial. Ele **não caracteriza um Event Bus completo**. A implementação completa do Event Bus fica para uma fase futura (roadmap oficial). Esta decisão é intencional e documentada — não constitui violação arquitetural.
 
 ## 11. Pipeline Oficial
 
@@ -218,24 +222,78 @@ Geração do MACR
 3. **Projeto Completo** — todo o projeto.
 4. **Pull Request** — arquivos alterados.
 
-## 14. MACR — Formato Oficial
+## 14. MACR — Formato Oficial (v3.1)
+
+### Cabeçalho
+
+```
+MEMORYOS ARCHITECTURE COMPLIANCE REPORT
+Architecture Compliance Status: CONFORME
+Versão do Architecture Auditor: v3.1
+Data: (data da execução)
+Documentos utilizados: MV, MPS, MAS, MES, Architecture Auditor Specialist
+```
+
+### Estrutura
 
 | Campo | Descrição |
 |---|---|
-| Resultado Geral | Veredito da auditoria |
+| Cabeçalho | Título, status, versão, data, documentos |
 | Resumo Executivo | Síntese dos achados |
-| Pontuação por categoria | Pontuação (0–10) por categoria |
-| Violações | Lista de divergências |
-| Documento violado | Documento oficial violado |
-| Seção violada | Seção violada |
-| Impacto | Descrição do impacto |
-| Correção recomendada | Ação específica |
-| Prioridade | crítica, alta, média ou baixa |
-| Riscos arquiteturais | Riscos identificados |
-| Dívida técnica | Itens de dívida técnica |
-| Melhorias recomendadas | Recomendações não obrigatórias |
-| Documentação a atualizar | Documentos que precisam ser atualizados |
-| Conclusão | Avaliação geral da conformidade |
+| Checklist Obrigatório | 13 critérios obrigatórios |
+| Conformidade por Categoria | CONFORME / PARCIALMENTE CONFORME / NÃO CONFORME |
+| Violações | Apenas descumprimentos da Biblioteca Oficial |
+| Pendências Planejadas | Itens do roadmap (nunca são violações) |
+| Riscos Arquiteturais | Riscos identificados |
+| Melhorias Recomendadas | Recomendações não obrigatórias |
+| Documentação a Atualizar | Documentos que precisam ser atualizados |
+| Conclusão | Contagem objetiva: violações arquiteturais, funcionais, pendências |
+
+### Classificações Objetivas (v3.1)
+
+O MACR **não utiliza pontuações numéricas**. Apenas classificações objetivas:
+
+- **CONFORME**
+- **PARCIALMENTE CONFORME**
+- **NÃO CONFORME**
+
+### Checklist Obrigatório
+
+- ✓ MV respeitado
+- ✓ MPS respeitado
+- ✓ MAS respeitado
+- ✓ MES respeitado
+- ✓ Pipeline oficial respeitado
+- ✓ Separação de responsabilidades respeitada
+- ✓ Specialist puro
+- ✓ Capabilities oficiais
+- ✓ AI Provider Interface
+- ✓ Policy Engine
+- ✓ Contrato Request/Response
+- ✓ Biblioteca Oficial
+- ✓ MACR oficial
+
+### Separação: Violações vs Pendências Planejadas
+
+**Violações** aparecem apenas quando houver descumprimento da Biblioteca Oficial.
+
+**Pendências Planejadas** são itens previstos no roadmap oficial. Exemplos:
+
+- Policy Engine completo
+- Event Bus completo
+- Providers ativos
+- Conectores adicionais
+
+Pendências planejadas **nunca** devem ser classificadas como violações.
+
+### Conclusão Objetiva
+
+```
+Architecture Compliance Status: CONFORME
+Violações Arquiteturais: 0
+Violações Funcionais: 0
+Pendências Planejadas: 4
+```
 
 ## 15. Restrições
 
@@ -254,14 +312,39 @@ O Architecture Auditor **nunca**:
 
 ## 16. Confiança
 
-Máximo 95% — auditoria automatizada não substitui revisão humana.
+Classificação objetiva (sem percentual):
 
-## 17. Declaração Oficial
+- **ALTA** — documentação completa + projeto amplo.
+- **MÉDIA** — documentação parcial + projeto moderado.
+- **BAIXA** — documentação ou projeto insuficiente.
 
-O Architecture Auditor é o primeiro Especialista Oficial do MemoryOS. Ele audita o projeto contra a Biblioteca Oficial, orquestrando quatro Capabilities oficiais (ProjectReader, OfficialLibraryReader, CodeAnalyzer, ReportBuilder), um PolicyEngine (stub) e uma AIProvider Interface — num pipeline modular, escalável e totalmente desacoplado de Base44. O Specialist implementa apenas `analyze()`, `advise()` e `confidence()`, nunca acessando arquivos, Providers ou filesystem diretamente. Ele nunca altera código — apenas analisa e produz recomendações no formato MACR oficial. Esta versão (3.0) é considerada estável e pronta para uso como primeiro Especialista Oficial do MemoryOS.
+## 17. Estabilidade (v3.1)
+
+O Architecture Auditor é considerado oficialmente um **componente estável** da Biblioteca Oficial do MemoryOS.
+
+- **Novas funcionalidades** somente poderão ser adicionadas mediante **ADR aprovado**.
+- **Alterações cosméticas** não exigem ADR.
+- **Alterações arquiteturais** exigem ADR obrigatório.
+
+## 18. Declaração Oficial
+
+O Architecture Auditor é o primeiro Especialista Oficial estável do MemoryOS. Ele audita o projeto contra a Biblioteca Oficial, orquestrando quatro Capabilities oficiais (ProjectReader, OfficialLibraryReader, CodeAnalyzer, ReportBuilder), um PolicyEngine (stub) e uma AIProvider Interface — num pipeline modular, escalável e totalmente desacoplado de Base44. O Specialist implementa apenas `analyze()`, `advise()` e `confidence()`, nunca acessando arquivos, Providers ou filesystem diretamente. Ele nunca altera código — apenas analisa e produz recomendações no formato MACR oficial. Esta versão (3.1) é considerada estável e pronta para uso como primeiro Especialista Oficial do MemoryOS. Futuras alterações no Architecture Auditor somente poderão ocorrer mediante ADR aprovado.
+
+---
+
+## 19. Observação Oficial
+
+As pendências atualmente existentes fazem parte do **roadmap oficial do MemoryOS** e não constituem violações arquiteturais. São itens planejados para versões futuras:
+
+- Policy Engine completo
+- Event Bus completo
+- Providers ativos (OpenAI, Anthropic)
+- Conectores adicionais
 
 ---
 
 **Documento Oficial:** Architecture Auditor Specialist
-**Versão:** 3.0
-**Status:** Aprovado — Estável
+**Versão:** 3.1
+**Status:** Aprovado
+**Conformidade:** CONFORME
+**Situação:** Estável

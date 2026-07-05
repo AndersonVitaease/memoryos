@@ -39,8 +39,8 @@ import { emit, AUDIT_EVENTS } from "@/lib/capabilities/eventEmitter";
 
 export const AUDIT_LEVELS = ["file", "module", "project", "pr"];
 
-// Versão oficial do Specialist
-export const VERSION = "1.0";
+// Versão oficial do Specialist (v3.1 — Estável)
+export const VERSION = "3.1";
 
 // AIProvider padrão — injetável para testes e futura troca de Provider.
 const DEFAULT_PROVIDER = Base44Provider;
@@ -132,7 +132,7 @@ export async function analyze({ scope, aiProvider, onStage } = {}) {
       providerId: provider.id,
       providerVersion: provider.version,
       policyDecision: policyDecision.reason,
-      confidence: confidence(projectResp.result.fileCount, libraryResp.result.docCount),
+      auditorVersion: VERSION,
       timestamp: new Date().toISOString(),
     };
 
@@ -161,12 +161,13 @@ export function advise(macr) {
 /**
  * confidence() — Retorna o nível de confiança da auditoria.
  * Conforme MES §18 (Interface Oficial dos Specialists).
- * Máximo 95% — auditoria automatizada não substitui revisão humana.
+ * v3.1 — Classificação objetiva (sem percentual):
+ * ALTA | MÉDIA | BAIXA
  */
 export function confidence(sourceCount, docsCount) {
-  const sourceFactor = Math.min(0.35, sourceCount * 0.015);
-  const docsFactor = docsCount >= 5 ? 0.6 : docsCount * 0.12;
-  return Math.min(0.95, docsFactor + sourceFactor);
+  if (docsCount >= 5 && sourceCount >= 10) return "ALTA";
+  if (docsCount >= 3 && sourceCount >= 3) return "MÉDIA";
+  return "BAIXA";
 }
 
 export default {

@@ -11,8 +11,8 @@
  * NUNCA acessa filesystem (responsabilidade do ProjectReader).
  * NUNCA conhece Base44 — recebe AIProvider via request.context.aiProvider.
  *
- * Pipeline escalável (Correção 6):
- *   Indexação → Divisão em módulos → Análise módulo por módulo → Consolidação
+ * v3.1 — Correção 1: Removida pontuação numérica.
+ *        Substituída por classificação objetiva: CONFORME | PARCIALMENTE CONFORME | NÃO CONFORME
  *
  * Interface oficial (MES §19): { id, name, version, execute, validate }
  * Contrato oficial (MES §5, §6): Request/Response padronizado.
@@ -34,6 +34,13 @@ export const AUDIT_CATEGORIES = [
   "Engineering Standards (MES §2)",
 ];
 
+// v3.1 — Classificações objetivas substituem pontuação numérica.
+export const COMPLIANCE_STATUS = {
+  CONFORME: "CONFORME",
+  PARCIALMENTE: "PARCIALMENTE CONFORME",
+  NAO_CONFORME: "NÃO CONFORME",
+};
+
 const MODULE_ANALYSIS_SCHEMA = {
   type: "object",
   properties: {
@@ -52,14 +59,18 @@ const MODULE_ANALYSIS_SCHEMA = {
         },
       },
     },
-    pontuacao: {
+    conformidade: {
       type: "array",
       items: {
         type: "object",
-        properties: { categoria: { type: "string" }, pontuacao: { type: "number" }, comentario: { type: "string" } },
+        properties: {
+          categoria: { type: "string" },
+          status: { type: "string", enum: ["CONFORME", "PARCIALMENTE CONFORME", "NÃO CONFORME"] },
+          comentario: { type: "string" },
+        },
       },
     },
-    divida_tecnica: { type: "array", items: { type: "string" } },
+    pendencias_planejadas: { type: "array", items: { type: "string" } },
     melhorias_recomendadas: { type: "array", items: { type: "string" } },
     documentacao_para_atualizar: { type: "array", items: { type: "string" } },
     riscos_arquiteturais: { type: "array", items: { type: "string" } },
@@ -101,13 +112,13 @@ function buildModulePrompt(moduleName, batchFiles, docs) {
     .map(([name, content]) => `### ${name}\n\n${content}`)
     .join("\n\n---\n\n");
   const codeText = batchFiles.map((f) => `// === ${f.path} ===\n${f.content}`).join("\n\n");
-  return `Você é o módulo analisador do Architecture Auditor Specialist do MemoryOS.
+  return `Você é o módulo analisador do Architecture Auditor Specialist do MemoryOS (v3.1).
 
 ## PRINCÍPIOS
 1. A Biblioteca Oficial abaixo é a fonte da verdade.
 2. Você NUNCA altera código — apenas identifica divergências.
 3. Cada violação deve citar o documento oficial e a seção violados.
-4. Seja objetivo e específico — aponte o arquivo e a divergência concreta.
+4. NÃO atribua pontuação numérica. Use classificação objetiva: CONFORME, PARCIALMENTE CONFORME ou NÃO CONFORME.
 
 ## BIBLIOTECA OFICIAL
 ${docsText}
@@ -120,11 +131,13 @@ ${codeText}
 ## INSTRUÇÕES
 Analise ESTE módulo contra a Biblioteca Oficial.
 
-Para cada categoria abaixo, atribua pontuação de 0 a 10:
+Para cada categoria abaixo, atribua UMA das três classificações objetivas (CONFORME / PARCIALMENTE CONFORME / NÃO CONFORME):
 ${AUDIT_CATEGORIES.map((c, i) => `${i + 1}. ${c}`).join("\n")}
 
 Identifique violações com: arquivo, documento, seção, impacto, prioridade e correção recomendada.
-Liste também: dívida técnica, melhorias recomendadas, documentação a atualizar e riscos arquiteturais.
+Liste também: pendências planejadas (itens do roadmap, NÃO violações), melhorias recomendadas, documentação a atualizar e riscos arquiteturais.
+
+IMPORTANTE: Pendências planejadas (Policy Engine completo, Event Bus completo, Providers ativos, Conectores adicionais) NÃO são violações — devem ir em "pendencias_planejadas".
 
 Retorne JSON conforme o schema.`;
 }
@@ -132,8 +145,8 @@ Retorne JSON conforme o schema.`;
 function consolidate(moduleResults) {
   const consolidated = {
     violacoes: [],
-    pontuacao: [],
-    divida_tecnica: [],
+    conformidade: [],
+    pendencias_planejadas: [],
     melhorias_recomendadas: [],
     documentacao_para_atualizar: [],
     riscos_arquiteturais: [],
@@ -143,31 +156,35 @@ function consolidate(moduleResults) {
 
   for (const result of moduleResults) {
     if (result.violacoes) consolidated.violacoes.push(...result.violacoes);
-    if (result.divida_tecnica) consolidated.divida_tecnica.push(...result.divida_tecnica);
+    if (result.pendencias_planejadas) consolidated.pendencias_planejadas.push(...result.pendencias_planejadas);
     if (result.melhorias_recomendadas) consolidated.melhorias_recomendadas.push(...result.melhorias_recomendadas);
     if (result.documentacao_para_atualizar) consolidated.documentacao_para_atualizar.push(...result.documentacao_para_atualizar);
     if (result.riscos_arquiteturais) consolidated.riscos_arquiteturais.push(...result.riscos_arquiteturais);
   }
 
-  const scoreByCategory = {};
+  // v3.1 — Consolida classificação objetiva por categoria (sem pontuação numérica).
+  const statusByCategory = {};
   for (const result of moduleResults) {
-    if (!result.pontuacao) continue;
-    for (const p of result.pontuacao) {
-      if (!scoreByCategory[p.categoria]) scoreByCategory[p.categoria] = { sum: 0, count: 0, comentarios: [] };
-      scoreByCategory[p.categoria].sum += p.pontuacao || 0;
-      scoreByCategory[p.categoria].count += 1;
-      if (p.comentario) scoreByCategory[p.categoria].comentarios.push(p.comentario);
+    if (!result.conformidade) continue;
+    for (const c of result.conformidade) {
+      if (!statusByCategory[c.categoria]) statusByCategory[c.categoria] = { statuses: [], comentarios: [] };
+      statusByCategory[c.categoria].statuses.push(c.status);
+      if (c.comentario) statusByCategory[c.categoria].comentarios.push(c.comentario);
     }
   }
-  for (const [categoria, data] of Object.entries(scoreByCategory)) {
-    consolidated.pontuacao.push({
+
+  const STATUS_RANK = { "NÃO CONFORME": 0, "PARCIALMENTE CONFORME": 1, "CONFORME": 2 };
+  for (const [categoria, data] of Object.entries(statusByCategory)) {
+    // Pior status entre módulos determina o status consolidado
+    const worst = data.statuses.reduce((min, s) => (STATUS_RANK[s] < STATUS_RANK[min] ? s : min), "CONFORME");
+    consolidated.conformidade.push({
       categoria,
-      pontuacao: Math.round((data.sum / data.count) * 10) / 10,
+      status: worst,
       comentario: data.comentarios[0] || "",
     });
   }
 
-  consolidated.divida_tecnica = [...new Set(consolidated.divida_tecnica)];
+  consolidated.pendencias_planejadas = [...new Set(consolidated.pendencias_planejadas)];
   consolidated.melhorias_recomendadas = [...new Set(consolidated.melhorias_recomendadas)];
   consolidated.documentacao_para_atualizar = [...new Set(consolidated.documentacao_para_atualizar)];
   consolidated.riscos_arquiteturais = [...new Set(consolidated.riscos_arquiteturais)];

@@ -11,13 +11,22 @@
  *   - audit.completed
  *   - audit.failed
  *
- * A implementação completa do Event Bus fica para uma fase futura.
+ * v3.1 — Correção 6 (Documentação do EventEmitter):
+ * O método on() existe apenas para permitir integração futura com a interface
+ * do usuário e com o Event Bus. Ele NÃO caracteriza um Event Bus completo.
+ * A implementação completa do Event Bus fica para uma fase futura (roadmap oficial).
  */
 
 const _listeners = new Map();
 
 /**
  * Registra um listener para um evento.
+ *
+ * v3.1 — Documentação oficial (Correção 6):
+ * Este método existe APENAS para permitir integração futura com a interface
+ * do usuário e com o Event Bus oficial. Ele não caracteriza um Event Bus completo.
+ * A implementação completa do Event Bus fica para uma fase futura (roadmap oficial).
+ *
  * @returns {Function} unsubscribe
  */
 export function on(event, callback) {
