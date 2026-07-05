@@ -45,7 +45,22 @@ export async function orchestrateCapabilities({ message, memory, goal, sessionId
     goal
   );
 
-  // === ETAPA 2: SE FALTA INFORMAÇÃO, NÃO EXECUTAR — DEIXAR O LLM PEDIR ===
+  // === ETAPA 2: CONNECTOR INFO ===
+  // Se um conector foi detectado (ex: Gmail), verifica se está conectado.
+  let connectorInfo = null;
+  if (capabilities.connector) {
+    const { getConnector } = await import("@/lib/connectors/registry");
+    const connector = getConnector(capabilities.connector);
+    connectorInfo = {
+      id: capabilities.connector,
+      name: connector?.name || capabilities.connector,
+      connected: false, // OAuth não configurado no Beta
+      description: connector?.description || "",
+      privacyNote: connector?.privacyNote || "",
+    };
+  }
+
+  // === ETAPA 3: SE FALTA INFORMAÇÃO, NÃO EXECUTAR — DEIXAR O LLM PEDIR ===
   // O Planner incluirá a instrução de solicitar dados ao usuário.
   if (!hasEnoughInfo) {
     return {
@@ -54,6 +69,7 @@ export async function orchestrateCapabilities({ message, memory, goal, sessionId
       matchedReasons,
       needsMoreInfo: true,
       missingInfoHint,
+      connectorInfo,
     };
   }
 
@@ -81,5 +97,6 @@ export async function orchestrateCapabilities({ message, memory, goal, sessionId
     matchedReasons,
     needsMoreInfo: false,
     missingInfoHint: null,
+    connectorInfo,
   };
 }

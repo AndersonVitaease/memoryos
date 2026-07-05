@@ -86,6 +86,7 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
     capabilityResults: capabilityResult.capabilityResults,
     needsMoreInfo: capabilityResult.needsMoreInfo,
     missingInfoHint: capabilityResult.missingInfoHint,
+    connectorInfo: capabilityResult.connectorInfo,
   });
 
   // === ETAPA 6: UMA ÚNICA CHAMADA AO LLM ===

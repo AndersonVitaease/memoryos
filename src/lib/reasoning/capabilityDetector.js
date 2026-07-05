@@ -103,6 +103,7 @@ export function detectCapabilities(message, memory = {}, goal = {}) {
     planning: false,
     specialists: true, // Skills Engine decide independentemente
     needs_more_info: false,
+    connector: null,
   };
 
   const matchedReasons = {};
@@ -160,6 +161,19 @@ export function detectCapabilities(message, memory = {}, goal = {}) {
     matchedReasons.web_search = explicitlyRequested
       ? `Solicitado: ${webMatch.slice(0, 3).join(", ")}`
       : "Memória insuficiente para o tópico";
+  }
+
+  // === CONNECTOR: detecta se a intenção requer um conector (ex: Gmail) ===
+  const CONNECTOR_INTENTS = {
+    gmail: ["email", "e-mail", "gmail", "enviar email", "ler email", "caixa de entrada", "inbox"],
+  };
+  for (const [connectorId, keywords] of Object.entries(CONNECTOR_INTENTS)) {
+    const match = matchKeywords(normalized, keywords);
+    if (match.length > 0) {
+      capabilities.connector = connectorId;
+      matchedReasons.connector = `Intenção detectada: ${match.slice(0, 3).join(", ")}`;
+      break;
+    }
   }
 
   // === NEEDS_MORE_INFO: detecção de informação insuficiente ===

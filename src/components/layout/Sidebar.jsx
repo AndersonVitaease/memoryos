@@ -1,6 +1,6 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Brain, FolderOpen, Search, LogOut, MessageSquare, Home as HomeIcon } from "lucide-react";
+import { Brain, FolderOpen, Search, LogOut, MessageSquare, Home as HomeIcon, Plug } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 
 const navItems = [
@@ -9,6 +9,7 @@ const navItems = [
   { label: "Memória", icon: Brain, path: "/memory" },
   { label: "Espaços", icon: FolderOpen, path: "/projects" },
   { label: "Pesquisar", icon: Search, path: "/search" },
+  { label: "Conectores", icon: Plug, path: "/connections" },
 ];
 
 export default function Sidebar({ onNavigate }) {

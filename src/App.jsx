@@ -18,6 +18,7 @@ import Memory from '@/pages/Memory';
 import Projects from '@/pages/Projects';
 import ProjectDetail from '@/pages/ProjectDetail';
 import SearchPage from '@/pages/SearchPage';
+import Connections from '@/pages/Connections';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -53,6 +54,7 @@ const AuthenticatedApp = () => {
           <Route path="/projects" element={<Projects />} />
           <Route path="/projects/:id" element={<ProjectDetail />} />
           <Route path="/search" element={<SearchPage />} />
+          <Route path="/connections" element={<Connections />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />

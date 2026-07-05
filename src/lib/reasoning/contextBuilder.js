@@ -33,7 +33,7 @@ import { buildSkillsPrompt } from "@/lib/skills/detector";
  * @param {string} params.missingInfoHint - Descrição do que falta
  * @returns {string} - Prompt completo pronto para UMA chamada ao LLM
  */
-export function buildReasoningContext({ userMsg, memory, skills, goal, historyText, totalMessages, capabilities, capabilityResults, needsMoreInfo, missingInfoHint }) {
+export function buildReasoningContext({ userMsg, memory, skills, goal, historyText, totalMessages, capabilities, capabilityResults, needsMoreInfo, missingInfoHint, connectorInfo }) {
   const { context, sources, sessionSummary } = memory;
 
   // === BLOCO DE CAPACIDADES EXECUTADAS ===
@@ -79,6 +79,14 @@ export function buildReasoningContext({ userMsg, memory, skills, goal, historyTe
     );
   }
 
+  // === BLOCO DE CONECTOR ===
+  // Se um conector foi detectado (ex: Gmail), informa o LLM sobre sua disponibilidade.
+  const connectorBlock = connectorInfo
+    ? connectorInfo.connected
+      ? `## CONECTOR ATIVO: ${connectorInfo.name}\n${connectorInfo.description}\nVocê pode utilizar este conector para executar ações relacionadas a esta intenção.`
+      : `## CONECTOR DISPONÍVEL: ${connectorInfo.name}\n${connectorInfo.description}\nEste conector não está conectado. Informe ao usuário naturalmente que ele pode ativar esta capacidade conectando sua conta na página de Conectores.\nNota de privacidade: ${connectorInfo.privacyNote}`
+    : "";
+
   // === INSTRUÇÃO DE INFORMAÇÃO INSUFICIENTE ===
   // Se o Orchestrator detectou que faltam dados, instrui o LLM a solicitar.
   const needsMoreInfoBlock = needsMoreInfo
@@ -98,13 +106,20 @@ export function buildReasoningContext({ userMsg, memory, skills, goal, historyTe
   const skillsBlock = buildSkillsPrompt(skills);
   const isMultiSkill = skills.length > 1;
 
-  return `Você é o MemoryOS — a memória permanente do usuário.
+  return `Você é o MemoryOS — um Sistema Operacional Cognitivo.
 
-Você não é um chatbot. Você não é um assistente automático. Você não é um FAQ.
-Você é uma memória viva, inteligente e companheira, que acompanha a jornada do usuário ao longo do tempo.
-Sua missão é preservar, conectar e utilizar o conhecimento do usuário — não apenas responder perguntas.
+Você não é um chatbot. Não é um assistente automático. Não é um FAQ.
+Você é a camada de inteligência que conecta, compreende e transforma dados em conhecimento acionável, preservando sempre o contexto, a continuidade e o controle do usuário.
 
-O usuário não conversa com um software. O usuário conversa com a própria memória.
+O usuário conversa apenas com o MemoryOS.
+O MemoryOS conversa com o restante do mundo.
+O usuário nunca precisa saber qual aplicativo abrir — ele apenas diz o que deseja.
+Você interpreta a intenção, consulta memória, especialistas, capacidades e conectores, e entrega o resultado naturalmente.
+
+Você nunca conhece APIs. Você conhece apenas intenções humanas.
+Os conectores traduzem sua linguagem para a linguagem de cada sistema.
+
+Sua memória é permanente. O usuário nunca perde contexto. Nunca precisa recomeçar.
 Toda resposta deve transmitir essa sensação.
 
 ## COMO VOCÊ CONVERSA
@@ -175,11 +190,13 @@ Se apenas parte do histórico estiver disponível, diga naturalmente:
 
 ## PRINCÍPIO FUNDAMENTAL
 
-- O MemoryOS não responde perguntas. O MemoryOS conversa.
+- O MemoryOS não responde perguntas. O MemoryOS interpreta, conecta e conversa.
 - O MemoryOS não armazena arquivos. O MemoryOS preserva conhecimento.
 - O MemoryOS não possui sessões independentes. O MemoryOS possui uma única memória permanente.
+- O MemoryOS não é um destino para os dados. É a camada de inteligência que conecta, compreende e transforma dados em conhecimento acionável.
+- O usuário nunca deve pensar em qual aplicativo abrir. Ele apenas diz o que deseja.
 
-Antes de responder, pense como uma memória. Depois responda como um companheiro de longa data. Nunca como um chatbot.
+Antes de responder, pense como um Sistema Operacional Cognitivo: interprete a intenção, consulte tudo o que precisa, e responda como um companheiro de longa data que nunca esquece. Nunca como um chatbot.
 
 ${skillsBlock}
 ---
@@ -208,6 +225,6 @@ ${sessionSummary ? `## RESUMO DA CONVERSA\n${sessionSummary}` : ""}
 
 ${historyText ? `## HISTÓRICO DA CONVERSA\n${historyText}` : ""}
 
-${needsMoreInfoBlock ? `${needsMoreInfoBlock}\n\n---\n` : ""}${capabilityBlocks.length > 0 ? `${capabilityBlocks.join("\n\n---\n\n")}\n\n---\n` : ""}## O QUE O USUÁRIO ACABOU DE DIZER
+${connectorBlock ? `${connectorBlock}\n\n---\n` : ""}${needsMoreInfoBlock ? `${needsMoreInfoBlock}\n\n---\n` : ""}${capabilityBlocks.length > 0 ? `${capabilityBlocks.join("\n\n---\n\n")}\n\n---\n` : ""}## O QUE O USUÁRIO ACABOU DE DIZER
 ${userMsg}`;
 }
