@@ -108,3 +108,15 @@ export {
 } from "./memoryLifecycleManager";
 
 export { runLifecycleTests, LIFECYCLE_TEST_CASES } from "./lifecycleTests";
+
+// === Sprint 6 ===
+export {
+  consolidate,
+  getStats as getConsolidationStats,
+  getDecisionLog as getConsolidationDecisionLog,
+  _resetForTests as _resetConsolidationForTests,
+  CONSOLIDATION_ACTIONS,
+  CONSOLIDATION_REASON_CODES,
+} from "./memoryConsolidationManager";
+
+export { runConsolidationTests, CONSOLIDATION_TEST_CASES } from "./consolidationTests";

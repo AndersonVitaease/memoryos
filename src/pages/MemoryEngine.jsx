@@ -1,9 +1,10 @@
 import React, { useState } from "react";
-import { Brain, Cpu, Database, Search, Activity } from "lucide-react";
+import { Brain, Cpu, Database, Search, Activity, GitMerge } from "lucide-react";
 import StoreTestRunner from "@/components/memory-engine/StoreTestRunner";
 import RetrievalTestRunner from "@/components/memory-engine/RetrievalTestRunner";
 import ContextTestRunner from "@/components/memory-engine/ContextTestRunner";
 import LifecycleTestRunner from "@/components/memory-engine/LifecycleTestRunner";
+import ConsolidationTestRunner from "@/components/memory-engine/ConsolidationTestRunner";
 import { runClassifierTests, TEST_BATTERY } from "@/lib/memory-engine";
 import {
   Play,
@@ -20,10 +21,11 @@ const TABS = [
   { id: "sprint3", label: "Sprint 3 · Retrieval", icon: Search },
   { id: "sprint4", label: "Sprint 4 · Context Builder", icon: Layers },
   { id: "sprint5", label: "Sprint 5 · Lifecycle", icon: Activity },
+  { id: "sprint6", label: "Sprint 6 · Consolidation", icon: GitMerge },
 ];
 
 export default function MemoryEngine() {
-  const [tab, setTab] = useState("sprint5");
+  const [tab, setTab] = useState("sprint6");
 
   return (
     <div className="max-w-4xl mx-auto px-4 lg:px-6 py-8 lg:py-12 pb-20">
@@ -83,8 +85,10 @@ export default function MemoryEngine() {
         <RetrievalTestRunner />
       ) : tab === "sprint4" ? (
         <ContextTestRunner />
-      ) : (
+      ) : tab === "sprint5" ? (
         <LifecycleTestRunner />
+      ) : (
+        <ConsolidationTestRunner />
       )}
     </div>
   );
