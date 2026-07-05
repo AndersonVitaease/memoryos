@@ -2,19 +2,25 @@
  * Cognitive Engine (Fase 3)
  *
  * Camada de coordenação cognitiva do MemoryOS.
- * Decide quais componentes participam do processamento de cada mensagem
- * e executa os planos resultantes.
+ * Decide quais componentes participam do processamento de cada mensagem,
+ * executa os planos resultantes e constrói raciocínio estruturado.
  *
  * Sprint 14 — Cognitive Orchestrator (CONGELADO):
  *   - Cria Cognitive Plans a partir de mensagens
  *   - Classifica complexidade (determinístico)
  *   - Valida, roteiriza, cancela e descreve planos
  *
- * Sprint 15 — Cognitive Pipeline:
+ * Sprint 15 — Cognitive Pipeline (CONGELADO):
  *   - Executa Cognitive Plans etapa por etapa
  *   - Registra status, tempo, resultado e erro
  *   - Suporta pause / resume / cancel
  *   - Contrato Pipeline Execution
+ *
+ * Sprint 16 — Reasoning Engine:
+ *   - Transforma resultados do Pipeline em raciocínio estruturado
+ *   - Extrai premissas, agrupa evidências, detecta conflitos
+ *   - Gera hipóteses, conclusões e calcula confiança
+ *   - Contrato Reasoning Graph
  */
 
 // === Sprint 14 (congelado) ===
@@ -41,7 +47,7 @@ export {
 
 export { runCognitiveTests, COGNITIVE_TEST_CASES } from "./cognitiveTests";
 
-// === Sprint 15 ===
+// === Sprint 15 (congelado) ===
 export {
   buildPipelineExecution,
   validatePipelineExecution,
@@ -67,3 +73,28 @@ export {
 } from "./cognitivePipeline";
 
 export { runPipelineTests, PIPELINE_TEST_CASES } from "./pipelineTests";
+
+// === Sprint 16 ===
+export {
+  buildReasoningGraph,
+  validateReasoningGraph,
+  CONFIDENCE_LEVELS,
+  REASONING_GRAPH_FIELDS,
+} from "./reasoningGraph";
+
+export {
+  buildReasoning,
+  extractPremises,
+  collectEvidence,
+  detectConflicts,
+  generateHypotheses,
+  generateConclusions,
+  calculateConfidence,
+  describeReasoning,
+  validateReasoning,
+  getStats as getReasoningStats,
+  getDecisionLog as getReasoningDecisionLog,
+  _resetForTests as _resetReasoningForTests,
+} from "./reasoningEngine";
+
+export { runReasoningTests, REASONING_TEST_CASES } from "./reasoningTests";
