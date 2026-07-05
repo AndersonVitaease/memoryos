@@ -167,3 +167,19 @@ export {
 } from "./memoryRelationshipsManager";
 
 export { runRelationshipsTests, RELATIONSHIPS_TEST_CASES } from "./relationshipsTests";
+
+// === Sprint 9 ===
+export {
+  semanticSearch,
+  expandSemanticContext,
+  scoreMemory,
+  rankResults,
+  setScoreTable,
+  getScoreTable,
+  getStats as getSemanticStats,
+  getDecisionLog as getSemanticDecisionLog,
+  _resetForTests as _resetSemanticForTests,
+  DEFAULT_SCORE_TABLE,
+} from "./semanticRetrievalManager";
+
+export { runSemanticTests, SEMANTIC_TEST_CASES } from "./semanticTests";
