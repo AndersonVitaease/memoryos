@@ -244,3 +244,20 @@ export {
 } from "./memoryVectorIndexManager";
 
 export { runVectorIndexTests, VECTOR_INDEX_TEST_CASES } from "./vectorIndexTests";
+
+// === Sprint 12 ===
+export {
+  hybridSearch,
+  mergeResults,
+  calculateHybridScore,
+  rankHybridResults,
+  setWeights,
+  getWeights,
+  resetWeights,
+  getStats as getHybridStats,
+  getDecisionLog as getHybridDecisionLog,
+  _resetForTests as _resetHybridForTests,
+  DEFAULT_WEIGHTS,
+} from "./hybridRetrievalManager";
+
+export { runHybridTests, HYBRID_TEST_CASES } from "./hybridRetrievalTests";
