@@ -16,11 +16,18 @@
  *   - Suporta pause / resume / cancel
  *   - Contrato Pipeline Execution
  *
- * Sprint 16 — Reasoning Engine:
+ * Sprint 16 — Reasoning Engine (CONGELADO):
  *   - Transforma resultados do Pipeline em raciocínio estruturado
  *   - Extrai premissas, agrupa evidências, detecta conflitos
  *   - Gera hipóteses, conclusões e calcula confiança
  *   - Contrato Reasoning Graph
+ *
+ * Sprint 17 — Decision Engine:
+ *   - Seleciona a melhor decisão a partir de um Reasoning Graph
+ *   - Avalia alternativas, seleciona conclusão
+ *   - Calcula risco e confiança (determinístico)
+ *   - Produz justificativa
+ *   - Contrato Decision Result
  */
 
 // === Sprint 14 (congelado) ===
@@ -98,3 +105,28 @@ export {
 } from "./reasoningEngine";
 
 export { runReasoningTests, REASONING_TEST_CASES } from "./reasoningTests";
+
+// === Sprint 17 ===
+export {
+  buildDecisionResult,
+  validateDecisionResult,
+  RISK_LEVELS,
+  CONFIDENCE_LEVELS as DECISION_CONFIDENCE_LEVELS,
+  DECISION_RESULT_FIELDS,
+} from "./decisionResult";
+
+export {
+  makeDecision,
+  evaluateAlternatives,
+  selectConclusion,
+  calculateRisk,
+  calculateConfidence as calculateDecisionConfidence,
+  justifyDecision,
+  describeDecision,
+  validateDecision,
+  getStats as getDecisionStats,
+  getDecisionLog as getDecisionEngineDecisionLog,
+  _resetForTests as _resetDecisionForTests,
+} from "./decisionEngine";
+
+export { runDecisionTests, DECISION_TEST_CASES } from "./decisionTests";

@@ -1,17 +1,19 @@
 import React, { useState } from "react";
-import { Network, Workflow, Brain } from "lucide-react";
+import { Network, Workflow, Brain, GitBranch } from "lucide-react";
 import CognitiveTestRunner from "@/components/cognitive-engine/CognitiveTestRunner";
 import PipelineTestRunner from "@/components/cognitive-engine/PipelineTestRunner";
 import ReasoningTestRunner from "@/components/cognitive-engine/ReasoningTestRunner";
+import DecisionTestRunner from "@/components/cognitive-engine/DecisionTestRunner";
 
 const TABS = [
   { id: "sprint14", label: "Sprint 14 · Orchestrator", icon: Network },
   { id: "sprint15", label: "Sprint 15 · Pipeline", icon: Workflow },
   { id: "sprint16", label: "Sprint 16 · Reasoning", icon: Brain },
+  { id: "sprint17", label: "Sprint 17 · Decision", icon: GitBranch },
 ];
 
 export default function CognitiveEngine() {
-  const [tab, setTab] = useState("sprint16");
+  const [tab, setTab] = useState("sprint17");
 
   return (
     <div className="max-w-4xl mx-auto px-4 lg:px-6 py-8 lg:py-12 pb-20">
@@ -58,8 +60,10 @@ export default function CognitiveEngine() {
         <CognitiveTestRunner />
       ) : tab === "sprint15" ? (
         <PipelineTestRunner />
-      ) : (
+      ) : tab === "sprint16" ? (
         <ReasoningTestRunner />
+      ) : (
+        <DecisionTestRunner />
       )}
     </div>
   );
