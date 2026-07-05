@@ -2,8 +2,9 @@
 
 **Versão:** 1.0
 **Status:** Pendente
-**Tipo:** Prompt de Especialista
+**Tipo:** Especialista
 
 ---
 
-> Documento a ser entregue.
+> Este documento armazenará a especificação oficial do Especialista **Architecture Auditor**.
+> Conteúdo a ser entregue.
