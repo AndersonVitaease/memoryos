@@ -261,3 +261,26 @@ export {
 } from "./hybridRetrievalManager";
 
 export { runHybridTests, HYBRID_TEST_CASES } from "./hybridRetrievalTests";
+
+// === Sprint 13 ===
+export {
+  buildLearningInsight,
+  validateLearningInsight,
+  INSIGHT_TYPES,
+  INSIGHT_STATUSES,
+  DEFAULT_INSIGHT_STATUS,
+  LEARNING_INSIGHT_FIELDS,
+} from "./memoryLearningInsight";
+
+export {
+  generateInsights,
+  listInsights,
+  getInsights,
+  dismissInsight,
+  countInsights,
+  getStats as getLearningStats,
+  getDecisionLog as getLearningDecisionLog,
+  _resetForTests as _resetLearningForTests,
+} from "./memoryLearningManager";
+
+export { runLearningTests, LEARNING_TEST_CASES } from "./learningTests";
