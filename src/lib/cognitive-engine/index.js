@@ -160,3 +160,37 @@ export {
 } from "./planning/planningEngine";
 
 export { runPlanningTests, PLANNING_TEST_CASES } from "./planning/planningTests";
+
+// === Sprint 19 ===
+export {
+  buildExecutionResult,
+  buildStepResult,
+  validateExecutionResult,
+  validateStepResult,
+  EXECUTION_RESULT_FIELDS,
+  STEP_RESULT_FIELDS,
+  EXECUTION_STATUSES as EXEC_ENGINE_STATUSES,
+  STEP_STATUSES as EXEC_STEP_STATUSES,
+  STEP_STATUS_PENDING,
+  STEP_STATUS_RUNNING,
+  STEP_STATUS_COMPLETED,
+  STEP_STATUS_SKIPPED,
+  STEP_STATUS_FAILED,
+} from "./execution/executionResult";
+
+export {
+  executePlan as executePlanS19,
+  executeStep as executeStepS19,
+  validateExecutionOrder,
+  updateExecutionStatus,
+  calculateExecutionCost,
+  calculateExecutionTime,
+  calculateSuccessRate,
+  describeExecution as describeExecutionS19,
+  validateExecution as validateExecutionS19,
+  getStats as getExecutionStats,
+  getDecisionLog as getExecutionDecisionLog,
+  _resetForTests as _resetExecutionForTests,
+} from "./execution/executionEngine";
+
+export { runExecutionTests, EXECUTION_TEST_CASES } from "./execution/executionTests";
