@@ -15,7 +15,14 @@ import {
   ListChecks,
   Clock,
 } from "lucide-react";
-import { analyze as auditAnalyze, AUDIT_LEVELS } from "@/lib/specialists/architectureAuditor";
+import { SpecialistRegistry } from "@/lib/specialists/registry";
+
+// O Planner e as páginas NÃO conhecem Specialists diretamente.
+// Todo acesso ocorre através do Specialist Registry (MAS §4.3).
+const _auditorEntry = SpecialistRegistry.get("audit_architecture");
+const _auditor = _auditorEntry?.specialist;
+const auditAnalyze = _auditor?.analyze;
+const AUDIT_LEVELS = _auditor?.AUDIT_LEVELS || ["file", "module", "project", "pr"];
 
 const STAGE_LABELS = {
   idle: "Pronto",

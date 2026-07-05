@@ -5,7 +5,7 @@ import { detectGoal } from "@/lib/reasoning/goalDetector";
 import { buildReasoningContext } from "@/lib/reasoning/contextBuilder";
 import { synthesizeResponse } from "@/lib/reasoning/memorySynthesizer";
 import { orchestrateCapabilities } from "@/lib/reasoning/capabilityOrchestrator";
-import architectureAuditor from "@/lib/specialists/architectureAuditor";
+import { SpecialistRouter } from "@/lib/routing/specialistRouter";
 import { formatMacrForChat } from "@/lib/reasoning/macrFormatter";
 
 /**
@@ -13,24 +13,29 @@ import { formatMacrForChat } from "@/lib/reasoning/macrFormatter";
  *
  * Camada de orquestração da inteligência do MemoryOS.
  *
- * Fluxo:
+ * Fluxo oficial (MAS):
  *   Usuário
  *     → Memory Retrieval Pipeline (reutilizado)
  *     → Memory Reasoning Planner (esta camada)
+ *       → Goal Detector
+ *       → Specialist Router (decide qual Specialist, se houver)
+ *         → Specialist Registry (consulta, NÃO imports diretos)
+ *         → Specialist (executa pipeline próprio, retorna resultado)
  *       → Capability Orchestrator (decide e executa capacidades)
  *       → Context-Aware Skills Engine (reutilizada)
- *       → Goal Detector
  *       → Context Builder (inclui resultados das capacidades)
- *     → LLM (UMA ÚNICA CHAMADA)
+ *     → LLM (UMA ÚNICA CHAMADA — apenas se nenhum Specialist assumiu)
  *     → Memory Synthesizer
  *     → Resposta Final
  *
  * Princípios:
  * - O Planner PENSA, não responde. Monta o melhor contexto possível.
+ * - O Planner NUNCA conhece Specialists diretamente — apenas o Specialist Router.
  * - UMA chamada ao LLM por resposta. Nunca uma chamada por especialista.
  * - Especialistas são camadas de conhecimento, não agentes independentes.
  * - O usuário nunca percebe quantos componentes participaram.
  * - Reutiliza contexto já recuperado — sem consultas repetidas.
+ * - Escalabilidade: novo Specialist = registrar no Registry. Nada mais muda.
  *
  * @param {Object} params
  * @param {string} params.userMsg - Mensagem do usuário
@@ -59,14 +64,16 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
   const goal = detectGoal(userMsg);
 
   // === ETAPA 3.5: SPECIALIST ROUTING ===
-  // Se o objetivo é auditoria arquitetural, delega ao Architecture Auditor
-  // Specialist oficial. O Specialist executa seu próprio pipeline (com seu
-  // próprio AIProvider) e retorna o MACR — o LLM genérico do chat NÃO é chamado.
-  // Isto garante conformidade com MAS §4.3 (Specialists são oficiais e estáveis).
-  if (goal.id === "audit_architecture") {
+  // O Planner NÃO conhece Specialists diretamente.
+  // O Specialist Router consulta o Registry e decide qual Specialist utilizar.
+  // Se um Specialist for encontrado, ele executa seu próprio pipeline e retorna
+  // o resultado — o LLM genérico do chat NÃO é chamado.
+  // Conformidade: MAS §4.3 (Specialists), MES §18 (Interface Oficial).
+  const routing = SpecialistRouter.route(goal, { memory, session });
+  if (routing && routing.specialist) {
     setPhase?.("analyzing");
     try {
-      const result = await architectureAuditor.analyze({
+      const result = await routing.specialist.analyze({
         scope: { level: "project" },
         onStage: (stage) => {
           if (stage === "done") setPhase?.("generating");
@@ -79,8 +86,10 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
         goal: goal.id,
         goalLabel: goal.label,
         strategy: goal.strategy,
-        specialist: architectureAuditor.id,
-        specialistVersion: architectureAuditor.version,
+        specialist: routing.specialist.id,
+        specialistVersion: routing.specialist.version,
+        routingConfidence: routing.confidence,
+        routingReason: routing.reason,
         skills: [],
         skillsCount: 0,
         sourcesCount: 0,
@@ -96,8 +105,9 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
         base44.analytics.track({
           eventName: "mrp_specialist_routed",
           properties: {
-            specialist: architectureAuditor.id,
-            specialist_version: architectureAuditor.version,
+            specialist: routing.specialist.id,
+            specialist_version: routing.specialist.version,
+            routing_confidence: routing.confidence,
             response_time_ms: responseTimeMs,
           },
         });
@@ -107,8 +117,8 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
       return { response, plan, sources: [] };
     } catch (err) {
       // Em caso de falha no Specialist, informa o usuário — NÃO cai para o LLM genérico.
-      const response = `## ⚠️ Auditoria Arquitetural — Erro\n\nNão foi possível concluir a auditoria através do Architecture Auditor Specialist.\n\n**Erro:** ${err.message || "Falha desconhecida"}\n\nO Specialist oficial foi invocado, mas encontrou um problema durante a execução do pipeline (ProjectReader → OfficialLibraryReader → CodeAnalyzer → ReportBuilder). Tente novamente.`;
-      return { response, plan: { goal: goal.id, specialist: architectureAuditor.id, error: err.message }, sources: [] };
+      const response = `## ⚠️ ${routing.specialist.name} — Erro\n\nNão foi possível concluir a execução através do Specialist oficial.\n\n**Erro:** ${err.message || "Falha desconhecida"}\n\nO Specialist foi invocado pelo Specialist Router, mas encontrou um problema durante a execução. Tente novamente.`;
+      return { response, plan: { goal: goal.id, specialist: routing.specialist.id, error: err.message }, sources: [] };
     }
   }
 
