@@ -19,6 +19,7 @@ import Projects from '@/pages/Projects';
 import ProjectDetail from '@/pages/ProjectDetail';
 import SearchPage from '@/pages/SearchPage';
 import Connections from '@/pages/Connections';
+import ArchitectureAudit from '@/pages/ArchitectureAudit';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -55,6 +56,7 @@ const AuthenticatedApp = () => {
           <Route path="/projects/:id" element={<ProjectDetail />} />
           <Route path="/search" element={<SearchPage />} />
           <Route path="/connections" element={<Connections />} />
+          <Route path="/audit" element={<ArchitectureAudit />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />

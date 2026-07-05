@@ -32,4 +32,4 @@ Estes documentos não devem ser modificados de forma leviana.
 | [MPS — MemoryOS Product Specification](./MPS-MemoryOS-Product-Specification.md) | Produto | Aprovado |
 | [MAS — MemoryOS Architecture Specification](./MAS-MemoryOS-Architecture-Specification.md) | Arquitetura | Aprovado |
 | [MES — MemoryOS Engineering Specification](./MES-MemoryOS-Engineering-Specification.md) | Engenharia | Aprovado |
-| [Architecture Auditor Specialist](./Architecture-Auditor-Specialist.md) | Especialista | Pendente |
+| [Architecture Auditor Specialist](./Architecture-Auditor-Specialist.md) | Especialista | Aprovado |
