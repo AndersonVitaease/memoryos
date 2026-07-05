@@ -1,67 +1,82 @@
 import { detectCapabilities } from "./capabilityDetector";
 import { executeCapabilities } from "./capabilityExecutor";
+import { detectService } from "./serviceDetector";
+import { getConnectorsForService } from "@/lib/connectors/registry";
 
 /**
- * Capability Orchestrator
+ * Capability Orchestrator (Core)
  *
- * Camada de decisão que coordena quais capacidades do MemoryOS devem ser
- * utilizadas antes de gerar a resposta.
+ * Camada de decisão que coordena quais capacidades, serviços e conectores
+ * do MemoryOS devem ser utilizados antes de gerar a resposta.
  *
- * Posição na arquitetura:
+ * Hierarquia oficial (Constituição):
  *   Usuário
- *     → Memory Retrieval Pipeline
- *     → Memory Reasoning Planner
- *       → Capability Orchestrator (ESTA CAMADA)
- *         → detecta capacidades necessárias
- *         → executa capacidades (web search, cálculo, documentos)
- *       → Context-Aware Skills Engine
- *       → Context Builder (recebe resultados das capacidades)
- *     → UMA chamada LLM
- *     → Memory Synthesizer
- *     → Resposta Final
+ *     → MemoryOS Core
+ *     → Memory Builder
+ *     → Planner
+ *     → Capability Detector   (ESTA CAMADA)
+ *     → Capability Layer
+ *     → Specialists
+ *     → Service Layer         (ESTA CAMADA)
+ *     → Connector Manager      (ESTA CAMADA)
+ *     → Connector
+ *     → Sistema Externo
+ *     → Resultado
+ *     → MemoryOS Core
+ *     → Usuário
  *
  * Princípios:
- * - Decisão automática — o usuário nunca escolhe ferramentas.
- * - Prioridade: Memória → Documentos → Especialistas → Pesquisa externa.
- * - Pesquisa web apenas quando realmente necessária.
+ * - O Core nunca conhece APIs. Apenas intenções humanas.
+ * - Serviços definem O QUE precisa ser feito. Conectores definem COMO.
+ * - O usuário nunca escolhe ferramentas — a decisão é automática.
  * - Capacidades NÃO chamam o LLM para gerar resposta — apenas coletam dados.
  * - Uma única chamada LLM final, com todos os dados consolidados.
- * - Arquitetura modular: novas capacidades (Gmail, Shopify, ERP, etc.) entram
- *   como novos executores sem alterar o Orchestrator.
  *
  * @param {Object} params
  * @param {string} params.message - Mensagem do usuário
- * @param {Object} params.memory - Resultado do Memory Pipeline { context, sources, sessionSummary }
+ * @param {Object} params.memory - Resultado do Memory Pipeline
  * @param {Object} params.goal - Objetivo detectado pelo Goal Detector
  * @param {string} params.sessionId
  * @param {string} params.projectId
- * @returns {Object} { capabilities, capabilityResults, matchedReasons, needsMoreInfo, missingInfoHint }
+ * @returns {Object} { capabilities, capabilityResults, serviceInfo, needsMoreInfo, missingInfoHint }
  */
 export async function orchestrateCapabilities({ message, memory, goal, sessionId, projectId }) {
-  // === ETAPA 1: DETECTAR CAPACIDADES ===
+  // === ETAPA 3: DETECTAR CAPACIDADES ===
   const { capabilities, matchedReasons, hasEnoughInfo, missingInfoHint } = detectCapabilities(
     message,
     memory,
     goal
   );
 
-  // === ETAPA 2: CONNECTOR INFO ===
-  // Se um conector foi detectado (ex: Gmail), verifica se está conectado.
-  let connectorInfo = null;
-  if (capabilities.connector) {
-    const { getConnector } = await import("@/lib/connectors/registry");
-    const connector = getConnector(capabilities.connector);
-    connectorInfo = {
-      id: capabilities.connector,
-      name: connector?.name || capabilities.connector,
-      connected: false, // OAuth não configurado no Beta
-      description: connector?.description || "",
-      privacyNote: connector?.privacyNote || "",
+  // === ETAPA 5: SERVICE LAYER ===
+  // Identifica qual Serviço é necessário (ex: Serviço de E-mail).
+  // O Serviço define O QUE precisa ser feito. Nunca COMO.
+  const service = detectService(message);
+
+  // === ETAPA 6: CONNECTOR MANAGER ===
+  // Verifica se existe um Conector disponível para o Serviço identificado.
+  // Se existir: delega a execução. Se não: informa ao usuário.
+  let serviceInfo = null;
+  if (service) {
+    const availableConnectors = getConnectorsForService(service.id);
+    const hasConnector = availableConnectors.length > 0;
+
+    serviceInfo = {
+      id: service.id,
+      name: service.name,
+      description: service.description,
+      beta: service.beta,
+      hasConnector,
+      connectors: availableConnectors.map((c) => ({
+        id: c.id,
+        name: c.name,
+        connected: c.connected,
+        privacyNote: c.privacyNote,
+      })),
     };
   }
 
-  // === ETAPA 3: SE FALTA INFORMAÇÃO, NÃO EXECUTAR — DEIXAR O LLM PEDIR ===
-  // O Planner incluirá a instrução de solicitar dados ao usuário.
+  // === SE FALTA INFORMAÇÃO, NÃO EXECUTAR — DEIXAR O LLM PEDIR ===
   if (!hasEnoughInfo) {
     return {
       capabilities,
@@ -69,34 +84,32 @@ export async function orchestrateCapabilities({ message, memory, goal, sessionId
       matchedReasons,
       needsMoreInfo: true,
       missingInfoHint,
-      connectorInfo,
+      serviceInfo,
     };
   }
 
-  // === ETAPA 3: EXECUTAR CAPACIDADES ATIVAS EM PARALELO ===
-  // memory e specialists são tratados pelo Pipeline e Skills Engine — não executar aqui.
-  // documents, web_search, calculation são executados e resultados injetados no contexto.
+  // === ETAPA 4 (EXECUÇÃO): EXECUTAR CAPACIDADES ATIVAS EM PARALELO ===
+  // memory e specialists são tratados pelo Pipeline e Skills Engine.
+  // documents, web_search, calculation são executados aqui.
   const execCapabilities = {
     documents: capabilities.documents,
     web_search: capabilities.web_search,
     calculation: capabilities.calculation,
   };
 
-  // Só executa se houver pelo menos uma capacidade ativa além de memory/specialists
   const hasExecutable = Object.values(execCapabilities).some(Boolean);
 
   const capabilityResults = hasExecutable
     ? await executeCapabilities(execCapabilities, { message, sessionId, projectId })
     : {};
 
-  // === ETAPA 4: RETORNAR PARA O PLANNER ===
-  // Os resultados serão injetados no Context Builder.
+  // === RETORNAR PARA O PLANNER ===
   return {
     capabilities,
     capabilityResults,
     matchedReasons,
     needsMoreInfo: false,
     missingInfoHint: null,
-    connectorInfo,
+    serviceInfo,
   };
 }

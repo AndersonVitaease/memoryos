@@ -86,7 +86,7 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
     capabilityResults: capabilityResult.capabilityResults,
     needsMoreInfo: capabilityResult.needsMoreInfo,
     missingInfoHint: capabilityResult.missingInfoHint,
-    connectorInfo: capabilityResult.connectorInfo,
+    serviceInfo: capabilityResult.serviceInfo,
   });
 
   // === ETAPA 6: UMA ÚNICA CHAMADA AO LLM ===
@@ -120,6 +120,7 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
     capabilities: activeCapabilities,
     capabilitiesCount: activeCapabilities.length,
     needsMoreInfo: capabilityResult.needsMoreInfo,
+    service: capabilityResult.serviceInfo?.name || null,
     responseTimeMs,
   };
 
@@ -134,6 +135,7 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
         capabilities: activeCapabilities.join(",") || null,
         capabilities_count: plan.capabilitiesCount,
         needs_more_info: plan.needsMoreInfo,
+        service: plan.service,
         response_time_ms: plan.responseTimeMs,
       },
     });

@@ -17,6 +17,7 @@ export const CONNECTOR_REGISTRY = [
   {
     id: "gmail",
     name: "Gmail",
+    service: "email",
     description: "Ler e enviar e-mails através da sua conta Gmail.",
     category: "communication",
     beta: true,
@@ -31,6 +32,7 @@ export const CONNECTOR_REGISTRY = [
   {
     id: "whatsapp",
     name: "WhatsApp",
+    service: "messages",
     description: "Enviar e receber mensagens do WhatsApp.",
     category: "communication",
     beta: false,
@@ -42,6 +44,7 @@ export const CONNECTOR_REGISTRY = [
   {
     id: "googlecalendar",
     name: "Google Agenda",
+    service: "agenda",
     description: "Consultar e criar compromissos na sua agenda.",
     category: "productivity",
     beta: false,
@@ -53,6 +56,7 @@ export const CONNECTOR_REGISTRY = [
   {
     id: "googledrive",
     name: "Google Drive",
+    service: "documents",
     description: "Acessar e gerenciar arquivos no Google Drive.",
     category: "storage",
     beta: false,
@@ -64,6 +68,7 @@ export const CONNECTOR_REGISTRY = [
   {
     id: "shopify",
     name: "Shopify",
+    service: "commerce",
     description: "Consultar pedidos, produtos e clientes da sua loja.",
     category: "ecommerce",
     beta: false,
@@ -75,6 +80,7 @@ export const CONNECTOR_REGISTRY = [
   {
     id: "erp",
     name: "ERP",
+    service: "erp",
     description: "Consultar dados do seu sistema ERP.",
     category: "business",
     beta: false,
@@ -100,22 +106,9 @@ export function getConnector(id) {
 }
 
 /**
- * Encontra o conector apropriado com base na mensagem do usuário.
- * Retorna null se nenhuma intenção de conector for detectada.
+ * Encontra conectores disponíveis para um Serviço específico.
+ * Usado pelo Connector Manager (Etapa 6 do Processo de Raciocínio).
  */
-export function findConnectorForMessage(message) {
-  const normalized = (message || "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-
-  for (const connector of CONNECTOR_REGISTRY) {
-    if (!connector.beta) continue;
-    const matched = connector.intents.some((intent) =>
-      normalized.includes(intent.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""))
-    );
-    if (matched) return connector;
-  }
-
-  return null;
+export function getConnectorsForService(serviceId) {
+  return CONNECTOR_REGISTRY.filter((c) => c.service === serviceId && c.beta);
 }
