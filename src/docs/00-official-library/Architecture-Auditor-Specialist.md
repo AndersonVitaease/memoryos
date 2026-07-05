@@ -1,7 +1,7 @@
 # Architecture Auditor Specialist
 
-**Versão:** 2.0
-**Status:** Oficial
+**Versão:** 3.0
+**Status:** Oficial — Estável
 **Tipo:** Especialista Oficial
 
 ---
@@ -19,15 +19,17 @@ Sua missão é auditar automaticamente o projeto utilizando como referência a B
 O Architecture Auditor é um **Specialist**. Como todo Specialist do MemoryOS (MAS §4.3, MES §18), ele:
 
 - interpreta;
-- analisa;
+- coordena;
 - compara;
 - recomenda.
 
-Ele nunca executa responsabilidades pertencentes a outras camadas.
+Ele nunca:
 
-Ele nunca altera código automaticamente.
-
-Ele apenas analisa e produz recomendações.
+- lê arquivos;
+- chama APIs;
+- acessa filesystem;
+- gera relatórios;
+- conhece Providers.
 
 ## 3. Separação de Responsabilidades
 
@@ -39,58 +41,97 @@ O Specialist **NÃO** acessa diretamente:
 - `path`;
 - diretórios;
 - arquivos;
-- a Biblioteca Oficial.
+- a Biblioteca Oficial;
+- AI Providers.
 
-Essas responsabilidades pertencem às **Capabilities** (MAS §4.4). O Specialist apenas solicita essas capacidades.
+Toda leitura ocorre exclusivamente através das **Capabilities** oficiais (MAS §4.4). Toda comunicação com LLM ocorre exclusivamente através da interface **AIProvider** (MES §17). Toda autorização ocorre exclusivamente através do **PolicyEngine** (MAS §4.6).
 
 ## 4. Capabilities Oficiais
 
-O Architecture Auditor orquestra quatro Capabilities oficiais:
+### 4.1 ProjectReaderCapability (v1.0)
 
-### 4.1 ProjectReaderCapability
+Responsável apenas por ler o projeto, módulo, pasta, arquivo ou Pull Request.
 
-Responsável por:
+### 4.2 OfficialLibraryReaderCapability (v1.0)
 
-- ler projeto;
-- ler módulo;
-- ler pasta;
-- ler arquivo;
-- ler Pull Request.
+Responsável apenas por carregar a Biblioteca Oficial.
 
-Ela é a **única** responsável por acessar o código.
+### 4.3 CodeAnalyzerCapability (v1.0)
 
-### 4.2 OfficialLibraryReaderCapability
+Responsável apenas pela análise arquitetural — dividir em módulos, comparar código e documentação, identificar violações e consolidar resultados. Nunca gera relatórios.
 
-Responsável por carregar automaticamente a Biblioteca Oficial (`docs/00-official-library/`).
+### 4.4 ReportBuilderCapability (v1.0)
 
-Documentos:
+Responsável apenas pela construção do MACR. Recebe apenas o resultado consolidado da análise.
 
-- MV
-- MPS
-- MAS
-- MES
-- Architecture Auditor Specialist
+## 5. AI Provider Interface
 
-O Specialist nunca abre esses arquivos diretamente.
+Conforme MES §17, a interface oficial:
 
-### 4.3 CodeAnalyzerCapability
+```
+interface AIProvider {
+  id: string
+  name: string
+  version: string
+  chat(prompt, schema?): Promise<any>
+  summarize(text): Promise<string>
+  embeddings(text): Promise<number[]>
+}
+```
 
-Responsável por:
+Implementações oficiais:
 
-- dividir o projeto em módulos;
-- comparar código e documentação;
-- identificar violações;
-- consolidar resultados.
+- **Base44Provider** (v1.0) — ativo no Beta.
+- **OpenAIProvider** (v1.0) — stub para futura ativação.
+- **AnthropicProvider** (v1.0) — stub para futura ativação.
 
-Ela **nunca** gera relatórios.
+CodeAnalyzer e ReportBuilder **nunca** conhecem Base44 diretamente. Recebem apenas uma instância de AIProvider.
 
-### 4.4 ReportBuilderCapability
+## 6. Policy Engine
 
-Responsável por gerar o MemoryOS Architecture Compliance Report (MACR).
+Conforme MAS §4.6, a interface oficial:
 
-Ela recebe apenas o resultado consolidado da análise.
+```
+interface PolicyEngine {
+  authorize(request): Promise<{ allow: boolean, reason?: string }>
+}
+```
 
-## 5. Interface Oficial do Specialist
+**Stub oficial (v1.0):** `authorize()` retorna sempre `{ allow: true }`.
+
+Implementação completa fica para uma fase futura. O objetivo é preservar a arquitetura oficial.
+
+## 7. Contrato Oficial Request/Response
+
+Conforme MES §5 e §6, todas as Capabilities utilizam o contrato padronizado. Nenhuma Capability recebe parâmetros livres.
+
+### Request
+
+```json
+{
+  "requestId": "",
+  "conversationId": "",
+  "userId": "",
+  "goal": "",
+  "context": {},
+  "memory": {},
+  "metadata": {}
+}
+```
+
+### Response
+
+```json
+{
+  "status": "",
+  "result": {},
+  "events": [],
+  "logs": [],
+  "memoryUpdates": []
+}
+```
+
+## 8. Interface Oficial do Specialist
 
 Conforme MES §18, o Specialist implementa apenas:
 
@@ -104,22 +145,33 @@ interface Specialist {
 
 Nenhum método adicional para acesso direto ao projeto deve existir dentro do Specialist.
 
-## 6. Interface Oficial das Capabilities
+## 9. Versionamento Oficial
 
-Conforme MES §19, toda Capability implementa:
+Todas as Capabilities e o Specialist possuem versão oficial:
 
-```
-interface Capability<TInput, TOutput> {
-  id: string
-  name: string
-  execute(input: TInput): Promise<TOutput>
-  validate(input: TInput): Promise<boolean>
-}
-```
+| Componente | Versão |
+|---|---|
+| Architecture Auditor (Specialist) | 1.0 |
+| ProjectReaderCapability | 1.0 |
+| OfficialLibraryReaderCapability | 1.0 |
+| CodeAnalyzerCapability | 1.0 |
+| ReportBuilderCapability | 1.0 |
+| Base44Provider | 1.0 |
+| OpenAIProvider | 1.0 (stub) |
+| AnthropicProvider | 1.0 (stub) |
+| PolicyEngine | 1.0 (stub) |
 
-Nenhuma Capability deve utilizar interfaces próprias.
+## 10. Eventos de Auditoria
 
-## 7. Fluxo Oficial
+Conforme MES §22 e Correção 5, infraestrutura mínima de eventos:
+
+- `audit.started` — emitido ao iniciar a auditoria.
+- `audit.completed` — emitido ao concluir com sucesso.
+- `audit.failed` — emitido em caso de falha.
+
+Não há Event Bus completo — apenas emissão de eventos. A implementação completa fica para uma fase futura.
+
+## 11. Pipeline Oficial
 
 ```
 Usuário
@@ -130,6 +182,8 @@ ProjectReaderCapability
   ↓
 OfficialLibraryReaderCapability
   ↓
+PolicyEngine
+  ↓
 CodeAnalyzerCapability
   ↓
 ReportBuilderCapability
@@ -139,11 +193,9 @@ MACR
 Usuário
 ```
 
-Esse fluxo substitui qualquer implementação onde o Specialist leia arquivos diretamente.
+Nenhuma etapa pode ser ignorada.
 
-## 8. Pipeline de Auditoria
-
-A análise substitui a chamada única ao LLM por um pipeline escalável:
+## 12. Pipeline de Análise
 
 ```
 Projeto
@@ -159,45 +211,40 @@ Consolidação
 Geração do MACR
 ```
 
-O sistema está preparado para projetos grandes, dividindo o código em lotes que respeitam o orçamento de contexto do LLM.
-
-## 9. Níveis de Auditoria
-
-O Architecture Auditor suporta quatro níveis, todos utilizando exatamente o mesmo pipeline:
+## 13. Níveis de Auditoria
 
 1. **Arquivo** — um arquivo específico.
 2. **Pasta/Módulo** — uma pasta ou módulo.
 3. **Projeto Completo** — todo o projeto.
 4. **Pull Request** — arquivos alterados.
 
-## 10. MACR — MemoryOS Architecture Compliance Report
-
-Formato oficial:
+## 14. MACR — Formato Oficial
 
 | Campo | Descrição |
 |---|---|
-| **Resultado Geral** | Veredito da auditoria |
-| **Resumo Executivo** | Síntese dos achados relevantes |
-| **Pontuação por categoria** | Pontuação (0–10) por categoria |
-| **Violações** | Lista de divergências |
-| **Documento violado** | Documento oficial violado (ex: MAS, MES) |
-| **Seção violada** | Seção violada (ex: §4.1) |
-| **Impacto** | Descrição do impacto da violação |
-| **Correção recomendada** | Ação específica para corrigir |
-| **Prioridade** | crítica, alta, média ou baixa |
-| **Riscos arquiteturais** | Riscos identificados |
-| **Dívida técnica** | Itens de dívida técnica |
-| **Melhorias recomendadas** | Recomendações não obrigatórias |
-| **Documentação a atualizar** | Documentos que precisam ser atualizados |
-| **Conclusão** | Avaliação geral da conformidade |
+| Resultado Geral | Veredito da auditoria |
+| Resumo Executivo | Síntese dos achados |
+| Pontuação por categoria | Pontuação (0–10) por categoria |
+| Violações | Lista de divergências |
+| Documento violado | Documento oficial violado |
+| Seção violada | Seção violada |
+| Impacto | Descrição do impacto |
+| Correção recomendada | Ação específica |
+| Prioridade | crítica, alta, média ou baixa |
+| Riscos arquiteturais | Riscos identificados |
+| Dívida técnica | Itens de dívida técnica |
+| Melhorias recomendadas | Recomendações não obrigatórias |
+| Documentação a atualizar | Documentos que precisam ser atualizados |
+| Conclusão | Avaliação geral da conformidade |
 
-## 11. Restrições
+## 15. Restrições
 
 O Architecture Auditor **nunca**:
 
 - Altera código automaticamente.
 - Acessa filesystem diretamente.
 - Acessa a Biblioteca Oficial diretamente.
+- Conhece AI Providers diretamente.
 - Gera relatórios (responsabilidade do ReportBuilder).
 - Executa integrações.
 - Acessa sistemas externos.
@@ -205,33 +252,16 @@ O Architecture Auditor **nunca**:
 - Modifica a memória do usuário.
 - Substitui a revisão humana.
 
-## 12. Confiança
+## 16. Confiança
 
-O nível de confiança da auditoria é calculado com base em:
+Máximo 95% — auditoria automatizada não substitui revisão humana.
 
-- Quantidade de documentos oficiais carregados.
-- Quantidade de arquivos de código-fonte analisados.
+## 17. Declaração Oficial
 
-A confiança máxima é 95%, pois a auditoria é automatizada e não substitui a revisão humana.
-
-## 13. Página de Auditoria
-
-A página "Auditoria" utiliza o Architecture Auditor **apenas** através da interface oficial do Specialist (`analyze()`).
-
-Ela **nunca** acessa diretamente:
-
-- filesystem;
-- Biblioteca Oficial;
-- Capabilities.
-
-Toda orquestração acontece pelo Specialist, que por sua vez orquestra as Capabilities.
-
-## 14. Declaração Oficial
-
-O Architecture Auditor é o primeiro Especialista Oficial do MemoryOS. Ele audita o projeto contra a Biblioteca Oficial, orquestrando quatro Capabilities oficiais (ProjectReader, OfficialLibraryReader, CodeAnalyzer, ReportBuilder) num pipeline modular e escalável. O Specialist implementa apenas `analyze()`, `advise()` e `confidence()`, nunca acessando arquivos diretamente. Ele nunca altera código — apenas analisa e produz recomendações no formato MACR oficial.
+O Architecture Auditor é o primeiro Especialista Oficial do MemoryOS. Ele audita o projeto contra a Biblioteca Oficial, orquestrando quatro Capabilities oficiais (ProjectReader, OfficialLibraryReader, CodeAnalyzer, ReportBuilder), um PolicyEngine (stub) e uma AIProvider Interface — num pipeline modular, escalável e totalmente desacoplado de Base44. O Specialist implementa apenas `analyze()`, `advise()` e `confidence()`, nunca acessando arquivos, Providers ou filesystem diretamente. Ele nunca altera código — apenas analisa e produz recomendações no formato MACR oficial. Esta versão (3.0) é considerada estável e pronta para uso como primeiro Especialista Oficial do MemoryOS.
 
 ---
 
 **Documento Oficial:** Architecture Auditor Specialist
-**Versão:** 2.0
-**Status:** Aprovado
+**Versão:** 3.0
+**Status:** Aprovado — Estável

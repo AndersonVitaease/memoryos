@@ -1,51 +1,30 @@
 /**
  * ProjectReaderCapability
  *
- * Única responsável por acessar o código-fonte do projeto.
+ * Única responsável por acessar o código-fonte do projeto (MAS §4.4).
+ * Specialists NUNCA acessam arquivos diretamente.
  *
- * Conforme MAS §4.4 (Capability Layer) e MES §19:
- * - Acesso a filesystem/glob/path é responsabilidade exclusiva das Capabilities.
- * - Specialists NUNCA acessam arquivos diretamente.
+ * Níveis de auditoria (Correção 7):
+ *   file | module | project | pr
  *
- * Níveis de auditoria suportados (Correção 7):
- *   - file     → um arquivo específico
- *   - module   → uma pasta/módulo
- *   - project  → projeto completo
- *   - pr       → pull request (simulado como conjunto de arquivos alterados)
- *
- * Nesta implementação, o "filesystem" é o bundle de módulos Vite (?raw),
- * pois o app roda no browser. A interface permanece idêntica — apenas a
- * origem dos dados muda em ambientes server-side.
+ * Interface oficial (MES §19): { id, name, version, execute, validate }
+ * Contrato oficial (MES §5, §6): Request/Response padronizado.
  */
 
 import { createCapability } from "./baseCapability";
+import { successResponse } from "./requestResponse";
 
-// === FONTE DE DADOS (Vite ?raw, carregada em build) ===
 const SOURCE_GLOBS = import.meta.glob(
-  [
-    "/src/lib/**/*.js",
-    "/src/lib/**/*.jsx",
-    "/src/pages/**/*.jsx",
-    "/src/components/**/*.jsx",
-    "/src/hooks/**/*.js",
-    "/src/App.jsx",
-  ],
+  ["/src/lib/**/*.js", "/src/lib/**/*.jsx", "/src/pages/**/*.jsx", "/src/components/**/*.jsx", "/src/hooks/**/*.js", "/src/App.jsx"],
   { query: "?raw", import: "default", eager: true }
 );
 
 const MAX_TOTAL_CHARS = 120000;
 
-/**
- * Normaliza o caminho removendo o prefixo /src/.
- */
 function normalizePath(p) {
   return p.replace(/^\/src\//, "");
 }
 
-/**
- * Filtra fontes por escopo.
- * @param {Object} scope - { level, target? }
- */
 function filterByScope(scope) {
   const entries = Object.entries(SOURCE_GLOBS)
     .map(([path, content]) => ({ path: normalizePath(path), content }))
@@ -60,7 +39,6 @@ function filterByScope(scope) {
       const target = scope.target.replace(/^\/?src\//, "").replace(/\/$/, "");
       return entries.filter((e) => e.path.startsWith(target + "/") || e.path.startsWith(target));
     case "pr":
-      // Pull Request: escopo reduzido aos arquivos listados em scope.target (array)
       if (Array.isArray(scope.target) && scope.target.length > 0) {
         const set = new Set(scope.target.map((t) => t.replace(/^\/?src\//, "")));
         return entries.filter((e) => set.has(e.path));
@@ -72,9 +50,6 @@ function filterByScope(scope) {
   }
 }
 
-/**
- * Aplica limite de caracteres para evitar estouro de contexto.
- */
 function applyBudget(entries) {
   let total = 0;
   const result = [];
@@ -82,10 +57,7 @@ function applyBudget(entries) {
     if (total + entry.content.length > MAX_TOTAL_CHARS) {
       const remaining = MAX_TOTAL_CHARS - total;
       if (remaining > 500) {
-        result.push({
-          ...entry,
-          content: entry.content.substring(0, remaining) + "\n// ... [truncado pela Capability]",
-        });
+        result.push({ ...entry, content: entry.content.substring(0, remaining) + "\n// ... [truncado]" });
       }
       break;
     }
@@ -98,20 +70,21 @@ function applyBudget(entries) {
 export const ProjectReaderCapability = createCapability({
   id: "project-reader",
   name: "Project Reader",
-  validate: async (input) => {
-    if (!input || !input.scope) return false;
-    return ["file", "module", "project", "pr"].includes(input.scope.level);
+  version: "1.0",
+  validate: async (request) => {
+    if (!request || !request.context || !request.context.scope) return false;
+    return ["file", "module", "project", "pr"].includes(request.context.scope.level);
   },
-  execute: async (input) => {
-    const scope = input.scope;
+  execute: async (request) => {
+    const scope = request.context.scope;
     const all = filterByScope(scope);
     const files = applyBudget(all);
-    return {
+    return successResponse({
       files,
       scope,
       fileCount: files.length,
       totalChars: files.reduce((sum, f) => sum + f.content.length, 0),
-    };
+    });
   },
 });
 

@@ -1,25 +1,26 @@
 /**
  * CodeAnalyzerCapability
  *
- * Responsável por:
+ * Responsável por (MAS §4.4):
  *   - dividir o projeto em módulos;
  *   - comparar código e documentação;
  *   - identificar violações;
  *   - consolidar resultados.
  *
- * Conforme MAS §4.4 e Correção 6:
- * - Pipeline escalável: Indexação → Divisão em módulos → Análise módulo por módulo → Consolidação.
- * - NUNCA gera relatórios (responsabilidade do ReportBuilder).
- * - NUNCA acessa filesystem (responsabilidade do ProjectReader).
+ * NUNCA gera relatórios (responsabilidade do ReportBuilder).
+ * NUNCA acessa filesystem (responsabilidade do ProjectReader).
+ * NUNCA conhece Base44 — recebe AIProvider via request.context.aiProvider.
  *
- * A análise é feita em lotes por módulo para suportar projetos grandes,
- * evitando estouro de contexto do LLM.
+ * Pipeline escalável (Correção 6):
+ *   Indexação → Divisão em módulos → Análise módulo por módulo → Consolidação
+ *
+ * Interface oficial (MES §19): { id, name, version, execute, validate }
+ * Contrato oficial (MES §5, §6): Request/Response padronizado.
  */
 
 import { createCapability } from "./baseCapability";
-import { base44 } from "@/api/base44Client";
+import { successResponse } from "./requestResponse";
 
-// === CATEGORIAS OFICIAIS DE AUDITORIA ===
 export const AUDIT_CATEGORIES = [
   "Separação de Responsabilidades (MAS §3, §6)",
   "Independência do Core (MAS §4.1, MES §2.5)",
@@ -33,7 +34,6 @@ export const AUDIT_CATEGORIES = [
   "Engineering Standards (MES §2)",
 ];
 
-// === SCHEMA DA ANÁLISE POR MÓDULO ===
 const MODULE_ANALYSIS_SCHEMA = {
   type: "object",
   properties: {
@@ -56,11 +56,7 @@ const MODULE_ANALYSIS_SCHEMA = {
       type: "array",
       items: {
         type: "object",
-        properties: {
-          categoria: { type: "string" },
-          pontuacao: { type: "number" },
-          comentario: { type: "string" },
-        },
+        properties: { categoria: { type: "string" }, pontuacao: { type: "number" }, comentario: { type: "string" } },
       },
     },
     divida_tecnica: { type: "array", items: { type: "string" } },
@@ -72,9 +68,6 @@ const MODULE_ANALYSIS_SCHEMA = {
 
 const MAX_CHARS_PER_BATCH = 35000;
 
-/**
- * Divide os arquivos em módulos (agrupados por diretório de primeiro nível).
- */
 function splitIntoModules(files) {
   const groups = {};
   for (const file of files) {
@@ -83,15 +76,9 @@ function splitIntoModules(files) {
     if (!groups[moduleName]) groups[moduleName] = [];
     groups[moduleName].push(file);
   }
-  return Object.entries(groups).map(([moduleName, modFiles]) => ({
-    name: moduleName,
-    files: modFiles,
-  }));
+  return Object.entries(groups).map(([name, files]) => ({ name, files }));
 }
 
-/**
- * Divide um módulo em lotes que respeitem o orçamento de caracteres.
- */
 function batchModuleFiles(files) {
   const batches = [];
   let current = [];
@@ -113,11 +100,7 @@ function buildModulePrompt(moduleName, batchFiles, docs) {
   const docsText = Object.entries(docs)
     .map(([name, content]) => `### ${name}\n\n${content}`)
     .join("\n\n---\n\n");
-
-  const codeText = batchFiles
-    .map((f) => `// === ${f.path} ===\n${f.content}`)
-    .join("\n\n");
-
+  const codeText = batchFiles.map((f) => `// === ${f.path} ===\n${f.content}`).join("\n\n");
   return `Você é o módulo analisador do Architecture Auditor Specialist do MemoryOS.
 
 ## PRINCÍPIOS
@@ -141,16 +124,11 @@ Para cada categoria abaixo, atribua pontuação de 0 a 10:
 ${AUDIT_CATEGORIES.map((c, i) => `${i + 1}. ${c}`).join("\n")}
 
 Identifique violações com: arquivo, documento, seção, impacto, prioridade e correção recomendada.
-
-Liste também: dívida técnica, melhorias recomendadas, documentação a atualizar e riscos arquiteturais detectados neste módulo.
+Liste também: dívida técnica, melhorias recomendadas, documentação a atualizar e riscos arquiteturais.
 
 Retorne JSON conforme o schema.`;
 }
 
-/**
- * Consolida resultados de múltiplos módulos em uma análise unificada.
- * Determinístico — sem LLM.
- */
 function consolidate(moduleResults) {
   const consolidated = {
     violacoes: [],
@@ -163,25 +141,19 @@ function consolidate(moduleResults) {
     modules: moduleResults.map((m) => m.modulo),
   };
 
-  // Acumula violações
   for (const result of moduleResults) {
-    if (result.violacoes) {
-      consolidated.violacoes.push(...result.violacoes);
-    }
+    if (result.violacoes) consolidated.violacoes.push(...result.violacoes);
     if (result.divida_tecnica) consolidated.divida_tecnica.push(...result.divida_tecnica);
     if (result.melhorias_recomendadas) consolidated.melhorias_recomendadas.push(...result.melhorias_recomendadas);
     if (result.documentacao_para_atualizar) consolidated.documentacao_para_atualizar.push(...result.documentacao_para_atualizar);
     if (result.riscos_arquiteturais) consolidated.riscos_arquiteturais.push(...result.riscos_arquiteturais);
   }
 
-  // Consolida pontuações por categoria (média)
   const scoreByCategory = {};
   for (const result of moduleResults) {
     if (!result.pontuacao) continue;
     for (const p of result.pontuacao) {
-      if (!scoreByCategory[p.categoria]) {
-        scoreByCategory[p.categoria] = { sum: 0, count: 0, comentarios: [] };
-      }
+      if (!scoreByCategory[p.categoria]) scoreByCategory[p.categoria] = { sum: 0, count: 0, comentarios: [] };
       scoreByCategory[p.categoria].sum += p.pontuacao || 0;
       scoreByCategory[p.categoria].count += 1;
       if (p.comentario) scoreByCategory[p.categoria].comentarios.push(p.comentario);
@@ -195,7 +167,6 @@ function consolidate(moduleResults) {
     });
   }
 
-  // Dedupe
   consolidated.divida_tecnica = [...new Set(consolidated.divida_tecnica)];
   consolidated.melhorias_recomendadas = [...new Set(consolidated.melhorias_recomendadas)];
   consolidated.documentacao_para_atualizar = [...new Set(consolidated.documentacao_para_atualizar)];
@@ -207,19 +178,18 @@ function consolidate(moduleResults) {
 export const CodeAnalyzerCapability = createCapability({
   id: "code-analyzer",
   name: "Code Analyzer",
-  validate: async (input) => {
-    if (!input || !input.sources || !input.docs) return false;
-    return Array.isArray(input.sources.files) && typeof input.docs.docs === "object";
+  version: "1.0",
+  validate: async (request) => {
+    if (!request || !request.context) return false;
+    return !!(request.context.sources && request.context.docs && request.context.aiProvider);
   },
-  execute: async (input) => {
-    const { sources, docs, onStage } = input;
+  execute: async (request) => {
+    const { sources, docs, aiProvider, onStage } = request.context;
     const docsMap = docs.docs;
 
-    // === ETAPA 1: DIVISÃO EM MÓDULOS ===
     onStage?.("splitting");
     const modules = splitIntoModules(sources.files);
 
-    // === ETAPA 2: ANÁLISE MÓDULO POR MÓDULO ===
     const moduleResults = [];
     for (const mod of modules) {
       const batches = batchModuleFiles(mod.files);
@@ -230,18 +200,16 @@ export const CodeAnalyzerCapability = createCapability({
           batches[i],
           docsMap
         );
-        const result = await base44.integrations.Core.InvokeLLM({
-          prompt,
-          response_json_schema: MODULE_ANALYSIS_SCHEMA,
-        });
+        const result = await aiProvider.chat(prompt, MODULE_ANALYSIS_SCHEMA);
         moduleResults.push(typeof result === "string" ? JSON.parse(result) : result);
       }
     }
 
-    // === ETAPA 3: CONSOLIDAÇÃO ===
     onStage?.("consolidating");
     const consolidated = consolidate(moduleResults);
-    return consolidated;
+    return successResponse(consolidated, {
+      logs: [`modules_analyzed:${moduleResults.length}`],
+    });
   },
 });
 

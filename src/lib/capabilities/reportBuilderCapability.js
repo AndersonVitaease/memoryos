@@ -3,25 +3,17 @@
  *
  * Única responsável por gerar o MemoryOS Architecture Compliance Report (MACR).
  *
- * Conforme MAS §4.4 e Correção 4:
- * - Recebe APENAS o resultado consolidado da análise (do CodeAnalyzer).
- * - NUNCA acessa código-fonte nem filesystem.
- * - NUNCA acessa a Biblioteca Oficial diretamente.
+ * Recebe APENAS o resultado consolidado da análise (do CodeAnalyzer).
+ * NUNCA acessa código-fonte nem filesystem.
+ * NUNCA acessa a Biblioteca Oficial diretamente.
+ * NUNCA conhece Base44 — recebe AIProvider via request.context.aiProvider.
  *
- * Formato oficial do MACR (Correção 10):
- *   - Resultado Geral
- *   - Resumo Executivo
- *   - Pontuação por categoria
- *   - Violações (documento, seção, impacto, correção recomendada, prioridade)
- *   - Riscos arquiteturais
- *   - Dívida técnica
- *   - Melhorias recomendadas
- *   - Documentação que precisa ser atualizada
- *   - Conclusão
+ * Interface oficial (MES §19): { id, name, version, execute, validate }
+ * Contrato oficial (MES §5, §6): Request/Response padronizado.
  */
 
 import { createCapability } from "./baseCapability";
-import { base44 } from "@/api/base44Client";
+import { successResponse } from "./requestResponse";
 
 const SYNTHESIS_SCHEMA = {
   type: "object",
@@ -35,15 +27,14 @@ const SYNTHESIS_SCHEMA = {
 export const ReportBuilderCapability = createCapability({
   id: "report-builder",
   name: "Report Builder",
-  validate: async (input) => {
-    if (!input || !input.analysis) return false;
-    return typeof input.analysis === "object";
+  version: "1.0",
+  validate: async (request) => {
+    if (!request || !request.context) return false;
+    return !!(request.context.analysis && request.context.aiProvider);
   },
-  execute: async (input) => {
-    const { analysis } = input;
+  execute: async (request) => {
+    const { analysis, aiProvider } = request.context;
 
-    // Síntese narrativa via LLM (uma única chamada) — apenas para os campos
-    // que exigem linguagem natural. Dados estruturados são preservados do CodeAnalyzer.
     const prompt = `Você é o construtor de relatórios do Architecture Auditor do MemoryOS.
 
 Abaixo está o resultado consolidado da auditoria de conformidade arquitetural.
@@ -56,14 +47,10 @@ Escreva, em português, três campos:
 Dados consolidados:
 ${JSON.stringify(analysis, null, 2)}`;
 
-    const synthesis = await base44.integrations.Core.InvokeLLM({
-      prompt,
-      response_json_schema: SYNTHESIS_SCHEMA,
-    });
+    const synthesis = await aiProvider.chat(prompt, SYNTHESIS_SCHEMA);
     const synth = typeof synthesis === "string" ? JSON.parse(synthesis) : synthesis;
 
-    // === MONTAGEM DO MACR OFICIAL ===
-    return {
+    const macr = {
       resultado_geral: synth.resultado_geral || "",
       resumo_executivo: synth.resumo_executivo || "",
       pontuacao: analysis.pontuacao || [],
@@ -79,6 +66,8 @@ ${JSON.stringify(analysis, null, 2)}`;
         violationCount: (analysis.violacoes || []).length,
       },
     };
+
+    return successResponse(macr, { logs: [`violations:${macr.metadata.violationCount}`] });
   },
 });
 
