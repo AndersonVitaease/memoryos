@@ -183,3 +183,40 @@ export {
 } from "./semanticRetrievalManager";
 
 export { runSemanticTests, SEMANTIC_TEST_CASES } from "./semanticTests";
+
+// === Sprint 10 ===
+export {
+  buildMemoryEmbedding,
+  validateMemoryEmbedding,
+  normalizeLegacyEmbedding,
+  EMBEDDING_FIELDS,
+  EMBEDDING_STATUSES,
+  DEFAULT_EMBEDDING_STATUS,
+} from "./memoryEmbedding";
+
+export {
+  PROVIDER_TYPES,
+  createStubProvider,
+  createMockProvider,
+  createProvider,
+} from "./embeddingProvider";
+
+export {
+  queueEmbedding,
+  generateEmbedding,
+  reindexMemory,
+  reindexAll,
+  checksum,
+  setProvider,
+  getProvider,
+  getEmbedding,
+  getActiveEmbedding,
+  getEmbeddingHistory,
+  countEmbeddings,
+  getQueueSize,
+  getStats as getEmbeddingStats,
+  getDecisionLog as getEmbeddingDecisionLog,
+  _resetForTests as _resetEmbeddingForTests,
+} from "./memoryEmbeddingManager";
+
+export { runEmbeddingTests, EMBEDDING_TEST_CASES } from "./embeddingTests";
