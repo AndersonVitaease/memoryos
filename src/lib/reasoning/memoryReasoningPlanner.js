@@ -6,7 +6,7 @@ import { buildReasoningContext } from "@/lib/reasoning/contextBuilder";
 import { synthesizeResponse } from "@/lib/reasoning/memorySynthesizer";
 import { orchestrateCapabilities } from "@/lib/reasoning/capabilityOrchestrator";
 import { SpecialistRouter } from "@/lib/routing/specialistRouter";
-import { formatMacrForChat } from "@/lib/reasoning/macrFormatter";
+import { formatMacrForChat } from "@/lib/reasoning/macrFormatterV4";
 
 /**
  * Memory Reasoning Planner (MRP)

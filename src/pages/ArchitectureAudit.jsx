@@ -14,8 +14,10 @@ import {
   CheckCircle2,
   ListChecks,
   Clock,
+  Layers,
 } from "lucide-react";
 import { SpecialistRegistry } from "@/lib/specialists/registry";
+import AuditReportV4 from "@/components/audit/AuditReportV4";
 
 // O Planner e as páginas NÃO conhecem Specialists diretamente.
 // Todo acesso ocorre através do Specialist Registry (MAS §4.3).
@@ -28,8 +30,12 @@ const STAGE_LABELS = {
   idle: "Pronto",
   "reading-project": "Lendo código-fonte do projeto...",
   "reading-library": "Carregando Biblioteca Oficial...",
-  analyzing: "Analisando conformidade arquitetural...",
-  "building-report": "Construindo MACR...",
+  "detecting-modes": "Detectando modos de auditoria disponíveis...",
+  "specification-audit": "Auditando documentos oficiais (Specification Audit)...",
+  "behavioral-audit": "Auditando comportamento observado (Behavioral Audit)...",
+  analyzing: "Analisando código-fonte (Code Audit)...",
+  "runtime-audit": "Auditando runtime e telemetria (Runtime Audit)...",
+  "building-report": "Construindo MACR v4.0...",
   done: "Auditoria concluída",
 };
 
@@ -93,7 +99,7 @@ export default function ArchitectureAudit() {
           </div>
           <div>
             <h1 className="text-xl font-bold font-heading text-zinc-900">Architecture Auditor</h1>
-            <p className="text-sm text-zinc-500">Primeiro Especialista Oficial do MemoryOS · v3.1</p>
+            <p className="text-sm text-zinc-500">Especialista Oficial do MemoryOS · v4.0 Estável</p>
           </div>
         </div>
 
@@ -109,12 +115,23 @@ export default function ArchitectureAudit() {
             </div>
           </div>
           <div className="flex items-start gap-3">
+            <Layers className="w-5 h-5 text-violet-500 shrink-0 mt-0.5" />
+            <div>
+              <h2 className="text-sm font-semibold text-zinc-800">Quatro modos oficiais de auditoria</h2>
+              <p className="text-sm text-zinc-500 mt-1">
+                <strong>Specification Audit</strong> (documentos vs documentos), <strong>Behavioral Audit</strong>
+                (biblioteca vs comportamento observado), <strong>Code Audit</strong> (biblioteca vs código-fonte) e
+                <strong> Runtime Audit</strong> (arquitetura vs runtime/logs/eventos). A seleção é automática.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-start gap-3">
             <FileSearch className="w-5 h-5 text-violet-500 shrink-0 mt-0.5" />
             <div>
-              <h2 className="text-sm font-semibold text-zinc-800">Pipeline modular e escalável</h2>
+              <h2 className="text-sm font-semibold text-zinc-800">Seleção automática e transparência</h2>
               <p className="text-sm text-zinc-500 mt-1">
-                O Specialist orquestra Capabilities oficiais: ProjectReader → OfficialLibraryReader →
-                PolicyEngine → CodeAnalyzer → ReportBuilder. Análise módulo por módulo.
+                O Auditor identifica quais informações estão realmente disponíveis e executa apenas os modos viáveis.
+                Modos indisponíveis são declarados explicitamente com motivo. Toda conclusão informa sua origem.
               </p>
             </div>
           </div>
@@ -200,15 +217,13 @@ export default function ArchitectureAudit() {
     );
   }
 
-  // === REPORT (v3.1 — novo formato MACR) ===
+  // === REPORT (v4.0 — novo formato MACR) ===
   const { macr, metadata } = report;
-  const currentLevelLabel = AUDIT_LEVEL_OPTIONS.find((o) => o.level === metadata?.scope?.level)?.label || "Projeto";
   const cabecalho = macr?.cabecalho || {};
-  const overallStatus = cabecalho.compliance_status || macr?.metadata?.overallComplianceStatus || "—";
 
   return (
     <div className="max-w-4xl mx-auto px-4 lg:px-6 py-6 lg:py-8 pb-20">
-      {/* Cabeçalho do MACR (v3.1 — Correção 2) */}
+      {/* Cabeçalho do MACR */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center">
@@ -216,7 +231,7 @@ export default function ArchitectureAudit() {
           </div>
           <div>
             <h1 className="text-lg font-bold font-heading text-zinc-900">{cabecalho.titulo || "MACR"}</h1>
-            <p className="text-xs text-zinc-500">Architecture Compliance Report</p>
+            <p className="text-xs text-zinc-500">Architecture Compliance Report · v4.0</p>
           </div>
         </div>
         <button
@@ -228,212 +243,7 @@ export default function ArchitectureAudit() {
         </button>
       </div>
 
-      {/* Cabeçalho estruturado */}
-      <div className="bg-white border border-zinc-200 rounded-2xl p-5 lg:p-6 mb-4">
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400 mb-1">Architecture Compliance Status</p>
-            <span className={`inline-block text-sm font-bold px-3 py-1 rounded-lg ${statusColor(overallStatus)}`}>
-              {overallStatus}
-            </span>
-          </div>
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400 mb-1">Versão do Architecture Auditor</p>
-            <p className="text-sm font-medium text-zinc-700">{cabecalho.auditor_version || "v3.1"}</p>
-          </div>
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400 mb-1">Data</p>
-            <p className="text-sm font-medium text-zinc-700">{cabecalho.data || "—"}</p>
-          </div>
-        </div>
-        <div className="mt-4 pt-4 border-t border-zinc-100">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400 mb-2">Documentos utilizados</p>
-          <div className="flex flex-wrap gap-2">
-            {(cabecalho.documentos_utilizados || ["MV", "MPS", "MAS", "MES", "Architecture Auditor Specialist"]).map((doc) => (
-              <span key={doc} className="text-xs font-medium px-2.5 py-1 rounded-full bg-violet-50 text-violet-700 border border-violet-100">
-                {doc}
-              </span>
-            ))}
-          </div>
-        </div>
-        <div className="mt-3 flex items-center gap-3 text-xs text-zinc-400 flex-wrap">
-          <span>Nível: {currentLevelLabel}</span>
-          <span>•</span>
-          <span>{metadata?.fileCount || 0} arquivos</span>
-          <span>•</span>
-          <span>{metadata?.moduleCount || 0} módulos</span>
-          <span>•</span>
-          <span>{metadata?.docCount || 0} documentos</span>
-        </div>
-      </div>
-
-      {/* Resumo Executivo */}
-      {macr?.resumo_executivo && (
-        <div className="bg-white border border-zinc-200 rounded-2xl p-5 lg:p-6 mb-4">
-          <h2 className="text-sm font-semibold text-zinc-800 mb-3">Resumo Executivo</h2>
-          <p className="text-sm text-zinc-600 whitespace-pre-wrap leading-relaxed">{macr.resumo_executivo}</p>
-        </div>
-      )}
-
-      {/* Checklist Obrigatório (v3.1 — Correção 3) */}
-      {macr?.checklist_obrigatorio?.length > 0 && (
-        <div className="bg-white border border-zinc-200 rounded-2xl p-5 lg:p-6 mb-4">
-          <div className="flex items-center gap-2 mb-4">
-            <ListChecks className="w-4 h-4 text-violet-500" />
-            <h2 className="text-sm font-semibold text-zinc-800">Critérios Obrigatórios</h2>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {macr.checklist_obrigatorio.map((item, i) => (
-              <div key={i} className="flex items-center gap-2 text-sm text-zinc-700">
-                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                <span>{item.criterio}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Conformidade por Categoria (v3.1 — sem pontuação numérica) */}
-      {macr?.conformidade?.length > 0 && (
-        <div className="bg-white border border-zinc-200 rounded-2xl p-5 lg:p-6 mb-4">
-          <div className="flex items-center gap-2 mb-4">
-            <ShieldCheck className="w-4 h-4 text-violet-500" />
-            <h2 className="text-sm font-semibold text-zinc-800">Conformidade por Categoria</h2>
-          </div>
-          <div className="space-y-3">
-            {macr.conformidade.map((item, i) => (
-              <div key={i} className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-zinc-700">{item.categoria}</p>
-                  {item.comentario && <p className="text-xs text-zinc-400 mt-0.5">{item.comentario}</p>}
-                </div>
-                <span className={`text-xs font-bold px-2.5 py-1 rounded-full shrink-0 ${statusColor(item.status)}`}>
-                  {item.status}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Violações (v3.1 — Correção 4: separadas de pendências) */}
-      {macr?.violacoes?.length > 0 && (
-        <div className="bg-white border border-zinc-200 rounded-2xl p-5 lg:p-6 mb-4">
-          <div className="flex items-center gap-2 mb-4">
-            <AlertTriangle className="w-4 h-4 text-amber-500" />
-            <h2 className="text-sm font-semibold text-zinc-800">Violações ({macr.violacoes.length})</h2>
-          </div>
-          <div className="space-y-3">
-            {macr.violacoes.map((v, i) => (
-              <div key={i} className="border border-zinc-100 rounded-xl p-4">
-                <div className="flex items-center gap-2 flex-wrap mb-2">
-                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${priorityColor(v.prioridade)}`}>
-                    {(v.prioridade || "baixa").toUpperCase()}
-                  </span>
-                  <span className="text-xs font-medium text-zinc-500">{v.documento || "—"} · {v.secao || "—"}</span>
-                  {v.arquivo && <span className="text-[10px] text-zinc-400 font-mono">{v.arquivo}</span>}
-                </div>
-                {v.impacto && <p className="text-sm text-zinc-700 mb-2">{v.impacto}</p>}
-                {v.correcao_recomendada && (
-                  <div className="mt-2 pl-3 border-l-2 border-violet-200">
-                    <p className="text-xs text-zinc-400 mb-0.5">Correção recomendada</p>
-                    <p className="text-xs text-zinc-600">{v.correcao_recomendada}</p>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Pendências Planejadas (v3.1 — Correção 4: separadas de violações) */}
-      {macr?.pendencias_planejadas?.length > 0 && (
-        <div className="bg-white border border-zinc-200 rounded-2xl p-5 lg:p-6 mb-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Clock className="w-4 h-4 text-blue-500" />
-            <h2 className="text-sm font-semibold text-zinc-800">Pendências Planejadas ({macr.pendencias_planejadas.length})</h2>
-          </div>
-          <p className="text-xs text-zinc-400 mb-3">Itens previstos no roadmap oficial — não constituem violações arquiteturais.</p>
-          <ul className="space-y-2">
-            {macr.pendencias_planejadas.map((item, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm text-zinc-600">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 mt-2 shrink-0" />{item}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Riscos Arquiteturais */}
-      {macr?.riscos_arquiteturais?.length > 0 && (
-        <div className="bg-white border border-zinc-200 rounded-2xl p-5 lg:p-6 mb-4">
-          <h2 className="text-sm font-semibold text-zinc-800 mb-3">Riscos Arquiteturais</h2>
-          <ul className="space-y-2">
-            {macr.riscos_arquiteturais.map((item, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm text-zinc-600">
-                <span className="w-1 h-1 rounded-full bg-red-400 mt-2 shrink-0" />{item}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Melhorias Recomendadas */}
-      {macr?.melhorias_recomendadas?.length > 0 && (
-        <div className="bg-white border border-zinc-200 rounded-2xl p-5 lg:p-6 mb-4">
-          <div className="flex items-center gap-2 mb-3">
-            <Lightbulb className="w-4 h-4 text-violet-500" />
-            <h2 className="text-sm font-semibold text-zinc-800">Melhorias Recomendadas</h2>
-          </div>
-          <ul className="space-y-2">
-            {macr.melhorias_recomendadas.map((item, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm text-zinc-600">
-                <span className="w-1 h-1 rounded-full bg-violet-400 mt-2 shrink-0" />{item}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Documentação para Atualizar */}
-      {macr?.documentacao_para_atualizar?.length > 0 && (
-        <div className="bg-white border border-zinc-200 rounded-2xl p-5 lg:p-6 mb-4">
-          <div className="flex items-center gap-2 mb-3">
-            <BookOpen className="w-4 h-4 text-amber-500" />
-            <h2 className="text-sm font-semibold text-zinc-800">Documentação a Atualizar</h2>
-          </div>
-          <ul className="space-y-2">
-            {macr.documentacao_para_atualizar.map((item, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm text-zinc-600">
-                <span className="w-1 h-1 rounded-full bg-amber-400 mt-2 shrink-0" />{item}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Conclusão (v3.1 — Correção 5: objetiva, sem pontuação) */}
-      {macr?.conclusao && (
-        <div className="bg-gradient-to-br from-violet-50 to-indigo-50 border border-violet-100 rounded-2xl p-5 lg:p-6 mb-4">
-          <h2 className="text-sm font-semibold text-violet-800 mb-3">Conclusão</h2>
-          {/* Resumo objetivo */}
-          <div className="grid grid-cols-3 gap-3 mb-4">
-            <div className="bg-white/60 rounded-lg p-3 text-center">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400 mb-1">Violações Arquiteturais</p>
-              <p className="text-lg font-bold text-zinc-800">{macr.metadata?.violationCount ?? macr.violacoes?.length ?? 0}</p>
-            </div>
-            <div className="bg-white/60 rounded-lg p-3 text-center">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400 mb-1">Violações Funcionais</p>
-              <p className="text-lg font-bold text-zinc-800">0</p>
-            </div>
-            <div className="bg-white/60 rounded-lg p-3 text-center">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400 mb-1">Pendências Planejadas</p>
-              <p className="text-lg font-bold text-zinc-800">{macr.metadata?.plannedPendencyCount ?? macr.pendencias_planejadas?.length ?? 0}</p>
-            </div>
-          </div>
-          <p className="text-sm text-zinc-700 whitespace-pre-wrap leading-relaxed">{macr.conclusao}</p>
-        </div>
-      )}
+      <AuditReportV4 macr={macr} metadata={metadata} />
     </div>
   );
 }

@@ -18,7 +18,7 @@
  *   SpecialistRegistry.register(entry) → void
  */
 
-import architectureAuditor from "@/lib/specialists/architectureAuditor";
+import architectureAuditor from "@/lib/auditor/architectureAuditorV4";
 
 /**
  * Registro oficial.
@@ -29,7 +29,7 @@ const _registry = [
     goalId: "audit_architecture",
     specialist: architectureAuditor,
     confidence: "ALTA",
-    reason: "Goal de auditoria arquitetural mapeia diretamente ao Architecture Auditor Specialist (v3.1 — Estável).",
+    reason: "Goal de auditoria arquitetural mapeia diretamente ao Architecture Auditor Specialist (v4.0 — Estável).",
   },
 ];
 
