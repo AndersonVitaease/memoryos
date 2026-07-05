@@ -59,3 +59,25 @@ export {
 } from "./memoryStore";
 
 export { runStoreTests, STORE_TEST_CASES } from "./storeTests";
+
+// === Sprint 3 ===
+export {
+  MEMORY_STATUSES,
+  MEMORY_SOURCES,
+  normalizeLegacyRecord,
+  DEFAULT_STATUS,
+  DEFAULT_REVISION,
+  DEFAULT_SOURCE,
+} from "./memoryRecord";
+
+export {
+  findById,
+  findByTag,
+  findByType,
+  findByIntent,
+  search,
+  getRetrievalStats,
+  _resetRetrievalStats,
+} from "./memoryRetrieval";
+
+export { runRetrievalTests, RETRIEVAL_TEST_CASES } from "./retrievalTests";

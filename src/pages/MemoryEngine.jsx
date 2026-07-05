@@ -1,6 +1,7 @@
 import React, { useState } from "react";
-import { Brain, Cpu, Database } from "lucide-react";
+import { Brain, Cpu, Database, Search } from "lucide-react";
 import StoreTestRunner from "@/components/memory-engine/StoreTestRunner";
+import RetrievalTestRunner from "@/components/memory-engine/RetrievalTestRunner";
 import { runClassifierTests, TEST_BATTERY } from "@/lib/memory-engine";
 import {
   Play,
@@ -14,10 +15,11 @@ import {
 const TABS = [
   { id: "sprint1", label: "Sprint 1 · Classifier", icon: Cpu },
   { id: "sprint2", label: "Sprint 2 · Memory Store", icon: Database },
+  { id: "sprint3", label: "Sprint 3 · Retrieval", icon: Search },
 ];
 
 export default function MemoryEngine() {
-  const [tab, setTab] = useState("sprint2");
+  const [tab, setTab] = useState("sprint3");
 
   return (
     <div className="max-w-4xl mx-auto px-4 lg:px-6 py-8 lg:py-12 pb-20">
@@ -69,10 +71,12 @@ export default function MemoryEngine() {
       </div>
 
       {/* Content */}
-      {tab === "sprint2" ? (
+      {tab === "sprint1" ? (
+        <Sprint1View />
+      ) : tab === "sprint2" ? (
         <StoreTestRunner />
       ) : (
-        <Sprint1View />
+        <RetrievalTestRunner />
       )}
     </div>
   );

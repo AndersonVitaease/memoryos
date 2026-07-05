@@ -1,8 +1,14 @@
 /**
- * Memory Record (Sprint 2) — Contrato Oficial
+ * Memory Record (Sprint 2 + Sprint 3) — Contrato Oficial
  *
  * O Memory Record é o único formato aceito pelo Memory Store.
  * Nunca é uma mensagem do usuário. É sempre produto do Memory Classifier.
+ *
+ * Sprint 3 — Evolução do contrato (retrocompatível):
+ *   - status: "active" | "archived" | "superseded" | "expired" | "deleted"
+ *   - revision: number (inicial 1)
+ *   - relations: array (inicial [])
+ *   - source: "conversation" | "future_gmail" | "future_document" | "future_web" | "future_whatsapp"
  *
  * Estrutura oficial:
  *   {
@@ -24,7 +30,12 @@
  *     expires: string | null,
  *     createdAt: datetime,
  *     updatedAt: datetime,
- *     metadata: {}
+ *     metadata: {},
+ *     // === Sprint 3 ===
+ *     status: "active" | "archived" | "superseded" | "expired" | "deleted",
+ *     revision: number,
+ *     relations: array,
+ *     source: "conversation" | "future_gmail" | "future_document" | "future_web" | "future_whatsapp"
  *   }
  */
 
@@ -33,6 +44,20 @@ import { MEMORY_INTENTS, memoryTypeToIntent } from "./memoryIntents";
 
 const VALID_IMPORTANCE = ["low", "medium", "high"];
 const VALID_CONFIDENCE = ["low", "medium", "high"];
+
+// === Sprint 3: Novos campos ===
+export const MEMORY_STATUSES = ["active", "archived", "superseded", "expired", "deleted"];
+export const MEMORY_SOURCES = [
+  "conversation",
+  "future_gmail",
+  "future_document",
+  "future_web",
+  "future_whatsapp",
+];
+export const DEFAULT_STATUS = "active";
+export const DEFAULT_REVISION = 1;
+export const DEFAULT_RELATIONS = [];
+export const DEFAULT_SOURCE = "conversation";
 
 /**
  * Gera um UUID v4 (com fallback se crypto.randomUUID não existir).
@@ -105,9 +130,10 @@ function detectExpiration(message) {
  * @param {string} params.userId - ID do usuário
  * @param {string} params.conversationId - ID da conversa
  * @param {Object} [params.metadata] - Metadados adicionais
+ * @param {string} [params.source] - Origem da memória (default: "conversation")
  * @returns {Object} Memory Record (antes da validação do Store)
  */
-export function buildMemoryRecord({ classification, originalMessage, userId, conversationId, metadata = {} }) {
+export function buildMemoryRecord({ classification, originalMessage, userId, conversationId, metadata = {}, source }) {
   if (!classification || typeof classification !== "object") {
     throw new Error("MemoryRecord: classification é obrigatório.");
   }
@@ -144,6 +170,11 @@ export function buildMemoryRecord({ classification, originalMessage, userId, con
     createdAt: now,
     updatedAt: now,
     metadata: typeof metadata === "object" && metadata !== null ? metadata : {},
+    // === Sprint 3: Novos campos (com defaults para retrocompatibilidade) ===
+    status: DEFAULT_STATUS,
+    revision: DEFAULT_REVISION,
+    relations: DEFAULT_RELATIONS,
+    source: MEMORY_SOURCES.includes(source) ? source : DEFAULT_SOURCE,
   };
 }
 
@@ -206,10 +237,42 @@ export const MEMORY_RECORD_FIELDS = [
   "createdAt",
   "updatedAt",
   "metadata",
+  // === Sprint 3 ===
+  "status",
+  "revision",
+  "relations",
+  "source",
 ];
+
+/**
+ * Normaliza um Memory Record legado (pré-Sprint 3) garantindo
+ * que os novos campos existam com seus valores padrão.
+ *
+ * Nenhum Memory Record existente é invalidado — apenas complementado.
+ *
+ * @param {Object} record - Memory Record possivelmente legado
+ * @returns {Object} Memory Record normalizado
+ */
+export function normalizeLegacyRecord(record) {
+  if (!record || typeof record !== "object") return record;
+  return {
+    ...record,
+    status: MEMORY_STATUSES.includes(record.status) ? record.status : DEFAULT_STATUS,
+    revision: typeof record.revision === "number" ? record.revision : DEFAULT_REVISION,
+    relations: Array.isArray(record.relations) ? record.relations : DEFAULT_RELATIONS,
+    source: MEMORY_SOURCES.includes(record.source) ? record.source : DEFAULT_SOURCE,
+  };
+}
 
 export default {
   buildMemoryRecord,
   validateMemoryRecord,
+  normalizeLegacyRecord,
   MEMORY_RECORD_FIELDS,
+  MEMORY_STATUSES,
+  MEMORY_SOURCES,
+  DEFAULT_STATUS,
+  DEFAULT_REVISION,
+  DEFAULT_RELATIONS,
+  DEFAULT_SOURCE,
 };
