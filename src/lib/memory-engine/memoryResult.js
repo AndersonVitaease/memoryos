@@ -176,6 +176,7 @@ export function buildQualityMetrics({
 // === Builders ===
 
 export function buildPersistedMemory({
+  memoryId,
   memoryType,
   content,
   tags,
@@ -193,7 +194,7 @@ export function buildPersistedMemory({
   const conf = RESULT_CONFIDENCE_LEVELS.includes(confidence) ? confidence : "LOW";
 
   return Object.freeze({
-    memoryId: generateMemoryId(),
+    memoryId: memoryId || generateMemoryId(),
     memoryType: memoryType || "fact",
     content,
     tags: Array.isArray(tags) ? Object.freeze([...tags]) : Object.freeze([]),

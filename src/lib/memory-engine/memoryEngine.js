@@ -33,9 +33,7 @@
 
 import {
   buildMemoryUpdateResult,
-  buildStorageHints,
-  buildQualityMetrics,
-  generateMemoryRecordId,
+  buildPersistedMemory,
   _resetIdsForTests,
   validateMemoryUpdateResult,
 } from "./memoryResult";
@@ -266,18 +264,9 @@ export function applyProposal(proposal) {
       source: "proposal",
     });
 
-    // Sprint 22.1 — Enrich with contract fields (structure only, no heuristics).
-    // Memory Engine only declares these fields; it never decides storage,
-    // retention, importance, or quality. Those decisions belong to future sprints.
-    const enriched = Object.freeze({
-      ...stored,
-      memoryRecordId: generateMemoryRecordId(),
-      storagePolicy: null,
-      retentionPolicy: null,
-      importanceScore: null,
-      storageHints: buildStorageHints(),
-      qualityMetrics: buildQualityMetrics(),
-    });
+    // Sprint 22.1 — Memory Engine never creates IDs or decides policies.
+    // It delegates all contract construction to the builder.
+    const enriched = buildPersistedMemory({ ...stored });
 
     persistedMemories.push(enriched);
 
@@ -356,7 +345,7 @@ export function describeResult(result) {
       if (m.qualityMetrics) {
         const qm = m.qualityMetrics;
         lines.push(
-          `      quality: conf=${qm.confidence} consist=${qm.consistency} compl=${qm.completeness} rel=${qm.relevance} relb=${qm.reliability}`
+          `      quality: conf=${qm.confidence ?? "—"} consist=${qm.consistency ?? "—"} compl=${qm.completeness ?? "—"} rel=${qm.relevance ?? "—"} relb=${qm.reliability ?? "—"}`
         );
       }
     }
