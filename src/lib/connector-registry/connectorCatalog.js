@@ -2,6 +2,7 @@
  * Connector Catalog (Sprint 30)
  *
  * Visualização e listagem de Connectors registrados.
+ * Somente leitura — não modifica o estado do registry.
  *
  * list()     — O(n)
  * count()    — O(1)

@@ -1,5 +1,6 @@
 /**
  * Search Tests (Sprint 30)
+ * Includes findByTag and findByType with indexed lookups.
  */
 
 import { createConnectorRegistry } from "../connectorRegistry.js";
@@ -15,7 +16,7 @@ function _setup() {
 
 export const SEARCH_TESTS = [
   {
-    id: 55,
+    id: 67,
     name: "findById returns connector",
     run: () => {
       const { registry, search } = _setup();
@@ -25,16 +26,13 @@ export const SEARCH_TESTS = [
     assert: (r) => r !== null && r.connectorName === "C1",
   },
   {
-    id: 56,
+    id: 68,
     name: "findById returns null for unknown",
-    run: () => {
-      const { search } = _setup();
-      return search.findById("nonexistent");
-    },
+    run: () => { const { search } = _setup(); return search.findById("nonexistent"); },
     assert: (r) => r === null,
   },
   {
-    id: 57,
+    id: 69,
     name: "findByVendor returns matching connectors",
     run: () => {
       const { registry, search } = _setup();
@@ -46,7 +44,7 @@ export const SEARCH_TESTS = [
     assert: (r) => r.length === 2 && Object.isFrozen(r),
   },
   {
-    id: 58,
+    id: 70,
     name: "findByVendor returns empty for unknown vendor",
     run: () => {
       const { registry, search } = _setup();
@@ -56,7 +54,7 @@ export const SEARCH_TESTS = [
     assert: (r) => r.length === 0,
   },
   {
-    id: 59,
+    id: 71,
     name: "findByCategory returns matching connectors",
     run: () => {
       const { registry, search } = _setup();
@@ -68,7 +66,7 @@ export const SEARCH_TESTS = [
     assert: (r) => r.length === 2,
   },
   {
-    id: 60,
+    id: 72,
     name: "findByCategory returns empty for unknown category",
     run: () => {
       const { registry, search } = _setup();
@@ -78,7 +76,7 @@ export const SEARCH_TESTS = [
     assert: (r) => r.length === 0,
   },
   {
-    id: 61,
+    id: 73,
     name: "findByCapability returns matching connectors",
     run: () => {
       const { registry, search } = _setup();
@@ -90,7 +88,7 @@ export const SEARCH_TESTS = [
     assert: (r) => r.length === 2,
   },
   {
-    id: 62,
+    id: 74,
     name: "findByCapability returns empty for unsupported capability",
     run: () => {
       const { registry, search } = _setup();
@@ -100,7 +98,7 @@ export const SEARCH_TESTS = [
     assert: (r) => r.length === 0,
   },
   {
-    id: 63,
+    id: 75,
     name: "findByPermission returns matching connectors",
     run: () => {
       const { registry, search } = _setup();
@@ -112,7 +110,7 @@ export const SEARCH_TESTS = [
     assert: (r) => r.length === 2,
   },
   {
-    id: 64,
+    id: 76,
     name: "findByPermission returns empty for no matches",
     run: () => {
       const { registry, search } = _setup();
@@ -122,7 +120,72 @@ export const SEARCH_TESTS = [
     assert: (r) => r.length === 0,
   },
   {
-    id: 65,
+    id: 77,
+    name: "findByTag returns matching connectors",
+    run: () => {
+      const { registry, search } = _setup();
+      registry.register({ connectorName: "C1", tags: ["alpha", "beta"] });
+      registry.register({ connectorName: "C2", tags: ["alpha"] });
+      registry.register({ connectorName: "C3", tags: ["beta"] });
+      return search.findByTag("alpha");
+    },
+    assert: (r) => r.length === 2 && Object.isFrozen(r),
+  },
+  {
+    id: 78,
+    name: "findByTag returns empty for unknown tag",
+    run: () => {
+      const { registry, search } = _setup();
+      registry.register({ connectorName: "C1", tags: ["alpha"] });
+      return search.findByTag("nonexistent");
+    },
+    assert: (r) => r.length === 0,
+  },
+  {
+    id: 79,
+    name: "findByTag returns empty for connectors without tags",
+    run: () => {
+      const { registry, search } = _setup();
+      registry.register({ connectorName: "C1" });
+      return search.findByTag("alpha");
+    },
+    assert: (r) => r.length === 0,
+  },
+  {
+    id: 80,
+    name: "findByType returns matching connectors",
+    run: () => {
+      const { registry, search } = _setup();
+      registry.register({ connectorName: "C1", connectorType: "INBOUND" });
+      registry.register({ connectorName: "C2", connectorType: "INBOUND" });
+      registry.register({ connectorName: "C3", connectorType: "OUTBOUND" });
+      return search.findByType("INBOUND");
+    },
+    assert: (r) => r.length === 2 && Object.isFrozen(r),
+  },
+  {
+    id: 81,
+    name: "findByType returns empty for unknown type",
+    run: () => {
+      const { registry, search } = _setup();
+      registry.register({ connectorName: "C1", connectorType: "INBOUND" });
+      return search.findByType("OUTBOUND");
+    },
+    assert: (r) => r.length === 0,
+  },
+  {
+    id: 82,
+    name: "findByType returns BIDIRECTIONAL connectors",
+    run: () => {
+      const { registry, search } = _setup();
+      registry.register({ connectorName: "C1", connectorType: "BIDIRECTIONAL" });
+      registry.register({ connectorName: "C2", connectorType: "INBOUND" });
+      return search.findByType("BIDIRECTIONAL");
+    },
+    assert: (r) => r.length === 1,
+  },
+  {
+    id: 83,
     name: "search finds by name",
     run: () => {
       const { registry, search } = _setup();
@@ -133,7 +196,7 @@ export const SEARCH_TESTS = [
     assert: (r) => r.length === 1 && r[0].connectorName === "GmailConnector",
   },
   {
-    id: 66,
+    id: 84,
     name: "search finds by vendor",
     run: () => {
       const { registry, search } = _setup();
@@ -144,7 +207,7 @@ export const SEARCH_TESTS = [
     assert: (r) => r.length === 1 && r[0].vendor === "google",
   },
   {
-    id: 67,
+    id: 85,
     name: "search finds by description",
     run: () => {
       const { registry, search } = _setup();
@@ -155,18 +218,7 @@ export const SEARCH_TESTS = [
     assert: (r) => r.length === 1,
   },
   {
-    id: 68,
-    name: "search finds by category",
-    run: () => {
-      const { registry, search } = _setup();
-      registry.register({ connectorName: "C1", category: "email" });
-      registry.register({ connectorName: "C2", category: "crm" });
-      return search.search("email");
-    },
-    assert: (r) => r.length === 1,
-  },
-  {
-    id: 69,
+    id: 86,
     name: "search is case insensitive",
     run: () => {
       const { registry, search } = _setup();
@@ -176,7 +228,7 @@ export const SEARCH_TESTS = [
     assert: (r) => r.length === 1,
   },
   {
-    id: 70,
+    id: 87,
     name: "search returns empty for no matches",
     run: () => {
       const { registry, search } = _setup();
@@ -186,7 +238,7 @@ export const SEARCH_TESTS = [
     assert: (r) => r.length === 0,
   },
   {
-    id: 71,
+    id: 88,
     name: "search returns empty for empty query",
     run: () => {
       const { registry, search } = _setup();
@@ -196,7 +248,7 @@ export const SEARCH_TESTS = [
     assert: (r) => r.length === 0,
   },
   {
-    id: 72,
+    id: 89,
     name: "search returns frozen array",
     run: () => {
       const { registry, search } = _setup();
@@ -206,25 +258,38 @@ export const SEARCH_TESTS = [
     assert: (r) => Object.isFrozen(r),
   },
   {
-    id: 73,
+    id: 90,
     name: "search object is frozen",
-    run: () => {
-      const { search } = _setup();
-      return Object.isFrozen(search);
-    },
+    run: () => { const { search } = _setup(); return Object.isFrozen(search); },
     assert: (r) => r === true,
   },
   {
-    id: 74,
+    id: 91,
     name: "createConnectorSearch throws on missing registry",
-    run: () => {
-      try {
-        createConnectorSearch(null);
-        return { threw: false };
-      } catch (e) {
-        return { threw: true };
-      }
-    },
+    run: () => { try { createConnectorSearch(null); return { threw: false }; } catch (e) { return { threw: true }; } },
     assert: (r) => r.threw,
+  },
+  {
+    id: 92,
+    name: "indexed search reflects updates",
+    run: () => {
+      const { registry, search } = _setup();
+      const { connector } = registry.register({ connectorName: "C1", vendor: "google", tags: ["alpha"] });
+      registry.update(connector.connectorId, { vendor: "microsoft", tags: ["beta"] });
+      return { byGoogle: search.findByVendor("google").length, byMicrosoft: search.findByVendor("microsoft").length, byAlpha: search.findByTag("alpha").length, byBeta: search.findByTag("beta").length };
+    },
+    assert: (r) => r.byGoogle === 0 && r.byMicrosoft === 1 && r.byAlpha === 0 && r.byBeta === 1,
+  },
+  {
+    id: 93,
+    name: "indexed search reflects unregistrations",
+    run: () => {
+      const { registry, search } = _setup();
+      const { connector } = registry.register({ connectorName: "C1", vendor: "google", category: "email" });
+      registry.register({ connectorName: "C2", vendor: "google", category: "email" });
+      registry.unregister(connector.connectorId);
+      return search.findByVendor("google").length;
+    },
+    assert: (r) => r === 1,
   },
 ];

@@ -1,7 +1,7 @@
 /**
  * Validators (Sprint 30)
  *
- * Validadores para connectors, manifestos, compatibilidade e capacidades.
+ * Validadores para registry, connectors, manifestos, compatibilidade e capacidades.
  *
  * Todos retornam { valid, errors }.
  * Jamais lançam exceções.
@@ -33,25 +33,35 @@ function _isArray(v) {
   return Array.isArray(v);
 }
 
+export function validateRegistry(registry) {
+  if (!_isObject(registry)) {
+    return _result(false, ["registry must be an object"]);
+  }
+  const errors = [];
+  const requiredMethods = [
+    "register", "registerBatch", "unregister", "unregisterBatch",
+    "update", "exists", "reset",
+  ];
+  for (const method of requiredMethods) {
+    if (typeof registry[method] !== "function") {
+      errors.push(`registry.${method} is required`);
+    }
+  }
+  if (!Object.isFrozen(registry)) {
+    errors.push("registry should be frozen");
+  }
+  return _result(errors.length === 0, errors);
+}
+
 export function validateConnector(connector) {
   if (!_isObject(connector)) {
     return _result(false, ["connector must be an object"]);
   }
-
   const errors = [];
-
-  if (!_isString(connector.connectorId)) {
-    errors.push("connector.connectorId is required");
-  }
-  if (!_isString(connector.connectorName)) {
-    errors.push("connector.connectorName is required");
-  }
-  if (!_isString(connector.connectorVersion)) {
-    errors.push("connector.connectorVersion is required");
-  }
-  if (!_isString(connector.vendor)) {
-    errors.push("connector.vendor is required");
-  }
+  if (!_isString(connector.connectorId)) errors.push("connector.connectorId is required");
+  if (!_isString(connector.connectorName)) errors.push("connector.connectorName is required");
+  if (!_isString(connector.connectorVersion)) errors.push("connector.connectorVersion is required");
+  if (!_isString(connector.vendor)) errors.push("connector.vendor is required");
   if (connector.category && !CATEGORIES.includes(connector.category)) {
     errors.push(`connector.category invalid: ${connector.category}`);
   }
@@ -64,12 +74,8 @@ export function validateConnector(connector) {
   if (connector.health && !HEALTH_STATUSES.includes(connector.health)) {
     errors.push(`connector.health invalid: ${connector.health}`);
   }
-  if (!_isArray(connector.supportedEvents)) {
-    errors.push("connector.supportedEvents must be an array");
-  }
-  if (!_isArray(connector.supportedActions)) {
-    errors.push("connector.supportedActions must be an array");
-  }
+  if (!_isArray(connector.supportedEvents)) errors.push("connector.supportedEvents must be an array");
+  if (!_isArray(connector.supportedActions)) errors.push("connector.supportedActions must be an array");
   if (!_isArray(connector.supportedCapabilities)) {
     errors.push("connector.supportedCapabilities must be an array");
   } else {
@@ -79,7 +85,7 @@ export function validateConnector(connector) {
       }
     }
   }
-
+  if (!_isArray(connector.tags)) errors.push("connector.tags must be an array");
   return _result(errors.length === 0, errors);
 }
 
@@ -87,18 +93,10 @@ export function validateManifest(manifest) {
   if (!_isObject(manifest)) {
     return _result(false, ["manifest must be an object"]);
   }
-
   const errors = [];
-
-  if (!_isString(manifest.connectorName)) {
-    errors.push("manifest.connectorName is required");
-  }
-  if (!_isString(manifest.connectorVersion)) {
-    errors.push("manifest.connectorVersion is required");
-  }
-  if (!_isString(manifest.sdkVersion)) {
-    errors.push("manifest.sdkVersion is required");
-  }
+  if (!_isString(manifest.connectorName)) errors.push("manifest.connectorName is required");
+  if (!_isString(manifest.connectorVersion)) errors.push("manifest.connectorVersion is required");
+  if (!_isString(manifest.sdkVersion)) errors.push("manifest.sdkVersion is required");
   if (manifest.category && !CATEGORIES.includes(manifest.category)) {
     errors.push(`manifest.category invalid: ${manifest.category}`);
   }
@@ -111,7 +109,6 @@ export function validateManifest(manifest) {
       errors.push(`manifest.sdkCompatibility invalid: ${manifest.sdkCompatibility}`);
     }
   }
-
   return _result(errors.length === 0, errors);
 }
 
@@ -119,9 +116,7 @@ export function validateCompatibility(compatConfig) {
   if (!_isObject(compatConfig)) {
     return _result(false, ["compatibility config must be an object"]);
   }
-
   const errors = [];
-
   if (compatConfig.sdkVersion !== undefined) {
     if (!_isString(compatConfig.sdkVersion)) {
       errors.push("compatibility.sdkVersion must be a non-empty string");
@@ -139,7 +134,6 @@ export function validateCompatibility(compatConfig) {
   if (compatConfig.operator !== undefined && !SDK_COMPATIBILITY_OPERATORS.includes(compatConfig.operator)) {
     errors.push(`compatibility.operator invalid: ${compatConfig.operator}`);
   }
-
   return _result(errors.length === 0, errors);
 }
 
@@ -155,6 +149,7 @@ export function validateCapability(capability) {
 
 export function createValidators() {
   return Object.freeze({
+    validateRegistry,
     validateConnector,
     validateManifest,
     validateCompatibility,

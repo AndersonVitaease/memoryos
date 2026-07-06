@@ -15,6 +15,7 @@
  *   — IDs sequenciais (nenhum UUID, Math.random ou Date.now como ID)
  *   — Todos os objetos são frozen
  *   — Operações preferencialmente O(1) ou O(log n)
+ *   — Indexação lógica para pesquisas
  *
  * Compatível com:
  *   — Enterprise Integration Layer
@@ -52,17 +53,14 @@ export { createConnectorCatalog } from "./connectorCatalog.js";
 // === Search ===
 export { createConnectorSearch } from "./connectorSearch.js";
 
-// === Resolver ===
-export { createConnectorResolver } from "./connectorResolver.js";
-
-// === Capabilities ===
+// === Lookup ===
 export {
+  createConnectorLookup,
   hasCapability,
   getCapabilities,
-  resolveCapability,
   listCapabilities,
   isCapability,
-} from "./connectorCapabilities.js";
+} from "./connectorLookup.js";
 
 // === Compatibility ===
 export {
@@ -74,7 +72,7 @@ export {
   isVersionNewer,
   isVersionOlder,
   checkMemoryOSCompatibility,
-  isCompatible,
+  checkCompatibility,
 } from "./connectorCompatibility.js";
 
 // === Filters ===
@@ -94,6 +92,7 @@ export { createStatistics } from "./statistics.js";
 
 // === Validators ===
 export {
+  validateRegistry,
   validateConnector,
   validateManifest,
   validateCompatibility,

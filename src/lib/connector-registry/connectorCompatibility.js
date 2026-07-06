@@ -1,11 +1,10 @@
 /**
  * Connector Compatibility (Sprint 30)
  *
- * Verificação de compatibilidade de SDK, versão e MemoryOS.
+ * Consultas de compatibilidade de SDK, versão e MemoryOS.
  *
- * SDK Compatibility:      verifica sdkCompatibility vs targetSdkVersion
- * Version Compatibility:  compara duas versões semânticas
- * MemoryOS Compatibility: verifica minimumMemoryOSVersion
+ * Nenhuma decisão é tomada neste módulo.
+ * Apenas retorna informações de compatibilidade.
  */
 
 import { SDK_VERSION, deepFreeze } from "./registryContracts.js";
@@ -93,19 +92,16 @@ export function checkMemoryOSCompatibility(connector, memoryOSVersion) {
   return cmp >= 0;
 }
 
-// === Full Compatibility Check ===
+// === Full Compatibility Query ===
 
-export function isCompatible(connector, config = {}) {
+export function checkCompatibility(connector, config = {}) {
   if (!connector) {
     return deepFreeze({ compatible: false, sdkCompatible: false, memoryOSCompatible: false, reason: "connector is null" });
   }
-
   const targetSdk = config.sdkVersion || SDK_VERSION;
   const targetMOS = config.memoryOSVersion || "1.0.0";
-
   const sdkOk = checkSdkCompatibility(connector, targetSdk);
   const mosOk = checkMemoryOSCompatibility(connector, targetMOS);
-
   return deepFreeze({
     compatible: sdkOk && mosOk,
     sdkCompatible: sdkOk,

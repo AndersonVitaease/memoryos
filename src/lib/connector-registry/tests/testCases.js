@@ -12,8 +12,7 @@ import { CONTRACT_TESTS } from "./contractTests.js";
 import { REGISTRY_TESTS } from "./registryTests.js";
 import { CATALOG_TESTS } from "./catalogTests.js";
 import { SEARCH_TESTS } from "./searchTests.js";
-import { RESOLVER_TESTS } from "./resolverTests.js";
-import { CAPABILITIES_TESTS } from "./capabilitiesTests.js";
+import { LOOKUP_TESTS } from "./lookupTests.js";
 import { COMPATIBILITY_TESTS } from "./compatibilityTests.js";
 import { FILTER_TESTS } from "./filtersTests.js";
 import { STATISTICS_TESTS } from "./statisticsTests.js";
@@ -25,8 +24,7 @@ const ALL_TESTS = [
   ...REGISTRY_TESTS,
   ...CATALOG_TESTS,
   ...SEARCH_TESTS,
-  ...RESOLVER_TESTS,
-  ...CAPABILITIES_TESTS,
+  ...LOOKUP_TESTS,
   ...COMPATIBILITY_TESTS,
   ...FILTER_TESTS,
   ...STATISTICS_TESTS,
@@ -87,20 +85,20 @@ export async function runConnectorRegistryTests(onProgress) {
 
   // Feature coverage checklist
   const coverage = {
-    contracts: results.filter((r) => r.id >= 1 && r.id <= 21).every((r) => r.passed),
-    registry: results.filter((r) => r.id >= 22 && r.id <= 41).every((r) => r.passed),
-    catalog: results.filter((r) => r.id >= 42 && r.id <= 54).every((r) => r.passed),
-    search: results.filter((r) => r.id >= 55 && r.id <= 74).every((r) => r.passed),
-    resolver: results.filter((r) => r.id >= 75 && r.id <= 87).every((r) => r.passed),
-    capabilities: results.filter((r) => r.id >= 88 && r.id <= 101).every((r) => r.passed),
-    compatibility: results.filter((r) => r.id >= 102 && r.id <= 131).every((r) => r.passed),
-    filters: results.filter((r) => r.id >= 132 && r.id <= 145).every((r) => r.passed),
-    statistics: results.filter((r) => r.id >= 146 && r.id <= 158).every((r) => r.passed),
-    validators: results.filter((r) => r.id >= 159 && r.id <= 180).every((r) => r.passed),
-    frozenObjects: results.some((r) => r.id === 14 && r.passed) && results.some((r) => r.id === 184 && r.passed),
-    sequentialIds: results.some((r) => r.id === 11 && r.passed) && results.some((r) => r.id === 183 && r.passed),
-    reset: results.some((r) => r.id === 13 && r.passed) && results.some((r) => r.id === 186 && r.passed),
-    isolation: results.filter((r) => r.id >= 181 && r.id <= 199).every((r) => r.passed),
+    contracts: results.filter((r) => r.id >= 1 && r.id <= 22).every((r) => r.passed),
+    registry: results.filter((r) => r.id >= 23 && r.id <= 53).every((r) => r.passed),
+    batchRegistration: results.some((r) => r.id === 43 && r.passed) && results.some((r) => r.id === 45 && r.passed) && results.some((r) => r.id === 48 && r.passed),
+    catalog: results.filter((r) => r.id >= 54 && r.id <= 66).every((r) => r.passed),
+    search: results.filter((r) => r.id >= 67 && r.id <= 93).every((r) => r.passed),
+    lookup: results.filter((r) => r.id >= 94 && r.id <= 114).every((r) => r.passed),
+    compatibility: results.filter((r) => r.id >= 115 && r.id <= 144).every((r) => r.passed),
+    filters: results.filter((r) => r.id >= 145 && r.id <= 158).every((r) => r.passed),
+    statistics: results.filter((r) => r.id >= 159 && r.id <= 182).every((r) => r.passed),
+    validators: results.filter((r) => r.id >= 183 && r.id <= 211).every((r) => r.passed),
+    frozenObjects: results.some((r) => r.id === 14 && r.passed) && results.some((r) => r.id === 215 && r.passed),
+    sequentialIds: results.some((r) => r.id === 11 && r.passed) && results.some((r) => r.id === 214 && r.passed),
+    reset: results.some((r) => r.id === 13 && r.passed) && results.some((r) => r.id === 217 && r.passed),
+    isolation: results.filter((r) => r.id >= 212 && r.id <= 232).every((r) => r.passed),
   };
 
   // Acceptance criteria
@@ -111,8 +109,9 @@ export async function runConnectorRegistryTests(onProgress) {
     allContractsFrozen: coverage.frozenObjects,
     apisDeterministic: coverage.sequentialIds,
     registryWorks: coverage.registry,
+    batchRegistrationWorks: coverage.batchRegistration,
     searchWorks: coverage.search,
-    resolverWorks: coverage.resolver,
+    lookupWorks: coverage.lookup,
     compatibilityWorks: coverage.compatibility,
     statisticsWork: coverage.statistics,
     validatorsWork: coverage.validators,

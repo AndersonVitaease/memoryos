@@ -115,11 +115,7 @@ export const CONTRACT_TESTS = [
     run: () => {
       const obj = { a: { b: { c: 1 } } };
       deepFreeze(obj);
-      return {
-        outer: Object.isFrozen(obj),
-        mid: Object.isFrozen(obj.a),
-        inner: Object.isFrozen(obj.a.b),
-      };
+      return { outer: Object.isFrozen(obj), mid: Object.isFrozen(obj.a), inner: Object.isFrozen(obj.a.b) };
     },
     assert: (r) => r.outer && r.mid && r.inner,
   },
@@ -158,6 +154,7 @@ export const CONTRACT_TESTS = [
       r.connectorVersion === "1.0.0" &&
       r.status === "REGISTERED" &&
       r.health === "UNKNOWN" &&
+      r.tags.length === 0 &&
       Object.isFrozen(r),
   },
   {
@@ -165,11 +162,7 @@ export const CONTRACT_TESTS = [
     name: "buildConnectorRecord applies category and type validation",
     run: () => {
       _resetIdsForTests();
-      return buildConnectorRecord({
-        connectorName: "C1",
-        category: "email",
-        connectorType: "BIDIRECTIONAL",
-      });
+      return buildConnectorRecord({ connectorName: "C1", category: "email", connectorType: "BIDIRECTIONAL" });
     },
     assert: (r) => r.category === "email" && r.connectorType === "BIDIRECTIONAL",
   },
@@ -187,12 +180,7 @@ export const CONTRACT_TESTS = [
     name: "buildConnectorRecord throws on missing connectorName",
     run: () => {
       _resetIdsForTests();
-      try {
-        buildConnectorRecord({});
-        return { threw: false };
-      } catch (e) {
-        return { threw: true };
-      }
+      try { buildConnectorRecord({}); return { threw: false }; } catch (e) { return { threw: true }; }
     },
     assert: (r) => r.threw,
   },
@@ -201,11 +189,17 @@ export const CONTRACT_TESTS = [
     name: "buildConnectorRecord filters invalid capabilities",
     run: () => {
       _resetIdsForTests();
-      return buildConnectorRecord({
-        connectorName: "C1",
-        supportedCapabilities: ["READ", "INVALID_CAP", "WRITE"],
-      });
+      return buildConnectorRecord({ connectorName: "C1", supportedCapabilities: ["READ", "INVALID_CAP", "WRITE"] });
     },
     assert: (r) => r.supportedCapabilities.length === 2 && r.supportedCapabilities.includes("READ"),
+  },
+  {
+    id: 22,
+    name: "buildConnectorRecord accepts tags",
+    run: () => {
+      _resetIdsForTests();
+      return buildConnectorRecord({ connectorName: "C1", tags: ["alpha", "beta"] });
+    },
+    assert: (r) => r.tags.length === 2 && r.tags.includes("alpha") && r.tags.includes("beta"),
   },
 ];

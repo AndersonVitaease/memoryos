@@ -2,6 +2,7 @@
  * Connector Filters (Sprint 30)
  *
  * Filtragem de Connectors por status e saúde.
+ * Todos os filtros são determinísticos.
  *
  * filterActive()      — O(n)
  * filterInactive()    — O(n)

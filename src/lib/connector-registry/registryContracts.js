@@ -118,6 +118,7 @@ export function buildConnectorRecord(config = {}) {
       ? config.supportedCapabilities.filter((c) => CAPABILITIES.includes(c))
       : [],
     permissions: Array.isArray(config.permissions) ? [...config.permissions] : [],
+    tags: Array.isArray(config.tags) ? [...config.tags] : [],
     metadata: config.metadata && typeof config.metadata === "object" ? { ...config.metadata } : {},
     registeredAt: typeof config.registeredAt === "string" ? config.registeredAt : new Date().toISOString(),
   });
