@@ -253,3 +253,55 @@ export {
 } from "@/lib/memory-integration/memoryIntegrationEngine";
 
 export { runMemoryIntegrationTests, MEMORY_INTEGRATION_TEST_CASES } from "@/lib/memory-integration/memoryIntegrationTests";
+
+// === Sprint 22 ===
+export {
+  buildMemoryUpdateResult,
+  buildPersistedMemory,
+  buildPolicyDecision,
+  buildAuditEntry,
+  validateMemoryUpdateResult,
+  validatePersistedMemory,
+  MEMORY_UPDATE_RESULT_FIELDS,
+  PERSISTED_MEMORY_FIELDS,
+  RESULT_ACTIONS,
+  RESULT_STATUSES,
+  RESULT_CONFIDENCE_LEVELS,
+} from "@/lib/memory-engine/memoryResult";
+
+export {
+  applyProposal,
+  describeResult,
+  validateResult,
+  getStorageState,
+  clearStorage,
+  getStats as getMemoryEngineStats,
+  getDecisionLog as getMemoryEngineDecisionLog,
+  _resetForTests as _resetMemoryEngineForTests,
+} from "@/lib/memory-engine/memoryEngine";
+
+export {
+  evaluatePolicies,
+  shouldPersist,
+  shouldDefer,
+  POLICY_NAMES,
+} from "@/lib/memory-engine/memoryPolicyEngine";
+
+export {
+  resolveConflicts,
+  getResolvableCount,
+  getUnresolvableCount,
+  RESOLUTION_STRATEGIES,
+} from "@/lib/memory-engine/memoryConflictResolver";
+
+export {
+  normalizeContent,
+  isDuplicate,
+  findDuplicates,
+  findInternalDuplicates,
+} from "@/lib/memory-engine/memoryDeduplicator";
+
+export { store as storeMemory, findByContent, list as listMemories, clear as clearMemoryStorage } from "@/lib/memory-engine/memoryStorage";
+export { record as recordAudit, getTrail as getAuditTrail, clear as clearAuditTrail } from "@/lib/memory-engine/memoryAudit";
+
+export { runMemoryEngineTests, MEMORY_ENGINE_TEST_CASES } from "@/lib/memory-engine/memoryTests";

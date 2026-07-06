@@ -8,6 +8,7 @@ import PlanningTestRunner from "@/components/cognitive-engine/PlanningTestRunner
 import ExecutionTestRunner from "@/components/cognitive-engine/ExecutionTestRunner";
 import LearningTestRunner from "@/components/cognitive-engine/LearningTestRunner";
 import MemoryIntegrationTestRunner from "@/components/cognitive-engine/MemoryIntegrationTestRunner";
+import MemoryEngineTestRunner from "@/components/cognitive-engine/MemoryEngineTestRunner";
 
 const TABS = [
   { id: "sprint14", label: "Sprint 14 · Orchestrator", icon: Network },
@@ -18,10 +19,11 @@ const TABS = [
   { id: "sprint19", label: "Sprint 19 · Execution", icon: Zap },
   { id: "sprint20", label: "Sprint 20 · Learning", icon: GraduationCap },
   { id: "sprint21", label: "Sprint 21 · Memory Integration", icon: Database },
+  { id: "sprint22", label: "Sprint 22 · Memory Engine", icon: Database },
 ];
 
 export default function CognitiveEngine() {
-  const [tab, setTab] = useState("sprint21");
+  const [tab, setTab] = useState("sprint22");
 
   return (
     <div className="max-w-4xl mx-auto px-4 lg:px-6 py-8 lg:py-12 pb-20">
@@ -78,8 +80,10 @@ export default function CognitiveEngine() {
         <ExecutionTestRunner />
       ) : tab === "sprint20" ? (
         <LearningTestRunner />
-      ) : (
+      ) : tab === "sprint21" ? (
         <MemoryIntegrationTestRunner />
+      ) : (
+        <MemoryEngineTestRunner />
       )}
     </div>
   );
