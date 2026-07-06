@@ -71,6 +71,52 @@ export function bumpPatch(version) {
   return `${p.major}.${p.minor}.${p.patch + 1}`;
 }
 
+/**
+ * SDK Compatibility parsing and evaluation.
+ *
+ * Supports operator-prefixed version strings: ">=1.0.0", ">1.0.0",
+ * "<=2.0.0", "<2.0.0", "=1.0.0".
+ *
+ * parseSdkCompatibility(">=1.0.0") -> { operator: ">=", version: "1.0.0" }
+ * checkSdkCompatibility(">=1.0.0", "1.5.0") -> true/false
+ */
+
+export function parseSdkCompatibility(compat) {
+  if (typeof compat !== "string" || compat.length === 0) return null;
+  const match = compat.match(/^(>=|<=|>|<|=)(.+)$/);
+  if (!match) {
+    // No operator — treat as exact match
+    const parsed = parseVersion(compat.trim());
+    if (!parsed) return null;
+    return { operator: "=", version: compat.trim() };
+  }
+  const operator = match[1];
+  const version = match[2].trim();
+  if (!parseVersion(version)) return null;
+  return { operator, version };
+}
+
+export function checkSdkCompatibility(compatString, sdkVersion) {
+  const spec = parseSdkCompatibility(compatString);
+  if (!spec) return false;
+  const cmp = compareVersions(sdkVersion, spec.version);
+  if (cmp === null) return false;
+  switch (spec.operator) {
+    case "=":
+      return cmp === 0;
+    case ">":
+      return cmp > 0;
+    case ">=":
+      return cmp >= 0;
+    case "<":
+      return cmp < 0;
+    case "<=":
+      return cmp <= 0;
+    default:
+      return false;
+  }
+}
+
 export function createVersioning() {
   return Object.freeze({
     parseVersion,
@@ -82,5 +128,7 @@ export function createVersioning() {
     bumpMajor,
     bumpMinor,
     bumpPatch,
+    parseSdkCompatibility,
+    checkSdkCompatibility,
   });
 }

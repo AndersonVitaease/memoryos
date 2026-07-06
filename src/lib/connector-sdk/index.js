@@ -17,7 +17,9 @@
 export {
   LIFECYCLE_STATES,
   CATEGORIES,
+  CONNECTOR_TYPES,
   SDK_VERSION,
+  SDK_COMPATIBILITY_OPERATORS,
   HOOK_NAMES,
   buildManifest,
   nextConnectorId,
@@ -36,6 +38,8 @@ export {
   bumpMajor,
   bumpMinor,
   bumpPatch,
+  parseSdkCompatibility,
+  checkSdkCompatibility,
   createVersioning,
 } from "./connectorVersioning.js";
 

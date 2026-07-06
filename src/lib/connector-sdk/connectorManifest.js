@@ -29,7 +29,15 @@ export const CATEGORIES = [
   "other",
 ];
 
+export const CONNECTOR_TYPES = [
+  "INBOUND",
+  "OUTBOUND",
+  "BIDIRECTIONAL",
+];
+
 export const SDK_VERSION = "1.0.0";
+
+export const SDK_COMPATIBILITY_OPERATORS = [">=", ">", "<=", "<", "="];
 
 export const HOOK_NAMES = [
   "beforeConnect",
@@ -84,11 +92,13 @@ export function buildManifest(data) {
     connectorId: data.connectorId || nextConnectorId(),
     connectorVersion: data.connectorVersion || "1.0.0",
     sdkVersion: data.sdkVersion || SDK_VERSION,
+    sdkCompatibility: data.sdkCompatibility || `>=${SDK_VERSION}`,
     connectorName: data.connectorName,
     vendor: data.vendor || "unknown",
     description: data.description || "",
     category: data.category || "other",
     tags: Array.isArray(data.tags) ? [...data.tags] : [],
+    connectorType: data.connectorType || "BIDIRECTIONAL",
     permissions: Array.isArray(data.permissions) ? [...data.permissions] : [],
     supportedEvents: Array.isArray(data.supportedEvents) ? [...data.supportedEvents] : [],
     supportedActions: Array.isArray(data.supportedActions) ? [...data.supportedActions] : [],

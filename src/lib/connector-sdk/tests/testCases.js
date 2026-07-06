@@ -19,6 +19,7 @@ import { VERSIONING_TESTS } from "./versioningTests.js";
 import { VALIDATOR_TESTS } from "./validatorTests.js";
 import { STATISTICS_TESTS } from "./statisticsTests.js";
 import { ISOLATION_TESTS } from "./isolationTests.js";
+import { TYPE_COMPAT_TESTS } from "./typeCompatTests.js";
 
 const ALL_TESTS = [
   ...MANIFEST_TESTS,
@@ -32,6 +33,7 @@ const ALL_TESTS = [
   ...VALIDATOR_TESTS,
   ...STATISTICS_TESTS,
   ...ISOLATION_TESTS,
+  ...TYPE_COMPAT_TESTS,
 ];
 
 export async function runConnectorSdkTests(onProgress) {
@@ -102,6 +104,8 @@ export async function runConnectorSdkTests(onProgress) {
     sequentialIds: results.some((r) => r.id === 3 && r.passed) && results.some((r) => r.id === 127 && r.passed),
     reset: results.some((r) => r.id === 131 && r.passed),
     isolation: results.filter((r) => r.id >= 126 && r.id <= 135).every((r) => r.passed),
+    sdkCompatibility: results.filter((r) => r.id >= 142 && r.id <= 159).every((r) => r.passed),
+    connectorType: results.filter((r) => r.id >= 136 && r.id <= 141).every((r) => r.passed),
   };
 
   // Acceptance criteria
@@ -118,6 +122,8 @@ export async function runConnectorSdkTests(onProgress) {
     versioningWorks: coverage.versioning,
     validatorsWork: coverage.validators,
     statisticsWork: coverage.statistics,
+    sdkCompatibilityWorks: coverage.sdkCompatibility,
+    connectorTypeWorks: coverage.connectorType,
     apisDeterministic: coverage.sequentialIds,
     isolationPreserved: coverage.isolation,
     noLlm: true,

@@ -56,6 +56,16 @@ export function createConnectorBuilder(initialData) {
       return this;
     },
 
+    setConnectorType(connectorType) {
+      _data.connectorType = connectorType;
+      return this;
+    },
+
+    setSdkCompatibility(sdkCompatibility) {
+      _data.sdkCompatibility = sdkCompatibility;
+      return this;
+    },
+
     setVersion(version) {
       _data.connectorVersion = version;
       return this;

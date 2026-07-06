@@ -10,8 +10,8 @@
  * Jamais lançam exceções.
  */
 
-import { parseVersion } from "./connectorVersioning.js";
-import { LIFECYCLE_STATES } from "./connectorManifest.js";
+import { parseVersion, parseSdkCompatibility } from "./connectorVersioning.js";
+import { LIFECYCLE_STATES, CONNECTOR_TYPES, SDK_VERSION } from "./connectorManifest.js";
 
 function _result(valid, errors) {
   return { valid, errors: errors || [] };
@@ -32,6 +32,16 @@ export function validateManifest(manifest) {
     if (!manifest.connectorName) errors.push("connectorName is required");
     if (!manifest.vendor) errors.push("vendor is required");
     if (!manifest.category) errors.push("category is required");
+    if (!manifest.connectorType) {
+      errors.push("connectorType is required");
+    } else if (!CONNECTOR_TYPES.includes(manifest.connectorType)) {
+      errors.push(`connectorType must be one of: ${CONNECTOR_TYPES.join(", ")}`);
+    }
+    if (!manifest.sdkCompatibility) {
+      errors.push("sdkCompatibility is required");
+    } else if (!parseSdkCompatibility(manifest.sdkCompatibility)) {
+      errors.push("sdkCompatibility is not a valid operator+version (e.g. >=1.0.0)");
+    }
     if (!Array.isArray(manifest.tags)) errors.push("tags must be an array");
     if (!Array.isArray(manifest.permissions)) errors.push("permissions must be an array");
     if (!Array.isArray(manifest.supportedEvents)) errors.push("supportedEvents must be an array");
