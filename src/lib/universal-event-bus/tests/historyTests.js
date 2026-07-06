@@ -13,12 +13,12 @@ export const HISTORY_TESTS = [
     run: () => {
       _resetIdsForTests();
       const hist = createEventHistory();
-      const entry = hist.record("evt-1", "received", "from publisher");
+      const entry = hist.record("evt-1", "CREATED", "from publisher");
       return { entry, frozen: Object.isFrozen(entry) };
     },
     assert: ({ entry, frozen }) =>
       entry.eventId === "evt-1" &&
-      entry.status === "received" &&
+      entry.status === "CREATED" &&
       entry.detail === "from publisher" &&
       frozen === true,
   },
@@ -28,14 +28,14 @@ export const HISTORY_TESTS = [
     run: () => {
       _resetIdsForTests();
       const hist = createEventHistory();
-      hist.record("evt-1", "received");
-      hist.record("evt-1", "published");
-      hist.record("evt-2", "received");
+      hist.record("evt-1", "CREATED");
+      hist.record("evt-1", "QUEUED");
+      hist.record("evt-2", "CREATED");
       return { list: hist.list() };
     },
     assert: ({ list }) =>
       list.length === 3 &&
-      list[0].status === "received" &&
+      list[0].status === "CREATED" &&
       list[2].eventId === "evt-2",
   },
   {
@@ -44,15 +44,15 @@ export const HISTORY_TESTS = [
     run: () => {
       _resetIdsForTests();
       const hist = createEventHistory();
-      hist.record("evt-1", "received");
-      hist.record("evt-1", "published");
-      hist.record("evt-2", "received");
+      hist.record("evt-1", "CREATED");
+      hist.record("evt-1", "QUEUED");
+      hist.record("evt-2", "CREATED");
       return { entries: hist.getByEvent("evt-1") };
     },
     assert: ({ entries }) =>
       entries.length === 2 &&
-      entries[0].status === "received" &&
-      entries[1].status === "published",
+      entries[0].status === "CREATED" &&
+      entries[1].status === "QUEUED",
   },
   {
     id: 51,
@@ -60,12 +60,12 @@ export const HISTORY_TESTS = [
     run: () => {
       _resetIdsForTests();
       const hist = createEventHistory();
-      hist.record("evt-1", "received");
-      hist.record("evt-1", "published");
-      hist.record("evt-1", "processed");
+      hist.record("evt-1", "CREATED");
+      hist.record("evt-1", "QUEUED");
+      hist.record("evt-1", "COMPLETED");
       return { status: hist.lastStatus("evt-1") };
     },
-    assert: ({ status }) => status === "processed",
+    assert: ({ status }) => status === "COMPLETED",
   },
   {
     id: 52,
@@ -82,8 +82,8 @@ export const HISTORY_TESTS = [
     run: () => {
       _resetIdsForTests();
       const hist = createEventHistory();
-      hist.record("evt-1", "received");
-      hist.record("evt-1", "published");
+      hist.record("evt-1", "CREATED");
+      hist.record("evt-1", "QUEUED");
       return { count: hist.count() };
     },
     assert: ({ count }) => count === 2,
@@ -94,12 +94,12 @@ export const HISTORY_TESTS = [
     run: () => {
       _resetIdsForTests();
       const hist = createEventHistory();
-      hist.record("evt-1", "received");
-      hist.record("evt-1", "published");
-      hist.record("evt-2", "received");
+      hist.record("evt-1", "CREATED");
+      hist.record("evt-1", "QUEUED");
+      hist.record("evt-2", "CREATED");
       return {
-        received: hist.countByStatus("received"),
-        published: hist.countByStatus("published"),
+        received: hist.countByStatus("CREATED"),
+        published: hist.countByStatus("QUEUED"),
       };
     },
     assert: ({ received, published }) => received === 2 && published === 1,
@@ -110,8 +110,8 @@ export const HISTORY_TESTS = [
     run: () => {
       _resetIdsForTests();
       const hist = createEventHistory();
-      hist.record("evt-1", "received");
-      hist.record("evt-2", "published");
+      hist.record("evt-1", "CREATED");
+      hist.record("evt-2", "QUEUED");
       hist.clear();
       return { count: hist.count(), byEvent: hist.getByEvent("evt-1").length };
     },
@@ -126,9 +126,9 @@ export const HISTORY_TESTS = [
     },
     assert: ({ statuses }) =>
       statuses.length === 8 &&
-      statuses.includes("received") &&
-      statuses.includes("processed") &&
-      statuses.includes("discarded") &&
-      statuses.includes("restored"),
+      statuses.includes("CREATED") &&
+      statuses.includes("COMPLETED") &&
+      statuses.includes("DISCARDED") &&
+      statuses.includes("RETRYING"),
   },
 ];

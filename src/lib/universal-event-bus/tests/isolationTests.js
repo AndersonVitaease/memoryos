@@ -23,7 +23,7 @@ export const ISOLATION_TESTS = [
       return { consumed, acked, stats: bus.getStats() };
     },
     assert: ({ consumed, acked, stats }) =>
-      consumed !== null && acked === true && stats.processedEvents === 1,
+      consumed !== null && acked === true && stats.consumedEvents === 1,
   },
   {
     id: 113,
@@ -117,7 +117,7 @@ export const ISOLATION_TESTS = [
       return { consumed, acked, stats: bus.getStats() };
     },
     assert: ({ consumed, acked, stats }) =>
-      consumed !== null && acked === true && stats.processedEvents >= 1,
+      consumed !== null && acked === true && stats.consumedEvents >= 1,
   },
   {
     id: 118,

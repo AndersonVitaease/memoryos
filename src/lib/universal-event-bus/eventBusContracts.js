@@ -14,19 +14,21 @@
 
 export const EVENT_FIELDS = [
   "eventId",
+  "eventVersion",
+  "correlationId",
   "eventType",
+  "source",
+  "target",
   "priority",
+  "status",
   "timestamp",
+  "payload",
+  "metadata",
   "companyId",
   "tenantId",
   "userId",
   "sessionId",
-  "correlationId",
   "connectorId",
-  "source",
-  "target",
-  "payload",
-  "metadata",
 ];
 
 export const PRIORITIES = ["CRITICAL", "HIGH", "NORMAL", "LOW", "BACKGROUND"];
@@ -50,14 +52,14 @@ export const PRIORITY_WEIGHTS = {
 };
 
 export const EVENT_STATUSES = [
-  "received",
-  "published",
-  "scheduled",
-  "retried",
-  "processed",
-  "failed",
-  "discarded",
-  "restored",
+  "CREATED",
+  "QUEUED",
+  "SCHEDULED",
+  "PROCESSING",
+  "COMPLETED",
+  "FAILED",
+  "RETRYING",
+  "DISCARDED",
 ];
 
 // === Subscription ===
@@ -131,7 +133,9 @@ function _deepFreeze(value) {
 
 export function buildEvent({
   eventType,
+  eventVersion,
   priority,
+  status,
   companyId,
   tenantId,
   userId,
@@ -147,22 +151,25 @@ export function buildEvent({
     throw new Error("event eventType is required");
   }
   const pr = PRIORITIES.includes(priority) ? priority : "NORMAL";
+  const st = EVENT_STATUSES.includes(status) ? status : "CREATED";
 
   return Object.freeze({
     eventId: generateEventId(),
+    eventVersion: typeof eventVersion === "string" ? eventVersion : "1.0.0",
+    correlationId: correlationId != null ? String(correlationId) : "",
     eventType,
+    source: typeof source === "string" ? source : "",
+    target: typeof target === "string" ? target : "",
     priority: pr,
+    status: st,
     timestamp: new Date().toISOString(),
+    payload: payload != null ? _deepFreeze(payload) : Object.freeze({}),
+    metadata: metadata && typeof metadata === "object" ? _deepFreeze(metadata) : Object.freeze({}),
     companyId: companyId != null ? String(companyId) : "",
     tenantId: tenantId != null ? String(tenantId) : "",
     userId: userId != null ? String(userId) : "",
     sessionId: sessionId != null ? String(sessionId) : "",
-    correlationId: correlationId != null ? String(correlationId) : "",
     connectorId: connectorId != null ? String(connectorId) : "",
-    source: typeof source === "string" ? source : "",
-    target: typeof target === "string" ? target : "",
-    payload: payload != null ? _deepFreeze(payload) : Object.freeze({}),
-    metadata: metadata && typeof metadata === "object" ? _deepFreeze(metadata) : Object.freeze({}),
   });
 }
 

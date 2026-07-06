@@ -25,7 +25,7 @@ export const BUS_TESTS = [
       consumed.subscribers.includes("con-1") &&
       acked === true &&
       stats.publishedEvents === 1 &&
-      stats.processedEvents === 1,
+      stats.consumedEvents === 1,
   },
   {
     id: 102,

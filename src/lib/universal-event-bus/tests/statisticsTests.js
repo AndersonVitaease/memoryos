@@ -13,10 +13,10 @@ export const STATISTICS_TESTS = [
       const stats = createStatistics();
       stats.inc("publishedEvents");
       stats.inc("publishedEvents");
-      stats.inc("processedEvents");
-      return { published: stats.get("publishedEvents"), processed: stats.get("processedEvents") };
+      stats.inc("consumedEvents");
+      return { published: stats.get("publishedEvents"), consumed: stats.get("consumedEvents") };
     },
-    assert: ({ published, processed }) => published === 2 && processed === 1,
+    assert: ({ published, consumed }) => published === 2 && consumed === 1,
   },
   {
     id: 58,
@@ -43,7 +43,7 @@ export const STATISTICS_TESTS = [
       snap.publishedEvents === 10 &&
       snap.queueSizes.CRITICAL === 3 &&
       snap.queueSizes.LOW === 1 &&
-      "processedEvents" in snap,
+      "consumedEvents" in snap,
   },
   {
     id: 60,
@@ -51,7 +51,7 @@ export const STATISTICS_TESTS = [
     run: () => {
       const stats = createStatistics();
       stats.inc("publishedEvents", 10);
-      stats.inc("processedEvents", 5);
+      stats.inc("consumedEvents", 5);
       stats.setQueueSizes({ CRITICAL: 3 });
       stats.resetStatistics();
       const snap = stats.snapshot();
@@ -59,7 +59,7 @@ export const STATISTICS_TESTS = [
     },
     assert: ({ snap }) =>
       snap.publishedEvents === 0 &&
-      snap.processedEvents === 0 &&
+      snap.consumedEvents === 0 &&
       Object.keys(snap.queueSizes).length === 0,
   },
   {

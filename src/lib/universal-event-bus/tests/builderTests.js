@@ -123,13 +123,13 @@ export const BUILDER_TESTS = [
     name: "buildHistoryEntry creates frozen entry with valid status",
     run: () => {
       _resetIdsForTests();
-      const h = buildHistoryEntry({ eventId: "evt-1", status: "processed", detail: "ok" });
+      const h = buildHistoryEntry({ eventId: "evt-1", status: "COMPLETED", detail: "ok" });
       return { h };
     },
     assert: ({ h }) =>
       h.historyId.startsWith("his-") &&
       h.eventId === "evt-1" &&
-      h.status === "processed" &&
+      h.status === "COMPLETED" &&
       h.detail === "ok" &&
       Object.isFrozen(h),
   },

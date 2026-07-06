@@ -90,7 +90,7 @@ export function validateConsumer(consumer) {
   if (!consumer || typeof consumer !== "object") {
     return _result(["consumer is not an object"]);
   }
-  const methods = ["subscribe", "unsubscribe", "pause", "resume", "consume", "ack", "nack"];
+  const methods = ["subscribe", "unsubscribe", "pause", "resume", "consume", "ack", "acknowledge", "nack"];
   for (const m of methods) {
     if (typeof consumer[m] !== "function") {
       errors.push(`consumer missing method: ${m}`);

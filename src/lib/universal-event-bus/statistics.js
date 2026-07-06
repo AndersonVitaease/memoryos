@@ -4,8 +4,8 @@
  * Contadores de observabilidade do barramento.
  *
  * Implementa:
- *   publishedEvents, processedEvents, queuedEvents, retryEvents,
- *   discardedEvents, deadLetterEvents, consumers, publishers,
+ *   publishedEvents, consumedEvents, queuedEvents, retriedEvents,
+ *   discardedEvents, deadLetterEvents, activeConsumers, activePublishers,
  *   subscriptions, queueSizes
  *
  * + resetStatistics(), describeStatistics()
@@ -14,13 +14,13 @@
 export function createStatistics() {
   const _counters = {
     publishedEvents: 0,
-    processedEvents: 0,
+    consumedEvents: 0,
     queuedEvents: 0,
-    retryEvents: 0,
+    retriedEvents: 0,
     discardedEvents: 0,
     deadLetterEvents: 0,
-    consumers: 0,
-    publishers: 0,
+    activeConsumers: 0,
+    activePublishers: 0,
     subscriptions: 0,
   };
   let _queueSizes = {};
@@ -50,13 +50,13 @@ export function createStatistics() {
       const lines = [
         "Universal Event Bus — Statistics",
         `  Published: ${s.publishedEvents}`,
-        `  Processed: ${s.processedEvents}`,
+        `  Consumed: ${s.consumedEvents}`,
         `  Queued: ${s.queuedEvents}`,
-        `  Retries: ${s.retryEvents}`,
+        `  Retried: ${s.retriedEvents}`,
         `  Discarded: ${s.discardedEvents}`,
         `  Dead Letter: ${s.deadLetterEvents}`,
-        `  Consumers: ${s.consumers}`,
-        `  Publishers: ${s.publishers}`,
+        `  Active Consumers: ${s.activeConsumers}`,
+        `  Active Publishers: ${s.activePublishers}`,
         `  Subscriptions: ${s.subscriptions}`,
         `  Queue Sizes: ${JSON.stringify(s.queueSizes)}`,
       ];

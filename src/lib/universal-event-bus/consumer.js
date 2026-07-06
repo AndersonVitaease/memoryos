@@ -40,6 +40,9 @@ export function createConsumer(bus, name) {
     ack(eventId) {
       return bus.ack(eventId);
     },
+    acknowledge(eventId) {
+      return bus.ack(eventId);
+    },
     nack(eventId) {
       return bus.nack(eventId);
     },

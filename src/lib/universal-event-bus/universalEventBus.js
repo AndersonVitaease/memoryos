@@ -67,7 +67,7 @@ export function createEventBus() {
       _scheduled.delete(eventId);
       _scheduler.enqueue(entry.event);
       _stats.inc("queuedEvents");
-      _history.record(eventId, "published", "scheduled event delivered");
+      _history.record(eventId, "QUEUED", "scheduled event delivered");
     }
   }
 
@@ -75,11 +75,11 @@ export function createEventBus() {
 
   function publish(eventData, publisherName) {
     const event = buildEvent(eventData);
-    _history.record(event.eventId, "received", publisherName ? `from ${publisherName}` : "");
+    _history.record(event.eventId, "CREATED", publisherName ? `from ${publisherName}` : "");
     _scheduler.enqueue(event);
     _stats.inc("publishedEvents");
     _stats.inc("queuedEvents");
-    _history.record(event.eventId, "published");
+    _history.record(event.eventId, "QUEUED");
     return event;
   }
 
@@ -96,8 +96,8 @@ export function createEventBus() {
     const event = buildEvent(eventData);
     const deliverAt = new Date(Date.now() + (delayMs || 0)).toISOString();
     _scheduled.set(event.eventId, Object.freeze({ event, deliverAt }));
-    _history.record(event.eventId, "received", publisherName ? `from ${publisherName}` : "");
-    _history.record(event.eventId, "scheduled", `deliver at ${deliverAt}`);
+    _history.record(event.eventId, "CREATED", publisherName ? `from ${publisherName}` : "");
+    _history.record(event.eventId, "SCHEDULED", `deliver at ${deliverAt}`);
     _stats.inc("publishedEvents");
     return event;
   }
@@ -105,7 +105,7 @@ export function createEventBus() {
   function cancel(eventId) {
     if (_scheduled.has(eventId)) {
       _scheduled.delete(eventId);
-      _history.record(eventId, "discarded", "cancelled");
+      _history.record(eventId, "DISCARDED", "cancelled");
       return true;
     }
     return false;
@@ -116,8 +116,8 @@ export function createEventBus() {
     if (inflight) {
       _inFlight.delete(eventId);
       const rec = _retryManager.retry(inflight.event);
-      _stats.inc("retryEvents");
-      _history.record(eventId, "retried", `attempt ${rec.attempt}`);
+      _stats.inc("retriedEvents");
+      _history.record(eventId, "RETRYING", `attempt ${rec.attempt}`);
       _scheduler.enqueue(inflight.event);
       _stats.inc("queuedEvents");
       return Object.freeze({ action: "retried", record: rec });
@@ -129,7 +129,7 @@ export function createEventBus() {
     const inflight = _inFlight.get(eventId);
     if (inflight) {
       _inFlight.delete(eventId);
-      _history.record(eventId, "discarded");
+      _history.record(eventId, "DISCARDED");
       _stats.inc("discardedEvents");
       return inflight.event;
     }
@@ -184,12 +184,12 @@ export function createEventBus() {
     const subscriberNames = subscribers.map((s) => s.consumerName);
 
     if (subscribers.length === 0) {
-      _history.record(event.eventId, "processed", "no subscribers");
-      _stats.inc("processedEvents");
+      _history.record(event.eventId, "COMPLETED", "no subscribers");
+      _stats.inc("consumedEvents");
       return Object.freeze({ event, subscribers: [] });
     }
 
-    _history.record(event.eventId, "published", `to ${subscriberNames.join(", ")}`);
+    _history.record(event.eventId, "PROCESSING", `to ${subscriberNames.join(", ")}`);
     _inFlight.set(event.eventId, Object.freeze({
       event,
       subscribers: subscriberNames,
@@ -201,8 +201,8 @@ export function createEventBus() {
   function ack(eventId) {
     const inflight = _inFlight.get(eventId);
     if (!inflight) return false;
-    _history.record(eventId, "processed");
-    _stats.inc("processedEvents");
+    _history.record(eventId, "COMPLETED");
+    _stats.inc("consumedEvents");
     _inFlight.delete(eventId);
     return true;
   }
@@ -213,15 +213,15 @@ export function createEventBus() {
     _inFlight.delete(eventId);
 
     const rec = _retryManager.retry(inflight.event);
-    _stats.inc("retryEvents");
-    _history.record(eventId, "retried", `attempt ${rec.attempt}/${rec.maxAttempts}`);
+    _stats.inc("retriedEvents");
+    _history.record(eventId, "RETRYING", `attempt ${rec.attempt}/${rec.maxAttempts}`);
 
     if (_retryManager.shouldDiscard(eventId)) {
       _deadLetterQueue.send(inflight.event, "max_retries_exceeded");
       _stats.inc("deadLetterEvents");
       _stats.inc("discardedEvents");
-      _history.record(eventId, "failed", "max retries exceeded");
-      _history.record(eventId, "discarded", "sent to DLQ");
+      _history.record(eventId, "FAILED", "max retries exceeded");
+      _history.record(eventId, "DISCARDED", "sent to DLQ");
       return Object.freeze({ action: "dead_lettered", record: rec });
     }
 
@@ -236,7 +236,7 @@ export function createEventBus() {
     const event = _deadLetterQueue.restore(eventId);
     if (!event) return null;
     _retryManager.clearAttempt(eventId);
-    _history.record(eventId, "restored", "from DLQ");
+    _history.record(eventId, "QUEUED", "restored from DLQ");
     _scheduler.enqueue(event);
     _stats.inc("queuedEvents");
     return event;
@@ -246,13 +246,13 @@ export function createEventBus() {
 
   function registerPublisher(name, metadata) {
     const p = _registry.register("publisher", name, metadata);
-    if (p) _stats.inc("publishers");
+    if (p) _stats.inc("activePublishers");
     return p;
   }
 
   function registerConsumer(name, metadata) {
     const p = _registry.register("consumer", name, metadata);
-    if (p) _stats.inc("consumers");
+    if (p) _stats.inc("activeConsumers");
     return p;
   }
 
@@ -273,9 +273,9 @@ export function createEventBus() {
     const lines = [
       "Universal Event Bus — Status",
       `  Published: ${stats.publishedEvents}`,
-      `  Processed: ${stats.processedEvents}`,
+      `  Consumed: ${stats.consumedEvents}`,
       `  Queued: ${stats.queuedEvents}`,
-      `  Retries: ${stats.retryEvents}`,
+      `  Retried: ${stats.retriedEvents}`,
       `  Discarded: ${stats.discardedEvents}`,
       `  Dead Letter: ${stats.deadLetterEvents}`,
       `  Subscriptions: ${stats.subscriptions}`,
