@@ -73,6 +73,7 @@ export {
   isVersionOlder,
   checkMemoryOSCompatibility,
   checkCompatibility,
+  checkManifestCompatibility,
 } from "./connectorCompatibility.js";
 
 // === Filters ===

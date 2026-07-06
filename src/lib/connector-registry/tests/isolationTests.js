@@ -12,6 +12,7 @@ import {
   buildConnectorRecord,
   checkSdkCompatibility,
   checkCompatibility,
+  checkManifestCompatibility,
   filterActive,
   applyFilters,
   validateConnector,
@@ -323,5 +324,42 @@ export const ISOLATION_TESTS = [
       };
     },
     assert: (r) => r.connHasNoDecision && r.capHasNoDecision && r.compatHasNoDecision,
+  },
+  {
+    id: 250,
+    name: "getManifest works in isolation and returns no decisions",
+    run: () => {
+      const { registry, lookup } = _setupFull();
+      const { connector } = registry.register({ connectorName: "C1", supportedCapabilities: ["READ"] });
+      const result = lookup.getManifest(connector.connectorId);
+      return {
+        found: result.found,
+        hasManifest: result.manifest !== null,
+        noDecision: !("decision" in result) && !("recommended" in result),
+      };
+    },
+    assert: (r) => r.found === true && r.hasManifest === true && r.noDecision === true,
+  },
+  {
+    id: 251,
+    name: "checkManifestCompatibility works in isolation",
+    run: () => {
+      const manifest = { connectorName: "C1", sdkCompatibility: ">=1.0.0", minimumMemoryOSVersion: "1.0.0" };
+      const result = checkManifestCompatibility(manifest, { sdkVersion: "1.5.0" });
+      return { compatible: result.compatible, frozen: Object.isFrozen(result) };
+    },
+    assert: (r) => r.compatible === true && r.frozen === true,
+  },
+  {
+    id: 252,
+    name: "Multi-criteria search works in isolation",
+    run: () => {
+      const { registry, search } = _setupFull();
+      registry.register({ connectorName: "C1", vendor: "google", category: "email", supportedCapabilities: ["READ"] });
+      registry.register({ connectorName: "C2", vendor: "google", category: "email", supportedCapabilities: ["WRITE"] });
+      registry.register({ connectorName: "C3", vendor: "microsoft", category: "email", supportedCapabilities: ["READ"] });
+      return search.search({ vendor: "google", category: "email", capability: "READ" });
+    },
+    assert: (r) => r.length === 1 && r[0].connectorName === "C1",
   },
 ];

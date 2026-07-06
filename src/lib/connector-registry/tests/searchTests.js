@@ -292,4 +292,113 @@ export const SEARCH_TESTS = [
     },
     assert: (r) => r === 1,
   },
+  // === Multi-Criteria Search ===
+  {
+    id: 233,
+    name: "search with vendor + capability criteria",
+    run: () => {
+      const { registry, search } = _setup();
+      registry.register({ connectorName: "C1", vendor: "google", supportedCapabilities: ["READ", "WRITE"] });
+      registry.register({ connectorName: "C2", vendor: "google", supportedCapabilities: ["READ"] });
+      registry.register({ connectorName: "C3", vendor: "microsoft", supportedCapabilities: ["READ", "WRITE"] });
+      return search.search({ vendor: "google", capability: "WRITE" });
+    },
+    assert: (r) => r.length === 1 && r[0].connectorName === "C1" && Object.isFrozen(r),
+  },
+  {
+    id: 234,
+    name: "search with category + tag criteria",
+    run: () => {
+      const { registry, search } = _setup();
+      registry.register({ connectorName: "C1", category: "email", tags: ["alpha"] });
+      registry.register({ connectorName: "C2", category: "email", tags: ["beta"] });
+      registry.register({ connectorName: "C3", category: "crm", tags: ["alpha"] });
+      return search.search({ category: "email", tag: "alpha" });
+    },
+    assert: (r) => r.length === 1 && r[0].connectorName === "C1",
+  },
+  {
+    id: 235,
+    name: "search with connector type + permission criteria",
+    run: () => {
+      const { registry, search } = _setup();
+      registry.register({ connectorName: "C1", connectorType: "INBOUND", permissions: ["ALLOW"] });
+      registry.register({ connectorName: "C2", connectorType: "INBOUND", permissions: ["DENY"] });
+      registry.register({ connectorName: "C3", connectorType: "OUTBOUND", permissions: ["ALLOW"] });
+      return search.search({ connectorType: "INBOUND", permission: "ALLOW" });
+    },
+    assert: (r) => r.length === 1 && r[0].connectorName === "C1",
+  },
+  {
+    id: 236,
+    name: "search with vendor + category + capability criteria",
+    run: () => {
+      const { registry, search } = _setup();
+      registry.register({ connectorName: "C1", vendor: "google", category: "email", supportedCapabilities: ["READ", "WRITE"] });
+      registry.register({ connectorName: "C2", vendor: "google", category: "email", supportedCapabilities: ["READ"] });
+      registry.register({ connectorName: "C3", vendor: "google", category: "crm", supportedCapabilities: ["READ", "WRITE"] });
+      registry.register({ connectorName: "C4", vendor: "microsoft", category: "email", supportedCapabilities: ["READ", "WRITE"] });
+      return search.search({ vendor: "google", category: "email", capability: "WRITE" });
+    },
+    assert: (r) => r.length === 1 && r[0].connectorName === "C1",
+  },
+  {
+    id: 237,
+    name: "search with single criterion via object returns same as findByX",
+    run: () => {
+      const { registry, search } = _setup();
+      registry.register({ connectorName: "C1", vendor: "google" });
+      registry.register({ connectorName: "C2", vendor: "google" });
+      registry.register({ connectorName: "C3", vendor: "microsoft" });
+      return search.search({ vendor: "google" });
+    },
+    assert: (r) => r.length === 2,
+  },
+  {
+    id: 238,
+    name: "search with empty criteria object returns empty",
+    run: () => {
+      const { registry, search } = _setup();
+      registry.register({ connectorName: "C1" });
+      return search.search({});
+    },
+    assert: (r) => r.length === 0,
+  },
+  {
+    id: 239,
+    name: "search with no matching multi-criteria returns empty",
+    run: () => {
+      const { registry, search } = _setup();
+      registry.register({ connectorName: "C1", vendor: "google", category: "email" });
+      return search.search({ vendor: "google", category: "crm" });
+    },
+    assert: (r) => r.length === 0,
+  },
+  {
+    id: 240,
+    name: "search with all criteria matching returns correct result",
+    run: () => {
+      const { registry, search } = _setup();
+      registry.register({
+        connectorName: "C1",
+        vendor: "google",
+        category: "email",
+        connectorType: "BIDIRECTIONAL",
+        supportedCapabilities: ["READ"],
+        permissions: ["ALLOW"],
+        tags: ["alpha"],
+      });
+      registry.register({
+        connectorName: "C2",
+        vendor: "google",
+        category: "email",
+        connectorType: "BIDIRECTIONAL",
+        supportedCapabilities: ["READ"],
+        permissions: ["ALLOW"],
+        tags: ["beta"],
+      });
+      return search.search({ vendor: "google", category: "email", connectorType: "BIDIRECTIONAL", capability: "READ", permission: "ALLOW", tag: "alpha" });
+    },
+    assert: (r) => r.length === 1 && r[0].connectorName === "C1",
+  },
 ];

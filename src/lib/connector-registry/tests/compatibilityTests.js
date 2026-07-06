@@ -12,6 +12,7 @@ import {
   isVersionOlder,
   checkMemoryOSCompatibility,
   checkCompatibility,
+  checkManifestCompatibility,
 } from "../connectorCompatibility.js";
 import { SDK_VERSION } from "../registryContracts.js";
 
@@ -194,6 +195,49 @@ export const COMPATIBILITY_TESTS = [
     id: 144,
     name: "checkCompatibility uses default SDK version when not provided",
     run: () => checkCompatibility({ connectorId: "c1", sdkCompatibility: `>=${SDK_VERSION}`, minimumMemoryOSVersion: "1.0.0" }, {}),
+    assert: (r) => r.compatible === true,
+  },
+  // === Manifest Compatibility ===
+  {
+    id: 245,
+    name: "checkManifestCompatibility returns compatible for matching manifest",
+    run: () => checkManifestCompatibility(
+      { connectorName: "Gmail", sdkCompatibility: ">=1.0.0", minimumMemoryOSVersion: "1.0.0" },
+      { sdkVersion: "1.5.0", memoryOSVersion: "1.0.0" }
+    ),
+    assert: (r) => r.compatible === true && r.sdkCompatible === true && r.memoryOSCompatible === true && r.manifestName === "Gmail" && Object.isFrozen(r),
+  },
+  {
+    id: 246,
+    name: "checkManifestCompatibility returns incompatible for old SDK",
+    run: () => checkManifestCompatibility(
+      { connectorName: "Gmail", sdkCompatibility: ">=2.0.0", minimumMemoryOSVersion: "1.0.0" },
+      { sdkVersion: "1.0.0", memoryOSVersion: "1.0.0" }
+    ),
+    assert: (r) => r.compatible === false && r.sdkCompatible === false,
+  },
+  {
+    id: 247,
+    name: "checkManifestCompatibility returns incompatible for old MemoryOS",
+    run: () => checkManifestCompatibility(
+      { connectorName: "Gmail", sdkCompatibility: ">=1.0.0", minimumMemoryOSVersion: "2.0.0" },
+      { sdkVersion: "1.0.0", memoryOSVersion: "1.0.0" }
+    ),
+    assert: (r) => r.compatible === false && r.memoryOSCompatible === false,
+  },
+  {
+    id: 248,
+    name: "checkManifestCompatibility returns incompatible for null manifest",
+    run: () => checkManifestCompatibility(null, {}),
+    assert: (r) => r.compatible === false,
+  },
+  {
+    id: 249,
+    name: "checkManifestCompatibility uses default SDK version when not provided",
+    run: () => checkManifestCompatibility(
+      { connectorName: "Gmail", sdkCompatibility: ">=1.0.0", minimumMemoryOSVersion: "1.0.0" },
+      {}
+    ),
     assert: (r) => r.compatible === true,
   },
 ];

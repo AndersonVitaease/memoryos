@@ -179,4 +179,73 @@ export const LOOKUP_TESTS = [
     run: () => isCapability("INVALID"),
     assert: (r) => r === false,
   },
+  // === Manifest Lookup ===
+  {
+    id: 241,
+    name: "getManifest returns found=true with manifest data",
+    run: () => {
+      const { registry, lookup } = _setup();
+      const { connector } = registry.register({
+        connectorName: "GmailConnector",
+        connectorVersion: "2.0.0",
+        vendor: "google",
+        sdkVersion: "1.0.0",
+        sdkCompatibility: ">=1.0.0",
+        minimumMemoryOSVersion: "1.0.0",
+        category: "email",
+        connectorType: "BIDIRECTIONAL",
+        supportedEvents: ["message.received"],
+        supportedActions: ["send"],
+        supportedCapabilities: ["READ", "WRITE"],
+        permissions: ["ALLOW"],
+        tags: ["alpha"],
+      });
+      return lookup.getManifest(connector.connectorId);
+    },
+    assert: (r) =>
+      r.found === true &&
+      r.manifest !== null &&
+      r.manifest.connectorName === "GmailConnector" &&
+      r.manifest.connectorVersion === "2.0.0" &&
+      r.manifest.sdkVersion === "1.0.0" &&
+      r.manifest.sdkCompatibility === ">=1.0.0" &&
+      r.manifest.category === "email" &&
+      r.manifest.connectorType === "BIDIRECTIONAL" &&
+      r.manifest.supportedCapabilities.includes("READ") &&
+      r.manifest.supportedEvents.includes("message.received") &&
+      r.manifest.tags.includes("alpha") &&
+      Object.isFrozen(r) &&
+      Object.isFrozen(r.manifest),
+  },
+  {
+    id: 242,
+    name: "getManifest returns found=false for unknown connector",
+    run: () => {
+      const { lookup } = _setup();
+      return lookup.getManifest("nonexistent");
+    },
+    assert: (r) => r.found === false && r.manifest === null && Object.isFrozen(r),
+  },
+  {
+    id: 243,
+    name: "getManifest increments connectorQueries statistic",
+    run: () => {
+      const { registry, lookup, statistics } = _setup();
+      const { connector } = registry.register({ connectorName: "C1" });
+      lookup.getManifest(connector.connectorId);
+      return statistics.get("connectorQueries");
+    },
+    assert: (r) => r === 1,
+  },
+  {
+    id: 244,
+    name: "getManifest returns frozen manifest with copied arrays",
+    run: () => {
+      const { registry, lookup } = _setup();
+      const { connector } = registry.register({ connectorName: "C1", supportedCapabilities: ["READ"] });
+      const result = lookup.getManifest(connector.connectorId);
+      return { frozen: Object.isFrozen(result.manifest.supportedCapabilities), hasRead: result.manifest.supportedCapabilities.includes("READ") };
+    },
+    assert: (r) => r.frozen && r.hasRead,
+  },
 ];

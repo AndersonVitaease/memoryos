@@ -57,11 +57,28 @@ export function createConnectorSearch(registry) {
     },
 
     search(query) {
-      const all = registry._all();
+      // Multi-criteria search (object input)
+      if (query && typeof query === "object" && !Array.isArray(query)) {
+        const { vendor, category, connectorType, capability, permission, tag } = query;
+        if (vendor === undefined && category === undefined && connectorType === undefined &&
+            capability === undefined && permission === undefined && tag === undefined) {
+          return deepFreeze([]);
+        }
+        let results = registry._all();
+        if (vendor !== undefined) results = results.filter((c) => c.vendor === vendor);
+        if (category !== undefined) results = results.filter((c) => c.category === category);
+        if (connectorType !== undefined) results = results.filter((c) => c.connectorType === connectorType);
+        if (capability !== undefined) results = results.filter((c) => c.supportedCapabilities.includes(capability));
+        if (permission !== undefined) results = results.filter((c) => c.permissions.includes(permission));
+        if (tag !== undefined) results = results.filter((c) => c.tags.includes(tag));
+        return deepFreeze(results);
+      }
+
+      // Text search (string input)
       if (typeof query !== "string" || query.length === 0) return deepFreeze([]);
       const q = query.toLowerCase();
       return deepFreeze(
-        all.filter((c) =>
+        registry._all().filter((c) =>
           c.connectorName.toLowerCase().includes(q) ||
           c.vendor.toLowerCase().includes(q) ||
           c.description.toLowerCase().includes(q) ||

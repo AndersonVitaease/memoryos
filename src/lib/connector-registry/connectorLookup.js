@@ -99,5 +99,32 @@ export function createConnectorLookup({ registry, statistics }) {
         targetMemoryOSVersion: targetMOS,
       });
     },
+
+    getManifest(connectorId) {
+      _trackQuery();
+      const connector = registry._get(connectorId);
+      if (!connector) {
+        return deepFreeze({ found: false, connectorId: connectorId || "", manifest: null });
+      }
+      return deepFreeze({
+        found: true,
+        connectorId: connector.connectorId,
+        manifest: deepFreeze({
+          connectorName: connector.connectorName,
+          connectorVersion: connector.connectorVersion,
+          sdkVersion: connector.sdkVersion,
+          sdkCompatibility: connector.sdkCompatibility,
+          minimumMemoryOSVersion: connector.minimumMemoryOSVersion,
+          category: connector.category,
+          connectorType: connector.connectorType,
+          vendor: connector.vendor,
+          supportedEvents: [...connector.supportedEvents],
+          supportedActions: [...connector.supportedActions],
+          supportedCapabilities: [...connector.supportedCapabilities],
+          permissions: [...connector.permissions],
+          tags: [...connector.tags],
+        }),
+      });
+    },
   });
 }

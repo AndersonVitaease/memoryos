@@ -111,3 +111,23 @@ export function checkCompatibility(connector, config = {}) {
     targetMemoryOSVersion: targetMOS,
   });
 }
+
+// === Manifest Compatibility ===
+
+export function checkManifestCompatibility(manifest, config = {}) {
+  if (!manifest) {
+    return deepFreeze({ compatible: false, sdkCompatible: false, memoryOSCompatible: false, reason: "manifest is null" });
+  }
+  const targetSdk = config.sdkVersion || SDK_VERSION;
+  const targetMOS = config.memoryOSVersion || "1.0.0";
+  const sdkOk = checkSdkCompatibility(manifest, targetSdk);
+  const mosOk = checkMemoryOSCompatibility(manifest, targetMOS);
+  return deepFreeze({
+    compatible: sdkOk && mosOk,
+    sdkCompatible: sdkOk,
+    memoryOSCompatible: mosOk,
+    manifestName: manifest.connectorName,
+    targetSdkVersion: targetSdk,
+    targetMemoryOSVersion: targetMOS,
+  });
+}
