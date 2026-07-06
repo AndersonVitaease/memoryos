@@ -35,6 +35,8 @@ import {
   buildMemoryUpdateResult,
   buildStorageHints,
   buildQualityMetrics,
+  generateMemoryRecordId,
+  _resetIdsForTests,
   validateMemoryUpdateResult,
 } from "./memoryResult";
 import {
@@ -107,74 +109,6 @@ function _decideAction(proposal, totalDuplicates, conflictResolution) {
   // Use the proposal's suggested type
   const typeMap = { create: "CREATE", update: "UPDATE", merge: "MERGE", ignore: "IGNORE" };
   return typeMap[proposal.proposalType] || "CREATE";
-}
-
-// === Sprint 22.1 — Deterministic enrichment helpers ===
-
-const _confidenceToScore = { HIGH: 3, MEDIUM: 2, LOW: 1 };
-const _priorityBoost = { low: 5, normal: 10, high: 20, critical: 25 };
-
-function _clampScore(value) {
-  if (typeof value !== "number" || !Number.isFinite(value)) return 50;
-  return Math.max(0, Math.min(100, Math.round(value)));
-}
-
-function _computeImportanceScore(confidence, priority) {
-  const baseScore = (_confidenceToScore[confidence] || 1) * 25;
-  const boost = _priorityBoost[priority] || 10;
-  return _clampScore(baseScore + boost);
-}
-
-// Sprint 22.1 — Deterministic memoryRecordId derived from memoryId.
-// Reproducible: same memoryId always maps to the same recordId. No randomness.
-function _generateMemoryRecordId(memoryId) {
-  // Simple deterministic hash from the memoryId string
-  let hash = 0;
-  const str = String(memoryId);
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i);
-    hash = hash & hash; // Convert to 32-bit integer
-  }
-  return `mrec-${Math.abs(hash)}`;
-}
-
-function _decideStoragePolicy(suggested, proposal) {
-  // High confidence + high priority → LONG_TERM_MEMORY
-  // Medium confidence → SHORT_TERM_MEMORY
-  // Low confidence → WORKING_MEMORY
-  // Episodic-type memories (incident, procedure) → EPISODIC_MEMORY
-  // Fact-type with high confidence → SEMANTIC_MEMORY
-  if (suggested.memoryType === "incident" || suggested.memoryType === "procedure") {
-    return "EPISODIC_MEMORY";
-  }
-  if (suggested.memoryType === "fact" && suggested.confidence === "HIGH") {
-    return "SEMANTIC_MEMORY";
-  }
-  if (suggested.confidence === "HIGH" && (proposal.priority === "high" || proposal.priority === "critical")) {
-    return "LONG_TERM_MEMORY";
-  }
-  if (suggested.confidence === "LOW") {
-    return "WORKING_MEMORY";
-  }
-  return "SHORT_TERM_MEMORY";
-}
-
-function _decideRetentionPolicy(suggested, proposal) {
-  // Critical priority → PERMANENT
-  // High confidence facts → PERMANENT
-  // Low confidence → DELETE_AFTER_X_DAYS
-  // Medium → TEMPORARY
-  // Archived (old duplicates being merged) → ARCHIVE
-  if (proposal.priority === "critical") {
-    return "PERMANENT";
-  }
-  if (suggested.confidence === "LOW") {
-    return "DELETE_AFTER_X_DAYS";
-  }
-  if (suggested.confidence === "HIGH" && suggested.memoryType === "fact") {
-    return "PERMANENT";
-  }
-  return "TEMPORARY";
 }
 
 // === Apply Proposal (main entry point) ===
@@ -332,34 +266,17 @@ export function applyProposal(proposal) {
       source: "proposal",
     });
 
-    // Sprint 22.1 — Enrich with memoryRecordId, storagePolicy, retentionPolicy,
-    // importanceScore, storageHints, qualityMetrics (deterministic, no randomness).
-    // Memory Engine only DEFINES these; it never executes persistence.
-    const importanceScore = _computeImportanceScore(suggested.confidence, proposal.priority);
-    const storageHints = buildStorageHints({
-      category: suggested.memoryType,
-      priority: proposal.priority,
-      recommendedIndexes: [suggested.memoryType, ...(suggested.tags || [])],
-      compression: importanceScore < 50,
-      versioning: true,
-      notes: `Derived from proposal ${proposal.proposalId}`,
-    });
-    const qualityMetrics = buildQualityMetrics({
-      confidence: importanceScore,
-      consistency: importanceScore,
-      completeness: suggested.confidence === "HIGH" ? 90 : suggested.confidence === "MEDIUM" ? 70 : 50,
-      relevance: importanceScore,
-      reliability: importanceScore,
-    });
-
+    // Sprint 22.1 — Enrich with contract fields (structure only, no heuristics).
+    // Memory Engine only declares these fields; it never decides storage,
+    // retention, importance, or quality. Those decisions belong to future sprints.
     const enriched = Object.freeze({
       ...stored,
-      memoryRecordId: _generateMemoryRecordId(stored.memoryId),
-      storagePolicy: _decideStoragePolicy(suggested, proposal),
-      retentionPolicy: _decideRetentionPolicy(suggested, proposal),
-      importanceScore,
-      storageHints,
-      qualityMetrics,
+      memoryRecordId: generateMemoryRecordId(),
+      storagePolicy: null,
+      retentionPolicy: null,
+      importanceScore: null,
+      storageHints: buildStorageHints(),
+      qualityMetrics: buildQualityMetrics(),
     });
 
     persistedMemories.push(enriched);
@@ -434,7 +351,7 @@ export function describeResult(result) {
         `    • [${m.memoryId}|${m.memoryType}|${m.confidence}] ${m.content}`
       );
       lines.push(
-        `      recordId=${m.memoryRecordId} storage=${m.storagePolicy} retention=${m.retentionPolicy} importance=${m.importanceScore}`
+        `      recordId=${m.memoryRecordId} storage=${m.storagePolicy ?? "—"} retention=${m.retentionPolicy ?? "—"} importance=${m.importanceScore ?? "—"}`
       );
       if (m.qualityMetrics) {
         const qm = m.qualityMetrics;
@@ -522,6 +439,7 @@ export function _resetForTests() {
   _stats.statusDistribution = { PERSISTED: 0, SKIPPED: 0, REJECTED: 0, DEFERRED: 0 };
   _stats.totalProcessingTimeMs = 0;
   _stats.eventLog.length = 0;
+  _resetIdsForTests();
   storage.clear();
   audit.clear();
 }

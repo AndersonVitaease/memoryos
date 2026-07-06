@@ -250,13 +250,15 @@ export default function MemoryEngineTestRunner() {
             <AcceptRow label="Consistência determinística" ok={acceptance.deterministicConsistency} />
             <AcceptRow label="Estatísticas e auditoria funcionam" ok={acceptance.statsAndAuditWork} />
             <AcceptRow label="Sprint 22.1: memoryRecordId funciona" ok={acceptance.memoryRecordIdWorks} />
-            <AcceptRow label="Sprint 22.1: storagePolicy funciona" ok={acceptance.storagePolicyWorks} />
-            <AcceptRow label="Sprint 22.1: retentionPolicy funciona" ok={acceptance.retentionPolicyWorks} />
-            <AcceptRow label="Sprint 22.1: importanceScore funciona" ok={acceptance.importanceScoreWorks} />
-            <AcceptRow label="Sprint 22.1: storageHints funciona" ok={acceptance.storageHintsWork} />
-            <AcceptRow label="Sprint 22.1: qualityMetrics funciona" ok={acceptance.qualityMetricsWork} />
+            <AcceptRow label="Sprint 22.1: storagePolicy existe (null)" ok={acceptance.storagePolicyWorks} />
+            <AcceptRow label="Sprint 22.1: retentionPolicy existe (null)" ok={acceptance.retentionPolicyWorks} />
+            <AcceptRow label="Sprint 22.1: importanceScore existe (null)" ok={acceptance.importanceScoreWorks} />
+            <AcceptRow label="Sprint 22.1: storageHints existe (vazio)" ok={acceptance.storageHintsWork} />
+            <AcceptRow label="Sprint 22.1: qualityMetrics existe (vazio)" ok={acceptance.qualityMetricsWork} />
             <AcceptRow label="Sprint 22.1: contrato persistedMemory validado" ok={acceptance.persistedMemoryContractValidated} />
             <AcceptRow label="Sprint 22.1: nenhuma camada anterior modificada" ok={acceptance.noPreviousLayerModifiedS22_1} />
+            <AcceptRow label="Sprint 22.1: objetos congelados (Object.freeze)" ok={acceptance.objectsAreFrozen} />
+            <AcceptRow label="Sprint 22.1: builders produzem estruturas vazias" ok={acceptance.buildersProduceEmptyStructures} />
             <AcceptRow label="Nenhum LLM chamado" ok={acceptance.noLlmCalled} />
             <AcceptRow label="Nenhum HTTP executado" ok={acceptance.noHttpExecuted} />
             <AcceptRow label="Nenhuma API externa acessada" ok={acceptance.noExternalApiAccessed} />

@@ -16,10 +16,10 @@ import {
 import {
   MEMORY_UPDATE_RESULT_FIELDS,
   PERSISTED_MEMORY_FIELDS,
-  STORAGE_POLICIES,
-  RETENTION_POLICIES,
   STORAGE_HINTS_FIELDS,
   QUALITY_METRICS_FIELDS,
+  buildStorageHints,
+  buildQualityMetrics,
   validatePersistedMemory,
 } from "./memoryResult";
 import {
@@ -292,7 +292,7 @@ export const MEMORY_ENGINE_TEST_CASES = [
   },
   {
     id: 12,
-    name: "Sprint 22.1: storagePolicy is valid and never persisted",
+    name: "Sprint 22.1: storagePolicy exists and is null (no heuristic)",
     run: () => {
       _resetForTests();
       const proposal = _makeProposal();
@@ -301,12 +301,12 @@ export const MEMORY_ENGINE_TEST_CASES = [
       return { mem };
     },
     assert: ({ mem }) =>
-      STORAGE_POLICIES.includes(mem.storagePolicy) &&
-      mem.storagePolicy !== undefined,
+      "storagePolicy" in mem &&
+      mem.storagePolicy === null,
   },
   {
     id: 13,
-    name: "Sprint 22.1: retentionPolicy is valid",
+    name: "Sprint 22.1: retentionPolicy exists and is null (no heuristic)",
     run: () => {
       _resetForTests();
       const proposal = _makeProposal();
@@ -315,32 +315,30 @@ export const MEMORY_ENGINE_TEST_CASES = [
       return { mem };
     },
     assert: ({ mem }) =>
-      RETENTION_POLICIES.includes(mem.retentionPolicy),
+      "retentionPolicy" in mem &&
+      mem.retentionPolicy === null,
   },
   {
     id: 14,
-    name: "Sprint 22.1: importanceScore is deterministic integer 0-100",
+    name: "Sprint 22.1: importanceScore exists and is null (no calculation)",
     run: () => {
       _resetForTests();
       const proposal = _makeProposal({ priority: "critical", confidence: "HIGH" });
       const result = applyProposal(proposal);
       const mem = result.persistedMemories[0];
-      // Re-run to verify determinism
       _resetForTests();
       const result2 = applyProposal(_makeProposal({ priority: "critical", confidence: "HIGH" }));
       const mem2 = result2.persistedMemories[0];
       return { mem, mem2 };
     },
     assert: ({ mem, mem2 }) =>
-      typeof mem.importanceScore === "number" &&
-      Number.isInteger(mem.importanceScore) &&
-      mem.importanceScore >= 0 &&
-      mem.importanceScore <= 100 &&
+      "importanceScore" in mem &&
+      mem.importanceScore === null &&
       mem.importanceScore === mem2.importanceScore,
   },
   {
     id: 15,
-    name: "Sprint 22.1: storageHints has all required fields",
+    name: "Sprint 22.1: storageHints has all fields, all null except recommendedIndexes",
     run: () => {
       _resetForTests();
       const proposal = _makeProposal();
@@ -352,16 +350,17 @@ export const MEMORY_ENGINE_TEST_CASES = [
       hints !== null &&
       typeof hints === "object" &&
       STORAGE_HINTS_FIELDS.every((f) => f in hints) &&
-      typeof hints.category === "string" &&
-      typeof hints.priority === "string" &&
+      hints.category === null &&
+      hints.priority === null &&
       Array.isArray(hints.recommendedIndexes) &&
-      typeof hints.compression === "boolean" &&
-      typeof hints.versioning === "boolean" &&
-      typeof hints.notes === "string",
+      hints.recommendedIndexes.length === 0 &&
+      hints.compression === null &&
+      hints.versioning === null &&
+      hints.notes === null,
   },
   {
     id: 16,
-    name: "Sprint 22.1: qualityMetrics has all 5 fields, all 0-100, deterministic",
+    name: "Sprint 22.1: qualityMetrics has all 5 fields, all null, deterministic",
     run: () => {
       _resetForTests();
       const proposal = _makeProposal();
@@ -376,7 +375,7 @@ export const MEMORY_ENGINE_TEST_CASES = [
       qm !== null &&
       typeof qm === "object" &&
       QUALITY_METRICS_FIELDS.every((f) => f in qm) &&
-      QUALITY_METRICS_FIELDS.every((f) => typeof qm[f] === "number" && qm[f] >= 0 && qm[f] <= 100) &&
+      QUALITY_METRICS_FIELDS.every((f) => qm[f] === null) &&
       QUALITY_METRICS_FIELDS.every((f) => qm[f] === qm2[f]),
   },
   {
@@ -406,8 +405,51 @@ export const MEMORY_ENGINE_TEST_CASES = [
     assert: ({ result }) =>
       result !== null &&
       result.status === "PERSISTED" &&
-      // The proposal was not mutated (still has original proposalId)
-      result.proposalId === "test-learning" === false || result.proposalId !== null,
+      result.proposalId !== null,
+  },
+  {
+    id: 19,
+    name: "Sprint 22.1: enriched objects are frozen (Object.freeze)",
+    run: () => {
+      _resetForTests();
+      const proposal = _makeProposal();
+      const result = applyProposal(proposal);
+      const mem = result.persistedMemories[0];
+      return { result, mem };
+    },
+    assert: ({ result, mem }) =>
+      Object.isFrozen(result) &&
+      Object.isFrozen(mem) &&
+      Object.isFrozen(mem.storageHints) &&
+      Object.isFrozen(mem.qualityMetrics) &&
+      Object.isFrozen(mem.tags) &&
+      Object.isFrozen(mem.storageHints.recommendedIndexes),
+  },
+  {
+    id: 20,
+    name: "Sprint 22.1: builders produce empty frozen structures",
+    run: () => {
+      const hints = buildStorageHints();
+      const metrics = buildQualityMetrics();
+      return { hints, metrics };
+    },
+    assert: ({ hints, metrics }) =>
+      Object.isFrozen(hints) &&
+      Object.isFrozen(metrics) &&
+      Object.isFrozen(hints.recommendedIndexes) &&
+      STORAGE_HINTS_FIELDS.every((f) => f in hints) &&
+      hints.category === null &&
+      hints.priority === null &&
+      hints.recommendedIndexes.length === 0 &&
+      hints.compression === null &&
+      hints.versioning === null &&
+      hints.notes === null &&
+      QUALITY_METRICS_FIELDS.every((f) => f in metrics) &&
+      metrics.confidence === null &&
+      metrics.consistency === null &&
+      metrics.completeness === null &&
+      metrics.relevance === null &&
+      metrics.reliability === null,
   },
 ];
 
@@ -503,6 +545,8 @@ export async function runMemoryEngineTests(onProgress) {
       qualityMetricsWork: results.find((r) => r.id === 16)?.passed || false,
       persistedMemoryContractValidated: results.find((r) => r.id === 17)?.passed || false,
       noPreviousLayerModifiedS22_1: results.find((r) => r.id === 18)?.passed || false,
+      objectsAreFrozen: results.find((r) => r.id === 19)?.passed || false,
+      buildersProduceEmptyStructures: results.find((r) => r.id === 20)?.passed || false,
       noLlmCalled: true,
       noHttpExecuted: true,
       noExternalApiAccessed: true,
