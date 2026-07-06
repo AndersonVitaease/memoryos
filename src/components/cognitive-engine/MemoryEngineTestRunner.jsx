@@ -249,6 +249,14 @@ export default function MemoryEngineTestRunner() {
             <AcceptRow label="Resolução de conflitos funciona" ok={acceptance.conflictResolutionWorks} />
             <AcceptRow label="Consistência determinística" ok={acceptance.deterministicConsistency} />
             <AcceptRow label="Estatísticas e auditoria funcionam" ok={acceptance.statsAndAuditWork} />
+            <AcceptRow label="Sprint 22.1: memoryRecordId funciona" ok={acceptance.memoryRecordIdWorks} />
+            <AcceptRow label="Sprint 22.1: storagePolicy funciona" ok={acceptance.storagePolicyWorks} />
+            <AcceptRow label="Sprint 22.1: retentionPolicy funciona" ok={acceptance.retentionPolicyWorks} />
+            <AcceptRow label="Sprint 22.1: importanceScore funciona" ok={acceptance.importanceScoreWorks} />
+            <AcceptRow label="Sprint 22.1: storageHints funciona" ok={acceptance.storageHintsWork} />
+            <AcceptRow label="Sprint 22.1: qualityMetrics funciona" ok={acceptance.qualityMetricsWork} />
+            <AcceptRow label="Sprint 22.1: contrato persistedMemory validado" ok={acceptance.persistedMemoryContractValidated} />
+            <AcceptRow label="Sprint 22.1: nenhuma camada anterior modificada" ok={acceptance.noPreviousLayerModifiedS22_1} />
             <AcceptRow label="Nenhum LLM chamado" ok={acceptance.noLlmCalled} />
             <AcceptRow label="Nenhum HTTP executado" ok={acceptance.noHttpExecuted} />
             <AcceptRow label="Nenhuma API externa acessada" ok={acceptance.noExternalApiAccessed} />
