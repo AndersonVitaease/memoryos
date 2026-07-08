@@ -13,7 +13,8 @@ Todos os documentos aqui presentes são considerados **fontes oficiais** do proj
 5. **MCF** — MemoryOS Connector Framework
 6. **MCIS** — MemoryOS Connector Intelligence Specification
 7. **MGIS** — MemoryOS Goal Intelligence Specification
-8. **Architecture Auditor Specialist**
+8. **MDS** — MemoryOS Developer Specification (Manual Oficial de Engenharia)
+9. **Architecture Auditor Specialist**
 
 ## Fonte de Conhecimento Institucional
 
@@ -49,4 +50,8 @@ Estes documentos não devem ser modificados de forma leviana.
 | [MGIS-Engine — Goal Graph Engine e Registry](./MGIS-Engine.md) | Goal Intelligence | Aprovado |
 | [MGIS-Lifecycle — Aprendizado e Predição](./MGIS-Lifecycle.md) | Goal Intelligence | Aprovado |
 | [MGIS-Flows — UML, C4 e Casos Reais](./MGIS-Flows.md) | Goal Intelligence | Aprovado |
+| [MDS — MemoryOS Developer Specification](./MDS-MemoryOS-Developer-Specification.md) | Engenharia | Aprovado |
+| [MDS-Engines — Motores, Modelagem, DB e APIs](./MDS-Engines.md) | Engenharia | Aprovado |
+| [MDS-Platform — Frontend, Voice, Enterprise, DevOps](./MDS-Platform.md) | Engenharia | Aprovado |
+| [MDS-Connectors — Connectors Oficiais e Roadmap](./MDS-Connectors.md) | Engenharia | Aprovado |
 | [Architecture Auditor Specialist](./Architecture-Auditor-Specialist.md) | Especialista | Aprovado |
