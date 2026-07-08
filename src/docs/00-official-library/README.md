@@ -11,7 +11,8 @@ Todos os documentos aqui presentes são considerados **fontes oficiais** do proj
 3. **MAS** — MemoryOS Architecture Specification
 4. **MES** — MemoryOS Engineering Specification
 5. **MCF** — MemoryOS Connector Framework
-6. **Architecture Auditor Specialist**
+6. **MCIS** — MemoryOS Connector Intelligence Specification
+7. **Architecture Auditor Specialist**
 
 ## Fonte de Conhecimento Institucional
 
@@ -39,4 +40,8 @@ Estes documentos não devem ser modificados de forma leviana.
 | [MCF-Security — Segurança](./MCF-Security.md) | Connector Framework | Aprovado |
 | [MCF-Operations — Operações](./MCF-Operations.md) | Connector Framework | Aprovado |
 | [MCF-Catalog — SDK, Fluxos e Exemplos](./MCF-Catalog.md) | Connector Framework | Aprovado |
+| [MCIS — MemoryOS Connector Intelligence Specification](./MCIS-MemoryOS-Connector-Intelligence-Specification.md) | Connector Intelligence | Aprovado |
+| [MCIS-Registry — Registries e Discovery](./MCIS-Registry.md) | Connector Intelligence | Aprovado |
+| [MCIS-Intelligence — Seleção e Aprendizado](./MCIS-Intelligence.md) | Connector Intelligence | Aprovado |
+| [MCIS-Flows — Fluxos e Exemplos](./MCIS-Flows.md) | Connector Intelligence | Aprovado |
 | [Architecture Auditor Specialist](./Architecture-Auditor-Specialist.md) | Especialista | Aprovado |
