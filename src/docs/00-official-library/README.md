@@ -10,7 +10,8 @@ Todos os documentos aqui presentes são considerados **fontes oficiais** do proj
 2. **MPS** — MemoryOS Product Specification
 3. **MAS** — MemoryOS Architecture Specification
 4. **MES** — MemoryOS Engineering Specification
-5. **Architecture Auditor Specialist**
+5. **MCF** — MemoryOS Connector Framework
+6. **Architecture Auditor Specialist**
 
 ## Fonte de Conhecimento Institucional
 
@@ -32,4 +33,10 @@ Estes documentos não devem ser modificados de forma leviana.
 | [MPS — MemoryOS Product Specification](./MPS-MemoryOS-Product-Specification.md) | Produto | Aprovado |
 | [MAS — MemoryOS Architecture Specification](./MAS-MemoryOS-Architecture-Specification.md) | Arquitetura | Aprovado |
 | [MES — MemoryOS Engineering Specification](./MES-MemoryOS-Engineering-Specification.md) | Engenharia | Aprovado |
+| [MES — MemoryOS Engineering Specification](./MES-MemoryOS-Engineering-Specification.md) | Engenharia | Aprovado |
+| [MCF — MemoryOS Connector Framework](./MCF-MemoryOS-Connector-Framework.md) | Connector Framework | Aprovado |
+| [MCF-Lifecycle — Ciclo de Vida](./MCF-Lifecycle.md) | Connector Framework | Aprovado |
+| [MCF-Security — Segurança](./MCF-Security.md) | Connector Framework | Aprovado |
+| [MCF-Operations — Operações](./MCF-Operations.md) | Connector Framework | Aprovado |
+| [MCF-Catalog — SDK, Fluxos e Exemplos](./MCF-Catalog.md) | Connector Framework | Aprovado |
 | [Architecture Auditor Specialist](./Architecture-Auditor-Specialist.md) | Especialista | Aprovado |
