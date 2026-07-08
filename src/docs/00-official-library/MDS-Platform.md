@@ -1,4 +1,4 @@
-# MDS-Platform — Frontend, Voice, Enterprise, Marketplace, Testes, DevOps e Segurança
+# MDS-Platform — Frontend, Voice, Enterprise, Specialists, Testes, DevOps e Segurança
 
 **Versão:** 1.0  
 **Status:** Oficial  
@@ -13,157 +13,121 @@
 ## 1. Arquitetura Frontend
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                   FRONTEND ARCHITECTURE                             │
-└─────────────────────────────────────────────────────────────────────┘
-
 STACK OFICIAL:
-  Framework:       React 19 (web) | React Native 0.74+ (mobile)
-  Language:        TypeScript 5.x (strict mode)
-  State:           Zustand (local) + React Query (server state)
-  Routing:         React Router 6 (web) | Expo Router (mobile)
-  Styling:         Tailwind CSS + shadcn/ui (web) | NativeWind (mobile)
-  Build:           Vite (web) | Metro (mobile)
-  Testing:         Vitest + Testing Library + Playwright (E2E)
-
-ESTRUTURA DE ESTADO:
-  Server State:    @tanstack/react-query (cache + sync + mutations)
-  UI State:        Zustand stores (theme, voice, notifications, sidebar)
-  Forms:           React Hook Form + Zod validation
-  Real-time:       WebSocket (goals, executions, notifications)
-  Offline:         IndexedDB via Dexie.js (memory cache local)
+  Web:      React 19 + Vite 5 + TypeScript 5 (strict)
+  Mobile:   React Native 0.74 + Expo SDK 51
+  Desktop:  Electron 30 wrapping web app
+  Estilo:   Tailwind CSS + shadcn/ui (web) | NativeWind (mobile)
+  Estado:   Zustand (UI) + TanStack Query v5 (server state)
+  Forms:    React Hook Form + Zod
+  Roteamento: React Router 6 (web) | Expo Router (mobile)
+  Real-time:  WebSocket client (native + reconnect)
+  Offline:    Dexie.js (IndexedDB) + Service Worker
 
 apps/web/src/
-├── pages/              # Rotas (uma página = um arquivo)
+├── pages/              # Uma página = um arquivo, rota 1:1
 ├── components/
-│   ├── ui/             # shadcn/ui base components
-│   ├── core/           # Core components (ChatInterface, GoalCard, ...)
-│   ├── memory/         # Memory visualization components
-│   ├── connectors/     # Connector management UI
-│   └── layout/         # AppLayout, Sidebar, Header
-├── stores/             # Zustand stores
-│   ├── goalStore.ts
-│   ├── voiceStore.ts
-│   └── notificationStore.ts
-├── hooks/              # Custom hooks
-│   ├── useGoalStream.ts       # WebSocket hook para goals
-│   ├── useVoicePipeline.ts
-│   └── useMemorySearch.ts
-├── lib/
-│   ├── api/            # API client (wraps fetch)
-│   ├── ws/             # WebSocket client
-│   └── offline/        # IndexedDB / Service Worker
-└── design-system/      # Tokens, themes, typography
+│   ├── ui/             # shadcn/ui base
+│   ├── chat/           # ChatInterface, VoiceButton, ProcessingBubble
+│   ├── goals/          # GoalCard, GoalTimeline, GoalGraph
+│   ├── memory/         # MemorySearch, MemoryCard, MemoryTimeline
+│   ├── connectors/     # ConnectorCard, ConnectorOAuth, ConnectorStatus
+│   └── layout/         # AppLayout, Sidebar, Header, BottomNav (mobile)
+├── stores/
+│   ├── goalStore.ts    # Goals ativos, histórico
+│   ├── voiceStore.ts   # Estado da sessão de voz
+│   ├── uiStore.ts      # Tema, sidebar, notifications
+│   └── wsStore.ts      # Conexão WebSocket
+├── hooks/
+│   ├── useGoalStream.ts       # Assina updates de goal via WS
+│   ├── useVoicePipeline.ts    # Pipeline de voz
+│   ├── useMemorySearch.ts     # Busca semântica de memória
+│   └── useConnectorOAuth.ts   # Flow OAuth de connector
+└── lib/
+    ├── api/            # Axios client com interceptors (auth + retry)
+    ├── ws/             # WebSocket client com auto-reconnect
+    └── offline/        # IndexedDB + Service Worker sync
 ```
 
 ## 2. Design System
 
 ```typescript
-// src/design-system/tokens.ts
-
+// src/lib/design-system/tokens.ts
 export const tokens = {
-  // Cores
   colors: {
-    brand:    { primary: "#7C3AED", secondary: "#4F46E5" },
-    surface:  { base: "#09090B", elevated: "#18181B", overlay: "#27272A" },
-    text:     { primary: "#FAFAFA", secondary: "#A1A1AA", muted: "#71717A" },
-    semantic: { success: "#22C55E", warning: "#F59E0B", error: "#EF4444", info: "#3B82F6" },
+    brand:   { 50: "#F5F3FF", 500: "#7C3AED", 900: "#2E1065" },
+    surface: { base: "#09090B", elevated: "#18181B", overlay: "#27272A", border: "#3F3F46" },
+    text:    { primary: "#FAFAFA", secondary: "#A1A1AA", muted: "#71717A", disabled: "#52525B" },
+    semantic:{ success: "#22C55E", warning: "#F59E0B", error: "#EF4444", info: "#3B82F6" },
   },
-
-  // Tipografia
   typography: {
-    fonts: {
-      heading: "'Inter Variable', sans-serif",
-      body:    "'Inter Variable', sans-serif",
-      mono:    "'JetBrains Mono', monospace",
-    },
-    scale: {
-      xs:   "0.75rem",   // 12px
-      sm:   "0.875rem",  // 14px
-      base: "1rem",      // 16px
-      lg:   "1.125rem",  // 18px
-      xl:   "1.25rem",   // 20px
-      "2xl":"1.5rem",    // 24px
-      "3xl":"1.875rem",  // 30px
-      "4xl":"2.25rem",   // 36px
-    },
+    fonts: { heading: "'Inter Variable'", body: "'Inter Variable'", mono: "'JetBrains Mono'" },
+    scale: { xs: ".75rem", sm: ".875rem", base: "1rem", lg: "1.125rem", xl: "1.25rem",
+             "2xl": "1.5rem", "3xl": "1.875rem", "4xl": "2.25rem" },
+    weight:{ normal: 400, medium: 500, semibold: 600, bold: 700 },
   },
-
-  // Espaçamento
-  spacing: { 1: "4px", 2: "8px", 3: "12px", 4: "16px", 6: "24px", 8: "32px" },
-
-  // Breakpoints
-  breakpoints: { sm: "640px", md: "768px", lg: "1024px", xl: "1280px", "2xl": "1536px" },
-
-  // Animações
-  animation: {
-    fast:   "100ms ease-out",
-    normal: "200ms ease-out",
-    slow:   "300ms ease-in-out",
-  },
+  spacing:    { 1: "4px", 2: "8px", 3: "12px", 4: "16px", 6: "24px", 8: "32px", 12: "48px", 16: "64px" },
+  radius:     { sm: "4px", md: "8px", lg: "12px", xl: "16px", full: "9999px" },
+  breakpoints:{ sm: "640px", md: "768px", lg: "1024px", xl: "1280px", "2xl": "1536px" },
+  animation:  { fast: "100ms ease-out", normal: "200ms ease-out", slow: "300ms ease-in-out" },
+  zIndex:     { base: 0, overlay: 10, modal: 20, toast: 30, tooltip: 40 },
 } as const;
 ```
 
-## 3. Responsividade e Targets de Device
+## 3. Device Matrix e Responsividade
 
 ```
-┌────────────────────────────────────────────────────────────────────┐
-│                    DEVICE MATRIX                                   │
-├──────────────────┬─────────────────────────────────────────────────┤
-│ Device           │ Considerações de UX                             │
-├──────────────────┼─────────────────────────────────────────────────┤
-│ Desktop (1280+)  │ Full sidebar, multi-panel, keyboard shortcuts   │
-│ Laptop (1024+)   │ Collapsible sidebar, dense information          │
-│ Tablet (768+)    │ Modal sidebar, touch-first navigation           │
-│ Mobile (< 768)   │ Bottom nav, full-screen chat, voice-first       │
-│ Wearable         │ Notifications only, voice responses             │
-└──────────────────┴─────────────────────────────────────────────────┘
+┌──────────────────┬──────────────────────────────────────────────────────────┐
+│ Device           │ UX Adaptations                                          │
+├──────────────────┼──────────────────────────────────────────────────────────┤
+│ Desktop ≥ 1280px │ Full sidebar, multi-panel, keyboard shortcuts           │
+│                  │ Hover states, dense information, drag & drop            │
+├──────────────────┼──────────────────────────────────────────────────────────┤
+│ Laptop 1024-1279 │ Collapsible sidebar, single panel, most features       │
+├──────────────────┼──────────────────────────────────────────────────────────┤
+│ Tablet 768-1023  │ Modal/drawer sidebar, touch targets ≥ 44px             │
+│                  │ Swipe gestures, simplified navigation                   │
+├──────────────────┼──────────────────────────────────────────────────────────┤
+│ Mobile < 768px   │ Bottom navigation, full-screen chat, voice-first        │
+│                  │ Swipe to dismiss, haptic feedback                       │
+├──────────────────┼──────────────────────────────────────────────────────────┤
+│ Wearable         │ Notifications only, voice responses, minimal UI         │
+│                  │ WearOS / watchOS companion app (futuro)                 │
+└──────────────────┴──────────────────────────────────────────────────────────┘
 
 OFFLINE FIRST:
-  Service Worker: cache de assets + API responses
-  Background Sync: queue de mutations quando offline
-  IndexedDB: last 1000 memory records + active goals
-  Conflict resolution: server wins (timestamp-based)
+  Service Worker: cache de assets (Cache API) + API responses (network-first)
+  Background Sync: queue de mutations quando offline, sync ao reconectar
+  IndexedDB (Dexie): últimas 1000 memory records + goals ativos + preferences
+  Conflict resolution: server-wins (timestamp-based merge)
 ```
 
-## 4. Internacionalização (i18n)
+## 4. i18n e Acessibilidade
 
 ```typescript
-// lib/i18n/config.ts — next-intl ou i18next
-
-export const SUPPORTED_LOCALES = ["pt-BR", "en-US", "es-ES", "fr-FR"] as const;
+// i18n — next-intl
+export const SUPPORTED_LOCALES  = ["pt-BR", "en-US", "es-ES"] as const;
 export const DEFAULT_LOCALE     = "pt-BR" as const;
+// locales/<locale>/common.json, goals.json, connectors.json, errors.json
 
-// Estrutura de tradução
-// locales/
-//   pt-BR/
-//     common.json      — botões, labels gerais
-//     goals.json       — terminologia de goals
-//     connectors.json  — nomes e descrições
-//     errors.json      — mensagens de erro
-
-// Regras:
-// 1. Nunca string hardcoded em JSX
+// REGRAS:
+// 1. Zero strings hardcoded em JSX
 // 2. Pluralização via ICU message format
-// 3. Datas/moedas formatadas via Intl API nativa
-// 4. RTL support: Arabic, Hebrew (futuro) via CSS logical properties
-```
+// 3. Datas/moedas via Intl API nativa (respeita locale)
+// 4. RTL: Arabic/Hebrew via CSS logical properties (padding-inline-start, etc.)
 
-## 5. Acessibilidade
-
-```
-WCAG 2.1 AA — obrigatório em todos os componentes
-
-Checklist por componente:
-  ✅ Roles ARIA corretos (role="dialog", "navigation", "main")
-  ✅ Labels descritivos (aria-label, aria-labelledby)
-  ✅ Focus management (focus trap em modals)
-  ✅ Keyboard navigation (Tab, Shift+Tab, Enter, Escape, Arrow keys)
-  ✅ Color contrast ratio ≥ 4.5:1 (texto normal), 3:1 (texto grande)
-  ✅ Não depender exclusivamente de cor para transmitir info
-  ✅ Alt text em todas as imagens
-  ✅ Live regions para conteúdo dinâmico (aria-live="polite")
-  ✅ Skip links para leitores de tela
+// ACESSIBILIDADE — WCAG 2.1 AA obrigatório
+// Checklist por componente:
+// ✅ Roles ARIA semânticos (role="dialog", "navigation", "main", "alert")
+// ✅ Labels descritivos (aria-label, aria-labelledby, aria-describedby)
+// ✅ Focus trap em modais + focus-visible style
+// ✅ Keyboard navigation: Tab, Shift+Tab, Enter, Escape, Arrow keys
+// ✅ Contrast ratio ≥ 4.5:1 (texto normal) | 3:1 (texto grande / UI)
+// ✅ Sem info exclusivamente por cor (ícone + texto complementar)
+// ✅ Alt text em todas as imagens com conteúdo
+// ✅ aria-live="polite" em regiões com conteúdo dinâmico
+// ✅ Skip links para leitores de tela
+// ✅ motion: prefers-reduced-motion respeitado
 ```
 
 ---
@@ -172,32 +136,34 @@ Checklist por componente:
 
 ---
 
-## 6. Arquitetura de Voz
+## 5. Voice Pipeline Completo
 
 ```typescript
-// packages/voice/voice-pipeline.ts
+// apps/voice-service/src/voice-pipeline.ts
 
 export class VoicePipeline {
   constructor(
-    private readonly stt:          SpeechToTextEngine,   // Whisper / Web Speech API
-    private readonly intentEngine: IntentEngine,
-    private readonly tts:          TextToSpeechEngine,   // ElevenLabs / Web TTS
+    private readonly stt:          STTEngine,        // Whisper API / Web Speech API
+    private readonly tts:          TTSEngine,        // ElevenLabs / Web Speech Synth
     private readonly vad:          VoiceActivityDetector,
+    private readonly intentEngine: IntentEngine,
     private readonly interruption: InterruptionHandler,
   ) {}
 
-  async startSession(mode: VoiceMode): Promise<VoiceSession> {
+  async startSession(config: VoiceSessionConfig): Promise<VoiceSession> {
     const session: VoiceSession = {
       sessionId: generateId("vss"),
-      mode,      // PUSH_TO_TALK | CONTINUOUS
+      mode:      config.mode,          // PUSH_TO_TALK | CONTINUOUS
+      language:  config.language ?? "pt-BR",
       state:     "LISTENING",
       startedAt: new Date().toISOString(),
     };
 
-    if (mode === "CONTINUOUS") {
-      await this.vad.start(session.sessionId, {
+    if (config.mode === "CONTINUOUS") {
+      await this.vad.start({
         silenceThresholdMs: 1500,
-        onSpeechStart: () => this.setSessionState(session, "RECORDING"),
+        maxRecordMs:        30_000,
+        onSpeechStart: ()      => this.setState(session, "RECORDING"),
         onSpeechEnd:   (audio) => this.processAudio(session, audio),
       });
     }
@@ -207,80 +173,61 @@ export class VoicePipeline {
 
   async processAudio(session: VoiceSession, audio: AudioBuffer): Promise<void> {
     try {
-      // 1. Feedback visual: TRANSCRIBING
-      this.emitState(session, "TRANSCRIBING");
-
-      // 2. STT com timeout
+      this.setState(session, "TRANSCRIBING");
       const transcript = await withTimeout(
-        this.stt.transcribe(audio, session.language),
-        10_000,
-        new VoiceTimeoutError("STT timeout")
+        this.stt.transcribe(audio, session.language), 10_000
       );
 
-      // 3. Processar como intent normal
-      this.emitState(session, "PROCESSING");
+      this.setState(session, "PROCESSING");
       const result = await this.intentEngine.process(transcript, session.context);
 
-      // 4. TTS da resposta
-      this.emitState(session, "SPEAKING");
+      this.setState(session, "SPEAKING");
       const speech = await this.tts.synthesize(result.naturalResponse, {
-        voice:    session.preferences?.voice ?? "default",
+        voice:    session.preferences?.voice ?? "river",
         language: session.language,
+        speed:    session.preferences?.speed ?? 1.0,
       });
 
-      // 5. Reproduzir com suporte a interrupção
       await this.interruption.play(speech, () => {
-        // Usuário interrompeu → voltar a LISTENING imediatamente
-        this.setSessionState(session, "LISTENING");
+        // Usuário interrompeu → volta a LISTENING imediatamente
+        this.setState(session, "LISTENING");
       });
 
-      this.setSessionState(session, "LISTENING");
-    } catch (error) {
-      this.emitState(session, "ERROR");
+      this.setState(session, "LISTENING");
+    } catch {
+      this.setState(session, "ERROR");
       await this.tts.synthesize("Desculpe, não entendi. Pode repetir?");
-      this.setSessionState(session, "LISTENING");
+      await sleep(500);
+      this.setState(session, "LISTENING");   // recovery automático
     }
   }
 }
 
-// ESTADOS DA SESSÃO DE VOZ:
-type VoiceState =
-  | "IDLE"          // Sessão não iniciada
-  | "LISTENING"     // Aguardando fala
-  | "RECORDING"     // Gravando fala ativa
-  | "TRANSCRIBING"  // Convertendo áudio → texto
-  | "PROCESSING"    // Intent Engine processando
-  | "SPEAKING"      // TTS reproduzindo resposta
-  | "ERROR";        // Erro — recovery automático
+// ESTADOS:
+// IDLE → LISTENING → RECORDING → TRANSCRIBING → PROCESSING → SPEAKING → LISTENING
+//                                                                       ↑ interrupção
+// QUALQUER → ERROR → LISTENING (auto-recover)
 ```
 
-## 7. Idiomas e Personalização de Voz
+## 6. Voice Config
 
 ```typescript
 const VOICE_CONFIG = {
   supportedLanguages: ["pt-BR", "en-US", "es-ES"],
   defaultLanguage:    "pt-BR",
-
+  modes:              ["PUSH_TO_TALK", "CONTINUOUS"],
+  defaultMode:        "PUSH_TO_TALK",
   voices: {
-    "pt-BR": [
-      { id: "pt-br-natural",  name: "Natural", gender: "female" },
-      { id: "pt-br-formal",   name: "Formal",  gender: "male"   },
-    ],
-    "en-US": [
-      { id: "en-us-river",    name: "River",   gender: "neutral" },
-    ],
+    "pt-BR": [{ id: "river-ptbr", name: "River", gender: "neutral" },
+              { id: "honey-ptbr", name: "Honey", gender: "female" }],
+    "en-US": [{ id: "river-enus", name: "River", gender: "neutral" }],
   },
-
-  interruptionEnabled: true,     // Usuário pode interromper TTS
-  continuousMode:      false,    // Default: Push-to-Talk
-  hapticFeedback:      true,     // Vibração em mobile
-  soundFeedback:       true,     // Beep no início/fim da gravação
-
-  silenceDetection: {
-    thresholdMs:  1500,           // Parar de gravar após 1.5s de silêncio
-    maxRecordMs: 30_000,          // Timeout máximo de gravação: 30s
-  },
-};
+  feedback: { haptic: true, sound: true },
+  silenceThresholdMs: 1500,
+  maxRecordMs:        30_000,
+  interruptionEnabled: true,
+  contextMemory: true,     // Manter contexto entre turns da conversa
+} as const;
 ```
 
 ---
@@ -289,234 +236,150 @@ const VOICE_CONFIG = {
 
 ---
 
-## 8. Multi-Tenant e Hierarquia Organizacional
+## 7. Multi-Tenant e RBAC
 
 ```typescript
-// Estrutura de tenant Enterprise
+// RBAC oficial
+const ROLES = {
+  SYSTEM_ADMIN:  ["*"],
+  ORG_ADMIN:     ["org.*", "user.*", "connector.manage", "policy.manage"],
+  DEPT_MANAGER:  ["dept.*", "user.read", "goal.approve", "connector.use_org"],
+  ANALYST:       ["goal.read", "memory.read", "connector.use"],
+  USER:          ["goal.*", "memory.*", "connector.use_personal"],
+  VIEWER:        ["goal.read", "memory.read"],
+} as const;
 
+// Hierarquia organizacional
 interface Organization {
-  orgId:       string;
-  name:        string;
-  plan:        "ENTERPRISE" | "ENTERPRISE_PLUS";
-  ssoProvider: "SAML" | "OIDC" | "NONE";
-  ssoConfig:   SSOConfig;
-  settings:    OrgSettings;
+  orgId:             string;
+  name:              string;
+  plan:              "ENTERPRISE" | "ENTERPRISE_PLUS";
+  ssoProvider:       "SAML" | "OIDC" | "NONE";
+  approvalThreshold: number;   // Valor em R$ que exige aprovação
+  departments:       Department[];
 }
 
 interface Department {
-  deptId:        string;
-  orgId:         string;
-  name:          string;
-  parentDeptId?: string;    // Hierarquia de departamentos
-  managers:      string[];  // User IDs
-  allowedConnectors: string[];
-  budgetLimit:   number;
-  approvalThreshold: number;
+  deptId:              string;
+  orgId:               string;
+  parentDeptId?:       string;       // Hierarquia de departamentos
+  name:                string;
+  managerIds:          string[];
+  allowedConnectors:   string[];
+  budgetMonthly:       number;
+  approvalThreshold:   number;
 }
-
-// RBAC — Papéis e Permissões
-const ROLES = {
-  SYSTEM_ADMIN:   ["*"],                          // Tudo
-  ORG_ADMIN:      ["org.*", "user.*", "connector.manage"],
-  DEPT_MANAGER:   ["dept.*", "user.read", "goal.approve"],
-  ANALYST:        ["goal.read", "memory.read", "connector.use"],
-  USER:           ["goal.*", "memory.*", "connector.use_personal"],
-  VIEWER:         ["goal.read", "memory.read"],
-} as const;
 
 // Aprovação hierárquica
 interface ApprovalChain {
-  goalId:    string;
+  goalId:      string;
   steps: Array<{
-    order:       number;
-    approverRole: string;
-    approverId?: string;    // Específico ou pelo role
-    status:      "PENDING" | "APPROVED" | "REJECTED";
-    decidedAt?:  string;
-    comment?:    string;
+    order:         number;
+    approverRole:  string;
+    approverId?:   string;
+    status:        "PENDING" | "APPROVED" | "REJECTED";
+    decidedAt?:    string;
+    comment?:      string;
   }>;
   currentStep: number;
-  expiresAt:   string;
+  expiresAt:   string;    // Goal cancelado se expirar sem aprovação
 }
 ```
 
-## 9. Auditoria Enterprise
+## 8. Auditoria Enterprise (Append-Only + Hash Chain)
 
 ```typescript
-// Eventos auditáveis (append-only, imutável)
-const AUDITABLE_EVENTS = [
-  "user.login", "user.logout", "user.permission_changed",
-  "goal.created", "goal.executed", "goal.cancelled",
-  "connector.connected", "connector.executed", "connector.disconnected",
-  "memory.accessed", "memory.deleted",
-  "approval.requested", "approval.granted", "approval.rejected",
-  "policy.overridden", "security.suspicious_activity",
-] as const;
-
-// Auditoria imutável via append-only table + hash chain
+// Auditoria imutável com hash chain (prova de integridade)
 interface AuditEntry {
   id:         string;
   tenantId:   string;
   userId:     string;
-  action:     typeof AUDITABLE_EVENTS[number];
+  action:     AuditableAction;
   resource:   string;
   resourceId: string;
   before:     unknown;
   after:      unknown;
   ipAddress:  string;
   userAgent:  string;
-  hash:       string;   // SHA-256(prev_hash + entry_data)
-  prevHash:   string;   // Hash da entrada anterior
+  hash:       string;    // SHA-256(prevHash + JSON(entry))
+  prevHash:   string;    // Forma chain imutável
   createdAt:  string;
 }
-// Verificação de integridade: recomputar hash chain e comparar
-```
 
----
-
-# PARTE IX — MARKETPLACE
-
----
-
-## 10. Marketplace de Connectors
-
-```typescript
-// marketplace-service: catálogo público + instalação
-
-interface MarketplaceConnector {
-  connectorId:        string;
-  name:               string;
-  vendor:             string;
-  description:        string;
-  longDescription:    string;
-  category:           string;
-  tags:               string[];
-  certificationLevel: "CERTIFIED" | "PARTNER" | "COMMUNITY";
-
-  // Pricing
-  pricing: {
-    model:       "FREE" | "FREEMIUM" | "PAID" | "CREDITS";
-    monthlyCost?: number;
-    creditCost?:  number;  // Custo em créditos por execução
-  };
-
-  // Stats
-  stats: {
-    installs:     number;
-    rating:       number;  // 0-5
-    reviewCount:  number;
-    weeklyCalls:  number;
-  };
-
-  // Versões
-  versions:         ConnectorVersion[];
-  latestVersion:    string;
-  changelog:        ChangelogEntry[];
-
-  // Compatibilidade
-  requiredPlan:     "FREE" | "PRO" | "ENTERPRISE";
-  sdkCompatibility: string;
+// Verificar integridade do log
+async function verifyAuditChain(entries: AuditEntry[]): Promise<boolean> {
+  for (let i = 1; i < entries.length; i++) {
+    const expected = sha256(entries[i - 1].hash + JSON.stringify(entries[i]));
+    if (expected !== entries[i].hash) return false;
+  }
+  return true;
 }
 
-// Instalação via API
-async function installConnector(
-  connectorId: string,
-  userId: string,
-  config?: ConnectorConfig
-): Promise<InstallResult> {
-  // 1. Verificar compatibilidade e plano
-  // 2. Download do bundle do connector (signed)
-  // 3. Verificar assinatura digital
-  // 4. Desempacotar em sandbox isolado
-  // 5. Executar connector.initialize()
-  // 6. MCIS Hot Plug: registrar nos Registries
-  // 7. Retornar resultado
-}
-```
-
-## 11. Marketplaces Adicionais
-
-```
-MARKETPLACE DE SPECIALISTS:
-  Pacotes de conhecimento especializado
-  Ex: "Specialist Farmacêutico Premium v2.0"
-  Instalação similar a Connectors
-  Versionamento independente
-
-MARKETPLACE DE WORKFLOWS:
-  Templates de workflows prontos
-  Ex: "Workflow: Onboarding de Clientes B2B"
-  Composto por: Goals + Connectors + Policies
-  Exportável/importável entre organizações
-
-MARKETPLACE DE PROMPTS:
-  Templates de prompts otimizados por domínio
-  Ex: "Prompt Pack: Análise Jurídica Contratual"
-  Versionado e avaliado pela comunidade
-
-MARKETPLACE DE POLICIES:
-  Templates de políticas corporativas
-  Ex: "Policy Pack: LGPD Compliance"
-  Certificado por jurídicos parceiros
-
-LICENCIAMENTO:
-  OSS:          Apache 2.0 (connectors community)
-  Commercial:   Licença MemoryOS Commercial
-  Assinatura:   Mensal/anual com desconto
-  Revenue share: 70% desenvolvedor / 30% plataforma
+const AUDITABLE_ACTIONS: AuditableAction[] = [
+  "user.login", "user.logout", "user.role_changed",
+  "goal.created", "goal.executed", "goal.cancelled",
+  "connector.connected", "connector.executed",
+  "memory.accessed", "memory.deleted",
+  "approval.granted", "approval.rejected",
+  "policy.overridden", "security.mfa_bypass",
+];
 ```
 
 ---
 
-# PARTE X — SPECIALISTS
+# PARTE IX — SPECIALISTS
 
 ---
 
-## 12. Arquitetura de Specialists
+## 9. Arquitetura de Specialists
 
 ```typescript
 // packages/specialists/base-specialist.ts
 
-abstract class BaseSpecialist {
-  abstract readonly domain: SpecialistDomain;
+abstract class BaseSpecialist implements MemoryOSPlugin {
+  abstract readonly domain:  SpecialistDomain;
   abstract readonly version: string;
+  readonly type = "SPECIALIST" as const;
 
-  // Enriquecer decomposição de Goals
-  abstract enrich(
-    goal: Goal,
-    context: GoalContext
-  ): Promise<SpecialistEnrichment>;
+  // Enriquecer decomposição de Goals com dimensões do domínio
+  abstract enrich(goal: Goal, ctx: GoalContext): Promise<SpecialistEnrichment>;
 
-  // Responder perguntas no domínio
-  abstract answer(
-    query: string,
-    context: GoalContext,
-    memory: MemoryContext
-  ): Promise<SpecialistAnswer>;
+  // Responder perguntas do domínio com conhecimento especializado
+  abstract answer(query: string, ctx: GoalContext, mem: MemoryContext): Promise<SpecialistAnswer>;
 
-  // Validar um plano de execução
-  abstract validate(
-    plan: ExecutionPlan
-  ): Promise<SpecialistValidation>;
+  // Validar plano de execução (ex: Medical → verificar contraindicações)
+  abstract validate(plan: ExecutionPlan): Promise<SpecialistValidation>;
 
-  // Descrever capacidades (auto-discovery)
+  // MCIS-compatible self-description
   abstract describe(): SpecialistDescriptor;
+
+  // Knowledge Pack carregado na inicialização
+  protected knowledgePack!: KnowledgePackage;
+
+  async onEnable(ctx: PluginContext): Promise<void> {
+    this.knowledgePack = await ctx.knowledgeLoader.load(this.domain, this.version);
+    await ctx.specialists.register(this);
+  }
 }
 
-// Knowledge Pack — pacote de conhecimento do Specialist
+// Knowledge Package
 interface KnowledgePackage {
   packId:      string;
   domain:      SpecialistDomain;
   version:     string;
-  documents:   KnowledgeDocument[];  // PDFs, JSONs, textos estruturados
-  rules:       BusinessRule[];        // Regras determinísticas
-  embeddings:  EmbeddingCollection;  // Vetores pré-computados
-  validUntil?: string;               // Para conhecimento com prazo (regulatório)
+  documents:   KnowledgeDocument[];   // Textos estruturados, JSONs, PDFs processados
+  rules:       BusinessRule[];         // Regras determinísticas (ex: "voo < 24h → verificar passaporte")
+  embeddings:  EmbeddingCollection;   // Vetores pré-computados para busca semântica rápida
+  validUntil?: string;                // Para conhecimento regulatório com prazo
+  changelog:   string;
 }
 
-// Atualização de Knowledge Packs
-// Estratégia: semantic versioning + diff-patch para updates incrementais
-// Compatibilidade: KP 2.x sempre retrocompatível com Specialist 2.x
+// Specialist Bus (MGIS consulta durante decomposição)
+interface SpecialistBus {
+  consult(goal: Goal): Promise<SpecialistInsight[]>;
+  register(specialist: BaseSpecialist): void;
+  findByDomain(domain: string): BaseSpecialist | null;
+}
 ```
 
 ---
@@ -525,88 +388,96 @@ interface KnowledgePackage {
 
 ---
 
-## 13. Estratégia de Testes
+## 10. Estratégia de Testes — Pirâmide Oficial
 
 ```typescript
-// PIRÂMIDE DE TESTES
+// NÍVEL 1 — UNITÁRIOS (70% da cobertura)
+// Vitest — sem I/O, mocks explícitos, < 10ms cada
 
-// UNITÁRIOS (base) — 70% da cobertura
-// Vitest — rápidos, sem I/O
 describe("GoalDecomposer", () => {
-  it("should decompose TRAVEL goal into required subgoals", () => {
-    const decomposer = new GoalDecomposer(mockSpecialistBus);
-    const goal = GoalFactory.create(
-      mockIntent({ domain: "TRAVEL" }),
-      mockContext()
-    );
-    const result = decomposer.decompose(goal, mockContext(), []);
-    expect(result.subGoals).toContainEqual(
-      expect.objectContaining({ ontologyDomain: "TRAVEL.FLIGHTS" })
+  it("decomposes TRAVEL goal into expected subdomains", async () => {
+    const decomposer = new GoalDecomposer(mockSpecialistBus(), mockGoalRegistry());
+    const goal       = GoalFactory.create(mockIntent({ domain: "TRAVEL" }), mockCtx());
+    const result     = await decomposer.decompose(goal, mockCtx(), []);
+    expect(result.subGoals.map(s => s.ontologyDomain)).toEqual(
+      expect.arrayContaining(["TRAVEL.FLIGHTS", "TRAVEL.HOTELS", "TRAVEL.INSURANCE"])
     );
   });
 });
 
-// INTEGRAÇÃO (meio) — 20%
-// Testcontainers para DB e Redis reais
-describe("GoalRepository (Integration)", () => {
-  let pg: PostgreSqlContainer;
+describe("GoalStateMachine", () => {
+  it("throws on invalid transition COMPLETED → EXECUTING", () => {
+    expect(() => GoalStateMachine.assertValid("COMPLETED", "EXECUTING"))
+      .toThrow(InvalidGoalTransitionError);
+  });
+});
+
+// NÍVEL 2 — INTEGRAÇÃO (20%)
+// Testcontainers — DB e Redis reais em container efêmero
+
+describe("MemoryEngine (Integration)", () => {
+  let pg: StartedPostgreSqlContainer;
 
   beforeAll(async () => {
-    pg = await new PostgreSqlContainer("postgres:16").start();
+    pg = await new PostgreSqlContainer("postgres:16-alpine").start();
     await runMigrations(pg.getConnectionUri());
   });
 
-  it("should persist and retrieve a goal", async () => {
-    const repo = new PostgresGoalRepository(pg.getConnectionUri());
-    const aggregate = GoalFactory.create(mockIntent(), mockContext());
-    await repo.save(aggregate);
-    const found = await repo.findById(aggregate.id);
-    expect(found?.id).toBe(aggregate.id);
+  it("stores and retrieves fact by vector similarity", async () => {
+    const engine = buildMemoryEngine(pg.getConnectionUri());
+    await engine.store({ userId: "u1", content: "João trabalha na empresa X", type: "FACT", confidence: 0.95 });
+    const results = await engine.retrieve({ userId: "u1", text: "Onde João trabalha?", limit: 5 });
+    expect(results[0].record.content).toContain("João");
+    expect(results[0].similarity).toBeGreaterThan(0.80);
   });
+
+  afterAll(() => pg.stop());
 });
 
-// E2E (topo) — 10%
+// NÍVEL 3 — E2E (10%)
 // Playwright — fluxo real no browser
-test("user can process a travel intent end-to-end", async ({ page }) => {
+
+test("user processes travel intent end-to-end", async ({ page }) => {
   await page.goto("/");
-  await page.fill("[data-testid='chat-input']", "Quero viajar para Londres");
+  await loginAs(page, "test@memoryos.ai");
+  await page.fill("[data-testid='chat-input']", "Quero viajar para Londres em agosto");
   await page.keyboard.press("Enter");
-  await expect(page.locator("[data-testid='goal-card']")).toBeVisible({ timeout: 10_000 });
-  await expect(page.locator("[data-testid='goal-title']")).toContainText("Londres");
+  await expect(page.locator("[data-testid='goal-card']")).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator("[data-testid='goal-subgoals']")).toContainText("Voos");
+  await expect(page.locator("[data-testid='goal-subgoals']")).toContainText("Hotéis");
 });
 ```
 
-## 14. Chaos Engineering
+## 11. Chaos Engineering
 
 ```yaml
-# chaos/experiments/connector-failure.yaml
-# LitmusChaos ou Gremlin
+# chaos/connector-failure.yaml
 
 experiment:
-  name: "Gmail Connector Failure"
-  hypothesis: "When GmailConnector fails, system falls back to Outlook within 500ms"
-  
-  steps:
-    - action: inject_fault
-      target: connector-service
-      fault: http_error
-      params:
-        connector_id: "gmail"
-        error_rate: 100%
-        duration: 60s
+  name: "Gmail Connector Total Failure → Outlook Fallback"
+  hypothesis: "When Gmail fails 100%, system falls back to Outlook within 500ms"
 
-    - action: trigger_goal
+  steps:
+    - action: inject_http_fault
+      target: connector-service
       params:
-        intent: "Send email to João"
-        user_id: "test-user-001"
+        selector: { connector_id: "gmail" }
+        error_rate: "100%"
+        status_code: 503
+        duration: "60s"
+
+    - action: send_intent
+      params:
+        text: "Send email to João confirming the meeting"
+        user_id: "chaos-test-user-001"
 
   assertions:
-    - metric: "goal.fallback_activated"
-      expected: true
-    - metric: "goal.fallback_latency_ms"
-      expected: "< 500"
-    - metric: "goal.completed_successfully"
-      expected: true
+    - metric: goal.fallback_activated     expected: true
+    - metric: goal.fallback_latency_ms    expected: "< 500"
+    - metric: goal.completed_successfully expected: true
+    - metric: connector.fallback_used     expected: "outlook"
+
+  rollback: restore_connector_health
 ```
 
 ---
@@ -615,103 +486,99 @@ experiment:
 
 ---
 
-## 15. CI/CD Pipeline
+## 12. CI/CD Pipeline
 
 ```yaml
-# .github/workflows/main.yml
+# .github/workflows/ci.yml
 
 name: MemoryOS CI/CD
-
 on:
-  push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main]
+  push:    { branches: [main, develop] }
+  pull_request: { branches: [main] }
 
 jobs:
   quality:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Setup
-        uses: pnpm/action-setup@v3
-      - name: Lint
-        run: pnpm run lint
-      - name: Type check
-        run: pnpm run typecheck
-      - name: Unit tests
-        run: pnpm run test:unit --coverage
-      - name: Coverage gate (80%)
-        run: pnpm run coverage:check
+      - uses: pnpm/action-setup@v3
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run typecheck lint
+      - run: pnpm turbo run test:unit -- --coverage
+      - name: Coverage gate (80% min)
+        run: pnpm run coverage:check --threshold=80
 
   integration:
     needs: quality
     runs-on: ubuntu-latest
     services:
-      postgres: { image: postgres:16 }
-      redis:    { image: redis:7 }
+      postgres: { image: "postgres:16-alpine", env: { POSTGRES_PASSWORD: test } }
+      redis:    { image: "redis:7-alpine" }
     steps:
+      - uses: actions/checkout@v4
       - run: pnpm run test:integration
 
   deploy-staging:
     needs: integration
     if: github.ref == 'refs/heads/develop'
     steps:
-      - name: Deploy to staging (Kubernetes)
-        run: kubectl apply -k infra/k8s/staging/
+      - uses: azure/k8s-deploy@v4
+        with:
+          manifests: infra/k8s/staging/
+          strategy: rolling
 
   deploy-production:
     needs: integration
     if: github.ref == 'refs/heads/main'
-    strategy:
-      type: canary
-      steps: [5%, 25%, 50%, 100%]
-      pauseAfterEach: 5m
     steps:
-      - name: Canary deploy to production
+      - name: Canary deploy (5% → 25% → 50% → 100%)
         run: ./infra/scripts/canary-deploy.sh
+        env:
+          CANARY_STEPS: "5,25,50,100"
+          CANARY_PAUSE_MINUTES: "5"
+          ROLLBACK_ERROR_THRESHOLD: "1"   # % de erros para rollback automático
 ```
 
-## 16. Observabilidade (OpenTelemetry)
+## 13. Observabilidade (OpenTelemetry)
 
 ```typescript
-// packages/infra/observability/tracing.ts
+// packages/infra/observability/setup.ts
 
-import { NodeTracerProvider } from "@opentelemetry/sdk-node";
-import { Resource } from "@opentelemetry/resources";
-import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-
-export function initTracing(serviceName: string) {
+export function setupObservability(serviceName: string) {
+  // Tracing — Tempo (Grafana)
   const provider = new NodeTracerProvider({
-    resource: new Resource({ "service.name": serviceName }),
+    resource: new Resource({ [SEMRESATTRS_SERVICE_NAME]: serviceName }),
   });
-  provider.addSpanProcessor(
-    new BatchSpanProcessor(new OTLPTraceExporter({
-      url: process.env.OTLP_ENDPOINT,
-    }))
-  );
+  provider.addSpanProcessor(new BatchSpanProcessor(
+    new OTLPTraceExporter({ url: process.env.MOS_OTLP_ENDPOINT })
+  ));
   provider.register();
+
+  // Métricas — Prometheus
+  const meter = getMeter(serviceName);
+
+  return {
+    goalDuration: meter.createHistogram("goal_processing_duration_ms", {
+      description: "Goal processing duration",
+      unit:        "ms",
+      boundaries:  [50, 100, 250, 500, 1000, 2500, 5000, 10000],
+    }),
+    connectorCalls: meter.createCounter("connector_execution_total", {
+      description: "Total connector executions",
+    }),
+    memoryStoreLatency: meter.createHistogram("memory_store_latency_ms", {
+      description: "Memory store operation latency",
+      unit: "ms",
+    }),
+  };
 }
 
-// Métricas — Prometheus
-const goalProcessingDuration = new Histogram({
-  name:    "goal_processing_duration_ms",
-  help:    "Duration of goal processing in milliseconds",
-  buckets: [50, 100, 250, 500, 1000, 2500, 5000, 10000],
-  labelNames: ["domain", "complexity", "status"],
-});
-
-const connectorExecutionTotal = new Counter({
-  name:      "connector_execution_total",
-  help:      "Total connector executions",
-  labelNames: ["connector_id", "action", "status"],
-});
-
-// Alertas — Grafana / PagerDuty
-// Goal processing P95 > 5s → CRITICAL
-// Connector error rate > 5% → WARNING
-// Memory store latency P99 > 100ms → WARNING
-// DB connection pool exhausted → CRITICAL
+// ALERTAS (Grafana / PagerDuty):
+// goal_processing_duration_ms{p95} > 5000ms  → CRITICAL
+// connector_error_rate > 5%                  → WARNING
+// memory_store_latency_ms{p99} > 200ms       → WARNING
+// DB connection pool > 90% utilization       → CRITICAL
+// Circuit breaker OPEN duration > 5min       → WARNING
 ```
 
 ---
@@ -720,107 +587,63 @@ const connectorExecutionTotal = new Counter({
 
 ---
 
-## 17. Arquitetura de Segurança
+## 14. Arquitetura de Segurança
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    SECURITY ARCHITECTURE                            │
-└─────────────────────────────────────────────────────────────────────┘
-
 AUTENTICAÇÃO:
-  OAuth 2.0 + PKCE (SPA/mobile)
-  OIDC (Enterprise SSO)
-  SAML 2.0 (Enterprise SSO legado)
-  JWT RS256 (access token: 15min) + refresh token (30 dias, rotation)
-  MFA: TOTP (Authenticator app) obrigatório para Enterprise
+  Web/Mobile: OAuth 2.0 + PKCE (Authorization Code Flow)
+  API:        API Key (para integrações server-to-server)
+  Enterprise: OIDC (OpenID Connect) + SAML 2.0
+  JWT:        RS256 | access_token TTL: 15min | refresh_token TTL: 30 dias (rotation)
+  MFA:        TOTP (Authenticator App) — obrigatório para Enterprise
+  SSO:        Google, Microsoft, Okta (via OIDC)
 
 AUTORIZAÇÃO:
-  RBAC (Role-Based) para Personal
-  ABAC (Attribute-Based) para Enterprise (departamento, orçamento, etc.)
-  Policy Engine (MGIS) como última camada antes de execução
+  Personal:   RBAC simples (owner = full access)
+  Enterprise: RBAC + ABAC (departamento, budget, horário, geo)
+  Policy Engine (MGIS) como última camada de validação antes de execução
 
 CRIPTOGRAFIA:
-  Em trânsito:  TLS 1.3 obrigatório
-  Em repouso:   AES-256-GCM (dados sensíveis) via envelope encryption
-  Chaves:       AWS KMS / HashiCorp Vault (nunca hardcoded)
-  Secrets:      Vault + rotação automática a cada 90 dias
+  Em trânsito:  TLS 1.3 mandatory (HSTS com max-age=31536000)
+  Em repouso:   AES-256-GCM com envelope encryption (DEK + KEK via KMS)
+  Chaves:       AWS KMS / HashiCorp Vault
+  Secrets:      Vault com rotação automática a cada 90 dias
+  OAuth tokens: Armazenados criptografados (AES-256) na DB
 
 CONNECTOR SANDBOX:
-  Execução isolada em processo separado (Node.js worker_threads ou Deno)
-  Sem acesso ao filesystem do host
-  Network: allowlist apenas de domínios declarados no manifesto
-  Memória: limite de 256MB por execução
-  CPU: limite via cgroups
-  Timeout: máx. 60s por default, configurável
+  Isolamento: Node.js worker_threads com MessageChannel
+  CPU:        cgroup limit (200m por execução)
+  Memória:    256MB hard limit por worker
+  Network:    allowlist de domínios declarada no manifesto (sem wildcard *)
+  Filesystem: sem acesso (read-only /tmp max 50MB)
+  Timeout:    máx. 60s (configurável por connector)
+
+ASSINATURA DE PLUGINS:
+  Todo plugin oficial assinado com Ed25519 (chave privada MemoryOS)
+  Verificação no install + a cada inicialização
+  Hash SHA-256 do bundle validado no MCIS Registry
 
 LGPD / GDPR:
-  Minimização de dados: coletar apenas o necessário
-  Consentimento explícito antes de processar dados pessoais
-  Direito ao esquecimento: /v1/users/:id (DELETE) apaga todos os dados
-  Portabilidade: /v1/users/:id/export (JSON completo)
-  DPA assinado com todos os sub-processadores
+  Minimização: coletar apenas campos necessários
+  Consentimento: explícito antes de processar dados pessoais
+  Direito ao esquecimento: DELETE /v1/users/:id apaga todos os dados (cascade)
+  Portabilidade: GET /v1/users/:id/export retorna JSON completo
+  DPA: assinado com todos os sub-processadores
   Logs de auditoria retidos por 5 anos (LGPD Art. 37)
+  DPO designado: contato declarado na política de privacidade
+  Privacy by Design: dados pessoais na memory_records nunca em logs
 
-ASSINATURA DE CONNECTORS:
-  Todo connector oficial assinado com chave privada MemoryOS
-  Verificação de assinatura no install e a cada inicialização
-  Certificate pinning para comunicação com sistemas externos críticos
-```
-
-## 18. OAuth Flow para Connectors
-
-```typescript
-// Fluxo OAuth 2.0 Authorization Code + PKCE para Connectors
-
-async function initiateConnectorAuth(
-  connectorId: string,
-  userId: string
-): Promise<OAuthInitResult> {
-  const connector = await connectorRegistry.get(connectorId);
-  const { codeVerifier, codeChallenge } = generatePKCE();
-
-  // Salvar state e verifier em sessão (Redis, TTL: 10min)
-  const state = generateSecureRandom(32);
-  await redisClient.setex(
-    `oauth:${state}`,
-    600,
-    JSON.stringify({ connectorId, userId, codeVerifier })
-  );
-
-  const authUrl = buildAuthUrl(connector.oauthConfig, {
-    state,
-    codeChallenge,
-    codeChallengeMethod: "S256",
-    redirectUri: `${BASE_URL}/v1/connectors/oauth/callback`,
-    scope: connector.requiredScopes.join(" "),
-  });
-
-  return { authUrl, state };
-}
-
-async function handleOAuthCallback(
-  code: string,
-  state: string
-): Promise<ConnectorCredential> {
-  const session = await redisClient.get(`oauth:${state}`);
-  if (!session) throw new OAuthStateExpiredError();
-
-  const { connectorId, userId, codeVerifier } = JSON.parse(session);
-  const tokens = await exchangeCodeForTokens(connectorId, code, codeVerifier);
-
-  // Armazenar tokens criptografados (AES-256)
-  await credentialStore.save({
-    connectorId,
-    userId,
-    accessToken:  encrypt(tokens.access_token),
-    refreshToken: encrypt(tokens.refresh_token),
-    expiresAt:    new Date(Date.now() + tokens.expires_in * 1000).toISOString(),
-    scopes:       tokens.scope.split(" "),
-  });
-
-  await redisClient.del(`oauth:${state}`);
-  return { connectorId, userId, connected: true };
-}
+OWASP TOP 10 — ENDEREÇAMENTO:
+  A01 Broken Access Control     → RBAC + RLS no DB + ABAC no Policy Engine
+  A02 Cryptographic Failures    → AES-256 + TLS 1.3 + no-cache em dados sensíveis
+  A03 Injection                 → ORM parametrizado (zero string SQL manual)
+  A04 Insecure Design           → Threat modeling por módulo
+  A05 Security Misconfiguration → IaC (Terraform) + hardening checklist
+  A06 Vulnerable Components     → Dependabot + npm audit no CI
+  A07 Auth Failures             → Rate limit em /auth/* + lockout após 5 falhas
+  A08 Software Integrity        → Plugin signature + Dependabot + SBOM
+  A09 Logging Failures          → Audit log imutável + OTel centralizado
+  A10 SSRF                      → Connector allowlist de domínios no Sandbox
 ```
 
 ---

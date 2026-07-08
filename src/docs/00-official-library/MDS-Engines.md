@@ -1,4 +1,4 @@
-# MDS-Engines — Motores, Modelagem, Banco de Dados e APIs
+# MDS-Engines — Motores, Modelagem, Banco de Dados e Comunicação
 
 **Versão:** 1.0  
 **Status:** Oficial  
@@ -10,7 +10,52 @@
 
 ---
 
-## 1. Intent Engine
+## 1. Natural Language Understanding (NLU)
+
+```typescript
+// packages/core/intent/nlu-engine.ts
+
+@Injectable()
+export class NLUEngine {
+  constructor(
+    private readonly llm:    LLMProvider,
+    private readonly memory: MemoryEngine,
+  ) {}
+
+  async understand(raw: string, ctx: RequestContext): Promise<NLUResult> {
+    const memoryCtx = await this.memory.getRelevant(ctx.userId, raw);
+
+    const result = await this.llm.complete({
+      model:  "gemini_3_flash",               // padrão — custo baixo
+      prompt: this.buildNLUPrompt(raw, memoryCtx, ctx),
+      schema: NLUResultSchema,                 // resposta JSON estruturada
+    });
+
+    return NLUResultSchema.parse(result);
+  }
+
+  private buildNLUPrompt(raw: string, mem: MemoryContext, ctx: RequestContext): string {
+    return `
+Você é o módulo de compreensão de linguagem natural do MemoryOS.
+Idioma: ${ctx.language ?? "pt-BR"}.
+Contexto recente do usuário: ${JSON.stringify(mem.recentGoals.slice(0, 5))}.
+Entidades conhecidas: ${JSON.stringify(mem.knownEntities.slice(0, 10))}.
+
+Texto do usuário: "${raw}"
+
+Classifique com precisão:
+- domain: domínio principal (TRAVEL, FINANCE, COMMUNICATION, ENTERPRISE, BLOCKCHAIN, HEALTH...)
+- subDomain: sub-domínio específico
+- confidence: 0.0 a 1.0
+- entities: entidades detectadas (pessoas, lugares, valores, datas...)
+- ambiguous: true se precisar de clarificação
+- language: idioma detectado
+    `.trim();
+  }
+}
+```
+
+## 2. Intent Engine
 
 ```typescript
 // packages/core/intent/intent-engine.ts
@@ -18,139 +63,121 @@
 @Injectable()
 export class IntentEngine {
   constructor(
-    private readonly llmProvider: LLMProvider,
-    private readonly memoryEngine: MemoryEngine,
-    private readonly contextEngine: ContextEngine,
+    private readonly nlu:     NLUEngine,
+    private readonly context: ContextEngine,
+    private readonly memory:  MemoryEngine,
+    private readonly events:  UniversalEventBus,
   ) {}
 
-  async process(raw: string, context: RequestContext): Promise<IntentResult> {
-    // 1. Normalizar input
-    const normalized = this.normalize(raw);
+  async process(raw: string, ctx: RequestContext): Promise<IntentResult> {
+    const enrichedCtx  = await this.context.enrich(ctx);
+    const nluResult    = await this.nlu.understand(raw, enrichedCtx);
 
-    // 2. Enriquecer com contexto e memória
-    const enrichedContext = await this.contextEngine.enrich(context);
-    const memoryContext   = await this.memoryEngine.getRelevant(context.userId, normalized);
+    if (nluResult.ambiguous && !ctx.skipClarification) {
+      return { ...nluResult, requiresClarification: true,
+               clarificationQuestion: this.buildClarification(nluResult) };
+    }
 
-    // 3. Chamar LLM para classificação
-    const classification = await this.llmProvider.classify({
-      input: normalized,
-      context: enrichedContext,
-      memory: memoryContext,
-      schema: IntentClassificationSchema,
-    });
-
-    // 4. Validar resultado
-    const validated = IntentClassificationSchema.parse(classification);
-
-    return {
+    const intent: IntentResult = {
       intentId:    generateId("int"),
       rawText:     raw,
-      normalized,
-      domain:      validated.domain,
-      subDomain:   validated.subDomain,
-      confidence:  validated.confidence,
-      ambiguous:   validated.confidence < 0.70,
-      entities:    validated.entities,
-      language:    validated.language,
+      normalized:  nluResult.normalized,
+      domain:      nluResult.domain,
+      subDomain:   nluResult.subDomain,
+      confidence:  nluResult.confidence,
+      entities:    nluResult.entities,
+      language:    nluResult.language,
+      context:     enrichedCtx,
       detectedAt:  new Date().toISOString(),
     };
-  }
 
-  private normalize(raw: string): string {
-    return raw.trim().toLowerCase().replace(/\s+/g, " ");
+    await this.events.publish("intent.processed", { intentId: intent.intentId, domain: intent.domain });
+    return intent;
   }
 }
-
-// Schema de classificação (Zod)
-const IntentClassificationSchema = z.object({
-  domain:     z.nativeEnum(IntentDomain),
-  subDomain:  z.string().optional(),
-  confidence: z.number().min(0).max(1),
-  ambiguous:  z.boolean(),
-  entities:   z.array(DetectedEntitySchema),
-  language:   z.string(),
-});
 ```
 
-## 2. Goal Engine (MGIS Implementation)
+## 3. Goal Engine (MGIS Implementation)
 
 ```typescript
-// packages/core/goal/goal-engine.ts
+// packages/mgis/engine/goal-engine.ts
 
 @Injectable()
 export class GoalEngine {
   constructor(
-    private readonly goalDecomposer:  GoalDecomposer,
-    private readonly goalPrioritizer: GoalPrioritizer,
+    private readonly decomposer:      GoalDecomposer,
+    private readonly prioritizer:     GoalPrioritizer,
     private readonly conflictResolver: GoalConflictResolver,
-    private readonly goalMemory:      GoalMemoryManager,
-    private readonly goalRegistry:    GoalRegistry,
-    private readonly specialistBus:   SpecialistBus,
-    private readonly eventBus:        UniversalEventBus,
+    private readonly stateMachine:    GoalStateMachine,
+    private readonly memory:          GoalMemoryManager,
+    private readonly registry:        GoalRegistry,
+    private readonly specialists:     SpecialistBus,
+    private readonly policy:          PolicyEngine,
+    private readonly events:          UniversalEventBus,
   ) {}
 
   async processIntent(intent: IntentResult, ctx: GoalContext): Promise<GoalPlan> {
-    // 1. Buscar template similar na memória
-    const existing = await this.goalMemory.findSimilar(intent, ctx.userId);
-    if (existing && existing.confidence > 0.85) {
-      return this.adaptExisting(existing, ctx);
-    }
+    // 1. Verificar padrão similar na memória (evita decomposição redundante)
+    const cached = await this.memory.findSimilarPlan(intent, ctx.userId);
+    if (cached && cached.similarity > 0.88) return this.adaptCachedPlan(cached, ctx);
 
     // 2. Criar Goal raiz
-    const rootGoal = await this.createGoal(intent, ctx);
+    const root = GoalFactory.create(intent, ctx);
 
-    // 3. Consultar Specialists para enriquecer decomposição
-    const specialistInsights = await this.specialistBus.consult(rootGoal);
+    // 3. Consultar Policy antes de qualquer coisa
+    const policyResult = await this.policy.evaluate(root, ctx);
+    if (!policyResult.allowed && policyResult.type === "HARD_BLOCK") {
+      return this.buildBlockedPlan(root, policyResult);
+    }
 
-    // 4. Decompor em subgoals
-    const decomposition = await this.goalDecomposer.decompose(
-      rootGoal, ctx, specialistInsights
-    );
+    // 4. Consultar Specialists para enriquecer a decomposição
+    const insights = await this.specialists.consult(root);
 
-    // 5. Detectar e resolver conflitos
-    const activeGoals = await this.goalMemory.getActive(ctx.userId);
-    const conflicts   = this.conflictResolver.detect([...activeGoals, rootGoal]);
+    // 5. Decompor
+    const decomp = await this.decomposer.decompose(root, ctx, insights);
+
+    // 6. Detectar e resolver conflitos com goals ativos
+    const active    = await this.memory.getActive(ctx.userId);
+    const conflicts = this.conflictResolver.detect([...active, root]);
     const resolutions = conflicts.map(c => this.conflictResolver.resolve(c));
 
-    // 6. Priorizar
-    const prioritized = this.goalPrioritizer.prioritize(
-      decomposition.allGoals, ctx
-    );
+    // 7. Priorizar todos os subgoals
+    const prioritized = this.prioritizer.prioritize(decomp.allGoals, ctx);
 
-    // 7. Construir GoalPlan
-    const plan = this.buildPlan(rootGoal, decomposition, prioritized, resolutions, ctx);
-
-    // 8. Persistir e emitir evento
-    await this.goalMemory.save(plan);
-    await this.eventBus.publish("goal.created", { goalId: plan.goalPlanId, userId: ctx.userId });
+    // 8. Construir e persistir o GoalPlan
+    const plan = this.buildPlan(root, decomp, prioritized, resolutions, ctx);
+    await this.memory.save(plan);
+    await this.stateMachine.transition(root.goalId, GoalState.WAITING);
+    await this.events.publish("goal.created", { goalId: plan.goalPlanId, domain: root.ontologyDomain });
 
     return plan;
   }
 
-  private async createGoal(intent: IntentResult, ctx: GoalContext): Promise<Goal> {
-    const template = await this.goalRegistry.findByOntologyDomain(intent.domain);
-    return {
-      goalId:          generateId("gol"),
-      intentId:        intent.intentId,
-      title:           intent.normalized,
-      ontologyDomain:  intent.domain,
-      complexity:      this.classifyComplexity(intent),
-      horizon:         this.classifyHorizon(intent, ctx),
-      state:           GoalState.CREATED,
-      context:         ctx,
-      subGoals:        [],
-      objectives:      [],
-      constraints:     [],
-      dependencies:    [],
-      priority:        GoalPriority.NORMAL,
-      memoryContext:   { recentGoals: ctx.recentGoals },
-      createdAt:       new Date().toISOString(),
+  // GoalStateMachine — transições válidas (MGIS §6.2)
+  private validateTransition(from: GoalState, to: GoalState): void {
+    const allowed: Record<GoalState, GoalState[]> = {
+      CREATED:    ["CLARIFYING", "WAITING"],
+      CLARIFYING: ["WAITING"],
+      WAITING:    ["BLOCKED", "PLANNING"],
+      BLOCKED:    ["PLANNING", "CANCELLED"],
+      PLANNING:   ["APPROVED"],
+      APPROVED:   ["EXECUTING"],
+      EXECUTING:  ["PAUSED", "COMPLETED", "FAILED"],
+      PAUSED:     ["EXECUTING", "CANCELLED"],
+      FAILED:     ["RECOVERING", "CANCELLED"],
+      RECOVERING: ["EXECUTING"],
+      COMPLETED:  ["ARCHIVED"],
+      CANCELLED:  [],
+      ARCHIVED:   [],
     };
+    if (!allowed[from].includes(to)) {
+      throw new InvalidGoalTransitionError(from, to);
+    }
   }
 }
 ```
 
-## 3. Memory Engine
+## 4. Memory Engine
 
 ```typescript
 // packages/core/memory/memory-engine.ts
@@ -158,55 +185,52 @@ export class GoalEngine {
 @Injectable()
 export class MemoryEngine {
   constructor(
-    private readonly memoryStore:      MemoryStore,         // PostgreSQL
-    private readonly vectorIndex:      VectorIndexManager,  // pgvector
-    private readonly embeddingProvider: EmbeddingProvider,  // OpenAI/Gemini
-    private readonly consolidator:     MemoryConsolidationManager,
-    private readonly retrieval:        MemoryRetrievalEngine,
-    private readonly eventBus:         UniversalEventBus,
+    private readonly store:      MemoryStore,           // PostgreSQL
+    private readonly vector:     VectorIndexManager,    // pgvector
+    private readonly embedder:   EmbeddingProvider,     // text-embedding-3-small
+    private readonly lifecycle:  MemoryLifecycleManager,
+    private readonly dedup:      MemoryDeduplicator,
+    private readonly events:     UniversalEventBus,
   ) {}
 
   async store(proposal: MemoryUpdateProposal): Promise<MemoryRecord> {
-    // 1. Validar proposta
     MemoryUpdateProposalSchema.parse(proposal);
 
-    // 2. Verificar duplicatas
-    const duplicate = await this.checkDuplicate(proposal);
-    if (duplicate) return this.mergeOrReject(duplicate, proposal);
+    // Deduplicação semântica
+    const embedding   = await this.embedder.embed(proposal.content);
+    const duplicates  = await this.vector.findSimilar(proposal.userId, embedding, 5, 0.95);
+    if (duplicates.length > 0) return this.dedup.merge(duplicates[0], proposal);
 
-    // 3. Gerar embedding para busca semântica
-    const embedding = await this.embeddingProvider.embed(proposal.content);
-
-    // 4. Persistir
-    const record = await this.memoryStore.create({
+    const record = await this.store.create({
       ...proposal,
       embedding,
-      memoryTier: "active",
-      confidence: proposal.confidence ?? 1.0,
+      memoryTier:  "active",
+      confidence:  proposal.confidence ?? 1.0,
+      expiresAt:   this.lifecycle.computeExpiry(proposal),
     });
 
-    // 5. Indexar no vetor
-    await this.vectorIndex.index(record.id, embedding);
-
-    // 6. Emitir evento
-    await this.eventBus.publish("memory.fact.stored", { recordId: record.id });
-
+    await this.vector.index(record.id, record.userId, embedding);
+    await this.events.publish("memory.fact.stored", { recordId: record.id, type: proposal.type });
     return record;
   }
 
   async retrieve(query: MemoryQuery): Promise<MemorySearchResult[]> {
-    return this.retrieval.search(query);
+    const embedding = await this.embedder.embed(query.text);
+    const results   = await this.vector.searchSimilar(query.userId, embedding, query.limit ?? 20);
+    return results.filter(r => r.similarity >= (query.minSimilarity ?? 0.70));
   }
 
   async getRelevant(userId: string, context: string): Promise<MemoryContext> {
-    const embedding = await this.embeddingProvider.embed(context);
-    const similar   = await this.vectorIndex.searchSimilar(userId, embedding, 20);
-    return { facts: similar, recentGoals: await this.getRecentGoals(userId) };
+    const embedding   = await this.embedder.embed(context);
+    const facts       = await this.vector.searchSimilar(userId, embedding, 20);
+    const recentGoals = await this.store.getRecentGoals(userId, 10);
+    const entities    = await this.store.getKnownEntities(userId, 10);
+    return { facts, recentGoals, knownEntities: entities };
   }
 }
 ```
 
-## 4. Planner
+## 5. Planner
 
 ```typescript
 // packages/core/planner/planner.ts
@@ -214,73 +238,108 @@ export class MemoryEngine {
 @Injectable()
 export class Planner {
   async buildExecutionPlan(
-    goalPlan: GoalPlan,
-    mcisDiscovery: MCISDiscoveryResult
+    goalPlan:  GoalPlan,
+    mcis:      MCISRuntime,
   ): Promise<ExecutionPlan> {
-
     const steps: ExecutionStep[] = [];
 
-    for (const prioritizedGoal of goalPlan.prioritizedGoals) {
-      const capabilities = mcisDiscovery.getCapabilitiesForGoal(prioritizedGoal.goalId);
-
-      const step: ExecutionStep = {
+    for (const pg of goalPlan.prioritizedGoals) {
+      const caps = await mcis.discoverForGoal(pg);
+      steps.push({
         stepId:       generateId("stp"),
-        goalId:       prioritizedGoal.goalId,
+        goalId:       pg.goalId,
         order:        steps.length + 1,
-        capabilities,
-        connectorId:  capabilities[0]?.connectorId,   // Best match from MCIS
-        inputMapping: this.resolveInputMapping(prioritizedGoal, steps),
-        outputMapping: this.resolveOutputMapping(prioritizedGoal),
-        parallel:     this.canParallelize(prioritizedGoal, steps),
-        timeoutMs:    this.calculateTimeout(capabilities),
-        retryPolicy:  this.getRetryPolicy(prioritizedGoal),
-        onFailure:    "ABORT",
-      };
-      steps.push(step);
+        connectorId:  caps[0]?.connectorId,
+        action:       caps[0]?.name,
+        inputMapping: this.resolveInputMapping(pg, steps),
+        outputMapping: this.resolveOutputMapping(pg),
+        parallel:     this.canParallelize(pg, steps),
+        timeoutMs:    (caps[0]?.estimatedCostMs ?? 5000) * 3,
+        retryPolicy:  DEFAULT_RETRY_POLICY,
+        dependsOn:    this.resolveDependencies(pg, steps),
+        onFailure:    pg.critical ? "ABORT" : "SKIP",
+      });
     }
 
+    const sorted = this.topologicalSort(steps);
     return {
-      planId:          generateId("pln"),
-      goalPlanId:      goalPlan.goalPlanId,
-      steps:           this.topologicalSort(steps),
-      parallelGroups:  this.detectParallelGroups(steps),
-      criticalPath:    this.computeCriticalPath(steps),
-      estimatedMs:     this.estimateTotalDuration(steps),
-      createdAt:       new Date().toISOString(),
+      planId:         generateId("pln"),
+      goalPlanId:     goalPlan.goalPlanId,
+      steps:          sorted,
+      parallelGroups: this.buildParallelGroups(sorted),
+      criticalPath:   this.computeCriticalPath(sorted),
+      estimatedMs:    this.estimateDuration(sorted),
+      createdAt:      new Date().toISOString(),
     };
   }
 
+  /** Kahn's algorithm — respeitando dependências declaradas */
   private topologicalSort(steps: ExecutionStep[]): ExecutionStep[] {
-    // Kahn's algorithm para respeitar dependências
-    const sorted: ExecutionStep[] = [];
-    const inDegree = new Map<string, number>();
-    const adj = new Map<string, string[]>();
-
-    for (const step of steps) {
-      inDegree.set(step.stepId, step.dependsOn?.length ?? 0);
-      for (const dep of step.dependsOn ?? []) {
+    const inDegree = new Map(steps.map(s => [s.stepId, s.dependsOn?.length ?? 0]));
+    const adj      = new Map<string, string[]>();
+    for (const s of steps) {
+      for (const dep of s.dependsOn ?? []) {
         if (!adj.has(dep)) adj.set(dep, []);
-        adj.get(dep)!.push(step.stepId);
+        adj.get(dep)!.push(s.stepId);
       }
     }
-
-    const queue = steps.filter(s => (inDegree.get(s.stepId) ?? 0) === 0);
+    const queue  = steps.filter(s => inDegree.get(s.stepId) === 0);
+    const sorted: ExecutionStep[] = [];
     while (queue.length > 0) {
-      const step = queue.shift()!;
-      sorted.push(step);
-      for (const next of adj.get(step.stepId) ?? []) {
+      const s = queue.shift()!;
+      sorted.push(s);
+      for (const next of adj.get(s.stepId) ?? []) {
         inDegree.set(next, inDegree.get(next)! - 1);
-        if (inDegree.get(next) === 0) {
-          queue.push(steps.find(s => s.stepId === next)!);
-        }
+        if (inDegree.get(next) === 0) queue.push(steps.find(x => x.stepId === next)!);
       }
     }
+    if (sorted.length !== steps.length) throw new CircularDependencyError();
     return sorted;
   }
 }
 ```
 
-## 5. Execution Engine
+## 6. MCIS Runtime
+
+```typescript
+// packages/mcis/runtime/mcis-runtime.ts
+
+@Injectable()
+export class MCISRuntime {
+  constructor(
+    private readonly capabilityReg: CapabilityRegistry,
+    private readonly entityReg:     EntityRegistry,
+    private readonly actionReg:     ActionRegistry,
+    private readonly eventReg:      EventRegistry,
+    private readonly workflowReg:   WorkflowRegistry,
+    private readonly graph:         CapabilityGraph,
+    private readonly selection:     ConnectorSelectionEngine,
+    private readonly hotPlug:       HotPlugManager,
+  ) {}
+
+  async discoverForGoal(goal: PrioritizedGoal): Promise<RankedCapability[]> {
+    const candidates = await this.capabilityReg.findBySemanticVerb(goal.semanticVerb);
+    const filtered   = candidates.filter(c => this.graph.isReachable(c.capabilityId, goal.ontologyDomain));
+    return this.selection.rank(filtered, goal.context);
+  }
+
+  async register(connector: MemoryOSConnector): Promise<void> {
+    const desc = connector.describe();
+    this.validate(desc);
+    await Promise.all([
+      this.capabilityReg.registerBatch(desc.capabilities),
+      this.entityReg.registerBatch(desc.entities),
+      this.actionReg.registerBatch(desc.actions),
+      this.eventReg.registerBatch(desc.events),
+      this.workflowReg.registerBatch(desc.workflows),
+    ]);
+    this.graph.addEdges(desc.capabilities);
+    await this.hotPlug.emit("CONNECTOR_HOT_PLUGGED", { connectorId: desc.identity.connectorId });
+  }
+}
+```
+
+## 7. Execution Engine
 
 ```typescript
 // packages/connectors/runtime/execution-engine.ts
@@ -288,93 +347,75 @@ export class Planner {
 @Injectable()
 export class ExecutionEngine {
   constructor(
-    private readonly connectorManager: ConnectorManager,
-    private readonly circuitBreaker:   CircuitBreakerRegistry,
-    private readonly eventBus:         UniversalEventBus,
-    private readonly metricsCollector: MetricsCollector,
+    private readonly manager:  ConnectorManager,
+    private readonly cb:       CircuitBreakerRegistry,
+    private readonly metrics:  MetricsCollector,
+    private readonly events:   UniversalEventBus,
   ) {}
 
   async execute(plan: ExecutionPlan, ctx: ExecutionContext): Promise<ExecutionResult> {
     const results: StepResult[] = [];
-    const state: ExecutionState = { data: {}, completed: new Set() };
+    const state  = new ExecutionState();
 
     for (const group of plan.parallelGroups) {
-      if (group.length === 1) {
-        const result = await this.executeStep(group[0], state, ctx);
-        results.push(result);
-        state.completed.add(group[0].stepId);
-        if (result.status === "FAILED" && group[0].onFailure === "ABORT") {
-          return { planId: plan.planId, status: "FAILED", results, failedAt: group[0].stepId };
-        }
-        if (result.output) state.data[group[0].stepId] = result.output;
-      } else {
-        // Execução paralela
-        const parallelResults = await Promise.allSettled(
-          group.map(step => this.executeStep(step, state, ctx))
-        );
-        for (let i = 0; i < group.length; i++) {
-          const pr = parallelResults[i];
-          if (pr.status === "fulfilled") {
-            results.push(pr.value);
-            state.data[group[i].stepId] = pr.value.output;
-          } else {
-            results.push({ stepId: group[i].stepId, status: "FAILED", error: pr.reason });
-          }
+      const groupResults = group.length === 1
+        ? [await this.executeStep(group[0], state, ctx)]
+        : await Promise.allSettled(group.map(s => this.executeStep(s, state, ctx)))
+            .then(rs => rs.map((r, i) =>
+              r.status === "fulfilled" ? r.value
+                : { stepId: group[i].stepId, status: "FAILED" as const, error: String(r.reason) }
+            ));
+
+      for (const r of groupResults) {
+        results.push(r);
+        if (r.status === "COMPLETED" && r.output) state.set(r.stepId, r.output);
+        if (r.status === "FAILED" && group.find(s => s.stepId === r.stepId)?.onFailure === "ABORT") {
+          return { planId: plan.planId, status: "FAILED", results, failedAt: r.stepId };
         }
       }
     }
 
+    await this.events.publish("execution.completed", { planId: plan.planId });
     return { planId: plan.planId, status: "COMPLETED", results };
   }
 
-  private async executeStep(
-    step: ExecutionStep,
-    state: ExecutionState,
-    ctx: ExecutionContext
-  ): Promise<StepResult> {
-    const connector = await this.connectorManager.getConnector(step.connectorId!);
-    const cb        = this.circuitBreaker.get(step.connectorId!);
-
-    if (cb.isOpen()) {
-      const fallback = await this.connectorManager.getFallback(step.connectorId!);
-      if (fallback) return this.executeStep({ ...step, connectorId: fallback.connectorId }, state, ctx);
-      return { stepId: step.stepId, status: "FAILED", error: "Circuit breaker OPEN, no fallback" };
+  private async executeStep(step: ExecutionStep, state: ExecutionState, ctx: ExecutionContext): Promise<StepResult> {
+    const breaker = this.cb.get(step.connectorId!);
+    if (breaker.isOpen()) {
+      const fallback = await this.manager.getFallback(step.connectorId!);
+      if (!fallback) return { stepId: step.stepId, status: "FAILED", error: "CIRCUIT_OPEN_NO_FALLBACK" };
+      return this.executeStep({ ...step, connectorId: fallback.connectorId }, state, ctx);
     }
 
-    const input = this.resolveInput(step.inputMapping, state.data);
-    const start = Date.now();
+    const connector = await this.manager.get(step.connectorId!);
+    const input     = state.resolve(step.inputMapping);
+    const t0        = Date.now();
 
     try {
       const output = await withTimeout(
-        connector.execute({ action: step.action, input, context: ctx }),
+        connector.execute({ action: step.action!, input, context: ctx }),
         step.timeoutMs
       );
-      this.metricsCollector.record(step.connectorId!, Date.now() - start, "SUCCESS");
-      cb.recordSuccess();
+      breaker.recordSuccess();
+      this.metrics.record(step.connectorId!, Date.now() - t0, "SUCCESS");
+      await this.events.publish("execution.step.completed", { stepId: step.stepId });
       return { stepId: step.stepId, status: "COMPLETED", output };
-    } catch (error) {
-      cb.recordFailure();
-      this.metricsCollector.record(step.connectorId!, Date.now() - start, "FAILED");
-      if (step.retryPolicy && step.retryPolicy.maxAttempts > 0) {
-        return this.retryStep(step, state, ctx, error);
-      }
-      return { stepId: step.stepId, status: "FAILED", error: String(error) };
+    } catch (err) {
+      breaker.recordFailure();
+      this.metrics.record(step.connectorId!, Date.now() - t0, "FAILED");
+      if (step.retryPolicy?.maxAttempts > 0) return this.retryStep(step, state, ctx, err, 1);
+      return { stepId: step.stepId, status: "FAILED", error: String(err) };
     }
   }
 }
 ```
 
-## 6. Policy Engine
+## 8. Policy Engine
 
 ```typescript
-// packages/core/policy/policy-engine.ts
-
 @Injectable()
 export class PolicyEngine {
-  async evaluate(
-    goal: Goal,
-    ctx: GoalContext
-  ): Promise<PolicyEvaluationResult> {
+  async evaluate(goal: Goal, ctx: GoalContext): Promise<PolicyResult> {
     const checks = await Promise.all([
       this.checkAuthorization(goal, ctx),
       this.checkAgeRestriction(goal, ctx),
@@ -383,45 +424,55 @@ export class PolicyEngine {
       this.checkRegulatoryCompliance(goal, ctx),
       this.checkTimeWindow(goal, ctx),
       this.checkConnectorPermissions(goal, ctx),
+      this.checkTenantPolicy(goal, ctx),
     ]);
 
-    const blocked = checks.filter(c => c.result === "BLOCKED");
-    const pending = checks.filter(c => c.result === "PENDING_APPROVAL");
+    const blocked = checks.find(c => c.result === "HARD_BLOCK");
+    if (blocked) return { allowed: false, type: "HARD_BLOCK", reason: blocked.reason };
 
-    if (blocked.length > 0) {
-      return { allowed: false, reason: blocked[0].reason, type: "HARD_BLOCK" };
-    }
-    if (pending.length > 0) {
-      return { allowed: false, reason: pending[0].reason, type: "PENDING_APPROVAL",
-               approvalGoalTemplate: pending[0].approvalGoalTemplate };
-    }
+    const pending = checks.find(c => c.result === "PENDING_APPROVAL");
+    if (pending) return { allowed: false, type: "PENDING_APPROVAL", reason: pending.reason,
+                          approvalTemplate: pending.approvalTemplate };
+
     return { allowed: true };
   }
+}
+```
 
-  private async checkAgeRestriction(goal: Goal, ctx: GoalContext): Promise<PolicyCheck> {
-    const ageRestrictedDomains = ["ALCOHOL", "GAMBLING", "ADULT_CONTENT"];
-    if (!ageRestrictedDomains.some(d => goal.ontologyDomain.includes(d))) {
-      return { result: "APPROVED" };
-    }
-    const age = ctx.userProfile.age;
-    if (!age || age < 18) {
-      return { result: "BLOCKED", reason: "Ação não permitida por restrição de idade" };
-    }
-    return { result: "APPROVED" };
+## 9. Event Bus (UEB)
+
+```typescript
+// Kafka-backed Universal Event Bus
+
+@Injectable()
+export class UniversalEventBus {
+  async publish(eventType: string, payload: unknown): Promise<void> {
+    await this.kafka.producer.send({
+      topic:    this.topicFor(eventType),
+      messages: [{
+        key:   generateId("evt"),
+        value: JSON.stringify({ type: eventType, payload, ts: Date.now() }),
+      }],
+    });
   }
 
-  private async checkApprovalRequired(goal: Goal, ctx: GoalContext): Promise<PolicyCheck> {
-    if (!ctx.approvalRequired) return { result: "APPROVED" };
-    const financialGoals = goal.objectives.filter(o => o.estimatedCost > 0);
-    const totalCost = financialGoals.reduce((s, o) => s + o.estimatedCost, 0);
-    if (totalCost > (ctx.approvalThreshold ?? Infinity)) {
-      return {
-        result: "PENDING_APPROVAL",
-        reason: `Valor R$${totalCost} excede limite de aprovação`,
-        approvalGoalTemplate: "REQUEST_MANAGER_APPROVAL",
-      };
-    }
-    return { result: "APPROVED" };
+  subscribe(eventType: string, handler: EventHandler): UnsubscribeFn {
+    const consumer = this.kafka.consumer({ groupId: `${this.serviceId}.${eventType}` });
+    consumer.subscribe({ topic: this.topicFor(eventType) });
+    consumer.run({ eachMessage: async ({ message }) => {
+      const event = JSON.parse(message.value!.toString());
+      await handler(event);
+    }});
+    return () => consumer.disconnect();
+  }
+
+  // Para notificações internas de baixa latência (< 10ms): Redis PubSub
+  publishLocal(channel: string, payload: unknown): void {
+    this.redis.publish(channel, JSON.stringify(payload));
+  }
+
+  private topicFor(eventType: string): string {
+    return `memoryos.${eventType.replace(/\./g, ".")}`;
   }
 }
 ```
@@ -432,95 +483,34 @@ export class PolicyEngine {
 
 ---
 
-## 7. Domain Model Oficial
+## 10. Domain Model — Aggregates, Commands, Events, Repositories
 
 ```typescript
-// packages/shared/contracts/domain-models.ts
-
-// ─── AGGREGATES ────────────────────────────────────────────────────
+// ─── AGGREGATE ────────────────────────────────────────────────────────────
 
 export class GoalAggregate {
-  private readonly _events: DomainEvent[] = [];
+  private _events: DomainEvent[] = [];
 
   constructor(private state: Goal) {}
 
-  get id(): string { return this.state.goalId; }
-  get domainEvents(): DomainEvent[] { return [...this._events]; }
-
-  transition(newState: GoalState): void {
-    GoalStateMachine.validate(this.state.state, newState);
-    const prev = this.state.state;
-    this.state = { ...this.state, state: newState };
-    this._events.push(new GoalStateChangedEvent(this.state.goalId, prev, newState));
-  }
-
-  clearEvents(): void { this._events.length = 0; }
+  get id()            { return this.state.goalId; }
+  get domainEvents()  { return [...this._events]; }
+  clearEvents()       { this._events = []; }
   snapshot(): Goal    { return Object.freeze({ ...this.state }); }
+
+  transition(to: GoalState): void {
+    GoalStateMachine.assertValid(this.state.state, to);
+    const from        = this.state.state;
+    this.state        = { ...this.state, state: to };
+    this._events.push(new GoalStateChangedEvent(this.state.goalId, from, to));
+  }
 }
 
-// ─── REPOSITORIES ──────────────────────────────────────────────────
-
-export interface GoalRepository {
-  findById(id: string): Promise<GoalAggregate | null>;
-  findByUserId(userId: string, filter?: GoalFilter): Promise<GoalAggregate[]>;
-  save(aggregate: GoalAggregate): Promise<void>;
-  delete(id: string): Promise<void>;
-}
-
-// ─── COMMANDS ──────────────────────────────────────────────────────
-
-export interface CreateGoalCommand {
-  readonly type: "CREATE_GOAL";
-  readonly intentId: string;
-  readonly userId: string;
-  readonly rawText: string;
-  readonly context: GoalContext;
-}
-
-export interface ExecuteGoalCommand {
-  readonly type: "EXECUTE_GOAL";
-  readonly goalId: string;
-  readonly userId: string;
-  readonly immediate: boolean;
-}
-
-// ─── QUERIES ───────────────────────────────────────────────────────
-
-export interface GetActiveGoalsQuery {
-  readonly type: "GET_ACTIVE_GOALS";
-  readonly userId: string;
-  readonly orgId?: string;
-  readonly limit: number;
-  readonly offset: number;
-}
-
-// ─── EVENTS ────────────────────────────────────────────────────────
-
-export class GoalCreatedEvent implements DomainEvent {
-  readonly type = "goal.created";
-  readonly occurredAt = new Date().toISOString();
-  constructor(
-    readonly goalId: string,
-    readonly userId: string,
-    readonly domain: string,
-  ) {}
-}
-
-export class GoalStateChangedEvent implements DomainEvent {
-  readonly type = "goal.state_changed";
-  readonly occurredAt = new Date().toISOString();
-  constructor(
-    readonly goalId: string,
-    readonly from: GoalState,
-    readonly to: GoalState,
-  ) {}
-}
-
-// ─── FACTORY ───────────────────────────────────────────────────────
+// ─── FACTORY ──────────────────────────────────────────────────────────────
 
 export class GoalFactory {
   static create(intent: IntentResult, ctx: GoalContext): GoalAggregate {
-    const goal: Goal = {
+    return new GoalAggregate({
       goalId:         generateId("gol"),
       intentId:       intent.intentId,
       title:          intent.normalized,
@@ -536,16 +526,54 @@ export class GoalFactory {
       priority:       GoalPriority.NORMAL,
       memoryContext:  { recentGoals: [] },
       createdAt:      new Date().toISOString(),
-    };
-    return new GoalAggregate(goal);
+    });
   }
 }
-```
 
-## 8. Error Hierarchy
+// ─── REPOSITORY ───────────────────────────────────────────────────────────
 
-```typescript
-// packages/shared/errors/errors.ts
+export interface GoalRepository {
+  findById(id: string): Promise<GoalAggregate | null>;
+  findByUserId(userId: string, filter?: GoalFilter): Promise<GoalAggregate[]>;
+  findActiveByUserId(userId: string): Promise<GoalAggregate[]>;
+  save(aggregate: GoalAggregate): Promise<void>;
+  delete(id: string): Promise<void>;
+}
+
+// ─── COMMANDS ─────────────────────────────────────────────────────────────
+
+export interface CreateGoalCommand   { type: "CREATE_GOAL";   intentId: string; userId: string; context: GoalContext; }
+export interface ExecuteGoalCommand  { type: "EXECUTE_GOAL";  goalId: string;   userId: string; immediate: boolean; }
+export interface PauseGoalCommand    { type: "PAUSE_GOAL";    goalId: string;   userId: string; reason: string; }
+export interface CancelGoalCommand   { type: "CANCEL_GOAL";   goalId: string;   userId: string; reason: string; }
+
+// ─── QUERIES ──────────────────────────────────────────────────────────────
+
+export interface ListActiveGoalsQuery  { userId: string; orgId?: string; limit: number; offset: number; }
+export interface GetGoalDetailsQuery   { goalId: string; userId: string; }
+export interface SearchGoalsQuery      { userId: string; text: string; domain?: string; limit: number; }
+
+// ─── DOMAIN EVENTS ────────────────────────────────────────────────────────
+
+export class GoalCreatedEvent implements DomainEvent {
+  readonly type = "goal.created";
+  readonly ts   = new Date().toISOString();
+  constructor(readonly goalId: string, readonly userId: string, readonly domain: string) {}
+}
+
+export class GoalStateChangedEvent implements DomainEvent {
+  readonly type = "goal.state_changed";
+  readonly ts   = new Date().toISOString();
+  constructor(readonly goalId: string, readonly from: GoalState, readonly to: GoalState) {}
+}
+
+export class GoalCompletedEvent implements DomainEvent {
+  readonly type = "goal.completed";
+  readonly ts   = new Date().toISOString();
+  constructor(readonly goalId: string, readonly userId: string, readonly durationMs: number) {}
+}
+
+// ─── ERROR HIERARCHY ──────────────────────────────────────────────────────
 
 export class MemoryOSError extends Error {
   constructor(
@@ -553,64 +581,16 @@ export class MemoryOSError extends Error {
     readonly code: string,
     readonly httpStatus: number = 500,
     readonly retryable: boolean = false,
-  ) {
-    super(message);
-    this.name = this.constructor.name;
-  }
+  ) { super(message); this.name = this.constructor.name; }
 }
 
-// Core Errors
-export class IntentAmbiguousError extends MemoryOSError {
-  constructor(message = "Intenção ambígua — clarificação necessária") {
-    super(message, "INTENT_AMBIGUOUS", 422, false);
-  }
-}
-
-export class GoalNotFoundError extends MemoryOSError {
-  constructor(goalId: string) {
-    super(`Goal '${goalId}' não encontrado`, "GOAL_NOT_FOUND", 404, false);
-  }
-}
-
-export class GoalBlockedByPolicyError extends MemoryOSError {
-  constructor(reason: string) {
-    super(reason, "GOAL_BLOCKED_BY_POLICY", 403, false);
-  }
-}
-
-export class GoalConflictError extends MemoryOSError {
-  constructor(conflictType: string) {
-    super(`Conflito detectado: ${conflictType}`, "GOAL_CONFLICT", 409, false);
-  }
-}
-
-// Connector Errors
-export class ConnectorNotFoundError extends MemoryOSError {
-  constructor(connectorId: string) {
-    super(`Connector '${connectorId}' não encontrado`, "CONNECTOR_NOT_FOUND", 404, false);
-  }
-}
-
-export class ConnectorTimeoutError extends MemoryOSError {
-  constructor(connectorId: string, timeoutMs: number) {
-    super(`Connector '${connectorId}' timeout após ${timeoutMs}ms`,
-      "CONNECTOR_TIMEOUT", 504, true);
-  }
-}
-
-export class ConnectorRateLimitError extends MemoryOSError {
-  constructor(connectorId: string, retryAfterMs: number) {
-    super(`Rate limit no connector '${connectorId}'`,
-      "CONNECTOR_RATE_LIMIT", 429, true);
-  }
-}
-
-export class CircuitBreakerOpenError extends MemoryOSError {
-  constructor(connectorId: string) {
-    super(`Circuit breaker OPEN para '${connectorId}'`,
-      "CIRCUIT_BREAKER_OPEN", 503, true);
-  }
-}
+export class IntentAmbiguousError    extends MemoryOSError { constructor() { super("Intenção ambígua", "INTENT_AMBIGUOUS", 422, false); } }
+export class GoalNotFoundError       extends MemoryOSError { constructor(id: string) { super(`Goal '${id}' não encontrado`, "GOAL_NOT_FOUND", 404, false); } }
+export class GoalBlockedError        extends MemoryOSError { constructor(r: string) { super(r, "GOAL_BLOCKED_BY_POLICY", 403, false); } }
+export class ConnectorTimeoutError   extends MemoryOSError { constructor(id: string, ms: number) { super(`Timeout ${id} após ${ms}ms`, "CONNECTOR_TIMEOUT", 504, true); } }
+export class ConnectorRateLimitError extends MemoryOSError { constructor(id: string) { super(`Rate limit ${id}`, "CONNECTOR_RATE_LIMIT", 429, true); } }
+export class CircuitBreakerOpenError extends MemoryOSError { constructor(id: string) { super(`Circuit OPEN ${id}`, "CIRCUIT_BREAKER_OPEN", 503, true); } }
+export class InvalidGoalTransitionError extends MemoryOSError { constructor(f: string, t: string) { super(`Transição inválida: ${f} → ${t}`, "INVALID_GOAL_TRANSITION", 409, false); } }
 ```
 
 ---
@@ -619,46 +599,56 @@ export class CircuitBreakerOpenError extends MemoryOSError {
 
 ---
 
-## 9. Schema Oficial (PostgreSQL)
+## 11. Schema PostgreSQL Oficial
 
 ```sql
--- ─── TENANTS & USERS ─────────────────────────────────────────────
+-- ─── EXTENSION ─────────────────────────────────────────────────────────────
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS pg_partman;
+CREATE EXTENSION IF NOT EXISTS pg_trgm;  -- text search
 
+-- ─── TENANTS ───────────────────────────────────────────────────────────────
 CREATE TABLE tenants (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  type          VARCHAR(20) NOT NULL CHECK (type IN ('PERSONAL', 'ENTERPRISE')),
-  name          VARCHAR(255) NOT NULL,
-  plan          VARCHAR(50)  NOT NULL DEFAULT 'FREE',
-  metadata      JSONB        NOT NULL DEFAULT '{}',
-  created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-  updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  type        VARCHAR(20) NOT NULL CHECK (type IN ('PERSONAL','ENTERPRISE')),
+  name        VARCHAR(255) NOT NULL,
+  plan        VARCHAR(50)  NOT NULL DEFAULT 'FREE',
+  sso_config  JSONB        NOT NULL DEFAULT '{}',
+  settings    JSONB        NOT NULL DEFAULT '{}',
+  created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
+-- ─── USERS ─────────────────────────────────────────────────────────────────
 CREATE TABLE users (
-  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id     UUID         NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  email         VARCHAR(255) NOT NULL UNIQUE,
-  full_name     VARCHAR(255),
-  role          VARCHAR(50)  NOT NULL DEFAULT 'user',
-  preferences   JSONB        NOT NULL DEFAULT '{}',
-  created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-  updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+  id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id   UUID         NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  email       VARCHAR(255) NOT NULL UNIQUE,
+  full_name   VARCHAR(255),
+  role        VARCHAR(50)  NOT NULL DEFAULT 'user',
+  age         SMALLINT,
+  country     VARCHAR(10),
+  language    VARCHAR(10)  NOT NULL DEFAULT 'pt-BR',
+  preferences JSONB        NOT NULL DEFAULT '{}',
+  created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
+CREATE INDEX idx_users_tenant ON users(tenant_id);
 
--- ─── GOALS ──────────────────────────────────────────────────────
-
+-- ─── GOALS ─────────────────────────────────────────────────────────────────
 CREATE TABLE goals (
   id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id         UUID         NOT NULL REFERENCES users(id),
   tenant_id       UUID         NOT NULL REFERENCES tenants(id),
   intent_id       UUID,
+  parent_goal_id  UUID         REFERENCES goals(id),
   title           VARCHAR(500) NOT NULL,
   description     TEXT,
   ontology_domain VARCHAR(100) NOT NULL,
   complexity      VARCHAR(20)  NOT NULL,
   horizon         VARCHAR(20)  NOT NULL,
   state           VARCHAR(30)  NOT NULL DEFAULT 'CREATED',
-  priority        INTEGER      NOT NULL DEFAULT 5,
+  priority        SMALLINT     NOT NULL DEFAULT 5,
   context         JSONB        NOT NULL DEFAULT '{}',
   constraints     JSONB        NOT NULL DEFAULT '[]',
   dependencies    JSONB        NOT NULL DEFAULT '[]',
@@ -667,75 +657,83 @@ CREATE TABLE goals (
   created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
+CREATE INDEX idx_goals_user_state   ON goals(user_id, state);
+CREATE INDEX idx_goals_tenant       ON goals(tenant_id);
+CREATE INDEX idx_goals_parent       ON goals(parent_goal_id);
 
-CREATE INDEX idx_goals_user_id    ON goals(user_id);
-CREATE INDEX idx_goals_state      ON goals(state);
-CREATE INDEX idx_goals_tenant_id  ON goals(tenant_id);
-
--- ─── MEMORY ─────────────────────────────────────────────────────
-
-CREATE EXTENSION IF NOT EXISTS vector;
-
+-- ─── MEMORY RECORDS ────────────────────────────────────────────────────────
 CREATE TABLE memory_records (
-  id              UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id         UUID          NOT NULL REFERENCES users(id),
-  tenant_id       UUID          NOT NULL REFERENCES tenants(id),
-  content         TEXT          NOT NULL,
-  type            VARCHAR(50)   NOT NULL,   -- FACT, EVENT, PREFERENCE, DECISION
-  memory_tier     VARCHAR(20)   NOT NULL DEFAULT 'active',
-  confidence      FLOAT         NOT NULL DEFAULT 1.0,
-  embedding       vector(1536),             -- OpenAI ada-002 dimensions
-  source_type     VARCHAR(50),              -- document, message, goal_outcome
-  source_id       UUID,
-  expires_at      TIMESTAMPTZ,
-  created_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
-  updated_at      TIMESTAMPTZ   NOT NULL DEFAULT NOW()
+  id           UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id      UUID          NOT NULL REFERENCES users(id),
+  tenant_id    UUID          NOT NULL REFERENCES tenants(id),
+  content      TEXT          NOT NULL,
+  type         VARCHAR(50)   NOT NULL,  -- FACT | EVENT | PREFERENCE | DECISION | ENTITY
+  memory_tier  VARCHAR(20)   NOT NULL DEFAULT 'active',
+  confidence   FLOAT         NOT NULL DEFAULT 1.0 CHECK (confidence BETWEEN 0 AND 1),
+  embedding    vector(1536),
+  source_type  VARCHAR(50),
+  source_id    UUID,
+  expires_at   TIMESTAMPTZ,
+  created_at   TIMESTAMPTZ   NOT NULL DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ   NOT NULL DEFAULT NOW()
 );
+CREATE INDEX idx_memory_user_tier   ON memory_records(user_id, memory_tier);
+CREATE INDEX idx_memory_embedding   ON memory_records
+  USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+CREATE INDEX idx_memory_content_trgm ON memory_records USING gin (content gin_trgm_ops);
 
-CREATE INDEX idx_memory_user_id  ON memory_records(user_id);
-CREATE INDEX idx_memory_tier     ON memory_records(memory_tier);
-CREATE INDEX idx_memory_vector   ON memory_records USING ivfflat (embedding vector_cosine_ops)
-  WITH (lists = 100);
-
--- ─── CONNECTOR REGISTRY ─────────────────────────────────────────
-
+-- ─── CONNECTOR REGISTRATIONS ───────────────────────────────────────────────
 CREATE TABLE connector_registrations (
-  id                  UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-  connector_id        VARCHAR(100) NOT NULL UNIQUE,
-  connector_name      VARCHAR(255) NOT NULL,
-  vendor              VARCHAR(100) NOT NULL,
-  version             VARCHAR(20)  NOT NULL,
-  category            VARCHAR(50)  NOT NULL,
-  connector_type      VARCHAR(30)  NOT NULL,
-  status              VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE',
-  manifest            JSONB        NOT NULL,
-  self_description    JSONB        NOT NULL,
-  sdk_compatibility   VARCHAR(50),
-  min_memoryos_ver    VARCHAR(20),
-  certification_level VARCHAR(20)  NOT NULL DEFAULT 'COMMUNITY',
-  tags                TEXT[]       NOT NULL DEFAULT '{}',
-  registered_at       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-  updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+  id                   UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
+  connector_id         VARCHAR(100) NOT NULL UNIQUE,
+  connector_name       VARCHAR(255) NOT NULL,
+  vendor               VARCHAR(100) NOT NULL,
+  version              VARCHAR(20)  NOT NULL,
+  category             VARCHAR(50)  NOT NULL,
+  connector_type       VARCHAR(30)  NOT NULL,
+  status               VARCHAR(20)  NOT NULL DEFAULT 'ACTIVE',
+  manifest             JSONB        NOT NULL,
+  self_description     JSONB        NOT NULL,
+  certification_level  VARCHAR(20)  NOT NULL DEFAULT 'COMMUNITY',
+  tags                 TEXT[]       NOT NULL DEFAULT '{}',
+  registered_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at           TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
+CREATE INDEX idx_connector_status   ON connector_registrations(status);
+CREATE INDEX idx_connector_category ON connector_registrations(category);
 
--- ─── EXECUTIONS ─────────────────────────────────────────────────
-
-CREATE TABLE execution_plans (
+-- ─── CONNECTOR CREDENTIALS ────────────────────────────────────────────────
+CREATE TABLE connector_credentials (
   id              UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
-  goal_plan_id    UUID         NOT NULL,
   user_id         UUID         NOT NULL REFERENCES users(id),
   tenant_id       UUID         NOT NULL REFERENCES tenants(id),
-  status          VARCHAR(20)  NOT NULL DEFAULT 'PENDING',
-  steps           JSONB        NOT NULL DEFAULT '[]',
-  result          JSONB,
-  started_at      TIMESTAMPTZ,
-  completed_at    TIMESTAMPTZ,
-  duration_ms     INTEGER,
-  created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+  connector_id    VARCHAR(100) NOT NULL,
+  access_token    TEXT         NOT NULL,   -- AES-256 encrypted
+  refresh_token   TEXT,                    -- AES-256 encrypted
+  scopes          TEXT[]       NOT NULL DEFAULT '{}',
+  expires_at      TIMESTAMPTZ,
+  created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, connector_id)
 );
 
--- ─── AUDIT LOG ──────────────────────────────────────────────────
+-- ─── EXECUTION PLANS ──────────────────────────────────────────────────────
+CREATE TABLE execution_plans (
+  id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  goal_plan_id  UUID        NOT NULL,
+  user_id       UUID        NOT NULL REFERENCES users(id),
+  tenant_id     UUID        NOT NULL REFERENCES tenants(id),
+  status        VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+  steps         JSONB       NOT NULL DEFAULT '[]',
+  result        JSONB,
+  started_at    TIMESTAMPTZ,
+  completed_at  TIMESTAMPTZ,
+  duration_ms   INTEGER,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+) PARTITION BY RANGE (created_at);
+SELECT partman.create_parent('public.execution_plans', 'created_at', 'native', 'weekly');
 
+-- ─── AUDIT LOG (APPEND-ONLY + HASH CHAIN) ──────────────────────────────────
 CREATE TABLE audit_logs (
   id          UUID         PRIMARY KEY DEFAULT gen_random_uuid(),
   tenant_id   UUID         NOT NULL REFERENCES tenants(id),
@@ -746,156 +744,160 @@ CREATE TABLE audit_logs (
   before      JSONB,
   after       JSONB,
   ip_address  INET,
-  user_agent  TEXT,
+  hash        CHAR(64)     NOT NULL,   -- SHA-256(prev_hash + entry_data)
+  prev_hash   CHAR(64),
   created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
-) PARTITION BY RANGE (created_at);  -- Particionamento mensal
-
--- Partições mensais criadas automaticamente via pg_partman
+) PARTITION BY RANGE (created_at);
+SELECT partman.create_parent('public.audit_logs', 'created_at', 'native', 'monthly');
+-- Regra: nunca DELETE ou UPDATE nesta tabela (trigger de proteção)
 ```
 
-## 10. Estratégia de Escalabilidade — DB
+## 12. Estratégia de Escalabilidade
 
 ```
-SHARDING STRATEGY:
-  Chave de shard: tenant_id (para Enterprise) | user_id (para Personal)
-  Shards: mínimo 16, configurável
-  Routing: PgBouncer + hash consistente via tenant_id
+SHARDING (horizontal):
+  Chave: tenant_id (Enterprise) | user_id hash (Personal)
+  Shards mínimo: 16 (configurável via Citus ou PgBouncer)
+  Routing: hash ring consistente → sem resharding frequente
 
 READ REPLICAS:
-  1 primary write + N read replicas (mínimo 2)
-  Leituras de memory_records → always read replica
-  Escritas → always primary
+  1 primary (writes) + 2 read replicas mínimo
+  memory_records selects → sempre em replica
+  audit_logs inserts → primary com batch commit
 
 CONNECTION POOLING:
-  PgBouncer: max_pool_size = 100 por shard
-  Min pool: 10 | Max overflow: 20
+  PgBouncer: pool_mode = transaction
+  max_client_conn = 1000 | default_pool_size = 25 por shard
 
-PARTICIONAMENTO:
-  audit_logs: RANGE por created_at (mensal)
-  memory_records: LIST por memory_tier
+PARTICIONAMENTO NATIVO:
+  audit_logs:      RANGE por created_at (mensal)
   execution_plans: RANGE por created_at (semanal)
+  memory_records:  LIST por memory_tier (active/historical/archived)
 
-ÍNDICES:
-  memory_records.embedding: IVFFlat (approximate) para perf
-  goals: B-tree em (user_id, state, created_at)
-  audit_logs: BRIN em created_at (append-only, compacto)
+BACKUP E RECOVERY:
+  WAL archiving contínuo → S3 com retenção de 30 dias
+  pg_basebackup diário (snapshot completo)
+  PITR: < 5 minutos (RPO) | restore em < 1 hora (RTO)
+  Testes de restore automatizados semanalmente
 
-BACKUP:
-  Continuous WAL archiving → S3
-  Daily full snapshot
-  Point-in-time recovery (PITR) até 30 dias
-  RTO: < 1 hora | RPO: < 5 minutos
+MULTI-TENANT ISOLATION:
+  Nível lógico: WHERE tenant_id = $1 em todas as queries
+  Nível físico (Enterprise Plus): schema separado por org
+  Row-Level Security habilitado em tabelas críticas
 ```
 
 ---
 
-# PARTE V — APIs
+# PARTE V — COMUNICAÇÃO
 
 ---
 
-## 11. REST API Oficial
+## 13. REST API — Contratos Oficiais
 
-```typescript
-// Base URL: https://api.memoryos.ai/v1
+```
+BASE URL: https://api.memoryos.ai/v1
 
-// ─── INTENT / GOAL ───────────────────────────────────────────────
+AUTENTICAÇÃO:
+  Authorization: Bearer <jwt_access_token>
+  Refresh: POST /v1/auth/refresh { refresh_token }
 
-POST   /v1/process          // Processa intent → retorna GoalPlan + inicia execução
-GET    /v1/goals            // Lista goals ativos do usuário
-GET    /v1/goals/:id        // Detalhe de um goal
-PATCH  /v1/goals/:id/state  // Transição de estado (pause, cancel, resume)
-DELETE /v1/goals/:id        // Cancela e arquiva goal
+ENDPOINTS CORE:
+  POST   /v1/process             → processa intent → GoalPlan → inicia execução
+  GET    /v1/goals               → lista goals do usuário (paginado)
+  GET    /v1/goals/:id           → detalhe completo do goal
+  PATCH  /v1/goals/:id/state     → { state: "PAUSED" | "CANCELLED" }
+  GET    /v1/goals/:id/execution → status da execução em tempo real
 
-// ─── MEMORY ──────────────────────────────────────────────────────
+MEMÓRIA:
+  GET    /v1/memory              → busca semântica  ?q=texto&limit=20
+  POST   /v1/memory              → adiciona fato manualmente
+  DELETE /v1/memory/:id          → remove (LGPD: direito ao esquecimento)
+  GET    /v1/memory/export       → exportação completa (LGPD: portabilidade)
 
-GET    /v1/memory           // Busca semântica na memória
-POST   /v1/memory           // Adiciona fato manualmente
-DELETE /v1/memory/:id       // Remove da memória
+CONNECTORS:
+  GET    /v1/connectors                → lista disponíveis com status
+  POST   /v1/connectors/:id/connect   → inicia OAuth
+  GET    /v1/connectors/oauth/callback → callback OAuth (redirect)
+  DELETE /v1/connectors/:id/disconnect → desconecta
+  GET    /v1/connectors/:id/health    → status de saúde
 
-// ─── CONNECTORS ──────────────────────────────────────────────────
+MARKETPLACE:
+  GET    /v1/marketplace/connectors   → catálogo público
+  POST   /v1/marketplace/install      → instala plugin { pluginId }
+  DELETE /v1/marketplace/uninstall/:id → desinstala
 
-GET    /v1/connectors               // Lista connectors disponíveis
-POST   /v1/connectors/connect       // Inicia autenticação OAuth de um connector
-GET    /v1/connectors/:id/status    // Status de saúde do connector
-POST   /v1/connectors/:id/execute   // Execução direta (avançado)
+PADRÃO DE RESPOSTA:
+  { data: T, meta: { requestId, duration, version }, error: null }
+  { data: null, meta: { requestId }, error: { code, message, retryable } }
 
-// ─── EXECUTIONS ──────────────────────────────────────────────────
-
-GET    /v1/executions/:planId       // Status de uma execução
-GET    /v1/executions/:planId/steps // Steps com resultados individuais
-
-// ─── WEBSOCKET ──────────────────────────────────────────────────
-
-// Endpoint: wss://api.memoryos.ai/v1/stream
-
-// Eventos enviados ao cliente:
-{ type: "goal.state_changed",  data: { goalId, from, to } }
-{ type: "execution.step",      data: { stepId, status, output } }
-{ type: "memory.updated",      data: { recordId, type } }
-{ type: "notification",        data: { message, severity } }
+HTTP STATUS:
+  200 OK | 201 Created | 204 No Content
+  400 Bad Request | 401 Unauthorized | 403 Forbidden
+  404 Not Found | 409 Conflict | 422 Unprocessable Entity
+  429 Too Many Requests | 500 Internal Server Error | 503 Service Unavailable
 ```
 
-## 12. gRPC API (Inter-service)
-
-```protobuf
-// proto/core.proto
-
-syntax = "proto3";
-package memoryos.core.v1;
-
-service CoreService {
-  rpc ProcessIntent (ProcessIntentRequest) returns (ProcessIntentResponse);
-  rpc GetGoalPlan   (GetGoalPlanRequest)   returns (GetGoalPlanResponse);
-  rpc UpdateGoalState (UpdateGoalStateRequest) returns (UpdateGoalStateResponse);
-}
-
-message ProcessIntentRequest {
-  string raw_text  = 1;
-  string user_id   = 2;
-  string tenant_id = 3;
-  GoalContext context = 4;
-}
-
-message ProcessIntentResponse {
-  string goal_plan_id   = 1;
-  GoalPlan goal_plan    = 2;
-  bool requires_confirm = 3;
-}
-
-// proto/connector.proto
-
-service ConnectorService {
-  rpc Execute         (ConnectorExecuteRequest)  returns (ConnectorExecuteResponse);
-  rpc GetStatus       (ConnectorStatusRequest)   returns (ConnectorStatusResponse);
-  rpc DiscoverForGoal (DiscoverRequest)          returns (DiscoverResponse);
-}
-```
-
-## 13. Rate Limiting e Retry
+## 14. WebSocket — Protocolo de Real-time
 
 ```typescript
-// Rate Limit por plano (por minuto):
+// wss://api.memoryos.ai/v1/stream
+
+// HANDSHAKE:
+// Client → { type: "AUTH", token: "<jwt>" }
+// Server → { type: "AUTH_OK", sessionId: "...", userId: "..." }
+// ou:
+// Server → { type: "AUTH_FAIL", reason: "..." }
+
+// EVENTOS DO SERVIDOR → CLIENTE:
+{ type: "goal.state_changed",     data: { goalId, from, to, at } }
+{ type: "execution.step",         data: { planId, stepId, status, output, connectorId } }
+{ type: "execution.completed",    data: { planId, status, durationMs } }
+{ type: "memory.updated",         data: { recordId, type, content } }
+{ type: "notification",           data: { id, severity, title, message, goalId? } }
+{ type: "connector.status",       data: { connectorId, status, latencyMs } }
+
+// COMANDOS DO CLIENTE → SERVIDOR:
+{ type: "PAUSE_GOAL",  goalId: "..." }
+{ type: "RESUME_GOAL", goalId: "..." }
+{ type: "CANCEL_GOAL", goalId: "...", reason: "..." }
+{ type: "PING" }                        // heartbeat (resposta: PONG)
+
+// RECONEXÃO:
+// Exponential backoff: 1s, 2s, 4s, 8s, 16s, 30s (max)
+// Replay de eventos perdidos via: { type: "REPLAY", since: "<iso-timestamp>" }
+```
+
+## 15. Rate Limits, Retry e Timeout
+
+```typescript
+// Rate limits por plano (por minuto, sliding window)
 const RATE_LIMITS = {
-  FREE:       { requests: 60,   tokens: 10_000  },
-  PRO:        { requests: 600,  tokens: 100_000 },
-  ENTERPRISE: { requests: 6000, tokens: 1_000_000 },
+  FREE:           { requestsPerMin: 60,   tokensPerMin: 10_000  },
+  PRO:            { requestsPerMin: 600,  tokensPerMin: 100_000 },
+  ENTERPRISE:     { requestsPerMin: 6000, tokensPerMin: 1_000_000 },
 } as const;
 
-// Retry Policy padrão
+// Headers de resposta quando rate-limited:
+// Retry-After: 30
+// X-RateLimit-Limit: 60
+// X-RateLimit-Remaining: 0
+// X-RateLimit-Reset: <unix-timestamp>
+
+// Retry policy padrão
 const DEFAULT_RETRY_POLICY: RetryPolicy = {
   maxAttempts:     3,
   initialDelayMs:  500,
-  backoffFactor:   2.0,   // exponential
+  backoffFactor:   2.0,       // exponential
+  jitterMs:        200,       // evita thundering herd
   maxDelayMs:      10_000,
-  retryableErrors: ["CONNECTOR_TIMEOUT", "CONNECTOR_RATE_LIMIT", "CIRCUIT_BREAKER_OPEN"],
+  retryableCodes:  ["CONNECTOR_TIMEOUT", "CONNECTOR_RATE_LIMIT", "CIRCUIT_BREAKER_OPEN"],
 };
 
-// Circuit Breaker padrão
-const DEFAULT_CIRCUIT_BREAKER: CircuitBreakerConfig = {
-  failureThreshold:  5,    // OPEN após 5 falhas consecutivas
-  successThreshold:  2,    // CLOSE após 2 sucessos no estado HALF_OPEN
-  timeoutMs:        30_000, // HALF_OPEN após 30s
-  halfOpenRequests:  1,
+// Circuit Breaker padrão por Connector
+const DEFAULT_CB_CONFIG: CircuitBreakerConfig = {
+  failureThreshold:  5,        // OPEN após 5 falhas consecutivas
+  successThreshold:  2,        // CLOSE após 2 successos no HALF_OPEN
+  timeoutMs:        30_000,    // HALF_OPEN após 30s
 };
 ```
 

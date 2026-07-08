@@ -1,9 +1,9 @@
 # MemoryOS Developer Specification (MDS)
 
 **Versão:** 1.0  
-**Status:** Oficial  
-**Tipo:** Manual Oficial de Engenharia  
-**Posição na Biblioteca:** MV → MPS → MAS → MES → MCF → MCIS → MGIS → **MDS**  
+**Status:** Manual Oficial de Engenharia  
+**Tipo:** Especificação Técnica de Implementação  
+**Posição:** MV → MPS → MAS → MES → MCF → MCIS → MGIS → **MDS**  
 **Alinhamento:** MV 1.0 · MAS 1.0 · MES 1.0 · MCF 1.0 · MCIS 1.0 · MGIS 1.0  
 **Referência Cruzada:** MDS-Engines · MDS-Platform · MDS-Connectors
 
@@ -13,480 +13,583 @@
 
 O MDS é o **Manual Oficial de Engenharia do MemoryOS**.
 
-Ele transforma toda a arquitetura conceitual definida em MV, MPS, MAS, MES, MCF, MCIS e MGIS em **especificações técnicas implementáveis**, servindo como guia definitivo para qualquer equipe de engenharia construir, manter e evoluir o MemoryOS.
+Ele transforma toda a arquitetura conceitual definida em MV, MPS, MAS, MES, MCF, MCIS e MGIS em **especificações técnicas completas e implementáveis**, servindo como guia definitivo para toda equipe de engenharia construir, manter e evoluir o MemoryOS.
 
 O MDS **não altera** nenhuma decisão arquitetural anterior.  
-Ele **implementa** essas decisões.
+Onde houver inconsistência detectada, ela é registrada como **Observação Arquitetural** — nunca como alteração.
+
+> Toda implementação futura do MemoryOS deverá seguir rigorosamente esta especificação.
 
 ---
 
 ## Índice do MDS
 
-- **MDS** (este arquivo) — Arquitetura Física, Lógica, Estrutura, Monorepo, Módulos, Configuração
-- **MDS-Engines** — Implementação dos Motores, Modelagem, Banco de Dados, APIs
-- **MDS-Platform** — Frontend, Voice, Enterprise, Marketplace, Specialists, Testes, DevOps, Segurança
-- **MDS-Connectors** — Implementação dos 20 Connectors oficiais, Templates, Checklists, Roadmap
+| Arquivo | Partes cobertas |
+|---|---|
+| **MDS** (este) | I — Organização da Solução |
+| **MDS-Engines** | II — Motores · III — Modelagem · IV — Banco de Dados · V — Comunicação |
+| **MDS-Platform** | VI — Frontend · VII — Voice · VIII — Enterprise · IX — Specialists · XII — Testes · XIII — DevOps · XIV — Segurança |
+| **MDS-Connectors** | X — Connectors Oficiais · XI — Marketplace · XV — Sprint Zero · Checklists · Declaração Final |
 
 ---
 
-# PARTE I — ARQUITETURA DE IMPLEMENTAÇÃO
+# PARTE I — ORGANIZAÇÃO DA SOLUÇÃO
 
 ---
 
 ## 1.1 Arquitetura Física
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                 ARQUITETURA FÍSICA MEMORYOS                         │
-│                    (Visão de Infraestrutura)                        │
-└─────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                      ARQUITETURA FÍSICA MEMORYOS                             │
+│                         (Visão de Infraestrutura)                            │
+└──────────────────────────────────────────────────────────────────────────────┘
 
-  ┌──────────────────────────────────────────────────────────────────┐
-  │                      CDN / Edge Layer                            │
-  │         (Cloudflare Workers / Vercel Edge / AWS CloudFront)      │
-  └──────────────────────────┬───────────────────────────────────────┘
-                             │
-  ┌──────────────────────────▼───────────────────────────────────────┐
-  │                    API Gateway Layer                             │
-  │         (Kong / AWS API Gateway / custom gRPC gateway)          │
-  │   REST · gRPC · WebSocket · SSE · GraphQL (internal)            │
-  └──────────────┬──────────────────────────────┬────────────────────┘
-                 │                              │
-  ┌──────────────▼──────────┐   ┌──────────────▼──────────────────┐
-  │    Core Services        │   │    Connector Runtime            │
-  │  ┌──────────────────┐   │   │  ┌────────────────────────────┐ │
-  │  │ Intent Engine    │   │   │  │ Connector Manager          │ │
-  │  │ Goal Engine      │   │   │  │ Connector Sandbox          │ │
-  │  │ Memory Engine    │   │   │  │ Connector Registry (MCIS)  │ │
-  │  │ Planner          │   │   │  │ Execution Engine           │ │
-  │  │ Policy Engine    │   │   │  └────────────────────────────┘ │
-  │  │ Context Engine   │   │   └─────────────────────────────────┘
-  │  └──────────────────┘   │
-  └─────────────────────────┘
-                 │
-  ┌──────────────▼──────────────────────────────────────────────────┐
-  │                    Data Layer                                   │
-  │  ┌──────────────┐  ┌──────────────┐  ┌───────────────────────┐ │
-  │  │  PostgreSQL  │  │    Redis     │  │  Vector DB            │ │
-  │  │  (primary)   │  │  (cache/bus) │  │  (pgvector/Pinecone)  │ │
-  │  └──────────────┘  └──────────────┘  └───────────────────────┘ │
-  │  ┌──────────────┐  ┌──────────────┐                            │
-  │  │   S3/R2      │  │  Kafka/SQS   │                            │
-  │  │  (files)     │  │  (events)    │                            │
-  │  └──────────────┘  └──────────────┘                            │
-  └─────────────────────────────────────────────────────────────────┘
+  ┌──────────────────────────────────────────────────────────────────────────┐
+  │                        EDGE / CDN LAYER                                  │
+  │         Cloudflare Workers (assets, auth edge, geo-routing)              │
+  │         Vercel Edge (SSR/ISR web app)                                    │
+  └──────────────────────────────────┬───────────────────────────────────────┘
+                                     │ HTTPS / WSS
+  ┌──────────────────────────────────▼───────────────────────────────────────┐
+  │                       API GATEWAY (Kong / custom)                        │
+  │   REST (v1) · gRPC · WebSocket · SSE · Rate Limit · Auth Middleware     │
+  │   TenantResolver · RequestValidator · AuditLogger                        │
+  └──────────┬────────────────────────────────────────────┬──────────────────┘
+             │ gRPC                                       │ gRPC
+  ┌──────────▼──────────────────┐         ┌──────────────▼──────────────────┐
+  │      CORE SERVICES          │         │     CONNECTOR RUNTIME           │
+  │  ─────────────────────────  │         │  ─────────────────────────────  │
+  │  intent-service             │         │  connector-service              │
+  │  goal-service (MGIS)        │         │  execution-service              │
+  │  memory-service             │         │  sandbox-service                │
+  │  planner-service            │         │  marketplace-service            │
+  │  policy-service             │         │  mcis-registry-service          │
+  │  context-service            │         │                                 │
+  └──────────┬──────────────────┘         └──────────────┬──────────────────┘
+             │                                           │
+  ┌──────────▼────────────────────────────────────────── ▼──────────────────┐
+  │                     INFRASTRUCTURE LAYER                                 │
+  │                                                                          │
+  │  ┌────────────────┐  ┌──────────────┐  ┌────────────────────────────┐  │
+  │  │  PostgreSQL 16 │  │  Redis 7     │  │  pgvector / Pinecone       │  │
+  │  │  (primary DB)  │  │  (cache/bus) │  │  (semantic memory search)  │  │
+  │  └────────────────┘  └──────────────┘  └────────────────────────────┘  │
+  │  ┌────────────────┐  ┌──────────────┐  ┌────────────────────────────┐  │
+  │  │   S3 / R2      │  │  Kafka       │  │  OpenTelemetry Collector    │  │
+  │  │  (files)       │  │  (events)    │  │  (Tempo + Loki + Prometheus)│  │
+  │  └────────────────┘  └──────────────┘  └────────────────────────────┘  │
+  └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-## 1.2 Arquitetura Lógica
+## 1.2 Arquitetura Lógica — Camadas (MAS §3 implementado)
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                    ARQUITETURA LÓGICA                               │
-│              (Camadas conforme MAS §3 — implementadas)              │
-└─────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                     ARQUITETURA LÓGICA — CAMADAS                            │
+└──────────────────────────────────────────────────────────────────────────────┘
 
-  CAMADA 0 — CLIENT
-    Web App (React) · Mobile (React Native) · Desktop (Electron)
-    Voice Interface · API Clients (SDKs)
+  CAMADA 0 — CLIENT LAYER
+  ──────────────────────────────────────────────────────────────────────
+  Web App (React 19 + Vite)
+  Mobile (React Native 0.74 + Expo)
+  Desktop (Electron + React)
+  Voice Interface (Web Speech API / Whisper)
+  Public SDK (@memoryos/sdk-js, @memoryos/sdk-python)
 
-  CAMADA 1 — GATEWAY
-    AuthMiddleware · RateLimiter · RequestValidator
-    SessionManager · TenantResolver
+  CAMADA 1 — GATEWAY LAYER
+  ──────────────────────────────────────────────────────────────────────
+  AuthMiddleware (JWT RS256 + refresh rotation)
+  TenantResolver (Personal | Enterprise multi-tenant)
+  RateLimiter (por plano: Free/Pro/Enterprise)
+  RequestValidator (Zod schemas)
+  AuditLogger (append-only, hash chain)
 
   CAMADA 2 — CORE INTELLIGENCE (MAS §3.1)
-    IntentEngine → GoalEngine (MGIS) → Planner
-    MemoryEngine → ContextEngine → KnowledgeEngine
-    PolicyEngine → PermissionEngine
+  ──────────────────────────────────────────────────────────────────────
+  NLUEngine → IntentEngine → GoalEngine (MGIS) → Planner
+  MemoryEngine (store + vector + lifecycle)
+  ContextEngine (enrich + resolve)
+  KnowledgeEngine (specialists + knowledge packs)
+  PolicyEngine → PermissionEngine
 
   CAMADA 3 — SPECIALIST LAYER (MAS §3.3)
-    TravelSpecialist · FinanceSpecialist · MedicalSpecialist
-    LegalSpecialist · IndustrialSpecialist · BlockchainSpecialist
+  ──────────────────────────────────────────────────────────────────────
+  TravelSpecialist · FinanceSpecialist · MedicalSpecialist
+  LegalSpecialist · IndustrialSpecialist · BlockchainSpecialist
+  NutritionSpecialist · HRSpecialist · GovSpecialist
 
-  CAMADA 4 — CONNECTOR LAYER (MCF)
-    ConnectorRuntime · ConnectorSandbox · ConnectorRegistry
-    ConnectorManager · ExecutionEngine · WorkflowEngine
+  CAMADA 4 — CONNECTOR LAYER (MCF + MCIS)
+  ──────────────────────────────────────────────────────────────────────
+  MCISRegistry (Capability · Entity · Action · Event · Workflow)
+  CapabilityGraph (composição, equivalência, alternativas)
+  ConnectorManager (seleção MCIS + fallback)
+  ConnectorSandbox (isolamento, quota, network allowlist)
+  ExecutionEngine (sequential + parallel + retry + circuit breaker)
+  WorkflowEngine (multi-step + compensation)
 
   CAMADA 5 — INFRASTRUCTURE
-    EventBus (UEB) · Scheduler · NotificationEngine
-    ObservabilityStack · SecretManager · AuditLogger
+  ──────────────────────────────────────────────────────────────────────
+  UniversalEventBus (UEB — Kafka + Redis PubSub)
+  Scheduler (cron + recurrent goals + conditional triggers)
+  NotificationEngine (push + email + SMS + webhook)
+  SecretManager (Vault + rotation)
+  ObservabilityStack (OTel + Prometheus + Grafana)
 ```
 
-## 1.3 Estrutura Oficial do Monorepo
+## 1.3 Estrutura do Monorepo Oficial
 
 ```
-memoryos/
+memoryos/                               # Monorepo raiz
 │
 ├── apps/
-│   ├── web/                        # React web app
-│   ├── mobile/                     # React Native
-│   ├── desktop/                    # Electron wrapper
-│   └── api/                        # Main API server (NestJS)
+│   ├── api/                            # NestJS — API principal
+│   │   ├── src/
+│   │   │   ├── modules/
+│   │   │   │   ├── intent/             # IntentController + IntentModule
+│   │   │   │   ├── goal/               # GoalController + GoalModule
+│   │   │   │   ├── memory/             # MemoryController + MemoryModule
+│   │   │   │   ├── connectors/         # ConnectorController + ConnectorModule
+│   │   │   │   ├── executions/         # ExecutionController + ExecutionModule
+│   │   │   │   ├── auth/               # AuthModule (OAuth, JWT, OIDC)
+│   │   │   │   └── marketplace/        # MarketplaceModule
+│   │   │   ├── gateway/                # WsGateway (WebSocket)
+│   │   │   ├── middleware/             # Auth, Tenant, Rate, Audit
+│   │   │   └── main.ts
+│   │   └── Dockerfile
+│   │
+│   ├── web/                            # React 19 + Vite (web app)
+│   ├── mobile/                         # React Native + Expo
+│   ├── desktop/                        # Electron wrapper do web app
+│   └── voice-service/                  # Node.js — Voice Pipeline server
 │
 ├── packages/
-│   ├── core/                       # Core engine (MAS §3.1)
-│   │   ├── intent/                 # Intent Understanding
-│   │   ├── goal/                   # MGIS Goal Engine
-│   │   ├── memory/                 # Memory Engine
-│   │   ├── planner/                # Planner
-│   │   ├── policy/                 # Policy Engine
-│   │   └── context/                # Context Engine
+│   ├── core/                           # @memoryos/core
+│   │   ├── intent/                     # NLU + Intent Engine
+│   │   ├── goal/                       # MGIS: Goal Engine + Decomposer + Graph
+│   │   ├── memory/                     # Memory Engine + Vector + Lifecycle
+│   │   ├── planner/                    # Planner + Critical Path
+│   │   ├── context/                    # Context Engine + Enricher
+│   │   ├── knowledge/                  # Knowledge Engine + Specialist Bus
+│   │   └── policy/                     # Policy Engine + Permission Engine
 │   │
-│   ├── connectors/                 # Connector Runtime (MCF)
-│   │   ├── runtime/                # Connector execution runtime
-│   │   ├── sdk/                    # Connector SDK
-│   │   ├── registry/               # MCIS Registry
-│   │   └── sandbox/                # Isolation layer
+│   ├── connector-sdk/                  # @memoryos/connector-sdk (MCF)
+│   │   ├── base/                       # BaseConnector
+│   │   ├── manifest/                   # ConnectorManifest + validation
+│   │   ├── lifecycle/                  # ConnectorLifecycle
+│   │   ├── hooks/                      # ConnectorHooks
+│   │   ├── discovery/                  # ConnectorDiscovery
+│   │   └── versioning/                 # Semver + compatibility
 │   │
-│   ├── specialists/                # Specialist packages
+│   ├── mcis/                           # @memoryos/mcis (MCIS Runtime)
+│   │   ├── registries/                 # Capability/Entity/Action/Event/Workflow
+│   │   ├── graph/                      # CapabilityGraph
+│   │   ├── search/                     # ConnectorSearch
+│   │   ├── lookup/                     # ConnectorLookup
+│   │   ├── selection/                  # SelectionEngine
+│   │   └── compatibility/              # VersionNegotiation
+│   │
+│   ├── mgis/                           # @memoryos/mgis (MGIS Runtime)
+│   │   ├── engine/                     # GoalEngine
+│   │   ├── decomposer/                 # GoalDecomposer
+│   │   ├── graph/                      # GoalGraph
+│   │   ├── lifecycle/                  # GoalStateMachine
+│   │   ├── conflict/                   # ConflictResolver
+│   │   ├── priority/                   # PrioritizationEngine
+│   │   ├── prediction/                 # GoalPredictionEngine
+│   │   ├── memory/                     # GoalMemoryManager
+│   │   └── registry/                   # GoalRegistry + GoalOntology
+│   │
+│   ├── specialists/                    # @memoryos/specialists-*
 │   │   ├── travel/
 │   │   ├── finance/
 │   │   ├── medical/
 │   │   ├── legal/
-│   │   └── blockchain/
+│   │   ├── blockchain/
+│   │   ├── industrial/
+│   │   └── nutrition/
 │   │
-│   ├── shared/                     # Shared utilities
-│   │   ├── contracts/              # TypeScript interfaces
-│   │   ├── events/                 # Event definitions (UEB)
-│   │   ├── errors/                 # Error hierarchy
-│   │   ├── validators/             # Zod schemas
-│   │   └── utils/                  # Pure utilities
+│   ├── shared/                         # @memoryos/shared
+│   │   ├── contracts/                  # Todas as interfaces TypeScript
+│   │   ├── events/                     # Definições de eventos do UEB
+│   │   ├── errors/                     # Hierarquia de erros
+│   │   ├── validators/                 # Zod schemas reutilizáveis
+│   │   ├── ids/                        # Geração de IDs determinísticos
+│   │   └── utils/                      # Helpers puros (sem dependências)
 │   │
-│   ├── infra/                      # Infrastructure abstractions
-│   │   ├── database/               # DB clients + migrations
-│   │   ├── cache/                  # Redis abstraction
-│   │   ├── queue/                  # Kafka/SQS abstraction
-│   │   ├── storage/                # S3/R2 abstraction
-│   │   └── secrets/                # Secret Manager abstraction
-│   │
-│   └── marketplace/                # Marketplace runtime
-│       ├── connector-marketplace/
-│       ├── specialist-marketplace/
-│       └── workflow-marketplace/
+│   └── infra/                          # @memoryos/infra
+│       ├── database/                   # TypeORM / Drizzle + migrations
+│       ├── cache/                      # Redis abstraction
+│       ├── queue/                      # Kafka / BullMQ abstraction
+│       ├── storage/                    # S3 / R2 abstraction
+│       ├── secrets/                    # Vault + env abstraction
+│       └── observability/              # OTel setup
 │
-├── connector-catalog/              # Official connectors (MCF + MCIS)
+├── connector-catalog/                  # Connectors oficiais (MCF + MCIS)
 │   ├── gmail/
 │   ├── google-calendar/
+│   ├── google-drive/
+│   ├── outlook/
 │   ├── shopify/
 │   ├── mercado-livre/
 │   ├── bling/
 │   ├── totvs/
 │   ├── sabre/
-│   └── ...
-│
-├── tools/
-│   ├── connector-cli/              # CLI para criar novos connectors
-│   ├── specialist-cli/             # CLI para criar specialists
-│   └── schema-generator/           # Gera types de entity schemas
-│
-├── docs/
-│   └── 00-official-library/        # Biblioteca oficial
+│   ├── galileo/
+│   ├── amadeus/
+│   ├── phantom/
+│   ├── metamask/
+│   ├── layerzero/
+│   ├── chainlink/
+│   ├── openai/
+│   ├── claude/
+│   ├── gemini/
+│   ├── zebra/
+│   └── open-banking/
 │
 ├── infra/
-│   ├── terraform/                  # IaC
-│   ├── k8s/                        # Kubernetes manifests
-│   ├── docker/                     # Dockerfiles
-│   └── scripts/                    # Deploy scripts
+│   ├── terraform/                      # IaC (AWS / GCP / Cloudflare)
+│   ├── k8s/                            # Kubernetes manifests (staging, prod)
+│   │   ├── base/
+│   │   ├── staging/
+│   │   └── production/
+│   ├── docker/                         # Dockerfiles por serviço
+│   └── scripts/                        # Deploy, migrate, seed scripts
 │
-├── package.json                    # Root (pnpm workspaces)
+├── docs/
+│   └── 00-official-library/            # Biblioteca oficial (MV, MPS, MAS...)
+│
+├── tools/
+│   ├── connector-cli/                  # CLI: criar / publicar connector
+│   ├── specialist-cli/                 # CLI: criar / publicar specialist
+│   └── schema-gen/                     # Gera types a partir de schemas DB
+│
+├── package.json                        # Root (pnpm workspaces)
 ├── pnpm-workspace.yaml
-├── turbo.json                      # Turborepo config
-└── tsconfig.base.json              # Base TS config
+├── turbo.json                          # Turborepo pipeline
+├── tsconfig.base.json                  # Base TypeScript config
+└── .env.example                        # Template de variáveis de ambiente
 ```
 
-## 1.4 Convenções de Nomenclatura
+## 1.4 Separação de Domínios
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│               SEPARAÇÃO DE DOMÍNIOS                                  │
+├────────────────────┬─────────────────────────────────────────────────┤
+│ Domínio            │ Responsabilidade                                │
+├────────────────────┼─────────────────────────────────────────────────┤
+│ CORE               │ NLU, Goals, Memory, Planner, Policy             │
+│                    │ Nunca conhece connectors específicos            │
+│                    │ Tecnologia-agnóstico                            │
+├────────────────────┼─────────────────────────────────────────────────┤
+│ PERSONAL           │ Goals pessoais, memória pessoal                 │
+│                    │ 1 user = 1 tenant isolado                       │
+│                    │ Connectors pessoais (Gmail, Calendar...)        │
+├────────────────────┼─────────────────────────────────────────────────┤
+│ ENTERPRISE         │ Multi-tenant, RBAC, aprovações, delegações      │
+│                    │ Knowledge base compartilhada da org             │
+│                    │ Connectors org (TOTVS, ERP, CRM...)             │
+├────────────────────┼─────────────────────────────────────────────────┤
+│ RUNTIME            │ Execution Engine, Sandbox, Circuit Breaker      │
+│                    │ Gerencia execução sem conhecer negócio          │
+├────────────────────┼─────────────────────────────────────────────────┤
+│ CONNECTOR RUNTIME  │ Carrega, executa, monitora Connectors           │
+│                    │ Isolamento via worker_threads / Deno            │
+├────────────────────┼─────────────────────────────────────────────────┤
+│ SPECIALIST RUNTIME │ Carrega Knowledge Packs, responde perguntas     │
+│                    │ Enriquece decomposição de Goals                 │
+├────────────────────┼─────────────────────────────────────────────────┤
+│ MARKETPLACE        │ Catálogo, instalação, billing, reviews          │
+│                    │ Operação independente do Core                   │
+└────────────────────┴─────────────────────────────────────────────────┘
+```
+
+## 1.5 Convenções de Nomenclatura
 
 ```typescript
-// ARQUIVOS
-// kebab-case para todos os arquivos
-// intent-engine.ts, goal-decomposer.ts, connector-registry.ts
+// ─── ARQUIVOS ────────────────────────────────────────────────────
+// kebab-case sempre
+// intent-engine.ts
+// goal-decomposer.ts
+// gmail-connector.ts
+// memory-store.repository.ts
+// goal-created.event.ts
+// create-goal.command.ts
 
-// CLASSES
-// PascalCase
+// ─── CLASSES ─────────────────────────────────────────────────────
 class IntentEngine {}
 class GoalDecomposer {}
 class GmailConnector {}
+class PostgresGoalRepository {}
 
-// INTERFACES — prefixo I ou sufixo descritivo
-interface IGoalEngine {}
-interface ConnectorManifest {}   // sem 'I' quando nome é suficientemente descritivo
+// ─── INTERFACES ───────────────────────────────────────────────────
+// Sem prefixo 'I' — nome semântico é suficiente
+interface GoalEngine {}
+interface ConnectorManifest {}
+interface MemoryRecord {}
 
-// TIPOS
+// ─── TIPOS ────────────────────────────────────────────────────────
 type GoalState = "CREATED" | "PLANNING" | "EXECUTING" | "COMPLETED";
 type ConnectorType = "INBOUND" | "OUTBOUND" | "BIDIRECTIONAL";
+type GoalHorizon = "INSTANT" | "SHORT" | "MEDIUM" | "LONG" | "PERMANENT";
 
-// CONSTANTES
-const MAX_GOAL_DEPTH = 10;
-const DEFAULT_TIMEOUT_MS = 30_000;
-
-// ENUMS
-enum GoalPriority { LOW = 1, NORMAL = 5, HIGH = 8, CRITICAL = 10 }
-
-// EVENTOS (UEB)
-// domínio.recurso.ação — tudo em snake_case
+// ─── EVENTOS (UEB) ────────────────────────────────────────────────
+// domínio.recurso.ação — snake_case
 "goal.created"
+"goal.state_changed"
 "connector.gmail.email_received"
 "memory.fact.stored"
 "execution.step.completed"
+"marketplace.connector.installed"
 
-// MÓDULOS / PACOTES
-// @memoryos/core
-// @memoryos/connector-sdk
-// @memoryos/specialists-travel
+// ─── MÓDULOS / PACOTES ────────────────────────────────────────────
+"@memoryos/core"
+"@memoryos/connector-sdk"
+"@memoryos/mcis"
+"@memoryos/mgis"
+"@memoryos/shared"
+"@memoryos/specialists-travel"
 
-// BANCO DE DADOS — tabelas
-// snake_case, plural
-// goals, goal_steps, connector_registrations, memory_facts
+// ─── BANCO DE DADOS ──────────────────────────────────────────────
+// Tabelas: snake_case, plural
+// goals, goal_steps, memory_records, connector_registrations
+// Colunas: snake_case
+// created_at, tenant_id, ontology_domain
 
-// VARIÁVEIS DE AMBIENTE
-// SCREAMING_SNAKE_CASE com prefixo do serviço
-// MOS_DATABASE_URL, MOS_REDIS_URL, MOS_JWT_SECRET
+// ─── VARIÁVEIS DE AMBIENTE ────────────────────────────────────────
+// Prefixo MOS_ + SCREAMING_SNAKE_CASE
+// MOS_DATABASE_URL
+// MOS_REDIS_URL
+// MOS_JWT_SECRET
+// MOS_VAULT_ADDR
 ```
 
-## 1.5 Versionamento Oficial
+## 1.6 Versionamento Oficial
 
 ```
 SEMVER: MAJOR.MINOR.PATCH
 
-MAJOR — breaking changes na API pública ou contratos de motor
-MINOR — novas features backward compatible
-PATCH — bugfixes, performance, segurança
+MAJOR — Breaking change em contrato público ou motor
+MINOR — Nova feature backward-compatible
+PATCH — Bugfix, performance, segurança
 
-POLÍTICA:
-  - Core Engine: versão independente (@memoryos/core@2.1.0)
-  - Connector SDK: versão independente (@memoryos/connector-sdk@1.4.0)
-  - Connectors oficiais: versão independente (gmail-connector@1.2.0)
-  - API: versão na URL (/v1/, /v2/)
+PACOTES INDEPENDENTES:
+  @memoryos/core             1.x.x
+  @memoryos/connector-sdk    1.x.x  (MCF)
+  @memoryos/mcis             1.x.x
+  @memoryos/mgis             1.x.x
+  @memoryos/shared           1.x.x
+  API REST                   /v1/, /v2/ (na URL)
+  Connectors oficiais        versão própria por connector
 
-DEPRECATION:
-  - Mínimo 2 minor versions de aviso antes de remover
-  - Header: Deprecation + Sunset em todas as respostas de endpoints deprecated
-  - CHANGELOG.md obrigatório em cada release
+DEPRECATION POLICY:
+  Mínimo 2 minor versions de aviso antes de remover
+  Header Deprecation: <date> em todas as respostas deprecated
+  Header Sunset: <date> indicando data de remoção
+  CHANGELOG.md obrigatório em cada release
 
-GIT WORKFLOW:
-  main          → produção (protegida, só merge via PR)
-  develop       → integração contínua
-  feature/*     → features novas
-  fix/*         → bugfixes
-  connector/*   → desenvolvimento de novos connectors
-  release/*     → preparação de release (RC)
+GIT FLOW:
+  main         → produção (protected, merge via PR apenas)
+  develop      → integração contínua
+  feature/*    → novas features
+  fix/*        → bugfixes
+  connector/*  → desenvolvimento de connectors
+  release/*    → preparação de release (RC)
+  hotfix/*     → correção crítica em produção
 ```
 
-## 1.6 Feature Flags
+## 1.7 Feature Flags
 
 ```typescript
-// Sistema de Feature Flags — LaunchDarkly ou Unleash (open source)
+// Sistema: Unleash (self-hosted) ou LaunchDarkly
 
 interface FeatureFlag {
-  key: string;                      // "goal_prediction_v2"
-  enabled: boolean;
-  rolloutPercentage: number;        // 0-100
-  targetUsers?: string[];           // User IDs específicos
-  targetOrgs?: string[];            // Org IDs
-  metadata: Record<string, unknown>;
+  key:                string;       // "goal_prediction_v2"
+  enabled:            boolean;
+  rolloutPercentage:  number;       // 0–100
+  targetUserIds?:     string[];
+  targetOrgIds?:      string[];
+  targetPlans?:       string[];     // ["ENTERPRISE"]
 }
 
-// Uso no código:
-const flags = await featureFlagClient.getAll(userId);
-
-if (flags.isEnabled("goal_prediction_v2")) {
-  return await goalPredictionEngineV2.predict(context);
-} else {
-  return await goalPredictionEngine.predict(context);
-}
-
-// FLAGS OFICIAIS DE LANÇAMENTO:
+// Flags oficiais de lançamento
 const OFFICIAL_FLAGS = {
-  VOICE_HANDS_FREE:           "voice_hands_free_mode",
+  GOAL_PREDICTION:            "goal_prediction_v2",
   GOAL_AUTO_EXECUTE:          "goal_auto_execute",
   CONNECTOR_HOT_PLUG:         "connector_hot_plug",
+  VOICE_CONTINUOUS:           "voice_continuous_mode",
   ENTERPRISE_MULTI_TENANT:    "enterprise_multi_tenant",
-  BLOCKCHAIN_CONNECTORS:      "blockchain_connectors",
-  AI_GOAL_PREDICTION:         "ai_goal_prediction",
+  BLOCKCHAIN_CONNECTORS:      "blockchain_connectors_enabled",
   MARKETPLACE_V2:             "marketplace_v2",
+  SPECIALIST_RUNTIME_V2:      "specialist_runtime_v2",
 } as const;
+
+// Uso
+if (await flags.isEnabled(OFFICIAL_FLAGS.GOAL_PREDICTION, ctx.userId)) {
+  return goalPredictionV2.predict(context);
+}
 ```
 
-## 1.7 Sistema de Plugins e Módulos
+## 1.8 Sistema de Configuração Hierárquica
 
 ```typescript
-// Plugin Interface — para extensões de terceiros
+// Prioridade: defaults < .env < config.yaml < runtime secrets
+
+const MemoryOSConfigSchema = z.object({
+  core: z.object({
+    intentConfidenceThreshold: z.number().min(0).max(1).default(0.70),
+    goalMaxDepth:               z.number().int().positive().default(10),
+    plannerTimeoutMs:           z.number().int().positive().default(30_000),
+    memoryTtlDays:              z.number().int().positive().default(365),
+  }),
+  connectors: z.object({
+    sandboxEnabled:         z.boolean().default(true),
+    maxConcurrent:          z.number().int().positive().default(50),
+    defaultTimeoutMs:       z.number().int().positive().default(15_000),
+    maxMemoryMb:            z.number().int().positive().default(256),
+  }),
+  db: z.object({
+    url:            z.string().url(),
+    poolMin:        z.number().int().default(5),
+    poolMax:        z.number().int().default(20),
+    statementTimeout: z.number().int().default(30_000),
+  }),
+  redis: z.object({
+    url: z.string(),
+    ttlDefault: z.number().int().default(300),
+  }),
+  observability: z.object({
+    otlpEndpoint:  z.string().url().optional(),
+    logLevel:      z.enum(["debug", "info", "warn", "error"]).default("info"),
+    metricsEnabled: z.boolean().default(true),
+  }),
+});
+
+export type MemoryOSConfig = z.infer<typeof MemoryOSConfigSchema>;
+
+export async function loadConfig(): Promise<MemoryOSConfig> {
+  return MemoryOSConfigSchema.parse({
+    ...loadDefaults(),
+    ...loadFromEnv(),
+    ...await loadFromVault(),
+  });
+}
+```
+
+## 1.9 Sistema de Plugins
+
+```typescript
+// Interface base para todo plugin (Connector, Specialist, Workflow, Skill, Policy, Agent)
+
 interface MemoryOSPlugin {
-  name: string;
-  version: string;
-  type: "CONNECTOR" | "SPECIALIST" | "WORKFLOW" | "SKILL" | "POLICY";
+  readonly pluginId:   string;
+  readonly name:       string;
+  readonly version:    string;
+  readonly type:       "CONNECTOR" | "SPECIALIST" | "WORKFLOW" | "SKILL" | "POLICY" | "AGENT";
+  readonly sdkVersion: string;
 
-  // Lifecycle hooks
-  onInstall(context: PluginContext): Promise<void>;
-  onEnable(context: PluginContext): Promise<void>;
-  onDisable(context: PluginContext): Promise<void>;
-  onUninstall(context: PluginContext): Promise<void>;
+  // Lifecycle (MCF §4 para Connectors, análogo para outros tipos)
+  onInstall(ctx: PluginContext):   Promise<void>;
+  onEnable(ctx: PluginContext):    Promise<void>;
+  onDisable(ctx: PluginContext):   Promise<void>;
+  onUninstall(ctx: PluginContext): Promise<void>;
 
-  // Self-description (MCIS/MGIS)
+  // MCIS / MGIS self-description
   describe(): PluginDescriptor;
 
-  // Sandbox permissions declaradas
+  // Sandbox: permissões mínimas declaradas
   requiredPermissions: SandboxPermission[];
 }
 
-// Module Registry
+// Module Registry — DI container interno
 class ModuleRegistry {
-  private modules = new Map<string, MemoryOSModule>();
+  private readonly modules = new Map<string, MemoryOSPlugin>();
 
-  register(module: MemoryOSModule): void {
-    this.validateModule(module);
-    this.modules.set(module.id, Object.freeze(module));
-    this.eventBus.emit("module.registered", { moduleId: module.id });
+  register(plugin: MemoryOSPlugin): void {
+    this.validateSignature(plugin);
+    this.checkCompatibility(plugin);
+    this.modules.set(plugin.pluginId, Object.freeze(plugin));
+    this.eventBus.emit("plugin.registered", { pluginId: plugin.pluginId, type: plugin.type });
   }
 
-  resolve<T>(moduleId: string): T {
-    const module = this.modules.get(moduleId);
-    if (!module) throw new ModuleNotFoundException(moduleId);
-    return module as T;
+  resolve<T extends MemoryOSPlugin>(pluginId: string): T {
+    const plugin = this.modules.get(pluginId);
+    if (!plugin) throw new PluginNotFoundException(pluginId);
+    return plugin as T;
+  }
+
+  listByType(type: MemoryOSPlugin["type"]): MemoryOSPlugin[] {
+    return [...this.modules.values()].filter(p => p.type === type);
   }
 }
 ```
 
-## 1.8 Sistema de Configuração
-
-```typescript
-// Configuração hierárquica: defaults < env < file < runtime
-
-interface MemoryOSConfig {
-  // Core
-  core: {
-    intentConfidenceThreshold: number;   // default: 0.7
-    goalMaxDepth: number;                 // default: 10
-    plannerTimeoutMs: number;             // default: 30_000
-    memoryTtlDays: number;               // default: 365
-  };
-
-  // Connectors
-  connectors: {
-    sandboxEnabled: boolean;             // default: true
-    maxConcurrentExecutions: number;     // default: 50
-    defaultTimeoutMs: number;            // default: 15_000
-    retryPolicy: RetryPolicy;
-  };
-
-  // Performance
-  performance: {
-    cacheTtlSeconds: number;             // default: 300
-    maxRequestSizeBytes: number;         // default: 10_485_760 (10MB)
-    rateLimit: RateLimitConfig;
-  };
-
-  // Features
-  features: FeatureFlagConfig;
-
-  // Observability
-  observability: ObservabilityConfig;
-}
-
-// Carregamento via Zod + dotenv
-const config = await loadConfig({
-  schema: MemoryOSConfigSchema,
-  sources: ["env", ".env.local", "config.yaml"],
-  validate: true,
-  strict: true,
-});
-```
-
-## 1.9 Separação Personal / Enterprise
+## 1.10 Diagrama C4 — Nível 1 (Contexto)
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│              SEPARAÇÃO PERSONAL / ENTERPRISE                        │
-├────────────────────────┬────────────────────────────────────────────┤
-│ PERSONAL               │ ENTERPRISE                                 │
-├────────────────────────┼────────────────────────────────────────────┤
-│ 1 usuário / 1 tenant   │ N usuários / 1 org tenant                  │
-│ Dados isolados por user│ Dados compartilhados na org + isolados user│
-│ Connectors pessoais    │ Connectors org + pessoais                  │
-│ Goals pessoais         │ Goals pessoais + org + delegados           │
-│ Memória pessoal        │ Memória pessoal + org knowledge base       │
-│ Policy: simples        │ Policy: hierárquica + RBAC + aprovações    │
-│ Billing: por usuário   │ Billing: por org + seats                   │
-│ SSO: opcional          │ SSO: obrigatório (SAML/OIDC)               │
-│ Audit: básico          │ Audit: completo + exportável               │
-└────────────────────────┴────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         C4 LEVEL 1 — CONTEXTO                              │
+└─────────────────────────────────────────────────────────────────────────────┘
 
-IMPLEMENTAÇÃO:
-  TenantResolver middleware → detecta context (personal/enterprise)
-  Toda query inclui: WHERE tenant_id = ? AND (user_id = ? OR is_org_shared = true)
-  Connectors: ownership = USER | ORG
-  Memory: visibility = PRIVATE | TEAM | ORG | PUBLIC
+  ┌──────────────┐     linguagem natural      ┌───────────────────────────────┐
+  │   Usuário    │──────────────────────────► │                               │
+  │  (pessoa /   │                            │        MemoryOS               │
+  │   empresa)   │◄────────────────────────── │   (plataforma inteligente     │
+  └──────────────┘   resposta estruturada     │    de segunda memória)        │
+                                              └──────────────┬────────────────┘
+                                                             │
+                    ┌────────────────────────┬───────────────┼───────────────────┐
+                    │                        │               │                   │
+             ┌──────▼──────┐        ┌────────▼──────┐ ┌─────▼─────┐  ┌─────────▼──────┐
+             │  Sistemas   │        │  Sistemas     │ │  Sistemas  │  │   Marketplace  │
+             │  de Email   │        │  de Finanças  │ │ de Viagem  │  │   de Plugins   │
+             │  (Gmail etc)│        │  (Bling, ERP) │ │ (Sabre...) │  │   (Connectors) │
+             └─────────────┘        └───────────────┘ └────────────┘  └────────────────┘
 ```
 
----
-
-# PARTE II — ESTRUTURA DE SERVIÇOS
-
----
-
-## 2.1 Mapa Oficial de Serviços
+## 1.11 Diagrama C4 — Nível 2 (Containers)
 
 ```
-┌──────────────────────────────────────────────────────────────────────┐
-│                    MAPA DE MICROSERVIÇOS                             │
-├──────────────────────┬────────────────────────────────────────────── ┤
-│ Serviço              │ Responsabilidade                              │
-├──────────────────────┼───────────────────────────────────────────────┤
-│ api-gateway          │ Roteamento, auth, rate limit, logging         │
-│ core-service         │ Intent, Goal, Planner, Context                │
-│ memory-service       │ Memory Engine completo                        │
-│ connector-service    │ Connector Runtime, Sandbox, Registry          │
-│ execution-service    │ Execution Engine, Workflow Engine             │
-│ notification-service │ Push, Email, SMS, WebSocket                   │
-│ scheduler-service    │ Cron jobs, Background Goals, Recurrence       │
-│ marketplace-service  │ Catálogo de Connectors/Specialists            │
-│ auth-service         │ OAuth, JWT, OIDC, SAML                        │
-│ audit-service        │ Log de auditoria imutável                     │
-│ voice-service        │ STT, TTS, Voice Pipeline                      │
-│ analytics-service    │ Métricas de uso, insights                     │
-└──────────────────────┴───────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     C4 LEVEL 2 — CONTAINERS                                │
+└─────────────────────────────────────────────────────────────────────────────┘
 
-COMUNICAÇÃO ENTRE SERVIÇOS:
-  Síncrona:  gRPC (inter-service)
-  Assíncrona: Kafka (eventos domain)
-  Real-time: Redis Pub/Sub (notificações internas)
-```
-
-## 2.2 Diagrama C4 — Nível de Componentes
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                core-service (C4 Level 3)                            │
-└─────────────────────────────────────────────────────────────────────┘
-
-  ┌────────────────────────────────────────────────────────────────┐
-  │ IntentController (HTTP/gRPC)                                   │
-  │   POST /v1/intent/process                                      │
-  └──────────────────────┬─────────────────────────────────────────┘
-                         │
-                ┌────────▼────────┐
-                │  IntentEngine   │
-                │  (NLP + LLM)    │
-                └────────┬────────┘
-                         │ Intent
-                ┌────────▼────────┐
-                │   GoalEngine    │ ← MGIS implementation
-                │  (decompose,    │
-                │   prioritize,   │
-                │   conflict)     │
-                └────────┬────────┘
-                         │ GoalPlan
-                ┌────────▼────────┐
-                │    Planner      │
-                │  (builds        │
-                │  ExecutionPlan) │
-                └────────┬────────┘
-                         │ ExecutionPlan (gRPC)
-                         ▼
-                  connector-service
+  Cliente
+  (Web / Mobile / API)
+        │ HTTPS/WSS
+        ▼
+  ┌─────────────────┐
+  │  API Gateway    │ ← Auth · Rate Limit · Tenant · Audit
+  └────────┬────────┘
+           │ gRPC
+  ┌────────▼────────────────────────────────────────────────────────────────┐
+  │                           CORE SERVICES                                 │
+  │  ┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌────────────────┐ │
+  │  │intent-service│ │ goal-service │ │memory-service│ │planner-service │ │
+  │  │              │ │   (MGIS)     │ │              │ │                │ │
+  │  └──────────────┘ └──────────────┘ └──────────────┘ └────────────────┘ │
+  │  ┌──────────────┐ ┌──────────────┐                                      │
+  │  │policy-service│ │context-svc   │                                      │
+  │  └──────────────┘ └──────────────┘                                      │
+  └────────────────────────────────────┬───────────────────────────────────-┘
+                                       │ gRPC
+  ┌────────────────────────────────────▼───────────────────────────────────┐
+  │                       CONNECTOR RUNTIME                                │
+  │  ┌──────────────────┐ ┌────────────────┐ ┌──────────────────────────┐ │
+  │  │connector-service │ │execution-svc   │ │  mcis-registry-service   │ │
+  │  │(manager+sandbox) │ │(engine+workflow│ │  (MCIS Registries+Graph) │ │
+  │  └──────────────────┘ └────────────────┘ └──────────────────────────┘ │
+  └────────────────────────────────────────────────────────────────────────┘
+           │ Kafka + Redis
+  ┌────────▼────────────────────────────────────────────────────────────────┐
+  │                      INFRASTRUCTURE                                     │
+  │  PostgreSQL  ·  Redis  ·  pgvector  ·  Kafka  ·  S3/R2  ·  OTel       │
+  └────────────────────────────────────────────────────────────────────────-┘
 ```
 
 ---
 
 **Documento Oficial:** MDS — MemoryOS Developer Specification  
-**Versão:** 1.0 · **Status:** Aprovado  
-**Parte:** 1 de 4 — Arquitetura, Estrutura, Módulos, Configuração, Serviços
+**Versão:** 1.0 · **Status:** Manual Oficial de Engenharia  
+**Parte:** 1 de 4 — Organização da Solução
