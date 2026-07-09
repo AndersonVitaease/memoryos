@@ -58,4 +58,5 @@ Estes documentos não devem ser modificados de forma leviana.
 | [MDS v1.2 — Capability Negotiation Engine Completo](./MDS-Revision-1.2.md) | Engenharia | Aprovado |
 | [MDS v1.3 — Capability Intelligence Layer](./MDS-Revision-1.3.md) | Engenharia | Aprovado |
 | [MDS v1.4 — Learning Engine — Arquitetura Definitiva](./MDS-Revision-1.4.md) | Engenharia | Aprovado |
+| [MDS v1.5 — Knowledge Architecture — Arquitetura Definitiva](./MDS-Revision-1.5.md) | Engenharia | Aprovado |
 | [Architecture Auditor Specialist](./Architecture-Auditor-Specialist.md) | Especialista | Aprovado |
