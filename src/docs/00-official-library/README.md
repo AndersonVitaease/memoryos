@@ -54,4 +54,5 @@ Estes documentos não devem ser modificados de forma leviana.
 | [MDS-Engines — Motores, Modelagem, DB e APIs](./MDS-Engines.md) | Engenharia | Aprovado |
 | [MDS-Platform — Frontend, Voice, Enterprise, DevOps](./MDS-Platform.md) | Engenharia | Aprovado |
 | [MDS-Connectors — Connectors Oficiais e Roadmap](./MDS-Connectors.md) | Engenharia | Aprovado |
+| [MDS v1.1 — Revisão Arquitetural Oficial](./MDS-Revision-1.1.md) | Engenharia | Aprovado |
 | [Architecture Auditor Specialist](./Architecture-Auditor-Specialist.md) | Especialista | Aprovado |
