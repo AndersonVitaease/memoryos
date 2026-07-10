@@ -38,6 +38,7 @@ import MeomSystem from '@/pages/MeomSystem';
 import MdokSystem from '@/pages/MdokSystem';
 import MipSystem from '@/pages/MipSystem';
 import MeemSystem from '@/pages/MeemSystem';
+import Sprint1WME from '@/pages/Sprint1WME';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -93,6 +94,7 @@ const AuthenticatedApp = () => {
           <Route path="/mdok" element={<MdokSystem />} />
           <Route path="/mip" element={<MipSystem />} />
           <Route path="/meem" element={<MeemSystem />} />
+          <Route path="/sprint1-wme" element={<Sprint1WME />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
