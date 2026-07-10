@@ -60,6 +60,7 @@ Estes documentos não devem ser modificados de forma leviana.
 | [MDS v1.4 — Learning Engine — Arquitetura Definitiva](./MDS-Revision-1.4.md) | Engenharia | Aprovado |
 | [MDS v1.5 — Knowledge Architecture — Arquitetura Definitiva](./MDS-Revision-1.5.md) | Engenharia | Aprovado |
 | [MDS v1.6 — Memory Architecture — Arquitetura Definitiva](./MDS-Revision-1.6.md) | Engenharia | Aprovado |
+| [MGFS — MemoryOS Governance & Foundation Specification](./MGFS-MemoryOS-Governance-Foundation-Specification.md) | Governança | Aprovado |
 | [MDPS — MemoryOS Developer Platform Specification](./MDPS-MemoryOS-Developer-Platform-Specification.md) | Plataforma de Desenvolvimento | Aprovado |
 | [MIES — MemoryOS Intelligence Evolution Specification](./MIES-MemoryOS-Intelligence-Evolution-Specification.md) | Evolução Cognitiva | Aprovado |
 | [MDIS — MemoryOS Decision Intelligence Specification](./MDIS-MemoryOS-Decision-Intelligence-Specification.md) | Inteligência Decisória | Aprovado |
