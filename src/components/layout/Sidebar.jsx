@@ -32,6 +32,7 @@ const navItems = [
   { label: "Journeys",       icon: Route,  path: "/journeys" },
   { label: "Goals",          icon: Target,    path: "/goals" },
   { label: "Planner",        icon: GitBranch, path: "/planner" },
+  { label: "PIE",            icon: Brain,     path: "/planning-intelligence" },
 ];
 
 export default function Sidebar({ onNavigate }) {
