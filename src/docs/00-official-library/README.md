@@ -67,4 +67,5 @@ Estes documentos não devem ser modificados de forma leviana.
 | [MCS — MemoryOS Core Specification](./MCS-MemoryOS-Core-Specification.md) | Core | Aprovado |
 | [MRS — MemoryOS Runtime Specification](./MRS-MemoryOS-Runtime-Specification.md) | Runtime | Aprovado |
 | [MDS — Architectural Principles Expansion](./MDS-Architectural-Principles.md) | Princípios Arquiteturais | Aprovado |
+| [MRI — MemoryOS Reference Implementation](./MRI-MemoryOS-Reference-Implementation.md) | Implementação de Referência | Aprovado |
 | [Architecture Auditor Specialist](./Architecture-Auditor-Specialist.md) | Especialista | Aprovado |
