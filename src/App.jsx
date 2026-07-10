@@ -26,6 +26,7 @@ import MriValidation from '@/pages/MriValidation';
 import MqccsValidation from '@/pages/MqccsValidation';
 import MpegsGovernance from '@/pages/MpegsGovernance';
 import Foundation from '@/pages/Foundation';
+import DeveloperHandbook from '@/pages/DeveloperHandbook';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -69,6 +70,7 @@ const AuthenticatedApp = () => {
           <Route path="/mqccs" element={<MqccsValidation />} />
           <Route path="/mpegs" element={<MpegsGovernance />} />
           <Route path="/foundation" element={<Foundation />} />
+          <Route path="/developer-handbook" element={<DeveloperHandbook />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
