@@ -74,3 +74,4 @@ Estes documentos não devem ser modificados de forma leviana.
 | [Architecture Auditor Specialist](./Architecture-Auditor-Specialist.md) | Especialista | Aprovado |
 | [MERS — MemoryOS Engineering Review System](./MERS-MemoryOS-Engineering-Review-System.md) | Quality Gate Oficial | **Aprovado** |
 | [MADS — MemoryOS Architecture Drift & Sustainability](./MADS-MemoryOS-Architecture-Drift-Sustainability.md) | Drift & Sustentabilidade | **Aprovado** |
+| [MEOM — MemoryOS Engineering Operations Manual](./MEOM-MemoryOS-Engineering-Operations-Manual.md) | Manual de Operações | **Aprovado** |

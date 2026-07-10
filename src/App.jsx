@@ -34,6 +34,7 @@ import Sprint1Validation from '@/pages/Sprint1Validation';
 import Sprint1Review from '@/pages/Sprint1Review';
 import MersSystem from '@/pages/MersSystem';
 import MadsSystem from '@/pages/MadsSystem';
+import MeomSystem from '@/pages/MeomSystem';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -85,6 +86,7 @@ const AuthenticatedApp = () => {
           <Route path="/sprint1-review" element={<Sprint1Review />} />
           <Route path="/mers" element={<MersSystem />} />
           <Route path="/mads" element={<MadsSystem />} />
+          <Route path="/meom" element={<MeomSystem />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
