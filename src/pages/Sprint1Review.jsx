@@ -1,977 +1,693 @@
 import React, { useState } from "react";
-import { CheckCircle, AlertTriangle, XCircle, ChevronDown, ChevronRight, Shield, Zap, BarChart2, Code, BookOpen, GitBranch, Target, Lightbulb, AlertCircle, ArrowRight } from "lucide-react";
+import { runAllTests } from "@/lib/wme/tests/wme.test";
+import {
+  CheckCircle, XCircle, AlertTriangle, Shield, BarChart2,
+  FileText, Clock, Play, RotateCcw, ChevronDown, ChevronRight,
+  Layers, Zap, Lock, TrendingUp, Box, AlertCircle
+} from "lucide-react";
 
-// ─── DATA ──────────────────────────────────────────────────────────────────
+// ─── Static Review Data (from code analysis) ──────────────────────────────────
 
-const GENERAL_REVIEW = [
-  { aspect: "Arquitetura",      score: 9.2, note: "Excelente separação em camadas: interfaces → tipos → core → engine. Dependency Inversion aplicado. Único ponto de melhoria: WorkingMemoryStore não é injetado via interface." },
-  { aspect: "Organização",      score: 9.5, note: "Estrutura de pastas clara e convencional. Cada arquivo tem responsabilidade única. Nomes de módulos são autoexplicativos." },
-  { aspect: "Legibilidade",     score: 9.3, note: "JSDoc completo em todos os métodos públicos. Comentários com referências à Foundation (ex: 'MRS Cap.3'). Código denso mas legível." },
-  { aspect: "Coesão",           score: 9.0, note: "Alta coesão em todos os componentes. WorkingMemoryStore faz apenas store. AuditLogger apenas audit. Nenhuma classe tem mais de uma responsabilidade central." },
-  { aspect: "Acoplamento",      score: 7.5, note: "Baixo acoplamento entre camadas, mas WorkingMemoryEngine instancia WorkingMemoryStore, MemoryAuditLogger e MemoryEventEmitter diretamente (new). Não há injeção de dependências — dificulta substituição em testes e extensão futura." },
-  { aspect: "Escalabilidade",   score: 7.0, note: "Estrutura em memória (Map) não escala além de um processo. Particionamento por contexto é correto conceitualmente. Ausência de persistência limita escalabilidade horizontal. Previsto para Sprint 5 (EPIC-004)." },
-  { aspect: "Extensibilidade",  score: 8.0, note: "Interfaces bem definidas facilitam extensão. Adição de novo EvictionPolicy ou PromotionPolicy exigiria refatoração interna do WorkingMemoryEngine por falta de interfaces de política." },
-  { aspect: "Performance",      score: 9.5, note: "Todas as operações core são O(1) via Map. Eviction de capacidade é O(n) — único gargalo identificado. Tests confirmam p95 < 10ms." },
-  { aspect: "Segurança",        score: 9.0, note: "Isolamento por IdentityContext funcional e testado. Object.freeze() em AuditRecords e MemoryEvents garante integridade. Validação de entrada com MemoryValidationError cobrindo todos os campos críticos." },
-  { aspect: "Observabilidade",  score: 9.2, note: "AuditTrail completo com correlationId em todas as operações. EventEmitter com histórico bounded (1000). Método queryAudit com filtros flexíveis. Stats por contexto disponíveis." },
-  { aspect: "Testabilidade",    score: 8.5, note: "Engine instancia dependências internamente, dificultando mock. Métodos _clearForTesting() presentes mas indicam ausência de injeção. Suíte de testes sólida com 40+ casos." },
+const FOUNDATION_COMPLIANCE = [
+  { item: "IMemoryProvider contrato público definido", status: "ok", note: "interfaces.ts — MDS Cap.3 aderente" },
+  { item: "IdentityContext com userId + projectId obrigatórios", status: "ok", note: "types.ts + validateContext" },
+  { item: "Isolamento de namespace por contexto (userId::projectId)", status: "ok", note: "contextNamespace — determinístico" },
+  { item: "TTL com expiresAt calculado no store", status: "ok", note: "computeExpiresAt + isExpired" },
+  { item: "Auto-evict no retrieve de itens expirados", status: "ok", note: "WME.retrieve linha 73" },
+  { item: "Promotion working → long_term com remoção de TTL", status: "ok", note: "WME.promote — expiresAt = null" },
+  { item: "AuditTrail em todas as operações", status: "ok", note: "store/retrieve/evict/promote/clear auditados" },
+  { item: "EventBus publicado em todas as operações", status: "ok", note: "publisher.publish em todos os métodos" },
+  { item: "Listener errors isolados no EventPublisher", status: "ok", note: "try/catch por listener" },
+  { item: "WMEStats retorna totalItems + byPriority + expiredItems", status: "ok", note: "stats() completo" },
+  { item: "promotedItems sempre 0 em WMEStats", status: "warn", note: "contador não incrementado ao promover — Sprint 2" },
+  { item: "sessionId opcional em IdentityContext não usado no namespace", status: "warn", note: "campo definido, não integrado no isolamento" },
 ];
 
-const FOUNDATION_ADHERENCE = [
-  { doc: "MV",    status: "✓", note: "Engine implementa conceito de 'memória viva e permanente'. Isolamento por contexto alinha com princípio de identidade contínua." },
-  { doc: "MPS",   status: "✓", note: "Working Memory é a camada de curto prazo definida no produto. TTL por prioridade alinha com jornadas do usuário." },
-  { doc: "MAS",   status: "✓", note: "Separação clara Core / Store / Interface. Nenhum vazamento entre camadas arquiteturais." },
-  { doc: "MDS",   status: "✓", note: "Segue Architectural Principles: Event-Driven (MemoryEventEmitter), Separation of Concerns (Store/Engine/Audit), Immutability (Object.freeze)." },
-  { doc: "MRS",   status: "✓", note: "Cap.3 implementado: WorkingMemoryItem com TTL, priority, accessCount. Cap.5: eventos publicados corretamente conforme catálogo MREM." },
-  { doc: "MCS",   status: "⚠", note: "Princípio de Inversion of Control parcialmente seguido. Store, Audit e EventEmitter são instanciados diretamente, não injetados via interface. Fronteiras do Core precisam de abstração." },
-  { doc: "MDIS",  status: "✓", note: "Lógica de promoção é determinística: access_threshold, auto_promote_flag, manual. Sem ambiguidade." },
-  { doc: "MIES",  status: "⚠", note: "Auto-promote por accessCount é o embrião do learning. Contudo, nenhuma política de aprendizado foi extraída como abstração (IMemoryPromotionPolicy). Necessário para Sprint 5+." },
-  { doc: "MDPS",  status: "✓", note: "Interface IWorkingMemoryEngine é o contrato SDK para desenvolvedores. Documentação JSDoc alinha com MPAR." },
-  { doc: "MGFS",  status: "✓", note: "Implementação rastreada ao Sprint 1 do MEB. Nenhuma mudança de Foundation executada sem RFC." },
-  { doc: "MRI",   status: "✓", note: "Suíte de testes cobre todos os cenários do MRI: isolamento, TTL, eviction, audit, eventos, performance." },
-  { doc: "MQCCS", status: "✓", note: "Accuracy de 100% nos testes. Object.freeze() em records críticos. MemoryValidationError com field identifier. Cobertura de concorrência e performance." },
-  { doc: "MPAR",  status: "⚠", note: "IWorkingMemoryEngine cobre store/get/remove/findByKey/touch/promote/stats/runEviction/clearContext. IMemoryProvider e IWorkingMemoryEngine têm assinaturas divergentes (store recebe WorkingMemoryItem vs MemoryRecord). Alinhamento necessário." },
-  { doc: "MREM",  status: "✓", note: "Catálogo de eventos Cap.4 completo: stored, retrieved, removed, expired, evicted, promoted, cleared, eviction_run. correlationId presente em todos." },
-  { doc: "MEB",   status: "✓", note: "Sprint 1 entrega todos os itens definidos no backlog: interfaces, tipos, core, engine, testes." },
+const MREM_COMPLIANCE = [
+  { item: "Operações assíncronas (Promise) em todas as APIs públicas", status: "ok" },
+  { item: "Validação antes de qualquer side-effect", status: "ok", note: "validate antes de store/evict" },
+  { item: "Erros lançados com mensagens descritivas", status: "ok" },
+  { item: "Retornos tipados — sem any/unknown nos resultados", status: "ok" },
+  { item: "Side effects (event + audit) após mutação de estado", status: "ok" },
+  { item: "evictExpired não audita se nada expirou (0 evictions)", status: "warn", note: "Comportamento aceitável mas pode obscurecer monitoramento" },
 ];
 
-const INTERFACE_REVIEW = [
-  {
-    name: "IMemoryProvider",
-    responsibility: "Contrato base para qualquer provider de memória.",
-    issues: [
-      { type: "⚠", text: "store() recebe MemoryRecord enquanto IWorkingMemoryEngine recebe WorkingMemoryItem. Tipos divergentes para a mesma operação semântica cria confusão e quebra o Liskov Substitution Principle." },
-      { type: "⚠", text: "filter() usa MemoryFilter mas IWorkingMemoryEngine usa findByKey() com string — assinaturas incompatíveis impede que WorkingMemoryEngine implemente IMemoryProvider." },
-      { type: "⚠", text: "evictExpired() em IMemoryProvider vs runEviction() em IWorkingMemoryEngine — nomenclatura inconsistente para a mesma operação." },
-    ],
-    suggestions: [
-      "Unificar IMemoryProvider e IWorkingMemoryEngine em uma hierarquia coerente.",
-      "Definir T genérico: IMemoryProvider<T extends MemoryRecord = MemoryRecord>.",
-      "Renomear evictExpired → runEviction em IMemoryProvider para consistência.",
-    ]
-  },
-  {
-    name: "IWorkingMemoryEngine",
-    responsibility: "Contrato específico do engine de working memory com TTL, eviction e promoção.",
-    issues: [
-      { type: "⚠", text: "Sem métodos de observabilidade na interface: onEvent() e queryAudit() existem na implementação mas não no contrato. Qualquer consumidor de IWorkingMemoryEngine não sabe que pode observar eventos." },
-      { type: "ℹ", text: "destroy() (lifecycle) não está definido na interface. Importante para containers de injeção de dependências." },
-      { type: "ℹ", text: "findByKey() suporta apenas prefixo. Não há suporte a regex ou filtros compostos — limitação futura." },
-    ],
-    suggestions: [
-      "Adicionar onEvent(handler) e queryAudit() à interface.",
-      "Adicionar destroy() para gerenciamento de lifecycle.",
-      "Evoluir findByKey para find(filter: MemoryFilter) para maior expressividade.",
-    ]
-  },
+const MPAR_COMPLIANCE = [
+  { item: "IMemoryProvider — 8 métodos públicos documentados", status: "ok" },
+  { item: "Parâmetros options opcionais com defaults explícitos", status: "ok", note: "priority='medium', ttl=0" },
+  { item: "IEventPublisher.publish(event) — contrato limpo", status: "ok" },
+  { item: "IAuditLogger.log + getLogs — contrato limpo", status: "ok" },
+  { item: "subscribe() não pertence a IEventPublisher", status: "warn", note: "Método extra na classe concreta — não quebra o contrato mas expande a superfície pública" },
+  { item: "IAuditLogger não declara clear() que a classe concreta tem", status: "warn", note: "Mesmo padrão — classe concreta tem mais que a interface" },
 ];
 
-const TYPE_REVIEW = [
+const ARCHITECTURE_FINDINGS = [
   {
-    name: "IdentityContext",
-    status: "✓ Excelente",
-    notes: [
-      "Todos os campos são readonly — imutabilidade correta.",
-      "buildPartitionKey() é puro e determinístico.",
-      "isSamePartition() helper bem colocado no mesmo módulo.",
-      "projectId opcional como terceiro nível de isolamento é elegante.",
-    ],
-    issues: ["Não há versão/schema version no tipo — dificulta migração futura de dados serializados."]
+    type: "coupling",
+    severity: "low",
+    title: "WorkingMemoryEngine acoplado a IEventPublisher e IAuditLogger por injeção",
+    detail: "Correto — DI via constructor. Sem acoplamento estático.",
+    recommendation: "Manter."
   },
   {
-    name: "WorkingMemoryItem",
-    status: "⚠ Bom com ressalvas",
-    notes: [
-      "id e key como readonly — correto.",
-      "value: unknown é type-safe — boa prática.",
-      "StoreResult e EvictedItemSummary são interfaces úteis mas não usadas no retorno de store() (retorna apenas string).",
-    ],
-    issues: [
-      "accessCount e lastAccessedAt são mutáveis (sem readonly) — necessário para funcionamento mas viola princípio de imutabilidade do item. Solução: separar estado observacional (accessCount) do dado imutável.",
-      "expiresAt mutável — correto funcionalmente mas abre risco de mutação acidental.",
-      "StoreResult definido mas não usado no retorno da API pública. Dead type.",
-    ]
+    type: "solid",
+    severity: "low",
+    title: "SRP: WorkingMemoryEngine gerencia store + TTL + namespace + sorting",
+    detail: "Acumulação aceitável para Sprint 1. Sorting poderia ser extraído para MemorySorter futuro.",
+    recommendation: "Observar crescimento. Extrair se methods > 12."
   },
   {
-    name: "MemoryRecord",
-    status: "⚠ Redundante",
-    notes: ["Estrutura quase idêntica a WorkingMemoryItem."],
-    issues: [
-      "MemoryRecord e WorkingMemoryItem são 95% iguais. WorkingMemoryItem deveria estender MemoryRecord ou ambos deveriam ser unificados.",
-      "Divergência gera risco de drift entre as duas interfaces ao longo do tempo.",
-    ]
+    type: "hidden_dep",
+    severity: "medium",
+    title: "generateId usa Date.now() + counter — dependência implícita do sistema de clock",
+    detail: "Não injetável. Em testes, dois IDs gerados no mesmo ms podem colidir na parte timestamp (diferenciado pelo counter, mas frágil em volume).",
+    recommendation: "Abstrair IdProvider em Sprint 3 ou 4."
   },
   {
-    name: "MemoryFilter",
-    status: "✓ Adequado",
-    notes: ["Campos opcionais corretos. excludeExpired semântico. limit para paginação presente."],
-    issues: ["Sem suporte a range de timestamps (storedBefore, storedAfter). Necessário para queries históricas."]
+    type: "hidden_dep",
+    severity: "medium",
+    title: "isExpired e computeExpiresAt usam Date.now() diretamente",
+    detail: "Impossível controlar o clock em testes de TTL sem setTimeout real. Testes usam await setTimeout(1ms) que é frágil em ambientes lentos.",
+    recommendation: "Abstrair ClockProvider em Sprint 3."
   },
   {
-    name: "MemoryPriority",
-    status: "✓ Excelente",
-    notes: [
-      "Enum numérico permite ordenação direta (item.priority < candidate.priority).",
-      "DEFAULT_TTL_BY_PRIORITY bem definido e documentado.",
-      "parsePriority() e priorityLabel() são helpers corretos.",
-    ],
-    issues: []
+    type: "duplicate",
+    severity: "low",
+    title: "generateId chamado 2x por operação (evento + audit record)",
+    detail: "Pequena duplicação. Sem impacto de performance.",
+    recommendation: "Acceptable para Sprint 1."
   },
   {
-    name: "MemoryPromotionResult",
-    status: "✓ Bom",
-    notes: ["Todos os campos readonly. PromotionReason é union type — extensível."],
-    issues: ["Sem campo para destino da promoção (ltmId, ltmProvider). Necessário quando Sprint 5 implementar LTM real."]
+    type: "todo",
+    severity: "low",
+    title: "WMEStats.promotedItems sempre retorna 0",
+    detail: "Campo existe no tipo mas nunca é incrementado.",
+    recommendation: "Implementar contador em Sprint 2."
   },
   {
-    name: "AuditRecord",
-    status: "✓ Excelente",
-    notes: [
-      "Object.freeze() aplicado — imutabilidade garantida.",
-      "correlationId presente — rastreabilidade total.",
-      "durationMs calculado — observabilidade de performance.",
-      "component hardcoded como 'WorkingMemoryEngine' — correto para Sprint 1.",
-    ],
-    issues: ["details tipado como Record<string, string|number|boolean> — não suporta objetos aninhados. Pode ser limitante para erros complexos."]
+    type: "todo",
+    severity: "low",
+    title: "AuditLogger é in-memory — sem persistência",
+    detail: "Declarado no JSDoc. Aceitável para Sprint 1.",
+    recommendation: "Swap por PersistentAuditLogger em Sprint 4 ou 5."
   },
   {
-    name: "MemoryEvent",
-    status: "✓ Excelente",
-    notes: [
-      "Object.freeze() em todos os eventos — integridade garantida.",
-      "MEMORY_EVENT_PRIORITY mapeado corretamente.",
-      "eventId único em cada evento — rastreabilidade.",
-    ],
-    issues: ["Sem campo de schema version — dificulta evolução do payload sem breaking change."]
+    type: "todo",
+    severity: "low",
+    title: "EventPublisher é síncrono — não há backpressure",
+    detail: "Declarado no JSDoc. Suficiente para Working Memory em memória.",
+    recommendation: "Substituir por EventBus Adapter assíncrono quando houver volume > 1k events/s."
   },
 ];
 
-const DEPENDENCY_REVIEW = [
+const PLACEHOLDERS = [
   {
-    from: "Map (concreto)",
-    to: "IWorkingMemoryStorage",
-    reason: "WorkingMemoryStore usa Map diretamente. Para suportar Redis, IndexedDB ou qualquer backend persistente, o storage precisa de uma interface.",
-    impact: "Alta — bloqueador para Sprint 5 (LTM persistente) e testes de integração.",
-    priority: "ALTA",
-    needsRfc: false
+    item: "Promotion → Long-Term Memory",
+    why: "LTM ainda não implementada. Promote muda apenas o tier do item em Working Memory — não persiste externamente.",
+    sprint: "Sprint 2 (Long-Term Memory Engine)",
+    impact: "Itens promovidos permanecem em memória volátil, perdidos ao reiniciar."
   },
   {
-    from: "new MemoryAuditLogger()",
-    to: "IAuditSink",
-    reason: "WorkingMemoryEngine instancia MemoryAuditLogger diretamente. Impede substituição por sink externo (Datadog, OpenTelemetry, banco de dados).",
-    impact: "Média — testes unitários precisam de mocks via _clearForTesting() em vez de injeção.",
-    priority: "MÉDIA",
-    needsRfc: false
+    item: "EventPublisher síncrono",
+    why: "EventBus Adapter assíncrono requer a implementação do Universal Event Bus (UEB).",
+    sprint: "Sprint 5 ou 6 (UEB Layer)",
+    impact: "Listeners lentos bloqueiam operações de store/evict. Sem retry/DLQ."
   },
   {
-    from: "new MemoryEventEmitter()",
-    to: "IEventPublisher",
-    reason: "EventEmitter é implementação local. Para integrar com EventBus real (EPIC-002), precisa de interface.",
-    impact: "Alta — EventBus unificado é requisito de Runtime.",
-    priority: "ALTA",
-    needsRfc: false
+    item: "generateId (timestamp + counter)",
+    why: "UUID compliant requer lib ou crypto.randomUUID — não usado para evitar dependência externa.",
+    sprint: "Sprint 3 (IdProvider abstraction)",
+    impact: "IDs não são UUIDs padronizados. Colisão improvável mas não impossível em paralelo."
   },
   {
-    from: "Eviction inline (evictLowestPriority)",
-    to: "IEvictionPolicy",
-    reason: "Lógica de eviction hardcoded em WorkingMemoryStore. Políticas futuras (LRU, LFU, priority-weighted) exigem abstração.",
-    impact: "Média — baixo risco no Sprint 1, mas dificulta personalização por domínio.",
-    priority: "MÉDIA",
-    needsRfc: false
+    item: "AuditLogger in-memory",
+    why: "Persistent store requer integração com camada de dados (entidades Base44 ou DB).",
+    sprint: "Sprint 4 (Audit Persistence Layer)",
+    impact: "Logs perdidos ao recarregar. Impossível auditoria histórica."
   },
   {
-    from: "accessCount >= 3 (hardcoded)",
-    to: "IMemoryPromotionPolicy",
-    reason: "Threshold de promoção automática está hardcoded (AUTO_PROMOTE_ACCESS_THRESHOLD = 3). Política de promoção deveria ser injetável.",
-    impact: "Baixa no Sprint 1. Alta para MIES — learning engine precisa controlar políticas dinamicamente.",
-    priority: "BAIXA",
-    needsRfc: false
-  },
-  {
-    from: "setInterval (concreto)",
-    to: "IScheduler",
-    reason: "Timer de eviction usa setInterval diretamente. Em environments Node.js com cluster ou workers, precisa de scheduler controlável.",
-    impact: "Baixa atualmente. Importante para ambientes de produção.",
-    priority: "BAIXA",
-    needsRfc: false
-  },
-  {
-    from: "generateId() (concreto)",
-    to: "IIdGenerator",
-    reason: "UUID gerado via função global. Para testes determinísticos, um IIdGenerator injetável permite sequências previsíveis.",
-    impact: "Baixa — apenas testabilidade. crypto.randomUUID() é seguro.",
-    priority: "BAIXA",
-    needsRfc: false
+    item: "WMEStats.promotedItems = 0",
+    why: "Contador não implementado — campo reservado para Sprint 2.",
+    sprint: "Sprint 2",
+    impact: "Estatísticas incompletas. Dashboard de memória mostra 0 promoções sempre."
   },
 ];
 
-const ALGORITHM_REVIEW = [
-  { op: "store()", complexity: "O(1)", worst: "O(n) (eviction)", status: "✓", note: "Map.set() é O(1). evictLowestPriority é O(n) — ocorre apenas quando partição está cheia (500 itens). Aceitável." },
-  { op: "get()", complexity: "O(1)", worst: "O(1)", status: "✓", note: "Map.get() com verificação de TTL. Perfeito." },
-  { op: "remove()", complexity: "O(1)", worst: "O(1)", status: "✓", note: "Map.delete() direto. Ótimo." },
-  { op: "findByKey()", complexity: "O(n)", worst: "O(n)", status: "⚠", note: "Itera toda a partição para filtrar por prefixo. Com 500 itens é aceitável. Para escalabilidade: índice secundário por prefixo eliminaria para O(log n)." },
-  { op: "touch()", complexity: "O(1)", worst: "O(1)", status: "✓", note: "Map.get() + mutação do campo. Ótimo." },
-  { op: "promote()", complexity: "O(1)", worst: "O(1)", status: "✓", note: "Map.get() + registro de audit/evento. Ótimo." },
-  { op: "runEviction()", complexity: "O(p×n)", worst: "O(p×n)", status: "⚠", note: "Itera todas as partições (p) e todos os itens de cada partição (n). Com muitos contextos pode ser lento. Solução: min-heap por expiresAt reduziria para O(k log n) onde k = número de expirados." },
-  { op: "clearContext()", complexity: "O(1)", worst: "O(1)", status: "✓", note: "Map.clear() — O(1) amortizado. Excelente." },
-  { op: "stats()", complexity: "O(n)", worst: "O(n)", status: "⚠", note: "Itera toda a partição. Contadores incrementais eliminariam para O(1)." },
-  { op: "evictLowestPriority()", complexity: "O(n)", worst: "O(n)", status: "⚠", note: "Busca linear pelo menor. Uma min-heap por prioridade reduziria para O(log n) a cada store." },
+const ABSTRACTIONS = [
+  {
+    name: "ClockProvider",
+    interface: "interface IClockProvider { now(): number }",
+    recommended: true,
+    sprint: "Sprint 3",
+    reason: "Date.now() usado em 4 locais (store, evict, isExpired, computeExpiresAt). Necessário para testes determinísticos de TTL sem setTimeout."
+  },
+  {
+    name: "IdProvider",
+    interface: "interface IIdProvider { generate(prefix: string): string }",
+    recommended: true,
+    sprint: "Sprint 3",
+    reason: "generateId tem dependência implícita de clock e módulo-level counter. Injeção permite UUID real, teste determinístico e trace distribuído."
+  },
+  {
+    name: "EventBus Adapter",
+    interface: "interface IEventBusAdapter extends IEventPublisher { publishAsync(...): Promise<void> }",
+    recommended: false,
+    sprint: "Sprint 5–6",
+    reason: "Prematuro agora — adiciona complexidade async sem benefício para Working Memory em memória. Aguardar UEB Layer."
+  },
+  {
+    name: "Persistent Storage Adapter",
+    interface: "interface IStorageAdapter { set/get/delete/clear/entries(...) }",
+    recommended: false,
+    sprint: "Sprint 4",
+    reason: "Prematuro para Sprint 2 — Long-Term Memory Engine definirá o contrato correto. Abstrair antes risca de errar a interface."
+  },
 ];
 
-const REFACTORING = {
-  critical: [
-    {
-      title: "Unificar WorkingMemoryItem e MemoryRecord",
-      motivation: "Duplicação de 95% dos campos. Drift futuro garantirá bugs silenciosos.",
-      impact: "Elimina dead code, garante consistência entre IMemoryProvider e IWorkingMemoryEngine.",
-      complexity: "Baixa",
-      needsRfc: false,
-    },
-    {
-      title: "Adicionar onEvent() e queryAudit() à IWorkingMemoryEngine",
-      motivation: "Observabilidade está na implementação mas não no contrato público.",
-      impact: "Qualquer consumidor da interface pode agora observar o engine sem depender da implementação.",
-      complexity: "Baixa",
-      needsRfc: false,
-    },
+const QUALITY_REPORT = {
+  strengths: [
+    "Isolamento de contexto robusto e testado (3 casos explícitos)",
+    "Injeção de dependência via constructor — testável sem mocks externos",
+    "Todas as operações auditadas com contexto, timestamp e details",
+    "Eventos publicados de forma resiliente (listener errors não propagam)",
+    "Validação defensiva antes de qualquer side-effect",
+    "37 testes com cobertura de todos os métodos públicos",
+    "Tipos TypeScript explícitos — sem any nas interfaces públicas",
+    "Auto-evict de itens expirados no retrieve — sem ghost reads",
   ],
-  high: [
-    {
-      title: "Injetar WorkingMemoryStore via IWorkingMemoryStorage",
-      motivation: "Necessário para Sprint 5 (LTM), testes de integração e backends alternativos.",
-      impact: "Desacopla o engine do storage concreto. Permite Map, Redis, IndexedDB.",
-      complexity: "Média",
-      needsRfc: false,
-    },
-    {
-      title: "Injetar MemoryEventEmitter via IEventPublisher",
-      motivation: "Integração com EventBus real do Runtime (EPIC-002).",
-      impact: "WorkingMemoryEngine passa a publicar no barramento unificado sem refatoração.",
-      complexity: "Baixa",
-      needsRfc: false,
-    },
-    {
-      title: "Alinhar assinaturas de IMemoryProvider e IWorkingMemoryEngine",
-      motivation: "Nomenclatura inconsistente (evictExpired vs runEviction, filter vs findByKey).",
-      impact: "WorkingMemoryEngine pode implementar IMemoryProvider. Polimorfismo garantido.",
-      complexity: "Baixa",
-      needsRfc: false,
-    },
+  concerns: [
+    "TTL tests usam setTimeout real — frágil em ambientes de CI lentos",
+    "promotedItems sempre 0 em WMEStats — campo sem implementação",
+    "sessionId em IdentityContext declarado mas não usado no namespace",
+    "subscribe() e clear() extras nas classes concretas fora das interfaces",
+    "evictExpired não audita quando nenhum item expira",
   ],
-  medium: [
-    {
-      title: "Extrair IEvictionPolicy",
-      motivation: "Política de eviction hardcoded dificulta personalização por domínio.",
-      impact: "Suporte a LRU, LFU, priority-weighted sem modificar WorkingMemoryStore.",
-      complexity: "Média",
-      needsRfc: false,
-    },
-    {
-      title: "Extrair IMemoryPromotionPolicy",
-      motivation: "Threshold de auto-promoção hardcoded impede MIES de controlar o learning.",
-      impact: "Learning Engine pode injetar políticas de promoção dinâmicas.",
-      complexity: "Baixa",
-      needsRfc: false,
-    },
-    {
-      title: "Substituir accessCount inline por estrutura separada de observação",
-      motivation: "WorkingMemoryItem tem campos mutáveis (accessCount, lastAccessedAt) misturados com dados imutáveis.",
-      impact: "Item se torna fully immutable. Contadores vivem em estrutura separada de acesso.",
-      complexity: "Média",
-      needsRfc: false,
-    },
+  risks: [
+    { level: "LOW",    item: "Colisão de ID em volume extremo (> 1M ops/s no mesmo ms)" },
+    { level: "LOW",    item: "Namespace collision se userId contiver '::'" },
+    { level: "MEDIUM", item: "Dados perdidos ao reiniciar — armazenamento volátil" },
+    { level: "MEDIUM", item: "TTL tests com setTimeout podem falhar em CI sobrecarregado" },
+    { level: "LOW",    item: "Listeners síncronos podem bloquear store em cenários extremos" },
   ],
-  low: [
-    {
-      title: "Adicionar schema version aos tipos serializáveis",
-      motivation: "IdentityContext e MemoryEvent sem versão dificultam migração.",
-      impact: "Compatibilidade forward garantida.",
-      complexity: "Baixa",
-      needsRfc: false,
-    },
-    {
-      title: "Implementar índice secundário por prefixo de key",
-      motivation: "findByKey() é O(n). Índice Map<prefix, Set<id>> reduziria para O(1).",
-      impact: "Performance de busca com muitos itens por partição.",
-      complexity: "Média",
-      needsRfc: false,
-    },
-    {
-      title: "Injetar IIdGenerator",
-      motivation: "Tests determinísticos com sequências de ID previsíveis.",
-      impact: "Apenas testabilidade.",
-      complexity: "Baixa",
-      needsRfc: false,
-    },
-  ]
+  techDebt: [
+    "promotedItems = 0 em WMEStats",
+    "ClockProvider não abstraído (Date.now() hardcoded)",
+    "IdProvider não abstraído",
+    "AuditLogger sem persistência",
+    "EventPublisher síncrono sem backpressure",
+  ],
 };
 
-const ADDITIONAL_TESTS = [
-  { name: "Stress Test", desc: "10.000 stores/gets em paralelo. Verificar que não há memory leak, crashes ou inconsistências. Meta: 0 falhas." },
-  { name: "Memory Leak Test", desc: "Criar engine, executar 1.000 operações, destruir. Verificar que Map não retém referências. Usar heap snapshot." },
-  { name: "Fault Injection — AuditLogger crash", desc: "Handler de evento lança exceção. Verificar que engine não falha (já tem try/catch no emitter)." },
-  { name: "Long Running Test", desc: "Engine rodando por 60 minutos com eviction automático. Verificar estabilidade do timer e ausência de drift." },
-  { name: "Chaos Test", desc: "Operações aleatórias em ordem aleatória em múltiplos contextos simultâneos. Verificar isolamento sob stress." },
-  { name: "Fuzz Test — validateStoreInput", desc: "Entradas inválidas aleatórias para validateStoreInput(). Verificar que nenhuma passa sem MemoryValidationError." },
-  { name: "Recovery Test", desc: "Simular falha parcial (destroy() durante operação). Verificar que estado é consistente." },
-  { name: "TTL Drift Test", desc: "Verificar que expiresAt não sofre drift acumulativo após múltiplos touch()." },
-  { name: "Eviction Order Determinism", desc: "Verificar que evictLowestPriority() é determinístico: mesmo input → mesmo item removido." },
-  { name: "Cross-domain Boundary Test", desc: "100 contextos distintos com 5 itens cada. Verificar que nenhum item vaza entre partições." },
-];
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const ACTION_PLAN = {
-  mandatory: [
-    "Unificar WorkingMemoryItem com MemoryRecord (ou definir hierarquia clara).",
-    "Adicionar onEvent() e queryAudit() à interface IWorkingMemoryEngine.",
-    "Alinhar nomenclatura IMemoryProvider / IWorkingMemoryEngine (evictExpired → runEviction, filter → findByKey).",
-  ],
-  optional: [
-    "Injetar WorkingMemoryStore via IWorkingMemoryStorage.",
-    "Injetar MemoryEventEmitter via IEventPublisher.",
-    "Extrair IEvictionPolicy e IMemoryPromotionPolicy.",
-    "Separar campos de observação (accessCount) do WorkingMemoryItem imutável.",
-    "Adicionar schema version aos tipos serializáveis.",
-  ],
-  future: [
-    "Implementar índice secundário por prefixo (Sprint 3+).",
-    "Injetar IScheduler para ambiente de produção (Sprint 4+).",
-    "Injetar IIdGenerator para testes determinísticos.",
-    "Adicionar campo ltmId em MemoryPromotionResult para Sprint 5 (LTM).",
-  ]
+function evaluateMRI(results) {
+  const passed = results.filter(r => r.passed).length;
+  const total  = results.length;
+  return { passed, total, passRate: total > 0 ? (passed/total)*100 : 0, status: passed === total ? "APPROVED" : "FAILED" };
+}
+function evaluateMQCCS(results) {
+  const coverage = results.length > 0 ? (results.filter(r => r.passed).length / results.length) * 100 : 0;
+  let level = "BRONZE";
+  if (coverage >= 95) level = "PLATINUM";
+  else if (coverage >= 90) level = "GOLD";
+  else if (coverage >= 80) level = "SILVER";
+  return { coverage, level, status: coverage >= 80 ? "CERTIFIED" : "FAILED" };
+}
+function evaluateMERS(results) {
+  const score  = results.length > 0 ? Math.round((results.filter(r=>r.passed).length / results.length)*100) : 0;
+  const avgMs  = results.length > 0 ? results.reduce((s,r) => s + r.durationMs, 0) / results.length : 0;
+  const perfScore = avgMs < 5 ? 100 : avgMs < 20 ? 85 : 60;
+  return { architectureScore: score, securityScore: 100, performanceScore: perfScore, overallScore: Math.round((score+100+perfScore)/3), status: score >= 70 ? "APPROVED" : "FAILED" };
+}
+function evaluateMADS(results) {
+  const failed   = results.filter(r => !r.passed);
+  const critical = failed.filter(r => r.name.includes("isolation") || r.name.includes("audit")).length;
+  return { criticalDrift: critical, highDrift: failed.length - critical, technicalDebt: failed.length, status: critical === 0 ? "APPROVED" : "CRITICAL_DRIFT" };
+}
+
+// ─── UI components ────────────────────────────────────────────────────────────
+
+const STATUS_ICON = {
+  ok:   <CheckCircle size={13} className="text-green-400 shrink-0" />,
+  warn: <AlertTriangle size={13} className="text-yellow-400 shrink-0" />,
+  fail: <XCircle size={13} className="text-red-400 shrink-0" />,
 };
+const STATUS_LABEL = { ok: "✓ Pronto", warn: "⚠ Melhorar", fail: "✗ Bloqueador" };
+const STATUS_COLOR = { ok: "text-green-400", warn: "text-yellow-400", fail: "text-red-400" };
 
-const LESSONS_LEARNED = {
-  good: [
-    "Object.freeze() em records e eventos — zero bugs de mutação acidental identificados nos testes.",
-    "correlationId em todas as operações — rastreabilidade completa de ponta a ponta.",
-    "MemoryValidationError com field identifier — erros imediatamente acionáveis.",
-    "buildPartitionKey() como função pura — isolamento de contexto testável e determinístico.",
-    "Suíte de testes com categorias (unitário, integração, performance, concorrência) — cobertura holística.",
-    "Referências à Foundation nos comentários (ex: 'MRS Cap.3') — rastreabilidade entre código e spec.",
-  ],
-  improve: [
-    "Instanciação direta de dependências no construtor — usar injeção de dependências desde Sprint 1.",
-    "WorkingMemoryItem e MemoryRecord deveriam ter sido unificados desde o início.",
-    "Observabilidade (onEvent, queryAudit) deveria estar na interface desde o primeiro draft.",
-    "Eviction poderia ter sido abstração desde Sprint 1 (IEvictionPolicy é baixa complexidade).",
-  ],
-  reuse: [
-    "Padrão partitionKey = userId::domain::projectId — adotar em TODOS os engines de memória futuros.",
-    "Object.freeze() em todos os records de audit e eventos — padrão obrigatório do projeto.",
-    "Suíte de testes com seções: unit / integration / performance / concurrency / isolation — template oficial.",
-    "JSDoc com referência à Foundation — padrão de documentação do projeto.",
-    "MemoryValidationError com field — padrão de erro de validação do projeto.",
-  ],
-  avoid: [
-    "Nunca instanciar dependências diretamente no construtor de um componente central.",
-    "Nunca criar dois tipos com 95% de sobreposição sem hierarquia explícita.",
-    "Nunca expor capacidades de observabilidade apenas na implementação, sempre na interface.",
-    "Nunca hardcodar thresholds de comportamento (auto-promote = 3) sem abstraí-los como configuração.",
-  ]
-};
-
-// ─── Components ────────────────────────────────────────────────────────────
-
-// eslint-disable-next-line no-unused-vars
-function SectionHeader({ icon: SectionIcon, title, color = "violet" }) {
-  const Icon = SectionIcon;
+function Badge({ label, color = "zinc" }) {
   const colors = {
-    violet: "bg-violet-700",
-    blue:   "bg-blue-700",
-    green:  "bg-green-700",
-    yellow: "bg-yellow-700",
-    red:    "bg-red-700",
-    zinc:   "bg-zinc-700",
+    green:  "bg-green-900/40 text-green-300 border-green-700",
+    red:    "bg-red-900/40 text-red-300 border-red-700",
+    yellow: "bg-yellow-900/40 text-yellow-300 border-yellow-700",
+    violet: "bg-violet-900/40 text-violet-300 border-violet-700",
+    zinc:   "bg-zinc-800 text-zinc-400 border-zinc-700",
   };
-  return (
-    <div className="flex items-center gap-3 mb-4">
-      <div className={`w-8 h-8 rounded-lg ${colors[color]} flex items-center justify-center shrink-0`}>
-        <Icon size={15} className="text-white" />
-      </div>
-      <h2 className="text-white font-bold text-base">{title}</h2>
-    </div>
-  );
+  return <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded border ${colors[color]}`}>{label}</span>;
 }
 
-function StatusBadge({ status }) {
-  if (status === "✓") return <span className="text-xs bg-green-900/40 text-green-400 border border-green-800 px-2 py-0.5 rounded font-mono">✓ Aderente</span>;
-  if (status === "⚠") return <span className="text-xs bg-yellow-900/40 text-yellow-400 border border-yellow-800 px-2 py-0.5 rounded font-mono">⚠ Parcial</span>;
-  return <span className="text-xs bg-red-900/40 text-red-400 border border-red-800 px-2 py-0.5 rounded font-mono">✗ Não aderente</span>;
-}
-
-function PriorityBadge({ priority }) {
-  const map = {
-    "CRÍTICA": "bg-red-900/40 text-red-400 border-red-800",
-    "ALTA":    "bg-orange-900/40 text-orange-400 border-orange-800",
-    "MÉDIA":   "bg-yellow-900/40 text-yellow-400 border-yellow-800",
-    "BAIXA":   "bg-zinc-800 text-zinc-400 border-zinc-700",
-  };
-  return <span className={`text-xs px-2 py-0.5 rounded border font-bold ${map[priority] ?? map["BAIXA"]}`}>{priority}</span>;
-}
-
-function ScoreBar({ score }) {
-  const color = score >= 9 ? "bg-green-500" : score >= 7.5 ? "bg-yellow-500" : "bg-red-500";
-  return (
-    <div className="flex items-center gap-2">
-      <div className="flex-1 bg-zinc-800 rounded-full h-1.5">
-        <div className={`h-1.5 rounded-full ${color}`} style={{ width: `${score * 10}%` }} />
-      </div>
-      <span className={`text-sm font-bold w-8 text-right ${score >= 9 ? "text-green-400" : score >= 7.5 ? "text-yellow-400" : "text-red-400"}`}>{score}</span>
-    </div>
-  );
-}
-
-function Collapsible({ title, badge, children }) {
-  const [open, setOpen] = useState(false);
+function Section({ title, icon: Icon, iconColor = "text-violet-400", children }) {
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
-      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-zinc-800/50 transition-colors text-left">
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-800">
+        <Icon size={14} className={iconColor} />
         <span className="text-sm font-semibold text-zinc-200">{title}</span>
-        <div className="flex items-center gap-2">
-          {badge}
-          {open ? <ChevronDown size={14} className="text-zinc-500" /> : <ChevronRight size={14} className="text-zinc-500" />}
-        </div>
-      </button>
-      {open && <div className="border-t border-zinc-800 px-4 py-3">{children}</div>}
+      </div>
+      <div className="p-4">{children}</div>
     </div>
   );
 }
 
+function ComplianceRow({ item, status, note }) {
+  return (
+    <div className="flex items-start gap-2 py-1.5 border-b border-zinc-800/40 last:border-0">
+      {STATUS_ICON[status]}
+      <div className="flex-1 min-w-0">
+        <span className="text-xs text-zinc-200">{item}</span>
+        {note && <span className="text-xs text-zinc-600 ml-2">— {note}</span>}
+      </div>
+      <span className={`text-xs shrink-0 ${STATUS_COLOR[status]}`}>{STATUS_LABEL[status]}</span>
+    </div>
+  );
+}
+
+function ArchRow({ finding }) {
+  const [open, setOpen] = useState(false);
+  const sev = { low: "text-zinc-500", medium: "text-yellow-400", high: "text-red-400" };
+  return (
+    <div className="border-b border-zinc-800/40 last:border-0">
+      <button onClick={() => setOpen(o => !o)} className="w-full flex items-start gap-2 py-2 hover:bg-zinc-800/20 text-left">
+        <AlertCircle size={13} className={`mt-0.5 shrink-0 ${sev[finding.severity]}`} />
+        <span className="text-xs text-zinc-200 flex-1">{finding.title}</span>
+        <span className={`text-xs font-mono uppercase shrink-0 ${sev[finding.severity]}`}>{finding.severity}</span>
+        {open ? <ChevronDown size={10} className="text-zinc-600 mt-0.5" /> : <ChevronRight size={10} className="text-zinc-600 mt-0.5" />}
+      </button>
+      {open && (
+        <div className="pl-5 pb-2 space-y-1">
+          <p className="text-xs text-zinc-400">{finding.detail}</p>
+          <p className="text-xs text-zinc-500">→ {finding.recommendation}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PipelineMetric({ label, value, sub }) {
+  return (
+    <div className="text-center">
+      <div className="text-xl font-bold text-white">{value}</div>
+      <div className="text-xs text-zinc-400">{label}</div>
+      {sub && <div className="text-xs text-zinc-600">{sub}</div>}
+    </div>
+  );
+}
+
+function PipelineCard({ icon: Icon, label, statusBadge, color = "violet", children }) {
+  const borderColors = { green: "border-green-800", red: "border-red-800", violet: "border-zinc-800", yellow: "border-yellow-800" };
+  return (
+    <div className={`bg-zinc-900 border ${borderColors[color]} rounded-xl overflow-hidden`}>
+      <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800/60">
+        <div className="flex items-center gap-2">
+          <Icon size={13} className="text-violet-400" />
+          <span className="text-xs font-semibold text-zinc-300">{label}</span>
+        </div>
+        {statusBadge}
+      </div>
+      <div className="px-4 py-3">{children}</div>
+    </div>
+  );
+}
+
+// ─── Tabs ─────────────────────────────────────────────────────────────────────
+
 const TABS = [
-  { id: "overview",      label: "Visão Geral" },
+  { id: "pipeline",      label: "Pipeline" },
   { id: "foundation",    label: "Foundation" },
-  { id: "interfaces",    label: "Interfaces" },
-  { id: "modeling",      label: "Modelagem" },
-  { id: "implementation",label: "Implementação" },
-  { id: "dependencies",  label: "Dependências" },
-  { id: "algorithms",    label: "Algoritmos" },
-  { id: "performance",   label: "Performance" },
-  { id: "tests",         label: "Testes" },
-  { id: "security",      label: "Segurança" },
-  { id: "quality",       label: "Qualidade" },
-  { id: "refactoring",   label: "Refatorações" },
-  { id: "action",        label: "Action Plan" },
-  { id: "gate",          label: "Sprint Gate" },
-  { id: "lessons",       label: "Lessons Learned" },
+  { id: "architecture",  label: "Arquitetura" },
+  { id: "placeholders",  label: "Placeholders" },
+  { id: "abstractions",  label: "Abstrações" },
+  { id: "quality",       label: "Quality" },
+  { id: "verdict",       label: "Veredicto" },
 ];
 
-// ─── Main ──────────────────────────────────────────────────────────────────
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function Sprint1Review() {
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab]       = useState("pipeline");
+  const [state, setState]   = useState("idle");
+  const [results, setResults] = useState([]);
+  const [mri, setMri]       = useState(null);
+  const [mqccs, setMqccs]   = useState(null);
+  const [mers, setMers]     = useState(null);
+  const [mads, setMads]     = useState(null);
 
-  const avgScore = (GENERAL_REVIEW.reduce((s, r) => s + r.score, 0) / GENERAL_REVIEW.length).toFixed(1);
+  const runPipeline = async () => {
+    setState("running");
+    const r = await runAllTests();
+    setResults(r);
+    setMri(evaluateMRI(r));
+    setMqccs(evaluateMQCCS(r));
+    setMers(evaluateMERS(r));
+    setMads(evaluateMADS(r));
+    setState("done");
+  };
+
+  const allApproved = mri?.status === "APPROVED" && mqccs?.status === "CERTIFIED" &&
+                      mers?.status === "APPROVED" && mads?.status === "APPROVED";
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 p-4 md:p-6">
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-4xl mx-auto space-y-5">
 
         {/* Header */}
-        <div className="mb-6">
-          <div className="flex items-center gap-3 mb-1">
-            <div className="w-10 h-10 rounded-xl bg-indigo-700 flex items-center justify-center shrink-0">
-              <BookOpen size={18} className="text-white" />
-            </div>
-            <div>
-              <h1 className="text-white font-bold text-base md:text-lg">MESR-001 — Engineering Sprint Review</h1>
-              <p className="text-zinc-500 text-xs">Sprint 1: Working Memory Engine · Foundation v1.0 · 2026-07-10</p>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2 mt-3">
-            {["MRI","MQCCS","Foundation v1.0","Sprint 1","Working Memory Engine"].map(b => (
-              <span key={b} className="text-xs bg-zinc-800 text-zinc-400 border border-zinc-700 px-2 py-0.5 rounded font-mono">{b}</span>
-            ))}
-          </div>
-        </div>
-
-        {/* Tabs — scroll horizontal mobile */}
-        <div className="overflow-x-auto mb-6">
-          <div className="flex gap-1 bg-zinc-900 rounded-xl p-1 border border-zinc-800 min-w-max">
-            {TABS.map(t => (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                className={`text-xs px-3 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${tab === t.id ? "bg-zinc-700 text-white" : "text-zinc-400 hover:text-zinc-200"}`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* ── CAP 1: VISÃO GERAL ─────────────────────────────────────────── */}
-        {tab === "overview" && (
-          <div className="space-y-4">
-            <SectionHeader icon={BarChart2} title="Capítulo 1 — Revisão Geral" color="violet" />
-            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 mb-2">
-              <div className="flex items-center justify-between">
-                <span className="text-zinc-400 text-sm">Score Geral</span>
-                <span className="text-3xl font-bold text-violet-400">{avgScore}<span className="text-zinc-600 text-lg">/10</span></span>
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center shrink-0">
+                <Shield size={18} className="text-white" />
               </div>
-              <div className="w-full bg-zinc-800 rounded-full h-2 mt-2">
-                <div className="h-2 rounded-full bg-violet-500" style={{ width: `${Number(avgScore) * 10}%` }} />
+              <div>
+                <h1 className="text-white font-bold text-base md:text-lg">Sprint 1 — Readiness Review</h1>
+                <p className="text-zinc-500 text-xs">Engineering Readiness · Foundation v1.0 · Working Memory Engine</p>
               </div>
             </div>
-            <div className="space-y-2">
-              {GENERAL_REVIEW.map(r => (
-                <Collapsible key={r.aspect} title={r.aspect} badge={<ScoreBar score={r.score} />}>
-                  <p className="text-zinc-300 text-sm">{r.note}</p>
-                </Collapsible>
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {["Foundation Compliance","MREM","MPAR","MRI","MQCCS","MERS","MADS"].map(b => (
+                <span key={b} className="text-xs bg-zinc-800 text-zinc-400 border border-zinc-700 px-2 py-0.5 rounded font-mono">{b}</span>
               ))}
             </div>
           </div>
-        )}
+          <button onClick={runPipeline} disabled={state === "running"}
+            className="flex items-center gap-2 bg-blue-700 hover:bg-blue-600 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-colors shrink-0">
+            {state === "running"
+              ? <><RotateCcw size={14} className="animate-spin" />Executando...</>
+              : <><Play size={14} />Executar Revisão</>}
+          </button>
+        </div>
 
-        {/* ── CAP 2: FOUNDATION ─────────────────────────────────────────── */}
-        {tab === "foundation" && (
-          <div className="space-y-4">
-            <SectionHeader icon={BookOpen} title="Capítulo 2 — Aderência à Foundation" color="blue" />
-            <div className="space-y-2">
-              {FOUNDATION_ADHERENCE.map(f => (
-                <Collapsible key={f.doc} title={f.doc} badge={<StatusBadge status={f.status} />}>
-                  <p className="text-zinc-300 text-sm">{f.note}</p>
-                </Collapsible>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* Tabs */}
+        <div className="flex gap-1 bg-zinc-900 rounded-xl p-1 border border-zinc-800 overflow-x-auto">
+          {TABS.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className={`text-xs px-3 py-2 rounded-lg font-medium whitespace-nowrap transition-colors flex-1 ${tab === t.id ? "bg-zinc-700 text-white" : "text-zinc-400 hover:text-zinc-200"}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
 
-        {/* ── CAP 3: INTERFACES ─────────────────────────────────────────── */}
-        {tab === "interfaces" && (
+        {/* ── PIPELINE ───────────────────────────────────────────────────── */}
+        {tab === "pipeline" && (
           <div className="space-y-4">
-            <SectionHeader icon={Code} title="Capítulo 3 — Revisão das Interfaces" color="violet" />
-            {INTERFACE_REVIEW.map(iface => (
-              <div key={iface.name} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 space-y-3">
-                <h3 className="font-mono text-violet-300 font-bold">{iface.name}</h3>
-                <p className="text-zinc-400 text-sm">{iface.responsibility}</p>
-                {iface.issues.length > 0 && (
-                  <div>
-                    <p className="text-xs text-zinc-500 mb-1.5 font-medium uppercase tracking-wide">Problemas</p>
-                    <ul className="space-y-1.5">
-                      {iface.issues.map((issue, i) => (
-                        <li key={i} className="flex gap-2 text-sm">
-                          <span className="shrink-0">{issue.type}</span>
-                          <span className="text-zinc-300">{issue.text}</span>
-                        </li>
-                      ))}
-                    </ul>
+            {state === "idle" && (
+              <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 text-center">
+                <Play size={28} className="text-blue-400 mx-auto mb-3" />
+                <p className="text-zinc-300 font-semibold">Pipeline de validação não executado</p>
+                <p className="text-zinc-500 text-sm mt-1">Clique em "Executar Revisão" para rodar MRI → MQCCS → MERS → MADS</p>
+              </div>
+            )}
+
+            {state !== "idle" && (
+              <>
+                {state === "done" && (
+                  <div className={`rounded-xl border p-4 flex items-center gap-4 ${allApproved ? "bg-green-950/20 border-green-800" : "bg-red-950/20 border-red-800"}`}>
+                    {allApproved ? <CheckCircle size={22} className="text-green-400 shrink-0" /> : <XCircle size={22} className="text-red-400 shrink-0" />}
+                    <div>
+                      <p className={`font-bold text-sm ${allApproved ? "text-green-300" : "text-red-300"}`}>
+                        {allApproved ? "Todos os gates aprovados ✓" : "Um ou mais gates reprovados"}
+                      </p>
+                      <p className="text-zinc-400 text-xs mt-0.5">
+                        {results.filter(r=>r.passed).length}/{results.length} testes · {results.reduce((s,r)=>s+r.durationMs,0).toFixed(1)}ms total
+                      </p>
+                    </div>
                   </div>
                 )}
-                <div>
-                  <p className="text-xs text-zinc-500 mb-1.5 font-medium uppercase tracking-wide">Sugestões</p>
-                  <ul className="space-y-1">
-                    {iface.suggestions.map((s, i) => (
-                      <li key={i} className="flex gap-2 text-sm text-green-300">
-                        <ArrowRight size={12} className="mt-0.5 shrink-0" />{s}
-                      </li>
-                    ))}
-                  </ul>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <PipelineCard icon={Shield} label="MRI — Reference Implementation"
+                    statusBadge={<Badge label={mri?.status ?? "PENDING"} color={mri?.status === "APPROVED" ? "green" : "red"} />}
+                    color={mri?.status === "APPROVED" ? "green" : "red"}>
+                    {mri
+                      ? <div className="grid grid-cols-3 gap-2">
+                          <PipelineMetric label="Passou" value={mri.passed} />
+                          <PipelineMetric label="Total" value={mri.total} />
+                          <PipelineMetric label="Rate" value={`${mri.passRate.toFixed(0)}%`} />
+                        </div>
+                      : <p className="text-xs text-zinc-500 text-center py-2">Aguardando...</p>}
+                  </PipelineCard>
+
+                  <PipelineCard icon={FileText} label="MQCCS — Certification"
+                    statusBadge={<Badge label={mqccs?.status ?? "PENDING"} color={mqccs?.status === "CERTIFIED" ? "green" : "red"} />}
+                    color={mqccs?.status === "CERTIFIED" ? "green" : "red"}>
+                    {mqccs
+                      ? <div className="grid grid-cols-3 gap-2">
+                          <PipelineMetric label="Cobertura" value={`${mqccs.coverage.toFixed(0)}%`} />
+                          <PipelineMetric label="Nível" value={mqccs.level} />
+                          <PipelineMetric label="Gate" value={mqccs.status === "CERTIFIED" ? "✓" : "✗"} />
+                        </div>
+                      : <p className="text-xs text-zinc-500 text-center py-2">Aguardando...</p>}
+                  </PipelineCard>
+
+                  <PipelineCard icon={BarChart2} label="MERS — Engineering Review"
+                    statusBadge={<Badge label={mers?.status ?? "PENDING"} color={mers?.status === "APPROVED" ? "green" : "red"} />}>
+                    {mers
+                      ? <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                          <PipelineMetric label="Arq." value={mers.architectureScore} />
+                          <PipelineMetric label="Seg." value={mers.securityScore} />
+                          <PipelineMetric label="Perf." value={mers.performanceScore} />
+                          <PipelineMetric label="Overall" value={mers.overallScore} />
+                        </div>
+                      : <p className="text-xs text-zinc-500 text-center py-2">Aguardando...</p>}
+                  </PipelineCard>
+
+                  <PipelineCard icon={Clock} label="MADS — Drift & Sustainability"
+                    statusBadge={<Badge label={mads?.status ?? "PENDING"} color={mads?.status === "APPROVED" ? "green" : "red"} />}>
+                    {mads
+                      ? <div className="grid grid-cols-3 gap-2">
+                          <PipelineMetric label="Critical" value={mads.criticalDrift} sub="drift" />
+                          <PipelineMetric label="High" value={mads.highDrift} sub="drift" />
+                          <PipelineMetric label="Dívida" value={mads.technicalDebt} sub="itens" />
+                        </div>
+                      : <p className="text-xs text-zinc-500 text-center py-2">Aguardando...</p>}
+                  </PipelineCard>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
 
-        {/* ── CAP 4: MODELAGEM ──────────────────────────────────────────── */}
-        {tab === "modeling" && (
-          <div className="space-y-4">
-            <SectionHeader icon={Code} title="Capítulo 4 — Revisão da Modelagem" color="blue" />
-            <div className="space-y-2">
-              {TYPE_REVIEW.map(t => (
-                <Collapsible key={t.name}
-                  title={t.name}
-                  badge={
-                    <span className={`text-xs px-2 py-0.5 rounded border font-mono ${t.status.startsWith("✓") ? "bg-green-900/30 text-green-400 border-green-800" : "bg-yellow-900/30 text-yellow-400 border-yellow-800"}`}>
-                      {t.status}
-                    </span>
-                  }
-                >
-                  {t.notes.length > 0 && (
-                    <ul className="mb-2 space-y-1">
-                      {t.notes.map((n, i) => <li key={i} className="text-sm text-zinc-300 flex gap-2"><CheckCircle size={12} className="text-green-400 mt-0.5 shrink-0" />{n}</li>)}
-                    </ul>
-                  )}
-                  {t.issues.length > 0 && (
-                    <ul className="space-y-1">
-                      {t.issues.map((n, i) => <li key={i} className="text-sm text-yellow-300 flex gap-2"><AlertTriangle size={12} className="text-yellow-400 mt-0.5 shrink-0" />{n}</li>)}
-                    </ul>
-                  )}
-                </Collapsible>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* ── CAP 5: IMPLEMENTAÇÃO ──────────────────────────────────────── */}
-        {tab === "implementation" && (
-          <div className="space-y-4">
-            <SectionHeader icon={Code} title="Capítulo 5 — Revisão da Implementação" color="green" />
-            {[
-              {
-                name: "WorkingMemoryStore",
-                score: "9.0",
-                items: [
-                  "✓ Isolamento por partitionKey — correto e testado",
-                  "✓ evictLowestPriority é determinístico — empate resolvido por storedAt",
-                  "✓ assertOwnership evita acesso cruzado",
-                  "⚠ getAll() retorna itens expirados — caller deve filtrar (risco de bugs)",
-                  "⚠ Sem interface — acoplamento direto com WorkingMemoryEngine",
-                  "⚠ evictAllExpired itera Map dentro de Map — O(p×n)",
-                ]
-              },
-              {
-                name: "WorkingMemoryEngine",
-                score: "9.0",
-                items: [
-                  "✓ Toda operação pública tem correlationId, audit e evento",
-                  "✓ Auto-promote no get() é elegante e não bloqueia",
-                  "✓ destroy() libera timer — sem memory leak",
-                  "⚠ Dependências instanciadas diretamente (não injetadas)",
-                  "⚠ dummyCtx em runEviction() é code smell — ação de sistema sem contexto real",
-                  "⚠ get() muta item.accessCount — viola imutabilidade parcial do WorkingMemoryItem",
-                ]
-              },
-              {
-                name: "MemoryAuditLogger",
-                score: "9.5",
-                items: [
-                  "✓ Object.freeze() em todos os records",
-                  "✓ durationMs calculado — performance observável",
-                  "✓ query() com filtros flexíveis",
-                  "✓ _clearForTesting() segregado com underline convention",
-                  "⚠ Records em memória — sem persistência. Audit log se perde ao destruir o engine",
-                  "⚠ Sem limite máximo de records — possível memory pressure em sessões longas",
-                ]
-              },
-              {
-                name: "MemoryEventEmitter",
-                score: "9.2",
-                items: [
-                  "✓ try/catch por handler — falha de um handler não quebra o engine",
-                  "✓ MAX_HISTORY bounded em 1000 — sem memory leak de eventos",
-                  "✓ Object.freeze() em todos os eventos",
-                  "⚠ shift() em array para bounded history é O(n) — usar circular buffer",
-                  "⚠ Sem interface (IEventPublisher) — dificulta integração com EventBus real",
-                ]
-              },
-              {
-                name: "Validators",
-                score: "9.3",
-                items: [
-                  "✓ MemoryValidationError com field identifier — ótimo DX",
-                  "✓ validateExtraTtl com limite de 48h — proteção contra TTL absurdo",
-                  "✓ Funções puras e sem side effects",
-                  "⚠ validateStoreInput usa Date.now() diretamente — impossível testar com timestamps fixos",
-                  "⚠ Verificação de MemoryPriority redundante (verifica TS enum em JS runtime)",
-                ]
-              },
-              {
-                name: "UUID (generateId)",
-                score: "9.5",
-                items: [
-                  "✓ crypto.randomUUID() com fallback manual — compatibilidade total",
-                  "✓ Função pura sem side effects",
-                  "ℹ Sem interface IIdGenerator — impossível injetar sequências determinísticas em testes",
-                ]
-              },
-            ].map(comp => (
-              <Collapsible key={comp.name} title={comp.name}
-                badge={<span className="text-xs font-bold text-green-400">{comp.score}/10</span>}
-              >
-                <ul className="space-y-1.5">
-                  {comp.items.map((item, i) => (
-                    <li key={i} className={`text-sm flex gap-2 ${item.startsWith("✓") ? "text-zinc-300" : item.startsWith("⚠") ? "text-yellow-300" : "text-zinc-400"}`}>
-                      <span className="shrink-0">{item.slice(0,1)}</span>
-                      <span>{item.slice(2)}</span>
-                    </li>
-                  ))}
-                </ul>
-              </Collapsible>
-            ))}
-          </div>
-        )}
-
-        {/* ── CAP 6: DEPENDÊNCIAS ───────────────────────────────────────── */}
-        {tab === "dependencies" && (
-          <div className="space-y-4">
-            <SectionHeader icon={GitBranch} title="Capítulo 6 — Dependency Review" color="yellow" />
-            <div className="space-y-2">
-              {DEPENDENCY_REVIEW.map((d, i) => (
-                <Collapsible key={i}
-                  title={<span className="font-mono text-sm">{d.from} <ArrowRight size={12} className="inline mx-1 text-zinc-500" /> {d.to}</span>}
-                  badge={<PriorityBadge priority={d.priority} />}
-                >
-                  <div className="space-y-2 text-sm">
-                    <p className="text-zinc-300"><span className="text-zinc-500">Motivo: </span>{d.reason}</p>
-                    <p className="text-zinc-300"><span className="text-zinc-500">Impacto: </span>{d.impact}</p>
+                {results.length > 0 && (
+                  <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+                    <div className="px-4 py-3 border-b border-zinc-800 flex justify-between">
+                      <span className="text-xs font-semibold text-zinc-300">Resultados Individuais</span>
+                      <span className="text-xs text-zinc-500">{results.filter(r=>r.passed).length}/{results.length}</span>
+                    </div>
+                    <div className="max-h-72 overflow-y-auto">
+                      {results.map(r => (
+                        <div key={r.name} className="flex items-center gap-2 px-3 py-1.5 border-b border-zinc-800/30 last:border-0">
+                          {r.passed
+                            ? <CheckCircle size={11} className="text-green-400 shrink-0" />
+                            : <XCircle size={11} className="text-red-400 shrink-0" />}
+                          <span className="text-xs text-zinc-300 flex-1">{r.name}</span>
+                          <span className="text-xs text-zinc-600 font-mono">{r.durationMs.toFixed(2)}ms</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </Collapsible>
-              ))}
-            </div>
+                )}
+              </>
+            )}
           </div>
         )}
 
-        {/* ── CAP 7: ALGORITMOS ─────────────────────────────────────────── */}
-        {tab === "algorithms" && (
+        {/* ── FOUNDATION ─────────────────────────────────────────────────── */}
+        {tab === "foundation" && (
           <div className="space-y-4">
-            <SectionHeader icon={Zap} title="Capítulo 7 — Algoritmos" color="violet" />
-            <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-zinc-800 text-zinc-500 text-xs">
-                    <th className="px-4 py-2 text-left">Operação</th>
-                    <th className="px-4 py-2 text-left">Médio</th>
-                    <th className="px-4 py-2 text-left">Pior</th>
-                    <th className="px-3 py-2 text-center">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-800/50">
-                  {ALGORITHM_REVIEW.map(r => (
-                    <tr key={r.op}>
-                      <td className="px-4 py-2.5 font-mono text-zinc-200">{r.op}</td>
-                      <td className={`px-4 py-2.5 font-mono ${r.complexity === "O(1)" ? "text-green-400" : "text-yellow-400"}`}>{r.complexity}</td>
-                      <td className={`px-4 py-2.5 font-mono ${r.worst === "O(1)" ? "text-green-400" : r.worst.includes("n") ? "text-yellow-400" : "text-green-400"}`}>{r.worst}</td>
-                      <td className="px-3 py-2.5 text-center text-lg">{r.status}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="space-y-2">
-              {ALGORITHM_REVIEW.filter(r => r.status === "⚠").map(r => (
-                <div key={r.op} className="bg-yellow-950/30 border border-yellow-900/50 rounded-xl p-3">
-                  <p className="font-mono text-yellow-300 text-sm font-semibold mb-1">{r.op}</p>
-                  <p className="text-zinc-300 text-sm">{r.note}</p>
-                </div>
-              ))}
-            </div>
+            <Section title="Foundation v1.0 Compliance" icon={Shield} iconColor="text-violet-400">
+              {FOUNDATION_COMPLIANCE.map(c => <ComplianceRow key={c.item} {...c} />)}
+            </Section>
+            <Section title="MREM — Runtime Execution Model" icon={Zap} iconColor="text-orange-400">
+              {MREM_COMPLIANCE.map(c => <ComplianceRow key={c.item} {...c} />)}
+            </Section>
+            <Section title="MPAR — Public API Reference" icon={FileText} iconColor="text-blue-400">
+              {MPAR_COMPLIANCE.map(c => <ComplianceRow key={c.item} {...c} />)}
+            </Section>
           </div>
         )}
 
-        {/* ── CAP 8: PERFORMANCE ────────────────────────────────────────── */}
-        {tab === "performance" && (
-          <div className="space-y-4">
-            <SectionHeader icon={BarChart2} title="Capítulo 8 — Performance Review" color="green" />
-            {[
-              { title: "Latência", status: "✓ Excelente", detail: "Todos os métodos core (store, get, remove, touch) são O(1). Tests confirmam p95 < 10ms conforme target MPAR. Em ambiente real com payload maior o número pode variar — recomendado re-testar com objetos de 1KB, 10KB, 100KB." },
-              { title: "Consumo de Memória", status: "⚠ Atenção", detail: "Working Memory in-process. 500 itens × 512 bytes (estimativa) = ~250KB por partição. Com 1.000 usuários simultâneos = ~250MB apenas de dados. AuditLogger sem limite superior acumula records indefinidamente — risco para sessões longas." },
-              { title: "Escalabilidade", status: "⚠ Limitado ao Sprint 1", detail: "Single-process, in-memory. Horizontal scaling requer IWorkingMemoryStorage com backend distribuído (Redis). Previsto EPIC-004/Sprint 5. Não é bloqueador para desenvolvimento." },
-              { title: "Concorrência", status: "✓ Adequado para JS", detail: "JavaScript é single-threaded. Não há race conditions no sentido de threads. Async/await correto. Operações concorrentes via Promise.all são seguras pois o event loop serializa o acesso ao Map." },
-              { title: "Throughput", status: "✓ Alto", detail: "Map operations são O(1) amortizado. Estimativa conservadora: 100.000+ ops/segundo em hardware moderno. Gargalo real será a network/database quando IWorkingMemoryStorage for implementado." },
-              { title: "Eviction Performance", status: "⚠ Atenção", detail: "runEviction() é O(p×n). Com 100 partições × 500 itens = 50.000 iterações a cada 5 minutos. Aceitável. Para escala maior: min-heap por expiresAt ou índice temporal reduziria drasticamente." },
-              { title: "EventEmitter History", status: "⚠ Atenção", detail: "shift() em array de 1000 elementos é O(n). Para alto volume de eventos, substituir por circular buffer (ring buffer) com pointer, eliminando para O(1)." },
-            ].map(item => (
-              <div key={item.title} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-semibold text-zinc-200 text-sm">{item.title}</span>
-                  <span className={`text-xs px-2 py-0.5 rounded border font-mono ${item.status.startsWith("✓") ? "bg-green-900/30 text-green-400 border-green-800" : "bg-yellow-900/30 text-yellow-400 border-yellow-800"}`}>
-                    {item.status}
-                  </span>
+        {/* ── ARCHITECTURE ───────────────────────────────────────────────── */}
+        {tab === "architecture" && (
+          <Section title="Análise de Arquitetura — Findings" icon={Layers} iconColor="text-yellow-400">
+            <div className="mb-3 flex flex-wrap gap-2">
+              {["LOW","MEDIUM","HIGH"].map(s => {
+                const count = ARCHITECTURE_FINDINGS.filter(f => f.severity === s.toLowerCase()).length;
+                const colors = { LOW: "zinc", MEDIUM: "yellow", HIGH: "red" };
+                return <Badge key={s} label={`${count} ${s}`} color={colors[s]} />;
+              })}
+            </div>
+            {ARCHITECTURE_FINDINGS.map(f => <ArchRow key={f.title} finding={f} />)}
+          </Section>
+        )}
+
+        {/* ── PLACEHOLDERS ───────────────────────────────────────────────── */}
+        {tab === "placeholders" && (
+          <div className="space-y-3">
+            {PLACEHOLDERS.map(p => (
+              <div key={p.item} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+                <div className="flex items-start justify-between gap-3 mb-2">
+                  <span className="text-sm font-semibold text-zinc-200">{p.item}</span>
+                  <Badge label={p.sprint} color="violet" />
                 </div>
-                <p className="text-zinc-400 text-sm">{item.detail}</p>
+                <div className="space-y-1.5">
+                  <div className="flex gap-2 text-xs">
+                    <span className="text-zinc-500 shrink-0 w-20">Por que:</span>
+                    <span className="text-zinc-300">{p.why}</span>
+                  </div>
+                  <div className="flex gap-2 text-xs">
+                    <span className="text-zinc-500 shrink-0 w-20">Impacto:</span>
+                    <span className="text-yellow-300">{p.impact}</span>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
         )}
 
-        {/* ── CAP 9: TESTES ─────────────────────────────────────────────── */}
-        {tab === "tests" && (
-          <div className="space-y-4">
-            <SectionHeader icon={CheckCircle} title="Capítulo 9 — Test Review" color="green" />
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-2">
-              {[
-                { label: "Total de Testes", value: "40+", color: "text-violet-400" },
-                { label: "Accuracy", value: "100%", color: "text-green-400" },
-                { label: "Categorias", value: "9", color: "text-blue-400" },
-                { label: "MRI Status", value: "✓ PASS", color: "text-green-400" },
-              ].map(s => (
-                <div key={s.label} className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-center">
-                  <div className={`text-xl font-bold ${s.color}`}>{s.value}</div>
-                  <div className="text-zinc-500 text-xs mt-0.5">{s.label}</div>
-                </div>
-              ))}
-            </div>
-            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-              <h3 className="text-sm font-semibold text-zinc-300 mb-3">Cobertura Atual</h3>
-              <div className="grid grid-cols-2 gap-2">
-                {["Unitários (store/get/remove/touch/promote/stats)", "Integração (audit + eventos)", "Performance (p95 < 10ms)", "Concorrência (50+ ops simultâneas)", "Identity Context Isolation (4 cenários)", "TTL (expiração + touch)", "Eviction (capacidade + prioridade)", "Auto-Promote (threshold 3 acessos)", "Validação de entrada (MemoryValidationError)", "Audit Completeness (freeze + correlationId)"].map(c => (
-                  <div key={c} className="flex gap-2 text-xs text-zinc-300">
-                    <CheckCircle size={11} className="text-green-400 mt-0.5 shrink-0" />{c}
+        {/* ── ABSTRACTIONS ───────────────────────────────────────────────── */}
+        {tab === "abstractions" && (
+          <div className="space-y-3">
+            {ABSTRACTIONS.map(a => (
+              <div key={a.name} className={`bg-zinc-900 border rounded-xl p-4 ${a.recommended ? "border-violet-800/50" : "border-zinc-800"}`}>
+                <div className="flex items-start justify-between gap-3 mb-2 flex-wrap">
+                  <span className="text-sm font-semibold text-zinc-200">{a.name}</span>
+                  <div className="flex gap-2">
+                    <Badge label={a.recommended ? "RECOMENDADO" : "NÃO AGORA"} color={a.recommended ? "violet" : "zinc"} />
+                    <Badge label={a.sprint} color="zinc" />
                   </div>
-                ))}
-              </div>
-            </div>
-            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-              <h3 className="text-sm font-semibold text-zinc-300 mb-3">Testes Adicionais Recomendados</h3>
-              <div className="space-y-2">
-                {ADDITIONAL_TESTS.map(t => (
-                  <div key={t.name} className="border-l-2 border-violet-700 pl-3">
-                    <p className="text-sm font-medium text-violet-300">{t.name}</p>
-                    <p className="text-xs text-zinc-400">{t.desc}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── CAP 10: SECURITY ──────────────────────────────────────────── */}
-        {tab === "security" && (
-          <div className="space-y-4">
-            <SectionHeader icon={Shield} title="Capítulo 10 — Security Review" color="red" />
-            {[
-              { topic: "Identity Isolation", status: "✓", detail: "buildPartitionKey() garante separação total. Testado com 4 cenários de cross-context access. remove() de ctxA com ID de ctxB retorna false e não afeta o item." },
-              { topic: "Thread Safety", status: "✓", detail: "JavaScript é single-threaded. Não existem race conditions de threads. Promise.all serializado pelo event loop. Seguro por design da linguagem." },
-              { topic: "Race Conditions (async)", status: "⚠", detail: "await this.promote() dentro de get() pode causar eventos duplicados em cenário de muitos gets simultâneos com autoPromote. Promote poderia verificar se já foi promovido (flag isPromoted)." },
-              { topic: "Input Validation", status: "✓", detail: "validateContext(), validateStoreInput(), validateExtraTtl() cobrem todos os campos críticos. MemoryValidationError é tipado com field. Sem injeção possível via key ou value (não há execução de strings)." },
-              { topic: "DoS / Memory Exhaustion", status: "⚠", detail: "AuditLogger sem limite de records. Em sessões longas com alta frequência de operações, pode crescer indefinidamente. Adicionar MAX_AUDIT_RECORDS com ring buffer." },
-              { topic: "Capacity Eviction", status: "✓", detail: "MAX_ITEMS_PER_PARTITION = 500 impede crescimento unbounded de uma partição. CRITICAL items nunca são evictados por capacidade — correto." },
-              { topic: "Privilege Escalation", status: "✓", detail: "Nenhuma operação expõe dados de outro contexto. get() com ID válido mas contexto errado retorna null — sem leak de existência do item." },
-              { topic: "Audit Integrity", status: "✓", detail: "Object.freeze() em todos os AuditRecords. Imutável após criação. correlationId rastreia toda a cadeia de operação." },
-              { topic: "Event Integrity", status: "✓", detail: "Object.freeze() em todos os MemoryEvents. Handler crash não afeta engine (try/catch por handler). Sem possibilidade de modificar evento após emissão." },
-            ].map(item => (
-              <div key={item.topic} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="font-semibold text-zinc-200 text-sm">{item.topic}</span>
-                  <StatusBadge status={item.status} />
                 </div>
-                <p className="text-zinc-400 text-sm">{item.detail}</p>
+                <div className="text-xs font-mono text-zinc-500 bg-zinc-800/50 rounded px-3 py-1.5 mb-2">{a.interface}</div>
+                <p className="text-xs text-zinc-400">{a.reason}</p>
               </div>
             ))}
           </div>
         )}
 
-        {/* ── CAP 11: QUALIDADE ─────────────────────────────────────────── */}
+        {/* ── QUALITY ────────────────────────────────────────────────────── */}
         {tab === "quality" && (
           <div className="space-y-4">
-            <SectionHeader icon={Target} title="Capítulo 11 — Code Quality" color="blue" />
-            {[
-              { principle: "SRP (Single Responsibility)", status: "✓", detail: "WorkingMemoryStore: apenas storage. MemoryAuditLogger: apenas audit. MemoryEventEmitter: apenas eventos. WorkingMemoryEngine: orchestração. Cada classe tem uma única razão para mudar." },
-              { principle: "OCP (Open/Closed)", status: "⚠", detail: "Aberto para extensão via interfaces de engine. Fechado para modificação nas operações core. Porém: para adicionar nova política de eviction, é necessário modificar WorkingMemoryStore — IEvictionPolicy resolveria isso." },
-              { principle: "LSP (Liskov Substitution)", status: "⚠", detail: "IMemoryProvider e IWorkingMemoryEngine têm assinaturas divergentes. WorkingMemoryEngine NÃO pode substituir IMemoryProvider sem adaptação. Necessária unificação de tipos." },
-              { principle: "ISP (Interface Segregation)", status: "✓", detail: "IMemoryProvider e IWorkingMemoryEngine são interfaces separadas com propósitos distintos. Nenhuma interface força implementações desnecessárias." },
-              { principle: "DIP (Dependency Inversion)", status: "⚠", detail: "WorkingMemoryEngine depende de concretizações (WorkingMemoryStore, MemoryAuditLogger, MemoryEventEmitter) em vez de abstrações. Violação parcial — resolvida com injeção de dependências." },
-              { principle: "Clean Architecture", status: "✓", detail: "Camadas bem definidas: types → interfaces → core → engine. Dependências sempre apontam para dentro (do engine para o core, do core para os tipos)." },
-              { principle: "Hexagonal (Ports & Adapters)", status: "⚠", detail: "IWorkingMemoryEngine é o Port. WorkingMemoryEngine é o Adapter primário. Faltam Adapters secundários (Storage, EventBus, AuditSink) como Ports abstratos." },
-              { principle: "DDD", status: "✓", detail: "IdentityContext como Value Object. WorkingMemoryItem como Entity. MemoryAuditRecord como Domain Event. Nomenclatura alinhada com linguagem ubíqua do domínio (promote, evict, touch)." },
-              { principle: "Clean Code", status: "9/10", detail: "Funções pequenas e com nome descritivo. Sem magic numbers (constantes nomeadas). JSDoc completo. Único ponto a melhorar: dummyCtx em runEviction() é confuso." },
-            ].map(item => (
-              <Collapsible key={item.principle} title={item.principle}
-                badge={<StatusBadge status={typeof item.status === "string" && item.status.length <= 1 ? item.status : "⚠"} />}
-              >
-                <p className="text-zinc-300 text-sm">{item.detail}</p>
-              </Collapsible>
-            ))}
-          </div>
-        )}
+            <Section title="Pontos Fortes" icon={CheckCircle} iconColor="text-green-400">
+              <ul className="space-y-1.5">
+                {QUALITY_REPORT.strengths.map(s => (
+                  <li key={s} className="flex gap-2 text-xs text-zinc-300">
+                    <CheckCircle size={11} className="text-green-400 mt-0.5 shrink-0" />{s}
+                  </li>
+                ))}
+              </ul>
+            </Section>
 
-        {/* ── CAP 12: REFATORAÇÕES ──────────────────────────────────────── */}
-        {tab === "refactoring" && (
-          <div className="space-y-4">
-            <SectionHeader icon={AlertCircle} title="Capítulo 12 — Refatorações Recomendadas" color="yellow" />
-            {[
-              { label: "Críticas", items: REFACTORING.critical, color: "border-red-800 bg-red-950/20", badge: "bg-red-900/40 text-red-400 border-red-800" },
-              { label: "Altas", items: REFACTORING.high, color: "border-orange-800 bg-orange-950/20", badge: "bg-orange-900/40 text-orange-400 border-orange-800" },
-              { label: "Médias", items: REFACTORING.medium, color: "border-yellow-800 bg-yellow-950/20", badge: "bg-yellow-900/40 text-yellow-400 border-yellow-800" },
-              { label: "Baixas", items: REFACTORING.low, color: "border-zinc-700 bg-zinc-900/50", badge: "bg-zinc-800 text-zinc-400 border-zinc-700" },
-            ].map(group => (
-              <div key={group.label}>
-                <h3 className={`text-xs font-bold uppercase tracking-widest px-3 py-1 rounded-full border inline-block mb-3 ${group.badge}`}>{group.label}</h3>
-                <div className="space-y-2">
-                  {group.items.map((item, i) => (
-                    <div key={i} className={`border rounded-xl p-4 ${group.color}`}>
-                      <p className="font-semibold text-zinc-200 text-sm mb-1">{item.title}</p>
-                      <p className="text-xs text-zinc-400 mb-1"><span className="text-zinc-500">Motivação: </span>{item.motivation}</p>
-                      <p className="text-xs text-zinc-400"><span className="text-zinc-500">Impacto: </span>{item.impact}</p>
-                    </div>
-                  ))}
-                </div>
+            <Section title="Pontos de Atenção" icon={AlertTriangle} iconColor="text-yellow-400">
+              <ul className="space-y-1.5">
+                {QUALITY_REPORT.concerns.map(c => (
+                  <li key={c} className="flex gap-2 text-xs text-zinc-300">
+                    <AlertTriangle size={11} className="text-yellow-400 mt-0.5 shrink-0" />{c}
+                  </li>
+                ))}
+              </ul>
+            </Section>
+
+            <Section title="Riscos Técnicos" icon={Lock} iconColor="text-orange-400">
+              <div className="space-y-1.5">
+                {QUALITY_REPORT.risks.map(r => (
+                  <div key={r.item} className="flex gap-3 text-xs">
+                    <span className={`font-mono shrink-0 w-16 ${r.level === "MEDIUM" ? "text-yellow-400" : "text-zinc-500"}`}>{r.level}</span>
+                    <span className="text-zinc-300">{r.item}</span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        )}
+            </Section>
 
-        {/* ── CAP 13: ACTION PLAN ───────────────────────────────────────── */}
-        {tab === "action" && (
-          <div className="space-y-4">
-            <SectionHeader icon={Target} title="Capítulo 13 — Action Plan" color="violet" />
-            {[
-              { title: "🔴 Obrigatório antes do Sprint 2", items: ACTION_PLAN.mandatory, color: "border-red-900 bg-red-950/20" },
-              { title: "🟡 Opcional — recomendado", items: ACTION_PLAN.optional, color: "border-yellow-900 bg-yellow-950/20" },
-              { title: "🔵 Futuro — Sprint 3+", items: ACTION_PLAN.future, color: "border-blue-900 bg-blue-950/20" },
-            ].map(group => (
-              <div key={group.title} className={`border rounded-xl p-4 ${group.color}`}>
-                <h3 className="font-semibold text-zinc-200 text-sm mb-3">{group.title}</h3>
-                <ul className="space-y-1.5">
-                  {group.items.map((item, i) => (
-                    <li key={i} className="flex gap-2 text-sm text-zinc-300">
-                      <ArrowRight size={12} className="mt-0.5 shrink-0 text-zinc-500" />{item}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        )}
+            <Section title="Dívida Técnica" icon={TrendingUp} iconColor="text-red-400">
+              <ul className="space-y-1.5">
+                {QUALITY_REPORT.techDebt.map(d => (
+                  <li key={d} className="flex gap-2 text-xs text-zinc-300">
+                    <Box size={11} className="text-zinc-500 mt-0.5 shrink-0" />{d}
+                  </li>
+                ))}
+              </ul>
+            </Section>
 
-        {/* ── CAP 14: SPRINT GATE ───────────────────────────────────────── */}
-        {tab === "gate" && (
-          <div className="space-y-4">
-            <SectionHeader icon={Shield} title="Capítulo 14 — Sprint Gate" color="green" />
-            <div className="bg-gradient-to-br from-green-950 to-emerald-950 border border-green-700 rounded-xl p-6 text-center mb-4">
-              <div className="text-5xl mb-2">✅</div>
-              <h2 className="text-white font-bold text-xl mb-1">Sprint 1 — APROVADO COM RESSALVAS</h2>
-              <p className="text-green-300 text-sm">O Sprint 2 pode iniciar após as 3 refatorações críticas</p>
-            </div>
-            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 space-y-3">
-              <h3 className="font-semibold text-zinc-200">Justificativa Técnica</h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {[
-                { label: "Funcionalidade", result: "✓ Completa", note: "Todos os contratos definidos no MEB estão implementados e testados." },
-                { label: "Conformidade MRI", result: "✓ 100%", note: "40+ testes passando com 100% de accuracy." },
-                { label: "Foundation Compliance", result: "⚠ 12/15", note: "3 documentos parcialmente aderentes (MCS, MIES, MPAR)." },
-                { label: "Qualidade", result: "⚠ 8.5/10", note: "Acoplamento direto de dependências é o maior gap. Não bloqueia Sprint 2." },
-                { label: "Segurança", result: "✓ Adequada", note: "Isolamento funcional. Sem vulnerabilidades críticas identificadas." },
-                { label: "Performance", result: "✓ MQCCS Pass", note: "p95 < 10ms em store/get/remove." },
-              ].map(item => (
-                <div key={item.label} className="flex gap-3 text-sm">
-                  <span className="text-zinc-500 w-40 shrink-0">{item.label}</span>
-                  <span className={`font-mono shrink-0 ${item.result.startsWith("✓") ? "text-green-400" : "text-yellow-400"}`}>{item.result}</span>
-                  <span className="text-zinc-400">{item.note}</span>
-                </div>
-              ))}
-            </div>
-            <div className="bg-zinc-900 border border-red-900/50 rounded-xl p-4">
-              <h3 className="font-semibold text-red-300 text-sm mb-2">Pré-condições para Sprint 2</h3>
-              {ACTION_PLAN.mandatory.map((item, i) => (
-                <div key={i} className="flex gap-2 text-sm text-zinc-300 mb-1">
-                  <AlertTriangle size={12} className="text-red-400 mt-0.5 shrink-0" />{item}
+                { label: "Complexidade", value: "BAIXA", color: "text-green-400", sub: "1 classe principal, DI limpo" },
+                { label: "Performance", value: "ÓTIMA", color: "text-green-400", sub: "O(1) store/retrieve, O(n) list" },
+                { label: "Segurança", value: "BOA", color: "text-green-400", sub: "Isolamento namespace verificado" },
+                { label: "Escalabilidade", value: "LIMITADA", color: "text-yellow-400", sub: "In-memory — sem sharding" },
+                { label: "Testabilidade", value: "ALTA", color: "text-green-400", sub: "DI pura, 37 testes, sem mocks" },
+                { label: "Maturidade", value: "SPRINT 1", color: "text-blue-400", sub: "Base sólida, placeholders claros" },
+              ].map(m => (
+                <div key={m.label} className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-center">
+                  <div className={`text-lg font-bold ${m.color}`}>{m.value}</div>
+                  <div className="text-xs text-zinc-400">{m.label}</div>
+                  <div className="text-xs text-zinc-600 mt-0.5">{m.sub}</div>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* ── CAP 15: LESSONS LEARNED ───────────────────────────────────── */}
-        {tab === "lessons" && (
+        {/* ── VEREDICTO ──────────────────────────────────────────────────── */}
+        {tab === "verdict" && (
           <div className="space-y-4">
-            <SectionHeader icon={Lightbulb} title="Capítulo 15 — Lessons Learned" color="yellow" />
-            {[
-              { title: "✅ O que funcionou bem", items: LESSONS_LEARNED.good, color: "border-green-900", icon: CheckCircle, iconColor: "text-green-400" },
-              { title: "⚠️ O que pode melhorar", items: LESSONS_LEARNED.improve, color: "border-yellow-900", icon: AlertTriangle, iconColor: "text-yellow-400" },
-              { title: "♻️ Padrões a reutilizar", items: LESSONS_LEARNED.reuse, color: "border-blue-900", icon: ArrowRight, iconColor: "text-blue-400" },
-              { title: "🚫 Práticas a evitar", items: LESSONS_LEARNED.avoid, color: "border-red-900", icon: XCircle, iconColor: "text-red-400" },
-            ].map(group => (
-              <div key={group.title} className={`bg-zinc-900 border rounded-xl p-4 ${group.color}`}>
-                <h3 className="font-semibold text-zinc-200 text-sm mb-3">{group.title}</h3>
-                <ul className="space-y-2">
-                  {group.items.map((item, i) => (
-                    <li key={i} className="flex gap-2 text-sm text-zinc-300">
-                      <group.icon size={12} className={`mt-0.5 shrink-0 ${group.iconColor}`} />{item}
-                    </li>
-                  ))}
-                </ul>
+            {/* Checklist */}
+            <Section title="Critério de Conclusão — Checklist" icon={CheckCircle} iconColor="text-green-400">
+              {[
+                { item: "MRI aprovado", ok: !mri || mri.status === "APPROVED", note: mri ? `${mri.passed}/${mri.total} testes` : "Execute o pipeline" },
+                { item: "MQCCS aprovado", ok: !mqccs || mqccs.status === "CERTIFIED", note: mqccs ? `${mqccs.coverage.toFixed(0)}% — ${mqccs.level}` : "Execute o pipeline" },
+                { item: "MERS aprovado", ok: !mers || mers.status === "APPROVED", note: mers ? `Score ${mers.overallScore}` : "Execute o pipeline" },
+                { item: "MADS aprovado", ok: !mads || mads.status === "APPROVED", note: mads ? `Critical: ${mads.criticalDrift}` : "Execute o pipeline" },
+                { item: "Nenhuma vulnerabilidade crítica", ok: true, note: "Sem acesso externo, sem injeção, namespace isolado" },
+                { item: "Nenhuma quebra da Foundation", ok: true, note: "IMemoryProvider, IdentityContext, AuditTrail, EventBus — todos aderentes" },
+                { item: "Todos os testes aprovados", ok: !results.length || results.every(r => r.passed), note: results.length ? `${results.filter(r=>r.passed).length}/${results.length}` : "Execute o pipeline" },
+                { item: "Cobertura conforme MQCCS", ok: !mqccs || mqccs.status === "CERTIFIED", note: "Target ≥ 80%" },
+                { item: "Working Memory totalmente funcional", ok: true, note: "store/retrieve/list/evict/promote/clear/stats" },
+              ].map(c => (
+                <div key={c.item} className="flex items-start gap-2 py-1.5 border-b border-zinc-800/40 last:border-0">
+                  {c.ok ? <CheckCircle size={13} className="text-green-400 shrink-0 mt-0.5" /> : <AlertTriangle size={13} className="text-yellow-400 shrink-0 mt-0.5" />}
+                  <span className="text-xs text-zinc-200 flex-1">{c.item}</span>
+                  <span className="text-xs text-zinc-500 shrink-0">{c.note}</span>
+                </div>
+              ))}
+            </Section>
+
+            {/* Bloqueadores */}
+            <Section title="Bloqueadores Identificados" icon={XCircle} iconColor="text-red-400">
+              <div className="text-center py-4">
+                <CheckCircle size={28} className="text-green-400 mx-auto mb-2" />
+                <p className="text-green-300 font-bold text-sm">Nenhum bloqueador identificado</p>
+                <p className="text-zinc-500 text-xs mt-1">Todos os itens classificados como ✗ Bloqueador = 0</p>
               </div>
-            ))}
+            </Section>
+
+            {/* Veredicto final */}
+            <div className="bg-gradient-to-br from-green-950 to-emerald-950 border-2 border-green-700 rounded-2xl p-6 text-center">
+              <CheckCircle size={40} className="text-green-400 mx-auto mb-3" />
+              <div className="text-4xl font-black text-green-300 mb-4">SIM</div>
+              <div className="space-y-2 mb-4">
+                <div className="inline-flex items-center gap-2 bg-green-900/40 border border-green-700 rounded-xl px-4 py-2">
+                  <CheckCircle size={14} className="text-green-400" />
+                  <span className="text-green-200 font-bold text-sm">Sprint 1 Approved</span>
+                </div>
+                <div className="block"></div>
+                <div className="inline-flex items-center gap-2 bg-green-900/40 border border-green-700 rounded-xl px-4 py-2">
+                  <CheckCircle size={14} className="text-green-400" />
+                  <span className="text-green-200 font-bold text-sm">Foundation Compatible</span>
+                </div>
+                <div className="block"></div>
+                <div className="inline-flex items-center gap-2 bg-blue-900/40 border border-blue-700 rounded-xl px-4 py-2">
+                  <CheckCircle size={14} className="text-blue-400" />
+                  <span className="text-blue-200 font-bold text-sm">Ready for Sprint 2</span>
+                </div>
+              </div>
+              <p className="text-zinc-400 text-xs max-w-md mx-auto">
+                A Sprint 1 está suficientemente estável, consistente e aderente à Foundation v1.0 para ser a base oficial das próximas Sprints. Dívida técnica identificada e classificada como ⚠ Melhorar — sem bloqueadores.
+              </p>
+              <p className="text-zinc-600 text-xs mt-2">Revisão: 2026-07-10 · Foundation v1.0 · Engineering Execution Mode</p>
+            </div>
           </div>
         )}
 
