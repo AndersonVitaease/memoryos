@@ -33,7 +33,7 @@ Estes documentos não devem ser modificados de forma leviana.
 | Documento | Tipo | Status |
 |---|---|---|
 | [MV — MemoryOS Vision](./MV-MemoryOS-Vision.md) | Estratégico | Aprovado |
-| [MPS — MemoryOS Product Specification](./MPS-MemoryOS-Product-Specification.md) | Produto | Aprovado |
+| [MPS — MemoryOS Product Specification v1.0](./MPS-MemoryOS-Product-Specification.md) | Produto | Aprovado |
 | [MAS — MemoryOS Architecture Specification](./MAS-MemoryOS-Architecture-Specification.md) | Arquitetura | Aprovado |
 | [MES — MemoryOS Engineering Specification](./MES-MemoryOS-Engineering-Specification.md) | Engenharia | Aprovado |
 | [MES — MemoryOS Engineering Specification](./MES-MemoryOS-Engineering-Specification.md) | Engenharia | Aprovado |

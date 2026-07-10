@@ -1,349 +1,341 @@
-# MemoryOS Product Specification (MPS)
+# MPS — MemoryOS Product Specification
+## Product Vision & Product Principles
 
-**Versão:** 1.0
-**Status:** Oficial
-**Tipo:** Documento de Produto
+**Versão:** 1.0  
+**Status:** Documento Oficial do Produto — Aprovado  
+**Data:** 2026-07-10  
+**Tipo:** Especificação de Produto  
+**Complementa:** MAS · MDS 1.0–1.6 · MDS Architectural Principles
 
 ---
 
-## 1. Objetivo
+## Declaração
 
-Este documento define oficialmente o produto MemoryOS.
+Este documento define oficialmente **o que é o MemoryOS como produto**.
 
-Seu propósito é garantir que toda decisão de produto permaneça alinhada à visão definida no MemoryOS Vision (MV).
+| Documento | Define |
+|---|---|
+| **MAS** | COMO o sistema é construído (arquitetura técnica) |
+| **MDS** | COMO implementá-lo (engenharia e especificações) |
+| **MPS** | O QUE o produto representa para seus usuários |
 
-## 2. Definição do Produto
-
-O MemoryOS é um Sistema Operacional Cognitivo que preserva memória permanente, interpreta intenções humanas e coordena inteligentemente especialistas, capacidades, serviços e conectores para permitir que qualquer pessoa converse continuamente com uma única inteligência ao longo de toda a vida.
-
-## 3. Problema
-
-Hoje os usuários precisam:
-
-- Repetir informações.
-- Abrir diversos aplicativos.
-- Aprender diferentes interfaces.
-- Procurar arquivos manualmente.
-- Lembrar onde documentos estão armazenados.
-- Alternar constantemente entre sistemas.
-- Recomeçar conversas com IA.
-
-Isso gera perda de tempo, perda de contexto e sobrecarga cognitiva.
-
-## 4. Proposta de Valor
-
-O usuário conversa apenas com o MemoryOS.
-
-O MemoryOS:
-
-- lembra;
-- interpreta;
-- organiza;
-- pesquisa;
-- planeja;
-- aprende;
-- coordena;
-- executa.
-
-Tudo acontece através de uma única conversa contínua.
-
-## 5. Promessa Principal
-
-> "Você nunca mais precisará recomeçar uma conversa."
-
-Essa é a principal promessa do produto.
-
-## 6. Público-Alvo
-
-### Usuário Individual
-
-Profissionais que utilizam IA diariamente.
-
-Exemplos:
-
-- empreendedores;
-- estudantes;
-- pesquisadores;
-- desenvolvedores;
-- criadores de conteúdo;
-- consultores;
-- gestores.
-
-### Empresas
-
-Equipes que desejam:
-
-- preservar conhecimento;
-- reduzir retrabalho;
-- integrar sistemas;
-- centralizar informações.
-
-## 7. Hipótese Principal do Beta
-
-O Beta não existe para validar funcionalidades.
-
-O Beta existe para validar confiança.
-
-A principal pergunta do Beta é:
-
-> O usuário sente que finalmente encontrou uma IA que nunca o obriga a recomeçar uma conversa?
-
-## 8. Objetivos do Beta
-
-Validar:
-
-1. Memória Permanente.
-2. Continuidade.
-3. Busca Inteligente.
-4. Pesquisa Integrada.
-5. Aprendizado de Contexto.
-6. Upload de Documentos.
-7. Gmail Connector.
-
-## 9. Escopo do Beta
-
-### Incluído
-
-- Conversa contínua.
-- Memória permanente.
-- Pesquisa inteligente.
-- Busca na memória.
-- Upload de PDFs.
-- Upload de documentos.
-- Gmail Connector.
-
-### Fora do Beta
-
-- WhatsApp.
-- Agenda.
-- Google Drive.
-- Shopify.
-- ERP.
-- Bancos.
-- Turismo.
-- Word.
-- CRM.
-
-## 10. Jornada do Usuário
-
-### Primeiro Dia
-
-O usuário:
-
-- cria uma conta;
-- inicia uma conversa;
-- faz perguntas;
-- envia documentos;
-- realiza pesquisas.
-
-Nenhuma integração é obrigatória.
-
-### Primeira Semana
-
-O usuário percebe que:
-
-- o sistema lembra;
-- não precisa repetir informações;
-- encontra documentos rapidamente;
-- o contexto cresce naturalmente.
-
-### Segunda Semana
-
-O usuário conecta o Gmail de forma voluntária.
-
-A confiança precede a integração.
-
-### Longo Prazo
-
-O MemoryOS torna-se o ponto central da vida digital do usuário.
-
-## 11. Experiência Esperada
-
-O usuário deve sentir:
-
-- continuidade;
-- confiança;
-- simplicidade;
-- previsibilidade;
-- inteligência.
-
-Nunca deve sentir que está utilizando diversos aplicativos.
-
-## 12. Onboarding
-
-O onboarding deve comunicar imediatamente:
-
-- O MemoryOS lembra.
-- O usuário permanece no controle.
-- A memória pertence ao usuário.
-- As integrações são opcionais.
-
-Nunca solicitar todas as permissões no primeiro acesso.
-
-## 13. Comunicação
-
-O produto nunca deve ser apresentado como:
-
-- IA com memória;
-- chatbot;
-- assistente virtual.
-
-Sempre comunicar:
-
-> Sistema Operacional Cognitivo.
-
-## 14. Diferenciais
-
-- **Memória Permanente** — Nunca é perdida.
-- **Continuidade** — Existe apenas uma conversa.
-- **Contexto** — O sistema compreende histórico, documentos e preferências.
-- **Independência** — A memória não depende do modelo de IA.
-- **Conectores Opcionais** — A confiança vem antes das integrações.
-
-## 15. Modelo de Monetização
-
-### Gratuito
-
-- memória básica;
-- conversa contínua;
-- pesquisa.
-
-### Plus
-
-- memória expandida;
-- especialistas premium;
-- processamento premium.
-
-### Pro
-
-- múltiplos conectores;
-- automações;
-- recursos avançados.
-
-### Business
-
-- equipes;
-- administração;
-- auditoria;
-- integrações corporativas.
-
-## 16. Cancelamento
-
-Caso o usuário deixe de pagar:
-
-**Permanece:**
-
-- memória;
-- histórico;
-- contexto.
-
-**Perde apenas:**
-
-- novos recursos;
-- processamento premium;
-- especialistas premium;
-- conectores premium.
-
-A memória nunca será removida.
-
-## 17. Roadmap
-
-### Beta
-
-- memória;
-- documentos;
-- pesquisa;
-- Gmail.
-
-### Segunda Fase
-
-- Agenda.
-- WhatsApp.
-- Drive.
-
-### Expansão
-
-- Shopify.
-- ERP.
-- CRM.
-- Bancos.
-- Turismo.
-- Outros conectores.
-
-## 18. Indicadores de Sucesso
-
-O Beta será considerado bem-sucedido quando demonstrar:
-
-- alta retenção;
-- uso recorrente;
-- crescimento contínuo da memória;
-- adoção espontânea do Gmail Connector;
-- percepção clara de continuidade;
-- confiança no sistema.
-
-## 19. Posicionamento
-
-O MemoryOS não compete diretamente com modelos de IA.
-
-Também não substitui aplicativos.
-
-Ele atua como uma camada cognitiva acima deles.
-
-## 20. Mensagem Principal
-
-**Não vender:**
-
-- memória;
-- IA.
-
-**Vender:**
-
-- continuidade;
-- contexto;
-- confiança;
-- inteligência coordenada.
-
-## 21. Critérios para Publicação do Beta
-
-O Beta somente poderá ser publicado quando:
-
-1. a conversa contínua estiver estável;
-2. a memória permanente funcionar corretamente;
-3. a busca inteligente localizar informações de forma confiável;
-4. o upload de documentos estiver concluído;
-5. o Gmail Connector estiver funcional;
-6. o onboarding comunicar claramente a proposta de valor;
-7. o usuário compreender que integrações são opcionais;
-8. o sistema transmitir confiança desde o primeiro uso.
-
-## 22. Princípios do Produto
-
-Toda decisão de produto deve reforçar:
-
-- continuidade;
-- simplicidade;
-- confiança;
-- transparência;
-- controle do usuário;
-- privacidade;
-- memória permanente.
-
-Nenhuma funcionalidade poderá comprometer esses princípios.
-
-## 23. Declaração Oficial do Produto
-
-O MemoryOS é um Sistema Operacional Cognitivo que preserva memória permanente, compreende intenções humanas e coordena inteligentemente especialistas, capacidades, serviços e conectores para permitir que qualquer pessoa converse continuamente com uma única inteligência ao longo de toda a vida, sem precisar recomeçar conversas, reaprender softwares ou perder contexto.
-
-## 24. Missão do Produto
-
-Criar uma experiência em que a tecnologia deixe de ser o centro da interação.
-
-O usuário conversa apenas com o MemoryOS.
-
-Todo o restante acontece de forma transparente.
+Este documento **não substitui** o MAS, o MDS nem o MASS.  
+Ele **complementa** todos eles.
 
 ---
 
-**Documento Oficial:** MPS — MemoryOS Product Specification
-**Versão:** 1.0
-**Status:** Aprovado
+## 1. Visão do Produto
+
+O **MemoryOS** é uma plataforma de **Inteligência Contextual** capaz de acompanhar pessoas e organizações durante jornadas completas, preservando contexto, conhecimento, memória, decisões e progresso até que seus objetivos sejam alcançados.
+
+**O foco da plataforma não é responder perguntas.**  
+**O foco da plataforma é ajudar pessoas a concluir objetivos.**
+
+---
+
+## 2. Missão
+
+```
+Reduzir a complexidade do mundo digital.
+Transformar processos complexos em jornadas simples.
+Ajudar pessoas e organizações a tomarem melhores decisões.
+Automatizar tarefas repetitivas.
+Preservar conhecimento.
+Nunca perder contexto.
+```
+
+---
+
+## 3. Visão de Longo Prazo
+
+Ser a **principal plataforma mundial de Inteligência Contextual**.
+
+Uma plataforma capaz de integrar pessoas, empresas, governos e sistemas utilizando memória, contexto, conhecimento e execução inteligente.
+
+---
+
+## 4. Público-Alvo
+
+| Segmento | Exemplos de Uso |
+|---|---|
+| **Pessoa Física** | Vida pessoal, saúde, finanças, documentos |
+| **Empresas** | Processos internos, CRM, compliance, automação |
+| **Profissionais** | Advogados, médicos, contadores, engenheiros |
+| **Órgãos Públicos** | Atendimento ao cidadão, processos internos |
+| **Instituições** | Universidades, associações, fundações |
+| **Hospitais** | Prontuários, jornadas de paciente, gestão |
+| **Indústrias** | Produção, logística, supply chain |
+| **Educação** | Aprendizado personalizado, jornadas de estudo |
+| **Turismo** | Reservas, roteiros, atendimento |
+| **Logística** | Rastreamento, entregas, supply chain |
+| **Financeiro** | Investimentos, planejamento, compliance |
+| **E-commerce** | Pedidos, devoluções, atendimento |
+| **Compliance** | Auditorias, regulatório, governança |
+
+**Todos utilizando exatamente a mesma arquitetura.**
+
+---
+
+## 5. Proposta de Valor
+
+**O MemoryOS reduz:**
+
+- Burocracia
+- Complexidade
+- Retrabalho
+- Perda de contexto
+- Perda de conhecimento
+- Tempo gasto em tarefas repetitivas
+
+**E aumenta:**
+
+- Produtividade
+- Organização
+- Continuidade
+- Compreensão
+- Automação
+- Segurança
+- Governança
+
+---
+
+## 6. Filosofia do Produto
+
+```
+O MemoryOS não existe para substituir pessoas.
+Existe para potencializar pessoas.
+```
+
+**Princípios inegociáveis:**
+
+| Princípio | Descrição |
+|---|---|
+| **Controle humano** | O usuário sempre permanece no controle |
+| **Permissões** | Toda operação respeita as permissões configuradas |
+| **Transparência** | O sistema sempre explica o que está fazendo |
+| **Fontes oficiais** | Priorizadas quando disponíveis |
+| **Explicabilidade** | O sistema sempre explica suas decisões |
+
+---
+
+## 7. Jornada do Usuário
+
+Toda interação é parte de uma **Jornada**.
+
+```
+Jornada
+    │
+    ├── Objetivo (o que o usuário quer concluir)
+    ├── Contexto (o que já aconteceu)
+    ├── Progresso (onde está agora)
+    ├── Próximos passos (o que vem a seguir)
+    └── Conclusão (objetivo atingido)
+```
+
+**Regras:**
+
+- A conversa é apenas **um elemento** da Jornada
+- O objetivo é sempre **concluir** a Jornada
+- Nunca **abandonar** uma Jornada
+- Sempre **preservar continuidade** entre sessões
+
+---
+
+## 8. Comunicação
+
+O MemoryOS adapta automaticamente sua comunicação ao perfil do usuário.
+
+**Modos disponíveis:**
+
+| Modo | Quando usar |
+|---|---|
+| Resumido | Usuário precisa de visão rápida |
+| Passo a passo | Usuário precisa de orientação gradual |
+| Técnico | Desenvolvedor, analista |
+| Jurídico | Contexto legal ou regulatório |
+| Linguagem simples | Usuário sem formação técnica |
+| Executivo | Tomador de decisão, foco em resultado |
+
+**Regra:** A **informação permanece a mesma**. Apenas a forma de comunicação se adapta.
+
+---
+
+## 9. Transparência
+
+O usuário deve sempre saber:
+
+- **Quais dados** estão sendo utilizados
+- **Quais fontes** foram consultadas
+- **Quais permissões** estão sendo utilizadas
+- **Quando** uma resposta vier de fonte oficial
+- **Quando** uma resposta representar interpretação contextual
+
+A transparência é parte da experiência, não um recurso opcional.
+
+---
+
+## 10. Papel da IA
+
+**A IA não substitui a decisão humana.**
+
+**Ela organiza, interpreta, contextualiza, planeja, automatiza, acompanha e aprende.**
+
+```
+Ação de baixo impacto    → Automação total permitida
+Ação de médio impacto    → Notificação ao usuário
+Ação de alto impacto     → Confirmação humana obrigatória
+Ação irreversível        → Confirmação + justificativa obrigatória
+```
+
+**A decisão final permanece sob controle humano sempre que houver impacto relevante.**
+
+---
+
+## 11. Escalabilidade
+
+O produto cresce sem alterar sua filosofia.
+
+```
+Novos motores
+Novos Connectors
+Novos domínios
+Novos mercados
+        ↓
+Sempre reutilizando o Core
+Sempre preservando a filosofia
+```
+
+**Regra:** Escalabilidade não é motivo para comprometer os princípios do produto.
+
+---
+
+## 12. Mercados Estratégicos
+
+```
+Empresas · Turismo · Call Centers · E-commerce
+Saúde · Governo · Cidadãos · Compliance
+Educação · Logística · Indústria · Financeiro
+```
+
+**Todos utilizando exatamente a mesma arquitetura.**  
+A especialização ocorre via **Connectors** e **Specialists**, não no Core.
+
+---
+
+## 13. Princípios Permanentes
+
+Estes princípios não mudam com a evolução tecnológica:
+
+| # | Princípio |
+|---|---|
+| 1 | **Contexto** antes da execução |
+| 2 | **Memória** antes da repetição |
+| 3 | **Jornadas** antes de conversas |
+| 4 | **Fontes oficiais** antes de interpretações |
+| 5 | **Transparência** antes da automação |
+| 6 | **Segurança** antes da conveniência |
+| 7 | **Confirmação humana** antes de ações críticas |
+| 8 | **Evolução contínua** sem quebrar compatibilidade |
+
+---
+
+## 14. Não Objetivos
+
+**O MemoryOS não pretende substituir:**
+
+- Profissionais especializados
+- Órgãos públicos
+- Médicos
+- Advogados
+- Contadores
+
+**Seu papel é atuar como copiloto inteligente.**
+
+```
+Profissional especializado  ←──────────────┐
+                                           │
+MemoryOS (copiloto)  ──── organiza, contextualiza, automatiza
+                                           │
+Usuário final  ←───────────────────────────┘
+```
+
+---
+
+## 15. Critérios de Sucesso
+
+O MemoryOS será bem-sucedido quando:
+
+| Critério | Métrica |
+|---|---|
+| Reduzir complexidade | Processos concluídos sem retrabalho |
+| Preservar contexto | Zero perda de contexto entre sessões |
+| Reduzir retrabalho | Tempo economizado por jornada |
+| Aumentar produtividade | Objetivos concluídos por período |
+| Tornar informações compreensíveis | Satisfação de usuários não técnicos |
+| Integrar sistemas sem alterar o Core | Novos conectores sem breaking changes |
+| Tornar-se plataforma de confiança | Adoção e retenção de longo prazo |
+
+---
+
+## Checklist de Conformidade do Produto
+
+A cada nova funcionalidade, verificar:
+
+```
+CHECKLIST — MPS — OBRIGATÓRIO
+═══════════════════════════════════════════════════════════════════════════════
+
+VISÃO
+  [ ] A funcionalidade ajuda o usuário a CONCLUIR um objetivo?
+  [ ] É parte de uma Jornada?
+
+MISSÃO
+  [ ] Reduz complexidade?
+  [ ] Preserva contexto?
+
+FILOSOFIA
+  [ ] O usuário permanece no controle?
+  [ ] Permissões são respeitadas?
+  [ ] O sistema explica o que está fazendo?
+
+TRANSPARÊNCIA
+  [ ] Dados utilizados são visíveis?
+  [ ] Fontes são identificadas?
+
+PAPEL DA IA
+  [ ] Ações de alto impacto possuem confirmação humana?
+  [ ] A IA está no papel de copiloto (não substituto)?
+
+NÃO OBJETIVOS
+  [ ] A funcionalidade não pretende substituir profissionais especializados?
+
+PRINCÍPIOS PERMANENTES
+  [ ] Contexto foi considerado antes da execução?
+  [ ] Memória foi consultada antes de repetir informações?
+  [ ] Jornada foi preservada?
+  [ ] Fontes oficiais foram priorizadas?
+  [ ] Evolução não quebra compatibilidade?
+
+ESCALABILIDADE
+  [ ] Core não foi modificado para acomodar o novo mercado?
+  [ ] Especialização ocorre via Connectors ou Specialists?
+```
+
+---
+
+## Declaração Final
+
+Este documento passa a orientar **todas as futuras decisões relacionadas ao produto**.
+
+Novas funcionalidades, integrações, mercados e evoluções devem preservar:
+
+- A **identidade** do MemoryOS
+- A **missão** declarada
+- A **proposta de valor**
+
+Independentemente da evolução tecnológica ou dos mercados atendidos.
+
+---
+
+**MPS — MemoryOS Product Specification v1.0**  
+**Data:** 2026-07-10 · **Complementa:** MAS · MDS 1.0–1.6 · MDS Architectural Principles
