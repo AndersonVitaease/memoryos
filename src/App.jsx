@@ -29,6 +29,7 @@ import Foundation from '@/pages/Foundation';
 import DeveloperHandbook from '@/pages/DeveloperHandbook';
 import ApiReference from '@/pages/ApiReference';
 import ExecutionModel from '@/pages/ExecutionModel';
+import EngineeringBacklog from '@/pages/EngineeringBacklog';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -75,6 +76,7 @@ const AuthenticatedApp = () => {
           <Route path="/developer-handbook" element={<DeveloperHandbook />} />
           <Route path="/api-reference" element={<ApiReference />} />
           <Route path="/execution-model" element={<ExecutionModel />} />
+          <Route path="/engineering-backlog" element={<EngineeringBacklog />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
