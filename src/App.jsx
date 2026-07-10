@@ -40,6 +40,7 @@ import MipSystem from '@/pages/MipSystem';
 import MeemSystem from '@/pages/MeemSystem';
 import Sprint1WME from '@/pages/Sprint1WME';
 import ReviewEngineRegistryPage from '@/pages/ReviewEngineRegistry';
+import Capabilities from '@/pages/Capabilities';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -97,6 +98,7 @@ const AuthenticatedApp = () => {
           <Route path="/meem" element={<MeemSystem />} />
           <Route path="/sprint1-wme" element={<Sprint1WME />} />
           <Route path="/review-registry" element={<ReviewEngineRegistryPage />} />
+          <Route path="/capabilities" element={<Capabilities />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
