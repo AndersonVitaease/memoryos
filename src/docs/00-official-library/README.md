@@ -73,3 +73,4 @@ Estes documentos não devem ser modificados de forma leviana.
 | [RFC-001 — Foundation v1.0 Baseline Declaration](./RFC-001-Foundation-v1.0-Baseline-Declaration.md) | RFC Crítica | **Aprovado** |
 | [Architecture Auditor Specialist](./Architecture-Auditor-Specialist.md) | Especialista | Aprovado |
 | [MERS — MemoryOS Engineering Review System](./MERS-MemoryOS-Engineering-Review-System.md) | Quality Gate Oficial | **Aprovado** |
+| [MADS — MemoryOS Architecture Drift & Sustainability](./MADS-MemoryOS-Architecture-Drift-Sustainability.md) | Drift & Sustentabilidade | **Aprovado** |
