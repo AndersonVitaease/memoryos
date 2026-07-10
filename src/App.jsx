@@ -32,6 +32,7 @@ import ExecutionModel from '@/pages/ExecutionModel';
 import EngineeringBacklog from '@/pages/EngineeringBacklog';
 import Sprint1Validation from '@/pages/Sprint1Validation';
 import Sprint1Review from '@/pages/Sprint1Review';
+import MersSystem from '@/pages/MersSystem';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -81,6 +82,7 @@ const AuthenticatedApp = () => {
           <Route path="/engineering-backlog" element={<EngineeringBacklog />} />
           <Route path="/sprint1" element={<Sprint1Validation />} />
           <Route path="/sprint1-review" element={<Sprint1Review />} />
+          <Route path="/mers" element={<MersSystem />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
