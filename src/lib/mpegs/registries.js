@@ -9,6 +9,19 @@
 
 export const RFC_REGISTRY = [
   {
+    id: "RFC-000", title: "MemoryOS Foundation v1.0 Baseline Declaration",
+    author: "MemoryOS Core Team", date: "2026-07-10",
+    status: "Approved",
+    category: "Platform Governance",
+    motivation: "Declarar oficialmente o encerramento da fase documental e iniciar a fase Engineering First.",
+    problem: "Continuar produzindo especificações estruturais indefinidamente aumenta complexidade, sobreposição e atraso na implementação.",
+    decision: "Foundation v1.0 declarada como baseline. Toda evolução segue RFC→ADR→Implementação→MRI→MQCCS→Release conforme MPEGS.",
+    adrs: [],
+    components: ["All", "Governance"],
+    impact: "CRITICAL",
+    docRef: "RFC-001-Foundation-v1.0-Baseline-Declaration.md",
+  },
+  {
     id: "RFC-001", title: "Interface-First Architecture para Connectors",
     author: "MemoryOS Core Team", date: "2025-01-10",
     status: "Implemented",
@@ -214,6 +227,19 @@ export const RELEASE_REGISTRY = [
     breaking: [],
     rfcs: ["RFC-007"],
   },
+  {
+    version: "1.0.0-rc.2", date: "2026-07-10", stage: "Release Candidate",
+    title: "Foundation v1.0 Baseline Declaration",
+    highlights: [
+      "RFC-000 aprovada — encerramento da fase documental",
+      "Foundation v1.0 declarada como baseline oficial",
+      "13 especificações oficiais registradas",
+      "Fase Engineering First iniciada oficialmente",
+      "Processo RFC→ADR→Implementação torna-se obrigatório",
+    ],
+    breaking: [],
+    rfcs: ["RFC-000"],
+  },
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -225,10 +251,20 @@ export function getReleaseByVersion(v) { return RELEASE_REGISTRY.find(r => r.ver
 export function getRfcsByStatus(status) { return RFC_REGISTRY.filter(r => r.status === status); }
 export function getAdrsByStatus(status) { return ADR_REGISTRY.filter(a => a.status === status); }
 
+export const FOUNDATION_V1 = {
+  version:   "1.0",
+  declaredAt: "2026-07-10",
+  status:    "Stable",
+  rfc:       "RFC-000",
+  documents: ["MV","MPS","MAS","MDS","MRS","MCS","MDIS","MIES","MDPS","MGFS","MRI","MQCCS","MPEGS"],
+  phase:     "Engineering First",
+};
+
 export const REGISTRY_STATS = {
-  rfcs:      RFC_REGISTRY.length,
-  adrs:      ADR_REGISTRY.length,
-  releases:  RELEASE_REGISTRY.length,
-  implemented: RFC_REGISTRY.filter(r => r.status === "Implemented").length,
+  rfcs:         RFC_REGISTRY.length,
+  adrs:         ADR_REGISTRY.length,
+  releases:     RELEASE_REGISTRY.length,
+  implemented:  RFC_REGISTRY.filter(r => r.status === "Implemented").length,
+  approved:     RFC_REGISTRY.filter(r => r.status === "Approved").length,
   acceptedAdrs: ADR_REGISTRY.filter(a => a.status === "Accepted").length,
 };

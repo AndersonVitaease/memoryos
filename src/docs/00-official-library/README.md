@@ -70,4 +70,5 @@ Estes documentos não devem ser modificados de forma leviana.
 | [MRI — MemoryOS Reference Implementation](./MRI-MemoryOS-Reference-Implementation.md) | Implementação de Referência | Aprovado |
 | [MQCCS — MemoryOS Quality, Compliance & Certification Specification](./MQCCS-MemoryOS-Quality-Compliance-Certification-Specification.md) | Qualidade & Certificação | Aprovado |
 | [MPEGS — MemoryOS Platform Evolution Governance Specification](./MPEGS-MemoryOS-Platform-Evolution-Governance-Specification.md) | Governança da Evolução | Aprovado |
+| [RFC-001 — Foundation v1.0 Baseline Declaration](./RFC-001-Foundation-v1.0-Baseline-Declaration.md) | RFC Crítica | **Aprovado** |
 | [Architecture Auditor Specialist](./Architecture-Auditor-Specialist.md) | Especialista | Aprovado |

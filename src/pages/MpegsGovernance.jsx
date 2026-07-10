@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { GitBranch, FileText, Tag, Package, CheckCircle, Clock, XCircle, ChevronDown, ChevronRight, BarChart2, ArrowRight } from "lucide-react";
-import { RFC_REGISTRY, ADR_REGISTRY, RELEASE_REGISTRY, REGISTRY_STATS } from "@/lib/mpegs/registries";
+import { RFC_REGISTRY, ADR_REGISTRY, RELEASE_REGISTRY, REGISTRY_STATS, FOUNDATION_V1 } from "@/lib/mpegs/registries";
 
 // ─── Constants ────────────────────────────────────────────────────────────
 
@@ -191,6 +191,26 @@ function OverviewPanel() {
 
   return (
     <div className="space-y-6">
+      {/* Foundation v1.0 Banner */}
+      <div className="bg-gradient-to-r from-violet-950 to-blue-950 border border-violet-700 rounded-xl p-4 mb-2">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <p className="text-violet-300 text-xs font-mono mb-0.5">RFC-000 — Aprovada</p>
+            <p className="text-white font-bold text-lg">MemoryOS Foundation v{FOUNDATION_V1.version}</p>
+            <p className="text-violet-300 text-sm">Baseline oficial · {FOUNDATION_V1.documents.length} especificações · Fase: {FOUNDATION_V1.phase}</p>
+          </div>
+          <div className="text-right">
+            <span className="inline-block bg-green-900 text-green-400 text-xs font-bold px-3 py-1 rounded-full border border-green-700">STABLE</span>
+            <p className="text-zinc-500 text-xs mt-1">{FOUNDATION_V1.declaredAt}</p>
+          </div>
+        </div>
+        <div className="mt-3 flex flex-wrap gap-1">
+          {FOUNDATION_V1.documents.map(d => (
+            <span key={d} className="text-xs bg-violet-900/50 text-violet-300 px-2 py-0.5 rounded font-mono border border-violet-800">{d}</span>
+          ))}
+        </div>
+      </div>
+
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard label="RFCs Totais"      value={REGISTRY_STATS.rfcs}           color="violet" />
