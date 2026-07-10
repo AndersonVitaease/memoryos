@@ -77,3 +77,4 @@ Estes documentos não devem ser modificados de forma leviana.
 | [MEOM — MemoryOS Engineering Operations Manual](./MEOM-MemoryOS-Engineering-Operations-Manual.md) | Manual de Operações | **Aprovado** |
 | [MDOK — MemoryOS Developer Onboarding Kit](./MDOK-MemoryOS-Developer-Onboarding-Kit.md) | Onboarding Técnico | **Aprovado** |
 | [MIP — MemoryOS Master Implementation Plan](./MIP-MemoryOS-Master-Implementation-Plan.md) | Plano Mestre de Implementação | **Aprovado** |
+| [MEEM — MemoryOS Engineering Execution Mode](./MEEM-MemoryOS-Engineering-Execution-Mode.md) | Transição para Engenharia | **Aprovado** |

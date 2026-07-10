@@ -1,6 +1,6 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Brain, FolderOpen, Search, LogOut, MessageSquare, Home as HomeIcon, Plug, ShieldCheck, Cpu, Network, Archive, BookOpen, Code, Activity, Layers, Database, ClipboardCheck, Shield, Waves, BookMarked, Terminal, Map } from "lucide-react";
+import { Brain, FolderOpen, Search, LogOut, MessageSquare, Home as HomeIcon, Plug, ShieldCheck, Cpu, Network, Archive, BookOpen, Code, Activity, Layers, Database, ClipboardCheck, Shield, Waves, BookMarked, Terminal, Map, Zap } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 
 const navItems = [
@@ -25,6 +25,7 @@ const navItems = [
   { label: "MEOM", icon: BookMarked, path: "/meom" },
   { label: "MDOK", icon: Terminal, path: "/mdok" },
   { label: "MIP", icon: Map, path: "/mip" },
+  { label: "MEEM", icon: Zap, path: "/meem" },
 ];
 
 export default function Sidebar({ onNavigate }) {
