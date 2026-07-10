@@ -31,6 +31,7 @@ import ApiReference from '@/pages/ApiReference';
 import ExecutionModel from '@/pages/ExecutionModel';
 import EngineeringBacklog from '@/pages/EngineeringBacklog';
 import Sprint1Validation from '@/pages/Sprint1Validation';
+import Sprint1Review from '@/pages/Sprint1Review';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -79,6 +80,7 @@ const AuthenticatedApp = () => {
           <Route path="/execution-model" element={<ExecutionModel />} />
           <Route path="/engineering-backlog" element={<EngineeringBacklog />} />
           <Route path="/sprint1" element={<Sprint1Validation />} />
+          <Route path="/sprint1-review" element={<Sprint1Review />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
