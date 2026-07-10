@@ -42,6 +42,7 @@ import Sprint1WME from '@/pages/Sprint1WME';
 import ReviewEngineRegistryPage from '@/pages/ReviewEngineRegistry';
 import Capabilities from '@/pages/Capabilities';
 import Journeys from '@/pages/Journeys';
+import Goals from '@/pages/Goals';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -101,6 +102,7 @@ const AuthenticatedApp = () => {
           <Route path="/review-registry" element={<ReviewEngineRegistryPage />} />
           <Route path="/capabilities" element={<Capabilities />} />
           <Route path="/journeys" element={<Journeys />} />
+          <Route path="/goals" element={<Goals />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
