@@ -36,6 +36,7 @@ import MersSystem from '@/pages/MersSystem';
 import MadsSystem from '@/pages/MadsSystem';
 import MeomSystem from '@/pages/MeomSystem';
 import MdokSystem from '@/pages/MdokSystem';
+import MipSystem from '@/pages/MipSystem';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -89,6 +90,7 @@ const AuthenticatedApp = () => {
           <Route path="/mads" element={<MadsSystem />} />
           <Route path="/meom" element={<MeomSystem />} />
           <Route path="/mdok" element={<MdokSystem />} />
+          <Route path="/mip" element={<MipSystem />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
