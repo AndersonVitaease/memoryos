@@ -60,6 +60,7 @@ Estes documentos não devem ser modificados de forma leviana.
 | [MDS v1.4 — Learning Engine — Arquitetura Definitiva](./MDS-Revision-1.4.md) | Engenharia | Aprovado |
 | [MDS v1.5 — Knowledge Architecture — Arquitetura Definitiva](./MDS-Revision-1.5.md) | Engenharia | Aprovado |
 | [MDS v1.6 — Memory Architecture — Arquitetura Definitiva](./MDS-Revision-1.6.md) | Engenharia | Aprovado |
+| [MDIS — MemoryOS Decision Intelligence Specification](./MDIS-MemoryOS-Decision-Intelligence-Specification.md) | Inteligência Decisória | Aprovado |
 | [MCS — MemoryOS Core Specification](./MCS-MemoryOS-Core-Specification.md) | Core | Aprovado |
 | [MRS — MemoryOS Runtime Specification](./MRS-MemoryOS-Runtime-Specification.md) | Runtime | Aprovado |
 | [MDS — Architectural Principles Expansion](./MDS-Architectural-Principles.md) | Princípios Arquiteturais | Aprovado |
