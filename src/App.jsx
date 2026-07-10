@@ -46,6 +46,7 @@ import Goals from '@/pages/Goals';
 import Planner from '@/pages/Planner';
 import PlanningIntelligence from '@/pages/PlanningIntelligence';
 import SpecialistRouterPage from '@/pages/SpecialistRouter';
+import StrategyFusion from '@/pages/StrategyFusion';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -109,6 +110,7 @@ const AuthenticatedApp = () => {
           <Route path="/planner" element={<Planner />} />
           <Route path="/planning-intelligence" element={<PlanningIntelligence />} />
           <Route path="/specialist-router" element={<SpecialistRouterPage />} />
+          <Route path="/strategy-fusion" element={<StrategyFusion />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
