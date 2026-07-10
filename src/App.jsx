@@ -43,6 +43,7 @@ import ReviewEngineRegistryPage from '@/pages/ReviewEngineRegistry';
 import Capabilities from '@/pages/Capabilities';
 import Journeys from '@/pages/Journeys';
 import Goals from '@/pages/Goals';
+import Planner from '@/pages/Planner';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -103,6 +104,7 @@ const AuthenticatedApp = () => {
           <Route path="/capabilities" element={<Capabilities />} />
           <Route path="/journeys" element={<Journeys />} />
           <Route path="/goals" element={<Goals />} />
+          <Route path="/planner" element={<Planner />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
