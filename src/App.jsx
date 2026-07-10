@@ -23,6 +23,7 @@ import ArchitectureAudit from '@/pages/ArchitectureAudit';
 import MemoryEngine from '@/pages/MemoryEngine';
 import CognitiveEngine from '@/pages/CognitiveEngine';
 import MriValidation from '@/pages/MriValidation';
+import MqccsValidation from '@/pages/MqccsValidation';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -63,6 +64,7 @@ const AuthenticatedApp = () => {
           <Route path="/memory-engine" element={<MemoryEngine />} />
           <Route path="/cognitive-engine" element={<CognitiveEngine />} />
           <Route path="/mri" element={<MriValidation />} />
+          <Route path="/mqccs" element={<MqccsValidation />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
