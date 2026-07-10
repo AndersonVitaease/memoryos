@@ -1,6 +1,8 @@
 import React, { useState, useCallback } from "react";
 import { runAllTests } from "@/lib/wme/tests/wme.test";
-import { aggregate, runAggregatorTests } from "@/lib/review/ReviewAggregator";
+import { aggregateViaRegistry, runAggregatorTests } from "@/lib/review/ReviewAggregator";
+import { bootstrapDefaultRegistry } from "@/lib/review/registry/defaultRegistry";
+bootstrapDefaultRegistry();
 import {
   SPRINT1_COMPLIANCE, SPRINT1_FINDINGS, SPRINT1_PLACEHOLDERS,
   SPRINT1_ABSTRACTIONS, SPRINT1_QUALITY,
@@ -423,7 +425,7 @@ export default function Sprint1Review() {
     setRunning(true);
     setReport(null);
     const tests = await runAllTests();
-    const r = aggregate({
+    const r = await aggregateViaRegistry({
       sprint:      "sprint-1",
       sprintLabel: "Sprint 1 — Working Memory Engine",
       foundation:  "v1.0",

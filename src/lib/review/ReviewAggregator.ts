@@ -1,6 +1,6 @@
 // ─── ReviewAggregator ─────────────────────────────────────────────────────────
-// Foundation v1.0 · Agrega resultados dos analyzers + metadata em ReviewReport
-// Extensível: novos analyzers passados via options.extraGates
+// Foundation v1.0 · Agrega resultados via Registry Pipeline → ReviewReport
+// Backward compatible: extraGates param still accepted for legacy callers
 
 import type {
   TestResult, ReviewReport, ComplianceSection, Finding,
@@ -8,6 +8,9 @@ import type {
   VerdictItem, ReviewStatus,
 } from "./ReviewReport";
 import { analyzeMRI, analyzeMQCCS, analyzeMERS, analyzeMADS } from "./analyzers";
+import { runRegistryPipeline } from "./registry/RegistryPipeline";
+import { reviewEventBus } from "./registry/ReviewEventBus";
+import { reviewHistory }  from "./registry/ReviewHistoryStore";
 
 let _reviewCounter = 0;
 
@@ -31,6 +34,7 @@ export interface AggregatorInput {
 }
 
 export function aggregate(input: AggregatorInput): ReviewReport {
+  // Core analyzers — direct call for sync backward-compat
   const mri   = analyzeMRI(input.tests);
   const mqccs = analyzeMQCCS(input.tests);
   const mers  = analyzeMERS(input.tests);
@@ -66,7 +70,7 @@ export function aggregate(input: AggregatorInput): ReviewReport {
   const approved = blockers.length === 0;
   const overallStatus: ReviewStatus = approved ? "APPROVED" : "FAILED";
 
-  return {
+  const report: ReviewReport = {
     reviewId:     makeId(),
     timestamp:    Date.now(),
     sprint:       input.sprint,
@@ -96,6 +100,40 @@ export function aggregate(input: AggregatorInput): ReviewReport {
     status: overallStatus,
     gates,
   };
+
+  // Persist to history and publish completion events
+  reviewHistory.persist(report);
+  reviewEventBus.publish(approved ? "ReviewApproved" : "ReviewRejected", input.sprint, {
+    meta: { reviewId: report.reviewId, gates: gates.length },
+  });
+  reviewEventBus.publish("ReviewCompleted", input.sprint, {
+    meta: { reviewId: report.reviewId, status: overallStatus },
+  });
+
+  return report;
+}
+
+/**
+ * Registry-driven aggregate — uses the full pipeline via the Engine Registry.
+ * Drop-in replacement for aggregate() with async execution and event tracking.
+ */
+export async function aggregateViaRegistry(input: AggregatorInput): Promise<ReviewReport> {
+  const pipeline = await runRegistryPipeline({
+    tests:      input.tests,
+    sprint:     input.sprint,
+    foundation: input.foundation,
+  });
+
+  // Merge extraGates from pipeline with any passed explicitly
+  const mergedInput: AggregatorInput = {
+    ...input,
+    extraGates: [
+      ...(pipeline.extraGates ?? []),
+      ...(input.extraGates ?? []),
+    ],
+  };
+
+  return aggregate(mergedInput);
 }
 
 /** Tests for the aggregator itself */
