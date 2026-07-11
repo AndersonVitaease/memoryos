@@ -63,11 +63,25 @@ export class ConnectorRuntime {
 
   // ── Execution ──────────────────────────────────────────────────────────────
 
+  /** Produz um ConnectorResult com status CANCELLED — usado quando o usuario cancela antes da execucao */
+  buildCancelledResult(connectorId: string, operation: string): ConnectorResult {
+    return {
+      status: "CANCELLED",
+      success: false,
+      error: "Execution cancelled by user",
+      duration: 0,
+      connectorId,
+      executionId: makeExecutionId(),
+      logs: [makeLog("warn", `Operation "${operation}" cancelled before execution`)],
+    };
+  }
+
   async execute(
     connectorId: string,
     operation: string,
     payload: Record<string, unknown>,
     context: Omit<ConnectorContext, "executionId">,
+    timeoutMs?: number,
   ): Promise<ConnectorResult> {
     const connector = this.getOrThrow(connectorId);
     const ctx: ConnectorContext = { ...context, executionId: makeExecutionId() };
@@ -90,7 +104,7 @@ export class ConnectorRuntime {
       return denied;
     }
 
-    const result = await this.executor.execute(connector, operation, payload, ctx);
+    const result = await this.executor.execute(connector, operation, payload, ctx, timeoutMs);
     this.updateMetrics(connectorId, result);
     return result;
   }

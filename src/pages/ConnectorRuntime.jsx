@@ -1,6 +1,22 @@
 import React, { useState, useCallback } from "react";
 import { runConnectorRuntimeTests } from "@/lib/connector-runtime";
-import { CheckCircle, XCircle, Play, RotateCcw, Plug, Activity } from "lucide-react";
+import { CheckCircle, XCircle, Play, RotateCcw, Plug, AlertTriangle, Info } from "lucide-react";
+
+const STATUS_COLOR = {
+  SUCCESS:   "bg-green-900/40 text-green-300 border-green-700",
+  FAILED:    "bg-red-900/40 text-red-300 border-red-700",
+  DENIED:    "bg-orange-900/40 text-orange-300 border-orange-700",
+  TIMEOUT:   "bg-yellow-900/40 text-yellow-300 border-yellow-700",
+  CANCELLED: "bg-zinc-800 text-zinc-400 border-zinc-600",
+};
+
+function StatusBadge({ status }) {
+  return (
+    <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded border ${STATUS_COLOR[status] ?? "bg-zinc-800 text-zinc-400 border-zinc-700"}`}>
+      {status}
+    </span>
+  );
+}
 
 export default function ConnectorRuntimePage() {
   const [results, setResults] = useState(null);
@@ -14,9 +30,11 @@ export default function ConnectorRuntimePage() {
     setRunning(false);
   }, []);
 
-  const passed  = results?.filter(r => r.passed).length ?? 0;
-  const total   = results?.length ?? 0;
-  const allPass = results && passed === total;
+  const passed   = results?.filter(r => r.passed).length ?? 0;
+  const total    = results?.length ?? 0;
+  const allPass  = results && passed === total;
+  const hasObs   = results?.some(r => r.observation);
+  const totalMs  = results?.reduce((a, r) => a + r.durationMs, 0) ?? 0;
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 p-4 md:p-6">
@@ -30,7 +48,7 @@ export default function ConnectorRuntimePage() {
             </div>
             <div>
               <h1 className="text-white font-bold text-lg">Connector Runtime</h1>
-              <p className="text-zinc-500 text-xs">Engineering First · Foundation v1.0 · Validation</p>
+              <p className="text-zinc-500 text-xs">Engineering First · Foundation v1.0 · 7 Cenarios de Validacao</p>
             </div>
           </div>
           <button
@@ -40,7 +58,7 @@ export default function ConnectorRuntimePage() {
           >
             {running
               ? <><RotateCcw size={14} className="animate-spin" />Executando...</>
-              : <><Play size={14} />Executar Testes</>}
+              : <><Play size={14} />Executar Validacao</>}
           </button>
         </div>
 
@@ -51,44 +69,43 @@ export default function ConnectorRuntimePage() {
           ))}
         </div>
 
-        {/* Empty state */}
+        {/* Empty / running state */}
         {!running && !results && (
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-10 text-center">
-            <Activity size={28} className="text-zinc-600 mx-auto mb-3" />
-            <p className="text-zinc-400 text-sm font-medium">Runtime aguardando execucao</p>
-            <p className="text-zinc-600 text-xs mt-1">13 criterios de aceitacao serao validados</p>
+            <Plug size={28} className="text-zinc-600 mx-auto mb-3" />
+            <p className="text-zinc-400 text-sm font-medium">7 cenarios de validacao arquitetural</p>
+            <p className="text-zinc-600 text-xs mt-1">SUCCESS · FAILED · DENIED · TIMEOUT · CANCELLED</p>
           </div>
         )}
 
-        {/* Running */}
         {running && (
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-10 text-center">
             <RotateCcw size={28} className="text-cyan-400 animate-spin mx-auto mb-3" />
-            <p className="text-zinc-400 text-sm">Executando Connector Runtime...</p>
+            <p className="text-zinc-400 text-sm">Executando cenarios de validacao...</p>
           </div>
         )}
 
         {/* Results */}
         {results && (
-          <div className="space-y-3">
-            {/* Summary */}
+          <div className="space-y-4">
+            {/* Summary banner */}
             <div className={`rounded-xl border p-4 flex items-center gap-4 ${allPass ? "bg-green-950/20 border-green-800" : "bg-red-950/20 border-red-800"}`}>
               {allPass
                 ? <CheckCircle size={22} className="text-green-400 shrink-0" />
                 : <XCircle size={22} className="text-red-400 shrink-0" />}
-              <div>
+              <div className="flex-1">
                 <p className={`font-bold text-sm ${allPass ? "text-green-300" : "text-red-300"}`}>
-                  {allPass ? "Connector Runtime validado com sucesso" : `${total - passed} teste(s) falharam`}
+                  {allPass ? "Todos os cenarios validados com sucesso" : `${total - passed} cenario(s) falharam`}
                 </p>
-                <p className="text-zinc-400 text-xs mt-0.5">{passed}/{total} testes passaram</p>
+                <p className="text-zinc-400 text-xs mt-0.5">{passed}/{total} passou · {totalMs}ms total</p>
               </div>
-              <div className="ml-auto text-right">
+              <div className="text-right shrink-0">
                 <div className="text-2xl font-bold font-mono text-white">{Math.round((passed / total) * 100)}%</div>
                 <div className="text-xs text-zinc-500">pass rate</div>
               </div>
             </div>
 
-            {/* Metrics */}
+            {/* Metrics strip */}
             <div className="grid grid-cols-3 gap-2">
               <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-center">
                 <div className="text-xl font-bold text-green-400">{passed}</div>
@@ -99,40 +116,92 @@ export default function ConnectorRuntimePage() {
                 <div className="text-xs text-zinc-500">Falhou</div>
               </div>
               <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-center">
-                <div className="text-xl font-bold text-zinc-300">{results.reduce((a, r) => a + r.durationMs, 0)}ms</div>
-                <div className="text-xs text-zinc-500">Total</div>
+                <div className="text-xl font-bold text-zinc-300">{totalMs}ms</div>
+                <div className="text-xs text-zinc-500">Duracao</div>
               </div>
             </div>
 
-            {/* Test list */}
+            {/* Scenario cards */}
             <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
-              <div className="px-4 py-3 border-b border-zinc-800 flex justify-between">
-                <span className="text-xs font-semibold text-zinc-300">Resultados Individuais</span>
-                <span className="text-xs text-zinc-500">{passed}/{total}</span>
+              <div className="px-4 py-3 border-b border-zinc-800">
+                <span className="text-xs font-semibold text-zinc-300">Cenarios de Validacao</span>
               </div>
               {results.map((r, i) => (
-                <div key={i} className="flex items-start gap-3 px-4 py-2.5 border-b border-zinc-800/40 last:border-0">
-                  {r.passed
-                    ? <CheckCircle size={13} className="text-green-400 shrink-0 mt-0.5" />
-                    : <XCircle size={13} className="text-red-400 shrink-0 mt-0.5" />}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-zinc-200">{r.name}</p>
-                    {r.error && <p className="text-xs text-red-400 mt-0.5 font-mono truncate">{r.error}</p>}
+                <div key={i} className="border-b border-zinc-800/40 last:border-0 px-4 py-3 space-y-1.5">
+                  <div className="flex items-start gap-3">
+                    {r.passed
+                      ? <CheckCircle size={14} className="text-green-400 shrink-0 mt-0.5" />
+                      : <XCircle size={14} className="text-red-400 shrink-0 mt-0.5" />}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-zinc-200 font-medium">{r.name}</p>
+                      {r.detail && <p className="text-xs text-zinc-500 mt-0.5">{r.detail}</p>}
+                      {r.error && <p className="text-xs text-red-400 mt-0.5 font-mono">{r.error}</p>}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {r.expectedStatus && r.actualStatus && (
+                        <div className="flex items-center gap-1 text-xs text-zinc-600">
+                          <span className="text-zinc-600">esperado</span>
+                          <StatusBadge status={r.expectedStatus} />
+                          <span className="text-zinc-600">obtido</span>
+                          <StatusBadge status={r.actualStatus} />
+                        </div>
+                      )}
+                      <span className="text-xs text-zinc-600 font-mono">{r.durationMs}ms</span>
+                    </div>
                   </div>
-                  <span className="text-xs text-zinc-600 font-mono shrink-0">{r.durationMs}ms</span>
+                  {r.observation && (
+                    <div className="ml-5 bg-yellow-950/20 border border-yellow-800/40 rounded-lg px-3 py-2 flex gap-2">
+                      <AlertTriangle size={12} className="text-yellow-400 shrink-0 mt-0.5" />
+                      <p className="text-xs text-yellow-300">{r.observation}</p>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
 
-            {allPass && (
-              <div className="bg-cyan-950/20 border border-cyan-800 rounded-xl p-4 text-center">
-                <p className="text-cyan-300 font-bold text-sm">Connector Runtime — Engineering First</p>
-                <p className="text-zinc-400 text-xs mt-1">
-                  Arquitetura Foundation v1.0 validada por codigo executavel.
-                  Base44Connector e GitHubConnector registrados, carregados, executados e monitorados com sucesso.
-                </p>
+            {/* Engineering Review observation */}
+            {hasObs && (
+              <div className="bg-zinc-900 border border-yellow-800/50 rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <AlertTriangle size={14} className="text-yellow-400" />
+                  <span className="text-xs font-semibold text-yellow-300">Observacao para Engineering Review</span>
+                </div>
+                {results.filter(r => r.observation).map((r, i) => (
+                  <div key={i} className="space-y-0.5">
+                    <p className="text-xs font-medium text-zinc-300">{r.scenario} — {r.name}</p>
+                    <p className="text-xs text-zinc-400">{r.observation}</p>
+                  </div>
+                ))}
               </div>
             )}
+
+            {/* Final verdict */}
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 space-y-3">
+              <div className="flex items-center gap-2 mb-1">
+                <Info size={14} className="text-blue-400" />
+                <span className="text-xs font-semibold text-zinc-200">Criterio Final — Engineering First</span>
+              </div>
+              {[
+                { q: "1. O Connector Runtime esta funcional?",                  a: allPass ? "SIM" : "NAO",  ok: allPass },
+                { q: "2. A arquitetura suportou todos os testes?",              a: allPass ? "SIM" : "NAO",  ok: allPass },
+                { q: "3. Foi identificada alguma limitacao arquitetural?",       a: hasObs  ? "SIM" : "NAO",  ok: !hasObs },
+              ].map(({ q, a, ok }) => (
+                <div key={q} className="flex items-start justify-between gap-3 border-b border-zinc-800/40 last:border-0 pb-2 last:pb-0">
+                  <p className="text-xs text-zinc-300">{q}</p>
+                  <span className={`text-xs font-bold font-mono shrink-0 ${ok ? "text-green-400" : "text-yellow-400"}`}>{a}</span>
+                </div>
+              ))}
+              {hasObs && (
+                <div className="pt-1">
+                  <p className="text-xs text-zinc-500">
+                    <span className="text-yellow-400 font-semibold">4. Evidencia: </span>
+                    O runtime nao possui mecanismo de cancelamento em voo. O status CANCELLED e produzido
+                    apenas via buildCancelledResult() antes da chamada — nao e possivel interromper uma operacao
+                    ja em andamento. Evidencia registrada para futura Engineering Review conforme Engineering First.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
