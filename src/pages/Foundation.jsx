@@ -52,6 +52,7 @@ const RFC_REGISTRY = [
   { id: "RFC-000", title: "Meta-RFC — Governance of Foundation Governance", status: "Accepted", date: "2026-07-08" },
   { id: "RFC-001", title: "Foundation v1.0 Baseline Declaration", status: "Accepted", date: "2026-07-08" },
   { id: "RFC-002", title: "Minimum Sufficient Context Principle (MSC)", status: "Accepted", date: "2026-07-11" },
+  { id: "RFC-003", title: "Adaptive Communication Principle (ACP)", status: "Accepted", date: "2026-07-11" },
 ];
 
 const DEPENDENCY_CHAIN = ["MV","MPS","MAS","MDS","MRS","MCS","MDIS","MIES","MDPS","MGFS","MRI","MQCCS","MPEGS"];
@@ -200,6 +201,7 @@ export default function Foundation() {
                   "AuditTrail é imutável e append-only",
                   "A biblioteca só cresce; nunca diminui",
                   "O contexto deverá ser sempre o mínimo suficiente — nunca menor, nunca maior",
+                  "O sistema adapta a comunicação, nunca a verdade — fatos e recomendações são invariantes",
                 ].map((inv, i) => (
                   <div key={i} className="flex items-start gap-2 text-sm text-zinc-300">
                     <CheckCircle size={14} className="text-green-500 mt-0.5 shrink-0" />
@@ -303,6 +305,17 @@ export default function Foundation() {
                 ))}
               </div>
             </div>
+            <div className="bg-blue-950/20 border border-blue-800 rounded-xl p-4">
+              <p className="text-xs font-bold text-blue-300 mb-1">RFC-003 — Adaptive Communication Principle (ACP)</p>
+              <p className="text-xs text-zinc-400 mb-2">Princípio oficial: <strong className="text-zinc-200">"O MemoryOS adapta a comunicação, nunca a verdade."</strong> Fatos, evidências e recomendações são invariantes. Somente forma, vocabulário, profundidade e formato são adaptáveis.</p>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5 mb-2">
+                {["Profundidade","Vocabulário","Nível de Detalhe","Exemplos","Ritmo","Formato"].map(c => (
+                  <span key={c} className="text-xs bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded font-mono">{c}</span>
+                ))}
+              </div>
+              <p className="text-xs text-zinc-500">Hipóteses de perfil baseadas em evidências observáveis · Nível de confiança obrigatório · Continuamente atualizáveis</p>
+            </div>
+
             <div className="bg-violet-950/20 border border-violet-800 rounded-xl p-4">
               <p className="text-xs font-bold text-violet-300 mb-1">RFC-002 — Minimum Sufficient Context (MSC)</p>
               <p className="text-xs text-zinc-400 mb-2">Princípio oficial: o sistema deverá sempre construir o <strong className="text-zinc-200">menor contexto suficiente</strong> capaz de preservar precisão, segurança, explicabilidade e qualidade da decisão.</p>

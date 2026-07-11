@@ -27,6 +27,7 @@ Cada ADR registra:
 | ADR-006 | Journey como unidade primária de experiência | Accepted | RFC-006 | 2026-07-09 |
 | ADR-007 | Processo RFC→ADR→Implementação obrigatório | Accepted | RFC-007 | 2026-07-10 |
 | ADR-008 | Minimum Sufficient Context como princípio da Foundation | Accepted | RFC-002 | 2026-07-11 |
+| ADR-009 | Adaptive Communication — adaptar a comunicação, nunca a verdade | Accepted | RFC-003 | 2026-07-11 |
 
 ---
 
