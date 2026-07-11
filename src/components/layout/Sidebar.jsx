@@ -1,6 +1,6 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Brain, FolderOpen, Search, LogOut, MessageSquare, Home as HomeIcon, Plug, ShieldCheck, Cpu, Network, Archive, BookOpen, Code, Activity, Layers, Database, ClipboardCheck, Shield, Waves, BookMarked, Terminal, Map, Zap, FlaskConical, Puzzle, Box, Route, Target, GitBranch, Users, GitMerge, Radio, Award, Blocks } from "lucide-react";
+import { Brain, FolderOpen, Search, LogOut, MessageSquare, Home as HomeIcon, Plug, ShieldCheck, Cpu, Network, Archive, BookOpen, Code, Activity, Layers, Database, ClipboardCheck, Shield, Waves, BookMarked, Terminal, Map, Zap, FlaskConical, Puzzle, Box, Route, Target, GitBranch, Users, GitMerge, Radio, Award, Blocks, Flag } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 
 const navItems = [
@@ -41,6 +41,7 @@ const navItems = [
   { label: "ABV — Boundaries",  icon: Shield,  path: "/abv" },
   { label: "ABV v4.1 Sprint",   icon: ShieldCheck, path: "/abv-sprint" },
   { label: "FCE — Compliance",  icon: ShieldCheck, path: "/fce" },
+  { label: "Goal Runtime v0.1", icon: Flag,       path: "/goal-runtime" },
 ];
 
 export default function Sidebar({ onNavigate }) {

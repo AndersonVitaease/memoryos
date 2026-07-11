@@ -53,6 +53,7 @@ import CapabilityRuntimePage from '@/pages/CapabilityRuntime';
 import ABVPage from '@/pages/ABVPage';
 import ABVSprintPage from '@/pages/ABVSprintPage';
 import FCESprintPage from '@/pages/FCESprintPage';
+import GoalRuntimePage from '@/pages/GoalRuntimePage';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -123,6 +124,7 @@ const AuthenticatedApp = () => {
           <Route path="/abv" element={<ABVPage />} />
           <Route path="/abv-sprint" element={<ABVSprintPage />} />
           <Route path="/fce" element={<FCESprintPage />} />
+          <Route path="/goal-runtime" element={<GoalRuntimePage />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
