@@ -1,27 +1,48 @@
-// ABV — Architectural Boundary Validation Page
-// Foundation v1.0 · Engineering First
+// ABV v2 — Architectural Boundary Validation Page
+// Foundation v1.0 · Engineering First · Source Code Analyzer
 
 import React, { useState, useCallback } from "react";
 import { runABVTests } from "@/lib/abv/abvTests";
 
-// ── Shared UI ─────────────────────────────────────────────────────────────────
+// ── UI primitives ──────────────────────────────────────────────────────────────
 
-function Tag({ label, color }) {
-  const colors = {
-    PASS:   "bg-emerald-900/50 text-emerald-300 border-emerald-700/50",
-    FAIL:   "bg-red-900/50 text-red-300 border-red-700/50",
-    WARN:   "bg-yellow-900/50 text-yellow-300 border-yellow-700/50",
-    ERROR:  "bg-red-900/50 text-red-300 border-red-700/50",
-    INFO:   "bg-sky-900/50 text-sky-300 border-sky-700/50",
-  };
-  return <span className={`px-2 py-0.5 rounded text-xs font-mono font-bold border ${colors[color ?? label] ?? colors.INFO}`}>{label}</span>;
+const STATUS_COLORS = {
+  PASS: "bg-emerald-900/50 text-emerald-300 border-emerald-700/50",
+  FAIL: "bg-red-900/50 text-red-300 border-red-700/50",
+  WARN: "bg-yellow-900/50 text-yellow-300 border-yellow-700/50",
+  ERROR:"bg-red-900/50 text-red-300 border-red-700/50",
+  INFO: "bg-sky-900/50 text-sky-300 border-sky-700/50",
+};
+
+function Tag({ label }) {
+  return <span className={`px-2 py-0.5 rounded text-xs font-mono font-bold border ${STATUS_COLORS[label] ?? STATUS_COLORS.INFO}`}>{label}</span>;
 }
 
-function TestRow({ n, name, passed, duration, detail, observation, error, data }) {
-  const [open, setOpen] = useState(false);
-  const hasExtra = detail || observation || error || data;
+function Pill({ label, color }) {
+  const c = {
+    green:  "bg-emerald-900/30 border-emerald-800/40 text-emerald-400",
+    red:    "bg-red-900/30 border-red-800/40 text-red-400",
+    blue:   "bg-sky-900/30 border-sky-800/40 text-sky-400",
+    violet: "bg-violet-900/30 border-violet-800/40 text-violet-400",
+    zinc:   "bg-zinc-800 border-zinc-700/40 text-zinc-400",
+  }[color] ?? "bg-zinc-800 border-zinc-700 text-zinc-400";
+  return <span className={`px-1.5 py-0.5 rounded text-xs font-mono border ${c}`}>{label}</span>;
+}
+
+function Metric({ label, value, color = "text-zinc-200" }) {
   return (
-    <div className={`border-b border-zinc-800 last:border-0 ${!passed ? "bg-red-950/20" : ""}`}>
+    <div className="bg-zinc-800 rounded px-3 py-2">
+      <div className={`text-sm font-bold font-mono ${color}`}>{value}</div>
+      <div className="text-zinc-500 text-xs">{label}</div>
+    </div>
+  );
+}
+
+function TestRow({ n, name, passed, duration, detail, observation, error }) {
+  const [open, setOpen] = useState(false);
+  const hasExtra = detail || observation || error;
+  return (
+    <div className={`border-b border-zinc-800 last:border-0 ${!passed ? "bg-red-950/10" : ""}`}>
       <button onClick={() => hasExtra && setOpen(o => !o)} className="w-full flex items-center justify-between py-2 px-3 gap-2 text-left">
         <div className="flex items-center gap-2 min-w-0">
           <Tag label={passed ? "PASS" : "FAIL"} />
@@ -33,89 +54,175 @@ function TestRow({ n, name, passed, duration, detail, observation, error, data }
           {hasExtra && <span className="text-zinc-600 text-xs">{open ? "▲" : "▼"}</span>}
         </div>
       </button>
-      {open && (
-        <div className="px-3 pb-2 ml-10 border-l-2 border-zinc-700 mb-2 space-y-1">
+      {open && hasExtra && (
+        <div className="px-3 pb-2 ml-10 border-l-2 border-zinc-700 mb-1 space-y-1">
           {detail && <p className="text-xs text-zinc-400">{detail}</p>}
-          {observation && <p className="text-xs text-yellow-400/80 italic">⚠ {observation}</p>}
-          {error && <p className="text-xs text-red-400 font-mono">{error}</p>}
+          {observation && <p className="text-xs text-yellow-400/80 italic">obs: {observation}</p>}
+          {error && <p className="text-xs text-red-400 font-mono">error: {error}</p>}
         </div>
       )}
     </div>
   );
 }
 
-// ── Dependency Graph ───────────────────────────────────────────────────────────
+// ── Dependency Graph tab ───────────────────────────────────────────────────────
 
-function DependencyGraph({ layers }) {
-  if (!layers) return null;
+function LayerCard({ layer }) {
+  const [open, setOpen] = useState(false);
   return (
-    <div className="space-y-3">
-      {layers.map(layer => (
-        <div key={layer.layer} className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-800">
-            <span className="font-semibold text-sm text-white">{layer.layer}</span>
-            <Tag label={layer.status} />
+    <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
+      <button
+        className="w-full flex items-center justify-between px-4 py-2.5 border-b border-zinc-800 text-left"
+        onClick={() => setOpen(o => !o)}
+      >
+        <div className="flex items-center gap-2">
+          <Tag label={layer.status} />
+          <span className="font-semibold text-sm text-white">{layer.label}</span>
+          <span className="text-zinc-500 text-xs">({layer.filesAnalyzed} arquivos)</span>
+        </div>
+        <span className="text-zinc-600 text-xs">{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
+        <div className="p-3 space-y-3">
+          <div>
+            <p className="text-zinc-500 text-xs mb-1 uppercase tracking-wider">Imports detectados no codigo</p>
+            <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto">
+              {layer.detectedImports.map((d, i) => <Pill key={i} label={d} color="blue" />)}
+              {layer.detectedImports.length === 0 && <span className="text-zinc-600 text-xs italic">nenhum</span>}
+            </div>
           </div>
-          <div className="p-3 space-y-2">
+          <div className="grid grid-cols-2 gap-2">
             <div>
-              <p className="text-zinc-500 text-xs mb-1 uppercase tracking-wider">API Pública</p>
+              <p className="text-zinc-500 text-xs mb-1 uppercase tracking-wider">Deps permitidas</p>
               <div className="flex flex-wrap gap-1">
-                {layer.publicApi.map(m => (
-                  <span key={m} className="px-1.5 py-0.5 bg-zinc-800 rounded text-xs font-mono text-zinc-300">{m}</span>
-                ))}
-                {layer.publicApi.length === 0 && <span className="text-zinc-600 text-xs italic">nenhum</span>}
+                {layer.allowedDeps.map(d => <Pill key={d} label={d} color="green" />)}
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <p className="text-zinc-500 text-xs mb-1 uppercase tracking-wider">Deps Permitidas</p>
-                <div className="flex flex-wrap gap-1">
-                  {layer.allowedDeps.map(d => (
-                    <span key={d} className="px-1.5 py-0.5 bg-emerald-900/30 border border-emerald-800/40 rounded text-xs font-mono text-emerald-400">{d}</span>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <p className="text-zinc-500 text-xs mb-1 uppercase tracking-wider">Deps Proibidas</p>
-                <div className="flex flex-wrap gap-1">
-                  {layer.forbiddenDeps.map(d => (
-                    <span key={d} className="px-1.5 py-0.5 bg-red-900/30 border border-red-800/40 rounded text-xs font-mono text-red-400">{d}</span>
-                  ))}
-                </div>
+            <div>
+              <p className="text-zinc-500 text-xs mb-1 uppercase tracking-wider">Deps proibidas</p>
+              <div className="flex flex-wrap gap-1">
+                {layer.forbiddenDeps.map(d => <Pill key={d} label={d} color="red" />)}
               </div>
             </div>
-            {layer.detectedDeps.length > 0 && (
-              <div>
-                <p className="text-zinc-500 text-xs mb-1 uppercase tracking-wider">Deps Detectadas</p>
-                <div className="flex flex-wrap gap-1">
-                  {layer.detectedDeps.map(d => (
-                    <span key={d} className="px-1.5 py-0.5 bg-sky-900/30 border border-sky-800/40 rounded text-xs font-mono text-sky-400">{d}</span>
-                  ))}
+          </div>
+          <div>
+            <p className="text-zinc-500 text-xs mb-1 uppercase tracking-wider">Camadas detectadas no codigo</p>
+            <div className="flex flex-wrap gap-1">
+              {layer.detectedDeps.map(d => {
+                const isForbidden = layer.forbiddenDeps.includes(d);
+                return <Pill key={d} label={d} color={isForbidden ? "red" : "green"} />;
+              })}
+              {layer.detectedDeps.length === 0 && <span className="text-zinc-600 text-xs italic">nenhuma dep externa detectada</span>}
+            </div>
+          </div>
+          {layer.publicApi.length > 0 && (
+            <div>
+              <p className="text-zinc-500 text-xs mb-1 uppercase tracking-wider">Exports / API publica</p>
+              <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
+                {layer.publicApi.map((m, i) => <Pill key={i} label={m} color="violet" />)}
+              </div>
+            </div>
+          )}
+          {layer.violations.length > 0 && (
+            <div className="bg-red-950/20 border border-red-800/30 rounded p-2 space-y-1">
+              <p className="text-red-400 text-xs font-semibold">Violacoes ({layer.violations.length})</p>
+              {layer.violations.map((v, i) => (
+                <div key={i} className="flex gap-2 items-start">
+                  <Tag label={v.severity} />
+                  <span className="text-xs text-red-300">{v.detail}</span>
                 </div>
-              </div>
-            )}
-            {layer.violations.length > 0 && (
-              <div className="bg-red-950/20 border border-red-800/30 rounded p-2">
-                <p className="text-red-400 text-xs font-semibold mb-1">Violações ({layer.violations.length})</p>
-                {layer.violations.map((v, i) => (
-                  <div key={i} className="flex gap-2 items-start mb-0.5">
-                    <Tag label={v.severity} />
-                    <span className="text-xs text-red-300">{v.detail}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            {layer.responsibilityViolations.filter(v => v.rule === "API_EXPANSION").map((v, i) => (
-              <div key={i} className="bg-yellow-950/20 border border-yellow-800/30 rounded p-2">
-                <div className="flex gap-2 items-start">
-                  <Tag label="WARN" />
+              ))}
+            </div>
+          )}
+          {layer.responsibilityViolations.length > 0 && (
+            <div className="bg-yellow-950/20 border border-yellow-800/30 rounded p-2 space-y-1">
+              <p className="text-yellow-400 text-xs font-semibold">Responsabilidade ({layer.responsibilityViolations.length})</p>
+              {layer.responsibilityViolations.map((v, i) => (
+                <div key={i} className="flex gap-2 items-start">
+                  <Tag label={v.severity} />
                   <span className="text-xs text-yellow-300">{v.detail}</span>
                 </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Source Analysis tab ────────────────────────────────────────────────────────
+
+function SourceAnalysisTab({ analysis }) {
+  const [selected, setSelected] = useState(null);
+  if (!analysis) return null;
+
+  const layerEntries = Object.entries(analysis.layerMap).sort((a, b) => b[1].length - a[1].length);
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <Metric label="Arquivos"  value={analysis.filesAnalyzed}  color="text-zinc-200" />
+        <Metric label="Imports"   value={analysis.importsFound}   color="text-sky-400" />
+        <Metric label="Exports"   value={analysis.exportsFound}   color="text-violet-400" />
+        <Metric label="Ciclos"    value={analysis.circularDependencies.length} color={analysis.circularDependencies.length > 0 ? "text-red-400" : "text-zinc-400"} />
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-3">
+        {/* Layer file counts */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
+          <p className="text-zinc-400 text-xs uppercase tracking-wider mb-2">Arquivos por camada</p>
+          <div className="space-y-1">
+            {layerEntries.map(([layer, mods]) => (
+              <div
+                key={layer}
+                className={`flex justify-between items-center px-2 py-1 rounded cursor-pointer transition-colors ${selected === layer ? "bg-violet-900/30" : "hover:bg-zinc-800"}`}
+                onClick={() => setSelected(selected === layer ? null : layer)}
+              >
+                <span className="text-xs font-mono text-zinc-300">{layer}</span>
+                <span className="text-xs text-zinc-500">{mods.length} files</span>
               </div>
             ))}
           </div>
         </div>
-      ))}
+
+        {/* File list when layer is selected */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3">
+          <p className="text-zinc-400 text-xs uppercase tracking-wider mb-2">
+            {selected ? `Arquivos — ${selected}` : "Selecione uma camada"}
+          </p>
+          {selected && (
+            <div className="space-y-1 max-h-64 overflow-y-auto">
+              {(analysis.layerMap[selected] ?? []).map(mod => (
+                <div key={mod.path} className="px-2 py-1 hover:bg-zinc-800 rounded">
+                  <p className="text-xs font-mono text-zinc-300 truncate">{mod.path.split("/src/lib/")[1] ?? mod.path}</p>
+                  <p className="text-xs text-zinc-600">{mod.imports.length} imports · {mod.exports.length} exports</p>
+                </div>
+              ))}
+            </div>
+          )}
+          {!selected && (
+            <p className="text-zinc-600 text-xs italic">Clique em uma camada para ver os arquivos</p>
+          )}
+        </div>
+      </div>
+
+      {/* Circular dependencies */}
+      {analysis.circularDependencies.length > 0 && (
+        <div className="bg-red-950/20 border border-red-800/30 rounded-lg p-3">
+          <p className="text-red-400 text-xs font-semibold mb-2">Dependencias Circulares ({analysis.circularDependencies.length})</p>
+          {analysis.circularDependencies.map((cycle, i) => (
+            <div key={i} className="text-xs font-mono text-red-300 py-0.5">
+              {cycle.map(p => p.split("/src/lib/")[1] ?? p).join(" -> ")}
+            </div>
+          ))}
+        </div>
+      )}
+      {analysis.circularDependencies.length === 0 && (
+        <div className="bg-emerald-950/20 border border-emerald-800/30 rounded-lg p-3">
+          <p className="text-emerald-400 text-xs">Nenhuma dependencia circular detectada no codigo-fonte.</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -124,49 +231,53 @@ function DependencyGraph({ layers }) {
 
 function ReportSummary({ report }) {
   if (!report) return null;
+  const ok = report.boundariesViolated === 0 && report.forbiddenDeps === 0;
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 space-y-3">
-      <p className="text-zinc-400 text-xs uppercase tracking-wider">Relatório de Auditoria Arquitetural</p>
+    <div className="space-y-3">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-        {[
-          { label: "Módulos",   value: report.modulesAudited,      color: "text-zinc-200" },
-          { label: "Imports",   value: report.importsAnalyzed,     color: "text-sky-400" },
-          { label: "Deps OK",   value: report.validDeps,           color: "text-emerald-400" },
-          { label: "Proibidas", value: report.forbiddenDeps,       color: report.forbiddenDeps > 0 ? "text-red-400" : "text-zinc-400" },
-          { label: "Bound OK",  value: report.boundariesApproved,  color: "text-emerald-400" },
-          { label: "Violados",  value: report.boundariesViolated,  color: report.boundariesViolated > 0 ? "text-red-400" : "text-zinc-400" },
-          { label: "Circulares",value: report.circularDependencies,color: report.circularDependencies > 0 ? "text-red-400" : "text-zinc-400" },
-          { label: "Duração",   value: `${report.durationMs}ms`,   color: "text-violet-400" },
-        ].map(m => (
-          <div key={m.label} className="bg-zinc-800 rounded px-3 py-2">
-            <div className={`text-sm font-bold font-mono ${m.color}`}>{m.value}</div>
-            <div className="text-zinc-500 text-xs">{m.label}</div>
-          </div>
-        ))}
+        <Metric label="Arquivos analisados" value={report.filesAnalyzed}    color="text-zinc-200" />
+        <Metric label="Imports analisados"  value={report.importsAnalyzed}  color="text-sky-400" />
+        <Metric label="Exports analisados"  value={report.exportsAnalyzed}  color="text-violet-400" />
+        <Metric label="Modulos auditados"   value={report.modulesAudited}   color="text-zinc-200" />
+        <Metric label="Deps validas"        value={report.validDeps}        color="text-emerald-400" />
+        <Metric label="Deps proibidas"      value={report.forbiddenDeps}    color={report.forbiddenDeps > 0 ? "text-red-400" : "text-zinc-400"} />
+        <Metric label="Boundaries OK"       value={report.boundariesApproved}  color="text-emerald-400" />
+        <Metric label="Boundaries violados" value={report.boundariesViolated}   color={report.boundariesViolated > 0 ? "text-red-400" : "text-zinc-400"} />
+        <Metric label="Circulares"          value={report.circularDependencies} color={report.circularDependencies > 0 ? "text-red-400" : "text-zinc-400"} />
+        <Metric label="Duracao"             value={`${report.durationMs}ms`}    color="text-violet-400" />
       </div>
-      <div className={`rounded px-3 py-2 text-xs border ${
-        report.boundariesViolated === 0 && report.forbiddenDeps === 0
-          ? "bg-emerald-950/30 border-emerald-800/40 text-emerald-300"
-          : "bg-amber-950/30 border-amber-800/40 text-amber-300"
-      }`}>
-        <strong>Conclusão:</strong> {report.conclusion}
+      <div className={`rounded px-3 py-2 text-xs border ${ok ? "bg-emerald-950/30 border-emerald-800/40 text-emerald-300" : "bg-amber-950/30 border-amber-800/40 text-amber-300"}`}>
+        <strong>Conclusao:</strong> {report.conclusion}
       </div>
-      <p className="text-zinc-600 text-xs font-mono">
-        Executado em: {new Date(report.runAt).toISOString()}
-      </p>
+      <p className="text-zinc-600 text-xs font-mono">Executado: {new Date(report.runAt).toISOString()}</p>
+
+      {report.allViolations.length > 0 && (
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-3 space-y-1">
+          <p className="text-zinc-400 text-xs uppercase tracking-wider mb-2">Todas as violacoes</p>
+          {report.allViolations.map((v, i) => (
+            <div key={i} className="flex gap-2 items-start py-0.5 border-b border-zinc-800 last:border-0">
+              <Tag label={v.severity} />
+              <div>
+                <span className="text-xs text-zinc-500 font-mono mr-2">[{v.rule}]</span>
+                <span className="text-xs text-zinc-300">{v.detail}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
+// ── Main Page ──────────────────────────────────────────────────────────────────
 
 export default function ABVPage() {
-  const [running, setRunning] = useState(false);
-  const [data, setData] = useState(null);
+  const [running, setRunning]   = useState(false);
+  const [data, setData]         = useState(null);
   const [activeTab, setActiveTab] = useState("overview");
-  const [elapsed, setElapsed] = useState(null);
+  const [elapsed, setElapsed]   = useState(null);
 
-  const run = useCallback(async () => {
+  const runAudit = useCallback(async () => {
     setRunning(true);
     setData(null);
     const start = Date.now();
@@ -176,7 +287,7 @@ export default function ABVPage() {
       setData(result);
       setActiveTab("results");
     } catch (e) {
-      console.error(e);
+      console.error("ABV audit error:", e);
     } finally {
       setRunning(false);
     }
@@ -188,10 +299,11 @@ export default function ABVPage() {
   })() : null;
 
   const TABS = [
-    { id: "overview", label: "Visão Geral" },
-    { id: "results",  label: data ? `Testes (${summary.passed}/${summary.total})` : "Testes" },
-    { id: "graph",    label: "Dependency Graph" },
-    { id: "report",   label: "Relatório" },
+    { id: "overview",  label: "Visao Geral" },
+    { id: "results",   label: data ? `Criterios (${summary.passed}/${summary.total})` : "Criterios" },
+    { id: "graph",     label: "Dep. Graph" },
+    { id: "source",    label: "Source Analysis" },
+    { id: "report",    label: "Relatorio" },
   ];
 
   return (
@@ -204,34 +316,29 @@ export default function ABVPage() {
               <span className="text-violet-400 text-xs font-mono uppercase tracking-widest">Engineering First</span>
               <span className="text-zinc-600">·</span>
               <span className="text-zinc-400 text-xs font-mono">Foundation v1.0</span>
+              <span className="text-zinc-600">·</span>
+              <span className="text-emerald-400 text-xs font-mono">Source Code Analyzer v2</span>
             </div>
             <h1 className="text-xl font-bold text-white">ABV — Architectural Boundary Validation</h1>
             <p className="text-zinc-400 text-sm mt-1">
-              Auditoria automática de fronteiras arquiteturais. 10 critérios. Baseada em evidências objetivas do código implementado.
+              Auditoria 100% automatica baseada em codigo-fonte real. Nenhuma lista manual.
             </p>
           </div>
           <button
-            onClick={run}
+            onClick={runAudit}
             disabled={running}
             className="px-4 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm font-semibold transition-colors shrink-0"
           >
-            {running ? "Auditando..." : "▶ Executar Auditoria"}
+            {running ? "Analisando codigo-fonte..." : "▶ Executar Auditoria"}
           </button>
         </div>
 
         {summary && (
-          <div className="mt-4 grid grid-cols-3 md:grid-cols-4 gap-2">
-            {[
-              { label: "Total",    value: summary.total,  color: "text-zinc-200" },
-              { label: "Aprovados",value: summary.passed,  color: "text-emerald-400" },
-              { label: "Falhos",   value: summary.failed,  color: summary.failed === 0 ? "text-zinc-400" : "text-red-400" },
-              { label: "Duração",  value: `${elapsed}ms`, color: "text-violet-400" },
-            ].map(m => (
-              <div key={m.label} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2">
-                <div className={`text-base font-bold font-mono ${m.color}`}>{m.value}</div>
-                <div className="text-zinc-500 text-xs">{m.label}</div>
-              </div>
-            ))}
+          <div className="mt-3 grid grid-cols-4 gap-2">
+            <Metric label="Total"     value={summary.total}  color="text-zinc-200" />
+            <Metric label="Aprovados" value={summary.passed} color="text-emerald-400" />
+            <Metric label="Falhos"    value={summary.failed} color={summary.failed === 0 ? "text-zinc-400" : "text-red-400"} />
+            <Metric label="Duracao"   value={`${elapsed}ms`} color="text-violet-400" />
           </div>
         )}
       </div>
@@ -242,64 +349,28 @@ export default function ABVPage() {
           <button
             key={t.id}
             onClick={() => setActiveTab(t.id)}
-            className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors ${
-              activeTab === t.id ? "bg-violet-600 text-white" : "bg-zinc-800 text-zinc-400 hover:text-white"
-            }`}
+            className={`px-3 py-1.5 rounded text-xs font-semibold transition-colors ${activeTab === t.id ? "bg-violet-600 text-white" : "bg-zinc-800 text-zinc-400 hover:text-white"}`}
           >
             {t.label}
           </button>
         ))}
       </div>
 
-      {/* ── Overview ──────────────────────────────────────────────────────────── */}
+      {/* Overview */}
       {activeTab === "overview" && (
         <div className="space-y-4">
           <div className="grid md:grid-cols-2 gap-4">
-            <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 space-y-3">
-              <p className="text-zinc-400 text-xs uppercase tracking-wider">Boundaries Auditados</p>
-              {[
-                {
-                  layer: "Connector Runtime",
-                  allowed: ["policies"],
-                  forbidden: ["capability-runtime", "goal-engine", "planner-engine", "pie", "wme", "memory-engine"],
-                },
-                {
-                  layer: "Capability Runtime",
-                  allowed: ["connector-runtime", "policies"],
-                  forbidden: ["goal-engine", "planner-engine", "pie", "wme", "memory-engine"],
-                },
-                {
-                  layer: "Goal Runtime (future)",
-                  allowed: ["connector-runtime", "capability-runtime", "wme", "policies"],
-                  forbidden: ["planner-engine", "pie"],
-                },
-              ].map(b => (
-                <div key={b.layer} className="bg-zinc-800/50 rounded p-3">
-                  <p className="font-semibold text-sm text-white mb-2">{b.layer}</p>
-                  <div className="flex flex-wrap gap-1 mb-1">
-                    <span className="text-zinc-500 text-xs mr-1">OK:</span>
-                    {b.allowed.map(d => <span key={d} className="text-xs font-mono bg-emerald-900/30 text-emerald-400 border border-emerald-800/40 px-1.5 py-0.5 rounded">{d}</span>)}
-                  </div>
-                  <div className="flex flex-wrap gap-1">
-                    <span className="text-zinc-500 text-xs mr-1">Proibido:</span>
-                    {b.forbidden.map(d => <span key={d} className="text-xs font-mono bg-red-900/30 text-red-400 border border-red-800/40 px-1.5 py-0.5 rounded">{d}</span>)}
-                  </div>
-                </div>
-              ))}
-            </div>
             <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 space-y-2">
-              <p className="text-zinc-400 text-xs uppercase tracking-wider">Verificações Automáticas</p>
+              <p className="text-zinc-400 text-xs uppercase tracking-wider">Source Code Analyzer v2</p>
               {[
-                "Imports diretos auditados por camada",
-                "Dependências proibidas detectadas",
-                "Dependências circulares detectadas",
-                "API pública auditada contra contrato esperado",
-                "Expansões indevidas da API registradas",
-                "Responsabilidades proibidas por camada verificadas",
-                "Dependency Graph gerado automaticamente",
-                "Relatório padronizado ao final da auditoria",
-                "Nenhuma correção automática — apenas evidências",
-                "Encaminhamento para Engineering Review se violação",
+                "Carrega automaticamente todos os arquivos via import.meta.glob",
+                "Extrai imports estaticos, absolutos, relativos e dinamicos",
+                "Extrai exports e API publica de cada modulo",
+                "Constroi Dependency Graph (nos + arestas) do codigo real",
+                "Detecta ciclos com algoritmo DFS sobre o grafo",
+                "Mapeia cada arquivo para sua camada arquitetural",
+                "Nenhuma lista manual — toda evidencia do codigo-fonte",
+                "Erros de leitura nao interrompem a auditoria (hardening)",
               ].map((item, i) => (
                 <div key={i} className="flex items-start gap-2 text-xs text-zinc-300">
                   <span className="text-violet-400 shrink-0">→</span>
@@ -307,25 +378,40 @@ export default function ABVPage() {
                 </div>
               ))}
             </div>
+            <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 space-y-3">
+              <p className="text-zinc-400 text-xs uppercase tracking-wider">Boundaries auditados</p>
+              {[
+                { label: "Connector Runtime", forbidden: ["capability-runtime","goal-engine","planner-engine","pie","wme","memory-engine"] },
+                { label: "Capability Runtime", forbidden: ["goal-engine","planner-engine","pie","wme","memory-engine"] },
+                { label: "Goal Runtime (future)", forbidden: ["planner-engine","pie"] },
+              ].map(b => (
+                <div key={b.label} className="bg-zinc-800/50 rounded p-2">
+                  <p className="font-semibold text-xs text-white mb-1">{b.label}</p>
+                  <div className="flex flex-wrap gap-1">
+                    {b.forbidden.map(d => <Pill key={d} label={d} color="red" />)}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
 
-      {/* ── Results ───────────────────────────────────────────────────────────── */}
+      {/* Results */}
       {activeTab === "results" && (
-        <div className="space-y-4">
+        <div>
           {!data && (
             <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-8 text-center">
-              <p className="text-zinc-400 text-sm mb-3">Execute a auditoria para ver os resultados.</p>
-              <button onClick={run} disabled={running} className="px-4 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 rounded-lg text-sm font-semibold">
-                {running ? "Auditando..." : "▶ Executar Agora"}
+              <p className="text-zinc-400 text-sm mb-3">Execute a auditoria para ver os criterios.</p>
+              <button onClick={runAudit} disabled={running} className="px-4 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 rounded-lg text-sm font-semibold">
+                {running ? "Analisando..." : "▶ Executar"}
               </button>
             </div>
           )}
           {data && (
             <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
               <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
-                <span className="text-sm font-semibold text-zinc-200">ABV — 10 Critérios de Aceitação</span>
+                <span className="text-sm font-semibold text-zinc-200">ABV v2 — 10 Criterios de Aceitacao</span>
                 <div className="flex items-center gap-2">
                   <span className={`text-xs font-mono font-bold ${summary.failed === 0 ? "text-emerald-400" : "text-red-400"}`}>
                     {summary.passed}/{summary.total}
@@ -333,44 +419,36 @@ export default function ABVPage() {
                   <Tag label={summary.failed === 0 ? "PASS" : "FAIL"} />
                 </div>
               </div>
-              {data.results.map(r => (
-                <TestRow
-                  key={r.criterion}
-                  n={r.criterion}
-                  name={r.name}
-                  passed={r.passed}
-                  duration={r.durationMs}
-                  detail={r.detail}
-                  observation={r.observation}
-                  error={r.error}
-                  data={r.data}
-                />
-              ))}
+              {data.results.map(r => <TestRow key={r.criterion} {...r} n={r.criterion} />)}
             </div>
           )}
         </div>
       )}
 
-      {/* ── Dependency Graph ──────────────────────────────────────────────────── */}
+      {/* Dependency Graph */}
       {activeTab === "graph" && (
         <div>
-          {!data && (
-            <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-8 text-center">
-              <p className="text-zinc-400 text-sm">Execute a auditoria primeiro para gerar o grafo.</p>
+          {!data && <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-8 text-center"><p className="text-zinc-400 text-sm">Execute a auditoria primeiro.</p></div>}
+          {data && (
+            <div className="space-y-3">
+              {data.report.layers.map(layer => <LayerCard key={layer.layer} layer={layer} />)}
             </div>
           )}
-          {data && <DependencyGraph layers={data.report.layers} />}
         </div>
       )}
 
-      {/* ── Report ────────────────────────────────────────────────────────────── */}
+      {/* Source Analysis */}
+      {activeTab === "source" && (
+        <div>
+          {!data && <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-8 text-center"><p className="text-zinc-400 text-sm">Execute a auditoria primeiro.</p></div>}
+          {data && <SourceAnalysisTab analysis={data.analysis} />}
+        </div>
+      )}
+
+      {/* Report */}
       {activeTab === "report" && (
         <div>
-          {!data && (
-            <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-8 text-center">
-              <p className="text-zinc-400 text-sm">Execute a auditoria primeiro.</p>
-            </div>
-          )}
+          {!data && <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-8 text-center"><p className="text-zinc-400 text-sm">Execute a auditoria primeiro.</p></div>}
           {data && <ReportSummary report={data.report} />}
         </div>
       )}
