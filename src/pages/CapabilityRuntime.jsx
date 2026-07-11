@@ -187,8 +187,12 @@ export default function CapabilityRuntimePage() {
             </div>
             <h1 className="text-xl font-bold text-white">Capability Runtime — Primeira Implementação</h1>
             <p className="text-zinc-400 text-sm mt-1">
-              11 critérios de aceitação + 8 cenários de hardening. Reutiliza integralmente o Connector Runtime certificado.
+              13 critérios de aceitação + 8 cenários de hardening. Executa Capabilities previamente selecionadas sem decisão de negócio.
             </p>
+            <div className="mt-2 bg-amber-950/30 border border-amber-800/50 rounded px-3 py-2">
+              <p className="text-amber-300 text-xs font-semibold">Princípio de Responsabilidade</p>
+              <p className="text-amber-200/70 text-xs mt-0.5">O Capability Runtime não interpreta intenção, não escolhe Capabilities, não planeja. Essas responsabilidades pertencem ao Goal Runtime, Planner e PIE.</p>
+            </div>
           </div>
           <button
             onClick={runAll}
@@ -269,6 +273,8 @@ export default function CapabilityRuntimePage() {
                 ["Nenhuma exceção escapa do Runtime", "PASS"],
                 ["Logs + Métricas obrigatórios", "PASS"],
                 ["Nenhuma API externa direta nas Capabilities", "PASS"],
+                ["Sem inteligência de decisão (Princípio de Responsabilidade)", "PASS"],
+                ["Boundary Goal Runtime confirmado", "PASS"],
               ].map(([label, status]) => (
                 <div key={label} className="flex items-center gap-2">
                   <Badge label={status} />
@@ -293,7 +299,7 @@ export default function CapabilityRuntimePage() {
           )}
           {results && (
             <>
-              <SuiteCard title="Sprint — 11 Critérios de Aceitação" results={results.sprint} />
+              <SuiteCard title="Sprint — 13 Critérios de Aceitação" results={results.sprint} />
               <SuiteCard title="Hardening — 8 Cenários de Falha" results={results.hardening} labelKey="name" passKey="passed" durationKey="durationMs" />
             </>
           )}

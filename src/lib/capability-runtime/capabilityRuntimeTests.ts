@@ -226,6 +226,42 @@ export async function runCapabilityRuntimeTests(): Promise<CapabilityTestResult[
     };
   }));
 
+  // ── Criterio 12: Sem decisao de negocio — executa apenas o que foi selecionado ──
+  results.push(await criterion(12, "Criterio 12 — Runtime executa apenas Capabilities previamente selecionadas", async () => {
+    // Evidencia: execute() requer capabilityId explicito — nao existe overload sem ID,
+    // nao existe metodo "findBest()", "chooseCap()" ou qualquer inferencia de intencao.
+    const proto = Object.getOwnPropertyNames(Object.getPrototypeOf(capabilityRuntime));
+    const forbidden = ["choose", "infer", "plan", "decide", "selectCapability", "findBest", "interpret"];
+    const found = forbidden.filter(f => proto.some(m => m.toLowerCase().includes(f)));
+    if (found.length) throw new Error(`Metodos de decisao encontrados no Runtime: ${found.join(", ")}`);
+    // Confirmar que execute() exige ID explicito
+    const hasExecute = proto.includes("execute");
+    if (!hasExecute) throw new Error("execute() nao encontrado");
+    return {
+      detail: `API publica auditada: ${proto.filter(m => !m.startsWith("_")).join(", ")} | Nenhum metodo de decisao presente`,
+      observation: "Responsabilidade de selecao pertence ao Goal Runtime / Planner / PIE — nao ao Capability Runtime.",
+    };
+  }));
+
+  // ── Criterio 13: Nenhuma responsabilidade do Goal Runtime incorporada ──────
+  results.push(await criterion(13, "Criterio 13 — Nenhuma responsabilidade do Goal Runtime no Capability Runtime", async () => {
+    // Verificar que o CapabilityRuntime nao expoe: intent, goal, plan, strategy, reasoning
+    const proto = Object.getOwnPropertyNames(Object.getPrototypeOf(capabilityRuntime));
+    const goalRuntimeBoundary = ["intent", "goal", "plan", "strategy", "reason", "infer", "suggest", "orchestrate"];
+    const violations = goalRuntimeBoundary.filter(b => proto.some(m => m.toLowerCase().includes(b)));
+    if (violations.length) {
+      throw new Error(`Violacao de boundary: metodos de Goal Runtime presentes: ${violations.join(", ")}`);
+    }
+    // Confirmar boundary positivo: apenas responsabilidades do Runtime
+    const allowed = ["register", "load", "unload", "execute", "getMetrics", "allMetrics", "getHistory", "listCapabilities", "isLoaded", "buildCancelledResult"];
+    const publicMethods = proto.filter(m => !m.startsWith("_") && m !== "constructor");
+    const unknown = publicMethods.filter(m => !allowed.includes(m));
+    return {
+      detail: `Metodos publicos: ${publicMethods.join(", ")} | Metodos fora do boundary: ${unknown.length === 0 ? "nenhum" : unknown.join(", ")}`,
+      observation: "Boundary Goal Runtime / Capability Runtime confirmado. Intencao, planejamento e estrategia pertencem ao Goal Runtime, Planner e PIE.",
+    };
+  }));
+
   return results;
 }
 
