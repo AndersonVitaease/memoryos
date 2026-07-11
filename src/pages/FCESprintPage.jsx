@@ -165,7 +165,7 @@ export default function FCESprintPage() {
           <div className="flex items-start justify-between flex-wrap gap-3">
             <div>
               <div className="flex flex-wrap gap-2 mb-2 text-xs font-mono">
-                <span className="text-indigo-400">FCE Sprint-1</span>
+                <span className="text-indigo-400">FCE Sprint-2 — SSOT</span>
                 <span className="text-zinc-600">·</span>
                 <span className="text-zinc-400">Foundation v1.0</span>
                 <span className="text-zinc-600">·</span>
@@ -173,7 +173,7 @@ export default function FCESprintPage() {
               </div>
               <h1 className="text-lg font-bold text-white">Foundation Compliance Engine</h1>
               <p className="text-zinc-400 text-sm mt-0.5">
-                RuleLoader · Evaluator · ComplianceEvidence · Score · Traceability
+                OfficialLibraryManager → Parser → RuleLoader → Evaluator → Evidence
               </p>
             </div>
             <button onClick={runSuite} disabled={running}
@@ -198,8 +198,8 @@ export default function FCESprintPage() {
         {running && (
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-10 text-center">
             <div className="w-8 h-8 border-4 border-zinc-700 border-t-indigo-500 rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-zinc-400 text-sm">Foundation → Arquitetura → Codigo → Evidencias...</p>
-            <p className="text-zinc-600 text-xs mt-1">RuleLoader → ABV → ComplianceEvaluator → FCEReport</p>
+            <p className="text-zinc-400 text-sm">OfficialLibraryManager → Parser → Foundation → Evidencias...</p>
+            <p className="text-zinc-600 text-xs mt-1">SSOT: Biblioteca Oficial → RuleLoader → ABV → ComplianceEvaluator</p>
           </div>
         )}
 
@@ -341,11 +341,13 @@ export default function FCESprintPage() {
             <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 space-y-1">
               <p className="text-zinc-400 text-xs uppercase tracking-wider mb-2">Invariantes — Foundation v1.0</p>
               {[
+                "OfficialLibraryManager e a unica fonte de verdade (SSOT)",
+                "FoundationRuleLoader sem regras manuais — 100% parser",
+                "Parser extrai regras automaticamente dos documentos oficiais",
                 "FCE reutiliza ABV — zero duplicacao",
                 "Toda conclusao possui evidencia correspondente",
                 "Toda evidencia possui rastreabilidade completa",
                 "Nenhuma excecao interrompe a auditoria",
-                "Nenhuma lista manual introduzida",
                 "Score calculado deterministicamente",
                 "Compativel com Engineering First",
               ].map((inv, i) => (
@@ -364,7 +366,7 @@ export default function FCESprintPage() {
               <span className="text-2xl">📋</span>
             </div>
             <p className="text-zinc-300 text-sm font-semibold mb-1">Foundation Compliance Engine</p>
-            <p className="text-zinc-500 text-xs">Execute a sprint para auditar conformidade com Foundation v1.0</p>
+            <p className="text-zinc-500 text-xs">OfficialLibraryManager → Parser → FoundationRule → ABV → ComplianceEvidence</p>
           </div>
         )}
 

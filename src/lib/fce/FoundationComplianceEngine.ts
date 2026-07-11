@@ -8,7 +8,7 @@ import { loadSourceFiles, SourceCodeAnalyzer } from "../abv/SourceCodeAnalyzer";
 import { ArchitecturalBoundaryValidator } from "../abv/ArchitecturalBoundaryValidator";
 import { createBaseline, BaselineRegistry, ImmutableAuditHistory } from "../abv/BaselineEngine";
 import { ChangeDetectionEngine } from "../abv/ChangeDetectionEngine";
-import { loadFoundationRules } from "./FoundationRuleLoader";
+import { loadFoundationRules, invalidateRuleCache } from "./FoundationRuleLoader";
 import { ComplianceEvaluator } from "./ComplianceEvaluator";
 import type { FCEReport } from "./FCETypes";
 
@@ -43,11 +43,11 @@ export class FoundationComplianceEngine {
     const history = new ImmutableAuditHistory();
     history.append(baseline);
 
-    // ── Step 4: Load Foundation rules ─────────────────────────────────────
-    const { documents, rules, totalRules } = loadFoundationRules();
+    // ── Step 4: Load Foundation rules (Single Source of Truth) ───────────
+    const { documents, rules, totalRules, rawContents } = await loadFoundationRules();
 
     // ── Step 5: Evaluate compliance (reutiliza ComplianceEvaluator) ───────
-    const evaluation = this.evaluator.evaluate({ rules, abvReport, analysis });
+    const evaluation = this.evaluator.evaluate({ rules, abvReport, analysis, rawContents });
 
     // ── Step 6: Build report ───────────────────────────────────────────────
     const compliantEvidences = evaluation.evidences.filter(e => e.status === "COMPLIANT");

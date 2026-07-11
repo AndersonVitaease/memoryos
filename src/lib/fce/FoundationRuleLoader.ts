@@ -1,220 +1,180 @@
-// Foundation Compliance Engine — Foundation Rule Loader
-// Foundation v1.0 · Engineering First · Sprint FCE-1
+// Foundation Compliance Engine — Foundation Rule Loader (v2 — Single Source of Truth)
+// Foundation v1.0 · Engineering First · Sprint FCE-2
 //
-// Carrega automaticamente os documentos oficiais da Foundation.
-// Nenhuma lista manual. Toda regra deriva dos documentos oficiais.
-// Documentos suportados: MV, MPS, MAS, MES, Transition Declaration.
+// Single Source of Truth: OfficialLibraryManager → parser → FoundationRule
+// Nenhuma regra escrita manualmente.
+// Toda regra extraida automaticamente dos documentos oficiais.
 
-import type { FoundationRule } from "./FCETypes";
+import OfficialLibraryManager from "@/lib/officialLibraryManager";
+import type { FoundationRule, RuleCategory, FCESeverity } from "./FCETypes";
 
-// ── Official Foundation Documents (loaded from official library) ───────────────
-// Rules are extracted from the canonical text of each document.
-// Source: src/docs/00-official-library/ and src/docs/foundation/
+// ── Document → FCE meta mapping ───────────────────────────────────────────────
+// Maps known document name prefixes to their metadata.
+// This is configuration, NOT rule content — rule text comes from the docs.
 
-const MV_RULES: FoundationRule[] = [
-  {
-    ruleId: "MV-001",
-    name: "Permanencia do Conhecimento",
-    category: "principle",
-    sourceDocument: "MV",
-    sourceSection: "Vision Principles",
-    description: "Nenhum conhecimento pode ser perdido pelo sistema",
-    severity: "CRITICAL",
-    invariantText: "Permanencia — Nenhum conhecimento e perdido",
-  },
-  {
-    ruleId: "MV-002",
-    name: "Continuidade de Sessao",
-    category: "principle",
-    sourceDocument: "MV",
-    sourceSection: "Vision Principles",
-    description: "Toda sessao deve conhecer o historico passado relevante",
-    severity: "ERROR",
-    invariantText: "Continuidade — Toda sessao conhece o passado",
-  },
-  {
-    ruleId: "MV-003",
-    name: "Transparencia de Decisoes",
-    category: "principle",
-    sourceDocument: "MV",
-    sourceSection: "Vision Principles",
-    description: "Toda decisao deve ser rastreavel a sua origem",
-    severity: "ERROR",
-    invariantText: "Transparencia — Toda decisao e rastreavel",
-  },
+const DOC_META: Record<string, { shortId: string; category: RuleCategory; defaultSeverity: FCESeverity }> = {
+  "MV":  { shortId: "MV",    category: "principle",         defaultSeverity: "ERROR" },
+  "MPS": { shortId: "MPS",   category: "contract",          defaultSeverity: "ERROR" },
+  "MAS": { shortId: "MAS",   category: "boundary",          defaultSeverity: "CRITICAL" },
+  "MES": { shortId: "MES",   category: "engineering_first", defaultSeverity: "ERROR" },
+  "Architecture-Auditor": { shortId: "ARC", category: "responsibility", defaultSeverity: "WARNING" },
+};
+
+// ── Document name → shortId resolver ─────────────────────────────────────────
+
+function resolveDocMeta(docName: string): typeof DOC_META[string] | null {
+  for (const [prefix, meta] of Object.entries(DOC_META)) {
+    if (docName.startsWith(prefix)) return meta;
+  }
+  return null;
+}
+
+// ── Severity classifier from section/text keywords ───────────────────────────
+
+function classifySeverity(text: string, base: FCESeverity): FCESeverity {
+  const t = text.toLowerCase();
+  if (t.includes("nunca") || t.includes("never") || t.includes("obrigatorio") || t.includes("obrigatoria") || t.includes("constitui")) return "CRITICAL";
+  if (t.includes("deve") || t.includes("devera") || t.includes("sempre") || t.includes("toda") || t.includes("nenhum")) return "ERROR";
+  if (t.includes("recomenda") || t.includes("pode") || t.includes("preferencia")) return "WARNING";
+  return base;
+}
+
+// ── Category classifier from section/text keywords ───────────────────────────
+
+function classifyCategory(sectionTitle: string, text: string, base: RuleCategory): RuleCategory {
+  const s = (sectionTitle + " " + text).toLowerCase();
+  if (s.includes("boundary") || s.includes("camada") || s.includes("separacao") || s.includes("isolamento")) return "boundary";
+  if (s.includes("contrato") || s.includes("interface") || s.includes("contract")) return "contract";
+  if (s.includes("reutiliz") || s.includes("reuse")) return "reuse";
+  if (s.includes("responsabilidade") || s.includes("responsab")) return "responsibility";
+  if (s.includes("policy") || s.includes("autonomia") || s.includes("permissao") || s.includes("autorizacao")) return "autonomy_policy";
+  if (s.includes("frozen") || s.includes("congelad") || s.includes("baseline")) return "frozen_baseline";
+  if (s.includes("isolad") || s.includes("runtime isolation")) return "runtime_isolation";
+  if (s.includes("duplica") || s.includes("duplication")) return "zero_duplication";
+  if (s.includes("engineering first") || s.includes("engenharia")) return "engineering_first";
+  return base;
+}
+
+// ── Markdown Document Parser ──────────────────────────────────────────────────
+// Extracts sections, principles, invariants, restrictions, contracts
+// purely from raw Markdown text. No manual rules.
+
+interface ParsedSection {
+  sectionId: string;     // e.g. "3.1", "4", "7"
+  title: string;
+  lines: string[];       // bullet/sentence lines within this section
+}
+
+function parseMarkdownSections(content: string): ParsedSection[] {
+  const sections: ParsedSection[] = [];
+  const lines = content.split("\n");
+  let current: ParsedSection | null = null;
+
+  const headingRe = /^#{1,4}\s+(.+)/;
+  const numberedRe = /^(\d+(?:\.\d+)?)\.\s+(.+)/;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("---")) continue;
+
+    const headingMatch = headingRe.exec(line);
+    if (headingMatch) {
+      if (current) sections.push(current);
+      const headingText = headingMatch[1].trim();
+      const numMatch = numberedRe.exec(headingText);
+      current = {
+        sectionId: numMatch ? numMatch[1] : headingText.slice(0, 20),
+        title: headingText,
+        lines: [],
+      };
+      continue;
+    }
+
+    // Numbered sub-item inside section (e.g. "3.1 Separacao...")
+    const numLineMatch = numberedRe.exec(line);
+    if (numLineMatch && current) {
+      current.lines.push(line);
+      continue;
+    }
+
+    // Bullet or sentence line
+    if (current && line.startsWith("-")) {
+      current.lines.push(line.slice(1).trim());
+    } else if (current && line.length > 20) {
+      current.lines.push(line);
+    }
+  }
+
+  if (current) sections.push(current);
+  return sections;
+}
+
+// ── Rule Extraction ───────────────────────────────────────────────────────────
+// Identifies which lines are rule-worthy and extracts FoundationRule objects.
+
+const RULE_KEYWORDS = [
+  "nunca", "never", "obrigatorio", "obrigatoria", "sempre", "deve ", "devera",
+  "nenhum", "toda execucao", "todo ", "toda ", "nao pode", "nao podera",
+  "constitui", "separacao", "isolamento", "contrato", "interface", "policy engine",
+  "preserva", "pertence", "permanece", "proibido",
 ];
 
-const MPS_RULES: FoundationRule[] = [
-  {
-    ruleId: "MPS-001",
-    name: "Interface Conversacional como Primeira Classe",
-    category: "principle",
-    sourceDocument: "MPS",
-    sourceSection: "Product Specification",
-    description: "A interface conversacional deve ser o ponto central de interacao",
-    severity: "WARNING",
-    invariantText: "Conversa natural como interface primaria",
-  },
-  {
-    ruleId: "MPS-002",
-    name: "Preservacao de Contexto de Longo Prazo",
-    category: "contract",
-    sourceDocument: "MPS",
-    sourceSection: "Memory Model",
-    description: "O sistema deve manter contexto alem de uma sessao individual",
-    severity: "ERROR",
-    invariantText: "Contexto persistido alem da sessao",
-  },
-];
+function isRuleWorthy(text: string): boolean {
+  const t = text.toLowerCase();
+  return RULE_KEYWORDS.some(kw => t.includes(kw));
+}
 
-const MAS_RULES: FoundationRule[] = [
-  {
-    ruleId: "MAS-001",
-    name: "Core nao conhece implementacoes concretas",
-    category: "boundary",
-    sourceDocument: "MAS",
-    sourceSection: "Architectural Invariants",
-    description: "O Core nunca deve conhecer implementacoes concretas — apenas interfaces",
-    severity: "CRITICAL",
-    invariantText: "O Core nunca conhece implementacoes concretas",
-  },
-  {
-    ruleId: "MAS-002",
-    name: "Separacao de Responsabilidades entre camadas",
-    category: "responsibility",
-    sourceDocument: "MAS",
-    sourceSection: "Layer Architecture",
-    description: "Cada camada possui responsabilidade unica e bem definida",
-    severity: "CRITICAL",
-    invariantText: "Separacao de responsabilidades — cada camada faz uma coisa",
-  },
-  {
-    ruleId: "MAS-003",
-    name: "Connector Runtime reutilizado obrigatoriamente",
-    category: "reuse",
-    sourceDocument: "MAS",
-    sourceSection: "Runtime Constraints",
-    description: "O Capability Runtime deve reutilizar o Connector Runtime certificado",
-    severity: "CRITICAL",
-    invariantText: "Connector Runtime reutilizado — zero duplicacao",
-  },
-  {
-    ruleId: "MAS-004",
-    name: "Boundary entre camadas respeitado",
-    category: "boundary",
-    sourceDocument: "MAS",
-    sourceSection: "Boundary Definitions",
-    description: "Nenhuma camada pode importar diretamente uma camada que nao esta em sua lista de deps permitidas",
-    severity: "CRITICAL",
-    invariantText: "Boundary entre camadas — importacoes apenas de camadas permitidas",
-  },
-  {
-    ruleId: "MAS-005",
-    name: "AuditTrail imutavel",
-    category: "contract",
-    sourceDocument: "MAS",
-    sourceSection: "Audit Constraints",
-    description: "O AuditTrail deve ser append-only e nunca modificado",
-    severity: "CRITICAL",
-    invariantText: "AuditTrail e imutavel — append-only",
-  },
-  {
-    ruleId: "MAS-006",
-    name: "Runtime isolado entre usuarios",
-    category: "runtime_isolation",
-    sourceDocument: "MAS",
-    sourceSection: "Security Constraints",
-    description: "Nenhum contexto de usuario pode ser compartilhado com outro usuario",
-    severity: "CRITICAL",
-    invariantText: "Runtime isolado — contexto nunca compartilhado entre usuarios",
-  },
-];
+function extractRulesFromDoc(
+  docName: string,
+  content: string,
+  meta: typeof DOC_META[string],
+): FoundationRule[] {
+  const sections = parseMarkdownSections(content);
+  const rules: FoundationRule[] = [];
+  let ruleIndex = 1;
 
-const MES_RULES: FoundationRule[] = [
-  {
-    ruleId: "MES-001",
-    name: "Engineering First — Toda evolucao por implementacao",
-    category: "engineering_first",
-    sourceDocument: "MES",
-    sourceSection: "Engineering First Governance",
-    description: "Toda descoberta arquitetural deve nascer da implementacao, nao de conceitos",
-    severity: "ERROR",
-    invariantText: "Engineering First — toda evolucao sustentada por evidencias de implementacao pratica",
-  },
-  {
-    ruleId: "MES-002",
-    name: "Nenhuma RFC promovida por merito conceitual",
-    category: "engineering_first",
-    sourceDocument: "MES",
-    sourceSection: "RFC Governance",
-    description: "RFCs so podem ser promovidas com evidencias de implementacao real",
-    severity: "ERROR",
-    invariantText: "Nenhuma RFC promovida a Accepted por merito conceitual",
-  },
-  {
-    ruleId: "MES-003",
-    name: "Policy Engine obrigatorio para acoes de alto risco",
-    category: "autonomy_policy",
-    sourceDocument: "MES",
-    sourceSection: "Autonomy Policy",
-    description: "Toda acao de alto risco deve ser autorizada pelo Policy Engine antes da execucao",
-    severity: "CRITICAL",
-    invariantText: "Toda acao de alto risco exige aprovacao humana",
-  },
-  {
-    ruleId: "MES-004",
-    name: "Zero duplicacao arquitetural",
-    category: "zero_duplication",
-    sourceDocument: "MES",
-    sourceSection: "Architecture Constraints",
-    description: "Nenhum componente arquitetural pode ser duplicado — reutilizacao obrigatoria",
-    severity: "ERROR",
-    invariantText: "Zero duplicacao arquitetural",
-  },
-  {
-    ruleId: "MES-005",
-    name: "Capability Runtime reutiliza Connector Runtime",
-    category: "reuse",
-    sourceDocument: "MES",
-    sourceSection: "Runtime Reuse",
-    description: "O Capability Runtime deve reutilizar o Connector Runtime sem duplicacao de logica",
-    severity: "CRITICAL",
-    invariantText: "Capability Runtime reutiliza Connector Runtime certificado",
-  },
-];
+  for (const section of sections) {
+    // Also check section title as a potential rule
+    const candidates: string[] = [];
 
-const TRANSITION_RULES: FoundationRule[] = [
-  {
-    ruleId: "TRANS-001",
-    name: "Foundation v1.0 Frozen Baseline",
-    category: "frozen_baseline",
-    sourceDocument: "Transition Declaration",
-    sourceSection: "Frozen Baseline",
-    description: "A Foundation v1.0 esta congelada — nenhum documento pode ser alterado sem RFC aprovada",
-    severity: "CRITICAL",
-    invariantText: "Foundation v1.0 frozen — nenhum documento alterado sem RFC aprovada",
-  },
-  {
-    ruleId: "TRANS-002",
-    name: "Biblioteca so cresce, nunca diminui",
-    category: "frozen_baseline",
-    sourceDocument: "Transition Declaration",
-    sourceSection: "Library Invariants",
-    description: "A biblioteca oficial de documentos nunca pode ter documentos removidos",
-    severity: "ERROR",
-    invariantText: "A biblioteca so cresce — nunca diminui",
-  },
-  {
-    ruleId: "TRANS-003",
-    name: "Engineering First como governanca permanente",
-    category: "engineering_first",
-    sourceDocument: "Transition Declaration",
-    sourceSection: "Engineering First Mandate",
-    description: "Engineering First e a governanca permanente — toda evolucao requer evidencias",
-    severity: "ERROR",
-    invariantText: "Engineering First e a governanca permanente da plataforma",
-  },
-];
+    // Add lines that are rule-worthy
+    for (const line of section.lines) {
+      if (isRuleWorthy(line)) candidates.push(line);
+    }
+
+    // If the section title itself is a principle statement, include it
+    if (isRuleWorthy(section.title)) candidates.push(section.title);
+
+    for (const text of candidates) {
+      // Truncate very long lines for ruleId generation
+      const idx = String(ruleIndex).padStart(3, "0");
+      const ruleId = `${meta.shortId}-${idx}`;
+      const severity  = classifySeverity(text, meta.defaultSeverity);
+      const category  = classifyCategory(section.title, text, meta.category);
+
+      rules.push({
+        ruleId,
+        name: text.length > 80 ? text.slice(0, 80) + "..." : text,
+        category,
+        sourceDocument: meta.shortId,
+        sourceSection: section.title,
+        description: text,
+        severity,
+        invariantText: text,
+      });
+      ruleIndex++;
+    }
+  }
+
+  return rules;
+}
+
+// ── FCE-relevant document filter ──────────────────────────────────────────────
+// Only documents with a known meta entry are used for compliance evaluation.
+
+function isFCEDocument(docName: string): boolean {
+  return resolveDocMeta(docName) !== null;
+}
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -223,24 +183,52 @@ export interface LoadedDocuments {
   rules: FoundationRule[];
   rulesByDocument: Record<string, FoundationRule[]>;
   totalRules: number;
+  /** Raw document content keyed by shortId — for traceability */
+  rawContents: Record<string, string>;
 }
 
-export function loadFoundationRules(): LoadedDocuments {
-  const rulesByDocument: Record<string, FoundationRule[]> = {
-    "MV":                     MV_RULES,
-    "MPS":                    MPS_RULES,
-    "MAS":                    MAS_RULES,
-    "MES":                    MES_RULES,
-    "Transition Declaration": TRANSITION_RULES,
-  };
+let _cache: LoadedDocuments | null = null;
 
-  const documents = Object.keys(rulesByDocument);
-  const rules = documents.flatMap(d => rulesByDocument[d]);
+export async function loadFoundationRules(forceReload = false): Promise<LoadedDocuments> {
+  if (_cache && !forceReload) return _cache;
 
-  return {
-    documents,
-    rules,
-    rulesByDocument,
-    totalRules: rules.length,
-  };
+  // ── Load from OfficialLibraryManager (Single Source of Truth) ────────────
+  await OfficialLibraryManager.load();
+  const docs = OfficialLibraryManager.getDocs();
+
+  const documents: string[] = [];
+  const rulesByDocument: Record<string, FoundationRule[]> = {};
+  const rawContents: Record<string, string> = {};
+
+  for (const [docName, content] of Object.entries(docs)) {
+    if (!isFCEDocument(docName)) continue;
+
+    const meta = resolveDocMeta(docName)!;
+    let docRules: FoundationRule[] = [];
+
+    try {
+      if (typeof content === "string" && content.length > 0) {
+        docRules = extractRulesFromDoc(docName, content, meta);
+      }
+    } catch {
+      // Hardening: parsing errors never interrupt the loader
+      docRules = [];
+    }
+
+    if (docRules.length > 0) {
+      documents.push(meta.shortId);
+      rulesByDocument[meta.shortId] = docRules;
+      rawContents[meta.shortId] = typeof content === "string" ? content : "";
+    }
+  }
+
+  const rules = documents.flatMap(d => rulesByDocument[d] ?? []);
+
+  _cache = { documents, rules, rulesByDocument, totalRules: rules.length, rawContents };
+  return _cache;
+}
+
+/** Invalidate cache — forces next call to reload from OfficialLibraryManager */
+export function invalidateRuleCache(): void {
+  _cache = null;
 }

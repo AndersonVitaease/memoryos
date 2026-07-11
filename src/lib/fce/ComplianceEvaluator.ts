@@ -70,6 +70,8 @@ export interface EvaluationInput {
   rules: FoundationRule[];
   abvReport: ABVReport;
   analysis: SourceAnalysisResult;
+  /** Raw document contents keyed by shortId — for traceability to original text */
+  rawContents?: Record<string, string>;
 }
 
 export interface EvaluationOutput {
