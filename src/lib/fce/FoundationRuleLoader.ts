@@ -1,179 +1,57 @@
-// Foundation Compliance Engine — Foundation Rule Loader (v2 — Single Source of Truth)
-// Foundation v1.0 · Engineering First · Sprint FCE-2
+// Foundation Compliance Engine — Foundation Rule Loader (v3 — FKM)
+// Foundation v1.0 · Engineering First · Sprint FKM-1
 //
-// Single Source of Truth: OfficialLibraryManager → parser → FoundationRule
-// Nenhuma regra escrita manualmente.
-// Toda regra extraida automaticamente dos documentos oficiais.
+// Responsabilidade UNICA: converter KnowledgeAtoms em FoundationRules.
+// Nao interpreta Markdown. Nao acessa OfficialLibraryManager diretamente.
+// Recebe FoundationKnowledgeModel → produz FoundationRules.
 
 import OfficialLibraryManager from "@/lib/officialLibraryManager";
+import { FoundationDocumentParser } from "./FoundationDocumentParser";
+import { FoundationKnowledgeModelBuilder } from "./FoundationKnowledgeModel";
+import type { FoundationKnowledgeModel } from "./FoundationKnowledgeModel";
 import type { FoundationRule, RuleCategory, FCESeverity } from "./FCETypes";
 
-// ── Document → FCE meta mapping ───────────────────────────────────────────────
-// Maps known document name prefixes to their metadata.
-// This is configuration, NOT rule content — rule text comes from the docs.
+// ── Document registration (configuration, NOT rule content) ───────────────────
 
-const DOC_META: Record<string, { shortId: string; category: RuleCategory; defaultSeverity: FCESeverity }> = {
-  "MV":  { shortId: "MV",    category: "principle",         defaultSeverity: "ERROR" },
-  "MPS": { shortId: "MPS",   category: "contract",          defaultSeverity: "ERROR" },
-  "MAS": { shortId: "MAS",   category: "boundary",          defaultSeverity: "CRITICAL" },
-  "MES": { shortId: "MES",   category: "engineering_first", defaultSeverity: "ERROR" },
-  "Architecture-Auditor": { shortId: "ARC", category: "responsibility", defaultSeverity: "WARNING" },
+const DOC_REGISTRY: Record<string, { shortId: string; defaultSeverity: FCESeverity }> = {
+  "MV":                   { shortId: "MV",  defaultSeverity: "ERROR" },
+  "MPS":                  { shortId: "MPS", defaultSeverity: "ERROR" },
+  "MAS":                  { shortId: "MAS", defaultSeverity: "CRITICAL" },
+  "MES":                  { shortId: "MES", defaultSeverity: "ERROR" },
+  "Architecture-Auditor": { shortId: "ARC", defaultSeverity: "WARNING" },
 };
 
-// ── Document name → shortId resolver ─────────────────────────────────────────
-
-function resolveDocMeta(docName: string): typeof DOC_META[string] | null {
-  for (const [prefix, meta] of Object.entries(DOC_META)) {
-    if (docName.startsWith(prefix)) return meta;
+function resolveRegistry(docName: string): typeof DOC_REGISTRY[string] | null {
+  for (const [prefix, reg] of Object.entries(DOC_REGISTRY)) {
+    if (docName.startsWith(prefix)) return reg;
   }
   return null;
 }
 
-// ── Severity classifier from section/text keywords ───────────────────────────
+// ── Severity derivation from atom ─────────────────────────────────────────────
 
-function classifySeverity(text: string, base: FCESeverity): FCESeverity {
+function deriveSeverity(text: string, base: FCESeverity): FCESeverity {
   const t = text.toLowerCase();
-  if (t.includes("nunca") || t.includes("never") || t.includes("obrigatorio") || t.includes("obrigatoria") || t.includes("constitui")) return "CRITICAL";
-  if (t.includes("deve") || t.includes("devera") || t.includes("sempre") || t.includes("toda") || t.includes("nenhum")) return "ERROR";
-  if (t.includes("recomenda") || t.includes("pode") || t.includes("preferencia")) return "WARNING";
+  if (t.includes("nunca") || t.includes("never") || t.includes("obrigatorio") || t.includes("constitui")) return "CRITICAL";
+  if (t.includes("deve") || t.includes("devera") || t.includes("sempre") || t.includes("nenhum"))         return "ERROR";
+  if (t.includes("recomenda") || t.includes("pode") || t.includes("preferencia"))                          return "WARNING";
   return base;
 }
 
-// ── Category classifier from section/text keywords ───────────────────────────
+// ── FoundationRule factory — receives atom, emits rule ────────────────────────
 
-function classifyCategory(sectionTitle: string, text: string, base: RuleCategory): RuleCategory {
-  const s = (sectionTitle + " " + text).toLowerCase();
-  if (s.includes("boundary") || s.includes("camada") || s.includes("separacao") || s.includes("isolamento")) return "boundary";
-  if (s.includes("contrato") || s.includes("interface") || s.includes("contract")) return "contract";
-  if (s.includes("reutiliz") || s.includes("reuse")) return "reuse";
-  if (s.includes("responsabilidade") || s.includes("responsab")) return "responsibility";
-  if (s.includes("policy") || s.includes("autonomia") || s.includes("permissao") || s.includes("autorizacao")) return "autonomy_policy";
-  if (s.includes("frozen") || s.includes("congelad") || s.includes("baseline")) return "frozen_baseline";
-  if (s.includes("isolad") || s.includes("runtime isolation")) return "runtime_isolation";
-  if (s.includes("duplica") || s.includes("duplication")) return "zero_duplication";
-  if (s.includes("engineering first") || s.includes("engenharia")) return "engineering_first";
-  return base;
-}
-
-// ── Markdown Document Parser ──────────────────────────────────────────────────
-// Extracts sections, principles, invariants, restrictions, contracts
-// purely from raw Markdown text. No manual rules.
-
-interface ParsedSection {
-  sectionId: string;     // e.g. "3.1", "4", "7"
-  title: string;
-  lines: string[];       // bullet/sentence lines within this section
-}
-
-function parseMarkdownSections(content: string): ParsedSection[] {
-  const sections: ParsedSection[] = [];
-  const lines = content.split("\n");
-  let current: ParsedSection | null = null;
-
-  const headingRe = /^#{1,4}\s+(.+)/;
-  const numberedRe = /^(\d+(?:\.\d+)?)\.\s+(.+)/;
-
-  for (const rawLine of lines) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith("---")) continue;
-
-    const headingMatch = headingRe.exec(line);
-    if (headingMatch) {
-      if (current) sections.push(current);
-      const headingText = headingMatch[1].trim();
-      const numMatch = numberedRe.exec(headingText);
-      current = {
-        sectionId: numMatch ? numMatch[1] : headingText.slice(0, 20),
-        title: headingText,
-        lines: [],
-      };
-      continue;
-    }
-
-    // Numbered sub-item inside section (e.g. "3.1 Separacao...")
-    const numLineMatch = numberedRe.exec(line);
-    if (numLineMatch && current) {
-      current.lines.push(line);
-      continue;
-    }
-
-    // Bullet or sentence line
-    if (current && line.startsWith("-")) {
-      current.lines.push(line.slice(1).trim());
-    } else if (current && line.length > 20) {
-      current.lines.push(line);
-    }
-  }
-
-  if (current) sections.push(current);
-  return sections;
-}
-
-// ── Rule Extraction ───────────────────────────────────────────────────────────
-// Identifies which lines are rule-worthy and extracts FoundationRule objects.
-
-const RULE_KEYWORDS = [
-  "nunca", "never", "obrigatorio", "obrigatoria", "sempre", "deve ", "devera",
-  "nenhum", "toda execucao", "todo ", "toda ", "nao pode", "nao podera",
-  "constitui", "separacao", "isolamento", "contrato", "interface", "policy engine",
-  "preserva", "pertence", "permanece", "proibido",
-];
-
-function isRuleWorthy(text: string): boolean {
-  const t = text.toLowerCase();
-  return RULE_KEYWORDS.some(kw => t.includes(kw));
-}
-
-function extractRulesFromDoc(
-  docName: string,
-  content: string,
-  meta: typeof DOC_META[string],
-): FoundationRule[] {
-  const sections = parseMarkdownSections(content);
-  const rules: FoundationRule[] = [];
-  let ruleIndex = 1;
-
-  for (const section of sections) {
-    // Also check section title as a potential rule
-    const candidates: string[] = [];
-
-    // Add lines that are rule-worthy
-    for (const line of section.lines) {
-      if (isRuleWorthy(line)) candidates.push(line);
-    }
-
-    // If the section title itself is a principle statement, include it
-    if (isRuleWorthy(section.title)) candidates.push(section.title);
-
-    for (const text of candidates) {
-      // Truncate very long lines for ruleId generation
-      const idx = String(ruleIndex).padStart(3, "0");
-      const ruleId = `${meta.shortId}-${idx}`;
-      const severity  = classifySeverity(text, meta.defaultSeverity);
-      const category  = classifyCategory(section.title, text, meta.category);
-
-      rules.push({
-        ruleId,
-        name: text.length > 80 ? text.slice(0, 80) + "..." : text,
-        category,
-        sourceDocument: meta.shortId,
-        sourceSection: section.title,
-        description: text,
-        severity,
-        invariantText: text,
-      });
-      ruleIndex++;
-    }
-  }
-
-  return rules;
-}
-
-// ── FCE-relevant document filter ──────────────────────────────────────────────
-// Only documents with a known meta entry are used for compliance evaluation.
-
-function isFCEDocument(docName: string): boolean {
-  return resolveDocMeta(docName) !== null;
+function atomToRule(atom: import("./FoundationKnowledgeModel").KnowledgeAtom, idx: number, base: FCESeverity): FoundationRule {
+  const ruleId = `${atom.sourceDocument}-${String(idx).padStart(3, "0")}`;
+  return Object.freeze({
+    ruleId,
+    name:           atom.text.length > 80 ? atom.text.slice(0, 80) + "..." : atom.text,
+    category:       atom.categoryHint as RuleCategory,
+    sourceDocument: atom.sourceDocument,
+    sourceSection:  atom.sourceSection,
+    description:    atom.text,
+    severity:       deriveSeverity(atom.text, base),
+    invariantText:  atom.text,
+  });
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -185,50 +63,64 @@ export interface LoadedDocuments {
   totalRules: number;
   /** Raw document content keyed by shortId — for traceability */
   rawContents: Record<string, string>;
+  /** The Knowledge Model produced during this load — for reuse */
+  knowledgeModel: FoundationKnowledgeModel;
 }
 
 let _cache: LoadedDocuments | null = null;
 
+const _parser  = new FoundationDocumentParser();
+const _builder = new FoundationKnowledgeModelBuilder();
+
 export async function loadFoundationRules(forceReload = false): Promise<LoadedDocuments> {
   if (_cache && !forceReload) return _cache;
 
-  // ── Load from OfficialLibraryManager (Single Source of Truth) ────────────
+  // ── Step 1: Read from OfficialLibraryManager (Single Source of Truth) ────
   await OfficialLibraryManager.load();
-  const docs = OfficialLibraryManager.getDocs();
+  const libDocs = OfficialLibraryManager.getDocs();
 
-  const documents: string[] = [];
-  const rulesByDocument: Record<string, FoundationRule[]> = {};
   const rawContents: Record<string, string> = {};
+  const parsedDocs: ReturnType<FoundationDocumentParser["parse"]>[] = [];
 
-  for (const [docName, content] of Object.entries(docs)) {
-    if (!isFCEDocument(docName)) continue;
-
-    const meta = resolveDocMeta(docName)!;
-    let docRules: FoundationRule[] = [];
-
+  for (const [docName, content] of Object.entries(libDocs)) {
+    const reg = resolveRegistry(docName);
+    if (!reg) continue;
+    const raw = typeof content === "string" ? content : "";
+    rawContents[reg.shortId] = raw;
     try {
-      if (typeof content === "string" && content.length > 0) {
-        docRules = extractRulesFromDoc(docName, content, meta);
-      }
+      parsedDocs.push(_parser.parse(docName, reg.shortId, raw));
     } catch {
-      // Hardening: parsing errors never interrupt the loader
-      docRules = [];
+      // Hardening: parser failure never interrupts the loader
+      parsedDocs.push(_parser.parse(docName, reg.shortId, ""));
     }
+  }
 
-    if (docRules.length > 0) {
-      documents.push(meta.shortId);
-      rulesByDocument[meta.shortId] = docRules;
-      rawContents[meta.shortId] = typeof content === "string" ? content : "";
+  // ── Step 2: Build FoundationKnowledgeModel ────────────────────────────────
+  const knowledgeModel = _builder.build(parsedDocs);
+
+  // ── Step 3: Convert atoms → FoundationRules ───────────────────────────────
+  const documents: string[]                          = [];
+  const rulesByDocument: Record<string, FoundationRule[]> = {};
+  const indexByDoc: Record<string, number>           = {};
+
+  for (const atom of knowledgeModel.allAtoms) {
+    const docId = atom.sourceDocument;
+    if (!rulesByDocument[docId]) {
+      rulesByDocument[docId] = [];
+      indexByDoc[docId] = 1;
+      documents.push(docId);
     }
+    const reg = Object.values(DOC_REGISTRY).find(r => r.shortId === docId);
+    const base: FCESeverity = reg?.defaultSeverity ?? "ERROR";
+    rulesByDocument[docId].push(atomToRule(atom, indexByDoc[docId]++, base));
   }
 
   const rules = documents.flatMap(d => rulesByDocument[d] ?? []);
 
-  _cache = { documents, rules, rulesByDocument, totalRules: rules.length, rawContents };
+  _cache = { documents, rules, rulesByDocument, totalRules: rules.length, rawContents, knowledgeModel };
   return _cache;
 }
 
-/** Invalidate cache — forces next call to reload from OfficialLibraryManager */
 export function invalidateRuleCache(): void {
   _cache = null;
 }

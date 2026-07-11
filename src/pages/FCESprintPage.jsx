@@ -165,7 +165,7 @@ export default function FCESprintPage() {
           <div className="flex items-start justify-between flex-wrap gap-3">
             <div>
               <div className="flex flex-wrap gap-2 mb-2 text-xs font-mono">
-                <span className="text-indigo-400">FCE Sprint-2 — SSOT</span>
+                <span className="text-indigo-400">FCE Sprint-3 — FKM</span>
                 <span className="text-zinc-600">·</span>
                 <span className="text-zinc-400">Foundation v1.0</span>
                 <span className="text-zinc-600">·</span>
@@ -173,7 +173,7 @@ export default function FCESprintPage() {
               </div>
               <h1 className="text-lg font-bold text-white">Foundation Compliance Engine</h1>
               <p className="text-zinc-400 text-sm mt-0.5">
-                OfficialLibraryManager → Parser → RuleLoader → Evaluator → Evidence
+                OfficialLibraryManager → Parser → KnowledgeModel → RuleLoader → Evaluator
               </p>
             </div>
             <button onClick={runSuite} disabled={running}
@@ -232,7 +232,7 @@ export default function FCESprintPage() {
         {activeTab === "results" && data && (
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
             <div className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-800">
-              <span className="text-sm font-semibold text-zinc-200">15 Criterios (12 aceitacao + 3 hardening)</span>
+              <span className="text-sm font-semibold text-zinc-200">15 Criterios — FKM: Parser · KnowledgeModel · RuleLoader · SSOT</span>
               <span className={`text-xs font-mono font-bold ${allPass ? "text-emerald-400" : "text-red-400"}`}>{data.passed}/{data.total}</span>
             </div>
             {data.results.map(r => <TestRow key={r.criterion} r={r} />)}
@@ -342,8 +342,9 @@ export default function FCESprintPage() {
               <p className="text-zinc-400 text-xs uppercase tracking-wider mb-2">Invariantes — Foundation v1.0</p>
               {[
                 "OfficialLibraryManager e a unica fonte de verdade (SSOT)",
-                "FoundationRuleLoader sem regras manuais — 100% parser",
-                "Parser extrai regras automaticamente dos documentos oficiais",
+                "FoundationDocumentParser: responsabilidade unica de parsing",
+                "FoundationKnowledgeModel: representa estrutura do conhecimento",
+                "FoundationRuleLoader: KnowledgeAtoms → FoundationRules apenas",
                 "FCE reutiliza ABV — zero duplicacao",
                 "Toda conclusao possui evidencia correspondente",
                 "Toda evidencia possui rastreabilidade completa",

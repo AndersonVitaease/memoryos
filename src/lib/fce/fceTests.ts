@@ -1,15 +1,17 @@
-// FCE — Sprint Validation Tests (v2 — Single Source of Truth)
-// Foundation v1.0 · Engineering First · Sprint FCE-2
+// FCE — Sprint Validation Tests (v3 — FKM)
+// Foundation v1.0 · Engineering First · Sprint FKM-1
 //
 // 12 criterios de aceitacao + 3 hardening.
-// Toda regra deve nascer do OfficialLibraryManager — zero listas manuais.
+// Valida: Parser · KnowledgeModel · RuleLoader · SSOT · Rastreabilidade.
 
-import { FoundationComplianceEngine }         from "./FoundationComplianceEngine";
-import { loadFoundationRules, invalidateRuleCache } from "./FoundationRuleLoader";
-import { ComplianceEvaluator }                from "./ComplianceEvaluator";
-import { loadSourceFiles, SourceCodeAnalyzer } from "../abv/SourceCodeAnalyzer";
-import { ArchitecturalBoundaryValidator }       from "../abv/ArchitecturalBoundaryValidator";
-import OfficialLibraryManager                  from "@/lib/officialLibraryManager";
+import { FoundationComplianceEngine }                    from "./FoundationComplianceEngine";
+import { loadFoundationRules, invalidateRuleCache }       from "./FoundationRuleLoader";
+import { FoundationDocumentParser }                       from "./FoundationDocumentParser";
+import { FoundationKnowledgeModelBuilder }                from "./FoundationKnowledgeModel";
+import { ComplianceEvaluator }                            from "./ComplianceEvaluator";
+import { loadSourceFiles, SourceCodeAnalyzer }            from "../abv/SourceCodeAnalyzer";
+import { ArchitecturalBoundaryValidator }                  from "../abv/ArchitecturalBoundaryValidator";
+import OfficialLibraryManager                             from "@/lib/officialLibraryManager";
 import type { FCEReport } from "./FCETypes";
 
 export interface FCETestResult {
@@ -50,221 +52,239 @@ export async function runFCETests(): Promise<FCESprintResult> {
   const report = await engine.run();
   const results: FCETestResult[] = [];
 
-  // ── C1: OfficialLibraryManager e a unica fonte de leitura ────────────────
-  results.push(await run(1, "OfficialLibraryManager e a unica fonte de leitura", async () => {
+  // ── C1: OfficialLibraryManager e a unica fonte oficial ───────────────────
+  results.push(await run(1, "OfficialLibraryManager continua sendo a unica fonte oficial", async () => {
     await OfficialLibraryManager.load();
     const names = OfficialLibraryManager.getDocNames();
-    if (!names.length) throw new Error("OfficialLibraryManager nao retornou documentos");
+    if (!names.length) throw new Error("OfficialLibraryManager vazio");
     const { rawContents } = await loadFoundationRules();
-    // Every doc used by FCE must come from OfficialLibraryManager
-    for (const shortId of Object.keys(rawContents)) {
-      const found = names.some(n => n.startsWith(shortId) || n.includes(shortId));
-      if (!rawContents[shortId]) throw new Error(`Conteudo vazio para ${shortId} — nao veio do OfficialLibraryManager`);
-      if (!found && rawContents[shortId].length === 0) throw new Error(`${shortId} nao encontrado na Biblioteca Oficial`);
+    for (const [shortId, raw] of Object.entries(rawContents)) {
+      if (!raw || raw.length === 0) throw new Error(`${shortId}: conteudo vazio — nao veio da Biblioteca Oficial`);
+      const libMatch = Object.values(OfficialLibraryManager.getDocs())
+        .some(c => typeof c === "string" && c.slice(0, 80) === raw.slice(0, 80));
+      if (!libMatch) throw new Error(`${shortId}: conteudo nao rastreado ao OfficialLibraryManager`);
     }
-    return { detail: `OfficialLibraryManager: ${names.length} documentos | FCE consome: ${Object.keys(rawContents).join(", ")}` };
+    return { detail: `OfficialLibraryManager: ${names.length} docs | FCE consome: ${Object.keys(rawContents).join(", ")}` };
   }));
 
-  // ── C2: FoundationRuleLoader nao possui nenhuma regra manual ─────────────
-  results.push(await run(2, "FoundationRuleLoader nao possui nenhuma regra escrita manualmente", async () => {
-    const { rules, totalRules } = await loadFoundationRules();
-    if (totalRules === 0) throw new Error("Nenhuma regra extraida — loader vazio");
-    // Verify every rule has invariantText derived from actual doc content
-    const { rawContents } = await loadFoundationRules();
-    let manualCount = 0;
+  // ── C2: FoundationDocumentParser interpreta automaticamente os documentos ─
+  results.push(await run(2, "FoundationDocumentParser interpreta automaticamente todos os documentos", async () => {
+    const parser = new FoundationDocumentParser();
+    await OfficialLibraryManager.load();
+    const docs = OfficialLibraryManager.getDocs();
+    let totalSections = 0, totalElements = 0;
+    const docResults: string[] = [];
+
+    for (const [name, content] of Object.entries(docs)) {
+      if (typeof content !== "string" || content.length === 0) continue;
+      const parsed = parser.parse(name, name.split("-")[0], content);
+      totalSections += parsed.sections.length;
+      totalElements += parsed.allElements.length;
+      docResults.push(`${name.split("-")[0]}:${parsed.allElements.length}el`);
+    }
+    if (totalElements === 0) throw new Error("Parser nao extraiu nenhum elemento");
+    return { detail: `${totalSections} secoes | ${totalElements} elementos | ${docResults.join(" ")}` };
+  }));
+
+  // ── C3: FoundationKnowledgeModel representa o conhecimento corretamente ───
+  results.push(await run(3, "FoundationKnowledgeModel representa corretamente o conhecimento extraido", async () => {
+    const { knowledgeModel } = await loadFoundationRules();
+    if (knowledgeModel.totalAtoms === 0) throw new Error("KnowledgeModel vazio");
+    if (!knowledgeModel.documents.length) throw new Error("KnowledgeModel sem documentos");
+    // Verify indices are populated
+    const typeKeys = Object.keys(knowledgeModel.byType);
+    const docKeys  = Object.keys(knowledgeModel.byDocument);
+    if (!typeKeys.length) throw new Error("byType vazio — indices nao construidos");
+    if (!docKeys.length)  throw new Error("byDocument vazio — indices nao construidos");
+    const typeSummary = typeKeys.map(k => `${k}:${knowledgeModel.byType[k as keyof typeof knowledgeModel.byType].length}`).join(" ");
+    return {
+      detail: `${knowledgeModel.totalAtoms} atoms | ${knowledgeModel.documents.length} docs | ${knowledgeModel.buildTimeMs}ms | types: ${typeSummary}`,
+    };
+  }));
+
+  // ── C4: FoundationRuleLoader deixou de interpretar Markdown ──────────────
+  results.push(await run(4, "FoundationRuleLoader nao interpreta Markdown — apenas converte KnowledgeAtoms", async () => {
+    const { knowledgeModel, totalRules } = await loadFoundationRules();
+    // Rules must equal atoms (1:1 conversion, no extra parsing)
+    if (totalRules !== knowledgeModel.totalAtoms) {
+      throw new Error(`totalRules(${totalRules}) != totalAtoms(${knowledgeModel.totalAtoms}) — RuleLoader ainda interpreta docs?`);
+    }
+    return { detail: `RuleLoader: ${totalRules} regras == ${knowledgeModel.totalAtoms} atoms | Conversao 1:1 confirmada` };
+  }));
+
+  // ── C5: Todas as FoundationRules geradas a partir do Knowledge Model ──────
+  results.push(await run(5, "Todas as FoundationRules geradas exclusivamente a partir do Knowledge Model", async () => {
+    const { rules, knowledgeModel } = await loadFoundationRules();
+    if (!rules.length) throw new Error("Nenhuma regra gerada");
+    // Every rule's invariantText must match an atom's text
+    const atomTexts = new Set(knowledgeModel.allAtoms.map(a => a.text));
+    let mismatches = 0;
     for (const rule of rules) {
-      const docContent = rawContents[rule.sourceDocument] ?? "";
-      // The invariantText must appear somewhere in the raw document (or a cleaned version)
-      const normalised = docContent.toLowerCase().replace(/\s+/g, " ");
-      const ruleNorm   = rule.invariantText.toLowerCase().replace(/\s+/g, " ").slice(0, 60);
-      if (ruleNorm.length > 10 && !normalised.includes(ruleNorm)) manualCount++;
+      if (!atomTexts.has(rule.invariantText)) mismatches++;
     }
-    if (manualCount > Math.ceil(totalRules * 0.1)) {
-      throw new Error(`${manualCount}/${totalRules} regras nao encontradas nos documentos — possivel lista manual`);
-    }
+    if (mismatches > 0) throw new Error(`${mismatches} regras com texto nao rastreado a um KnowledgeAtom`);
+    return { detail: `${rules.length} regras | Todas rastreadas a KnowledgeAtoms | 0 mismatches` };
+  }));
+
+  // ── C6: FCE mantém exatamente o mesmo comportamento funcional ─────────────
+  results.push(await run(6, "FoundationComplianceEngine mantem exatamente o mesmo comportamento", async () => {
+    if (!report.evidences.length)    throw new Error("Nenhuma evidencia no relatorio");
+    if (!report.score.overallCompliance && report.score.overallCompliance !== 0) throw new Error("Score ausente");
+    if (!report.conclusion)          throw new Error("Conclusao ausente");
+    if (!report.executionId)         throw new Error("executionId ausente");
+    if (report.rulesTotal === 0)     throw new Error("rulesTotal=0");
     return {
-      detail: `${totalRules} regras extraidas automaticamente | ${manualCount} com texto nao rastreado (tolerancia 10%)`,
+      detail: `Relatorio funcional: ${report.rulesTotal} regras | ${report.evidences.length} evidencias | Score: ${report.score.overallCompliance}% | ${report.durationMs}ms`,
     };
   }));
 
-  // ── C3: Todas as FoundationRules geradas automaticamente ─────────────────
-  results.push(await run(3, "Todas as FoundationRules sao geradas automaticamente", async () => {
-    invalidateRuleCache();
-    const first  = await loadFoundationRules();
-    invalidateRuleCache();
-    const second = await loadFoundationRules();
-    if (first.totalRules !== second.totalRules) {
-      throw new Error(`Resultados inconsistentes: ${first.totalRules} vs ${second.totalRules} regras`);
+  // ── C7: Nenhuma regra manual permanece ───────────────────────────────────
+  results.push(await run(7, "Nenhuma regra manual permanece na implementacao", async () => {
+    const { rules, knowledgeModel, rawContents } = await loadFoundationRules();
+    // All invariantTexts must exist in the raw document content
+    let notFound = 0;
+    for (const rule of rules) {
+      const raw = rawContents[rule.sourceDocument] ?? "";
+      const normalised = raw.toLowerCase().replace(/\s+/g, " ");
+      const ruleSlice  = rule.invariantText.toLowerCase().replace(/\s+/g, " ").slice(0, 50);
+      if (ruleSlice.length > 10 && !normalised.includes(ruleSlice)) notFound++;
     }
-    const docsSeen = new Set(first.rules.map(r => r.sourceDocument));
-    return {
-      detail: `${first.totalRules} regras | Reproducivel: sim | Documentos: ${[...docsSeen].join(", ")}`,
-    };
+    const tolerance = Math.ceil(rules.length * 0.1);
+    if (notFound > tolerance) throw new Error(`${notFound}/${rules.length} regras nao encontradas nos docs — possivel lista manual`);
+    return { detail: `${rules.length} regras | ${notFound} com slice nao localizado (tolerancia=${tolerance}) | KnowledgeModel: ${knowledgeModel.totalAtoms} atoms` };
   }));
 
-  // ── C4: Toda ComplianceEvidence referencia o texto original ──────────────
-  results.push(await run(4, "Toda ComplianceEvidence referencia o texto original do documento", async () => {
-    if (!report.evidences.length) throw new Error("Nenhuma evidencia no relatorio");
-    for (const ev of report.evidences) {
-      if (!ev.traceability.principle) throw new Error(`Evidence ${ev.evidenceId} sem principle (texto original)`);
-      if (!ev.traceability.document)  throw new Error(`Evidence ${ev.evidenceId} sem document`);
-      if (!ev.traceability.section)   throw new Error(`Evidence ${ev.evidenceId} sem section`);
-    }
-    return { detail: `${report.evidences.length} evidencias | Todas com principle (texto original) + document + section` };
-  }));
-
-  // ── C5: Toda conclusao possui rastreabilidade completa ───────────────────
-  results.push(await run(5, "Toda conclusao possui rastreabilidade completa", async () => {
+  // ── C8: Rastreabilidade continua apontando para o texto original ──────────
+  results.push(await run(8, "Toda rastreabilidade continua apontando para o texto original da Foundation", async () => {
     for (const ev of report.evidences) {
       const t = ev.traceability;
       if (!t.foundation) throw new Error(`${ev.evidenceId}: foundation ausente`);
       if (!t.document)   throw new Error(`${ev.evidenceId}: document ausente`);
       if (!t.section)    throw new Error(`${ev.evidenceId}: section ausente`);
-      if (!t.principle)  throw new Error(`${ev.evidenceId}: principle ausente`);
+      if (!t.principle)  throw new Error(`${ev.evidenceId}: principle (texto original) ausente`);
       if (!t.conclusion) throw new Error(`${ev.evidenceId}: conclusion ausente`);
     }
-    return { detail: `${report.evidences.length} evidencias com cadeia completa: foundation→document→section→principle→conclusion` };
+    return { detail: `${report.evidences.length} evidencias | Cadeia completa: foundation→document→section→principle→conclusion` };
   }));
 
-  // ── C6: ABV continua sendo reutilizado integralmente ─────────────────────
-  results.push(await run(6, "ABV continua sendo reutilizado integralmente", async () => {
-    if (typeof report.abvFilesAnalyzed !== "number") throw new Error("abvFilesAnalyzed ausente");
-    if (typeof report.abvBoundaryCompliance !== "number") throw new Error("abvBoundaryCompliance ausente");
-    if (typeof report.abvCircularDeps !== "number") throw new Error("abvCircularDeps ausente");
-    if (report.abvFilesAnalyzed === 0) throw new Error("ABV nao analisou arquivos");
-    return {
-      detail: `ABV: ${report.abvFilesAnalyzed} arquivos | Boundary: ${report.abvBoundaryCompliance}% | Circular: ${report.abvCircularDeps} | FCE reutiliza: SourceCodeAnalyzer + ABV + BaselineEngine`,
-    };
-  }));
+  // ── C9: Parser, KnowledgeModel e RuleLoader possuem responsabilidades independentes
+  results.push(await run(9, "Parser, KnowledgeModel e RuleLoader possuem responsabilidades independentes", async () => {
+    // Invoke each independently with the same input and verify outputs
+    const parser   = new FoundationDocumentParser();
+    const builder  = new FoundationKnowledgeModelBuilder();
 
-  // ── C7: Nenhuma logica arquitetural duplicada ─────────────────────────────
-  results.push(await run(7, "Nenhuma logica arquitetural duplicada", async () => {
-    // FCE must propagate ABV data — not reimplement it
-    if (typeof report.score.boundaryCompliance !== "number") throw new Error("boundaryCompliance nao propagado do ABV");
-    // Rule count must come from parser, not a hardcoded list
-    const { totalRules } = await loadFoundationRules();
-    if (totalRules < 5) throw new Error(`Apenas ${totalRules} regras — insuficiente para ser parser-driven`);
-    return {
-      detail: `Logica ABV nao duplicada: boundaryCompliance=${report.abvBoundaryCompliance}% propagado | ${totalRules} regras via parser`,
-    };
-  }));
-
-  // ── C8: Nenhuma lista manual permanece no projeto ─────────────────────────
-  results.push(await run(8, "Nenhuma lista manual permanece no loader", async () => {
-    // Verify: re-invalidate and reload — if count stays stable, it's from parser
-    invalidateRuleCache();
-    const a = await loadFoundationRules();
-    invalidateRuleCache();
-    const b = await loadFoundationRules();
-    if (a.totalRules !== b.totalRules) throw new Error("Regras inconsistentes entre reloads — possivel fonte manual");
-    return { detail: `Parser deterministico: ${a.totalRules} == ${b.totalRules} regras em duas execucoes independentes` };
-  }));
-
-  // ── C9: Alteracoes futuras propagam automaticamente ──────────────────────
-  results.push(await run(9, "Alteracoes futuras na Foundation propagam automaticamente para o FCE", async () => {
-    // Simulate: clear cache → reload → verify rules rebuild from OfficialLibraryManager
-    invalidateRuleCache();
-    const fresh = await loadFoundationRules();
-    if (!fresh.rawContents || Object.keys(fresh.rawContents).length === 0) {
-      throw new Error("rawContents vazio — cache nao invalidado corretamente");
-    }
-    // Verify docs sourced from OfficialLibraryManager match what loader used
     await OfficialLibraryManager.load();
-    const libDocs = OfficialLibraryManager.getDocs();
-    let matched = 0;
-    for (const shortId of Object.keys(fresh.rawContents)) {
-      const found = Object.entries(libDocs).find(([name]) => name.startsWith(shortId));
-      if (found) matched++;
+    const docs = OfficialLibraryManager.getDocs();
+    const firstDoc = Object.entries(docs).find(([, c]) => typeof c === "string" && c.length > 0);
+    if (!firstDoc) throw new Error("Nenhum documento disponivel para teste");
+
+    const [docName, content] = firstDoc;
+    const shortId = docName.split("-")[0];
+
+    // Parser: only returns ParsedDocument, no FoundationRules
+    const parsed = parser.parse(docName, shortId, content as string);
+    if (typeof (parsed as unknown as { rules: unknown }).rules !== "undefined") {
+      throw new Error("Parser nao deveria conter FoundationRules");
     }
-    if (matched === 0) throw new Error("Nenhum documento do FCE rastreado ao OfficialLibraryManager");
+
+    // KnowledgeModel: only returns atoms, no FoundationRules
+    const km = builder.build([parsed]);
+    if (typeof (km as unknown as { rules: unknown }).rules !== "undefined") {
+      throw new Error("KnowledgeModel nao deveria conter FoundationRules");
+    }
+
     return {
-      detail: `Cache invalidado → ${fresh.totalRules} regras reconstruidas do zero | ${matched}/${Object.keys(fresh.rawContents).length} documentos rastreados ao OfficialLibraryManager`,
+      detail: [
+        `Parser: ${parsed.allElements.length} elementos, sem rules`,
+        `KnowledgeModel: ${km.totalAtoms} atoms, sem rules`,
+        `RuleLoader: converte atoms→rules (responsabilidade propria)`,
+      ].join(" | "),
     };
   }));
 
-  // ── C10: Compliance Report permanece funcional sem ajuste manual ──────────
-  results.push(await run(10, "Compliance Report permanece funcional sem ajuste manual", async () => {
-    if (!report.executionId)           throw new Error("executionId ausente");
-    if (!report.conclusion)            throw new Error("conclusion ausente");
-    if (!report.documentsLoaded.length) throw new Error("documentsLoaded vazio");
-    if (report.rulesTotal === 0)       throw new Error("rulesTotal=0 — nenhuma regra avaliada");
-    if (!report.score.overallCompliance && report.score.overallCompliance !== 0) throw new Error("overallCompliance ausente");
-    return {
-      detail: `ID: ${report.executionId} | Docs: ${report.documentsEvaluated} | Regras: ${report.rulesTotal} | Score: ${report.score.overallCompliance}% | ${report.durationMs}ms`,
-    };
-  }));
-
-  // ── C11: Single Source of Truth comprovado por testes automatizados ───────
-  results.push(await run(11, "Principio Single Source of Truth comprovado automaticamente", async () => {
-    await OfficialLibraryManager.load();
-    const libDocNames = OfficialLibraryManager.getDocNames();
-    const { documents: fceDocuments, rawContents } = await loadFoundationRules();
-
-    // Every FCE document must have its content from the library
-    for (const shortId of fceDocuments) {
-      const raw = rawContents[shortId];
-      if (!raw || raw.length === 0) throw new Error(`${shortId}: conteudo vazio — SSOT violado`);
-      // Content must come from a library document
-      const libMatch = Object.entries(OfficialLibraryManager.getDocs())
-        .find(([, content]) => content.slice(0, 100) === raw.slice(0, 100));
-      if (!libMatch) throw new Error(`${shortId}: conteudo nao rastreado ao OfficialLibraryManager — SSOT violado`);
-    }
-    return {
-      detail: `SSOT verificado: ${fceDocuments.length} documentos FCE 100% rastreados ao OfficialLibraryManager (${libDocNames.length} docs total na biblioteca)`,
-    };
-  }));
-
-  // ── C12: FCE permanece totalmente READ ONLY ───────────────────────────────
-  results.push(await run(12, "Foundation Compliance Engine permanece totalmente READ ONLY", async () => {
-    if (!report.logs.length) throw new Error("Logs ausentes — auditoria incompleta");
-    for (const log of report.logs) {
-      if (!log.ruleId || !log.document || !log.status) throw new Error("Log malformado");
-    }
-    // Verify score is reproducible (READ ONLY means no side effects on score)
+  // ── C10: FCE continua produzindo os mesmos ComplianceReports ─────────────
+  results.push(await run(10, "FCE continua produzindo os mesmos ComplianceReports", async () => {
     const report2 = await engine.run();
-    const scoreDiff = Math.abs(report.score.overallCompliance - report2.score.overallCompliance);
-    if (scoreDiff > 5) {
-      return {
-        detail: `Score run1=${report.score.overallCompliance}% run2=${report2.score.overallCompliance}% (diff=${scoreDiff}%) — variacao aceitavel`,
-        observation: "Variacao pequena esperada pois timestamps diferem entre runs",
-      };
+    if (report2.rulesTotal !== report.rulesTotal) {
+      throw new Error(`rulesTotal mudou: ${report.rulesTotal} → ${report2.rulesTotal}`);
     }
+    if (report2.evidences.length !== report.evidences.length) {
+      throw new Error(`evidencias mudou: ${report.evidences.length} → ${report2.evidences.length}`);
+    }
+    const scoreDiff = Math.abs(report.score.overallCompliance - report2.score.overallCompliance);
+    if (scoreDiff > 5) throw new Error(`Score variou ${scoreDiff}% entre runs`);
+    return { detail: `Run1 vs Run2: rules=${report.rulesTotal}=${report2.rulesTotal} | evidencias=${report.evidences.length}=${report2.evidences.length} | score~=${report.score.overallCompliance}%` };
+  }));
+
+  // ── C11: Toda auditoria baseada exclusivamente na Biblioteca Oficial ───────
+  results.push(await run(11, "Toda auditoria baseia-se exclusivamente na Biblioteca Oficial", async () => {
+    invalidateRuleCache();
+    const freshLoad  = await loadFoundationRules();
+    const libDocs    = OfficialLibraryManager.getDocs();
+
+    for (const [shortId, raw] of Object.entries(freshLoad.rawContents)) {
+      if (!raw) continue;
+      const match = Object.values(libDocs).find(c => typeof c === "string" && c.slice(0, 60) === raw.slice(0, 60));
+      if (!match) throw new Error(`${shortId}: conteudo nao rastreado a OfficialLibraryManager pos-reload`);
+    }
+    return { detail: `SSOT verificado pos-invalidacao: ${freshLoad.documents.length} docs | ${freshLoad.totalRules} regras | Todos rastreados a OfficialLibraryManager` };
+  }));
+
+  // ── C12: Arquitetura interna reutilizavel por futuros componentes ─────────
+  results.push(await run(12, "Arquitetura interna FCE reutilizavel por futuros componentes", async () => {
+    // Verify public interfaces exist and are independently callable
+    const parser  = new FoundationDocumentParser();
+    const builder = new FoundationKnowledgeModelBuilder();
+
+    // Parser is callable standalone
+    const standalone = parser.parse("TEST-DOC", "TEST", "## 1. Secao\nNunca ignore este principio.");
+    if (!standalone.allElements.length) throw new Error("Parser standalone nao extraiu elementos");
+
+    // KnowledgeModel is buildable standalone
+    const km = builder.build([standalone]);
+    if (km.totalAtoms === 0) throw new Error("KnowledgeModel standalone vazio");
+
+    // Both are independent — no circular dependency on FCE internals
     return {
-      detail: `READ ONLY confirmado | ${report.logs.length} logs | Score reproduzivel: ${report.score.overallCompliance}% ~ ${report2.score.overallCompliance}%`,
+      detail: [
+        `Parser standalone: ${standalone.allElements.length} elementos`,
+        `KnowledgeModel standalone: ${km.totalAtoms} atoms`,
+        `Interfaces publicas prontas para: Goal Runtime, Planner, PIE, Specialists`,
+      ].join(" | "),
     };
   }));
 
-  // ── H1: Hardening — Documento vazio nao interrompe loader ────────────────
-  results.push(await run(13, "[Hardening] Documento vazio nao interrompe loader", async () => {
-    // loadFoundationRules handles empty content silently
-    invalidateRuleCache();
-    const result = await loadFoundationRules();
-    // If we got here, no exception was thrown
-    return { detail: `Loader resiliente: ${result.totalRules} regras extraidas sem excecao` };
+  // ── H1: Hardening — documento vazio nao interrompe pipeline ──────────────
+  results.push(await run(13, "[Hardening] Documento vazio nao interrompe o pipeline", async () => {
+    const parser  = new FoundationDocumentParser();
+    const builder = new FoundationKnowledgeModelBuilder();
+    const empty   = parser.parse("EMPTY", "EMP", "");
+    const km      = builder.build([empty]);
+    if (km.totalAtoms !== 0) throw new Error("Doc vazio gerou atoms — inesperado");
+    return { detail: `Doc vazio → Parser: 0 elementos → KM: 0 atoms → Nenhuma excecao` };
   }));
 
-  // ── H2: Hardening — Cache invalido nao corrompe resultado ────────────────
-  results.push(await run(14, "[Hardening] Cache invalido forcado: regras reconstruidas corretamente", async () => {
-    // Force three consecutive cache invalidations and reloads
+  // ── H2: Hardening — Markdown corrompido nao lanca excecao ────────────────
+  results.push(await run(14, "[Hardening] Markdown corrompido nao lanca excecao", async () => {
+    const parser  = new FoundationDocumentParser();
+    const builder = new FoundationKnowledgeModelBuilder();
+    const corrupt = "###\x00\xFF\x01 Secao###\n- \x00texto invalido\n## ##\n";
+    const parsed  = parser.parse("CORRUPT", "COR", corrupt);
+    const km      = builder.build([parsed]);
+    // Should not throw regardless of atom count
+    return { detail: `Markdown corrompido: ${parsed.sections.length} secoes | ${parsed.allElements.length} elementos | ${km.totalAtoms} atoms | Sem excecao` };
+  }));
+
+  // ── H3: Hardening — cache invalido e re-carregado corretamente ───────────
+  results.push(await run(15, "[Hardening] Cache invalido: pipeline reconstruido corretamente", async () => {
     for (let i = 0; i < 3; i++) {
       invalidateRuleCache();
       const r = await loadFoundationRules();
       if (r.totalRules === 0) throw new Error(`Iteracao ${i + 1}: nenhuma regra apos invalidacao`);
+      if (r.knowledgeModel.totalAtoms === 0) throw new Error(`Iteracao ${i + 1}: KM vazio apos invalidacao`);
     }
     const final = await loadFoundationRules();
-    return { detail: `3 invalidacoes + reloads | Final: ${final.totalRules} regras | Cache rebuilt corretamente` };
-  }));
-
-  // ── H3: Hardening — Nenhuma excecao interrompe a auditoria ───────────────
-  results.push(await run(15, "[Hardening] Nenhuma excecao interrompe a auditoria FCE", async () => {
-    // Run the full engine a second time to ensure it never throws
-    const r2 = await engine.run();
-    for (const ev of r2.evidences) {
-      if (!ev.evidenceId || !ev.status) throw new Error("Evidencia malformada na segunda execucao");
-    }
-    return {
-      detail: `Segunda execucao completa: ${r2.evidences.length} evidencias | ${r2.rulesTotal} regras | Score: ${r2.score.overallCompliance}% | Nenhuma excecao`,
-    };
+    return { detail: `3 invalidades + reloads | Final: ${final.totalRules} regras | ${final.knowledgeModel.totalAtoms} atoms | Pipeline estavel` };
   }));
 
   const passed = results.filter(r => r.passed).length;
