@@ -61,25 +61,29 @@ const DEPENDENCY_CHAIN = ["MV","MPS","MAS","MDS","MRS","MCS","MDIS","MIES","MDPS
 const EVOLUTION_FLOW = ["RFC","Discussão","ADR","Implementação","MRI","MQCCS","Release","Monitoramento","Nova RFC"];
 
 const ENGINEERING_PRIORITIES = [
-  { n: 1,  label: "Connector Runtime",                         status: "in_progress" },
-  { n: 2,  label: "Base44 Connector",                          status: "in_progress" },
-  { n: 3,  label: "GitHub Connector",                          status: "in_progress" },
-  { n: 4,  label: "Capability Runtime",                        status: "in_progress" },
-  { n: 5,  label: "Goal Runtime",                              status: "in_progress" },
-  { n: 6,  label: "Planning Intelligence Engine (impl.)",      status: "in_progress" },
-  { n: 7,  label: "Strategy Fusion Engine (impl.)",            status: "in_progress" },
-  { n: 8,  label: "Working Memory Runtime",                    status: "in_progress" },
-  { n: 9,  label: "Long-Term Memory Runtime",                  status: "in_progress" },
-  { n: 10, label: "Validação end-to-end do ciclo completo",    status: "planned" },
+  { n: 1,  label: "Goal Runtime v0.1",                         status: "next"      },
+  { n: 2,  label: "Goal Runtime v0.2",                         status: "planned"   },
+  { n: 3,  label: "Goal Runtime v0.3",                         status: "planned"   },
+  { n: 4,  label: "Planner v0.1",                              status: "planned"   },
+  { n: 5,  label: "Planner v0.2",                              status: "planned"   },
+  { n: 6,  label: "Planning Intelligence Engine v0.1",         status: "planned"   },
+  { n: 7,  label: "Working Memory Runtime",                    status: "planned"   },
+  { n: 8,  label: "Long-Term Memory Runtime",                  status: "planned"   },
+  { n: 9,  label: "Conversation Engine",                       status: "planned"   },
+  { n: 10, label: "Learning Engine",                           status: "planned"   },
 ];
 
 const statusStyle = {
+  completed:   "bg-emerald-900/50 text-emerald-300 border-emerald-700",
+  next:        "bg-blue-900/50 text-blue-300 border-blue-700",
   in_progress: "bg-blue-900/50 text-blue-300 border-blue-700",
   partial:     "bg-yellow-900/50 text-yellow-300 border-yellow-700",
   planned:     "bg-zinc-800 text-zinc-400 border-zinc-700",
 };
 
 const statusLabel = {
+  completed:   "Concluido",
+  next:        "Proximo",
   in_progress: "Em Progresso",
   partial:     "Parcial",
   planned:     "Planejado",
@@ -127,7 +131,7 @@ export default function Foundation() {
               </div>
               <h1 className="text-2xl font-bold text-white mb-1">MemoryOS Foundation</h1>
               <p className="text-zinc-400 text-sm max-w-lg">
-                Baseline arquitetural oficial da plataforma. 13 especificações aprovadas. Fase Engineering First iniciada.
+                Baseline arquitetural oficial da plataforma. 13 especificacoes aprovadas. Infraestrutura de engenharia concluida. Proxima fase: Cognitive Systems.
               </p>
             </div>
             <div className="text-right shrink-0">
@@ -140,7 +144,12 @@ export default function Foundation() {
                 ENGINEERING FIRST
               </span>
             </div>
-            <div className="text-zinc-500 text-xs mt-1">Transition: 2026-07-11</div>
+            <div className="mt-1">
+              <span className="inline-block bg-emerald-900/60 text-emerald-300 text-xs font-bold px-3 py-1 rounded-full border border-emerald-700">
+                BASELINE COMPLETE
+              </span>
+            </div>
+            <div className="text-zinc-500 text-xs mt-1">Baseline: 2026-07-11</div>
             </div>
           </div>
 
@@ -175,12 +184,44 @@ export default function Foundation() {
         {/* Overview */}
         {activeTab === "overview" && (
           <div className="space-y-4">
+            {/* Engineering Baseline Card */}
+            <div className="bg-gradient-to-r from-emerald-950/50 to-green-950/50 border-2 border-emerald-700 rounded-xl p-5">
+              <div className="flex items-start justify-between gap-4 flex-wrap">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <CheckCircle size={18} className="text-emerald-400" />
+                    <span className="text-emerald-300 text-sm font-bold font-mono">ENGINEERING BASELINE</span>
+                    <span className="text-xs bg-emerald-900 text-emerald-300 border border-emerald-700 px-2 py-0.5 rounded font-mono font-bold">COMPLETED</span>
+                  </div>
+                  <p className="text-white font-semibold mb-1">Infraestrutura de Engenharia Concluida</p>
+                  <p className="text-zinc-400 text-xs">Foundation estabilizada. Proxima fase: Cognitive Systems.</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-xs text-zinc-500 font-mono">2026-07-11</div>
+                  <div className="text-xs text-emerald-400 font-bold mt-1">11 componentes certificados</div>
+                </div>
+              </div>
+              <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-2 border-t border-emerald-800/40 pt-4">
+                {[
+                  { label: "Foundation",              value: "100%" },
+                  { label: "Governanca",              value: "100%" },
+                  { label: "Eng. Infrastructure",    value: "100%" },
+                  { label: "Goal Runtime",            value: "NEXT" },
+                ].map(s => (
+                  <div key={s.label} className="bg-zinc-900/60 rounded-lg px-3 py-2 text-center">
+                    <div className={`text-sm font-bold font-mono ${s.value === "NEXT" ? "text-blue-400" : "text-emerald-400"}`}>{s.value}</div>
+                    <div className="text-zinc-500 text-xs mt-0.5">{s.label}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {/* Stats */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[
                 { label: "Especificações", value: "13", color: "text-violet-400" },
                 { label: "Status",         value: "Frozen", color: "text-green-400" },
-                { label: "Fase",           value: "Eng. First", color: "text-blue-400" },
+                { label: "Fase",           value: "Cognitive", color: "text-blue-400" },
                 { label: "RFC Base",       value: "RFC-000", color: "text-yellow-400" },
               ].map(s => (
                 <div key={s.label} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 text-center">
@@ -486,22 +527,23 @@ export default function Foundation() {
 
             {/* Milestones */}
             <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
-              <h2 className="text-white font-semibold mb-4">Milestones</h2>
+              <h2 className="text-white font-semibold mb-4">Milestones Oficiais</h2>
               <div className="space-y-2">
                 {[
-                  { id: "M1", label: "Foundation v1.0 — Consolidação",    date: "2026-07-10", done: true  },
-                  { id: "M2", label: "Engineering First — Declaração Oficial", date: "2026-07-11", done: true  },
-                  { id: "M3", label: "Connector + Capability Runtime",         date: "Q3 2026",    done: false },
-                  { id: "M4", label: "PIE + SFE (implementação validada)",     date: "Q3 2026",    done: false },
-                  { id: "M5", label: "Validação end-to-end do ciclo completo", date: "Q4 2026",    done: false },
+                  { id: "M1", label: "Foundation v1.0",              date: "2026-07-10", done: true,  next: false },
+                  { id: "M2", label: "Engineering First",             date: "2026-07-11", done: true,  next: false },
+                  { id: "M3", label: "Engineering Infrastructure",    date: "2026-07-11", done: true,  next: false },
+                  { id: "M4", label: "Goal Runtime",                  date: "Q3 2026",    done: false, next: true  },
                 ].map(m => (
-                  <div key={m.id} className="flex items-center gap-3 bg-zinc-800/50 rounded-lg px-4 py-3">
+                  <div key={m.id} className={`flex items-center gap-3 rounded-lg px-4 py-3 ${m.next ? "bg-blue-950/30 border border-blue-800/50" : "bg-zinc-800/50"}`}>
                     <span className="text-xs font-mono font-bold text-zinc-500 w-8">{m.id}</span>
                     <div className="flex-1 text-sm text-zinc-200">{m.label}</div>
                     <span className="text-xs text-zinc-500">{m.date}</span>
                     {m.done
                       ? <CheckCircle size={16} className="text-green-500 shrink-0" />
-                      : <div className="w-4 h-4 rounded-full border-2 border-zinc-600 shrink-0" />
+                      : m.next
+                        ? <span className="text-xs font-bold text-blue-300 font-mono shrink-0">NEXT</span>
+                        : <div className="w-4 h-4 rounded-full border-2 border-zinc-600 shrink-0" />
                     }
                   </div>
                 ))}
