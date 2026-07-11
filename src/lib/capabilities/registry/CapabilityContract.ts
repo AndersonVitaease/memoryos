@@ -1,5 +1,11 @@
 // ─── Capability Contract ──────────────────────────────────────────────────────
 // Foundation v1.0 · Contrato genérico para toda capability do MemoryOS
+//
+// Requisito Funcional: Autonomy Policy
+// O Capability Runtime DEVE consultar o PolicyEngine ANTES de executar
+// qualquer Capability. A execução sem aprovação da policy é proibida.
+// Fluxo: Goal → Planner → Capability Runtime → PolicyEngine → Executa/Confirma
+// Ver: src/lib/goal-engine/AutonomyPolicy.ts
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 

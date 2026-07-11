@@ -1,5 +1,10 @@
 // ─── Goal Engine — Types ───────────────────────────────────────────────────────
 // Foundation v1.0 · Intent → Goal → Journey
+//
+// Requisito Funcional: Autonomy Policy
+// O Goal Runtime deverá consultar o PolicyEngine antes de despachar
+// qualquer Capability, respeitando o nível de autonomia configurado.
+// Ver: src/lib/goal-engine/AutonomyPolicy.ts
 
 export type GoalStatus =
   | "Draft" | "Analyzing" | "PendingInfo" | "Validated" | "Rejected"
