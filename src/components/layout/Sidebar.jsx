@@ -43,6 +43,7 @@ const navItems = [
   { label: "FCE — Compliance",  icon: ShieldCheck, path: "/fce" },
   { label: "Goal Runtime v0.1",        icon: Flag,       path: "/goal-runtime" },
   { label: "Goal Registry Service v1.0", icon: Flag,     path: "/goal-registry-service" },
+  { label: "Goal Scheduler v1.0",        icon: Flag,     path: "/goal-scheduler" },
 ];
 
 export default function Sidebar({ onNavigate }) {
