@@ -1,6 +1,6 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Brain, FolderOpen, Search, LogOut, MessageSquare, Home as HomeIcon, Plug, ShieldCheck, Cpu, Network, Archive, BookOpen, Code, Activity, Layers, Database, ClipboardCheck, Shield, Waves, BookMarked, Terminal, Map, Zap, FlaskConical, Puzzle, Box, Route, Target, GitBranch, Users, GitMerge, Radio, Award } from "lucide-react";
+import { Brain, FolderOpen, Search, LogOut, MessageSquare, Home as HomeIcon, Plug, ShieldCheck, Cpu, Network, Archive, BookOpen, Code, Activity, Layers, Database, ClipboardCheck, Shield, Waves, BookMarked, Terminal, Map, Zap, FlaskConical, Puzzle, Box, Route, Target, GitBranch, Users, GitMerge, Radio, Award, Blocks } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 
 const navItems = [
@@ -37,6 +37,7 @@ const navItems = [
   { label: "Strategy Fusion", icon: GitMerge, path: "/strategy-fusion" },
   { label: "Connector Runtime", icon: Radio,    path: "/connector-runtime" },
   { label: "Certification",    icon: Award,    path: "/certification" },
+  { label: "Capability Runtime", icon: Blocks,  path: "/capability-runtime" },
 ];
 
 export default function Sidebar({ onNavigate }) {
