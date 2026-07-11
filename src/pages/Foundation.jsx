@@ -61,16 +61,16 @@ const DEPENDENCY_CHAIN = ["MV","MPS","MAS","MDS","MRS","MCS","MDIS","MIES","MDPS
 const EVOLUTION_FLOW = ["RFC","Discussão","ADR","Implementação","MRI","MQCCS","Release","Monitoramento","Nova RFC"];
 
 const ENGINEERING_PRIORITIES = [
-  { n: 1, label: "Core Complete", status: "in_progress" },
-  { n: 2, label: "Runtime", status: "in_progress" },
-  { n: 3, label: "SDKs", status: "in_progress" },
-  { n: 4, label: "Connectors Oficiais", status: "partial" },
-  { n: 5, label: "Specialists Oficiais", status: "partial" },
-  { n: 6, label: "Knowledge Packages", status: "planned" },
-  { n: 7, label: "Marketplace", status: "planned" },
-  { n: 8, label: "Developer Portal", status: "planned" },
-  { n: 9, label: "Capability Registry", status: "planned" },
-  { n: 10, label: "Beta", status: "planned" },
+  { n: 1,  label: "Connector Runtime",                         status: "in_progress" },
+  { n: 2,  label: "Base44 Connector",                          status: "in_progress" },
+  { n: 3,  label: "GitHub Connector",                          status: "in_progress" },
+  { n: 4,  label: "Capability Runtime",                        status: "in_progress" },
+  { n: 5,  label: "Goal Runtime",                              status: "in_progress" },
+  { n: 6,  label: "Planning Intelligence Engine (impl.)",      status: "in_progress" },
+  { n: 7,  label: "Strategy Fusion Engine (impl.)",            status: "in_progress" },
+  { n: 8,  label: "Working Memory Runtime",                    status: "in_progress" },
+  { n: 9,  label: "Long-Term Memory Runtime",                  status: "in_progress" },
+  { n: 10, label: "Validação end-to-end do ciclo completo",    status: "planned" },
 ];
 
 const statusStyle = {
@@ -447,13 +447,19 @@ export default function Foundation() {
         {activeTab === "engineering" && (
           <div className="space-y-4">
             <div className="bg-gradient-to-r from-blue-950 to-cyan-950 border border-blue-700 rounded-xl p-5">
-              <div className="flex items-center gap-2 mb-1">
+              <div className="flex items-center gap-2 mb-2">
                 <Cpu size={18} className="text-blue-400" />
                 <h2 className="text-white font-bold text-lg">Fase: Engineering First</h2>
+                <span className="ml-auto text-xs bg-green-900 text-green-300 border border-green-700 px-2 py-0.5 rounded font-mono font-bold">ATIVO</span>
               </div>
-              <p className="text-blue-300 text-sm">
-                A Foundation está congelada. O foco passa a ser implementação real, validada pelo MRI e certificada pelo MQCCS.
+              <p className="text-blue-300 text-sm mb-3">
+                Foundation v1.0 arquiteturalmente madura. Foco passa da descoberta arquitetural para validação por engenharia.
               </p>
+              <div className="space-y-1 text-xs text-zinc-400 border-t border-blue-800/40 pt-3">
+                <div className="flex gap-2"><span className="text-zinc-600 shrink-0">→</span> Toda descoberta arquitetural deverá nascer da implementação</div>
+                <div className="flex gap-2"><span className="text-zinc-600 shrink-0">→</span> Nenhuma RFC promovida por mérito conceitual — somente evidências reais</div>
+                <div className="flex gap-2"><span className="text-zinc-600 shrink-0">→</span> Fluxo obrigatório: RFC Draft → Impl → MRI → MQCCS → MERS → Engineering Review → Decisão</div>
+              </div>
             </div>
 
             <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
@@ -478,11 +484,11 @@ export default function Foundation() {
               <h2 className="text-white font-semibold mb-4">Milestones</h2>
               <div className="space-y-2">
                 {[
-                  { id: "M1", label: "Foundation v1.0",   date: "2026-07-10", done: true  },
-                  { id: "M2", label: "Core Complete",      date: "Q3 2026",    done: false },
-                  { id: "M3", label: "SDK v1.0",           date: "Q3 2026",    done: false },
-                  { id: "M4", label: "First Connectors",   date: "Q4 2026",    done: false },
-                  { id: "M5", label: "Beta",               date: "Q1 2027",    done: false },
+                  { id: "M1", label: "Foundation v1.0 — Consolidação",    date: "2026-07-10", done: true  },
+                  { id: "M2", label: "Engineering First — Declaração Oficial", date: "2026-07-11", done: true  },
+                  { id: "M3", label: "Connector + Capability Runtime",         date: "Q3 2026",    done: false },
+                  { id: "M4", label: "PIE + SFE (implementação validada)",     date: "Q3 2026",    done: false },
+                  { id: "M5", label: "Validação end-to-end do ciclo completo", date: "Q4 2026",    done: false },
                 ].map(m => (
                   <div key={m.id} className="flex items-center gap-3 bg-zinc-800/50 rounded-lg px-4 py-3">
                     <span className="text-xs font-mono font-bold text-zinc-500 w-8">{m.id}</span>
