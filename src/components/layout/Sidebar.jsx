@@ -44,6 +44,7 @@ const navItems = [
   { label: "Goal Runtime v0.1",        icon: Flag,       path: "/goal-runtime" },
   { label: "Goal Registry Service v1.0", icon: Flag,     path: "/goal-registry-service" },
   { label: "Goal Scheduler v1.0",        icon: Flag,     path: "/goal-scheduler" },
+  { label: "Goal Execution Queue v1.0",  icon: Flag,     path: "/goal-execution-queue" },
 ];
 
 export default function Sidebar({ onNavigate }) {

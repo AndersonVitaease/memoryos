@@ -56,6 +56,7 @@ import FCESprintPage from '@/pages/FCESprintPage';
 import GoalRuntimePage from '@/pages/GoalRuntimePage';
 import GoalRegistryServicePage from '@/pages/GoalRegistryServicePage';
 import GoalSchedulerPage from '@/pages/GoalSchedulerPage';
+import GoalExecutionQueuePage from '@/pages/GoalExecutionQueuePage';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -129,6 +130,7 @@ const AuthenticatedApp = () => {
           <Route path="/goal-runtime" element={<GoalRuntimePage />} />
           <Route path="/goal-registry-service" element={<GoalRegistryServicePage />} />
           <Route path="/goal-scheduler" element={<GoalSchedulerPage />} />
+          <Route path="/goal-execution-queue" element={<GoalExecutionQueuePage />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
