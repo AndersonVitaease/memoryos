@@ -34,6 +34,7 @@
 
 | Sprint | Foco | Status |
 |---|---|---|
+| INT-01 | Cognitive Pipeline Integration — CognitivePipelineAdapter v1.0 | ✅ Done |
 | S21 | Core Complete (KnowledgeGraph + Decision produção) | Planned |
 | S22 | Runtime Complete (Context Persistence + Tiering) | Planned |
 | S23 | Core SDK v1.0 | Planned |

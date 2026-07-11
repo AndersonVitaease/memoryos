@@ -56,6 +56,7 @@ const navItems = [
   { label: "Retrieval Engine v1.0",     icon: Flag,     path: "/retrieval-engine" },
   { label: "Cognitive Pipeline",        icon: Workflow, path: "/cognitive-pipeline" },
   { label: "Capability Registry v1.0", icon: Flag,     path: "/capability-registry" },
+  { label: "Pipeline Adapter INT-01",  icon: Workflow, path: "/cognitive-pipeline-adapter" },
 ];
 
 export default function Sidebar({ onNavigate }) {

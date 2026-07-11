@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { Send, Loader2, Brain, Sparkles, ChevronDown, ChevronUp, Radio, Volume2, X, Paperclip } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import ReactMarkdown from "react-markdown";
@@ -6,6 +6,7 @@ import { getOrCreateActiveSession, shouldProcessBatch, processConversationBatch 
 import { useVoicePipeline } from "@/hooks/useVoicePipeline";
 import { ingestKnowledge, ACCEPT_MAP } from "@/lib/knowledgeIngestionPipeline";
 import { runReasoningPlan } from "@/lib/reasoning/memoryReasoningPlanner";
+import { CognitivePipelineAdapter } from "@/lib/cognitive-pipeline-adapter/CognitivePipelineAdapter";
 import VoiceButton from "@/components/chat/VoiceButton";
 import VoiceMode from "@/components/chat/VoiceMode";
 import AttachmentMenu from "@/components/chat/AttachmentMenu";
@@ -13,12 +14,17 @@ import ProcessingBubble from "@/components/chat/ProcessingBubble";
 import PasteTextDialog from "@/components/chat/PasteTextDialog";
 import LinkDialog from "@/components/chat/LinkDialog";
 
+// Cognitive Pipeline Adapter — instancia singleton por sessao de UI
+// Responsabilidade: encaminhar cada mensagem pelo pipeline cognitivo certificado EF
+// antes de processar a resposta LLM via runReasoningPlan.
+
 export default function ChatPage() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [session, setSession] = useState(null);
+  const pipelineAdapter = useMemo(() => new CognitivePipelineAdapter(), []);
   const [showSummary, setShowSummary] = useState(false);
   const [continuousMode, setContinuousMode] = useState(false);
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
@@ -60,6 +66,16 @@ export default function ChatPage() {
       memory_tier: "active",
     });
     setMessages((prev) => [...prev, savedUserMsg]);
+
+    // === COGNITIVE PIPELINE ADAPTER (Sprint INT-01) ===
+    // Encaminha a mensagem pelo pipeline cognitivo certificado (EF-01 a EF-14).
+    // Execucao ocorre de forma nao-bloqueante — falha no pipeline nao interrompe a resposta.
+    pipelineAdapter.execute({
+      message:   userMsg,
+      sessionId: session.id,
+      userId:    session.created_by_id ?? "anonymous",
+      projectId: session.project_id ?? "default",
+    }).catch(() => { /* pipeline errors nao bloqueiam a UI — silent */ });
 
     // === MEMORY REASONING PLANNER ===
     // O Planner orquestra toda a inteligência:

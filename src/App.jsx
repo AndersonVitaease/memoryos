@@ -68,6 +68,7 @@ import MemoryEnginePage from '@/pages/MemoryEnginePage';
 import RetrievalEnginePage from '@/pages/RetrievalEnginePage';
 import CognitivePipeline from '@/pages/CognitivePipeline';
 import CapabilityRegistryPage from '@/pages/CapabilityRegistryPage';
+import CognitivePipelineAdapterPage from '@/pages/CognitivePipelineAdapterPage';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -153,6 +154,7 @@ const AuthenticatedApp = () => {
           <Route path="/retrieval-engine" element={<RetrievalEnginePage />} />
           <Route path="/cognitive-pipeline" element={<CognitivePipeline />} />
           <Route path="/capability-registry" element={<CapabilityRegistryPage />} />
+          <Route path="/cognitive-pipeline-adapter" element={<CognitivePipelineAdapterPage />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
