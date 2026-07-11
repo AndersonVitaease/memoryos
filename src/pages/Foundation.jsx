@@ -48,6 +48,12 @@ const FOUNDATION_DOCS = [
   },
 ];
 
+const RFC_REGISTRY = [
+  { id: "RFC-000", title: "Meta-RFC — Governance of Foundation Governance", status: "Accepted", date: "2026-07-08" },
+  { id: "RFC-001", title: "Foundation v1.0 Baseline Declaration", status: "Accepted", date: "2026-07-08" },
+  { id: "RFC-002", title: "Minimum Sufficient Context Principle (MSC)", status: "Accepted", date: "2026-07-11" },
+];
+
 const DEPENDENCY_CHAIN = ["MV","MPS","MAS","MDS","MRS","MCS","MDIS","MIES","MDPS","MGFS","MRI","MQCCS","MPEGS"];
 
 const EVOLUTION_FLOW = ["RFC","Discussão","ADR","Implementação","MRI","MQCCS","Release","Monitoramento","Nova RFC"];
@@ -99,6 +105,7 @@ export default function Foundation() {
   const tabs = [
     { id: "overview",    label: "Visão Geral",     icon: <Layers size={14} /> },
     { id: "library",     label: "Biblioteca",      icon: <BookOpen size={14} /> },
+    { id: "rfcs",        label: "RFCs",            icon: <FileText size={14} /> },
     { id: "graph",       label: "Dep. Graph",      icon: <GitBranch size={14} /> },
     { id: "evolution",   label: "Evolução",        icon: <Map size={14} /> },
     { id: "engineering", label: "Eng. First",      icon: <Cpu size={14} /> },
@@ -192,6 +199,7 @@ export default function Foundation() {
                   "Toda ação de alto risco exige aprovação humana",
                   "AuditTrail é imutável e append-only",
                   "A biblioteca só cresce; nunca diminui",
+                  "O contexto deverá ser sempre o mínimo suficiente — nunca menor, nunca maior",
                 ].map((inv, i) => (
                   <div key={i} className="flex items-start gap-2 text-sm text-zinc-300">
                     <CheckCircle size={14} className="text-green-500 mt-0.5 shrink-0" />
@@ -269,6 +277,45 @@ export default function Foundation() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* RFCs */}
+        {activeTab === "rfcs" && (
+          <div className="space-y-3">
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+              <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-800">
+                <FileText size={14} className="text-violet-400" />
+                <span className="text-sm font-semibold text-zinc-200">RFC Registry — Foundation v1.0</span>
+              </div>
+              <div className="p-4 space-y-2">
+                {RFC_REGISTRY.map(rfc => (
+                  <div key={rfc.id} className="bg-zinc-800/50 rounded-xl p-3 flex items-start justify-between gap-3 flex-wrap">
+                    <div>
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <span className="text-xs font-mono font-bold bg-violet-900/60 text-violet-300 px-2 py-0.5 rounded">{rfc.id}</span>
+                        <span className="text-xs bg-green-900/40 text-green-300 border border-green-800 px-2 py-0.5 rounded font-mono">{rfc.status}</span>
+                      </div>
+                      <p className="text-sm text-zinc-200 mt-1">{rfc.title}</p>
+                    </div>
+                    <span className="text-xs text-zinc-600 shrink-0">{rfc.date}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="bg-violet-950/20 border border-violet-800 rounded-xl p-4">
+              <p className="text-xs font-bold text-violet-300 mb-1">RFC-002 — Minimum Sufficient Context (MSC)</p>
+              <p className="text-xs text-zinc-400 mb-2">Princípio oficial: o sistema deverá sempre construir o <strong className="text-zinc-200">menor contexto suficiente</strong> capaz de preservar precisão, segurança, explicabilidade e qualidade da decisão.</p>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5">
+                {["Goal Engine","Context Builder","Planner","PIE","Specialist Router","Strategy Fusion Engine","Working Memory","Connector Runtime"].map(c => (
+                  <span key={c} className="text-xs bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded font-mono">{c}</span>
+                ))}
+              </div>
+              <div className="mt-3 pt-3 border-t border-violet-800/40">
+                <p className="text-xs font-semibold text-zinc-400 mb-1">Semantic Context Compression</p>
+                <p className="text-xs text-zinc-500">Transformar grandes volumes de conhecimento em um conjunto mínimo de fatos relevantes preservando o significado necessário para tomada de decisão.</p>
+              </div>
+            </div>
           </div>
         )}
 
