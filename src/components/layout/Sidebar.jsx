@@ -53,6 +53,7 @@ const navItems = [
   { label: "Knowledge Engine v1.0",     icon: Flag,     path: "/knowledge-engine" },
   { label: "Learning Engine v1.0",      icon: Flag,     path: "/learning-engine" },
   { label: "Memory Engine v1.0",        icon: Flag,     path: "/memory-engine-v1" },
+  { label: "Retrieval Engine v1.0",     icon: Flag,     path: "/retrieval-engine" },
 ];
 
 export default function Sidebar({ onNavigate }) {

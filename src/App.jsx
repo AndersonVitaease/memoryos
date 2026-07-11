@@ -65,6 +65,7 @@ import SelfEvaluationEnginePage from '@/pages/SelfEvaluationEnginePage';
 import KnowledgeEnginePage from '@/pages/KnowledgeEnginePage';
 import LearningEnginePage from '@/pages/LearningEnginePage';
 import MemoryEnginePage from '@/pages/MemoryEnginePage';
+import RetrievalEnginePage from '@/pages/RetrievalEnginePage';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -147,6 +148,7 @@ const AuthenticatedApp = () => {
           <Route path="/knowledge-engine" element={<KnowledgeEnginePage />} />
           <Route path="/learning-engine" element={<LearningEnginePage />} />
           <Route path="/memory-engine-v1" element={<MemoryEnginePage />} />
+          <Route path="/retrieval-engine" element={<RetrievalEnginePage />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
