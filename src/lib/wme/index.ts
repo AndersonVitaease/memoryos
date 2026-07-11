@@ -13,9 +13,6 @@ export type {
 
 /** Factory — creates a fully wired WorkingMemoryEngine instance */
 export function createWorkingMemoryEngine() {
-  const { AuditLogger }    = require("./AuditLogger");
-  const { EventPublisher } = require("./EventPublisher");
-  const { WorkingMemoryEngine } = require("./WorkingMemoryEngine");
   const publisher = new EventPublisher();
   const audit     = new AuditLogger();
   const engine    = new WorkingMemoryEngine(publisher, audit);

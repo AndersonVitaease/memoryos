@@ -14,9 +14,11 @@
 import { createCapability } from "./baseCapability";
 import { successResponse } from "./requestResponse";
 
-const SOURCE_GLOBS = import.meta.glob(
+// Lazy glob — nenhum arquivo e carregado durante o boot.
+// Os modulos sao carregados sob demanda quando execute() e chamado.
+const SOURCE_GLOBS_LAZY = import.meta.glob(
   ["/src/lib/**/*.js", "/src/lib/**/*.jsx", "/src/pages/**/*.jsx", "/src/components/**/*.jsx", "/src/hooks/**/*.js", "/src/App.jsx"],
-  { query: "?raw", import: "default", eager: true }
+  { query: "?raw", import: "default", eager: false }
 );
 
 const MAX_TOTAL_CHARS = 120000;
@@ -25,9 +27,24 @@ function normalizePath(p) {
   return p.replace(/^\/src\//, "");
 }
 
-function filterByScope(scope) {
-  const entries = Object.entries(SOURCE_GLOBS)
-    .map(([path, content]) => ({ path: normalizePath(path), content }))
+async function loadAllSources() {
+  const result = {};
+  await Promise.all(
+    Object.entries(SOURCE_GLOBS_LAZY).map(async ([path, loader]) => {
+      try {
+        result[path] = await loader();
+      } catch {
+        // arquivo ignorado se falhar ao carregar
+      }
+    })
+  );
+  return result;
+}
+
+async function filterByScope(scope) {
+  const loaded = await loadAllSources();
+  const entries = Object.entries(loaded)
+    .map(([path, content]) => ({ path: normalizePath(path), content: typeof content === "string" ? content : String(content ?? "") }))
     .sort((a, b) => a.path.localeCompare(b.path));
 
   switch (scope?.level) {
@@ -77,7 +94,7 @@ export const ProjectReaderCapability = createCapability({
   },
   execute: async (request) => {
     const scope = request.context.scope;
-    const all = filterByScope(scope);
+    const all = await filterByScope(scope);
     const files = applyBudget(all);
     return successResponse({
       files,
