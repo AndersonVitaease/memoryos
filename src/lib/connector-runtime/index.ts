@@ -8,6 +8,8 @@ export { ConnectorExecutor }  from "./ConnectorExecutor";
 export { Base44Connector }    from "./connectors/Base44Connector";
 export { GitHubConnector }    from "./connectors/GitHubConnector";
 export { runConnectorRuntimeTests } from "./connectorRuntimeTests";
+export { runBase44ConnectorTests } from "./base44ConnectorTests";
+export type { Base44TestResult } from "./base44ConnectorTests";
 export type { IConnector }    from "./IConnector";
 export type {
   ConnectorContext,
