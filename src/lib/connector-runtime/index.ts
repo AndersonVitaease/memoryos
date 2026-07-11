@@ -10,6 +10,8 @@ export { GitHubConnector }    from "./connectors/GitHubConnector";
 export { runConnectorRuntimeTests } from "./connectorRuntimeTests";
 export { runBase44ConnectorTests } from "./base44ConnectorTests";
 export type { Base44TestResult } from "./base44ConnectorTests";
+export { runBase44HardeningTests, summarizeHardeningMetrics } from "./base44HardeningTests";
+export type { HardeningTestResult } from "./base44HardeningTests";
 export type { IConnector }    from "./IConnector";
 export type {
   ConnectorContext,

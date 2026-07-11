@@ -1,7 +1,6 @@
 import React, { useState, useCallback } from "react";
-import { runConnectorRuntimeTests } from "@/lib/connector-runtime";
-import { runBase44ConnectorTests } from "@/lib/connector-runtime";
-import { CheckCircle, XCircle, Play, RotateCcw, Plug, AlertTriangle, Info, Activity } from "lucide-react";
+import { runConnectorRuntimeTests, runBase44ConnectorTests, runBase44HardeningTests, summarizeHardeningMetrics } from "@/lib/connector-runtime";
+import { CheckCircle, XCircle, Play, RotateCcw, Plug, AlertTriangle, Info, Activity, ShieldCheck } from "lucide-react";
 
 // ── Shared primitives ─────────────────────────────────────────────────────────
 
@@ -339,11 +338,200 @@ function Base44SprintTab() {
   );
 }
 
+// ── Tab 3: Hardening (8 cenarios de resiliencia) ─────────────────────────────
+
+const CATEGORY_COLOR = {
+  validation: "text-yellow-400",
+  auth:       "text-orange-400",
+  external:   "text-red-400",
+  internal:   "text-red-500",
+  success:    "text-green-400",
+};
+
+const CATEGORY_BADGE = {
+  validation: "bg-yellow-900/30 text-yellow-300 border-yellow-800/50",
+  auth:       "bg-orange-900/30 text-orange-300 border-orange-800/50",
+  external:   "bg-red-900/30 text-red-300 border-red-800/50",
+  internal:   "bg-red-900/40 text-red-300 border-red-700",
+  success:    "bg-green-900/30 text-green-300 border-green-800/50",
+};
+
+function HardeningTab() {
+  const [results, setResults] = useState(null);
+  const [summary, setSummary] = useState(null);
+  const [running, setRunning] = useState(false);
+
+  const run = useCallback(async () => {
+    setRunning(true); setResults(null); setSummary(null);
+    const r = await runBase44HardeningTests();
+    setResults(r);
+    setSummary(summarizeHardeningMetrics(r));
+    setRunning(false);
+  }, []);
+
+  const passed  = results?.filter(r => r.passed).length ?? 0;
+  const total   = results?.length ?? 0;
+  const allPass = results && passed === total;
+  const escaped = summary?.exceptionsEscaped ?? 0;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <p className="text-xs text-zinc-300 font-semibold">Base44 Connector — Hardening v0.3.0</p>
+          <p className="text-xs text-zinc-500 mt-0.5">8 cenarios · null · incompleto · campo ausente · tipo inesperado · timeout · auth · API error · valido</p>
+        </div>
+        <RunButton onClick={run} running={running} label="Executar Hardening" />
+      </div>
+
+      {/* Checklist */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+        <p className="text-xs font-semibold text-zinc-400 mb-2">Criterios de Aceitacao</p>
+        <div className="space-y-1">
+          {[
+            "Todas as respostas validadas antes do retorno",
+            "Todas as falhas produzem ConnectorResult padronizado",
+            "Nenhuma excecao escapa do Connector",
+            "Logs expandidos registrados (operation, validation, response time, error category)",
+            "Metricas internas registradas (invalidResponses, authFailures, externalFailures)",
+          ].map(item => (
+            <div key={item} className="flex items-start gap-2 text-xs text-zinc-400">
+              <ShieldCheck size={11} className="text-cyan-400 mt-0.5 shrink-0" />
+              {item}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {!running && !results && (
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-10 text-center">
+          <ShieldCheck size={28} className="text-zinc-600 mx-auto mb-3" />
+          <p className="text-zinc-400 text-sm font-medium">Validacao de resiliencia do Base44 Connector</p>
+          <p className="text-zinc-600 text-xs mt-1">Injeta falhas controladas e valida que nenhuma excecao escapa</p>
+        </div>
+      )}
+
+      {running && (
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-10 text-center">
+          <RotateCcw size={28} className="text-cyan-400 animate-spin mx-auto mb-3" />
+          <p className="text-zinc-400 text-sm">Injetando falhas e validando respostas...</p>
+        </div>
+      )}
+
+      {results && (
+        <>
+          {/* Exception escape alert — critical failure */}
+          {escaped > 0 && (
+            <div className="bg-red-950/30 border-2 border-red-700 rounded-xl p-4 flex gap-3">
+              <AlertTriangle size={18} className="text-red-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-red-300 font-bold text-sm">{escaped} excecao(oes) escaparam do Connector</p>
+                <p className="text-red-400 text-xs mt-0.5">Criterio critico de hardening FALHOU. Nenhuma excecao pode escapar do Connector.</p>
+              </div>
+            </div>
+          )}
+
+          <SummaryBanner passed={passed} total={total} totalMs={results.reduce((a, r) => a + r.durationMs, 0)} />
+
+          {/* Category breakdown */}
+          {summary && (
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+              {Object.entries(summary.byCategory).map(([cat, count]) => (
+                <div key={cat} className="bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-center">
+                  <div className={`text-lg font-bold ${CATEGORY_COLOR[cat] ?? "text-zinc-300"}`}>{count}</div>
+                  <div className="text-xs text-zinc-500 capitalize">{cat}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+            <div className="px-4 py-3 border-b border-zinc-800 flex justify-between">
+              <span className="text-xs font-semibold text-zinc-300">Cenarios de Hardening</span>
+              <span className="text-xs text-zinc-500">{passed}/{total} — {escaped === 0 ? "nenhuma excecao escapou" : `${escaped} excecoes escaparam`}</span>
+            </div>
+            {results.map((r) => (
+              <div key={r.scenario} className="border-b border-zinc-800/40 last:border-0 px-4 py-3 space-y-1.5">
+                <div className="flex items-start gap-3">
+                  <div className="w-5 h-5 rounded-full bg-zinc-800 flex items-center justify-center text-xs font-bold text-zinc-400 shrink-0 mt-0.5">
+                    {r.scenario}
+                  </div>
+                  {r.passed
+                    ? <CheckCircle size={13} className="text-green-400 shrink-0 mt-0.5" />
+                    : <XCircle size={13} className="text-red-400 shrink-0 mt-0.5" />}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-xs text-zinc-200 font-medium">{r.name}</p>
+                      <span className={`text-xs font-mono px-1.5 py-0.5 rounded border ${CATEGORY_BADGE[r.category] ?? ""}`}>
+                        {r.category}
+                      </span>
+                    </div>
+                    {r.detail && <p className="text-xs text-zinc-500 mt-0.5 font-mono">{r.detail}</p>}
+                    {r.error && <p className="text-xs text-red-400 mt-0.5">{r.error}</p>}
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-xs text-zinc-600">esp.</span>
+                    <StatusBadge status={r.expectedStatus} />
+                    <span className="text-xs text-zinc-600">obt.</span>
+                    <StatusBadge status={r.actualStatus} />
+                    <span className="text-xs text-zinc-600 font-mono ml-1">{r.durationMs}ms</span>
+                  </div>
+                </div>
+
+                {/* Internal metrics snapshot */}
+                {r.passed && r.internalMetricsSnapshot && (
+                  <div className="ml-8 flex flex-wrap gap-2 text-xs">
+                    {Object.entries(r.internalMetricsSnapshot).filter(([k]) =>
+                      ["invalidResponses","authFailures","externalFailures","totalExecutions"].includes(k)
+                    ).map(([k, v]) => (
+                      <span key={k} className="text-zinc-600 font-mono">{k}={String(v)}</span>
+                    ))}
+                  </div>
+                )}
+
+                {r.observation && (
+                  <div className="ml-8 bg-yellow-950/20 border border-yellow-800/40 rounded-lg px-3 py-2 flex gap-2">
+                    <AlertTriangle size={11} className="text-yellow-400 shrink-0 mt-0.5" />
+                    <p className="text-xs text-yellow-300">{r.observation}</p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Hardening verdict */}
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 space-y-2">
+            <div className="flex items-center gap-2 mb-2">
+              <ShieldCheck size={14} className="text-cyan-400" />
+              <span className="text-xs font-semibold text-zinc-200">Hardening Verdict</span>
+            </div>
+            {[
+              { q: "Todas as respostas validadas antes do retorno?",         a: allPass && escaped === 0 },
+              { q: "Todas as falhas produziram ConnectorResult padronizado?", a: allPass },
+              { q: "Nenhuma excecao escapou do Connector?",                  a: escaped === 0 },
+              { q: "Metricas internas registradas?",                         a: allPass },
+              { q: "Base44 Connector pronto como implementacao de referencia?", a: allPass && escaped === 0 },
+            ].map(({ q, a }) => (
+              <div key={q} className="flex items-start justify-between gap-3 border-b border-zinc-800/40 last:border-0 pb-1.5 last:pb-0">
+                <p className="text-xs text-zinc-300">{q}</p>
+                <span className={`text-xs font-bold font-mono shrink-0 ${a ? "text-green-400" : "text-red-400"}`}>
+                  {a ? "SIM" : "NAO"}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: "runtime",  label: "Runtime — 7 Cenarios" },
-  { id: "sprint",   label: "Base44 Sprint — Real" },
+  { id: "runtime",   label: "Runtime — 7 Cenarios" },
+  { id: "sprint",    label: "Base44 Sprint" },
+  { id: "hardening", label: "Hardening v0.3.0" },
 ];
 
 export default function ConnectorRuntimePage() {
@@ -381,8 +569,9 @@ export default function ConnectorRuntimePage() {
           ))}
         </div>
 
-        {tab === "runtime" && <RuntimeValidationTab />}
-        {tab === "sprint"  && <Base44SprintTab />}
+        {tab === "runtime"   && <RuntimeValidationTab />}
+        {tab === "sprint"    && <Base44SprintTab />}
+        {tab === "hardening" && <HardeningTab />}
 
       </div>
     </div>
