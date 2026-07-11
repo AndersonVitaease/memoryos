@@ -57,6 +57,7 @@ import GoalRuntimePage from '@/pages/GoalRuntimePage';
 import GoalRegistryServicePage from '@/pages/GoalRegistryServicePage';
 import GoalSchedulerPage from '@/pages/GoalSchedulerPage';
 import GoalExecutionQueuePage from '@/pages/GoalExecutionQueuePage';
+import ExecutionDispatcherPage from '@/pages/ExecutionDispatcherPage';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -131,6 +132,7 @@ const AuthenticatedApp = () => {
           <Route path="/goal-registry-service" element={<GoalRegistryServicePage />} />
           <Route path="/goal-scheduler" element={<GoalSchedulerPage />} />
           <Route path="/goal-execution-queue" element={<GoalExecutionQueuePage />} />
+          <Route path="/execution-dispatcher" element={<ExecutionDispatcherPage />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
