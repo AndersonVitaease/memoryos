@@ -40,6 +40,7 @@ const navItems = [
   { label: "Capability Runtime", icon: Blocks,  path: "/capability-runtime" },
   { label: "ABV — Boundaries",  icon: Shield,  path: "/abv" },
   { label: "ABV v4.1 Sprint",   icon: ShieldCheck, path: "/abv-sprint" },
+  { label: "FCE — Compliance",  icon: ShieldCheck, path: "/fce" },
 ];
 
 export default function Sidebar({ onNavigate }) {

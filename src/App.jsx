@@ -52,6 +52,7 @@ import ConnectorRuntimeCertification from '@/pages/ConnectorRuntimeCertification
 import CapabilityRuntimePage from '@/pages/CapabilityRuntime';
 import ABVPage from '@/pages/ABVPage';
 import ABVSprintPage from '@/pages/ABVSprintPage';
+import FCESprintPage from '@/pages/FCESprintPage';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -121,6 +122,7 @@ const AuthenticatedApp = () => {
           <Route path="/capability-runtime" element={<CapabilityRuntimePage />} />
           <Route path="/abv" element={<ABVPage />} />
           <Route path="/abv-sprint" element={<ABVSprintPage />} />
+          <Route path="/fce" element={<FCESprintPage />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
