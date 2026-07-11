@@ -38,6 +38,7 @@ const navItems = [
   { label: "Connector Runtime", icon: Radio,    path: "/connector-runtime" },
   { label: "Certification",    icon: Award,    path: "/certification" },
   { label: "Capability Runtime", icon: Blocks,  path: "/capability-runtime" },
+  { label: "ABV — Boundaries",  icon: Shield,  path: "/abv" },
 ];
 
 export default function Sidebar({ onNavigate }) {

@@ -50,6 +50,7 @@ import StrategyFusion from '@/pages/StrategyFusion';
 import ConnectorRuntimePage from '@/pages/ConnectorRuntime';
 import ConnectorRuntimeCertification from '@/pages/ConnectorRuntimeCertification';
 import CapabilityRuntimePage from '@/pages/CapabilityRuntime';
+import ABVPage from '@/pages/ABVPage';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -117,6 +118,7 @@ const AuthenticatedApp = () => {
           <Route path="/connector-runtime" element={<ConnectorRuntimePage />} />
           <Route path="/certification" element={<ConnectorRuntimeCertification />} />
           <Route path="/capability-runtime" element={<CapabilityRuntimePage />} />
+          <Route path="/abv" element={<ABVPage />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
