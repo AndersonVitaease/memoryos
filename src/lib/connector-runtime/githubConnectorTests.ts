@@ -192,7 +192,7 @@ export async function runGitHubConnectorTests(): Promise<GitHubTestResult[]> {
     if (!health.connectorId) throw new Error("Campo connectorId ausente");
     if (!health.checkedAt) throw new Error("Campo checkedAt ausente");
 
-    const hasToken = !!(import.meta as any).env?.VITE_GITHUB_TOKEN;
+    const hasToken = !!(globalThis as any).__GITHUB_TOKEN__;
     if (hasToken && health.status !== "healthy") {
       throw new Error(`Health deveria ser healthy com token, obtido: ${health.status} — ${health.details}`);
     }

@@ -172,9 +172,9 @@ export class GitHubConnector implements IConnector {
 
   async initialize(_ctx: ConnectorContext): Promise<void> {
     try {
-      // Resolve token from environment (injected by Base44 secrets)
-      const tok = (import.meta as any).env?.VITE_GITHUB_TOKEN
-        ?? (globalThis as any).__GITHUB_TOKEN__
+      // Resolve token from environment (injected via globalThis by Base44 secrets)
+      const tok = (globalThis as any).__GITHUB_TOKEN__
+        ?? (globalThis as any).__env__?.GITHUB_TOKEN
         ?? null;
       this.token = tok;
 
@@ -248,8 +248,8 @@ export class GitHubConnector implements IConnector {
   }
 
   private getToken(): string | null {
-    // Try runtime env injection (Base44 secrets expose via import.meta.env)
-    return (import.meta as any).env?.VITE_GITHUB_TOKEN
+    return (globalThis as any).__GITHUB_TOKEN__
+      ?? (globalThis as any).__env__?.GITHUB_TOKEN
       ?? this.token
       ?? null;
   }
