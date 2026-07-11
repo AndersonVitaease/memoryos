@@ -3,7 +3,7 @@
 
 import React, { useState, useCallback } from "react";
 import { runFCETests } from "@/lib/fce/fceTests";
-import { runFKMTests } from "@/lib/fce/fkmTests";
+import FKMSprintPanel from "@/pages/components/FKMSprintPanel";
 
 // ── UI Primitives ─────────────────────────────────────────────────────────────
 
@@ -112,134 +112,6 @@ function EvidenceCard({ ev }) {
             </div>
           )}
           <div className="text-xs text-zinc-600 font-mono">{ev.evidenceId} · confidence={ev.confidence}%</div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── FKM-2 Test Row ────────────────────────────────────────────────────────────
-
-function FKMTestRow({ r }) {
-  const [open, setOpen] = useState(false);
-  const isHardening = r.name.startsWith("[Hardening]");
-  const hasExtra = r.detail || r.observation || r.error;
-  return (
-    <div className={`border-b border-zinc-800 last:border-0 ${!r.passed ? "bg-red-950/10" : ""}`}>
-      <button onClick={() => hasExtra && setOpen(o => !o)}
-        className="w-full flex items-start gap-2 py-2.5 px-3 text-left">
-        <Badge label={r.passed ? "PASS" : "FAIL"} style={r.passed ? "bg-emerald-900/50 text-emerald-300 border-emerald-700" : "bg-red-900/50 text-red-300 border-red-700"} />
-        <span className="text-zinc-500 font-mono text-xs w-5 shrink-0 mt-0.5">C{r.criterion}</span>
-        <div className="flex-1 min-w-0">
-          <p className={`text-sm ${r.passed ? "text-zinc-200" : "text-red-300"}`}>{r.name}</p>
-          {isHardening && <span className="text-xs text-violet-400 font-mono">hardening</span>}
-        </div>
-        <span className="text-zinc-600 font-mono text-xs shrink-0">{r.durationMs}ms</span>
-      </button>
-      {open && hasExtra && (
-        <div className="px-3 pb-2 ml-12 border-l-2 border-zinc-700 space-y-1">
-          {r.detail      && <p className="text-xs text-zinc-400">{r.detail}</p>}
-          {r.observation && <p className="text-xs text-yellow-400/80 italic">obs: {r.observation}</p>}
-          {r.error       && <p className="text-xs text-red-400 font-mono">error: {r.error}</p>}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ── FKM-2 Sprint Panel ────────────────────────────────────────────────────────
-
-function FKMSprintPanel() {
-  const [running, setRunning] = useState(false);
-  const [data, setData]       = useState(null);
-
-  const run = useCallback(async () => {
-    setRunning(true); setData(null);
-    try {
-      const r = await runFKMTests();
-      setData(r);
-    } catch (e) { console.error("FKM error:", e); }
-    finally { setRunning(false); }
-  }, []);
-
-  const allPass = data && data.passed === data.total;
-
-  return (
-    <div className="space-y-4">
-      {/* Header strip */}
-      <div className="bg-gradient-to-r from-violet-950/50 to-indigo-950/50 border border-violet-800/40 rounded-xl p-4">
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div>
-            <div className="flex flex-wrap gap-2 mb-1 text-xs font-mono">
-              <span className="text-violet-400">FKM-2 — Reusability Validation</span>
-              <span className="text-zinc-600">·</span>
-              <span className="text-zinc-400">Foundation v1.0</span>
-              <span className="text-zinc-600">·</span>
-              <span className="text-emerald-400">Engineering First</span>
-            </div>
-            <p className="text-white font-semibold text-sm">Foundation Knowledge Model — API Publica</p>
-            <p className="text-zinc-400 text-xs mt-0.5">FoundationKnowledgeAPI · 5 consumers · 12 criterios + 4 hardening</p>
-          </div>
-          <button onClick={run} disabled={running}
-            className="px-4 py-2 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 rounded-lg text-sm font-semibold transition-colors shrink-0">
-            {running ? "Executando..." : "▶ Executar FKM-2"}
-          </button>
-        </div>
-        {data && (
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            <Metric label="Criterios" value={`${data.passed}/${data.total}`} color={allPass ? "text-emerald-400" : "text-red-400"} />
-            <Metric label="Duracao"   value={`${data.durationMs}ms`}          color="text-violet-400" />
-            <Metric label="Status"    value={allPass ? "PASS" : "FAIL"}       color={allPass ? "text-emerald-400" : "text-red-400"} />
-          </div>
-        )}
-      </div>
-
-      {/* Architecture overview */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 space-y-2">
-        <p className="text-zinc-400 text-xs uppercase tracking-wider mb-2">Arquitetura — Sprint FKM-2</p>
-        {[
-          ["OfficialLibraryManager", "Single Source of Truth"],
-          ["FoundationDocumentParser",  "Parsing de Markdown"],
-          ["FoundationKnowledgeModel",  "Representacao do conhecimento"],
-          ["FoundationKnowledgeAPI",    "API publica de consulta (nova)"],
-          ["Consumers (5)",             "FCE · Auditor · Goal · Planner · PIE"],
-        ].map(([comp, desc]) => (
-          <div key={comp} className="flex items-center gap-3 text-xs">
-            <span className="text-violet-300 font-mono w-44 shrink-0">{comp}</span>
-            <span className="text-zinc-500">→</span>
-            <span className="text-zinc-400">{desc}</span>
-          </div>
-        ))}
-      </div>
-
-      {running && (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 text-center">
-          <div className="w-7 h-7 border-4 border-zinc-700 border-t-violet-500 rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-zinc-400 text-sm">KnowledgeModel → API → 5 consumers → validando...</p>
-        </div>
-      )}
-
-      {data && !running && (
-        <>
-          <div className={`rounded-xl border-2 p-3 ${allPass ? "bg-emerald-950/30 border-emerald-700" : "bg-amber-950/30 border-amber-700"}`}>
-            <p className={`text-sm font-bold ${allPass ? "text-emerald-300" : "text-amber-300"}`}>
-              {allPass ? `FKM-2 Concluida — ${data.passed}/${data.total} criterios` : `${data.total - data.passed} criterio(s) falharam`}
-            </p>
-          </div>
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-800">
-              <span className="text-sm font-semibold text-zinc-200">16 Criterios (12 aceitacao + 4 hardening)</span>
-              <span className={`text-xs font-mono font-bold ${allPass ? "text-emerald-400" : "text-red-400"}`}>{data.passed}/{data.total}</span>
-            </div>
-            {data.results.map(r => <FKMTestRow key={r.criterion} r={r} />)}
-          </div>
-        </>
-      )}
-
-      {!running && !data && (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 text-center">
-          <p className="text-zinc-400 text-sm font-medium">Foundation Knowledge Model — Reusability Validation</p>
-          <p className="text-zinc-600 text-xs mt-1">getAllAtoms · getByType · search · count · statistics · 5 consumers</p>
         </div>
       )}
     </div>
