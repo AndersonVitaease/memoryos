@@ -203,7 +203,7 @@ export default function Foundation() {
                   "A biblioteca só cresce; nunca diminui",
                   "O contexto deverá ser sempre o mínimo suficiente — nunca menor, nunca maior",
                   "O sistema adapta a comunicação, nunca a verdade — fatos e recomendações são invariantes",
-                  "O sistema identifica lacunas entre o objetivo e as capacidades existentes (Gap Analysis)",
+                  "Toda evolução arquitetural da Foundation deverá ser sustentada por evidências de implementação prática",
                 ].map((inv, i) => (
                   <div key={i} className="flex items-start gap-2 text-sm text-zinc-300">
                     <CheckCircle size={14} className="text-green-500 mt-0.5 shrink-0" />
@@ -309,13 +309,12 @@ export default function Foundation() {
             </div>
             <div className="bg-emerald-950/20 border border-emerald-800 rounded-xl p-4">
               <p className="text-xs font-bold text-emerald-300 mb-1">RFC-004 — Gap Analysis Principle (GAP) <span className="text-xs text-yellow-400 font-mono ml-2">Draft</span></p>
-              <p className="text-xs text-zinc-400 mb-2">Princípio: <strong className="text-zinc-200">"O que ainda está faltando para atingir este objetivo?"</strong> O sistema identifica estruturalmente lacunas entre objetivo, estado atual e capacidades existentes.</p>
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5 mb-2">
-                {["knowledge_gap","documentation_gap","component_gap","connector_gap","capability_gap","specialist_gap","policy_gap","authorization_gap","dependency_gap","risk_gap"].map(c => (
-                  <span key={c} className="text-xs bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded font-mono">{c}</span>
+              <p className="text-xs text-zinc-400 mb-2"><strong className="text-yellow-300">Hipótese arquitetural</strong> — aguardando validação durante Engineering First. Não promover para Accepted por mérito conceitual. Avaliar se surge naturalmente como responsabilidade do PIE.</p>
+              <div className="flex flex-wrap gap-1.5">
+                {["Validar no PIE","Validar no Goal Engine","Validar no Planner","Validar no SFE","Validar no Connector Runtime"].map(c => (
+                  <span key={c} className="text-xs bg-yellow-900/30 text-yellow-400 border border-yellow-800/50 px-2 py-0.5 rounded font-mono">{c}</span>
                 ))}
               </div>
-              <p className="text-xs text-zinc-500">Toda lacuna classificada como Confirmada · Provável · Hipótese · Nível de confiança obrigatório</p>
             </div>
 
             <div className="bg-blue-950/20 border border-blue-800 rounded-xl p-4">
