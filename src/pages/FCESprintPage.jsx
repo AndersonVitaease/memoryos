@@ -1,5 +1,5 @@
 // Foundation Compliance Engine — Sprint Validation Page
-// FCE Sprint-1 · Foundation v1.0 · Engineering First
+// FCE Sprint-3 · FKM-2 · Foundation v1.0 · Engineering First
 
 import React, { useState, useCallback } from "react";
 import { runFCETests } from "@/lib/fce/fceTests";
