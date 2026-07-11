@@ -41,7 +41,8 @@ const navItems = [
   { label: "ABV — Boundaries",  icon: Shield,  path: "/abv" },
   { label: "ABV v4.1 Sprint",   icon: ShieldCheck, path: "/abv-sprint" },
   { label: "FCE — Compliance",  icon: ShieldCheck, path: "/fce" },
-  { label: "Goal Runtime v0.1", icon: Flag,       path: "/goal-runtime" },
+  { label: "Goal Runtime v0.1",        icon: Flag,       path: "/goal-runtime" },
+  { label: "Goal Registry Service v1.0", icon: Flag,     path: "/goal-registry-service" },
 ];
 
 export default function Sidebar({ onNavigate }) {
