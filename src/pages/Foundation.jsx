@@ -53,6 +53,7 @@ const RFC_REGISTRY = [
   { id: "RFC-001", title: "Foundation v1.0 Baseline Declaration", status: "Accepted", date: "2026-07-08" },
   { id: "RFC-002", title: "Minimum Sufficient Context Principle (MSC)", status: "Accepted", date: "2026-07-11" },
   { id: "RFC-003", title: "Adaptive Communication Principle (ACP)", status: "Accepted", date: "2026-07-11" },
+  { id: "RFC-004", title: "Gap Analysis Principle (GAP)", status: "Draft", date: "2026-07-11" },
 ];
 
 const DEPENDENCY_CHAIN = ["MV","MPS","MAS","MDS","MRS","MCS","MDIS","MIES","MDPS","MGFS","MRI","MQCCS","MPEGS"];
@@ -202,6 +203,7 @@ export default function Foundation() {
                   "A biblioteca só cresce; nunca diminui",
                   "O contexto deverá ser sempre o mínimo suficiente — nunca menor, nunca maior",
                   "O sistema adapta a comunicação, nunca a verdade — fatos e recomendações são invariantes",
+                  "O sistema identifica lacunas entre o objetivo e as capacidades existentes (Gap Analysis)",
                 ].map((inv, i) => (
                   <div key={i} className="flex items-start gap-2 text-sm text-zinc-300">
                     <CheckCircle size={14} className="text-green-500 mt-0.5 shrink-0" />
@@ -305,6 +307,17 @@ export default function Foundation() {
                 ))}
               </div>
             </div>
+            <div className="bg-emerald-950/20 border border-emerald-800 rounded-xl p-4">
+              <p className="text-xs font-bold text-emerald-300 mb-1">RFC-004 — Gap Analysis Principle (GAP) <span className="text-xs text-yellow-400 font-mono ml-2">Draft</span></p>
+              <p className="text-xs text-zinc-400 mb-2">Princípio: <strong className="text-zinc-200">"O que ainda está faltando para atingir este objetivo?"</strong> O sistema identifica estruturalmente lacunas entre objetivo, estado atual e capacidades existentes.</p>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-1.5 mb-2">
+                {["knowledge_gap","documentation_gap","component_gap","connector_gap","capability_gap","specialist_gap","policy_gap","authorization_gap","dependency_gap","risk_gap"].map(c => (
+                  <span key={c} className="text-xs bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded font-mono">{c}</span>
+                ))}
+              </div>
+              <p className="text-xs text-zinc-500">Toda lacuna classificada como Confirmada · Provável · Hipótese · Nível de confiança obrigatório</p>
+            </div>
+
             <div className="bg-blue-950/20 border border-blue-800 rounded-xl p-4">
               <p className="text-xs font-bold text-blue-300 mb-1">RFC-003 — Adaptive Communication Principle (ACP)</p>
               <p className="text-xs text-zinc-400 mb-2">Princípio oficial: <strong className="text-zinc-200">"O MemoryOS adapta a comunicação, nunca a verdade."</strong> Fatos, evidências e recomendações são invariantes. Somente forma, vocabulário, profundidade e formato são adaptáveis.</p>
