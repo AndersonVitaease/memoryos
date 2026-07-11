@@ -131,11 +131,16 @@ export default function Foundation() {
               </p>
             </div>
             <div className="text-right shrink-0">
-              <div className="text-2xl font-bold text-white font-mono">v1.0.0</div>
-              <span className="inline-block mt-1 bg-green-900 text-green-400 text-xs font-bold px-3 py-1 rounded-full border border-green-700">
-                FROZEN BASELINE
+            <div className="text-2xl font-bold text-white font-mono">v1.0.0</div>
+            <span className="inline-block mt-1 bg-green-900 text-green-400 text-xs font-bold px-3 py-1 rounded-full border border-green-700">
+              FROZEN BASELINE
+            </span>
+            <div className="mt-1">
+              <span className="inline-block bg-blue-900 text-blue-300 text-xs font-bold px-3 py-1 rounded-full border border-blue-700">
+                ENGINEERING FIRST
               </span>
-              <div className="text-zinc-500 text-xs mt-1">2026-07-10</div>
+            </div>
+            <div className="text-zinc-500 text-xs mt-1">Transition: 2026-07-11</div>
             </div>
           </div>
 
