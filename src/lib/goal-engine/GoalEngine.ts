@@ -12,7 +12,12 @@ import { createWorkingMemoryEngine }  from "@/lib/wme";
 import { createJourney, addTask }     from "@/lib/journey/JourneyManager";
 import type { IdentityContext }       from "@/lib/wme/types";
 
-const { engine: wme } = createWorkingMemoryEngine();
+// Lazy singleton — avoid top-level instantiation during module boot
+let _wmePromise: ReturnType<typeof createWorkingMemoryEngine> | null = null;
+async function getWme() {
+  if (!_wmePromise) _wmePromise = createWorkingMemoryEngine();
+  return (await _wmePromise).engine;
+}
 
 // ── In-memory repository ──────────────────────────────────────────────────────
 
@@ -118,7 +123,7 @@ export async function processIntent(input: CreateGoalInput): Promise<Goal> {
   goal.auditLog.push(makeAuditEntry("analyzing", { detail: `Confidence: ${analysis.confidenceScore}` }));
 
   // Persist temporarily to Working Memory
-  await wme.store(
+  await (await getWme()).store(
     input.identityContext,
     `goal_draft:${goal.id}`,
     { goal, analysis },
@@ -206,7 +211,7 @@ export async function convertToJourney(goalId: string, identityContext: Identity
   goal.auditLog.push(makeAuditEntry("converted_to_journey", { detail: `Journey: ${journey.id}` }));
 
   // Remove from Working Memory (now permanent in Journey)
-  await wme.evict(identityContext, `goal_draft:${goalId}`).catch(() => {/* ignore */});
+  await (await getWme()).evict(identityContext, `goal_draft:${goalId}`).catch(() => {/* ignore */});
 
   goalEventBus.publish("GoalConvertedToJourney", goalId, { journeyId: journey.id });
   goalEventBus.publish("GoalUpdated", goalId);

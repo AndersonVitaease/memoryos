@@ -8,13 +8,10 @@ import { recordAudit, recordTimeline } from "./JourneyAudit";
 import { createWorkingMemoryEngine } from "@/lib/wme";
 
 // Lazy singleton — instanciado na primeira chamada, nao durante o boot do modulo
-let _workingMemoryEngine: ReturnType<typeof createWorkingMemoryEngine>["engine"] | null = null;
-function getWorkingMemoryEngine() {
-  if (!_workingMemoryEngine) {
-    const { engine } = createWorkingMemoryEngine();
-    _workingMemoryEngine = engine;
-  }
-  return _workingMemoryEngine;
+let _wmePromise: ReturnType<typeof createWorkingMemoryEngine> | null = null;
+async function getWorkingMemoryEngine() {
+  if (!_wmePromise) _wmePromise = createWorkingMemoryEngine();
+  return (await _wmePromise).engine;
 }
 
 // ── Internal helpers ─────────────────────────────────────────────────────────
@@ -50,7 +47,7 @@ export async function orchestrateTask(journey: Journey, task: JourneyTask): Prom
 
   try {
     // 2. Write task input to this Journey's Working Memory (isolated context)
-    await getWorkingMemoryEngine().store(
+    await (await getWorkingMemoryEngine()).store(
       journey.identityContext,
       `task_input:${task.id}`,
       task.input,
@@ -69,7 +66,7 @@ export async function orchestrateTask(journey: Journey, task: JourneyTask): Prom
     task.output = output;
 
     // 4. Write result to Working Memory
-    await getWorkingMemoryEngine().store(
+    await (await getWorkingMemoryEngine()).store(
       journey.identityContext,
       `task_output:${task.id}`,
       output,

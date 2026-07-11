@@ -12,7 +12,12 @@ export type {
 } from "./types";
 
 /** Factory — creates a fully wired WorkingMemoryEngine instance */
-export function createWorkingMemoryEngine() {
+export async function createWorkingMemoryEngine() {
+  const [{ EventPublisher }, { AuditLogger }, { WorkingMemoryEngine }] = await Promise.all([
+    import("./EventPublisher"),
+    import("./AuditLogger"),
+    import("./WorkingMemoryEngine"),
+  ]);
   const publisher = new EventPublisher();
   const audit     = new AuditLogger();
   const engine    = new WorkingMemoryEngine(publisher, audit);

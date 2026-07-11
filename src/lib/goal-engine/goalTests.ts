@@ -11,8 +11,6 @@ import { bootstrapCapabilities } from "@/lib/capabilities/registry/bootstrapCapa
 import type { IdentityContext } from "@/lib/wme/types";
 import { getJourney }        from "@/lib/journey/JourneyManager";
 
-bootstrapCapabilities();
-
 export interface GoalTestResult {
   name: string;
   passed: boolean;
@@ -29,6 +27,7 @@ function makeCtx(suffix = `${Date.now()}`): IdentityContext {
 }
 
 export async function runGoalTests(): Promise<GoalTestResult[]> {
+  bootstrapCapabilities();
   const results: GoalTestResult[] = [];
 
   async function run(name: string, fn: () => Promise<void> | void) {

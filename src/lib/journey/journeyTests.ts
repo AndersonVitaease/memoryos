@@ -13,9 +13,6 @@ import type { JourneyGoal, JourneyStatus } from "./types";
 import type { IdentityContext } from "@/lib/wme/types";
 import { bootstrapCapabilities } from "@/lib/capabilities/registry/bootstrapCapabilities";
 import { createWorkingMemoryEngine } from "@/lib/wme";
-const { engine: workingMemoryEngine } = createWorkingMemoryEngine();
-
-bootstrapCapabilities();
 
 export interface JourneyTestResult {
   name: string;
@@ -61,6 +58,8 @@ function makeJourney(suffix = `${Date.now()}`) {
 // ── Runner ────────────────────────────────────────────────────────────────────
 
 export async function runJourneyTests(): Promise<JourneyTestResult[]> {
+  bootstrapCapabilities();
+  const { engine: workingMemoryEngine } = await createWorkingMemoryEngine();
   const results: JourneyTestResult[] = [];
 
   async function run(name: string, fn: () => Promise<void> | void) {
