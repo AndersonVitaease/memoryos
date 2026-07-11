@@ -107,12 +107,12 @@ export interface PolicyEngine {
  *
  * Estas regras valem independente do nível de autonomia configurado.
  */
-export const AUTONOMY_INVARIANTS = [
-  "Confirmações obrigatórias por lei nunca podem ser removidas",
-  "Mudanças na política de autonomia exigem confirmação explícita",
-  "Toda execução autônoma gera entrada no AuditTrail",
-  "Nível 3 mantém log completo e reversão quando aplicável",
-] as const;
+export const AUTONOMY_INVARIANTS: string[] = [
+  "Confirmacoes obrigatorias por lei nunca podem ser removidas",
+  "Mudancas na politica de autonomia exigem confirmacao explicita",
+  "Toda execucao autonoma gera entrada no AuditTrail",
+  "Nivel 3 mantem log completo e reversao quando aplicavel",
+];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -128,11 +128,11 @@ export function makeDefaultPolicy(): AutonomyPolicy {
 }
 
 export function describeLevel(level: AutonomyLevel): string {
-  const descriptions: Record<AutonomyLevel, string> = {
-    0: "Manual — toda ação exige confirmação",
-    1: "Autonomia Básica — ações de baixo risco executadas automaticamente",
-    2: "Autonomia Condicional — execução automática baseada em políticas",
-    3: "Autonomia Avançada — fluxos completos autorizados com audit e reversão",
+  const descriptions: Record<number, string> = {
+    0: "Manual - toda acao exige confirmacao",
+    1: "Autonomia Basica - acoes de baixo risco executadas automaticamente",
+    2: "Autonomia Condicional - execucao automatica baseada em politicas",
+    3: "Autonomia Avancada - fluxos completos autorizados com audit e reversao",
   };
   return descriptions[level];
 }
