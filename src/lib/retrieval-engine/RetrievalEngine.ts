@@ -31,7 +31,6 @@ function quid(): string {
   return `qry-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-const ALL_STRATEGIES: RetrievalStrategy[] = ["EXACT", "FUZZY", "SEMANTIC", "COMPOSITE"];
 const ALL_TYPES: RetrievalType[] = ["LESSON","BEST_PRACTICE","WARNING","RULE","PATTERN","ANTI_PATTERN","OBSERVATION"];
 
 export class RetrievalEngine {

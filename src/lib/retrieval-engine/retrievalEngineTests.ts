@@ -16,7 +16,7 @@ import { RETRIEVAL_MIN_SCORE }  from "./RetrievalEngineTypes";
 import type { Memory }          from "@/lib/memory-engine-v1/MemoryEngineTypes";
 import type { ExecutionResult } from "@/lib/reflection-engine/ReflectionEngineTypes";
 import type { DecisionCandidate } from "@/lib/decision-engine/DecisionEngineTypes";
-import type { GoalMetadata }    from "@/lib/goal-runtime-v01/GoalTypes";
+
 
 export interface RetTestResult {
   criterion:  number;
