@@ -90,10 +90,19 @@ export async function runConnectorRuntimeTests(): Promise<RuntimeTestResult[]> {
     if (!(result.data as any)?.pong) throw new Error("expected pong in data");
   }));
 
-  results.push(await run("ConnectorResult contains executionId and connectorId", async () => {
+  results.push(await run("ConnectorResult contains executionId, connectorId and status", async () => {
     const result = await runtime.execute("base44", "test.echo", { msg: "hello" }, BASE_CTX);
     if (!result.executionId) throw new Error("missing executionId");
     if (result.connectorId !== "base44") throw new Error("wrong connectorId");
+    if (!result.status) throw new Error("missing status field");
+    if (result.status !== "SUCCESS") throw new Error(`expected SUCCESS, got ${result.status}`);
+  }));
+
+  results.push(await run("Policy Engine consulted before execution", async () => {
+    // Policy Engine stub always allows; result must be SUCCESS (not DENIED)
+    const result = await runtime.execute("github", "test.ping", {}, BASE_CTX);
+    if (result.status === "DENIED") throw new Error("Policy Engine denied unexpectedly");
+    if (!result.success) throw new Error("expected success after policy allow");
   }));
 
   // 7. Logs are recorded

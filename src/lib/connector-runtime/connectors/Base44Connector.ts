@@ -52,14 +52,14 @@ export class Base44Connector implements IConnector {
     const logs = [makeLog("info", `Base44Connector executing "${operation}"`)];
 
     if (operation === "test.ping") {
-      return { success: true, data: { pong: true }, duration: Date.now() - start, connectorId: this.id, executionId: context.executionId, logs };
+      return { status: "SUCCESS", success: true, data: { pong: true }, duration: Date.now() - start, connectorId: this.id, executionId: context.executionId, logs };
     }
 
     if (operation === "test.echo") {
-      return { success: true, data: { echo: payload }, duration: Date.now() - start, connectorId: this.id, executionId: context.executionId, logs };
+      return { status: "SUCCESS", success: true, data: { echo: payload }, duration: Date.now() - start, connectorId: this.id, executionId: context.executionId, logs };
     }
 
-    return { success: false, error: `Unknown operation: ${operation}`, duration: Date.now() - start, connectorId: this.id, executionId: context.executionId, logs };
+    return { status: "FAILED", success: false, error: `Unknown operation: ${operation}`, duration: Date.now() - start, connectorId: this.id, executionId: context.executionId, logs };
   }
 
   validate(): boolean {

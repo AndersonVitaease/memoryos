@@ -12,7 +12,18 @@ import type {
   ConnectorContext, ConnectorResult, ConnectorMetrics,
   ConnectorHealthReport, ExecutionRecord,
 } from "./ConnectorTypes";
-import { makeExecutionId } from "./ConnectorTypes";
+import { makeExecutionId, makeLog } from "./ConnectorTypes";
+
+// Policy Engine — JS interop (stub, Foundation v1.0 compliant)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _policyEngine: any = null;
+async function getPolicyEngine() {
+  if (!_policyEngine) {
+    const mod = await import("../../lib/policies/policyEngine.js");
+    _policyEngine = mod.PolicyEngine ?? mod.default;
+  }
+  return _policyEngine;
+}
 
 export class ConnectorRuntime {
   private readonly registry = new ConnectorRegistry();
@@ -60,6 +71,24 @@ export class ConnectorRuntime {
   ): Promise<ConnectorResult> {
     const connector = this.getOrThrow(connectorId);
     const ctx: ConnectorContext = { ...context, executionId: makeExecutionId() };
+
+    // Policy Engine gate — obrigatorio antes de qualquer execucao (Foundation v1.0)
+    const policy = await getPolicyEngine();
+    const authResult = await policy.authorize({ connectorId, operation, context: ctx });
+
+    if (!authResult.allow) {
+      const denied: ConnectorResult = {
+        status: "DENIED",
+        success: false,
+        error: authResult.reason ?? "Execution denied by Policy Engine",
+        duration: 0,
+        connectorId,
+        executionId: ctx.executionId,
+        logs: [makeLog("warn", `Policy Engine denied "${operation}" on "${connectorId}": ${authResult.reason ?? "no reason"}`)],
+      };
+      this.updateMetrics(connectorId, denied);
+      return denied;
+    }
 
     const result = await this.executor.execute(connector, operation, payload, ctx);
     this.updateMetrics(connectorId, result);

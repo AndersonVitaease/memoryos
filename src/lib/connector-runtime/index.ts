@@ -12,6 +12,7 @@ export type { IConnector }    from "./IConnector";
 export type {
   ConnectorContext,
   ConnectorResult,
+  ConnectorResultStatus,
   ConnectorMetrics,
   ConnectorHealthReport,
   ConnectorMetadata,

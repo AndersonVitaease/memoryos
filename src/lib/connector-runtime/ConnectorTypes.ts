@@ -18,7 +18,17 @@ export interface ConnectorContext {
 
 // ── Result ───────────────────────────────────────────────────────────────────
 
+export type ConnectorResultStatus =
+  | "SUCCESS"
+  | "FAILED"
+  | "DENIED"
+  | "TIMEOUT"
+  | "CANCELLED";
+
 export interface ConnectorResult<T = unknown> {
+  /** Indicador oficial do resultado — use status para logica, success para compatibilidade */
+  status: ConnectorResultStatus;
+  /** Mantido para compatibilidade com componentes existentes */
   success: boolean;
   data?: T;
   error?: string;
