@@ -47,6 +47,7 @@ const navItems = [
   { label: "Goal Execution Queue v1.0",  icon: Flag,     path: "/goal-execution-queue" },
   { label: "Execution Dispatcher v1.0", icon: Flag,     path: "/execution-dispatcher" },
   { label: "Decision Engine v1.0",      icon: Flag,     path: "/decision-engine" },
+  { label: "Planning Engine v1.0",      icon: Flag,     path: "/planning-engine" },
 ];
 
 export default function Sidebar({ onNavigate }) {

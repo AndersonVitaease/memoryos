@@ -59,6 +59,7 @@ import GoalSchedulerPage from '@/pages/GoalSchedulerPage';
 import GoalExecutionQueuePage from '@/pages/GoalExecutionQueuePage';
 import ExecutionDispatcherPage from '@/pages/ExecutionDispatcherPage';
 import DecisionEnginePage from '@/pages/DecisionEnginePage';
+import PlanningEnginePage from '@/pages/PlanningEnginePage';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -135,6 +136,7 @@ const AuthenticatedApp = () => {
           <Route path="/goal-execution-queue" element={<GoalExecutionQueuePage />} />
           <Route path="/execution-dispatcher" element={<ExecutionDispatcherPage />} />
           <Route path="/decision-engine" element={<DecisionEnginePage />} />
+          <Route path="/planning-engine" element={<PlanningEnginePage />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
