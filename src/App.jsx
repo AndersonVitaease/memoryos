@@ -48,6 +48,7 @@ import PlanningIntelligence from '@/pages/PlanningIntelligence';
 import SpecialistRouterPage from '@/pages/SpecialistRouter';
 import StrategyFusion from '@/pages/StrategyFusion';
 import ConnectorRuntimePage from '@/pages/ConnectorRuntime';
+import ConnectorRuntimeCertification from '@/pages/ConnectorRuntimeCertification';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -113,6 +114,7 @@ const AuthenticatedApp = () => {
           <Route path="/specialist-router" element={<SpecialistRouterPage />} />
           <Route path="/strategy-fusion" element={<StrategyFusion />} />
           <Route path="/connector-runtime" element={<ConnectorRuntimePage />} />
+          <Route path="/certification" element={<ConnectorRuntimeCertification />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
