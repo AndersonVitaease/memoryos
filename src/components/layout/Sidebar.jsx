@@ -39,6 +39,7 @@ const navItems = [
   { label: "Certification",    icon: Award,    path: "/certification" },
   { label: "Capability Runtime", icon: Blocks,  path: "/capability-runtime" },
   { label: "ABV — Boundaries",  icon: Shield,  path: "/abv" },
+  { label: "ABV v4.1 Sprint",   icon: ShieldCheck, path: "/abv-sprint" },
 ];
 
 export default function Sidebar({ onNavigate }) {
