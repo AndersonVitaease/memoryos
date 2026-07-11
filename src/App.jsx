@@ -62,6 +62,7 @@ import DecisionEnginePage from '@/pages/DecisionEnginePage';
 import PlanningEnginePage from '@/pages/PlanningEnginePage';
 import ReflectionEnginePage from '@/pages/ReflectionEnginePage';
 import SelfEvaluationEnginePage from '@/pages/SelfEvaluationEnginePage';
+import KnowledgeEnginePage from '@/pages/KnowledgeEnginePage';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -141,6 +142,7 @@ const AuthenticatedApp = () => {
           <Route path="/planning-engine" element={<PlanningEnginePage />} />
           <Route path="/reflection-engine" element={<ReflectionEnginePage />} />
           <Route path="/self-evaluation-engine" element={<SelfEvaluationEnginePage />} />
+          <Route path="/knowledge-engine" element={<KnowledgeEnginePage />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
