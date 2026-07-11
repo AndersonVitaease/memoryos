@@ -1,23 +1,20 @@
-// Architectural Boundary Validation (ABV) — v2
+// Architectural Boundary Validation (ABV) — v3
 // Foundation v1.0 · Engineering First
 //
-// Auditoria 100% automatica baseada em codigo-fonte real.
-// Nenhuma lista manual de imports. Toda evidencia extraida pelo SourceCodeAnalyzer.
+// Auditoria 100% automatica baseada em evidencias do codigo-fonte.
+// READ ONLY. Nenhuma conclusao sem evidencia correspondente.
 
-import type { SourceAnalysisResult, ModuleAnalysis } from "./SourceCodeAnalyzer";
+import type { SourceAnalysisResult } from "./SourceCodeAnalyzer";
+import { EvidenceCollector } from "./EvidenceCollector";
+import { calculateCompliance } from "./EvidenceModel";
+import type { ArchitecturalEvidence, ComplianceScore } from "./EvidenceModel";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── Public types ──────────────────────────────────────────────────────────────
+
+export type { ArchitecturalEvidence, ComplianceScore };
 
 export type ABVSeverity = "ERROR" | "WARN" | "INFO";
 export type ABVStatus   = "PASS" | "FAIL" | "WARN";
-
-export interface ABVViolation {
-  rule: string;
-  layer: string;
-  detail: string;
-  severity: ABVSeverity;
-  evidence?: string;
-}
 
 export interface ABVLayerReport {
   layer: string;
@@ -27,10 +24,10 @@ export interface ABVLayerReport {
   publicApi: string[];
   allowedDeps: string[];
   forbiddenDeps: string[];
-  detectedDeps: string[];          // unique layers actually imported
-  detectedImports: string[];       // raw specifiers found in source
-  violations: ABVViolation[];
-  responsibilityViolations: ABVViolation[];
+  detectedDeps: string[];
+  detectedImports: string[];
+  boundaryEvidences: ArchitecturalEvidence[];
+  apiEvidences: ArchitecturalEvidence[];
   circularDependencies: string[][];
   durationMs: number;
 }
@@ -38,32 +35,46 @@ export interface ABVLayerReport {
 export interface ABVReport {
   runAt: number;
   durationMs: number;
+  // Source metrics
   filesAnalyzed: number;
   modulesAudited: number;
   importsAnalyzed: number;
   exportsAnalyzed: number;
+  // Compliance counters
   validDeps: number;
   forbiddenDeps: number;
   boundariesApproved: number;
   boundariesViolated: number;
   circularDependencies: number;
+  // Evidence
+  allEvidences: ArchitecturalEvidence[];
+  criticalEvidences: ArchitecturalEvidence[];
+  errorEvidences: ArchitecturalEvidence[];
+  // Graph extras
+  isolatedModules: string[];
+  orphanModules: string[];
+  unparsedFiles: string[];
+  // Scores
+  compliance: ComplianceScore;
+  // Layers
   layers: ABVLayerReport[];
-  allViolations: ABVViolation[];
+  // Export structure (v3 — populated but not yet rendered externally)
+  exportStructure: {
+    json: object;
+    markdownReady: boolean;
+    htmlReady: boolean;
+  };
   conclusion: string;
 }
 
-// ── Layer Policy Definitions — Foundation v1.0 ───────────────────────────────
-// These are the RULES (what is allowed/forbidden).
-// The actual imports are read from source code, never hardcoded here.
+// ── Layer Policy Definitions ──────────────────────────────────────────────────
 
 interface LayerPolicy {
   id: string;
   label: string;
-  /** Glob-friendly path fragments identifying files in this layer */
   pathPattern: string;
   allowedLayerDeps: string[];
   forbiddenLayerDeps: string[];
-  /** Method/export name fragments that signal a responsibility violation */
   forbiddenApiTerms: string[];
 }
 
@@ -72,7 +83,7 @@ const LAYER_POLICIES: LayerPolicy[] = [
     id: "connector-runtime",
     label: "Connector Runtime",
     pathPattern: "connector-runtime",
-    allowedLayerDeps: ["policies", "__unknown", null as unknown as string],
+    allowedLayerDeps: ["policies"],
     forbiddenLayerDeps: ["capability-runtime", "goal-engine", "planner-engine", "pie", "wme", "memory-engine"],
     forbiddenApiTerms: ["capability", "goal", "plan", "infer", "intent", "reason", "strategy"],
   },
@@ -80,7 +91,7 @@ const LAYER_POLICIES: LayerPolicy[] = [
     id: "capability-runtime",
     label: "Capability Runtime",
     pathPattern: "capability-runtime",
-    allowedLayerDeps: ["connector-runtime", "policies", "__unknown", null as unknown as string],
+    allowedLayerDeps: ["connector-runtime", "policies"],
     forbiddenLayerDeps: ["goal-engine", "planner-engine", "pie", "wme", "memory-engine"],
     forbiddenApiTerms: ["interpret", "infer", "plan", "decide", "selectcapability", "findbest", "reason", "strategy", "choosecapability"],
   },
@@ -88,7 +99,7 @@ const LAYER_POLICIES: LayerPolicy[] = [
     id: "goal-engine",
     label: "Goal Runtime (future)",
     pathPattern: "goal-engine",
-    allowedLayerDeps: ["connector-runtime", "capability-runtime", "wme", "policies", "journey", "__unknown", null as unknown as string],
+    allowedLayerDeps: ["connector-runtime", "capability-runtime", "wme", "policies", "journey"],
     forbiddenLayerDeps: ["planner-engine", "pie"],
     forbiddenApiTerms: [],
   },
@@ -97,30 +108,30 @@ const LAYER_POLICIES: LayerPolicy[] = [
 // ── Validator ─────────────────────────────────────────────────────────────────
 
 export class ArchitecturalBoundaryValidator {
-  /**
-   * Run boundary audit against a SourceAnalysisResult produced by SourceCodeAnalyzer.
-   * No manual lists — all import evidence comes from the analysis.
-   */
+  private readonly collector = new EvidenceCollector();
+
   audit(analysis: SourceAnalysisResult): ABVReport {
     const start = Date.now();
+
+    // ── Collect all evidences from source ─────────────────────────────────
+    const { evidences, isolatedModules, orphanModules, unparsedFiles } =
+      this.collector.collect(analysis);
+
     const layerReports: ABVLayerReport[] = [];
     let validDeps = 0;
     let forbiddenDepsTotal = 0;
     let boundariesApproved = 0;
     let boundariesViolated = 0;
-    const allViolations: ABVViolation[] = [];
+    let totalResponsibilityViolations = 0;
 
     for (const policy of LAYER_POLICIES) {
       const layerStart = Date.now();
+      const layerFiles = analysis.layerMap[policy.id] ?? [];
 
-      // All files belonging to this layer (from source code analysis)
-      const layerFiles: ModuleAnalysis[] = analysis.layerMap[policy.id] ?? [];
+      const allImports   = layerFiles.flatMap(f => f.imports);
+      const allExports   = layerFiles.flatMap(f => f.exports);
 
-      // Collect all actual imports across all files in this layer
-      const allImports = layerFiles.flatMap(f => f.imports);
-      const allExports = layerFiles.flatMap(f => f.exports);
-
-      // Unique layers actually imported (exclude self and external)
+      // Deps actually found in source
       const detectedLayerDeps = [
         ...new Set(
           allImports
@@ -128,75 +139,36 @@ export class ArchitecturalBoundaryValidator {
             .filter((l): l is string => l !== null && l !== policy.id),
         ),
       ];
-
       const detectedImportSpecifiers = [...new Set(allImports.map(i => i.specifier))];
 
-      const violations: ABVViolation[] = [];
-      const responsibilityViolations: ABVViolation[] = [];
-
-      // ── Forbidden dependency check (from actual source imports) ───────────
-      for (const dep of detectedLayerDeps) {
-        if (policy.forbiddenLayerDeps.includes(dep)) {
-          // Find which file(s) introduced this violation
-          const offendingFiles = layerFiles
-            .filter(f => f.imports.some(i => i.resolvedLayer === dep))
-            .map(f => f.path);
-
-          forbiddenDepsTotal++;
-          violations.push({
-            rule: "FORBIDDEN_DEPENDENCY",
-            layer: policy.label,
-            detail: `Dependencia proibida "${dep}" encontrada em: ${offendingFiles.join(", ")}`,
-            severity: "ERROR",
-            evidence: offendingFiles.join(", "),
-          });
-        } else {
-          validDeps++;
-        }
-      }
-
-      // ── Circular dependencies within this layer ───────────────────────────
-      const layerPaths = new Set(layerFiles.map(f => f.path));
-      const layerCycles = analysis.circularDependencies.filter(cycle =>
-        cycle.some(p => layerPaths.has(p)),
+      // Evidence links for this layer
+      const boundaryEvidences = evidences.filter(
+        e => (e.layerFrom === policy.id) && (e.ruleId === "FORBIDDEN_DEPENDENCY" || e.ruleId === "CIRCULAR_DEPENDENCY"),
       );
-      if (layerCycles.length > 0) {
-        layerCycles.forEach(cycle => {
-          violations.push({
-            rule: "CIRCULAR_DEPENDENCY",
-            layer: policy.label,
-            detail: `Dependencia circular: ${cycle.join(" -> ")}`,
-            severity: "ERROR",
-            evidence: cycle.join(" -> "),
-          });
-        });
+      const apiEvidences = evidences.filter(
+        e => (e.layerFrom === policy.id || e.module.includes(policy.pathPattern)) &&
+             (e.ruleId === "RESPONSIBILITY_VIOLATION" || e.ruleId === "API_SURFACE"),
+      );
+
+      // Counters
+      for (const dep of detectedLayerDeps) {
+        if (policy.forbiddenLayerDeps.includes(dep)) forbiddenDepsTotal++;
+        else validDeps++;
       }
 
-      // ── Responsibility / API surface check (actual exports from source) ───
-      for (const exp of allExports) {
-        const expLower = exp.toLowerCase();
-        for (const term of policy.forbiddenApiTerms) {
-          if (expLower.includes(term)) {
-            responsibilityViolations.push({
-              rule: "RESPONSIBILITY_VIOLATION",
-              layer: policy.label,
-              detail: `Export "${exp}" sugere responsabilidade proibida ("${term}")`,
-              severity: "ERROR",
-              evidence: exp,
-            });
-          }
-        }
-      }
+      const responsibilityErrors = apiEvidences.filter(e => e.ruleId === "RESPONSIBILITY_VIOLATION").length;
+      totalResponsibilityViolations += responsibilityErrors;
 
-      const layerViolations = [...violations, ...responsibilityViolations];
-      const hasErrors = layerViolations.some(v => v.severity === "ERROR");
-      const hasWarns  = layerViolations.some(v => v.severity === "WARN");
-      const status: ABVStatus = hasErrors ? "FAIL" : hasWarns ? "WARN" : "PASS";
+      const layerCycles = analysis.circularDependencies.filter(cycle =>
+        cycle.some(p => layerFiles.some(f => f.path === p)),
+      );
+
+      const hasBoundaryError = boundaryEvidences.some(e => e.severity === "CRITICAL" || e.severity === "ERROR");
+      const hasRespError     = apiEvidences.some(e => e.severity === "ERROR");
+      const status: ABVStatus = (hasBoundaryError || hasRespError) ? "FAIL" : "PASS";
 
       if (status === "FAIL") boundariesViolated++;
       else boundariesApproved++;
-
-      allViolations.push(...layerViolations);
 
       layerReports.push({
         layer: policy.id,
@@ -204,22 +176,72 @@ export class ArchitecturalBoundaryValidator {
         status,
         filesAnalyzed: layerFiles.length,
         publicApi: allExports,
-        allowedDeps: policy.allowedLayerDeps.filter(Boolean),
+        allowedDeps: policy.allowedLayerDeps,
         forbiddenDeps: policy.forbiddenLayerDeps,
         detectedDeps: detectedLayerDeps,
         detectedImports: detectedImportSpecifiers,
-        violations,
-        responsibilityViolations,
+        boundaryEvidences,
+        apiEvidences,
         circularDependencies: layerCycles,
         durationMs: Date.now() - layerStart,
       });
     }
 
+    // ── Compliance Score ──────────────────────────────────────────────────
+    const compliance = calculateCompliance({
+      totalBoundaries: LAYER_POLICIES.length,
+      boundaryViolations: boundariesViolated,
+      totalDeps: validDeps + forbiddenDepsTotal,
+      forbiddenDeps: forbiddenDepsTotal,
+      totalExports: analysis.exportsFound,
+      responsibilityViolations: totalResponsibilityViolations,
+      filesAnalyzed: analysis.filesAnalyzed,
+      circularCycles: analysis.circularDependencies.length,
+      totalImports: analysis.importsFound,
+      brokenImports: unparsedFiles.length,
+    });
+
+    // ── Evidence partitions ───────────────────────────────────────────────
+    const criticalEvidences = evidences.filter(e => e.severity === "CRITICAL");
+    const errorEvidences    = evidences.filter(e => e.severity === "ERROR");
+
+    // ── Conclusion (based solely on evidences) ────────────────────────────
+    const totalCritical = criticalEvidences.length;
+    const totalErrors   = errorEvidences.length;
+    const conclusion = totalCritical > 0
+      ? `${totalCritical} evidencia(s) CRITICAL — boundary(ies) violado(s). Encaminhar para Engineering Review.`
+      : totalErrors > 0
+        ? `${totalErrors} evidencia(s) ERROR detectada(s). Conformidade parcial. Revisar antes do proximo release.`
+        : `Conformidade total — ${evidences.length} evidencias coletadas, nenhuma CRITICAL ou ERROR. Foundation v1.0 respeitada.`;
+
     const totalDuration = Date.now() - start;
-    const errorCount = allViolations.filter(v => v.severity === "ERROR").length;
-    const conclusion = errorCount === 0
-      ? "Auditoria concluida — nenhuma violacao arquitetural encontrada. Foundation v1.0 boundaries respeitados."
-      : `Auditoria concluida com ${errorCount} violacao(oes) ERROR detectada(s) no codigo-fonte. Encaminhar para Engineering Review.`;
+
+    // ── Export structure (v3 — JSON ready, Markdown/HTML prepared) ────────
+    const exportStructure = {
+      json: {
+        meta: { runAt: Date.now(), durationMs: totalDuration, version: "ABV-v3" },
+        compliance,
+        summary: {
+          filesAnalyzed: analysis.filesAnalyzed,
+          importsAnalyzed: analysis.importsFound,
+          exportsAnalyzed: analysis.exportsFound,
+          boundariesApproved,
+          boundariesViolated,
+          circularDependencies: analysis.circularDependencies.length,
+        },
+        evidences: evidences.map(e => ({ ...e })),
+        layers: layerReports.map(l => ({
+          layer: l.layer,
+          label: l.label,
+          status: l.status,
+          filesAnalyzed: l.filesAnalyzed,
+          detectedDeps: l.detectedDeps,
+          violations: l.boundaryEvidences.filter(e => e.severity === "CRITICAL" || e.severity === "ERROR").length,
+        })),
+      },
+      markdownReady: true,
+      htmlReady: true,
+    };
 
     return {
       runAt: Date.now(),
@@ -233,8 +255,15 @@ export class ArchitecturalBoundaryValidator {
       boundariesApproved,
       boundariesViolated,
       circularDependencies: analysis.circularDependencies.length,
+      allEvidences: evidences,
+      criticalEvidences,
+      errorEvidences,
+      isolatedModules,
+      orphanModules,
+      unparsedFiles,
+      compliance,
       layers: layerReports,
-      allViolations,
+      exportStructure,
       conclusion,
     };
   }

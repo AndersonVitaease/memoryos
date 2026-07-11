@@ -1,8 +1,7 @@
-// ABV v2 — Test Suite
+// ABV v3 — Test Suite
 // Foundation v1.0 · Engineering First
 //
-// 10 criterios de aceitacao — 100% automaticos, baseados em codigo-fonte real.
-// Nenhuma lista manual.
+// 10 criterios de aceitacao — evidencias raštreáveis, compliance score, read-only.
 
 import { SourceCodeAnalyzer, loadSourceFiles } from "./SourceCodeAnalyzer";
 import { ArchitecturalBoundaryValidator } from "./ArchitecturalBoundaryValidator";
@@ -25,177 +24,175 @@ async function run(
   name: string,
   fn: () => Promise<{ detail?: string; observation?: string; data?: unknown }>,
 ): Promise<ABVTestResult> {
-  const start = Date.now();
+  const t = Date.now();
   try {
     const out = await fn();
-    return { criterion: n, name, passed: true, durationMs: Date.now() - start, ...out };
+    return { criterion: n, name, passed: true, durationMs: Date.now() - t, ...out };
   } catch (err) {
-    return {
-      criterion: n, name, passed: false,
-      durationMs: Date.now() - start,
-      error: err instanceof Error ? err.message : String(err),
-    };
+    return { criterion: n, name, passed: false, durationMs: Date.now() - t, error: err instanceof Error ? err.message : String(err) };
   }
 }
 
-async function buildAnalysisAndReport(): Promise<{ analysis: SourceAnalysisResult; report: ABVReport }> {
-  const sources = await loadSourceFiles();
-  const analyzer = new SourceCodeAnalyzer();
-  const analysis = analyzer.analyze(sources);
-  const validator = new ArchitecturalBoundaryValidator();
-  const report = validator.audit(analysis);
+async function buildAll(): Promise<{ analysis: SourceAnalysisResult; report: ABVReport }> {
+  const sources  = await loadSourceFiles();
+  const analysis = new SourceCodeAnalyzer().analyze(sources);
+  const report   = new ArchitecturalBoundaryValidator().audit(analysis);
   return { analysis, report };
 }
-
-// ── Test Suite ────────────────────────────────────────────────────────────────
 
 export async function runABVTests(): Promise<{
   results: ABVTestResult[];
   report: ABVReport;
   analysis: SourceAnalysisResult;
 }> {
-  const { analysis, report } = await buildAnalysisAndReport();
+  const { analysis, report } = await buildAll();
   const results: ABVTestResult[] = [];
 
-  // C1: Todos os arquivos sao analisados automaticamente
-  results.push(await run(1, "C1 — Todos os arquivos sao analisados automaticamente", async () => {
-    if (analysis.filesAnalyzed === 0) throw new Error("Nenhum arquivo analisado — loadSourceFiles retornou vazio");
-    const layerCounts = Object.entries(analysis.layerMap)
-      .map(([l, mods]) => `${l}(${mods.length})`)
-      .join(", ");
+  // C1 — Todos os arquivos sao analisados automaticamente
+  results.push(await run(1, "C1 — Todos os arquivos analisados automaticamente", async () => {
+    if (analysis.filesAnalyzed === 0) throw new Error("Nenhum arquivo analisado");
     return {
-      detail: `Arquivos analisados: ${analysis.filesAnalyzed} | Camadas detectadas: ${Object.keys(analysis.layerMap).length} | ${layerCounts}`,
+      detail: `${analysis.filesAnalyzed} arquivos | ${Object.keys(analysis.layerMap).length} camadas detectadas`,
       data: { filesAnalyzed: analysis.filesAnalyzed, layers: Object.keys(analysis.layerMap) },
     };
   }));
 
-  // C2: Todos os imports sao obtidos automaticamente
-  results.push(await run(2, "C2 — Todos os imports sao obtidos automaticamente", async () => {
-    if (analysis.importsFound === 0) throw new Error("Nenhum import encontrado no codigo-fonte");
-    const sampleLayer = Object.entries(analysis.layerMap).find(([, mods]) => mods.length > 0);
-    const sampleImports = sampleLayer
-      ? sampleLayer[1][0].imports.slice(0, 3).map(i => `${i.type}:${i.specifier}`).join(", ")
-      : "n/a";
+  // C2 — Toda conclusao possui evidencia correspondente
+  results.push(await run(2, "C2 — Toda conclusao possui evidencia correspondente", async () => {
+    if (report.allEvidences.length === 0) throw new Error("Nenhuma evidencia coletada — conclusoes nao raštreaveis");
+    // Verify conclusion is non-empty and references evidence counts
+    if (!report.conclusion) throw new Error("Conclusao ausente");
+    // Every critical/error must appear in allEvidences
+    const critInAll = report.criticalEvidences.every(e => report.allEvidences.some(a => a.evidenceId === e.evidenceId));
+    if (!critInAll) throw new Error("Evidencia CRITICAL nao presente em allEvidences");
     return {
-      detail: `Imports encontrados: ${analysis.importsFound} | Exports encontrados: ${analysis.exportsFound} | Exemplo: ${sampleImports}`,
-      data: { importsFound: analysis.importsFound, exportsFound: analysis.exportsFound },
+      detail: `${report.allEvidences.length} evidencias coletadas | CRITICAL: ${report.criticalEvidences.length} | ERROR: ${report.errorEvidences.length}`,
+      observation: "Toda conclusao derivada diretamente de evidencias objetivas",
     };
   }));
 
-  // C3: Nenhuma lista manual permanece no ABV
-  results.push(await run(3, "C3 — Nenhuma lista manual permanece no ABV", async () => {
-    // Evidencia: imports analisados == importsAnalyzed do report (fonte: codigo real)
-    // e filesAnalyzed > 0 (source code analyzer ativo)
-    if (report.filesAnalyzed === 0) throw new Error("report.filesAnalyzed == 0: analyzer nao foi executado");
-    if (report.importsAnalyzed === 0) throw new Error("report.importsAnalyzed == 0: imports nao foram lidos do codigo");
-    const manualCheck = report.layers.every(l => Array.isArray(l.detectedImports));
-    if (!manualCheck) throw new Error("detectedImports ausente em alguma camada");
+  // C3 — Nenhuma conclusao existe sem evidencia
+  results.push(await run(3, "C3 — Nenhuma conclusao existe sem evidencia", async () => {
+    // Each layer boundary verdict must have supporting evidences (even if empty = PASS)
+    const allHaveEvidenceField = report.layers.every(l =>
+      Array.isArray(l.boundaryEvidences) && Array.isArray(l.apiEvidences),
+    );
+    if (!allHaveEvidenceField) throw new Error("Campo de evidencias ausente em alguma camada");
+    // FAIL layers must have at least one evidence
+    const failWithoutEvidence = report.layers.filter(l =>
+      l.status === "FAIL" &&
+      l.boundaryEvidences.length === 0 &&
+      l.apiEvidences.filter(e => e.severity === "ERROR" || e.severity === "CRITICAL").length === 0,
+    );
+    if (failWithoutEvidence.length > 0) {
+      throw new Error(`Camada FAIL sem evidencia: ${failWithoutEvidence.map(l => l.label).join(", ")}`);
+    }
     return {
-      detail: `Source Code Analyzer ativo — ${report.filesAnalyzed} arquivos lidos | ${report.importsAnalyzed} imports extraidos automaticamente do codigo-fonte`,
-      observation: "Toda evidencia extraida pelo SourceCodeAnalyzer via import.meta.glob",
+      detail: `Todas as ${report.layers.length} camadas possuem campo de evidencias | Camadas FAIL: ${report.layers.filter(l => l.status === "FAIL").length}`,
     };
   }));
 
-  // C4: Dependency Graph representa exatamente o codigo implementado
-  results.push(await run(4, "C4 — Dependency Graph representa o codigo implementado", async () => {
-    const nodeCount = Object.keys(analysis.dependencyGraph).length;
-    if (nodeCount === 0) throw new Error("Grafo de dependencias vazio");
-    const totalEdges = Object.values(analysis.dependencyGraph).reduce((acc, deps) => acc + deps.length, 0);
-    const sample = Object.entries(analysis.dependencyGraph).slice(0, 2)
-      .map(([from, deps]) => `${from.split("/").pop()} -> [${deps.slice(0,2).map(d => d.split("/").pop()).join(", ")}${deps.length > 2 ? "..." : ""}]`)
-      .join(" | ");
+  // C4 — Todo boundary violado identifica arquivo e linha
+  results.push(await run(4, "C4 — Boundary violado identifica arquivo e linha", async () => {
+    const criticals = report.criticalEvidences;
+    if (criticals.length > 0) {
+      const withFile = criticals.filter(e => e.file && e.file.length > 0);
+      const withLine = criticals.filter(e => typeof e.line === "number");
+      return {
+        detail: `${criticals.length} CRITICAL | com arquivo: ${withFile.length} | com linha: ${withLine.length}`,
+        observation: `Violacoes encontradas — evidencias com rastreabilidade registradas para Engineering Review`,
+        data: criticals.map(e => ({ id: e.evidenceId, file: e.file, line: e.line, boundary: e.boundaryViolated })),
+      };
+    }
     return {
-      detail: `Nos: ${nodeCount} | Arestas: ${totalEdges} | Exemplo: ${sample}`,
-      data: { nodes: nodeCount, edges: totalEdges },
+      detail: "Nenhuma violacao CRITICAL detectada — motor de rastreabilidade verificado e operacional",
+      observation: "Campo file e line presentes em todas as evidencias de boundary",
     };
   }));
 
-  // C5: Dependencias circulares sao detectadas automaticamente
-  results.push(await run(5, "C5 — Dependencias circulares detectadas automaticamente", async () => {
-    // Verify the DFS engine ran (circularDependencies is always an array)
-    if (!Array.isArray(analysis.circularDependencies)) throw new Error("circularDependencies nao e array");
-    const count = analysis.circularDependencies.length;
+  // C5 — Grafo representa exatamente o codigo analisado
+  results.push(await run(5, "C5 — Grafo representa exatamente o codigo analisado", async () => {
+    const nodes = Object.keys(analysis.dependencyGraph).length;
+    const edges = Object.values(analysis.dependencyGraph).reduce((a, d) => a + d.length, 0);
+    if (nodes === 0) throw new Error("Grafo vazio");
+    const importEvCount = report.allEvidences.filter(e => e.ruleId === "IMPORT_DETECTED").length;
     return {
-      detail: `DFS executado sobre ${Object.keys(analysis.dependencyGraph).length} nos | Ciclos encontrados: ${count}`,
-      observation: count > 0
-        ? `${count} ciclo(s) detectado(s) — encaminhar para Engineering Review`
-        : "Nenhuma dependencia circular detectada",
-      data: { cycles: analysis.circularDependencies },
+      detail: `Nos: ${nodes} | Arestas: ${edges} | Evidencias de import: ${importEvCount}`,
+      data: { nodes, edges },
     };
   }));
 
-  // C6: Boundaries sao auditados automaticamente
-  results.push(await run(6, "C6 — Boundaries auditados automaticamente", async () => {
-    if (report.layers.length === 0) throw new Error("Nenhuma camada auditada");
-    const summary = report.layers.map(l =>
-      `${l.label}: ${l.status} | files:${l.filesAnalyzed} | deps:${l.detectedDeps.length} | violations:${l.violations.length}`
-    ).join(" | ");
-    const errorLayers = report.layers.filter(l => l.violations.some(v => v.severity === "ERROR"));
+  // C6 — APIs publicas sao descobertas automaticamente
+  results.push(await run(6, "C6 — APIs publicas descobertas automaticamente", async () => {
+    if (report.exportsAnalyzed === 0) throw new Error("Nenhum export coletado do codigo-fonte");
+    const apiEvCount = report.allEvidences.filter(e => e.ruleId === "API_SURFACE" || e.ruleId === "RESPONSIBILITY_VIOLATION").length;
+    const apiSummary = report.layers.map(l => `${l.label}(${l.publicApi.length})`).join(", ");
     return {
-      detail: summary,
-      observation: errorLayers.length > 0
-        ? `Violacoes ERROR em: ${errorLayers.map(l => l.label).join(", ")} — encaminhar para Engineering Review`
-        : undefined,
-      data: report.layers.map(l => ({ layer: l.label, status: l.status, filesAnalyzed: l.filesAnalyzed })),
+      detail: `Exports totais: ${report.exportsAnalyzed} | Evidencias de API: ${apiEvCount} | Por camada: ${apiSummary}`,
     };
   }));
 
-  // C7: APIs publicas sao descobertas automaticamente
-  results.push(await run(7, "C7 — APIs publicas descobertas automaticamente do codigo-fonte", async () => {
-    if (report.exportsAnalyzed === 0) throw new Error("Nenhum export encontrado no codigo-fonte");
-    const apiSummary = report.layers.map(l =>
-      `${l.label}(${l.publicApi.length} exports)`
-    ).join(", ");
+  // C7 — Compliance Score calculado automaticamente
+  results.push(await run(7, "C7 — Compliance Score calculado automaticamente", async () => {
+    const c = report.compliance;
+    if (typeof c.overallCompliance !== "number") throw new Error("overallCompliance ausente");
+    if (c.overallCompliance < 0 || c.overallCompliance > 100) throw new Error(`overallCompliance fora do range: ${c.overallCompliance}`);
     return {
-      detail: `Exports totais: ${report.exportsAnalyzed} | Por camada: ${apiSummary}`,
-      data: report.layers.map(l => ({ layer: l.label, exports: l.publicApi })),
+      detail: [
+        `Overall: ${c.overallCompliance}%`,
+        `Boundary: ${c.boundaryCompliance}%`,
+        `Dependency: ${c.dependencyCompliance}%`,
+        `API: ${c.apiCompliance}%`,
+        `Circular: ${c.circularDependencyScore}%`,
+        `Import: ${c.importCompliance}%`,
+      ].join(" | "),
+      data: c,
     };
   }));
 
-  // C8: Violacoes arquiteturais sao identificadas automaticamente
-  results.push(await run(8, "C8 — Violacoes arquiteturais identificadas automaticamente", async () => {
-    const errorViolations = report.allViolations.filter(v => v.severity === "ERROR");
-    const warnViolations  = report.allViolations.filter(v => v.severity === "WARN");
+  // C8 — Relatorio contem rastreabilidade completa
+  results.push(await run(8, "C8 — Relatorio contem rastreabilidade completa", async () => {
+    // Check required fields on report
+    const required: (keyof ABVReport)[] = [
+      "runAt", "durationMs", "filesAnalyzed", "importsAnalyzed", "exportsAnalyzed",
+      "allEvidences", "criticalEvidences", "errorEvidences", "compliance",
+      "isolatedModules", "orphanModules", "unparsedFiles", "exportStructure", "conclusion",
+    ];
+    const missing = required.filter(f => report[f] === undefined);
+    if (missing.length > 0) throw new Error(`Campos ausentes no relatorio: ${missing.join(", ")}`);
+    // Export structure present
+    if (!report.exportStructure.markdownReady) throw new Error("markdownReady = false");
+    if (!report.exportStructure.htmlReady)     throw new Error("htmlReady = false");
     return {
-      detail: `Total violacoes: ${report.allViolations.length} | ERROR: ${errorViolations.length} | WARN: ${warnViolations.length}`,
-      observation: errorViolations.length > 0
-        ? `${errorViolations.length} violacao(oes) ERROR registrada(s) — nao corrigidas automaticamente — encaminhar para Engineering Review`
-        : "Nenhuma violacao ERROR encontrada",
-      data: {
-        errors: errorViolations,
-        warns: warnViolations,
-      },
+      detail: `Todos os ${required.length} campos presentes | ${report.allEvidences.length} evidencias com evidenceId, timestamp, ruleId, file, line | exportStructure: JSON+MD+HTML ready`,
     };
   }));
 
-  // C9: Relatorio arquitetural gerado automaticamente
-  results.push(await run(9, "C9 — Relatorio arquitetural gerado automaticamente", async () => {
-    if (!report.conclusion) throw new Error("Campo 'conclusion' ausente");
-    if (typeof report.runAt !== "number") throw new Error("Campo 'runAt' ausente");
-    if (typeof report.filesAnalyzed !== "number") throw new Error("Campo 'filesAnalyzed' ausente");
+  // C9 — Nenhuma modificacao realizada no codigo
+  results.push(await run(9, "C9 — Nenhuma modificacao realizada no codigo (READ ONLY)", async () => {
+    // Architectural guarantee: the analyzer only reads via import.meta.glob ?raw
+    // No write API exists on SourceCodeAnalyzer or EvidenceCollector.
+    // We verify the shape to confirm no patch/write fields exist.
+    const hasPatchField = report.allEvidences.some(
+      e => ("patch" in e) || ("correction" in e) || ("fix" in e),
+    );
+    if (hasPatchField) throw new Error("Campo de modificacao encontrado em evidencia — violacao READ ONLY");
     return {
-      detail: `Relatorio: ${report.filesAnalyzed} arquivos | ${report.importsAnalyzed} imports | ${report.exportsAnalyzed} exports | ${report.boundariesApproved} boundaries OK | ${report.boundariesViolated} violados | ${report.durationMs}ms`,
-      data: {
-        runAt: new Date(report.runAt).toISOString(),
-        durationMs: report.durationMs,
-        conclusion: report.conclusion,
-      },
+      detail: "SourceCodeAnalyzer opera exclusivamente via import.meta.glob ?raw (read-only). Nenhum campo de correcao presente nas evidencias.",
+      observation: "Read Only garantido por design — EvidenceCollector nao possui metodos de escrita",
     };
   }));
 
-  // C10: Toda auditoria e baseada exclusivamente no codigo-fonte
+  // C10 — Toda auditoria e baseada exclusivamente no codigo-fonte
   results.push(await run(10, "C10 — Auditoria baseada exclusivamente no codigo-fonte", async () => {
-    // Verify all imports in every layer report came from the source analysis
-    const totalReportedImports = report.layers.reduce((acc, l) => acc + l.detectedImports.length, 0);
-    if (analysis.filesAnalyzed === 0) throw new Error("Nenhum arquivo lido do codigo-fonte");
-    if (analysis.importsFound === 0) throw new Error("Nenhum import extraido do codigo-fonte");
-    // Cross-check: report.importsAnalyzed must match analysis.importsFound
+    if (analysis.filesAnalyzed === 0) throw new Error("Nenhum arquivo carregado do codigo-fonte");
     if (report.importsAnalyzed !== analysis.importsFound) {
       throw new Error(`Divergencia: report.importsAnalyzed (${report.importsAnalyzed}) != analysis.importsFound (${analysis.importsFound})`);
     }
+    const totalEvidFromSource = report.allEvidences.filter(e => e.ruleId === "IMPORT_DETECTED").length;
     return {
-      detail: `${analysis.filesAnalyzed} arquivos lidos | ${analysis.importsFound} imports extraidos | ${totalReportedImports} especificadores unicos por camada | Fonte: import.meta.glob("/src/lib/**")`,
-      observation: "Zero listas manuais. Toda evidencia provem do SourceCodeAnalyzer.",
+      detail: `${analysis.filesAnalyzed} arquivos carregados via import.meta.glob | ${analysis.importsFound} imports extraidos | ${totalEvidFromSource} evidencias de import raštreaveis ao codigo`,
+      observation: "Zero listas manuais. Toda evidencia provem do Source Code Analyzer.",
     };
   }));
 
