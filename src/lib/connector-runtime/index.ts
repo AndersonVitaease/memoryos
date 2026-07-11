@@ -12,6 +12,8 @@ export { runBase44ConnectorTests } from "./base44ConnectorTests";
 export type { Base44TestResult } from "./base44ConnectorTests";
 export { runBase44HardeningTests, summarizeHardeningMetrics } from "./base44HardeningTests";
 export type { HardeningTestResult } from "./base44HardeningTests";
+export { runGitHubConnectorTests, runGitHubHardeningTests } from "./githubConnectorTests";
+export type { GitHubTestResult, GitHubHardeningResult } from "./githubConnectorTests";
 export type { IConnector }    from "./IConnector";
 export type {
   ConnectorContext,
