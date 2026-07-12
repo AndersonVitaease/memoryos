@@ -59,6 +59,7 @@ const navItems = [
   { label: "Pipeline Adapter INT-01",  icon: Workflow, path: "/cognitive-pipeline-adapter" },
   { label: "Connector Runtime EF-31",  icon: Radio,   path: "/connector-runtime-ef31" },
   { label: "EF-31A — Validation",      icon: ShieldCheck, path: "/ef31a" },
+  { label: "EF-31B — Certification",   icon: Award,       path: "/ef31b" },
 ];
 
 export default function Sidebar({ onNavigate }) {
