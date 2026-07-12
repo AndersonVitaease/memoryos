@@ -92,6 +92,7 @@ export class ConnectorAudit {
     const successes = this.records.filter(r => r.status === 'SUCCESS').length;
     const failures = this.records.filter(r => r.hasError).length;
     return {
+      recordCount: total,      // alias for tests
       totalRecords: total,
       writeCount: this.writeCount,
       successCount: successes,

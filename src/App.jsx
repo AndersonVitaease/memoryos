@@ -70,6 +70,7 @@ import CognitivePipeline from '@/pages/CognitivePipeline';
 import CapabilityRegistryPage from '@/pages/CapabilityRegistryPage';
 import CognitivePipelineAdapterPage from '@/pages/CognitivePipelineAdapterPage';
 import ConnectorRuntimeFoundationPage from '@/pages/ConnectorRuntimePage';
+import EF31APage from '@/pages/EF31APage';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -157,6 +158,7 @@ const AuthenticatedApp = () => {
           <Route path="/capability-registry" element={<CapabilityRegistryPage />} />
           <Route path="/cognitive-pipeline-adapter" element={<CognitivePipelineAdapterPage />} />
           <Route path="/connector-runtime-ef31" element={<ConnectorRuntimeFoundationPage />} />
+          <Route path="/ef31a" element={<EF31APage />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />

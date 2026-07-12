@@ -104,6 +104,7 @@ export class ConnectorTelemetry {
   statistics() {
     const all = this.getAll();
     return {
+      trackCount: this.globalRecordCount,   // alias for tests
       trackedConnectors: this.counters.size,
       globalRecordCount: this.globalRecordCount,
       globalSuccessRate: all.length > 0
