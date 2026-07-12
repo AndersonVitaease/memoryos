@@ -60,6 +60,7 @@ const navItems = [
   { label: "Connector Runtime EF-31",  icon: Radio,   path: "/connector-runtime-ef31" },
   { label: "EF-31A — Validation",      icon: ShieldCheck, path: "/ef31a" },
   { label: "EF-31B — Certification",   icon: Award,       path: "/ef31b" },
+  { label: "EF-31C — SDK Freeze",      icon: Award,       path: "/ef31c" },
 ];
 
 export default function Sidebar({ onNavigate }) {

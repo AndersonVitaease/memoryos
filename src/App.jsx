@@ -72,6 +72,7 @@ import CognitivePipelineAdapterPage from '@/pages/CognitivePipelineAdapterPage';
 import ConnectorRuntimeFoundationPage from '@/pages/ConnectorRuntimePage';
 import EF31APage from '@/pages/EF31APage';
 import EF31BPage from '@/pages/EF31BPage';
+import EF31CPage from '@/pages/EF31CPage';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -161,6 +162,7 @@ const AuthenticatedApp = () => {
           <Route path="/connector-runtime-ef31" element={<ConnectorRuntimeFoundationPage />} />
           <Route path="/ef31a" element={<EF31APage />} />
           <Route path="/ef31b" element={<EF31BPage />} />
+          <Route path="/ef31c" element={<EF31CPage />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
