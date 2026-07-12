@@ -62,6 +62,7 @@ const navItems = [
   { label: "EF-31B — Certification",   icon: Award,       path: "/ef31b" },
   { label: "EF-31C — SDK Freeze",      icon: Award,       path: "/ef31c" },
   { label: "EF-32 — Base44 Connector", icon: Plug,        path: "/ef32" },
+  { label: "EF-32B — Write Operations", icon: Flag,       path: "/ef32b" },
 ];
 
 export default function Sidebar({ onNavigate }) {
