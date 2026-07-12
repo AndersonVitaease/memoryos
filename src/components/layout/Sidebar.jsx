@@ -57,6 +57,7 @@ const navItems = [
   { label: "Cognitive Pipeline",        icon: Workflow, path: "/cognitive-pipeline" },
   { label: "Capability Registry v1.0", icon: Flag,     path: "/capability-registry" },
   { label: "Pipeline Adapter INT-01",  icon: Workflow, path: "/cognitive-pipeline-adapter" },
+  { label: "Connector Runtime EF-31",  icon: Radio,   path: "/connector-runtime-ef31" },
 ];
 
 export default function Sidebar({ onNavigate }) {
