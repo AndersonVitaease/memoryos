@@ -75,6 +75,7 @@ import EF31BPage from '@/pages/EF31BPage';
 import EF31CPage from '@/pages/EF31CPage';
 import EF32Page from '@/pages/EF32Page';
 import EF32BPage from '@/pages/EF32BPage';
+import EF33APage from '@/pages/EF33APage';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -167,6 +168,7 @@ const AuthenticatedApp = () => {
           <Route path="/ef31c" element={<EF31CPage />} />
           <Route path="/ef32" element={<EF32Page />} />
           <Route path="/ef32b" element={<EF32BPage />} />
+          <Route path="/ef33a" element={<EF33APage />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
