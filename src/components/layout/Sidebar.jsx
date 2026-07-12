@@ -64,6 +64,7 @@ const navItems = [
   { label: "EF-32 — Base44 Connector", icon: Plug,        path: "/ef32" },
   { label: "EF-32B — Write Operations", icon: Flag,       path: "/ef32b" },
   { label: "EF-33A — GitHub Foundation", icon: Flag,     path: "/ef33a" },
+  { label: "EF-33B — GitHub Write Ops",  icon: Flag,     path: "/ef33b" },
 ];
 
 export default function Sidebar({ onNavigate }) {
