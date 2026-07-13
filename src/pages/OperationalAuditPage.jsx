@@ -223,6 +223,33 @@ export default function OperationalAuditPage() {
                 </div>
               ))}
             </div>
+
+            {/* GitHub Recovery Guidance */}
+            {report.github.overallStatus !== 'OPERATIONAL' && (
+              <div className="bg-red-950/20 border border-red-800/50 rounded-xl p-4 space-y-3">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-zinc-100 text-sm font-bold">GitHub Recovery Guidance</span>
+                  <Badge label={report.github.overallStatus} style={STATUS_COLORS[report.github.overallStatus] ?? ''} />
+                </div>
+                <p className="text-zinc-300 text-xs">GitHub connector is not yet OPERATIONAL. Use <strong className="text-violet-300">Phase 5.3 — GitHub Bring-Up</strong> to complete authentication and run full production validation.</p>
+                <div className="space-y-2">
+                  {[
+                    { step: 1, action: "Generate a GitHub PAT", detail: "GitHub → Settings → Developer settings → Personal access tokens → Generate new token. Required scopes: repo + read:user" },
+                    { step: 2, action: "Inject the token", detail: "Navigate to Phase 5.3 → Authentication Configuration → paste token → click Inject" },
+                    { step: 3, action: "Run Full Bring-Up", detail: "Click 'Run Full Bring-Up' to validate all 12 read-only operations and generate Production Certification" },
+                    { step: 4, action: "Re-run this audit", detail: "Return here and click 'Run Operational Audit' — GitHub should reach OPERATIONAL" },
+                  ].map(s => (
+                    <div key={s.step} className="flex gap-3 bg-zinc-800/30 rounded-lg p-2.5">
+                      <div className="shrink-0 w-5 h-5 rounded-full bg-red-900 flex items-center justify-center text-red-200 text-xs font-bold">{s.step}</div>
+                      <div>
+                        <p className="text-zinc-200 text-xs font-medium">{s.action}</p>
+                        <p className="text-zinc-500 text-xs mt-0.5">{s.detail}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
