@@ -84,6 +84,7 @@ const navItems = [
   { label: "Beta-03.3 — Prod Activation",      icon: Award,       path: "/beta033" },
   { label: "Phase 5 — Goal Intelligence",      icon: Target,      path: "/phase5" },
   { label: "Phase 5.1 — Cognitive Connectors", icon: Plug,        path: "/phase51" },
+  { label: "Phase 5.2 — Core Certification",   icon: Award,       path: "/phase52" },
 ];
 
 export default function Sidebar({ onNavigate }) {
