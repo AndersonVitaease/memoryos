@@ -70,6 +70,7 @@ const navItems = [
   { label: "EF-36B — GitHub KP",        icon: GitBranch,   path: "/ef36b" },
   { label: "EF-36C — Conversation KP",  icon: MessageSquare, path: "/ef36c" },
   { label: "EF-36D — Fusion Engine",    icon: GitMerge,      path: "/ef36d" },
+  { label: "EF-36E — Identity Engine",  icon: Brain,         path: "/ef36e" },
 ];
 
 export default function Sidebar({ onNavigate }) {

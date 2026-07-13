@@ -82,6 +82,7 @@ import EF36APage from '@/pages/EF36APage';
 import EF36BPage from '@/pages/EF36BPage';
 import EF36CPage from '@/pages/EF36CPage';
 import EF36DPage from '@/pages/EF36DPage';
+import EF36EPage from '@/pages/EF36EPage';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -181,6 +182,7 @@ const AuthenticatedApp = () => {
           <Route path="/ef36b" element={<EF36BPage />} />
           <Route path="/ef36c" element={<EF36CPage />} />
           <Route path="/ef36d" element={<EF36DPage />} />
+          <Route path="/ef36e" element={<EF36EPage />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
