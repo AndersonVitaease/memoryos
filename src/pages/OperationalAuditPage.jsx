@@ -133,6 +133,9 @@ export default function OperationalAuditPage() {
     } finally { setRunning(false); }
   }, []);
 
+  // Auto-run on mount
+  React.useEffect(() => { handleRun(); }, []);
+
   const overall = report?.overallStatus;
 
   return (
