@@ -71,6 +71,7 @@ const navItems = [
   { label: "EF-36C — Conversation KP",  icon: MessageSquare, path: "/ef36c" },
   { label: "EF-36D — Fusion Engine",    icon: GitMerge,      path: "/ef36d" },
   { label: "EF-36E — Identity Engine",  icon: Brain,         path: "/ef36e" },
+  { label: "EF-36F — Project Reconstruction", icon: Layers, path: "/ef36f" },
 ];
 
 export default function Sidebar({ onNavigate }) {
