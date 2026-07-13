@@ -1,11 +1,21 @@
 /**
  * GitHubKnowledgeSource.ts — GitHub Knowledge Provider
- * EF-36B · Project Independence · Foundation v1.0
+ * EF-36B.1 · Project Independence · Foundation v1.0
  * 2026-07-13
  *
- * Transforms GitHub repository data into Knowledge Objects for the KRE.
- * Reuses the existing GitHubConnector for all API communication.
- * Does NOT duplicate GitHub HTTP logic.
+ * ARCHITECTURE COMPLIANCE — EF-36B.1:
+ *   Zero direct GitHub networking.
+ *   Zero token reading/storing.
+ *   Zero HTTP clients.
+ *   Zero fetch() calls.
+ *   Zero status code interpretation.
+ *
+ * Communication path (single, official):
+ *   GitHubKnowledgeSource
+ *     → GitHubConnectorService
+ *       → GitHubConnector.execute()
+ *         → githubFetch()
+ *           → GitHub API
  */
 
 import type { IKnowledgeSource } from "../IKnowledgeSource";
@@ -22,40 +32,19 @@ import type {
 } from "../KRETypes";
 import { makeKREId } from "../KRETypes";
 import type { GitHubSyncState, GitHubRepoMeta, GitHubCommitMeta, GitHubFileMeta } from "./GitHubKnowledgeTypes";
+import { GitHubConnectorService } from "./GitHubConnectorService";
 
-// ── GitHub API HTTP helper (reused internally — no connector overhead for direct calls) ──
-
-const GITHUB_API = "https://api.github.com";
-
-async function ghFetch(path: string, token: string, timeoutMs = 8000): Promise<{ ok: boolean; status: number; data: unknown; error?: string }> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(`${GITHUB_API}${path}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
-    let data: unknown = null;
-    try { data = await res.json(); } catch { /* empty */ }
-    return { ok: res.ok, status: res.status, data };
-  } catch (err) {
-    clearTimeout(timer);
-    return { ok: false, status: 0, data: null, error: (err as Error).message };
-  }
-}
-
-// ── Ignored paths ──────────────────────────────────────────────────────────────
+// ── File classification helpers (pure, no networking) ─────────────────────────
 
 const IGNORED_PATHS = [
   "node_modules/", "build/", "dist/", "vendor/", ".cache/",
   ".next/", "coverage/", "__pycache__/", ".git/", "tmp/", "temp/",
 ];
-const SUPPORTED_EXTENSIONS = [".md", ".ts", ".tsx", ".js", ".jsx", ".json", ".yaml", ".yml", ".txt", ".py", ".go", ".rs", ".sh", ".env.example"];
+
+const SUPPORTED_EXTENSIONS = [
+  ".md", ".ts", ".tsx", ".js", ".jsx", ".json", ".yaml", ".yml",
+  ".txt", ".py", ".go", ".rs", ".sh", ".env.example",
+];
 
 function shouldIgnore(path: string): boolean {
   return IGNORED_PATHS.some(p => path.startsWith(p) || path.includes("/" + p));
@@ -111,23 +100,26 @@ export class GitHubKnowledgeSource implements IKnowledgeSource {
   readonly id: string;
   readonly name: string;
 
-  private token: string | null = null;
+  // ── ARCHITECTURE: The service is the ONLY communication channel ──────────────
+  private readonly service: GitHubConnectorService;
   private syncState: GitHubSyncState;
   private _lastScanResult: KnowledgeScanResult | null = null;
 
   constructor(config: {
     sourceId?: string;
-    token?: string;
     /** If provided, only scan this specific repo (owner/repo format) */
     targetRepo?: string;
     /** Max commits to import per repo */
     maxCommitsPerRepo?: number;
     /** Max files to import per repo */
     maxFilesPerRepo?: number;
+    /** Injected service (for testing) — if omitted, default GitHubConnectorService is used */
+    service?: GitHubConnectorService;
   } = {}) {
     this.id = config.sourceId ?? "github-knowledge";
     this.name = "GitHub Knowledge Provider";
-    this.token = config.token ?? this._resolveToken();
+    // All networking goes through the service — Provider owns zero credentials
+    this.service = config.service ?? new GitHubConnectorService();
     this.syncState = {
       lastSyncAt: null,
       knownCommitShas: new Set(),
@@ -140,16 +132,6 @@ export class GitHubKnowledgeSource implements IKnowledgeSource {
     };
   }
 
-  private _resolveToken(): string | null {
-    return (globalThis as any).__GITHUB_TOKEN__
-      ?? (globalThis as any).__env__?.GITHUB_TOKEN
-      ?? null;
-  }
-
-  private getToken(): string | null {
-    return this.token ?? this._resolveToken();
-  }
-
   // ── IKnowledgeSource ────────────────────────────────────────────────────────
 
   metadata(): KnowledgeSourceMetadata {
@@ -158,74 +140,58 @@ export class GitHubKnowledgeSource implements IKnowledgeSource {
       name: this.name,
       provider: "GitHub",
       type: "github",
-      version: "1.0.0",
-      description: "GitHub Knowledge Provider — reconstructs project knowledge from Git repositories",
+      version: "1.1.0",
+      description: "GitHub Knowledge Provider — EF-36B.1 decoupled, all comms via GitHubConnectorService",
     };
   }
 
   async isAvailable(): Promise<KnowledgeSourceHealth> {
-    const token = this.getToken();
-    if (!token) return "unavailable";
-    try {
-      const res = await ghFetch("/user", token, 5000);
-      if (res.ok) return "available";
-      if (res.status === 401) return "unavailable";
-      return "degraded";
-    } catch {
-      return "unavailable";
-    }
+    // Delegates to service — no token access here
+    const { available, notConfigured } = await this.service.checkAvailability();
+    if (notConfigured) return "unavailable";
+    if (available) return "available";
+    return "degraded";
   }
 
   async health(): Promise<{ status: KnowledgeSourceHealth; details: string; checkedAt: number }> {
-    const token = this.getToken();
-    if (!token) {
-      return { status: "unavailable", details: "No GitHub token — set VITE_GITHUB_TOKEN or __GITHUB_TOKEN__", checkedAt: Date.now() };
+    const { available, login, notConfigured } = await this.service.checkAvailability();
+    if (notConfigured) {
+      return { status: "unavailable", details: "GitHub token not configured — set via GitHubConnector", checkedAt: Date.now() };
     }
-    try {
-      const res = await ghFetch("/user", token, 5000);
-      if (res.ok) {
-        const login = (res.data as any)?.login ?? "unknown";
-        const repoCount = this.syncState.repositories.length;
-        const commitCount = this.syncState.knownCommitShas.size;
-        return {
-          status: "available",
-          details: `Authenticated as: ${login} · ${repoCount} repos · ${commitCount} known commits`,
-          checkedAt: Date.now(),
-        };
-      }
-      return { status: "degraded", details: `GitHub API ${res.status}`, checkedAt: Date.now() };
-    } catch (e) {
-      return { status: "unavailable", details: `Health check failed: ${(e as Error).message}`, checkedAt: Date.now() };
+    if (available) {
+      const repoCount = this.syncState.repositories.length;
+      const commitCount = this.syncState.knownCommitShas.size;
+      return {
+        status: "available",
+        details: `Authenticated as: ${login ?? "unknown"} · ${repoCount} repos · ${commitCount} known commits`,
+        checkedAt: Date.now(),
+      };
     }
+    return { status: "degraded", details: "GitHub connector returned unavailable", checkedAt: Date.now() };
   }
 
   async scan(): Promise<KnowledgeScanResult> {
     const t = Date.now();
-    const token = this.getToken();
     const errors: string[] = [];
     const itemIds: string[] = [];
 
-    if (!token) {
-      this._lastScanResult = { sourceId: this.id, scannedAt: Date.now(), itemsFound: 0, itemIds: [], errors: ["No GitHub token configured"], durationMs: Date.now() - t };
+    const repos = await this._discoverRepositories();
+    if (repos === null) {
+      this._lastScanResult = {
+        sourceId: this.id, scannedAt: Date.now(), itemsFound: 0, itemIds: [],
+        errors: ["GitHub token not configured — cannot scan repositories"], durationMs: Date.now() - t,
+      };
       return this._lastScanResult;
     }
 
-    try {
-      const repos = await this._discoverRepositories(token);
-      this.syncState.repositories = repos;
+    this.syncState.repositories = repos;
 
-      for (const repo of repos) {
-        // Repo itself as an item
-        itemIds.push(`github:repo:${repo.fullName}`);
-
-        // Branches
-        for (const branch of repo.branches) {
-          itemIds.push(`github:branch:${repo.fullName}:${branch}`);
-          this.syncState.knownBranches.add(`${repo.fullName}:${branch}`);
-        }
+    for (const repo of repos) {
+      itemIds.push(`github:repo:${repo.fullName}`);
+      for (const branch of repo.branches) {
+        itemIds.push(`github:branch:${repo.fullName}:${branch}`);
+        this.syncState.knownBranches.add(`${repo.fullName}:${branch}`);
       }
-    } catch (e) {
-      errors.push(`Repository scan failed: ${(e as Error).message}`);
     }
 
     this._lastScanResult = {
@@ -241,57 +207,53 @@ export class GitHubKnowledgeSource implements IKnowledgeSource {
 
   async load(): Promise<KnowledgeLoadResult> {
     const t = Date.now();
-    const token = this.getToken();
     const items: KnowledgeItem[] = [];
     const relationships: KnowledgeRelationship[] = [];
     const timelineEvents: KnowledgeTimelineEvent[] = [];
     const errors: string[] = [];
 
-    if (!token) {
-      return { sourceId: this.id, loadedAt: Date.now(), items: [], relationships: [], timelineEvents: [], errors: ["No GitHub token configured"], durationMs: Date.now() - t };
+    // Check availability through service — no token reading
+    const { available, notConfigured } = await this.service.checkAvailability();
+    if (notConfigured) {
+      return { sourceId: this.id, loadedAt: Date.now(), items: [], relationships: [], timelineEvents: [], errors: ["GitHub token not configured"], durationMs: Date.now() - t };
+    }
+    if (!available) {
+      return { sourceId: this.id, loadedAt: Date.now(), items: [], relationships: [], timelineEvents: [], errors: ["GitHub connector unavailable"], durationMs: Date.now() - t };
     }
 
-    // Scan first if no repositories known
     if (this.syncState.repositories.length === 0) {
       await this.scan();
     }
 
     for (const repo of this.syncState.repositories) {
       try {
-        // 1 — Repository item
         const repoItem = this._buildRepoItem(repo);
         items.push(repoItem);
 
-        // 2 — Commits → artifacts + timeline events
-        const commits = await this._loadCommits(token, repo);
+        // Commits → artifacts + timeline events
+        const commits = await this._loadCommits(repo);
         for (const commit of commits) {
           const artifact = this._buildCommitArtifact(repo, commit);
           items.push(artifact);
-
-          const event = this._buildCommitEvent(repo, commit, artifact.id);
-          timelineEvents.push(event);
-
-          // Relationship: repo → commit
+          timelineEvents.push(this._buildCommitEvent(repo, commit, artifact.id));
           relationships.push(this._buildRel(repoItem.id, artifact.id, "contains_commit", 1.0, repo, commit.sha));
         }
 
-        // 3 — Files → documents/artifacts
-        const files = await this._loadFiles(token, repo);
+        // Files → documents/artifacts
+        const files = await this._loadFiles(repo);
         for (const file of files) {
           const doc = this._buildFileItem(repo, file, repo.defaultBranch, commits[0]?.sha ?? "unknown");
           items.push(doc);
-
-          // Relationship: repo → file
           relationships.push(this._buildRel(repoItem.id, doc.id, "contains_file", 0.9, repo, file.path));
-
-          // Relationship: latest commit → file (if any commits exist)
           if (commits.length > 0) {
-            const commitArtifactId = `github:commit:${repo.fullName}:${commits[0].sha}`;
-            relationships.push(this._buildRel(commitArtifactId, doc.id, "modifies", 0.8, repo, file.path));
+            relationships.push(this._buildRel(
+              `github:commit:${repo.fullName}:${commits[0].sha}`,
+              doc.id, "modifies", 0.8, repo, file.path,
+            ));
           }
         }
 
-        // 4 — Branch items
+        // Branch items
         for (const branch of repo.branches) {
           const branchItem = this._buildBranchItem(repo, branch);
           items.push(branchItem);
@@ -303,35 +265,24 @@ export class GitHubKnowledgeSource implements IKnowledgeSource {
       }
     }
 
-    // Update sync state
     this.syncState.lastSyncAt = Date.now();
-
-    return {
-      sourceId: this.id,
-      loadedAt: Date.now(),
-      items,
-      relationships,
-      timelineEvents,
-      errors,
-      durationMs: Date.now() - t,
-    };
+    return { sourceId: this.id, loadedAt: Date.now(), items, relationships, timelineEvents, errors, durationMs: Date.now() - t };
   }
 
   // ── Incremental Sync ────────────────────────────────────────────────────────
 
   async sync(): Promise<{ newItems: KnowledgeItem[]; newEvents: KnowledgeTimelineEvent[]; newRelationships: KnowledgeRelationship[]; summary: GitHubSyncSummary }> {
-    const token = this.getToken();
     const newItems: KnowledgeItem[] = [];
     const newEvents: KnowledgeTimelineEvent[] = [];
     const newRelationships: KnowledgeRelationship[] = [];
     const summary: GitHubSyncSummary = { newCommits: 0, modifiedFiles: 0, deletedFiles: 0, newBranches: 0, mergedBranches: 0, syncedAt: Date.now() };
 
-    if (!token) return { newItems, newEvents, newRelationships, summary };
+    const { available, notConfigured } = await this.service.checkAvailability();
+    if (notConfigured || !available) return { newItems, newEvents, newRelationships, summary };
 
     for (const repo of this.syncState.repositories) {
       try {
-        // Detect new commits
-        const commits = await this._loadCommits(token, repo);
+        const commits = await this._loadCommits(repo);
         for (const commit of commits) {
           if (!this.syncState.knownCommitShas.has(commit.sha)) {
             this.syncState.knownCommitShas.add(commit.sha);
@@ -342,18 +293,16 @@ export class GitHubKnowledgeSource implements IKnowledgeSource {
           }
         }
 
-        // Detect new/modified files
-        const files = await this._loadFiles(token, repo);
+        const files = await this._loadFiles(repo);
         for (const file of files) {
-          const isNew = !this.syncState.knownFilePaths.has(`${repo.fullName}:${file.path}`);
-          if (isNew) {
-            this.syncState.knownFilePaths.add(`${repo.fullName}:${file.path}`);
+          const key = `${repo.fullName}:${file.path}`;
+          if (!this.syncState.knownFilePaths.has(key)) {
+            this.syncState.knownFilePaths.add(key);
             newItems.push(this._buildFileItem(repo, file, repo.defaultBranch, commits[0]?.sha ?? "unknown"));
             summary.modifiedFiles++;
           }
         }
 
-        // Detect new branches
         const currentBranches = new Set(repo.branches.map(b => `${repo.fullName}:${b}`));
         for (const branch of currentBranches) {
           if (!this.syncState.knownBranches.has(branch)) {
@@ -361,14 +310,13 @@ export class GitHubKnowledgeSource implements IKnowledgeSource {
             summary.newBranches++;
           }
         }
-        // Detect merged/deleted branches
         for (const known of this.syncState.knownBranches) {
           if (known.startsWith(repo.fullName + ":") && !currentBranches.has(known)) {
             this.syncState.knownBranches.delete(known);
             summary.mergedBranches++;
           }
         }
-      } catch { /* continue with other repos */ }
+      } catch { /* continue */ }
     }
 
     this.syncState.lastSyncAt = Date.now();
@@ -384,134 +332,59 @@ export class GitHubKnowledgeSource implements IKnowledgeSource {
     };
   }
 
-  // ── Repository Discovery ────────────────────────────────────────────────────
+  // ── Internal helpers — all use service, zero networking ─────────────────────
 
-  private async _discoverRepositories(token: string): Promise<GitHubRepoMeta[]> {
-    const repos: GitHubRepoMeta[] = [];
-
+  private async _discoverRepositories(): Promise<GitHubRepoMeta[] | null> {
     if (this.syncState.targetRepo) {
-      // Single repo mode
       const [owner, repoName] = this.syncState.targetRepo.split("/");
-      const res = await ghFetch(`/repos/${owner}/${repoName}`, token);
-      if (res.ok && res.data) {
-        const r = res.data as any;
-        const branches = await this._fetchBranches(token, owner, repoName);
-        repos.push({
-          id: String(r.id),
-          name: r.name,
-          fullName: r.full_name,
-          owner: r.owner?.login ?? owner,
-          defaultBranch: r.default_branch ?? "main",
-          branches,
-          language: r.language ?? "Unknown",
-          languages: r.language ? [r.language] : [],
-          isPrivate: !!r.private,
-          createdAt: r.created_at ? new Date(r.created_at).getTime() : Date.now(),
-          updatedAt: r.updated_at ? new Date(r.updated_at).getTime() : Date.now(),
-          description: r.description ?? "",
-          stars: r.stargazers_count ?? 0,
-          forks: r.forks_count ?? 0,
-          openIssues: r.open_issues_count ?? 0,
-        });
-      }
-    } else {
-      // All user repos (capped at 10)
-      const res = await ghFetch("/user/repos?per_page=10&sort=updated&affiliation=owner,collaborator", token);
-      if (res.ok && Array.isArray(res.data)) {
-        for (const r of (res.data as any[])) {
-          const branches = await this._fetchBranches(token, r.owner?.login ?? "", r.name);
-          repos.push({
-            id: String(r.id),
-            name: r.name,
-            fullName: r.full_name,
-            owner: r.owner?.login ?? "",
-            defaultBranch: r.default_branch ?? "main",
-            branches,
-            language: r.language ?? "Unknown",
-            languages: r.language ? [r.language] : [],
-            isPrivate: !!r.private,
-            createdAt: r.created_at ? new Date(r.created_at).getTime() : Date.now(),
-            updatedAt: r.updated_at ? new Date(r.updated_at).getTime() : Date.now(),
-            description: r.description ?? "",
-            stars: r.stargazers_count ?? 0,
-            forks: r.forks_count ?? 0,
-            openIssues: r.open_issues_count ?? 0,
-          });
-        }
-      }
+      const result = await this.service.getRepository(owner, repoName);
+      if (result.notConfigured) return null;
+      if (!result.ok || !result.data) return [];
+      const repo = result.data;
+      const branchResult = await this.service.getBranches(owner, repoName);
+      repo.branches = branchResult.ok && branchResult.data ? branchResult.data : [];
+      return [repo];
     }
 
-    return repos;
+    const result = await this.service.listRepositories(10);
+    if (result.notConfigured) return null;
+    if (!result.ok || !result.data) return [];
+
+    // Populate branches for each repo
+    for (const repo of result.data) {
+      const [owner, repoName] = repo.fullName.split("/");
+      const branchResult = await this.service.getBranches(owner, repoName);
+      repo.branches = branchResult.ok && branchResult.data ? branchResult.data : [];
+    }
+    return result.data;
   }
 
-  private async _fetchBranches(token: string, owner: string, repo: string): Promise<string[]> {
-    try {
-      const res = await ghFetch(`/repos/${owner}/${repo}/branches?per_page=20`, token, 5000);
-      if (res.ok && Array.isArray(res.data)) {
-        return (res.data as any[]).map(b => b.name as string);
-      }
-    } catch { /* return empty */ }
-    return [];
+  private async _loadCommits(repo: GitHubRepoMeta): Promise<GitHubCommitMeta[]> {
+    const result = await this.service.getCommits(
+      repo.owner, repo.name, repo.defaultBranch, this.syncState.maxCommitsPerRepo,
+    );
+    if (!result.ok || !result.data) return [];
+    for (const c of result.data) this.syncState.knownCommitShas.add(c.sha);
+    return result.data;
   }
 
-  // ── Commit Loading ──────────────────────────────────────────────────────────
+  private async _loadFiles(repo: GitHubRepoMeta): Promise<GitHubFileMeta[]> {
+    const result = await this.service.getFileTree(repo.owner, repo.name, repo.defaultBranch);
+    if (!result.ok || !result.data) return [];
 
-  private async _loadCommits(token: string, repo: GitHubRepoMeta): Promise<GitHubCommitMeta[]> {
-    const commits: GitHubCommitMeta[] = [];
-    const max = this.syncState.maxCommitsPerRepo;
-    try {
-      const res = await ghFetch(`/repos/${repo.owner}/${repo.name}/commits?per_page=${max}&sha=${repo.defaultBranch}`, token);
-      if (res.ok && Array.isArray(res.data)) {
-        for (const c of (res.data as any[])) {
-          const sha = c.sha as string;
-          commits.push({
-            sha,
-            message: (c.commit?.message as string ?? "").split("\n")[0].slice(0, 200),
-            authorName: c.commit?.author?.name ?? c.author?.login ?? "Unknown",
-            authorEmail: c.commit?.author?.email ?? "",
-            timestamp: c.commit?.author?.date ? new Date(c.commit.author.date).getTime() : Date.now(),
-            branch: repo.defaultBranch,
-            parentShas: (c.parents as any[] ?? []).map((p: any) => p.sha as string),
-            url: c.html_url ?? "",
-          });
-          this.syncState.knownCommitShas.add(sha);
-        }
-      }
-    } catch { /* return what we have */ }
-    return commits;
+    const filtered: GitHubFileMeta[] = [];
+    let count = 0;
+    for (const file of result.data) {
+      if (count >= this.syncState.maxFilesPerRepo) break;
+      if (shouldIgnore(file.path) || !isSupported(file.path)) continue;
+      filtered.push(file);
+      this.syncState.knownFilePaths.add(`${repo.fullName}:${file.path}`);
+      count++;
+    }
+    return filtered;
   }
 
-  // ── File Loading ────────────────────────────────────────────────────────────
-
-  private async _loadFiles(token: string, repo: GitHubRepoMeta): Promise<GitHubFileMeta[]> {
-    const files: GitHubFileMeta[] = [];
-    const max = this.syncState.maxFilesPerRepo;
-    try {
-      // Get file tree (recursive) — use git trees API
-      const res = await ghFetch(`/repos/${repo.owner}/${repo.name}/git/trees/${repo.defaultBranch}?recursive=1`, token);
-      if (res.ok && (res.data as any)?.tree) {
-        const tree = (res.data as any).tree as any[];
-        let count = 0;
-        for (const entry of tree) {
-          if (count >= max) break;
-          if (entry.type !== "blob") continue;
-          const path = entry.path as string;
-          if (shouldIgnore(path) || !isSupported(path)) continue;
-          files.push({
-            path,
-            sha: entry.sha as string,
-            sizeBytes: (entry.size as number) ?? 0,
-            url: entry.url as string ?? "",
-          });
-          this.syncState.knownFilePaths.add(`${repo.fullName}:${path}`);
-          count++;
-        }
-      }
-    } catch { /* return what we have */ }
-    return files;
-  }
-
-  // ── Item Builders ───────────────────────────────────────────────────────────
+  // ── Item builders — pure, no networking ────────────────────────────────────
 
   private _buildRepoItem(repo: GitHubRepoMeta): KnowledgeItem {
     return Object.freeze({
@@ -559,7 +432,7 @@ export class GitHubKnowledgeSource implements IKnowledgeSource {
     const fileName = file.path.split("/").pop() ?? file.path;
 
     if (fileType === "artifact") {
-      const artifact: KnowledgeArtifact = Object.freeze({
+      return Object.freeze({
         id: `github:file:${repo.fullName}:${file.sha}`,
         type: "artifact" as const,
         title: fileName,
@@ -571,8 +444,7 @@ export class GitHubKnowledgeSource implements IKnowledgeSource {
         version: file.sha.slice(0, 7),
         filePath: file.path,
         language: lang,
-      });
-      return artifact;
+      } as KnowledgeArtifact);
     }
 
     return Object.freeze({
@@ -599,17 +471,12 @@ export class GitHubKnowledgeSource implements IKnowledgeSource {
   }
 
   private _buildRel(
-    fromId: string,
-    toId: string,
-    type: string,
-    weight: number,
-    repo: GitHubRepoMeta,
-    originalId: string,
+    fromId: string, toId: string, type: string, weight: number,
+    repo: GitHubRepoMeta, originalId: string,
   ): KnowledgeRelationship {
     return Object.freeze({
       id: makeKREId("ghrel"),
-      fromId,
-      toId,
+      fromId, toId,
       relationshipType: type,
       weight,
       provenance: Object.freeze(makeGitHubProvenance(this.id, repo.fullName, repo.defaultBranch, "HEAD", originalId, 0.9)),
