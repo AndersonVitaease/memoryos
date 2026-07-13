@@ -3,9 +3,11 @@
  * Phase 5.7.0 · MemoryOS Core Production Certification · 2026-07-13
  * EF-57.1 through EF-57.11
  */
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback } from "react";
 import { runEF570Tests } from "@/lib/connection-manager/ef570Tests";
 import { ConnectionManager } from "@/lib/connection-manager/ConnectionManager";
+import { injectGitHubToken, clearGitHubToken } from "@/lib/connection-manager/GitHubAuthFlow";
+import GitHubPATModal from "@/components/connection-manager/GitHubPATModal";
 
 // ── Primitives ────────────────────────────────────────────────────────────────
 
@@ -145,16 +147,44 @@ const TABS = ["Connectors", "Validation", "Health Monitor", "Certification"];
 const cm = new ConnectionManager();
 
 export default function Phase570Page() {
-  const [tab, setTab]       = useState("Connectors");
-  const [loading, setLoading] = useState(false);
-  const [suite, setSuite]   = useState(null);
-  const [error, setError]   = useState(null);
-  const [regs, setRegs]     = useState(() => cm.getAllRegistrations());
+  const [tab, setTab]           = useState("Connectors");
+  const [loading, setLoading]   = useState(false);
+  const [suite, setSuite]       = useState(null);
+  const [error, setError]       = useState(null);
+  const [regs, setRegs]         = useState(() => cm.getAllRegistrations());
   const [healthHistory, setHealthHistory] = useState([]);
+  const [patModal, setPatModal] = useState(false);
+  const [patLoading, setPatLoading] = useState(false);
+  const [patError, setPatError] = useState(null);
 
   const refreshRegs = () => setRegs(cm.getAllRegistrations());
 
+  // GitHub PAT flow — opened when Connect is clicked for GitHub
+  const handleGitHubPATSubmit = useCallback(async (token) => {
+    setPatLoading(true);
+    setPatError(null);
+    // Inject token into global scope so GitHubConnector picks it up
+    injectGitHubToken(token);
+    const result = await cm.authenticate("github");
+    if (result.success) {
+      setPatModal(false);
+      refreshRegs();
+      setHealthHistory(cm.getHealthHistory());
+    } else {
+      // Token invalid — clear it and show error
+      clearGitHubToken();
+      setPatError(result.error ?? "Authentication failed — check your token and try again.");
+    }
+    setPatLoading(false);
+  }, []);
+
   const handleAuth = useCallback(async (id) => {
+    if (id === "github") {
+      // Always open PAT modal for GitHub — no OAuth in this environment
+      setPatError(null);
+      setPatModal(true);
+      return;
+    }
     setLoading(true);
     await cm.authenticate(id);
     refreshRegs();
@@ -418,6 +448,16 @@ export default function Phase570Page() {
           <p className="text-zinc-600 text-xs text-center py-6">Run the EF-57 Validation suite to generate the certification.</p>
         )}
       </div>
+
+      {/* GitHub PAT Modal */}
+      {patModal && (
+        <GitHubPATModal
+          loading={patLoading}
+          error={patError}
+          onClose={() => { setPatModal(false); setPatError(null); }}
+          onSubmit={handleGitHubPATSubmit}
+        />
+      )}
     </div>
   );
 }

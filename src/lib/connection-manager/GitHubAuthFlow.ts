@@ -10,6 +10,18 @@ import { makeCMId } from "./ConnectionManagerTypes";
 
 const CONNECTOR_ID: ConnectorId = "github";
 
+/**
+ * Injects a PAT into the global scope so GitHubConnector.getToken() picks it up.
+ * This is the only sanctioned path for token injection from the UI layer.
+ */
+export function injectGitHubToken(token: string): void {
+  (globalThis as any).__GITHUB_TOKEN__ = token;
+}
+
+export function clearGitHubToken(): void {
+  delete (globalThis as any).__GITHUB_TOKEN__;
+}
+
 export class GitHubAuthFlow {
   private readonly cis = new ConnectorInvocationService();
 
