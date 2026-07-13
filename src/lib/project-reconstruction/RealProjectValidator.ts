@@ -456,4 +456,6 @@ export class RealProjectValidator {
   }
 
   getLastReport(): EF36GReport | null { return this.lastReport; }
+  getIdentityEngine() { return this.preEngine.getIdentityEngine(); }
+  getFusionEngine() { return this.preEngine.getFusionEngine(); }
 }

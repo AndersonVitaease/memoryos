@@ -73,6 +73,7 @@ const navItems = [
   { label: "EF-36E — Identity Engine",  icon: Brain,         path: "/ef36e" },
   { label: "EF-36F — Project Reconstruction", icon: Layers, path: "/ef36f" },
   { label: "EF-36G — Real Reconstruction",    icon: ShieldCheck, path: "/ef36g" },
+  { label: "EF-36H — Independence Cert",       icon: Award,       path: "/ef36h" },
 ];
 
 export default function Sidebar({ onNavigate }) {
