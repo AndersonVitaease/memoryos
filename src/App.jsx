@@ -100,6 +100,7 @@ import Phase52Page from '@/pages/Phase52Page';
 import OperationalAuditPage from '@/pages/OperationalAuditPage';
 import Phase53Page from '@/pages/Phase53Page';
 import CoreValidationReportPage from '@/pages/CoreValidationReportPage';
+import Phase54Page from '@/pages/Phase54Page';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -217,6 +218,7 @@ const AuthenticatedApp = () => {
           <Route path="/op-audit" element={<OperationalAuditPage />} />
           <Route path="/phase53" element={<Phase53Page />} />
           <Route path="/core-validation" element={<CoreValidationReportPage />} />
+          <Route path="/phase54" element={<Phase54Page />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
