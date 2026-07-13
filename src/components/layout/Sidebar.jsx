@@ -76,6 +76,7 @@ const navItems = [
   { label: "EF-36H — Independence Cert",       icon: Award,       path: "/ef36h" },
   { label: "EF-36I — Architecture Audit",     icon: ShieldCheck, path: "/ef36i" },
   { label: "Beta-01 — GitHub Connector",      icon: Award,       path: "/beta01" },
+  { label: "Beta-01.1 — Connector Standard",  icon: ShieldCheck, path: "/beta011" },
 ];
 
 export default function Sidebar({ onNavigate }) {
