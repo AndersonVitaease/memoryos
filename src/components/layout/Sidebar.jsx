@@ -87,6 +87,7 @@ const navItems = [
   { label: "Phase 5.2 — Core Certification",   icon: Award,       path: "/phase52" },
   { label: "Operational Audit",                icon: ShieldCheck, path: "/op-audit" },
   { label: "Phase 5.3 — GitHub Bring-Up",      icon: Award,       path: "/phase53" },
+  { label: "Core Validation Report",           icon: ShieldCheck, path: "/core-validation" },
 ];
 
 export default function Sidebar({ onNavigate }) {
