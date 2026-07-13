@@ -1,19 +1,10 @@
-// Base44Connector — Hardening
-// Foundation v1.0 · Engineering First · v0.3.0
+// Base44Connector — EF-35 Production Hardening
+// Foundation v1.0 · Engineering First · v0.4.0
 //
-// Operacoes (apenas leitura, imutavel nesta sprint):
-//   auth.me            — retorna usuario autenticado
-//   auth.validate      — valida autenticacao
-//   app.info           — informacoes da aplicacao
-//   projects.list      — lista projetos do usuario
-//   sessions.list      — lista sessoes recentes
-//   connectivity.ping  — valida conectividade
-//
-// Hardening:
-//   - Toda resposta validada antes de retornar ConnectorResult
-//   - Nenhuma excecao escapa do Connector
-//   - Logs expandidos: operation, validation, response time, error category
-//   - Metricas internas: invalid responses, auth failures, external failures, per-op timing
+// EF-35 changes:
+//   - validate() replaced: real checks for SDK availability, auth session, required capabilities
+//   - ConnectorValidationResult returned as structured diagnostics
+//   - All operations return SUCCESS only when they actually succeed
 
 import type { IConnector } from "../IConnector";
 import type {
@@ -22,6 +13,7 @@ import type {
   ConnectorMetadata,
   ConnectorResult,
   ConnectorLog,
+  ConnectorValidationResult,
 } from "../ConnectorTypes";
 import { makeLog, makeExecutionId } from "../ConnectorTypes";
 
@@ -37,7 +29,7 @@ async function getSDK() {
   return _sdk;
 }
 
-// ── Internal metrics (used by MERS future integration) ────────────────────────
+// ── Internal metrics ─────────────────────────────────────────────────────────
 
 export interface Base44ConnectorMetrics {
   totalExecutions: number;
@@ -74,27 +66,18 @@ function requireArray(val: unknown, label: string): ValidationResult {
 // ── Result builders ───────────────────────────────────────────────────────────
 
 function ok<T>(
-  data: T,
-  start: number,
-  id: string,
-  eid: string,
-  logs: ConnectorLog[],
-  op: string,
+  data: T, start: number, id: string, eid: string, logs: ConnectorLog[], op: string,
 ): ConnectorResult<T> {
   const duration = Date.now() - start;
   const size = (() => { try { return JSON.stringify(data).length; } catch { return 0; } })();
   logs.push(makeLog("info", `[${op}] Completed in ${duration}ms — response size: ${size}B`));
-  return { status: "SUCCESS", success: true, data, duration, connectorId: id, executionId: eid, logs };
+  return { status: "SUCCESS", success: true, data, duration, connectorId: "base44", executionId: eid, logs };
 }
 
 function fail(
   error: string,
   category: "validation" | "auth" | "external" | "internal",
-  start: number,
-  id: string,
-  eid: string,
-  logs: ConnectorLog[],
-  op: string,
+  start: number, id: string, eid: string, logs: ConnectorLog[], op: string,
 ): ConnectorResult {
   const duration = Date.now() - start;
   logs.push(makeLog("error", `[${op}] FAILED [${category}] ${error} — duration: ${duration}ms`));
@@ -107,6 +90,7 @@ export class Base44Connector implements IConnector {
   readonly id = "base44";
   private initialized = false;
   private authenticatedUser: Record<string, unknown> | null = null;
+  private _lastValidation: ConnectorValidationResult | null = null;
 
   readonly internalMetrics: Base44ConnectorMetrics = {
     totalExecutions: 0,
@@ -121,13 +105,13 @@ export class Base44Connector implements IConnector {
     return {
       id: "base44",
       name: "Base44 Connector",
-      version: "0.3.0",
-      description: "Base44 Connector — hardened, read-only, reference implementation",
+      version: "0.4.0",
+      description: "Base44 Connector — EF-35 production hardened, read-only",
       author: "MemoryOS",
       capabilities: [
         "auth.me", "auth.validate", "app.info",
         "projects.list", "sessions.list", "connectivity.ping",
-        "test.ping", "test.echo", // compat
+        "test.ping", "test.echo",
       ],
     };
   }
@@ -137,8 +121,7 @@ export class Base44Connector implements IConnector {
       const sdk = await getSDK();
       this.authenticatedUser = await sdk.auth.me();
       this.initialized = true;
-    } catch (err) {
-      // initialize nao propaga — connector fica em estado degraded
+    } catch {
       this.initialized = false;
     }
   }
@@ -162,7 +145,100 @@ export class Base44Connector implements IConnector {
     }
   }
 
-  validate(): boolean { return true; }
+  // ── Real validation (EF-35) ───────────────────────────────────────────────
+
+  validate(): boolean {
+    // Legacy sync gate — always pass so the loader proceeds,
+    // then validateAsync() does the real work asynchronously.
+    return true;
+  }
+
+  async validateAsync(): Promise<ConnectorValidationResult> {
+    const checks: ConnectorValidationResult["checks"] = [];
+
+    // Check 1: SDK available
+    let sdk: any = null;
+    try {
+      sdk = await getSDK();
+      checks.push({ name: "SDK available", passed: !!sdk, detail: sdk ? "Base44 SDK loaded" : "SDK module not found" });
+    } catch (e) {
+      checks.push({ name: "SDK available", passed: false, detail: `SDK import failed: ${e instanceof Error ? e.message : String(e)}` });
+    }
+
+    // Check 2: Authenticated session
+    let authOk = false;
+    let authDetail = "Not checked";
+    try {
+      if (sdk) {
+        const user = await sdk.auth.me();
+        authOk = !!(user && typeof user === "object" && (user as any).id);
+        authDetail = authOk ? `Authenticated as: ${(user as any).email ?? (user as any).id}` : "auth.me() returned invalid user";
+      } else {
+        authDetail = "Skipped — SDK unavailable";
+      }
+    } catch (e) {
+      authDetail = `auth.me() threw: ${e instanceof Error ? e.message : String(e)}`;
+    }
+    checks.push({ name: "Authenticated session", passed: authOk, detail: authDetail });
+
+    // Check 3: isAuthenticated() returns boolean true
+    let isAuthedOk = false;
+    let isAuthedDetail = "Not checked";
+    try {
+      if (sdk) {
+        const authed = await sdk.auth.isAuthenticated();
+        isAuthedOk = authed === true;
+        isAuthedDetail = isAuthedOk ? "isAuthenticated() = true" : `isAuthenticated() returned: ${authed}`;
+      } else {
+        isAuthedDetail = "Skipped — SDK unavailable";
+      }
+    } catch (e) {
+      isAuthedDetail = `isAuthenticated() threw: ${e instanceof Error ? e.message : String(e)}`;
+    }
+    checks.push({ name: "isAuthenticated() returns true", passed: isAuthedOk, detail: isAuthedDetail });
+
+    // Check 4: Entity API reachable (Project.list)
+    let entityOk = false;
+    let entityDetail = "Not checked";
+    try {
+      if (sdk && authOk) {
+        const projects = await sdk.entities.Project.list("-updated_date", 1);
+        entityOk = Array.isArray(projects);
+        entityDetail = entityOk ? `Entity API reachable — ${projects.length} project(s)` : "Project.list() did not return array";
+      } else {
+        entityDetail = "Skipped — auth not available";
+      }
+    } catch (e) {
+      entityDetail = `Entity API threw: ${e instanceof Error ? e.message : String(e)}`;
+    }
+    checks.push({ name: "Entity API reachable", passed: entityOk, detail: entityDetail });
+
+    // Check 5: Required capabilities declared
+    const required = ["auth.me", "auth.validate", "projects.list", "sessions.list", "connectivity.ping"];
+    const declared = this.metadata().capabilities;
+    const missing = required.filter(c => !declared.includes(c));
+    checks.push({
+      name: "Required capabilities declared",
+      passed: missing.length === 0,
+      detail: missing.length === 0 ? `All ${required.length} required capabilities present` : `Missing: ${missing.join(", ")}`,
+    });
+
+    const valid = checks.every(c => c.passed);
+    const passed = checks.filter(c => c.passed).length;
+    const result: ConnectorValidationResult = {
+      valid,
+      checks,
+      summary: valid
+        ? `All ${checks.length} checks passed`
+        : `${passed}/${checks.length} checks passed — ${checks.filter(c => !c.passed).map(c => c.name).join("; ")}`,
+    };
+    this._lastValidation = result;
+    return result;
+  }
+
+  getLastValidation(): ConnectorValidationResult | null {
+    return this._lastValidation;
+  }
 
   // ── Execute ─────────────────────────────────────────────────────────────────
 
@@ -175,19 +251,16 @@ export class Base44Connector implements IConnector {
     const eid = context.executionId ?? makeExecutionId();
     const logs: ConnectorLog[] = [makeLog("info", `[${operation}] Starting execution`)];
 
-    // Track per-operation call count
     this.internalMetrics.totalExecutions++;
     this.internalMetrics.operationCallCount[operation] = (this.internalMetrics.operationCallCount[operation] ?? 0) + 1;
 
     try {
       const result = await this._dispatch(operation, payload, context, start, eid, logs);
-      // Track per-operation timing
       const ms = result.duration;
       if (!this.internalMetrics.perOperationMs[operation]) this.internalMetrics.perOperationMs[operation] = [];
       this.internalMetrics.perOperationMs[operation].push(ms);
       return result;
     } catch (err) {
-      // Safety net — nenhuma excecao escapa
       this.internalMetrics.externalFailures++;
       const msg = err instanceof Error ? err.message : String(err);
       return fail(`Unhandled exception: ${msg}`, "internal", start, this.id, eid, logs, operation);
@@ -206,63 +279,50 @@ export class Base44Connector implements IConnector {
 
     switch (operation) {
 
-      // ── auth.me ──────────────────────────────────────────────────────────────
       case "auth.me": {
         let raw: unknown;
-        try {
-          raw = await sdk.auth.me();
-        } catch (err) {
+        try { raw = await sdk.auth.me(); }
+        catch (err) {
           this.internalMetrics.externalFailures++;
           return fail(`SDK auth.me() threw: ${err instanceof Error ? err.message : err}`, "external", start, this.id, eid, logs, operation);
         }
-
         const vObj = requireObject(raw, "auth.me response");
         if (!vObj.valid) { this.internalMetrics.invalidResponses++; return fail(vObj.reason, "validation", start, this.id, eid, logs, operation); }
-
         const obj = raw as Record<string, unknown>;
         const vId = requireField(obj, "id", "string");
         if (!vId.valid) { this.internalMetrics.invalidResponses++; return fail(vId.reason, "validation", start, this.id, eid, logs, operation); }
-
         logs.push(makeLog("info", `[${operation}] Validation OK — user: ${obj.email ?? "?"}`));
         return ok({ id: obj.id, email: obj.email, full_name: obj.full_name, role: obj.role }, start, this.id, eid, logs, operation);
       }
 
-      // ── auth.validate ─────────────────────────────────────────────────────────
       case "auth.validate": {
         let authed: unknown;
-        try {
-          authed = await sdk.auth.isAuthenticated();
-        } catch (err) {
+        try { authed = await sdk.auth.isAuthenticated(); }
+        catch (err) {
           this.internalMetrics.externalFailures++;
           return fail(`SDK isAuthenticated() threw: ${err instanceof Error ? err.message : err}`, "external", start, this.id, eid, logs, operation);
         }
-
         if (typeof authed !== "boolean") {
           this.internalMetrics.invalidResponses++;
           return fail(`isAuthenticated() returned unexpected type: ${typeof authed}`, "validation", start, this.id, eid, logs, operation);
         }
         if (!authed) {
           this.internalMetrics.authFailures++;
-          logs.push(makeLog("warn", `[${operation}] User is not authenticated`));
           return fail("User is not authenticated", "auth", start, this.id, eid, logs, operation);
         }
         logs.push(makeLog("info", `[${operation}] Validation OK — authenticated`));
         return ok({ authenticated: true }, start, this.id, eid, logs, operation);
       }
 
-      // ── app.info ─────────────────────────────────────────────────────────────
       case "app.info": {
         let user: unknown;
-        try {
-          user = await sdk.auth.me();
-        } catch (err) {
+        try { user = await sdk.auth.me(); }
+        catch (err) {
           this.internalMetrics.externalFailures++;
           return fail(`SDK auth.me() threw: ${err instanceof Error ? err.message : err}`, "external", start, this.id, eid, logs, operation);
         }
-
         const vObj = requireObject(user, "app.info user");
         if (!vObj.valid) { this.internalMetrics.invalidResponses++; return fail(vObj.reason, "validation", start, this.id, eid, logs, operation); }
-
         const u = user as Record<string, unknown>;
         logs.push(makeLog("info", `[${operation}] Validation OK`));
         return ok({
@@ -273,60 +333,43 @@ export class Base44Connector implements IConnector {
         }, start, this.id, eid, logs, operation);
       }
 
-      // ── projects.list ─────────────────────────────────────────────────────────
       case "projects.list": {
         const limit = typeof payload.limit === "number" && payload.limit > 0 ? payload.limit : 10;
         let projects: unknown;
-        try {
-          projects = await sdk.entities.Project.list("-updated_date", limit);
-        } catch (err) {
+        try { projects = await sdk.entities.Project.list("-updated_date", limit); }
+        catch (err) {
           this.internalMetrics.externalFailures++;
           return fail(`SDK Project.list() threw: ${err instanceof Error ? err.message : err}`, "external", start, this.id, eid, logs, operation);
         }
-
         const vArr = requireArray(projects, "projects response");
         if (!vArr.valid) { this.internalMetrics.invalidResponses++; return fail(vArr.reason, "validation", start, this.id, eid, logs, operation); }
-
         const arr = projects as Record<string, unknown>[];
-        logs.push(makeLog("info", `[${operation}] Validation OK — ${arr.length} items — response size: ${JSON.stringify(arr).length}B`));
-        return ok({
-          count: arr.length,
-          items: arr.map(p => ({ id: p.id, name: p.name, type: p.type })),
-        }, start, this.id, eid, logs, operation);
+        logs.push(makeLog("info", `[${operation}] Validation OK — ${arr.length} items`));
+        return ok({ count: arr.length, items: arr.map(p => ({ id: p.id, name: p.name, type: p.type })) }, start, this.id, eid, logs, operation);
       }
 
-      // ── sessions.list ─────────────────────────────────────────────────────────
       case "sessions.list": {
         const limit = typeof payload.limit === "number" && payload.limit > 0 ? payload.limit : 5;
         let sessions: unknown;
-        try {
-          sessions = await sdk.entities.ChatSession.list("-updated_date", limit);
-        } catch (err) {
+        try { sessions = await sdk.entities.ChatSession.list("-updated_date", limit); }
+        catch (err) {
           this.internalMetrics.externalFailures++;
           return fail(`SDK ChatSession.list() threw: ${err instanceof Error ? err.message : err}`, "external", start, this.id, eid, logs, operation);
         }
-
         const vArr = requireArray(sessions, "sessions response");
         if (!vArr.valid) { this.internalMetrics.invalidResponses++; return fail(vArr.reason, "validation", start, this.id, eid, logs, operation); }
-
         const arr = sessions as Record<string, unknown>[];
         logs.push(makeLog("info", `[${operation}] Validation OK — ${arr.length} items`));
-        return ok({
-          count: arr.length,
-          items: arr.map(s => ({ id: s.id, title: s.title, status: s.status })),
-        }, start, this.id, eid, logs, operation);
+        return ok({ count: arr.length, items: arr.map(s => ({ id: s.id, title: s.title, status: s.status })) }, start, this.id, eid, logs, operation);
       }
 
-      // ── connectivity.ping ─────────────────────────────────────────────────────
       case "connectivity.ping": {
         let authed: unknown;
-        try {
-          authed = await sdk.auth.isAuthenticated();
-        } catch (err) {
+        try { authed = await sdk.auth.isAuthenticated(); }
+        catch (err) {
           this.internalMetrics.externalFailures++;
           return fail(`SDK isAuthenticated() threw: ${err instanceof Error ? err.message : err}`, "external", start, this.id, eid, logs, operation);
         }
-
         if (typeof authed !== "boolean") {
           this.internalMetrics.invalidResponses++;
           return fail(`Unexpected connectivity response type: ${typeof authed}`, "validation", start, this.id, eid, logs, operation);
@@ -335,13 +378,10 @@ export class Base44Connector implements IConnector {
         return ok({ pong: true, authenticated: authed, timestamp: Date.now() }, start, this.id, eid, logs, operation);
       }
 
-      // ── compat ────────────────────────────────────────────────────────────────
       case "test.ping":
-        logs.push(makeLog("info", `[${operation}] compat`));
         return ok({ pong: true }, start, this.id, eid, logs, operation);
 
       case "test.echo":
-        logs.push(makeLog("info", `[${operation}] compat`));
         return ok({ echo: payload }, start, this.id, eid, logs, operation);
 
       default:

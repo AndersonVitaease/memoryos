@@ -1,19 +1,10 @@
-// GitHubConnector — Sprint: Primeira Implementacao Real
-// Foundation v1.0 · Engineering First · v1.0.0
+// GitHubConnector — EF-35 Production Hardening
+// Foundation v1.0 · Engineering First · v1.1.0
 //
-// Operacoes (apenas leitura):
-//   auth.user          — retorna usuario autenticado (GET /user)
-//   auth.validate      — valida token de autenticacao
-//   repos.list         — lista repositorios do usuario
-//   repos.get          — retorna dados de um repositorio especifico
-//   repos.branches     — lista branches de um repositorio
-//   connectivity.ping  — valida conectividade com a API do GitHub
-//
-// Hardening (padrao Base44Connector):
-//   - Toda resposta validada antes de construir ConnectorResult
-//   - Nenhuma excecao escapa do Connector
-//   - Logs expandidos: executionId, connectorId, operation, status, duration, responseTime, errorCategory
-//   - Metricas internas: totalExecutions, avgResponseMs, authFailures, invalidResponses, externalFailures, timeouts
+// EF-35 changes:
+//   - validate() replaced: real checks for token, API reachability, repo access, permissions
+//   - NOT_CONFIGURED status returned when no token — never fakes SUCCESS
+//   - validateAsync() returns ConnectorValidationResult with structured diagnostics
 
 import type { IConnector } from "../IConnector";
 import type {
@@ -22,10 +13,9 @@ import type {
   ConnectorMetadata,
   ConnectorResult,
   ConnectorLog,
+  ConnectorValidationResult,
 } from "../ConnectorTypes";
 import { makeLog, makeExecutionId } from "../ConnectorTypes";
-
-// ── Constants ─────────────────────────────────────────────────────────────────
 
 const GITHUB_API = "https://api.github.com";
 const DEFAULT_TIMEOUT_MS = 8000;
@@ -67,13 +57,7 @@ function requireArray(val: unknown, label: string): ValidationResult {
 
 // ── Result builders ───────────────────────────────────────────────────────────
 
-function ok<T>(
-  data: T,
-  start: number,
-  eid: string,
-  logs: ConnectorLog[],
-  op: string,
-): ConnectorResult<T> {
+function ok<T>(data: T, start: number, eid: string, logs: ConnectorLog[], op: string): ConnectorResult<T> {
   const duration = Date.now() - start;
   logs.push(makeLog("info", `[${op}] Completed in ${duration}ms`));
   return { status: "SUCCESS", success: true, data, duration, connectorId: "github", executionId: eid, logs };
@@ -82,14 +66,25 @@ function ok<T>(
 function fail(
   error: string,
   category: "validation" | "auth" | "external" | "internal" | "timeout",
-  start: number,
-  eid: string,
-  logs: ConnectorLog[],
-  op: string,
+  start: number, eid: string, logs: ConnectorLog[], op: string,
 ): ConnectorResult {
   const duration = Date.now() - start;
   logs.push(makeLog("error", `[${op}] FAILED [${category}] ${error} — ${duration}ms`));
   return { status: "FAILED", success: false, error: `[${category}] ${error}`, duration, connectorId: "github", executionId: eid, logs };
+}
+
+function notConfigured(start: number, eid: string, logs: ConnectorLog[], op: string): ConnectorResult {
+  const duration = Date.now() - start;
+  logs.push(makeLog("warn", `[${op}] NOT_CONFIGURED — no GitHub token available`));
+  return {
+    status: "NOT_CONFIGURED",
+    success: false,
+    error: "GitHub token not configured. Set VITE_GITHUB_TOKEN or __GITHUB_TOKEN__ in environment.",
+    duration,
+    connectorId: "github",
+    executionId: eid,
+    logs,
+  };
 }
 
 // ── HTTP helper ───────────────────────────────────────────────────────────────
@@ -102,15 +97,10 @@ interface FetchResult {
   error?: string;
 }
 
-async function githubFetch(
-  path: string,
-  token: string,
-  timeoutMs = DEFAULT_TIMEOUT_MS,
-): Promise<FetchResult> {
+async function githubFetch(path: string, token: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<FetchResult> {
   const t0 = Date.now();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
-
   try {
     const res = await fetch(`${GITHUB_API}${path}`, {
       headers: {
@@ -121,17 +111,13 @@ async function githubFetch(
       signal: controller.signal,
     });
     clearTimeout(timer);
-    const responseTimeMs = Date.now() - t0;
-
     let data: unknown = null;
-    try { data = await res.json(); } catch { /* empty response */ }
-
-    return { ok: res.ok, status: res.status, data, responseTimeMs };
+    try { data = await res.json(); } catch { /* empty */ }
+    return { ok: res.ok, status: res.status, data, responseTimeMs: Date.now() - t0 };
   } catch (err) {
     clearTimeout(timer);
-    const responseTimeMs = Date.now() - t0;
     const isAbort = (err as Error).name === "AbortError";
-    return { ok: false, status: 0, data: null, responseTimeMs, error: isAbort ? "Request timed out" : (err as Error).message };
+    return { ok: false, status: 0, data: null, responseTimeMs: Date.now() - t0, error: isAbort ? "Request timed out" : (err as Error).message };
   }
 }
 
@@ -142,6 +128,7 @@ export class GitHubConnector implements IConnector {
   private token: string | null = null;
   private initialized = false;
   private authenticatedUser: Record<string, unknown> | null = null;
+  private _lastValidation: ConnectorValidationResult | null = null;
 
   readonly internalMetrics: GitHubConnectorMetrics = {
     totalExecutions: 0,
@@ -157,27 +144,121 @@ export class GitHubConnector implements IConnector {
     return {
       id: "github",
       name: "GitHub Connector",
-      version: "1.0.0",
-      description: "GitHub Connector — read-only, Engineering First Sprint, Foundation v1.0",
+      version: "1.1.0",
+      description: "GitHub Connector — EF-35 production hardened, read-only",
       author: "MemoryOS",
-      capabilities: [
-        "auth.user", "auth.validate",
-        "repos.list", "repos.get", "repos.branches",
-        "connectivity.ping",
-      ],
+      capabilities: ["auth.user", "auth.validate", "repos.list", "repos.get", "repos.branches", "connectivity.ping"],
     };
   }
 
+  // Legacy sync gate — real validation done in validateAsync()
   validate(): boolean { return true; }
+
+  async validateAsync(): Promise<ConnectorValidationResult> {
+    const checks: ConnectorValidationResult["checks"] = [];
+    const token = this.getToken();
+
+    // Check 1: Token configured
+    checks.push({
+      name: "Token configured",
+      passed: !!token,
+      detail: token ? "GitHub token found in environment" : "No token in globalThis.__GITHUB_TOKEN__ or __env__.GITHUB_TOKEN — operations will return NOT_CONFIGURED",
+    });
+
+    if (!token) {
+      const result: ConnectorValidationResult = {
+        valid: false,
+        checks,
+        summary: "GitHub token not configured — connector is NOT_CONFIGURED, not broken",
+      };
+      this._lastValidation = result;
+      return result;
+    }
+
+    // Check 2: API reachable (rate_limit endpoint — no auth needed)
+    let apiReachable = false;
+    let apiDetail = "Not checked";
+    try {
+      const res = await githubFetch("/rate_limit", token, 5000);
+      apiReachable = res.ok || res.status === 401; // 401 = reachable but bad token
+      apiDetail = apiReachable
+        ? `GitHub API reachable — HTTP ${res.status} in ${res.responseTimeMs}ms`
+        : `GitHub API returned ${res.status} in ${res.responseTimeMs}ms`;
+      if (res.error) { apiReachable = false; apiDetail = `Network error: ${res.error}`; }
+    } catch (e) {
+      apiDetail = `Fetch threw: ${e instanceof Error ? e.message : String(e)}`;
+    }
+    checks.push({ name: "GitHub API reachable", passed: apiReachable, detail: apiDetail });
+
+    // Check 3: Token valid — GET /user
+    let tokenValid = false;
+    let tokenDetail = "Not checked";
+    let login: string | null = null;
+    try {
+      const res = await githubFetch("/user", token, 5000);
+      tokenValid = res.ok && !!(res.data as any)?.login;
+      login = tokenValid ? (res.data as any).login : null;
+      tokenDetail = tokenValid
+        ? `Token valid — authenticated as: ${login}`
+        : res.status === 401
+          ? "Token invalid or expired (HTTP 401)"
+          : res.status === 403
+            ? "Token lacks required scopes (HTTP 403)"
+            : `GET /user returned HTTP ${res.status}`;
+    } catch (e) {
+      tokenDetail = `GET /user threw: ${e instanceof Error ? e.message : String(e)}`;
+    }
+    checks.push({ name: "Token valid (GET /user)", passed: tokenValid, detail: tokenDetail });
+
+    // Check 4: Repository access — GET /user/repos
+    let repoAccess = false;
+    let repoDetail = "Not checked";
+    if (tokenValid) {
+      try {
+        const res = await githubFetch("/user/repos?per_page=1", token, 5000);
+        repoAccess = res.ok && Array.isArray(res.data);
+        repoDetail = repoAccess
+          ? `Repository access confirmed — ${(res.data as any[]).length} repo(s) accessible`
+          : `GET /user/repos returned HTTP ${res.status}`;
+      } catch (e) {
+        repoDetail = `GET /user/repos threw: ${e instanceof Error ? e.message : String(e)}`;
+      }
+    } else {
+      repoDetail = "Skipped — token invalid";
+    }
+    checks.push({ name: "Repository access", passed: repoAccess, detail: repoDetail });
+
+    // Check 5: Required capabilities declared
+    const required = ["auth.user", "auth.validate", "repos.list", "repos.get", "repos.branches", "connectivity.ping"];
+    const declared = this.metadata().capabilities;
+    const missing = required.filter(c => !declared.includes(c));
+    checks.push({
+      name: "Required capabilities declared",
+      passed: missing.length === 0,
+      detail: missing.length === 0 ? `All ${required.length} required capabilities present` : `Missing: ${missing.join(", ")}`,
+    });
+
+    const valid = checks.every(c => c.passed);
+    const passed = checks.filter(c => c.passed).length;
+    const result: ConnectorValidationResult = {
+      valid,
+      checks,
+      summary: valid
+        ? `All ${checks.length} checks passed — authenticated as: ${login}`
+        : `${passed}/${checks.length} checks passed — ${checks.filter(c => !c.passed).map(c => c.name).join("; ")}`,
+    };
+    this._lastValidation = result;
+    return result;
+  }
+
+  getLastValidation(): ConnectorValidationResult | null {
+    return this._lastValidation;
+  }
 
   async initialize(_ctx: ConnectorContext): Promise<void> {
     try {
-      // Resolve token from environment (injected via globalThis by Base44 secrets)
-      const tok = (globalThis as any).__GITHUB_TOKEN__
-        ?? (globalThis as any).__env__?.GITHUB_TOKEN
-        ?? null;
+      const tok = this.getToken();
       this.token = tok;
-
       if (this.token) {
         const res = await githubFetch("/user", this.token);
         if (res.ok && res.data && typeof res.data === "object" && !Array.isArray(res.data)) {
@@ -186,7 +267,6 @@ export class GitHubConnector implements IConnector {
           return;
         }
       }
-      // No token or auth failed — initialized in degraded mode
       this.initialized = false;
     } catch {
       this.initialized = false;
@@ -200,18 +280,17 @@ export class GitHubConnector implements IConnector {
   }
 
   async health(): Promise<ConnectorHealthReport> {
-    if (!this.token) {
-      return { status: "unhealthy", connectorId: this.id, checkedAt: Date.now(), details: "No token configured" };
+    const token = this.getToken();
+    if (!token) {
+      return { status: "unhealthy", connectorId: this.id, checkedAt: Date.now(), details: "No token configured — set VITE_GITHUB_TOKEN" };
     }
     try {
-      const res = await githubFetch("/user", this.token);
+      const res = await githubFetch("/user", token);
       if (res.ok) {
         const login = (res.data as any)?.login ?? "unknown";
         return { status: "healthy", connectorId: this.id, checkedAt: Date.now(), details: `Authenticated as: ${login}` };
       }
-      if (res.status === 401) {
-        return { status: "unhealthy", connectorId: this.id, checkedAt: Date.now(), details: "Token invalid or expired" };
-      }
+      if (res.status === 401) return { status: "unhealthy", connectorId: this.id, checkedAt: Date.now(), details: "Token invalid or expired" };
       return { status: "degraded", connectorId: this.id, checkedAt: Date.now(), details: `GitHub API returned ${res.status}` };
     } catch {
       return { status: "degraded", connectorId: this.id, checkedAt: Date.now(), details: "Health check failed" };
@@ -220,16 +299,10 @@ export class GitHubConnector implements IConnector {
 
   // ── Execute ─────────────────────────────────────────────────────────────────
 
-  async execute(
-    operation: string,
-    payload: Record<string, unknown>,
-    context: ConnectorContext,
-  ): Promise<ConnectorResult> {
+  async execute(operation: string, payload: Record<string, unknown>, context: ConnectorContext): Promise<ConnectorResult> {
     const start = Date.now();
     const eid = context.executionId ?? makeExecutionId();
-    const logs: ConnectorLog[] = [
-      makeLog("info", `[${operation}] executionId=${eid} connectorId=${this.id} Starting`),
-    ];
+    const logs: ConnectorLog[] = [makeLog("info", `[${operation}] executionId=${eid} connectorId=${this.id} Starting`)];
 
     this.internalMetrics.totalExecutions++;
     this.internalMetrics.operationCallCount[operation] = (this.internalMetrics.operationCallCount[operation] ?? 0) + 1;
@@ -255,55 +328,37 @@ export class GitHubConnector implements IConnector {
   }
 
   private async _dispatch(
-    operation: string,
-    payload: Record<string, unknown>,
-    start: number,
-    eid: string,
-    logs: ConnectorLog[],
+    operation: string, payload: Record<string, unknown>,
+    start: number, eid: string, logs: ConnectorLog[],
   ): Promise<ConnectorResult> {
     const token = this.getToken();
 
-    // Token required for all operations except connectivity.ping (which validates it exists)
-    if (!token && operation !== "connectivity.ping") {
+    // No token: return NOT_CONFIGURED (not FAILED) for all ops
+    if (!token) {
       this.internalMetrics.authFailures++;
-      return fail("No GitHub token configured. Set VITE_GITHUB_TOKEN secret.", "auth", start, eid, logs, operation);
+      return notConfigured(start, eid, logs, operation);
     }
 
     switch (operation) {
 
-      // ── connectivity.ping ─────────────────────────────────────────────────
       case "connectivity.ping": {
-        if (!token) {
-          this.internalMetrics.authFailures++;
-          logs.push(makeLog("warn", `[${operation}] No token — connectivity check without auth`));
-          return fail("No token configured", "auth", start, eid, logs, operation);
-        }
         const res = await githubFetch("/rate_limit", token);
         logs.push(makeLog("info", `[${operation}] responseTime=${res.responseTimeMs}ms status=${res.status}`));
-        if (res.error?.includes("timed out")) {
-          this.internalMetrics.timeouts++;
-          return fail("Request timed out", "timeout", start, eid, logs, operation);
-        }
-        if (!res.ok) {
-          this.internalMetrics.externalFailures++;
-          return fail(`GitHub API returned ${res.status}`, "external", start, eid, logs, operation);
-        }
+        if (res.error?.includes("timed out")) { this.internalMetrics.timeouts++; return fail("Request timed out", "timeout", start, eid, logs, operation); }
+        if (!res.ok) { this.internalMetrics.externalFailures++; return fail(`GitHub API returned ${res.status}`, "external", start, eid, logs, operation); }
         const vObj = requireObject(res.data, "rate_limit response");
         if (!vObj.valid) { this.internalMetrics.invalidResponses++; return fail(vObj.reason, "validation", start, eid, logs, operation); }
         const d = res.data as Record<string, unknown>;
         const rate = (d.rate ?? d.resources) as any;
-        logs.push(makeLog("info", `[${operation}] Validation OK — connected`));
         return ok({ pong: true, authenticated: true, responseTimeMs: res.responseTimeMs, rateLimit: rate }, start, eid, logs, operation);
       }
 
-      // ── auth.user ─────────────────────────────────────────────────────────
       case "auth.user": {
-        const res = await githubFetch("/user", token!);
+        const res = await githubFetch("/user", token);
         logs.push(makeLog("info", `[${operation}] responseTime=${res.responseTimeMs}ms status=${res.status}`));
         if (res.error?.includes("timed out")) { this.internalMetrics.timeouts++; return fail("Request timed out", "timeout", start, eid, logs, operation); }
         if (res.status === 401) { this.internalMetrics.authFailures++; return fail("Token invalid or expired (401)", "auth", start, eid, logs, operation); }
         if (!res.ok) { this.internalMetrics.externalFailures++; return fail(`GitHub API ${res.status}`, "external", start, eid, logs, operation); }
-
         const vObj = requireObject(res.data, "user response");
         if (!vObj.valid) { this.internalMetrics.invalidResponses++; return fail(vObj.reason, "validation", start, eid, logs, operation); }
         const u = res.data as Record<string, unknown>;
@@ -311,116 +366,66 @@ export class GitHubConnector implements IConnector {
         if (!vLogin.valid) { this.internalMetrics.invalidResponses++; return fail(vLogin.reason, "validation", start, eid, logs, operation); }
         const vId = requireField(u, "id", "number");
         if (!vId.valid) { this.internalMetrics.invalidResponses++; return fail(vId.reason, "validation", start, eid, logs, operation); }
-
-        logs.push(makeLog("info", `[${operation}] Validation OK — login: ${u.login}`));
-        return ok({
-          id: u.id, login: u.login, name: u.name,
-          email: u.email, avatar_url: u.avatar_url,
-          public_repos: u.public_repos, followers: u.followers,
-        }, start, eid, logs, operation);
+        return ok({ id: u.id, login: u.login, name: u.name, email: u.email, avatar_url: u.avatar_url, public_repos: u.public_repos, followers: u.followers }, start, eid, logs, operation);
       }
 
-      // ── auth.validate ─────────────────────────────────────────────────────
       case "auth.validate": {
-        const res = await githubFetch("/user", token!);
+        const res = await githubFetch("/user", token);
         logs.push(makeLog("info", `[${operation}] responseTime=${res.responseTimeMs}ms status=${res.status}`));
         if (res.error?.includes("timed out")) { this.internalMetrics.timeouts++; return fail("Request timed out", "timeout", start, eid, logs, operation); }
         if (res.status === 401) { this.internalMetrics.authFailures++; return fail("Token invalid or expired (401)", "auth", start, eid, logs, operation); }
         if (res.status === 403) { this.internalMetrics.authFailures++; return fail("Token lacks required scopes (403)", "auth", start, eid, logs, operation); }
         if (!res.ok) { this.internalMetrics.externalFailures++; return fail(`GitHub API ${res.status}`, "external", start, eid, logs, operation); }
-
         const vObj = requireObject(res.data, "auth.validate response");
         if (!vObj.valid) { this.internalMetrics.invalidResponses++; return fail(vObj.reason, "validation", start, eid, logs, operation); }
         const u = res.data as Record<string, unknown>;
         const vLogin = requireField(u, "login", "string");
         if (!vLogin.valid) { this.internalMetrics.invalidResponses++; return fail(vLogin.reason, "validation", start, eid, logs, operation); }
-
-        logs.push(makeLog("info", `[${operation}] Validation OK — token valid for: ${u.login}`));
         return ok({ authenticated: true, login: u.login }, start, eid, logs, operation);
       }
 
-      // ── repos.list ────────────────────────────────────────────────────────
       case "repos.list": {
         const perPage = typeof payload.per_page === "number" ? payload.per_page : 10;
         const sort = typeof payload.sort === "string" ? payload.sort : "updated";
-        const res = await githubFetch(`/user/repos?per_page=${perPage}&sort=${sort}&affiliation=owner,collaborator`, token!);
+        const res = await githubFetch(`/user/repos?per_page=${perPage}&sort=${sort}&affiliation=owner,collaborator`, token);
         logs.push(makeLog("info", `[${operation}] responseTime=${res.responseTimeMs}ms status=${res.status}`));
         if (res.error?.includes("timed out")) { this.internalMetrics.timeouts++; return fail("Request timed out", "timeout", start, eid, logs, operation); }
         if (res.status === 401) { this.internalMetrics.authFailures++; return fail("Token invalid (401)", "auth", start, eid, logs, operation); }
         if (!res.ok) { this.internalMetrics.externalFailures++; return fail(`GitHub API ${res.status}`, "external", start, eid, logs, operation); }
-
         const vArr = requireArray(res.data, "repos response");
         if (!vArr.valid) { this.internalMetrics.invalidResponses++; return fail(vArr.reason, "validation", start, eid, logs, operation); }
-
         const repos = res.data as Record<string, unknown>[];
-        logs.push(makeLog("info", `[${operation}] Validation OK — ${repos.length} repos`));
-        return ok({
-          count: repos.length,
-          items: repos.map(r => ({
-            id: r.id, name: r.name, full_name: r.full_name,
-            private: r.private, language: r.language,
-            default_branch: r.default_branch,
-            stargazers_count: r.stargazers_count,
-            updated_at: r.updated_at,
-          })),
-        }, start, eid, logs, operation);
+        return ok({ count: repos.length, items: repos.map(r => ({ id: r.id, name: r.name, full_name: r.full_name, private: r.private, language: r.language, default_branch: r.default_branch, stargazers_count: r.stargazers_count, updated_at: r.updated_at })) }, start, eid, logs, operation);
       }
 
-      // ── repos.get ─────────────────────────────────────────────────────────
       case "repos.get": {
         const owner = typeof payload.owner === "string" ? payload.owner : null;
         const repo  = typeof payload.repo === "string" ? payload.repo : null;
-        if (!owner || !repo) return fail(`payload.owner and payload.repo are required`, "validation", start, eid, logs, operation);
-
-        const res = await githubFetch(`/repos/${owner}/${repo}`, token!);
-        logs.push(makeLog("info", `[${operation}] responseTime=${res.responseTimeMs}ms status=${res.status}`));
+        if (!owner || !repo) return fail("payload.owner and payload.repo are required", "validation", start, eid, logs, operation);
+        const res = await githubFetch(`/repos/${owner}/${repo}`, token);
         if (res.error?.includes("timed out")) { this.internalMetrics.timeouts++; return fail("Request timed out", "timeout", start, eid, logs, operation); }
         if (res.status === 404) return fail(`Repository "${owner}/${repo}" not found`, "external", start, eid, logs, operation);
         if (res.status === 401) { this.internalMetrics.authFailures++; return fail("Token invalid (401)", "auth", start, eid, logs, operation); }
         if (!res.ok) { this.internalMetrics.externalFailures++; return fail(`GitHub API ${res.status}`, "external", start, eid, logs, operation); }
-
         const vObj = requireObject(res.data, "repo response");
         if (!vObj.valid) { this.internalMetrics.invalidResponses++; return fail(vObj.reason, "validation", start, eid, logs, operation); }
         const r = res.data as Record<string, unknown>;
-        const vName = requireField(r, "name", "string");
-        if (!vName.valid) { this.internalMetrics.invalidResponses++; return fail(vName.reason, "validation", start, eid, logs, operation); }
-
-        logs.push(makeLog("info", `[${operation}] Validation OK — ${r.full_name}`));
-        return ok({
-          id: r.id, name: r.name, full_name: r.full_name,
-          description: r.description, private: r.private,
-          language: r.language, default_branch: r.default_branch,
-          stargazers_count: r.stargazers_count, forks_count: r.forks_count,
-          open_issues_count: r.open_issues_count, updated_at: r.updated_at,
-        }, start, eid, logs, operation);
+        return ok({ id: r.id, name: r.name, full_name: r.full_name, description: r.description, private: r.private, language: r.language, default_branch: r.default_branch, stargazers_count: r.stargazers_count, forks_count: r.forks_count, open_issues_count: r.open_issues_count, updated_at: r.updated_at }, start, eid, logs, operation);
       }
 
-      // ── repos.branches ────────────────────────────────────────────────────
       case "repos.branches": {
         const owner = typeof payload.owner === "string" ? payload.owner : null;
         const repo  = typeof payload.repo === "string" ? payload.repo : null;
-        if (!owner || !repo) return fail(`payload.owner and payload.repo are required`, "validation", start, eid, logs, operation);
-
-        const res = await githubFetch(`/repos/${owner}/${repo}/branches?per_page=30`, token!);
-        logs.push(makeLog("info", `[${operation}] responseTime=${res.responseTimeMs}ms status=${res.status}`));
+        if (!owner || !repo) return fail("payload.owner and payload.repo are required", "validation", start, eid, logs, operation);
+        const res = await githubFetch(`/repos/${owner}/${repo}/branches?per_page=30`, token);
         if (res.error?.includes("timed out")) { this.internalMetrics.timeouts++; return fail("Request timed out", "timeout", start, eid, logs, operation); }
         if (res.status === 404) return fail(`Repository "${owner}/${repo}" not found`, "external", start, eid, logs, operation);
         if (res.status === 401) { this.internalMetrics.authFailures++; return fail("Token invalid (401)", "auth", start, eid, logs, operation); }
         if (!res.ok) { this.internalMetrics.externalFailures++; return fail(`GitHub API ${res.status}`, "external", start, eid, logs, operation); }
-
         const vArr = requireArray(res.data, "branches response");
         if (!vArr.valid) { this.internalMetrics.invalidResponses++; return fail(vArr.reason, "validation", start, eid, logs, operation); }
-
         const branches = res.data as Record<string, unknown>[];
-        logs.push(makeLog("info", `[${operation}] Validation OK — ${branches.length} branches`));
-        return ok({
-          count: branches.length,
-          items: branches.map(b => ({
-            name: b.name,
-            protected: b.protected,
-            sha: (b.commit as any)?.sha,
-          })),
-        }, start, eid, logs, operation);
+        return ok({ count: branches.length, items: branches.map(b => ({ name: b.name, protected: b.protected, sha: (b.commit as any)?.sha })) }, start, eid, logs, operation);
       }
 
       default:

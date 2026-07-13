@@ -1,4 +1,4 @@
-// Connector Runtime — Types
+// Connector Runtime — Types — EF-35 Extended
 // Foundation v1.0 · Engineering First
 
 export type ConnectorStatus = "unregistered" | "registered" | "loading" | "ready" | "executing" | "error" | "shutdown";
@@ -23,12 +23,12 @@ export type ConnectorResultStatus =
   | "FAILED"
   | "DENIED"
   | "TIMEOUT"
-  | "CANCELLED";
+  | "CANCELLED"
+  | "NOT_CONFIGURED"
+  | "NOT_SUPPORTED";
 
 export interface ConnectorResult<T = unknown> {
-  /** Indicador oficial do resultado — use status para logica, success para compatibilidade */
   status: ConnectorResultStatus;
-  /** Mantido para compatibilidade com componentes existentes */
   success: boolean;
   data?: T;
   error?: string;
@@ -64,15 +64,38 @@ export interface ConnectorHealthReport {
   details?: string;
 }
 
-// ── Metrics ───────────────────────────────────────────────────────────────────
+// ── Validation Diagnostics (EF-35) ────────────────────────────────────────────
+
+export interface ConnectorValidationResult {
+  valid: boolean;
+  checks: ConnectorValidationCheck[];
+  summary: string;
+}
+
+export interface ConnectorValidationCheck {
+  name: string;
+  passed: boolean;
+  detail: string;
+}
+
+// ── Metrics (EF-35 Extended) ─────────────────────────────────────────────────
 
 export interface ConnectorMetrics {
   connectorId: string;
   totalExecutions: number;
   totalFailures: number;
+  totalDenied: number;
+  totalTimeouts: number;
+  totalSuccesses: number;
   avgDurationMs: number;
+  p95DurationMs: number;
   lastExecutedAt: number | null;
+  lastSuccessAt: number | null;
+  lastFailureAt: number | null;
+  lastError: string | null;
   loadTimeMs: number | null;
+  uptimeSince: number | null;
+  healthHistory: ConnectorHealthStatus[];
 }
 
 // ── Execution Log ─────────────────────────────────────────────────────────────
@@ -84,7 +107,7 @@ export interface ExecutionRecord {
   startTime: number;
   endTime: number;
   duration: number;
-  status: "success" | "failure";
+  status: "success" | "failure" | "denied" | "timeout";
   error?: string;
 }
 
@@ -97,4 +120,11 @@ export function makeExecutionId(): string {
 
 export function makeLog(level: ConnectorLog["level"], message: string): ConnectorLog {
   return { timestamp: Date.now(), level, message };
+}
+
+export function calcP95(durations: number[]): number {
+  if (durations.length === 0) return 0;
+  const sorted = [...durations].sort((a, b) => a - b);
+  const idx = Math.ceil(sorted.length * 0.95) - 1;
+  return sorted[Math.max(0, idx)];
 }

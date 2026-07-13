@@ -1,7 +1,6 @@
 /**
- * ConnectorRuntimeValidationPage.jsx
- * Connector Runtime — End-to-End Validation Dashboard
- * Validates: Goal Runtime → Planner → Capability Runtime → Connector Runtime → Base44 + GitHub
+ * ConnectorRuntimeValidationPage — EF-35 Production Validation Dashboard
+ * Real validation only — no mocks, no simulations
  * 2026-07-13 · Engineering First
  */
 import React, { useState, useCallback } from 'react';
@@ -24,12 +23,21 @@ function Metric({ label, value, color = 'text-zinc-200' }) {
 
 function StatusDot({ status }) {
   const map = {
-    healthy: 'bg-emerald-500', ready: 'bg-emerald-500',
-    degraded: 'bg-amber-500',
-    unhealthy: 'bg-red-500', error: 'bg-red-500',
+    healthy: 'bg-emerald-500', ready: 'bg-emerald-500', AUTHORIZED: 'bg-emerald-500',
+    degraded: 'bg-amber-500', DEGRADED: 'bg-amber-500',
+    unhealthy: 'bg-red-500', error: 'bg-red-500', UNAUTHORIZED: 'bg-red-500',
     unknown: 'bg-zinc-500', registered: 'bg-blue-500',
   };
   return <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${map[status] ?? 'bg-zinc-600'}`} />;
+}
+
+function ReportStatusBadge({ status }) {
+  const styles = {
+    PASS: 'bg-emerald-900/50 text-emerald-300 border-emerald-700',
+    WARNING: 'bg-amber-900/50 text-amber-300 border-amber-700',
+    FAIL: 'bg-red-900/50 text-red-300 border-red-700',
+  };
+  return <Badge label={status} style={styles[status] ?? styles.FAIL} />;
 }
 
 function TestRow({ r }) {
@@ -57,9 +65,10 @@ function TestRow({ r }) {
 }
 
 const TABS = [
-  { id: 'report', label: 'Validation Report' },
+  { id: 'report', label: 'Report' },
   { id: 'registry', label: 'Registry' },
   { id: 'diagnostics', label: 'Diagnostics' },
+  { id: 'policy', label: 'Policy' },
   { id: 'logs', label: 'Logs' },
   { id: 'tests', label: 'Tests' },
 ];
@@ -70,6 +79,50 @@ const STATUS_STYLE = {
   unhealthy: 'text-red-400', error: 'text-red-400',
   unknown: 'text-zinc-500',
 };
+
+function GroupSummary({ results }) {
+  const byGroup = {};
+  for (const r of results) {
+    if (!byGroup[r.group]) byGroup[r.group] = { passed: 0, total: 0 };
+    byGroup[r.group].total++;
+    if (r.passed) byGroup[r.group].passed++;
+  }
+  return (
+    <div className="space-y-1.5">
+      {Object.entries(byGroup).map(([g, v]) => {
+        const ok = v.passed === v.total;
+        return (
+          <div key={g} className={`flex items-center gap-3 px-3 py-2 rounded-lg border ${ok ? 'border-zinc-800 bg-zinc-900' : 'border-red-900/50 bg-red-950/10'}`}>
+            <Badge label={ok ? 'PASS' : 'FAIL'}
+              style={ok ? 'bg-emerald-900/50 text-emerald-300 border-emerald-700' : 'bg-red-900/50 text-red-300 border-red-700'} />
+            <span className="text-zinc-300 text-xs font-mono flex-1">{g}</span>
+            <span className={`text-xs font-bold font-mono ${ok ? 'text-emerald-400' : 'text-red-400'}`}>{v.passed}/{v.total}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ValidationSection({ checks }) {
+  return (
+    <div className="space-y-2">
+      {checks.map((c, i) => (
+        <div key={i} className={`flex items-start gap-3 px-4 py-3 rounded-lg border ${
+          c.status === 'PASS' ? 'border-zinc-800 bg-zinc-900/60' :
+          c.status === 'WARNING' ? 'border-amber-900/40 bg-amber-950/10' :
+          'border-red-900/40 bg-red-950/10'
+        }`}>
+          <ReportStatusBadge status={c.status} />
+          <div className="flex-1 min-w-0">
+            <p className="text-zinc-200 text-sm font-semibold">{c.label}</p>
+            <p className="text-zinc-500 text-xs mt-0.5 font-mono">{c.detail}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function ConnectorRuntimeValidationPage() {
   const [running, setRunning] = useState(false);
@@ -95,44 +148,6 @@ export default function ConnectorRuntimeValidationPage() {
   const allPass = data && data.passed === data.total;
   const filtered = showFailed ? (data?.results.filter(r => !r.passed) ?? []) : (data?.results ?? []);
 
-  const PIPELINE_FLOW = [
-    { label: 'Goal Runtime', color: 'text-violet-400' },
-    { label: '↓', color: 'text-zinc-600' },
-    { label: 'Planner', color: 'text-indigo-400' },
-    { label: '↓', color: 'text-zinc-600' },
-    { label: 'Capability Runtime', color: 'text-blue-400' },
-    { label: '↓', color: 'text-zinc-600' },
-    { label: 'Connector Runtime', color: 'text-cyan-400' },
-    { label: '↓', color: 'text-zinc-600' },
-    { label: 'Base44', color: 'text-teal-400' },
-    { label: '|', color: 'text-zinc-600' },
-    { label: 'GitHub', color: 'text-green-400' },
-  ];
-
-  function GroupSummary({ results }) {
-    const byGroup = {};
-    for (const r of results) {
-      if (!byGroup[r.group]) byGroup[r.group] = { passed: 0, total: 0 };
-      byGroup[r.group].total++;
-      if (r.passed) byGroup[r.group].passed++;
-    }
-    return (
-      <div className="space-y-1.5">
-        {Object.entries(byGroup).map(([g, v]) => {
-          const ok = v.passed === v.total;
-          return (
-            <div key={g} className={`flex items-center gap-3 px-3 py-2 rounded-lg border ${ok ? 'border-zinc-800 bg-zinc-900' : 'border-red-900/50 bg-red-950/10'}`}>
-              <Badge label={ok ? 'PASS' : 'FAIL'}
-                style={ok ? 'bg-emerald-900/50 text-emerald-300 border-emerald-700' : 'bg-red-900/50 text-red-300 border-red-700'} />
-              <span className="text-zinc-300 text-xs font-mono flex-1">{g}</span>
-              <span className={`text-xs font-bold font-mono ${ok ? 'text-emerald-400' : 'text-red-400'}`}>{v.passed}/{v.total}</span>
-            </div>
-          );
-        })}
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-zinc-950 text-white p-4 md:p-6">
       <div className="max-w-4xl mx-auto space-y-4">
@@ -144,26 +159,19 @@ export default function ConnectorRuntimeValidationPage() {
               <div className="flex flex-wrap gap-2 mb-2 text-xs font-mono">
                 <span className="text-cyan-400">Connector Runtime</span>
                 <span className="text-zinc-600">·</span>
-                <span className="text-zinc-400">Validation Pipeline</span>
+                <span className="text-zinc-400">EF-35 Production Validation</span>
                 <span className="text-zinc-600">·</span>
                 <span className="text-blue-400">Engineering First · 2026-07-13</span>
               </div>
-              <h1 className="text-lg font-bold text-white">Connector Runtime — End-to-End Validation</h1>
+              <h1 className="text-lg font-bold text-white">Connector Runtime — Production Hardening</h1>
               <p className="text-zinc-400 text-sm mt-0.5">
-                Discovery · Registry · Health · Diagnostics · Base44 · GitHub · Routing · Logs
+                Real validation only · Policy Engine v2 · Connector Validation · Strengthened Assertions · Extended Metrics
               </p>
             </div>
             <button onClick={handleRun} disabled={running}
               className="px-4 py-2 bg-cyan-700 hover:bg-cyan-600 disabled:opacity-50 rounded-lg text-sm font-semibold transition-colors shrink-0">
-              {running ? 'Validating...' : 'Run Validation'}
+              {running ? 'Validating...' : 'Run EF-35 Validation'}
             </button>
-          </div>
-
-          {/* Pipeline flow */}
-          <div className="mt-3 flex flex-wrap items-center gap-1">
-            {PIPELINE_FLOW.map((n, i) => (
-              <span key={i} className={`text-xs font-mono ${n.color}`}>{n.label}</span>
-            ))}
           </div>
 
           {data && (
@@ -171,7 +179,7 @@ export default function ConnectorRuntimeValidationPage() {
               <Metric label="Passed" value={data.passed} color="text-emerald-400" />
               <Metric label="Failed" value={data.total - data.passed} color={(data.total - data.passed) > 0 ? 'text-red-400' : 'text-zinc-600'} />
               <Metric label="Total" value={data.total} />
-              <Metric label="Success" value={`${passRate}%`} color={allPass ? 'text-emerald-400' : 'text-amber-400'} />
+              <Metric label="Rate" value={`${passRate}%`} color={allPass ? 'text-emerald-400' : 'text-amber-400'} />
               <Metric label="Time" value={`${data.totalMs}ms`} color="text-cyan-400" />
             </div>
           )}
@@ -180,9 +188,9 @@ export default function ConnectorRuntimeValidationPage() {
         {running && (
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 text-center">
             <div className="w-7 h-7 border-4 border-zinc-700 border-t-cyan-500 rounded-full animate-spin mx-auto mb-3" />
-            <p className="text-zinc-400 text-sm">Running validation pipeline...</p>
+            <p className="text-zinc-400 text-sm">Running EF-35 production validation...</p>
             <p className="text-zinc-600 text-xs mt-1">
-              Discovering connectors → Registering → Health checks → Base44 → GitHub → Dynamic routing → Integration tests
+              Policy Engine v2 · Connector Validation · Strengthened tests · Real Base44 SDK + GitHub API
             </p>
           </div>
         )}
@@ -197,34 +205,34 @@ export default function ConnectorRuntimeValidationPage() {
         {data && !running && (
           <>
             {/* Tabs */}
-            <div className="flex gap-1 bg-zinc-900 border border-zinc-800 rounded-xl p-1">
+            <div className="flex gap-1 bg-zinc-900 border border-zinc-800 rounded-xl p-1 overflow-x-auto">
               {TABS.map(t => (
                 <button key={t.id} onClick={() => setActiveTab(t.id)}
-                  className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors ${activeTab === t.id ? 'bg-cyan-700 text-white' : 'text-zinc-400 hover:text-white'}`}>
+                  className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap ${activeTab === t.id ? 'bg-cyan-700 text-white' : 'text-zinc-400 hover:text-white'}`}>
                   {t.label}
                 </button>
               ))}
             </div>
 
-            {/* ── Validation Report tab ──────────────────────────────────────── */}
+            {/* ── Report tab ─────────────────────────────────────────────────── */}
             {activeTab === 'report' && (
-              <div className="space-y-3">
-                {/* Overall checks */}
+              <div className="space-y-4">
+                {/* Operational checks */}
                 <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-                  <p className="text-zinc-400 text-xs uppercase tracking-wider mb-3">Validation Checks</p>
+                  <p className="text-zinc-400 text-xs uppercase tracking-wider mb-3">Operational Status</p>
                   <div className="space-y-2">
                     {[
-                      { key: 'runtimeOperational', label: 'Connector Runtime operational' },
-                      { key: 'base44Operational', label: 'Base44 Connector operational' },
-                      { key: 'githubOperational', label: 'GitHub Connector operational' },
-                      { key: 'registryOperational', label: 'Connector Registry operational' },
-                      { key: 'dynamicRoutingOperational', label: 'Dynamic routing operational' },
+                      { key: 'runtimeOperational', label: 'Connector Runtime' },
+                      { key: 'base44Operational', label: 'Base44 Connector' },
+                      { key: 'githubOperational', label: 'GitHub Connector' },
+                      { key: 'registryOperational', label: 'Connector Registry' },
+                      { key: 'dynamicRoutingOperational', label: 'Dynamic Routing' },
                     ].map(c => (
                       <div key={c.key} className="flex items-center gap-3">
                         <span className={`text-sm ${data.checks[c.key] ? 'text-emerald-400' : 'text-red-400'}`}>
                           {data.checks[c.key] ? '✓' : '✗'}
                         </span>
-                        <span className="text-zinc-300 text-sm">{c.label}</span>
+                        <span className="text-zinc-300 text-sm flex-1">{c.label}</span>
                         <Badge label={data.checks[c.key] ? 'OPERATIONAL' : 'DEGRADED'}
                           style={data.checks[c.key]
                             ? 'bg-emerald-900/50 text-emerald-300 border-emerald-700'
@@ -234,7 +242,19 @@ export default function ConnectorRuntimeValidationPage() {
                   </div>
                 </div>
 
-                <GroupSummary results={data.results} />
+                {/* Production Readiness Report */}
+                {data.reportItems && (
+                  <div className="space-y-2">
+                    <p className="text-zinc-400 text-xs uppercase tracking-wider px-1">Production Readiness Report</p>
+                    <ValidationSection checks={data.reportItems} />
+                  </div>
+                )}
+
+                {/* Group summary */}
+                <div>
+                  <p className="text-zinc-500 text-xs uppercase tracking-wider mb-2 px-1">Test Groups</p>
+                  <GroupSummary results={data.results} />
+                </div>
 
                 {/* Final verdict */}
                 <div className={`rounded-xl border-2 p-4 ${allPass ? 'bg-cyan-950/30 border-cyan-600' : 'bg-amber-950/20 border-amber-700'}`}>
@@ -242,18 +262,16 @@ export default function ConnectorRuntimeValidationPage() {
                     {allPass ? '✅ ALL VALIDATIONS PASSED' : `⚠ ${data.total - data.passed} TEST(S) FAILED`}
                   </p>
                   <p className="text-zinc-400 text-xs mt-1">
-                    {data.passed}/{data.total} tests passed · {data.totalMs}ms total · {new Date(data.runAt).toISOString().slice(0, 19).replace('T', ' ')}
+                    {data.passed}/{data.total} tests passed · {data.totalMs}ms · {new Date(data.runAt).toISOString().slice(0, 19).replace('T', ' ')}
                   </p>
                 </div>
               </div>
             )}
 
-            {/* ── Registry tab ───────────────────────────────────────────────── */}
+            {/* ── Registry tab ──────────────────────────────────────────────── */}
             {activeTab === 'registry' && (
               <div className="space-y-3">
-                <p className="text-zinc-500 text-xs uppercase tracking-wider">
-                  {data.registry.length} connectors registered
-                </p>
+                <p className="text-zinc-500 text-xs uppercase tracking-wider">{data.registry.length} connectors registered</p>
                 {data.registry.map(e => (
                   <div key={e.connectorId} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
                     <div className="flex items-start gap-3 mb-3">
@@ -271,11 +289,37 @@ export default function ConnectorRuntimeValidationPage() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-2 mb-3">
+                    <div className="grid grid-cols-4 gap-2 mb-3">
                       <Metric label="Executions" value={e.totalExecutions} />
-                      <Metric label="Failures" value={e.totalFailures} color={e.totalFailures > 0 ? 'text-red-400' : 'text-zinc-400'} />
-                      <Metric label="Avg Latency" value={e.latencyMs !== null ? `${e.latencyMs}ms` : '—'} color="text-cyan-400" />
+                      <Metric label="Success" value={e.totalSuccesses ?? '—'} color="text-emerald-400" />
+                      <Metric label="Failed" value={e.totalFailures} color={e.totalFailures > 0 ? 'text-red-400' : 'text-zinc-500'} />
+                      <Metric label="Denied" value={e.totalDenied ?? 0} color={(e.totalDenied ?? 0) > 0 ? 'text-amber-400' : 'text-zinc-500'} />
                     </div>
+                    <div className="grid grid-cols-3 gap-2 mb-3">
+                      <Metric label="Avg Latency" value={e.latencyMs !== null ? `${e.latencyMs}ms` : '—'} color="text-cyan-400" />
+                      <Metric label="P95 Latency" value={e.p95DurationMs ? `${e.p95DurationMs}ms` : '—'} color="text-blue-400" />
+                      <Metric label="Load Time" value={e.loadTimeMs !== null ? `${e.loadTimeMs}ms` : '—'} />
+                    </div>
+
+                    {/* Validation results */}
+                    {e.validation && (
+                      <div className="mb-3 p-3 rounded-lg bg-zinc-800/60 border border-zinc-700">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Badge label={e.validation.valid ? 'VALID' : 'INVALID'}
+                            style={e.validation.valid ? 'bg-emerald-900/50 text-emerald-300 border-emerald-700' : 'bg-red-900/50 text-red-300 border-red-700'} />
+                          <span className="text-zinc-400 text-xs font-mono">{e.validation.summary}</span>
+                        </div>
+                        <div className="space-y-1">
+                          {e.validation.checks.map((c, i) => (
+                            <div key={i} className="flex items-start gap-2 text-xs">
+                              <span className={c.passed ? 'text-emerald-400' : 'text-red-400'}>{c.passed ? '✓' : '✗'}</span>
+                              <span className="text-zinc-400 font-semibold">{c.name}</span>
+                              <span className="text-zinc-600 truncate">{c.detail}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     <div>
                       <p className="text-zinc-600 text-xs uppercase tracking-wider mb-1">Capabilities ({e.capabilities.length})</p>
@@ -290,6 +334,7 @@ export default function ConnectorRuntimeValidationPage() {
                       <div className="mt-2 text-xs text-zinc-600 font-mono">
                         Health: <span className={STATUS_STYLE[e.healthStatus] ?? 'text-zinc-400'}>{e.healthStatus}</span>
                         {' · '}{e.healthDetails}
+                        {e.lastError && <span className="text-red-500 ml-2">· Last error: {e.lastError.slice(0, 80)}</span>}
                       </div>
                     )}
                   </div>
@@ -297,74 +342,120 @@ export default function ConnectorRuntimeValidationPage() {
               </div>
             )}
 
-            {/* ── Diagnostics tab ─────────────────────────────────────────────── */}
+            {/* ── Diagnostics tab ──────────────────────────────────────────── */}
             {activeTab === 'diagnostics' && (
               <div className="space-y-3">
-                <p className="text-zinc-500 text-xs uppercase tracking-wider mb-1">Runtime Diagnostics</p>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="text-zinc-500 border-b border-zinc-800">
-                        <th className="text-left py-2 px-3 font-medium">Connector</th>
-                        <th className="text-left py-2 px-3 font-medium">Status</th>
-                        <th className="text-left py-2 px-3 font-medium">Latency</th>
-                        <th className="text-left py-2 px-3 font-medium">Last Health Check</th>
-                        <th className="text-left py-2 px-3 font-medium">Details</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.diagnostics.map(d => (
-                        <tr key={d.connectorId} className="border-b border-zinc-900 hover:bg-zinc-900/50">
-                          <td className="py-2 px-3">
-                            <div className="flex items-center gap-2">
-                              <StatusDot status={d.status} />
-                              <span className="text-zinc-200 font-mono">{d.name}</span>
-                            </div>
-                          </td>
-                          <td className="py-2 px-3">
-                            <span className={`font-mono font-bold ${STATUS_STYLE[d.status] ?? 'text-zinc-500'}`}>{d.status}</span>
-                          </td>
-                          <td className="py-2 px-3">
-                            <span className="text-cyan-400 font-mono">{d.latencyMs !== null ? `${d.latencyMs}ms` : '—'}</span>
-                          </td>
-                          <td className="py-2 px-3 text-zinc-600 font-mono">
-                            {d.lastHealthCheckAt ? new Date(d.lastHealthCheckAt).toISOString().slice(11, 23) : '—'}
-                          </td>
-                          <td className="py-2 px-3 text-zinc-500 max-w-xs truncate">{d.healthDetails || '—'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <p className="text-zinc-500 text-xs uppercase tracking-wider mb-1">Runtime Diagnostics — EF-35 Extended</p>
+                {data.diagnostics.map(d => (
+                  <div key={d.connectorId} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+                    <div className="flex items-center gap-3 mb-3 flex-wrap">
+                      <StatusDot status={d.status} />
+                      <span className="text-zinc-100 font-semibold">{d.name}</span>
+                      <Badge label={`v${d.version}`} style="bg-zinc-800 text-zinc-400 border-zinc-700" />
+                      <Badge label={d.authorizationStatus}
+                        style={d.authorizationStatus === 'AUTHORIZED' ? 'bg-emerald-900/50 text-emerald-300 border-emerald-700'
+                          : 'bg-red-900/50 text-red-300 border-red-700'} />
+                      <span className="text-zinc-600 font-mono text-xs">provider: {d.provider}</span>
+                    </div>
 
-                <div className="space-y-3 mt-2">
-                  {data.diagnostics.map(d => (
-                    <div key={d.connectorId} className="bg-zinc-900 border border-zinc-800 rounded-xl p-3">
-                      <div className="flex items-center gap-2 mb-2">
-                        <StatusDot status={d.status} />
-                        <span className="text-zinc-200 font-semibold text-sm">{d.name}</span>
-                        <span className="text-zinc-600 font-mono text-xs">— {d.connectorId}</span>
+                    <div className="grid grid-cols-3 gap-2 mb-3">
+                      <Metric label="Health" value={d.status} color={d.status === 'healthy' ? 'text-emerald-400' : d.status === 'degraded' ? 'text-amber-400' : 'text-red-400'} />
+                      <Metric label="Avg Latency" value={d.latencyMs !== null ? `${d.latencyMs}ms` : '—'} color="text-cyan-400" />
+                      <Metric label="P95 Latency" value={d.p95DurationMs ? `${d.p95DurationMs}ms` : '—'} color="text-blue-400" />
+                    </div>
+
+                    {d.metrics && (
+                      <div className="grid grid-cols-4 gap-2 mb-3">
+                        <Metric label="Executions" value={d.metrics.totalExecutions} />
+                        <Metric label="Successes" value={d.metrics.totalSuccesses} color="text-emerald-400" />
+                        <Metric label="Failures" value={d.metrics.totalFailures} color={d.metrics.totalFailures > 0 ? 'text-red-400' : 'text-zinc-500'} />
+                        <Metric label="Denied" value={d.metrics.totalDenied} color={d.metrics.totalDenied > 0 ? 'text-amber-400' : 'text-zinc-500'} />
                       </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-3 mb-3 text-xs text-zinc-500 font-mono">
+                      <div>Last Success: {d.metrics?.lastSuccessAt ? new Date(d.metrics.lastSuccessAt).toISOString().slice(11, 23) : '—'}</div>
+                      <div>Last Failure: {d.metrics?.lastFailureAt ? new Date(d.metrics.lastFailureAt).toISOString().slice(11, 23) : '—'}</div>
+                      <div>Last Health: {d.lastHealthCheckAt ? new Date(d.lastHealthCheckAt).toISOString().slice(11, 23) : '—'}</div>
+                      <div>Session: {d.currentSession}</div>
+                    </div>
+
+                    {d.metrics?.lastError && (
+                      <div className="text-xs text-red-400 font-mono mb-2">Last Error: {d.metrics.lastError.slice(0, 120)}</div>
+                    )}
+
+                    {d.metrics?.healthHistory && d.metrics.healthHistory.length > 0 && (
+                      <div className="mb-2">
+                        <p className="text-zinc-600 text-xs uppercase tracking-wider mb-1">Health History ({d.metrics.healthHistory.length})</p>
+                        <div className="flex flex-wrap gap-1">
+                          {d.metrics.healthHistory.map((h, i) => (
+                            <span key={i} className={`text-xs rounded px-1 py-0.5 font-mono ${
+                              h === 'healthy' ? 'bg-emerald-900/40 text-emerald-400' :
+                              h === 'degraded' ? 'bg-amber-900/40 text-amber-400' :
+                              'bg-red-900/40 text-red-400'}`}>{h}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {d.validation && (
+                      <div className="p-2 rounded-lg bg-zinc-800/60 border border-zinc-700 mb-2">
+                        <Badge label={d.validation.valid ? 'VALID' : 'INVALID'}
+                          style={d.validation.valid ? 'bg-emerald-900/50 text-emerald-300 border-emerald-700' : 'bg-red-900/50 text-red-300 border-red-700'} />
+                        <span className="text-zinc-500 text-xs font-mono ml-2">{d.validation.summary}</span>
+                      </div>
+                    )}
+
+                    {d.healthDetails && (
+                      <div className="text-xs text-zinc-600 font-mono">Health: {d.healthDetails}</div>
+                    )}
+
+                    <div className="mt-2">
+                      <p className="text-zinc-600 text-xs uppercase tracking-wider mb-1">Capabilities</p>
                       <div className="flex flex-wrap gap-1">
                         {d.capabilities.map(c => (
                           <span key={c} className="text-xs bg-zinc-800 text-zinc-400 rounded px-1.5 py-0.5 font-mono">{c}</span>
                         ))}
                       </div>
-                      {d.metrics && (
-                        <div className="mt-2 grid grid-cols-4 gap-1.5">
-                          <Metric label="Executions" value={d.metrics.totalExecutions} />
-                          <Metric label="Failures" value={d.metrics.totalFailures} />
-                          <Metric label="Avg ms" value={d.metrics.avgDurationMs} color="text-cyan-400" />
-                          <Metric label="Load ms" value={d.metrics.loadTimeMs ?? '—'} />
-                        </div>
-                      )}
                     </div>
-                  ))}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* ── Policy tab ────────────────────────────────────────────────── */}
+            {activeTab === 'policy' && (
+              <div className="space-y-3">
+                <p className="text-zinc-500 text-xs uppercase tracking-wider">Policy Engine v2.0.0 — Decision Log</p>
+                <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+                  <div className="px-4 py-2.5 border-b border-zinc-800 flex items-center gap-3">
+                    <span className="text-sm font-semibold text-zinc-200">Authorization Decisions</span>
+                    <span className="text-xs text-zinc-500 font-mono ml-auto">{data.policyDecisionLog?.length ?? 0} decisions</span>
+                  </div>
+                  <div className="max-h-[60vh] overflow-y-auto">
+                    {(data.policyDecisionLog ?? []).map((d, i) => (
+                      <div key={i} className={`flex items-start gap-3 px-4 py-2 border-b border-zinc-800/60 text-xs ${!d.allow ? 'bg-red-950/10' : ''}`}>
+                        <Badge label={d.allow ? 'ALLOW' : 'DENY'}
+                          style={d.allow ? 'bg-emerald-900/50 text-emerald-300 border-emerald-700' : 'bg-red-900/50 text-red-300 border-red-700'} />
+                        <div className="flex-1 min-w-0">
+                          <span className="text-cyan-400 font-mono">{d.connectorId}</span>
+                          <span className="text-zinc-600 mx-1">·</span>
+                          <span className="text-zinc-300 font-mono">{d.operation}</span>
+                          <span className="text-zinc-600 mx-1">·</span>
+                          <span className="text-zinc-500">{d.reason}</span>
+                        </div>
+                        <span className="text-zinc-700 font-mono shrink-0">{d.ruleId}</span>
+                      </div>
+                    ))}
+                    {(!data.policyDecisionLog || data.policyDecisionLog.length === 0) && (
+                      <p className="text-zinc-600 text-center py-8 text-sm">No policy decisions recorded</p>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
 
-            {/* ── Logs tab ────────────────────────────────────────────────────── */}
+            {/* ── Logs tab ──────────────────────────────────────────────────── */}
             {activeTab === 'logs' && (
               <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
                 <div className="px-4 py-2.5 border-b border-zinc-800 flex items-center gap-3">
@@ -385,15 +476,14 @@ export default function ConnectorRuntimeValidationPage() {
                     <tbody>
                       {data.logs.map(l => (
                         <tr key={l.id} className="border-b border-zinc-900 hover:bg-zinc-800/30">
-                          <td className="py-1.5 px-3 text-zinc-600 font-mono">
-                            {new Date(l.timestamp).toISOString().slice(11, 23)}
-                          </td>
+                          <td className="py-1.5 px-3 text-zinc-600 font-mono">{new Date(l.timestamp).toISOString().slice(11, 23)}</td>
                           <td className="py-1.5 px-3 text-zinc-300 font-mono">{l.connectorName}</td>
                           <td className="py-1.5 px-3 text-cyan-400 font-mono">{l.action}</td>
                           <td className="py-1.5 px-3">
                             <Badge label={l.result}
                               style={l.result === 'SUCCESS' ? 'bg-emerald-900/50 text-emerald-300 border-emerald-700'
                                 : l.result === 'DENIED' ? 'bg-amber-900/50 text-amber-300 border-amber-700'
+                                : l.result === 'NOT_CONFIGURED' ? 'bg-zinc-800 text-zinc-400 border-zinc-700'
                                 : 'bg-red-900/50 text-red-300 border-red-700'} />
                           </td>
                           <td className="py-1.5 px-3 text-right text-zinc-500 font-mono">{l.executionTimeMs}ms</td>
@@ -408,7 +498,7 @@ export default function ConnectorRuntimeValidationPage() {
               </div>
             )}
 
-            {/* ── Tests tab ───────────────────────────────────────────────────── */}
+            {/* ── Tests tab ─────────────────────────────────────────────────── */}
             {activeTab === 'tests' && (
               <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
                 <div className="flex items-center gap-3 px-4 py-2.5 border-b border-zinc-800">
@@ -434,12 +524,12 @@ export default function ConnectorRuntimeValidationPage() {
 
         {!data && !running && !err && (
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-8 text-center">
-            <p className="text-zinc-400 text-sm font-medium mb-1">Connector Runtime Validation Pipeline</p>
+            <p className="text-zinc-400 text-sm font-medium mb-1">EF-35 — Production Validation Pipeline</p>
             <p className="text-zinc-600 text-xs">
-              Discovery → Registry → Health Checks → Base44 → GitHub → Dynamic Routing → Integration Tests → Validation Report
+              Policy Engine v2 · Real Connector Validation · Strengthened Assertions · Extended Metrics
             </p>
             <p className="text-zinc-700 text-xs mt-2">
-              10 groups · ~40 tests · Real Base44 SDK + GitHub API
+              10 groups · ~50 tests · Real Base44 SDK · GitHub API (requires token for full validation)
             </p>
           </div>
         )}
