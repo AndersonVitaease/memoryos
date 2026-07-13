@@ -13,6 +13,8 @@ export type { Base44TestResult } from "./base44ConnectorTests";
 export { runBase44HardeningTests, summarizeHardeningMetrics } from "./base44HardeningTests";
 export type { HardeningTestResult } from "./base44HardeningTests";
 export { runGitHubConnectorTests, runGitHubHardeningTests } from "./githubConnectorTests";
+export { ConnectorRuntimePipeline } from "./ConnectorRuntimePipeline";
+export type { PipelineValidationReport, RegistryEntry, ConnectorDiagnostic, ConnectorLogEntry, PipelineTestResult } from "./ConnectorRuntimePipeline";
 export type { GitHubTestResult, GitHubHardeningResult } from "./githubConnectorTests";
 export type { IConnector }    from "./IConnector";
 export type {
