@@ -79,6 +79,7 @@ const navItems = [
   { label: "Beta-01.1 — Connector Standard",  icon: ShieldCheck, path: "/beta011" },
   { label: "Beta-02 — Base44 Connector",      icon: Award,       path: "/beta02" },
   { label: "Beta-03 — Connector SDK v1.0",    icon: Blocks,      path: "/beta03" },
+  { label: "Beta-03.1 — Dev Loop Cert",        icon: Workflow,    path: "/beta031" },
 ];
 
 export default function Sidebar({ onNavigate }) {
