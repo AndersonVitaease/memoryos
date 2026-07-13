@@ -91,6 +91,7 @@ const navItems = [
   { label: "Phase 5.4 — Live Cognitive Pipeline", icon: Workflow,    path: "/phase54" },
   { label: "Phase 5.5 — Conversational Cognitive", icon: MessageSquare, path: "/phase55" },
   { label: "Phase 5.6 — Primary Routing",          icon: Route,         path: "/phase56" },
+  { label: "Phase 5.6.1 — Response Binding",       icon: ShieldCheck,   path: "/phase561" },
 ];
 
 export default function Sidebar({ onNavigate }) {

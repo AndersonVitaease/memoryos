@@ -8,6 +8,7 @@ import { ingestKnowledge, ACCEPT_MAP } from "@/lib/knowledgeIngestionPipeline";
 import { runReasoningPlan } from "@/lib/reasoning/memoryReasoningPlanner";
 import { CognitivePipelineAdapter } from "@/lib/cognitive-pipeline-adapter/CognitivePipelineAdapter";
 import { primaryRouter } from "@/lib/primary-conversation-router/PrimaryConversationRouter";
+import { responseTracer } from "@/lib/response-binding/ResponseBindingTracer";
 import VoiceButton from "@/components/chat/VoiceButton";
 import VoiceMode from "@/components/chat/VoiceMode";
 import AttachmentMenu from "@/components/chat/AttachmentMenu";
@@ -84,31 +85,40 @@ export default function ChatPage() {
     const historyMessages = [...messages, savedUserMsg].slice(-30);
     setPhase?.("retrieving");
 
+    // === RESPONSE BINDING TRACER (Phase 5.6.1) ===
+    const traceId = responseTracer.beginTrace(userMsg, session.id);
+
     const routerResult = await primaryRouter.route(
       userMsg,
       session.id,
       session.project_id ?? null,
       historyMessages.length,
     );
+    responseTracer.recordRouterDecision(traceId, routerResult.decision, routerResult.intent.intent, routerResult.durationMs);
 
     let response, sources;
 
     if (routerResult.decision === "cognitive_pipeline" && routerResult.cognitiveAnswer?.answer) {
-      // Cognitive path — answer came from Live Cognitive Pipeline
-      response = routerResult.cognitiveAnswer.answer;
+      // Cognitive path — pipeline answer bound directly, no overwrite
+      const ca = routerResult.cognitiveAnswer;
+      responseTracer.recordPipelineAnswer(traceId, ca.answer, ca.executionId, ca.stagesExecuted, ca.confidence, ca.evidenceSources, ca.durationMs);
+      response = ca.answer;
       sources  = [];
       setPhase?.("generating");
     } else {
-      // General conversation path — use Memory Reasoning Planner
-      const plan = await runReasoningPlan({
-        userMsg,
-        session,
-        historyMessages,
-        setPhase,
-      });
+      // General conversation path — documented fallback condition
+      const t0fall = Date.now();
+      const plan = await runReasoningPlan({ userMsg, session, historyMessages, setPhase });
       response = plan.response;
       sources  = plan.sources;
+      const fallbackReason = routerResult.decision === "cognitive_pipeline"
+        ? "EMPTY_PIPELINE_ANSWER"
+        : "GENERAL_CONVERSATION";
+      responseTracer.recordFallback(traceId, fallbackReason, response, Date.now() - t0fall);
     }
+
+    // Record rendered answer — binding verification runs here
+    responseTracer.recordRendered(traceId, response);
 
     // Salvar resposta
     const savedAssistant = await base44.entities.Message.create({
