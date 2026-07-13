@@ -80,6 +80,7 @@ const navItems = [
   { label: "Beta-02 — Base44 Connector",      icon: Award,       path: "/beta02" },
   { label: "Beta-03 — Connector SDK v1.0",    icon: Blocks,      path: "/beta03" },
   { label: "Beta-03.1 — Dev Loop Cert",        icon: Workflow,    path: "/beta031" },
+  { label: "Beta-03.2 — Cognitive Learning",   icon: Brain,       path: "/beta032" },
 ];
 
 export default function Sidebar({ onNavigate }) {
