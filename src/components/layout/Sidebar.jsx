@@ -67,6 +67,7 @@ const navItems = [
   { label: "EF-33B — GitHub Write Ops",  icon: Flag,     path: "/ef33b" },
   { label: "Connector Validation",       icon: ShieldCheck, path: "/connector-validation" },
   { label: "EF-36A — KRE",              icon: Brain,       path: "/ef36a" },
+  { label: "EF-36B — GitHub KP",        icon: GitBranch,   path: "/ef36b" },
 ];
 
 export default function Sidebar({ onNavigate }) {
