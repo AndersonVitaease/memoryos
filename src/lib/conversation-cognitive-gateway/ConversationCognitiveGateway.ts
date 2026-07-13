@@ -13,6 +13,7 @@
  */
 
 import { LiveCognitivePipeline } from "../live-cognitive-pipeline/LiveCognitivePipeline";
+import { CognitiveAnswerComposer } from "../cognitive-answer-composer/CognitiveAnswerComposer";
 import type {
   GatewayRequest, CognitiveAnswer, IntentClassification, CognitiveIntent,
   GatewayDiagnostic, CCGReport, AnswerSource,
@@ -163,7 +164,8 @@ function generateAnswer(
 // ── ConversationCognitiveGateway ──────────────────────────────────────────────
 
 export class ConversationCognitiveGateway {
-  private readonly _pipeline = new LiveCognitivePipeline();
+  private readonly _pipeline  = new LiveCognitivePipeline();
+  private readonly _composer  = new CognitiveAnswerComposer();
   private readonly _diagnostics: GatewayDiagnostic[] = [];
   private _totalRequests     = 0;
   private _cognitiveRequests = 0;
@@ -202,7 +204,27 @@ export class ConversationCognitiveGateway {
         goalId:           intent.intent,
         userApprovalGiven: false,
       });
-      answer = generateAnswer(request, intent, pipelineReport);
+      // CognitiveAnswerComposer (Phase 5.6.3) — presentation layer
+      const snapshot = pipelineReport?.snapshot ?? {};
+      const composed = this._composer.compose({
+        userMessage:    userMessage,
+        intent:         intent.intent,
+        snapshot:       snapshot as Record<string, unknown>,
+        pipelineReport: pipelineReport as Record<string, unknown>,
+        evidence:       (snapshot as any)?.evidence ?? [],
+        confidence:     (snapshot as any)?.confidence ?? 0.5,
+        executionId:    pipelineReport?.context?.executionId ?? null,
+        durationMs:     pipelineReport?.durationMs ?? 0,
+      });
+
+      // Build CognitiveAnswer from ComposedAnswer
+      const legacyAnswer = generateAnswer(request, intent, pipelineReport);
+      answer = {
+        ...legacyAnswer,
+        answer: composed.narrative || legacyAnswer.answer,
+        degraded: composed.degraded,
+        degradationReason: composed.degradationNote,
+      };
     } else {
       // Pure conversation — no pipeline needed
       answer = {

@@ -93,6 +93,7 @@ const navItems = [
   { label: "Phase 5.6 — Primary Routing",          icon: Route,         path: "/phase56" },
   { label: "Phase 5.6.1 — Response Binding",       icon: ShieldCheck,   path: "/phase561" },
   { label: "Phase 5.6.2 — Module Resolution",      icon: Blocks,        path: "/phase562" },
+  { label: "Phase 5.6.3 — Answer Composer",        icon: MessageSquare, path: "/phase563" },
 ];
 
 export default function Sidebar({ onNavigate }) {
