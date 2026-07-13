@@ -80,6 +80,7 @@ import EF33BPage from '@/pages/EF33BPage';
 import ConnectorRuntimeValidationPage from '@/pages/ConnectorRuntimeValidationPage';
 import EF36APage from '@/pages/EF36APage';
 import EF36BPage from '@/pages/EF36BPage';
+import EF36CPage from '@/pages/EF36CPage';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -177,6 +178,7 @@ const AuthenticatedApp = () => {
           <Route path="/connector-validation" element={<ConnectorRuntimeValidationPage />} />
           <Route path="/ef36a" element={<EF36APage />} />
           <Route path="/ef36b" element={<EF36BPage />} />
+          <Route path="/ef36c" element={<EF36CPage />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
