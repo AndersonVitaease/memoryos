@@ -7,6 +7,7 @@ import { useVoicePipeline } from "@/hooks/useVoicePipeline";
 import { ingestKnowledge, ACCEPT_MAP } from "@/lib/knowledgeIngestionPipeline";
 import { runReasoningPlan } from "@/lib/reasoning/memoryReasoningPlanner";
 import { CognitivePipelineAdapter } from "@/lib/cognitive-pipeline-adapter/CognitivePipelineAdapter";
+import { primaryRouter } from "@/lib/primary-conversation-router/PrimaryConversationRouter";
 import VoiceButton from "@/components/chat/VoiceButton";
 import VoiceMode from "@/components/chat/VoiceMode";
 import AttachmentMenu from "@/components/chat/AttachmentMenu";
@@ -68,7 +69,6 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, savedUserMsg]);
 
     // === COGNITIVE PIPELINE ADAPTER (Sprint INT-01) ===
-    // Encaminha a mensagem pelo pipeline cognitivo certificado (EF-01 a EF-14).
     // Execucao ocorre de forma nao-bloqueante — falha no pipeline nao interrompe a resposta.
     pipelineAdapter.execute({
       message:   userMsg,
@@ -77,18 +77,38 @@ export default function ChatPage() {
       projectId: session.project_id ?? "default",
     }).catch(() => { /* pipeline errors nao bloqueiam a UI — silent */ });
 
-    // === MEMORY REASONING PLANNER ===
-    // O Planner orquestra toda a inteligência:
-    //   Memory Pipeline → Skills Engine → Goal Detection → Context Builder
-    //   → UMA chamada LLM → Memory Synthesizer
-    // Reutiliza os módulos existentes sem duplicar lógica.
+    // === PRIMARY CONVERSATION ROUTER (Phase 5.6) ===
+    // Every message passes through PrimaryConversationRouter first.
+    // Cognitive messages → ConversationCognitiveGateway → LiveCognitivePipeline.
+    // General messages   → runReasoningPlan (conversation memory).
     const historyMessages = [...messages, savedUserMsg].slice(-30);
-    const { response, sources } = await runReasoningPlan({
+    setPhase?.("retrieving");
+
+    const routerResult = await primaryRouter.route(
       userMsg,
-      session,
-      historyMessages,
-      setPhase,
-    });
+      session.id,
+      session.project_id ?? null,
+      historyMessages.length,
+    );
+
+    let response, sources;
+
+    if (routerResult.decision === "cognitive_pipeline" && routerResult.cognitiveAnswer?.answer) {
+      // Cognitive path — answer came from Live Cognitive Pipeline
+      response = routerResult.cognitiveAnswer.answer;
+      sources  = [];
+      setPhase?.("generating");
+    } else {
+      // General conversation path — use Memory Reasoning Planner
+      const plan = await runReasoningPlan({
+        userMsg,
+        session,
+        historyMessages,
+        setPhase,
+      });
+      response = plan.response;
+      sources  = plan.sources;
+    }
 
     // Salvar resposta
     const savedAssistant = await base44.entities.Message.create({

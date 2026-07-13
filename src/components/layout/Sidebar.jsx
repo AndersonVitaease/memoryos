@@ -90,6 +90,7 @@ const navItems = [
   { label: "Core Validation Report",           icon: ShieldCheck, path: "/core-validation" },
   { label: "Phase 5.4 — Live Cognitive Pipeline", icon: Workflow,    path: "/phase54" },
   { label: "Phase 5.5 — Conversational Cognitive", icon: MessageSquare, path: "/phase55" },
+  { label: "Phase 5.6 — Primary Routing",          icon: Route,         path: "/phase56" },
 ];
 
 export default function Sidebar({ onNavigate }) {
