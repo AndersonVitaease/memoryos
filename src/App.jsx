@@ -93,6 +93,7 @@ import Beta02Page from '@/pages/Beta02Page';
 import Beta03Page from '@/pages/Beta03Page';
 import Beta031Page from '@/pages/Beta031Page';
 import Beta032Page from '@/pages/Beta032Page';
+import Beta033Page from '@/pages/Beta033Page';
 import Phase5Page from '@/pages/Phase5Page';
 
 const AuthenticatedApp = () => {
@@ -204,6 +205,7 @@ const AuthenticatedApp = () => {
           <Route path="/beta03" element={<Beta03Page />} />
           <Route path="/beta031" element={<Beta031Page />} />
           <Route path="/beta032" element={<Beta032Page />} />
+          <Route path="/beta033" element={<Beta033Page />} />
           <Route path="/phase5" element={<Phase5Page />} />
         </Route>
       </Route>

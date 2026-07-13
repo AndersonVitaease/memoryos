@@ -81,6 +81,7 @@ const navItems = [
   { label: "Beta-03 — Connector SDK v1.0",    icon: Blocks,      path: "/beta03" },
   { label: "Beta-03.1 — Dev Loop Cert",        icon: Workflow,    path: "/beta031" },
   { label: "Beta-03.2 — Cognitive Learning",   icon: Brain,       path: "/beta032" },
+  { label: "Beta-03.3 — Prod Activation",      icon: Award,       path: "/beta033" },
   { label: "Phase 5 — Goal Intelligence",      icon: Target,      path: "/phase5" },
 ];
 
