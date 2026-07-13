@@ -94,6 +94,7 @@ const navItems = [
   { label: "Phase 5.6.1 — Response Binding",       icon: ShieldCheck,   path: "/phase561" },
   { label: "Phase 5.6.2 — Module Resolution",      icon: Blocks,        path: "/phase562" },
   { label: "Phase 5.6.3 — Answer Composer",        icon: MessageSquare, path: "/phase563" },
+  { label: "Phase 5.7.0 — Production Certification", icon: Award,       path: "/phase570" },
 ];
 
 export default function Sidebar({ onNavigate }) {
