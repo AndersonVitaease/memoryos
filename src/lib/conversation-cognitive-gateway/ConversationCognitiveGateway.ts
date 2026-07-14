@@ -18,11 +18,54 @@ import { GitHubQueryRouter } from "./GitHubQueryRouter";
 import { ConnectorInvocationService } from "../cognitive-connector/ConnectorInvocationService";
 import { RepositoryResolver } from "../github-deep-analysis/RepositoryResolver";
 import { SearchRanker } from "../github-deep-analysis/SearchRanker";
+import { KnowledgeGraphStore } from "../project-knowledge/KnowledgeGraphStore";
 import type {
   GatewayRequest, CognitiveAnswer, IntentClassification, CognitiveIntent,
   GatewayDiagnostic, CCGReport, AnswerSource,
 } from "./CCGTypes";
 import { makeCCGId } from "./CCGTypes";
+
+// ── KG Query Patterns (EF-60.3) ───────────────────────────────────────────────
+// Checked BEFORE GitHubQueryRouter so graph queries never route to GitHub.
+
+interface KGPattern {
+  type: "all_entities" | "relationships" | "modules" | "who_uses" | "keyword";
+  keywords: string[];
+}
+
+const KG_PATTERNS: KGPattern[] = [
+  { type: "all_entities",  keywords: ["show all entities", "list all entities", "all entities", "todas entidades", "listar entidades", "show entities", "graph entities", "knowledge graph entities"] },
+  { type: "relationships", keywords: ["show all relationships", "list relationships", "all relationships", "show relationships", "graph relationships", "todas relações", "relações do grafo"] },
+  { type: "modules",       keywords: ["show module graph", "module graph", "module map", "show modules", "knowledge graph modules", "graph modules", "mapa de modulos", "modulos do grafo"] },
+  { type: "who_uses",      keywords: ["who uses", "uses connectionmanager", "uses planningengine", "uses cognitivegateway", "quem usa"] },
+  { type: "keyword",       keywords: [] }, // fallback for "X dependencies", "X entities"
+];
+
+function detectKGQuery(message: string): { matched: boolean; type: KGPattern["type"]; symbol: string | null } {
+  const lower = message.toLowerCase();
+
+  for (const pattern of KG_PATTERNS) {
+    if (pattern.type === "keyword") continue; // handled below
+    if (pattern.keywords.some(kw => lower.includes(kw))) {
+      // Extract symbol for who_uses
+      const sym = pattern.type === "who_uses"
+        ? (message.match(/([A-Z][a-zA-Z0-9]+(?:Engine|Manager|Service|Router|Gateway|Connector|Pipeline|Store|Planner|Queue|Builder|Composer))/)?.[1] ?? null)
+        : null;
+      return { matched: true, type: pattern.type, symbol: sym };
+    }
+  }
+
+  // Check if KG is ready and message asks about a specific component
+  if (KnowledgeGraphStore.isReady()) {
+    const kgKeywords = ["dependencies", "knowledge graph", "graph", "kg entity", "architecture entities"];
+    if (kgKeywords.some(kw => lower.includes(kw))) {
+      const sym = message.match(/([A-Z][a-zA-Z0-9]+(?:Engine|Manager|Service|Router|Gateway|Connector|Pipeline|Store|Planner|Queue|Builder|Composer))/)?.[1] ?? null;
+      return { matched: true, type: sym ? "keyword" : "all_entities", symbol: sym };
+    }
+  }
+
+  return { matched: false, type: "keyword", symbol: null };
+}
 
 // ── Intent keyword map ────────────────────────────────────────────────────────
 
@@ -204,6 +247,77 @@ export class ConversationCognitiveGateway {
     const intent = this.classifyIntent(userMessage);
 
     let answer: CognitiveAnswer;
+
+    // ── Phase 6.0.3: Knowledge Graph First Intercept ─────────────────────────
+    // If the KG is ready, KG-targeted queries are answered directly from the
+    // KnowledgeGraphStore — never routed to GitHub or the LCP pipeline.
+    const kgDetect = detectKGQuery(userMessage);
+    if (kgDetect.matched && KnowledgeGraphStore.isReady()) {
+      this._cognitiveRequests++;
+      const t0kg = Date.now();
+      const graph = KnowledgeGraphStore.get()!;
+      const kgStats = {
+        entityCount:      graph.entityCount,
+        relationshipCount: graph.relationshipCount,
+        moduleCount:      graph.modules.length,
+        health:           (KnowledgeGraphStore.snapshotFields().kgHealth as string),
+      };
+
+      let kgResult: Parameters<typeof this._composer.composeFromKnowledgeGraph>[1];
+
+      switch (kgDetect.type) {
+        case "all_entities":
+          kgResult = { queryType: "all_entities", entities: KnowledgeGraphStore.listAllEntities(), kgStats };
+          break;
+        case "relationships":
+          kgResult = { queryType: "relationships", relationships: graph.relationships, entities: KnowledgeGraphStore.listAllEntities(), kgStats };
+          break;
+        case "modules":
+          kgResult = { queryType: "modules", modules: graph.modules.map(m => ({ name: m.name, entities: m.entities })), kgStats };
+          break;
+        case "who_uses": {
+          const sym = kgDetect.symbol ?? "";
+          const found = KnowledgeGraphStore.queryByKeyword(sym);
+          kgResult = { queryType: "who_uses", entities: found.map(e => ({ name: e.name, type: e.type, layer: e.layer, filePath: e.filePath })), symbol: sym, kgStats };
+          break;
+        }
+        default: {
+          const sym = kgDetect.symbol ?? userMessage.split(" ")[0];
+          const kqr = KnowledgeGraphStore.query(sym);
+          const entities = kqr.found && kqr.entity
+            ? [{ name: kqr.entity.name, type: kqr.entity.type, layer: kqr.entity.layer, filePath: kqr.entity.filePath },
+               ...kqr.dependencies.map(e => ({ name: e.name, type: e.type, layer: e.layer, filePath: e.filePath })),
+               ...kqr.dependents.map(e => ({ name: e.name, type: e.type, layer: e.layer, filePath: e.filePath }))]
+            : KnowledgeGraphStore.queryByKeyword(sym).map(e => ({ name: e.name, type: e.type, layer: e.layer, filePath: e.filePath }));
+          kgResult = { queryType: "keyword", entities, symbol: sym, kgStats };
+        }
+      }
+
+      const composed = this._composer.composeFromKnowledgeGraph(userMessage, kgResult, Date.now() - t0kg);
+      answer = {
+        id:                makeCCGId("answer"),
+        requestId:         request.id,
+        executionId:       null,
+        answer:            composed.narrative,
+        source:            "live_pipeline" as AnswerSource,
+        intent:            "knowledge_reconstruction",
+        connectorsUsed:    ["KnowledgeGraphStore"],
+        stagesExecuted:    ["KnowledgeGraphStore.read"],
+        evidenceSources:   composed.evidence.sources,
+        confidence:        0.95,
+        durationMs:        Date.now() - t0,
+        timestamp:         Date.now(),
+        degraded:          false,
+        degradationReason: null,
+        recoveryInfo:      null,
+        pipelineStatus:    "KNOWLEDGE_GRAPH",
+      };
+      this._totalConfidence += answer.confidence;
+      this._totalDuration   += answer.durationMs;
+      this._diagnostics.push({ requestId: request.id, userMessage, intent, pipelineInvoked: false, answer, timestamp: Date.now() });
+      if (this._diagnostics.length > 100) this._diagnostics.splice(0, this._diagnostics.length - 100);
+      return answer;
+    }
 
     // ── Connector-Aware Query Routing (Phase 5.8.1) ──────────────────────────
     // GitHub-targeted questions bypass the LCP entirely and invoke the connector directly.

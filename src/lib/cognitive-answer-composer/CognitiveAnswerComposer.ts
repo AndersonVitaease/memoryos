@@ -377,6 +377,106 @@ function composeGeneralSummary(input: ComposerInput): { sections: AnswerSection[
   return { sections, narrative };
 }
 
+// ── Knowledge Graph Template (Phase 6.0.3) ───────────────────────────────────
+
+function composeKnowledgeGraph(
+  userMessage: string,
+  kgResult: {
+    queryType: "entity" | "all_entities" | "relationships" | "modules" | "keyword" | "who_uses";
+    entities?: Array<{ name: string; type: string; layer: string; filePath: string }>;
+    relationships?: Array<{ fromId: string; toId: string; type: string; strength: number }>;
+    modules?: Array<{ name: string; entities: string[] }>;
+    symbol?: string;
+    kgStats: { entityCount: number; relationshipCount: number; moduleCount: number; health: string };
+  },
+  durationMs: number,
+): string {
+  const lines: string[] = [];
+  const { kgStats } = kgResult;
+
+  switch (kgResult.queryType) {
+    case "all_entities": {
+      const entities = kgResult.entities ?? [];
+      if (entities.length === 0) {
+        return `**Knowledge Graph — Entities**\n\nNo entities found. Graph may not be built yet.\n\n*KG Stats: ${kgStats.entityCount} entities · ${kgStats.health}*`;
+      }
+      const byLayer: Record<string, typeof entities> = {};
+      for (const e of entities) {
+        if (!byLayer[e.layer]) byLayer[e.layer] = [];
+        byLayer[e.layer].push(e);
+      }
+      lines.push(`**Knowledge Graph — All Entities** (${entities.length} total)`);
+      lines.push(`*Graph: ${kgStats.entityCount} entities · ${kgStats.relationshipCount} relationships · ${kgStats.moduleCount} modules · ${kgStats.health}*`);
+      lines.push("");
+      for (const [layer, ents] of Object.entries(byLayer)) {
+        lines.push(`**Layer: ${layer}** (${ents.length})`);
+        for (const e of ents.slice(0, 20)) {
+          lines.push(`• \`${e.name}\` (${e.type}) — \`${e.filePath}\``);
+        }
+        if (ents.length > 20) lines.push(`  *...and ${ents.length - 20} more*`);
+      }
+      break;
+    }
+    case "relationships": {
+      const rels = kgResult.relationships ?? [];
+      const entities = kgResult.entities ?? [];
+      const byId = new Map(entities.map(e => [e.name, e]));
+      lines.push(`**Knowledge Graph — Relationships** (${rels.length} total)`);
+      lines.push(`*Source: KnowledgeGraphStore · ${kgStats.entityCount} entities · ${durationMs}ms*`);
+      lines.push("");
+      if (rels.length === 0) {
+        lines.push("No relationships found in the current graph.");
+      } else {
+        for (const r of rels.slice(0, 30)) {
+          lines.push(`• \`${r.fromId}\` —[${r.type}]→ \`${r.toId}\` (strength: ${Math.round(r.strength * 100)}%)`);
+        }
+        if (rels.length > 30) lines.push(`*...and ${rels.length - 30} more*`);
+      }
+      break;
+    }
+    case "modules": {
+      const modules = kgResult.modules ?? [];
+      lines.push(`**Knowledge Graph — Module Map** (${modules.length} modules)`);
+      lines.push(`*Source: KnowledgeGraphStore · cached · ${durationMs}ms*`);
+      lines.push("");
+      if (modules.length === 0) {
+        lines.push("No modules found in the current graph.");
+      } else {
+        for (const m of modules) {
+          lines.push(`**Module: \`${m.name}\`** (${m.entities.length} entities)`);
+          for (const e of m.entities.slice(0, 8)) {
+            lines.push(`  • \`${e}\``);
+          }
+          if (m.entities.length > 8) lines.push(`  *...and ${m.entities.length - 8} more*`);
+        }
+      }
+      break;
+    }
+    case "who_uses":
+    case "keyword": {
+      const entities = kgResult.entities ?? [];
+      const sym = kgResult.symbol ?? "unknown";
+      lines.push(`**Knowledge Graph — "${sym}"** (${entities.length} matches)`);
+      lines.push(`*Source: KnowledgeGraphStore · ${durationMs}ms*`);
+      lines.push("");
+      if (entities.length === 0) {
+        lines.push(`No entities found matching \`${sym}\` in the knowledge graph.`);
+        lines.push(`\nTry: "show all entities", "show all relationships", or "show module graph"`);
+      } else {
+        for (const e of entities) {
+          lines.push(`• \`${e.name}\` (${e.type}) — Layer: \`${e.layer}\` · File: \`${e.filePath}\``);
+        }
+      }
+      break;
+    }
+    default:
+      lines.push(`**Knowledge Graph Query**\n${JSON.stringify(kgResult, null, 2).slice(0, 400)}`);
+  }
+
+  lines.push(`\n---\n*Source: KnowledgeGraphStore (cached) · ${kgStats.entityCount} entities · ${kgStats.relationshipCount} rels · ${kgStats.moduleCount} modules · ${durationMs}ms*`);
+  return lines.join("\n");
+}
+
 // ── GitHub Live Template ──────────────────────────────────────────────────────
 
 function composeGitHubLive(
@@ -733,6 +833,46 @@ export class CognitiveAnswerComposer {
     this._diagnostics.push(diagnostic);
     if (this._diagnostics.length > 50) this._diagnostics.splice(0, this._diagnostics.length - 50);
 
+    return answer;
+  }
+
+  // ── Knowledge Graph Compose (Phase 6.0.3) ────────────────────────────────
+
+  composeFromKnowledgeGraph(
+    userMessage: string,
+    kgResult: Parameters<typeof composeKnowledgeGraph>[1],
+    durationMs: number,
+  ): ComposedAnswer {
+    const t0 = Date.now();
+    const narrative = composeKnowledgeGraph(userMessage, kgResult, durationMs);
+    const ev: EvidenceBlock = {
+      sources:          [`KnowledgeGraphStore: ${kgResult.kgStats.entityCount} entities`, `Health: ${kgResult.kgStats.health}`],
+      executionId:      null,
+      confidence:       0.95,
+      pipelineStatus:   "KNOWLEDGE_GRAPH",
+      connectors:       ["KnowledgeGraphStore"],
+      stagesUsed:       ["KnowledgeGraphStore.read"],
+      snapshotSections: [],
+    };
+    const answer: ComposedAnswer = {
+      id:              makeCACId("cac_kg"),
+      template:        "KNOWLEDGE_GRAPH",
+      narrative,
+      sections:        [{ heading: "Knowledge Graph", body: narrative, relevant: true }],
+      evidence:        ev,
+      confidence:      0.95,
+      degraded:        false,
+      degradationNote: null,
+      composedAt:      Date.now(),
+      compositionMs:   Date.now() - t0,
+    };
+    this._diagnostics.push({
+      id: makeCACId("diag_kg"), userMessage, detectedIntent: "knowledge_graph",
+      selectedTemplate: "KNOWLEDGE_GRAPH", snapshotSectionsUsed: [],
+      evidenceCount: 2, confidence: 0.95, compositionMs: answer.compositionMs,
+      answer, timestamp: Date.now(),
+    });
+    if (this._diagnostics.length > 50) this._diagnostics.splice(0, this._diagnostics.length - 50);
     return answer;
   }
 

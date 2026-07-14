@@ -23,7 +23,8 @@ export type AnswerTemplate =
   | "CURRENT_RISKS"
   | "IMPLEMENTATION_PROGRESS"
   | "GENERAL_SUMMARY"
-  | "GITHUB_LIVE";
+  | "GITHUB_LIVE"
+  | "KNOWLEDGE_GRAPH";
 
 // ── Composer Input ────────────────────────────────────────────────────────────
 
