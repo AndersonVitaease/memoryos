@@ -36,7 +36,7 @@ interface KGPattern {
 const KG_PATTERNS: KGPattern[] = [
   { type: "all_entities",  keywords: ["show all entities", "list all entities", "all entities", "todas entidades", "listar entidades", "show entities", "graph entities", "knowledge graph entities"] },
   { type: "relationships", keywords: ["show all relationships", "list relationships", "all relationships", "show relationships", "graph relationships", "todas relações", "relações do grafo"] },
-  { type: "modules",       keywords: ["show module graph", "module graph", "module map", "show modules", "knowledge graph modules", "graph modules", "mapa de modulos", "modulos do grafo"] },
+  { type: "modules",       keywords: ["show module graph", "module graph", "module map", "show modules", "knowledge graph modules", "graph modules", "mapa de modulos", "modulos do grafo", "module dependency graph", "dependency graph", "depend on", "depends on", "what depends", "which modules depend", "which depend", "dependents of", "who depends"] },
   { type: "who_uses",      keywords: ["who uses", "uses connectionmanager", "uses planningengine", "uses cognitivegateway", "quem usa"] },
   { type: "keyword",       keywords: [] }, // fallback for "X dependencies", "X entities"
 ];
