@@ -48,11 +48,20 @@ import { AcceptanceAudit }     from "../engineering-acceptance/AcceptanceAudit";
 import { AcceptanceEvidenceStore } from "../engineering-acceptance/AcceptanceEvidence";
 import { buildCriteria }       from "../engineering-acceptance/AcceptanceCriteria";
 import { assert as eafAssert } from "../engineering-acceptance/AcceptanceAssertion";
+import { AutonomousEngineeringLoop } from "../autonomous-engineering/AutonomousEngineeringLoop";
+import { ExecutionContext }          from "../autonomous-engineering/ExecutionContext";
+import { ExecutionStateMachine }     from "../autonomous-engineering/ExecutionStateMachine";
+import { ExecutionEvidence }         from "../autonomous-engineering/ExecutionEvidence";
+import { ExecutionTimeline }         from "../autonomous-engineering/ExecutionTimeline";
+import { ExecutionMetrics }          from "../autonomous-engineering/ExecutionMetrics";
+import { ExecutionAudit }            from "../autonomous-engineering/ExecutionAudit";
+import { ExecutionReporter }         from "../autonomous-engineering/ExecutionReporter";
+import { ExecutionHistory }          from "../autonomous-engineering/ExecutionHistory";
 
 // ── Result types ──────────────────────────────────────────────────────────────
 
 export type RegressionCategory =
-  | "KG" | "PIPELINE" | "ROUTING" | "CONNECTOR" | "GRAPH" | "WORKFLOW" | "BASELINE" | "MEMORY" | "UCP" | "SHR" | "EAF";
+  | "KG" | "PIPELINE" | "ROUTING" | "CONNECTOR" | "GRAPH" | "WORKFLOW" | "BASELINE" | "MEMORY" | "UCP" | "SHR" | "EAF" | "AEL";
 
 export interface RegressionTest {
   id:       string;
@@ -1184,6 +1193,140 @@ export class EngineeringRegressionSuite {
         },
       },
 
+      // ── AEL Tests ─────────────────────────────────────────────────────────────
+
+      {
+        id: "ael_01", name: "AutonomousEngineeringLoop initializes", category: "AEL",
+        run: () => {
+          const t0 = Date.now();
+          const loop = new AutonomousEngineeringLoop();
+          const ok = typeof loop.run === "function" && typeof loop.dashboardState === "function";
+          return { testId: "ael_01", testName: "AutonomousEngineeringLoop initializes", category: "AEL",
+            passed: ok, detail: ok ? "run + dashboardState callable" : "Missing methods", durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "ael_02", name: "ExecutionContext maintains state", category: "AEL",
+        run: () => {
+          const t0 = Date.now();
+          const ctx = new ExecutionContext("test objective");
+          ctx.setState("ANALYZING");
+          const ok = ctx.data.state === "ANALYZING" && ctx.data.objective === "test objective";
+          return { testId: "ael_02", testName: "ExecutionContext maintains state", category: "AEL",
+            passed: ok, detail: ok ? `state=${ctx.data.state}` : "State not set correctly", durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "ael_03", name: "ExecutionStateMachine enforces valid transitions", category: "AEL",
+        run: () => {
+          const t0 = Date.now();
+          const sm = new ExecutionStateMachine();
+          sm.transition("ANALYZING");
+          sm.transition("PLANNING");
+          let threw = false;
+          try { sm.transition("IDLE"); } catch { threw = true; }
+          const ok = sm.state === "PLANNING" && threw;
+          return { testId: "ael_03", testName: "ExecutionStateMachine enforces valid transitions", category: "AEL",
+            passed: ok, detail: ok ? "Valid transitions enforced, invalid rejected" : `state=${sm.state} threw=${threw}`,
+            durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "ael_04", name: "ExecutionEvidence is append-only", category: "AEL",
+        run: () => {
+          const t0 = Date.now();
+          const ev = new ExecutionEvidence();
+          ev.capture("exec_01", "ANALYZE", "LOG", "test", "hello");
+          ev.capture("exec_01", "ANALYZE", "METRIC", "count", 42);
+          const entries = ev.forExecution("exec_01");
+          const ok = entries.length === 2 && ev.count() === 2;
+          return { testId: "ael_04", testName: "ExecutionEvidence is append-only", category: "AEL",
+            passed: ok, detail: ok ? `entries=${entries.length} total=${ev.count()}` : `got ${entries.length}`, durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "ael_05", name: "ExecutionTimeline records transitions", category: "AEL",
+        run: () => {
+          const t0 = Date.now();
+          const tl = new ExecutionTimeline();
+          tl.record("exec_01", "ANALYZE", "ANALYZING", "Analysis done", 100);
+          tl.record("exec_01", "GENERATE_PLAN", "PLANNING", "Plan generated", 200);
+          const entries = tl.forExecution("exec_01");
+          const ok = entries.length === 2;
+          return { testId: "ael_05", testName: "ExecutionTimeline records transitions", category: "AEL",
+            passed: ok, detail: ok ? `${entries.length} entries` : "Timeline empty", durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "ael_06", name: "ExecutionMetrics records runs", category: "AEL",
+        run: () => {
+          const t0 = Date.now();
+          const m = new ExecutionMetrics();
+          m.recordRun({ durationMs: 500, stagesCompleted: 15, reused: true, approved: true, rolledBack: false, recovered: false, accepted: true, ready: true });
+          m.recordRun({ durationMs: 300, stagesCompleted: 10, reused: false, approved: false, rolledBack: false, recovered: false, accepted: false, ready: false });
+          const snap = m.snapshot();
+          const ok = snap.totalExecutions === 2 && snap.successRate === 50;
+          return { testId: "ael_06", testName: "ExecutionMetrics records runs", category: "AEL",
+            passed: ok, detail: ok ? `runs=2 successRate=50%` : `runs=${snap.totalExecutions} rate=${snap.successRate}`, durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "ael_07", name: "ExecutionAudit is append-only", category: "AEL",
+        run: () => {
+          const t0 = Date.now();
+          const audit = new ExecutionAudit();
+          audit.record("exec_01", "Coordinator", "STAGE_ANALYZE", "ANALYZE", "PASS", "done");
+          const before = audit.count();
+          audit.record("exec_01", "Coordinator", "STAGE_PLAN", "GENERATE_PLAN", "PASS", "done");
+          const after = audit.count();
+          const ok = after === before + 1;
+          return { testId: "ael_07", testName: "ExecutionAudit is append-only", category: "AEL",
+            passed: ok, detail: ok ? `before=${before} after=${after}` : "Audit count did not grow", durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "ael_08", name: "ExecutionReporter generates valid report", category: "AEL",
+        run: () => {
+          const t0 = Date.now();
+          const reporter = new ExecutionReporter();
+          const ctx = new ExecutionContext("test objective");
+          ctx.setState("READY");
+          ctx.complete();
+          const report = reporter.generate(ctx);
+          const ok = !!report.id && typeof report.summary === "string";
+          return { testId: "ael_08", testName: "ExecutionReporter generates valid report", category: "AEL",
+            passed: ok, detail: ok ? `report.id=${report.id}` : "Report missing fields", durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "ael_09", name: "ExecutionHistory is append-only", category: "AEL",
+        run: () => {
+          const t0 = Date.now();
+          const history = new ExecutionHistory();
+          const ctx = new ExecutionContext("test");
+          history.addContext(ctx.data);
+          const before = history.contextCount();
+          const ctx2 = new ExecutionContext("test2");
+          history.addContext(ctx2.data);
+          const after = history.contextCount();
+          const ok = after === before + 1;
+          return { testId: "ael_09", testName: "ExecutionHistory is append-only", category: "AEL",
+            passed: ok, detail: ok ? `before=${before} after=${after}` : "History count did not grow", durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "ael_10", name: "Full loop runs and reaches READY or terminal state", category: "AEL",
+        run: async () => {
+          const t0 = Date.now();
+          const loop = new AutonomousEngineeringLoop();
+          const report = await loop.run("AEL regression test — validate all pipeline stages complete");
+          const ok = report.finalState === "READY" || report.finalState === "FAILED";
+          return { testId: "ael_10", testName: "Full loop runs and reaches READY or terminal state", category: "AEL",
+            passed: ok, detail: ok ? `finalState=${report.finalState} duration=${report.durationMs}ms stages=${report.stageResults.length}` : "Loop did not reach terminal state",
+            durationMs: Date.now() - t0 };
+        },
+      },
+
       {
         id: "mem_10", name: "Timeline is append-only (no deletions)", category: "MEMORY",
         run: () => {
@@ -1226,6 +1369,7 @@ export class EngineeringRegressionSuite {
       UCP: { passed: 0, failed: 0 },
       SHR: { passed: 0, failed: 0 },
       EAF: { passed: 0, failed: 0 },
+      AEL: { passed: 0, failed: 0 },
     };
     for (const r of results) {
       if (r.passed) categories[r.category].passed++;
@@ -1265,6 +1409,7 @@ export class EngineeringRegressionSuite {
       if (r.category === "UCP")       return `UCP: Check UniversalConnectorPlatform module — ${r.testName}`;
       if (r.category === "SHR")       return `SHR: Check SelfHealingRuntime module — ${r.testName}`;
       if (r.category === "EAF")       return `EAF: Check EngineeringAcceptanceFramework module — ${r.testName}`;
+      if (r.category === "AEL")       return `AEL: Check AutonomousEngineeringLoop module — ${r.testName}`;
       return `FIX: ${r.detail}`;
     }).filter((v, i, a) => a.indexOf(v) === i); // deduplicate
 

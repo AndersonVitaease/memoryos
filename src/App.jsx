@@ -126,6 +126,7 @@ import Phase624Page from '@/pages/Phase624Page';
 import Phase630Page from '@/pages/Phase630Page';
 import Phase631Page from '@/pages/Phase631Page';
 import Phase632Page from '@/pages/Phase632Page';
+import Phase633Page from '@/pages/Phase633Page';
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -269,6 +270,7 @@ const AuthenticatedApp = () => {
           <Route path="/phase630" element={<Phase630Page />} />
           <Route path="/phase631" element={<Phase631Page />} />
           <Route path="/phase632" element={<Phase632Page />} />
+          <Route path="/phase633" element={<Phase633Page />} />
         </Route>
       </Route>
       <Route path="*" element={<PageNotFound />} />
