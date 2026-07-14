@@ -18,6 +18,33 @@
     suppressedPopups: [],
     outletChildren: null,
     mainChildren: null,
+
+    // React component lifecycle flags — preenchidos pelos logs [CHAIN]
+    react: {
+      appMounted: false,
+      protectedRouteMounted: false,
+      appLayoutMounted: false,
+      connectionsMounted: false,
+      connectorCardsRendered: 0,
+    },
+
+    // Performance entries
+    performance: {
+      navigation: [],
+      resources: [],
+    },
+
+    // Storage keys
+    storage: {
+      localStorage: [],
+      sessionStorage: [],
+    },
+
+    // Theme/class state
+    theme: {
+      htmlClass: '',
+      bodyClass: '',
+    },
   };
 
   window.__MEMORY_DEBUG__ = debug;
@@ -177,11 +204,47 @@
     }
   }, true /* capture phase para pegar erros de recursos */);
 
-  // ─── 7. Snapshots adicionais em pontos-chave ─────────────────────────────────
+  // ─── 7. Coleta de performance, storage e theme ──────────────────────────────
+  function collectMeta() {
+    debug.performance.navigation = performance.getEntriesByType('navigation');
+    debug.performance.resources = performance.getEntriesByType('resource');
+    debug.storage.localStorage = Object.keys(localStorage);
+    debug.storage.sessionStorage = Object.keys(sessionStorage);
+    debug.theme.htmlClass = document.documentElement.className;
+    debug.theme.bodyClass = document.body ? document.body.className : '';
+  }
+
+  // ─── 8. Patch no console para detectar logs [CHAIN] e atualizar react.* ─────
+  (function patchConsole() {
+    const origLog = console.log.bind(console);
+    console.log = function (...args) {
+      origLog(...args);
+      const msg = args[0];
+      if (typeof msg !== 'string') return;
+      if (msg.includes('[CHAIN][1-App]') && msg.includes('RENDER START')) {
+        debug.react.appMounted = true;
+      }
+      if (msg.includes('[CHAIN][2-ProtectedRoute]') && msg.includes('RENDER START')) {
+        debug.react.protectedRouteMounted = true;
+      }
+      if (msg.includes('[CHAIN][3-AppLayout]') && msg.includes('RENDER START')) {
+        debug.react.appLayoutMounted = true;
+      }
+      if (msg.includes('[CHAIN][4-Connections]') && msg.includes('RENDER START')) {
+        debug.react.connectionsMounted = true;
+      }
+      if (msg.includes('[CHAIN][5-ConnectorCard]') && msg.includes('RENDER')) {
+        debug.react.connectorCardsRendered += 1;
+      }
+    };
+  })();
+
+  // ─── 9. Snapshots adicionais em pontos-chave ─────────────────────────────────
   window.addEventListener('load', () => {
     captureSnapshot('window.load');
     scanHiddenElements();
     scanSuppressedPopups();
+    collectMeta();
     console.log('[DebugRuntime] window.__MEMORY_DEBUG__ disponível. Estado inicial:', {
       readyState: document.readyState,
       pathname: window.location.pathname,
@@ -202,6 +265,7 @@
     captureSnapshot('2000ms-post-load');
     scanHiddenElements();
     scanSuppressedPopups();
+    collectMeta();
     console.log('[DebugRuntime] Snapshot 2s completo. window.__MEMORY_DEBUG__:', window.__MEMORY_DEBUG__);
   }, 2000);
 
@@ -209,7 +273,11 @@
     captureSnapshot('5000ms-post-load');
     scanHiddenElements();
     scanSuppressedPopups();
+    collectMeta();
     console.log('[DebugRuntime] Snapshot 5s completo. Mutations registradas:', debug.mutations.length);
+    console.log('[DebugRuntime] React chain:', JSON.stringify(debug.react));
+    console.log('[DebugRuntime] Theme:', JSON.stringify(debug.theme));
+    console.log('[DebugRuntime] Storage keys:', JSON.stringify(debug.storage));
   }, 5000);
 
 })();
