@@ -1,190 +1,163 @@
-import React, { useState, useEffect } from "react";
-import { X, Brain, Loader2, Mic, Volume2 } from "lucide-react";
-import { useVoiceRecognition } from "@/hooks/useVoiceRecognition";
-import { useTextToSpeech } from "@/hooks/useTextToSpeech";
-import { useHaptics } from "@/hooks/useHaptics";
-import ReactMarkdown from "react-markdown";
-
 /**
- * Voice Mode — tela cheia para conversa contínua por voz.
- *
- * Fluxo:
- * 1. Abre e começa a escutar automaticamente
- * 2. Usuário fala → transcrição em tempo real
- * 3. Detecta fim da fala → envia para IA (Memory Pipeline)
- * 4. IA responde → exibe texto + reproduz em voz (TTS)
- * 5. Após TTS → volta a escutar automaticamente (loop contínuo)
- *
- * Interrupção: tocar no orb durante a fala da IA interrompe e volta a escutar.
+ * VoiceMode.jsx — Voice Interaction Platform (VIP) consumer
+ * Sprint 7.0.0: All voice logic delegated to VoiceInteractionManager.
+ * No internal pipeline, no MediaRecorder, no AudioContext.
  */
+
+import React, { useEffect, useRef, useState } from "react";
+import { X } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import { useVoiceInteraction } from "@/lib/voice-platform/useVoiceInteraction";
+import VoiceVisualizer from "@/components/voice/VoiceVisualizer";
+
+const PHASE_LABELS = {
+  idle: "Toque para falar",
+  listening: "Ouvindo...",
+  transcribing: "Convertendo...",
+  retrieving: "Consultando memoria...",
+  generating: "Gerando resposta...",
+  speaking: "Respondendo...",
+  completed: "Concluido",
+  cancelled: "Cancelado",
+  error: "Erro",
+};
+
+function formatTime(ms) {
+  const s = Math.floor(ms / 1000);
+  const m = Math.floor(s / 60);
+  return `${m}:${String(s % 60).padStart(2, "0")}`;
+}
+
 export default function VoiceMode({ onSendAndReceive, onClose }) {
-  const [phase, setPhase] = useState("listening"); // listening | processing | speaking
-  const [interimText, setInterimText] = useState("");
-  const [aiText, setAiText] = useState("");
+  const [lastResponse, setLastResponse] = useState("");
+  const [lastTranscript, setLastTranscript] = useState("");
 
-  const tts = useTextToSpeech();
-  const haptics = useHaptics();
-
-  const handleResult = (text) => {
-    if (!text.trim()) return;
-    haptics.feedback("end");
-    setPhase("processing");
-    setInterimText("");
-
-    onSendAndReceive(text)
-      .then((response) => {
-        if (response) {
-          setAiText(response);
-          setPhase("speaking");
-          tts.speak(response, {
-            onEnd: () => {
-              setPhase("listening");
-              setAiText("");
-              setTimeout(() => startListening(), 150);
-            },
-          });
-        } else {
-          setPhase("listening");
-          setTimeout(() => startListening(), 150);
-        }
-      })
-      .catch(() => {
-        setPhase("listening");
-        setTimeout(() => startListening(), 150);
-      });
+  const handleSend = async (text, opts) => {
+    setLastTranscript(text);
+    opts?.setPhase?.("generating");
+    const response = await onSendAndReceive?.(text);
+    setLastResponse(response ?? "");
+    return response;
   };
 
-  const { isListening, startListening, stopListening, isSupported } = useVoiceRecognition({
-    onResult: handleResult,
-    onInterim: (text) => setInterimText(text),
-  });
+  const voice = useVoiceInteraction({ onSend: handleSend });
 
-  useEffect(() => {
-    haptics.feedback("start");
-    startListening();
-    return () => {
-      stopListening();
-      tts.stopSpeaking();
-    };
-  }, []);
-
-  const handleInterrupt = () => {
-    tts.stopSpeaking();
-    setPhase("listening");
-    setAiText("");
-    startListening();
+  const handleOrbPress = () => {
+    if (voice.phase === "idle") {
+      voice.startCapture();
+    } else if (voice.phase === "listening") {
+      voice.stopCapture();
+    } else if (voice.isSpeaking) {
+      voice.stopSpeaking();
+    } else if (["transcribing", "retrieving", "generating"].includes(voice.phase)) {
+      voice.cancel();
+    }
   };
-
-  const handleClose = () => {
-    stopListening();
-    tts.stopSpeaking();
-    onClose();
-  };
-
-  const phaseConfig = {
-    listening: {
-      label: "Ouvindo...",
-      orbClass: "bg-gradient-to-br from-violet-500 to-indigo-600",
-      glowClass: "bg-violet-500/30",
-      icon: Mic,
-      iconClass: "text-white",
-    },
-    processing: {
-      label: "Consultando memória...",
-      orbClass: "bg-gradient-to-br from-amber-500 to-orange-600 scale-90",
-      glowClass: "bg-amber-500/30",
-      icon: Loader2,
-      iconClass: "text-white animate-spin",
-    },
-    speaking: {
-      label: "Respondendo...",
-      orbClass: "bg-gradient-to-br from-emerald-500 to-teal-600",
-      glowClass: "bg-emerald-500/30",
-      icon: Volume2,
-      iconClass: "text-white",
-    },
-  };
-
-  const config = phaseConfig[phase];
 
   return (
-    <div className="fixed inset-0 z-50 bg-zinc-950 flex flex-col items-center justify-center px-6">
-      {/* Botão fechar */}
+    <div className="fixed inset-0 z-50 bg-zinc-950/95 flex flex-col items-center justify-center">
+      {/* Close */}
       <button
-        onClick={handleClose}
-        className="absolute top-4 right-4 sm:top-6 sm:right-6 p-2.5 rounded-full bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition"
+        onClick={onClose}
+        className="absolute top-5 right-5 p-2 rounded-full bg-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-700 transition"
       >
         <X className="w-5 h-5" />
       </button>
 
-      {/* Nave não suportado */}
-      {!isSupported && (
-        <div className="text-center max-w-sm">
-          <Brain className="w-12 h-12 text-zinc-600 mx-auto mb-4" />
-          <p className="text-white/80 font-medium">Reconhecimento de voz não suportado</p>
-          <p className="text-white/40 text-sm mt-2">
-            Seu navegador não suporta reconhecimento de voz. Tente usar Chrome, Edge ou Safari.
-          </p>
+      {/* Orb visualizer — tappable */}
+      <button
+        onClick={handleOrbPress}
+        className="focus:outline-none mb-6"
+        aria-label={PHASE_LABELS[voice.phase] ?? ""}
+      >
+        <VoiceVisualizer
+          mode="orb"
+          waveform={voice.waveform}
+          phase={voice.phase}
+        />
+      </button>
+
+      {/* Phase label */}
+      <p className="text-sm font-medium text-zinc-300 mb-2">
+        {voice.error ? voice.error : (PHASE_LABELS[voice.phase] ?? "")}
+      </p>
+
+      {/* Timer (during listening) */}
+      {voice.phase === "listening" && (
+        <p className="text-xs font-mono text-zinc-500 mb-4">
+          {formatTime(voice.elapsedMs)}
+        </p>
+      )}
+
+      {/* Interim text */}
+      {voice.interimText && (
+        <p className="text-sm text-zinc-400 italic mb-4 max-w-sm text-center px-4">
+          {voice.interimText}
+        </p>
+      )}
+
+      {/* Last transcript */}
+      {lastTranscript && !voice.interimText && (
+        <div className="mb-4 px-6 max-w-sm w-full">
+          <p className="text-xs text-zinc-500 mb-1">Voce disse:</p>
+          <p className="text-sm text-zinc-300">{lastTranscript}</p>
         </div>
       )}
 
-      {/* Conteúdo principal */}
-      {isSupported && (
-        <>
-          {/* Orb */}
-          <button
-            onClick={phase === "speaking" ? handleInterrupt : undefined}
-            className="relative w-36 h-36 flex items-center justify-center mb-10"
-            disabled={phase !== "speaking"}
-          >
-            {/* Glow */}
-            <div className={`absolute inset-[-30%] rounded-full blur-3xl transition-all duration-700 ${config.glowClass}`} />
-
-            {/* Ring pulsante ao escutar */}
-            {phase === "listening" && (
-              <div className="absolute inset-0 rounded-full bg-violet-500/20 animate-ping" />
-            )}
-
-            {/* Ring pulsante ao falar */}
-            {phase === "speaking" && (
-              <div className="absolute inset-0 rounded-full bg-emerald-500/20 animate-pulse" />
-            )}
-
-            {/* Orb central */}
-            <div className={`relative w-28 h-28 rounded-full flex items-center justify-center transition-all duration-500 shadow-2xl ${config.orbClass}`}>
-              <config.icon className={`w-10 h-10 ${config.iconClass}`} />
-            </div>
-          </button>
-
-          {/* Status */}
-          <p className="text-white/50 text-sm font-medium mb-6">{config.label}</p>
-
-          {/* Conteúdo dinâmico */}
-          <div className="max-w-lg text-center min-h-[60px]">
-            {phase === "listening" && interimText && (
-              <p className="text-white text-lg leading-relaxed">{interimText}</p>
-            )}
-            {phase === "listening" && !interimText && (
-              <p className="text-white/30 text-sm">Fale naturalmente...</p>
-            )}
-            {phase === "processing" && (
-              <p className="text-white/40 text-sm">Consultando toda a sua memória...</p>
-            )}
-            {phase === "speaking" && aiText && (
-              <div className="text-white/70 text-sm leading-relaxed max-h-40 overflow-y-auto px-4">
-                <ReactMarkdown>{aiText}</ReactMarkdown>
-              </div>
-            )}
+      {/* Last response */}
+      {lastResponse && (
+        <div className="mb-6 px-6 max-w-sm w-full">
+          <p className="text-xs text-zinc-500 mb-1">Resposta:</p>
+          <div className="text-sm text-zinc-200 prose prose-invert prose-sm max-w-none">
+            <ReactMarkdown>{lastResponse}</ReactMarkdown>
           </div>
-
-          {/* Dica de interrupção */}
-          {phase === "speaking" && (
-            <p className="absolute bottom-8 text-white/30 text-xs">
-              Toque no orb para interromper e falar
-            </p>
-          )}
-        </>
+        </div>
       )}
+
+      {/* Waveform bar (listening) */}
+      {voice.phase === "listening" && (
+        <div className="mb-6 w-64">
+          <VoiceVisualizer
+            mode="bars"
+            waveform={voice.waveform}
+            phase={voice.phase}
+            color="#ef4444"
+            width={256}
+            height={32}
+          />
+        </div>
+      )}
+
+      {/* Action buttons */}
+      <div className="flex items-center gap-3">
+        {voice.phase === "listening" && (
+          <>
+            <button
+              onClick={voice.cancel}
+              className="px-4 py-2 rounded-xl text-sm font-medium text-zinc-400 border border-zinc-700 hover:bg-zinc-800 transition"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={voice.stopCapture}
+              className="px-5 py-2 rounded-xl text-sm font-medium bg-white text-zinc-900 hover:bg-zinc-100 transition"
+            >
+              Enviar
+            </button>
+          </>
+        )}
+        {voice.isSpeaking && (
+          <button
+            onClick={voice.stopSpeaking}
+            className="px-4 py-2 rounded-xl text-sm font-medium text-zinc-400 border border-zinc-700 hover:bg-zinc-800 transition"
+          >
+            Parar resposta
+          </button>
+        )}
+        {voice.phase === "idle" && !voice.isSpeaking && (
+          <p className="text-xs text-zinc-600">Toque no orb para falar</p>
+        )}
+      </div>
     </div>
   );
 }

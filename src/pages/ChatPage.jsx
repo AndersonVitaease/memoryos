@@ -21,10 +21,10 @@ import {
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { useConversation } from "@/lib/conversation-platform/useConversation";
-import { useVoicePipeline } from "@/hooks/useVoicePipeline";
+import { useVoiceInteraction } from "@/lib/voice-platform/useVoiceInteraction";
 import { ingestKnowledge, ACCEPT_MAP } from "@/lib/knowledgeIngestionPipeline";
 import { base44 } from "@/api/base44Client";
-import VoiceButton from "@/components/chat/VoiceButton";
+import VoicePanel from "@/components/voice/VoicePanel";
 import VoiceMode from "@/components/chat/VoiceMode";
 import AttachmentMenu from "@/components/chat/AttachmentMenu";
 import ProcessingBubble from "@/components/chat/ProcessingBubble";
@@ -73,13 +73,13 @@ export default function ChatPage() {
   const fileInputRef = useRef(null);
   const fileInputTypeRef = useRef(null);
 
-  // Voice pipeline — still wired for push-to-talk
-  const pipeline = useVoicePipeline({
-    onSend: async (text, { setPhase }) => {
+  // Voice — powered by Voice Interaction Platform (VIP)
+  const pipeline = useVoiceInteraction({
+    onSend: async (text, opts) => {
       setLastUserMessage(text);
+      opts?.setPhase?.("generating");
       await conversation.send(text);
-      setPhase?.("idle");
-      // Return the last assistant response for TTS
+      opts?.setPhase?.("idle");
       const msgs = conversation.messages;
       const last = msgs[msgs.length - 1];
       return last?.role === "assistant" ? last.content : null;
@@ -286,36 +286,24 @@ export default function ChatPage() {
       </div>
 
       {/* Voice status bar */}
-      {(pipeline.state !== "idle" || pipeline.error) && (
+      {/* Voice status — only show the full bar when processing (panel handles idle/listening states) */}
+      {(pipeline.isProcessing || pipeline.isSpeaking) && (
         <div className={`border-t px-4 lg:px-6 py-2 flex items-center gap-2 ${
-          pipeline.state === "listening" ? "bg-red-50 border-red-100" :
-          pipeline.state === "speaking" ? "bg-emerald-50/50 border-zinc-100" :
-          pipeline.error ? "bg-red-50 border-red-100" :
-          "bg-violet-50 border-violet-100"
+          pipeline.isSpeaking ? "bg-emerald-50/50 border-zinc-100" : "bg-violet-50 border-violet-100"
         }`}>
-          {pipeline.state === "listening" && (<>
-            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0" />
-            <span className="text-xs text-red-600 font-medium">{pipeline.phaseLabel}</span>
-            {pipeline.interimText && <span className="text-xs text-red-400 truncate ml-1">{pipeline.interimText}</span>}
-          </>)}
-          {(pipeline.state === "transcribing" || pipeline.state === "retrieving" || pipeline.state === "generating") && (<>
+          {pipeline.isProcessing && (<>
             <Loader2 className="w-3.5 h-3.5 animate-spin text-violet-500 shrink-0" />
-            <span className="text-xs text-violet-600 font-medium">{pipeline.phaseLabel}</span>
+            <span className="text-xs text-violet-600 font-medium">Processando...</span>
           </>)}
-          {pipeline.state === "speaking" && (<>
+          {pipeline.isSpeaking && (<>
             <Volume2 className="w-4 h-4 text-emerald-500 animate-pulse shrink-0" />
-            <span className="text-xs text-emerald-600 font-medium">{pipeline.phaseLabel}</span>
+            <span className="text-xs text-emerald-600 font-medium">Respondendo...</span>
             <button type="button" onClick={pipeline.stopSpeaking} className="ml-auto text-xs text-emerald-600 hover:text-emerald-700 font-medium">Parar</button>
           </>)}
-          {pipeline.error && (
-            <span className="text-xs text-red-600 font-medium truncate">{pipeline.error.message}</span>
-          )}
-          {(pipeline.isProcessing || pipeline.state === "speaking") && !pipeline.error && (
-            <button type="button" onClick={pipeline.cancel} className="ml-auto flex items-center gap-1 text-xs text-zinc-400 hover:text-red-500 font-medium transition">
-              <X className="w-3 h-3" />
-              Cancelar
-            </button>
-          )}
+          <button type="button" onClick={pipeline.cancel} className="ml-auto flex items-center gap-1 text-xs text-zinc-400 hover:text-red-500 font-medium transition">
+            <X className="w-3 h-3" />
+            Cancelar
+          </button>
         </div>
       )}
 
@@ -398,14 +386,20 @@ export default function ChatPage() {
               </button>
             )}
 
-            {pipeline.isSupported && !conversation.isLoading && (
-              <VoiceButton
-                disabled={pipeline.isProcessing}
-                onPressStart={pipeline.startCapture}
-                onPressEnd={pipeline.stopCapture}
-                onCancel={pipeline.cancel}
-              />
-            )}
+            <VoicePanel
+              phase={pipeline.phase}
+              waveform={pipeline.waveform}
+              elapsedMs={pipeline.elapsedMs}
+              interimText={pipeline.interimText}
+              error={pipeline.error}
+              isSpeaking={pipeline.isSpeaking}
+              isSupported={pipeline.isSupported}
+              isLoading={conversation.isLoading}
+              onStart={pipeline.startCapture}
+              onStop={pipeline.stopCapture}
+              onCancel={pipeline.cancel}
+              stopSpeaking={pipeline.stopSpeaking}
+            />
 
             <button
               type="submit"
