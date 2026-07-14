@@ -137,12 +137,14 @@ const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
 
   if (isLoadingPublicSettings || isLoadingAuth) {
+    console.log('[DIAG][AuthenticatedApp] SPINNER ATIVO — isLoadingPublicSettings:', isLoadingPublicSettings, '| isLoadingAuth:', isLoadingAuth);
     return (
       <div className="fixed inset-0 flex items-center justify-center bg-zinc-950">
         <div className="w-8 h-8 border-4 border-zinc-700 border-t-violet-500 rounded-full animate-spin"></div>
       </div>
     );
   }
+  console.log('[DIAG][AuthenticatedApp] SPINNER ENCERRADO — renderizando Routes. authError:', authError?.type ?? null);
 
   if (authError) {
     if (authError.type === 'user_not_registered') {

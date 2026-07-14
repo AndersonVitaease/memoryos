@@ -13,25 +13,35 @@ export default function ProtectedRoute({ fallback = <DefaultFallback />, unauthe
   const { isAuthenticated, isLoadingAuth, authChecked, authError, checkUserAuth } = useAuth();
 
   useEffect(() => {
+    console.log('[DIAG][ProtectedRoute] estado atual — isLoadingAuth:', isLoadingAuth, '| authChecked:', authChecked, '| isAuthenticated:', isAuthenticated, '| authError:', authError?.type ?? null);
+  });
+
+  useEffect(() => {
     if (!authChecked && !isLoadingAuth) {
+      console.log('[DIAG][ProtectedRoute] authChecked=false && !isLoadingAuth → chamando checkUserAuth()');
       checkUserAuth();
     }
   }, [authChecked, isLoadingAuth, checkUserAuth]);
 
   if (isLoadingAuth || !authChecked) {
+    console.log('[DIAG][ProtectedRoute] RETORNANDO FALLBACK (spinner) — isLoadingAuth:', isLoadingAuth, '| authChecked:', authChecked);
     return fallback;
   }
 
   if (authError) {
     if (authError.type === 'user_not_registered') {
+      console.log('[DIAG][ProtectedRoute] RETORNANDO UserNotRegisteredError');
       return <UserNotRegisteredError />;
     }
+    console.log('[DIAG][ProtectedRoute] RETORNANDO unauthenticatedElement — authError.type:', authError.type);
     return unauthenticatedElement;
   }
 
   if (!isAuthenticated) {
+    console.log('[DIAG][ProtectedRoute] RETORNANDO unauthenticatedElement — isAuthenticated=false');
     return unauthenticatedElement;
   }
 
+  console.log('[DIAG][ProtectedRoute] RETORNANDO <Outlet /> — usuário autenticado');
   return <Outlet />;
 }
