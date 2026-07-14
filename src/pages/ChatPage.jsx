@@ -20,7 +20,10 @@ import LinkDialog from "@/components/chat/LinkDialog";
 // Responsabilidade: encaminhar cada mensagem pelo pipeline cognitivo certificado EF
 // antes de processar a resposta LLM via runReasoningPlan.
 
+const _CHATLOG = (...args) => console.log('[CHAT]', ...args);
+
 export default function ChatPage() {
+  _CHATLOG('[INIT] ChatPage montando');
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -45,29 +48,44 @@ export default function ChatPage() {
 
   useEffect(() => { init(); }, []);
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, loading]);
+  useEffect(() => {
+    return () => { _CHATLOG('[UNMOUNT] ChatPage desmontando — session:', session?.id, 'messages:', messages.length); };
+  }, []);
 
   const init = async () => {
+    _CHATLOG('[LOAD] init() chamado');
     setInitialLoading(true);
     const activeSession = await getOrCreateActiveSession();
+    _CHATLOG('[SESSION] sessão obtida — id:', activeSession.id, 'title:', activeSession.title, 'status:', activeSession.status, 'created:', activeSession.created_date);
     setSession(activeSession);
     const msgs = await base44.entities.Message.filter({ session_id: activeSession.id }, "created_date", 100);
+    _CHATLOG('[LOAD] mensagens carregadas — count:', msgs.length, 'session_id:', activeSession.id);
     setMessages(msgs);
     setInitialLoading(false);
+    _CHATLOG('[LOAD] init() concluído');
   };
 
   const sendAndReceive = async (userMsg, { setPhase } = {}) => {
-    if (!userMsg || !userMsg.trim() || loading || !session) return null;
+    _CHATLOG('[BUTTON] sendAndReceive chamado — loading:', loading, 'session:', session?.id, 'input length:', userMsg?.length);
+    if (!userMsg || !userMsg.trim() || loading || !session) {
+      _CHATLOG('[BUTTON] ABORTADO — motivo:', !userMsg ? 'sem texto' : !userMsg.trim() ? 'texto vazio' : loading ? 'loading=true' : 'sem sessão');
+      return null;
+    }
 
     setLoading(true);
+    _CHATLOG('[INPUT] setLoading(true)');
 
     // Salvar mensagem do usuário
+    _CHATLOG('[SAVE] criando Message user — session_id:', session.id);
     const savedUserMsg = await base44.entities.Message.create({
       session_id: session.id,
       role: "user",
       content: userMsg,
       memory_tier: "active",
     });
+    _CHATLOG('[SAVE] Message user salva — id:', savedUserMsg.id);
     setMessages((prev) => [...prev, savedUserMsg]);
+    _CHATLOG('[MESSAGE] user message adicionada ao state — total:', messages.length + 1);
 
     // === COGNITIVE PIPELINE ADAPTER (Sprint INT-01) ===
     // Execucao ocorre de forma nao-bloqueante — falha no pipeline nao interrompe a resposta.
@@ -88,16 +106,19 @@ export default function ChatPage() {
     // === RESPONSE BINDING TRACER (Phase 5.6.1) ===
     const traceId = responseTracer.beginTrace(userMsg, session.id);
 
+    _CHATLOG('[STREAM] primaryRouter.route — session:', session.id, 'historyLen:', historyMessages.length);
     const routerResult = await primaryRouter.route(
       userMsg,
       session.id,
       session.project_id ?? null,
       historyMessages.length,
     );
+    _CHATLOG('[STREAM] router decision:', routerResult.decision, 'intent:', routerResult.intent?.intent, 'durationMs:', routerResult.durationMs);
     responseTracer.recordRouterDecision(traceId, routerResult.decision, routerResult.intent.intent, routerResult.durationMs);
 
     let response, sources;
 
+    _CHATLOG('[STREAM] avaliando path — cognitiveAnswer:', !!routerResult.cognitiveAnswer?.answer);
     if (routerResult.decision === "cognitive_pipeline" && routerResult.cognitiveAnswer?.answer) {
       // Cognitive path — pipeline answer bound directly, no overwrite
       const ca = routerResult.cognitiveAnswer;
@@ -121,6 +142,7 @@ export default function ChatPage() {
     responseTracer.recordRendered(traceId, response);
 
     // Salvar resposta
+    _CHATLOG('[SAVE] criando Message assistant — session_id:', session.id, 'response length:', response?.length);
     const savedAssistant = await base44.entities.Message.create({
       session_id: session.id,
       role: "assistant",
@@ -129,7 +151,9 @@ export default function ChatPage() {
       memory_tier: "active",
     });
     setMessages((prev) => [...prev, savedAssistant]);
+    _CHATLOG('[MESSAGE] assistant message adicionada — id:', savedAssistant.id);
     setLoading(false);
+    _CHATLOG('[INPUT] setLoading(false)');
 
     const responseText = response;
 
@@ -139,7 +163,9 @@ export default function ChatPage() {
     const allMessages = [...messages, savedUserMsg, savedAssistant];
     const userMessageCount = allMessages.filter((m) => m.role === "user").length;
 
+    _CHATLOG('[MEMORY] userMessageCount:', userMessageCount, 'shouldProcessBatch:', shouldProcessBatch(userMessageCount));
     if (shouldProcessBatch(userMessageCount)) {
+      _CHATLOG('[MEMORY] disparando processConversationBatch em background');
       // Atualizar título na primeira vez
       if (session.title === "Nova conversa" && allMessages.length > 0) {
         const titleResult = await base44.integrations.Core.InvokeLLM({
@@ -151,10 +177,11 @@ export default function ChatPage() {
 
       // Processar conhecimento em background (não bloqueia a UI)
       processConversationBatch(session, allMessages, session.project_id).then(async (knowledge) => {
+        _CHATLOG('[MEMORY] batch processado — summary length:', knowledge?.summary?.length ?? 0);
         if (knowledge?.summary) {
           setSession((prev) => ({ ...prev, summary: knowledge.summary }));
         }
-      }).catch(() => { /* silent — processamento em background */ });
+      }).catch((err) => { _CHATLOG('[MEMORY] batch ERRO (background):', err?.message); });
     }
 
     return responseText;
@@ -262,8 +289,13 @@ export default function ChatPage() {
   const sendMessage = async (e) => {
     e?.preventDefault();
     const text = input.trim();
-    if (!text || loading || !session) return;
+    _CHATLOG('[BUTTON] sendMessage — text length:', text.length, 'loading:', loading, 'session:', session?.id);
+    if (!text || loading || !session) {
+      _CHATLOG('[BUTTON] sendMessage ABORTADO — text:', !!text, 'loading:', loading, 'session:', !!session);
+      return;
+    }
     setInput("");
+    _CHATLOG('[INPUT] input limpo');
     await sendAndReceive(text);
   };
 
