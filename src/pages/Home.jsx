@@ -74,7 +74,7 @@ export default function Home() {
   }
 
   return (
-    <div className="p-4 sm:p-6 lg:p-10 max-w-3xl mx-auto w-full">
+    <div className="p-6 max-w-3xl mx-auto w-full">
       <GreetingBlock user={user} activeSession={activeSessions[0]} />
       <SinceLastVisit sinceLastVisit={sinceLastVisit} pendingTasks={pendingTasks} />
       <MemorySpaces spaces={spaces} />

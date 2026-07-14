@@ -42,7 +42,7 @@ export default function AppLayout() {
           </button>
           <span className="font-bold text-sm font-heading">MemoryOS</span>
         </div>
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1">
           <Outlet />
         </div>
       </main>
