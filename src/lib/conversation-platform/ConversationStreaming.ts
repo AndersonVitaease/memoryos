@@ -76,8 +76,9 @@ class ConversationStreaming {
         timestamp: Date.now(),
       });
 
-      // Variable delay for natural feel: faster for short words
-      const delay = token.trim().length > 8 ? 18 : token.trim().length > 4 ? 12 : 8;
+      // Variable delay — perceptible to the user (~30-60ms per token)
+      const len = token.trim().length;
+      const delay = len > 8 ? 55 : len > 4 ? 40 : 28;
       await this._sleep(delay);
     }
 
