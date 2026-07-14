@@ -117,6 +117,7 @@ const navItems = [
   { label: "Phase 6.3.3 — Autonomous Engineering Loop",   icon: Play,         path: "/phase633" },
   { label: "Phase 6.3.4 — Persistent Runtime",            icon: Server,       path: "/phase634" },
   { label: "Phase 6.3.5 — Readiness Certification",       icon: Award,        path: "/phase635" },
+  { label: "Phase 6.4.0 — Universal OAuth Platform",      icon: Plug,         path: "/phase640" },
 ];
 
 export default function Sidebar({ onNavigate }) {

@@ -5,7 +5,7 @@ const suite = new EngineeringRegressionSuite();
 
 const CAT_COLOR = {
   KG: "blue", PIPELINE: "purple", ROUTING: "violet", CONNECTOR: "yellow",
-  GRAPH: "teal", WORKFLOW: "orange", BASELINE: "red", MEMORY: "green", UCP: "violet", SHR: "orange", EAF: "violet", AEL: "orange", PSM: "green", ERC: "violet",
+  GRAPH: "teal", WORKFLOW: "orange", BASELINE: "red", MEMORY: "green", UCP: "violet", SHR: "orange", EAF: "violet", AEL: "orange", PSM: "green", ERC: "violet", UOP: "blue",
 };
 
 const HEALTH_COLOR = { HEALTHY: "green", DEGRADED: "yellow", NOT_READY: "red", PASS: "green", PARTIAL: "yellow", FAIL: "red", BLOCKED: "red" };
@@ -59,7 +59,7 @@ function ResultRow({ r }) {
   );
 }
 
-const CATEGORIES = ["KG", "PIPELINE", "ROUTING", "CONNECTOR", "GRAPH", "WORKFLOW", "BASELINE", "MEMORY", "UCP", "SHR", "EAF", "AEL", "PSM", "ERC"];
+const CATEGORIES = ["KG", "PIPELINE", "ROUTING", "CONNECTOR", "GRAPH", "WORKFLOW", "BASELINE", "MEMORY", "UCP", "SHR", "EAF", "AEL", "PSM", "ERC", "UOP"];
 
 export default function Phase611Page() {
   const [report, setReport] = useState(null);
