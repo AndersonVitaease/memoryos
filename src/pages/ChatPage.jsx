@@ -1,193 +1,111 @@
-import React, { useState, useRef, useEffect, useMemo } from "react";
-import { Send, Loader2, Brain, Sparkles, ChevronDown, ChevronUp, Radio, Volume2, X, Paperclip } from "lucide-react";
-import { base44 } from "@/api/base44Client";
+/**
+ * ChatPage.jsx — Conversation Experience Platform consumer
+ * Sprint 7.1.0: All business logic delegated to ConversationManager.
+ * This page: render only. No SDK calls. No sendAndReceive. No message state.
+ */
+
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import {
+  Send,
+  Loader2,
+  Brain,
+  Sparkles,
+  ChevronDown,
+  ChevronUp,
+  Radio,
+  Volume2,
+  X,
+  Paperclip,
+  RotateCcw,
+  Square,
+} from "lucide-react";
 import ReactMarkdown from "react-markdown";
-import { getOrCreateActiveSession, shouldProcessBatch, processConversationBatch } from "@/lib/conversationEngine";
+import { useConversation } from "@/lib/conversation-platform/useConversation";
 import { useVoicePipeline } from "@/hooks/useVoicePipeline";
 import { ingestKnowledge, ACCEPT_MAP } from "@/lib/knowledgeIngestionPipeline";
-import { runReasoningPlan } from "@/lib/reasoning/memoryReasoningPlanner";
-import { CognitivePipelineAdapter } from "@/lib/cognitive-pipeline-adapter/CognitivePipelineAdapter";
-import { primaryRouter } from "@/lib/primary-conversation-router/PrimaryConversationRouter";
-import { responseTracer } from "@/lib/response-binding/ResponseBindingTracer";
+import { base44 } from "@/api/base44Client";
 import VoiceButton from "@/components/chat/VoiceButton";
 import VoiceMode from "@/components/chat/VoiceMode";
 import AttachmentMenu from "@/components/chat/AttachmentMenu";
 import ProcessingBubble from "@/components/chat/ProcessingBubble";
 import PasteTextDialog from "@/components/chat/PasteTextDialog";
 import LinkDialog from "@/components/chat/LinkDialog";
+import StreamingMessage from "@/components/chat/StreamingMessage";
+import ReasoningIndicator from "@/components/chat/ReasoningIndicator";
 
-// Cognitive Pipeline Adapter — instancia singleton por sessao de UI
-// Responsabilidade: encaminhar cada mensagem pelo pipeline cognitivo certificado EF
-// antes de processar a resposta LLM via runReasoningPlan.
+// ─── Phase label map ──────────────────────────────────────────────────────────
 
-const _CHATLOG = (...args) => console.log('[CHAT]', ...args);
+const PHASE_LABELS = {
+  idle: null,
+  retrieving_memory: "Recuperando memoria...",
+  consulting_specialists: "Consultando especialistas...",
+  executing_capabilities: "Executando capacidades...",
+  building_response: "Construindo resposta...",
+  responding: "Respondendo...",
+};
+
+const STATUS_LABELS = {
+  preparing: "Preparando...",
+  persisting: "Salvando...",
+  reasoning: null, // shown via reasoningPhase
+  routing: null,
+  synthesizing: null,
+  streaming: null, // shown as typing indicator
+  finalizing: "Finalizando...",
+  recovering: "Recuperando...",
+  error: null,
+  idle: null,
+};
+
+// ─── ChatPage ─────────────────────────────────────────────────────────────────
 
 export default function ChatPage() {
-  _CHATLOG('[INIT] ChatPage montando');
-  const [messages, setMessages] = useState([]);
+  const conversation = useConversation();
   const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [initialLoading, setInitialLoading] = useState(true);
-  const [session, setSession] = useState(null);
-  const pipelineAdapter = useMemo(() => new CognitivePipelineAdapter(), []);
   const [showSummary, setShowSummary] = useState(false);
   const [continuousMode, setContinuousMode] = useState(false);
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
   const [processingItems, setProcessingItems] = useState([]);
   const [pasteDialogOpen, setPasteDialogOpen] = useState(false);
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const [lastUserMessage, setLastUserMessage] = useState("");
   const bottomRef = useRef(null);
   const fileInputRef = useRef(null);
   const fileInputTypeRef = useRef(null);
 
+  // Voice pipeline — still wired for push-to-talk
   const pipeline = useVoicePipeline({
     onSend: async (text, { setPhase }) => {
-      return await sendAndReceive(text, { setPhase });
+      setLastUserMessage(text);
+      await conversation.send(text);
+      setPhase?.("idle");
+      // Return the last assistant response for TTS
+      const msgs = conversation.messages;
+      const last = msgs[msgs.length - 1];
+      return last?.role === "assistant" ? last.content : null;
     },
   });
 
-  useEffect(() => { init(); }, []);
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages, loading]);
+  // Auto-scroll
   useEffect(() => {
-    return () => { _CHATLOG('[UNMOUNT] ChatPage desmontando — session:', session?.id, 'messages:', messages.length); };
-  }, []);
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [conversation.messages, conversation.isLoading]);
 
-  const init = async () => {
-    _CHATLOG('[LOAD] init() chamado');
-    setInitialLoading(true);
-    const activeSession = await getOrCreateActiveSession();
-    _CHATLOG('[SESSION] sessão obtida — id:', activeSession.id, 'title:', activeSession.title, 'status:', activeSession.status, 'created:', activeSession.created_date);
-    setSession(activeSession);
-    const msgs = await base44.entities.Message.filter({ session_id: activeSession.id }, "created_date", 100);
-    _CHATLOG('[LOAD] mensagens carregadas — count:', msgs.length, 'session_id:', activeSession.id);
-    setMessages(msgs);
-    setInitialLoading(false);
-    _CHATLOG('[LOAD] init() concluído');
-  };
+  // ── Send ────────────────────────────────────────────────────────────────────
 
-  const sendAndReceive = async (userMsg, { setPhase } = {}) => {
-    _CHATLOG('[BUTTON] sendAndReceive chamado — loading:', loading, 'session:', session?.id, 'input length:', userMsg?.length);
-    if (!userMsg || !userMsg.trim() || loading || !session) {
-      _CHATLOG('[BUTTON] ABORTADO — motivo:', !userMsg ? 'sem texto' : !userMsg.trim() ? 'texto vazio' : loading ? 'loading=true' : 'sem sessão');
-      return null;
-    }
+  const sendMessage = useCallback(async (e) => {
+    e?.preventDefault();
+    const text = input.trim();
+    if (!text || conversation.isLoading) return;
+    setLastUserMessage(text);
+    setInput("");
+    await conversation.send(text);
+  }, [input, conversation]);
 
-    setLoading(true);
-    _CHATLOG('[INPUT] setLoading(true)');
-
-    // Salvar mensagem do usuário
-    _CHATLOG('[SAVE] criando Message user — session_id:', session.id);
-    const savedUserMsg = await base44.entities.Message.create({
-      session_id: session.id,
-      role: "user",
-      content: userMsg,
-      memory_tier: "active",
-    });
-    _CHATLOG('[SAVE] Message user salva — id:', savedUserMsg.id);
-    setMessages((prev) => [...prev, savedUserMsg]);
-    _CHATLOG('[MESSAGE] user message adicionada ao state — total:', messages.length + 1);
-
-    // === COGNITIVE PIPELINE ADAPTER (Sprint INT-01) ===
-    // Execucao ocorre de forma nao-bloqueante — falha no pipeline nao interrompe a resposta.
-    pipelineAdapter.execute({
-      message:   userMsg,
-      sessionId: session.id,
-      userId:    session.created_by_id ?? "anonymous",
-      projectId: session.project_id ?? "default",
-    }).catch(() => { /* pipeline errors nao bloqueiam a UI — silent */ });
-
-    // === PRIMARY CONVERSATION ROUTER (Phase 5.6) ===
-    // Every message passes through PrimaryConversationRouter first.
-    // Cognitive messages → ConversationCognitiveGateway → LiveCognitivePipeline.
-    // General messages   → runReasoningPlan (conversation memory).
-    const historyMessages = [...messages, savedUserMsg].slice(-30);
-    setPhase?.("retrieving");
-
-    // === RESPONSE BINDING TRACER (Phase 5.6.1) ===
-    const traceId = responseTracer.beginTrace(userMsg, session.id);
-
-    _CHATLOG('[STREAM] primaryRouter.route — session:', session.id, 'historyLen:', historyMessages.length);
-    const routerResult = await primaryRouter.route(
-      userMsg,
-      session.id,
-      session.project_id ?? null,
-      historyMessages.length,
-    );
-    _CHATLOG('[STREAM] router decision:', routerResult.decision, 'intent:', routerResult.intent?.intent, 'durationMs:', routerResult.durationMs);
-    responseTracer.recordRouterDecision(traceId, routerResult.decision, routerResult.intent.intent, routerResult.durationMs);
-
-    let response, sources;
-
-    _CHATLOG('[STREAM] avaliando path — cognitiveAnswer:', !!routerResult.cognitiveAnswer?.answer);
-    if (routerResult.decision === "cognitive_pipeline" && routerResult.cognitiveAnswer?.answer) {
-      // Cognitive path — pipeline answer bound directly, no overwrite
-      const ca = routerResult.cognitiveAnswer;
-      responseTracer.recordPipelineAnswer(traceId, ca.answer, ca.executionId, ca.stagesExecuted, ca.confidence, ca.evidenceSources, ca.durationMs);
-      response = ca.answer;
-      sources  = [];
-      setPhase?.("generating");
-    } else {
-      // General conversation path — documented fallback condition
-      const t0fall = Date.now();
-      const plan = await runReasoningPlan({ userMsg, session, historyMessages, setPhase });
-      response = plan.response;
-      sources  = plan.sources;
-      const fallbackReason = routerResult.decision === "cognitive_pipeline"
-        ? "EMPTY_PIPELINE_ANSWER"
-        : "GENERAL_CONVERSATION";
-      responseTracer.recordFallback(traceId, fallbackReason, response, Date.now() - t0fall);
-    }
-
-    // Record rendered answer — binding verification runs here
-    responseTracer.recordRendered(traceId, response);
-
-    // Salvar resposta
-    _CHATLOG('[SAVE] criando Message assistant — session_id:', session.id, 'response length:', response?.length);
-    const savedAssistant = await base44.entities.Message.create({
-      session_id: session.id,
-      role: "assistant",
-      content: response,
-      sources_used: sources.map((s) => s.id),
-      memory_tier: "active",
-    });
-    setMessages((prev) => [...prev, savedAssistant]);
-    _CHATLOG('[MESSAGE] assistant message adicionada — id:', savedAssistant.id);
-    setLoading(false);
-    _CHATLOG('[INPUT] setLoading(false)');
-
-    const responseText = response;
-
-    // TTS é gerenciado pelo VoicePipeline — não fazer aqui
-
-    // Processar lote em background (a cada 5 mensagens alternadas = 10 total)
-    const allMessages = [...messages, savedUserMsg, savedAssistant];
-    const userMessageCount = allMessages.filter((m) => m.role === "user").length;
-
-    _CHATLOG('[MEMORY] userMessageCount:', userMessageCount, 'shouldProcessBatch:', shouldProcessBatch(userMessageCount));
-    if (shouldProcessBatch(userMessageCount)) {
-      _CHATLOG('[MEMORY] disparando processConversationBatch em background');
-      // Atualizar título na primeira vez
-      if (session.title === "Nova conversa" && allMessages.length > 0) {
-        const titleResult = await base44.integrations.Core.InvokeLLM({
-          prompt: `Crie um título curto (máx 5 palavras) para uma conversa que começou com:\n"${allMessages[0].content}"\nResponda apenas o título.`,
-        });
-        await base44.entities.ChatSession.update(session.id, { title: titleResult.trim().replace(/["']/g, "") });
-        setSession((prev) => ({ ...prev, title: titleResult.trim().replace(/["']/g, "") }));
-      }
-
-      // Processar conhecimento em background (não bloqueia a UI)
-      processConversationBatch(session, allMessages, session.project_id).then(async (knowledge) => {
-        _CHATLOG('[MEMORY] batch processado — summary length:', knowledge?.summary?.length ?? 0);
-        if (knowledge?.summary) {
-          setSession((prev) => ({ ...prev, summary: knowledge.summary }));
-        }
-      }).catch((err) => { _CHATLOG('[MEMORY] batch ERRO (background):', err?.message); });
-    }
-
-    return responseText;
-  };
+  // ── Attachments ─────────────────────────────────────────────────────────────
 
   const runIngestion = async ({ type, file, url, text }) => {
+    const session = conversation.session;
     if (!session) return;
     const itemId = `ingestion-${Date.now()}`;
     const displayName = file?.name || url || "Texto colado";
@@ -197,21 +115,17 @@ export default function ChatPage() {
       { id: itemId, name: displayName, type, stage: "receiving", error: null },
     ]);
 
-    // Salvar mensagem do usuário (registro do conteúdo adicionado)
-    const userMsg = await base44.entities.Message.create({
+    // Save user message via persistence
+    await base44.entities.Message.create({
       session_id: session.id,
       role: "user",
-      content: type === "link" ? `📎 ${url}` : `📎 ${displayName}`,
+      content: type === "link" ? `Adicionando link: ${url}` : `Adicionando: ${displayName}`,
       memory_tier: "active",
     });
-    setMessages((prev) => [...prev, userMsg]);
 
     try {
       const result = await ingestKnowledge({
-        type,
-        file,
-        url,
-        text,
+        type, file, url, text,
         name: displayName,
         sessionId: session.id,
         projectId: session.project_id,
@@ -223,39 +137,27 @@ export default function ChatPage() {
       });
 
       const stats = result.stats;
-      const statsLines = [];
-      if (stats.entities > 0) statsLines.push(`✓ ${stats.entities} entidades identificadas`);
-      if (stats.keywords > 0) statsLines.push(`✓ ${stats.keywords} palavras-chave extraídas`);
-      if (stats.decisions > 0) statsLines.push(`✓ ${stats.decisions} decisões registradas`);
-      if (stats.tasks > 0) statsLines.push(`✓ ${stats.tasks} tarefas identificadas`);
-      if (stats.topics > 0) statsLines.push(`✓ ${stats.topics} assuntos catalogados`);
+      const lines = [];
+      if (stats.entities > 0) lines.push(`✓ ${stats.entities} entidades`);
+      if (stats.keywords > 0) lines.push(`✓ ${stats.keywords} palavras-chave`);
+      if (stats.decisions > 0) lines.push(`✓ ${stats.decisions} decisoes`);
+      if (stats.tasks > 0) lines.push(`✓ ${stats.tasks} tarefas`);
+      if (stats.topics > 0) lines.push(`✓ ${stats.topics} assuntos`);
 
-      const completionText = `**${result.displayName}** processado.\n\n✓ Resumo criado.\n${statsLines.join("\n")}\n\nEste conteúdo agora faz parte da sua memória permanente.`;
-
-      const assistantMsg = await base44.entities.Message.create({
+      await base44.entities.Message.create({
         session_id: session.id,
         role: "assistant",
-        content: completionText,
+        content: `**${result.displayName}** processado e salvo na memoria.\n\n${lines.join("\n")}`,
         memory_tier: "active",
       });
-      setMessages((prev) => [...prev, assistantMsg]);
 
       setProcessingItems((prev) => prev.filter((item) => item.id !== itemId));
-    } catch (err) {
+    } catch {
       setProcessingItems((prev) =>
         prev.map((item) =>
-          item.id === itemId ? { ...item, error: "Erro ao processar conteúdo." } : item
+          item.id === itemId ? { ...item, error: "Erro ao processar." } : item
         )
       );
-
-      const errorMsg = await base44.entities.Message.create({
-        session_id: session.id,
-        role: "assistant",
-        content: `Não consegui processar **${displayName}**. Ocorreu um erro durante o processamento. Tente novamente.`,
-        memory_tier: "active",
-      });
-      setMessages((prev) => [...prev, errorMsg]);
-
       setTimeout(() => {
         setProcessingItems((prev) => prev.filter((item) => item.id !== itemId));
       }, 3000);
@@ -264,14 +166,8 @@ export default function ChatPage() {
 
   const handleAttachmentSelect = (type) => {
     setAttachmentMenuOpen(false);
-    if (type === "text") {
-      setPasteDialogOpen(true);
-      return;
-    }
-    if (type === "link") {
-      setLinkDialogOpen(true);
-      return;
-    }
+    if (type === "text") { setPasteDialogOpen(true); return; }
+    if (type === "link") { setLinkDialogOpen(true); return; }
     fileInputTypeRef.current = type;
     if (fileInputRef.current) {
       fileInputRef.current.accept = ACCEPT_MAP[type] || "";
@@ -286,20 +182,19 @@ export default function ChatPage() {
     await runIngestion({ type: fileInputTypeRef.current, file });
   };
 
-  const sendMessage = async (e) => {
-    e?.preventDefault();
-    const text = input.trim();
-    _CHATLOG('[BUTTON] sendMessage — text length:', text.length, 'loading:', loading, 'session:', session?.id);
-    if (!text || loading || !session) {
-      _CHATLOG('[BUTTON] sendMessage ABORTADO — text:', !!text, 'loading:', loading, 'session:', !!session);
-      return;
-    }
-    setInput("");
-    _CHATLOG('[INPUT] input limpo');
-    await sendAndReceive(text);
-  };
+  // ── Reasoning label ─────────────────────────────────────────────────────────
 
-  if (initialLoading) {
+  const reasoningLabel =
+    PHASE_LABELS[conversation.reasoningPhase] ??
+    STATUS_LABELS[conversation.status] ??
+    null;
+
+  const showReasoningIndicator =
+    conversation.isLoading && !["streaming"].includes(conversation.status);
+
+  // ── Loading guard ───────────────────────────────────────────────────────────
+
+  if (!conversation.isInitialized) {
     return (
       <div className="flex items-center justify-center h-[calc(100vh-3.5rem)] lg:h-screen">
         <div className="w-8 h-8 border-4 border-zinc-200 border-t-violet-600 rounded-full animate-spin" />
@@ -309,8 +204,8 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)] lg:h-screen">
-      {/* Session header with rolling summary toggle */}
-      {session?.summary && (
+      {/* Session summary toggle */}
+      {conversation.session?.summary && (
         <div className="border-b border-zinc-100 bg-white">
           <button
             onClick={() => setShowSummary(!showSummary)}
@@ -318,15 +213,17 @@ export default function ChatPage() {
           >
             <Sparkles className="w-3.5 h-3.5 text-violet-500 shrink-0" />
             <span className="text-xs font-medium text-zinc-500 truncate">
-              Memória ativa — {messages.length} mensagens
+              Memoria ativa — {conversation.messages.length} mensagens
             </span>
-            {showSummary ? <ChevronUp className="w-3.5 h-3.5 text-zinc-400 ml-auto shrink-0" /> : <ChevronDown className="w-3.5 h-3.5 text-zinc-400 ml-auto shrink-0" />}
+            {showSummary
+              ? <ChevronUp className="w-3.5 h-3.5 text-zinc-400 ml-auto shrink-0" />
+              : <ChevronDown className="w-3.5 h-3.5 text-zinc-400 ml-auto shrink-0" />}
           </button>
           {showSummary && (
             <div className="px-4 lg:px-6 pb-4">
               <div className="bg-violet-50/50 rounded-xl p-4 border border-violet-100">
-                <p className="text-xs font-semibold text-violet-600 uppercase tracking-wide mb-2">Resumo da Memória</p>
-                <p className="text-sm text-zinc-600 whitespace-pre-wrap">{session.summary}</p>
+                <p className="text-xs font-semibold text-violet-600 uppercase tracking-wide mb-2">Resumo</p>
+                <p className="text-sm text-zinc-600 whitespace-pre-wrap">{conversation.session.summary}</p>
               </div>
             </div>
           )}
@@ -336,19 +233,20 @@ export default function ChatPage() {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-3 sm:px-4 lg:px-6 py-4 lg:py-6">
         <div className="max-w-3xl mx-auto space-y-3 lg:space-y-4">
-          {messages.length === 0 && (
+
+          {conversation.messages.length === 0 && !conversation.isLoading && (
             <div className="flex flex-col items-center justify-center h-full text-center py-20">
               <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center mb-4 shadow-lg shadow-violet-200">
                 <Brain className="w-8 h-8 text-white" />
               </div>
-              <h3 className="text-lg font-semibold text-zinc-800 font-heading">Sua memória está pronta</h3>
+              <h3 className="text-lg font-semibold text-zinc-800 font-heading">Sua memoria esta pronta</h3>
               <p className="text-sm text-zinc-400 mt-1 max-w-md">
-                Converse naturalmente. O MemoryOS organiza, relaciona e preserva todo o conhecimento automaticamente — você nunca precisa resumir.
+                Converse naturalmente. O MemoryOS organiza, relaciona e preserva todo o conhecimento automaticamente.
               </p>
             </div>
           )}
 
-          {messages.map((msg) => (
+          {conversation.messages.map((msg) => (
             <div key={msg.id} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
               <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${
                 msg.role === "user"
@@ -356,9 +254,13 @@ export default function ChatPage() {
                   : "bg-white border border-zinc-200 text-zinc-700 rounded-bl-md shadow-sm"
               }`}>
                 {msg.role === "assistant" ? (
-                  <div className="prose prose-sm prose-zinc max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-                    <ReactMarkdown>{msg.content}</ReactMarkdown>
-                  </div>
+                  msg.isStreaming ? (
+                    <StreamingMessage content={msg.streamingContent ?? ""} />
+                  ) : (
+                    <div className="prose prose-sm prose-zinc max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+                      <ReactMarkdown>{msg.content}</ReactMarkdown>
+                    </div>
+                  )
                 ) : (
                   <p className="whitespace-pre-wrap">{msg.content}</p>
                 )}
@@ -366,13 +268,11 @@ export default function ChatPage() {
             </div>
           ))}
 
-          {loading && (
+          {/* Reasoning indicator — shows progressive phase labels */}
+          {showReasoningIndicator && (
             <div className="flex justify-start">
               <div className="bg-white border border-zinc-200 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm">
-                <div className="flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin text-violet-500" />
-                  <span className="text-sm text-zinc-400">Consultando a memória...</span>
-                </div>
+                <ReasoningIndicator label={reasoningLabel} />
               </div>
             </div>
           )}
@@ -380,11 +280,12 @@ export default function ChatPage() {
           {processingItems.map((item) => (
             <ProcessingBubble key={item.id} item={item} />
           ))}
+
           <div ref={bottomRef} />
         </div>
       </div>
 
-      {/* Voice pipeline status indicator */}
+      {/* Voice status bar */}
       {(pipeline.state !== "idle" || pipeline.error) && (
         <div className={`border-t px-4 lg:px-6 py-2 flex items-center gap-2 ${
           pipeline.state === "listening" ? "bg-red-50 border-red-100" :
@@ -418,10 +319,26 @@ export default function ChatPage() {
         </div>
       )}
 
-      {/* Input — fixo na parte inferior */}
+      {/* Error bar with retry */}
+      {conversation.error && (
+        <div className="border-t border-red-100 bg-red-50 px-4 lg:px-6 py-2 flex items-center gap-3">
+          <span className="text-xs text-red-600 flex-1">{conversation.error}</span>
+          {lastUserMessage && (
+            <button
+              type="button"
+              onClick={() => conversation.retry(lastUserMessage)}
+              className="flex items-center gap-1 text-xs text-red-600 hover:text-red-700 font-medium"
+            >
+              <RotateCcw className="w-3 h-3" />
+              Tentar novamente
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Input area */}
       <div className="border-t border-zinc-200 bg-white px-3 sm:px-4 lg:px-6 py-3 lg:py-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
         <form onSubmit={sendMessage} className="max-w-3xl mx-auto">
-          {/* Conversa Contínua — modo separado para longas conversas por voz */}
           <div className="flex items-center gap-2 mb-2">
             <button
               type="button"
@@ -429,7 +346,7 @@ export default function ChatPage() {
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-zinc-400 hover:text-violet-600 hover:bg-violet-50 transition"
             >
               <Radio className="w-3.5 h-3.5" />
-              Conversa Contínua
+              Conversa Continua
             </button>
           </div>
 
@@ -438,7 +355,7 @@ export default function ChatPage() {
               <button
                 type="button"
                 onClick={() => setAttachmentMenuOpen(!attachmentMenuOpen)}
-                disabled={loading}
+                disabled={conversation.isLoading}
                 className="p-3 rounded-2xl bg-zinc-100 text-zinc-600 hover:bg-zinc-200 disabled:opacity-30 transition-all shrink-0"
               >
                 <Paperclip className="w-5 h-5" />
@@ -450,6 +367,7 @@ export default function ChatPage() {
                 />
               )}
             </div>
+
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -459,25 +377,39 @@ export default function ChatPage() {
                   sendMessage();
                 }
               }}
-              placeholder="Converse com sua memória..."
+              placeholder="Converse com sua memoria..."
               rows={1}
               className={`flex-1 resize-none px-4 py-3 rounded-2xl border text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 transition-all bg-white max-h-32 ${
                 pipeline.isListening ? "border-red-300 bg-red-50/30" : "border-zinc-200"
               }`}
               readOnly={pipeline.isListening}
-              disabled={loading}
+              disabled={conversation.isLoading}
             />
-            {pipeline.isSupported && (
+
+            {/* Stop button while loading */}
+            {conversation.isLoading && (
+              <button
+                type="button"
+                onClick={() => conversation.cancel()}
+                className="p-3 rounded-2xl bg-red-50 text-red-500 hover:bg-red-100 transition-all shrink-0"
+                title="Parar"
+              >
+                <Square className="w-4 h-4" />
+              </button>
+            )}
+
+            {pipeline.isSupported && !conversation.isLoading && (
               <VoiceButton
-                disabled={loading || pipeline.isProcessing}
+                disabled={pipeline.isProcessing}
                 onPressStart={pipeline.startCapture}
                 onPressEnd={pipeline.stopCapture}
                 onCancel={pipeline.cancel}
               />
             )}
+
             <button
               type="submit"
-              disabled={loading || !input.trim()}
+              disabled={conversation.isLoading || !input.trim()}
               className="p-3 rounded-2xl bg-zinc-900 text-white hover:bg-zinc-800 disabled:opacity-30 transition-all"
             >
               <Send className="w-4 h-4" />
@@ -486,35 +418,31 @@ export default function ChatPage() {
         </form>
       </div>
 
-      {/* Hidden file input for attachments */}
-      <input
-        ref={fileInputRef}
-        type="file"
-        className="hidden"
-        onChange={handleFileChange}
-      />
+      <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileChange} />
 
-      {/* Paste text dialog */}
       <PasteTextDialog
         open={pasteDialogOpen}
         onOpenChange={setPasteDialogOpen}
         onSubmit={(text) => runIngestion({ type: "text", text })}
       />
 
-      {/* Link dialog */}
       <LinkDialog
         open={linkDialogOpen}
         onOpenChange={setLinkDialogOpen}
         onSubmit={(url) => runIngestion({ type: "link", url })}
       />
 
-      {/* Conversa Contínua — overlay para longas conversas por voz */}
       {continuousMode && (
         <VoiceMode
-          onSendAndReceive={(text) => sendAndReceive(text)}
+          onSendAndReceive={async (text) => {
+            await conversation.send(text);
+            const msgs = conversation.messages;
+            const last = msgs[msgs.length - 1];
+            return last?.role === "assistant" ? last.content : null;
+          }}
           onClose={() => {
             setContinuousMode(false);
-            pipeline.stopSpeaking();
+            pipeline.stopSpeaking?.();
           }}
         />
       )}
