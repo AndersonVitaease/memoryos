@@ -22,7 +22,8 @@ export type AnswerTemplate =
   | "TECHNICAL_DEBT"
   | "CURRENT_RISKS"
   | "IMPLEMENTATION_PROGRESS"
-  | "GENERAL_SUMMARY";
+  | "GENERAL_SUMMARY"
+  | "GITHUB_LIVE";
 
 // ── Composer Input ────────────────────────────────────────────────────────────
 

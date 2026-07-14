@@ -14,6 +14,8 @@
 
 import { LiveCognitivePipeline } from "../live-cognitive-pipeline/LiveCognitivePipeline";
 import { CognitiveAnswerComposer } from "../cognitive-answer-composer/CognitiveAnswerComposer";
+import { GitHubQueryRouter } from "./GitHubQueryRouter";
+import { ConnectorInvocationService } from "../cognitive-connector/ConnectorInvocationService";
 import type {
   GatewayRequest, CognitiveAnswer, IntentClassification, CognitiveIntent,
   GatewayDiagnostic, CCGReport, AnswerSource,
@@ -164,8 +166,10 @@ function generateAnswer(
 // ── ConversationCognitiveGateway ──────────────────────────────────────────────
 
 export class ConversationCognitiveGateway {
-  private readonly _pipeline  = new LiveCognitivePipeline();
-  private readonly _composer  = new CognitiveAnswerComposer();
+  private readonly _pipeline   = new LiveCognitivePipeline();
+  private readonly _composer   = new CognitiveAnswerComposer();
+  private readonly _ghRouter   = new GitHubQueryRouter();
+  private readonly _cis        = new ConnectorInvocationService();
   private readonly _diagnostics: GatewayDiagnostic[] = [];
   private _totalRequests     = 0;
   private _cognitiveRequests = 0;
@@ -195,6 +199,111 @@ export class ConversationCognitiveGateway {
     const intent = this.classifyIntent(userMessage);
 
     let answer: CognitiveAnswer;
+
+    // ── Connector-Aware Query Routing (Phase 5.7.1) ──────────────────────────
+    // GitHub-targeted questions bypass the LCP entirely and invoke the connector directly.
+    const ghRoute = this._ghRouter.route(userMessage);
+    if (ghRoute.isGitHubQuery && ghRoute.capability) {
+      this._cognitiveRequests++;
+
+      // Capabilities that require owner+repo: if not extracted, auto-fetch first repo
+      const needsRepo = ["branches.list", "commits.list", "files.list", "files.get", "repos.stats", "repos.languages"].includes(ghRoute.capability);
+      let capability  = ghRoute.capability;
+      let payload     = { ...ghRoute.payload };
+
+      if (needsRepo && (!payload.owner || !payload.repo)) {
+        // Auto-discover first repo
+        const reposInv = await this._cis.invoke("github", "repos.list", { per_page: 5 },
+          { originComponent: "ConversationCognitiveGateway", reason: "Auto-discover repo for query", goalId: null });
+        if (reposInv.record.status === "SUCCESS") {
+          const items = (reposInv.result?.data as any)?.items ?? [];
+          if (items.length > 0) {
+            payload.owner = items[0].owner;
+            payload.repo  = items[0].name;
+          } else {
+            // No repos — fall back to repos.list answer
+            capability = "repos.list";
+            payload = {};
+          }
+        } else if (reposInv.record.status === "NOT_CONFIGURED") {
+          // Pass through — will be caught as NOT_CONFIGURED below
+          capability = "repos.list";
+          payload = {};
+        }
+      }
+
+      const invocationResult = await this._cis.invoke(
+        "github",
+        capability,
+        payload,
+        { originComponent: "ConversationCognitiveGateway", reason: `User query: ${capability}`, goalId: null },
+      );
+
+      if (invocationResult.record.status === "SUCCESS" && invocationResult.result?.data) {
+        const connectorData = invocationResult.result.data as Record<string, unknown>;
+        const evidence = [
+          `GitHub direct: ${capability}`,
+          `Query confidence: ${Math.round(ghRoute.confidence * 100)}%`,
+          `Keywords: ${ghRoute.matchedKeywords.slice(0, 3).join(", ")}`,
+          `ExecutionId: ${invocationResult.record.id}`,
+        ];
+        const composed = this._composer.composeFromConnectorResult(
+          userMessage,
+          capability,
+          connectorData,
+          evidence,
+          invocationResult.record.id ?? null,
+          Date.now() - t0,
+        );
+        answer = {
+          id:                makeCCGId("answer"),
+          requestId:         request.id,
+          executionId:       invocationResult.record.id ?? null,
+          answer:            composed.narrative,
+          source:            "live_pipeline" as AnswerSource,
+          intent:            "repository_analysis",
+          connectorsUsed:    ["github"],
+          stagesExecuted:    [capability],
+          evidenceSources:   evidence,
+          confidence:        0.95,
+          durationMs:        Date.now() - t0,
+          timestamp:         Date.now(),
+          degraded:          false,
+          degradationReason: null,
+          recoveryInfo:      null,
+          pipelineStatus:    "CONNECTOR_DIRECT",
+        };
+      } else {
+        // Connector returned NOT_CONFIGURED or failed — fall through to LCP
+        const notConfigured = invocationResult.record.status === "NOT_CONFIGURED";
+        answer = {
+          id:                makeCCGId("answer"),
+          requestId:         request.id,
+          executionId:       null,
+          answer:            notConfigured
+            ? "GitHub connector is not configured. Please connect your GitHub account in the Phase 5.7.0 dashboard to enable repository queries."
+            : `GitHub query failed: ${invocationResult.record.error ?? "unknown error"}`,
+          source:            "degraded_pipeline" as AnswerSource,
+          intent:            "repository_analysis",
+          connectorsUsed:    [],
+          stagesExecuted:    [],
+          evidenceSources:   [],
+          confidence:        0,
+          durationMs:        Date.now() - t0,
+          timestamp:         Date.now(),
+          degraded:          true,
+          degradationReason: invocationResult.record.error ?? "GitHub not configured",
+          recoveryInfo:      notConfigured ? "Inject a GitHub PAT in Phase 5.7.0 dashboard" : null,
+          pipelineStatus:    invocationResult.record.status,
+        };
+      }
+
+      this._totalConfidence += answer.confidence;
+      this._totalDuration   += answer.durationMs;
+      this._diagnostics.push({ requestId: request.id, userMessage, intent, pipelineInvoked: false, answer, timestamp: Date.now() });
+      if (this._diagnostics.length > 100) this._diagnostics.splice(0, this._diagnostics.length - 100);
+      return answer;
+    }
 
     if (intent.requiresCognitive) {
       this._cognitiveRequests++;

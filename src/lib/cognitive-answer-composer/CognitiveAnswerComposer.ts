@@ -377,6 +377,81 @@ function composeGeneralSummary(input: ComposerInput): { sections: AnswerSection[
   return { sections, narrative };
 }
 
+// ── GitHub Live Template ──────────────────────────────────────────────────────
+
+function composeGitHubLive(
+  userMessage: string,
+  capability: string,
+  connectorData: Record<string, unknown>,
+  evidence: string[],
+): string {
+  const d = connectorData as any;
+
+  switch (capability) {
+    case "repos.list": {
+      const items: any[] = d.items ?? [];
+      if (items.length === 0) return "No repositories found in your GitHub account.";
+      const list = items.map(r =>
+        `• **${r.full_name ?? r.name}** — ${r.language ?? "unknown language"}${r.private ? " (private)" : ""} · ⭐ ${r.stargazers_count ?? 0}`
+      ).join("\n");
+      return `**Your GitHub Repositories** (${d.count ?? items.length})\n\n${list}`;
+    }
+    case "branches.list": {
+      const items: any[] = d.items ?? [];
+      if (items.length === 0) return "No branches found for this repository.";
+      const list = items.map(b =>
+        `• **${b.name}**${b.protected ? " 🔒 protected" : ""} · sha: \`${b.sha?.slice(0, 7) ?? "—"}\``
+      ).join("\n");
+      return `**Branches** (${d.count ?? items.length})\n\n${list}`;
+    }
+    case "commits.list": {
+      const items: any[] = d.items ?? [];
+      if (items.length === 0) return "No commits found.";
+      const list = items.slice(0, 15).map(c =>
+        `• \`${c.shortSha ?? c.sha?.slice(0, 7)}\` **${c.message ?? "—"}** — ${c.author ?? "unknown"} · ${c.date ? new Date(c.date).toLocaleDateString() : "—"}`
+      ).join("\n");
+      return `**Recent Commits** (${d.count ?? items.length})\n\n${list}`;
+    }
+    case "files.list": {
+      const items: any[] = d.items ?? [];
+      if (items.length === 0) return "No files found in this repository.";
+      // Group by top-level directory
+      const grouped: Record<string, string[]> = {};
+      items.slice(0, 40).forEach((f: any) => {
+        const parts = f.path.split("/");
+        const top = parts.length > 1 ? parts[0] : "(root)";
+        if (!grouped[top]) grouped[top] = [];
+        grouped[top].push(f.path);
+      });
+      const list = Object.entries(grouped).slice(0, 15).map(([dir, files]) =>
+        `**${dir}/**: ${files.length} file(s)`
+      ).join("\n");
+      return `**Repository Files** (${d.totalFiles ?? items.length} total)\n\n${list}${d.truncated ? "\n\n*Results truncated — repository has more files.*" : ""}`;
+    }
+    case "files.get": {
+      if (!d.content) return `File \`${d.path ?? "unknown"}\` found but content could not be decoded.`;
+      const preview = (d.content as string).slice(0, 2000);
+      return `**File: \`${d.path}\`** (${d.size ?? 0} bytes)\n\n\`\`\`\n${preview}${(d.content as string).length > 2000 ? "\n... (truncated)" : ""}\n\`\`\``;
+    }
+    case "repos.stats": {
+      const top: any[] = d.topContributors ?? [];
+      const contribs = top.map(c => `• **${c.login ?? "unknown"}** — ${c.total} commits`).join("\n");
+      return `**Repository Stats**\n\nTotal commits: ${d.totalCommits ?? "N/A"} · Contributors: ${d.contributorCount ?? 0}\n\n${contribs || "No contributor data."}`;
+    }
+    case "repos.languages": {
+      const langs: any[] = d.languages ?? [];
+      if (langs.length === 0) return "No language data available for this repository.";
+      const list = langs.map(l => `• **${l.lang}** — ${l.pct}%`).join("\n");
+      return `**Languages** (primary: ${d.primaryLanguage ?? "unknown"})\n\n${list}`;
+    }
+    case "auth.user": {
+      return `**GitHub Account**\n\n• Login: ${d.login}\n• Name: ${d.name ?? "—"}\n• Public repos: ${d.public_repos ?? 0}\n• Followers: ${d.followers ?? 0}`;
+    }
+    default:
+      return `**GitHub — ${capability}**\n\n${JSON.stringify(d, null, 2).slice(0, 500)}`;
+  }
+}
+
 // ── Evidence Block Builder ────────────────────────────────────────────────────
 
 function buildEvidence(input: ComposerInput, snapshotSections: string[]): EvidenceBlock {
@@ -513,6 +588,61 @@ export class CognitiveAnswerComposer {
       snapshotSectionsUsed: snapshotSections,
       evidenceCount:        ev.sources.length,
       confidence:           input.confidence,
+      compositionMs:        answer.compositionMs,
+      answer,
+      timestamp:            Date.now(),
+    };
+    this._diagnostics.push(diagnostic);
+    if (this._diagnostics.length > 50) this._diagnostics.splice(0, this._diagnostics.length - 50);
+
+    return answer;
+  }
+
+  // ── GitHub Live Connector Compose ─────────────────────────────────────────
+
+  composeFromConnectorResult(
+    userMessage:    string,
+    capability:     string,
+    connectorData:  Record<string, unknown>,
+    evidence:       string[],
+    executionId:    string | null,
+    durationMs:     number,
+  ): ComposedAnswer {
+    const t0 = Date.now();
+    const narrative = composeGitHubLive(userMessage, capability, connectorData, evidence)
+      + `\n\n---\n*Source: GitHub Live · Capability: ${capability} · ${evidence.slice(0, 3).join(" · ")} · ${durationMs}ms*`;
+
+    const ev: EvidenceBlock = {
+      sources:          evidence,
+      executionId,
+      confidence:       0.95,
+      pipelineStatus:   "CONNECTOR_DIRECT",
+      connectors:       ["GitHub"],
+      stagesUsed:       [capability],
+      snapshotSections: [],
+    };
+
+    const answer: ComposedAnswer = {
+      id:              makeCACId("cac_gh"),
+      template:        "GITHUB_LIVE",
+      narrative,
+      sections:        [{ heading: capability, body: narrative, relevant: true }],
+      evidence:        ev,
+      confidence:      0.95,
+      degraded:        false,
+      degradationNote: null,
+      composedAt:      Date.now(),
+      compositionMs:   Date.now() - t0,
+    };
+
+    const diagnostic: ComposerDiagnostic = {
+      id:                   makeCACId("diag_gh"),
+      userMessage,
+      detectedIntent:       "github_live",
+      selectedTemplate:     "GITHUB_LIVE",
+      snapshotSectionsUsed: [],
+      evidenceCount:        evidence.length,
+      confidence:           0.95,
       compositionMs:        answer.compositionMs,
       answer,
       timestamp:            Date.now(),

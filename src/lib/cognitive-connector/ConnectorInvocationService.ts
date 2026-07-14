@@ -323,17 +323,18 @@ export class ConnectorInvocationService {
     checks.push({ name: "Read-only enforcement", passed: !isWrite, detail: isWrite ? `${operation} is a blocked write operation` : "Read-only operation — allowed" });
     if (isWrite) return this._authResult("ACCESS_DENIED", connectorId, operation, `Write operation "${operation}" blocked by read-only policy`, checks);
 
-    // 3. Connector healthy
+    // 3. Connector reachable (NOT_CONFIGURED is still allowed through — connector returns it at execute time)
     const connector = this._connectors.get(connectorId)!;
-    let healthy = false;
+    let reachable = false;
     try {
       const h = await connector.health() as any;
-      healthy = h.status === "healthy" || h.status === "degraded";
-      checks.push({ name: "Connector healthy", passed: healthy, detail: `health=${h.status}` });
+      // "unhealthy" due to missing token → connector will return NOT_CONFIGURED at execute time, which is valid
+      reachable = h.status === "healthy" || h.status === "degraded" || h.status === "unhealthy";
+      checks.push({ name: "Connector reachable", passed: reachable, detail: `health=${h.status}` });
     } catch (e) {
-      checks.push({ name: "Connector healthy", passed: false, detail: `health() threw: ${String(e)}` });
+      checks.push({ name: "Connector reachable", passed: false, detail: `health() threw: ${String(e)}` });
     }
-    if (!healthy) return this._authResult("NOT_AVAILABLE", connectorId, operation, `Connector ${connectorId} is unhealthy`, checks);
+    if (!reachable) return this._authResult("NOT_AVAILABLE", connectorId, operation, `Connector ${connectorId} unreachable`, checks);
 
     // 4. Capability exists
     const meta = connector.metadata();
