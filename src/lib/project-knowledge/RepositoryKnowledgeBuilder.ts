@@ -128,6 +128,9 @@ export class RepositoryKnowledgeBuilder {
     const entityMap = new Map<string, ArchEntity>();
     const BATCH = 8;
 
+    let _downloadedCount = 0;
+    let _parsedCount = 0;
+
     for (let i = 0; i < targetFiles.length; i += BATCH) {
       const batch = targetFiles.slice(i, i + BATCH);
       const results = await Promise.allSettled(
@@ -139,17 +142,25 @@ export class RepositoryKnowledgeBuilder {
       for (let j = 0; j < batch.length; j++) {
         const r = results[j];
         const filePath = batch[j].path;
-        if (r.status !== "fulfilled" || r.value.record.status !== "SUCCESS") continue;
+        if (r.status !== "fulfilled" || r.value.record.status !== "SUCCESS") {
+          const reason = r.status !== "fulfilled" ? `rejected: ${(r as any).reason}` : `status=${r.value.record.status}`;
+          console.warn(`[RKB] files.get FAILED "${filePath}" — ${reason}`);
+          continue;
+        }
+
+        _downloadedCount++;
 
         const rawData  = r.value.result?.data as any;
         const content  = rawData?.content ?? "";
         if (!content || content.trim().length === 0) {
-          // Log every skipped file so failures are never silent
-          console.warn(`[RKB] SKIP ${filePath} — empty content (decoded=${rawData?.decoded}, encoding=${rawData?.encoding}, size=${rawData?.size})`);
+          console.warn(`[RKB] SKIP "${filePath}" — empty content (decoded=${rawData?.decoded}, encoding=${rawData?.encoding}, size=${rawData?.size})`);
           continue;
         }
 
         const parsed   = parseSourceFile(filePath, content);
+        _parsedCount++;
+        console.log(`[RKB] FILE "${filePath}" contentLength=${content.length} classes=${JSON.stringify(parsed.classes)} interfaces=${JSON.stringify(parsed.interfaces)} enums=${JSON.stringify(parsed.enums)} functions=${parsed.functions.length} types=${parsed.types.length} constants=${parsed.constants.length} imports=${parsed.imports.length} exports=${JSON.stringify(parsed.exports)}`);
+
         const layer    = detectLayer(filePath);
         const eType    = resolveEntityType(parsed);
         const primary  = [...parsed.classes, ...parsed.interfaces, ...parsed.enums][0] ?? filePath.split("/").pop()?.replace(/\.\w+$/, "") ?? "unknown";
@@ -182,7 +193,9 @@ export class RepositoryKnowledgeBuilder {
       }
     }
 
-    console.log(`[RKB] STAGE after parse loop — entities.length = ${entities.length}`);
+    console.log(`[RKB] STAGE downloaded — _downloadedCount = ${_downloadedCount}`);
+    console.log(`[RKB] STAGE parsed — _parsedCount = ${_parsedCount}`);
+    console.log(`[RKB] STAGE entity extraction — entities.length = ${entities.length}`);
 
     // 5. Build relationships (EF-60.4)
     const relationships: ArchRelationship[] = buildRelationships(entities, targetFiles, entityMap);
