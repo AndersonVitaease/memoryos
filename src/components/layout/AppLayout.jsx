@@ -4,10 +4,12 @@ import Sidebar from "./Sidebar";
 import { Menu, X } from "lucide-react";
 
 export default function AppLayout() {
+  console.log('[CHAIN][3-AppLayout] RENDER START');
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const closeDrawer = () => setMobileOpen(false);
 
+  console.log('[CHAIN][3-AppLayout] → RETORNANDO JSX com <Outlet />');
   return (
     <div className="min-h-screen bg-zinc-50">
       {/* Desktop sidebar — fixed, fora do fluxo do documento */}

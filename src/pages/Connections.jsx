@@ -15,10 +15,12 @@ import { CONNECTOR_REGISTRY } from "@/lib/connectors/registry";
  * Jornada: Gmail é o único conector do Beta oficial.
  */
 export default function Connections() {
+  console.log('[CHAIN][4-Connections] RENDER START');
   const registry = Array.isArray(CONNECTOR_REGISTRY) ? CONNECTOR_REGISTRY : [];
   const betaConnectors = registry.filter((c) => c.beta);
   const futureConnectors = registry.filter((c) => !c.beta);
 
+  console.log('[CHAIN][4-Connections] → betaConnectors:', betaConnectors.length, '| futureConnectors:', futureConnectors.length, '→ RETORNANDO JSX');
   return (
     <div className="min-h-[calc(100vh-3.5rem)] lg:min-h-screen px-4 py-6 lg:px-6 lg:py-8">
       <div className="max-w-3xl mx-auto">
@@ -94,6 +96,7 @@ export default function Connections() {
 }
 
 function ConnectorCard({ connector }) {
+  console.log('[CHAIN][5-ConnectorCard] RENDER — id:', connector?.id);
   const isConnected = connector.connected;
 
   return (

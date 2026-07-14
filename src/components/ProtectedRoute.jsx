@@ -10,6 +10,7 @@ const DefaultFallback = () => (
 );
 
 export default function ProtectedRoute({ fallback = <DefaultFallback />, unauthenticatedElement }) {
+  console.log('[CHAIN][2-ProtectedRoute] RENDER START');
   const { isAuthenticated, isLoadingAuth, authChecked, authError, checkUserAuth } = useAuth();
 
   useEffect(() => {
@@ -24,7 +25,7 @@ export default function ProtectedRoute({ fallback = <DefaultFallback />, unauthe
   }, [authChecked, isLoadingAuth, checkUserAuth]);
 
   if (isLoadingAuth || !authChecked) {
-    console.log('[DIAG][ProtectedRoute] RETORNANDO FALLBACK (spinner) — isLoadingAuth:', isLoadingAuth, '| authChecked:', authChecked);
+    console.log('[CHAIN][2-ProtectedRoute] → FALLBACK spinner — isLoadingAuth:', isLoadingAuth, '| authChecked:', authChecked);
     return fallback;
   }
 
@@ -42,6 +43,6 @@ export default function ProtectedRoute({ fallback = <DefaultFallback />, unauthe
     return unauthenticatedElement;
   }
 
-  console.log('[DIAG][ProtectedRoute] RETORNANDO <Outlet /> — usuário autenticado');
+  console.log('[CHAIN][2-ProtectedRoute] → RETORNANDO <Outlet /> — isAuthenticated=true, authChecked=true');
   return <Outlet />;
 }
