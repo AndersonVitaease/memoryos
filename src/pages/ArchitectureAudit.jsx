@@ -67,6 +67,7 @@ function priorityColor(p) {
 }
 
 export default function ArchitectureAudit() {
+  console.log('[RENDER] ArchitectureAudit');
   const [stage, setStage] = useState("idle");
   const [report, setReport] = useState(null);
   const [error, setError] = useState(null);
@@ -91,6 +92,7 @@ export default function ArchitectureAudit() {
 
   // === IDLE ===
   if (stage === "idle" && !report) {
+    console.log('[RETURN] ArchitectureAudit → idle UI');
     return (
       <div className="max-w-3xl mx-auto px-4 lg:px-6 py-8 lg:py-12">
         <div className="flex items-center gap-3 mb-6">

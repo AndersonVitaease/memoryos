@@ -6,6 +6,7 @@ import { retrieveContext } from "@/lib/contextRetrieval";
 import { base44 } from "@/api/base44Client";
 
 export default function SearchPage() {
+  console.log('[RENDER] SearchPage');
   const [query, setQuery] = useState("");
   const [answer, setAnswer] = useState("");
   const [sources, setSources] = useState([]);
@@ -39,6 +40,7 @@ Se não encontrar a informação, diga que não está na memória do sistema.`;
     setLoading(false);
   };
 
+  console.log('[RETURN] SearchPage → full UI');
   return (
     <div className="p-4 sm:p-6 lg:p-10 max-w-4xl mx-auto w-full">
       <div className="mb-8">

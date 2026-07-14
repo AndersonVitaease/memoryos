@@ -8,6 +8,7 @@ import MemorySpaces from "@/components/home/MemorySpaces";
 import RecentActivity from "@/components/home/RecentActivity";
 
 export default function Home() {
+  console.log('[RENDER] Home');
   const [snapshot, setSnapshot] = useState(null);
   const [loading, setLoading] = useState(true);
   const updatedRef = useRef(false);
@@ -43,6 +44,7 @@ export default function Home() {
   };
 
   if (loading || !snapshot) {
+    console.log('[RETURN] Home → spinner');
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="w-8 h-8 border-4 border-zinc-200 border-t-violet-600 rounded-full animate-spin" />
@@ -54,6 +56,7 @@ export default function Home() {
   const isEmpty = activeSessions.length === 0 && spaces.length === 0 && activity.length === 0;
 
   if (isEmpty) {
+    console.log('[RETURN] Home → empty state');
     return (
       <div className="flex flex-col items-center justify-center h-[calc(100vh-3.5rem)] lg:h-screen text-center px-6">
         <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center mb-5 shadow-lg shadow-violet-200">
@@ -73,6 +76,7 @@ export default function Home() {
     );
   }
 
+  console.log('[RETURN] Home → full UI');
   return (
     <div className="p-6 max-w-3xl mx-auto w-full">
       <GreetingBlock user={user} activeSession={activeSessions[0]} />

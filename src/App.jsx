@@ -134,6 +134,7 @@ import Phase641Page from '@/pages/Phase641Page';
 import Phase641aPage from '@/pages/Phase641aPage';
 
 const AuthenticatedApp = () => {
+  console.log('[RENDER] AuthenticatedApp');
   console.log('[CHAIN][1-App] AuthenticatedApp RENDER START');
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
 

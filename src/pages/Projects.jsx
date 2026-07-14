@@ -6,6 +6,7 @@ import ProjectCard from "@/components/projects/ProjectCard";
 import CreateProjectDialog from "@/components/projects/CreateProjectDialog";
 
 export default function Projects() {
+  console.log('[RENDER] Projects');
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -16,12 +17,18 @@ export default function Projects() {
 
   const loadProjects = async () => {
     setLoading(true);
-    const data = await base44.entities.Project.list("-created_date", 50);
-    setProjects(data);
-    setLoading(false);
+    try {
+      const data = await base44.entities.Project.list("-created_date", 50);
+      setProjects(data);
+    } catch (error) {
+      console.error('[CRASH] Projects loadProjects()', error?.message, error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (loading) {
+    console.log('[RETURN] Projects → spinner');
     return (
       <div className="flex items-center justify-center h-[calc(100vh-3.5rem)] lg:h-screen">
         <div className="w-8 h-8 border-4 border-zinc-200 border-t-violet-600 rounded-full animate-spin" />
@@ -29,6 +36,7 @@ export default function Projects() {
     );
   }
 
+  console.log('[RETURN] Projects → full UI');
   return (
     <div className="p-4 sm:p-6 lg:p-10 max-w-6xl mx-auto w-full">
       <div className="flex items-center justify-between mb-8">

@@ -1,9 +1,38 @@
-import React, { useState } from "react";
+import React, { useState, Component } from "react";
 import { Outlet } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import { Menu, X } from "lucide-react";
 
+class OutletErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, info) {
+    console.error("[CRASH][ErrorBoundary] Component crashed inside Outlet");
+    console.error("[CRASH][ErrorBoundary] error:", error?.message, error);
+    console.error("[CRASH][ErrorBoundary] componentStack:", info?.componentStack);
+    console.error("[CRASH][ErrorBoundary] JS stack:", error?.stack);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: 24, color: "red", fontFamily: "monospace", fontSize: 13 }}>
+          <strong>[CRASH][ErrorBoundary]</strong> Um componente dentro do Outlet lançou uma exceção.<br />
+          <pre style={{ whiteSpace: "pre-wrap", marginTop: 8 }}>{this.state.error?.message}</pre>
+          <pre style={{ whiteSpace: "pre-wrap", fontSize: 11, color: "#888" }}>{this.state.error?.stack}</pre>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function AppLayout() {
+  console.log('[RENDER] AppLayout');
   console.log('[CHAIN][3-AppLayout] RENDER START');
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -45,7 +74,10 @@ export default function AppLayout() {
           <span className="font-bold text-sm font-heading">MemoryOS</span>
         </div>
         <div className="flex-1">
-          <Outlet />
+          <OutletErrorBoundary>
+            {console.log('[RETURN] AppLayout → mounting Outlet') || null}
+            <Outlet />
+          </OutletErrorBoundary>
         </div>
       </main>
     </div>

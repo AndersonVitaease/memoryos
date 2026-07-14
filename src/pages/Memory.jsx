@@ -4,6 +4,7 @@ import { Brain, CheckCircle2, ListTodo, Users, Tag as TagIcon, Calendar, FileTex
 import moment from "moment";
 
 export default function Memory() {
+  console.log('[RENDER] Memory');
   const [loading, setLoading] = useState(true);
   const [sessions, setSessions] = useState([]);
   const [decisions, setDecisions] = useState([]);
@@ -16,19 +17,24 @@ export default function Memory() {
 
   const load = async () => {
     setLoading(true);
-    const [sess, decs, tks, tops, ents] = await Promise.all([
-      base44.entities.ChatSession.list("-updated_date", 20),
-      base44.entities.Decision.list("-decided_date", 50),
-      base44.entities.Task.list("-created_date", 50),
-      base44.entities.Topic.list("-created_date", 50),
-      base44.entities.KnowledgeEntity.list("-created_date", 100),
-    ]);
-    setSessions(sess);
-    setDecisions(decs);
-    setTasks(tks);
-    setTopics(tops);
-    setEntities(ents);
-    setLoading(false);
+    try {
+      const [sess, decs, tks, tops, ents] = await Promise.all([
+        base44.entities.ChatSession.list("-updated_date", 20),
+        base44.entities.Decision.list("-decided_date", 50),
+        base44.entities.Task.list("-created_date", 50),
+        base44.entities.Topic.list("-created_date", 50),
+        base44.entities.KnowledgeEntity.list("-created_date", 100),
+      ]);
+      setSessions(sess);
+      setDecisions(decs);
+      setTasks(tks);
+      setTopics(tops);
+      setEntities(ents);
+    } catch (error) {
+      console.error('[CRASH] Memory load()', error?.message, error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const updateTaskStatus = async (taskId, currentStatus) => {
@@ -38,6 +44,7 @@ export default function Memory() {
   };
 
   if (loading) {
+    console.log('[RETURN] Memory → spinner');
     return (
       <div className="flex items-center justify-center h-[calc(100vh-3.5rem)] lg:h-screen">
         <div className="w-8 h-8 border-4 border-zinc-200 border-t-violet-600 rounded-full animate-spin" />
@@ -45,6 +52,7 @@ export default function Memory() {
     );
   }
 
+  console.log('[RETURN] Memory → full UI');
   const tabs = [
     { id: "decisions", label: "Decisões", icon: CheckCircle2, count: decisions.length },
     { id: "tasks", label: "Tarefas", icon: ListTodo, count: tasks.length },

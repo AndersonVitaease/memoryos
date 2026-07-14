@@ -10,6 +10,7 @@ const DefaultFallback = () => (
 );
 
 export default function ProtectedRoute({ fallback = <DefaultFallback />, unauthenticatedElement }) {
+  console.log('[RENDER] ProtectedRoute');
   console.log('[CHAIN][2-ProtectedRoute] RENDER START');
   const { isAuthenticated, isLoadingAuth, authChecked, authError, checkUserAuth } = useAuth();
 
@@ -43,6 +44,7 @@ export default function ProtectedRoute({ fallback = <DefaultFallback />, unauthe
     return unauthenticatedElement;
   }
 
+  console.log('[RETURN] ProtectedRoute → <Outlet />');
   console.log('[CHAIN][2-ProtectedRoute] → RETORNANDO <Outlet /> — isAuthenticated=true, authChecked=true');
   return <Outlet />;
 }
