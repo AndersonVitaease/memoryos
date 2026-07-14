@@ -1,0 +1,215 @@
+/**
+ * DebugRuntime — Módulo de coleta de evidências do runtime do browser.
+ * Não altera nenhuma lógica da aplicação. Apenas observa e registra.
+ * Acesse o resultado em: window.__MEMORY_DEBUG__
+ */
+
+(function installDebugRuntime() {
+  if (typeof window === 'undefined') return;
+
+  const debug = {
+    timestamp: new Date().toISOString(),
+    snapshots: [],
+    mutations: [],
+    errors: [],
+    unhandledRejections: [],
+    networkErrors: [],
+    hiddenElements: [],
+    suppressedPopups: [],
+    outletChildren: null,
+    mainChildren: null,
+  };
+
+  window.__MEMORY_DEBUG__ = debug;
+
+  // ─── 1. Captura de snapshot do DOM ──────────────────────────────────────────
+  function captureSnapshot(label) {
+    const snap = {
+      label,
+      time: new Date().toISOString(),
+      readyState: document.readyState,
+      pathname: window.location.pathname,
+      bodyLength: document.body ? document.body.innerHTML.length : 0,
+      mainChildCount: 0,
+      outletChildCount: null,
+    };
+
+    // Filhos de <main>
+    const main = document.querySelector('main');
+    snap.mainChildCount = main ? main.children.length : 0;
+
+    // Filhos do Outlet — procura pelo container direto dentro do <main>
+    // O Outlet do React Router não tem um atributo próprio; buscamos o
+    // primeiro div filho direto de main que contenha mais de 0 filhos.
+    if (main) {
+      const outletCandidate = main.querySelector('div:not([class*="mobile"]):not([class*="header"])');
+      snap.outletChildCount = outletCandidate ? outletCandidate.children.length : 0;
+    }
+
+    debug.snapshots.push(snap);
+    debug.mainChildren = snap.mainChildCount;
+    debug.outletChildren = snap.outletChildCount;
+
+    return snap;
+  }
+
+  // ─── 2. Elementos ocultos ────────────────────────────────────────────────────
+  function scanHiddenElements() {
+    const hidden = [];
+    const all = document.querySelectorAll('*');
+    all.forEach((el) => {
+      const style = window.getComputedStyle(el);
+      const tag = el.tagName.toLowerCase();
+      const id = el.id ? `#${el.id}` : '';
+      const cls = el.className && typeof el.className === 'string'
+        ? `.${el.className.trim().split(/\s+/).join('.')}`
+        : '';
+      const selector = `${tag}${id}${cls}`.slice(0, 80);
+
+      if (
+        style.display === 'none' ||
+        style.visibility === 'hidden' ||
+        style.opacity === '0'
+      ) {
+        hidden.push({
+          selector,
+          display: style.display,
+          visibility: style.visibility,
+          opacity: style.opacity,
+          rect: el.getBoundingClientRect
+            ? JSON.stringify(el.getBoundingClientRect())
+            : null,
+        });
+      }
+    });
+    debug.hiddenElements = hidden;
+    return hidden;
+  }
+
+  // ─── 3. Elementos suprimidos pelo Base44 ────────────────────────────────────
+  function scanSuppressedPopups() {
+    const suppressed = [];
+    document.querySelectorAll('[data-base44-suppressed-popup]').forEach((el) => {
+      suppressed.push({
+        tag: el.tagName,
+        id: el.id,
+        className: el.className,
+        attr: el.getAttribute('data-base44-suppressed-popup'),
+      });
+    });
+    debug.suppressedPopups = suppressed;
+    return suppressed;
+  }
+
+  // ─── 4. MutationObserver global ─────────────────────────────────────────────
+  let firstRenderDone = false;
+  const mutationLog = [];
+
+  const globalObserver = new MutationObserver((records) => {
+    records.forEach((rec) => {
+      const entry = {
+        time: new Date().toISOString(),
+        afterFirstRender: firstRenderDone,
+        type: rec.type,
+        targetTag: rec.target ? rec.target.tagName : null,
+        targetId: rec.target ? rec.target.id : null,
+        targetClass: rec.target && typeof rec.target.className === 'string'
+          ? rec.target.className.slice(0, 60)
+          : null,
+        addedNodes: rec.addedNodes.length,
+        removedNodes: rec.removedNodes.length,
+        removedNodeTags: Array.from(rec.removedNodes).map((n) => n.nodeName).join(', '),
+        attributeName: rec.attributeName || null,
+      };
+      mutationLog.push(entry);
+    });
+    debug.mutations = mutationLog;
+  });
+
+  // Começa a observar imediatamente
+  globalObserver.observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['style', 'class', 'hidden', 'data-base44-suppressed-popup'],
+  });
+
+  // Marca primeiro render após DOMContentLoaded
+  document.addEventListener('DOMContentLoaded', () => {
+    captureSnapshot('DOMContentLoaded');
+    firstRenderDone = true;
+  });
+
+  // ─── 5. Erros globais ────────────────────────────────────────────────────────
+  window.onerror = function (message, source, lineno, colno, error) {
+    debug.errors.push({
+      time: new Date().toISOString(),
+      message,
+      source,
+      lineno,
+      colno,
+      stack: error ? error.stack : null,
+    });
+    // Não suprime o handler original
+    return false;
+  };
+
+  window.addEventListener('unhandledrejection', (event) => {
+    debug.unhandledRejections.push({
+      time: new Date().toISOString(),
+      reason: event.reason
+        ? (event.reason.message || String(event.reason))
+        : 'unknown',
+      stack: event.reason && event.reason.stack ? event.reason.stack : null,
+    });
+  });
+
+  // ─── 6. Erros de rede (JS/CSS) ──────────────────────────────────────────────
+  window.addEventListener('error', (event) => {
+    const el = event.target;
+    if (el && (el.tagName === 'SCRIPT' || el.tagName === 'LINK')) {
+      debug.networkErrors.push({
+        time: new Date().toISOString(),
+        tag: el.tagName,
+        src: el.src || el.href,
+        type: el.type || null,
+      });
+    }
+  }, true /* capture phase para pegar erros de recursos */);
+
+  // ─── 7. Snapshots adicionais em pontos-chave ─────────────────────────────────
+  window.addEventListener('load', () => {
+    captureSnapshot('window.load');
+    scanHiddenElements();
+    scanSuppressedPopups();
+    console.log('[DebugRuntime] window.__MEMORY_DEBUG__ disponível. Estado inicial:', {
+      readyState: document.readyState,
+      pathname: window.location.pathname,
+      bodyLength: document.body.innerHTML.length,
+      snapshots: debug.snapshots.length,
+      errors: debug.errors.length,
+    });
+  });
+
+  // Snapshot tardio para capturar o estado pós-React (após hidratação/render)
+  setTimeout(() => {
+    captureSnapshot('500ms-post-load');
+    scanHiddenElements();
+    scanSuppressedPopups();
+  }, 500);
+
+  setTimeout(() => {
+    captureSnapshot('2000ms-post-load');
+    scanHiddenElements();
+    scanSuppressedPopups();
+    console.log('[DebugRuntime] Snapshot 2s completo. window.__MEMORY_DEBUG__:', window.__MEMORY_DEBUG__);
+  }, 2000);
+
+  setTimeout(() => {
+    captureSnapshot('5000ms-post-load');
+    scanHiddenElements();
+    scanSuppressedPopups();
+    console.log('[DebugRuntime] Snapshot 5s completo. Mutations registradas:', debug.mutations.length);
+  }, 5000);
+
+})();
