@@ -47,7 +47,15 @@
     },
   };
 
+  console.log('[DEBUG] Runtime created — timestamp:', debug.timestamp);
   window.__MEMORY_DEBUG__ = debug;
+  console.log('[DEBUG] Runtime attached to window — typeof:', typeof window.__MEMORY_DEBUG__);
+
+  // Guard: detecta se foi recriado (sobrescreve objeto anterior)
+  if (window.__MEMORY_DEBUG__.__instance) {
+    console.warn('[DEBUG] Runtime REPLACED — previous instance existed! Instance #:', window.__MEMORY_DEBUG__.__instance);
+  }
+  window.__MEMORY_DEBUG__.__instance = (window.__MEMORY_DEBUG__.__instance || 0) + 1;
 
   // ─── 1. Captura de snapshot do DOM ──────────────────────────────────────────
   function captureSnapshot(label) {
@@ -76,6 +84,7 @@
     debug.snapshots.push(snap);
     debug.mainChildren = snap.mainChildCount;
     debug.outletChildren = snap.outletChildCount;
+    console.log('[DEBUG] Snapshot added —', label, '| total snapshots:', debug.snapshots.length, '| window.__MEMORY_DEBUG__ === debug:', window.__MEMORY_DEBUG__ === debug);
 
     return snap;
   }
@@ -180,6 +189,17 @@
     // Não suprime o handler original
     return false;
   };
+
+  // Detector passivo de destruição: verifica periodicamente se window.__MEMORY_DEBUG__ ainda aponta para este debug
+  let _watchInterval = setInterval(() => {
+    if (window.__MEMORY_DEBUG__ !== debug) {
+      console.error('[DEBUG] Runtime DESTROYED or REPLACED — window.__MEMORY_DEBUG__ foi substituído!', {
+        windowValue: typeof window.__MEMORY_DEBUG__,
+        localDebugAlive: !!debug,
+      });
+      clearInterval(_watchInterval);
+    }
+  }, 1000);
 
   window.addEventListener('unhandledrejection', (event) => {
     debug.unhandledRejections.push({
