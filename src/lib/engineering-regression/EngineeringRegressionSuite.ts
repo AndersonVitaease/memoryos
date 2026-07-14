@@ -38,11 +38,21 @@ import { RuntimeHealth }        from "../self-healing-runtime/RuntimeHealth";
 import { RuntimeAudit }         from "../self-healing-runtime/RuntimeAudit";
 import { RuntimeMetrics }       from "../self-healing-runtime/RuntimeMetrics";
 import { RuntimeEventBus }      from "../self-healing-runtime/RuntimeEventBus";
+import { AcceptanceEngine }    from "../engineering-acceptance/AcceptanceEngine";
+import { AcceptanceRegistry }  from "../engineering-acceptance/AcceptanceRegistry";
+import { AcceptanceValidator } from "../engineering-acceptance/AcceptanceValidator";
+import { AcceptanceReporter }  from "../engineering-acceptance/AcceptanceReporter";
+import { AcceptanceHistory }   from "../engineering-acceptance/AcceptanceHistory";
+import { AcceptanceMetrics }   from "../engineering-acceptance/AcceptanceMetrics";
+import { AcceptanceAudit }     from "../engineering-acceptance/AcceptanceAudit";
+import { AcceptanceEvidenceStore } from "../engineering-acceptance/AcceptanceEvidence";
+import { buildCriteria }       from "../engineering-acceptance/AcceptanceCriteria";
+import { assert as eafAssert } from "../engineering-acceptance/AcceptanceAssertion";
 
 // ── Result types ──────────────────────────────────────────────────────────────
 
 export type RegressionCategory =
-  | "KG" | "PIPELINE" | "ROUTING" | "CONNECTOR" | "GRAPH" | "WORKFLOW" | "BASELINE" | "MEMORY" | "UCP" | "SHR";
+  | "KG" | "PIPELINE" | "ROUTING" | "CONNECTOR" | "GRAPH" | "WORKFLOW" | "BASELINE" | "MEMORY" | "UCP" | "SHR" | "EAF";
 
 export interface RegressionTest {
   id:       string;
@@ -1037,6 +1047,143 @@ export class EngineeringRegressionSuite {
         },
       },
 
+      // ── EAF Tests ─────────────────────────────────────────────────────────────
+
+      {
+        id: "eaf_01", name: "AcceptanceEngine initializes", category: "EAF",
+        run: () => {
+          const t0 = Date.now();
+          const engine = new AcceptanceEngine();
+          const ok = typeof engine.runSprint === "function" && typeof engine.dashboardState === "function";
+          return { testId: "eaf_01", testName: "AcceptanceEngine initializes", category: "EAF",
+            passed: ok, detail: ok ? "runSprint + dashboardState callable" : "Missing methods", durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "eaf_02", name: "AcceptanceRegistry stores sprints", category: "EAF",
+        run: () => {
+          const t0 = Date.now();
+          const reg = new AcceptanceRegistry();
+          const criteria = buildCriteria([{ desc: "test", cat: "SMOKE" }]);
+          reg.register("reg_test", "test objective", criteria);
+          const ok = reg.has("reg_test") && reg.count() === 1;
+          return { testId: "eaf_02", testName: "AcceptanceRegistry stores sprints", category: "EAF",
+            passed: ok, detail: ok ? `count=${reg.count()}` : "Registry store failed", durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "eaf_03", name: "AcceptanceValidator blocks READY on FAIL", category: "EAF",
+        run: () => {
+          const t0 = Date.now();
+          const validator = new AcceptanceValidator();
+          const crit = buildCriteria([{ desc: "must pass", cat: "SMOKE" }]);
+          const assertions = [{ criterionId: crit[0].id, description: "test", category: "SMOKE" as const, status: "FAIL" as const, detail: "nope", durationMs: 1, evidence: [] }];
+          const result = validator.validate(assertions, crit);
+          const ok = !result.ready && result.blockers.length > 0;
+          return { testId: "eaf_03", testName: "AcceptanceValidator blocks READY on FAIL", category: "EAF",
+            passed: ok, detail: ok ? "Validator correctly blocked" : "Validator allowed READY with FAIL",
+            durationMs: Date.now() - t0, rca: ok ? undefined : "AcceptanceValidator.validate() not enforcing mandatory criteria." };
+        },
+      },
+      {
+        id: "eaf_04", name: "AcceptanceReporter generates valid report", category: "EAF",
+        run: () => {
+          const t0 = Date.now();
+          const reporter = new AcceptanceReporter();
+          const fakeRun = {
+            id: "test_run", sprintId: "6.3.2", startedAt: Date.now(), completedAt: Date.now(),
+            durationMs: 50, status: "PASS" as const, assertions: [], passed: 0, failed: 0,
+            skipped: 0, blocked: 0, total: 0, score: 100, ready: true, confidence: 100,
+            blockers: [], reportId: "rpt_test",
+          };
+          const report = reporter.generate(fakeRun);
+          const ok = !!report.id && typeof report.summary === "string" && report.ready;
+          return { testId: "eaf_04", testName: "AcceptanceReporter generates valid report", category: "EAF",
+            passed: ok, detail: ok ? `report.id=${report.id}` : "Report missing fields", durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "eaf_05", name: "AcceptanceHistory is append-only", category: "EAF",
+        run: () => {
+          const t0 = Date.now();
+          const history = new AcceptanceHistory();
+          const fake = { id: "h1", sprintId: "t", startedAt: 0, completedAt: 0, durationMs: 0, status: "PASS" as const, assertions: [], passed: 1, failed: 0, skipped: 0, blocked: 0, total: 1, score: 100, ready: true, confidence: 100, blockers: [], reportId: "r1" };
+          history.addRun(fake);
+          const before = history.runCount();
+          history.addRun({ ...fake, id: "h2" });
+          const after = history.runCount();
+          const ok = after === before + 1;
+          return { testId: "eaf_05", testName: "AcceptanceHistory is append-only", category: "EAF",
+            passed: ok, detail: ok ? `before=${before} after=${after}` : "History count did not grow", durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "eaf_06", name: "AcceptanceMetrics records runs", category: "EAF",
+        run: () => {
+          const t0 = Date.now();
+          const m = new AcceptanceMetrics();
+          m.recordRun(200, 100, 100, true);
+          m.recordRun(300, 80, 90, false);
+          const snap = m.snapshot();
+          const ok = snap.totalRuns === 2 && snap.passRate === 50;
+          return { testId: "eaf_06", testName: "AcceptanceMetrics records runs", category: "EAF",
+            passed: ok, detail: ok ? `runs=2 passRate=50%` : `runs=${snap.totalRuns} passRate=${snap.passRate}`, durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "eaf_07", name: "AcceptanceAudit is append-only", category: "EAF",
+        run: () => {
+          const t0 = Date.now();
+          const audit = new AcceptanceAudit();
+          audit.record("6.3.2", "run_001", "AcceptanceEngine", "RUN_STARTED", "RUNNING", "started");
+          const before = audit.count();
+          audit.record("6.3.2", "run_001", "AcceptanceEngine", "RUN_COMPLETED", "PASS", "done");
+          const after = audit.count();
+          const ok = after === before + 1;
+          return { testId: "eaf_07", testName: "AcceptanceAudit is append-only", category: "EAF",
+            passed: ok, detail: ok ? `before=${before} after=${after}` : "Audit count did not grow", durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "eaf_08", name: "AcceptanceEvidenceStore captures evidence", category: "EAF",
+        run: () => {
+          const t0 = Date.now();
+          const store = new AcceptanceEvidenceStore();
+          store.capture("crit_001", "LOG", "test log", "hello");
+          store.capture("crit_001", "METRIC", "count", 42);
+          const entries = store.forCriterion("crit_001");
+          const ok = entries.length === 2 && store.count() === 2;
+          return { testId: "eaf_08", testName: "AcceptanceEvidenceStore captures evidence", category: "EAF",
+            passed: ok, detail: ok ? `entries=${entries.length} total=${store.count()}` : `got ${entries.length}`, durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "eaf_09", name: "Assertion helpers return correct statuses", category: "EAF",
+        run: () => {
+          const t0 = Date.now();
+          const p = eafAssert.pass("ok");
+          const f = eafAssert.fail("nope");
+          const s = eafAssert.skip("skip");
+          const b = eafAssert.blocked("blocked");
+          const ok = p.status === "PASS" && f.status === "FAIL" && s.status === "SKIP" && b.status === "BLOCKED";
+          return { testId: "eaf_09", testName: "Assertion helpers return correct statuses", category: "EAF",
+            passed: ok, detail: ok ? "All 4 statuses correct" : `Got: ${p.status}/${f.status}/${s.status}/${b.status}`, durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "eaf_10", name: "Validator allows READY when all mandatory PASS", category: "EAF",
+        run: () => {
+          const t0 = Date.now();
+          const validator = new AcceptanceValidator();
+          const crit = buildCriteria([{ desc: "must pass", cat: "SMOKE" }]);
+          const assertions = [{ criterionId: crit[0].id, description: "test", category: "SMOKE" as const, status: "PASS" as const, detail: "ok", durationMs: 1, evidence: [] }];
+          const result = validator.validate(assertions, crit);
+          const ok = result.ready && result.score === 100;
+          return { testId: "eaf_10", testName: "Validator allows READY when all mandatory PASS", category: "EAF",
+            passed: ok, detail: ok ? `ready=true score=100` : `ready=${result.ready} score=${result.score}`, durationMs: Date.now() - t0 };
+        },
+      },
+
       {
         id: "mem_10", name: "Timeline is append-only (no deletions)", category: "MEMORY",
         run: () => {
@@ -1078,6 +1225,7 @@ export class EngineeringRegressionSuite {
       BASELINE: { passed: 0, failed: 0 }, MEMORY: { passed: 0, failed: 0 },
       UCP: { passed: 0, failed: 0 },
       SHR: { passed: 0, failed: 0 },
+      EAF: { passed: 0, failed: 0 },
     };
     for (const r of results) {
       if (r.passed) categories[r.category].passed++;
@@ -1116,6 +1264,7 @@ export class EngineeringRegressionSuite {
       if (r.category === "MEMORY")    return `MEMORY: Check EngineeringMemory module — ${r.testName}`;
       if (r.category === "UCP")       return `UCP: Check UniversalConnectorPlatform module — ${r.testName}`;
       if (r.category === "SHR")       return `SHR: Check SelfHealingRuntime module — ${r.testName}`;
+      if (r.category === "EAF")       return `EAF: Check EngineeringAcceptanceFramework module — ${r.testName}`;
       return `FIX: ${r.detail}`;
     }).filter((v, i, a) => a.indexOf(v) === i); // deduplicate
 
