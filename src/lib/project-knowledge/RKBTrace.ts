@@ -43,6 +43,14 @@ export interface FileTrace {
   error:         string | null;
 }
 
+export interface TreeNodeTrace {
+  path:      string;
+  rawType:   string;       // exactly what GitHub returned
+  extension: string;
+  decision:  "eligible" | "rejected";
+  reason:    string | null;
+}
+
 export interface RKBRunTrace {
   runId:        string;
   startedAt:    number;
@@ -53,6 +61,7 @@ export interface RKBRunTrace {
   branch:       string;
   steps:        TraceStep[];
   fileTraces:   FileTrace[];
+  treeNodeTraces: TreeNodeTrace[];  // every raw node from GitHub (EF-60.2 req 1)
 
   // Tree validation (EF-60.2.2)
   reposFound:       number;
@@ -64,6 +73,7 @@ export interface RKBRunTrace {
   eligibleFiles:    number;
   skippedFiles:     number;
   skipReasons:      Record<string, number>;
+  rawTreeSample:    any[];  // first 5 raw nodes for type inspection
 
   // Final counters
   entitiesTotal:    number;
@@ -91,6 +101,7 @@ class RKBTraceStore {
       owner, repo, branch,
       steps:        [],
       fileTraces:   [],
+      treeNodeTraces: [],
       reposFound:       0,
       selectedRepo:     "",
       defaultBranch:    "",
@@ -100,6 +111,7 @@ class RKBTraceStore {
       eligibleFiles:    0,
       skippedFiles:     0,
       skipReasons:      {},
+      rawTreeSample:    [],
       entitiesTotal:    0,
       relationshipsTotal: 0,
       modulesTotal:     0,

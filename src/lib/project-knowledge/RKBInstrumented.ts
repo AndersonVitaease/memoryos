@@ -16,7 +16,7 @@ import { ConnectorInvocationService } from "../cognitive-connector/ConnectorInvo
 import { parseSourceFile, detectLayer, detectLanguage } from "./SourceCodeParser";
 import { KnowledgeGraphStore } from "./KnowledgeGraphStore";
 import { RKBTracer } from "./RKBTrace";
-import type { RKBRunTrace, FileTrace } from "./RKBTrace";
+import type { RKBRunTrace, FileTrace, TreeNodeTrace } from "./RKBTrace";
 import type { ProjectKnowledgeGraph, ArchEntity, ArchRelationship, ModuleNode, ArchitecturalLayer, EntityType } from "./PKBTypes";
 import { makePKBId } from "./PKBTypes";
 
@@ -93,13 +93,17 @@ export class RKBInstrumented {
         RKBTracer.finish(run);
         return { graph: _emptyGraph(owner, repo, branch), trace: run };
       }
-      allFiles = (treeInv.result?.data as any)?.files ?? [];
+      const rawData = treeInv.result?.data as any;
+      // GitHub tree may return .files, .tree, or a flat array — handle all shapes
+      allFiles = rawData?.files ?? rawData?.tree ?? (Array.isArray(rawData) ? rawData : []);
       run.treeDownloaded = true;
       run.totalTreeNodes = allFiles.length;
       run.defaultBranch  = branch;
+      // Capture first 5 raw nodes so the dashboard can show exact shape
+      run.rawTreeSample  = allFiles.slice(0, 5);
       RKBTracer.finishStep(s2, "ok",
-        `Downloaded ${allFiles.length} tree nodes`,
-        { totalNodes: allFiles.length });
+        `Downloaded ${allFiles.length} tree nodes (raw keys: ${allFiles[0] ? Object.keys(allFiles[0]).join(",") : "—"})`,
+        { totalNodes: allFiles.length, sampleKeys: allFiles[0] ? Object.keys(allFiles[0]) : [] });
     } catch (e) {
       RKBTracer.finishStep(s2, "failed", "Tree download threw", {}, String(e));
       RKBTracer.finish(run);
@@ -112,33 +116,84 @@ export class RKBInstrumented {
 
     const targetFiles: Array<{ path: string; type: string }> = [];
     for (const f of allFiles) {
-      if (f.type !== "blob") {
-        skipReasons["not_blob"] = (skipReasons["not_blob"] ?? 0) + 1;
+      const rawType  = f.type ?? f.mode ?? "unknown";
+      const filePath = f.path ?? f.name ?? "";
+      const ext      = filePath.includes(".") ? "." + filePath.split(".").pop() : "(none)";
+
+      const nt: TreeNodeTrace = {
+        path:      filePath,
+        rawType:   String(rawType),
+        extension: ext,
+        decision:  "eligible",
+        reason:    null,
+      };
+
+      // FIX: GitHub API returns "blob" (REST tree) or "file" (contents API) — accept both.
+      // Also accept nodes with no type field but a valid file extension (defensive).
+      const isFileNode = rawType === "blob" || rawType === "file" || rawType === "100644" || rawType === "100755";
+      const hasNoType  = !f.type && !f.mode;
+      if (!isFileNode && !hasNoType) {
+        nt.decision = "rejected";
+        nt.reason   = `type="${rawType}" is not a file node (expected blob/file)`;
+        skipReasons[`type:${rawType}`] = (skipReasons[`type:${rawType}`] ?? 0) + 1;
+        run.treeNodeTraces.push(nt);
         continue;
       }
-      if (shouldIgnore(f.path)) {
-        const reason = IGNORE_PATTERNS.find(p => f.path.includes(p)) ?? "ignore_pattern";
-        skipReasons[reason] = (skipReasons[reason] ?? 0) + 1;
+
+      if (!filePath) {
+        nt.decision = "rejected";
+        nt.reason   = "empty path";
+        skipReasons["empty_path"] = (skipReasons["empty_path"] ?? 0) + 1;
+        run.treeNodeTraces.push(nt);
+        continue;
+      }
+
+      if (shouldIgnore(filePath)) {
+        const pattern = IGNORE_PATTERNS.find(p => filePath.includes(p)) ?? "ignore_pattern";
+        nt.decision = "rejected";
+        nt.reason   = `matches ignore pattern: "${pattern}"`;
+        skipReasons[`ignore:${pattern}`] = (skipReasons[`ignore:${pattern}`] ?? 0) + 1;
         run.ignoredNodes++;
+        run.treeNodeTraces.push(nt);
         continue;
       }
-      if (!isSupported(f.path)) {
-        skipReasons["unsupported_ext"] = (skipReasons["unsupported_ext"] ?? 0) + 1;
+
+      if (!isSupported(filePath)) {
+        nt.decision = "rejected";
+        nt.reason   = `extension "${ext}" not in supported set [.ts,.tsx,.js,.jsx,.json]`;
+        skipReasons[`ext:${ext}`] = (skipReasons[`ext:${ext}`] ?? 0) + 1;
         run.skippedFiles++;
+        run.treeNodeTraces.push(nt);
         continue;
       }
-      targetFiles.push(f);
+
+      nt.decision = "eligible";
+      run.treeNodeTraces.push(nt);
+      targetFiles.push({ path: filePath, type: rawType });
     }
 
     const limited = targetFiles.slice(0, maxFiles);
     run.eligibleFiles = limited.length;
-    run.skippedFiles  += targetFiles.length - limited.length; // capped by maxFiles
-    if (targetFiles.length > maxFiles) skipReasons["max_files_cap"] = targetFiles.length - maxFiles;
+    if (targetFiles.length > maxFiles) {
+      const cap = targetFiles.length - maxFiles;
+      skipReasons["max_files_cap"] = cap;
+      run.skippedFiles += cap;
+      // Mark the capped nodes as rejected in trace
+      for (let i = maxFiles; i < run.treeNodeTraces.filter(n => n.decision === "eligible").length; i++) {
+        const node = run.treeNodeTraces.find((n, idx) => n.decision === "eligible" && idx >= maxFiles);
+        if (node) { node.decision = "rejected"; node.reason = "max_files_cap"; }
+      }
+    }
     run.skipReasons = skipReasons;
 
+    const filterDetail = run.eligibleFiles === 0
+      ? `ZERO eligible files. Reasons: ${Object.entries(skipReasons).map(([k,v])=>`${k}×${v}`).join(", ") || "all nodes were directories (type=tree)"}`
+      : `${run.eligibleFiles} eligible files`;
+
     RKBTracer.finishStep(s3, run.eligibleFiles > 0 ? "ok" : "failed",
-      `${run.eligibleFiles} eligible files (ignored: ${run.ignoredNodes}, skipped: ${run.skippedFiles})`,
-      { eligible: run.eligibleFiles, ignored: run.ignoredNodes, skipped: run.skippedFiles, reasons: skipReasons });
+      `${filterDetail} (total: ${run.totalTreeNodes}, ignored: ${run.ignoredNodes}, skipped: ${run.skippedFiles})`,
+      { eligible: run.eligibleFiles, ignored: run.ignoredNodes, skipped: run.skippedFiles, reasons: skipReasons,
+        sampleRawTypes: [...new Set(allFiles.slice(0, 20).map((f: any) => f.type ?? f.mode ?? "missing"))] });
 
     if (run.eligibleFiles === 0) {
       RKBTracer.finish(run);

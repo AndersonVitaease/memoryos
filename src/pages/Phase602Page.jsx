@@ -359,24 +359,63 @@ export default function Phase602Page() {
           {!trace ? <p className="text-zinc-500 text-sm">Run validation first.</p> : (
             <div className="space-y-3">
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                <Metric label="Total Nodes"   value={trace.totalTreeNodes} />
-                <Metric label="Ignored"       value={trace.ignoredNodes} sub="node_modules etc." />
-                <Metric label="Eligible"      value={trace.eligibleFiles} sub="source files" />
-                <Metric label="Skipped"       value={trace.skippedFiles} sub="unsupported ext" />
+                <Metric label="Total Nodes"    value={trace.totalTreeNodes} />
+                <Metric label="Ignored"        value={trace.ignoredNodes} sub="node_modules etc." />
+                <Metric label="Eligible"       value={trace.eligibleFiles} sub="source files" />
+                <Metric label="Skipped"        value={trace.skippedFiles} sub="unsupported ext" />
                 <Metric label="Tree Downloaded" value={trace.treeDownloaded ? "YES" : "NO"} />
-                <Metric label="Default Branch" value={trace.branch} />
+                <Metric label="Default Branch"  value={trace.branch} />
               </div>
+
+              {/* Raw node type sample */}
+              {trace.rawTreeSample?.length > 0 && (
+                <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+                  <p className="text-xs text-zinc-500 uppercase tracking-wide mb-2">Raw Node Shape (first {trace.rawTreeSample.length})</p>
+                  <pre className="text-xs text-zinc-300 overflow-auto max-h-32">
+                    {JSON.stringify(trace.rawTreeSample, null, 2)}
+                  </pre>
+                </div>
+              )}
+
+              {/* Skip reasons */}
               <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-                <p className="text-xs text-zinc-500 uppercase tracking-wide mb-3">Skip Reasons</p>
-                {Object.entries(trace.skipReasons).length === 0
-                  ? <p className="text-zinc-500 text-sm">No skip reasons recorded.</p>
+                <p className="text-xs text-zinc-500 uppercase tracking-wide mb-3">Rejection Reasons</p>
+                {Object.entries(trace.skipReasons ?? {}).length === 0
+                  ? <p className="text-zinc-500 text-sm">No rejections recorded.</p>
                   : Object.entries(trace.skipReasons).map(([reason, count]) => (
                     <div key={reason} className="flex justify-between text-sm py-1 border-b border-zinc-800 last:border-0">
                       <span className="font-mono text-zinc-300">{reason}</span>
-                      <span className="font-mono text-zinc-400">{count} files</span>
+                      <span className="font-mono text-zinc-400">{count} nodes</span>
                     </div>
                   ))}
               </div>
+
+              {/* Per-node trace table */}
+              {trace.treeNodeTraces?.length > 0 && (
+                <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+                  <p className="text-xs text-zinc-500 uppercase tracking-wide mb-3">
+                    Per-Node Trace ({trace.treeNodeTraces.length} nodes)
+                  </p>
+                  <div className="max-h-96 overflow-y-auto space-y-0.5">
+                    <div className="grid grid-cols-12 gap-1 text-[10px] text-zinc-600 font-mono pb-1 border-b border-zinc-800">
+                      <span className="col-span-5">PATH</span>
+                      <span className="col-span-2">TYPE</span>
+                      <span className="col-span-1">EXT</span>
+                      <span className="col-span-2">DECISION</span>
+                      <span className="col-span-2">REASON</span>
+                    </div>
+                    {trace.treeNodeTraces.map((n, i) => (
+                      <div key={i} className={`grid grid-cols-12 gap-1 text-[10px] font-mono py-0.5 ${n.decision === "eligible" ? "text-emerald-400" : "text-zinc-500"}`}>
+                        <span className="col-span-5 truncate" title={n.path}>{n.path}</span>
+                        <span className="col-span-2 truncate">{n.rawType}</span>
+                        <span className="col-span-1 truncate">{n.extension}</span>
+                        <span className="col-span-2">{n.decision}</span>
+                        <span className="col-span-2 truncate text-zinc-600" title={n.reason ?? ""}>{n.reason ?? "—"}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
