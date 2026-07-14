@@ -15,6 +15,7 @@ import { makeCTPId } from "./CTPTypes";
 import { ConnectorInvocationService } from "../cognitive-connector/ConnectorInvocationService";
 import { RepositoryResolver } from "../github-deep-analysis/RepositoryResolver";
 import { SearchRanker } from "../github-deep-analysis/SearchRanker";
+import { KnowledgeGraphStore } from "../project-knowledge/KnowledgeGraphStore";
 
 // ── Capability Chain Definitions (EF-59.4) ────────────────────────────────────
 
@@ -313,6 +314,39 @@ export class CognitiveTaskPlanner {
   private readonly _diagnostics: PlannerDiagnostic[] = [];
   private _repoCache: { owner: string; repo: string; fetchedAt: number } | null = null;
 
+  // ── EF-60.1.5: Query Knowledge Graph before GitHub ────────────────────────
+
+  queryKnowledgeGraph(symbol: string): { found: boolean; answer: string; source: string } {
+    if (!KnowledgeGraphStore.isReady()) {
+      return { found: false, answer: "", source: "not_ready" };
+    }
+    const direct  = KnowledgeGraphStore.query(symbol);
+    const keyword = KnowledgeGraphStore.queryByKeyword(symbol);
+
+    if (direct.found && direct.entity) {
+      const e = direct.entity;
+      const answer = [
+        `**${e.name}** (${e.type}) — Layer: \`${e.layer}\``,
+        `File: \`${e.filePath}\``,
+        e.responsibilities.length > 0 ? `Responsibilities: ${e.responsibilities.join("; ")}` : "",
+        direct.dependencies.length > 0 ? `Depends on: ${direct.dependencies.slice(0, 5).map(d => d.name).join(", ")}` : "",
+        direct.dependents.length > 0  ? `Used by: ${direct.dependents.slice(0, 5).map(d => d.name).join(", ")}` : "",
+      ].filter(Boolean).join("\n");
+      return { found: true, answer, source: "knowledge_graph" };
+    }
+
+    if (keyword.length > 0) {
+      const names = keyword.slice(0, 5).map(e => `\`${e.name}\` (${e.layer})`).join(", ");
+      return {
+        found: true,
+        answer: `Found ${keyword.length} entities matching "${symbol}": ${names}`,
+        source: "knowledge_graph",
+      };
+    }
+
+    return { found: false, answer: "", source: "knowledge_graph_miss" };
+  }
+
   // ── Build Execution Graph (EF-59.3) ──────────────────────────────────────
 
   buildGraph(intents: DetectedIntent[], userMessage: string): ExecutionGraph {
@@ -388,6 +422,29 @@ export class CognitiveTaskPlanner {
     const planId = makeCTPId("plan");
     const recoveryEvents: RecoveryEvent[] = [];
     const taskData: Record<string, unknown> = {};
+
+    // EF-60.1.5: Check Knowledge Graph first for architecture/implementation queries
+    const kgDependentIntents = ["implementation_search", "dependency_analysis", "architecture_question", "repository_map"];
+    for (const intent of graph.intents) {
+      if (!kgDependentIntents.includes(intent.category)) continue;
+      const symbol = intent.extractedEntities?.symbol ?? intent.extractedEntities?.class ?? "";
+      if (!symbol) continue;
+      const kgResult = this.queryKnowledgeGraph(symbol);
+      if (kgResult.found) {
+        // Short-circuit: answer from KG, mark all tasks for this intent as completed via graph
+        for (const task of graph.tasks.filter(t => t.intentId === intent.intentId)) {
+          task.status = "completed";
+          task.result = {
+            taskId:     task.taskId,
+            status:     "completed",
+            data:       { answer: kgResult.answer, source: "knowledge_graph" },
+            evidence:   [`KnowledgeGraph: ${symbol}`, `Layer: knowledge_graph`, `Conf: 90%`],
+            confidence: 0.9,
+            error:      null,
+          };
+        }
+      }
+    }
 
     // Resolve repository context
     const ctx = await this._buildContext(graph.intents, projectId);

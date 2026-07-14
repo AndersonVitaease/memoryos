@@ -22,6 +22,8 @@ import { KnowledgeFusionEngine }         from "../knowledge-fusion/KnowledgeFusi
 import type { ProviderKnowledge }        from "../knowledge-fusion/KnowledgeFusionEngine";
 import { IdentityResolutionEngine }      from "../identity-resolution/IdentityResolutionEngine";
 import { ProjectReconstructionEngine }   from "../project-reconstruction/ProjectReconstructionEngine";
+import { RepositoryKnowledgeBuilder }    from "../project-knowledge/RepositoryKnowledgeBuilder";
+import { KnowledgeGraphStore }           from "../project-knowledge/KnowledgeGraphStore";
 import type {
   PipelineExecutionContext, StageResult, StageProvenance, StageStatus,
   PipelineRecoveryReport, LiveProjectSnapshot, LiveCognitivePipelineReport, PipelineStatus,
@@ -33,6 +35,7 @@ import { makeLCPId } from "./LCPTypes";
 const STAGE_NAMES = [
   "ConnectorInvocationService",
   "RepositoryAnalyzer",
+  "RepositoryKnowledgeBuilder",
   "ApplicationAnalyzer",
   "KnowledgeReconstructionEngine",
   "KnowledgeFusionEngine",
@@ -52,6 +55,7 @@ export class LiveCognitivePipeline {
   private readonly cis = new ConnectorInvocationService();
   private readonly gie = new GoalIntelligenceEngine();
   private readonly cle = new CognitiveLearningEngine();
+  private readonly rkb = new RepositoryKnowledgeBuilder();
 
   private readonly _stages:    StageResult[]            = [];
   private readonly _recovery:  PipelineRecoveryReport[] = [];
@@ -90,6 +94,10 @@ export class LiveCognitivePipeline {
     const repoOutput = await this._stageRepositoryAnalyzer(ctx, cisOutput, opts.githubOwner, opts.githubRepo);
     this._record(repoOutput);
 
+    // ── Stage 2b: Repository Knowledge Builder (EF-60.1.1) ─────────────────
+    const rkbOutput = await this._stageRepositoryKnowledgeBuilder(ctx, repoOutput);
+    this._record(rkbOutput);
+
     // ── Stage 3: Application Analyzer ──────────────────────────────────────
     const appOutput = await this._stageApplicationAnalyzer(ctx, repoOutput);
     this._record(appOutput);
@@ -125,7 +133,7 @@ export class LiveCognitivePipeline {
     // ── Stage 11: Project Snapshot ──────────────────────────────────────────
     const snapshotOutput = await this._stageProjectSnapshot(ctx,
       repoOutput, appOutput, kreOutput, kfeOutput, ireOutput,
-      preOutput, gieOutput, cleOutput, kgOutput
+      preOutput, gieOutput, cleOutput, kgOutput, rkbOutput
     );
     this._record(snapshotOutput);
 
@@ -228,6 +236,49 @@ export class LiveCognitivePipeline {
     } catch (e) {
       this._addRecovery("RepositoryAnalyzer", String(e), "Continue without repository data", ["Use Base44 knowledge only"]);
       return this._mkStage("RepositoryAnalyzer", t0, "FAILED", {}, String(e), "Repository analysis failed", "repository analysis", 0.1);
+    }
+  }
+
+  private async _stageRepositoryKnowledgeBuilder(
+    ctx: PipelineExecutionContext,
+    repoStage: StageResult,
+  ): Promise<StageResult> {
+    const t0 = Date.now();
+    // Skip if GitHub is not configured
+    if (repoStage.status === "NOT_CONFIGURED" || repoStage.status === "FAILED") {
+      return this._mkStage("RepositoryKnowledgeBuilder", t0, "SKIPPED",
+        { reason: "Repository analysis unavailable — skipping graph build" }, null,
+        "RKB skipped — no repository", "passthrough", 0.5);
+    }
+    // Use cached graph if fresh (< 10 min) — avoid rebuilding on every pipeline run
+    if (KnowledgeGraphStore.isReady() && KnowledgeGraphStore.ageMs() < 10 * 60 * 1000) {
+      const g = KnowledgeGraphStore.get()!;
+      ctx.knowledgeEvidence.push(`RKB: graph cached · ${g.entityCount} entities · ${g.relationshipCount} rels`);
+      return this._mkStage("RepositoryKnowledgeBuilder", t0, "SUCCESS", {
+        ...KnowledgeGraphStore.snapshotFields(),
+        cached: true,
+      }, null, "RKB: knowledge graph served from cache", "cache → knowledge graph", 0.9);
+    }
+    try {
+      const repoData = repoStage.output as any;
+      const owner = repoData.targetOwner ?? null;
+      const repo  = repoData.targetRepo  ?? null;
+      if (!owner || !repo) {
+        return this._mkStage("RepositoryKnowledgeBuilder", t0, "SKIPPED",
+          { reason: "No owner/repo resolved by RepositoryAnalyzer" }, null,
+          "RKB skipped — owner/repo unknown", "passthrough", 0.5);
+      }
+      const graph = await this.rkb.build(owner, repo, "main", { maxFiles: 80 });
+      KnowledgeGraphStore.set(graph);
+      ctx.knowledgeEvidence.push(`RKB: ${graph.entityCount} entities · ${graph.relationshipCount} rels · ${graph.modules.length} modules`);
+      return this._mkStage("RepositoryKnowledgeBuilder", t0, "SUCCESS", {
+        ...KnowledgeGraphStore.snapshotFields(),
+        cached: false,
+      }, null, "RKB: project knowledge graph built", "repository → architectural entities", 0.85);
+    } catch (e) {
+      this._addRecovery("RepositoryKnowledgeBuilder", String(e), "Continue without knowledge graph", ["Use GitHub raw data"]);
+      return this._mkStage("RepositoryKnowledgeBuilder", t0, "SKIPPED",
+        { reason: String(e) }, String(e), "RKB failed — continuing", "fallback", 0.4);
     }
   }
 
@@ -495,6 +546,7 @@ export class LiveCognitivePipeline {
     ctx: PipelineExecutionContext,
     repoS: StageResult, appS: StageResult, kreS: StageResult, kfeS: StageResult,
     ireS: StageResult, preS: StageResult, gieS: StageResult, cleS: StageResult, kgS: StageResult,
+    rkbS?: StageResult,
   ): Promise<StageResult> {
     const t0 = Date.now();
     try {
@@ -513,6 +565,8 @@ export class LiveCognitivePipeline {
         projectState:     preS.output,
         goalState:        gieS.output,
         learningState:    cleS.output,
+        // EF-60.1.4: inject knowledge graph fields into every snapshot
+        ...(rkbS?.output ?? KnowledgeGraphStore.snapshotFields()),
         confidence,
         evidence:         [...ctx.connectorEvidence, ...ctx.knowledgeEvidence],
         provenanceChain:  [...this._provChain],

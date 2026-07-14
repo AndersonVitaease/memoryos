@@ -100,6 +100,7 @@ const navItems = [
   { label: "Phase 5.8.1 — Engineering Accuracy",    icon: ShieldCheck,  path: "/phase581" },
   { label: "Phase 5.9.0 — Cognitive Task Planner",  icon: Network,      path: "/phase59" },
   { label: "Phase 6.0.0 — Project Knowledge Builder", icon: Database,   path: "/phase60" },
+  { label: "Phase 6.0.1 — Knowledge Graph Activation", icon: Database,  path: "/phase601" },
 ];
 
 export default function Sidebar({ onNavigate }) {
