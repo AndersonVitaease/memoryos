@@ -103,6 +103,7 @@ const navItems = [
   { label: "Phase 6.0.1 — Knowledge Graph Activation", icon: Database,  path: "/phase601" },
   { label: "Phase 6.0.2 — RKB Validation Dashboard",  icon: Database,  path: "/phase602" },
   { label: "Phase 6.0.3 — KG Consumption Validation", icon: Database,  path: "/phase603" },
+  { label: "Phase 6.0.4 — KGS Lifecycle Validation",  icon: Database,  path: "/phase604" },
 ];
 
 export default function Sidebar({ onNavigate }) {

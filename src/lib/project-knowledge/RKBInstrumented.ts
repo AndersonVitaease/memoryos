@@ -435,7 +435,7 @@ export class RKBInstrumented {
     const s11 = RKBTracer.addStep(run, "KnowledgeGraphStore Persistence", "Persisting graph to KnowledgeGraphStore singleton");
     try {
       graph.durationMs = Date.now() - run.startedAt;
-      KnowledgeGraphStore.set(graph);
+      KnowledgeGraphStore.set(graph, "RKBInstrumented");
       const diag = KnowledgeGraphStore.diagnostics();
       run.persistenceStatus = "ok";
       run.persistedAt       = Date.now();

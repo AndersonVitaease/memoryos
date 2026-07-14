@@ -267,28 +267,28 @@ export class ConversationCognitiveGateway {
 
       switch (kgDetect.type) {
         case "all_entities":
-          kgResult = { queryType: "all_entities", entities: KnowledgeGraphStore.listAllEntities(), kgStats };
+          kgResult = { queryType: "all_entities", entities: KnowledgeGraphStore.listAllEntities("CCG"), kgStats };
           break;
         case "relationships":
-          kgResult = { queryType: "relationships", relationships: graph.relationships, entities: KnowledgeGraphStore.listAllEntities(), kgStats };
+          kgResult = { queryType: "relationships", relationships: graph.relationships, entities: KnowledgeGraphStore.listAllEntities("CCG"), kgStats };
           break;
         case "modules":
-          kgResult = { queryType: "modules", modules: graph.modules.map(m => ({ name: m.name, entities: m.entities })), kgStats };
+          kgResult = { queryType: "modules", modules: graph.modules.map(m => ({ name: m.name, entities: m.entityIds })), kgStats };
           break;
         case "who_uses": {
           const sym = kgDetect.symbol ?? "";
-          const found = KnowledgeGraphStore.queryByKeyword(sym);
+          const found = KnowledgeGraphStore.queryByKeyword(sym, "CCG");
           kgResult = { queryType: "who_uses", entities: found.map(e => ({ name: e.name, type: e.type, layer: e.layer, filePath: e.filePath })), symbol: sym, kgStats };
           break;
         }
         default: {
           const sym = kgDetect.symbol ?? userMessage.split(" ")[0];
-          const kqr = KnowledgeGraphStore.query(sym);
+          const kqr = KnowledgeGraphStore.query(sym, "CCG");
           const entities = kqr.found && kqr.entity
             ? [{ name: kqr.entity.name, type: kqr.entity.type, layer: kqr.entity.layer, filePath: kqr.entity.filePath },
                ...kqr.dependencies.map(e => ({ name: e.name, type: e.type, layer: e.layer, filePath: e.filePath })),
                ...kqr.dependents.map(e => ({ name: e.name, type: e.type, layer: e.layer, filePath: e.filePath }))]
-            : KnowledgeGraphStore.queryByKeyword(sym).map(e => ({ name: e.name, type: e.type, layer: e.layer, filePath: e.filePath }));
+            : KnowledgeGraphStore.queryByKeyword(sym, "CCG").map(e => ({ name: e.name, type: e.type, layer: e.layer, filePath: e.filePath }));
           kgResult = { queryType: "keyword", entities, symbol: sym, kgStats };
         }
       }

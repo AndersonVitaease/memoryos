@@ -252,7 +252,7 @@ export class LiveCognitivePipeline {
     }
     // Use cached graph if fresh (< 10 min) — avoid rebuilding on every pipeline run
     if (KnowledgeGraphStore.isReady() && KnowledgeGraphStore.ageMs() < 10 * 60 * 1000) {
-      const g = KnowledgeGraphStore.get()!;
+      const g = KnowledgeGraphStore.get("LiveCognitivePipeline.cache")!;
       ctx.knowledgeEvidence.push(`RKB: graph cached · ${g.entityCount} entities · ${g.relationshipCount} rels`);
       return this._mkStage("RepositoryKnowledgeBuilder", t0, "SUCCESS", {
         ...KnowledgeGraphStore.snapshotFields(),
@@ -269,7 +269,7 @@ export class LiveCognitivePipeline {
           "RKB skipped — owner/repo unknown", "passthrough", 0.5);
       }
       const graph = await this.rkb.build(owner, repo, "main", { maxFiles: 80 });
-      KnowledgeGraphStore.set(graph);
+      KnowledgeGraphStore.set(graph, "LiveCognitivePipeline.RKB");
       ctx.knowledgeEvidence.push(`RKB: ${graph.entityCount} entities · ${graph.relationshipCount} rels · ${graph.modules.length} modules`);
       return this._mkStage("RepositoryKnowledgeBuilder", t0, "SUCCESS", {
         ...KnowledgeGraphStore.snapshotFields(),
