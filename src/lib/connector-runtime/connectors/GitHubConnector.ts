@@ -690,7 +690,13 @@ export class GitHubConnector implements IConnector {
         let decoded = false;
         if (f.encoding === "base64" && f.content) {
           try { content = atob(f.content.replace(/\n/g, "")); decoded = true; } catch { content = f.content; }
+        } else if (f.content && f.encoding !== "base64") {
+          // Some responses return content directly (no encoding)
+          content = String(f.content);
+          decoded = true;
         }
+        // Guarantee content is always a string — never null — so callers don't silently skip
+        if (content === null) content = "";
         return ok({ path: f.path, name: f.name, size: f.size, sha: f.sha, encoding: f.encoding, content, decoded, download_url: f.download_url }, start, eid, logs, operation);
       }
 

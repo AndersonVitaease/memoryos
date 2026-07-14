@@ -125,8 +125,13 @@ export class RepositoryKnowledgeBuilder {
         const filePath = batch[j].path;
         if (r.status !== "fulfilled" || r.value.record.status !== "SUCCESS") continue;
 
-        const content  = (r.value.result?.data as any)?.content ?? "";
-        if (!content) continue;
+        const rawData  = r.value.result?.data as any;
+        const content  = rawData?.content ?? "";
+        if (!content || content.trim().length === 0) {
+          // Log every skipped file so failures are never silent
+          console.warn(`[RKB] SKIP ${filePath} — empty content (decoded=${rawData?.decoded}, encoding=${rawData?.encoding}, size=${rawData?.size})`);
+          continue;
+        }
 
         const parsed   = parseSourceFile(filePath, content);
         const layer    = detectLayer(filePath);
