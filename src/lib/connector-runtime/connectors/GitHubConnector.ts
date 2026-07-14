@@ -677,7 +677,10 @@ export class GitHubConnector implements IConnector {
         const path   = typeof payload.path === "string" ? payload.path : null;
         const ref    = typeof payload.ref === "string" ? payload.ref : "HEAD";
         if (!owner || !repo || !path) return fail("owner, repo and path required", "validation", start, eid, logs, operation);
-        const res = await githubFetch(`/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}?ref=${ref}`, token);
+        // encodeURIComponent encodes '/' which breaks the GitHub Contents API path routing.
+        // Encode each path segment individually so slashes are preserved as separators.
+        const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+        const res = await githubFetch(`/repos/${owner}/${repo}/contents/${encodedPath}?ref=${ref}`, token);
         logs.push(makeLog("info", `[${operation}] HTTP ${res.status} — ${res.responseTimeMs}ms`));
         if (res.status === 404) return fail(`File "${path}" not found`, "external", start, eid, logs, operation);
         if (!res.ok) { this.internalMetrics.externalFailures++; return fail(`HTTP ${res.status}`, "external", start, eid, logs, operation); }
@@ -758,7 +761,7 @@ export class GitHubConnector implements IConnector {
           totalFiles: files.length,
           truncated: (res.data as any)?.truncated ?? false,
           directories: Object.entries(dirs).map(([path, count]) => ({ path, fileCount: count })).sort((a, b) => b.fileCount - a.fileCount).slice(0, 30),
-          files: files.slice(0, 50).map((f: any) => ({ path: f.path, size: f.size ?? 0, ext: f.path.split(".").pop()?.toLowerCase() ?? "" })),
+          files: files.slice(0, 300).map((f: any) => ({ path: f.path, size: f.size ?? 0, ext: f.path.split(".").pop()?.toLowerCase() ?? "" })),
         }, start, eid, logs, operation);
       }
 
@@ -810,7 +813,7 @@ export class GitHubConnector implements IConnector {
         const repo  = typeof payload.repo  === "string" ? payload.repo  : null;
         if (!owner || !repo) return fail("owner and repo required", "validation", start, eid, logs, operation);
         // Read package.json for dependencies
-        const res = await githubFetch(`/repos/${owner}/${repo}/contents/package.json`, token);
+        const res = await githubFetch(`/repos/${owner}/${repo}/contents/package.json`, token); // no encoding needed — no slashes in filename
         if (!res.ok) return ok({ found: false, note: "No package.json found" }, start, eid, logs, operation);
         const f = res.data as any;
         let pkg: any = {};
@@ -866,7 +869,8 @@ export class GitHubConnector implements IConnector {
         const repo  = typeof payload.repo  === "string" ? payload.repo  : null;
         const path  = typeof payload.path  === "string" ? payload.path  : null;
         if (!owner || !repo || !path) return fail("owner, repo and path required", "validation", start, eid, logs, operation);
-        const res = await githubFetch(`/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`, token);
+        const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+        const res = await githubFetch(`/repos/${owner}/${repo}/contents/${encodedPath}`, token);
         if (res.status === 404) return fail(`File "${path}" not found`, "external", start, eid, logs, operation);
         if (!res.ok) { this.internalMetrics.externalFailures++; return fail(`HTTP ${res.status}`, "external", start, eid, logs, operation); }
         const f = res.data as any;
