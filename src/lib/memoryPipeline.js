@@ -1,5 +1,6 @@
 import { base44 } from "@/api/base44Client";
 import moment from "moment";
+import { buildEnrichedContext } from "@/lib/memory-intelligence/EnrichedContextBuilder";
 
 /**
  * Memory Retrieval Pipeline
@@ -347,13 +348,15 @@ export async function runMemoryPipeline(question, sessionId, projectId) {
   // Passo 2: Consultar todos os tipos de memória relevantes em paralelo
   const data = await queryEntities(intent, sessionId, projectId);
 
-  // Passo 3: Recuperar apenas os registros mais relevantes e montar contexto único
-  const { context, sources } = buildContext(data, intent, sessionId);
+  // Passo 3: MIP — Score composto, Ranking, Consolidação, Grafo, Contexto Enriquecido
+  const { context, sources, ranked, health, graph } = buildEnrichedContext(data, intent, sessionId);
 
   return {
     context,
     sources,
     intent,
     sessionSummary: data.sessionSummary,
+    // MIP metadata (disponível para COP e dashboard)
+    mip: { ranked, health, graph },
   };
 }
