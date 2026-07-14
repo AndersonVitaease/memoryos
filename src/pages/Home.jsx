@@ -18,12 +18,27 @@ export default function Home() {
 
   const load = async () => {
     setLoading(true);
-    const data = await fetchMemorySnapshot();
-    setSnapshot(data);
-    setLoading(false);
-    if (!updatedRef.current) {
-      updatedRef.current = true;
-      updateLastVisit();
+    try {
+      const data = await fetchMemorySnapshot();
+      setSnapshot(data);
+    } catch (e) {
+      console.error("[Home] fetchMemorySnapshot failed:", e);
+      // Provide a safe empty snapshot so the page always renders
+      setSnapshot({
+        user: null,
+        activeSessions: [],
+        spaces: [],
+        pendingTasks: [],
+        sinceLastVisit: null,
+        activity: [],
+        isFirstVisit: true,
+      });
+    } finally {
+      setLoading(false);
+      if (!updatedRef.current) {
+        updatedRef.current = true;
+        updateLastVisit();
+      }
     }
   };
 

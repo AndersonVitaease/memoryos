@@ -29,19 +29,24 @@ export function getFirstName(user) {
 
 /**
  * Busca todo o contexto necessário para a Home em paralelo.
+ * Each entity call is individually guarded so a single failure
+ * never prevents the page from rendering.
  */
 export async function fetchMemorySnapshot() {
   const lastVisit = getLastVisit();
   const lastVisitDate = lastVisit ? new Date(lastVisit) : null;
 
+  const safe = (promise, fallback = []) =>
+    promise.catch((e) => { console.warn("[memorySnapshot] partial failure:", e?.message ?? e); return fallback; });
+
   const [user, activeSessions, spaces, decisions, tasks, documents, topics] = await Promise.all([
-    base44.auth.me(),
-    base44.entities.ChatSession.filter({ status: "active" }, "-last_message_at", 10),
-    base44.entities.Project.list("-updated_date", 20),
-    base44.entities.Decision.list("-created_date", 20),
-    base44.entities.Task.list("-created_date", 20),
-    base44.entities.Document.list("-created_date", 20),
-    base44.entities.Topic.list("-created_date", 20),
+    safe(base44.auth.me(), null),
+    safe(base44.entities.ChatSession.filter({ status: "active" }, "-last_message_at", 10)),
+    safe(base44.entities.Project.list("-updated_date", 20)),
+    safe(base44.entities.Decision.list("-created_date", 20)),
+    safe(base44.entities.Task.list("-created_date", 20)),
+    safe(base44.entities.Document.list("-created_date", 20)),
+    safe(base44.entities.Topic.list("-created_date", 20)),
   ]);
 
   const pendingTasks = tasks.filter((t) => t.status !== "done");
