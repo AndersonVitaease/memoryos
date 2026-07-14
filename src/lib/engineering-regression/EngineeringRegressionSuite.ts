@@ -52,6 +52,7 @@ import { AutonomousEngineeringLoop } from "../autonomous-engineering/AutonomousE
 import { psmTests } from "./tests/psmTests";
 import { ercTests } from "./tests/ercTests";
 import { uopTests } from "./tests/uopTests";
+import { gipTests } from "./tests/gipTests";
 import { ExecutionContext }          from "../autonomous-engineering/ExecutionContext";
 import { ExecutionStateMachine }     from "../autonomous-engineering/ExecutionStateMachine";
 import { ExecutionEvidence }         from "../autonomous-engineering/ExecutionEvidence";
@@ -64,7 +65,7 @@ import { ExecutionHistory }          from "../autonomous-engineering/ExecutionHi
 // ── Result types ──────────────────────────────────────────────────────────────
 
 export type RegressionCategory =
-  | "KG" | "PIPELINE" | "ROUTING" | "CONNECTOR" | "GRAPH" | "WORKFLOW" | "BASELINE" | "MEMORY" | "UCP" | "SHR" | "EAF" | "AEL" | "PSM" | "ERC" | "UOP";
+  | "KG" | "PIPELINE" | "ROUTING" | "CONNECTOR" | "GRAPH" | "WORKFLOW" | "BASELINE" | "MEMORY" | "UCP" | "SHR" | "EAF" | "AEL" | "PSM" | "ERC" | "UOP" | "GIP";
 
 export interface RegressionTest {
   id:       string;
@@ -1338,6 +1339,9 @@ export class EngineeringRegressionSuite {
 
       // ── UOP Tests (Sprint 6.4.0) — imported ──────────────────────────────────
       ...uopTests,
+
+      // ── GIP Tests (Sprint 6.4.1) — imported ──────────────────────────────────
+      ...gipTests,
       {
         id: "mem_10", name: "Timeline is append-only (no deletions)", category: "MEMORY",
         run: () => {
@@ -1384,6 +1388,7 @@ export class EngineeringRegressionSuite {
       PSM: { passed: 0, failed: 0 },
       ERC: { passed: 0, failed: 0 },
       UOP: { passed: 0, failed: 0 },
+      GIP: { passed: 0, failed: 0 },
     };
     for (const r of results) {
       if (r.passed) categories[r.category].passed++;
@@ -1427,6 +1432,7 @@ export class EngineeringRegressionSuite {
       if (r.category === "PSM")       return `PSM: Check runtime-persistence module — ${r.testName}`;
       if (r.category === "ERC")       return `ERC: Check engineering-readiness module — ${r.testName}`;
       if (r.category === "UOP")       return `UOP: Check universal-oauth module — ${r.testName}`;
+      if (r.category === "GIP")       return `GIP: Check google-identity module — ${r.testName}`;
       return `FIX: ${r.detail}`;
     }).filter((v, i, a) => a.indexOf(v) === i); // deduplicate
 
