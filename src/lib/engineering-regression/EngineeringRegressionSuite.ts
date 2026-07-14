@@ -27,11 +27,22 @@ import { ConnectorHealth }     from "../universal-connector-platform/ConnectorHe
 import { ConnectorDiagnostics }from "../universal-connector-platform/ConnectorDiagnostics";
 import { validateCompatibility }from "../universal-connector-platform/ConnectorCompatibility";
 import { makeCapabilities, validateCapabilities } from "../universal-connector-platform/ConnectorCapabilities";
+import { RuntimeSupervisor }   from "../self-healing-runtime/RuntimeSupervisor";
+import { RuntimeStateSnapshot } from "../self-healing-runtime/RuntimeStateSnapshot";
+import { RuntimeDependencyResolver } from "../self-healing-runtime/RuntimeDependencyResolver";
+import { RuntimeRestartManager } from "../self-healing-runtime/RuntimeRestartManager";
+import { RuntimeRecovery }      from "../self-healing-runtime/RuntimeRecovery";
+import { RuntimeWarmup }        from "../self-healing-runtime/RuntimeWarmup";
+import { RuntimeRestore }       from "../self-healing-runtime/RuntimeRestore";
+import { RuntimeHealth }        from "../self-healing-runtime/RuntimeHealth";
+import { RuntimeAudit }         from "../self-healing-runtime/RuntimeAudit";
+import { RuntimeMetrics }       from "../self-healing-runtime/RuntimeMetrics";
+import { RuntimeEventBus }      from "../self-healing-runtime/RuntimeEventBus";
 
 // ── Result types ──────────────────────────────────────────────────────────────
 
 export type RegressionCategory =
-  | "KG" | "PIPELINE" | "ROUTING" | "CONNECTOR" | "GRAPH" | "WORKFLOW" | "BASELINE" | "MEMORY" | "UCP";
+  | "KG" | "PIPELINE" | "ROUTING" | "CONNECTOR" | "GRAPH" | "WORKFLOW" | "BASELINE" | "MEMORY" | "UCP" | "SHR";
 
 export interface RegressionTest {
   id:       string;
@@ -888,6 +899,144 @@ export class EngineeringRegressionSuite {
         },
       },
 
+      // ── SHR Tests ─────────────────────────────────────────────────────────────
+
+      {
+        id: "shr_01", name: "RuntimeSupervisor instantiates", category: "SHR",
+        run: () => {
+          const t0 = Date.now();
+          const sup = new RuntimeSupervisor();
+          const ok = typeof sup.start === "function" && typeof sup.stop === "function" && typeof sup.state === "function";
+          return { testId: "shr_01", testName: "RuntimeSupervisor instantiates", category: "SHR",
+            passed: ok, detail: ok ? "start/stop/state callable" : "Missing methods", durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "shr_02", name: "RuntimeEventBus emits and receives", category: "SHR",
+        run: () => {
+          const t0 = Date.now();
+          const bus = new RuntimeEventBus();
+          let received = false;
+          bus.on("RuntimeStarted", () => { received = true; });
+          bus.emit("RuntimeStarted", { test: true });
+          const ok = received && bus.history().length > 0;
+          return { testId: "shr_02", testName: "RuntimeEventBus emits and receives", category: "SHR",
+            passed: ok, detail: ok ? "Event emitted and received" : "Event not received", durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "shr_03", name: "RuntimeStateSnapshot captures state", category: "SHR",
+        run: () => {
+          const t0 = Date.now();
+          const snap = new RuntimeStateSnapshot();
+          const result = snap.capture("MANUAL", "READY", { TestModule: "READY" });
+          const ok = !!result.id && result.trigger === "MANUAL" && result.runtimeState === "READY";
+          return { testId: "shr_03", testName: "RuntimeStateSnapshot captures state", category: "SHR",
+            passed: ok, detail: ok ? `Snapshot id=${result.id}` : "Snapshot fields invalid", durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "shr_04", name: "RuntimeDependencyResolver computes chain", category: "SHR",
+        run: () => {
+          const t0 = Date.now();
+          const resolver = new RuntimeDependencyResolver();
+          const chain = resolver.resolveDependencyChain("KnowledgeGraphStore");
+          const ok = chain.length > 0 && chain.includes("LiveCognitivePipeline");
+          return { testId: "shr_04", testName: "RuntimeDependencyResolver computes chain", category: "SHR",
+            passed: ok, detail: ok ? `chain=[${chain.slice(0,4).join(",")}...]` : `chain empty or missing LiveCognitivePipeline: ${chain.join(",")}`,
+            durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "shr_05", name: "RestartManager builds valid plan", category: "SHR",
+        run: () => {
+          const t0 = Date.now();
+          const bus = new RuntimeEventBus();
+          const resolver = new RuntimeDependencyResolver();
+          const mgr = new RuntimeRestartManager(resolver, bus);
+          const plan = mgr.buildPlan("KnowledgeGraphStore", "MANUAL");
+          const ok = !!plan.id && plan.dependencyChain.length > 0;
+          return { testId: "shr_05", testName: "RestartManager builds valid plan", category: "SHR",
+            passed: ok, detail: ok ? `plan chain=${plan.dependencyChain.length} modules` : "Plan has no dependency chain",
+            durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "shr_06", name: "RuntimeRecovery succeeds on first try", category: "SHR",
+        run: async () => {
+          const t0 = Date.now();
+          const bus = new RuntimeEventBus();
+          const rec = new RuntimeRecovery(bus);
+          const result = await rec.recover({
+            moduleId: "TestModule",
+            recover: async () => true,
+          });
+          const ok = result.finalResult === "RECOVERED" && result.attempts === 1;
+          return { testId: "shr_06", testName: "RuntimeRecovery succeeds on first try", category: "SHR",
+            passed: ok, detail: ok ? "Recovered in 1 attempt" : `result=${result.finalResult} attempts=${result.attempts}`,
+            durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "shr_07", name: "RuntimeWarmup runs all 5 steps", category: "SHR",
+        run: async () => {
+          const t0 = Date.now();
+          const warmup = new RuntimeWarmup();
+          const result = await warmup.run();
+          const ok = result.steps.length === 5;
+          return { testId: "shr_07", testName: "RuntimeWarmup runs all 5 steps", category: "SHR",
+            passed: ok, detail: ok ? `All 5 warmup steps ran` : `Only ${result.steps.length} steps ran`,
+            durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "shr_08", name: "RuntimeHealth evaluates module states", category: "SHR",
+        run: () => {
+          const t0 = Date.now();
+          const health = new RuntimeHealth();
+          health.updateModule("ModA", "READY");
+          health.updateModule("ModB", "READY");
+          health.updateModule("ModC", "DEGRADED");
+          const report = health.evaluate();
+          const ok = report.totalModules === 3 && report.readyModules === 2 && report.status === "DEGRADED";
+          return { testId: "shr_08", testName: "RuntimeHealth evaluates module states", category: "SHR",
+            passed: ok, detail: ok ? "Health evaluation correct" : `total=${report.totalModules} ready=${report.readyModules} status=${report.status}`,
+            durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "shr_09", name: "RuntimeAudit is append-only", category: "SHR",
+        run: () => {
+          const t0 = Date.now();
+          const audit = new RuntimeAudit();
+          audit.record({ actor: "Supervisor", action: "RESTART", trigger: "MANUAL", modules: ["ModA"], durationMs: 100, result: "SUCCESS" });
+          const before = audit.count();
+          audit.record({ actor: "Supervisor", action: "RECOVER", trigger: "CODE_CHANGE", modules: ["ModB"], durationMs: 200, result: "PARTIAL" });
+          const after = audit.count();
+          const ok = after === before + 1;
+          return { testId: "shr_09", testName: "RuntimeAudit is append-only", category: "SHR",
+            passed: ok, detail: ok ? `before=${before} after=${after}` : "Audit count did not grow", durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "shr_10", name: "RuntimeMetrics records and snapshots", category: "SHR",
+        run: () => {
+          const t0 = Date.now();
+          const metrics = new RuntimeMetrics();
+          metrics.recordRestart(150, true);
+          metrics.recordRecovery(300, true);
+          metrics.recordWarmup(200, true);
+          const snap = metrics.snapshot();
+          const ok = snap.totalRestarts === 1 && snap.totalRecoveries === 1 && snap.totalWarmups === 1
+            && snap.avgRestartMs === 150 && snap.successRate === 100;
+          return { testId: "shr_10", testName: "RuntimeMetrics records and snapshots", category: "SHR",
+            passed: ok, detail: ok
+              ? "restarts=1 recoveries=1 warmups=1 avg=150ms rate=100%"
+              : `r=${snap.totalRestarts} rec=${snap.totalRecoveries} w=${snap.totalWarmups} rate=${snap.successRate}`,
+            durationMs: Date.now() - t0 };
+        },
+      },
+
       {
         id: "mem_10", name: "Timeline is append-only (no deletions)", category: "MEMORY",
         run: () => {
@@ -928,6 +1077,7 @@ export class EngineeringRegressionSuite {
       GRAPH: { passed: 0, failed: 0 }, WORKFLOW: { passed: 0, failed: 0 },
       BASELINE: { passed: 0, failed: 0 }, MEMORY: { passed: 0, failed: 0 },
       UCP: { passed: 0, failed: 0 },
+      SHR: { passed: 0, failed: 0 },
     };
     for (const r of results) {
       if (r.passed) categories[r.category].passed++;
@@ -965,6 +1115,7 @@ export class EngineeringRegressionSuite {
       if (r.category === "BASELINE")  return `BASELINE: Restore deleted/renamed module: ${r.testName}`;
       if (r.category === "MEMORY")    return `MEMORY: Check EngineeringMemory module — ${r.testName}`;
       if (r.category === "UCP")       return `UCP: Check UniversalConnectorPlatform module — ${r.testName}`;
+      if (r.category === "SHR")       return `SHR: Check SelfHealingRuntime module — ${r.testName}`;
       return `FIX: ${r.detail}`;
     }).filter((v, i, a) => a.indexOf(v) === i); // deduplicate
 
