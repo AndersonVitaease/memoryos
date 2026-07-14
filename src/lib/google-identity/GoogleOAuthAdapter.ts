@@ -5,6 +5,7 @@
  */
 
 import { UOP } from "../universal-oauth/UniversalOAuthPlatform";
+import { OAuthDiscovery } from "../oauth-discovery/OAuthDiscoveryEngine";
 import { GoogleIdentityProvider } from "./GoogleIdentityProvider";
 import { GoogleAuthorizationFlow } from "./GoogleAuthorizationFlow";
 import { GoogleTokenExchange } from "./GoogleTokenExchange";
@@ -66,7 +67,7 @@ export class GoogleOAuthAdapter {
    */
   buildLoginUrl(
     clientId: string,
-    redirectUri: string,
+    redirectUri: string = OAuthDiscovery.getRedirectUri("google"), // auto-discovered
     scopes = this._scopeMapper.getIdentityScopes(),
   ): { url: string; sessionId: string; state: string } {
     this.initialize();

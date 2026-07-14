@@ -119,6 +119,7 @@ const navItems = [
   { label: "Phase 6.3.5 — Readiness Certification",       icon: Award,        path: "/phase635" },
   { label: "Phase 6.4.0 — Universal OAuth Platform",      icon: Plug,         path: "/phase640" },
   { label: "Phase 6.4.1 — Google Identity Provider",     icon: ShieldCheck,  path: "/phase641" },
+  { label: "Phase 6.4.1A — OAuth Discovery",             icon: Search,       path: "/phase641a" },
 ];
 
 export default function Sidebar({ onNavigate }) {

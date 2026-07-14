@@ -8,6 +8,7 @@
 import { UOP } from "../universal-oauth/UniversalOAuthPlatform";
 import type { GoogleAuthorizationRequest } from "./GoogleIdentityTypes";
 import { GIP_IDENTITY_SCOPES } from "./GoogleIdentityProvider";
+import { OAuthDiscovery } from "../oauth-discovery/OAuthDiscoveryEngine";
 
 const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 
@@ -19,7 +20,7 @@ export class GoogleAuthorizationFlow {
    */
   buildRequest(
     clientId: string,
-    redirectUri: string,
+    redirectUri: string = OAuthDiscovery.getRedirectUri("google"), // consumed from discovery
     scopes: string[] = [...GIP_IDENTITY_SCOPES],
     prompt: "consent" | "select_account" | "none" = "consent",
   ): { request: GoogleAuthorizationRequest; url: string } {
