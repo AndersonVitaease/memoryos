@@ -10,8 +10,8 @@ export default function AppLayout() {
 
   return (
     <div className="min-h-screen bg-zinc-50">
-      {/* Desktop sidebar — visível apenas em telas grandes */}
-      <div className="hidden lg:block">
+      {/* Desktop sidebar — fixed, fora do fluxo do documento */}
+      <div className="hidden lg:block fixed inset-y-0 left-0 w-64 z-10">
         <Sidebar />
       </div>
 
