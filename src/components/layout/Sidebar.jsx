@@ -105,6 +105,7 @@ const navItems = [
   { label: "Phase 6.0.3 — KG Consumption Validation", icon: Database,  path: "/phase603" },
   { label: "Phase 6.0.4 — KGS Lifecycle Validation",  icon: Database,  path: "/phase604" },
   { label: "Phase 6.1.0 — Autonomous Engineering Workflow", icon: Workflow, path: "/phase610" },
+  { label: "Phase 6.2.0 — Engineering Orchestrator",       icon: Server,   path: "/phase620" },
 ];
 
 export default function Sidebar({ onNavigate }) {
