@@ -60,37 +60,66 @@ function TestRow({ result }) {
 // ─── Pipeline Diagram ─────────────────────────────────────────────────────────
 
 const PIPELINE_STEPS = [
-  { label: "Engineering Request",     color: "bg-zinc-700" },
-  { label: "EngineeringWorkflowOrchestrator", color: "bg-violet-600" },
-  { label: "GovernanceMiddleware",    color: "bg-indigo-600" },
-  { label: "EngineeringGovernance.evaluate()", color: "bg-blue-600" },
-  { label: "CoreProtectionEngine",    color: "bg-blue-500" },
-  { label: "EngineeringPermissionEngine", color: "bg-blue-500" },
-  { label: "GovernancePolicyEngine",  color: "bg-blue-500" },
-  { label: "SecurityEngine",          color: "bg-blue-500" },
-  { label: "ChangeImpactAnalyzer",    color: "bg-blue-500" },
-  { label: "ApprovalFlow (se crítico)", color: "bg-amber-500" },
-  { label: "RollbackEngine.capture() ← P1", color: "bg-emerald-600" },
-  { label: "ImplementationSandbox.execute()", color: "bg-emerald-600" },
-  { label: "WorkflowMemoryIntegration", color: "bg-teal-600" },
-  { label: "GovernanceAuditEngine",   color: "bg-teal-600" },
-  { label: "WorkflowMetricsCollector", color: "bg-zinc-500" },
-  { label: "COMPLETED / ROLLED_BACK", color: "bg-zinc-700" },
+  { label: "Engineering Request",            color: "bg-zinc-800",    layer: "Entry" },
+  { label: "EngineeringWorkflow",            color: "bg-violet-700",  layer: "Orchestration" },
+  { label: "GovernanceMiddleware",           color: "bg-indigo-600",  layer: "Middleware" },
+  { label: "EngineeringGovernance.evaluate()", color: "bg-blue-700", layer: "Governance Facade" },
+  { label: "CoreProtectionEngine",           color: "bg-blue-500",   layer: "Governance Motors" },
+  { label: "EngineeringPermissionEngine",    color: "bg-blue-500",   layer: "Governance Motors" },
+  { label: "GovernancePolicyEngine",         color: "bg-blue-500",   layer: "Governance Motors" },
+  { label: "SecurityEngine",                color: "bg-blue-500",   layer: "Governance Motors" },
+  { label: "ChangeImpactAnalyzer",           color: "bg-blue-500",   layer: "Governance Motors" },
+  { label: "ApprovalFlow",                   color: "bg-amber-500",  layer: "Approval" },
+  { label: "RollbackEngine.capture()",       color: "bg-emerald-600", layer: "Safety" },
+  { label: "ImplementationSandbox.execute()", color: "bg-emerald-600", layer: "Safety" },
+  { label: "Execution",                      color: "bg-teal-700",   layer: "Execution" },
+  { label: "WorkflowMemoryIntegration",      color: "bg-teal-600",   layer: "Memory" },
+  { label: "GovernanceAuditEngine",          color: "bg-teal-600",   layer: "Memory" },
+  { label: "WorkflowMetricsCollector",       color: "bg-slate-500",  layer: "Observability" },
+  { label: "COMPLETED",                      color: "bg-zinc-800",   layer: "Terminal" },
 ];
 
 function PipelineDiagram() {
+  // Group consecutive steps that share the same layer for bracket display.
   return (
-    <div className="flex flex-col items-center gap-0">
-      {PIPELINE_STEPS.map((step, i) => (
-        <div key={i} className="flex flex-col items-center">
-          <div className={`${step.color} text-white text-xs font-medium px-4 py-1.5 rounded-lg text-center min-w-60`}>
-            {step.label}
+    <div className="flex gap-6 items-start">
+      {/* Main pipeline column */}
+      <div className="flex flex-col items-center gap-0">
+        {PIPELINE_STEPS.map((step, i) => (
+          <div key={i} className="flex flex-col items-center">
+            <div className={`${step.color} text-white text-xs font-semibold px-5 py-2 rounded-lg text-center w-72 shadow-sm`}>
+              {step.label}
+            </div>
+            {i < PIPELINE_STEPS.length - 1 && (
+              <div className="flex flex-col items-center">
+                <div className="w-px h-2 bg-zinc-300" />
+                <div className="w-1.5 h-1.5 rounded-full bg-zinc-400" />
+                <div className="w-px h-2 bg-zinc-300" />
+              </div>
+            )}
           </div>
-          {i < PIPELINE_STEPS.length - 1 && (
-            <div className="w-px h-3 bg-zinc-300" />
-          )}
-        </div>
-      ))}
+        ))}
+      </div>
+
+      {/* Layer annotations */}
+      <div className="flex flex-col gap-0 pt-0.5">
+        {PIPELINE_STEPS.map((step, i) => {
+          const prev = PIPELINE_STEPS[i - 1];
+          const showLabel = !prev || prev.layer !== step.layer;
+          return (
+            <div key={i} className="flex flex-col">
+              <div className="h-[33px] flex items-center">
+                {showLabel && (
+                  <span className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 whitespace-nowrap">
+                    {step.layer}
+                  </span>
+                )}
+              </div>
+              {i < PIPELINE_STEPS.length - 1 && <div className="h-[17px]" />}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
