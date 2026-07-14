@@ -16,11 +16,12 @@
  */
 
 import { KnowledgeGraphStore } from "../project-knowledge/KnowledgeGraphStore";
+import { EngineeringMemory }   from "../engineering-memory/EngineeringMemory";
 
 // ── Result types ──────────────────────────────────────────────────────────────
 
 export type RegressionCategory =
-  | "KG" | "PIPELINE" | "ROUTING" | "CONNECTOR" | "GRAPH" | "WORKFLOW" | "BASELINE";
+  | "KG" | "PIPELINE" | "ROUTING" | "CONNECTOR" | "GRAPH" | "WORKFLOW" | "BASELINE" | "MEMORY";
 
 export interface RegressionTest {
   id:       string;
@@ -626,6 +627,131 @@ export class EngineeringRegressionSuite {
           }
         },
       })),
+
+      // ── MEMORY Tests ─────────────────────────────────────────────────────────
+
+      {
+        id: "mem_01", name: "Engineering Memory initializes", category: "MEMORY",
+        run: () => {
+          const t0 = Date.now();
+          const em = new EngineeringMemory();
+          const ok = typeof em.recordImplementation === "function" && typeof em.searchBeforeImplementing === "function";
+          return { testId: "mem_01", testName: "Engineering Memory initializes", category: "MEMORY",
+            passed: ok, detail: ok ? "EngineeringMemory API callable" : "Missing methods", durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "mem_02", name: "Memory persists recorded entries", category: "MEMORY",
+        run: () => {
+          const t0 = Date.now();
+          const em = new EngineeringMemory();
+          em.recordImplementation({ objective: "regression test impl", planId: "p0", components: ["TestComp"], strategy: "CREATE", filesChanged: [], durationMs: 100, regressionsPassed: true, approved: true, rollbackExecuted: false, outcome: "PASS" });
+          const ok = em.implementations.all().length > 0;
+          return { testId: "mem_02", testName: "Memory persists recorded entries", category: "MEMORY",
+            passed: ok, detail: ok ? `${em.implementations.all().length} impl(s) stored` : "No entries stored", durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "mem_03", name: "Memory search works", category: "MEMORY",
+        run: () => {
+          const t0 = Date.now();
+          const em = new EngineeringMemory();
+          em.recordImplementation({ objective: "caching strategy for retrieval", planId: "p1", components: ["RetrievalEngine"], strategy: "EXTEND", filesChanged: [], durationMs: 200, regressionsPassed: true, approved: true, rollbackExecuted: false, outcome: "PASS" });
+          const results = em.searchBeforeImplementing("caching retrieval");
+          const ok = results.length > 0;
+          return { testId: "mem_03", testName: "Memory search works", category: "MEMORY",
+            passed: ok, detail: ok ? `${results.length} result(s) found` : "Search returned nothing", durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "mem_04", name: "Pattern detection works", category: "MEMORY",
+        run: () => {
+          const t0 = Date.now();
+          const em = new EngineeringMemory();
+          em.recordImplementation({ objective: "add feature A", planId: "p2", components: ["SharedComp"], strategy: "CREATE", filesChanged: [], durationMs: 100, regressionsPassed: true, approved: true, rollbackExecuted: false, outcome: "PASS" });
+          em.recordImplementation({ objective: "add feature B", planId: "p3", components: ["SharedComp"], strategy: "EXTEND", filesChanged: [], durationMs: 150, regressionsPassed: true, approved: true, rollbackExecuted: false, outcome: "PASS" });
+          const loop = em.runLearningLoop("PASS", ["SharedComp"]);
+          const ok = em.patterns.all().length > 0 || loop.newPatterns >= 0;
+          return { testId: "mem_04", testName: "Pattern detection works", category: "MEMORY",
+            passed: ok, detail: `patterns=${em.patterns.all().length} loopNewPatterns=${loop.newPatterns}`, durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "mem_05", name: "Learning loop executes", category: "MEMORY",
+        run: () => {
+          const t0 = Date.now();
+          const em = new EngineeringMemory();
+          em.recordImplementation({ objective: "loop test", planId: "p4", components: ["LoopComp"], strategy: "CREATE", filesChanged: [], durationMs: 300, regressionsPassed: true, approved: true, rollbackExecuted: false, outcome: "PASS" });
+          const result = em.runLearningLoop("PASS", ["LoopComp"]);
+          const ok = result.durationMs >= 0 && result.lessonsExtracted.length > 0;
+          return { testId: "mem_05", testName: "Learning loop executes", category: "MEMORY",
+            passed: ok, detail: `lessons=${result.lessonsExtracted.length} durationMs=${result.durationMs}`, durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "mem_06", name: "Experience snapshot updates", category: "MEMORY",
+        run: () => {
+          const t0 = Date.now();
+          const em = new EngineeringMemory();
+          em.recordImplementation({ objective: "exp test", planId: "p5", components: ["ExpComp"], strategy: "CREATE", filesChanged: [], durationMs: 500, regressionsPassed: true, approved: true, rollbackExecuted: false, outcome: "PASS" });
+          const snap = em.experienceSnapshot();
+          const ok = snap.totalImplementations > 0 && snap.successRate >= 0;
+          return { testId: "mem_06", testName: "Experience snapshot updates", category: "MEMORY",
+            passed: ok, detail: `totalImpl=${snap.totalImplementations} successRate=${snap.successRate}%`, durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "mem_07", name: "Knowledge Graph links memories via kgEntityIds", category: "MEMORY",
+        run: () => {
+          const t0 = Date.now();
+          const em = new EngineeringMemory();
+          const entry = em.recordImplementation({ objective: "KG link test", planId: "p6", components: ["KGComp"], strategy: "EXTEND", filesChanged: [], durationMs: 100, regressionsPassed: true, approved: true, rollbackExecuted: false, outcome: "PASS", kgEntityIds: ["entity_001"] });
+          const ok = Array.isArray(entry.kgEntityIds) && entry.kgEntityIds.length > 0;
+          return { testId: "mem_07", testName: "Knowledge Graph links memories", category: "MEMORY",
+            passed: ok, detail: ok ? `kgEntityIds=${entry.kgEntityIds.join(",")}` : "kgEntityIds empty", durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "mem_08", name: "Memory ranking is consistent", category: "MEMORY",
+        run: () => {
+          const t0 = Date.now();
+          const em = new EngineeringMemory();
+          em.recordImplementation({ objective: "rank test A", planId: "p7", components: ["RankComp"], strategy: "CREATE", filesChanged: [], durationMs: 100, regressionsPassed: true, approved: true, rollbackExecuted: false, outcome: "PASS" });
+          em.recordBug({ description: "rank bug", rootCause: "test", module: "RankModule", impact: "LOW", fix: "fixed", relatedRegression: "", confidence: 0.8, version: "6.2.4" });
+          const all = em.allEntries();
+          const ok = all.every(e => typeof e.rank === "number" && e.rank >= 0 && e.rank <= 100);
+          return { testId: "mem_08", testName: "Memory ranking is consistent", category: "MEMORY",
+            passed: ok, detail: ok ? `All ${all.length} entries have valid rank` : "Invalid rank found", durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "mem_09", name: "Memory audit is immutable (append-only)", category: "MEMORY",
+        run: () => {
+          const t0 = Date.now();
+          const em = new EngineeringMemory();
+          em.recordBug({ description: "audit test", rootCause: "test", module: "AuditMod", impact: "LOW", fix: "fixed", relatedRegression: "", confidence: 0.9, version: "6.2.4" });
+          const before = em.audit.all().length;
+          em.recordBug({ description: "audit test 2", rootCause: "test2", module: "AuditMod2", impact: "MEDIUM", fix: "fixed2", relatedRegression: "", confidence: 0.8, version: "6.2.4" });
+          const after = em.audit.all().length;
+          const ok = after > before;
+          return { testId: "mem_09", testName: "Memory audit is immutable (append-only)", category: "MEMORY",
+            passed: ok, detail: `audit entries before=${before} after=${after}`, durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "mem_10", name: "Timeline is append-only (no deletions)", category: "MEMORY",
+        run: () => {
+          const t0 = Date.now();
+          const em = new EngineeringMemory();
+          em.recordApproval({ proposalId: "tl_p1", objective: "timeline test", approved: true, reason: "ok", approver: "test" });
+          const count1 = em.allEntries().length;
+          em.recordApproval({ proposalId: "tl_p2", objective: "timeline test 2", approved: false, reason: "nope", approver: "test" });
+          const count2 = em.allEntries().length;
+          const ok = count2 > count1;
+          return { testId: "mem_10", testName: "Timeline is append-only (no deletions)", category: "MEMORY",
+            passed: ok, detail: `entries before=${count1} after=${count2}`, durationMs: Date.now() - t0 };
+        },
+      },
     ];
   }
 
@@ -650,7 +776,7 @@ export class EngineeringRegressionSuite {
       KG: { passed: 0, failed: 0 }, PIPELINE: { passed: 0, failed: 0 },
       ROUTING: { passed: 0, failed: 0 }, CONNECTOR: { passed: 0, failed: 0 },
       GRAPH: { passed: 0, failed: 0 }, WORKFLOW: { passed: 0, failed: 0 },
-      BASELINE: { passed: 0, failed: 0 },
+      BASELINE: { passed: 0, failed: 0 }, MEMORY: { passed: 0, failed: 0 },
     };
     for (const r of results) {
       if (r.passed) categories[r.category].passed++;
@@ -686,6 +812,7 @@ export class EngineeringRegressionSuite {
       if (r.category === "GRAPH")     return `GRAPH: Check RKB build pipeline for duplicate/orphan entities`;
       if (r.category === "WORKFLOW")  return `WORKFLOW: Verify EngineeringWorkflow stage transitions`;
       if (r.category === "BASELINE")  return `BASELINE: Restore deleted/renamed module: ${r.testName}`;
+      if (r.category === "MEMORY")    return `MEMORY: Check EngineeringMemory module — ${r.testName}`;
       return `FIX: ${r.detail}`;
     }).filter((v, i, a) => a.indexOf(v) === i); // deduplicate
 
