@@ -115,6 +115,7 @@ const navItems = [
   { label: "Phase 6.3.1 — Self-Healing Runtime",          icon: ShieldCheck,  path: "/phase631" },
   { label: "Phase 6.3.2 — Acceptance Framework",          icon: ShieldCheck,  path: "/phase632" },
   { label: "Phase 6.3.3 — Autonomous Engineering Loop",   icon: Play,         path: "/phase633" },
+  { label: "Phase 6.3.4 — Persistent Runtime",            icon: Server,       path: "/phase634" },
 ];
 
 export default function Sidebar({ onNavigate }) {

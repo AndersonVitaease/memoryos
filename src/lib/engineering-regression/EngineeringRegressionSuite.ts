@@ -49,6 +49,7 @@ import { AcceptanceEvidenceStore } from "../engineering-acceptance/AcceptanceEvi
 import { buildCriteria }       from "../engineering-acceptance/AcceptanceCriteria";
 import { assert as eafAssert } from "../engineering-acceptance/AcceptanceAssertion";
 import { AutonomousEngineeringLoop } from "../autonomous-engineering/AutonomousEngineeringLoop";
+import { psmTests } from "./tests/psmTests";
 import { ExecutionContext }          from "../autonomous-engineering/ExecutionContext";
 import { ExecutionStateMachine }     from "../autonomous-engineering/ExecutionStateMachine";
 import { ExecutionEvidence }         from "../autonomous-engineering/ExecutionEvidence";
@@ -61,7 +62,7 @@ import { ExecutionHistory }          from "../autonomous-engineering/ExecutionHi
 // ── Result types ──────────────────────────────────────────────────────────────
 
 export type RegressionCategory =
-  | "KG" | "PIPELINE" | "ROUTING" | "CONNECTOR" | "GRAPH" | "WORKFLOW" | "BASELINE" | "MEMORY" | "UCP" | "SHR" | "EAF" | "AEL";
+  | "KG" | "PIPELINE" | "ROUTING" | "CONNECTOR" | "GRAPH" | "WORKFLOW" | "BASELINE" | "MEMORY" | "UCP" | "SHR" | "EAF" | "AEL" | "PSM";
 
 export interface RegressionTest {
   id:       string;
@@ -1327,6 +1328,8 @@ export class EngineeringRegressionSuite {
         },
       },
 
+      // ── PSM Tests (Sprint 6.3.4) — imported ──────────────────────────────────
+      ...psmTests,
       {
         id: "mem_10", name: "Timeline is append-only (no deletions)", category: "MEMORY",
         run: () => {
@@ -1370,6 +1373,7 @@ export class EngineeringRegressionSuite {
       SHR: { passed: 0, failed: 0 },
       EAF: { passed: 0, failed: 0 },
       AEL: { passed: 0, failed: 0 },
+      PSM: { passed: 0, failed: 0 },
     };
     for (const r of results) {
       if (r.passed) categories[r.category].passed++;
@@ -1410,6 +1414,7 @@ export class EngineeringRegressionSuite {
       if (r.category === "SHR")       return `SHR: Check SelfHealingRuntime module — ${r.testName}`;
       if (r.category === "EAF")       return `EAF: Check EngineeringAcceptanceFramework module — ${r.testName}`;
       if (r.category === "AEL")       return `AEL: Check AutonomousEngineeringLoop module — ${r.testName}`;
+      if (r.category === "PSM")       return `PSM: Check runtime-persistence module — ${r.testName}`;
       return `FIX: ${r.detail}`;
     }).filter((v, i, a) => a.indexOf(v) === i); // deduplicate
 
