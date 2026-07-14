@@ -269,7 +269,10 @@ export class LiveCognitivePipeline {
           "RKB skipped — owner/repo unknown", "passthrough", 0.5);
       }
       const graph = await this.rkb.build(owner, repo, "main", { maxFiles: 80 });
+      console.log(`[LCP] PRE KnowledgeGraphStore.set — entities=${graph.entities.length} rels=${graph.relationships.length} modules=${graph.modules.length}`);
       KnowledgeGraphStore.set(graph, "LiveCognitivePipeline.RKB");
+      const _postGraph = KnowledgeGraphStore.get("LCP.postSet");
+      console.log(`[LCP] POST KnowledgeGraphStore.get — entities=${_postGraph?.entities.length ?? 0} rels=${_postGraph?.relationships.length ?? 0} modules=${_postGraph?.modules.length ?? 0}`);
       ctx.knowledgeEvidence.push(`RKB: ${graph.entityCount} entities · ${graph.relationshipCount} rels · ${graph.modules.length} modules`);
       return this._mkStage("RepositoryKnowledgeBuilder", t0, "SUCCESS", {
         ...KnowledgeGraphStore.snapshotFields(),

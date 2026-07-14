@@ -97,10 +97,26 @@ export class RepositoryKnowledgeBuilder {
         ? ((treeInv.result?.data as any)?.files ?? [])
         : [];
 
+    console.log(`[RKB] STAGE repository.tree — allFiles.length = ${allFiles.length}`);
+    allFiles.slice(0, 10).forEach((f, i) => {
+      console.log(`[RKB] allFiles[${i}] = { path: "${f.path}", type: ${JSON.stringify((f as any).type)}, ext: ${JSON.stringify((f as any).ext)} }`);
+    });
+
     // 2. Filter to supported, non-ignored files
     const targetFiles = allFiles
-      .filter(f => f.type === "blob" && isSupported(f.path) && !shouldIgnore(f.path))
+      .filter(f => {
+        const passesType    = f.type === "blob";
+        const passesSupport = isSupported(f.path);
+        const passesIgnore  = !shouldIgnore(f.path);
+        const final         = passesType && passesSupport && passesIgnore;
+        if (!final) {
+          console.log(`[RKB] FILTER REJECT "${f.path}" — type=${JSON.stringify(f.type)} passesType=${passesType} supported=${passesSupport} ignored=${!passesIgnore}`);
+        }
+        return final;
+      })
       .slice(0, maxFiles);
+
+    console.log(`[RKB] STAGE eligible files — targetFiles.length = ${targetFiles.length}`);
 
     // 3. Fetch latest commit for metadata
     const commitsInv = await this._cis.invoke("github", "commits.list", { owner, repo, per_page: 1 },
@@ -166,6 +182,8 @@ export class RepositoryKnowledgeBuilder {
       }
     }
 
+    console.log(`[RKB] STAGE after parse loop — entities.length = ${entities.length}`);
+
     // 5. Build relationships (EF-60.4)
     const relationships: ArchRelationship[] = buildRelationships(entities, targetFiles, entityMap);
 
@@ -178,6 +196,8 @@ export class RepositoryKnowledgeBuilder {
         if (!to.dependents.includes(from.id))    to.dependents.push(from.id);
       }
     }
+
+    console.log(`[RKB] STAGE relationships — relationships.length = ${relationships.length}`);
 
     // 7. Build module graph (EF-60.5)
     const modules = buildModuleGraph(entities, relationships);
@@ -218,6 +238,11 @@ export class RepositoryKnowledgeBuilder {
       builtAt:           Date.now(),
       durationMs:        Date.now() - t0,
     };
+
+    console.log(`[RKB] STAGE modules — modules.length = ${modules.length}`);
+    console.log(`[RKB] PRE-SET graph.entities.length = ${graph.entities.length}`);
+    console.log(`[RKB] PRE-SET graph.relationships.length = ${graph.relationships.length}`);
+    console.log(`[RKB] PRE-SET graph.modules.length = ${graph.modules.length}`);
 
     this._graph = graph;
     this._graphBuiltAt = Date.now();
