@@ -767,7 +767,7 @@ export class GitHubConnector implements IConnector {
           totalFiles: files.length,
           truncated: (res.data as any)?.truncated ?? false,
           directories: Object.entries(dirs).map(([path, count]) => ({ path, fileCount: count })).sort((a, b) => b.fileCount - a.fileCount).slice(0, 30),
-          files: files.slice(0, 300).map((f: any) => ({ path: f.path, size: f.size ?? 0, ext: f.path.split(".").pop()?.toLowerCase() ?? "" })),
+          files: files.slice(0, 300).map((f: any) => ({ path: f.path, size: f.size ?? 0, type: f.type ?? "blob", ext: f.path.split(".").pop()?.toLowerCase() ?? "" })),
         }, start, eid, logs, operation);
       }
 
