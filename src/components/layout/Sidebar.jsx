@@ -97,6 +97,7 @@ const navItems = [
   { label: "Phase 5.7.0 — Production Certification", icon: Award,       path: "/phase570" },
   { label: "Phase 5.8.0 — GitHub Deep Analysis",    icon: FileCode,     path: "/phase58" },
   { label: "EF-58.13 — Engineering Validation",     icon: ShieldCheck,  path: "/phase58-validation" },
+  { label: "Phase 5.8.1 — Engineering Accuracy",    icon: ShieldCheck,  path: "/phase581" },
 ];
 
 export default function Sidebar({ onNavigate }) {

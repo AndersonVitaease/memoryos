@@ -16,6 +16,8 @@ import { LiveCognitivePipeline } from "../live-cognitive-pipeline/LiveCognitiveP
 import { CognitiveAnswerComposer } from "../cognitive-answer-composer/CognitiveAnswerComposer";
 import { GitHubQueryRouter } from "./GitHubQueryRouter";
 import { ConnectorInvocationService } from "../cognitive-connector/ConnectorInvocationService";
+import { RepositoryResolver } from "../github-deep-analysis/RepositoryResolver";
+import { SearchRanker } from "../github-deep-analysis/SearchRanker";
 import type {
   GatewayRequest, CognitiveAnswer, IntentClassification, CognitiveIntent,
   GatewayDiagnostic, CCGReport, AnswerSource,
@@ -170,6 +172,9 @@ export class ConversationCognitiveGateway {
   private readonly _composer   = new CognitiveAnswerComposer();
   private readonly _ghRouter   = new GitHubQueryRouter();
   private readonly _cis        = new ConnectorInvocationService();
+  private readonly _repoResolver = new RepositoryResolver();
+  private readonly _searchRanker = new SearchRanker();
+  private _repoCache: { owner: string; repo: string; fetchedAt: number } | null = null;
   private readonly _diagnostics: GatewayDiagnostic[] = [];
   private _totalRequests     = 0;
   private _cognitiveRequests = 0;
@@ -200,35 +205,49 @@ export class ConversationCognitiveGateway {
 
     let answer: CognitiveAnswer;
 
-    // ── Connector-Aware Query Routing (Phase 5.7.1) ──────────────────────────
+    // ── Connector-Aware Query Routing (Phase 5.8.1) ──────────────────────────
     // GitHub-targeted questions bypass the LCP entirely and invoke the connector directly.
     const ghRoute = this._ghRouter.route(userMessage);
     if (ghRoute.isGitHubQuery && ghRoute.capability) {
       this._cognitiveRequests++;
 
-      // Capabilities that require owner+repo: if not extracted, auto-fetch first repo
-      const needsRepo = ["branches.list", "commits.list", "files.list", "files.get", "repos.stats", "repos.languages"].includes(ghRoute.capability);
-      let capability  = ghRoute.capability;
-      let payload     = { ...ghRoute.payload };
+      let capability = ghRoute.capability;
+      let payload    = { ...ghRoute.payload };
 
+      // EF-58.1.1: Repository Resolution — use RepositoryResolver for any cap needing owner/repo
+      const needsRepo = !["repos.list", "auth.user"].includes(capability);
       if (needsRepo && (!payload.owner || !payload.repo)) {
-        // Auto-discover first repo
-        const reposInv = await this._cis.invoke("github", "repos.list", { per_page: 5 },
-          { originComponent: "ConversationCognitiveGateway", reason: "Auto-discover repo for query", goalId: null });
-        if (reposInv.record.status === "SUCCESS") {
-          const items = (reposInv.result?.data as any)?.items ?? [];
-          if (items.length > 0) {
-            payload.owner = items[0].owner;
-            payload.repo  = items[0].name;
-          } else {
-            // No repos — fall back to repos.list answer
-            capability = "repos.list";
-            payload = {};
+        const resolved = await this._resolveRepository(userMessage, projectId);
+        if (resolved) {
+          payload.owner = resolved.owner;
+          payload.repo  = resolved.repo;
+          if (resolved.needsConfirmation) {
+            // Return disambiguation message instead of executing
+            const disambig: CognitiveAnswer = {
+              id:                makeCCGId("answer"),
+              requestId:         request.id,
+              executionId:       null,
+              answer:            this._repoResolver.buildConfirmationMessage(resolved.candidates),
+              source:            "conversation_memory" as AnswerSource,
+              intent:            "repository_analysis",
+              connectorsUsed:    [],
+              stagesExecuted:    [],
+              evidenceSources:   [`${resolved.candidates.length} repositories found`],
+              confidence:        resolved.confidence,
+              durationMs:        Date.now() - t0,
+              timestamp:         Date.now(),
+              degraded:          false,
+              degradationReason: null,
+              recoveryInfo:      null,
+              pipelineStatus:    "AWAITING_CONFIRMATION",
+            };
+            this._diagnostics.push({ requestId: request.id, userMessage, intent, pipelineInvoked: false, answer: disambig, timestamp: Date.now() });
+            return disambig;
           }
-        } else if (reposInv.record.status === "NOT_CONFIGURED") {
-          // Pass through — will be caught as NOT_CONFIGURED below
+        } else {
+          // No repos found or NOT_CONFIGURED — fallback to repos.list
           capability = "repos.list";
-          payload = {};
+          payload    = {};
         }
       }
 
@@ -240,12 +259,20 @@ export class ConversationCognitiveGateway {
       );
 
       if (invocationResult.record.status === "SUCCESS" && invocationResult.result?.data) {
-        const connectorData = invocationResult.result.data as Record<string, unknown>;
+        let connectorData = invocationResult.result.data as Record<string, unknown>;
+
+        // EF-58.1.2: Apply search ranking for search.* capabilities
+        if (capability.startsWith("search.") && (connectorData as any).items) {
+          const ranked = this._searchRanker.rank((connectorData as any).items, userMessage);
+          connectorData = { ...connectorData, items: ranked, _ranked: true };
+        }
+
         const evidence = [
-          `GitHub direct: ${capability}`,
-          `Query confidence: ${Math.round(ghRoute.confidence * 100)}%`,
-          `Keywords: ${ghRoute.matchedKeywords.slice(0, 3).join(", ")}`,
-          `ExecutionId: ${invocationResult.record.id}`,
+          `GitHub: ${capability}`,
+          `Repo: ${payload.owner ?? "—"}/${payload.repo ?? "—"}`,
+          `Confidence: ${Math.round(ghRoute.confidence * 100)}%`,
+          `ExecId: ${invocationResult.record.id?.slice(-8)}`,
+          `Duration: ${invocationResult.record.durationMs}ms`,
         ];
         const composed = this._composer.composeFromConnectorResult(
           userMessage,
@@ -274,15 +301,21 @@ export class ConversationCognitiveGateway {
           pipelineStatus:    "CONNECTOR_DIRECT",
         };
       } else {
-        // Connector returned NOT_CONFIGURED or failed — fall through to LCP
+        // EF-58.1.12: Graceful fallback — never expose raw validation errors
         const notConfigured = invocationResult.record.status === "NOT_CONFIGURED";
+        const rawError = invocationResult.record.error ?? "";
+        const userFriendlyError = notConfigured
+          ? "GitHub is not connected yet. Please add your GitHub token in the Phase 5.7.0 dashboard to enable repository queries."
+          : rawError.includes("owner and repo required")
+            ? "I could not determine which repository to inspect. Please specify the repository name in your question."
+            : rawError.includes("not found")
+              ? `The requested file or repository was not found. Please verify the path and try again.`
+              : "GitHub query could not be completed. Please try again or check your connection.";
         answer = {
           id:                makeCCGId("answer"),
           requestId:         request.id,
           executionId:       null,
-          answer:            notConfigured
-            ? "GitHub connector is not configured. Please connect your GitHub account in the Phase 5.7.0 dashboard to enable repository queries."
-            : `GitHub query failed: ${invocationResult.record.error ?? "unknown error"}`,
+          answer:            userFriendlyError,
           source:            "degraded_pipeline" as AnswerSource,
           intent:            "repository_analysis",
           connectorsUsed:    [],
@@ -371,6 +404,32 @@ export class ConversationCognitiveGateway {
     if (this._diagnostics.length > 100) this._diagnostics.splice(0, this._diagnostics.length - 100);
 
     return answer;
+  }
+
+  // ── Repository Resolution (EF-58.1.1) ────────────────────────────────────
+
+  private async _resolveRepository(
+    userMessage: string,
+    projectId: string | null,
+  ): Promise<{ owner: string; repo: string; confidence: number; needsConfirmation: boolean; candidates: any[] } | null> {
+    // Use cache if fresh (< 5 minutes)
+    if (this._repoCache && Date.now() - this._repoCache.fetchedAt < 5 * 60 * 1000) {
+      return { owner: this._repoCache.owner, repo: this._repoCache.repo, confidence: 0.9, needsConfirmation: false, candidates: [] };
+    }
+    const reposInv = await this._cis.invoke("github", "repos.list", { per_page: 10 },
+      { originComponent: "ConversationCognitiveGateway", reason: "Repository resolution" });
+    if (reposInv.record.status !== "SUCCESS") return null;
+    const items = (reposInv.result?.data as any)?.items ?? [];
+    if (items.length === 0) return null;
+
+    const resolved = this._repoResolver.resolve(items, userMessage, projectId);
+    if (!resolved) return null;
+
+    // Cache the best result
+    if (!resolved.needsConfirmation) {
+      this._repoCache = { owner: resolved.owner, repo: resolved.repo, fetchedAt: Date.now() };
+    }
+    return resolved;
   }
 
   // ── Intent classifier ─────────────────────────────────────────────────────
