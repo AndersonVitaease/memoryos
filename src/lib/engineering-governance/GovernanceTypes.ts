@@ -113,6 +113,19 @@ export interface SecurityCheckResult {
   checkedAt: string;
 }
 
+/**
+ * P4 — Single source of truth for permission level ranking.
+ * Imported by EngineeringPermissionEngine and GovernancePolicyEngine.
+ * Never duplicate this constant in any other module.
+ */
+export const PERMISSION_LEVEL_RANK: Record<PermissionLevel, number> = {
+  none: 0,
+  read: 1,
+  propose: 2,
+  execute: 3,
+  admin: 4,
+};
+
 // ─── UI-facing constants ──────────────────────────────────────────────────────
 
 export const PROTECTED_COMPONENTS: string[] = [

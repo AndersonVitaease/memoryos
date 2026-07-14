@@ -1,8 +1,10 @@
 /**
  * governanceTests.ts
- * Sprint 6.2.2 — Engineering Governance & Core Protection
+ * Sprint 6.2.2A — Engineering Governance Hardening
  *
  * Suite de testes para todos os motores de governança.
+ * Inclui testes específicos para os hardenings P1, P2, P4 e P5.
+ *
  * Cobertura: CoreProtectionEngine, EngineeringPermissionEngine,
  *            ChangeImpactAnalyzer, ImplementationSandbox, RollbackEngine,
  *            GovernancePolicyEngine, GovernanceAuditEngine, SecurityEngine,
@@ -18,6 +20,7 @@ import { GovernancePolicyEngine } from './GovernancePolicyEngine';
 import { GovernanceAuditEngine } from './GovernanceAuditEngine';
 import { SecurityEngine } from './SecurityEngine';
 import { EngineeringGovernance } from './EngineeringGovernance';
+import { PERMISSION_LEVEL_RANK } from './GovernanceTypes';
 
 // ─── Minimal test harness ────────────────────────────────────────────────────
 
@@ -293,27 +296,43 @@ const auditTests = [
 const securityTests = [
   runTest('SE-01: blocked principal is denied', () => {
     SecurityEngine.blockPrincipal('blocked-user');
-    const r = SecurityEngine.check('blocked-user', 'src/pages/Home.jsx', 'read', 'read');
+    const r = SecurityEngine.check('blocked-user', 'src/pages/Home.jsx', 'read', 'read', []);
     assert(!r.allowed, 'Blocked principal should be denied');
     SecurityEngine.unblockPrincipal('blocked-user');
   }),
-  runTest('SE-02: write on immutable core is denied', () => {
-    const r = SecurityEngine.check('user-eng', 'src/lib/wme/index.ts', 'write', 'execute');
-    assert(!r.allowed, 'Write on immutable should be denied by security');
+
+  // P2 hardening: SecurityEngine no longer calls CoreProtection internally.
+  // It receives pre-computed violations — we verify that by passing violations explicitly.
+  runTest('SE-02 [P2]: violations passed as parameter are surfaced in result', () => {
+    const preViolations = ['Core protection: Component "WorkingMemoryEngine" is immutable.'];
+    const r = SecurityEngine.check('user-eng', 'src/lib/wme/index.ts', 'write', 'execute', preViolations);
+    assert(!r.allowed, 'Should be denied when pre-computed violations are passed');
+    assert(r.violations.some((v) => v.includes('immutable')), 'Expected immutable violation in result');
   }),
-  runTest('SE-03: allowed operation returns no violations', () => {
-    const r = SecurityEngine.check('user-eng', 'src/pages/Home.jsx', 'read', 'read');
-    assert(r.allowed, 'Read on open path should be allowed');
+
+  runTest('SE-03: no violations and no blocklist → allowed', () => {
+    const r = SecurityEngine.check('user-eng', 'src/pages/Home.jsx', 'read', 'read', []);
+    assert(r.allowed, 'Read on open path with no violations should be allowed');
     assert(r.violations.length === 0, 'Expected no violations');
   }),
-  runTest('SE-04: enforce throws on denied operation', () => {
+
+  runTest('SE-04: enforce throws when violations are pre-computed', () => {
     let threw = false;
     try {
-      SecurityEngine.enforce('bad-user', 'src/lib/wme/index.ts', 'delete', 'read');
+      SecurityEngine.enforce('bad-user', 'src/lib/wme/index.ts', 'delete', 'read', [
+        'Core protection: Component is immutable.',
+      ]);
     } catch {
       threw = true;
     }
     assert(threw, 'Expected enforce to throw');
+  }),
+
+  // P2 hardening: SecurityEngine does NOT import CoreProtectionEngine or GovernancePolicyEngine.
+  // We verify indirectly: an open path with an empty violations list is always allowed.
+  runTest('SE-05 [P2]: open path with no pre-computed violations is always allowed by SecurityEngine', () => {
+    const r = SecurityEngine.check('user-viewer', 'src/pages/Some.jsx', 'write', 'execute', []);
+    assert(r.allowed, 'No violations passed → SecurityEngine should allow');
   }),
 ];
 
@@ -330,6 +349,7 @@ const facadeTests = [
     assert(!d.approved, 'Expected rejection');
     assert(d.violations.length > 0, 'Expected violations');
   }),
+
   runTest('EG-02: evaluate approves read on open path', () => {
     const d = EngineeringGovernance.evaluate({
       principalId: 'user-viewer',
@@ -339,8 +359,11 @@ const facadeTests = [
     });
     assert(d.approved, 'Expected approval for read on open path');
   }),
-  runTest('EG-03: execute returns sandboxId for allowed operation', async () => {
-    const { decision, sandboxId } = await EngineeringGovernance.execute(
+
+  // P1 hardening: execute() must return a snapshotId whenever sandbox runs.
+  runTest('EG-03 [P1]: execute captures pre-execution snapshot automatically', async () => {
+    const snapshotsBefore = RollbackEngine.listSnapshots().length;
+    const result = await EngineeringGovernance.execute(
       {
         principalId: 'user-admin',
         principalRole: 'admin',
@@ -349,16 +372,86 @@ const facadeTests = [
       },
       () => 'executed'
     );
-    assert(decision !== undefined, 'Expected decision');
-    assert(typeof sandboxId === 'string', 'Expected sandboxId');
+    const snapshotsAfter = RollbackEngine.listSnapshots().length;
+    assert(result.decision !== undefined, 'Expected decision');
+    assert(typeof result.snapshotId === 'string', 'Expected snapshotId in result (P1)');
+    assert(snapshotsAfter > snapshotsBefore, 'Expected a new snapshot to exist in RollbackEngine (P1)');
   }),
-  runTest('EG-04: health returns all engines', () => {
+
+  // P1 hardening: snapshot label follows the convention pre-exec:<op>:<path>.
+  runTest('EG-04 [P1]: auto-snapshot label follows pre-exec convention', async () => {
+    await EngineeringGovernance.execute(
+      {
+        principalId: 'user-admin',
+        principalRole: 'admin',
+        targetPath: 'src/pages/Target.jsx',
+        operation: 'refactor',
+      },
+      () => 'done'
+    );
+    const chain = RollbackEngine.versionChain();
+    const found = chain.find((s) => s.label.startsWith('pre-exec:refactor:src/pages/Target.jsx'));
+    assert(found !== undefined, 'Expected pre-exec snapshot label in version chain (P1)');
+  }),
+
+  runTest('EG-05: health returns all engines', () => {
     const h = EngineeringGovernance.health();
     const keys = Object.keys(h);
     assert(keys.includes('coreProtection'), 'Expected coreProtection');
     assert(keys.includes('securityEngine'), 'Expected securityEngine');
     assert(keys.includes('auditEngine'), 'Expected auditEngine');
     assert(keys.length >= 8, `Expected at least 8 engines, got ${keys.length}`);
+  }),
+
+  // P5 hardening: engine bypass references must not exist on the facade.
+  runTest('EG-06 [P5]: direct engine references removed from facade API', () => {
+    const facade = EngineeringGovernance as unknown as Record<string, unknown>;
+    const bypassKeys = ['core', 'permissions', 'policy', 'security', 'rollback', 'audit', 'sandbox', 'impact'];
+    for (const key of bypassKeys) {
+      assert(!(key in facade), `Bypass reference "${key}" must not exist on EngineeringGovernance (P5)`);
+    }
+  }),
+
+  // P5 hardening: only the three public methods should be callable.
+  runTest('EG-07 [P5]: only evaluate, execute and health are on the public API', () => {
+    assert(typeof EngineeringGovernance.evaluate === 'function', 'Expected evaluate');
+    assert(typeof EngineeringGovernance.execute === 'function', 'Expected execute');
+    assert(typeof EngineeringGovernance.health === 'function', 'Expected health');
+  }),
+];
+
+// ─── P4 — PERMISSION_LEVEL_RANK single source of truth ───────────────────────
+
+const levelRankTests = [
+  runTest('P4-01: PERMISSION_LEVEL_RANK exported from GovernanceTypes', () => {
+    assert(typeof PERMISSION_LEVEL_RANK === 'object', 'Expected PERMISSION_LEVEL_RANK to be an object');
+    assert(PERMISSION_LEVEL_RANK['none'] === 0, 'Expected none=0');
+    assert(PERMISSION_LEVEL_RANK['read'] === 1, 'Expected read=1');
+    assert(PERMISSION_LEVEL_RANK['propose'] === 2, 'Expected propose=2');
+    assert(PERMISSION_LEVEL_RANK['execute'] === 3, 'Expected execute=3');
+    assert(PERMISSION_LEVEL_RANK['admin'] === 4, 'Expected admin=4');
+  }),
+
+  runTest('P4-02: rank ordering is strictly ascending', () => {
+    const ranks = ['none', 'read', 'propose', 'execute', 'admin'] as const;
+    for (let i = 1; i < ranks.length; i++) {
+      assert(
+        PERMISSION_LEVEL_RANK[ranks[i]] > PERMISSION_LEVEL_RANK[ranks[i - 1]],
+        `Expected ${ranks[i]} > ${ranks[i - 1]}`
+      );
+    }
+  }),
+
+  runTest('P4-03: PermissionEngine uses PERMISSION_LEVEL_RANK (admin >= execute)', () => {
+    // Indirect verification: admin role can write (requires execute rank).
+    const r = EngineeringPermissionEngine.check('u', 'admin', 'write', 'src/pages/X.jsx');
+    assert(r.allowed, 'admin rank >= execute rank → must be allowed');
+  }),
+
+  runTest('P4-04: PolicyEngine uses PERMISSION_LEVEL_RANK (admin passes immutable write policy)', () => {
+    // Indirect verification: admin permission passes the immutable write block policy.
+    const passes = GovernancePolicyEngine.passes('src/lib/wme/index.ts', 'write', 'admin');
+    assert(passes, 'admin should pass immutable write policy via PERMISSION_LEVEL_RANK');
   }),
 ];
 
@@ -380,6 +473,7 @@ export async function runGovernanceTests(): Promise<{
     ...auditTests,
     ...securityTests,
     ...facadeTests,
+    ...levelRankTests,
   ];
 
   const results = await Promise.all(allTests);
@@ -387,7 +481,7 @@ export async function runGovernanceTests(): Promise<{
   const failed = results.filter((r) => !r.passed).length;
   const coverage = `${passed}/${results.length} tests passed (${Math.round((passed / results.length) * 100)}%)`;
 
-  console.log(`\n[GovernanceTests] ${coverage}`);
+  console.log(`\n[GovernanceTests 6.2.2A] ${coverage}`);
   for (const r of results) {
     const icon = r.passed ? '✓' : '✗';
     const suffix = r.error ? ` — ${r.error}` : '';

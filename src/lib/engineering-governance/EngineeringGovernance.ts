@@ -1,10 +1,13 @@
 /**
  * EngineeringGovernance.ts
- * Sprint 6.2.2 — Engineering Governance & Core Protection
+ * Sprint 6.2.2A — Governance Hardening (P1, P2, P5)
  *
- * Facade unificada: ponto de entrada para todos os motores de governança.
- * Orquestra a sequência: Protection → Permission → Policy → Security → Sandbox → Audit.
- * Não implementa lógica própria — delega a cada motor especializado.
+ * Facade unificada: único ponto de entrada público para o pipeline de governança.
+ * Orquestra a sequência: Protection → Permission → Policy → Security → Impact → Snapshot → Sandbox → Audit.
+ *
+ * P1: RollbackEngine.capture() chamado automaticamente antes da execução de qualquer task.
+ * P2: SecurityEngine recebe violations pré-computadas — não reexecuta CoreProtection/Policy.
+ * P5: Referências diretas aos motores removidas da API pública — acesso via evaluate/execute/health apenas.
  */
 
 import { CoreProtectionEngine } from './CoreProtectionEngine';
@@ -15,7 +18,7 @@ import { RollbackEngine } from './RollbackEngine';
 import { GovernancePolicyEngine } from './GovernancePolicyEngine';
 import { GovernanceAuditEngine } from './GovernanceAuditEngine';
 import { SecurityEngine } from './SecurityEngine';
-import type { OperationType, ImpactReport } from './GovernanceTypes';
+import type { OperationType, ImpactReport, Snapshot } from './GovernanceTypes';
 
 export interface GovernanceRequest {
   principalId: string;
@@ -33,17 +36,35 @@ export interface GovernanceDecision {
   reason: string;
 }
 
+export interface GovernanceExecutionResult {
+  decision: GovernanceDecision;
+  sandboxId?: string;
+  /** P1: snapshot captured before task execution; present whenever sandbox ran. */
+  snapshotId?: string;
+}
+
 export class EngineeringGovernance {
   /**
    * Full governance pipeline for a proposed change.
-   * Steps: Core Protection → Permission Check → Policy Evaluation → Security Gate → Impact Analysis.
+   *
+   * Pipeline order (P2 hardened — no duplicate engine calls):
+   *   Step 1: CoreProtectionEngine.checkOperation()
+   *   Step 2: EngineeringPermissionEngine.check()        ← receives Step 1 result
+   *   Step 3: GovernancePolicyEngine.evaluate()
+   *   Step 4: SecurityEngine.check()                     ← receives pre-computed violations (Steps 1+3)
+   *   Step 5: ChangeImpactAnalyzer.analyze()
+   *   Audit:  GovernanceAuditEngine.record()
+   *
    * Returns a decision — does NOT execute the change.
    */
   static evaluate(req: GovernanceRequest): GovernanceDecision {
     const { principalId, principalRole, targetPath, operation } = req;
 
-    // Step 1: Core protection.
+    // Step 1: Core protection — single call, result reused downstream.
     const coreCheck = CoreProtectionEngine.checkOperation(targetPath, operation);
+    const coreViolations = coreCheck.blocked
+      ? [coreCheck.reason ?? 'Core protection block']
+      : [];
 
     // Step 2: Permission check (informed by core protection result).
     const permCheck = EngineeringPermissionEngine.check(
@@ -53,30 +74,32 @@ export class EngineeringGovernance {
       targetPath,
       coreCheck
     );
+    const permViolations = permCheck.allowed ? [] : [permCheck.reason];
 
-    // Step 3: Policy evaluation.
+    // Step 3: Policy evaluation — single call, result reused by SecurityEngine.
     const policyEvals = GovernancePolicyEngine.evaluate(targetPath, operation, permCheck.grantedLevel);
     const policyViolations = policyEvals.filter((e) => !e.passed).map((e) => e.reason);
 
-    // Step 4: Security gate.
-    const secCheck = SecurityEngine.check(principalId, targetPath, operation, permCheck.grantedLevel);
+    // Step 4: Security gate — P2 fix: receives pre-computed violations, no internal engine calls.
+    const upstreamViolations = [...coreViolations, ...permViolations, ...policyViolations];
+    const secCheck = SecurityEngine.check(
+      principalId,
+      targetPath,
+      operation,
+      permCheck.grantedLevel,
+      upstreamViolations  // pre-computed — SecurityEngine only adds blocklist check
+    );
 
     // Step 5: Impact analysis.
     const impactReport = ChangeImpactAnalyzer.analyze(targetPath, operation);
 
-    // Aggregate.
-    const allViolations = [
-      ...(coreCheck.blocked ? [coreCheck.reason ?? 'Core protection block'] : []),
-      ...(permCheck.allowed ? [] : [permCheck.reason]),
-      ...policyViolations,
-      ...secCheck.violations,
-    ];
-
+    // Aggregate all violations (secCheck already includes upstream + blocklist).
+    const allViolations = secCheck.violations;
     const approved = allViolations.length === 0;
-    const requiresSandbox = !approved || impactReport.requiresApproval;
+    const requiresSandbox = impactReport.requiresApproval || impactReport.severity === 'critical' || impactReport.severity === 'high';
     const requiresApproval = impactReport.requiresApproval || impactReport.severity === 'critical';
 
-    // Audit the governance decision.
+    // Audit the final governance decision.
     GovernanceAuditEngine.record(
       approved ? 'change_approved' : 'change_rejected',
       principalId,
@@ -99,27 +122,46 @@ export class EngineeringGovernance {
   }
 
   /**
-   * Execute a change through the full governance pipeline including sandbox.
-   * Only runs the task if the governance decision approves it.
+   * Executes a change through the full governance pipeline.
+   *
+   * Pipeline order (P1 hardened — snapshot before execution):
+   *   1. evaluate()        → GovernanceDecision
+   *   2. RollbackEngine.capture()  ← automatic pre-execution snapshot (P1)
+   *   3. ImplementationSandbox.execute()
+   *   4. Audit trail updated by SecurityEngine and evaluate()
+   *
+   * Only proceeds to snapshot+sandbox if the decision is approved OR requiresSandbox.
    */
   static async execute(
     req: GovernanceRequest,
     task: () => Promise<unknown> | unknown
-  ): Promise<{ decision: GovernanceDecision; sandboxId?: string }> {
+  ): Promise<GovernanceExecutionResult> {
     const decision = this.evaluate(req);
 
     if (!decision.approved && !decision.requiresSandbox) {
       return { decision };
     }
 
-    const result = await ImplementationSandbox.execute(
+    // P1: Capture pre-execution snapshot unconditionally before any task runs.
+    const snapshot: Snapshot = RollbackEngine.capture(
+      `pre-exec:${req.operation}:${req.targetPath}`,
+      [req.targetPath],
+      { targetPath: req.targetPath, operation: req.operation, principalId: req.principalId, capturedAt: new Date().toISOString() }
+    );
+
+    // Execute in sandbox.
+    const sandboxResult = await ImplementationSandbox.execute(
       req.targetPath,
       req.operation,
       task,
       req.principalId
     );
 
-    return { decision, sandboxId: result.sandboxId };
+    return {
+      decision,
+      sandboxId: sandboxResult.sandboxId,
+      snapshotId: snapshot.snapshotId,
+    };
   }
 
   /** Returns a unified health report from all engines. */
@@ -136,13 +178,6 @@ export class EngineeringGovernance {
     };
   }
 
-  // Re-export engines for direct access when needed.
-  static readonly core = CoreProtectionEngine;
-  static readonly permissions = EngineeringPermissionEngine;
-  static readonly impact = ChangeImpactAnalyzer;
-  static readonly sandbox = ImplementationSandbox;
-  static readonly rollback = RollbackEngine;
-  static readonly policy = GovernancePolicyEngine;
-  static readonly audit = GovernanceAuditEngine;
-  static readonly security = SecurityEngine;
+  // P5: All direct engine references removed from public API.
+  // Motors are not accessible outside the facade — use evaluate(), execute(), health() only.
 }

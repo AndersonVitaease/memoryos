@@ -1,72 +1,60 @@
 /**
  * SecurityEngine.ts
- * Sprint 6.2.2 — Engineering Governance & Core Protection
+ * Sprint 6.2.2A — Governance Hardening (P2)
  *
- * Responsabilidade única: validar operações críticas e proteger contra acessos não autorizados.
- * Atua como última barreira antes de qualquer execução — após permissões e políticas.
+ * Responsabilidade única: validar o blocklist global e registrar a decisão de segurança.
+ * NÃO invoca CoreProtectionEngine nem GovernancePolicyEngine — esses resultados chegam
+ * já computados pela facade (EngineeringGovernance) como parâmetros explícitos.
+ * Elimina toda duplicação de lógica detectada na auditoria Sprint 6.2.2.
  */
 
-import { CoreProtectionEngine } from './CoreProtectionEngine';
-import { GovernancePolicyEngine } from './GovernancePolicyEngine';
 import { GovernanceAuditEngine } from './GovernanceAuditEngine';
 import type { SecurityCheckResult, OperationType, PermissionLevel } from './GovernanceTypes';
 
-// Operations that always require a security check regardless of protection level.
-const ALWAYS_CHECKED_OPS: OperationType[] = ['write', 'delete', 'refactor', 'migrate', 'rollback'];
-
-// Principals that are globally blocked (e.g., compromised accounts).
-const GLOBAL_BLOCKLIST: Set<string> = new Set();
-
 export class SecurityEngine {
+  /** P2 fix: blocklist encapsulado como propriedade estática da classe (não mais estado de módulo). */
+  private static readonly blocklist: Set<string> = new Set();
+
   /** Adds a principal to the global block list. */
   static blockPrincipal(principalId: string): void {
-    GLOBAL_BLOCKLIST.add(principalId);
+    this.blocklist.add(principalId);
     console.warn(`[SecurityEngine] Principal blocked: ${principalId}`);
   }
 
   /** Removes a principal from the global block list. */
   static unblockPrincipal(principalId: string): void {
-    GLOBAL_BLOCKLIST.delete(principalId);
+    this.blocklist.delete(principalId);
   }
 
   /**
-   * Performs the full security gate check for a proposed operation.
-   * Integrates CoreProtection + PolicyEngine + blocklist.
-   * Records all violations to the audit trail automatically.
+   * Security gate: evaluates only the blocklist + any pre-computed violations passed
+   * by the facade (coreViolations from CoreProtectionEngine, policyViolations from
+   * GovernancePolicyEngine). Does NOT call those engines internally.
+   *
+   * @param principalId     - Who is performing the operation.
+   * @param targetPath      - Target component path.
+   * @param operation       - Requested operation type.
+   * @param grantedPermission - Permission level already resolved by PermissionEngine.
+   * @param preComputedViolations - Violations already detected upstream (core + policy).
    */
   static check(
     principalId: string,
     targetPath: string,
     operation: OperationType,
-    grantedPermission: PermissionLevel
+    grantedPermission: PermissionLevel,
+    preComputedViolations: string[] = []
   ): SecurityCheckResult {
-    const violations: string[] = [];
+    const violations: string[] = [...preComputedViolations];
     const checkedAt = new Date().toISOString();
 
-    // 1. Global blocklist.
-    if (GLOBAL_BLOCKLIST.has(principalId)) {
+    // Sole responsibility of SecurityEngine: blocklist check.
+    if (this.blocklist.has(principalId)) {
       violations.push(`Principal "${principalId}" is globally blocked.`);
-    }
-
-    // 2. Core protection hard check (only for critical operations).
-    if (ALWAYS_CHECKED_OPS.includes(operation)) {
-      const coreCheck = CoreProtectionEngine.checkOperation(targetPath, operation);
-      if (coreCheck.blocked) {
-        violations.push(`Core protection: ${coreCheck.reason}`);
-      }
-    }
-
-    // 3. Policy evaluation.
-    const policyEvals = GovernancePolicyEngine.evaluate(targetPath, operation, grantedPermission);
-    for (const ev of policyEvals) {
-      if (!ev.passed) {
-        violations.push(`Policy violation: ${ev.reason}`);
-      }
     }
 
     const allowed = violations.length === 0;
 
-    // 4. Audit every security check (violations always logged as denied).
+    // Audit every security gate invocation.
     GovernanceAuditEngine.record(
       violations.length > 0 ? 'security_violation' : 'permission_check',
       principalId,
@@ -87,14 +75,16 @@ export class SecurityEngine {
   /**
    * Convenience gate: throws if the operation is not allowed.
    * Use in places where a hard stop is needed.
+   * Accepts the same pre-computed violations as check().
    */
   static enforce(
     principalId: string,
     targetPath: string,
     operation: OperationType,
-    grantedPermission: PermissionLevel
+    grantedPermission: PermissionLevel,
+    preComputedViolations: string[] = []
   ): void {
-    const result = this.check(principalId, targetPath, operation, grantedPermission);
+    const result = this.check(principalId, targetPath, operation, grantedPermission, preComputedViolations);
     if (!result.allowed) {
       throw new Error(
         `[SecurityEngine] Operation denied: ${operation} on ${targetPath} by ${principalId}. Violations: ${result.violations.join('; ')}`
@@ -104,10 +94,10 @@ export class SecurityEngine {
 
   /** Returns blocked principals. */
   static listBlocked(): string[] {
-    return [...GLOBAL_BLOCKLIST];
+    return [...this.blocklist];
   }
 
   static health(): { status: 'ok'; blockedPrincipals: number } {
-    return { status: 'ok', blockedPrincipals: GLOBAL_BLOCKLIST.size };
+    return { status: 'ok', blockedPrincipals: this.blocklist.size };
   }
 }

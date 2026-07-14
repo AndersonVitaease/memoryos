@@ -7,15 +7,7 @@
  */
 
 import type { Permission, PermissionLevel, OperationType } from './GovernanceTypes';
-
-// Numeric rank for permission level comparison.
-const LEVEL_RANK: Record<PermissionLevel, number> = {
-  none: 0,
-  read: 1,
-  propose: 2,
-  execute: 3,
-  admin: 4,
-};
+import { PERMISSION_LEVEL_RANK } from './GovernanceTypes';
 
 // Default role → level mapping. Can be overridden via configure().
 const DEFAULT_ROLE_LEVELS: Record<string, PermissionLevel> = {
@@ -136,7 +128,7 @@ export class EngineeringPermissionEngine {
     const required = OPERATION_REQUIREMENTS[operation];
     const granted = this.resolve(principalId, principalRole, operation, targetPath);
 
-    const allowed = LEVEL_RANK[granted] >= LEVEL_RANK[required];
+    const allowed = PERMISSION_LEVEL_RANK[granted] >= PERMISSION_LEVEL_RANK[required];
 
     return {
       allowed,

@@ -8,6 +8,7 @@
  */
 
 import type { Policy, PolicyEvaluation, OperationType, PermissionLevel } from './GovernanceTypes';
+import { PERMISSION_LEVEL_RANK } from './GovernanceTypes';
 
 // Built-in baseline policies — cannot be removed, only disabled.
 const BASELINE_POLICIES: Policy[] = [
@@ -57,14 +58,6 @@ function conditionMatches(condition: string, operation: OperationType): boolean 
   return condition === `operation=${operation}`;
 }
 
-const LEVEL_RANK: Record<PermissionLevel, number> = {
-  none: 0,
-  read: 1,
-  propose: 2,
-  execute: 3,
-  admin: 4,
-};
-
 export class GovernancePolicyEngine {
   private static customPolicies: Policy[] = [];
 
@@ -110,7 +103,7 @@ export class GovernancePolicyEngine {
       if (!pathMatchesTarget(path, policy.targets)) continue;
 
       const hasBlockCondition = policy.blockConditions.some((c) => conditionMatches(c, operation));
-      const hasRequiredPermission = LEVEL_RANK[grantedPermission] >= LEVEL_RANK[policy.requiredPermission];
+      const hasRequiredPermission = PERMISSION_LEVEL_RANK[grantedPermission] >= PERMISSION_LEVEL_RANK[policy.requiredPermission];
 
       if (hasBlockCondition && !hasRequiredPermission) {
         results.push({
