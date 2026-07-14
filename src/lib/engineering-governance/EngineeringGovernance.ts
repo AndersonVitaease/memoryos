@@ -1,263 +1,148 @@
 /**
- * EngineeringGovernance.ts — Sprint 6.2.2
- * Highest authority above Engineering Intelligence.
- * Nothing may modify the MemoryOS Core without passing Governance.
+ * EngineeringGovernance.ts
+ * Sprint 6.2.2 — Engineering Governance & Core Protection
  *
- * Full pipeline:
- *   Submit → Impact Analysis → Security → Policy → Core Protection →
- *   Permission Check → Sandbox → Await Approval (if required) →
- *   Authorize → Audit
+ * Facade unificada: ponto de entrada para todos os motores de governança.
+ * Orquestra a sequência: Protection → Permission → Policy → Security → Sandbox → Audit.
+ * Não implementa lógica própria — delega a cada motor especializado.
  */
 
-import { CoreProtectionEngine }      from "./CoreProtectionEngine";
-import { EngineeringPermissionEngine } from "./EngineeringPermissionEngine";
-import { ChangeImpactAnalyzer }      from "./ChangeImpactAnalyzer";
-import { RollbackEngine }            from "./RollbackEngine";
-import { ImplementationSandbox }     from "./ImplementationSandbox";
-import { GovernancePolicyEngine }    from "./GovernancePolicyEngine";
-import { SecurityEngine }            from "./SecurityEngine";
-import { GovernanceAuditEngine }     from "./GovernanceAuditEngine";
-import type {
-  GovernanceProposal, GovernanceReport, GovernanceStatus,
-  PermissionLevel, SandboxResult,
-} from "./GovernanceTypes";
-import type { SandboxLog } from "./ImplementationSandbox";
+import { CoreProtectionEngine } from './CoreProtectionEngine';
+import { EngineeringPermissionEngine } from './EngineeringPermissionEngine';
+import { ChangeImpactAnalyzer } from './ChangeImpactAnalyzer';
+import { ImplementationSandbox } from './ImplementationSandbox';
+import { RollbackEngine } from './RollbackEngine';
+import { GovernancePolicyEngine } from './GovernancePolicyEngine';
+import { GovernanceAuditEngine } from './GovernanceAuditEngine';
+import { SecurityEngine } from './SecurityEngine';
+import type { OperationType, ImpactReport } from './GovernanceTypes';
 
-let _seq = 0;
-function makeId(p: string): string { return `${p}_${Date.now()}_${++_seq}`; }
-function ts(): string { return new Date().toISOString().slice(11, 23); }
+export interface GovernanceRequest {
+  principalId: string;
+  principalRole: string;
+  targetPath: string;
+  operation: OperationType;
+}
 
-export interface GovernanceExecution {
-  id:              string;
-  objective:       string;
-  stage:           string;
-  log:             string[];
-  proposal:        GovernanceProposal | null;
-  sandboxResult:   SandboxResult | null;
-  sandboxLog:      SandboxLog[];
-  report:          GovernanceReport | null;
-  startedAt:       number;
-  completedAt:     number | null;
+export interface GovernanceDecision {
+  approved: boolean;
+  requiresSandbox: boolean;
+  requiresApproval: boolean;
+  impactReport: ImpactReport;
+  violations: string[];
+  reason: string;
 }
 
 export class EngineeringGovernance {
-  private readonly _cpe    = new CoreProtectionEngine();
-  private readonly _perm   = new EngineeringPermissionEngine();
-  private readonly _impact = new ChangeImpactAnalyzer();
-  private readonly _rollback = new RollbackEngine();
-  private readonly _sandbox  = new ImplementationSandbox();
-  private readonly _policy   = new GovernancePolicyEngine();
-  private readonly _security = new SecurityEngine();
-  private readonly _audit    = new GovernanceAuditEngine();
+  /**
+   * Full governance pipeline for a proposed change.
+   * Steps: Core Protection → Permission Check → Policy Evaluation → Security Gate → Impact Analysis.
+   * Returns a decision — does NOT execute the change.
+   */
+  static evaluate(req: GovernanceRequest): GovernanceDecision {
+    const { principalId, principalRole, targetPath, operation } = req;
 
-  onStageChange?: (exec: GovernanceExecution) => void;
+    // Step 1: Core protection.
+    const coreCheck = CoreProtectionEngine.checkOperation(targetPath, operation);
 
-  get audit(): GovernanceAuditEngine { return this._audit; }
-  get rollbacks(): RollbackEngine    { return this._rollback; }
-  get cpe(): CoreProtectionEngine    { return this._cpe; }
-  get perm(): EngineeringPermissionEngine { return this._perm; }
-  get policies(): readonly string[]  { return this._policy.policies; }
+    // Step 2: Permission check (informed by core protection result).
+    const permCheck = EngineeringPermissionEngine.check(
+      principalId,
+      principalRole,
+      operation,
+      targetPath,
+      coreCheck
+    );
 
-  // ── Main submission ───────────────────────────────────────────────────────
+    // Step 3: Policy evaluation.
+    const policyEvals = GovernancePolicyEngine.evaluate(targetPath, operation, permCheck.grantedLevel);
+    const policyViolations = policyEvals.filter((e) => !e.passed).map((e) => e.reason);
 
-  async submit(
-    objective: string,
-    targetComponents: string[],
-    requestedPermission: PermissionLevel = "IMPLEMENT",
-    connectorNames: string[] = [],
-  ): Promise<GovernanceExecution> {
-    const exec: GovernanceExecution = {
-      id: makeId("gov"), objective, stage: "SUBMITTED",
-      log: [], proposal: null, sandboxResult: null,
-      sandboxLog: [], report: null,
-      startedAt: Date.now(), completedAt: null,
-    };
+    // Step 4: Security gate.
+    const secCheck = SecurityEngine.check(principalId, targetPath, operation, permCheck.grantedLevel);
 
-    const log = (msg: string) => { exec.log.push(`[${ts()}] ${msg}`); this._emit(exec); };
-    const setStage = (s: string) => { exec.stage = s; this._emit(exec); };
+    // Step 5: Impact analysis.
+    const impactReport = ChangeImpactAnalyzer.analyze(targetPath, operation);
 
-    log(`Governance submission: "${objective}"`);
-    log(`Requested permission: ${requestedPermission}`);
+    // Aggregate.
+    const allViolations = [
+      ...(coreCheck.blocked ? [coreCheck.reason ?? 'Core protection block'] : []),
+      ...(permCheck.allowed ? [] : [permCheck.reason]),
+      ...policyViolations,
+      ...secCheck.violations,
+    ];
 
-    // 1. Change Impact Analysis
-    setStage("IMPACT_ANALYSIS");
-    log("STEP 1 — Change Impact Analysis");
-    const impact = this._impact.analyze(objective, targetComponents);
-    log(`Risk: ${impact.riskLevel} (score=${impact.riskScore})`);
-    log(`Protected files hit: ${impact.protectedFilesHit.join(", ") || "none"}`);
-    log(`Singletons: ${impact.singletonsTouched.join(", ") || "none"}`);
+    const approved = allViolations.length === 0;
+    const requiresSandbox = !approved || impactReport.requiresApproval;
+    const requiresApproval = impactReport.requiresApproval || impactReport.severity === 'critical';
 
-    // 2. Security Check
-    setStage("SECURITY_CHECK");
-    log("STEP 2 — Security validation");
-    const security = this._security.validate(objective, targetComponents, connectorNames);
-    log(`Security: ${security.passed ? "PASSED" : "FAILED"} — ${security.findings.length} finding(s)`);
-    security.findings.forEach(f => log(`  ⚠ ${f}`));
+    // Audit the governance decision.
+    GovernanceAuditEngine.record(
+      approved ? 'change_approved' : 'change_rejected',
+      principalId,
+      targetPath,
+      operation,
+      approved ? 'allowed' : 'denied',
+      { impactSeverity: impactReport.severity, riskScore: impactReport.riskScore, violations: allViolations }
+    );
 
-    // 3. Core Protection Check
-    setStage("CORE_PROTECTION");
-    log("STEP 3 — Core Protection check");
-    const protection = this._cpe.check(targetComponents, objective, null);
-    log(`Protected hit: ${protection.protectedHit.join(", ") || "none"}`);
-    if (protection.requiresApproval) {
-      log(`Core modification detected — human approval MANDATORY`);
-      log(`Why necessary: ${protection.whyNecessary}`);
-      log(`Regression probability: ${protection.regressionProbability}`);
-    }
-
-    // 4. Generate Rollback Plan (before any implementation)
-    setStage("GENERATING_ROLLBACK");
-    log("STEP 4 — Generating rollback plan");
-    const proposalId = makeId("prop");
-    const rollbackPlan = this._rollback.generate(proposalId, targetComponents);
-    log(`Rollback ready: ${rollbackPlan.entries.length} entries`);
-
-    // 5. Build proposal
-    const requiresApproval = protection.requiresApproval || impact.riskLevel === "CRITICAL" || impact.riskLevel === "HIGH";
-
-    const proposal: GovernanceProposal = {
-      id:                  proposalId,
-      objective,
-      requestedPermission,
-      impact,
-      protectedComponents: protection.protectedHit,
-      whyNecessary:        protection.whyNecessary,
-      architecturalImpact: protection.architecturalImpact,
-      riskLevel:           impact.riskLevel,
-      regressionProbability: protection.regressionProbability,
-      rollbackPlan:        protection.rollbackPlan,
-      policyViolations:    [],
+    return {
+      approved,
+      requiresSandbox,
       requiresApproval,
-      status:              "PENDING",
-      createdAt:           Date.now(),
-      approvedAt:          null,
-      rejectedAt:          null,
-      rejectionReason:     null,
+      impactReport,
+      violations: allViolations,
+      reason: approved
+        ? `Change approved. Impact: ${impactReport.severity}, risk: ${impactReport.riskScore}/100.`
+        : `Change rejected. Violations: ${allViolations.join(' | ')}`,
     };
-    exec.proposal = proposal;
+  }
 
-    // 6. Policy check
-    setStage("POLICY_CHECK");
-    log("STEP 5 — Engineering policy validation");
-    const violations = this._policy.validate(proposal);
-    proposal.policyViolations = violations;
-    if (violations.length > 0) {
-      violations.forEach(v => log(`  ❌ ${v}`));
-      proposal.status = "BLOCKED";
-      log("Proposal BLOCKED by policy violations");
-    } else {
-      log("All policies satisfied");
+  /**
+   * Execute a change through the full governance pipeline including sandbox.
+   * Only runs the task if the governance decision approves it.
+   */
+  static async execute(
+    req: GovernanceRequest,
+    task: () => Promise<unknown> | unknown
+  ): Promise<{ decision: GovernanceDecision; sandboxId?: string }> {
+    const decision = this.evaluate(req);
+
+    if (!decision.approved && !decision.requiresSandbox) {
+      return { decision };
     }
 
-    // 7. Permission check
-    setStage("PERMISSION_CHECK");
-    log("STEP 6 — Permission check");
-    const permCheck = this._perm.check(requestedPermission, impact.riskLevel, false, impact.protectedFilesHit.length);
-    log(`Permission ${requestedPermission}: ${permCheck.granted ? "GRANTED" : "DENIED"} — ${permCheck.reason}`);
+    const result = await ImplementationSandbox.execute(
+      req.targetPath,
+      req.operation,
+      task,
+      req.principalId
+    );
 
-    // 8. Sandbox
-    setStage("SANDBOX");
-    log("STEP 7 — Executing Implementation Sandbox");
-    const { result: sandboxResult, log: sandboxLog } = await this._sandbox.run(proposal);
-    exec.sandboxResult = sandboxResult;
-    exec.sandboxLog    = sandboxLog;
-    log(`Sandbox: ${sandboxResult.readyToApply ? "READY" : "BLOCKED"} — ${sandboxResult.blockers.join("; ") || "no blockers"}`);
+    return { decision, sandboxId: result.sandboxId };
+  }
 
-    // 9. Determine final governance status
-    if (proposal.status !== "BLOCKED") {
-      proposal.status = requiresApproval ? "PENDING" : "APPROVED";
-    }
-
-    if (proposal.status === "APPROVED" && !requiresApproval) {
-      proposal.approvedAt = Date.now();
-    }
-
-    // 10. Build report
-    setStage("GENERATING_REPORT");
-    log("STEP 8 — Generating Governance Report");
-    const auditEntry = this._audit.record({
-      timestamp:  Date.now(),
-      objective,
-      planId:     proposalId,
-      files:      impact.filesModified,
-      decision:   `${requestedPermission} — ${impact.riskLevel}`,
-      approval:   proposal.status === "APPROVED" ? "HUMAN_APPROVED" : proposal.status === "BLOCKED" ? "AUTO_BLOCKED" : "PENDING",
-      regression: sandboxResult.regressionOk ? "PASSED" : "FAILED",
-      rollback:   rollbackPlan.id,
-      outcome:    proposal.status === "APPROVED" ? "PASS" : proposal.status === "BLOCKED" ? "BLOCKED" : "PENDING",
-      approver:   proposal.status === "APPROVED" && !requiresApproval ? "MemoryOS (auto)" : "Pending human",
-      policyViolations: violations,
-    });
-
-    const report: GovernanceReport = {
-      proposalId,
-      governanceOk:    proposal.status !== "BLOCKED",
-      riskReport:      { level: impact.riskLevel, score: impact.riskScore, explanation: `${impact.riskLevel} risk — score ${impact.riskScore}/100` },
-      impactReport:    impact,
-      rollbackReport:  { available: true, entries: rollbackPlan.entries.length },
-      auditEntry,
-      approvalReport:  { required: requiresApproval, status: proposal.status, reason: permCheck.reason },
-      regressionReport: { required: true, passed: sandboxResult.regressionOk },
-      securityReport:  security,
-      policyReport:    { violations, allPoliciesOk: violations.length === 0 },
-      generatedAt:     Date.now(),
+  /** Returns a unified health report from all engines. */
+  static health(): Record<string, unknown> {
+    return {
+      coreProtection: CoreProtectionEngine.health(),
+      permissions: EngineeringPermissionEngine.health(),
+      impactAnalyzer: ChangeImpactAnalyzer.health(),
+      sandbox: ImplementationSandbox.health(),
+      rollback: RollbackEngine.health(),
+      policyEngine: GovernancePolicyEngine.health(),
+      auditEngine: GovernanceAuditEngine.health(),
+      securityEngine: SecurityEngine.health(),
     };
-    exec.report = report;
-
-    setStage(requiresApproval && proposal.status === "PENDING" ? "WAIT_APPROVAL" : proposal.status === "BLOCKED" ? "BLOCKED" : "AUTHORIZED");
-    exec.completedAt = requiresApproval ? null : Date.now();
-    log(exec.stage === "WAIT_APPROVAL" ? "⏸ Awaiting human approval" : exec.stage === "BLOCKED" ? "❌ Blocked by governance" : "✅ Authorized — implementation may proceed");
-    this._emit(exec);
-
-    return exec;
   }
 
-  // ── Human approval ────────────────────────────────────────────────────────
-
-  approve(exec: GovernanceExecution): GovernanceExecution {
-    if (!exec.proposal || exec.stage !== "WAIT_APPROVAL") throw new Error("Nothing pending approval");
-    exec.proposal.approvedAt = Date.now();
-    exec.proposal.status = "APPROVED";
-    exec.stage = "AUTHORIZED";
-    exec.completedAt = Date.now();
-
-    // Update audit
-    const existing = exec.report?.auditEntry;
-    if (existing) {
-      const updated = this._audit.record({
-        ...existing,
-        approval: "HUMAN_APPROVED",
-        outcome:  "PASS",
-        approver: "Human",
-        timestamp: Date.now(),
-        planId: existing.planId,
-      });
-      if (exec.report) exec.report.auditEntry = updated;
-    }
-
-    exec.log.push(`[${ts()}] ✅ HUMAN APPROVED — implementation authorized`);
-    // Update permission check with approval
-    const pc = this._perm.check(exec.proposal.requestedPermission, exec.proposal.riskLevel, true, exec.proposal.protectedComponents.length);
-    exec.log.push(`[${ts()}] Permission re-check: ${pc.granted ? "GRANTED" : "DENIED"}`);
-    this._emit(exec);
-    return exec;
-  }
-
-  // ── Human rejection ───────────────────────────────────────────────────────
-
-  reject(exec: GovernanceExecution, reason: string): GovernanceExecution {
-    if (!exec.proposal) return exec;
-    exec.proposal.rejectedAt = Date.now();
-    exec.proposal.rejectionReason = reason;
-    exec.proposal.status = "REJECTED";
-    exec.stage = "REJECTED";
-    exec.completedAt = Date.now();
-    exec.log.push(`[${ts()}] ❌ REJECTED — ${reason}`);
-    this._emit(exec);
-    return exec;
-  }
-
-  private _emit(exec: GovernanceExecution): void {
-    this.onStageChange?.({ ...exec, log: [...exec.log] });
-  }
+  // Re-export engines for direct access when needed.
+  static readonly core = CoreProtectionEngine;
+  static readonly permissions = EngineeringPermissionEngine;
+  static readonly impact = ChangeImpactAnalyzer;
+  static readonly sandbox = ImplementationSandbox;
+  static readonly rollback = RollbackEngine;
+  static readonly policy = GovernancePolicyEngine;
+  static readonly audit = GovernanceAuditEngine;
+  static readonly security = SecurityEngine;
 }

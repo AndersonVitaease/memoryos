@@ -1,79 +1,148 @@
 /**
- * CoreProtectionEngine.ts — Sprint 6.2.2
- * Enforces read-only status on all protected components.
- * Any attempt to modify a protected component is blocked unless human approval is on record.
+ * CoreProtectionEngine.ts
+ * Sprint 6.2.2 — Engineering Governance & Core Protection
+ *
+ * Responsabilidade única: identificar e proteger componentes do Core.
+ * Não executa mudanças. Expõe apenas APIs de consulta e verificação.
  */
 
-import { PROTECTED_COMPONENTS } from "./GovernanceTypes";
+import type { ProtectedComponent, ProtectionLevel, OperationType } from './GovernanceTypes';
 
-export interface ProtectionCheckResult {
-  blocked:            boolean;
-  protectedHit:       string[];
-  requiresApproval:   boolean;
-  whyNecessary:       string;
-  architecturalImpact: string;
-  regressionProbability: string;
-  rollbackPlan:       string;
-}
+// Registro imutável dos componentes protegidos do Core.
+const CORE_REGISTRY: ProtectedComponent[] = [
+  {
+    id: 'wme',
+    name: 'WorkingMemoryEngine',
+    path: 'src/lib/wme',
+    level: 'immutable',
+    reason: 'Motor central de memoria de trabalho — alteracoes exigem aprovacao do Architecture Board',
+    dependencies: [],
+    ownedBy: 'core-team',
+  },
+  {
+    id: 'sprint1',
+    name: 'Sprint1 Core',
+    path: 'src/lib/sprint1',
+    level: 'immutable',
+    reason: 'Implementacao de referencia MRI — congelada apos certificacao',
+    dependencies: ['wme'],
+    ownedBy: 'core-team',
+  },
+  {
+    id: 'fce',
+    name: 'FoundationComplianceEngine',
+    path: 'src/lib/fce',
+    level: 'restricted',
+    reason: 'Engine de conformidade com o Foundation — alteracoes exigem revisao de politica',
+    dependencies: [],
+    ownedBy: 'governance-team',
+  },
+  {
+    id: 'abv',
+    name: 'ArchitecturalBoundaryValidator',
+    path: 'src/lib/abv',
+    level: 'restricted',
+    reason: 'Validador de fronteiras arquiteturais — auditado em cada mudanca',
+    dependencies: ['fce'],
+    ownedBy: 'governance-team',
+  },
+  {
+    id: 'connector-runtime',
+    name: 'ConnectorRuntime',
+    path: 'src/lib/connector-runtime',
+    level: 'audited',
+    reason: 'Runtime de conectores — alteracoes auditadas automaticamente',
+    dependencies: [],
+    ownedBy: 'platform-team',
+  },
+  {
+    id: 'auth-context',
+    name: 'AuthContext',
+    path: 'src/lib/AuthContext.jsx',
+    level: 'restricted',
+    reason: 'Contexto de autenticacao — acesso restrito por seguranca',
+    dependencies: [],
+    ownedBy: 'security-team',
+  },
+  {
+    id: 'official-library',
+    name: 'OfficialLibrary',
+    path: 'src/lib/officialLibraryManager.js',
+    level: 'immutable',
+    reason: 'Biblioteca oficial do MemoryOS — fonte unica de verdade',
+    dependencies: [],
+    ownedBy: 'core-team',
+  },
+];
+
+// Operations that are never allowed on immutable components.
+const IMMUTABLE_BLOCKED_OPS: OperationType[] = ['write', 'delete', 'refactor', 'migrate'];
 
 export class CoreProtectionEngine {
-  private readonly _protected = new Set(PROTECTED_COMPONENTS);
+  private static readonly registry: ProtectedComponent[] = [...CORE_REGISTRY];
 
-  isProtected(componentName: string): boolean {
-    return this._protected.has(componentName);
+  /** Returns all registered protected components. */
+  static listProtected(): ProtectedComponent[] {
+    return this.registry.map((c) => ({ ...c }));
   }
 
-  listProtected(): string[] {
-    return [...this._protected];
+  /** Returns a single protected component by id or path prefix. */
+  static find(idOrPath: string): ProtectedComponent | null {
+    return (
+      this.registry.find((c) => c.id === idOrPath || idOrPath.startsWith(c.path)) ?? null
+    );
   }
 
-  check(
-    targetComponents: string[],
-    objective: string,
-    approvedAt: number | null,
-  ): ProtectionCheckResult {
-    const protectedHit = targetComponents.filter(c => this._protected.has(c));
-    const blocked      = protectedHit.length > 0 && !approvedAt;
+  /** Returns true if the given path is under a protected component. */
+  static isProtected(path: string): boolean {
+    return this.registry.some((c) => path.startsWith(c.path));
+  }
 
-    const riskMap: Record<string, string> = {
-      ConversationCognitiveGateway: "Central conversation routing — breakage silences all AI responses",
-      LiveCognitivePipeline:        "Core pipeline — any regression breaks all cognitive processing",
-      KnowledgeGraphStore:          "Singleton — HMR data loss risk, all KG consumers affected",
-      RepositoryKnowledgeBuilder:   "KG builder — regression breaks all repository analysis",
-      SourceCodeParser:             "Parser — regression breaks entity extraction for all files",
-      EngineeringWorkflow:          "Workflow engine — regression blocks all engineering lifecycle",
-      EngineeringOrchestrator:      "Orchestrator — regression disables autonomous execution",
-      EngineeringIntelligence:      "11-engine intelligence layer — regression disables sprint planning",
-      RegressionShield:             "Safety gate — disabling it removes all regression protection",
-      ApprovalGate:                 "Human approval gate — disabling it bypasses all governance",
-      GitHubConnector:              "Repository connector — breakage disables all GitHub operations",
-      Base44Connector:              "Platform connector — breakage disables all entity operations",
-      ConnectorInvocationService:   "Central connector router — breakage breaks all connectors",
-    };
+  /** Returns the protection level for a given path. */
+  static getProtectionLevel(path: string): ProtectionLevel | null {
+    const component = this.registry.find((c) => path.startsWith(c.path));
+    return component?.level ?? null;
+  }
 
-    const whyNecessary = protectedHit.length > 0
-      ? `Modification required for: ${objective}. Components affected: ${protectedHit.join(", ")}`
-      : "No protected components in scope";
+  /**
+   * Checks whether the given operation is blocked on a path.
+   * Returns { blocked: false } if allowed, { blocked: true, reason } if not.
+   */
+  static checkOperation(
+    path: string,
+    operation: OperationType
+  ): { blocked: boolean; reason?: string; component?: ProtectedComponent } {
+    const component = this.registry.find((c) => path.startsWith(c.path));
+    if (!component) return { blocked: false };
 
-    const architecturalImpact = protectedHit.map(c => riskMap[c] ?? `${c} is a stable Core component`).join("; ");
+    if (component.level === 'immutable' && IMMUTABLE_BLOCKED_OPS.includes(operation)) {
+      return {
+        blocked: true,
+        reason: `Component "${component.name}" is immutable. Operation "${operation}" is not permitted.`,
+        component: { ...component },
+      };
+    }
 
-    const regressionProbability = protectedHit.length > 2 ? "HIGH (>60%)"
-      : protectedHit.length === 1 ? "MEDIUM (20–40%)"
-      : protectedHit.length > 0  ? "MEDIUM-HIGH (40–60%)"
-      : "LOW (<5%)";
+    if (component.level === 'restricted' && operation === 'delete') {
+      return {
+        blocked: true,
+        reason: `Component "${component.name}" is restricted. Deletion requires Architecture Board approval.`,
+        component: { ...component },
+      };
+    }
 
-    const rollbackPlan = protectedHit.length > 0
-      ? `Revert files for: ${protectedHit.join(", ")}. Re-run Regression Shield to confirm 5/5 acceptance.`
-      : "No rollback required — no protected components affected";
+    return { blocked: false, component: { ...component } };
+  }
 
-    return {
-      blocked,
-      protectedHit,
-      requiresApproval: protectedHit.length > 0,
-      whyNecessary,
-      architecturalImpact,
-      regressionProbability,
-      rollbackPlan,
-    };
+  /** Lists all components that depend on the given component id. */
+  static getDependents(componentId: string): ProtectedComponent[] {
+    return this.registry.filter((c) => c.dependencies.includes(componentId)).map((c) => ({ ...c }));
+  }
+
+  /** Returns health summary of the registry. */
+  static health(): { status: 'ok'; componentCount: number; levels: Record<ProtectionLevel, number> } {
+    const levels: Record<ProtectionLevel, number> = { immutable: 0, restricted: 0, audited: 0, open: 0 };
+    for (const c of this.registry) levels[c.level]++;
+    return { status: 'ok', componentCount: this.registry.length, levels };
   }
 }

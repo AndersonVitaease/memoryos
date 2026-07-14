@@ -1,86 +1,140 @@
 /**
- * ImplementationSandbox.ts — Sprint 6.2.2
- * Every engineering task executes inside an isolated sandbox before going live.
- * Pipeline: Plan → Patch → Simulate → Regression Shield → Governance Review → Approval → Apply
+ * ImplementationSandbox.ts
+ * Sprint 6.2.2 — Engineering Governance & Core Protection
+ *
+ * Responsabilidade única: executar mudanças propostas em ambiente isolado.
+ * Não aplica ao Core sem aprovação explícita. Não altera estado externo diretamente.
  */
 
-import { EngineeringRegressionSuite } from "../engineering-regression/EngineeringRegressionSuite";
-import type { SandboxResult, GovernanceProposal } from "./GovernanceTypes";
+import { CoreProtectionEngine } from './CoreProtectionEngine';
+import type { SandboxResult, OperationType } from './GovernanceTypes';
 
-function ts(): string { return new Date().toISOString().slice(11, 23); }
+type SandboxTask = () => Promise<unknown> | unknown;
 
-export interface SandboxLog { time: string; stage: string; detail: string; ok: boolean }
+interface SandboxEntry {
+  sandboxId: string;
+  targetPath: string;
+  operation: OperationType;
+  status: 'pending' | 'executed' | 'approved' | 'rejected';
+  result?: SandboxResult;
+  createdAt: string;
+  approvedBy?: string;
+}
+
+let idCounter = 0;
+function makeSandboxId(): string {
+  return `sb-${Date.now()}-${++idCounter}`;
+}
 
 export class ImplementationSandbox {
-  private readonly _regression = new EngineeringRegressionSuite();
+  private static entries: SandboxEntry[] = [];
 
-  async run(proposal: GovernanceProposal): Promise<{ result: SandboxResult; log: SandboxLog[] }> {
-    const t0  = Date.now();
-    const log: SandboxLog[] = [];
-    const blockers: string[] = [];
+  /**
+   * Executes a task in the sandbox.
+   * If the target path touches a protected core component, marks as requiresApproval.
+   * The task function runs but its output is held — not committed — until approved.
+   */
+  static async execute(
+    targetPath: string,
+    operation: OperationType,
+    task: SandboxTask,
+    principalId: string
+  ): Promise<SandboxResult> {
+    const sandboxId = makeSandboxId();
+    const coreCheck = CoreProtectionEngine.checkOperation(targetPath, operation);
 
-    const record = (stage: string, detail: string, ok: boolean) => {
-      log.push({ time: ts(), stage, detail, ok });
+    const entry: SandboxEntry = {
+      sandboxId,
+      targetPath,
+      operation,
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+    };
+    this.entries.push(entry);
+
+    // Hard block: immutable core — do not even run the task.
+    if (coreCheck.blocked) {
+      const result: SandboxResult = {
+        sandboxId,
+        success: false,
+        output: null,
+        sideEffects: [],
+        approvalRequired: true,
+        error: coreCheck.reason,
+      };
+      entry.status = 'rejected';
+      entry.result = result;
+      console.warn(`[ImplementationSandbox] BLOCKED — ${coreCheck.reason}`);
+      return result;
+    }
+
+    // Run the task in isolation (errors are caught, never propagated).
+    let output: unknown = null;
+    let error: string | undefined;
+    const sideEffects: string[] = [];
+
+    try {
+      output = await Promise.resolve(task());
+      sideEffects.push(`Task executed for principal "${principalId}" on "${targetPath}"`);
+    } catch (e: unknown) {
+      error = e instanceof Error ? e.message : String(e);
+    }
+
+    const protectionLevel = CoreProtectionEngine.getProtectionLevel(targetPath);
+    const approvalRequired = protectionLevel === 'restricted' || protectionLevel === 'audited';
+
+    const result: SandboxResult = {
+      sandboxId,
+      success: !error,
+      output,
+      sideEffects,
+      approvalRequired,
+      error,
     };
 
-    // 1. Plan validation
-    const planOk = !!proposal.objective && proposal.impact.filesModified.length >= 0;
-    record("PLAN_VALIDATION", planOk ? "Plan is valid" : "Plan validation failed", planOk);
-    if (!planOk) blockers.push("Plan validation failed");
+    entry.status = 'executed';
+    entry.result = result;
+    return result;
+  }
 
-    // 2. Patch generation (simulated — no real code written in sandbox)
-    const patch = `[SANDBOX] Dry-run patch for: ${proposal.objective}\nTarget components: ${proposal.impact.filesModified.join(", ")}\nRisk: ${proposal.impact.riskLevel}`;
-    record("PATCH_GENERATION", "Dry-run patch generated (sandbox — not applied to production)", true);
-
-    // 3. Simulate
-    const simulationOk = proposal.impact.riskLevel !== "CRITICAL";
-    record("SIMULATION", simulationOk ? "Simulation passed" : "CRITICAL risk — simulation blocked", simulationOk);
-    if (!simulationOk) blockers.push("CRITICAL risk blocks simulation");
-
-    // 4. Regression Shield
-    let regressionOk = false;
-    try {
-      const regReport = await this._regression.run();
-      regressionOk = regReport.shield === "PASS" || regReport.shield === "WARN";
-      record("REGRESSION_SHIELD", `Shield=${regReport.shield} passed=${regReport.passed}/${regReport.total}`, regressionOk);
-    } catch {
-      regressionOk = false;
-      record("REGRESSION_SHIELD", "Regression Shield threw — treating as FAIL", false);
+  /**
+   * Approves a sandbox execution, marking it as safe to commit.
+   * Does not perform the actual commit — callers must handle that.
+   */
+  static approve(sandboxId: string, approverPrincipalId: string): boolean {
+    const entry = this.entries.find((e) => e.sandboxId === sandboxId);
+    if (!entry || entry.status !== 'executed') return false;
+    entry.status = 'approved';
+    entry.approvedBy = approverPrincipalId;
+    if (entry.result) {
+      entry.result.committedAt = new Date().toISOString();
     }
-    if (!regressionOk) blockers.push("Regression Shield failed — rollback required");
+    return true;
+  }
 
-    // 5. Governance Review
-    const governanceOk = proposal.policyViolations.length === 0;
-    record("GOVERNANCE_REVIEW",
-      governanceOk ? "No policy violations" : `Policy violations: ${proposal.policyViolations.join(", ")}`,
-      governanceOk);
-    if (!governanceOk) blockers.push(`Policy violations: ${proposal.policyViolations.join(", ")}`);
+  /** Rejects a sandbox entry. */
+  static reject(sandboxId: string): boolean {
+    const entry = this.entries.find((e) => e.sandboxId === sandboxId);
+    if (!entry || entry.status !== 'executed') return false;
+    entry.status = 'rejected';
+    return true;
+  }
 
-    // 6. Approval check
-    const approvalRequired = proposal.requiresApproval;
-    const hasApproval = proposal.status === "APPROVED" && proposal.approvedAt !== null;
-    const approvalOk  = !approvalRequired || hasApproval;
-    record("APPROVAL_CHECK",
-      approvalOk ? "Approval satisfied" : "Approval required but not yet granted",
-      approvalOk);
-    if (!approvalOk) blockers.push("Human approval required before IMPLEMENT");
+  /** Returns all entries (read-only copies). */
+  static listEntries(): SandboxEntry[] {
+    return this.entries.map((e) => ({ ...e }));
+  }
 
-    const readyToApply = blockers.length === 0;
-    record("READY_TO_APPLY", readyToApply ? "Sandbox passed — ready to apply" : `Blocked: ${blockers.join("; ")}`, readyToApply);
+  /** Returns pending entries awaiting approval. */
+  static listPending(): SandboxEntry[] {
+    return this.entries.filter((e) => e.status === 'executed' && e.result?.approvalRequired).map((e) => ({ ...e }));
+  }
 
+  static health(): { status: 'ok'; totalEntries: number; pendingApproval: number } {
     return {
-      result: {
-        proposalId:       proposal.id,
-        patch,
-        simulationOk,
-        regressionOk,
-        governanceOk,
-        approvalRequired,
-        readyToApply,
-        blockers,
-        durationMs:       Date.now() - t0,
-      },
-      log,
+      status: 'ok',
+      totalEntries: this.entries.length,
+      pendingApproval: this.listPending().length,
     };
   }
 }

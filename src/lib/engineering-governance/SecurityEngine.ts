@@ -1,63 +1,113 @@
 /**
- * SecurityEngine.ts — Sprint 6.2.2
- * Validates security constraints before any implementation.
+ * SecurityEngine.ts
+ * Sprint 6.2.2 — Engineering Governance & Core Protection
+ *
+ * Responsabilidade única: validar operações críticas e proteger contra acessos não autorizados.
+ * Atua como última barreira antes de qualquer execução — após permissões e políticas.
  */
 
-import type { SecurityCheckResult } from "./GovernanceTypes";
+import { CoreProtectionEngine } from './CoreProtectionEngine';
+import { GovernancePolicyEngine } from './GovernancePolicyEngine';
+import { GovernanceAuditEngine } from './GovernanceAuditEngine';
+import type { SecurityCheckResult, OperationType, PermissionLevel } from './GovernanceTypes';
 
-const DANGEROUS_PATTERNS = [
-  { pattern: /process\.env\.[A-Z_]+/g,          label: "secrets_exposure" },
-  { pattern: /password|secret|api_key|token/gi,  label: "credential_leak" },
-  { pattern: /fs\.unlink|fs\.rmdir|rimraf/g,     label: "unsafe_fs" },
-  { pattern: /deleteMany\(\s*\{\s*\}\s*\)/g,     label: "unsafe_deletion" },
-  { pattern: /overwrite.*production|write.*prod/gi, label: "unsafe_overwrite" },
-];
+// Operations that always require a security check regardless of protection level.
+const ALWAYS_CHECKED_OPS: OperationType[] = ['write', 'delete', 'refactor', 'migrate', 'rollback'];
+
+// Principals that are globally blocked (e.g., compromised accounts).
+const GLOBAL_BLOCKLIST: Set<string> = new Set();
 
 export class SecurityEngine {
-  validate(objective: string, targetComponents: string[], connectorNames: string[]): SecurityCheckResult {
-    const lower    = objective.toLowerCase();
-    const findings: string[] = [];
+  /** Adds a principal to the global block list. */
+  static blockPrincipal(principalId: string): void {
+    GLOBAL_BLOCKLIST.add(principalId);
+    console.warn(`[SecurityEngine] Principal blocked: ${principalId}`);
+  }
 
-    // Connector permissions
-    const connectorPerms = connectorNames.every(c => ["github", "base44", "GitHubConnector", "Base44Connector", "ConnectorInvocationService"].includes(c));
-    if (!connectorPerms) findings.push(`Unrecognized connector(s): ${connectorNames.filter(c => !["github","base44","GitHubConnector","Base44Connector","ConnectorInvocationService"].includes(c)).join(", ")}`);
+  /** Removes a principal from the global block list. */
+  static unblockPrincipal(principalId: string): void {
+    GLOBAL_BLOCKLIST.delete(principalId);
+  }
 
-    // Repository permissions
-    const repoPerms = !(/write.*repo|push.*main|force.*push/i.test(objective));
-    if (!repoPerms) findings.push("Unsafe repository write operation detected");
+  /**
+   * Performs the full security gate check for a proposed operation.
+   * Integrates CoreProtection + PolicyEngine + blocklist.
+   * Records all violations to the audit trail automatically.
+   */
+  static check(
+    principalId: string,
+    targetPath: string,
+    operation: OperationType,
+    grantedPermission: PermissionLevel
+  ): SecurityCheckResult {
+    const violations: string[] = [];
+    const checkedAt = new Date().toISOString();
 
-    // Protected files check (using objective keywords)
-    const protectedFiles = !(/overwrite.*core|replace.*core/i.test(objective));
-    if (!protectedFiles) findings.push("Attempt to overwrite Core files detected");
+    // 1. Global blocklist.
+    if (GLOBAL_BLOCKLIST.has(principalId)) {
+      violations.push(`Principal "${principalId}" is globally blocked.`);
+    }
 
-    // Pattern-based checks on objective text
-    let secretsExposure  = true;
-    let credentialLeak   = true;
-    let unsafeFs         = true;
-    let unsafeConnector  = !(/unsafe.*connector|bypass.*connector/i.test(objective));
-    let unsafeDeletion   = !(/delete all|drop all|wipe all/i.test(objective));
-    let unsafeOverwrite  = !(/overwrite.*production/i.test(objective));
-
-    for (const { pattern, label } of DANGEROUS_PATTERNS) {
-      if (pattern.test(objective)) {
-        switch (label) {
-          case "secrets_exposure": secretsExposure = false; findings.push("Potential secrets exposure in objective"); break;
-          case "credential_leak":  credentialLeak  = false; findings.push("Potential credential reference detected"); break;
-          case "unsafe_fs":        unsafeFs        = false; findings.push("Unsafe filesystem operation detected"); break;
-          case "unsafe_deletion":  unsafeDeletion  = false; findings.push("Unsafe deletion operation detected"); break;
-          case "unsafe_overwrite": unsafeOverwrite = false; findings.push("Unsafe overwrite to production detected"); break;
-        }
+    // 2. Core protection hard check (only for critical operations).
+    if (ALWAYS_CHECKED_OPS.includes(operation)) {
+      const coreCheck = CoreProtectionEngine.checkOperation(targetPath, operation);
+      if (coreCheck.blocked) {
+        violations.push(`Core protection: ${coreCheck.reason}`);
       }
     }
 
-    const passed = connectorPerms && repoPerms && protectedFiles &&
-      secretsExposure && credentialLeak && unsafeFs && unsafeConnector && unsafeDeletion && unsafeOverwrite;
+    // 3. Policy evaluation.
+    const policyEvals = GovernancePolicyEngine.evaluate(targetPath, operation, grantedPermission);
+    for (const ev of policyEvals) {
+      if (!ev.passed) {
+        violations.push(`Policy violation: ${ev.reason}`);
+      }
+    }
 
-    return {
-      passed, connectorPerms, repoPerms, protectedFiles,
-      secretsExposure, credentialLeak, unsafeFs,
-      unsafeConnector, unsafeDeletion, unsafeOverwrite,
-      findings,
-    };
+    const allowed = violations.length === 0;
+
+    // 4. Audit every security check (violations always logged as denied).
+    GovernanceAuditEngine.record(
+      violations.length > 0 ? 'security_violation' : 'permission_check',
+      principalId,
+      targetPath,
+      operation,
+      allowed ? 'allowed' : 'denied',
+      { violations, grantedPermission, checkedAt }
+    );
+
+    if (!allowed) {
+      console.error(`[SecurityEngine] DENIED — ${principalId} → ${operation} on ${targetPath}`);
+      for (const v of violations) console.error(`  ↳ ${v}`);
+    }
+
+    return { allowed, violations, checkedAt };
+  }
+
+  /**
+   * Convenience gate: throws if the operation is not allowed.
+   * Use in places where a hard stop is needed.
+   */
+  static enforce(
+    principalId: string,
+    targetPath: string,
+    operation: OperationType,
+    grantedPermission: PermissionLevel
+  ): void {
+    const result = this.check(principalId, targetPath, operation, grantedPermission);
+    if (!result.allowed) {
+      throw new Error(
+        `[SecurityEngine] Operation denied: ${operation} on ${targetPath} by ${principalId}. Violations: ${result.violations.join('; ')}`
+      );
+    }
+  }
+
+  /** Returns blocked principals. */
+  static listBlocked(): string[] {
+    return [...GLOBAL_BLOCKLIST];
+  }
+
+  static health(): { status: 'ok'; blockedPrincipals: number } {
+    return { status: 'ok', blockedPrincipals: GLOBAL_BLOCKLIST.size };
   }
 }

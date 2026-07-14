@@ -1,90 +1,131 @@
 /**
- * ChangeImpactAnalyzer.ts — Sprint 6.2.2
- * Calculates the full change impact before any implementation.
+ * ChangeImpactAnalyzer.ts
+ * Sprint 6.2.2 — Engineering Governance & Core Protection
+ *
+ * Responsabilidade única: calcular o impacto arquitetural de uma mudança proposta.
+ * Lê o grafo de dependências do CoreProtectionEngine. Não modifica estado.
  */
 
-import { PROTECTED_COMPONENTS } from "./GovernanceTypes";
-import { KnowledgeGraphStore }  from "../project-knowledge/KnowledgeGraphStore";
-import type { ChangeImpact, RiskLevel } from "./GovernanceTypes";
+import { CoreProtectionEngine } from './CoreProtectionEngine';
+import type { ImpactReport, OperationType, ImpactSeverity } from './GovernanceTypes';
 
-const SINGLETON_NAMES = ["KnowledgeGraphStore", "ConnectorInvocationService", "LiveCognitivePipeline", "EngineeringMemory"];
-const PIPELINE_NAMES  = ["LiveCognitivePipeline", "ConversationCognitiveGateway", "CognitivePipelineAdapter", "PrimaryConversationRouter"];
-const CONNECTOR_NAMES = ["GitHubConnector", "Base44Connector", "ConnectorInvocationService", "ConnectorRuntime"];
-const PROTECTED_SET   = new Set(PROTECTED_COMPONENTS);
+// Static dependency graph for non-core paths (can be extended).
+const KNOWN_DEPENDENCIES: Record<string, string[]> = {
+  'src/lib/wme': ['src/lib/sprint1', 'src/pages/ChatPage.jsx', 'src/lib/memoryEngine.js'],
+  'src/lib/sprint1': ['src/pages/ChatPage.jsx'],
+  'src/lib/fce': ['src/lib/abv'],
+  'src/lib/abv': ['src/pages/ArchitectureAudit.jsx'],
+  'src/lib/connector-runtime': [
+    'src/lib/cognitive-pipeline-adapter',
+    'src/lib/universal-connector-platform',
+  ],
+  'src/lib/AuthContext.jsx': ['src/App.jsx', 'src/components/ProtectedRoute.jsx'],
+  'src/lib/officialLibraryManager.js': ['src/lib/reasoning', 'src/lib/auditor'],
+};
 
-function scoreToLevel(score: number): RiskLevel {
-  if (score >= 80) return "CRITICAL";
-  if (score >= 55) return "HIGH";
-  if (score >= 30) return "MEDIUM";
-  return "LOW";
+function computeRiskScore(severity: ImpactSeverity, affectedCount: number): number {
+  const base: Record<ImpactSeverity, number> = {
+    critical: 80,
+    high: 60,
+    medium: 40,
+    low: 20,
+    none: 0,
+  };
+  return Math.min(100, base[severity] + affectedCount * 2);
 }
 
-export class ChangeImpactAnalyzer {
-  analyze(objective: string, targetComponents: string[]): ChangeImpact {
-    const lower = objective.toLowerCase();
-    const all   = [...targetComponents, ...this._inferFromObjective(lower)];
-    const unique = [...new Set(all)];
+function resolveSeverity(path: string, operation: OperationType): ImpactSeverity {
+  const level = CoreProtectionEngine.getProtectionLevel(path);
+  if (!level) {
+    if (operation === 'delete') return 'medium';
+    if (operation === 'write' || operation === 'refactor') return 'low';
+    return 'none';
+  }
+  if (level === 'immutable') {
+    if (['write', 'delete', 'migrate', 'refactor'].includes(operation)) return 'critical';
+    return 'medium';
+  }
+  if (level === 'restricted') {
+    if (operation === 'delete') return 'high';
+    if (['write', 'refactor', 'migrate'].includes(operation)) return 'high';
+    return 'medium';
+  }
+  if (level === 'audited') {
+    if (operation === 'delete') return 'medium';
+    return 'low';
+  }
+  return 'low';
+}
 
-    const protectedFilesHit   = unique.filter(c => PROTECTED_SET.has(c));
-    const singletonsTouched   = unique.filter(c => SINGLETON_NAMES.includes(c));
-    const pipelinesTouched    = unique.filter(c => PIPELINE_NAMES.includes(c));
-    const connectorsModified  = unique.filter(c => CONNECTOR_NAMES.includes(c));
+function collectDependents(path: string, visited = new Set<string>()): string[] {
+  if (visited.has(path)) return [];
+  visited.add(path);
 
-    // KG-backed module detection
-    const modulesModified: string[] = [];
-    if (KnowledgeGraphStore.isReady()) {
-      for (const comp of unique) {
-        const r = KnowledgeGraphStore.query(comp, "ChangeImpactAnalyzer");
-        if (r.found && r.entity) {
-          const mod = r.entity.filePath.split("/").slice(0, 3).join("/");
-          if (!modulesModified.includes(mod)) modulesModified.push(mod);
+  const result: string[] = [];
+
+  // From CoreProtectionEngine registry.
+  const component = CoreProtectionEngine.find(path);
+  if (component) {
+    const dependents = CoreProtectionEngine.getDependents(component.id);
+    for (const dep of dependents) {
+      result.push(dep.path);
+      result.push(...collectDependents(dep.path, visited));
+    }
+  }
+
+  // From static dependency graph.
+  for (const [key, deps] of Object.entries(KNOWN_DEPENDENCIES)) {
+    if (path.startsWith(key) || key.startsWith(path)) {
+      for (const dep of deps) {
+        if (!visited.has(dep)) {
+          result.push(dep);
+          result.push(...collectDependents(dep, visited));
         }
       }
     }
+  }
 
-    // Risk score
-    let score = 0;
-    score += protectedFilesHit.length  * 20;
-    score += singletonsTouched.length  * 15;
-    score += pipelinesTouched.length   * 10;
-    score += connectorsModified.length * 8;
-    if (/rewrite|replace|delete|remove/i.test(objective)) score += 25;
-    if (/connector|oauth|authentication/i.test(objective)) score += 10;
-    score = Math.min(100, score);
+  return [...new Set(result)];
+}
 
-    const kgImpact = KnowledgeGraphStore.isReady()
-      ? `${protectedFilesHit.length} protected KG entities in scope`
-      : "KG not built — impact cannot be fully measured";
-
-    const engineeringMemoryImpact = unique.length > 3
-      ? "Multiple components modified — engineering memory will be updated"
-      : "Minimal memory footprint expected";
+export class ChangeImpactAnalyzer {
+  /**
+   * Analyzes the impact of performing `operation` on `targetPath`.
+   */
+  static analyze(targetPath: string, operation: OperationType): ImpactReport {
+    const severity = resolveSeverity(targetPath, operation);
+    const dependencyChain = collectDependents(targetPath);
+    const affectedComponents = [...new Set(dependencyChain)];
+    const riskScore = computeRiskScore(severity, affectedComponents.length);
+    const requiresApproval = riskScore >= 60 || severity === 'critical' || severity === 'high';
 
     return {
-      filesModified:          unique,
-      protectedFilesHit,
-      modulesModified,
-      connectorsModified,
-      singletonsTouched,
-      pipelinesTouched,
-      kgImpact,
-      engineeringMemoryImpact,
-      riskScore:              score,
-      riskLevel:              scoreToLevel(score),
+      targetPath,
+      operation,
+      severity,
+      affectedComponents,
+      dependencyChain,
+      riskScore,
+      requiresApproval,
+      summary: `Operation "${operation}" on "${targetPath}" has ${severity} impact. Risk score: ${riskScore}/100. Affected: ${affectedComponents.length} component(s).`,
     };
   }
 
-  private _inferFromObjective(lower: string): string[] {
-    const inferred: string[] = [];
-    if (lower.includes("pipeline"))    inferred.push("LiveCognitivePipeline");
-    if (lower.includes("gateway"))     inferred.push("ConversationCognitiveGateway");
-    if (lower.includes("knowledge"))   inferred.push("KnowledgeGraphStore");
-    if (lower.includes("github"))      inferred.push("GitHubConnector");
-    if (lower.includes("base44"))      inferred.push("Base44Connector");
-    if (lower.includes("connector"))   inferred.push("ConnectorInvocationService");
-    if (lower.includes("regression"))  inferred.push("RegressionShield");
-    if (lower.includes("workflow"))    inferred.push("EngineeringWorkflow");
-    if (lower.includes("orchestrator")) inferred.push("EngineeringOrchestrator");
-    return inferred;
+  /**
+   * Batch analysis for multiple paths.
+   */
+  static analyzeMany(targets: Array<{ path: string; operation: OperationType }>): ImpactReport[] {
+    return targets.map(({ path, operation }) => this.analyze(path, operation));
+  }
+
+  /**
+   * Returns true if any of the targets have critical or high impact.
+   */
+  static requiresBoardApproval(reports: ImpactReport[]): boolean {
+    return reports.some((r) => r.severity === 'critical' || r.severity === 'high');
+  }
+
+  static health(): { status: 'ok'; knownPaths: number } {
+    return { status: 'ok', knownPaths: Object.keys(KNOWN_DEPENDENCIES).length };
   }
 }

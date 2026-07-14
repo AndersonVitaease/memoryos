@@ -1,38 +1,94 @@
 /**
- * GovernanceAuditEngine.ts — Sprint 6.2.2
- * Immutable audit log. Entries cannot be modified or deleted after creation.
+ * GovernanceAuditEngine.ts
+ * Sprint 6.2.2 — Engineering Governance & Core Protection
+ *
+ * Responsabilidade única: registrar todas as decisões e alterações de governança.
+ * Trilha de auditoria imutável (append-only). Não modifica outros componentes.
  */
 
-import type { AuditEntry } from "./GovernanceTypes";
+import type { AuditRecord, AuditEventType, OperationType } from './GovernanceTypes';
 
-let _seq = 0;
-function makeAuditId(): string { return `audit_${Date.now()}_${++_seq}`; }
+let auditCounter = 0;
+function makeAuditId(): string {
+  return `audit-${Date.now()}-${++auditCounter}`;
+}
 
 export class GovernanceAuditEngine {
-  // Object.freeze prevents mutation after creation
-  private readonly _entries: AuditEntry[] = [];
+  private static records: AuditRecord[] = [];
 
-  record(entry: Omit<AuditEntry, "id" | "engineer">): AuditEntry {
-    const full = Object.freeze({
-      ...entry,
-      id:       makeAuditId(),
-      engineer: "MemoryOS" as const,
-    });
-    this._entries.push(full);
-    return full;
+  /**
+   * Records an audit event. All parameters are required for traceability.
+   */
+  static record(
+    eventType: AuditEventType,
+    principalId: string,
+    targetPath: string,
+    operation: OperationType,
+    outcome: 'allowed' | 'denied' | 'pending',
+    details: Record<string, unknown> = {}
+  ): AuditRecord {
+    const record: AuditRecord = {
+      id: makeAuditId(),
+      eventType,
+      timestamp: new Date().toISOString(),
+      principalId,
+      targetPath,
+      operation,
+      outcome,
+      details,
+    };
+    this.records.push(record);
+    console.info(
+      `[GovernanceAuditEngine] [${record.id}] ${eventType} | ${outcome.toUpperCase()} | ${principalId} → ${operation} on ${targetPath}`
+    );
+    return { ...record };
   }
 
-  all(): readonly AuditEntry[] { return this._entries; }
+  /** Returns all audit records (read-only). */
+  static trail(): AuditRecord[] {
+    return this.records.map((r) => ({ ...r }));
+  }
 
-  latest(): AuditEntry | null { return this._entries[this._entries.length - 1] ?? null; }
+  /** Filters audit records by event type. */
+  static filterByEvent(eventType: AuditEventType): AuditRecord[] {
+    return this.records.filter((r) => r.eventType === eventType).map((r) => ({ ...r }));
+  }
 
-  find(id: string): AuditEntry | undefined { return this._entries.find(e => e.id === id); }
+  /** Filters audit records by principal. */
+  static filterByPrincipal(principalId: string): AuditRecord[] {
+    return this.records.filter((r) => r.principalId === principalId).map((r) => ({ ...r }));
+  }
 
-  stats() {
-    const total   = this._entries.length;
-    const passed  = this._entries.filter(e => e.outcome === "PASS").length;
-    const blocked = this._entries.filter(e => e.outcome === "BLOCKED").length;
-    const failed  = this._entries.filter(e => e.outcome === "FAIL").length;
-    return { total, passed, blocked, failed };
+  /** Filters audit records by outcome. */
+  static filterByOutcome(outcome: 'allowed' | 'denied' | 'pending'): AuditRecord[] {
+    return this.records.filter((r) => r.outcome === outcome).map((r) => ({ ...r }));
+  }
+
+  /** Returns a summary of audit activity. */
+  static summary(): {
+    total: number;
+    allowed: number;
+    denied: number;
+    pending: number;
+    byEventType: Record<string, number>;
+  } {
+    const byEventType: Record<string, number> = {};
+    let allowed = 0, denied = 0, pending = 0;
+    for (const r of this.records) {
+      if (r.outcome === 'allowed') allowed++;
+      else if (r.outcome === 'denied') denied++;
+      else pending++;
+      byEventType[r.eventType] = (byEventType[r.eventType] ?? 0) + 1;
+    }
+    return { total: this.records.length, allowed, denied, pending, byEventType };
+  }
+
+  /** Returns the last N records. */
+  static recent(n = 20): AuditRecord[] {
+    return this.records.slice(-n).map((r) => ({ ...r }));
+  }
+
+  static health(): { status: 'ok'; totalRecords: number } {
+    return { status: 'ok', totalRecords: this.records.length };
   }
 }

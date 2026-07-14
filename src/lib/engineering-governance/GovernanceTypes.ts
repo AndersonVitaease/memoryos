@@ -1,162 +1,136 @@
 /**
- * GovernanceTypes.ts — Sprint 6.2.2
- * Shared types for the Engineering Governance Layer.
+ * GovernanceTypes.ts
+ * MV > MPS > MAS > MDS > Implementation
+ * Sprint 6.2.2 — Engineering Governance & Core Protection
+ *
+ * Tipos centrais compartilhados por todos os motores de governança.
  */
 
-export type PermissionLevel = "READ" | "PLAN" | "SIMULATE" | "IMPLEMENT" | "DEPLOY";
-export type RiskLevel       = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
-export type GovernanceStatus = "PENDING" | "APPROVED" | "REJECTED" | "BLOCKED";
-export type PolicyViolation = string;
+export type ProtectionLevel = 'immutable' | 'restricted' | 'audited' | 'open';
+export type PermissionLevel = 'none' | 'read' | 'propose' | 'execute' | 'admin';
+export type ImpactSeverity = 'critical' | 'high' | 'medium' | 'low' | 'none';
+export type OperationType = 'read' | 'write' | 'delete' | 'refactor' | 'migrate' | 'rollback';
+export type AuditEventType =
+  | 'permission_check'
+  | 'impact_analysis'
+  | 'sandbox_execution'
+  | 'rollback_triggered'
+  | 'policy_evaluated'
+  | 'security_violation'
+  | 'core_access_attempt'
+  | 'change_approved'
+  | 'change_rejected';
 
-// ── Protected component list ──────────────────────────────────────────────────
-
-export const PROTECTED_COMPONENTS: readonly string[] = [
-  "ConversationCognitiveGateway",
-  "LiveCognitivePipeline",
-  "KnowledgeGraphStore",
-  "RepositoryKnowledgeBuilder",
-  "SourceCodeParser",
-  "EngineeringWorkflow",
-  "EngineeringOrchestrator",
-  "EngineeringIntelligence",
-  "RegressionShield",
-  "ApprovalGate",
-  "GitHubConnector",
-  "Base44Connector",
-  "ConnectorInvocationService",
-] as const;
-
-// ── Immutable policies ─────────────────────────────────────────────────────────
-
-export const ENGINEERING_POLICIES: readonly string[] = [
-  "Never duplicate an existing implementation",
-  "Never bypass the Approval Gate",
-  "Never modify Core components automatically",
-  "Never disable the Regression Shield",
-  "Never disable Governance",
-  "Never write outside project scope",
-  "Never execute destructive actions automatically",
-] as const;
-
-// ── Impact Analysis ───────────────────────────────────────────────────────────
-
-export interface ChangeImpact {
-  filesModified:         string[];
-  protectedFilesHit:     string[];
-  modulesModified:       string[];
-  connectorsModified:    string[];
-  singletonsTouched:     string[];
-  pipelinesTouched:      string[];
-  kgImpact:              string;
-  engineeringMemoryImpact: string;
-  riskScore:             number; // 0–100
-  riskLevel:             RiskLevel;
+export interface ProtectedComponent {
+  id: string;
+  name: string;
+  path: string;
+  level: ProtectionLevel;
+  reason: string;
+  dependencies: string[];
+  ownedBy: string;
 }
 
-// ── Governance Proposal ───────────────────────────────────────────────────────
-
-export interface GovernanceProposal {
-  id:                  string;
-  objective:           string;
-  requestedPermission: PermissionLevel;
-  impact:              ChangeImpact;
-  protectedComponents: string[];
-  whyNecessary:        string;
-  architecturalImpact: string;
-  riskLevel:           RiskLevel;
-  regressionProbability: string;
-  rollbackPlan:        string;
-  policyViolations:    PolicyViolation[];
-  requiresApproval:    boolean;
-  status:              GovernanceStatus;
-  createdAt:           number;
-  approvedAt:          number | null;
-  rejectedAt:          number | null;
-  rejectionReason:     string | null;
+export interface Permission {
+  principalId: string;
+  principalRole: string;
+  operation: OperationType;
+  targetPath: string;
+  level: PermissionLevel;
+  grantedAt: string;
+  expiresAt?: string;
+  conditions?: string[];
 }
 
-// ── Rollback Plan ─────────────────────────────────────────────────────────────
-
-export interface RollbackEntry {
-  filePath:      string;
-  originalHash:  string;   // simple length-based fingerprint
-  module:        string;
-  connector:     string | null;
-  instructions:  string;
+export interface ImpactReport {
+  targetPath: string;
+  operation: OperationType;
+  severity: ImpactSeverity;
+  affectedComponents: string[];
+  dependencyChain: string[];
+  riskScore: number; // 0–100
+  requiresApproval: boolean;
+  summary: string;
 }
-
-export interface RollbackPlan {
-  id:           string;
-  proposalId:   string;
-  entries:      RollbackEntry[];
-  affectedModules:    string[];
-  affectedConnectors: string[];
-  instructions: string;
-  createdAt:    number;
-  executed:     boolean;
-  executedAt:   number | null;
-}
-
-// ── Sandbox Result ────────────────────────────────────────────────────────────
 
 export interface SandboxResult {
-  proposalId:        string;
-  patch:             string;
-  simulationOk:      boolean;
-  regressionOk:      boolean;
-  governanceOk:      boolean;
-  approvalRequired:  boolean;
-  readyToApply:      boolean;
-  blockers:          string[];
-  durationMs:        number;
+  sandboxId: string;
+  success: boolean;
+  output: unknown;
+  sideEffects: string[];
+  approvalRequired: boolean;
+  committedAt?: string;
+  error?: string;
 }
 
-// ── Audit Entry (immutable) ───────────────────────────────────────────────────
-
-export interface AuditEntry {
-  readonly id:          string;
-  readonly timestamp:   number;
-  readonly objective:   string;
-  readonly planId:      string;
-  readonly files:       readonly string[];
-  readonly decision:    string;
-  readonly approval:    "HUMAN_APPROVED" | "HUMAN_REJECTED" | "AUTO_BLOCKED" | "PENDING";
-  readonly regression:  string;
-  readonly rollback:    string;
-  readonly outcome:     "PASS" | "FAIL" | "BLOCKED" | "PENDING";
-  readonly engineer:    "MemoryOS";
-  readonly approver:    string;
-  readonly policyViolations: readonly string[];
+export interface Snapshot {
+  snapshotId: string;
+  createdAt: string;
+  label: string;
+  paths: string[];
+  state: Record<string, unknown>;
 }
 
-// ── Security Check ────────────────────────────────────────────────────────────
+export interface RollbackResult {
+  success: boolean;
+  snapshotId: string;
+  restoredPaths: string[];
+  failedPaths: string[];
+  executedAt: string;
+}
+
+export interface Policy {
+  id: string;
+  name: string;
+  description: string;
+  targets: string[]; // path globs
+  requiredPermission: PermissionLevel;
+  blockConditions: string[];
+  enabled: boolean;
+}
+
+export interface PolicyEvaluation {
+  policyId: string;
+  passed: boolean;
+  reason: string;
+  blockedBy?: string;
+}
+
+export interface AuditRecord {
+  id: string;
+  eventType: AuditEventType;
+  timestamp: string;
+  principalId: string;
+  targetPath: string;
+  operation: OperationType;
+  outcome: 'allowed' | 'denied' | 'pending';
+  details: Record<string, unknown>;
+}
 
 export interface SecurityCheckResult {
-  passed:          boolean;
-  connectorPerms:  boolean;
-  repoPerms:       boolean;
-  protectedFiles:  boolean;
-  secretsExposure: boolean;
-  credentialLeak:  boolean;
-  unsafeFs:        boolean;
-  unsafeConnector: boolean;
-  unsafeDeletion:  boolean;
-  unsafeOverwrite: boolean;
-  findings:        string[];
+  allowed: boolean;
+  violations: string[];
+  checkedAt: string;
 }
 
-// ── Governance Report ─────────────────────────────────────────────────────────
+// ─── UI-facing constants ──────────────────────────────────────────────────────
 
-export interface GovernanceReport {
-  proposalId:      string;
-  governanceOk:    boolean;
-  riskReport:      { level: RiskLevel; score: number; explanation: string };
-  impactReport:    ChangeImpact;
-  rollbackReport:  { available: boolean; entries: number };
-  auditEntry:      AuditEntry;
-  approvalReport:  { required: boolean; status: GovernanceStatus; reason: string };
-  regressionReport: { required: boolean; passed: boolean | null };
-  securityReport:  SecurityCheckResult;
-  policyReport:    { violations: string[]; allPoliciesOk: boolean };
-  generatedAt:     number;
-}
+export const PROTECTED_COMPONENTS: string[] = [
+  'src/lib/wme',
+  'src/lib/sprint1',
+  'src/lib/fce',
+  'src/lib/abv',
+  'src/lib/connector-runtime',
+  'src/lib/AuthContext.jsx',
+  'src/lib/officialLibraryManager.js',
+];
+
+export const ENGINEERING_POLICIES: string[] = [
+  'No direct modification of immutable core components without Architecture Board approval',
+  'All write operations must pass the full governance pipeline',
+  'Deletion of any protected component requires admin-level permission',
+  'Security violations are automatically blocked and audited',
+  'Rollback snapshot must be captured before any destructive operation',
+  'Sandbox execution is mandatory for restricted and audited components',
+  'All governance decisions are recorded in an append-only audit trail',
+];

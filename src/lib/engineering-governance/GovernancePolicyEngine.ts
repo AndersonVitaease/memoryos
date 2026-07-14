@@ -1,54 +1,150 @@
 /**
- * GovernancePolicyEngine.ts — Sprint 6.2.2
- * Immutable engineering policies. Cannot be changed at runtime.
- * Every proposal is validated against all policies before governance approval.
+ * GovernancePolicyEngine.ts
+ * Sprint 6.2.2 — Engineering Governance & Core Protection
+ *
+ * Responsabilidade única: avaliar políticas de governança de forma determinística.
+ * Substitui qualquer implementação temporária de PolicyEngine.
+ * Políticas são centralizadas, versionadas e imutáveis após registro.
  */
 
-import { ENGINEERING_POLICIES, PROTECTED_COMPONENTS } from "./GovernanceTypes";
-import type { GovernanceProposal } from "./GovernanceTypes";
+import type { Policy, PolicyEvaluation, OperationType, PermissionLevel } from './GovernanceTypes';
 
-const PROTECTED_SET = new Set(PROTECTED_COMPONENTS);
+// Built-in baseline policies — cannot be removed, only disabled.
+const BASELINE_POLICIES: Policy[] = [
+  {
+    id: 'p-immutable-no-write',
+    name: 'Immutable Core Write Block',
+    description: 'No write operations on immutable core components without Architecture Board approval.',
+    targets: ['src/lib/wme', 'src/lib/sprint1', 'src/lib/officialLibraryManager.js'],
+    requiredPermission: 'admin',
+    blockConditions: ['operation=write', 'operation=delete', 'operation=refactor', 'operation=migrate'],
+    enabled: true,
+  },
+  {
+    id: 'p-restricted-no-delete',
+    name: 'Restricted Component Delete Block',
+    description: 'Deletion of restricted components requires admin-level permission.',
+    targets: ['src/lib/fce', 'src/lib/abv', 'src/lib/AuthContext.jsx'],
+    requiredPermission: 'admin',
+    blockConditions: ['operation=delete'],
+    enabled: true,
+  },
+  {
+    id: 'p-auth-read-only',
+    name: 'Auth Context Read-Only Policy',
+    description: 'AuthContext may only be modified by the security-team role.',
+    targets: ['src/lib/AuthContext.jsx'],
+    requiredPermission: 'admin',
+    blockConditions: ['operation=write', 'operation=refactor'],
+    enabled: true,
+  },
+  {
+    id: 'p-connector-audit',
+    name: 'Connector Runtime Audit Policy',
+    description: 'All write operations on connector-runtime must be audited.',
+    targets: ['src/lib/connector-runtime'],
+    requiredPermission: 'execute',
+    blockConditions: [],
+    enabled: true,
+  },
+];
+
+function pathMatchesTarget(path: string, targets: string[]): boolean {
+  return targets.some((t) => path.startsWith(t));
+}
+
+function conditionMatches(condition: string, operation: OperationType): boolean {
+  return condition === `operation=${operation}`;
+}
+
+const LEVEL_RANK: Record<PermissionLevel, number> = {
+  none: 0,
+  read: 1,
+  propose: 2,
+  execute: 3,
+  admin: 4,
+};
 
 export class GovernancePolicyEngine {
-  // Policies are read-only — never expose a setter
-  get policies(): readonly string[] { return ENGINEERING_POLICIES; }
+  private static customPolicies: Policy[] = [];
 
-  validate(proposal: GovernanceProposal): string[] {
-    const violations: string[] = [];
-
-    // 1. Never modify Core automatically
-    if (proposal.impact.protectedFilesHit.length > 0 && proposal.status !== "APPROVED") {
-      violations.push(`Policy violated: "Never modify Core automatically" — protected: ${proposal.impact.protectedFilesHit.join(", ")}`);
+  /** Registers a new custom policy. */
+  static registerPolicy(policy: Policy): void {
+    const existing = this.customPolicies.find((p) => p.id === policy.id);
+    if (existing) {
+      Object.assign(existing, policy);
+    } else {
+      this.customPolicies.push({ ...policy });
     }
-
-    // 2. Never bypass Approval Gate
-    if (proposal.requestedPermission === "IMPLEMENT" && proposal.requiresApproval && !proposal.approvedAt) {
-      violations.push(`Policy violated: "Never bypass the Approval Gate" — IMPLEMENT on protected components requires human approval`);
-    }
-
-    // 3. Never disable Regression Shield
-    if (/disable.*regression|remove.*regression|bypass.*regression/i.test(proposal.objective)) {
-      violations.push(`Policy violated: "Never disable the Regression Shield"`);
-    }
-
-    // 4. Never disable Governance
-    if (/disable.*governance|bypass.*governance|remove.*governance/i.test(proposal.objective)) {
-      violations.push(`Policy violated: "Never disable Governance"`);
-    }
-
-    // 5. Never execute destructive actions automatically
-    if (/delete all|wipe|drop table|truncate|rm -rf/i.test(proposal.objective) && proposal.status !== "APPROVED") {
-      violations.push(`Policy violated: "Never execute destructive actions automatically"`);
-    }
-
-    return violations;
   }
 
-  isDestructive(objective: string): boolean {
-    return /delete all|wipe|drop|truncate|rm -rf|destroy/i.test(objective);
+  /** Disables a custom policy by id (baseline policies cannot be permanently removed). */
+  static disablePolicy(policyId: string): boolean {
+    const custom = this.customPolicies.find((p) => p.id === policyId);
+    if (custom) {
+      custom.enabled = false;
+      return true;
+    }
+    // Cannot disable baseline policies.
+    return false;
   }
 
-  touchesCore(components: string[]): boolean {
-    return components.some(c => PROTECTED_SET.has(c));
+  /** Returns all active policies (baseline + custom). */
+  static listPolicies(): Policy[] {
+    return [...BASELINE_POLICIES, ...this.customPolicies].filter((p) => p.enabled);
+  }
+
+  /**
+   * Evaluates all applicable policies for a given path + operation + grantedPermission.
+   * Returns one evaluation per matching policy.
+   */
+  static evaluate(
+    path: string,
+    operation: OperationType,
+    grantedPermission: PermissionLevel
+  ): PolicyEvaluation[] {
+    const results: PolicyEvaluation[] = [];
+    const allPolicies = this.listPolicies();
+
+    for (const policy of allPolicies) {
+      if (!pathMatchesTarget(path, policy.targets)) continue;
+
+      const hasBlockCondition = policy.blockConditions.some((c) => conditionMatches(c, operation));
+      const hasRequiredPermission = LEVEL_RANK[grantedPermission] >= LEVEL_RANK[policy.requiredPermission];
+
+      if (hasBlockCondition && !hasRequiredPermission) {
+        results.push({
+          policyId: policy.id,
+          passed: false,
+          reason: `Policy "${policy.name}" blocks operation "${operation}" — requires ${policy.requiredPermission}, granted ${grantedPermission}.`,
+          blockedBy: policy.name,
+        });
+      } else {
+        results.push({
+          policyId: policy.id,
+          passed: true,
+          reason: `Policy "${policy.name}" passed for operation "${operation}" on "${path}".`,
+        });
+      }
+    }
+
+    return results;
+  }
+
+  /**
+   * Convenience: returns true only if ALL applicable policies pass.
+   */
+  static passes(path: string, operation: OperationType, grantedPermission: PermissionLevel): boolean {
+    const evals = this.evaluate(path, operation, grantedPermission);
+    return evals.every((e) => e.passed);
+  }
+
+  static health(): { status: 'ok'; baselinePolicies: number; customPolicies: number; activePolicies: number } {
+    return {
+      status: 'ok',
+      baselinePolicies: BASELINE_POLICIES.length,
+      customPolicies: this.customPolicies.length,
+      activePolicies: this.listPolicies().length,
+    };
   }
 }
