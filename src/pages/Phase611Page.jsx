@@ -38,10 +38,12 @@ function StatCard({ label, value, sub, color = "gray" }) {
 
 function ResultRow({ r }) {
   const [open, setOpen] = useState(false);
+  const icon = r.skipped ? "⏭" : r.passed ? "✅" : "❌";
+  const border = r.skipped ? "border-zinc-800" : r.passed ? "border-zinc-800" : "border-red-800/50";
   return (
-    <div className={`rounded border ${r.passed ? "border-zinc-800" : "border-red-800/50"} bg-zinc-900`}>
+    <div className={`rounded border ${border} bg-zinc-900`}>
       <button className="w-full flex items-center gap-3 px-3 py-2 text-left" onClick={() => setOpen(o => !o)}>
-        <span className="text-xs w-5">{r.passed ? "✅" : "❌"}</span>
+        <span className="text-xs w-5">{icon}</span>
         <Badge label={r.category} color={CAT_COLOR[r.category] ?? "gray"} />
         <span className="text-sm text-zinc-300 flex-1">{r.testName}</span>
         <span className="text-xs text-zinc-600 font-mono">{r.durationMs}ms</span>
@@ -121,6 +123,7 @@ export default function Phase611Page() {
               color={report.acceptanceScore === 5 ? "green" : "red"} sub="KG routing queries" />
             <StatCard label="PASSED" value={report.passed} color="green" />
             <StatCard label="FAILED" value={report.failed} color={report.failed === 0 ? "gray" : "red"} />
+            {report.skipped > 0 && <StatCard label="SKIPPED" value={report.skipped} color="gray" sub="KG not built yet" />}
           </div>
 
           {/* Health status row */}
