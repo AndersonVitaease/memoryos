@@ -1,7 +1,9 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { OAuthDiscovery } from "@/lib/oauth-discovery/OAuthDiscoveryEngine";
 import { OAuthDiscoveryDashboard } from "@/lib/oauth-discovery/OAuthDiscoveryDashboard";
 import { OAuthConfigurationRegistry } from "@/lib/oauth-discovery/OAuthConfigurationRegistry";
+import { OAuthRedirectUriResolver } from "@/lib/oauth-discovery/OAuthRedirectUriResolver";
+import { OAuthCallbackResolver } from "@/lib/oauth-discovery/OAuthCallbackResolver";
 
 const dashboard = new OAuthDiscoveryDashboard();
 const configReg = new OAuthConfigurationRegistry();
@@ -142,6 +144,179 @@ function ProviderCard({ provider, onMarkConfigured }) {
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── UriRow: one labeled URI row with copy button ──────────────────────────────
+function UriRow({ label, value, note }) {
+  return (
+    <div className="space-y-0.5">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs text-zinc-500 w-36 shrink-0 font-mono">{label}</span>
+        <span className="text-xs font-mono text-blue-300 flex-1 break-all">{value}</span>
+        <CopyButton value={value} label={label} />
+      </div>
+      {note && <p className="text-[11px] text-zinc-600 pl-36">{note}</p>}
+    </div>
+  );
+}
+
+// ── RedirectUrisTab ───────────────────────────────────────────────────────────
+// Always resolves URIs directly from OAuthRedirectUriResolver so the tab
+// is never blank — even before any discovery run completes.
+function RedirectUrisTab({ baseUrl, isSecure, providers }) {
+  // Instantiate resolver directly so URIs come from the live runtime environment,
+  // not from a stale discovery snapshot.
+  const resolver = useMemo(() => new OAuthRedirectUriResolver(), []);
+  const callbackResolver = useMemo(() => new OAuthCallbackResolver(), []);
+
+  // Determine why base URL might be unresolvable
+  const baseUrlIssue = !baseUrl || baseUrl === "unknown"
+    ? "Base URL could not be resolved. This happens when window.location is unavailable (e.g. SSR or iframe sandbox). " +
+      "In production this resolves automatically from the browser's window.location.protocol + hostname + port."
+    : null;
+
+  // All providers we want to show — use discovery list if available, fall back to a
+  // known static list so the tab always renders something.
+  const FALLBACK_PROVIDERS = [
+    { provider: "google",    displayName: "Google",    iconEmoji: "🔵" },
+    { provider: "microsoft", displayName: "Microsoft", iconEmoji: "🟦" },
+    { provider: "github",    displayName: "GitHub",    iconEmoji: "⚫" },
+    { provider: "slack",     displayName: "Slack",     iconEmoji: "🟣" },
+    { provider: "notion",    displayName: "Notion",    iconEmoji: "⬜" },
+    { provider: "dropbox",   displayName: "Dropbox",   iconEmoji: "🔷" },
+    { provider: "meta",      displayName: "Meta",      iconEmoji: "🔵" },
+    { provider: "hubspot",   displayName: "HubSpot",   iconEmoji: "🟠" },
+  ];
+
+  const rows = providers.length > 0
+    ? providers.map(p => ({ provider: p.provider, displayName: p.displayName, iconEmoji: p.iconEmoji }))
+    : FALLBACK_PROVIDERS;
+
+  return (
+    <div className="space-y-4">
+      {/* How resolution works */}
+      <div className="border border-violet-800/40 rounded-lg p-4 bg-violet-950/10 space-y-2">
+        <h3 className="text-xs font-mono text-violet-400 uppercase tracking-widest">How URIs Are Resolved</h3>
+        <p className="text-xs text-zinc-400">
+          All URIs are computed at runtime from <code className="text-violet-300 bg-zinc-800 px-1 rounded">OAuthRedirectUriResolver</code>{" "}
+          using <code className="text-violet-300 bg-zinc-800 px-1 rounded">window.location.protocol + hostname + port</code>.
+          No URL is ever hardcoded. The pattern is:
+        </p>
+        <p className="text-xs font-mono text-blue-300 bg-zinc-900 rounded px-3 py-1.5">
+          {baseUrl || "https://your-app-domain.com"}/oauth/callback/<span className="text-violet-300">[provider]</span>
+        </p>
+      </div>
+
+      {/* Base URL status */}
+      <div className={`border rounded-lg p-4 space-y-2 ${baseUrlIssue ? "border-yellow-800/40 bg-yellow-950/10" : "border-blue-800/40 bg-blue-950/10"}`}>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-mono text-zinc-500 uppercase">Detected Base URL</span>
+          <Badge label={isSecure ? "SECURE" : "INSECURE"} color={isSecure ? "green" : "red"} size="xs" />
+          {baseUrlIssue && <Badge label="UNRESOLVABLE" color="yellow" size="xs" />}
+        </div>
+        {baseUrlIssue ? (
+          <div className="space-y-1">
+            <p className="text-xs text-yellow-300 font-mono">⚠ {baseUrl || "(empty)"}</p>
+            <p className="text-xs text-zinc-400">{baseUrlIssue}</p>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-mono text-blue-300">{baseUrl}</span>
+            <CopyButton value={baseUrl} label="base URL" />
+          </div>
+        )}
+      </div>
+
+      {/* ── Google highlighted section ─────────────────────────────── */}
+      {(() => {
+        const googleConfig = resolver.resolve("google");
+        const origins      = resolver.getAuthorizedOrigins();
+        const cbParams     = callbackResolver.parse();  // current page (likely not a callback)
+        return (
+          <div className="border border-green-700/40 rounded-lg p-5 bg-green-950/10 space-y-4">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">🔵</span>
+              <span className="text-sm font-bold text-green-300">Google — Required OAuth Configuration</span>
+              <Badge label="Sprint 6.4.1" color="green" size="xs" />
+            </div>
+            <p className="text-xs text-zinc-400">
+              Copy these values and paste them into your{" "}
+              <span className="text-blue-300 font-mono">Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 Client</span>.
+            </p>
+            <div className="space-y-3 border-t border-green-900/40 pt-3">
+              {/* Authorized Origin */}
+              <div className="space-y-1.5">
+                <p className="text-xs font-mono text-zinc-500 uppercase">Authorized JavaScript Origins</p>
+                {origins.map(o => (
+                  <UriRow key={o} label="Authorized Origin" value={o} note="Add each of these to 'Authorized JavaScript origins' in Google Console" />
+                ))}
+              </div>
+              {/* Redirect URI */}
+              <div className="space-y-1.5 border-t border-green-900/30 pt-2">
+                <p className="text-xs font-mono text-zinc-500 uppercase">OAuth Redirect URI</p>
+                <UriRow
+                  label="OAuth Redirect URI"
+                  value={googleConfig.redirectUri}
+                  note="Add to 'Authorized redirect URIs' in Google Console. This is where Google sends the user after login."
+                />
+              </div>
+              {/* Callback URI */}
+              <div className="space-y-1.5 border-t border-green-900/30 pt-2">
+                <p className="text-xs font-mono text-zinc-500 uppercase">OAuth Callback URI</p>
+                <UriRow
+                  label="OAuth Callback URI"
+                  value={googleConfig.callbackUri}
+                  note="This is the same as Redirect URI for Google OAuth. OAuthCallbackResolver reads code and state from this URL."
+                />
+              </div>
+            </div>
+            {/* Resolver explanation */}
+            <div className="bg-zinc-900 rounded p-3 text-xs font-mono text-zinc-500 space-y-0.5">
+              <p><span className="text-violet-400">OAuthRedirectUriResolver</span>.resolve("google")</p>
+              <p>  redirectUri  = <span className="text-blue-300">{googleConfig.redirectUri}</span></p>
+              <p>  callbackUri  = <span className="text-blue-300">{googleConfig.callbackUri}</span></p>
+              <p>  callbackPath = <span className="text-zinc-400">{googleConfig.callbackPath}</span></p>
+              <p>  baseUrl      = <span className="text-zinc-400">{googleConfig.baseUrl}</span></p>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── All other providers ──────────────────────────────────── */}
+      <h3 className="text-xs font-mono text-zinc-500 uppercase tracking-widest pt-2">All Providers</h3>
+      {rows.map(row => {
+        const config = resolver.resolve(row.provider);
+        const origins = resolver.getAuthorizedOrigins();
+        return (
+          <div key={row.provider} className="border border-zinc-800 rounded-lg p-4 space-y-3 bg-zinc-900">
+            <div className="flex items-center gap-2">
+              <span>{row.iconEmoji}</span>
+              <span className="text-sm font-semibold text-zinc-200">{row.displayName}</span>
+              <Badge label={row.provider} size="xs" />
+            </div>
+            <div className="space-y-2">
+              <UriRow label="Authorized Origin" value={origins[0]} note="Primary authorized origin for this environment" />
+              <UriRow label="OAuth Redirect URI" value={config.redirectUri} />
+              <UriRow label="OAuth Callback URI" value={config.callbackUri} />
+            </div>
+            {/* Collapsible origins */}
+            {origins.length > 1 && (
+              <details className="text-xs">
+                <summary className="text-zinc-500 cursor-pointer hover:text-zinc-300">
+                  +{origins.length - 1} more authorized origins
+                </summary>
+                <div className="mt-1.5 space-y-1 pl-2">
+                  {origins.slice(1).map(o => (
+                    <UriRow key={o} label="Authorized Origin" value={o} />
+                  ))}
+                </div>
+              </details>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -323,44 +498,7 @@ export default function Phase641aPage() {
       )}
 
       {/* ── REDIRECT URIs ─────────────────────────────────────────── */}
-      {tab === "redirect-uris" && (
-        <div className="space-y-4">
-          <div className="border border-blue-800/40 rounded-lg p-4 bg-blue-950/10 space-y-2">
-            <h3 className="text-sm font-semibold">Auto-Resolved Base URL</h3>
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-mono text-blue-300">{baseUrl}</span>
-              <CopyButton value={baseUrl} label="base URL" />
-              <Badge label={isSecure ? "SECURE" : "INSECURE"} color={isSecure ? "green" : "red"} size="xs" />
-            </div>
-          </div>
-          {providers.map(p => (
-            <div key={p.provider} className="border border-zinc-800 rounded-lg p-4 space-y-2 bg-zinc-900">
-              <div className="flex items-center gap-2">
-                <span>{p.iconEmoji}</span>
-                <span className="text-sm font-semibold">{p.displayName}</span>
-              </div>
-              <div className="space-y-1.5">
-                {[["Redirect URI", p.redirectUri],["Callback URI", p.callbackUri]].map(([label, val]) => (
-                  <div key={label} className="flex items-center gap-2">
-                    <span className="text-xs text-zinc-500 w-24 shrink-0">{label}:</span>
-                    <span className="text-xs font-mono text-zinc-300 flex-1 truncate">{val}</span>
-                    <CopyButton value={val} label={label} />
-                  </div>
-                ))}
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs text-zinc-500">Authorized Origins:</p>
-                {p.authorizedOrigins.map(o => (
-                  <div key={o} className="flex items-center gap-2">
-                    <span className="text-xs font-mono text-zinc-400 flex-1">{o}</span>
-                    <CopyButton value={o} label="origin" />
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      {tab === "redirect-uris" && <RedirectUrisTab baseUrl={baseUrl} isSecure={isSecure} providers={providers} />}
 
       {/* ── CALLBACKS ─────────────────────────────────────────────── */}
       {tab === "callbacks" && (
