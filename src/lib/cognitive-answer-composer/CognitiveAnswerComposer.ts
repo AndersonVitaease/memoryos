@@ -447,6 +447,144 @@ function composeGitHubLive(
     case "auth.user": {
       return `**GitHub Account**\n\n• Login: ${d.login}\n• Name: ${d.name ?? "—"}\n• Public repos: ${d.public_repos ?? 0}\n• Followers: ${d.followers ?? 0}`;
     }
+
+    // ── Phase 5.8.0 — Search ───────────────────────────────────────────────
+    case "search.file":
+    case "search.folder":
+    case "search.symbol":
+    case "search.class":
+    case "search.function":
+    case "search.interface":
+    case "search.text":
+    case "search.import":
+    case "search.export":
+    case "search.reference": {
+      if (d.totalCount === 0) return `No results found for \`${d.query}\` in this repository.`;
+      const label = capability.replace("search.", "").replace(/^./, (c: string) => c.toUpperCase());
+      const list = (d.items ?? []).slice(0, 10).map((i: any) => {
+        const matches = (i.textMatches ?? []).flatMap((m: any) => m.matches ?? []).slice(0, 2).join(", ");
+        return `• \`${i.path}\`${matches ? ` — *"${matches}"*` : ""}`;
+      }).join("\n");
+      return `**${label} Search: \`${d.query}\`** (${d.totalCount} result${d.totalCount !== 1 ? "s" : ""})\n\n${list}`;
+    }
+
+    // ── Phase 5.8.0 — Repository Map ──────────────────────────────────────
+    case "repository.tree": {
+      const dirs: any[] = d.directories ?? [];
+      const list = dirs.slice(0, 20).map((dir: any) => `• \`${dir.path}/\` — ${dir.fileCount} file(s)`).join("\n");
+      return `**Repository Tree: ${d.owner}/${d.repo}** (${d.totalFiles} files total)\n\n${list}${d.truncated ? "\n\n*Truncated — repository has more files.*" : ""}`;
+    }
+    case "repository.modules": {
+      const mods: any[] = d.modules ?? [];
+      const list = mods.slice(0, 20).map((m: any) => `• \`${m.name}\` — ${m.fileCount} file(s)`).join("\n");
+      return `**Project Modules** (${mods.length} modules)\n\n${list}`;
+    }
+    case "repository.dependencies": {
+      if (!d.found) return `No \`package.json\` found in this repository.`;
+      const deps = (d.dependencies ?? []).slice(0, 20).join(", ");
+      const devDeps = (d.devDependencies ?? []).slice(0, 10).join(", ");
+      return `**Project Dependencies** (${d.totalDeps} total)\n\n**${d.name}** v${d.version}\n\n**Runtime (${(d.dependencies ?? []).length}):** ${deps || "none"}\n\n**Dev (${(d.devDependencies ?? []).length}):** ${devDeps || "none"}`;
+    }
+    case "repository.statistics": {
+      const langs = (d.languages ?? []).slice(0, 5).map((l: any) => `${l.lang} ${l.pct}%`).join(" · ");
+      return `**Repository Statistics: ${d.name}**\n\n• Description: ${d.description ?? "—"}\n• Stars: ${d.stars} · Forks: ${d.forks} · Open Issues: ${d.openIssues}\n• Size: ${d.size_kb} KB · Branch: ${d.defaultBranch}\n• Languages: ${langs || "unknown"}\n• Created: ${d.createdAt?.slice(0, 10)} · Last push: ${d.pushedAt?.slice(0, 10)}`;
+    }
+    case "repository.entrypoints": {
+      const ep: string[] = d.entrypoints ?? [];
+      if (ep.length === 0) return "No standard entrypoints detected in this repository.";
+      return `**Entry Points** (${ep.length} found)\n\n${ep.map((p: string) => `• \`${p}\``).join("\n")}`;
+    }
+
+    // ── Phase 5.8.0 — File Intelligence ───────────────────────────────────
+    case "file.summary":
+    case "file.explanation":
+    case "file.responsibilities":
+    case "file.dependencies":
+    case "file.exports":
+    case "file.imports":
+    case "file.relationships": {
+      const lines: string[] = [];
+      lines.push(`**File: \`${d.path}\`** (${d.lineCount} lines · ${d.size} bytes)`);
+      if (d.classes?.length)     lines.push(`\n**Classes:** ${d.classes.join(", ")}`);
+      if (d.interfaces?.length)  lines.push(`**Interfaces:** ${d.interfaces.join(", ")}`);
+      if (d.functions?.length)   lines.push(`**Functions:** ${d.functions.slice(0, 8).join(", ")}`);
+      if (d.types?.length)       lines.push(`**Types:** ${d.types.slice(0, 6).join(", ")}`);
+      if (d.imports?.length) {
+        lines.push(`\n**Imports (${d.imports.length}):**`);
+        d.imports.slice(0, 8).forEach((imp: string) => lines.push(`• \`${imp.slice(0, 80)}\``));
+      }
+      if (d.exports?.length) {
+        lines.push(`\n**Exports (${d.exports.length}):**`);
+        d.exports.slice(0, 6).forEach((exp: string) => lines.push(`• \`${exp.slice(0, 80)}\``));
+      }
+      return lines.join("\n");
+    }
+
+    // ── Phase 5.8.0 — Commit Intelligence ─────────────────────────────────
+    case "commit.details": {
+      const files = (d.changedFiles ?? []).slice(0, 10).map((f: any) =>
+        `• \`${f.filename}\` ${f.status} +${f.additions} -${f.deletions}`
+      ).join("\n");
+      return `**Commit \`${d.shortSha}\`**\n\n${d.message}\n\n**Author:** ${d.author} (@${d.authorLogin ?? "—"}) · **Date:** ${d.date?.slice(0, 10) ?? "—"}\n\n**Changes:** +${d.stats?.additions ?? 0} -${d.stats?.deletions ?? 0} across ${d.totalFiles} file(s)\n\n${files}`;
+    }
+    case "commit.timeline": {
+      const tl: any[] = d.timeline ?? [];
+      const list = tl.slice(0, 14).map((t: any) =>
+        `• **${t.date}** — ${t.commitCount} commit(s): ${t.messages.slice(0, 2).join("; ")}`
+      ).join("\n");
+      return `**Commit Timeline** (${d.totalCommits} recent commits)\n\n${list}`;
+    }
+    case "diff.commit":
+    case "commit.diff": {
+      const files = (d.files ?? []).slice(0, 10).map((f: any) =>
+        `• \`${f.filename}\` ${f.status} +${f.additions} -${f.deletions}`
+      ).join("\n");
+      return `**Diff: Commit \`${d.sha}\`**\n\n${d.message}\n\n${d.summary}\n\n${files}`;
+    }
+    case "diff.branch": {
+      const files = (d.files ?? []).slice(0, 10).map((f: any) =>
+        `• \`${f.filename}\` ${f.status} +${f.additions} -${f.deletions}`
+      ).join("\n");
+      return `**Branch Diff: \`${d.base}\` vs \`${d.head}\`**\n\n${d.summary}\n\nTotal commits: ${d.totalCommits}\n\n**Changed Files:**\n${files}`;
+    }
+
+    // ── Phase 5.8.0 — File History ─────────────────────────────────────────
+    case "history.file": {
+      const hist: any[] = d.history ?? [];
+      const list = hist.slice(0, 12).map((c: any) =>
+        `• \`${c.sha}\` **${c.message}** — ${c.author} · ${c.date?.slice(0, 10) ?? "—"}`
+      ).join("\n");
+      return `**History: \`${d.path}\`** (${d.commitCount} commits)\n\n• First seen: ${d.firstSeen?.slice(0, 10) ?? "unknown"}\n• Last modified: ${d.lastModified?.slice(0, 10) ?? "unknown"}\n\n${list}`;
+    }
+
+    // ── Phase 5.8.0 — Pull Requests ────────────────────────────────────────
+    case "pullRequests.list": {
+      const items: any[] = d.items ?? [];
+      if (items.length === 0) return `No ${d.state} pull requests found.`;
+      const list = items.slice(0, 10).map((p: any) =>
+        `• **#${p.number}** ${p.title} — @${p.author} · \`${p.head}\` -> \`${p.base}\`${p.draft ? " (draft)" : ""}`
+      ).join("\n");
+      return `**Pull Requests** (${d.count} ${d.state})\n\n${list}`;
+    }
+
+    // ── Phase 5.8.0 — Issues ───────────────────────────────────────────────
+    case "issues.list": {
+      const items: any[] = d.items ?? [];
+      if (items.length === 0) return `No ${d.state} issues found.`;
+      const list = items.slice(0, 10).map((i: any) =>
+        `• **#${i.number}** ${i.title} — @${i.author}${i.labels?.length ? " [" + i.labels.join(", ") + "]" : ""}`
+      ).join("\n");
+      return `**Issues** (${d.count} ${d.state})\n\n${list}`;
+    }
+    case "issue.search": {
+      const items: any[] = d.items ?? [];
+      if (items.length === 0) return `No issues found for query: "${d.query}".`;
+      const list = items.slice(0, 10).map((i: any) =>
+        `• **#${i.number}** ${i.title} [${i.state}]`
+      ).join("\n");
+      return `**Issue Search: "${d.query}"** (${d.totalCount} results)\n\n${list}`;
+    }
+
     default:
       return `**GitHub — ${capability}**\n\n${JSON.stringify(d, null, 2).slice(0, 500)}`;
   }

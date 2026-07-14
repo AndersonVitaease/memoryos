@@ -189,6 +189,18 @@ export class GitHubConnector implements IConnector {
         "commits.list", "commits.get",
         "files.list", "files.get",
         "health.full",
+        // Phase 5.8.0 — Engineering Intelligence
+        "search.file", "search.folder", "search.symbol", "search.class", "search.function",
+        "search.interface", "search.text", "search.import", "search.export", "search.reference",
+        "repository.tree", "repository.modules", "repository.statistics", "repository.dependencies",
+        "repository.entrypoints", "repository.languages",
+        "file.summary", "file.explanation", "file.responsibilities",
+        "file.dependencies", "file.exports", "file.imports", "file.relationships",
+        "commit.details", "commit.diff", "commit.timeline",
+        "diff.commit", "diff.branch",
+        "history.file",
+        "pullRequests.list", "pullRequest.details",
+        "issues.list", "issue.search",
       ],
     };
   }
@@ -677,6 +689,390 @@ export class GitHubConnector implements IConnector {
           try { content = atob(f.content.replace(/\n/g, "")); decoded = true; } catch { content = f.content; }
         }
         return ok({ path: f.path, name: f.name, size: f.size, sha: f.sha, encoding: f.encoding, content, decoded, download_url: f.download_url }, start, eid, logs, operation);
+      }
+
+      // ── Search ────────────────────────────────────────────────────────────
+
+      case "search.file":
+      case "search.folder":
+      case "search.symbol":
+      case "search.class":
+      case "search.function":
+      case "search.interface":
+      case "search.text":
+      case "search.import":
+      case "search.export":
+      case "search.reference": {
+        const query  = typeof payload.query  === "string" ? payload.query  : null;
+        const owner  = typeof payload.owner  === "string" ? payload.owner  : null;
+        const repo   = typeof payload.repo   === "string" ? payload.repo   : null;
+        if (!query) return fail("query required", "validation", start, eid, logs, operation);
+
+        // Build GitHub Code Search query
+        const repoFilter = (owner && repo) ? `+repo:${owner}/${repo}` : "";
+        const ext = operation === "search.file" ? "" : "";
+        const q = encodeURIComponent(query) + repoFilter;
+        const res = await githubFetch(`/search/code?q=${q}&per_page=20`, token);
+        logs.push(makeLog("info", `[${operation}] HTTP ${res.status} — ${res.responseTimeMs}ms`));
+        if (res.status === 403) return fail("Search rate limited — wait 30s and retry", "external", start, eid, logs, operation);
+        if (res.status === 422) return fail("Query too complex for GitHub search", "validation", start, eid, logs, operation);
+        if (!res.ok) { this.internalMetrics.externalFailures++; return fail(`HTTP ${res.status}`, "external", start, eid, logs, operation); }
+        const d = res.data as any;
+        const items = (d.items ?? []) as any[];
+        return ok({
+          query,
+          operation,
+          totalCount: d.total_count ?? 0,
+          items: items.slice(0, 20).map((i: any) => ({
+            path:       i.path,
+            repository: i.repository?.full_name ?? null,
+            sha:        i.sha,
+            url:        i.html_url,
+            textMatches: (i.text_matches ?? []).map((m: any) => ({
+              fragment:  m.fragment,
+              matches:   (m.matches ?? []).map((mm: any) => mm.text).slice(0, 3),
+            })).slice(0, 3),
+          })),
+        }, start, eid, logs, operation);
+      }
+
+      // ── Repository Map ────────────────────────────────────────────────────
+
+      case "repository.tree": {
+        const owner  = typeof payload.owner  === "string" ? payload.owner  : null;
+        const repo   = typeof payload.repo   === "string" ? payload.repo   : null;
+        const branch = typeof payload.branch === "string" ? payload.branch : "HEAD";
+        if (!owner || !repo) return fail("owner and repo required", "validation", start, eid, logs, operation);
+        const res = await githubFetch(`/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`, token);
+        if (!res.ok) { this.internalMetrics.externalFailures++; return fail(`HTTP ${res.status}`, "external", start, eid, logs, operation); }
+        const tree = ((res.data as any)?.tree ?? []) as any[];
+        const dirs: Record<string, number> = {};
+        const files = tree.filter(n => n.type === "blob" && !n.path.includes("node_modules") && !n.path.includes("dist"));
+        files.forEach((f: any) => {
+          const parts = f.path.split("/");
+          const top = parts.length > 1 ? parts.slice(0, 2).join("/") : "(root)";
+          dirs[top] = (dirs[top] ?? 0) + 1;
+        });
+        return ok({
+          owner, repo, branch,
+          totalFiles: files.length,
+          truncated: (res.data as any)?.truncated ?? false,
+          directories: Object.entries(dirs).map(([path, count]) => ({ path, fileCount: count })).sort((a, b) => b.fileCount - a.fileCount).slice(0, 30),
+          files: files.slice(0, 50).map((f: any) => ({ path: f.path, size: f.size ?? 0, ext: f.path.split(".").pop()?.toLowerCase() ?? "" })),
+        }, start, eid, logs, operation);
+      }
+
+      case "repository.modules": {
+        const owner = typeof payload.owner === "string" ? payload.owner : null;
+        const repo  = typeof payload.repo  === "string" ? payload.repo  : null;
+        if (!owner || !repo) return fail("owner and repo required", "validation", start, eid, logs, operation);
+        const res = await githubFetch(`/repos/${owner}/${repo}/git/trees/HEAD?recursive=1`, token);
+        if (!res.ok) { this.internalMetrics.externalFailures++; return fail(`HTTP ${res.status}`, "external", start, eid, logs, operation); }
+        const tree = ((res.data as any)?.tree ?? []) as any[];
+        const srcFiles = tree.filter(n => n.type === "blob" && n.path.startsWith("src/") && !n.path.includes("node_modules"));
+        const modules: Record<string, string[]> = {};
+        srcFiles.forEach((f: any) => {
+          const parts = f.path.split("/");
+          const mod = parts.length >= 3 ? parts[1] : "(root)";
+          if (!modules[mod]) modules[mod] = [];
+          modules[mod].push(f.path);
+        });
+        return ok({
+          modules: Object.entries(modules).map(([name, files]) => ({ name, fileCount: files.length, files: files.slice(0, 10) })).sort((a, b) => b.fileCount - a.fileCount),
+        }, start, eid, logs, operation);
+      }
+
+      case "repository.statistics": {
+        const owner = typeof payload.owner === "string" ? payload.owner : null;
+        const repo  = typeof payload.repo  === "string" ? payload.repo  : null;
+        if (!owner || !repo) return fail("owner and repo required", "validation", start, eid, logs, operation);
+        const [repoRes, langsRes, commitsRes] = await Promise.all([
+          githubFetch(`/repos/${owner}/${repo}`, token),
+          githubFetch(`/repos/${owner}/${repo}/languages`, token),
+          githubFetch(`/repos/${owner}/${repo}/commits?per_page=1`, token),
+        ]);
+        if (!repoRes.ok) { this.internalMetrics.externalFailures++; return fail(`HTTP ${repoRes.status}`, "external", start, eid, logs, operation); }
+        const r = repoRes.data as any;
+        const langs = langsRes.ok ? langsRes.data as Record<string, number> : {};
+        const total = Object.values(langs).reduce((s: number, v) => s + (v as number), 0);
+        const langBreakdown = Object.entries(langs).map(([l, b]) => ({ lang: l, pct: total > 0 ? parseFloat((b / total * 100).toFixed(1)) : 0 })).sort((a, b) => b.pct - a.pct);
+        return ok({
+          name: r.full_name, description: r.description, stars: r.stargazers_count,
+          forks: r.forks_count, openIssues: r.open_issues_count,
+          size_kb: r.size, defaultBranch: r.default_branch,
+          createdAt: r.created_at, updatedAt: r.updated_at, pushedAt: r.pushed_at,
+          topics: r.topics ?? [], languages: langBreakdown,
+        }, start, eid, logs, operation);
+      }
+
+      case "repository.dependencies": {
+        const owner = typeof payload.owner === "string" ? payload.owner : null;
+        const repo  = typeof payload.repo  === "string" ? payload.repo  : null;
+        if (!owner || !repo) return fail("owner and repo required", "validation", start, eid, logs, operation);
+        // Read package.json for dependencies
+        const res = await githubFetch(`/repos/${owner}/${repo}/contents/package.json`, token);
+        if (!res.ok) return ok({ found: false, note: "No package.json found" }, start, eid, logs, operation);
+        const f = res.data as any;
+        let pkg: any = {};
+        try {
+          const raw = f.encoding === "base64" ? atob(f.content.replace(/\n/g, "")) : f.content;
+          pkg = JSON.parse(raw);
+        } catch { return ok({ found: false, note: "Could not parse package.json" }, start, eid, logs, operation); }
+        const deps = Object.keys(pkg.dependencies ?? {});
+        const devDeps = Object.keys(pkg.devDependencies ?? {});
+        return ok({
+          found: true, name: pkg.name, version: pkg.version,
+          dependencies: deps, devDependencies: devDeps,
+          totalDeps: deps.length + devDeps.length,
+        }, start, eid, logs, operation);
+      }
+
+      case "repository.entrypoints": {
+        const owner = typeof payload.owner === "string" ? payload.owner : null;
+        const repo  = typeof payload.repo  === "string" ? payload.repo  : null;
+        if (!owner || !repo) return fail("owner and repo required", "validation", start, eid, logs, operation);
+        const candidates = ["src/main.jsx","src/main.tsx","src/index.jsx","src/index.tsx","src/App.jsx","src/App.tsx","index.js","index.ts"];
+        const results: Array<{ path: string; found: boolean }> = [];
+        for (const path of candidates) {
+          const r = await githubFetch(`/repos/${owner}/${repo}/contents/${path}`, token);
+          results.push({ path, found: r.ok });
+        }
+        return ok({ entrypoints: results.filter(r => r.found).map(r => r.path), checked: candidates }, start, eid, logs, operation);
+      }
+
+      case "repository.languages": {
+        // Alias for repos.languages
+        const owner = typeof payload.owner === "string" ? payload.owner : null;
+        const repo  = typeof payload.repo  === "string" ? payload.repo  : null;
+        if (!owner || !repo) return fail("owner and repo required", "validation", start, eid, logs, operation);
+        const res = await githubFetch(`/repos/${owner}/${repo}/languages`, token);
+        if (!res.ok) { this.internalMetrics.externalFailures++; return fail(`HTTP ${res.status}`, "external", start, eid, logs, operation); }
+        const langs = res.data as Record<string, number>;
+        const total = Object.values(langs).reduce((s, v) => s + v, 0);
+        const breakdown = Object.entries(langs).map(([lang, bytes]) => ({ lang, bytes, pct: total > 0 ? parseFloat((bytes / total * 100).toFixed(1)) : 0 })).sort((a, b) => b.bytes - a.bytes);
+        return ok({ languages: breakdown, primaryLanguage: breakdown[0]?.lang ?? null }, start, eid, logs, operation);
+      }
+
+      // ── File Intelligence ─────────────────────────────────────────────────
+
+      case "file.summary":
+      case "file.explanation":
+      case "file.responsibilities":
+      case "file.dependencies":
+      case "file.exports":
+      case "file.imports":
+      case "file.relationships": {
+        const owner = typeof payload.owner === "string" ? payload.owner : null;
+        const repo  = typeof payload.repo  === "string" ? payload.repo  : null;
+        const path  = typeof payload.path  === "string" ? payload.path  : null;
+        if (!owner || !repo || !path) return fail("owner, repo and path required", "validation", start, eid, logs, operation);
+        const res = await githubFetch(`/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`, token);
+        if (res.status === 404) return fail(`File "${path}" not found`, "external", start, eid, logs, operation);
+        if (!res.ok) { this.internalMetrics.externalFailures++; return fail(`HTTP ${res.status}`, "external", start, eid, logs, operation); }
+        const f = res.data as any;
+        let content: string = "";
+        try { content = f.encoding === "base64" ? atob(f.content.replace(/\n/g, "")) : (f.content ?? ""); } catch { content = ""; }
+        const lines = content.split("\n");
+        // Static analysis
+        const imports  = lines.filter(l => l.trimStart().startsWith("import ")).slice(0, 30);
+        const exports  = lines.filter(l => l.includes("export ")).slice(0, 20);
+        const classes  = lines.filter(l => l.match(/^(export\s+)?(abstract\s+)?class\s+/)).map(l => l.trim().replace(/\{.*/, "").trim()).slice(0, 10);
+        const funcs    = lines.filter(l => l.match(/^(export\s+)?(async\s+)?function\s+/)).map(l => l.trim().replace(/\(.*/, "").trim()).slice(0, 15);
+        const ifaces   = lines.filter(l => l.match(/^(export\s+)?interface\s+/)).map(l => l.trim().replace(/\{.*/, "").trim()).slice(0, 10);
+        const types    = lines.filter(l => l.match(/^(export\s+)?type\s+/)).map(l => l.trim().replace(/=.*/, "").trim()).slice(0, 10);
+        return ok({
+          path, size: f.size, lineCount: lines.length, operation,
+          imports: imports.map(l => l.trim()),
+          exports: exports.map(l => l.trim()),
+          classes, functions: funcs, interfaces: ifaces, types,
+          preview: lines.slice(0, 40).join("\n"),
+          sha: f.sha,
+        }, start, eid, logs, operation);
+      }
+
+      // ── Commit Intelligence ───────────────────────────────────────────────
+
+      case "commit.details": {
+        // Alias for commits.get with richer diff
+        const owner = typeof payload.owner === "string" ? payload.owner : null;
+        const repo  = typeof payload.repo  === "string" ? payload.repo  : null;
+        const sha   = typeof payload.sha   === "string" ? payload.sha   : null;
+        if (!owner || !repo || !sha) return fail("owner, repo and sha required", "validation", start, eid, logs, operation);
+        const res = await githubFetch(`/repos/${owner}/${repo}/commits/${sha}`, token);
+        if (!res.ok) { this.internalMetrics.externalFailures++; return fail(`HTTP ${res.status}`, "external", start, eid, logs, operation); }
+        const c = res.data as any;
+        const files = (c.files ?? []).map((f: any) => ({ filename: f.filename, status: f.status, additions: f.additions, deletions: f.deletions, changes: f.changes, patch: (f.patch ?? "").slice(0, 500) }));
+        return ok({
+          sha: c.sha, shortSha: c.sha?.slice(0, 7),
+          message: c.commit?.message ?? "",
+          author: c.commit?.author?.name, authorLogin: c.author?.login,
+          date: c.commit?.author?.date,
+          stats: c.stats, changedFiles: files, totalFiles: files.length,
+        }, start, eid, logs, operation);
+      }
+
+      case "commit.diff":
+      case "diff.commit": {
+        const owner = typeof payload.owner === "string" ? payload.owner : null;
+        const repo  = typeof payload.repo  === "string" ? payload.repo  : null;
+        const sha   = typeof payload.sha   === "string" ? payload.sha   : null;
+        if (!owner || !repo || !sha) return fail("owner, repo and sha required", "validation", start, eid, logs, operation);
+        const res = await githubFetch(`/repos/${owner}/${repo}/commits/${sha}`, token);
+        if (!res.ok) { this.internalMetrics.externalFailures++; return fail(`HTTP ${res.status}`, "external", start, eid, logs, operation); }
+        const c = res.data as any;
+        const files = (c.files ?? []).map((f: any) => ({
+          filename: f.filename, status: f.status,
+          additions: f.additions, deletions: f.deletions, changes: f.changes,
+          patch: (f.patch ?? "").slice(0, 1000),
+        }));
+        return ok({
+          sha: c.sha?.slice(0, 7), message: c.commit?.message?.split("\n")[0],
+          stats: c.stats, files,
+          summary: `+${c.stats?.additions ?? 0} -${c.stats?.deletions ?? 0} across ${files.length} file(s)`,
+        }, start, eid, logs, operation);
+      }
+
+      case "diff.branch": {
+        const owner  = typeof payload.owner  === "string" ? payload.owner  : null;
+        const repo   = typeof payload.repo   === "string" ? payload.repo   : null;
+        const base   = typeof payload.base   === "string" ? payload.base   : "main";
+        const head   = typeof payload.head   === "string" ? payload.head   : null;
+        if (!owner || !repo || !head) return fail("owner, repo and head required", "validation", start, eid, logs, operation);
+        const res = await githubFetch(`/repos/${owner}/${repo}/compare/${base}...${head}`, token);
+        if (!res.ok) { this.internalMetrics.externalFailures++; return fail(`HTTP ${res.status}`, "external", start, eid, logs, operation); }
+        const d = res.data as any;
+        return ok({
+          base, head, status: d.status,
+          aheadBy: d.ahead_by, behindBy: d.behind_by,
+          totalCommits: d.total_commits,
+          files: (d.files ?? []).slice(0, 20).map((f: any) => ({ filename: f.filename, status: f.status, additions: f.additions, deletions: f.deletions })),
+          summary: `${head} is ${d.ahead_by} ahead, ${d.behind_by} behind ${base}`,
+        }, start, eid, logs, operation);
+      }
+
+      case "commit.timeline": {
+        const owner   = typeof payload.owner   === "string" ? payload.owner   : null;
+        const repo    = typeof payload.repo    === "string" ? payload.repo    : null;
+        const perPage = typeof payload.per_page === "number" ? payload.per_page : 30;
+        if (!owner || !repo) return fail("owner and repo required", "validation", start, eid, logs, operation);
+        const res = await githubFetch(`/repos/${owner}/${repo}/commits?per_page=${perPage}`, token);
+        if (!res.ok) { this.internalMetrics.externalFailures++; return fail(`HTTP ${res.status}`, "external", start, eid, logs, operation); }
+        const commits = Array.isArray(res.data) ? res.data as any[] : [];
+        // Group by date
+        const byDate: Record<string, string[]> = {};
+        commits.forEach(c => {
+          const d = c.commit?.author?.date?.slice(0, 10) ?? "unknown";
+          if (!byDate[d]) byDate[d] = [];
+          byDate[d].push(c.commit?.message?.split("\n")[0] ?? "");
+        });
+        return ok({
+          totalCommits: commits.length,
+          timeline: Object.entries(byDate).map(([date, msgs]) => ({ date, commitCount: msgs.length, messages: msgs.slice(0, 3) })).sort((a, b) => b.date.localeCompare(a.date)),
+        }, start, eid, logs, operation);
+      }
+
+      // ── File History ──────────────────────────────────────────────────────
+
+      case "history.file": {
+        const owner = typeof payload.owner === "string" ? payload.owner : null;
+        const repo  = typeof payload.repo  === "string" ? payload.repo  : null;
+        const path  = typeof payload.path  === "string" ? payload.path  : null;
+        if (!owner || !repo || !path) return fail("owner, repo and path required", "validation", start, eid, logs, operation);
+        const res = await githubFetch(`/repos/${owner}/${repo}/commits?path=${encodeURIComponent(path)}&per_page=20`, token);
+        if (!res.ok) { this.internalMetrics.externalFailures++; return fail(`HTTP ${res.status}`, "external", start, eid, logs, operation); }
+        const commits = Array.isArray(res.data) ? res.data as any[] : [];
+        return ok({
+          path, commitCount: commits.length,
+          history: commits.map(c => ({
+            sha: c.sha?.slice(0, 7),
+            message: c.commit?.message?.split("\n")[0] ?? "",
+            author: c.commit?.author?.name ?? c.author?.login ?? "unknown",
+            date: c.commit?.author?.date ?? null,
+          })),
+          firstSeen: commits.length > 0 ? commits[commits.length - 1]?.commit?.author?.date : null,
+          lastModified: commits.length > 0 ? commits[0]?.commit?.author?.date : null,
+        }, start, eid, logs, operation);
+      }
+
+      // ── Pull Requests ─────────────────────────────────────────────────────
+
+      case "pullRequests.list": {
+        const owner  = typeof payload.owner  === "string" ? payload.owner  : null;
+        const repo   = typeof payload.repo   === "string" ? payload.repo   : null;
+        const state  = typeof payload.state  === "string" ? payload.state  : "open";
+        if (!owner || !repo) return fail("owner and repo required", "validation", start, eid, logs, operation);
+        const res = await githubFetch(`/repos/${owner}/${repo}/pulls?state=${state}&per_page=20`, token);
+        if (!res.ok) { this.internalMetrics.externalFailures++; return fail(`HTTP ${res.status}`, "external", start, eid, logs, operation); }
+        const prs = Array.isArray(res.data) ? res.data as any[] : [];
+        return ok({
+          count: prs.length, state,
+          items: prs.map(p => ({
+            number: p.number, title: p.title, state: p.state,
+            author: p.user?.login, createdAt: p.created_at, updatedAt: p.updated_at,
+            head: p.head?.ref, base: p.base?.ref,
+            draft: p.draft ?? false,
+          })),
+        }, start, eid, logs, operation);
+      }
+
+      case "pullRequest.details": {
+        const owner  = typeof payload.owner  === "string" ? payload.owner  : null;
+        const repo   = typeof payload.repo   === "string" ? payload.repo   : null;
+        const number = typeof payload.number === "number" ? payload.number : null;
+        if (!owner || !repo || !number) return fail("owner, repo and number required", "validation", start, eid, logs, operation);
+        const res = await githubFetch(`/repos/${owner}/${repo}/pulls/${number}`, token);
+        if (!res.ok) { this.internalMetrics.externalFailures++; return fail(`HTTP ${res.status}`, "external", start, eid, logs, operation); }
+        const p = res.data as any;
+        return ok({
+          number: p.number, title: p.title, body: (p.body ?? "").slice(0, 500),
+          state: p.state, author: p.user?.login,
+          head: p.head?.ref, base: p.base?.ref,
+          additions: p.additions, deletions: p.deletions, changedFiles: p.changed_files,
+          mergeable: p.mergeable, draft: p.draft,
+          createdAt: p.created_at, updatedAt: p.updated_at, mergedAt: p.merged_at,
+        }, start, eid, logs, operation);
+      }
+
+      // ── Issues ────────────────────────────────────────────────────────────
+
+      case "issues.list": {
+        const owner   = typeof payload.owner  === "string" ? payload.owner  : null;
+        const repo    = typeof payload.repo   === "string" ? payload.repo   : null;
+        const state   = typeof payload.state  === "string" ? payload.state  : "open";
+        const labels  = typeof payload.labels === "string" ? payload.labels : "";
+        if (!owner || !repo) return fail("owner and repo required", "validation", start, eid, logs, operation);
+        const labelParam = labels ? `&labels=${encodeURIComponent(labels)}` : "";
+        const res = await githubFetch(`/repos/${owner}/${repo}/issues?state=${state}&per_page=20${labelParam}`, token);
+        if (!res.ok) { this.internalMetrics.externalFailures++; return fail(`HTTP ${res.status}`, "external", start, eid, logs, operation); }
+        const issues = (Array.isArray(res.data) ? res.data as any[] : []).filter(i => !i.pull_request);
+        return ok({
+          count: issues.length, state,
+          items: issues.map(i => ({
+            number: i.number, title: i.title, state: i.state,
+            author: i.user?.login, createdAt: i.created_at,
+            labels: (i.labels ?? []).map((l: any) => l.name),
+            comments: i.comments,
+          })),
+        }, start, eid, logs, operation);
+      }
+
+      case "issue.search": {
+        const owner = typeof payload.owner === "string" ? payload.owner : null;
+        const repo  = typeof payload.repo  === "string" ? payload.repo  : null;
+        const query = typeof payload.query === "string" ? payload.query : null;
+        if (!owner || !repo || !query) return fail("owner, repo and query required", "validation", start, eid, logs, operation);
+        const q = encodeURIComponent(`${query} repo:${owner}/${repo} is:issue`);
+        const res = await githubFetch(`/search/issues?q=${q}&per_page=15`, token);
+        if (!res.ok) { this.internalMetrics.externalFailures++; return fail(`HTTP ${res.status}`, "external", start, eid, logs, operation); }
+        const d = res.data as any;
+        return ok({
+          query, totalCount: d.total_count,
+          items: (d.items ?? []).slice(0, 15).map((i: any) => ({
+            number: i.number, title: i.title, state: i.state,
+            author: i.user?.login, createdAt: i.created_at,
+            labels: (i.labels ?? []).map((l: any) => l.name),
+          })),
+        }, start, eid, logs, operation);
       }
 
       // ── Full health ────────────────────────────────────────────────────────

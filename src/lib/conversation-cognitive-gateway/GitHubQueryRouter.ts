@@ -1,6 +1,6 @@
 /**
  * GitHubQueryRouter.ts — Connector-Aware Query Routing
- * Phase 5.7.1 · MemoryOS Core · 2026-07-14
+ * Phase 5.8.0 · MemoryOS Core · 2026-07-14
  *
  * Detects when a user question targets GitHub resources and maps it to the
  * exact GitHubConnector capability + payload needed to answer it.
@@ -20,15 +20,74 @@ export type GitHubCapability =
   | "repos.get"
   | "repos.stats"
   | "repos.languages"
-  | "auth.user";
+  | "auth.user"
+  // Phase 5.8.0 — Search
+  | "search.file"
+  | "search.symbol"
+  | "search.class"
+  | "search.function"
+  | "search.interface"
+  | "search.text"
+  | "search.import"
+  | "search.reference"
+  // Phase 5.8.0 — Repository Map
+  | "repository.tree"
+  | "repository.modules"
+  | "repository.statistics"
+  | "repository.dependencies"
+  | "repository.entrypoints"
+  | "repository.languages"
+  // Phase 5.8.0 — File Intelligence
+  | "file.summary"
+  | "file.explanation"
+  | "file.responsibilities"
+  | "file.dependencies"
+  | "file.imports"
+  | "file.exports"
+  // Phase 5.8.0 — Commit Intelligence
+  | "commit.details"
+  | "commit.timeline"
+  | "diff.commit"
+  | "diff.branch"
+  // Phase 5.8.0 — File History
+  | "history.file"
+  // Phase 5.8.0 — Pull Requests & Issues
+  | "pullRequests.list"
+  | "issues.list"
+  | "issue.search";
 
 export interface GitHubRouteDecision {
-  isGitHubQuery: boolean;
-  capability:    GitHubCapability | null;
-  payload:       Record<string, unknown>;
-  confidence:    number;
+  isGitHubQuery:   boolean;
+  capability:      GitHubCapability | null;
+  payload:         Record<string, unknown>;
+  confidence:      number;
   matchedKeywords: string[];
-  reasoning:     string;
+  reasoning:       string;
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function extractRepoOwner(msg: string): { owner?: string; repo?: string } {
+  const match = msg.match(/([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)/);
+  if (match) return { owner: match[1], repo: match[2] };
+  return {};
+}
+
+function extractFilePath(msg: string): string | undefined {
+  // Matches patterns like "src/lib/something.ts" or "ConnectionManager.ts"
+  const longMatch = msg.match(/(?:in |at |file |from )?([a-zA-Z0-9_/-]+\.[a-zA-Z]{1,6})/i);
+  if (longMatch) return longMatch[1];
+  // Match CamelCase names as file hints
+  const camelMatch = msg.match(/([A-Z][a-zA-Z0-9]+(?:[A-Z][a-zA-Z0-9]+)+)/);
+  if (camelMatch) return camelMatch[1];
+  return undefined;
+}
+
+function extractSymbol(msg: string): string | undefined {
+  // Extract the main subject: CamelCase class/function/interface name
+  const match = msg.match(/(?:class|function|interface|type|component|module|service|engine|connector|router|gateway|manager|handler|provider|factory|builder)\s+([A-Z][a-zA-Z0-9]+)/i)
+    ?? msg.match(/([A-Z][a-zA-Z0-9]+(?:Engine|Manager|Service|Router|Gateway|Connector|Handler|Provider|Factory|Builder|Queue|Registry|Orchestrator|Pipeline|Composer|Executor|Dispatcher|Monitor))/);
+  return match?.[1];
 }
 
 // ── Keyword patterns per capability ──────────────────────────────────────────
@@ -40,12 +99,275 @@ interface Pattern {
 }
 
 const PATTERNS: Pattern[] = [
+
+  // ── Search (highest priority for "where is / find / search") ──────────────
+  {
+    capability: "search.symbol",
+    keywords: [
+      "where is", "find class", "find function", "find interface", "find type",
+      "onde está", "onde fica", "search for", "locate", "implemented in",
+      "where is it defined", "where is it implemented", "find the class",
+      "find the function", "look for class", "search class",
+    ],
+    extractPayload: (msg) => {
+      const sym = extractSymbol(msg);
+      const { owner, repo } = extractRepoOwner(msg);
+      return { query: sym ?? msg, ...(owner && { owner }), ...(repo && { repo }) };
+    },
+  },
+  {
+    capability: "search.file",
+    keywords: [
+      "search file", "find file", "where is file", "locate file",
+      "procurar arquivo", "encontrar arquivo", "which file",
+    ],
+    extractPayload: (msg) => {
+      const p = extractFilePath(msg);
+      const { owner, repo } = extractRepoOwner(msg);
+      return { query: p ?? msg, ...(owner && { owner }), ...(repo && { repo }) };
+    },
+  },
+  {
+    capability: "search.text",
+    keywords: [
+      "search code", "search in code", "search for text", "grep", "find text",
+      "where is used", "where is it used", "who uses", "find usage",
+      "onde e usado", "quem usa",
+    ],
+    extractPayload: (msg) => {
+      const { owner, repo } = extractRepoOwner(msg);
+      return { query: msg, ...(owner && { owner }), ...(repo && { repo }) };
+    },
+  },
+  {
+    capability: "search.reference",
+    keywords: [
+      "who calls", "called by", "cross reference", "references", "who imports",
+      "quem chama", "who depends on", "what uses",
+    ],
+    extractPayload: (msg) => {
+      const sym = extractSymbol(msg);
+      const { owner, repo } = extractRepoOwner(msg);
+      return { query: sym ?? msg, ...(owner && { owner }), ...(repo && { repo }) };
+    },
+  },
+  {
+    capability: "search.import",
+    keywords: [
+      "who imports", "imports from", "what imports", "import reference",
+      "quem importa",
+    ],
+    extractPayload: (msg) => {
+      const sym = extractSymbol(msg);
+      const { owner, repo } = extractRepoOwner(msg);
+      return { query: sym ?? msg, ...(owner && { owner }), ...(repo && { repo }) };
+    },
+  },
+
+  // ── File Intelligence ──────────────────────────────────────────────────────
+  {
+    capability: "file.explanation",
+    keywords: [
+      "explain file", "explain this file", "what does this file do",
+      "explain the file", "explain module", "what does this module do",
+      "explicar arquivo", "o que faz esse arquivo",
+    ],
+    extractPayload: (msg) => {
+      const p = extractFilePath(msg);
+      const { owner, repo } = extractRepoOwner(msg);
+      return { path: p ?? "", ...(owner && { owner }), ...(repo && { repo }) };
+    },
+  },
+  {
+    capability: "file.responsibilities",
+    keywords: [
+      "responsibilities of", "what is responsible for", "what is the role of",
+      "purpose of", "why does", "what is the purpose",
+      "qual a responsabilidade", "para que serve",
+    ],
+    extractPayload: (msg) => {
+      const p = extractFilePath(msg);
+      const { owner, repo } = extractRepoOwner(msg);
+      return { path: p ?? "", ...(owner && { owner }), ...(repo && { repo }) };
+    },
+  },
+  {
+    capability: "file.dependencies",
+    keywords: [
+      "dependencies of file", "what does this file import", "file imports",
+      "what does the file depend on", "dependencias do arquivo",
+    ],
+    extractPayload: (msg) => {
+      const p = extractFilePath(msg);
+      const { owner, repo } = extractRepoOwner(msg);
+      return { path: p ?? "", ...(owner && { owner }), ...(repo && { repo }) };
+    },
+  },
+  {
+    capability: "file.summary",
+    keywords: [
+      "summarize file", "file summary", "brief description of file",
+      "resumo do arquivo", "describe file",
+    ],
+    extractPayload: (msg) => {
+      const p = extractFilePath(msg);
+      const { owner, repo } = extractRepoOwner(msg);
+      return { path: p ?? "", ...(owner && { owner }), ...(repo && { repo }) };
+    },
+  },
+
+  // ── Repository Map ────────────────────────────────────────────────────────
+  {
+    capability: "repository.tree",
+    keywords: [
+      "repository tree", "repo tree", "file tree", "project structure",
+      "directory structure", "estrutura do projeto", "estrutura de pastas",
+      "folder structure", "show structure",
+    ],
+    extractPayload: (msg) => extractRepoOwner(msg),
+  },
+  {
+    capability: "repository.modules",
+    keywords: [
+      "modules", "project modules", "module structure", "source modules",
+      "modulos", "modulos do projeto",
+    ],
+    extractPayload: (msg) => extractRepoOwner(msg),
+  },
+  {
+    capability: "repository.dependencies",
+    keywords: [
+      "project dependencies", "npm dependencies", "package dependencies",
+      "what packages", "package.json", "dependencias do projeto",
+    ],
+    extractPayload: (msg) => extractRepoOwner(msg),
+  },
+  {
+    capability: "repository.statistics",
+    keywords: [
+      "repository statistics", "repo statistics", "repo info", "repository info",
+      "estatisticas do repositorio", "project stats",
+    ],
+    extractPayload: (msg) => extractRepoOwner(msg),
+  },
+  {
+    capability: "repository.entrypoints",
+    keywords: [
+      "entrypoints", "entry points", "main file", "app entry",
+      "pontos de entrada", "arquivo principal",
+    ],
+    extractPayload: (msg) => extractRepoOwner(msg),
+  },
+
+  // ── Commit Intelligence ───────────────────────────────────────────────────
+  {
+    capability: "commit.timeline",
+    keywords: [
+      "commit timeline", "what changed last sprint", "recent changes",
+      "last sprint changes", "sprint changes", "what was done",
+      "o que mudou", "o que foi feito", "commit history timeline",
+    ],
+    extractPayload: (msg) => {
+      const { owner, repo } = extractRepoOwner(msg);
+      return { per_page: 30, ...(owner && { owner }), ...(repo && { repo }) };
+    },
+  },
+  {
+    capability: "commit.details",
+    keywords: [
+      "commit details", "show commit", "what is in commit", "commit info",
+      "detalhes do commit",
+    ],
+    extractPayload: (msg) => {
+      const shaMatch = msg.match(/\b([0-9a-f]{7,40})\b/i);
+      const { owner, repo } = extractRepoOwner(msg);
+      return { sha: shaMatch?.[1] ?? "", ...(owner && { owner }), ...(repo && { repo }) };
+    },
+  },
+  {
+    capability: "diff.branch",
+    keywords: [
+      "diff branch", "compare branch", "branch diff", "what differs",
+      "differences between branches", "branch comparison",
+      "diferenca entre branches",
+    ],
+    extractPayload: (msg) => {
+      const { owner, repo } = extractRepoOwner(msg);
+      return { base: "main", ...(owner && { owner }), ...(repo && { repo }) };
+    },
+  },
+  {
+    capability: "diff.commit",
+    keywords: [
+      "diff commit", "commit diff", "what changed in commit", "show diff",
+      "o que mudou no commit",
+    ],
+    extractPayload: (msg) => {
+      const shaMatch = msg.match(/\b([0-9a-f]{7,40})\b/i);
+      const { owner, repo } = extractRepoOwner(msg);
+      return { sha: shaMatch?.[1] ?? "", ...(owner && { owner }), ...(repo && { repo }) };
+    },
+  },
+
+  // ── File History ──────────────────────────────────────────────────────────
+  {
+    capability: "history.file",
+    keywords: [
+      "history of file", "file history", "when was created", "how has evolved",
+      "file changes", "when was modified", "who modified",
+      "historico do arquivo", "quando foi criado", "como evoluiu",
+    ],
+    extractPayload: (msg) => {
+      const p = extractFilePath(msg);
+      const { owner, repo } = extractRepoOwner(msg);
+      return { path: p ?? "", ...(owner && { owner }), ...(repo && { repo }) };
+    },
+  },
+
+  // ── Pull Requests & Issues ────────────────────────────────────────────────
+  {
+    capability: "pullRequests.list",
+    keywords: [
+      "pull request", "pull requests", "pr list", "open prs", "prs",
+      "merge request", "list prs",
+    ],
+    extractPayload: (msg) => {
+      const { owner, repo } = extractRepoOwner(msg);
+      const state = msg.includes("closed") ? "closed" : msg.includes("merged") ? "closed" : "open";
+      return { state, ...(owner && { owner }), ...(repo && { repo }) };
+    },
+  },
+  {
+    capability: "issues.list",
+    keywords: [
+      "issues", "open issues", "list issues", "bug list", "todos",
+      "problemas", "abertos",
+    ],
+    extractPayload: (msg) => {
+      const { owner, repo } = extractRepoOwner(msg);
+      const state = msg.includes("closed") ? "closed" : "open";
+      return { state, ...(owner && { owner }), ...(repo && { repo }) };
+    },
+  },
+  {
+    capability: "issue.search",
+    keywords: [
+      "find issue", "search issue", "search bug", "find bug",
+      "find roadmap", "future roadmap",
+    ],
+    extractPayload: (msg) => {
+      const { owner, repo } = extractRepoOwner(msg);
+      return { query: msg, ...(owner && { owner }), ...(repo && { repo }) };
+    },
+  },
+
+  // ── Existing capabilities (kept) ──────────────────────────────────────────
   {
     capability: "repos.list",
     keywords: [
       "repositor", "repos", "list repos", "show repos", "my repos",
       "available repos", "what repos", "which repos", "quais repos",
-      "meus repositórios", "listar repositórios", "repositórios disponíveis",
+      "meus repositorios", "listar repositorios", "repositorios disponiveis",
     ],
   },
   {
@@ -54,54 +376,34 @@ const PATTERNS: Pattern[] = [
       "branch", "branches", "list branches", "show branches",
       "galhos", "listar branches",
     ],
-    extractPayload: (msg) => {
-      // Try to extract owner/repo from message e.g. "branches of owner/repo"
-      const match = msg.match(/([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)/);
-      if (match) return { owner: match[1], repo: match[2] };
-      return {};
-    },
+    extractPayload: (msg) => extractRepoOwner(msg),
   },
   {
     capability: "commits.list",
     keywords: [
       "commit", "commits", "list commits", "show commits", "recent commits",
-      "commit history", "últimos commits", "histórico de commits",
+      "commit history", "ultimos commits", "historico de commits",
     ],
-    extractPayload: (msg) => {
-      const match = msg.match(/([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)/);
-      if (match) return { owner: match[1], repo: match[2], per_page: 20 };
-      return { per_page: 20 };
-    },
+    extractPayload: (msg) => ({ ...extractRepoOwner(msg), per_page: 20 }),
   },
   {
     capability: "files.list",
     keywords: [
       "files", "file list", "list files", "show files", "directory", "tree",
-      "source files", "find file", "search file", "arquivos", "listar arquivos",
+      "source files", "arquivos", "listar arquivos",
     ],
-    extractPayload: (msg) => {
-      const match = msg.match(/([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)/);
-      if (match) return { owner: match[1], repo: match[2] };
-      return {};
-    },
+    extractPayload: (msg) => extractRepoOwner(msg),
   },
   {
     capability: "files.get",
     keywords: [
-      "explain file", "read file", "show file", "content of", "open file",
-      "source code", "código fonte", "conteúdo do arquivo", "explain this",
-      "search code", "look at",
+      "read file", "show file", "content of", "open file",
+      "source code", "codigo fonte", "conteudo do arquivo", "look at",
     ],
     extractPayload: (msg) => {
-      // Try to detect path patterns like "src/something.ts"
-      const pathMatch = msg.match(/([a-zA-Z0-9/_.-]+\.[a-zA-Z]{1,6})/);
-      const repoMatch = msg.match(/([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)/);
-      const result: Record<string, unknown> = {};
-      if (repoMatch) {
-        result.owner = repoMatch[1];
-        result.repo  = repoMatch[2];
-      }
-      if (pathMatch) result.path = pathMatch[1];
+      const result: Record<string, unknown> = extractRepoOwner(msg);
+      const p = extractFilePath(msg);
+      if (p) result.path = p;
       return result;
     },
   },
@@ -109,13 +411,9 @@ const PATTERNS: Pattern[] = [
     capability: "repos.stats",
     keywords: [
       "repo stats", "repository stats", "contributors", "contribution",
-      "estatísticas", "quem contribuiu",
+      "estatisticas", "quem contribuiu",
     ],
-    extractPayload: (msg) => {
-      const match = msg.match(/([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)/);
-      if (match) return { owner: match[1], repo: match[2] };
-      return {};
-    },
+    extractPayload: (msg) => extractRepoOwner(msg),
   },
   {
     capability: "repos.languages",
@@ -123,17 +421,13 @@ const PATTERNS: Pattern[] = [
       "language", "languages", "linguagem", "linguagens", "stack",
       "tech stack", "what language", "qual linguagem",
     ],
-    extractPayload: (msg) => {
-      const match = msg.match(/([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)/);
-      if (match) return { owner: match[1], repo: match[2] };
-      return {};
-    },
+    extractPayload: (msg) => extractRepoOwner(msg),
   },
   {
     capability: "auth.user",
     keywords: [
       "github user", "github account", "github profile", "who am i on github",
-      "minha conta github", "usuário github",
+      "minha conta github", "usuario github",
     ],
   },
 ];
@@ -155,7 +449,7 @@ export class GitHubQueryRouter {
         bestScore       = matched.length;
         bestCapability  = pattern.capability;
         matchedKeywords = matched;
-        reasoning       = `Matched: ${matched.join(", ")} → ${pattern.capability}`;
+        reasoning       = `Matched: ${matched.join(", ")} -> ${pattern.capability}`;
         bestPattern     = pattern;
       }
     }

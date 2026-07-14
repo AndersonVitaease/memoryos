@@ -1,6 +1,6 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Brain, FolderOpen, Search, LogOut, MessageSquare, Home as HomeIcon, Plug, ShieldCheck, Cpu, Network, Archive, BookOpen, Code, Activity, Layers, Database, ClipboardCheck, Shield, Waves, BookMarked, Terminal, Map, Zap, FlaskConical, Puzzle, Box, Route, Target, GitBranch, Users, GitMerge, Radio, Award, Blocks, Flag, Workflow } from "lucide-react";
+import { Brain, FolderOpen, Search, LogOut, MessageSquare, Home as HomeIcon, Plug, ShieldCheck, Cpu, Network, Archive, BookOpen, Code, Activity, Layers, Database, ClipboardCheck, Shield, Waves, BookMarked, Terminal, Map, Zap, FlaskConical, Puzzle, Box, Route, Target, GitBranch, Users, GitMerge, Radio, Award, Blocks, Flag, Workflow, FileCode } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 
 const navItems = [
@@ -95,6 +95,8 @@ const navItems = [
   { label: "Phase 5.6.2 — Module Resolution",      icon: Blocks,        path: "/phase562" },
   { label: "Phase 5.6.3 — Answer Composer",        icon: MessageSquare, path: "/phase563" },
   { label: "Phase 5.7.0 — Production Certification", icon: Award,       path: "/phase570" },
+  { label: "Phase 5.8.0 — GitHub Deep Analysis",    icon: FileCode,     path: "/phase58" },
+  { label: "EF-58.13 — Engineering Validation",     icon: ShieldCheck,  path: "/phase58-validation" },
 ];
 
 export default function Sidebar({ onNavigate }) {
