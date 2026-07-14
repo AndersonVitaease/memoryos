@@ -111,6 +111,7 @@ const navItems = [
   { label: "Phase 6.2.2 — Engineering Governance",         icon: ShieldCheck, path: "/phase622" },
   { label: "Phase 6.2.3 — Architecture Authority",         icon: ShieldCheck, path: "/phase623" },
   { label: "Phase 6.2.4 — Engineering Memory",             icon: Brain,       path: "/phase624" },
+  { label: "Phase 6.3.0 — Universal Connector Platform",   icon: Plug,        path: "/phase630" },
 ];
 
 export default function Sidebar({ onNavigate }) {

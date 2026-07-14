@@ -17,11 +17,21 @@
 
 import { KnowledgeGraphStore } from "../project-knowledge/KnowledgeGraphStore";
 import { EngineeringMemory }   from "../engineering-memory/EngineeringMemory";
+import { ConnectorRuntime }    from "../universal-connector-platform/ConnectorRuntime";
+import { ConnectorRegistry }   from "../universal-connector-platform/ConnectorRegistry";
+import { ConnectorFactory }    from "../universal-connector-platform/ConnectorFactory";
+import { ConnectorLifecycle }  from "../universal-connector-platform/ConnectorLifecycle";
+import { ConnectorAudit }      from "../universal-connector-platform/ConnectorAudit";
+import { ConnectorMetrics }    from "../universal-connector-platform/ConnectorMetrics";
+import { ConnectorHealth }     from "../universal-connector-platform/ConnectorHealth";
+import { ConnectorDiagnostics }from "../universal-connector-platform/ConnectorDiagnostics";
+import { validateCompatibility }from "../universal-connector-platform/ConnectorCompatibility";
+import { makeCapabilities, validateCapabilities } from "../universal-connector-platform/ConnectorCapabilities";
 
 // ── Result types ──────────────────────────────────────────────────────────────
 
 export type RegressionCategory =
-  | "KG" | "PIPELINE" | "ROUTING" | "CONNECTOR" | "GRAPH" | "WORKFLOW" | "BASELINE" | "MEMORY";
+  | "KG" | "PIPELINE" | "ROUTING" | "CONNECTOR" | "GRAPH" | "WORKFLOW" | "BASELINE" | "MEMORY" | "UCP";
 
 export interface RegressionTest {
   id:       string;
@@ -738,6 +748,146 @@ export class EngineeringRegressionSuite {
             passed: ok, detail: `audit entries before=${before} after=${after}`, durationMs: Date.now() - t0 };
         },
       },
+      // ── UCP Tests ──────────────────────────────────────────────────────────────
+
+      {
+        id: "ucp_r01", name: "Connector Runtime initializes", category: "UCP",
+        run: () => {
+          const t0 = Date.now();
+          const rt = new ConnectorRuntime();
+          rt.start();
+          const ok = rt.isRunning();
+          rt.stop();
+          return { testId: "ucp_r01", testName: "Connector Runtime initializes", category: "UCP",
+            passed: ok, detail: ok ? "Runtime started and stopped successfully" : "Runtime did not start",
+            durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "ucp_r02", name: "Connector Registry works", category: "UCP",
+        run: () => {
+          const t0 = Date.now();
+          const registry = new ConnectorRegistry();
+          const factory  = new ConnectorFactory();
+          const d = factory.create({ provider: "RegTest", displayName: "Reg", version: "1.0.0", capabilities: ["READ"] });
+          registry.register(d);
+          const ok = registry.has(d.id) && registry.count() === 1;
+          return { testId: "ucp_r02", testName: "Connector Registry works", category: "UCP",
+            passed: ok, detail: ok ? "Register + has + count consistent" : "Registry inconsistent",
+            durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "ucp_r03", name: "Factory creates connectors", category: "UCP",
+        run: () => {
+          const t0 = Date.now();
+          const factory = new ConnectorFactory();
+          const d = factory.create({ provider: "FacTest", displayName: "Fac", version: "2.0.0", capabilities: ["READ", "WRITE"] });
+          const ok = !!d.id && d.lifecycle === "REGISTERED" && d.version.major === 2;
+          return { testId: "ucp_r03", testName: "Factory creates connectors", category: "UCP",
+            passed: ok, detail: ok ? "Descriptor fields valid" : `lifecycle=${d.lifecycle} major=${d.version.major}`,
+            durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "ucp_r04", name: "Capabilities validated", category: "UCP",
+        run: () => {
+          const t0 = Date.now();
+          const caps = makeCapabilities(["READ", "WRITE"]);
+          const valid = validateCapabilities(caps);
+          const empty = validateCapabilities(makeCapabilities([]));
+          const ok = valid.valid && !empty.valid;
+          return { testId: "ucp_r04", testName: "Capabilities validated", category: "UCP",
+            passed: ok, detail: ok ? "Valid caps pass, empty caps rejected" : `valid=${valid.valid} emptyValid=${empty.valid}`,
+            durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "ucp_r05", name: "Lifecycle transitions", category: "UCP",
+        run: () => {
+          const t0 = Date.now();
+          const lc = new ConnectorLifecycle();
+          lc.init("lc_test");
+          lc.transition("lc_test", "CONFIGURED");
+          lc.transition("lc_test", "READY");
+          const ok = lc.get("lc_test") === "READY";
+          return { testId: "ucp_r05", testName: "Lifecycle transitions", category: "UCP",
+            passed: ok, detail: ok ? "REGISTERED → CONFIGURED → READY" : `got ${lc.get("lc_test")}`,
+            durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "ucp_r06", name: "Diagnostics execute", category: "UCP",
+        run: () => {
+          const t0 = Date.now();
+          const factory = new ConnectorFactory();
+          const diag    = new ConnectorDiagnostics();
+          const d = factory.create({ provider: "DiagR", displayName: "Diag", version: "1.0.0", capabilities: ["READ"] });
+          const result  = diag.run({ ...d, lifecycle: "CONFIGURED" });
+          const ok = typeof result.overall === "boolean" && result.details.length > 0;
+          return { testId: "ucp_r06", testName: "Diagnostics execute", category: "UCP",
+            passed: ok, detail: ok ? `overall=${result.overall} details=${result.details.length}` : "Diagnostics failed unexpectedly",
+            durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "ucp_r07", name: "Health updates", category: "UCP",
+        run: () => {
+          const t0 = Date.now();
+          const health = new ConnectorHealth();
+          health.mark("h_test", "HEALTHY", "ok");
+          const snap = health.get("h_test");
+          const ok = snap.state === "HEALTHY";
+          return { testId: "ucp_r07", testName: "Health updates", category: "UCP",
+            passed: ok, detail: ok ? "Health state set to HEALTHY" : `got ${snap.state}`,
+            durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "ucp_r08", name: "Metrics collected", category: "UCP",
+        run: () => {
+          const t0 = Date.now();
+          const metrics = new ConnectorMetrics();
+          metrics.recordCall("m_test", 100, true);
+          metrics.recordCall("m_test", 200, false);
+          const snap = metrics.snapshot("m_test");
+          const ok = snap.totalCalls === 2 && snap.totalErrors === 1 && snap.avgLatencyMs === 150;
+          return { testId: "ucp_r08", testName: "Metrics collected", category: "UCP",
+            passed: ok, detail: ok ? "calls=2 errors=1 avg=150ms" : `calls=${snap.totalCalls} errors=${snap.totalErrors} avg=${snap.avgLatencyMs}`,
+            durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "ucp_r09", name: "Audit immutable (append-only)", category: "UCP",
+        run: () => {
+          const t0 = Date.now();
+          const audit = new ConnectorAudit();
+          audit.install("a_test", "installed");
+          const before = audit.count();
+          audit.configure("a_test", "configured");
+          const after = audit.count();
+          const ok = after === before + 1;
+          return { testId: "ucp_r09", testName: "Audit immutable (append-only)", category: "UCP",
+            passed: ok, detail: ok ? `before=${before} after=${after}` : "Audit count did not grow",
+            durationMs: Date.now() - t0 };
+        },
+      },
+      {
+        id: "ucp_r10", name: "Compatibility preserved", category: "UCP",
+        run: () => {
+          const t0 = Date.now();
+          const result = validateCompatibility({
+            runtimeVersion: "6.3.0", workflowVersion: "6.1.0",
+            governanceVersion: "6.2.2", architectureVersion: "6.2.3",
+            engineeringMemoryVersion: "6.2.4",
+          });
+          const ok = result.valid && result.violations.length === 0;
+          return { testId: "ucp_r10", testName: "Compatibility preserved", category: "UCP",
+            passed: ok, detail: ok ? "All layer versions compatible" : `Violations: ${result.violations.join(", ")}`,
+            durationMs: Date.now() - t0 };
+        },
+      },
+
       {
         id: "mem_10", name: "Timeline is append-only (no deletions)", category: "MEMORY",
         run: () => {
@@ -777,6 +927,7 @@ export class EngineeringRegressionSuite {
       ROUTING: { passed: 0, failed: 0 }, CONNECTOR: { passed: 0, failed: 0 },
       GRAPH: { passed: 0, failed: 0 }, WORKFLOW: { passed: 0, failed: 0 },
       BASELINE: { passed: 0, failed: 0 }, MEMORY: { passed: 0, failed: 0 },
+      UCP: { passed: 0, failed: 0 },
     };
     for (const r of results) {
       if (r.passed) categories[r.category].passed++;
@@ -813,6 +964,7 @@ export class EngineeringRegressionSuite {
       if (r.category === "WORKFLOW")  return `WORKFLOW: Verify EngineeringWorkflow stage transitions`;
       if (r.category === "BASELINE")  return `BASELINE: Restore deleted/renamed module: ${r.testName}`;
       if (r.category === "MEMORY")    return `MEMORY: Check EngineeringMemory module — ${r.testName}`;
+      if (r.category === "UCP")       return `UCP: Check UniversalConnectorPlatform module — ${r.testName}`;
       return `FIX: ${r.detail}`;
     }).filter((v, i, a) => a.indexOf(v) === i); // deduplicate
 
