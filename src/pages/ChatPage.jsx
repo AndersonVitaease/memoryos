@@ -1,23 +1,13 @@
 /**
  * ChatPage.jsx — Conversation Experience Platform consumer
- * Sprint 7.1.0: All business logic delegated to ConversationManager.
- * This page: render only. No SDK calls. No sendAndReceive. No message state.
+ * Sprint 7.0.1 (VXP): Smart auto-scroll, transcript review, VXP status states.
+ * Architecture: render only. All logic in useConversation() + useVoiceInteraction().
  */
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
-  Send,
-  Loader2,
-  Brain,
-  Sparkles,
-  ChevronDown,
-  ChevronUp,
-  Radio,
-  Volume2,
-  X,
-  Paperclip,
-  RotateCcw,
-  Square,
+  Send, Brain, Sparkles, ChevronDown, ChevronUp,
+  Radio, Volume2, X, Paperclip, RotateCcw, Square,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { useConversation } from "@/lib/conversation-platform/useConversation";
@@ -33,13 +23,13 @@ import LinkDialog from "@/components/chat/LinkDialog";
 import StreamingMessage from "@/components/chat/StreamingMessage";
 import ReasoningIndicator from "@/components/chat/ReasoningIndicator";
 
-// ─── Phase label map ──────────────────────────────────────────────────────────
+// ─── VXP Status labels ────────────────────────────────────────────────────────
 
 const PHASE_LABELS = {
   idle: null,
   retrieving_memory: "Recuperando memoria...",
   consulting_specialists: "Consultando especialistas...",
-  executing_capabilities: "Executando capacidades...",
+  executing_capabilities: "Executando conectores...",
   building_response: "Construindo resposta...",
   responding: "Respondendo...",
 };
@@ -47,10 +37,10 @@ const PHASE_LABELS = {
 const STATUS_LABELS = {
   preparing: "Preparando...",
   persisting: "Salvando...",
-  reasoning: null, // shown via reasoningPhase
+  reasoning: null,
   routing: null,
   synthesizing: null,
-  streaming: null, // shown as typing indicator
+  streaming: null,
   finalizing: "Finalizando...",
   recovering: "Recuperando...",
   error: null,
@@ -69,29 +59,89 @@ export default function ChatPage() {
   const [pasteDialogOpen, setPasteDialogOpen] = useState(false);
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [lastUserMessage, setLastUserMessage] = useState("");
+
+  // VXP Sprint 7.0.1: transcript review state
+  const [pendingTranscript, setPendingTranscript] = useState(null);
+
+  // Smart auto-scroll
+  const scrollContainerRef = useRef(null);
   const bottomRef = useRef(null);
+  const userScrolledRef = useRef(false);
+  const lastScrollTopRef = useRef(0);
+
   const fileInputRef = useRef(null);
   const fileInputTypeRef = useRef(null);
 
-  // Voice — powered by Voice Interaction Platform (VIP)
+  // ── Voice — VXP: transcript review before send ────────────────────────────
+
   const pipeline = useVoiceInteraction({
     onSend: async (text, opts) => {
-      setLastUserMessage(text);
-      opts?.setPhase?.("generating");
-      await conversation.send(text);
-      opts?.setPhase?.("idle");
-      const msgs = conversation.messages;
-      const last = msgs[msgs.length - 1];
-      return last?.role === "assistant" ? last.content : null;
+      // VXP: show transcript for review first — pause the pipeline
+      // The actual send happens in onConfirmTranscript
+      setPendingTranscript(text);
+      // Return null to prevent VIP from auto-sending
+      return null;
     },
   });
 
-  // Auto-scroll
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [conversation.messages, conversation.isLoading]);
+  // Confirm transcript and send
+  const onConfirmTranscript = useCallback(async () => {
+    const text = pendingTranscript;
+    setPendingTranscript(null);
+    if (!text) return;
+    setLastUserMessage(text);
+    await conversation.send(text);
+    const msgs = conversation.messages;
+    const last = msgs[msgs.length - 1];
+    if (last?.role === "assistant") {
+      pipeline.stopSpeaking?.();
+    }
+  }, [pendingTranscript, conversation, pipeline]);
 
-  // ── Send ────────────────────────────────────────────────────────────────────
+  const onCancelTranscript = useCallback(() => {
+    setPendingTranscript(null);
+    pipeline.cancel?.();
+  }, [pipeline]);
+
+  const onEditTranscript = useCallback(() => {
+    const text = pendingTranscript;
+    setPendingTranscript(null);
+    pipeline.cancel?.();
+    setInput(text ?? "");
+  }, [pendingTranscript, pipeline]);
+
+  // ── Smart auto-scroll ─────────────────────────────────────────────────────
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      const atBottom = scrollHeight - scrollTop - clientHeight < 80;
+      // If user scrolled UP, pause auto-scroll
+      if (scrollTop < lastScrollTopRef.current - 5) {
+        userScrolledRef.current = true;
+      }
+      // If back at bottom, resume
+      if (atBottom) {
+        userScrolledRef.current = false;
+      }
+      lastScrollTopRef.current = scrollTop;
+    };
+
+    container.addEventListener("scroll", handleScroll, { passive: true });
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // Scroll to bottom when new messages arrive or streaming updates
+  const streamingContent = conversation.messages.find((m) => m.isStreaming)?.streamingContent;
+  useEffect(() => {
+    if (userScrolledRef.current) return;
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [conversation.messages.length, conversation.isLoading, streamingContent]);
+
+  // ── Send (text) ───────────────────────────────────────────────────────────
 
   const sendMessage = useCallback(async (e) => {
     e?.preventDefault();
@@ -99,10 +149,11 @@ export default function ChatPage() {
     if (!text || conversation.isLoading) return;
     setLastUserMessage(text);
     setInput("");
+    userScrolledRef.current = false; // resume scroll on new send
     await conversation.send(text);
   }, [input, conversation]);
 
-  // ── Attachments ─────────────────────────────────────────────────────────────
+  // ── Attachments ───────────────────────────────────────────────────────────
 
   const runIngestion = async ({ type, file, url, text }) => {
     const session = conversation.session;
@@ -115,7 +166,6 @@ export default function ChatPage() {
       { id: itemId, name: displayName, type, stage: "receiving", error: null },
     ]);
 
-    // Save user message via persistence
     await base44.entities.Message.create({
       session_id: session.id,
       role: "user",
@@ -182,7 +232,7 @@ export default function ChatPage() {
     await runIngestion({ type: fileInputTypeRef.current, file });
   };
 
-  // ── Reasoning label ─────────────────────────────────────────────────────────
+  // ── Thinking/reasoning label ─────────────────────────────────────────────
 
   const reasoningLabel =
     PHASE_LABELS[conversation.reasoningPhase] ??
@@ -192,7 +242,7 @@ export default function ChatPage() {
   const showReasoningIndicator =
     conversation.isLoading && !["streaming"].includes(conversation.status);
 
-  // ── Loading guard ───────────────────────────────────────────────────────────
+  // ── Loading guard ────────────────────────────────────────────────────────
 
   if (!conversation.isInitialized) {
     return (
@@ -230,8 +280,11 @@ export default function ChatPage() {
         </div>
       )}
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-3 sm:px-4 lg:px-6 py-4 lg:py-6">
+      {/* Messages — smart auto-scroll container */}
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto px-3 sm:px-4 lg:px-6 py-4 lg:py-6"
+      >
         <div className="max-w-3xl mx-auto space-y-3 lg:space-y-4">
 
           {conversation.messages.length === 0 && !conversation.isLoading && (
@@ -268,7 +321,7 @@ export default function ChatPage() {
             </div>
           ))}
 
-          {/* Reasoning indicator — shows progressive phase labels */}
+          {/* Thinking indicator — VXP progressive states */}
           {showReasoningIndicator && (
             <div className="flex justify-start">
               <div className="bg-white border border-zinc-200 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm">
@@ -285,25 +338,18 @@ export default function ChatPage() {
         </div>
       </div>
 
-      {/* Voice status bar */}
-      {/* Voice status — only show the full bar when processing (panel handles idle/listening states) */}
+      {/* Voice speaking status bar */}
       {(pipeline.isProcessing || pipeline.isSpeaking) && (
         <div className={`border-t px-4 lg:px-6 py-2 flex items-center gap-2 ${
           pipeline.isSpeaking ? "bg-emerald-50/50 border-zinc-100" : "bg-violet-50 border-violet-100"
         }`}>
-          {pipeline.isProcessing && (<>
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-violet-500 shrink-0" />
-            <span className="text-xs text-violet-600 font-medium">Processando...</span>
-          </>)}
-          {pipeline.isSpeaking && (<>
-            <Volume2 className="w-4 h-4 text-emerald-500 animate-pulse shrink-0" />
-            <span className="text-xs text-emerald-600 font-medium">Respondendo...</span>
-            <button type="button" onClick={pipeline.stopSpeaking} className="ml-auto text-xs text-emerald-600 hover:text-emerald-700 font-medium">Parar</button>
-          </>)}
-          <button type="button" onClick={pipeline.cancel} className="ml-auto flex items-center gap-1 text-xs text-zinc-400 hover:text-red-500 font-medium transition">
-            <X className="w-3 h-3" />
-            Cancelar
-          </button>
+          {pipeline.isSpeaking && (
+            <>
+              <Volume2 className="w-4 h-4 text-emerald-500 animate-pulse shrink-0" />
+              <span className="text-xs text-emerald-600 font-medium">Respondendo...</span>
+              <button type="button" onClick={pipeline.stopSpeaking} className="ml-auto text-xs text-emerald-600 hover:text-emerald-700 font-medium">Parar</button>
+            </>
+          )}
         </div>
       )}
 
@@ -339,6 +385,7 @@ export default function ChatPage() {
           </div>
 
           <div className="flex items-end gap-2">
+            {/* Attachment button */}
             <div className="relative">
               <button
                 type="button"
@@ -356,6 +403,7 @@ export default function ChatPage() {
               )}
             </div>
 
+            {/* Text input */}
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -386,6 +434,7 @@ export default function ChatPage() {
               </button>
             )}
 
+            {/* VXP Voice Panel — with transcript review + permission prop */}
             <VoicePanel
               phase={pipeline.phase}
               waveform={pipeline.waveform}
@@ -395,12 +444,18 @@ export default function ChatPage() {
               isSpeaking={pipeline.isSpeaking}
               isSupported={pipeline.isSupported}
               isLoading={conversation.isLoading}
+              permission={pipeline.permission}
               onStart={pipeline.startCapture}
               onStop={pipeline.stopCapture}
               onCancel={pipeline.cancel}
               stopSpeaking={pipeline.stopSpeaking}
+              pendingTranscript={pendingTranscript}
+              onConfirmTranscript={onConfirmTranscript}
+              onCancelTranscript={onCancelTranscript}
+              onEditTranscript={onEditTranscript}
             />
 
+            {/* Send button */}
             <button
               type="submit"
               disabled={conversation.isLoading || !input.trim()}

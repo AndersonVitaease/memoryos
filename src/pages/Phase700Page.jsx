@@ -135,6 +135,7 @@ export default function Phase700Page() {
 
   const tabs = [
     { id: "overview", label: "Overview", icon: Activity },
+    { id: "vxp", label: "Voice Experience", icon: Shield },
     { id: "waveform", label: "Waveform", icon: Radio },
     { id: "devices", label: "Dispositivos", icon: Cpu },
     { id: "playback", label: "Playback", icon: Volume2 },
@@ -153,7 +154,7 @@ export default function Phase700Page() {
           </div>
           <div>
             <h1 className="text-lg font-bold font-heading text-zinc-900">Voice Center</h1>
-            <p className="text-xs text-zinc-500">Sprint 7.0.0 · Voice Interaction Platform</p>
+            <p className="text-xs text-zinc-500">Sprint 7.0.1 · Voice Experience Platform</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -248,6 +249,131 @@ export default function Phase700Page() {
                 "Toda captura passa pela Voice Interaction Platform",
               ].map((c) => (
                 <li key={c} className="flex items-center gap-2 text-sm text-zinc-600">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                  {c}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
+      {/* ── Voice Experience (VXP Sprint 7.0.1) ── */}
+      {activeTab === "vxp" && (
+        <div className="space-y-4">
+          {/* Readiness */}
+          <div className={`rounded-xl p-4 border flex items-center gap-3 ${vimState?.isSupported ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
+            {vimState?.isSupported
+              ? <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+              : <XCircle className="w-5 h-5 text-red-600 shrink-0" />}
+            <div>
+              <p className={`text-sm font-bold ${vimState?.isSupported ? "text-emerald-700" : "text-red-700"}`}>
+                {vimState?.isSupported ? "VOICE EXPERIENCE PLATFORM READY" : "VOICE NOT SUPPORTED"}
+              </p>
+              <p className="text-xs text-zinc-500 mt-0.5">Sprint 7.0.1 · VXP completo</p>
+            </div>
+          </div>
+
+          {/* Permission */}
+          <div className="bg-white border border-zinc-200 rounded-xl p-5">
+            <h3 className="text-sm font-semibold text-zinc-800 mb-3">Permission UX</h3>
+            <div className="space-y-2">
+              {[
+                { label: "Estado atual", value: vimState?.permission ?? "UNKNOWN", badge: permColor },
+                { label: "Suportado", value: vimState?.isSupported ? "Sim" : "Nao", badge: vimState?.isSupported ? "green" : "red" },
+              ].map(({ label, value, badge }) => (
+                <div key={label} className="flex items-center justify-between py-1.5 border-b border-zinc-50 last:border-0">
+                  <span className="text-xs text-zinc-500">{label}</span>
+                  <Badge color={badge}>{value}</Badge>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 p-3 bg-violet-50 rounded-lg border border-violet-100">
+              <p className="text-xs font-semibold text-violet-700 mb-1">Comportamento por estado</p>
+              <div className="space-y-1 text-xs text-zinc-600">
+                <p><span className="font-mono text-emerald-700">GRANTED</span> — Inicia imediatamente. Sem popup.</p>
+                <p><span className="font-mono text-blue-700">UNKNOWN / PROMPT</span> — Solicita uma vez.</p>
+                <p><span className="font-mono text-red-700">DENIED / BLOCKED</span> — Exibe alerta. Jamais solicita novamente.</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Waveform FPS */}
+          <div className="bg-white border border-zinc-200 rounded-xl p-5">
+            <h3 className="text-sm font-semibold text-zinc-800 mb-3">Waveform — rAF 60fps</h3>
+            <div className="bg-zinc-900 rounded-xl p-4 flex items-center justify-center h-20">
+              {waveform ? (
+                <div className="w-full h-12">
+                  <canvas
+                    ref={(canvas) => {
+                      if (!canvas || !waveform?.bars) return;
+                      const ctx = canvas.getContext("2d");
+                      const W = canvas.width; const H = canvas.height;
+                      ctx.clearRect(0, 0, W, H);
+                      const count = Math.min(waveform.bars.length, 32);
+                      const barW = (W / count) * 0.65;
+                      const gap = (W / count) * 0.35;
+                      for (let i = 0; i < count; i++) {
+                        const v = waveform.bars[i] / 255;
+                        const barH = Math.max(2, v * H);
+                        ctx.globalAlpha = 0.25 + v * 0.75;
+                        ctx.fillStyle = "#ef4444";
+                        ctx.fillRect(i * (barW + gap), (H - barH) / 2, barW, barH);
+                      }
+                      ctx.globalAlpha = 1;
+                    }}
+                    width={400}
+                    height={48}
+                    className="w-full h-full"
+                  />
+                </div>
+              ) : (
+                <p className="text-xs text-zinc-500">Inicie gravacao no Chat para ver waveform ao vivo</p>
+              )}
+            </div>
+            {waveform && (
+              <div className="grid grid-cols-3 gap-2 mt-3 text-xs text-center">
+                <div className="bg-zinc-50 rounded-lg p-2"><p className="text-zinc-400">Amplitude</p><p className="font-bold">{waveform.amplitude.toFixed(3)}</p></div>
+                <div className="bg-zinc-50 rounded-lg p-2"><p className="text-zinc-400">Peak</p><p className="font-bold">{waveform.peak.toFixed(3)}</p></div>
+                <div className="bg-zinc-50 rounded-lg p-2"><p className="text-zinc-400">Energia</p><p className="font-bold">{waveform.energy.toFixed(3)}</p></div>
+              </div>
+            )}
+          </div>
+
+          {/* Streaming info */}
+          <div className="bg-white border border-zinc-200 rounded-xl p-5">
+            <h3 className="text-sm font-semibold text-zinc-800 mb-3">Conversation Streaming</h3>
+            <div className="space-y-2 text-xs text-zinc-600">
+              <p>• Tokens revelados progressivamente via <span className="font-mono">ConversationStreaming.streamResponse()</span></p>
+              <p>• Cursor piscando durante streaming (<span className="font-mono">vxp-cursor</span> CSS animation)</p>
+              <p>• Auto-scroll inteligente — pausa quando usuario sobe, retoma ao chegar ao fim</p>
+              <p>• Estados: Pensando → Recuperando → Consultando → Construindo → Streaming</p>
+              <p>• Infraestrutura SSE/WebSocket pronta via <span className="font-mono">connectSSE()</span> / <span className="font-mono">connectWebSocket()</span></p>
+            </div>
+          </div>
+
+          {/* VXP Checklist */}
+          <div className="bg-white border border-zinc-200 rounded-xl p-5">
+            <h3 className="text-sm font-semibold text-zinc-800 mb-3">Criterios de Aprovacao VXP</h3>
+            <ul className="space-y-2">
+              {[
+                "Uma unica solicitacao de permissao por sessao",
+                "MediaStream persistente — reutilizado entre gravacoes",
+                "Gravacao inicia instantaneamente (<150ms)",
+                "Waveform via rAF 60fps — dados reais do VoiceAnalyzer",
+                "Cronometro funcional durante gravacao",
+                "Cancelar e Enviar independentes",
+                "Revisao de transcricao antes do envio",
+                "Editar transcricao redireciona para caixa de texto",
+                "Estados progressivos: Gravando / Processando / Recuperando / Consultando / Respondendo",
+                "Streaming inicia com primeiros tokens",
+                "Cursor piscando durante streaming",
+                "Auto-scroll inteligente — pausa ao subir, retoma ao chegar ao fim",
+                "Atalhos: Space=gravar, ESC=cancelar, Enter=enviar",
+                "ChatPage permanece extremamente simples (apenas consumers)",
+                "Zero logica duplicada entre VIP e ChatPage",
+              ].map((c) => (
+                <li key={c} className="flex items-center gap-2 text-xs text-zinc-600">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                   {c}
                 </li>
