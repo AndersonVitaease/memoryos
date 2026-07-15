@@ -235,6 +235,30 @@ class ConversationPipeline {
       });
       // ── end E-02.1 ───────────────────────────────────────────────────────
 
+      // ── E-02.2: Goal → Planning Engine ──────────────────────────────────
+      // Transforms the ConversationGoal into a structured ExecutionPlan.
+      // Pure: no connectors, no runtime, no network. Plan is NOT executed.
+      // Execution is the responsibility of Sprint E-02.3 (Planning → Runtime).
+      if (goalBridgeResult.goal.valid) {
+        const { conversationPlanningEngine } = await import("@/lib/planning-engine-e022/ConversationPlanningEngine");
+        const planResult = conversationPlanningEngine.plan(goalBridgeResult.goal);
+        conversationStore.emit({
+          type: "PIPELINE_STEP",
+          executionId,
+          payload: {
+            step:       "plan_produced",
+            planId:     planResult.plan.id,
+            goalId:     planResult.plan.goalId,
+            goalType:   planResult.plan.goalType,
+            status:     planResult.plan.status,
+            stepCount:  planResult.plan.steps.length,
+            durationMs: planResult.durationMs,
+          },
+          timestamp: Date.now(),
+        });
+      }
+      // ── end E-02.2 ───────────────────────────────────────────────────────
+
       setStep("route", "done");
       setStep("synthesize", "running");
       conversationStore.setStatus("synthesizing");
