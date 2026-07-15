@@ -18,6 +18,7 @@
 import { GitHubConnector } from "../connector-runtime/connectors/GitHubConnector";
 import { Base44Connector } from "../connector-runtime/connectors/Base44Connector";
 import { GmailConnector } from "../connector-runtime/connectors/GmailConnector";
+import { GoogleCalendarConnector } from "../connector-runtime/connectors/GoogleCalendarConnector";
 import type {
   ConnectorExecutionContext, InvocationAuthorization, CognitiveInvocationRecord,
   DiscoveredConnector, InvocationKnowledgeEntry, InvocationTimelineEvent,
@@ -30,7 +31,7 @@ import { makeExecutionId } from "../connector-runtime/ConnectorTypes";
 // ── Known registry of production connectors ────────────────────────────────────
 // No hardcoded behavior — connectors are instantiated and queried at runtime.
 
-const REGISTERED_CONNECTORS = ["github", "base44", "google"] as const;
+const REGISTERED_CONNECTORS = ["github", "base44", "google", "google-calendar"] as const;
 type RegisteredId = typeof REGISTERED_CONNECTORS[number];
 
 // Write operations — explicitly blocked for read-only certification
@@ -44,10 +45,11 @@ const BLOCKED_OPERATIONS = new Set([
 
 export class ConnectorInvocationService {
   // ── Connector singletons (instantiated once, reused) ─────────────────────────
-  private readonly _connectors: Map<string, GitHubConnector | Base44Connector | GmailConnector> = new Map([
+  private readonly _connectors: Map<string, GitHubConnector | Base44Connector | GmailConnector | GoogleCalendarConnector> = new Map([
     ["github", new GitHubConnector()],
     ["base44", new Base44Connector()],
     ["google", new GmailConnector()],
+    ["google-calendar", new GoogleCalendarConnector()],
   ]);
 
   // ── Persistent stores (append-only) ──────────────────────────────────────────
@@ -78,7 +80,7 @@ export class ConnectorInvocationService {
         healthStatus: health,
         authenticated,
         readOnly: true,
-        certificationLevel: id === "github" ? "Beta-01 v2.0.0" : id === "google" ? "Impl-002 v1.0.0" : "Beta-02 v2.0.0",
+        certificationLevel: id === "github" ? "Beta-01 v2.0.0" : id === "google" ? "Impl-003 v1.0.0" : id === "google-calendar" ? "Impl-004 v1.0.0" : "Beta-02 v2.0.0",
         discoveredAt: Date.now(),
       });
     }
@@ -209,6 +211,24 @@ export class ConnectorInvocationService {
 
   async googleProfile(ctx: Partial<ConnectorExecutionContext> = {}) {
     return this.invoke("google", "auth.profile", {}, { ...ctx, originComponent: ctx.originComponent ?? "GmailReader" });
+  }
+
+  // ── Google Calendar convenience wrappers ──────────────────────────────────────
+
+  async calendarListCalendars(maxResults = 50, ctx: Partial<ConnectorExecutionContext> = {}) {
+    return this.invoke("google-calendar", "calendar.calendars.list", { maxResults }, { ...ctx, originComponent: ctx.originComponent ?? "CalendarReader" });
+  }
+
+  async calendarListEvents(calendarId = "primary", opts: { maxResults?: number; timeMin?: string; timeMax?: string; q?: string } = {}, ctx: Partial<ConnectorExecutionContext> = {}) {
+    return this.invoke("google-calendar", "calendar.events.list", { calendarId, ...opts }, { ...ctx, originComponent: ctx.originComponent ?? "CalendarReader" });
+  }
+
+  async calendarGetEvent(calendarId: string, eventId: string, ctx: Partial<ConnectorExecutionContext> = {}) {
+    return this.invoke("google-calendar", "calendar.events.get", { calendarId, eventId }, { ...ctx, originComponent: ctx.originComponent ?? "CalendarReader" });
+  }
+
+  async calendarPing(ctx: Partial<ConnectorExecutionContext> = {}) {
+    return this.invoke("google-calendar", "connectivity.ping", {}, { ...ctx, originComponent: ctx.originComponent ?? "CalendarReader" });
   }
 
   // ── Dogfooding: MemoryOS inspects itself ──────────────────────────────────────

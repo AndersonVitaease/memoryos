@@ -11,6 +11,7 @@ import {
 } from "@/lib/google-auth/GoogleAuthSession";
 import { runGoogleAuthTests } from "@/lib/google-auth/googleAuthTests";
 import { runGmailConnectorTests } from "@/lib/google-auth/gmailConnectorTests";
+import { runGoogleCalendarConnectorTests } from "@/lib/google-auth/googleCalendarConnectorTests";
 
 // ─── Google Workspace connector card ─────────────────────────────────────────
 
@@ -225,6 +226,80 @@ function GoogleConnectorCard() {
   );
 }
 
+// ─── Calendar Test Panel — Implementation 004 ────────────────────────────────
+
+function CalendarTestPanel() {
+  const [running, setRunning]   = useState(false);
+  const [results, setResults]   = useState(null);
+
+  const handleRun = async () => {
+    setRunning(true);
+    setResults(null);
+    try {
+      const r = await runGoogleCalendarConnectorTests();
+      setResults(r);
+    } catch (e) {
+      setResults({ verdict: "FAIL", architecturalStatus: e.message, totalPassed: 0, totalFailed: 1, totalTests: 1, suites: [] });
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <div className="border border-zinc-200 rounded-xl overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 bg-zinc-50 border-b border-zinc-200">
+        <div className="flex items-center gap-2">
+          <GitBranch className="w-4 h-4 text-zinc-500" />
+          <span className="text-sm font-semibold text-zinc-700">Testes — Implementation 004 (GoogleCalendarConnector)</span>
+        </div>
+        <button
+          onClick={handleRun}
+          disabled={running}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-900 text-white hover:bg-zinc-800 disabled:opacity-40 transition"
+        >
+          {running ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+          {running ? "Executando..." : "Rodar Testes"}
+        </button>
+      </div>
+
+      {results && (
+        <div className="p-4 space-y-3">
+          <div className={`flex items-center gap-2 p-3 rounded-lg border text-sm font-medium ${results.verdict === "PASS" ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-red-50 border-red-200 text-red-700"}`}>
+            {results.verdict === "PASS"
+              ? <CheckCircle2 className="w-4 h-4 shrink-0" />
+              : <XCircle className="w-4 h-4 shrink-0" />}
+            <span>{results.architecturalStatus}</span>
+            <span className="ml-auto text-xs font-normal">{results.totalPassed}/{results.totalTests} · {results.durationMs}ms</span>
+          </div>
+
+          {results.suites?.map((suite) => (
+            <div key={suite.suite}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-semibold text-zinc-600">{suite.suite}</span>
+                <span className={`text-xs font-medium ${suite.failed === 0 ? "text-emerald-600" : "text-red-600"}`}>
+                  {suite.passed}/{suite.total}
+                </span>
+              </div>
+              <div className="space-y-0.5">
+                {suite.results?.map((r, i) => (
+                  <div key={i} className={`flex items-center gap-2 text-xs py-1 px-2 rounded ${r.passed ? "text-zinc-600" : "bg-red-50 text-red-600"}`}>
+                    {r.passed
+                      ? <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
+                      : <XCircle className="w-3 h-3 text-red-500 shrink-0" />}
+                    <span className="flex-1 font-mono">{r.name}</span>
+                    {!r.passed && <span className="text-red-400 truncate max-w-[180px]" title={r.error}>{r.error}</span>}
+                    <span className="text-zinc-400 shrink-0">{r.durationMs}ms</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Gmail Test Panel — Implementation 002 ───────────────────────────────────
 
 function GmailTestPanel() {
@@ -410,11 +485,19 @@ export default function Connections() {
         </div>
 
         {/* Tests — Implementation 002 */}
-        <div className="mb-8">
+        <div className="mb-6">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
-            Validacao — Implementation 002 (GmailConnector + CIS)
+            Validacao — Implementation 002/003 (GmailConnector + CIS)
           </h2>
           <GmailTestPanel />
+        </div>
+
+        {/* Tests — Implementation 004 */}
+        <div className="mb-8">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+            Validacao — Implementation 004 (GoogleCalendarConnector)
+          </h2>
+          <CalendarTestPanel />
         </div>
 
         {/* Future */}
