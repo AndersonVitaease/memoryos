@@ -18,6 +18,7 @@ import { runGoogleOAuth007Tests } from "@/lib/google-auth/googleOAuth007Tests";
 import { base44 } from "@/api/base44Client";
 import GoogleProfileCard from "@/components/connections/GoogleProfileCard";
 import GmailConnectorCard from "@/components/connections/GmailConnectorCard";
+import GmailActionsCard from "@/components/connections/GmailActionsCard";
 
 // ─── Google Workspace connector card ─────────────────────────────────────────
 
@@ -874,6 +875,14 @@ export default function Connections() {
             Gmail — Implementation 009
           </h2>
           <GmailConnectorCard />
+        </div>
+
+        {/* Gmail Actions — Implementation 010 */}
+        <div className="mb-6">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+            Gmail Acoes — Implementation 010
+          </h2>
+          <GmailActionsCard />
         </div>
 
         {/* OAuth Init Diagnostics */}
