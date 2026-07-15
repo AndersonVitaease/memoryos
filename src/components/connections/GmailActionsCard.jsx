@@ -1,27 +1,38 @@
 /**
- * GmailActionsCard — Implementation 010
- * UI para createDraft, sendDraft e sendEmail com confirmacao obrigatoria.
+ * GmailActionsCard — Implementation 010 / 010.5
+ * UI para createDraft, sendDraft e sendEmail.
+ *
+ * Confirmacao delegada exclusivamente ao RuntimeConfirmationEngine.
+ * Nenhuma logica de confirmacao existe aqui.
  */
 
 import { useState } from "react";
 import {
-  Mail, Send, FileText, Loader2, Play,
+  Send, FileText, Loader2, Play,
   CheckCircle2, XCircle, AlertTriangle, ShieldAlert,
 } from "lucide-react";
 import { createDraft, sendDraft, sendEmail } from "@/lib/gmail/GmailActions";
 import { runGmailActionsTests } from "@/lib/gmail/gmailActionsTests";
+import { runRuntimeConfirmationTests } from "@/lib/runtime/runtimeConfirmationTests";
+import {
+  requestConfirmation,
+  confirm,
+  cancel,
+  listPending,
+} from "@/lib/runtime/RuntimeConfirmationEngine";
 
-// ── Confirmation dialog ───────────────────────────────────────────────────────
+// ── Confirmation dialog (UI adapter for RuntimeConfirmationEngine) ─────────────
 
-function ConfirmDialog({ message, onConfirm, onCancel }) {
+function ConfirmationDialog({ request, onConfirm, onCancel }) {
+  if (!request) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <div className="bg-white rounded-xl shadow-2xl p-6 max-w-sm w-full mx-4 space-y-4">
         <div className="flex items-start gap-3">
           <ShieldAlert className="w-5 h-5 text-amber-500 mt-0.5 shrink-0" />
           <div>
-            <p className="font-semibold text-zinc-800 text-sm">Confirmacao necessaria</p>
-            <p className="text-sm text-zinc-600 mt-1">{message}</p>
+            <p className="font-semibold text-zinc-800 text-sm">{request.title}</p>
+            <p className="text-sm text-zinc-600 mt-1">{request.description}</p>
           </div>
         </div>
         <div className="flex gap-2 justify-end">
@@ -35,7 +46,7 @@ function ConfirmDialog({ message, onConfirm, onCancel }) {
             onClick={onConfirm}
             className="px-4 py-2 rounded-lg text-sm font-medium bg-zinc-900 text-white hover:bg-zinc-800 transition"
           >
-            Confirmar envio
+            Confirmar
           </button>
         </div>
       </div>
@@ -159,17 +170,23 @@ function SendDraftForm({ onSend, loading }) {
   );
 }
 
-// ── Test panel ────────────────────────────────────────────────────────────────
+// ── Combined test panel ───────────────────────────────────────────────────────
 
-function GmailActionsTestPanel() {
+function TestPanel() {
   const [running, setRunning] = useState(false);
   const [results, setResults] = useState(null);
+  const [activeTab, setActiveTab] = useState("actions");
+
+  const runners = {
+    actions: { label: "GmailActions (010)",        fn: runGmailActionsTests },
+    engine:  { label: "ConfirmationEngine (010.5)", fn: runRuntimeConfirmationTests },
+  };
 
   const handleRun = async () => {
     setRunning(true);
     setResults(null);
     try {
-      const r = await runGmailActionsTests();
+      const r = await runners[activeTab].fn();
       setResults(r);
     } catch (e) {
       setResults({ verdict: "FAIL", architecturalStatus: e.message, totalPassed: 0, totalFailed: 1, totalTests: 1, suites: [] });
@@ -181,14 +198,24 @@ function GmailActionsTestPanel() {
   return (
     <div className="border border-zinc-200 rounded-xl overflow-hidden mt-4">
       <div className="flex items-center justify-between px-4 py-3 bg-zinc-50 border-b border-zinc-200">
-        <span className="text-xs font-semibold text-zinc-600">Testes — Implementation 010 (GmailActions)</span>
+        <div className="flex gap-1">
+          {Object.entries(runners).map(([key, { label }]) => (
+            <button
+              key={key}
+              onClick={() => { setActiveTab(key); setResults(null); }}
+              className={`px-2.5 py-1 rounded text-xs font-medium transition ${activeTab === key ? "bg-zinc-800 text-white" : "text-zinc-500 hover:bg-zinc-100"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <button
           onClick={handleRun}
           disabled={running}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-zinc-900 text-white hover:bg-zinc-800 disabled:opacity-40 transition"
         >
           {running ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
-          {running ? "Testando..." : "Rodar Testes"}
+          {running ? "Testando..." : "Rodar"}
         </button>
       </div>
       {results && (
@@ -225,10 +252,39 @@ function GmailActionsTestPanel() {
 // ── Main card ─────────────────────────────────────────────────────────────────
 
 export default function GmailActionsCard() {
-  const [tab, setTab]         = useState("compose");
-  const [loading, setLoading] = useState(false);
-  const [result, setResult]   = useState(null);
-  const [confirm, setConfirm] = useState(null); // { message, action }
+  const [tab, setTab]           = useState("compose");
+  const [loading, setLoading]   = useState(false);
+  const [result, setResult]     = useState(null);
+  // State for the active confirmation dialog
+  const [pendingConfirm, setPendingConfirm] = useState(null); // { request, resolve }
+
+  // Unified send-with-confirmation via RuntimeConfirmationEngine
+  const withConfirmation = async (capability, title, description, payload, action) => {
+    let resolveConfirm;
+    const userDecision = new Promise(res => { resolveConfirm = res; });
+
+    // Create engine request (synchronously adds to pending before first await)
+    const enginePromise = requestConfirmation({ capability, title, description, payload });
+    const pending = listPending();
+    const req = pending[pending.length - 1];
+
+    setPendingConfirm({ request: req, resolveConfirm });
+
+    // Wait for user to decide via dialog
+    const decided = await userDecision;
+
+    if (decided) {
+      confirm(req.id);
+    } else {
+      cancel(req.id);
+    }
+
+    const confirmResult = await enginePromise;
+    setPendingConfirm(null);
+
+    if (!confirmResult.confirmed) return null;
+    return action();
+  };
 
   const handleDraft = async (req) => {
     setLoading(true); setResult(null);
@@ -237,45 +293,44 @@ export default function GmailActionsCard() {
     setLoading(false);
   };
 
-  const requestSend = (action, message) => {
-    setConfirm({ message, action });
-  };
-
-  const handleConfirm = async () => {
-    const action = confirm.action;
-    setConfirm(null);
+  const handleSendEmail = async (req) => {
     setLoading(true); setResult(null);
-    const r = await action();
+    const r = await withConfirmation(
+      "gmail.sendEmail",
+      "Confirmar envio de e-mail",
+      `Enviar para: ${req.to.join(", ")} — Assunto: "${req.subject}"`,
+      req,
+      () => sendEmail(req)
+    );
     setResult(r);
     setLoading(false);
   };
 
-  const handleSendEmail = (req) => {
-    requestSend(
-      () => sendEmail(req),
-      `Confirma o envio de um e-mail para "${req.to.join(", ")}" com o assunto "${req.subject}"?`
+  const handleSendDraft = async (draftId) => {
+    setLoading(true); setResult(null);
+    const r = await withConfirmation(
+      "gmail.sendDraft",
+      "Confirmar envio de rascunho",
+      `Enviar rascunho ID: "${draftId}"`,
+      { draftId },
+      () => sendDraft(draftId)
     );
-  };
-
-  const handleSendDraft = (draftId) => {
-    requestSend(
-      () => sendDraft(draftId),
-      `Confirma o envio do rascunho "${draftId}"?`
-    );
+    setResult(r);
+    setLoading(false);
   };
 
   const tabs = [
-    { id: "compose",    label: "Compor / Rascunho", icon: Mail },
+    { id: "compose",    label: "Compor / Rascunho", icon: FileText },
     { id: "send_draft", label: "Enviar rascunho",   icon: Send },
   ];
 
   return (
     <div className="space-y-4">
-      {confirm && (
-        <ConfirmDialog
-          message={confirm.message}
-          onConfirm={handleConfirm}
-          onCancel={() => setConfirm(null)}
+      {pendingConfirm && (
+        <ConfirmationDialog
+          request={pendingConfirm.request}
+          onConfirm={() => pendingConfirm.resolveConfirm(true)}
+          onCancel={() => pendingConfirm.resolveConfirm(false)}
         />
       )}
 
@@ -287,14 +342,16 @@ export default function GmailActionsCard() {
           </div>
           <div>
             <h3 className="font-semibold text-sm text-foreground">Gmail — Acoes</h3>
-            <span className="text-xs text-zinc-400">Implementation 010 — Envio com confirmacao</span>
+            <span className="text-xs text-zinc-400">Implementation 010 / 010.5</span>
           </div>
         </div>
 
         {/* Security notice */}
         <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-50 border border-amber-100 mb-4">
           <ShieldAlert className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
-          <p className="text-xs text-amber-700">Confirmacao obrigatoria antes de qualquer envio.</p>
+          <p className="text-xs text-amber-700">
+            Envio requer confirmacao via <span className="font-mono">RuntimeConfirmationEngine</span>. Rascunhos nao exigem confirmacao.
+          </p>
         </div>
 
         {/* Tabs */}
@@ -318,10 +375,10 @@ export default function GmailActionsCard() {
           <SendDraftForm onSend={handleSendDraft} loading={loading} />
         )}
 
-        {result && <div className="mt-3"><ResultBanner result={result} /></div>}
+        {result !== null && <div className="mt-3"><ResultBanner result={result} /></div>}
       </div>
 
-      <GmailActionsTestPanel />
+      <TestPanel />
     </div>
   );
 }
