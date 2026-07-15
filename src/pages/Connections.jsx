@@ -19,6 +19,7 @@ import { base44 } from "@/api/base44Client";
 import GoogleProfileCard from "@/components/connections/GoogleProfileCard";
 import GmailConnectorCard from "@/components/connections/GmailConnectorCard";
 import GmailActionsCard from "@/components/connections/GmailActionsCard";
+import GmailAdvancedCard from "@/components/connections/GmailAdvancedCard";
 
 // ─── Google Workspace connector card ─────────────────────────────────────────
 
@@ -883,6 +884,14 @@ export default function Connections() {
             Gmail Acoes — Implementation 010
           </h2>
           <GmailActionsCard />
+        </div>
+
+        {/* Gmail Advanced — Implementation 011 */}
+        <div className="mb-6">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+            Gmail Avancado — Implementation 011
+          </h2>
+          <GmailAdvancedCard />
         </div>
 
         {/* OAuth Init Diagnostics */}
