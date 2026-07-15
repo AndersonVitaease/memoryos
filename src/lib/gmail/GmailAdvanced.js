@@ -15,10 +15,12 @@
  */
 
 import { getAccessToken, ensureValidToken } from "@/lib/google-auth/GoogleAuthSession";
+import { buildMime } from "@/lib/gmail/MimeBuilder";
+import { getActiveWorkspaceId } from "@/lib/workspace/WorkspaceContext";
 
 const LOG_PREFIX = "[GmailAdvanced]";
 const GMAIL_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
-const WORKSPACE_ID = "default";
+const WORKSPACE_ID = getActiveWorkspaceId();
 const REQUEST_TIMEOUT_MS = 15000;
 
 function log(msg) {
@@ -112,29 +114,6 @@ function decodeHttpError(res, context) {
   return null;
 }
 
-// ── MIME builder ──────────────────────────────────────────────────────────────
-
-function buildMime({ to, cc, subject, body, inReplyTo, references, isHtml = false }) {
-  const contentType = isHtml ? "text/html" : "text/plain";
-  const lines = [
-    `To: ${(to ?? []).join(", ")}`,
-    cc?.length ? `Cc: ${cc.join(", ")}` : null,
-    `Subject: ${subject ?? ""}`,
-    inReplyTo  ? `In-Reply-To: ${inReplyTo}`  : null,
-    references ? `References: ${references}` : null,
-    `MIME-Version: 1.0`,
-    `Content-Type: ${contentType}; charset=UTF-8`,
-    ``,
-    body ?? "",
-  ].filter(l => l !== null);
-
-  const raw = lines.join("\r\n");
-  return btoa(unescape(encodeURIComponent(raw)))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
 // ── Message metadata fetcher ──────────────────────────────────────────────────
 
 async function fetchMessageMeta(messageId, token) {
@@ -192,8 +171,6 @@ function validateRecipients(recipients) {
 /**
  * Responde uma mensagem.
  * ATENCAO: exigir confirmacao via RuntimeConfirmationEngine antes de chamar.
- *
- * @param {{ messageId: string, body: string, replyAll?: boolean }} req
  */
 export async function replyEmail({ messageId, body, replyAll = false } = {}) {
   log(`replyEmail("${messageId}", replyAll=${replyAll})`);
@@ -237,8 +214,6 @@ export async function replyAll({ messageId, body } = {}) {
 /**
  * Encaminha uma mensagem para novos destinatarios.
  * ATENCAO: exigir confirmacao via RuntimeConfirmationEngine antes de chamar.
- *
- * @param {{ messageId: string, recipients: string[], body?: string }} req
  */
 export async function forwardEmail({ messageId, recipients, body = "" } = {}) {
   log(`forwardEmail("${messageId}")`);
@@ -275,8 +250,6 @@ export async function forwardEmail({ messageId, recipients, body = "" } = {}) {
 
 /**
  * Cria rascunho de resposta (sem confirmacao obrigatoria).
- *
- * @param {{ messageId: string, body: string, replyAll?: boolean }} req
  */
 export async function createReplyDraft({ messageId, body, replyAll: all = false } = {}) {
   log(`createReplyDraft("${messageId}")`);
@@ -311,8 +284,6 @@ export async function createReplyDraft({ messageId, body, replyAll: all = false 
 
 /**
  * Cria rascunho de encaminhamento (sem confirmacao obrigatoria).
- *
- * @param {{ messageId: string, recipients: string[], body?: string }} req
  */
 export async function createForwardDraft({ messageId, recipients, body = "" } = {}) {
   log(`createForwardDraft("${messageId}")`);

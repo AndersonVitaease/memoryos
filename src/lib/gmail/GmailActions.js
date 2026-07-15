@@ -15,10 +15,12 @@
  */
 
 import { getAccessToken, ensureValidToken } from "@/lib/google-auth/GoogleAuthSession";
+import { buildMime } from "@/lib/gmail/MimeBuilder";
+import { getActiveWorkspaceId } from "@/lib/workspace/WorkspaceContext";
 
 const LOG_PREFIX = "[GmailActions]";
 const GMAIL_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
-const WORKSPACE_ID = "default";
+const WORKSPACE_ID = getActiveWorkspaceId();
 const REQUEST_TIMEOUT_MS = 15000;
 
 function log(msg) {
@@ -55,40 +57,6 @@ async function requireSession() {
   const token = getAccessToken(WORKSPACE_ID);
   if (!token) return null;
   return token;
-}
-
-// ── MIME builder ──────────────────────────────────────────────────────────────
-
-/**
- * Constroi uma mensagem MIME em base64url para a Gmail API.
- * @param {Object} req
- * @param {string[]} req.to
- * @param {string[]} [req.cc]
- * @param {string[]} [req.bcc]
- * @param {string} req.subject
- * @param {string} req.body
- * @param {boolean} [req.isHtml]
- * @returns {string} base64url encoded MIME message
- */
-function buildMime({ to, cc, bcc, subject, body, isHtml = false }) {
-  const contentType = isHtml ? "text/html" : "text/plain";
-  const lines = [
-    `To: ${to.join(", ")}`,
-    cc?.length  ? `Cc: ${cc.join(", ")}`   : null,
-    bcc?.length ? `Bcc: ${bcc.join(", ")}` : null,
-    `Subject: ${subject}`,
-    `MIME-Version: 1.0`,
-    `Content-Type: ${contentType}; charset=UTF-8`,
-    ``,
-    body,
-  ].filter(l => l !== null);
-
-  const raw = lines.join("\r\n");
-  // btoa with unicode support
-  return btoa(unescape(encodeURIComponent(raw)))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
 }
 
 // ── Validation ────────────────────────────────────────────────────────────────

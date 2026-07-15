@@ -1,7 +1,7 @@
 /**
- * GmailAdvancedCard — Implementation 011
+ * GmailAdvancedCard — Implementation 011 / Sprint E-01
  * UI para reply, replyAll, forward e rascunhos derivados.
- * Confirmacao delegada ao RuntimeConfirmationEngine para acoes de envio.
+ * Confirmacao delegada ao ConfirmationProvider (nao conversa diretamente com o Engine).
  */
 
 import { useState } from "react";
@@ -14,36 +14,7 @@ import {
   createReplyDraft, createForwardDraft,
 } from "@/lib/gmail/GmailAdvanced";
 import { runGmailAdvancedTests } from "@/lib/gmail/gmailAdvancedTests";
-import {
-  requestConfirmation, confirm, cancel, listPending,
-} from "@/lib/runtime/RuntimeConfirmationEngine";
-
-// ── Confirmation dialog ───────────────────────────────────────────────────────
-
-function ConfirmationDialog({ request, onConfirm, onCancel }) {
-  if (!request) return null;
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <div className="bg-white rounded-xl shadow-2xl p-6 max-w-sm w-full mx-4 space-y-4">
-        <div className="flex items-start gap-3">
-          <ShieldAlert className="w-5 h-5 text-amber-500 mt-0.5 shrink-0" />
-          <div>
-            <p className="font-semibold text-zinc-800 text-sm">{request.title}</p>
-            <p className="text-sm text-zinc-600 mt-1">{request.description}</p>
-          </div>
-        </div>
-        <div className="flex gap-2 justify-end">
-          <button onClick={onCancel} className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-600 hover:bg-zinc-100 transition">
-            Cancelar
-          </button>
-          <button onClick={onConfirm} className="px-4 py-2 rounded-lg text-sm font-medium bg-zinc-900 text-white hover:bg-zinc-800 transition">
-            Confirmar
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
+import { ConfirmationProvider, useConfirmation } from "@/lib/confirmation/ConfirmationProvider";
 
 // ── Result banner ─────────────────────────────────────────────────────────────
 
@@ -64,42 +35,6 @@ function ResultBanner({ result }) {
       {result.error}
     </div>
   );
-}
-
-// ── useConfirmation hook ──────────────────────────────────────────────────────
-
-function useConfirmation() {
-  const [pendingConfirm, setPendingConfirm] = useState(null);
-
-  const withConfirmation = async (capability, title, description, action) => {
-    let resolveDecision;
-    const decision = new Promise(res => { resolveDecision = res; });
-
-    const enginePromise = requestConfirmation({ capability, title, description });
-    const pending = listPending();
-    const req = pending[pending.length - 1];
-
-    setPendingConfirm({ request: req, resolveDecision });
-    const confirmed = await decision;
-
-    if (confirmed) confirm(req.id);
-    else cancel(req.id);
-
-    const result = await enginePromise;
-    setPendingConfirm(null);
-    if (!result.confirmed) return null;
-    return action();
-  };
-
-  const dialog = pendingConfirm ? (
-    <ConfirmationDialog
-      request={pendingConfirm.request}
-      onConfirm={() => pendingConfirm.resolveDecision(true)}
-      onCancel={() => pendingConfirm.resolveDecision(false)}
-    />
-  ) : null;
-
-  return { withConfirmation, dialog };
 }
 
 // ── Reply / ReplyAll form ─────────────────────────────────────────────────────
@@ -148,7 +83,7 @@ function ReplyForm({ onSend, onDraft, loading }) {
 function ForwardForm({ onSend, onDraft, loading }) {
   const [messageId, setMessageId] = useState("");
   const [recipients, setRecipients] = useState("");
-  const [body, setBody]           = useState("");
+  const [body, setBody]             = useState("");
 
   const recipientsList = () => recipients.split(",").map(s => s.trim()).filter(Boolean);
 
@@ -195,16 +130,10 @@ function TestPanel() {
   const [results, setResults] = useState(null);
 
   const handleRun = async () => {
-    setRunning(true);
-    setResults(null);
-    try {
-      const r = await runGmailAdvancedTests();
-      setResults(r);
-    } catch (e) {
-      setResults({ verdict: "FAIL", architecturalStatus: e.message, totalPassed: 0, totalFailed: 1, totalTests: 1, suites: [] });
-    } finally {
-      setRunning(false);
-    }
+    setRunning(true); setResults(null);
+    try { setResults(await runGmailAdvancedTests()); }
+    catch (e) { setResults({ verdict: "FAIL", architecturalStatus: e.message, totalPassed: 0, totalFailed: 1, totalTests: 1, suites: [] }); }
+    finally { setRunning(false); }
   };
 
   return (
@@ -248,87 +177,98 @@ function TestPanel() {
   );
 }
 
-// ── Main card ─────────────────────────────────────────────────────────────────
+// ── Inner card (needs ConfirmationProvider context) ───────────────────────────
 
-export default function GmailAdvancedCard() {
-  const [tab, setTab]       = useState("reply");
+function GmailAdvancedCardInner() {
+  const [tab, setTab]         = useState("reply");
   const [loading, setLoading] = useState(false);
   const [result, setResult]   = useState(null);
-  const { withConfirmation, dialog } = useConfirmation();
+  const { requestAction }     = useConfirmation();
 
   const wrap = async (action) => {
     setLoading(true); setResult(null);
     const r = await action();
-    setResult(r);
+    if (r !== null) setResult(r);
     setLoading(false);
   };
 
   const tabs = [
-    { id: "reply",   label: "Responder",     icon: CornerUpLeft },
-    { id: "forward", label: "Encaminhar",    icon: Forward },
+    { id: "reply",   label: "Responder",  icon: CornerUpLeft },
+    { id: "forward", label: "Encaminhar", icon: Forward },
   ];
 
   return (
-    <div className="space-y-4">
-      {dialog}
-
-      <div className="p-5 rounded-xl border border-border bg-card">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-9 h-9 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center shrink-0">
-            <CornerUpRight className="w-5 h-5 text-indigo-500" />
-          </div>
-          <div>
-            <h3 className="font-semibold text-sm text-foreground">Gmail — Comunicacao Avancada</h3>
-            <span className="text-xs text-zinc-400">Implementation 011 — Reply / Forward</span>
-          </div>
+    <div className="p-5 rounded-xl border border-border bg-card">
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-9 h-9 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center shrink-0">
+          <CornerUpRight className="w-5 h-5 text-indigo-500" />
         </div>
-
-        <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-50 border border-amber-100 mb-4">
-          <ShieldAlert className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
-          <p className="text-xs text-amber-700">
-            Envio requer confirmacao via <span className="font-mono">RuntimeConfirmationEngine</span>. Rascunhos nao exigem confirmacao.
-          </p>
+        <div>
+          <h3 className="font-semibold text-sm text-foreground">Gmail — Comunicacao Avancada</h3>
+          <span className="text-xs text-zinc-400">Implementation 011 — Reply / Forward</span>
         </div>
-
-        <div className="flex gap-1 mb-4 border-b border-zinc-100 pb-1">
-          {tabs.map(({ id, label, icon: Icon }) => (
-            <button key={id} onClick={() => { setTab(id); setResult(null); }}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${tab === id ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-100"}`}>
-              <Icon className="w-3.5 h-3.5" />
-              {label}
-            </button>
-          ))}
-        </div>
-
-        {tab === "reply" && (
-          <ReplyForm
-            loading={loading}
-            onDraft={(req) => wrap(() => createReplyDraft(req))}
-            onSend={(req) => wrap(() => withConfirmation(
-              req.replyAll ? "gmail.replyAll" : "gmail.replyEmail",
-              req.replyAll ? "Confirmar Reply All" : "Confirmar resposta",
-              `Responder mensagem "${req.messageId}"${req.replyAll ? " para todos" : ""}`,
-              () => req.replyAll ? replyAll(req) : replyEmail(req)
-            ))}
-          />
-        )}
-        {tab === "forward" && (
-          <ForwardForm
-            loading={loading}
-            onDraft={(req) => wrap(() => createForwardDraft(req))}
-            onSend={(req) => wrap(() => withConfirmation(
-              "gmail.forwardEmail",
-              "Confirmar encaminhamento",
-              `Encaminhar mensagem "${req.messageId}" para ${req.recipients.join(", ")}`,
-              () => forwardEmail(req)
-            ))}
-          />
-        )}
-
-        <ResultBanner result={result} />
       </div>
 
-      <TestPanel />
+      <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-50 border border-amber-100 mb-4">
+        <ShieldAlert className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
+        <p className="text-xs text-amber-700">
+          Envio requer confirmacao via <span className="font-mono">RuntimeConfirmationEngine</span>. Rascunhos nao exigem confirmacao.
+        </p>
+      </div>
+
+      <div className="flex gap-1 mb-4 border-b border-zinc-100 pb-1">
+        {tabs.map(({ id, label, icon: Icon }) => (
+          <button key={id} onClick={() => { setTab(id); setResult(null); }}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${tab === id ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-100"}`}>
+            <Icon className="w-3.5 h-3.5" />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "reply" && (
+        <ReplyForm
+          loading={loading}
+          onDraft={(req) => wrap(() => createReplyDraft(req))}
+          onSend={(req) => wrap(() => requestAction(
+            {
+              capability:  req.replyAll ? "gmail.replyAll" : "gmail.replyEmail",
+              title:       req.replyAll ? "Confirmar Reply All" : "Confirmar resposta",
+              description: `Responder mensagem "${req.messageId}"${req.replyAll ? " para todos" : ""}`,
+            },
+            () => req.replyAll ? replyAll(req) : replyEmail(req)
+          ))}
+        />
+      )}
+      {tab === "forward" && (
+        <ForwardForm
+          loading={loading}
+          onDraft={(req) => wrap(() => createForwardDraft(req))}
+          onSend={(req) => wrap(() => requestAction(
+            {
+              capability:  "gmail.forwardEmail",
+              title:       "Confirmar encaminhamento",
+              description: `Encaminhar mensagem "${req.messageId}" para ${req.recipients.join(", ")}`,
+            },
+            () => forwardEmail(req)
+          ))}
+        />
+      )}
+
+      <ResultBanner result={result} />
     </div>
+  );
+}
+
+// ── Main export (wraps with providers) ───────────────────────────────────────
+
+export default function GmailAdvancedCard() {
+  return (
+    <ConfirmationProvider>
+      <div className="space-y-4">
+        <GmailAdvancedCardInner />
+        <TestPanel />
+      </div>
+    </ConfirmationProvider>
   );
 }
