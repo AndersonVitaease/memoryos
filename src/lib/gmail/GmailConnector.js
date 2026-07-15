@@ -171,6 +171,13 @@ export async function listMessages({ maxResults = DEFAULT_MAX_RESULTS, labelIds,
   const conn = await requireSession();
   if (!conn) return disconnected();
 
+  console.group("[GmailConnector][DIAG] listMessages — pre-call");
+  console.log("[DIAG] conn.state  :", conn.state);
+  console.log("[DIAG] conn.scopes :", conn.scopes);
+  console.log("[DIAG] conn.email  :", conn.email);
+  console.log("[DIAG] token valido?", !!getAccessToken(WORKSPACE_ID));
+  console.groupEnd();
+
   const params = { maxResults };
   if (labelIds) params.labelIds = labelIds;
   if (pageToken) params.pageToken = pageToken;
