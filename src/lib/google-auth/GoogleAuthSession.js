@@ -156,6 +156,16 @@ export async function connect({ workspaceId = "default", scopes = WORKSPACE_SCOP
   });
   const { authUrl, state, codeVerifier } = initRes.data;
 
+  // DIAG — log redirect_uri exata usada na requisição
+  const sentRedirectUri = `${window.location.origin}/oauth/google/callback`;
+  const parsedAuthUrl = new URL(authUrl);
+  console.group("[GoogleAuthSession][DIAG] OAuth Init");
+  console.log("[DIAG] window.location.origin :", window.location.origin);
+  console.log("[DIAG] redirect_uri enviada ao backend :", sentRedirectUri);
+  console.log("[DIAG] redirect_uri dentro do authUrl  :", parsedAuthUrl.searchParams.get("redirect_uri"));
+  console.log("[DIAG] authUrl COMPLETA:", authUrl);
+  console.groupEnd();
+
   // 2. Store PKCE state for callback verification
   sessionStorage.setItem('gauth_state', state);
   sessionStorage.setItem('gauth_code_verifier', codeVerifier);
