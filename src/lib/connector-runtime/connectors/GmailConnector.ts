@@ -31,7 +31,7 @@ import type {
   ConnectorLog,
 } from "../ConnectorTypes";
 import { makeLog, makeExecutionId } from "../ConnectorTypes";
-import { isConnected, ensureValidToken, getConnection, getMetrics } from "../../google-auth/GoogleAuthSession";
+import { isConnected, ensureValidToken, getConnection, getMetrics, getAccessToken } from "../../google-auth/GoogleAuthSession";
 
 const GMAIL_API = "https://gmail.googleapis.com";
 const DEFAULT_TIMEOUT_MS = 10000;
@@ -256,20 +256,12 @@ export class GmailConnector implements IConnector {
   }
 
   /**
-   * Obtain access token via GoogleAuthSession's public interface only.
-   *
-   * LIMITATION (Impl-003):
-   *   GoogleAuthSession (Impl-001) currently stores only an opaque tokenRef
-   *   (gw-tok-*), not a real OAuth access token. A backend function performing
-   *   the OAuth code→token exchange is required before real API calls can be made.
-   *   This method returns null intentionally until that backend is available.
-   *   No globalThis or internal state is accessed here.
+   * Obtain real access token via GoogleAuthSession's public getAccessToken() API.
+   * Implementation 007: real OAuth token available after backend exchange.
+   * Token is stored in memory by GoogleAuthSession — never in localStorage.
    */
   private _getToken(): string | null {
-    // GoogleAuthSession's public API does not yet expose a real access token.
-    // When getAccessToken() or equivalent is added to GoogleAuthSession's public API
-    // after backend OAuth exchange is implemented, this is the only method to update.
-    return null;
+    return getAccessToken("default");
   }
 
   private _recordResponseTime(ms: number): void {

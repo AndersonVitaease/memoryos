@@ -140,6 +140,7 @@ import Phase711Page from '@/pages/Phase711Page';
 import Phase712Page from '@/pages/Phase712Page';
 import Phase713Page from '@/pages/Phase713Page';
 import Phase714Page from '@/pages/Phase714Page';
+import GoogleOAuthCallback from '@/pages/GoogleOAuthCallback';
 
 const AuthenticatedApp = () => {
   console.log('[RENDER] AuthenticatedApp');
@@ -304,6 +305,7 @@ const AuthenticatedApp = () => {
           <Route path="/phase714" element={<Phase714Page />} />
         </Route>
       </Route>
+      <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );

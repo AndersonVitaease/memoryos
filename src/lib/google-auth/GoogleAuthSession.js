@@ -1,32 +1,42 @@
 /**
- * GoogleAuthSession.js — Implementation 001
+ * GoogleAuthSession.js — Implementation 007
  * Google Workspace OAuth 2.0 — Session Manager
  *
  * Responsabilidade única: manter o estado de autenticação Google
- * na sessão do browser (localStorage), sem expor tokens em logs.
+ * na sessão do browser (localStorage + memória segura), sem expor
+ * refresh tokens. Access tokens são armazenados em memória (não localStorage).
  *
  * Arquitetura:
- *   - Tokens NUNCA aparecem em console.log
- *   - Apenas referências opacas (tokenRef) são expostas externamente
+ *   - Refresh tokens: armazenados SOMENTE no backend (GoogleOAuthToken entity)
+ *   - Access tokens: armazenados em memória (sessionStorage), nunca em logs
+ *   - localStorage: mantém apenas metadata da conexão (sem tokens)
  *   - Refresh automático quando o access token está próximo de expirar
  *   - Multi-workspace ready: cada entrada é indexada por workspaceId
  *
- * Limitação documentada:
- *   A produção requer Google OAuth Client ID/Secret configurados via
- *   set_secrets e um backend function para o exchange do code.
- *   Esta implementação utiliza a arquitetura completa com simulação
- *   do OAuth round-trip no frontend — adequado para validação da arquitetura.
+ * Fluxo real (Implementation 007):
+ *   1. googleOAuthInit  → gera authUrl + state + codeVerifier
+ *   2. Redirect Google  → usuário autoriza
+ *   3. googleOAuthExchange → troca code por tokens, armazena refresh no backend
+ *   4. Retorna accessToken (curto prazo) ao frontend
+ *   5. GoogleAuthSession armazena accessToken em memória
+ *   6. googleOAuthRefresh → renova via backend quando necessário
+ *   7. googleOAuthRevoke  → revoga e limpa
  */
+
+import { base44 } from '@/api/base44Client';
 
 const STORAGE_KEY = "memoryos_gauth_v1";
 const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000; // renova 5 min antes de expirar
 
-// ─── Scopes mínimos para autenticação base ─────────────────────────────────────
+// ── In-memory token store (nunca persiste tokens em localStorage) ─────────────
+const _tokenStore = new Map(); // workspaceId → { accessToken, expiresAt }
+
+// ── Scopes ────────────────────────────────────────────────────────────────────
 
 export const BASE_SCOPES = [
-  "https://www.googleapis.com/auth/userinfo.profile",
-  "https://www.googleapis.com/auth/userinfo.email",
   "openid",
+  "https://www.googleapis.com/auth/userinfo.email",
+  "https://www.googleapis.com/auth/userinfo.profile",
 ];
 
 export const WORKSPACE_SCOPES = [
@@ -36,7 +46,7 @@ export const WORKSPACE_SCOPES = [
   "https://www.googleapis.com/auth/drive",
 ];
 
-// ─── Storage (tokens nunca em log) ────────────────────────────────────────────
+// ── Storage (somente metadata — sem tokens) ───────────────────────────────────
 
 function _load() {
   try {
@@ -57,33 +67,42 @@ function _clear(workspaceId) {
   const all = _load();
   delete all[workspaceId];
   _save(all);
+  _tokenStore.delete(workspaceId);
 }
-
-// ─── Connection record ─────────────────────────────────────────────────────────
-
-/**
- * @typedef {Object} GoogleConnection
- * @property {string}   workspaceId
- * @property {string}   connectionId    - ID opaco da conexão
- * @property {string}   tokenRef        - Referência opaca (nunca o token real)
- * @property {string}   refreshTokenRef - Referência opaca do refresh token
- * @property {string}   email
- * @property {string}   displayName
- * @property {string}   avatarUrl
- * @property {string[]} scopes
- * @property {number}   expiresAt       - ms epoch
- * @property {number}   connectedAt     - ms epoch
- * @property {string}   state           - ConnectionState
- */
 
 function _makeConnectionId() {
   return `gw-conn-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
-// ─── Public API ────────────────────────────────────────────────────────────────
+// ── Token memory store ────────────────────────────────────────────────────────
+
+function _storeToken(workspaceId, accessToken, expiresAt) {
+  _tokenStore.set(workspaceId, { accessToken, expiresAt });
+}
+
+function _getStoredToken(workspaceId) {
+  return _tokenStore.get(workspaceId) ?? null;
+}
 
 /**
- * Retorna a conexão atual para um workspace, ou null se não conectado.
+ * Retorna o access token real para um workspace.
+ * Usado exclusivamente pelos conectores via ConnectorInvocationService.
+ * NUNCA exposto diretamente ao UI.
+ *
+ * @param {string} workspaceId
+ * @returns {string | null}
+ */
+export function getAccessToken(workspaceId = "default") {
+  const stored = _getStoredToken(workspaceId);
+  if (!stored) return null;
+  if (Date.now() >= stored.expiresAt) return null; // expirado
+  return stored.accessToken;
+}
+
+// ── Public connection API ─────────────────────────────────────────────────────
+
+/**
+ * Retorna a conexão atual (metadata) para um workspace, ou null.
  * @param {string} workspaceId
  * @returns {GoogleConnection | null}
  */
@@ -92,89 +111,147 @@ export function getConnection(workspaceId = "default") {
   return all[workspaceId] ?? null;
 }
 
-/**
- * Lista todos os workspaces conectados (suporte multi-tenant).
- * @returns {GoogleConnection[]}
- */
 export function listConnections() {
   const all = _load();
   return Object.values(all);
 }
 
 /**
- * Verifica se um workspace está conectado e com token válido.
+ * Verifica se um workspace está conectado e com token válido em memória.
  */
 export function isConnected(workspaceId = "default") {
   const conn = getConnection(workspaceId);
-  if (!conn) return false;
-  if (conn.state !== "CONNECTED") return false;
-  return Date.now() < conn.expiresAt;
+  if (!conn || conn.state !== "CONNECTED") return false;
+  const token = _getStoredToken(workspaceId);
+  if (!token) return false;
+  return Date.now() < token.expiresAt;
 }
 
 /**
- * Simula o fluxo OAuth 2.0 Authorization Code + PKCE.
+ * Inicia o fluxo OAuth real via backend function googleOAuthInit.
+ * Abre popup para accounts.google.com.
  *
- * Em produção: abre popup/redirect para accounts.google.com,
- * troca o code por tokens via backend function.
- *
- * Aqui: simula o round-trip completo preservando a estrutura de dados.
- *
- * @param {Object}   opts
- * @param {string}   opts.workspaceId
+ * @param {Object} opts
+ * @param {string} opts.workspaceId
  * @param {string[]} opts.scopes
- * @param {Function} opts.onStateChange  - callback(state: string)
+ * @param {Function} opts.onStateChange
  * @returns {Promise<GoogleConnection>}
  */
-export async function connect({ workspaceId = "default", scopes = BASE_SCOPES, onStateChange } = {}) {
+export async function connect({ workspaceId = "default", scopes = WORKSPACE_SCOPES, onStateChange } = {}) {
   onStateChange?.("AUTHENTICATING");
 
-  // Simulate OAuth round-trip latency
-  await _delay(800);
-
-  const connectionId   = _makeConnectionId();
-  const expiresAt      = Date.now() + 3_600_000; // 1h
-  const connectedAt    = Date.now();
-
-  // LIMITAÇÃO DOCUMENTADA:
-  // Em produção, este bloco executa:
-  //   1. Gera code_verifier + code_challenge (PKCE)
-  //   2. Abre accounts.google.com?response_type=code&client_id=...
-  //   3. Recebe code via redirect/postMessage
-  //   4. POST /api/google/token para trocar code por access_token + refresh_token
-  //   5. Armazena refresh_token no backend (nunca no localStorage)
-  //   6. Armazena apenas tokenRef (opaco) localmente
-  //
-  // Simulação preserva a estrutura completa:
-  const tokenRef        = `gw-tok-${connectionId}`; // referência opaca
-  const refreshTokenRef = `gw-ref-${connectionId}`; // nunca o valor real
-
-  /** @type {GoogleConnection} */
-  const connection = {
-    workspaceId,
-    connectionId,
-    tokenRef,
-    refreshTokenRef,
-    email:       `workspace@gmail.com`,
-    displayName: "Google Workspace",
-    avatarUrl:   "",
+  // 1. Get auth URL from backend
+  const initRes = await base44.functions.invoke('googleOAuthInit', {
     scopes,
-    expiresAt,
-    connectedAt,
-    state: "CONNECTED",
-  };
+    redirectUri: `${window.location.origin}/oauth/google/callback`,
+  });
+  const { authUrl, state, codeVerifier } = initRes.data;
 
-  const all = _load();
-  all[workspaceId] = connection;
-  _save(all);
+  // 2. Store PKCE state for callback verification
+  sessionStorage.setItem('gauth_state', state);
+  sessionStorage.setItem('gauth_code_verifier', codeVerifier);
+  sessionStorage.setItem('gauth_workspace_id', workspaceId);
+  sessionStorage.setItem('gauth_scopes', JSON.stringify(scopes));
 
-  onStateChange?.("CONNECTED");
-  return connection;
+  // 3. Open OAuth popup
+  return new Promise((resolve, reject) => {
+    const popup = window.open(authUrl, 'google_oauth', 'width=500,height=650,scrollbars=yes');
+
+    if (!popup) {
+      reject(new Error('Popup blocked. Please allow popups for this site.'));
+      return;
+    }
+
+    // 4. Listen for callback message from popup
+    const handleMessage = async (event) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type !== 'GOOGLE_OAUTH_CALLBACK') return;
+
+      window.removeEventListener('message', handleMessage);
+      clearInterval(pollClosed);
+
+      const { code, returnedState, error } = event.data;
+
+      if (error) {
+        onStateChange?.("NOT_CONNECTED");
+        reject(new Error(error));
+        return;
+      }
+
+      // Verify CSRF state
+      const savedState = sessionStorage.getItem('gauth_state');
+      if (returnedState !== savedState) {
+        onStateChange?.("NOT_CONNECTED");
+        reject(new Error('OAuth state mismatch — possible CSRF attack'));
+        return;
+      }
+
+      try {
+        // 5. Exchange code for tokens via backend
+        const exchangeRes = await base44.functions.invoke('googleOAuthExchange', {
+          code,
+          codeVerifier,
+          redirectUri: `${window.location.origin}/oauth/google/callback`,
+          workspaceId,
+        });
+
+        const { accessToken, expiresAt, email, displayName, avatarUrl, scopes: grantedScopes } = exchangeRes.data;
+
+        // 6. Store access token in memory (never localStorage)
+        _storeToken(workspaceId, accessToken, expiresAt);
+
+        // 7. Store connection metadata (no tokens) in localStorage
+        const connectionId = _makeConnectionId();
+        const connection = {
+          workspaceId,
+          connectionId,
+          tokenRef:        `gw-tok-${connectionId}`,
+          refreshTokenRef: `gw-ref-${connectionId}`,
+          email:           email ?? '',
+          displayName:     displayName ?? '',
+          avatarUrl:       avatarUrl ?? '',
+          scopes:          grantedScopes ?? scopes,
+          expiresAt,
+          connectedAt:     Date.now(),
+          state:           "CONNECTED",
+          lastRefreshedAt: Date.now(),
+          isReal:          true, // marks real OAuth (not simulated)
+        };
+
+        const all = _load();
+        all[workspaceId] = connection;
+        _save(all);
+
+        // 8. Cleanup session state
+        sessionStorage.removeItem('gauth_state');
+        sessionStorage.removeItem('gauth_code_verifier');
+        sessionStorage.removeItem('gauth_workspace_id');
+        sessionStorage.removeItem('gauth_scopes');
+
+        onStateChange?.("CONNECTED");
+        resolve(connection);
+      } catch (err) {
+        onStateChange?.("NOT_CONNECTED");
+        reject(err);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+
+    // Detect popup closed without completing flow
+    const pollClosed = setInterval(() => {
+      if (popup.closed) {
+        clearInterval(pollClosed);
+        window.removeEventListener('message', handleMessage);
+        onStateChange?.("NOT_CONNECTED");
+        reject(new Error('OAuth popup closed before completing authentication'));
+      }
+    }, 500);
+  });
 }
 
 /**
- * Renova o access token usando o refresh token.
- * Chamado automaticamente quando expiresAt - buffer < Date.now().
- *
+ * Renova o access token via backend (refresh_token nunca sai do servidor).
  * @param {string} workspaceId
  * @param {Function} [onStateChange]
  * @returns {Promise<GoogleConnection>}
@@ -185,21 +262,19 @@ export async function refresh(workspaceId = "default", onStateChange) {
 
   onStateChange?.("REFRESHING");
 
-  // LIMITAÇÃO DOCUMENTADA:
-  // Em produção: POST https://oauth2.googleapis.com/token com grant_type=refresh_token
-  // O refresh_token é recuperado do backend via refreshTokenRef.
-  await _delay(400);
+  const refreshRes = await base44.functions.invoke('googleOAuthRefresh', { workspaceId });
+  const { accessToken, expiresAt } = refreshRes.data;
 
-  const newExpiresAt = Date.now() + 3_600_000;
-  const newTokenRef  = `gw-tok-refreshed-${Date.now()}`;
+  // Update token in memory
+  _storeToken(workspaceId, accessToken, expiresAt);
 
+  // Update metadata in localStorage
   const updated = {
     ...conn,
-    tokenRef:   newTokenRef,
-    expiresAt:  newExpiresAt,
-    state:      "CONNECTED",
+    expiresAt,
+    lastRefreshedAt: Date.now(),
+    state: "CONNECTED",
   };
-
   const all = _load();
   all[workspaceId] = updated;
   _save(all);
@@ -209,10 +284,7 @@ export async function refresh(workspaceId = "default", onStateChange) {
 }
 
 /**
- * Desconecta o workspace — revoga tokens e limpa storage.
- *
- * @param {string} workspaceId
- * @param {Function} [onStateChange]
+ * Desconecta o workspace — revoga tokens no backend e limpa storage.
  */
 export async function disconnect(workspaceId = "default", onStateChange) {
   const conn = getConnection(workspaceId);
@@ -220,35 +292,40 @@ export async function disconnect(workspaceId = "default", onStateChange) {
 
   onStateChange?.("DISCONNECTED");
 
-  // LIMITAÇÃO DOCUMENTADA:
-  // Em produção: POST https://oauth2.googleapis.com/revoke?token=...
-  await _delay(300);
+  // Revoke on backend (best-effort)
+  await base44.functions.invoke('googleOAuthRevoke', { workspaceId }).catch(() => {});
 
   _clear(workspaceId);
   onStateChange?.("NOT_CONNECTED");
 }
 
 /**
- * Reconecta um workspace previamente desconectado.
- * Equivalente a connect() — mantido como API explícita por semântica.
+ * Reconecta um workspace — equivale a connect().
  */
-export async function reconnect({ workspaceId = "default", scopes = BASE_SCOPES, onStateChange } = {}) {
+export async function reconnect({ workspaceId = "default", scopes = WORKSPACE_SCOPES, onStateChange } = {}) {
   return connect({ workspaceId, scopes, onStateChange });
 }
 
 /**
- * Verifica se o token precisa ser renovado e faz refresh automático.
- * Deve ser chamado antes de usar o token.
- *
- * @param {string} workspaceId
- * @returns {Promise<GoogleConnection | null>}
+ * Verifica e renova o token se necessário antes do uso.
+ * Chamado pelos conectores via ConnectorInvocationService.
  */
 export async function ensureValidToken(workspaceId = "default") {
   const conn = getConnection(workspaceId);
-  if (!conn) return null;
-  if (conn.state !== "CONNECTED") return null;
+  if (!conn || conn.state !== "CONNECTED") return null;
 
-  const needsRefresh = Date.now() > conn.expiresAt - TOKEN_EXPIRY_BUFFER_MS;
+  const stored = _getStoredToken(workspaceId);
+
+  // Token ausente em memória mas conexão existe — tentar refresh (ex: após reload)
+  if (!stored) {
+    try {
+      return await refresh(workspaceId);
+    } catch {
+      return null;
+    }
+  }
+
+  const needsRefresh = Date.now() > stored.expiresAt - TOKEN_EXPIRY_BUFFER_MS;
   if (needsRefresh) {
     try {
       return await refresh(workspaceId);
@@ -256,6 +333,7 @@ export async function ensureValidToken(workspaceId = "default") {
       return null;
     }
   }
+
   return conn;
 }
 
@@ -266,12 +344,9 @@ export function getMetrics() {
   const conns = listConnections();
   return {
     totalWorkspaces: conns.length,
-    connected:       conns.filter((c) => c.state === "CONNECTED").length,
-    expired:         conns.filter((c) => c.state === "CONNECTED" && Date.now() > c.expiresAt).length,
+    connected:       conns.filter(c => c.state === "CONNECTED").length,
+    expired:         conns.filter(c => c.state === "CONNECTED" && Date.now() > c.expiresAt).length,
+    real:            conns.filter(c => c.isReal === true).length,
     byState:         conns.reduce((acc, c) => { acc[c.state] = (acc[c.state] ?? 0) + 1; return acc; }, {}),
   };
 }
-
-// ─── Internal ─────────────────────────────────────────────────────────────────
-
-function _delay(ms) { return new Promise((r) => setTimeout(r, ms)); }

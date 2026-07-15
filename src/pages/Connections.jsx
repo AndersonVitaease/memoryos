@@ -14,6 +14,7 @@ import { runGmailConnectorTests } from "@/lib/google-auth/gmailConnectorTests";
 import { runGoogleCalendarConnectorTests } from "@/lib/google-auth/googleCalendarConnectorTests";
 import { runGoogleDriveConnectorTests } from "@/lib/google-auth/googleDriveConnectorTests";
 import { runGoogleWorkspaceIntegrationTests } from "@/lib/google-auth/googleWorkspaceIntegrationTests";
+import { runGoogleOAuth007Tests } from "@/lib/google-auth/googleOAuth007Tests";
 
 // ─── Google Workspace connector card ─────────────────────────────────────────
 
@@ -157,15 +158,35 @@ function GoogleConnectorCard() {
 
       {/* Connected account info */}
       {connected && conn && (
-        <div className="mt-4 p-3 rounded-lg bg-emerald-50 border border-emerald-100">
+        <div className="mt-4 p-3 rounded-lg bg-emerald-50 border border-emerald-100 space-y-2">
           <div className="flex items-center gap-2 text-xs text-emerald-700">
             <Check className="w-3.5 h-3.5 shrink-0" />
-            <span className="font-medium">Workspace conectado</span>
-            <span className="text-emerald-500 font-mono ml-auto">{conn.connectionId.slice(-10)}</span>
+            <span className="font-semibold">Workspace conectado</span>
+            {conn.isReal && (
+              <span className="ml-auto px-1.5 py-0.5 rounded bg-emerald-200 text-emerald-800 text-xs font-bold">OAuth 2.0 Real</span>
+            )}
           </div>
-          <div className="mt-2 grid grid-cols-2 gap-1 text-xs text-emerald-600">
-            <span>Escopos: {conn.scopes.length}</span>
-            <span>Expira: {new Date(conn.expiresAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
+          {conn.email && (
+            <div className="text-xs text-emerald-700">
+              <span className="font-medium">E-mail: </span>{conn.email}
+            </div>
+          )}
+          {conn.displayName && (
+            <div className="text-xs text-emerald-700">
+              <span className="font-medium">Workspace: </span>{conn.displayName}
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-1 text-xs text-emerald-600">
+            <span><span className="font-medium">Escopos:</span> {conn.scopes?.length ?? 0}</span>
+            <span><span className="font-medium">Expira:</span> {new Date(conn.expiresAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span>
+          </div>
+          {conn.lastRefreshedAt && (
+            <div className="text-xs text-emerald-600">
+              <span className="font-medium">Ultima renovacao:</span> {new Date(conn.lastRefreshedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+            </div>
+          )}
+          <div className="text-xs text-emerald-600">
+            <span className="font-medium">Status:</span> {conn.state === "CONNECTED" ? "CONNECTED" : conn.state}
           </div>
         </div>
       )}
@@ -224,6 +245,80 @@ function GoogleConnectorCard() {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── OAuth007 Test Panel — Implementation 007 ────────────────────────────────
+
+function OAuth007TestPanel() {
+  const [running, setRunning] = useState(false);
+  const [results, setResults] = useState(null);
+
+  const handleRun = async () => {
+    setRunning(true);
+    setResults(null);
+    try {
+      const r = await runGoogleOAuth007Tests();
+      setResults(r);
+    } catch (e) {
+      setResults({ verdict: "FAIL", architecturalStatus: e.message, totalPassed: 0, totalFailed: 1, totalTests: 1, suites: [] });
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <div className="border border-zinc-200 rounded-xl overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 bg-zinc-900 border-b border-zinc-700">
+        <div className="flex items-center gap-2">
+          <GitBranch className="w-4 h-4 text-zinc-300" />
+          <span className="text-sm font-semibold text-white">Google OAuth 2.0 Backend</span>
+          <span className="text-xs text-zinc-400 ml-1">Implementation 007</span>
+        </div>
+        <button
+          onClick={handleRun}
+          disabled={running}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-white text-zinc-900 hover:bg-zinc-100 disabled:opacity-40 transition"
+        >
+          {running ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+          {running ? "Validando..." : "Rodar Testes"}
+        </button>
+      </div>
+
+      {results && (
+        <div className="p-4 space-y-3">
+          <div className={`flex items-center gap-2 p-3 rounded-lg border text-sm font-medium ${results.verdict === "PASS" ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-red-50 border-red-200 text-red-700"}`}>
+            {results.verdict === "PASS"
+              ? <CheckCircle2 className="w-4 h-4 shrink-0" />
+              : <XCircle className="w-4 h-4 shrink-0" />}
+            <span>{results.architecturalStatus}</span>
+            <span className="ml-auto text-xs font-normal">{results.totalPassed}/{results.totalTests} · {results.durationMs}ms</span>
+          </div>
+          {results.suites?.map((suite) => (
+            <div key={suite.suite}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-semibold text-zinc-600">{suite.suite}</span>
+                <span className={`text-xs font-medium ${suite.failed === 0 ? "text-emerald-600" : "text-red-600"}`}>
+                  {suite.passed}/{suite.total}
+                </span>
+              </div>
+              <div className="space-y-0.5">
+                {suite.results?.map((r, i) => (
+                  <div key={i} className={`flex items-center gap-2 text-xs py-1 px-2 rounded ${r.passed ? "text-zinc-600" : "bg-red-50 text-red-600"}`}>
+                    {r.passed
+                      ? <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
+                      : <XCircle className="w-3 h-3 text-red-500 shrink-0" />}
+                    <span className="flex-1 font-mono">{r.name}</span>
+                    {!r.passed && <span className="text-red-400 truncate max-w-[180px]" title={r.error}>{r.error}</span>}
+                    <span className="text-zinc-400 shrink-0">{r.durationMs}ms</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -678,6 +773,14 @@ export default function Connections() {
             Disponivel agora
           </h2>
           <GoogleConnectorCard />
+        </div>
+
+        {/* OAuth Backend Tests — Implementation 007 */}
+        <div className="mb-6">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+            OAuth 2.0 Backend — Implementation 007
+          </h2>
+          <OAuth007TestPanel />
         </div>
 
         {/* Integration Validation — Implementation 006 */}

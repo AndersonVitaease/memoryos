@@ -1,0 +1,35 @@
+{
+  "name": "GoogleOAuthToken",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "description": "ID do usu\u00e1rio propriet\u00e1rio do token"
+    },
+    "workspace_id": {
+      "type": "string",
+      "description": "ID do workspace Google (ex: default)"
+    },
+    "refresh_token": {
+      "type": "string",
+      "description": "Refresh token Google \u2014 armazenado apenas no backend, nunca exposto ao frontend"
+    },
+    "email": {
+      "type": "string",
+      "description": "Email da conta Google autenticada"
+    },
+    "scopes": {
+      "type": "string",
+      "description": "Escopos autorizados (string separada por espa\u00e7o)"
+    },
+    "updated_at": {
+      "type": "string",
+      "description": "\u00daltima atualiza\u00e7\u00e3o do token"
+    }
+  },
+  "required": [
+    "user_id",
+    "workspace_id",
+    "refresh_token"
+  ]
+}
