@@ -235,29 +235,34 @@ class ConversationPipeline {
       });
       // ── end E-02.1 ───────────────────────────────────────────────────────
 
-      // ── E-02.2: Goal → Planning Engine ──────────────────────────────────
-      // Transforms the ConversationGoal into a structured ExecutionPlan.
-      // Pure: no connectors, no runtime, no network. Plan is NOT executed.
-      // Execution is the responsibility of Sprint E-02.3 (Planning → Runtime).
+      // ── E-02.3: Planning → Runtime Engine ───────────────────────────────
+      // Executes the ExecutionPlan via ConversationRuntimeEngine (MockExecutor).
+      // No real connectors are called — MockCapabilityExecutor handles all steps.
+      // The result is emitted as an event for observability; it does NOT affect
+      // the conversation response (that still comes from the LLM reasoning path).
       if (goalBridgeResult.goal.valid) {
         const { conversationPlanningEngine } = await import("@/lib/planning-engine-e022/ConversationPlanningEngine");
         const planResult = conversationPlanningEngine.plan(goalBridgeResult.goal);
-        conversationStore.emit({
-          type: "PIPELINE_STEP",
-          executionId,
-          payload: {
-            step:       "plan_produced",
-            planId:     planResult.plan.id,
-            goalId:     planResult.plan.goalId,
-            goalType:   planResult.plan.goalType,
-            status:     planResult.plan.status,
-            stepCount:  planResult.plan.steps.length,
-            durationMs: planResult.durationMs,
-          },
-          timestamp: Date.now(),
-        });
+        if (planResult.success && planResult.plan.steps.length > 0) {
+          const { conversationRuntimeEngine } = await import("@/lib/runtime-engine/ConversationRuntimeEngine");
+          const executionResult = await conversationRuntimeEngine.execute(planResult.plan);
+          conversationStore.emit({
+            type: "PIPELINE_STEP",
+            executionId,
+            payload: {
+              step:        "runtime_executed",
+              runtimeId:   executionResult.executionId,
+              planId:      executionResult.planId,
+              status:      executionResult.status,
+              stepCount:   executionResult.steps.length,
+              durationMs:  executionResult.durationMs,
+              errors:      executionResult.errors,
+            },
+            timestamp: Date.now(),
+          });
+        }
       }
-      // ── end E-02.2 ───────────────────────────────────────────────────────
+      // ── end E-02.3 ───────────────────────────────────────────────────────
 
       setStep("route", "done");
       setStep("synthesize", "running");
