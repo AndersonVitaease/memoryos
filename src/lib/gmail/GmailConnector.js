@@ -53,6 +53,12 @@ async function gmailGet(path, params = {}) {
     if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
   });
 
+  const masked = token.slice(0, 8) + "..." + token.slice(-4);
+  console.group(`[GmailConnector][DIAG] gmailGet(${path})`);
+  console.log("[DIAG] token (mascarado):", masked);
+  console.log("[DIAG] URL:", url.toString());
+  console.log("[DIAG] Authorization header: Bearer", masked);
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
@@ -62,9 +68,26 @@ async function gmailGet(path, params = {}) {
       signal: controller.signal,
     });
     clearTimeout(timer);
+
+    console.log("[DIAG] HTTP status:", res.status, res.ok ? "OK" : "ERRO");
+
+    // Clone para logar o body sem consumir o stream original
+    const cloned = res.clone();
+    cloned.json().then(body => {
+      if (!res.ok) {
+        console.error("[DIAG] Response body (erro):", JSON.stringify(body));
+      } else {
+        const preview = JSON.stringify(body).slice(0, 200);
+        console.log("[DIAG] Response body (preview):", preview);
+      }
+    }).catch(() => {});
+
+    console.groupEnd();
     return { status: res.status, ok: res.ok, json: () => res.json() };
   } catch (e) {
     clearTimeout(timer);
+    console.error("[DIAG] Excecao na chamada fetch:", e.name, e.message);
+    console.groupEnd();
     if (e.name === "AbortError") return { httpError: "timeout" };
     return { httpError: "network", message: e.message };
   }
@@ -73,9 +96,28 @@ async function gmailGet(path, params = {}) {
 // ── Session guard ─────────────────────────────────────────────────────────────
 
 async function requireSession() {
+  console.group("[GmailConnector][DIAG] requireSession()");
+
   const conn = await ensureValidToken(WORKSPACE_ID);
-  if (!conn) return null;
+  console.log("[DIAG] ensureValidToken() →", conn ? `state=${conn.state}` : "NULL");
+
+  if (!conn) {
+    console.warn("[DIAG] FALHA: ensureValidToken retornou null — sem conexao ou refresh falhou");
+    console.groupEnd();
+    return null;
+  }
+
   const token = getAccessToken(WORKSPACE_ID);
+  if (token) {
+    const masked = token.slice(0, 8) + "..." + token.slice(-4);
+    console.log("[DIAG] getAccessToken() →", masked);
+    console.log("[DIAG] conn.expiresAt →", new Date(conn.expiresAt).toISOString());
+    console.log("[DIAG] conn.scopes →", conn.scopes);
+  } else {
+    console.warn("[DIAG] FALHA: getAccessToken() retornou null — token ausente em memoria");
+  }
+
+  console.groupEnd();
   if (!token) return null;
   return conn;
 }
