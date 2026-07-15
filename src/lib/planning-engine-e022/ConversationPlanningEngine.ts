@@ -1,31 +1,34 @@
 /**
- * ConversationPlanningEngine.ts — Engineering Sprint E-02.2
- * Goal → ExecutionPlan
+ * ConversationPlanningEngine.ts — Engineering Sprint E-02.2A
+ * Goal → ExecutionPlan (normalized)
  *
  * SRP: Unica responsabilidade — receber um ConversationGoal e produzir
- *      um ExecutionPlan imutavel e estruturado.
+ *      um ExecutionPlan imutavel composto exclusivamente de Capabilities.
  *
- * NAO executa steps.
- * NAO chama connectors (Gmail, Calendar, Drive, GitHub).
- * NAO chama Runtime.
- * NAO faz chamadas de rede.
- * NAO conhece OAuth.
- * NAO conhece LLM.
+ * O Planner conhece APENAS:
+ *   - ConversationGoal  (contrato de entrada)
+ *   - GoalCapabilityRegistry (mapeamento Goal → Capabilities)
+ *   - ExecutionPlan     (contrato de saida)
  *
- * Conhece apenas:
- *   - ConversationGoal (contrato de dados)
- *   - GoalPlanTemplates (mapeamento declarativo)
- *   - ExecutionPlanTypes (contratos de saida)
+ * O Planner NAO conhece:
+ *   - Runtime
+ *   - validate_session / summarize / noop
+ *   - OAuth / autenticacao
+ *   - Retry / timeout
+ *   - Connectors concretos (Gmail, Calendar, Drive)
+ *   - LLM
+ *   - Rede
  *
- * Observabilidade interna:
- *   - planning_started
- *   - planning_completed
- *   - planning_failed
- * (eventos in-process, sem telemetria externa)
+ * Toda a logica operacional (auth, retry, timeout, summarize, auditoria)
+ * e responsabilidade exclusiva do Runtime (Sprint E-02.3).
+ *
+ * Observabilidade interna (in-process, sem telemetria externa):
+ *   planning_started / planning_completed / planning_failed
  */
 
-import type { ConversationGoal }              from "@/lib/goals/GoalTypes";
-import { getTemplate }                        from "./GoalPlanTemplates";
+import type { ConversationGoal }    from "@/lib/goals/GoalTypes";
+import type { GoalType }            from "@/lib/goals/GoalTypes";
+import { GoalCapabilityRegistry }   from "./GoalCapabilityRegistry";
 import {
   makePlanId,
   makeStepId,
@@ -38,7 +41,7 @@ import type {
   PlanStatus,
 } from "./ExecutionPlanTypes";
 
-// ── Internal event bus (in-process, no external telemetry) ────────────────────
+// ── Event listener type ───────────────────────────────────────────────────────
 
 type PlanningEventListener = (event: PlanningEvent) => void;
 
@@ -48,109 +51,62 @@ export class ConversationPlanningEngine {
   private _listeners: PlanningEventListener[] = [];
   private _totalPlanned = 0;
   private _totalFailed  = 0;
-  private _lastPlans: ExecutionPlan[] = [];
-
-  // ── Public API ─────────────────────────────────────────────────────────────
+  private _lastPlans:  ExecutionPlan[] = [];
 
   /**
    * Transforms a ConversationGoal into a structured, immutable ExecutionPlan.
    *
+   * Each step in the plan represents a connector capability.
+   * No infrastructure steps (validate_session, summarize, noop) are included —
+   * those are injected by the Runtime during execution.
+   *
    * Guarantees:
-   * - Never throws (returns plan with status "invalid_goal" on failure)
+   * - Never throws
    * - Never makes network calls
    * - Never invokes connectors or runtime
-   * - Deterministic for the same goal
+   * - Deterministic for the same goal and registry state
    */
   plan(goal: ConversationGoal): PlanningResult {
     const t0     = Date.now();
     const planId = makePlanId();
 
-    this._emit({
-      type:         "planning_started",
-      goalId:       goal.id,
-      planId,
-      planningTime: 0,
-      stepCount:    0,
-      timestamp:    Date.now(),
-    });
+    this._emit({ type: "planning_started", goalId: goal.id, planId, planningTime: 0, stepCount: 0, timestamp: Date.now() });
 
     try {
-      // Validate goal
       if (!goal.valid) {
-        const plan = this._buildPlan(planId, goal, [], "invalid_goal", t0);
-        this._totalFailed++;
-        this._emit({
-          type:         "planning_failed",
-          goalId:       goal.id,
-          planId,
-          planningTime: Date.now() - t0,
-          stepCount:    0,
-          timestamp:    Date.now(),
-        });
-        return { plan, success: false, error: "Goal is invalid", durationMs: Date.now() - t0 };
+        return this._fail(planId, goal, "Goal is invalid", t0);
       }
 
-      // Look up template
-      const template = getTemplate(goal.type as Parameters<typeof getTemplate>[0]);
+      const descriptors = GoalCapabilityRegistry.resolve(goal.type as GoalType);
 
-      if (!template || template.steps.length === 0) {
-        const plan = this._buildPlan(planId, goal, [], "empty", t0);
+      // Unknown goalType (not registered) — treat as empty
+      if (descriptors === null || descriptors.length === 0) {
+        const plan = this._makePlan(planId, goal, [], "empty", t0);
+        this._track(plan);
         this._totalPlanned++;
-        this._trackPlan(plan);
-        this._emit({
-          type:         "planning_completed",
-          goalId:       goal.id,
-          planId,
-          planningTime: Date.now() - t0,
-          stepCount:    0,
-          timestamp:    Date.now(),
-        });
+        this._emit({ type: "planning_completed", goalId: goal.id, planId, planningTime: Date.now() - t0, stepCount: 0, timestamp: Date.now() });
         return { plan, success: true, error: null, durationMs: Date.now() - t0 };
       }
 
-      // Build steps from template + goal parameters
-      let stepIdx = 0;
-      const steps: ExecutionStep[] = template.steps.map((tmpl) => {
-        stepIdx++;
+      let idx = 0;
+      const steps: ExecutionStep[] = descriptors.map((desc) => {
+        idx++;
         return Object.freeze({
-          id:        makeStepId(stepIdx),
-          type:      tmpl.type,
-          connector: tmpl.connector,
-          params:    Object.freeze({ ...tmpl.params, ...goal.parameters }),
+          id:         makeStepId(idx),
+          connector:  desc.connector,
+          capability: desc.capability,
+          parameters: Object.freeze({ ...desc.params, ...goal.parameters }),
         });
       });
 
-      const plan = this._buildPlan(planId, goal, steps, "planned", t0);
+      const plan = this._makePlan(planId, goal, steps, "planned", t0);
+      this._track(plan);
       this._totalPlanned++;
-      this._trackPlan(plan);
-      this._emit({
-        type:         "planning_completed",
-        goalId:       goal.id,
-        planId,
-        planningTime: Date.now() - t0,
-        stepCount:    steps.length,
-        timestamp:    Date.now(),
-      });
-
+      this._emit({ type: "planning_completed", goalId: goal.id, planId, planningTime: Date.now() - t0, stepCount: steps.length, timestamp: Date.now() });
       return { plan, success: true, error: null, durationMs: Date.now() - t0 };
 
     } catch (err) {
-      const plan = this._buildPlan(planId, goal, [], "invalid_goal", t0);
-      this._totalFailed++;
-      this._emit({
-        type:         "planning_failed",
-        goalId:       goal.id,
-        planId,
-        planningTime: Date.now() - t0,
-        stepCount:    0,
-        timestamp:    Date.now(),
-      });
-      return {
-        plan,
-        success:    false,
-        error:      err instanceof Error ? err.message : "Unknown planning error",
-        durationMs: Date.now() - t0,
-      };
+      return this._fail(planId, goal, err instanceof Error ? err.message : "Unknown error", t0);
     }
   }
 
@@ -158,27 +114,23 @@ export class ConversationPlanningEngine {
 
   onEvent(listener: PlanningEventListener): () => void {
     this._listeners.push(listener);
-    return () => {
-      this._listeners = this._listeners.filter((l) => l !== listener);
-    };
+    return () => { this._listeners = this._listeners.filter((l) => l !== listener); };
   }
 
   getMetrics() {
     return {
-      totalPlanned:    this._totalPlanned,
-      totalFailed:     this._totalFailed,
-      lastPlans:       [...this._lastPlans].reverse().slice(0, 20),
+      totalPlanned: this._totalPlanned,
+      totalFailed:  this._totalFailed,
+      registrySize: GoalCapabilityRegistry.size,
+      lastPlans:    [...this._lastPlans].reverse().slice(0, 20),
     };
   }
 
   // ── Private ────────────────────────────────────────────────────────────────
 
-  private _buildPlan(
-    planId:    string,
-    goal:      ConversationGoal,
-    steps:     ExecutionStep[],
-    status:    PlanStatus,
-    t0:        number,
+  private _makePlan(
+    planId: string, goal: ConversationGoal,
+    steps: ExecutionStep[], status: PlanStatus, t0: number,
   ): ExecutionPlan {
     return Object.freeze({
       id:         planId,
@@ -191,7 +143,14 @@ export class ConversationPlanningEngine {
     });
   }
 
-  private _trackPlan(plan: ExecutionPlan): void {
+  private _fail(planId: string, goal: ConversationGoal, error: string, t0: number): PlanningResult {
+    const plan = this._makePlan(planId, goal, [], "invalid_goal", t0);
+    this._totalFailed++;
+    this._emit({ type: "planning_failed", goalId: goal.id, planId, planningTime: Date.now() - t0, stepCount: 0, timestamp: Date.now() });
+    return { plan, success: false, error, durationMs: Date.now() - t0 };
+  }
+
+  private _track(plan: ExecutionPlan): void {
     this._lastPlans.push(plan);
     if (this._lastPlans.length > 50) this._lastPlans.splice(0, this._lastPlans.length - 50);
   }

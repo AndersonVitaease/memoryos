@@ -1,55 +1,36 @@
 /**
- * ExecutionPlanTypes.ts — Engineering Sprint E-02.2
- * Shared types for the Planning Engine layer.
+ * ExecutionPlanTypes.ts — Engineering Sprint E-02.2A
+ * Canonical types for the Planning Engine.
  *
- * SRP: apenas tipos e helpers de identificacao.
- * Sem logica. Sem rede. Sem connectors. Sem runtime.
+ * SRP: apenas contratos de dados. Sem logica. Sem rede. Sem connectors.
  *
- * Usado por:
- *   - ConversationPlanningEngine
- *   - ConversationPipeline (step: planning)
+ * Utilizado por:
+ *   - ConversationPlanningEngine (produtor)
+ *   - ConversationPipeline       (consumidor step: planning)
+ *   - Runtime Engine             (Sprint E-02.3 — executor)
  *   - Observability / Analytics
- *   - Sprint E-02.3 Runtime (consumidor do plano)
+ *
+ * MODELO CANONICAL:
+ *   ExecutionStep = { connector, capability, parameters }
+ *
+ *   O Runtime e o unico responsavel por adicionar:
+ *     - validate_session
+ *     - retry / timeout
+ *     - summarize
+ *     - observabilidade / auditoria
  */
 
-// ── Step types ─────────────────────────────────────────────────────────────────
+// ── Connector identifier ───────────────────────────────────────────────────────
+// String open-ended so future connectors need no type changes here.
+export type ConnectorId = string;
 
-export type StepConnector =
-  | "google"
-  | "gmail"
-  | "calendar"
-  | "drive"
-  | "memory"
-  | null;
-
-export type StepType =
-  // Session lifecycle
-  | "validate_session"
-  // Gmail
-  | "gmail.readInbox"
-  | "gmail.searchMessages"
-  | "gmail.readMessage"
-  // Calendar
-  | "calendar.listToday"
-  | "calendar.listTomorrow"
-  | "calendar.listWeek"
-  | "calendar.createEvent"
-  // Drive
-  | "drive.searchFiles"
-  | "drive.listRecent"
-  | "drive.openDocument"
-  // Memory
-  | "memory.query"
-  | "memory.summarize"
-  // General
-  | "summarize"
-  | "noop";
+// ── ExecutionStep ─────────────────────────────────────────────────────────────
 
 export interface ExecutionStep {
-  readonly id:        string;
-  readonly type:      StepType;
-  readonly connector: StepConnector;
-  readonly params:    Readonly<Record<string, unknown>>;
+  readonly id:         string;
+  readonly connector:  ConnectorId;
+  readonly capability: string;
+  readonly parameters: Readonly<Record<string, unknown>>;
 }
 
 // ── ExecutionPlan ──────────────────────────────────────────────────────────────
@@ -75,15 +56,15 @@ export interface PlanningResult {
   readonly durationMs: number;
 }
 
-// ── Observability events ───────────────────────────────────────────────────────
+// ── Observability events (in-process only, no external telemetry) ─────────────
 
 export interface PlanningEvent {
-  readonly type:       "planning_started" | "planning_completed" | "planning_failed";
-  readonly goalId:     string;
-  readonly planId:     string;
+  readonly type:        "planning_started" | "planning_completed" | "planning_failed";
+  readonly goalId:      string;
+  readonly planId:      string;
   readonly planningTime: number;
-  readonly stepCount:  number;
-  readonly timestamp:  number;
+  readonly stepCount:   number;
+  readonly timestamp:   number;
 }
 
 // ── ID factory ────────────────────────────────────────────────────────────────

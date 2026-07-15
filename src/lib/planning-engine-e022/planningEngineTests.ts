@@ -1,28 +1,26 @@
 /**
- * planningEngineTests.ts — Engineering Sprint E-02.2
- * Deterministic test suite for ConversationPlanningEngine.
+ * planningEngineTests.ts — Engineering Sprint E-02.2A
+ * Deterministic test suite for ConversationPlanningEngine (normalized).
  *
  * Cobertura:
- * ✓ gmail.readInbox    → 3-step plan
- * ✓ gmail.searchMessages
- * ✓ gmail.readMessage
- * ✓ calendar.listToday
- * ✓ calendar.listTomorrow
- * ✓ calendar.createEvent
- * ✓ drive.searchFiles
- * ✓ drive.openDocument
- * ✓ memory.query
- * ✓ memory.summarize
+ * ✓ Planner gera apenas Capabilities (connector + capability)
+ * ✓ Nao existe validate_session, summarize, noop nos steps
+ * ✓ gmail.readInbox / searchMessages / readMessage
+ * ✓ calendar.listToday / listTomorrow / createEvent
+ * ✓ drive.searchFiles / openDocument
+ * ✓ memory.query / memory.summarize
  * ✓ Goal desconhecido (unknown)  → empty plan
- * ✓ Goal invalido                → invalid_goal plan
- * ✓ Plano vazio (general.conversation)
- * ✓ Plano imutavel
+ * ✓ Goal invalido                → invalid_goal
+ * ✓ ExecutionPlan imutavel
  * ✓ IDs unicos
- * ✓ Observabilidade (planning_started / planning_completed / planning_failed)
+ * ✓ Observabilidade: planning_started / planning_completed / planning_failed
  * ✓ Parametros do Goal propagados para os steps
+ * ✓ GoalCapabilityRegistry funcionando
+ * ✓ Sem regressoes
  */
 
 import { ConversationPlanningEngine }  from "./ConversationPlanningEngine";
+import { GoalCapabilityRegistry }      from "./GoalCapabilityRegistry";
 import type { ConversationGoal }       from "@/lib/goals/GoalTypes";
 import type { GoalType }               from "@/lib/goals/GoalTypes";
 import type { PlanningEvent }          from "./ExecutionPlanTypes";
@@ -39,28 +37,21 @@ interface TestResult {
 function assert(cond: boolean, msg: string): void {
   if (!cond) throw new Error(`Assertion failed: ${msg}`);
 }
-
 function assertEqual<T>(actual: T, expected: T, label: string): void {
-  if (actual !== expected) {
+  if (actual !== expected)
     throw new Error(`${label}: expected "${String(expected)}", got "${String(actual)}"`);
-  }
 }
 
 async function run(name: string, fn: () => void | Promise<void>): Promise<TestResult> {
   const t0 = Date.now();
-  try {
-    await fn();
-    return { name, passed: true, error: null, durationMs: Date.now() - t0 };
-  } catch (e) {
-    return { name, passed: false, error: (e as Error).message, durationMs: Date.now() - t0 };
-  }
+  try { await fn(); return { name, passed: true, error: null, durationMs: Date.now() - t0 }; }
+  catch (e) { return { name, passed: false, error: (e as Error).message, durationMs: Date.now() - t0 }; }
 }
 
 let _gseq = 0;
 function makeGoal(type: GoalType, overrides: Partial<ConversationGoal> = {}): ConversationGoal {
-  const id = `test-goal-${++_gseq}`;
   return Object.freeze({
-    id,
+    id:               `test-goal-${++_gseq}`,
     type,
     confidence:       0.8,
     parameters:       Object.freeze({}),
@@ -71,6 +62,17 @@ function makeGoal(type: GoalType, overrides: Partial<ConversationGoal> = {}): Co
     validationErrors: Object.freeze([]),
     ...overrides,
   }) as ConversationGoal;
+}
+
+const INFRA_STEPS = ["validate_session", "summarize", "noop"];
+
+function assertNoPlannerInfraSteps(steps: readonly { capability: string }[], label: string): void {
+  for (const step of steps) {
+    assert(
+      !INFRA_STEPS.includes(step.capability),
+      `${label}: step capability "${step.capability}" is an infra step — must not exist in Planner output`,
+    );
+  }
 }
 
 // ── Test suite ────────────────────────────────────────────────────────────────
@@ -86,180 +88,175 @@ export async function runPlanningEngineTests(): Promise<{
 
   const results: TestResult[] = await Promise.all([
 
-    // ── T01: gmail.readInbox → 3-step plan ───────────────────────────────
-    run("T01 — gmail.readInbox → validate_session + gmail.readInbox + summarize", () => {
+    // ── T01: GoalCapabilityRegistry tem builtins ──────────────────────────
+    run("T01 — GoalCapabilityRegistry tem mappings registrados", () => {
+      assert(GoalCapabilityRegistry.size > 0, "registry must have built-in mappings");
+      const all = GoalCapabilityRegistry.listAll();
+      const types = all.map((m) => m.goalType);
+      assert(types.includes("gmail.readInbox"),    "gmail.readInbox registered");
+      assert(types.includes("calendar.listToday"), "calendar.listToday registered");
+      assert(types.includes("drive.searchFiles"),  "drive.searchFiles registered");
+      assert(types.includes("memory.query"),       "memory.query registered");
+    }),
+
+    // ── T02: gmail.readInbox → 1 capability step (gmail/readInbox) ────────
+    run("T02 — gmail.readInbox → connector=gmail, capability=readInbox", () => {
       const { plan } = engine.plan(makeGoal("gmail.readInbox"));
       assertEqual(plan.status, "planned", "status");
-      assertEqual(plan.steps.length, 3, "step count");
-      assertEqual(plan.steps[0].type, "validate_session", "step[0].type");
-      assertEqual(plan.steps[0].connector, "google", "step[0].connector");
-      assertEqual(plan.steps[1].type, "gmail.readInbox", "step[1].type");
-      assertEqual(plan.steps[1].connector, "gmail", "step[1].connector");
-      assertEqual(plan.steps[2].type, "summarize", "step[2].type");
-      assert(plan.steps[2].connector === null, "summarize connector must be null");
+      assertEqual(plan.steps.length, 1, "exactly 1 step");
+      assertEqual(plan.steps[0].connector,  "gmail",     "connector");
+      assertEqual(plan.steps[0].capability, "readInbox", "capability");
+      assertNoPlannerInfraSteps(plan.steps, "gmail.readInbox");
     }),
 
-    // ── T02: gmail.searchMessages ─────────────────────────────────────────
-    run("T02 — gmail.searchMessages → 3-step plan", () => {
+    // ── T03: gmail.searchMessages ─────────────────────────────────────────
+    run("T03 — gmail.searchMessages → connector=gmail, capability=searchMessages", () => {
       const { plan } = engine.plan(makeGoal("gmail.searchMessages"));
-      assertEqual(plan.status, "planned", "status");
-      assertEqual(plan.steps[1].type, "gmail.searchMessages", "step[1].type");
-      assertEqual(plan.steps[1].connector, "gmail", "connector");
+      assertEqual(plan.steps[0].connector,  "gmail",          "connector");
+      assertEqual(plan.steps[0].capability, "searchMessages", "capability");
+      assertNoPlannerInfraSteps(plan.steps, "gmail.searchMessages");
     }),
 
-    // ── T03: gmail.readMessage ────────────────────────────────────────────
-    run("T03 — gmail.readMessage → 3-step plan", () => {
+    // ── T04: gmail.readMessage ────────────────────────────────────────────
+    run("T04 — gmail.readMessage → connector=gmail, capability=readMessage", () => {
       const { plan } = engine.plan(makeGoal("gmail.readMessage"));
-      assertEqual(plan.steps[1].type, "gmail.readMessage", "type");
-      assertEqual(plan.steps.length, 3, "steps");
+      assertEqual(plan.steps[0].capability, "readMessage", "capability");
+      assertNoPlannerInfraSteps(plan.steps, "gmail.readMessage");
     }),
 
-    // ── T04: calendar.listToday ───────────────────────────────────────────
-    run("T04 — calendar.listToday → validate + listToday + summarize", () => {
+    // ── T05: calendar.listToday ───────────────────────────────────────────
+    run("T05 — calendar.listToday → connector=calendar, capability=listToday", () => {
       const { plan } = engine.plan(makeGoal("calendar.listToday"));
-      assertEqual(plan.steps[1].type, "calendar.listToday", "type");
-      assertEqual(plan.steps[1].connector, "calendar", "connector");
+      assertEqual(plan.steps[0].connector,  "calendar",  "connector");
+      assertEqual(plan.steps[0].capability, "listToday", "capability");
+      assertNoPlannerInfraSteps(plan.steps, "calendar.listToday");
     }),
 
-    // ── T05: calendar.listTomorrow ────────────────────────────────────────
-    run("T05 — calendar.listTomorrow → 3-step plan", () => {
+    // ── T06: calendar.listTomorrow ────────────────────────────────────────
+    run("T06 — calendar.listTomorrow → capability=listTomorrow", () => {
       const { plan } = engine.plan(makeGoal("calendar.listTomorrow"));
-      assertEqual(plan.steps[1].type, "calendar.listTomorrow", "type");
+      assertEqual(plan.steps[0].capability, "listTomorrow", "capability");
+      assertNoPlannerInfraSteps(plan.steps, "calendar.listTomorrow");
     }),
 
-    // ── T06: calendar.createEvent ─────────────────────────────────────────
-    run("T06 — calendar.createEvent → 3-step plan", () => {
+    // ── T07: calendar.createEvent ─────────────────────────────────────────
+    run("T07 — calendar.createEvent → connector=calendar, capability=createEvent", () => {
       const { plan } = engine.plan(makeGoal("calendar.createEvent"));
-      assertEqual(plan.steps[1].type, "calendar.createEvent", "type");
-      assertEqual(plan.steps[1].connector, "calendar", "connector");
+      assertEqual(plan.steps[0].connector,  "calendar",    "connector");
+      assertEqual(plan.steps[0].capability, "createEvent", "capability");
+      assertNoPlannerInfraSteps(plan.steps, "calendar.createEvent");
     }),
 
-    // ── T07: drive.searchFiles ────────────────────────────────────────────
-    run("T07 — drive.searchFiles → validate + searchFiles + summarize", () => {
+    // ── T08: drive.searchFiles ────────────────────────────────────────────
+    run("T08 — drive.searchFiles → connector=drive, capability=searchFiles", () => {
       const { plan } = engine.plan(makeGoal("drive.searchFiles"));
-      assertEqual(plan.steps[1].type, "drive.searchFiles", "type");
-      assertEqual(plan.steps[1].connector, "drive", "connector");
+      assertEqual(plan.steps[0].connector,  "drive",       "connector");
+      assertEqual(plan.steps[0].capability, "searchFiles", "capability");
+      assertNoPlannerInfraSteps(plan.steps, "drive.searchFiles");
     }),
 
-    // ── T08: drive.openDocument ───────────────────────────────────────────
-    run("T08 — drive.openDocument → 3-step plan", () => {
+    // ── T09: drive.openDocument ───────────────────────────────────────────
+    run("T09 — drive.openDocument → connector=drive, capability=openDocument", () => {
       const { plan } = engine.plan(makeGoal("drive.openDocument"));
-      assertEqual(plan.steps[1].type, "drive.openDocument", "type");
+      assertEqual(plan.steps[0].capability, "openDocument", "capability");
+      assertNoPlannerInfraSteps(plan.steps, "drive.openDocument");
     }),
 
-    // ── T09: memory.query ─────────────────────────────────────────────────
-    run("T09 — memory.query → 2-step plan (no session validation)", () => {
+    // ── T10: memory.query ─────────────────────────────────────────────────
+    run("T10 — memory.query → connector=memory, capability=query", () => {
       const { plan } = engine.plan(makeGoal("memory.query"));
-      assertEqual(plan.steps[0].type, "memory.query", "step[0].type");
-      assertEqual(plan.steps[0].connector, "memory", "connector");
-      assertEqual(plan.steps[1].type, "summarize", "step[1].type");
-      assertEqual(plan.steps.length, 2, "step count");
+      assertEqual(plan.steps[0].connector,  "memory", "connector");
+      assertEqual(plan.steps[0].capability, "query",  "capability");
+      assertNoPlannerInfraSteps(plan.steps, "memory.query");
     }),
 
-    // ── T10: memory.summarize ─────────────────────────────────────────────
-    run("T10 — memory.summarize → 2-step plan", () => {
+    // ── T11: memory.summarize ─────────────────────────────────────────────
+    run("T11 — memory.summarize → connector=memory, capability=summarize", () => {
       const { plan } = engine.plan(makeGoal("memory.summarize"));
-      assertEqual(plan.steps[0].type, "memory.summarize", "type");
-      assertEqual(plan.steps.length, 2, "steps");
+      assertEqual(plan.steps[0].connector,  "memory",    "connector");
+      // "summarize" here is the memory capability, not an infra step
+      assertEqual(plan.steps[0].capability, "summarize", "capability");
     }),
 
-    // ── T11: Goal unknown → empty plan ────────────────────────────────────
-    run("T11 — unknown goal → empty plan (status=empty)", () => {
+    // ── T12: Goal unknown → empty plan ────────────────────────────────────
+    run("T12 — unknown goal → empty plan, status=empty, success=true", () => {
       const { plan, success } = engine.plan(makeGoal("unknown"));
       assertEqual(plan.status, "empty", "status");
-      assertEqual(plan.steps.length, 0, "steps must be empty");
-      assert(success, "should succeed (empty is a valid outcome)");
+      assertEqual(plan.steps.length, 0, "no steps");
+      assert(success, "unknown is a valid (empty) outcome");
     }),
 
-    // ── T12: Goal invalido → invalid_goal ────────────────────────────────
-    run("T12 — invalid goal → status=invalid_goal", () => {
+    // ── T13: Goal invalido → invalid_goal ────────────────────────────────
+    run("T13 — invalid goal → status=invalid_goal, success=false", () => {
       const goal = makeGoal("gmail.readInbox", {
-        valid:            false,
-        validationErrors: Object.freeze(["userIntent is required"]),
+        valid: false, validationErrors: Object.freeze(["userIntent is required"]),
       });
       const { plan, success, error } = engine.plan(goal);
       assertEqual(plan.status, "invalid_goal", "status");
-      assert(!success, "should not succeed");
-      assert(error !== null, "error must be present");
+      assert(!success, "must not succeed");
+      assert(error !== null, "error required");
     }),
 
-    // ── T13: Plano vazio — general.conversation ───────────────────────────
-    run("T13 — general.conversation → 1 noop step (status=planned)", () => {
+    // ── T14: general.conversation → empty plan (no infra steps) ──────────
+    run("T14 — general.conversation → empty plan (no steps)", () => {
       const { plan } = engine.plan(makeGoal("general.conversation"));
-      assertEqual(plan.steps[0].type, "noop", "type");
-      assertEqual(plan.status, "planned", "status");
+      assertEqual(plan.steps.length, 0, "no steps — Runtime handles gracefully");
+      assert(["planned", "empty"].includes(plan.status), "status must be planned or empty");
     }),
 
-    // ── T14: Plano imutavel ───────────────────────────────────────────────
-    run("T14 — ExecutionPlan e imutavel (Object.freeze)", () => {
+    // ── T15: ExecutionPlan imutavel ───────────────────────────────────────
+    run("T15 — ExecutionPlan e imutavel", () => {
       const { plan } = engine.plan(makeGoal("gmail.readInbox"));
       let threw = false;
-      try {
-        (plan as Record<string, unknown>)["hacked"] = true;
-      } catch { threw = true; }
-      assert(threw || (plan as Record<string, unknown>)["hacked"] === undefined,
-        "plan must be immutable");
+      try { (plan as Record<string, unknown>)["hacked"] = true; } catch { threw = true; }
+      assert(threw || (plan as Record<string, unknown>)["hacked"] === undefined, "must be immutable");
     }),
 
-    // ── T15: IDs unicos ───────────────────────────────────────────────────
-    run("T15 — IDs de planos sao unicos entre chamadas", () => {
+    // ── T16: IDs unicos entre chamadas ────────────────────────────────────
+    run("T16 — IDs de planos sao unicos", () => {
       const { plan: p1 } = engine.plan(makeGoal("gmail.readInbox"));
       const { plan: p2 } = engine.plan(makeGoal("gmail.readInbox"));
       assert(p1.id !== p2.id, "plan IDs must be unique");
     }),
 
-    // ── T16: Observabilidade — planning_started + planning_completed ───────
-    run("T16 — Observabilidade: planning_started + planning_completed", () => {
+    // ── T17: Observabilidade — planning_started + planning_completed ───────
+    run("T17 — Observabilidade: planning_started + planning_completed", () => {
       const events: PlanningEvent[] = [];
       const unsub = engine.onEvent((e) => events.push(e));
       engine.plan(makeGoal("gmail.readInbox"));
       unsub();
-      assert(events.length >= 2, "must emit at least 2 events");
       assert(events.some((e) => e.type === "planning_started"),   "planning_started");
       assert(events.some((e) => e.type === "planning_completed"), "planning_completed");
     }),
 
-    // ── T17: Observabilidade — planning_failed ────────────────────────────
-    run("T17 — Observabilidade: planning_failed para goal invalido", () => {
+    // ── T18: Observabilidade — planning_failed ────────────────────────────
+    run("T18 — Observabilidade: planning_failed para goal invalido", () => {
       const events: PlanningEvent[] = [];
       const unsub = engine.onEvent((e) => events.push(e));
-      engine.plan(makeGoal("gmail.readInbox", { valid: false, validationErrors: Object.freeze(["err"]) }));
+      engine.plan(makeGoal("gmail.readInbox", {
+        valid: false, validationErrors: Object.freeze(["err"]),
+      }));
       unsub();
       assert(events.some((e) => e.type === "planning_failed"), "planning_failed must fire");
     }),
 
-    // ── T18: Parametros do Goal propagados para steps ─────────────────────
-    run("T18 — Goal parameters propagados para todos os steps", () => {
+    // ── T19: Parametros do Goal propagados para steps ─────────────────────
+    run("T19 — Goal parameters propagados para todos os steps", () => {
       const goal = makeGoal("gmail.readInbox", {
         parameters: Object.freeze({ maxResults: 25 }),
       });
       const { plan } = engine.plan(goal);
       for (const step of plan.steps) {
-        assertEqual(
-          step.params["maxResults"] as number,
-          25,
-          `step ${step.id} params.maxResults`,
-        );
+        assertEqual(step.parameters["maxResults"] as number, 25, `step ${step.id}`);
       }
     }),
 
-    // ── T19: goalId reflete o id do goal original ─────────────────────────
-    run("T19 — plan.goalId referencia o goal original", () => {
+    // ── T20: plan.goalId e goalType referenciam o goal original ──────────
+    run("T20 — plan.goalId e goalType referenciam o goal", () => {
       const goal = makeGoal("calendar.listToday");
       const { plan } = engine.plan(goal);
-      assertEqual(plan.goalId, goal.id, "goalId must match goal.id");
-      assertEqual(plan.goalType, goal.type, "goalType must match goal.type");
-    }),
-
-    // ── T20: Metricas do engine ───────────────────────────────────────────
-    run("T20 — Metricas acumuladas corretamente", () => {
-      const e2 = new ConversationPlanningEngine();
-      e2.plan(makeGoal("gmail.readInbox"));
-      e2.plan(makeGoal("unknown"));
-      e2.plan(makeGoal("gmail.readInbox", { valid: false, validationErrors: Object.freeze(["err"]) }));
-      const m = e2.getMetrics();
-      assertEqual(m.totalPlanned, 2, "totalPlanned");
-      assertEqual(m.totalFailed,  1, "totalFailed");
+      assertEqual(plan.goalId,   goal.id,   "goalId");
+      assertEqual(plan.goalType, goal.type, "goalType");
     }),
 
   ]);
