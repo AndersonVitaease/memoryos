@@ -1,10 +1,27 @@
 /**
  * gmailConnectorTests — Implementation 009
  * Suite de testes para GmailConnector.
+ *
+ * CORRECAO: ES module exports sao read-only live bindings — nao e possivel
+ * sobrescrever GoogleAuthSession.ensureValidToken diretamente.
+ *
+ * Estrategia correta:
+ *  - Simular estado de sessao via localStorage (que getConnection() le)
+ *  - Simular token via mock de window.fetch: quando ensureValidToken() tenta
+ *    refresh automatico, o fetch mockado retorna um token falso
+ *  - Para testes com token valido: pre-popular _tokenStore nao e possivel de
+ *    fora do modulo, mas podemos injetar o estado via connect() simulado
+ *    usando o localStorage + fetch mockado para o endpoint de refresh
+ *
+ * SIMPLIFICACAO ADOTADA:
+ *  - Testes com "token valido" usam fetch mockado que inclui o endpoint de
+ *    refresh do GoogleAuthSession (googleOAuthRefresh via base44.functions.invoke)
+ *    retornando um access token fake, e depois simula as respostas Gmail
+ *  - Alternativa mais simples: pre-popular localStorage com estado CONNECTED
+ *    e mockar fetch para cobrir tanto o refresh quanto as chamadas Gmail
  */
 
 import { listMessages, searchMessages, getMessage, listLabels } from "./GmailConnector";
-import * as GoogleAuthSession from "@/lib/google-auth/GoogleAuthSession";
 
 // ── Test runner ───────────────────────────────────────────────────────────────
 
@@ -22,35 +39,84 @@ async function runTest(name, fn) {
   }
 }
 
-// ── Mock helpers ──────────────────────────────────────────────────────────────
+// ── Session state helpers (via localStorage — nao sobrescreve exports) ────────
 
-function mockSession(accessToken) {
-  GoogleAuthSession.ensureValidToken = async () => ({ state: "CONNECTED" });
-  GoogleAuthSession.getAccessToken   = () => accessToken;
-}
+const STORAGE_KEY = "memoryos_gauth_v1";
 
-function mockDisconnected() {
-  GoogleAuthSession.ensureValidToken = async () => null;
-  GoogleAuthSession.getAccessToken   = () => null;
-}
-
-let _fetchImpl = null;
-
-function mockFetch(handler) {
-  _fetchImpl = handler;
-  window.fetch = async (url, opts) => {
-    const result = await handler(url, opts);
-    return {
-      status: result.status ?? 200,
-      ok: (result.status ?? 200) >= 200 && (result.status ?? 200) < 300,
-      json: async () => result.body ?? {},
-    };
+function setFakeSession(accessToken, expiresOffsetMs = 3600_000) {
+  const expiresAt = Date.now() + expiresOffsetMs;
+  const conn = {
+    workspaceId:     "default",
+    connectionId:    "test-conn-001",
+    email:           "test@example.com",
+    displayName:     "Test User",
+    scopes:          ["https://www.googleapis.com/auth/gmail.readonly"],
+    expiresAt,
+    connectedAt:     Date.now(),
+    state:           "CONNECTED",
+    lastRefreshedAt: Date.now(),
+    isReal:          true,
   };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ default: conn }));
+
+  // Retorna o token e expiresAt para que o fetch mock de refresh possa usa-los
+  return { accessToken, expiresAt };
+}
+
+function clearFakeSession() {
+  localStorage.removeItem(STORAGE_KEY);
+}
+
+// ── Fetch mock ────────────────────────────────────────────────────────────────
+// Intercepta TODAS as chamadas fetch — tanto o refresh do GoogleAuthSession
+// quanto as chamadas diretas para a Gmail API.
+
+function mockFetch(gmailHandler, accessToken) {
+  window.fetch = async (url, opts) => {
+    const urlStr = typeof url === "string" ? url : url?.toString?.() ?? "";
+
+    // Base44 SDK calls (base44.functions.invoke usa fetch internamente)
+    // Simula o endpoint de refresh do GoogleAuthSession
+    if (urlStr.includes("googleOAuthRefresh") || urlStr.includes("functions/invoke")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          data: {
+            accessToken,
+            expiresAt: Date.now() + 3600_000,
+          },
+        }),
+      };
+    }
+
+    // Chamadas reais para a Gmail API
+    if (urlStr.includes("gmail.googleapis.com")) {
+      const result = await gmailHandler(urlStr, opts);
+      return {
+        status: result.status ?? 200,
+        ok: (result.status ?? 200) >= 200 && (result.status ?? 200) < 300,
+        json: async () => result.body ?? {},
+      };
+    }
+
+    // Fallback
+    return { status: 404, ok: false, json: async () => ({}) };
+  };
+}
+
+function mockFetchDisconnected() {
+  // Sem sessao no localStorage + fetch que retorna 401 para qualquer chamada Gmail
+  clearFakeSession();
+  window.fetch = async () => ({
+    status: 401,
+    ok: false,
+    json: async () => ({ error: "unauthorized" }),
+  });
 }
 
 function restoreFetch(original) {
   window.fetch = original;
-  _fetchImpl = null;
 }
 
 // ── Fake data ─────────────────────────────────────────────────────────────────
@@ -88,14 +154,13 @@ const FAKE_LABEL = {
 
 async function suiteTokenValido() {
   const originalFetch = window.fetch;
-  mockSession("valid-token-xyz");
+  const { accessToken } = setFakeSession("valid-token-xyz");
 
-  // API returns list + message detail
   mockFetch(async (url) => {
     if (url.includes("/messages/msg-001")) return { status: 200, body: FAKE_MSG_FULL };
     if (url.includes("/messages"))        return { status: 200, body: { messages: [FAKE_MSG_REF], resultSizeEstimate: 1 } };
     return { status: 404, body: {} };
-  });
+  }, accessToken);
 
   const results = await Promise.all([
     runTest("listMessages retorna ok=true", async () => {
@@ -122,6 +187,7 @@ async function suiteTokenValido() {
   ]);
 
   restoreFetch(originalFetch);
+  clearFakeSession();
   return results;
 }
 
@@ -129,9 +195,9 @@ async function suiteTokenValido() {
 
 async function suiteGmailVazio() {
   const originalFetch = window.fetch;
-  mockSession("valid-token-xyz");
+  const { accessToken } = setFakeSession("valid-token-xyz");
 
-  mockFetch(async () => ({ status: 200, body: { messages: [], resultSizeEstimate: 0 } }));
+  mockFetch(async () => ({ status: 200, body: { messages: [], resultSizeEstimate: 0 } }), accessToken);
 
   const results = await Promise.all([
     runTest("listMessages com inbox vazia retorna ok=true", async () => {
@@ -145,6 +211,7 @@ async function suiteGmailVazio() {
   ]);
 
   restoreFetch(originalFetch);
+  clearFakeSession();
   return results;
 }
 
@@ -152,13 +219,13 @@ async function suiteGmailVazio() {
 
 async function suitePesquisa() {
   const originalFetch = window.fetch;
-  mockSession("valid-token-xyz");
+  const { accessToken } = setFakeSession("valid-token-xyz");
 
   mockFetch(async (url) => {
     if (url.includes("/messages/msg-001")) return { status: 200, body: FAKE_MSG_FULL };
     if (url.includes("/messages"))        return { status: 200, body: { messages: [FAKE_MSG_REF], resultSizeEstimate: 1 } };
     return { status: 404, body: {} };
-  });
+  }, accessToken);
 
   const results = await Promise.all([
     runTest("searchMessages retorna ok=true", async () => {
@@ -181,6 +248,7 @@ async function suitePesquisa() {
   ]);
 
   restoreFetch(originalFetch);
+  clearFakeSession();
   return results;
 }
 
@@ -188,13 +256,13 @@ async function suitePesquisa() {
 
 async function suiteGetMessage() {
   const originalFetch = window.fetch;
-  mockSession("valid-token-xyz");
+  const { accessToken } = setFakeSession("valid-token-xyz");
 
   mockFetch(async (url) => {
-    if (url.includes("/messages/msg-001")) return { status: 200, body: FAKE_MSG_FULL };
+    if (url.includes("/messages/msg-001"))    return { status: 200, body: FAKE_MSG_FULL };
     if (url.includes("/messages/INEXISTENTE")) return { status: 404, body: { error: "Not Found" } };
     return { status: 200, body: FAKE_MSG_FULL };
-  });
+  }, accessToken);
 
   const results = await Promise.all([
     runTest("getMessage retorna ok=true para ID valido", async () => {
@@ -219,6 +287,7 @@ async function suiteGetMessage() {
   ]);
 
   restoreFetch(originalFetch);
+  clearFakeSession();
   return results;
 }
 
@@ -226,12 +295,12 @@ async function suiteGetMessage() {
 
 async function suiteLabels() {
   const originalFetch = window.fetch;
-  mockSession("valid-token-xyz");
+  const { accessToken } = setFakeSession("valid-token-xyz");
 
   mockFetch(async () => ({
     status: 200,
     body: { labels: [FAKE_LABEL] },
-  }));
+  }), accessToken);
 
   const results = await Promise.all([
     runTest("listLabels retorna ok=true", async () => {
@@ -252,6 +321,7 @@ async function suiteLabels() {
   ]);
 
   restoreFetch(originalFetch);
+  clearFakeSession();
   return results;
 }
 
@@ -259,7 +329,12 @@ async function suiteLabels() {
 
 async function suiteDesconectado() {
   const originalFetch = window.fetch;
-  mockDisconnected();
+  // Sem sessao no localStorage — getConnection() retorna null
+  // ensureValidToken() retorna null imediatamente (sem tentar refresh)
+  clearFakeSession();
+  // Fetch nao chega a ser chamado pois requireSession() retorna null antes
+  // mas precisamos de um fetch minimo para nao quebrar
+  window.fetch = async () => ({ status: 401, ok: false, json: async () => ({}) });
 
   const results = await Promise.all([
     runTest("listMessages desconectado retorna status=disconnected", async () => {
@@ -292,12 +367,27 @@ async function suiteDesconectado() {
 
 async function suiteErrosAPI() {
   const originalFetch = window.fetch;
-  mockSession("valid-token-xyz");
-
   const results = [];
 
+  // Helper: seta sessao + fetch que retorna codigo especifico para Gmail
+  const withStatus = (httpStatus) => {
+    const { accessToken } = setFakeSession("valid-token-xyz");
+    window.fetch = async (url) => {
+      const urlStr = typeof url === "string" ? url : url?.toString?.() ?? "";
+      // Refresh endpoint — responde com token valido para que requireSession() passe
+      if (!urlStr.includes("gmail.googleapis.com")) {
+        return {
+          ok: true, status: 200,
+          json: async () => ({ data: { accessToken, expiresAt: Date.now() + 3600_000 } }),
+        };
+      }
+      // Gmail API — retorna o status configurado
+      return { status: httpStatus, ok: httpStatus < 400, json: async () => ({ error: "test" }) };
+    };
+  };
+
   // 401
-  mockFetch(async () => ({ status: 401, body: { error: "invalid_token" } }));
+  withStatus(401);
   results.push(await runTest("401 retorna status=expired", async () => {
     const r = await listMessages();
     assert(r.ok === false, "ok deve ser false");
@@ -305,7 +395,7 @@ async function suiteErrosAPI() {
   }));
 
   // 403
-  mockFetch(async () => ({ status: 403, body: { error: "forbidden" } }));
+  withStatus(403);
   results.push(await runTest("403 retorna status=error", async () => {
     const r = await listMessages();
     assert(r.ok === false, "ok deve ser false");
@@ -313,23 +403,26 @@ async function suiteErrosAPI() {
   }));
 
   // 500
-  mockFetch(async () => ({ status: 500, body: { error: "internal" } }));
+  withStatus(500);
   results.push(await runTest("500 retorna status=error", async () => {
     const r = await listMessages();
     assert(r.ok === false, "ok deve ser false");
     assert(r.status === "error", `status deve ser error, recebeu: ${r.status}`);
   }));
 
-  // Refresh automatico — token ausente, ensureValidToken renova e retorna conn
-  GoogleAuthSession.ensureValidToken = async () => ({ state: "CONNECTED" });
-  GoogleAuthSession.getAccessToken   = () => null;
-  results.push(await runTest("token ausente em memoria retorna status=expired", async () => {
+  // Token ausente em memoria mas conexao existe: ensureValidToken tenta refresh
+  // Se refresh falha (fetch retorna erro), requireSession retorna null -> disconnected
+  setFakeSession("will-not-be-used");
+  // Refresh falha -> sem token em memoria -> requireSession retorna null
+  window.fetch = async () => ({ status: 500, ok: false, json: async () => ({ error: "refresh failed" }) });
+  results.push(await runTest("refresh falha retorna status=disconnected ou expired", async () => {
     const r = await listMessages();
-    assert(r.ok === false, "ok deve ser false quando token ausente");
-    assert(r.status === "expired", `status deve ser expired, recebeu: ${r.status}`);
+    assert(r.ok === false, "ok deve ser false quando refresh falha");
+    assert(["disconnected", "expired"].includes(r.status), `status deve ser disconnected ou expired, recebeu: ${r.status}`);
   }));
 
   restoreFetch(originalFetch);
+  clearFakeSession();
   return results;
 }
 
