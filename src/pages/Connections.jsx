@@ -16,6 +16,7 @@ import { runGoogleDriveConnectorTests } from "@/lib/google-auth/googleDriveConne
 import { runGoogleWorkspaceIntegrationTests } from "@/lib/google-auth/googleWorkspaceIntegrationTests";
 import { runGoogleOAuth007Tests } from "@/lib/google-auth/googleOAuth007Tests";
 import { base44 } from "@/api/base44Client";
+import GoogleProfileCard from "@/components/connections/GoogleProfileCard";
 
 // ─── Google Workspace connector card ─────────────────────────────────────────
 
@@ -856,6 +857,14 @@ export default function Connections() {
             Disponivel agora
           </h2>
           <GoogleConnectorCard />
+        </div>
+
+        {/* Google Profile — Implementation 008 */}
+        <div className="mb-6">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+            Perfil Google — Implementation 008
+          </h2>
+          <GoogleProfileCard />
         </div>
 
         {/* OAuth Init Diagnostics */}
