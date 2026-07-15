@@ -13,6 +13,7 @@ import { runGoogleAuthTests } from "@/lib/google-auth/googleAuthTests";
 import { runGmailConnectorTests } from "@/lib/google-auth/gmailConnectorTests";
 import { runGoogleCalendarConnectorTests } from "@/lib/google-auth/googleCalendarConnectorTests";
 import { runGoogleDriveConnectorTests } from "@/lib/google-auth/googleDriveConnectorTests";
+import { runGoogleWorkspaceIntegrationTests } from "@/lib/google-auth/googleWorkspaceIntegrationTests";
 
 // ─── Google Workspace connector card ─────────────────────────────────────────
 
@@ -223,6 +224,134 @@ function GoogleConnectorCard() {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── Workspace Integration Validation Panel — Implementation 006 ─────────────
+
+const STATUS_COMPONENTS = [
+  { key: "gmailConnector",           label: "Gmail Connector",              impl: "Impl-003" },
+  { key: "calendarConnector",        label: "Calendar Connector",           impl: "Impl-004" },
+  { key: "driveConnector",           label: "Drive Connector",              impl: "Impl-005" },
+  { key: "googleAuthSession",        label: "GoogleAuthSession",            impl: "Impl-001" },
+  { key: "connectorInvocationService", label: "ConnectorInvocationService", impl: "CIS" },
+  { key: "runtimeIntegration",       label: "Runtime Integration",          impl: "E2E" },
+  { key: "oauthTokenExchange",       label: "OAuth Token Exchange",         impl: "Pending" },
+];
+
+function StatusBadge({ status }) {
+  if (status === "PASS") return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700">
+      <CheckCircle2 className="w-3 h-3" /> PASS
+    </span>
+  );
+  if (status === "FAIL") return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">
+      <XCircle className="w-3 h-3" /> FAIL
+    </span>
+  );
+  return (
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">
+      <AlertTriangle className="w-3 h-3" /> NOT_CONFIGURED
+    </span>
+  );
+}
+
+function WorkspaceIntegrationPanel() {
+  const [running, setRunning] = useState(false);
+  const [results, setResults] = useState(null);
+
+  const handleRun = async () => {
+    setRunning(true);
+    setResults(null);
+    try {
+      const r = await runGoogleWorkspaceIntegrationTests();
+      setResults(r);
+    } catch (e) {
+      setResults({ verdict: "FAIL", architecturalStatus: e.message, totalPassed: 0, totalFailed: 1, totalTests: 1, suites: [], componentStatus: {} });
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <div className="border border-zinc-200 rounded-xl overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 bg-zinc-900 border-b border-zinc-700">
+        <div className="flex items-center gap-2">
+          <GitBranch className="w-4 h-4 text-zinc-300" />
+          <span className="text-sm font-semibold text-white">Google Workspace Integration</span>
+          <span className="text-xs text-zinc-400 ml-1">Implementation 006</span>
+        </div>
+        <button
+          onClick={handleRun}
+          disabled={running}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-white text-zinc-900 hover:bg-zinc-100 disabled:opacity-40 transition"
+        >
+          {running ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+          {running ? "Validando..." : "Rodar Validacao"}
+        </button>
+      </div>
+
+      {/* Component grid — always visible */}
+      <div className="p-4 grid grid-cols-1 gap-2">
+        {STATUS_COMPONENTS.map(({ key, label, impl }) => {
+          const status = results?.componentStatus?.[key] ?? null;
+          return (
+            <div key={key} className="flex items-center justify-between py-1.5 px-3 rounded-lg bg-zinc-50 border border-zinc-100">
+              <div className="flex items-center gap-2">
+                {status === null
+                  ? <div className="w-3 h-3 rounded-full border-2 border-zinc-300" />
+                  : status === "PASS"
+                  ? <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                  : status === "NOT_CONFIGURED"
+                  ? <AlertTriangle className="w-3 h-3 text-amber-500" />
+                  : <XCircle className="w-3 h-3 text-red-500" />}
+                <span className="text-sm font-medium text-zinc-700">{label}</span>
+                <span className="text-xs text-zinc-400">{impl}</span>
+              </div>
+              {status !== null && <StatusBadge status={status} />}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Overall result + suite breakdown */}
+      {results && (
+        <div className="px-4 pb-4 space-y-3 border-t border-zinc-100 pt-3">
+          <div className={`flex items-center gap-2 p-3 rounded-lg border text-sm font-medium ${results.verdict === "PASS" ? "bg-emerald-50 border-emerald-200 text-emerald-700" : "bg-red-50 border-red-200 text-red-700"}`}>
+            {results.verdict === "PASS"
+              ? <CheckCircle2 className="w-4 h-4 shrink-0" />
+              : <XCircle className="w-4 h-4 shrink-0" />}
+            <span>{results.architecturalStatus}</span>
+            <span className="ml-auto text-xs font-normal">{results.totalPassed}/{results.totalTests} · {results.durationMs}ms</span>
+          </div>
+
+          {results.suites?.map((suite) => (
+            <div key={suite.suite}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-semibold text-zinc-600">{suite.suite}</span>
+                <span className={`text-xs font-medium ${suite.failed === 0 ? "text-emerald-600" : "text-red-600"}`}>
+                  {suite.passed}/{suite.total}
+                </span>
+              </div>
+              <div className="space-y-0.5">
+                {suite.results?.map((r, i) => (
+                  <div key={i} className={`flex items-center gap-2 text-xs py-1 px-2 rounded ${r.passed ? "text-zinc-600" : "bg-red-50 text-red-600"}`}>
+                    {r.passed
+                      ? <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
+                      : <XCircle className="w-3 h-3 text-red-500 shrink-0" />}
+                    <span className="flex-1 font-mono">{r.name}</span>
+                    {!r.passed && <span className="text-red-400 truncate max-w-[180px]" title={r.error}>{r.error}</span>}
+                    <span className="text-zinc-400 shrink-0">{r.durationMs}ms</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -549,6 +678,14 @@ export default function Connections() {
             Disponivel agora
           </h2>
           <GoogleConnectorCard />
+        </div>
+
+        {/* Integration Validation — Implementation 006 */}
+        <div className="mb-6">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+            Google Workspace Integration — Implementation 006
+          </h2>
+          <WorkspaceIntegrationPanel />
         </div>
 
         {/* Tests — Implementation 001 */}
