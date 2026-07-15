@@ -4,13 +4,28 @@
  */
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowLeft, Play, CheckCircle, XCircle, Clock } from "lucide-react";
+import { ArrowLeft, Play, CheckCircle, XCircle, Clock, Layers } from "lucide-react";
 
 export default function SprintE023Page() {
   const [running, setRunning]   = useState(false);
   const [results, setResults]   = useState(null);
   const [demoOut, setDemoOut]   = useState(null);
   const [demoRunning, setDemoRunning] = useState(false);
+  const [normRunning, setNormRunning] = useState(false);
+  const [normResults, setNormResults] = useState(null);
+
+  async function runNormTests() {
+    setNormRunning(true);
+    setNormResults(null);
+    try {
+      const { runRuntimeNormalizationTests } = await import("@/lib/runtime-engine/runtimeNormalizationTests");
+      setNormResults(await runRuntimeNormalizationTests());
+    } catch (e) {
+      setNormResults({ verdict: "FAIL", passed: 0, failed: 1, total: 1, results: [{ name: "Suite load error", passed: false, error: e.message, durationMs: 0 }] });
+    } finally {
+      setNormRunning(false);
+    }
+  }
 
   async function runTests() {
     setRunning(true);
@@ -110,6 +125,36 @@ export default function SprintE023Page() {
         )}
         {demoOut?.error && (
           <div className="p-3 rounded-lg bg-red-500/10 text-red-400 text-xs font-mono">{demoOut.error}</div>
+        )}
+      </section>
+
+      {/* Normalization Tests E-02.3A */}
+      <section className="mb-8">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+          E-02.3A — Normalização (Dispatcher · ContextFactory · Provider · Policy · Retry)
+        </h2>
+        <button onClick={runNormTests} disabled={normRunning}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 mb-4">
+          <Layers className="w-4 h-4" />
+          {normRunning ? "Executando…" : "Executar testes de normalização (20 casos)"}
+        </button>
+        {normResults && (
+          <div className="space-y-2">
+            <div className={`flex items-center gap-3 p-3 rounded-xl border text-sm font-medium ${normResults.verdict === "PASS" ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" : "bg-red-500/10 border-red-500/30 text-red-400"}`}>
+              {normResults.verdict === "PASS" ? <CheckCircle className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
+              {normResults.verdict} — {normResults.passed}/{normResults.total} aprovados
+            </div>
+            {normResults.results.map((r, i) => (
+              <div key={i} className={`flex items-start gap-3 p-3 rounded-lg border text-xs ${r.passed ? "border-border/50 bg-muted/20" : "border-red-500/30 bg-red-500/10"}`}>
+                {r.passed ? <CheckCircle className="w-3.5 h-3.5 text-emerald-500 mt-0.5 shrink-0" /> : <XCircle className="w-3.5 h-3.5 text-red-500 mt-0.5 shrink-0" />}
+                <div className="flex-1 min-w-0">
+                  <p className={r.passed ? "text-foreground" : "text-red-400"}>{r.name}</p>
+                  {!r.passed && r.error && <p className="text-red-400/70 mt-0.5 font-mono text-[10px]">{r.error}</p>}
+                </div>
+                <span className="flex items-center gap-1 text-muted-foreground shrink-0"><Clock className="w-3 h-3" />{r.durationMs}ms</span>
+              </div>
+            ))}
+          </div>
         )}
       </section>
 
