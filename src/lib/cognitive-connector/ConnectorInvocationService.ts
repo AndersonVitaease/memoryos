@@ -19,6 +19,7 @@ import { GitHubConnector } from "../connector-runtime/connectors/GitHubConnector
 import { Base44Connector } from "../connector-runtime/connectors/Base44Connector";
 import { GmailConnector } from "../connector-runtime/connectors/GmailConnector";
 import { GoogleCalendarConnector } from "../connector-runtime/connectors/GoogleCalendarConnector";
+import { GoogleDriveConnector } from "../connector-runtime/connectors/GoogleDriveConnector";
 import type {
   ConnectorExecutionContext, InvocationAuthorization, CognitiveInvocationRecord,
   DiscoveredConnector, InvocationKnowledgeEntry, InvocationTimelineEvent,
@@ -31,7 +32,7 @@ import { makeExecutionId } from "../connector-runtime/ConnectorTypes";
 // ── Known registry of production connectors ────────────────────────────────────
 // No hardcoded behavior — connectors are instantiated and queried at runtime.
 
-const REGISTERED_CONNECTORS = ["github", "base44", "google", "google-calendar"] as const;
+const REGISTERED_CONNECTORS = ["github", "base44", "google", "google-calendar", "google-drive"] as const;
 type RegisteredId = typeof REGISTERED_CONNECTORS[number];
 
 // Write operations — explicitly blocked for read-only certification
@@ -45,11 +46,12 @@ const BLOCKED_OPERATIONS = new Set([
 
 export class ConnectorInvocationService {
   // ── Connector singletons (instantiated once, reused) ─────────────────────────
-  private readonly _connectors: Map<string, GitHubConnector | Base44Connector | GmailConnector | GoogleCalendarConnector> = new Map([
+  private readonly _connectors: Map<string, GitHubConnector | Base44Connector | GmailConnector | GoogleCalendarConnector | GoogleDriveConnector> = new Map([
     ["github", new GitHubConnector()],
     ["base44", new Base44Connector()],
     ["google", new GmailConnector()],
     ["google-calendar", new GoogleCalendarConnector()],
+    ["google-drive", new GoogleDriveConnector()],
   ]);
 
   // ── Persistent stores (append-only) ──────────────────────────────────────────
@@ -80,7 +82,7 @@ export class ConnectorInvocationService {
         healthStatus: health,
         authenticated,
         readOnly: true,
-        certificationLevel: id === "github" ? "Beta-01 v2.0.0" : id === "google" ? "Impl-003 v1.0.0" : id === "google-calendar" ? "Impl-004 v1.0.0" : "Beta-02 v2.0.0",
+        certificationLevel: id === "github" ? "Beta-01 v2.0.0" : id === "google" ? "Impl-003 v1.0.0" : id === "google-calendar" ? "Impl-004 v1.0.0" : id === "google-drive" ? "Impl-005 v1.0.0" : "Beta-02 v2.0.0",
         discoveredAt: Date.now(),
       });
     }
@@ -229,6 +231,28 @@ export class ConnectorInvocationService {
 
   async calendarPing(ctx: Partial<ConnectorExecutionContext> = {}) {
     return this.invoke("google-calendar", "connectivity.ping", {}, { ...ctx, originComponent: ctx.originComponent ?? "CalendarReader" });
+  }
+
+  // ── Google Drive convenience wrappers ─────────────────────────────────────────
+
+  async driveListFiles(opts: { pageSize?: number; orderBy?: string; pageToken?: string } = {}, ctx: Partial<ConnectorExecutionContext> = {}) {
+    return this.invoke("google-drive", "drive.files.list", { ...opts }, { ...ctx, originComponent: ctx.originComponent ?? "DriveReader" });
+  }
+
+  async driveGetFile(fileId: string, ctx: Partial<ConnectorExecutionContext> = {}) {
+    return this.invoke("google-drive", "drive.files.get", { fileId }, { ...ctx, originComponent: ctx.originComponent ?? "DriveReader" });
+  }
+
+  async driveSearchFiles(q: string, pageSize = 20, ctx: Partial<ConnectorExecutionContext> = {}) {
+    return this.invoke("google-drive", "drive.files.search", { q, pageSize }, { ...ctx, originComponent: ctx.originComponent ?? "DriveReader" });
+  }
+
+  async driveAbout(ctx: Partial<ConnectorExecutionContext> = {}) {
+    return this.invoke("google-drive", "drive.about.get", {}, { ...ctx, originComponent: ctx.originComponent ?? "DriveReader" });
+  }
+
+  async drivePing(ctx: Partial<ConnectorExecutionContext> = {}) {
+    return this.invoke("google-drive", "connectivity.ping", {}, { ...ctx, originComponent: ctx.originComponent ?? "DriveReader" });
   }
 
   // ── Dogfooding: MemoryOS inspects itself ──────────────────────────────────────
