@@ -23,31 +23,17 @@
  *   7. googleOAuthRevoke  → revoga e limpa
  */
 
-import { appParams } from '@/lib/app-params';
+import { base44 } from '@/api/base44Client';
 
 const STORAGE_KEY = "memoryos_gauth_v1";
 
 // ── Backend function invoker ──────────────────────────────────────────────────
-// Uses fetch directly — base44.functions is not available in browser SDK.
+// Uses the official Base44 SDK — base44.functions.invoke() — so no internal
+// URLs are hardcoded here. The SDK owns all transport and routing details.
 
 async function invokeFn(name, payload) {
-  const { appBaseUrl, functionsVersion, token } = appParams;
-  const base = appBaseUrl?.replace(/\/$/, '') ?? '';
-  const ver  = functionsVersion ? `/v${functionsVersion}` : '';
-  const url  = `${base}/api/functions${ver}/${name}`;
-
-  const res = await fetch(url, {
-    method:  'POST',
-    headers: {
-      'Content-Type':  'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify(payload ?? {}),
-  });
-
-  const data = await res.json();
-  if (!res.ok) throw new Error(data?.error ?? `Function ${name} returned ${res.status}`);
-  return { data };
+  const res = await base44.functions.invoke(name, payload ?? {});
+  return { data: res.data };
 }
 const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000; // renova 5 min antes de expirar
 
