@@ -15,6 +15,7 @@ import { runGoogleCalendarConnectorTests } from "@/lib/google-auth/googleCalenda
 import { runGoogleDriveConnectorTests } from "@/lib/google-auth/googleDriveConnectorTests";
 import { runGoogleWorkspaceIntegrationTests } from "@/lib/google-auth/googleWorkspaceIntegrationTests";
 import { runGoogleOAuth007Tests } from "@/lib/google-auth/googleOAuth007Tests";
+import { base44 } from "@/api/base44Client";
 
 // ─── Google Workspace connector card ─────────────────────────────────────────
 
@@ -245,6 +246,88 @@ function GoogleConnectorCard() {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── OAuth Init Diagnostics Panel ────────────────────────────────────────────
+
+function OAuthInitDiagnosticsPanel() {
+  const [running, setRunning] = useState(false);
+  const [diag, setDiag] = useState(null);
+
+  const handleRun = async () => {
+    setRunning(true);
+    setDiag(null);
+
+    const origin = window.location.origin;
+    const redirectUri = `${origin}/oauth/google/callback`;
+
+    let result = null;
+    let error = null;
+    try {
+      const res = await base44.functions.invoke("googleOAuthInit", {
+        scopes: [
+          "openid",
+          "https://www.googleapis.com/auth/userinfo.email",
+          "https://www.googleapis.com/auth/userinfo.profile",
+          "https://www.googleapis.com/auth/gmail.readonly",
+          "https://www.googleapis.com/auth/calendar",
+          "https://www.googleapis.com/auth/drive",
+        ],
+        redirectUri,
+      });
+      const authUrl = res.data?.authUrl ?? "";
+      let parsedRedirectUri = null;
+      let parsedClientId = null;
+      try {
+        const u = new URL(authUrl);
+        parsedRedirectUri = u.searchParams.get("redirect_uri");
+        parsedClientId = u.searchParams.get("client_id");
+      } catch (_) {}
+      result = {
+        windowLocationOrigin: origin,
+        redirectUriSentToFunction: redirectUri,
+        authUrlComplete: authUrl,
+        redirectUriInAuthUrl: parsedRedirectUri,
+        clientId: parsedClientId,
+      };
+    } catch (e) {
+      error = e?.message ?? String(e);
+    }
+
+    setDiag({ result, error });
+    setRunning(false);
+  };
+
+  return (
+    <div className="border border-amber-300 rounded-xl overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 bg-amber-50 border-b border-amber-200">
+        <span className="text-sm font-semibold text-amber-800">Diagnóstico — OAuth Init (sem abrir popup)</span>
+        <button
+          onClick={handleRun}
+          disabled={running}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-800 text-white hover:bg-amber-700 disabled:opacity-40 transition"
+        >
+          {running ? <Loader2 className="w-3 h-3 animate-spin" /> : <Play className="w-3 h-3" />}
+          {running ? "Coletando..." : "Executar diagnóstico"}
+        </button>
+      </div>
+      {diag && (
+        <div className="p-4 space-y-3 font-mono text-xs bg-white">
+          {diag.error && (
+            <div className="p-2 rounded bg-red-50 border border-red-200 text-red-700">
+              <span className="font-bold">ERRO:</span> {diag.error}
+            </div>
+          )}
+          {diag.result && Object.entries(diag.result).map(([key, val]) => (
+            <div key={key} className="space-y-0.5">
+              <div className="text-zinc-400 uppercase tracking-wide text-[10px]">{key}</div>
+              <div className="break-all bg-zinc-50 border border-zinc-200 rounded px-2 py-1.5 text-zinc-800 select-all">{val ?? "(null)"}</div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -773,6 +856,14 @@ export default function Connections() {
             Disponivel agora
           </h2>
           <GoogleConnectorCard />
+        </div>
+
+        {/* OAuth Init Diagnostics */}
+        <div className="mb-6">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+            Diagnóstico OAuth Init
+          </h2>
+          <OAuthInitDiagnosticsPanel />
         </div>
 
         {/* OAuth Backend Tests — Implementation 007 */}
