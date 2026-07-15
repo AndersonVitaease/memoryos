@@ -17,6 +17,7 @@
 
 import { GitHubConnector } from "../connector-runtime/connectors/GitHubConnector";
 import { Base44Connector } from "../connector-runtime/connectors/Base44Connector";
+import { GmailConnector } from "../connector-runtime/connectors/GmailConnector";
 import type {
   ConnectorExecutionContext, InvocationAuthorization, CognitiveInvocationRecord,
   DiscoveredConnector, InvocationKnowledgeEntry, InvocationTimelineEvent,
@@ -29,7 +30,7 @@ import { makeExecutionId } from "../connector-runtime/ConnectorTypes";
 // ── Known registry of production connectors ────────────────────────────────────
 // No hardcoded behavior — connectors are instantiated and queried at runtime.
 
-const REGISTERED_CONNECTORS = ["github", "base44"] as const;
+const REGISTERED_CONNECTORS = ["github", "base44", "google"] as const;
 type RegisteredId = typeof REGISTERED_CONNECTORS[number];
 
 // Write operations — explicitly blocked for read-only certification
@@ -43,9 +44,10 @@ const BLOCKED_OPERATIONS = new Set([
 
 export class ConnectorInvocationService {
   // ── Connector singletons (instantiated once, reused) ─────────────────────────
-  private readonly _connectors: Map<string, GitHubConnector | Base44Connector> = new Map([
+  private readonly _connectors: Map<string, GitHubConnector | Base44Connector | GmailConnector> = new Map([
     ["github", new GitHubConnector()],
     ["base44", new Base44Connector()],
+    ["google", new GmailConnector()],
   ]);
 
   // ── Persistent stores (append-only) ──────────────────────────────────────────
@@ -76,7 +78,7 @@ export class ConnectorInvocationService {
         healthStatus: health,
         authenticated,
         readOnly: true,
-        certificationLevel: id === "github" ? "Beta-01 v2.0.0" : "Beta-02 v2.0.0",
+        certificationLevel: id === "github" ? "Beta-01 v2.0.0" : id === "google" ? "Impl-002 v1.0.0" : "Beta-02 v2.0.0",
         discoveredAt: Date.now(),
       });
     }
@@ -181,6 +183,32 @@ export class ConnectorInvocationService {
   }
   async base44WorkspaceDiagnostics(ctx: Partial<ConnectorExecutionContext> = {}) {
     return this.invoke("base44", "workspace.info", {}, { ...ctx, originComponent: ctx.originComponent ?? "ApplicationAnalyzer" });
+  }
+
+  // ── Google / Gmail convenience wrappers ───────────────────────────────────────
+
+  async gmailListMessages(query?: string, maxResults = 20, ctx: Partial<ConnectorExecutionContext> = {}) {
+    const payload: Record<string, unknown> = { maxResults };
+    if (query) payload.q = query;
+    return this.invoke("google", "gmail.messages.list", payload, { ...ctx, originComponent: ctx.originComponent ?? "GmailReader" });
+  }
+
+  async gmailGetMessage(id: string, ctx: Partial<ConnectorExecutionContext> = {}) {
+    return this.invoke("google", "gmail.messages.get", { id, format: "metadata" }, { ...ctx, originComponent: ctx.originComponent ?? "GmailReader" });
+  }
+
+  async gmailListThreads(query?: string, maxResults = 20, ctx: Partial<ConnectorExecutionContext> = {}) {
+    const payload: Record<string, unknown> = { maxResults };
+    if (query) payload.q = query;
+    return this.invoke("google", "gmail.threads.list", payload, { ...ctx, originComponent: ctx.originComponent ?? "GmailReader" });
+  }
+
+  async gmailListLabels(ctx: Partial<ConnectorExecutionContext> = {}) {
+    return this.invoke("google", "gmail.labels.list", {}, { ...ctx, originComponent: ctx.originComponent ?? "GmailReader" });
+  }
+
+  async googleProfile(ctx: Partial<ConnectorExecutionContext> = {}) {
+    return this.invoke("google", "auth.profile", {}, { ...ctx, originComponent: ctx.originComponent ?? "GmailReader" });
   }
 
   // ── Dogfooding: MemoryOS inspects itself ──────────────────────────────────────
