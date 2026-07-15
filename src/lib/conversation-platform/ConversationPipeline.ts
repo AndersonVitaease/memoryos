@@ -200,6 +200,7 @@ class ConversationPipeline {
       const { runReasoningPlan } = await import("@/lib/reasoning/memoryReasoningPlanner");
       const { primaryRouter } = await import("@/lib/primary-conversation-router/PrimaryConversationRouter");
       const { responseTracer } = await import("@/lib/response-binding/ResponseBindingTracer");
+      const { conversationGoalBridge } = await import("@/lib/conversation-goal-bridge/ConversationGoalBridge");
 
       const traceId = responseTracer.beginTrace(userMessage, session.id);
       const routerResult = await primaryRouter.route(
@@ -209,6 +210,30 @@ class ConversationPipeline {
         historyMessages.length
       );
       responseTracer.recordRouterDecision(traceId, routerResult.decision, routerResult.intent?.intent, routerResult.durationMs);
+
+      // ── E-02.1: Conversation → Goal Bridge ──────────────────────────────
+      // Derives a structured ConversationGoal from the user message + classified intent.
+      // The goal is NOT executed here — it is produced for Sprint E-02.2 (Goal → Planning).
+      // This call is pure (no network, no connectors, no side effects).
+      const goalBridgeResult = conversationGoalBridge.derive(
+        userMessage,
+        routerResult.intent?.intent ?? "general_conversation",
+        routerResult.intent?.confidence ?? 0,
+      );
+      conversationStore.emit({
+        type: "PIPELINE_STEP",
+        executionId,
+        payload: {
+          step: "goal_derived",
+          goalId:      goalBridgeResult.goal.id,
+          goalType:    goalBridgeResult.goal.type,
+          confidence:  goalBridgeResult.goal.confidence,
+          valid:       goalBridgeResult.goal.valid,
+          durationMs:  goalBridgeResult.durationMs,
+        },
+        timestamp: Date.now(),
+      });
+      // ── end E-02.1 ───────────────────────────────────────────────────────
 
       setStep("route", "done");
       setStep("synthesize", "running");
