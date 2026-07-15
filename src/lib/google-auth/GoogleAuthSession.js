@@ -23,9 +23,32 @@
  *   7. googleOAuthRevoke  → revoga e limpa
  */
 
-import { base44 } from '@/api/base44Client';
+import { appParams } from '@/lib/app-params';
 
 const STORAGE_KEY = "memoryos_gauth_v1";
+
+// ── Backend function invoker ──────────────────────────────────────────────────
+// Uses fetch directly — base44.functions is not available in browser SDK.
+
+async function invokeFn(name, payload) {
+  const { appBaseUrl, functionsVersion, token } = appParams;
+  const base = appBaseUrl?.replace(/\/$/, '') ?? '';
+  const ver  = functionsVersion ? `/v${functionsVersion}` : '';
+  const url  = `${base}/api/functions${ver}/${name}`;
+
+  const res = await fetch(url, {
+    method:  'POST',
+    headers: {
+      'Content-Type':  'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(payload ?? {}),
+  });
+
+  const data = await res.json();
+  if (!res.ok) throw new Error(data?.error ?? `Function ${name} returned ${res.status}`);
+  return { data };
+}
 const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000; // renova 5 min antes de expirar
 
 // ── In-memory token store (nunca persiste tokens em localStorage) ─────────────
@@ -141,7 +164,7 @@ export async function connect({ workspaceId = "default", scopes = WORKSPACE_SCOP
   onStateChange?.("AUTHENTICATING");
 
   // 1. Get auth URL from backend
-  const initRes = await base44.functions.invoke('googleOAuthInit', {
+  const initRes = await invokeFn('googleOAuthInit', {
     scopes,
     redirectUri: `${window.location.origin}/oauth/google/callback`,
   });
@@ -188,7 +211,7 @@ export async function connect({ workspaceId = "default", scopes = WORKSPACE_SCOP
 
       try {
         // 5. Exchange code for tokens via backend
-        const exchangeRes = await base44.functions.invoke('googleOAuthExchange', {
+        const exchangeRes = await invokeFn('googleOAuthExchange', {
           code,
           codeVerifier,
           redirectUri: `${window.location.origin}/oauth/google/callback`,
@@ -262,7 +285,7 @@ export async function refresh(workspaceId = "default", onStateChange) {
 
   onStateChange?.("REFRESHING");
 
-  const refreshRes = await base44.functions.invoke('googleOAuthRefresh', { workspaceId });
+  const refreshRes = await invokeFn('googleOAuthRefresh', { workspaceId });
   const { accessToken, expiresAt } = refreshRes.data;
 
   // Update token in memory
@@ -293,7 +316,7 @@ export async function disconnect(workspaceId = "default", onStateChange) {
   onStateChange?.("DISCONNECTED");
 
   // Revoke on backend (best-effort)
-  await base44.functions.invoke('googleOAuthRevoke', { workspaceId }).catch(() => {});
+  await invokeFn('googleOAuthRevoke', { workspaceId }).catch(() => {});
 
   _clear(workspaceId);
   onStateChange?.("NOT_CONNECTED");

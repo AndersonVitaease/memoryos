@@ -82,7 +82,7 @@ function GoogleConnectorCard() {
         onStateChange,
       });
     } catch (e) {
-      setError("Falha ao conectar. Tente novamente.");
+      setError(e?.message ?? "Falha ao conectar. Tente novamente.");
     } finally {
       setLoading(false);
       syncConn();
