@@ -30,6 +30,8 @@ import type {
 } from "@/lib/goals/GoalTypes";
 import type { CognitiveIntent }                      from "@/lib/conversation-cognitive-gateway/CCGTypes";
 import { implicitConnectorIntentDetector }           from "./ImplicitConnectorIntentDetector";
+// Ensures SemanticProviders are registered before first resolve() call
+import "@/lib/semantic-registry/index";
 
 // Re-export types for consumers that import from the Bridge
 export type { ConversationGoal, GoalBridgeResult, GoalType } from "@/lib/goals/GoalTypes";
