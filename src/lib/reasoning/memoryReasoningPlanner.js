@@ -46,7 +46,7 @@ import { formatMacrForChat } from "@/lib/reasoning/macrFormatterV4";
  *   - response: resposta final sintetizada
  *   - plan: metadados do raciocínio (objetivo, especialistas, estratégia, tempo)
  */
-export async function runReasoningPlan({ userMsg, session, historyMessages = [], setPhase }) {
+export async function runReasoningPlan({ userMsg, session, historyMessages = [], setPhase, kfmContext }) {
   const startTime = Date.now();
 
   // === ETAPA 1: MEMORY RETRIEVAL PIPELINE ===
@@ -153,6 +153,7 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
     needsMoreInfo: capabilityResult.needsMoreInfo,
     missingInfoHint: capabilityResult.missingInfoHint,
     serviceInfo: capabilityResult.serviceInfo,
+    kfmContext,
   });
 
   // === ETAPA 6: UMA ÚNICA CHAMADA AO LLM ===

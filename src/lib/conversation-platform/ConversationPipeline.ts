@@ -368,11 +368,14 @@ class ConversationPipeline {
           });
 
           // Synthesize connector output → user-facing response
+          // Sprint M-05: pass kfmModel so the synthesizer can enrich the LLM prompt
+          // with fused knowledge (entities, topics, decisions, tasks).
           const { synthesizeConnectorResult } = await import("@/lib/connector-runtime-provider/ConnectorResultSynthesizer");
           const synthesis = await synthesizeConnectorResult(
             executionResult,
             userMessage,
             goalBridgeResult.goal.type,
+            kfmModel,
           );
 
           if (synthesis.handled && synthesis.response) {
@@ -405,10 +408,28 @@ class ConversationPipeline {
         sources = [];
       } else {
         setPhase("executing_capabilities");
+        // Sprint M-05: build kfmContext string from UnifiedKnowledgeModel so the
+        // LLM reasoning path also benefits from fused knowledge.
+        // Non-blocking: if kfmModel is null or empty, kfmContext remains undefined.
+        let kfmContext: string | undefined;
+        if (kfmModel && kfmModel.statistics.totalEntities > 0) {
+          const lines: string[] = [];
+          if (kfmModel.entities.length > 0)
+            lines.push(`- Entidades: ${kfmModel.entities.slice(0, 10).map((e) => e.canonicalValue).join(", ")}`);
+          if (kfmModel.topics.length > 0)
+            lines.push(`- Topicos ativos: ${kfmModel.topics.slice(0, 5).map((t) => t.canonicalValue).join(", ")}`);
+          if (kfmModel.decisions.length > 0)
+            lines.push(`- Decisoes: ${kfmModel.decisions.slice(0, 3).map((d) => d.canonicalValue).join("; ")}`);
+          if (kfmModel.tasks.length > 0)
+            lines.push(`- Tarefas: ${kfmModel.tasks.slice(0, 3).map((t) => t.canonicalValue).join("; ")}`);
+          if (lines.length > 0)
+            kfmContext = `Confianca do modelo: ${Math.round(kfmModel.confidence * 100)}%\n${lines.join("\n")}`;
+        }
         const plan = await runReasoningPlan({
           userMsg: userMessage,
           session,
           historyMessages,
+          kfmContext,
           setPhase: (p: string) => {
             if (p === "retrieving") setPhase("retrieving_memory");
             else if (p === "routing") setPhase("consulting_specialists");

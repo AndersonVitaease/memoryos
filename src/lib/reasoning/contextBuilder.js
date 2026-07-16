@@ -35,7 +35,7 @@ import { buildSkillsPrompt } from "@/lib/skills/detector";
  * @param {Object} params.serviceInfo - Serviço identificado + conectores disponíveis
  * @returns {string} - Prompt completo pronto para UMA chamada ao LLM
  */
-export function buildReasoningContext({ userMsg, memory, skills, goal, historyText, totalMessages, capabilities, capabilityResults, needsMoreInfo, missingInfoHint, serviceInfo }) {
+export function buildReasoningContext({ userMsg, memory, skills, goal, historyText, totalMessages, capabilities, capabilityResults, needsMoreInfo, missingInfoHint, serviceInfo, kfmContext }) {
   const { context, sources, sessionSummary } = memory;
 
   // === BLOCO DE CAPACIDADES EXECUTADAS ===
@@ -282,6 +282,8 @@ ${hasStructuredMemory ? `- Memória estruturada recuperada: ${sources.length} re
 
 ## FONTES CONSULTADAS PELO PIPELINE
 ${sourcesText}
+
+${kfmContext ? `## CONHECIMENTO FUNDIDO (KnowledgeFusionEngine)\n${kfmContext}` : ""}
 
 ${context ? `## MEMÓRIA ESTRUTURADA RECUPERADA\n${context}` : ""}
 

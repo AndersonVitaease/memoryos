@@ -16,9 +16,10 @@
  * Ele nunca executa nem decide.
  */
 
-import type { ExecutionResult } from "@/lib/runtime-engine/RuntimeTypes";
-import { base44 }               from "@/api/base44Client";
-import { SearchRanker }         from "@/lib/github-deep-analysis/SearchRanker";
+import type { ExecutionResult }        from "@/lib/runtime-engine/RuntimeTypes";
+import type { UnifiedKnowledgeModel }  from "@/lib/knowledge-fusion-engine/KFETypes";
+import { base44 }                      from "@/api/base44Client";
+import { SearchRanker }                from "@/lib/github-deep-analysis/SearchRanker";
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -37,11 +38,13 @@ export interface SynthesisResult {
  * @param result   - The ExecutionResult from ConversationRuntimeEngine
  * @param userMsg  - The original user message (for LLM context)
  * @param goalType - The goalType that was planned (for context)
+ * @param kfmModel - Optional UnifiedKnowledgeModel from KnowledgeFusionEngine (Sprint M-05)
  */
 export async function synthesizeConnectorResult(
   result:   ExecutionResult,
   userMsg:  string,
   goalType: string,
+  kfmModel?: UnifiedKnowledgeModel | null,
 ): Promise<SynthesisResult> {
 
   // ── No steps planned — not a connector goal; let LLM handle it ───────────
@@ -96,7 +99,7 @@ export async function synthesizeConnectorResult(
 
   // ── Synthesize with LLM ────────────────────────────────────────────────────
   try {
-    const prompt = _buildSynthesisPrompt(userMsg, goalType, connectorData);
+    const prompt = _buildSynthesisPrompt(userMsg, goalType, connectorData, kfmModel);
     const llmResponse = await base44.integrations.Core.InvokeLLM({ prompt });
 
     return {
@@ -147,13 +150,38 @@ function _buildSynthesisPrompt(
   userMsg:       string,
   goalType:      string,
   connectorData: { connector: string; capability: string; output: unknown }[],
+  kfmModel?:     UnifiedKnowledgeModel | null,
 ): string {
   const dataJson = JSON.stringify(connectorData, null, 2);
+
+  // ── Sprint M-05: inject KFE knowledge context ──────────────────────────────
+  // The UnifiedKnowledgeModel enriches the synthesis prompt with fused entities,
+  // topics, decisions and tasks extracted from the user's conversation context.
+  // This ensures the synthesizer is aware of what the user has been discussing,
+  // enabling responses that connect connector data to existing memory context.
+  let kfmBlock = "";
+  if (kfmModel && kfmModel.statistics.totalEntities > 0) {
+    const entityLines: string[] = [];
+    if (kfmModel.entities.length > 0) {
+      entityLines.push(`Entidades: ${kfmModel.entities.slice(0, 8).map((e) => e.canonicalValue).join(", ")}`);
+    }
+    if (kfmModel.topics.length > 0) {
+      entityLines.push(`Topicos: ${kfmModel.topics.slice(0, 5).map((t) => t.canonicalValue).join(", ")}`);
+    }
+    if (kfmModel.decisions.length > 0) {
+      entityLines.push(`Decisoes recentes: ${kfmModel.decisions.slice(0, 3).map((d) => d.canonicalValue).join("; ")}`);
+    }
+    if (kfmModel.tasks.length > 0) {
+      entityLines.push(`Tarefas em aberto: ${kfmModel.tasks.slice(0, 3).map((t) => t.canonicalValue).join("; ")}`);
+    }
+    kfmBlock = `\nContexto de memoria do usuario (conhecimento fundido):\n${entityLines.join("\n")}\n`;
+  }
+  // ── end Sprint M-05 ────────────────────────────────────────────────────────
 
   return `Voce e o MemoryOS, o assistente de memoria permanente do usuario.
 
 O usuario pediu: "${userMsg}"
-
+${kfmBlock}
 O sistema executou automaticamente a acao "${goalType}" e obteve os seguintes dados reais:
 
 ${dataJson}
@@ -165,6 +193,7 @@ Sua tarefa:
 - NAO mencionar detalhes tecnicos como "connector", "capability", "ExecutionResult" etc.
 - Se forem emails: mostrar remetente, assunto e trecho de cada um.
 - Se nao houver dados relevantes: informar de forma amigavel.
+- Utilize o contexto de memoria para conectar os dados do conector ao historico do usuario quando relevante.
 - Resposta direta, sem introducao longa.`;
 }
 
