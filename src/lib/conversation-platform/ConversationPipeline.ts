@@ -285,7 +285,32 @@ class ConversationPipeline {
       } catch {
         // KFE failure is non-blocking
       }
-      void kfmModel;
+      // ── Sprint M-03: Knowledge Graph Population ─────────────────────────────
+      // Persist the UnifiedKnowledgeModel into KnowledgeGraphStore via the
+      // KnowledgeGraphBridge. Non-blocking — never delays the user response.
+      // Only executes when KFE produced a successful model with entities.
+      if (kfmModel !== null && kfmModel.statistics.totalEntities > 0) {
+        try {
+          const { knowledgeGraphBridge } = await import("@/lib/knowledge-fusion-engine/KnowledgeGraphBridge");
+          const bridgeResult = knowledgeGraphBridge.persist(kfmModel, session.id);
+          conversationStore.emit({
+            type: "PIPELINE_STEP",
+            executionId,
+            payload: {
+              step:        "knowledge_graph_updated",
+              persisted:   bridgeResult.persisted,
+              reason:      bridgeResult.reason,
+              entityCount: bridgeResult.entityCount,
+              durationMs:  bridgeResult.durationMs,
+            },
+            timestamp: Date.now(),
+          });
+        } catch {
+          // Non-blocking — KGS update failure never affects user response
+        }
+      }
+      // ── end Sprint M-03 ──────────────────────────────────────────────────
+
       // ── end Sprint 8.12 ──────────────────────────────────────────────────
 
       // ── E-02.1: Conversation → Goal Bridge ──────────────────────────────
