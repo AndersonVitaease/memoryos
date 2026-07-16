@@ -143,48 +143,45 @@ export class GmailConnector implements IConnector {
       }
 
       case "searchEmails": {
-        const { searchMessages } = await import("@/lib/gmail/GmailConnector");
-        const { executeSmartSearch } = await import("@/lib/gmail/SmartGmailQueryBuilder");
-        const rawQuery = (p["query"] as string) ?? "";
+        // E-02.9: GmailConnector is a thin orchestrator only.
+        // Knowledge → EmailAliasRegistry / DomainRegistry
+        // Strategy  → SmartQueryBuilder
+        // Execution → SmartQueryExecutor
+        const { searchMessages }   = await import("@/lib/gmail/GmailConnector");
+        const { smartQueryBuilder } = await import("@/lib/gmail/SmartQueryBuilder");
+        const { smartQueryExecutor } = await import("@/lib/gmail/SmartQueryExecutor");
+
+        const rawQuery   = (p["query"] as string) ?? "";
         const maxResults = (p["maxResults"] as number) ?? 20;
 
-        console.log("[GmailConnector][E-02.8] SmartSearch for:", rawQuery);
-
-        const smartResult = await executeSmartSearch(
-          rawQuery,
+        const strategy = smartQueryBuilder.build(rawQuery);
+        const result   = await smartQueryExecutor.execute(
+          strategy,
           (q, max) => searchMessages(q, max) as Promise<{ ok: boolean; data: unknown; error: string | null }>,
           maxResults,
         );
 
-        // Log every attempt for observability
-        smartResult.log.forEach((line) => console.log(line));
-
-        if (smartResult.winningQuery) {
-          return {
-            ok:     true,
-            data:   (smartResult as unknown as Record<string, unknown>)._data,
-            error:  null,
-            status: "success",
-            _smartMeta: {
-              entity:       smartResult.entity,
-              winningQuery: smartResult.winningQuery,
-              totalFound:   smartResult.totalFound,
-              attempts:     smartResult.strategy.attempts.map((a) => ({
-                attempt:   a.attempt,
-                query:     a.query,
-                strategy:  a.strategy,
-                results:   a.results,
-                succeeded: a.succeeded,
-              })),
-            },
-          };
-        }
+        result.log.forEach((line) => console.log(line));
 
         return {
           ok:     true,
-          data:   { messages: [], resultSizeEstimate: 0, _noResults: true, _entity: rawQuery },
+          data:   result.data ?? { messages: [], resultSizeEstimate: 0, _noResults: true, _entity: rawQuery },
           error:  null,
           status: "success",
+          _smartMeta: {
+            entity:       result.entity,
+            winningQuery: result.winningQuery,
+            totalFound:   result.totalFound,
+            totalDurationMs: result.totalDurationMs,
+            attempts: result.strategy.attempts.map((a) => ({
+              attempt:   a.attempt,
+              query:     a.query,
+              strategy:  a.strategy,
+              results:   a.results,
+              succeeded: a.succeeded,
+              durationMs: a.durationMs,
+            })),
+          },
         };
       }
 

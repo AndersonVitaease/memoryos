@@ -1,171 +1,178 @@
 /**
- * EmailAliasRegistry.ts — Engineering Sprint E-02.6
- * Semantic Email Search Engine — Connector Intelligence Layer
+ * EmailAliasRegistry.ts — Engineering Sprint E-02.9
+ * Connector Knowledge Layer
  *
- * SRP: mapear nomes de marcas/remetentes para seus aliases de busca.
- * Sem HTTP. Sem Runtime. Sem OAuth. Sem side effects.
+ * SRP: Conhecer aliases de entidades. Apenas isso.
  *
- * Extensao: adicionar novas entradas no objeto ALIAS_MAP.
- * Nenhuma regra hardcoded fora deste arquivo.
+ * Jamais monta queries.
+ * Jamais executa buscas.
+ * Jamais conhece dominios.
+ *
+ * Extensibilidade: adicionar uma nova empresa exige apenas chamar
+ * EmailAliasRegistry.register() — nenhum outro arquivo precisa mudar.
  */
 
-export interface AliasEntry {
-  /** Primary human-readable name */
-  readonly name: string;
-  /** All search terms that represent this entity (lower-case signal for matching) */
-  readonly signals: readonly string[];
-  /** Gmail-optimized aliases: used in from:(...) or general OR query */
-  readonly aliases: readonly string[];
-}
+import type { AliasDescriptor } from "./SmartQueryTypes";
 
-// ── Registry ──────────────────────────────────────────────────────────────────
-// Key: lower-case canonical name used for signal matching.
-// aliases: values placed inside from:(...) or bare OR query.
+// ── EmailAliasRegistryClass ───────────────────────────────────────────────────
 
-const ALIAS_MAP: Readonly<Record<string, AliasEntry>> = Object.freeze({
+class EmailAliasRegistryClass {
+  /** slug → lista de alias descriptors */
+  private readonly _bySlug  = new Map<string, AliasDescriptor[]>();
+  /** alias lower-case → slug canonico */
+  private readonly _reverse = new Map<string, string>();
 
-  shopee: {
-    name: "Shopee",
-    signals: ["shopee"],
-    aliases: ["Shopee", "shopee.com.br", "seller.shopee", "no-reply@shopee", "support@shopee"],
-  },
+  /**
+   * Registra aliases para um slug canonico.
+   * Idempotente: chamadas duplicadas para o mesmo slug sao ignoradas.
+   */
+  register(slug: string, aliases: string[]): void {
+    const key = slug.toLowerCase().trim();
+    if (this._bySlug.has(key)) return;
 
-  "mercado livre": {
-    name: "Mercado Livre",
-    signals: ["mercado livre", "mercadolivre", "ml"],
-    aliases: ["Mercado Livre", "MercadoLivre", "mercadolivre", "mercadoenvios", "mercadolivre.com.br"],
-  },
+    const descriptors: AliasDescriptor[] = aliases.map((a) => ({
+      alias: a,
+      slug:  a.toLowerCase().replace(/\s+/g, ""),
+    }));
 
-  "mercado pago": {
-    name: "Mercado Pago",
-    signals: ["mercado pago", "mercadopago"],
-    aliases: ["Mercado Pago", "mercadopago", "mercadopago.com.br"],
-  },
+    this._bySlug.set(key, descriptors);
 
-  amazon: {
-    name: "Amazon",
-    signals: ["amazon"],
-    aliases: ["Amazon", "amazon.com", "amazon.com.br", "sellercentral.amazon"],
-  },
-
-  hostinger: {
-    name: "Hostinger",
-    signals: ["hostinger"],
-    aliases: ["Hostinger", "hostinger.com", "support.hostinger", "billing.hostinger", "no-reply@hostinger"],
-  },
-
-  google: {
-    name: "Google",
-    signals: ["google", "gmail", "workspace google"],
-    aliases: ["Google", "google.com", "gmail.com", "workspace.google"],
-  },
-
-  meta: {
-    name: "Meta",
-    signals: ["meta", "facebook", "instagram", "whatsapp meta"],
-    aliases: ["Meta", "Facebook", "Instagram", "facebookmail.com", "meta.com"],
-  },
-
-  facebook: {
-    name: "Facebook",
-    signals: ["facebook"],
-    aliases: ["Facebook", "facebookmail.com", "meta.com"],
-  },
-
-  paypal: {
-    name: "PayPal",
-    signals: ["paypal"],
-    aliases: ["PayPal", "service@paypal.com", "paypal.com"],
-  },
-
-  shopify: {
-    name: "Shopify",
-    signals: ["shopify"],
-    aliases: ["Shopify", "shopify.com", "notifications@shopify.com"],
-  },
-
-  ifood: {
-    name: "iFood",
-    signals: ["ifood"],
-    aliases: ["iFood", "ifood.com.br", "noreply@ifood"],
-  },
-
-  nubank: {
-    name: "Nubank",
-    signals: ["nubank", "nu "],
-    aliases: ["Nubank", "nubank.com.br", "todomundo@nubank.com.br"],
-  },
-
-  itau: {
-    name: "Itau",
-    signals: ["itau", "itaú"],
-    aliases: ["Itau", "itau.com.br", "itaucard"],
-  },
-
-  bradesco: {
-    name: "Bradesco",
-    signals: ["bradesco"],
-    aliases: ["Bradesco", "bradesco.com.br"],
-  },
-
-  correios: {
-    name: "Correios",
-    signals: ["correios"],
-    aliases: ["Correios", "correios.com.br"],
-  },
-
-  netflix: {
-    name: "Netflix",
-    signals: ["netflix"],
-    aliases: ["Netflix", "netflix.com", "info@netflix.com"],
-  },
-
-  spotify: {
-    name: "Spotify",
-    signals: ["spotify"],
-    aliases: ["Spotify", "spotify.com", "no-reply@spotify.com"],
-  },
-
-  linkedin: {
-    name: "LinkedIn",
-    signals: ["linkedin"],
-    aliases: ["LinkedIn", "linkedin.com", "messages-noreply@linkedin.com"],
-  },
-
-  github: {
-    name: "GitHub",
-    signals: ["github"],
-    aliases: ["GitHub", "github.com", "noreply@github.com"],
-  },
-
-});
-
-// ── Public API ─────────────────────────────────────────────────────────────────
-
-/**
- * Finds an alias entry whose signals match anywhere in the input text.
- * Returns the first match (most specific signals are listed first in each entry).
- */
-export function findAlias(text: string): AliasEntry | null {
-  const lower = text.toLowerCase();
-  // Try multi-word signals first (longer = more specific)
-  const entries = Object.values(ALIAS_MAP).sort(
-    (a, b) => Math.max(...b.signals.map((s) => s.length)) - Math.max(...a.signals.map((s) => s.length))
-  );
-  for (const entry of entries) {
-    if (entry.signals.some((s) => lower.includes(s))) {
-      return entry;
-    }
+    // Build reverse index for fast lookup
+    descriptors.forEach((d) => {
+      this._reverse.set(d.alias.toLowerCase(), key);
+      this._reverse.set(d.slug.toLowerCase(), key);
+    });
   }
-  return null;
+
+  /**
+   * Resolve uma string de entrada para o slug canonico.
+   * Retorna null se nao encontrado.
+   */
+  resolve(input: string): string | null {
+    const lower = input.toLowerCase().trim();
+    // Direct slug match
+    if (this._bySlug.has(lower)) return lower;
+    // Alias reverse lookup
+    return this._reverse.get(lower) ?? null;
+  }
+
+  /**
+   * Retorna todos os alias descriptors para um slug canonico.
+   * Retorna [] se nao registrado.
+   */
+  getAliases(slug: string): readonly AliasDescriptor[] {
+    return this._bySlug.get(slug.toLowerCase().trim()) ?? [];
+  }
+
+  /**
+   * Retorna todas as strings de alias (incluindo slug) para busca.
+   */
+  getAliasStrings(slug: string): readonly string[] {
+    const descs = this.getAliases(slug);
+    const unique = new Set<string>();
+    descs.forEach((d) => { unique.add(d.alias); unique.add(d.slug); });
+    return [...unique];
+  }
+
+  listSlugs(): readonly string[] {
+    return [...this._bySlug.keys()];
+  }
+
+  get size(): number {
+    return this._bySlug.size;
+  }
 }
 
-/** Returns all registered alias entries. */
-export function listAllAliases(): readonly AliasEntry[] {
-  return Object.values(ALIAS_MAP);
-}
+// ── Singleton ─────────────────────────────────────────────────────────────────
 
-/** Returns an alias entry by its canonical key, or null. */
-export function getAliasByKey(key: string): AliasEntry | null {
-  return ALIAS_MAP[key.toLowerCase()] ?? null;
+const _KEY = "__EMAIL_ALIAS_REGISTRY__";
+if (!(globalThis as unknown as Record<string, unknown>)[_KEY]) {
+  (globalThis as unknown as Record<string, unknown>)[_KEY] = new EmailAliasRegistryClass();
 }
+export const EmailAliasRegistry: EmailAliasRegistryClass = (
+  globalThis as unknown as Record<string, EmailAliasRegistryClass>
+)[_KEY];
+
+// ── Built-in registrations ────────────────────────────────────────────────────
+
+const _aliases: Array<[string, string[]]> = [
+  // E-commerce
+  ["mercadolivre",  ["Mercado Livre", "MercadoLivre", "Mercado Libre", "mercadolivre", "mercadolibre", "ML", "Meli"]],
+  ["mercadopago",   ["Mercado Pago", "MercadoPago", "mercadopago", "MP"]],
+  ["shopee",        ["Shopee", "shopee"]],
+  ["amazon",        ["Amazon", "amazon", "Amazon.com.br", "Amazon Brasil"]],
+  ["americanas",    ["Americanas", "americanas", "Americanas.com", "Lojas Americanas"]],
+  ["aliexpress",    ["AliExpress", "Aliexpress", "aliexpress", "Ali Express"]],
+  ["magazineluiza", ["Magazine Luiza", "MagazineLuiza", "magazineluiza", "Magalu", "magalu"]],
+
+  // Financeiro / Pagamentos
+  ["picpay",        ["PicPay", "Pic Pay", "picpay", "pic pay"]],
+  ["nubank",        ["Nubank", "nubank", "Nu", "nu bank"]],
+  ["paypal",        ["PayPal", "Paypal", "paypal", "Pay Pal"]],
+  ["pagseguro",     ["PagSeguro", "Pag Seguro", "pagseguro"]],
+  ["stripe",        ["Stripe", "stripe"]],
+
+  // Bancos
+  ["bradesco",      ["Bradesco", "bradesco", "Banco Bradesco"]],
+  ["bancodobrasil", ["Banco do Brasil", "BancoDoBrasil", "BB", "banco do brasil", "bancodobrasil"]],
+  ["caixa",         ["Caixa", "caixa", "Caixa Economica", "Caixa Economica Federal", "CEF"]],
+  ["santander",     ["Santander", "santander", "Banco Santander"]],
+  ["itau",          ["Itau", "Itaú", "itau", "Banco Itau", "Banco Itaú"]],
+  ["inter",         ["Inter", "inter", "Banco Inter", "banco inter"]],
+
+  // Hospedagem / Cloud
+  ["hostinger",     ["Hostinger", "hostinger"]],
+  ["godaddy",       ["GoDaddy", "Godaddy", "godaddy", "Go Daddy"]],
+  ["aws",           ["AWS", "Amazon Web Services", "aws", "Amazon AWS"]],
+  ["digitalocean",  ["DigitalOcean", "Digital Ocean", "digitalocean"]],
+  ["vercel",        ["Vercel", "vercel"]],
+
+  // Produtividade / SaaS
+  ["notion",        ["Notion", "notion"]],
+  ["slack",         ["Slack", "slack"]],
+  ["hubspot",       ["HubSpot", "Hubspot", "hubspot", "Hub Spot"]],
+  ["zendesk",       ["Zendesk", "zendesk", "Zen Desk"]],
+  ["jira",          ["Jira", "jira", "Atlassian Jira", "JIRA"]],
+  ["confluence",    ["Confluence", "confluence", "Atlassian Confluence"]],
+  ["trello",        ["Trello", "trello"]],
+  ["asana",         ["Asana", "asana"]],
+  ["monday",        ["Monday", "monday", "Monday.com"]],
+  ["linear",        ["Linear", "linear"]],
+
+  // Dev
+  ["github",        ["GitHub", "Github", "github"]],
+  ["gitlab",        ["GitLab", "Gitlab", "gitlab"]],
+  ["npm",           ["npm", "NPM", "npmjs"]],
+
+  // Enterprise / ERP
+  ["oracle",        ["Oracle", "oracle"]],
+  ["sap",           ["SAP", "sap"]],
+  ["salesforce",    ["Salesforce", "salesforce", "Sales Force"]],
+  ["microsoft",     ["Microsoft", "microsoft", "MSFT"]],
+
+  // Google
+  ["google",        ["Google", "google"]],
+  ["youtube",       ["YouTube", "Youtube", "youtube"]],
+
+  // Social / Comunicacao
+  ["linkedin",      ["LinkedIn", "Linkedin", "linkedin"]],
+  ["twitter",       ["Twitter", "twitter", "X", "X.com"]],
+  ["facebook",      ["Facebook", "facebook", "FB"]],
+  ["instagram",     ["Instagram", "instagram", "IG"]],
+  ["tiktok",        ["TikTok", "Tiktok", "tiktok", "Tik Tok"]],
+  ["discord",       ["Discord", "discord"]],
+  ["whatsapp",      ["WhatsApp", "Whatsapp", "whatsapp", "Whats App"]],
+
+  // Storage / Docs
+  ["dropbox",       ["Dropbox", "dropbox", "Drop Box"]],
+  ["onedrive",      ["OneDrive", "Onedrive", "onedrive", "One Drive"]],
+  ["outlook",       ["Outlook", "outlook", "Microsoft Outlook"]],
+  ["teams",         ["Microsoft Teams", "Teams", "teams", "MS Teams"]],
+
+  // Logistica / Delivery
+  ["ifood",         ["iFood", "Ifood", "ifood", "i Food"]],
+  ["rappi",         ["Rappi", "rappi"]],
+  ["correios",      ["Correios", "correios", "Empresa Brasileira de Correios"]],
+];
+
+_aliases.forEach(([slug, aliases]) => EmailAliasRegistry.register(slug, aliases));

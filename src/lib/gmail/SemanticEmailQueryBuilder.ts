@@ -9,7 +9,15 @@
  * Toda a inteligencia de busca reside neste modulo.
  */
 
-import { findAlias } from "./EmailAliasRegistry";
+import { EmailAliasRegistry } from "./EmailAliasRegistry";
+
+// Compat shim: adapt new EmailAliasRegistry to the old findAlias() contract
+function findAlias(query: string): { name: string; aliases: string[] } | null {
+  const slug = EmailAliasRegistry.resolve(query);
+  if (!slug) return null;
+  const aliases = EmailAliasRegistry.getAliasStrings(slug) as string[];
+  return aliases.length > 0 ? { name: slug, aliases } : null;
+}
 
 const LOG_PREFIX = "[SemanticEmailQueryBuilder]";
 
