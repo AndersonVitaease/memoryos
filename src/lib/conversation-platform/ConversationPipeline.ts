@@ -211,6 +211,39 @@ class ConversationPipeline {
       );
       responseTracer.recordRouterDecision(traceId, routerResult.decision, routerResult.intent?.intent, routerResult.durationMs);
 
+      // ── Sprint 8.11: Unified Context Builder ────────────────────────────
+      // Builds the full cognitive context BEFORE GoalBridge.
+      // Pure composition: reads sources, no connectors executed, no planning.
+      let unifiedCtx: import("@/lib/unified-context/UnifiedContextTypes").UnifiedContext | null = null;
+      try {
+        const { unifiedContextBuilder } = await import("@/lib/unified-context/UnifiedContextBuilder");
+        unifiedCtx = await unifiedContextBuilder.build(
+          userMessage,
+          session.id,
+          session.project_id ?? null,
+          session.summary ?? null,
+          historyMessages.map((m) => ({ role: m.role, content: m.content })),
+        );
+        conversationStore.emit({
+          type: "PIPELINE_STEP",
+          executionId,
+          payload: {
+            step:          "unified_context_built",
+            buildId:       unifiedCtx.buildId,
+            intent:        unifiedCtx.intent,
+            durationMs:    unifiedCtx.durationMs,
+            confidence:    unifiedCtx.confidence,
+            sourceCount:   unifiedCtx.sources.length,
+            sourcesUsed:   unifiedCtx.sources.map((s) => s.sourceId),
+            connectors:    unifiedCtx.connectorAvailability,
+          },
+          timestamp: Date.now(),
+        });
+      } catch {
+        // UCB failure is non-blocking — pipeline continues without unified context
+      }
+      // ── end Sprint 8.11 ─────────────────────────────────────────────────
+
       // ── E-02.1: Conversation → Goal Bridge ──────────────────────────────
       // Derives a structured ConversationGoal from the user message + classified intent.
       // The goal is NOT executed here — it is produced for Sprint E-02.2 (Goal → Planning).
