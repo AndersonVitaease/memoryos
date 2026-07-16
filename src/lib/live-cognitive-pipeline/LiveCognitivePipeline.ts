@@ -439,19 +439,39 @@ export class LiveCognitivePipeline {
     const t0 = Date.now();
     try {
       const ire = new IdentityResolutionEngine();
-      // IRE.resolve() expects IRInput: { entities, relationships, timelineEvents }
-      // Pull fused data forwarded from KFE stage if available, otherwise use empty arrays
-      const prevOut = prev.output as any;
-      const ireInput = {
-        entities:       (prevOut._fusedEntities       as any[] | undefined) ?? [],
-        relationships:  (prevOut._fusedRelationships  as any[] | undefined) ?? [],
-        timelineEvents: (prevOut._fusedTimeline        as any[] | undefined) ?? [],
-      };
 
-      const ireReport = ire.resolve(ireInput);
-      ctx.knowledgeEvidence.push(`IRE: ${ireReport.canonicalEntitiesCreated} canonicals · ${ireReport.aliasesDetected} aliases`);
+      // Sprint M-06.3: IRE consumes real FusedEntity[] produced by KFE (Stage 5 — M-06.2B).
+      // _fusedEntities/_fusedRelationships/_fusedTimeline are forwarded from _stageKFE unchanged.
+      // When KGS was loaded (kgsLoaded=true), these arrays contain real entities from the repository.
+      // When KGS was not ready (fallback path), these arrays are empty — IRE produces 0 canonicals.
+      const prevOut = prev.output as any;
+      const fusedEntities:       any[] = (prevOut._fusedEntities       as any[] | undefined) ?? [];
+      const fusedRelationships:  any[] = (prevOut._fusedRelationships  as any[] | undefined) ?? [];
+      const fusedTimeline:       any[] = (prevOut._fusedTimeline       as any[] | undefined) ?? [];
+
+      // Observability: record how many real entities IRE is about to receive
+      const kgsLoaded: boolean = prevOut.kgsLoaded ?? false;
+      ctx.knowledgeEvidence.push(
+        `IRE input: ${fusedEntities.length} fused entities · ${fusedRelationships.length} rels · ` +
+        `${fusedTimeline.length} events · source=${kgsLoaded ? "KGS (real)" : "fallback (empty)"}`
+      );
+
+      const t0IRE = Date.now();
+      const ireReport = ire.resolve({
+        entities:       fusedEntities,
+        relationships:  fusedRelationships,
+        timelineEvents: fusedTimeline,
+      });
+      const ireMs = Date.now() - t0IRE;
+
+      ctx.knowledgeEvidence.push(
+        `IRE: ${ireReport.canonicalEntitiesCreated} canonicals · ${ireReport.aliasesDetected} aliases · ` +
+        `${ireReport.versionsDetected} versions · ${ireReport.conflictsDetected} conflicts · ` +
+        `coverage=${ireReport.coverage.toFixed(3)} · confidence=${ireReport.overallConfidence.toFixed(3)} · ire=${ireMs}ms`
+      );
 
       return this._mkStage("IdentityResolutionEngine", t0, "SUCCESS", {
+        // existing fields — unchanged
         canonicalEntitiesCreated: ireReport.canonicalEntitiesCreated,
         aliasesDetected:          ireReport.aliasesDetected,
         versionsDetected:         ireReport.versionsDetected,
@@ -460,7 +480,20 @@ export class LiveCognitivePipeline {
         conflictsDetected:        ireReport.conflictsDetected,
         overallConfidence:        ireReport.overallConfidence,
         coverage:                 ireReport.coverage,
-      }, null, "IRE operational — identities resolved", "fused entities → canonical identities", 0.78);
+        // Sprint M-06.3 observability
+        kgsLoaded,
+        inputEntityCount:         fusedEntities.length,
+        inputRelationshipCount:   fusedRelationships.length,
+        inputTimelineCount:       fusedTimeline.length,
+        ireMs,
+        // forward resolved canonicals for downstream stages
+        _canonicals:              ire.listCanonicals() as unknown as Record<string, unknown>[],
+      }, null,
+      kgsLoaded
+        ? `IRE: ${ireReport.canonicalEntitiesCreated} real canonicals from KGS entities`
+        : "IRE: 0 canonicals (KGS fallback)",
+      "KFE FusedEntity[] → IRE → CanonicalEntity[]",
+      kgsLoaded ? 0.85 : 0.78);
     } catch (e) {
       return this._mkStage("IdentityResolutionEngine", t0, "SKIPPED", {
         reason: String(e),
