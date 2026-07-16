@@ -18,6 +18,7 @@
 
 import type { ExecutionResult } from "@/lib/runtime-engine/RuntimeTypes";
 import { base44 }               from "@/api/base44Client";
+import { SearchRanker }         from "@/lib/github-deep-analysis/SearchRanker";
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -63,11 +64,35 @@ export async function synthesizeConnectorResult(
     return { handled: true, response, connectorData: null };
   }
 
-  const connectorData = completedSteps.map((s) => ({
-    connector:  s.connector,
-    capability: s.capability,
-    output:     s.output,
-  }));
+  // ── A-10: Search Result Ranking ───────────────────────────────────────────
+  // For github.search.* capabilities, rank results by technical priority
+  // (implementation files > type definitions > tests > config > docs) before
+  // passing to the LLM synthesizer.  Pure function — no network, no side effects.
+  const _ranker = new SearchRanker();
+
+  const connectorData = completedSteps.map((s) => {
+    const isGitHubSearch =
+      s.connector === "github" &&
+      typeof s.capability === "string" &&
+      s.capability.startsWith("search.");
+
+    if (isGitHubSearch && s.output !== null) {
+      const out = s.output as Record<string, unknown>;
+      const items = out["items"] as unknown[] | undefined;
+      if (Array.isArray(items)) {
+        return {
+          connector:  s.connector,
+          capability: s.capability,
+          output:     { ...out, items: _ranker.rank(items, userMsg), _ranked: true },
+        };
+      }
+    }
+    return {
+      connector:  s.connector,
+      capability: s.capability,
+      output:     s.output,
+    };
+  });
 
   // ── Synthesize with LLM ────────────────────────────────────────────────────
   try {
