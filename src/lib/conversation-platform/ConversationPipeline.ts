@@ -244,24 +244,24 @@ class ConversationPipeline {
       }
       // ── end Sprint 8.11 ─────────────────────────────────────────────────
 
-      // ── Sprint 8.12: Knowledge Fusion Engine ─────────────────────────────
-      // Pure computation: UCB sources → UnifiedKnowledgeModel. No I/O. Non-blocking.
+      // ── Sprint 8.12 / 8.12.1: Knowledge Fusion Engine ───────────────────────
+      // Official pipeline: UnifiedContext → KnowledgeNormalizer → RawKnowledgeUnit[]
+      //                    → KnowledgeFusionEngine → UnifiedKnowledgeModel
+      // No inline transformation. KnowledgeNormalizer is the sole UCB→KFE adapter.
       let kfmModel: import("@/lib/knowledge-fusion-engine/KFETypes").UnifiedKnowledgeModel | null = null;
       try {
         const { knowledgeFusionEngine } = await import("@/lib/knowledge-fusion-engine/KnowledgeFusionEngine");
-        const rawUnits = (unifiedCtx?.sources ?? []).map((src, idx) => ({
-          id:         `ucb-${idx}-${src.sourceId}`,
-          sourceId:   src.sourceId,
-          type:       "entity" as const,
-          value:      src.sourceId.toLowerCase(),
-          rawValue:   src.sourceId,
-          confidence: (src as { confidence?: number }).confidence ?? 0.5,
-          context:    (src as { excerpt?: string }).excerpt ?? undefined,
-          metadata:   Object.freeze({}),
-        }));
+        const { knowledgeNormalizer }   = await import("@/lib/knowledge-fusion-engine/KnowledgeNormalizer");
+
+        // Step 1: Normalize — only if UCB produced a context
+        const normResult = unifiedCtx
+          ? knowledgeNormalizer.normalize(unifiedCtx)
+          : { units: [], unitCount: 0, buildId: `kfe-${Date.now()}` };
+
+        // Step 2: Fuse
         const kfeResult = knowledgeFusionEngine.fuse({
-          buildId:   unifiedCtx?.buildId ?? `kfe-${Date.now()}`,
-          units:     rawUnits,
+          buildId:   normResult.buildId,
+          units:     normResult.units,
           sessionId: session.id,
         });
         if (kfeResult.success) {

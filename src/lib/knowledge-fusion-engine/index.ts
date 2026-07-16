@@ -25,3 +25,7 @@ export { knowledgeRelationshipBuilder,  KnowledgeRelationshipBuilder  } from "./
 export { knowledgeConfidenceCalculator, KnowledgeConfidenceCalculator } from "./KnowledgeConfidenceCalculator";
 export { runKFECertificationSuite                                      } from "./KnowledgeFusionCertificationSuite";
 export type { KFECertReport, KFECertCase                              } from "./KnowledgeFusionCertificationSuite";
+export { knowledgeNormalizer, KnowledgeNormalizer                     } from "./KnowledgeNormalizer";
+export type { NormalizerResult                                        } from "./KnowledgeNormalizer";
+export { runKFEIntegrationCertificationSuite                          } from "./KnowledgeFusionIntegrationCertificationSuite";
+export type { IntegCertReport, IntegCertCase                         } from "./KnowledgeFusionIntegrationCertificationSuite";
