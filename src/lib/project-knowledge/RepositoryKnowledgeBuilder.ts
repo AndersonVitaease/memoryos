@@ -17,7 +17,9 @@ import type {
 } from "./PKBTypes";
 import { makePKBId } from "./PKBTypes";
 import { parseSourceFile, detectLayer, detectLanguage } from "./SourceCodeParser";
-import { ConnectorInvocationService } from "../cognitive-connector/ConnectorInvocationService";
+// P-01: CIS dependency eliminated. RKB now routes all connector calls through
+// the official pipeline (OfficialRuntimeBridge → PlanningEngine → RuntimeEngine → UCR → GitHubConnector).
+import { officialRuntimeBridge } from "../cognitive-connector/OfficialRuntimeBridge";
 
 // ── Files to ignore (EF-60.1) ─────────────────────────────────────────────────
 
@@ -67,7 +69,7 @@ function moduleOf(filePath: string): string {
 // ── RepositoryKnowledgeBuilder ────────────────────────────────────────────────
 
 export class RepositoryKnowledgeBuilder {
-  private readonly _cis = new ConnectorInvocationService();
+  // P-01: _cis removed. All connector calls now route through officialRuntimeBridge.
   private _graph: ProjectKnowledgeGraph | null = null;
   private _graphBuiltAt = 0;
 
@@ -89,12 +91,12 @@ export class RepositoryKnowledgeBuilder {
     const maxFiles = options.maxFiles ?? 120;
 
     // 1. Fetch repository tree
-    const treeInv = await this._cis.invoke("github", "repository.tree", { owner, repo },
-      { originComponent: "RepositoryKnowledgeBuilder", reason: "Build knowledge graph" });
+    // P-01: routes through officialRuntimeBridge → PlanningEngine → RuntimeEngine → UCR → GitHubConnector
+    const treeInv = await officialRuntimeBridge.invoke("github", "repository.tree", { owner, repo });
 
     const allFiles: Array<{ path: string; type: string }> =
-      treeInv.record.status === "SUCCESS"
-        ? ((treeInv.result?.data as any)?.files ?? [])
+      treeInv.success
+        ? ((treeInv.data as any)?.files ?? [])
         : [];
 
     console.log(`[RKB] STAGE repository.tree — allFiles.length = ${allFiles.length}`);
@@ -119,9 +121,9 @@ export class RepositoryKnowledgeBuilder {
     console.log(`[RKB] STAGE eligible files — targetFiles.length = ${targetFiles.length}`);
 
     // 3. Fetch latest commit for metadata
-    const commitsInv = await this._cis.invoke("github", "commits.list", { owner, repo, per_page: 1 },
-      { originComponent: "RepositoryKnowledgeBuilder", reason: "Get latest commit" });
-    const latestCommit = (commitsInv.result?.data as any)?.items?.[0]?.sha ?? null;
+    // P-01: routes through officialRuntimeBridge → PlanningEngine → RuntimeEngine → UCR → GitHubConnector
+    const commitsInv = await officialRuntimeBridge.invoke("github", "commits.list", { owner, repo, per_page: 1 });
+    const latestCommit = (commitsInv.data as any)?.items?.[0]?.sha ?? null;
 
     // 4. Fetch & parse files in batches of 8
     const entities: ArchEntity[]      = [];
@@ -133,24 +135,23 @@ export class RepositoryKnowledgeBuilder {
 
     for (let i = 0; i < targetFiles.length; i += BATCH) {
       const batch = targetFiles.slice(i, i + BATCH);
+      // P-01: routes through officialRuntimeBridge → PlanningEngine → RuntimeEngine → UCR → GitHubConnector
       const results = await Promise.allSettled(
-        batch.map(f => this._cis.invoke("github", "files.get",
-          { owner, repo, path: f.path },
-          { originComponent: "RepositoryKnowledgeBuilder", reason: "Parse file" }))
+        batch.map(f => officialRuntimeBridge.invoke("github", "files.get", { owner, repo, path: f.path }))
       );
 
       for (let j = 0; j < batch.length; j++) {
         const r = results[j];
         const filePath = batch[j].path;
-        if (r.status !== "fulfilled" || r.value.record.status !== "SUCCESS") {
-          const reason = r.status !== "fulfilled" ? `rejected: ${(r as any).reason}` : `status=${r.value.record.status}`;
+        if (r.status !== "fulfilled" || !r.value.success) {
+          const reason = r.status !== "fulfilled" ? `rejected: ${(r as any).reason}` : `status=${r.value.status}`;
           console.warn(`[RKB] files.get FAILED "${filePath}" — ${reason}`);
           continue;
         }
 
         _downloadedCount++;
 
-        const rawData  = r.value.result?.data as any;
+        const rawData  = r.value.data as any;
         const content  = rawData?.content ?? "";
         if (!content || content.trim().length === 0) {
           console.warn(`[RKB] SKIP "${filePath}" — empty content (decoded=${rawData?.decoded}, encoding=${rawData?.encoding}, size=${rawData?.size})`);
@@ -296,10 +297,10 @@ export class RepositoryKnowledgeBuilder {
     if (!this._graph) return 0;
     let updated = 0;
     for (const path of changedPaths) {
-      const inv = await this._cis.invoke("github", "files.get", { owner, repo, path },
-        { originComponent: "RepositoryKnowledgeBuilder", reason: "Incremental update" });
-      if (inv.record.status !== "SUCCESS") continue;
-      const content = (inv.result?.data as any)?.content ?? "";
+      // P-01: routes through officialRuntimeBridge → PlanningEngine → RuntimeEngine → UCR → GitHubConnector
+      const inv = await officialRuntimeBridge.invoke("github", "files.get", { owner, repo, path });
+      if (!inv.success) continue;
+      const content = (inv.data as any)?.content ?? "";
       if (!content) continue;
 
       const parsed = parseSourceFile(path, content);
