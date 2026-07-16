@@ -14,6 +14,7 @@ import GoogleProfileCard from "@/components/connections/GoogleProfileCard";
 import GmailConnectorCard from "@/components/connections/GmailConnectorCard";
 import GmailActionsCard from "@/components/connections/GmailActionsCard";
 import GmailAdvancedCard from "@/components/connections/GmailAdvancedCard";
+import ArchitectureGovernancePanel from "@/components/connections/ArchitectureGovernancePanel";
 import {
   OAuthInitDiagnosticsPanel,
   OAuth007TestPanel,
@@ -63,6 +64,11 @@ export default function Connections() {
             voce constroi seu proprio MemoryOS, no seu ritmo.
           </p>
         </div>
+
+        {/* Architecture Governance — Sprint 8.5 */}
+        <Section title="Architecture Governance — Sprint 8.5">
+          <ArchitectureGovernancePanel />
+        </Section>
 
         {/* Runtime Bootstrap — Sprint 8.2 */}
         <Section title="Runtime Bootstrap — Sprint 8.2">
