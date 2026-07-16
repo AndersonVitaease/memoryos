@@ -136,6 +136,7 @@ import Phase642Page from '@/pages/Phase642Page';
 import Phase642aPage from '@/pages/Phase642aPage';
 import Phase710Page from '@/pages/Phase710Page';
 import Phase700Page from '@/pages/Phase700Page';
+// Phase700Page replaced by Sprint 7.0 GWS Foundation dashboard (same route)
 import Phase711Page from '@/pages/Phase711Page';
 import Phase712Page from '@/pages/Phase712Page';
 import Phase713Page from '@/pages/Phase713Page';
