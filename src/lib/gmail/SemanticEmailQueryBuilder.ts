@@ -11,14 +11,6 @@
 
 import { EmailAliasRegistry } from "./EmailAliasRegistry";
 
-// Compat shim: adapt new EmailAliasRegistry to the old findAlias() contract
-function findAlias(query: string): { name: string; aliases: string[] } | null {
-  const slug = EmailAliasRegistry.resolve(query);
-  if (!slug) return null;
-  const aliases = EmailAliasRegistry.getAliasStrings(slug) as string[];
-  return aliases.length > 0 ? { name: slug, aliases } : null;
-}
-
 const LOG_PREFIX = "[SemanticEmailQueryBuilder]";
 
 function log(msg: string, data?: unknown): void {
@@ -114,17 +106,19 @@ export function buildGmailQuery(naturalQuery: string): SemanticQueryResult {
   const modifiers = detectModifiers(trimmed);
   log("Detected modifiers:", modifiers);
 
-  // 1. Try alias expansion
-  const alias = findAlias(trimmed);
-  log("Alias found:", alias?.name ?? "none");
+  // 1. Try alias expansion via EmailAliasRegistry (E-02.9 API)
+  const resolvedSlug = EmailAliasRegistry.resolve(trimmed);
+  const aliasTerms   = resolvedSlug ? (EmailAliasRegistry.getAliasStrings(resolvedSlug) as string[]) : [];
+  const aliasFound   = resolvedSlug !== null && aliasTerms.length > 0;
+  log("Alias found:", resolvedSlug ?? "none");
 
   const parts: string[] = [];
 
-  if (alias) {
+  if (aliasFound) {
     // Build from:(...) clause with all alias terms
-    const fromTerms = alias.aliases.join(" OR ");
+    const fromTerms = aliasTerms.join(" OR ");
     parts.push(`from:(${fromTerms})`);
-    log("Alias terms:", alias.aliases);
+    log("Alias terms:", aliasTerms);
   } else {
     // No alias — use original query as the main search term
     // Strip common command words ("procure", "buscar", "pesquise", etc.)
@@ -162,9 +156,9 @@ export function buildGmailQuery(naturalQuery: string): SemanticQueryResult {
   return Object.freeze({
     originalQuery: trimmed,
     gmailQuery,
-    aliasExpanded: alias !== null,
-    aliasName:     alias?.name ?? null,
-    aliasTerms:    Object.freeze(alias?.aliases ?? []),
+    aliasExpanded: aliasFound,
+    aliasName:     resolvedSlug ?? null,
+    aliasTerms:    Object.freeze(aliasTerms),
     modifiers:     Object.freeze(modifiers),
   });
 }
