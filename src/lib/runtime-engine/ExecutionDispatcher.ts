@@ -23,6 +23,7 @@ import type {
   StepStatus,
   RetryContext,
 } from "./RuntimeTypes";
+import { connectorMetrics }           from "@/lib/connector-runtime/ConnectorMetricsStore";
 
 // ── DispatchInput ─────────────────────────────────────────────────────────────
 
@@ -55,6 +56,11 @@ export class ExecutionDispatcher {
 
       const output     = await Promise.race([outputPromise, timeoutPromise]);
       const finishedAt = Date.now();
+      const durationMs = finishedAt - startedAt;
+      const success    = output.status === "completed" || output.status === "success";
+
+      // ── Metrics ─────────────────────────────────────────────────────────
+      connectorMetrics.record(step.connector, success, durationMs, output.error ?? undefined);
 
       return Object.freeze({
         stepId:     step.id,
@@ -65,12 +71,17 @@ export class ExecutionDispatcher {
         error:      output.error,
         startedAt,
         finishedAt,
-        durationMs: finishedAt - startedAt,
+        durationMs,
         attempt:    1,
       });
     } catch (err) {
       const finishedAt = Date.now();
+      const durationMs = finishedAt - startedAt;
       const isTimeout  = (err as Error).message === "Step timeout";
+      const errMsg     = (err as Error).message;
+
+      // ── Metrics ─────────────────────────────────────────────────────────
+      connectorMetrics.record(step.connector, false, durationMs, errMsg);
 
       return Object.freeze({
         stepId:     step.id,
@@ -78,10 +89,10 @@ export class ExecutionDispatcher {
         capability: step.capability,
         status:     (isTimeout ? "timeout" : "failed") as StepStatus,
         output:     null,
-        error:      (err as Error).message,
+        error:      errMsg,
         startedAt,
         finishedAt,
-        durationMs: finishedAt - startedAt,
+        durationMs,
         attempt:    1,
       });
     }

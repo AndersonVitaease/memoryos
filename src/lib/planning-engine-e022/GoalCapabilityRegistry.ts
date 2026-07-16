@@ -1,5 +1,5 @@
 /**
- * GoalCapabilityRegistry.ts — Engineering Sprint E-02.2A
+ * GoalCapabilityRegistry.ts — Engineering Sprint E-02.2A (aligned Sprint 8.8.3)
  * Goal → Capability mapping registry.
  *
  * Replaces GoalPlanTemplates entirely.
@@ -22,6 +22,18 @@
  * Cada entrada mapeia um GoalType para uma lista de CapabilityDescriptors.
  * O Runtime e responsavel por envolver cada step com autenticacao,
  * retry, timeout, summarize, auditoria etc.
+ *
+ * Sprint 8.8.3 — ALIGNMENT:
+ *   All connector IDs and capability names now exactly match the declarations
+ *   in the official Runtime Connectors (connector-runtime/connectors/).
+ *
+ *   Gmail    → id="gmail"           caps: "readInbox", "searchEmails", "readMessage"
+ *   Calendar → id="google-calendar" caps: "calendar.events.list", "calendar.events.get", "calendar.calendars.list"
+ *   Drive    → id="google-drive"    caps: "drive.files.list", "drive.files.search", "drive.files.get"
+ *
+ *   Memory goals (memory.query, memory.summarize) are handled by the internal
+ *   memory reasoning path (memoryReasoningPlanner.js) — NOT by the UCR.
+ *   They produce empty plans so the Pipeline falls through to the LLM/memory path.
  */
 
 import type { GoalType }    from "@/lib/goals/GoalTypes";
@@ -30,9 +42,9 @@ import type { ConnectorId } from "./ExecutionPlanTypes";
 // ── CapabilityDescriptor ───────────────────────────────────────────────────────
 
 export interface CapabilityDescriptor {
-  /** Target connector namespace (e.g. "gmail", "calendar", "drive", "memory") */
+  /** Target connector id — must exactly match IConnector.id in the Runtime */
   readonly connector:  ConnectorId;
-  /** Capability name within the connector (e.g. "readInbox", "listToday") */
+  /** Capability name — must exactly match metadata().capabilities[] entry */
   readonly capability: string;
   /** Static default parameters — merged with goal parameters at plan time */
   readonly params:     Record<string, unknown>;
@@ -90,87 +102,119 @@ export const GoalCapabilityRegistry: GoalCapabilityRegistryClass = (
 // ── Built-in capability mappings (registered at module load) ──────────────────
 // Each entry maps a GoalType to pure connector capability descriptors.
 // NO validate_session, NO summarize, NO noop — those belong to the Runtime.
+//
+// ALIGNMENT (Sprint 8.8.3):
+//   connector IDs and capability names verified against Runtime Connector source:
+//     GmailConnector.ts:33         → id = "gmail"
+//     GmailConnector.ts:23-30      → capabilities = ["readInbox","searchEmails",...]
+//     GoogleCalendarConnector.ts:115 → id = "google-calendar"
+//     GoogleCalendarConnector.ts:132 → capabilities = ["calendar.events.list",...]
+//     GoogleDriveConnector.ts:118  → id = "google-drive"
+//     GoogleDriveConnector.ts:134  → capabilities = ["drive.files.list",...]
 
 const _builtins: CapabilityMapping[] = [
 
   // ── Gmail ──────────────────────────────────────────────────────────────────
+  // connector id: "gmail"  (GmailConnector.ts:33)
   {
     goalType: "gmail.readInbox",
     descriptors: [
-      { connector: "gmail", capability: "readInbox",      params: {} },
+      { connector: "gmail", capability: "readInbox", params: {} },
     ],
   },
   {
     goalType: "gmail.searchMessages",
     descriptors: [
+      // GmailConnector.ts:26 declares "searchEmails" — that is the capability name
       { connector: "gmail", capability: "searchEmails", params: {} },
     ],
   },
   {
     goalType: "gmail.readMessage",
     descriptors: [
-      { connector: "gmail", capability: "readMessage",    params: {} },
+      { connector: "gmail", capability: "readMessage", params: {} },
     ],
   },
 
   // ── Calendar ───────────────────────────────────────────────────────────────
+  // connector id: "google-calendar"  (GoogleCalendarConnector.ts:115)
+  // capabilities: "calendar.events.list", "calendar.events.get",
+  //               "calendar.calendars.list", "connectivity.ping", "health.full"
   {
     goalType: "calendar.listToday",
     descriptors: [
-      { connector: "calendar", capability: "listToday",    params: {} },
+      {
+        connector: "google-calendar",
+        capability: "calendar.events.list",
+        // today's date range injected at plan time via goal.parameters;
+        // Runtime connector defaults to "primary" calendar when calendarId absent
+        params: {},
+      },
     ],
   },
   {
     goalType: "calendar.listTomorrow",
     descriptors: [
-      { connector: "calendar", capability: "listTomorrow", params: {} },
+      { connector: "google-calendar", capability: "calendar.events.list", params: {} },
     ],
   },
   {
     goalType: "calendar.listWeek",
     descriptors: [
-      { connector: "calendar", capability: "listWeek",     params: {} },
+      { connector: "google-calendar", capability: "calendar.events.list", params: {} },
     ],
   },
   {
     goalType: "calendar.createEvent",
     descriptors: [
-      { connector: "calendar", capability: "createEvent",  params: {} },
+      // No write capability exists in GoogleCalendarConnector — connector is read-only.
+      // Mapping to calendar.events.list so the plan is routable; synthesis will
+      // explain that event creation is not yet supported.
+      { connector: "google-calendar", capability: "calendar.events.list", params: {} },
+    ],
+  },
+  {
+    goalType: "calendar.listCalendars",
+    descriptors: [
+      { connector: "google-calendar", capability: "calendar.calendars.list", params: {} },
     ],
   },
 
   // ── Drive ──────────────────────────────────────────────────────────────────
+  // connector id: "google-drive"  (GoogleDriveConnector.ts:118)
+  // capabilities: "drive.files.list", "drive.files.get", "drive.files.search",
+  //               "drive.about.get", "connectivity.ping", "health.full"
   {
     goalType: "drive.searchFiles",
     descriptors: [
-      { connector: "drive", capability: "searchFiles",   params: {} },
+      { connector: "google-drive", capability: "drive.files.search", params: {} },
     ],
   },
   {
     goalType: "drive.listRecent",
     descriptors: [
-      { connector: "drive", capability: "listRecent",    params: {} },
+      { connector: "google-drive", capability: "drive.files.list", params: {} },
     ],
   },
   {
     goalType: "drive.openDocument",
     descriptors: [
-      { connector: "drive", capability: "openDocument",  params: {} },
+      { connector: "google-drive", capability: "drive.files.get", params: {} },
     ],
   },
 
   // ── Memory ─────────────────────────────────────────────────────────────────
+  // Validated in Sprint 8.8.2.a: Memory is an INTERNAL service, not a UCR connector.
+  // There is no MemoryConnector in ConnectorBootstrap.
+  // Memory goals produce EMPTY plans so ConversationPipeline falls through to
+  // the memoryReasoningPlanner.js (LLM/DB path) which handles them natively.
   {
     goalType: "memory.query",
-    descriptors: [
-      { connector: "memory", capability: "query",     params: {} },
-    ],
+    descriptors: [],
   },
   {
     goalType: "memory.summarize",
-    descriptors: [
-      { connector: "memory", capability: "summarize", params: {} },
-    ],
+    descriptors: [],
   },
 
   // ── General / Unknown — no capability steps; Runtime handles gracefully ───

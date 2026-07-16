@@ -89,14 +89,30 @@ export async function runPlanningEngineTests(): Promise<{
   const results: TestResult[] = await Promise.all([
 
     // ── T01: GoalCapabilityRegistry tem builtins ──────────────────────────
-    run("T01 — GoalCapabilityRegistry tem mappings registrados", () => {
+    run("T01 — GoalCapabilityRegistry tem mappings registrados com IDs alinhados ao Runtime", () => {
       assert(GoalCapabilityRegistry.size > 0, "registry must have built-in mappings");
       const all = GoalCapabilityRegistry.listAll();
       const types = all.map((m) => m.goalType);
       assert(types.includes("gmail.readInbox"),    "gmail.readInbox registered");
       assert(types.includes("calendar.listToday"), "calendar.listToday registered");
       assert(types.includes("drive.searchFiles"),  "drive.searchFiles registered");
-      assert(types.includes("memory.query"),       "memory.query registered");
+      assert(types.includes("memory.query"),       "memory.query registered (empty plan — internal service)");
+
+      // Sprint 8.8.3: verify aligned IDs
+      const calEntry = all.find(m => m.goalType === "calendar.listToday");
+      assert(calEntry !== undefined, "calendar.listToday entry exists");
+      assert(calEntry!.descriptors[0].connector === "google-calendar", "Calendar uses connector id 'google-calendar'");
+      assert(calEntry!.descriptors[0].capability === "calendar.events.list", "Calendar uses capability 'calendar.events.list'");
+
+      const driveEntry = all.find(m => m.goalType === "drive.searchFiles");
+      assert(driveEntry !== undefined, "drive.searchFiles entry exists");
+      assert(driveEntry!.descriptors[0].connector === "google-drive", "Drive uses connector id 'google-drive'");
+      assert(driveEntry!.descriptors[0].capability === "drive.files.search", "Drive uses capability 'drive.files.search'");
+
+      // Memory goals must produce empty plans (no UCR steps)
+      const memEntry = all.find(m => m.goalType === "memory.query");
+      assert(memEntry !== undefined, "memory.query entry exists");
+      assert(memEntry!.descriptors.length === 0, "memory.query has no UCR descriptors");
     }),
 
     // ── T02: gmail.readInbox → 1 capability step (gmail/readInbox) ────────
@@ -110,10 +126,12 @@ export async function runPlanningEngineTests(): Promise<{
     }),
 
     // ── T03: gmail.searchMessages ─────────────────────────────────────────
-    run("T03 — gmail.searchMessages → connector=gmail, capability=searchMessages", () => {
+    // GoalCapabilityRegistry maps "gmail.searchMessages" → capability "searchEmails"
+    // (the Runtime connector declares "searchEmails", not "searchMessages")
+    run("T03 — gmail.searchMessages → connector=gmail, capability=searchEmails", () => {
       const { plan } = engine.plan(makeGoal("gmail.searchMessages"));
-      assertEqual(plan.steps[0].connector,  "gmail",          "connector");
-      assertEqual(plan.steps[0].capability, "searchMessages", "capability");
+      assertEqual(plan.steps[0].connector,  "gmail",        "connector");
+      assertEqual(plan.steps[0].capability, "searchEmails", "capability");
       assertNoPlannerInfraSteps(plan.steps, "gmail.searchMessages");
     }),
 
@@ -125,57 +143,68 @@ export async function runPlanningEngineTests(): Promise<{
     }),
 
     // ── T05: calendar.listToday ───────────────────────────────────────────
-    run("T05 — calendar.listToday → connector=calendar, capability=listToday", () => {
+    // connector id: "google-calendar" (GoogleCalendarConnector.ts:115)
+    // capability:   "calendar.events.list" (GoogleCalendarConnector.ts:133)
+    run("T05 — calendar.listToday → connector=google-calendar, capability=calendar.events.list", () => {
       const { plan } = engine.plan(makeGoal("calendar.listToday"));
-      assertEqual(plan.steps[0].connector,  "calendar",  "connector");
-      assertEqual(plan.steps[0].capability, "listToday", "capability");
+      assertEqual(plan.steps[0].connector,  "google-calendar",     "connector");
+      assertEqual(plan.steps[0].capability, "calendar.events.list", "capability");
       assertNoPlannerInfraSteps(plan.steps, "calendar.listToday");
     }),
 
     // ── T06: calendar.listTomorrow ────────────────────────────────────────
-    run("T06 — calendar.listTomorrow → capability=listTomorrow", () => {
+    run("T06 — calendar.listTomorrow → connector=google-calendar, capability=calendar.events.list", () => {
       const { plan } = engine.plan(makeGoal("calendar.listTomorrow"));
-      assertEqual(plan.steps[0].capability, "listTomorrow", "capability");
+      assertEqual(plan.steps[0].connector,  "google-calendar",      "connector");
+      assertEqual(plan.steps[0].capability, "calendar.events.list", "capability");
       assertNoPlannerInfraSteps(plan.steps, "calendar.listTomorrow");
     }),
 
     // ── T07: calendar.createEvent ─────────────────────────────────────────
-    run("T07 — calendar.createEvent → connector=calendar, capability=createEvent", () => {
+    // GoogleCalendarConnector is read-only — no write capability exists.
+    // Mapped to calendar.events.list; synthesis explains limitation.
+    run("T07 — calendar.createEvent → connector=google-calendar, capability=calendar.events.list", () => {
       const { plan } = engine.plan(makeGoal("calendar.createEvent"));
-      assertEqual(plan.steps[0].connector,  "calendar",    "connector");
-      assertEqual(plan.steps[0].capability, "createEvent", "capability");
+      assertEqual(plan.steps[0].connector,  "google-calendar",      "connector");
+      assertEqual(plan.steps[0].capability, "calendar.events.list", "capability");
       assertNoPlannerInfraSteps(plan.steps, "calendar.createEvent");
     }),
 
     // ── T08: drive.searchFiles ────────────────────────────────────────────
-    run("T08 — drive.searchFiles → connector=drive, capability=searchFiles", () => {
+    // connector id: "google-drive" (GoogleDriveConnector.ts:118)
+    // capability:   "drive.files.search" (GoogleDriveConnector.ts:138)
+    run("T08 — drive.searchFiles → connector=google-drive, capability=drive.files.search", () => {
       const { plan } = engine.plan(makeGoal("drive.searchFiles"));
-      assertEqual(plan.steps[0].connector,  "drive",       "connector");
-      assertEqual(plan.steps[0].capability, "searchFiles", "capability");
+      assertEqual(plan.steps[0].connector,  "google-drive",      "connector");
+      assertEqual(plan.steps[0].capability, "drive.files.search", "capability");
       assertNoPlannerInfraSteps(plan.steps, "drive.searchFiles");
     }),
 
     // ── T09: drive.openDocument ───────────────────────────────────────────
-    run("T09 — drive.openDocument → connector=drive, capability=openDocument", () => {
+    // capability: "drive.files.get" (GoogleDriveConnector.ts:136)
+    run("T09 — drive.openDocument → connector=google-drive, capability=drive.files.get", () => {
       const { plan } = engine.plan(makeGoal("drive.openDocument"));
-      assertEqual(plan.steps[0].capability, "openDocument", "capability");
+      assertEqual(plan.steps[0].connector,  "google-drive",   "connector");
+      assertEqual(plan.steps[0].capability, "drive.files.get", "capability");
       assertNoPlannerInfraSteps(plan.steps, "drive.openDocument");
     }),
 
     // ── T10: memory.query ─────────────────────────────────────────────────
-    run("T10 — memory.query → connector=memory, capability=query", () => {
-      const { plan } = engine.plan(makeGoal("memory.query"));
-      assertEqual(plan.steps[0].connector,  "memory", "connector");
-      assertEqual(plan.steps[0].capability, "query",  "capability");
-      assertNoPlannerInfraSteps(plan.steps, "memory.query");
+    // Sprint 8.8.3: Memory is an internal service — not a UCR connector.
+    // memory.query produces an EMPTY plan (Pipeline falls to memoryReasoningPlanner).
+    run("T10 — memory.query → empty plan (internal memory service, not UCR)", () => {
+      const { plan, success } = engine.plan(makeGoal("memory.query"));
+      assertEqual(plan.status, "empty", "status=empty");
+      assertEqual(plan.steps.length, 0, "no UCR steps for memory goals");
+      assert(success, "empty plan is a valid successful outcome");
     }),
 
     // ── T11: memory.summarize ─────────────────────────────────────────────
-    run("T11 — memory.summarize → connector=memory, capability=summarize", () => {
-      const { plan } = engine.plan(makeGoal("memory.summarize"));
-      assertEqual(plan.steps[0].connector,  "memory",    "connector");
-      // "summarize" here is the memory capability, not an infra step
-      assertEqual(plan.steps[0].capability, "summarize", "capability");
+    run("T11 — memory.summarize → empty plan (internal memory service, not UCR)", () => {
+      const { plan, success } = engine.plan(makeGoal("memory.summarize"));
+      assertEqual(plan.status, "empty", "status=empty");
+      assertEqual(plan.steps.length, 0, "no UCR steps for memory goals");
+      assert(success, "empty plan is a valid successful outcome");
     }),
 
     // ── T12: Goal unknown → empty plan ────────────────────────────────────
@@ -253,7 +282,7 @@ export async function runPlanningEngineTests(): Promise<{
 
     // ── T20: plan.goalId e goalType referenciam o goal original ──────────
     run("T20 — plan.goalId e goalType referenciam o goal", () => {
-      const goal = makeGoal("calendar.listToday");
+      const goal = makeGoal("gmail.readInbox");
       const { plan } = engine.plan(goal);
       assertEqual(plan.goalId,   goal.id,   "goalId");
       assertEqual(plan.goalType, goal.type, "goalType");

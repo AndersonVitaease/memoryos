@@ -91,14 +91,18 @@ export async function runConnectorBootstrapCertification(): Promise<Certificatio
   ));
 
   cases.push(await runCase(
-    "C-06", "Nenhuma Capability duplicada",
+    "C-06", "Nenhuma Capability duplicada dentro do mesmo Connector",
     () => {
-      const allCaps: string[] = [];
+      // Each individual connector must not declare the same capability twice.
+      // Cross-connector duplicates (e.g. "connectivity.ping" on Drive AND Calendar)
+      // are permitted by design — each connector owns its own capability namespace.
       for (const id of result.connectorIds) {
         const c = registry.get(id);
-        if (c) allCaps.push(...c.metadata().capabilities);
+        if (!c) return false;
+        const caps = c.metadata().capabilities;
+        if (caps.length !== new Set(caps).size) return false;
       }
-      return allCaps.length === new Set(allCaps).size;
+      return true;
     },
   ));
 
