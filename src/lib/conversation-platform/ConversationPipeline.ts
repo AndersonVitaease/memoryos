@@ -244,6 +244,50 @@ class ConversationPipeline {
       }
       // ── end Sprint 8.11 ─────────────────────────────────────────────────
 
+      // ── Sprint 8.12: Knowledge Fusion Engine ─────────────────────────────
+      // Pure computation: UCB sources → UnifiedKnowledgeModel. No I/O. Non-blocking.
+      let kfmModel: import("@/lib/knowledge-fusion-engine/KFETypes").UnifiedKnowledgeModel | null = null;
+      try {
+        const { knowledgeFusionEngine } = await import("@/lib/knowledge-fusion-engine/KnowledgeFusionEngine");
+        const rawUnits = (unifiedCtx?.sources ?? []).map((src, idx) => ({
+          id:         `ucb-${idx}-${src.sourceId}`,
+          sourceId:   src.sourceId,
+          type:       "entity" as const,
+          value:      src.sourceId.toLowerCase(),
+          rawValue:   src.sourceId,
+          confidence: (src as { confidence?: number }).confidence ?? 0.5,
+          context:    (src as { excerpt?: string }).excerpt ?? undefined,
+          metadata:   Object.freeze({}),
+        }));
+        const kfeResult = knowledgeFusionEngine.fuse({
+          buildId:   unifiedCtx?.buildId ?? `kfe-${Date.now()}`,
+          units:     rawUnits,
+          sessionId: session.id,
+        });
+        if (kfeResult.success) {
+          kfmModel = kfeResult.model;
+          conversationStore.emit({
+            type: "PIPELINE_STEP",
+            executionId,
+            payload: {
+              step:          "knowledge_model_built",
+              modelId:       kfmModel.modelId,
+              entities:      kfmModel.statistics.totalEntities,
+              relationships: kfmModel.statistics.totalRelationships,
+              conflicts:     kfmModel.statistics.totalConflicts,
+              duplicates:    kfmModel.statistics.duplicatesRemoved,
+              confidence:    kfmModel.confidence,
+              durationMs:    kfeResult.durationMs,
+            },
+            timestamp: Date.now(),
+          });
+        }
+      } catch {
+        // KFE failure is non-blocking
+      }
+      void kfmModel;
+      // ── end Sprint 8.12 ──────────────────────────────────────────────────
+
       // ── E-02.1: Conversation → Goal Bridge ──────────────────────────────
       // Derives a structured ConversationGoal from the user message + classified intent.
       // The goal is NOT executed here — it is produced for Sprint E-02.2 (Goal → Planning).
