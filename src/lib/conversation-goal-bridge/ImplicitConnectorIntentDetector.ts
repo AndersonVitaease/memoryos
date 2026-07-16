@@ -1,6 +1,6 @@
 /**
- * ImplicitConnectorIntentDetector.ts — Engineering Sprint E-02.6
- * Implicit Connector Intent Recognition
+ * ImplicitConnectorIntentDetector.ts — Engineering Sprint E-02.6 / E-02.7
+ * Implicit Connector Intent Recognition + Natural Language Normalization
  *
  * SRP: receber texto de conversa + connectors registrados e decidir
  *      se existe uma intenção implícita de acionar algum Connector.
@@ -21,6 +21,7 @@
 
 import type { GoalType } from "@/lib/goals/GoalTypes";
 import type { GoalDefinition } from "@/lib/goals/GoalRegistry";
+import { normalize } from "./NaturalLanguageGoalNormalizer";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -113,7 +114,6 @@ class ImplicitConnectorIntentDetectorImpl implements ImplicitConnectorIntentReso
   ): ImplicitIntentResult {
     this._totalChecked++;
     const trimmed = message.trim();
-    const lower   = trimmed.toLowerCase();
 
     const none = (label: string): ImplicitIntentResult => Object.freeze({
       detected:   false,
@@ -124,59 +124,45 @@ class ImplicitConnectorIntentDetectorImpl implements ImplicitConnectorIntentReso
       searchTerm: trimmed,
     });
 
-    // ── Criterion 1: message must have 5 words or fewer ─────────────────────
+    // ── Step 1: Normalize — extract entity + detect social ───────────────────
+    const norm = normalize(trimmed);
+
+    if (norm.isSocialPhrase) return none("social_phrase");
+
+    // ── Step 2: Entity must be non-empty after normalization ─────────────────
+    if (!norm.entity.trim()) return none("empty_entity");
+
+    // ── Step 3: Must not be a pure action-verb-only sentence (no entity) ─────
+    // If the normalized entity is the same length as the original and has no
+    // known entity, check the word-count guard (≤8 words) to avoid long prose.
     const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
-    if (wordCount > 5) return none("too_many_words");
+    if (wordCount > 8 && !norm.isKnownEntity) return none("too_many_words_no_entity");
 
-    // ── Criterion 2: no action verbs ────────────────────────────────────────
-    const hasVerb = ACTION_VERBS.some((v) => lower.includes(v));
-    if (hasVerb) return none("has_action_verb");
-
-    // ── Criterion 3: not a social phrase (greetings, pleasantries) ──────────
-    const SOCIAL = [
-      "ola", "olá", "bom dia", "boa tarde", "boa noite",
-      "obrigado", "obrigada", "tchau", "tudo bem", "tudo bom",
-      "quem e voce", "quem é você", "conte uma piada", "piada",
-      "como vai", "oi", "hi", "hello", "thanks", "thank you",
-      "ok", "certo", "entendido", "blz", "vlw",
-    ];
-    if (SOCIAL.some((s) => lower === s || lower.startsWith(s + " "))) {
-      return none("social_phrase");
-    }
-
-    // ── Criterion 4: derive which connectors are registered ─────────────────
+    // ── Step 4: derive which connectors are registered ───────────────────────
     const registeredNamespaces = new Set(
       registeredDefinitions.map((d) => d.namespace)
     );
 
-    // ── Criterion 5: determine target connector + capability ─────────────────
-    // Priority: gmail (most common for short searches)
-    // Can be extended by adding entries to IMPLICIT_SEARCH_CAPABILITY.
+    // ── Step 5: determine target connector + capability ──────────────────────
     let targetGoalType: GoalType | null = null;
     for (const [ns, gt] of Object.entries(IMPLICIT_SEARCH_CAPABILITY)) {
       if (registeredNamespaces.has(ns)) {
         targetGoalType = gt;
-        break; // use first available connector
+        break;
       }
     }
 
     if (!targetGoalType) return none("no_compatible_connector");
 
-    // ── Build the search term ────────────────────────────────────────────────
-    let searchTerm = trimmed;
-    for (const pattern of FILLER_PATTERNS) {
-      searchTerm = searchTerm.replace(pattern, " ");
-    }
-    searchTerm = searchTerm.replace(/\s{2,}/g, " ").trim();
-    if (!searchTerm) searchTerm = trimmed; // fallback to original
-
     this._totalDetected++;
+
+    const searchTerm = norm.entity;
 
     return Object.freeze({
       detected:   true,
       goalType:   targetGoalType,
       parameters: Object.freeze({ query: searchTerm }),
-      confidence: 0.75,
+      confidence: norm.isKnownEntity ? 0.9 : 0.75,
       label:      `implicit:${targetGoalType}`,
       searchTerm,
     });
@@ -218,26 +204,33 @@ export function runImplicitIntentTests(
   registeredDefinitions: readonly GoalDefinition[],
 ): ImplicitIntentTest[] {
   const CASES: Array<{ name: string; input: string; expectDetect: boolean }> = [
-    // ── Positive cases ────────────────────────────────────────────────────
-    { name: "Shopee",         input: "Shopee",          expectDetect: true  },
-    { name: "Hostinger",      input: "Hostinger",        expectDetect: true  },
-    { name: "Mercado Livre",  input: "Mercado Livre",    expectDetect: true  },
-    { name: "Pix",            input: "Pix",              expectDetect: true  },
-    { name: "Nota Fiscal",    input: "Nota Fiscal",      expectDetect: true  },
-    { name: "GitHub",         input: "GitHub",           expectDetect: true  },
-    { name: "Contrato",       input: "Contrato",         expectDetect: true  },
-    { name: "Calendário",     input: "Calendário",       expectDetect: true  },
-    { name: "Amazon",         input: "Amazon",           expectDetect: true  },
-    { name: "DANFE",          input: "DANFE",            expectDetect: true  },
-    // ── Negative cases ────────────────────────────────────────────────────
-    { name: "Ola",            input: "Olá",              expectDetect: false },
-    { name: "Bom dia",        input: "Bom dia",          expectDetect: false },
-    { name: "Obrigado",       input: "Obrigado",         expectDetect: false },
-    { name: "Tudo bem",       input: "Tudo bem",         expectDetect: false },
-    { name: "Quem e voce",    input: "Quem é você",      expectDetect: false },
-    { name: "Conte uma piada",input: "Conte uma piada",  expectDetect: false },
-    { name: "Procure emails", input: "Procure emails da Shopee", expectDetect: false }, // has verb
-    { name: "Long phrase",    input: "Eu quero muito ver os emails da Shopee hoje", expectDetect: false }, // too many words
+    // ── Positive — bare entities ───────────────────────────────────────────
+    { name: "Shopee bare",              input: "Shopee",                              expectDetect: true  },
+    { name: "Hostinger bare",           input: "Hostinger",                           expectDetect: true  },
+    { name: "Mercado Livre bare",       input: "Mercado Livre",                       expectDetect: true  },
+    { name: "Pix bare",                 input: "Pix",                                 expectDetect: true  },
+    { name: "Nota Fiscal bare",         input: "Nota Fiscal",                         expectDetect: true  },
+    { name: "GitHub bare",              input: "GitHub",                              expectDetect: true  },
+    { name: "Contrato bare",            input: "Contrato",                            expectDetect: true  },
+    { name: "Amazon bare",              input: "Amazon",                              expectDetect: true  },
+    { name: "DANFE bare",               input: "DANFE",                               expectDetect: true  },
+    { name: "Boleto bare",              input: "Boleto",                              expectDetect: true  },
+    // ── Positive — natural interrogative forms ─────────────────────────────
+    { name: "Tenho email Shopee",       input: "Tenho email da Shopee?",              expectDetect: true  },
+    { name: "Existe email Shopee",      input: "Existe algum email da Shopee?",       expectDetect: true  },
+    { name: "Recebi email Shopee",      input: "Recebi algum email da Shopee?",       expectDetect: true  },
+    { name: "Recebi Pix",               input: "Recebi Pix?",                         expectDetect: true  },
+    { name: "Recebi boleto",            input: "Recebi algum boleto?",                expectDetect: true  },
+    { name: "Recebi ML",                input: "Recebi algo do Mercado Livre?",       expectDetect: true  },
+    { name: "Tem nota fiscal",          input: "Tem alguma nota fiscal?",             expectDetect: true  },
+    { name: "Ha DANFE",                 input: "Há algum DANFE?",                     expectDetect: true  },
+    // ── Negative — social/greeting ─────────────────────────────────────────
+    { name: "Ola",                      input: "Olá",                                 expectDetect: false },
+    { name: "Bom dia",                  input: "Bom dia",                             expectDetect: false },
+    { name: "Obrigado",                 input: "Obrigado",                            expectDetect: false },
+    { name: "Tudo bem",                 input: "Tudo bem",                            expectDetect: false },
+    { name: "Quem e voce",              input: "Quem é você",                         expectDetect: false },
+    { name: "Conte uma piada",          input: "Conte uma piada",                     expectDetect: false },
   ];
 
   const det = implicitConnectorIntentDetector;

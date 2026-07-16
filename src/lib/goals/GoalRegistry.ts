@@ -127,24 +127,49 @@ const _builtins: GoalDefinition[] = [
     namespace: "gmail",
     description: "Search Gmail messages by query",
     signals: [
+      // Explicit search commands (PT)
       "procure emails", "procure e-mails", "procurar emails", "procurar e-mails",
       "buscar email", "buscar e-mail", "pesquisar email", "pesquisar e-mail",
       "pesquise emails", "pesquise e-mails", "encontrar email", "procurar email",
-      "search email", "find email", "emails de ", "e-mails de ",
-      "emails da ", "e-mails da ", "emails do ", "e-mails do ",
-      "emails contendo", "e-mails contendo",
+      "busque emails", "busque e-mails", "mostre emails", "mostrar emails",
+      // Explicit search commands (EN)
+      "search email", "find email", "show emails",
+      // Prepositional queries (PT) — "emails da X", "emails do X", "emails de X"
+      "emails de ", "e-mails de ", "emails da ", "e-mails da ",
+      "emails do ", "e-mails do ", "emails contendo", "e-mails contendo",
+      // Interrogative forms — "tenho emails da X", "existe email da X"
+      "tenho email", "tenho e-mail", "tenho algum email", "tenho alguma mensagem",
+      "existe email", "existe e-mail", "existe algum email", "existe alguma mensagem",
+      "há email", "há e-mail", "há algum email", "ha algum email",
+      "tem email", "tem e-mail", "tem algum email", "tem alguma mensagem",
+      "recebi email", "recebi e-mail", "recebi algum email",
+      "recebi algo da", "recebi algo do", "recebi algo de",
+      // Showing
+      "ver emails", "ver e-mails", "listar emails", "checar emails",
     ],
     extractParams: (msg) => {
-      // Extract the search term: everything after "da/do/de/contendo/sobre" keyword
-      const afterPrep = msg.match(/(?:da|do|de|contendo|sobre|com assunto|from|about)\s+(.+)$/i)?.[1];
-      if (afterPrep) return { query: afterPrep.trim() };
-      const quoted = msg.match(/"([^"]+)"/)?.[1];
-      if (quoted) return { query: quoted };
-      // Fallback: strip common command words and use the rest as query
-      const stripped = msg
-        .replace(/procur[ea]r?|pesquis[ae]r?|buscar?|encontrar?|emails?|e-?mails?|procure/gi, "")
-        .trim();
-      return { query: stripped || msg.trim() };
+      // Use the normalizer for robust entity extraction (E-02.7)
+      // Lazy import to avoid circular deps at module level
+      try {
+        // Inline normalize logic to stay synchronous
+        const afterPrep = msg.match(/(?:da|do|de|contendo|sobre|com assunto|from|about|algum[a]?\s+(?:email[s]?\s+(?:da|do|de))?)\s+(.+?)(?:\?|$)/i)?.[1];
+        if (afterPrep) {
+          const cleaned = afterPrep.replace(/[?!.,;:]/g, "").trim();
+          if (cleaned) return { query: cleaned };
+        }
+        const quoted = msg.match(/"([^"]+)"/)?.[1];
+        if (quoted) return { query: quoted };
+        // Strip noise and return entity
+        const stripped = msg
+          .replace(/\b(procur[ea]r?|pesquis[ae]r?|buscar?|busque?|encontrar?|mostre?|mostrar?|listar?|liste?|ver|veja|tenho|existe|há|ha|tem|recebi|receber)\b/gi, "")
+          .replace(/\b(algum[a]?|emails?|e-?mails?|mensagens?|da[s]?|do[s]?|de[s]?)\b/gi, "")
+          .replace(/[?!.,;:]/g, "")
+          .replace(/\s{2,}/g, " ")
+          .trim();
+        return { query: stripped || msg.trim() };
+      } catch {
+        return { query: msg.trim() };
+      }
     },
   },
   {
