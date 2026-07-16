@@ -141,6 +141,7 @@ import Phase711Page from '@/pages/Phase711Page';
 import GoogleDrivePage from '@/pages/GoogleDrivePage';
 import GoogleCalendarPage from '@/pages/GoogleCalendarPage';
 import MultiConnectorPage from '@/pages/MultiConnectorPage';
+import MissionsPage from '@/pages/MissionsPage';
 // Sprint 7.0.1 — Gmail GWS Integration (Phase711Page already imported above)
 import Phase712Page from '@/pages/Phase712Page';
 import Phase713Page from '@/pages/Phase713Page';
@@ -321,6 +322,7 @@ const AuthenticatedApp = () => {
           <Route path="/google-drive" element={<GoogleDrivePage />} />
           <Route path="/calendar" element={<GoogleCalendarPage />} />
           <Route path="/multi-connector" element={<MultiConnectorPage />} />
+          <Route path="/missions" element={<MissionsPage />} />
           <Route path="/phase712" element={<Phase712Page />} />
           <Route path="/phase713" element={<Phase713Page />} />
           <Route path="/phase714" element={<Phase714Page />} />
