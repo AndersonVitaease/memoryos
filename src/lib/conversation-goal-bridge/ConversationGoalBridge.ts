@@ -29,6 +29,7 @@ import type {
   GoalType,
 } from "@/lib/goals/GoalTypes";
 import type { CognitiveIntent }                      from "@/lib/conversation-cognitive-gateway/CCGTypes";
+import { implicitConnectorIntentDetector }           from "./ImplicitConnectorIntentDetector";
 
 // Re-export types for consumers that import from the Bridge
 export type { ConversationGoal, GoalBridgeResult, GoalType } from "@/lib/goals/GoalTypes";
@@ -68,12 +69,24 @@ export class ConversationGoalBridge {
       parameters = match.extractParams(userMessage);
       confidence = Math.round(Math.min(cognitiveConfidence + 0.3, 1) * 100) / 100;
     } else {
-      // No signal match: fall back to intent mapping
-      goalType   = GoalRegistry.resolveFromIntent(cognitiveIntent);
-      parameters = {};
-      confidence = goalType === "unknown" || goalType === "general.conversation"
-        ? Math.min(cognitiveConfidence, 0.3)
-        : cognitiveConfidence;
+      // No explicit signal match — try implicit connector intent (E-02.6)
+      const implicit = implicitConnectorIntentDetector.resolve(
+        userMessage,
+        GoalRegistry.listAll(),
+      );
+
+      if (implicit.detected && implicit.goalType) {
+        goalType   = implicit.goalType;
+        parameters = implicit.parameters;
+        confidence = implicit.confidence;
+      } else {
+        // Final fallback: intent mapping
+        goalType   = GoalRegistry.resolveFromIntent(cognitiveIntent);
+        parameters = {};
+        confidence = goalType === "unknown" || goalType === "general.conversation"
+          ? Math.min(cognitiveConfidence, 0.3)
+          : cognitiveConfidence;
+      }
     }
 
     const partial = {
