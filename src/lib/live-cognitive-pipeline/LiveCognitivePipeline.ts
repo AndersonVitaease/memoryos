@@ -17,6 +17,8 @@
 // Sprint M-04: ConnectorInvocationService replaced by OfficialRuntimeBridge
 // All connector execution now routes through the official pipeline.
 import { officialRuntimeBridge }        from "../cognitive-connector/OfficialRuntimeBridge";
+// Sprint M-06.2B: KnowledgeGraphAdapter feeds real ProviderKnowledge[] to KFE (Stage 5)
+import { adaptFromKnowledgeGraphStore } from "../knowledge-graph-adapter/KnowledgeGraphAdapter";
 import { GoalIntelligenceEngine }       from "../goal-intelligence/GoalIntelligenceEngine";
 import { CognitiveLearningEngine }      from "../cognitive-learning-engine/CognitiveLearningEngine";
 import { KnowledgeReconstructionEngine } from "../knowledge-reconstruction/KnowledgeReconstructionEngine";
@@ -359,35 +361,72 @@ export class LiveCognitivePipeline {
     const t0 = Date.now();
     try {
       const kfe = new KnowledgeFusionEngine();
-      // KFE.fuse() expects ProviderKnowledge[] — build a synthetic provider from the pipeline context
-      const providers: ProviderKnowledge[] = [
-        {
-          sourceId:       "base44",
-          sourceName:     "Base44 Live",
-          items:          [],
-          relationships:  [],
-          timelineEvents: [],
-        },
-      ];
-      if (ctx.connectorEvidence.some(e => e.includes("github"))) {
-        providers.push({ sourceId: "github", sourceName: "GitHub", items: [], relationships: [], timelineEvents: [] });
+
+      // Sprint M-06.2B: load real ProviderKnowledge[] from KnowledgeGraphStore via adapter.
+      // Falls back to synthetic empty providers when KGS is not ready (no GitHub PAT / RKB not run).
+      const t0Adapter = Date.now();
+      const adapterResult = adaptFromKnowledgeGraphStore("LCP._stageKFE");
+      const adapterMs = Date.now() - t0Adapter;
+
+      let providers: ProviderKnowledge[];
+      let kgsLoaded: boolean;
+
+      if (adapterResult.providers.length > 0) {
+        // REAL path: KGS has data — use adapter output
+        providers = adapterResult.providers;
+        kgsLoaded = true;
+        ctx.knowledgeEvidence.push(
+          `KGS→KFE: ${adapterResult.entityCount} entities · ${adapterResult.relationshipCount} rels · ` +
+          `${adapterResult.moduleCount} modules · ${adapterResult.timelineEventCount} events · adapter=${adapterMs}ms`
+        );
+      } else {
+        // FALLBACK path: KGS empty / not ready — preserve original synthetic behaviour
+        providers = [
+          { sourceId: "base44", sourceName: "Base44 Live", items: [], relationships: [], timelineEvents: [] },
+        ];
+        if (ctx.connectorEvidence.some(e => e.includes("github"))) {
+          providers.push({ sourceId: "github", sourceName: "GitHub", items: [], relationships: [], timelineEvents: [] });
+        }
+        kgsLoaded = false;
+        ctx.knowledgeEvidence.push(
+          `KGS→KFE: fallback (KGS not ready) — ${adapterResult.warnings[0] ?? "no data"}`
+        );
       }
 
+      const t0KFE = Date.now();
       const kfReport = kfe.fuse(providers);
-      ctx.knowledgeEvidence.push(`KFE: ${kfReport.entitiesUnique} unique entities · ${kfReport.conflictsDetected} conflicts`);
+      const kfeMs = Date.now() - t0KFE;
+
+      ctx.knowledgeEvidence.push(
+        `KFE: ${kfReport.entitiesUnique} unique entities · ${kfReport.conflictsDetected} conflicts · ` +
+        `${kfReport.relationshipsCreated} rels · confidence=${kfReport.overallConfidence.toFixed(3)} · kfe=${kfeMs}ms`
+      );
 
       return this._mkStage("KnowledgeFusionEngine", t0, "SUCCESS", {
-        providersProcessed: kfReport.providersProcessed,
-        entitiesUnique: kfReport.entitiesUnique,
-        entitiesMerged: kfReport.entitiesMerged,
+        providersProcessed:   kfReport.providersProcessed,
+        entitiesUnique:       kfReport.entitiesUnique,
+        entitiesMerged:       kfReport.entitiesMerged,
         relationshipsCreated: kfReport.relationshipsCreated,
-        conflictsDetected: kfReport.conflictsDetected,
-        overallConfidence: kfReport.overallConfidence,
-        // forward for IRE
-        _fusedEntities:    kfe.getEntities()    as unknown as Record<string, unknown>[],
-        _fusedRelationships: kfe.getRelationships() as unknown as Record<string, unknown>[],
-        _fusedTimeline:    kfe.getTimeline()    as unknown as Record<string, unknown>[],
-      }, null, "KFE operational — knowledge fused", "KRE items → fused entity graph", 0.8);
+        conflictsDetected:    kfReport.conflictsDetected,
+        overallConfidence:    kfReport.overallConfidence,
+        // observability — Sprint M-06.2B
+        kgsLoaded,
+        adapterEntityCount:       adapterResult.entityCount,
+        adapterRelationshipCount: adapterResult.relationshipCount,
+        adapterModuleCount:       adapterResult.moduleCount,
+        adapterTimelineCount:     adapterResult.timelineEventCount,
+        adapterMs,
+        kfeMs,
+        // forward for IRE (unchanged)
+        _fusedEntities:      kfe.getEntities()       as unknown as Record<string, unknown>[],
+        _fusedRelationships: kfe.getRelationships()  as unknown as Record<string, unknown>[],
+        _fusedTimeline:      kfe.getTimeline()       as unknown as Record<string, unknown>[],
+      }, null,
+      kgsLoaded
+        ? `KFE: ${kfReport.entitiesUnique} real entities from KGS`
+        : "KFE: fallback (KGS not ready)",
+      "KnowledgeGraphStore → ProviderKnowledge[] → KFE → fused entity graph",
+      kgsLoaded ? 0.88 : 0.8);
     } catch (e) {
       return this._mkStage("KnowledgeFusionEngine", t0, "SKIPPED", {
         reason: String(e),
