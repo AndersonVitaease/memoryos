@@ -7,6 +7,7 @@
 import { Shield, Lock, ArrowLeft } from "lucide-react";
 import { Link } from "react-router-dom";
 
+import ConnectorRegistry from "@/components/connections/ConnectorRegistry";
 import GoogleWorkspaceSection from "@/components/connections/GoogleWorkspaceSection";
 import GoogleProfileCard from "@/components/connections/GoogleProfileCard";
 import GmailConnectorCard from "@/components/connections/GmailConnectorCard";
@@ -61,6 +62,11 @@ export default function Connections() {
             voce constroi seu proprio MemoryOS, no seu ritmo.
           </p>
         </div>
+
+        {/* Connector Registry */}
+        <Section title="Connector Registry">
+          <ConnectorRegistry />
+        </Section>
 
         {/* Google Workspace */}
         <Section title="Disponivel agora">
