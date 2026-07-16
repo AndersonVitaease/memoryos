@@ -1,14 +1,15 @@
 /**
- * ConnectorBootstrap.ts — Engineering Sprint 8.2
+ * ConnectorBootstrap.ts — Engineering Sprint 8.3
  *
- * SRP: descobrir, validar e registrar todos os Connectors oficiais.
- *      Nenhuma outra responsabilidade.
+ * SRP: discover, validate and register all official connectors.
+ *      No other responsibility.
  *
- * Open/Closed: novos connectors sao adicionados a OFFICIAL_CONNECTORS.
- *   ConnectorRuntimeProvider, UCR, Runtime e Pipeline permanecem inalterados.
+ * Open/Closed: add new connectors to OFFICIAL_FACTORIES only.
+ *   No other file changes required.
  *
- * O ConnectorRuntimeProvider nao conhece connectors individuais.
- * Toda responsabilidade de registro reside aqui.
+ * Sprint 8.3 change: Gmail now uses the native connector-runtime GmailConnector
+ *   (implements connector-runtime/IConnector directly, no adapter).
+ *   All three connectors are first-class citizens of the same interface.
  */
 
 import type { IConnector } from "./IConnector";
@@ -17,11 +18,11 @@ import type { ConnectorRegistry } from "./ConnectorRegistry";
 // ── Public types ──────────────────────────────────────────────────────────────
 
 export interface BootstrapResult {
-  readonly connectorsLoaded: number;
+  readonly connectorsLoaded:   number;
   readonly capabilitiesLoaded: number;
-  readonly bootstrapTimeMs: number;
-  readonly errors: readonly string[];
-  readonly connectorIds: readonly string[];
+  readonly bootstrapTimeMs:    number;
+  readonly errors:             readonly string[];
+  readonly connectorIds:       readonly string[];
 }
 
 // ── Validation ────────────────────────────────────────────────────────────────
@@ -44,11 +45,11 @@ function validateConnector(c: IConnector): string | null {
   }
   try {
     const meta = c.metadata();
-    if (!meta || !meta.capabilities || !Array.isArray(meta.capabilities)) {
+    if (!meta?.capabilities || !Array.isArray(meta.capabilities)) {
       return `[${c.id}] metadata().capabilities must be a string[]`;
     }
     if (meta.capabilities.length === 0) {
-      return `[${c.id}] metadata().capabilities is empty — connector has no capabilities`;
+      return `[${c.id}] metadata().capabilities is empty`;
     }
   } catch (e) {
     return `[${c.id}] metadata() threw: ${(e as Error).message}`;
@@ -56,67 +57,23 @@ function validateConnector(c: IConnector): string | null {
   return null;
 }
 
-// ── Official connector factory ────────────────────────────────────────────────
-// Each factory is lazy (async import) to avoid top-level module failures.
+// ── Official connector factories ───────────────────────────────────────────────
+// All three use the same connector-runtime/IConnector interface. No adapters.
 
 type ConnectorFactory = () => Promise<IConnector>;
 
 const OFFICIAL_FACTORIES: ConnectorFactory[] = [
   async () => {
-    const { GmailConnector } = await import("@/lib/connector-router/connectors/GmailConnector");
-    // GmailConnector (UCR variant) uses UCRTypes.IConnector, not connector-runtime IConnector.
-    // We adapt the surface here to satisfy the connector-runtime registry contract.
-    const inner = new GmailConnector();
-    return {
-      id: "gmail",
-      metadata: () => ({
-        id: "gmail",
-        name: inner.metadata().name,
-        version: inner.metadata().version,
-        description: inner.metadata().description,
-        author: inner.metadata().author,
-        capabilities: inner.capabilities().map((c) => c.id),
-      }),
-      validate: () => true,
-      initialize: async () => {},
-      shutdown: async () => {},
-      health: async () => ({
-        status: inner.health().status === "healthy" ? "healthy" as const
-               : inner.health().status === "degraded" ? "degraded" as const
-               : "unhealthy" as const,
-        connectorId: "gmail",
-        checkedAt: Date.now(),
-        details: inner.health().message,
-      }),
-      execute: async (op: string, payload: Record<string, unknown>, ctx: { executionId: string }) => {
-        const { makeExecutionId } = await import("./ConnectorTypes");
-        const eid = ctx.executionId ?? makeExecutionId();
-        const result = await inner.execute({
-          executionId: eid,
-          capability: op,
-          parameters: payload,
-        });
-        return {
-          status: result.status === "success" ? "SUCCESS" as const : "FAILED" as const,
-          success: result.status === "success",
-          data: result.output,
-          error: result.error ?? undefined,
-          duration: result.durationMs,
-          connectorId: "gmail",
-          executionId: eid,
-          logs: [],
-        };
-      },
-    } as IConnector;
+    // Sprint 8.3: native connector-runtime GmailConnector — no adapter
+    const { GmailConnector } = await import("./connectors/GmailConnector");
+    return new GmailConnector();
   },
-
   async () => {
-    const { GoogleDriveConnector } = await import("@/lib/connector-runtime/connectors/GoogleDriveConnector");
+    const { GoogleDriveConnector } = await import("./connectors/GoogleDriveConnector");
     return new GoogleDriveConnector();
   },
-
   async () => {
-    const { GoogleCalendarConnector } = await import("@/lib/connector-runtime/connectors/GoogleCalendarConnector");
+    const { GoogleCalendarConnector } = await import("./connectors/GoogleCalendarConnector");
     return new GoogleCalendarConnector();
   },
 ];
@@ -127,41 +84,37 @@ export const ConnectorBootstrap = Object.freeze({
   /**
    * Discovers, validates, and registers all official connectors.
    * Never aborts on a single connector failure.
-   * Returns immutable BootstrapResult with full statistics.
+   * Returns an immutable BootstrapResult.
    */
   async bootstrap(registry: ConnectorRegistry): Promise<BootstrapResult> {
     const t0 = Date.now();
-    const errors: string[] = [];
+    const errors: string[]    = [];
     const loadedIds: string[] = [];
-    let capabilitiesLoaded = 0;
+    let capabilitiesLoaded    = 0;
 
     for (const factory of OFFICIAL_FACTORIES) {
       let connector: IConnector | null = null;
       try {
         connector = await factory();
       } catch (e) {
-        errors.push(`Factory failed to instantiate connector: ${(e as Error).message}`);
+        errors.push(`Factory failed: ${(e as Error).message}`);
         continue;
       }
 
-      // Validate
-      const validationError = validateConnector(connector);
-      if (validationError) {
-        errors.push(`Validation failed — ${validationError}`);
+      const err = validateConnector(connector);
+      if (err) {
+        errors.push(`Validation failed — ${err}`);
         continue;
       }
 
-      // Prevent duplicates
       if (registry.has(connector.id)) {
         errors.push(`[${connector.id}] already registered — skipped`);
         continue;
       }
 
-      // Register
       try {
         registry.register(connector);
-        const caps = connector.metadata().capabilities.length;
-        capabilitiesLoaded += caps;
+        capabilitiesLoaded += connector.metadata().capabilities.length;
         loadedIds.push(connector.id);
       } catch (e) {
         errors.push(`[${connector.id}] registry.register() threw: ${(e as Error).message}`);
