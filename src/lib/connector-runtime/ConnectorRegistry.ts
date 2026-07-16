@@ -40,4 +40,32 @@ export class ConnectorRegistry {
   count(): number {
     return this.entries.size;
   }
+
+  list(): string[] {
+    return Array.from(this.entries.keys());
+  }
+
+  listCapabilities(): string[] {
+    const caps: string[] = [];
+    for (const { connector } of this.entries.values()) {
+      caps.push(...connector.metadata().capabilities);
+    }
+    return caps;
+  }
+
+  statistics(): {
+    connectorsLoaded: number;
+    capabilitiesLoaded: number;
+    connectorIds: readonly string[];
+    capabilityIds: readonly string[];
+  } {
+    const connectorIds  = this.list();
+    const capabilityIds = this.listCapabilities();
+    return Object.freeze({
+      connectorsLoaded:   connectorIds.length,
+      capabilitiesLoaded: capabilityIds.length,
+      connectorIds:       Object.freeze(connectorIds),
+      capabilityIds:      Object.freeze(capabilityIds),
+    });
+  }
 }

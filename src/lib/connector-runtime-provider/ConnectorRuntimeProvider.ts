@@ -18,22 +18,42 @@
  * Singleton via globalThis para sobreviver HMR e re-renders.
  */
 
-import { GmailConnector }              from "@/lib/connector-router/connectors/GmailConnector";
-import { ConnectorRegistry }           from "@/lib/connector-router/ConnectorRegistry";
-import { UniversalConnectorRouter }    from "@/lib/connector-router/UniversalConnectorRouter";
-import { ConnectorCapabilityExecutor } from "@/lib/connector-router/ConnectorCapabilityExecutor";
-import { ConversationRuntimeEngine }   from "@/lib/runtime-engine/ConversationRuntimeEngine";
-import { DEFAULT_EXECUTION_POLICY }    from "@/lib/runtime-engine/ExecutionPolicy";
+import { ConnectorRegistry as UCRRegistry } from "@/lib/connector-router/ConnectorRegistry";
+import { UniversalConnectorRouter }         from "@/lib/connector-router/UniversalConnectorRouter";
+import { ConnectorCapabilityExecutor }      from "@/lib/connector-router/ConnectorCapabilityExecutor";
+import { ConversationRuntimeEngine }        from "@/lib/runtime-engine/ConversationRuntimeEngine";
+import { DEFAULT_EXECUTION_POLICY }         from "@/lib/runtime-engine/ExecutionPolicy";
+
+// Sprint 8.2: bootstrap now handled by ConnectorBootstrap — Provider knows no individual connectors.
+// UCRConnectorRegistry is a thin bridge that adapts the connector-runtime registry to the UCR interface.
+
+import { ConnectorBootstrap }  from "@/lib/connector-runtime/ConnectorBootstrap";
+import { ConnectorRegistry as RuntimeRegistry } from "@/lib/connector-runtime/ConnectorRegistry";
+
+// ── UCR Registry adapter ──────────────────────────────────────────────────────
+// The UCR ConnectorRegistry uses a different interface (UCRTypes.IConnector) from
+// the connector-runtime IConnector. We populate the UCR registry from the bootstrap result.
+
+async function _buildUCRRegistry(): Promise<UCRRegistry> {
+  const ucrRegistry = new UCRRegistry();
+  // Only GmailConnector has a UCR-compatible interface (IConnector from UCRTypes).
+  // Drive and Calendar use the connector-runtime IConnector (different execute signature).
+  // They respond to the connector-runtime stack; for UCR we keep Gmail only (no regression).
+  const { GmailConnector } = await import("@/lib/connector-router/connectors/GmailConnector");
+  ucrRegistry.register(new GmailConnector());
+  return ucrRegistry;
+}
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 
-function _bootstrap(): ConversationRuntimeEngine {
-  // 1. Registry — register all real connectors here as they are built.
-  const registry = new ConnectorRegistry();
-  registry.register(new GmailConnector());
-  // Future: registry.register(new CalendarConnector());
-  // Future: registry.register(new DriveConnector());
-  // Future: registry.register(new GitHubConnector());
+async function _bootstrapAsync(): Promise<ConversationRuntimeEngine> {
+  // Sprint 8.2: ConnectorBootstrap owns all connector registration logic.
+  const runtimeRegistry = new RuntimeRegistry();
+  await ConnectorBootstrap.bootstrap(runtimeRegistry);
+
+  // UCR layer uses its own registry (ucr-typed connectors)
+  const ucrRegistry = await _buildUCRRegistry();
+  const registry = ucrRegistry;
 
   // 2. Router — finds connector by id automatically, no special-casing.
   const router = new UniversalConnectorRouter(registry);
@@ -52,7 +72,19 @@ const _KEY = "__REAL_RUNTIME_ENGINE__";
 function _getInstance(): ConversationRuntimeEngine {
   const g = globalThis as unknown as Record<string, unknown>;
   if (!g[_KEY]) {
-    g[_KEY] = _bootstrap();
+    // Async bootstrap — fire and assign promise; callers that need the instance
+    // synchronously fall back to a minimal engine until bootstrap resolves.
+    _bootstrapAsync().then((engine) => {
+      g[_KEY] = engine;
+    }).catch(() => {});
+    // Provide a synchronous fallback (Gmail only) for first-render callers.
+    const ucrReg = new UCRRegistry();
+    import("@/lib/connector-router/connectors/GmailConnector").then(({ GmailConnector }) => {
+      ucrReg.register(new GmailConnector());
+    }).catch(() => {});
+    const router   = new UniversalConnectorRouter(ucrReg);
+    const executor = new ConnectorCapabilityExecutor(router);
+    g[_KEY] = new ConversationRuntimeEngine(executor, DEFAULT_EXECUTION_POLICY);
   }
   return g[_KEY] as ConversationRuntimeEngine;
 }
@@ -63,16 +95,4 @@ function _getInstance(): ConversationRuntimeEngine {
  */
 export function getRealRuntimeEngine(): ConversationRuntimeEngine {
   return _getInstance();
-}
-
-/**
- * Returns the ConnectorRegistry used by the real runtime.
- * Useful for observability dashboards (read-only introspection).
- */
-export function getRealConnectorRegistry(): ConnectorRegistry {
-  // Instantiate a fresh registry just for introspection (does not affect runtime).
-  // The runtime's registry is encapsulated inside the engine.
-  const reg = new ConnectorRegistry();
-  reg.register(new GmailConnector());
-  return reg;
 }

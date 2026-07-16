@@ -8,6 +8,7 @@ import { Shield, Lock, ArrowLeft } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import ConnectorRegistry from "@/components/connections/ConnectorRegistry";
+import RuntimeBootstrapPanel from "@/components/connections/RuntimeBootstrapPanel";
 import GoogleWorkspaceSection from "@/components/connections/GoogleWorkspaceSection";
 import GoogleProfileCard from "@/components/connections/GoogleProfileCard";
 import GmailConnectorCard from "@/components/connections/GmailConnectorCard";
@@ -62,6 +63,13 @@ export default function Connections() {
             voce constroi seu proprio MemoryOS, no seu ritmo.
           </p>
         </div>
+
+        {/* Runtime Bootstrap — Sprint 8.2 */}
+        <Section title="Runtime Bootstrap — Sprint 8.2">
+          <div className="p-4 rounded-xl border border-border/40 bg-muted/5">
+            <RuntimeBootstrapPanel />
+          </div>
+        </Section>
 
         {/* Connector Registry */}
         <Section title="Connector Registry">
