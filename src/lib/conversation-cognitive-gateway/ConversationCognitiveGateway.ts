@@ -15,7 +15,7 @@
 import { LiveCognitivePipeline } from "../live-cognitive-pipeline/LiveCognitivePipeline";
 import { CognitiveAnswerComposer } from "../cognitive-answer-composer/CognitiveAnswerComposer";
 import { GitHubQueryRouter } from "./GitHubQueryRouter";
-import { ConnectorInvocationService } from "../cognitive-connector/ConnectorInvocationService";
+import { officialRuntimeBridge } from "../cognitive-connector/OfficialRuntimeBridge";
 import { RepositoryResolver } from "../github-deep-analysis/RepositoryResolver";
 import { SearchRanker } from "../github-deep-analysis/SearchRanker";
 import { KnowledgeGraphStore } from "../project-knowledge/KnowledgeGraphStore";
@@ -214,7 +214,8 @@ export class ConversationCognitiveGateway {
   private readonly _pipeline   = new LiveCognitivePipeline();
   private readonly _composer   = new CognitiveAnswerComposer();
   private readonly _ghRouter   = new GitHubQueryRouter();
-  private readonly _cis        = new ConnectorInvocationService();
+  // Sprint M-04: _cis replaced by officialRuntimeBridge — all connector
+  // execution now routes through ConversationPlanningEngine → ConversationRuntimeEngine → UCR.
   private readonly _repoResolver = new RepositoryResolver();
   private readonly _searchRanker = new SearchRanker();
   private _repoCache: { owner: string; repo: string; fetchedAt: number } | null = null;
@@ -365,7 +366,8 @@ export class ConversationCognitiveGateway {
         }
       }
 
-      const invocationResult = await this._cis.invoke(
+      // Sprint M-04: route through official pipeline instead of CIS bypass
+      const invocationResult = await officialRuntimeBridge.invokeCompat(
         "github",
         capability,
         payload,
@@ -530,7 +532,8 @@ export class ConversationCognitiveGateway {
     if (this._repoCache && Date.now() - this._repoCache.fetchedAt < 5 * 60 * 1000) {
       return { owner: this._repoCache.owner, repo: this._repoCache.repo, confidence: 0.9, needsConfirmation: false, candidates: [] };
     }
-    const reposInv = await this._cis.invoke("github", "repos.list", { per_page: 10 },
+    // Sprint M-04: route through official pipeline instead of CIS bypass
+    const reposInv = await officialRuntimeBridge.invokeCompat("github", "repos.list", { per_page: 10 },
       { originComponent: "ConversationCognitiveGateway", reason: "Repository resolution" });
     if (reposInv.record.status !== "SUCCESS") return null;
     const items = (reposInv.result?.data as any)?.items ?? [];
