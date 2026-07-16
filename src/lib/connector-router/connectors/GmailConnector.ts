@@ -144,15 +144,48 @@ export class GmailConnector implements IConnector {
 
       case "searchEmails": {
         const { searchMessages } = await import("@/lib/gmail/GmailConnector");
-        const { buildGmailQuery } = await import("@/lib/gmail/SemanticEmailQueryBuilder");
+        const { executeSmartSearch } = await import("@/lib/gmail/SmartGmailQueryBuilder");
         const rawQuery = (p["query"] as string) ?? "";
-        const semantic = buildGmailQuery(rawQuery);
-        console.log("[GmailConnector][E-02.6] searchEmails");
-        console.log("  query original :", semantic.originalQuery);
-        console.log("  alias encontrado:", semantic.aliasName ?? "nenhum");
-        console.log("  alias expandido :", semantic.aliasExpanded);
-        console.log("  query otimizada :", semantic.gmailQuery);
-        return searchMessages(semantic.gmailQuery, (p["maxResults"] as number) ?? 20);
+        const maxResults = (p["maxResults"] as number) ?? 20;
+
+        console.log("[GmailConnector][E-02.8] SmartSearch for:", rawQuery);
+
+        const smartResult = await executeSmartSearch(
+          rawQuery,
+          (q, max) => searchMessages(q, max) as Promise<{ ok: boolean; data: unknown; error: string | null }>,
+          maxResults,
+        );
+
+        // Log every attempt for observability
+        smartResult.log.forEach((line) => console.log(line));
+
+        if (smartResult.winningQuery) {
+          return {
+            ok:     true,
+            data:   (smartResult as unknown as Record<string, unknown>)._data,
+            error:  null,
+            status: "success",
+            _smartMeta: {
+              entity:       smartResult.entity,
+              winningQuery: smartResult.winningQuery,
+              totalFound:   smartResult.totalFound,
+              attempts:     smartResult.strategy.attempts.map((a) => ({
+                attempt:   a.attempt,
+                query:     a.query,
+                strategy:  a.strategy,
+                results:   a.results,
+                succeeded: a.succeeded,
+              })),
+            },
+          };
+        }
+
+        return {
+          ok:     true,
+          data:   { messages: [], resultSizeEstimate: 0, _noResults: true, _entity: rawQuery },
+          error:  null,
+          status: "success",
+        };
       }
 
       case "readMessage": {
