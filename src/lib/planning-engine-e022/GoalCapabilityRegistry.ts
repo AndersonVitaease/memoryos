@@ -103,7 +103,7 @@ const _builtins: CapabilityMapping[] = [
   {
     goalType: "gmail.searchMessages",
     descriptors: [
-      { connector: "gmail", capability: "searchMessages", params: {} },
+      { connector: "gmail", capability: "searchEmails", params: {} },
     ],
   },
   {

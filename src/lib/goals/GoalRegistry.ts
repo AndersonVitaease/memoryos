@@ -120,6 +120,33 @@ export const GoalRegistry: GoalRegistryClass = (
 
 const _builtins: GoalDefinition[] = [
   // ── Gmail ──────────────────────────────────────────────────────────────────
+  // IMPORTANT: gmail.searchMessages must come BEFORE gmail.readInbox
+  // so that "procure emails da Shopee" matches search, not inbox.
+  {
+    type: "gmail.searchMessages",
+    namespace: "gmail",
+    description: "Search Gmail messages by query",
+    signals: [
+      "procure emails", "procure e-mails", "procurar emails", "procurar e-mails",
+      "buscar email", "buscar e-mail", "pesquisar email", "pesquisar e-mail",
+      "pesquise emails", "pesquise e-mails", "encontrar email", "procurar email",
+      "search email", "find email", "emails de ", "e-mails de ",
+      "emails da ", "e-mails da ", "emails do ", "e-mails do ",
+      "emails contendo", "e-mails contendo",
+    ],
+    extractParams: (msg) => {
+      // Extract the search term: everything after "da/do/de/contendo/sobre" keyword
+      const afterPrep = msg.match(/(?:da|do|de|contendo|sobre|com assunto|from|about)\s+(.+)$/i)?.[1];
+      if (afterPrep) return { query: afterPrep.trim() };
+      const quoted = msg.match(/"([^"]+)"/)?.[1];
+      if (quoted) return { query: quoted };
+      // Fallback: strip common command words and use the rest as query
+      const stripped = msg
+        .replace(/procur[ea]r?|pesquis[ae]r?|buscar?|encontrar?|emails?|e-?mails?|procure/gi, "")
+        .trim();
+      return { query: stripped || msg.trim() };
+    },
+  },
   {
     type: "gmail.readInbox",
     namespace: "gmail",
@@ -132,20 +159,6 @@ const _builtins: GoalDefinition[] = [
     extractParams: (msg) => {
       const n = msg.match(/\b(\d+)\b/)?.[1];
       return { maxResults: n ? Math.min(parseInt(n, 10), 50) : 10 };
-    },
-  },
-  {
-    type: "gmail.searchMessages",
-    namespace: "gmail",
-    description: "Search Gmail messages by query",
-    signals: [
-      "buscar email", "buscar e-mail", "pesquisar email", "pesquisar e-mail",
-      "encontrar email", "procurar email", "search email", "find email",
-    ],
-    extractParams: (msg) => {
-      const quoted   = msg.match(/"([^"]+)"/)?.[1];
-      const fromMatch = msg.match(/(?:de|from)\s+(\S+)/i)?.[1];
-      return { query: quoted ?? fromMatch ?? msg.trim() };
     },
   },
   {
