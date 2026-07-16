@@ -203,6 +203,71 @@ const _builtins: CapabilityMapping[] = [
     ],
   },
 
+  // ── GitHub — Sprint M-02 ─────────────────────────────────────────────────
+  // Connector id: "github"  (GitHubConnector.ts:161 → readonly id = "github")
+  // Capabilities verified against GitHubConnector.metadata().capabilities[]
+  // (GitHubConnector.ts:184-205). Zero new capabilities created.
+  {
+    goalType: "github.listRepos",
+    descriptors: [
+      { connector: "github", capability: "repos.list", params: { per_page: 10 } },
+    ],
+  },
+  {
+    goalType: "github.listBranches",
+    descriptors: [
+      { connector: "github", capability: "branches.list", params: {} },
+    ],
+  },
+  {
+    goalType: "github.listCommits",
+    descriptors: [
+      { connector: "github", capability: "commits.list", params: { per_page: 20 } },
+    ],
+  },
+  {
+    goalType: "github.listFiles",
+    descriptors: [
+      { connector: "github", capability: "files.list", params: {} },
+    ],
+  },
+  {
+    goalType: "github.getFile",
+    descriptors: [
+      { connector: "github", capability: "files.get", params: {} },
+    ],
+  },
+  {
+    goalType: "github.searchCode",
+    descriptors: [
+      { connector: "github", capability: "search.symbol", params: {} },
+    ],
+  },
+  {
+    goalType: "github.listPullRequests",
+    descriptors: [
+      { connector: "github", capability: "pullRequests.list", params: { state: "open" } },
+    ],
+  },
+  {
+    goalType: "github.listIssues",
+    descriptors: [
+      { connector: "github", capability: "issues.list", params: { state: "open" } },
+    ],
+  },
+  {
+    goalType: "github.commitTimeline",
+    descriptors: [
+      { connector: "github", capability: "commit.timeline", params: { per_page: 30 } },
+    ],
+  },
+  {
+    goalType: "github.repoStatistics",
+    descriptors: [
+      { connector: "github", capability: "repository.statistics", params: {} },
+    ],
+  },
+
   // ── Memory ─────────────────────────────────────────────────────────────────
   // Validated in Sprint 8.8.2.a: Memory is an INTERNAL service, not a UCR connector.
   // There is no MemoryConnector in ConnectorBootstrap.

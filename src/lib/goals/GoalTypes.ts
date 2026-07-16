@@ -35,6 +35,18 @@ export type GoalType =
   | "drive.openDocument"
   | "drive.searchFiles"
   | "drive.listRecent"
+  // GitHub — Sprint M-02
+  // Connector id: "github" (GitHubConnector.ts:161)
+  | "github.listRepos"
+  | "github.listBranches"
+  | "github.listCommits"
+  | "github.listFiles"
+  | "github.getFile"
+  | "github.searchCode"
+  | "github.listPullRequests"
+  | "github.listIssues"
+  | "github.commitTimeline"
+  | "github.repoStatistics"
   // Memory
   | "memory.query"
   | "memory.summarize"

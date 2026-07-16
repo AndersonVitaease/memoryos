@@ -280,6 +280,130 @@ const _builtins: GoalDefinition[] = [
     },
   },
 
+  // ── GitHub — Sprint M-02 ─────────────────────────────────────────────────
+  // All signals are specific enough to avoid collision with Gmail/Calendar/Drive.
+  // Signal matching priority: more-specific goals listed first.
+  {
+    type: "github.searchCode",
+    namespace: "github",
+    description: "Search for code symbols, classes, functions, or text in the repository",
+    signals: [
+      // EN — code search
+      "where is", "find class", "find function", "find interface", "find type",
+      "search for", "locate", "implemented in", "search class", "search code",
+      "search in code", "grep", "find text", "where is used", "find usage",
+      "who imports", "who calls", "called by", "cross reference", "references",
+      // PT — code search
+      "onde está", "onde fica", "procurar classe", "encontrar classe",
+      "onde está implementado", "onde é usado", "quem usa", "quem importa",
+      "onde está definido",
+    ],
+    extractParams: (msg) => {
+      const sym = msg.match(/([A-Z][a-zA-Z0-9]+(?:Engine|Manager|Service|Router|Gateway|Connector|Handler|Provider|Factory|Builder|Queue|Registry|Orchestrator|Pipeline|Composer|Executor|Dispatcher|Monitor))/)?.[1]
+        ?? msg.replace(/\b(where is|find|locate|search for|grep|procurar|encontrar|onde está|onde fica)\b/gi, "").trim();
+      return { query: sym || msg.trim() };
+    },
+  },
+  {
+    type: "github.listPullRequests",
+    namespace: "github",
+    description: "List open or closed pull requests in the repository",
+    signals: [
+      "pull request", "pull requests", "pr list", "open prs", "prs",
+      "merge request", "list prs", "show prs", "listar prs",
+    ],
+    extractParams: (msg) => {
+      const state = msg.includes("closed") || msg.includes("fechado") ? "closed" : "open";
+      return { state };
+    },
+  },
+  {
+    type: "github.listIssues",
+    namespace: "github",
+    description: "List issues in the repository",
+    signals: [
+      "issues", "open issues", "list issues", "bug list",
+      "problemas abertos", "listar issues", "show issues",
+    ],
+    extractParams: (msg) => {
+      const state = msg.includes("closed") || msg.includes("fechado") ? "closed" : "open";
+      return { state };
+    },
+  },
+  {
+    type: "github.commitTimeline",
+    namespace: "github",
+    description: "Show commit history timeline for the repository",
+    signals: [
+      "commit timeline", "what changed last sprint", "recent changes",
+      "last sprint changes", "what was done", "commit history timeline",
+      "o que mudou", "o que foi feito", "historico de commits recentes",
+    ],
+    extractParams: () => ({ per_page: 30 }),
+  },
+  {
+    type: "github.repoStatistics",
+    namespace: "github",
+    description: "Show repository statistics: stars, forks, languages, description",
+    signals: [
+      "repository statistics", "repo statistics", "repo info", "repository info",
+      "estatisticas do repositorio", "project stats", "repo stats",
+    ],
+    extractParams: () => ({}),
+  },
+  {
+    type: "github.listBranches",
+    namespace: "github",
+    description: "List branches of the repository",
+    signals: [
+      "list branches", "show branches", "listar branches", "galhos do repositorio",
+    ],
+    extractParams: () => ({}),
+  },
+  {
+    type: "github.listCommits",
+    namespace: "github",
+    description: "List recent commits in the repository",
+    signals: [
+      "list commits", "show commits", "recent commits", "ultimos commits",
+      "listar commits", "commit history",
+    ],
+    extractParams: () => ({ per_page: 20 }),
+  },
+  {
+    type: "github.listFiles",
+    namespace: "github",
+    description: "List files in the repository tree",
+    signals: [
+      "list files", "show files", "source files", "listar arquivos do repositorio",
+      "file tree", "repository tree", "show structure",
+    ],
+    extractParams: () => ({}),
+  },
+  {
+    type: "github.getFile",
+    namespace: "github",
+    description: "Read the content of a specific file in the repository",
+    signals: [
+      "read file", "show file", "content of", "open file",
+      "source code", "codigo fonte", "conteudo do arquivo",
+    ],
+    extractParams: (msg) => {
+      const path = msg.match(/(?:in |at |file |from )?([a-zA-Z0-9_/-]+\.[a-zA-Z]{1,6})/i)?.[1];
+      return { path: path ?? null };
+    },
+  },
+  {
+    type: "github.listRepos",
+    namespace: "github",
+    description: "List user repositories",
+    signals: [
+      "list repos", "show repos", "my repos", "available repos",
+      "listar repositorios", "repositorios disponiveis", "meus repositorios",
+    ],
+    extractParams: () => ({ per_page: 10 }),
+  },
+
   // ── Memory ─────────────────────────────────────────────────────────────────
   {
     type: "memory.summarize",
