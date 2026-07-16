@@ -4,7 +4,6 @@
  * Ponto de entrada único — nunca importar diretamente de subpastas
  */
 
-export * from "./IConnector";
 export * from "./ISpecialist";
 export * from "./IMemoryProvider";
 export * from "./IEventBus";
