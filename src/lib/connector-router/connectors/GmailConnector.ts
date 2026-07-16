@@ -144,8 +144,15 @@ export class GmailConnector implements IConnector {
 
       case "searchEmails": {
         const { searchMessages } = await import("@/lib/gmail/GmailConnector");
-        const query = (p["query"] as string) ?? "";
-        return searchMessages(query, (p["maxResults"] as number) ?? 20);
+        const { buildGmailQuery } = await import("@/lib/gmail/SemanticEmailQueryBuilder");
+        const rawQuery = (p["query"] as string) ?? "";
+        const semantic = buildGmailQuery(rawQuery);
+        console.log("[GmailConnector][E-02.6] searchEmails");
+        console.log("  query original :", semantic.originalQuery);
+        console.log("  alias encontrado:", semantic.aliasName ?? "nenhum");
+        console.log("  alias expandido :", semantic.aliasExpanded);
+        console.log("  query otimizada :", semantic.gmailQuery);
+        return searchMessages(semantic.gmailQuery, (p["maxResults"] as number) ?? 20);
       }
 
       case "readMessage": {
