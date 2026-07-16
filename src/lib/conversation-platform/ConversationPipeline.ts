@@ -235,17 +235,21 @@ class ConversationPipeline {
       });
       // ── end E-02.1 ───────────────────────────────────────────────────────
 
-      // ── E-02.3: Planning → Runtime Engine ───────────────────────────────
-      // Executes the ExecutionPlan via ConversationRuntimeEngine (MockExecutor).
-      // No real connectors are called — MockCapabilityExecutor handles all steps.
-      // The result is emitted as an event for observability; it does NOT affect
-      // the conversation response (that still comes from the LLM reasoning path).
+      // ── E-02.5A: Planning → Real Runtime → Connector → Synthesize ──────────
+      // Uses the real ConnectorCapabilityExecutor (UCR + ConnectorRegistry + GmailConnector).
+      // When the runtime produces connector data, the synthesizer builds the final response
+      // so the LLM path below is bypassed entirely for connector goals.
+      // For general_conversation / unknown goals, steps=0 → synthesizer returns handled=false
+      // → execution falls through to the LLM path unchanged.
       if (goalBridgeResult.goal.valid) {
         const { conversationPlanningEngine } = await import("@/lib/planning-engine-e022/ConversationPlanningEngine");
         const planResult = conversationPlanningEngine.plan(goalBridgeResult.goal);
+
         if (planResult.success && planResult.plan.steps.length > 0) {
-          const { conversationRuntimeEngine } = await import("@/lib/runtime-engine/ConversationRuntimeEngine");
-          const executionResult = await conversationRuntimeEngine.execute(planResult.plan);
+          setPhase("executing_capabilities");
+          const { getRealRuntimeEngine } = await import("@/lib/connector-runtime-provider/ConnectorRuntimeProvider");
+          const executionResult = await getRealRuntimeEngine().execute(planResult.plan);
+
           conversationStore.emit({
             type: "PIPELINE_STEP",
             executionId,
@@ -260,16 +264,39 @@ class ConversationPipeline {
             },
             timestamp: Date.now(),
           });
+
+          // Synthesize connector output → user-facing response
+          const { synthesizeConnectorResult } = await import("@/lib/connector-runtime-provider/ConnectorResultSynthesizer");
+          const synthesis = await synthesizeConnectorResult(
+            executionResult,
+            userMessage,
+            goalBridgeResult.goal.type,
+          );
+
+          if (synthesis.handled && synthesis.response) {
+            // Connector handled this request — bypass LLM path entirely
+            response = synthesis.response;
+            sources  = [];
+            conversationStore.emit({
+              type: "PIPELINE_STEP",
+              executionId,
+              payload: { step: "connector_response_synthesized", goalType: goalBridgeResult.goal.type },
+              timestamp: Date.now(),
+            });
+          }
         }
       }
-      // ── end E-02.3 ───────────────────────────────────────────────────────
+      // ── end E-02.5A ──────────────────────────────────────────────────────
 
       setStep("route", "done");
       setStep("synthesize", "running");
       conversationStore.setStatus("synthesizing");
       setPhase("building_response");
 
-      if (routerResult.decision === "cognitive_pipeline" && routerResult.cognitiveAnswer?.answer) {
+      // If a connector already handled the response (E-02.5A), skip the LLM path.
+      if (response) {
+        responseTracer.recordRendered(traceId, response);
+      } else if (routerResult.decision === "cognitive_pipeline" && routerResult.cognitiveAnswer?.answer) {
         const ca = routerResult.cognitiveAnswer;
         responseTracer.recordPipelineAnswer(traceId, ca.answer, ca.executionId, ca.stagesExecuted, ca.confidence, ca.evidenceSources, ca.durationMs);
         response = ca.answer;
@@ -291,9 +318,8 @@ class ConversationPipeline {
         sources = (plan.sources ?? []).map((s: { id: string }) => s.id);
         const fallbackReason = routerResult.decision === "cognitive_pipeline" ? "EMPTY_PIPELINE_ANSWER" : "GENERAL_CONVERSATION";
         responseTracer.recordFallback(traceId, fallbackReason, response, Date.now() - t0synth);
+        responseTracer.recordRendered(traceId, response);
       }
-
-      responseTracer.recordRendered(traceId, response);
     } catch (err) {
       // Fallback response on reasoning failure
       response = "Nao consegui processar sua mensagem. Por favor, tente novamente.";
