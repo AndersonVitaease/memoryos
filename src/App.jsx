@@ -138,6 +138,7 @@ import Phase710Page from '@/pages/Phase710Page';
 import Phase700Page from '@/pages/Phase700Page';
 // Phase700Page replaced by Sprint 7.0 GWS Foundation dashboard (same route)
 import Phase711Page from '@/pages/Phase711Page';
+// Sprint 7.0.1 — Gmail GWS Integration (Phase711Page already imported above)
 import Phase712Page from '@/pages/Phase712Page';
 import Phase713Page from '@/pages/Phase713Page';
 import Phase714Page from '@/pages/Phase714Page';
