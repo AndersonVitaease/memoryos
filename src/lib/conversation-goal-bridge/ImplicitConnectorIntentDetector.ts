@@ -1,112 +1,375 @@
 /**
- * ImplicitConnectorIntentDetector.ts — Engineering Sprint E-02.6 / E-02.7
- * Implicit Connector Intent Recognition + Natural Language Normalization
+ * ImplicitConnectorIntentDetector.ts — Engineering Sprint 9.2.1
+ * Implicit Connector Intent Recognition v2 — Evidence-Based Scoring
  *
  * SRP: receber texto de conversa + connectors registrados e decidir
- *      se existe uma intenção implícita de acionar algum Connector.
+ *      qual connector possui maior evidencia para esta mensagem.
+ *
+ * BREAKING CHANGE from v1:
+ *   v1 usava "primeiro connector registrado" (gmail-first bug).
+ *   v2 usa scoring por evidencias semanticas — ordem de registro
+ *   e completamente irrelevante para o resultado.
  *
  * Garantias:
- * - NAO executa nada
- * - NAO chama connectors
- * - NAO faz chamadas de rede
- * - NAO modifica qualquer camada arquitetural
- * - Retorna Goal implícito OU null
+ * - DETERMINISTICA: mesma entrada sempre produz mesmo output
+ * - PURA: sem efeitos colaterais, sem estado mutavel por chamada
+ * - IMUTAVEL: todos os objetos retornados sao Object.freeze()
+ * - AUDITAVEL: cada decisao acompanha evidencias[] e ranking[]
+ * - EXPLICAVEL: campo explanation[] em ImplicitResolution
+ * - SEM REDE: nenhuma chamada de API ou LLM
+ * - SEM ORDEM: resultado independe da ordem de registro dos connectors
  *
- * Critérios de ativação (todos devem ser verdadeiros):
- * 1. GoalRegistry não encontrou Goal explícito (ou resultado é general.conversation/unknown)
- * 2. Mensagem tem até 5 palavras
- * 3. Mensagem não contém verbos de ação conhecidos
- * 4. Existe Connector registrado com capability compatível
+ * Algoritmo:
+ *   1. Normalizacao da mensagem
+ *   2. Extracao de sinais semanticos (entidade, temporalidade, documento)
+ *   3. Construcao de ConnectorCandidate para cada connector registrado
+ *   4. Pontuacao independente por connector (sem referencia a outros)
+ *   5. Ranking por score decrescente
+ *   6. Winner = highestScore
  */
 
 import type { GoalType } from "@/lib/goals/GoalTypes";
 import type { GoalDefinition } from "@/lib/goals/GoalRegistry";
 import { normalize } from "./NaturalLanguageGoalNormalizer";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── Public types ───────────────────────────────────────────────────────────────
 
-export interface ImplicitIntentResult {
-  /** true = found implicit connector intent */
-  readonly detected:    boolean;
-  /** The Goal type to dispatch */
-  readonly goalType:    GoalType | null;
-  /** Parameters for the goal (e.g. {query: "shopee"}) */
-  readonly parameters:  Readonly<Record<string, unknown>>;
-  /** Confidence score 0-1 */
-  readonly confidence:  number;
-  /** Human label for logging/observability */
-  readonly label:       string;
-  /** The raw trimmed text used as search term */
-  readonly searchTerm:  string;
+/** Identificador do connector como usado no GoalRegistry */
+export type ConnectorId = "gmail" | "calendar" | "drive" | "memory" | string;
+
+/**
+ * Candidato produzido para cada connector registrado.
+ * Score e evidencias sao independentes entre connectors.
+ */
+export interface ConnectorCandidate {
+  readonly connectorId: ConnectorId;
+  readonly goalType:    GoalType;
+  readonly score:       number;
+  readonly evidences:   readonly string[];
 }
 
-// ── Action verbs — presence means the message is explicit, not implicit ────────
+/**
+ * Resultado completo da resolucao implicita.
+ * Inclui winner, ranking completo e explicacao auditavel.
+ */
+export interface ImplicitResolution {
+  readonly winner:      ConnectorCandidate;
+  readonly ranking:     readonly ConnectorCandidate[];
+  readonly confidence:  number;
+  readonly explanation: readonly string[];
+}
 
-const ACTION_VERBS = [
-  // Portuguese
-  "procure", "procura", "procurar", "procuro",
-  "busque", "busca", "buscar", "busco",
-  "pesquise", "pesquisa", "pesquisar", "pesquiso",
-  "encontre", "encontra", "encontrar", "encontro",
-  "mostre", "mostra", "mostrar", "mostro",
-  "liste", "lista", "listar", "listo",
-  "abra", "abrir", "abre",
-  "crie", "cria", "criar", "crio",
-  "agende", "agenda", "agendar",
-  "envie", "envia", "enviar",
-  "responda", "responder", "responde",
-  "leia", "ler", "ler", "le",
-  "veja", "ver", "vejo",
-  "cheque", "checar", "checa",
-  "quero", "queria", "preciso",
-  "me mostra", "me mostre", "me lista",
-  "me busca", "me procura", "me encontra",
-  // English
-  "search", "find", "look", "get", "show", "list",
-  "open", "read", "send", "create", "schedule",
-  "check", "fetch", "retrieve", "give me",
-];
+/** Resultado publico compativel com o contrato anterior (ConversationGoalBridge). */
+export interface ImplicitIntentResult {
+  readonly detected:    boolean;
+  readonly goalType:    GoalType | null;
+  readonly parameters:  Readonly<Record<string, unknown>>;
+  readonly confidence:  number;
+  readonly label:       string;
+  readonly searchTerm:  string;
+  /** v2 addition: full resolution for observability/dashboard */
+  readonly resolution:  ImplicitResolution | null;
+}
 
-// ── Filler words to strip before treating as search term ─────────────────────
+// ── Connector scoring tables ───────────────────────────────────────────────────
+// Each connector has its own independent scoring signals.
+// No connector references another connector's signals.
+// Order within each table is irrelevant — all signals are evaluated.
 
-const FILLER_PATTERNS = [
-  /\b(emails?|e-?mails?|mensagens?|messages?)\b/gi,
-  /\b(da|do|de|dos?|das?|no|na|nos?|nas?|sobre|para|com|por)\b/gi,
-];
+/** Gmail semantic signals */
+const GMAIL_SIGNALS = Object.freeze({
+  // Direct email mentions → high weight
+  emailKeywords:    ["email", "e-mail", "emails", "e-mails", "mensagem", "mensagens",
+                     "inbox", "caixa de entrada", "correio"],
+  // Financial/transactional documents — almost always arrive via email
+  financialDocs:    ["boleto", "fatura", "nota fiscal", "nfe", "danfe", "darf", "pix",
+                     "pagamento", "pagamentos", "recibo", "nf"],
+  // Commercial entities — common email senders
+  commercialBrands: ["shopee", "amazon", "hostinger", "mercado livre", "mercadolivre",
+                     "mercado pago", "mercadopago", "ifood", "correios", "magalu",
+                     "americanas", "aliexpress", "ebay", "shopify"],
+  // Verbs that imply email actions
+  emailVerbs:       ["recebi", "recebeu", "receber", "enviei", "enviar", "responder",
+                     "encaminhar", "encaminhou"],
+  // Contextual indicators
+  contextPhrases:   ["da shopee", "do amazon", "da hostinger", "do mercado", "da fatura"],
+});
 
-// ── Connectors that support implicit search ───────────────────────────────────
-// Maps from GoalDefinition.namespace → the implicit GoalType to use.
-// When a new connector registers its namespace in GoalRegistry,
-// it only needs an entry here to enable implicit intent detection.
+/** Calendar semantic signals */
+const CALENDAR_SIGNALS = Object.freeze({
+  // Temporal references — strongest calendar indicators
+  temporalDirect:   ["hoje", "today", "amanha", "amanhã", "tomorrow", "ontem", "yesterday",
+                     "semana", "week", "mes", "mês", "month", "ano", "year",
+                     "segunda", "terca", "quarta", "quinta", "sexta", "sabado", "domingo",
+                     "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"],
+  // Event-type words
+  eventTypes:       ["reuniao", "reunião", "reunioes", "reuniões", "meeting", "compromisso",
+                     "compromissos", "evento", "eventos", "event", "events", "agendamento",
+                     "lembrete", "reminder", "call", "chamada"],
+  // Time references
+  timeRefs:         ["hora", "horario", "horário", "schedule", "agenda", "calendario",
+                     "calendário", "calendar"],
+  // Relative time phrases
+  relativePhrases:  ["esta semana", "proximo", "proxima", "próximo", "próxima", "next",
+                     "fin de semana", "fds", "fim de semana"],
+});
 
-const IMPLICIT_SEARCH_CAPABILITY: Readonly<Record<string, GoalType>> = Object.freeze({
+/** Drive semantic signals */
+const DRIVE_SIGNALS = Object.freeze({
+  // Document types — strongest drive indicators
+  documentTypes:    ["arquivo", "arquivos", "file", "files", "documento", "documentos",
+                     "document", "documents", "planilha", "planilhas", "spreadsheet",
+                     "apresentacao", "apresentação", "presentation", "slides", "pdf",
+                     "doc", "docx", "xlsx", "pptx", "csv"],
+  // Drive actions
+  driveActions:     ["abrir", "abra", "open", "criar documento", "editar", "edit",
+                     "compartilhar", "share", "upload", "baixar", "download"],
+  // Storage context
+  storageContext:   ["drive", "google drive", "pasta", "folder", "pastas", "folders",
+                     "meus arquivos", "my files", "recentes", "recent"],
+  // Contract documents (not financial — typically stored in drive)
+  contractDocs:     ["contrato", "contratos", "contract", "contracts", "proposta",
+                     "proposta comercial", "ata", "relatorio", "relatório", "report"],
+});
+
+/** Memory semantic signals */
+const MEMORY_SIGNALS = Object.freeze({
+  // Direct memory references
+  memoryDirect:     ["lembro", "lembrar", "recordo", "recordar", "memoria", "memória",
+                     "remember", "memory", "recall"],
+  // History references
+  historyPhrases:   ["o que eu disse", "o que falamos", "discutimos", "conversamos",
+                     "what i said", "what we discussed"],
+  // Summary requests
+  summaryPhrases:   ["resumo", "resumir", "summarize", "summary", "recap", "recapitular",
+                     "o que foi discutido", "o que falamos"],
+  // Session context
+  sessionContext:   ["sessao", "sessão", "session", "conversa", "conversa anterior",
+                     "ultimas conversas", "historico", "histórico"],
+});
+
+// ── Scoring functions ──────────────────────────────────────────────────────────
+// Each function is independent and scores its connector without referencing others.
+
+function scoreGmail(lower: string, norm: ReturnType<typeof normalize>): { score: number; evidences: string[] } {
+  const evidences: string[] = [];
+  let score = 0;
+
+  // Direct email keyword: very strong signal
+  for (const kw of GMAIL_SIGNALS.emailKeywords) {
+    if (lower.includes(kw)) {
+      score += 0.40;
+      evidences.push(`email-keyword: "${kw}"`);
+      break; // count once
+    }
+  }
+
+  // Financial documents: strong email signal
+  for (const doc of GMAIL_SIGNALS.financialDocs) {
+    if (lower.includes(doc)) {
+      score += 0.30;
+      evidences.push(`financial-doc: "${doc}"`);
+      break;
+    }
+  }
+
+  // Commercial brands: moderate email signal
+  for (const brand of GMAIL_SIGNALS.commercialBrands) {
+    if (lower.includes(brand)) {
+      score += 0.25;
+      evidences.push(`commercial-brand: "${brand}"`);
+      break;
+    }
+  }
+
+  // Email verbs: strong signal
+  for (const verb of GMAIL_SIGNALS.emailVerbs) {
+    if (lower.includes(verb)) {
+      score += 0.20;
+      evidences.push(`email-verb: "${verb}"`);
+      break;
+    }
+  }
+
+  // Normalizer detected email query
+  if (norm.isEmailQuery) {
+    score += 0.15;
+    evidences.push("normalizer: isEmailQuery=true");
+  }
+
+  return { score: Math.min(score, 1.0), evidences };
+}
+
+function scoreCalendar(lower: string): { score: number; evidences: string[] } {
+  const evidences: string[] = [];
+  let score = 0;
+
+  // Direct temporal references: strongest calendar signal
+  for (const t of CALENDAR_SIGNALS.temporalDirect) {
+    if (lower.includes(t)) {
+      score += 0.45;
+      evidences.push(`temporal: "${t}"`);
+      break;
+    }
+  }
+
+  // Event type words
+  for (const ev of CALENDAR_SIGNALS.eventTypes) {
+    if (lower.includes(ev)) {
+      score += 0.35;
+      evidences.push(`event-type: "${ev}"`);
+      break;
+    }
+  }
+
+  // Time references
+  for (const tr of CALENDAR_SIGNALS.timeRefs) {
+    if (lower.includes(tr)) {
+      score += 0.20;
+      evidences.push(`time-ref: "${tr}"`);
+      break;
+    }
+  }
+
+  // Relative time phrases
+  for (const rp of CALENDAR_SIGNALS.relativePhrases) {
+    if (lower.includes(rp)) {
+      score += 0.15;
+      evidences.push(`relative-phrase: "${rp}"`);
+      break;
+    }
+  }
+
+  return { score: Math.min(score, 1.0), evidences };
+}
+
+function scoreDrive(lower: string): { score: number; evidences: string[] } {
+  const evidences: string[] = [];
+  let score = 0;
+
+  // Document type words: strongest drive signal
+  for (const dt of DRIVE_SIGNALS.documentTypes) {
+    if (lower.includes(dt)) {
+      score += 0.45;
+      evidences.push(`document-type: "${dt}"`);
+      break;
+    }
+  }
+
+  // Drive actions
+  for (const da of DRIVE_SIGNALS.driveActions) {
+    if (lower.includes(da)) {
+      score += 0.30;
+      evidences.push(`drive-action: "${da}"`);
+      break;
+    }
+  }
+
+  // Storage context
+  for (const sc of DRIVE_SIGNALS.storageContext) {
+    if (lower.includes(sc)) {
+      score += 0.35;
+      evidences.push(`storage-context: "${sc}"`);
+      break;
+    }
+  }
+
+  // Contract documents
+  for (const cd of DRIVE_SIGNALS.contractDocs) {
+    if (lower.includes(cd)) {
+      score += 0.25;
+      evidences.push(`contract-doc: "${cd}"`);
+      break;
+    }
+  }
+
+  return { score: Math.min(score, 1.0), evidences };
+}
+
+function scoreMemory(lower: string): { score: number; evidences: string[] } {
+  const evidences: string[] = [];
+  let score = 0;
+
+  // Direct memory references
+  for (const md of MEMORY_SIGNALS.memoryDirect) {
+    if (lower.includes(md)) {
+      score += 0.50;
+      evidences.push(`memory-direct: "${md}"`);
+      break;
+    }
+  }
+
+  // History phrases
+  for (const hp of MEMORY_SIGNALS.historyPhrases) {
+    if (lower.includes(hp)) {
+      score += 0.40;
+      evidences.push(`history-phrase: "${hp}"`);
+      break;
+    }
+  }
+
+  // Summary requests
+  for (const sp of MEMORY_SIGNALS.summaryPhrases) {
+    if (lower.includes(sp)) {
+      score += 0.35;
+      evidences.push(`summary-phrase: "${sp}"`);
+      break;
+    }
+  }
+
+  // Session context
+  for (const sc of MEMORY_SIGNALS.sessionContext) {
+    if (lower.includes(sc)) {
+      score += 0.20;
+      evidences.push(`session-context: "${sc}"`);
+      break;
+    }
+  }
+
+  return { score: Math.min(score, 1.0), evidences };
+}
+
+// ── Goal type map for implicit detection ──────────────────────────────────────
+// Maps namespace → the implicit GoalType to use.
+// This is a pure lookup — no ordering dependency.
+
+const IMPLICIT_GOAL_TYPE: Readonly<Record<string, GoalType>> = Object.freeze({
   gmail:    "gmail.searchMessages",
   calendar: "calendar.listToday",
   drive:    "drive.searchFiles",
   memory:   "memory.query",
 });
 
-// ── ImplicitConnectorIntentResolver ──────────────────────────────────────────
+// ── Scorer dispatch map ───────────────────────────────────────────────────────
+// Pure function per connector — independent of registration order.
 
-export interface ImplicitConnectorIntentResolver {
-  resolve(
-    message:              string,
-    registeredDefinitions: readonly GoalDefinition[],
-  ): ImplicitIntentResult;
-}
+type ScorerFn = (lower: string, norm: ReturnType<typeof normalize>) => { score: number; evidences: string[] };
 
-// ── Implementation ────────────────────────────────────────────────────────────
+const CONNECTOR_SCORERS: Readonly<Record<string, ScorerFn>> = Object.freeze({
+  gmail:    (lower, norm) => scoreGmail(lower, norm),
+  calendar: (lower)       => scoreCalendar(lower),
+  drive:    (lower)       => scoreDrive(lower),
+  memory:   (lower)       => scoreMemory(lower),
+});
 
-class ImplicitConnectorIntentDetectorImpl implements ImplicitConnectorIntentResolver {
-  private _totalChecked = 0;
+// ── Minimum score threshold to be considered a valid candidate ─────────────────
+const MIN_SCORE_THRESHOLD = 0.20;
+
+// ── ImplicitConnectorIntentDetectorImpl ────────────────────────────────────────
+
+class ImplicitConnectorIntentDetectorImpl {
+  private _totalChecked  = 0;
   private _totalDetected = 0;
 
   /**
-   * Resolves implicit connector intent from a short, verb-free user message.
+   * Resolves implicit connector intent using evidence-based scoring.
+   *
+   * The winning connector is the one with the highest score.
+   * Registration order of connectors has ZERO effect on the result.
    *
    * @param message               — raw user message
    * @param registeredDefinitions — list from GoalRegistry.listAll()
-   * @returns ImplicitIntentResult
+   * @returns ImplicitIntentResult (compatible with ConversationGoalBridge contract)
    */
   resolve(
     message:               string,
@@ -122,56 +385,92 @@ class ImplicitConnectorIntentDetectorImpl implements ImplicitConnectorIntentReso
       confidence: 0,
       label,
       searchTerm: trimmed,
+      resolution: null,
     });
 
-    // ── Step 1: Normalize — extract entity + detect social ───────────────────
+    // ── Step 1: Normalize ────────────────────────────────────────────────────
     const norm = normalize(trimmed);
 
     if (norm.isSocialPhrase) return none("social_phrase");
-
-    // ── Step 2: Entity must be non-empty after normalization ─────────────────
     if (!norm.entity.trim()) return none("empty_entity");
 
-    // ── Step 3: Must not be a pure action-verb-only sentence (no entity) ─────
-    // If the normalized entity is the same length as the original and has no
-    // known entity, check the word-count guard (≤8 words) to avoid long prose.
-    const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
-    if (wordCount > 8 && !norm.isKnownEntity) return none("too_many_words_no_entity");
+    const lower = trimmed.toLowerCase();
 
-    // ── Step 4: derive which connectors are registered ───────────────────────
+    // ── Step 2: Collect registered namespaces ────────────────────────────────
     const registeredNamespaces = new Set(
       registeredDefinitions.map((d) => d.namespace)
     );
 
-    // ── Step 5: determine target connector + capability ──────────────────────
-    let targetGoalType: GoalType | null = null;
-    for (const [ns, gt] of Object.entries(IMPLICIT_SEARCH_CAPABILITY)) {
-      if (registeredNamespaces.has(ns)) {
-        targetGoalType = gt;
-        break;
-      }
+    // ── Step 3: Score each registered connector independently ────────────────
+    // ORDER-INDEPENDENT: we build all candidates first, then rank.
+    const candidates: ConnectorCandidate[] = [];
+
+    for (const [ns, goalType] of Object.entries(IMPLICIT_GOAL_TYPE)) {
+      if (!registeredNamespaces.has(ns)) continue;
+
+      const scorer = CONNECTOR_SCORERS[ns];
+      if (!scorer) continue;
+
+      const { score, evidences } = scorer(lower, norm);
+
+      candidates.push(Object.freeze({
+        connectorId: ns,
+        goalType,
+        score:       Math.round(score * 1000) / 1000, // 3 decimal precision
+        evidences:   Object.freeze([...evidences]),
+      }));
     }
 
-    if (!targetGoalType) return none("no_compatible_connector");
+    if (candidates.length === 0) return none("no_registered_connectors");
+
+    // ── Step 4: Rank by score descending (deterministic tiebreak by connectorId) ──
+    const ranking = [...candidates].sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      // Stable tiebreak: alphabetical by connectorId — never by registration order
+      return a.connectorId.localeCompare(b.connectorId);
+    });
+
+    const winner = ranking[0];
+
+    // ── Step 5: Reject if best score is below threshold ──────────────────────
+    if (winner.score < MIN_SCORE_THRESHOLD) {
+      return none(`below_threshold:${winner.connectorId}:${winner.score}`);
+    }
+
+    // ── Step 6: Build explanation ────────────────────────────────────────────
+    const explanation: string[] = [
+      `Winner: ${winner.connectorId} (score=${winner.score})`,
+      `Evidences: ${winner.evidences.join(", ") || "none"}`,
+      `Ranking: ${ranking.map((c) => `${c.connectorId}=${c.score}`).join(" > ")}`,
+      `Entity: "${norm.entity}"`,
+      `SearchTerm used: "${norm.entity}"`,
+    ];
+
+    const resolution: ImplicitResolution = Object.freeze({
+      winner:      Object.freeze(winner),
+      ranking:     Object.freeze([...ranking]),
+      confidence:  winner.score,
+      explanation: Object.freeze([...explanation]),
+    });
 
     this._totalDetected++;
 
-    const searchTerm = norm.entity;
-
     return Object.freeze({
       detected:   true,
-      goalType:   targetGoalType,
-      parameters: Object.freeze({ query: searchTerm }),
-      confidence: norm.isKnownEntity ? 0.9 : 0.75,
-      label:      `implicit:${targetGoalType}`,
-      searchTerm,
+      goalType:   winner.goalType,
+      parameters: Object.freeze({ query: norm.entity }),
+      confidence: winner.score,
+      label:      `evidence:${winner.connectorId}:score=${winner.score}`,
+      searchTerm: norm.entity,
+      resolution,
     });
   }
 
   getMetrics() {
     return {
-      totalChecked:  this._totalChecked,
-      totalDetected: this._totalDetected,
+      totalChecked:      this._totalChecked,
+      totalDetected:     this._totalDetected,
+      minScoreThreshold: MIN_SCORE_THRESHOLD,
     };
   }
 }
@@ -187,24 +486,24 @@ export const implicitConnectorIntentDetector: ImplicitConnectorIntentDetectorImp
   globalThis as unknown as Record<string, ImplicitConnectorIntentDetectorImpl>
 )[_KEY];
 
-// ── Test suite ────────────────────────────────────────────────────────────────
+// ── Legacy test runner (kept for backward compatibility with SprintE021Page) ──
 
 export interface ImplicitIntentTest {
-  name:        string;
-  input:       string;
+  name:         string;
+  input:        string;
   expectDetect: boolean;
-  passed:      boolean;
-  detected:    boolean;
-  goalType:    GoalType | null;
-  searchTerm:  string;
-  error:       string | null;
+  passed:       boolean;
+  detected:     boolean;
+  goalType:     GoalType | null;
+  searchTerm:   string;
+  error:        string | null;
 }
 
 export function runImplicitIntentTests(
   registeredDefinitions: readonly GoalDefinition[],
 ): ImplicitIntentTest[] {
   const CASES: Array<{ name: string; input: string; expectDetect: boolean }> = [
-    // ── Positive — bare entities ───────────────────────────────────────────
+    // Positive — bare entities (financial docs — email)
     { name: "Shopee bare",              input: "Shopee",                              expectDetect: true  },
     { name: "Hostinger bare",           input: "Hostinger",                           expectDetect: true  },
     { name: "Mercado Livre bare",       input: "Mercado Livre",                       expectDetect: true  },
@@ -215,7 +514,7 @@ export function runImplicitIntentTests(
     { name: "Amazon bare",              input: "Amazon",                              expectDetect: true  },
     { name: "DANFE bare",               input: "DANFE",                               expectDetect: true  },
     { name: "Boleto bare",              input: "Boleto",                              expectDetect: true  },
-    // ── Positive — natural interrogative forms ─────────────────────────────
+    // Positive — natural interrogative forms
     { name: "Tenho email Shopee",       input: "Tenho email da Shopee?",              expectDetect: true  },
     { name: "Existe email Shopee",      input: "Existe algum email da Shopee?",       expectDetect: true  },
     { name: "Recebi email Shopee",      input: "Recebi algum email da Shopee?",       expectDetect: true  },
@@ -223,13 +522,13 @@ export function runImplicitIntentTests(
     { name: "Recebi boleto",            input: "Recebi algum boleto?",                expectDetect: true  },
     { name: "Recebi ML",                input: "Recebi algo do Mercado Livre?",       expectDetect: true  },
     { name: "Tem nota fiscal",          input: "Tem alguma nota fiscal?",             expectDetect: true  },
-    { name: "Ha DANFE",                 input: "Há algum DANFE?",                     expectDetect: true  },
-    // ── Negative — social/greeting ─────────────────────────────────────────
-    { name: "Ola",                      input: "Olá",                                 expectDetect: false },
+    { name: "Ha DANFE",                 input: "Ha algum DANFE?",                     expectDetect: true  },
+    // Negative — social/greeting
+    { name: "Ola",                      input: "Ola",                                 expectDetect: false },
     { name: "Bom dia",                  input: "Bom dia",                             expectDetect: false },
     { name: "Obrigado",                 input: "Obrigado",                            expectDetect: false },
     { name: "Tudo bem",                 input: "Tudo bem",                            expectDetect: false },
-    { name: "Quem e voce",              input: "Quem é você",                         expectDetect: false },
+    { name: "Quem e voce",              input: "Quem e voce",                         expectDetect: false },
     { name: "Conte uma piada",          input: "Conte uma piada",                     expectDetect: false },
   ];
 
