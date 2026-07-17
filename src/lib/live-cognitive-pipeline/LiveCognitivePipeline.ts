@@ -126,7 +126,9 @@ export class LiveCognitivePipeline {
     this._record(preOutput);
 
     // ── Stage 8: Goal Intelligence Engine ───────────────────────────────────
-    const gieOutput = await this._stageGIE(ctx, preOutput);
+    // Sprint M-06.5: pass preOutput so _stageGIE can build a real CognitiveContext
+    // instead of the empty ctx={} that caused BP-02 (CRITICAL) in the M-06.4.5 audit.
+    const gieOutput = await this._stageGIE(ctx, preOutput, preOutput);
     this._record(gieOutput);
 
     // ── Stage 9: Cognitive Learning Engine ──────────────────────────────────
@@ -623,25 +625,79 @@ export class LiveCognitivePipeline {
     }
   }
 
-  private async _stageGIE(ctx: PipelineExecutionContext, prev: StageResult): Promise<StageResult> {
+  private async _stageGIE(
+    ctx: PipelineExecutionContext,
+    prev: StageResult,        // Stage 7 — ProjectReconstructionEngine output (unused directly)
+    preStage: StageResult,    // Stage 7 — ProjectReconstructionEngine output (Sprint M-06.5)
+  ): Promise<StageResult> {
     const t0 = Date.now();
     try {
+      // Sprint M-06.5: build real CognitiveContext from PRE Stage 7 output.
+      // Fixes BP-01 (invalid category), BP-02 (empty ctx), BP-03 (static description), BP-04 (no linkedKnowledge).
+      const preData = preStage.output as any;
+      const kgsLoaded: boolean      = preData.kgsLoaded ?? false;
+      const totalEntities: number   = preData.totalEntities ?? 0;
+      const totalRels: number       = preData.totalRelationships ?? 0;
+      const canonicals: number      = preData.canonicalsReceived ?? 0;
+      const coverage: number        = preData.coverageOverall ?? 0;
+      const confidence: number      = preData.confidence ?? 0;
+
+      // Observability: record PRE context received
+      ctx.knowledgeEvidence.push(
+        `GIE input: ${totalEntities} components · ${totalRels} rels · ${canonicals} identities · ` +
+        `coverage=${coverage.toFixed(3)} · confidence=${confidence.toFixed(3)} · source=${kgsLoaded ? "KGS (real)" : "fallback"}`
+      );
+
+      const t0GIE = Date.now();
+
+      // BP-01 fix: "technical" → "knowledge" (valid GoalCategory — most accurate for pipeline cognitive domain)
+      // BP-03 fix: description carries real PRE metrics
       const lifecycle = this.gie.fullLifecycle({
-        title: "Live Cognitive Pipeline — Goal Intelligence",
-        description: `Execute GIE on pipeline context: project=${ctx.projectId}`,
-        category: "technical",
+        title: `Live Cognitive Pipeline — Project ${ctx.projectId}`,
+        description:
+          `Pipeline execution: ${totalEntities} entities · ${totalRels} relationships · ` +
+          `${canonicals} canonical identities · coverage=${coverage.toFixed(3)} · confidence=${confidence.toFixed(3)}`,
+        category: "knowledge",   // BP-01 fix: valid GoalCategory
         priority: "high",
+      },
+      // BP-02 fix: real CognitiveContext from PRE output
+      // BP-04 fix: preComponentCount, kfeRelationshipCount, ireIdentityCount now populated
+      {
+        preComponentCount:    totalEntities,
+        kfeRelationshipCount: totalRels,
+        ireIdentityCount:     canonicals,
       });
 
-      ctx.knowledgeEvidence.push(`GIE: ${lifecycle.decomposition.subGoals.length} sub-goals, ${lifecycle.recommendations.length} recs`);
+      const gieMs = Date.now() - t0GIE;
+
+      ctx.knowledgeEvidence.push(
+        `GIE: goal=${lifecycle.goal.id} · subGoals=${lifecycle.decomposition.subGoals.length} · ` +
+        `recs=${lifecycle.recommendations.length} · integration.preLinked=${lifecycle.integration.preComponentsLinked} · ` +
+        `integration.kfeLinked=${lifecycle.integration.kfeRelationshipsLinked} · ` +
+        `integration.ireLinked=${lifecycle.integration.ireIdentitiesLinked} · gieMs=${gieMs}`
+      );
 
       return this._mkStage("GoalIntelligenceEngine", t0, "SUCCESS", {
-        goalId:       lifecycle.goal.id,
-        goalStatus:   lifecycle.goal.status,
-        subGoals:     lifecycle.decomposition.subGoals.length,
+        // existing fields — unchanged interface
+        goalId:          lifecycle.goal.id,
+        goalStatus:      lifecycle.goal.status,
+        subGoals:        lifecycle.decomposition.subgoals.length,
         recommendations: lifecycle.recommendations.length,
-        topRec:       lifecycle.recommendations[0]?.title ?? null,
-      }, null, "Goal intelligence applied", "project state → goals + recommendations", 0.88);
+        topRec:          lifecycle.recommendations[0]?.title ?? null,
+        // Sprint M-06.5 observability
+        kgsLoaded,
+        preComponentsLinked:    lifecycle.integration.preComponentsLinked,
+        kfeRelationshipsLinked: lifecycle.integration.kfeRelationshipsLinked,
+        ireIdentitiesLinked:    lifecycle.integration.ireIdentitiesLinked,
+        knowledgeGraphNodes:    lifecycle.integration.knowledgeGraphNodesAdded,
+        timelineEventsAdded:    lifecycle.integration.timelineEventsAdded,
+        gieMs,
+      }, null,
+      kgsLoaded
+        ? `GIE: ${totalEntities} real components integrated`
+        : "GIE: 0 components (KGS fallback)",
+      "PRE ProjectSnapshot → CognitiveContext → GoalIntelligenceEngine → GoalGraph",
+      0.88);
     } catch (e) {
       return this._mkStage("GoalIntelligenceEngine", t0, "FAILED", {}, String(e),
         "GIE execution failed", "goal analysis", 0.1);
