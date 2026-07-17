@@ -1,57 +1,102 @@
 /**
- * ResolutionResult.ts — Sprint C-02.2
- * Modelo de saida do Reference Resolution MVP.
+ * ResolutionResult.ts — Sprint C-02.3 (upgrade from C-02.2)
+ * Modelo de saida do Reference Resolution.
  *
- * SRP: representar o resultado de uma resolucao — identificador tecnico + metadados.
- * Imutavel. Sem logica de negocio.
+ * Novos campos (C-02.3):
+ *   reason              — Explainability: por que este resultado foi escolhido
+ *   evaluation          — Relatorio completo de candidatos (Trust Panel futuro)
+ *   confirmationRequired — true quando confidence < minimumConfidence
  */
 
+import type { ReferenceResolutionReason } from "./core/ReferenceResolutionReason";
+import type { ReferenceEvaluation, EvaluatedCandidate } from "./core/ReferenceEvaluation";
+
 export interface ResolutionCandidate {
-  /** Identificador tecnico do recurso (fileId ou messageId) */
+  /** Identificador tecnico do recurso */
   readonly resourceId: string;
-  /** Nome legivel do recurso */
+  /** Nome legivel */
   readonly displayName: string;
-  /** Score de confianca determinístico [0, 1] */
+  /** Score de confianca [0, 1] */
   readonly confidence: number;
+  /** Razao do score deste candidato */
+  readonly reason: ReferenceResolutionReason;
 }
 
 export interface ResolutionResult {
   readonly success: boolean;
-  /** Connector onde a resolucao ocorreu */
   readonly connector: string;
-  /** Referencia humana original */
   readonly referenceText: string;
-  /** Identificador tecnico do recurso com maior confianca (null se nao resolvido) */
   readonly resourceId: string | null;
-  /** Nome legivel do recurso principal (null se nao resolvido) */
   readonly displayName: string | null;
-  /** Confianca do resultado principal [0, 1] (0 se nao resolvido) */
   readonly confidence: number;
-  /** Lista completa de candidatos — util para tratamento de ambiguidade */
+  /** Razao da resolucao — Explainability */
+  readonly reason: ReferenceResolutionReason;
+  /** Lista de candidatos avaliados */
   readonly candidates: readonly ResolutionCandidate[];
-  /** Razao de falha quando success=false */
+  /** Relatorio detalhado de avaliacao (Trust Panel) */
+  readonly evaluation: Readonly<ReferenceEvaluation>;
+  /**
+   * true quando confidence < minimumConfidence.
+   * O recurso mais provavel e retornado mas NAO deve ser usado automaticamente.
+   */
+  readonly confirmationRequired: boolean;
   readonly error: string | null;
 }
 
-// ── Builders ───────────────────────────────────────────────────────────────────
+// ── Internal builder helpers ───────────────────────────────────────────────────
+
+function buildEvaluation(
+  totalEvaluated: number,
+  candidates: ResolutionCandidate[],
+  minimumConfidence: number,
+): Readonly<ReferenceEvaluation> {
+  const topScore = candidates[0]?.score ?? candidates[0]?.confidence ?? 0;
+  const evaluated: EvaluatedCandidate[] = candidates.map((c, i) => Object.freeze({
+    resourceId:  c.resourceId,
+    displayName: c.displayName,
+    score:       c.confidence,
+    reason:      c.reason,
+    selected:    i === 0,
+  }));
+  return Object.freeze({
+    totalEvaluated,
+    candidateCount: candidates.length,
+    candidates:     Object.freeze(evaluated),
+    topScore,
+    thresholdMet:   topScore >= minimumConfidence,
+  });
+}
+
+// ── Public builders ───────────────────────────────────────────────────────────
 
 export function resolvedResult(
   connector: string,
   referenceText: string,
   candidates: ResolutionCandidate[],
+  totalEvaluated: number,
+  minimumConfidence: number,
 ): ResolutionResult {
-  // Sort by confidence descending — deterministic
   const sorted = [...candidates].sort((a, b) => b.confidence - a.confidence);
   const best = sorted[0] ?? null;
+  const confirmationRequired = best !== null && best.confidence < minimumConfidence;
+  const reason: ReferenceResolutionReason = best === null
+    ? "NO_MATCH"
+    : confirmationRequired
+      ? "USER_CONFIRMATION_REQUIRED"
+      : best.reason;
+
   return Object.freeze({
-    success:       best !== null,
+    success:             best !== null,
     connector,
     referenceText,
-    resourceId:    best?.resourceId  ?? null,
-    displayName:   best?.displayName ?? null,
-    confidence:    best?.confidence  ?? 0,
-    candidates:    Object.freeze(sorted),
-    error:         best !== null ? null : "No matching resource found",
+    resourceId:          best?.resourceId  ?? null,
+    displayName:         best?.displayName ?? null,
+    confidence:          best?.confidence  ?? 0,
+    reason,
+    candidates:          Object.freeze(sorted),
+    evaluation:          buildEvaluation(totalEvaluated, sorted, minimumConfidence),
+    confirmationRequired,
+    error:               best !== null ? null : "No matching resource found",
   });
 }
 
@@ -60,14 +105,24 @@ export function failedResult(
   referenceText: string,
   error: string,
 ): ResolutionResult {
+  const evaluation: Readonly<ReferenceEvaluation> = Object.freeze({
+    totalEvaluated: 0,
+    candidateCount: 0,
+    candidates:     Object.freeze([]),
+    topScore:       0,
+    thresholdMet:   false,
+  });
   return Object.freeze({
-    success:       false,
+    success:             false,
     connector,
     referenceText,
-    resourceId:    null,
-    displayName:   null,
-    confidence:    0,
-    candidates:    Object.freeze([]),
+    resourceId:          null,
+    displayName:         null,
+    confidence:          0,
+    reason:              "NO_MATCH" as ReferenceResolutionReason,
+    candidates:          Object.freeze([]),
+    evaluation,
+    confirmationRequired: false,
     error,
   });
 }

@@ -1,110 +1,154 @@
 /**
- * GoogleDriveReferenceResolver.ts — Sprint C-02.2
- * Adapter: resolve referencias humanas em fileIds do Google Drive.
+ * GoogleDriveReferenceResolver.ts — Sprint C-02.3 (refactored from C-02.2)
  *
- * SRP: transformar uma referencia de texto em um fileId.
- * Nao executa connectors. Nao abre arquivos. Nao interpreta intencao.
+ * Responsabilidade do adapter:
+ *   1. Converter DriveFile → ReferenceResource (modelo canonico)
+ *   2. Delegar o scoring ao algoritmo de recursos (sem conhecer Drive)
  *
- * Prioridade deterministica (sem randomness):
- *   1. Nome exatamente igual          → confidence = 1.00
- *   2. Nome inicia com a referencia   → confidence = 0.85
- *   3. Nome contém a referencia       → confidence = 0.65
- *   4. Arquivo mais recente           → confidence = 0.30
+ * O resolver interno opera EXCLUSIVAMENTE sobre ReferenceResource.
+ * Nenhum campo especifico do Drive (fileId, mimeType, modifiedTime)
+ * chega ao algoritmo de scoring.
  *
- * Entrada: lista de arquivos pre-carregada via ResolverContext.preloaded
- * (o caller e responsavel por buscar os dados; este resolver e puramente determinístico).
+ * Dependency Inversion: recebe ReferenceResolutionPolicy no construtor.
+ * Open/Closed: novos Match levels sao adicionados na Policy, nao aqui.
  */
 
 import type { ReferenceResolver, ResolverContext } from "../ReferenceResolver";
 import type { Reference }                          from "../Reference";
 import type { ResolutionResult, ResolutionCandidate } from "../ResolutionResult";
 import { resolvedResult, failedResult }            from "../ResolutionResult";
+import type { ReferenceResource }                  from "../core/ReferenceResource";
+import type { ReferenceResolutionPolicy }          from "../core/ReferenceResolutionPolicy";
+import { DEFAULT_POLICY }                          from "../core/ReferenceResolutionPolicy";
+import type { ReferenceResolutionReason }          from "../core/ReferenceResolutionReason";
+import { TelemetryCollector }                      from "../core/ReferenceTelemetry";
+
+// ── Drive-specific raw type (adapter boundary) ────────────────────────────────
+// Este tipo e privado ao adapter. Nao e exportado. Nao chega ao Core.
 
 interface DriveFile {
-  id:           string;
-  name:         string;
+  id:            string;
+  name:          string;
   modifiedTime?: string;
-  mimeType?:    string;
+  mimeType?:     string;
 }
 
-// ── Score helpers ─────────────────────────────────────────────────────────────
+// ── Adapter: DriveFile → ReferenceResource ────────────────────────────────────
 
-function scoreFile(name: string, query: string): number {
-  const n = name.toLowerCase().trim();
+function toResource(file: DriveFile): ReferenceResource {
+  return Object.freeze({
+    id:           file.id,
+    title:        file.name,
+    lastModified: file.modifiedTime,
+  });
+}
+
+// ── Canonical scoring (operates only on ReferenceResource) ────────────────────
+
+function scoreResource(
+  resource: ReferenceResource,
+  query: string,
+  policy: ReferenceResolutionPolicy,
+): { score: number; reason: ReferenceResolutionReason } {
+  const t = resource.title.toLowerCase().trim();
   const q = query.toLowerCase().trim();
-  if (n === q)               return 1.00;
-  if (n.startsWith(q))       return 0.85;
-  if (n.includes(q))         return 0.65;
-  return 0;
+  if (t === q)           return { score: policy.EXACT_MATCH,    reason: "EXACT_MATCH" };
+  if (t.startsWith(q))   return { score: policy.PREFIX_MATCH,   reason: "PREFIX_MATCH" };
+  if (t.includes(q))     return { score: policy.CONTAINS_MATCH, reason: "CONTAINS_MATCH" };
+  // summary fallback (if present)
+  const s = (resource.summary ?? "").toLowerCase().trim();
+  if (s.includes(q))     return { score: policy.CONTAINS_MATCH, reason: "CONTAINS_MATCH" };
+  return { score: 0, reason: "NO_MATCH" };
 }
 
 // ── GoogleDriveReferenceResolver ──────────────────────────────────────────────
 
 export class GoogleDriveReferenceResolver implements ReferenceResolver {
   readonly connectorId = "google-drive";
+  private readonly _policy: Readonly<ReferenceResolutionPolicy>;
+
+  constructor(policy?: Readonly<ReferenceResolutionPolicy>) {
+    this._policy = policy ?? DEFAULT_POLICY;
+  }
 
   async resolve(
     reference: Reference,
     context?: ResolverContext,
   ): Promise<ResolutionResult> {
-    const q = reference.text.trim();
+    const t0 = Date.now();
+    const q  = reference.text.trim();
+
     if (!q) {
       return failedResult("google-drive", reference.text, "Reference text is empty");
     }
 
-    // Preloaded file list injected by the caller (from Drive connector output)
-    const files = this._extractFiles(context?.preloaded);
-    if (files.length === 0) {
-      return failedResult("google-drive", reference.text, "No files available for resolution — preload Drive files first");
+    // ── Step 1: extract raw Drive files (adapter boundary) ───────────────────
+    const rawFiles = this._extractFiles(context?.preloaded);
+    if (rawFiles.length === 0) {
+      return failedResult("google-drive", reference.text,
+        "No files available for resolution — preload Drive files first");
     }
 
-    const maxCandidates = context?.maxCandidates ?? 10;
-    const candidates: ResolutionCandidate[] = [];
-    let fallback: DriveFile | null = null;
-    let latestModified = "";
+    // ── Step 2: convert to canonical ReferenceResource (adapter responsibility) ─
+    const resources: ReferenceResource[] = rawFiles
+      .filter(f => f.id && f.name)
+      .map(toResource);
 
-    for (const file of files) {
-      if (!file.id || !file.name) continue;
+    // ── Step 3: score each resource (canonical algorithm — no Drive knowledge) ─
+    const maxCandidates = context?.maxCandidates ?? this._policy.maxCandidates;
+    const candidates:  ResolutionCandidate[] = [];
+    let   fallback:    ReferenceResource | null = null;
+    let   latestModified = "";
 
-      const score = scoreFile(file.name, q);
+    for (const resource of resources) {
+      const { score, reason } = scoreResource(resource, q, this._policy);
       if (score > 0) {
-        candidates.push(Object.freeze({
-          resourceId:  file.id,
-          displayName: file.name,
-          confidence:  score,
-        }));
+        candidates.push(Object.freeze({ resourceId: resource.id, displayName: resource.title, confidence: score, reason }));
       }
-
-      // Track most recently modified file as low-confidence fallback
-      const mt = file.modifiedTime ?? "";
-      if (mt > latestModified) {
-        latestModified = mt;
-        fallback = file;
-      }
+      // Track most recently modified for fallback
+      const mt = resource.lastModified ?? "";
+      if (mt > latestModified) { latestModified = mt; fallback = resource; }
     }
 
-    // Add fallback with lowest confidence when no match found
+    // ── Step 4: fallback (below threshold — confirmation required) ────────────
     if (candidates.length === 0 && fallback) {
       candidates.push(Object.freeze({
         resourceId:  fallback.id,
-        displayName: fallback.name,
-        confidence:  0.30,
+        displayName: fallback.title,
+        confidence:  this._policy.RECENT_RESOURCE_FALLBACK,
+        reason:      "RECENT_RESOURCE" as ReferenceResolutionReason,
       }));
     }
 
-    // Trim to maxCandidates after sort (sort happens in resolvedResult)
     const trimmed = candidates
       .sort((a, b) => b.confidence - a.confidence)
       .slice(0, maxCandidates);
 
-    return resolvedResult("google-drive", reference.text, trimmed);
+    const result = resolvedResult(
+      "google-drive", reference.text, trimmed,
+      resources.length, this._policy.minimumConfidence,
+    );
+
+    // ── Step 5: telemetry ─────────────────────────────────────────────────────
+    TelemetryCollector.emit(Object.freeze({
+      event:               "ReferenceResolved",
+      connector:           "google-drive",
+      referenceText:       reference.text,
+      durationMs:          Date.now() - t0,
+      candidateCount:      trimmed.length,
+      confidence:          result.confidence,
+      reason:              result.reason,
+      confirmationRequired: result.confirmationRequired,
+      timestamp:           Date.now(),
+    }));
+
+    return result;
   }
 
-  // ── Private ─────────────────────────────────────────────────────────────────
+  // ── Private: adapter boundary — Drive-specific extraction ─────────────────
 
   private _extractFiles(preloaded: unknown): DriveFile[] {
     if (!preloaded) return [];
-    // Accept: { files: DriveFile[] } or DriveFile[] directly
     if (Array.isArray(preloaded)) return preloaded as DriveFile[];
     const p = preloaded as Record<string, unknown>;
     if (Array.isArray(p.files)) return p.files as DriveFile[];
