@@ -169,6 +169,7 @@ import SprintC022Page from '@/pages/SprintC022Page';
 import SprintC023Page from '@/pages/SprintC023Page';
 import SprintC024Page from '@/pages/SprintC024Page';
 import SprintC030Page from '@/pages/SprintC030Page';
+import SprintC036Page from '@/pages/SprintC036Page';
 
 const AuthenticatedApp = () => {
   console.log('[RENDER] AuthenticatedApp');
@@ -357,6 +358,7 @@ const AuthenticatedApp = () => {
           <Route path="/sprint-c023" element={<SprintC023Page />} />
           <Route path="/sprint-c024" element={<SprintC024Page />} />
           <Route path="/sprint-c030" element={<SprintC030Page />} />
+          <Route path="/sprint-c036" element={<SprintC036Page />} />
         </Route>
       </Route>
       <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />
