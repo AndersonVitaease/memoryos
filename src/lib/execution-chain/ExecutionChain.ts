@@ -14,7 +14,8 @@
 
 import { ExecutionCompositionRoot }     from "./ExecutionCompositionRoot";
 import type { ComposedRuntime, CompositionDeps } from "./ExecutionCompositionRoot";
-import { withUserInput, EMPTY_EXECUTION_STATE } from "./ExecutionState";
+import { withUserInput, EMPTY_EXECUTION_STATE }   from "./ExecutionState";
+import type { ExecutionReportAssembler }           from "./ExecutionReportAssembler";
 import type { ExecutionState }          from "./ExecutionState";
 import type { RuntimeEventBus }         from "../runtime-infra/RuntimeEventBus";
 import type { RuntimeMetrics }          from "../runtime-infra/RuntimeMetrics";
