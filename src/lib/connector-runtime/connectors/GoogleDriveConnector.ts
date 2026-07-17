@@ -349,8 +349,13 @@ export class GoogleDriveConnector implements IConnector {
       // -- Files Search --------------------------------------------------------
 
       case "drive.files.search": {
-        const q = typeof payload.q === "string" ? payload.q : null;
-        if (!q) return fail("query string 'q' is required", "validation", start, eid, logs, operation);
+        // Sprint C-01: when "q" is absent or empty, fall back to listing all
+        // non-trashed files (same semantics as drive.files.list but via search path).
+        // This eliminates the [validation] 'q' is required error that occurred when
+        // the Planner produced a search step with no query parameter.
+        const q = (typeof payload.q === "string" && payload.q.trim().length > 0)
+          ? payload.q
+          : "trashed=false";
         const pageSize = typeof payload.pageSize === "number" ? Math.min(payload.pageSize, 100) : 20;
         const fields = "nextPageToken,files(id,name,mimeType,size,modifiedTime,createdTime,owners,parents,webViewLink,thumbnailLink,trashed)";
 

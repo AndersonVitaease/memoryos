@@ -184,22 +184,44 @@ const _builtins: CapabilityMapping[] = [
   // connector id: "google-drive"  (GoogleDriveConnector.ts:118)
   // capabilities: "drive.files.list", "drive.files.get", "drive.files.search",
   //               "drive.about.get", "connectivity.ping", "health.full"
+  //
+  // Sprint C-01: default params added so every Drive goal produces a valid
+  // payload even when the user intent carries no explicit parameters.
+  //   drive.files.search requires "q" — default: "trashed=false" (list all non-trashed)
+  //   drive.files.list   defaults: pageSize=10, orderBy=modifiedTime desc
+  //   drive.files.get    requires "fileId" — no static default possible; goal.parameters must carry it
   {
     goalType: "drive.searchFiles",
     descriptors: [
-      { connector: "google-drive", capability: "drive.files.search", params: {} },
+      {
+        connector: "google-drive",
+        capability: "drive.files.search",
+        // Sprint C-01: "q" default prevents [validation] query string 'q' is required.
+        // If goal.parameters carries a more specific "q", it overrides this default
+        // (Planner merges: { ...desc.params, ...goal.parameters }).
+        params: { q: "trashed=false", pageSize: 10, orderBy: "modifiedTime desc" },
+      },
     ],
   },
   {
     goalType: "drive.listRecent",
     descriptors: [
-      { connector: "google-drive", capability: "drive.files.list", params: {} },
+      {
+        connector: "google-drive",
+        capability: "drive.files.list",
+        params: { pageSize: 10, orderBy: "modifiedTime desc" },
+      },
     ],
   },
   {
     goalType: "drive.openDocument",
     descriptors: [
-      { connector: "google-drive", capability: "drive.files.get", params: {} },
+      {
+        connector: "google-drive",
+        capability: "drive.files.get",
+        // fileId must come from goal.parameters; no static default possible.
+        params: {},
+      },
     ],
   },
 
