@@ -8,8 +8,9 @@ import type { PipelineStage }    from "./PipelineStage";
 import type { ExecutionContext }  from "./ExecutionContext";
 import type { ExecutionState }   from "./ExecutionState";
 import type { ChainStageRecord } from "./ExecutionChainTypes";
-import { ExecutionPipeline }     from "./ExecutionPipeline";
-import { PipelineValidator }     from "./PipelineValidator";
+import { ExecutionPipeline }         from "./ExecutionPipeline";
+import { PipelineValidator }         from "./PipelineValidator";
+import { PipelineInstrumentation }   from "./PipelineInstrumentation";
 
 import type { IIntentRuntime }         from "./stages/IntentRuntimeStage";
 import type { IGoalRuntime }           from "./stages/GoalRuntimeStage";
@@ -205,7 +206,7 @@ export interface PipelineStageFactories {
 export class PipelineBuilder {
   private readonly _validator = new PipelineValidator();
 
-  build(factories: PipelineStageFactories): ExecutionPipeline {
+  build(factories: PipelineStageFactories, instrumentation?: PipelineInstrumentation): ExecutionPipeline {
     const stages: PipelineStage[] = [
       StageAdapters.userInput(),
       StageAdapters.intent(factories.intentRuntime),
@@ -227,6 +228,6 @@ export class PipelineBuilder {
       throw new Error(`PipelineValidator rejected pipeline: ${validation.errors.join("; ")}`);
     }
 
-    return new ExecutionPipeline(stages);
+    return new ExecutionPipeline(stages, instrumentation);
   }
 }

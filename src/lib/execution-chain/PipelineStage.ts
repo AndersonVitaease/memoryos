@@ -27,22 +27,28 @@ export interface RuntimeHealth {
 }
 
 /**
- * EF-18 — Self Registration descriptor.
+ * EF-18/EF-24 — Self Registration descriptor.
  * Each runtime stage exposes this to eliminate manual registration in ECR.
+ * EF-24: apiVersion + schemaVersion added for future evolution.
  */
 export interface RuntimeDescriptor {
-  readonly id:           string;
-  readonly version:      string;
-  readonly owner:        string;
-  readonly capabilities: readonly string[];
-  readonly dependencies: readonly string[];
-  readonly lifecycle:    "singleton" | "scoped" | "transient";
+  readonly id:             string;
+  readonly version:        string;
+  /** EF-24: API contract version — incremented on breaking changes. */
+  readonly apiVersion?:    string;
+  /** EF-24: Schema version — incremented when descriptor shape changes. */
+  readonly schemaVersion?: string;
+  readonly owner:          string;
+  readonly capabilities:   readonly string[];
+  readonly dependencies:   readonly string[];
+  readonly lifecycle:      "singleton" | "scoped" | "transient";
   health(): RuntimeHealth;
 }
 
 /**
- * EF-17 — ExplainabilityEvidence V2
- * Collected automatically by ExecutionPipeline per stage.
+ * EF-23 — ExplainabilityEvidence V3
+ * Collected automatically by PipelineInstrumentation per stage.
+ * Added: reasoning (structured justification) + metadata (contextual extras).
  * Stages must NOT build Explainability manually.
  */
 export interface ExplainabilityEvidence {
@@ -51,7 +57,11 @@ export interface ExplainabilityEvidence {
   readonly durationMs: number;
   readonly input:      Record<string, unknown>;
   readonly output:     Record<string, unknown> | unknown;
+  /** EF-23: Structured reasoning — WHY this stage made its decision. */
+  readonly reasoning:  string;
   readonly decision:   string;
   readonly confidence: number;
   readonly policies:   readonly string[];
+  /** EF-23: Arbitrary stage-specific metadata for rich explainability. */
+  readonly metadata:   Record<string, unknown>;
 }

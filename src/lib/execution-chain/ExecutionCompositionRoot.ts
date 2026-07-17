@@ -16,6 +16,8 @@ import { RuntimeRegistry }                             from "./RuntimeRegistry";
 import type { RuntimeDescriptor }                      from "./RuntimeRegistry";
 import { RuntimeAuditSink }                            from "./RuntimeAuditSink";
 import { PipelineBuilder }                             from "./PipelineBuilder";
+import { ExecutionReportAssembler }                    from "./ExecutionReportAssembler";
+import { PipelineInstrumentation }                    from "./PipelineInstrumentation";
 
 import { IntentRuntimeStage }                          from "./stages/IntentRuntimeStage";
 import { GoalRuntimeStage }                            from "./stages/GoalRuntimeStage";
@@ -68,6 +70,8 @@ export interface ComposedRuntime {
   readonly runtimeRegistry:   RuntimeRegistry;
   readonly auditSink:         RuntimeAuditSink;
   readonly pipeline:          ExecutionPipeline;
+  /** EF-26: Injected into ExecutionChain — no concrete instantiation in chain. */
+  readonly reportAssembler:   ExecutionReportAssembler;
 }
 
 /**
@@ -118,13 +122,19 @@ export class ExecutionCompositionRoot {
     const explainability      = deps.explainability      ?? new ExplainabilityStageImpl(idProvider);
     const auditEngine         = deps.auditEngine         ?? new AuditStageImpl(idProvider, clock);
 
+    // ── EF-22: Instrumentation layer ────────────────────────────────────────
+    const instrumentation = new PipelineInstrumentation();
+
+    // ── EF-26: Report assembler constructed here, injected into chain ────────
+    const reportAssembler = new ExecutionReportAssembler();
+
     // ── Pipeline assembly ───────────────────────────────────────────────────
     const builder  = new PipelineBuilder();
     const pipeline = builder.build({
       intentRuntime, goalRuntime, planningRuntime, kernel,
       runtimeOrchestrator, capabilityRuntime, connectorRuntime,
       connectorStage, resultStage, memoryEngine, explainability, auditEngine,
-    });
+    }, instrumentation);
 
     // ── EF-18: Auto self-registration ───────────────────────────────────────
     // Stage IDs that have corresponding runtimes to register (USER_INPUT is infra-only)
@@ -151,7 +161,7 @@ export class ExecutionCompositionRoot {
       runtimeRegistry.register(desc);
     }
 
-    return Object.freeze({ clock, idProvider, eventBus, metrics, connectorRegistry, runtimeRegistry, auditSink, pipeline });
+    return Object.freeze({ clock, idProvider, eventBus, metrics, connectorRegistry, runtimeRegistry, auditSink, pipeline, reportAssembler });
   }
 
   /** Build an ExecutionContext for a single execution. */

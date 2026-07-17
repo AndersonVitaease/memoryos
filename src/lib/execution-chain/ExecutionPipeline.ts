@@ -1,21 +1,26 @@
 // ══════════════════════════════════════════════════════════════════════════════
-// Sprint P-01.11B — EF-01/EF-15/EF-17: ExecutionPipeline
+// Sprint P-01.11C — EF-22: ExecutionPipeline (pure orchestrator)
 //
-// EF-15: Propagates ExecutionState through all 13 stages — no Map, no bag.
-// EF-17: Automatically collects Explainability evidence per stage.
-//        Each stage may ONLY complement evidence — never build it manually.
+// Responsibilities (ONLY):
+//   - stage ordering
+//   - state propagation via typed helpers (EF-21)
+//   - failure interruption
+//
+// ALL instrumentation (metrics, events, evidence, records) is delegated to
+// PipelineInstrumentation (EF-22). Zero instrumentation code here.
 // ══════════════════════════════════════════════════════════════════════════════
 
 import type { PipelineStage }          from "./PipelineStage";
 import type { ExecutionContext }        from "./ExecutionContext";
-import type { ChainStage, ChainStageStatus } from "./ExecutionChainTypes";
-import type { RuntimeEventType }        from "../runtime-infra/RuntimeEvent";
-import type { ChainStageRecord }        from "./ExecutionChainTypes";
-import type { ExecutionState }   from "./ExecutionState";
-import { withRecord, withStageOutput } from "./ExecutionState";
-
-const EV_STAGE_COMPLETED: RuntimeEventType = "STAGE_COMPLETED";
-const EV_STAGE_FAILED:    RuntimeEventType = "STAGE_FAILED";
+import type { ChainStage }             from "./ExecutionChainTypes";
+import type { ExecutionState }         from "./ExecutionState";
+import {
+  withRecord,
+  withUserInput, withIntent, withGoal, withPlan, withKernel,
+  withOrchestrator, withCapability, withConnectorRuntime,
+  withConnector, withResult, withMemory, withExplainability, withAudit,
+} from "./ExecutionState";
+import { PipelineInstrumentation }     from "./PipelineInstrumentation";
 
 export interface PipelineRunResult {
   readonly state:       ExecutionState;
@@ -23,73 +28,67 @@ export interface PipelineRunResult {
   readonly failedStage: string | null;
 }
 
-export class ExecutionPipeline {
-  private readonly _stages: PipelineStage[];
+// Map each stage ID to its typed state helper — EF-21: no unsafe casts
+const STATE_MERGER: Record<string, (s: ExecutionState, v: unknown) => ExecutionState> = {
+  USER_INPUT:           (s, v) => withUserInput(s,          v as Parameters<typeof withUserInput>[1]),
+  INTENT_RUNTIME:       (s, v) => withIntent(s,             v as Parameters<typeof withIntent>[1]),
+  GOAL_RUNTIME:         (s, v) => withGoal(s,               v as Parameters<typeof withGoal>[1]),
+  PLANNING_RUNTIME:     (s, v) => withPlan(s,               v as Parameters<typeof withPlan>[1]),
+  KERNEL:               (s, v) => withKernel(s,             v as Parameters<typeof withKernel>[1]),
+  RUNTIME_ORCHESTRATOR: (s, v) => withOrchestrator(s,       v as Parameters<typeof withOrchestrator>[1]),
+  CAPABILITY_RUNTIME:   (s, v) => withCapability(s,         v as Parameters<typeof withCapability>[1]),
+  CONNECTOR_RUNTIME:    (s, v) => withConnectorRuntime(s,   v as Parameters<typeof withConnectorRuntime>[1]),
+  CONNECTOR:            (s, v) => withConnector(s,          v as Parameters<typeof withConnector>[1]),
+  RESULT:               (s, v) => withResult(s,             v as Parameters<typeof withResult>[1]),
+  MEMORY:               (s, v) => withMemory(s,             v as Parameters<typeof withMemory>[1]),
+  EXPLAINABILITY:       (s, v) => withExplainability(s,     v as Parameters<typeof withExplainability>[1]),
+  AUDIT:                (s, v) => withAudit(s,              v as Parameters<typeof withAudit>[1]),
+};
 
-  constructor(stages: PipelineStage[]) {
-    this._stages = stages;
+export class ExecutionPipeline {
+  private readonly _stages:          PipelineStage[];
+  private readonly _instrumentation: PipelineInstrumentation;
+
+  constructor(stages: PipelineStage[], instrumentation?: PipelineInstrumentation) {
+    this._stages          = stages;
+    this._instrumentation = instrumentation ?? new PipelineInstrumentation();
   }
 
   /** Run all stages in sequence, propagating ExecutionState. Stops on first failure. */
   async execute(
-    context: ExecutionContext,
+    context:      ExecutionContext,
     initialInput: ExecutionState,
   ): Promise<PipelineRunResult> {
     let   state:       ExecutionState = initialInput;
     let   failedStage: string | null  = null;
 
     for (const stage of this._stages) {
-      const startedAt = context.clock.now();
-
-      // EF-17: pipeline automatically captures input before stage execution
-      const stageInput = state;
+      const startedAt  = context.clock.now();
+      const stageInput = state;  // snapshot before execution
 
       try {
         const output      = await stage.execute(context, stageInput);
         const completedAt = context.clock.now();
-        const durationMs  = completedAt - startedAt;
 
-        context.metrics.recordSuccess(durationMs);
+        // Delegate ALL instrumentation to PipelineInstrumentation (EF-22)
+        const record = this._instrumentation.onSuccess(
+          context, stage.id, startedAt, completedAt, stageInput, output,
+        );
 
-        // EF-17: automatic evidence collection — stage label, timing, decision
-        context.evidences.push({
-          runtimeId:   stage.id,
-          timestamp:   completedAt,
-          durationMs,
-          input:       Object.freeze({ stage: stage.id }),
-          output:      typeof output === "object" && output !== null ? output : { value: output },
-          decision:    `${stage.id} completed in ${durationMs}ms`,
-          confidence:  1.0,
-          policies:    [],
-        });
-
-        context.eventBus.publish(Object.freeze({
-          type:         EV_STAGE_COMPLETED,
-          executionId:  stage.id,
-          runtimeLabel: stage.id,
-          timestamp:    completedAt,
-          detail:       undefined,
-          payload:      { stage: stage.id, durationMs },
-        }));
-
-        const record = _record(stage.id as ChainStage, startedAt, completedAt, stageInput, output, null);
-        state = withStageOutput(withRecord(state, record), stage.id, output);
+        // State propagation — use typed helper via lookup (EF-21)
+        const merger = STATE_MERGER[stage.id as ChainStage];
+        state = merger
+          ? withRecord(merger(state, output), record)
+          : withRecord(state, record);
 
       } catch (e: unknown) {
         const completedAt = context.clock.now();
         const error       = String((e as Error).message ?? e);
 
-        context.metrics.recordFailure();
-        context.eventBus.publish(Object.freeze({
-          type:         EV_STAGE_FAILED,
-          executionId:  stage.id,
-          runtimeLabel: stage.id,
-          timestamp:    completedAt,
-          detail:       error,
-          payload:      { stage: stage.id },
-        }));
+        const record = this._instrumentation.onFailure(
+          context, stage.id, startedAt, completedAt, stageInput, error,
+        );
 
-        const record = _record(stage.id as ChainStage, startedAt, completedAt, stageInput, null, error);
         state        = withRecord(state, record);
         failedStage  = stage.id;
         break;
@@ -98,24 +97,4 @@ export class ExecutionPipeline {
 
     return Object.freeze({ state, success: failedStage === null, failedStage });
   }
-}
-
-function _record(
-  stage:       ChainStage,
-  startedAt:   number,
-  completedAt: number,
-  input:       unknown,
-  output:      unknown,
-  error:       string | null,
-): ChainStageRecord {
-  return Object.freeze({
-    stage,
-    status:      (error ? "FAILED" : "COMPLETED") as ChainStageStatus,
-    startedAt,
-    completedAt,
-    durationMs:  completedAt - startedAt,
-    input,
-    output,
-    error,
-  });
 }

@@ -14,8 +14,7 @@
 
 import { ExecutionCompositionRoot }     from "./ExecutionCompositionRoot";
 import type { ComposedRuntime, CompositionDeps } from "./ExecutionCompositionRoot";
-import { ExecutionReportAssembler }     from "./ExecutionReportAssembler";
-import { withStageOutput, EMPTY_EXECUTION_STATE } from "./ExecutionState";
+import { withUserInput, EMPTY_EXECUTION_STATE } from "./ExecutionState";
 import type { ExecutionState }          from "./ExecutionState";
 import type { RuntimeEventBus }         from "../runtime-infra/RuntimeEventBus";
 import type { RuntimeMetrics }          from "../runtime-infra/RuntimeMetrics";
@@ -33,12 +32,13 @@ export type ExecutionChainDeps = CompositionDeps & {
 };
 
 export class ExecutionChain {
-  private readonly _rt:       ComposedRuntime;
+  private readonly _rt:        ComposedRuntime;
   private readonly _assembler: ExecutionReportAssembler;
 
   constructor(deps: ExecutionChainDeps = {}) {
-    this._rt       = ExecutionCompositionRoot.compose(deps);
-    this._assembler = new ExecutionReportAssembler();
+    this._rt = ExecutionCompositionRoot.compose(deps);
+    // EF-26: assembler is constructed by CompositionRoot, injected here — no 'new' in chain
+    this._assembler = this._rt.reportAssembler;
   }
 
   async execute(input: UserInput): Promise<ExecutionChainReport> {
@@ -48,8 +48,8 @@ export class ExecutionChain {
     this._rt.metrics.recordExecution();
     this._emit(EV_EXEC_STARTED, chainId, "ExecutionChain started");
 
-    // Build initial state with userInput populated
-    const initialState = withStageOutput(EMPTY_EXECUTION_STATE, "USER_INPUT", input);
+    // EF-21: typed helper — no unsafe cast
+    const initialState = withUserInput(EMPTY_EXECUTION_STATE, input);
 
     const evidences: ExplainabilityEvidence[] = [];
     const ctx = {

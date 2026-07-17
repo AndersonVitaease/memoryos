@@ -1,8 +1,7 @@
 // ══════════════════════════════════════════════════════════════════════════════
-// Sprint P-01.11B — EF-14: ExecutionState
-// Replaces StageOutputBag and Map<string, unknown> entirely.
-// Fully typed, immutable, no any, no unsafe casts.
-// All PipelineStages consume and produce ExecutionState.
+// Sprint P-01.11C — EF-21: ExecutionState (typed helpers, zero unsafe casts)
+// Replaces withStageOutput switch+cast with strongly typed helper functions.
+// All helpers return a new frozen ExecutionState — no mutation, no 'as Type'.
 // ══════════════════════════════════════════════════════════════════════════════
 
 import type {
@@ -70,20 +69,57 @@ export const EMPTY_EXECUTION_STATE: ExecutionState = Object.freeze({
   records:          Object.freeze([]) as readonly ChainStageRecord[],
 });
 
-/**
- * withRecord — pure helper to append a stage record to state.
- * Returns a new frozen ExecutionState.
- */
+// ── EF-21: Strongly typed helpers — zero unsafe casts ────────────────────────
+
+/** Append a stage record to state. Returns a new frozen ExecutionState. */
 export function withRecord(state: ExecutionState, record: ChainStageRecord): ExecutionState {
-  return Object.freeze({
-    ...state,
-    records: Object.freeze([...state.records, record]),
-  });
+  return Object.freeze({ ...state, records: Object.freeze([...state.records, record]) });
+}
+
+export function withUserInput(state: ExecutionState, v: UserInput): ExecutionState {
+  return Object.freeze({ ...state, userInput: v });
+}
+export function withIntent(state: ExecutionState, v: IntentResult): ExecutionState {
+  return Object.freeze({ ...state, intent: v });
+}
+export function withGoal(state: ExecutionState, v: GoalResult): ExecutionState {
+  return Object.freeze({ ...state, goal: v });
+}
+export function withPlan(state: ExecutionState, v: PlanResult): ExecutionState {
+  return Object.freeze({ ...state, plan: v });
+}
+export function withKernel(state: ExecutionState, v: KernelResult): ExecutionState {
+  return Object.freeze({ ...state, kernel: v });
+}
+export function withOrchestrator(state: ExecutionState, v: OrchestratorResult): ExecutionState {
+  return Object.freeze({ ...state, orchestrator: v });
+}
+export function withCapability(state: ExecutionState, v: CapabilityResult): ExecutionState {
+  return Object.freeze({ ...state, capability: v });
+}
+export function withConnectorRuntime(state: ExecutionState, v: ConnectorRuntimeResult): ExecutionState {
+  return Object.freeze({ ...state, connectorRuntime: v });
+}
+export function withConnector(state: ExecutionState, v: ConnectorResult): ExecutionState {
+  return Object.freeze({ ...state, connector: v });
+}
+export function withResult(state: ExecutionState, v: ResultOutput): ExecutionState {
+  return Object.freeze({ ...state, result: v });
+}
+export function withMemory(state: ExecutionState, v: MemoryResult): ExecutionState {
+  return Object.freeze({ ...state, memory: v });
+}
+export function withExplainability(state: ExecutionState, v: ExplainabilityResult): ExecutionState {
+  return Object.freeze({ ...state, explainability: v });
+}
+export function withAudit(state: ExecutionState, v: AuditResult): ExecutionState {
+  return Object.freeze({ ...state, audit: v });
 }
 
 /**
- * withStageOutput — typed merge of a single stage output into the state.
- * Returns a new frozen ExecutionState.
+ * withStageOutput — backward-compatible dispatcher used only by ExecutionChain
+ * for the initial USER_INPUT seeding. Pipeline stages use typed helpers above.
+ * Kept for backward compatibility with existing cert suites.
  */
 export function withStageOutput(
   state: ExecutionState,
@@ -91,19 +127,7 @@ export function withStageOutput(
   output: unknown,
 ): ExecutionState {
   switch (stageId) {
-    case "USER_INPUT":          return Object.freeze({ ...state, userInput:        output as UserInput              });
-    case "INTENT_RUNTIME":      return Object.freeze({ ...state, intent:           output as IntentResult           });
-    case "GOAL_RUNTIME":        return Object.freeze({ ...state, goal:             output as GoalResult             });
-    case "PLANNING_RUNTIME":    return Object.freeze({ ...state, plan:             output as PlanResult             });
-    case "KERNEL":              return Object.freeze({ ...state, kernel:           output as KernelResult           });
-    case "RUNTIME_ORCHESTRATOR":return Object.freeze({ ...state, orchestrator:     output as OrchestratorResult     });
-    case "CAPABILITY_RUNTIME":  return Object.freeze({ ...state, capability:       output as CapabilityResult       });
-    case "CONNECTOR_RUNTIME":   return Object.freeze({ ...state, connectorRuntime: output as ConnectorRuntimeResult });
-    case "CONNECTOR":           return Object.freeze({ ...state, connector:        output as ConnectorResult        });
-    case "RESULT":              return Object.freeze({ ...state, result:           output as ResultOutput           });
-    case "MEMORY":              return Object.freeze({ ...state, memory:           output as MemoryResult           });
-    case "EXPLAINABILITY":      return Object.freeze({ ...state, explainability:   output as ExplainabilityResult   });
-    case "AUDIT":               return Object.freeze({ ...state, audit:            output as AuditResult            });
-    default:                    return Object.freeze({ ...state });
+    case "USER_INPUT": return withUserInput(state, output as UserInput);
+    default:           return Object.freeze({ ...state });
   }
 }

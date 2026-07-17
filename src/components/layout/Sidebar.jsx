@@ -122,6 +122,7 @@ const navItems = [
   { label: "Phase 6.4.1A — OAuth Discovery",             icon: Search,       path: "/phase641a" },
   { label: "Sprint P-01.11A — Architecture Freeze",       icon: Award,        path: "/sprint-p011a" },
   { label: "Sprint P-01.11B — Hardening",                 icon: ShieldCheck,  path: "/sprint-p011b" },
+  { label: "Sprint P-01.11C — Engineering Quality",       icon: Award,        path: "/sprint-p011c" },
 ];
 
 export default function Sidebar({ onNavigate }) {
