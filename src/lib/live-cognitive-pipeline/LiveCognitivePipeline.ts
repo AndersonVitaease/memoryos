@@ -692,6 +692,8 @@ export class LiveCognitivePipeline {
         knowledgeGraphNodes:    lifecycle.integration.knowledgeGraphNodesAdded,
         timelineEventsAdded:    lifecycle.integration.timelineEventsAdded,
         gieMs,
+        // Sprint M-06.6: forward lifecycle so _stageCLE can build a real ExecutionPlan
+        _lifecycle: lifecycle as unknown as Record<string, unknown>,
       }, null,
       kgsLoaded
         ? `GIE: ${totalEntities} real components integrated`
@@ -707,35 +709,135 @@ export class LiveCognitivePipeline {
   private async _stageCLE(ctx: PipelineExecutionContext, prev: StageResult): Promise<StageResult> {
     const t0 = Date.now();
     try {
-      const gieData = prev.output as any;
+      const gieOut = prev.output as any;
+
+      // Sprint M-06.6 — Phase 1: convert GoalDecomposition.tasks[] → PlanStep[]
+      // Source: _lifecycle forwarded by _stageGIE (M-06.6 Phase 2B).
+      // Fallback: single synthetic step when lifecycle unavailable (e.g. GIE failed).
+      const lifecycle = gieOut._lifecycle as any;
+      const decomp    = lifecycle?.decomposition;
+
+      // Gather all decomposition items: tasks + objectives + milestones + subgoals
+      const allItems: any[] = [
+        ...(decomp?.tasks      ?? []),
+        ...(decomp?.objectives ?? []),
+        ...(decomp?.milestones ?? []),
+        ...(decomp?.subgoals   ?? []),
+      ];
+
+      const planSteps: any[] = allItems.length > 0
+        ? allItems.map((item: any, i: number) => ({
+            id:                 item.id ?? `step_${i}`,
+            order:              i,
+            title:              item.title ?? `Task ${i + 1}`,
+            description:        `Cognitive task from GoalDecomposition: ${item.type ?? "task"}`,
+            connector:          "base44" as const,
+            operation:          `goal.${item.type ?? "task"}.execute`,
+            riskLevel:          "low" as const,
+            estimatedDurationMs: 50,
+            requiresApproval:   false,
+            affectedFiles:      [],
+            expectedImpact:     `Complete ${item.title ?? "task"}`,
+          }))
+        : [{ // fallback single step (only when GIE produced 0 tasks)
+            id: "step_fallback", order: 0,
+            title: "Live Pipeline Execution (fallback)", description: "No tasks from GoalDecomposition",
+            connector: "base44" as const, operation: "projects.list",
+            riskLevel: "low" as const, estimatedDurationMs: 50,
+            requiresApproval: false, affectedFiles: [], expectedImpact: "Pipeline execution",
+          }];
+
+      // Phase 2: forward GIERecommendation[] → ExecutionPlan.opportunities[]
+      const gieRecs: any[] = lifecycle?.recommendations ?? [];
+      const opportunities: any[] = gieRecs.map((r: any) => ({
+        id:          r.id ?? makeLCPId("opp"),
+        title:       r.title ?? "GIE Recommendation",
+        description: r.reasoning ?? r.description ?? "",
+        category:    "knowledge" as const,
+        riskLevel:   "low" as const,
+        effort:      "medium" as const,
+        reasoning:   r.reasoning ?? "",
+      }));
+
       const plan: any = {
-        id: makeLCPId("plan"),
-        steps: [{ id: "s1", title: "Live Pipeline Execution", connector: "base44", operation: "projects.list" }],
-        opportunities: [],
-        risk: { overall: "low" },
-      };
-      const record: any = {
-        id: makeLCPId("rec"),
-        stepResults: [{ stepId: "s1", status: "complete", startedAt: t0, completedAt: Date.now(), durationMs: Date.now() - t0, output: gieData, error: null, warnings: [] }],
-        operationsExecuted: 1,
-        errors: [],
-        warnings: [],
-        planId: plan.id,
-        startedAt: t0,
-        completedAt: Date.now(),
-        durationMs: Date.now() - t0,
-        overallSuccess: true,
+        id:            makeLCPId("plan"),
+        generatedAt:   t0,
+        title:         `Goal Intelligence Plan — ${lifecycle?.goal?.id ?? ctx.executionId}`,
+        summary:       `${planSteps.length} tasks from GoalDecomposition · ${opportunities.length} GIE recommendations`,
+        steps:         planSteps,
+        opportunities,
+        risk:          { overall: "low", items: [] },
+        dependencies:  { directDependencies: [], knowledgeDependencies: [], connectorDependencies: [] },
+        requiresConnectors: ["base44"],
+        estimatedTotalMs: planSteps.length * 50,
+        approved:      true,
+        approvedAt:    t0,
       };
 
+      // Phase 1B: derive overallSuccess and step statuses from real GIE state.
+      // goalStatus "planned" = GIE completed lifecycle successfully.
+      const goalStatus:    string  = lifecycle?.goal?.status ?? "unknown";
+      const gieSucceeded:  boolean = goalStatus === "planned" || goalStatus === "executing" || goalStatus === "completed";
+      const kgsLoaded:     boolean = gieOut.kgsLoaded ?? false;
+
+      const stepResults: any[] = planSteps.map((step: any) => ({
+        stepId:      step.id,
+        status:      gieSucceeded ? "complete" : "failed",
+        startedAt:   t0,
+        completedAt: Date.now(),
+        durationMs:  Math.max(1, Date.now() - t0),
+        output:      { goalStatus, kgsLoaded, taskTitle: step.title },
+        error:       gieSucceeded ? null : `Goal not in planned state: ${goalStatus}`,
+        warnings:    kgsLoaded ? [] : ["KGS fallback — no real repository data"],
+      }));
+
+      const record: any = {
+        id:                 makeLCPId("exec_rec"),
+        planId:             plan.id,
+        startedAt:          t0,
+        completedAt:        Date.now(),
+        durationMs:         Date.now() - t0,
+        stepResults,
+        operationsExecuted: planSteps.length,
+        errors:             gieSucceeded ? [] : [`Goal status: ${goalStatus}`],
+        warnings:           kgsLoaded ? [] : ["KGS not loaded"],
+        overallSuccess:     gieSucceeded,   // Phase 1B: real success derived from GIE
+      };
+
+      const t0CLE = Date.now();
       const session = this.cle.learn(plan, record, ctx.executionId);
-      ctx.knowledgeEvidence.push(`CLE: learning score=${session.overallLearningScore}`);
+      const cleMs   = Date.now() - t0CLE;
+
+      // Observability — Sprint M-06.6
+      ctx.knowledgeEvidence.push(
+        `CLE: score=${session.overallLearningScore} · tasks=${planSteps.length} · ` +
+        `gieRecs=${gieRecs.length} → opps=${opportunities.length} · ` +
+        `records=${session.learningRecords.length} · ` +
+        `success=${gieSucceeded} · goalStatus=${goalStatus} · cle=${cleMs}ms`
+      );
 
       return this._mkStage("CognitiveLearningEngine", t0, "SUCCESS", {
-        sessionId:     session.sessionId,
+        // existing fields — unchanged interface
+        sessionId:     session.id,
         learningScore: session.overallLearningScore,
         records:       session.learningRecords.length,
-        confidence:    session.sessionConfidence,
-      }, null, "Cognitive learning applied", "execution outcomes → learning records", 0.85);
+        confidence:    this.cle.getConfidence("overall"),
+        // Sprint M-06.6 observability
+        tasksConverted:      planSteps.length,
+        planStepsGenerated:  planSteps.length,
+        gieRecsReceived:     gieRecs.length,
+        opportunitiesAdded:  opportunities.length,
+        goalStatus,
+        gieSucceeded,
+        kgsLoaded,
+        cleMs,
+        learningPatterns: session.learningRecords.map((r: any) => r.learningType),
+      }, null,
+      gieSucceeded
+        ? `CLE: ${planSteps.length} real tasks learned from GoalDecomposition`
+        : "CLE: goal not in planned state — failure patterns recorded",
+      "GoalDecomposition.tasks[] → PlanStep[] → ExecutionPlan → CognitiveLearningEngine → LearningSession",
+      0.85);
     } catch (e) {
       return this._mkStage("CognitiveLearningEngine", t0, "FAILED", {}, String(e),
         "CLE execution failed", "learning", 0.1);
