@@ -1,34 +1,44 @@
 // ══════════════════════════════════════════════════════════════════════════════
-// Sprint P-01.11A — ExecutionChain (Thin Orchestrator — Architecture Freeze)
+// Sprint P-01.11B — ExecutionChain (Thin Orchestrator — Architecture Freeze)
 //
-// ZERO business logic. ZERO object instantiation. ZERO stage knowledge.
-// Delegates entirely to:
-//   * ExecutionCompositionRoot  — builds the runtime graph
-//   * ExecutionPipeline         — runs the stages
-//   * ExecutionContext           — carries shared services
+// Responsibilities:
+//   1. Start execution (clock + metrics + event)
+//   2. Build ExecutionState with userInput
+//   3. Call ExecutionPipeline
+//   4. Delegate report assembly to ExecutionReportAssembler
+//   5. Return result
+//
+// ZERO business logic. ZERO field access. ZERO manual state copies.
+// NO _populateBag. NO Map<string, unknown>. NO new inside execute().
 // ══════════════════════════════════════════════════════════════════════════════
 
-import { ExecutionCompositionRoot }         from "./ExecutionCompositionRoot";
+import { ExecutionCompositionRoot }     from "./ExecutionCompositionRoot";
 import type { ComposedRuntime, CompositionDeps } from "./ExecutionCompositionRoot";
-import type { RuntimeEventBus }             from "../runtime-infra/RuntimeEventBus";
-import type { RuntimeMetrics }              from "../runtime-infra/RuntimeMetrics";
-import type { RuntimeEventType }            from "../runtime-infra/RuntimeEvent";
-import type {
-  UserInput, ExecutionChainReport, ChainStageRecord,
-} from "./ExecutionChainTypes";
-import type { StageOutputBag }              from "./PipelineBuilder";
-import type { ExecutionContext }            from "./ExecutionContext";
+import { ExecutionReportAssembler }     from "./ExecutionReportAssembler";
+import { withStageOutput, EMPTY_EXECUTION_STATE } from "./ExecutionState";
+import type { ExecutionState }          from "./ExecutionState";
+import type { RuntimeEventBus }         from "../runtime-infra/RuntimeEventBus";
+import type { RuntimeMetrics }          from "../runtime-infra/RuntimeMetrics";
+import type { RuntimeEventType }        from "../runtime-infra/RuntimeEvent";
+import type { UserInput, ExecutionChainReport } from "./ExecutionChainTypes";
+import type { ExecutionContext }         from "./ExecutionContext";
+import type { ExplainabilityEvidence }  from "./PipelineStage";
+
 const EV_EXEC_STARTED:   RuntimeEventType = "EXECUTION_STARTED";
 const EV_EXEC_COMPLETED: RuntimeEventType = "EXECUTION_COMPLETED";
 const EV_EXEC_FAILED:    RuntimeEventType = "EXECUTION_FAILED";
 
-export type ExecutionChainDeps = CompositionDeps;
+export type ExecutionChainDeps = CompositionDeps & {
+  connectorRegistry?: CompositionDeps["connectorRegistry"];
+};
 
 export class ExecutionChain {
-  private readonly _rt: ComposedRuntime;
+  private readonly _rt:       ComposedRuntime;
+  private readonly _assembler: ExecutionReportAssembler;
 
   constructor(deps: ExecutionChainDeps = {}) {
-    this._rt = ExecutionCompositionRoot.compose(deps);
+    this._rt       = ExecutionCompositionRoot.compose(deps);
+    this._assembler = new ExecutionReportAssembler();
   }
 
   async execute(input: UserInput): Promise<ExecutionChainReport> {
@@ -38,16 +48,16 @@ export class ExecutionChain {
     this._rt.metrics.recordExecution();
     this._emit(EV_EXEC_STARTED, chainId, "ExecutionChain started");
 
-    const bag: Partial<StageOutputBag> = { userInput: input, records: [] };
+    // Build initial state with userInput populated
+    const initialState = withStageOutput(EMPTY_EXECUTION_STATE, "USER_INPUT", input);
+
+    const evidences: ExplainabilityEvidence[] = [];
     const ctx = {
       ...ExecutionCompositionRoot.buildContext(this._rt, chainId, input.sessionId, input.userId),
-      _bag: bag,
-    } as unknown as ExecutionContext;
+      evidences,
+    } as ExecutionContext;
 
-    const pipeResult = await this._rt.pipeline.execute(ctx, input);
-
-    this._populateBag(bag, pipeResult.outputs);
-    bag.records = pipeResult.records;
+    const pipeResult = await this._rt.pipeline.execute(ctx, initialState);
 
     const completedAt = this._rt.clock.now();
     const durationMs  = completedAt - startedAt;
@@ -55,12 +65,15 @@ export class ExecutionChain {
     if (!pipeResult.success) {
       this._rt.metrics.recordFailure();
       this._emit(EV_EXEC_FAILED, chainId, "pipeline aborted");
-      return this._buildReport(chainId, startedAt, completedAt, pipeResult.records, input, false);
+    } else {
+      this._rt.metrics.recordSuccess(durationMs);
+      this._emit(EV_EXEC_COMPLETED, chainId, `completed in ${durationMs}ms`, { durationMs });
     }
 
-    this._rt.metrics.recordSuccess(durationMs);
-    this._emit(EV_EXEC_COMPLETED, chainId, `completed in ${durationMs}ms`, { durationMs });
-    return this._buildReport(chainId, startedAt, completedAt, pipeResult.records, input, true);
+    return this._assembler.assemble(
+      chainId, startedAt, completedAt,
+      input, pipeResult.state, pipeResult.success,
+    );
   }
 
   bus():     RuntimeEventBus { return this._rt.eventBus; }
@@ -71,48 +84,5 @@ export class ExecutionChain {
       type, executionId, runtimeLabel: "ExecutionChain",
       timestamp: this._rt.clock.now(), detail, payload,
     }));
-  }
-
-  private _populateBag(bag: Partial<StageOutputBag>, outputs: Map<string, unknown>): void {
-    const g = <T>(k: string): T => outputs.get(k) as T;
-    bag.userInput = g("USER_INPUT");
-    bag.intent    = g("INTENT_RUNTIME");
-    bag.goal      = g("GOAL_RUNTIME");
-    bag.plan      = g("PLANNING_RUNTIME");
-    bag.kern      = g("KERNEL");
-    bag.orch      = g("RUNTIME_ORCHESTRATOR");
-    bag.cap       = g("CAPABILITY_RUNTIME");
-    bag.cr        = g("CONNECTOR_RUNTIME");
-    bag.conn      = g("CONNECTOR");
-    bag.result    = g("RESULT");
-    bag.mem       = g("MEMORY");
-  }
-
-  private _buildReport(
-    chainId: string,
-    startedAt: number,
-    completedAt: number,
-    stages: ChainStageRecord[],
-    input: UserInput,
-    success: boolean,
-  ): ExecutionChainReport {
-    const get = (id: string): unknown => stages.find(s => s.stage === id)?.output ?? null;
-    return Object.freeze({
-      chainId,
-      sessionId:            input.sessionId,
-      userId:               input.userId,
-      startedAt,
-      completedAt,
-      totalDurationMs:      completedAt - startedAt,
-      status:               success ? "COMPLETED" as const : "FAILED" as const,
-      stages:               Object.freeze(stages),
-      userInput:            input,
-      finalOutput:          success ? get("RESULT")         : null,
-      memoryResult:         success ? get("MEMORY")         : null,
-      explainabilityResult: success ? get("EXPLAINABILITY") : null,
-      auditResult:          success ? get("AUDIT")          : null,
-      stagesPassed:         stages.filter(s => s.status === "COMPLETED").length,
-      stagesTotal:          stages.length,
-    }) as ExecutionChainReport;
   }
 }

@@ -51,6 +51,6 @@ export interface ExecutionContext {
   readonly permissions:        ExecutionPermissions;
   readonly config:             ExecutionConfig;
 
-  // Evidence accumulator — stages append their ExplainabilityEvidence here
+  // EF-17: Evidence accumulator — ExecutionPipeline appends automatically per stage
   readonly evidences:          ExplainabilityEvidence[];
 }

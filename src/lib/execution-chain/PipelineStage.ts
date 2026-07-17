@@ -1,7 +1,7 @@
 // ══════════════════════════════════════════════════════════════════════════════
-// Sprint P-01.11A — EF-02: PipelineStage
+// Sprint P-01.11B — EF-02: PipelineStage
 // Canonical contract for every runtime stage in the execution pipeline.
-// All 11 runtime stages implement this interface — no exceptions.
+// All stages receive ExecutionState — no ad-hoc input types in the interface.
 // ══════════════════════════════════════════════════════════════════════════════
 
 import type { ExecutionContext } from "./ExecutionContext";
@@ -14,26 +14,44 @@ export interface PipelineStage<I = unknown, O = unknown> {
   /** Execute the stage with a shared context and typed input. Returns typed output. */
   execute(context: ExecutionContext, input: I): Promise<O>;
 
-  /** Optional: runtime health status for RuntimeRegistry. */
-  health?(): RuntimeHealth;
+  /** EF-18: Optional self-registration descriptor returned by each runtime stage. */
+  descriptor?(): RuntimeDescriptor;
 }
 
 /** Returned by PipelineStage.health() — EF-11 */
 export interface RuntimeHealth {
-  readonly status: "healthy" | "degraded" | "unhealthy";
-  readonly uptime: number;
-  readonly version: string;
+  readonly status:       "healthy" | "degraded" | "unhealthy";
+  readonly uptime:       number;
+  readonly version:      string;
   readonly dependencies: string[];
 }
 
-/** Evidence produced by each stage — EF-06 ExplainabilityEvidence V2 */
+/**
+ * EF-18 — Self Registration descriptor.
+ * Each runtime stage exposes this to eliminate manual registration in ECR.
+ */
+export interface RuntimeDescriptor {
+  readonly id:           string;
+  readonly version:      string;
+  readonly owner:        string;
+  readonly capabilities: readonly string[];
+  readonly dependencies: readonly string[];
+  readonly lifecycle:    "singleton" | "scoped" | "transient";
+  health(): RuntimeHealth;
+}
+
+/**
+ * EF-17 — ExplainabilityEvidence V2
+ * Collected automatically by ExecutionPipeline per stage.
+ * Stages must NOT build Explainability manually.
+ */
 export interface ExplainabilityEvidence {
-  readonly runtime: string;
-  readonly decision: string;
+  readonly runtimeId:  string;
+  readonly timestamp:  number;
+  readonly durationMs: number;
+  readonly input:      Record<string, unknown>;
+  readonly output:     Record<string, unknown> | unknown;
+  readonly decision:   string;
   readonly confidence: number;
-  readonly inputs: Record<string, unknown>;
-  readonly outputs: Record<string, unknown>;
-  readonly reasoning: string;
-  readonly policies: string[];
-  readonly timestamp: number;
+  readonly policies:   readonly string[];
 }

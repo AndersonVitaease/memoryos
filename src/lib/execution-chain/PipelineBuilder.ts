@@ -1,18 +1,13 @@
 // ══════════════════════════════════════════════════════════════════════════════
-// Sprint P-01.11A — EF-03: PipelineBuilder
-// Assembles the canonical 13-stage pipeline in the correct order.
-// ExecutionChain MUST use this — never assemble stages inline.
+// Sprint P-01.11B — EF-03/EF-14: PipelineBuilder
+// Assembles the canonical 13-stage pipeline.
+// All stages consume ExecutionState — no StageOutputBag, no Map, no _bag().
 // ══════════════════════════════════════════════════════════════════════════════
 
 import type { PipelineStage }    from "./PipelineStage";
 import type { ExecutionContext }  from "./ExecutionContext";
-import type {
-  UserInput, IntentResult, GoalResult, PlanResult, KernelResult,
-  OrchestratorResult, CapabilityResult, ConnectorRuntimeResult,
-  ConnectorResult, ResultOutput, MemoryResult,
-  ExplainabilityResult, AuditResult,
-  ChainStageRecord,
-} from "./ExecutionChainTypes";
+import type { ExecutionState }   from "./ExecutionState";
+import type { ChainStageRecord } from "./ExecutionChainTypes";
 import { ExecutionPipeline }     from "./ExecutionPipeline";
 import { PipelineValidator }     from "./PipelineValidator";
 
@@ -29,143 +24,146 @@ import type { IMemoryEngine }          from "./stages/MemoryStage";
 import type { IExplainabilityEngine }  from "./stages/ExplainabilityStage";
 import type { IAuditEngine }           from "./stages/AuditStage";
 
-// ── Internal carry-bag — ECR populates this per execution ─────────────────────
-export interface StageOutputBag {
-  userInput: UserInput;
-  intent:    IntentResult;
-  goal:      GoalResult;
-  plan:      PlanResult;
-  kern:      KernelResult;
-  orch:      OrchestratorResult;
-  cap:       CapabilityResult;
-  cr:        ConnectorRuntimeResult;
-  conn:      ConnectorResult;
-  result:    ResultOutput;
-  mem:       MemoryResult;
-  records:   ChainStageRecord[];
-}
+// ── Stage factory functions ────────────────────────────────────────────────────
+// Each stage receives the full ExecutionState and returns its typed output.
 
-// Helper to retrieve the bag from context
-function _bag(ctx: ExecutionContext): StageOutputBag {
-  return (ctx as unknown as { _bag: StageOutputBag })._bag;
-}
-
-// ── Stage factory functions ───────────────────────────────────────────────────
-
-function userInputStage(): PipelineStage<UserInput, UserInput> {
+function userInputStage(): PipelineStage {
   return {
     id: "USER_INPUT",
-    async execute(_ctx: ExecutionContext, input: UserInput): Promise<UserInput> {
-      return input;
+    async execute(_ctx: ExecutionContext, state: ExecutionState) {
+      return state.userInput;
     },
   };
 }
 
-function intentStage(runtime: IIntentRuntime): PipelineStage<UserInput, IntentResult> {
+function intentStage(runtime: IIntentRuntime): PipelineStage {
   return {
     id: "INTENT_RUNTIME",
-    async execute(_ctx: ExecutionContext, input: UserInput): Promise<IntentResult> {
-      return runtime.classify(input);
+    async execute(_ctx: ExecutionContext, state: ExecutionState) {
+      if (!state.userInput) throw new Error("INTENT_RUNTIME: userInput missing from state");
+      return runtime.classify(state.userInput);
     },
   };
 }
 
-function goalStage(runtime: IGoalRuntime): PipelineStage<IntentResult, GoalResult> {
+function goalStage(runtime: IGoalRuntime): PipelineStage {
   return {
     id: "GOAL_RUNTIME",
-    async execute(ctx: ExecutionContext, intent: IntentResult): Promise<GoalResult> {
-      return runtime.derive(intent, _bag(ctx).userInput);
+    async execute(_ctx: ExecutionContext, state: ExecutionState) {
+      if (!state.intent)    throw new Error("GOAL_RUNTIME: intent missing");
+      if (!state.userInput) throw new Error("GOAL_RUNTIME: userInput missing");
+      return runtime.derive(state.intent, state.userInput);
     },
   };
 }
 
-function planningStage(runtime: IPlanningRuntime): PipelineStage<GoalResult, PlanResult> {
+function planningStage(runtime: IPlanningRuntime): PipelineStage {
   return {
     id: "PLANNING_RUNTIME",
-    async execute(ctx: ExecutionContext, goal: GoalResult): Promise<PlanResult> {
-      return runtime.plan(goal, _bag(ctx).intent);
+    async execute(_ctx: ExecutionContext, state: ExecutionState) {
+      if (!state.goal)   throw new Error("PLANNING_RUNTIME: goal missing");
+      if (!state.intent) throw new Error("PLANNING_RUNTIME: intent missing");
+      return runtime.plan(state.goal, state.intent);
     },
   };
 }
 
-function kernelStage(runtime: IKernel): PipelineStage<PlanResult, KernelResult> {
+function kernelStage(runtime: IKernel): PipelineStage {
   return {
     id: "KERNEL",
-    async execute(ctx: ExecutionContext, plan: PlanResult): Promise<KernelResult> {
-      return runtime.apply(plan, _bag(ctx).userInput);
+    async execute(_ctx: ExecutionContext, state: ExecutionState) {
+      if (!state.plan)      throw new Error("KERNEL: plan missing");
+      if (!state.userInput) throw new Error("KERNEL: userInput missing");
+      return runtime.apply(state.plan, state.userInput);
     },
   };
 }
 
-function orchestratorStage(runtime: IRuntimeOrchestrator): PipelineStage<KernelResult, OrchestratorResult> {
+function orchestratorStage(runtime: IRuntimeOrchestrator): PipelineStage {
   return {
     id: "RUNTIME_ORCHESTRATOR",
-    async execute(ctx: ExecutionContext, kern: KernelResult): Promise<OrchestratorResult> {
-      return runtime.orchestrate(kern, _bag(ctx).plan);
+    async execute(_ctx: ExecutionContext, state: ExecutionState) {
+      if (!state.kernel) throw new Error("RUNTIME_ORCHESTRATOR: kernel missing");
+      if (!state.plan)   throw new Error("RUNTIME_ORCHESTRATOR: plan missing");
+      return runtime.orchestrate(state.kernel, state.plan);
     },
   };
 }
 
-function capabilityStage(runtime: ICapabilityRuntime): PipelineStage<OrchestratorResult, CapabilityResult> {
+function capabilityStage(runtime: ICapabilityRuntime): PipelineStage {
   return {
     id: "CAPABILITY_RUNTIME",
-    async execute(_ctx: ExecutionContext, orch: OrchestratorResult): Promise<CapabilityResult> {
-      return runtime.prepare(orch);
+    async execute(_ctx: ExecutionContext, state: ExecutionState) {
+      if (!state.orchestrator) throw new Error("CAPABILITY_RUNTIME: orchestrator missing");
+      return runtime.prepare(state.orchestrator);
     },
   };
 }
 
-function connectorRuntimeStage(runtime: IConnectorRuntimeStage): PipelineStage<CapabilityResult, ConnectorRuntimeResult> {
+function connectorRuntimeStage(runtime: IConnectorRuntimeStage): PipelineStage {
   return {
     id: "CONNECTOR_RUNTIME",
-    async execute(ctx: ExecutionContext, _cap: CapabilityResult): Promise<ConnectorRuntimeResult> {
-      return runtime.connect(_bag(ctx).orch);
+    async execute(_ctx: ExecutionContext, state: ExecutionState) {
+      if (!state.orchestrator) throw new Error("CONNECTOR_RUNTIME: orchestrator missing");
+      return runtime.connect(state.orchestrator);
     },
   };
 }
 
-function connectorStage(runtime: IConnectorStage): PipelineStage<ConnectorRuntimeResult, ConnectorResult> {
+function connectorStage(runtime: IConnectorStage): PipelineStage {
   return {
     id: "CONNECTOR",
-    async execute(ctx: ExecutionContext, cr: ConnectorRuntimeResult): Promise<ConnectorResult> {
-      return runtime.execute(_bag(ctx).orch, cr, _bag(ctx).userInput);
+    async execute(_ctx: ExecutionContext, state: ExecutionState) {
+      if (!state.orchestrator)     throw new Error("CONNECTOR: orchestrator missing");
+      if (!state.connectorRuntime) throw new Error("CONNECTOR: connectorRuntime missing");
+      if (!state.userInput)        throw new Error("CONNECTOR: userInput missing");
+      return runtime.execute(state.orchestrator, state.connectorRuntime, state.userInput);
     },
   };
 }
 
-function resultStage(runtime: IResultStage): PipelineStage<ConnectorResult, ResultOutput> {
+function resultStage(runtime: IResultStage): PipelineStage {
   return {
     id: "RESULT",
-    async execute(ctx: ExecutionContext, conn: ConnectorResult): Promise<ResultOutput> {
-      return runtime.produce(conn, _bag(ctx).intent);
+    async execute(_ctx: ExecutionContext, state: ExecutionState) {
+      if (!state.connector) throw new Error("RESULT: connector missing");
+      if (!state.intent)    throw new Error("RESULT: intent missing");
+      return runtime.produce(state.connector, state.intent);
     },
   };
 }
 
-function memoryStage(runtime: IMemoryEngine): PipelineStage<ResultOutput, MemoryResult> {
+function memoryStage(runtime: IMemoryEngine): PipelineStage {
   return {
     id: "MEMORY",
-    async execute(ctx: ExecutionContext, result: ResultOutput): Promise<MemoryResult> {
-      return runtime.memorize(result, _bag(ctx).goal, _bag(ctx).userInput);
+    async execute(_ctx: ExecutionContext, state: ExecutionState) {
+      if (!state.result)    throw new Error("MEMORY: result missing");
+      if (!state.goal)      throw new Error("MEMORY: goal missing");
+      if (!state.userInput) throw new Error("MEMORY: userInput missing");
+      return runtime.memorize(state.result, state.goal, state.userInput);
     },
   };
 }
 
-function explainabilityStage(runtime: IExplainabilityEngine): PipelineStage<MemoryResult, ExplainabilityResult> {
+function explainabilityStage(runtime: IExplainabilityEngine): PipelineStage {
   return {
     id: "EXPLAINABILITY",
-    async execute(ctx: ExecutionContext, _mem: MemoryResult): Promise<ExplainabilityResult> {
+    async execute(ctx: ExecutionContext, state: ExecutionState) {
+      if (!state.result) throw new Error("EXPLAINABILITY: result missing");
+      if (!state.intent) throw new Error("EXPLAINABILITY: intent missing");
+      // EF-17: evidences collected automatically by ExecutionPipeline
       const evids = ctx.evidences.map(e => e.decision);
-      return runtime.explain(_bag(ctx).records, _bag(ctx).result, _bag(ctx).intent, evids);
+      const recs  = state.records as readonly ChainStageRecord[];
+      return runtime.explain(recs as ChainStageRecord[], state.result, state.intent, evids);
     },
   };
 }
 
-function auditStage(runtime: IAuditEngine): PipelineStage<ExplainabilityResult, AuditResult> {
+function auditStage(runtime: IAuditEngine): PipelineStage {
   return {
     id: "AUDIT",
-    async execute(ctx: ExecutionContext, expl: ExplainabilityResult): Promise<AuditResult> {
-      return runtime.audit(ctx.executionId, _bag(ctx).mem, expl, ctx.eventBus);
+    async execute(ctx: ExecutionContext, state: ExecutionState) {
+      return runtime.audit(ctx.executionId, state.memory ?? null, state.explainability ?? null, ctx.eventBus);
     },
   };
 }

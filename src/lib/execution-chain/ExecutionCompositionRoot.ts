@@ -1,7 +1,9 @@
 // ══════════════════════════════════════════════════════════════════════════════
-// Sprint P-01.11A — EF-04: ExecutionCompositionRoot
+// Sprint P-01.11B — EF-04/EF-18: ExecutionCompositionRoot
 // THE ONLY place where runtime objects are instantiated.
-// ExecutionChain must never call `new SomeRuntime()` — all construction happens here.
+//
+// EF-18: RuntimeRegistry now auto-registers from stage.descriptor().
+//        No manual registration list.
 // ══════════════════════════════════════════════════════════════════════════════
 
 import { SystemClock }                                  from "../runtime-infra/RuntimeClock";
@@ -11,6 +13,7 @@ import { RuntimeMetrics }                              from "../runtime-infra/Ru
 
 import { ConnectorRegistry }                           from "./ConnectorRegistry";
 import { RuntimeRegistry }                             from "./RuntimeRegistry";
+import type { RuntimeDescriptor }                      from "./RuntimeRegistry";
 import { RuntimeAuditSink }                            from "./RuntimeAuditSink";
 import { PipelineBuilder }                             from "./PipelineBuilder";
 
@@ -29,18 +32,18 @@ import { AuditStageImpl }                              from "./stages/AuditStage
 
 import type { IClock }               from "../runtime-infra/RuntimeClockTypes";
 import type { IExecutionIdProvider } from "../runtime-infra/RuntimeExecutionIdProvider";
-
+import type { IConnectorRegistry }   from "./ConnectorRegistry";
 import type { ExecutionContext, ExecutionConfig, ExecutionPermissions } from "./ExecutionContext";
 import type { ExplainabilityEvidence } from "./PipelineStage";
-import type { ExecutionPipeline }      from "./ExecutionPipeline";
+import type { ExecutionPipeline }    from "./ExecutionPipeline";
 
 export interface CompositionDeps {
-  // Override clock (for testing with DeterministicClock)
   runtimeClock?:        IClock;
   executionIdProvider?: IExecutionIdProvider;
   eventBus?:            RuntimeEventBus;
   metrics?:             RuntimeMetrics;
-  // Override any individual stage
+  connectorRegistry?:   IConnectorRegistry;
+  // Override any individual stage runtime
   intentRuntime?:       InstanceType<typeof IntentRuntimeStage>;
   goalRuntime?:         InstanceType<typeof GoalRuntimeStage>;
   planningRuntime?:     InstanceType<typeof PlanningRuntimeStage>;
@@ -61,10 +64,25 @@ export interface ComposedRuntime {
   readonly idProvider:        IExecutionIdProvider;
   readonly eventBus:          RuntimeEventBus;
   readonly metrics:           RuntimeMetrics;
-  readonly connectorRegistry: ConnectorRegistry;
+  readonly connectorRegistry: IConnectorRegistry;
   readonly runtimeRegistry:   RuntimeRegistry;
   readonly auditSink:         RuntimeAuditSink;
   readonly pipeline:          ExecutionPipeline;
+}
+
+/**
+ * EF-18: Default descriptor factory for stages that do not provide descriptor().
+ */
+function defaultDescriptor(id: string, clock: IClock): RuntimeDescriptor {
+  return {
+    id,
+    version:      "1.0",
+    owner:        "core",
+    capabilities: [],
+    dependencies: [],
+    lifecycle:    "singleton",
+    health:       () => ({ status: "healthy", uptime: clock.now(), version: "1.0", dependencies: [] }),
+  };
 }
 
 /**
@@ -79,7 +97,7 @@ export class ExecutionCompositionRoot {
     const eventBus   = deps.eventBus            ?? new RuntimeEventBus(1000);
     const metrics    = deps.metrics             ?? new RuntimeMetrics(60000, () => clock.now());
 
-    const connectorRegistry = new ConnectorRegistry();
+    const connectorRegistry = deps.connectorRegistry ?? new ConnectorRegistry();
     const runtimeRegistry   = new RuntimeRegistry(clock.now());
     const auditSink         = new RuntimeAuditSink();
 
@@ -108,27 +126,29 @@ export class ExecutionCompositionRoot {
       connectorStage, resultStage, memoryEngine, explainability, auditEngine,
     });
 
-    // ── Register runtimes in registry ───────────────────────────────────────
-    const runtimes = [
-      { id: "INTENT_RUNTIME",        version: "1.0", owner: "core" },
-      { id: "GOAL_RUNTIME",          version: "1.0", owner: "core" },
-      { id: "PLANNING_RUNTIME",      version: "1.0", owner: "core" },
-      { id: "KERNEL",                version: "1.0", owner: "core" },
-      { id: "RUNTIME_ORCHESTRATOR",  version: "1.0", owner: "core" },
-      { id: "CAPABILITY_RUNTIME",    version: "1.0", owner: "core" },
-      { id: "CONNECTOR_RUNTIME",     version: "1.0", owner: "core" },
-      { id: "CONNECTOR",             version: "1.0", owner: "core" },
-      { id: "RESULT",                version: "1.0", owner: "core" },
-      { id: "MEMORY",                version: "1.0", owner: "core" },
-      { id: "EXPLAINABILITY",        version: "1.0", owner: "core" },
-      { id: "AUDIT",                 version: "1.0", owner: "core" },
+    // ── EF-18: Auto self-registration ───────────────────────────────────────
+    // Stage IDs that have corresponding runtimes to register (USER_INPUT is infra-only)
+    const stageToId: Array<[unknown, string]> = [
+      [intentRuntime,       "INTENT_RUNTIME"       ],
+      [goalRuntime,         "GOAL_RUNTIME"          ],
+      [planningRuntime,     "PLANNING_RUNTIME"      ],
+      [kernel,              "KERNEL"                ],
+      [runtimeOrchestrator, "RUNTIME_ORCHESTRATOR"  ],
+      [capabilityRuntime,   "CAPABILITY_RUNTIME"    ],
+      [connectorRuntime,    "CONNECTOR_RUNTIME"     ],
+      [connectorStage,      "CONNECTOR"             ],
+      [resultStage,         "RESULT"                ],
+      [memoryEngine,        "MEMORY"                ],
+      [explainability,      "EXPLAINABILITY"        ],
+      [auditEngine,         "AUDIT"                 ],
     ];
-    for (const r of runtimes) {
-      runtimeRegistry.register({
-        ...r, capabilities: [], dependencies: [],
-        lifecycle: "singleton",
-        health: () => ({ status: "healthy", uptime: clock.now(), version: r.version, dependencies: [] }),
-      });
+
+    for (const [stage, id] of stageToId) {
+      const desc =
+        typeof (stage as { descriptor?: () => RuntimeDescriptor }).descriptor === "function"
+          ? (stage as { descriptor: () => RuntimeDescriptor }).descriptor()
+          : defaultDescriptor(id, clock);
+      runtimeRegistry.register(desc);
     }
 
     return Object.freeze({ clock, idProvider, eventBus, metrics, connectorRegistry, runtimeRegistry, auditSink, pipeline });
@@ -140,8 +160,7 @@ export class ExecutionCompositionRoot {
     executionId: string,
     sessionId: string,
     userId: string,
-  ): ExecutionContext {
-    const evidences: ExplainabilityEvidence[] = [];
+  ): Omit<ExecutionContext, "evidences"> {
     const permissions: ExecutionPermissions = { userId, scopes: ["memory:read", "memory:write"], roles: ["user"] };
     const config: ExecutionConfig = { maxTimeMs: 30000, maxRetries: 3, environment: "production" };
 
@@ -157,7 +176,6 @@ export class ExecutionCompositionRoot {
       runtimeRegistry:    rt.runtimeRegistry,
       permissions,
       config,
-      evidences,
-    } as ExecutionContext;
+    };
   }
 }

@@ -1,32 +1,89 @@
 // ══════════════════════════════════════════════════════════════════════════════
-// Sprint P-01.11A — EF-08: ExecutionSnapshot
-// The ONLY shape that Dashboard, monitoring, and external consumers may receive.
-// Dashboard must NOT know ExecutionChainReport, ExecutionChain, or StageResult.
+// Sprint P-01.11B — EF-08/EF-19: ExecutionSnapshot + SnapshotAssembler
+//
+// EF-19: Dashboard consumes ONLY ExecutionSnapshot — no internal types exposed.
+//        ExecutionSnapshotAssembler is the sole converter from ExecutionChainReport.
 // ══════════════════════════════════════════════════════════════════════════════
 
+import type { ExecutionChainReport } from "./ExecutionChainTypes";
+
+/** Public-facing stage summary — no internal types, plain scalars only. */
 export interface StageSnapshot {
   readonly stage:      string;
   readonly status:     "COMPLETED" | "FAILED" | "PENDING";
   readonly durationMs: number;
-  readonly summary:    string;   // human-readable one-liner
+  readonly summary:    string;
 }
 
+/**
+ * ExecutionSnapshot — the ONLY shape that Dashboard and external consumers may use.
+ * No ExecutionChainReport, no StageOutputBag, no runtime internals.
+ */
 export interface ExecutionSnapshot {
-  readonly executionId:    string;
-  readonly sessionId:      string;
-  readonly status:         "COMPLETED" | "FAILED" | "PARTIAL";
-  readonly startedAt:      number;
-  readonly completedAt:    number;
+  readonly executionId:     string;
+  readonly sessionId:       string;
+  readonly status:          "COMPLETED" | "FAILED" | "PARTIAL";
+  readonly startedAt:       number;
+  readonly completedAt:     number;
   readonly totalDurationMs: number;
-  readonly stagesPassed:   number;
-  readonly stagesTotal:    number;
-  readonly stages:         readonly StageSnapshot[];
+  readonly stagesPassed:    number;
+  readonly stagesTotal:     number;
+  readonly stages:          readonly StageSnapshot[];
 
   // Aggregate results — plain scalars only, no internal types
-  readonly compliance:      "COMPLIANT" | "WARNING" | "VIOLATION" | null;
-  readonly confidence:      number | null;
-  readonly memorized:       boolean | null;
-  readonly connectorUsed:   string | null;
-  readonly intentType:      string | null;
-  readonly humanSummary:    string | null;
+  readonly compliance:    "COMPLIANT" | "WARNING" | "VIOLATION" | null;
+  readonly confidence:    number | null;
+  readonly memorized:     boolean | null;
+  readonly connectorUsed: string | null;
+  readonly intentType:    string | null;
+  readonly humanSummary:  string | null;
+}
+
+/**
+ * EF-19: ExecutionSnapshotAssembler
+ * Single responsibility: ExecutionChainReport → ExecutionSnapshot.
+ * Dashboard must use this — never touch ExecutionChainReport directly.
+ */
+export class ExecutionSnapshotAssembler {
+  fromReport(report: ExecutionChainReport): ExecutionSnapshot {
+    const stages: StageSnapshot[] = report.stages.map(s => ({
+      stage:      s.stage as string,
+      status:     s.status === "COMPLETED" ? "COMPLETED"
+                : s.status === "FAILED"    ? "FAILED"
+                :                           "PENDING",
+      durationMs: s.durationMs ?? 0,
+      summary:    s.error ?? `${s.stage} ${s.status.toLowerCase()}`,
+    }));
+
+    const audit  = report.auditResult;
+    const expl   = report.explainabilityResult;
+    const mem    = report.memoryResult;
+    const result = report.finalOutput;
+
+    // connectorUsed: read from the RUNTIME_ORCHESTRATOR stage output
+    const orchStage  = report.stages.find(s => s.stage === "RUNTIME_ORCHESTRATOR");
+    const orchOutput = orchStage?.output as { selectedConnector?: string } | undefined;
+
+    // intentType: read from INTENT_RUNTIME stage output
+    const intentStage  = report.stages.find(s => s.stage === "INTENT_RUNTIME");
+    const intentOutput = intentStage?.output as { intentType?: string } | undefined;
+
+    return Object.freeze({
+      executionId:     report.chainId,
+      sessionId:       report.sessionId,
+      status:          report.status,
+      startedAt:       report.startedAt,
+      completedAt:     report.completedAt,
+      totalDurationMs: report.totalDurationMs,
+      stagesPassed:    report.stagesPassed,
+      stagesTotal:     report.stagesTotal,
+      stages:          Object.freeze(stages),
+      compliance:      audit?.complianceStatus ?? null,
+      confidence:      result?.confidence ?? expl?.confidenceScore ?? null,
+      memorized:       mem?.memorized ?? null,
+      connectorUsed:   orchOutput?.selectedConnector ?? null,
+      intentType:      intentOutput?.intentType ?? null,
+      humanSummary:    expl?.humanReadableSummary ?? null,
+    });
+  }
 }

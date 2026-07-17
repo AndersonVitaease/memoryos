@@ -120,6 +120,8 @@ const navItems = [
   { label: "Phase 6.4.0 — Universal OAuth Platform",      icon: Plug,         path: "/phase640" },
   { label: "Phase 6.4.1 — Google Identity Provider",     icon: ShieldCheck,  path: "/phase641" },
   { label: "Phase 6.4.1A — OAuth Discovery",             icon: Search,       path: "/phase641a" },
+  { label: "Sprint P-01.11A — Architecture Freeze",       icon: Award,        path: "/sprint-p011a" },
+  { label: "Sprint P-01.11B — Hardening",                 icon: ShieldCheck,  path: "/sprint-p011b" },
 ];
 
 export default function Sidebar({ onNavigate }) {
