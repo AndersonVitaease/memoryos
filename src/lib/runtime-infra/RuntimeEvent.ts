@@ -20,7 +20,10 @@ export type RuntimeEventType =
   | "SCHEDULER_QUEUED"
   | "SCHEDULER_READY"
   | "SCHEDULER_RUNNING"
-  | "SCHEDULER_COMPLETED";
+  | "SCHEDULER_COMPLETED"
+  // Sprint P-01.11 — Execution chain stage events
+  | "STAGE_COMPLETED"
+  | "STAGE_FAILED";
 
 export interface RuntimeEvent {
   readonly type: RuntimeEventType;

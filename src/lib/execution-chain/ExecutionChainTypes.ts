@@ -1,6 +1,7 @@
 // ══════════════════════════════════════════════════════════════════════════════
-// SPRINT C-04.0 — Execution Chain Types
-// Canonical type contracts for the full 13-stage execution pipeline
+// Sprint P-01.11 — Execution Chain Types
+// Canonical type contracts for the full 13-stage execution pipeline.
+// Every stage result carries its own `evidence` string for Explainability.
 // ══════════════════════════════════════════════════════════════════════════════
 
 export type ChainStage =
@@ -29,12 +30,13 @@ export interface UserInput {
 }
 
 export interface IntentResult {
-  readonly intentType: string;       // e.g. "CONNECTOR_QUERY" | "MEMORY_RECALL" | "PLAN_EXECUTE"
-  readonly confidence: number;       // 0-1
+  readonly intentType: string;
+  readonly confidence: number;
   readonly entities: Record<string, string>;
   readonly slots: Record<string, string>;
   readonly requiresConnector: boolean;
   readonly requiresPlanning: boolean;
+  readonly evidence?: string;
 }
 
 export interface GoalResult {
@@ -44,6 +46,7 @@ export interface GoalResult {
   readonly subGoals: string[];
   readonly priority: number;
   readonly constraints: string[];
+  readonly evidence?: string;
 }
 
 export interface PlanResult {
@@ -51,6 +54,7 @@ export interface PlanResult {
   readonly steps: PlanStep[];
   readonly estimatedDurationMs: number;
   readonly confidence: number;
+  readonly evidence?: string;
 }
 
 export interface PlanStep {
@@ -67,6 +71,7 @@ export interface KernelResult {
   readonly resourceLimits: { maxTimeMs: number; maxRetries: number };
   readonly securityContext: { userId: string; scopes: string[] };
   readonly routingDecision: string;
+  readonly evidence?: string;
 }
 
 export interface OrchestratorResult {
@@ -75,6 +80,7 @@ export interface OrchestratorResult {
   readonly selectedConnector: string;
   readonly executionParams: Record<string, unknown>;
   readonly fallbackChain: string[];
+  readonly evidence?: string;
 }
 
 export interface CapabilityResult {
@@ -83,6 +89,7 @@ export interface CapabilityResult {
   readonly inputValidated: boolean;
   readonly outputSchema: string;
   readonly executionPolicy: string;
+  readonly evidence?: string;
 }
 
 export interface ConnectorRuntimeResult {
@@ -90,6 +97,7 @@ export interface ConnectorRuntimeResult {
   readonly connectionEstablished: boolean;
   readonly rateLimitRemaining: number;
   readonly authMethod: string;
+  readonly evidence?: string;
 }
 
 export interface ConnectorResult {
@@ -98,6 +106,7 @@ export interface ConnectorResult {
   readonly rawResponse: unknown;
   readonly responseStatus: number;
   readonly latencyMs: number;
+  readonly evidence?: string;
 }
 
 export interface ResultOutput {
@@ -106,6 +115,7 @@ export interface ResultOutput {
   readonly format: string;
   readonly confidence: number;
   readonly sources: string[];
+  readonly evidence?: string;
 }
 
 export interface MemoryResult {
@@ -114,6 +124,7 @@ export interface MemoryResult {
   readonly tier: "ACTIVE" | "HISTORICAL" | "ARCHIVED";
   readonly knowledgeExtracted: string[];
   readonly entitiesStored: number;
+  readonly evidence?: string;
 }
 
 export interface ExplainabilityResult {
