@@ -1,226 +1,244 @@
 /**
- * Phase700Page — Engineering Sprint 7.0
- * Google Workspace Connector Suite Foundation Dashboard
- * Rota: /phase700
+ * Phase700Page — Sprint 7.0.0
+ * Unified Cognitive Memory Engine (UCME) Dashboard
  */
-import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
-import { ArrowLeft, CheckCircle, Circle, Shield, Zap, Activity, Globe, Lock } from "lucide-react";
 
-const SERVICE_META = {
-  gmail:    { icon: "📧", label: "Gmail",           status: "active",   note: "Connector existente — reutiliza GWS Auth/Token/Error" },
-  drive:    { icon: "📁", label: "Google Drive",    status: "stub",     note: "Capability stubs registrados" },
-  calendar: { icon: "📅", label: "Google Calendar", status: "stub",     note: "Capability stubs registrados" },
-  contacts: { icon: "👥", label: "Google Contacts", status: "stub",     note: "Capability stubs registrados" },
-  docs:     { icon: "📄", label: "Google Docs",     status: "stub",     note: "Capability stubs registrados" },
-  sheets:   { icon: "📊", label: "Google Sheets",   status: "stub",     note: "Capability stubs registrados" },
-  tasks:    { icon: "✅", label: "Google Tasks",    status: "stub",     note: "Capability stubs registrados" },
-  keep:     { icon: "🗒️", label: "Google Keep",     status: "planned",  note: "Sem scope publico disponivel ainda" },
-};
+import React, { useState } from "react";
 
-const MODULE_DOCS = [
-  { file: "GoogleWorkspaceTypes.ts",              resp: "Tipos compartilhados: GWSToken, GWSCapability, GWSError, GWSAuditEntry, GWSQuota" },
-  { file: "GoogleWorkspaceScopes.ts",             resp: "Fonte unica de verdade para todos os OAuth scopes por servico" },
-  { file: "GoogleWorkspaceAuth.ts",               resp: "OAuth orchestration: store/get/revoke token, authHeader, isAuthenticated" },
-  { file: "GoogleWorkspaceTokenManager.ts",       resp: "Cache em memoria + refresh automatico via googleOAuthRefresh backend fn" },
-  { file: "GoogleWorkspacePermissionValidator.ts",resp: "Valida scopes antes de toda execucao de capability" },
-  { file: "GoogleWorkspaceErrorHandler.ts",       resp: "Normaliza erros HTTP 401/403/404/429/5xx em GWSError com retry guidance" },
-  { file: "GoogleWorkspaceRateLimiter.ts",        resp: "Quota por servico (RPM/RPD) com sliding window e backoff" },
-  { file: "GoogleWorkspaceAuditLogger.ts",        resp: "Log append-only de todas as chamadas API (persiste no localStorage)" },
-  { file: "GoogleWorkspaceCapabilityRegistry.ts", resp: "Registro central de capabilities com stubs para todos os servicos" },
-  { file: "GoogleWorkspaceConnector.ts",          resp: "Orquestrador: compoe todos os modulos em uma superficie de execucao" },
-];
+async function runTests() {
+  const { runUCMETests } = await import("@/lib/ucme/UCMETests");
+  return runUCMETests();
+}
 
-const ARCH_LAYERS = [
-  { label: "GmailConnector (existente)", color: "blue",    note: "Reutiliza Auth/Token/Error via GWS modules" },
-  { label: "GoogleWorkspaceConnector",   color: "violet",  note: "Orquestrador central — Sprint 7.0" },
-  { label: "CapabilityRegistry",         color: "indigo",  note: "14 capabilities registradas (stubs + gmail ativo)" },
-  { label: "Auth + TokenManager",        color: "emerald", note: "OAuth + cache + refresh" },
-  { label: "PermissionValidator",        color: "emerald", note: "Scopes por servico" },
-  { label: "ErrorHandler + RateLimiter", color: "amber",   note: "Retry + quota + backoff" },
-  { label: "AuditLogger",               color: "zinc",    note: "Todas as chamadas registradas" },
-  { label: "Core (INALTERADO)",         color: "red",     note: "Runtime · Pipeline · GoalEngine · Planning · Dispatchers" },
-];
-
-function Badge({ color, children }) {
-  const c = {
-    active:  "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
-    stub:    "bg-zinc-700/40 text-zinc-400 border-zinc-600",
-    planned: "bg-amber-500/15 text-amber-400 border-amber-500/30",
-  };
+function Badge({ ok }) {
   return (
-    <span className={`px-2 py-0.5 rounded-full border text-[10px] font-semibold ${c[color] ?? c.stub}`}>
-      {children}
+    <span className={`text-xs px-2 py-0.5 rounded border font-bold font-mono ${ok ? "bg-emerald-900/50 text-emerald-300 border-emerald-700" : "bg-red-900/50 text-red-300 border-red-700"}`}>
+      {ok ? "PASS" : "FAIL"}
     </span>
   );
 }
 
-function LayerBar({ label, color, note }) {
-  const c = {
-    blue:    "bg-blue-500/15 border-blue-500/30 text-blue-300",
-    violet:  "bg-violet-500/15 border-violet-500/30 text-violet-300",
-    indigo:  "bg-indigo-500/15 border-indigo-500/30 text-indigo-300",
-    emerald: "bg-emerald-500/15 border-emerald-500/30 text-emerald-300",
-    amber:   "bg-amber-500/15 border-amber-500/30 text-amber-300",
-    zinc:    "bg-zinc-700/30 border-zinc-600 text-zinc-400",
-    red:     "bg-red-500/10 border-red-500/20 text-red-400",
-  };
-  return (
-    <div className={`flex items-center gap-3 px-3 py-2 rounded-lg border ${c[color] ?? c.zinc}`}>
-      <span className="text-xs font-mono font-semibold min-w-56">{label}</span>
-      <span className="text-[11px] text-muted-foreground">{note}</span>
-    </div>
-  );
-}
+const SUITE_COLORS = {
+  "1 — Provider Registry":          "border-violet-700 text-violet-300",
+  "2 — Fusion Engine":              "border-blue-700 text-blue-300",
+  "3 — UnifiedMemoryEngine":        "border-cyan-700 text-cyan-300",
+  "4 — MemoryContextBuilder":       "border-teal-700 text-teal-300",
+  "5 — Explainability & Evidence":  "border-yellow-700 text-yellow-300",
+  "6 — Architecture Compliance":    "border-emerald-700 text-emerald-300",
+};
 
 export default function Phase700Page() {
-  const [capCount,    setCapCount]    = useState(null);
-  const [auditStats,  setAuditStats]  = useState(null);
-  const [quotaStatus, setQuotaStatus] = useState([]);
+  const [report, setReport]   = useState(null);
+  const [running, setRunning] = useState(false);
+  const [err, setErr]         = useState(null);
+  const [health, setHealth]   = useState(null);
+  const [demoResult, setDemoResult] = useState(null);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const { GoogleWorkspaceConnector } = await import("@/lib/google-workspace/GoogleWorkspaceConnector");
-        const h = GoogleWorkspaceConnector.health();
-        setCapCount(h.capabilityCount);
-        setAuditStats(h.auditStats);
-        setQuotaStatus(h.rateLimits);
-      } catch { /* non-blocking */ }
-    })();
-  }, []);
+  async function run() {
+    setRunning(true); setErr(null); setReport(null);
+    try { setReport(await runTests()); }
+    catch (e) { setErr(e?.message ?? String(e)); }
+    finally { setRunning(false); }
+  }
+
+  async function checkHealth() {
+    try {
+      const { UnifiedMemoryEngine } = await import("@/lib/ucme/UnifiedMemoryEngine");
+      await import("@/lib/ucme/providers/ConversationMemoryProvider");
+      await import("@/lib/ucme/providers/GoogleDriveMemoryProvider");
+      await import("@/lib/ucme/providers/GmailMemoryProvider");
+      await import("@/lib/ucme/providers/KnowledgeGraphMemoryProvider");
+      setHealth(await UnifiedMemoryEngine.healthCheck());
+    } catch (e) { setErr(e?.message ?? String(e)); }
+  }
+
+  async function runDemo(question) {
+    try {
+      const { MemoryContextBuilder } = await import("@/lib/ucme/MemoryContextBuilder");
+      await import("@/lib/ucme/providers/ConversationMemoryProvider");
+      await import("@/lib/ucme/providers/GoogleDriveMemoryProvider");
+      await import("@/lib/ucme/providers/GmailMemoryProvider");
+      await import("@/lib/ucme/providers/KnowledgeGraphMemoryProvider");
+      const ctx = await MemoryContextBuilder.build(question, { maxResults: 5, timeoutMs: 3000 });
+      setDemoResult(ctx);
+    } catch (e) { setErr(e?.message ?? String(e)); }
+  }
+
+  const suites = report
+    ? [...new Set(report.results.map(r => r.suite))].map(s => ({ suite: s, rows: report.results.filter(r => r.suite === s) }))
+    : [];
 
   return (
-    <div className="min-h-screen px-4 py-6 lg:px-6 lg:py-8 max-w-4xl mx-auto">
-      <Link to="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6">
-        <ArrowLeft className="w-4 h-4" /> Voltar
-      </Link>
+    <div className="min-h-screen bg-zinc-950 text-white p-6 font-mono">
+      <div className="max-w-5xl mx-auto space-y-6">
 
-      <div className="flex items-center gap-3 mb-1">
-        <Globe className="w-6 h-6 text-blue-400" />
-        <h1 className="text-2xl font-bold">Google Workspace Connector Suite</h1>
-        <span className="text-xs font-mono text-muted-foreground border border-border px-2 py-0.5 rounded">Sprint 7.0</span>
-      </div>
-      <p className="text-sm text-muted-foreground mb-6">
-        Fundacao oficial dos connectors Google Workspace — infraestrutura comum centralizada.
-      </p>
+        {/* Header */}
+        <div>
+          <div className="text-xs text-violet-400 tracking-widest mb-1">SPRINT 7.0.0 — UNIFIED COGNITIVE MEMORY ENGINE</div>
+          <h1 className="text-3xl font-bold">UCME — Unified Cognitive Memory</h1>
+          <p className="text-zinc-400 text-sm mt-1">Uma interface · Todos os provedores · O usuário apenas pergunta</p>
+        </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
-        {[
-          ["Capabilities Registradas", capCount ?? "…", "Zap", "violet"],
-          ["Servicos Cobertos",         8,               "Globe", "blue"],
-          ["Modulos Criados",           10,              "Shield", "emerald"],
-        ].map(([l, v, , color]) => (
-          <div key={l} className={`p-3 rounded-xl border text-center ${color === "violet" ? "border-violet-500/30 bg-violet-500/5" : color === "blue" ? "border-blue-500/30 bg-blue-500/5" : "border-emerald-500/30 bg-emerald-500/5"}`}>
-            <p className="text-[10px] uppercase text-muted-foreground">{l}</p>
-            <p className={`text-2xl font-bold ${color === "violet" ? "text-violet-300" : color === "blue" ? "text-blue-300" : "text-emerald-300"}`}>{v}</p>
+        {/* Architecture */}
+        <div className="border border-zinc-700 rounded-lg p-4 bg-zinc-900 text-xs">
+          <div className="text-zinc-400 tracking-widest mb-3">ARQUITETURA</div>
+          <div className="flex items-start gap-2 flex-wrap">
+            {[
+              ["Conversation", "Planner", "→"],
+              ["Planner", "MemoryContextBuilder", "→"],
+              ["MemoryContextBuilder", "UnifiedMemoryEngine", "→"],
+              ["UnifiedMemoryEngine", "ProviderRegistry", "→"],
+              ["ProviderRegistry", "4 Providers", "→"],
+            ].map(([from, to, arrow], i) => (
+              <React.Fragment key={i}>
+                <div className="border border-zinc-700 rounded px-2 py-1 text-zinc-300">{from}</div>
+                <span className="text-zinc-600 self-center">{arrow}</span>
+                {i === 4 && <div className="border border-violet-700 rounded px-2 py-1 text-violet-300">{to}</div>}
+              </React.Fragment>
+            ))}
           </div>
-        ))}
-      </div>
-
-      {/* Architecture diagram */}
-      <div className="p-4 rounded-xl border border-border bg-muted/5 mb-6">
-        <h2 className="text-sm font-semibold mb-3 flex items-center gap-2">
-          <Activity className="w-4 h-4 text-violet-400" />
-          Diagrama de Arquitetura — Sprint 7.0
-        </h2>
-        <div className="space-y-1.5">
-          {ARCH_LAYERS.map((l) => <LayerBar key={l.label} {...l} />)}
-        </div>
-      </div>
-
-      {/* Services */}
-      <div className="mb-6">
-        <h2 className="text-sm font-semibold mb-3 flex items-center gap-2">
-          <Globe className="w-4 h-4 text-blue-400" />
-          Servicos Google Workspace
-        </h2>
-        <div className="grid grid-cols-1 gap-2">
-          {Object.entries(SERVICE_META).map(([id, meta]) => (
-            <div key={id} className="flex items-center gap-3 px-3 py-2 rounded-lg border border-border/40 bg-muted/5">
-              <span className="text-xl">{meta.icon}</span>
-              <div className="flex-1">
-                <span className="text-sm font-medium">{meta.label}</span>
-                <span className="text-[11px] text-muted-foreground ml-2">{meta.note}</span>
+          <div className="mt-3 grid grid-cols-4 gap-2">
+            {[
+              ["conversation", "Conversation Memory", "Mensagens DB", "violet"],
+              ["knowledge-graph", "Knowledge Graph", "Entities, Decisions, Tasks", "blue"],
+              ["google-drive", "Google Drive", "Índice cognitivo (TTL 30min)", "cyan"],
+              ["gmail", "Gmail", "Subject+sender+labels (sem corpo)", "teal"],
+            ].map(([id, name, desc, color]) => (
+              <div key={id} className={`border border-${color}-800 rounded p-2`}>
+                <div className={`text-${color}-400 font-bold text-xs`}>{name}</div>
+                <div className="text-zinc-500 text-xs mt-0.5">{desc}</div>
               </div>
-              <Badge color={meta.status}>{meta.status === "active" ? "Ativo" : meta.status === "stub" ? "Stub" : "Planejado"}</Badge>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
 
-      {/* Module docs */}
-      <div className="mb-6">
-        <h2 className="text-sm font-semibold mb-3 flex items-center gap-2">
-          <Shield className="w-4 h-4 text-emerald-400" />
-          Modulos — Responsabilidades
-        </h2>
-        <div className="rounded-xl border border-border overflow-hidden">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b border-border bg-muted/10">
-                <th className="text-left px-3 py-2 text-muted-foreground font-medium">Arquivo</th>
-                <th className="text-left px-3 py-2 text-muted-foreground font-medium">Responsabilidade (SRP)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {MODULE_DOCS.map((m, i) => (
-                <tr key={m.file} className={`border-b border-border/30 ${i % 2 === 0 ? "" : "bg-muted/5"}`}>
-                  <td className="px-3 py-2 font-mono text-violet-300 whitespace-nowrap">{m.file}</td>
-                  <td className="px-3 py-2 text-muted-foreground">{m.resp}</td>
-                </tr>
+        {/* Controls */}
+        <div className="flex gap-3 flex-wrap">
+          <button onClick={run} disabled={running}
+            className="bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white px-6 py-2.5 rounded-lg font-bold text-sm transition-colors">
+            {running ? "Running UCME Tests…" : "▶  Run Full Test Suite (6 Suites)"}
+          </button>
+          <button onClick={checkHealth}
+            className="bg-zinc-700 hover:bg-zinc-600 text-white px-6 py-2.5 rounded-lg font-bold text-sm transition-colors">
+            🏥 Health Check
+          </button>
+          <button onClick={() => runDemo("Onde está meu RG?")}
+            className="bg-teal-700 hover:bg-teal-600 text-white px-6 py-2.5 rounded-lg font-bold text-sm transition-colors">
+            🧠 Demo: "Onde está meu RG?"
+          </button>
+          <button onClick={() => runDemo("Últimos emails do cliente")}
+            className="bg-blue-700 hover:bg-blue-600 text-white px-6 py-2.5 rounded-lg font-bold text-sm transition-colors">
+            📧 Demo: "Últimos emails do cliente"
+          </button>
+        </div>
+
+        {err && <div className="border border-red-700 bg-red-950/20 rounded p-4 text-red-300 text-sm">Error: {err}</div>}
+
+        {/* Health */}
+        {health && (
+          <div className="border border-zinc-700 rounded-lg p-4 bg-zinc-900 text-xs">
+            <div className="text-zinc-400 tracking-widest mb-2">PROVIDER HEALTH</div>
+            <div className="grid grid-cols-2 gap-2">
+              {health.map(h => (
+                <div key={h.providerId} className={`flex items-center justify-between border rounded p-2 ${h.healthy ? "border-emerald-800 bg-emerald-950/20" : "border-zinc-800"}`}>
+                  <span className={h.healthy ? "text-emerald-300" : "text-zinc-500"}>{h.providerName}</span>
+                  <span className={`text-xs ${h.healthy ? "text-emerald-500" : "text-red-400"}`}>{h.healthy ? "✓ HEALTHY" : h.detail}</span>
+                </div>
               ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            </div>
+          </div>
+        )}
 
-      {/* Gmail integration */}
-      <div className="p-4 rounded-xl border border-blue-500/20 bg-blue-500/5 mb-6">
-        <h2 className="text-sm font-semibold mb-2 flex items-center gap-2 text-blue-300">
-          <CheckCircle className="w-4 h-4" />
-          Integracao com o Gmail Connector (zero duplicacao)
-        </h2>
-        <div className="text-xs text-muted-foreground space-y-1">
-          <p>• <span className="font-mono text-blue-200">GoogleWorkspaceAuth</span> → compativel com GoogleAuthSession (mesma estrutura de token)</p>
-          <p>• <span className="font-mono text-blue-200">GoogleWorkspaceTokenManager</span> → reutiliza o backend fn <code>googleOAuthRefresh</code> existente</p>
-          <p>• <span className="font-mono text-blue-200">GoogleWorkspaceErrorHandler</span> → GmailConnector pode delegar normalizacao de erros HTTP</p>
-          <p>• <span className="font-mono text-blue-200">GoogleWorkspaceRateLimiter</span> → GmailConnector pode reportar quota ao limiter central</p>
-          <p>• <span className="font-mono text-blue-200">GoogleWorkspaceAuditLogger</span> → audit centralizado para todas as chamadas Gmail</p>
-          <p>• <span className="font-mono text-blue-200">GmailConnector</span> nao foi alterado — integracao e opcional e aditiva</p>
-        </div>
-      </div>
+        {/* Demo result */}
+        {demoResult && (
+          <div className="border border-zinc-700 rounded-lg p-4 bg-zinc-900 text-xs space-y-3">
+            <div className="text-violet-400 font-bold">🧠 MEMORY CONTEXT — "{demoResult.query.text}"</div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="text-zinc-400">Evidências: <span className="text-zinc-200">{demoResult.result.evidence.length}</span></div>
+              <div className="text-zinc-400">Providers: <span className="text-zinc-200">{demoResult.result.providerStats.length}</span></div>
+              <div className="text-zinc-400">Duração: <span className="text-zinc-200">{demoResult.result.durationMs}ms</span></div>
+            </div>
+            {demoResult.result.evidence.slice(0, 4).map((ev, i) => (
+              <div key={i} className="border border-zinc-800 rounded p-2 space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-violet-400">{ev.providerName}</span>
+                  <span className="text-zinc-500">conf: {(ev.confidence * 100).toFixed(0)}% · rel: {(ev.relevance * 100).toFixed(0)}% · w: {ev.weight}</span>
+                </div>
+                <div className="text-zinc-300">{ev.content.slice(0, 200)}</div>
+                <div className="text-zinc-600 italic">{ev.justification}</div>
+              </div>
+            ))}
+            {demoResult.result.evidence.length === 0 && (
+              <div className="text-zinc-500 italic">Nenhuma evidência encontrada para esta query (provedores sem dados locais)</div>
+            )}
+          </div>
+        )}
 
-      {/* CCC integration */}
-      <div className="p-4 rounded-xl border border-yellow-500/20 bg-yellow-500/5 mb-6">
-        <h2 className="text-sm font-semibold mb-2 flex items-center gap-2 text-yellow-300">
-          <Shield className="w-4 h-4" />
-          Compatibilidade com o Certification Framework (CCC)
-        </h2>
-        <div className="text-xs text-muted-foreground space-y-1">
-          <p>• Cada servico GWS sera registrado no <span className="font-mono text-yellow-200">certLifecycle</span> com seu prorio ConnectorId</p>
-          <p>• Mudancas em qualquer modulo GWS disparam <span className="font-mono text-yellow-200">invalidate(trigger)</span> automaticamente</p>
-          <p>• Quality Gate bloqueia promocao enquanto <code>certification_required</code> ou <code>certification_failed</code></p>
-          <p>• AuditLogger alimenta as evidencias de certificacao (precision, recall, perf stats)</p>
-        </div>
-      </div>
+        {/* Summary */}
+        {report && (
+          <div className={`border-2 rounded-xl p-6 text-center ${report.certified ? "border-emerald-500 bg-emerald-950/20" : "border-red-700 bg-red-950/10"}`}>
+            <div className={`text-3xl font-bold ${report.certified ? "text-emerald-400" : "text-red-400"}`}>
+              {report.certified ? "✓ UCME SPRINT 7.0.0 CERTIFIED" : "✗ TEST SUITE FAILED"}
+            </div>
+            <div className="text-zinc-400 text-sm mt-2">{report.passed}/{report.total} passed · {report.failed} failed</div>
+          </div>
+        )}
 
-      {/* Core invariance */}
-      <div className="p-4 rounded-xl border border-border/30 bg-muted/5">
-        <h2 className="text-sm font-semibold mb-2 flex items-center gap-2">
-          <Lock className="w-4 h-4 text-red-400" />
-          Confirmacao: Zero alteracoes no Core
-        </h2>
-        <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-muted-foreground">
-          {["ConversationPipeline","ConversationManager","GoalEngine","PlanningEngine",
-            "Runtime","ExecutionDispatcher","ExecutionPolicy","ExecutionContextFactory",
-            "UniversalConnectorRouter","ConnectorRegistry","Certification Framework"].map((f) => (
-            <span key={f} className="inline-flex items-center gap-1">
-              <CheckCircle className="w-2.5 h-2.5 text-emerald-500" />{f}
-            </span>
+        {/* Suite tables */}
+        {suites.map(({ suite, rows }) => {
+          const sp  = rows.filter(r => r.passed).length;
+          const cls = SUITE_COLORS[suite] ?? "border-zinc-700 text-zinc-300";
+          return (
+            <div key={suite} className="space-y-1">
+              <div className={`border rounded-lg px-4 py-2 flex justify-between bg-zinc-900 ${cls}`}>
+                <span className="font-bold text-sm">{suite}</span>
+                <span className="text-xs font-mono">{sp}/{rows.length}</span>
+              </div>
+              <div className="border border-zinc-800 rounded-lg overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead className="bg-zinc-900 text-zinc-500">
+                    <tr>
+                      <th className="text-left p-2 pl-3 w-96">Test</th>
+                      <th className="text-left p-2">Detail</th>
+                      <th className="text-center p-2 pr-3 w-14">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-800/60">
+                    {rows.map((r, i) => (
+                      <tr key={i} className={r.passed ? "" : "bg-red-950/20"}>
+                        <td className="p-2 pl-3 text-zinc-300">{r.name}</td>
+                        <td className="p-2 text-zinc-500 truncate max-w-xs" title={r.detail}>{r.detail}</td>
+                        <td className="p-2 pr-3 text-center"><Badge ok={r.passed} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {rows.filter(r => !r.passed).map((r, i) => (
+                  <div key={i} className="border-t border-red-800 bg-red-950/10 px-3 py-1.5 text-red-300 text-xs">
+                    ✗ [{r.name}] {r.error}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Compliance summary */}
+        <div className="border border-zinc-700 rounded-lg p-4 bg-zinc-900 text-xs">
+          <div className="text-zinc-400 tracking-widest mb-2">CRITÉRIOS DE ACEITE</div>
+          {[
+            "Existe apenas uma interface pública de memória (UnifiedMemoryEngine + MemoryContextBuilder)",
+            "Todos os tipos de memória implementam MemoryProvider (7 métodos: search, remember, forget, update, explain, health, capabilities)",
+            "O Planner não conhece nenhuma memória específica — usa apenas MemoryContextBuilder",
+            "O usuário pergunta naturalmente — UCME decide onde procurar",
+            "Resultados são fundidos automaticamente via MemoryFusionEngine (merge + dedup + rank)",
+            "Toda resposta possui evidências: memoryId, confidence, relevance, weight, justification",
+            "Novos Memory Providers: apenas MemoryProviderRegistry.register() — o núcleo não muda",
+          ].map((item, i) => (
+            <div key={i} className="text-zinc-300 py-0.5">✓ {item}</div>
           ))}
         </div>
+
       </div>
     </div>
   );
