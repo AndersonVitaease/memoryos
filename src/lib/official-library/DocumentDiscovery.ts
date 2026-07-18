@@ -1,11 +1,13 @@
 /**
- * DocumentDiscovery.ts — Sprint EF-7.2.2
+ * DocumentDiscovery.ts — Sprint EF-7.2.3
  *
  * Core interface for document discovery.
- * No implementation detail. No Vite. No Node. No Base44.
+ * Runtime-agnostic. No Vite, Node, Base44, or any platform dependency.
  *
- * Any runtime (Vite, Node, Base44, GitHub, GoogleDrive, …) implements this
- * interface to plug into the Official Library pipeline.
+ * EF-7.2.3 changes:
+ * - discover() is now purely async (no sync overload)
+ * - Added priority: number for auto-selection ordering
+ * - DiscoveryResult is immutable (readonly arrays)
  *
  * SRP: discovery only — never loads content, never parses, never indexes.
  */
@@ -15,17 +17,11 @@ import type { MemoryAuthority } from "./OfficialLibraryTypes";
 // ── Discovered document descriptor ───────────────────────────────────────────
 
 export interface DiscoveredDocument {
-  /** Stable, unique identifier for this document. */
   readonly id:        string;
-  /** Human-readable display name. */
   readonly name:      string;
-  /** Logical path (relative, runtime-agnostic). */
   readonly path:      string;
-  /** Authority level of the document source. */
   readonly authority: MemoryAuthority;
-  /** Opaque loader function — returns raw string content. */
   readonly load:      () => Promise<string>;
-  /** Optional metadata attached at discovery time. */
   readonly metadata?: Record<string, unknown>;
 }
 
@@ -42,12 +38,17 @@ export interface DiscoveryResult {
 // ── Core interface ────────────────────────────────────────────────────────────
 
 export interface IDocumentDiscovery {
-  /** Unique identifier for this discovery implementation. */
-  readonly runtimeId: string;
+  /** Unique identifier for this implementation. */
+  readonly runtimeId:   string;
   /** Human-readable name. */
   readonly runtimeName: string;
-  /** Whether this discovery implementation is available in the current environment. */
+  /** Whether this implementation is available in the current environment. */
   readonly isAvailable: boolean;
+  /**
+   * Selection priority — higher wins when auto-selecting.
+   * Vite=100, Node=50, Base44=10, GitHub/Drive=80 (future).
+   */
+  readonly priority: number;
 
   /** Discover all documents. Never throws — returns diagnostics for errors. */
   discover(): Promise<DiscoveryResult>;
@@ -55,6 +56,6 @@ export interface IDocumentDiscovery {
   /** List document IDs without loading content. */
   list(): Promise<string[]>;
 
-  /** Check if a document with the given id/path exists. */
+  /** Check if a document with the given id or path exists. */
   exists(idOrPath: string): Promise<boolean>;
 }

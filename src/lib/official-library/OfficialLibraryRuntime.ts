@@ -1,21 +1,23 @@
 /**
- * OfficialLibraryRuntime.ts — Sprint EF-7.2.2
+ * OfficialLibraryRuntime.ts — Sprint EF-7.2.3
  *
  * Single entry point for runtime registration.
- * Registers all available IDocumentDiscovery implementations and selects
- * the best one for the current environment.
+ * The ONLY file that imports concrete IDocumentDiscovery implementations.
  *
- * This is the ONLY file that imports concrete implementations.
- * All other Official Library files depend only on interfaces.
+ * EF-7.2.3 changes:
+ * - Registration uses priority-based auto-selection (no manual if/else)
+ * - Idempotent: safe to import multiple times
  *
- * To add a new runtime: import it here and call register().
- * Nothing else changes.
+ * To add a new runtime (e.g. GitHubDocumentDiscovery):
+ *   1. Create the class implementing IDocumentDiscovery with a suitable priority
+ *   2. Import it here and call register()
+ *   Nothing else changes.
  */
 
-import { DocumentDiscoveryRegistry }  from "./DocumentDiscoveryRegistry";
-import { ViteDocumentDiscovery }       from "./ViteDocumentDiscovery";
-import { NodeDocumentDiscovery }       from "./NodeDocumentDiscovery";
-import { Base44DocumentDiscovery }     from "./Base44DocumentDiscovery";
+import { DocumentDiscoveryRegistry } from "./DocumentDiscoveryRegistry";
+import { ViteDocumentDiscovery }     from "./ViteDocumentDiscovery";
+import { NodeDocumentDiscovery }     from "./NodeDocumentDiscovery";
+import { Base44DocumentDiscovery }   from "./Base44DocumentDiscovery";
 
 let _initialized = false;
 
@@ -23,24 +25,13 @@ export function initOfficialLibraryRuntime(): void {
   if (_initialized) return;
   _initialized = true;
 
-  // Register all implementations — order defines fallback priority
-  const vite   = new ViteDocumentDiscovery();
-  const node   = new NodeDocumentDiscovery();
-  const base44 = new Base44DocumentDiscovery();
+  // Register all implementations — getActive() selects highest-priority available one
+  DocumentDiscoveryRegistry.register(new ViteDocumentDiscovery());   // priority 100
+  DocumentDiscoveryRegistry.register(new NodeDocumentDiscovery());   // priority 50
+  DocumentDiscoveryRegistry.register(new Base44DocumentDiscovery()); // priority 10
 
-  DocumentDiscoveryRegistry.register(vite);
-  DocumentDiscoveryRegistry.register(node);
-  DocumentDiscoveryRegistry.register(base44);
-
-  // Auto-select: prefer Vite (browser/build), fallback to Node, then Base44
-  if (vite.isAvailable) {
-    DocumentDiscoveryRegistry.setActive(vite);
-  } else if (node.isAvailable) {
-    DocumentDiscoveryRegistry.setActive(node);
-  } else {
-    DocumentDiscoveryRegistry.setActive(base44);
-  }
+  // No manual setActive() — priority-based auto-selection handles it
 }
 
-// Auto-initialize when this module is imported
+// Auto-initialize on import
 initOfficialLibraryRuntime();

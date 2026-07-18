@@ -1,31 +1,48 @@
 /**
- * NodeDocumentDiscovery.ts — Sprint EF-7.2.2
+ * NodeDocumentDiscovery.ts — Sprint EF-7.2.3
  *
  * IDocumentDiscovery implementation for the Node.js runtime.
  *
- * Allows the Official Library to run in Node (CLI tools, tests, SSR, scripts)
- * without any Vite dependency.
- *
- * Implementation uses dynamic imports + optional `fs` access.
- * Gracefully degrades when `fs` is unavailable (e.g., in a browser context
- * where this class should not be instantiated).
+ * EF-7.2.3 changes:
+ * - priority = 50
+ * - baseDirs is configurable at construction time (no hardcoded project root)
+ * - Defaults are relative to process.cwd() — works regardless of project structure
+ * - Each dir entry carries its authority
  */
 
 import type { IDocumentDiscovery, DiscoveredDocument, DiscoveryResult } from "./DocumentDiscovery";
 import { MemoryAuthority } from "./OfficialLibraryTypes";
 
+export interface NodeDiscoveryDir {
+  readonly dir:       string;
+  readonly authority: MemoryAuthority;
+}
+
+const DEFAULT_DIRS: NodeDiscoveryDir[] = [
+  { dir: "src/docs/00-official-library", authority: MemoryAuthority.OFFICIAL },
+  { dir: "src/docs/foundation",           authority: MemoryAuthority.VERIFIED },
+  { dir: "src/docs/foundation/adr",       authority: MemoryAuthority.VERIFIED },
+  { dir: "src/docs/foundation/rfc",       authority: MemoryAuthority.VERIFIED },
+];
+
 export class NodeDocumentDiscovery implements IDocumentDiscovery {
   readonly runtimeId   = "node-v1";
   readonly runtimeName = "Node.js (fs.readdir)";
+  readonly priority    = 50;
+
+  private readonly _dirs: NodeDiscoveryDir[];
+
+  constructor(dirs: NodeDiscoveryDir[] = DEFAULT_DIRS) {
+    this._dirs = dirs;
+  }
 
   get isAvailable(): boolean {
-    // Only available in a Node-like environment
     return typeof process !== "undefined"
       && typeof process.versions?.node === "string";
   }
 
   async discover(): Promise<DiscoveryResult> {
-    const t0         = Date.now();
+    const t0          = Date.now();
     const diagnostics: string[] = [];
     const documents:   DiscoveredDocument[] = [];
 
@@ -35,34 +52,29 @@ export class NodeDocumentDiscovery implements IDocumentDiscovery {
     }
 
     try {
-      // Dynamic import to avoid breaking browser/Vite bundling
       const { readdir, readFile } = await import("fs/promises" as any);
-      const { join } = await import("path" as any);
+      const { join, resolve }     = await import("path" as any);
+      const cwd = process.cwd();
 
-      const BASES = [
-        { dir: "src/docs/00-official-library", authority: MemoryAuthority.OFFICIAL },
-        { dir: "src/docs/foundation",           authority: MemoryAuthority.VERIFIED },
-        { dir: "src/docs/foundation/adr",       authority: MemoryAuthority.VERIFIED },
-        { dir: "src/docs/foundation/rfc",       authority: MemoryAuthority.VERIFIED },
-      ];
-
-      for (const { dir, authority } of BASES) {
+      for (const { dir, authority } of this._dirs) {
+        const absDir = resolve(cwd, dir);
         try {
-          const files: string[] = await readdir(dir);
+          const files: string[] = await readdir(absDir);
           for (const file of files.filter((f: string) => f.endsWith(".md"))) {
-            const fullPath = join(dir, file);
+            const fullPath = join(absDir, file);
+            const relPath  = join(dir, file);
             const name     = file.replace(/\.md$/i, "");
             const id       = `doc-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
             documents.push({
               id,
               name,
-              path:      fullPath,
+              path:      relPath,
               authority,
-              load:      async () => readFile(fullPath, "utf-8"),
+              load:      () => readFile(fullPath, "utf-8"),
             });
           }
         } catch {
-          diagnostics.push(`NodeDocumentDiscovery: could not read directory "${dir}"`);
+          diagnostics.push(`NodeDocumentDiscovery: could not read "${dir}" (resolved: ${absDir})`);
         }
       }
     } catch (e) {

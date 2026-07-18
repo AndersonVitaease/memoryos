@@ -153,9 +153,9 @@ export default function Phase720Page() {
 
         {/* Header */}
         <div>
-          <div className="text-xs text-violet-400 tracking-widest mb-1">SPRINT EF-7.2.2 — OFFICIAL LIBRARY RUNTIME INDEPENDENCE</div>
-          <h1 className="text-3xl font-bold">Official Library — Runtime Independence</h1>
-          <p className="text-zinc-400 text-sm mt-1">IDocumentDiscovery · ViteDiscovery · NodeDiscovery · Base44Discovery · Registry · Factory · DI · Zero Vite coupling</p>
+          <div className="text-xs text-violet-400 tracking-widest mb-1">SPRINT EF-7.2.3 — RUNTIME PROVIDER CONSOLIDATION</div>
+          <h1 className="text-3xl font-bold">Official Library — Runtime Provider Consolidation</h1>
+          <p className="text-zinc-400 text-sm mt-1">Priority-based selection · Unified async discover() · NodeDiscovery configurable · Registry generic · Bootstrap abstracted</p>
         </div>
 
         {/* Runtime info */}
@@ -199,12 +199,12 @@ export default function Phase720Page() {
           </div>
           <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
             {[
-              ["IDocumentDiscovery",   "Interface — no Vite/Node/Base44 coupling"],
-              ["ViteDocumentDiscovery","Only file that uses import.meta.glob"],
-              ["NodeDocumentDiscovery","Node fs-based — same interface"],
-              ["Base44Discovery",      "Stub ready for Base44 file API"],
-              ["Registry + Factory",   "DI — setActive() swaps at runtime"],
-              ["Catalog decoupled",    "Zero import.meta.glob in Catalog"],
+              ["Priority-based",       "Vite=100 · Node=50 · Base44=10 · GitHub/Drive=80"],
+              ["Unified discover()",   "Single async method — no sync/discoverAsync split"],
+              ["NodeDiscovery",        "configurable baseDirs — cwd-relative, no hardcoded paths"],
+              ["Runtime removed setActive()", "Auto-selection via priority only"],
+              ["Catalog simplified",   "One method, one responsibility"],
+              ["Future-ready",         "GitHub=80, Drive=80: just register()"],
             ].map(([k, v]) => (
               <div key={k} className="border border-zinc-800 rounded p-2">
                 <div className="text-violet-300 font-bold text-xs">{k}</div>
@@ -321,7 +321,7 @@ export default function Phase720Page() {
         {report && (
           <div className={`border-2 rounded-xl p-6 text-center ${report.certified ? "border-emerald-500 bg-emerald-950/20" : "border-red-700 bg-red-950/10"}`}>
             <div className={`text-3xl font-bold ${report.certified ? "text-emerald-400" : "text-red-400"}`}>
-              {report.certified ? "✓ EF-7.2.2 CERTIFIED" : "✗ TEST SUITE FAILED"}
+              {report.certified ? "✓ EF-7.2.3 CERTIFIED" : "✗ TEST SUITE FAILED"}
             </div>
             <div className="text-zinc-400 text-sm mt-2">{report.passed}/{report.total} passed · {report.failed} failed</div>
           </div>
@@ -368,23 +368,19 @@ export default function Phase720Page() {
 
         {/* Acceptance criteria */}
         <div className="border border-zinc-700 rounded-lg p-4 bg-zinc-900 text-xs space-y-1.5">
-          <div className="text-zinc-400 tracking-widest mb-2">CRITÉRIOS DE ACEITE — EF-7.2.2</div>
+          <div className="text-zinc-400 tracking-widest mb-2">CRITÉRIOS DE ACEITE — EF-7.2.3</div>
           {[
-            "IDocumentDiscovery: interface pura — zero acoplamento a Vite/Node/Base44",
-            "ViteDocumentDiscovery: único arquivo com import.meta.glob — toda a Official Library é independente",
-            "NodeDocumentDiscovery: mesmo contrato, implementação via fs.readdir",
-            "Base44DocumentDiscovery: stub pronto para integração futura",
-            "DocumentDiscoveryRegistry: factory + DI — setActive() troca em runtime",
-            "DocumentLoaderFactory: factory para loaders — extensível sem mudanças",
-            "OfficialLibraryRuntime: único ponto de registro das implementações concretas",
-            "OfficialLibraryCatalog: zero import.meta.glob — delega ao Registry",
-            "OfficialLibraryBootstrap: zero imports concretos — usa Registry e Factory",
-            "Futuro: GitHubDiscovery, DriveDiscovery, DropboxDiscovery = apenas nova classe + register()",
-            "Arquitetura preparada para múltiplos runtimes",
-            "Zero regressões — todas as 19 suites do EF-7.2.1 preservadas",
-            "Zero breaking changes — APIs públicas de EF-7.2.1 são 100% compatíveis",
-            "EMBEDDED_FALLBACK removido — documentos existem apenas em src/docs/",
-            "SearchStrategy DIP · AuthorityComparator · GraphBuilder/Storage/Query — EF-7.2.1 preservados",
+            "discover() é único e async — sem sync/discoverAsync duality",
+            "Seleção de runtime por priority: Vite=100, Node=50, Base44=10",
+            "OfficialLibraryRuntime: sem setActive() manual — apenas register() + auto-select",
+            "NodeDocumentDiscovery: baseDirs configurável — sem hardcoded project root",
+            "Registry: has(), listAll(), listIds() ordenado por priority",
+            "IDocumentDiscovery: priority: number no contrato",
+            "OfficialLibraryCatalog: método único discover() async — catalog simplificado",
+            "Bootstrap: usa catalog.discover() (sem discoverAsync alias)",
+            "GitHub/Drive ready: priority=80, register() = adicionado ao ecossistema",
+            "Zero regressões — 28 suites do EF-7.2.2 preservadas",
+            "Zero breaking changes nos consumidores externos",
           ].map((item, i) => (
             <div key={i} className="text-zinc-300 py-0.5">✓ {item}</div>
           ))}

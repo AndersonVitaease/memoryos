@@ -1,21 +1,17 @@
 /**
- * ViteDocumentDiscovery.ts — Sprint EF-7.2.2
+ * ViteDocumentDiscovery.ts — Sprint EF-7.2.3
  *
  * IDocumentDiscovery implementation for the Vite build environment.
- *
  * ALL import.meta.glob usage is confined to this file.
- * No other file in the Official Library pipeline may use import.meta.glob.
  *
- * OCP: adding a new discovery source = adding a new IDocumentDiscovery impl,
- *      never modifying this file or the catalog.
+ * EF-7.2.3: added priority = 100 (highest — Vite/browser is the primary runtime).
  */
 
 import type { IDocumentDiscovery, DiscoveredDocument, DiscoveryResult } from "./DocumentDiscovery";
 import { MemoryAuthority } from "./OfficialLibraryTypes";
 
-// ── Glob maps declared once at module level (Vite requirement) ────────────────
-// Vite's import.meta.glob must have a string literal argument — cannot be dynamic.
-// { as: 'raw' } prevents Vite from parsing .md files as JS modules.
+// Glob maps declared at module level (Vite requirement — string literal args).
+// { as: 'raw' } prevents Vite from parsing .md as JS.
 
 const OFFICIAL_GLOB = import.meta.glob(
   "/src/docs/00-official-library/*.md",
@@ -37,15 +33,11 @@ const RFC_GLOB = import.meta.glob(
   { eager: false, as: "raw" }
 ) as Record<string, () => Promise<string>>;
 
-// ── Path → Authority mapping ──────────────────────────────────────────────────
-
 function authorityFromPath(path: string): MemoryAuthority {
   if (path.includes("/00-official-library/")) return MemoryAuthority.OFFICIAL;
   if (path.includes("/foundation/"))          return MemoryAuthority.VERIFIED;
   return MemoryAuthority.EXTERNAL;
 }
-
-// ── Glob entry → DiscoveredDocument ──────────────────────────────────────────
 
 function toDiscovered(path: string, importer: () => Promise<string>): DiscoveredDocument {
   const fileName = path.split("/").pop() ?? path;
@@ -63,12 +55,14 @@ function toDiscovered(path: string, importer: () => Promise<string>): Discovered
   };
 }
 
-// ── Implementation ────────────────────────────────────────────────────────────
-
 export class ViteDocumentDiscovery implements IDocumentDiscovery {
   readonly runtimeId   = "vite-v1";
   readonly runtimeName = "Vite (import.meta.glob)";
-  readonly isAvailable = typeof import.meta !== "undefined" && typeof import.meta.glob === "function";
+  readonly priority    = 100;
+
+  get isAvailable(): boolean {
+    return typeof import.meta !== "undefined" && typeof import.meta.glob === "function";
+  }
 
   async discover(): Promise<DiscoveryResult> {
     const t0          = Date.now();
@@ -76,10 +70,10 @@ export class ViteDocumentDiscovery implements IDocumentDiscovery {
     const documents:   DiscoveredDocument[] = [];
 
     for (const [glob, label] of [
-      [OFFICIAL_GLOB,  "official-library"],
-      [FOUNDATION_GLOB,"foundation"],
-      [ADR_GLOB,       "adr"],
-      [RFC_GLOB,       "rfc"],
+      [OFFICIAL_GLOB,   "official-library"],
+      [FOUNDATION_GLOB, "foundation"],
+      [ADR_GLOB,        "adr"],
+      [RFC_GLOB,        "rfc"],
     ] as [Record<string, () => Promise<string>>, string][]) {
       const entries = Object.entries(glob);
       if (entries.length === 0) {
@@ -97,16 +91,19 @@ export class ViteDocumentDiscovery implements IDocumentDiscovery {
 
     return {
       documents,
-      durationMs:    Date.now() - t0,
-      discoveredAt:  new Date().toISOString(),
-      runtimeId:     this.runtimeId,
+      durationMs:   Date.now() - t0,
+      discoveredAt: new Date().toISOString(),
+      runtimeId:    this.runtimeId,
       diagnostics,
     };
   }
 
   async list(): Promise<string[]> {
-    const result = await this.discover();
-    return result.documents.map(d => d.id);
+    return Object.keys({ ...OFFICIAL_GLOB, ...FOUNDATION_GLOB, ...ADR_GLOB, ...RFC_GLOB })
+      .map(path => {
+        const name = (path.split("/").pop() ?? path).replace(/\.md$/i, "");
+        return `doc-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`;
+      });
   }
 
   async exists(idOrPath: string): Promise<boolean> {

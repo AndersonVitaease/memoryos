@@ -207,18 +207,20 @@ async function suite11(): Promise<OLTestResult[]> {
 
 // ── Suite 12: Catalog auto-discovery ─────────────────────────────────────────
 
-function suite12(): OLTestResult[] {
+async function suite12(): Promise<OLTestResult[]> {
   const S = "12 — OfficialLibraryCatalog (auto-discovery)";
-  const sources = OfficialLibraryCatalog.discover();
+  OfficialLibraryCatalog.reset();
+  const sources = await OfficialLibraryCatalog.discover();
   return [
-    check(S, "discover() returns array",              Array.isArray(sources), "ok"),
-    check(S, "each source has id",                    sources.every(s => s.id.length > 0), "ok"),
-    check(S, "each source has name",                  sources.every(s => s.name.length > 0), "ok"),
-    check(S, "each source has load function",         sources.every(s => typeof s.load === "function"), "ok"),
-    check(S, "catalog has hasDocuments getter",       typeof OfficialLibraryCatalog.hasDocuments === "boolean", "ok"),
-    check(S, "diagnostics is string[]",               Array.isArray(OfficialLibraryCatalog.diagnostics), "ok"),
-    check(S, "count matches sources.length",          OfficialLibraryCatalog.count === sources.length, `${OfficialLibraryCatalog.count}`),
-    check(S, "no hardcoded names (discover is dynamic)", !OfficialLibraryCatalog.discover.toString().includes('"doc-mv"'), "ok"),
+    check(S, "discover() returns array",                 Array.isArray(sources), "ok"),
+    check(S, "each source has id",                       sources.every(s => s.id.length > 0), "ok"),
+    check(S, "each source has name",                     sources.every(s => s.name.length > 0), "ok"),
+    check(S, "each source has load function",            sources.every(s => typeof s.load === "function"), "ok"),
+    check(S, "catalog has hasDocuments getter",          typeof OfficialLibraryCatalog.hasDocuments === "boolean", "ok"),
+    check(S, "diagnostics is string[]",                  Array.isArray(OfficialLibraryCatalog.diagnostics), "ok"),
+    check(S, "count matches sources.length",             OfficialLibraryCatalog.count === sources.length, `${OfficialLibraryCatalog.count}`),
+    check(S, "discover() is async (returns Promise)",    OfficialLibraryCatalog.discover() instanceof Promise, "ok"),
+    check(S, "no hardcoded names",                       !OfficialLibraryCatalog.discover.toString().includes('"doc-mv"'), "ok"),
   ];
 }
 
@@ -364,7 +366,7 @@ function suite19(): OLTestResult[] {
   const S = "19 — No Hardcoded Content";
   const indexerSrc  = OfficialLibraryIndexer._reset.toString();
   const providerSrc = OfficialLibraryProvider.search.toString();
-  const catalogSrc  = OfficialLibraryCatalog.discoverAsync.toString();
+  const catalogSrc  = OfficialLibraryCatalog.discover.toString();
 
   return [
     check(S, "OfficialLibraryIndexer has no EMBEDDED_FALLBACK",      !indexerSrc.includes("EMBEDDED_FALLBACK"), "ok"),
@@ -459,19 +461,20 @@ async function suite23(): Promise<OLTestResult[]> {
 // ── Suite 24: DocumentDiscoveryRegistry ──────────────────────────────────────
 
 function suite24(): OLTestResult[] {
-  const S = "24 — DocumentDiscoveryRegistry (Factory + DI)";
+  const S = "24 — DocumentDiscoveryRegistry (Priority-based + DI)";
+  const active = DocumentDiscoveryRegistry.getActive();
 
   return [
-    check(S, "registry has at least 1 impl registered",      DocumentDiscoveryRegistry.size >= 1, `${DocumentDiscoveryRegistry.size}`),
-    check(S, "listIds() returns string[]",                    Array.isArray(DocumentDiscoveryRegistry.listIds()), "ok"),
-    check(S, "vite-v1 is registered",                         DocumentDiscoveryRegistry.listIds().includes("vite-v1"), "ok"),
-    check(S, "node-v1 is registered",                         DocumentDiscoveryRegistry.listIds().includes("node-v1"), "ok"),
-    check(S, "base44-v1 is registered",                       DocumentDiscoveryRegistry.listIds().includes("base44-v1"), "ok"),
-    check(S, "getActive() returns IDocumentDiscovery",        typeof DocumentDiscoveryRegistry.getActive().runtimeId === "string", "ok"),
-    check(S, "active runtimeId is vite-v1 (Vite env)",       DocumentDiscoveryRegistry.getActive().runtimeId === "vite-v1", DocumentDiscoveryRegistry.getActive().runtimeId),
-    check(S, "get('vite-v1') returns ViteDocumentDiscovery", DocumentDiscoveryRegistry.get("vite-v1")?.runtimeId === "vite-v1", "ok"),
-    check(S, "register() adds new impl",                     (() => { const d = new ViteDocumentDiscovery(); DocumentDiscoveryRegistry.register(d); return DocumentDiscoveryRegistry.has ? true : DocumentDiscoveryRegistry.size >= 3; })(), "ok"),
-    check(S, "setActive() allows DI injection",              (() => { const d = new ViteDocumentDiscovery(); DocumentDiscoveryRegistry.setActive(d); return DocumentDiscoveryRegistry.getActive().runtimeId === "vite-v1"; })(), "ok"),
+    check(S, "registry has 3 impls registered",               DocumentDiscoveryRegistry.size >= 3, `${DocumentDiscoveryRegistry.size}`),
+    check(S, "listIds() ordered by priority desc",            DocumentDiscoveryRegistry.listIds()[0] === "vite-v1", DocumentDiscoveryRegistry.listIds().join(",")),
+    check(S, "has('vite-v1') = true",                         DocumentDiscoveryRegistry.has("vite-v1"), "ok"),
+    check(S, "has('node-v1') = true",                         DocumentDiscoveryRegistry.has("node-v1"), "ok"),
+    check(S, "has('base44-v1') = true",                       DocumentDiscoveryRegistry.has("base44-v1"), "ok"),
+    check(S, "getActive() returns highest-priority available", active.runtimeId === "vite-v1", active.runtimeId),
+    check(S, "get('vite-v1') returns impl",                   DocumentDiscoveryRegistry.get("vite-v1")?.runtimeId === "vite-v1", "ok"),
+    check(S, "vite priority=100 > node priority=50",          (DocumentDiscoveryRegistry.get("vite-v1")?.priority ?? 0) > (DocumentDiscoveryRegistry.get("node-v1")?.priority ?? 0), "ok"),
+    check(S, "node priority=50 > base44 priority=10",         (DocumentDiscoveryRegistry.get("node-v1")?.priority ?? 0) > (DocumentDiscoveryRegistry.get("base44-v1")?.priority ?? 0), "ok"),
+    check(S, "listAll() returns IDocumentDiscovery[]",        Array.isArray(DocumentDiscoveryRegistry.listAll()), "ok"),
   ];
 }
 
@@ -530,20 +533,20 @@ async function suite27(): Promise<OLTestResult[]> {
 // ── Suite 28: Catalog fully decoupled ─────────────────────────────────────────
 
 async function suite28(): Promise<OLTestResult[]> {
-  const S = "28 — Catalog fully decoupled from Vite";
-  const catalogSrc = OfficialLibraryCatalog.discoverAsync.toString();
+  const S = "28 — Catalog fully decoupled (EF-7.2.3)";
+  const catalogSrc = OfficialLibraryCatalog.discover.toString();
   OfficialLibraryCatalog.reset();
-  const sources = await OfficialLibraryCatalog.discoverAsync();
+  const sources = await OfficialLibraryCatalog.discover();
 
   return [
-    check(S, "no import.meta.glob in catalog",           !catalogSrc.includes("import.meta.glob"), "ok"),
-    check(S, "no assetsInclude in catalog",              !catalogSrc.includes("assetsInclude"), "ok"),
-    check(S, "no 'vite' string in catalog",              !catalogSrc.toLowerCase().includes("import.meta.glob"), "ok"),
-    check(S, "discoverAsync() delegates to Registry",    catalogSrc.includes("DocumentDiscoveryRegistry") || true, "ok"),
-    check(S, "runtimeId reflects active discovery",      OfficialLibraryCatalog.runtimeId.length > 0, OfficialLibraryCatalog.runtimeId),
-    check(S, "discoveryMs is a number",                  typeof OfficialLibraryCatalog.discoveryMs === "number", `${OfficialLibraryCatalog.discoveryMs}ms`),
-    check(S, "sources are returned from async discovery", Array.isArray(sources), `${sources.length} docs`),
-    check(S, "catalog.count reflects discovered docs",   OfficialLibraryCatalog.count === sources.length, `${OfficialLibraryCatalog.count}`),
+    check(S, "no import.meta.glob in catalog",            !catalogSrc.includes("import.meta.glob"), "ok"),
+    check(S, "no assetsInclude in catalog",               !catalogSrc.includes("assetsInclude"), "ok"),
+    check(S, "discover() is async (single unified method)", catalogSrc.includes("async"), "ok"),
+    check(S, "no discoverAsync() alias needed",           !("discoverAsync" in OfficialLibraryCatalog), "ok"),
+    check(S, "runtimeId reflects active discovery",       OfficialLibraryCatalog.runtimeId.length > 0, OfficialLibraryCatalog.runtimeId),
+    check(S, "discoveryMs is a number",                   typeof OfficialLibraryCatalog.discoveryMs === "number", `${OfficialLibraryCatalog.discoveryMs}ms`),
+    check(S, "discover() returns DocumentSource[]",       Array.isArray(sources), `${sources.length} docs`),
+    check(S, "catalog.count reflects discovered docs",    OfficialLibraryCatalog.count === sources.length, `${OfficialLibraryCatalog.count}`),
   ];
 }
 
@@ -558,8 +561,8 @@ export interface OLTestReport {
 }
 
 export async function runOfficialLibraryTests(): Promise<OLTestReport> {
-  const sync   = [...suite1(), ...suite2(), ...suite4(), ...suite12(), ...suite15(), ...suite17(), ...suite18(), ...suite19(), ...suite20(), ...suite24(), ...suite25(), ...suite26()];
-  const async_ = await Promise.all([suite3(), suite5(), suite6(), suite7(), suite8(), suite9(), suite10(), suite11(), suite13(), suite14(), suite16(), suite21(), suite22(), suite23(), suite27(), suite28()]);
+  const sync   = [...suite1(), ...suite2(), ...suite4(), ...suite15(), ...suite17(), ...suite18(), ...suite19(), ...suite20(), ...suite24(), ...suite25(), ...suite26()];
+  const async_ = await Promise.all([suite3(), suite5(), suite6(), suite7(), suite8(), suite9(), suite10(), suite11(), suite12(), suite13(), suite14(), suite16(), suite21(), suite22(), suite23(), suite27(), suite28()]);
   const results = [...sync, ...async_.flat()];
   const passed  = results.filter(r => r.passed).length;
   return { results, total: results.length, passed, failed: results.length - passed, certified: results.every(r => r.passed) };

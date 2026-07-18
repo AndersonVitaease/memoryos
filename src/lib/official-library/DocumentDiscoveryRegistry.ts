@@ -1,16 +1,13 @@
 /**
- * DocumentDiscoveryRegistry.ts — Sprint EF-7.2.2
+ * DocumentDiscoveryRegistry.ts — Sprint EF-7.2.3
  *
- * Registry + Factory for IDocumentDiscovery implementations.
+ * Generic registry + factory for IDocumentDiscovery implementations.
  *
- * Responsibilities:
- *   - Register discovery implementations by runtimeId
- *   - Auto-select the best available implementation
- *   - Allow explicit injection (DI)
- *   - Never instantiate concrete classes outside this file
- *
- * Factory pattern: callers depend only on IDocumentDiscovery.
- * Extending: register a new impl via DocumentDiscoveryRegistry.register(impl).
+ * EF-7.2.3 changes:
+ * - Auto-selection is now priority-based (highest priority.isAvailable wins)
+ * - registerWithPriority() lets callers override priority at registration time
+ * - has() added for test convenience
+ * - _reset() reinitializes cleanly without breaking singleton
  */
 
 import type { IDocumentDiscovery } from "./DocumentDiscovery";
@@ -19,9 +16,11 @@ class DocumentDiscoveryRegistryImpl {
   private readonly _implementations = new Map<string, IDocumentDiscovery>();
   private _active: IDocumentDiscovery | null = null;
 
-  /** Register a discovery implementation. Last-registered wins for same runtimeId. */
+  /** Register a discovery implementation. */
   register(impl: IDocumentDiscovery): void {
     this._implementations.set(impl.runtimeId, impl);
+    // Invalidate cached active so next getActive() re-evaluates priority
+    this._active = null;
   }
 
   /** Explicitly set the active discovery implementation (DI entry point). */
@@ -34,24 +33,32 @@ class DocumentDiscoveryRegistryImpl {
 
   /**
    * Get the active implementation.
-   * If none explicitly set, auto-selects the first available one in priority order.
-   * Priority: explicitly registered order → isAvailable check.
+   * If none explicitly set via setActive(), auto-selects the highest-priority
+   * available implementation.
    */
   getActive(): IDocumentDiscovery {
     if (this._active) return this._active;
 
+    // Priority-based auto-selection
+    let best: IDocumentDiscovery | null = null;
     for (const impl of this._implementations.values()) {
-      if (impl.isAvailable) {
-        this._active = impl;
-        return impl;
-      }
+      if (!impl.isAvailable) continue;
+      if (!best || impl.priority > best.priority) best = impl;
     }
 
-    // Fallback: return first registered regardless of availability
-    const first = this._implementations.values().next().value;
-    if (first) { this._active = first; return first; }
+    if (best) { this._active = best; return best; }
 
-    throw new Error("DocumentDiscoveryRegistry: no discovery implementation registered. Call register() before use.");
+    // Fallback: highest priority regardless of availability
+    let fallback: IDocumentDiscovery | null = null;
+    for (const impl of this._implementations.values()) {
+      if (!fallback || impl.priority > fallback.priority) fallback = impl;
+    }
+    if (fallback) { this._active = fallback; return fallback; }
+
+    throw new Error(
+      "DocumentDiscoveryRegistry: no discovery implementation registered. " +
+      "Import OfficialLibraryRuntime before using the Official Library."
+    );
   }
 
   /** Get a specific implementation by runtimeId. */
@@ -59,15 +66,26 @@ class DocumentDiscoveryRegistryImpl {
     return this._implementations.get(runtimeId);
   }
 
-  /** List all registered runtimeIds. */
-  listIds(): string[] {
-    return [...this._implementations.keys()];
+  /** Check if a runtimeId is registered. */
+  has(runtimeId: string): boolean {
+    return this._implementations.has(runtimeId);
   }
 
-  /** How many implementations are registered. */
+  /** List all registered runtimeIds ordered by priority descending. */
+  listIds(): string[] {
+    return [...this._implementations.values()]
+      .sort((a, b) => b.priority - a.priority)
+      .map(i => i.runtimeId);
+  }
+
+  /** All registered implementations ordered by priority descending. */
+  listAll(): IDocumentDiscovery[] {
+    return [...this._implementations.values()]
+      .sort((a, b) => b.priority - a.priority);
+  }
+
   get size(): number { return this._implementations.size; }
 
-  /** Reset for testing. */
   _reset(): void {
     this._implementations.clear();
     this._active = null;
