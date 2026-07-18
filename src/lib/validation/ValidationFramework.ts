@@ -5,15 +5,20 @@
  * and tracks regression state (all previously passed scenarios are permanent).
  */
 
-import { ValidationRunner }      from "./ValidationRunner";
-import { OFFICIAL_SCENARIOS }    from "./ValidationScenarios";
+import { ValidationRunner }              from "./ValidationRunner";
+import { OFFICIAL_SCENARIOS }            from "./ValidationScenarios";
+import { RegressionStore }               from "./RegressionStore";
+import { MetricsConsistencyAuditor }     from "./MetricsConsistencyAuditor";
+import { CertificationReportBuilder }    from "./CertificationReport";
 import type {
   ValidationScenario,
   ValidationSuiteResult,
   ValidationResult,
 } from "./ValidationTypes";
+import type { ProductValidationCertificate } from "./CertificationReport";
 
 let _suiteHistory: ValidationSuiteResult[] = [];
+let _lastCert: ProductValidationCertificate | null = null;
 
 export class ValidationFramework {
   private readonly _runner: ValidationRunner;
@@ -50,19 +55,34 @@ export class ValidationFramework {
     return Object.freeze([..._suiteHistory]);
   }
 
-  /** Regression check — verifies no previously passing scenario now fails. */
+  /** Regression check — uses permanent RegressionStore. */
   checkRegression(latest: ValidationSuiteResult): string[] {
-    if (_suiteHistory.length === 0) return [];
-    const violations: string[] = [];
-    for (const prev of _suiteHistory) {
-      const prevPassed = new Set(prev.results.filter(r => r.passed).map(r => r.scenarioId));
-      for (const r of latest.results) {
-        if (prevPassed.has(r.scenarioId) && !r.passed) {
-          violations.push(`REGRESSION: ${r.scenarioId} (${r.scenarioName}) previously passed but now failed`);
-        }
-      }
-    }
-    return violations;
+    return RegressionStore.detectRegressions(latest.results);
+  }
+
+  /** Run consistency audit across report/snapshot/metrics. */
+  auditConsistency(suite: ValidationSuiteResult) {
+    return MetricsConsistencyAuditor.auditAll(suite.results);
+  }
+
+  /** Build the final ProductValidationCertificate. */
+  certify(suite: ValidationSuiteResult): ProductValidationCertificate {
+    const regressions        = RegressionStore.all();
+    const permanent          = RegressionStore.permanentSuite();
+    const consistency        = MetricsConsistencyAuditor.auditAll(suite.results);
+    const regressionViolations = RegressionStore.detectRegressions(suite.results);
+    _lastCert = CertificationReportBuilder.build(suite, regressions, permanent, consistency, regressionViolations);
+    return _lastCert;
+  }
+
+  /** Last issued certificate (null if never certified). */
+  lastCertificate(): ProductValidationCertificate | null {
+    return _lastCert;
+  }
+
+  /** Permanent regression suite IDs. */
+  permanentSuite(): readonly string[] {
+    return RegressionStore.permanentSuite();
   }
 
   private async _runScenarios(
@@ -99,6 +119,8 @@ export class ValidationFramework {
     });
 
     _suiteHistory = [..._suiteHistory, suite];
+    // Always record into permanent regression store
+    RegressionStore.recordAll(suite.results);
     return suite;
   }
 }
