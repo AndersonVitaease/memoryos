@@ -1,11 +1,11 @@
 /**
- * OfficialLibraryRuntimeProvider.ts — Sprint EF-7.2.5
+ * OfficialLibraryRuntimeProvider.ts — Sprint EF-7.2.6
  *
  * Facade that Bootstrap uses for all infrastructure resolution.
- * Exposes only interfaces — zero concrete imports.
+ * Depends ONLY on IRuntimeResolver and IRuntimeProvider interfaces.
+ * RuntimeRegistry is completely hidden behind RuntimeResolver.
  *
- * EF-7.2.5: refresh() now uses public RuntimeRegistry.refresh() API
- * — no private state access, no globalThis hacks.
+ * EF-7.2.6: no direct RuntimeRegistry import — resolved through RuntimeResolver.
  *
  * Bootstrap usage:
  *   const runtime   = OfficialLibraryRuntimeProvider.runtime();
@@ -16,7 +16,8 @@
 import type { IRuntimeProvider }       from "./IRuntimeProvider";
 import type { IDocumentDiscovery }     from "./DocumentDiscovery";
 import type { IDocumentLoader }        from "./DocumentLoaderFactory";
-import { RuntimeRegistry }             from "./RuntimeRegistry";
+import type { IRuntimeResolver }       from "./IRuntimeResolver";
+import { RuntimeResolver }             from "./RuntimeResolver";
 import { RuntimeScore }                from "./RuntimeScore";
 import { RuntimeReason }               from "./RuntimeReason";
 import { detectEnvironment }           from "./RuntimeEnvironment";
@@ -24,31 +25,35 @@ import type { RuntimeReasonResult }    from "./RuntimeReason";
 import type { RuntimeScoreResult }     from "./RuntimeScore";
 
 class OfficialLibraryRuntimeProviderImpl {
+  private readonly _resolver: IRuntimeResolver;
 
-  runtime():     IRuntimeProvider  { return RuntimeRegistry.getActive(); }
-  getRuntime():  IRuntimeProvider  { return this.runtime(); }
-  getDiscovery(): IDocumentDiscovery { return this.runtime().discovery(); }
-  getLoader():    IDocumentLoader    { return this.runtime().loader(); }
+  constructor(resolver: IRuntimeResolver = RuntimeResolver) {
+    this._resolver = resolver;
+  }
+
+  runtime():      IRuntimeProvider   { return this._resolver.getActive(); }
+  getRuntime():   IRuntimeProvider   { return this._resolver.getActive(); }
+  getDiscovery(): IDocumentDiscovery { return this._resolver.getActive().discovery(); }
+  getLoader():    IDocumentLoader    { return this._resolver.getActive().loader(); }
 
   getReason(): RuntimeReasonResult {
-    const provider = this.runtime();
+    const provider = this._resolver.getActive();
     const score    = RuntimeScore.score(provider);
     const env      = detectEnvironment();
     return RuntimeReason.explain(provider, score, true, env);
   }
 
   getScore(): RuntimeScoreResult {
-    return RuntimeScore.score(this.runtime());
+    return RuntimeScore.score(this._resolver.getActive());
   }
 
   getAllReasons(): RuntimeReasonResult[] {
-    return RuntimeRegistry.explain();
+    return [...this._resolver.explain()];
   }
 
-  /** Force re-evaluation — uses public API only, no private state access. */
+  /** Force re-evaluation using the resolver's public API. */
   refresh(): IRuntimeProvider {
-    RuntimeRegistry.refresh();
-    return RuntimeRegistry.getActive();
+    return this._resolver.refresh();
   }
 }
 
