@@ -197,6 +197,7 @@ import SprintOL02Page from '@/pages/SprintOL02Page';
 import PhaseKB01Page from '@/pages/PhaseKB01Page';
 import PhaseKB02Page from '@/pages/PhaseKB02Page';
 import PhaseKB03Page from '@/pages/PhaseKB03Page';
+import PhaseKB04Page from '@/pages/PhaseKB04Page';
 
 const AuthenticatedApp = () => {
   console.log('[RENDER] AuthenticatedApp');
@@ -413,6 +414,7 @@ const AuthenticatedApp = () => {
           <Route path="/kb01" element={<PhaseKB01Page />} />
           <Route path="/kb02" element={<PhaseKB02Page />} />
           <Route path="/kb03" element={<PhaseKB03Page />} />
+          <Route path="/kb04" element={<PhaseKB04Page />} />
         </Route>
       </Route>
       <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />
