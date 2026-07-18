@@ -1,13 +1,29 @@
 /**
- * MemoryFusionEngine.ts — UCME v1.0
- * Sprint 7.0.0
+ * MemoryFusionEngine.ts — UCME v1.1
+ * Sprint EF-7.2.0 — Authority-aware ranking
  *
  * Merges, deduplicates, and ranks evidence from multiple providers.
- * Uses confidence × relevance × recency weighting.
+ * Ranking priority: Authority > Confidence > Relevance > Recency
+ * Authority rank is read from metadata.authority (optional, backward compatible).
  * No knowledge of specific providers.
  */
 
 import type { MemoryEvidence } from "./UCMETypes";
+
+// ── Authority rank lookup (backward compatible — optional field) ───────────────
+
+const AUTHORITY_WEIGHT: Record<string, number> = {
+  OFFICIAL:  0.20,
+  VERIFIED:  0.10,
+  LEARNED:   0.00,
+  USER:      0.00,
+  EXTERNAL:  0.00,
+};
+
+function authorityBoost(ev: MemoryEvidence): number {
+  const authority = (ev.metadata?.authority ?? "") as string;
+  return AUTHORITY_WEIGHT[authority] ?? 0;
+}
 
 // ── Recency scoring ───────────────────────────────────────────────────────────
 // Maps age (ms) to 0–1. Fresh = 1, older = decays.
@@ -28,11 +44,13 @@ function recencyScore(lastUpdatedISO: string): number {
 }
 
 // ── Weight formula ────────────────────────────────────────────────────────────
+// Sprint EF-7.2.0: Authority boost is additive and always applied first.
+// Authority > Confidence > Relevance > Recency
 
 function computeWeight(ev: MemoryEvidence): number {
-  return Math.round(
-    (ev.confidence * 0.4 + ev.relevance * 0.4 + ev.recency * 0.2) * 1000
-  ) / 1000;
+  const base     = ev.confidence * 0.4 + ev.relevance * 0.4 + ev.recency * 0.2;
+  const authBoost = authorityBoost(ev);
+  return Math.round(Math.min(1, base + authBoost) * 1000) / 1000;
 }
 
 // ── Deduplication key ─────────────────────────────────────────────────────────
