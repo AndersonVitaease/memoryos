@@ -7,6 +7,12 @@
  */
 
 import { ExecutionStage } from "./ExecutionStage";
+import type {
+  UserInput, IntentResult, GoalResult, PlanResult, KernelResult,
+  OrchestratorResult, CapabilityResult, ConnectorRuntimeResult,
+  ConnectorResult, ResultOutput, MemoryResult, ExplainabilityResult,
+  AuditResult, ChainStageRecord,
+} from "./ExecutionChainTypes";
 
 export interface ExplanationNode {
   readonly origin:      string;
@@ -77,6 +83,24 @@ export interface ExecutionState {
   readonly telemetry:         ExecutionTelemetry;
   readonly timestamps:        ExecutionTimestamps;
   readonly status:            "running" | "completed" | "failed" | "aborted";
+
+  // ── Stage-specific output slots — set by pipeline stages, read by downstream stages ──
+  // These replace StageOutputBag: ExecutionState is the single shared state.
+  readonly userInput?:        UserInput;
+  readonly intent?:           IntentResult;
+  readonly goal?:             GoalResult;
+  readonly plan?:             PlanResult;
+  readonly kernel?:           KernelResult;
+  readonly orchestrator?:     OrchestratorResult;
+  readonly capability?:       CapabilityResult;
+  readonly connectorRuntime?: ConnectorRuntimeResult;
+  readonly connector?:        ConnectorResult;
+  readonly result?:           ResultOutput;
+  readonly memory?:           MemoryResult;
+  readonly explainability?:   ExplainabilityResult;
+  readonly audit?:            AuditResult;
+  /** Legacy: full ChainStageRecord array — used by ExplainabilityStage */
+  readonly records?:          readonly ChainStageRecord[];
 }
 
 /** Factory — produces a frozen ExecutionState. */
@@ -157,8 +181,33 @@ export const ExecutionStateFactory = {
 
 // ── Single generic record helper (pipeline infrastructure only) ───────────────
 
-export function withRecord(state: ExecutionState, record: StageRecord): ExecutionState {
-  return ExecutionStateFactory.completeStage(state, record);
+/** Accepts either a StageRecord or a ChainStageRecord — normalises to StageRecord. */
+export function withRecord(state: ExecutionState, record: StageRecord | ChainStageRecord): ExecutionState {
+  // Normalise ChainStageRecord → StageRecord
+  const sr: StageRecord = "stageId" in record
+    ? (record as StageRecord)
+    : Object.freeze({
+        stageId:     (record as ChainStageRecord).stage as string,
+        stageName:   (record as ChainStageRecord).stage as string,
+        startedAt:   new Date((record as ChainStageRecord).startedAt).toISOString(),
+        completedAt: new Date((record as ChainStageRecord).completedAt ?? Date.now()).toISOString(),
+        durationMs:  (record as ChainStageRecord).durationMs ?? 0,
+        status:      (record as ChainStageRecord).status === "COMPLETED" ? "completed" : "failed",
+        error:       (record as ChainStageRecord).error ?? null,
+      });
+
+  // Also append to state.records (used by ExplainabilityStage)
+  const chain = record as ChainStageRecord;
+  const chainRecord = "stage" in chain ? chain : undefined;
+  const newRecords = chainRecord
+    ? Object.freeze([...(state.records ?? []), chainRecord])
+    : state.records;
+
+  const withRecs = chainRecord
+    ? ExecutionStateFactory.update(state, { records: newRecords })
+    : state;
+
+  return ExecutionStateFactory.completeStage(withRecs, sr);
 }
 
 /**
@@ -176,3 +225,27 @@ export function createEmptyExecutionState(): ExecutionState {
     stages:      [],
   });
 }
+
+/**
+ * EMPTY_EXECUTION_STATE — stable constant for tests that need a shared base.
+ * Uses createEmptyExecutionState() so each access gets a fresh frozen instance.
+ * Backward-compat alias for EngineeringQuality.cert.ts and legacy test files.
+ */
+export const EMPTY_EXECUTION_STATE: ExecutionState = createEmptyExecutionState();
+
+// ── 13 typed stage-output helpers ─────────────────────────────────────────────
+// Each sets exactly one stage-output slot and returns a new frozen ExecutionState.
+
+export const withUserInput        = (s: ExecutionState, v: UserInput)            : ExecutionState => ExecutionStateFactory.update(s, { userInput:        v });
+export const withIntent           = (s: ExecutionState, v: IntentResult)         : ExecutionState => ExecutionStateFactory.update(s, { intent:           v });
+export const withGoal             = (s: ExecutionState, v: GoalResult)           : ExecutionState => ExecutionStateFactory.update(s, { goal:             v });
+export const withPlan             = (s: ExecutionState, v: PlanResult)           : ExecutionState => ExecutionStateFactory.update(s, { plan:             v });
+export const withKernel           = (s: ExecutionState, v: KernelResult)         : ExecutionState => ExecutionStateFactory.update(s, { kernel:           v });
+export const withOrchestrator     = (s: ExecutionState, v: OrchestratorResult)   : ExecutionState => ExecutionStateFactory.update(s, { orchestrator:     v });
+export const withCapability       = (s: ExecutionState, v: CapabilityResult)     : ExecutionState => ExecutionStateFactory.update(s, { capability:       v });
+export const withConnectorRuntime = (s: ExecutionState, v: ConnectorRuntimeResult): ExecutionState => ExecutionStateFactory.update(s, { connectorRuntime: v });
+export const withConnector        = (s: ExecutionState, v: ConnectorResult)      : ExecutionState => ExecutionStateFactory.update(s, { connector:        v });
+export const withResult           = (s: ExecutionState, v: ResultOutput)         : ExecutionState => ExecutionStateFactory.update(s, { result:           v });
+export const withMemory           = (s: ExecutionState, v: MemoryResult)         : ExecutionState => ExecutionStateFactory.update(s, { memory:           v });
+export const withExplainability   = (s: ExecutionState, v: ExplainabilityResult) : ExecutionState => ExecutionStateFactory.update(s, { explainability:   v });
+export const withAudit            = (s: ExecutionState, v: AuditResult)          : ExecutionState => ExecutionStateFactory.update(s, { audit:            v });

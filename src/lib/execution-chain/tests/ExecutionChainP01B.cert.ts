@@ -19,16 +19,16 @@ import { ExecutionCompositionRoot }    from "../ExecutionCompositionRoot";
 import { ExecutionReportAssembler }    from "../ExecutionReportAssembler";
 import { ExecutionSnapshotAssembler }  from "../ExecutionSnapshot";
 import { createEmptyExecutionState, withRecord, ExecutionStateFactory } from "../ExecutionState";
-import { ExecutionStage } from "../ExecutionStage";
-
-// EF-7.2.8A: factory function — each call returns a new isolated instance
-function EMPTY_EXECUTION_STATE() { return createEmptyExecutionState(); }
+import { ExecutionStage }              from "../ExecutionStage";
 import { RuntimeRegistry }             from "../RuntimeRegistry";
 import { DeterministicClock }          from "../../runtime-infra/RuntimeClock";
 import { DeterministicProvider }       from "../../runtime-infra/RuntimeExecutionIdProvider";
 import { RuntimeEventBus }             from "../../runtime-infra/RuntimeEventBus";
 import { RuntimeMetrics }              from "../../runtime-infra/RuntimeMetrics";
 import type { UserInput }              from "../ExecutionChainTypes";
+
+// EF-7.2.8A: factory function — each call returns a new isolated instance
+function EMPTY_EXECUTION_STATE() { return createEmptyExecutionState(); }
 
 // ── Test harness ──────────────────────────────────────────────────────────────
 

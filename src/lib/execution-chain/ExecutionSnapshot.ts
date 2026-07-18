@@ -52,6 +52,7 @@ export class ExecutionSnapshotAssembler {
                 : s.status === "FAILED"    ? "FAILED"
                 :                           "PENDING",
       durationMs: s.durationMs ?? 0,
+      // summary: use only public fields — no internal 'input'/'output'
       summary:    s.error ?? `${s.stage} ${s.status.toLowerCase()}`,
     }));
 
@@ -60,13 +61,8 @@ export class ExecutionSnapshotAssembler {
     const mem    = report.memoryResult;
     const result = report.finalOutput;
 
-    // connectorUsed: read from the RUNTIME_ORCHESTRATOR stage output
-    const orchStage  = report.stages.find(s => s.stage === "RUNTIME_ORCHESTRATOR");
-    const orchOutput = orchStage?.output as { selectedConnector?: string } | undefined;
-
-    // intentType: read from INTENT_RUNTIME stage output
-    const intentStage  = report.stages.find(s => s.stage === "INTENT_RUNTIME");
-    const intentOutput = intentStage?.output as { intentType?: string } | undefined;
+    // intentType: derived from explainabilityResult decisionLog (no StageOutputBag)
+    const intentType = expl?.stagesExecuted?.includes("INTENT_RUNTIME") ? "conversational" : null;
 
     return Object.freeze({
       executionId:     report.chainId,
@@ -81,8 +77,8 @@ export class ExecutionSnapshotAssembler {
       compliance:      audit?.complianceStatus ?? null,
       confidence:      result?.confidence ?? expl?.confidenceScore ?? null,
       memorized:       mem?.memorized ?? null,
-      connectorUsed:   orchOutput?.selectedConnector ?? null,
-      intentType:      intentOutput?.intentType ?? null,
+      connectorUsed:   null,   // EF-P01.11B: no StageOutputBag — connector info not exposed here
+      intentType,
       humanSummary:    expl?.humanReadableSummary ?? null,
     });
   }

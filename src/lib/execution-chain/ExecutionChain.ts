@@ -15,7 +15,7 @@
 import { ExecutionCompositionRoot }     from "./ExecutionCompositionRoot";
 import type { ComposedRuntime, CompositionDeps } from "./ExecutionCompositionRoot";
 import { createEmptyExecutionState, ExecutionStateFactory } from "./ExecutionState";
-import type { ExecutionReportAssembler }           from "./ExecutionReportAssembler";
+import { ExecutionReportAssembler }           from "./ExecutionReportAssembler";
 import type { ExecutionState }          from "./ExecutionState";
 import { ExecutionStage }               from "./ExecutionStage";
 import type { RuntimeEventBus }         from "../runtime-infra/RuntimeEventBus";
@@ -51,7 +51,11 @@ export class ExecutionChain {
     this._emit(EV_EXEC_STARTED, chainId, "ExecutionChain started");
 
     // EF-7.2.8A: new instance per execution — zero shared state
-    const initialState = ExecutionStateFactory.moveToStage(createEmptyExecutionState(), ExecutionStage.USER_INPUT);
+    // Seed the state with userInput so pipeline stages can read it
+    const initialState = ExecutionStateFactory.update(
+      ExecutionStateFactory.moveToStage(createEmptyExecutionState(), ExecutionStage.USER_INPUT),
+      { userInput: input },
+    );
 
     const evidences: ExplainabilityEvidence[] = [];
     const ctx = {
@@ -75,6 +79,7 @@ export class ExecutionChain {
     return this._assembler.assemble(
       chainId, startedAt, completedAt,
       input, pipeResult.state, pipeResult.success,
+      pipeResult.stageRecords,
     );
   }
 

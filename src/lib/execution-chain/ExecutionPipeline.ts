@@ -12,16 +12,37 @@
 
 import type { PipelineStage }          from "./PipelineStage";
 import type { ExecutionContext }        from "./ExecutionContext";
-import type { ChainStage }             from "./ExecutionChainTypes";
+import type { ChainStage, ChainStageRecord } from "./ExecutionChainTypes";
 import type { ExecutionState }         from "./ExecutionState";
 import { withRecord, ExecutionStateFactory } from "./ExecutionState";
 import { ExecutionStage }              from "./ExecutionStage";
 import { PipelineInstrumentation }     from "./PipelineInstrumentation";
 
+type StateKey = keyof ExecutionState;
+
+// Map each stage ID to its output slot on ExecutionState
+const STAGE_OUTPUT_SLOT: Partial<Record<string, StateKey>> = {
+  USER_INPUT:           "userInput",
+  INTENT_RUNTIME:       "intent",
+  GOAL_RUNTIME:         "goal",
+  PLANNING_RUNTIME:     "plan",
+  KERNEL:               "kernel",
+  RUNTIME_ORCHESTRATOR: "orchestrator",
+  CAPABILITY_RUNTIME:   "capability",
+  CONNECTOR_RUNTIME:    "connectorRuntime",
+  CONNECTOR:            "connector",
+  RESULT:               "result",
+  MEMORY:               "memory",
+  EXPLAINABILITY:       "explainability",
+  AUDIT:                "audit",
+};
+
 export interface PipelineRunResult {
   readonly state:       ExecutionState;
   readonly success:     boolean;
   readonly failedStage: string | null;
+  /** All stage records produced during this run — used by ExecutionReportAssembler. */
+  readonly stageRecords: readonly ChainStageRecord[];
 }
 
 // Map each stage ID to its ExecutionStage enum value — EF-7.2.8: generic moveToStage
@@ -55,8 +76,9 @@ export class ExecutionPipeline {
     context:      ExecutionContext,
     initialInput: ExecutionState,
   ): Promise<PipelineRunResult> {
-    let   state:       ExecutionState = initialInput;
-    let   failedStage: string | null  = null;
+    let   state:        ExecutionState    = initialInput;
+    let   failedStage:  string | null     = null;
+    const stageRecords: ChainStageRecord[] = [];
 
     for (const stage of this._stages) {
       const startedAt  = context.clock.now();
@@ -70,12 +92,27 @@ export class ExecutionPipeline {
         const record = this._instrumentation.onSuccess(
           context, stage.id, startedAt, completedAt, stageInput, output,
         );
+        stageRecords.push(record);
 
         // State propagation — use generic moveToStage (EF-7.2.8)
         const enumStage = STAGE_MAP[stage.id as ChainStage];
+        const stageRecord = Object.freeze({
+          stageId: stage.id, stageName: stage.id,
+          startedAt: new Date(startedAt).toISOString(),
+          completedAt: new Date(completedAt).toISOString(),
+          durationMs: completedAt - startedAt,
+          status: "completed" as const, error: null,
+        });
+
+        // Store stage output into ExecutionState so downstream stages can read it
+        const outputSlot = STAGE_OUTPUT_SLOT[stage.id];
+        const withOutput = outputSlot
+          ? ExecutionStateFactory.update(state, { [outputSlot]: output } as Partial<ExecutionState>)
+          : state;
+
         state = enumStage
-          ? withRecord(ExecutionStateFactory.moveToStage(state, enumStage), record)
-          : withRecord(state, record);
+          ? withRecord(ExecutionStateFactory.moveToStage(withOutput, enumStage), stageRecord)
+          : withRecord(withOutput, stageRecord);
 
       } catch (e: unknown) {
         const completedAt = context.clock.now();
@@ -84,13 +121,21 @@ export class ExecutionPipeline {
         const record = this._instrumentation.onFailure(
           context, stage.id, startedAt, completedAt, stageInput, error,
         );
+        stageRecords.push(record);
 
-        state        = withRecord(state, record);
+        const stageRecord = Object.freeze({
+          stageId: stage.id, stageName: stage.id,
+          startedAt: new Date(startedAt).toISOString(),
+          completedAt: new Date(completedAt).toISOString(),
+          durationMs: completedAt - startedAt,
+          status: "failed" as const, error,
+        });
+        state        = withRecord(state, stageRecord);
         failedStage  = stage.id;
         break;
       }
     }
 
-    return Object.freeze({ state, success: failedStage === null, failedStage });
+    return Object.freeze({ state, success: failedStage === null, failedStage, stageRecords: Object.freeze(stageRecords) });
   }
 }

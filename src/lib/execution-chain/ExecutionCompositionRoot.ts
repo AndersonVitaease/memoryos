@@ -17,6 +17,7 @@ import type { RuntimeDescriptor }                      from "./RuntimeRegistry";
 import { RuntimeAuditSink }                            from "./RuntimeAuditSink";
 import { PipelineBuilder }                             from "./PipelineBuilder";
 import { ExecutionReportAssembler }                    from "./ExecutionReportAssembler";
+// ExecutionReportAssembler is now a class with both instance + static assemble methods
 import { PipelineInstrumentation }                    from "./PipelineInstrumentation";
 
 import { IntentRuntimeStage }                          from "./stages/IntentRuntimeStage";
