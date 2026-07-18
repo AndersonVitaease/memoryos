@@ -243,8 +243,24 @@ const _builtins: GoalDefinition[] = [
   },
 
   // ── Drive ──────────────────────────────────────────────────────────────────
-  // PRIORITY ORDER: openDocument before searchFiles so download/open verbs
-  // match first. matchBySignals() returns the FIRST hit in registration order.
+  // PRIORITY ORDER: downloadFile > openDocument > searchFiles > listRecent
+  // matchBySignals() returns the FIRST hit in registration order.
+  {
+    type: "drive.downloadFile",
+    namespace: "drive",
+    description: "Download or export a file from Google Drive",
+    signals: [
+      "baixar", "baixe", "baixa", "baixo", "baixando",
+      "download", "exportar", "exporte", "exporta",
+      "baixar o arquivo", "baixar o documento",
+      "baixar arquivo", "baixar documento",
+    ],
+    extractParams: (msg) => {
+      const quoted = msg.match(/"([^"]+)"/)?.[1];
+      const afterNoun = msg.match(/(?:o arquivo|o documento|arquivo|documento)\s+([a-z0-9\s\-_.]+?)(?:\s*$|\s+(?:no|em|do|da|de))/i)?.[1]?.trim();
+      return { fileName: quoted ?? afterNoun ?? null, rawText: msg.trim() };
+    },
+  },
   {
     type: "drive.openDocument",
     namespace: "drive",

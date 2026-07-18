@@ -32,6 +32,7 @@ export type GoalType =
   | "calendar.listWeek"
   | "calendar.createEvent"
   // Drive
+  | "drive.downloadFile"
   | "drive.openDocument"
   | "drive.searchFiles"
   | "drive.listRecent"

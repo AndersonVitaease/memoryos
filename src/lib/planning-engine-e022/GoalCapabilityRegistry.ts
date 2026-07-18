@@ -214,6 +214,17 @@ const _builtins: CapabilityMapping[] = [
     ],
   },
   {
+    goalType: "drive.downloadFile",
+    descriptors: [
+      {
+        connector: "google-drive",
+        // Search by name first, then get content — same executor path as openDocument
+        capability: "drive.files.search",
+        params: { q: "trashed=false", pageSize: 5, orderBy: "modifiedTime desc" },
+      },
+    ],
+  },
+  {
     goalType: "drive.openDocument",
     descriptors: [
       {

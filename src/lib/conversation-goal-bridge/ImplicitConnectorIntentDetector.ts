@@ -88,12 +88,20 @@ function scoreProvider(
   norm:      ReturnType<typeof normalize>,
 ): ConnectorCandidate {
   if (isModernProvider(provider)) {
-    // EF-6.3.x: new contract — detect() determines goalType internally
+    // EF-6.3.x v2: goalType may be null (domain detected, intent unknown)
     const detection = provider.detect(lower, norm);
+    // When goalType is null, fall back to a safe domain-level goal
+    // so the detector can still signal domain confidence correctly.
+    // The Bridge will handle null goalType via GoalRegistry fallback.
+    const resolvedGoalType = detection.goalType
+      ?? (`${detection.connector}.searchFiles` as import("@/lib/goals/GoalTypes").GoalType);
     return Object.freeze({
       connectorId: detection.connector,
-      goalType:    detection.goalType,
-      score:       Math.round(detection.confidence * 1000) / 1000,
+      goalType:    resolvedGoalType,
+      score:       detection.goalType === null
+        // penalize null-intent: halve confidence so GoalRegistry signals win
+        ? Math.round(detection.confidence * 0.5 * 1000) / 1000
+        : Math.round(detection.confidence * 1000) / 1000,
       evidences:   Object.freeze([...detection.evidences]),
       entities:    Object.freeze({ ...detection.entities }),
     });
