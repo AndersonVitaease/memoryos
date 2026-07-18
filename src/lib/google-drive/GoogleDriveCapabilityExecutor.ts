@@ -136,12 +136,19 @@ export function buildDriveQuery(rawQuery: string): string {
   return parts.join(" and ");
 }
 
+// ── Diagnostic logger (temporary — Sprint P-01.2) ────────────────────────────
+const _LOG = (step: string, data: Record<string, unknown>) =>
+  console.log(`%c[DRIVE][${step}]`, "color:#a78bfa;font-weight:bold", data);
+
 // ── Capability dispatcher ─────────────────────────────────────────────────────
 
 export async function executeDriveCapability(
   capabilityId: string,
   parameters: Record<string, unknown>,
 ): Promise<CapResult> {
+  // LOG 1 — capability chosen by Planner + raw parameters
+  _LOG("1-ENTER", { capabilityId, parameters });
+
   const { listFiles, searchFiles, readFileMetadata, readFile, listFolders } =
     await import("./GoogleDriveConnector");
 
@@ -156,6 +163,8 @@ export async function executeDriveCapability(
 
     case "drive.searchFiles": {
       const r = await searchFiles((parameters.query as string) ?? "", { pageSize: (parameters.pageSize as number) ?? 20 });
+      // LOG 3 — searchFiles result
+      _LOG("3-SEARCH-RESULT", { count: r.files.length, query: r.searchQuery, files: r.files.map(f => ({ id: f.id, name: f.name, mimeType: f.mimeType })) });
       return { ok: true, data: r, error: null };
     }
 
@@ -181,7 +190,12 @@ export async function executeDriveCapability(
       if (!query) return { ok: false, data: { code: "NO_FILE_SELECTED" }, error: "NO_FILE_SELECTED — provide fileId or query" };
 
       const sr  = await searchFiles(query, { pageSize: 20 });
+      // LOG 3 — searchFiles result for openFile
+      _LOG("3-SEARCH-RESULT", { capabilityId, query, count: sr.files.length, driveQuery: sr.searchQuery, files: sr.files.map(f => ({ id: f.id, name: f.name })) });
+
       const res = resolveSingleSearchResult(sr, query);
+      // LOG 4 — resolved fileId
+      _LOG("4-RESOLVE", { status: res.status, fileId: res.status === "RESOLVED" ? res.file.id : null, fileName: res.status === "RESOLVED" ? res.file.name : null });
 
       if (res.status === "NOT_FOUND") return { ok: false, data: null, error: res.error };
       if (res.status === "AMBIGUOUS") return { ok: true,  data: { requiresSelection: true, clarification: res.clarification, files: res.files }, error: null };
@@ -205,28 +219,48 @@ export async function executeDriveCapability(
         if (!query) return { ok: false, data: { code: "NO_FILE_SELECTED" }, error: "NO_FILE_SELECTED — provide fileId or query" };
 
         const sr  = await searchFiles(query, { pageSize: 20 });
+        // LOG 3 — searchFiles result for readFile/downloadFile
+        _LOG("3-SEARCH-RESULT", { capabilityId, query, count: sr.files.length, driveQuery: sr.searchQuery, files: sr.files.map(f => ({ id: f.id, name: f.name })) });
+
         const res = resolveSingleSearchResult(sr, query);
+        // LOG 4 — fileId resolved from search
+        _LOG("4-RESOLVE", { status: res.status, fileId: res.status === "RESOLVED" ? res.file.id : null, fileName: res.status === "RESOLVED" ? res.file.name : null });
 
         if (res.status === "NOT_FOUND") return { ok: false, data: null, error: res.error };
         if (res.status === "AMBIGUOUS") return { ok: true,  data: { requiresSelection: true, clarification: res.clarification, files: res.files }, error: null };
 
         fileId = res.file.id;
+      } else {
+        // LOG 4 — fileId came from explicit parameter
+        _LOG("4-RESOLVE", { source: "explicit-parameter", fileId });
       }
 
       // Guard — never call Drive API with empty fileId
       const guard = validateFileId(fileId);
-      if (guard) return guard;
+      if (guard) { _LOG("4-GUARD-BLOCKED", { fileId, reason: guard.error }); return guard; }
 
       // Determine export MIME — use metadata if not provided
       const mimeType = (parameters.mimeType as string | undefined)?.trim();
       if (mimeType) {
-        return readFile(fileId, resolveExportMime(mimeType));
+        const exportMime = resolveExportMime(mimeType);
+        // LOG 5 — calling readFile with known mimeType
+        _LOG("5-READ-FILE", { fileId, mimeType, exportMime });
+        const result = await readFile(fileId, exportMime);
+        // LOG 6 — Drive API response
+        _LOG("6-API-RESPONSE", { fileId, ok: result.ok, error: result.error, sizeBytes: (result.data as { sizeBytes?: number })?.sizeBytes ?? null });
+        return result;
       }
 
       const meta = await readFileMetadata(fileId);
       if (!meta.ok || !meta.data) return { ok: false, data: null, error: `File not found: ${fileId}` };
 
-      return readFile(fileId, resolveExportMime(meta.data.mimeType));
+      const exportMime = resolveExportMime(meta.data.mimeType);
+      // LOG 5 — calling readFile after metadata fetch
+      _LOG("5-READ-FILE", { fileId, name: meta.data.name, mimeType: meta.data.mimeType, exportMime });
+      const result = await readFile(fileId, exportMime);
+      // LOG 6 — Drive API response
+      _LOG("6-API-RESPONSE", { fileId, name: meta.data.name, ok: result.ok, error: result.error, sizeBytes: (result.data as { sizeBytes?: number })?.sizeBytes ?? null });
+      return result;
     }
 
     default:

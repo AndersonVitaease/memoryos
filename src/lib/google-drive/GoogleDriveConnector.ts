@@ -131,6 +131,8 @@ export async function searchFiles(query: string, opts: {
   const t0 = Date.now();
   const { buildDriveQuery } = await import("./GoogleDriveCapabilityExecutor");
   const driveQ = buildDriveQuery(query);
+  // LOG 2 — entering Drive API call
+  console.log("%c[DRIVE][2-SEARCH-CALL]", "color:#a78bfa;font-weight:bold", { naturalQuery: query, driveQuery: driveQ, pageSize: opts.pageSize ?? 20 });
   const params = new URLSearchParams({
     q:        driveQ,
     pageSize: String(opts.pageSize ?? 20),
