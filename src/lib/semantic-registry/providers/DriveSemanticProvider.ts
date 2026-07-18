@@ -15,8 +15,18 @@
  *   drive.searchFiles   — procurar, buscar, encontrar
  *   drive.listRecent    — listar, meus arquivos, recentes
  *   null                — domínio reconhecido, intenção indefinida
+ *                         (detector NÃO inventa goalType — preserva null)
  *
- * Entidades extraídas (contrato padrao EF-6.3.x):
+ * ALTERAÇÃO 2 (EF-6.3.x Final):
+ *   Case 2 "domain-only" agora retorna goalType=null.
+ *   O detector preserva null sem inventar searchFiles.
+ *
+ * ALTERAÇÃO 4 (EF-6.3.x Final):
+ *   Cada regra em INTENT_RULES é autossuficiente:
+ *   possui extractEntities() e validator() próprios.
+ *   Adicionar intenção = adicionar regra. Algoritmo não muda.
+ *
+ * Entidades extraídas (contrato padrao EF-6.3.x — ALTERAÇÃO 5):
  *   fileName, folderName, mimeType, extension, owner, date, rawText
  */
 
@@ -25,16 +35,31 @@ import type { NormalizationResult } from "@/lib/conversation-goal-bridge/Natural
 import type { GoalType } from "@/lib/goals/GoalTypes";
 
 // ── Intent Rule ───────────────────────────────────────────────────────────────
+// ALTERAÇÃO 4: cada regra é autossuficiente.
+// extractEntities() sobrescreve o extrator global para intenções especializadas.
+// validator() permite rejeitar falsos positivos sem tocar no algoritmo.
 
 interface IntentRule {
   /** Menor número = maior prioridade (avaliadas em ordem crescente) */
-  readonly priority:  number;
+  readonly priority:       number;
   /** goalType retornado quando esta regra vence */
-  readonly goalType:  GoalType;
+  readonly goalType:       GoalType;
   /** Score base adicionado ao domainScore quando a regra dispara */
-  readonly baseScore: number;
+  readonly baseScore:      number;
   /** Sinais (substrings em lowercase) que ativam esta regra */
-  readonly signals:   readonly string[];
+  readonly signals:        readonly string[];
+  /**
+   * Extrator de entidades específico desta regra.
+   * Recebe o texto lower e as entidades globais já extraídas.
+   * Retorna entidades adicionais ou sobrescritas para esta intenção.
+   * Se ausente, usa as entidades globais sem modificação.
+   */
+  readonly extractEntities?: (lower: string, base: Record<string, unknown>) => Record<string, unknown>;
+  /**
+   * Validador opcional: retorna true se a regra deve ser aceita.
+   * Permite rejeitar falsos positivos sem alterar o algoritmo.
+   */
+  readonly validator?: (lower: string) => boolean;
 }
 
 // ── INTENT_RULES — declarative table ─────────────────────────────────────────
@@ -43,6 +68,9 @@ interface IntentRule {
 // Prioridades: 10=download, 20=open, 30=search, 40=list
 
 const INTENT_RULES: readonly IntentRule[] = Object.freeze([
+  // ── priority 10: download ───────────────────────────────────────────────────
+  // extractEntities: preserves global extraction (fileName, extension etc.)
+  // validator: none needed — download verbs are unambiguous
   {
     priority:  10,
     goalType:  "drive.downloadFile",
@@ -53,7 +81,14 @@ const INTENT_RULES: readonly IntentRule[] = Object.freeze([
       "baixar o arquivo", "baixar o documento",
       "baixar arquivo",  "baixar documento",
     ],
+    extractEntities: (_lower, base) => ({
+      ...base,
+      // intent-specific: mark the action explicitly for executors
+      intentAction: "download",
+    }),
   },
+
+  // ── priority 20: open ───────────────────────────────────────────────────────
   {
     priority:  20,
     goalType:  "drive.openDocument",
@@ -66,7 +101,14 @@ const INTENT_RULES: readonly IntentRule[] = Object.freeze([
       "open file", "open document",
       "ler arquivo", "ler documento",
     ],
+    extractEntities: (_lower, base) => ({
+      ...base,
+      intentAction: "open",
+    }),
   },
+
+  // ── priority 30: search ─────────────────────────────────────────────────────
+  // validator: reject if "ver arquivo" is present (belongs to openDocument)
   {
     priority:  30,
     goalType:  "drive.searchFiles",
@@ -81,7 +123,15 @@ const INTENT_RULES: readonly IntentRule[] = Object.freeze([
       "encontrar arquivo", "pesquisar drive",
       "search drive", "find file",
     ],
+    extractEntities: (lower, base) => ({
+      ...base,
+      intentAction: "search",
+      // propagate full text as query when no fileName extracted
+      query: (base.fileName as string | undefined) ?? lower.trim(),
+    }),
   },
+
+  // ── priority 40: list ───────────────────────────────────────────────────────
   {
     priority:  40,
     goalType:  "drive.listRecent",
@@ -93,6 +143,10 @@ const INTENT_RULES: readonly IntentRule[] = Object.freeze([
       "recent files", "ultimos arquivos",
       "mostrar arquivos", "mostrar documentos",
     ],
+    extractEntities: (_lower, base) => ({
+      ...base,
+      intentAction: "list",
+    }),
   },
 ]);
 
@@ -161,11 +215,14 @@ interface RuleMatch {
 }
 
 function evaluateRules(lower: string): RuleMatch | null {
-  // Rules are already sorted by priority in INTENT_RULES
-  // First match (lowest priority number) wins
+  // Rules are evaluated in priority order (lowest number first).
+  // validator() can reject a match without breaking the loop —
+  // the next rule is tried instead (open/closed: no algorithm change needed).
   for (const rule of INTENT_RULES) {
     const signal = firstMatch(lower, rule.signals);
-    if (signal) return { rule, signal };
+    if (!signal) continue;
+    if (rule.validator && !rule.validator(lower)) continue;
+    return { rule, signal };
   }
   return null;
 }
@@ -200,31 +257,37 @@ export const DriveSemanticProvider: SemanticProvider = Object.freeze({
 
     // ── Case 1: Intent rule fired ───────────────────────────────────────────
     if (match) {
+      // ALTERAÇÃO 4: use the rule's own extractEntities if defined
+      const ruleEntities = match.rule.extractEntities
+        ? match.rule.extractEntities(lower, { ...entities })
+        : entities;
+
       const evidences = [
         `intent-rule:"${match.rule.goalType}"`,
         `signal:"${match.signal}"`,
         ...domain.evidences,
       ];
-      if (entities.fileName) evidences.push(`fileName:"${entities.fileName as string}"`);
+      if (ruleEntities.fileName) evidences.push(`fileName:"${ruleEntities.fileName as string}"`);
 
       return Object.freeze({
         connector:  "drive",
         goalType:   match.rule.goalType,
         confidence: Math.min(domain.score + match.rule.baseScore, 1.0),
         evidences:  Object.freeze(evidences),
-        entities:   Object.freeze(entities),
+        entities:   Object.freeze(ruleEntities),
       });
     }
 
     // ── Case 2: Domain recognized, no intent verb ───────────────────────────
-    // goalType = "drive.searchFiles" as default when domain signals present
-    // goalType = null when no domain signal at all
+    // ALTERAÇÃO 2 (EF-6.3.x Final): goalType = null.
+    // The provider does NOT invent searchFiles.
+    // The detector preserves null — it never decides.
     if (domain.score > 0) {
       return Object.freeze({
         connector:  "drive",
-        goalType:   "drive.searchFiles" as GoalType,
+        goalType:   null,
         confidence: domain.score,
-        evidences:  Object.freeze([...domain.evidences, "implicit:domain-only"]),
+        evidences:  Object.freeze([...domain.evidences, "domain-only:intent-unknown"]),
         entities:   Object.freeze({ ...entities, query: lower.trim() }),
       });
     }

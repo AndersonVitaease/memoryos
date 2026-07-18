@@ -52,7 +52,7 @@ export type ConnectorId = string;
 
 export interface ConnectorCandidate {
   readonly connectorId: ConnectorId;
-  readonly goalType:    GoalType;
+  readonly goalType:    GoalType | null;
   readonly score:       number;
   readonly evidences:   readonly string[];
   readonly entities:    Readonly<Record<string, unknown>>;
@@ -88,18 +88,16 @@ function scoreProvider(
   norm:      ReturnType<typeof normalize>,
 ): ConnectorCandidate {
   if (isModernProvider(provider)) {
-    // EF-6.3.x v2: goalType may be null (domain detected, intent unknown)
+    // EF-6.3.x v2 FINAL: detector is a pure orchestrator.
+    // goalType=null is preserved as-is — the detector NEVER invents a GoalType.
+    // Null-confidence candidates are penalized so explicit GoalRegistry signals win.
     const detection = provider.detect(lower, norm);
-    // When goalType is null, fall back to a safe domain-level goal
-    // so the detector can still signal domain confidence correctly.
-    // The Bridge will handle null goalType via GoalRegistry fallback.
-    const resolvedGoalType = detection.goalType
-      ?? (`${detection.connector}.searchFiles` as import("@/lib/goals/GoalTypes").GoalType);
     return Object.freeze({
       connectorId: detection.connector,
-      goalType:    resolvedGoalType,
+      goalType:    detection.goalType,
       score:       detection.goalType === null
-        // penalize null-intent: halve confidence so GoalRegistry signals win
+        // domain recognized but no intent: halve confidence so signal-based
+        // GoalRegistry results always win over implicit domain-only detection.
         ? Math.round(detection.confidence * 0.5 * 1000) / 1000
         : Math.round(detection.confidence * 1000) / 1000,
       evidences:   Object.freeze([...detection.evidences]),
@@ -207,6 +205,12 @@ class ImplicitConnectorIntentDetectorImpl {
 
     if (winner.score < MIN_SCORE_THRESHOLD) {
       return none(`below_threshold:${winner.connectorId}:${winner.score}`);
+    }
+
+    // Pure orchestrator contract: if the winning provider returned goalType=null
+    // (domain recognized, no intent), we cannot proceed — return not-detected.
+    if (winner.goalType === null) {
+      return none(`null_goaltype:${winner.connectorId}`);
     }
 
     // ── 6. Build parameters — prefer provider entities, fallback to norm.entity ─

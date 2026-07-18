@@ -213,14 +213,19 @@ const _builtins: CapabilityMapping[] = [
       },
     ],
   },
+  // ALTERAÇÃO 3 (EF-6.3.x Final): drive.downloadFile uses drive.files.get.
+  // The Registry declares WHAT must happen (get the file), not HOW the executor
+  // resolves the fileId (search-by-name is an internal executor detail).
+  // GoalCapabilityRegistry remains declarative and domain-agnostic.
   {
     goalType: "drive.downloadFile",
     descriptors: [
       {
         connector: "google-drive",
-        // Search by name first, then get content — same executor path as openDocument
-        capability: "drive.files.search",
-        params: { q: "trashed=false", pageSize: 5, orderBy: "modifiedTime desc" },
+        capability: "drive.files.get",
+        // fileId resolved by GoogleDriveCapabilityExecutor.resolveFileId()
+        // using fileName from goal.parameters — executor detail, not registry concern.
+        params: {},
       },
     ],
   },
