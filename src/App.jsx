@@ -211,6 +211,7 @@ import PhaseEV4Page from '@/pages/PhaseEV4Page';
 import PhaseEV4BPage from '@/pages/PhaseEV4BPage';
 import PhaseEV5Page from '@/pages/PhaseEV5Page';
 import ProductionDashboard from '@/pages/ProductionDashboard';
+import PhaseEF36Page from '@/pages/PhaseEF36Page';
 
 const AuthenticatedApp = () => {
   console.log('[RENDER] AuthenticatedApp');
@@ -441,6 +442,7 @@ const AuthenticatedApp = () => {
           <Route path="/ev4b" element={<PhaseEV4BPage />} />
           <Route path="/ev5" element={<PhaseEV5Page />} />
           <Route path="/production" element={<ProductionDashboard />} />
+          <Route path="/ef36-kde" element={<PhaseEF36Page />} />
         </Route>
       </Route>
       <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />
