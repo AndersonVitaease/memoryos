@@ -33,7 +33,22 @@ const STORAGE_KEY = "memoryos_gauth_v1";
 
 async function invokeFn(name, payload) {
   const res = await base44.functions.invoke(name, payload ?? {});
-  return { data: res.data };
+  // ── INSTRUMENTATION: throw on backend error so callers see real failures ──
+  const d = res.data ?? res;
+  if (d?.error) {
+    const err = new Error(d.error);
+    err._audit = d.audit ?? null;
+    err._backendError = d.error;
+    console.error(`[GoogleAuthSession][invokeFn][${name}] BACKEND ERROR:`, d);
+    throw err;
+  }
+  // Log _audit from exchange if present
+  if (d?._audit) {
+    console.group(`[GoogleAuthSession][invokeFn][${name}] AUDIT`);
+    console.log(JSON.stringify(d._audit, null, 2));
+    console.groupEnd();
+  }
+  return { data: d };
 }
 const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000; // renova 5 min antes de expirar
 

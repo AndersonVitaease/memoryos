@@ -43,6 +43,7 @@ export default function GoogleWorkspaceSection() {
   const [authState, setAuth]  = useState(conn?.state ?? "NOT_CONNECTED");
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState(null);
+  const [audit, setAudit]     = useState(null); // captura _audit do exchange real
 
   const syncConn = useCallback(() => setConn(getConnection(WORKSPACE_ID)), []);
 
@@ -52,9 +53,16 @@ export default function GoogleWorkspaceSection() {
   }, [syncConn]);
 
   const handleConnect = async () => {
-    setLoading(true); setError(null);
-    try { await connect({ workspaceId: WORKSPACE_ID, scopes: WORKSPACE_SCOPES, onStateChange }); }
-    catch (e) { setError(e?.message ?? "Falha ao conectar. Tente novamente."); }
+    setLoading(true); setError(null); setAudit(null);
+    try {
+      const result = await connect({ workspaceId: WORKSPACE_ID, scopes: WORKSPACE_SCOPES, onStateChange });
+      // Se chegou aqui, exchange foi bem-sucedido — captura audit do sessionStorage
+      setAudit({ phase: "SUCCESS", result });
+    } catch (e) {
+      setError(e?.message ?? "Falha ao conectar. Tente novamente.");
+      // Captura _audit injetado pelo invokeFn no erro
+      if (e?._audit) setAudit(e._audit);
+    }
     finally { setLoading(false); syncConn(); }
   };
 
@@ -66,9 +74,14 @@ export default function GoogleWorkspaceSection() {
   };
 
   const handleReconnect = async () => {
-    setLoading(true); setError(null);
-    try { await reconnect({ workspaceId: WORKSPACE_ID, scopes: WORKSPACE_SCOPES, onStateChange }); }
-    catch (e) { setError(e?.message ?? "Falha ao reconectar."); }
+    setLoading(true); setError(null); setAudit(null);
+    try {
+      await reconnect({ workspaceId: WORKSPACE_ID, scopes: WORKSPACE_SCOPES, onStateChange });
+      setAudit({ phase: "SUCCESS" });
+    } catch (e) {
+      setError(e?.message ?? "Falha ao reconectar.");
+      if (e?._audit) setAudit(e._audit);
+    }
     finally { setLoading(false); syncConn(); }
   };
 
@@ -133,6 +146,22 @@ export default function GoogleWorkspaceSection() {
       {error && (
         <div className="mt-3 flex items-center gap-2 p-2 rounded-lg bg-red-50 border border-red-100 text-xs text-red-600">
           <AlertTriangle className="w-3.5 h-3.5 shrink-0" />{error}
+        </div>
+      )}
+
+      {audit && (
+        <div className="mt-3 rounded-lg border border-zinc-700 bg-zinc-950 overflow-hidden">
+          <div className="flex items-center justify-between px-3 py-1.5 bg-zinc-900 border-b border-zinc-700">
+            <span className="text-[10px] font-mono font-bold tracking-widest text-violet-400">
+              [EXCHANGE AUDIT] — {audit.phase ?? "CAPTURED"}
+            </span>
+            <button
+              onClick={() => setAudit(null)}
+              className="text-zinc-500 hover:text-zinc-300 text-xs ml-3">✕</button>
+          </div>
+          <pre className="text-[10px] font-mono text-zinc-300 p-3 overflow-auto max-h-72 whitespace-pre-wrap break-all">
+            {JSON.stringify(audit, null, 2)}
+          </pre>
         </div>
       )}
 
