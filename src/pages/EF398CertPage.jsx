@@ -1,166 +1,124 @@
 /**
- * EF-39.9 — REAL RUNTIME CERTIFICATION (ZERO STUBS)
+ * EF-40.0 — CERTIFICATION CONSISTENCY
  *
- * Rules:
- * - Every phase that shows PASS was actually executed and passed.
- * - Every phase that could not be executed shows NOT_EXECUTED with a reason.
- * - Score is computed only over executed phases.
- * - No Object.freeze fallbacks used as fake data.
- * - No manual PASS flags.
+ * Three independent concepts — no shared panels, no ambiguity:
  *
- * Architecture: Runtime Audit Orchestrator
- *   - Each auditor runs in its own try/catch.
- *   - Returns { status, data, reason, durationMs } per phase.
- *   - The page aggregates — never imports ?raw modules directly.
+ * A) EXECUTION COVERAGE
+ *    Denominator = ALL 8 declared phases (including NOT_EXECUTED).
+ *    Coverage % = executed / total.
  *
- * Vite ?raw limitation:
- *   SourceAudit and ASTAuditor use static top-level ?raw imports.
- *   When ArchitecturalAuditor has already pulled the same files as normal
- *   chunks, Vite cannot resolve the ?raw variant in the same JS context.
- *   These phases are honestly reported as NOT_EXECUTED with the reason.
+ * B) CERTIFICATION SCORE
+ *    Denominator = only the phases actually executed.
+ *    Score = passed_executed / executed * 100.
+ *    Grade derived from score.
+ *    NOT_EXECUTED phases never inflate or deflate the score.
+ *
+ * C) CERTIFICATION STATUS
+ *    CERTIFIED         — all phases executed AND score >= minimum.
+ *    PARTIALLY CERTIFIED — any phase NOT_EXECUTED (even if score = 100).
+ *    NOT CERTIFIED     — any FAIL in an executed phase.
  */
 import React, { useState, useEffect, useRef } from "react";
 
-// ── Status constants ──────────────────────────────────────────────────────────
-const STATUS = {
-  PASS:         "PASS",
-  FAIL:         "FAIL",
-  NOT_EXECUTED: "NOT_EXECUTED",
-  SKIPPED:      "SKIPPED",
+// ─────────────────────────────────────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────────────────────────────────────
+const STATUS = { PASS: "PASS", FAIL: "FAIL", NOT_EXECUTED: "NOT_EXECUTED" };
+
+const ALL_PHASES = ["TESTS","ARCHITECTURE","SOLID","IMMUTABILITY","PERFORMANCE","STRUCTURAL","SOURCE","AST"];
+const TOTAL_PHASES = ALL_PHASES.length; // always 8
+
+const MIN_SCORE = 95;
+
+const STATUS_COLOR  = { PASS: "#22c55e", FAIL: "#ef4444", NOT_EXECUTED: "#f59e0b" };
+const STATUS_BG     = { PASS: "#052e16", FAIL: "#450a0a", NOT_EXECUTED: "#422006" };
+const STATUS_LABEL  = { PASS: "PASS",    FAIL: "FAIL",    NOT_EXECUTED: "NOT EXECUTED" };
+const STATUS_ICON   = { PASS: "✓",       FAIL: "✗",       NOT_EXECUTED: "⊘" };
+
+const CERT_STATUS = {
+  CERTIFIED:           "CERTIFIED",
+  PARTIALLY_CERTIFIED: "PARTIALLY_CERTIFIED",
+  NOT_CERTIFIED:       "NOT_CERTIFIED",
 };
 
-// ── UI helpers ────────────────────────────────────────────────────────────────
-const STATUS_COLOR = {
-  PASS:         "#22c55e",
-  FAIL:         "#ef4444",
-  NOT_EXECUTED: "#f59e0b",
-  SKIPPED:      "#71717a",
-};
+// ─────────────────────────────────────────────────────────────────────────────
+// Pure computation — no side effects
+// ─────────────────────────────────────────────────────────────────────────────
 
-const STATUS_BG = {
-  PASS:         "#052e16",
-  FAIL:         "#450a0a",
-  NOT_EXECUTED: "#422006",
-  SKIPPED:      "#18181b",
-};
-
-const STATUS_LABEL = {
-  PASS:         "PASS",
-  FAIL:         "FAIL",
-  NOT_EXECUTED: "NOT EXECUTED",
-  SKIPPED:      "SKIPPED",
-};
-
-const STATUS_ICON = {
-  PASS:         "✓",
-  FAIL:         "✗",
-  NOT_EXECUTED: "⊘",
-  SKIPPED:      "—",
-};
-
-function PhaseCard({ name, status, note, durationMs }) {
-  const color = STATUS_COLOR[status] ?? "#71717a";
-  const bg    = STATUS_BG[status]    ?? "#18181b";
-  return (
-    <div style={{ border: `1px solid ${color}`, borderRadius: 6, padding: "8px 12px", background: bg }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontSize: 12, fontWeight: "bold", color: "#e4e4e7" }}>{name}</span>
-        <span style={{ fontSize: 12, fontWeight: "bold", color, letterSpacing: 1 }}>
-          {STATUS_ICON[status]} {STATUS_LABEL[status]}
-        </span>
-      </div>
-      {note && <div style={{ fontSize: 10, color: "#71717a", marginTop: 3 }}>{note}</div>}
-      {durationMs != null && (
-        <div style={{ fontSize: 9, color: "#52525b", marginTop: 1 }}>{durationMs}ms</div>
-      )}
-    </div>
-  );
+/**
+ * A) EXECUTION COVERAGE — always uses TOTAL_PHASES as denominator.
+ */
+function computeCoverage(phases) {
+  const executed    = ALL_PHASES.filter(k => phases[k]?.status !== STATUS.NOT_EXECUTED);
+  const notExecuted = ALL_PHASES.filter(k => phases[k]?.status === STATUS.NOT_EXECUTED);
+  const coveragePct = Math.round((executed.length / TOTAL_PHASES) * 100);
+  return { executed, notExecuted, total: TOTAL_PHASES, coveragePct };
 }
 
-// ── Score calculator — only over executed phases ──────────────────────────────
-function computeHonestScore(phases) {
-  // Weights per phase (only applied when phase was actually executed)
-  const WEIGHTS = {
-    TESTS:        0.30,
-    ARCHITECTURE: 0.20,
-    SOLID:        0.15,
-    IMMUTABILITY: 0.15,
-    PERFORMANCE:  0.10,
-    STRUCTURAL:   0.10,
-    // SOURCE and AST intentionally absent — they cannot run in this context
-  };
+/**
+ * B) CERTIFICATION SCORE — only over executed phases.
+ * Each executed phase contributes equally (1 unit).
+ */
+function computeScore(phases) {
+  const SCOREABLE = ["TESTS","ARCHITECTURE","SOLID","IMMUTABILITY","PERFORMANCE","STRUCTURAL","SOURCE","AST"];
+  const executed  = SCOREABLE.filter(k => phases[k]?.status !== STATUS.NOT_EXECUTED);
+  const passed    = executed.filter(k => phases[k]?.status === STATUS.PASS);
+  const failed    = executed.filter(k => phases[k]?.status === STATUS.FAIL);
 
-  let totalWeight  = 0;
-  let earnedWeight = 0;
-  const breakdown  = {};
-
-  for (const [key, weight] of Object.entries(WEIGHTS)) {
-    const phase = phases[key];
-    if (!phase || phase.status === STATUS.NOT_EXECUTED || phase.status === STATUS.SKIPPED) continue;
-
-    totalWeight  += weight;
-    const earned  = phase.status === STATUS.PASS ? weight : 0;
-    earnedWeight  += earned;
-    breakdown[key] = phase.status === STATUS.PASS ? 100 : 0;
-  }
-
-  const score  = totalWeight > 0 ? Math.round((earnedWeight / totalWeight) * 100) : 0;
-  const executed = Object.keys(WEIGHTS).filter(k => {
-    const p = phases[k];
-    return p && p.status !== STATUS.NOT_EXECUTED && p.status !== STATUS.SKIPPED;
-  });
-  const notExecuted = Object.keys(WEIGHTS).filter(k => {
-    const p = phases[k];
-    return !p || p.status === STATUS.NOT_EXECUTED || p.status === STATUS.SKIPPED;
-  });
-
+  const score = executed.length > 0 ? Math.round((passed.length / executed.length) * 100) : 0;
   const grade = score >= 97 ? "A+" : score >= 90 ? "A" : score >= 80 ? "B" : score >= 70 ? "C" : score >= 60 ? "D" : "F";
 
-  return { score, grade, breakdown, executed, notExecuted, totalPhases: Object.keys(WEIGHTS).length };
+  return { score, grade, executedCount: executed.length, passedCount: passed.length, failedCount: failed.length, passed, failed, executed };
 }
 
-// ── Runtime Audit Orchestrator ────────────────────────────────────────────────
-// Each runner returns { status, data, reason, durationMs }.
-// Every runner is independent — a failure in one does not abort others.
+/**
+ * C) CERTIFICATION STATUS — derived from coverage + score.
+ * CERTIFIED:            all phases executed AND score >= MIN_SCORE AND no FAIL.
+ * PARTIALLY CERTIFIED:  any NOT_EXECUTED (even if score = 100 on executed ones).
+ * NOT CERTIFIED:        any FAIL in an executed phase.
+ */
+function computeCertStatus(coverage, scoreInfo) {
+  const hasNotExecuted = coverage.notExecuted.length > 0;
+  const hasFail        = scoreInfo.failedCount > 0;
+
+  if (hasFail)        return CERT_STATUS.NOT_CERTIFIED;
+  if (hasNotExecuted) return CERT_STATUS.PARTIALLY_CERTIFIED;
+  if (scoreInfo.score >= MIN_SCORE) return CERT_STATUS.CERTIFIED;
+  return CERT_STATUS.NOT_CERTIFIED;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Runtime Audit Orchestrator — each phase is independent
+// ─────────────────────────────────────────────────────────────────────────────
 
 async function runPhaseTests(addLog) {
   addLog("TESTS — Running MemoryStoreTests…");
   const t0 = performance.now();
   try {
     const { runMemoryStoreTests } = await import("@/lib/knowledge-store/memory/MemoryStoreTests");
-    const result = await runMemoryStoreTests();
+    const r = await runMemoryStoreTests();
     const ms = Math.round(performance.now() - t0);
-    addLog(`TESTS DONE — ${result.passed}/${result.total} passed (${ms}ms)`);
-    return {
-      status: result.certified ? STATUS.PASS : STATUS.FAIL,
-      data: result,
-      reason: result.certified ? null : `${result.failed} test(s) failed`,
-      durationMs: ms,
-    };
+    addLog(`TESTS DONE — ${r.passed}/${r.total} passed (${ms}ms)`);
+    return { status: r.certified ? STATUS.PASS : STATUS.FAIL, data: r, reason: r.certified ? null : `${r.failed} test(s) failed`, durationMs: ms };
   } catch (err) {
     const ms = Math.round(performance.now() - t0);
-    addLog(`TESTS ERROR — ${err?.message}`);
+    addLog(`TESTS FAIL — ${err?.message}`);
     return { status: STATUS.FAIL, data: null, reason: err?.message, durationMs: ms };
   }
 }
 
 async function runPhaseArchitecture(addLog) {
-  addLog("ARCHITECTURE — Running ArchitecturalAuditor (integrity + immutability + SOLID + performance)…");
+  addLog("ARCHITECTURE — Running ArchitecturalAuditor…");
   const t0 = performance.now();
   try {
     const { runFullAudit } = await import("@/lib/knowledge-store/auditor/ArchitecturalAuditor");
-    const result = await runFullAudit();
+    const r = await runFullAudit();
     const ms = Math.round(performance.now() - t0);
-    addLog(`ARCHITECTURE DONE — integrity:${result.integrity.passed}/${result.integrity.passed + result.integrity.failed} immutability:${result.immutability.passed}/${result.immutability.passed + result.immutability.failed} solid:${result.solid.ok} (${ms}ms)`);
-    return {
-      status: result.allPassed ? STATUS.PASS : STATUS.FAIL,
-      data: result,
-      reason: result.allPassed ? null : "One or more architectural checks failed",
-      durationMs: ms,
-    };
+    addLog(`ARCHITECTURE DONE — integrity:${r.integrity.passed}/${r.integrity.passed+r.integrity.failed} immutability:${r.immutability.passed}/${r.immutability.passed+r.immutability.failed} solid:${r.solid.ok} (${ms}ms)`);
+    return { status: r.allPassed ? STATUS.PASS : STATUS.FAIL, data: r, reason: r.allPassed ? null : "One or more architectural checks failed", durationMs: ms };
   } catch (err) {
     const ms = Math.round(performance.now() - t0);
-    addLog(`ARCHITECTURE ERROR — ${err?.message}`);
+    addLog(`ARCHITECTURE FAIL — ${err?.message}`);
     return { status: STATUS.FAIL, data: null, reason: err?.message, durationMs: ms };
   }
 }
@@ -170,54 +128,317 @@ async function runPhaseStructural(addLog) {
   const t0 = performance.now();
   try {
     const { runStructuralAudit } = await import("@/lib/knowledge-store/auditor/SourceAuditStructural");
-    const result = await runStructuralAudit();
+    const r = await runStructuralAudit();
     const ms = Math.round(performance.now() - t0);
-    addLog(`STRUCTURAL DONE — ${result.passed}/${result.passed + result.failed} checks (${ms}ms)`);
-    return {
-      status: result.ok ? STATUS.PASS : STATUS.FAIL,
-      data: result,
-      reason: result.ok ? null : `${result.failed} structural check(s) failed`,
-      durationMs: ms,
-    };
+    addLog(`STRUCTURAL DONE — ${r.passed}/${r.passed+r.failed} (${ms}ms)`);
+    return { status: r.ok ? STATUS.PASS : STATUS.FAIL, data: r, reason: r.ok ? null : `${r.failed} check(s) failed`, durationMs: ms };
   } catch (err) {
     const ms = Math.round(performance.now() - t0);
-    addLog(`STRUCTURAL ERROR — ${err?.message}`);
+    addLog(`STRUCTURAL FAIL — ${err?.message}`);
     return { status: STATUS.FAIL, data: null, reason: err?.message, durationMs: ms };
   }
 }
 
-// SOURCE AUDIT — honest NOT_EXECUTED: uses static top-level ?raw imports
-// that collide with ArchitecturalAuditor's normal chunk loading of the same files.
-// Attempting dynamic import() of this module causes a Vite bundle evaluation error
-// that cannot be caught by try/catch (fires at ES module link phase, before execution).
-// Evidence: documented dead-end since EF-39.8. Correctly executes in /ef393-certification.
+// SOURCE — NOT_EXECUTED: static ?raw imports collide with ArchitecturalAuditor's normal chunks.
+// Error fires at ES module link phase — uncatchable by try/catch. Documented project dead-end.
+// Runs correctly at /ef393-certification (isolated lazy route).
 function runPhaseSource(addLog) {
-  addLog("SOURCE AUDIT — NOT_EXECUTED: Vite ?raw static import collision (see project dead-ends)");
-  addLog("SOURCE AUDIT — runs correctly at /ef393-certification (isolated lazy route)");
+  addLog("SOURCE — NOT_EXECUTED: Vite ?raw collision with ArchitecturalAuditor chunks (documented dead-end)");
   return {
     status: STATUS.NOT_EXECUTED,
     data: null,
-    reason: "Vite ?raw module evaluation collision: SourceAudit uses static top-level ?raw imports of the same files already loaded as normal chunks by ArchitecturalAuditor. The error fires at the ES module link phase — uncatchable. This is a documented platform dead-end. Runs correctly in /ef393-certification.",
+    reason: "Static top-level ?raw imports (MemoryStore.ts?raw, etc.) collide with normal chunks already loaded by ArchitecturalAuditor. The ES module link error fires before any try/catch. See project dead-ends. Executes correctly at /ef393-certification.",
     durationMs: 0,
   };
 }
 
-// AST AUDIT — same reason as SOURCE AUDIT
+// AST — same root cause as SOURCE.
 function runPhaseAST(addLog) {
-  addLog("AST AUDIT — NOT_EXECUTED: same Vite ?raw collision as SourceAudit");
+  addLog("AST — NOT_EXECUTED: same Vite ?raw collision as SOURCE");
   return {
     status: STATUS.NOT_EXECUTED,
     data: null,
-    reason: "Vite ?raw module evaluation collision — same root cause as SourceAudit. Runs correctly in /ef393-certification.",
+    reason: "Same root cause as SOURCE AUDIT — static top-level ?raw imports. Runs correctly at /ef393-certification.",
     durationMs: 0,
   };
 }
 
-// ── Main page ─────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Sub-components
+// ─────────────────────────────────────────────────────────────────────────────
+
+function Panel({ title, children, accent = "#27272a" }) {
+  return (
+    <div style={{ background: "#18181b", border: `1px solid ${accent}`, borderRadius: 8, padding: 14, marginBottom: 12 }}>
+      <div style={{ fontSize: 10, color: "#52525b", letterSpacing: 1.5, marginBottom: 10, textTransform: "uppercase" }}>{title}</div>
+      {children}
+    </div>
+  );
+}
+
+function Row({ children, color = "#a1a1aa" }) {
+  return <div style={{ fontSize: 10, color, marginBottom: 3, lineHeight: 1.5 }}>{children}</div>;
+}
+
+function CoveragePanel({ coverage }) {
+  const pct = coverage.coveragePct;
+  const color = pct === 100 ? "#22c55e" : pct >= 50 ? "#f59e0b" : "#ef4444";
+  return (
+    <Panel title="A — Execution Coverage (all declared phases)" accent={color}>
+      <div style={{ display: "flex", gap: 32, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <div>
+          <div style={{ fontSize: 30, fontWeight: "bold", color }}>{pct}%</div>
+          <div style={{ fontSize: 11, color: "#71717a" }}>{coverage.executed.length} of {coverage.total} phases executed</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 10, color: "#52525b", marginBottom: 4 }}>EXECUTED ({coverage.executed.length})</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {coverage.executed.map(k => (
+              <span key={k} style={{ fontSize: 9, background: "#052e16", color: "#22c55e", border: "1px solid #166534", borderRadius: 4, padding: "1px 6px" }}>{k}</span>
+            ))}
+          </div>
+        </div>
+        {coverage.notExecuted.length > 0 && (
+          <div>
+            <div style={{ fontSize: 10, color: "#52525b", marginBottom: 4 }}>NOT EXECUTED ({coverage.notExecuted.length})</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+              {coverage.notExecuted.map(k => (
+                <span key={k} style={{ fontSize: 9, background: "#422006", color: "#f59e0b", border: "1px solid #92400e", borderRadius: 4, padding: "1px 6px" }}>{k}</span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
+function ScorePanel({ scoreInfo }) {
+  const color = scoreInfo.score >= 95 ? "#22c55e" : scoreInfo.score >= 80 ? "#60a5fa" : "#ef4444";
+  return (
+    <Panel title="B — Certification Score (executed phases only)" accent={color}>
+      <div style={{ display: "flex", gap: 32, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <div>
+          <div style={{ fontSize: 30, fontWeight: "bold", color }}>{scoreInfo.score}/100</div>
+          <div style={{ fontSize: 20, fontWeight: "bold", color }}>{scoreInfo.grade}</div>
+        </div>
+        <div>
+          <div style={{ fontSize: 10, color: "#52525b", marginBottom: 2 }}>BASIS</div>
+          <div style={{ fontSize: 11, color: "#a1a1aa" }}>{scoreInfo.executedCount} phases executed</div>
+          <div style={{ fontSize: 11, color: "#22c55e" }}>{scoreInfo.passedCount} passed</div>
+          {scoreInfo.failedCount > 0 && <div style={{ fontSize: 11, color: "#ef4444" }}>{scoreInfo.failedCount} failed</div>}
+        </div>
+        <div>
+          <div style={{ fontSize: 10, color: "#52525b", marginBottom: 2 }}>FORMULA</div>
+          <div style={{ fontSize: 10, color: "#71717a" }}>
+            {scoreInfo.passedCount} / {scoreInfo.executedCount} × 100 = {scoreInfo.score}
+          </div>
+          <div style={{ fontSize: 9, color: "#52525b", marginTop: 2 }}>
+            NOT_EXECUTED phases are excluded from numerator and denominator.
+          </div>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+const CERT_CONFIG = {
+  CERTIFIED:           { color: "#22c55e", bg: "#052e16", icon: "✓", label: "CERTIFIED" },
+  PARTIALLY_CERTIFIED: { color: "#f59e0b", bg: "#422006", icon: "⊘", label: "PARTIALLY CERTIFIED" },
+  NOT_CERTIFIED:       { color: "#ef4444", bg: "#450a0a", icon: "✗", label: "NOT CERTIFIED" },
+};
+
+function CertStatusPanel({ certStatus, coverage, scoreInfo }) {
+  const cfg = CERT_CONFIG[certStatus];
+  const rules = {
+    CERTIFIED:           `All ${coverage.total} phases executed. Score ${scoreInfo.score} >= ${MIN_SCORE} minimum. No failures.`,
+    PARTIALLY_CERTIFIED: `${coverage.notExecuted.length} phase(s) NOT_EXECUTED: ${coverage.notExecuted.join(", ")}. Certification score is based only on executed phases. Execution coverage remains incomplete.`,
+    NOT_CERTIFIED:       `${scoreInfo.failedCount} phase(s) failed: ${scoreInfo.failed.join(", ")}. All executed phases must pass.`,
+  };
+  return (
+    <Panel title="C — Certification Status" accent={cfg.color}>
+      <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+        <div style={{ background: cfg.bg, border: `2px solid ${cfg.color}`, borderRadius: 8, padding: "8px 20px", textAlign: "center" }}>
+          <div style={{ fontSize: 24, fontWeight: "bold", color: cfg.color }}>{cfg.icon} {cfg.label}</div>
+        </div>
+        <div style={{ fontSize: 10, color: "#a1a1aa", maxWidth: 480, lineHeight: 1.6 }}>{rules[certStatus]}</div>
+      </div>
+    </Panel>
+  );
+}
+
+function ExecutionMatrix({ phases, coverage, scoreInfo }) {
+  return (
+    <Panel title="Execution Matrix — all declared phases">
+      <div style={{ display: "grid", gridTemplateColumns: "140px 110px 80px 1fr", gap: "2px 12px", alignItems: "center" }}>
+        {/* Header */}
+        {["PHASE","STATUS","TIME","RESULT / OBSERVATION"].map(h => (
+          <div key={h} style={{ fontSize: 9, color: "#52525b", letterSpacing: 1, borderBottom: "1px solid #27272a", paddingBottom: 4, marginBottom: 4 }}>{h}</div>
+        ))}
+        {ALL_PHASES.map(name => {
+          const phase = phases[name];
+          const s     = phase?.status ?? STATUS.NOT_EXECUTED;
+          const color = STATUS_COLOR[s];
+          const note  = matrixNote(name, phase);
+          return (
+            <React.Fragment key={name}>
+              <div style={{ fontSize: 10, color: "#e4e4e7", fontWeight: "bold" }}>{name}</div>
+              <div style={{ fontSize: 10, color, fontWeight: "bold" }}>{STATUS_ICON[s]} {STATUS_LABEL[s]}</div>
+              <div style={{ fontSize: 9, color: "#71717a" }}>{phase?.durationMs > 0 ? `${phase.durationMs}ms` : "—"}</div>
+              <div style={{ fontSize: 9, color: s === STATUS.NOT_EXECUTED ? "#f59e0b" : s === STATUS.FAIL ? "#ef4444" : "#a1a1aa" }}>{note}</div>
+            </React.Fragment>
+          );
+        })}
+      </div>
+    </Panel>
+  );
+}
+
+function matrixNote(name, phase) {
+  if (!phase) return "Phase not registered";
+  const s = phase.status;
+  if (s === STATUS.NOT_EXECUTED) return phase.reason?.split(".")[0] ?? "Not executed";
+  if (s === STATUS.FAIL)         return phase.reason ?? "Failed";
+  const d = phase.data;
+  if (!d) return "Passed";
+  if (name === "TESTS")        return `${d.passed}/${d.total} tests passed`;
+  if (name === "ARCHITECTURE") return `integrity:${d.integrity.passed}/${d.integrity.passed+d.integrity.failed} immutability:${d.immutability.passed}/${d.immutability.passed+d.immutability.failed} solid:${d.solid.ok}`;
+  if (name === "SOLID")        return d.checks?.map(c => `${c.principle}:${c.verdict}`).join(" · ") ?? "Passed";
+  if (name === "IMMUTABILITY") return `${d.passed}/${d.passed+d.failed} checks`;
+  if (name === "PERFORMANCE")  return `${d.benchmarks?.length}/8 benchmarks`;
+  if (name === "STRUCTURAL")   return `${d.passed}/${d.passed+d.failed} checks`;
+  return "Passed";
+}
+
+function FinalBanner({ certStatus, coverage, scoreInfo, execAt, totalMs }) {
+  const cfg = CERT_CONFIG[certStatus];
+  return (
+    <div style={{ border: `2px solid ${cfg.color}`, borderRadius: 12, padding: 24, textAlign: "center", background: cfg.bg, marginTop: 8 }}>
+      <div style={{ fontSize: 26, fontWeight: "bold", color: cfg.color }}>{cfg.icon} {cfg.label}</div>
+
+      {certStatus === CERT_STATUS.PARTIALLY_CERTIFIED && (
+        <div style={{ fontSize: 11, color: "#f59e0b", marginTop: 8, maxWidth: 500, margin: "8px auto 0" }}>
+          Certification score is based only on executed phases.<br />
+          Execution coverage remains incomplete.
+        </div>
+      )}
+
+      <div style={{ display: "flex", justifyContent: "center", gap: 32, marginTop: 16, flexWrap: "wrap" }}>
+        <Stat label="Coverage"  value={`${coverage.coveragePct}%`}        sub={`${coverage.executed.length}/${coverage.total} phases`} color={coverage.coveragePct === 100 ? "#22c55e" : "#f59e0b"} />
+        <Stat label="Score"     value={`${scoreInfo.score}/100`}           sub={`Grade ${scoreInfo.grade}`}                             color={scoreInfo.score >= 95 ? "#22c55e" : "#ef4444"} />
+        <Stat label="Executed"  value={`${scoreInfo.executedCount}/${TOTAL_PHASES}`} sub="phases"                                   color="#a1a1aa" />
+        <Stat label="Passed"    value={scoreInfo.passedCount}              sub="phases"                                               color="#22c55e" />
+        {scoreInfo.failedCount > 0 && <Stat label="Failed" value={scoreInfo.failedCount} sub="phases" color="#ef4444" />}
+        {coverage.notExecuted.length > 0 && <Stat label="Not Executed" value={coverage.notExecuted.length} sub="phases" color="#f59e0b" />}
+        <Stat label="Total Time" value={`${totalMs}ms`}                    sub={execAt?.split("T")[1]?.split(".")[0] ?? ""}            color="#71717a" />
+      </div>
+    </div>
+  );
+}
+
+function Stat({ label, value, sub, color }) {
+  return (
+    <div style={{ textAlign: "center" }}>
+      <div style={{ fontSize: 9, color: "#52525b", letterSpacing: 1, marginBottom: 2 }}>{label}</div>
+      <div style={{ fontSize: 18, fontWeight: "bold", color }}>{value}</div>
+      {sub && <div style={{ fontSize: 9, color: "#52525b" }}>{sub}</div>}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Detail sections
+// ─────────────────────────────────────────────────────────────────────────────
+
+function DetailSections({ phases }) {
+  return (
+    <>
+      {phases.TESTS?.data && (
+        <Panel title={`Tests — ${phases.TESTS.data.passed}/${phases.TESTS.data.total} passed`}>
+          {phases.TESTS.data.results?.filter(r => !r.passed).length === 0
+            ? <Row color="#22c55e">✓ All {phases.TESTS.data.total} tests passed</Row>
+            : phases.TESTS.data.results?.filter(r => !r.passed).map((r, i) => (
+                <Row key={i} color="#ef4444">✗ [{r.suite}] {r.name}: {r.error}</Row>
+              ))
+          }
+        </Panel>
+      )}
+
+      {phases.SOLID?.data?.checks && (
+        <Panel title="SOLID Audit">
+          {phases.SOLID.data.checks.map((c, i) => (
+            <Row key={i} color={c.verdict === "PASS" ? "#22c55e" : c.verdict === "WARNING" ? "#f59e0b" : "#ef4444"}>
+              {c.verdict === "PASS" ? "✓" : c.verdict === "WARNING" ? "⚠" : "✗"} {c.principle} — {c.rationale}
+            </Row>
+          ))}
+        </Panel>
+      )}
+
+      {phases.ARCHITECTURE?.data?.integrity?.checks && (
+        <Panel title={`Integrity — ${phases.ARCHITECTURE.data.integrity.passed}/${phases.ARCHITECTURE.data.integrity.passed + phases.ARCHITECTURE.data.integrity.failed}`}>
+          {phases.ARCHITECTURE.data.integrity.checks.filter(c => !c.ok).map((c, i) => (
+            <Row key={i} color="#ef4444">✗ {c.check}: {c.detail}</Row>
+          ))}
+          {phases.ARCHITECTURE.data.integrity.failed === 0 && (
+            <Row color="#22c55e">✓ All {phases.ARCHITECTURE.data.integrity.passed} integrity checks passed</Row>
+          )}
+        </Panel>
+      )}
+
+      {phases.PERFORMANCE?.data?.benchmarks && (
+        <Panel title="Performance Benchmarks">
+          {phases.PERFORMANCE.data.benchmarks.map((b, i) => (
+            <div key={i} style={{ fontSize: 10, color: "#a1a1aa", marginBottom: 2 }}>
+              <span style={{ color: "#e4e4e7", minWidth: 180, display: "inline-block" }}>{b.operation}</span>
+              avg:{b.avgMs}ms{"  "}p95:{b.p95Ms}ms{"  "}{b.opsPerSec?.toLocaleString()}ops/s
+            </div>
+          ))}
+        </Panel>
+      )}
+
+      {phases.STRUCTURAL?.data && (
+        <Panel title={`Structural Audit — ${phases.STRUCTURAL.data.passed}/${phases.STRUCTURAL.data.passed + phases.STRUCTURAL.data.failed}`}>
+          {phases.STRUCTURAL.data.checks?.filter(c => !c.ok).map((c, i) => (
+            <Row key={i} color="#ef4444">✗ {c.check}: {c.detail}</Row>
+          ))}
+          {phases.STRUCTURAL.data.failed === 0 && (
+            <Row color="#22c55e">✓ All {phases.STRUCTURAL.data.passed} structural checks passed</Row>
+          )}
+        </Panel>
+      )}
+
+      {(phases.SOURCE?.status === STATUS.NOT_EXECUTED || phases.AST?.status === STATUS.NOT_EXECUTED) && (
+        <Panel title="Not Executed — Technical Explanation" accent="#f59e0b">
+          <Row color="#f59e0b">⊘ SOURCE AUDIT and AST AUDIT were not executed in this runtime context.</Row>
+          <div style={{ fontSize: 10, color: "#a1a1aa", marginTop: 6, lineHeight: 1.6 }}>
+            Both auditors use static top-level Vite <code style={{ color: "#c084fc" }}>?raw</code> imports (e.g.{" "}
+            <code style={{ color: "#c084fc" }}>MemoryStore.ts?raw</code>). When ArchitecturalAuditor loads first,
+            it pulls the same files as normal JS chunks. Vite cannot then resolve the <code style={{ color: "#c084fc" }}>?raw</code> variant
+            of those module IDs — the error fires at the ES module link phase, before any try/catch can intercept it.
+          </div>
+          <div style={{ fontSize: 10, color: "#a1a1aa", marginTop: 6, lineHeight: 1.6 }}>
+            These auditors produce real results at <span style={{ color: "#818cf8" }}>/ef393-certification</span> (isolated lazy route
+            without ArchitecturalAuditor). This is a documented dead-end in the project.
+          </div>
+          <div style={{ fontSize: 9, color: "#52525b", marginTop: 4 }}>
+            These phases are excluded from the Certification Score denominator. Execution Coverage counts them as not executed.
+          </div>
+        </Panel>
+      )}
+    </>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main page
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function EF398CertPage() {
   const [runStatus, setRunStatus] = useState("idle");
   const [phases,    setPhases]    = useState({});
+  const [coverage,  setCoverage]  = useState(null);
   const [scoreInfo, setScoreInfo] = useState(null);
+  const [certStatus,setCertStatus]= useState(null);
   const [log,       setLog]       = useState([]);
   const [totalMs,   setTotalMs]   = useState(null);
   const [execAt,    setExecAt]    = useState(null);
@@ -233,12 +454,13 @@ export default function EF398CertPage() {
     setRunStatus("running");
     setLog([]);
     setPhases({});
+    setCoverage(null);
     setScoreInfo(null);
+    setCertStatus(null);
 
     const wallStart = performance.now();
     setExecAt(new Date().toISOString());
 
-    // Reset shared singletons
     try {
       const { KnowledgeStoreMetrics } = await import("@/lib/knowledge-store/KnowledgeStoreMetrics");
       KnowledgeStoreMetrics.reset();
@@ -249,32 +471,26 @@ export default function EF398CertPage() {
       addLog(`Singleton reset warning: ${e?.message}`);
     }
 
-    // ── Run each phase independently ─────────────────────────────────────────
-    // Tests and Architecture run in parallel (no shared state after reset)
     const [testsPhase, archPhase] = await Promise.all([
       runPhaseTests(addLog),
       runPhaseArchitecture(addLog),
     ]);
 
-    // Structural runs after (depends on same store internals — serial to avoid race)
     const structuralPhase = await runPhaseStructural(addLog);
+    const sourcePhase     = runPhaseSource(addLog);
+    const astPhase        = runPhaseAST(addLog);
 
-    // Source and AST are synchronously determined (NOT_EXECUTED — no await needed)
-    const sourcePhase = runPhaseSource(addLog);
-    const astPhase    = runPhaseAST(addLog);
-
-    // Derive per-auditor sub-phases from archPhase data
     const archData = archPhase.data;
     const solidPhase = archData
-      ? { status: archData.solid.ok ? STATUS.PASS : STATUS.FAIL, data: archData.solid, reason: null, durationMs: archData.solid.durationMs }
+      ? { status: archData.solid.ok ? STATUS.PASS : STATUS.FAIL, data: archData.solid, reason: null, durationMs: Math.round(archData.solid.durationMs) }
       : { status: STATUS.FAIL, data: null, reason: "ArchitecturalAuditor failed", durationMs: 0 };
 
     const immutabilityPhase = archData
-      ? { status: archData.immutability.ok ? STATUS.PASS : STATUS.FAIL, data: archData.immutability, reason: null, durationMs: archData.immutability.durationMs }
+      ? { status: archData.immutability.ok ? STATUS.PASS : STATUS.FAIL, data: archData.immutability, reason: null, durationMs: Math.round(archData.immutability.durationMs) }
       : { status: STATUS.FAIL, data: null, reason: "ArchitecturalAuditor failed", durationMs: 0 };
 
     const perfPhase = archData
-      ? { status: archData.performance.benchmarks.length === 8 ? STATUS.PASS : STATUS.FAIL, data: archData.performance, reason: null, durationMs: archData.performance.durationMs }
+      ? { status: archData.performance.benchmarks.length === 8 ? STATUS.PASS : STATUS.FAIL, data: archData.performance, reason: null, durationMs: Math.round(archData.performance.durationMs) }
       : { status: STATUS.FAIL, data: null, reason: "ArchitecturalAuditor failed", durationMs: 0 };
 
     const allPhases = {
@@ -288,256 +504,84 @@ export default function EF398CertPage() {
       AST:          astPhase,
     };
 
-    const score = computeHonestScore(allPhases);
-    const ms    = Math.round(performance.now() - wallStart);
+    const cov  = computeCoverage(allPhases);
+    const sc   = computeScore(allPhases);
+    const cert = computeCertStatus(cov, sc);
+    const ms   = Math.round(performance.now() - wallStart);
 
     setPhases(allPhases);
-    setScoreInfo(score);
+    setCoverage(cov);
+    setScoreInfo(sc);
+    setCertStatus(cert);
     setTotalMs(ms);
     setRunStatus("done");
-    addLog(`COMPLETE — score:${score.score}/100 (${score.executed.length}/${score.totalPhases} executed) — ${ms}ms`);
+
+    addLog(`COMPLETE — coverage:${cov.coveragePct}% (${cov.executed.length}/${cov.total}) score:${sc.score}/100 ${sc.grade} status:${cert} — ${ms}ms`);
   }
 
   useEffect(() => { run(); }, []);
 
-  const executed  = scoreInfo?.executed  ?? [];
-  const notExec   = scoreInfo?.notExecuted ?? [];
-  const isCertified = scoreInfo?.score >= 95 && executed.length === scoreInfo?.totalPhases;
-
   return (
     <div style={{ background: "#09090b", color: "#e4e4e7", minHeight: "100vh", fontFamily: "monospace", padding: 24 }}>
-      <div style={{ maxWidth: 960, margin: "0 auto" }}>
+      <div style={{ maxWidth: 980, margin: "0 auto" }}>
 
         {/* Header */}
-        <div style={{ fontSize: 18, fontWeight: "bold", color: "#a78bfa", marginBottom: 4 }}>
-          EF-39.9 — REAL RUNTIME CERTIFICATION (ZERO STUBS)
+        <div style={{ fontSize: 17, fontWeight: "bold", color: "#a78bfa", marginBottom: 3 }}>
+          EF-40.0 — CERTIFICATION CONSISTENCY
         </div>
-        <div style={{ fontSize: 11, color: "#52525b", marginBottom: 4 }}>
-          Rule: PASS = actually executed and passed. NOT EXECUTED = not run (reason disclosed). No fabricated data.
+        <div style={{ fontSize: 10, color: "#52525b", marginBottom: 4 }}>
+          Coverage = all {TOTAL_PHASES} declared phases · Score = executed phases only · Status = CERTIFIED / PARTIALLY CERTIFIED / NOT CERTIFIED
         </div>
-        <div style={{ fontSize: 12, color: "#71717a", marginBottom: 16 }}>
-          Status:{" "}
+        <div style={{ fontSize: 11, color: "#71717a", marginBottom: 16 }}>
+          Run status:{" "}
           <span style={{ color: runStatus === "done" ? "#22c55e" : runStatus === "error" ? "#ef4444" : "#facc15", fontWeight: "bold" }}>
             {runStatus.toUpperCase()}
           </span>
-          {execAt && <span style={{ color: "#52525b", marginLeft: 12 }}>{execAt}</span>}
+          {execAt && <span style={{ color: "#3f3f46", marginLeft: 12 }}>{execAt}</span>}
         </div>
 
         {/* Log */}
-        <div style={{ background: "#18181b", border: "1px solid #27272a", borderRadius: 8, padding: 12, marginBottom: 20, maxHeight: 200, overflowY: "auto" }}>
-          <div style={{ fontSize: 10, color: "#52525b", marginBottom: 6, letterSpacing: 1 }}>EXECUTION LOG</div>
+        <div style={{ background: "#18181b", border: "1px solid #27272a", borderRadius: 8, padding: 12, marginBottom: 20, maxHeight: 180, overflowY: "auto" }}>
+          <div style={{ fontSize: 9, color: "#3f3f46", marginBottom: 6, letterSpacing: 1 }}>EXECUTION LOG</div>
           {log.map((l, i) => (
             <div key={i} style={{ fontSize: 10, marginBottom: 1 }}>
-              <span style={{ color: "#3f3f46" }}>[{l.t}ms] </span>
-              <span style={{
-                color: l.msg.includes("ERROR") || l.msg.includes("FAIL")
-                  ? "#ef4444"
-                  : l.msg.includes("DONE") || l.msg.includes("COMPLETE") || l.msg.includes("OK")
-                  ? "#22c55e"
-                  : l.msg.includes("NOT_EXECUTED")
-                  ? "#f59e0b"
-                  : "#a1a1aa"
-              }}>{l.msg}</span>
+              <span style={{ color: "#27272a" }}>[{l.t}ms] </span>
+              <span style={{ color: l.msg.includes("FAIL") || l.msg.includes("ERROR") ? "#ef4444" : l.msg.includes("DONE") || l.msg.includes("COMPLETE") || l.msg.includes("OK") ? "#22c55e" : l.msg.includes("NOT_EXECUTED") ? "#f59e0b" : "#71717a" }}>
+                {l.msg}
+              </span>
             </div>
           ))}
           {runStatus === "running" && <div style={{ color: "#facc15", fontSize: 10 }}>⏳ Running…</div>}
         </div>
 
-        {scoreInfo && (
+        {coverage && scoreInfo && certStatus && (
           <>
-            {/* Score + Coverage */}
-            <div style={{ background: "#18181b", border: "1px solid #27272a", borderRadius: 10, padding: 16, marginBottom: 16, display: "flex", gap: 32, alignItems: "flex-start", flexWrap: "wrap" }}>
-              <div>
-                <div style={{ fontSize: 10, color: "#52525b", marginBottom: 4, letterSpacing: 1 }}>HONEST SCORE (executed phases only)</div>
-                <div style={{ fontSize: 36, fontWeight: "bold", color: scoreInfo.score >= 95 ? "#22c55e" : scoreInfo.score >= 80 ? "#60a5fa" : "#ef4444" }}>
-                  {scoreInfo.score}/100 — {scoreInfo.grade}
-                </div>
-              </div>
-              <div>
-                <div style={{ fontSize: 10, color: "#52525b", marginBottom: 4, letterSpacing: 1 }}>COVERAGE</div>
-                <div style={{ fontSize: 22, fontWeight: "bold", color: executed.length === scoreInfo.totalPhases ? "#22c55e" : "#f59e0b" }}>
-                  {executed.length}/{scoreInfo.totalPhases} executed
-                </div>
-                {notExec.length > 0 && (
-                  <div style={{ fontSize: 10, color: "#f59e0b", marginTop: 4 }}>
-                    Not executed: {notExec.join(", ")}
-                  </div>
-                )}
-              </div>
-              <div>
-                <div style={{ fontSize: 10, color: "#52525b", marginBottom: 4, letterSpacing: 1 }}>TOTAL TIME</div>
-                <div style={{ fontSize: 18, color: "#a1a1aa" }}>{totalMs}ms</div>
-              </div>
-            </div>
-
-            {/* Status legend */}
-            <div style={{ display: "flex", gap: 16, marginBottom: 12, flexWrap: "wrap" }}>
+            {/* Legend */}
+            <div style={{ display: "flex", gap: 20, marginBottom: 14, flexWrap: "wrap" }}>
               {Object.entries(STATUS_LABEL).map(([k, label]) => (
-                <div key={k} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10 }}>
+                <div key={k} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10 }}>
                   <span style={{ color: STATUS_COLOR[k], fontWeight: "bold" }}>{STATUS_ICON[k]}</span>
                   <span style={{ color: STATUS_COLOR[k] }}>{label}</span>
                 </div>
               ))}
             </div>
 
-            {/* Phase grid */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 20 }}>
-              {Object.entries(phases).map(([name, phase]) => (
-                <PhaseCard
-                  key={name}
-                  name={name}
-                  status={phase.status}
-                  note={phase.reason ?? phaseNote(name, phase)}
-                  durationMs={phase.durationMs > 0 ? phase.durationMs : null}
-                />
-              ))}
-            </div>
+            {/* Three independent concept panels */}
+            <CoveragePanel coverage={coverage} />
+            <ScorePanel scoreInfo={scoreInfo} />
+            <CertStatusPanel certStatus={certStatus} coverage={coverage} scoreInfo={scoreInfo} />
+
+            {/* Execution Matrix */}
+            <ExecutionMatrix phases={phases} coverage={coverage} scoreInfo={scoreInfo} />
 
             {/* Detail sections */}
-
-            {/* Tests */}
-            {phases.TESTS?.data && (
-              <Section title={`TESTS — ${phases.TESTS.data.passed}/${phases.TESTS.data.total} passed`}>
-                {phases.TESTS.data.results?.filter(r => !r.passed).length === 0
-                  ? <Row color="#22c55e">✓ All {phases.TESTS.data.total} tests passed</Row>
-                  : phases.TESTS.data.results?.filter(r => !r.passed).map((r, i) => (
-                      <Row key={i} color="#ef4444">✗ [{r.suite}] {r.name}: {r.error}</Row>
-                    ))
-                }
-              </Section>
-            )}
-
-            {/* SOLID */}
-            {phases.SOLID?.data?.checks && (
-              <Section title="SOLID AUDIT">
-                {phases.SOLID.data.checks.map((c, i) => (
-                  <Row key={i} color={c.verdict === "PASS" ? "#22c55e" : c.verdict === "WARNING" ? "#f59e0b" : "#ef4444"}>
-                    {c.verdict === "PASS" ? "✓" : c.verdict === "WARNING" ? "⚠" : "✗"} {c.principle} — {c.rationale}
-                  </Row>
-                ))}
-              </Section>
-            )}
-
-            {/* Integrity */}
-            {phases.ARCHITECTURE?.data?.integrity?.checks && (
-              <Section title={`INTEGRITY — ${phases.ARCHITECTURE.data.integrity.passed}/${phases.ARCHITECTURE.data.integrity.passed + phases.ARCHITECTURE.data.integrity.failed}`}>
-                {phases.ARCHITECTURE.data.integrity.checks.filter(c => !c.ok).map((c, i) => (
-                  <Row key={i} color="#ef4444">✗ {c.check}: {c.detail}</Row>
-                ))}
-                {phases.ARCHITECTURE.data.integrity.failed === 0 && (
-                  <Row color="#22c55e">✓ All {phases.ARCHITECTURE.data.integrity.passed} integrity checks passed</Row>
-                )}
-              </Section>
-            )}
-
-            {/* Performance */}
-            {phases.PERFORMANCE?.data?.benchmarks && (
-              <Section title="PERFORMANCE BENCHMARKS">
-                {phases.PERFORMANCE.data.benchmarks.map((b, i) => (
-                  <div key={i} style={{ fontSize: 10, color: "#a1a1aa", marginBottom: 2 }}>
-                    <span style={{ color: "#e4e4e7", minWidth: 180, display: "inline-block" }}>{b.operation}</span>
-                    avg:{b.avgMs}ms{"  "}p95:{b.p95Ms}ms{"  "}{b.opsPerSec?.toLocaleString()}ops/s
-                  </div>
-                ))}
-              </Section>
-            )}
-
-            {/* Structural */}
-            {phases.STRUCTURAL?.data && (
-              <Section title={`STRUCTURAL AUDIT — ${phases.STRUCTURAL.data.passed}/${phases.STRUCTURAL.data.passed + phases.STRUCTURAL.data.failed}`}>
-                {phases.STRUCTURAL.data.checks?.filter(c => !c.ok).map((c, i) => (
-                  <Row key={i} color="#ef4444">✗ {c.check}: {c.detail}</Row>
-                ))}
-                {phases.STRUCTURAL.data.failed === 0 && (
-                  <Row color="#22c55e">✓ All {phases.STRUCTURAL.data.passed} structural checks passed</Row>
-                )}
-              </Section>
-            )}
-
-            {/* NOT EXECUTED explanation */}
-            {[phases.SOURCE, phases.AST].some(p => p?.status === STATUS.NOT_EXECUTED) && (
-              <Section title="NOT EXECUTED — WHY?" borderColor="#f59e0b">
-                <div style={{ fontSize: 11, color: "#f59e0b", marginBottom: 6 }}>
-                  ⊘ SOURCE AUDIT and AST AUDIT were not executed in this runtime context.
-                </div>
-                <div style={{ fontSize: 10, color: "#a1a1aa", lineHeight: 1.6 }}>
-                  Both auditors use static top-level Vite <code style={{ color: "#c084fc" }}>?raw</code> imports (e.g.{" "}
-                  <code style={{ color: "#c084fc" }}>MemoryStore.ts?raw</code>). When ArchitecturalAuditor is loaded first,
-                  it pulls the same files as normal JS chunks. Vite then cannot resolve the <code style={{ color: "#c084fc" }}>?raw</code> variant
-                  of those same module IDs — the error fires at the ES module link phase, before any try/catch can intercept it.
-                </div>
-                <div style={{ fontSize: 10, color: "#a1a1aa", marginTop: 6, lineHeight: 1.6 }}>
-                  These auditors execute correctly and produce real results at{" "}
-                  <span style={{ color: "#818cf8" }}>/ef393-certification</span>, where they run in an isolated lazy route
-                  without ArchitecturalAuditor loading the same files first. This is a documented dead-end in the project.
-                </div>
-                <div style={{ fontSize: 10, color: "#52525b", marginTop: 4 }}>
-                  These phases do not contribute to the score above. The score and grade reflect only the {executed.length} executed phases.
-                </div>
-              </Section>
-            )}
+            <DetailSections phases={phases} />
 
             {/* Final banner */}
-            <div style={{
-              border: `2px solid ${isCertified ? "#22c55e" : executed.length < scoreInfo.totalPhases ? "#f59e0b" : "#ef4444"}`,
-              borderRadius: 12, padding: 20, textAlign: "center", marginTop: 8,
-              background: isCertified ? "#052e16" : executed.length < scoreInfo.totalPhases ? "#422006" : "#450a0a",
-            }}>
-              {isCertified ? (
-                <>
-                  <div style={{ fontSize: 22, fontWeight: "bold", color: "#22c55e" }}>✓ CERTIFIED</div>
-                  <div style={{ fontSize: 11, color: "#71717a", marginTop: 4 }}>Score {scoreInfo.score}/100 · Grade {scoreInfo.grade}</div>
-                </>
-              ) : executed.length < scoreInfo.totalPhases ? (
-                <>
-                  <div style={{ fontSize: 22, fontWeight: "bold", color: "#f59e0b" }}>⊘ PARTIALLY EXECUTED</div>
-                  <div style={{ fontSize: 11, color: "#71717a", marginTop: 4 }}>
-                    Score {scoreInfo.score}/100 · {executed.length}/{scoreInfo.totalPhases} phases executed
-                  </div>
-                  <div style={{ fontSize: 10, color: "#f59e0b", marginTop: 4 }}>
-                    Cannot certify until all phases are executed. Not-executed phases: {notExec.join(", ")}
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div style={{ fontSize: 22, fontWeight: "bold", color: "#ef4444" }}>✗ NOT CERTIFIED</div>
-                  <div style={{ fontSize: 11, color: "#71717a", marginTop: 4 }}>Score {scoreInfo.score}/100</div>
-                </>
-              )}
-              <div style={{ fontSize: 10, color: "#52525b", marginTop: 6 }}>
-                EF-39.9 · {execAt} · {totalMs}ms
-              </div>
-            </div>
+            <FinalBanner certStatus={certStatus} coverage={coverage} scoreInfo={scoreInfo} execAt={execAt} totalMs={totalMs} />
           </>
         )}
       </div>
     </div>
   );
-}
-
-// ── Minor helpers ─────────────────────────────────────────────────────────────
-function Section({ title, children, borderColor = "#27272a" }) {
-  return (
-    <div style={{ background: "#18181b", border: `1px solid ${borderColor}`, borderRadius: 8, padding: 12, marginBottom: 12 }}>
-      <div style={{ fontSize: 11, color: "#71717a", marginBottom: 8, letterSpacing: 0.5 }}>{title}</div>
-      {children}
-    </div>
-  );
-}
-
-function Row({ children, color = "#a1a1aa" }) {
-  return <div style={{ fontSize: 10, color, marginBottom: 2 }}>{children}</div>;
-}
-
-function phaseNote(name, phase) {
-  if (phase.status === STATUS.PASS) {
-    const d = phase.data;
-    if (name === "TESTS")        return `${d.passed}/${d.total} passed`;
-    if (name === "ARCHITECTURE") return `integrity:${d.integrity.ok} immutability:${d.immutability.ok} solid:${d.solid.ok}`;
-    if (name === "SOLID")        return d.checks?.map(c => `${c.principle}:${c.verdict}`).join(" · ");
-    if (name === "IMMUTABILITY") return `${d.passed}/${d.passed + d.failed} checks`;
-    if (name === "PERFORMANCE")  return `${d.benchmarks?.length}/8 benchmarks`;
-    if (name === "STRUCTURAL")   return `${d.passed}/${d.passed + d.failed} checks`;
-  }
-  return null;
 }
