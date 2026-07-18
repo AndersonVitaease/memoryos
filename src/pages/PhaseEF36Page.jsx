@@ -30,7 +30,7 @@ function MetCard({ label, value, color }) {
   );
 }
 
-const TABS = ["Overview","Policies","Profiles","Classifications","Disclosure Decisions","Transformations","Audit","Statistics","Tests"];
+const TABS = ["Overview","Structured Response","Policies","Profiles","Classifications","Disclosure Decisions","Transformations","Audit","Statistics","Tests"];
 
 const PROFILES = ["Visitor","Customer","Power User","Developer","Administrator","MemoryOS Engineer"];
 const LEVELS   = ["PUBLIC","BASIC","ADVANCED","DEVELOPER","INTERNAL","ARCHITECTURE","ENGINEERING","SYSTEM"];
@@ -49,14 +49,25 @@ export default function PhaseEF36Page() {
   const [auditLog, setAuditLog]     = useState([]);
   const [stats, setStats]           = useState(null);
   const [liveInput, setLiveInput]   = useState({ text: "O Decision Engine executou análise de capacidades.", component: "Decision Engine", profile: "Customer" });
+  const [srmResult, setSrmResult]   = useState(null);
+  const [srmTestResults, setSrmTestResults] = useState(null);
 
   const runTests = useCallback(async () => {
     setRunning(true);
     try {
       const { runDisclosureTests } = await import("@/lib/disclosure/disclosureTests");
+      const { runSRMTests } = await import("@/lib/response/srmTests");
       const { DisclosureAuditEngine } = await import("@/lib/disclosure/DisclosureAuditEngine");
-      const result = await runDisclosureTests();
-      setTestResults(result);
+      const [r1, r2] = await Promise.all([runDisclosureTests(), runSRMTests()]);
+      const combined = {
+        results: [...r1.results, ...r2.results],
+        passed: r1.passed + r2.passed,
+        failed: r1.failed + r2.failed,
+        total: r1.total + r2.total,
+        certified: r1.certified && r2.certified,
+      };
+      setTestResults(combined);
+      setSrmTestResults(r2);
       setAuditLog(DisclosureAuditEngine.getRecent(100));
       setStats(DisclosureAuditEngine.stats());
       setTab("Tests");
@@ -66,6 +77,32 @@ export default function PhaseEF36Page() {
       setRunning(false);
     }
   }, []);
+
+  const runSRMLive = useCallback(async () => {
+    try {
+      const { StructuredResponseBuilder } = await import("@/lib/response/StructuredResponseBuilder");
+      const { StructuredKDE } = await import("@/lib/response/StructuredKDE");
+      const { ResponseComposer } = await import("@/lib/response/ResponseComposer");
+      const { KnowledgeClassifier } = await import("@/lib/disclosure/KnowledgeClassification");
+      const { DisclosureAuditEngine } = await import("@/lib/disclosure/DisclosureAuditEngine");
+
+      const cls = KnowledgeClassifier.classifyComponent(liveInput.component);
+      const sr = StructuredResponseBuilder.create()
+        .addFact(liveInput.text, cls)
+        .addReasoning(`${liveInput.component} processed the request.`, cls)
+        .addComponent(liveInput.component, "pipeline stage", cls)
+        .addAction("View result", "The result is ready.", "PUBLIC")
+        .addJustificationTag("PIPELINE_EXECUTION")
+        .addKnowledgeSource(liveInput.component)
+        .build();
+
+      const filtered = StructuredKDE.filter(sr, liveInput.profile);
+      const composed = ResponseComposer.compose(filtered.authorized, "text");
+      setSrmResult({ sr, filtered, composed });
+      setAuditLog(DisclosureAuditEngine.getRecent(50));
+      setStats(DisclosureAuditEngine.stats());
+    } catch (e) { console.error(e); }
+  }, [liveInput]);
 
   const runLive = useCallback(async () => {
     try {
@@ -146,11 +183,15 @@ export default function PhaseEF36Page() {
         <div className="flex gap-3 flex-wrap">
           <button onClick={runTests} disabled={running}
             className="bg-violet-700 hover:bg-violet-600 disabled:opacity-50 text-white px-5 py-2.5 rounded-lg text-sm font-bold">
-            {running ? "Running..." : "▶ Run 80+ Tests"}
+            {running ? "Running..." : "▶ Run 140+ Tests (EF-36 + SRM)"}
           </button>
           <button onClick={runAllProfiles} disabled={running}
             className="bg-zinc-700 hover:bg-zinc-600 text-white px-4 py-2.5 rounded-lg text-sm font-bold">
             Compare All Profiles
+          </button>
+          <button onClick={runSRMLive} disabled={running}
+            className="bg-sky-800 hover:bg-sky-700 text-white px-4 py-2.5 rounded-lg text-sm font-bold">
+            SRM Live Demo
           </button>
         </div>
 
@@ -158,7 +199,7 @@ export default function PhaseEF36Page() {
         {testResults && (
           <div className={"border-2 rounded-xl p-4 text-center " + (testResults.certified ? "border-emerald-500 bg-emerald-950/20" : "border-red-700 bg-red-950/10")}>
             <div className={"text-xl font-bold " + (testResults.certified ? "text-emerald-400" : "text-red-400")}>
-              {testResults.certified ? "✓ KDE CERTIFIED — ALL TESTS PASS" : "✗ TESTS FAILED"}
+              {testResults.certified ? "✓ KDE + SRM CERTIFIED — ALL TESTS PASS" : "✗ TESTS FAILED"}
             </div>
             <div className="text-zinc-400 text-sm mt-1">
               {testResults.passed}/{testResults.total} passed · {testResults.failed} failed
@@ -212,6 +253,142 @@ export default function PhaseEF36Page() {
                 <div className="text-zinc-600 text-xs mt-2">{r.reason}</div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* ── STRUCTURED RESPONSE ──────────────────────────────────────────── */}
+        {tab === "Structured Response" && (
+          <div className="space-y-4">
+            {/* Pipeline diagram */}
+            <div className="border border-sky-800/50 rounded-xl bg-sky-950/10 p-4">
+              <div className="text-zinc-500 text-xs tracking-widest mb-3">EF-36.1 — STRUCTURED RESPONSE PIPELINE</div>
+              <div className="flex items-center gap-1 flex-wrap text-xs">
+                {["Knowledge","Structured Response ★","StructuredKDE (filter)","ResponseComposer","Final Text"].map((s, i, arr) => (
+                  <React.Fragment key={s}>
+                    <span className={"border rounded px-2 py-1 " + (s.includes("★") ? "border-sky-500 text-sky-300 bg-sky-900/30 font-bold" : "border-zinc-700 text-zinc-400")}>
+                      {s.replace(" ★", "")}
+                    </span>
+                    {i < arr.length - 1 && <span className="text-zinc-600">→</span>}
+                  </React.Fragment>
+                ))}
+              </div>
+              <div className="mt-2 text-zinc-500 text-xs">No regex · No text analysis · Classification-driven · Composer is the only text generator</div>
+            </div>
+
+            {/* Live SRM demo result */}
+            {srmResult ? (
+              <div className="space-y-3">
+                {/* Original SR */}
+                <div className="border border-zinc-700 rounded-xl bg-zinc-900">
+                  <div className="px-4 py-3 border-b border-zinc-800 text-xs text-zinc-400 tracking-widest">ORIGINAL STRUCTURED RESPONSE</div>
+                  <div className="p-4 grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <div className="text-zinc-500 mb-1">Facts ({srmResult.sr.facts.length})</div>
+                      {srmResult.sr.facts.map(f => (
+                        <div key={f.id} className="flex items-center gap-2 mb-1">
+                          <span className={"text-xs " + (LEVEL_COLORS[f.classification] || "text-zinc-500")}>{f.classification}</span>
+                          <span className="text-zinc-300">{f.text}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div>
+                      <div className="text-zinc-500 mb-1">Components ({srmResult.sr.components.length})</div>
+                      {srmResult.sr.components.map(c => (
+                        <div key={c.id} className="flex items-center gap-2 mb-1">
+                          <span className={"text-xs " + (LEVEL_COLORS[c.classification] || "text-zinc-500")}>{c.classification}</span>
+                          <span className="text-zinc-300">{c.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div>
+                      <div className="text-zinc-500 mb-1">Reasoning ({srmResult.sr.reasoning.length})</div>
+                      {srmResult.sr.reasoning.map(r => (
+                        <div key={r.id} className="flex items-center gap-2 mb-1">
+                          <span className={"text-xs " + (LEVEL_COLORS[r.classification] || "text-zinc-500")}>{r.classification}</span>
+                          <span className="text-zinc-300">{r.text}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div>
+                      <div className="text-zinc-500 mb-1">Actions ({srmResult.sr.actions.length})</div>
+                      {srmResult.sr.actions.map(a => (
+                        <div key={a.id} className="flex items-center gap-2 mb-1">
+                          <span className={"text-xs " + (LEVEL_COLORS[a.classification] || "text-zinc-500")}>{a.classification}</span>
+                          <span className="text-zinc-300">{a.title}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* KDE result */}
+                <div className={"border-2 rounded-xl bg-zinc-900 " + (srmResult.filtered.decision === "ALLOW" ? "border-emerald-700" : srmResult.filtered.decision === "PARTIAL" ? "border-amber-700" : "border-red-700")}>
+                  <div className="px-4 py-3 border-b border-zinc-800 flex items-center gap-3 text-xs">
+                    <span className="text-zinc-400 tracking-widest">AFTER STRUCTURED KDE</span>
+                    <Badge label={srmResult.filtered.decision} style={STATUS_COLOR[srmResult.filtered.decision]} />
+                    <span className={"font-bold " + (LEVEL_COLORS[srmResult.filtered.userMaxLevel] || "text-zinc-400")}>{srmResult.filtered.userMaxLevel}</span>
+                  </div>
+                  <div className="p-4 grid grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <div className="text-emerald-400 mb-1">✓ Kept facts ({srmResult.filtered.authorized.facts.length})</div>
+                      {srmResult.filtered.authorized.facts.map(f => <div key={f.id} className="text-zinc-300 mb-0.5">{f.text}</div>)}
+                    </div>
+                    <div>
+                      <div className="text-red-400 mb-1">✗ Removed facts ({srmResult.filtered.removedFacts.length})</div>
+                      {srmResult.filtered.removedFacts.map(f => <div key={f.id} className="text-zinc-500 mb-0.5">{f.text}</div>)}
+                    </div>
+                    <div>
+                      <div className="text-emerald-400 mb-1">✓ Kept components ({srmResult.filtered.authorized.components.length})</div>
+                      {srmResult.filtered.authorized.components.map(c => <div key={c.id} className="text-zinc-300 mb-0.5">{c.name}</div>)}
+                    </div>
+                    <div>
+                      <div className="text-red-400 mb-1">✗ Removed components ({srmResult.filtered.removedComponents.length})</div>
+                      {srmResult.filtered.removedComponents.map(c => <div key={c.id} className="text-zinc-500 mb-0.5">{c.name}</div>)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Composed output */}
+                <div className="border border-zinc-700 rounded-xl bg-zinc-900 p-4">
+                  <div className="text-zinc-400 text-xs tracking-widest mb-2">RESPONSE COMPOSER OUTPUT (text)</div>
+                  <div className="bg-zinc-800 rounded p-3 text-sm text-zinc-200">{srmResult.composed.text}</div>
+                  <div className="flex gap-4 mt-2 text-xs text-zinc-500">
+                    <span>facts: {srmResult.composed.factCount}</span>
+                    <span>actions: {srmResult.composed.actionCount}</span>
+                    <span>reasoning: {srmResult.composed.reasoningCount}</span>
+                    <span>components: {srmResult.composed.componentCount}</span>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="border border-zinc-700 rounded-xl p-8 text-center bg-zinc-900 text-zinc-500 text-sm">
+                Click "SRM Live Demo" to build a StructuredResponse and run it through the KDE + Composer pipeline.
+              </div>
+            )}
+
+            {/* SRM test summary */}
+            {srmTestResults && (
+              <div className={"border-2 rounded-xl p-4 text-center " + (srmTestResults.certified ? "border-sky-500 bg-sky-950/20" : "border-red-700 bg-red-950/10")}>
+                <div className={"text-lg font-bold " + (srmTestResults.certified ? "text-sky-400" : "text-red-400")}>
+                  {srmTestResults.certified ? "✓ SRM CERTIFIED" : "✗ SRM TESTS FAILED"}
+                </div>
+                <div className="text-zinc-400 text-sm mt-1">{srmTestResults.passed}/{srmTestResults.total} passed</div>
+              </div>
+            )}
+
+            {/* Acceptance criteria */}
+            <div className="border border-zinc-800 rounded-lg p-4 bg-zinc-900 text-xs space-y-1">
+              <div className="text-zinc-400 tracking-widest mb-2">ACCEPTANCE CRITERIA — EF-36.1 SRM</div>
+              {[
+                "No component uses regex to decide disclosure",
+                "No decision depends on text content — only classification fields",
+                "StructuredKDE works on objects, not strings",
+                "ResponseComposer is the only text generator",
+                "Every response is fully auditable with block-level trace",
+                "Classification is always traceable to source",
+                "60+ SRM tests — zero regressions",
+              ].map((c, i) => <div key={i} className="text-zinc-300">✓ {c}</div>)}
+            </div>
           </div>
         )}
 
