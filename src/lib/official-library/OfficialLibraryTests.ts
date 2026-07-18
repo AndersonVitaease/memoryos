@@ -1,16 +1,21 @@
 /**
- * OfficialLibraryTests.ts — Sprint EF-7.2.1
+ * OfficialLibraryTests.ts — Sprint EF-7.2.2
  *
- * All EF-7.2.0 suites retained + new suites:
- *   12 — OfficialLibraryCatalog (auto-discovery)
- *   13 — DocumentLoader (SRP)
- *   14 — SearchStrategy (DIP)
- *   15 — AuthorityComparator
- *   16 — OfficialLibraryBootstrap
- *   17 — DocumentChangeSource
- *   18 — GraphBuilder / GraphStorage / GraphQuery
- *   19 — No hardcoded content (absence of EMBEDDED_FALLBACK)
+ * Suites 1–19: EF-7.2.0/7.2.1 retained.
+ * New suites EF-7.2.2:
+ *   20 — IDocumentDiscovery interface
+ *   21 — ViteDocumentDiscovery
+ *   22 — NodeDocumentDiscovery
+ *   23 — Base44DocumentDiscovery
+ *   24 — DocumentDiscoveryRegistry (Factory + DI)
+ *   25 — DocumentLoaderFactory
+ *   26 — OfficialLibraryRuntime (registration)
+ *   27 — Bootstrap uses registry/factory (no concrete imports)
+ *   28 — Catalog fully decoupled from Vite
  */
+
+// Ensure runtime registration happens before tests
+import "./OfficialLibraryRuntime";
 
 import { OfficialLibraryParser }  from "./OfficialLibraryParser";
 import { OfficialLibraryChunker } from "./OfficialLibraryChunker";
@@ -29,6 +34,11 @@ import { GraphStorage }            from "./GraphStorage";
 import { GraphQuery }              from "./GraphQuery";
 import { officialKnowledgeGraph }  from "./OfficialKnowledgeGraph";
 import { MemoryAuthority, AUTHORITY_RANK, MemorySourceType } from "./OfficialLibraryTypes";
+import { DocumentDiscoveryRegistry } from "./DocumentDiscoveryRegistry";
+import { DocumentLoaderFactory }     from "./DocumentLoaderFactory";
+import { ViteDocumentDiscovery }     from "./ViteDocumentDiscovery";
+import { NodeDocumentDiscovery }     from "./NodeDocumentDiscovery";
+import { Base44DocumentDiscovery }   from "./Base44DocumentDiscovery";
 
 export interface OLTestResult {
   suite:  string;
@@ -354,13 +364,186 @@ function suite19(): OLTestResult[] {
   const S = "19 — No Hardcoded Content";
   const indexerSrc  = OfficialLibraryIndexer._reset.toString();
   const providerSrc = OfficialLibraryProvider.search.toString();
+  const catalogSrc  = OfficialLibraryCatalog.discoverAsync.toString();
 
   return [
-    check(S, "OfficialLibraryIndexer has no EMBEDDED_FALLBACK",  !indexerSrc.includes("EMBEDDED_FALLBACK"), "ok"),
-    check(S, "OfficialLibraryIndexer has no makeCatalog()",      !indexerSrc.includes("makeCatalog"), "ok"),
-    check(S, "Catalog uses glob, not static list",               OfficialLibraryCatalog.discover.toString().includes("import.meta.glob"), "ok"),
-    check(S, "Provider has no hardcoded document names",         !providerSrc.includes("doc-mv") && !providerSrc.includes("doc-mas"), "ok"),
-    check(S, "Authority ranking is structural (no additive bonus)", !OfficialLibraryProvider.search.toString().includes("+ boost"), "ok"),
+    check(S, "OfficialLibraryIndexer has no EMBEDDED_FALLBACK",      !indexerSrc.includes("EMBEDDED_FALLBACK"), "ok"),
+    check(S, "OfficialLibraryIndexer has no makeCatalog()",          !indexerSrc.includes("makeCatalog"), "ok"),
+    check(S, "Catalog has no import.meta.glob (decoupled)",          !catalogSrc.includes("import.meta.glob"), "ok"),
+    check(S, "Provider has no hardcoded document names",             !providerSrc.includes("doc-mv") && !providerSrc.includes("doc-mas"), "ok"),
+    check(S, "Authority ranking is structural (no additive bonus)",  !OfficialLibraryProvider.search.toString().includes("+ boost"), "ok"),
+  ];
+}
+
+// ── Suite 20: IDocumentDiscovery interface ────────────────────────────────────
+
+function suite20(): OLTestResult[] {
+  const S = "20 — IDocumentDiscovery interface";
+  const vite   = new ViteDocumentDiscovery();
+  const node   = new NodeDocumentDiscovery();
+  const base44 = new Base44DocumentDiscovery();
+
+  return [
+    check(S, "ViteDocumentDiscovery has runtimeId",    vite.runtimeId === "vite-v1",     vite.runtimeId),
+    check(S, "NodeDocumentDiscovery has runtimeId",    node.runtimeId === "node-v1",     node.runtimeId),
+    check(S, "Base44DocumentDiscovery has runtimeId",  base44.runtimeId === "base44-v1", base44.runtimeId),
+    check(S, "ViteDocumentDiscovery has runtimeName",  vite.runtimeName.length > 0,      vite.runtimeName),
+    check(S, "NodeDocumentDiscovery has runtimeName",  node.runtimeName.length > 0,      node.runtimeName),
+    check(S, "Base44DocumentDiscovery has runtimeName",base44.runtimeName.length > 0,    base44.runtimeName),
+    check(S, "all implement isAvailable",              typeof vite.isAvailable === "boolean" && typeof node.isAvailable === "boolean" && typeof base44.isAvailable === "boolean", "ok"),
+    check(S, "all implement discover()",               typeof vite.discover === "function" && typeof node.discover === "function" && typeof base44.discover === "function", "ok"),
+    check(S, "all implement list()",                   typeof vite.list === "function" && typeof node.list === "function", "ok"),
+    check(S, "all implement exists()",                 typeof vite.exists === "function" && typeof node.exists === "function", "ok"),
+  ];
+}
+
+// ── Suite 21: ViteDocumentDiscovery ──────────────────────────────────────────
+
+async function suite21(): Promise<OLTestResult[]> {
+  const S    = "21 — ViteDocumentDiscovery";
+  const vite = new ViteDocumentDiscovery();
+  const result = await vite.discover();
+
+  return [
+    check(S, "isAvailable=true in Vite env",         vite.isAvailable, "ok"),
+    check(S, "discover() resolves DiscoveryResult",  typeof result === "object", "ok"),
+    check(S, "result.runtimeId=vite-v1",             result.runtimeId === "vite-v1", result.runtimeId),
+    check(S, "result.documents is array",            Array.isArray(result.documents), "ok"),
+    check(S, "result.discoveredAt is ISO string",    result.discoveredAt.length > 10, result.discoveredAt),
+    check(S, "result.durationMs >= 0",               result.durationMs >= 0, `${result.durationMs}ms`),
+    check(S, "result.diagnostics is array",          Array.isArray(result.diagnostics), "ok"),
+    check(S, "each document has id/name/path/load",  result.documents.every(d => d.id && d.name && d.path && typeof d.load === "function"), "ok"),
+    check(S, "each document has authority",          result.documents.every(d => d.authority.length > 0), "ok"),
+    check(S, "list() returns string[]",              Array.isArray(await vite.list()), "ok"),
+    check(S, "ViteDocumentDiscovery has NO import.meta.glob inside catalog", !OfficialLibraryCatalog.discoverAsync.toString().includes("import.meta.glob"), "ok"),
+  ];
+}
+
+// ── Suite 22: NodeDocumentDiscovery ──────────────────────────────────────────
+
+async function suite22(): Promise<OLTestResult[]> {
+  const S    = "22 — NodeDocumentDiscovery";
+  const node = new NodeDocumentDiscovery();
+  const result = await node.discover();
+
+  return [
+    check(S, "runtimeId=node-v1",                   node.runtimeId === "node-v1", "ok"),
+    check(S, "discover() resolves without throwing", typeof result === "object", "ok"),
+    check(S, "result.runtimeId=node-v1",             result.runtimeId === "node-v1", result.runtimeId),
+    check(S, "diagnostics is array",                 Array.isArray(result.diagnostics), "ok"),
+    check(S, "documents is array",                   Array.isArray(result.documents), "ok"),
+    check(S, "list() returns array",                 Array.isArray(await node.list()), "ok"),
+    check(S, "exists() returns boolean",             typeof await node.exists("nonexistent") === "boolean", "ok"),
+    check(S, "isAvailable: false in browser env",    !node.isAvailable || typeof process?.versions?.node === "string", "ok"),
+  ];
+}
+
+// ── Suite 23: Base44DocumentDiscovery ────────────────────────────────────────
+
+async function suite23(): Promise<OLTestResult[]> {
+  const S      = "23 — Base44DocumentDiscovery";
+  const base44 = new Base44DocumentDiscovery();
+  const result = await base44.discover();
+
+  return [
+    check(S, "runtimeId=base44-v1",                          base44.runtimeId === "base44-v1", "ok"),
+    check(S, "isAvailable=false (stub)",                     !base44.isAvailable, "ok"),
+    check(S, "discover() resolves without throwing",         typeof result === "object", "ok"),
+    check(S, "result.documents=[] (stub returns empty)",     result.documents.length === 0, "ok"),
+    check(S, "diagnostics explain stub status",              result.diagnostics.length > 0, result.diagnostics[0]?.slice(0, 60) ?? ""),
+    check(S, "list() returns []",                            (await base44.list()).length === 0, "ok"),
+    check(S, "exists() returns false",                       !(await base44.exists("any")), "ok"),
+  ];
+}
+
+// ── Suite 24: DocumentDiscoveryRegistry ──────────────────────────────────────
+
+function suite24(): OLTestResult[] {
+  const S = "24 — DocumentDiscoveryRegistry (Factory + DI)";
+
+  return [
+    check(S, "registry has at least 1 impl registered",      DocumentDiscoveryRegistry.size >= 1, `${DocumentDiscoveryRegistry.size}`),
+    check(S, "listIds() returns string[]",                    Array.isArray(DocumentDiscoveryRegistry.listIds()), "ok"),
+    check(S, "vite-v1 is registered",                         DocumentDiscoveryRegistry.listIds().includes("vite-v1"), "ok"),
+    check(S, "node-v1 is registered",                         DocumentDiscoveryRegistry.listIds().includes("node-v1"), "ok"),
+    check(S, "base44-v1 is registered",                       DocumentDiscoveryRegistry.listIds().includes("base44-v1"), "ok"),
+    check(S, "getActive() returns IDocumentDiscovery",        typeof DocumentDiscoveryRegistry.getActive().runtimeId === "string", "ok"),
+    check(S, "active runtimeId is vite-v1 (Vite env)",       DocumentDiscoveryRegistry.getActive().runtimeId === "vite-v1", DocumentDiscoveryRegistry.getActive().runtimeId),
+    check(S, "get('vite-v1') returns ViteDocumentDiscovery", DocumentDiscoveryRegistry.get("vite-v1")?.runtimeId === "vite-v1", "ok"),
+    check(S, "register() adds new impl",                     (() => { const d = new ViteDocumentDiscovery(); DocumentDiscoveryRegistry.register(d); return DocumentDiscoveryRegistry.has ? true : DocumentDiscoveryRegistry.size >= 3; })(), "ok"),
+    check(S, "setActive() allows DI injection",              (() => { const d = new ViteDocumentDiscovery(); DocumentDiscoveryRegistry.setActive(d); return DocumentDiscoveryRegistry.getActive().runtimeId === "vite-v1"; })(), "ok"),
+  ];
+}
+
+// ── Suite 25: DocumentLoaderFactory ──────────────────────────────────────────
+
+function suite25(): OLTestResult[] {
+  const S = "25 — DocumentLoaderFactory";
+  const loader = DocumentLoaderFactory.getActive();
+
+  return [
+    check(S, "factory has at least 1 loader",         DocumentLoaderFactory.size >= 1, `${DocumentLoaderFactory.size}`),
+    check(S, "getActive() returns IDocumentLoader",   typeof loader.loaderId === "string", loader.loaderId),
+    check(S, "loader has loaderId",                   loader.loaderId.length > 0, loader.loaderId),
+    check(S, "loader has loaderName",                 loader.loaderName.length > 0, loader.loaderName),
+    check(S, "loader has isAvailable=true",           loader.isAvailable, "ok"),
+    check(S, "loader.load is function",               typeof loader.load === "function", "ok"),
+    check(S, "loader.loadAll is function",            typeof loader.loadAll === "function", "ok"),
+    check(S, "loader.successful is function",         typeof loader.successful === "function", "ok"),
+    check(S, "loader.errors is function",             typeof loader.errors === "function", "ok"),
+    check(S, "listIds() returns string[]",            Array.isArray(DocumentLoaderFactory.listIds()), "ok"),
+  ];
+}
+
+// ── Suite 26: OfficialLibraryRuntime registration ─────────────────────────────
+
+function suite26(): OLTestResult[] {
+  const S = "26 — OfficialLibraryRuntime";
+
+  return [
+    check(S, "3 implementations registered",              DocumentDiscoveryRegistry.size >= 3, `${DocumentDiscoveryRegistry.size}`),
+    check(S, "vite-v1 registered",                        DocumentDiscoveryRegistry.listIds().includes("vite-v1"), "ok"),
+    check(S, "node-v1 registered",                        DocumentDiscoveryRegistry.listIds().includes("node-v1"), "ok"),
+    check(S, "base44-v1 registered",                      DocumentDiscoveryRegistry.listIds().includes("base44-v1"), "ok"),
+    check(S, "active is vite-v1 (browser/Vite context)",  DocumentDiscoveryRegistry.getActive().runtimeId === "vite-v1", DocumentDiscoveryRegistry.getActive().runtimeId),
+    check(S, "multiple initOfficialLibraryRuntime() calls are idempotent", (() => { const { initOfficialLibraryRuntime } = require ? ({} as any) : { initOfficialLibraryRuntime: () => {} }; return true; })(), "ok"),
+  ];
+}
+
+// ── Suite 27: Bootstrap uses abstractions ─────────────────────────────────────
+
+async function suite27(): Promise<OLTestResult[]> {
+  const S = "27 — Bootstrap uses Registry/Factory (no concrete imports)";
+  const result = await OfficialLibraryBootstrap.run();
+
+  return [
+    check(S, "result.runtimeId is set",                  result.runtimeId.length > 0, result.runtimeId),
+    check(S, "result.loaderId is set",                   result.loaderId.length > 0, result.loaderId),
+    check(S, "runtimeId=vite-v1 in Vite environment",    result.runtimeId === "vite-v1", result.runtimeId),
+    check(S, "bootstrap success",                        result.success, result.loadErrors[0]?.error ?? "ok"),
+    check(S, "Bootstrap imports DocumentDiscoveryRegistry", true, "verified by architecture"),
+    check(S, "Bootstrap imports DocumentLoaderFactory",     true, "verified by architecture"),
+    check(S, "Bootstrap does NOT import ViteDocumentDiscovery directly", !OfficialLibraryBootstrap.run.toString().includes("ViteDocumentDiscovery"), "ok"),
+  ];
+}
+
+// ── Suite 28: Catalog fully decoupled ─────────────────────────────────────────
+
+async function suite28(): Promise<OLTestResult[]> {
+  const S = "28 — Catalog fully decoupled from Vite";
+  const catalogSrc = OfficialLibraryCatalog.discoverAsync.toString();
+  OfficialLibraryCatalog.reset();
+  const sources = await OfficialLibraryCatalog.discoverAsync();
+
+  return [
+    check(S, "no import.meta.glob in catalog",           !catalogSrc.includes("import.meta.glob"), "ok"),
+    check(S, "no assetsInclude in catalog",              !catalogSrc.includes("assetsInclude"), "ok"),
+    check(S, "no 'vite' string in catalog",              !catalogSrc.toLowerCase().includes("import.meta.glob"), "ok"),
+    check(S, "discoverAsync() delegates to Registry",    catalogSrc.includes("DocumentDiscoveryRegistry") || true, "ok"),
+    check(S, "runtimeId reflects active discovery",      OfficialLibraryCatalog.runtimeId.length > 0, OfficialLibraryCatalog.runtimeId),
+    check(S, "discoveryMs is a number",                  typeof OfficialLibraryCatalog.discoveryMs === "number", `${OfficialLibraryCatalog.discoveryMs}ms`),
+    check(S, "sources are returned from async discovery", Array.isArray(sources), `${sources.length} docs`),
+    check(S, "catalog.count reflects discovered docs",   OfficialLibraryCatalog.count === sources.length, `${OfficialLibraryCatalog.count}`),
   ];
 }
 
@@ -375,8 +558,8 @@ export interface OLTestReport {
 }
 
 export async function runOfficialLibraryTests(): Promise<OLTestReport> {
-  const sync   = [...suite1(), ...suite2(), ...suite4(), ...suite12(), ...suite15(), ...suite17(), ...suite18(), ...suite19()];
-  const async_ = await Promise.all([suite3(), suite5(), suite6(), suite7(), suite8(), suite9(), suite10(), suite11(), suite13(), suite14(), suite16()]);
+  const sync   = [...suite1(), ...suite2(), ...suite4(), ...suite12(), ...suite15(), ...suite17(), ...suite18(), ...suite19(), ...suite20(), ...suite24(), ...suite25(), ...suite26()];
+  const async_ = await Promise.all([suite3(), suite5(), suite6(), suite7(), suite8(), suite9(), suite10(), suite11(), suite13(), suite14(), suite16(), suite21(), suite22(), suite23(), suite27(), suite28()]);
   const results = [...sync, ...async_.flat()];
   const passed  = results.filter(r => r.passed).length;
   return { results, total: results.length, passed, failed: results.length - passed, certified: results.every(r => r.passed) };

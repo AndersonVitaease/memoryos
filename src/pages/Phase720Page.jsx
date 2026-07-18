@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from "react";
 
 async function runTests() {
+  await import("@/lib/official-library/OfficialLibraryRuntime");
   const { runOfficialLibraryTests } = await import("@/lib/official-library/OfficialLibraryTests");
   return runOfficialLibraryTests();
 }
@@ -46,6 +47,15 @@ const SUITE_COLORS = {
   "17 — DocumentChangeSource":          "border-rose-700 text-rose-300",
   "18 — GraphBuilder / GraphStorage / GraphQuery": "border-purple-700 text-purple-300",
   "19 — No Hardcoded Content":          "border-zinc-500 text-zinc-300",
+  "20 — IDocumentDiscovery interface":    "border-violet-600 text-violet-200",
+  "21 — ViteDocumentDiscovery":           "border-sky-600 text-sky-200",
+  "22 — NodeDocumentDiscovery":           "border-green-700 text-green-300",
+  "23 — Base44DocumentDiscovery":         "border-orange-700 text-orange-300",
+  "24 — DocumentDiscoveryRegistry (Factory + DI)": "border-pink-700 text-pink-300",
+  "25 — DocumentLoaderFactory":           "border-yellow-600 text-yellow-200",
+  "26 — OfficialLibraryRuntime":          "border-teal-600 text-teal-200",
+  "27 — Bootstrap uses Registry/Factory (no concrete imports)": "border-emerald-500 text-emerald-200",
+  "28 — Catalog fully decoupled from Vite": "border-red-600 text-red-200",
 };
 
 function StatCard({ label, value, color = "text-zinc-200" }) {
@@ -69,10 +79,25 @@ export default function Phase720Page() {
   const [watcher, setWatcher]       = useState(null);
   const [health, setHealth]         = useState(null);
   const [loading, setLoading]       = useState(false);
+  const [runtime, setRuntime]       = useState(null);
 
   async function loadInfo() {
     setLoading(true);
     try {
+      await import("@/lib/official-library/OfficialLibraryRuntime");
+      const { DocumentDiscoveryRegistry } = await import("@/lib/official-library/DocumentDiscoveryRegistry");
+      const { DocumentLoaderFactory }     = await import("@/lib/official-library/DocumentLoaderFactory");
+      const active = DocumentDiscoveryRegistry.getActive();
+      const loader = DocumentLoaderFactory.getActive();
+      setRuntime({
+        runtimeId:    active.runtimeId,
+        runtimeName:  active.runtimeName,
+        isAvailable:  active.isAvailable,
+        registeredIds: DocumentDiscoveryRegistry.listIds(),
+        loaderId:     loader.loaderId,
+        loaderName:   loader.loaderName,
+      });
+
       const { OfficialLibraryBootstrap, graphStorage } = await import("@/lib/official-library/OfficialLibraryBootstrap");
       const { OfficialLibraryIndexer }  = await import("@/lib/official-library/OfficialLibraryIndexer");
       const { OfficialLibraryCatalog }  = await import("@/lib/official-library/OfficialLibraryCatalog");
@@ -128,16 +153,44 @@ export default function Phase720Page() {
 
         {/* Header */}
         <div>
-          <div className="text-xs text-violet-400 tracking-widest mb-1">SPRINT EF-7.2.1 — OFFICIAL LIBRARY FOUNDATION HARDENING</div>
-          <h1 className="text-3xl font-bold">Official Library — Permanent Infrastructure</h1>
-          <p className="text-zinc-400 text-sm mt-1">Auto-discovery · DocumentLoader · SearchStrategy (DIP) · AuthorityComparator · Bootstrap · GraphBuilder/Storage/Query</p>
+          <div className="text-xs text-violet-400 tracking-widest mb-1">SPRINT EF-7.2.2 — OFFICIAL LIBRARY RUNTIME INDEPENDENCE</div>
+          <h1 className="text-3xl font-bold">Official Library — Runtime Independence</h1>
+          <p className="text-zinc-400 text-sm mt-1">IDocumentDiscovery · ViteDiscovery · NodeDiscovery · Base44Discovery · Registry · Factory · DI · Zero Vite coupling</p>
         </div>
+
+        {/* Runtime info */}
+        {runtime && (
+          <div className="border border-violet-700 rounded-lg p-4 bg-violet-950/10 text-xs">
+            <div className="text-violet-400 tracking-widest mb-2">ACTIVE RUNTIME</div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="border border-zinc-700 rounded p-2 bg-zinc-900">
+                <div className="text-zinc-500">Discovery</div>
+                <div className="text-violet-300 font-bold">{runtime.runtimeId}</div>
+                <div className="text-zinc-600 text-xs">{runtime.runtimeName}</div>
+              </div>
+              <div className="border border-zinc-700 rounded p-2 bg-zinc-900">
+                <div className="text-zinc-500">Loader</div>
+                <div className="text-blue-300 font-bold">{runtime.loaderId}</div>
+                <div className="text-zinc-600 text-xs">{runtime.loaderName}</div>
+              </div>
+              <div className="border border-zinc-700 rounded p-2 bg-zinc-900">
+                <div className="text-zinc-500">Available</div>
+                <div className={`font-bold ${runtime.isAvailable ? "text-emerald-400" : "text-red-400"}`}>{runtime.isAvailable ? "✓ YES" : "✗ NO"}</div>
+              </div>
+              <div className="border border-zinc-700 rounded p-2 bg-zinc-900">
+                <div className="text-zinc-500">Registered</div>
+                <div className="text-zinc-300 font-bold">{runtime.registeredIds.length} impls</div>
+                <div className="text-zinc-600 text-xs">{runtime.registeredIds.join(", ")}</div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Pipeline diagram */}
         <div className="border border-zinc-700 rounded-lg p-4 bg-zinc-900 text-xs">
-          <div className="text-zinc-400 tracking-widest mb-3">BOOTSTRAP PIPELINE</div>
+          <div className="text-zinc-400 tracking-widest mb-3">BOOTSTRAP PIPELINE (EF-7.2.2)</div>
           <div className="flex items-center gap-1 flex-wrap text-xs">
-            {["Catalog (auto-discover)", "DocumentLoader (load)", "Parser (parse)", "Chunker (chunk)", "Indexer (index)", "GraphBuilder→Storage", "Provider Ready"].map((step, i, arr) => (
+            {["Registry.getActive()", "discoverAsync()", "Loader.loadAll()", "Parser", "Chunker", "Indexer", "GraphBuilder→Storage", "Provider Ready"].map((step, i, arr) => (
               <React.Fragment key={step}>
                 <span className={`border rounded px-2 py-1 ${i === 0 ? "border-violet-700 text-violet-300" : i === arr.length - 1 ? "border-emerald-700 text-emerald-300" : "border-zinc-700 text-zinc-400"}`}>{step}</span>
                 {i < arr.length - 1 && <span className="text-zinc-600">→</span>}
@@ -146,12 +199,12 @@ export default function Phase720Page() {
           </div>
           <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
             {[
-              ["No EMBEDDED_FALLBACK", "Documents exist in one place only"],
-              ["No hardcoded catalog", "New docs auto-discovered via glob"],
-              ["SearchStrategy (DIP)", "Provider never knows the algorithm"],
-              ["AuthorityComparator",  "All authority comparisons centralized"],
-              ["Structural ranking",   "Authority = sort priority, not bonus"],
-              ["GraphBuilder SRP",     "Build / Storage / Query separated"],
+              ["IDocumentDiscovery",   "Interface — no Vite/Node/Base44 coupling"],
+              ["ViteDocumentDiscovery","Only file that uses import.meta.glob"],
+              ["NodeDocumentDiscovery","Node fs-based — same interface"],
+              ["Base44Discovery",      "Stub ready for Base44 file API"],
+              ["Registry + Factory",   "DI — setActive() swaps at runtime"],
+              ["Catalog decoupled",    "Zero import.meta.glob in Catalog"],
             ].map(([k, v]) => (
               <div key={k} className="border border-zinc-800 rounded p-2">
                 <div className="text-violet-300 font-bold text-xs">{k}</div>
@@ -250,7 +303,7 @@ export default function Phase720Page() {
         <div className="flex gap-3 flex-wrap">
           <button onClick={run} disabled={running}
             className="bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white px-6 py-2.5 rounded-lg font-bold text-sm">
-            {running ? "Running…" : "▶  Run Full Test Suite (19 Suites)"}
+            {running ? "Running…" : "▶  Run Full Test Suite (28 Suites)"}
           </button>
           <button onClick={loadInfo} disabled={loading}
             className="bg-zinc-700 hover:bg-zinc-600 disabled:opacity-50 text-white px-4 py-2.5 rounded-lg font-bold text-sm">
@@ -268,7 +321,7 @@ export default function Phase720Page() {
         {report && (
           <div className={`border-2 rounded-xl p-6 text-center ${report.certified ? "border-emerald-500 bg-emerald-950/20" : "border-red-700 bg-red-950/10"}`}>
             <div className={`text-3xl font-bold ${report.certified ? "text-emerald-400" : "text-red-400"}`}>
-              {report.certified ? "✓ EF-7.2.1 CERTIFIED" : "✗ TEST SUITE FAILED"}
+              {report.certified ? "✓ EF-7.2.2 CERTIFIED" : "✗ TEST SUITE FAILED"}
             </div>
             <div className="text-zinc-400 text-sm mt-2">{report.passed}/{report.total} passed · {report.failed} failed</div>
           </div>
@@ -315,22 +368,23 @@ export default function Phase720Page() {
 
         {/* Acceptance criteria */}
         <div className="border border-zinc-700 rounded-lg p-4 bg-zinc-900 text-xs space-y-1.5">
-          <div className="text-zinc-400 tracking-widest mb-2">CRITÉRIOS DE ACEITE — EF-7.2.1</div>
+          <div className="text-zinc-400 tracking-widest mb-2">CRITÉRIOS DE ACEITE — EF-7.2.2</div>
           {[
-            "OfficialLibraryCatalog: descoberta automática via import.meta.glob — zero listas hardcoded",
-            "EMBEDDED_FALLBACK completamente removido — documentos existem apenas em src/docs/",
-            "DocumentLoader (SRP): carrega, não parseia, não chunkeia, não indexa",
-            "SearchStrategy (interface): KeywordSearchStrategy, EmbeddingSearchStrategy, HybridSearchStrategy",
-            "OfficialLibraryProvider recebe SearchStrategy via DIP — nunca instancia estratégias",
-            "AuthorityComparator: única responsável por comparar autoridades — centralizada",
-            "DocumentChangeSource (interface): PollingChangeSource + stubs GitHub/Base44/Drive",
-            "OfficialLibraryWatcher depende da interface, nunca do polling diretamente",
-            "OfficialLibraryBootstrap: orquestra pipeline completo — nenhum outro componente conhece a sequência",
-            "OfficialKnowledgeGraph refatorado: GraphBuilder (constrói) / GraphStorage (armazena) / GraphQuery (consulta)",
-            "MemoryFusionEngine: Authority = prioridade estrutural (sort key), não bônus numérico",
-            "Zero regressões — todas as 11 suites do EF-7.2.0 preservadas",
-            "Zero breaking changes — APIs públicas de EF-7.2.0 são 100% compatíveis",
-            "Arquitetura preparada para centenas de documentos (glob auto-discovery, sem lista para manter)",
+            "IDocumentDiscovery: interface pura — zero acoplamento a Vite/Node/Base44",
+            "ViteDocumentDiscovery: único arquivo com import.meta.glob — toda a Official Library é independente",
+            "NodeDocumentDiscovery: mesmo contrato, implementação via fs.readdir",
+            "Base44DocumentDiscovery: stub pronto para integração futura",
+            "DocumentDiscoveryRegistry: factory + DI — setActive() troca em runtime",
+            "DocumentLoaderFactory: factory para loaders — extensível sem mudanças",
+            "OfficialLibraryRuntime: único ponto de registro das implementações concretas",
+            "OfficialLibraryCatalog: zero import.meta.glob — delega ao Registry",
+            "OfficialLibraryBootstrap: zero imports concretos — usa Registry e Factory",
+            "Futuro: GitHubDiscovery, DriveDiscovery, DropboxDiscovery = apenas nova classe + register()",
+            "Arquitetura preparada para múltiplos runtimes",
+            "Zero regressões — todas as 19 suites do EF-7.2.1 preservadas",
+            "Zero breaking changes — APIs públicas de EF-7.2.1 são 100% compatíveis",
+            "EMBEDDED_FALLBACK removido — documentos existem apenas em src/docs/",
+            "SearchStrategy DIP · AuthorityComparator · GraphBuilder/Storage/Query — EF-7.2.1 preservados",
           ].map((item, i) => (
             <div key={i} className="text-zinc-300 py-0.5">✓ {item}</div>
           ))}

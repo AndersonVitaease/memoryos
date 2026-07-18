@@ -1,45 +1,57 @@
 /**
- * OfficialLibraryBootstrap.ts — Sprint EF-7.2.1
+ * OfficialLibraryBootstrap.ts — Sprint EF-7.2.2
  *
- * Single responsibility: orchestrate the full Official Library initialization pipeline.
- * No other component should know this sequence.
+ * Orchestrates the full Official Library initialization pipeline.
+ * No component knows this sequence except Bootstrap.
  *
  * Pipeline:
- *   Catalog → Loader → Parser → Chunker → Indexer → KnowledgeGraph → Provider Ready
+ *   Discovery (via DocumentDiscoveryRegistry)
+ *   → Loader  (via DocumentLoaderFactory)
+ *   → Parser
+ *   → Chunker
+ *   → Indexer
+ *   → KnowledgeGraph (GraphBuilder → GraphStorage)
+ *   → Provider Ready
+ *
+ * DIP: Bootstrap depends on IDocumentDiscovery and IDocumentLoader abstractions.
+ * No concrete Vite/Node/Base44 classes imported here.
  */
 
-import { OfficialLibraryCatalog }  from "./OfficialLibraryCatalog";
-import { DocumentLoader }           from "./DocumentLoader";
-import { OfficialLibraryParser }    from "./OfficialLibraryParser";
-import { OfficialLibraryChunker }   from "./OfficialLibraryChunker";
-import { OfficialLibraryIndexer }   from "./OfficialLibraryIndexer";
-import { GraphBuilder }             from "./GraphBuilder";
-import { GraphStorage }             from "./GraphStorage";
-import { GraphQuery }               from "./GraphQuery";
+import { OfficialLibraryCatalog }        from "./OfficialLibraryCatalog";
+import { DocumentLoaderFactory }          from "./DocumentLoaderFactory";
+import { DocumentDiscoveryRegistry }      from "./DocumentDiscoveryRegistry";
+import { OfficialLibraryParser }          from "./OfficialLibraryParser";
+import { OfficialLibraryChunker }         from "./OfficialLibraryChunker";
+import { OfficialLibraryIndexer }         from "./OfficialLibraryIndexer";
+import { GraphBuilder }                   from "./GraphBuilder";
+import { GraphStorage }                   from "./GraphStorage";
+import { GraphQuery }                     from "./GraphQuery";
 import type { OfficialChunk, OfficialDocumentMeta } from "./OfficialLibraryTypes";
 
 export interface BootstrapResult {
-  readonly success:       boolean;
-  readonly documentCount: number;
-  readonly chunkCount:    number;
-  readonly graphNodes:    number;
-  readonly graphEdges:    number;
-  readonly loadErrors:    { id: string; name: string; error: string }[];
-  readonly durationMs:    number;
+  readonly success:        boolean;
+  readonly documentCount:  number;
+  readonly chunkCount:     number;
+  readonly graphNodes:     number;
+  readonly graphEdges:     number;
+  readonly loadErrors:     { id: string; name: string; error: string }[];
+  readonly durationMs:     number;
   readonly bootstrappedAt: string;
+  readonly runtimeId:      string;
+  readonly loaderId:       string;
 }
 
-// ── Graph singletons (separated per SRP) ─────────────────────────────────────
+// ── Graph singletons ──────────────────────────────────────────────────────────
 
 const _graphStorage = new GraphStorage();
 export const graphStorage = _graphStorage;
 export const graphQuery   = new GraphQuery(_graphStorage);
 
-// ── Bootstrap Implementation ──────────────────────────────────────────────────
+// ── Bootstrap ─────────────────────────────────────────────────────────────────
 
 class OfficialLibraryBootstrapImpl {
-  private _result: BootstrapResult | null = null;
-  private _running = false;
+  private _result:  BootstrapResult | null = null;
+  private _running: boolean                = false;
 
   get lastResult(): BootstrapResult | null { return this._result; }
   get isReady(): boolean { return this._result?.success === true; }
@@ -47,7 +59,6 @@ class OfficialLibraryBootstrapImpl {
   async run(force = false): Promise<BootstrapResult> {
     if (this._result && !force) return this._result;
     if (this._running) {
-      // Wait for ongoing bootstrap
       await new Promise<void>(resolve => {
         const interval = setInterval(() => {
           if (!this._running) { clearInterval(interval); resolve(); }
@@ -59,26 +70,29 @@ class OfficialLibraryBootstrapImpl {
     this._running = true;
     const t0 = Date.now();
 
+    // Resolve active implementations via DI (never new ConcreteClass() here)
+    const discovery = DocumentDiscoveryRegistry.getActive();
+    const loader    = DocumentLoaderFactory.getActive();
+
     try {
-      // Step 1: Catalog — discover all documents automatically
-      const sources = OfficialLibraryCatalog.discover();
+      // Step 1: Discovery — runtime-agnostic document enumeration
+      OfficialLibraryCatalog.reset();
+      const sources = await OfficialLibraryCatalog.discoverAsync();
 
-      // Step 2: Loader — load raw content (SRP: only loads, no parsing)
-      const loaded = await DocumentLoader.loadAll(sources);
-      const successful = DocumentLoader.successful(loaded);
-      const loadErrors = DocumentLoader.errors(loaded);
+      // Step 2: Load — raw content (SRP: only loads)
+      const loaded     = await loader.loadAll(sources);
+      const successful = loader.successful(loaded);
+      const loadErrors = loader.errors(loaded);
 
-      // Step 3: Parser — raw → ParsedDocument
+      // Step 3: Parse — raw → ParsedDocument
       const parsed = successful.map(doc =>
         OfficialLibraryParser.parse(doc.raw, doc.path, doc.name)
       );
 
-      // Step 4: Chunker — ParsedDocument → OfficialChunk[]
+      // Step 4: Chunk — ParsedDocument → OfficialChunk[]
       const allChunks: OfficialChunk[] = OfficialLibraryChunker.chunkAll(parsed);
 
-      // Step 5: Indexer — populate the search index
-      // Bypass the indexer's internal catalog (it was built with hardcoded entries).
-      // We inject chunks and metas directly via the internal API.
+      // Step 5: Index
       await OfficialLibraryIndexer._reset();
       const metas: OfficialDocumentMeta[] = parsed.map(p => ({
         documentId:   p.documentId,
@@ -95,34 +109,38 @@ class OfficialLibraryBootstrapImpl {
       }));
       OfficialLibraryIndexer._injectFromBootstrap(allChunks, metas);
 
-      // Step 6: KnowledgeGraph — build from chunks (GraphBuilder → GraphStorage)
+      // Step 6: KnowledgeGraph
       const graphData = GraphBuilder.build(allChunks);
       _graphStorage.store(graphData);
 
-      // Also update the legacy singleton for backward compatibility with EF-7.2.0 code
+      // Backward compat: update legacy singleton
       const { officialKnowledgeGraph } = await import("./OfficialKnowledgeGraph");
       officialKnowledgeGraph.build(allChunks);
 
       this._result = Object.freeze({
-        success:       true,
-        documentCount: metas.length,
-        chunkCount:    allChunks.length,
-        graphNodes:    _graphStorage.nodeCount,
-        graphEdges:    _graphStorage.edgeCount,
+        success:        true,
+        documentCount:  metas.length,
+        chunkCount:     allChunks.length,
+        graphNodes:     _graphStorage.nodeCount,
+        graphEdges:     _graphStorage.edgeCount,
         loadErrors,
-        durationMs:    Date.now() - t0,
+        durationMs:     Date.now() - t0,
         bootstrappedAt: new Date().toISOString(),
+        runtimeId:      discovery.runtimeId,
+        loaderId:       loader.loaderId,
       });
     } catch (e) {
       this._result = Object.freeze({
-        success:       false,
-        documentCount: 0,
-        chunkCount:    0,
-        graphNodes:    0,
-        graphEdges:    0,
-        loadErrors:    [{ id: "bootstrap", name: "Bootstrap", error: (e as Error).message }],
-        durationMs:    Date.now() - t0,
+        success:        false,
+        documentCount:  0,
+        chunkCount:     0,
+        graphNodes:     0,
+        graphEdges:     0,
+        loadErrors:     [{ id: "bootstrap", name: "Bootstrap", error: (e as Error).message }],
+        durationMs:     Date.now() - t0,
         bootstrappedAt: new Date().toISOString(),
+        runtimeId:      discovery.runtimeId,
+        loaderId:       loader.loaderId,
       });
     } finally {
       this._running = false;
