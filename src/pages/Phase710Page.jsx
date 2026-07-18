@@ -19,12 +19,17 @@ function Badge({ ok }) {
 }
 
 const SUITE_COLORS = {
-  "1 — EvidenceAnalyzer":             "border-violet-700 text-violet-300",
-  "2 — ConflictResolver":             "border-red-700 text-red-300",
-  "3 — HypothesisGenerator":          "border-yellow-700 text-yellow-300",
-  "4 — ConfidenceAdjuster":           "border-blue-700 text-blue-300",
+  "1 — EvidenceAnalyzer":                      "border-violet-700 text-violet-300",
+  "2 — ConflictResolver":                      "border-red-700 text-red-300",
+  "3 — HypothesisGenerator":                   "border-yellow-700 text-yellow-300",
+  "4 — ConfidenceAdjuster":                    "border-blue-700 text-blue-300",
   "5 — MemoryReasoningEngine (full pipeline)": "border-emerald-700 text-emerald-300",
-  "6 — Architecture Compliance":      "border-zinc-600 text-zinc-400",
+  "6 — Architecture Compliance":               "border-zinc-600 text-zinc-400",
+  "7 — SimilarityEngine":                      "border-cyan-700 text-cyan-300",
+  "8 — ReasoningRuleRegistry":                 "border-orange-700 text-orange-300",
+  "9 — StructuredContext":                     "border-pink-700 text-pink-300",
+  "10 — Duplicate Merge":                      "border-teal-700 text-teal-300",
+  "11 — ConfidencePolicy":                     "border-indigo-700 text-indigo-300",
 };
 
 export default function Phase710Page() {
@@ -85,16 +90,16 @@ export default function Phase710Page() {
 
         {/* Header */}
         <div>
-          <div className="text-xs text-violet-400 tracking-widest mb-1">SPRINT 7.1.0</div>
-          <h1 className="text-3xl font-bold">Memory Reasoning Engine</h1>
-          <p className="text-zinc-400 text-sm mt-1">MemoryEvidence[] → inferência → consolidação → ReasoningResult</p>
+          <div className="text-xs text-violet-400 tracking-widest mb-1">SPRINT EF-7.1.1 — MRE REFINEMENT</div>
+          <h1 className="text-3xl font-bold">Memory Reasoning Engine v1.1</h1>
+          <p className="text-zinc-400 text-sm mt-1">SimilarityEngine · RuleRegistry · StructuredContext · DuplicateMerge · ConfidencePolicy</p>
         </div>
 
         {/* Architecture */}
         <div className="border border-zinc-700 rounded-lg p-4 bg-zinc-900 text-xs">
           <div className="text-zinc-400 tracking-widest mb-3">PIPELINE</div>
           <div className="flex items-center gap-2 flex-wrap text-xs">
-            {["MemoryEvidence[]", "EvidenceAnalyzer", "ConflictResolver", "ConfidenceAdjuster", "HypothesisGenerator", "ExplanationBuilder", "ReasoningResult"].map((step, i, arr) => (
+            {["MemoryEvidence[]", "SimilarityEngine", "RuleRegistry", "ConflictResolver", "ConfidencePolicy", "ExplanationBuilder", "ReasoningResult + StructuredContext"].map((step, i, arr) => (
               <React.Fragment key={step}>
                 <span className={`border rounded px-2 py-1 ${i === 0 || i === arr.length - 1 ? "border-violet-700 text-violet-300" : "border-zinc-700 text-zinc-400"}`}>{step}</span>
                 {i < arr.length - 1 && <span className="text-zinc-600">→</span>}
@@ -103,10 +108,11 @@ export default function Phase710Page() {
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
             {[
-              ["UCME (retrieval only)", "Retorna MemoryEvidence[] bruto — sem inferência"],
-              ["MRE (reasoning only)",  "Recebe MemoryEvidence[] → produz conhecimento consolidado"],
-              ["Conflitos",             "Detectados, resolvidos, explicados — nunca ignorados"],
-              ["Hipóteses",             "Geradas quando evidência insuficiente — sempre marcadas"],
+              ["SimilarityEngine",  "Algoritmo desacoplado — swap para Embeddings/BM25 sem mudar Analyzer"],
+              ["RuleRegistry",      "Regras registradas externamente — Engine nunca conhece regras individuais"],
+              ["StructuredContext", "Contexto estruturado machine-readable além do texto plain"],
+              ["ConfidencePolicy",  "Zero pesos hardcoded — todos configuráveis via política"],
+              ["DuplicateMerge",    "Duplicatas são fundidas com audit trail — nenhuma evidência perdida silenciosamente"],
             ].map(([k, v]) => (
               <div key={k} className="border border-zinc-800 rounded p-2">
                 <div className="text-violet-300 font-bold">{k}</div>
@@ -120,7 +126,7 @@ export default function Phase710Page() {
         <div className="flex gap-2 flex-wrap">
           <button onClick={run} disabled={running}
             className="bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white px-6 py-2.5 rounded-lg font-bold text-sm">
-            {running ? "Running MRE Tests…" : "▶  Run Full Test Suite (6 Suites)"}
+            {running ? "Running MRE Tests…" : "▶  Run Full Test Suite (11 Suites)"}
           </button>
           <button onClick={() => runDemo("rg")}
             className="bg-zinc-700 hover:bg-zinc-600 text-white px-4 py-2.5 rounded-lg font-bold text-sm">
@@ -193,7 +199,7 @@ export default function Phase710Page() {
         {report && (
           <div className={`border-2 rounded-xl p-6 text-center ${report.certified ? "border-emerald-500 bg-emerald-950/20" : "border-red-700 bg-red-950/10"}`}>
             <div className={`text-3xl font-bold ${report.certified ? "text-emerald-400" : "text-red-400"}`}>
-              {report.certified ? "✓ MRE SPRINT 7.1.0 CERTIFIED" : "✗ TEST SUITE FAILED"}
+              {report.certified ? "✓ MRE EF-7.1.1 CERTIFIED" : "✗ TEST SUITE FAILED"}
             </div>
             <div className="text-zinc-400 text-sm mt-2">{report.passed}/{report.total} passed · {report.failed} failed</div>
           </div>

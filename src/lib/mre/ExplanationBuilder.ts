@@ -1,9 +1,8 @@
 /**
- * ExplanationBuilder.ts — MRE v1.0
- * Sprint 7.1.0
+ * ExplanationBuilder.ts — MRE v1.1 (Sprint EF-7.1.1)
  *
- * Builds a human-readable explanation for every reasoning result.
- * Answers: why this conclusion? what was used? what was discarded?
+ * Sprint 7.1.1 addition: buildStructuredContext() for machine-readable output.
+ * Plain context string preserved for backward compatibility.
  */
 
 import type { MemoryEvidence } from "@/lib/ucme/UCMETypes";
@@ -14,15 +13,18 @@ import type {
   ReasoningExplanation,
   ConsolidatedKnowledge,
   KnowledgeFact,
+  StructuredContext,
+  TimelineEntry,
+  MergedEvidence,
 } from "./MRETypes";
 
 export const ExplanationBuilder = {
 
   buildExplanation(
-    session: { query: string },
-    reasoning: ReasoningEvidence[],
-    conflicts:  ReasoningConflict[],
-    hypotheses: ReasoningHypothesis[],
+    session:      { query: string },
+    reasoning:    ReasoningEvidence[],
+    conflicts:    ReasoningConflict[],
+    hypotheses:   ReasoningHypothesis[],
     rulesApplied: string[],
   ): ReasoningExplanation {
     const used      = reasoning.filter(r => r.role !== "discarded").map(r => r.original.memoryId);
@@ -38,11 +40,8 @@ export const ExplanationBuilder = {
       for (const c of conflicts) steps.push(`  → Conflict: ${c.description} — ${c.explanation}`);
     }
 
-    if (discarded.length > 0) {
-      const discardedItems = reasoning.filter(r => r.role === "discarded");
-      for (const r of discardedItems) {
-        steps.push(`  → Discarded "${r.original.providerName}": ${r.discardReason}`);
-      }
+    for (const r of reasoning.filter(r2 => r2.role === "discarded")) {
+      steps.push(`  → Discarded "${r.original.providerName}": ${r.discardReason}`);
     }
 
     if (hypotheses.length > 0) {
@@ -66,16 +65,15 @@ export const ExplanationBuilder = {
   },
 
   buildConsolidated(
-    query: string,
-    reasoning: ReasoningEvidence[],
-    conflicts:  ReasoningConflict[],
-    hypotheses: ReasoningHypothesis[],
+    query:       string,
+    reasoning:   ReasoningEvidence[],
+    conflicts:   ReasoningConflict[],
+    hypotheses:  ReasoningHypothesis[],
     overallConf: number,
   ): ConsolidatedKnowledge {
-    const active = reasoning.filter(r => r.role !== "discarded");
+    const active  = reasoning.filter(r => r.role !== "discarded");
     const sources = [...new Set(active.map(r => r.original.providerName))];
 
-    // Build facts from primary + supporting evidence
     const facts: KnowledgeFact[] = active.map(r => ({
       statement:    r.original.summary,
       confidence:   r.adjustedConf,
@@ -83,30 +81,63 @@ export const ExplanationBuilder = {
       isHypothesis: r.role === "hypothetical",
     }));
 
-    // Add hypotheses as low-confidence facts
     for (const h of hypotheses) {
       facts.push({
-        statement:    `[HIPÓTESE] ${h.statement}`,
-        confidence:   h.probability,
-        sources:      [],
+        statement: `[HIPÓTESE] ${h.statement}`,
+        confidence: h.probability,
+        sources: [],
         isHypothesis: true,
       });
     }
 
-    // Gaps: what questions can't be answered
     const gaps: string[] = [];
     if (active.length === 0) gaps.push("No relevant memory found for this query.");
     if (conflicts.some(c => c.resolution === "unresolved")) gaps.push("Unresolved conflicts — result may be incomplete.");
 
-    // Summary: one-line answer
     const topFact = facts.filter(f => !f.isHypothesis).sort((a, b) => b.confidence - a.confidence)[0];
-    const summary = topFact ? topFact.statement : (hypotheses[0]?.statement ?? `No definitive answer found for: "${query}"`);
+    const summary = topFact
+      ? topFact.statement
+      : (hypotheses[0]?.statement ?? `No definitive answer found for: "${query}"`);
 
     return { summary, facts, gaps, sources, confidence: overallConf };
   },
 
+  /** Sprint 7.1.1: machine-readable structured context. */
+  buildStructuredContext(
+    reasoning:   ReasoningEvidence[],
+    conflicts:   ReasoningConflict[],
+    hypotheses:  ReasoningHypothesis[],
+    consolidated: ConsolidatedKnowledge,
+    merges:      MergedEvidence[],
+  ): StructuredContext {
+    const evidenceUsed = reasoning.filter(r => r.role !== "discarded").map(r => r.original.memoryId);
+
+    const timeline: TimelineEntry[] = reasoning
+      .filter(r => r.role !== "discarded")
+      .map(r => ({
+        memoryId:     r.original.memoryId,
+        providerName: r.original.providerName,
+        timestamp:    r.original.lastUpdated,
+        summary:      r.original.summary,
+      }))
+      .sort((a, b) => {
+        try { return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(); }
+        catch { return 0; }
+      });
+
+    return {
+      facts:        consolidated.facts,
+      conflicts,
+      hypotheses,
+      gaps:         consolidated.gaps,
+      timeline,
+      evidenceUsed,
+      merges,
+    };
+  },
+
   buildContextBlock(
-    query: string,
+    query:        string,
     consolidated: ConsolidatedKnowledge,
     conflicts:    ReasoningConflict[],
     hypotheses:   ReasoningHypothesis[],

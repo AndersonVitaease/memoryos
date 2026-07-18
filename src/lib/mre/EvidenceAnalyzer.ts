@@ -1,29 +1,20 @@
 /**
- * EvidenceAnalyzer.ts — MRE v1.0
- * Sprint 7.1.0
+ * EvidenceAnalyzer.ts — MRE v1.1 (Sprint EF-7.1.1)
  *
- * Analyzes relationships between evidence items:
- *   - Semantic similarity (keyword overlap)
- *   - Temporal ordering
- *   - Duplicate detection
- *   - Complementarity detection
+ * Consumes SimilarityEngine — never implements similarity directly.
+ * Detects relationships, conflicts, and duplicates between evidence items.
  */
 
 import type { MemoryEvidence } from "@/lib/ucme/UCMETypes";
 import type { EvidenceRelationship } from "./MRETypes";
+import { defaultSimilarityEngine, type SimilarityEngine } from "./similarity/SimilarityEngine";
+import { DEFAULT_CONFIDENCE_POLICY, type ConfidencePolicy } from "./policies/ConfidencePolicy";
 
-// ── Text helpers ──────────────────────────────────────────────────────────────
+// ── Text helpers (summary similarity for topic overlap detection) ─────────────
 
-function tokenize(text: string): Set<string> {
-  return new Set(
-    text.toLowerCase()
-      .replace(/[^a-z0-9áàâãéèêíìîóòôõúùûç\s]/g, " ")
-      .split(/\s+/)
-      .filter(w => w.length > 3)
-  );
-}
+import { tokenize } from "./similarity/SimilarityEngine";
 
-function jaccardSimilarity(a: string, b: string): number {
+function textSimilarity(a: string, b: string): number {
   const sa = tokenize(a);
   const sb = tokenize(b);
   if (sa.size === 0 && sb.size === 0) return 1;
@@ -32,11 +23,8 @@ function jaccardSimilarity(a: string, b: string): number {
   return union === 0 ? 0 : intersection / union;
 }
 
-// ── Date helpers ──────────────────────────────────────────────────────────────
-
 function parseDate(iso: string): number {
-  try { return new Date(iso).getTime(); }
-  catch { return 0; }
+  try { return new Date(iso).getTime(); } catch { return 0; }
 }
 
 // ── EvidenceAnalyzer ──────────────────────────────────────────────────────────
@@ -44,23 +32,32 @@ function parseDate(iso: string): number {
 export const EvidenceAnalyzer = {
 
   /** Find all pairwise relationships between evidence items. */
-  analyzeRelationships(evidence: MemoryEvidence[]): Map<string, EvidenceRelationship[]> {
+  analyzeRelationships(
+    evidence: MemoryEvidence[],
+    engine: SimilarityEngine = defaultSimilarityEngine,
+    policy: ConfidencePolicy = DEFAULT_CONFIDENCE_POLICY,
+  ): Map<string, EvidenceRelationship[]> {
     const result = new Map<string, EvidenceRelationship[]>();
     for (const ev of evidence) result.set(ev.memoryId, []);
 
     for (let i = 0; i < evidence.length; i++) {
       for (let j = i + 1; j < evidence.length; j++) {
-        const a = evidence[i];
-        const b = evidence[j];
-        const sim = jaccardSimilarity(a.content, b.content);
+        const a   = evidence[i];
+        const b   = evidence[j];
+        const sim = engine.similarity(a, b);
 
-        // Duplicate / complement / conflict
-        if (sim >= 0.75) {
-          const rel: EvidenceRelationship = { type: "duplicates", targetId: b.memoryId, strength: sim, explanation: `Content is ${(sim * 100).toFixed(0)}% similar` };
+        if (sim >= policy.duplicateThreshold) {
+          const rel: EvidenceRelationship = {
+            type: "duplicates", targetId: b.memoryId, strength: sim,
+            explanation: `Content is ${(sim * 100).toFixed(0)}% similar`,
+          };
           result.get(a.memoryId)!.push(rel);
           result.get(b.memoryId)!.push({ ...rel, targetId: a.memoryId });
-        } else if (sim >= 0.35) {
-          const rel: EvidenceRelationship = { type: "complements", targetId: b.memoryId, strength: sim, explanation: `Overlapping topics (${(sim * 100).toFixed(0)}% similarity)` };
+        } else if (sim >= policy.complementThreshold) {
+          const rel: EvidenceRelationship = {
+            type: "complements", targetId: b.memoryId, strength: sim,
+            explanation: `Overlapping topics (${(sim * 100).toFixed(0)}% similarity)`,
+          };
           result.get(a.memoryId)!.push(rel);
           result.get(b.memoryId)!.push({ ...rel, targetId: a.memoryId });
         }
@@ -70,7 +67,10 @@ export const EvidenceAnalyzer = {
         const tb = parseDate(b.lastUpdated);
         if (ta > 0 && tb > 0 && Math.abs(ta - tb) > 60000) {
           const [earlier, later] = ta < tb ? [a, b] : [b, a];
-          result.get(earlier.memoryId)!.push({ type: "precedes", targetId: later.memoryId, strength: 0.8, explanation: `"${earlier.providerName}" predates "${later.providerName}"` });
+          result.get(earlier.memoryId)!.push({
+            type: "precedes", targetId: later.memoryId, strength: 0.8,
+            explanation: `"${earlier.providerName}" predates "${later.providerName}"`,
+          });
         }
       }
     }
@@ -78,32 +78,42 @@ export const EvidenceAnalyzer = {
     return result;
   },
 
-  /** Detect conflicting pairs: same topic, different provider, low similarity. */
-  detectConflicts(evidence: MemoryEvidence[]): Array<{ a: MemoryEvidence; b: MemoryEvidence; sim: number }> {
+  /** Detect conflicting pairs: same topic, different provider, divergent content. */
+  detectConflicts(
+    evidence: MemoryEvidence[],
+    engine: SimilarityEngine = defaultSimilarityEngine,
+    policy: ConfidencePolicy = DEFAULT_CONFIDENCE_POLICY,
+  ): Array<{ a: MemoryEvidence; b: MemoryEvidence; sim: number }> {
     const conflicts: Array<{ a: MemoryEvidence; b: MemoryEvidence; sim: number }> = [];
     for (let i = 0; i < evidence.length; i++) {
       for (let j = i + 1; j < evidence.length; j++) {
         const a = evidence[i];
         const b = evidence[j];
-        if (a.providerId === b.providerId) continue; // same source — not a cross-provider conflict
-        const queryOverlap = jaccardSimilarity(a.summary, b.summary);
-        const contentDiff  = jaccardSimilarity(a.content, b.content);
-        // High topic overlap but low content similarity = potential conflict
-        if (queryOverlap >= 0.4 && contentDiff < 0.3) {
-          conflicts.push({ a, b, sim: contentDiff });
+        if (a.providerId === b.providerId) continue;
+        const topicOverlap  = textSimilarity(a.summary, b.summary);
+        const contentSim    = engine.similarity(a, b);
+        if (topicOverlap >= policy.conflictTopicOverlap && contentSim < policy.conflictContentMax) {
+          conflicts.push({ a, b, sim: contentSim });
         }
       }
     }
     return conflicts;
   },
 
-  /** Check if two evidence items are semantic duplicates. */
-  areDuplicates(a: MemoryEvidence, b: MemoryEvidence): boolean {
-    return jaccardSimilarity(a.content, b.content) >= 0.75;
+  areDuplicates(
+    a: MemoryEvidence,
+    b: MemoryEvidence,
+    engine: SimilarityEngine = defaultSimilarityEngine,
+    policy: ConfidencePolicy = DEFAULT_CONFIDENCE_POLICY,
+  ): boolean {
+    return engine.similarity(a, b) >= policy.duplicateThreshold;
   },
 
-  /** Compute semantic similarity between two evidence items (0–1). */
-  similarity(a: MemoryEvidence, b: MemoryEvidence): number {
-    return jaccardSimilarity(a.content, b.content);
+  similarity(
+    a: MemoryEvidence,
+    b: MemoryEvidence,
+    engine: SimilarityEngine = defaultSimilarityEngine,
+  ): number {
+    return engine.similarity(a, b);
   },
 };

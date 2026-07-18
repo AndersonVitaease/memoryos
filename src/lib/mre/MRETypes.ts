@@ -1,10 +1,10 @@
 /**
- * MRETypes.ts — Memory Reasoning Engine v1.0
- * Sprint 7.1.0
+ * MRETypes.ts — Memory Reasoning Engine v1.1 (Sprint EF-7.1.1)
  *
- * All types for the MRE system.
- * Input:  MemoryEvidence[] (from UCME)
- * Output: ReasoningResult  (consolidated knowledge for the Planner)
+ * Additions:
+ *   - EvidenceCorroboration: explicit sourceCount, providerAgreement, corroborationCount
+ *     (replaces tags.length proxy in ConflictResolver)
+ *   - StructuredContext: machine-readable reasoning output alongside plain context string
  */
 
 import type { MemoryEvidence } from "@/lib/ucme/UCMETypes";
@@ -20,108 +20,144 @@ export interface ReasoningSession {
 }
 
 // ── Reasoning Evidence ────────────────────────────────────────────────────────
-// A view of an original MemoryEvidence after reasoning analysis.
 
 export type EvidenceRole = "primary" | "supporting" | "conflicting" | "discarded" | "hypothetical";
 
 export interface ReasoningEvidence {
   readonly original:      MemoryEvidence;
   readonly role:          EvidenceRole;
-  readonly adjustedConf:  number;       // confidence after reasoning adjustments
+  readonly adjustedConf:  number;
   readonly discardReason: string | null;
   readonly relationships: EvidenceRelationship[];
+  /** Sprint 7.1.1: explicit corroboration metadata (no more tags.length proxy) */
+  readonly corroboration: EvidenceCorroboration;
+}
+
+/** Explicit source agreement — never inferred from tags. */
+export interface EvidenceCorroboration {
+  readonly sourceCount:        number;  // unique providers that agree
+  readonly corroborationCount: number;  // total evidence items that agree
+  readonly providerAgreement:  number;  // 0–1 fraction of providers agreeing
 }
 
 export interface EvidenceRelationship {
-  readonly type:       "complements" | "conflicts" | "duplicates" | "precedes" | "causes" | "implies";
-  readonly targetId:   string;           // memoryId of related evidence
-  readonly strength:   number;           // 0–1
+  readonly type:        "complements" | "conflicts" | "duplicates" | "precedes" | "causes" | "implies";
+  readonly targetId:    string;
+  readonly strength:    number;
   readonly explanation: string;
+}
+
+// ── Duplicate Merge Record ─────────────────────────────────────────────────────
+/** Sprint 7.1.1: duplicates are merged, not silently discarded. */
+export interface MergedEvidence {
+  readonly primaryId:    string;       // kept evidence
+  readonly mergedIds:    string[];     // absorbed evidence (auditable)
+  readonly supportCount: number;       // total items merged
+  readonly explanation:  string;
 }
 
 // ── Conflict ──────────────────────────────────────────────────────────────────
 
 export interface ReasoningConflict {
   readonly id:          string;
-  readonly evidenceIds: string[];        // the conflicting memoryIds
+  readonly evidenceIds: string[];
   readonly description: string;
   readonly resolution:  "higher_confidence" | "more_recent" | "more_sources" | "unresolved";
-  readonly winner:      string | null;   // memoryId of chosen evidence, null if unresolved
+  readonly winner:      string | null;
   readonly explanation: string;
 }
 
 // ── Hypothesis ────────────────────────────────────────────────────────────────
 
 export interface ReasoningHypothesis {
-  readonly id:              string;
-  readonly statement:       string;
-  readonly probability:     number;      // 0–1
-  readonly evidenceIds:     string[];    // supporting memoryIds
-  readonly limitations:     string;
-  readonly isHypothesis:    true;        // always true — never present as fact
+  readonly id:           string;
+  readonly statement:    string;
+  readonly probability:  number;
+  readonly evidenceIds:  string[];
+  readonly limitations:  string;
+  readonly isHypothesis: true;
 }
 
 // ── Reasoning Rule ────────────────────────────────────────────────────────────
-// Rules are pure functions: no hardcoded module names.
 
 export interface ReasoningRule {
   readonly id:          string;
   readonly description: string;
-  apply(
-    evidence: MemoryEvidence[],
-    session: ReasoningSession,
-  ): RuleApplicationResult;
+  apply(evidence: MemoryEvidence[], session: ReasoningSession): RuleApplicationResult;
 }
 
 export interface RuleApplicationResult {
-  readonly ruleId:          string;
-  readonly conflicts:       ReasoningConflict[];
-  readonly hypotheses:      ReasoningHypothesis[];
-  readonly adjustments:     Map<string, number>;  // memoryId → new confidence
-  readonly discards:        Map<string, string>;  // memoryId → reason
-  readonly relationships:   EvidenceRelationship[];
-  readonly notes:           string[];
-}
-
-// ── Reasoning Result ──────────────────────────────────────────────────────────
-// This is what the Planner receives instead of raw MemoryEvidence[].
-
-export interface ReasoningResult {
-  readonly session:       ReasoningSession;
-  readonly consolidated:  ConsolidatedKnowledge;
-  readonly reasoning:     ReasoningEvidence[];
+  readonly ruleId:        string;
   readonly conflicts:     ReasoningConflict[];
   readonly hypotheses:    ReasoningHypothesis[];
-  readonly explanation:   ReasoningExplanation;
-  readonly confidence:    number;          // overall confidence 0–1
-  readonly context:       string;          // ready-to-use LLM context (replaces raw evidence)
+  readonly adjustments:   Map<string, number>;
+  readonly discards:      Map<string, string>;
+  readonly relationships: EvidenceRelationship[];
+  readonly notes:         string[];
+}
+
+// ── Structured Context ────────────────────────────────────────────────────────
+/** Sprint 7.1.1: machine-readable reasoning output. */
+export interface StructuredContext {
+  readonly facts:        KnowledgeFact[];
+  readonly conflicts:    ReasoningConflict[];
+  readonly hypotheses:   ReasoningHypothesis[];
+  readonly gaps:         string[];
+  readonly timeline:     TimelineEntry[];
+  readonly evidenceUsed: string[];   // memoryIds
+  readonly merges:       MergedEvidence[];
+}
+
+export interface TimelineEntry {
+  readonly memoryId:    string;
+  readonly providerName: string;
+  readonly timestamp:   string;
+  readonly summary:     string;
 }
 
 // ── Consolidated Knowledge ────────────────────────────────────────────────────
 
 export interface ConsolidatedKnowledge {
-  readonly summary:       string;
-  readonly facts:         KnowledgeFact[];
-  readonly gaps:          string[];        // what is unknown
-  readonly sources:       string[];        // providerNames used
-  readonly confidence:    number;
+  readonly summary:    string;
+  readonly facts:      KnowledgeFact[];
+  readonly gaps:       string[];
+  readonly sources:    string[];
+  readonly confidence: number;
 }
 
 export interface KnowledgeFact {
-  readonly statement:     string;
-  readonly confidence:    number;
-  readonly sources:       string[];        // providerIds
-  readonly isHypothesis:  boolean;
+  readonly statement:    string;
+  readonly confidence:   number;
+  readonly sources:      string[];
+  readonly isHypothesis: boolean;
 }
 
 // ── Explanation ───────────────────────────────────────────────────────────────
 
 export interface ReasoningExplanation {
-  readonly conclusion:       string;
-  readonly evidenceUsed:     string[];     // memoryIds
-  readonly evidenceDiscarded: string[];    // memoryIds
-  readonly conflictsFound:   boolean;
-  readonly hypothesisUsed:   boolean;
-  readonly rulesApplied:     string[];     // rule ids
-  readonly steps:            string[];     // human-readable reasoning steps
+  readonly conclusion:         string;
+  readonly evidenceUsed:       string[];
+  readonly evidenceDiscarded:  string[];
+  readonly conflictsFound:     boolean;
+  readonly hypothesisUsed:     boolean;
+  readonly rulesApplied:       string[];
+  readonly steps:              string[];
+}
+
+// ── Reasoning Result ──────────────────────────────────────────────────────────
+
+export interface ReasoningResult {
+  readonly session:           ReasoningSession;
+  readonly consolidated:      ConsolidatedKnowledge;
+  readonly reasoning:         ReasoningEvidence[];
+  readonly conflicts:         ReasoningConflict[];
+  readonly hypotheses:        ReasoningHypothesis[];
+  readonly explanation:       ReasoningExplanation;
+  readonly confidence:        number;
+  /** Plain text — preserved for backward compatibility with the Planner. */
+  readonly context:           string;
+  /** Sprint 7.1.1: structured, machine-readable output. */
+  readonly structuredContext: StructuredContext;
+  /** Sprint 7.1.1: duplicate merge audit trail. */
+  readonly merges:            MergedEvidence[];
 }
