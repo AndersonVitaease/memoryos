@@ -1,5 +1,5 @@
 /**
- * ConnectorSemanticRegistry.ts — Engineering Sprint 9.2.2
+ * ConnectorSemanticRegistry.ts — Engineering Sprint EF-6.3.x
  * Semantic Provider Registry Singleton
  *
  * SRP: registrar e consultar SemanticProviders.
@@ -8,6 +8,10 @@
  * Open/Closed: aberto para extensao via register(),
  *              fechado para modificacao — nenhum connector e embutido.
  *
+ * EF-6.3.x: aceita tanto providers modernos (detect) quanto legados (score).
+ * A interface de saida listAll() e opaca — o detector faz o cast correto
+ * via type guards (isModernProvider / isLegacyProvider).
+ *
  * Garantias:
  * - Determinístico: listAll() sempre retorna a mesma ordem (registro + sort)
  * - Imutavel: colecoes retornadas sao Object.freeze()
@@ -15,16 +19,17 @@
  * - Zero conhecimento de dominio: nenhuma referencia a Gmail/Calendar/Drive/Memory
  */
 
-import type { SemanticProvider } from "./SemanticTypes";
+// Accept any shape — the detector applies type guards
+type AnyProvider = { readonly connectorId: string } & Record<string, unknown>;
 
 class ConnectorSemanticRegistryClass {
-  private readonly _providers = new Map<string, SemanticProvider>();
+  private readonly _providers = new Map<string, AnyProvider>();
 
   /**
-   * Registra um SemanticProvider.
+   * Registra um SemanticProvider (moderno ou legado).
    * Idempotente: chamadas subsequentes com o mesmo connectorId sao ignoradas.
    */
-  register(provider: SemanticProvider): void {
+  register(provider: AnyProvider): void {
     if (this._providers.has(provider.connectorId)) return;
     this._providers.set(provider.connectorId, provider);
   }
@@ -32,7 +37,7 @@ class ConnectorSemanticRegistryClass {
   /**
    * Retorna o provider para um connectorId, ou null.
    */
-  get(connectorId: string): SemanticProvider | null {
+  get(connectorId: string): AnyProvider | null {
     return this._providers.get(connectorId) ?? null;
   }
 
@@ -40,7 +45,7 @@ class ConnectorSemanticRegistryClass {
    * Lista todos os providers registrados.
    * Ordem: alfabetica por connectorId — determinística, independente do registro.
    */
-  listAll(): readonly SemanticProvider[] {
+  listAll(): readonly AnyProvider[] {
     return Object.freeze(
       [...this._providers.values()].sort((a, b) =>
         a.connectorId.localeCompare(b.connectorId)

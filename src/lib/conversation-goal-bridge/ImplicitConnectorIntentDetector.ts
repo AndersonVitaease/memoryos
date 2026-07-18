@@ -1,11 +1,15 @@
 /**
- * ImplicitConnectorIntentDetector.ts — Engineering Sprint 9.2.2
- * Implicit Connector Intent Recognition v3 — Pure Orchestrator
+ * ImplicitConnectorIntentDetector.ts — Engineering Sprint EF-6.3.x
+ * Implicit Connector Intent Recognition v4 — Pure Orchestrator
  *
  * SRP: coordenar a resolucao de intencao implicita.
  *      Nunca conhece dominio. Nunca conhece connectors.
  *
- * Open/Closed (Sprint 9.2.2):
+ * EF-6.3.x: suporte ao novo contrato SemanticProvider.detect() que retorna
+ * SemanticDetection com goalType especifico determinado internamente.
+ * Retrocompatibilidade total com providers legados (score + implicitGoalType).
+ *
+ * Open/Closed:
  *   Adicionar um novo connector = criar SemanticProvider + registrar.
  *   ZERO linhas deste arquivo precisam mudar.
  *
@@ -17,34 +21,25 @@
  *   - referencia a Gmail, Calendar, Drive, Memory
  *   - tabelas de connectors
  *
- * Unicas responsabilidades:
+ * Responsabilidades:
  *   1. Normalizar a mensagem
  *   2. Consultar ConnectorSemanticRegistry
- *   3. Solicitar score a cada SemanticProvider
- *   4. Rankear candidatos
+ *   3. Solicitar deteccao a cada SemanticProvider (detect OU score)
+ *   4. Rankear candidatos por confidence
  *   5. Escolher winner
  *   6. Retornar ImplicitIntentResult
- *
- * Garantias:
- *   - Deterministica: mesmo input → mesmo output
- *   - Pura: sem efeitos colaterais por chamada
- *   - Imutavel: Object.freeze() em todo output
- *   - Auditavel: ranking[] + evidences[] + explanation[]
- *   - Ordem-independente: resultado independe da ordem de registro
- *   - Sem rede, sem LLM
  */
 
 import type { GoalType }       from "@/lib/goals/GoalTypes";
 import type { GoalDefinition } from "@/lib/goals/GoalRegistry";
 import { normalize }           from "./NaturalLanguageGoalNormalizer";
+import { isModernProvider, isLegacyProvider } from "@/lib/semantic-registry/SemanticTypes";
 
 // ── Lazy import to avoid circular-dep at module init ──────────────────────────
-// ConnectorSemanticRegistry is loaded once and cached below.
 let _registry: import("@/lib/semantic-registry/ConnectorSemanticRegistry").ConnectorSemanticRegistryClass | null = null;
 
 async function getRegistry() {
   if (!_registry) {
-    // Ensure providers are registered before first use
     const mod = await import("@/lib/semantic-registry/index");
     _registry = mod.ConnectorSemanticRegistry;
   }
@@ -60,6 +55,7 @@ export interface ConnectorCandidate {
   readonly goalType:    GoalType;
   readonly score:       number;
   readonly evidences:   readonly string[];
+  readonly entities:    Readonly<Record<string, unknown>>;
 }
 
 export interface ImplicitResolution {
@@ -82,7 +78,51 @@ export interface ImplicitIntentResult {
 // ── Minimum score threshold ────────────────────────────────────────────────────
 const MIN_SCORE_THRESHOLD = 0.20;
 
-// ── ImplicitConnectorIntentDetectorImpl ────────────────────────────────────────
+// ── Unified adapter: modern (detect) OR legacy (score) provider ───────────────
+
+type AnyProvider = Record<string, unknown>;
+
+function scoreProvider(
+  provider:  AnyProvider,
+  lower:     string,
+  norm:      ReturnType<typeof normalize>,
+): ConnectorCandidate {
+  if (isModernProvider(provider)) {
+    // EF-6.3.x: new contract — detect() determines goalType internally
+    const detection = provider.detect(lower, norm);
+    return Object.freeze({
+      connectorId: detection.connector,
+      goalType:    detection.goalType,
+      score:       Math.round(detection.confidence * 1000) / 1000,
+      evidences:   Object.freeze([...detection.evidences]),
+      entities:    Object.freeze({ ...detection.entities }),
+    });
+  }
+
+  if (isLegacyProvider(provider)) {
+    // Sprint 9.2.2: legacy contract — score() + fixed implicitGoalType
+    const { score, evidences } = provider.score(lower, norm);
+    return Object.freeze({
+      connectorId: provider.connectorId,
+      goalType:    provider.implicitGoalType,
+      score:       Math.round(score * 1000) / 1000,
+      evidences:   Object.freeze([...evidences]),
+      entities:    Object.freeze({}),
+    });
+  }
+
+  // Unknown provider shape — return zero score
+  const id = (provider.connectorId as string) ?? "unknown";
+  return Object.freeze({
+    connectorId: id,
+    goalType:    `${id}.unknown` as GoalType,
+    score:       0,
+    evidences:   Object.freeze(["unknown-provider-shape"]),
+    entities:    Object.freeze({}),
+  });
+}
+
+// ── ImplicitConnectorIntentDetectorImpl ───────────────────────────────────────
 
 class ImplicitConnectorIntentDetectorImpl {
   private _totalChecked  = 0;
@@ -91,13 +131,10 @@ class ImplicitConnectorIntentDetectorImpl {
   /**
    * Resolve intencao implicita de connector para uma mensagem.
    *
-   * Consulta o ConnectorSemanticRegistry para obter todos os providers
-   * registrados, solicita score a cada um, e elege o winner por maior score.
+   * Consulta o ConnectorSemanticRegistry, delega a deteccao a cada provider
+   * (moderno ou legado), e elege o winner por maior score/confidence.
    *
    * A ordem de registro dos providers nao influencia o resultado.
-   *
-   * @param message               — raw user message
-   * @param registeredDefinitions — list from GoalRegistry.listAll()
    */
   resolve(
     message:               string,
@@ -116,57 +153,43 @@ class ImplicitConnectorIntentDetectorImpl {
       resolution: null,
     });
 
-    // ── 1. Normalize ─────────────────────────────────────────────────────────
+    // ── 1. Normalize ──────────────────────────────────────────────────────────
     const norm = normalize(trimmed);
     if (norm.isSocialPhrase)   return none("social_phrase");
     if (!norm.entity.trim())   return none("empty_entity");
 
     const lower = trimmed.toLowerCase();
 
-    // ── 2. Registered namespaces (from GoalRegistry) ─────────────────────────
+    // ── 2. Registered namespaces (from GoalRegistry) ──────────────────────────
     const registeredNamespaces = new Set(
       registeredDefinitions.map((d) => d.namespace)
     );
 
-    // ── 3. Collect providers from SemanticRegistry (sync via globalThis cache) ─
-    // The registry is auto-populated at index.ts import time.
-    // We access it synchronously through globalThis — safe after first import.
+    // ── 3. Access registry synchronously via globalThis ───────────────────────
     const registryRaw = (globalThis as unknown as Record<string, unknown>)["__CONNECTOR_SEMANTIC_REGISTRY__"];
-
-    // Fallback: if registry not yet loaded (first render edge-case), defer
     if (!registryRaw) return none("registry_not_ready");
 
-    // Cast — same class, same globalThis key
     const registry = registryRaw as {
-      listAll(): readonly Array<{
-        connectorId: string;
-        implicitGoalType: GoalType;
-        score(lower: string, norm: ReturnType<typeof normalize>): { score: number; evidences: readonly string[] };
-      }>;
+      listAll(): readonly AnyProvider[];
     };
 
     const allProviders = registry.listAll();
 
-    // ── 4. Score each provider whose connector is registered in GoalRegistry ──
+    // ── 4. Score / detect each provider ───────────────────────────────────────
     const candidates: ConnectorCandidate[] = [];
 
     for (const provider of allProviders) {
+      const connId = (provider.connectorId as string) ?? "";
       // Only score connectors that have GoalDefinitions registered
-      if (!registeredNamespaces.has(provider.connectorId)) continue;
+      if (!registeredNamespaces.has(connId)) continue;
 
-      const { score, evidences } = provider.score(lower, norm);
-
-      candidates.push(Object.freeze({
-        connectorId: provider.connectorId,
-        goalType:    provider.implicitGoalType,
-        score:       Math.round(score * 1000) / 1000,
-        evidences:   Object.freeze([...evidences]),
-      }));
+      const candidate = scoreProvider(provider, lower, norm);
+      candidates.push(candidate);
     }
 
     if (candidates.length === 0) return none("no_compatible_connector");
 
-    // ── 5. Rank by score desc — tiebreak alphabetical (never by reg. order) ──
+    // ── 5. Rank by score desc — tiebreak alphabetical ─────────────────────────
     const ranking = [...candidates].sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;
       return a.connectorId.localeCompare(b.connectorId);
@@ -178,13 +201,18 @@ class ImplicitConnectorIntentDetectorImpl {
       return none(`below_threshold:${winner.connectorId}:${winner.score}`);
     }
 
-    // ── 6. Build explanation ─────────────────────────────────────────────────
+    // ── 6. Build parameters — prefer provider entities, fallback to norm.entity ─
+    const params: Record<string, unknown> = {
+      query: norm.entity,
+      ...winner.entities,
+    };
+
+    // ── 7. Build explanation ──────────────────────────────────────────────────
     const explanation: string[] = [
-      `Winner: ${winner.connectorId} (score=${winner.score})`,
+      `Winner: ${winner.connectorId} / ${winner.goalType} (score=${winner.score})`,
       `Evidences: ${winner.evidences.join(", ") || "none"}`,
-      `Ranking: ${ranking.map((c) => `${c.connectorId}=${c.score}`).join(" > ")}`,
+      `Ranking: ${ranking.map((c) => `${c.connectorId}:${c.goalType}=${c.score}`).join(" > ")}`,
       `Entity: "${norm.entity}"`,
-      `SearchTerm used: "${norm.entity}"`,
     ];
 
     const resolution: ImplicitResolution = Object.freeze({
@@ -199,9 +227,9 @@ class ImplicitConnectorIntentDetectorImpl {
     return Object.freeze({
       detected:   true,
       goalType:   winner.goalType,
-      parameters: Object.freeze({ query: norm.entity }),
+      parameters: Object.freeze(params),
       confidence: winner.score,
-      label:      `evidence:${winner.connectorId}:score=${winner.score}`,
+      label:      `evidence:${winner.connectorId}:${winner.goalType}:score=${winner.score}`,
       searchTerm: norm.entity,
       resolution,
     });
