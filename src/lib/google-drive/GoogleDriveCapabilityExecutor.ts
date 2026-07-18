@@ -1,15 +1,21 @@
 /**
- * GoogleDriveCapabilityExecutor.ts — Engineering Sprint 7.1
+ * GoogleDriveCapabilityExecutor.ts — Sprint P-01.2 (extends Sprint 7.1)
  *
- * Two responsibilities (SRP):
+ * Responsibilities:
  *   1. buildDriveQuery() — convert natural language intent to Drive API query
  *   2. executeDriveCapability() — IConnector-compatible capability dispatcher
- *
- * Imported by UniversalConnectorRouter (no changes needed in router/registry).
+ *      with fileId resolution via DriveActionResolver (EF-1..EF-10)
  */
 
 import type { DriveQueryIntent } from "./GoogleDriveTypes";
 import { DRIVE_MIME } from "./GoogleDriveTypes";
+import {
+  resolveFromSearchResult,
+  assertFileId,
+  getDownloadConfig,
+  driveLog,
+  type SelectedFile,
+} from "./DriveActionResolver";
 
 // ── Natural Language → Drive Query ────────────────────────────────────────────
 
@@ -99,30 +105,110 @@ export async function executeDriveCapability(
   const { listFiles, searchFiles, readFileMetadata, readFile, listFolders } =
     await import("./GoogleDriveConnector");
 
+  driveLog("INTENT", { capabilityId, parameters });
+
   switch (capabilityId) {
+    // ── Read-only list / search ──────────────────────────────────────────────
+
     case "drive.listFiles":
       try {
         const r = await listFiles({ pageSize: (parameters.pageSize as number) ?? 20, folderId: parameters.folderId as string });
+        driveLog("SEARCH", { capabilityId, resultCount: r.files.length });
         return { ok: true, data: r, error: null };
       } catch (e) { return { ok: false, data: null, error: (e as Error).message }; }
 
     case "drive.searchFiles":
       try {
         const r = await searchFiles((parameters.query as string) ?? "", { pageSize: (parameters.pageSize as number) ?? 20 });
+        driveLog("SEARCH", { capabilityId, resultCount: r.files.length });
         return { ok: true, data: r, error: null };
       } catch (e) { return { ok: false, data: null, error: (e as Error).message }; }
-
-    case "drive.readFileMetadata":
-      return readFileMetadata((parameters.fileId as string) ?? "");
-
-    case "drive.readFile":
-      return readFile((parameters.fileId as string) ?? "", parameters.mimeType as string);
 
     case "drive.listFolders":
       try {
         const r = await listFolders({ pageSize: (parameters.pageSize as number) ?? 30, parentId: parameters.parentId as string });
         return { ok: r.ok, data: r.data, error: r.error };
       } catch (e) { return { ok: false, data: null, error: (e as Error).message }; }
+
+    // ── Search + resolve + action (EF-1..EF-5) ──────────────────────────────
+
+    case "drive.openFile":
+    case "drive.readFileMetadata": {
+      // If fileId explicitly provided — use it directly
+      const explicitId = (parameters.fileId as string | undefined)?.trim();
+      if (explicitId) {
+        assertFileId(explicitId, capabilityId);
+        driveLog("SELECTED", { source: "explicit", fileId: explicitId });
+        return readFileMetadata(explicitId);
+      }
+
+      // Otherwise: search → resolve → get metadata (EF-3, EF-4, EF-5)
+      const query = (parameters.query as string) ?? (parameters.name as string) ?? "";
+      if (!query) {
+        return { ok: false, data: { code: "NO_FILE_SELECTED" }, error: "NO_FILE_SELECTED — fileId or query is required for openFile" };
+      }
+      const searchResult = await searchFiles(query, { pageSize: 20 });
+      const resolution   = resolveFromSearchResult(searchResult, query);
+
+      if (resolution.status === "NOT_FOUND") return { ok: false, data: null, error: resolution.error };
+      if (resolution.status === "AMBIGUOUS") return { ok: true, data: { ambiguous: true, clarification: resolution.clarification, candidates: resolution.candidates }, error: null };
+
+      assertFileId(resolution.selectedFile!.id, capabilityId);
+      driveLog("OPERATION", { operation: capabilityId, fileId: resolution.selectedFile!.id, name: resolution.selectedFile!.name });
+      return readFileMetadata(resolution.selectedFile!.id);
+    }
+
+    case "drive.readFile":
+    case "drive.downloadFile":
+    case "drive.readDocument":
+    case "drive.exportFile": {
+      // If fileId explicitly provided — use it directly (EF-10: guard)
+      const explicitId = (parameters.fileId as string | undefined)?.trim();
+      if (explicitId) {
+        assertFileId(explicitId, capabilityId);
+      }
+
+      const fileId = explicitId ?? await (async () => {
+        // Search → resolve → get fileId (EF-3, EF-4, EF-5)
+        const query = (parameters.query as string) ?? (parameters.name as string) ?? "";
+        if (!query) return null;
+        const sr         = await searchFiles(query, { pageSize: 20 });
+        const resolution = resolveFromSearchResult(sr, query);
+        if (resolution.status !== "RESOLVED") return null;
+        return resolution.selectedFile!.id;
+      })();
+
+      // EF-10: guard — never call API without fileId
+      if (!fileId || fileId.trim() === "") {
+        driveLog("GUARD_VIOLATION", { operation: capabilityId, fileId: null });
+        return { ok: false, data: { code: "NO_FILE_SELECTED" }, error: "NO_FILE_SELECTED — could not resolve fileId. Provide fileId or a search query." };
+      }
+
+      driveLog("OPERATION", { operation: capabilityId, fileId });
+
+      // EF-6: determine download strategy by MIME type
+      // First get metadata to know the mimeType if not provided
+      const mimeType = (parameters.mimeType as string | undefined);
+      if (mimeType) {
+        const dlConfig = getDownloadConfig(mimeType);
+        driveLog("DOWNLOAD", { fileId, mimeType, strategy: dlConfig.strategy, exportMime: dlConfig.exportMime });
+        // EF-7: delegate to existing readFile which already handles GWS export vs media
+        const result = await readFile(fileId, dlConfig.exportMime);
+        driveLog("PARSER", { fileId, ok: result.ok, sizeBytes: result.data?.sizeBytes ?? 0 });
+        return result;
+      }
+
+      // No mimeType provided — fetch metadata first, then read with correct strategy
+      const meta = await readFileMetadata(fileId);
+      if (!meta.ok || !meta.data) return { ok: false, data: null, error: `File not found: ${fileId}` };
+
+      const dlConfig = getDownloadConfig(meta.data.mimeType);
+      driveLog("DOWNLOAD", { fileId, mimeType: meta.data.mimeType, strategy: dlConfig.strategy, exportMime: dlConfig.exportMime });
+      const result = await readFile(fileId, dlConfig.exportMime);
+      driveLog("PARSER", { fileId, name: meta.data.name, ok: result.ok, sizeBytes: result.data?.sizeBytes ?? 0 });
+      driveLog("RESPONSE", { fileId, name: meta.data.name, ok: result.ok });
+      return result;
+    }
 
     default:
       return { ok: false, data: null, error: `Unknown capability: ${capabilityId}` };
