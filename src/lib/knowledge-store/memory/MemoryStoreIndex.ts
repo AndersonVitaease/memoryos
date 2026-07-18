@@ -53,8 +53,11 @@ export class MemoryStoreIndex {
       this._setAdd(this._byConv, next.evidence.conversationId, next.id);
     }
 
-    // date (createdAt never changes on update — updatedAt does, but we index by createdAt)
-    // No action needed for date index.
+    // EF-39.2: resilient date index update — handles any case where createdAt differs
+    if (prev.createdAt !== next.createdAt) {
+      this._setDel(this._byDate, this._dateKey(prev.createdAt), prev.id);
+      this._setAdd(this._byDate, this._dateKey(next.createdAt), next.id);
+    }
 
     // tags diff
     const prevTags = new Set(prev.tags);

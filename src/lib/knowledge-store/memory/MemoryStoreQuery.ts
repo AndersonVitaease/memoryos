@@ -37,15 +37,13 @@ export const MemoryStoreQuery = {
       results = results.filter(r => r.createdAt <= q.createdBefore!);
     }
 
+    // EF-39.2 fix: sort the full filtered set BEFORE pagination — preserves correct page order.
+    results = [...results].sort((a, b) => b.createdAt - a.createdAt || a.id.localeCompare(b.id));
+
     const total  = results.length;
     const offset = q.offset ?? 0;
     const limit  = q.limit  ?? 50;
-
-    // EF-39.1: sort only the page slice, not the full filtered set —
-    // same logical result, reduced work when paginating large stores.
-    const page = results
-      .slice(offset, offset + limit)
-      .sort((a, b) => b.createdAt - a.createdAt || a.id.localeCompare(b.id));
+    const page   = results.slice(offset, offset + limit);
 
     return Object.freeze({
       ok:      true,

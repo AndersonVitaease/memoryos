@@ -406,33 +406,50 @@ async function suiteHardening() {
       eq(st.activeRecords, 0); eq(st.archivedRecords, 0); eq(st.deletedCount, 1);
     }),
 
-    // stress: 1000 records (scaled down from 10k for browser runtime)
-    test("Hardening", "stress: 1000 stores all succeed", async () => {
+    // stress: 10,000 records (EF-39.2 requirement)
+    test("Hardening", "stress: 10000 stores all succeed", async () => {
       const s = fresh();
       const { KnowledgeEvidenceFactory } = await import("@/lib/ingestion/KnowledgeEvidence");
       const e = KnowledgeEvidenceFactory.create({ source: "stress", conversationId: "c-stress", messageId: "m-stress", confidence: 0.9 });
       const results = await Promise.all(
-        Array.from({ length: 1000 }, (_, i) =>
+        Array.from({ length: 10000 }, (_, i) =>
           s.store({ type: "LongTerm", content: `Stress record ${i}`, evidence: e })
         )
       );
-      assert(results.every(r => r.ok), "all stores should succeed");
-      eq(s.recordCount(), 1000, "recordCount should be 1000");
+      assert(results.every(r => r.ok), "all 10000 stores should succeed");
+      eq(s.recordCount(), 10000, "recordCount should be 10000");
     }),
 
-    // stress: query over 1000 records
-    test("Hardening", "stress: query over 1000 records returns correct total", async () => {
+    // stress: query over 10,000 records with correct pagination
+    test("Hardening", "stress: query over 10000 records returns correct total and pagination", async () => {
       const s = fresh();
       const { KnowledgeEvidenceFactory } = await import("@/lib/ingestion/KnowledgeEvidence");
       const e = KnowledgeEvidenceFactory.create({ source: "stress", conversationId: "c-stress", messageId: "m-stress", confidence: 0.9 });
-      await Promise.all(Array.from({ length: 1000 }, (_, i) =>
+      await Promise.all(Array.from({ length: 10000 }, (_, i) =>
         s.store({ type: "LongTerm", content: `Stress record ${i}`, evidence: e })
       ));
-      const q = await s.query({ status: ["active"], limit: 10 });
-      assert(q.ok && q.total === 1000 && q.records.length === 10 && q.hasMore, "pagination should work at scale");
+      const q = await s.query({ status: ["active"], limit: 25 });
+      assert(q.ok, "query should succeed");
+      eq(q.total, 10000, "total should be 10000");
+      eq(q.records.length, 25, "page size should be 25");
+      assert(q.hasMore, "hasMore should be true");
     }),
 
-    // large snapshot
+    // stress: statistics consistent after 10000 stores
+    test("Hardening", "stress: statistics consistent after 10000 stores", async () => {
+      const s = fresh();
+      const { KnowledgeEvidenceFactory } = await import("@/lib/ingestion/KnowledgeEvidence");
+      const e = KnowledgeEvidenceFactory.create({ source: "stress", conversationId: "c-stress", messageId: "m-stress", confidence: 0.9 });
+      await Promise.all(Array.from({ length: 10000 }, (_, i) =>
+        s.store({ type: "LongTerm", content: `Stress record ${i}`, evidence: e })
+      ));
+      const st = s.internalStats();
+      eq(st.activeRecords, 10000, "activeRecords should be 10000");
+      eq(st.archivedRecords, 0, "archivedRecords should be 0");
+      assert(st.totalWrites >= 10000, "totalWrites should be >= 10000");
+    }),
+
+    // large snapshot — immutability via Object.isFrozen instead of "as any"
     test("Hardening", "large snapshot is immutable and correct", async () => {
       const s = fresh();
       const { KnowledgeEvidenceFactory } = await import("@/lib/ingestion/KnowledgeEvidence");
@@ -442,8 +459,7 @@ async function suiteHardening() {
       ));
       const snap = s.takeSnapshot("large");
       eq(snap.recordCount, 100, "snapshot should have 100 records");
-      try { (snap as any).recordCount = 999; } catch {}
-      assert(snap.recordCount !== 999, "snapshot should be immutable");
+      assert(Object.isFrozen(snap), "snapshot should be frozen (Object.isFrozen)");
     }),
 
     // extended version history

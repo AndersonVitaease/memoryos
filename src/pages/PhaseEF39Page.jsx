@@ -128,9 +128,9 @@ export default function PhaseEF39Page() {
       <div className="max-w-5xl mx-auto space-y-5">
 
         <div className="border border-emerald-700/60 rounded-xl p-5 bg-emerald-950/10">
-          <div className="text-zinc-500 text-xs tracking-widest mb-1">SPRINT EF-39 — MEMORY STORE REFERENCE IMPLEMENTATION</div>
+          <div className="text-zinc-500 text-xs tracking-widest mb-1">SPRINT EF-39.2 — MEMORY STORE FINAL HARDENING</div>
           <div className="text-xl font-bold">MemoryStore — Canonical IKnowledgeStore Implementation</div>
-          <div className="text-zinc-400 text-sm mt-1">Reference behavior for all future storage engines · O(1) lookup · Immutable · Fully auditable</div>
+          <div className="text-zinc-400 text-sm mt-1">Query regression fixed · Date index fully resilient · 10k stress validated · Zero as-any</div>
         </div>
 
         <div className="border border-zinc-700 rounded-xl bg-zinc-900 p-4">
@@ -160,7 +160,7 @@ export default function PhaseEF39Page() {
           <button onClick={addRecord} className="bg-emerald-700 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm font-bold">+ Add Record</button>
           <button onClick={takeSnap}  className="bg-zinc-700 hover:bg-zinc-600 text-white px-4 py-2 rounded-lg text-sm font-bold">📸 Snapshot</button>
           <button onClick={runTests} disabled={running} className="bg-violet-700 hover:bg-violet-600 disabled:opacity-50 text-white px-4 py-2 rounded-lg text-sm font-bold">
-            {running ? "Running..." : "▶ Run ~150 Tests"}
+            {running ? "Running..." : "▶ Run EF-39.2 Suite"}
           </button>
           {!store && <button onClick={initStore} className="bg-sky-700 hover:bg-sky-600 text-white px-4 py-2 rounded-lg text-sm font-bold">Init Store</button>}
         </div>
@@ -168,7 +168,7 @@ export default function PhaseEF39Page() {
         {testResult && (
           <div className={"border-2 rounded-xl p-4 text-center " + (testResult.certified ? "border-emerald-500 bg-emerald-950/20" : "border-red-700 bg-red-950/10")}>
             <div className={"text-xl font-bold " + (testResult.certified ? "text-emerald-400" : "text-red-400")}>
-              {testResult.certified ? "✓ EF-39 CERTIFIED — REFERENCE IMPLEMENTATION COMPLETE" : "✗ TESTS FAILED"}
+              {testResult.certified ? "✓ EF-39.2 CERTIFIED — FINAL HARDENING COMPLETE" : "✗ TESTS FAILED"}
             </div>
             <div className="text-zinc-400 text-sm mt-1">{testResult.passed}/{testResult.total} passed · {testResult.failed} failed</div>
           </div>
@@ -417,20 +417,20 @@ export default function PhaseEF39Page() {
         )}
 
         <div className="border border-zinc-800 rounded-lg p-4 bg-zinc-900 text-xs space-y-1">
-          <div className="text-zinc-400 tracking-widest mb-2">ACCEPTANCE CRITERIA — EF-39</div>
+          <div className="text-zinc-400 tracking-widest mb-2">ACCEPTANCE CRITERIA — EF-39.2</div>
           {[
-            "MemoryStore fully implements IKnowledgeStore — all 11 methods",
-            "Every public object is immutable (Object.freeze)",
-            "Every write updates indexes atomically",
-            "Every write updates statistics",
-            "Every write emits KnowledgeStoreEvent",
-            "Version history preserved — never mutates existing versions",
-            "Archive/Restore fully implemented with listArchived()",
-            "Delete permanently removes all data (record, versions, archive, index)",
-            "Queries are deterministic — same input, same order",
-            "Search is deterministic — relevance-scored, consistent tie-breaking",
-            "Snapshots are immutable point-in-time captures",
-            "MemoryStore is the canonical reference for all future engines",
+            "Query: Filter → Sort → Paginate (regression from EF-39.1 fixed)",
+            "Query pagination returns correct records regardless of page/offset",
+            "Ordering remains deterministic: createdAt DESC, id ASC tie-break",
+            "Index: update() resilient to createdAt change — date index fully updated",
+            "All index dimensions (type, status, source, conv, date, tags) updated in update()",
+            "Empty Sets auto-removed from all index maps after remove/update",
+            "Stress: 10,000 stores — no exception, recordCount=10000",
+            "Stress: query over 10,000 records — correct total, correct page, hasMore=true",
+            "Stress: statistics consistent after 10,000 stores",
+            "Zero 'as any' in production code and test code",
+            "Immutability validated via Object.isFrozen() — no type casts needed",
+            "All EF-39 + EF-39.1 tests continue to pass",
           ].map((c,i) => <div key={i} className="text-zinc-300">✓ {c}</div>)}
         </div>
 
