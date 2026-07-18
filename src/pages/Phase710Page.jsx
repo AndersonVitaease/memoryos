@@ -1,474 +1,244 @@
 /**
- * Phase710Page.jsx — Conversation Experience Platform Dashboard
- * Sprint 7.1.0 · Conversation Center
+ * Phase710Page — Sprint 7.1.0
+ * Memory Reasoning Engine (MRE) Dashboard
  */
 
-import React, { useState, useEffect } from "react";
-import {
-  MessageSquare,
-  Zap,
-  Clock,
-  TrendingUp,
-  AlertTriangle,
-  CheckCircle2,
-  Loader2,
-  RotateCcw,
-  Activity,
-  Database,
-  GitBranch,
-  BarChart2,
-  Radio,
-  XCircle,
-} from "lucide-react";
-import { conversationManager } from "@/lib/conversation-platform/ConversationManager";
-import { runCXPTests } from "@/lib/conversation-platform/cxpTests";
+import React, { useState } from "react";
 
-// ─── UI Atoms ─────────────────────────────────────────────────────────────────
+async function runTests() {
+  const { runMRETests } = await import("@/lib/mre/MRETests");
+  return runMRETests();
+}
 
-function Badge({ children, color = "zinc" }) {
-  const colors = {
-    green: "bg-emerald-100 text-emerald-700",
-    red: "bg-red-100 text-red-700",
-    yellow: "bg-amber-100 text-amber-700",
-    violet: "bg-violet-100 text-violet-700",
-    zinc: "bg-zinc-100 text-zinc-600",
-    blue: "bg-blue-100 text-blue-700",
-  };
+function Badge({ ok }) {
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${colors[color]}`}>
-      {children}
+    <span className={`text-xs px-2 py-0.5 rounded border font-bold font-mono ${ok ? "bg-emerald-900/50 text-emerald-300 border-emerald-700" : "bg-red-900/50 text-red-300 border-red-700"}`}>
+      {ok ? "PASS" : "FAIL"}
     </span>
   );
 }
 
-function StatCard({ icon: Icon, label, value, sub, color = "violet" }) {
-  const colors = {
-    violet: "text-violet-500 bg-violet-50",
-    emerald: "text-emerald-500 bg-emerald-50",
-    amber: "text-amber-500 bg-amber-50",
-    red: "text-red-500 bg-red-50",
-    blue: "text-blue-500 bg-blue-50",
-  };
-  return (
-    <div className="bg-white border border-zinc-200 rounded-xl p-4 flex items-start gap-3">
-      <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${colors[color]}`}>
-        <Icon className="w-4 h-4" />
-      </div>
-      <div>
-        <p className="text-xs text-zinc-500">{label}</p>
-        <p className="text-lg font-bold text-zinc-800 font-heading">{value ?? "—"}</p>
-        {sub && <p className="text-xs text-zinc-400 mt-0.5">{sub}</p>}
-      </div>
-    </div>
-  );
-}
-
-function TestRow({ result }) {
-  return (
-    <div className="flex items-center gap-2 py-1.5 border-b border-zinc-50 last:border-0">
-      {result.passed
-        ? <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-        : <XCircle className="w-4 h-4 text-red-500 shrink-0" />}
-      <span className={`text-sm flex-1 ${result.passed ? "text-zinc-700" : "text-red-700"}`}>
-        {result.name}
-      </span>
-      <span className="text-xs text-zinc-400">{result.durationMs}ms</span>
-    </div>
-  );
-}
-
-// ─── Phase710Page ─────────────────────────────────────────────────────────────
+const SUITE_COLORS = {
+  "1 — EvidenceAnalyzer":             "border-violet-700 text-violet-300",
+  "2 — ConflictResolver":             "border-red-700 text-red-300",
+  "3 — HypothesisGenerator":          "border-yellow-700 text-yellow-300",
+  "4 — ConfidenceAdjuster":           "border-blue-700 text-blue-300",
+  "5 — MemoryReasoningEngine (full pipeline)": "border-emerald-700 text-emerald-300",
+  "6 — Architecture Compliance":      "border-zinc-600 text-zinc-400",
+};
 
 export default function Phase710Page() {
-  const [activeTab, setActiveTab] = useState("overview");
-  const [metrics, setMetrics] = useState(null);
-  const [detailedMetrics, setDetailedMetrics] = useState([]);
-  const [events, setEvents] = useState([]);
-  const [recovery, setRecovery] = useState([]);
-  const [testReport, setTestReport] = useState(null);
-  const [testRunning, setTestRunning] = useState(false);
-  const [liveState, setLiveState] = useState(null);
+  const [report, setReport]   = useState(null);
+  const [running, setRunning] = useState(false);
+  const [err, setErr]         = useState(null);
+  const [demo, setDemo]       = useState(null);
 
-  useEffect(() => {
-    loadData();
-    const unsub = conversationManager.subscribe((s) => setLiveState({ ...s }));
-    return unsub;
-  }, []);
+  async function run() {
+    setRunning(true); setErr(null); setReport(null);
+    try { setReport(await runTests()); }
+    catch (e) { setErr(e?.message ?? String(e)); }
+    finally { setRunning(false); }
+  }
 
-  const loadData = () => {
-    setMetrics(conversationManager.getMetrics());
-    setDetailedMetrics(conversationManager.getDetailedMetrics());
-    setEvents(conversationManager.getEventHistory().slice(-50).reverse());
-    setRecovery(conversationManager.getRecoveryHistory());
-  };
-
-  const runTests = async () => {
-    setTestRunning(true);
-    setTestReport(null);
+  async function runDemo(scenario) {
     try {
-      const report = await runCXPTests();
-      setTestReport(report);
-    } catch (e) {
-      setTestReport({ error: e.message });
-    } finally {
-      setTestRunning(false);
-    }
-  };
+      const { MemoryReasoningEngine } = await import("@/lib/mre/MemoryReasoningEngine");
 
-  const tabs = [
-    { id: "overview", label: "Overview", icon: Activity },
-    { id: "streaming", label: "Streaming", icon: Radio },
-    { id: "recovery", label: "Recovery", icon: RotateCcw },
-    { id: "events", label: "Eventos", icon: Database },
-    { id: "metrics", label: "Metricas", icon: BarChart2 },
-    { id: "tests", label: "Testes", icon: GitBranch },
-  ];
+      const now = new Date().toISOString();
+      const old = new Date(Date.now() - 3 * 86400000).toISOString();
+
+      const scenarios = {
+        rg: {
+          query: "Onde está meu RG?",
+          evidence: [
+            { memoryId: "1", providerId: "conversation", providerName: "Conversation", content: "O RG está na pasta documentos do Google Drive", summary: "RG no Drive", confidence: 0.85, relevance: 0.9, recency: 0.9, weight: 0.87, lastUpdated: old, justification: "test", tags: ["conv"], metadata: {} },
+            { memoryId: "2", providerId: "google-drive", providerName: "Google Drive", content: "RG.pdf encontrado no Google Drive em /documentos/pessoal", summary: "RG.pdf no Drive", confidence: 0.9, relevance: 0.95, recency: 0.8, weight: 0.9, lastUpdated: now, justification: "test", tags: ["drive"], metadata: {} },
+            { memoryId: "3", providerId: "knowledge-graph", providerName: "Knowledge Graph", content: "Documento pessoal do tipo RG, categoria documentos pessoais", summary: "RG é documento pessoal", confidence: 0.8, relevance: 0.85, recency: 0.7, weight: 0.82, lastUpdated: old, justification: "test", tags: ["kg"], metadata: {} },
+          ],
+        },
+        conflict: {
+          query: "Onde está o contrato com a empresa ABC?",
+          evidence: [
+            { memoryId: "c1", providerId: "conversation", providerName: "Conversation", content: "O contrato com a ABC foi assinado e está no Drive pasta Contratos", summary: "Contrato ABC no Drive", confidence: 0.7, relevance: 0.85, recency: 0.6, weight: 0.72, lastUpdated: old, justification: "test", tags: ["conv"], metadata: {} },
+            { memoryId: "c2", providerId: "gmail", providerName: "Gmail", content: "Email: contrato ABC foi cancelado e arquivo deletado", summary: "Contrato ABC cancelado", confidence: 0.85, relevance: 0.9, recency: 0.95, weight: 0.88, lastUpdated: now, justification: "test", tags: ["gmail"], metadata: {} },
+          ],
+        },
+        empty: {
+          query: "Qual é o número da minha CNH?",
+          evidence: [],
+        },
+      };
+
+      const s = scenarios[scenario];
+      const result = MemoryReasoningEngine.reason(s.query, s.evidence);
+      setDemo({ scenario, result });
+    } catch (e) { setErr(e?.message ?? String(e)); }
+  }
+
+  const suites = report
+    ? [...new Set(report.results.map(r => r.suite))].map(s => ({ suite: s, rows: report.results.filter(r => r.suite === s) }))
+    : [];
 
   return (
-    <div className="max-w-5xl mx-auto px-4 lg:px-6 py-6 pb-20">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center">
-            <MessageSquare className="w-5 h-5 text-white" />
+    <div className="min-h-screen bg-zinc-950 text-white p-6 font-mono">
+      <div className="max-w-5xl mx-auto space-y-6">
+
+        {/* Header */}
+        <div>
+          <div className="text-xs text-violet-400 tracking-widest mb-1">SPRINT 7.1.0</div>
+          <h1 className="text-3xl font-bold">Memory Reasoning Engine</h1>
+          <p className="text-zinc-400 text-sm mt-1">MemoryEvidence[] → inferência → consolidação → ReasoningResult</p>
+        </div>
+
+        {/* Architecture */}
+        <div className="border border-zinc-700 rounded-lg p-4 bg-zinc-900 text-xs">
+          <div className="text-zinc-400 tracking-widest mb-3">PIPELINE</div>
+          <div className="flex items-center gap-2 flex-wrap text-xs">
+            {["MemoryEvidence[]", "EvidenceAnalyzer", "ConflictResolver", "ConfidenceAdjuster", "HypothesisGenerator", "ExplanationBuilder", "ReasoningResult"].map((step, i, arr) => (
+              <React.Fragment key={step}>
+                <span className={`border rounded px-2 py-1 ${i === 0 || i === arr.length - 1 ? "border-violet-700 text-violet-300" : "border-zinc-700 text-zinc-400"}`}>{step}</span>
+                {i < arr.length - 1 && <span className="text-zinc-600">→</span>}
+              </React.Fragment>
+            ))}
           </div>
-          <div>
-            <h1 className="text-lg font-bold font-heading text-zinc-900">Conversation Center</h1>
-            <p className="text-xs text-zinc-500">Sprint 7.1.0 · Conversation Experience Platform</p>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+            {[
+              ["UCME (retrieval only)", "Retorna MemoryEvidence[] bruto — sem inferência"],
+              ["MRE (reasoning only)",  "Recebe MemoryEvidence[] → produz conhecimento consolidado"],
+              ["Conflitos",             "Detectados, resolvidos, explicados — nunca ignorados"],
+              ["Hipóteses",             "Geradas quando evidência insuficiente — sempre marcadas"],
+            ].map(([k, v]) => (
+              <div key={k} className="border border-zinc-800 rounded p-2">
+                <div className="text-violet-300 font-bold">{k}</div>
+                <div className="text-zinc-500 mt-0.5">{v}</div>
+              </div>
+            ))}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge color={liveState?.isInitialized ? "green" : "zinc"}>
-            {liveState?.isInitialized ? "Inicializado" : "Aguardando"}
-          </Badge>
-          <Badge color={liveState && !["idle", "error"].includes(liveState.status) ? "violet" : "zinc"}>
-            {liveState?.status ?? "idle"}
-          </Badge>
-          <button
-            onClick={loadData}
-            className="p-2 rounded-lg hover:bg-zinc-100 text-zinc-500 transition"
-          >
-            <RotateCcw className="w-4 h-4" />
+
+        {/* Controls */}
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={run} disabled={running}
+            className="bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white px-6 py-2.5 rounded-lg font-bold text-sm">
+            {running ? "Running MRE Tests…" : "▶  Run Full Test Suite (6 Suites)"}
+          </button>
+          <button onClick={() => runDemo("rg")}
+            className="bg-zinc-700 hover:bg-zinc-600 text-white px-4 py-2.5 rounded-lg font-bold text-sm">
+            🔍 Demo: RG (3 fontes)
+          </button>
+          <button onClick={() => runDemo("conflict")}
+            className="bg-red-800 hover:bg-red-700 text-white px-4 py-2.5 rounded-lg font-bold text-sm">
+            ⚠ Demo: Conflito
+          </button>
+          <button onClick={() => runDemo("empty")}
+            className="bg-zinc-800 hover:bg-zinc-700 text-white px-4 py-2.5 rounded-lg font-bold text-sm">
+            ? Demo: Sem evidências
           </button>
         </div>
-      </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
-        <StatCard icon={MessageSquare} label="Total Conversas" value={metrics?.total ?? 0} color="violet" />
-        <StatCard icon={Clock} label="Latencia Media" value={metrics?.avgLatencyMs ? `${metrics.avgLatencyMs}ms` : "—"} color="blue" />
-        <StatCard icon={Zap} label="Tokens/s" value={metrics?.avgTokensPerSecond ?? "—"} color="emerald" />
-        <StatCard icon={TrendingUp} label="Primeiro Token" value={metrics?.avgTimeToFirstToken ? `${metrics.avgTimeToFirstToken}ms` : "—"} color="amber" />
-      </div>
+        {err && <div className="border border-red-700 bg-red-950/20 rounded p-4 text-red-300 text-sm">{err}</div>}
 
-      {/* Tabs */}
-      <div className="flex gap-1 mb-6 overflow-x-auto">
-        {tabs.map((tab) => {
-          const Icon = tab.icon;
+        {/* Demo output */}
+        {demo && (
+          <div className="border border-zinc-700 rounded-lg p-4 bg-zinc-900 text-xs space-y-3">
+            <div className="text-violet-400 font-bold text-sm">🧠 REASONING RESULT — "{demo.result.session.query}"</div>
+
+            <div className="grid grid-cols-4 gap-2">
+              {[
+                ["Confiança", `${(demo.result.confidence * 100).toFixed(0)}%`, demo.result.confidence > 0.7 ? "text-emerald-400" : "text-yellow-400"],
+                ["Evidências", demo.result.reasoning.length, "text-zinc-300"],
+                ["Conflitos", demo.result.conflicts.length, demo.result.conflicts.length > 0 ? "text-red-400" : "text-zinc-500"],
+                ["Hipóteses", demo.result.hypotheses.length, demo.result.hypotheses.length > 0 ? "text-yellow-400" : "text-zinc-500"],
+              ].map(([label, val, cls]) => (
+                <div key={label} className="border border-zinc-800 rounded p-2 text-center">
+                  <div className="text-zinc-500 text-xs">{label}</div>
+                  <div className={`font-bold text-lg ${cls}`}>{val}</div>
+                </div>
+              ))}
+            </div>
+
+            <div className="border border-zinc-800 rounded p-3">
+              <div className="text-zinc-400 text-xs mb-1">CONHECIMENTO CONSOLIDADO</div>
+              <div className="text-zinc-200">{demo.result.consolidated.summary}</div>
+              {demo.result.consolidated.sources.length > 0 && (
+                <div className="text-zinc-600 mt-1">Fontes: {demo.result.consolidated.sources.join(", ")}</div>
+              )}
+            </div>
+
+            {demo.result.conflicts.map(c => (
+              <div key={c.id} className="border border-red-800 bg-red-950/20 rounded p-3">
+                <div className="text-red-400 font-bold">⚠ CONFLITO: {c.description}</div>
+                <div className="text-zinc-400 mt-1">{c.explanation}</div>
+                <div className="text-zinc-600">Resolução: {c.resolution} {c.winner ? `→ winner: ${c.winner}` : "(não resolvido)"}</div>
+              </div>
+            ))}
+
+            {demo.result.hypotheses.map(h => (
+              <div key={h.id} className="border border-yellow-800 bg-yellow-950/20 rounded p-3">
+                <div className="text-yellow-400 font-bold">? HIPÓTESE ({(h.probability * 100).toFixed(0)}%): {h.statement}</div>
+                <div className="text-zinc-600 mt-1">Limitações: {h.limitations}</div>
+              </div>
+            ))}
+
+            <div className="border border-zinc-800 rounded p-3">
+              <div className="text-zinc-400 text-xs mb-2">EXPLICAÇÃO</div>
+              {demo.result.explanation.steps.map((s, i) => (
+                <div key={i} className="text-zinc-500 text-xs py-0.5">• {s}</div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Summary */}
+        {report && (
+          <div className={`border-2 rounded-xl p-6 text-center ${report.certified ? "border-emerald-500 bg-emerald-950/20" : "border-red-700 bg-red-950/10"}`}>
+            <div className={`text-3xl font-bold ${report.certified ? "text-emerald-400" : "text-red-400"}`}>
+              {report.certified ? "✓ MRE SPRINT 7.1.0 CERTIFIED" : "✗ TEST SUITE FAILED"}
+            </div>
+            <div className="text-zinc-400 text-sm mt-2">{report.passed}/{report.total} passed · {report.failed} failed</div>
+          </div>
+        )}
+
+        {/* Suite tables */}
+        {suites.map(({ suite, rows }) => {
+          const sp  = rows.filter(r => r.passed).length;
+          const cls = SUITE_COLORS[suite] ?? "border-zinc-700 text-zinc-300";
           return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap transition ${
-                activeTab === tab.id
-                  ? "bg-zinc-900 text-white"
-                  : "text-zinc-500 hover:bg-zinc-100"
-              }`}
-            >
-              <Icon className="w-3.5 h-3.5" />
-              {tab.label}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* ── Overview ── */}
-      {activeTab === "overview" && (
-        <div className="space-y-4">
-          {/* Live state */}
-          <div className="bg-white border border-zinc-200 rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-zinc-800 mb-3">Estado Atual</h3>
-            {liveState ? (
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="flex justify-between"><span className="text-zinc-500">Status</span><Badge color={liveState.status === "error" ? "red" : liveState.status === "idle" ? "zinc" : "violet"}>{liveState.status}</Badge></div>
-                <div className="flex justify-between"><span className="text-zinc-500">Fase</span><Badge color="blue">{liveState.reasoningPhase || "idle"}</Badge></div>
-                <div className="flex justify-between"><span className="text-zinc-500">Sessao</span><span className="text-zinc-700 font-medium text-xs truncate max-w-[120px]">{liveState.session?.title ?? "—"}</span></div>
-                <div className="flex justify-between"><span className="text-zinc-500">Mensagens</span><span className="text-zinc-700 font-medium">{liveState.messages?.length ?? 0}</span></div>
-                <div className="flex justify-between"><span className="text-zinc-500">Inicializado</span><Badge color={liveState.isInitialized ? "green" : "zinc"}>{liveState.isInitialized ? "Sim" : "Nao"}</Badge></div>
-                <div className="flex justify-between"><span className="text-zinc-500">Streaming</span><Badge color={liveState.streamSession ? "violet" : "zinc"}>{liveState.streamSession ? "Ativo" : "Inativo"}</Badge></div>
+            <div key={suite} className="space-y-1">
+              <div className={`border rounded-lg px-4 py-2 flex justify-between bg-zinc-900 ${cls}`}>
+                <span className="font-bold text-sm">{suite}</span>
+                <span className="text-xs font-mono">{sp}/{rows.length}</span>
               </div>
-            ) : (
-              <p className="text-sm text-zinc-400">Nenhuma sessao ativa</p>
-            )}
-          </div>
-
-          {/* Architecture map */}
-          <div className="bg-white border border-zinc-200 rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-zinc-800 mb-3">Arquitetura CXP</h3>
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-2">
-              {[
-                { name: "ConversationStore", desc: "Estado central", color: "violet" },
-                { name: "ConversationPipeline", desc: "Orquestrador de etapas", color: "blue" },
-                { name: "ConversationStreaming", desc: "Tokens em tempo real", color: "emerald" },
-                { name: "ConversationRecovery", desc: "Recuperacao de falhas", color: "amber" },
-                { name: "ConversationMetrics", desc: "Telemetria completa", color: "zinc" },
-                { name: "ConversationPersistence", desc: "SDK centralizado", color: "violet" },
-                { name: "ConversationContext", desc: "Contexto inteligente", color: "blue" },
-                { name: "ConversationSessionManager", desc: "Ciclo de sessoes", color: "emerald" },
-                { name: "ConversationManager", desc: "API publica unica", color: "amber" },
-              ].map((m) => (
-                <div key={m.name} className="border border-zinc-100 rounded-lg p-3">
-                  <p className="text-xs font-semibold text-zinc-800">{m.name}</p>
-                  <p className="text-xs text-zinc-400 mt-0.5">{m.desc}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Pipeline steps */}
-          <div className="bg-white border border-zinc-200 rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-zinc-800 mb-3">Pipeline de Etapas</h3>
-            <div className="flex flex-wrap gap-2 items-center">
-              {["Prepare", "Persist User", "Context", "Route", "Synthesize", "Stream", "Finalize"].map((step, i, arr) => (
-                <React.Fragment key={step}>
-                  <span className="px-3 py-1.5 bg-zinc-50 border border-zinc-200 rounded-lg text-xs font-medium text-zinc-700">{step}</span>
-                  {i < arr.length - 1 && <span className="text-zinc-300 text-xs">→</span>}
-                </React.Fragment>
-              ))}
-            </div>
-            <p className="text-xs text-zinc-400 mt-3">Cada etapa possui timeout, metricas e recuperacao automatica.</p>
-          </div>
-
-          {/* Error/recovery stats */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-white border border-zinc-200 rounded-xl p-4">
-              <p className="text-xs text-zinc-500 mb-1">Taxa de Erro</p>
-              <p className="text-2xl font-bold text-zinc-800">{metrics?.errorRate ?? "0%"}</p>
-            </div>
-            <div className="bg-white border border-zinc-200 rounded-xl p-4">
-              <p className="text-xs text-zinc-500 mb-1">Cancelamentos</p>
-              <p className="text-2xl font-bold text-zinc-800">{metrics?.cancellationRate ?? "0%"}</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Streaming ── */}
-      {activeTab === "streaming" && (
-        <div className="space-y-4">
-          <div className="bg-white border border-zinc-200 rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-zinc-800 mb-3">Sessao de Streaming Atual</h3>
-            {liveState?.streamSession ? (
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between"><span className="text-zinc-500">Estado</span><Badge color="violet">{liveState.streamSession.state}</Badge></div>
-                <div className="flex justify-between"><span className="text-zinc-500">Tokens</span><span className="font-medium">{liveState.streamSession.totalTokens}</span></div>
-                <div className="flex justify-between"><span className="text-zinc-500">Tokens/s</span><span className="font-medium">{liveState.streamSession.tokensPerSecond?.toFixed(1) ?? "—"}</span></div>
-                <div className="flex justify-between"><span className="text-zinc-500">Primeiro Token</span><span className="font-medium">{liveState.streamSession.firstTokenAt ? `${liveState.streamSession.firstTokenAt - (liveState.streamSession.startedAt ?? 0)}ms` : "—"}</span></div>
-              </div>
-            ) : (
-              <p className="text-sm text-zinc-400">Nenhuma sessao de streaming ativa</p>
-            )}
-          </div>
-
-          <div className="bg-white border border-zinc-200 rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-zinc-800 mb-3">Como o Streaming Funciona</h3>
-            <div className="space-y-2 text-sm text-zinc-600">
-              <p>1. LLM retorna resposta completa via <code className="bg-zinc-100 px-1 rounded text-xs">InvokeLLM()</code></p>
-              <p>2. <code className="bg-zinc-100 px-1 rounded text-xs">ConversationStreaming</code> divide em tokens (palavras)</p>
-              <p>3. Cada token e emitido com delay variavel (8-18ms) para efeito natural</p>
-              <p>4. <code className="bg-zinc-100 px-1 rounded text-xs">StreamingMessage</code> renderiza parcialmente com cursor piscando</p>
-              <p>5. Ao terminar, mensagem e persistida e placeholder substituido</p>
-              <p className="text-xs text-zinc-400 mt-2">Infraestrutura pronta para SSE e WebSocket reais — apenas o body muda.</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Recovery ── */}
-      {activeTab === "recovery" && (
-        <div className="space-y-4">
-          <div className="bg-white border border-zinc-200 rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-zinc-800 mb-3">Historico de Recuperacao</h3>
-            {recovery.length === 0 ? (
-              <p className="text-sm text-zinc-400">Nenhuma recuperacao registrada — sistema estavel.</p>
-            ) : (
-              <div className="space-y-2">
-                {recovery.map((r) => (
-                  <div key={r.id} className="flex items-center gap-3 py-2 border-b border-zinc-50">
-                    {r.success
-                      ? <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                      : <AlertTriangle className="w-4 h-4 text-red-500" />}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-zinc-700">{r.strategy} — tentativa {r.attemptNumber}</p>
-                      <p className="text-xs text-zinc-400 truncate">{r.reason}</p>
-                    </div>
-                    <Badge color={r.success ? "green" : "red"}>{r.success ? "OK" : "FALHOU"}</Badge>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="bg-white border border-zinc-200 rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-zinc-800 mb-2">Garantias de Recovery</h3>
-            <ul className="space-y-1.5 text-sm text-zinc-600">
-              {[
-                "Nenhuma excecao deixa loading=true permanentemente",
-                "Timeout de 30s por execucao de pipeline",
-                "safeReset() sempre chamado no finally",
-                "Backoff exponencial entre tentativas",
-                "Status resetado para idle ou error sempre",
-              ].map((g) => (
-                <li key={g} className="flex items-center gap-2">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                  {g}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      )}
-
-      {/* ── Events ── */}
-      {activeTab === "events" && (
-        <div className="bg-white border border-zinc-200 rounded-xl p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-zinc-800">Historico de Eventos</h3>
-            <button onClick={loadData} className="text-xs text-violet-600 hover:text-violet-700">Atualizar</button>
-          </div>
-          {events.length === 0 ? (
-            <p className="text-sm text-zinc-400">Nenhum evento registrado ainda.</p>
-          ) : (
-            <div className="space-y-1 max-h-96 overflow-y-auto">
-              {events.map((ev, i) => (
-                <div key={i} className="flex items-center gap-2 py-1.5 border-b border-zinc-50 last:border-0">
-                  <span className="text-xs font-mono text-zinc-400 shrink-0 w-20 truncate">
-                    {new Date(ev.timestamp).toLocaleTimeString("pt-BR", { hour12: false })}
-                  </span>
-                  <Badge color={
-                    ev.type.includes("ERROR") || ev.type.includes("FAIL") ? "red" :
-                    ev.type.includes("STREAM") ? "violet" :
-                    ev.type.includes("RECOVERY") ? "amber" :
-                    ev.type.includes("SAVE") || ev.type.includes("MESSAGE") ? "blue" : "zinc"
-                  }>{ev.type}</Badge>
-                  {ev.executionId && (
-                    <span className="text-xs text-zinc-300 font-mono truncate">{ev.executionId.slice(-8)}</span>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── Metrics ── */}
-      {activeTab === "metrics" && (
-        <div className="space-y-4">
-          <div className="bg-white border border-zinc-200 rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-zinc-800 mb-3">Metricas Recentes</h3>
-            {detailedMetrics.length === 0 ? (
-              <p className="text-sm text-zinc-400">Nenhuma conversa registrada ainda.</p>
-            ) : (
-              <div className="overflow-x-auto">
+              <div className="border border-zinc-800 rounded-lg overflow-hidden">
                 <table className="w-full text-xs">
-                  <thead>
-                    <tr className="text-zinc-400 border-b border-zinc-100">
-                      <th className="text-left py-2 pr-3">ID</th>
-                      <th className="text-right py-2 pr-3">Total</th>
-                      <th className="text-right py-2 pr-3">1o Token</th>
-                      <th className="text-right py-2 pr-3">Tokens/s</th>
-                      <th className="text-right py-2 pr-3">Recovery</th>
-                      <th className="text-right py-2">Status</th>
+                  <thead className="bg-zinc-900 text-zinc-500">
+                    <tr>
+                      <th className="text-left p-2 pl-3 w-96">Test</th>
+                      <th className="text-left p-2">Detail</th>
+                      <th className="text-center p-2 pr-3 w-14">Status</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    {detailedMetrics.map((m) => (
-                      <tr key={m.executionId} className="border-b border-zinc-50">
-                        <td className="py-2 pr-3 font-mono text-zinc-400">{m.executionId.slice(-8)}</td>
-                        <td className="text-right py-2 pr-3">{m.totalDurationMs}ms</td>
-                        <td className="text-right py-2 pr-3">{m.timeToFirstToken ?? "—"}ms</td>
-                        <td className="text-right py-2 pr-3">{m.tokensPerSecond?.toFixed(1) ?? "—"}</td>
-                        <td className="text-right py-2 pr-3">{m.recoveryAttempts}</td>
-                        <td className="text-right py-2">
-                          <Badge color={m.error ? "red" : m.cancelled ? "amber" : "green"}>
-                            {m.error ? "Erro" : m.cancelled ? "Cancelado" : "OK"}
-                          </Badge>
-                        </td>
+                  <tbody className="divide-y divide-zinc-800/60">
+                    {rows.map((r, i) => (
+                      <tr key={i} className={r.passed ? "" : "bg-red-950/20"}>
+                        <td className="p-2 pl-3 text-zinc-300">{r.name}</td>
+                        <td className="p-2 text-zinc-500 truncate max-w-xs" title={r.detail}>{r.detail}</td>
+                        <td className="p-2 pr-3 text-center"><Badge ok={r.passed} /></td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+                {rows.filter(r => !r.passed).map((r, i) => (
+                  <div key={i} className="border-t border-red-800 bg-red-950/10 px-3 py-1.5 text-red-300 text-xs">
+                    ✗ [{r.name}] {r.error}
+                  </div>
+                ))}
               </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ── Tests ── */}
-      {activeTab === "tests" && (
-        <div className="space-y-4">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={runTests}
-              disabled={testRunning}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-zinc-900 text-white text-sm font-medium hover:bg-zinc-800 disabled:opacity-50 transition"
-            >
-              {testRunning
-                ? <><Loader2 className="w-4 h-4 animate-spin" /> Executando...</>
-                : <><GitBranch className="w-4 h-4" /> Executar Suite CXP</>}
-            </button>
-
-            {testReport && !testReport.error && (
-              <Badge color={testReport.verdict === "PASS" ? "green" : "red"}>
-                {testReport.verdict} — {testReport.totalPassed}/{testReport.totalTests}
-              </Badge>
-            )}
-          </div>
-
-          {testReport?.error && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-              <p className="text-sm text-red-700">{testReport.error}</p>
             </div>
-          )}
+          );
+        })}
 
-          {testReport && !testReport.error && (
-            <>
-              {/* Architectural verdict */}
-              <div className={`rounded-xl p-4 border ${testReport.verdict === "PASS" ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
-                <p className={`text-sm font-bold ${testReport.verdict === "PASS" ? "text-emerald-700" : "text-red-700"}`}>
-                  {testReport.architecturalStatus}
-                </p>
-                <p className="text-xs text-zinc-500 mt-1">
-                  {testReport.totalPassed} aprovados · {testReport.totalFailed} reprovados · {testReport.durationMs}ms
-                </p>
-              </div>
-
-              {testReport.suites.map((suite) => (
-                <div key={suite.suite} className="bg-white border border-zinc-200 rounded-xl p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-sm font-semibold text-zinc-800">{suite.suite}</h4>
-                    <div className="flex items-center gap-2">
-                      <Badge color={suite.failed === 0 ? "green" : "red"}>
-                        {suite.passed}/{suite.total}
-                      </Badge>
-                      <span className="text-xs text-zinc-400">{suite.durationMs}ms</span>
-                    </div>
-                  </div>
-                  <div className="space-y-0.5">
-                    {suite.results.map((r) => <TestRow key={r.name} result={r} />)}
-                  </div>
-                  {suite.results.filter((r) => !r.passed).map((r) => (
-                    <div key={r.name} className="mt-2 bg-red-50 rounded-lg p-3">
-                      <p className="text-xs font-medium text-red-700">{r.name}</p>
-                      <p className="text-xs text-red-500 mt-1">{r.error}</p>
-                    </div>
-                  ))}
-                </div>
-              ))}
-            </>
-          )}
-        </div>
-      )}
+      </div>
     </div>
   );
 }
