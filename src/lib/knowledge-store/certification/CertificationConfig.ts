@@ -38,7 +38,6 @@ export const CertificationConfig = Object.freeze({
   // ── AST complexity thresholds ─────────────────────────────────────────────────
   maxCyclomaticComplexity: 10,
   maxFunctionParams:        5,
-  maxFunctionLines:        60,
 
   // ── Performance benchmark settings ───────────────────────────────────────────
   benchmarkIterations:  200,

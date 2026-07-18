@@ -160,7 +160,6 @@ function analyzeSource(file: string, source: string): SourceFinding[] {
   lines.forEach((line, idx) => {
     const trimmed    = line.trim();
     const isComment  = trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*");
-    const col1       = line.indexOf(trimmed) + 1;
 
     for (const rule of RULES) {
       if (rule.codeOnly && isComment) continue;

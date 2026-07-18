@@ -149,7 +149,6 @@ export default function PhaseEF393Page() {
 
         {phase === "done" && report && !report.fatalError && (
           <>
-            <CertificationSummary report={report} />
             <CertificationMetrics report={report} />
             <CertificationTabs
               activeTab={activeTab}

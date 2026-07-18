@@ -417,7 +417,7 @@ async function runSOLIDAudit(): Promise<SOLIDReport> {
 export async function runFullAudit(): Promise<FullAuditReport> {
   const t0 = performance.now();
 
-  const [integrity, immutability, performance, solid] = await Promise.all([
+  const [integrityResult, immutabilityResult, performanceResult, solidResult] = await Promise.all([
     runIntegrityAudit(),
     runImmutabilityAudit(),
     runPerformanceAudit(),
@@ -425,13 +425,13 @@ export async function runFullAudit(): Promise<FullAuditReport> {
   ]);
 
   const allPassed =
-    integrity.ok && immutability.ok && performance.benchmarks.length > 0 && solid.ok;
+    integrityResult.ok && immutabilityResult.ok && performanceResult.benchmarks.length > 0 && solidResult.ok;
 
   return Object.freeze({
-    integrity,
-    immutability,
-    performance,
-    solid,
+    integrity:    integrityResult,
+    immutability: immutabilityResult,
+    performance:  performanceResult,
+    solid:        solidResult,
     totalDurationMs: Math.round((performance.now() - t0) * 100) / 100,
     allPassed,
     executedAt: Date.now(),
