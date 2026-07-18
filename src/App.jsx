@@ -198,6 +198,7 @@ import PhaseKB01Page from '@/pages/PhaseKB01Page';
 import PhaseKB02Page from '@/pages/PhaseKB02Page';
 import PhaseKB03Page from '@/pages/PhaseKB03Page';
 import PhaseKB04Page from '@/pages/PhaseKB04Page';
+import PhaseKB05Page from '@/pages/PhaseKB05Page';
 
 const AuthenticatedApp = () => {
   console.log('[RENDER] AuthenticatedApp');
@@ -415,6 +416,7 @@ const AuthenticatedApp = () => {
           <Route path="/kb02" element={<PhaseKB02Page />} />
           <Route path="/kb03" element={<PhaseKB03Page />} />
           <Route path="/kb04" element={<PhaseKB04Page />} />
+          <Route path="/kb05" element={<PhaseKB05Page />} />
         </Route>
       </Route>
       <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />
