@@ -216,6 +216,7 @@ import KnowledgeIngestionDashboard from '@/pages/KnowledgeIngestionDashboard';
 import PhaseEF38Page from '@/pages/PhaseEF38Page';
 import PhaseEF381Page from '@/pages/PhaseEF381Page';
 import PhaseEF39Page from '@/pages/PhaseEF39Page';
+import PhaseEF393Page from '@/pages/PhaseEF393Page';
 
 const AuthenticatedApp = () => {
   console.log('[RENDER] AuthenticatedApp');
@@ -451,6 +452,7 @@ const AuthenticatedApp = () => {
           <Route path="/ef38-uks" element={<PhaseEF38Page />} />
           <Route path="/ef381-store" element={<PhaseEF381Page />} />
           <Route path="/ef39-memory-store" element={<PhaseEF39Page />} />
+          <Route path="/ef393-certification" element={<PhaseEF393Page />} />
         </Route>
       </Route>
       <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />
