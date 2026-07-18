@@ -204,6 +204,7 @@ import PhaseIntegration02Page from '@/pages/PhaseIntegration02Page';
 import PhaseIntegration03Page from '@/pages/PhaseIntegration03Page';
 import PhaseIntegration04Page from '@/pages/PhaseIntegration04Page';
 import PhaseIntegration05Page from '@/pages/PhaseIntegration05Page';
+import PlatformAuditPage from '@/pages/PlatformAuditPage';
 
 const AuthenticatedApp = () => {
   console.log('[RENDER] AuthenticatedApp');
@@ -427,6 +428,7 @@ const AuthenticatedApp = () => {
           <Route path="/integration03" element={<PhaseIntegration03Page />} />
           <Route path="/integration04" element={<PhaseIntegration04Page />} />
           <Route path="/integration05" element={<PhaseIntegration05Page />} />
+          <Route path="/platform-audit" element={<PlatformAuditPage />} />
         </Route>
       </Route>
       <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />
