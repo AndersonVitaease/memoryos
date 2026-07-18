@@ -5,7 +5,7 @@
  * Regression: zero breaking changes, immutability preserved.
  */
 
-import { ExecutionStateFactory } from "../ExecutionState";
+import { ExecutionStateFactory, createEmptyExecutionState } from "../ExecutionState";
 import { ExecutionStage }        from "../ExecutionStage";
 
 export interface CertResult {
@@ -165,6 +165,90 @@ function suite114(): CertResult[] {
   return results;
 }
 
+// ── Suite 115 — createEmptyExecutionState returns distinct instances ──────────
+
+function suite115(): CertResult[] {
+  const results: CertResult[] = [];
+  const S = "115";
+
+  const a = createEmptyExecutionState();
+  const b = createEmptyExecutionState();
+
+  // Different object references
+  results.push(
+    a !== b
+      ? pass(S, "two calls return different instances")
+      : fail(S, "two calls return different instances", "same reference — shared state")
+  );
+
+  // Structurally equal
+  results.push(
+    a.executionId === b.executionId &&
+    a.goalId      === b.goalId     &&
+    a.pipelineId  === b.pipelineId &&
+    a.status      === b.status
+      ? pass(S, "instances are structurally equal")
+      : fail(S, "instances are structurally equal", "fields differ")
+  );
+
+  // Both frozen
+  results.push(Object.isFrozen(a) ? pass(S, "instance A is frozen") : fail(S, "instance A is frozen", "not frozen"));
+  results.push(Object.isFrozen(b) ? pass(S, "instance B is frozen") : fail(S, "instance B is frozen", "not frozen"));
+
+  // Factory function exported (not a constant)
+  results.push(
+    typeof createEmptyExecutionState === "function"
+      ? pass(S, "createEmptyExecutionState is a function (not a constant)")
+      : fail(S, "createEmptyExecutionState is a function (not a constant)", typeof createEmptyExecutionState)
+  );
+
+  return results;
+}
+
+// ── Suite 116 — Pipeline isolation: two concurrent states do not share refs ───
+
+function suite116(): CertResult[] {
+  const results: CertResult[] = [];
+  const S = "116";
+
+  // Simulate two simultaneous pipelines
+  const stateA = ExecutionStateFactory.moveToStage(createEmptyExecutionState(), ExecutionStage.USER_INPUT);
+  const stateB = ExecutionStateFactory.moveToStage(createEmptyExecutionState(), ExecutionStage.USER_INPUT);
+
+  // Modify pipeline A
+  const stateAModified = ExecutionStateFactory.moveToStage(stateA, ExecutionStage.KERNEL);
+
+  // Pipeline B must remain at USER_INPUT
+  results.push(
+    stateB.currentStage === ExecutionStage.USER_INPUT
+      ? pass(S, "pipeline B unaffected by pipeline A mutation")
+      : fail(S, "pipeline B unaffected by pipeline A mutation", `got ${stateB.currentStage}`)
+  );
+
+  // Original stateA also unaffected (immutability)
+  results.push(
+    stateA.currentStage === ExecutionStage.USER_INPUT
+      ? pass(S, "original stateA unaffected after moveToStage")
+      : fail(S, "original stateA unaffected after moveToStage", `got ${stateA.currentStage}`)
+  );
+
+  // Modified A has correct stage
+  results.push(
+    stateAModified.currentStage === ExecutionStage.KERNEL
+      ? pass(S, "stateAModified has KERNEL stage")
+      : fail(S, "stateAModified has KERNEL stage", `got ${stateAModified.currentStage}`)
+  );
+
+  // A and B are different objects
+  results.push(
+    stateA !== stateB
+      ? pass(S, "pipeline A and B are distinct state objects")
+      : fail(S, "pipeline A and B are distinct state objects", "same reference")
+  );
+
+  return results;
+}
+
 // ── Runner ────────────────────────────────────────────────────────────────────
 
 export function runExecutionStateDecouplingCert(): { results: CertResult[]; passed: number; total: number; certified: boolean } {
@@ -173,6 +257,8 @@ export function runExecutionStateDecouplingCert(): { results: CertResult[]; pass
     ...suite112(),
     ...suite113(),
     ...suite114(),
+    ...suite115(),
+    ...suite116(),
   ];
   const passed = results.filter(r => r.passed).length;
   return { results, passed, total: results.length, certified: passed === results.length };

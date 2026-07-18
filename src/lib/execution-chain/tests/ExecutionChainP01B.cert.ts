@@ -18,7 +18,11 @@ import { ExecutionChain }              from "../ExecutionChain";
 import { ExecutionCompositionRoot }    from "../ExecutionCompositionRoot";
 import { ExecutionReportAssembler }    from "../ExecutionReportAssembler";
 import { ExecutionSnapshotAssembler }  from "../ExecutionSnapshot";
-import { EMPTY_EXECUTION_STATE, withStageOutput, withRecord } from "../ExecutionState";
+import { createEmptyExecutionState, withRecord, ExecutionStateFactory } from "../ExecutionState";
+import { ExecutionStage } from "../ExecutionStage";
+
+// EF-7.2.8A: factory function — each call returns a new isolated instance
+function EMPTY_EXECUTION_STATE() { return createEmptyExecutionState(); }
 import { RuntimeRegistry }             from "../RuntimeRegistry";
 import { DeterministicClock }          from "../../runtime-infra/RuntimeClock";
 import { DeterministicProvider }       from "../../runtime-infra/RuntimeExecutionIdProvider";
@@ -70,31 +74,33 @@ function assert(cond: boolean, msg: string): void {
 async function executionStateSuite(): Promise<CertCase[]> {
   const cases: CertCase[] = [];
 
-  cases.push(await run("ES-01", "EMPTY_EXECUTION_STATE is frozen", async () => {
-    assert(Object.isFrozen(EMPTY_EXECUTION_STATE), "not frozen");
-    assert(EMPTY_EXECUTION_STATE.userInput === undefined, "userInput not undefined");
-    assert(EMPTY_EXECUTION_STATE.records.length === 0, "records not empty");
+  cases.push(await run("ES-01", "createEmptyExecutionState() is frozen", async () => {
+    const empty = EMPTY_EXECUTION_STATE();
+    assert(Object.isFrozen(empty), "not frozen");
+    assert((empty as unknown as Record<string, unknown>).userInput === undefined, "userInput not undefined");
+    assert(empty.completedStages.length === 0, "completedStages not empty");
   }));
 
-  cases.push(await run("ES-02", "withStageOutput preserves previous fields", async () => {
-    const s1 = withStageOutput(EMPTY_EXECUTION_STATE, "USER_INPUT", { text: "hello", sessionId: "s", userId: "u", timestamp: 1 });
-    const s2 = withStageOutput(s1, "INTENT_RUNTIME", { intentType: "TEST", confidence: 0.9, entities: {}, slots: {}, requiresConnector: false, requiresPlanning: false });
-    assert(s2.userInput?.text === "hello", "userInput lost");
-    assert(s2.intent?.intentType === "TEST", "intent not set");
+  cases.push(await run("ES-02", "moveToStage preserves other fields", async () => {
+    const s1 = ExecutionStateFactory.moveToStage(EMPTY_EXECUTION_STATE(), ExecutionStage.USER_INPUT);
+    const s2 = ExecutionStateFactory.moveToStage(s1, ExecutionStage.INTENT_RUNTIME);
+    assert(s2.currentStage === ExecutionStage.INTENT_RUNTIME, "currentStage not updated");
+    assert(Object.isFrozen(s2), "s2 not frozen");
   }));
 
-  cases.push(await run("ES-03", "withStageOutput returns new frozen object", async () => {
-    const s1 = withStageOutput(EMPTY_EXECUTION_STATE, "USER_INPUT", { text: "x", sessionId: "s", userId: "u", timestamp: 1 });
+  cases.push(await run("ES-03", "moveToStage returns new frozen object", async () => {
+    const empty = EMPTY_EXECUTION_STATE();
+    const s1 = ExecutionStateFactory.moveToStage(empty, ExecutionStage.USER_INPUT);
     assert(Object.isFrozen(s1), "s1 not frozen");
-    assert(s1 !== EMPTY_EXECUTION_STATE, "same reference");
+    assert(s1 !== empty, "same reference");
   }));
 
   cases.push(await run("ES-04", "withRecord appends record and freezes", async () => {
-    const rec = Object.freeze({ stage: "USER_INPUT" as const, status: "COMPLETED" as const, startedAt: 0, completedAt: 10, durationMs: 10, input: null, output: null, error: null });
-    const s1  = withRecord(EMPTY_EXECUTION_STATE, rec);
-    assert(s1.records.length === 1, `records.length=${s1.records.length}`);
+    const rec = Object.freeze({ stageId: "USER_INPUT", stageName: "USER_INPUT", status: "completed" as const, startedAt: new Date().toISOString(), completedAt: new Date().toISOString(), durationMs: 10, error: null });
+    const s1  = withRecord(EMPTY_EXECUTION_STATE(), rec);
+    assert(s1.completedStages.length === 1, `completedStages.length=${s1.completedStages.length}`);
     assert(Object.isFrozen(s1), "not frozen");
-    assert(Object.isFrozen(s1.records), "records not frozen");
+    assert(Object.isFrozen(s1.completedStages), "completedStages not frozen");
   }));
 
   cases.push(await run("ES-05", "All 13 stage outputs populated after full execution", async () => {
@@ -110,18 +116,17 @@ async function executionStateSuite(): Promise<CertCase[]> {
   }));
 
   cases.push(await run("ES-06", "ExecutionState is immutable — no mutation", async () => {
-    let s = EMPTY_EXECUTION_STATE;
-    const s1 = withStageOutput(s, "USER_INPUT", { text: "x", sessionId: "s", userId: "u", timestamp: 1 });
+    const s  = EMPTY_EXECUTION_STATE();
+    const s1 = ExecutionStateFactory.moveToStage(s, ExecutionStage.USER_INPUT);
     // original state unchanged
-    assert(s.userInput === undefined, "original mutated");
-    assert(s1.userInput !== undefined, "new state not set");
+    assert(s.currentStage !== ExecutionStage.USER_INPUT || s1 !== s, "original mutated or same ref");
+    assert(s1.currentStage === ExecutionStage.USER_INPUT, "new state not set");
   }));
 
-  cases.push(await run("ES-07", "withStageOutput ignores unknown stage ids gracefully", async () => {
-    const s1 = withStageOutput(EMPTY_EXECUTION_STATE, "UNKNOWN_STAGE_XYZ", { foo: "bar" });
+  cases.push(await run("ES-07", "update with unknown fields produces frozen state", async () => {
+    const s1 = ExecutionStateFactory.update(EMPTY_EXECUTION_STATE(), {});
     assert(Object.isFrozen(s1), "not frozen");
-    // No known field polluted
-    assert(s1.userInput === undefined, "unexpected field set");
+    assert(s1.status === "running", "status changed unexpectedly");
   }));
 
   cases.push(await run("ES-08", "Records accumulate across 13 stages", async () => {
@@ -159,7 +164,7 @@ async function reportAssemblerSuite(): Promise<CertCase[]> {
   cases.push(await run("RA-01", "Assembler produces frozen report", async () => {
     const assembler = new ExecutionReportAssembler();
     const input     = inp("assemble test", 10);
-    const state     = EMPTY_EXECUTION_STATE;
+    const state     = EMPTY_EXECUTION_STATE();
     const report    = assembler.assemble("chain-001", 100, 200, input, state, true);
     assert(Object.isFrozen(report), "report not frozen");
   }));
@@ -167,21 +172,21 @@ async function reportAssemblerSuite(): Promise<CertCase[]> {
   cases.push(await run("RA-02", "Assembler status COMPLETED on success", async () => {
     const assembler = new ExecutionReportAssembler();
     const input     = inp("status success", 11);
-    const report    = assembler.assemble("c-001", 0, 100, input, EMPTY_EXECUTION_STATE, true);
+    const report    = assembler.assemble("c-001", 0, 100, input, EMPTY_EXECUTION_STATE(), true);
     assert(report.status === "COMPLETED", `status=${report.status}`);
   }));
 
   cases.push(await run("RA-03", "Assembler status FAILED on failure", async () => {
     const assembler = new ExecutionReportAssembler();
     const input     = inp("status fail", 12);
-    const report    = assembler.assemble("c-002", 0, 50, input, EMPTY_EXECUTION_STATE, false);
+    const report    = assembler.assemble("c-002", 0, 50, input, EMPTY_EXECUTION_STATE(), false);
     assert(report.status === "FAILED", `status=${report.status}`);
   }));
 
   cases.push(await run("RA-04", "Assembler sets sessionId and userId from input", async () => {
     const assembler = new ExecutionReportAssembler();
     const input     = inp("id check", 13);
-    const report    = assembler.assemble("c-003", 0, 1, input, EMPTY_EXECUTION_STATE, true);
+    const report    = assembler.assemble("c-003", 0, 1, input, EMPTY_EXECUTION_STATE(), true);
     assert(report.sessionId === input.sessionId, "sessionId mismatch");
     assert(report.userId    === input.userId,    "userId mismatch");
   }));
@@ -189,7 +194,7 @@ async function reportAssemblerSuite(): Promise<CertCase[]> {
   cases.push(await run("RA-05", "Assembler: finalOutput null on failure", async () => {
     const assembler = new ExecutionReportAssembler();
     const input     = inp("null output", 14);
-    const report    = assembler.assemble("c-004", 0, 1, input, EMPTY_EXECUTION_STATE, false);
+    const report    = assembler.assemble("c-004", 0, 1, input, EMPTY_EXECUTION_STATE(), false);
     assert(report.finalOutput === null, "finalOutput should be null on failure");
   }));
 

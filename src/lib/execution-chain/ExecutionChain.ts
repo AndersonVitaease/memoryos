@@ -14,7 +14,7 @@
 
 import { ExecutionCompositionRoot }     from "./ExecutionCompositionRoot";
 import type { ComposedRuntime, CompositionDeps } from "./ExecutionCompositionRoot";
-import { EMPTY_EXECUTION_STATE, ExecutionStateFactory } from "./ExecutionState";
+import { createEmptyExecutionState, ExecutionStateFactory } from "./ExecutionState";
 import type { ExecutionReportAssembler }           from "./ExecutionReportAssembler";
 import type { ExecutionState }          from "./ExecutionState";
 import { ExecutionStage }               from "./ExecutionStage";
@@ -50,8 +50,8 @@ export class ExecutionChain {
     this._rt.metrics.recordExecution();
     this._emit(EV_EXEC_STARTED, chainId, "ExecutionChain started");
 
-    // EF-7.2.8: generic moveToStage — no stage-specific helpers
-    const initialState = ExecutionStateFactory.moveToStage(EMPTY_EXECUTION_STATE, ExecutionStage.USER_INPUT);
+    // EF-7.2.8A: new instance per execution — zero shared state
+    const initialState = ExecutionStateFactory.moveToStage(createEmptyExecutionState(), ExecutionStage.USER_INPUT);
 
     const evidences: ExplainabilityEvidence[] = [];
     const ctx = {

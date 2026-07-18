@@ -161,10 +161,18 @@ export function withRecord(state: ExecutionState, record: StageRecord): Executio
   return ExecutionStateFactory.completeStage(state, record);
 }
 
-/** Canonical empty state — use as initial value before the pipeline starts. */
-export const EMPTY_EXECUTION_STATE: ExecutionState = ExecutionStateFactory.create({
-  executionId: "",
-  goalId:      "",
-  pipelineId:  "",
-  stages:      [],
-});
+/**
+ * createEmptyExecutionState — official pipeline initialization point.
+ *
+ * Each call returns a NEW ExecutionState instance.
+ * No global shared state. Every execution is fully isolated.
+ * Creation exclusively via ExecutionStateFactory.create() — no `new ExecutionState()`.
+ */
+export function createEmptyExecutionState(): ExecutionState {
+  return ExecutionStateFactory.create({
+    executionId: "",
+    goalId:      "",
+    pipelineId:  "",
+    stages:      [],
+  });
+}
