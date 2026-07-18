@@ -1,23 +1,18 @@
-// MemoryStoreIndex.ts — Sprint EF-39
+// MemoryStoreIndex.ts — Sprint EF-39.1 (hardened)
 // Maintains O(1) lookup indexes for all record dimensions.
+// EF-39.1: update() now correctly handles ALL index dimensions (type, source, conversationId, date).
+// EF-39.1: _setDel() auto-removes empty Sets so no index ever contains stale empty sets.
 
 import type { KnowledgeRecord, KnowledgeRecordStatus } from "../KnowledgeStoreTypes";
 import type { MemoryType } from "@/lib/ingestion/KipTypes";
 
 export class MemoryStoreIndex {
-  // id → record id (identity; primary key)
   private readonly _byId      = new Map<string, string>();
-  // type → Set<id>
   private readonly _byType    = new Map<MemoryType, Set<string>>();
-  // status → Set<id>
   private readonly _byStatus  = new Map<KnowledgeRecordStatus, Set<string>>();
-  // tag → Set<id>
   private readonly _byTag     = new Map<string, Set<string>>();
-  // source → Set<id>
   private readonly _bySource  = new Map<string, Set<string>>();
-  // conversationId → Set<id>
   private readonly _byConv    = new Map<string, Set<string>>();
-  // dateKey (YYYY-MM-DD) → Set<id>
   private readonly _byDate    = new Map<string, Set<string>>();
 
   private _dateKey(ts: number) { return new Date(ts).toISOString().slice(0, 10); }
@@ -32,11 +27,36 @@ export class MemoryStoreIndex {
     r.tags.forEach(t => this._setAdd(this._byTag, t, r.id));
   }
 
+  // EF-39.1: fully update ALL dimensions that may have changed between prev and next.
   update(prev: KnowledgeRecord, next: KnowledgeRecord): void {
-    // Remove old status/type/tag/date, add new
-    this._setDel(this._byStatus, prev.status, prev.id);
-    this._setAdd(this._byStatus, next.status, next.id);
-    // Tags diff
+    // status
+    if (prev.status !== next.status) {
+      this._setDel(this._byStatus, prev.status, prev.id);
+      this._setAdd(this._byStatus, next.status, next.id);
+    }
+
+    // type
+    if (prev.type !== next.type) {
+      this._setDel(this._byType, prev.type, prev.id);
+      this._setAdd(this._byType, next.type, next.id);
+    }
+
+    // source
+    if (prev.evidence.source !== next.evidence.source) {
+      this._setDel(this._bySource, prev.evidence.source, prev.id);
+      this._setAdd(this._bySource, next.evidence.source, next.id);
+    }
+
+    // conversationId
+    if (prev.evidence.conversationId !== next.evidence.conversationId) {
+      this._setDel(this._byConv, prev.evidence.conversationId, prev.id);
+      this._setAdd(this._byConv, next.evidence.conversationId, next.id);
+    }
+
+    // date (createdAt never changes on update — updatedAt does, but we index by createdAt)
+    // No action needed for date index.
+
+    // tags diff
     const prevTags = new Set(prev.tags);
     const nextTags = new Set(next.tags);
     prevTags.forEach(t => { if (!nextTags.has(t)) this._setDel(this._byTag, t, prev.id); });
@@ -65,13 +85,13 @@ export class MemoryStoreIndex {
 
   stats() {
     return Object.freeze({
-      totalIds:    this._byId.size,
-      types:       this._byType.size,
-      statuses:    this._byStatus.size,
-      tags:        this._byTag.size,
-      sources:     this._bySource.size,
-      convs:       this._byConv.size,
-      dates:       this._byDate.size,
+      totalIds:  this._byId.size,
+      types:     this._byType.size,
+      statuses:  this._byStatus.size,
+      tags:      this._byTag.size,
+      sources:   this._bySource.size,
+      convs:     this._byConv.size,
+      dates:     this._byDate.size,
     });
   }
 
@@ -79,7 +99,12 @@ export class MemoryStoreIndex {
     if (!map.has(key)) map.set(key, new Set());
     map.get(key)!.add(id);
   }
+
+  // EF-39.1: auto-remove the Map entry when the Set becomes empty.
   private _setDel<K>(map: Map<K, Set<string>>, key: K, id: string) {
-    map.get(key)?.delete(id);
+    const set = map.get(key);
+    if (!set) return;
+    set.delete(id);
+    if (set.size === 0) map.delete(key);
   }
 }

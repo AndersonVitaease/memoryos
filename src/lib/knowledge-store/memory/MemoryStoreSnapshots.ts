@@ -1,5 +1,11 @@
-// MemoryStoreSnapshots.ts — Sprint EF-39
+// MemoryStoreSnapshots.ts — Sprint EF-39.1
 // Immutable read-only snapshots of store state.
+//
+// ARCHITECTURAL NOTE — EF-39.1:
+// CURRENT IMPLEMENTATION: each snapshot copies the full record array (O(n) memory per snapshot).
+// FUTURE IMPLEMENTATION: consider Copy-on-Write (CoW), structural sharing, or delta snapshots
+// to reduce memory overhead for large stores or frequent snapshot operations.
+// The public API (take, get, listAll, latest) must remain unchanged after any such refactor.
 
 import type { KnowledgeRecord } from "../KnowledgeStoreTypes";
 import type { StoreStatisticsSnapshot } from "./MemoryStoreStatistics";

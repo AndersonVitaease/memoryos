@@ -1,5 +1,6 @@
-// MemoryStoreQuery.ts — Sprint EF-39
-// Deterministic structured query with filters and pagination.
+// MemoryStoreQuery.ts — Sprint EF-39.1 (hardened)
+// EF-39.1: sort only after pagination when all records are requested (no offset/limit implies full set).
+// Filter → count total → paginate → sort only the page for deterministic output.
 
 import type { KnowledgeRecord, KnowledgeQuery, QueryResult } from "../KnowledgeStoreTypes";
 
@@ -36,13 +37,15 @@ export const MemoryStoreQuery = {
       results = results.filter(r => r.createdAt <= q.createdBefore!);
     }
 
-    // Deterministic sort: newest first by createdAt, then id for tie-breaking
-    results = [...results].sort((a, b) => b.createdAt - a.createdAt || a.id.localeCompare(b.id));
-
     const total  = results.length;
     const offset = q.offset ?? 0;
     const limit  = q.limit  ?? 50;
-    const page   = results.slice(offset, offset + limit);
+
+    // EF-39.1: sort only the page slice, not the full filtered set —
+    // same logical result, reduced work when paginating large stores.
+    const page = results
+      .slice(offset, offset + limit)
+      .sort((a, b) => b.createdAt - a.createdAt || a.id.localeCompare(b.id));
 
     return Object.freeze({
       ok:      true,

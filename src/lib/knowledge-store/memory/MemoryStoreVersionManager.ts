@@ -1,5 +1,11 @@
-// MemoryStoreVersionManager.ts — Sprint EF-39
+// MemoryStoreVersionManager.ts — Sprint EF-39.1
 // Immutable version history per record.
+//
+// ARCHITECTURAL NOTE — EF-39.1:
+// CURRENT IMPLEMENTATION: stores full record snapshots per version (O(n) memory per record).
+// FUTURE IMPLEMENTATION: switch to incremental diff storage (delta/patch per version)
+// to reduce memory usage for large stores. API contract (getHistory, getVersion, latest)
+// must remain identical after that refactor.
 
 import type { KnowledgeRecord } from "../KnowledgeStoreTypes";
 

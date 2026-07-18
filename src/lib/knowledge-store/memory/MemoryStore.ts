@@ -116,7 +116,7 @@ export class MemoryStore implements IKnowledgeStore {
     this._stats.onArchive();
 
     KnowledgeStoreEventBus.emit("RECORD_ARCHIVED", ENGINE, { recordId: id, durationMs: Date.now() - t0 });
-    KnowledgeStoreMetrics.record("archive" as any, true, Date.now() - t0);
+    KnowledgeStoreMetrics.record("archive", true, Date.now() - t0);
 
     return Object.freeze({ ok: true, archived: true, record: archived });
   }
@@ -139,7 +139,7 @@ export class MemoryStore implements IKnowledgeStore {
     this._stats.onRestore();
 
     KnowledgeStoreEventBus.emit("RECORD_RESTORED", ENGINE, { recordId: id, durationMs: Date.now() - t0 });
-    KnowledgeStoreMetrics.record("restore" as any, true, Date.now() - t0);
+    KnowledgeStoreMetrics.record("restore", true, Date.now() - t0);
 
     return Object.freeze({ ok: true, restored: true, record: restored });
   }
@@ -159,7 +159,7 @@ export class MemoryStore implements IKnowledgeStore {
     this._stats.onDelete(wasArchived);
 
     KnowledgeStoreEventBus.emit("RECORD_DELETED", ENGINE, { recordId: id, durationMs: Date.now() - t0 });
-    KnowledgeStoreMetrics.record("delete" as any, true, Date.now() - t0);
+    KnowledgeStoreMetrics.record("delete", true, Date.now() - t0);
 
     return Object.freeze({ ok: true, deleted: true });
   }
@@ -167,7 +167,7 @@ export class MemoryStore implements IKnowledgeStore {
   // ── exists() ───────────────────────────────────────────────────────────────
   async exists(id: string): Promise<ExistsResult> {
     const exists = this._index.hasId(id);
-    KnowledgeStoreMetrics.record("exists" as any, true, 0);
+    KnowledgeStoreMetrics.record("exists", true, 0);
     return Object.freeze({ ok: true, exists, id: exists ? id : undefined });
   }
 
@@ -175,7 +175,7 @@ export class MemoryStore implements IKnowledgeStore {
   async get(id: string): Promise<GetResult> {
     const record = this._records.get(id);
     KnowledgeStoreEventBus.emit("RECORD_QUERIED", ENGINE, { recordId: id });
-    KnowledgeStoreMetrics.record("query" as any, true, 0);
+    KnowledgeStoreMetrics.record("query", true, 0);
     return Object.freeze({ ok: true, record });
   }
 

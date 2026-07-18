@@ -1,5 +1,6 @@
-// MemoryStoreStatistics.ts — Sprint EF-39
-// Immutable statistics collection.
+// MemoryStoreStatistics.ts — Sprint EF-39.1 (hardened)
+// EF-39.1: counters are consistent across all lifecycle sequences including
+// store → archive → restore → archive → restore → delete.
 
 export interface StoreStatisticsSnapshot {
   readonly totalRecords:   number;
@@ -15,6 +16,7 @@ export interface StoreStatisticsSnapshot {
 }
 
 export class MemoryStoreStatistics {
+  // _active and _archived track net state — never go below 0
   private _active   = 0;
   private _archived = 0;
   private _deleted  = 0;
@@ -22,27 +24,50 @@ export class MemoryStoreStatistics {
   private _queries  = 0;
   private _searches = 0;
   private _totalVersions  = 0;
-  private _recordsTracked = 0;
+  private _recordsTracked = 0;  // unique records ever stored (never decremented)
   private readonly _startedAt = Date.now();
 
-  onStore()   { this._active++;   this._writes++;  this._recordsTracked++; this._totalVersions++; }
-  onUpdate()  { this._writes++;   this._totalVersions++; }
-  onArchive() { this._active--;   this._archived++; }
-  onRestore() { this._archived--; this._active++;   }
-  onDelete(wasArchived: boolean) {
-    if (wasArchived) { this._archived--; } else { this._active--; }
-    this._deleted++;
-    this._recordsTracked = Math.max(0, this._recordsTracked - 1);
+  onStore()  {
+    this._active++;
+    this._writes++;
+    this._recordsTracked++;
+    this._totalVersions++;
   }
+
+  onUpdate() {
+    this._writes++;
+    this._totalVersions++;
+  }
+
+  onArchive() {
+    // Move one from active → archived
+    if (this._active > 0) this._active--;
+    this._archived++;
+  }
+
+  onRestore() {
+    // Move one from archived → active
+    if (this._archived > 0) this._archived--;
+    this._active++;
+  }
+
+  onDelete(wasArchived: boolean) {
+    if (wasArchived) {
+      if (this._archived > 0) this._archived--;
+    } else {
+      if (this._active > 0) this._active--;
+    }
+    this._deleted++;
+  }
+
   onQuery()  { this._queries++;  }
   onSearch() { this._searches++; }
 
   snapshot(): StoreStatisticsSnapshot {
-    const total = this._active + this._archived;
     return Object.freeze({
-      totalRecords:    total,
-      activeRecords:   Math.max(0, this._active),
-      archivedRecords: Math.max(0, this._archived),
+      totalRecords:    this._active + this._archived,
+      activeRecords:   this._active,
+      archivedRecords: this._archived,
       deletedCount:    this._deleted,
       avgVersions:     this._recordsTracked > 0 ? this._totalVersions / this._recordsTracked : 0,
       totalWrites:     this._writes,

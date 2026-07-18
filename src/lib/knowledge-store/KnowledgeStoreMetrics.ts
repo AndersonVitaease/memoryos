@@ -1,6 +1,5 @@
-// KnowledgeStoreMetrics.ts — Sprint EF-38.1
-// Collects operation counts, latency, and availability metrics.
-// All snapshots are immutable.
+// KnowledgeStoreMetrics.ts — Sprint EF-39.1 (hardened)
+// EF-39.1: eliminated all "as any" casts — OperationName type is fully explicit and used everywhere.
 
 export interface MetricsSnapshot {
   readonly storeCount:   number;
@@ -15,15 +14,15 @@ export interface MetricsSnapshot {
   readonly totalOps:     number;
   readonly failureCount: number;
   readonly successCount: number;
-  readonly failureRate:  number;   // 0–1
-  readonly successRate:  number;   // 0–1
+  readonly failureRate:  number;
+  readonly successRate:  number;
   readonly avgLatencyMs: number;
   readonly maxLatencyMs: number;
-  readonly availability: number;   // 0–1
+  readonly availability: number;
   readonly capturedAt:   number;
 }
 
-type OperationName =
+export type OperationName =
   | "store" | "update" | "archive" | "restore" | "delete"
   | "query" | "search" | "exists" | "health";
 
@@ -47,8 +46,8 @@ export const KnowledgeStoreMetrics = {
   },
 
   snapshot(): MetricsSnapshot {
-    const total   = _successes + _failures;
-    const avgMs   = _samples > 0 ? Math.round(_totalMs / _samples) : 0;
+    const total    = _successes + _failures;
+    const avgMs    = _samples > 0 ? Math.round(_totalMs / _samples) : 0;
     const failRate = total > 0 ? _failures / total : 0;
     return Object.freeze({
       storeCount:   _counts.store,
@@ -72,8 +71,10 @@ export const KnowledgeStoreMetrics = {
     });
   },
 
+  // EF-39.1: no "as any" — iterate typed keys directly
   reset(): void {
-    Object.keys(_counts).forEach(k => { (_counts as any)[k] = 0; });
+    const keys: OperationName[] = ["store","update","archive","restore","delete","query","search","exists","health"];
+    keys.forEach(k => { _counts[k] = 0; });
     _failures = 0; _successes = 0; _totalMs = 0; _maxMs = 0; _samples = 0;
   },
 };
