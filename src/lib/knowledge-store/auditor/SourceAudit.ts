@@ -237,9 +237,7 @@ export function runSourceAudit(): SourceAuditReport {
   });
 }
 
-// Re-export structural audit for convenience
-export type { StructuralAuditReport, StructuralCheck } from "./SourceAuditStructural";
-export { runStructuralAudit } from "./SourceAuditStructural";
-
-// Synchronous — no async needed (raw strings are available at module load)
-// runSourceAudit() is already exported above
+// Note: runStructuralAudit lives in SourceAuditStructural.ts — import it directly from there.
+// Do NOT re-export it here: SourceAuditStructural uses dynamic import("../memory/MemoryStore")
+// while this file uses ?raw imports of the same files — mixing both in the same bundle
+// causes Vite to fail resolving the default export of the ?raw chunk at runtime.

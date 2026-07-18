@@ -50,17 +50,18 @@ export default function PhaseEF393Page() {
       const [
         { runMemoryStoreTests },
         { runFullAudit },
-        sourceAuditMod,
+        { runSourceAudit },
+        { runStructuralAudit },
         { runASTAudit },
         { CertificationReportBuilder },
       ] = await Promise.all([
         import("@/lib/knowledge-store/memory/MemoryStoreTests"),
         import("@/lib/knowledge-store/auditor/ArchitecturalAuditor"),
         import("@/lib/knowledge-store/auditor/SourceAudit"),
+        import("@/lib/knowledge-store/auditor/SourceAuditStructural"),
         import("@/lib/knowledge-store/auditor/ASTAuditor"),
         import("@/lib/knowledge-store/certification/CertificationReportBuilder"),
       ]);
-      const { runSourceAudit, runStructuralAudit } = sourceAuditMod;
 
       log("Running all auditors in parallel…");
       const [testResult, auditReport, structuralReport] = await Promise.all([

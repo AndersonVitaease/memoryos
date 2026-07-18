@@ -217,6 +217,7 @@ import PhaseEF38Page from '@/pages/PhaseEF38Page';
 import PhaseEF381Page from '@/pages/PhaseEF381Page';
 import PhaseEF39Page from '@/pages/PhaseEF39Page';
 import PhaseEF393Page from '@/pages/PhaseEF393Page';
+import EF398CertPage from '@/pages/EF398CertPage';
 
 const AuthenticatedApp = () => {
   console.log('[RENDER] AuthenticatedApp');
@@ -456,6 +457,7 @@ const AuthenticatedApp = () => {
         </Route>
       </Route>
       <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />
+      <Route path="/ef398-cert" element={<EF398CertPage />} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );

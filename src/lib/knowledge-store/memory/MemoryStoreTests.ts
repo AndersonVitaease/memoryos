@@ -205,16 +205,33 @@ async function suiteStatistics() {
 }
 
 // ── Suite: Events ─────────────────────────────────────────────────────────────
+// NOTE: Tests run sequentially (not Promise.all) because they share the global
+// KnowledgeStoreEventBus singleton and each calls clear() — parallel execution
+// causes race conditions where one test's clear() wipes another's events.
 async function suiteEvents() {
-  return Promise.all([
-    test("Events", "store() emits RECORD_STORED", async () => { KnowledgeStoreEventBus.clear(); const s = fresh(); await s.store(DRAFT); assert(KnowledgeStoreEventBus.getByType("RECORD_STORED").length > 0); }),
-    test("Events", "update() emits RECORD_UPDATED", async () => { KnowledgeStoreEventBus.clear(); const s = fresh(); const r = await s.store(DRAFT); await s.update(r.id, { content: "x" }); assert(KnowledgeStoreEventBus.getByType("RECORD_UPDATED").length > 0); }),
-    test("Events", "archive() emits RECORD_ARCHIVED", async () => { KnowledgeStoreEventBus.clear(); const s = fresh(); const r = await s.store(DRAFT); await s.archive(r.id); assert(KnowledgeStoreEventBus.getByType("RECORD_ARCHIVED").length > 0); }),
-    test("Events", "restore() emits RECORD_RESTORED", async () => { KnowledgeStoreEventBus.clear(); const s = fresh(); const r = await s.store(DRAFT); await s.archive(r.id); await s.restore(r.id); assert(KnowledgeStoreEventBus.getByType("RECORD_RESTORED").length > 0); }),
-    test("Events", "delete() emits RECORD_DELETED", async () => { KnowledgeStoreEventBus.clear(); const s = fresh(); const r = await s.store(DRAFT); await s.delete(r.id); assert(KnowledgeStoreEventBus.getByType("RECORD_DELETED").length > 0); }),
-    test("Events", "health() emits HEALTH_CHECKED", async () => { KnowledgeStoreEventBus.clear(); await fresh().health(); assert(KnowledgeStoreEventBus.getByType("HEALTH_CHECKED").length > 0); }),
-    test("Events", "emitted events are frozen", async () => { KnowledgeStoreEventBus.clear(); await fresh().store(DRAFT); const ev = KnowledgeStoreEventBus.getByType("RECORD_STORED")[0]; try { (ev as any).type = "hack"; } catch {} eq(ev.type, "RECORD_STORED"); }),
-  ]);
+  const results = [];
+  const eventTests = [
+    async () => { KnowledgeStoreEventBus.clear(); const s = fresh(); await s.store(DRAFT); assert(KnowledgeStoreEventBus.getByType("RECORD_STORED").length > 0); },
+    async () => { KnowledgeStoreEventBus.clear(); const s = fresh(); const r = await s.store(DRAFT); await s.update(r.id, { content: "x" }); assert(KnowledgeStoreEventBus.getByType("RECORD_UPDATED").length > 0); },
+    async () => { KnowledgeStoreEventBus.clear(); const s = fresh(); const r = await s.store(DRAFT); await s.archive(r.id); assert(KnowledgeStoreEventBus.getByType("RECORD_ARCHIVED").length > 0); },
+    async () => { KnowledgeStoreEventBus.clear(); const s = fresh(); const r = await s.store(DRAFT); await s.archive(r.id); await s.restore(r.id); assert(KnowledgeStoreEventBus.getByType("RECORD_RESTORED").length > 0); },
+    async () => { KnowledgeStoreEventBus.clear(); const s = fresh(); const r = await s.store(DRAFT); await s.delete(r.id); assert(KnowledgeStoreEventBus.getByType("RECORD_DELETED").length > 0); },
+    async () => { KnowledgeStoreEventBus.clear(); await fresh().health(); assert(KnowledgeStoreEventBus.getByType("HEALTH_CHECKED").length > 0); },
+    async () => { KnowledgeStoreEventBus.clear(); await fresh().store(DRAFT); const ev = KnowledgeStoreEventBus.getByType("RECORD_STORED")[0]; try { (ev as any).type = "hack"; } catch {} eq(ev.type, "RECORD_STORED"); },
+  ];
+  const names = [
+    "store() emits RECORD_STORED",
+    "update() emits RECORD_UPDATED",
+    "archive() emits RECORD_ARCHIVED",
+    "restore() emits RECORD_RESTORED",
+    "delete() emits RECORD_DELETED",
+    "health() emits HEALTH_CHECKED",
+    "emitted events are frozen",
+  ];
+  for (let i = 0; i < eventTests.length; i++) {
+    results.push(await test("Events", names[i], eventTests[i]));
+  }
+  return results;
 }
 
 // ── Suite: Health ─────────────────────────────────────────────────────────────
@@ -498,7 +515,9 @@ export async function runMemoryStoreTests(): Promise<TestReport> {
   KnowledgeStoreMetrics.reset();
   KnowledgeStoreEventBus.clear();
 
-  const all = await Promise.all([
+  // suiteEvents runs last and alone because it calls KnowledgeStoreEventBus.clear()
+  // which is a singleton — concurrent parallel suites would cause race conditions.
+  const nonEventSuites = await Promise.all([
     suiteStore(),
     suiteUpdate(),
     suiteArchiveRestore(),
@@ -510,7 +529,6 @@ export async function runMemoryStoreTests(): Promise<TestReport> {
     suiteVersions(),
     suiteSnapshots(),
     suiteStatistics(),
-    suiteEvents(),
     suiteHealth(),
     suiteImmutability(),
     suiteConcurrency(),
@@ -518,6 +536,10 @@ export async function runMemoryStoreTests(): Promise<TestReport> {
     suiteRegression(),
     suiteHardening(),
   ]);
+  // Reset bus before event suite to avoid pollution from above suites
+  KnowledgeStoreEventBus.clear();
+  const eventResults = await suiteEvents();
+  const all = [...nonEventSuites, eventResults];
 
   const results = all.flat();
   const passed  = results.filter(r => r.passed).length;
