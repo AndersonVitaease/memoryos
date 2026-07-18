@@ -227,5 +227,104 @@ export async function listFolders(opts: {
   }
 }
 
+// ── Sprint EF-6.3.2: Connector Facade methods ─────────────────────────────────
+// These are the ONLY methods that know about the Google Drive API URLs, tokens,
+// and HTTP semantics. DriveDownloadExecutor calls these — it never calls fetch().
+
+/** Search Drive files by name fragment. Returns raw minimal records for ranking. */
+export async function searchByName(
+  name: string,
+  opts: { pageSize?: number } = {},
+): Promise<Array<{ id: string; name: string; mimeType: string; modifiedTime: string | null }>> {
+  await ensureValidToken(WS);
+  const q = `name contains '${name.replace(/'/g, "\\'")}' and trashed=false`;
+  const params = new URLSearchParams({
+    q,
+    pageSize: String(opts.pageSize ?? 20),
+    fields:   "files(id,name,mimeType,modifiedTime)",
+    orderBy:  "modifiedTime desc",
+  });
+  try {
+    const raw = await _driveRequest<{ files: Array<{ id: string; name: string; mimeType: string; modifiedTime: string | null }> }>(
+      "drive.searchByName",
+      `https://www.googleapis.com/drive/v3/files?${params}`,
+    );
+    return raw.files ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/** Get minimal metadata for a fileId (id, name, mimeType, modifiedTime). */
+export async function getFileMetadata(
+  fileId: string,
+): Promise<{ id: string; name: string; mimeType: string; modifiedTime: string | null } | null> {
+  await ensureValidToken(WS);
+  const params = new URLSearchParams({ fields: "id,name,mimeType,modifiedTime" });
+  try {
+    const raw = await _driveRequest<{ id: string; name: string; mimeType: string; modifiedTime: string | null }>(
+      "drive.getFileMetadata",
+      `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?${params}`,
+    );
+    return raw;
+  } catch {
+    return null;
+  }
+}
+
+/** Download binary/text file content via media download. */
+export async function downloadMedia(
+  fileId: string,
+): Promise<{ content: string; encoding: "text" | "base64"; sizeBytes: number; ok: boolean; status: number; durationMs: number }> {
+  await ensureValidToken(WS);
+  const t0   = Date.now();
+  const auth = _authHeader();
+  if (!auth) return { content: "", encoding: "text", sizeBytes: 0, ok: false, status: 401, durationMs: 0 };
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const res = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`,
+      { headers: { Authorization: auth }, signal: controller.signal },
+    );
+    clearTimeout(timer);
+    const body        = await res.text();
+    const contentType = res.headers.get("content-type") ?? "";
+    const isText      = contentType.startsWith("text/") || contentType.includes("json") || contentType.includes("xml");
+    return { content: body, encoding: isText ? "text" : "base64", sizeBytes: body.length, ok: res.ok, status: res.status, durationMs: Date.now() - t0 };
+  } catch (e) {
+    clearTimeout(timer);
+    const isAbort = (e as Error).name === "AbortError";
+    return { content: isAbort ? "TIMEOUT" : String(e), encoding: "text", sizeBytes: 0, ok: false, status: 0, durationMs: Date.now() - t0 };
+  }
+}
+
+/** Export a Google Workspace file to the given MIME type. */
+export async function exportFile(
+  fileId: string,
+  exportMime: string,
+): Promise<{ content: string; encoding: "text" | "base64"; sizeBytes: number; ok: boolean; status: number; durationMs: number }> {
+  await ensureValidToken(WS);
+  const t0   = Date.now();
+  const auth = _authHeader();
+  if (!auth) return { content: "", encoding: "text", sizeBytes: 0, ok: false, status: 401, durationMs: 0 };
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const url = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/export?mimeType=${encodeURIComponent(exportMime)}`;
+    const res = await fetch(url, { headers: { Authorization: auth }, signal: controller.signal });
+    clearTimeout(timer);
+    const body   = await res.text();
+    const isText = exportMime.startsWith("text/") || exportMime.includes("json") || exportMime.includes("xml");
+    return { content: body, encoding: isText ? "text" : "base64", sizeBytes: body.length, ok: res.ok, status: res.status, durationMs: Date.now() - t0 };
+  } catch (e) {
+    clearTimeout(timer);
+    const isAbort = (e as Error).name === "AbortError";
+    return { content: isAbort ? "TIMEOUT" : String(e), encoding: "text", sizeBytes: 0, ok: false, status: 0, durationMs: Date.now() - t0 };
+  }
+}
+
 // ── Bootstrap on first import ─────────────────────────────────────────────────
 bootstrapDriveCapabilities().catch(() => {});
