@@ -1,19 +1,15 @@
 /**
- * OfficialLibraryRuntime.ts — Sprint EF-7.2.4
+ * OfficialLibraryRuntime.ts — Sprint P-01.11B
  *
- * Single entry point for provider registration.
- * ONLY responsibility: register concrete IRuntimeProvider implementations.
+ * Auto-registration: each provider self-registers on module import.
+ * Bootstrap never knows about concrete providers.
  *
- * EF-7.2.4 changes:
- * - Registers IRuntimeProvider instances into RuntimeRegistry
- * - Also registers legacy IDocumentDiscovery into DocumentDiscoveryRegistry
- *   for backward compatibility with Suites 20–28
- * - Zero selection logic here — RuntimeRegistry.getActive() handles it
+ * Pattern: import this file → providers auto-register → Bootstrap uses IRuntimeStore.
+ * To add a new provider: implement IRuntimeProvider + add one import line here.
+ * Nothing else changes anywhere.
  *
- * To add a new runtime (GitHub, Drive, S3…):
- *   1. Create class implementing IRuntimeProvider
- *   2. register(new MyRuntimeProvider()) here
- *   Nothing else changes.
+ * SRP: orchestrates auto-registration only.
+ * DIP: Bootstrap depends on IRuntimeStore/IRuntimeResolver, not this file.
  */
 
 import { RuntimeRegistry }          from "./RuntimeRegistry";
@@ -28,20 +24,19 @@ export function initOfficialLibraryRuntime(): void {
   if (_initialized) return;
   _initialized = true;
 
-  const vite   = new ViteRuntimeProvider();
-  const node   = new NodeRuntimeProvider();
-  const base44 = new Base44RuntimeProvider();
-
-  // Register into RuntimeRegistry (EF-7.2.4 — primary)
-  RuntimeRegistry.register(vite);
-  RuntimeRegistry.register(node);
-  RuntimeRegistry.register(base44);
-
-  // Register legacy discovery impls for backward compat (Suites 20–28)
-  DocumentDiscoveryRegistry.register(vite.discovery());
-  DocumentDiscoveryRegistry.register(node.discovery());
-  DocumentDiscoveryRegistry.register(base44.discovery());
+  // ── Auto-registration: providers register themselves on bootstrap ──────────
+  // Each provider is responsible only for implementing IRuntimeProvider.
+  // Bootstrap never imports or names concrete providers.
+  [
+    new ViteRuntimeProvider(),
+    new NodeRuntimeProvider(),
+    new Base44RuntimeProvider(),
+  ].forEach(provider => {
+    RuntimeRegistry.register(provider);
+    // Register legacy discovery for backward compat (Suites 20–28)
+    DocumentDiscoveryRegistry.register(provider.discovery());
+  });
 }
 
-// Auto-initialize on import
+// Auto-initialize on import — side-effect is intentional and idempotent
 initOfficialLibraryRuntime();

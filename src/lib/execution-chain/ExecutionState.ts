@@ -1,133 +1,146 @@
-// ══════════════════════════════════════════════════════════════════════════════
-// Sprint P-01.11C — EF-21: ExecutionState (typed helpers, zero unsafe casts)
-// Replaces withStageOutput switch+cast with strongly typed helper functions.
-// All helpers return a new frozen ExecutionState — no mutation, no 'as Type'.
-// ══════════════════════════════════════════════════════════════════════════════
-
-import type {
-  UserInput,
-  IntentResult,
-  GoalResult,
-  PlanResult,
-  KernelResult,
-  OrchestratorResult,
-  CapabilityResult,
-  ConnectorRuntimeResult,
-  ConnectorResult,
-  ResultOutput,
-  MemoryResult,
-  ExplainabilityResult,
-  AuditResult,
-  ChainStageRecord,
-} from "./ExecutionChainTypes";
-
 /**
- * ExecutionState — the typed, immutable carrier of all stage outputs.
+ * ExecutionState.ts — Sprint P-01.11B
  *
- * Propagated through the entire pipeline:
- *   Stage N reads from state, produces a new state with N's output added.
- *
- * Fields are optional because they are populated progressively as each stage
- * completes. Once set they are never mutated — each stage returns a new state.
+ * Immutable value object representing the complete state of a single execution.
+ * SRP: state representation only — no logic, no side effects.
+ * Every field is readonly. Instances are Object.freeze()-ed.
  */
+
+export interface ExplanationNode {
+  readonly origin:      string;
+  readonly evidence:    readonly string[];
+  readonly reasoning:   string;
+  readonly confidence:  number;
+  readonly timestamp:   string;
+}
+
+export interface ConnectorCall {
+  readonly connectorId:  string;
+  readonly capability:   string;
+  readonly startedAt:    string;
+  readonly completedAt:  string;
+  readonly durationMs:   number;
+  readonly success:      boolean;
+  readonly error:        string | null;
+}
+
+export interface MemoryQuery {
+  readonly queryId:     string;
+  readonly query:       string;
+  readonly providerId:  string;
+  readonly startedAt:   string;
+  readonly durationMs:  number;
+  readonly resultCount: number;
+}
+
+export interface StageRecord {
+  readonly stageId:     string;
+  readonly stageName:   string;
+  readonly startedAt:   string;
+  readonly completedAt: string;
+  readonly durationMs:  number;
+  readonly status:      "completed" | "failed" | "skipped";
+  readonly error:       string | null;
+}
+
+export interface ExecutionTelemetry {
+  readonly totalDurationMs:     number;
+  readonly stageCount:          number;
+  readonly connectorCallCount:  number;
+  readonly memoryQueryCount:    number;
+  readonly decisionCount:       number;
+  readonly retryCount:          number;
+  readonly overallConfidence:   number;
+}
+
+export interface ExecutionTimestamps {
+  readonly createdAt:   string;
+  readonly startedAt:   string;
+  readonly completedAt: string | null;
+  readonly failedAt:    string | null;
+}
+
 export interface ExecutionState {
-  // ── Accumulated stage outputs ─────────────────────────────────────────────
-  readonly userInput:        UserInput                | undefined;
-  readonly intent:           IntentResult             | undefined;
-  readonly goal:             GoalResult               | undefined;
-  readonly plan:             PlanResult               | undefined;
-  readonly kernel:           KernelResult             | undefined;
-  readonly orchestrator:     OrchestratorResult       | undefined;
-  readonly capability:       CapabilityResult         | undefined;
-  readonly connectorRuntime: ConnectorRuntimeResult   | undefined;
-  readonly connector:        ConnectorResult          | undefined;
-  readonly result:           ResultOutput             | undefined;
-  readonly memory:           MemoryResult             | undefined;
-  readonly explainability:   ExplainabilityResult     | undefined;
-  readonly audit:            AuditResult              | undefined;
-
-  // ── Pipeline bookkeeping ──────────────────────────────────────────────────
-  /** Ordered list of stage records appended by ExecutionPipeline. */
-  readonly records:          readonly ChainStageRecord[];
+  readonly executionId:       string;
+  readonly goalId:            string;
+  readonly pipelineId:        string;
+  readonly currentStage:      string;
+  readonly completedStages:   readonly StageRecord[];
+  readonly pendingStages:     readonly string[];
+  readonly failedStages:      readonly StageRecord[];
+  readonly connectorCalls:    readonly ConnectorCall[];
+  readonly memoryQueries:     readonly MemoryQuery[];
+  readonly decisions:         readonly string[];
+  readonly explanations:      readonly ExplanationNode[];
+  readonly telemetry:         ExecutionTelemetry;
+  readonly timestamps:        ExecutionTimestamps;
+  readonly status:            "running" | "completed" | "failed" | "aborted";
 }
 
-/** The initial empty state passed into the pipeline before any stage runs. */
-export const EMPTY_EXECUTION_STATE: ExecutionState = Object.freeze({
-  userInput:        undefined,
-  intent:           undefined,
-  goal:             undefined,
-  plan:             undefined,
-  kernel:           undefined,
-  orchestrator:     undefined,
-  capability:       undefined,
-  connectorRuntime: undefined,
-  connector:        undefined,
-  result:           undefined,
-  memory:           undefined,
-  explainability:   undefined,
-  audit:            undefined,
-  records:          Object.freeze([]) as readonly ChainStageRecord[],
-});
+/** Factory — produces a frozen ExecutionState. */
+export const ExecutionStateFactory = {
+  create(params: {
+    executionId:  string;
+    goalId:       string;
+    pipelineId:   string;
+    stages:       string[];
+  }): ExecutionState {
+    const now = new Date().toISOString();
+    const state: ExecutionState = {
+      executionId:     params.executionId,
+      goalId:          params.goalId,
+      pipelineId:      params.pipelineId,
+      currentStage:    params.stages[0] ?? "",
+      completedStages: Object.freeze([]),
+      pendingStages:   Object.freeze([...params.stages]),
+      failedStages:    Object.freeze([]),
+      connectorCalls:  Object.freeze([]),
+      memoryQueries:   Object.freeze([]),
+      decisions:       Object.freeze([]),
+      explanations:    Object.freeze([]),
+      telemetry:       Object.freeze({
+        totalDurationMs:    0,
+        stageCount:         params.stages.length,
+        connectorCallCount: 0,
+        memoryQueryCount:   0,
+        decisionCount:      0,
+        retryCount:         0,
+        overallConfidence:  0,
+      }),
+      timestamps: Object.freeze({
+        createdAt:   now,
+        startedAt:   now,
+        completedAt: null,
+        failedAt:    null,
+      }),
+      status: "running",
+    };
+    return Object.freeze(state);
+  },
 
-// ── EF-21: Strongly typed helpers — zero unsafe casts ────────────────────────
+  /** Produce a new frozen state with updated fields (immutable update pattern). */
+  update(existing: ExecutionState, delta: Partial<ExecutionState>): ExecutionState {
+    return Object.freeze({ ...existing, ...delta });
+  },
 
-/** Append a stage record to state. Returns a new frozen ExecutionState. */
-export function withRecord(state: ExecutionState, record: ChainStageRecord): ExecutionState {
-  return Object.freeze({ ...state, records: Object.freeze([...state.records, record]) });
-}
+  /** Add an explanation node — returns new frozen state. */
+  addExplanation(state: ExecutionState, node: ExplanationNode): ExecutionState {
+    return ExecutionStateFactory.update(state, {
+      explanations: Object.freeze([...state.explanations, Object.freeze(node)]),
+      telemetry: Object.freeze({
+        ...state.telemetry,
+        decisionCount: state.telemetry.decisionCount + 1,
+        overallConfidence: node.confidence,
+      }),
+    });
+  },
 
-export function withUserInput(state: ExecutionState, v: UserInput): ExecutionState {
-  return Object.freeze({ ...state, userInput: v });
-}
-export function withIntent(state: ExecutionState, v: IntentResult): ExecutionState {
-  return Object.freeze({ ...state, intent: v });
-}
-export function withGoal(state: ExecutionState, v: GoalResult): ExecutionState {
-  return Object.freeze({ ...state, goal: v });
-}
-export function withPlan(state: ExecutionState, v: PlanResult): ExecutionState {
-  return Object.freeze({ ...state, plan: v });
-}
-export function withKernel(state: ExecutionState, v: KernelResult): ExecutionState {
-  return Object.freeze({ ...state, kernel: v });
-}
-export function withOrchestrator(state: ExecutionState, v: OrchestratorResult): ExecutionState {
-  return Object.freeze({ ...state, orchestrator: v });
-}
-export function withCapability(state: ExecutionState, v: CapabilityResult): ExecutionState {
-  return Object.freeze({ ...state, capability: v });
-}
-export function withConnectorRuntime(state: ExecutionState, v: ConnectorRuntimeResult): ExecutionState {
-  return Object.freeze({ ...state, connectorRuntime: v });
-}
-export function withConnector(state: ExecutionState, v: ConnectorResult): ExecutionState {
-  return Object.freeze({ ...state, connector: v });
-}
-export function withResult(state: ExecutionState, v: ResultOutput): ExecutionState {
-  return Object.freeze({ ...state, result: v });
-}
-export function withMemory(state: ExecutionState, v: MemoryResult): ExecutionState {
-  return Object.freeze({ ...state, memory: v });
-}
-export function withExplainability(state: ExecutionState, v: ExplainabilityResult): ExecutionState {
-  return Object.freeze({ ...state, explainability: v });
-}
-export function withAudit(state: ExecutionState, v: AuditResult): ExecutionState {
-  return Object.freeze({ ...state, audit: v });
-}
-
-/**
- * withStageOutput — backward-compatible dispatcher used only by ExecutionChain
- * for the initial USER_INPUT seeding. Pipeline stages use typed helpers above.
- * Kept for backward compatibility with existing cert suites.
- */
-export function withStageOutput(
-  state: ExecutionState,
-  stageId: string,
-  output: unknown,
-): ExecutionState {
-  switch (stageId) {
-    case "USER_INPUT": return withUserInput(state, output as UserInput);
-    default:           return Object.freeze({ ...state });
-  }
-}
+  /** Mark a stage completed — returns new frozen state. */
+  completeStage(state: ExecutionState, record: StageRecord): ExecutionState {
+    return ExecutionStateFactory.update(state, {
+      completedStages: Object.freeze([...state.completedStages, Object.freeze(record)]),
+      pendingStages:   Object.freeze(state.pendingStages.filter(s => s !== record.stageId)),
+      currentStage:    state.pendingStages.find(s => s !== record.stageId) ?? "",
+    });
+  },
+};
