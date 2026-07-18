@@ -16,6 +16,8 @@ import { getConnection, isConnected, getAccessToken, ensureValidToken }
   from "@/lib/google-auth/GoogleAuthSession";
 import { GoogleWorkspaceAuditLogger } from "@/lib/google-workspace/GoogleWorkspaceAuditLogger";
 import { GoogleWorkspaceRateLimiter }  from "@/lib/google-workspace/GoogleWorkspaceRateLimiter";
+// Sprint EF-6.4.0: UCR adapter registered on import
+import "@/lib/ucr/adapters/GoogleDriveAdapter";
 
 import type { DriveFile, DriveListResult, DriveFileContent, DriveFolder } from "./GoogleDriveTypes";
 import { detectFileType } from "./GoogleDriveTypes";
