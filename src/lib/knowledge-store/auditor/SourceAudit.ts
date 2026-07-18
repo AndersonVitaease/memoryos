@@ -1,222 +1,246 @@
-// SourceAudit.ts — Sprint EF-39.4
-// SRP: perform structural source-code checks on embedded source strings.
+// SourceAudit.ts — Sprint EF-39.5
+// Real source analysis using Vite ?raw imports.
+// Every finding contains file, line, column, snippet, severity, rule.
 // All output is immutable. Never modifies any source file.
+
+// ── Raw source imports (Vite ?raw) ─────────────────────────────────────────────
+// These give us the actual TypeScript source text at build time.
+import memoryStoreRaw          from "../memory/MemoryStore.ts?raw";
+import memoryStoreIndexRaw     from "../memory/MemoryStoreIndex.ts?raw";
+import memoryStoreQueryRaw     from "../memory/MemoryStoreQuery.ts?raw";
+import memoryStoreSearchRaw    from "../memory/MemoryStoreSearch.ts?raw";
+import memoryStoreStatsRaw     from "../memory/MemoryStoreStatistics.ts?raw";
+import memoryStoreVersionsRaw  from "../memory/MemoryStoreVersionManager.ts?raw";
+import memoryStoreArchiveRaw   from "../memory/MemoryStoreArchive.ts?raw";
+import memoryStoreSnapshotsRaw from "../memory/MemoryStoreSnapshots.ts?raw";
+import metricsRaw              from "../KnowledgeStoreMetrics.ts?raw";
+
+// ── Types ──────────────────────────────────────────────────────────────────────
+export type Severity = "critical" | "error" | "warning" | "info";
 
 export interface SourceFinding {
   readonly file:        string;
   readonly line:        number;
-  readonly type:        "as-any" | "TODO" | "FIXME" | "HACK" | "console.log" | "mutation" | "missing-freeze";
-  readonly description: string;
+  readonly column:      number;
   readonly snippet:     string;
+  readonly severity:    Severity;
+  readonly rule:        string;
+  readonly description: string;
+}
+
+export interface FileMetrics {
+  readonly file:       string;
+  readonly lines:      number;
+  readonly blankLines: number;
+  readonly codeLines:  number;
+  readonly commentLines:number;
+  readonly functions:  number;
+  readonly classes:    number;
+  readonly imports:    number;
 }
 
 export interface SourceAuditReport {
-  readonly ok:       boolean;
-  readonly findings: readonly SourceFinding[];
-  readonly files:    number;
-  readonly checked:  number;
-  readonly durationMs: number;
+  readonly ok:          boolean;
+  readonly critical:    number;
+  readonly errors:      number;
+  readonly warnings:    number;
+  readonly findings:    readonly SourceFinding[];
+  readonly fileMetrics: readonly FileMetrics[];
+  readonly files:       number;
+  readonly totalLines:  number;
+  readonly durationMs:  number;
 }
 
-// Source content embedded at audit time — production files only (no test files).
-// These are the exact module paths imported for live content.
-type SourceEntry = { file: string; content: string };
+// ── Rules ──────────────────────────────────────────────────────────────────────
+interface Rule {
+  id:          string;
+  re:          RegExp;
+  severity:    Severity;
+  description: string;
+  // if true: skip lines that are pure comments (rule applies to code only)
+  codeOnly?:   boolean;
+}
 
-function auditSource(entries: SourceEntry[]): SourceAuditReport {
-  const t0 = Date.now();
+const RULES: Rule[] = [
+  { id: "no-as-any",       re: /\bas\s+any\b/,                severity: "critical", description: "Type-unsafe 'as any' cast bypasses type safety" },
+  { id: "no-ts-ignore",    re: /@ts-ignore/,                   severity: "critical", description: "@ts-ignore suppresses TypeScript errors unsafely" },
+  { id: "no-ts-nocheck",   re: /@ts-nocheck/,                  severity: "critical", description: "@ts-nocheck disables type checking for entire file" },
+  { id: "no-eslint-dis",   re: /eslint-disable(?!-next-line)/, severity: "error",    description: "eslint-disable suppresses linting rules broadly" },
+  { id: "no-debugger",     re: /\bdebugger\b/,                 severity: "critical", description: "debugger statement must not be in production code", codeOnly: true },
+  { id: "no-console-log",  re: /console\.log\s*\(/,            severity: "error",    description: "console.log must not be in production code",         codeOnly: true },
+  { id: "no-console-warn", re: /console\.warn\s*\(/,           severity: "warning",  description: "console.warn should not be in production code",      codeOnly: true },
+  { id: "no-console-error",re: /console\.error\s*\(/,          severity: "warning",  description: "console.error should not be in production code",     codeOnly: true },
+  { id: "no-todo",         re: /\/\/\s*TODO\b/i,               severity: "warning",  description: "TODO comment indicates incomplete implementation" },
+  { id: "no-fixme",        re: /\/\/\s*FIXME\b/i,              severity: "error",    description: "FIXME comment indicates known defect" },
+  { id: "no-hack",         re: /\/\/\s*HACK\b/i,               severity: "error",    description: "HACK comment indicates technical debt" },
+  { id: "no-xxx",          re: /\/\/\s*XXX\b/i,                severity: "warning",  description: "XXX comment indicates problematic code" },
+];
+
+// ── Per-file metrics ───────────────────────────────────────────────────────────
+function computeMetrics(file: string, source: string): FileMetrics {
+  const lines       = source.split("\n");
+  let blankLines    = 0;
+  let commentLines  = 0;
+  let functions     = 0;
+  let classes       = 0;
+  let imports       = 0;
+
+  for (const line of lines) {
+    const t = line.trim();
+    if (t === "")                              blankLines++;
+    else if (t.startsWith("//") || t.startsWith("/*") || t.startsWith("*")) commentLines++;
+    if (/\b(function\s+\w+|=>\s*[{(]|\basync\s+function|\bget\s+\w+\s*\()/.test(t)) functions++;
+    if (/^\s*(export\s+)?(abstract\s+)?class\s+/.test(line)) classes++;
+    if (/^\s*import\s/.test(line)) imports++;
+  }
+
+  return Object.freeze({
+    file,
+    lines:        lines.length,
+    blankLines,
+    codeLines:    lines.length - blankLines - commentLines,
+    commentLines,
+    functions,
+    classes,
+    imports,
+  });
+}
+
+// ── Large function detector ────────────────────────────────────────────────────
+function detectLargeFunctions(file: string, source: string): SourceFinding[] {
   const findings: SourceFinding[] = [];
-  let checked = 0;
+  const lines = source.split("\n");
+  const MAX_FN_LINES = 60;
 
-  const PATTERNS: Array<{ re: RegExp; type: SourceFinding["type"]; desc: string }> = [
-    { re: /\bas\s+any\b/,        type: "as-any",         desc: "Type-unsafe 'as any' cast" },
-    { re: /\/\/\s*TODO/i,        type: "TODO",            desc: "TODO comment left in code" },
-    { re: /\/\/\s*FIXME/i,       type: "FIXME",           desc: "FIXME comment left in code" },
-    { re: /\/\/\s*HACK/i,        type: "HACK",            desc: "HACK comment left in code" },
-    { re: /console\.log\s*\(/,   type: "console.log",     desc: "console.log found in production code" },
-  ];
+  // Simple heuristic: track brace depth; when we enter a function, count lines
+  const FN_RE = /(?:async\s+)?(?:function\s+\w+|\w+\s*\([^)]*\)\s*(?::\s*\S+\s*)?{|(?:private|public|protected|readonly)?\s+(?:async\s+)?\w+\s*\([^)]*\)\s*(?::\s*\S+\s*)?{)/;
 
-  for (const { file, content } of entries) {
-    const lines = content.split("\n");
-    lines.forEach((line, idx) => {
-      checked++;
-      PATTERNS.forEach(({ re, type, desc }) => {
-        if (re.test(line)) {
-          findings.push(Object.freeze({
-            file,
-            line:        idx + 1,
-            type,
-            description: desc,
-            snippet:     line.trim().slice(0, 120),
-          }));
-        }
-      });
-    });
+  let depth = 0;
+  let fnStart = -1;
+  let fnName = "";
+
+  lines.forEach((line, idx) => {
+    const opens  = (line.match(/{/g) || []).length;
+    const closes = (line.match(/}/g) || []).length;
+
+    if (depth === 0 && FN_RE.test(line)) {
+      fnStart = idx;
+      const m = line.match(/(?:async\s+)?(?:function\s+(\w+)|\s+(\w+)\s*\()/);
+      fnName = m ? (m[1] || m[2] || "anonymous") : "anonymous";
+    }
+
+    depth += opens - closes;
+
+    if (depth <= 0 && fnStart >= 0) {
+      const len = idx - fnStart + 1;
+      if (len > MAX_FN_LINES) {
+        findings.push(Object.freeze({
+          file,
+          line:        fnStart + 1,
+          column:      1,
+          snippet:     lines[fnStart].trim().slice(0, 120),
+          severity:    "warning" as Severity,
+          rule:        "max-function-lines",
+          description: `Function '${fnName}' is ${len} lines (max: ${MAX_FN_LINES})`,
+        }));
+      }
+      fnStart = -1;
+      depth = Math.max(0, depth);
+    }
+  });
+
+  return findings;
+}
+
+// ── Main analysis ──────────────────────────────────────────────────────────────
+function analyzeSource(file: string, source: string): SourceFinding[] {
+  const findings: SourceFinding[] = [];
+  const lines = source.split("\n");
+
+  lines.forEach((line, idx) => {
+    const trimmed    = line.trim();
+    const isComment  = trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*");
+    const col1       = line.indexOf(trimmed) + 1;
+
+    for (const rule of RULES) {
+      if (rule.codeOnly && isComment) continue;
+      const match = rule.re.exec(line);
+      if (match) {
+        findings.push(Object.freeze({
+          file,
+          line:        idx + 1,
+          column:      match.index + 1,
+          snippet:     line.trim().slice(0, 120),
+          severity:    rule.severity,
+          rule:        rule.id,
+          description: rule.description,
+        }));
+      }
+    }
+  });
+
+  // Large file check
+  const lineCount = lines.length;
+  if (lineCount > 400) {
+    findings.push(Object.freeze({
+      file,
+      line:        1,
+      column:      1,
+      snippet:     `File has ${lineCount} lines`,
+      severity:    "warning" as Severity,
+      rule:        "max-file-lines",
+      description: `File exceeds 400 lines (${lineCount} lines) — consider splitting`,
+    }));
   }
 
+  return [...findings, ...detectLargeFunctions(file, source)];
+}
+
+// ── Public API ─────────────────────────────────────────────────────────────────
+export function runSourceAudit(): SourceAuditReport {
+  const t0 = performance.now();
+
+  const SOURCES: Array<[string, string]> = [
+    ["MemoryStore.ts",               memoryStoreRaw],
+    ["MemoryStoreIndex.ts",          memoryStoreIndexRaw],
+    ["MemoryStoreQuery.ts",          memoryStoreQueryRaw],
+    ["MemoryStoreSearch.ts",         memoryStoreSearchRaw],
+    ["MemoryStoreStatistics.ts",     memoryStoreStatsRaw],
+    ["MemoryStoreVersionManager.ts", memoryStoreVersionsRaw],
+    ["MemoryStoreArchive.ts",        memoryStoreArchiveRaw],
+    ["MemoryStoreSnapshots.ts",      memoryStoreSnapshotsRaw],
+    ["KnowledgeStoreMetrics.ts",     metricsRaw],
+  ];
+
+  const allFindings: SourceFinding[] = [];
+  const fileMetrics: FileMetrics[]   = [];
+
+  for (const [file, src] of SOURCES) {
+    allFindings.push(...analyzeSource(file, src));
+    fileMetrics.push(computeMetrics(file, src));
+  }
+
+  const totalLines = fileMetrics.reduce((a, m) => a + m.lines, 0);
+  const critical   = allFindings.filter(f => f.severity === "critical").length;
+  const errors     = allFindings.filter(f => f.severity === "error").length;
+  const warnings   = allFindings.filter(f => f.severity === "warning").length;
+
   return Object.freeze({
-    ok:       findings.length === 0,
-    findings: Object.freeze(findings),
-    files:    entries.length,
-    checked,
-    durationMs: Date.now() - t0,
+    ok:          critical === 0 && errors === 0,
+    critical,
+    errors,
+    warnings,
+    findings:    Object.freeze(allFindings),
+    fileMetrics: Object.freeze(fileMetrics),
+    files:       SOURCES.length,
+    totalLines,
+    durationMs:  Math.round((performance.now() - t0) * 100) / 100,
   });
 }
 
-// ── Dynamic loader — imports source as text via fetch of known module paths ────
-// We load the compiled module text by dynamically importing and stringifying.
-// This is the only reliable approach inside a browser/Vite runtime.
-async function loadSources(): Promise<SourceEntry[]> {
-  const modules: Array<[string, () => Promise<unknown>]> = [
-    ["MemoryStore.ts",              () => import("../memory/MemoryStore")],
-    ["MemoryStoreIndex.ts",         () => import("../memory/MemoryStoreIndex")],
-    ["MemoryStoreQuery.ts",         () => import("../memory/MemoryStoreQuery")],
-    ["MemoryStoreSearch.ts",        () => import("../memory/MemoryStoreSearch")],
-    ["MemoryStoreStatistics.ts",    () => import("../memory/MemoryStoreStatistics")],
-    ["MemoryStoreVersionManager.ts",() => import("../memory/MemoryStoreVersionManager")],
-    ["MemoryStoreArchive.ts",       () => import("../memory/MemoryStoreArchive")],
-    ["MemoryStoreSnapshots.ts",     () => import("../memory/MemoryStoreSnapshots")],
-    ["KnowledgeStoreMetrics.ts",    () => import("../KnowledgeStoreMetrics")],
-    ["ArchitecturalAuditor.ts",     () => import("./ArchitecturalAuditor")],
-  ];
+// Re-export structural audit for convenience
+export type { StructuralAuditReport, StructuralCheck } from "./SourceAuditStructural";
+export { runStructuralAudit } from "./SourceAuditStructural";
 
-  // We cannot read raw file content from browser runtime without a special plugin.
-  // Instead we serialize the exported module objects to detect structural signals.
-  // For "as any" / TODO / HACK patterns we use the known-source map below.
-  const entries: SourceEntry[] = [];
-
-  // Known-source map: embed the relevant identifiers from each module.
-  // This is the production-safe approach — we describe WHAT was found in the
-  // actual module exports and method signatures, not infer from test names.
-  for (const [file, loader] of modules) {
-    try {
-      const mod = await loader();
-      // Serialize export names as audit surface
-      const exportKeys = Object.keys(mod as object).join(", ");
-      entries.push({ file, content: `// exports: ${exportKeys}` });
-    } catch {
-      entries.push({ file, content: "// failed to load" });
-    }
-  }
-
-  return entries;
-}
-
-// ── Structural checks (runtime-observable, not text-based) ────────────────────
-export interface StructuralCheck {
-  readonly check:     string;
-  readonly ok:        boolean;
-  readonly detail:    string;
-}
-
-export interface StructuralAuditReport {
-  readonly ok:        boolean;
-  readonly checks:    readonly StructuralCheck[];
-  readonly passed:    number;
-  readonly failed:    number;
-  readonly durationMs:number;
-}
-
-export async function runStructuralAudit(): Promise<StructuralAuditReport> {
-  const t0 = Date.now();
-  const checks: StructuralCheck[] = [];
-
-  // 1. KnowledgeStoreMetrics.reset() uses typed keys, no "as any"
-  {
-    const { KnowledgeStoreMetrics } = await import("../KnowledgeStoreMetrics");
-    const snap1 = KnowledgeStoreMetrics.snapshot();
-    KnowledgeStoreMetrics.reset();
-    const snap2 = KnowledgeStoreMetrics.snapshot();
-    const ok = snap2.storeCount === 0 && snap2.totalOps === 0;
-    checks.push(Object.freeze({
-      check:  "KnowledgeStoreMetrics.reset() works without 'as any'",
-      ok,
-      detail: `After reset: storeCount=${snap2.storeCount} totalOps=${snap2.totalOps}`,
-    }));
-  }
-
-  // 2. MemoryStoreSearch handles undefined summary/tags without throwing
-  {
-    const { MemoryStore } = await import("../memory/MemoryStore");
-    const { KnowledgeEvidenceFactory } = await import("@/lib/ingestion/KnowledgeEvidence");
-    const e = KnowledgeEvidenceFactory.create({ source: "structural", conversationId: "c1", messageId: "m1", confidence: 0.9 });
-    const s = new MemoryStore();
-    await s.store({ type: "Engineering", content: "structural probe", summary: "", tags: [], evidence: e });
-    let threw = false;
-    try { await s.search({ text: "structural" }); } catch { threw = true; }
-    checks.push(Object.freeze({
-      check:  "MemoryStoreSearch handles empty summary/tags without throwing",
-      ok:     !threw,
-      detail: `threw=${threw}`,
-    }));
-  }
-
-  // 3. MemoryStoreQuery: Filter→Sort→Paginate order verified
-  {
-    const { MemoryStore } = await import("../memory/MemoryStore");
-    const { KnowledgeEvidenceFactory } = await import("@/lib/ingestion/KnowledgeEvidence");
-    const e = KnowledgeEvidenceFactory.create({ source: "structural", conversationId: "c1", messageId: "m1", confidence: 0.9 });
-    const s = new MemoryStore();
-    for (let i = 0; i < 10; i++) {
-      await s.store({ type: "Engineering", content: `record-${i}`, evidence: e });
-    }
-    // Page 1 and page 2 must not overlap
-    const p1 = await s.query({ status: ["active"], limit: 3, offset: 0 });
-    const p2 = await s.query({ status: ["active"], limit: 3, offset: 3 });
-    const ids1 = new Set(p1.records.map(r => r.id));
-    const overlap = p2.records.filter(r => ids1.has(r.id)).length;
-    checks.push(Object.freeze({
-      check:  "Query pagination pages don't overlap (Filter→Sort→Paginate order)",
-      ok:     overlap === 0 && p1.total === 10,
-      detail: `p1.length=${p1.records.length} p2.length=${p2.records.length} overlap=${overlap} total=${p1.total}`,
-    }));
-  }
-
-  // 4. MemoryStoreIndex: empty sets removed after all records deleted
-  {
-    const { MemoryStore } = await import("../memory/MemoryStore");
-    const { KnowledgeEvidenceFactory } = await import("@/lib/ingestion/KnowledgeEvidence");
-    const e = KnowledgeEvidenceFactory.create({ source: "structural", conversationId: "c1", messageId: "m1", confidence: 0.9 });
-    const s = new MemoryStore();
-    const r = await s.store({ type: "Engineering", content: "probe", evidence: e });
-    await s.delete(r.id);
-    const idx = s.indexStats();
-    const clean = idx.totalIds === 0 && idx.types === 0 && idx.statuses === 0;
-    checks.push(Object.freeze({
-      check:  "MemoryStoreIndex: no empty Sets after delete",
-      ok:     clean,
-      detail: `totalIds=${idx.totalIds} types=${idx.types} statuses=${idx.statuses}`,
-    }));
-  }
-
-  // 5. MemoryStoreStatistics: double archive/restore is consistent
-  {
-    const { MemoryStore } = await import("../memory/MemoryStore");
-    const { KnowledgeEvidenceFactory } = await import("@/lib/ingestion/KnowledgeEvidence");
-    const e = KnowledgeEvidenceFactory.create({ source: "structural", conversationId: "c1", messageId: "m1", confidence: 0.9 });
-    const s = new MemoryStore();
-    const r = await s.store({ type: "Engineering", content: "stats probe", evidence: e });
-    await s.archive(r.id); await s.restore(r.id);
-    await s.archive(r.id); await s.restore(r.id);
-    const st = s.internalStats();
-    const ok = st.activeRecords === 1 && st.archivedRecords === 0;
-    checks.push(Object.freeze({
-      check:  "MemoryStoreStatistics: consistent after double archive/restore",
-      ok,
-      detail: `active=${st.activeRecords} archived=${st.archivedRecords}`,
-    }));
-  }
-
-  const passed = checks.filter(c => c.ok).length;
-  return Object.freeze({
-    ok:       passed === checks.length,
-    checks:   Object.freeze(checks),
-    passed,
-    failed:   checks.length - passed,
-    durationMs: Date.now() - t0,
-  });
-}
-
-export async function runSourceAudit(): Promise<SourceAuditReport> {
-  const entries = await loadSources();
-  return auditSource(entries);
-}
+// Synchronous — no async needed (raw strings are available at module load)
+// runSourceAudit() is already exported above
