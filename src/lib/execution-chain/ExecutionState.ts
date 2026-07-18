@@ -2,9 +2,11 @@
  * ExecutionState.ts — Sprint P-01.11B
  *
  * Immutable value object representing the complete state of a single execution.
- * SRP: state representation only — no logic, no side effects.
+ * SRP: state representation only — no logic, no side effects, no pipeline knowledge.
  * Every field is readonly. Instances are Object.freeze()-ed.
  */
+
+import { ExecutionStage } from "./ExecutionStage";
 
 export interface ExplanationNode {
   readonly origin:      string;
@@ -143,62 +145,26 @@ export const ExecutionStateFactory = {
       currentStage:    state.pendingStages.find(s => s !== record.stageId) ?? "",
     });
   },
+
+  /**
+   * moveToStage — generic stage transition. Pipeline-agnostic.
+   * SRP: updates currentStage only; no stage-specific knowledge required.
+   */
+  moveToStage(state: ExecutionState, stage: ExecutionStage): ExecutionState {
+    return ExecutionStateFactory.update(state, { currentStage: stage });
+  },
 };
 
-// ── Typed state-merge helpers (used by ExecutionPipeline) ─────────────────────
+// ── Single generic record helper (pipeline infrastructure only) ───────────────
 
 export function withRecord(state: ExecutionState, record: StageRecord): ExecutionState {
   return ExecutionStateFactory.completeStage(state, record);
 }
 
-export function withUserInput(state: ExecutionState, _v: unknown): ExecutionState {
-  return ExecutionStateFactory.update(state, { currentStage: "USER_INPUT" });
-}
-
-export function withIntent(state: ExecutionState, _v: unknown): ExecutionState {
-  return ExecutionStateFactory.update(state, { currentStage: "INTENT_RUNTIME" });
-}
-
-export function withGoal(state: ExecutionState, _v: unknown): ExecutionState {
-  return ExecutionStateFactory.update(state, { currentStage: "GOAL_RUNTIME" });
-}
-
-export function withPlan(state: ExecutionState, _v: unknown): ExecutionState {
-  return ExecutionStateFactory.update(state, { currentStage: "PLANNING_RUNTIME" });
-}
-
-export function withKernel(state: ExecutionState, _v: unknown): ExecutionState {
-  return ExecutionStateFactory.update(state, { currentStage: "KERNEL" });
-}
-
-export function withOrchestrator(state: ExecutionState, _v: unknown): ExecutionState {
-  return ExecutionStateFactory.update(state, { currentStage: "RUNTIME_ORCHESTRATOR" });
-}
-
-export function withCapability(state: ExecutionState, _v: unknown): ExecutionState {
-  return ExecutionStateFactory.update(state, { currentStage: "CAPABILITY_RUNTIME" });
-}
-
-export function withConnectorRuntime(state: ExecutionState, _v: unknown): ExecutionState {
-  return ExecutionStateFactory.update(state, { currentStage: "CONNECTOR_RUNTIME" });
-}
-
-export function withConnector(state: ExecutionState, _v: unknown): ExecutionState {
-  return ExecutionStateFactory.update(state, { currentStage: "CONNECTOR" });
-}
-
-export function withResult(state: ExecutionState, _v: unknown): ExecutionState {
-  return ExecutionStateFactory.update(state, { currentStage: "RESULT" });
-}
-
-export function withMemory(state: ExecutionState, _v: unknown): ExecutionState {
-  return ExecutionStateFactory.update(state, { currentStage: "MEMORY" });
-}
-
-export function withExplainability(state: ExecutionState, _v: unknown): ExecutionState {
-  return ExecutionStateFactory.update(state, { currentStage: "EXPLAINABILITY" });
-}
-
-export function withAudit(state: ExecutionState, _v: unknown): ExecutionState {
-  return ExecutionStateFactory.update(state, { currentStage: "AUDIT" });
-}
+/** Canonical empty state — use as initial value before the pipeline starts. */
+export const EMPTY_EXECUTION_STATE: ExecutionState = ExecutionStateFactory.create({
+  executionId: "",
+  goalId:      "",
+  pipelineId:  "",
+  stages:      [],
+});

@@ -14,9 +14,10 @@
 
 import { ExecutionCompositionRoot }     from "./ExecutionCompositionRoot";
 import type { ComposedRuntime, CompositionDeps } from "./ExecutionCompositionRoot";
-import { withUserInput, EMPTY_EXECUTION_STATE }   from "./ExecutionState";
+import { EMPTY_EXECUTION_STATE, ExecutionStateFactory } from "./ExecutionState";
 import type { ExecutionReportAssembler }           from "./ExecutionReportAssembler";
 import type { ExecutionState }          from "./ExecutionState";
+import { ExecutionStage }               from "./ExecutionStage";
 import type { RuntimeEventBus }         from "../runtime-infra/RuntimeEventBus";
 import type { RuntimeMetrics }          from "../runtime-infra/RuntimeMetrics";
 import type { RuntimeEventType }        from "../runtime-infra/RuntimeEvent";
@@ -49,8 +50,8 @@ export class ExecutionChain {
     this._rt.metrics.recordExecution();
     this._emit(EV_EXEC_STARTED, chainId, "ExecutionChain started");
 
-    // EF-21: typed helper — no unsafe cast
-    const initialState = withUserInput(EMPTY_EXECUTION_STATE, input);
+    // EF-7.2.8: generic moveToStage — no stage-specific helpers
+    const initialState = ExecutionStateFactory.moveToStage(EMPTY_EXECUTION_STATE, ExecutionStage.USER_INPUT);
 
     const evidences: ExplainabilityEvidence[] = [];
     const ctx = {
