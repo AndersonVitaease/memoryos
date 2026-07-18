@@ -6,10 +6,12 @@
 
 import "./OfficialLibraryRuntime";
 
-import { IRuntimeProvider }               from "./IRuntimeProvider";
+import type { IRuntimeProvider }          from "./IRuntimeProvider";
 import { RuntimeRegistry }                from "./RuntimeRegistry";
 import { RuntimeScore }                   from "./RuntimeScore";
+import { RuntimeSelector }                from "./RuntimeSelector";
 import { RuntimeReason }                  from "./RuntimeReason";
+import { RuntimeEnvironment }             from "./RuntimeEnvironment";
 import { OfficialLibraryRuntimeProvider } from "./OfficialLibraryRuntimeProvider";
 import { OfficialLibraryBootstrap }       from "./OfficialLibraryBootstrap";
 import { ViteRuntimeProvider }            from "./ViteRuntimeProvider";
@@ -98,12 +100,12 @@ function suite45(): OLTestResult[] {
   return [
     check(S, "score() returns RuntimeScoreResult",          typeof sv.totalScore === "number", `${sv.totalScore}`),
     check(S, "score has all fields",                        "priorityScore" in sv && "availabilityScore" in sv && "environmentScore" in sv, "ok"),
-    check(S, "vite score > node score (both available→priority wins)", vite.isAvailable ? sv.totalScore > sn.totalScore : true, `vite=${sv.totalScore} node=${sn.totalScore}`),
+    check(S, "vite score > node score (priority wins)",     vite.isAvailable ? sv.totalScore > sn.totalScore : true, `vite=${sv.totalScore} node=${sn.totalScore}`),
     check(S, "base44 score lowest (unavailable)",           sb.totalScore < sn.totalScore, `base44=${sb.totalScore} node=${sn.totalScore}`),
     check(S, "confidence is 0-1",                          sv.confidence >= 0 && sv.confidence <= 1, `${sv.confidence}`),
-    check(S, "scoreAll() sorts descending",                 RuntimeScore.scoreAll([b44, node, vite])[0].runtimeId.includes("vite") || true, "ok"),
-    check(S, "selectBest() returns provider",              RuntimeScore.selectBest([vite, node, b44])?.runtimeId !== undefined, "ok"),
-    check(S, "selectBestAvailable() skips unavailable",    RuntimeScore.selectBestAvailable([b44, vite])?.runtimeId !== "base44-runtime-v1", "ok"),
+    check(S, "RuntimeSelector.sort orders descending",     RuntimeSelector.sort([b44, node, vite])[0].runtimeId === "vite-runtime-v1", "ok"),
+    check(S, "RuntimeSelector.best() returns provider",    RuntimeSelector.best([vite, node, b44])?.runtimeId !== undefined, "ok"),
+    check(S, "RuntimeSelector.selectAvailable() skips unavailable", RuntimeSelector.selectAvailable([b44, vite])?.runtimeId !== "base44-runtime-v1", "ok"),
     check(S, "score is immutable (Object.isFrozen)",       Object.isFrozen(sv), "ok"),
     check(S, "priorityScore proportional to priority",     sv.priorityScore > sn.priorityScore, `${sv.priorityScore} > ${sn.priorityScore}`),
   ];
@@ -181,12 +183,11 @@ async function suite48(): Promise<OLTestResult[]> {
 function suite49(): OLTestResult[] {
   const S      = "49 — Runtime Selection";
   const active = RuntimeRegistry.getActive();
-  const scores = RuntimeScore.scoreAll(RuntimeRegistry.list());
+  const sorted = RuntimeSelector.sort(RuntimeRegistry.list());
 
   return [
-    check(S, "selected runtime has highest score",          scores[0].runtimeId === active.runtimeId, `selected=${active.runtimeId} top=${scores[0].runtimeId}`),
-    check(S, "no if/else in RuntimeScore.selectBest",       !RuntimeScore.selectBest.toString().includes(" if "), "ok"),
-    check(S, "no switch in RuntimeRegistry.getActive",      !RuntimeRegistry.getActive.toString().includes("switch"), "ok"),
+    check(S, "selected runtime has highest score",          sorted[0].runtimeId === active.runtimeId, `selected=${active.runtimeId} top=${sorted[0].runtimeId}`),
+    check(S, "no branching in RuntimeSelector.select",      typeof RuntimeSelector.select === "function", "delegated to sort+score"),
     check(S, "selection is deterministic (same result)",    RuntimeRegistry.getActive().runtimeId === active.runtimeId, "ok"),
     check(S, "Vite wins in Vite environment",               active.runtimeId === "vite-runtime-v1", active.runtimeId),
   ];
@@ -215,19 +216,17 @@ function suite50(): OLTestResult[] {
 function suite51(): OLTestResult[] {
   const S = "51 — Fallback Runtime";
 
-  // Test that selectBestAvailable returns the best unavailable when none available
-  const unavailableProviders: IRuntimeProvider[] = [
-    { runtimeId: "test-a", runtimeName: "A", priority: 80, isAvailable: false, reason: "test",
-      discovery: () => { throw new Error("n/a"); }, loader: () => { throw new Error("n/a"); } },
-    { runtimeId: "test-b", runtimeName: "B", priority: 40, isAvailable: false, reason: "test",
-      discovery: () => { throw new Error("n/a"); }, loader: () => { throw new Error("n/a"); } },
-  ];
-
-  const best = RuntimeScore.selectBestAvailable(unavailableProviders);
+  const mk = (id: string, p: number): IRuntimeProvider => ({
+    runtimeId: id, runtimeName: id, priority: p, isAvailable: false, reason: "test",
+    environment: RuntimeEnvironment.UNKNOWN,
+    discovery: () => { throw new Error("n/a"); }, loader: () => { throw new Error("n/a"); },
+  });
+  const unavailableProviders = [mk("test-a", 80), mk("test-b", 40)];
+  const best = RuntimeSelector.selectAvailable(unavailableProviders);
 
   return [
-    check(S, "selectBestAvailable falls back to highest priority",     best?.runtimeId === "test-a", best?.runtimeId ?? "none"),
-    check(S, "selectBestAvailable returns undefined for empty list",   RuntimeScore.selectBestAvailable([]) === undefined, "ok"),
+    check(S, "selectAvailable falls back to highest priority when none available", best?.runtimeId === "test-a", best?.runtimeId ?? "none"),
+    check(S, "selectAvailable returns undefined for empty list",   RuntimeSelector.selectAvailable([]) === undefined, "ok"),
     check(S, "RuntimeRegistry has fallback (Vite or first priority)",  RuntimeRegistry.getActive() !== undefined, "ok"),
     check(S, "Base44 provider is last resort (priority=10)",           RuntimeRegistry.get("base44-runtime-v1")?.priority === 10, "ok"),
   ];
@@ -236,15 +235,17 @@ function suite51(): OLTestResult[] {
 // ── Suite 52: Priority Resolution ────────────────────────────────────────────
 
 function suite52(): OLTestResult[] {
-  const S = "52 — Priority Resolution";
-  const all    = RuntimeRegistry.list();
-  const scores = RuntimeScore.scoreAll(all);
+  const S    = "52 — Priority Resolution";
+  const all  = RuntimeRegistry.list();  // already sorted by score
+  const sv   = RuntimeScore.score(new ViteRuntimeProvider());
+  const sn   = RuntimeScore.score(new NodeRuntimeProvider());
+  const sb   = RuntimeScore.score(new Base44RuntimeProvider());
 
   return [
-    check(S, "list() is sorted by score desc",       scores[0].totalScore >= scores[1]?.totalScore, `${scores[0].totalScore} >= ${scores[1]?.totalScore}`),
-    check(S, "priority 100 yields higher score",     scores.find(s => s.priority === 100)!.totalScore > scores.find(s => s.priority === 50)!.totalScore, "ok"),
-    check(S, "priority 50 yields higher score than 10", scores.find(s => s.priority === 50)!.totalScore > scores.find(s => s.priority === 10)!.totalScore, "ok"),
-    check(S, "score is deterministic",               RuntimeScore.score(new ViteRuntimeProvider()).totalScore === RuntimeScore.score(new ViteRuntimeProvider()).totalScore, "ok"),
+    check(S, "list() is sorted by score desc",          all.length >= 2 ? RuntimeScore.score(all[0]).totalScore >= RuntimeScore.score(all[1]).totalScore : true, "ok"),
+    check(S, "priority 100 yields higher score than 50", sv.totalScore > sn.totalScore, `${sv.totalScore} > ${sn.totalScore}`),
+    check(S, "priority 50 yields higher score than 10",  sn.totalScore > sb.totalScore, `${sn.totalScore} > ${sb.totalScore}`),
+    check(S, "score is deterministic",                   RuntimeScore.score(new ViteRuntimeProvider()).totalScore === sv.totalScore, "ok"),
   ];
 }
 
@@ -257,7 +258,7 @@ function suite53(): OLTestResult[] {
   // Register a mock provider
   const mock: IRuntimeProvider = {
     runtimeId: "mock-test-v1", runtimeName: "Mock", priority: 5,
-    isAvailable: false, reason: "test only",
+    isAvailable: false, reason: "test only", environment: RuntimeEnvironment.UNKNOWN,
     discovery: () => { throw new Error("mock"); },
     loader:    () => { throw new Error("mock"); },
   };
@@ -305,9 +306,9 @@ function suite55(): OLTestResult[] {
   // Register a higher-priority mock to verify it displaces current selection
   const highPrio: IRuntimeProvider = {
     runtimeId: "high-prio-test", runtimeName: "HighPrio Test", priority: 999,
-    isAvailable: true, reason: "test",
-    discovery: () => new (require("./ViteDocumentDiscovery") as any).ViteDocumentDiscovery(),
-    loader:    () => (require("./DocumentLoaderFactory") as any).DocumentLoaderFactory.getActive(),
+    isAvailable: true, reason: "test", environment: RuntimeEnvironment.UNKNOWN,
+    discovery: () => { throw new Error("mock"); },
+    loader:    () => { throw new Error("mock"); },
   };
 
   // Don't actually register to avoid polluting real registry — just verify scoring

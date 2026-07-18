@@ -9,8 +9,9 @@ async function runTests() {
   await import("@/lib/official-library/OfficialLibraryRuntime");
   const { runOfficialLibraryTests }    = await import("@/lib/official-library/OfficialLibraryTests");
   const { runOfficialLibraryTests724 } = await import("@/lib/official-library/OfficialLibraryTests724");
-  const [r1, r2] = await Promise.all([runOfficialLibraryTests(), runOfficialLibraryTests724()]);
-  const results = [...r1.results, ...r2.results];
+  const { runOfficialLibraryTests725 } = await import("@/lib/official-library/OfficialLibraryTests725");
+  const [r1, r2, r3] = await Promise.all([runOfficialLibraryTests(), runOfficialLibraryTests724(), runOfficialLibraryTests725()]);
+  const results = [...r1.results, ...r2.results, ...r3.results];
   const passed  = results.filter(r => r.passed).length;
   return { results, total: results.length, passed, failed: results.length - passed, certified: results.every(r => r.passed) };
 }
@@ -56,26 +57,36 @@ export default function Phase720Page() {
       const { OfficialLibraryRuntimeProvider } = await import("@/lib/official-library/OfficialLibraryRuntimeProvider");
       const { RuntimeRegistry }                = await import("@/lib/official-library/RuntimeRegistry");
       const { RuntimeScore }                   = await import("@/lib/official-library/RuntimeScore");
+      const { RuntimeSelector }                = await import("@/lib/official-library/RuntimeSelector");
+      const { detectEnvironment }              = await import("@/lib/official-library/RuntimeEnvironment");
 
-      const runtime   = OfficialLibraryRuntimeProvider.runtime();
-      const score     = OfficialLibraryRuntimeProvider.getScore();
-      const reason    = OfficialLibraryRuntimeProvider.getReason();
-      const allScores = RuntimeScore.scoreAll(RuntimeRegistry.list());
-      const allReason = OfficialLibraryRuntimeProvider.getAllReasons();
+      const runtime    = OfficialLibraryRuntimeProvider.runtime();
+      const score      = OfficialLibraryRuntimeProvider.getScore();
+      const reason     = OfficialLibraryRuntimeProvider.getReason();
+      const sorted     = RuntimeSelector.sort(RuntimeRegistry.list());
+      const allScores  = sorted.map(p => RuntimeScore.score(p));
+      const allReason  = OfficialLibraryRuntimeProvider.getAllReasons();
+      const currentEnv = detectEnvironment();
 
       setRuntimeInfo({
-        runtimeId:    runtime.runtimeId,
-        runtimeName:  runtime.runtimeName,
-        priority:     runtime.priority,
-        isAvailable:  runtime.isAvailable,
-        providerReason: runtime.reason,
-        discoveryId:  runtime.discovery().runtimeId,
-        loaderId:     runtime.loader().loaderId,
+        runtimeId:       runtime.runtimeId,
+        runtimeName:     runtime.runtimeName,
+        priority:        runtime.priority,
+        isAvailable:     runtime.isAvailable,
+        environment:     runtime.environment,
+        providerReason:  runtime.reason,
+        discoveryId:     runtime.discovery().runtimeId,
+        loaderId:        runtime.loader().loaderId,
         score,
         reason,
         allScores,
         allReason,
-        registrySize: RuntimeRegistry.size,
+        registrySize:    RuntimeRegistry.size,
+        selectionCount:  RuntimeRegistry.selectionCount,
+        refreshCount:    RuntimeRegistry.refreshCount,
+        lastSelectedAt:  RuntimeRegistry.lastSelectedAt,
+        lastSelectedId:  RuntimeRegistry.lastSelectedId,
+        currentEnv,
       });
     } catch (e) {
       setErr(e?.message ?? String(e));
@@ -112,9 +123,9 @@ export default function Phase720Page() {
 
         {/* Header */}
         <div>
-          <div className="text-xs text-violet-400 tracking-widest mb-1">SPRINT EF-7.2.4 — RUNTIME ABSTRACTION COMPLETION</div>
-          <h1 className="text-3xl font-bold">Official Library — Runtime Abstraction</h1>
-          <p className="text-zinc-400 text-sm mt-1">IRuntimeProvider · RuntimeRegistry · RuntimeScore · RuntimeReason · Bootstrap fully decoupled</p>
+          <div className="text-xs text-violet-400 tracking-widest mb-1">SPRINT EF-7.2.5 — RUNTIME HARDENING & ARCHITECTURE FINALIZATION</div>
+          <h1 className="text-3xl font-bold">Official Library — Runtime Layer STABLE</h1>
+          <p className="text-zinc-400 text-sm mt-1">RuntimeSelector · RuntimeScore SRP · RuntimeEnvironment · Registry hardened · No require() · Behavioral tests</p>
         </div>
 
         {/* Architecture pipeline */}
@@ -162,9 +173,13 @@ export default function Phase720Page() {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {[
                 ["Runtime",      runtimeInfo.runtimeId,   "text-violet-300"],
+                ["Environment",  runtimeInfo.environment, "text-cyan-300"],
                 ["Priority",     runtimeInfo.priority,    "text-blue-300"],
                 ["Score",        `${(runtimeInfo.score.confidence * 100).toFixed(0)}%`, "text-emerald-400"],
                 ["Available",    runtimeInfo.isAvailable ? "✓ YES" : "✗ NO", runtimeInfo.isAvailable ? "text-emerald-400" : "text-red-400"],
+                ["Selections",   runtimeInfo.selectionCount, "text-zinc-300"],
+                ["Refreshes",    runtimeInfo.refreshCount,   "text-zinc-300"],
+                ["Cache",        runtimeInfo.lastSelectedId ? "HOT" : "COLD", runtimeInfo.lastSelectedId ? "text-orange-400" : "text-blue-400"],
               ].map(([label, value, cls]) => (
                 <div key={label} className="border border-zinc-700 rounded p-2 bg-zinc-900 text-center">
                   <div className="text-zinc-500 text-xs">{label}</div>
@@ -245,16 +260,57 @@ export default function Phase720Page() {
         {report && (
           <div className={`border-2 rounded-xl p-6 text-center ${report.certified ? "border-emerald-500 bg-emerald-950/20" : "border-red-700 bg-red-950/10"}`}>
             <div className={`text-3xl font-bold ${report.certified ? "text-emerald-400" : "text-red-400"}`}>
-              {report.certified ? "✓ EF-7.2.4 CERTIFIED" : "✗ TEST SUITE FAILED"}
+              {report.certified ? "✓ EF-7.2.5 CERTIFIED — RUNTIME LAYER STABLE" : "✗ TEST SUITE FAILED"}
             </div>
             <div className="text-zinc-400 text-sm mt-2">{report.passed}/{report.total} passed · {report.failed} failed</div>
           </div>
         )}
 
+        {/* EF-7.2.5 suites */}
+        {report && (() => {
+          const suites725 = [...new Set(report.results.map(r => r.suite))]
+            .filter(s => parseInt(s) >= 59)
+            .map(s => ({ suite: s, rows: report.results.filter(r => r.suite === s) }));
+          return suites725.length > 0 && (
+            <div className="space-y-1">
+              <div className="text-emerald-400 text-xs tracking-widest px-1">EF-7.2.5 — NEW SUITES (59–72) — RUNTIME LAYER HARDENING</div>
+              {suites725.map(({ suite, rows }) => {
+                const sp  = rows.filter(r => r.passed).length;
+                return (
+                  <div key={suite} className="space-y-0.5">
+                    <div className={`border rounded-lg px-4 py-2 flex justify-between bg-zinc-900 border-emerald-700 text-emerald-300`}>
+                      <span className="font-bold text-sm">{suite}</span>
+                      <span className="text-xs font-mono">{sp}/{rows.length}</span>
+                    </div>
+                    <div className="border border-zinc-800 rounded-lg overflow-hidden">
+                      <table className="w-full text-xs">
+                        <tbody className="divide-y divide-zinc-800/60">
+                          {rows.map((r, i) => (
+                            <tr key={i} className={r.passed ? "" : "bg-red-950/20"}>
+                              <td className="p-2 pl-3 text-zinc-300 w-96">{r.name}</td>
+                              <td className="p-2 text-zinc-500 truncate max-w-xs" title={r.detail}>{r.detail}</td>
+                              <td className="p-2 pr-3 text-center"><Badge ok={r.passed} /></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {rows.filter(r => !r.passed).map((r, i) => (
+                        <div key={i} className="border-t border-red-800 bg-red-950/10 px-3 py-1.5 text-red-300 text-xs">
+                          ✗ [{r.name}] {r.error}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+
         {/* EF-7.2.4 suites */}
         {suites724.length > 0 && (
           <div className="space-y-1">
-            <div className="text-violet-400 text-xs tracking-widest px-1">EF-7.2.4 — NEW SUITES (43–58)</div>
+            <div className="text-violet-400 text-xs tracking-widest px-1">EF-7.2.4 — SUITES (43–58)</div>
             {suites724.map(({ suite, rows }) => {
               const sp  = rows.filter(r => r.passed).length;
               const cls = SUITE_COLORS[suite] ?? "border-zinc-700 text-zinc-300";
@@ -312,19 +368,20 @@ export default function Phase720Page() {
 
         {/* Acceptance criteria */}
         <div className="border border-zinc-700 rounded-lg p-4 bg-zinc-900 text-xs space-y-1.5">
-          <div className="text-zinc-400 tracking-widest mb-2">CRITÉRIOS DE ACEITE — EF-7.2.4</div>
+          <div className="text-zinc-400 tracking-widest mb-2">CRITÉRIOS DE ACEITE — EF-7.2.5 (RUNTIME LAYER FINALIZADA)</div>
           {[
-            "Bootstrap conhece apenas OfficialLibraryRuntimeProvider",
-            "RuntimeRegistry é completamente genérico — zero conhecimento de Vite/Node/Base44",
-            "IRuntimeProvider abstrai discovery() e loader() em uma interface",
-            "OfficialLibraryRuntime apenas registra Providers — zero lógica de seleção",
-            "RuntimeScore centraliza toda lógica de seleção — pure functions",
-            "RuntimeReason explica toda decisão de seleção",
-            "Nenhum if/else/switch para seleção de Runtime no Registry",
-            "Nenhum import concreto no Bootstrap (sem Vite/Node/Base44/Discovery/Loader diretos)",
-            "Zero breaking changes — suites 1–28 preservadas",
-            "Suites 43–58 aprovadas",
-            "Arquitetura preparada: GitHub=80, Drive=80, S3=70 — apenas nova classe + register()",
+            "RuntimeScore SRP: apenas score(), compare(), normalize() — sem seleção",
+            "RuntimeSelector SRP: select(), selectAvailable(), sort(), best() — sem score",
+            "RuntimeReason SRP: apenas explicação — sem detecção de ambiente, sem scores",
+            "RuntimeEnvironment: providers declaram environment — RuntimeReason apenas consome",
+            "RuntimeRegistry: refresh(), clearSelection(), invalidate() — sem acesso a _activeId externo",
+            "OfficialLibraryRuntimeProvider.refresh() usa public API do Registry",
+            "Nenhum require() — apenas import/dynamic import ES Modules",
+            "Todos os testes são comportamentais — sem toString()/includes()",
+            "Bootstrap permanece totalmente desacoplado — apenas OfficialLibraryRuntimeProvider",
+            "Zero breaking changes — suites 1–58 preservadas",
+            "Suites 59–72 aprovadas",
+            "Runtime Layer CONGELADA — pronta para Connectors (GitHub, Drive, Gmail, WhatsApp, Base44…)",
           ].map((item, i) => (
             <div key={i} className="text-zinc-300 py-0.5">✓ {item}</div>
           ))}

@@ -1,29 +1,25 @@
 /**
- * RuntimeScore.ts — Sprint EF-7.2.4
+ * RuntimeScore.ts — Sprint EF-7.2.5
  *
- * Pure function module. Calculates a numeric score for an IRuntimeProvider.
- * Score drives auto-selection — highest score among available providers wins.
+ * Single responsibility: calculate numeric score for an IRuntimeProvider.
+ * Selection logic has been moved to RuntimeSelector.
  *
- * Score factors:
- *   priority    — base weight (0–100 mapped to 0–0.60)
- *   available   — +0.30 if isAvailable, 0 otherwise
- *   environment — +0.10 bonus (reserved for future per-env tuning; currently constant)
+ * SRP: scoring only. No selection. No sorting. No registry access.
  *
- * SRP: scoring only. No registry, no selection, no imports.
- * No if/else/switch branching for provider identity.
+ * API: score() · compare() · normalize()
  */
 
 import type { IRuntimeProvider } from "./IRuntimeProvider";
 
 export interface RuntimeScoreResult {
-  readonly runtimeId:    string;
-  readonly priority:     number;
-  readonly isAvailable:  boolean;
-  readonly priorityScore: number;
+  readonly runtimeId:         string;
+  readonly priority:          number;
+  readonly isAvailable:       boolean;
+  readonly priorityScore:     number;
   readonly availabilityScore: number;
   readonly environmentScore:  number;
-  readonly totalScore:   number;
-  readonly confidence:   number; // 0–1
+  readonly totalScore:        number;
+  readonly confidence:        number; // 0–1
 }
 
 // ── Weights ───────────────────────────────────────────────────────────────────
@@ -37,11 +33,11 @@ const MAX_PRIORITY  = 100;
 
 export const RuntimeScore = {
 
-  /** Calculate the score for a single provider. */
+  /** Calculate the score for a single provider. Pure — no side effects. */
   score(provider: IRuntimeProvider): RuntimeScoreResult {
     const priorityScore     = (Math.min(provider.priority, MAX_PRIORITY) / MAX_PRIORITY) * W_PRIORITY;
     const availabilityScore = provider.isAvailable ? W_AVAILABLE : 0;
-    const environmentScore  = W_ENVIRONMENT; // future: env-specific multipliers
+    const environmentScore  = W_ENVIRONMENT;
     const totalScore        = priorityScore + availabilityScore + environmentScore;
     const confidence        = parseFloat(Math.min(totalScore, 1).toFixed(4));
 
@@ -57,26 +53,13 @@ export const RuntimeScore = {
     });
   },
 
-  /** Score all providers and sort descending. */
-  scoreAll(providers: IRuntimeProvider[]): RuntimeScoreResult[] {
-    return providers
-      .map(p => RuntimeScore.score(p))
-      .sort((a, b) => b.totalScore - a.totalScore);
+  /** Compare two providers by score. Returns positive if a > b. */
+  compare(a: IRuntimeProvider, b: IRuntimeProvider): number {
+    return RuntimeScore.score(a).totalScore - RuntimeScore.score(b).totalScore;
   },
 
-  /** Select the best provider from a list. Returns undefined if list is empty. */
-  selectBest(providers: IRuntimeProvider[]): IRuntimeProvider | undefined {
-    if (providers.length === 0) return undefined;
-    const scored = RuntimeScore.scoreAll(providers);
-    const best   = scored[0];
-    return providers.find(p => p.runtimeId === best.runtimeId);
-  },
-
-  /** Select only from available providers; fall back to highest-priority unavailable. */
-  selectBestAvailable(providers: IRuntimeProvider[]): IRuntimeProvider | undefined {
-    const available = providers.filter(p => p.isAvailable);
-    return available.length > 0
-      ? RuntimeScore.selectBest(available)
-      : RuntimeScore.selectBest(providers);
+  /** Normalize a raw score value to 0–1 range. */
+  normalize(value: number, max = 1): number {
+    return parseFloat(Math.min(Math.max(value / max, 0), 1).toFixed(4));
   },
 };
