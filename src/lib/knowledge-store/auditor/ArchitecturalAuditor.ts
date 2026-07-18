@@ -5,81 +5,13 @@
 import { MemoryStore } from "../memory/MemoryStore";
 import { KnowledgeEvidenceFactory } from "@/lib/ingestion/KnowledgeEvidence";
 
-// ── Architecture Score ─────────────────────────────────────────────────────────
-export interface ArchitectureScore {
-  readonly score:     number;         // 0–100
-  readonly grade:     "A+" | "A" | "B" | "C" | "D" | "F";
-  readonly breakdown: Readonly<{
-    tests:         number;
-    solid:         number;
-    immutability:  number;
-    integrity:     number;
-    codeSmells:    number;
-    sourceCleanliness: number;
-    performance:   number;
-    dependencies:  number;
-  }>;
-  readonly verdict:   "CERTIFIED" | "CERTIFICATION FAILED";
-  readonly failedGates: readonly string[];
-}
-
-export function computeArchitectureScore(params: {
-  testsPassed:        number;
-  testsTotal:         number;
-  solidPassed:        number;
-  solidTotal:         number;
-  immutabilityPassed: number;
-  immutabilityTotal:  number;
-  integrityPassed:    number;
-  integrityTotal:     number;
-  codeSmellCount:     number;
-  sourceFindings:     number;
-  avgBenchmarkMs:     number;
-  hasCircularDeps:    boolean;
-}): ArchitectureScore {
-  const pct = (n: number, d: number) => d === 0 ? 100 : Math.round((n / d) * 100);
-
-  const tests         = pct(params.testsPassed,        params.testsTotal);
-  const solid         = pct(params.solidPassed,         params.solidTotal);
-  const immutability  = pct(params.immutabilityPassed,  params.immutabilityTotal);
-  const integrity     = pct(params.integrityPassed,     params.integrityTotal);
-  const codeSmells    = Math.max(0, 100 - params.codeSmellCount * 5);
-  const sourceCleanliness = Math.max(0, 100 - params.sourceFindings * 15);
-  const performance   = params.avgBenchmarkMs < 1 ? 100 : params.avgBenchmarkMs < 5 ? 90 : params.avgBenchmarkMs < 20 ? 75 : 50;
-  const dependencies  = params.hasCircularDeps ? 0 : 100;
-
-  const score = Math.round(
-    tests        * 0.25 +
-    solid        * 0.15 +
-    immutability * 0.15 +
-    integrity    * 0.15 +
-    codeSmells   * 0.10 +
-    sourceCleanliness * 0.10 +
-    performance  * 0.05 +
-    dependencies * 0.05
-  );
-
-  const grade: ArchitectureScore["grade"] =
-    score >= 97 ? "A+" :
-    score >= 90 ? "A"  :
-    score >= 80 ? "B"  :
-    score >= 70 ? "C"  :
-    score >= 60 ? "D"  : "F";
-
-  const failedGates: string[] = [];
-  if (params.testsPassed        < params.testsTotal)       failedGates.push(`Tests: ${params.testsPassed}/${params.testsTotal}`);
-  if (params.immutabilityPassed < params.immutabilityTotal) failedGates.push(`Immutability: ${params.immutabilityPassed}/${params.immutabilityTotal}`);
-  if (params.integrityPassed    < params.integrityTotal)    failedGates.push(`Integrity: ${params.integrityPassed}/${params.integrityTotal}`);
-  if (params.sourceFindings     > 0)                        failedGates.push(`Source findings: ${params.sourceFindings} critical/errors`);
-  if (params.hasCircularDeps)                               failedGates.push("Circular dependencies detected");
-  if (score < 95)                                           failedGates.push(`Score ${score} < 95 required`);
-
-  return Object.freeze({
-    score, grade,
-    breakdown: Object.freeze({ tests, solid, immutability, integrity, codeSmells, sourceCleanliness, performance, dependencies }),
-    verdict:   failedGates.length === 0 ? "CERTIFIED" : "CERTIFICATION FAILED",
-    failedGates: Object.freeze(failedGates),
-  });
+// ── Re-export ArchitectureScore from dedicated engine (EF-39.6) ───────────────
+export type { ArchitectureScore } from "../certification/ArchitectureScoreEngine";
+export { ArchitectureScoreEngine } from "../certification/ArchitectureScoreEngine";
+import { ArchitectureScoreEngine as _ASE, type ScoreEvidence } from "../certification/ArchitectureScoreEngine";
+// Backward-compat alias — dashboard previously called computeArchitectureScore directly
+export function computeArchitectureScore(params: ScoreEvidence) {
+  return _ASE.compute(params);
 }
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -150,17 +82,6 @@ export interface FullAuditReport {
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function ev(check: string, ok: boolean, detail: string): AuditEvidence {
   return Object.freeze({ check, ok, detail, measuredAt: Date.now() });
-}
-
-function stddev(values: number[]): number {
-  if (values.length === 0) return 0;
-  const mean = values.reduce((a, b) => a + b, 0) / values.length;
-  return Math.sqrt(values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length);
-}
-
-function percentile(sorted: number[], p: number): number {
-  const idx = Math.ceil((p / 100) * sorted.length) - 1;
-  return sorted[Math.max(0, Math.min(idx, sorted.length - 1))];
 }
 
 const E = KnowledgeEvidenceFactory.create({
@@ -424,33 +345,13 @@ async function runImmutabilityAudit(): Promise<ImmutabilityReport> {
   });
 }
 
-// ── Performance Auditor ────────────────────────────────────────────────────────
+// ── Performance Auditor — delegates to PerformanceBenchmarkEngine (EF-39.6) ───
 async function runPerformanceAudit(): Promise<PerformanceReport> {
   const t0 = performance.now();
-  const ITERS = 200;
+  const { PerformanceBenchmarkEngine } = await import("../certification/PerformanceBenchmarkEngine");
+  const { benchmarkSeedRecords, benchmarkIterations } = (await import("../certification/CertificationConfig")).CertificationConfig;
 
-  async function bench(name: string, fn: () => Promise<void>): Promise<PerformanceBenchmark> {
-    const times: number[] = [];
-    for (let i = 0; i < ITERS; i++) {
-      const t = performance.now();
-      await fn();
-      times.push(performance.now() - t);
-    }
-    const sorted = [...times].sort((a, b) => a - b);
-    const avg    = times.reduce((a, b) => a + b, 0) / ITERS;
-    return Object.freeze({
-      operation:  name,
-      iterations: ITERS,
-      avgMs:      Math.round(avg * 1000) / 1000,
-      minMs:      Math.round(sorted[0] * 1000) / 1000,
-      maxMs:      Math.round(sorted[sorted.length - 1] * 1000) / 1000,
-      medianMs:   Math.round(percentile(sorted, 50) * 1000) / 1000,
-      p95Ms:      Math.round(percentile(sorted, 95) * 1000) / 1000,
-      p99Ms:      Math.round(percentile(sorted, 99) * 1000) / 1000,
-      stdDev:     Math.round(stddev(times) * 1000) / 1000,
-      opsPerSec:  avg > 0 ? Math.round(1000 / avg) : 999999,
-    });
-  }
+  const bench = PerformanceBenchmarkEngine.benchmark.bind(PerformanceBenchmarkEngine);
 
   // store()
   const storeStore = new MemoryStore();
@@ -463,12 +364,12 @@ async function runPerformanceAudit(): Promise<PerformanceReport> {
 
   // query()
   const queryStore = new MemoryStore();
-  for (let i = 0; i < 50; i++) await queryStore.store(DRAFT);
+  for (let i = 0; i < benchmarkSeedRecords; i++) await queryStore.store(DRAFT);
   const queryBench = await bench("query()", () => queryStore.query({ status: ["active"] }));
 
   // search()
   const searchStore = new MemoryStore();
-  for (let i = 0; i < 50; i++) await searchStore.store({ ...DRAFT, content: `Search probe record number ${i}` });
+  for (let i = 0; i < benchmarkSeedRecords; i++) await searchStore.store({ ...DRAFT, content: `Search probe record number ${i}` });
   const searchBench = await bench("search()", () => searchStore.search({ text: "probe" }));
 
   // archive() / restore()
@@ -477,7 +378,7 @@ async function runPerformanceAudit(): Promise<PerformanceReport> {
   let arcArchived = false;
   const archiveBench = await bench("archive()", async () => {
     if (!arcArchived) { await arcStore.archive(arcR.id); arcArchived = true; }
-    else { await arcStore.restore(arcR.id); arcArchived = false; }
+    else              { await arcStore.restore(arcR.id); arcArchived = false; }
   });
 
   // snapshot()
@@ -493,9 +394,9 @@ async function runPerformanceAudit(): Promise<PerformanceReport> {
   // delete()
   const delStore = new MemoryStore();
   const delIds: string[] = [];
-  for (let i = 0; i < ITERS; i++) { const r = await delStore.store(DRAFT); delIds.push(r.id); }
+  for (let i = 0; i < benchmarkIterations; i++) { const r = await delStore.store(DRAFT); delIds.push(r.id); }
   let delIdx = 0;
-  const deleteBench = await bench("delete()", () => delStore.delete(delIds[delIdx++ % ITERS]));
+  const deleteBench = await bench("delete()", () => delStore.delete(delIds[delIdx++ % benchmarkIterations]));
 
   return Object.freeze({
     benchmarks: Object.freeze([
@@ -506,98 +407,10 @@ async function runPerformanceAudit(): Promise<PerformanceReport> {
   });
 }
 
-// ── SOLID Auditor (evidence-derived, not declared) ─────────────────────────────
+// ── SOLID Auditor — delegates to modular sub-auditors (EF-39.6) ───────────────
 async function runSOLIDAudit(): Promise<SOLIDReport> {
-  const t0 = performance.now();
-  const checks: SOLIDCheck[] = [];
-
-  // SRP — measure: each sub-module exports exactly one class or one namespace
-  {
-    const mods = await Promise.all([
-      import("../memory/MemoryStoreIndex").then(m => ({ name: "MemoryStoreIndex",          exports: Object.keys(m) })),
-      import("../memory/MemoryStoreQuery").then(m => ({ name: "MemoryStoreQuery",          exports: Object.keys(m) })),
-      import("../memory/MemoryStoreSearch").then(m => ({ name: "MemoryStoreSearch",        exports: Object.keys(m) })),
-      import("../memory/MemoryStoreStatistics").then(m => ({ name: "MemoryStoreStatistics",exports: Object.keys(m) })),
-      import("../memory/MemoryStoreVersionManager").then(m => ({ name: "MemoryStoreVersionManager", exports: Object.keys(m) })),
-      import("../memory/MemoryStoreArchive").then(m => ({ name: "MemoryStoreArchive",      exports: Object.keys(m) })),
-      import("../memory/MemoryStoreSnapshots").then(m => ({ name: "MemoryStoreSnapshots",  exports: Object.keys(m) })),
-    ]);
-    // SRP: each module should export <= 2 symbols (class + optional types)
-    const violators = mods.filter(m => m.exports.length > 4);
-    checks.push(Object.freeze({
-      principle: "SRP — Single Responsibility",
-      verdict:   violators.length === 0 ? "PASS" as const : "WARNING" as const,
-      rationale: `Each sub-module measured by export count (<=4 = focused). Violators: ${violators.length}`,
-      evidence:  mods.map(m => `${m.name}=${m.exports.length}`).join(", "),
-    }));
-  }
-
-  // OCP — verify MemoryStoreQuery/Search are stateless pure functions
-  {
-    const { MemoryStoreQuery } = await import("../memory/MemoryStoreQuery");
-    const { MemoryStoreSearch } = await import("../memory/MemoryStoreSearch");
-    const qOk = typeof MemoryStoreQuery.execute === "function";
-    const sOk = typeof MemoryStoreSearch.execute === "function";
-    checks.push(Object.freeze({
-      principle: "OCP — Open/Closed",
-      verdict:   (qOk && sOk) ? "PASS" as const : "FAIL" as const,
-      rationale: "MemoryStoreQuery and MemoryStoreSearch are pure stateless functions — open for extension (new engines), closed for modification.",
-      evidence:  `MemoryStoreQuery.execute exists=${qOk}, MemoryStoreSearch.execute exists=${sOk}`,
-    }));
-  }
-
-  // LSP — MemoryStore substitutable as IKnowledgeStore
-  {
-    const { MemoryStore: MS } = await import("../memory/MemoryStore");
-    const store = new MS();
-    const iface: string[] = ["store","update","archive","restore","delete","exists","get","search","query","stats","health"];
-    const missing = iface.filter(m => typeof (store as Record<string, unknown>)[m] !== "function");
-    checks.push(Object.freeze({
-      principle: "LSP — Liskov Substitution",
-      verdict:   missing.length === 0 ? "PASS" as const : "FAIL" as const,
-      rationale: "MemoryStore implements all 11 IKnowledgeStore methods and can be substituted anywhere IKnowledgeStore is expected.",
-      evidence:  missing.length === 0 ? "All 11 methods present" : `Missing: ${missing.join(", ")}`,
-    }));
-  }
-
-  // ISP — measure: IKnowledgeStore contract vs extension methods
-  {
-    const { MemoryStore: MS } = await import("../memory/MemoryStore");
-    const s = new MS();
-    const contractMethods = ["store","update","archive","restore","delete","exists","get","search","query","stats","health"];
-    const extensionMethods = ["takeSnapshot","getSnapshot","listSnapshots","getVersionHistory","getRecordVersion","listArchived","internalStats","indexStats","recordCount"];
-    const contractOk  = contractMethods.every(m => typeof (s as Record<string,unknown>)[m] === "function");
-    const extensionOk = extensionMethods.every(m => typeof (s as Record<string,unknown>)[m] === "function");
-    // ISP passes if extension methods are NOT in the base interface (they are extras)
-    checks.push(Object.freeze({
-      principle: "ISP — Interface Segregation",
-      verdict:   contractOk ? "PASS" as const : "FAIL" as const,
-      rationale: `IKnowledgeStore has ${contractMethods.length} focused methods. ${extensionMethods.length} extension methods exist outside the interface contract.`,
-      evidence:  `contract=${contractMethods.length} present=${contractOk}, extensions=${extensionMethods.length} present=${extensionOk}`,
-    }));
-  }
-
-  // DIP — measure: verify EventBus and Metrics are used (not concrete loggers)
-  {
-    const { KnowledgeStoreEventBus } = await import("../KnowledgeStoreEvents");
-    const { KnowledgeStoreMetrics }  = await import("../KnowledgeStoreMetrics");
-    const busOk     = typeof KnowledgeStoreEventBus.emit     === "function";
-    const metricsOk = typeof KnowledgeStoreMetrics.record    === "function";
-    const resetOk   = typeof KnowledgeStoreMetrics.reset     === "function";
-    checks.push(Object.freeze({
-      principle: "DIP — Dependency Inversion",
-      verdict:   (busOk && metricsOk) ? "PASS" as const : "FAIL" as const,
-      rationale: "MemoryStore depends on KnowledgeStoreEventBus and KnowledgeStoreMetrics abstractions, not concrete implementations.",
-      evidence:  `EventBus.emit=${busOk}, Metrics.record=${metricsOk}, Metrics.reset=${resetOk}`,
-    }));
-  }
-
-  const allPass = checks.every(c => c.verdict === "PASS");
-  return Object.freeze({
-    ok: allPass,
-    checks: Object.freeze(checks),
-    durationMs: Math.round((performance.now() - t0) * 100) / 100,
-  });
+  const { runSOLIDAudit: run } = await import("../certification/solid/SOLIDAuditor");
+  return run();
 }
 
 // ── Main entry ─────────────────────────────────────────────────────────────────

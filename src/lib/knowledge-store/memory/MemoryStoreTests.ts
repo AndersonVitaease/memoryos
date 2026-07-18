@@ -486,13 +486,15 @@ async function suiteHardening() {
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────────
-export async function runMemoryStoreTests(): Promise<{
+export type TestReport = {
   results: TR[];
   passed: number;
   failed: number;
   total: number;
   certified: boolean;
-}> {
+};
+
+export async function runMemoryStoreTests(): Promise<TestReport> {
   KnowledgeStoreMetrics.reset();
   KnowledgeStoreEventBus.clear();
 
