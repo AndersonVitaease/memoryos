@@ -1,23 +1,26 @@
 /**
- * OfficialLibraryRuntime.ts — Sprint EF-7.2.3
+ * OfficialLibraryRuntime.ts — Sprint EF-7.2.4
  *
- * Single entry point for runtime registration.
- * The ONLY file that imports concrete IDocumentDiscovery implementations.
+ * Single entry point for provider registration.
+ * ONLY responsibility: register concrete IRuntimeProvider implementations.
  *
- * EF-7.2.3 changes:
- * - Registration uses priority-based auto-selection (no manual if/else)
- * - Idempotent: safe to import multiple times
+ * EF-7.2.4 changes:
+ * - Registers IRuntimeProvider instances into RuntimeRegistry
+ * - Also registers legacy IDocumentDiscovery into DocumentDiscoveryRegistry
+ *   for backward compatibility with Suites 20–28
+ * - Zero selection logic here — RuntimeRegistry.getActive() handles it
  *
- * To add a new runtime (e.g. GitHubDocumentDiscovery):
- *   1. Create the class implementing IDocumentDiscovery with a suitable priority
- *   2. Import it here and call register()
+ * To add a new runtime (GitHub, Drive, S3…):
+ *   1. Create class implementing IRuntimeProvider
+ *   2. register(new MyRuntimeProvider()) here
  *   Nothing else changes.
  */
 
+import { RuntimeRegistry }          from "./RuntimeRegistry";
 import { DocumentDiscoveryRegistry } from "./DocumentDiscoveryRegistry";
-import { ViteDocumentDiscovery }     from "./ViteDocumentDiscovery";
-import { NodeDocumentDiscovery }     from "./NodeDocumentDiscovery";
-import { Base44DocumentDiscovery }   from "./Base44DocumentDiscovery";
+import { ViteRuntimeProvider }       from "./ViteRuntimeProvider";
+import { NodeRuntimeProvider }       from "./NodeRuntimeProvider";
+import { Base44RuntimeProvider }     from "./Base44RuntimeProvider";
 
 let _initialized = false;
 
@@ -25,12 +28,19 @@ export function initOfficialLibraryRuntime(): void {
   if (_initialized) return;
   _initialized = true;
 
-  // Register all implementations — getActive() selects highest-priority available one
-  DocumentDiscoveryRegistry.register(new ViteDocumentDiscovery());   // priority 100
-  DocumentDiscoveryRegistry.register(new NodeDocumentDiscovery());   // priority 50
-  DocumentDiscoveryRegistry.register(new Base44DocumentDiscovery()); // priority 10
+  const vite   = new ViteRuntimeProvider();
+  const node   = new NodeRuntimeProvider();
+  const base44 = new Base44RuntimeProvider();
 
-  // No manual setActive() — priority-based auto-selection handles it
+  // Register into RuntimeRegistry (EF-7.2.4 — primary)
+  RuntimeRegistry.register(vite);
+  RuntimeRegistry.register(node);
+  RuntimeRegistry.register(base44);
+
+  // Register legacy discovery impls for backward compat (Suites 20–28)
+  DocumentDiscoveryRegistry.register(vite.discovery());
+  DocumentDiscoveryRegistry.register(node.discovery());
+  DocumentDiscoveryRegistry.register(base44.discovery());
 }
 
 // Auto-initialize on import

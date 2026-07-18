@@ -1,31 +1,29 @@
 /**
- * OfficialLibraryBootstrap.ts — Sprint EF-7.2.3
+ * OfficialLibraryBootstrap.ts — Sprint EF-7.2.4
  *
- * Orchestrates the full Official Library initialization pipeline.
- * Depends only on abstractions — no concrete runtime classes imported here.
+ * Orchestrates full Official Library initialization.
+ * Depends ONLY on OfficialLibraryRuntimeProvider — no concrete imports.
  *
  * Pipeline:
- *   Runtime (via DocumentDiscoveryRegistry)
- *   → Catalog.discover()
- *   → Loader.loadAll()
- *   → Parser
- *   → Chunker
- *   → Indexer
+ *   OfficialLibraryRuntimeProvider.runtime()
+ *   → runtime.discovery() → Catalog.discover()
+ *   → runtime.loader().loadAll()
+ *   → Parser → Chunker → Indexer
  *   → GraphBuilder → GraphStorage
  *   → Provider Ready
  *
- * EF-7.2.3: catalog.discover() is now purely async — no discoverAsync() alias needed.
+ * EF-7.2.4: DocumentDiscoveryRegistry and DocumentLoaderFactory removed from this file.
+ * EF-7.2.3: catalog.discover() is purely async.
  */
 
-import { OfficialLibraryCatalog }   from "./OfficialLibraryCatalog";
-import { DocumentLoaderFactory }    from "./DocumentLoaderFactory";
-import { DocumentDiscoveryRegistry } from "./DocumentDiscoveryRegistry";
-import { OfficialLibraryParser }    from "./OfficialLibraryParser";
-import { OfficialLibraryChunker }   from "./OfficialLibraryChunker";
-import { OfficialLibraryIndexer }   from "./OfficialLibraryIndexer";
-import { GraphBuilder }             from "./GraphBuilder";
-import { GraphStorage }             from "./GraphStorage";
-import { GraphQuery }               from "./GraphQuery";
+import { OfficialLibraryRuntimeProvider } from "./OfficialLibraryRuntimeProvider";
+import { OfficialLibraryCatalog }         from "./OfficialLibraryCatalog";
+import { OfficialLibraryParser }          from "./OfficialLibraryParser";
+import { OfficialLibraryChunker }         from "./OfficialLibraryChunker";
+import { OfficialLibraryIndexer }         from "./OfficialLibraryIndexer";
+import { GraphBuilder }                   from "./GraphBuilder";
+import { GraphStorage }                   from "./GraphStorage";
+import { GraphQuery }                     from "./GraphQuery";
 import type { OfficialChunk, OfficialDocumentMeta } from "./OfficialLibraryTypes";
 
 export interface BootstrapResult {
@@ -64,11 +62,13 @@ class OfficialLibraryBootstrapImpl {
     this._running = true;
     const t0 = Date.now();
 
-    const discovery = DocumentDiscoveryRegistry.getActive();
-    const loader    = DocumentLoaderFactory.getActive();
+    // ── Single dependency: OfficialLibraryRuntimeProvider ─────────────────────
+    const runtime   = OfficialLibraryRuntimeProvider.runtime();
+    const discovery = runtime.discovery();
+    const loader    = runtime.loader();
 
     try {
-      // Step 1: Discovery
+      // Step 1: Discovery via Catalog (delegates to runtime.discovery() via Registry)
       OfficialLibraryCatalog.reset();
       const sources = await OfficialLibraryCatalog.discover();
 
@@ -102,7 +102,7 @@ class OfficialLibraryBootstrapImpl {
       }));
       OfficialLibraryIndexer._injectFromBootstrap(allChunks, metas);
 
-      // Step 6: KnowledgeGraph
+      // Step 6: Knowledge Graph
       const graphData = GraphBuilder.build(allChunks);
       _graphStorage.store(graphData);
 

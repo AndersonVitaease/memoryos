@@ -417,7 +417,7 @@ async function suite21(): Promise<OLTestResult[]> {
     check(S, "each document has id/name/path/load",  result.documents.every(d => d.id && d.name && d.path && typeof d.load === "function"), "ok"),
     check(S, "each document has authority",          result.documents.every(d => d.authority.length > 0), "ok"),
     check(S, "list() returns string[]",              Array.isArray(await vite.list()), "ok"),
-    check(S, "ViteDocumentDiscovery has NO import.meta.glob inside catalog", !OfficialLibraryCatalog.discoverAsync.toString().includes("import.meta.glob"), "ok"),
+    check(S, "ViteDocumentDiscovery has NO import.meta.glob inside catalog", !OfficialLibraryCatalog.discover.toString().includes("import.meta.glob"), "ok"),
   ];
 }
 
