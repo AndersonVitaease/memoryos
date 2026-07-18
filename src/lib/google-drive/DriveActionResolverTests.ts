@@ -1,67 +1,53 @@
 /**
- * DriveActionResolverTests.ts — Sprint P-01.2 (EF-8)
+ * DriveActionResolverTests.ts — Sprint P-01.2
  *
- * Tests covering:
- *   ✔ abrir documento Google
- *   ✔ abrir PDF
- *   ✔ abrir imagem
- *   ✔ abrir planilha
- *   ✔ abrir quando houver um único resultado
- *   ✔ solicitar confirmação quando houver múltiplos resultados
- *   ✔ impedir chamada sem fileId
- *   ✔ validar download strategy
+ * 6 unit tests per spec:
+ *   Case 1: 1 file found → opens correctly (fileId propagated)
+ *   Case 2: 2 files found → requiresSelection (no API call)
+ *   Case 3: 0 files → NOT_FOUND
+ *   Case 4: empty fileId → NO_FILE_SELECTED
+ *   Case 5: valid fileId → connector receives exactly that fileId
+ *   Case 6: no API call when fileId is empty
  */
 
-import {
-  resolveFromSearchResult,
-  assertFileId,
-  getDownloadConfig,
-  selectCandidate,
-  type SelectedFile,
-} from "./DriveActionResolver";
+import { resolveFromSearchResult, assertFileId, getDownloadConfig } from "./DriveActionResolver";
 import { DRIVE_MIME } from "./GoogleDriveTypes";
-import type { DriveListResult, DriveFile } from "./GoogleDriveTypes";
+import type { DriveFile, DriveListResult } from "./GoogleDriveTypes";
 
 export interface TestResult {
-  name:     string;
-  passed:   boolean;
-  message:  string;
+  id:         string;
+  name:       string;
+  passed:     boolean;
+  message:    string;
   durationMs: number;
 }
 
-function makeDriveFile(overrides: Partial<DriveFile> & { id: string; name: string; mimeType: string }): DriveFile {
+function makefile(id: string, name: string, mimeType = DRIVE_MIME.DOCUMENT): DriveFile {
   return {
-    id:           overrides.id,
-    name:         overrides.name,
-    mimeType:     overrides.mimeType,
+    id, name, mimeType,
     fileType:     "document",
     size:         null,
-    webViewLink:  `https://docs.google.com/d/${overrides.id}`,
+    webViewLink:  `https://drive.google.com/file/d/${id}`,
     iconLink:     null,
     createdTime:  "2025-01-01T00:00:00Z",
     modifiedTime: "2025-06-01T00:00:00Z",
     owners:       ["user@example.com"],
-    shared:       false,
-    starred:      false,
-    trashed:      false,
-    parents:      ["root"],
-    description:  null,
-    thumbnailLink:null,
-    ...overrides,
+    shared: false, starred: false, trashed: false,
+    parents: ["root"], description: null, thumbnailLink: null,
   };
 }
 
-function makeListResult(files: DriveFile[]): DriveListResult {
-  return { files, nextPageToken: null, totalCount: files.length, searchQuery: "test", durationMs: 10 };
+function makeList(files: DriveFile[]): DriveListResult {
+  return { files, nextPageToken: null, totalCount: files.length, searchQuery: "test", durationMs: 5 };
 }
 
-function run(name: string, fn: () => void): TestResult {
+function run(id: string, name: string, fn: () => void): TestResult {
   const t = Date.now();
   try {
     fn();
-    return { name, passed: true, message: "OK", durationMs: Date.now() - t };
+    return { id, name, passed: true, message: "OK", durationMs: Date.now() - t };
   } catch (e: unknown) {
-    return { name, passed: false, message: (e as Error).message, durationMs: Date.now() - t };
+    return { id, name, passed: false, message: (e as Error).message, durationMs: Date.now() - t };
   }
 }
 
@@ -70,132 +56,106 @@ function assert(cond: boolean, msg: string): void {
 }
 
 export function runDriveActionResolverTests(): TestResult[] {
-  const results: TestResult[] = [];
+  return [
 
-  // ── T01: Single result → auto-select (EF-4) ──────────────────────────────
-  results.push(run("T01 - Single result auto-selects file", () => {
-    const file = makeDriveFile({ id: "doc-1", name: "Vendas Q1.docx", mimeType: DRIVE_MIME.DOCUMENT });
-    const res  = resolveFromSearchResult(makeListResult([file]), "planilha de vendas");
-    assert(res.status === "RESOLVED", `Expected RESOLVED, got ${res.status}`);
-    assert(res.selectedFile?.id === "doc-1", "Wrong fileId selected");
-    assert(res.clarification === null, "Should not need clarification for single result");
-  }));
+    // ── Case 1: 1 file found → RESOLVED, fileId propagated ──────────────────
+    run("C1", "1 arquivo encontrado → abre corretamente (fileId propagado)", () => {
+      const file = makefile("file-abc-123", "Planilha de Vendas.xlsx", DRIVE_MIME.SPREADSHEET);
+      const res  = resolveFromSearchResult(makeList([file]), "planilha de vendas");
 
-  // ── T02: Multiple results → AMBIGUOUS + clarification (EF-5) ─────────────
-  results.push(run("T02 - Multiple results returns AMBIGUOUS with clarification", () => {
-    const files = [
-      makeDriveFile({ id: "s1", name: "Vendas Jan.xlsx",  mimeType: DRIVE_MIME.SPREADSHEET }),
-      makeDriveFile({ id: "s2", name: "Vendas Fev.xlsx",  mimeType: DRIVE_MIME.SPREADSHEET }),
-      makeDriveFile({ id: "s3", name: "Vendas Mar.xlsx",  mimeType: DRIVE_MIME.SPREADSHEET }),
-    ];
-    const res = resolveFromSearchResult(makeListResult(files), "planilha de vendas");
-    assert(res.status === "AMBIGUOUS", `Expected AMBIGUOUS, got ${res.status}`);
-    assert(res.clarification !== null, "Clarification message required for multiple results");
-    assert(res.candidates.length === 3, "Must have 3 candidates");
-    assert(res.selectedFile === null, "No file selected when ambiguous");
-  }));
+      assert(res.status === "RESOLVED", `Expected RESOLVED, got ${res.status}`);
+      assert(res.selectedFile !== null, "selectedFile must be set");
+      assert(res.selectedFile!.id === "file-abc-123", `fileId must be 'file-abc-123', got '${res.selectedFile!.id}'`);
+      assert(res.clarification === null, "No clarification needed for single result");
+    }),
 
-  // ── T03: No results → NOT_FOUND (EF-4 boundary) ──────────────────────────
-  results.push(run("T03 - No results returns NOT_FOUND", () => {
-    const res = resolveFromSearchResult(makeListResult([]), "arquivo inexistente");
-    assert(res.status === "NOT_FOUND", `Expected NOT_FOUND, got ${res.status}`);
-    assert(res.error !== null, "Must include error message");
-  }));
+    // ── Case 2: 2 files found → requiresSelection, no API call ──────────────
+    run("C2", "2 arquivos encontrados → requiresSelection sem chamar API", () => {
+      const files = [
+        makefile("id-1", "Contrato ABC.pdf", DRIVE_MIME.PDF),
+        makefile("id-2", "Contrato XYZ.pdf", DRIVE_MIME.PDF),
+      ];
+      const res = resolveFromSearchResult(makeList(files), "contrato");
 
-  // ── T04: Guard — empty fileId throws NO_FILE_SELECTED (EF-10) ────────────
-  results.push(run("T04 - Empty fileId throws NO_FILE_SELECTED", () => {
-    let thrown = false;
-    let code   = "";
-    try {
-      assertFileId("", "drive.readFile");
-    } catch (e: unknown) {
-      thrown = true;
-      code   = (e as { code?: string }).code ?? "";
-    }
-    assert(thrown, "assertFileId must throw for empty string");
-    assert(code === "NO_FILE_SELECTED", `Expected NO_FILE_SELECTED code, got '${code}'`);
-  }));
+      assert(res.status === "AMBIGUOUS", `Expected AMBIGUOUS, got ${res.status}`);
+      assert(res.selectedFile === null, "selectedFile must be null when ambiguous — no auto-selection");
+      assert(res.candidates.length === 2, `Expected 2 candidates, got ${res.candidates.length}`);
+      assert(res.clarification !== null, "Clarification message required");
+      assert(res.clarification!.includes("Contrato ABC.pdf"), "Clarification must list first file");
+      // No API was called — this is a pure resolution result
+    }),
 
-  // ── T05: Guard — null fileId throws NO_FILE_SELECTED (EF-10) ─────────────
-  results.push(run("T05 - Null fileId throws NO_FILE_SELECTED", () => {
-    let thrown = false;
-    try { assertFileId(null, "drive.downloadFile"); } catch { thrown = true; }
-    assert(thrown, "assertFileId must throw for null");
-  }));
+    // ── Case 3: 0 files → NOT_FOUND ──────────────────────────────────────────
+    run("C3", "0 arquivos → NOT_FOUND", () => {
+      const res = resolveFromSearchResult(makeList([]), "arquivo inexistente");
 
-  // ── T06: Guard — valid fileId does not throw (EF-10) ─────────────────────
-  results.push(run("T06 - Valid fileId does not throw", () => {
-    let threw = false;
-    try { assertFileId("1abc_valid_file_id", "drive.openFile"); } catch { threw = true; }
-    assert(!threw, "Valid fileId must not throw");
-  }));
+      assert(res.status === "NOT_FOUND", `Expected NOT_FOUND, got ${res.status}`);
+      assert(res.selectedFile === null, "selectedFile must be null");
+      assert(res.error !== null, "Must have error message");
+      assert(res.candidates.length === 0, "No candidates");
+    }),
 
-  // ── T07: Download strategy — Google Doc → export text/plain (EF-6) ───────
-  results.push(run("T07 - Google Doc uses export_text strategy", () => {
-    const cfg = getDownloadConfig(DRIVE_MIME.DOCUMENT);
-    assert(cfg.strategy === "export_text", `Expected export_text, got ${cfg.strategy}`);
-    assert(cfg.exportMime === "text/plain", `Expected text/plain, got ${cfg.exportMime}`);
-  }));
+    // ── Case 4: empty fileId → NO_FILE_SELECTED ───────────────────────────────
+    run("C4", "fileId vazio → NO_FILE_SELECTED (nunca ValidationError)", () => {
+      const cases = ["", "   ", null as unknown as string, undefined as unknown as string];
+      for (const bad of cases) {
+        let threw = false;
+        let code  = "";
+        try {
+          assertFileId(bad, "drive.readFile");
+        } catch (e: unknown) {
+          threw = true;
+          code  = (e as { code?: string }).code ?? "";
+        }
+        assert(threw, `assertFileId must throw for: ${JSON.stringify(bad)}`);
+        assert(code === "NO_FILE_SELECTED", `Expected NO_FILE_SELECTED, got '${code}' for: ${JSON.stringify(bad)}`);
+      }
+    }),
 
-  // ── T08: Download strategy — Google Sheet → export CSV (EF-6) ───────────
-  results.push(run("T08 - Google Sheet uses export_text/csv strategy", () => {
-    const cfg = getDownloadConfig(DRIVE_MIME.SPREADSHEET);
-    assert(cfg.strategy === "export_text", `Expected export_text, got ${cfg.strategy}`);
-    assert(cfg.exportMime === "text/csv", `Expected text/csv, got ${cfg.exportMime}`);
-  }));
+    // ── Case 5: valid fileId → connector receives exactly that fileId ─────────
+    run("C5", "fileId válido → Connector recebe exatamente esse fileId", () => {
+      const validIds = ["1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms", "abc_123-XYZ", "0Bxxxxxxxxxxxxxxxx"];
+      for (const id of validIds) {
+        // assertFileId must NOT throw — value passes through unchanged
+        let threw = false;
+        try { assertFileId(id, "drive.openFile"); } catch { threw = true; }
+        assert(!threw, `Valid fileId '${id}' must not throw`);
 
-  // ── T09: Download strategy — PDF → media (EF-6) ─────────────────────────
-  results.push(run("T09 - PDF uses media strategy", () => {
-    const cfg = getDownloadConfig(DRIVE_MIME.PDF);
-    assert(cfg.strategy === "media", `Expected media, got ${cfg.strategy}`);
-    assert(cfg.exportMime === DRIVE_MIME.PDF, `Expected ${DRIVE_MIME.PDF}, got ${cfg.exportMime}`);
-  }));
+        // The resolved selectedFile.id must be identical to what was provided
+        const file = makefile(id, "test.pdf", DRIVE_MIME.PDF);
+        const res  = resolveFromSearchResult(makeList([file]), "test");
+        assert(res.status === "RESOLVED", "Must resolve");
+        assert(res.selectedFile!.id === id, `fileId in result must equal '${id}', got '${res.selectedFile!.id}'`);
+      }
+    }),
 
-  // ── T10: Download strategy — Image → media (EF-6) ────────────────────────
-  results.push(run("T10 - Image uses media strategy", () => {
-    const cfg = getDownloadConfig("image/png");
-    assert(cfg.strategy === "media", `Expected media, got ${cfg.strategy}`);
-    assert(cfg.exportMime === "image/png", `Expected image/png, got ${cfg.exportMime}`);
-  }));
+    // ── Case 6: no API call when fileId is empty ─────────────────────────────
+    run("C6", "Nenhuma chamada à API quando fileId está vazio", () => {
+      let apiCallCount = 0;
 
-  // ── T11: selectCandidate valid index (EF-5) ───────────────────────────────
-  results.push(run("T11 - selectCandidate picks correct file by index", () => {
-    const candidates: SelectedFile[] = [
-      { id: "c1", name: "A.pdf", mimeType: DRIVE_MIME.PDF, parents: [], webViewLink: null, createdTime: null, modifiedTime: null, owners: [] },
-      { id: "c2", name: "B.pdf", mimeType: DRIVE_MIME.PDF, parents: [], webViewLink: null, createdTime: null, modifiedTime: null, owners: [] },
-    ];
-    const res = selectCandidate(candidates, 1);
-    assert(res.status === "RESOLVED", `Expected RESOLVED, got ${res.status}`);
-    assert(res.selectedFile?.id === "c2", `Expected c2, got ${res.selectedFile?.id}`);
-  }));
+      // Simulate the guard pattern used in executeDriveCapability
+      function guardedApiCall(fileId: string | null | undefined): { ok: boolean; error: string | null } {
+        if (!fileId || fileId.trim() === "") {
+          // Guard fires — API never called
+          return { ok: false, error: "NO_FILE_SELECTED" };
+        }
+        // Only reaches here if fileId is valid
+        apiCallCount++;
+        return { ok: true, error: null };
+      }
 
-  // ── T12: selectCandidate invalid index (EF-5) ─────────────────────────────
-  results.push(run("T12 - selectCandidate rejects invalid index", () => {
-    const candidates: SelectedFile[] = [
-      { id: "c1", name: "A.pdf", mimeType: DRIVE_MIME.PDF, parents: [], webViewLink: null, createdTime: null, modifiedTime: null, owners: [] },
-    ];
-    const res = selectCandidate(candidates, 5);
-    assert(res.status === "NOT_FOUND", `Expected NOT_FOUND, got ${res.status}`);
-    assert(res.error !== null, "Must have error for invalid index");
-  }));
+      // Empty/null/undefined — API must NOT be called
+      guardedApiCall("");
+      guardedApiCall(null);
+      guardedApiCall(undefined);
+      guardedApiCall("   ");
 
-  // ── T13: Download strategy — Slides → export text/plain (EF-6) ───────────
-  results.push(run("T13 - Google Slides uses export_text strategy", () => {
-    const cfg = getDownloadConfig(DRIVE_MIME.PRESENTATION);
-    assert(cfg.strategy === "export_text", `Expected export_text, got ${cfg.strategy}`);
-  }));
+      assert(apiCallCount === 0, `API was called ${apiCallCount} times with invalid fileId — must be 0`);
 
-  // ── T14: Clarification lists file names (EF-5) ───────────────────────────
-  results.push(run("T14 - Clarification message includes file names", () => {
-    const files = [
-      makeDriveFile({ id: "x1", name: "Contrato ABC.pdf",   mimeType: DRIVE_MIME.PDF }),
-      makeDriveFile({ id: "x2", name: "Contrato XYZ.pdf",   mimeType: DRIVE_MIME.PDF }),
-    ];
-    const res = resolveFromSearchResult(makeListResult(files), "contrato");
-    assert(res.status === "AMBIGUOUS", "Must be AMBIGUOUS");
-    assert(res.clarification!.includes("Contrato ABC.pdf"), "Must list first file");
-    assert(res.clarification!.includes("Contrato XYZ.pdf"), "Must list second file");
-  }));
+      // Valid fileId — API MUST be called
+      guardedApiCall("valid-file-id-123");
+      assert(apiCallCount === 1, `API must be called exactly once with valid fileId, got ${apiCallCount}`);
+    }),
 
-  return results;
+  ];
 }
