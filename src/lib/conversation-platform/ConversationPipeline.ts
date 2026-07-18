@@ -347,6 +347,17 @@ class ConversationPipeline {
         const { conversationPlanningEngine } = await import("@/lib/planning-engine-e022/ConversationPlanningEngine");
         const planResult = conversationPlanningEngine.plan(goalBridgeResult.goal);
 
+        // LOG — CAPABILITY_ROUTER: capability chosen by Planner
+        console.log("[CAPABILITY_ROUTER]", {
+          intent:             goalBridgeResult.goal.type,
+          confidence:         goalBridgeResult.goal.confidence,
+          selectedCapability: planResult.plan.steps.map(s => `${s.connector}/${s.capability}`),
+          planId:             planResult.plan.id,
+          planSuccess:        planResult.success,
+          stepCount:          planResult.plan.steps.length,
+          parameters:         planResult.plan.steps.map(s => s.parameters),
+        });
+
         if (planResult.success && planResult.plan.steps.length > 0) {
           setPhase("executing_capabilities");
           const { getRealRuntimeEngine } = await import("@/lib/connector-runtime-provider/ConnectorRuntimeProvider");
