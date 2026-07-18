@@ -1,19 +1,16 @@
 /**
- * UCRPipeline.ts — Universal Connector Runtime v1.0
- * Sprint EF-6.4.0
+ * UCRPipeline.ts — Universal Connector Runtime v1.0 (migrated EF-6.5.0)
  *
- * The single pipeline executed on every connector request:
+ * Pipeline executed on every connector request.
+ * After EF-6.5.0: Runtime knows ZERO about HTTP, fetch, URL, headers, body.
+ * All transport is delegated to the Universal Transport Layer (UTL).
  *
- *   Authentication Middleware
- *   → Rate Limiter
- *   → Retry Policy
- *   → HTTP Executor
- *   → Response Validator
- *   → Audit Logger
- *   → Metrics Collector
- *
- * All connectors share this exact pipeline.
- * Adapters only supply: URL + headers + body + parseResponse().
+ * Pipeline stages:
+ *   [1] Circuit Breaker check
+ *   [2] Rate Limiter check
+ *   [3] Transport execution (via UTL — retry inside HttpTransport.executeWithRetry)
+ *   [4] Circuit Breaker feedback
+ *   [5] Audit + Metrics
  */
 
 import type { UCRRequest, UCRResponse, UCRAudit, UCRConfig, UCRErrorCode } from "./UCRTypes";
@@ -22,59 +19,56 @@ import { UCRMetricsStore }    from "./UCRMetricsStore";
 import { UCRCircuitBreaker }  from "./UCRCircuitBreaker";
 import { UCRRateLimiter }     from "./UCRRateLimiter";
 
+// UTL imports — Runtime ONLY uses the abstract interface
+import "@/lib/utl/index";
+import { TransportFactory }  from "@/lib/utl/TransportFactory";
+import type { TransportRequest } from "@/lib/utl/UTLTypes";
+
 // ── Trace ID generator ────────────────────────────────────────────────────────
 
 let _seq = 1;
-function traceId(connectorId: string): string {
+function makeTraceId(connectorId: string): string {
   return `${connectorId}-${Date.now()}-${(_seq++).toString().padStart(4, "0")}`;
 }
 
-// ── HTTP status → error code ──────────────────────────────────────────────────
+// ── Normalize transport status → UCR error code ───────────────────────────────
+// This mapping stays in UCR (it owns error semantics), not in Transport.
 
-function statusToCode(status: number, body: string): UCRErrorCode {
-  if (body.includes("TIMEOUT") || body.includes("AbortError")) return "TIMEOUT";
-  if (status === 0)   return "API_UNAVAILABLE";
-  if (status === 401) return "NOT_AUTHENTICATED";
-  if (status === 403) {
+function statusToCode(statusCode: number, body: string): UCRErrorCode {
+  if (body === "TIMEOUT" || body.includes("AbortError")) return "TIMEOUT";
+  if (body === "CIRCUIT_OPEN")                           return "CIRCUIT_OPEN";
+  if (body === "RATE_LIMITED")                           return "RATE_LIMITED";
+  if (body === "UNSUPPORTED_OPERATION")                  return "UNSUPPORTED_OPERATION" as UCRErrorCode;
+  if (statusCode === 0)   return "API_UNAVAILABLE";
+  if (statusCode === 401) return "NOT_AUTHENTICATED";
+  if (statusCode === 403) {
     if (body.includes("quotaExceeded") || body.includes("userRateLimitExceeded")) return "QUOTA_EXCEEDED";
     return "NO_PERMISSION";
   }
-  if (status === 404) return "NOT_FOUND";
-  if (status === 429) return "RATE_LIMITED";
+  if (statusCode === 404) return "NOT_FOUND";
+  if (statusCode === 429) return "RATE_LIMITED";
   return "UNKNOWN";
 }
 
-// ── Retry-able status codes ───────────────────────────────────────────────────
+// ── UCR Request → Transport Request ───────────────────────────────────────────
+// This bridge lives in UCR. Adapter builds UCRRequest; UCR translates to TransportRequest.
+// Transport gets only: endpoint (from url), payload, credential, timeoutMs, meta.
 
-const RETRYABLE = new Set([429, 500, 502, 503, 504]);
-
-// ── Core HTTP fetch (single attempt) ─────────────────────────────────────────
-
-async function httpFetch(req: UCRRequest, timeoutMs: number): Promise<{ ok: boolean; status: number; rawText: string; durationMs: number }> {
-  const t0         = Date.now();
-  const controller = new AbortController();
-  const timer      = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const res = await fetch(req.url, {
-      method:  req.method ?? "GET",
-      headers: req.headers ?? {},
-      body:    req.body ? JSON.stringify(req.body) : undefined,
-      signal:  controller.signal,
-    });
-    clearTimeout(timer);
-    const rawText = await res.text();
-    return { ok: res.ok, status: res.status, rawText, durationMs: Date.now() - t0 };
-  } catch (e) {
-    clearTimeout(timer);
-    const isTimeout = (e as Error).name === "AbortError";
-    return { ok: false, status: 0, rawText: isTimeout ? "TIMEOUT" : String(e), durationMs: Date.now() - t0 };
-  }
+function toTransportRequest(req: UCRRequest, traceId: string): TransportRequest {
+  return {
+    operation:   req.operation,
+    endpoint:    req.url,           // "url" lives in UCRRequest (set by Adapter)
+    payload:     req.body as Record<string, unknown> | undefined,
+    credential:  req.credential,
+    timeoutMs:   req.timeoutMs,
+    traceId,
+    meta: {
+      ...(req.meta ?? {}),
+      method:            req.method ?? "GET",
+      additionalHeaders: req.headers,
+    },
+  };
 }
-
-// ── Delay helper ──────────────────────────────────────────────────────────────
-
-const delay = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 
 // ── Main pipeline executor ────────────────────────────────────────────────────
 
@@ -83,90 +77,91 @@ export async function executePipeline(
   req: UCRRequest,
   config: Readonly<UCRConfig> = DEFAULT_UCR_CONFIG,
 ): Promise<UCRResponse> {
-  const tid       = req.traceId ?? traceId(connectorId);
+  const tid       = req.traceId ?? makeTraceId(connectorId);
   const startedAt = new Date().toISOString();
   const t0        = Date.now();
-  let retries     = 0;
 
-  // ── Stage 1: Circuit Breaker check ────────────────────────────────────────
+  // ── Stage 1: Circuit Breaker ───────────────────────────────────────────────
   const cb = UCRCircuitBreaker.get(connectorId);
   if (cb.isOpen()) {
     const dur = Date.now() - t0;
     UCRMetricsStore.record(connectorId, false, dur, 0, "CIRCUIT_OPEN");
-    return {
-      ok:         false,
-      status:     0,
-      data:       null,
-      rawText:    "CIRCUIT_OPEN",
-      durationMs: dur,
-      traceId:    tid,
-      audit:      buildAudit(connectorId, req.operation, tid, startedAt, dur, 0, "failure", "CIRCUIT_OPEN"),
-    };
+    return _shortCircuit(connectorId, req.operation, tid, startedAt, dur, "CIRCUIT_OPEN", 0);
   }
 
-  // ── Stage 2: Rate Limiter check ────────────────────────────────────────────
+  // ── Stage 2: Rate Limiter ──────────────────────────────────────────────────
   const rl = UCRRateLimiter.get(connectorId);
   if (!rl.tryConsume(config.rateLimitMax, config.rateLimitWindowMs)) {
     const dur = Date.now() - t0;
     UCRMetricsStore.record(connectorId, false, dur, 0, "RATE_LIMITED");
-    return {
-      ok:         false,
-      status:     429,
-      data:       null,
-      rawText:    "RATE_LIMITED",
-      durationMs: dur,
-      traceId:    tid,
-      audit:      buildAudit(connectorId, req.operation, tid, startedAt, dur, 0, "failure", "RATE_LIMITED"),
-    };
+    return _shortCircuit(connectorId, req.operation, tid, startedAt, dur, "RATE_LIMITED", 429);
   }
 
-  // ── Stage 3: Retry loop (with exponential backoff) ────────────────────────
-  const timeoutMs = req.timeoutMs ?? config.defaultTimeoutMs;
-  let lastResult: { ok: boolean; status: number; rawText: string; durationMs: number } | null = null;
+  // ── Stage 3: Transport execution (via UTL) ─────────────────────────────────
+  // Runtime calls TransportFactory.resolve() → gets ITransport → calls execute/executeWithRetry.
+  // No fetch(), URL, headers, body, HTTP method knowledge here.
 
-  for (let attempt = 0; attempt <= config.maxRetries; attempt++) {
-    if (attempt > 0) {
-      retries++;
-      await delay(config.retryBaseDelayMs * Math.pow(2, attempt - 1));
-    }
+  const transportReq = toTransportRequest(req, tid);
+  const transport    = TransportFactory.resolve(transportReq);
 
-    lastResult = await httpFetch(req, timeoutMs);
+  // Retry logic delegated to HttpTransport.executeWithRetry (HTTP concern)
+  // For other transports, fall back to single execute (they handle retry internally if supported)
+  let retries = 0;
+  let transportRes;
 
-    if (lastResult.ok) break;
-    if (!RETRYABLE.has(lastResult.status) && lastResult.rawText !== "TIMEOUT") break;
+  if ("executeWithRetry" in transport && typeof (transport as any).executeWithRetry === "function") {
+    transportRes = await (transport as any).executeWithRetry(
+      transportReq,
+      config.maxRetries,
+      config.retryBaseDelayMs,
+    ) as { ok: boolean; statusCode: number; body: string; data: unknown; durationMs: number; retries: number };
+    retries = transportRes.retries;
+  } else {
+    transportRes = await transport.execute(transportReq);
   }
 
-  const res      = lastResult!;
-  const dur      = Date.now() - t0;
-  const errCode  = res.ok ? null : statusToCode(res.status, res.rawText);
+  const dur     = Date.now() - t0;
+  const errCode = transportRes.ok ? null : statusToCode(transportRes.statusCode, transportRes.body);
 
   // ── Stage 4: Circuit Breaker feedback ─────────────────────────────────────
-  cb.record(res.ok);
+  cb.record(transportRes.ok);
 
-  // ── Stage 5: Parse JSON (best-effort) ─────────────────────────────────────
-  let parsed: unknown = null;
-  if (res.ok) {
-    try { parsed = JSON.parse(res.rawText); } catch { parsed = res.rawText; }
-  }
+  // ── Stage 5: Audit + Metrics ──────────────────────────────────────────────
+  const audit = _buildAudit(connectorId, req.operation, tid, startedAt, dur, retries, transportRes.ok ? "success" : "failure", errCode);
+  UCRMetricsStore.record(connectorId, transportRes.ok, dur, retries, errCode);
 
-  // ── Stage 6: Audit + Metrics ──────────────────────────────────────────────
-  const audit = buildAudit(connectorId, req.operation, tid, startedAt, dur, retries, res.ok ? "success" : "failure", errCode);
-  UCRMetricsStore.record(connectorId, res.ok, dur, retries, errCode);
-
-  return { ok: res.ok, status: res.status, data: parsed, rawText: res.rawText, durationMs: dur, traceId: tid, audit };
+  return {
+    ok:         transportRes.ok,
+    status:     transportRes.statusCode,
+    data:       transportRes.data,
+    rawText:    transportRes.body,
+    durationMs: dur,
+    traceId:    tid,
+    audit,
+  };
 }
 
-// ── Audit builder ─────────────────────────────────────────────────────────────
+// ── Private helpers ───────────────────────────────────────────────────────────
 
-function buildAudit(
-  connectorId: string,
-  operation: string,
-  traceId: string,
-  startedAt: string,
-  durationMs: number,
-  retries: number,
-  result: "success" | "failure",
-  errorCode: string | null,
+function _shortCircuit(
+  connectorId: string, operation: string, traceId: string,
+  startedAt: string, dur: number, reason: string, status: number,
+): UCRResponse {
+  return {
+    ok:         false,
+    status,
+    data:       null,
+    rawText:    reason,
+    durationMs: dur,
+    traceId,
+    audit:      _buildAudit(connectorId, operation, traceId, startedAt, dur, 0, "failure", reason),
+  };
+}
+
+function _buildAudit(
+  connectorId: string, operation: string, traceId: string,
+  startedAt: string, durationMs: number, retries: number,
+  result: "success" | "failure", errorCode: string | null,
 ): UCRAudit {
   return Object.freeze({ connectorId, operation, traceId, startedAt, durationMs, result, retries, errorCode });
 }

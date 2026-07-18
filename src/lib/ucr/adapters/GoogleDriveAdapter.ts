@@ -43,7 +43,8 @@ export const GoogleDriveAdapter: ConnectorAdapter = {
   ],
 
   buildRequest(operation: string, params: Record<string, unknown>, token: string): UCRRequest {
-    const auth = { Authorization: `Bearer ${token}` };
+    // EF-6.5.0: token passed as credential — HttpTransport injects Authorization header.
+    // Adapter no longer constructs headers. No HTTP knowledge here.
 
     switch (operation) {
 
@@ -57,7 +58,7 @@ export const GoogleDriveAdapter: ConnectorAdapter = {
           orderBy:  (params.orderBy as string) ?? "modifiedTime desc",
           ...(params.pageToken ? { pageToken: params.pageToken as string } : {}),
         });
-        return { operation, url: `${BASE}/files?${sp}`, headers: auth };
+        return { operation, url: `${BASE}/files?${sp}`, credential: token };
       }
 
       case OPS.SEARCH:
@@ -70,25 +71,25 @@ export const GoogleDriveAdapter: ConnectorAdapter = {
           orderBy:  "modifiedTime desc",
           ...(params.pageToken ? { pageToken: params.pageToken as string } : {}),
         });
-        return { operation, url: `${BASE}/files?${sp}`, headers: auth };
+        return { operation, url: `${BASE}/files?${sp}`, credential: token };
       }
 
       case OPS.METADATA: {
         const fileId = encodeURIComponent(params.fileId as string);
         const fields = (params.fields as string) ?? FILE_FIELDS;
         const sp = new URLSearchParams({ fields });
-        return { operation, url: `${BASE}/files/${fileId}?${sp}`, headers: auth };
+        return { operation, url: `${BASE}/files/${fileId}?${sp}`, credential: token };
       }
 
       case OPS.MEDIA: {
         const fileId = encodeURIComponent(params.fileId as string);
-        return { operation, url: `${BASE}/files/${fileId}?alt=media`, headers: auth };
+        return { operation, url: `${BASE}/files/${fileId}?alt=media`, credential: token };
       }
 
       case OPS.EXPORT: {
         const fileId = encodeURIComponent(params.fileId as string);
         const mime   = encodeURIComponent(params.mimeType as string);
-        return { operation, url: `${BASE}/files/${fileId}/export?mimeType=${mime}`, headers: auth };
+        return { operation, url: `${BASE}/files/${fileId}/export?mimeType=${mime}`, credential: token };
       }
 
       case OPS.LIST_FOLDERS: {
@@ -100,7 +101,7 @@ export const GoogleDriveAdapter: ConnectorAdapter = {
           fields:   "files(id,name,parents,createdTime,modifiedTime,shared)",
           orderBy:  "name",
         });
-        return { operation, url: `${BASE}/files?${sp}`, headers: auth };
+        return { operation, url: `${BASE}/files?${sp}`, credential: token };
       }
 
       default:

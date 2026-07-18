@@ -11,15 +11,19 @@
 export interface UCRRequest {
   /** Adapter-defined operation name (e.g. "drive.files.list") */
   readonly operation:   string;
-  /** URL to call */
+  /** URL to call (passed to Transport as endpoint) */
   readonly url:         string;
-  /** HTTP method */
+  /** HTTP method — opaque to Runtime, forwarded to Transport via meta */
   readonly method?:     "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-  /** Extra headers (auth added by Runtime) */
+  /** Extra headers — opaque to Runtime, forwarded to Transport via meta */
   readonly headers?:    Record<string, string>;
   /** JSON body (for POST/PUT) */
   readonly body?:       unknown;
-  /** Timeout override in ms (default: Runtime default) */
+  /** Auth credential (token) — forwarded to Transport */
+  readonly credential?: string;
+  /** Transport-specific metadata bag — opaque to Runtime */
+  readonly meta?:       Record<string, unknown>;
+  /** Timeout override in ms */
   readonly timeoutMs?:  number;
   /** Caller trace ID */
   readonly traceId?:    string;
