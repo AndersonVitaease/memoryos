@@ -1,14 +1,13 @@
 /**
- * EF-40.1 — AUDIT EVIDENCE & TRACEABILITY
- * Adds: Execution ID, Evidence column, Source of Truth, Audit Summary,
- *       Platform Limitations, Certification Decision, Audit Trail, Export.
+ * EF-40.2 — CERTIFICATION HISTORY & REGRESSION ENGINE
+ * Adds: CertificationHistoryStore, RegressionEngine, History panel,
+ *       Regression Report, Timeline, Compare With Previous, Project Health.
  *
- * EF-40.0 rules are UNCHANGED:
- *   Coverage  = all 8 declared phases (denominator always 8)
- *   Score     = executed phases only
- *   Status    = CERTIFIED / PARTIALLY CERTIFIED / NOT CERTIFIED
+ * EF-40.0 / EF-40.1 rules are UNCHANGED.
  */
 import React, { useState, useEffect, useRef } from "react";
+import { CertificationHistoryStore } from "@/lib/certification-history/CertificationHistoryStore";
+import { runRegressionEngine, computeProjectHealth } from "@/lib/certification-history/RegressionEngine";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants (EF-40.0 — UNCHANGED)
@@ -490,8 +489,157 @@ function FinalBanner({ certStatus, coverage, scoreInfo, execAt, totalMs }) {
   );
 }
 
-// ── EF-40.1: Export button ───────────────────────────────────────────────────
-function buildExportPayload({ execId, execAt, totalMs, coverage, scoreInfo, certStatus, phases, trail }) {
+// ── EF-40.2: Project Health indicator ────────────────────────────────────────
+function ProjectHealthBadge({ history }) {
+  const health = computeProjectHealth(history);
+  const labels = {
+    EXCELLENT: "All metrics healthy, no regressions.",
+    GOOD:      "Score healthy, no recent regressions.",
+    WARNING:   "Recent regressions or incomplete coverage.",
+    CRITICAL:  "Failures or severe regressions detected.",
+    UNKNOWN:   "No history available yet.",
+  };
+  return (
+    <div style={{ background: "#18181b", border: `2px solid ${health.color}`, borderRadius: 8, padding: "10px 18px", marginBottom: 12, display: "inline-flex", alignItems: "center", gap: 14 }}>
+      <div>
+        <div style={{ fontSize: 9, color: "#52525b", letterSpacing: 1.5 }}>PROJECT HEALTH</div>
+        <div style={{ fontSize: 20, fontWeight: "bold", color: health.color }}>{health.label}</div>
+      </div>
+      <div style={{ fontSize: 10, color: "#71717a", maxWidth: 300 }}>{labels[health.label]}</div>
+    </div>
+  );
+}
+
+// ── EF-40.2: Certification History panel ──────────────────────────────────────
+function CertificationHistoryPanel({ history, currentId }) {
+  if (!history || history.length === 0) {
+    return (
+      <Panel title="Certification History">
+        <div style={{ fontSize: 10, color: "#52525b" }}>No previous certifications found. This is the first run.</div>
+      </Panel>
+    );
+  }
+  const cols = "140px 155px 70px 70px 155px 80px 80px";
+  const headers = ["EXECUTION ID", "TIMESTAMP", "COVERAGE", "SCORE", "STATUS", "RUNTIME", "TREND"];
+  // compute trends
+  const sorted = [...history].sort((a,b) => new Date(a.timestamp)-new Date(b.timestamp));
+  return (
+    <Panel title={`Certification History — ${history.length} run(s)`}>
+      <div style={{ overflowX: "auto" }}>
+        <div style={{ display: "grid", gridTemplateColumns: cols, gap: "2px 10px", minWidth: 900 }}>
+          {headers.map(h => (
+            <div key={h} style={{ fontSize: 9, color: "#52525b", letterSpacing: 1, borderBottom: "1px solid #27272a", paddingBottom: 3, marginBottom: 3 }}>{h}</div>
+          ))}
+          {sorted.map((rec, i) => {
+            const cfg      = CERT_CONFIG[rec.certificationStatus] ?? { color: "#71717a" };
+            const isCurrent= rec.executionId === currentId;
+            const prev     = i > 0 ? sorted[i - 1] : null;
+            const reg      = prev ? runRegressionEngine(rec, prev) : null;
+            const trend    = !reg ? "—" : reg.summary === "IMPROVED" ? "↑ IMPROVED" : reg.summary === "REGRESSED" ? "↓ REGRESSED" : reg.summary === "MIXED" ? "~ MIXED" : "= NO CHANGE";
+            const trendClr = !reg ? "#52525b" : reg.summary === "IMPROVED" ? "#22c55e" : reg.summary === "REGRESSED" ? "#ef4444" : "#f59e0b";
+            return (
+              <React.Fragment key={rec.executionId}>
+                <div style={{ fontSize: 9, color: isCurrent ? "#a78bfa" : "#71717a", fontWeight: isCurrent ? "bold" : "normal" }}>{rec.executionId.slice(0,8)}…{isCurrent ? " ◀ current" : ""}</div>
+                <div style={{ fontSize: 9, color: "#52525b" }}>{new Date(rec.timestamp).toLocaleString()}</div>
+                <div style={{ fontSize: 9, color: rec.coveragePct === 100 ? "#22c55e" : "#f59e0b" }}>{rec.coveragePct}%</div>
+                <div style={{ fontSize: 9, color: rec.score >= 95 ? "#22c55e" : "#ef4444" }}>{rec.score}/100 {rec.grade}</div>
+                <div style={{ fontSize: 9, color: cfg.color }}>{cfg.icon ?? ""} {rec.certificationStatus}</div>
+                <div style={{ fontSize: 9, color: "#71717a" }}>{rec.totalRuntimeMs}ms</div>
+                <div style={{ fontSize: 9, color: trendClr, fontWeight: "bold" }}>{trend}</div>
+              </React.Fragment>
+            );
+          })}
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+// ── EF-40.2: Regression Report panel ─────────────────────────────────────────
+const CHANGE_COLOR = { IMPROVEMENT: "#22c55e", REGRESSION: "#ef4444", NO_CHANGE: "#52525b" };
+const CHANGE_ICON  = { IMPROVEMENT: "↑", REGRESSION: "↓", NO_CHANGE: "=" };
+
+function RegressionReportPanel({ regression }) {
+  if (!regression) {
+    return (
+      <Panel title="Regression Report — Compare With Previous">
+        <div style={{ fontSize: 10, color: "#52525b" }}>No previous execution to compare against.</div>
+      </Panel>
+    );
+  }
+  const summaryColor = regression.summary === "IMPROVED" ? "#22c55e" : regression.summary === "REGRESSED" ? "#ef4444" : regression.summary === "MIXED" ? "#f59e0b" : "#52525b";
+  return (
+    <Panel title={`Regression Report — vs execution ${regression.previousId?.slice(0,8)}…`} accent={summaryColor}>
+      <div style={{ display: "flex", gap: 20, marginBottom: 10, flexWrap: "wrap" }}>
+        <div style={{ fontSize: 13, fontWeight: "bold", color: summaryColor }}>{regression.summary}</div>
+        <div style={{ fontSize: 10, color: "#22c55e" }}>↑ {regression.improvements} improvement(s)</div>
+        <div style={{ fontSize: 10, color: "#ef4444" }}>↓ {regression.regressions} regression(s)</div>
+        <div style={{ fontSize: 10, color: "#52525b" }}>= {regression.noChanges} no change</div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "180px 110px 110px 100px 110px", gap: "2px 10px" }}>
+        {["DIMENSION","PREVIOUS","CURRENT","DELTA","CHANGE"].map(h => (
+          <div key={h} style={{ fontSize: 9, color: "#52525b", letterSpacing: 1, borderBottom: "1px solid #27272a", paddingBottom: 3, marginBottom: 3 }}>{h}</div>
+        ))}
+        {regression.dimensions.map((d, i) => (
+          <React.Fragment key={i}>
+            <div style={{ fontSize: 10, color: "#e4e4e7" }}>{d.name}</div>
+            <div style={{ fontSize: 10, color: "#71717a" }}>{d.previous}</div>
+            <div style={{ fontSize: 10, color: "#a1a1aa" }}>{d.current}</div>
+            <div style={{ fontSize: 10, color: CHANGE_COLOR[d.change] ?? "#71717a" }}>{d.delta}</div>
+            <div style={{ fontSize: 10, color: CHANGE_COLOR[d.change] ?? "#71717a", fontWeight: "bold" }}>{CHANGE_ICON[d.change]} {d.change}</div>
+          </React.Fragment>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+// ── EF-40.2: Timeline ─────────────────────────────────────────────────────────
+function TimelinePanel({ history, currentId }) {
+  const sorted = [...(history ?? [])].sort((a,b) => new Date(a.timestamp)-new Date(b.timestamp));
+  if (sorted.length === 0) return null;
+  return (
+    <Panel title="Certification Timeline">
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 0, overflowX: "auto", paddingBottom: 8 }}>
+        {sorted.map((rec, i) => {
+          const cfg       = CERT_CONFIG[rec.certificationStatus] ?? { color: "#52525b", icon: "?" };
+          const isCurrent = rec.executionId === currentId;
+          return (
+            <div key={rec.executionId} style={{ display: "flex", alignItems: "flex-start" }}>
+              {/* Node */}
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", minWidth: 100 }}>
+                <div style={{
+                  width: 32, height: 32, borderRadius: "50%",
+                  background: isCurrent ? cfg.color : "#27272a",
+                  border: `2px solid ${cfg.color}`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 14, color: isCurrent ? "#09090b" : cfg.color, fontWeight: "bold",
+                }}>{cfg.icon}</div>
+                <div style={{ fontSize: 9, color: isCurrent ? "#a78bfa" : "#52525b", marginTop: 4, textAlign: "center", maxWidth: 90, wordBreak: "break-all" }}>
+                  {rec.executionId.slice(0,6)}…
+                </div>
+                <div style={{ fontSize: 9, color: cfg.color, textAlign: "center" }}>{rec.certificationStatus.replace("_","_\n")}</div>
+                <div style={{ fontSize: 9, color: "#71717a", textAlign: "center" }}>Cov: {rec.coveragePct}%</div>
+                <div style={{ fontSize: 9, color: rec.score >= 95 ? "#22c55e" : "#ef4444", textAlign: "center" }}>{rec.score}/100</div>
+                <div style={{ fontSize: 9, color: "#52525b", textAlign: "center" }}>{rec.totalRuntimeMs}ms</div>
+              </div>
+              {/* Connector */}
+              {i < sorted.length - 1 && (
+                <div style={{ display: "flex", alignItems: "center", paddingTop: 15 }}>
+                  <div style={{ width: 30, height: 2, background: "#27272a" }} />
+                  <div style={{ fontSize: 10, color: "#52525b" }}>▶</div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </Panel>
+  );
+}
+
+// ── EF-40.1: Export button (EF-40.2: extended payload) ───────────────────────
+function buildExportPayload({ execId, execAt, totalMs, coverage, scoreInfo, certStatus, phases, trail, regression, history }) {
   const matrix = ALL_PHASES.map(name => {
     const phase = phases[name];
     const s     = phase?.status ?? STATUS.NOT_EXECUTED;
@@ -543,6 +691,11 @@ function buildExportPayload({ execId, execAt, totalMs, coverage, scoreInfo, cert
       coverageAchieved: coverage.coveragePct,
       notExecutedReason: coverage.notExecuted.length > 0 ? "Documented platform limitation: Vite ?raw module collision" : null,
     },
+    // EF-40.2 additions
+    previousExecution: regression ? { executionId: regression.previousId } : null,
+    regressionReport:  regression ?? null,
+    historyIndex:      history ? history.findIndex(h => h.executionId === execId) : -1,
+    trend:             regression ? regression.summary : "NO_HISTORY",
   };
 }
 
@@ -561,7 +714,7 @@ function ExportButton({ payload }) {
     <button onClick={handleExport} style={{
       background: "#4f46e5", color: "#fff", border: "none", borderRadius: 6,
       padding: "8px 20px", fontSize: 11, fontFamily: "monospace", cursor: "pointer",
-      fontWeight: "bold", letterSpacing: 0.5, marginBottom: 12,
+      fontWeight: "bold", letterSpacing: 0.5,
     }}>
       ↓ EXPORT AUDIT REPORT (JSON)
     </button>
@@ -572,16 +725,19 @@ function ExportButton({ payload }) {
 // Main page
 // ─────────────────────────────────────────────────────────────────────────────
 export default function EF398CertPage() {
-  const [runStatus, setRunStatus] = useState("idle");
-  const [phases,    setPhases]    = useState({});
-  const [coverage,  setCoverage]  = useState(null);
-  const [scoreInfo, setScoreInfo] = useState(null);
-  const [certStatus,setCertStatus]= useState(null);
-  const [log,       setLog]       = useState([]);
-  const [trail,     setTrail]     = useState([]);
-  const [totalMs,   setTotalMs]   = useState(null);
-  const [execAt,    setExecAt]    = useState(null);
-  const [execId,    setExecId]    = useState(null);
+  const [runStatus,  setRunStatus]  = useState("idle");
+  const [phases,     setPhases]     = useState({});
+  const [coverage,   setCoverage]   = useState(null);
+  const [scoreInfo,  setScoreInfo]  = useState(null);
+  const [certStatus, setCertStatus] = useState(null);
+  const [log,        setLog]        = useState([]);
+  const [trail,      setTrail]      = useState([]);
+  const [totalMs,    setTotalMs]    = useState(null);
+  const [execAt,     setExecAt]     = useState(null);
+  const [execId,     setExecId]     = useState(null);
+  // EF-40.2
+  const [history,    setHistory]    = useState([]);
+  const [regression, setRegression] = useState(null);
   const startedRef = useRef(false);
   const trailRef   = useRef([]);
 
@@ -596,10 +752,11 @@ export default function EF398CertPage() {
   async function run() {
     if (startedRef.current) return;
     startedRef.current = true;
-    const id = generateUUID();
+    const id  = generateUUID();
     const now = new Date().toISOString();
     setExecId(id);
     setExecAt(now);
+    setHistory(CertificationHistoryStore.getAll()); // load existing history on start
     setRunStatus("running");
     setLog([]);
     trailRef.current = [];
@@ -661,12 +818,22 @@ export default function EF398CertPage() {
     setTotalMs(ms);
     setRunStatus("done");
     addLog(`COMPLETE — coverage:${cov.coveragePct}% score:${sc.score}/100 ${sc.grade} status:${cert} — ${ms}ms`);
+
+    // EF-40.2: persist to history and compute regression
+    const payload402 = buildExportPayload({ execId: id, execAt: now, totalMs: ms, coverage: cov, scoreInfo: sc, certStatus: cert, phases: allPhases, trail: trailRef.current, regression: null, history: [] });
+    CertificationHistoryStore.save(payload402);
+    const allHistory  = CertificationHistoryStore.getAll();
+    const prevRecord  = CertificationHistoryStore.getPrevious(id);
+    const currentRecord = CertificationHistoryStore.getByExecutionId(id);
+    const reg = (currentRecord && prevRecord) ? runRegressionEngine(currentRecord, prevRecord) : null;
+    setHistory(allHistory);
+    setRegression(reg);
   }
 
   useEffect(() => { run(); }, []);
 
   const exportPayload = (coverage && scoreInfo && certStatus && execId)
-    ? buildExportPayload({ execId, execAt, totalMs, coverage, scoreInfo, certStatus, phases, trail })
+    ? buildExportPayload({ execId, execAt, totalMs, coverage, scoreInfo, certStatus, phases, trail, regression, history })
     : null;
 
   return (
@@ -675,7 +842,7 @@ export default function EF398CertPage() {
 
         {/* Header */}
         <div style={{ fontSize: 17, fontWeight: "bold", color: "#a78bfa", marginBottom: 3 }}>
-          EF-40.1 — AUDIT EVIDENCE & TRACEABILITY
+          EF-40.2 — CERTIFICATION HISTORY & REGRESSION ENGINE
         </div>
         <div style={{ fontSize: 10, color: "#52525b", marginBottom: 4 }}>
           Coverage = all {TOTAL_PHASES} declared phases · Score = executed phases only · Status = CERTIFIED / PARTIALLY CERTIFIED / NOT CERTIFIED
@@ -727,8 +894,27 @@ export default function EF398CertPage() {
               </div>
             </div>
 
-            {/* Export button */}
-            {exportPayload && <ExportButton payload={exportPayload} />}
+            {/* EF-40.2: Project Health + action buttons */}
+            <ProjectHealthBadge history={history} />
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+              {exportPayload && <ExportButton payload={exportPayload} />}
+              {regression && (
+                <button onClick={() => document.getElementById("regression-report")?.scrollIntoView({ behavior: "smooth" })} style={{
+                  background: regression.regressions > 0 ? "#450a0a" : "#052e16",
+                  color: regression.regressions > 0 ? "#ef4444" : "#22c55e",
+                  border: `1px solid ${regression.regressions > 0 ? "#ef4444" : "#22c55e"}`,
+                  borderRadius: 6, padding: "8px 16px", fontSize: 11, fontFamily: "monospace", cursor: "pointer", fontWeight: "bold",
+                }}>
+                  ⇅ COMPARE WITH PREVIOUS {regression.regressions > 0 ? `— ${regression.regressions} REGRESSION(S)` : `— ${regression.improvements} IMPROVEMENT(S)`}
+                </button>
+              )}
+              <button onClick={() => { CertificationHistoryStore.clear(); setHistory([]); setRegression(null); }} style={{
+                background: "#18181b", color: "#71717a", border: "1px solid #27272a",
+                borderRadius: 6, padding: "8px 14px", fontSize: 11, fontFamily: "monospace", cursor: "pointer",
+              }}>
+                ✕ Clear History
+              </button>
+            </div>
 
             {/* EF-40.0 panels — UNCHANGED */}
             <CoveragePanel coverage={coverage} />
@@ -744,6 +930,13 @@ export default function EF398CertPage() {
 
             {/* Detail sections */}
             <DetailSections phases={phases} />
+
+            {/* EF-40.2: History, Regression, Timeline */}
+            <TimelinePanel history={history} currentId={execId} />
+            <div id="regression-report">
+              <RegressionReportPanel regression={regression} />
+            </div>
+            <CertificationHistoryPanel history={history} currentId={execId} />
 
             {/* Final banner — UNCHANGED */}
             <FinalBanner certStatus={certStatus} coverage={coverage} scoreInfo={scoreInfo} execAt={execAt} totalMs={totalMs} />
