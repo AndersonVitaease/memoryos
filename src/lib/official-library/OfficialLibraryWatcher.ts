@@ -1,53 +1,64 @@
 /**
- * OfficialLibraryWatcher.ts — Sprint EF-7.2.0
+ * OfficialLibraryWatcher.ts — Sprint EF-7.2.1 (refactored from EF-7.2.0)
  *
- * Monitors changes to official documents.
- * When a document changes:
- *   → Reindex
- *   → Update in-memory chunks
- *   → Invalidate cache
- *   → Register new version
- *   → Emit WatchEvent (without restarting the app)
- *
- * In the browser environment, watches via polling at configurable intervals.
+ * Changes from EF-7.2.0:
+ *   - Depends on DocumentChangeSource interface (DIP)
+ *   - Never depends on PollingChangeSource directly
+ *   - PollingChangeSource is the default but can be swapped at runtime
+ *   - Knowledge graph rebuild uses graphStorage/graphQuery from Bootstrap
  */
 
 import type { WatchEvent } from "./OfficialLibraryTypes";
+import type { DocumentChangeSource } from "./DocumentChangeSource";
+import { PollingChangeSource } from "./DocumentChangeSource";
 import { OfficialLibraryIndexer } from "./OfficialLibraryIndexer";
-import { officialKnowledgeGraph } from "./OfficialKnowledgeGraph";
 
 type WatchListener = (event: WatchEvent) => void;
+
+// ── Default change source ─────────────────────────────────────────────────────
+
+function makeDefaultChangeSource(): DocumentChangeSource {
+  return new PollingChangeSource(60_000, () => {
+    const stats = OfficialLibraryIndexer.stats();
+    return `${stats.documentCount}-${stats.chunkCount}-${stats.lastIndexedAt}`;
+  });
+}
 
 // ── Watcher implementation ────────────────────────────────────────────────────
 
 class OfficialLibraryWatcherImpl {
-  private _listeners:  WatchListener[]   = [];
-  private _history:    WatchEvent[]      = [];
-  private _active:     boolean           = false;
-  private _intervalId: ReturnType<typeof setInterval> | null = null;
-  private _pollMs:     number            = 60_000;   // 1 minute default
-  private _lastHash:   string            = "";
+  private _listeners:    WatchListener[]        = [];
+  private _history:      WatchEvent[]           = [];
+  private _changeSource: DocumentChangeSource   = makeDefaultChangeSource();
 
-  /** Start watching. Safe to call multiple times. */
-  start(pollMs = 60_000): void {
-    if (this._active) return;
-    this._active  = true;
-    this._pollMs  = pollMs;
-    this._intervalId = setInterval(() => this._poll(), this._pollMs);
+  get isActive(): boolean     { return this._changeSource.isActive; }
+  get eventCount(): number    { return this._history.length; }
+  get history(): WatchEvent[] { return [...this._history]; }
+  get sourceId(): string      { return this._changeSource.sourceId; }
+  get sourceName(): string    { return this._changeSource.sourceName; }
+
+  /** Swap the change source (DIP — e.g. switch to GitHubWebhookSource). */
+  setChangeSource(source: DocumentChangeSource): void {
+    this._changeSource.stop();
+    this._changeSource = source;
+  }
+
+  /** Start watching with the current change source. */
+  start(): void {
+    this._changeSource.start(event => {
+      this._emit({
+        type:        "update",
+        documentId:  event.documentId,
+        triggeredAt: event.triggeredAt,
+        reason:      event.reason,
+      });
+    });
   }
 
   /** Stop watching. */
   stop(): void {
-    this._active = false;
-    if (this._intervalId !== null) {
-      clearInterval(this._intervalId);
-      this._intervalId = null;
-    }
+    this._changeSource.stop();
   }
-
-  get isActive(): boolean    { return this._active; }
-  get eventCount(): number   { return this._history.length; }
-  get history(): WatchEvent[] { return [...this._history]; }
 
   /** Subscribe to watch events. Returns unsubscribe fn. */
   subscribe(listener: WatchListener): () => void {
@@ -59,69 +70,45 @@ class OfficialLibraryWatcherImpl {
   async triggerReindex(documentId: string, reason = "manual"): Promise<boolean> {
     const ok = await OfficialLibraryIndexer.reindex(documentId);
     if (ok) {
-      const chunks = OfficialLibraryIndexer.getChunks();
-      officialKnowledgeGraph.build(chunks);
-      const event: WatchEvent = {
-        type:        "reindex",
-        documentId,
-        triggeredAt: new Date().toISOString(),
-        reason,
-      };
-      this._emit(event);
+      await this._rebuildGraph();
+      this._emit({ type: "reindex", documentId, triggeredAt: new Date().toISOString(), reason });
     }
     return ok;
   }
 
-  /** Trigger a full reindex. */
+  /** Trigger a full reindex via Bootstrap. */
   async triggerFullReindex(reason = "full-reindex"): Promise<void> {
-    // Reset and re-initialize the indexer
-    OfficialLibraryIndexer._reset();
-    await OfficialLibraryIndexer.initialize();
-    const chunks = OfficialLibraryIndexer.getChunks();
-    officialKnowledgeGraph.build(chunks);
-
-    const event: WatchEvent = {
-      type:        "reindex",
-      documentId:  "*",
-      triggeredAt: new Date().toISOString(),
-      reason,
-    };
-    this._emit(event);
+    try {
+      const { OfficialLibraryBootstrap } = await import("./OfficialLibraryBootstrap");
+      await OfficialLibraryBootstrap.run(true);
+    } catch { /* bootstrap errors are diagnostic-only */ }
+    this._emit({ type: "reindex", documentId: "*", triggeredAt: new Date().toISOString(), reason });
   }
 
-  private async _poll(): Promise<void> {
-    if (!this._active) return;
+  private async _rebuildGraph(): Promise<void> {
     try {
-      const stats    = OfficialLibraryIndexer.stats();
-      const newHash  = `${stats.documentCount}-${stats.chunkCount}-${stats.lastIndexedAt}`;
-      if (newHash !== this._lastHash && this._lastHash !== "") {
-        const event: WatchEvent = {
-          type:        "update",
-          documentId:  "*",
-          triggeredAt: new Date().toISOString(),
-          reason:      "poll-detected-change",
-        };
-        this._emit(event);
-      }
-      this._lastHash = newHash;
-    } catch {
-      // Silent — poll failures don't propagate
-    }
+      const { OfficialLibraryBootstrap, graphStorage } = await import("./OfficialLibraryBootstrap");
+      const { GraphBuilder } = await import("./GraphBuilder");
+      const chunks = OfficialLibraryIndexer.getChunks();
+      graphStorage.store(GraphBuilder.build(chunks));
+      // Also update legacy singleton
+      const { officialKnowledgeGraph } = await import("./OfficialKnowledgeGraph");
+      officialKnowledgeGraph.build(chunks);
+    } catch { /* no-op */ }
   }
 
   private _emit(event: WatchEvent): void {
     this._history.push(event);
-    if (this._history.length > 100) this._history.shift();  // circular buffer
+    if (this._history.length > 100) this._history.shift();
     for (const listener of this._listeners) {
-      try { listener(event); } catch { /* isolate listener errors */ }
+      try { listener(event); } catch { /* isolate */ }
     }
   }
 
-  /** Reset for tests. */
   _reset(): void {
     this.stop();
-    this._history  = [];
-    this._lastHash = "";
+    this._history      = [];
+    this._changeSource = makeDefaultChangeSource();
   }
 }
 
