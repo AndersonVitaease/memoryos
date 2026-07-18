@@ -144,3 +144,61 @@ export const ExecutionStateFactory = {
     });
   },
 };
+
+// ── Typed state-merge helpers (used by ExecutionPipeline) ─────────────────────
+
+export function withRecord(state: ExecutionState, record: StageRecord): ExecutionState {
+  return ExecutionStateFactory.completeStage(state, record);
+}
+
+export function withUserInput(state: ExecutionState, _v: unknown): ExecutionState {
+  return ExecutionStateFactory.update(state, { currentStage: "USER_INPUT" });
+}
+
+export function withIntent(state: ExecutionState, _v: unknown): ExecutionState {
+  return ExecutionStateFactory.update(state, { currentStage: "INTENT_RUNTIME" });
+}
+
+export function withGoal(state: ExecutionState, _v: unknown): ExecutionState {
+  return ExecutionStateFactory.update(state, { currentStage: "GOAL_RUNTIME" });
+}
+
+export function withPlan(state: ExecutionState, _v: unknown): ExecutionState {
+  return ExecutionStateFactory.update(state, { currentStage: "PLANNING_RUNTIME" });
+}
+
+export function withKernel(state: ExecutionState, _v: unknown): ExecutionState {
+  return ExecutionStateFactory.update(state, { currentStage: "KERNEL" });
+}
+
+export function withOrchestrator(state: ExecutionState, _v: unknown): ExecutionState {
+  return ExecutionStateFactory.update(state, { currentStage: "RUNTIME_ORCHESTRATOR" });
+}
+
+export function withCapability(state: ExecutionState, _v: unknown): ExecutionState {
+  return ExecutionStateFactory.update(state, { currentStage: "CAPABILITY_RUNTIME" });
+}
+
+export function withConnectorRuntime(state: ExecutionState, _v: unknown): ExecutionState {
+  return ExecutionStateFactory.update(state, { currentStage: "CONNECTOR_RUNTIME" });
+}
+
+export function withConnector(state: ExecutionState, _v: unknown): ExecutionState {
+  return ExecutionStateFactory.update(state, { currentStage: "CONNECTOR" });
+}
+
+export function withResult(state: ExecutionState, _v: unknown): ExecutionState {
+  return ExecutionStateFactory.update(state, { currentStage: "RESULT" });
+}
+
+export function withMemory(state: ExecutionState, _v: unknown): ExecutionState {
+  return ExecutionStateFactory.update(state, { currentStage: "MEMORY" });
+}
+
+export function withExplainability(state: ExecutionState, _v: unknown): ExecutionState {
+  return ExecutionStateFactory.update(state, { currentStage: "EXPLAINABILITY" });
+}
+
+export function withAudit(state: ExecutionState, _v: unknown): ExecutionState {
+  return ExecutionStateFactory.update(state, { currentStage: "AUDIT" });
+}
