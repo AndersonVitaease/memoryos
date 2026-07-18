@@ -204,6 +204,24 @@ export async function executeDriveCapability(
       return readFileMetadata(res.file.id);
     }
 
+    // ── download via GoalCapabilityRegistry → drive.files.get ─────────────────
+    // Sprint EF-6.3.1: drive.downloadFile goal routes here via Registry.
+    // Full logic lives in DriveDownloadExecutor (fileId resolution, ranking,
+    // export strategy, error handling, audit). Executor decides everything.
+
+    case "drive.files.get": {
+      const { getAccessToken } = await import("@/lib/google-auth/GoogleAuthSession");
+      const token = getAccessToken("default");
+      if (!token) {
+        return { ok: false, data: { code: "NOT_CONFIGURED", message: "Google Drive não autenticado. Conecte sua conta em /connections." }, error: "NOT_CONFIGURED" };
+      }
+      const { executeDriveDownload } = await import("./DriveDownloadExecutor");
+      _LOG("EF631-DOWNLOAD-ENTER", { parameters });
+      const result = await executeDriveDownload(parameters, token);
+      _LOG("EF631-DOWNLOAD-RESULT", { ok: result.ok, code: result.ok ? null : result.code, fileName: result.ok ? result.fileName : result.fileName, durationMs: result.durationMs });
+      return { ok: result.ok, data: result, error: result.ok ? null : result.message };
+    }
+
     // ── Download / read file content ───────────────────────────────────────────
 
     case "drive.readFile":
