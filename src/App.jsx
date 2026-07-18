@@ -209,6 +209,7 @@ import PhaseEV1Page from '@/pages/PhaseEV1Page';
 import PhaseEV2Page from '@/pages/PhaseEV2Page';
 import PhaseEV4Page from '@/pages/PhaseEV4Page';
 import PhaseEV4BPage from '@/pages/PhaseEV4BPage';
+import PhaseEV5Page from '@/pages/PhaseEV5Page';
 
 const AuthenticatedApp = () => {
   console.log('[RENDER] AuthenticatedApp');
@@ -437,6 +438,7 @@ const AuthenticatedApp = () => {
           <Route path="/ev2" element={<PhaseEV2Page />} />
           <Route path="/ev4" element={<PhaseEV4Page />} />
           <Route path="/ev4b" element={<PhaseEV4BPage />} />
+          <Route path="/ev5" element={<PhaseEV5Page />} />
         </Route>
       </Route>
       <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />
