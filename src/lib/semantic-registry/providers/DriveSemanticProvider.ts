@@ -14,9 +14,15 @@ const DOCUMENT_TYPES = Object.freeze([
   "doc", "docx", "xlsx", "pptx", "csv",
 ]);
 
+// Download/open action verbs — indicate drive.openDocument intent
+const DOWNLOAD_ACTIONS = Object.freeze([
+  "baixar", "baixe", "baixa", "download", "ler arquivo", "ler documento",
+  "abrir arquivo", "open file", "read file", "abrir", "open",
+]);
+
+// Generic drive actions (search/list) — NOT download
 const DRIVE_ACTIONS = Object.freeze([
-  "abrir", "abra", "open", "criar documento", "editar", "edit",
-  "compartilhar", "share", "upload", "baixar", "download",
+  "criar documento", "editar", "edit", "compartilhar", "share", "upload",
 ]);
 
 const STORAGE_CONTEXT = Object.freeze([
@@ -35,6 +41,31 @@ function firstMatch(lower: string, list: readonly string[]): string | null {
   }
   return null;
 }
+
+// Two providers — one per intent — so the winner selection in
+// ImplicitConnectorIntentDetector can distinguish search from open/download.
+
+export const DriveOpenDocumentSemanticProvider: SemanticProvider = Object.freeze({
+  connectorId:      "drive",
+  implicitGoalType: "drive.openDocument",
+
+  score(lower: string, _normalized: NormalizationResult): SemanticScore {
+    const evidences: string[] = [];
+    let score = 0;
+
+    // Download/open verb is the primary signal — strong weight
+    const dl = firstMatch(lower, DOWNLOAD_ACTIONS);
+    if (dl) { score += 0.55; evidences.push(`download-action: "${dl}"`); }
+
+    const dt = firstMatch(lower, DOCUMENT_TYPES);
+    if (dt) { score += 0.35; evidences.push(`document-type: "${dt}"`); }
+
+    const cd = firstMatch(lower, CONTRACT_DOCS);
+    if (cd) { score += 0.20; evidences.push(`contract-doc: "${cd}"`); }
+
+    return Object.freeze({ score: Math.min(score, 1.0), evidences: Object.freeze(evidences) });
+  },
+});
 
 export const DriveSemanticProvider: SemanticProvider = Object.freeze({
   connectorId:      "drive",
@@ -56,6 +87,10 @@ export const DriveSemanticProvider: SemanticProvider = Object.freeze({
     const cd = firstMatch(lower, CONTRACT_DOCS);
     if (cd) { score += 0.25; evidences.push(`contract-doc: "${cd}"`); }
 
-    return Object.freeze({ score: Math.min(score, 1.0), evidences: Object.freeze(evidences) });
+    // Penalize when a download verb is present — openDocument provider should win
+    const dl = firstMatch(lower, DOWNLOAD_ACTIONS);
+    if (dl) { score -= 0.40; evidences.push(`download-penalty: "${dl}"`); }
+
+    return Object.freeze({ score: Math.min(Math.max(score, 0), 1.0), evidences: Object.freeze(evidences) });
   },
 });

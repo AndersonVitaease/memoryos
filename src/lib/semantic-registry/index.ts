@@ -14,12 +14,13 @@ export { ConnectorSemanticRegistry } from "./ConnectorSemanticRegistry";
 import { ConnectorSemanticRegistry } from "./ConnectorSemanticRegistry";
 import { GmailSemanticProvider }    from "./providers/GmailSemanticProvider";
 import { CalendarSemanticProvider } from "./providers/CalendarSemanticProvider";
-import { DriveSemanticProvider }    from "./providers/DriveSemanticProvider";
+import { DriveSemanticProvider, DriveOpenDocumentSemanticProvider } from "./providers/DriveSemanticProvider";
 import { MemorySemanticProvider }   from "./providers/MemorySemanticProvider";
 
 // Auto-register all official providers at module load.
 // register() is idempotent — safe to call multiple times.
 ConnectorSemanticRegistry.register(GmailSemanticProvider);
 ConnectorSemanticRegistry.register(CalendarSemanticProvider);
-ConnectorSemanticRegistry.register(DriveSemanticProvider);
+ConnectorSemanticRegistry.register(DriveOpenDocumentSemanticProvider); // higher priority: download/open
+ConnectorSemanticRegistry.register(DriveSemanticProvider);              // fallback: search
 ConnectorSemanticRegistry.register(MemorySemanticProvider);

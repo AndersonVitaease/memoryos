@@ -243,6 +243,26 @@ const _builtins: GoalDefinition[] = [
   },
 
   // ── Drive ──────────────────────────────────────────────────────────────────
+  // PRIORITY ORDER: openDocument before searchFiles so download/open verbs
+  // match first. matchBySignals() returns the FIRST hit in registration order.
+  {
+    type: "drive.openDocument",
+    namespace: "drive",
+    description: "Open or download a specific document in Drive",
+    signals: [
+      // Download / read verbs (PT + EN) — highest priority
+      "baixar", "baixe", "baixa", "download", "baixar arquivo", "baixar documento",
+      "baixar o arquivo", "baixar o documento", "ler arquivo", "ler documento",
+      "read file", "read document", "abrir arquivo",
+      "open document", "open file",
+      // Document type words (when accompanied by a name / action intent)
+      "abrir", "planilha", "documento", "spreadsheet", "doc",
+    ],
+    extractParams: (msg) => {
+      const quoted = msg.match(/"([^"]+)"/)?.[1];
+      return { fileName: quoted ?? null, rawText: msg.trim() };
+    },
+  },
   {
     type: "drive.searchFiles",
     namespace: "drive",
@@ -265,19 +285,6 @@ const _builtins: GoalDefinition[] = [
       "ultimos arquivos", "ver drive", "meus arquivos",
     ],
     extractParams: () => ({ maxResults: 10 }),
-  },
-  {
-    type: "drive.openDocument",
-    namespace: "drive",
-    description: "Open a specific document in Drive",
-    signals: [
-      "abrir", "planilha", "documento", "spreadsheet", "doc",
-      "open document", "open file", "abrir arquivo",
-    ],
-    extractParams: (msg) => {
-      const quoted = msg.match(/"([^"]+)"/)?.[1];
-      return { fileName: quoted ?? null, rawText: msg.trim() };
-    },
   },
 
   // ── GitHub — Sprint M-02 ─────────────────────────────────────────────────
