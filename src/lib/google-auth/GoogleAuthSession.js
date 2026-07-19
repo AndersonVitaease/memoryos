@@ -56,22 +56,52 @@ const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000; // renova 5 min antes de expirar
 const _tokenStore = new Map(); // workspaceId → { accessToken, expiresAt }
 
 // ── [DIAG-TEMP] Probe helper — remove after proof ─────────────────────────────
+
+// Shared executionId for all TOKEN-PROBE events in the current page session.
+// Created lazily on first _probe() call, reused for the entire session.
+let _probeExecId = null;
+
+function _getProbeExecId() {
+  const _KEY = "__MEMORY_OS_RUNTIME_DEBUG__";
+  const bus = globalThis[_KEY];
+  if (!bus) return null;
+  if (_probeExecId && bus.isOpen(_probeExecId)) return _probeExecId;
+  // Create a new execution for this diagnostic session
+  _probeExecId = bus.startExecution("google-drive", "TOKEN-PROBE — Auth Session Diagnostics");
+  return _probeExecId;
+}
+
 function _probe(step, workspaceId, extra = {}) {
   const stored = _tokenStore.get(workspaceId) ?? null;
   const tok = stored?.accessToken ?? null;
+  const payload = {
+    step,
+    ts:             new Date().toISOString(),
+    workspaceId,
+    tokenPrefix:    tok ? tok.slice(0, 12) : "NULL",
+    expiresAt:      stored?.expiresAt ? new Date(stored.expiresAt).toISOString() : "N/A",
+    tokenStoreSize: _tokenStore.size,
+    ...extra,
+  };
   console.log(
     `%c[TOKEN-PROBE][${step}]`,
     "color:#f59e0b;font-weight:bold;font-size:11px",
-    {
-      step,
-      ts:            new Date().toISOString(),
-      workspaceId,
-      tokenPrefix:   tok ? tok.slice(0, 12) : "NULL",
-      expiresAt:     stored?.expiresAt ? new Date(stored.expiresAt).toISOString() : "N/A",
-      tokenStoreSize: _tokenStore.size,
-      ...extra,
-    }
+    payload
   );
+  // Emit to RuntimeDebug so events appear in /drive-debug
+  try {
+    const execId = _getProbeExecId();
+    if (execId) {
+      const _KEY = "__MEMORY_OS_RUNTIME_DEBUG__";
+      globalThis[_KEY].emit({
+        executionId: execId,
+        connector:   "google-drive",
+        source:      "GoogleAuthSession",
+        event:       step,
+        payload,
+      });
+    }
+  } catch (_) { /* non-blocking — never break auth flow */ }
 }
 
 // ── Scopes ────────────────────────────────────────────────────────────────────

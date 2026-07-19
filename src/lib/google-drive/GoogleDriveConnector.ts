@@ -33,20 +33,42 @@ function _rid() { return `drv-${Date.now()}-${(_seq++).toString().padStart(4, "0
 
 // ── Auth header ───────────────────────────────────────────────────────────────
 
+// [DIAG-TEMP] Get or reuse the shared TOKEN-PROBE execution from GoogleAuthSession
+function _getProbeExecId(): string | null {
+  const _KEY = "__MEMORY_OS_RUNTIME_DEBUG__";
+  const bus = (globalThis as any)[_KEY];
+  if (!bus) return null;
+  // Find the open TOKEN-PROBE execution created by GoogleAuthSession._probe()
+  const executions: any[] = bus.getExecutions("google-drive");
+  const open = executions.find((e: any) => !e.endedAt && e.label?.startsWith("TOKEN-PROBE"));
+  if (open) return open.executionId;
+  // Fallback: create one here if GoogleAuthSession didn't run first
+  return bus.startExecution("google-drive", "TOKEN-PROBE — Auth Session Diagnostics");
+}
+
+function _emitProbe(step: string, payload: Record<string, unknown>): void {
+  try {
+    const _KEY = "__MEMORY_OS_RUNTIME_DEBUG__";
+    const bus = (globalThis as any)[_KEY];
+    const execId = _getProbeExecId();
+    if (bus && execId) {
+      bus.emit({ executionId: execId, connector: "google-drive", source: "GoogleDriveConnector", event: step, payload });
+    }
+  } catch (_) { /* non-blocking */ }
+}
+
 function _authHeader(): string | null {
   const token = getAccessToken(WS);
+  const payload = {
+    step:        "7-_authHeader",
+    ts:          new Date().toISOString(),
+    workspaceId: WS,
+    tokenPrefix: token ? token.slice(0, 12) : "NULL",
+    result:      token ? `Bearer ${token.slice(0, 12)}...` : "NULL — Authorization header will be missing",
+  };
   // [DIAG-TEMP] Point 7 — value produced by _authHeader()
-  console.log(
-    "%c[TOKEN-PROBE][7-_authHeader]",
-    "color:#f59e0b;font-weight:bold;font-size:11px",
-    {
-      step:        "7-_authHeader",
-      ts:          new Date().toISOString(),
-      workspaceId: WS,
-      tokenPrefix: token ? token.slice(0, 12) : "NULL",
-      result:      token ? `Bearer ${token.slice(0, 12)}...` : "NULL — Authorization header will be missing",
-    }
-  );
+  console.log("%c[TOKEN-PROBE][7-_authHeader]", "color:#f59e0b;font-weight:bold;font-size:11px", payload);
+  _emitProbe("7-_authHeader", payload);
   return token ? `Bearer ${token}` : null;
 }
 
@@ -59,18 +81,16 @@ async function _driveRequest<T>(capability: string, url: string, opts: RequestIn
     GoogleWorkspaceRateLimiter.consume(SVC);
     const auth = _authHeader();
     if (!auth) throw Object.assign(new Error("Not authenticated"), { code: "NOT_AUTHENTICATED" });
+    const p8 = {
+      step:       "8-fetch-Authorization",
+      ts:         new Date().toISOString(),
+      capability,
+      authPrefix: auth.slice(0, 19) + "...",
+      urlPath:    url.replace("https://www.googleapis.com", ""),
+    };
     // [DIAG-TEMP] Point 8 — Authorization header sent to fetch()
-    console.log(
-      "%c[TOKEN-PROBE][8-fetch-Authorization]",
-      "color:#34d399;font-weight:bold;font-size:11px",
-      {
-        step:        "8-fetch-Authorization",
-        ts:          new Date().toISOString(),
-        capability,
-        authPrefix:  auth.slice(0, 19) + "...",
-        urlPath:     url.replace("https://www.googleapis.com", ""),
-      }
-    );
+    console.log("%c[TOKEN-PROBE][8-fetch-Authorization]", "color:#34d399;font-weight:bold;font-size:11px", p8);
+    _emitProbe("8-fetch-Authorization", p8);
     const res = await fetch(url, { ...opts, headers: { Authorization: auth, ...opts.headers } });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
