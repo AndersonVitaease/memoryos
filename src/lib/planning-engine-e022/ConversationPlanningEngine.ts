@@ -91,11 +91,26 @@ export class ConversationPlanningEngine {
       let idx = 0;
       const steps: ExecutionStep[] = descriptors.map((desc) => {
         idx++;
+        const mergedParams = { ...desc.params, ...goal.parameters };
+        // [DIAG] ConversationPlanningEngine — step parameters before runtime
+        if (desc.capability === "drive.downloadFile" || desc.connector === "google-drive") {
+          console.log("[DIAG][Planner] drive step parameters", {
+            goalType:   goal.type,
+            connector:  desc.connector,
+            capability: desc.capability,
+            "desc.params":      desc.params,
+            "goal.parameters":  goal.parameters,
+            "mergedParams":     mergedParams,
+            "fileName in merged":  mergedParams.fileName  ?? null,
+            "fileId in merged":    mergedParams.fileId    ?? null,
+            "query in merged":     mergedParams.query     ?? null,
+          });
+        }
         return Object.freeze({
           id:         makeStepId(idx),
           connector:  desc.connector,
           capability: desc.capability,
-          parameters: Object.freeze({ ...desc.params, ...goal.parameters }),
+          parameters: Object.freeze(mergedParams),
         });
       });
 

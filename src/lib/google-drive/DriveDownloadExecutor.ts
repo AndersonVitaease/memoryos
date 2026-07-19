@@ -128,6 +128,18 @@ export async function executeDriveDownload(
   const queryFallback  = typeof parameters.query       === "string" ? parameters.query.trim()       : null;
   const rawText        = typeof parameters.rawText     === "string" ? parameters.rawText.trim()     : null;
 
+  // [DIAG] DriveDownloadExecutor — received parameters
+  console.log("[DIAG][DriveDownloadExecutor] received parameters", {
+    "parameters.fileId":       parameters.fileId       ?? null,
+    "parameters.fileName":     parameters.fileName     ?? null,
+    "parameters.filePath":     parameters.filePath     ?? null,
+    "parameters.query":        parameters.query        ?? null,
+    "parameters.outputFormat": parameters.outputFormat ?? null,
+    "parameters.rawText":      parameters.rawText      ?? null,
+    allParameterKeys: Object.keys(parameters),
+    allParameterValues: parameters,
+  });
+
   function fail(code: DownloadErrorCode, message: string, fileId: string | null, extra: Partial<DownloadFailure> = {}): DownloadFailure {
     const dur = Date.now() - t0;
     return { ok: false, code, message, fileId, fileName, durationMs: dur, audit: makeAudit("failure", startedAt, dur, code), ...extra };
@@ -142,7 +154,26 @@ export async function executeDriveDownload(
   let resolvedBy: "fileId" | "search" = "fileId";
   let resolvedCandidates: RankCandidate[] | undefined;
 
+  // [DIAG] DriveDownloadExecutor — resolution strategy selection
+  console.log("[DIAG][DriveDownloadExecutor] strategy selection", {
+    hasExplicitFileId: !!explicitFileId,
+    hasFileName:       !!fileName,
+    hasQueryFallback:  !!queryFallback,
+    hasRawText:        !!rawText,
+    explicitFileId,
+    fileName,
+    queryFallback,
+    rawText,
+    strategy: explicitFileId
+      ? "explicit fileId"
+      : !fileName && !queryFallback && !rawText
+        ? "conversation context"
+        : "search by name",
+  });
+
   if (explicitFileId) {
+    // [DIAG]
+    console.log("[DIAG][DriveDownloadExecutor] using strategy: explicit fileId →", explicitFileId);
     resolvedFileId = explicitFileId;
   } else if (!fileName && !queryFallback && !rawText) {
     // No explicit identifier — attempt recovery from session-scoped ConversationStore.
@@ -153,6 +184,13 @@ export async function executeDriveDownload(
       const { readDriveContext }  = await import("@/lib/connector-context/providers/GoogleDriveContextBuilder");
       const raw      = conversationStore.getConnectorContext("google-drive");
       const driveCtx = readDriveContext(raw);
+      // [DIAG]
+      console.log("[DIAG][DriveDownloadExecutor] using strategy: conversation context", {
+        rawContextFound:  raw !== null,
+        driveCtxFound:    driveCtx !== null,
+        selectedFileId:   driveCtx?.selectedFileId   ?? null,
+        selectedFileName: driveCtx?.selectedFileName ?? null,
+      });
       if (driveCtx && driveCtx.selectedFileId) {
         resolvedFileId = driveCtx.selectedFileId;
         resolvedBy     = "fileId";
@@ -167,6 +205,9 @@ export async function executeDriveDownload(
     if (!searchQuery) {
       return fail("NO_PARAMS", "Nenhum fileId ou fileName fornecido. Especifique o nome do arquivo para download.", null);
     }
+
+    // [DIAG]
+    console.log("[DIAG][DriveDownloadExecutor] using strategy: search by name →", { searchQuery });
 
     // Delegate search to connector — no HTTP here
     const searchResults = await connector.searchByName(searchQuery, { pageSize: 20 });

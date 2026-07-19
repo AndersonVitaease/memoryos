@@ -116,6 +116,14 @@ class ConversationStore {
    * Each connector is responsible exclusively for its own context slot.
    */
   setConnectorContext(connectorId: string, ctx: BaseConnectorContext): void {
+    // [DIAG] ConversationStore.setConnectorContext
+    const driveCtx = ctx as Record<string, unknown>;
+    console.log("[DIAG][ConversationStore] setConnectorContext", {
+      connectorId,
+      selectedFileId:   driveCtx.selectedFileId   ?? null,
+      selectedFileName: driveCtx.selectedFileName ?? null,
+      fullContext:      ctx,
+    });
     this._patch({
       connectorContexts: { ...this._state.connectorContexts, [connectorId]: ctx },
     });
@@ -125,7 +133,16 @@ class ConversationStore {
    * Retrieves the context for a given connectorId, or null if not set.
    */
   getConnectorContext(connectorId: string): BaseConnectorContext | null {
-    return this._state.connectorContexts[connectorId] ?? null;
+    const ctx = this._state.connectorContexts[connectorId] ?? null;
+    // [DIAG] ConversationStore.getConnectorContext
+    const driveCtx = ctx as Record<string, unknown> | null;
+    console.log("[DIAG][ConversationStore] getConnectorContext", {
+      connectorId,
+      found:            ctx !== null,
+      selectedFileId:   driveCtx?.selectedFileId   ?? null,
+      selectedFileName: driveCtx?.selectedFileName ?? null,
+    });
+    return ctx;
   }
 
   /**

@@ -137,7 +137,16 @@ export const GoogleDriveContextBuilder: IConnectorContextBuilder = {
         .filter((f) => f.id.length > 0);
 
       if (files.length > 0) {
-        return _makeContext(files, 0, capability, executionMetadata);
+        const ctx = _makeContext(files, 0, capability, executionMetadata);
+        // [DIAG] GoogleDriveContextBuilder — Case 1 (list/search)
+        console.log("[DIAG][DriveCtxBuilder] built context from file list", {
+          capability,
+          fileCount:        files.length,
+          selectedFileId:   ctx.selectedFileId,
+          selectedFileName: ctx.selectedFileName,
+          fileNames:        files.slice(0, 5).map((f) => f.name),
+        });
+        return ctx;
       }
     }
 
@@ -146,14 +155,26 @@ export const GoogleDriveContextBuilder: IConnectorContextBuilder = {
     const singleName = String(output.fileName ?? output.name ?? "");
     const singleMime = String(output.mimeType ?? "");
     if (singleId) {
-      return _makeContext(
+      const ctx = _makeContext(
         [{ id: singleId, name: singleName, mimeType: singleMime }],
         0,
         capability,
         executionMetadata,
       );
+      // [DIAG] GoogleDriveContextBuilder — Case 2 (single file)
+      console.log("[DIAG][DriveCtxBuilder] built context from single file", {
+        capability,
+        selectedFileId:   ctx.selectedFileId,
+        selectedFileName: ctx.selectedFileName,
+      });
+      return ctx;
     }
 
+    // [DIAG] GoogleDriveContextBuilder — no context built
+    console.log("[DIAG][DriveCtxBuilder] could not build context — no files and no singleId", {
+      capability,
+      outputKeys: Object.keys(output),
+    });
     return null;
   },
 };
