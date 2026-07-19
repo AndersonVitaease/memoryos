@@ -20,9 +20,7 @@ import { registerContextBuilder } from "./ConnectorContextBuilderRegistry";
 // Import the object — not a side-effect. The registration is explicit below.
 
 import { GoogleDriveContextBuilder } from "./providers/GoogleDriveContextBuilder";
-
-// Future connectors — uncomment as they are implemented:
-// import { GmailContextBuilder }    from "./providers/GmailContextBuilder";
+import { GmailContextBuilder }       from "./providers/GmailContextBuilder";
 // import { CalendarContextBuilder } from "./providers/CalendarContextBuilder";
 // import { GitHubContextBuilder }   from "./providers/GitHubContextBuilder";
 // import { NotionContextBuilder }   from "./providers/NotionContextBuilder";
@@ -43,9 +41,7 @@ export function bootstrapConnectorContext(): void {
   _bootstrapped = true;
 
   registerContextBuilder(GoogleDriveContextBuilder);
-
-  // Future connectors:
-  // registerContextBuilder(GmailContextBuilder);
+  registerContextBuilder(GmailContextBuilder);
   // registerContextBuilder(CalendarContextBuilder);
   // registerContextBuilder(GitHubContextBuilder);
   // registerContextBuilder(NotionContextBuilder);

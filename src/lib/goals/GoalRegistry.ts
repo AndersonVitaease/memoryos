@@ -196,9 +196,11 @@ const _builtins: GoalDefinition[] = [
       "email body", "full email",
     ],
     extractParams: (msg) => {
-      // Try to extract a messageId if mentioned (e.g. "leia o email 18fa...")
+      // 1. Explicit messageId in the message text (e.g. "leia o email 18fa3b2c1d4e5f6a")
       const idMatch = msg.match(/\b([0-9a-f]{8,})\b/i)?.[1];
-      // Try to extract ordinal position ("o primeiro", "o segundo", "o terceiro")
+      if (idMatch) return { messageId: idMatch, emailIndex: null };
+
+      // 2. Ordinal reference ("o primeiro", "o segundo", "o terceiro" …)
       const ordinals: Record<string, number> = {
         "primeiro": 0, "first": 0,
         "segundo": 1, "second": 1,
@@ -207,10 +209,24 @@ const _builtins: GoalDefinition[] = [
         "quinto": 4, "fifth": 4,
       };
       const ordinalKey = Object.keys(ordinals).find((k) => msg.toLowerCase().includes(k));
-      return {
-        messageId:    idMatch ?? null,
-        emailIndex:   ordinalKey != null ? ordinals[ordinalKey] : null,
-      };
+      const emailIndex = ordinalKey != null ? ordinals[ordinalKey] : null;
+
+      // 3. Resolve from GmailConnectorContext stored in ConversationStore
+      //    ("leia este email", "abra essa mensagem", etc.)
+      try {
+        const { conversationStore } = require("@/lib/conversation-platform/ConversationStore");
+        const { readGmailContext, resolveMessageId } = require("@/lib/connector-context/providers/GmailContextBuilder");
+        const raw = conversationStore.getConnectorContext("gmail");
+        const gmailCtx = readGmailContext(raw);
+        const resolvedId = resolveMessageId(gmailCtx, emailIndex);
+        if (resolvedId) {
+          return { messageId: resolvedId, emailIndex };
+        }
+      } catch {
+        // Store not yet available (SSR / test env) — fall through
+      }
+
+      return { messageId: null, emailIndex };
     },
   },
   {
