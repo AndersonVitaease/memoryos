@@ -120,8 +120,11 @@ export const GoalRegistry: GoalRegistryClass = (
 
 const _builtins: GoalDefinition[] = [
   // ── Gmail ──────────────────────────────────────────────────────────────────
-  // IMPORTANT: gmail.searchMessages must come BEFORE gmail.readInbox
-  // so that "procure emails da Shopee" matches search, not inbox.
+  // PRIORITY ORDER (first-match-wins):
+  //   1. gmail.searchMessages  — explicit search verbs
+  //   2. gmail.readEmail       — multi-word specific read-body signals (MUST be before readInbox)
+  //   3. gmail.readInbox       — generic inbox signals ("emails", "inbox", etc.)
+  //   4. gmail.readMessage     — open/read a specific message by reference
   {
     type: "gmail.searchMessages",
     namespace: "gmail",
@@ -144,8 +147,9 @@ const _builtins: GoalDefinition[] = [
       "tem email", "tem e-mail", "tem algum email", "tem alguma mensagem",
       "recebi email", "recebi e-mail", "recebi algum email",
       "recebi algo da", "recebi algo do", "recebi algo de",
-      // Showing
-      "ver emails", "ver e-mails", "listar emails", "checar emails",
+      // Showing — note: "ver emails" / "checar emails" are kept only in readInbox
+      // to avoid collision. "listar emails" kept here as it implies listing by query.
+      "ver e-mails", "listar emails",
     ],
     extractParams: (msg) => {
       // Use the normalizer for robust entity extraction (E-02.7)
@@ -171,30 +175,6 @@ const _builtins: GoalDefinition[] = [
         return { query: msg.trim() };
       }
     },
-  },
-  {
-    type: "gmail.readInbox",
-    namespace: "gmail",
-    description: "Read the user's Gmail inbox",
-    signals: [
-      "email", "emails", "e-mail", "e-mails", "inbox", "caixa de entrada",
-      "meus emails", "meus e-mails", "ultimos emails", "ultimos e-mails",
-      "mensagens recentes", "leia meus", "ver emails", "checar emails",
-    ],
-    extractParams: (msg) => {
-      const n = msg.match(/\b(\d+)\b/)?.[1];
-      return { maxResults: n ? Math.min(parseInt(n, 10), 50) : 10 };
-    },
-  },
-  {
-    type: "gmail.readMessage",
-    namespace: "gmail",
-    description: "Open and read a specific Gmail message",
-    signals: [
-      "abrir email", "abrir mensagem", "ler email", "ler mensagem",
-      "ver email", "open email", "read email",
-    ],
-    extractParams: () => ({ messageId: null }),
   },
   {
     type: "gmail.readEmail",
@@ -232,6 +212,33 @@ const _builtins: GoalDefinition[] = [
         emailIndex:   ordinalKey != null ? ordinals[ordinalKey] : null,
       };
     },
+  },
+  {
+    type: "gmail.readInbox",
+    namespace: "gmail",
+    description: "Read the user's Gmail inbox",
+    signals: [
+      // NOTE: "email" (bare word) intentionally removed — it is a substring of
+      // every gmail.readEmail signal and caused first-match collision.
+      // Signals here are all multi-word or unambiguously inbox-specific.
+      "emails", "e-mail", "e-mails", "inbox", "caixa de entrada",
+      "meus emails", "meus e-mails", "ultimos emails", "ultimos e-mails",
+      "mensagens recentes", "leia meus", "ver emails", "checar emails",
+    ],
+    extractParams: (msg) => {
+      const n = msg.match(/\b(\d+)\b/)?.[1];
+      return { maxResults: n ? Math.min(parseInt(n, 10), 50) : 10 };
+    },
+  },
+  {
+    type: "gmail.readMessage",
+    namespace: "gmail",
+    description: "Open and read a specific Gmail message",
+    signals: [
+      "abrir email", "abrir mensagem", "ler email", "ler mensagem",
+      "ver email", "open email", "read email",
+    ],
+    extractParams: () => ({ messageId: null }),
   },
 
   // ── Calendar ───────────────────────────────────────────────────────────────
