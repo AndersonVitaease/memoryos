@@ -24,6 +24,7 @@
  */
 
 import { base44 } from '@/api/base44Client';
+import { RuntimeDebug } from '@/lib/debug/RuntimeDebug';
 
 const STORAGE_KEY = "memoryos_gauth_v1";
 
@@ -62,12 +63,8 @@ const _tokenStore = new Map(); // workspaceId → { accessToken, expiresAt }
 let _probeExecId = null;
 
 function _getProbeExecId() {
-  const _KEY = "__MEMORY_OS_RUNTIME_DEBUG__";
-  const bus = globalThis[_KEY];
-  if (!bus) return null;
-  if (_probeExecId && bus.isOpen(_probeExecId)) return _probeExecId;
-  // Create a new execution for this diagnostic session
-  _probeExecId = bus.startExecution("google-drive", "TOKEN-PROBE — Auth Session Diagnostics");
+  if (_probeExecId && RuntimeDebug.isOpen(_probeExecId)) return _probeExecId;
+  _probeExecId = RuntimeDebug.startExecution("google-drive", "TOKEN-PROBE — Auth Session Diagnostics");
   return _probeExecId;
 }
 
@@ -91,16 +88,13 @@ function _probe(step, workspaceId, extra = {}) {
   // Emit to RuntimeDebug so events appear in /drive-debug
   try {
     const execId = _getProbeExecId();
-    if (execId) {
-      const _KEY = "__MEMORY_OS_RUNTIME_DEBUG__";
-      globalThis[_KEY].emit({
-        executionId: execId,
-        connector:   "google-drive",
-        source:      "GoogleAuthSession",
-        event:       step,
-        payload,
-      });
-    }
+    RuntimeDebug.emit({
+      executionId: execId,
+      connector:   "google-drive",
+      source:      "GoogleAuthSession",
+      event:       step,
+      payload,
+    });
   } catch (_) { /* non-blocking — never break auth flow */ }
 }
 

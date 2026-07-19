@@ -16,6 +16,7 @@ import { getConnection, isConnected, getAccessToken, ensureValidToken }
   from "@/lib/google-auth/GoogleAuthSession";
 import { GoogleWorkspaceAuditLogger } from "@/lib/google-workspace/GoogleWorkspaceAuditLogger";
 import { GoogleWorkspaceRateLimiter }  from "@/lib/google-workspace/GoogleWorkspaceRateLimiter";
+import { RuntimeDebug } from "@/lib/debug/RuntimeDebug";
 // Sprint EF-6.4.0: UCR adapter registered on import
 import "@/lib/ucr/adapters/GoogleDriveAdapter";
 
@@ -35,24 +36,18 @@ function _rid() { return `drv-${Date.now()}-${(_seq++).toString().padStart(4, "0
 
 // [DIAG-TEMP] Get or reuse the shared TOKEN-PROBE execution from GoogleAuthSession
 function _getProbeExecId(): string | null {
-  const _KEY = "__MEMORY_OS_RUNTIME_DEBUG__";
-  const bus = (globalThis as any)[_KEY];
-  if (!bus) return null;
-  // Find the open TOKEN-PROBE execution created by GoogleAuthSession._probe()
-  const executions: any[] = bus.getExecutions("google-drive");
-  const open = executions.find((e: any) => !e.endedAt && e.label?.startsWith("TOKEN-PROBE"));
+  const open = RuntimeDebug.getExecutions("google-drive")
+    .find((e) => !e.endedAt && e.label?.startsWith("TOKEN-PROBE"));
   if (open) return open.executionId;
   // Fallback: create one here if GoogleAuthSession didn't run first
-  return bus.startExecution("google-drive", "TOKEN-PROBE — Auth Session Diagnostics");
+  return RuntimeDebug.startExecution("google-drive", "TOKEN-PROBE — Auth Session Diagnostics");
 }
 
 function _emitProbe(step: string, payload: Record<string, unknown>): void {
   try {
-    const _KEY = "__MEMORY_OS_RUNTIME_DEBUG__";
-    const bus = (globalThis as any)[_KEY];
     const execId = _getProbeExecId();
-    if (bus && execId) {
-      bus.emit({ executionId: execId, connector: "google-drive", source: "GoogleDriveConnector", event: step, payload });
+    if (execId) {
+      RuntimeDebug.emit({ executionId: execId, connector: "google-drive", source: "GoogleDriveConnector", event: step, payload });
     }
   } catch (_) { /* non-blocking */ }
 }
