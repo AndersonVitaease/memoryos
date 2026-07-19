@@ -146,12 +146,13 @@ export async function executeDriveDownload(
     resolvedFileId = explicitFileId;
   } else if (!fileName && !queryFallback && !rawText) {
     // No explicit identifier — attempt recovery from session-scoped ConversationStore.
-    // This covers "Esse mesmo" / "faz o download" turns where the user refers to
-    // the file presented in the previous assistant turn.
-    // NEVER reads from a global singleton — state is keyed per sessionId.
+    // Uses the generic connector context API: no Drive-specific types in the store.
+    // Covers "Esse mesmo" / "faz o download" / "o terceiro" cross-turn references.
     try {
       const { conversationStore } = await import("@/lib/conversation-platform/ConversationStore");
-      const driveCtx = conversationStore.getDriveFileContext();
+      const { readDriveContext }  = await import("@/lib/connector-context/ConnectorContextStore");
+      const raw    = conversationStore.getConnectorContext("google-drive");
+      const driveCtx = readDriveContext(raw);
       if (driveCtx && driveCtx.selectedFileId) {
         resolvedFileId = driveCtx.selectedFileId;
         resolvedBy     = "fileId";

@@ -14,8 +14,11 @@ import type {
   PipelineExecution,
   ConversationEvent,
   ConversationEventType,
-  DriveFileContext,
 } from "./CXPTypes";
+import type {
+  BaseConnectorContext,
+  ConnectorContextMap,
+} from "@/lib/connector-context/ConnectorContextStore";
 
 type StateListener = (state: ConversationState) => void;
 type EventListener = (event: ConversationEvent) => void;
@@ -32,7 +35,7 @@ function defaultState(): ConversationState {
     currentExecution: null,
     error: null,
     isInitialized: false,
-    driveFileContext: null,
+    connectorContexts: {},
   };
 }
 
@@ -108,16 +111,29 @@ class ConversationStore {
   }
 
   /**
-   * Records Drive file selection context for this session.
-   * Scoped to the current session — isolation across users/sessions is
-   * guaranteed by the ConversationStore lifecycle (one store per session).
+   * Stores a connector-specific context by connectorId.
+   * Scoped to the current session — never shared across sessions.
+   * Each connector is responsible exclusively for its own context slot.
    */
-  setDriveFileContext(ctx: DriveFileContext | null): void {
-    this._patch({ driveFileContext: ctx });
+  setConnectorContext(connectorId: string, ctx: BaseConnectorContext): void {
+    this._patch({
+      connectorContexts: { ...this._state.connectorContexts, [connectorId]: ctx },
+    });
   }
 
-  getDriveFileContext(): DriveFileContext | null {
-    return this._state.driveFileContext;
+  /**
+   * Retrieves the context for a given connectorId, or null if not set.
+   */
+  getConnectorContext(connectorId: string): BaseConnectorContext | null {
+    return this._state.connectorContexts[connectorId] ?? null;
+  }
+
+  /**
+   * Clears the context for a given connectorId (e.g. after a session reset).
+   */
+  clearConnectorContext(connectorId: string): void {
+    const { [connectorId]: _removed, ...rest } = this._state.connectorContexts;
+    this._patch({ connectorContexts: rest as ConnectorContextMap });
   }
 
   /** Update streaming content on the last assistant message */

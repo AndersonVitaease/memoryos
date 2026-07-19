@@ -21,7 +21,8 @@ import type { UnifiedKnowledgeModel }  from "@/lib/knowledge-fusion-engine/KFETy
 import { base44 }                      from "@/api/base44Client";
 import { SearchRanker }                from "@/lib/github-deep-analysis/SearchRanker";
 import { conversationStore }           from "@/lib/conversation-platform/ConversationStore";
-import type { DriveFileContext, DriveFileEntry } from "@/lib/conversation-platform/CXPTypes";
+import { buildDriveContext }           from "@/lib/connector-context/ConnectorContextStore";
+import type { DriveFileEntry }         from "@/lib/connector-context/ConnectorContextStore";
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -63,38 +64,29 @@ export async function synthesizeConnectorResult(
   // ── Runtime completed — extract data from step outputs ───────────────────
   const completedSteps = result.steps.filter((s) => s.status === "completed" && s.output !== null);
 
-  // ── Drive context: record file selection state into session-scoped store ───
-  // Enables "Esse mesmo, faz o download" across turns.
+  // ── Connector context: persist per-connector result state into session store ─
+  // Each connector stores only its own context slot via the generic API.
+  // Enables cross-turn references: "Esse mesmo", "o terceiro", "aquele", etc.
   // State is scoped to the active session — never a global singleton.
-  // The full file list + selectedIndex are stored so the executor receives
-  // exactly the file that was presented/selected, not just the first one.
   try {
-    const sessionId = conversationStore.session?.id;
-    if (sessionId) {
-      for (const s of completedSteps) {
-        if (s.connector !== "google-drive") continue;
-        const out = s.output as Record<string, unknown> | null;
-        if (!out) continue;
+    for (const s of completedSteps) {
+      const out = s.output as Record<string, unknown> | null;
+      if (!out) continue;
 
-        // List / search result — store full list, select index 0 (first presented)
+      if (s.connector === "google-drive") {
+        // List / search result — store full file list, default selection = index 0
         const rawFiles = (out as any).files;
         if (Array.isArray(rawFiles) && rawFiles.length > 0) {
-          const files: DriveFileEntry[] = rawFiles.map((f: Record<string, unknown>) => ({
-            id:       String(f.id ?? ""),
-            name:     String(f.name ?? ""),
-            mimeType: String(f.mimeType ?? ""),
-          })).filter((f: DriveFileEntry) => f.id.length > 0);
+          const files: DriveFileEntry[] = rawFiles
+            .map((f: Record<string, unknown>) => ({
+              id:       String(f.id ?? ""),
+              name:     String(f.name ?? ""),
+              mimeType: String(f.mimeType ?? ""),
+            }))
+            .filter((f: DriveFileEntry) => f.id.length > 0);
 
           if (files.length > 0) {
-            const ctx: DriveFileContext = {
-              sessionId,
-              files,
-              selectedIndex:    0,
-              selectedFileId:   files[0].id,
-              selectedFileName: files[0].name,
-              updatedAt:        Date.now(),
-            };
-            conversationStore.setDriveFileContext(ctx);
+            conversationStore.setConnectorContext("google-drive", buildDriveContext(files, 0));
             break;
           }
         }
@@ -104,18 +96,16 @@ export async function synthesizeConnectorResult(
         const singleName = String((out as any).fileName ?? (out as any).name ?? "");
         const singleMime = String((out as any).mimeType ?? "");
         if (singleId) {
-          const ctx: DriveFileContext = {
-            sessionId,
-            files:            [{ id: singleId, name: singleName, mimeType: singleMime }],
-            selectedIndex:    0,
-            selectedFileId:   singleId,
-            selectedFileName: singleName,
-            updatedAt:        Date.now(),
-          };
-          conversationStore.setDriveFileContext(ctx);
+          conversationStore.setConnectorContext(
+            "google-drive",
+            buildDriveContext([{ id: singleId, name: singleName, mimeType: singleMime }], 0),
+          );
           break;
         }
       }
+
+      // Future connectors: add their own context-building branches here.
+      // e.g. if (s.connector === "gmail") { ... buildGmailContext(...) }
     }
   } catch {
     // Non-blocking — context update failure never affects user response
