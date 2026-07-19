@@ -74,15 +74,7 @@ export class GmailConnector implements IConnector {
   ): Promise<ConnectorResult> {
     const start = Date.now();
     const eid   = context.executionId ?? makeExecutionId();
-    // [AUDIT-PROBE][GC-01] GmailConnector.execute() called
-    console.log("[AUDIT-PROBE][GC-01]", {
-      probe:     "gmailConnector:execute:called",
-      ts:        Date.now(),
-      operation,
-      eid,
-      payloadKeys: Object.keys(payload),
-      note: "If this never appears, GmailConnector.execute() was never invoked by the Router.",
-    });
+
     const logs: ConnectorLog[] = [makeLog("info", `[${operation}] executionId=${eid}`)];
 
     try {

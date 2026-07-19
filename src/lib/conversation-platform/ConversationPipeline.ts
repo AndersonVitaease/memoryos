@@ -323,19 +323,18 @@ class ConversationPipeline {
         routerResult.intent?.intent ?? "general_conversation",
         routerResult.intent?.confidence ?? 0,
       );
-      // [AUDIT-PROBE][CXP-GOAL] GoalBridge output — decisive gate for Runtime path
-      console.log("[AUDIT-PROBE][CXP-GOAL]", {
-        probe:       "pipeline:goalDerived",
-        ts:          Date.now(),
-        executionId,
-        userMessage,
-        goalType:    goalBridgeResult.goal.type,
-        valid:       goalBridgeResult.goal.valid,
-        confidence:  goalBridgeResult.goal.confidence,
-        parameters:  goalBridgeResult.goal.parameters,
-        durationMs:  goalBridgeResult.durationMs,
-        note: "If goalType=general.conversation or unknown AND plan.steps=0 → Runtime NEVER called",
-      });
+      // ── RuntimeTrace: record goal step ───────────────────────────────────
+      try {
+        const { runtimeTraceStore } = await import("@/lib/runtime-trace/RuntimeTraceStore");
+        runtimeTraceStore.beginTrace(executionId, userMessage);
+        runtimeTraceStore.recordStep("goal", "executed", {
+          goalType:   goalBridgeResult.goal.type,
+          confidence: goalBridgeResult.goal.confidence,
+          valid:      goalBridgeResult.goal.valid,
+          parameters: goalBridgeResult.goal.parameters,
+          durationMs: goalBridgeResult.durationMs,
+        });
+      } catch { /* non-blocking */ }
       conversationStore.emit({
         type: "PIPELINE_STEP",
         executionId,
@@ -361,17 +360,25 @@ class ConversationPipeline {
         const { conversationPlanningEngine } = await import("@/lib/planning-engine-e022/ConversationPlanningEngine");
         const planResult = conversationPlanningEngine.plan(goalBridgeResult.goal);
 
-        // [AUDIT-PROBE][CXP-PLAN] Planning result — decisive gate for Runtime execution
-        console.log("[AUDIT-PROBE][CXP-PLAN]", {
-          probe:       "pipeline:planResult",
-          ts:          Date.now(),
-          executionId,
-          goalType:    goalBridgeResult.goal.type,
-          planSuccess: planResult.success,
-          stepCount:   planResult.plan?.steps?.length ?? 0,
-          steps:       planResult.plan?.steps?.map((s: { connector: string; capability: string }) => `${s.connector}.${s.capability}`) ?? [],
-          note: "stepCount===0 → if-block is FALSE → Runtime.execute() is NEVER called → readEmail NEVER called",
-        });
+        // ── RuntimeTrace: record plan step ──────────────────────────────────
+        try {
+          const { runtimeTraceStore } = await import("@/lib/runtime-trace/RuntimeTraceStore");
+          const _steps = planResult.plan?.steps ?? [];
+          runtimeTraceStore.recordStep("plan", planResult.success ? "executed" : "skipped", {
+            success:    planResult.success,
+            stepCount:  _steps.length,
+            steps:      _steps.map((s: { connector: string; capability: string; id: string }) => ({
+              id: s.id, connector: s.connector, capability: s.capability,
+            })),
+          });
+          if (_steps.length > 0) {
+            runtimeTraceStore.recordStep("capability", "executed", {
+              connector:  _steps[0].connector,
+              capability: _steps[0].capability,
+              parameters: (_steps[0] as Record<string, unknown>).parameters ?? {},
+            });
+          }
+        } catch { /* non-blocking */ }
 
         if (planResult.success && planResult.plan.steps.length > 0) {
           setPhase("executing_capabilities");
@@ -420,7 +427,41 @@ class ConversationPipeline {
             kfmModel,
           );
 
+          // ── RuntimeTrace: connector result + LLM input ──────────────────
+          try {
+            const { runtimeTraceStore } = await import("@/lib/runtime-trace/RuntimeTraceStore");
+            runtimeTraceStore.recordStep("connector", executionResult.status === "completed" ? "executed" : "error", {
+              status:     executionResult.status,
+              durationMs: executionResult.durationMs,
+              errors:     executionResult.errors,
+              stepCount:  executionResult.steps.length,
+              stepOutputs: executionResult.steps.map((s) => ({
+                connector:  s.connector,
+                capability: s.capability,
+                status:     s.status,
+                error:      s.error,
+                hasOutput:  s.output !== null,
+                outputKeys: s.output ? Object.keys(s.output as object) : [],
+              })),
+            });
+            if (synthesis.connectorData) {
+              runtimeTraceStore.recordStep("llm_input", "executed", {
+                connectorData: synthesis.connectorData,
+                goalType: goalBridgeResult.goal.type,
+              });
+            }
+          } catch { /* non-blocking */ }
+
           if (synthesis.handled && synthesis.response) {
+            // ── RuntimeTrace: final LLM response ──────────────────────────
+            try {
+              const { runtimeTraceStore } = await import("@/lib/runtime-trace/RuntimeTraceStore");
+              runtimeTraceStore.recordStep("llm_response", "executed", {
+                responseLen: synthesis.response.length,
+                responseHead: synthesis.response.slice(0, 300),
+              });
+              runtimeTraceStore.finishTrace();
+            } catch { /* non-blocking */ }
             // Connector handled this request — bypass LLM path entirely
             response = synthesis.response;
             sources  = [];
@@ -484,6 +525,17 @@ class ConversationPipeline {
         const fallbackReason = routerResult.decision === "cognitive_pipeline" ? "EMPTY_PIPELINE_ANSWER" : "GENERAL_CONVERSATION";
         responseTracer.recordFallback(traceId, fallbackReason, response, Date.now() - t0synth);
         responseTracer.recordRendered(traceId, response);
+        // ── RuntimeTrace: LLM-only path (no connector) ────────────────────
+        try {
+          const { runtimeTraceStore } = await import("@/lib/runtime-trace/RuntimeTraceStore");
+          runtimeTraceStore.recordStep("llm_response", "executed", {
+            path:         "llm_only",
+            fallbackReason,
+            responseLen:  response.length,
+            responseHead: response.slice(0, 300),
+          });
+          runtimeTraceStore.finishTrace();
+        } catch { /* non-blocking */ }
       }
     } catch (err) {
       // Fallback response on reasoning failure

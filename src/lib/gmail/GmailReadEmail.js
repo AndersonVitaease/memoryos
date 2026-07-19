@@ -80,14 +80,6 @@ function handleHttpError(res, messageId) {
  * @returns {Promise<{ ok: boolean, data: ReadEmailResult|null, error: string|null }>}
  */
 export async function readEmail(messageId) {
-  // [AUDIT-PROBE][RE-01] readEmail() CALLED — if this never appears in console, function was never invoked
-  console.log("[AUDIT-PROBE][RE-01]", {
-    probe:     "readEmail:called",
-    ts:        Date.now(),
-    messageId,
-    note: "If this log is absent, the entire GmailReadEmail module was never reached.",
-  });
-
   if (!messageId || typeof messageId !== "string" || !messageId.trim()) {
     return fail("messageId e obrigatorio e deve ser uma string nao vazia.");
   }
@@ -95,17 +87,20 @@ export async function readEmail(messageId) {
   const conn = await ensureValidToken(WORKSPACE_ID).catch(() => null);
   if (!conn) return fail("Google Workspace nao conectado. Conecte primeiro na secao de Conectores.");
 
+  const _httpStart = Date.now();
   const res = await fetchMessageFull(messageId.trim());
-  // [AUDIT-PROBE][RE-02] HTTP response received from Gmail API
-  console.log("[AUDIT-PROBE][RE-02]", {
-    probe:     "readEmail:httpResponse",
-    ts:        Date.now(),
-    messageId,
-    httpError: (res && res.httpError) ? res.httpError : null,
-    status:    (res && typeof res.status === "number") ? res.status : "n/a",
-    ok:        (res && typeof res.ok === "boolean") ? res.ok : "n/a",
-    note: "httpError present → no HTTP call reached Gmail. status=200 → API responded.",
-  });
+  const _httpDuration = Date.now() - _httpStart;
+
+  // ── RuntimeTrace: HTTP request step ──────────────────────────────────────
+  try {
+    const { runtimeTraceStore } = await import("@/lib/runtime-trace/RuntimeTraceStore");
+    runtimeTraceStore.recordStep("http_request", "executed", {
+      endpoint: `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=full`,
+      method:   "GET",
+      format:   "full",
+    }, _httpStart);
+  } catch { /* non-blocking */ }
+
   const httpErr = handleHttpError(res, messageId);
   if (httpErr) return httpErr;
 
@@ -116,41 +111,68 @@ export async function readEmail(messageId) {
     return fail("Resposta invalida da Gmail API (JSON parse error).");
   }
 
-  // [AUDIT-PROBE][RE-03] Raw Gmail API payload structure before parsing
-  console.log("[AUDIT-PROBE][RE-03]", {
-    probe:          "readEmail:rawPayload",
-    ts:             Date.now(),
-    messageId:      rawMessage?.id,
-    snippet:        rawMessage?.snippet,
-    rootMimeType:   rawMessage?.payload?.mimeType,
-    hasBodyData:    !!rawMessage?.payload?.body?.data,
-    bodySize:       rawMessage?.payload?.body?.size ?? 0,
-    partsCount:     rawMessage?.payload?.parts?.length ?? 0,
-    parts:          (rawMessage?.payload?.parts ?? []).map((p, i) => ({
-      index:    i,
-      partId:   p.partId,
-      mimeType: p.mimeType,
-      bodySize: p.body?.size ?? 0,
-      hasData:  !!p.body?.data,
-      hasAttachmentId: !!p.body?.attachmentId,
-      filename: p.filename ?? null,
-      subPartsCount: p.parts?.length ?? 0,
-    })),
-    note: "This is the COMPLETE MIME structure from Gmail API format=full",
-  });
+  // ── RuntimeTrace: HTTP response + MIME payload ───────────────────────────
+  try {
+    const { runtimeTraceStore } = await import("@/lib/runtime-trace/RuntimeTraceStore");
 
+    const buildMimeTree = (part, depth = 0) => {
+      if (!part) return null;
+      return {
+        mimeType:    part.mimeType,
+        partId:      part.partId,
+        bodySize:    part.body?.size ?? 0,
+        hasData:     !!part.body?.data,
+        hasAttachmentId: !!part.body?.attachmentId,
+        filename:    part.filename ?? null,
+        depth,
+        children:    (part.parts ?? []).map(p => buildMimeTree(p, depth + 1)),
+      };
+    };
+
+    runtimeTraceStore.recordStep("http_response", "executed", {
+      id:        rawMessage?.id,
+      threadId:  rawMessage?.threadId,
+      snippet:   rawMessage?.snippet,
+      historyId: rawMessage?.historyId,
+      durationMs: _httpDuration,
+    });
+
+    runtimeTraceStore.recordStep("mime_payload", "executed", {
+      rootMimeType: rawMessage?.payload?.mimeType,
+      hasBodyData:  !!rawMessage?.payload?.body?.data,
+      bodySize:     rawMessage?.payload?.body?.size ?? 0,
+      partsCount:   rawMessage?.payload?.parts?.length ?? 0,
+      headers:      (rawMessage?.payload?.headers ?? []).reduce((acc, h) => {
+        acc[h.name] = h.value; return acc;
+      }, {}),
+    });
+
+    runtimeTraceStore.recordStep("mime_tree", "executed", {
+      tree: buildMimeTree(rawMessage?.payload),
+    });
+  } catch { /* non-blocking */ }
+
+  const _parseStart = Date.now();
   const result = parseGmailMessage(rawMessage);
-  // [AUDIT-PROBE][RE-04] MimeParser output
-  console.log("[AUDIT-PROBE][RE-04]", {
-    probe:           "readEmail:parseResult",
-    ts:              Date.now(),
-    plainTextLen:    result.plainText?.length ?? 0,
-    htmlLen:         result.html?.length ?? 0,
-    attachments:     result.attachments?.length ?? 0,
-    plainTextHead:   result.plainText?.slice(0, 200),
-    htmlHead:        result.html?.slice(0, 200),
-    mimeStructure:   result.mimeStructure,
-    note: "plainTextLen===0 AND htmlLen===0 → parser found no content.",
-  });
+  const _parseDuration = Date.now() - _parseStart;
+
+  // ── RuntimeTrace: MimeParser result ──────────────────────────────────────
+  try {
+    const { runtimeTraceStore } = await import("@/lib/runtime-trace/RuntimeTraceStore");
+    runtimeTraceStore.recordStep("mime_parser_result", result.plainText || result.html ? "executed" : "error", {
+      plainTextLen:  result.plainText?.length ?? 0,
+      htmlLen:       result.html?.length ?? 0,
+      attachments:   result.attachments?.length ?? 0,
+      plainText:     result.plainText,
+      html:          result.html,
+      subject:       result.subject,
+      from:          result.from,
+      to:            result.to,
+      date:          result.date,
+      mimeStructure: result.mimeStructure,
+      durationMs:    _parseDuration,
+    }, _parseStart, (!result.plainText && !result.html) ? "No text/plain or text/html found" : undefined);
+  } catch { /* non-blocking */ }
+
   return ok(result);
 }
