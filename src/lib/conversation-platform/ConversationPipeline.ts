@@ -323,6 +323,19 @@ class ConversationPipeline {
         routerResult.intent?.intent ?? "general_conversation",
         routerResult.intent?.confidence ?? 0,
       );
+      // [AUDIT-PROBE][CXP-GOAL] GoalBridge output — decisive gate for Runtime path
+      console.log("[AUDIT-PROBE][CXP-GOAL]", {
+        probe:       "pipeline:goalDerived",
+        ts:          Date.now(),
+        executionId,
+        userMessage,
+        goalType:    goalBridgeResult.goal.type,
+        valid:       goalBridgeResult.goal.valid,
+        confidence:  goalBridgeResult.goal.confidence,
+        parameters:  goalBridgeResult.goal.parameters,
+        durationMs:  goalBridgeResult.durationMs,
+        note: "If goalType=general.conversation or unknown AND plan.steps=0 → Runtime NEVER called",
+      });
       conversationStore.emit({
         type: "PIPELINE_STEP",
         executionId,
@@ -347,6 +360,18 @@ class ConversationPipeline {
       if (goalBridgeResult.goal.valid) {
         const { conversationPlanningEngine } = await import("@/lib/planning-engine-e022/ConversationPlanningEngine");
         const planResult = conversationPlanningEngine.plan(goalBridgeResult.goal);
+
+        // [AUDIT-PROBE][CXP-PLAN] Planning result — decisive gate for Runtime execution
+        console.log("[AUDIT-PROBE][CXP-PLAN]", {
+          probe:       "pipeline:planResult",
+          ts:          Date.now(),
+          executionId,
+          goalType:    goalBridgeResult.goal.type,
+          planSuccess: planResult.success,
+          stepCount:   planResult.plan?.steps?.length ?? 0,
+          steps:       planResult.plan?.steps?.map((s: { connector: string; capability: string }) => `${s.connector}.${s.capability}`) ?? [],
+          note: "stepCount===0 → if-block is FALSE → Runtime.execute() is NEVER called → readEmail NEVER called",
+        });
 
         if (planResult.success && planResult.plan.steps.length > 0) {
           setPhase("executing_capabilities");

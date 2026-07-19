@@ -49,6 +49,26 @@ export async function synthesizeConnectorResult(
   kfmModel?: UnifiedKnowledgeModel | null,
 ): Promise<SynthesisResult> {
 
+  // [AUDIT-PROBE][SYN-01] Synthesizer called — what did the Runtime return?
+  console.log("[AUDIT-PROBE][SYN-01]", {
+    probe:          "synthesizer:called",
+    ts:             Date.now(),
+    goalType,
+    userMsg:        userMsg.slice(0, 120),
+    runtimeStatus:  result.status,
+    stepCount:      result.steps.length,
+    completedSteps: result.steps.filter(s => s.status === "completed").length,
+    stepDetails:    result.steps.map(s => ({
+      connector:  s.connector,
+      capability: s.capability,
+      status:     s.status,
+      hasOutput:  s.output !== null,
+      outputKeys: s.output ? Object.keys(s.output as object) : [],
+      error:      s.error,
+    })),
+    note: "stepCount===0 → NOT a connector execution. stepDetails shows what output was returned.",
+  });
+
   // ── No steps planned — not a connector goal; let LLM handle it ───────────
   if (result.steps.length === 0) {
     return { handled: false, response: null, connectorData: null };
