@@ -383,23 +383,13 @@ class ConversationPipeline {
         if (planResult.success && planResult.plan.steps.length > 0) {
           setPhase("executing_capabilities");
           const { getRealRuntimeEngine, getRealConnectorRegistry } = await import("@/lib/connector-runtime-provider/ConnectorRuntimeProvider");
-          // [RUNTIME-PROBE][CXP-01] Pipeline entering Runtime execution — snapshot registry state NOW
-          const _probeReg = getRealConnectorRegistry();
-          console.log("[RUNTIME-PROBE][CXP-01]", {
-            probe:           "pipeline:enteringRuntimeExecution",
-            t:               performance.now(),
-            ts:              Date.now(),
-            executionId,
-            sessionId:       session.id,
-            goalType:        goalBridgeResult.goal.type,
-            planId:          planResult.plan.id,
-            planSteps:       planResult.plan.steps.map(s => `${s.connector}.${s.capability}`),
-            regSize:         _probeReg.count(),
-            regContents:     _probeReg.list(),
-            driveRegistered: _probeReg.list().includes("google-drive"),
-            note:            "CRITICAL: regSize===0 or driveRegistered===false means placeholder engine will be used.",
-          });
-          const executionResult = await getRealRuntimeEngine().execute(planResult.plan);
+          // Await fully-bootstrapped engine + registry (no placeholder — Sprint M1.1)
+          const [_realEngine, _probeReg] = await Promise.all([
+            getRealRuntimeEngine(),
+            getRealConnectorRegistry(),
+          ]);
+          console.log("[RUNTIME] Pipeline: engine READY — registry:", _probeReg.list(), `connectors=${_probeReg.count()}`);
+          const executionResult = await _realEngine.execute(planResult.plan);
 
           conversationStore.emit({
             type: "PIPELINE_STEP",

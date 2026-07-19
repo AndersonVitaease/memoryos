@@ -1,5 +1,5 @@
 /**
- * ConnectorRuntimeProvider.ts — Engineering Sprint 8.3
+ * ConnectorRuntimeProvider.ts — Sprint M1.1 (Bootstrap Stabilization)
  *
  * SRP: build and expose the ConversationRuntimeEngine backed by the
  *      official Connector Runtime pipeline.
@@ -12,11 +12,12 @@
  *           → ConnectorCapabilityExecutor
  *             → ConversationRuntimeEngine
  *
- * The Provider knows ZERO individual connectors.
- * All registration is delegated to ConnectorBootstrap.
- * The UCR layer is populated via the generic UCRBridge.
- *
- * Singleton via globalThis — survives HMR and re-renders.
+ * Sprint M1.1 change:
+ *   - Eliminated placeholder engine + race condition.
+ *   - Bootstrap fires eagerly at module load (no longer lazy).
+ *   - getRealRuntimeEngine() awaits bootstrap before returning — guaranteed READY.
+ *   - Single bootstrap promise; all concurrent callers wait on the same promise.
+ *   - Bootstrap executes exactly once per process lifetime (HMR-safe via globalThis).
  */
 
 import { UniversalConnectorRouter }    from "@/lib/connector-router/UniversalConnectorRouter";
@@ -30,128 +31,87 @@ import { buildUCRRegistry }            from "@/lib/connector-runtime/UCRBridge";
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 
 async function _bootstrapEngine(): Promise<{
-  engine: ConversationRuntimeEngine;
+  engine:   ConversationRuntimeEngine;
   registry: ConnectorRegistry;
 }> {
-  // 1. Bootstrap all connectors into the single RuntimeRegistry.
-  const runtimeRegistry = new ConnectorRegistry();
-  await ConnectorBootstrap.bootstrap(runtimeRegistry);
+  console.log("[RUNTIME] Bootstrap iniciado");
 
-  // 2. Build UCR registry via generic bridge — no connector-specific code here.
+  // 1. Create ConnectorRegistry.
+  const runtimeRegistry = new ConnectorRegistry();
+  console.log("[RUNTIME] ConnectorRegistry criado");
+
+  // 2. Register all connectors (sequential, validates each).
+  const result = await ConnectorBootstrap.bootstrap(runtimeRegistry);
+  console.log(`[RUNTIME] ${runtimeRegistry.count()} connectors registrados:`, runtimeRegistry.list(), result.errors.length ? `(errors: ${result.errors.join(", ")})` : "");
+
+  // 3. Build UCR layer from RuntimeRegistry via generic bridge.
   const ucrRegistry = buildUCRRegistry(runtimeRegistry);
 
-  // 3. Wire UCR → Executor → Engine.
-  const router   = new UniversalConnectorRouter(ucrRegistry);
+  // 4. Wire Router.
+  const router = new UniversalConnectorRouter(ucrRegistry);
+  console.log("[RUNTIME] UniversalConnectorRouter criado");
+
+  // 5. Wire Executor.
   const executor = new ConnectorCapabilityExecutor(router);
-  const engine   = new ConversationRuntimeEngine(executor, DEFAULT_EXECUTION_POLICY);
+  console.log("[RUNTIME] ConnectorCapabilityExecutor criado");
+
+  // 6. Wire Engine.
+  const engine = new ConversationRuntimeEngine(executor, DEFAULT_EXECUTION_POLICY);
+  console.log("[RUNTIME] ConversationRuntimeEngine criado");
+
+  console.log("[RUNTIME] Runtime READY — registry:", runtimeRegistry.list(), `| connectors=${runtimeRegistry.count()} | bootstrapMs=${result.bootstrapTimeMs}`);
 
   return { engine, registry: runtimeRegistry };
 }
 
 // ── Singleton ─────────────────────────────────────────────────────────────────
+// One Promise, one result. All callers await the same bootstrap.
+// HMR-safe: stored on globalThis, never re-created if already running.
 
-const _ENG_KEY = "__REAL_RUNTIME_ENGINE__";
-const _REG_KEY = "__REAL_RUNTIME_REGISTRY__";
-
-type BootstrapState = {
-  engine:   ConversationRuntimeEngine;
-  registry: ConnectorRegistry;
-} | null;
+const _PROMISE_KEY = "__REAL_RUNTIME_PROMISE__";
+const _ENG_KEY     = "__REAL_RUNTIME_ENGINE__";
+const _REG_KEY     = "__REAL_RUNTIME_REGISTRY__";
 
 const _g = globalThis as unknown as Record<string, unknown>;
 
-// Initialize synchronously with a minimal engine, then upgrade async.
-function _ensureInitialized(): void {
-  if (_g[_ENG_KEY]) {
-    // [RUNTIME-PROBE][CRP-02] _ensureInitialized early-return — singleton already exists
-    console.log("[RUNTIME-PROBE][CRP-02]", {
-      probe:       "ensureInitialized:earlyReturn",
-      t:           performance.now(),
-      ts:          Date.now(),
-      engineKey:   _ENG_KEY,
-      engineExists: true,
-      regSize:     (_g[_REG_KEY] as ConnectorRegistry | undefined)?.count?.() ?? "unknown",
-      regContents: (_g[_REG_KEY] as ConnectorRegistry | undefined)?.list?.() ?? [],
-    });
-    return;
-  }
-
-  // [RUNTIME-PROBE][CRP-03] First call — placeholder about to be created, race window opens NOW
-  console.log("[RUNTIME-PROBE][CRP-03]", {
-    probe:                "ensureInitialized:firstCall:placeholderAboutToBeCreated",
-    t:                    performance.now(),
-    ts:                   Date.now(),
-    note:                 "Placeholder engine will be stored synchronously. _bootstrapEngine() fires async (NOT awaited). Race window OPENS here.",
-  });
-
-  // Synchronous placeholder — keeps existing callers working immediately.
-  const placeholderReg = new ConnectorRegistry();
-  const placeholderUCR = buildUCRRegistry(placeholderReg);
-  const placeholderRouter   = new UniversalConnectorRouter(placeholderUCR);
-  const placeholderExecutor = new ConnectorCapabilityExecutor(placeholderRouter);
-  _g[_ENG_KEY] = new ConversationRuntimeEngine(placeholderExecutor, DEFAULT_EXECUTION_POLICY);
-  _g[_REG_KEY] = placeholderReg;
-
-  // [RUNTIME-PROBE][CRP-04] Placeholder stored — bootstrap about to fire (not awaited)
-  console.log("[RUNTIME-PROBE][CRP-04]", {
-    probe:            "ensureInitialized:placeholderStored:bootstrapFiring",
-    t:                performance.now(),
-    ts:               Date.now(),
-    placeholderRegSize: placeholderReg.count(),
-    placeholderRegContents: placeholderReg.list(),
-    note:             "_bootstrapEngine().then() fires NOW — not awaited. Any getRealRuntimeEngine() call before .then() resolves returns the placeholder.",
-  });
-
-  // Async upgrade — replaces the placeholder once bootstrap completes.
-  _bootstrapEngine().then(({ engine, registry }) => {
-    // [RUNTIME-PROBE][CRP-06] Real engine stored — bootstrap complete, race window CLOSES
-    console.log("[RUNTIME-PROBE][CRP-06]", {
-      probe:          "bootstrapEngine:thenResolved:realEngineStored",
-      t:              performance.now(),
-      ts:             Date.now(),
-      realRegSize:    registry.count(),
-      realRegContents: registry.list(),
-      note:           "Real engine now active. Any request BEFORE this log used the placeholder.",
-    });
+// Kick off bootstrap immediately at module load — no lazy trigger.
+// This means bootstrap is already running by the time the first message arrives.
+if (!_g[_PROMISE_KEY]) {
+  _g[_PROMISE_KEY] = _bootstrapEngine().then(({ engine, registry }) => {
     _g[_ENG_KEY] = engine;
     _g[_REG_KEY] = registry;
+    return { engine, registry };
   }).catch((e) => {
-    console.warn("[ConnectorRuntimeProvider] bootstrap failed:", e);
+    console.error("[RUNTIME] Bootstrap FAILED:", e);
+    // Re-throw so awaiting callers get the error instead of silently returning undefined.
+    throw e;
   });
 }
 
+// ── Public API ────────────────────────────────────────────────────────────────
+
 /**
- * Returns the app-wide ConversationRuntimeEngine.
- * Safe to call multiple times — always returns the current singleton.
+ * Returns the fully-bootstrapped ConversationRuntimeEngine.
+ * Awaits bootstrap completion — guaranteed READY when resolved.
+ * All concurrent callers share the same Promise (no duplicate bootstrap).
  */
-export function getRealRuntimeEngine(): ConversationRuntimeEngine {
-  _ensureInitialized();
-  // [RUNTIME-PROBE][CRP-05] getRealRuntimeEngine returning — is it placeholder or real?
-  const reg = _g[_REG_KEY] as ConnectorRegistry | undefined;
-  console.log("[RUNTIME-PROBE][CRP-05]", {
-    probe:          "getRealRuntimeEngine:returning",
-    t:              performance.now(),
-    ts:             Date.now(),
-    regSize:        reg?.count?.() ?? "unknown",
-    regContents:    reg?.list?.() ?? [],
-    isPlaceholder:  (reg?.count?.() ?? 0) === 0,
-    note:           "regSize===0 means placeholder is being returned. Race condition active if Drive request follows.",
-  });
+export async function getRealRuntimeEngine(): Promise<ConversationRuntimeEngine> {
+  await (_g[_PROMISE_KEY] as Promise<unknown>);
   return _g[_ENG_KEY] as ConversationRuntimeEngine;
 }
 
 /**
- * Returns the RuntimeRegistry — useful for dashboard introspection.
- * The registry may be the placeholder (empty) before bootstrap completes.
+ * Returns the fully-bootstrapped ConnectorRegistry.
+ * Awaits bootstrap completion — guaranteed populated when resolved.
  */
-export function getRealConnectorRegistry(): ConnectorRegistry {
-  _ensureInitialized();
+export async function getRealConnectorRegistry(): Promise<ConnectorRegistry> {
+  await (_g[_PROMISE_KEY] as Promise<unknown>);
   return _g[_REG_KEY] as ConnectorRegistry;
 }
 
 /**
  * Returns a fresh bootstrapped registry (always complete, async).
- * Used by the Dashboard and Certification Suite for accurate reporting.
+ * Used by Dashboard and Certification Suite for accurate reporting.
  */
 export async function getFreshBootstrappedRegistry(): Promise<ConnectorRegistry> {
   const reg = new ConnectorRegistry();
