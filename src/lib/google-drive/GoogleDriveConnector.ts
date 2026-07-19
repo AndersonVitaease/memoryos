@@ -87,11 +87,44 @@ async function _driveRequest<T>(capability: string, url: string, opts: RequestIn
     console.log("%c[TOKEN-PROBE][8-fetch-Authorization]", "color:#34d399;font-weight:bold;font-size:11px", p8);
     _emitProbe("8-fetch-Authorization", p8);
     const res = await fetch(url, { ...opts, headers: { Authorization: auth, ...opts.headers } });
+    const resBody = await res.text().catch(() => "");
+
+    // [DIAG-TEMP] Probe 9 — Google Drive HTTP response
+    const p9: Record<string, unknown> = {
+      step:        "9-drive-response",
+      ts:          new Date().toISOString(),
+      capability,
+      status:      res.status,
+      statusText:  res.statusText,
+      url:         url.replace("https://www.googleapis.com", ""),
+      body:        resBody.slice(0, 2000), // cap at 2 KB to avoid oversized payloads
+      headers: {
+        "content-type":     res.headers.get("content-type")     ?? null,
+        "www-authenticate": res.headers.get("www-authenticate") ?? null,
+        "x-goog-request-params": res.headers.get("x-goog-request-params") ?? null,
+      },
+    };
+    console.log("%c[TOKEN-PROBE][9-drive-response]", "color:#22d3ee;font-weight:bold;font-size:11px", p9);
+    _emitProbe("9-drive-response", p9);
+
     if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      throw Object.assign(new Error(`Drive API ${res.status}: ${body}`), { code: `HTTP_${res.status}` });
+      // [DIAG-TEMP] Probe 10 — Drive error detail
+      const err = Object.assign(new Error(`Drive API ${res.status}: ${resBody}`), { code: `HTTP_${res.status}` });
+      const p10: Record<string, unknown> = {
+        step:       "10-drive-error",
+        ts:         new Date().toISOString(),
+        capability,
+        status:     res.status,
+        statusText: res.statusText,
+        body:       resBody.slice(0, 2000),
+        stack:      err.stack?.split("\n").slice(0, 6).join(" | ") ?? null,
+      };
+      console.error("%c[TOKEN-PROBE][10-drive-error]", "color:#f87171;font-weight:bold;font-size:11px", p10);
+      _emitProbe("10-drive-error", p10);
+      throw err;
     }
-    return res.json() as T;
+
+    return JSON.parse(resBody) as T;
   });
 }
 
