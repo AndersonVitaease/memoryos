@@ -78,6 +78,21 @@ export class UniversalConnectorRouter {
       parameters:  step.parameters,
     });
 
+    // [UCR-PROBE-02] Result returned by connector.execute() (UCRTypes.ConnectorResult)
+    console.log("[UCR-PROBE-02]", {
+      probe:          "router:connectorExecuteResult",
+      t:              performance.now(),
+      executionId,
+      connectorId:    step.connector,
+      capability:     step.capability,
+      resultStatus:   result.status,
+      resultOutputPresent: (result as any).output !== undefined,
+      resultOutputIsNull:  (result as any).output === null,
+      resultDataPresent:   (result as any).data !== undefined,
+      resultKeys:     Object.keys(result as object),
+      constructorName: (result as any)?.constructor?.name ?? "Object",
+    });
+
     return Object.freeze({
       found:       true,
       connectorId: step.connector,

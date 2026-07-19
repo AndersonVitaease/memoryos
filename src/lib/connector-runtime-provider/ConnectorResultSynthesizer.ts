@@ -83,6 +83,24 @@ export async function synthesizeConnectorResult(
   // ── Runtime completed — extract data from step outputs ───────────────────
   const completedSteps = result.steps.filter((s) => s.status === "completed" && s.output !== null);
 
+  // [SYNTH-PROBE-01] StepResult shapes reaching ConnectorResultSynthesizer
+  console.log("[SYNTH-PROBE-01]", {
+    probe:        "synthesizer:stepResults",
+    t:            performance.now(),
+    totalSteps:   result.steps.length,
+    completedStepsCount: completedSteps.length,
+    allSteps: result.steps.map(s => ({
+      connector:       s.connector,
+      capability:      s.capability,
+      status:          s.status,
+      outputPresent:   s.output !== undefined,
+      outputIsNull:    s.output === null,
+      outputIsUndef:   s.output === undefined,
+      outputType:      typeof s.output,
+      outputKeys:      s.output && typeof s.output === "object" ? Object.keys(s.output as object).slice(0, 8) : String(s.output),
+    })),
+  });
+
   // ── Connector context: dispatch to registry — zero connector-specific logic ─
   // ConnectorResultSynthesizer never knows which connector ran.
   // Each connector's builder self-registers and handles its own output shape.

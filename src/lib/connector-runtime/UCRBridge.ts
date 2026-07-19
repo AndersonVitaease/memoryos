@@ -53,6 +53,16 @@ class UCRConnectorBridge implements UCRConnector {
   async execute(input: ConnectorInput): Promise<UCRResult> {
     const t0  = Date.now();
     const eid = input.executionId ?? makeExecutionId();
+
+    // [UCRBRIDGE-PROBE-01] UCRBridge.execute() CALLED
+    console.log("[UCRBRIDGE-PROBE-01]", {
+      probe:      "UCRBridge:execute:entry",
+      t:          performance.now(),
+      connectorId: this._inner.id,
+      capability:  input.capability,
+      executionId: eid,
+    });
+
     const result = await this._inner.execute(
       input.capability,
       input.parameters as Record<string, unknown>,
@@ -64,7 +74,19 @@ class UCRConnectorBridge implements UCRConnector {
       },
     );
 
-    return Object.freeze({
+    // [UCRBRIDGE-PROBE-02] RuntimeConnector returned ConnectorTypes.ConnectorResult
+    console.log("[UCRBRIDGE-PROBE-02]", {
+      probe:           "UCRBridge:innerResult",
+      connectorId:     this._inner.id,
+      capability:      input.capability,
+      innerResultStatus:  result.status,
+      innerResultSuccess: result.success,
+      innerResultDataKey: result.data !== undefined ? "PRESENT" : "ABSENT",
+      innerResultDataType: result.data === null ? "null" : typeof result.data,
+      innerResultOutputKey: (result as any).output !== undefined ? "PRESENT" : "ABSENT",
+    });
+
+    const ucrResult = Object.freeze({
       connectorId: this._inner.id,
       capability:  input.capability,
       status:      result.success ? "success" : "failed",
@@ -72,6 +94,19 @@ class UCRConnectorBridge implements UCRConnector {
       error:       result.error ?? null,
       durationMs:  Date.now() - t0,
     } as UCRResult);
+
+    // [UCRBRIDGE-PROBE-03] UCRTypes.ConnectorResult returned by Bridge
+    console.log("[UCRBRIDGE-PROBE-03]", {
+      probe:         "UCRBridge:ucrResult",
+      connectorId:   ucrResult.connectorId,
+      capability:    ucrResult.capability,
+      status:        ucrResult.status,
+      outputPresent: ucrResult.output !== null && ucrResult.output !== undefined,
+      outputType:    typeof ucrResult.output,
+      outputKeys:    ucrResult.output && typeof ucrResult.output === "object" ? Object.keys(ucrResult.output as object).slice(0, 6) : "N/A",
+    });
+
+    return ucrResult;
   }
 
   health(): ConnectorHealth {

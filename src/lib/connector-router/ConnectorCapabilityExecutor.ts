@@ -30,6 +30,24 @@ export class ConnectorCapabilityExecutor implements ICapabilityExecutor {
 
     const routerResult = await this._router.route(executionId, step);
 
+    // [CCE-PROBE-01] routerResult.result shape received by Executor
+    console.log("[CCE-PROBE-01]", {
+      probe:           "CCE:routerResultShape",
+      t:               performance.now(),
+      executionId,
+      connector:       step.connector,
+      capability:      step.capability,
+      found:           routerResult.found,
+      resultIsNull:    routerResult.result === null,
+      resultKeys:      routerResult.result ? Object.keys(routerResult.result as object) : "NULL",
+      resultDotOutput: routerResult.result ? (routerResult.result as any).output : "N/A",
+      resultDotData:   routerResult.result ? (routerResult.result as any).data   : "N/A",
+      resultDotOutputPresent: routerResult.result ? (routerResult.result as any).output !== undefined : false,
+      resultDotDataPresent:   routerResult.result ? (routerResult.result as any).data   !== undefined : false,
+      resultDotOutputIsNull:  routerResult.result ? (routerResult.result as any).output === null : false,
+      constructorName: routerResult.result ? ((routerResult.result as any)?.constructor?.name ?? "Object") : "NULL",
+    });
+
     if (!routerResult.found || routerResult.result === null) {
       // [RUNTIME-PROBE][CCE-01] Connector NOT found — execution terminates here
       console.log("[RUNTIME-PROBE][CCE-01]", {
