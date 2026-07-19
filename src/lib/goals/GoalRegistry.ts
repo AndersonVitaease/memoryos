@@ -196,6 +196,43 @@ const _builtins: GoalDefinition[] = [
     ],
     extractParams: () => ({ messageId: null }),
   },
+  {
+    type: "gmail.readEmail",
+    namespace: "gmail",
+    description: "Read the full content (body) of a specific email message",
+    signals: [
+      // PT — leitura de corpo completo
+      "leia este email", "leia esse email", "leia o email",
+      "leia o primeiro email", "leia o segundo email", "leia o terceiro email",
+      "leia a mensagem", "leia esta mensagem", "leia essa mensagem",
+      "abra este email", "abra esse email", "abra o email",
+      "leia o email completo", "mostrar conteudo", "mostrar o conteudo",
+      "mostre o conteudo", "mostre o corpo", "corpo do email",
+      "conteudo do email", "conteudo da mensagem", "texto do email",
+      "email completo", "mensagem completa",
+      // EN
+      "read this email", "read the email", "read the full email",
+      "show email content", "show the full email", "open this email",
+      "email body", "full email",
+    ],
+    extractParams: (msg) => {
+      // Try to extract a messageId if mentioned (e.g. "leia o email 18fa...")
+      const idMatch = msg.match(/\b([0-9a-f]{8,})\b/i)?.[1];
+      // Try to extract ordinal position ("o primeiro", "o segundo", "o terceiro")
+      const ordinals: Record<string, number> = {
+        "primeiro": 0, "first": 0,
+        "segundo": 1, "second": 1,
+        "terceiro": 2, "third": 2,
+        "quarto": 3, "fourth": 3,
+        "quinto": 4, "fifth": 4,
+      };
+      const ordinalKey = Object.keys(ordinals).find((k) => msg.toLowerCase().includes(k));
+      return {
+        messageId:    idMatch ?? null,
+        emailIndex:   ordinalKey != null ? ordinals[ordinalKey] : null,
+      };
+    },
+  },
 
   // ── Calendar ───────────────────────────────────────────────────────────────
   {

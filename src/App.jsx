@@ -221,6 +221,7 @@ import EF398CertPage from '@/pages/EF398CertPage';
 import DriveDebugPanel from '@/pages/DriveDebugPanel';
 import TokenLifecycleTestPage from '@/pages/TokenLifecycleTestPage';
 import RuntimeTracePage from '@/pages/RuntimeTracePage';
+import GmailReadEmailTestPage from '@/pages/GmailReadEmailTestPage';
 
 const AuthenticatedApp = () => {
   console.log('[RENDER] AuthenticatedApp');
@@ -460,6 +461,7 @@ const AuthenticatedApp = () => {
           <Route path="/drive-debug" element={<DriveDebugPanel />} />
           <Route path="/token-lifecycle-tests" element={<TokenLifecycleTestPage />} />
           <Route path="/runtime-trace" element={<RuntimeTracePage />} />
+          <Route path="/gmail-reademail-test" element={<GmailReadEmailTestPage />} />
         </Route>
       </Route>
       <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />

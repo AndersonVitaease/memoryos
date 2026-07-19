@@ -26,6 +26,7 @@ export type GoalType =
   | "gmail.readInbox"
   | "gmail.searchMessages"
   | "gmail.readMessage"
+  | "gmail.readEmail"
   // Calendar
   | "calendar.listToday"
   | "calendar.listTomorrow"

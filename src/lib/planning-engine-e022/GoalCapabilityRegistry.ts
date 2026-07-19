@@ -135,6 +135,12 @@ const _builtins: CapabilityMapping[] = [
       { connector: "gmail", capability: "readMessage", params: {} },
     ],
   },
+  {
+    goalType: "gmail.readEmail",
+    descriptors: [
+      { connector: "gmail", capability: "readEmail", params: {} },
+    ],
+  },
 
   // ── Calendar ───────────────────────────────────────────────────────────────
   // connector id: "google-calendar"  (GoogleCalendarConnector.ts:115)
