@@ -18,11 +18,13 @@
 
 import type { ExecutionResult }        from "@/lib/runtime-engine/RuntimeTypes";
 import type { UnifiedKnowledgeModel }  from "@/lib/knowledge-fusion-engine/KFETypes";
-import { base44 }                      from "@/api/base44Client";
-import { SearchRanker }                from "@/lib/github-deep-analysis/SearchRanker";
-import { conversationStore }           from "@/lib/conversation-platform/ConversationStore";
-import { buildDriveContext }           from "@/lib/connector-context/ConnectorContextStore";
-import type { DriveFileEntry }         from "@/lib/connector-context/ConnectorContextStore";
+import { base44 }             from "@/api/base44Client";
+import { SearchRanker }       from "@/lib/github-deep-analysis/SearchRanker";
+import { conversationStore }  from "@/lib/conversation-platform/ConversationStore";
+import { buildContext }       from "@/lib/connector-context/ConnectorContextBuilderRegistry";
+// Side-effect imports: each builder self-registers on load.
+// Add one import per new connector — zero other changes required.
+import "@/lib/connector-context/providers/GoogleDriveContextBuilder";
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -64,48 +66,19 @@ export async function synthesizeConnectorResult(
   // ── Runtime completed — extract data from step outputs ───────────────────
   const completedSteps = result.steps.filter((s) => s.status === "completed" && s.output !== null);
 
-  // ── Connector context: persist per-connector result state into session store ─
-  // Each connector stores only its own context slot via the generic API.
-  // Enables cross-turn references: "Esse mesmo", "o terceiro", "aquele", etc.
-  // State is scoped to the active session — never a global singleton.
+  // ── Connector context: dispatch to registry — zero connector-specific logic ─
+  // ConnectorResultSynthesizer never knows which connector ran.
+  // Each connector's builder self-registers and handles its own output shape.
+  // To add a new connector: create a builder + one side-effect import above.
   try {
     for (const s of completedSteps) {
       const out = s.output as Record<string, unknown> | null;
       if (!out) continue;
-
-      if (s.connector === "google-drive") {
-        // List / search result — store full file list, default selection = index 0
-        const rawFiles = (out as any).files;
-        if (Array.isArray(rawFiles) && rawFiles.length > 0) {
-          const files: DriveFileEntry[] = rawFiles
-            .map((f: Record<string, unknown>) => ({
-              id:       String(f.id ?? ""),
-              name:     String(f.name ?? ""),
-              mimeType: String(f.mimeType ?? ""),
-            }))
-            .filter((f: DriveFileEntry) => f.id.length > 0);
-
-          if (files.length > 0) {
-            conversationStore.setConnectorContext("google-drive", buildDriveContext(files, 0));
-            break;
-          }
-        }
-
-        // Single-file result (drive.files.get / drive.downloadFile)
-        const singleId   = String((out as any).fileId ?? (out as any).id ?? "");
-        const singleName = String((out as any).fileName ?? (out as any).name ?? "");
-        const singleMime = String((out as any).mimeType ?? "");
-        if (singleId) {
-          conversationStore.setConnectorContext(
-            "google-drive",
-            buildDriveContext([{ id: singleId, name: singleName, mimeType: singleMime }], 0),
-          );
-          break;
-        }
+      const ctx = buildContext(s.connector, out);
+      if (ctx) {
+        conversationStore.setConnectorContext(s.connector, ctx);
+        break;
       }
-
-      // Future connectors: add their own context-building branches here.
-      // e.g. if (s.connector === "gmail") { ... buildGmailContext(...) }
     }
   } catch {
     // Non-blocking — context update failure never affects user response

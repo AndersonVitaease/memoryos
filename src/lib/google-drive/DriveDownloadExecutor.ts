@@ -150,8 +150,8 @@ export async function executeDriveDownload(
     // Covers "Esse mesmo" / "faz o download" / "o terceiro" cross-turn references.
     try {
       const { conversationStore } = await import("@/lib/conversation-platform/ConversationStore");
-      const { readDriveContext }  = await import("@/lib/connector-context/ConnectorContextStore");
-      const raw    = conversationStore.getConnectorContext("google-drive");
+      const { readDriveContext }  = await import("@/lib/connector-context/providers/GoogleDriveContextBuilder");
+      const raw      = conversationStore.getConnectorContext("google-drive");
       const driveCtx = readDriveContext(raw);
       if (driveCtx && driveCtx.selectedFileId) {
         resolvedFileId = driveCtx.selectedFileId;
