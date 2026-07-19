@@ -55,6 +55,25 @@ const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000; // renova 5 min antes de expirar
 // ── In-memory token store (nunca persiste tokens em localStorage) ─────────────
 const _tokenStore = new Map(); // workspaceId → { accessToken, expiresAt }
 
+// ── [DIAG-TEMP] Probe helper — remove after proof ─────────────────────────────
+function _probe(step, workspaceId, extra = {}) {
+  const stored = _tokenStore.get(workspaceId) ?? null;
+  const tok = stored?.accessToken ?? null;
+  console.log(
+    `%c[TOKEN-PROBE][${step}]`,
+    "color:#f59e0b;font-weight:bold;font-size:11px",
+    {
+      step,
+      ts:            new Date().toISOString(),
+      workspaceId,
+      tokenPrefix:   tok ? tok.slice(0, 12) : "NULL",
+      expiresAt:     stored?.expiresAt ? new Date(stored.expiresAt).toISOString() : "N/A",
+      tokenStoreSize: _tokenStore.size,
+      ...extra,
+    }
+  );
+}
+
 // ── Scopes ────────────────────────────────────────────────────────────────────
 
 export const BASE_SCOPES = [
@@ -118,8 +137,15 @@ function _getStoredToken(workspaceId) {
  */
 export function getAccessToken(workspaceId = "default") {
   const stored = _getStoredToken(workspaceId);
-  if (!stored) return null;
-  if (Date.now() >= stored.expiresAt) return null; // expirado
+  if (!stored) {
+    _probe("6-getAccessToken", workspaceId, { result: "NULL — no entry in _tokenStore" });
+    return null;
+  }
+  if (Date.now() >= stored.expiresAt) {
+    _probe("6-getAccessToken", workspaceId, { result: "NULL — token expired", expiresAtMs: stored.expiresAt, nowMs: Date.now() });
+    return null;
+  }
+  _probe("6-getAccessToken", workspaceId, { result: "OK" });
   return stored.accessToken;
 }
 
@@ -296,11 +322,28 @@ export async function refresh(workspaceId = "default", onStateChange) {
 
   onStateChange?.("REFRESHING");
 
+  // [DIAG-TEMP] Point 2 — before calling invokeFn
+  _probe("2-before-refresh-call", workspaceId, { backendFn: "googleOAuthRefresh" });
+
   const refreshRes = await invokeFn('googleOAuthRefresh', { workspaceId });
   const { accessToken, expiresAt } = refreshRes.data;
 
+  // [DIAG-TEMP] Point 3 — immediately after refresh() returned from backend
+  _probe("3-after-refresh-returned", workspaceId, {
+    returnedTokenPrefix: accessToken ? accessToken.slice(0, 12) : "NULL",
+    returnedExpiresAt:   expiresAt ? new Date(expiresAt).toISOString() : "N/A",
+    storeBeforeSet:      _tokenStore.has(workspaceId) ? "HAS_ENTRY" : "EMPTY",
+  });
+
   // Update token in memory
   _storeToken(workspaceId, accessToken, expiresAt);
+
+  // [DIAG-TEMP] Point 4+5 — value returned by refresh + _tokenStore content immediately after set
+  _probe("4+5-tokenStore-after-set", workspaceId, {
+    returnedTokenPrefix: accessToken ? accessToken.slice(0, 12) : "NULL",
+    storeAfterSet:       _tokenStore.has(workspaceId) ? "HAS_ENTRY" : "STILL_EMPTY",
+    storedEntry:         (() => { const e = _tokenStore.get(workspaceId); return e ? { prefix: e.accessToken.slice(0, 12), expiresAt: new Date(e.expiresAt).toISOString() } : "NULL"; })(),
+  });
 
   // Update metadata in localStorage
   const updated = {
@@ -351,6 +394,9 @@ export async function reconnect({ workspaceId = "default", scopes = WORKSPACE_SC
  *   - Assim _driveRequest pode confiar que o token está em _tokenStore.
  */
 export async function ensureValidToken(workspaceId = "default") {
+  // [DIAG-TEMP] Point 1 — entry of ensureValidToken
+  _probe("1-ensureValidToken-entry", workspaceId, { caller: new Error().stack?.split("\n")[2]?.trim() ?? "unknown" });
+
   const conn = getConnection(workspaceId);
   if (!conn || conn.state !== "CONNECTED") {
     throw new Error("Google Workspace not connected. Please connect in /connections.");
