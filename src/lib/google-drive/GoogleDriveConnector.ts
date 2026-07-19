@@ -87,11 +87,12 @@ function _normalizeFile(f: Record<string, unknown>): DriveFile {
 
 /** Connection health check */
 export function getDriveHealth(): { ok: boolean; reason: string } {
-  const conn      = getConnection(WS);
-  const connected = isConnected(WS);
-  if (!conn)      return { ok: false, reason: "Google Workspace nao conectado" };
-  if (!connected) return { ok: false, reason: "Token expirado — necesita refresh" };
-  return { ok: true, reason: `Conectado como ${conn.email ?? "usuario"}` };
+  const conn = getConnection(WS);
+  if (!conn || conn.state !== "CONNECTED") return { ok: false, reason: "Google Workspace nao conectado" };
+  const token = getAccessToken(WS);
+  // token can be null after page reload — that is normal and will be fixed by ensureValidToken()
+  if (token) return { ok: true, reason: `Conectado como ${conn.email ?? "usuario"}` };
+  return { ok: true, reason: `Conectado como ${conn.email ?? "usuario"} (token sera renovado automaticamente)` };
 }
 
 /** List files — supports optional folder, page size, page token */

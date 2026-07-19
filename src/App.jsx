@@ -219,6 +219,7 @@ import PhaseEF39Page from '@/pages/PhaseEF39Page';
 import PhaseEF393Page from '@/pages/PhaseEF393Page';
 import EF398CertPage from '@/pages/EF398CertPage';
 import DriveDebugPanel from '@/pages/DriveDebugPanel';
+import TokenLifecycleTestPage from '@/pages/TokenLifecycleTestPage';
 
 const AuthenticatedApp = () => {
   console.log('[RENDER] AuthenticatedApp');
@@ -456,6 +457,7 @@ const AuthenticatedApp = () => {
           <Route path="/ef39-memory-store" element={<PhaseEF39Page />} />
           <Route path="/ef393-certification" element={<PhaseEF393Page />} />
           <Route path="/drive-debug" element={<DriveDebugPanel />} />
+          <Route path="/token-lifecycle-tests" element={<TokenLifecycleTestPage />} />
         </Route>
       </Route>
       <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />

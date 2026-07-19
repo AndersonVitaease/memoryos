@@ -343,31 +343,34 @@ export async function reconnect({ workspaceId = "default", scopes = WORKSPACE_SC
 /**
  * Verifica e renova o token se necessário antes do uso.
  * Chamado pelos conectores via ConnectorInvocationService.
+ *
+ * CONTRATO GARANTIDO:
+ *   - Após retornar com sucesso, getAccessToken(workspaceId) SEMPRE retorna um
+ *     string não-nulo e não-expirado.
+ *   - Se o refresh falhar, lança Error — nunca retorna null silenciosamente.
+ *   - Assim _driveRequest pode confiar que o token está em _tokenStore.
  */
 export async function ensureValidToken(workspaceId = "default") {
   const conn = getConnection(workspaceId);
-  if (!conn || conn.state !== "CONNECTED") return null;
+  if (!conn || conn.state !== "CONNECTED") {
+    throw new Error("Google Workspace not connected. Please connect in /connections.");
+  }
 
   const stored = _getStoredToken(workspaceId);
 
-  // Token ausente em memória mas conexão existe — tentar refresh (ex: após reload)
+  // Token ausente em memória mas conexão existe — reload ou primeiro uso.
+  // Faz refresh e propaga erro se falhar.
   if (!stored) {
-    try {
-      return await refresh(workspaceId);
-    } catch {
-      return null;
-    }
+    return await refresh(workspaceId);
   }
 
+  // Token presente mas expirado ou próximo de expirar — renova.
   const needsRefresh = Date.now() > stored.expiresAt - TOKEN_EXPIRY_BUFFER_MS;
   if (needsRefresh) {
-    try {
-      return await refresh(workspaceId);
-    } catch {
-      return null;
-    }
+    return await refresh(workspaceId);
   }
 
+  // Token válido — garante que está no store antes de retornar.
   return conn;
 }
 
