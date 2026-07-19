@@ -186,6 +186,30 @@ export interface ConversationEvent {
   timestamp: number;
 }
 
+// ─── Drive File Context (session-scoped, no global state) ────────────────────
+
+export interface DriveFileEntry {
+  id:       string;
+  name:     string;
+  mimeType: string;
+}
+
+/**
+ * Represents the Drive file selection state for the current conversation session.
+ * Written by ConnectorResultSynthesizer after any Drive search/list/get operation.
+ * Read by DriveDownloadExecutor to resolve "Esse mesmo" / "faz o download" turns.
+ *
+ * Isolation: keyed per sessionId — never shared across users or sessions.
+ */
+export interface DriveFileContext {
+  sessionId:        string;
+  files:            DriveFileEntry[];
+  selectedIndex:    number;        // index into files[] of the "presented" file
+  selectedFileId:   string;
+  selectedFileName: string;
+  updatedAt:        number;        // ms timestamp
+}
+
 // ─── Store ────────────────────────────────────────────────────────────────────
 
 export interface ConversationState {
@@ -197,6 +221,8 @@ export interface ConversationState {
   currentExecution: PipelineExecution | null;
   error: string | null;
   isInitialized: boolean;
+  /** Session-scoped Drive file selection context. Never a global singleton. */
+  driveFileContext: DriveFileContext | null;
 }
 
 // ─── Future Contracts ─────────────────────────────────────────────────────────

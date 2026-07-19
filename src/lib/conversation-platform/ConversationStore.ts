@@ -14,6 +14,7 @@ import type {
   PipelineExecution,
   ConversationEvent,
   ConversationEventType,
+  DriveFileContext,
 } from "./CXPTypes";
 
 type StateListener = (state: ConversationState) => void;
@@ -31,6 +32,7 @@ function defaultState(): ConversationState {
     currentExecution: null,
     error: null,
     isInitialized: false,
+    driveFileContext: null,
   };
 }
 
@@ -103,6 +105,19 @@ class ConversationStore {
 
   setCurrentExecution(currentExecution: PipelineExecution | null): void {
     this._patch({ currentExecution });
+  }
+
+  /**
+   * Records Drive file selection context for this session.
+   * Scoped to the current session — isolation across users/sessions is
+   * guaranteed by the ConversationStore lifecycle (one store per session).
+   */
+  setDriveFileContext(ctx: DriveFileContext | null): void {
+    this._patch({ driveFileContext: ctx });
+  }
+
+  getDriveFileContext(): DriveFileContext | null {
+    return this._state.driveFileContext;
   }
 
   /** Update streaming content on the last assistant message */

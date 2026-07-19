@@ -20,6 +20,8 @@ import type { ExecutionResult }        from "@/lib/runtime-engine/RuntimeTypes";
 import type { UnifiedKnowledgeModel }  from "@/lib/knowledge-fusion-engine/KFETypes";
 import { base44 }                      from "@/api/base44Client";
 import { SearchRanker }                from "@/lib/github-deep-analysis/SearchRanker";
+import { conversationStore }           from "@/lib/conversation-platform/ConversationStore";
+import type { DriveFileContext, DriveFileEntry } from "@/lib/conversation-platform/CXPTypes";
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -61,39 +63,56 @@ export async function synthesizeConnectorResult(
   // ── Runtime completed — extract data from step outputs ───────────────────
   const completedSteps = result.steps.filter((s) => s.status === "completed" && s.output !== null);
 
-  // ── Drive context: record the first returned fileId for the next turn ──────
-  // This enables "Esse mesmo, faz o download" — the next goal (drive.downloadFile)
-  // will recover this fileId via DriveConversationContext when none is in params.
+  // ── Drive context: record file selection state into session-scoped store ───
+  // Enables "Esse mesmo, faz o download" across turns.
+  // State is scoped to the active session — never a global singleton.
+  // The full file list + selectedIndex are stored so the executor receives
+  // exactly the file that was presented/selected, not just the first one.
   try {
-    const { driveConversationContext } = await import("@/lib/google-drive/DriveConversationContext");
-    for (const s of completedSteps) {
-      if (s.connector !== "google-drive") continue;
-      const out = s.output as Record<string, unknown> | null;
-      if (!out) continue;
+    const sessionId = conversationStore.session?.id;
+    if (sessionId) {
+      for (const s of completedSteps) {
+        if (s.connector !== "google-drive") continue;
+        const out = s.output as Record<string, unknown> | null;
+        if (!out) continue;
 
-      // Single file result (drive.files.get / drive.downloadFile)
-      const singleId = (out as any).fileId ?? (out as any).id;
-      if (singleId && typeof singleId === "string") {
-        driveConversationContext.record({
-          fileId:   singleId,
-          fileName: String((out as any).fileName ?? (out as any).name ?? ""),
-          mimeType: String((out as any).mimeType ?? ""),
-          recordedAt: Date.now(),
-        });
-        break;
-      }
+        // List / search result — store full list, select index 0 (first presented)
+        const rawFiles = (out as any).files;
+        if (Array.isArray(rawFiles) && rawFiles.length > 0) {
+          const files: DriveFileEntry[] = rawFiles.map((f: Record<string, unknown>) => ({
+            id:       String(f.id ?? ""),
+            name:     String(f.name ?? ""),
+            mimeType: String(f.mimeType ?? ""),
+          })).filter((f: DriveFileEntry) => f.id.length > 0);
 
-      // List/search result — use the first file
-      const files = (out as any).files;
-      if (Array.isArray(files) && files.length > 0) {
-        const first = files[0] as Record<string, unknown>;
-        if (first.id && typeof first.id === "string") {
-          driveConversationContext.record({
-            fileId:   first.id,
-            fileName: String(first.name ?? ""),
-            mimeType: String(first.mimeType ?? ""),
-            recordedAt: Date.now(),
-          });
+          if (files.length > 0) {
+            const ctx: DriveFileContext = {
+              sessionId,
+              files,
+              selectedIndex:    0,
+              selectedFileId:   files[0].id,
+              selectedFileName: files[0].name,
+              updatedAt:        Date.now(),
+            };
+            conversationStore.setDriveFileContext(ctx);
+            break;
+          }
+        }
+
+        // Single-file result (drive.files.get / drive.downloadFile)
+        const singleId   = String((out as any).fileId ?? (out as any).id ?? "");
+        const singleName = String((out as any).fileName ?? (out as any).name ?? "");
+        const singleMime = String((out as any).mimeType ?? "");
+        if (singleId) {
+          const ctx: DriveFileContext = {
+            sessionId,
+            files:            [{ id: singleId, name: singleName, mimeType: singleMime }],
+            selectedIndex:    0,
+            selectedFileId:   singleId,
+            selectedFileName: singleName,
+            updatedAt:        Date.now(),
+          };
+          conversationStore.setDriveFileContext(ctx);
           break;
         }
       }

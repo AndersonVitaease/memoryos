@@ -128,8 +128,6 @@ export async function executeDriveDownload(
   const queryFallback  = typeof parameters.query       === "string" ? parameters.query.trim()       : null;
   const rawText        = typeof parameters.rawText     === "string" ? parameters.rawText.trim()     : null;
 
-
-
   function fail(code: DownloadErrorCode, message: string, fileId: string | null, extra: Partial<DownloadFailure> = {}): DownloadFailure {
     const dur = Date.now() - t0;
     return { ok: false, code, message, fileId, fileName, durationMs: dur, audit: makeAudit("failure", startedAt, dur, code), ...extra };
@@ -146,6 +144,23 @@ export async function executeDriveDownload(
 
   if (explicitFileId) {
     resolvedFileId = explicitFileId;
+  } else if (!fileName && !queryFallback && !rawText) {
+    // No explicit identifier — attempt recovery from session-scoped ConversationStore.
+    // This covers "Esse mesmo" / "faz o download" turns where the user refers to
+    // the file presented in the previous assistant turn.
+    // NEVER reads from a global singleton — state is keyed per sessionId.
+    try {
+      const { conversationStore } = await import("@/lib/conversation-platform/ConversationStore");
+      const driveCtx = conversationStore.getDriveFileContext();
+      if (driveCtx && driveCtx.selectedFileId) {
+        resolvedFileId = driveCtx.selectedFileId;
+        resolvedBy     = "fileId";
+      } else {
+        return fail("NO_PARAMS", "Nenhum arquivo selecionado. Por favor, especifique o nome do arquivo para download.", null);
+      }
+    } catch {
+      return fail("NO_PARAMS", "Nenhum fileId ou fileName fornecido. Especifique o nome do arquivo para download.", null);
+    }
   } else {
     const searchQuery = fileName ?? queryFallback ?? rawText;
     if (!searchQuery) {

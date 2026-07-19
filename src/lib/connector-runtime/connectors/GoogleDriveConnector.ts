@@ -407,29 +407,12 @@ export class GoogleDriveConnector implements IConnector {
 
       case "drive.downloadFile": {
         const { executeDriveDownload } = await import("../../google-drive/DriveDownloadExecutor");
-        const { driveConversationContext } = await import("../../google-drive/DriveConversationContext");
 
-        // Build enriched params: inject lastFileId from conversation context
-        // when neither fileId nor fileName is present in the current goal.
-        // This is the architectural fix for "Esse mesmo, faz o download" —
-        // DriveDownloadExecutor receives a fileId it can use directly (Step 1,
-        // DIRECT path) without needing a new Drive API search call.
-        const params: Record<string, unknown> = { ...payload };
-
-        if (!params.fileId && !params.fileName) {
-          const ctx = driveConversationContext.getLast();
-          if (ctx) {
-            console.log("[DriveConnector][drive.downloadFile] Recovering fileId from context:", JSON.stringify(ctx));
-            params.fileId   = ctx.fileId;
-            params.fileName = ctx.fileName;
-          } else {
-            console.log("[DriveConnector][drive.downloadFile] No conversation context available — executor will attempt search.");
-          }
-        } else {
-          console.log("[DriveConnector][drive.downloadFile] fileId/fileName present in params — using directly:", { fileId: params.fileId, fileName: params.fileName });
-        }
-
-        const result = await executeDriveDownload(params, token);
+        // DriveDownloadExecutor owns all resolution logic:
+        //   1. Use explicit fileId/fileName when present in params
+        //   2. Read DriveFileContext from session-scoped ConversationStore (no global singleton)
+        //   3. Execute name-based search as last resort
+        const result = await executeDriveDownload(payload, token);
 
         if (!result.ok) {
           return fail(result.message, "external", start, eid, logs, operation);
