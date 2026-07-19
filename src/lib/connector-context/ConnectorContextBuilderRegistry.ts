@@ -35,6 +35,16 @@ export interface ConnectorContextBuildRequest {
     durationMs?:       number;
     connectorVersion?: string;
   };
+  /**
+   * Optional conversation context — available to builders that need to scope
+   * or enrich the context by session, conversation, or user.
+   * Not required for current functionality; prepared for future Selection Resolution Engine.
+   */
+  conversationContext?: {
+    sessionId?:      string;
+    conversationId?: string;
+    userId?:         string;
+  };
 }
 
 // ── Builder Contract ──────────────────────────────────────────────────────────

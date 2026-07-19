@@ -6,6 +6,7 @@
  * MDS v2.0 compliant
  */
 
+import { initializePlatform } from "@/lib/platform/PlatformBootstrap";
 import { conversationStore } from "./ConversationStore";
 import { conversationStreaming } from "./ConversationStreaming";
 import { conversationRecovery } from "./ConversationRecovery";
@@ -576,6 +577,10 @@ class ConversationPipeline {
 }
 
 // ─── Singleton ────────────────────────────────────────────────────────────────
+
+// ─── Platform initialization ──────────────────────────────────────────────────
+// Single call — all registries initialized before any pipeline executes.
+initializePlatform();
 
 const _key = "__CXP_PIPELINE__";
 if (!(globalThis as unknown as Record<string, unknown>)[_key]) {

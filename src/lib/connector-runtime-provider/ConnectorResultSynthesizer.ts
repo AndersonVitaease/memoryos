@@ -18,14 +18,10 @@
 
 import type { ExecutionResult }        from "@/lib/runtime-engine/RuntimeTypes";
 import type { UnifiedKnowledgeModel }  from "@/lib/knowledge-fusion-engine/KFETypes";
-import { base44 }             from "@/api/base44Client";
-import { SearchRanker }       from "@/lib/github-deep-analysis/SearchRanker";
-import { conversationStore }  from "@/lib/conversation-platform/ConversationStore";
-import { buildContext }       from "@/lib/connector-context/ConnectorContextBuilderRegistry";
-import { bootstrapConnectorContext } from "@/lib/connector-context/ConnectorContextBootstrap";
-
-// Ensure all builders are registered before first use.
-bootstrapConnectorContext();
+import { base44 }            from "@/api/base44Client";
+import { SearchRanker }      from "@/lib/github-deep-analysis/SearchRanker";
+import { conversationStore } from "@/lib/conversation-platform/ConversationStore";
+import { buildContext }      from "@/lib/connector-context/ConnectorContextBuilderRegistry";
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
