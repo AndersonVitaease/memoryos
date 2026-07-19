@@ -1,25 +1,65 @@
+/**
+ * DriveDebugPanel — Drive Debug Runtime Panel
+ *
+ * Consome exclusivamente o RuntimeDebug (Event Bus oficial).
+ * Sem monkey-patch, sem parsing de strings, sem console.log interception.
+ * Interface visual identica a versao anterior.
+ */
 import React, { useState, useEffect, useCallback } from "react";
-import { driveDebugStore, installConsoleInterceptor } from "@/lib/debug/DriveDebugStore";
+import { RuntimeDebug } from "@/lib/debug/RuntimeDebug";
 
-// Install interceptor as soon as this page is loaded
-installConsoleInterceptor();
+// ── Constants ─────────────────────────────────────────────────────────────────
 
 const SOURCE_COLORS = {
-  Planner:              "bg-violet-600",
-  DriveContextBuilder:  "bg-blue-600",
-  ConversationStore:    "bg-amber-600",
-  DriveDownloadExecutor:"bg-emerald-600",
+  Planner:               "bg-violet-600",
+  DriveContextBuilder:   "bg-blue-600",
+  ConversationStore:     "bg-amber-600",
+  DriveDownloadExecutor: "bg-emerald-600",
 };
 
 const SOURCE_LABELS = {
-  Planner:              "Planner",
-  DriveContextBuilder:  "Context Builder",
-  ConversationStore:    "Store",
-  DriveDownloadExecutor:"Executor",
+  Planner:               "Planner",
+  DriveContextBuilder:   "Context Builder",
+  ConversationStore:     "Store",
+  DriveDownloadExecutor: "Executor",
 };
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function fmtTime(ts) {
+  const d = new Date(ts);
+  return `${d.getHours().toString().padStart(2,"0")}:${d.getMinutes().toString().padStart(2,"0")}:${d.getSeconds().toString().padStart(2,"0")}.${d.getMilliseconds().toString().padStart(3,"0")}`;
+}
+
+function hasBugSignal(payload) {
+  if (!payload) return false;
+  const mp = payload.mergedParams;
+  if (mp?.fileName && typeof mp.fileName === "string" && mp.fileName.toLowerCase().includes("download")) return true;
+  if (payload.strategy === "search by name" && typeof payload.fileName === "string" && payload.fileName.toLowerCase().includes("download")) return true;
+  return false;
+}
+
+function extractHighlights(payload) {
+  const h = [];
+  if (!payload) return h;
+  const mp = payload.mergedParams;
+  if (mp?.fileName) h.push(`fileName: "${mp.fileName}"`);
+  if (mp?.fileId)   h.push(`fileId: "${mp.fileId}"`);
+  if (mp?.query)    h.push(`query: "${mp.query}"`);
+  if (payload.selectedFileId)   h.push(`selectedFileId: "${payload.selectedFileId}"`);
+  if (payload.selectedFileName) h.push(`selectedFileName: "${payload.selectedFileName}"`);
+  if (payload.strategy)         h.push(`strategy: "${payload.strategy}"`);
+  if (payload.found !== undefined) h.push(`found: ${payload.found}`);
+  if (payload["parameters.fileId"])   h.push(`recv.fileId: "${payload["parameters.fileId"]}"`);
+  if (payload["parameters.fileName"]) h.push(`recv.fileName: "${payload["parameters.fileName"]}"`);
+  return h;
+}
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
 function JsonView({ data }) {
-  if (!data || Object.keys(data).length === 0) return <span className="text-zinc-500 text-xs italic">sem dados</span>;
+  if (!data || Object.keys(data).length === 0)
+    return <span className="text-zinc-500 text-xs italic">sem dados</span>;
   return (
     <pre className="text-xs text-zinc-300 whitespace-pre-wrap break-all leading-relaxed">
       {JSON.stringify(data, null, 2)}
@@ -29,49 +69,31 @@ function JsonView({ data }) {
 
 function EventRow({ event, idx }) {
   const [open, setOpen] = useState(false);
-  const color = SOURCE_COLORS[event.source] || "bg-zinc-600";
-  const label = SOURCE_LABELS[event.source] || event.source;
-  const ts = new Date(event.ts);
-  const timeStr = `${ts.getHours().toString().padStart(2,"0")}:${ts.getMinutes().toString().padStart(2,"0")}:${ts.getSeconds().toString().padStart(2,"0")}.${ts.getMilliseconds().toString().padStart(3,"0")}`;
-
-  // Highlight critical fields
-  const highlights = [];
-  if (event.data?.mergedParams) {
-    const mp = event.data.mergedParams;
-    if (mp.fileName) highlights.push(`fileName: "${mp.fileName}"`);
-    if (mp.fileId)   highlights.push(`fileId: "${mp.fileId}"`);
-    if (mp.query)    highlights.push(`query: "${mp.query}"`);
-  }
-  if (event.data?.selectedFileId)   highlights.push(`selectedFileId: "${event.data.selectedFileId}"`);
-  if (event.data?.selectedFileName) highlights.push(`selectedFileName: "${event.data.selectedFileName}"`);
-  if (event.data?.strategy)         highlights.push(`strategy: "${event.data.strategy}"`);
-  if (event.data?.found !== undefined) highlights.push(`found: ${event.data.found}`);
-
-  const hasBug =
-    (event.data?.mergedParams?.fileName && typeof event.data.mergedParams.fileName === "string" &&
-     event.data.mergedParams.fileName.toLowerCase().includes("download")) ||
-    (event.data?.strategy === "search by name" &&
-     typeof event.data?.fileName === "string" &&
-     event.data.fileName.toLowerCase().includes("download"));
+  const color    = SOURCE_COLORS[event.source]  || "bg-zinc-600";
+  const srcLabel = SOURCE_LABELS[event.source]  || event.source;
+  const bug      = hasBugSignal(event.payload);
+  const highlights = extractHighlights(event.payload);
 
   return (
-    <div className={`border-l-2 pl-3 py-2 ${hasBug ? "border-red-500 bg-red-950/20" : "border-zinc-700"}`}>
-      <div
-        className="flex items-center gap-2 cursor-pointer select-none"
-        onClick={() => setOpen(!open)}
-      >
+    <div className={`border-l-2 pl-3 py-2 ${bug ? "border-red-500 bg-red-950/20" : "border-zinc-700"}`}>
+      <div className="flex items-center gap-2 cursor-pointer select-none" onClick={() => setOpen(!open)}>
         <span className="text-zinc-600 text-xs w-5 text-right">{idx + 1}.</span>
-        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded text-white ${color}`}>{label}</span>
-        <span className="text-zinc-300 text-xs flex-1 truncate">{event.label}</span>
-        <span className="text-zinc-600 text-[10px] shrink-0">{timeStr}</span>
-        {hasBug && <span className="text-red-400 text-[10px] font-bold">⚠ BUG?</span>}
+        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded text-white ${color}`}>{srcLabel}</span>
+        <span className="text-zinc-300 text-xs flex-1 truncate">{event.event}</span>
+        <span className="text-zinc-600 text-[10px] shrink-0">{fmtTime(event.ts)}</span>
+        {bug && <span className="text-red-400 text-[10px] font-bold">⚠ BUG?</span>}
         <span className="text-zinc-600 text-xs">{open ? "▲" : "▼"}</span>
       </div>
 
       {highlights.length > 0 && (
         <div className="mt-1 flex flex-wrap gap-1 pl-7">
           {highlights.map((h, i) => (
-            <span key={i} className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${hasBug && h.includes("download") ? "bg-red-800 text-red-200" : "bg-zinc-800 text-zinc-300"}`}>
+            <span
+              key={i}
+              className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
+                bug && h.toLowerCase().includes("download") ? "bg-red-800 text-red-200" : "bg-zinc-800 text-zinc-300"
+              }`}
+            >
               {h}
             </span>
           ))}
@@ -80,51 +102,43 @@ function EventRow({ event, idx }) {
 
       {open && (
         <div className="mt-2 pl-7 bg-zinc-900 rounded p-2">
-          <JsonView data={event.data} />
+          <div className="text-[10px] text-zinc-600 font-mono mb-1">executionId: {event.executionId}</div>
+          <JsonView data={event.payload} />
         </div>
       )}
     </div>
   );
 }
 
-function RunCard({ run, isLatest }) {
+function ExecutionCard({ execution, isLatest }) {
   const [open, setOpen] = useState(isLatest);
-  const elapsed = run.closed
-    ? ((run.events[run.events.length - 1]?.ts ?? run.startedAt) - run.startedAt) + "ms"
+  const bug     = execution.events.some(e => hasBugSignal(e.payload));
+  const closed  = !!execution.endedAt;
+  const elapsed = closed
+    ? ((execution.endedAt ?? 0) - execution.startedAt) + "ms"
     : "em andamento…";
 
-  const startTime = new Date(run.startedAt);
-  const startStr = `${startTime.getHours().toString().padStart(2,"0")}:${startTime.getMinutes().toString().padStart(2,"0")}:${startTime.getSeconds().toString().padStart(2,"0")}`;
-
-  const hasBug = run.events.some(e =>
-    (e.data?.mergedParams?.fileName && typeof e.data.mergedParams.fileName === "string" &&
-     e.data.mergedParams.fileName.toLowerCase().includes("download")) ||
-    (e.data?.strategy === "search by name" &&
-     typeof e.data?.fileName === "string" &&
-     e.data.fileName?.toLowerCase().includes("download"))
-  );
-
   return (
-    <div className={`rounded-lg border mb-3 overflow-hidden ${hasBug ? "border-red-700" : isLatest ? "border-violet-600" : "border-zinc-800"}`}>
+    <div className={`rounded-lg border mb-3 overflow-hidden ${bug ? "border-red-700" : isLatest ? "border-violet-600" : "border-zinc-800"}`}>
       <div
-        className={`flex items-center gap-3 px-4 py-3 cursor-pointer ${hasBug ? "bg-red-950/30" : isLatest ? "bg-violet-950/30" : "bg-zinc-900"}`}
+        className={`flex items-center gap-3 px-4 py-3 cursor-pointer ${bug ? "bg-red-950/30" : isLatest ? "bg-violet-950/30" : "bg-zinc-900"}`}
         onClick={() => setOpen(!open)}
       >
-        <span className={`w-2 h-2 rounded-full shrink-0 ${run.closed ? "bg-zinc-500" : "bg-green-400 animate-pulse"}`} />
-        <span className="text-zinc-300 text-sm font-mono flex-1">{run.id}</span>
-        <span className="text-zinc-500 text-xs">{startStr}</span>
+        <span className={`w-2 h-2 rounded-full shrink-0 ${closed ? "bg-zinc-500" : "bg-green-400 animate-pulse"}`} />
+        <span className="text-zinc-300 text-xs font-mono flex-1 truncate">{execution.executionId}</span>
+        <span className="text-zinc-500 text-xs">{fmtTime(execution.startedAt)}</span>
         <span className="text-zinc-500 text-xs">{elapsed}</span>
-        <span className="text-zinc-500 text-xs">{run.events.length} eventos</span>
-        {hasBug && <span className="text-red-400 text-xs font-bold">⚠ ANOMALIA</span>}
+        <span className="text-zinc-500 text-xs">{execution.events.length} eventos</span>
+        {bug && <span className="text-red-400 text-xs font-bold">⚠ ANOMALIA</span>}
         <span className="text-zinc-600 text-xs">{open ? "▲" : "▼"}</span>
       </div>
 
       {open && (
         <div className="px-4 py-3 bg-zinc-950 space-y-1">
-          {run.events.length === 0 ? (
+          {execution.events.length === 0 ? (
             <p className="text-zinc-600 text-xs italic">Nenhum evento capturado ainda.</p>
           ) : (
-            run.events.map((ev, i) => <EventRow key={i} event={ev} idx={i} />)
+            execution.events.map((ev, i) => <EventRow key={ev.id} event={ev} idx={i} />)
           )}
         </div>
       )}
@@ -132,33 +146,33 @@ function RunCard({ run, isLatest }) {
   );
 }
 
+// ── Page ──────────────────────────────────────────────────────────────────────
+
 export default function DriveDebugPanel() {
-  const [runs, setRuns] = useState(() => driveDebugStore.getRuns());
-  const [newRunId, setNewRunId] = useState(null);
+  const [executions, setExecutions] = useState(() => RuntimeDebug.getExecutions("google-drive"));
 
   useEffect(() => {
-    const unsub = driveDebugStore.subscribe(() => {
-      setRuns(driveDebugStore.getRuns());
+    const unsub = RuntimeDebug.subscribe(() => {
+      setExecutions(RuntimeDebug.getExecutions("google-drive"));
     });
     return unsub;
   }, []);
 
-  const handleStartRun = useCallback(() => {
-    const id = driveDebugStore.startRun();
-    setNewRunId(id);
-  }, []);
-
-  const handleClear = useCallback(() => {
-    driveDebugStore.clear();
-    setNewRunId(null);
+  const handleStart = useCallback(() => {
+    RuntimeDebug.startExecution("google-drive");
   }, []);
 
   const handleCloseLatest = useCallback(() => {
-    const open = runs.find(r => !r.closed);
-    if (open) driveDebugStore.closeRun(open.id);
-  }, [runs]);
+    const open = executions.find(e => !e.endedAt);
+    if (open) RuntimeDebug.closeExecution(open.executionId);
+  }, [executions]);
 
-  const openRun = runs.find(r => !r.closed);
+  const handleClear = useCallback(() => {
+    RuntimeDebug.clear("google-drive");
+  }, []);
+
+  const openExecution = executions.find(e => !e.endedAt);
+  const totalEvents   = executions.reduce((acc, e) => acc + e.events.length, 0);
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white p-6">
@@ -170,11 +184,11 @@ export default function DriveDebugPanel() {
             Drive Debug Runtime Panel
           </h1>
           <p className="text-zinc-500 text-sm mt-1">
-            Captura todos os eventos [DIAG] do fluxo Google Drive em tempo real.
+            RuntimeDebug Event Bus — observabilidade ponta a ponta com Correlation ID.
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {openRun && (
+          {openExecution && (
             <button
               onClick={handleCloseLatest}
               className="px-3 py-1.5 text-xs rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-300 transition-colors"
@@ -183,7 +197,7 @@ export default function DriveDebugPanel() {
             </button>
           )}
           <button
-            onClick={handleStartRun}
+            onClick={handleStart}
             className="px-3 py-1.5 text-xs rounded bg-violet-600 hover:bg-violet-500 text-white transition-colors font-bold"
           >
             + Nova execução
@@ -205,35 +219,35 @@ export default function DriveDebugPanel() {
           <li>Vá para <span className="text-zinc-300">/chat</span> e envie "CNH"</li>
           <li>Aguarde a resposta com a lista de arquivos</li>
           <li>Envie "Faça o download"</li>
-          <li>Volte aqui — os eventos aparecerão automaticamente</li>
+          <li>Volte aqui — os eventos aparecerão com Correlation ID compartilhado</li>
           <li>Eventos com <span className="text-red-400">⚠ ANOMALIA</span> indicam onde o bug ocorreu</li>
         </ol>
       </div>
 
       {/* Status bar */}
       <div className="flex items-center gap-4 mb-4 text-xs text-zinc-500">
-        <span>{runs.length} execuções capturadas</span>
-        {openRun && (
+        <span>{executions.length} execuções</span>
+        {openExecution && (
           <span className="flex items-center gap-1 text-green-400">
             <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-            Capturando eventos…
+            Capturando — {openExecution.executionId}
           </span>
         )}
         <span className="ml-auto font-mono text-zinc-700">
-          window.__MEMORY_DEBUG__.drive — {runs.reduce((acc, r) => acc + r.events.length, 0)} eventos totais
+          window.__MEMORY_DEBUG__.drive — {totalEvents} eventos
         </span>
       </div>
 
-      {/* Runs */}
-      {runs.length === 0 ? (
+      {/* Executions */}
+      {executions.length === 0 ? (
         <div className="text-center py-16 text-zinc-600">
           <p className="text-4xl mb-3">🔍</p>
           <p className="text-sm">Nenhuma execução ainda.</p>
-          <p className="text-xs mt-1">Clique em "+ Nova execução" e depois execute o fluxo no chat.</p>
+          <p className="text-xs mt-1">Clique em "+ Nova execução" e execute o fluxo no chat.</p>
         </div>
       ) : (
-        runs.map((run, i) => (
-          <RunCard key={run.id} run={run} isLatest={i === 0} />
+        executions.map((ex, i) => (
+          <ExecutionCard key={ex.executionId} execution={ex} isLatest={i === 0} />
         ))
       )}
     </div>

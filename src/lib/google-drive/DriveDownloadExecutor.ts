@@ -34,6 +34,7 @@ import {
   DEFAULT_RANKING_POLICY,
   DEFAULT_EXPORT_POLICY,
 } from "./DriveDownloadPolicies";
+import { RuntimeDebug } from "@/lib/debug/RuntimeDebug";
 import type { RankingPolicy, ExportPolicy, RankCandidate } from "./DriveDownloadPolicies";
 import { httpStatusToErrorCode } from "./DriveConnectorContract";
 import type { ConnectorAudit } from "./DriveConnectorContract";
@@ -128,16 +129,24 @@ export async function executeDriveDownload(
   const queryFallback  = typeof parameters.query       === "string" ? parameters.query.trim()       : null;
   const rawText        = typeof parameters.rawText     === "string" ? parameters.rawText.trim()     : null;
 
-  // [DIAG] DriveDownloadExecutor — received parameters
-  console.log("[DIAG][DriveDownloadExecutor] received parameters", {
-    "parameters.fileId":       parameters.fileId       ?? null,
-    "parameters.fileName":     parameters.fileName     ?? null,
-    "parameters.filePath":     parameters.filePath     ?? null,
-    "parameters.query":        parameters.query        ?? null,
-    "parameters.outputFormat": parameters.outputFormat ?? null,
-    "parameters.rawText":      parameters.rawText      ?? null,
-    allParameterKeys: Object.keys(parameters),
-    allParameterValues: parameters,
+  const _execId = typeof parameters._debugExecutionId === "string"
+    ? parameters._debugExecutionId
+    : `drive-dl-${Date.now()}`;
+
+  RuntimeDebug.emit({
+    executionId: _execId,
+    connector:   "google-drive",
+    source:      "DriveDownloadExecutor",
+    event:       "received parameters",
+    payload: {
+      "parameters.fileId":       parameters.fileId       ?? null,
+      "parameters.fileName":     parameters.fileName     ?? null,
+      "parameters.filePath":     parameters.filePath     ?? null,
+      "parameters.query":        parameters.query        ?? null,
+      "parameters.outputFormat": parameters.outputFormat ?? null,
+      "parameters.rawText":      parameters.rawText      ?? null,
+      allParameterKeys: Object.keys(parameters),
+    },
   });
 
   function fail(code: DownloadErrorCode, message: string, fileId: string | null, extra: Partial<DownloadFailure> = {}): DownloadFailure {
@@ -154,26 +163,30 @@ export async function executeDriveDownload(
   let resolvedBy: "fileId" | "search" = "fileId";
   let resolvedCandidates: RankCandidate[] | undefined;
 
-  // [DIAG] DriveDownloadExecutor — resolution strategy selection
-  console.log("[DIAG][DriveDownloadExecutor] strategy selection", {
-    hasExplicitFileId: !!explicitFileId,
-    hasFileName:       !!fileName,
-    hasQueryFallback:  !!queryFallback,
-    hasRawText:        !!rawText,
-    explicitFileId,
-    fileName,
-    queryFallback,
-    rawText,
-    strategy: explicitFileId
-      ? "explicit fileId"
-      : !fileName && !queryFallback && !rawText
-        ? "conversation context"
-        : "search by name",
+  RuntimeDebug.emit({
+    executionId: _execId,
+    connector:   "google-drive",
+    source:      "DriveDownloadExecutor",
+    event:       "strategy selection",
+    payload: {
+      hasExplicitFileId: !!explicitFileId,
+      hasFileName:       !!fileName,
+      hasQueryFallback:  !!queryFallback,
+      hasRawText:        !!rawText,
+      explicitFileId,
+      fileName,
+      queryFallback,
+      rawText,
+      strategy: explicitFileId
+        ? "explicit fileId"
+        : !fileName && !queryFallback && !rawText
+          ? "conversation context"
+          : "search by name",
+    },
   });
 
   if (explicitFileId) {
-    // [DIAG]
-    console.log("[DIAG][DriveDownloadExecutor] using strategy: explicit fileId →", explicitFileId);
+    RuntimeDebug.emit({ executionId: _execId, connector: "google-drive", source: "DriveDownloadExecutor", event: "using strategy: explicit fileId", payload: { explicitFileId } });
     resolvedFileId = explicitFileId;
   } else if (!fileName && !queryFallback && !rawText) {
     // No explicit identifier — attempt recovery from session-scoped ConversationStore.
@@ -184,12 +197,17 @@ export async function executeDriveDownload(
       const { readDriveContext }  = await import("@/lib/connector-context/providers/GoogleDriveContextBuilder");
       const raw      = conversationStore.getConnectorContext("google-drive");
       const driveCtx = readDriveContext(raw);
-      // [DIAG]
-      console.log("[DIAG][DriveDownloadExecutor] using strategy: conversation context", {
-        rawContextFound:  raw !== null,
-        driveCtxFound:    driveCtx !== null,
-        selectedFileId:   driveCtx?.selectedFileId   ?? null,
-        selectedFileName: driveCtx?.selectedFileName ?? null,
+      RuntimeDebug.emit({
+        executionId: _execId,
+        connector:   "google-drive",
+        source:      "DriveDownloadExecutor",
+        event:       "using strategy: conversation context",
+        payload: {
+          rawContextFound:  raw !== null,
+          driveCtxFound:    driveCtx !== null,
+          selectedFileId:   driveCtx?.selectedFileId   ?? null,
+          selectedFileName: driveCtx?.selectedFileName ?? null,
+        },
       });
       if (driveCtx && driveCtx.selectedFileId) {
         resolvedFileId = driveCtx.selectedFileId;
@@ -206,8 +224,7 @@ export async function executeDriveDownload(
       return fail("NO_PARAMS", "Nenhum fileId ou fileName fornecido. Especifique o nome do arquivo para download.", null);
     }
 
-    // [DIAG]
-    console.log("[DIAG][DriveDownloadExecutor] using strategy: search by name →", { searchQuery });
+    RuntimeDebug.emit({ executionId: _execId, connector: "google-drive", source: "DriveDownloadExecutor", event: "using strategy: search by name", payload: { searchQuery, fileName, queryFallback, rawText } });
 
     // Delegate search to connector — no HTTP here
     const searchResults = await connector.searchByName(searchQuery, { pageSize: 20 });

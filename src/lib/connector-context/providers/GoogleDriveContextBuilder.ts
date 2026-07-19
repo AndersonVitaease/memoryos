@@ -25,6 +25,7 @@ import type {
   IConnectorContextBuilder,
   ConnectorContextBuildRequest,
 }                                              from "../ConnectorContextBuilderRegistry";
+import { RuntimeDebug }                       from "@/lib/debug/RuntimeDebug";
 
 // ── Drive-specific types ──────────────────────────────────────────────────────
 
@@ -138,13 +139,18 @@ export const GoogleDriveContextBuilder: IConnectorContextBuilder = {
 
       if (files.length > 0) {
         const ctx = _makeContext(files, 0, capability, executionMetadata);
-        // [DIAG] GoogleDriveContextBuilder — Case 1 (list/search)
-        console.log("[DIAG][DriveCtxBuilder] built context from file list", {
-          capability,
-          fileCount:        files.length,
-          selectedFileId:   ctx.selectedFileId,
-          selectedFileName: ctx.selectedFileName,
-          fileNames:        files.slice(0, 5).map((f) => f.name),
+        RuntimeDebug.emit({
+          executionId: executionMetadata.executionId ?? "unknown",
+          connector:   "google-drive",
+          source:      "DriveContextBuilder",
+          event:       "built context from file list",
+          payload: {
+            capability,
+            fileCount:        files.length,
+            selectedFileId:   ctx.selectedFileId,
+            selectedFileName: ctx.selectedFileName,
+            fileNames:        files.slice(0, 5).map((f) => f.name),
+          },
         });
         return ctx;
       }
@@ -161,19 +167,29 @@ export const GoogleDriveContextBuilder: IConnectorContextBuilder = {
         capability,
         executionMetadata,
       );
-      // [DIAG] GoogleDriveContextBuilder — Case 2 (single file)
-      console.log("[DIAG][DriveCtxBuilder] built context from single file", {
-        capability,
-        selectedFileId:   ctx.selectedFileId,
-        selectedFileName: ctx.selectedFileName,
+      RuntimeDebug.emit({
+        executionId: executionMetadata.executionId ?? "unknown",
+        connector:   "google-drive",
+        source:      "DriveContextBuilder",
+        event:       "built context from single file",
+        payload: {
+          capability,
+          selectedFileId:   ctx.selectedFileId,
+          selectedFileName: ctx.selectedFileName,
+        },
       });
       return ctx;
     }
 
-    // [DIAG] GoogleDriveContextBuilder — no context built
-    console.log("[DIAG][DriveCtxBuilder] could not build context — no files and no singleId", {
-      capability,
-      outputKeys: Object.keys(output),
+    RuntimeDebug.emit({
+      executionId: executionMetadata.executionId ?? "unknown",
+      connector:   "google-drive",
+      source:      "DriveContextBuilder",
+      event:       "could not build context — no files and no singleId",
+      payload: {
+        capability,
+        outputKeys: Object.keys(output),
+      },
     });
     return null;
   },

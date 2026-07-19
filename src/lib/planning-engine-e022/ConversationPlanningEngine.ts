@@ -29,6 +29,7 @@
 import type { ConversationGoal }    from "@/lib/goals/GoalTypes";
 import type { GoalType }            from "@/lib/goals/GoalTypes";
 import { GoalCapabilityRegistry }   from "./GoalCapabilityRegistry";
+import { RuntimeDebug }             from "@/lib/debug/RuntimeDebug";
 import {
   makePlanId,
   makeStepId,
@@ -92,18 +93,24 @@ export class ConversationPlanningEngine {
       const steps: ExecutionStep[] = descriptors.map((desc) => {
         idx++;
         const mergedParams = { ...desc.params, ...goal.parameters };
-        // [DIAG] ConversationPlanningEngine — step parameters before runtime
+        // Observabilidade: emite evento no RuntimeDebug para conectores Drive
         if (desc.capability === "drive.downloadFile" || desc.connector === "google-drive") {
-          console.log("[DIAG][Planner] drive step parameters", {
-            goalType:   goal.type,
-            connector:  desc.connector,
-            capability: desc.capability,
-            "desc.params":      desc.params,
-            "goal.parameters":  goal.parameters,
-            "mergedParams":     mergedParams,
-            "fileName in merged":  mergedParams.fileName  ?? null,
-            "fileId in merged":    mergedParams.fileId    ?? null,
-            "query in merged":     mergedParams.query     ?? null,
+          RuntimeDebug.emit({
+            executionId: goal.id ?? "unknown",
+            connector:   "google-drive",
+            source:      "Planner",
+            event:       "drive step parameters",
+            payload: {
+              goalType:          goal.type,
+              connector:         desc.connector,
+              capability:        desc.capability,
+              descParams:        desc.params,
+              goalParameters:    goal.parameters,
+              mergedParams,
+              "fileName in merged":  mergedParams.fileName  ?? null,
+              "fileId in merged":    mergedParams.fileId    ?? null,
+              "query in merged":     mergedParams.query     ?? null,
+            },
           });
         }
         return Object.freeze({

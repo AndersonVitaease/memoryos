@@ -15,6 +15,7 @@ import type {
   ConversationEvent,
   ConversationEventType,
 } from "./CXPTypes";
+import { RuntimeDebug } from "@/lib/debug/RuntimeDebug";
 import type {
   BaseConnectorContext,
   ConnectorContextMap,
@@ -116,13 +117,16 @@ class ConversationStore {
    * Each connector is responsible exclusively for its own context slot.
    */
   setConnectorContext(connectorId: string, ctx: BaseConnectorContext): void {
-    // [DIAG] ConversationStore.setConnectorContext
-    const driveCtx = ctx as Record<string, unknown>;
-    console.log("[DIAG][ConversationStore] setConnectorContext", {
-      connectorId,
-      selectedFileId:   driveCtx.selectedFileId   ?? null,
-      selectedFileName: driveCtx.selectedFileName ?? null,
-      fullContext:      ctx,
+    RuntimeDebug.emit({
+      executionId: (ctx as Record<string, unknown>).executionId as string ?? "unknown",
+      connector:   connectorId as "google-drive",
+      source:      "ConversationStore",
+      event:       "setConnectorContext",
+      payload: {
+        connectorId,
+        selectedFileId:   (ctx as Record<string, unknown>).selectedFileId   ?? null,
+        selectedFileName: (ctx as Record<string, unknown>).selectedFileName ?? null,
+      },
     });
     this._patch({
       connectorContexts: { ...this._state.connectorContexts, [connectorId]: ctx },
@@ -134,13 +138,17 @@ class ConversationStore {
    */
   getConnectorContext(connectorId: string): BaseConnectorContext | null {
     const ctx = this._state.connectorContexts[connectorId] ?? null;
-    // [DIAG] ConversationStore.getConnectorContext
-    const driveCtx = ctx as Record<string, unknown> | null;
-    console.log("[DIAG][ConversationStore] getConnectorContext", {
-      connectorId,
-      found:            ctx !== null,
-      selectedFileId:   driveCtx?.selectedFileId   ?? null,
-      selectedFileName: driveCtx?.selectedFileName ?? null,
+    RuntimeDebug.emit({
+      executionId: (ctx as Record<string, unknown> | null)?.executionId as string ?? "unknown",
+      connector:   connectorId as "google-drive",
+      source:      "ConversationStore",
+      event:       "getConnectorContext",
+      payload: {
+        connectorId,
+        found:            ctx !== null,
+        selectedFileId:   (ctx as Record<string, unknown> | null)?.selectedFileId   ?? null,
+        selectedFileName: (ctx as Record<string, unknown> | null)?.selectedFileName ?? null,
+      },
     });
     return ctx;
   }
