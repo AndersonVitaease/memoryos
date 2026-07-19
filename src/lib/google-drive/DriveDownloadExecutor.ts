@@ -128,6 +128,17 @@ export async function executeDriveDownload(
   const queryFallback  = typeof parameters.query       === "string" ? parameters.query.trim()       : null;
   const rawText        = typeof parameters.rawText     === "string" ? parameters.rawText.trim()     : null;
 
+  // ── FILEID LIFECYCLE — STEP 1: DriveDownloadExecutor entry
+  console.group("%c[FILEID-LIFECYCLE][1-DOWNLOAD-EXECUTOR-ENTRY]", "color:#60a5fa;font-weight:bold");
+  console.log("timestamp        :", new Date(startedAt).toISOString());
+  console.log("parameters (raw) :", JSON.stringify(parameters));
+  console.log("explicitFileId   :", explicitFileId ?? "NULL");
+  console.log("fileName         :", fileName ?? "NULL");
+  console.log("queryFallback    :", queryFallback ?? "NULL");
+  console.log("rawText          :", rawText ?? "NULL");
+  console.log("resolveStrategy  :", explicitFileId ? "DIRECT (fileId present)" : `SEARCH (using: ${fileName ?? queryFallback ?? rawText ?? "NOTHING — will fail"})`);
+  console.groupEnd();
+
   function fail(code: DownloadErrorCode, message: string, fileId: string | null, extra: Partial<DownloadFailure> = {}): DownloadFailure {
     const dur = Date.now() - t0;
     return { ok: false, code, message, fileId, fileName, durationMs: dur, audit: makeAudit("failure", startedAt, dur, code), ...extra };
@@ -157,6 +168,16 @@ export async function executeDriveDownload(
       return fail("NOT_FOUND", `Arquivo não encontrado: "${searchQuery}". Verifique o nome ou o acesso ao Google Drive.`, null);
     }
 
+    // ── FILEID LIFECYCLE — STEP 1b: Raw search result
+    console.group("%c[FILEID-LIFECYCLE][1b-SEARCH-RESULT]", "color:#60a5fa;font-weight:bold");
+    console.log("timestamp      :", new Date().toISOString());
+    console.log("searchQuery    :", searchQuery);
+    console.log("resultCount    :", searchResults.length);
+    searchResults.slice(0, 5).forEach((f, i) => {
+      console.log(`result[${i}]    :`, JSON.stringify({ id: f.id, name: f.name, mimeType: f.mimeType }));
+    });
+    console.groupEnd();
+
     const ranked = rankCandidates(searchResults, searchQuery, rankPolicy);
     resolvedCandidates = ranked;
 
@@ -183,6 +204,14 @@ export async function executeDriveDownload(
       }
     }
   }
+
+  // ── FILEID LIFECYCLE — STEP 1c: Resolved fileId after search/rank
+  console.group("%c[FILEID-LIFECYCLE][1c-RESOLVED-FILEID]", "color:#60a5fa;font-weight:bold");
+  console.log("timestamp      :", new Date().toISOString());
+  console.log("resolvedFileId :", resolvedFileId);
+  console.log("resolvedBy     :", resolvedBy);
+  console.log("source         :", resolvedBy === "fileId" ? "parameters.fileId (direct)" : `search result for "${searchQuery ?? fileName}"`);
+  console.groupEnd();
 
   // ── Step 2: Get metadata — delegate to connector ──────────────────────────
 

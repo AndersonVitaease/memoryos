@@ -376,7 +376,30 @@ export class GoogleDriveConnector implements IConnector {
       // -- Files Get -----------------------------------------------------------
 
       case "drive.files.get": {
+        // ── FILEID LIFECYCLE — STEP 7+8: Payload received by drive.files.get
+        console.group("%c[FILEID-LIFECYCLE][7-DRIVE-FILES-GET-PAYLOAD]", "color:#ef4444;font-weight:bold");
+        console.log("timestamp         :", new Date().toISOString());
+        console.log("operation         :", operation);
+        console.log("executionId       :", eid);
+        console.log("payload (full)    :", JSON.stringify(payload));
+        console.log("payload.fileId    :", payload.fileId ?? "ABSENT");
+        console.log("payload.fileName  :", payload.fileName ?? "ABSENT");
+        console.log("typeof fileId     :", typeof payload.fileId);
+        console.log("fileId is truthy  :", !!(payload.fileId));
+        // Stack trace to see call chain
+        console.log("call stack        :", new Error("stack-capture").stack);
+        console.groupEnd();
+
         const fileId = typeof payload.fileId === "string" ? payload.fileId : null;
+
+        // ── FILEID LIFECYCLE — STEP 9: Validation result
+        console.group("%c[FILEID-LIFECYCLE][9-VALIDATION]", fileId ? "color:#22c55e;font-weight:bold" : "color:#ef4444;font-weight:bold");
+        console.log("timestamp         :", new Date().toISOString());
+        console.log("resolvedFileId    :", fileId ?? "NULL — VALIDATION WILL FAIL");
+        console.log("source            :", "payload.fileId (string coercion)");
+        console.log("WILL_FAIL         :", !fileId);
+        console.groupEnd();
+
         if (!fileId) return fail("fileId is required", "validation", start, eid, logs, operation);
         const fields = "id,name,mimeType,size,modifiedTime,createdTime,owners,parents,webViewLink,thumbnailLink,trashed,description,md5Checksum,sha256Checksum,capabilities";
 

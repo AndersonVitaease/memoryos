@@ -58,6 +58,37 @@ export async function synthesizeConnectorResult(
     return { handled: true, response, connectorData: null };
   }
 
+  // ── FILEID LIFECYCLE — STEP 5: Working memory state (connector output)
+  console.group("%c[FILEID-LIFECYCLE][5-CONNECTOR-OUTPUT]", "color:#34d399;font-weight:bold");
+  console.log("timestamp      :", new Date().toISOString());
+  console.log("userMsg        :", userMsg);
+  console.log("goalType       :", goalType);
+  console.log("execStatus     :", result.status);
+  console.log("stepCount      :", result.steps.length);
+  result.steps.forEach((s, i) => {
+    const out = s.output as Record<string, unknown> | null;
+    console.group(`step[${i}] ${s.connector}/${s.capability} status=${s.status}`);
+    if (out) {
+      console.log("output.fileId  :", (out as any)?.id ?? (out as any)?.fileId ?? "ABSENT");
+      console.log("output.name    :", (out as any)?.name ?? "ABSENT");
+      console.log("output.mimeType:", (out as any)?.mimeType ?? "ABSENT");
+      console.log("output (keys)  :", Object.keys(out));
+      // For search results: log first few files
+      const files = (out as any)?.files;
+      if (Array.isArray(files)) {
+        console.log("files count    :", files.length);
+        files.slice(0, 3).forEach((f: any, fi: number) => {
+          console.log(`  file[${fi}]   :`, JSON.stringify({ id: f.id, name: f.name, mimeType: f.mimeType }));
+        });
+      }
+    } else {
+      console.log("output         : NULL");
+    }
+    console.log("error          :", s.error ?? "none");
+    console.groupEnd();
+  });
+  console.groupEnd();
+
   // ── Runtime completed — extract data from step outputs ───────────────────
   const completedSteps = result.steps.filter((s) => s.status === "completed" && s.output !== null);
 
@@ -96,6 +127,26 @@ export async function synthesizeConnectorResult(
       output:     s.output,
     };
   });
+
+  // ── FILEID LIFECYCLE — STEP 4: Data sent to LLM
+  console.group("%c[FILEID-LIFECYCLE][4-LLM-CONTEXT]", "color:#34d399;font-weight:bold");
+  console.log("timestamp      :", new Date().toISOString());
+  console.log("userMsg        :", userMsg);
+  console.log("goalType       :", goalType);
+  console.log("connectorData  :", JSON.stringify(connectorData).slice(0, 2000));
+  // Extract and log all fileIds found in connectorData
+  const fileIds: string[] = [];
+  connectorData.forEach((step) => {
+    const out = step.output as Record<string, unknown> | null;
+    if (!out) return;
+    if ((out as any).id) fileIds.push(`${step.capability}::id=${(out as any).id}`);
+    const files = (out as any).files;
+    if (Array.isArray(files)) {
+      files.slice(0, 5).forEach((f: any) => fileIds.push(`${step.capability}::files[]::id=${f.id}::name=${f.name}`));
+    }
+  });
+  console.log("ALL fileIds in context:", fileIds.length > 0 ? fileIds : "NONE FOUND");
+  console.groupEnd();
 
   // ── Synthesize with LLM ────────────────────────────────────────────────────
   try {

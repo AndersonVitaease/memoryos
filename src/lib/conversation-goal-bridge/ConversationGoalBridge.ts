@@ -70,12 +70,36 @@ export class ConversationGoalBridge {
       goalType   = match.type;
       parameters = match.extractParams(userMessage);
       confidence = Math.round(Math.min(cognitiveConfidence + 0.3, 1) * 100) / 100;
+
+      // ── FILEID LIFECYCLE — STEP 2: GoalBridge signal match + param extraction
+      console.group("%c[FILEID-LIFECYCLE][2-GOAL-BRIDGE]", "color:#a78bfa;font-weight:bold");
+      console.log("timestamp      :", new Date().toISOString());
+      console.log("userMessage    :", userMessage);
+      console.log("matchedGoal    :", goalType);
+      console.log("extractedParams:", JSON.stringify(parameters));
+      console.log("fileId present :", "fileId" in parameters ? parameters.fileId : "ABSENT");
+      console.log("fileName       :", "fileName" in parameters ? parameters.fileName : "ABSENT");
+      console.log("rawText        :", "rawText" in parameters ? parameters.rawText : "ABSENT");
+      console.groupEnd();
     } else {
       // No explicit signal match — try implicit connector intent (E-02.6)
       const implicit = implicitConnectorIntentDetector.resolve(
         userMessage,
         GoalRegistry.listAll(),
       );
+
+      // ── FILEID LIFECYCLE — STEP 6: Context recovered for "Esse mesmo" path
+      console.group("%c[FILEID-LIFECYCLE][6-IMPLICIT-DETECTOR]", "color:#f97316;font-weight:bold");
+      console.log("timestamp        :", new Date().toISOString());
+      console.log("userMessage      :", userMessage);
+      console.log("implicit.detected:", implicit.detected);
+      console.log("implicit.goalType:", implicit.goalType);
+      console.log("implicit.params  :", JSON.stringify(implicit.parameters));
+      console.log("implicit.entities:", JSON.stringify((implicit.resolution?.winner?.entities ?? {})));
+      console.log("fileId in entities:", (implicit.resolution?.winner?.entities as any)?.fileId ?? "ABSENT");
+      console.log("fileName in params:", (implicit.parameters as any)?.fileName ?? "ABSENT");
+      console.log("label            :", implicit.label);
+      console.groupEnd();
 
       if (implicit.detected && implicit.goalType) {
         goalType   = implicit.goalType;

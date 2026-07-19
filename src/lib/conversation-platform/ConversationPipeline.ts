@@ -347,16 +347,28 @@ class ConversationPipeline {
         const { conversationPlanningEngine } = await import("@/lib/planning-engine-e022/ConversationPlanningEngine");
         const planResult = conversationPlanningEngine.plan(goalBridgeResult.goal);
 
-        // LOG — CAPABILITY_ROUTER: capability chosen by Planner
-        console.log("[CAPABILITY_ROUTER]", {
-          intent:             goalBridgeResult.goal.type,
-          confidence:         goalBridgeResult.goal.confidence,
-          selectedCapability: planResult.plan.steps.map(s => `${s.connector}/${s.capability}`),
-          planId:             planResult.plan.id,
-          planSuccess:        planResult.success,
-          stepCount:          planResult.plan.steps.length,
-          parameters:         planResult.plan.steps.map(s => s.parameters),
+        // ── FILEID LIFECYCLE — STEP 3: Objects sent to Planner ──────────────
+        console.group("%c[FILEID-LIFECYCLE][3-PLANNER-INPUT]", "color:#f59e0b;font-weight:bold");
+        console.log("timestamp     :", new Date().toISOString());
+        console.log("goalType      :", goalBridgeResult.goal.type);
+        console.log("goal.params   :", JSON.stringify(goalBridgeResult.goal.parameters));
+        console.log("fileId in goal:", (goalBridgeResult.goal.parameters as Record<string,unknown>)?.fileId ?? "ABSENT");
+        console.log("fileName      :", (goalBridgeResult.goal.parameters as Record<string,unknown>)?.fileName ?? "ABSENT");
+        console.log("rawText       :", (goalBridgeResult.goal.parameters as Record<string,unknown>)?.rawText ?? "ABSENT");
+        console.groupEnd();
+
+        // ── FILEID LIFECYCLE — STEP 3b: Objects sent to Planner (output) ────
+        console.group("%c[FILEID-LIFECYCLE][3b-PLANNER-OUTPUT]", "color:#f59e0b;font-weight:bold");
+        console.log("timestamp     :", new Date().toISOString());
+        console.log("planSuccess   :", planResult.success);
+        console.log("stepCount     :", planResult.plan.steps.length);
+        planResult.plan.steps.forEach((s, i) => {
+          console.log(`step[${i}] connector ="${s.connector}" cap="${s.capability}"`);
+          console.log(`step[${i}] parameters:`, JSON.stringify(s.parameters));
+          console.log(`step[${i}] fileId     :`, (s.parameters as Record<string,unknown>)?.fileId ?? "ABSENT");
+          console.log(`step[${i}] fileName   :`, (s.parameters as Record<string,unknown>)?.fileName ?? "ABSENT");
         });
+        console.groupEnd();
 
         if (planResult.success && planResult.plan.steps.length > 0) {
           setPhase("executing_capabilities");
