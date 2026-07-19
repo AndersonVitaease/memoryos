@@ -47,6 +47,17 @@ export class ExecutionDispatcher {
     const { executionId, step, stepTimeoutMs } = input;
     const startedAt  = Date.now();
     const retryCtx: RetryContext = { attempt: 1, maxAttempts: 1, lastError: null };
+    // [RUNTIME-PROBE][EXD-01] ExecutionDispatcher.dispatch() entered
+    console.log("[RUNTIME-PROBE][EXD-01]", {
+      probe:      "dispatcher:dispatch:entry",
+      t:          performance.now(),
+      ts:         Date.now(),
+      executionId,
+      connector:  step.connector,
+      capability: step.capability,
+      stepId:     step.id,
+      stepTimeoutMs,
+    });
 
     try {
       const outputPromise = this._executor.execute({ executionId, step, retryCtx });

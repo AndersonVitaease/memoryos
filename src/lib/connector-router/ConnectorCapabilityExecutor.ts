@@ -31,6 +31,19 @@ export class ConnectorCapabilityExecutor implements ICapabilityExecutor {
     const routerResult = await this._router.route(executionId, step);
 
     if (!routerResult.found || routerResult.result === null) {
+      // [RUNTIME-PROBE][CCE-01] Connector NOT found — execution terminates here
+      console.log("[RUNTIME-PROBE][CCE-01]", {
+        probe:       "capabilityExecutor:connectorNotFound",
+        t:           performance.now(),
+        ts:          Date.now(),
+        executionId,
+        connector:   step.connector,
+        capability:  step.capability,
+        routerError: routerResult.error,
+        regSize:     (this._router as any)._registry?.size?.() ?? "unknown",
+        regContents: (this._router as any)._registry?.list?.() ?? [],
+        note:        "GoogleDriveConnector.execute() will NOT be called. If regSize===0, race condition confirmed.",
+      });
       return Object.freeze({
         status: "failed" as StepStatus,
         output: null,

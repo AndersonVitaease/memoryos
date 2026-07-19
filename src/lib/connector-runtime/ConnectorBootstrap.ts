@@ -92,6 +92,16 @@ export const ConnectorBootstrap = Object.freeze({
     const loadedIds: string[] = [];
     let capabilitiesLoaded    = 0;
 
+    // [RUNTIME-PROBE][CBS-01] ConnectorBootstrap.bootstrap() started
+    console.log("[RUNTIME-PROBE][CBS-01]", {
+      probe:        "bootstrap:started",
+      t:            performance.now(),
+      ts:           Date.now(),
+      factoryCount: OFFICIAL_FACTORIES.length,
+      regSizeAtEntry: registry.count(),
+      note:         "If this fires AFTER any CXP-01, the first request arrived before bootstrap began.",
+    });
+
     for (const factory of OFFICIAL_FACTORIES) {
       let connector: IConnector | null = null;
       try {
@@ -116,10 +126,32 @@ export const ConnectorBootstrap = Object.freeze({
         registry.register(connector);
         capabilitiesLoaded += connector.metadata().capabilities.length;
         loadedIds.push(connector.id);
+        // [RUNTIME-PROBE][CBS-02] Connector registered — Drive available from this point forward
+        console.log("[RUNTIME-PROBE][CBS-02]", {
+          probe:           "bootstrap:connectorRegistered",
+          t:               performance.now(),
+          ts:              Date.now(),
+          connectorId:     connector.id,
+          regSizeNow:      registry.count(),
+          allRegistered:   loadedIds.slice(),
+          note:            "If connector_id=google-drive fires AFTER CXP-01, Drive request used placeholder.",
+        });
       } catch (e) {
         errors.push(`[${connector.id}] registry.register() threw: ${(e as Error).message}`);
       }
     }
+
+    // [RUNTIME-PROBE][CBS-03] ConnectorBootstrap.bootstrap() complete
+    console.log("[RUNTIME-PROBE][CBS-03]", {
+      probe:              "bootstrap:complete",
+      t:                  performance.now(),
+      ts:                 Date.now(),
+      bootstrapTimeMs:    Date.now() - t0,
+      connectorsLoaded:   loadedIds.length,
+      connectorIds:       loadedIds.slice(),
+      errors:             errors.slice(),
+      note:               "Bootstrap finished. Real engine will be swapped by CRP-06 immediately after this.",
+    });
 
     return Object.freeze({
       connectorsLoaded:   loadedIds.length,

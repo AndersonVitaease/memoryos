@@ -33,6 +33,20 @@ export class UniversalConnectorRouter {
   async route(executionId: string, step: ExecutionStep): Promise<RouterResult> {
     const connector = this._registry.lookup(step.connector);
 
+    // [RUNTIME-PROBE][UCR-01] UniversalConnectorRouter lookup result — THE DECISIVE PROBE
+    console.log("[RUNTIME-PROBE][UCR-01]", {
+      probe:           "router:lookup",
+      t:               performance.now(),
+      ts:              Date.now(),
+      executionId,
+      connector:       step.connector,
+      capability:      step.capability,
+      lookupResult:    connector === null ? "NULL — NOT FOUND" : `FOUND: ${(connector as any).connectorId?.() ?? (connector as any).id ?? "?"}`,
+      regSize:         this._registry.size(),
+      regContents:     this._registry.list(),
+      note:            "CRITICAL: regSize===0 + lookupResult=NULL is the definitive race condition signature.",
+    });
+
     if (!connector) {
       return Object.freeze({
         found:       false,

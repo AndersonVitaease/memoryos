@@ -67,6 +67,18 @@ export class ConversationRuntimeEngine {
   // ── Public API ────────────────────────────────────────────────────────────
 
   async execute(plan: ExecutionPlan): Promise<ExecutionResult> {
+    // [RUNTIME-PROBE][RTE-01] ConversationRuntimeEngine.execute() entered
+    console.log("[RUNTIME-PROBE][RTE-01]", {
+      probe:      "runtimeEngine:execute:entry",
+      t:          performance.now(),
+      ts:         Date.now(),
+      planId:     plan.id,
+      goalId:     plan.goalId,
+      goalType:   plan.goalType,
+      steps:      plan.steps.map(s => `${s.connector}.${s.capability}`),
+      executorType: (this._dispatcher as any)._executor?.constructor?.name ?? "unknown",
+      note:       "executorType=ConnectorCapabilityExecutor is expected. Registry may still be empty if placeholder.",
+    });
     // Context creation delegated to ExecutionContextFactory
     const ctx = executionContextFactory.create(plan, this._policy);
 

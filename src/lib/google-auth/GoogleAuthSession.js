@@ -418,6 +418,14 @@ export async function reconnect({ workspaceId = "default", scopes = WORKSPACE_SC
  *   - Assim _driveRequest pode confiar que o token está em _tokenStore.
  */
 export async function ensureValidToken(workspaceId = "default") {
+  // [RUNTIME-PROBE][GAS-01] ensureValidToken() reached — if this fires, execution passed GoogleDriveConnector
+  console.log("[RUNTIME-PROBE][GAS-01]", {
+    probe:      "googleAuthSession:ensureValidToken:entry",
+    t:          performance.now(),
+    ts:         Date.now(),
+    workspaceId,
+    note:       "If this fires on a failing Drive request, failure is in OAuth/token layer — not in bootstrap registry.",
+  });
   // [DIAG-TEMP] Point 1 — entry of ensureValidToken
   _probe("1-ensureValidToken-entry", workspaceId, { caller: new Error().stack?.split("\n")[2]?.trim() ?? "unknown" });
 

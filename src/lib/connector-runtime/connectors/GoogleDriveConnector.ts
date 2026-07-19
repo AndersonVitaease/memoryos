@@ -200,8 +200,31 @@ export class GoogleDriveConnector implements IConnector {
     const eid   = context.executionId ?? "";
     const logs: ConnectorLog[] = [makeLog("info", `[${operation}] executionId=${eid} Starting`)];
 
+    // [RUNTIME-PROBE][GDC-01] GoogleDriveConnector.execute() reached — race condition REFUTED if this fires on failing request
+    console.log("[RUNTIME-PROBE][GDC-01]", {
+      probe:       "googleDriveConnector:execute:entry",
+      t:           performance.now(),
+      ts:          Date.now(),
+      executionId: eid,
+      operation,
+      note:        "If this fires, the connector was reached. Failure is in auth or HTTP — NOT in bootstrap registry.",
+    });
+
     // Auth check — GWS Foundation owns ensureValidToken; we only check if token exists
     const token = getAccessToken("default");
+
+    // [RUNTIME-PROBE][GDC-02] Token state at connector entry
+    console.log("[RUNTIME-PROBE][GDC-02]", {
+      probe:        "googleDriveConnector:tokenCheck",
+      t:            performance.now(),
+      ts:           Date.now(),
+      executionId:  eid,
+      operation,
+      tokenPresent: !!token,
+      tokenPrefix:  token ? token.slice(0, 12) + "..." : "NULL",
+      authPath:     !token ? "will_attempt_ensureValidToken" : "token_ok_proceeding",
+      note:         "tokenPresent===false here means auth failure, not registry failure.",
+    });
     if (!token) {
       // Attempt refresh via GWS Foundation before giving up
       try {
