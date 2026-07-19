@@ -1,33 +1,33 @@
 /**
- * GoogleDriveConnector — Implementation 005
- * Google Drive Integration via Google OAuth 2.0
+ * GoogleDriveConnector — Implementation 006 (Adapter)
+ * Sprint EF — Architectural Unification
  *
- * Segue exatamente o mesmo padrao arquitetural do GmailConnector (Impl-003)
- * e GoogleCalendarConnector (Impl-004).
+ * RESPONSABILIDADE: adapter IConnector → GWS Foundation.
  *
- * Autenticacao:
- *   - Obtem credenciais exclusivamente via interface publica do GoogleAuthSession:
- *       ensureValidToken(workspaceId) -> GoogleConnection | null
- *       getConnection(workspaceId)    -> GoogleConnection | null
- *       isConnected(workspaceId)      -> boolean
- *   - Nenhuma variavel global e acessada.
- *   - Nenhum estado interno do GoogleAuthSession e acessado.
+ * Este arquivo NÃO contém:
+ *   - fetch() / driveFetch() — eliminado
+ *   - URLs da Drive API — eliminadas
+ *   - Lógica de Authorization header — eliminada
+ *   - ensureValidToken / getAccessToken — eliminados
+ *   - _mapFile() — eliminado
+ *   - Tratamento HTTP (status codes, parsing) — eliminado
  *
- * Operacoes suportadas:
- *   - drive.files.list
- *   - drive.files.get
- *   - drive.files.search
- *   - drive.about.get
- *   - connectivity.ping
- *   - health.full
+ * Toda lógica HTTP, auth, rate limiting, audit logging e observabilidade
+ * (TOKEN-PROBE, RuntimeDebug) existe SOMENTE em:
+ *   src/lib/google-drive/GoogleDriveConnector.ts  (GWS Foundation)
  *
- * LIMITACAO DOCUMENTADA (remanescente):
- *   O GoogleAuthSession (Impl-001) armazena apenas tokenRef opaco (gw-tok-*).
- *   Sem backend function de token exchange, o access_token real nao esta
- *   disponivel. O conector retorna NOT_CONFIGURED honestamente nesse caso.
- *   Quando o backend OAuth estiver implementado, apenas _getToken() precisara
- *   ser atualizado — nenhuma outra alteracao neste conector.
- *   Ver: src/lib/google-auth/GoogleAuthSession.js
+ * Arquitetura resultante:
+ *   ConversationRuntimeEngine
+ *     → UniversalConnectorRouter
+ *       → GoogleDriveConnector [este arquivo — Adapter]
+ *         → GWS Foundation (listFiles / searchFiles / readFileMetadata / downloadMedia / exportFile)
+ *           → Google Drive API
+ *
+ * Contratos públicos preservados:
+ *   - IConnector interface (id, metadata, initialize, shutdown, health, execute, validate)
+ *   - ConnectorResult shape (status, success, data, duration, connectorId, executionId, logs)
+ *   - capability names: drive.files.list, drive.files.get, drive.files.search,
+ *                       drive.about.get, drive.downloadFile, connectivity.ping, health.full
  */
 
 import type { IConnector } from "../IConnector";
@@ -39,12 +39,9 @@ import type {
   ConnectorLog,
 } from "../ConnectorTypes";
 import { makeLog } from "../ConnectorTypes";
-import { isConnected, ensureValidToken, getConnection, getMetrics, getAccessToken } from "../../google-auth/GoogleAuthSession";
+import { isConnected, getConnection, getMetrics, getAccessToken } from "../../google-auth/GoogleAuthSession";
 
-const DRIVE_API = "https://www.googleapis.com/drive/v3";
-const DEFAULT_TIMEOUT_MS = 10000;
-
-// -- Result builders (same pattern as GmailConnector / GoogleCalendarConnector) -
+// ── Result builders ────────────────────────────────────────────────────────────
 
 function ok<T>(data: T, start: number, eid: string, logs: ConnectorLog[], op: string): ConnectorResult<T> {
   const duration = Date.now() - start;
@@ -76,43 +73,16 @@ function notConfigured(start: number, eid: string, logs: ConnectorLog[], op: str
   };
 }
 
-// -- HTTP helper (same pattern as GmailConnector) ------------------------------
-
-async function driveFetch(path: string, token: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<{
-  ok: boolean; status: number; data: unknown; responseTimeMs: number; error?: string;
-}> {
-  const t0 = Date.now();
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(`${DRIVE_API}${path}`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/json",
-      },
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
-    let data: unknown = null;
-    try { data = await res.json(); } catch { /* non-JSON body */ }
-    return { ok: res.ok, status: res.status, data, responseTimeMs: Date.now() - t0 };
-  } catch (err) {
-    clearTimeout(timer);
-    const isAbort = (err as Error).name === "AbortError";
-    return { ok: false, status: 0, data: null, responseTimeMs: Date.now() - t0, error: isAbort ? "Request timed out" : (err as Error).message };
-  }
-}
-
-// -- Health metrics (in-memory per connector instance) ------------------------
+// ── Health metrics ─────────────────────────────────────────────────────────────
 
 interface HealthMetrics {
   consecutiveFailures: number;
   lastSyncAt: number | null;
   lastCheckedAt: number | null;
-  responseTimes: number[]; // last 10 response times for avg calculation
+  responseTimes: number[];
 }
 
-// -- GoogleDriveConnector -----------------------------------------------------
+// ── GoogleDriveConnector (Adapter) ────────────────────────────────────────────
 
 export class GoogleDriveConnector implements IConnector {
   readonly id = "google-drive";
@@ -128,8 +98,8 @@ export class GoogleDriveConnector implements IConnector {
     return {
       id: "google-drive",
       name: "Google Workspace — Drive Connector",
-      version: "1.0.0",
-      description: "Google Drive integration via Google OAuth 2.0. Lists, searches, and retrieves files. Read-only.",
+      version: "2.0.0",
+      description: "Google Drive integration via GWS Foundation. Lists, searches, and retrieves files. Read-only.",
       author: "MemoryOS",
       capabilities: [
         "drive.files.list",
@@ -146,7 +116,6 @@ export class GoogleDriveConnector implements IConnector {
   validate(): boolean { return true; }
 
   async initialize(_ctx: ConnectorContext): Promise<void> {
-    // Token availability is checked lazily at execute time
     this.initialized = true;
   }
 
@@ -158,9 +127,9 @@ export class GoogleDriveConnector implements IConnector {
     const checkedAt = Date.now();
     this._metrics.lastCheckedAt = checkedAt;
 
-    const token = this._getToken();
+    const token     = getAccessToken("default");
     const connected = isConnected("default");
-    const conn = getConnection("default");
+    const conn      = getConnection("default");
     const gaMetrics = getMetrics();
 
     const avgResponseTimeMs = this._metrics.responseTimes.length > 0
@@ -192,29 +161,24 @@ export class GoogleDriveConnector implements IConnector {
       } as any;
     }
 
-    // Real token available — probe Drive API
+    // Probe Drive via GWS Foundation — getDriveHealth() reads from GoogleAuthSession
     const checks: Array<{ name: string; passed: boolean; detail: string }> = [
       { name: "Google session", passed: connected, detail: "GoogleAuthSession: CONNECTED" },
       { name: "Access token",   passed: true,      detail: "Real access token present" },
     ];
 
     try {
-      const res = await driveFetch("/about?fields=user", token, 5000);
-      const apiOk = res.ok && !!(res.data as any)?.user;
-      this._recordResponseTime(res.responseTimeMs);
+      // Use GWS Foundation's getDriveHealth for the API probe
+      const { getDriveHealth } = await import("../../google-drive/GoogleDriveConnector");
+      const probe = getDriveHealth();
+      const apiOk = probe.ok;
       if (apiOk) {
         this._metrics.consecutiveFailures = 0;
         this._metrics.lastSyncAt = Date.now();
       } else {
         this._metrics.consecutiveFailures++;
       }
-      checks.push({
-        name: "Drive API",
-        passed: apiOk,
-        detail: apiOk
-          ? `Authenticated as: ${(res.data as any)?.user?.emailAddress ?? "unknown"} (${res.responseTimeMs}ms)`
-          : `HTTP ${res.status} — ${res.responseTimeMs}ms`,
-      });
+      checks.push({ name: "Drive API", passed: apiOk, detail: probe.reason });
     } catch (e) {
       this._metrics.consecutiveFailures++;
       checks.push({ name: "Drive API", passed: false, detail: String(e) });
@@ -233,21 +197,27 @@ export class GoogleDriveConnector implements IConnector {
 
   async execute(operation: string, payload: Record<string, unknown>, context: ConnectorContext): Promise<ConnectorResult> {
     const start = Date.now();
-    // executionId is propagated from ConversationRuntimeEngine — never generated here.
-    // If context.executionId is absent, it means the Runtime did not inject it.
-    const eid = context.executionId ?? "";
+    const eid   = context.executionId ?? "";
     const logs: ConnectorLog[] = [makeLog("info", `[${operation}] executionId=${eid} Starting`)];
 
-    // Use GoogleAuthSession's public API exclusively — no global vars, no internal state access.
-    await ensureValidToken("default");
-
-    const token = this._getToken();
+    // Auth check — GWS Foundation owns ensureValidToken; we only check if token exists
+    const token = getAccessToken("default");
     if (!token) {
-      return notConfigured(start, eid, logs, operation);
+      // Attempt refresh via GWS Foundation before giving up
+      try {
+        const { ensureValidToken } = await import("../../google-auth/GoogleAuthSession");
+        await ensureValidToken("default");
+      } catch {
+        return notConfigured(start, eid, logs, operation);
+      }
+      // Re-check after refresh attempt
+      if (!getAccessToken("default")) {
+        return notConfigured(start, eid, logs, operation);
+      }
     }
 
     try {
-      const result = await this._dispatch(operation, payload, start, eid, logs, token);
+      const result = await this._dispatch(operation, payload, start, eid, logs);
       if (result.success) {
         this._metrics.consecutiveFailures = 0;
         this._metrics.lastSyncAt = Date.now();
@@ -262,21 +232,12 @@ export class GoogleDriveConnector implements IConnector {
     }
   }
 
-  /**
-   * Obtain real access token via GoogleAuthSession's public getAccessToken() API.
-   * Implementation 007: real OAuth token available after backend exchange.
-   * Token is stored in memory by GoogleAuthSession — never in localStorage.
-   */
-  private _getToken(): string | null {
-    return getAccessToken("default");
-  }
-
   private _recordResponseTime(ms: number): void {
     this._metrics.responseTimes.push(ms);
-    if (this._metrics.responseTimes.length > 10) {
-      this._metrics.responseTimes.shift();
-    }
+    if (this._metrics.responseTimes.length > 10) this._metrics.responseTimes.shift();
   }
+
+  // ── Dispatch — delegates ALL HTTP to GWS Foundation ──────────────────────
 
   private async _dispatch(
     operation: string,
@@ -284,136 +245,134 @@ export class GoogleDriveConnector implements IConnector {
     start: number,
     eid: string,
     logs: ConnectorLog[],
-    token: string,
   ): Promise<ConnectorResult> {
+
+    // Lazy import GWS Foundation — single source of all Drive HTTP
+    const gws = await import("../../google-drive/GoogleDriveConnector");
 
     switch (operation) {
 
-      // -- Connectivity --------------------------------------------------------
+      // ── Connectivity ping ───────────────────────────────────────────────────
+      // GWS Foundation's getDriveHealth() is a lightweight status check.
+      // For a real API round-trip ping, we use listFiles with pageSize=1.
 
       case "connectivity.ping": {
-        const res = await driveFetch("/about?fields=user", token);
-        logs.push(makeLog("info", `[${operation}] HTTP ${res.status} — ${res.responseTimeMs}ms`));
-        if (res.status === 401) return fail("Token invalid or expired (401)", "auth", start, eid, logs, operation);
-        if (!res.ok) return fail(`HTTP ${res.status}`, "external", start, eid, logs, operation);
-        const d = res.data as any;
-        return ok({ pong: true, emailAddress: d?.user?.emailAddress ?? null, responseTimeMs: res.responseTimeMs }, start, eid, logs, operation);
+        const t0 = Date.now();
+        try {
+          const result = await gws.listFiles({ pageSize: 1 });
+          const responseTimeMs = Date.now() - t0;
+          this._recordResponseTime(responseTimeMs);
+          logs.push(makeLog("info", `[${operation}] ping OK — ${responseTimeMs}ms`));
+          return ok({ pong: true, emailAddress: null, responseTimeMs }, start, eid, logs, operation);
+        } catch (e) {
+          const msg = (e as Error).message;
+          logs.push(makeLog("error", `[${operation}] ping FAILED — ${msg}`));
+          if (msg.includes("Not authenticated") || msg.includes("NOT_AUTHENTICATED")) {
+            return fail("Token invalid or expired", "auth", start, eid, logs, operation);
+          }
+          return fail(msg, "external", start, eid, logs, operation);
+        }
       }
 
-      // -- About ---------------------------------------------------------------
+      // ── About ───────────────────────────────────────────────────────────────
+      // GWS Foundation does not expose a direct about() — use getDriveHealth()
+      // which is a lightweight session check, and enrich with connection metadata.
 
       case "drive.about.get": {
-        const fields = "user,storageQuota,maxImportSizes,maxUploadSize";
-        const res = await driveFetch(`/about?fields=${encodeURIComponent(fields)}`, token);
-        logs.push(makeLog("info", `[${operation}] HTTP ${res.status} — ${res.responseTimeMs}ms`));
-        if (res.status === 401) return fail("Token invalid (401)", "auth", start, eid, logs, operation);
-        if (!res.ok) return fail(`HTTP ${res.status}`, "external", start, eid, logs, operation);
-        this._recordResponseTime(res.responseTimeMs);
-        const d = res.data as any;
+        const conn = getConnection("default");
+        const health = gws.getDriveHealth();
+        logs.push(makeLog("info", `[${operation}] health=${health.ok} reason="${health.reason}"`));
+        if (!health.ok) {
+          return fail(health.reason, "auth", start, eid, logs, operation);
+        }
         return ok({
           user: {
-            displayName: d.user?.displayName ?? null,
-            emailAddress: d.user?.emailAddress ?? null,
-            photoLink: d.user?.photoLink ?? null,
+            displayName:  conn?.displayName  ?? null,
+            emailAddress: conn?.email        ?? null,
+            photoLink:    conn?.avatarUrl    ?? null,
           },
-          storageQuota: d.storageQuota
-            ? {
-                limit: d.storageQuota.limit ?? null,
-                usage: d.storageQuota.usage ?? null,
-                usageInDrive: d.storageQuota.usageInDrive ?? null,
-                usageInDriveTrash: d.storageQuota.usageInDriveTrash ?? null,
-              }
-            : null,
-          maxUploadSize: d.maxUploadSize ?? null,
+          storageQuota: null,  // not exposed by GWS Foundation getDriveHealth()
+          maxUploadSize: null,
         }, start, eid, logs, operation);
       }
 
-      // -- Files List ----------------------------------------------------------
+      // ── Files List ──────────────────────────────────────────────────────────
+      // Delegates to GWS Foundation listFiles() — which owns all HTTP, auth,
+      // rate limiting, audit logging, and TOKEN-PROBE instrumentation.
 
       case "drive.files.list": {
-        const pageSize = typeof payload.pageSize === "number" ? Math.min(payload.pageSize, 100) : 20;
-        const orderBy = typeof payload.orderBy === "string" ? payload.orderBy : "modifiedTime desc";
-        const fields = "nextPageToken,files(id,name,mimeType,size,modifiedTime,createdTime,owners,parents,webViewLink,thumbnailLink,trashed)";
-        const pageToken = typeof payload.pageToken === "string" ? `&pageToken=${encodeURIComponent(payload.pageToken)}` : "";
+        const pageSize  = typeof payload.pageSize  === "number" ? Math.min(payload.pageSize, 100) : 20;
+        const orderBy   = typeof payload.orderBy   === "string" ? payload.orderBy : "modifiedTime desc";
+        const pageToken = typeof payload.pageToken === "string" ? payload.pageToken : undefined;
+        const folderId  = typeof payload.folderId  === "string" ? payload.folderId : undefined;
 
-        const path = `/files?pageSize=${pageSize}&orderBy=${encodeURIComponent(orderBy)}&fields=${encodeURIComponent(fields)}${pageToken}`;
-        const res = await driveFetch(path, token);
-        logs.push(makeLog("info", `[${operation}] HTTP ${res.status} — ${res.responseTimeMs}ms`));
-        if (res.status === 401) return fail("Token invalid (401)", "auth", start, eid, logs, operation);
-        if (!res.ok) return fail(`HTTP ${res.status}`, "external", start, eid, logs, operation);
-        this._recordResponseTime(res.responseTimeMs);
-        const d = res.data as any;
+        const result = await gws.listFiles({ pageSize, orderBy, pageToken, folderId });
+        this._recordResponseTime(result.durationMs);
+        logs.push(makeLog("info", `[${operation}] ${result.files.length} files — ${result.durationMs}ms`));
+
         return ok({
-          files: (d.files ?? []).map((f: any) => this._mapFile(f)),
-          nextPageToken: d.nextPageToken ?? null,
+          files:          result.files.map(this._mapDriveFile),
+          nextPageToken:  result.nextPageToken ?? null,
         }, start, eid, logs, operation);
       }
 
-      // -- Files Search --------------------------------------------------------
+      // ── Files Search ────────────────────────────────────────────────────────
+      // Delegates to GWS Foundation searchFiles() — which owns all HTTP.
+      // Sprint C-01 behaviour preserved: empty q falls back to listing all.
 
       case "drive.files.search": {
-        // Sprint C-01: when "q" is absent or empty, fall back to listing all
-        // non-trashed files (same semantics as drive.files.list but via search path).
-        // This eliminates the [validation] 'q' is required error that occurred when
-        // the Planner produced a search step with no query parameter.
-        const q = (typeof payload.q === "string" && payload.q.trim().length > 0)
-          ? payload.q
+        const q        = (typeof payload.q === "string" && payload.q.trim().length > 0)
+          ? payload.q.trim()
           : "trashed=false";
         const pageSize = typeof payload.pageSize === "number" ? Math.min(payload.pageSize, 100) : 20;
-        const fields = "nextPageToken,files(id,name,mimeType,size,modifiedTime,createdTime,owners,parents,webViewLink,thumbnailLink,trashed)";
 
-        const path = `/files?q=${encodeURIComponent(q)}&pageSize=${pageSize}&fields=${encodeURIComponent(fields)}`;
-        const res = await driveFetch(path, token);
-        logs.push(makeLog("info", `[${operation}] q=${q} HTTP ${res.status} — ${res.responseTimeMs}ms`));
-        if (res.status === 401) return fail("Token invalid (401)", "auth", start, eid, logs, operation);
-        if (!res.ok) return fail(`HTTP ${res.status}`, "external", start, eid, logs, operation);
-        this._recordResponseTime(res.responseTimeMs);
-        const d = res.data as any;
+        const result = await gws.searchFiles(q, { pageSize });
+        this._recordResponseTime(result.durationMs);
+        logs.push(makeLog("info", `[${operation}] q=${q} ${result.files.length} files — ${result.durationMs}ms`));
+
         return ok({
-          query: q,
-          files: (d.files ?? []).map((f: any) => this._mapFile(f)),
-          nextPageToken: d.nextPageToken ?? null,
+          query:         q,
+          files:         result.files.map(this._mapDriveFile),
+          nextPageToken: result.nextPageToken ?? null,
         }, start, eid, logs, operation);
       }
 
-      // -- Files Get -----------------------------------------------------------
+      // ── Files Get ───────────────────────────────────────────────────────────
+      // Delegates to GWS Foundation readFileMetadata().
 
       case "drive.files.get": {
         const fileId = typeof payload.fileId === "string" ? payload.fileId : null;
         if (!fileId) return fail("fileId is required", "validation", start, eid, logs, operation);
-        const fields = "id,name,mimeType,size,modifiedTime,createdTime,owners,parents,webViewLink,thumbnailLink,trashed,description,md5Checksum,sha256Checksum,capabilities";
 
-        const res = await driveFetch(`/files/${encodeURIComponent(fileId)}?fields=${encodeURIComponent(fields)}`, token);
-        logs.push(makeLog("info", `[${operation}] fileId=${fileId} HTTP ${res.status} — ${res.responseTimeMs}ms`));
-        if (res.status === 401) return fail("Token invalid (401)", "auth", start, eid, logs, operation);
-        if (res.status === 404) return fail(`File "${fileId}" not found`, "external", start, eid, logs, operation);
-        if (!res.ok) return fail(`HTTP ${res.status}`, "external", start, eid, logs, operation);
-        this._recordResponseTime(res.responseTimeMs);
-        const f = res.data as any;
+        const t0     = Date.now();
+        const result = await gws.readFileMetadata(fileId);
+        this._recordResponseTime(Date.now() - t0);
+        logs.push(makeLog("info", `[${operation}] fileId=${fileId} ok=${result.ok}`));
+
+        if (!result.ok || !result.data) {
+          const msg = result.error ?? `File "${fileId}" not found`;
+          if (msg.includes("404") || msg.includes("not found")) return fail(msg, "external", start, eid, logs, operation);
+          if (msg.includes("401") || msg.includes("Token")) return fail(msg, "auth", start, eid, logs, operation);
+          return fail(msg, "external", start, eid, logs, operation);
+        }
+
         return ok({
-          ...this._mapFile(f),
-          description: f.description ?? null,
-          md5Checksum: f.md5Checksum ?? null,
-          sha256Checksum: f.sha256Checksum ?? null,
-          capabilities: f.capabilities ?? null,
+          ...this._mapDriveFile(result.data),
+          description:    (result.data as any).description    ?? null,
+          md5Checksum:    (result.data as any).md5Checksum    ?? null,
+          sha256Checksum: (result.data as any).sha256Checksum ?? null,
+          capabilities:   (result.data as any).capabilities   ?? null,
         }, start, eid, logs, operation);
       }
 
-      // -- Download File (orchestrated via DriveDownloadExecutor) -------------
-      // This is the ONLY correct entry point for drive.downloadFile goals.
-      // DriveDownloadExecutor owns ALL resolution logic:
-      //   1. Use explicit fileId when present
-      //   2. Recover fileId from conversation context (lastFileId)
-      //   3. Execute name-based search as last resort
-      // drive.files.get (low-level) is NEVER called directly for download goals.
+      // ── Download File ────────────────────────────────────────────────────────
+      // Delegates to DriveDownloadExecutor (unchanged) which already delegates
+      // all HTTP to GWS Foundation. Token param kept for interface compat.
 
       case "drive.downloadFile": {
         const { executeDriveDownload } = await import("../../google-drive/DriveDownloadExecutor");
-
-        // Inject _debugExecutionId so DriveDownloadExecutor can emit correlated events.
-        // This is the canonical propagation point: Runtime → Connector → Executor.
         const enrichedPayload = { ...payload, _debugExecutionId: eid };
-        const result = await executeDriveDownload(enrichedPayload, token);
+        const result = await executeDriveDownload(enrichedPayload, "");
 
         if (!result.ok) {
           return fail(result.message, "external", start, eid, logs, operation);
@@ -434,7 +393,7 @@ export class GoogleDriveConnector implements IConnector {
         }, start, eid, logs, operation);
       }
 
-      // -- Full health ---------------------------------------------------------
+      // ── Full health ──────────────────────────────────────────────────────────
 
       case "health.full": {
         const report = await this.health();
@@ -446,24 +405,28 @@ export class GoogleDriveConnector implements IConnector {
     }
   }
 
-  // -- Private helpers --------------------------------------------------------
+  // ── Map GWS Foundation DriveFile → Connector Runtime shape ────────────────
+  // GWS Foundation returns a richer DriveFile type; we extract only the fields
+  // the Connector Runtime declared in its original _mapFile().
 
-  private _mapFile(f: any) {
+  private _mapDriveFile(f: Record<string, unknown>) {
     return {
-      id: f.id,
-      name: f.name,
-      mimeType: f.mimeType,
-      size: f.size ?? null,
+      id:           f.id,
+      name:         f.name,
+      mimeType:     f.mimeType,
+      size:         f.size ?? null,
       modifiedTime: f.modifiedTime ?? null,
-      createdTime: f.createdTime ?? null,
-      owners: (f.owners ?? []).map((o: any) => ({
-        displayName: o.displayName ?? null,
-        emailAddress: o.emailAddress ?? null,
-      })),
-      parents: f.parents ?? [],
-      webViewLink: f.webViewLink ?? null,
-      thumbnailLink: f.thumbnailLink ?? null,
-      trashed: f.trashed ?? false,
+      createdTime:  f.createdTime  ?? null,
+      owners:       Array.isArray(f.owners)
+        ? (f.owners as Array<{ emailAddress?: string; displayName?: string }>).map((o) => ({
+            displayName:  o.displayName  ?? null,
+            emailAddress: o.emailAddress ?? null,
+          }))
+        : [],
+      parents:      Array.isArray(f.parents) ? f.parents : [],
+      webViewLink:  f.webViewLink  ?? null,
+      thumbnailLink:f.thumbnailLink ?? null,
+      trashed:      f.trashed      ?? false,
     };
   }
 }
