@@ -213,18 +213,19 @@ const _builtins: CapabilityMapping[] = [
       },
     ],
   },
-  // ALTERAÇÃO 3 (EF-6.3.x Final): drive.downloadFile uses drive.files.get.
-  // The Registry declares WHAT must happen (get the file), not HOW the executor
-  // resolves the fileId (search-by-name is an internal executor detail).
-  // GoalCapabilityRegistry remains declarative and domain-agnostic.
+  // drive.downloadFile — routes to the high-level drive.downloadFile capability.
+  // GoogleDriveConnector.execute("drive.downloadFile") delegates entirely to
+  // DriveDownloadExecutor, which owns all fileId resolution logic:
+  //   1. Use explicit fileId when present in goal.parameters
+  //   2. Use lastFileId (from previous search results in conversation context)
+  //   3. Search by fileName / query as last resort
+  // drive.files.get (low-level) must NEVER be called directly for download goals.
   {
     goalType: "drive.downloadFile",
     descriptors: [
       {
         connector: "google-drive",
-        capability: "drive.files.get",
-        // fileId resolved by GoogleDriveCapabilityExecutor.resolveFileId()
-        // using fileName from goal.parameters — executor detail, not registry concern.
+        capability: "drive.downloadFile",
         params: {},
       },
     ],
@@ -234,8 +235,7 @@ const _builtins: CapabilityMapping[] = [
     descriptors: [
       {
         connector: "google-drive",
-        capability: "drive.files.get",
-        // fileId must come from goal.parameters; no static default possible.
+        capability: "drive.downloadFile",
         params: {},
       },
     ],

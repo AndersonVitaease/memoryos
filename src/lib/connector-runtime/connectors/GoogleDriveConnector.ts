@@ -136,6 +136,7 @@ export class GoogleDriveConnector implements IConnector {
         "drive.files.get",
         "drive.files.search",
         "drive.about.get",
+        "drive.downloadFile",
         "connectivity.ping",
         "health.full",
       ],
@@ -376,30 +377,7 @@ export class GoogleDriveConnector implements IConnector {
       // -- Files Get -----------------------------------------------------------
 
       case "drive.files.get": {
-        // ── FILEID LIFECYCLE — STEP 7+8: Payload received by drive.files.get
-        console.group("%c[FILEID-LIFECYCLE][7-DRIVE-FILES-GET-PAYLOAD]", "color:#ef4444;font-weight:bold");
-        console.log("timestamp         :", new Date().toISOString());
-        console.log("operation         :", operation);
-        console.log("executionId       :", eid);
-        console.log("payload (full)    :", JSON.stringify(payload));
-        console.log("payload.fileId    :", payload.fileId ?? "ABSENT");
-        console.log("payload.fileName  :", payload.fileName ?? "ABSENT");
-        console.log("typeof fileId     :", typeof payload.fileId);
-        console.log("fileId is truthy  :", !!(payload.fileId));
-        // Stack trace to see call chain
-        console.log("call stack        :", new Error("stack-capture").stack);
-        console.groupEnd();
-
         const fileId = typeof payload.fileId === "string" ? payload.fileId : null;
-
-        // ── FILEID LIFECYCLE — STEP 9: Validation result
-        console.group("%c[FILEID-LIFECYCLE][9-VALIDATION]", fileId ? "color:#22c55e;font-weight:bold" : "color:#ef4444;font-weight:bold");
-        console.log("timestamp         :", new Date().toISOString());
-        console.log("resolvedFileId    :", fileId ?? "NULL — VALIDATION WILL FAIL");
-        console.log("source            :", "payload.fileId (string coercion)");
-        console.log("WILL_FAIL         :", !fileId);
-        console.groupEnd();
-
         if (!fileId) return fail("fileId is required", "validation", start, eid, logs, operation);
         const fields = "id,name,mimeType,size,modifiedTime,createdTime,owners,parents,webViewLink,thumbnailLink,trashed,description,md5Checksum,sha256Checksum,capabilities";
 
@@ -416,6 +394,59 @@ export class GoogleDriveConnector implements IConnector {
           md5Checksum: f.md5Checksum ?? null,
           sha256Checksum: f.sha256Checksum ?? null,
           capabilities: f.capabilities ?? null,
+        }, start, eid, logs, operation);
+      }
+
+      // -- Download File (orchestrated via DriveDownloadExecutor) -------------
+      // This is the ONLY correct entry point for drive.downloadFile goals.
+      // DriveDownloadExecutor owns ALL resolution logic:
+      //   1. Use explicit fileId when present
+      //   2. Recover fileId from conversation context (lastFileId)
+      //   3. Execute name-based search as last resort
+      // drive.files.get (low-level) is NEVER called directly for download goals.
+
+      case "drive.downloadFile": {
+        const { executeDriveDownload } = await import("../../google-drive/DriveDownloadExecutor");
+        const { driveConversationContext } = await import("../../google-drive/DriveConversationContext");
+
+        // Build enriched params: inject lastFileId from conversation context
+        // when neither fileId nor fileName is present in the current goal.
+        // This is the architectural fix for "Esse mesmo, faz o download" —
+        // DriveDownloadExecutor receives a fileId it can use directly (Step 1,
+        // DIRECT path) without needing a new Drive API search call.
+        const params: Record<string, unknown> = { ...payload };
+
+        if (!params.fileId && !params.fileName) {
+          const ctx = driveConversationContext.getLast();
+          if (ctx) {
+            console.log("[DriveConnector][drive.downloadFile] Recovering fileId from context:", JSON.stringify(ctx));
+            params.fileId   = ctx.fileId;
+            params.fileName = ctx.fileName;
+          } else {
+            console.log("[DriveConnector][drive.downloadFile] No conversation context available — executor will attempt search.");
+          }
+        } else {
+          console.log("[DriveConnector][drive.downloadFile] fileId/fileName present in params — using directly:", { fileId: params.fileId, fileName: params.fileName });
+        }
+
+        const result = await executeDriveDownload(params, token);
+
+        if (!result.ok) {
+          return fail(result.message, "external", start, eid, logs, operation);
+        }
+
+        return ok({
+          fileId:     result.fileId,
+          fileName:   result.fileName,
+          mimeType:   result.mimeType,
+          exportMime: result.exportMime,
+          strategy:   result.strategy,
+          content:    result.content,
+          encoding:   result.encoding,
+          sizeBytes:  result.sizeBytes,
+          resolvedBy: result.resolvedBy,
+          apiUsed:    result.apiUsed,
+          durationMs: result.durationMs,
         }, start, eid, logs, operation);
       }
 
