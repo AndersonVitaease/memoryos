@@ -11,6 +11,7 @@
 
 import type { DriveQueryIntent, DriveListResult } from "./GoogleDriveTypes";
 import { DRIVE_MIME } from "./GoogleDriveTypes";
+import { RuntimeDebug } from "@/lib/debug/RuntimeDebug";
 
 // ── Private types ─────────────────────────────────────────────────────────────
 
@@ -136,18 +137,22 @@ export function buildDriveQuery(rawQuery: string): string {
   return parts.join(" and ");
 }
 
-// ── Diagnostic logger (temporary — Sprint P-01.2) ────────────────────────────
-const _LOG = (step: string, data: Record<string, unknown>) =>
-  console.log(`%c[DRIVE][${step}]`, "color:#a78bfa;font-weight:bold", data);
-
 // ── Capability dispatcher ─────────────────────────────────────────────────────
 
 export async function executeDriveCapability(
   capabilityId: string,
   parameters: Record<string, unknown>,
 ): Promise<CapResult> {
-  // LOG 1 — capability chosen by Planner + raw parameters
-  _LOG("1-ENTER", { capabilityId, parameters });
+  // executionId propagated from the Runtime via parameters._debugExecutionId
+  const _execId = typeof parameters._debugExecutionId === "string" ? parameters._debugExecutionId : "";
+
+  RuntimeDebug.emit({
+    executionId: _execId,
+    connector:   "google-drive",
+    source:      "DriveCapabilityExecutor",
+    event:       "capability entered",
+    payload:     { capabilityId, parameterKeys: Object.keys(parameters) },
+  });
 
   const { listFiles, searchFiles, readFileMetadata, readFile, listFolders } =
     await import("./GoogleDriveConnector");
@@ -163,8 +168,7 @@ export async function executeDriveCapability(
 
     case "drive.searchFiles": {
       const r = await searchFiles((parameters.query as string) ?? "", { pageSize: (parameters.pageSize as number) ?? 20 });
-      // LOG 3 — searchFiles result
-      _LOG("3-SEARCH-RESULT", { count: r.files.length, query: r.searchQuery, files: r.files.map(f => ({ id: f.id, name: f.name, mimeType: f.mimeType })) });
+      RuntimeDebug.emit({ executionId: _execId, connector: "google-drive", source: "DriveCapabilityExecutor", event: "searchFiles result", payload: { count: r.files.length, query: r.searchQuery } });
       return { ok: true, data: r, error: null };
     }
 
@@ -190,12 +194,10 @@ export async function executeDriveCapability(
       if (!query) return { ok: false, data: { code: "NO_FILE_SELECTED" }, error: "NO_FILE_SELECTED — provide fileId or query" };
 
       const sr  = await searchFiles(query, { pageSize: 20 });
-      // LOG 3 — searchFiles result for openFile
-      _LOG("3-SEARCH-RESULT", { capabilityId, query, count: sr.files.length, driveQuery: sr.searchQuery, files: sr.files.map(f => ({ id: f.id, name: f.name })) });
+      RuntimeDebug.emit({ executionId: _execId, connector: "google-drive", source: "DriveCapabilityExecutor", event: "searchFiles result (openFile)", payload: { capabilityId, query, count: sr.files.length } });
 
       const res = resolveSingleSearchResult(sr, query);
-      // LOG 4 — resolved fileId
-      _LOG("4-RESOLVE", { status: res.status, fileId: res.status === "RESOLVED" ? res.file.id : null, fileName: res.status === "RESOLVED" ? res.file.name : null });
+      RuntimeDebug.emit({ executionId: _execId, connector: "google-drive", source: "DriveCapabilityExecutor", event: "fileId resolved", payload: { status: res.status, fileId: res.status === "RESOLVED" ? res.file.id : null, fileName: res.status === "RESOLVED" ? res.file.name : null } });
 
       if (res.status === "NOT_FOUND") return { ok: false, data: null, error: res.error };
       if (res.status === "AMBIGUOUS") return { ok: true,  data: { requiresSelection: true, clarification: res.clarification, files: res.files }, error: null };
@@ -216,9 +218,9 @@ export async function executeDriveCapability(
         return { ok: false, data: { code: "NOT_CONFIGURED", message: "Google Drive não autenticado. Conecte sua conta em /connections." }, error: "NOT_CONFIGURED" };
       }
       const { executeDriveDownload } = await import("./DriveDownloadExecutor");
-      _LOG("EF631-DOWNLOAD-ENTER", { parameters });
+      RuntimeDebug.emit({ executionId: _execId, connector: "google-drive", source: "DriveCapabilityExecutor", event: "invoking DriveDownloadExecutor", payload: { parameterKeys: Object.keys(parameters) } });
       const result = await executeDriveDownload(parameters, token);
-      _LOG("EF631-DOWNLOAD-RESULT", { ok: result.ok, code: result.ok ? null : result.code, fileName: result.ok ? result.fileName : result.fileName, durationMs: result.durationMs });
+      RuntimeDebug.emit({ executionId: _execId, connector: "google-drive", source: "DriveCapabilityExecutor", event: "DriveDownloadExecutor result", payload: { ok: result.ok, code: result.ok ? null : result.code, fileName: result.fileName ?? null, durationMs: result.durationMs } });
       return { ok: result.ok, data: result, error: result.ok ? null : result.message };
     }
 
@@ -237,35 +239,33 @@ export async function executeDriveCapability(
         if (!query) return { ok: false, data: { code: "NO_FILE_SELECTED" }, error: "NO_FILE_SELECTED — provide fileId or query" };
 
         const sr  = await searchFiles(query, { pageSize: 20 });
-        // LOG 3 — searchFiles result for readFile/downloadFile
-        _LOG("3-SEARCH-RESULT", { capabilityId, query, count: sr.files.length, driveQuery: sr.searchQuery, files: sr.files.map(f => ({ id: f.id, name: f.name })) });
+        RuntimeDebug.emit({ executionId: _execId, connector: "google-drive", source: "DriveCapabilityExecutor", event: "searchFiles result (readFile)", payload: { capabilityId, query, count: sr.files.length } });
 
         const res = resolveSingleSearchResult(sr, query);
-        // LOG 4 — fileId resolved from search
-        _LOG("4-RESOLVE", { status: res.status, fileId: res.status === "RESOLVED" ? res.file.id : null, fileName: res.status === "RESOLVED" ? res.file.name : null });
+        RuntimeDebug.emit({ executionId: _execId, connector: "google-drive", source: "DriveCapabilityExecutor", event: "fileId resolved from search", payload: { status: res.status, fileId: res.status === "RESOLVED" ? res.file.id : null } });
 
         if (res.status === "NOT_FOUND") return { ok: false, data: null, error: res.error };
         if (res.status === "AMBIGUOUS") return { ok: true,  data: { requiresSelection: true, clarification: res.clarification, files: res.files }, error: null };
 
         fileId = res.file.id;
       } else {
-        // LOG 4 — fileId came from explicit parameter
-        _LOG("4-RESOLVE", { source: "explicit-parameter", fileId });
+        RuntimeDebug.emit({ executionId: _execId, connector: "google-drive", source: "DriveCapabilityExecutor", event: "fileId from explicit parameter", payload: { fileId } });
       }
 
       // Guard — never call Drive API with empty fileId
       const guard = validateFileId(fileId);
-      if (guard) { _LOG("4-GUARD-BLOCKED", { fileId, reason: guard.error }); return guard; }
+      if (guard) {
+        RuntimeDebug.emit({ executionId: _execId, connector: "google-drive", source: "DriveCapabilityExecutor", event: "fileId guard blocked", payload: { fileId, reason: guard.error } });
+        return guard;
+      }
 
       // Determine export MIME — use metadata if not provided
       const mimeType = (parameters.mimeType as string | undefined)?.trim();
       if (mimeType) {
         const exportMime = resolveExportMime(mimeType);
-        // LOG 5 — calling readFile with known mimeType
-        _LOG("5-READ-FILE", { fileId, mimeType, exportMime });
+        RuntimeDebug.emit({ executionId: _execId, connector: "google-drive", source: "DriveCapabilityExecutor", event: "readFile (known mimeType)", payload: { fileId, mimeType, exportMime } });
         const result = await readFile(fileId, exportMime);
-        // LOG 6 — Drive API response
-        _LOG("6-API-RESPONSE", { fileId, ok: result.ok, error: result.error, sizeBytes: (result.data as { sizeBytes?: number })?.sizeBytes ?? null });
+        RuntimeDebug.emit({ executionId: _execId, connector: "google-drive", source: "DriveCapabilityExecutor", event: "Drive API response", payload: { fileId, ok: result.ok, error: result.error } });
         return result;
       }
 
@@ -273,11 +273,9 @@ export async function executeDriveCapability(
       if (!meta.ok || !meta.data) return { ok: false, data: null, error: `File not found: ${fileId}` };
 
       const exportMime = resolveExportMime(meta.data.mimeType);
-      // LOG 5 — calling readFile after metadata fetch
-      _LOG("5-READ-FILE", { fileId, name: meta.data.name, mimeType: meta.data.mimeType, exportMime });
+      RuntimeDebug.emit({ executionId: _execId, connector: "google-drive", source: "DriveCapabilityExecutor", event: "readFile (after metadata)", payload: { fileId, name: meta.data.name, mimeType: meta.data.mimeType, exportMime } });
       const result = await readFile(fileId, exportMime);
-      // LOG 6 — Drive API response
-      _LOG("6-API-RESPONSE", { fileId, name: meta.data.name, ok: result.ok, error: result.error, sizeBytes: (result.data as { sizeBytes?: number })?.sizeBytes ?? null });
+      RuntimeDebug.emit({ executionId: _execId, connector: "google-drive", source: "DriveCapabilityExecutor", event: "Drive API response", payload: { fileId, name: meta.data.name, ok: result.ok, error: result.error } });
       return result;
     }
 

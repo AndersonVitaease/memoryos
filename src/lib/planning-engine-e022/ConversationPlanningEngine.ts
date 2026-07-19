@@ -93,10 +93,15 @@ export class ConversationPlanningEngine {
       const steps: ExecutionStep[] = descriptors.map((desc) => {
         idx++;
         const mergedParams = { ...desc.params, ...goal.parameters };
-        // Observabilidade: emite evento no RuntimeDebug para conectores Drive
+        // Observabilidade: emite evento no RuntimeDebug para conectores Drive.
+        // _debugExecutionId is injected by ConversationPipeline from the Runtime's executionId.
+        // goal.id is a goal identifier, NOT an executionId — never used as one.
         if (desc.capability === "drive.downloadFile" || desc.connector === "google-drive") {
+          const execId = typeof (goal.parameters as Record<string, unknown>)?._debugExecutionId === "string"
+            ? (goal.parameters as Record<string, unknown>)._debugExecutionId as string
+            : ""; // intentionally empty — correlation loss will be warned by RuntimeDebug
           RuntimeDebug.emit({
-            executionId: goal.id ?? "unknown",
+            executionId: execId,
             connector:   "google-drive",
             source:      "Planner",
             event:       "drive step parameters",

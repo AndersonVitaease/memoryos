@@ -129,9 +129,12 @@ export async function executeDriveDownload(
   const queryFallback  = typeof parameters.query       === "string" ? parameters.query.trim()       : null;
   const rawText        = typeof parameters.rawText     === "string" ? parameters.rawText.trim()     : null;
 
+  // executionId is propagated from ConversationRuntimeEngine via parameters._debugExecutionId.
+  // It is NEVER generated here. If missing, it means the Runtime did not inject it —
+  // events will be dropped by RuntimeDebug with a CORRELATION LOSS warning.
   const _execId = typeof parameters._debugExecutionId === "string"
     ? parameters._debugExecutionId
-    : `drive-dl-${Date.now()}`;
+    : ""; // intentionally empty — correlation loss will be signalled by RuntimeDebug
 
   RuntimeDebug.emit({
     executionId: _execId,

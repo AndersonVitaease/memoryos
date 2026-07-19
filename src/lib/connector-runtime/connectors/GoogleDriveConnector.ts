@@ -38,7 +38,7 @@ import type {
   ConnectorResult,
   ConnectorLog,
 } from "../ConnectorTypes";
-import { makeLog, makeExecutionId } from "../ConnectorTypes";
+import { makeLog } from "../ConnectorTypes";
 import { isConnected, ensureValidToken, getConnection, getMetrics, getAccessToken } from "../../google-auth/GoogleAuthSession";
 
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
@@ -233,7 +233,9 @@ export class GoogleDriveConnector implements IConnector {
 
   async execute(operation: string, payload: Record<string, unknown>, context: ConnectorContext): Promise<ConnectorResult> {
     const start = Date.now();
-    const eid = context.executionId ?? makeExecutionId();
+    // executionId is propagated from ConversationRuntimeEngine — never generated here.
+    // If context.executionId is absent, it means the Runtime did not inject it.
+    const eid = context.executionId ?? "";
     const logs: ConnectorLog[] = [makeLog("info", `[${operation}] executionId=${eid} Starting`)];
 
     // Use GoogleAuthSession's public API exclusively — no global vars, no internal state access.
@@ -408,11 +410,10 @@ export class GoogleDriveConnector implements IConnector {
       case "drive.downloadFile": {
         const { executeDriveDownload } = await import("../../google-drive/DriveDownloadExecutor");
 
-        // DriveDownloadExecutor owns all resolution logic:
-        //   1. Use explicit fileId/fileName when present in params
-        //   2. Read DriveFileContext from session-scoped ConversationStore (no global singleton)
-        //   3. Execute name-based search as last resort
-        const result = await executeDriveDownload(payload, token);
+        // Inject _debugExecutionId so DriveDownloadExecutor can emit correlated events.
+        // This is the canonical propagation point: Runtime → Connector → Executor.
+        const enrichedPayload = { ...payload, _debugExecutionId: eid };
+        const result = await executeDriveDownload(enrichedPayload, token);
 
         if (!result.ok) {
           return fail(result.message, "external", start, eid, logs, operation);

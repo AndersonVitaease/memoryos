@@ -117,17 +117,22 @@ class ConversationStore {
    * Each connector is responsible exclusively for its own context slot.
    */
   setConnectorContext(connectorId: string, ctx: BaseConnectorContext): void {
-    RuntimeDebug.emit({
-      executionId: (ctx as Record<string, unknown>).executionId as string ?? "unknown",
-      connector:   connectorId as "google-drive",
-      source:      "ConversationStore",
-      event:       "setConnectorContext",
-      payload: {
-        connectorId,
-        selectedFileId:   (ctx as Record<string, unknown>).selectedFileId   ?? null,
-        selectedFileName: (ctx as Record<string, unknown>).selectedFileName ?? null,
-      },
-    });
+    // Emit only when executionId is present (propagated from Runtime).
+    // Never generate or fall back to a synthetic ID here.
+    const execId = (ctx as Record<string, unknown>).executionId as string | undefined;
+    if (execId) {
+      RuntimeDebug.emit({
+        executionId: execId,
+        connector:   connectorId as "google-drive",
+        source:      "ConversationStore",
+        event:       "setConnectorContext",
+        payload: {
+          connectorId,
+          selectedFileId:   (ctx as Record<string, unknown>).selectedFileId   ?? null,
+          selectedFileName: (ctx as Record<string, unknown>).selectedFileName ?? null,
+        },
+      });
+    }
     this._patch({
       connectorContexts: { ...this._state.connectorContexts, [connectorId]: ctx },
     });
@@ -137,20 +142,11 @@ class ConversationStore {
    * Retrieves the context for a given connectorId, or null if not set.
    */
   getConnectorContext(connectorId: string): BaseConnectorContext | null {
-    const ctx = this._state.connectorContexts[connectorId] ?? null;
-    RuntimeDebug.emit({
-      executionId: (ctx as Record<string, unknown> | null)?.executionId as string ?? "unknown",
-      connector:   connectorId as "google-drive",
-      source:      "ConversationStore",
-      event:       "getConnectorContext",
-      payload: {
-        connectorId,
-        found:            ctx !== null,
-        selectedFileId:   (ctx as Record<string, unknown> | null)?.selectedFileId   ?? null,
-        selectedFileName: (ctx as Record<string, unknown> | null)?.selectedFileName ?? null,
-      },
-    });
-    return ctx;
+    // Read-only operation — no debug emission here.
+    // The executionId of the stored context belongs to a PREVIOUS execution.
+    // Emitting here would correlate events from different flows, creating noise.
+    // The Executor (DriveDownloadExecutor) emits its own correlated event after reading.
+    return this._state.connectorContexts[connectorId] ?? null;
   }
 
   /**

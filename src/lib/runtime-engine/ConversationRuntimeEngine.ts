@@ -34,6 +34,7 @@ import type {
   RuntimeEventType,
 } from "./RuntimeTypes";
 import { makeExecutionId }             from "./RuntimeTypes";
+import { RuntimeDebug }               from "@/lib/debug/RuntimeDebug";
 import { MockCapabilityExecutor }      from "./MockCapabilityExecutor";
 import { ExecutionDispatcher }         from "./ExecutionDispatcher";
 import { executionContextFactory }     from "./ExecutionContextFactory";
@@ -89,6 +90,17 @@ export class ConversationRuntimeEngine {
     ctx.status    = "running";
     ctx.startedAt = Date.now();
     ctx.timeoutAt = Date.now() + this._policy.timeoutMs;
+
+    // ── Single source of truth for executionId ────────────────────────────────
+    // ConversationRuntimeEngine is the ONLY component that creates executionIds.
+    // It registers its own ID into RuntimeDebug so all downstream components
+    // (Planner, Connector, ContextBuilder, Executor, Store) can emit correlated
+    // events without generating any ID themselves.
+    RuntimeDebug.registerExecution(
+      ctx.executionId,
+      "system",
+      `runtime — ${ctx.executionId}`,
+    );
 
     this._emit(ctx, "execution_started", null);
 
@@ -173,6 +185,9 @@ export class ConversationRuntimeEngine {
   private _finalize(ctx: RuntimeExecutionContext, status: ExecutionStatus): ExecutionResult {
     ctx.status     = status;
     ctx.finishedAt = Date.now();
+
+    // Close the RuntimeDebug execution when the Runtime finishes
+    RuntimeDebug.closeExecution(ctx.executionId);
 
     const eventType: RuntimeEventType =
       status === "completed" ? "execution_completed"  :

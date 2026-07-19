@@ -96,6 +96,10 @@ class RuntimeDebugBus {
    * Start a new traced execution.
    * Returns a Correlation ID that must be passed to every emit() call
    * belonging to this flow.
+   *
+   * Used by the DriveDebugPanel UI to manually open a capture window.
+   * For production flows, use registerExecution() instead, passing the
+   * executionId already created by ConversationRuntimeEngine.
    */
   startExecution(connector: DebugConnector, label = ""): string {
     const executionId = _execId(connector);
@@ -111,6 +115,31 @@ class RuntimeDebugBus {
     return executionId;
   }
 
+  /**
+   * Register an executionId that was already created by ConversationRuntimeEngine.
+   *
+   * This is the canonical registration path for production flows:
+   *   ConversationRuntimeEngine creates the executionId via makeExecutionId()
+   *   → calls RuntimeDebug.registerExecution(executionId, connector, label)
+   *   → all downstream emit() calls use that ID without generating their own.
+   *
+   * SINGLE SOURCE OF TRUTH CONTRACT:
+   *   Only ConversationRuntimeEngine calls registerExecution().
+   *   Planner / Connector / ContextBuilder / Executor / Store never call this.
+   */
+  registerExecution(executionId: string, connector: DebugConnector, label = ""): void {
+    if (this._find(executionId)) return; // idempotent
+    this._executions.unshift({
+      executionId,
+      connector,
+      label: label || `${connector} — ${new Date().toLocaleTimeString("pt-BR")}`,
+      startedAt: Date.now(),
+      events:    [],
+    });
+    if (this._executions.length > MAX_EXECUTIONS) this._executions.pop();
+    this._flush();
+  }
+
   /** Mark an execution as complete. */
   closeExecution(executionId: string): void {
     const ex = this._find(executionId);
@@ -124,23 +153,31 @@ class RuntimeDebugBus {
 
   /**
    * Emit a debug event.
-   * If executionId is unknown, auto-creates an execution for the connector.
-   * Fan-out order: store → console → window.__MEMORY_DEBUG__ → UI subscribers
+   *
+   * STRICT CORRELATION POLICY:
+   *   The executionId MUST be created exclusively by RuntimeDebug.startExecution().
+   *   Downstream components (Planner, Connector, ContextBuilder, Executor, Store)
+   *   only receive and propagate the ID — they never generate it.
+   *
+   *   If emit() receives an executionId not registered via startExecution():
+   *     - In development: logs a correlation-loss warning to console.warn.
+   *     - Does NOT auto-create a silent execution.
+   *     - The event is dropped (no store mutation, no UI update).
+   *
+   * Fan-out order (when execution is found): store → console → window.__MEMORY_DEBUG__ → UI subscribers
    */
   emit(opts: EmitOptions): void {
     let ex = this._find(opts.executionId);
     if (!ex) {
-      // Auto-create execution when none exists (covers the "already open" case)
-      const executionId = opts.executionId;
-      ex = {
-        executionId,
-        connector: opts.connector,
-        label:     `${opts.connector} — auto`,
-        startedAt: Date.now(),
-        events:    [],
-      };
-      this._executions.unshift(ex);
-      if (this._executions.length > MAX_EXECUTIONS) this._executions.pop();
+      // CORRELATION LOSS — warn and drop the event (never auto-create silently)
+      if (typeof process === "undefined" || process.env?.NODE_ENV !== "production") {
+        console.warn(
+          `[RuntimeDebug] CORRELATION LOSS — executionId "${opts.executionId}" not found.` +
+          ` source="${opts.source}" event="${opts.event}".` +
+          ` Call RuntimeDebug.startExecution() in the Runtime before emitting.`,
+        );
+      }
+      return; // drop — no store mutation, no UI update
     }
 
     const ev: DebugEvent = {

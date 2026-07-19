@@ -140,7 +140,7 @@ export const GoogleDriveContextBuilder: IConnectorContextBuilder = {
       if (files.length > 0) {
         const ctx = _makeContext(files, 0, capability, executionMetadata);
         RuntimeDebug.emit({
-          executionId: executionMetadata.executionId ?? "unknown",
+          executionId: executionMetadata.executionId ?? "",
           connector:   "google-drive",
           source:      "DriveContextBuilder",
           event:       "built context from file list",
@@ -168,7 +168,7 @@ export const GoogleDriveContextBuilder: IConnectorContextBuilder = {
         executionMetadata,
       );
       RuntimeDebug.emit({
-        executionId: executionMetadata.executionId ?? "unknown",
+        executionId: executionMetadata.executionId ?? "",
         connector:   "google-drive",
         source:      "DriveContextBuilder",
         event:       "built context from single file",
@@ -182,7 +182,7 @@ export const GoogleDriveContextBuilder: IConnectorContextBuilder = {
     }
 
     RuntimeDebug.emit({
-      executionId: executionMetadata.executionId ?? "unknown",
+      executionId: executionMetadata.executionId ?? "",
       connector:   "google-drive",
       source:      "DriveContextBuilder",
       event:       "could not build context — no files and no singleId",
