@@ -22,9 +22,10 @@ import { base44 }             from "@/api/base44Client";
 import { SearchRanker }       from "@/lib/github-deep-analysis/SearchRanker";
 import { conversationStore }  from "@/lib/conversation-platform/ConversationStore";
 import { buildContext }       from "@/lib/connector-context/ConnectorContextBuilderRegistry";
-// Side-effect imports: each builder self-registers on load.
-// Add one import per new connector — zero other changes required.
-import "@/lib/connector-context/providers/GoogleDriveContextBuilder";
+import { bootstrapConnectorContext } from "@/lib/connector-context/ConnectorContextBootstrap";
+
+// Ensure all builders are registered before first use.
+bootstrapConnectorContext();
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -74,7 +75,12 @@ export async function synthesizeConnectorResult(
     for (const s of completedSteps) {
       const out = s.output as Record<string, unknown> | null;
       if (!out) continue;
-      const ctx = buildContext(s.connector, out);
+      const ctx = buildContext(
+        s.connector,
+        s.capability,
+        out,
+        { executionId: result.executionId, durationMs: s.durationMs },
+      );
       if (ctx) {
         conversationStore.setConnectorContext(s.connector, ctx);
         break;

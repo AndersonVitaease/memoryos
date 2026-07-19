@@ -4,30 +4,33 @@
  * Google Drive implementation of IConnectorContextBuilder.
  *
  * Responsibilities:
- *   - Define DriveFileEntry and DriveConnectorContext types (Drive-specific).
- *   - Implement build(output) to extract files from any Drive step output
- *     (list, search, get, downloadFile).
- *   - Register itself in ConnectorContextBuilderRegistry on import.
+ *   - Define DriveFileEntry and DriveConnectorContext (Drive-specific types).
+ *   - Implement build(request) to extract file context from any Drive step output.
+ *   - Export readDriveContext() for DriveDownloadExecutor to read its own slot.
+ *   - Export updateDriveSelection() for future Selection Resolution Engine.
  *
- * Consumers:
- *   - ConnectorResultSynthesizer triggers this via the registry (no direct import).
- *   - DriveDownloadExecutor imports readDriveContext() to read its own slot.
- *   - updateDriveSelection() lets callers change the active selection before download.
+ * Registration:
+ *   - NOT self-registering. Registered explicitly in ConnectorContextBootstrap.
+ *
+ * Search policy:
+ *   - Drive ALWAYS searches across ALL file types.
+ *   - mimeType is treated as metadata only — never used as a search predicate.
+ *   - The user expresses intent ("meu contrato", "a planilha") and the engine resolves.
  *
  * SRP: sole responsibility is Drive context building and reading.
- * Zero platform-core imports beyond the two registry contracts.
  */
 
-import type { BaseConnectorContext }   from "../ConnectorContextStore";
-import type { IConnectorContextBuilder } from "../ConnectorContextBuilderRegistry";
-import { registerContextBuilder }       from "../ConnectorContextBuilderRegistry";
+import type { BaseConnectorContext }           from "../ConnectorContextStore";
+import type {
+  IConnectorContextBuilder,
+  ConnectorContextBuildRequest,
+}                                              from "../ConnectorContextBuilderRegistry";
 
 // ── Drive-specific types ──────────────────────────────────────────────────────
 
 /**
- * A file entry from any Drive list/search/get operation.
- * mimeType is metadata only — never used as a search predicate.
- * The connector always searches across all file types.
+ * A file entry from any Drive list / search / get / download operation.
+ * mimeType is metadata only — never a search predicate.
  */
 export interface DriveFileEntry {
   id:       string;
@@ -38,48 +41,74 @@ export interface DriveFileEntry {
 /**
  * Drive connector context stored in ConversationState.connectorContexts["google-drive"].
  *
- * selectedIndex is the user's current selection within files[].
- * Defaults to 0 (first file presented) and can be updated via updateDriveSelection()
- * when the user says "o terceiro", "esse", "o contrato", "aquele", etc.
+ * selectedIndex: current user selection within files[]. Defaults to 0.
+ *   Updated via updateDriveSelection() when the Selection Resolution Engine
+ *   resolves phrases like "o terceiro", "esse", "aquele", "o contrato", etc.
+ *
+ * The context is immutable after construction (Object.freeze).
+ * Mutations produce a new frozen object via updateDriveSelection().
  */
 export interface DriveConnectorContext extends BaseConnectorContext {
   connectorId:      "google-drive";
-  files:            DriveFileEntry[];
+  files:            readonly DriveFileEntry[];
   selectedIndex:    number;
   selectedFileId:   string;
   selectedFileName: string;
+  /** Capability that produced this context (e.g. "drive.files.list") */
+  capability:       string;
+  /** Execution metadata carried through for observability */
+  executionId?:     string;
+  durationMs?:      number;
 }
 
-// ── Pure factory helpers ──────────────────────────────────────────────────────
+// ── Pure factory ──────────────────────────────────────────────────────────────
 
-function _makeContext(files: DriveFileEntry[], selectedIndex: number): DriveConnectorContext {
-  const idx  = Math.max(0, Math.min(selectedIndex, files.length - 1));
+function _makeContext(
+  files:     DriveFileEntry[],
+  index:     number,
+  capability: string,
+  meta:      ConnectorContextBuildRequest["executionMetadata"],
+): DriveConnectorContext {
+  const idx  = Math.max(0, Math.min(index, files.length - 1));
   const file = files[idx] ?? files[0];
   return Object.freeze<DriveConnectorContext>({
     connectorId:      "google-drive",
-    files:            Object.freeze([...files]) as DriveFileEntry[],
+    files:            Object.freeze([...files]),
     selectedIndex:    idx,
     selectedFileId:   file?.id   ?? "",
     selectedFileName: file?.name ?? "",
-    updatedAt:        Date.now(),
+    capability,
+    executionId:      meta.executionId,
+    durationMs:       meta.durationMs,
+    updatedAt:        meta.timestamp ?? Date.now(),
   });
 }
 
+// ── Selection API — prepared for Selection Resolution Engine ──────────────────
+
 /**
  * Return an updated DriveConnectorContext reflecting a new user selection.
- * Call this when the user refers to a specific file by ordinal or name
- * ("o terceiro", "o contrato", "aquele") before executing the download.
+ * Call this when the Selection Resolution Engine resolves a reference
+ * ("o terceiro", "o contrato", "aquele", "esse mesmo") to a specific index.
+ *
+ * Does not mutate — always returns a new frozen object.
  */
 export function updateDriveSelection(
-  ctx: DriveConnectorContext,
+  ctx:      DriveConnectorContext,
   newIndex: number,
 ): DriveConnectorContext {
-  return _makeContext([...ctx.files], newIndex);
+  return _makeContext(
+    [...ctx.files],
+    newIndex,
+    ctx.capability,
+    { executionId: ctx.executionId, durationMs: ctx.durationMs, timestamp: Date.now() },
+  );
 }
 
 /**
  * Safely narrow a BaseConnectorContext to DriveConnectorContext.
- * Returns null when the context is absent or belongs to a different connector.
+ * Returns null when context is absent or belongs to a different connector.
+ * Used by DriveDownloadExecutor to read its own session slot.
  */
 export function readDriveContext(
   ctx: BaseConnectorContext | undefined | null,
@@ -90,10 +119,12 @@ export function readDriveContext(
 
 // ── Builder implementation ────────────────────────────────────────────────────
 
-const GoogleDriveContextBuilder: IConnectorContextBuilder = {
+export const GoogleDriveContextBuilder: IConnectorContextBuilder = {
   connectorId: "google-drive",
 
-  build(output: Record<string, unknown>): DriveConnectorContext | null {
+  build(request: ConnectorContextBuildRequest): DriveConnectorContext | null {
+    const { capability, output, executionMetadata } = request;
+
     // Case 1: list / search result — output.files is an array
     const rawFiles = output.files;
     if (Array.isArray(rawFiles) && rawFiles.length > 0) {
@@ -105,7 +136,9 @@ const GoogleDriveContextBuilder: IConnectorContextBuilder = {
         }))
         .filter((f) => f.id.length > 0);
 
-      if (files.length > 0) return _makeContext(files, 0);
+      if (files.length > 0) {
+        return _makeContext(files, 0, capability, executionMetadata);
+      }
     }
 
     // Case 2: single-file result — drive.files.get / drive.downloadFile
@@ -113,15 +146,14 @@ const GoogleDriveContextBuilder: IConnectorContextBuilder = {
     const singleName = String(output.fileName ?? output.name ?? "");
     const singleMime = String(output.mimeType ?? "");
     if (singleId) {
-      return _makeContext([{ id: singleId, name: singleName, mimeType: singleMime }], 0);
+      return _makeContext(
+        [{ id: singleId, name: singleName, mimeType: singleMime }],
+        0,
+        capability,
+        executionMetadata,
+      );
     }
 
     return null;
   },
 };
-
-// ── Auto-register on import ───────────────────────────────────────────────────
-
-registerContextBuilder(GoogleDriveContextBuilder);
-
-export { GoogleDriveContextBuilder };

@@ -1,16 +1,15 @@
 /**
  * ConnectorContextStore.ts — Pure infrastructure. Zero connector-specific logic.
  *
- * Defines the base contract for session-scoped connector contexts.
- * All connector-specific types live in their own provider modules.
+ * Defines only the structural contracts used by the platform.
+ * No connector types. No Google Drive. No Gmail. No GitHub.
  *
- * SRP: sole responsibility is defining the structural contracts
- *      (BaseConnectorContext, ConnectorContextMap) used by the platform.
+ * SRP: sole responsibility is defining BaseConnectorContext and ConnectorContextMap.
  */
 
 /**
  * Every connector context must carry these mandatory fields.
- * Connector-specific data extends this interface in the connector's own module.
+ * Connector-specific data extends this interface in the connector's own provider module.
  */
 export interface BaseConnectorContext {
   /** Connector identifier — must match the connectorId used in ConnectorRegistry */
