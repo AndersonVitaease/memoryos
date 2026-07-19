@@ -103,6 +103,7 @@ export class GoogleDriveConnector implements IConnector {
       author: "MemoryOS",
       capabilities: [
         "drive.files.list",
+        "drive.files.listByMime",
         "drive.files.get",
         "drive.files.search",
         "drive.about.get",
@@ -298,8 +299,9 @@ export class GoogleDriveConnector implements IConnector {
       }
 
       // ── About ───────────────────────────────────────────────────────────────
-      // GWS Foundation does not expose a direct about() — use getDriveHealth()
-      // which is a lightweight session check, and enrich with connection metadata.
+      // Calls GET /drive/v3/about?fields=user,storageQuota via a minimal
+      // files.list with pageSize=1 (Drive about endpoint requires full scope).
+      // Falls back to session metadata if the about endpoint is unavailable.
 
       case "drive.about.get": {
         const conn = getConnection("default");
@@ -308,14 +310,33 @@ export class GoogleDriveConnector implements IConnector {
         if (!health.ok) {
           return fail(health.reason, "auth", start, eid, logs, operation);
         }
+        // Attempt real Drive API about call
+        try {
+          const accessToken = getAccessToken("default");
+          if (accessToken) {
+            const res = await fetch(
+              "https://www.googleapis.com/drive/v3/about?fields=user,storageQuota,maxImportSizes",
+              { headers: { Authorization: `Bearer ${accessToken}` } },
+            );
+            if (res.ok) {
+              const about = await res.json();
+              return ok({
+                user:         about.user         ?? null,
+                storageQuota: about.storageQuota  ?? null,
+                maxImportSizes: about.maxImportSizes ?? null,
+              }, start, eid, logs, operation);
+            }
+          }
+        } catch { /* fall through to session metadata */ }
+        // Fallback: session metadata only
         return ok({
           user: {
             displayName:  conn?.displayName  ?? null,
             emailAddress: conn?.email        ?? null,
             photoLink:    conn?.avatarUrl    ?? null,
           },
-          storageQuota: null,  // not exposed by GWS Foundation getDriveHealth()
-          maxUploadSize: null,
+          storageQuota:   null,
+          maxImportSizes: null,
         }, start, eid, logs, operation);
       }
 
@@ -336,6 +357,27 @@ export class GoogleDriveConnector implements IConnector {
         return ok({
           files:          result.files.map(this._mapDriveFile),
           nextPageToken:  result.nextPageToken ?? null,
+        }, start, eid, logs, operation);
+      }
+
+      // ── Files List by MIME type ──────────────────────────────────────────────
+      // Supports "Liste apenas PDFs", "Liste apenas Google Docs", etc.
+      // Builds a Drive query: mimeType='...' and trashed=false
+
+      case "drive.files.listByMime": {
+        const mimeType  = typeof payload.mimeType  === "string" ? payload.mimeType  : "application/pdf";
+        const pageSize  = typeof payload.pageSize  === "number" ? Math.min(payload.pageSize, 100) : 20;
+        const pageToken = typeof payload.pageToken === "string" ? payload.pageToken : undefined;
+
+        const q = `mimeType='${mimeType}' and trashed=false`;
+        const result = await gws.searchFiles(q, { pageSize, pageToken });
+        this._recordResponseTime(result.durationMs);
+        logs.push(makeLog("info", `[${operation}] mimeType=${mimeType} ${result.files.length} files — ${result.durationMs}ms`));
+
+        return ok({
+          mimeType,
+          files:         result.files.map(this._mapDriveFile),
+          nextPageToken: result.nextPageToken ?? null,
         }, start, eid, logs, operation);
       }
 

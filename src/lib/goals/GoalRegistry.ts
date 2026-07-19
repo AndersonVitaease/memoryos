@@ -184,16 +184,18 @@ const _builtins: GoalDefinition[] = [
       // PT — leitura de corpo completo
       "leia este email", "leia esse email", "leia o email",
       "leia o primeiro email", "leia o segundo email", "leia o terceiro email",
+      "leia o ultimo email", "leia o último email",
       "leia a mensagem", "leia esta mensagem", "leia essa mensagem",
       "abra este email", "abra esse email", "abra o email",
       "leia o email completo", "mostrar conteudo", "mostrar o conteudo",
       "mostre o conteudo", "mostre o corpo", "corpo do email",
       "conteudo do email", "conteudo da mensagem", "texto do email",
       "email completo", "mensagem completa",
+      "ultimo e-mail", "último e-mail", "ultimo email", "último email",
       // EN
-      "read this email", "read the email", "read the full email",
+      "read this email", "read the email", "read the full email", "read the last email",
       "show email content", "show the full email", "open this email",
-      "email body", "full email",
+      "email body", "full email", "last email",
     ],
     extractParams: (msg) => {
       // 1. Explicit messageId in the message text (e.g. "leia o email 18fa3b2c1d4e5f6a")
@@ -256,6 +258,35 @@ const _builtins: GoalDefinition[] = [
     ],
     extractParams: () => ({ messageId: null }),
   },
+  {
+    type: "gmail.getThread" as GoalType,
+    namespace: "gmail",
+    description: "Read a full Gmail thread (all messages)",
+    signals: [
+      "thread completa", "thread inteira", "conversa completa", "conversa inteira",
+      "toda a conversa", "todos os emails da thread", "leia a thread",
+      "read thread", "full thread", "toda a thread",
+    ],
+    extractParams: (msg) => {
+      const idMatch = msg.match(/\b([0-9a-f]{8,})\b/i)?.[1];
+      return { threadId: idMatch ?? null };
+    },
+  },
+  {
+    type: "gmail.getAttachment" as GoalType,
+    namespace: "gmail",
+    description: "Download a Gmail attachment",
+    signals: [
+      "baixar anexo", "leia o anexo", "leia esse anexo", "abrir anexo",
+      "ver anexo", "download attachment", "read attachment", "open attachment",
+      "anexo do email",
+    ],
+    extractParams: (msg) => {
+      const messageIdMatch = msg.match(/messageId[=:]\s*([0-9a-f]+)/i)?.[1];
+      const attachmentIdMatch = msg.match(/attachmentId[=:]\s*([^,\s]+)/i)?.[1];
+      return { messageId: messageIdMatch ?? null, attachmentId: attachmentIdMatch ?? null };
+    },
+  },
 
   // ── Calendar ───────────────────────────────────────────────────────────────
   {
@@ -314,6 +345,10 @@ const _builtins: GoalDefinition[] = [
       "download", "exportar", "exporte", "exporta",
       "baixar o arquivo", "baixar o documento",
       "baixar arquivo", "baixar documento",
+      // "Abra esse PDF" / "abra esse documento" — open a specific file
+      "abra esse pdf", "abra esse documento", "abra esse arquivo",
+      "abrir esse pdf", "abrir esse documento", "abrir esse arquivo",
+      "abra o pdf", "abra o arquivo",
     ],
     extractParams: (msg) => {
       const quoted = msg.match(/"([^"]+)"/)?.[1];
@@ -326,13 +361,11 @@ const _builtins: GoalDefinition[] = [
     namespace: "drive",
     description: "Open or download a specific document in Drive",
     signals: [
-      // Download / read verbs (PT + EN) — highest priority
-      "baixar", "baixe", "baixa", "download", "baixar arquivo", "baixar documento",
-      "baixar o arquivo", "baixar o documento", "ler arquivo", "ler documento",
-      "read file", "read document", "abrir arquivo",
+      "ler arquivo", "ler documento", "ler esse documento", "leia esse documento",
+      "leia o documento", "leia esse arquivo", "leia o arquivo",
+      "read file", "read document",
       "open document", "open file",
-      // Document type words (when accompanied by a name / action intent)
-      "abrir", "planilha", "documento", "spreadsheet", "doc",
+      "abrir arquivo", "abrir o arquivo", "abrir o documento",
     ],
     extractParams: (msg) => {
       const quoted = msg.match(/"([^"]+)"/)?.[1];
@@ -346,10 +379,15 @@ const _builtins: GoalDefinition[] = [
     signals: [
       "buscar arquivo", "buscar documento", "pesquisar drive",
       "encontrar arquivo", "search drive", "find file",
+      // PDF name search signals — "Tem minha CNH em PDF?" / "Procure CNH"
+      "tem minha cnh", "procure cnh", "encontre cnh", "procurar cnh",
+      "procure contrato", "encontre contrato", "tem contrato",
     ],
     extractParams: (msg) => {
       const quoted = msg.match(/"([^"]+)"/)?.[1];
-      return { query: quoted ?? msg.trim() };
+      // Extract named entity after common search verbs
+      const nameMatch = msg.match(/(?:cnh|contrato|procure?|encontre?|tem)\s+(.+?)(?:\s+em\s+pdf|\?|$)/i)?.[1]?.trim();
+      return { query: quoted ?? nameMatch ?? msg.trim() };
     },
   },
   {
@@ -361,6 +399,17 @@ const _builtins: GoalDefinition[] = [
       "ultimos arquivos", "ver drive", "meus arquivos",
     ],
     extractParams: () => ({ maxResults: 10 }),
+  },
+  {
+    type: "drive.listPDFs" as GoalType,
+    namespace: "drive",
+    description: "List PDF files in Google Drive",
+    signals: [
+      "apenas pdfs", "apenas pdf", "somente pdfs", "somente pdf",
+      "pdfs no drive", "listar pdfs", "liste pdfs", "meus pdfs",
+      "arquivos pdf", "only pdfs", "list pdfs",
+    ],
+    extractParams: () => ({ mimeType: "application/pdf", pageSize: 20 }),
   },
 
   // ── GitHub — Sprint M-02 ─────────────────────────────────────────────────

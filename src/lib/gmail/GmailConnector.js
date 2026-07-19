@@ -290,6 +290,61 @@ export async function getMessage(messageId) {
 }
 
 /**
+ * Recupera uma thread completa pelo threadId.
+ * @param {string} threadId
+ * @returns {Promise<ConnectorResult>}
+ */
+export async function getThread(threadId) {
+  log(`getThread("${threadId}")`);
+  if (!threadId) return apiError("threadId e obrigatorio.");
+  const conn = await requireSession();
+  if (!conn) return disconnected();
+
+  const res = await gmailGet(`/threads/${threadId}`, { format: "full" });
+  const err = handleHttpError(res, `getThread(${threadId})`);
+  if (err) return err;
+
+  const thread = await res.json();
+  const messages = (thread.messages ?? []).map(msg => {
+    const headers = msg.payload?.headers ?? [];
+    return normalizeSummary(msg);
+  });
+
+  return ok({
+    id:       thread.id,
+    snippet:  thread.snippet ?? "",
+    messages,
+    historyId: thread.historyId ?? "",
+  });
+}
+
+/**
+ * Baixa o conteúdo de um anexo específico.
+ * @param {string} messageId
+ * @param {string} attachmentId
+ * @returns {Promise<ConnectorResult>}
+ */
+export async function getAttachment(messageId, attachmentId) {
+  log(`getAttachment(${messageId}, ${attachmentId})`);
+  if (!messageId || !attachmentId) return apiError("messageId e attachmentId sao obrigatorios.");
+  const conn = await requireSession();
+  if (!conn) return disconnected();
+
+  const res = await gmailGet(`/messages/${messageId}/attachments/${attachmentId}`);
+  const err = handleHttpError(res, `getAttachment(${messageId}, ${attachmentId})`);
+  if (err) return err;
+
+  const body = await res.json();
+  return ok({
+    attachmentId,
+    messageId,
+    size:     body.size ?? 0,
+    data:     body.data ?? "",    // Base64URL encoded
+    encoding: "base64url",
+  });
+}
+
+/**
  * Lista todas as labels do usuario.
  * @returns {Promise<ConnectorResult>}
  */

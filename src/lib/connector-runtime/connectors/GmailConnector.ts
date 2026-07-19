@@ -25,6 +25,8 @@ const CAPABILITIES = Object.freeze([
   "searchEmails",
   "readMessage",
   "readEmail",
+  "getThread",
+  "getAttachment",
   "listLabels",
   "createDraft",
   "sendEmail",
@@ -158,6 +160,17 @@ export class GmailConnector implements IConnector {
       case "readEmail": {
         const { readEmail } = await import("@/lib/gmail/GmailReadEmail");
         return readEmail((p["messageId"] as string) ?? "");
+      }
+      case "getThread": {
+        const { getThread } = await import("@/lib/gmail/GmailConnector");
+        return getThread((p["threadId"] as string) ?? "");
+      }
+      case "getAttachment": {
+        const { getAttachment } = await import("@/lib/gmail/GmailConnector");
+        return getAttachment(
+          (p["messageId"] as string) ?? "",
+          (p["attachmentId"] as string) ?? "",
+        );
       }
       case "listLabels": {
         const { listLabels } = await import("@/lib/gmail/GmailConnector");

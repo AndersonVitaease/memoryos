@@ -141,6 +141,18 @@ const _builtins: CapabilityMapping[] = [
       { connector: "gmail", capability: "readEmail", params: {} },
     ],
   },
+  {
+    goalType: "gmail.getThread" as GoalType,
+    descriptors: [
+      { connector: "gmail", capability: "getThread", params: {} },
+    ],
+  },
+  {
+    goalType: "gmail.getAttachment" as GoalType,
+    descriptors: [
+      { connector: "gmail", capability: "getAttachment", params: {} },
+    ],
+  },
 
   // ── Calendar ───────────────────────────────────────────────────────────────
   // connector id: "google-calendar"  (GoogleCalendarConnector.ts:115)
@@ -202,10 +214,18 @@ const _builtins: CapabilityMapping[] = [
       {
         connector: "google-drive",
         capability: "drive.files.search",
-        // Sprint C-01: "q" default prevents [validation] query string 'q' is required.
-        // If goal.parameters carries a more specific "q", it overrides this default
-        // (Planner merges: { ...desc.params, ...goal.parameters }).
         params: { q: "trashed=false", pageSize: 10, orderBy: "modifiedTime desc" },
+      },
+    ],
+  },
+  // drive.listPDFs — "Liste apenas PDFs", "Liste PDFs", "Tenho CNH em PDF?"
+  {
+    goalType: "drive.listPDFs" as GoalType,
+    descriptors: [
+      {
+        connector: "google-drive",
+        capability: "drive.files.listByMime",
+        params: { mimeType: "application/pdf", pageSize: 20 },
       },
     ],
   },
