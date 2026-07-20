@@ -28,6 +28,8 @@ import type {
 import { makeCCIId } from "./CCITypes";
 import type { ConnectorResult } from "../connector-runtime/ConnectorTypes";
 import { makeExecutionId } from "../connector-runtime/ConnectorTypes";
+// BUGFIX-002.6.1: ResolvedCapability integration (FASE 3)
+import type { ResolvedCapability } from "@/lib/capability-resolution/ResolvedCapability";
 
 // ── Known registry of production connectors ────────────────────────────────────
 // No hardcoded behavior — connectors are instantiated and queried at runtime.
@@ -163,6 +165,64 @@ export class ConnectorInvocationService {
     this._appendHistory(record);
 
     return { authorization, result, record };
+  }
+
+  // ── FASE 3 (002.6.1): executeResolvedCapability ──────────────────────────────
+  // New first-class execution path that honours a ResolvedCapability contract.
+  // The legacy invoke() method remains intact — this is additive only.
+  //
+  // Rules:
+  //   - connectorId is ALWAYS taken from resolvedCapability.preferredConnector
+  //   - If ambiguous (preferredConnector===null), returns NOT_AVAILABLE without fallback
+  //   - No default connector. No fallback. The decision was already made upstream.
+
+  async executeResolvedCapability(
+    resolved:  ResolvedCapability,
+    payload:   Record<string, unknown> = {},
+    ctx:       Partial<ConnectorExecutionContext> = {},
+  ): Promise<{ authorization: InvocationAuthorization; result: ConnectorResult | null; record: CognitiveInvocationRecord }> {
+    // Reject ambiguous decisions immediately — never fall back to any default connector.
+    if (resolved.ambiguous || !resolved.preferredConnector) {
+      const executionId    = makeExecutionId();
+      const correlationId  = makeCCIId("corr");
+      const context: ConnectorExecutionContext = {
+        executionId,
+        correlationId,
+        goalId:             ctx.goalId     ?? null,
+        sessionId:          ctx.sessionId  ?? null,
+        reason:             "Rejected: ambiguous capability — no preferredConnector",
+        requestedCapability: resolved.capabilityId,
+        originComponent:    ctx.originComponent ?? "System",
+        approvalStatus:     "auto_approved",
+        timestamp:          Date.now(),
+      };
+      const auth: InvocationAuthorization = {
+        decision:    "NOT_AVAILABLE",
+        connectorId: "ambiguous",
+        operation:   resolved.capabilityId,
+        reason:      `ResolvedCapability is ambiguous — no connector selected. capabilityId="${resolved.capabilityId}"`,
+        checkedAt:   Date.now(),
+        checks:      [{ name: "Ambiguity guard", passed: false, detail: resolved.reasoning }],
+      };
+      const record = this._makeRecord("ambiguous", resolved.capabilityId, context, auth, "NOT_AVAILABLE", 0, null, auth.reason);
+      this._appendHistory(record);
+      return { authorization: auth, result: null, record };
+    }
+
+    // Merge preserved context into payload so downstream connectors have full info.
+    const enrichedPayload: Record<string, unknown> = {
+      ...payload,
+      ...(resolved.preservedContext.repository ? { repository: resolved.preservedContext.repository } : {}),
+      _resolvedCapabilityId: resolved.capabilityId,
+      _resolvedDomain:       resolved.domain,
+    };
+
+    return this.invoke(
+      resolved.preferredConnector,
+      resolved.capabilityId,
+      enrichedPayload,
+      { ...ctx, reason: ctx.reason ?? `ResolvedCapability: ${resolved.capabilityId} via ${resolved.preferredConnector}` },
+    );
   }
 
   // ── Convenience wrappers ───────────────────────────────────────────────────────
