@@ -228,6 +228,7 @@ import SprintM110AuditPage from '@/pages/SprintM110AuditPage';
 import DriveAuditPanel from '@/pages/DriveAuditPanel';
 import GitHubDebugPanel from '@/pages/GitHubDebugPanel';
 import EF399ValidationPage from '@/pages/EF399ValidationPage';
+import RegressionTest271Page from '@/pages/RegressionTest271Page';
 
 const AuthenticatedApp = () => {
   console.log('[RENDER] AuthenticatedApp');
@@ -473,6 +474,7 @@ const AuthenticatedApp = () => {
           <Route path="/sprint-m110-audit" element={<SprintM110AuditPage />} />
           <Route path="/drive-audit" element={<DriveAuditPanel />} />
           <Route path="/github-debug" element={<GitHubDebugPanel />} />
+          <Route path="/regression-271" element={<RegressionTest271Page />} />
         </Route>
       </Route>
       <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />
