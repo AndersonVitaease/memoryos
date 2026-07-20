@@ -199,7 +199,7 @@ export class OfficialRuntimeBridgeClass {
 
     // ── 4. Execute via ConversationRuntimeEngine (official path) ─────────────
     try {
-      const engine = getRealRuntimeEngine();
+      const engine = await getRealRuntimeEngine();
       const executionResult = await engine.execute(planResult.plan);
 
       const completedSteps = executionResult.steps.filter(
