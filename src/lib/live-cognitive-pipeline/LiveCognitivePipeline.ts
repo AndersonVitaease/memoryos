@@ -181,9 +181,10 @@ export class LiveCognitivePipeline {
     const t0 = Date.now();
     try {
       // Base44 ping via official runtime (maps to memory.query → empty plan = NOT_ROUTABLE = ok)
-      const b44Ping = await officialRuntimeBridge.invoke("base44", "connectivity.ping", {});
+      // invokeGuarded: verifies connector declared === connector resolved (002.6.3)
+      const b44Ping = await officialRuntimeBridge.invokeGuarded("base44", "connectivity.ping", {});
       // GitHub ping via official runtime
-      const ghPing  = await officialRuntimeBridge.invoke("github",  "connectivity.ping", {});
+      const ghPing  = await officialRuntimeBridge.invokeGuarded("github",  "connectivity.ping", {});
 
       const b44Status = b44Ping.success || b44Ping.status === "NOT_ROUTABLE" ? "SUCCESS" : "NOT_CONFIGURED";
       const ghStatus  = ghPing.success  || ghPing.status  === "NOT_ROUTABLE" ? "SUCCESS" : "NOT_CONFIGURED";
@@ -214,7 +215,7 @@ export class LiveCognitivePipeline {
     const t0 = Date.now();
     try {
       // Sprint M-04: routes through OfficialRuntimeBridge → ConversationPlanningEngine → Runtime → UCR
-      const reposInv = await officialRuntimeBridge.invoke("github", "repos.list", { per_page: 10 });
+      const reposInv = await officialRuntimeBridge.invokeGuarded("github", "repos.list", { per_page: 10 });
 
       if (!reposInv.success && reposInv.status !== "NOT_ROUTABLE") {
         this._addRecovery("RepositoryAnalyzer", "GitHub not available via Runtime", "Continue with Base44-only pipeline", ["Skip repository stages","Use Base44 entities for knowledge"]);
@@ -229,8 +230,8 @@ export class LiveCognitivePipeline {
       let branchCount = 0, commitCount = 0;
       if (targetOwner && targetRepo) {
         const [bInv, cInv] = await Promise.all([
-          officialRuntimeBridge.invoke("github", "branches.list", { owner: targetOwner, repo: targetRepo }),
-          officialRuntimeBridge.invoke("github", "commits.list",  { owner: targetOwner, repo: targetRepo, per_page: 10 }),
+          officialRuntimeBridge.invokeGuarded("github", "branches.list", { owner: targetOwner, repo: targetRepo }),
+          officialRuntimeBridge.invokeGuarded("github", "commits.list",  { owner: targetOwner, repo: targetRepo, per_page: 10 }),
         ]);
         branchCount = (bInv.data as any)?.count ?? 0;
         commitCount = (cInv.data as any)?.count ?? 0;
@@ -300,13 +301,13 @@ export class LiveCognitivePipeline {
       // Sprint M-04: routes through OfficialRuntimeBridge → ConversationPlanningEngine → Runtime → UCR
       // memory.query / workspace.info map to empty plans (internal) — returns NOT_ROUTABLE = ok
       const [projInv, diagInv] = await Promise.all([
-        officialRuntimeBridge.invoke("base44", "projects.list", { limit: 20 }),
-        officialRuntimeBridge.invoke("base44", "workspace.info", {}),
+        officialRuntimeBridge.invokeGuarded("base44", "projects.list", { limit: 20 }),
+        officialRuntimeBridge.invokeGuarded("base44", "workspace.info", {}),
       ]);
 
       const entityNames = ["Message", "ChatSession", "Document", "Task", "KnowledgeEntity", "Decision"];
       const entityInvs = await Promise.all(
-        entityNames.map(e => officialRuntimeBridge.invoke("base44", "entities.list", { entity: e, limit: 10 }))
+        entityNames.map(e => officialRuntimeBridge.invokeGuarded("base44", "entities.list", { entity: e, limit: 10 }))
       );
 
       const entityCounts: Record<string, number> = {};

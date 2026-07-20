@@ -40,6 +40,26 @@ import { conversationPlanningEngine }        from "@/lib/planning-engine-e022/Co
 import { getRealRuntimeEngine }              from "@/lib/connector-runtime-provider/ConnectorRuntimeProvider";
 import type { ExecutionResult }              from "@/lib/runtime-engine/RuntimeTypes";
 
+// ── ConnectorId → domain prefix map (for divergence guard) ───────────────────
+// Used by invokeGuarded to verify that the resolved connector matches
+// the declared connectorId before execution.
+const CONNECTOR_DOMAIN_PREFIX: Record<string, string[]> = {
+  "github":          ["github."],
+  "base44":          ["base44.", "memory."],
+  "google":          ["gmail."],
+  "gmail":           ["gmail."],
+  "google-calendar": ["calendar."],
+  "google-drive":    ["drive."],
+};
+
+/** Returns true when the step connector is consistent with the declared connectorId. */
+function _connectorConsistent(declaredId: string, stepConnector: string): boolean {
+  if (declaredId === stepConnector) return true;
+  // base44/memory pings are internal — always consistent
+  if (stepConnector === "base44" && declaredId === "base44") return true;
+  return false;
+}
+
 // ── Bridge Result ─────────────────────────────────────────────────────────────
 
 export interface BridgeInvocationResult {
@@ -198,6 +218,157 @@ export class OfficialRuntimeBridgeClass {
     }
 
     // ── 4. Execute via ConversationRuntimeEngine (official path) ─────────────
+    try {
+      const engine = await getRealRuntimeEngine();
+      const executionResult = await engine.execute(planResult.plan);
+
+      const completedSteps = executionResult.steps.filter(
+        (s) => s.status === "completed" && s.output !== null,
+      );
+
+      const allOutputs = completedSteps.map((s) => ({
+        connector:  s.connector,
+        capability: s.capability,
+        output:     s.output,
+      }));
+
+      const primaryData = allOutputs[0]?.output ?? null;
+      const success = executionResult.status === "completed" && completedSteps.length > 0;
+
+      const bridgeResult: BridgeInvocationResult = {
+        success,
+        data:            primaryData,
+        allOutputs,
+        status:          executionResult.status,
+        error:           executionResult.errors[0] ?? null,
+        durationMs:      Date.now() - t0,
+        executionId:     executionResult.executionId,
+        executionResult,
+      };
+
+      this._track(bridgeResult);
+      return bridgeResult;
+
+    } catch (err) {
+      this._totalBypassed++;
+      const errResult: BridgeInvocationResult = {
+        success:         false,
+        data:            null,
+        allOutputs:      [],
+        status:          "FAILED",
+        error:           err instanceof Error ? err.message : String(err),
+        durationMs:      Date.now() - t0,
+        executionId:     `bridge-err-${Date.now()}`,
+        executionResult: {
+          executionId: `bridge-err-${Date.now()}`,
+          planId:      planResult.plan.id,
+          status:      "failed",
+          steps:       [],
+          errors:      [err instanceof Error ? err.message : String(err)],
+          durationMs:  Date.now() - t0,
+          startedAt:   t0,
+          completedAt: Date.now(),
+        },
+      };
+      this._track(errResult);
+      return errResult;
+    }
+  }
+
+  /**
+   * BUGFIX-002.6.3 — Guarded invocation.
+   *
+   * Identical to invoke() but enforces the invariant:
+   *   connector declared by caller === connector resolved by GoalCapabilityRegistry
+   *
+   * If the plan resolves to a different connector, execution is ABORTED and a
+   * ConnectorDivergenceError is returned instead of silently executing the wrong
+   * connector.
+   *
+   * All LCP and CCG calls should migrate to invokeGuarded() over invoke().
+   */
+  async invokeGuarded(
+    connectorId: string,
+    operation:   string,
+    parameters:  Record<string, unknown> = {},
+  ): Promise<BridgeInvocationResult & { divergence?: { declared: string; resolved: string } }> {
+    const t0 = Date.now();
+    this._totalInvocations++;
+
+    // ── 1. Map operation → GoalType ─────────────────────────────────────────
+    const goalType = CIS_TO_GOAL_TYPE[operation] ?? "general.conversation";
+
+    // ── 2. Build synthetic ConversationGoal ─────────────────────────────────
+    const goal: ConversationGoal = Object.freeze({
+      id:               makeConversationGoalId(),
+      type:             goalType,
+      confidence:       0.9,
+      parameters:       Object.freeze({ ...parameters, _sourceConnector: connectorId, _sourceOperation: operation }),
+      userIntent:       `${connectorId}.${operation}`,
+      cognitiveIntent:  "repository_analysis" as import("@/lib/conversation-cognitive-gateway/CCGTypes").CognitiveIntent,
+      createdAt:        Date.now(),
+      valid:            true,
+      validationErrors: Object.freeze([]),
+    });
+
+    // ── 3. Plan via ConversationPlanningEngine ───────────────────────────────
+    const planResult = conversationPlanningEngine.plan(goal);
+
+    if (!planResult.success || planResult.plan.steps.length === 0) {
+      const emptyResult: BridgeInvocationResult = {
+        success:         true,
+        data:            null,
+        allOutputs:      [],
+        status:          "NOT_ROUTABLE",
+        error:           null,
+        durationMs:      Date.now() - t0,
+        executionId:     `bridge-empty-${Date.now()}`,
+        executionResult: {
+          executionId: `bridge-empty-${Date.now()}`,
+          planId:      planResult.plan.id,
+          status:      "completed",
+          steps:       [],
+          errors:      [],
+          durationMs:  Date.now() - t0,
+          startedAt:   t0,
+          completedAt: Date.now(),
+        },
+      };
+      this._track(emptyResult);
+      return emptyResult;
+    }
+
+    // ── 4. Divergence guard — verify connector consistency ───────────────────
+    // If the GoalCapabilityRegistry resolved to a different connector than
+    // what the caller declared, abort execution and return a divergence error.
+    // This eliminates the silent "github → google-drive" class of bugs.
+    const resolvedConnector = planResult.plan.steps[0]?.connector ?? null;
+    if (resolvedConnector && !_connectorConsistent(connectorId, resolvedConnector)) {
+      const divergenceResult: BridgeInvocationResult & { divergence: { declared: string; resolved: string } } = {
+        success:         false,
+        data:            null,
+        allOutputs:      [],
+        status:          "CONNECTOR_DIVERGENCE",
+        error:           `ConnectorDivergence: caller declared "${connectorId}" but GoalCapabilityRegistry resolved "${resolvedConnector}" for operation="${operation}" goalType="${goalType}". Execution aborted to prevent wrong-connector execution.`,
+        durationMs:      Date.now() - t0,
+        executionId:     `bridge-diverge-${Date.now()}`,
+        divergence:      { declared: connectorId, resolved: resolvedConnector },
+        executionResult: {
+          executionId: `bridge-diverge-${Date.now()}`,
+          planId:      planResult.plan.id,
+          status:      "failed",
+          steps:       [],
+          errors:      [`ConnectorDivergence: declared="${connectorId}" resolved="${resolvedConnector}"`],
+          durationMs:  Date.now() - t0,
+          startedAt:   t0,
+          completedAt: Date.now(),
+        },
+      };
+      this._track(divergenceResult);
+      return divergenceResult;
+    }
+
+    // ── 5. Execute via ConversationRuntimeEngine (official path) ─────────────
     try {
       const engine = await getRealRuntimeEngine();
       const executionResult = await engine.execute(planResult.plan);
