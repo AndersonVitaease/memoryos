@@ -76,6 +76,11 @@ const OFFICIAL_FACTORIES: ConnectorFactory[] = [
     const { GoogleCalendarConnector } = await import("./connectors/GoogleCalendarConnector");
     return new GoogleCalendarConnector();
   },
+  async () => {
+    // Sprint EF-39.9C: register GitHubConnector in the official bootstrap
+    const { GitHubConnector } = await import("./connectors/GitHubConnector");
+    return new GitHubConnector();
+  },
 ];
 
 // ── ConnectorBootstrap ────────────────────────────────────────────────────────
