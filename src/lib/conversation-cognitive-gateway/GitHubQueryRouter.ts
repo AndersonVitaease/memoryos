@@ -399,6 +399,9 @@ const PATTERNS: Pattern[] = [
     keywords: [
       "read file", "show file", "content of", "open file",
       "source code", "codigo fonte", "conteudo do arquivo", "look at",
+      // PT-BR: ler arquivo + contexto github/repositorio
+      "ler arquivo", "leia o arquivo", "mostrar arquivo", "abrir arquivo",
+      "conteudo do arquivo", "ver arquivo", "ver o arquivo",
     ],
     extractPayload: (msg) => {
       const result: Record<string, unknown> = extractRepoOwner(msg);
@@ -454,7 +457,12 @@ export class GitHubQueryRouter {
       }
     }
 
-    const confidence    = Math.min(bestScore * 0.4, 1.0);
+    // Domain anchor: if the message explicitly mentions "github" or "repositorio/repository",
+    // treat it as a GitHub query even with a partial keyword match.
+    const hasGitHubAnchor = lower.includes("github") || lower.includes("repositorio") || lower.includes("repository") || lower.includes("repo ");
+    const anchorBoost = hasGitHubAnchor ? 0.4 : 0;
+
+    const confidence    = Math.min(bestScore * 0.4 + anchorBoost, 1.0);
     const isGitHubQuery = confidence >= 0.4;
 
     const payload: Record<string, unknown> =
@@ -462,9 +470,18 @@ export class GitHubQueryRouter {
         ? bestPattern.extractPayload(message)
         : {};
 
+    // If anchor fired but no pattern matched, default to files.get for read-oriented queries,
+    // or repos.list as the safest fallback — never google-drive.
+    let resolvedCapability: GitHubCapability | null = isGitHubQuery ? bestCapability : null;
+    if (isGitHubQuery && resolvedCapability === null && hasGitHubAnchor) {
+      const lowerRead = lower.includes("ler") || lower.includes("read") || lower.includes("arquivo") || lower.includes("file");
+      resolvedCapability = lowerRead ? "files.get" : "repos.list";
+      reasoning = `Anchor match (github/repositorio) → defaulted to ${resolvedCapability}`;
+    }
+
     return {
       isGitHubQuery,
-      capability:      isGitHubQuery ? bestCapability : null,
+      capability:      resolvedCapability,
       payload,
       confidence,
       matchedKeywords,
