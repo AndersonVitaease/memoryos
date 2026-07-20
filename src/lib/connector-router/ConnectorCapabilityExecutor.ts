@@ -76,6 +76,25 @@ export class ConnectorCapabilityExecutor implements ICapabilityExecutor {
       r.status === "timeout" ? "timeout"   :
       "failed";
 
+    // ── [M1.12 AUDIT PROBE — RUNTIME] ──────────────────────────────────────
+    // Only fires for github connector. AUDIT_MODE guard prevents any cost when off.
+    if (step.connector === "github") {
+      try {
+        const { githubAuditStore, GITHUB_AUDIT_MODE } = await import("@/lib/debug/GitHubAuditStore");
+        if (GITHUB_AUDIT_MODE) {
+          githubAuditStore.record({
+            executionId,
+            stage: "runtime",
+            status,
+            capability: step.capability,
+            error: r.error ?? undefined,
+            result: r.output ? JSON.stringify(r.output).slice(0, 300) : null,
+          });
+        }
+      } catch { /* non-blocking */ }
+    }
+    // ── [END M1.12 AUDIT PROBE] ─────────────────────────────────────────────
+
     return Object.freeze({
       status,
       output: r.output,

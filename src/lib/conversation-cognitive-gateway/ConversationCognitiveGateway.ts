@@ -366,6 +366,21 @@ export class ConversationCognitiveGateway {
         }
       }
 
+      // ── [M1.12 AUDIT PROBE — ROUTE] ──────────────────────────────────────
+      try {
+        const { githubAuditStore, GITHUB_AUDIT_MODE } = await import("@/lib/debug/GitHubAuditStore");
+        if (GITHUB_AUDIT_MODE) {
+          githubAuditStore.record({
+            executionId: request.id,
+            stage: "route",
+            capability,
+            payload: { ...payload },
+            status: "routed",
+          });
+        }
+      } catch { /* non-blocking */ }
+      // ── [END M1.12 AUDIT PROBE] ──────────────────────────────────────────
+
       // Sprint M-04: route through official pipeline instead of CIS bypass
       const invocationResult = await officialRuntimeBridge.invokeCompat(
         "github",
@@ -373,6 +388,23 @@ export class ConversationCognitiveGateway {
         payload,
         { originComponent: "ConversationCognitiveGateway", reason: `User query: ${capability}`, goalId: null },
       );
+
+      // ── [M1.12 AUDIT PROBE — CAPABILITY INVOCATION] ──────────────────────
+      try {
+        const { githubAuditStore, GITHUB_AUDIT_MODE } = await import("@/lib/debug/GitHubAuditStore");
+        if (GITHUB_AUDIT_MODE) {
+          githubAuditStore.record({
+            executionId: request.id,
+            stage: "capability",
+            capability,
+            payload: { ...payload },
+            status: invocationResult.record.status,
+            error:  invocationResult.record.error ?? undefined,
+            result: invocationResult.result?.data ?? null,
+          });
+        }
+      } catch { /* non-blocking */ }
+      // ── [END M1.12 AUDIT PROBE] ──────────────────────────────────────────
 
       if (invocationResult.record.status === "SUCCESS" && invocationResult.result?.data) {
         let connectorData = invocationResult.result.data as Record<string, unknown>;
@@ -535,11 +567,43 @@ export class ConversationCognitiveGateway {
     // Sprint M-04: route through official pipeline instead of CIS bypass
     const reposInv = await officialRuntimeBridge.invokeCompat("github", "repos.list", { per_page: 10 },
       { originComponent: "ConversationCognitiveGateway", reason: "Repository resolution" });
+    // ── [M1.12 AUDIT PROBE — repos.list] ─────────────────────────────────
+    try {
+      const { githubAuditStore, GITHUB_AUDIT_MODE } = await import("@/lib/debug/GitHubAuditStore");
+      if (GITHUB_AUDIT_MODE) {
+        const items2 = (reposInv.result?.data as any)?.items ?? [];
+        githubAuditStore.record({
+          executionId: "resolve-" + Date.now(),
+          stage: "repos.list",
+          status: reposInv.record.status,
+          error:  reposInv.record.error ?? undefined,
+          repoCount: items2.length,
+          result: items2.slice(0, 5).map((r: any) => ({ name: r.name, owner: r.owner })),
+        });
+      }
+    } catch { /* non-blocking */ }
+    // ── [END M1.12 AUDIT PROBE] ──────────────────────────────────────────
+
     if (reposInv.record.status !== "SUCCESS") return null;
     const items = (reposInv.result?.data as any)?.items ?? [];
     if (items.length === 0) return null;
 
     const resolved = this._repoResolver.resolve(items, userMessage, projectId);
+    // ── [M1.12 AUDIT PROBE — RESOLVER] ──────────────────────────────────
+    try {
+      const { githubAuditStore, GITHUB_AUDIT_MODE } = await import("@/lib/debug/GitHubAuditStore");
+      if (GITHUB_AUDIT_MODE) {
+        githubAuditStore.record({
+          executionId: "resolve-" + Date.now(),
+          stage: "resolver",
+          repoCount: items.length,
+          selectedRepo: resolved ? { owner: resolved.owner, repo: resolved.repo, confidence: resolved.confidence } : null,
+          status: resolved ? "resolved" : "not_resolved",
+        });
+      }
+    } catch { /* non-blocking */ }
+    // ── [END M1.12 AUDIT PROBE] ──────────────────────────────────────────
+
     if (!resolved) return null;
 
     // Cache the best result

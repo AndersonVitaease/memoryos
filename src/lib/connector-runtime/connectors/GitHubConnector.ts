@@ -383,6 +383,23 @@ export class GitHubConnector implements IConnector {
       this.internalMetrics.avgLatencyMs = all.length > 0 ? Math.round(all.reduce((s, v) => s + v, 0) / all.length) : 0;
       this.internalMetrics.p95LatencyMs = computeP95(all);
       this.internalMetrics.uptimeDurationMs = Date.now() - this.internalMetrics.uptimeStartMs;
+
+      // ── [M1.12 AUDIT PROBE — CONNECTOR] ──────────────────────────────────
+      try {
+        const { githubAuditStore, GITHUB_AUDIT_MODE } = (await import("@/lib/debug/GitHubAuditStore")) as any;
+        if (GITHUB_AUDIT_MODE) {
+          githubAuditStore.record({
+            executionId: eid,
+            stage: "connector",
+            capability: operation,
+            status: result.status,
+            error: result.error ?? undefined,
+            result: result.success ? JSON.stringify((result as any).data ?? {}).slice(0, 300) : null,
+          });
+        }
+      } catch { /* non-blocking */ }
+      // ── [END M1.12 AUDIT PROBE] ──────────────────────────────────────────
+
       return result;
     } catch (err) {
       this.internalMetrics.externalFailures++;
