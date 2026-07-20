@@ -224,6 +224,7 @@ import RuntimeTracePage from '@/pages/RuntimeTracePage';
 import GmailReadEmailTestPage from '@/pages/GmailReadEmailTestPage';
 import SprintM15Page from '@/pages/SprintM15Page';
 import SprintM19AuditPage from '@/pages/SprintM19AuditPage';
+import SprintM110AuditPage from '@/pages/SprintM110AuditPage';
 
 const AuthenticatedApp = () => {
   console.log('[RENDER] AuthenticatedApp');
@@ -466,6 +467,7 @@ const AuthenticatedApp = () => {
           <Route path="/gmail-reademail-test" element={<GmailReadEmailTestPage />} />
           <Route path="/sprint-m15" element={<SprintM15Page />} />
           <Route path="/sprint-m19-audit" element={<SprintM19AuditPage />} />
+          <Route path="/sprint-m110-audit" element={<SprintM110AuditPage />} />
         </Route>
       </Route>
       <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />
