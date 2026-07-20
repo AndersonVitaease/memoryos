@@ -350,11 +350,11 @@ export async function getFileMetadata(
 /** Download binary/text file content via media download. */
 export async function downloadMedia(
   fileId: string,
-): Promise<{ content: string; encoding: "text" | "base64"; sizeBytes: number; ok: boolean; status: number; durationMs: number }> {
+): Promise<{ content: string; encoding: "text" | "base64"; sizeBytes: number; ok: boolean; status: number; durationMs: number; contentType: string }> {
   await ensureValidToken(WS);
   const t0   = Date.now();
   const auth = _authHeader();
-  if (!auth) return { content: "", encoding: "text", sizeBytes: 0, ok: false, status: 401, durationMs: 0 };
+  if (!auth) return { content: "", encoding: "text", sizeBytes: 0, ok: false, status: 401, durationMs: 0, contentType: "" };
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15000);
@@ -364,14 +364,36 @@ export async function downloadMedia(
       { headers: { Authorization: auth }, signal: controller.signal },
     );
     clearTimeout(timer);
-    const body        = await res.text();
     const contentType = res.headers.get("content-type") ?? "";
-    const isText      = contentType.startsWith("text/") || contentType.includes("json") || contentType.includes("xml");
-    return { content: body, encoding: isText ? "text" : "base64", sizeBytes: body.length, ok: res.ok, status: res.status, durationMs: Date.now() - t0 };
+    const isBinary = !contentType.startsWith("text/") && !contentType.includes("json") && !contentType.includes("xml");
+
+    let body: string;
+    let sizeBytes: number;
+
+    if (isBinary) {
+      // Para conteúdo binário (PDF, DOCX, imagens), preserva bytes via arrayBuffer → string binária
+      const buffer = await res.arrayBuffer();
+      const bytes  = new Uint8Array(buffer);
+      body      = Array.from(bytes).map(b => String.fromCharCode(b)).join("");
+      sizeBytes = bytes.byteLength;
+    } else {
+      body      = await res.text();
+      sizeBytes = body.length;
+    }
+
+    return {
+      content:     body,
+      encoding:    isBinary ? "base64" : "text",
+      sizeBytes,
+      ok:          res.ok,
+      status:      res.status,
+      durationMs:  Date.now() - t0,
+      contentType,
+    };
   } catch (e) {
     clearTimeout(timer);
     const isAbort = (e as Error).name === "AbortError";
-    return { content: isAbort ? "TIMEOUT" : String(e), encoding: "text", sizeBytes: 0, ok: false, status: 0, durationMs: Date.now() - t0 };
+    return { content: isAbort ? "TIMEOUT" : String(e), encoding: "text", sizeBytes: 0, ok: false, status: 0, durationMs: Date.now() - t0, contentType: "" };
   }
 }
 

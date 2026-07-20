@@ -34,7 +34,8 @@ import {
   DEFAULT_RANKING_POLICY,
   DEFAULT_EXPORT_POLICY,
 } from "./DriveDownloadPolicies";
-import { RuntimeDebug } from "@/lib/debug/RuntimeDebug";
+import { RuntimeDebug }             from "@/lib/debug/RuntimeDebug";
+import { DocumentProcessingEngine } from "@/lib/document-processing/DocumentProcessingEngine";
 import type { RankingPolicy, ExportPolicy, RankCandidate } from "./DriveDownloadPolicies";
 import { httpStatusToErrorCode } from "./DriveConnectorContract";
 import type { ConnectorAudit } from "./DriveConnectorContract";
@@ -306,7 +307,53 @@ export async function executeDriveDownload(
     };
   }
 
-  // ── Step 6: Return success ────────────────────────────────────────────────
+  // ── Step 6: Document Processing Engine ───────────────────────────────────
+  // Passa o conteúdo bruto para a camada de processamento de documentos.
+  // O DriveDownloadExecutor NÃO conhece regras de parsing de PDF, DOCX, etc.
+  // A responsabilidade de extrair texto pertence ao DocumentProcessingEngine.
+
+  const processingResult = await DocumentProcessingEngine.process({
+    fileName:        meta.name,
+    mimeType:        meta.mimeType,
+    rawContent:      downloadRaw.content,
+    encoding:        downloadRaw.encoding,
+    sourceConnector: "google-drive",
+  });
+
+  // Texto extraído (ou conteúdo bruto como fallback se o parser falhar)
+  const extractedText = processingResult.ok
+    ? processingResult.extractedText
+    : downloadRaw.content;
+
+  const processingMeta = processingResult.ok
+    ? {
+        parserUsed:    processingResult.parserUsed,
+        charCount:     processingResult.charCount,
+        documentType:  processingResult.documentType,
+        parsingMeta:   processingResult.meta,
+      }
+    : {
+        parserUsed:    processingResult.parserUsed ?? null,
+        parsingError:  processingResult.errorCode,
+        parsingMessage: processingResult.message,
+      };
+
+  RuntimeDebug.emit({
+    executionId: _execId,
+    connector:   "google-drive",
+    source:      "DriveDownloadExecutor",
+    event:       "document-processing-complete",
+    payload: {
+      fileName:       meta.name,
+      mimeType:       meta.mimeType,
+      processingOk:   processingResult.ok,
+      charCount:      processingResult.ok ? processingResult.charCount : 0,
+      parserUsed:     processingResult.parserUsed ?? null,
+      errorCode:      processingResult.ok ? null : processingResult.errorCode,
+    },
+  });
+
+  // ── Step 7: Return success ────────────────────────────────────────────────
 
   const dur = Date.now() - t0;
   return {
@@ -316,14 +363,15 @@ export async function executeDriveDownload(
     mimeType:    meta.mimeType,
     exportMime,
     strategy,
-    content:     downloadRaw.content,
-    encoding:    downloadRaw.encoding,
-    sizeBytes:   downloadRaw.sizeBytes,
+    content:     extractedText,
+    encoding:    "text" as const,
+    sizeBytes:   extractedText.length,
     apiUsed,
     resolvedBy,
     candidates:  resolvedCandidates,
     durationMs:  dur,
     audit:       makeAudit("success", startedAt, dur, null),
+    processing:  processingMeta,
   };
 }
 
