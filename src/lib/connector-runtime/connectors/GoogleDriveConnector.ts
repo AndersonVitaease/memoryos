@@ -201,6 +201,12 @@ export class GoogleDriveConnector implements IConnector {
     const eid   = context.executionId ?? "";
     const logs: ConnectorLog[] = [makeLog("info", `[${operation}] executionId=${eid} Starting`)];
 
+    // BUGFIX-SPRINT-001: workspaceId is required — no silent fallback to "default"
+    if (!context.workspaceId) {
+      throw new Error("Google Drive execution requires workspaceId");
+    }
+    const workspaceId = context.workspaceId;
+
     // [RUNTIME-PROBE][GDC-01] GoogleDriveConnector.execute() reached — race condition REFUTED if this fires on failing request
     console.log("[RUNTIME-PROBE][GDC-01]", {
       probe:       "googleDriveConnector:execute:entry",
@@ -208,11 +214,12 @@ export class GoogleDriveConnector implements IConnector {
       ts:          Date.now(),
       executionId: eid,
       operation,
+      workspaceId,
       note:        "If this fires, the connector was reached. Failure is in auth or HTTP — NOT in bootstrap registry.",
     });
 
     // Auth check — GWS Foundation owns ensureValidToken; we only check if token exists
-    const token = getAccessToken("default");
+    const token = getAccessToken(workspaceId);
 
     // [RUNTIME-PROBE][GDC-02] Token state at connector entry
     console.log("[RUNTIME-PROBE][GDC-02]", {
@@ -221,6 +228,7 @@ export class GoogleDriveConnector implements IConnector {
       ts:           Date.now(),
       executionId:  eid,
       operation,
+      workspaceId,
       tokenPresent: !!token,
       tokenPrefix:  token ? token.slice(0, 12) + "..." : "NULL",
       authPath:     !token ? "will_attempt_ensureValidToken" : "token_ok_proceeding",
@@ -230,18 +238,18 @@ export class GoogleDriveConnector implements IConnector {
       // Attempt refresh via GWS Foundation before giving up
       try {
         const { ensureValidToken } = await import("../../google-auth/GoogleAuthSession");
-        await ensureValidToken("default");
+        await ensureValidToken(workspaceId);
       } catch {
         return notConfigured(start, eid, logs, operation);
       }
       // Re-check after refresh attempt
-      if (!getAccessToken("default")) {
+      if (!getAccessToken(workspaceId)) {
         return notConfigured(start, eid, logs, operation);
       }
     }
 
     try {
-      const result = await this._dispatch(operation, payload, start, eid, logs);
+      const result = await this._dispatch(operation, payload, start, eid, logs, workspaceId);
       if (result.success) {
         this._metrics.consecutiveFailures = 0;
         this._metrics.lastSyncAt = Date.now();
@@ -269,6 +277,7 @@ export class GoogleDriveConnector implements IConnector {
     start: number,
     eid: string,
     logs: ConnectorLog[],
+    workspaceId: string,
   ): Promise<ConnectorResult> {
 
     // Lazy import GWS Foundation — single source of all Drive HTTP
@@ -304,7 +313,7 @@ export class GoogleDriveConnector implements IConnector {
       // Falls back to session metadata if the about endpoint is unavailable.
 
       case "drive.about.get": {
-        const conn = getConnection("default");
+        const conn = getConnection(workspaceId);
         const health = gws.getDriveHealth();
         logs.push(makeLog("info", `[${operation}] health=${health.ok} reason="${health.reason}"`));
         if (!health.ok) {
@@ -312,7 +321,7 @@ export class GoogleDriveConnector implements IConnector {
         }
         // Attempt real Drive API about call
         try {
-          const accessToken = getAccessToken("default");
+          const accessToken = getAccessToken(workspaceId);
           if (accessToken) {
             const res = await fetch(
               "https://www.googleapis.com/drive/v3/about?fields=user,storageQuota,maxImportSizes",
