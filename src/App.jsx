@@ -222,6 +222,7 @@ import DriveDebugPanel from '@/pages/DriveDebugPanel';
 import TokenLifecycleTestPage from '@/pages/TokenLifecycleTestPage';
 import RuntimeTracePage from '@/pages/RuntimeTracePage';
 import GmailReadEmailTestPage from '@/pages/GmailReadEmailTestPage';
+import SprintM15Page from '@/pages/SprintM15Page';
 
 const AuthenticatedApp = () => {
   console.log('[RENDER] AuthenticatedApp');
@@ -462,6 +463,7 @@ const AuthenticatedApp = () => {
           <Route path="/token-lifecycle-tests" element={<TokenLifecycleTestPage />} />
           <Route path="/runtime-trace" element={<RuntimeTracePage />} />
           <Route path="/gmail-reademail-test" element={<GmailReadEmailTestPage />} />
+          <Route path="/sprint-m15" element={<SprintM15Page />} />
         </Route>
       </Route>
       <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />
