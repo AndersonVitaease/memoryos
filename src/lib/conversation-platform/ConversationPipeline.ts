@@ -72,6 +72,22 @@ class ConversationPipeline {
 
     conversationStore.setCurrentExecution(execution);
     conversationStore.setStatus("preparing");
+
+    // ── [M1.11 AUDIT PROBE — PIPELINE] ───────────────────────────────────
+    // AUDIT_MODE guard: zero impact when false. No logic altered.
+    try {
+      const { driveAuditStore, AUDIT_MODE } = await import("@/lib/audit/DriveAuditStore");
+      if (AUDIT_MODE) {
+        driveAuditStore.beginTrace(executionId, userMessage);
+        driveAuditStore.record("pipeline", "ok", {
+          executionId,
+          userMessage: userMessage.slice(0, 200),
+          sessionId: session.id,
+          timestamp: new Date().toISOString(),
+        });
+      }
+    } catch { /* non-blocking */ }
+    // ── [END M1.11 AUDIT PROBE] ──────────────────────────────────────────
     conversationMetrics.begin(executionId, session.id);
 
     conversationStore.emit({
@@ -348,6 +364,24 @@ class ConversationPipeline {
         },
         timestamp: Date.now(),
       });
+
+      // ── [M1.11 AUDIT PROBE — GOAL] ────────────────────────────────────────
+      try {
+        const { driveAuditStore, AUDIT_MODE } = await import("@/lib/audit/DriveAuditStore");
+        if (AUDIT_MODE) {
+          driveAuditStore.record("goal", "ok", {
+            goalId:     goalBridgeResult.goal.id,
+            goalType:   goalBridgeResult.goal.type,
+            intent:     routerResult.intent?.intent ?? null,
+            confidence: goalBridgeResult.goal.confidence,
+            valid:      goalBridgeResult.goal.valid,
+            parameters: goalBridgeResult.goal.parameters,
+            durationMs: goalBridgeResult.durationMs,
+          });
+        }
+      } catch { /* non-blocking */ }
+      // ── [END M1.11 AUDIT PROBE] ──────────────────────────────────────────
+
       // ── end E-02.1 ───────────────────────────────────────────────────────
 
       // ── E-02.5A: Planning → Real Runtime → Connector → Synthesize ──────────
@@ -380,6 +414,26 @@ class ConversationPipeline {
           }
         } catch { /* non-blocking */ }
 
+        // ── [M1.11 AUDIT PROBE — PLANNER] ────────────────────────────────────
+        try {
+          const { driveAuditStore, AUDIT_MODE } = await import("@/lib/audit/DriveAuditStore");
+          if (AUDIT_MODE) {
+            const _pSteps = planResult.plan?.steps ?? [];
+            driveAuditStore.record("planner", planResult.success ? "ok" : "error", {
+              success:    planResult.success,
+              goalType:   goalBridgeResult.goal.type,
+              stepCount:  _pSteps.length,
+              steps:      _pSteps.map((s: Record<string, unknown>) => ({
+                id:         s.id,
+                connector:  s.connector,
+                capability: s.capability,
+                parameters: s.parameters,
+              })),
+            });
+          }
+        } catch { /* non-blocking */ }
+        // ── [END M1.11 AUDIT PROBE] ──────────────────────────────────────────
+
         if (planResult.success && planResult.plan.steps.length > 0) {
           setPhase("executing_capabilities");
           const { getRealRuntimeEngine, getRealConnectorRegistry } = await import("@/lib/connector-runtime-provider/ConnectorRuntimeProvider");
@@ -405,6 +459,31 @@ class ConversationPipeline {
             },
             timestamp: Date.now(),
           });
+
+          // ── [M1.11 AUDIT PROBE — RUNTIME] ──────────────────────────────────
+          try {
+            const { driveAuditStore, AUDIT_MODE } = await import("@/lib/audit/DriveAuditStore");
+            if (AUDIT_MODE) {
+              driveAuditStore.record("runtime", executionResult.status === "completed" ? "ok" : "error", {
+                executionId:  executionResult.executionId,
+                planId:       executionResult.planId,
+                status:       executionResult.status,
+                durationMs:   executionResult.durationMs,
+                errors:       executionResult.errors,
+                steps: executionResult.steps.map((s) => ({
+                  connector:   s.connector,
+                  capability:  s.capability,
+                  status:      s.status,
+                  durationMs:  s.durationMs,
+                  error:       s.error,
+                  hasOutput:   s.output !== null && s.output !== undefined,
+                  outputKeys:  s.output && typeof s.output === "object" ? Object.keys(s.output as object) : [],
+                  outputPreview: s.output ? JSON.stringify(s.output).slice(0, 300) : null,
+                })),
+              });
+            }
+          } catch { /* non-blocking */ }
+          // ── [END M1.11 AUDIT PROBE] ────────────────────────────────────────
 
           // Synthesize connector output → user-facing response
           // Sprint M-05: pass kfmModel so the synthesizer can enrich the LLM prompt

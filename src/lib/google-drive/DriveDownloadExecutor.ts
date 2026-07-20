@@ -231,7 +231,30 @@ export async function executeDriveDownload(
     RuntimeDebug.emit({ executionId: _execId, connector: "google-drive", source: "DriveDownloadExecutor", event: "using strategy: search by name", payload: { searchQuery, fileName, queryFallback, rawText } });
 
     // Delegate search to connector — no HTTP here
+    const _searchT0 = Date.now();
     const searchResults = await connector.searchByName(searchQuery, { pageSize: 20 });
+
+    // ── [M1.11 AUDIT PROBE — DRIVE SEARCH] ────────────────────────────────
+    try {
+      const { driveAuditStore, AUDIT_MODE } = await import("@/lib/audit/DriveAuditStore");
+      if (AUDIT_MODE) {
+        driveAuditStore.record("drive_search", searchResults.length > 0 ? "ok" : "error", {
+          searchQuery,
+          fileName,
+          queryFallback,
+          rawText,
+          resultCount:   searchResults.length,
+          results:       searchResults.slice(0, 10).map((f: Record<string, unknown>) => ({
+            id:          f.id,
+            name:        f.name,
+            mimeType:    f.mimeType,
+            modifiedTime: f.modifiedTime,
+          })),
+          durationMs: Date.now() - _searchT0,
+        }, _searchT0);
+      }
+    } catch { /* non-blocking */ }
+    // ── [END M1.11 AUDIT PROBE] ───────────────────────────────────────────
 
     if (searchResults.length === 0) {
       return fail("NOT_FOUND", `Arquivo não encontrado: "${searchQuery}". Verifique o nome ou o acesso ao Google Drive.`, null);
@@ -267,6 +290,23 @@ export async function executeDriveDownload(
   // ── Step 2: Get metadata — delegate to connector ──────────────────────────
 
   const meta = await connector.getFileMetadata(resolvedFileId);
+
+  // ── [M1.11 AUDIT PROBE — METADATA] ────────────────────────────────────
+  try {
+    const { driveAuditStore, AUDIT_MODE } = await import("@/lib/audit/DriveAuditStore");
+    if (AUDIT_MODE) {
+      driveAuditStore.record("metadata", meta ? "ok" : "error", {
+        resolvedFileId,
+        resolvedBy,
+        fileName:    meta?.name ?? null,
+        mimeType:    meta?.mimeType ?? null,
+        modifiedTime: (meta as Record<string, unknown>)?.modifiedTime ?? null,
+        found:       !!meta,
+      });
+    }
+  } catch { /* non-blocking */ }
+  // ── [END M1.11 AUDIT PROBE] ─────────────────────────────────────────────
+
   if (!meta) {
     return fail("NOT_FOUND", `Arquivo não encontrado: fileId="${resolvedFileId}"`, resolvedFileId);
   }
@@ -277,9 +317,36 @@ export async function executeDriveDownload(
 
   // ── Step 4: Download — delegate entirely to connector ────────────────────
 
+  const _dlT0 = Date.now();
   const downloadRaw = strategy === "export"
     ? await connector.exportFile(resolvedFileId, exportMime)
     : await connector.downloadMedia(resolvedFileId);
+
+  // ── [M1.11 AUDIT PROBE — DOWNLOAD] ────────────────────────────────────
+  try {
+    const { driveAuditStore, AUDIT_MODE } = await import("@/lib/audit/DriveAuditStore");
+    if (AUDIT_MODE) {
+      const _content = downloadRaw.content ?? "";
+      // Hex preview of first 32 bytes for binary detection
+      const _hexBytes = _content.split("").slice(0, 32).map((c: string) => c.charCodeAt(0).toString(16).padStart(2, "0")).join(" ");
+      driveAuditStore.record("download", downloadRaw.ok ? "ok" : "error", {
+        fileId:         resolvedFileId,
+        fileName:       meta.name,
+        mimeType:       meta.mimeType,
+        strategy,
+        exportMime,
+        ok:             downloadRaw.ok,
+        status:         downloadRaw.status,
+        encoding:       downloadRaw.encoding,
+        sizeBytes:      downloadRaw.sizeBytes,
+        contentLength:  _content.length,
+        contentPreview: _content.slice(0, 300),
+        hexPreview:     _hexBytes,
+        durationMs:     Date.now() - _dlT0,
+      }, _dlT0);
+    }
+  } catch { /* non-blocking */ }
+  // ── [END M1.11 AUDIT PROBE] ─────────────────────────────────────────────
 
   const apiUsed: "files.get" | "files.export" = strategy === "export" ? "files.export" : "files.get";
 
@@ -356,8 +423,8 @@ export async function executeDriveDownload(
   // ── Step 7: Return success ────────────────────────────────────────────────
 
   const dur = Date.now() - t0;
-  return {
-    ok:          true,
+  const _finalResult = {
+    ok:          true as const,
     fileId:      resolvedFileId,
     fileName:    meta.name,
     mimeType:    meta.mimeType,
@@ -373,6 +440,33 @@ export async function executeDriveDownload(
     audit:       makeAudit("success", startedAt, dur, null),
     processing:  processingMeta,
   };
+
+  // ── [M1.11 AUDIT PROBE — DOWNLOAD RESULT] ────────────────────────────
+  try {
+    const { driveAuditStore, AUDIT_MODE } = await import("@/lib/audit/DriveAuditStore");
+    if (AUDIT_MODE) {
+      driveAuditStore.record("download_result", "ok", {
+        ok:             true,
+        fileId:         _finalResult.fileId,
+        fileName:       _finalResult.fileName,
+        mimeType:       _finalResult.mimeType,
+        strategy:       _finalResult.strategy,
+        exportMime:     _finalResult.exportMime,
+        encoding:       _finalResult.encoding,
+        sizeBytes:      _finalResult.sizeBytes,
+        resolvedBy:     _finalResult.resolvedBy,
+        apiUsed:        _finalResult.apiUsed,
+        durationMs:     _finalResult.durationMs,
+        processing:     processingMeta,
+        contentLength:  extractedText.length,
+        contentPreview: extractedText.slice(0, 300),
+        contentIsEmpty: extractedText.length === 0,
+      });
+    }
+  } catch { /* non-blocking */ }
+  // ── [END M1.11 AUDIT PROBE] ─────────────────────────────────────────────
+
+  return _finalResult;
 }
 
 // Re-export for backward compat with tests

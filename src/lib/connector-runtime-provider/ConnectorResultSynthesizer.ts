@@ -71,6 +71,16 @@ export async function synthesizeConnectorResult(
 
   // ── No steps planned — not a connector goal; let LLM handle it ───────────
   if (result.steps.length === 0) {
+    // ── [M1.11 AUDIT PROBE — SYNTHESIZER: no steps] ──────────────────────
+    try {
+      const { driveAuditStore, AUDIT_MODE } = await import("@/lib/audit/DriveAuditStore");
+      if (AUDIT_MODE) {
+        driveAuditStore.record("synthesizer", "skipped", {
+          reason: "steps.length === 0 — not a connector goal",
+          goalType, userMsg: userMsg.slice(0, 120),
+        });
+      }
+    } catch { /* non-blocking */ }
     return { handled: false, response: null, connectorData: null };
   }
 
@@ -163,6 +173,30 @@ export async function synthesizeConnectorResult(
   // ── Synthesize with LLM ────────────────────────────────────────────────────
   try {
     const prompt = _buildSynthesisPrompt(userMsg, goalType, connectorData, kfmModel);
+
+    // ── [M1.11 AUDIT PROBE — SYNTHESIZER: LLM input] ─────────────────────
+    try {
+      const { driveAuditStore, AUDIT_MODE } = await import("@/lib/audit/DriveAuditStore");
+      if (AUDIT_MODE) {
+        driveAuditStore.record("synthesizer", "ok", {
+          goalType,
+          userMsg:        userMsg.slice(0, 200),
+          completedSteps: completedSteps.length,
+          connectorDataSummary: connectorData.map(cd => ({
+            connector:    cd.connector,
+            capability:   cd.capability,
+            outputKeys:   cd.output && typeof cd.output === "object" ? Object.keys(cd.output as object) : [],
+            contentSize:  JSON.stringify(cd.output).length,
+            contentPreview: JSON.stringify(cd.output).slice(0, 300),
+          })),
+          promptLength:   prompt.length,
+          promptPreview:  prompt.slice(0, 500),
+        });
+        driveAuditStore.finishTrace();
+      }
+    } catch { /* non-blocking */ }
+    // ── [END M1.11 AUDIT PROBE] ───────────────────────────────────────────
+
     const llmResponse = await base44.integrations.Core.InvokeLLM({ prompt });
 
     return {
