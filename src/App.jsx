@@ -473,11 +473,11 @@ const AuthenticatedApp = () => {
           <Route path="/sprint-m110-audit" element={<SprintM110AuditPage />} />
           <Route path="/drive-audit" element={<DriveAuditPanel />} />
           <Route path="/github-debug" element={<GitHubDebugPanel />} />
-          <Route path="/ef399-validation" element={<EF399ValidationPage />} />
         </Route>
       </Route>
       <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />
       <Route path="/ef398-cert" element={<EF398CertPage />} />
+      <Route path="/ef399-validation" element={<EF399ValidationPage />} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
   );

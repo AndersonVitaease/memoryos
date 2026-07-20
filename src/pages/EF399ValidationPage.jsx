@@ -228,6 +228,11 @@ export default function EF399ValidationPage() {
   const [result, setResult]   = useState(null);
   const [running, setRunning] = useState(false);
 
+  // Auto-execute on mount so screenshot tool captures the result
+  React.useEffect(() => {
+    handle();
+  }, []); // eslint-disable-line
+
   async function handle() {
     setRunning(true);
     setResult(null);
