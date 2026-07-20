@@ -1,15 +1,19 @@
 /**
- * CapabilityResolutionEngine.ts — BUGFIX-SPRINT-002.4
+ * CapabilityResolutionEngine.ts — BUGFIX-SPRINT-002.4 / 002.5
  *
- * Transforms { goal, metadata, context } into a domain-specific capability
- * without any fallback to a default connector.
+ * Transforms { goal, metadata, context } into a ResolvedCapability.
+ * Returns the unified ResolvedCapability contract (BUGFIX-002.5).
  *
  * Architecture rules:
- *   - Never chooses a connector by history or default
- *   - Returns "ambiguous_capability_resolution" when context is insufficient
+ *   - Never chooses a connector by history, order of registration, or default
+ *   - Returns ambiguous_capability_resolution when context is insufficient
  *   - NLP/intent layer feeds metadata; this engine consumes it
- *   - ConnectorResolver receives the already-resolved capability — never decides domain here
+ *   - ConnectorResolver receives the already-resolved ResolvedCapability
+ *   - preservedContext carries all input metadata through to execution
  */
+
+import { resolvedCapability, ambiguousCapability } from "./ResolvedCapability";
+export type { ResolvedCapability } from "./ResolvedCapability";
 
 export type ResolutionSource = "github" | "google-drive" | "google-calendar" | "gmail" | "base44";
 export type ResolutionDomain = "repository" | "document" | "calendar" | "email" | "application" | "ambiguous";
@@ -18,10 +22,11 @@ export interface ResolutionInput {
   /** High-level goal string, e.g. "FETCH_SOURCE_CODE", "READ_DOCUMENT", "READ_FILE" */
   goal: string;
   metadata?: {
-    source?: string;     // explicit source: "github", "google-drive", etc.
-    type?:   string;     // "code", "document", "spreadsheet", etc.
-    domain?: string;     // "repository", "drive", etc.
-    origin?: string;     // raw user phrase for additional hinting
+    source?:     string;
+    type?:       string;
+    domain?:     string;
+    origin?:     string;
+    repository?: string;
   };
   context?: {
     workspaceId?: string;
@@ -30,11 +35,12 @@ export interface ResolutionInput {
   };
 }
 
+// Legacy result shape — kept for backward compatibility with 002.4 spec tests
 export interface ResolutionResult {
-  capability:  string;          // e.g. "source.code.read", "document.read", "ambiguous_capability_resolution"
-  connector:   string | null;   // e.g. "github", "google-drive", null when ambiguous
+  capability:  string;
+  connector:   string | null;
   domain:      ResolutionDomain;
-  confidence:  number;          // 0–1
+  confidence:  number;
   reasoning:   string;
   ambiguous:   boolean;
 }
@@ -176,45 +182,60 @@ function matchesAny(value: string | undefined, patterns: string[] | undefined): 
 
 export class CapabilityResolutionEngine {
 
-  resolve(input: ResolutionInput): ResolutionResult {
-    const goalUpper  = input.goal.toUpperCase().replace(/[^A-Z0-9_]/g, "_");
-    const source     = input.metadata?.source   ?? "";
-    const type       = input.metadata?.type     ?? "";
-    const domain     = input.metadata?.domain   ?? "";
-    const origin     = input.metadata?.origin   ?? "";
-    const domainHint = `${domain} ${origin}`.trim();
+  /**
+   * Primary API — returns unified ResolvedCapability contract (BUGFIX-002.5).
+   * All metadata is preserved in preservedContext.
+   */
+  resolveCapability(input: ResolutionInput): import("./ResolvedCapability").ResolvedCapability {
+    const goalUpper    = input.goal.toUpperCase().replace(/[^A-Z0-9_]/g, "_");
+    const source       = input.metadata?.source      ?? "";
+    const type         = input.metadata?.type        ?? "";
+    const domain       = input.metadata?.domain      ?? "";
+    const origin       = input.metadata?.origin      ?? "";
+    const repository   = input.metadata?.repository  ?? input.context?.repository ?? "";
+    const domainHint   = `${domain} ${origin}`.trim();
+
+    const preserved = Object.freeze({ source, type, domain, origin, repository });
 
     for (const rule of RULES) {
-      // 1. Goal must match at least one pattern
       const goalMatches = rule.goalPatterns.some(p => goalUpper.includes(p));
       if (!goalMatches) continue;
 
-      // 2. Source / type / domain hints (if defined on rule, must match)
       const srcOk    = !rule.sourceHints  || matchesAny(source,     rule.sourceHints);
       const typeOk   = !rule.typeHints    || matchesAny(type,       rule.typeHints);
       const domainOk = !rule.domainHints  || matchesAny(domainHint, rule.domainHints);
 
       if (srcOk && typeOk && domainOk) {
         const hasExplicit = !!(source || type || domain || origin);
-        return {
-          capability: rule.capability,
-          connector:  rule.connector,
-          domain:     rule.domain,
-          confidence: hasExplicit ? 0.95 : 0.75,
-          reasoning:  `Rule match: goal="${input.goal}" source="${source}" type="${type}" → ${rule.capability} via ${rule.connector}`,
-          ambiguous:  false,
-        };
+        return resolvedCapability(
+          rule.capability,
+          rule.connector,
+          rule.domain,
+          hasExplicit ? 0.95 : 0.75,
+          `Rule match: goal="${input.goal}" source="${source}" type="${type}" → ${rule.capability} via ${rule.connector}`,
+          preserved,
+        );
       }
     }
 
-    // No rule matched with sufficient context → ambiguous
+    return ambiguousCapability(
+      `No rule matched for goal="${input.goal}" source="${source}" type="${type}" — explicit source/type required`,
+      preserved,
+    );
+  }
+
+  /**
+   * Legacy API — backward compat with 002.4 spec tests.
+   */
+  resolve(input: ResolutionInput): ResolutionResult {
+    const r = this.resolveCapability(input);
     return {
-      capability: "ambiguous_capability_resolution",
-      connector:  null,
-      domain:     "ambiguous",
-      confidence: 0,
-      reasoning:  `No rule matched for goal="${input.goal}" source="${source}" type="${type}" — explicit source/type required`,
-      ambiguous:  true,
+      capability: r.capabilityId,
+      connector:  r.preferredConnector,
+      domain:     r.domain as ResolutionDomain,
+      confidence: r.confidence,
+      reasoning:  r.reasoning,
+      ambiguous:  r.ambiguous,
     };
   }
 }
