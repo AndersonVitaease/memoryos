@@ -76,6 +76,15 @@ const OFFICIAL_FACTORIES: ConnectorFactory[] = [
     const { GoogleCalendarConnector } = await import("./connectors/GoogleCalendarConnector");
     return new GoogleCalendarConnector();
   },
+  async () => {
+    // Sprint EF-39.9A: GitHubConnector was missing from bootstrap — root cause fix.
+    // GitHubConnector.id = "github" (GitHubConnector.ts line 161).
+    // Without this entry, UCRBridge never builds a bridge for "github",
+    // UniversalConnectorRouter.lookup("github") always returns null,
+    // and every GitHub capability execution fails with "Connector not found: github".
+    const { GitHubConnector } = await import("./connectors/GitHubConnector");
+    return new GitHubConnector();
+  },
 ];
 
 // ── ConnectorBootstrap ────────────────────────────────────────────────────────
