@@ -24,6 +24,11 @@
 // String open-ended so future connectors need no type changes here.
 export type ConnectorId = string;
 
+// ── ExecutionMode — Sprint M1.12 ──────────────────────────────────────────────
+// Controls whether the Runtime executes connectors or performs static analysis.
+// Default: "live" — preserves all existing behavior when mode is absent.
+export type ExecutionMode = "live" | "static_analysis";
+
 // ── ExecutionStep ─────────────────────────────────────────────────────────────
 
 export interface ExecutionStep {
@@ -45,6 +50,8 @@ export interface ExecutionPlan {
   readonly steps:      readonly ExecutionStep[];
   readonly createdAt:  number;
   readonly durationMs: number;
+  /** Sprint M1.12: execution mode. Defaults to "live" when absent. */
+  readonly mode?:      ExecutionMode;
 }
 
 // ── PlanningResult ─────────────────────────────────────────────────────────────

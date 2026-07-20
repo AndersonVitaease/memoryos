@@ -392,7 +392,7 @@ class ConversationPipeline {
       // → execution falls through to the LLM path unchanged.
       if (goalBridgeResult.goal.valid) {
         const { conversationPlanningEngine } = await import("@/lib/planning-engine-e022/ConversationPlanningEngine");
-        const planResult = conversationPlanningEngine.plan(goalBridgeResult.goal);
+        const planResult = conversationPlanningEngine.plan(goalBridgeResult.goal, { mode: "live" });
 
         // ── RuntimeTrace: record plan step ──────────────────────────────────
         try {
@@ -434,7 +434,24 @@ class ConversationPipeline {
         } catch { /* non-blocking */ }
         // ── [END M1.11 AUDIT PROBE] ──────────────────────────────────────────
 
-        if (planResult.success && planResult.plan.steps.length > 0) {
+        // ── Sprint M1.12: static_analysis guard ────────────────────────────────
+        // When mode==="static_analysis", bypass Runtime entirely.
+        // No connectors are executed. StaticAnalysisEngine handles the response via LLM.
+        if (planResult.plan.mode === "static_analysis") {
+          const { staticAnalysisEngine } = await import("@/lib/static-analysis/StaticAnalysisEngine");
+          const saResult = await staticAnalysisEngine.analyze(planResult.plan, userMessage);
+          response = saResult.response;
+          sources  = [];
+          conversationStore.emit({
+            type: "PIPELINE_STEP",
+            executionId,
+            payload: { step: "static_analysis_response", goalType: planResult.plan.goalType },
+            timestamp: Date.now(),
+          });
+        }
+        // ── end Sprint M1.12 guard ─────────────────────────────────────────────
+
+        if (!response && planResult.success && planResult.plan.steps.length > 0) {
           setPhase("executing_capabilities");
           const { getRealRuntimeEngine, getRealConnectorRegistry } = await import("@/lib/connector-runtime-provider/ConnectorRuntimeProvider");
           // Await fully-bootstrapped engine + registry (no placeholder — Sprint M1.1)

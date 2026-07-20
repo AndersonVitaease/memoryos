@@ -37,6 +37,7 @@ import {
 import type {
   ExecutionPlan,
   ExecutionStep,
+  ExecutionMode,
   PlanningResult,
   PlanningEvent,
   PlanStatus,
@@ -67,7 +68,9 @@ export class ConversationPlanningEngine {
    * - Never invokes connectors or runtime
    * - Deterministic for the same goal and registry state
    */
-  plan(goal: ConversationGoal): PlanningResult {
+  /** Sprint M1.12: options.mode defaults to "live" — zero behavior change when omitted. */
+  plan(goal: ConversationGoal, options?: { mode?: ExecutionMode }): PlanningResult {
+    const _mode: ExecutionMode = options?.mode ?? "live";
     const t0     = Date.now();
     const planId = makePlanId();
 
@@ -82,7 +85,7 @@ export class ConversationPlanningEngine {
 
       // Unknown goalType (not registered) — treat as empty
       if (descriptors === null || descriptors.length === 0) {
-        const plan = this._makePlan(planId, goal, [], "empty", t0);
+        const plan = this._makePlan(planId, goal, [], "empty", t0, _mode);
         this._track(plan);
         this._totalPlanned++;
         this._emit({ type: "planning_completed", goalId: goal.id, planId, planningTime: Date.now() - t0, stepCount: 0, timestamp: Date.now() });
@@ -126,7 +129,7 @@ export class ConversationPlanningEngine {
         });
       });
 
-      const plan = this._makePlan(planId, goal, steps, "planned", t0);
+      const plan = this._makePlan(planId, goal, steps, "planned", t0, _mode);
       this._track(plan);
       this._totalPlanned++;
       this._emit({ type: "planning_completed", goalId: goal.id, planId, planningTime: Date.now() - t0, stepCount: steps.length, timestamp: Date.now() });
@@ -158,6 +161,7 @@ export class ConversationPlanningEngine {
   private _makePlan(
     planId: string, goal: ConversationGoal,
     steps: ExecutionStep[], status: PlanStatus, t0: number,
+    mode: ExecutionMode = "live",
   ): ExecutionPlan {
     return Object.freeze({
       id:         planId,
@@ -167,11 +171,12 @@ export class ConversationPlanningEngine {
       steps:      Object.freeze([...steps]),
       createdAt:  Date.now(),
       durationMs: Date.now() - t0,
+      mode,
     });
   }
 
   private _fail(planId: string, goal: ConversationGoal, error: string, t0: number): PlanningResult {
-    const plan = this._makePlan(planId, goal, [], "invalid_goal", t0);
+    const plan = this._makePlan(planId, goal, [], "invalid_goal", t0, "live");
     this._totalFailed++;
     this._emit({ type: "planning_failed", goalId: goal.id, planId, planningTime: Date.now() - t0, stepCount: 0, timestamp: Date.now() });
     return { plan, success: false, error, durationMs: Date.now() - t0 };
