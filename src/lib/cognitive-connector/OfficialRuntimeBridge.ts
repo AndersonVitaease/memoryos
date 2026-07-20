@@ -429,6 +429,7 @@ export class OfficialRuntimeBridgeClass {
   /**
    * Convenience: invoke and return data in the shape ConnectorInvocationService used to return.
    * Allows drop-in replacement in LCP and CCG with minimal code changes.
+   * NOTE: uses invoke() (no divergence guard). Prefer invokeCompatGuarded() for new consumers.
    */
   async invokeCompat(
     connectorId: string,
@@ -444,6 +445,45 @@ export class OfficialRuntimeBridgeClass {
       record: {
         id:        r.executionId,
         status:    r.success ? "SUCCESS" : (r.status === "NOT_ROUTABLE" ? "NOT_CONFIGURED" : r.status),
+        durationMs: r.durationMs,
+        error:     r.error,
+      },
+      result: r.data !== null ? { data: r.data, success: r.success } : null,
+    };
+  }
+
+  /**
+   * BUGFIX-002.6.5 — Guarded compat adapter.
+   *
+   * Drop-in replacement for invokeCompat() that routes through invokeGuarded()
+   * instead of invoke(). Enforces the divergence guard:
+   *   declared connector === resolved connector
+   *
+   * Returns the same shape as invokeCompat() so all CCG/LCP callers can migrate
+   * with a one-word change (invokeCompat → invokeCompatGuarded).
+   *
+   * If CONNECTOR_DIVERGENCE is detected:
+   *   - record.status = "CONNECTOR_DIVERGENCE"
+   *   - result = null
+   *   - Never executes the wrong connector
+   */
+  async invokeCompatGuarded(
+    connectorId: string,
+    operation:   string,
+    payload:     Record<string, unknown> = {},
+    _ctx:        Record<string, unknown> = {},
+  ): Promise<{
+    record: { id: string; status: string; durationMs: number; error: string | null };
+    result: { data: unknown; success: boolean } | null;
+  }> {
+    const r = await this.invokeGuarded(connectorId, operation, payload);
+    return {
+      record: {
+        id:        r.executionId,
+        status:    r.success ? "SUCCESS"
+                 : r.status === "NOT_ROUTABLE"        ? "NOT_CONFIGURED"
+                 : r.status === "CONNECTOR_DIVERGENCE" ? "CONNECTOR_DIVERGENCE"
+                 : r.status,
         durationMs: r.durationMs,
         error:     r.error,
       },
