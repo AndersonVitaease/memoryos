@@ -1,8 +1,16 @@
 /**
- * ConversationPipeline.ts
- * Replaces sendAndReceive() entirely.
+ * ConversationPipeline.ts — v2 (Execution Outcome Architecture)
+ *
  * Divides into: Prepare → Persist → Reason → Route → Capabilities → Synthesize → Stream → Finalize
- * Each step has timeout, metrics, and recovery.
+ *
+ * v2 CHANGES:
+ *   - Every producer now creates an ExecutionOutcome via ExecutionOutcomeAdapterFactory.
+ *   - All response-decision logic (if/else priority, short-circuit, manual precedence)
+ *     removed from the Pipeline.
+ *   - All candidates are collected and delivered to ResponseArbiter.
+ *   - ResponseArbiter.arbitrate() is the SOLE authority on which response is used.
+ *   - Pipeline becomes a pure orchestrator: execute → collect outcomes → arbiter → stream.
+ *
  * MDS v2.0 compliant
  */
 
@@ -12,8 +20,12 @@ import { conversationStreaming } from "./ConversationStreaming";
 import { conversationRecovery } from "./ConversationRecovery";
 import { conversationMetrics } from "./ConversationMetrics";
 import { persistMessage } from "./ConversationPersistence";
-import { buildConversationContext, contextToPromptParts, historyToText } from "./ConversationContext";
+import { buildConversationContext } from "./ConversationContext";
 import type { PipelineExecution, PipelineStep, ReasoningPhase } from "./CXPTypes";
+import { executionOutcomeAdapterFactory } from "@/lib/response-arbiter/ExecutionOutcomeAdapterFactory";
+import { responseArbiter } from "@/lib/response-arbiter/ResponseArbiter";
+import type { ResponseCandidate } from "@/lib/response-arbiter/ResponseCandidate";
+import type { ArbitrationContext } from "@/lib/response-arbiter/ResponseArbiter";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -29,7 +41,7 @@ function makeStep(name: string, label: string): PipelineStep {
   return { name, label, status: "pending" };
 }
 
-// ─── ConversationPipeline ─────────────────────────────────────────────────────
+// ─── ConversationPipeline v2 ──────────────────────────────────────────────────
 
 class ConversationPipeline {
   private _currentExecutionId: string | null = null;
@@ -52,13 +64,13 @@ class ConversationPipeline {
     this._currentExecutionId = executionId;
 
     const steps: PipelineStep[] = [
-      makeStep("prepare", "Preparando"),
+      makeStep("prepare",      "Preparando"),
       makeStep("persist_user", "Salvando mensagem"),
-      makeStep("context", "Recuperando memoria"),
-      makeStep("route", "Consultando especialistas"),
-      makeStep("synthesize", "Construindo resposta"),
-      makeStep("stream", "Respondendo"),
-      makeStep("finalize", "Finalizando"),
+      makeStep("context",      "Recuperando memoria"),
+      makeStep("route",        "Consultando especialistas"),
+      makeStep("synthesize",   "Construindo resposta"),
+      makeStep("stream",       "Respondendo"),
+      makeStep("finalize",     "Finalizando"),
     ];
 
     const execution: PipelineExecution = {
@@ -74,7 +86,6 @@ class ConversationPipeline {
     conversationStore.setStatus("preparing");
 
     // ── [M1.11 AUDIT PROBE — PIPELINE] ───────────────────────────────────
-    // AUDIT_MODE guard: zero impact when false. No logic altered.
     try {
       const { driveAuditStore, AUDIT_MODE } = await import("@/lib/audit/DriveAuditStore");
       if (AUDIT_MODE) {
@@ -84,10 +95,12 @@ class ConversationPipeline {
           userMessage: userMessage.slice(0, 200),
           sessionId: session.id,
           timestamp: new Date().toISOString(),
+          version: "v2",
         });
       }
     } catch { /* non-blocking */ }
     // ── [END M1.11 AUDIT PROBE] ──────────────────────────────────────────
+
     conversationMetrics.begin(executionId, session.id);
 
     conversationStore.emit({
@@ -103,7 +116,7 @@ class ConversationPipeline {
         executionId,
         () => this._runPipeline(executionId, userMessage, steps),
         {
-          maxAttempts: 1, // pipeline handles its own retry per step
+          maxAttempts: 1,
           onRetry: () => conversationMetrics.recordRecoveryAttempt(executionId),
         }
       );
@@ -130,7 +143,7 @@ class ConversationPipeline {
     userMessage: string,
     steps: PipelineStep[]
   ): Promise<void> {
-    const session = conversationStore.session!;
+    const session  = conversationStore.session!;
     const messages = conversationStore.messages;
 
     const setStep = (name: string, status: PipelineStep["status"]) => {
@@ -199,7 +212,9 @@ class ConversationPipeline {
     });
     setStep("context", "done");
 
-    // ── 4. Route + Reason ────────────────────────────────────────────────
+    // ── 4. Route + Reason + Collect Candidates ───────────────────────────
+    // v2: Each producer generates a ResponseCandidate via ExecutionOutcome.
+    //     No manual if/else decision. All candidates go to ResponseArbiter.
     if (this._cancelled) return;
     setStep("route", "running");
     conversationStore.setStatus("routing");
@@ -209,17 +224,21 @@ class ConversationPipeline {
     conversationMetrics.markPhase(executionId, "llm_start");
     const t0synth = Date.now();
 
-    let response = "";
+    // ── Candidate collection — ONE per producer ───────────────────────────
+    const candidates: ResponseCandidate[] = [];
     let sources: string[] = [];
 
-    try {
-      // Import lazily to avoid circular deps
-      const { runReasoningPlan } = await import("@/lib/reasoning/memoryReasoningPlanner");
-      const { primaryRouter } = await import("@/lib/primary-conversation-router/PrimaryConversationRouter");
-      const { responseTracer } = await import("@/lib/response-binding/ResponseBindingTracer");
-      const { conversationGoalBridge } = await import("@/lib/conversation-goal-bridge/ConversationGoalBridge");
+    // Detect preferred domain for arbiter (from router, non-blocking)
+    let preferredDomain: ArbitrationContext["preferredDomain"] = null;
 
-      const traceId = responseTracer.beginTrace(userMessage, session.id);
+    try {
+      const { runReasoningPlan }      = await import("@/lib/reasoning/memoryReasoningPlanner");
+      const { primaryRouter }         = await import("@/lib/primary-conversation-router/PrimaryConversationRouter");
+      const { responseTracer }        = await import("@/lib/response-binding/ResponseBindingTracer");
+      const { conversationGoalBridge }= await import("@/lib/conversation-goal-bridge/ConversationGoalBridge");
+
+      const traceId     = responseTracer.beginTrace(userMessage, session.id);
+      const t0route     = Date.now();
       const routerResult = await primaryRouter.route(
         userMessage,
         session.id,
@@ -229,8 +248,6 @@ class ConversationPipeline {
       responseTracer.recordRouterDecision(traceId, routerResult.decision, routerResult.intent?.intent, routerResult.durationMs);
 
       // ── Sprint 8.11: Unified Context Builder ────────────────────────────
-      // Builds the full cognitive context BEFORE GoalBridge.
-      // Pure composition: reads sources, no connectors executed, no planning.
       let unifiedCtx: import("@/lib/unified-context/UnifiedContextTypes").UnifiedContext | null = null;
       try {
         const { unifiedContextBuilder } = await import("@/lib/unified-context/UnifiedContextBuilder");
@@ -245,37 +262,28 @@ class ConversationPipeline {
           type: "PIPELINE_STEP",
           executionId,
           payload: {
-            step:          "unified_context_built",
-            buildId:       unifiedCtx.buildId,
-            intent:        unifiedCtx.intent,
-            durationMs:    unifiedCtx.durationMs,
-            confidence:    unifiedCtx.confidence,
-            sourceCount:   unifiedCtx.sources.length,
-            sourcesUsed:   unifiedCtx.sources.map((s) => s.sourceId),
-            connectors:    unifiedCtx.connectorAvailability,
+            step:        "unified_context_built",
+            buildId:     unifiedCtx.buildId,
+            intent:      unifiedCtx.intent,
+            durationMs:  unifiedCtx.durationMs,
+            confidence:  unifiedCtx.confidence,
+            sourceCount: unifiedCtx.sources.length,
+            sourcesUsed: unifiedCtx.sources.map((s) => s.sourceId),
+            connectors:  unifiedCtx.connectorAvailability,
           },
           timestamp: Date.now(),
         });
-      } catch {
-        // UCB failure is non-blocking — pipeline continues without unified context
-      }
+      } catch { /* non-blocking */ }
       // ── end Sprint 8.11 ─────────────────────────────────────────────────
 
-      // ── Sprint 8.12 / 8.12.1: Knowledge Fusion Engine ───────────────────────
-      // Official pipeline: UnifiedContext → KnowledgeNormalizer → RawKnowledgeUnit[]
-      //                    → KnowledgeFusionEngine → UnifiedKnowledgeModel
-      // No inline transformation. KnowledgeNormalizer is the sole UCB→KFE adapter.
+      // ── Sprint 8.12: Knowledge Fusion Engine ────────────────────────────
       let kfmModel: import("@/lib/knowledge-fusion-engine/KFETypes").UnifiedKnowledgeModel | null = null;
       try {
         const { knowledgeFusionEngine } = await import("@/lib/knowledge-fusion-engine/KnowledgeFusionEngine");
         const { knowledgeNormalizer }   = await import("@/lib/knowledge-fusion-engine/KnowledgeNormalizer");
-
-        // Step 1: Normalize — only if UCB produced a context
         const normResult = unifiedCtx
           ? knowledgeNormalizer.normalize(unifiedCtx)
           : { units: [], unitCount: 0, buildId: `kfe-${Date.now()}` };
-
-        // Step 2: Fuse
         const kfeResult = knowledgeFusionEngine.fuse({
           buildId:   normResult.buildId,
           units:     normResult.units,
@@ -299,13 +307,9 @@ class ConversationPipeline {
             timestamp: Date.now(),
           });
         }
-      } catch {
-        // KFE failure is non-blocking
-      }
-      // ── Sprint M-03: Knowledge Graph Population ─────────────────────────────
-      // Persist the UnifiedKnowledgeModel into KnowledgeGraphStore via the
-      // KnowledgeGraphBridge. Non-blocking — never delays the user response.
-      // Only executes when KFE produced a successful model with entities.
+      } catch { /* non-blocking */ }
+
+      // ── Sprint M-03: Knowledge Graph Population ──────────────────────────
       if (kfmModel !== null && kfmModel.statistics.totalEntities > 0) {
         try {
           const { knowledgeGraphBridge } = await import("@/lib/knowledge-fusion-engine/KnowledgeGraphBridge");
@@ -322,43 +326,16 @@ class ConversationPipeline {
             },
             timestamp: Date.now(),
           });
-        } catch {
-          // Non-blocking — KGS update failure never affects user response
-        }
+        } catch { /* non-blocking */ }
       }
-      // ── end Sprint M-03 ──────────────────────────────────────────────────
-
-      // ── end Sprint 8.12 ──────────────────────────────────────────────────
-
-      // ── BUGFIX EXPERIMENTAL: cognitive_pipeline short-circuit ───────────
-      // If the PrimaryConversationRouter already ran the ConversationCognitiveGateway
-      // and produced a valid answer (e.g. GitHub domain), skip the GoalBridge/Runtime
-      // path entirely and use that answer directly.
-      if (
-        routerResult.decision === "cognitive_pipeline" &&
-        routerResult.cognitiveAnswer?.answer
-      ) {
-        response = routerResult.cognitiveAnswer.answer;
-        sources  = [];
-        conversationStore.emit({
-          type: "PIPELINE_STEP",
-          executionId,
-          payload: { step: "cognitive_pipeline_short_circuit", intent: routerResult.intent?.intent },
-          timestamp: Date.now(),
-        });
-      }
+      // ── end Sprint M-03 / 8.12 ──────────────────────────────────────────
 
       // ── E-02.1: Conversation → Goal Bridge ──────────────────────────────
-      // Derives a structured ConversationGoal from the user message + classified intent.
-      // The goal is NOT executed here — it is produced for Sprint E-02.2 (Goal → Planning).
-      // This call is pure (no network, no connectors, no side effects).
-      // NOTE: skipped entirely when cognitive_pipeline short-circuit fired above.
       const goalBridgeResult = conversationGoalBridge.derive(
         userMessage,
         routerResult.intent?.intent ?? "general_conversation",
         routerResult.intent?.confidence ?? 0,
       );
-      // ── RuntimeTrace: record goal step ───────────────────────────────────
       try {
         const { runtimeTraceStore } = await import("@/lib/runtime-trace/RuntimeTraceStore");
         runtimeTraceStore.beginTrace(executionId, userMessage);
@@ -374,12 +351,12 @@ class ConversationPipeline {
         type: "PIPELINE_STEP",
         executionId,
         payload: {
-          step: "goal_derived",
-          goalId:      goalBridgeResult.goal.id,
-          goalType:    goalBridgeResult.goal.type,
-          confidence:  goalBridgeResult.goal.confidence,
-          valid:       goalBridgeResult.goal.valid,
-          durationMs:  goalBridgeResult.durationMs,
+          step:       "goal_derived",
+          goalId:     goalBridgeResult.goal.id,
+          goalType:   goalBridgeResult.goal.type,
+          confidence: goalBridgeResult.goal.confidence,
+          valid:      goalBridgeResult.goal.valid,
+          durationMs: goalBridgeResult.durationMs,
         },
         timestamp: Date.now(),
       });
@@ -401,26 +378,55 @@ class ConversationPipeline {
       } catch { /* non-blocking */ }
       // ── [END M1.11 AUDIT PROBE] ──────────────────────────────────────────
 
-      // ── end E-02.1 ───────────────────────────────────────────────────────
+      // ── PRODUCER A: Cognitive Gateway (short-circuit path) ───────────────
+      // v2: Gateway answer → ExecutionOutcome → ResponseCandidate
+      // No special-casing. Candidate enters the pool like any other.
+      if (
+        routerResult.decision === "cognitive_pipeline" &&
+        routerResult.cognitiveAnswer?.answer
+      ) {
+        const ca = routerResult.cognitiveAnswer;
+        const gatewayResult = executionOutcomeAdapterFactory.fromInput({
+          producer:     "cognitive_gateway",
+          startedAt:    t0route,
+          finishedAt:   Date.now(),
+          success:      true,
+          errorType:    "none",
+          errorMessage: null,
+          domain:       _intentToDomain(routerResult.intent?.intent),
+          capability:   null,
+          payload:      null,
+          metadata:     { executionId: ca.executionId, stagesExecuted: ca.stagesExecuted },
+          cost:         { apiCalls: 1, cacheHit: false, estimatedLatencyMs: ca.durationMs ?? 0 },
+          confidence:   { score: ca.confidence ?? 0.85, reason: "cognitive gateway", producerConfidence: ca.confidence ?? 0.85 },
+          hint:         { synthesizedAnswer: ca.answer, sourceOverride: "cognitive_gateway" },
+        });
+        if (gatewayResult.ok && gatewayResult.candidate) {
+          candidates.push(gatewayResult.candidate);
+          preferredDomain = gatewayResult.candidate.explicitDomain;
+          responseTracer.recordPipelineAnswer(traceId, ca.answer, ca.executionId, ca.stagesExecuted, ca.confidence, ca.evidenceSources, ca.durationMs);
+        }
+        conversationStore.emit({
+          type: "PIPELINE_STEP",
+          executionId,
+          payload: { step: "gateway_candidate_added", intent: routerResult.intent?.intent },
+          timestamp: Date.now(),
+        });
+      }
 
-      // ── E-02.5A: Planning → Real Runtime → Connector → Synthesize ──────────
-      // Uses the real ConnectorCapabilityExecutor (UCR + ConnectorRegistry + GmailConnector).
-      // When the runtime produces connector data, the synthesizer builds the final response
-      // so the LLM path below is bypassed entirely for connector goals.
-      // For general_conversation / unknown goals, steps=0 → synthesizer returns handled=false
-      // → execution falls through to the LLM path unchanged.
-      if (!response && goalBridgeResult.goal.valid) {
+      // ── PRODUCER B: Planning → Runtime → Connector → Synthesize ──────────
+      // v2: Connector answer → ExecutionOutcome → ResponseCandidate
+      if (goalBridgeResult.goal.valid) {
         const { conversationPlanningEngine } = await import("@/lib/planning-engine-e022/ConversationPlanningEngine");
         const planResult = conversationPlanningEngine.plan(goalBridgeResult.goal, { mode: "live" });
 
-        // ── RuntimeTrace: record plan step ──────────────────────────────────
         try {
           const { runtimeTraceStore } = await import("@/lib/runtime-trace/RuntimeTraceStore");
           const _steps = planResult.plan?.steps ?? [];
           runtimeTraceStore.recordStep("plan", planResult.success ? "executed" : "skipped", {
-            success:    planResult.success,
-            stepCount:  _steps.length,
-            steps:      _steps.map((s: { connector: string; capability: string; id: string }) => ({
+            success:   planResult.success,
+            stepCount: _steps.length,
+            steps:     _steps.map((s: { connector: string; capability: string; id: string }) => ({
               id: s.id, connector: s.connector, capability: s.capability,
             })),
           });
@@ -433,70 +439,79 @@ class ConversationPipeline {
           }
         } catch { /* non-blocking */ }
 
-        // ── [M1.11 AUDIT PROBE — PLANNER] ────────────────────────────────────
         try {
           const { driveAuditStore, AUDIT_MODE } = await import("@/lib/audit/DriveAuditStore");
           if (AUDIT_MODE) {
             const _pSteps = planResult.plan?.steps ?? [];
             driveAuditStore.record("planner", planResult.success ? "ok" : "error", {
-              success:    planResult.success,
-              goalType:   goalBridgeResult.goal.type,
-              stepCount:  _pSteps.length,
-              steps:      _pSteps.map((s: Record<string, unknown>) => ({
-                id:         s.id,
-                connector:  s.connector,
-                capability: s.capability,
-                parameters: s.parameters,
+              success:   planResult.success,
+              goalType:  goalBridgeResult.goal.type,
+              stepCount: _pSteps.length,
+              steps:     _pSteps.map((s: Record<string, unknown>) => ({
+                id: s.id, connector: s.connector, capability: s.capability, parameters: s.parameters,
               })),
             });
           }
         } catch { /* non-blocking */ }
-        // ── [END M1.11 AUDIT PROBE] ──────────────────────────────────────────
 
-        // ── Sprint M1.12: static_analysis guard ────────────────────────────────
-        // When mode==="static_analysis", bypass Runtime entirely.
-        // No connectors are executed. StaticAnalysisEngine handles the response via LLM.
+        // ── Static Analysis path ──────────────────────────────────────────
         if (planResult.plan.mode === "static_analysis") {
           const { staticAnalysisEngine } = await import("@/lib/static-analysis/StaticAnalysisEngine");
           const saResult = await staticAnalysisEngine.analyze(planResult.plan, userMessage);
-          response = saResult.response;
-          sources  = [];
+          const t0sa = Date.now();
+          const saAdapted = executionOutcomeAdapterFactory.fromInput({
+            producer:     "static_analysis",
+            startedAt:    t0sa - (planResult.plan.estimatedDurationMs ?? 0),
+            finishedAt:   t0sa,
+            success:      true,
+            errorType:    "none",
+            errorMessage: null,
+            domain:       _intentToDomain(routerResult.intent?.intent),
+            capability:   "static_analysis",
+            payload:      null,
+            metadata:     { goalType: planResult.plan.goalType },
+            cost:         { apiCalls: 1, cacheHit: false, estimatedLatencyMs: 0 },
+            confidence:   { score: 0.8, reason: "static analysis", producerConfidence: 0.8 },
+            hint:         { synthesizedAnswer: saResult.response, sourceOverride: "static_analysis" },
+          });
+          if (saAdapted.ok && saAdapted.candidate) {
+            candidates.push(saAdapted.candidate);
+          }
           conversationStore.emit({
             type: "PIPELINE_STEP",
             executionId,
-            payload: { step: "static_analysis_response", goalType: planResult.plan.goalType },
+            payload: { step: "static_analysis_candidate_added", goalType: planResult.plan.goalType },
             timestamp: Date.now(),
           });
         }
-        // ── end Sprint M1.12 guard ─────────────────────────────────────────────
 
-        if (!response && planResult.success && planResult.plan.steps.length > 0) {
+        // ── Live Connector Runtime path ───────────────────────────────────
+        else if (planResult.success && planResult.plan.steps.length > 0) {
           setPhase("executing_capabilities");
           const { getRealRuntimeEngine, getRealConnectorRegistry } = await import("@/lib/connector-runtime-provider/ConnectorRuntimeProvider");
-          // Await fully-bootstrapped engine + registry (no placeholder — Sprint M1.1)
           const [_realEngine, _probeReg] = await Promise.all([
             getRealRuntimeEngine(),
             getRealConnectorRegistry(),
           ]);
-          console.log("[RUNTIME] Pipeline: engine READY — registry:", _probeReg.list(), `connectors=${_probeReg.count()}`);
+          console.log("[RUNTIME] Pipeline v2: engine READY — registry:", _probeReg.list(), `connectors=${_probeReg.count()}`);
           const executionResult = await _realEngine.execute(planResult.plan);
+          const t0connector = Date.now();
 
           conversationStore.emit({
             type: "PIPELINE_STEP",
             executionId,
             payload: {
-              step:        "runtime_executed",
-              runtimeId:   executionResult.executionId,
-              planId:      executionResult.planId,
-              status:      executionResult.status,
-              stepCount:   executionResult.steps.length,
-              durationMs:  executionResult.durationMs,
-              errors:      executionResult.errors,
+              step:       "runtime_executed",
+              runtimeId:  executionResult.executionId,
+              planId:     executionResult.planId,
+              status:     executionResult.status,
+              stepCount:  executionResult.steps.length,
+              durationMs: executionResult.durationMs,
+              errors:     executionResult.errors,
             },
             timestamp: Date.now(),
           });
 
-          // ── [M1.11 AUDIT PROBE — RUNTIME] ──────────────────────────────────
           try {
             const { driveAuditStore, AUDIT_MODE } = await import("@/lib/audit/DriveAuditStore");
             if (AUDIT_MODE) {
@@ -507,23 +522,20 @@ class ConversationPipeline {
                 durationMs:   executionResult.durationMs,
                 errors:       executionResult.errors,
                 steps: executionResult.steps.map((s) => ({
-                  connector:   s.connector,
-                  capability:  s.capability,
-                  status:      s.status,
-                  durationMs:  s.durationMs,
-                  error:       s.error,
-                  hasOutput:   s.output !== null && s.output !== undefined,
-                  outputKeys:  s.output && typeof s.output === "object" ? Object.keys(s.output as object) : [],
-                  outputPreview: s.output ? JSON.stringify(s.output).slice(0, 300) : null,
+                  connector:      s.connector,
+                  capability:     s.capability,
+                  status:         s.status,
+                  durationMs:     s.durationMs,
+                  error:          s.error,
+                  hasOutput:      s.output !== null && s.output !== undefined,
+                  outputKeys:     s.output && typeof s.output === "object" ? Object.keys(s.output as object) : [],
+                  outputPreview:  s.output ? JSON.stringify(s.output).slice(0, 300) : null,
                 })),
               });
             }
           } catch { /* non-blocking */ }
-          // ── [END M1.11 AUDIT PROBE] ────────────────────────────────────────
 
-          // Synthesize connector output → user-facing response
-          // Sprint M-05: pass kfmModel so the synthesizer can enrich the LLM prompt
-          // with fused knowledge (entities, topics, decisions, tasks).
+          // Synthesize connector output → text answer
           const { synthesizeConnectorResult } = await import("@/lib/connector-runtime-provider/ConnectorResultSynthesizer");
           const synthesis = await synthesizeConnectorResult(
             executionResult,
@@ -532,14 +544,13 @@ class ConversationPipeline {
             kfmModel,
           );
 
-          // ── RuntimeTrace: connector result + LLM input ──────────────────
           try {
             const { runtimeTraceStore } = await import("@/lib/runtime-trace/RuntimeTraceStore");
             runtimeTraceStore.recordStep("connector", executionResult.status === "completed" ? "executed" : "error", {
-              status:     executionResult.status,
-              durationMs: executionResult.durationMs,
-              errors:     executionResult.errors,
-              stepCount:  executionResult.steps.length,
+              status:      executionResult.status,
+              durationMs:  executionResult.durationMs,
+              errors:      executionResult.errors,
+              stepCount:   executionResult.steps.length,
               stepOutputs: executionResult.steps.map((s) => ({
                 connector:  s.connector,
                 capability: s.capability,
@@ -557,48 +568,75 @@ class ConversationPipeline {
             }
           } catch { /* non-blocking */ }
 
+          // ── v2: connector result → ExecutionOutcome → ResponseCandidate ──
+          const connectorDomain = _goalTypeToDomain(goalBridgeResult.goal.type);
+
           if (synthesis.handled && synthesis.response) {
-            // ── RuntimeTrace: final LLM response ──────────────────────────
+            // Success: synthesizer produced a response
+            const connResult = executionOutcomeAdapterFactory.fromConnectorSuccess({
+              producer:          "connector_runtime",
+              domain:            connectorDomain,
+              capability:        goalBridgeResult.goal.type,
+              payload:           synthesis.connectorData,
+              durationMs:        executionResult.durationMs,
+              synthesizedAnswer: synthesis.response,
+              metadata:          { runtimeId: executionResult.executionId, planId: executionResult.planId },
+            });
+            if (connResult.ok && connResult.candidate) {
+              candidates.push(connResult.candidate);
+              preferredDomain = preferredDomain ?? connResult.candidate.explicitDomain;
+            }
             try {
               const { runtimeTraceStore } = await import("@/lib/runtime-trace/RuntimeTraceStore");
               runtimeTraceStore.recordStep("llm_response", "executed", {
-                responseLen: synthesis.response.length,
+                responseLen:  synthesis.response.length,
                 responseHead: synthesis.response.slice(0, 300),
               });
               runtimeTraceStore.finishTrace();
             } catch { /* non-blocking */ }
-            // Connector handled this request — bypass LLM path entirely
-            response = synthesis.response;
-            sources  = [];
             conversationStore.emit({
               type: "PIPELINE_STEP",
               executionId,
-              payload: { step: "connector_response_synthesized", goalType: goalBridgeResult.goal.type },
+              payload: { step: "connector_candidate_added", goalType: goalBridgeResult.goal.type },
               timestamp: Date.now(),
             });
+          } else if (!synthesis.handled && executionResult.errors.length > 0) {
+            // Failure: connector execution failed → error candidate
+            const firstError = executionResult.errors[0] ?? "Connector execution failed";
+            const errResult = executionOutcomeAdapterFactory.fromConnectorFailure({
+              producer:     "connector_runtime",
+              domain:       connectorDomain,
+              capability:   goalBridgeResult.goal.type,
+              errorType:    _classifyError(firstError),
+              errorMessage: firstError,
+              durationMs:   executionResult.durationMs,
+              metadata:     { runtimeId: executionResult.executionId },
+            });
+            if (errResult.ok && errResult.candidate) {
+              candidates.push(errResult.candidate);
+            }
           }
+          // synthesis.handled=false + no errors → connector produced no data → no candidate added
+          // Pipeline will fall through to LLM path
         }
       }
-      // ── end E-02.5A ──────────────────────────────────────────────────────
 
       setStep("route", "done");
       setStep("synthesize", "running");
       conversationStore.setStatus("synthesizing");
       setPhase("building_response");
 
-      // If a connector already handled the response (E-02.5A), skip the LLM path.
-      if (response) {
-        responseTracer.recordRendered(traceId, response);
-      } else if (routerResult.decision === "cognitive_pipeline" && routerResult.cognitiveAnswer?.answer) {
-        const ca = routerResult.cognitiveAnswer;
-        responseTracer.recordPipelineAnswer(traceId, ca.answer, ca.executionId, ca.stagesExecuted, ca.confidence, ca.evidenceSources, ca.durationMs);
-        response = ca.answer;
-        sources = [];
-      } else {
+      // ── PRODUCER C: LLM Reasoning (always runs if no high-confidence candidate yet) ──
+      // v2: Run LLM when no candidate with handled=true and confidence>=0.7 exists yet.
+      // This keeps the LLM as the reliable fallback without special-casing it in the Pipeline.
+      const hasHighConfidenceCandidate = candidates.some(
+        (c) => c.handled && c.confidence >= 0.7,
+      );
+
+      if (!hasHighConfidenceCandidate) {
         setPhase("executing_capabilities");
-        // Sprint M-05: build kfmContext string from UnifiedKnowledgeModel so the
-        // LLM reasoning path also benefits from fused knowledge.
-        // Non-blocking: if kfmModel is null or empty, kfmContext remains undefined.
+
+        // Build kfmContext string for LLM prompt enrichment (Sprint M-05)
         let kfmContext: string | undefined;
         if (kfmModel && kfmModel.statistics.totalEntities > 0) {
           const lines: string[] = [];
@@ -613,6 +651,8 @@ class ConversationPipeline {
           if (lines.length > 0)
             kfmContext = `Confianca do modelo: ${Math.round(kfmModel.confidence * 100)}%\n${lines.join("\n")}`;
         }
+
+        const t0llm = Date.now();
         const plan = await runReasoningPlan({
           userMsg: userMessage,
           session,
@@ -625,28 +665,74 @@ class ConversationPipeline {
             else setPhase("responding");
           },
         });
-        response = plan.response;
+
         sources = (plan.sources ?? []).map((s: { id: string }) => s.id);
-        const fallbackReason = routerResult.decision === "cognitive_pipeline" ? "EMPTY_PIPELINE_ANSWER" : "GENERAL_CONVERSATION";
-        responseTracer.recordFallback(traceId, fallbackReason, response, Date.now() - t0synth);
-        responseTracer.recordRendered(traceId, response);
-        // ── RuntimeTrace: LLM-only path (no connector) ────────────────────
+
+        // LLM answer → ExecutionOutcome → ResponseCandidate
+        const llmResult = executionOutcomeAdapterFactory.fromLLMReasoning({
+          answer:     plan.response,
+          durationMs: Date.now() - t0llm,
+          confidence: 0.7,
+          metadata:   { sessionId: session.id },
+        });
+        if (llmResult.ok && llmResult.candidate) {
+          candidates.push(llmResult.candidate);
+        }
+
+        const fallbackReason = routerResult.decision === "cognitive_pipeline"
+          ? "EMPTY_PIPELINE_ANSWER"
+          : "GENERAL_CONVERSATION";
+        responseTracer.recordFallback(traceId, fallbackReason, plan.response, Date.now() - t0synth);
+        responseTracer.recordRendered(traceId, plan.response);
+
         try {
           const { runtimeTraceStore } = await import("@/lib/runtime-trace/RuntimeTraceStore");
           runtimeTraceStore.recordStep("llm_response", "executed", {
             path:         "llm_only",
             fallbackReason,
-            responseLen:  response.length,
-            responseHead: response.slice(0, 300),
+            responseLen:  plan.response.length,
+            responseHead: plan.response.slice(0, 300),
           });
           runtimeTraceStore.finishTrace();
         } catch { /* non-blocking */ }
+
+        conversationStore.emit({
+          type: "PIPELINE_STEP",
+          executionId,
+          payload: { step: "llm_candidate_added", candidateCount: candidates.length },
+          timestamp: Date.now(),
+        });
       }
-    } catch (err) {
-      // Fallback response on reasoning failure
-      response = "Nao consegui processar sua mensagem. Por favor, tente novamente.";
-      sources = [];
-    }
+
+      // ── ARBITRATION — sole decision authority ─────────────────────────────
+      // v2: ResponseArbiter receives ALL candidates and decides.
+      // No if/else. No short-circuit. No manual priority.
+      const arbContext: ArbitrationContext = {
+        preferredDomain,
+        userMessage,
+        sessionId: session.id,
+      };
+      const arbResult = responseArbiter.arbitrate(candidates, arbContext);
+
+      conversationStore.emit({
+        type: "PIPELINE_STEP",
+        executionId,
+        payload: {
+          step:         "arbiter_decision",
+          reason:       arbResult.reason,
+          totalCount:   arbResult.totalCount,
+          handledCount: arbResult.handledCount,
+          selected:     arbResult.selected.source,
+          confidence:   arbResult.selected.confidence,
+          domain:       arbResult.selected.explicitDomain,
+          durationMs:   arbResult.durationMs,
+        },
+        timestamp: Date.now(),
+      });
+
+      // ── Extract final response from arbitration result ────────────────────
+      const finalResponse = arbResult.selected.answer
+        ?? "Nao consegui processar sua mensagem. Por favor, tente novamente.";
 
     conversationMetrics.recordSynthesisMs(executionId, Date.now() - t0synth);
     setStep("synthesize", "done");
@@ -657,26 +743,23 @@ class ConversationPipeline {
     conversationStore.setStatus("streaming");
     setPhase("responding");
 
-    // Insert placeholder message for streaming
     const streamMsgId = makeMsgId();
-    const streamingPlaceholder = {
-      id: streamMsgId,
-      session_id: session.id,
-      role: "assistant" as const,
-      content: "",
+    conversationStore.appendMessage({
+      id:               streamMsgId,
+      session_id:       session.id,
+      role:             "assistant",
+      content:          "",
       streamingContent: "",
-      isStreaming: true,
-      memory_tier: "active" as const,
-      sources_used: sources,
-    };
-    conversationStore.appendMessage(streamingPlaceholder);
+      isStreaming:      true,
+      memory_tier:      "active",
+      sources_used:     sources,
+    });
 
     await conversationStreaming.streamResponse({
       executionId,
-      messageId: streamMsgId,
-      fullContent: response,
+      messageId:   streamMsgId,
+      fullContent: finalResponse,
       onChunk: () => {
-        // Record first token timing
         if (!conversationStore.state.streamSession?.firstTokenAt) {
           conversationMetrics.recordFirstToken(executionId);
         }
@@ -692,31 +775,26 @@ class ConversationPipeline {
 
     try {
       const savedAssistant = await persistMessage({
-        sessionId: session.id,
-        projectId: session.project_id,
-        role: "assistant",
-        content: response,
+        sessionId:    session.id,
+        projectId:    session.project_id,
+        role:         "assistant",
+        content:      finalResponse,
         sources_used: sources,
       });
-
-      // Replace the streaming placeholder with the persisted message
       conversationStore.updateMessage(streamMsgId, {
-        id: savedAssistant.id,
-        content: response,
+        id:               savedAssistant.id,
+        content:          finalResponse,
         streamingContent: undefined,
-        isStreaming: false,
-        sources_used: sources,
+        isStreaming:      false,
+        sources_used:     sources,
       });
-
       conversationStore.emit({
         type: "MESSAGE_SAVED",
         executionId,
         payload: { messageId: savedAssistant.id, role: "assistant" },
         timestamp: Date.now(),
       });
-    } catch {
-      // Non-critical — message is visible even if persist fails
-    }
+    } catch { /* non-critical */ }
 
     conversationStore.setStatus("idle");
     conversationStore.setReasoningPhase("idle");
@@ -724,6 +802,42 @@ class ConversationPipeline {
 
     // ── 7. Background batch processing ──────────────────────────────────
     this._backgroundProcessing(session, [...messages, savedUser]).catch(() => {});
+
+    } catch (err) {
+      // ── Fallback: arbitrate with whatever candidates we have ──────────────
+      // Even on error, we attempt to deliver the best available candidate.
+      let finalResponse = "Nao consegui processar sua mensagem. Por favor, tente novamente.";
+      if (candidates.length > 0) {
+        const fallbackArb = responseArbiter.arbitrate(candidates, { preferredDomain });
+        if (fallbackArb.selected.answer) {
+          finalResponse = fallbackArb.selected.answer;
+        }
+      }
+
+      conversationMetrics.recordSynthesisMs(executionId, Date.now() - t0synth);
+      setStep("synthesize", "done");
+
+      if (!this._cancelled) {
+        setStep("stream", "running");
+        conversationStore.setStatus("streaming");
+        setPhase("responding");
+
+        const streamMsgId = makeMsgId();
+        conversationStore.appendMessage({
+          id: streamMsgId, session_id: session.id, role: "assistant",
+          content: "", streamingContent: "", isStreaming: true, memory_tier: "active", sources_used: [],
+        });
+        await conversationStreaming.streamResponse({
+          executionId, messageId: streamMsgId, fullContent: finalResponse, onChunk: () => {},
+        });
+        setStep("stream", "done");
+      }
+
+      setStep("finalize", "running");
+      conversationStore.setStatus("idle");
+      conversationStore.setReasoningPhase("idle");
+      setStep("finalize", "done");
+    }
   }
 
   // ── Background Processing ─────────────────────────────────────────────────
@@ -733,9 +847,7 @@ class ConversationPipeline {
     allMessages: { role: string; content: string }[]
   ): Promise<void> {
     const userCount = allMessages.filter((m) => m.role === "user").length;
-
     if (userCount % 5 !== 0) return;
-
     try {
       const { processConversationBatch } = await import("@/lib/conversationEngine");
       const knowledge = await processConversationBatch(session, allMessages, session.project_id);
@@ -743,14 +855,11 @@ class ConversationPipeline {
         const { sessionManager } = await import("./ConversationSessionManager");
         await sessionManager.syncSessionMetadata(session.id, { summary: knowledge.summary });
       }
-
       if (session.title === "Nova conversa" && allMessages.length > 0) {
         const { sessionManager } = await import("./ConversationSessionManager");
         await sessionManager.autoTitleIfNeeded(allMessages[0].content);
       }
-    } catch {
-      // background — never block UI
-    }
+    } catch { /* background — never block UI */ }
   }
 
   // ── Cancel ────────────────────────────────────────────────────────────────
@@ -774,10 +883,42 @@ class ConversationPipeline {
   }
 }
 
+// ─── Domain resolution helpers ────────────────────────────────────────────────
+
+import type { ExecutionDomain } from "@/lib/response-arbiter/ExecutionOutcomeTypes";
+
+function _intentToDomain(intent: string | undefined): ExecutionDomain {
+  if (!intent) return "general";
+  if (intent.includes("github"))   return "github";
+  if (intent.includes("drive"))    return "google_drive";
+  if (intent.includes("gmail") || intent.includes("email")) return "gmail";
+  if (intent.includes("calendar")) return "google_calendar";
+  if (intent.includes("memory"))   return "memory";
+  return "general";
+}
+
+function _goalTypeToDomain(goalType: string): ExecutionDomain {
+  if (goalType.startsWith("github"))          return "github";
+  if (goalType.startsWith("drive"))           return "google_drive";
+  if (goalType.startsWith("gmail") || goalType.startsWith("email")) return "gmail";
+  if (goalType.startsWith("calendar"))        return "google_calendar";
+  if (goalType.startsWith("memory"))          return "memory";
+  return "general";
+}
+
+function _classifyError(error: string): import("@/lib/response-arbiter/ExecutionOutcomeTypes").ErrorType {
+  const e = error.toLowerCase();
+  if (e.includes("401") || e.includes("auth") || e.includes("oauth") || e.includes("expirado")) return "auth";
+  if (e.includes("403") || e.includes("acesso negado") || e.includes("escopos")) return "auth";
+  if (e.includes("404") || e.includes("nao encontrado")) return "not_found";
+  if (e.includes("timeout") || e.includes("demorou")) return "timeout";
+  if (e.includes("network") || e.includes("conectividade")) return "network";
+  if (e.includes("validation") || e.includes("parametro")) return "validation";
+  return "runtime";
+}
+
 // ─── Singleton ────────────────────────────────────────────────────────────────
 
-// ─── Platform initialization ──────────────────────────────────────────────────
-// Single call — all registries initialized before any pipeline executes.
 initializePlatform();
 
 const _key = "__CXP_PIPELINE__";
