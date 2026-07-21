@@ -127,6 +127,8 @@ export class GeneralAdapter implements IExecutionOutcomeDomainAdapter {
 
 // ── UnknownAdapter ────────────────────────────────────────────────────────────
 // Fallback catch-all: cobre "unknown" e qualquer dominio sem adapter registrado.
+// Preserva o explicitDomain mapeado via DOMAIN_TO_EXPLICIT para que o
+// ResponseArbiter possa aplicar DOMAIN_MATCH corretamente.
 
 export class UnknownAdapter implements IExecutionOutcomeDomainAdapter {
   readonly domains: readonly ExecutionDomain[] = ["unknown"];
@@ -138,7 +140,10 @@ export class UnknownAdapter implements IExecutionOutcomeDomainAdapter {
 
   adapt(outcome: ExecutionOutcome, hint: AdaptationHint): AdaptationResult {
     const t0 = Date.now();
-    return buildResult(outcome, hint, t0, null);
+    // Resolve explicitDomain from the outcome's domain so DOMAIN_MATCH works.
+    // Falls back to null only for truly unknown domains.
+    const explicitDomain = DOMAIN_TO_EXPLICIT[outcome.domain] ?? null;
+    return buildResult(outcome, hint, t0, explicitDomain);
   }
 }
 
