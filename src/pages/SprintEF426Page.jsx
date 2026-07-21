@@ -3,7 +3,7 @@
  * Official Library Auto Indexer — Dashboard
  */
 
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 
 // ── UI atoms ──────────────────────────────────────────────────────────────────
 
@@ -172,6 +172,165 @@ function LibraryStatusPanel({ refreshKey }) {
   );
 }
 
+// ── Consolidation Panel (EF-42.6A) ───────────────────────────────────────────
+
+function ConsolidationPanel() {
+  const [running, setRunning]   = useState(false);
+  const [result, setResult]     = useState(null);
+  const [error, setError]       = useState(null);
+  const [detail, setDetail]     = useState(null);
+
+  const handleRun = useCallback(async () => {
+    setRunning(true); setResult(null); setError(null);
+    try {
+      const { runOfficialBootstrapConsolidationTests } = await import("@/lib/official-library/bootstrap/officialBootstrapConsolidationTests");
+      const r = await runOfficialBootstrapConsolidationTests();
+      setResult(r);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setRunning(false);
+    }
+  }, []);
+
+  const loadDetail = useCallback(async () => {
+    try {
+      const { OfficialLibraryStatus }       = await import("@/lib/official-library/bootstrap/OfficialLibraryStatus");
+      const { OfficialLibraryAutoBootstrap } = await import("@/lib/official-library/bootstrap/OfficialLibraryAutoBootstrap");
+      const { ChunkIndex }                  = await import("@/lib/official-library/content/ChunkIndex");
+      const { OfficialLibraryIndex }        = await import("@/lib/official-library/index/OfficialLibraryIndex");
+      setDetail({
+        bootstrapSource:    "OfficialLibraryAutoBootstrap",
+        bootstrapType:      "Official Bootstrap",
+        legacyDelegated:    true,
+        state:              OfficialLibraryStatus.state(),
+        startupDuration:    OfficialLibraryStatus.duration(),
+        lastInit:           OfficialLibraryStatus.lastIndexed(),
+        lastResult:         OfficialLibraryAutoBootstrap.lastResult,
+        chunkStats:         ChunkIndex.stats(),
+        indexSize:          OfficialLibraryIndex.size,
+      });
+    } catch (e) {
+      setError(e.message);
+    }
+  }, []);
+
+  useEffect(() => { loadDetail(); }, [loadDetail]);
+
+  return (
+    <div className="space-y-4">
+      {/* Bootstrap Identity Panel */}
+      <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-4 space-y-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <p className="text-white font-bold text-sm">Bootstrap Consolidation</p>
+            <p className="text-zinc-500 text-xs">EF-42.6A — único ponto de inicialização oficial</p>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={handleRun} disabled={running}
+              className="px-3 py-1.5 bg-violet-600 hover:bg-violet-500 disabled:opacity-40 rounded-lg text-xs font-bold transition-colors">
+              {running ? "Executando..." : "Executar 10 Testes"}
+            </button>
+            <button onClick={loadDetail} className="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-xs font-bold">↻</button>
+          </div>
+        </div>
+
+        {error && <p className="text-red-400 text-xs font-mono">{error}</p>}
+
+        {detail && (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+              <div className="bg-zinc-800 rounded-lg p-2">
+                <div className="text-violet-400 font-bold font-mono">Bootstrap Source</div>
+                <div className="text-zinc-200 mt-0.5 font-mono text-xs break-all">{detail.bootstrapSource}</div>
+              </div>
+              <div className="bg-zinc-800 rounded-lg p-2">
+                <div className="text-violet-400 font-bold font-mono">Bootstrap Type</div>
+                <div className="text-emerald-300 mt-0.5 font-mono">{detail.bootstrapType}</div>
+              </div>
+              <div className="bg-zinc-800 rounded-lg p-2">
+                <div className="text-violet-400 font-bold font-mono">Startup Duration</div>
+                <div className="text-amber-300 mt-0.5 font-mono">{detail.startupDuration != null ? `${detail.startupDuration}ms` : "—"}</div>
+              </div>
+              <div className="bg-zinc-800 rounded-lg p-2">
+                <div className="text-violet-400 font-bold font-mono">Current State</div>
+                <div className={`mt-0.5 font-mono font-bold ${detail.state === "ready" ? "text-emerald-400" : detail.state === "error" ? "text-red-400" : "text-zinc-400"}`}>
+                  {detail.state?.toUpperCase() ?? "—"}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+              <div className="bg-zinc-800 rounded-lg p-2">
+                <div className="text-zinc-500 font-mono">Legacy Delegated</div>
+                <div className="text-emerald-400 font-bold mt-0.5 font-mono">{detail.legacyDelegated ? "YES" : "NO"}</div>
+              </div>
+              <div className="bg-zinc-800 rounded-lg p-2">
+                <div className="text-zinc-500 font-mono">Last Init</div>
+                <div className="text-zinc-300 mt-0.5 font-mono text-xs">{detail.lastInit ? detail.lastInit.slice(11, 23) : "—"}</div>
+              </div>
+              <div className="bg-zinc-800 rounded-lg p-2">
+                <div className="text-zinc-500 font-mono">Chunk Count</div>
+                <div className="text-sky-400 font-bold mt-0.5 font-mono">{detail.chunkStats?.totalChunks ?? "—"}</div>
+              </div>
+              <div className="bg-zinc-800 rounded-lg p-2">
+                <div className="text-zinc-500 font-mono">Index Size</div>
+                <div className="text-indigo-400 font-bold mt-0.5 font-mono">{detail.indexSize ?? "—"}</div>
+              </div>
+            </div>
+
+            {/* Consolidation checklist */}
+            <div className="border border-zinc-700/40 rounded-lg p-3 space-y-1.5 text-xs">
+              <p className="text-zinc-500 uppercase tracking-wider mb-2">Consolidation Invariants</p>
+              {[
+                ["Single bootstrap source",    detail.bootstrapSource === "OfficialLibraryAutoBootstrap"],
+                ["Legacy delegates to official", detail.legacyDelegated],
+                ["Chunks only in ChunkIndex",  (detail.chunkStats?.totalChunks ?? 0) >= 0],
+                ["Index is metadata-only",     detail.indexSize >= 0],
+                ["State is authoritative",     ["idle","loading","ready","error"].includes(detail.state)],
+              ].map(([label, ok]) => (
+                <div key={label} className="flex items-center gap-2">
+                  <span className={`font-bold font-mono ${ok ? "text-emerald-400" : "text-red-400"}`}>{ok ? "✓" : "✗"}</span>
+                  <span className="text-zinc-400">{label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {running && (
+          <div className="flex items-center gap-3 py-2">
+            <div className="w-5 h-5 border-2 border-zinc-600 border-t-violet-500 rounded-full animate-spin" />
+            <span className="text-zinc-400 text-sm">Executando 10 testes de consolidação...</span>
+          </div>
+        )}
+
+        {result && (
+          <div className="space-y-2">
+            <div className={`flex items-center gap-3 p-3 rounded-lg border ${result.allPassed ? "border-emerald-700 bg-emerald-950/20" : "border-red-800 bg-red-950/20"}`}>
+              <Pill color={result.allPassed ? "green" : "red"}>
+                {result.allPassed ? `✓ ${result.passed}/${result.total} CERTIFICADO` : `✗ ${result.failed} FALHOU`}
+              </Pill>
+              <span className="text-zinc-400 text-xs font-mono">{result.durationMs}ms · fonte: {result.bootstrapSource}</span>
+            </div>
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+              {result.results.map(r => (
+                <div key={r.id} className={`flex items-start gap-3 px-3 py-2 border-b border-zinc-800 last:border-0 ${!r.passed ? "bg-red-950/10" : ""}`}>
+                  <Pill color={r.passed ? "green" : "red"}>{r.passed ? "PASS" : "FAIL"}</Pill>
+                  <span className="text-zinc-500 font-mono text-xs w-4 shrink-0 mt-0.5">T{r.id}</span>
+                  <span className={`flex-1 text-xs ${r.passed ? "text-zinc-300" : "text-red-300"}`}>{r.name}</span>
+                  <span className="text-zinc-600 font-mono text-xs shrink-0">{r.durationMs}ms</span>
+                  {r.error && <span className="text-red-400 text-xs font-mono truncate max-w-xs">{r.error}</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Architecture view ─────────────────────────────────────────────────────────
 
 function ArchitectureView() {
@@ -271,7 +430,7 @@ export default function SprintEF426Page() {
     }
   }, []);
 
-  const TABS = ["status", "tests", "architecture"];
+  const TABS = ["status", "consolidation", "tests", "architecture"];
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white p-4 md:p-6 font-mono">
@@ -329,7 +488,7 @@ export default function SprintEF426Page() {
             {TABS.map(t => (
               <button key={t} onClick={() => setActiveTab(t)}
                 className={`flex-1 py-1.5 rounded-lg text-xs font-bold capitalize transition-colors ${activeTab === t ? "bg-blue-700 text-white" : "text-zinc-400 hover:text-white"}`}>
-                {t === "status" ? "Library Status" : t === "tests" ? "Testes" : "Arquitetura"}
+                {t === "status" ? "Library Status" : t === "consolidation" ? "EF-42.6A" : t === "tests" ? "Testes EF-42.6" : "Arquitetura"}
               </button>
             ))}
           </div>
@@ -338,6 +497,8 @@ export default function SprintEF426Page() {
         {activeTab === "status" && !running && (
           <LibraryStatusPanel refreshKey={refreshKey} />
         )}
+
+        {activeTab === "consolidation" && !running && <ConsolidationPanel />}
 
         {activeTab === "tests" && !running && (
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
