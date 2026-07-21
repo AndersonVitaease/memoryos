@@ -26,6 +26,7 @@ import { executionOutcomeAdapterFactory } from "@/lib/response-arbiter/Execution
 import { responseArbiter } from "@/lib/response-arbiter/ResponseArbiter";
 import type { ResponseCandidate } from "@/lib/response-arbiter/ResponseCandidate";
 import type { ArbitrationContext } from "@/lib/response-arbiter/ResponseArbiter";
+import type { ExecutionDomain } from "@/lib/response-arbiter/ExecutionOutcomeTypes";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -884,8 +885,6 @@ class ConversationPipeline {
 }
 
 // ─── Domain resolution helpers ────────────────────────────────────────────────
-
-import type { ExecutionDomain } from "@/lib/response-arbiter/ExecutionOutcomeTypes";
 
 function _intentToDomain(intent: string | undefined): ExecutionDomain {
   if (!intent) return "general";

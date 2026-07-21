@@ -229,6 +229,7 @@ import DriveAuditPanel from '@/pages/DriveAuditPanel';
 import GitHubDebugPanel from '@/pages/GitHubDebugPanel';
 import EF399ValidationPage from '@/pages/EF399ValidationPage';
 import RegressionTest271Page from '@/pages/RegressionTest271Page';
+import EOACertificationPage from '@/pages/EOACertificationPage';
 
 const AuthenticatedApp = () => {
   console.log('[RENDER] AuthenticatedApp');
@@ -475,6 +476,7 @@ const AuthenticatedApp = () => {
           <Route path="/drive-audit" element={<DriveAuditPanel />} />
           <Route path="/github-debug" element={<GitHubDebugPanel />} />
           <Route path="/regression-271" element={<RegressionTest271Page />} />
+          <Route path="/eoa-certification" element={<EOACertificationPage />} />
         </Route>
       </Route>
       <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />
