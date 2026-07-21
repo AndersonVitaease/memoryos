@@ -237,6 +237,7 @@ import ComponentOriginAuditPage from '@/pages/ComponentOriginAuditPage';
 import SprintEF403Page from '@/pages/SprintEF403Page';
 import SprintEF404Page from '@/pages/SprintEF404Page';
 import SprintEF405Page from '@/pages/SprintEF405Page';
+import UCMEShadowDiagnosticsPage from '@/pages/UCMEShadowDiagnosticsPage';
 
 const AuthenticatedApp = () => {
   console.log('[RENDER] AuthenticatedApp');
@@ -491,6 +492,7 @@ const AuthenticatedApp = () => {
           <Route path="/sprint-ef403" element={<SprintEF403Page />} />
           <Route path="/sprint-ef404" element={<SprintEF404Page />} />
           <Route path="/sprint-ef405" element={<SprintEF405Page />} />
+          <Route path="/ucme-shadow" element={<UCMEShadowDiagnosticsPage />} />
         </Route>
       </Route>
       <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />

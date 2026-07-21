@@ -667,6 +667,55 @@ class ConversationPipeline {
           },
         });
 
+        // ── EF-40.6: UCME Shadow Mode (fire-and-forget, non-blocking) ────────
+        // O Planner ja recebeu a resposta legacy acima.
+        // O UCME executa em paralelo APENAS para gerar diagnosticos.
+        // Nenhuma resposta ao usuario e afetada.
+        try {
+          const { MemoryContextProviderFactory } = await import("@/lib/memory-context/MemoryContextProviderFactory");
+          if (MemoryContextProviderFactory.getMode() === "SHADOW") {
+            const { runMemoryPipeline } = await import("@/lib/memoryPipeline");
+            const { detectSkills }      = await import("@/lib/skills/detector");
+            const { detectGoal }        = await import("@/lib/reasoning/goalDetector");
+            void (async () => {
+              try {
+                const _mem  = await runMemoryPipeline(userMessage, session.id, session.project_id);
+                const _sk   = detectSkills(userMessage, { sessionSummary: _mem.sessionSummary, context: _mem.context, sources: _mem.sources });
+                const _goal = detectGoal(userMessage);
+                const _hist = historyMessages.map((m: { role: string; content: string }) => `${m.role === "user" ? "Usuario" : "Assistente"}: ${m.content}`).join("\n\n");
+                await MemoryContextProviderFactory.execute({
+                  messageId: executionId,
+                  legacyInput: {
+                    userMsg: userMessage,
+                    memory: _mem,
+                    skills: _sk,
+                    goal: _goal,
+                    historyText: _hist,
+                    totalMessages: historyMessages.length,
+                    capabilities: {},
+                    capabilityResults: {},
+                    needsMoreInfo: false,
+                    kfmContext,
+                  },
+                  ucmeInput: {
+                    userMsg:   userMessage,
+                    sessionId: session.id,
+                    projectId: session.project_id ?? null,
+                    intent:    routerResult.intent?.intent,
+                  },
+                });
+                conversationStore.emit({
+                  type: "PIPELINE_STEP",
+                  executionId,
+                  payload: { step: "ucme_shadow_executed", mode: "SHADOW", reportCount: MemoryContextProviderFactory.getShadowReports().length },
+                  timestamp: Date.now(),
+                });
+              } catch { /* shadow nao bloqueia nunca */ }
+            })();
+          }
+        } catch { /* non-blocking */ }
+        // ── END EF-40.6 ──────────────────────────────────────────────────────
+
         sources = (plan.sources ?? []).map((s: { id: string }) => s.id);
 
         // LLM answer → ExecutionOutcome → ResponseCandidate
