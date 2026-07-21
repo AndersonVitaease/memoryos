@@ -241,6 +241,7 @@ import UCMEShadowDiagnosticsPage from '@/pages/UCMEShadowDiagnosticsPage';
 import SprintEF407Page from '@/pages/SprintEF407Page';
 import SprintEF407aPage from '@/pages/SprintEF407aPage';
 import SprintEF408Page from '@/pages/SprintEF408Page';
+import SprintEF408BPage from '@/pages/SprintEF408BPage';
 
 const AuthenticatedApp = () => {
   console.log('[RENDER] AuthenticatedApp');
@@ -499,6 +500,7 @@ const AuthenticatedApp = () => {
           <Route path="/sprint-ef407" element={<SprintEF407Page />} />
           <Route path="/sprint-ef407a" element={<SprintEF407aPage />} />
           <Route path="/sprint-ef408" element={<SprintEF408Page />} />
+          <Route path="/sprint-ef408b" element={<SprintEF408BPage />} />
         </Route>
       </Route>
       <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />
