@@ -104,6 +104,22 @@ class ConversationPipeline {
 
     conversationMetrics.begin(executionId, session.id);
 
+    // ── [EF-49.2] Pipeline Instrument — non-blocking, zero behavioral impact ──
+    try {
+      const { ef492Store } = await import("@/lib/ef492/RuntimePipelineInstrument");
+      ef492Store.begin(executionId, userMessage);
+      ef492Store.record(executionId, {
+        layer: "ConversationPipeline", source: "production_runtime",
+        timestamp: Date.now(), durationMs: null,
+        input: `userMessage="${userMessage.slice(0, 80)}"`,
+        output: "pipeline started",
+        caller: "ConversationManager.send()",
+        next: "PrimaryConversationRouter",
+        status: "executed",
+      });
+    } catch { /* never block production */ }
+    // ── [END EF-49.2] ────────────────────────────────────────────────────────
+
     conversationStore.emit({
       type: "CONVERSATION_STARTED",
       executionId,
@@ -240,6 +256,21 @@ class ConversationPipeline {
 
       const traceId     = responseTracer.beginTrace(userMessage, session.id);
       const t0route     = Date.now();
+
+      // [EF-49.2] Router probe
+      try {
+        const { ef492Store } = await import("@/lib/ef492/RuntimePipelineInstrument");
+        ef492Store.record(executionId, {
+          layer: "PrimaryConversationRouter", source: "production_runtime",
+          timestamp: Date.now(), durationMs: null,
+          input: `message="${userMessage.slice(0, 80)}"`,
+          output: "RouterResult { decision, intent }",
+          caller: "ConversationPipeline._runPipeline",
+          next: "ConversationGoalBridge",
+          status: "executed",
+        });
+      } catch { /* non-blocking */ }
+
       const routerResult = await primaryRouter.route(
         userMessage,
         session.id,
@@ -332,6 +363,8 @@ class ConversationPipeline {
       // ── end Sprint M-03 / 8.12 ──────────────────────────────────────────
 
       // ── E-02.1: Conversation → Goal Bridge ──────────────────────────────
+      // [EF-49.2 probe] GoalBridge
+      try { const { ef492Store: _s } = await import("@/lib/ef492/RuntimePipelineInstrument"); _s.record(executionId, { layer: "ConversationGoalBridge", source: "production_runtime", timestamp: Date.now(), durationMs: null, input: "routerResult.intent", output: "GoalBridgeResult.goal", caller: "ConversationPipeline", next: "ConversationPlanningEngine", status: "executed" }); } catch { /* non-blocking */ }
       const goalBridgeResult = conversationGoalBridge.derive(
         userMessage,
         routerResult.intent?.intent ?? "general_conversation",
@@ -419,6 +452,8 @@ class ConversationPipeline {
       // v2: Connector answer → ExecutionOutcome → ResponseCandidate
       if (goalBridgeResult.goal.valid) {
         const { conversationPlanningEngine } = await import("@/lib/planning-engine-e022/ConversationPlanningEngine");
+        // [EF-49.2 probe] PlanningEngine
+        try { const { ef492Store: _s } = await import("@/lib/ef492/RuntimePipelineInstrument"); _s.record(executionId, { layer: "ConversationPlanningEngine", source: "production_runtime", timestamp: Date.now(), durationMs: null, input: `goalType="${goalBridgeResult.goal.type}"`, output: "ExecutionPlan", caller: "ConversationPipeline", next: "ConversationRuntimeEngine", status: "executed" }); } catch { /* non-blocking */ }
         const planResult = conversationPlanningEngine.plan(goalBridgeResult.goal, { mode: "live" });
 
         try {
@@ -495,6 +530,8 @@ class ConversationPipeline {
             getRealConnectorRegistry(),
           ]);
           console.log("[RUNTIME] Pipeline v2: engine READY — registry:", _probeReg.list(), `connectors=${_probeReg.count()}`);
+          // [EF-49.2 probe] RuntimeEngine
+          try { const { ef492Store: _s } = await import("@/lib/ef492/RuntimePipelineInstrument"); _s.record(executionId, { layer: "ConversationRuntimeEngine", source: "production_runtime", timestamp: Date.now(), durationMs: null, input: `ExecutionPlan(${planResult.plan.steps.length} steps)`, output: "ExecutionResult", caller: "ConversationPipeline", next: "UniversalConnectorRouter", status: "executed" }); } catch { /* non-blocking */ }
           const executionResult = await _realEngine.execute(planResult.plan);
           const t0connector = Date.now();
 
@@ -762,6 +799,8 @@ class ConversationPipeline {
         userMessage,
         sessionId: session.id,
       };
+      // [EF-49.2 probe] Arbiter + finish trace
+      try { const { ef492Store: _s } = await import("@/lib/ef492/RuntimePipelineInstrument"); _s.record(executionId, { layer: "ResponseArbiter", source: "production_runtime", timestamp: Date.now(), durationMs: null, input: `${candidates.length} candidates`, output: "ArbitrationResult.selected", caller: "ConversationPipeline", next: "StreamResponse → User", status: "executed" }); _s.finish(executionId); } catch { /* non-blocking */ }
       const arbResult = responseArbiter.arbitrate(candidates, arbContext);
 
       conversationStore.emit({
