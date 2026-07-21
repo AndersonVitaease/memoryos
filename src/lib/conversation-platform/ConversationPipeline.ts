@@ -330,10 +330,29 @@ class ConversationPipeline {
 
       // ── end Sprint 8.12 ──────────────────────────────────────────────────
 
+      // ── BUGFIX EXPERIMENTAL: cognitive_pipeline short-circuit ───────────
+      // If the PrimaryConversationRouter already ran the ConversationCognitiveGateway
+      // and produced a valid answer (e.g. GitHub domain), skip the GoalBridge/Runtime
+      // path entirely and use that answer directly.
+      if (
+        routerResult.decision === "cognitive_pipeline" &&
+        routerResult.cognitiveAnswer?.answer
+      ) {
+        response = routerResult.cognitiveAnswer.answer;
+        sources  = [];
+        conversationStore.emit({
+          type: "PIPELINE_STEP",
+          executionId,
+          payload: { step: "cognitive_pipeline_short_circuit", intent: routerResult.intent?.intent },
+          timestamp: Date.now(),
+        });
+      }
+
       // ── E-02.1: Conversation → Goal Bridge ──────────────────────────────
       // Derives a structured ConversationGoal from the user message + classified intent.
       // The goal is NOT executed here — it is produced for Sprint E-02.2 (Goal → Planning).
       // This call is pure (no network, no connectors, no side effects).
+      // NOTE: skipped entirely when cognitive_pipeline short-circuit fired above.
       const goalBridgeResult = conversationGoalBridge.derive(
         userMessage,
         routerResult.intent?.intent ?? "general_conversation",
@@ -390,7 +409,7 @@ class ConversationPipeline {
       // so the LLM path below is bypassed entirely for connector goals.
       // For general_conversation / unknown goals, steps=0 → synthesizer returns handled=false
       // → execution falls through to the LLM path unchanged.
-      if (goalBridgeResult.goal.valid) {
+      if (!response && goalBridgeResult.goal.valid) {
         const { conversationPlanningEngine } = await import("@/lib/planning-engine-e022/ConversationPlanningEngine");
         const planResult = conversationPlanningEngine.plan(goalBridgeResult.goal, { mode: "live" });
 
