@@ -1,5 +1,5 @@
 import { base44 } from "@/api/base44Client";
-import { runMemoryPipeline } from "@/lib/memoryPipeline";
+import { memoryService } from "@/lib/memory-kernel/MemoryServiceFactory";
 import { detectSkills } from "@/lib/skills/detector";
 import { detectGoal } from "@/lib/reasoning/goalDetector";
 import { buildReasoningContext } from "@/lib/reasoning/contextBuilder";
@@ -49,10 +49,23 @@ import { formatMacrForChat } from "@/lib/reasoning/macrFormatterV4";
 export async function runReasoningPlan({ userMsg, session, historyMessages = [], setPhase, kfmContext }) {
   const startTime = Date.now();
 
-  // === ETAPA 1: MEMORY RETRIEVAL PIPELINE ===
-  // Reutiliza o pipeline existente — consulta todo o banco uma única vez.
+  // === ETAPA 1: MEMORY KERNEL ===
+  // O Planner conhece apenas MemoryService — nunca a implementacao subjacente.
+  // A escolha de implementacao (Legacy/UCME/Shadow) e responsabilidade do MemoryServiceFactory.
   setPhase?.("retrieving");
-  const memory = await runMemoryPipeline(userMsg, session.id, session.project_id);
+  const memoryResult = await memoryService.retrieve({
+    userMessage: userMsg,
+    sessionId:   session.id,
+    projectId:   session.project_id ?? null,
+  });
+  // Adapta MemoryContext ao contrato que o restante do Planner ja conhece
+  const memory = {
+    context:        memoryResult.memories,
+    sources:        memoryResult.sources,
+    sessionSummary: memoryResult.sessionSummary,
+    intent:         null,
+    mip:            {},
+  };
 
   // === ETAPA 2: CONTEXT-AWARE SKILLS ENGINE ===
   // Seleciona especialistas com base na mensagem + memória recuperada.
