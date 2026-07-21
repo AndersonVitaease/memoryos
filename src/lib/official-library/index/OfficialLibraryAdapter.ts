@@ -1,5 +1,5 @@
 /**
- * OfficialLibraryAdapter.ts — Sprint EF-41A (Refinement 5)
+ * OfficialLibraryAdapter.ts — Sprint EF-41A (Refinement 5) + EF-42
  *
  * Adapter layer between the Official Library internal storage structures
  * (OfficialDocumentMeta, OfficialChunk) and the Index Engine contracts
@@ -9,6 +9,7 @@
  *   - Convert OfficialDocumentMeta → RawDocumentInput
  *   - Convert OfficialChunk → RawChunkInput
  *   - Isolate the Index Engine from Official Library internal model changes
+ *   - Synthesize representative OfficialChunks from indexed metadata (EF-42 Phase 1)
  *
  * The Retrieval Engine and future consumers MUST depend on this adapter,
  * never on OfficialDocumentMeta or OfficialChunk directly.
@@ -17,6 +18,7 @@
  */
 
 import type { OfficialDocumentMeta, OfficialChunk } from "../OfficialLibraryTypes";
+import type { OfficialDocumentMetadata }             from "./OfficialDocumentMetadata";
 
 // ── Scanner-facing contracts (adapter output) ─────────────────────────────────
 
@@ -86,6 +88,71 @@ class OfficialLibraryAdapterImpl {
    */
   chunksFor(docId: string, chunks: RawChunkInput[]): RawChunkInput[] {
     return chunks.filter(c => c.docId === docId);
+  }
+
+  /**
+   * Synthesize representative OfficialChunk objects from an indexed document's
+   * metadata (keywords, title, path, category).
+   *
+   * Used by EF-42 Phase 1 Retrieval Engine when actual chunk persistence
+   * (EF-42 Phase 2) is not yet available.
+   *
+   * Each keyword group is collapsed into a synthetic chunk so ChunkSelector
+   * can operate on real content without requiring full document parsing.
+   */
+  syntheticChunksFrom(doc: OfficialDocumentMetadata): OfficialChunk[] {
+    const base: Omit<OfficialChunk, "id" | "content" | "tags" | "chapter" | "section" | "title" | "summary"> = {
+      documentId:    doc.id,
+      documentName:  doc.title,
+      version:       doc.version,
+      authority:     "OFFICIAL" as OfficialChunk["authority"],
+      sourceType:    "OFFICIAL_LIBRARY" as OfficialChunk["sourceType"],
+      createdAt:     doc.updatedAt,
+      updatedAt:     doc.updatedAt,
+      metadata:      {},
+    };
+
+    const chunks: OfficialChunk[] = [];
+
+    // Chunk 0: title + category + type
+    chunks.push({
+      ...base,
+      id:      `${doc.id}::title`,
+      chapter: "title",
+      section: "header",
+      title:   doc.title,
+      summary: doc.category,
+      content: `${doc.title} ${doc.category} ${doc.type}`,
+      tags:    [doc.category, doc.type, "title"],
+    });
+
+    // Chunk 1: keyword summary
+    if (doc.keywords.length > 0) {
+      chunks.push({
+        ...base,
+        id:      `${doc.id}::keywords`,
+        chapter: "keywords",
+        section: "metadata",
+        title:   "Keywords",
+        summary: doc.keywords.slice(0, 3).join(", "),
+        content: doc.keywords.join(" "),
+        tags:    [...doc.keywords.slice(0, 5), "keywords"],
+      });
+    }
+
+    // Chunk 2: version + status + path
+    chunks.push({
+      ...base,
+      id:      `${doc.id}::meta`,
+      chapter: "metadata",
+      section: "version",
+      title:   "Metadata",
+      summary: `v${doc.version} ${doc.status}`,
+      content: `version ${doc.version} status ${doc.status} path ${doc.path}`,
+      tags:    [doc.status, doc.version, "metadata"],
+    });
+
+    return chunks;
   }
 }
 
