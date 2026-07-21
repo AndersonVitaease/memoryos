@@ -1,31 +1,36 @@
 /**
- * OfficialDocumentScanner.ts — Sprint EF-41
+ * OfficialDocumentScanner.ts — Sprint EF-41A (Refinement 3)
  *
- * Responsible for:
- *   1. Locating official documents via the existing Bootstrap/Catalog pipeline
- *   2. Validating document structure (title, version, non-empty content)
- *   3. Extracting rich metadata (category, type, keywords, relationships, checksum)
- *   4. Producing OfficialDocumentMetadata records ready for indexing
+ * Single responsibility: validate and collect raw information from documents.
  *
- * What this scanner does NOT do:
- *   - Load raw content (delegated to OfficialLibraryBootstrap / DocumentLoader)
- *   - Parse chunks (delegated to OfficialLibraryChunker)
- *   - Index the results (delegated to OfficialLibraryIndexer)
- *   - Alter the Planner, UCME, or any runtime
+ * What changed in EF-41A:
+ *   - Metadata construction delegated to OfficialMetadataBuilder
+ *   - Internal structures (OfficialDocumentMeta, OfficialChunk) accessed
+ *     exclusively through OfficialLibraryAdapter
+ *   - Scanner no longer calls deriveCategory, deriveDocumentType, computeChecksum,
+ *     or extractKeywords directly
  *
- * SRP: scan → validate → extract → emit metadata.
+ * Responsibilities:
+ *   1. Receive raw inputs via OfficialLibraryAdapter
+ *   2. Validate structure (name, version, path, chunks present)
+ *   3. Emit ScanResult per document — validation flags + metadata from Builder
+ *
+ * What this does NOT do:
+ *   - Build metadata (OfficialMetadataBuilder's job)
+ *   - Classify categories or types (ClassificationStrategies' job)
+ *   - Compute checksums or keywords (OfficialMetadataBuilder's job)
+ *   - Index or store (OfficialLibraryIndexOrchestrator's job)
+ *
+ * SRP: scan → validate → delegate to builder → emit ScanResult.
  */
 
 import type { OfficialDocumentMeta, OfficialChunk } from "../OfficialLibraryTypes";
-import type { OfficialDocumentMetadata, DocumentRelationship } from "./OfficialDocumentMetadata";
-import {
-  computeChecksum,
-  deriveCategory,
-  deriveDocumentType,
-  extractKeywords,
-} from "./OfficialDocumentMetadata";
+import type { OfficialDocumentMetadata }             from "./OfficialDocumentMetadata";
+import { OfficialLibraryAdapter }                    from "./OfficialLibraryAdapter";
+import { OfficialMetadataBuilder }                   from "./OfficialMetadataBuilder";
+import type { RawDocumentInput, RawChunkInput }      from "./OfficialLibraryAdapter";
 
-// ── Scan result ───────────────────────────────────────────────────────────────
+// ── Scan result contracts ─────────────────────────────────────────────────────
 
 export interface ScanResult {
   readonly metadata:    OfficialDocumentMetadata;
@@ -43,71 +48,22 @@ export interface ScanReport {
   readonly results:    readonly ScanResult[];
 }
 
-// ── Relationship extraction ───────────────────────────────────────────────────
+// ── Validation (Scanner's sole remaining logic) ───────────────────────────────
 
-/**
- * Extract document relationships from supersedes / supersededBy fields
- * plus simple heuristic cross-referencing via document name matching.
- */
-function extractRelationships(
-  meta: OfficialDocumentMeta,
-  allMetas: OfficialDocumentMeta[],
-): DocumentRelationship[] {
-  const relationships: DocumentRelationship[] = [];
-
-  if (meta.supersedes) {
-    const target = allMetas.find(m => m.documentId === meta.supersedes);
-    relationships.push({
-      targetId:         meta.supersedes,
-      targetName:       target?.documentName ?? meta.supersedes,
-      relationshipType: "supersedes",
-      strength:         1.0,
-    });
-  }
-
-  if (meta.supersededBy) {
-    const target = allMetas.find(m => m.documentId === meta.supersededBy);
-    relationships.push({
-      targetId:         meta.supersededBy,
-      targetName:       target?.documentName ?? meta.supersededBy,
-      relationshipType: "superseded-by",
-      strength:         1.0,
-    });
-  }
-
-  return relationships;
-}
-
-/**
- * Extract dependency references from tags (tags like "depends:MAS", "implements:MES").
- */
-function extractDependencies(tags: readonly string[]): string[] {
-  const deps: string[] = [];
-  for (const tag of tags) {
-    const match = tag.match(/^(?:depends|implements|extends):(.+)$/i);
-    if (match) deps.push(match[1].trim());
-  }
-  return deps;
-}
-
-// ── Validation ────────────────────────────────────────────────────────────────
-
-function validateMeta(meta: OfficialDocumentMeta, chunks: OfficialChunk[]): string[] {
+function validateRaw(doc: RawDocumentInput, chunks: readonly RawChunkInput[]): string[] {
   const warnings: string[] = [];
 
-  if (!meta.documentName || meta.documentName.trim().length === 0) {
-    warnings.push(`[${meta.documentId}] Missing document name`);
+  if (!doc.name || doc.name.trim().length === 0) {
+    warnings.push(`[${doc.id}] Missing document name`);
   }
-  if (!meta.version || meta.version.trim().length === 0) {
-    warnings.push(`[${meta.documentId}] Missing version`);
+  if (!doc.version || doc.version.trim().length === 0) {
+    warnings.push(`[${doc.id}] Missing version`);
   }
-  if (!meta.path || meta.path.trim().length === 0) {
-    warnings.push(`[${meta.documentId}] Missing file path`);
+  if (!doc.path || doc.path.trim().length === 0) {
+    warnings.push(`[${doc.id}] Missing file path`);
   }
-
-  const docChunks = chunks.filter(c => c.documentId === meta.documentId);
-  if (docChunks.length === 0) {
-    warnings.push(`[${meta.documentId}] No chunks produced — document may be empty or unparseable`);
+  if (chunks.length === 0) {
+    warnings.push(`[${doc.id}] No chunks produced — document may be empty or unparseable`);
   }
 
   return warnings;
@@ -118,30 +74,29 @@ function validateMeta(meta: OfficialDocumentMeta, chunks: OfficialChunk[]): stri
 class OfficialDocumentScannerImpl {
 
   /**
-   * Scan all documents from the existing Bootstrap metas + chunks.
-   * This is the primary entry point, called by OfficialLibraryIndexer.
+   * Scan all documents. Entry point called by OfficialLibraryIndexOrchestrator.
+   * Adapts internal types via OfficialLibraryAdapter before processing.
    */
   scanAll(
     metas: OfficialDocumentMeta[],
     chunks: OfficialChunk[],
   ): ScanReport {
     const t0 = Date.now();
-    const results: ScanResult[] = [];
 
-    for (const meta of metas) {
-      const result = this.scanOne(meta, chunks, metas);
-      results.push(result);
-    }
+    const rawDocs   = OfficialLibraryAdapter.adaptMetas(metas);
+    const rawChunks = OfficialLibraryAdapter.adaptChunks(chunks);
 
-    const valid   = results.filter(r => r.isValid).length;
-    const invalid = results.filter(r => !r.isValid).length;
+    const results: ScanResult[] = rawDocs.map(doc =>
+      this._scanOne(doc, rawChunks, rawDocs)
+    );
+
+    const valid    = results.filter(r => r.isValid).length;
+    const invalid  = results.filter(r => !r.isValid).length;
     const warnings = results.reduce((s, r) => s + r.warnings.length, 0);
 
     return Object.freeze({
-      scanned:    metas.length,
-      valid,
-      invalid,
-      warnings,
+      scanned: metas.length,
+      valid, invalid, warnings,
       durationMs: Date.now() - t0,
       scannedAt:  new Date().toISOString(),
       results:    Object.freeze(results),
@@ -149,59 +104,34 @@ class OfficialDocumentScannerImpl {
   }
 
   /**
-   * Scan a single OfficialDocumentMeta and produce OfficialDocumentMetadata.
+   * Scan a single document. Used by OfficialLibraryIndexOrchestrator
+   * for incremental updates.
    */
   scanOne(
     meta: OfficialDocumentMeta,
     chunks: OfficialChunk[],
     allMetas: OfficialDocumentMeta[],
   ): ScanResult {
-    const warnings = validateMeta(meta, chunks);
-    const isValid  = warnings.length === 0 || warnings.every(w => w.includes("No chunks"));
+    const rawDoc    = OfficialLibraryAdapter.adaptMeta(meta);
+    const rawChunks = OfficialLibraryAdapter.adaptChunks(chunks);
+    const allRaw    = OfficialLibraryAdapter.adaptMetas(allMetas);
+    return this._scanOne(rawDoc, rawChunks, allRaw);
+  }
 
-    const docChunks = chunks.filter(c => c.documentId === meta.documentId);
-    const chunkCount     = docChunks.length;
-    const tokenEstimate  = docChunks.reduce((s, c) => s + Math.ceil(c.content.length / 4), 0);
+  // ── Internal ───────────────────────────────────────────────────────────────
 
-    const tags        = [...(meta.tags ?? [])];
-    const keywords    = extractKeywords(meta.documentName, tags);
-    const dependencies = extractDependencies(tags);
-    const relationships = extractRelationships(meta, allMetas);
+  private _scanOne(
+    doc: RawDocumentInput,
+    allChunks: readonly RawChunkInput[],
+    allDocs: readonly RawDocumentInput[],
+  ): ScanResult {
+    const docChunks = OfficialLibraryAdapter.chunksFor(doc.id, allChunks);
+    const warnings  = validateRaw(doc, docChunks);
+    const isValid   = warnings.length === 0 || warnings.every(w => w.includes("No chunks"));
 
-    const checksumInput = `${meta.documentId}|${meta.documentName}|${meta.version}|${meta.path}|${tags.sort().join(",")}`;
-    const checksum = computeChecksum(checksumInput);
+    const metadata = OfficialMetadataBuilder.build({ doc, chunks: docChunks, allDocs });
 
-    const category = deriveCategory(meta.path, meta.documentName);
-    const type     = deriveDocumentType(meta.path, meta.documentName);
-
-    const now = new Date().toISOString();
-
-    const metadata: OfficialDocumentMetadata = Object.freeze({
-      id:               meta.documentId,
-      title:            meta.documentName,
-      type,
-      category,
-      version:          meta.version || "unknown",
-      author:           "MemoryOS Engineering",
-      createdAt:        meta.createdAt || now,
-      updatedAt:        meta.updatedAt || now,
-      status:           meta.deprecated ? "deprecated" : "active",
-      path:             meta.path,
-      rawId:            meta.documentId,
-      tags:             Object.freeze(tags),
-      keywords:         Object.freeze(keywords),
-      dependencies:     Object.freeze(dependencies),
-      relatedDocuments: Object.freeze(relationships),
-      checksum,
-      chunkCount,
-      tokenEstimate,
-    });
-
-    return Object.freeze({
-      metadata,
-      isValid,
-      warnings: Object.freeze(warnings),
-    });
+    return Object.freeze({ metadata, isValid, warnings: Object.freeze(warnings) });
   }
 }
 

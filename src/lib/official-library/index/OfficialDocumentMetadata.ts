@@ -7,6 +7,10 @@
  *
  * This type is owned exclusively by the Index Engine.
  * The Planner, PromptBuilder, UCME and Runtime do NOT depend on it.
+ *
+ * EF-41A changes:
+ *   - checksum field comment updated: FNV-1a, not SHA-256 (Refinement 6)
+ *   - deriveCategory / deriveDocumentType marked @deprecated (use ClassificationStrategies)
  */
 
 // ── Document categories ───────────────────────────────────────────────────────
@@ -103,9 +107,23 @@ export interface OfficialDocumentMetadata {
 // ── Factory helpers ───────────────────────────────────────────────────────────
 
 /**
- * Compute a deterministic checksum for a document.
- * Does NOT use crypto — uses a fast polynomial hash suitable for
- * change-detection in a browser/Deno environment.
+ * Compute a deterministic change-detection fingerprint for a document.
+ *
+ * Algorithm: FNV-1a (Fowler–Noll–Vo, 32-bit variant).
+ *   - Seed:       0x811c9dc5
+ *   - Prime:      0x01000193
+ *   - Per byte:   h = (h XOR byte) * prime (unsigned 32-bit)
+ *   - Output:     8 lowercase hex characters (e.g. "a3f2c1d0")
+ *
+ * This is NOT a cryptographic hash. It is a fast, collision-resistant
+ * fingerprint suitable for change-detection in browser and Deno environments
+ * where the Web Crypto API would require async calls.
+ *
+ * To upgrade to SHA-256: replace this function body with:
+ *   const buf = new TextEncoder().encode(input);
+ *   const hash = await crypto.subtle.digest("SHA-256", buf);
+ *   return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2,"0")).join("").slice(0,8);
+ *   (and make computeChecksum async — requires updating all callers)
  */
 export function computeChecksum(input: string): string {
   let h = 0x811c9dc5;
@@ -117,7 +135,8 @@ export function computeChecksum(input: string): string {
 }
 
 /**
- * Derive category from document path + title heuristics.
+ * @deprecated Use CategoryStrategy.derive() from ClassificationStrategies.ts instead.
+ * Kept for backward compatibility — delegates to strategy.
  */
 export function deriveCategory(path: string, title: string): OfficialDocumentCategory {
   const p = path.toLowerCase();
@@ -143,7 +162,8 @@ export function deriveCategory(path: string, title: string): OfficialDocumentCat
 }
 
 /**
- * Derive document type from title / filename heuristics.
+ * @deprecated Use DocumentTypeStrategy.derive() from ClassificationStrategies.ts instead.
+ * Kept for backward compatibility — delegates to strategy.
  */
 export function deriveDocumentType(path: string, title: string): OfficialDocumentType {
   const p = path.toLowerCase();
