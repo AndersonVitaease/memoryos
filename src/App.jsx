@@ -230,6 +230,7 @@ import GitHubDebugPanel from '@/pages/GitHubDebugPanel';
 import EF399ValidationPage from '@/pages/EF399ValidationPage';
 import RegressionTest271Page from '@/pages/RegressionTest271Page';
 import EOACertificationPage from '@/pages/EOACertificationPage';
+import SprintEF401Page from '@/pages/SprintEF401Page';
 
 const AuthenticatedApp = () => {
   console.log('[RENDER] AuthenticatedApp');
@@ -477,6 +478,7 @@ const AuthenticatedApp = () => {
           <Route path="/github-debug" element={<GitHubDebugPanel />} />
           <Route path="/regression-271" element={<RegressionTest271Page />} />
           <Route path="/eoa-certification" element={<EOACertificationPage />} />
+          <Route path="/sprint-ef401" element={<SprintEF401Page />} />
         </Route>
       </Route>
       <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />
