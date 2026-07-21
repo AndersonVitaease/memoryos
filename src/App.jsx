@@ -233,6 +233,7 @@ import EOACertificationPage from '@/pages/EOACertificationPage';
 import SprintEF401Page from '@/pages/SprintEF401Page';
 import SprintEF402Page from '@/pages/SprintEF402Page';
 import OfficialLibraryFlowPage from '@/pages/OfficialLibraryFlowPage';
+import ComponentOriginAuditPage from '@/pages/ComponentOriginAuditPage';
 
 const AuthenticatedApp = () => {
   console.log('[RENDER] AuthenticatedApp');
@@ -483,6 +484,7 @@ const AuthenticatedApp = () => {
           <Route path="/sprint-ef401" element={<SprintEF401Page />} />
           <Route path="/sprint-ef402" element={<SprintEF402Page />} />
           <Route path="/ol-flow" element={<OfficialLibraryFlowPage />} />
+          <Route path="/component-origin-audit" element={<ComponentOriginAuditPage />} />
         </Route>
       </Route>
       <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />
