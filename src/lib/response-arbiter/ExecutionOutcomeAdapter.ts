@@ -1,108 +1,25 @@
 /**
- * ExecutionOutcomeAdapter.ts — Execution Outcome Adapter
+ * ExecutionOutcomeAdapter.ts — Execution Outcome Adapter (Registry-delegating)
  *
- * SRP: converte um ExecutionOutcome em um ResponseCandidate.
+ * SRP: ponto de entrada publico para adaptacao de ExecutionOutcome.
  *
- * Esta e a unica camada que conhece ambos os contratos.
- * Encapsula todo o mapeamento entre ExecutionOutcome e ResponseCandidate,
- * eliminando logica de conversao dispersa no Pipeline.
+ * Responsabilidades apos introducao do Registry:
+ *   1. Validar o outcome de entrada.
+ *   2. Resolver o adapter especializado via ExecutionOutcomeAdapterRegistry.
+ *   3. Delegar a adaptacao ao adapter resolvido.
  *
- * Principios:
- *   - Funcao pura: mesmos inputs => mesmo output.
- *   - Sem efeitos colaterais.
- *   - Sem chamadas de rede.
- *   - Sem conhecimento de Pipeline, Connector, Gateway ou Runtime.
- *   - Imutabilidade: todos os outputs sao Object.freeze().
+ * O que foi removido (agora vive nos DomainAdapters):
+ *   - DOMAIN_MAP
+ *   - PRODUCER_SOURCE_MAP
+ *   - _extractAnswer()
+ *   - _resolveHandledAndAnswer()
  *
- * Estrategia de mapeamento:
- *
- *   outcome.success=true  + payload presente  → handled=true,  executionSucceeded=true
- *   outcome.success=false                      → handled=true,  executionSucceeded=false
- *                                                (erro e uma resposta valida para o Arbiter)
- *   outcome.success=true  + payload=null       → handled=false, executionSucceeded=true
- *                                                (execucao ok mas sem dados = nao tratado)
- *
- *   answer = hint.synthesizedAnswer ?? _extractFromPayload(outcome.payload)
+ * Sem efeitos colaterais. Sem rede. Sem conhecimento de Pipeline ou Connector.
  */
 
-import type {
-  AdaptationResult,
-  AdaptationError,
-  AdaptationHint,
-  DomainMapping,
-} from "./ExecutionOutcomeAdapterTypes";
-import type { ExecutionOutcome, ExecutionDomain } from "./ExecutionOutcomeTypes";
-import type { ResponseSource, ExplicitDomain } from "./ResponseCandidate";
-import { createResponseCandidate } from "./ResponseCandidate";
-
-// ── Domain mapping ────────────────────────────────────────────────────────────
-// ExecutionDomain → ExplicitDomain
-// "unknown" em ExecutionOutcome → null em ResponseCandidate (sem dominio declarado)
-
-const DOMAIN_MAP: DomainMapping = Object.freeze({
-  github:          "github",
-  gmail:           "gmail",
-  google_drive:    "google_drive",
-  google_calendar: "google_calendar",
-  memory:          "memory",
-  general:         "general",
-  unknown:         null,
-} as Record<ExecutionDomain, ExplicitDomain>);
-
-// ── Producer → ResponseSource mapping ────────────────────────────────────────
-
-const PRODUCER_SOURCE_MAP: Record<ExecutionOutcome["producer"], ResponseSource> = Object.freeze({
-  cognitive_gateway: "cognitive_gateway",
-  connector_runtime: "connector_runtime",
-  llm_reasoning:     "llm_reasoning",
-  static_analysis:   "static_analysis",
-  goal_bridge:       "goal_bridge_fallback",
-  unknown:           "unknown",
-});
-
-// ── Answer extraction ─────────────────────────────────────────────────────────
-// Best-effort: tenta extrair texto legivel do payload bruto.
-// Nunca lanca excecao.
-
-function _extractAnswer(payload: unknown): string | null {
-  if (payload === null || payload === undefined) return null;
-  if (typeof payload === "string" && payload.trim()) return payload.trim();
-  if (typeof payload === "object") {
-    const p = payload as Record<string, unknown>;
-    // Campos comuns de resposta sintetizada
-    for (const key of ["answer", "response", "text", "content", "message", "narrative"]) {
-      if (typeof p[key] === "string" && (p[key] as string).trim()) {
-        return (p[key] as string).trim();
-      }
-    }
-  }
-  return null;
-}
-
-// ── Handled/answer resolution ─────────────────────────────────────────────────
-
-function _resolveHandledAndAnswer(
-  outcome: ExecutionOutcome,
-  hint:    AdaptationHint,
-): { handled: boolean; answer: string | null; executionSucceeded: boolean | null } {
-  const synthesized = hint.synthesizedAnswer?.trim() || null;
-  const fromPayload = _extractAnswer(outcome.payload);
-  const answer      = synthesized ?? fromPayload;
-
-  if (!outcome.success) {
-    // Execucao falhou: resposta de erro e uma resposta valida
-    const errorAnswer = answer ?? outcome.errorMessage ?? "Operacao nao concluida.";
-    return { handled: true, answer: errorAnswer, executionSucceeded: false };
-  }
-
-  if (answer) {
-    // Execucao bem-sucedida com resposta disponivel
-    return { handled: true, answer, executionSucceeded: true };
-  }
-
-  // Execucao bem-sucedida mas sem dados para apresentar
-  return { handled: false, answer: null, executionSucceeded: true };
-}
+import type { AdaptationResult, AdaptationError, AdaptationHint } from "./ExecutionOutcomeAdapterTypes";
+import type { ExecutionOutcome } from "./ExecutionOutcomeTypes";
+import { executionOutcomeAdapterRegistry } from "./ExecutionOutcomeAdapterRegistry";
 
 // ── ExecutionOutcomeAdapter ───────────────────────────────────────────────────
 
@@ -111,9 +28,10 @@ export class ExecutionOutcomeAdapter {
   /**
    * Converte um ExecutionOutcome em um ResponseCandidate.
    *
-   * @param outcome  O outcome produzido por qualquer executor do sistema.
-   * @param hint     Contexto opcional do caller (resposta sintetizada, source override).
-   * @returns        AdaptationResult imutavel.
+   * Fluxo:
+   *   1. Valida outcome.
+   *   2. Resolve adapter especializado via Registry.
+   *   3. Delega adapt() ao adapter resolvido.
    */
   adapt(
     outcome: ExecutionOutcome,
@@ -140,40 +58,18 @@ export class ExecutionOutcomeAdapter {
       });
     }
 
-    // ── Mapeamento de campos ──────────────────────────────────────────────────
-    const source: ResponseSource =
-      hint.sourceOverride ?? PRODUCER_SOURCE_MAP[outcome.producer] ?? "unknown";
+    // ── Resolver adapter especializado ────────────────────────────────────────
+    const { adapter } = executionOutcomeAdapterRegistry.resolve(outcome);
 
-    const explicitDomain: ExplicitDomain = DOMAIN_MAP[outcome.domain] ?? null;
-
-    const { handled, answer, executionSucceeded } = _resolveHandledAndAnswer(outcome, hint);
-
-    const candidate = createResponseCandidate({
-      source,
-      explicitDomain,
-      confidence:         outcome.confidence.score,
-      handled,
-      executionSucceeded,
-      executionCost:      outcome.executionCost.estimatedCost,
-      answer,
-    });
-
-    return Object.freeze({
-      candidate,
-      ok:            true,
-      sourceOutcome: outcome,
-      errors:        [],
-      durationMs:    Date.now() - t0,
-    });
+    // ── Delegar ───────────────────────────────────────────────────────────────
+    // O adapter resolvido (General, Unknown ou futuro GitHub/Drive/Gmail)
+    // e responsavel por todo o mapeamento de campos.
+    return adapter!.adapt(outcome, hint);
   }
 
   /**
-   * Converte um array de ExecutionOutcomes em ResponseCandidates.
-   * Outcomes que falham na adaptacao sao omitidos do resultado (nao lancam excecao).
-   *
-   * @param outcomes  Lista de outcomes.
-   * @param hint      Hint compartilhado aplicado a todos os outcomes.
-   * @returns         Array de AdaptationResults (um por outcome).
+   * Converte um array de ExecutionOutcomes em AdaptationResults.
+   * Cada outcome e resolvido individualmente pelo Registry.
    */
   adaptMany(
     outcomes: readonly ExecutionOutcome[],
