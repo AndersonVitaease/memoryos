@@ -31,7 +31,7 @@
  */
 
 import { OfficialLibraryIndex }    from "../index/OfficialLibraryIndex";
-import { OfficialLibraryAdapter }  from "../index/OfficialLibraryAdapter";
+import { ChunkIndex }              from "../content/ChunkIndex";
 import {
   normalizeText,
   tokenize,
@@ -103,12 +103,30 @@ class OfficialRetrievalEngineImpl {
 
       // ── Retrieve chunks for qualifying docs ──────────────────────────────
 
+      // EF-42.5: use real chunks from ChunkIndex (replaces syntheticChunksFrom)
       let chunksForDoc: OfficialChunk[] = [];
       try {
-        // OfficialLibraryIndex stores metadata only; chunks come from Adapter
-        // For EF-42 Phase 1: synthesize representative chunks from keywords/metadata
-        // (Full chunk persistence is EF-42 Phase 2 — Indexer integration)
-        chunksForDoc = OfficialLibraryAdapter.syntheticChunksFrom(doc);
+        const real = ChunkIndex.getChunks(doc.id);
+        if (real.length > 0) {
+          // Map OfficialContentChunk → OfficialChunk shape for ChunkSelector
+          chunksForDoc = real.map(c => ({
+            id:           c.id,
+            documentId:   c.documentId,
+            documentName: doc.title,
+            version:      doc.version,
+            chapter:      c.chapter,
+            section:      c.section,
+            title:        c.title,
+            content:      c.content,
+            summary:      c.summary,
+            authority:    "OFFICIAL" as const,
+            sourceType:   "OFFICIAL_LIBRARY" as const,
+            createdAt:    doc.updatedAt,
+            updatedAt:    doc.updatedAt,
+            tags:         [...c.tags],
+            metadata:     {},
+          }));
+        }
       } catch {
         chunksForDoc = [];
       }
@@ -201,7 +219,25 @@ class OfficialRetrievalEngineImpl {
     const doc = OfficialLibraryIndex.get(documentId);
     if (!doc) return null;
 
-    const chunks     = OfficialLibraryAdapter.syntheticChunksFrom(doc);
+    // EF-42.5: use real chunks from ChunkIndex
+    const real = ChunkIndex.getChunks(documentId);
+    const chunks: OfficialChunk[] = real.map(c => ({
+      id:           c.id,
+      documentId:   c.documentId,
+      documentName: doc.title,
+      version:      doc.version,
+      chapter:      c.chapter,
+      section:      c.section,
+      title:        c.title,
+      content:      c.content,
+      summary:      c.summary,
+      authority:    "OFFICIAL" as const,
+      sourceType:   "OFFICIAL_LIBRARY" as const,
+      createdAt:    doc.updatedAt,
+      updatedAt:    doc.updatedAt,
+      tags:         [...c.tags],
+      metadata:     {},
+    }));
     const chunkResult = selectChunks(documentId, chunks);
 
     return Object.freeze({
