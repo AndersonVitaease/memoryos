@@ -51,33 +51,46 @@ export class ConnectorCapabilityExecutor implements ICapabilityExecutor {
     if (!routerResult.found || routerResult.result === null) {
       // [RUNTIME-PROBE][CCE-01] Connector NOT found — execution terminates here
       console.log("[RUNTIME-PROBE][CCE-01]", {
-        probe:       "capabilityExecutor:connectorNotFound",
-        t:           performance.now(),
-        ts:          Date.now(),
+        probe:          "capabilityExecutor:connectorNotFound",
+        t:              performance.now(),
+        ts:             Date.now(),
         executionId,
-        connector:   step.connector,
-        capability:  step.capability,
-        routerError: routerResult.error,
-        regSize:     (this._router as any)._registry?.size?.() ?? "unknown",
-        regContents: (this._router as any)._registry?.list?.() ?? [],
-        note:        "GoogleDriveConnector.execute() will NOT be called. If regSize===0, race condition confirmed.",
+        connector:      step.connector,
+        capability:     step.capability,
+        routerError:    routerResult.error,
+        notFoundReason: routerResult.notFoundReason ?? "unknown",
+        regSize:        (this._router as any)._registry?.size?.() ?? "unknown",
+        regContents:    (this._router as any)._registry?.list?.() ?? [],
+        note:           "Connector.execute() will NOT be called. If regSize===0, race condition confirmed.",
       });
+      // C-05: preserve the not_found semantic — do not collapse to a generic "failed"
       return Object.freeze({
-        status: "failed" as StepStatus,
-        output: null,
-        error:  routerResult.error ?? "Router: connector or capability not found",
+        status:          "failed" as StepStatus,
+        output:          null,
+        error:           routerResult.error ?? "Router: connector or capability not found",
+        // C-05: connectorStatus carries the reason so StepResult observers can distinguish
+        connectorStatus: routerResult.notFoundReason ?? "not_found",
       });
     }
 
     const r = routerResult.result;
 
+    // C-01/C-05: Preserve full status vocabulary — no binary collapse.
+    // "not_found" (C-05) and "denied" (C-05) are distinct from "failed".
+    // UCR status → StepStatus mapping:
+    //   success   → completed
+    //   timeout   → timeout
+    //   not_found → failed  (connector found but capability not routable)
+    //   denied    → failed  (auth/config issue — treated as non-retryable failure at step level)
+    //   failed    → failed
     const status: StepStatus =
-      r.status === "success" ? "completed" :
-      r.status === "timeout" ? "timeout"   :
+      r.status === "success"   ? "completed" :
+      r.status === "timeout"   ? "timeout"   :
       "failed";
 
+    // C-06: preserve connector-reported durationMs for Dispatcher metrics accuracy.
+    // The Dispatcher will receive this in the output object and use it if present.
     // ── [M1.12 AUDIT PROBE — RUNTIME] ──────────────────────────────────────
-    // Only fires for github connector. AUDIT_MODE guard prevents any cost when off.
     if (step.connector === "github") {
       try {
         const { githubAuditStore, GITHUB_AUDIT_MODE } = await import("@/lib/debug/GitHubAuditStore");
@@ -97,8 +110,16 @@ export class ConnectorCapabilityExecutor implements ICapabilityExecutor {
 
     return Object.freeze({
       status,
-      output: r.output,
-      error:  r.error,
+      output:        r.output,
+      error:         r.error,
+      // C-04: propagate connectorId from the UCR result
+      connectorId:   r.connectorId,
+      // C-04: propagate logs — available to Dispatcher and ExecutionResult for diagnostics
+      logs:          r.logs,
+      // C-03/C-06: connector-reported duration propagated so Dispatcher can use it
+      connectorDurationMs: r.durationMs,
+      // C-05: preserve original UCR status string for observability (e.g. "denied", "not_found")
+      connectorStatus: r.status,
     });
   }
 }

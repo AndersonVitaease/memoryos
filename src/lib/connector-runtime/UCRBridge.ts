@@ -18,12 +18,32 @@ import type {
   ConnectorCapability,
   ConnectorInput,
   ConnectorResult as UCRResult,
+  ConnectorResultStatus as UCRStatus,
   ConnectorHealth,
   ConnectorMetadata as UCRMetadata,
 } from "@/lib/connector-router/UCRTypes";
+import type { ConnectorResultStatus as RuntimeStatus } from "./ConnectorTypes";
 import { ConnectorRegistry as UCRRegistry } from "@/lib/connector-router/ConnectorRegistry";
 import { ConnectorRegistry as RuntimeRegistry } from "./ConnectorRegistry";
 // A-02: makeExecutionId removed — UCRBridge no longer generates fallback IDs.
+
+// ── C-01/C-05: Status mapping — runtime → UCR ────────────────────────────────
+// Maps ALL 6 runtime status values to UCR status values with zero collapse.
+// NOT_CONFIGURED and NOT_SUPPORTED become "denied" (C-05), never "failed".
+// DENIED becomes "denied". TIMEOUT becomes "timeout". CANCELLED becomes "failed".
+// This replaces the previous `result.success ? "success" : "failed"` binary.
+function _mapStatus(runtimeStatus: RuntimeStatus): UCRStatus {
+  switch (runtimeStatus) {
+    case "SUCCESS":        return "success";
+    case "TIMEOUT":        return "timeout";
+    case "NOT_CONFIGURED": return "denied";   // C-05: explicit — not "failed"
+    case "NOT_SUPPORTED":  return "denied";   // C-05: explicit — not "failed"
+    case "DENIED":         return "denied";   // C-05: explicit — not "failed"
+    case "FAILED":         return "failed";
+    case "CANCELLED":      return "failed";   // closest UCR equivalent
+    default:               return "failed";
+  }
+}
 
 // ── Bridge (wraps one RuntimeConnector as UCRConnector) ───────────────────────
 
@@ -52,14 +72,13 @@ class UCRConnectorBridge implements UCRConnector {
 
   async execute(input: ConnectorInput): Promise<UCRResult> {
     const t0  = Date.now();
-    // A-02: executionId must always come from upstream (Pipeline → CRE → ECF → Dispatcher → CCE → UCR → here).
-    // No fallback generation — if it is missing, use it as-is so the bug surfaces visibly in probes.
+    // A-02: executionId must always come from upstream.
     const eid = input.executionId;
 
     // [UCRBRIDGE-PROBE-01] UCRBridge.execute() CALLED
     console.log("[UCRBRIDGE-PROBE-01]", {
-      probe:      "UCRBridge:execute:entry",
-      t:          performance.now(),
+      probe:       "UCRBridge:execute:entry",
+      t:           performance.now(),
       connectorId: this._inner.id,
       capability:  input.capability,
       executionId: eid,
@@ -78,24 +97,39 @@ class UCRConnectorBridge implements UCRConnector {
 
     // [UCRBRIDGE-PROBE-02] RuntimeConnector returned ConnectorTypes.ConnectorResult
     console.log("[UCRBRIDGE-PROBE-02]", {
-      probe:           "UCRBridge:innerResult",
-      connectorId:     this._inner.id,
-      capability:      input.capability,
+      probe:              "UCRBridge:innerResult",
+      connectorId:        this._inner.id,
+      capability:         input.capability,
       innerResultStatus:  result.status,
       innerResultSuccess: result.success,
       innerResultDataKey: result.data !== undefined ? "PRESENT" : "ABSENT",
-      innerResultDataType: result.data === null ? "null" : typeof result.data,
-      innerResultOutputKey: (result as any).output !== undefined ? "PRESENT" : "ABSENT",
+      innerDurationMs:    result.duration,
+      logsCount:          result.logs?.length ?? 0,
     });
 
-    const ucrResult = Object.freeze({
+    // C-03: Use the connector's own duration when available — avoid double-measuring.
+    // result.duration is set at connector level (start → operation end).
+    // Fall back to bridge-measured elapsed only if the connector did not report one.
+    const durationMs = (typeof result.duration === "number" && result.duration > 0)
+      ? result.duration
+      : Date.now() - t0;
+
+    const ucrResult: UCRResult = Object.freeze({
+      // C-02: data → output mapping — explicit, no ambiguity
       connectorId: this._inner.id,
       capability:  input.capability,
-      status:      result.success ? "success" : "failed",
+      // C-01: full status preserved via _mapStatus — no binary collapse
+      status:      _mapStatus(result.status),
+      // C-02: result.data is the canonical data field from runtime connectors
       output:      result.data ?? null,
       error:       result.error ?? null,
-      durationMs:  Date.now() - t0,
-    } as UCRResult);
+      // C-03: connector-reported duration takes precedence
+      durationMs,
+      // C-04: executionId propagated — never generated here
+      executionId: result.executionId ?? eid,
+      // C-04: logs preserved — never discarded
+      logs:        Object.freeze(result.logs ?? []),
+    });
 
     // [UCRBRIDGE-PROBE-03] UCRTypes.ConnectorResult returned by Bridge
     console.log("[UCRBRIDGE-PROBE-03]", {
@@ -104,8 +138,9 @@ class UCRConnectorBridge implements UCRConnector {
       capability:    ucrResult.capability,
       status:        ucrResult.status,
       outputPresent: ucrResult.output !== null && ucrResult.output !== undefined,
-      outputType:    typeof ucrResult.output,
-      outputKeys:    ucrResult.output && typeof ucrResult.output === "object" ? Object.keys(ucrResult.output as object).slice(0, 6) : "N/A",
+      durationMs:    ucrResult.durationMs,
+      logsCount:     ucrResult.logs.length,
+      executionId:   ucrResult.executionId,
     });
 
     return ucrResult;

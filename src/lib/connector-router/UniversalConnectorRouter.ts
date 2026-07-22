@@ -49,11 +49,13 @@ export class UniversalConnectorRouter {
 
     if (!connector) {
       return Object.freeze({
-        found:       false,
-        connectorId: step.connector,
-        capability:  step.capability,
-        result:      null,
-        error:       `Connector not found: "${step.connector}"`,
+        found:             false,
+        connectorId:       step.connector,
+        capability:        step.capability,
+        result:            null,
+        // C-05: connector_not_registered is semantically distinct from a runtime failure
+        notFoundReason:    "connector_not_registered" as const,
+        error:             `Connector not found: "${step.connector}"`,
       });
     }
 
@@ -64,11 +66,13 @@ export class UniversalConnectorRouter {
 
     if (!hasCapability) {
       return Object.freeze({
-        found:       false,
-        connectorId: step.connector,
-        capability:  step.capability,
-        result:      null,
-        error:       `Capability "${step.capability}" not found on connector "${step.connector}"`,
+        found:          false,
+        connectorId:    step.connector,
+        capability:     step.capability,
+        result:         null,
+        // C-05: capability_not_declared is semantically distinct from connector_not_registered
+        notFoundReason: "capability_not_declared" as const,
+        error:          `Capability "${step.capability}" not found on connector "${step.connector}"`,
       });
     }
 

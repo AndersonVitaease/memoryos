@@ -67,8 +67,15 @@ export class ExecutionDispatcher {
 
       const output     = await Promise.race([outputPromise, timeoutPromise]);
       const finishedAt = Date.now();
-      const durationMs = finishedAt - startedAt;
       const success    = output.status === "completed" || output.status === "success";
+
+      // C-06: prefer the connector-reported duration over the Dispatcher-measured wall-clock.
+      // connectorDurationMs is set by UCRBridge using the runtime connector's own result.duration.
+      // Dispatcher-measured durationMs includes bridge overhead and is used only as fallback.
+      const dispatcherDurationMs = finishedAt - startedAt;
+      const durationMs = (typeof output.connectorDurationMs === "number" && output.connectorDurationMs > 0)
+        ? output.connectorDurationMs
+        : dispatcherDurationMs;
 
       // ── Metrics ─────────────────────────────────────────────────────────
       connectorMetrics.record(step.connector, success, durationMs, output.error ?? undefined);
@@ -84,6 +91,12 @@ export class ExecutionDispatcher {
         finishedAt,
         durationMs,
         attempt:    1,
+        // C-04: logs propagated from connector through the entire chain
+        logs:                output.logs,
+        // C-05: original connector status preserved for observability
+        connectorStatus:     output.connectorStatus,
+        // C-06: both durations preserved — connector-reported and dispatcher-measured
+        connectorDurationMs: output.connectorDurationMs,
       });
     } catch (err) {
       const finishedAt = Date.now();
@@ -105,6 +118,7 @@ export class ExecutionDispatcher {
         finishedAt,
         durationMs,
         attempt:    1,
+        // C-04/C-05/C-06: not available on exception path — omitted (optional fields)
       });
     }
   }

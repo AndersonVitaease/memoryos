@@ -60,6 +60,12 @@ export interface StepResult {
   readonly finishedAt: number;
   readonly durationMs: number;
   readonly attempt:    number;
+  // C-04: connector logs preserved end-to-end — optional for backward compat
+  readonly logs?:             readonly ConnectorLog[];
+  // C-05: original connector status before StepStatus mapping (e.g. "denied", "not_found")
+  readonly connectorStatus?:  string;
+  // C-06: connector-reported duration (may differ from Dispatcher-measured durationMs)
+  readonly connectorDurationMs?: number;
 }
 
 // ── Execution result ──────────────────────────────────────────────────────────
@@ -109,6 +115,21 @@ export interface CapabilityExecutorOutput {
   readonly status:  StepStatus;
   readonly output:  unknown;
   readonly error:   string | null;
+  // C-04: connectorId propagated from UCR result — optional for backward compat
+  readonly connectorId?:   string;
+  // C-04: connector logs propagated — optional for backward compat
+  readonly logs?:          readonly ConnectorLog[];
+  // C-03/C-06: connector-reported duration — takes precedence over Dispatcher-measured elapsed
+  readonly connectorDurationMs?: number;
+  // C-05: original UCR status string for observability ("denied", "not_found", etc.)
+  readonly connectorStatus?:     string;
+}
+
+// C-04: ConnectorLog carried through CapabilityExecutorOutput → StepResult
+export interface ConnectorLog {
+  readonly timestamp: number;
+  readonly level:     "info" | "warn" | "error";
+  readonly message:   string;
 }
 
 export interface ICapabilityExecutor {
