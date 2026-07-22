@@ -52,7 +52,9 @@ export interface CertificationMetrics {
   readonly isolationScore: number;
   readonly regressionScore: number;
   readonly stressScore: number;
+  // NC-05 remediation: added deterministicScore (correct spelling); deterministmScore kept for backward compatibility
   readonly deterministmScore: number;
+  readonly deterministicScore: number;
   readonly overallCertificationScore: number;
   readonly certified: boolean;
 }

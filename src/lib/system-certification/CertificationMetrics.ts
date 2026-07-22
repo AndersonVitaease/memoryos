@@ -6,7 +6,8 @@
 
 import type { AuditResult, CertificationMetrics } from "./SCTypes";
 
-const CERTIFICATION_THRESHOLD = 80;
+// NC-03 remediation: threshold raised from 80 to 95 per prompt requirement (confidence >= 95%)
+const CERTIFICATION_THRESHOLD = 95;
 
 export class CertificationMetricsEngine {
   compute(results: readonly AuditResult[]): CertificationMetrics {
@@ -23,12 +24,14 @@ export class CertificationMetricsEngine {
     const isolationScore     = byAuditor("IsolationAuditor");
     const regressionScore    = byAuditor("ArchitecturalComplianceAuditor");
     const stressScore        = performanceScore;
-    const deterministmScore  = byAuditor("DeterminismAuditor");
+    // NC-05 remediation: typo deterministmScore → deterministicScore (field kept for backward compat, aliased below)
+    const deterministicScore = byAuditor("DeterminismAuditor");
+    const deterministmScore  = deterministicScore; // alias — both names present for transition period
 
     const scores = [
       goldenScore, architectureScore, pipelineHealth, contractHealth,
       performanceScore, dependencyScore, explainabilityScore,
-      observabilityScore, isolationScore, deterministmScore,
+      observabilityScore, isolationScore, deterministicScore,
     ];
 
     const overallCertificationScore = scores.reduce((a, b) => a + b, 0) / scores.length;
@@ -37,7 +40,9 @@ export class CertificationMetricsEngine {
     return Object.freeze({
       architectureScore, pipelineHealth, contractHealth, performanceScore,
       dependencyScore, explainabilityScore, observabilityScore, isolationScore,
-      regressionScore, stressScore, deterministmScore,
+      regressionScore, stressScore,
+      deterministmScore,       // backward compat alias
+      deterministicScore,      // NC-05 corrected field name
       overallCertificationScore,
       certified,
     });

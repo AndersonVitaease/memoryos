@@ -73,7 +73,9 @@ export class ScenarioValidator {
 
     const overall = (structuralConf * 0.30 + behaviorConf * 0.30 + evidenceConf * 0.25 + runtimeConf * 0.15);
     const score   = Math.round(overall * 100);
-    const status  = issues.filter(i => !i.includes("warning")).length === 0 ? "pass" : score >= 70 ? "warn" : "fail";
+    // NC-06 remediation: removed inert filter '!i.includes("warning")' — no issue ever contained that string.
+    // Status now correctly reflects issues.length directly.
+    const status  = issues.length === 0 ? "pass" : score >= 70 ? "warn" : "fail";
 
     evidence.push(`executionId=${ev.executionId.slice(-12)}`);
     evidence.push(`learningId=${ev.learningId.slice(-12)}`);

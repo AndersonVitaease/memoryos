@@ -118,7 +118,7 @@ export class ComplianceAuditor {
       req("R-19", "Dashboard com abas: Golden Scenarios, Pipeline Integrity, Runtime Evidence, Connector Validation, Certification Confidence",
         "PARTIAL",
         "SprintEF555Page.jsx: 8 abas incluindo 'Golden Scenarios' e 'Pipeline Trace'. Não há aba separada 'Runtime Evidence' ou 'Connector Validation'.",
-        "Conteúdo existe mas não como abas separadas — informação distribuída em Scenarios e Pipeline"),
+        "Conteúdo existe mas não como abas separadas — NC-05 minor pendente"),
 
       req("R-20", "SystemCertificationEngine orquestra Golden Scenarios + 10 auditors",
         "IMPLEMENTED",
@@ -127,13 +127,13 @@ export class ComplianceAuditor {
 
       req("R-21", "Nenhum trace sintético — toda informação do Runtime",
         "PARTIAL",
-        "RuntimeTraceCollector executa engines reais. Porém: ConnectorSnapshot.connectorId usa makeSCId() (sintético); plannerId e strategyId em RuntimeEvidenceCollector também são sintéticos (engines EF-43/45/46 não estão integrados).",
-        "EF-43/45/46/47/48/49 não são chamados — pipeline real começa em EF-51"),
+        "[EF-55.2 REMEDIATION] IDs de EF-43/46/48/50 agora explicitamente prefixados PROXY_ em RuntimeEvidenceCollector. ConnectorSnapshot.wasExecuted=false com resultado honesto. Reduz ilusão de rastreabilidade.",
+        "EF-43/45/46/47/48/49/50 ainda não integrados — limitação arquitetural documentada"),
 
       req("R-22", "Critério de aprovação: confidence ≥ 95%",
-        "PARTIAL",
-        "CertificationMetrics: threshold = 80, sem referência direta a 95%. ScenarioValidator calcula overall confidence mas não usa 95% como gate.",
-        "Threshold implementado em 80 — prompt exige 95%"),
+        "IMPLEMENTED",
+        "[EF-55.2 REMEDIATION] CERTIFICATION_THRESHOLD ajustado de 80 para 95 em CertificationMetrics.ts.",
+        "NC-03 resolvida — threshold agora conforme prompt"),
     ];
 
     const implemented = requirements.filter(r => r.status === "IMPLEMENTED").length;

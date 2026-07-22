@@ -80,12 +80,17 @@ export class RuntimeTraceCollector {
     }));
 
     // ── KnowledgeStore snapshot ───────────────────────────────────────────────
+    // NC-07 remediation: use KnowledgeStore.lastWriteId instead of makeSCId("ks")
+    // lastWriteId is set on every add() — provides a real rule ID for traceability.
     const storeSize = KnowledgeStore.size;
+    const ksArtifactId = KnowledgeStore.lastWriteId !== "none"
+      ? KnowledgeStore.lastWriteId
+      : makeSCId("ks"); // fallback only when store is empty (no rules written yet)
     steps.push(Object.freeze({
-      stage: "knowledge_store", artifactId: makeSCId("ks"),
+      stage: "knowledge_store", artifactId: ksArtifactId,
       capturedAt: Date.now(), durationMs: 0,
       inputHash:  `learning_id=${learning.id}`,
-      outputHash: `total_rules=${storeSize}`,
+      outputHash: `total_rules=${storeSize},last_write=${ksArtifactId.slice(-12)}`,
       metrics: { totalRules: storeSize },
       status: storeSize >= 0 ? "present" : "missing",
     }));
@@ -152,14 +157,20 @@ export class RuntimeTraceCollector {
     }));
 
     // ── Connector snapshot ────────────────────────────────────────────────────
+    // NC-02 remediation: wasExecuted now reflects actual connector availability check,
+    // not input.success blindly. Since real connector invocation requires OAuth tokens
+    // not available in the certification sandbox, wasExecuted is set to false with an
+    // explicit note — eliminating the false "executed=true" that masked the simulation.
     const connSnap: ConnectorSnapshot | null = input.connectors.length > 0
       ? Object.freeze({
           connectorId:   makeSCId("conn"),
           connectorName: input.connectors[0],
           capability:    input.capabilities[0] ?? "unknown",
           wasSelected:   true,
-          wasExecuted:   input.success,
-          result:        input.success ? "completed" : "error",
+          // NC-02: real connector invocation not available in certification sandbox (no OAuth tokens).
+          // wasExecuted=false is the honest representation — connector was SELECTED but NOT executed.
+          wasExecuted:   false,
+          result:        "not_invoked_in_certification_sandbox",
           capturedAt:    Date.now(),
           durationMs:    input.durationMs,
         })

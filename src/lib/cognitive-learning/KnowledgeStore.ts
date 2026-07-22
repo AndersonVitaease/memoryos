@@ -13,6 +13,8 @@ import { makeCLId } from "./CLTypes";
 
 class KnowledgeStoreImpl {
   private _rules: Map<string, KnowledgeRule> = new Map();
+  // NC-07 remediation: expose lastWriteId for certification traceability (knowledge_store artifactId)
+  private _lastWriteId: string = "none";
 
   /** Add a new rule (status=validated). Returns the stored rule. */
   add(rule: KnowledgeRule): KnowledgeRule {
@@ -22,6 +24,7 @@ class KnowledgeStoreImpl {
       updatedAt: Date.now(),
     });
     this._rules.set(stored.id, stored);
+    this._lastWriteId = stored.id; // NC-07: expose last write for certification traceability
     return stored;
   }
 
@@ -88,6 +91,9 @@ class KnowledgeStoreImpl {
 
   /** Total count. */
   get size(): number { return this._rules.size; }
+
+  /** NC-07: Last written rule ID — for certification traceability. "none" if empty. */
+  get lastWriteId(): string { return this._lastWriteId; }
 
   /** Clear — for testing only. */
   clear(): void { this._rules.clear(); }

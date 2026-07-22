@@ -4,6 +4,7 @@
 
 import React, { useState, useCallback } from "react";
 import { ArchitecturalCertificationEngine } from "@/lib/system-certification/certification/ArchitecturalCertificationEngine";
+import { REMEDIATION_REPORT } from "@/lib/system-certification/certification/RemediationReport";
 
 // ── UI Atoms ──────────────────────────────────────────────────────────────────
 
@@ -75,6 +76,7 @@ function decisionColor(d) {
 
 const TABS = [
   { id: "executive",      label: "Resumo Executivo" },
+  { id: "remediation",    label: "Remediação EF-55.2" },
   { id: "implementation", label: "Implementação" },
   { id: "compliance",     label: "Conformidade" },
   { id: "solid",          label: "SOLID" },
@@ -182,6 +184,42 @@ export default function ArchitecturalCertPage() {
                     <ScoreBar label="SCORE GERAL" value={r.overallScore} />
                   </div>
                 </div>
+              </div>
+            )}
+
+            {/* REMEDIATION */}
+            {tab === "remediation" && (
+              <div className="space-y-3">
+                <div className={`border rounded-xl p-4 ${REMEDIATION_REPORT.readyForRecertification ? "bg-emerald-950/20 border-emerald-700/30" : "bg-amber-950/15 border-amber-700/30"}`}>
+                  <div className="flex gap-2 flex-wrap mb-2">
+                    <Badge label="EF-55.2 REMEDIATION" color="gold" />
+                    <Badge label={`${REMEDIATION_REPORT.resolvedCount} RESOLVED`} color="green" />
+                    <Badge label={`${REMEDIATION_REPORT.partialCount} PARTIAL`} color="amber" />
+                    <Badge label={`${REMEDIATION_REPORT.deferredCount} DEFERRED`} color="zinc" />
+                    {REMEDIATION_REPORT.readyForRecertification && <Badge label="PRONTO PARA RE-CERTIFICACAO" color="teal" />}
+                  </div>
+                  <p className="text-zinc-300 text-xs leading-relaxed">{REMEDIATION_REPORT.summary}</p>
+                </div>
+                {REMEDIATION_REPORT.items.map(item => (
+                  <div key={item.ncId} className={`bg-zinc-900 border rounded-xl p-4 space-y-2 ${item.status === "RESOLVED" ? "border-emerald-800/30" : item.status === "PARTIAL" ? "border-amber-700/30" : "border-zinc-800"}`}>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge label={item.ncId} color="zinc" />
+                      <Badge label={item.ncClass.toUpperCase()} color={item.ncClass === "major" ? "orange" : item.ncClass === "minor" ? "amber" : "zinc"} />
+                      <Badge label={item.status} color={item.status === "RESOLVED" ? "green" : item.status === "PARTIAL" ? "amber" : "zinc"} />
+                    </div>
+                    <p className="text-zinc-300 text-xs font-bold">{item.description}</p>
+                    <div className="space-y-0.5">
+                      {item.changesMade.map((c, i) => <p key={i} className="text-zinc-500 text-xs font-mono pl-2">+ {c}</p>)}
+                    </div>
+                    {item.filesChanged.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {item.filesChanged.map((f, i) => <Badge key={i} label={f.split("/").pop()} color="sky" />)}
+                      </div>
+                    )}
+                    <p className="text-emerald-400 text-xs">✓ {item.validation}</p>
+                    <p className="text-zinc-600 text-xs">Risco de regressao: {item.regressionRisk}</p>
+                  </div>
+                ))}
               </div>
             )}
 
