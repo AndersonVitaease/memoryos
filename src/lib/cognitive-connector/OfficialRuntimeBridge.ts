@@ -172,6 +172,10 @@ export class OfficialRuntimeBridgeClass {
     const t0 = Date.now();
     this._totalInvocations++;
 
+    // A-01: single orbExecutionId per invocation — reused in ALL branches (empty, success, error).
+    // No more bridge-empty-*, bridge-err-* synthetic IDs that create parallel namespaces.
+    const orbExecutionId = `orb-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
     // ── 1. Map operation → GoalType ─────────────────────────────────────────
     const goalType = CIS_TO_GOAL_TYPE[operation] ?? "general.conversation";
 
@@ -192,8 +196,7 @@ export class OfficialRuntimeBridgeClass {
     const planResult = conversationPlanningEngine.plan(goal);
 
     if (!planResult.success || planResult.plan.steps.length === 0) {
-      // Empty plan = goalType not routable (e.g. connectivity.ping → memory.query)
-      // This is a valid non-connector path — return a synthetic "ok" result
+      // Empty plan = goalType not routable — reuse orbExecutionId (A-01: single ID)
       const t_empty = Date.now();
       const emptyResult: BridgeInvocationResult = {
         success:         true,
@@ -202,9 +205,9 @@ export class OfficialRuntimeBridgeClass {
         status:          "NOT_ROUTABLE",
         error:           null,
         durationMs:      t_empty - t0,
-        executionId:     `bridge-empty-${t_empty}`,
+        executionId:     orbExecutionId,
         executionResult: {
-          executionId: `bridge-empty-${t_empty}`,
+          executionId: orbExecutionId,
           planId:      planResult.plan.id,
           goalId:      planResult.plan.goalId,
           status:      "completed",
@@ -220,10 +223,10 @@ export class OfficialRuntimeBridgeClass {
     }
 
     // ── 4. Execute via ConversationRuntimeEngine (official path) ─────────────
+    // A-01: pass orbExecutionId so the Runtime ECF reuses it instead of generating exec-rt-*
     try {
       const engine = await getRealRuntimeEngine();
-      // ADR-003/ADR-004: destructure ExecutionWithReport
-      const { executionResult } = await engine.execute(planResult.plan);
+      const { executionResult } = await engine.execute(planResult.plan, orbExecutionId);
 
       const completedSteps = executionResult.steps.filter(
         (s) => s.status === "completed" && s.output !== null,
@@ -245,7 +248,7 @@ export class OfficialRuntimeBridgeClass {
         status:          executionResult.status,
         error:           executionResult.errors[0] ?? null,
         durationMs:      Date.now() - t0,
-        executionId:     executionResult.executionId,
+        executionId:     executionResult.executionId, // == orbExecutionId (A-01 confirmed)
         executionResult,
       };
 
@@ -255,6 +258,7 @@ export class OfficialRuntimeBridgeClass {
     } catch (err) {
       this._totalBypassed++;
       const t_err = Date.now();
+      // A-01: reuse orbExecutionId even on error — no new synthetic ID
       const errResult: BridgeInvocationResult = {
         success:         false,
         data:            null,
@@ -262,9 +266,9 @@ export class OfficialRuntimeBridgeClass {
         status:          "FAILED",
         error:           err instanceof Error ? err.message : String(err),
         durationMs:      t_err - t0,
-        executionId:     `bridge-err-${t_err}`,
+        executionId:     orbExecutionId,
         executionResult: {
-          executionId: `bridge-err-${t_err}`,
+          executionId: orbExecutionId,
           planId:      planResult.plan.id,
           goalId:      planResult.plan.goalId,
           status:      "failed",
@@ -300,6 +304,9 @@ export class OfficialRuntimeBridgeClass {
     const t0 = Date.now();
     this._totalInvocations++;
 
+    // A-01: single orbExecutionId per invocation — reused in ALL branches.
+    const orbExecutionId = `orb-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
     // ── 1. Map operation → GoalType ─────────────────────────────────────────
     const goalType = CIS_TO_GOAL_TYPE[operation] ?? "general.conversation";
 
@@ -320,6 +327,7 @@ export class OfficialRuntimeBridgeClass {
     const planResult = conversationPlanningEngine.plan(goal);
 
     if (!planResult.success || planResult.plan.steps.length === 0) {
+      // A-01: reuse orbExecutionId — no new synthetic ID
       const t_empty2 = Date.now();
       const emptyResult: BridgeInvocationResult = {
         success:         true,
@@ -328,9 +336,9 @@ export class OfficialRuntimeBridgeClass {
         status:          "NOT_ROUTABLE",
         error:           null,
         durationMs:      t_empty2 - t0,
-        executionId:     `bridge-empty-${t_empty2}`,
+        executionId:     orbExecutionId,
         executionResult: {
-          executionId: `bridge-empty-${t_empty2}`,
+          executionId: orbExecutionId,
           planId:      planResult.plan.id,
           goalId:      planResult.plan.goalId,
           status:      "completed",
@@ -346,30 +354,29 @@ export class OfficialRuntimeBridgeClass {
     }
 
     // ── 4. Divergence guard — verify connector consistency ───────────────────
-    // If the GoalCapabilityRegistry resolved to a different connector than
-    // what the caller declared, abort execution and return a divergence error.
-    // This eliminates the silent "github → google-drive" class of bugs.
     const resolvedConnector = planResult.plan.steps[0]?.connector ?? null;
     if (resolvedConnector && !_connectorConsistent(connectorId, resolvedConnector)) {
+      // A-01: reuse orbExecutionId — no bridge-diverge-* synthetic ID
+      const t_div = Date.now();
       const divergenceResult: BridgeInvocationResult & { divergence: { declared: string; resolved: string } } = {
         success:         false,
         data:            null,
         allOutputs:      [],
         status:          "CONNECTOR_DIVERGENCE",
         error:           `ConnectorDivergence: caller declared "${connectorId}" but GoalCapabilityRegistry resolved "${resolvedConnector}" for operation="${operation}" goalType="${goalType}". Execution aborted to prevent wrong-connector execution.`,
-        durationMs:      Date.now() - t0,
-        executionId:     `bridge-diverge-${Date.now()}`,
+        durationMs:      t_div - t0,
+        executionId:     orbExecutionId,
         divergence:      { declared: connectorId, resolved: resolvedConnector },
         executionResult: {
-          executionId: `bridge-diverge-${Date.now()}`,
+          executionId: orbExecutionId,
           planId:      planResult.plan.id,
           goalId:      planResult.plan.goalId,
           status:      "failed",
           steps:       Object.freeze([]),
           errors:      Object.freeze([`ConnectorDivergence: declared="${connectorId}" resolved="${resolvedConnector}"`]),
-          durationMs:  Date.now() - t0,
+          durationMs:  t_div - t0,
           startedAt:   t0,
-          finishedAt:  Date.now(),
+          finishedAt:  t_div,
         },
       };
       this._track(divergenceResult);
@@ -377,10 +384,10 @@ export class OfficialRuntimeBridgeClass {
     }
 
     // ── 5. Execute via ConversationRuntimeEngine (official path) ─────────────
+    // A-01: pass orbExecutionId so ECF reuses it — single ID through entire chain
     try {
       const engine = await getRealRuntimeEngine();
-      // ADR-003/ADR-004: destructure ExecutionWithReport
-      const { executionResult } = await engine.execute(planResult.plan);
+      const { executionResult } = await engine.execute(planResult.plan, orbExecutionId);
 
       const completedSteps = executionResult.steps.filter(
         (s) => s.status === "completed" && s.output !== null,
@@ -402,7 +409,7 @@ export class OfficialRuntimeBridgeClass {
         status:          executionResult.status,
         error:           executionResult.errors[0] ?? null,
         durationMs:      Date.now() - t0,
-        executionId:     executionResult.executionId,
+        executionId:     executionResult.executionId, // == orbExecutionId (A-01 confirmed)
         executionResult,
       };
 
@@ -412,6 +419,7 @@ export class OfficialRuntimeBridgeClass {
     } catch (err) {
       this._totalBypassed++;
       const t_err = Date.now();
+      // A-01: reuse orbExecutionId on error — no new synthetic bridge-err-* ID
       const errResult: BridgeInvocationResult = {
         success:         false,
         data:            null,
@@ -419,9 +427,9 @@ export class OfficialRuntimeBridgeClass {
         status:          "FAILED",
         error:           err instanceof Error ? err.message : String(err),
         durationMs:      t_err - t0,
-        executionId:     `bridge-err-${t_err}`,
+        executionId:     orbExecutionId,
         executionResult: {
-          executionId: `bridge-err-${t_err}`,
+          executionId: orbExecutionId,
           planId:      planResult.plan.id,
           goalId:      planResult.plan.goalId,
           status:      "failed",

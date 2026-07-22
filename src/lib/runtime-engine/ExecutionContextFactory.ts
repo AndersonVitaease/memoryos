@@ -54,13 +54,16 @@ export class ExecutionContextFactory {
    * @throws never — returns null on invalid plan instead
    */
   create(
-    plan:   ExecutionPlan,
-    policy: ExecutionPolicy = DEFAULT_EXECUTION_POLICY,
+    plan:              ExecutionPlan,
+    policy:            ExecutionPolicy = DEFAULT_EXECUTION_POLICY,
+    pipelineExecutionId?: string,
   ): RuntimeExecutionContext | null {
     const validation = this.validate(plan);
     if (!validation.valid) return null;
 
-    const executionId = makeExecutionId();
+    // A-01: use the Pipeline's executionId when provided — no new ID generated.
+    // This ensures a single canonical executionId for the entire execution chain.
+    const executionId = pipelineExecutionId ?? makeExecutionId();
 
     return {
       executionId,

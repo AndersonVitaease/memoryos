@@ -23,7 +23,7 @@ import type {
 } from "@/lib/connector-router/UCRTypes";
 import { ConnectorRegistry as UCRRegistry } from "@/lib/connector-router/ConnectorRegistry";
 import { ConnectorRegistry as RuntimeRegistry } from "./ConnectorRegistry";
-import { makeExecutionId } from "./ConnectorTypes";
+// A-02: makeExecutionId removed — UCRBridge no longer generates fallback IDs.
 
 // ── Bridge (wraps one RuntimeConnector as UCRConnector) ───────────────────────
 
@@ -52,7 +52,9 @@ class UCRConnectorBridge implements UCRConnector {
 
   async execute(input: ConnectorInput): Promise<UCRResult> {
     const t0  = Date.now();
-    const eid = input.executionId ?? makeExecutionId();
+    // A-02: executionId must always come from upstream (Pipeline → CRE → ECF → Dispatcher → CCE → UCR → here).
+    // No fallback generation — if it is missing, use it as-is so the bug surfaces visibly in probes.
+    const eid = input.executionId;
 
     // [UCRBRIDGE-PROBE-01] UCRBridge.execute() CALLED
     console.log("[UCRBRIDGE-PROBE-01]", {

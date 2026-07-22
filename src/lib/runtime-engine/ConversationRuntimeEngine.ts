@@ -131,7 +131,10 @@ export class ConversationRuntimeEngine {
 
   // ── Public API ────────────────────────────────────────────────────────────
 
-  async execute(plan: ExecutionPlan): Promise<ExecutionWithReport> {
+  // A-01: accept pipelineExecutionId so the Runtime reuses the Pipeline's canonical ID
+  // instead of generating its own. All downstream components (Dispatcher → CCE → UCR →
+  // UCRBridge → Connector) propagate this single ID without ever creating a new one.
+  async execute(plan: ExecutionPlan, pipelineExecutionId?: string): Promise<ExecutionWithReport> {
     const t_start = Date.now();
 
     // [RUNTIME-PROBE][RTE-01] ConversationRuntimeEngine.execute() entered
@@ -144,16 +147,18 @@ export class ConversationRuntimeEngine {
       goalType:   plan.goalType,
       steps:      plan.steps.map(s => `${s.connector}.${s.capability}`),
       executorType: (this._dispatcher as any)._executor?.constructor?.name ?? "unknown",
+      pipelineExecutionId: pipelineExecutionId ?? "not-provided",
       note:       "executorType=ConnectorCapabilityExecutor is expected. Registry may still be empty if placeholder.",
     });
-    // Context creation delegated to ExecutionContextFactory
-    const ctx = executionContextFactory.create(plan, this._policy);
+    // A-01: pass pipelineExecutionId into context so ECF reuses it instead of generating new one
+    const ctx = executionContextFactory.create(plan, this._policy, pipelineExecutionId);
 
     if (!ctx) {
-      // Plan failed validation — return a structured failure + empty report
+      // Plan failed validation — return a structured failure + empty report.
+      // A-01: use pipelineExecutionId here too so even validation-failures share the same ID.
       const now = Date.now();
       const executionResult = Object.freeze({
-        executionId: makeExecutionId(),
+        executionId: pipelineExecutionId ?? makeExecutionId(),
         planId:      plan.id,
         goalId:      plan.goalId,
         status:      "failed" as ExecutionStatus,
