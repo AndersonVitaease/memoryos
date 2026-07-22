@@ -92,7 +92,22 @@ export async function synthesizeConnectorResult(
   }
 
   // ── Runtime completed — extract data from step outputs ───────────────────
-  const completedSteps = result.steps.filter((s) => s.status === "completed" && s.output !== null);
+  // EF-44: Also detect steps that completed but returned an error payload
+  // (e.g. { error: "requires workspaceId" }) — those are NOT successful data.
+  const completedSteps = result.steps.filter((s) => {
+    if (s.status !== "completed" || s.output === null) return false;
+    // Reject outputs that are plain error objects (no real collection/data)
+    const out = s.output as Record<string, unknown> | null;
+    if (out && typeof out === "object" && !Array.isArray(out)) {
+      const keys = Object.keys(out);
+      // If the ONLY keys are error-like fields → treat as failure
+      const isErrorOnly = keys.length > 0 && keys.every(k =>
+        ["error", "message", "code", "status", "reason"].includes(k.toLowerCase())
+      );
+      if (isErrorOnly) return false;
+    }
+    return true;
+  });
 
   // [SYNTH-PROBE-01] StepResult shapes reaching ConnectorResultSynthesizer
   console.log("[SYNTH-PROBE-01]", {
@@ -136,7 +151,17 @@ export async function synthesizeConnectorResult(
   }
 
   if (completedSteps.length === 0) {
-    // Steps ran but all outputs were null — treat as error
+    // EF-44: Steps ran but all outputs were null or error-only — treat as error.
+    // Extract the error message from the step output if available.
+    const firstStepError = result.steps[0];
+    const stepOutputError = firstStepError?.output as Record<string, unknown> | null;
+    const embeddedError = stepOutputError?.["error"] as string | undefined
+      ?? stepOutputError?.["message"] as string | undefined;
+
+    if (embeddedError) {
+      const response = _buildErrorResponseFromMessage(embeddedError);
+      return { handled: true, response, connectorData: null };
+    }
     const response = _buildErrorResponse(result);
     return { handled: true, response, connectorData: null };
   }
@@ -242,6 +267,30 @@ export async function synthesizeConnectorResult(
 
 // ── Private helpers ───────────────────────────────────────────────────────────
 
+/**
+ * EF-44: Build a user-facing error message from an embedded error string
+ * found inside a step output (e.g. { error: "requires workspaceId" }).
+ */
+function _buildErrorResponseFromMessage(errorMsg: string): string {
+  const e = errorMsg.toLowerCase();
+  if (e.includes("workspaceid") || e.includes("workspace_id")) {
+    return "Nao foi possivel acessar o arquivo: configuracao de workspace ausente. Por favor, reconecte sua conta Google em **Conectores**.";
+  }
+  if (e.includes("nao conectado") || e.includes("not connected") || e.includes("disconnected")) {
+    return "Voce ainda nao conectou sua conta. Va em **Conectores** para autorizar o acesso.";
+  }
+  if (e.includes("401") || e.includes("expirado") || e.includes("expired") || e.includes("token")) {
+    return "Sua sessao expirou. Va em **Conectores** para reconectar.";
+  }
+  if (e.includes("403") || e.includes("permission") || e.includes("acesso negado")) {
+    return "Acesso negado. Por favor, reconecte sua conta em **Conectores** e autorize os escopos necessarios.";
+  }
+  if (e.includes("404") || e.includes("not found") || e.includes("nao encontrado")) {
+    return "O recurso solicitado nao foi encontrado.";
+  }
+  return `Nao foi possivel completar a operacao: ${errorMsg}`;
+}
+
 function _buildErrorResponse(result: ExecutionResult): string {
   const errors = result.errors;
 
@@ -308,18 +357,18 @@ function _buildSynthesisPrompt(
 
 O usuario pediu: "${userMsg}"
 ${kfmBlock}
-O sistema executou automaticamente a acao "${goalType}" e obteve os seguintes dados reais:
+O sistema executou automaticamente a acao "${goalType}" e obteve os seguintes dados:
 
 ${dataJson}
 
-Sua tarefa:
-- Apresentar os dados de forma clara, organizada e em portugues.
-- Ser conciso mas completo.
-- NAO inventar informacoes que nao estejam nos dados.
-- NAO mencionar detalhes tecnicos como "connector", "capability", "ExecutionResult" etc.
+REGRAS OBRIGATORIAS (EF-44 — Verified Execution Layer):
+- NUNCA afirmar que encontrou, leu, baixou ou acessou dados se os dados acima estiverem vazios, forem uma mensagem de erro, ou nao contiverem informacoes reais.
+- Se o output contiver apenas campos "error", "message" ou "reason" → reportar o problema claramente ao usuario.
+- Se items/messages/files/events estiverem vazios → dizer que nao foram encontrados resultados.
+- NUNCA inventar ou inferir dados que nao estejam explicitamente presentes no JSON acima.
+- Se os dados forem validos e conterem informacao real → apresentar de forma clara e organizada em portugues.
 - Se forem emails: mostrar remetente, assunto e trecho de cada um.
-- Se nao houver dados relevantes: informar de forma amigavel.
-- Utilize o contexto de memoria para conectar os dados do conector ao historico do usuario quando relevante.
+- NAO mencionar detalhes tecnicos como "connector", "capability", "ExecutionResult", "output" etc.
 - Resposta direta, sem introducao longa.`;
 }
 
