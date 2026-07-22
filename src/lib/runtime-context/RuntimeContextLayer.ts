@@ -454,9 +454,9 @@ class RuntimeContextLayerClass {
     return artifact;
   }
 
-  dumpCurrentResultSet(): string[] {
+  dumpCurrentResultSet(): ExecutionResultSet | null {
     const rs = this.get().currentResultSet;
-    console.log("[RUNTIME CONTEXT] dumpCurrentResultSet()", { count: rs.length, paths: rs.slice(0, 5) });
+    console.log("[RUNTIME CONTEXT] dumpCurrentResultSet()", { hasResultSet: rs != null, count: rs?.items?.length ?? 0 });
     return rs;
   }
 

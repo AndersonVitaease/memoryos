@@ -362,6 +362,50 @@ class ConversationPipeline {
       }
       // ── end Sprint M-03 / 8.12 ──────────────────────────────────────────
 
+      // ── [EF-42] Runtime Introspection Intercept ──────────────────────────────
+      // Detects questions about the Runtime's own internal state and answers
+      // them directly — zero Connector, zero LLM, zero Planner.
+      // REVERSAO: remover este bloco try/catch e apagar src/lib/runtime-introspection/.
+      try {
+        const { runtimeIntrospectionRouter } = await import("@/lib/runtime-introspection/RuntimeIntrospectionRouter");
+        const rifResult = runtimeIntrospectionRouter.intercept(userMessage);
+        if (rifResult.intercepted && rifResult.candidate) {
+          candidates.push(rifResult.candidate);
+          preferredDomain = "general";
+          conversationStore.emit({
+            type: "PIPELINE_STEP", executionId,
+            payload: { step: "runtime_introspection_intercepted", reason: rifResult.reason },
+            timestamp: Date.now(),
+          });
+          setStep("route", "done");
+          setStep("synthesize", "running");
+          conversationStore.setStatus("synthesizing");
+          setPhase("building_response");
+          const _rifArb = responseArbiter.arbitrate(candidates, { preferredDomain, userMessage, sessionId: session.id });
+          const _rifFinal = _rifArb.selected.answer ?? "Nao foi possivel responder a introspeccao de runtime.";
+          conversationMetrics.recordSynthesisMs(executionId, Date.now() - t0synth);
+          setStep("synthesize", "done");
+          setStep("stream", "running");
+          conversationStore.setStatus("streaming");
+          setPhase("responding");
+          const _rifMsgId = makeMsgId();
+          conversationStore.appendMessage({ id: _rifMsgId, session_id: session.id, role: "assistant", content: "", streamingContent: "", isStreaming: true, memory_tier: "active", sources_used: [] });
+          await conversationStreaming.streamResponse({ executionId, messageId: _rifMsgId, fullContent: _rifFinal, onChunk: () => {} });
+          setStep("stream", "done");
+          setStep("finalize", "running");
+          conversationStore.setStatus("finalizing");
+          try {
+            const _rifSaved = await persistMessage({ sessionId: session.id, projectId: session.project_id, role: "assistant", content: _rifFinal, sources_used: [] });
+            conversationStore.updateMessage(_rifMsgId, { id: _rifSaved.id, content: _rifFinal, streamingContent: undefined, isStreaming: false, sources_used: [] });
+          } catch { /* non-critical */ }
+          conversationStore.setStatus("idle");
+          conversationStore.setReasoningPhase("idle");
+          setStep("finalize", "done");
+          return; // Pipeline complete via introspection path
+        }
+      } catch { /* non-blocking — fall through to normal pipeline */ }
+      // ── [END EF-42] ──────────────────────────────────────────────────────────
+
       // ── E-02.1: Conversation → Goal Bridge ──────────────────────────────
       // [EXP-RUNTIME-CONTEXT-LAYER] resolveContinuation — BEFORE Router/GoalBridge
       // REVERSAO: remover este bloco try/catch e apagar src/lib/runtime-context/
