@@ -19,6 +19,9 @@ import { officialRuntimeBridge } from "../cognitive-connector/OfficialRuntimeBri
 import { RepositoryResolver } from "../github-deep-analysis/RepositoryResolver";
 import { SearchRanker } from "../github-deep-analysis/SearchRanker";
 import { KnowledgeGraphStore } from "../project-knowledge/KnowledgeGraphStore";
+// [EXP-GITHUB-CTX-READ] — import experimental. Remove junto com o bloco em _resolveRepository().
+import { conversationStore } from "../conversation-platform/ConversationStore";
+import { readGitHubContext } from "../connector-context/providers/GitHubContextBuilder";
 import type {
   GatewayRequest, CognitiveAnswer, IntentClassification, CognitiveIntent,
   GatewayDiagnostic, CCGReport, AnswerSource,
@@ -580,10 +583,38 @@ export class ConversationCognitiveGateway {
     userMessage: string,
     projectId: string | null,
   ): Promise<{ owner: string; repo: string; confidence: number; needsConfirmation: boolean; candidates: any[] } | null> {
+
+    // ── [EXP-GITHUB-CTX-READ] INÍCIO DO BLOCO EXPERIMENTAL ──────────────────
+    // Para remover o experimento: apagar daqui até [EXP-GITHUB-CTX-READ] FIM.
+    // Nenhum outro arquivo precisa ser alterado.
+    try {
+      console.log("[EXP-GITHUB-CTX-READ] Consultando ConversationStore.getConnectorContext('github')");
+      const rawCtx = conversationStore.getConnectorContext("github");
+      const ghCtx  = readGitHubContext(rawCtx);
+      if (ghCtx && ghCtx.owner && ghCtx.repo) {
+        console.log("[EXP-GITHUB-CTX-READ] Contexto encontrado — retornando sem repos.list ou RepositoryResolver", {
+          owner:          ghCtx.owner,
+          repo:           ghCtx.repo,
+          repositoryName: ghCtx.repositoryName,
+          updatedAt:      ghCtx.updatedAt,
+        });
+        return { owner: ghCtx.owner, repo: ghCtx.repo, confidence: 1.0, needsConfirmation: false, candidates: [] };
+      }
+      console.log("[EXP-GITHUB-CTX-READ] Contexto ausente ou incompleto — fallback para _repoCache / repos.list", {
+        rawCtxFound: rawCtx !== null,
+        ghCtxFound:  ghCtx !== null,
+      });
+    } catch (e) {
+      console.log("[EXP-GITHUB-CTX-READ] Erro ao ler contexto — ignorado, fallback normal", String(e));
+    }
+    // ── [EXP-GITHUB-CTX-READ] FIM DO BLOCO EXPERIMENTAL ────────────────────
+
     // Use cache if fresh (< 5 minutes)
     if (this._repoCache && Date.now() - this._repoCache.fetchedAt < 5 * 60 * 1000) {
+      console.log("[EXP-GITHUB-CTX-READ] Fallback para _repoCache", { owner: this._repoCache.owner, repo: this._repoCache.repo });
       return { owner: this._repoCache.owner, repo: this._repoCache.repo, confidence: 0.9, needsConfirmation: false, candidates: [] };
     }
+    console.log("[EXP-GITHUB-CTX-READ] Fallback para repos.list + RepositoryResolver");
     // BUGFIX-002.6.5: invokeCompatGuarded enforces declaredConnector===resolvedConnector guard
     const reposInv = await officialRuntimeBridge.invokeCompatGuarded("github", "repos.list", { per_page: 10 },
       { originComponent: "ConversationCognitiveGateway", reason: "Repository resolution" });
