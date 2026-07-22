@@ -22,6 +22,8 @@ import { GmailSemanticProvider }     from "./providers/GmailSemanticProvider";
 import { CalendarSemanticProvider }  from "./providers/CalendarSemanticProvider";
 import { DriveSemanticProvider }     from "./providers/DriveSemanticProvider";
 import { MemorySemanticProvider }    from "./providers/MemorySemanticProvider";
+// [EXP-GITHUB-SEM] — remover esta linha + apagar GitHubSemanticProvider.ts para reverter
+import { GitHubSemanticProvider }    from "./providers/GitHubSemanticProvider";
 
 // Auto-register all official providers at module load.
 // register() is idempotent — safe to call multiple times.
@@ -30,3 +32,5 @@ ConnectorSemanticRegistry.register(GmailSemanticProvider    as never);
 ConnectorSemanticRegistry.register(CalendarSemanticProvider as never);
 ConnectorSemanticRegistry.register(DriveSemanticProvider    as never);
 ConnectorSemanticRegistry.register(MemorySemanticProvider   as never);
+// [EXP-GITHUB-SEM] — remover esta linha para reverter o experimento
+ConnectorSemanticRegistry.register(GitHubSemanticProvider   as never);
