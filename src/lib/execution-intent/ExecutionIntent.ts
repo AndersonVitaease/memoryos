@@ -140,9 +140,21 @@ export function isContinuationMessage(message: string): boolean {
 // ── Mapeamento Intent → GoalType ──────────────────────────────────────────────
 
 /**
- * Dado um ExecutionIntentRecord e uma mensagem de continuidade,
- * retorna o goalType concreto a ser usado pelo GoalBridge.
- * Nunca lanca excecao. Retorna null se nao for possivel resolver.
+ * Resolve o goalType correto para uma mensagem de continuidade.
+ *
+ * EF-43A: Usa o entityType do ExecutionResultSet (quando disponivel)
+ * para escolher a capability correta — nunca pela frase do usuario.
+ *
+ * Mapeamento de tipo → goalType:
+ *   repository  → github.listFiles   (abrir repo = listar arquivos)
+ *   file        → github.getFile
+ *   branch      → github.listBranches
+ *   commit      → github.listCommits
+ *   pull_request→ github.listPullRequests
+ *   issue       → github.listIssues
+ *   email       → gmail.readMessage
+ *   event       → calendar.listToday
+ *   drive_file  → drive.downloadFile
  */
 export function resolveGoalTypeFromIntent(
   intent: ExecutionIntentRecord,
@@ -150,24 +162,59 @@ export function resolveGoalTypeFromIntent(
 ): string | null {
   const lower = message.toLowerCase();
 
-  if (intent.domain === "github") {
-    // "abra o arquivo", "leia o arquivo", "agora abra" → files.get
-    if (
-      lower.includes("abra") || lower.includes("abre") || lower.includes("abrir") ||
-      lower.includes("leia") || lower.includes("baixe") || lower.includes("arquivo")
-    ) {
-      return "github.getFile";
+  // ── EF-43A: Resolve by ResultSet entityType (highest priority) ───────────────
+  // Access RuntimeContextLayer via globalThis to avoid circular import.
+  try {
+    const _rcl = (globalThis as any)["__RUNTIME_CONTEXT_LAYER__"];
+    const resultSet = _rcl ? _rcl.getResultSet() : null;
+
+    if (resultSet && resultSet.items.length > 0) {
+      const entityType: string = resultSet.entityType ?? "item";
+
+      console.log("[EF-43A] resolveGoalTypeFromIntent — using ResultSet entityType", {
+        entityType,
+        connector:  resultSet.connector,
+        capability: resultSet.capability,
+        itemCount:  resultSet.items.length,
+        message:    message.slice(0, 80),
+      });
+
+      // Map entityType → goalType (independent of user phrasing)
+      if (entityType === "repository") return "github.listFiles";
+      if (entityType === "file")       return "github.getFile";
+      if (entityType === "branch")     return "github.listBranches";
+      if (entityType === "commit")     return "github.listCommits";
+      if (entityType === "pull_request") return "github.listPullRequests";
+      if (entityType === "issue")      return "github.listIssues";
+      if (entityType === "email")      return "gmail.readMessage";
+      if (entityType === "event")      return "calendar.listToday";
+      if (entityType === "drive_file") return "drive.downloadFile";
+      // "item" or unknown — fall through to domain-based resolution below
     }
+  } catch { /* non-blocking — fall through */ }
+  // ── end EF-43A ────────────────────────────────────────────────────────────────
+
+  if (intent.domain === "github") {
+    // Explicit "arquivo" keyword → always files.get regardless of context
+    if (lower.includes("arquivo")) return "github.getFile";
+
     // "proximo", "anterior" — navegar pelos resultados de search
     if (
       lower.includes("proximo") || lower.includes("próximo") ||
       lower.includes("anterior") || lower.includes("volte")
     ) {
-      return intent.purpose === "get_file" ? "github.getFile" : "github.searchCode";
+      return intent.purpose === "get_file" ? "github.getFile" : "github.listFiles";
     }
-    // "mostre o primeiro/segundo resultado"
+    // "abra/abre/abrir/leia/baixe" sem ResultSet → listar arquivos do repositorio atual
+    if (
+      lower.includes("abra") || lower.includes("abre") || lower.includes("abrir") ||
+      lower.includes("leia") || lower.includes("baixe")
+    ) {
+      return intent.purpose === "list_repositories" ? "github.listFiles" : "github.getFile";
+    }
+    // "mostre o primeiro/segundo resultado" — depende do purpose atual
     if (lower.match(/\d+|primeiro|segundo|terceiro|ultimo/)) {
-      return "github.getFile";
+      return intent.purpose === "list_repositories" ? "github.listFiles" : "github.getFile";
     }
     // fallback dentro do dominio github
     return "github.searchCode";
@@ -445,6 +492,45 @@ export class ExecutionIntentManager {
             displayName:  getSelectedItem(updatedResultSet)?.displayName,
             artifact,
           });
+
+          // ── EF-43A: Update GitHub ConversationStore context when repo is selected ──
+          // When the selected item is a repository, write owner/repo to the "github" slot
+          // so GitHubPlanningContextProvider picks up the CORRECT repo (not always first).
+          try {
+            const selectedItem2 = getSelectedItem(updatedResultSet);
+            const ref2 = selectedItem2?.reference as Record<string, unknown> | undefined;
+            const selOwner = ref2?.["owner"] as string | undefined;
+            const selName  = ref2?.["name"]  as string | undefined;
+            const selFull  = ref2?.["full_name"] as string | undefined;
+
+            let resolvedOwner = selOwner;
+            let resolvedRepo  = selName;
+            if (!resolvedOwner && selFull) {
+              const parts = selFull.split("/");
+              if (parts.length === 2) { resolvedOwner = parts[0]; resolvedRepo = parts[1]; }
+            }
+
+            if (resolvedOwner && resolvedRepo && resultSet.entityType === "repository") {
+              const ghCtx = Object.freeze({
+                connectorId:    "github",
+                owner:          resolvedOwner,
+                repo:           resolvedRepo,
+                repositoryName: `${resolvedOwner}/${resolvedRepo}`,
+                defaultBranch:  (ref2?.["default_branch"] as string | undefined) ?? null,
+                repositoryId:   null,
+                capability:     "ordinal_selection",
+                executionId:    undefined as any,
+                updatedAt:      Date.now(),
+              });
+              conversationStore.setConnectorContext("github", ghCtx);
+              console.log("[EF-43A] GitHub context updated from ordinal selection", {
+                owner: resolvedOwner,
+                repo:  resolvedRepo,
+                index: newIndex,
+              });
+            }
+          } catch { /* non-blocking */ }
+          // ── end EF-43A ───────────────────────────────────────────────────────
         }
       }
     } catch { /* non-blocking — fallback to legacy below */ }

@@ -171,16 +171,33 @@ export async function synthesizeConnectorResult(
     };
   });
 
-  // ── EF-41: Build ExecutionResultSet and persist to RuntimeContextLayer ───────
-  // Non-blocking — never affects user response.
+  // ── EF-41 / EF-43A: Build ExecutionResultSet and persist to RuntimeContextLayer ──
+  // Uses globalThis singleton access (same pattern as ExecutionIntent.consume) to
+  // avoid dynamic import failures that silently drop the ResultSet.
   try {
     const resultSet = executionResultSetBuilder.build(connectorData);
     if (resultSet) {
-      const { runtimeContextLayer } = await import("@/lib/runtime-context/RuntimeContextLayer");
-      runtimeContextLayer.setResultSet(resultSet);
+      const _rcl = (globalThis as any)["__RUNTIME_CONTEXT_LAYER__"];
+      if (_rcl && typeof _rcl.setResultSet === "function") {
+        _rcl.setResultSet(resultSet);
+        console.log("[EF-43A] ExecutionResultSet persisted", {
+          id:         resultSet.id,
+          entityType: resultSet.entityType,
+          connector:  resultSet.connector,
+          capability: resultSet.capability,
+          itemCount:  resultSet.items.length,
+          preview:    resultSet.items.slice(0, 3).map((i: any) => i.displayName),
+        });
+      } else {
+        // Fallback: async import if globalThis not yet initialised
+        const { runtimeContextLayer } = await import("@/lib/runtime-context/RuntimeContextLayer");
+        runtimeContextLayer.setResultSet(resultSet);
+      }
     }
-  } catch { /* non-blocking */ }
-  // ── end EF-41 ────────────────────────────────────────────────────────────────
+  } catch (e) {
+    console.log("[EF-43A] ResultSet persist failed (non-blocking):", String(e));
+  }
+  // ── end EF-41 / EF-43A ───────────────────────────────────────────────────────
 
   // ── Synthesize with LLM ────────────────────────────────────────────────────
   try {

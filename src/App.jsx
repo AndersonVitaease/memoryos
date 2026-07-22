@@ -252,6 +252,7 @@ import SprintEF428Page from '@/pages/SprintEF428Page';
 import SprintEF429Page from '@/pages/SprintEF429Page';
 import SprintEF4210Page from '@/pages/SprintEF4210Page';
 import SprintEF43Page from '@/pages/SprintEF43Page';
+import SprintEF43APage from '@/pages/SprintEF43APage';
 import SprintEF45Page from '@/pages/SprintEF45Page';
 import SprintEF46Page from '@/pages/SprintEF46Page';
 import SprintEF47Page from '@/pages/SprintEF47Page';
@@ -544,6 +545,7 @@ const AuthenticatedApp = () => {
           <Route path="/sprint-ef429" element={<SprintEF429Page />} />
           <Route path="/sprint-ef4210" element={<SprintEF4210Page />} />
           <Route path="/sprint-ef43" element={<SprintEF43Page />} />
+          <Route path="/sprint-ef43a" element={<SprintEF43APage />} />
           <Route path="/sprint-ef45" element={<SprintEF45Page />} />
           <Route path="/sprint-ef46" element={<SprintEF46Page />} />
           <Route path="/sprint-ef47" element={<SprintEF47Page />} />
