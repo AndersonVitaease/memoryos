@@ -58,6 +58,7 @@
  */
 
 import type { BaseConnectorContext } from "@/lib/connector-context/ConnectorContextStore";
+import { conversationStore } from "@/lib/conversation-platform/ConversationStore";
 import {
   ExecutionIntentManager,
   isContinuationMessage,
@@ -153,7 +154,6 @@ class RuntimeContextLayerClass {
    */
   get(): RuntimeContextState {
     try {
-      const { conversationStore } = require("@/lib/conversation-platform/ConversationStore");
       const raw = conversationStore.getConnectorContext(CONTEXT_SLOT);
       if (raw && (raw as any)._rcl === true) {
         return (raw as any).state as RuntimeContextState;
@@ -270,7 +270,6 @@ class RuntimeContextLayerClass {
    */
   clear(): void {
     try {
-      const { conversationStore } = require("@/lib/conversation-platform/ConversationStore");
       conversationStore.clearConnectorContext(CONTEXT_SLOT);
       ExecutionIntentManager.clear();
       console.log("[RUNTIME CONTEXT] Cleared");
@@ -309,7 +308,6 @@ class RuntimeContextLayerClass {
     try {
       this._persist(snap.state);
       if (snap.state.executionIntent) {
-        const { conversationStore } = require("@/lib/conversation-platform/ConversationStore");
         conversationStore.setConnectorContext("execution-intent", snap.state.executionIntent);
       }
       console.log("[RUNTIME CONTEXT] Restored", {
@@ -463,7 +461,6 @@ class RuntimeContextLayerClass {
   // ── Private ───────────────────────────────────────────────────────────────
 
   private _persist(state: RuntimeContextState): void {
-    const { conversationStore } = require("@/lib/conversation-platform/ConversationStore");
     // Wrap in a BaseConnectorContext-compatible object
     const wrapper: BaseConnectorContext & { _rcl: true; state: RuntimeContextState } = {
       connectorId: CONTEXT_SLOT,

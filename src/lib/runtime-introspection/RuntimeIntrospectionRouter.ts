@@ -31,9 +31,9 @@
  *   Nenhum outro arquivo precisa ser alterado.
  */
 
-import { runtimeCapabilityRegistry } from "./RuntimeCapabilityRegistry";
-import { runtimeCapabilityExecutor }  from "./RuntimeCapabilityExecutor";
-import { executionOutcomeAdapterFactory } from "@/lib/response-arbiter/ExecutionOutcomeAdapterFactory";
+import { runtimeCapabilityRegistry }      from "./RuntimeCapabilityRegistry";
+import { runtimeCapabilityExecutor }       from "./RuntimeCapabilityExecutor";
+import { executionOutcomeAdapterFactory }  from "@/lib/response-arbiter/ExecutionOutcomeAdapterFactory";
 import type { ResponseCandidate } from "@/lib/response-arbiter/ResponseCandidate";
 
 export interface IntrospectionResult {

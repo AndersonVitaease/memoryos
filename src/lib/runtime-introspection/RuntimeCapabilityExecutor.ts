@@ -17,6 +17,7 @@
  *   Nunca bloqueia.
  */
 
+import { runtimeContextLayer } from "@/lib/runtime-context/RuntimeContextLayer";
 import type { RuntimeCapabilityId } from "./RuntimeCapabilityRegistry";
 
 export interface RuntimeExecutionResult {
@@ -48,7 +49,6 @@ export class RuntimeCapabilityExecutor {
     let data: unknown = null;
 
     try {
-      const { runtimeContextLayer } = require("@/lib/runtime-context/RuntimeContextLayer");
       const state = runtimeContextLayer.get();
 
       switch (capabilityId) {
