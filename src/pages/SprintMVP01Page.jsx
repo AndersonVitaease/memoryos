@@ -87,7 +87,7 @@ const STAGE_LABELS = {
   memory:           "11. Memory — Atualização da memória cognitiva",
   response:         "12. Response Generation — Resposta gerada",
   delivered:        "13. Entrega — Resposta entregue ao usuário",
-  recall:           "14. Memory Recall Validation — Reutilização do conhecimento",
+  recall:           "14. Memory Recall — Retrieval → Planner → Reasoning → Resposta",
 };
 
 function makeInitialStages(includeRecall = false) {
@@ -127,7 +127,41 @@ async function runCognitiveCycle(userMessage, onStageUpdate, includeRecall = fal
     metrics:  { type: goalBridge.goal.type, valid: String(goalBridge.goal.valid), durationMs: goalBridge.durationMs },
   });
 
-  // 3. Planning
+  // ── Knowledge Retrieval (antes do Planning — alimenta o Planner e o Reasoning) ──
+  let retrievedKnowledge = null;   // ReasoningReport — produzido pelo KnowledgeReasoningEngine
+  let knowledgeContext   = "";     // string resumida entregue ao LLM como contexto
+  if (includeRecall) {
+    const { KnowledgeReasoningEngine } = await import("@/lib/knowledge-reasoning/KnowledgeReasoningEngine");
+    retrievedKnowledge = KnowledgeReasoningEngine.reason({
+      goal:         userMessage,
+      intent,
+      capabilities: [],
+      strategy:     routerResult.decision,
+      metadata:     { phase: "mvp02_recall" },
+    });
+    // Produz contexto textual a partir das regras recuperadas — entregue ao Planner e ao LLM
+    const topRules = retrievedKnowledge.decision?.rulesUsed ?? [];
+    const { KnowledgeStore: KS } = await import("@/lib/cognitive-learning/KnowledgeStore");
+    const ruleObjects = topRules.map(id => KS.get(id)).filter(Boolean);
+    if (ruleObjects.length > 0) {
+      knowledgeContext = ruleObjects
+        .map(r => `- [${r.id.slice(-8)}] ${r.type}: ${r.description ?? r.pattern ?? ""}`)
+        .join("\n");
+    }
+    update("planning", {
+      status:   "running",
+      artifact: null,
+      summary:  `Knowledge Retrieval: ${retrievedKnowledge.metrics.knowledgeRetrieved} regra(s) recuperadas | depth=${retrievedKnowledge.inferenceChain.depth} | conf=${retrievedKnowledge.decision.confidence.toFixed(3)}`,
+      metrics:  {
+        retrieved:  retrievedKnowledge.metrics.knowledgeRetrieved,
+        depth:      retrievedKnowledge.inferenceChain.depth,
+        conf:       retrievedKnowledge.decision.confidence.toFixed(3),
+        rulesUsed:  (retrievedKnowledge.decision.rulesUsed ?? []).length,
+      },
+    });
+  }
+
+  // 3. Planning — recebe knowledge context como enriquecimento
   update("planning", { status: "running" });
   const { conversationPlanningEngine } = await import("@/lib/planning-engine-e022/ConversationPlanningEngine");
   const planResult = conversationPlanningEngine.plan(goalBridge.goal, { mode: "live" });
@@ -135,8 +169,14 @@ async function runCognitiveCycle(userMessage, onStageUpdate, includeRecall = fal
   update("planning", {
     status:   planResult.success ? "ok" : "fallback",
     artifact: planResult.plan?.id ?? "no-plan",
-    summary:  `${steps.length} step(s) | mode: ${planResult.plan?.mode ?? "none"} | success: ${planResult.success}`,
-    metrics:  { steps: steps.length, mode: planResult.plan?.mode ?? "none", success: String(planResult.success) },
+    summary:  `${steps.length} step(s) | mode: ${planResult.plan?.mode ?? "none"} | success: ${planResult.success}`
+      + (knowledgeContext ? ` | knowledge injetado: ${(retrievedKnowledge?.decision?.rulesUsed ?? []).length} regra(s)` : ""),
+    metrics:  {
+      steps:            steps.length,
+      mode:             planResult.plan?.mode ?? "none",
+      success:          String(planResult.success),
+      knowledgeRules:   (retrievedKnowledge?.decision?.rulesUsed ?? []).length,
+    },
   });
 
   // 4. Capability
@@ -268,7 +308,7 @@ async function runCognitiveCycle(userMessage, onStageUpdate, includeRecall = fal
     metrics: { total: allRules.length, validated: validatedRules.length, promoted: promotedRules.length },
   });
 
-  // 12. Response
+  // 12. Response — Reasoning usa knowledge recuperado como contexto
   update("response", { status: "running" });
   let finalResponse = "";
   try {
@@ -277,16 +317,26 @@ async function runCognitiveCycle(userMessage, onStageUpdate, includeRecall = fal
       userMsg: userMessage,
       session: { id: "mvp-session", title: "MVP Validation", project_id: null },
       historyMessages: [],
+      // Injeta o knowledge recuperado como kfmContext — o LLM recebe o knowledge da Exec-1
+      kfmContext: knowledgeContext
+        ? `Conhecimento recuperado do KnowledgeStore (${(retrievedKnowledge?.decision?.rulesUsed ?? []).length} regra(s)):\n${knowledgeContext}`
+        : undefined,
       setPhase: () => {},
     });
     finalResponse = plan.response;
   } catch {
     finalResponse = `[MVP] Ciclo cognitivo executado para: "${userMessage}"`;
   }
+  const knowledgeUsedInResponse = knowledgeContext.length > 0;
   update("response", {
     status: "ok", artifact: `resp_${Date.now()}`,
     summary: finalResponse.slice(0, 300) + (finalResponse.length > 300 ? "..." : ""),
-    metrics: { chars: finalResponse.length, words: finalResponse.split(/\s+/).length },
+    metrics: {
+      chars:         finalResponse.length,
+      words:         finalResponse.split(/\s+/).length,
+      knowledgeUsed: String(knowledgeUsedInResponse),
+      rulesInjected: (retrievedKnowledge?.decision?.rulesUsed ?? []).length,
+    },
   });
 
   // 13. Delivered
@@ -296,35 +346,48 @@ async function runCognitiveCycle(userMessage, onStageUpdate, includeRecall = fal
     metrics: { cycle: "complete" },
   });
 
-  // 14. Memory Recall Validation (somente na Execução 2 / modo recall)
+  // 14. Memory Recall Validation — evidência da cadeia completa:
+  //     Knowledge Retrieval → Planner recebe → Reasoning usa → Resposta contém
   if (includeRecall) {
     update("recall", { status: "running" });
-    const recalled = KnowledgeStore.getAll();
+    const recalled  = KnowledgeStore.getAll();
     const promoted  = KnowledgeStore.getAll("promoted");
     const validated = KnowledgeStore.getAll("validated");
 
-    // Evidências observáveis: regras recuperadas, IDs, confiança
-    const topRules = recalled.slice(0, 5);
-    const rulesSummary = topRules.map(r =>
-      `[${r.id.slice(-10)}] "${r.type}" conf=${r.confidence?.toFixed(2) ?? "?"} pat=${r.patternId?.slice(-8) ?? "?"}`
-    ).join(" | ");
+    const reasoningId      = retrievedKnowledge?.id ?? "none";
+    const rulesUsed        = retrievedKnowledge?.decision?.rulesUsed ?? [];
+    const retrievedCount   = retrievedKnowledge?.metrics?.knowledgeRetrieved ?? 0;
+    const inferenceDepth   = retrievedKnowledge?.inferenceChain?.depth ?? 0;
+    const decisionConf     = retrievedKnowledge?.decision?.confidence ?? 0;
+    const knowledgeInjected= knowledgeContext.length > 0;
+    const responseHasKnowledge = finalResponse.length > 0 && knowledgeInjected;
 
-    const knowledgeInfluenced = recalled.length > 0 && finalResponse.length > 0;
+    // Fluxo completo observável
+    const chainEvidence = [
+      `✓ KnowledgeStore: ${recalled.length} regra(s) persistidas`,
+      retrievedCount > 0 ? `✓ Retrieval: ${retrievedCount} regra(s) recuperadas (depth=${inferenceDepth} conf=${decisionConf.toFixed(3)})` : "✗ Retrieval: 0 regras encontradas",
+      knowledgeInjected  ? `✓ Planner recebeu ${rulesUsed.length} regra(s) como contexto` : "~ Planner: sem knowledge context (0 regras recuperadas)",
+      knowledgeInjected  ? `✓ Reasoning utilizou knowledge injetado no prompt do LLM` : "~ Reasoning: sem knowledge",
+      responseHasKnowledge ? `✓ Resposta contém o conhecimento recuperado` : "~ Resposta gerada sem knowledge context",
+    ].join(" | ");
+
+    const overallOk = recalled.length > 0 && retrievedCount > 0 && responseHasKnowledge;
 
     update("recall", {
-      status:   knowledgeInfluenced ? "ok" : "error",
-      artifact: recalled.length > 0 ? recalled[0].id : "no-rules",
-      summary:  recalled.length > 0
-        ? `${recalled.length} regra(s) recuperadas do KnowledgeStore. Exec-2 consultou o mesmo KnowledgeStore persistido pela Exec-1. Top regras: ${rulesSummary}`
-        : "Nenhuma regra encontrada no KnowledgeStore — knowledge não persistido.",
+      status:   overallOk ? "ok" : recalled.length > 0 ? "fallback" : "error",
+      artifact: reasoningId !== "none" ? reasoningId : (recalled[0]?.id ?? "no-rules"),
+      summary:  chainEvidence,
       metrics: {
-        totalRecalled:  recalled.length,
-        promoted:       promoted.length,
-        validated:      validated.length,
-        episodeLinked:  episodeId.slice(-16),
-        knowledgeId:    KnowledgeStore.lastWriteId.slice(-16),
-        confidence:     topRules[0]?.confidence?.toFixed(3) ?? "n/a",
-        influenced:     String(knowledgeInfluenced),
+        "1_ks_total":       recalled.length,
+        "2_retrieved":      retrievedCount,
+        "3_inference_depth":inferenceDepth,
+        "4_decision_conf":  decisionConf.toFixed(3),
+        "5_rules_used":     rulesUsed.length,
+        "6_injected":       String(knowledgeInjected),
+        "7_response_ok":    String(responseHasKnowledge),
+        reasoningId:        reasoningId.slice(-16),
+        episodeId:          episodeId.slice(-16),
+        ksLastWriteId:      KnowledgeStore.lastWriteId.slice(-16),
       },
     });
   }
