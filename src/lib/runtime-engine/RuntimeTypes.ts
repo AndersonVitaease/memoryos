@@ -91,7 +91,10 @@ export interface RuntimeExecutionContext {
   stepResults:              StepResult[];
   cancelRequested:          boolean;
   timeoutAt:                number | null;
+  /** ADR-004: typed contribution bag — each engine writes only its own section */
   readonly metadata:        Record<string, unknown>;
+  /** ADR-004: typed population contract — preferred over metadata for new contributions */
+  contribution:             Partial<RuntimeMetadata>;
 }
 
 // ── Capability executor interface (Dependency Inversion) ──────────────────────
@@ -138,6 +141,65 @@ export interface RuntimeEvent {
   readonly status:      ExecutionStatus | StepStatus;
   readonly durationMs:  number | null;
   readonly timestamp:   number;
+}
+
+// ── RuntimeMetadata — ADR-004 — contrato de população do ExecutionReport ─────
+//
+// Cada Engine escreve SOMENTE a sua própria seção.
+// O Runtime lê este objeto para montar o ExecutionReport final.
+// Nenhum Engine escreve campos de outro Engine.
+// Proprietários declarados — sem convenção implícita.
+
+export interface RuntimeMetadataRouter {
+  /** Proprietário: PrimaryConversationRouter */
+  readonly userMessage:      string;
+  readonly intent:           string;
+  readonly intentConf:       number;
+  readonly routingDecision:  string;
+}
+
+export interface RuntimeMetadataGoal {
+  /** Proprietário: ConversationGoalBridge */
+  readonly goalType:         string;
+  readonly goalConfidence:   number;
+}
+
+export interface RuntimeMetadataConnector {
+  /** Proprietário: ConnectorRuntime (via ctx.metadata após dispatch) */
+  readonly connector:        string;
+  readonly capability:       string;
+  readonly executionDurationMs: number;
+}
+
+export interface RuntimeMetadataEpisode {
+  /** Proprietário: EpisodeStore / CognitiveRuntime */
+  readonly episodeId:        string;
+}
+
+export interface RuntimeMetadataKnowledge {
+  /** Proprietário: KnowledgeStore */
+  readonly knowledgeStoreBefore: number;
+  readonly knowledgeStoreAfter:  number;
+  readonly ksLastWriteId:        string;
+}
+
+// Seções tipadas — cada Engine contribui com a sua (null = Engine não executou)
+export interface RuntimeMetadata {
+  readonly router?:    RuntimeMetadataRouter;
+  readonly goal?:      RuntimeMetadataGoal;
+  readonly connector?: RuntimeMetadataConnector;
+  readonly episode?:   RuntimeMetadataEpisode;
+  readonly knowledge?: RuntimeMetadataKnowledge;
+  /** Seções dos engines cognitivos (já tipadas em ExecutionReport) */
+  readonly retrieval?: ExecutionReportRetrieval;
+  readonly planner?:   ExecutionReportPlanner;
+  readonly learning?:  ExecutionReportLearning;
+  readonly memory?:    ExecutionReportMemory;
+  readonly response?:  ExecutionReportResponse;
+  /** Warnings acumulados durante execução */
+  readonly warnings?:  readonly string[];
+  /** Erro fatal capturado pelo Runtime */
+  readonly fatalError?: string;
 }
 
 // ── ExecutionReport — ADR-003 — contrato oficial do Runtime ──────────────────

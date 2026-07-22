@@ -532,7 +532,8 @@ class ConversationPipeline {
           console.log("[RUNTIME] Pipeline v2: engine READY — registry:", _probeReg.list(), `connectors=${_probeReg.count()}`);
           // [EF-49.2 probe] RuntimeEngine
           try { const { ef492Store: _s } = await import("@/lib/ef492/RuntimePipelineInstrument"); _s.record(executionId, { layer: "ConversationRuntimeEngine", source: "production_runtime", timestamp: Date.now(), durationMs: null, input: `ExecutionPlan(${planResult.plan.steps.length} steps)`, output: "ExecutionResult", caller: "ConversationPipeline", next: "UniversalConnectorRouter", status: "executed" }); } catch { /* non-blocking */ }
-          const executionResult = await _realEngine.execute(planResult.plan);
+          // ADR-003/ADR-004: engine.execute() returns { executionResult, executionReport }
+          const { executionResult } = await _realEngine.execute(planResult.plan);
           const t0connector = Date.now();
 
           conversationStore.emit({

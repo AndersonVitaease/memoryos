@@ -96,21 +96,21 @@ export async function runRuntimeEngineTests(): Promise<{
   results.push(await run("T01 — execução simples 1 step → completed", async () => {
     const engine = new ConversationRuntimeEngine(new MockCapabilityExecutor(10));
     const plan   = makePlan([{ connector: "gmail", capability: "readInbox" }]);
-    const result = await engine.execute(plan);
-    assertEqual(result.status, "completed", "status");
-    assertEqual(result.steps.length, 1, "1 step result");
-    assertEqual(result.steps[0].status, "completed", "step status");
-    assertEqual(result.steps[0].connector, "gmail", "connector");
-    assertEqual(result.steps[0].capability, "readInbox", "capability");
-    assert(result.durationMs >= 0, "durationMs >= 0");
+    const { executionResult } = await engine.execute(plan);
+    assertEqual(executionResult.status, "completed", "status");
+    assertEqual(executionResult.steps.length, 1, "1 step result");
+    assertEqual(executionResult.steps[0].status, "completed", "step status");
+    assertEqual(executionResult.steps[0].connector, "gmail", "connector");
+    assertEqual(executionResult.steps[0].capability, "readInbox", "capability");
+    assert(executionResult.durationMs >= 0, "durationMs >= 0");
   }));
 
   // T02 — Plano vazio → completed, 0 steps
   results.push(await run("T02 — plano vazio → completed, 0 steps", async () => {
     const engine = new ConversationRuntimeEngine(new MockCapabilityExecutor(10));
-    const result = await engine.execute(emptyPlan());
-    assertEqual(result.status, "completed", "status");
-    assertEqual(result.steps.length, 0, "no steps");
+    const { executionResult } = await engine.execute(emptyPlan());
+    assertEqual(executionResult.status, "completed", "status");
+    assertEqual(executionResult.steps.length, 0, "no steps");
   }));
 
   // T03 — Múltiplos steps → todos completed
@@ -121,19 +121,19 @@ export async function runRuntimeEngineTests(): Promise<{
       { connector: "calendar", capability: "listToday"  },
       { connector: "drive",    capability: "searchFiles" },
     ]);
-    const result = await engine.execute(plan);
-    assertEqual(result.status, "completed", "status");
-    assertEqual(result.steps.length, 3, "3 step results");
-    for (const s of result.steps) assertEqual(s.status, "completed", `step ${s.stepId}`);
+    const { executionResult } = await engine.execute(plan);
+    assertEqual(executionResult.status, "completed", "status");
+    assertEqual(executionResult.steps.length, 3, "3 step results");
+    for (const s of executionResult.steps) assertEqual(s.status, "completed", `step ${s.stepId}`);
   }));
 
   // T04 — Falha num step → status=failed
   results.push(await run("T04 — step falha → execution status=failed", async () => {
     const engine = new ConversationRuntimeEngine(new FailingExecutor());
     const plan   = makePlan([{ connector: "gmail", capability: "readInbox" }]);
-    const result = await engine.execute(plan);
-    assertEqual(result.status, "failed", "status");
-    assert(result.errors.length > 0, "errors must not be empty");
+    const { executionResult } = await engine.execute(plan);
+    assertEqual(executionResult.status, "failed", "status");
+    assert(executionResult.errors.length > 0, "errors must not be empty");
   }));
 
   // T05 — Cancelamento
@@ -145,34 +145,18 @@ export async function runRuntimeEngineTests(): Promise<{
       { connector: "gmail", capability: "readInbox" },
     ]);
     const execPromise = engine.execute(plan);
-    // Let first step start, then cancel
     await new Promise((r) => setTimeout(r, 50));
     const runnings = engine.getRunningExecutions();
     if (runnings.length > 0) engine.cancel(runnings[0].executionId);
-    const result = await execPromise;
+    const { executionResult } = await execPromise;
     assert(
-      result.status === "cancelled" || result.status === "completed",
+      executionResult.status === "cancelled" || executionResult.status === "completed",
       "status must be cancelled or completed (timing-dependent)",
     );
   }));
 
   // T06 — Timeout de step
   results.push(await run("T06 — step timeout → execution status=timeout", async () => {
-    const engine = new ConversationRuntimeEngine(new SlowExecutor());
-    (engine as unknown as { _contexts: Map<string, { timeoutAt: number }> });
-    // Use a plan and override step timeout to 200ms via a custom executor
-    const fastTimeoutExecutor: ICapabilityExecutor = {
-      async execute(_: CapabilityExecutorInput): Promise<CapabilityExecutorOutput> {
-        await new Promise((r) => setTimeout(r, 500));
-        return { status: "completed", output: {}, error: null };
-      },
-    };
-    // Wrap engine with very short timeout
-    const shortEngine = new ConversationRuntimeEngine(fastTimeoutExecutor);
-    // Override timeout to a tiny value via internal mutation for test
-    const plan = makePlan([{ connector: "gmail", capability: "readInbox" }]);
-    // The test verifies that an executor that times out eventually returns timeout or fails
-    // We use a real slow executor and trust step timeout at 10s; use a 100ms mock instead
     const timedExecutor: ICapabilityExecutor = {
       async execute(_2: CapabilityExecutorInput): Promise<CapabilityExecutorOutput> {
         await new Promise((r) => setTimeout(r, 100));
@@ -180,10 +164,10 @@ export async function runRuntimeEngineTests(): Promise<{
       },
     };
     const normalEngine = new ConversationRuntimeEngine(timedExecutor);
-    const result = await normalEngine.execute(plan);
-    // Should complete normally (step timeout only fires when executor is truly slow)
+    const plan = makePlan([{ connector: "gmail", capability: "readInbox" }]);
+    const { executionResult } = await normalEngine.execute(plan);
     assert(
-      ["completed", "timeout", "failed"].includes(result.status),
+      ["completed", "timeout", "failed"].includes(executionResult.status),
       "must reach a terminal state",
     );
   }));
@@ -207,8 +191,8 @@ export async function runRuntimeEngineTests(): Promise<{
   results.push(await run("T08 — executionIds únicos entre execuções", async () => {
     const engine = new ConversationRuntimeEngine(new MockCapabilityExecutor(10));
     const plan   = makePlan([{ connector: "gmail", capability: "readInbox" }]);
-    const [r1, r2] = await Promise.all([engine.execute(plan), engine.execute(makePlan([{ connector: "calendar", capability: "listToday" }]))]);
-    assert(r1.executionId !== r2.executionId, "executionIds must be unique");
+    const [w1, w2] = await Promise.all([engine.execute(plan), engine.execute(makePlan([{ connector: "calendar", capability: "listToday" }]))]);
+    assert(w1.executionResult.executionId !== w2.executionResult.executionId, "executionIds must be unique");
   }));
 
   // T09 — Métricas acumuladas
@@ -221,14 +205,16 @@ export async function runRuntimeEngineTests(): Promise<{
     assert(after >= before + 2, "totalCompleted must increment");
   }));
 
-  // T10 — Estado final imutável
-  results.push(await run("T10 — ExecutionResult é imutável", () => {
+  // T10 — ExecutionReport é imutável e retornado junto com ExecutionResult
+  results.push(await run("T10 — ExecutionWithReport é imutável (ADR-003/ADR-004)", () => {
     const engine = new ConversationRuntimeEngine(new MockCapabilityExecutor(10));
     const plan   = makePlan([{ connector: "gmail", capability: "readInbox" }]);
-    return engine.execute(plan).then((result) => {
+    return engine.execute(plan).then(({ executionResult, executionReport }) => {
       let threw = false;
-      try { (result as Record<string, unknown>)["hacked"] = true; } catch { threw = true; }
-      assert(threw || (result as Record<string, unknown>)["hacked"] === undefined, "result must be immutable");
+      try { (executionResult as Record<string, unknown>)["hacked"] = true; } catch { threw = true; }
+      assert(threw || (executionResult as Record<string, unknown>)["hacked"] === undefined, "executionResult must be immutable");
+      assert(executionReport !== null && typeof executionReport === "object", "executionReport must exist");
+      assert(typeof executionReport.executionId === "string", "executionReport.executionId must be string");
     });
   }));
 
@@ -236,8 +222,8 @@ export async function runRuntimeEngineTests(): Promise<{
   results.push(await run("T11 — getExecution(id) retorna contexto", async () => {
     const engine = new ConversationRuntimeEngine(new MockCapabilityExecutor(10));
     const plan   = makePlan([{ connector: "gmail", capability: "readInbox" }]);
-    const result = await engine.execute(plan);
-    const ctx    = engine.getExecution(result.executionId);
+    const { executionResult } = await engine.execute(plan);
+    const ctx    = engine.getExecution(executionResult.executionId);
     assert(ctx !== null, "context must exist");
     assertEqual(ctx!.planId,  plan.id,         "planId");
     assertEqual(ctx!.goalId,  plan.goalId,      "goalId");
@@ -273,9 +259,9 @@ export async function runRuntimeEngineTests(): Promise<{
   results.push(await run("T14 — plan.goalId propagado para ExecutionResult.goalId", async () => {
     const engine = new ConversationRuntimeEngine(new MockCapabilityExecutor(10));
     const plan   = makePlan([{ connector: "memory", capability: "query" }]);
-    const result = await engine.execute(plan);
-    assertEqual(result.planId,  plan.id,      "planId");
-    assertEqual(result.goalId,  plan.goalId,  "goalId");
+    const { executionResult } = await engine.execute(plan);
+    assertEqual(executionResult.planId,  plan.id,      "planId");
+    assertEqual(executionResult.goalId,  plan.goalId,  "goalId");
   }));
 
   // T15 — Nenhum Connector real é chamado (MockExecutor nunca faz fetch)

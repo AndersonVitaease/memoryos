@@ -80,6 +80,8 @@ export class ExecutionContextFactory {
         stepCount: plan.steps.length,
         goalType:  plan.goalType,
       },
+      // ADR-004: typed contribution bag — engines write their section here
+      contribution:    {},
     };
   }
 }

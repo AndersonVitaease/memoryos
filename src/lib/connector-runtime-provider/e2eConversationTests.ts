@@ -92,7 +92,8 @@ async function runE2EPipeline(
   registry.register(stub);
   const executor = new ConnectorCapabilityExecutor(new UniversalConnectorRouter(registry));
   const engine   = new ConversationRuntimeEngine(executor);
-  const executionResult = await engine.execute(planResult.plan);
+  // ADR-003/ADR-004: destructure ExecutionWithReport
+  const { executionResult } = await engine.execute(planResult.plan);
 
   // 4. Synthesis
   const synthesis = await synthesizeConnectorResult(executionResult, userMessage, goal.type);

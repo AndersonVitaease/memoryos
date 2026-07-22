@@ -194,23 +194,25 @@ export class OfficialRuntimeBridgeClass {
     if (!planResult.success || planResult.plan.steps.length === 0) {
       // Empty plan = goalType not routable (e.g. connectivity.ping → memory.query)
       // This is a valid non-connector path — return a synthetic "ok" result
+      const t_empty = Date.now();
       const emptyResult: BridgeInvocationResult = {
         success:         true,
         data:            null,
         allOutputs:      [],
         status:          "NOT_ROUTABLE",
         error:           null,
-        durationMs:      Date.now() - t0,
-        executionId:     `bridge-empty-${Date.now()}`,
+        durationMs:      t_empty - t0,
+        executionId:     `bridge-empty-${t_empty}`,
         executionResult: {
-          executionId: `bridge-empty-${Date.now()}`,
+          executionId: `bridge-empty-${t_empty}`,
           planId:      planResult.plan.id,
+          goalId:      planResult.plan.goalId,
           status:      "completed",
-          steps:       [],
-          errors:      [],
-          durationMs:  Date.now() - t0,
+          steps:       Object.freeze([]),
+          errors:      Object.freeze([]),
+          durationMs:  t_empty - t0,
           startedAt:   t0,
-          completedAt: Date.now(),
+          finishedAt:  t_empty,
         },
       };
       this._track(emptyResult);
@@ -220,7 +222,8 @@ export class OfficialRuntimeBridgeClass {
     // ── 4. Execute via ConversationRuntimeEngine (official path) ─────────────
     try {
       const engine = await getRealRuntimeEngine();
-      const executionResult = await engine.execute(planResult.plan);
+      // ADR-003/ADR-004: destructure ExecutionWithReport
+      const { executionResult } = await engine.execute(planResult.plan);
 
       const completedSteps = executionResult.steps.filter(
         (s) => s.status === "completed" && s.output !== null,
@@ -251,23 +254,25 @@ export class OfficialRuntimeBridgeClass {
 
     } catch (err) {
       this._totalBypassed++;
+      const t_err = Date.now();
       const errResult: BridgeInvocationResult = {
         success:         false,
         data:            null,
         allOutputs:      [],
         status:          "FAILED",
         error:           err instanceof Error ? err.message : String(err),
-        durationMs:      Date.now() - t0,
-        executionId:     `bridge-err-${Date.now()}`,
+        durationMs:      t_err - t0,
+        executionId:     `bridge-err-${t_err}`,
         executionResult: {
-          executionId: `bridge-err-${Date.now()}`,
+          executionId: `bridge-err-${t_err}`,
           planId:      planResult.plan.id,
+          goalId:      planResult.plan.goalId,
           status:      "failed",
-          steps:       [],
-          errors:      [err instanceof Error ? err.message : String(err)],
-          durationMs:  Date.now() - t0,
+          steps:       Object.freeze([]),
+          errors:      Object.freeze([err instanceof Error ? err.message : String(err)]),
+          durationMs:  t_err - t0,
           startedAt:   t0,
-          completedAt: Date.now(),
+          finishedAt:  t_err,
         },
       };
       this._track(errResult);
@@ -315,23 +320,25 @@ export class OfficialRuntimeBridgeClass {
     const planResult = conversationPlanningEngine.plan(goal);
 
     if (!planResult.success || planResult.plan.steps.length === 0) {
+      const t_empty2 = Date.now();
       const emptyResult: BridgeInvocationResult = {
         success:         true,
         data:            null,
         allOutputs:      [],
         status:          "NOT_ROUTABLE",
         error:           null,
-        durationMs:      Date.now() - t0,
-        executionId:     `bridge-empty-${Date.now()}`,
+        durationMs:      t_empty2 - t0,
+        executionId:     `bridge-empty-${t_empty2}`,
         executionResult: {
-          executionId: `bridge-empty-${Date.now()}`,
+          executionId: `bridge-empty-${t_empty2}`,
           planId:      planResult.plan.id,
+          goalId:      planResult.plan.goalId,
           status:      "completed",
-          steps:       [],
-          errors:      [],
-          durationMs:  Date.now() - t0,
+          steps:       Object.freeze([]),
+          errors:      Object.freeze([]),
+          durationMs:  t_empty2 - t0,
           startedAt:   t0,
-          completedAt: Date.now(),
+          finishedAt:  t_empty2,
         },
       };
       this._track(emptyResult);
@@ -356,12 +363,13 @@ export class OfficialRuntimeBridgeClass {
         executionResult: {
           executionId: `bridge-diverge-${Date.now()}`,
           planId:      planResult.plan.id,
+          goalId:      planResult.plan.goalId,
           status:      "failed",
-          steps:       [],
-          errors:      [`ConnectorDivergence: declared="${connectorId}" resolved="${resolvedConnector}"`],
+          steps:       Object.freeze([]),
+          errors:      Object.freeze([`ConnectorDivergence: declared="${connectorId}" resolved="${resolvedConnector}"`]),
           durationMs:  Date.now() - t0,
           startedAt:   t0,
-          completedAt: Date.now(),
+          finishedAt:  Date.now(),
         },
       };
       this._track(divergenceResult);
@@ -371,7 +379,8 @@ export class OfficialRuntimeBridgeClass {
     // ── 5. Execute via ConversationRuntimeEngine (official path) ─────────────
     try {
       const engine = await getRealRuntimeEngine();
-      const executionResult = await engine.execute(planResult.plan);
+      // ADR-003/ADR-004: destructure ExecutionWithReport
+      const { executionResult } = await engine.execute(planResult.plan);
 
       const completedSteps = executionResult.steps.filter(
         (s) => s.status === "completed" && s.output !== null,
@@ -402,23 +411,25 @@ export class OfficialRuntimeBridgeClass {
 
     } catch (err) {
       this._totalBypassed++;
+      const t_err = Date.now();
       const errResult: BridgeInvocationResult = {
         success:         false,
         data:            null,
         allOutputs:      [],
         status:          "FAILED",
         error:           err instanceof Error ? err.message : String(err),
-        durationMs:      Date.now() - t0,
-        executionId:     `bridge-err-${Date.now()}`,
+        durationMs:      t_err - t0,
+        executionId:     `bridge-err-${t_err}`,
         executionResult: {
-          executionId: `bridge-err-${Date.now()}`,
+          executionId: `bridge-err-${t_err}`,
           planId:      planResult.plan.id,
+          goalId:      planResult.plan.goalId,
           status:      "failed",
-          steps:       [],
-          errors:      [err instanceof Error ? err.message : String(err)],
-          durationMs:  Date.now() - t0,
+          steps:       Object.freeze([]),
+          errors:      Object.freeze([err instanceof Error ? err.message : String(err)]),
+          durationMs:  t_err - t0,
           startedAt:   t0,
-          completedAt: Date.now(),
+          finishedAt:  t_err,
         },
       };
       this._track(errResult);

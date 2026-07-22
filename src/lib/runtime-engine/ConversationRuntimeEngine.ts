@@ -34,6 +34,7 @@ import type {
   ICapabilityExecutor,
   RuntimeEvent,
   RuntimeEventType,
+  RuntimeMetadata,
 } from "./RuntimeTypes";
 import { makeExecutionId }             from "./RuntimeTypes";
 import { RuntimeDebug }               from "@/lib/debug/RuntimeDebug";
@@ -58,37 +59,64 @@ export class ConversationRuntimeEngine {
   private _totalFailed    = 0;
   private _totalCancelled = 0;
 
-  // ADR-003: Runtime-owned ExecutionReport factory.
-  // Called by _finalize() — only place where ExecutionReport is created.
+  // ADR-003 / ADR-004: Runtime-owned ExecutionReport factory.
+  // Reads exclusively from ctx.contribution (typed, ADR-004) with
+  // fallback to ctx.metadata (untyped legacy bag) for backward compatibility.
+  // Only place in the codebase where ExecutionReport is created.
   private _buildReport(
     ctx: RuntimeExecutionContext,
     result: ExecutionResult,
     t_start: number,
     overrides: Partial<ExecutionReport> = {},
   ): ExecutionReport {
+    const c = ctx.contribution;
+
+    // ── ADR-004: integrity validation — collect warnings for missing contributions ──
+    const warnings: string[] = [...(c.warnings ?? [])];
+    if (!c.router)    warnings.push("ADR-004: router contribution missing (PrimaryConversationRouter)");
+    if (!c.goal)      warnings.push("ADR-004: goal contribution missing (ConversationGoalBridge)");
+    if (!c.knowledge) warnings.push("ADR-004: knowledge contribution missing (KnowledgeStore)");
+
+    // ── Read typed contribution (ADR-004), fall back to legacy metadata ──────────
+    const userMessage  = c.router?.userMessage          ?? String(ctx.metadata["userMessage"] ?? "");
+    const intent       = (c.router?.intent               ?? String(ctx.metadata["intent"] ?? "")) || null;
+    const intentConf   = c.router?.intentConf           ?? Number(ctx.metadata["intentConf"] ?? 0);
+    const goalType     = (c.goal?.goalType               ?? String(ctx.metadata["goalType"] ?? "")) || null;
+    const connector    = c.connector?.connector         ?? String(ctx.metadata["connector"] ?? result.steps[0]?.connector ?? "");
+    const capability   = c.connector?.capability        ?? String(ctx.metadata["capability"] ?? result.steps[0]?.capability ?? "");
+    const episodeId    = (c.episode?.episodeId           ?? String(ctx.metadata["episodeId"] ?? "")) || null;
+    const ksBefore     = c.knowledge?.knowledgeStoreBefore ?? Number(ctx.metadata["knowledgeStoreBefore"] ?? 0);
+    const ksAfter      = c.knowledge?.knowledgeStoreAfter  ?? Number(ctx.metadata["knowledgeStoreAfter"]  ?? 0);
+    const ksLastWrite  = c.knowledge?.ksLastWriteId     ?? String(ctx.metadata["ksLastWriteId"] ?? "none");
+    const retrieval    = c.retrieval  ?? (ctx.metadata["retrieval"] as ExecutionReport["retrieval"]) ?? null;
+    const planner      = c.planner    ?? (ctx.metadata["planner"]  as ExecutionReport["planner"])   ?? null;
+    const learning     = c.learning   ?? (ctx.metadata["learning"] as ExecutionReport["learning"])  ?? null;
+    const memory       = c.memory     ?? (ctx.metadata["memory"]   as ExecutionReport["memory"])    ?? null;
+    const response     = c.response   ?? (ctx.metadata["response"] as ExecutionReport["response"])  ?? null;
+
     return Object.freeze({
       executionId:           result.executionId,
-      userMessage:           String(ctx.metadata["userMessage"] ?? ""),
-      intent:                String(ctx.metadata["intent"] ?? ""),
-      intentConf:            Number(ctx.metadata["intentConf"] ?? 0),
+      userMessage,
+      intent,
+      intentConf,
       goalId:                result.goalId,
-      goalType:              String(ctx.metadata["goalType"] ?? ""),
+      goalType,
       planId:                result.planId,
-      connector:             String(ctx.metadata["connector"] ?? result.steps[0]?.connector ?? ""),
-      capability:            String(ctx.metadata["capability"] ?? result.steps[0]?.capability ?? ""),
-      episodeId:             String(ctx.metadata["episodeId"] ?? ""),
-      knowledgeStoreBefore:  Number(ctx.metadata["knowledgeStoreBefore"] ?? 0),
-      knowledgeStoreAfter:   Number(ctx.metadata["knowledgeStoreAfter"]  ?? 0),
-      knowledgeGrowth:       Number(ctx.metadata["knowledgeStoreAfter"]  ?? 0) - Number(ctx.metadata["knowledgeStoreBefore"] ?? 0),
-      ksLastWriteId:         String(ctx.metadata["ksLastWriteId"] ?? "none"),
-      retrieval:             (ctx.metadata["retrieval"] as ExecutionReport["retrieval"]) ?? null,
-      planner:               (ctx.metadata["planner"]  as ExecutionReport["planner"])   ?? null,
-      learning:              (ctx.metadata["learning"] as ExecutionReport["learning"])   ?? null,
-      memory:                (ctx.metadata["memory"]   as ExecutionReport["memory"])     ?? null,
-      response:              (ctx.metadata["response"] as ExecutionReport["response"])   ?? null,
+      connector,
+      capability,
+      episodeId,
+      knowledgeStoreBefore:  ksBefore,
+      knowledgeStoreAfter:   ksAfter,
+      knowledgeGrowth:       ksAfter - ksBefore,
+      ksLastWriteId:         ksLastWrite,
+      retrieval,
+      planner,
+      learning,
+      memory,
+      response,
       totalDurationMs:       Date.now() - t_start,
       errors:                result.errors,
-      warnings:              Object.freeze((ctx.metadata["warnings"] as string[]) ?? []),
+      warnings:              Object.freeze(warnings),
       ...overrides,
     } satisfies ExecutionReport);
   }
