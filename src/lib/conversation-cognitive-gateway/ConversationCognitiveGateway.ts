@@ -360,9 +360,29 @@ export class ConversationCognitiveGateway {
             return disambig;
           }
         } else {
-          // No repos found or NOT_CONFIGURED — fallback to repos.list
-          capability = "repos.list";
-          payload    = {};
+          // No repos found or NOT_CONFIGURED — cannot execute capability without owner/repo.
+          // Return a user-facing disambiguation message instead of silently running repos.list.
+          const noRepoAnswer: CognitiveAnswer = {
+            id:                makeCCGId("answer"),
+            requestId:         request.id,
+            executionId:       null,
+            answer:            `Não consegui identificar qual repositório usar para executar **${capability}**.\n\nPor favor, especifique o repositório na sua mensagem (ex: "no repositório owner/repo") ou acesse o dashboard e configure seu GitHub token para que eu possa listar os repositórios disponíveis.`,
+            source:            "conversation_memory" as AnswerSource,
+            intent:            "repository_analysis",
+            connectorsUsed:    [],
+            stagesExecuted:    [],
+            evidenceSources:   [],
+            confidence:        0,
+            durationMs:        Date.now() - t0,
+            timestamp:         Date.now(),
+            degraded:          true,
+            degradationReason: "Repository not resolved — owner/repo missing",
+            recoveryInfo:      "Specify repository in message or configure GitHub token",
+            pipelineStatus:    "NO_REPOSITORY",
+          };
+          this._diagnostics.push({ requestId: request.id, userMessage, intent, pipelineInvoked: false, answer: noRepoAnswer, timestamp: Date.now() });
+          if (this._diagnostics.length > 100) this._diagnostics.splice(0, this._diagnostics.length - 100);
+          return noRepoAnswer;
         }
       }
 
