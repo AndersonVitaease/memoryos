@@ -17,6 +17,7 @@ import type {
   CapabilityExecutorInput,
   CapabilityExecutorOutput,
   StepStatus,
+  ConnectorExecutionContext,
 } from "@/lib/runtime-engine/RuntimeTypes";
 import { UniversalConnectorRouter } from "./UniversalConnectorRouter";
 
@@ -26,9 +27,10 @@ export class ConnectorCapabilityExecutor implements ICapabilityExecutor {
   constructor(private readonly _router: UniversalConnectorRouter) {}
 
   async execute(input: CapabilityExecutorInput): Promise<CapabilityExecutorOutput> {
-    const { executionId, step } = input;
+    const { executionId, step, connectorCtx } = input;
 
-    const routerResult = await this._router.route(executionId, step);
+    // B-04: forward connectorCtx to UCR so it reaches UCRBridge and then the RuntimeConnector
+    const routerResult = await this._router.route(executionId, step, connectorCtx);
 
     // [CCE-PROBE-01] routerResult.result shape received by Executor
     console.log("[CCE-PROBE-01]", {

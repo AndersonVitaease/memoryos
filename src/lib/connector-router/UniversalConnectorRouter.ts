@@ -17,9 +17,10 @@
  * Nenhuma rede. Nenhum OAuth.
  */
 
-import type { ExecutionStep } from "@/lib/planning-engine-e022/ExecutionPlanTypes";
-import type { RouterResult }  from "./UCRTypes";
-import { ConnectorRegistry }  from "./ConnectorRegistry";
+import type { ExecutionStep }              from "@/lib/planning-engine-e022/ExecutionPlanTypes";
+import type { RouterResult, ConnectorInput } from "./UCRTypes";
+import type { ConnectorExecutionContext }   from "@/lib/runtime-engine/RuntimeTypes";
+import { ConnectorRegistry }               from "./ConnectorRegistry";
 
 // ── UniversalConnectorRouter ──────────────────────────────────────────────────
 
@@ -30,7 +31,8 @@ export class UniversalConnectorRouter {
    * Routes an ExecutionStep to the correct connector and executes it.
    * Never throws — always returns a RouterResult.
    */
-  async route(executionId: string, step: ExecutionStep): Promise<RouterResult> {
+  // B-04: connectorCtx added — carries real userId/workspaceId/sessionId to UCRBridge
+  async route(executionId: string, step: ExecutionStep, connectorCtx?: ConnectorExecutionContext): Promise<RouterResult> {
     const connector = this._registry.lookup(step.connector);
 
     // [RUNTIME-PROBE][UCR-01] UniversalConnectorRouter lookup result — THE DECISIVE PROBE
@@ -76,11 +78,16 @@ export class UniversalConnectorRouter {
       });
     }
 
-    const result = await connector.execute({
+    // B-04: pass connectorCtx into ConnectorInput so UCRBridge can forward it
+    const connectorInput: ConnectorInput = Object.freeze({
       executionId,
-      capability:  step.capability,
-      parameters:  step.parameters,
+      capability:   step.capability,
+      parameters:   step.parameters,
+      // B-04: real context — undefined means UCRBridge will use its own fallback
+      connectorCtx: connectorCtx,
     });
+
+    const result = await connector.execute(connectorInput);
 
     // [UCR-PROBE-02] Result returned by connector.execute() (UCRTypes.ConnectorResult)
     console.log("[UCR-PROBE-02]", {

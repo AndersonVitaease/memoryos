@@ -27,10 +27,14 @@ import { connectorMetrics }           from "@/lib/connector-runtime/ConnectorMet
 
 // ── DispatchInput ─────────────────────────────────────────────────────────────
 
+import type { ConnectorExecutionContext } from "./RuntimeTypes";
+
 export interface DispatchInput {
   readonly executionId:   string;
   readonly step:          ExecutionStep;
   readonly stepTimeoutMs: number;
+  /** B-03: real connector context forwarded from RuntimeExecutionContext.connectorCtx */
+  readonly connectorCtx:  ConnectorExecutionContext;
 }
 
 // ── ExecutionDispatcher ───────────────────────────────────────────────────────
@@ -44,7 +48,7 @@ export class ExecutionDispatcher {
    * Never throws — always returns a StepResult.
    */
   async dispatch(input: DispatchInput): Promise<StepResult> {
-    const { executionId, step, stepTimeoutMs } = input;
+    const { executionId, step, stepTimeoutMs, connectorCtx } = input;
     const startedAt  = Date.now();
     const retryCtx: RetryContext = { attempt: 1, maxAttempts: 1, lastError: null };
     // [RUNTIME-PROBE][EXD-01] ExecutionDispatcher.dispatch() entered
@@ -60,7 +64,8 @@ export class ExecutionDispatcher {
     });
 
     try {
-      const outputPromise = this._executor.execute({ executionId, step, retryCtx });
+      // B-03: connectorCtx forwarded intact — never re-created here
+      const outputPromise = this._executor.execute({ executionId, step, retryCtx, connectorCtx });
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("Step timeout")), Math.max(stepTimeoutMs, 100)),
       );

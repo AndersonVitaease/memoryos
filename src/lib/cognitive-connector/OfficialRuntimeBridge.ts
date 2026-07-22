@@ -38,7 +38,7 @@ import type { GoalType, ConversationGoal }  from "@/lib/goals/GoalTypes";
 import { makeConversationGoalId }            from "@/lib/goals/GoalTypes";
 import { conversationPlanningEngine }        from "@/lib/planning-engine-e022/ConversationPlanningEngine";
 import { getRealRuntimeEngine }              from "@/lib/connector-runtime-provider/ConnectorRuntimeProvider";
-import type { ExecutionResult }              from "@/lib/runtime-engine/RuntimeTypes";
+import type { ExecutionResult, ConnectorExecutionContext } from "@/lib/runtime-engine/RuntimeTypes";
 
 // ── ConnectorId → domain prefix map (for divergence guard) ───────────────────
 // Used by invokeGuarded to verify that the resolved connector matches
@@ -168,6 +168,7 @@ export class OfficialRuntimeBridgeClass {
     connectorId: string,
     operation:   string,
     parameters:  Record<string, unknown> = {},
+    callerCtx?:  ConnectorExecutionContext,
   ): Promise<BridgeInvocationResult> {
     const t0 = Date.now();
     this._totalInvocations++;
@@ -224,9 +225,16 @@ export class OfficialRuntimeBridgeClass {
 
     // ── 4. Execute via ConversationRuntimeEngine (official path) ─────────────
     // A-01: pass orbExecutionId so the Runtime ECF reuses it instead of generating exec-rt-*
+    // B-02: pass callerCtx (with origin="orb" fallback) so connectors get real identity
+    const orbCtx: ConnectorExecutionContext = callerCtx ?? Object.freeze({
+      userId:      "orb-caller",
+      workspaceId: "orb-caller",
+      sessionId:   orbExecutionId,
+      origin:      "orb",
+    });
     try {
       const engine = await getRealRuntimeEngine();
-      const { executionResult } = await engine.execute(planResult.plan, orbExecutionId);
+      const { executionResult } = await engine.execute(planResult.plan, orbExecutionId, orbCtx);
 
       const completedSteps = executionResult.steps.filter(
         (s) => s.status === "completed" && s.output !== null,
@@ -300,6 +308,7 @@ export class OfficialRuntimeBridgeClass {
     connectorId: string,
     operation:   string,
     parameters:  Record<string, unknown> = {},
+    callerCtx?:  ConnectorExecutionContext,
   ): Promise<BridgeInvocationResult & { divergence?: { declared: string; resolved: string } }> {
     const t0 = Date.now();
     this._totalInvocations++;
@@ -385,9 +394,16 @@ export class OfficialRuntimeBridgeClass {
 
     // ── 5. Execute via ConversationRuntimeEngine (official path) ─────────────
     // A-01: pass orbExecutionId so ECF reuses it — single ID through entire chain
+    // B-02: pass callerCtx so connectors receive real identity
+    const guardedCtx: ConnectorExecutionContext = callerCtx ?? Object.freeze({
+      userId:      "orb-caller",
+      workspaceId: "orb-caller",
+      sessionId:   orbExecutionId,
+      origin:      "orb",
+    });
     try {
       const engine = await getRealRuntimeEngine();
-      const { executionResult } = await engine.execute(planResult.plan, orbExecutionId);
+      const { executionResult } = await engine.execute(planResult.plan, orbExecutionId, guardedCtx);
 
       const completedSteps = executionResult.steps.filter(
         (s) => s.status === "completed" && s.output !== null,

@@ -35,6 +35,7 @@ import type {
   RuntimeEvent,
   RuntimeEventType,
   RuntimeMetadata,
+  ConnectorExecutionContext,
 } from "./RuntimeTypes";
 import { makeExecutionId }             from "./RuntimeTypes";
 import { RuntimeDebug }               from "@/lib/debug/RuntimeDebug";
@@ -131,10 +132,9 @@ export class ConversationRuntimeEngine {
 
   // ── Public API ────────────────────────────────────────────────────────────
 
-  // A-01: accept pipelineExecutionId so the Runtime reuses the Pipeline's canonical ID
-  // instead of generating its own. All downstream components (Dispatcher → CCE → UCR →
-  // UCRBridge → Connector) propagate this single ID without ever creating a new one.
-  async execute(plan: ExecutionPlan, pipelineExecutionId?: string): Promise<ExecutionWithReport> {
+  // A-01: accept pipelineExecutionId so the Runtime reuses the Pipeline's canonical ID.
+  // B-02: accept connectorCtx so real identity propagates to every connector.execute().
+  async execute(plan: ExecutionPlan, pipelineExecutionId?: string, connectorCtx?: ConnectorExecutionContext): Promise<ExecutionWithReport> {
     const t_start = Date.now();
 
     // [RUNTIME-PROBE][RTE-01] ConversationRuntimeEngine.execute() entered
@@ -150,8 +150,9 @@ export class ConversationRuntimeEngine {
       pipelineExecutionId: pipelineExecutionId ?? "not-provided",
       note:       "executorType=ConnectorCapabilityExecutor is expected. Registry may still be empty if placeholder.",
     });
-    // A-01: pass pipelineExecutionId into context so ECF reuses it instead of generating new one
-    const ctx = executionContextFactory.create(plan, this._policy, pipelineExecutionId);
+    // A-01: pass pipelineExecutionId into context so ECF reuses it instead of generating new one.
+    // B-02: pass connectorCtx so real identity is stored in RuntimeExecutionContext.
+    const ctx = executionContextFactory.create(plan, this._policy, pipelineExecutionId, connectorCtx);
 
     if (!ctx) {
       // Plan failed validation — return a structured failure + empty report.
@@ -212,6 +213,7 @@ export class ConversationRuntimeEngine {
         this._emit(ctx, "execution_step_started", step.id);
 
         // Step execution delegated to ExecutionDispatcher
+        // B-03: connectorCtx from RuntimeExecutionContext propagated intact
         const stepResult = await this._dispatcher.dispatch({
           executionId:   ctx.executionId,
           step,
@@ -219,6 +221,7 @@ export class ConversationRuntimeEngine {
             this._policy.stepTimeoutMs,
             (ctx.timeoutAt ?? Infinity) - Date.now(),
           ),
+          connectorCtx: ctx.connectorCtx,
         });
 
         ctx.stepResults.push(stepResult);

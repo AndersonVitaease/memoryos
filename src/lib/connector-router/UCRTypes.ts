@@ -27,10 +27,24 @@ export interface ConnectorCapability {
 
 // ── ConnectorInput / ConnectorResult ─────────────────────────────────────────
 
+// B-04: ConnectorExecutionContext imported from RuntimeTypes to avoid duplication.
+// We re-export a minimal shape here so UCRTypes stays self-contained for
+// consumers that don't import RuntimeTypes directly.
+export interface ConnectorCallerContext {
+  readonly userId:       string;
+  readonly workspaceId:  string;
+  readonly sessionId:    string;
+  readonly goalId?:      string;
+  readonly requestId?:   string;
+  readonly origin?:      string;
+}
+
 export interface ConnectorInput {
-  readonly executionId: string;
-  readonly capability:  string;
-  readonly parameters:  Readonly<Record<string, unknown>>;
+  readonly executionId:  string;
+  readonly capability:   string;
+  readonly parameters:   Readonly<Record<string, unknown>>;
+  /** B-04: real caller context forwarded from RuntimeExecutionContext.connectorCtx */
+  readonly connectorCtx?: ConnectorCallerContext;
 }
 
 // C-01: Full status vocabulary — all states from the runtime connector are preserved.

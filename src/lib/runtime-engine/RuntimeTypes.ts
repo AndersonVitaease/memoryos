@@ -84,6 +84,25 @@ export interface ExecutionResult {
 
 // ── Runtime execution context ─────────────────────────────────────────────────
 
+// ── ConnectorExecutionContext — B-01 ─────────────────────────────────────────
+// Real identity context propagated from the caller (Pipeline/ORB) all the way
+// down to every RuntimeConnector.execute() call.
+// No synthetic values ("ucr-bridge", "default", "user") are ever allowed here.
+export interface ConnectorExecutionContext {
+  /** Authenticated user ID from the session. */
+  readonly userId:       string;
+  /** Active workspace / project ID. */
+  readonly workspaceId:  string;
+  /** Session ID from the conversation session. */
+  readonly sessionId:    string;
+  /** Optional: goal ID driving this execution. */
+  readonly goalId?:      string;
+  /** Optional: opaque request ID for end-to-end tracing. */
+  readonly requestId?:   string;
+  /** Optional: human-readable origin label ("pipeline", "orb", "test"). */
+  readonly origin?:      string;
+}
+
 export interface RuntimeExecutionContext {
   readonly executionId:     string;
   readonly planId:          string;
@@ -97,6 +116,8 @@ export interface RuntimeExecutionContext {
   stepResults:              StepResult[];
   cancelRequested:          boolean;
   timeoutAt:                number | null;
+  /** B-01: real identity context — propagated to every connector.execute() call */
+  readonly connectorCtx:    ConnectorExecutionContext;
   /** ADR-004: typed contribution bag — each engine writes only its own section */
   readonly metadata:        Record<string, unknown>;
   /** ADR-004: typed population contract — preferred over metadata for new contributions */
@@ -106,9 +127,11 @@ export interface RuntimeExecutionContext {
 // ── Capability executor interface (Dependency Inversion) ──────────────────────
 
 export interface CapabilityExecutorInput {
-  readonly executionId: string;
-  readonly step:        ExecutionStep;
-  readonly retryCtx:    RetryContext;
+  readonly executionId:   string;
+  readonly step:          ExecutionStep;
+  readonly retryCtx:      RetryContext;
+  /** B-03: real connector context propagated from RuntimeExecutionContext.connectorCtx */
+  readonly connectorCtx:  ConnectorExecutionContext;
 }
 
 export interface CapabilityExecutorOutput {

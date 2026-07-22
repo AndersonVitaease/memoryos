@@ -82,16 +82,25 @@ class UCRConnectorBridge implements UCRConnector {
       connectorId: this._inner.id,
       capability:  input.capability,
       executionId: eid,
+      // B-05: log real context for observability
+      userId:      input.connectorCtx?.userId      ?? "anonymous",
+      workspaceId: input.connectorCtx?.workspaceId ?? "anonymous",
+      sessionId:   input.connectorCtx?.sessionId   ?? "anonymous",
+      origin:      input.connectorCtx?.origin      ?? "unknown",
     });
 
+    // B-05: use the real caller context when available — eliminate synthetic "ucr-bridge" values.
+    // connectorCtx is injected by the UCR from the RuntimeExecutionContext.connectorCtx field.
+    const ctx = input.connectorCtx;
     const result = await this._inner.execute(
       input.capability,
       input.parameters as Record<string, unknown>,
       {
         executionId: eid,
-        userId:      "ucr-bridge",
-        projectId:   "ucr-bridge",
-        sessionId:   "ucr-bridge",
+        userId:      ctx?.userId      ?? "anonymous",
+        projectId:   ctx?.workspaceId ?? "anonymous",
+        sessionId:   ctx?.sessionId   ?? "anonymous",
+        goalId:      ctx?.goalId,
       },
     );
 

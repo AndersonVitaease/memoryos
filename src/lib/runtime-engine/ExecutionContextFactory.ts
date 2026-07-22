@@ -8,11 +8,20 @@
  * Nenhum connector, nenhuma rede, nenhum OAuth.
  */
 
-import type { ExecutionPlan }           from "@/lib/planning-engine-e022/ExecutionPlanTypes";
-import type { RuntimeExecutionContext } from "./RuntimeTypes";
-import type { ExecutionPolicy }         from "./ExecutionPolicy";
-import { DEFAULT_EXECUTION_POLICY }    from "./ExecutionPolicy";
-import { makeExecutionId }             from "./RuntimeTypes";
+import type { ExecutionPlan }                                       from "@/lib/planning-engine-e022/ExecutionPlanTypes";
+import type { RuntimeExecutionContext, ConnectorExecutionContext }  from "./RuntimeTypes";
+import type { ExecutionPolicy }                                     from "./ExecutionPolicy";
+import { DEFAULT_EXECUTION_POLICY }                                from "./ExecutionPolicy";
+import { makeExecutionId }                                         from "./RuntimeTypes";
+
+// B-02: Fallback context used only when no real context is provided.
+// This is a last-resort sentinel — callers should always supply a real context.
+const ANONYMOUS_CONNECTOR_CTX: ConnectorExecutionContext = Object.freeze({
+  userId:      "anonymous",
+  workspaceId: "anonymous",
+  sessionId:   "anonymous",
+  origin:      "unknown",
+});
 
 // ── Validation result ─────────────────────────────────────────────────────────
 
@@ -54,9 +63,11 @@ export class ExecutionContextFactory {
    * @throws never — returns null on invalid plan instead
    */
   create(
-    plan:              ExecutionPlan,
-    policy:            ExecutionPolicy = DEFAULT_EXECUTION_POLICY,
+    plan:                 ExecutionPlan,
+    policy:               ExecutionPolicy = DEFAULT_EXECUTION_POLICY,
     pipelineExecutionId?: string,
+    // B-02: real caller context — propagated to every connector.execute() downstream
+    connectorCtx?:        ConnectorExecutionContext,
   ): RuntimeExecutionContext | null {
     const validation = this.validate(plan);
     if (!validation.valid) return null;
@@ -78,6 +89,8 @@ export class ExecutionContextFactory {
       stepResults:     [],
       cancelRequested: false,
       timeoutAt:       null,
+      // B-02: use real context when provided, fall back to anonymous sentinel
+      connectorCtx:    connectorCtx ?? ANONYMOUS_CONNECTOR_CTX,
       metadata:        {
         policy,
         stepCount: plan.steps.length,
