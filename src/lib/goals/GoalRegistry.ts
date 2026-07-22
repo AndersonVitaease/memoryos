@@ -358,7 +358,16 @@ const _builtins: GoalDefinition[] = [
     extractParams: (msg) => {
       const quoted = msg.match(/"([^"]+)"/)?.[1];
       const afterNoun = msg.match(/(?:o arquivo|o documento|arquivo|documento)\s+([a-z0-9\s\-_.]+?)(?:\s*$|\s+(?:no|em|do|da|de))/i)?.[1]?.trim();
-      return { fileName: quoted ?? afterNoun ?? null, rawText: msg.trim() };
+      // IA-008: fallback para respostas soltas a uma desambiguação (ex: "rg Aparecida - download"),
+      // que não batem no padrão "arquivo X" acima. Remove palavras de comando/filler conhecidas
+      // em vez de usar a frase inteira (rawText) como busca — evita que "download"/"baixar" etc.
+      // entrem no termo de busca do Drive.
+      const stripped = msg
+        .replace(/\b(baixar|baixe|baixa|baixo|baixando|download|downloads|exportar|exporte|exporta|abrir|abra|abre|ler|leia|o arquivo|o documento|arquivo|documento|por favor)\b/gi, "")
+        .replace(/[-–—]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      return { fileName: quoted ?? afterNoun ?? (stripped || null), rawText: msg.trim() };
     },
   },
   {
