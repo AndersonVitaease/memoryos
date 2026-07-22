@@ -365,7 +365,12 @@ const PATTERNS: Pattern[] = [
   {
     capability: "repos.list",
     keywords: [
-      "repositor", "repos", "list repos", "show repos", "my repos",
+      // IA-009: "repositor"/"repos" soltos removidos — "repos" é substring
+      // literal de "repositório", fazendo este padrão empatar (e vencer por
+      // ordem no array) contra padrões mais específicos como files.get em
+      // qualquer mensagem que mencione "repositório", mesmo sem intenção de
+      // listar nada (ex: "leia o arquivo X do repositório Y").
+      "list repos", "show repos", "my repos",
       "available repos", "what repos", "which repos", "quais repos",
       "meus repositorios", "listar repositorios", "repositorios disponiveis",
     ],
