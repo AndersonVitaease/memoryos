@@ -30,6 +30,7 @@ export type RuntimeCapabilityId =
   | "runtime.execution.get"
   | "runtime.goal.get"
   | "runtime.connector.get"
+  | "runtime.connector.status"
   | "runtime.capability.get"
   | "runtime.domain.get"
   | "runtime.artifact.get"
@@ -104,11 +105,44 @@ const DEFINITIONS: RuntimeCapabilityDefinition[] = [
   },
   {
     id:          "runtime.connector.get",
-    description: "Get the active Connector",
+    description: "Get the active Connector from RuntimeContext",
     signals: [
       "qual connector", "connector ativo", "connector atual",
       "qual o connector", "conector ativo", "conector atual",
       "qual conector", "qual o conector", "active connector",
+      "nenhum connector", "nenhum conector",
+    ],
+  },
+  {
+    id:          "runtime.connector.status",
+    description: "Check connector connection status from RuntimeContext (EF-43B)",
+    signals: [
+      // GitHub
+      "github esta conectado", "github está conectado",
+      "github conectado", "github esta ativo", "github está ativo",
+      "github esta funcionando", "github está funcionando",
+      "github disponivel", "github disponível",
+      "esta conectado ao github", "está conectado ao github",
+      // Drive
+      "drive esta conectado", "drive está conectado",
+      "google drive esta conectado", "google drive está conectado",
+      "drive conectado", "drive esta ativo", "drive está ativo",
+      "esta conectado ao drive", "está conectado ao drive",
+      // Gmail
+      "gmail esta conectado", "gmail está conectado",
+      "gmail conectado", "gmail esta ativo", "gmail está ativo",
+      "esta conectado ao gmail", "está conectado ao gmail",
+      // Calendar
+      "calendar esta conectado", "calendar está conectado",
+      "google calendar esta conectado", "google calendar está conectado",
+      "calendario conectado", "calendário conectado",
+      "esta conectado ao calendar", "está conectado ao calendar",
+      // Generic
+      "conectores disponiveis", "conectores disponíveis",
+      "quais conectores", "quais connectors",
+      "lista de conectores", "lista de connectors",
+      "status dos conectores", "status dos connectors",
+      "conectores ativos", "connectors ativos",
     ],
   },
   {

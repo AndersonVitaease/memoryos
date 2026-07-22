@@ -18,6 +18,7 @@
  */
 
 import { runtimeContextLayer } from "@/lib/runtime-context/RuntimeContextLayer";
+import { conversationStore }   from "@/lib/conversation-platform/ConversationStore";
 import type { RuntimeCapabilityId } from "./RuntimeCapabilityRegistry";
 
 export interface RuntimeExecutionResult {
@@ -120,6 +121,68 @@ export class RuntimeCapabilityExecutor {
           } else {
             answer = `**Connector ativo:** Nao ha connector registrado no contexto.\n\nNenhuma capability externa foi executada nesta sessao.`;
           }
+          break;
+        }
+
+        // ── runtime.connector.status (EF-43B) ──────────────────────────────
+        // Reads the ConversationStore connector slots to determine real
+        // connection state. NEVER infers from conversation history.
+        // Source of truth: what was actually persisted by a ConnectorContextBuilder.
+        case "runtime.connector.status": {
+          const KNOWN = ["github", "google-drive", "gmail", "google-calendar"] as const;
+          const LABELS: Record<string, string> = {
+            "github":          "GitHub",
+            "google-drive":    "Google Drive",
+            "gmail":           "Gmail",
+            "google-calendar": "Google Calendar",
+          };
+
+          const statusMap: Record<string, { connected: boolean; lastUsed?: number; detail: string }> = {};
+
+          for (const id of KNOWN) {
+            const ctx = conversationStore.getConnectorContext(id);
+            if (ctx && ctx.connectorId === id) {
+              const updatedAt = (ctx as any).updatedAt as number | undefined;
+              statusMap[id] = {
+                connected: true,
+                lastUsed:  updatedAt,
+                detail:    updatedAt
+                  ? `Ultimo uso: ${new Date(updatedAt).toLocaleString("pt-BR")}`
+                  : "Conectado (sem timestamp)",
+              };
+            } else {
+              // Also check if the RuntimeContext records this connector as last used
+              const rclConnector = state.currentConnector;
+              if (rclConnector === id && state.currentExecutionId) {
+                statusMap[id] = {
+                  connected: true,
+                  lastUsed:  state.updatedAt,
+                  detail:    `Ativo no RuntimeContext (executionId: ${state.currentExecutionId.slice(-8)})`,
+                };
+              } else {
+                statusMap[id] = { connected: false, detail: "Nenhuma execucao registrada nesta sessao" };
+              }
+            }
+          }
+
+          data = statusMap;
+
+          const lines = KNOWN.map((id) => {
+            const s = statusMap[id];
+            const icon = s.connected ? "✅" : "❌";
+            return `${icon} **${LABELS[id]}:** ${s.connected ? "Conectado" : "Nao conectado"} — ${s.detail}`;
+          });
+
+          const anyConnected = KNOWN.some((id) => statusMap[id].connected);
+          const rclNote = state.currentConnector
+            ? `\n\n> RuntimeContext registra \`${state.currentConnector}\` como ultimo connector ativo (executionId: \`${(state.currentExecutionId ?? "").slice(-12)}\`)`
+            : "\n\n> RuntimeContext nao registra nenhum connector ativo nesta sessao.";
+
+          answer = `**Status dos Conectores** _(fonte: RuntimeContext — EF-43B)_\n\n`
+            + lines.join("\n")
+            + rclNote
+            + (anyConnected ? "" : "\n\n> Nenhum conector foi utilizado nesta sessao. Execute uma operacao com um conector para registrar o estado.");
+
           break;
         }
 
