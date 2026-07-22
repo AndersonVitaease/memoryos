@@ -29,7 +29,7 @@ export class ConnectorCapabilityExecutor implements ICapabilityExecutor {
   async execute(input: CapabilityExecutorInput): Promise<CapabilityExecutorOutput> {
     const { executionId, step, connectorCtx } = input;
 
-    // B-04: forward connectorCtx to UCR so it reaches UCRBridge and then the RuntimeConnector
+    // B-04: forward connectorCtx to UCR — undefined is acceptable (UCR treats it as optional)
     const routerResult = await this._router.route(executionId, step, connectorCtx);
 
     // [CCE-PROBE-01] routerResult.result shape received by Executor

@@ -534,11 +534,17 @@ class ConversationPipeline {
           try { const { ef492Store: _s } = await import("@/lib/ef492/RuntimePipelineInstrument"); _s.record(executionId, { layer: "ConversationRuntimeEngine", source: "production_runtime", timestamp: Date.now(), durationMs: null, input: `ExecutionPlan(${planResult.plan.steps.length} steps)`, output: "ExecutionResult", caller: "ConversationPipeline", next: "UniversalConnectorRouter", status: "executed" }); } catch { /* non-blocking */ }
           // ADR-003/ADR-004: engine.execute() returns { executionResult, executionReport }
           // A-01: pass Pipeline's executionId so Runtime reuses it — single canonical ID
-          // B-02: build real connectorCtx from the session — no synthetic values
-          const _pipelineUser = conversationStore.currentUser;
+          // B-02: build real connectorCtx from session — no synthetic values.
+          // userId resolved via base44.auth.me() (non-blocking, best-effort).
+          let _pipelineUserId = "pipeline-caller";
+          try {
+            const { base44 } = await import("@/api/base44Client");
+            const _me = await base44.auth.me();
+            if (_me?.id) _pipelineUserId = _me.id;
+          } catch { /* non-blocking — fall back to sentinel */ }
           const _pipelineConnCtx = Object.freeze({
-            userId:      _pipelineUser?.id      ?? "pipeline-caller",
-            workspaceId: session.project_id     ?? "default-workspace",
+            userId:      _pipelineUserId,
+            workspaceId: session.project_id ?? "default-workspace",
             sessionId:   session.id,
             goalId:      goalBridgeResult.goal.id,
             origin:      "pipeline",

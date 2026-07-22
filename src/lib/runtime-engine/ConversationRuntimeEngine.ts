@@ -170,9 +170,15 @@ export class ConversationRuntimeEngine {
         errors:      Object.freeze(["Plan failed validation"]),
       });
       const executionReport = this._buildReport(
-        { executionId: executionResult.executionId, planId: plan.id, goalId: plan.goalId,
+        {
+          executionId: executionResult.executionId, planId: plan.id, goalId: plan.goalId,
           plan, createdAt: now, startedAt: now, finishedAt: now, status: "failed",
-          currentStepIndex: 0, stepResults: [], cancelRequested: false, timeoutAt: null, metadata: {} },
+          currentStepIndex: 0, stepResults: [], cancelRequested: false, timeoutAt: null,
+          metadata: {},
+          contribution: {},
+          // B-02: validation-failure path — use provided connectorCtx or anonymous sentinel
+          connectorCtx: connectorCtx ?? { userId: "anonymous", workspaceId: "anonymous", sessionId: "anonymous", origin: "unknown" },
+        },
         executionResult,
         t_start,
         { errors: Object.freeze(["Plan failed validation"]) },

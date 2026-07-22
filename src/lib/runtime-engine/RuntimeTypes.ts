@@ -130,8 +130,9 @@ export interface CapabilityExecutorInput {
   readonly executionId:   string;
   readonly step:          ExecutionStep;
   readonly retryCtx:      RetryContext;
-  /** B-03: real connector context propagated from RuntimeExecutionContext.connectorCtx */
-  readonly connectorCtx:  ConnectorExecutionContext;
+  /** B-03: real connector context propagated from RuntimeExecutionContext.connectorCtx.
+   *  Optional to preserve backward compatibility with test stubs that have no user context. */
+  readonly connectorCtx?: ConnectorExecutionContext;
 }
 
 export interface CapabilityExecutorOutput {
