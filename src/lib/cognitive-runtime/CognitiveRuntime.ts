@@ -218,6 +218,26 @@ class CognitiveRuntimeImpl {
     };
   }
 
+  // ── traceStage() — único ponto de instrumentação EF-60A ─────────────────────
+  //
+  // Toda instrumentação passa por aqui. Quando um stage novo for criado,
+  // apenas este método precisa ser chamado — sem dispersar lógica de trace.
+
+  private _traceStage(params: {
+    trace:      import("@/lib/runtime-trace/OfficialRuntimeTraceStore").RuntimeTrace;
+    stage:      string;
+    startedAt:  number;
+    finishedAt: number;
+    artifactId: string;
+    ctxBefore:  Record<string, unknown>;
+    ctxAfter:   Record<string, unknown>;
+    status:     "ok" | "fallback" | "skipped";
+    summary:    string;
+    keyMetrics: Record<string, number | string>;
+  }): void {
+    OfficialRuntimeTraceStore.recordStage(params);
+  }
+
   // ── execute() — the official cognitive cycle ────────────────────────────────
 
   async execute(input: CognitiveInput): Promise<CognitiveRunResult> {
@@ -296,8 +316,7 @@ class CognitiveRuntimeImpl {
       },
       ctxSnapshot: { goalId, executionId: ctx.executionId },
     });
-    // EF-60A trace
-    OfficialRuntimeTraceStore.recordStage({
+    this._traceStage({
       trace: _trace, stage: "goal",
       startedAt: t_goal, finishedAt: t_goal + dur_goal,
       artifactId: goalId,
@@ -346,8 +365,7 @@ class CognitiveRuntimeImpl {
       },
       ctxSnapshot: { goalId: ctx.goalId, planId },
     });
-    // EF-60A trace
-    OfficialRuntimeTraceStore.recordStage({
+    this._traceStage({
       trace: _trace, stage: "planning",
       startedAt: t_plan, finishedAt: t_plan + dur_plan,
       artifactId: planId,
@@ -381,8 +399,7 @@ class CognitiveRuntimeImpl {
       keyMetrics: { dispatchMs: dur_disp },
       ctxSnapshot: { goalId: ctx.goalId, planId: ctx.planId, dispatchId },
     });
-    // EF-60A trace
-    OfficialRuntimeTraceStore.recordStage({
+    this._traceStage({
       trace: _trace, stage: "dispatch",
       startedAt: t_disp, finishedAt: t_disp + dur_disp,
       artifactId: dispatchId,
@@ -435,8 +452,7 @@ class CognitiveRuntimeImpl {
       keyMetrics: { confidence: ctx.confidence, authority: ctx.authority },
       ctxSnapshot: { goalId: ctx.goalId, planId: ctx.planId, dispatchId: ctx.dispatchId, episodeId },
     });
-    // EF-60A trace
-    OfficialRuntimeTraceStore.recordStage({
+    this._traceStage({
       trace: _trace, stage: "episode",
       startedAt: t_ep, finishedAt: t_ep + dur_ep,
       artifactId: episodeId,
@@ -470,8 +486,7 @@ class CognitiveRuntimeImpl {
       },
       ctxSnapshot: { learningId: learning.id, executionId: ctx.executionId },
     });
-    // EF-60A trace
-    OfficialRuntimeTraceStore.recordStage({
+    this._traceStage({
       trace: _trace, stage: "learning",
       startedAt: t_lr, finishedAt: t_lr + dur_lr,
       artifactId: learning.id,
@@ -499,8 +514,7 @@ class CognitiveRuntimeImpl {
       keyMetrics: { totalRules: knowledgeAfter, growth: knowledgeAfter - knowledgeBefore },
       ctxSnapshot: { knowledgeBefore, knowledgeAfter, learningId: ctx.learningId },
     });
-    // EF-60A trace
-    OfficialRuntimeTraceStore.recordStage({
+    this._traceStage({
       trace: _trace, stage: "knowledge_store",
       startedAt: _t_ks, finishedAt: _t_ks,
       artifactId: ksArtifactId,
@@ -556,8 +570,7 @@ class CognitiveRuntimeImpl {
         knowledgeAfter,
       },
     });
-    // EF-60A trace
-    OfficialRuntimeTraceStore.recordStage({
+    this._traceStage({
       trace: _trace, stage: "reasoning",
       startedAt: t_rr, finishedAt: t_rr + dur_rr,
       artifactId: reasoning.id,
@@ -610,8 +623,7 @@ class CognitiveRuntimeImpl {
         knowledgeAfter,
       },
     });
-    // EF-60A trace
-    OfficialRuntimeTraceStore.recordStage({
+    this._traceStage({
       trace: _trace, stage: "optimization",
       startedAt: t_opt, finishedAt: t_opt + dur_opt,
       artifactId: optimization.id,
@@ -668,8 +680,7 @@ class CognitiveRuntimeImpl {
         optimizationId:ctx.optimizationId,
       },
     });
-    // EF-60A trace
-    OfficialRuntimeTraceStore.recordStage({
+    this._traceStage({
       trace: _trace, stage: "meta_cognition",
       startedAt: t_mc, finishedAt: t_mc + dur_mc,
       artifactId: meta.id,
@@ -697,8 +708,7 @@ class CognitiveRuntimeImpl {
       },
       ctxSnapshot: { reflectionId: reflection.id, metaId: ctx.metaId },
     });
-    // EF-60A trace
-    OfficialRuntimeTraceStore.recordStage({
+    this._traceStage({
       trace: _trace, stage: "reflection",
       startedAt: _t_ref, finishedAt: _t_ref,
       artifactId: reflection.id,
