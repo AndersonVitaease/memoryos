@@ -1,125 +1,91 @@
 /**
- * IntegrationAuditor.ts — Sprint EF-55
+ * IntegrationAuditor.ts — Sprint EF-55.1
  *
- * TEST 1: End-to-End Pipeline
- * Executa o pipeline completo EF-43→EF-54 e verifica que cada etapa
- * produz ID, timestamp, input, output, metrics, duration, status, trace.
- *
- * Somente observa — nunca modifica.
+ * TEST 1: End-to-End Pipeline — inicia no Goal, percorre EF-43→EF-54.
+ * Usa RuntimeTraceCollector para obter artefatos reais.
+ * ZERO dados sintéticos — toda evidência vem do Runtime.
  */
 
 import type { AuditResult, AuditCheck, AuditStatus } from "./SCTypes";
 import { makeSCId } from "./SCTypes";
+import { RuntimeTraceCollector } from "./runtime/RuntimeTraceCollector";
 
-function check(
-  name: string, description: string, status: AuditStatus,
-  score: number, durationMs: number, evidence: string[], issues: string[],
-): AuditCheck {
-  return Object.freeze({ id: makeSCId("chk"), name, description, status, score, durationMs, evidence: Object.freeze(evidence), issues: Object.freeze(issues) });
+function chk(name: string, desc: string, ok: boolean, score: number, dur: number, evidence: string[], issues: string[]): AuditCheck {
+  return Object.freeze({ id: makeSCId("chk"), name, description: desc, status: (ok ? "pass" : "fail") as AuditStatus, score, durationMs: dur, evidence: Object.freeze(evidence), issues: Object.freeze(issues) });
+}
+
+function buildResult(checks: AuditCheck[], t0: number): AuditResult {
+  const passed = checks.filter(c => c.status === "pass").length;
+  const failed = checks.filter(c => c.status === "fail").length;
+  const warned = checks.filter(c => c.status === "warn").length;
+  const score  = checks.length > 0 ? checks.reduce((s, c) => s + c.score, 0) / checks.length : 0;
+  const status: AuditStatus = failed > 0 ? "fail" : warned > 0 ? "warn" : "pass";
+  return Object.freeze({ id: makeSCId("ar"), auditor: "IntegrationAuditor", runAt: Date.now(), durationMs: Date.now() - t0, checks: Object.freeze(checks), score, passed, failed, warned, status, summary: `Integration: ${passed}/${checks.length} passed, score=${score.toFixed(0)}` });
 }
 
 export class IntegrationAuditor {
+  private readonly _tracer = new RuntimeTraceCollector();
+
   async audit(): Promise<AuditResult> {
     const t0 = Date.now();
     const checks: AuditCheck[] = [];
 
-    // Dynamically import engines to avoid circular deps at module load
-    const stages = [
-      { name: "EF-43 Cognitive Orchestrator", key: "cognitiveOrchestrator" },
-      { name: "EF-45 Dynamic Planning",        key: "dynamicPlanningEngine" },
-      { name: "EF-46 Strategy Selection",      key: "strategySelectionEngine" },
-      { name: "EF-47 Strategy Generation",     key: "strategyGenerationEngine" },
-      { name: "EF-48 Capability Reasoning",    key: "capabilityReasoningEngine" },
-      { name: "EF-50 Episodic Memory",         key: "episodicMemory" },
-      { name: "EF-51 Learning Engine",         key: "learningEngine" },
-      { name: "EF-52 Knowledge Reasoning",     key: "knowledgeReasoningEngine" },
-      { name: "EF-53 Self Optimization",       key: "selfOptimizationEngine" },
-      { name: "EF-54 Meta-Cognition",          key: "metaCognitiveEngine" },
+    // ── E2E: Goal → Learning → Reasoning → Optimization → Meta ───────────────
+    const scenarios = [
+      { goal: "github_repository_read",   strategy: "direct_connector", capabilities: ["repository.read"], connectors: ["github"], confidence: 0.85, authority: 0.80, durationMs: 600, success: true,  episodeCount: 15 },
+      { goal: "knowledge_retrieval",      strategy: "sequential",        capabilities: ["knowledge.read"],  connectors: [],         confidence: 0.90, authority: 0.85, durationMs: 300, success: true,  episodeCount: 20 },
+      { goal: "meta_reflection",          strategy: "direct_connector",  capabilities: [],                  connectors: [],         confidence: 0.78, authority: 0.72, durationMs: 350, success: true,  episodeCount: 16 },
     ];
 
-    for (const stage of stages) {
+    for (const sc of scenarios) {
       const t = Date.now();
-      checks.push(check(
-        `${stage.name} — Module Loaded`,
-        `Verify ${stage.name} is importable and produces typed outputs.`,
-        "pass", 100, Date.now() - t,
-        [`module=${stage.name}`, `key=${stage.key}`],
-        [],
-      ));
+      try {
+        const snap = await this._tracer.collect(sc);
+
+        // Validate every required stage is present
+        const requiredStages = ["learning", "knowledge_store", "reasoning", "optimization", "meta_cognition"];
+        const missingStages  = requiredStages.filter(s => !snap.steps.find(st => st.stage === s && st.status === "present"));
+
+        checks.push(chk(
+          `E2E: ${sc.goal}`,
+          `Pipeline Goal→EF-51→EF-52→EF-53→EF-54 with real runtime artifacts.`,
+          missingStages.length === 0,
+          missingStages.length === 0 ? 100 : Math.max(0, 100 - missingStages.length * 20),
+          Date.now() - t,
+          snap.steps.map(s => `${s.stage}:${s.artifactId.slice(-10)}`),
+          missingStages.map(s => `Stage missing: ${s}`),
+        ));
+
+        // Each step must have a real artifactId (not synthetic)
+        const stepsMissingId = snap.steps.filter(s => !s.artifactId || s.artifactId.length < 5);
+        checks.push(chk(
+          `E2E: ${sc.goal} — All Artifact IDs Real`,
+          `Every pipeline step must carry a real engine-produced ID.`,
+          stepsMissingId.length === 0,
+          stepsMissingId.length === 0 ? 100 : 0,
+          0,
+          [`steps=${snap.steps.length}`, `withId=${snap.steps.length - stepsMissingId.length}`],
+          stepsMissingId.map(s => `Missing ID at stage: ${s.stage}`),
+        ));
+
+        // Connector snapshot
+        if (sc.connectors.length > 0) {
+          checks.push(chk(
+            `E2E: ${sc.goal} — Connector Snapshot`,
+            `Connector was captured in runtime snapshot.`,
+            snap.connector !== null,
+            snap.connector !== null ? 100 : 50,
+            0,
+            snap.connector ? [`connector=${snap.connector.connectorName}`, `executed=${snap.connector.wasExecuted}`] : [],
+            snap.connector ? [] : ["Connector snapshot missing"],
+          ));
+        }
+
+      } catch (e: unknown) {
+        checks.push(chk(`E2E: ${sc.goal}`, "Full pipeline.", false, 0, Date.now() - t, [], [`${e instanceof Error ? e.message : String(e)}`]));
+      }
     }
 
-    // E2E smoke: run full pipeline with synthetic data
-    const t1 = Date.now();
-    try {
-      const { LearningEngine } = await import("@/lib/cognitive-learning/LearningEngine");
-      const { KnowledgeReasoningEngine } = await import("@/lib/knowledge-reasoning/KnowledgeReasoningEngine");
-      const { SelfOptimizationEngine } = await import("@/lib/self-optimization/SelfOptimizationEngine");
-      const { MetaCognitiveEngine } = await import("@/lib/meta-cognition/MetaCognitiveEngine");
-
-      // Feed episodes → EF-51
-      const eps = Array.from({ length: 10 }, (_, i) => ({
-        id: `cert_ep_${i}`, createdAt: Date.now() - i * 1000,
-        goal: "certification_test", intent: "validate", context: "cert",
-        strategy: "direct_connector", capabilities: ["repository.read"],
-        connectorChain: ["github"], result: "completed", success: true, failure: false,
-        confidence: 0.80, authority: 0.75, cost: 2, durationMs: 500, metadata: {},
-      }));
-      const learning = LearningEngine.learn(eps);
-
-      // EF-52 reasoning
-      const reasoning = KnowledgeReasoningEngine.reason({ goal: "certification_test", intent: "validate", capabilities: ["repository.read"], strategy: "direct_connector" });
-
-      // EF-53 optimization
-      const snap = SelfOptimizationEngine.buildSnapshot(eps);
-      const optimization = SelfOptimizationEngine.analyze(snap);
-
-      // EF-54 meta
-      const meta = MetaCognitiveEngine.analyze({
-        goal: "certification_test", strategy: "direct_connector", capabilities: ["repository.read"],
-        connectors: ["github"], knowledgeRules: learning.knowledgeCreated,
-        inferenceDepth: reasoning.inferenceChain.depth,
-        inferenceConf: reasoning.inferenceChain.overallConfidence,
-        decisionConf: reasoning.decision.confidence, decisionAuth: reasoning.decision.authority,
-        optimizationRecs: optimization.recommendations.length,
-        success: true, durationMs: 500, conflictCount: reasoning.conflicts.length,
-        confidence: 0.80, authority: 0.75,
-      });
-
-      checks.push(check(
-        "E2E Pipeline — Full Run",
-        "EF-51 → EF-52 → EF-53 → EF-54 executed without errors.",
-        "pass", 100, Date.now() - t1,
-        [
-          `learning.knowledgeCreated=${learning.knowledgeCreated}`,
-          `reasoning.confidence=${(reasoning.decision.confidence * 100).toFixed(0)}%`,
-          `optimization.recs=${optimization.recommendations.length}`,
-          `meta.metaConfidence=${(meta.metrics.metaConfidence * 100).toFixed(0)}%`,
-        ],
-        [],
-      ));
-    } catch (e: unknown) {
-      checks.push(check(
-        "E2E Pipeline — Full Run",
-        "Pipeline execution.",
-        "fail", 0, Date.now() - t1,
-        [], [`Error: ${e instanceof Error ? e.message : String(e)}`],
-      ));
-    }
-
-    return this._buildResult(checks, t0);
-  }
-
-  private _buildResult(checks: AuditCheck[], t0: number): AuditResult {
-    const passed  = checks.filter(c => c.status === "pass").length;
-    const failed  = checks.filter(c => c.status === "fail").length;
-    const warned  = checks.filter(c => c.status === "warn").length;
-    const score   = checks.length > 0 ? checks.reduce((s, c) => s + c.score, 0) / checks.length : 0;
-    const status: AuditStatus = failed > 0 ? "fail" : warned > 0 ? "warn" : "pass";
-    return Object.freeze({
-      id: makeSCId("ar"), auditor: "IntegrationAuditor", runAt: Date.now(),
-      durationMs: Date.now() - t0, checks: Object.freeze(checks),
-      score, passed, failed, warned, status,
-      summary: `Integration: ${passed}/${checks.length} checks passed, score=${score.toFixed(0)}`,
-    });
+    return buildResult(checks, t0);
   }
 }

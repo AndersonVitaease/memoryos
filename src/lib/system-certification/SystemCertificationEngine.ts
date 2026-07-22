@@ -1,14 +1,14 @@
 /**
- * SystemCertificationEngine.ts — Sprint EF-55 · System Certification Engine
+ * SystemCertificationEngine.ts — Sprint EF-55.1
  *
- * Coordena toda a infraestrutura de certificação:
- *   12 auditors → PipelineTrace → CertificationMetrics → CertificationReport
+ * Coordena toda a infraestrutura de certificação oficial:
+ *   Golden Scenarios + 10 Auditors → PipelineTrace → CertificationMetrics → CertificationReport
  *
  * NUNCA modifica nenhum componente existente. Somente observa.
  * HMR-safe singleton via globalThis.
  */
 
-import type { CertificationReport } from "./SCTypes";
+import type { CertificationReport, AuditResult } from "./SCTypes";
 import { IntegrationAuditor }             from "./IntegrationAuditor";
 import { PipelineAuditor }                from "./PipelineAuditor";
 import { ContractAuditor }                from "./ContractAuditor";
@@ -19,29 +19,39 @@ import { ObservabilityAuditor }           from "./ObservabilityAuditor";
 import { ExplainabilityAuditor }          from "./ExplainabilityAuditor";
 import { DeterminismAuditor }             from "./DeterminismAuditor";
 import { ArchitecturalComplianceAuditor } from "./ArchitecturalComplianceAuditor";
+import { GoldenScenarioRunner }           from "./scenarios/GoldenScenarioRunner";
+import { goldenSummaryToAuditResult }     from "./scenarios/ScenarioReport";
 import { CertificationMetricsEngine }     from "./CertificationMetrics";
 import { CertificationReportBuilder }     from "./CertificationReport";
 import { CertificationHistory }           from "./CertificationHistory";
+import type { GoldenRunSummary }          from "./scenarios/GoldenScenarioRunner";
 
 class SystemCertificationEngineImpl {
-  private readonly _integration   = new IntegrationAuditor();
-  private readonly _pipeline      = new PipelineAuditor();
-  private readonly _contract      = new ContractAuditor();
-  private readonly _dependency    = new DependencyAuditor();
-  private readonly _isolation     = new IsolationAuditor();
-  private readonly _performance   = new PerformanceAuditor();
-  private readonly _observability = new ObservabilityAuditor();
-  private readonly _explainability= new ExplainabilityAuditor();
-  private readonly _determinism   = new DeterminismAuditor();
-  private readonly _architecture  = new ArchitecturalComplianceAuditor();
-  private readonly _metricsEng    = new CertificationMetricsEngine();
-  private readonly _reportBuilder = new CertificationReportBuilder();
+  private readonly _integration    = new IntegrationAuditor();
+  private readonly _pipeline       = new PipelineAuditor();
+  private readonly _contract       = new ContractAuditor();
+  private readonly _dependency     = new DependencyAuditor();
+  private readonly _isolation      = new IsolationAuditor();
+  private readonly _performance    = new PerformanceAuditor();
+  private readonly _observability  = new ObservabilityAuditor();
+  private readonly _explainability = new ExplainabilityAuditor();
+  private readonly _determinism    = new DeterminismAuditor();
+  private readonly _architecture   = new ArchitecturalComplianceAuditor();
+  private readonly _scenarios      = new GoldenScenarioRunner();
+  private readonly _metricsEng     = new CertificationMetricsEngine();
+  private readonly _reportBuilder  = new CertificationReportBuilder();
 
   private _reports: CertificationReport[] = [];
+  private _lastGoldenSummary: GoldenRunSummary | null = null;
 
   async certify(onProgress?: (msg: string) => void): Promise<CertificationReport> {
     const startedAt = Date.now();
     const emit = (msg: string) => { onProgress?.(msg); };
+
+    emit("Running Golden Scenarios (real runtime evidence)...");
+    const goldenSummary = await this._scenarios.runAll(msg => emit(`  ${msg}`));
+    this._lastGoldenSummary = goldenSummary;
+    const goldenResult = goldenSummaryToAuditResult(goldenSummary);
 
     emit("Running Integration Audit...");
     const integration = await this._integration.audit();
@@ -74,7 +84,10 @@ class SystemCertificationEngineImpl {
     const architecture = await this._architecture.audit();
 
     emit("Computing Metrics...");
-    const auditResults = [integration, pipeline, contract, dependency, isolation, performance, observability, explainability, determinism, architecture];
+    const auditResults: readonly AuditResult[] = [
+      goldenResult, integration, pipeline, contract, dependency,
+      isolation, performance, observability, explainability, determinism, architecture,
+    ];
     const metrics  = this._metricsEng.compute(auditResults);
 
     emit("Building Report...");
@@ -89,6 +102,7 @@ class SystemCertificationEngineImpl {
 
   getReports(): readonly CertificationReport[] { return this._reports; }
   getLastReport(): CertificationReport | null   { return this._reports[this._reports.length - 1] ?? null; }
+  getLastGoldenSummary(): GoldenRunSummary | null { return this._lastGoldenSummary; }
 }
 
 const G = globalThis as typeof globalThis & { __EF55_SCE__?: SystemCertificationEngineImpl };
