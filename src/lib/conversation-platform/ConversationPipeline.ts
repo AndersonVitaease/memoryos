@@ -524,6 +524,14 @@ class ConversationPipeline {
         // ── Live Connector Runtime path ───────────────────────────────────
         else if (planResult.success && planResult.plan.steps.length > 0) {
           setPhase("executing_capabilities");
+
+          // [EXP-GITHUB-PLAN] Enrich plan with owner/repo/branch for GitHub steps.
+          // REVERSAO: remover este bloco (3 linhas) e apagar GitHubPlanningContextProvider.ts
+          const { gitHubPlanningContextProvider } = await import("@/lib/github-plan-context/GitHubPlanningContextProvider");
+          const _enrichedPlan = await gitHubPlanningContextProvider.enrich(planResult.plan, userMessage).catch(() => planResult.plan);
+          const _activePlan = _enrichedPlan;
+          // [END EXP-GITHUB-PLAN]
+
           const { getRealRuntimeEngine, getRealConnectorRegistry } = await import("@/lib/connector-runtime-provider/ConnectorRuntimeProvider");
           const [_realEngine, _probeReg] = await Promise.all([
             getRealRuntimeEngine(),
@@ -549,7 +557,7 @@ class ConversationPipeline {
             goalId:      goalBridgeResult.goal.id,
             origin:      "pipeline",
           });
-          const { executionResult } = await _realEngine.execute(planResult.plan, executionId, _pipelineConnCtx);
+          const { executionResult } = await _realEngine.execute(_activePlan, executionId, _pipelineConnCtx);
           const t0connector = Date.now();
 
           conversationStore.emit({
