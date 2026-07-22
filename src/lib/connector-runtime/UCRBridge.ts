@@ -92,16 +92,32 @@ class UCRConnectorBridge implements UCRConnector {
     // B-05: use the real caller context when available — eliminate synthetic "ucr-bridge" values.
     // connectorCtx is injected by the UCR from the RuntimeExecutionContext.connectorCtx field.
     const ctx = input.connectorCtx;
+    // IA-005: workspaceId adicionado — GoogleDriveConnector.execute() exige
+    // context.workspaceId (ver BUGFIX-SPRINT-001 no próprio Adapter) e nunca
+    // o recebia, pois este objeto só continha projectId. projectId é mantido
+    // intacto (IA-003/IA-004: nenhum conector oficial o consome, mas nada
+    // depende de sua remoção — mudança aditiva apenas).
+    const context = {
+      executionId: eid,
+      userId:      ctx?.userId      ?? "anonymous",
+      projectId:   ctx?.workspaceId ?? "anonymous",
+      workspaceId: ctx?.workspaceId ?? "anonymous",
+      sessionId:   ctx?.sessionId   ?? "anonymous",
+      goalId:      ctx?.goalId,
+    };
+    // [IA-005-PROBE] Confirms workspaceId reaches the connector context.
+    console.log("[IA-005-PROBE]", {
+      probe:            "UCRBridge:execute:context-built",
+      connectorId:      this._inner.id,
+      capability:       input.capability,
+      executionId:      eid,
+      "context.workspaceId": context.workspaceId,
+      "context.projectId":   context.projectId,
+    });
     const result = await this._inner.execute(
       input.capability,
       input.parameters as Record<string, unknown>,
-      {
-        executionId: eid,
-        userId:      ctx?.userId      ?? "anonymous",
-        projectId:   ctx?.workspaceId ?? "anonymous",
-        sessionId:   ctx?.sessionId   ?? "anonymous",
-        goalId:      ctx?.goalId,
-      },
+      context,
     );
 
     // [UCRBRIDGE-PROBE-02] RuntimeConnector returned ConnectorTypes.ConnectorResult
