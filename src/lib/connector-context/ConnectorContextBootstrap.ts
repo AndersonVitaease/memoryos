@@ -21,8 +21,9 @@ import { registerContextBuilder } from "./ConnectorContextBuilderRegistry";
 
 import { GoogleDriveContextBuilder } from "./providers/GoogleDriveContextBuilder";
 import { GmailContextBuilder }       from "./providers/GmailContextBuilder";
+import { GitHubContextBuilder }      from "./providers/GitHubContextBuilder"; // EXP-GITHUB-CTX-01
 // import { CalendarContextBuilder } from "./providers/CalendarContextBuilder";
-// import { GitHubContextBuilder }   from "./providers/GitHubContextBuilder";
+// import { NotionContextBuilder }   from "./providers/NotionContextBuilder";
 // import { NotionContextBuilder }   from "./providers/NotionContextBuilder";
 // import { DropboxContextBuilder }  from "./providers/DropboxContextBuilder";
 // import { SlackContextBuilder }    from "./providers/SlackContextBuilder";
@@ -42,8 +43,8 @@ export function bootstrapConnectorContext(): void {
 
   registerContextBuilder(GoogleDriveContextBuilder);
   registerContextBuilder(GmailContextBuilder);
+  registerContextBuilder(GitHubContextBuilder); // EXP-GITHUB-CTX-01
   // registerContextBuilder(CalendarContextBuilder);
-  // registerContextBuilder(GitHubContextBuilder);
   // registerContextBuilder(NotionContextBuilder);
   // registerContextBuilder(DropboxContextBuilder);
   // registerContextBuilder(SlackContextBuilder);
