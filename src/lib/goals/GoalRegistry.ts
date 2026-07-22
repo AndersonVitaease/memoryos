@@ -339,7 +339,7 @@ const _builtins: GoalDefinition[] = [
   },
 
   // ── Drive ──────────────────────────────────────────────────────────────────
-  // PRIORITY ORDER: downloadFile > openDocument > searchFiles > listRecent
+  // PRIORITY ORDER: downloadFile > listPDFs > openDocument > searchFiles > listRecent
   // matchBySignals() returns the FIRST hit in registration order.
   {
     type: "drive.downloadFile",
@@ -369,6 +369,21 @@ const _builtins: GoalDefinition[] = [
         .trim();
       return { fileName: quoted ?? afterNoun ?? (stripped || null), rawText: msg.trim() };
     },
+  },
+  {
+    // IA-012: movido pra antes de drive.openDocument — "arquivos pdf" precisa
+    // vencer "ler arquivo" (que é substring de "ler arquivos") em mensagens
+    // como "ler arquivos pdf", que são pedido de LISTAGEM, não de abrir um
+    // arquivo único chamado "arquivos pdf".
+    type: "drive.listPDFs" as GoalType,
+    namespace: "drive",
+    description: "List PDF files in Google Drive",
+    signals: [
+      "apenas pdfs", "apenas pdf", "somente pdfs", "somente pdf",
+      "pdfs no drive", "listar pdfs", "liste pdfs", "meus pdfs",
+      "arquivos pdf", "only pdfs", "list pdfs",
+    ],
+    extractParams: () => ({ mimeType: "application/pdf", pageSize: 20 }),
   },
   {
     type: "drive.openDocument",
@@ -413,17 +428,6 @@ const _builtins: GoalDefinition[] = [
       "ultimos arquivos", "ver drive", "meus arquivos",
     ],
     extractParams: () => ({ maxResults: 10 }),
-  },
-  {
-    type: "drive.listPDFs" as GoalType,
-    namespace: "drive",
-    description: "List PDF files in Google Drive",
-    signals: [
-      "apenas pdfs", "apenas pdf", "somente pdfs", "somente pdf",
-      "pdfs no drive", "listar pdfs", "liste pdfs", "meus pdfs",
-      "arquivos pdf", "only pdfs", "list pdfs",
-    ],
-    extractParams: () => ({ mimeType: "application/pdf", pageSize: 20 }),
   },
 
   // ── GitHub — Sprint M-02 ─────────────────────────────────────────────────
