@@ -1,0 +1,447 @@
+/**
+ * ExecutionIntent.ts — EXPERIMENTAL (Sprint EXP-EXECUTION-INTENT)
+ *
+ * EXPERIMENTO REVERSIVEL.
+ *
+ * REVERSAO:
+ *   1. Apagar este arquivo.
+ *   2. Remover as linhas marcadas [EXP-EXECUTION-INTENT] em ConversationPipeline.ts.
+ *   Nenhum outro arquivo precisa ser alterado.
+ *
+ * RESPONSABILIDADE UNICA:
+ *   Preservar o objetivo operacional da execucao corrente para que mensagens
+ *   de continuidade ("abra", "proximo", "anterior") possam ser resolvidas
+ *   sem reinterpretar o dominio do zero.
+ *
+ * PERSISTENCIA:
+ *   Utiliza exclusivamente conversationStore.setConnectorContext / getConnectorContext
+ *   com connectorId="execution-intent".
+ *   Sem cache global. Sem variaveis estaticas. Sem localStorage.
+ *
+ * DESIGN:
+ *   - ExecutionIntentRecord: objeto imutavel descrevendo o estado atual.
+ *   - ExecutionIntentManager: manager singleton para criar, atualizar e consumir.
+ *   - isContinuationMessage(): detecta frases de continuidade.
+ *   - resolveGoalTypeFromIntent(): transforma intent + mensagem em goalType concreto.
+ *
+ * CONTINUIDADE SUPORTADA:
+ *   domain=github   → github.getFile, github.searchCode, github.listFiles
+ *   domain=google-drive → drive.downloadFile, drive.searchFiles, drive.listRecent
+ *   domain=gmail    → gmail.readMessage, gmail.searchMessages
+ *   domain=google-calendar → calendar.listToday
+ */
+
+import type { BaseConnectorContext } from "@/lib/connector-context/ConnectorContextStore";
+
+// ── Tipos ─────────────────────────────────────────────────────────────────────
+
+export type ExecutionDomain =
+  | "github"
+  | "google-drive"
+  | "gmail"
+  | "google-calendar"
+  | "base44"
+  | "general";
+
+export type ExecutionPurpose =
+  | "list_repositories"
+  | "search_symbol"
+  | "search_reference"
+  | "search_text"
+  | "get_file"
+  | "list_files"
+  | "list_commits"
+  | "list_branches"
+  | "list_pull_requests"
+  | "list_issues"
+  | "list_emails"
+  | "search_emails"
+  | "read_email"
+  | "list_drive_files"
+  | "search_drive_files"
+  | "download_drive_file"
+  | "list_calendar_events"
+  | "general_conversation";
+
+export type ArtifactType =
+  | "source_code"
+  | "repository"
+  | "commit"
+  | "branch"
+  | "pull_request"
+  | "issue"
+  | "email"
+  | "drive_file"
+  | "calendar_event"
+  | "none";
+
+export interface CurrentArtifact {
+  /** For github: owner login */
+  owner?:  string;
+  /** For github: repository name */
+  repo?:   string;
+  /** For github/drive: file path */
+  path?:   string;
+  /** For drive: file id */
+  fileId?: string;
+  /** For github search: last result items (paths only, max 20) */
+  resultPaths?: string[];
+  /** Current cursor index into resultPaths (for "next"/"previous" navigation) */
+  cursorIndex?: number;
+}
+
+export interface ExecutionIntentRecord extends BaseConnectorContext {
+  connectorId:      "execution-intent";
+  /** Operative domain of the last execution */
+  domain:           ExecutionDomain;
+  /** What the user was trying to do */
+  purpose:          ExecutionPurpose;
+  /** Type of the primary artifact involved */
+  artifactType:     ArtifactType;
+  /** Continuation mode — "navigation" means next/previous is meaningful */
+  continuationMode: "navigation" | "standalone";
+  /** Most recent artifact context */
+  currentArtifact:  CurrentArtifact;
+  /** executionId of the execution that set this intent */
+  executionId:      string;
+  /** Timestamp of last update */
+  updatedAt:        number;
+}
+
+// ── Frases de continuidade ────────────────────────────────────────────────────
+
+const CONTINUATION_SIGNALS: string[] = [
+  "abra", "abre", "abrir",
+  "continue", "continua", "continuar",
+  "proximo", "próximo", "proxima", "próxima", "next",
+  "anterior", "volte", "volta", "voltar", "previous", "prev",
+  "esse", "essa", "este", "esta",
+  "o primeiro", "a primeira", "o segundo", "a segunda",
+  "o terceiro", "a terceira", "o ultimo", "a ultima",
+  "o ultimo resultado", "o primeiro resultado",
+  "mostre o", "mostre a", "mostrar o", "mostrar a",
+  "agora abra", "agora mostre", "agora leia",
+  "leia esse", "leia este", "leia o arquivo",
+  "baixe esse", "baixe este",
+  "abra o arquivo", "abra o proximo", "abra o anterior",
+];
+
+export function isContinuationMessage(message: string): boolean {
+  const lower = message.toLowerCase().trim();
+  return CONTINUATION_SIGNALS.some((sig) => lower.startsWith(sig) || lower.includes(sig));
+}
+
+// ── Mapeamento Intent → GoalType ──────────────────────────────────────────────
+
+/**
+ * Dado um ExecutionIntentRecord e uma mensagem de continuidade,
+ * retorna o goalType concreto a ser usado pelo GoalBridge.
+ * Nunca lanca excecao. Retorna null se nao for possivel resolver.
+ */
+export function resolveGoalTypeFromIntent(
+  intent: ExecutionIntentRecord,
+  message: string,
+): string | null {
+  const lower = message.toLowerCase();
+
+  if (intent.domain === "github") {
+    // "abra o arquivo", "leia o arquivo", "agora abra" → files.get
+    if (
+      lower.includes("abra") || lower.includes("abre") || lower.includes("abrir") ||
+      lower.includes("leia") || lower.includes("baixe") || lower.includes("arquivo")
+    ) {
+      return "github.getFile";
+    }
+    // "proximo", "anterior" — navegar pelos resultados de search
+    if (
+      lower.includes("proximo") || lower.includes("próximo") ||
+      lower.includes("anterior") || lower.includes("volte")
+    ) {
+      return intent.purpose === "get_file" ? "github.getFile" : "github.searchCode";
+    }
+    // "mostre o primeiro/segundo resultado"
+    if (lower.match(/\d+|primeiro|segundo|terceiro|ultimo/)) {
+      return "github.getFile";
+    }
+    // fallback dentro do dominio github
+    return "github.searchCode";
+  }
+
+  if (intent.domain === "google-drive") {
+    if (
+      lower.includes("abra") || lower.includes("baixe") || lower.includes("abre") ||
+      lower.includes("ultimo") || lower.includes("último") || lower.includes("pdf")
+    ) {
+      return "drive.downloadFile";
+    }
+    return "drive.listRecent";
+  }
+
+  if (intent.domain === "gmail") {
+    if (lower.includes("abra") || lower.includes("leia") || lower.includes("esse") || lower.includes("este")) {
+      return "gmail.readMessage";
+    }
+    return "gmail.readInbox";
+  }
+
+  if (intent.domain === "google-calendar") {
+    return "calendar.listToday";
+  }
+
+  return null;
+}
+
+// ── Extrator de CurrentArtifact a partir do output do connector ───────────────
+
+export function extractArtifact(
+  goalType:      string,
+  connectorData: unknown,
+): CurrentArtifact {
+  const data = connectorData as Record<string, unknown> | null;
+  if (!data) return {};
+
+  // Para search results: extrair lista de paths
+  if (goalType.startsWith("github.search") || goalType === "github.searchCode") {
+    const steps = (data as any[]);
+    const items = Array.isArray(steps)
+      ? steps.flatMap((s: any) => (s.output?.items ?? []))
+      : [];
+    const paths = (items as any[]).map((i: any) => i.path).filter(Boolean).slice(0, 20);
+    return { resultPaths: paths, cursorIndex: 0 };
+  }
+
+  // Para files.get: extrair path
+  if (goalType === "github.getFile" || goalType === "github.listFiles") {
+    const steps = Array.isArray(data) ? data : [];
+    const first = steps[0] as any;
+    return {
+      path: first?.output?.path ?? undefined,
+    };
+  }
+
+  // Para repos.list: extrair owner/repo do primeiro item
+  if (goalType === "github.listRepos") {
+    const steps = Array.isArray(data) ? data : [];
+    const items = (steps[0] as any)?.output?.items ?? [];
+    const first = Array.isArray(items) ? items[0] : null;
+    return first
+      ? { owner: String(first.owner ?? ""), repo: String(first.name ?? "") }
+      : {};
+  }
+
+  // Para drive: extrair fileId
+  if (goalType.startsWith("drive.")) {
+    const steps = Array.isArray(data) ? data : [];
+    const out   = (steps[0] as any)?.output ?? {};
+    return { fileId: out.fileId ?? out.id ?? undefined };
+  }
+
+  return {};
+}
+
+// ── Mapeamento goalType → purpose ─────────────────────────────────────────────
+
+export function purposeFromGoalType(goalType: string): ExecutionPurpose {
+  const map: Record<string, ExecutionPurpose> = {
+    "github.listRepos":       "list_repositories",
+    "github.searchCode":      "search_symbol",
+    "github.searchFiles":     "search_text",
+    "github.getFile":         "get_file",
+    "github.listFiles":       "list_files",
+    "github.listCommits":     "list_commits",
+    "github.listBranches":    "list_branches",
+    "github.listPullRequests":"list_pull_requests",
+    "github.listIssues":      "list_issues",
+    "gmail.readInbox":        "list_emails",
+    "gmail.searchMessages":   "search_emails",
+    "gmail.readMessage":      "read_email",
+    "gmail.readEmail":        "read_email",
+    "drive.listRecent":       "list_drive_files",
+    "drive.searchFiles":      "search_drive_files",
+    "drive.downloadFile":     "download_drive_file",
+    "calendar.listToday":     "list_calendar_events",
+    "calendar.listWeek":      "list_calendar_events",
+  };
+  return map[goalType] ?? "general_conversation";
+}
+
+export function artifactTypeFromGoalType(goalType: string): ArtifactType {
+  if (goalType.startsWith("github.search") || goalType === "github.getFile" || goalType === "github.listFiles") return "source_code";
+  if (goalType === "github.listRepos")     return "repository";
+  if (goalType === "github.listCommits")   return "commit";
+  if (goalType === "github.listBranches")  return "branch";
+  if (goalType.startsWith("github.list"))  return "repository";
+  if (goalType.startsWith("gmail"))        return "email";
+  if (goalType.startsWith("drive"))        return "drive_file";
+  if (goalType.startsWith("calendar"))     return "calendar_event";
+  return "none";
+}
+
+export function domainFromGoalType(goalType: string): ExecutionDomain {
+  if (goalType.startsWith("github"))   return "github";
+  if (goalType.startsWith("drive"))    return "google-drive";
+  if (goalType.startsWith("gmail") || goalType.startsWith("email")) return "gmail";
+  if (goalType.startsWith("calendar")) return "google-calendar";
+  return "general";
+}
+
+// ── ExecutionIntentManager ────────────────────────────────────────────────────
+
+export class ExecutionIntentManager {
+  private static readonly CONNECTOR_ID = "execution-intent";
+
+  /**
+   * Cria e persiste um novo ExecutionIntentRecord a partir do resultado de uma execucao.
+   * Chamado pelo Pipeline apos sintese bem-sucedida.
+   */
+  static update(
+    executionId:   string,
+    goalType:      string,
+    connectorData: unknown,
+    existingOwner?: string,
+    existingRepo?:  string,
+  ): void {
+    try {
+      const domain       = domainFromGoalType(goalType);
+      const purpose      = purposeFromGoalType(goalType);
+      const artifactType = artifactTypeFromGoalType(goalType);
+
+      if (domain === "general") {
+        console.log("[EXP-EXECUTION-INTENT] Skipped update — domain=general for goalType:", goalType);
+        return;
+      }
+
+      const artifact = extractArtifact(goalType, connectorData);
+
+      // Preservar owner/repo do enriquecimento anterior se nao extraido do output
+      if (existingOwner && !artifact.owner) artifact.owner = existingOwner;
+      if (existingRepo  && !artifact.repo)  artifact.repo  = existingRepo;
+
+      const record: ExecutionIntentRecord = Object.freeze({
+        connectorId:      "execution-intent",
+        domain,
+        purpose,
+        artifactType,
+        continuationMode: (domain === "github" || domain === "google-drive") ? "navigation" : "standalone",
+        currentArtifact:  Object.freeze(artifact),
+        executionId,
+        updatedAt:        Date.now(),
+      });
+
+      // Persistir via ConversationStore (mecanismo oficial)
+      const { conversationStore } = require("@/lib/conversation-platform/ConversationStore");
+      conversationStore.setConnectorContext(ExecutionIntentManager.CONNECTOR_ID, record);
+
+      console.log("[EXP-EXECUTION-INTENT] ExecutionIntent Updated", {
+        executionId,
+        domain,
+        purpose,
+        artifactType,
+        continuationMode: record.continuationMode,
+        currentArtifact:  artifact,
+      });
+    } catch (e) {
+      // Non-blocking — intent update failure never affects user response
+      console.log("[EXP-EXECUTION-INTENT] Update failed (non-blocking):", String(e));
+    }
+  }
+
+  /**
+   * Carrega o ExecutionIntentRecord atual do ConversationStore.
+   * Retorna null se nao existir.
+   */
+  static load(): ExecutionIntentRecord | null {
+    try {
+      const { conversationStore } = require("@/lib/conversation-platform/ConversationStore");
+      const raw = conversationStore.getConnectorContext(ExecutionIntentManager.CONNECTOR_ID);
+      if (!raw || raw.connectorId !== "execution-intent") return null;
+
+      const record = raw as ExecutionIntentRecord;
+      console.log("[EXP-EXECUTION-INTENT] ExecutionIntent Loaded", {
+        domain:          record.domain,
+        purpose:         record.purpose,
+        artifactType:    record.artifactType,
+        updatedAt:       record.updatedAt,
+        currentArtifact: record.currentArtifact,
+      });
+      return record;
+    } catch (e) {
+      console.log("[EXP-EXECUTION-INTENT] Load failed (non-blocking):", String(e));
+      return null;
+    }
+  }
+
+  /**
+   * Consome o intent para uma mensagem de continuidade.
+   * Retorna o goalType resolvido ou null se nao aplicavel.
+   */
+  static consume(message: string): { goalType: string; artifact: CurrentArtifact } | null {
+    if (!isContinuationMessage(message)) return null;
+
+    const intent = ExecutionIntentManager.load();
+    if (!intent) {
+      console.log("[EXP-EXECUTION-INTENT] ExecutionIntent Consumed — no intent stored");
+      return null;
+    }
+
+    const goalType = resolveGoalTypeFromIntent(intent, message);
+    if (!goalType) {
+      console.log("[EXP-EXECUTION-INTENT] ExecutionIntent Consumed — could not resolve goalType", {
+        domain:  intent.domain,
+        purpose: intent.purpose,
+        message: message.slice(0, 80),
+      });
+      return null;
+    }
+
+    // Avanca o cursor se for "proximo"
+    const lower   = message.toLowerCase();
+    const artifact = { ...intent.currentArtifact };
+    if ((lower.includes("proximo") || lower.includes("próximo") || lower.includes("next")) &&
+        Array.isArray(artifact.resultPaths) && typeof artifact.cursorIndex === "number") {
+      artifact.cursorIndex = Math.min(
+        artifact.cursorIndex + 1,
+        artifact.resultPaths.length - 1,
+      );
+      // Injeta path do proximo resultado
+      artifact.path = artifact.resultPaths[artifact.cursorIndex];
+    } else if ((lower.includes("anterior") || lower.includes("prev") || lower.includes("volte")) &&
+               Array.isArray(artifact.resultPaths) && typeof artifact.cursorIndex === "number") {
+      artifact.cursorIndex = Math.max(artifact.cursorIndex - 1, 0);
+      artifact.path = artifact.resultPaths[artifact.cursorIndex];
+    } else if (lower.match(/\b(primeiro|first|1[oaº])\b/) && Array.isArray(artifact.resultPaths)) {
+      artifact.cursorIndex = 0;
+      artifact.path = artifact.resultPaths[0];
+    } else if (lower.match(/\b(segundo|second|2[oaº])\b/) && Array.isArray(artifact.resultPaths)) {
+      artifact.cursorIndex = 1;
+      artifact.path = artifact.resultPaths[1];
+    } else if (lower.match(/\b(terceiro|third|3[oaº])\b/) && Array.isArray(artifact.resultPaths)) {
+      artifact.cursorIndex = 2;
+      artifact.path = artifact.resultPaths[2];
+    } else if (lower.match(/\b(ultimo|last|[uú]ltimo)\b/) && Array.isArray(artifact.resultPaths)) {
+      artifact.cursorIndex = artifact.resultPaths.length - 1;
+      artifact.path = artifact.resultPaths[artifact.cursorIndex];
+    }
+
+    console.log("[EXP-EXECUTION-INTENT] ExecutionIntent Consumed", {
+      message:   message.slice(0, 80),
+      domain:    intent.domain,
+      purpose:   intent.purpose,
+      goalType,
+      artifact,
+    });
+
+    return { goalType, artifact };
+  }
+
+  /**
+   * Limpa o intent atual (ex: ao trocar de sessao).
+   */
+  static clear(): void {
+    try {
+      const { conversationStore } = require("@/lib/conversation-platform/ConversationStore");
+      conversationStore.clearConnectorContext(ExecutionIntentManager.CONNECTOR_ID);
+      console.log("[EXP-EXECUTION-INTENT] ExecutionIntent Cleared");
+    } catch { /* non-blocking */ }
+  }
+}

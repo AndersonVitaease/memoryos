@@ -363,11 +363,21 @@ class ConversationPipeline {
       // ── end Sprint M-03 / 8.12 ──────────────────────────────────────────
 
       // ── E-02.1: Conversation → Goal Bridge ──────────────────────────────
+      // [EXP-EXECUTION-INTENT] Check continuation before GoalBridge
+      // REVERSAO: remover este bloco try/catch e apagar ExecutionIntent.ts
+      let _intentOverride: { goalType: string; artifact: import("@/lib/execution-intent/ExecutionIntent").CurrentArtifact } | null = null;
+      try {
+        const { ExecutionIntentManager } = await import("@/lib/execution-intent/ExecutionIntent");
+        _intentOverride = ExecutionIntentManager.consume(userMessage);
+      } catch { /* non-blocking */ }
+      // [END EXP-EXECUTION-INTENT]
+
       // [EF-49.2 probe] GoalBridge
       try { const { ef492Store: _s } = await import("@/lib/ef492/RuntimePipelineInstrument"); _s.record(executionId, { layer: "ConversationGoalBridge", source: "production_runtime", timestamp: Date.now(), durationMs: null, input: "routerResult.intent", output: "GoalBridgeResult.goal", caller: "ConversationPipeline", next: "ConversationPlanningEngine", status: "executed" }); } catch { /* non-blocking */ }
       const goalBridgeResult = conversationGoalBridge.derive(
         userMessage,
-        routerResult.intent?.intent ?? "general_conversation",
+        // [EXP-EXECUTION-INTENT] if continuation resolved, override intent with the resolved goalType
+        _intentOverride?.goalType ?? routerResult.intent?.intent ?? "general_conversation",
         routerResult.intent?.confidence ?? 0,
       );
       try {
@@ -633,6 +643,18 @@ class ConversationPipeline {
 
           // ── v2: connector result → ExecutionOutcome → ResponseCandidate ──
           const connectorDomain = _goalTypeToDomain(goalBridgeResult.goal.type);
+
+          // [EXP-EXECUTION-INTENT] Update intent after successful connector execution
+          // REVERSAO: remover este bloco try/catch
+          if (synthesis.handled && synthesis.connectorData) {
+            try {
+              const { ExecutionIntentManager } = await import("@/lib/execution-intent/ExecutionIntent");
+              const _enrichedOwner = (_activePlan.steps[0]?.parameters as Record<string, unknown>)?.owner as string | undefined;
+              const _enrichedRepo  = (_activePlan.steps[0]?.parameters as Record<string, unknown>)?.repo  as string | undefined;
+              ExecutionIntentManager.update(executionId, goalBridgeResult.goal.type, synthesis.connectorData, _enrichedOwner, _enrichedRepo);
+            } catch { /* non-blocking */ }
+          }
+          // [END EXP-EXECUTION-INTENT]
 
           if (synthesis.handled && synthesis.response) {
             // Success: synthesizer produced a response
