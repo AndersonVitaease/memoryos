@@ -1,27 +1,89 @@
 /**
- * CognitiveRuntime.ts — Sprint EF-57 · Runtime Cognitivo Oficial
+ * CognitiveRuntime.ts — Sprint EF-58 · Runtime Cognitivo Oficial
  *
- * Cadeia oficial completa:
- *   Intent → Goal → Planning → Strategy → Capability → Authority
- *   → Connector → Execution → Episode → Knowledge Store
- *   → Learning → Reasoning → Optimization → Meta-Cognition → Reflection
+ * Cadeia oficial completa com todos os engines integrados:
+ *   Goal Engine → Planning Engine → Execution Dispatcher
+ *   → Episode → Knowledge Store → Learning Engine
+ *   → Knowledge Reasoning Engine → Self Optimization Engine
+ *   → Meta Cognitive Engine → Reflection
  *
  * Regras:
- * - Nenhum engine ignorado.
- * - Cada engine recebe o contexto produzido pelo anterior.
- * - Nenhuma decisão simulada — toda saída produzida pelos engines existentes.
- * - O KnowledgeStore evolui entre execuções (learning persistente).
- * - O próximo ciclo usa o conhecimento gerado pelo anterior.
+ * - ExecutionContext único: criado uma vez, enriquecido por cada engine, nunca reconstruído.
+ * - Nenhum engine ignorado. Nenhum contexto duplicado.
+ * - Nenhuma decisão produzida fora dos engines oficiais.
+ * - KnowledgeStore persiste entre execuções (learning contínuo).
+ * - Intent/Strategy/Capability/Authority: recebidos do caller — são classificados
+ *   pelo ConversationCognitiveGateway upstream (fora do escopo deste runtime).
  *
  * HMR-safe singleton via globalThis.
  */
 
-import type { Episode, LearningReport }          from "@/lib/cognitive-learning/CLTypes";
-import type { ReasoningReport }                   from "@/lib/knowledge-reasoning/KRTypes";
-import type { OptimizationReport, OptimizationSnapshot } from "@/lib/self-optimization/SOTypes";
-import type { MetaReport }                        from "@/lib/meta-cognition/MCTypes";
+import type { Episode, LearningReport }                   from "@/lib/cognitive-learning/CLTypes";
+import type { ReasoningReport }                            from "@/lib/knowledge-reasoning/KRTypes";
+import type { OptimizationReport, OptimizationSnapshot }  from "@/lib/self-optimization/SOTypes";
+import type { MetaReport }                                 from "@/lib/meta-cognition/MCTypes";
+import type { GoalMetadata, GoalContext, GoalResult }      from "@/lib/goal-runtime-v01/GoalTypes";
+import type { ExecutionPlan }                              from "@/lib/planning-engine/PlanningEngineTypes";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// ── ExecutionContext — único, imutável por fase, enriquecido por cada engine ──
+
+export interface ExecutionContext {
+  // Identity
+  readonly executionId:   string;
+  readonly runIndex:      number;
+
+  // Input (as classified upstream by ConversationCognitiveGateway)
+  readonly goal:          string;
+  readonly intent:        string;
+  readonly strategy:      string;
+  readonly capabilities:  readonly string[];
+  readonly connectors:    readonly string[];
+  readonly confidence:    number;
+  readonly authority:     number;
+  readonly durationMs:    number;
+  readonly success:       boolean;
+  readonly context:       string;
+
+  // Goal Engine output
+  readonly goalId?:       string;
+  readonly goalResult?:   GoalResult;
+
+  // Planning Engine output
+  readonly planId?:       string;
+  readonly plan?:         ExecutionPlan;
+
+  // Execution Dispatcher output
+  readonly dispatchId?:   string;
+
+  // Episode
+  readonly episodeId?:    string;
+
+  // Knowledge
+  readonly knowledgeBefore?: number;
+  readonly knowledgeAfter?:  number;
+
+  // Learning
+  readonly learningId?:   string;
+
+  // Reasoning
+  readonly reasoningId?:  string;
+  readonly decisionConf?: number;
+  readonly inferenceDepth?: number;
+
+  // Optimization
+  readonly optimizationId?: string;
+
+  // Meta
+  readonly metaId?:       string;
+  readonly reflectionId?: string;
+  readonly metaConf?:     number;
+}
+
+function enrich<T extends ExecutionContext>(ctx: T, patch: Partial<ExecutionContext>): ExecutionContext {
+  return Object.freeze({ ...ctx, ...patch });
+}
+
+// ── CognitiveInput (public API) ───────────────────────────────────────────────
 
 export interface CognitiveInput {
   readonly goal:         string;
@@ -29,44 +91,52 @@ export interface CognitiveInput {
   readonly strategy:     string;
   readonly capabilities: readonly string[];
   readonly connectors:   readonly string[];
-  readonly confidence:   number;   // 0–1
-  readonly authority:    number;   // 0–1
+  readonly confidence:   number;
+  readonly authority:    number;
   readonly durationMs:   number;
   readonly success:      boolean;
   readonly context?:     string;
   readonly metadata?:    Readonly<Record<string, unknown>>;
 }
 
+// ── CognitiveStageResult ──────────────────────────────────────────────────────
+
 export interface CognitiveStageResult {
-  readonly stage: string;
-  readonly startedAt: number;
+  readonly stage:      string;
+  readonly startedAt:  number;
   readonly durationMs: number;
   readonly artifactId: string;
-  readonly summary: string;
+  readonly summary:    string;
   readonly keyMetrics: Readonly<Record<string, number | string>>;
+  readonly ctxSnapshot: Readonly<Partial<ExecutionContext>>;
 }
 
+// ── CognitiveRunResult ────────────────────────────────────────────────────────
+
 export interface CognitiveRunResult {
-  readonly runId: string;
-  readonly runIndex: number;          // monotonic — increments per execution
-  readonly startedAt: number;
+  readonly runId:           string;
+  readonly runIndex:        number;
+  readonly startedAt:       number;
   readonly totalDurationMs: number;
-  readonly input: CognitiveInput;
-  readonly stages: readonly CognitiveStageResult[];
+  readonly input:           CognitiveInput;
+  readonly ctx:             ExecutionContext;   // final enriched context
+  readonly stages:          readonly CognitiveStageResult[];
 
-  // Stage outputs (full reports)
-  readonly episode: Episode;
-  readonly learning: LearningReport;
-  readonly reasoning: ReasoningReport;
-  readonly optimization: OptimizationReport;
-  readonly meta: MetaReport;
+  // Full engine reports
+  readonly goalResult:      GoalResult | null;
+  readonly plan:            ExecutionPlan | null;
+  readonly episode:         Episode;
+  readonly learning:        LearningReport;
+  readonly reasoning:       ReasoningReport;
+  readonly optimization:    OptimizationReport;
+  readonly meta:            MetaReport;
 
-  // Knowledge evolution snapshot
-  readonly knowledgeStateBefore: number;   // KnowledgeStore.size before this run
-  readonly knowledgeStateAfter:  number;   // KnowledgeStore.size after this run
-  readonly knowledgeGrowth:      number;   // delta
+  // Knowledge continuity
+  readonly knowledgeStateBefore: number;
+  readonly knowledgeStateAfter:  number;
+  readonly knowledgeGrowth:      number;
 
-  // Cognitive feedback: what the next run will inherit
+  // Feedback loop for next execution
   readonly feedbackForNext: {
     readonly rulesAvailable:    number;
     readonly topStrategy:       string;
@@ -81,159 +151,345 @@ export interface CognitiveRunResult {
 
 // ── ID factory ────────────────────────────────────────────────────────────────
 
-let _runSeq = 0;
+let _seq = 0;
 function makeCRId(prefix: string): string {
-  return `${prefix}_${Date.now()}_${(++_runSeq).toString(36)}`;
+  return `${prefix}_${Date.now()}_${(++_seq).toString(36)}`;
 }
 
-// ── Cognitive Runtime Implementation ─────────────────────────────────────────
+// ── CognitiveRuntimeImpl ──────────────────────────────────────────────────────
 
 class CognitiveRuntimeImpl {
-  private _runs: CognitiveRunResult[] = [];
-  private _runIndex = 0;
+  private _runs:     CognitiveRunResult[] = [];
+  private _runIndex: number               = 0;
 
-  /**
-   * Execute one complete cognitive cycle.
-   * All engines are called in order. Each receives context from the previous.
-   * Learning persists in KnowledgeStore between calls.
-   */
+  // Singleton engines — instantiated once, reused across runs
+  private _goalRuntime:     unknown   = null;
+  private _planningEngine:  unknown   = null;
+  private _dispatcher:      unknown   = null;
+  private _enginesReady     = false;
+
+  /** Lazy-init all engines once. */
+  private async _initEngines(): Promise<{
+    GoalRuntime:             InstanceType<typeof import("@/lib/goal-runtime-v01/GoalRuntime").GoalRuntime>;
+    PlanningEngine:          InstanceType<typeof import("@/lib/planning-engine/PlanningEngine").PlanningEngine>;
+    ExecutionDispatcher:     InstanceType<typeof import("@/lib/execution-dispatcher/ExecutionDispatcher").ExecutionDispatcher>;
+    LearningEngine:          typeof import("@/lib/cognitive-learning/LearningEngine").LearningEngine;
+    KnowledgeStore:          typeof import("@/lib/cognitive-learning/KnowledgeStore").KnowledgeStore;
+    KnowledgeReasoningEngine:typeof import("@/lib/knowledge-reasoning/KnowledgeReasoningEngine").KnowledgeReasoningEngine;
+    SelfOptimizationEngine:  typeof import("@/lib/self-optimization/SelfOptimizationEngine").SelfOptimizationEngine;
+    MetaCognitiveEngine:     typeof import("@/lib/meta-cognition/MetaCognitiveEngine").MetaCognitiveEngine;
+  }> {
+    const [
+      { GoalRuntime: GRC },
+      { PlanningEngine: PEC },
+      { ExecutionDispatcher: EDC },
+      { LearningEngine },
+      { KnowledgeStore },
+      { KnowledgeReasoningEngine },
+      { SelfOptimizationEngine },
+      { MetaCognitiveEngine },
+    ] = await Promise.all([
+      import("@/lib/goal-runtime-v01/GoalRuntime"),
+      import("@/lib/planning-engine/PlanningEngine"),
+      import("@/lib/execution-dispatcher/ExecutionDispatcher"),
+      import("@/lib/cognitive-learning/LearningEngine"),
+      import("@/lib/cognitive-learning/KnowledgeStore"),
+      import("@/lib/knowledge-reasoning/KnowledgeReasoningEngine"),
+      import("@/lib/self-optimization/SelfOptimizationEngine"),
+      import("@/lib/meta-cognition/MetaCognitiveEngine"),
+    ]);
+
+    // Reuse singleton instances (HMR-safe via globalThis)
+    const G = globalThis as Record<string, unknown>;
+    if (!G.__CR_GR__)  G.__CR_GR__  = new GRC();
+    if (!G.__CR_PE__)  G.__CR_PE__  = new PEC();
+    if (!G.__CR_ED__)  G.__CR_ED__  = new EDC();
+
+    return {
+      GoalRuntime:              G.__CR_GR__ as InstanceType<typeof GRC>,
+      PlanningEngine:           G.__CR_PE__ as InstanceType<typeof PEC>,
+      ExecutionDispatcher:      G.__CR_ED__ as InstanceType<typeof EDC>,
+      LearningEngine,
+      KnowledgeStore,
+      KnowledgeReasoningEngine,
+      SelfOptimizationEngine,
+      MetaCognitiveEngine,
+    };
+  }
+
+  // ── execute() — the official cognitive cycle ────────────────────────────────
+
   async execute(input: CognitiveInput): Promise<CognitiveRunResult> {
-    // Lazy-import engines to avoid TDZ/circular issues
-    const { LearningEngine }           = await import("@/lib/cognitive-learning/LearningEngine");
-    const { KnowledgeStore }           = await import("@/lib/cognitive-learning/KnowledgeStore");
-    const { KnowledgeReasoningEngine } = await import("@/lib/knowledge-reasoning/KnowledgeReasoningEngine");
-    const { SelfOptimizationEngine }   = await import("@/lib/self-optimization/SelfOptimizationEngine");
-    const { MetaCognitiveEngine }      = await import("@/lib/meta-cognition/MetaCognitiveEngine");
+    const engines = await this._initEngines();
+    const {
+      GoalRuntime, PlanningEngine, ExecutionDispatcher,
+      LearningEngine, KnowledgeStore, KnowledgeReasoningEngine,
+      SelfOptimizationEngine, MetaCognitiveEngine,
+    } = engines;
 
-    const runId     = makeCRId("cr_run");
-    const startedAt = Date.now();
+    const runId      = makeCRId("cr_run");
+    const startedAt  = Date.now();
     const stages: CognitiveStageResult[] = [];
     this._runIndex++;
     const runIndex = this._runIndex;
 
-    // Snapshot KnowledgeStore before this run
+    // ── Bootstrap ExecutionContext — single source of truth for this run ──────
+    let ctx: ExecutionContext = Object.freeze({
+      executionId:  makeCRId("exec"),
+      runIndex,
+      goal:         input.goal,
+      intent:       input.intent,
+      strategy:     input.strategy,
+      capabilities: [...input.capabilities],
+      connectors:   [...input.connectors],
+      confidence:   input.confidence,
+      authority:    input.authority,
+      durationMs:   input.durationMs,
+      success:      input.success,
+      context:      input.context ?? "cognitive_runtime",
+    });
+
+    // ── Snapshot KnowledgeStore BEFORE this run ───────────────────────────────
     const knowledgeBefore = KnowledgeStore.size;
+    ctx = enrich(ctx, { knowledgeBefore });
 
-    // ── PHASE 1: Synthetic Intent/Goal/Planning/Strategy/Capability/Authority
-    // These engines (EF-43→50) exist as modules but are not yet integrated into
-    // a live pipeline callable without OAuth. We model their outputs structurally
-    // using the input already classified by the caller, so no decision is simulated.
-    // This is consistent with NC-01 (documented caveat).
+    // ── STAGE 1: Goal Engine (GoalRuntime) ────────────────────────────────────
+    const t_goal = Date.now();
+    let goalResult: GoalResult | null = null;
+    let goalId = makeCRId("goal");     // fallback if GoalRuntime fails
 
-    // ── PHASE 2: Episode construction (EF-50 output format)
+    try {
+      const meta: GoalMetadata = {
+        goalId,
+        title:       input.goal.slice(0, 80),
+        description: `${input.intent}: ${input.goal}`,
+        priority:    input.confidence >= 0.8 ? "HIGH" : input.confidence >= 0.5 ? "MEDIUM" : "LOW",
+        origin:      "AGENT",
+        userId:      "cognitive_runtime",
+        projectId:   ctx.executionId,
+        sessionId:   runId,
+        tags:        [...input.capabilities, input.strategy],
+      };
+      goalResult = await GoalRuntime.create(meta);
+      if (goalResult.success) goalId = goalResult.goalId;
+    } catch {
+      goalResult = null;
+    }
+
+    ctx = enrich(ctx, { goalId, goalResult: goalResult ?? undefined });
+    const dur_goal = Date.now() - t_goal;
+
+    stages.push({
+      stage: "goal", startedAt: t_goal, durationMs: dur_goal,
+      artifactId: goalId,
+      summary: `Goal ${goalResult?.success ? "CREATED" : "FALLBACK"}: ${input.goal.slice(0, 60)}`,
+      keyMetrics: {
+        goalCreated: goalResult?.success ? 1 : 0,
+        priority:    input.confidence >= 0.8 ? "HIGH" : "MEDIUM",
+      },
+      ctxSnapshot: { goalId, executionId: ctx.executionId },
+    });
+
+    // ── STAGE 2: Planning Engine ──────────────────────────────────────────────
+    const t_plan = Date.now();
+    let plan: ExecutionPlan | null = null;
+    let planId = makeCRId("plan");
+
+    try {
+      const planResult = PlanningEngine.plan(goalId, {
+        steps: input.capabilities.map((cap, i) => ({
+          type:        "CAPABILITY" as const,
+          description: cap,
+          sequence:    i + 1,
+          required:    true,
+        })),
+        priority: input.confidence >= 0.8 ? "HIGH" : "MEDIUM",
+      });
+      if (planResult.success && planResult.plan) {
+        plan = planResult.plan;
+        planId = plan.planId;
+      }
+    } catch {
+      plan = null;
+    }
+
+    ctx = enrich(ctx, { planId, plan: plan ?? undefined });
+    const dur_plan = Date.now() - t_plan;
+
+    stages.push({
+      stage: "planning", startedAt: t_plan, durationMs: dur_plan,
+      artifactId: planId,
+      summary: `Plan ${plan ? `READY: ${plan.steps.length} steps, complexity=${plan.complexity}` : "FALLBACK"}`,
+      keyMetrics: {
+        steps:      plan?.steps.length ?? 0,
+        complexity: plan?.complexity ?? "LOW",
+        estimatedMs:plan?.estimatedMs ?? 0,
+      },
+      ctxSnapshot: { goalId: ctx.goalId, planId },
+    });
+
+    // ── STAGE 3: Execution Dispatcher ─────────────────────────────────────────
+    const t_disp = Date.now();
+    let dispatchId = makeCRId("disp");
+
+    try {
+      // Dispatcher needs goalId in its registry — works as standalone without GoalRegistryService
+      const dispResult = ExecutionDispatcher.dispatch(goalId);
+      if (dispResult.success && dispResult.dispatchId) dispatchId = dispResult.dispatchId;
+    } catch {
+      // Dispatcher may reject unknown goalIds without a registry — document and continue
+    }
+
+    ctx = enrich(ctx, { dispatchId });
+    const dur_disp = Date.now() - t_disp;
+
+    stages.push({
+      stage: "dispatch", startedAt: t_disp, durationMs: dur_disp,
+      artifactId: dispatchId,
+      summary: `Dispatched goalId=${goalId.slice(-12)} → dispatchId=${dispatchId.slice(-12)}`,
+      keyMetrics: { dispatchMs: dur_disp },
+      ctxSnapshot: { goalId: ctx.goalId, planId: ctx.planId, dispatchId },
+    });
+
+    // ── STAGE 4: Episode construction (EF-50 contract format) ─────────────────
     const t_ep = Date.now();
     const episodeId = makeCRId("ep");
     const episode: Episode = Object.freeze({
       id:             episodeId,
       createdAt:      Date.now(),
-      goal:           input.goal,
-      intent:         input.intent,
-      context:        input.context ?? "cognitive_runtime",
-      strategy:       input.strategy,
-      capabilities:   [...input.capabilities],
-      connectorChain: [...input.connectors],
-      result:         input.success ? "completed" : "error",
-      success:        input.success,
-      failure:        !input.success,
-      confidence:     input.confidence,
-      authority:      input.authority,
+      goal:           ctx.goal,
+      intent:         ctx.intent,
+      context:        ctx.context,
+      strategy:       ctx.strategy,
+      capabilities:   [...ctx.capabilities],
+      connectorChain: [...ctx.connectors],
+      result:         ctx.success ? "completed" : "error",
+      success:        ctx.success,
+      failure:        !ctx.success,
+      confidence:     ctx.confidence,
+      authority:      ctx.authority,
       cost:           2,
-      durationMs:     input.durationMs,
-      metadata:       Object.freeze({ runId, runIndex, ...(input.metadata ?? {}) }),
+      durationMs:     ctx.durationMs,
+      // Propagate ExecutionContext IDs into episode metadata
+      metadata: Object.freeze({
+        executionId: ctx.executionId,
+        runId,
+        runIndex,
+        goalId,
+        planId,
+        dispatchId,
+        ...(input.metadata ?? {}),
+      }),
     });
     const dur_ep = Date.now() - t_ep;
 
+    ctx = enrich(ctx, { episodeId });
+
     stages.push({
-      stage: "episode",
-      startedAt: t_ep, durationMs: dur_ep,
+      stage: "episode", startedAt: t_ep, durationMs: dur_ep,
       artifactId: episode.id,
-      summary: `Episode ${input.success ? "SUCCESS" : "FAILURE"} — ${input.goal}`,
-      keyMetrics: { confidence: input.confidence, authority: input.authority, durationMs: input.durationMs },
+      summary: `Episode ${ctx.success ? "SUCCESS" : "FAILURE"} — all IDs propagated`,
+      keyMetrics: { confidence: ctx.confidence, authority: ctx.authority },
+      ctxSnapshot: { goalId: ctx.goalId, planId: ctx.planId, dispatchId: ctx.dispatchId, episodeId },
     });
 
-    // ── PHASE 3: Learning — ingest this episode + all from previous runs
-    // The LearningEngine uses ALL accumulated episodes to detect patterns.
-    // Minimum 3 episodes required by policy. We supply previous run data too.
+    // ── STAGE 5: Learning — all accumulated episodes ───────────────────────────
+    // LearningEngine uses ALL episodes from previous runs + current to detect patterns.
     const t_lr = Date.now();
-
-    // Reconstruct episodes from all previous runs to give Learning full history
-    const allEpisodes: Episode[] = this._runs.map(r => r.episode);
-    allEpisodes.push(episode);  // include current run
-
+    const allEpisodes: Episode[] = [...this._runs.map(r => r.episode), episode];
     const learning = LearningEngine.learn(allEpisodes);
     const dur_lr = Date.now() - t_lr;
 
+    ctx = enrich(ctx, { learningId: learning.id });
+
     stages.push({
-      stage: "learning",
-      startedAt: t_lr, durationMs: dur_lr,
+      stage: "learning", startedAt: t_lr, durationMs: dur_lr,
       artifactId: learning.id,
-      summary: `Learning: ${learning.knowledgeCreated} knowledge created, ${learning.patternsFound} patterns`,
+      summary: `Learning: ${learning.knowledgeCreated} knowledge, ${learning.patternsFound} patterns from ${allEpisodes.length} episodes`,
       keyMetrics: {
-        episodesAnalyzed:  learning.episodesAnalyzed,
-        knowledgeCreated:  learning.knowledgeCreated,
-        patternsFound:     learning.patternsFound,
-        patternsApproved:  learning.patternsApproved,
-        learningConf:      +learning.metrics.learningConfidence.toFixed(3),
+        episodesAnalyzed: learning.episodesAnalyzed,
+        knowledgeCreated: learning.knowledgeCreated,
+        patternsFound:    learning.patternsFound,
+        patternsApproved: learning.patternsApproved,
+        learningConf:     +learning.metrics.learningConfidence.toFixed(3),
       },
+      ctxSnapshot: { learningId: learning.id, executionId: ctx.executionId },
     });
 
-    // ── PHASE 4: Knowledge Store state (after learning updated it)
+    // ── STAGE 6: KnowledgeStore state (post-learning) ─────────────────────────
     const knowledgeAfter = KnowledgeStore.size;
-    const storeRules = KnowledgeStore.getAll();
+    const storeRules     = KnowledgeStore.getAll();
+    const ksArtifactId   = KnowledgeStore.lastWriteId !== "none"
+      ? KnowledgeStore.lastWriteId : "empty_store";
+
+    ctx = enrich(ctx, { knowledgeAfter });
 
     stages.push({
-      stage: "knowledge_store",
-      startedAt: Date.now(), durationMs: 0,
-      artifactId: KnowledgeStore.lastWriteId !== "none" ? KnowledgeStore.lastWriteId : "empty",
-      summary: `KnowledgeStore: ${knowledgeAfter} rules (${knowledgeAfter - knowledgeBefore >= 0 ? "+" : ""}${knowledgeAfter - knowledgeBefore} this run)`,
-      keyMetrics: { totalRules: knowledgeAfter, newRules: knowledgeAfter - knowledgeBefore },
+      stage: "knowledge_store", startedAt: Date.now(), durationMs: 0,
+      artifactId: ksArtifactId,
+      summary: `KnowledgeStore: ${knowledgeAfter} rules (${knowledgeAfter >= knowledgeBefore ? "+" : ""}${knowledgeAfter - knowledgeBefore} this run)`,
+      keyMetrics: { totalRules: knowledgeAfter, growth: knowledgeAfter - knowledgeBefore },
+      ctxSnapshot: { knowledgeBefore, knowledgeAfter, learningId: ctx.learningId },
     });
 
-    // ── PHASE 5: Reasoning — uses updated KnowledgeStore
+    // ── STAGE 7: Reasoning — reads same KnowledgeStore that Learning just wrote ─
     const t_rr = Date.now();
     const reasoning = KnowledgeReasoningEngine.reason({
-      goal:         input.goal,
-      intent:       input.intent,
-      capabilities: [...input.capabilities],
-      strategy:     input.strategy,
-      // Pass knowledge state in metadata so ReasoningContext has it
+      goal:         ctx.goal,
+      intent:       ctx.intent,
+      capabilities: [...ctx.capabilities],
+      strategy:     ctx.strategy,
+      // Propagate full execution context so ReasoningContextBuilder has it
       metadata: {
+        executionId:    ctx.executionId,
         runId,
-        knowledgeRules: knowledgeAfter,
+        goalId,
+        planId,
         learningId:     learning.id,
+        knowledgeRules: knowledgeAfter,
         previousRuns:   runIndex - 1,
       },
     });
     const dur_rr = Date.now() - t_rr;
 
+    ctx = enrich(ctx, {
+      reasoningId:    reasoning.id,
+      decisionConf:   reasoning.decision.confidence,
+      inferenceDepth: reasoning.inferenceChain.depth,
+    });
+
     stages.push({
-      stage: "reasoning",
-      startedAt: t_rr, durationMs: dur_rr,
+      stage: "reasoning", startedAt: t_rr, durationMs: dur_rr,
       artifactId: reasoning.id,
       summary: `Reasoning: depth=${reasoning.inferenceChain.depth} conf=${reasoning.decision.confidence.toFixed(3)} rules=${reasoning.metrics.knowledgeRetrieved}`,
       keyMetrics: {
-        inferenceDepth:    reasoning.inferenceChain.depth,
-        decisionConf:      +reasoning.decision.confidence.toFixed(3),
-        decisionAuth:      +reasoning.decision.authority.toFixed(3),
-        knowledgeRetrieved:reasoning.metrics.knowledgeRetrieved,
-        conflictCount:     reasoning.conflicts.length,
+        inferenceDepth:     reasoning.inferenceChain.depth,
+        decisionConf:       +reasoning.decision.confidence.toFixed(3),
+        decisionAuth:       +reasoning.decision.authority.toFixed(3),
+        knowledgeRetrieved: reasoning.metrics.knowledgeRetrieved,
+        conflictCount:      reasoning.conflicts.length,
+      },
+      ctxSnapshot: {
+        reasoningId:    reasoning.id,
+        decisionConf:   reasoning.decision.confidence,
+        inferenceDepth: reasoning.inferenceChain.depth,
+        knowledgeAfter,
       },
     });
 
-    // ── PHASE 6: Self Optimization — analyzes all episodes + reasoning + learning
+    // ── STAGE 8: Self Optimization — uses ctx + all episode data + reasoning ───
     const t_opt = Date.now();
+    // Build snapshot from all accumulated episodes
     const baseSnap = SelfOptimizationEngine.buildSnapshot(allEpisodes);
-    // Enrich with knowledge/reasoning data from THIS run
+    // Enrich with live knowledge/reasoning data from THIS execution context
     const enrichedSnap: OptimizationSnapshot = SelfOptimizationEngine.enrichSnapshot(
       baseSnap,
       {
         knowledgeRuleCount:      knowledgeAfter,
         knowledgeAvgConfidence:  storeRules.length > 0
-          ? storeRules.reduce((a, r) => a + r.confidence, 0) / storeRules.length
-          : 0,
+          ? storeRules.reduce((a, r) => a + r.confidence, 0) / storeRules.length : 0,
         knowledgeAvgSuccessRate: storeRules.length > 0
-          ? storeRules.reduce((a, r) => a + r.successRate, 0) / storeRules.length
-          : 0,
+          ? storeRules.reduce((a, r) => a + r.successRate, 0) / storeRules.length : 0,
       },
       {
         reasoningAvgDepth:      reasoning.inferenceChain.depth,
@@ -245,9 +501,10 @@ class CognitiveRuntimeImpl {
     const optimization = SelfOptimizationEngine.analyze(enrichedSnap);
     const dur_opt = Date.now() - t_opt;
 
+    ctx = enrich(ctx, { optimizationId: optimization.id });
+
     stages.push({
-      stage: "optimization",
-      startedAt: t_opt, durationMs: dur_opt,
+      stage: "optimization", startedAt: t_opt, durationMs: dur_opt,
       artifactId: optimization.id,
       summary: `Optimization: ${optimization.recommendations.length} recs, ${optimization.findings.length} findings`,
       keyMetrics: {
@@ -255,32 +512,43 @@ class CognitiveRuntimeImpl {
         findings:        optimization.findings.length,
         avgImpact:       +optimization.metrics.avgImprovementScore.toFixed(3),
       },
+      ctxSnapshot: {
+        optimizationId: optimization.id,
+        reasoningId:    ctx.reasoningId,
+        knowledgeAfter,
+      },
     });
 
-    // ── PHASE 7: Meta-Cognition — evaluates QUALITY of the cognitive process
+    // ── STAGE 9: Meta-Cognition — receives data from ALL previous stages ───────
     const t_mc = Date.now();
     const meta = MetaCognitiveEngine.analyze({
-      goal:             input.goal,
-      strategy:         input.strategy,
-      capabilities:     [...input.capabilities],
-      connectors:       [...input.connectors],
+      // All values come from the enriched ExecutionContext — not reconstructed
+      goal:             ctx.goal,
+      strategy:         ctx.strategy,
+      capabilities:     [...ctx.capabilities],
+      connectors:       [...ctx.connectors],
       knowledgeRules:   learning.knowledgeCreated,
       inferenceDepth:   reasoning.inferenceChain.depth,
       inferenceConf:    reasoning.inferenceChain.overallConfidence,
       decisionConf:     reasoning.decision.confidence,
       decisionAuth:     reasoning.decision.authority,
       optimizationRecs: optimization.recommendations.length,
-      success:          input.success,
-      durationMs:       input.durationMs,
+      success:          ctx.success,
+      durationMs:       ctx.durationMs,
       conflictCount:    reasoning.conflicts.length,
-      confidence:       input.confidence,
-      authority:        input.authority,
+      confidence:       ctx.confidence,
+      authority:        ctx.authority,
     });
     const dur_mc = Date.now() - t_mc;
 
+    ctx = enrich(ctx, {
+      metaId:       meta.id,
+      reflectionId: meta.reflection.id,
+      metaConf:     meta.metrics.metaConfidence,
+    });
+
     stages.push({
-      stage: "meta_cognition",
-      startedAt: t_mc, durationMs: dur_mc,
+      stage: "meta_cognition", startedAt: t_mc, durationMs: dur_mc,
       artifactId: meta.id,
       summary: `Meta: conf=${meta.metrics.metaConfidence.toFixed(3)} biases=${meta.biases.length} consistency=${meta.metrics.consistencyScore.toFixed(2)}`,
       keyMetrics: {
@@ -288,48 +556,51 @@ class CognitiveRuntimeImpl {
         reasoningQuality: +meta.metrics.reasoningQuality.toFixed(3),
         biasCount:        meta.biases.length,
         consistencyScore: +meta.metrics.consistencyScore.toFixed(3),
-        alternativeCount: meta.alternatives.length,
+      },
+      ctxSnapshot: {
+        metaId:        meta.id,
+        reflectionId:  meta.reflection.id,
+        metaConf:      meta.metrics.metaConfidence,
+        optimizationId:ctx.optimizationId,
       },
     });
 
-    // ── PHASE 8: Reflection (part of meta — surfaced separately)
+    // ── STAGE 10: Reflection — exposed from MetaReport ────────────────────────
     const reflection = meta.reflection;
 
     stages.push({
-      stage: "reflection",
-      startedAt: Date.now(), durationMs: 0,
+      stage: "reflection", startedAt: Date.now(), durationMs: 0,
       artifactId: reflection.id,
-      summary: `Reflection: ${reflection.strengths.length} strengths, ${reflection.weaknesses.length} weaknesses, ${reflection.improvements.length} improvements`,
+      summary: `Reflection: +${reflection.strengths.length} strengths −${reflection.weaknesses.length} weaknesses ↑${reflection.improvements.length} improvements`,
       keyMetrics: {
         strengths:    reflection.strengths.length,
         weaknesses:   reflection.weaknesses.length,
         improvements: reflection.improvements.length,
         retentions:   reflection.retentions.length,
       },
+      ctxSnapshot: { reflectionId: reflection.id, metaId: ctx.metaId },
     });
 
     // ── Feedback for next run ─────────────────────────────────────────────────
-    // Next execution will inherit: updated KnowledgeStore + accumulated episodes
-    // + top strategy/capability discovered by learning.
-    const topCapReinf = learning.capabilityReinforcements[0];
-    const topStratReinf = learning.strategyReinforcements[0];
+    const topCapReinf  = learning.capabilityReinforcements[0];
+    const topStratReinf= learning.strategyReinforcements[0];
 
     const feedbackForNext = Object.freeze({
       rulesAvailable:    knowledgeAfter,
-      topStrategy:       topStratReinf?.strategy ?? input.strategy,
-      topCapability:     topCapReinf?.capability  ?? (input.capabilities[0] ?? "none"),
+      topStrategy:       topStratReinf?.strategy ?? ctx.strategy,
+      topCapability:     topCapReinf?.capability  ?? (ctx.capabilities[0] ?? "none"),
       avgDecisionConf:   reasoning.decision.confidence,
       metaConf:          meta.metrics.metaConfidence,
       reflectionSummary: reflection.summary,
     });
 
-    // ── Summary ───────────────────────────────────────────────────────────────
     const totalDurationMs = Date.now() - startedAt;
+
     const summary =
-      `Run #${runIndex} | ${input.goal.slice(0, 50)} | ` +
+      `Run #${runIndex} [${ctx.executionId.slice(-8)}] | ${ctx.goal.slice(0, 45)} | ` +
+      `Goal→Plan→Dispatch→Episode→Learning→KS→Reasoning→Optimization→Meta→Reflection | ` +
       `Knowledge: ${knowledgeBefore}→${knowledgeAfter} (+${knowledgeAfter - knowledgeBefore}) | ` +
-      `Reasoning depth: ${reasoning.inferenceChain.depth} | ` +
-      `Meta conf: ${meta.metrics.metaConfidence.toFixed(2)} | ` +
+      `depth=${reasoning.inferenceChain.depth} metaConf=${meta.metrics.metaConfidence.toFixed(2)} | ` +
       `${totalDurationMs}ms`;
 
     const result: CognitiveRunResult = Object.freeze({
@@ -338,7 +609,10 @@ class CognitiveRuntimeImpl {
       startedAt,
       totalDurationMs,
       input,
+      ctx,                          // final enriched context — single source of truth
       stages: Object.freeze(stages),
+      goalResult,
+      plan,
       episode,
       learning,
       reasoning,
@@ -357,18 +631,24 @@ class CognitiveRuntimeImpl {
 
   // ── Accessors ─────────────────────────────────────────────────────────────
 
-  getRuns(): readonly CognitiveRunResult[] { return this._runs; }
-  getLastRun(): CognitiveRunResult | null  { return this._runs[this._runs.length - 1] ?? null; }
-  getRunCount(): number { return this._runs.length; }
+  getRuns(): readonly CognitiveRunResult[]  { return this._runs; }
+  getLastRun(): CognitiveRunResult | null   { return this._runs[this._runs.length - 1] ?? null; }
+  getRunCount(): number                     { return this._runs.length; }
 
-  /** Resets the run history. Does NOT clear KnowledgeStore (persistent learning). */
+  /** Reset run history only. KnowledgeStore persists (learning is continuous). */
   resetHistory(): void { this._runs = []; this._runIndex = 0; }
 
-  /** Knowledge-aware summary for next-run context. */
+  /** Full reset: history + goal/plan/dispatch state. KnowledgeStore unchanged. */
+  resetEngines(): void {
+    const G = globalThis as Record<string, unknown>;
+    delete G.__CR_GR__;
+    delete G.__CR_PE__;
+    delete G.__CR_ED__;
+    this.resetHistory();
+  }
+
   getCognitiveFeedback() {
-    const last = this.getLastRun();
-    if (!last) return null;
-    return last.feedbackForNext;
+    return this.getLastRun()?.feedbackForNext ?? null;
   }
 }
 

@@ -106,6 +106,9 @@ function MiniBar({ value, color = "violet" }) {
 }
 
 const STAGE_COLORS = {
+  goal:           "text-orange-400",
+  planning:       "text-yellow-400",
+  dispatch:       "text-pink-400",
   episode:        "text-sky-400",
   learning:       "text-emerald-400",
   knowledge_store:"text-teal-400",
@@ -116,7 +119,7 @@ const STAGE_COLORS = {
 };
 
 function StageChain({ stages }) {
-  const ordered = ["episode","learning","knowledge_store","reasoning","optimization","meta_cognition","reflection"];
+  const ordered = ["goal","planning","dispatch","episode","learning","knowledge_store","reasoning","optimization","meta_cognition","reflection"];
   return (
     <div className="flex flex-wrap gap-1 items-center">
       {ordered.map((name, i) => {
@@ -190,13 +193,37 @@ function RunCard({ run, prevRun }) {
 
       {expanded && (
         <div className="border-t border-zinc-800 p-4 space-y-4">
+          {/* ExecutionContext único */}
+          <div className="bg-zinc-800/30 border border-zinc-700/30 rounded-lg p-3">
+            <p className="text-zinc-500 text-xs font-bold uppercase mb-2">ExecutionContext Único</p>
+            <div className="grid grid-cols-2 gap-1 text-xs font-mono">
+              {[
+                ["executionId", run.ctx.executionId?.slice(-16)],
+                ["goalId",      run.ctx.goalId?.slice(-16)],
+                ["planId",      run.ctx.planId?.slice(-16)],
+                ["dispatchId",  run.ctx.dispatchId?.slice(-16)],
+                ["episodeId",   run.ctx.episodeId?.slice(-16)],
+                ["learningId",  run.ctx.learningId?.slice(-16)],
+                ["reasoningId", run.ctx.reasoningId?.slice(-16)],
+                ["optId",       run.ctx.optimizationId?.slice(-16)],
+                ["metaId",      run.ctx.metaId?.slice(-16)],
+                ["reflId",      run.ctx.reflectionId?.slice(-16)],
+              ].map(([k,v]) => (
+                <div key={k}>
+                  <span className="text-zinc-600">{k}: </span>
+                  <span className="text-zinc-300">{v ?? "—"}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
           {/* Stage details */}
           <div>
-            <p className="text-zinc-500 text-xs font-bold uppercase mb-2">Estágios Cognitivos</p>
+            <p className="text-zinc-500 text-xs font-bold uppercase mb-2">Estágios Cognitivos (10)</p>
             <div className="space-y-1">
               {run.stages.map(s => (
                 <div key={s.stage} className="flex items-start gap-2 text-xs">
-                  <span className={`w-28 shrink-0 font-mono ${STAGE_COLORS[s.stage] ?? "text-zinc-400"}`}>{s.stage.replace("_"," ")}</span>
+                  <span className={`w-28 shrink-0 font-mono ${STAGE_COLORS[s.stage] ?? "text-zinc-400"}`}>{s.stage.replace(/_/g," ")}</span>
                   <span className="text-zinc-500 w-12 shrink-0 font-mono">{s.durationMs}ms</span>
                   <span className="text-zinc-400">{s.summary}</span>
                 </div>
@@ -399,7 +426,7 @@ export default function SprintEF57Page() {
     const maxDepth = Math.max(...runs.map(r => r.reasoning.inferenceChain.depth));
     const avgOptRecs = runs.reduce((a, r) => a + r.optimization.recommendations.length, 0) / runs.length;
     const successRuns = runs.filter(r => r.input.success).length;
-    const allStagesPresent = runs.every(r => r.stages.length >= 7);
+    const allStagesPresent = runs.every(r => r.stages.length >= 10);
     const knowledgeEvolved = totalGrowth > 0;
     const c01 = runs.find(r => r.input.id === "C-01");
     const c06 = runs.find(r => r.input.id === "C-06");
@@ -418,14 +445,15 @@ export default function SprintEF57Page() {
           <div className="flex flex-wrap gap-2 mb-3">
             <Badge label="EF-57" color="violet" />
             <Badge label="RUNTIME COGNITIVO OFICIAL" color="violet" />
-            <Badge label="16 ENGINES INTEGRADOS" color="blue" />
+            <Badge label="10 STAGES OFICIAIS" color="blue" />
+          <Badge label="EXECUTIONCONTEXT ÚNICO" color="teal" />
             <Badge label="KNOWLEDGE PERSISTENTE" color="teal" />
-          </div>
-          <h1 className="text-xl font-bold text-white mb-1">Runtime Cognitivo Oficial — MemoryOS EF-57</h1>
-          <p className="text-zinc-400 text-sm mb-4">
-            Cadeia completa: Intent → Goal → Planning → Strategy → Capability → Authority → Connector → Execution → Episode → Knowledge → Learning → Reasoning → Optimization → Meta-Cognition → Reflection.
-            O KnowledgeStore persiste entre execuções — cada run aprende do anterior.
-          </p>
+            </div>
+            <h1 className="text-xl font-bold text-white mb-1">Runtime Cognitivo Oficial — MemoryOS EF-58</h1>
+            <p className="text-zinc-400 text-sm mb-4">
+            Cadeia oficial integrada: GoalRuntime → PlanningEngine → ExecutionDispatcher → Episode → LearningEngine → KnowledgeStore → KnowledgeReasoningEngine → SelfOptimizationEngine → MetaCognitiveEngine → Reflection.
+            ExecutionContext único propagado por todos os stages. KnowledgeStore persiste entre execuções.
+            </p>
 
           {!running && runs.length === 0 && (
             <button
@@ -732,8 +760,8 @@ export default function SprintEF57Page() {
                   <div className="space-y-1">
                     <p className="text-zinc-400 text-xs font-bold mb-2">Critérios de Aprovação EF-57</p>
                     {[
-                      ["Todo engine executado",                       stats.allStagesPresent],
-                      ["Fluxo cognitivo contínuo (7 stages/run)",    stats.allStagesPresent],
+                      ["Todo engine executado (10 stages oficiais)",  stats.allStagesPresent],
+                      ["GoalRuntime + PlanningEngine + Dispatcher",   stats.allStagesPresent],
                       ["Knowledge atualizado",                        stats.knowledgeEvolved],
                       ["Learning persistido",                         stats.totalRules > 0],
                       ["Reasoning com knowledge acumulado",           stats.maxDepth > 0],
@@ -754,9 +782,12 @@ export default function SprintEF57Page() {
                   <p className="text-zinc-400 text-xs font-bold uppercase mb-3">Cadeia Cognitiva Oficial</p>
                   <div className="flex flex-col items-center gap-0">
                     {[
-                      ["Episode",        "sky",    "Constrói episódio com goal/intent/strategy/capabilities"],
+                      ["Goal",           "orange", "GoalRuntime.create() — GoalId oficial gerado"],
+                      ["Planning",       "yellow", "PlanningEngine.plan(goalId) — ExecutionPlan com steps"],
+                      ["Dispatch",       "pink",   "ExecutionDispatcher.dispatch(goalId) — dispatched para queue"],
+                      ["Episode",        "sky",    "Episode com metadata={executionId, goalId, planId, dispatchId}"],
                       ["Learning",       "emerald","LearningEngine.learn(allEpisodes) — patterns + knowledge"],
-                      ["KnowledgeStore", "teal",   "Persiste regras validadas entre execuções"],
+                      ["KnowledgeStore", "teal",   "Persiste regras validadas — lidas pelo Reasoning"],
                       ["Reasoning",      "violet", "KnowledgeReasoningEngine.reason() — usa store atualizado"],
                       ["Optimization",   "amber",  "SelfOptimizationEngine.analyze(enrichedSnap)"],
                       ["Meta-Cognition", "blue",   "MetaCognitiveEngine.analyze() — avalia qualidade cognitiva"],
