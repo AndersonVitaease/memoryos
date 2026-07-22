@@ -39,6 +39,7 @@ import type {
 } from "./RuntimeTypes";
 import { makeExecutionId }             from "./RuntimeTypes";
 import { RuntimeDebug }               from "@/lib/debug/RuntimeDebug";
+import { runtimeObsStore }            from "./RuntimeObservabilityStore";
 import { MockCapabilityExecutor }      from "./MockCapabilityExecutor";
 import { ExecutionDispatcher }         from "./ExecutionDispatcher";
 import { executionContextFactory }     from "./ExecutionContextFactory";
@@ -202,6 +203,22 @@ export class ConversationRuntimeEngine {
       `runtime — ${ctx.executionId}`,
     );
 
+    // D-01/D-02: evento padronizado de início de execução
+    runtimeObsStore.record({
+      executionId:  ctx.executionId,
+      stepId:       null,
+      connectorId:  null,
+      capability:   null,
+      kind:         "execution_started",
+      status:       "running",
+      startedAt:    ctx.startedAt ?? t_start,
+      finishedAt:   ctx.startedAt ?? t_start,
+      durationMs:   0,
+      error:        null,
+      planId:       ctx.planId,
+      goalId:       ctx.goalId,
+    });
+
     this._emit(ctx, "execution_started", null);
 
     try {
@@ -218,6 +235,23 @@ export class ConversationRuntimeEngine {
 
         this._emit(ctx, "execution_step_started", step.id);
 
+        // D-01: registrar início do step com correlação completa (D-03)
+        const _stepStartedAt = Date.now();
+        runtimeObsStore.record({
+          executionId:  ctx.executionId,
+          stepId:       step.id,
+          connectorId:  step.connector,
+          capability:   step.capability,
+          kind:         "step_started",
+          status:       "running",
+          startedAt:    _stepStartedAt,
+          finishedAt:   _stepStartedAt,
+          durationMs:   0,
+          error:        null,
+          planId:       ctx.planId,
+          goalId:       ctx.goalId,
+        });
+
         // Step execution delegated to ExecutionDispatcher
         // B-03: connectorCtx from RuntimeExecutionContext propagated intact
         const stepResult = await this._dispatcher.dispatch({
@@ -232,6 +266,26 @@ export class ConversationRuntimeEngine {
 
         ctx.stepResults.push(stepResult);
         this._emit(ctx, "execution_step_completed", step.id);
+
+        // D-01/D-04: registrar conclusão do step — dados reais do StepResult preservados
+        const _stepKind =
+          stepResult.status === "completed" ? "step_completed" :
+          stepResult.status === "timeout"   ? "step_timeout"   :
+          "step_failed";
+        runtimeObsStore.record({
+          executionId:  ctx.executionId,
+          stepId:       stepResult.stepId,
+          connectorId:  stepResult.connector,
+          capability:   stepResult.capability,
+          kind:         _stepKind,
+          status:       stepResult.status,
+          startedAt:    stepResult.startedAt,
+          finishedAt:   stepResult.finishedAt,
+          durationMs:   stepResult.durationMs,
+          error:        stepResult.error,
+          planId:       ctx.planId,
+          goalId:       ctx.goalId,
+        });
 
         if (stepResult.status === "failed" || stepResult.status === "timeout") {
           return this._finalize(ctx, stepResult.status === "timeout" ? "timeout" : "failed", t_start);
@@ -273,12 +327,16 @@ export class ConversationRuntimeEngine {
 
   getMetrics(): Record<string, unknown> {
     return {
-      totalCompleted: this._totalCompleted,
-      totalFailed:    this._totalFailed,
-      totalCancelled: this._totalCancelled,
-      activeCount:    this.getRunningExecutions().length,
-      totalTracked:   this._contexts.size,
-      policy:         this._policy,
+      totalCompleted:    this._totalCompleted,
+      totalFailed:       this._totalFailed,
+      totalCancelled:    this._totalCancelled,
+      activeCount:       this.getRunningExecutions().length,
+      totalTracked:      this._contexts.size,
+      policy:            this._policy,
+      // D-05: métricas de observabilidade consolidadas
+      obsEvents:         runtimeObsStore.totalEvents(),
+      obsExecutions:     runtimeObsStore.totalExecutions(),
+      recentSummaries:   runtimeObsStore.getRecentSummaries(5),
     };
   }
 
@@ -299,6 +357,30 @@ export class ConversationRuntimeEngine {
       "execution_completed";
 
     this._emit(ctx, eventType, null);
+
+    // D-01/D-02/D-05: evento de encerramento + fechar summary consolidado
+    const _now = ctx.finishedAt!;
+    const _obsKind =
+      status === "completed" ? "execution_completed" :
+      status === "cancelled" ? "execution_cancelled" :
+      status === "timeout"   ? "execution_timeout"   :
+      "execution_failed";
+    runtimeObsStore.record({
+      executionId:  ctx.executionId,
+      stepId:       null,
+      connectorId:  null,
+      capability:   null,
+      kind:         _obsKind,
+      status,
+      startedAt:    ctx.startedAt ?? ctx.createdAt,
+      finishedAt:   _now,
+      durationMs:   _now - (ctx.startedAt ?? ctx.createdAt),
+      error:        ctx.metadata["fatalError"] as string ?? null,
+      planId:       ctx.planId,
+      goalId:       ctx.goalId,
+    });
+    // D-05: produzir summary consolidado — tempo total, por connector, por etapa
+    runtimeObsStore.closeExecution(ctx.executionId, status);
 
     if (status === "completed")  this._totalCompleted++;
     if (status === "failed")     this._totalFailed++;
