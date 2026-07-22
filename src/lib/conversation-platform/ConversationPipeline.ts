@@ -15,6 +15,7 @@
  */
 
 import { initializePlatform } from "@/lib/platform/PlatformBootstrap";
+import { getActiveWorkspaceId } from "@/lib/workspace/WorkspaceContext";
 import { conversationStore } from "./ConversationStore";
 import { conversationStreaming } from "./ConversationStreaming";
 import { conversationRecovery } from "./ConversationRecovery";
@@ -606,7 +607,7 @@ class ConversationPipeline {
           } catch { /* non-blocking — fall back to sentinel */ }
           const _pipelineConnCtx = Object.freeze({
             userId:      _pipelineUserId,
-            workspaceId: session.project_id ?? "default-workspace",
+            workspaceId: getActiveWorkspaceId(),
             sessionId:   session.id,
             goalId:      goalBridgeResult.goal.id,
             origin:      "pipeline",
