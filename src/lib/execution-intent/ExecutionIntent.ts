@@ -32,6 +32,11 @@
  */
 
 import type { BaseConnectorContext } from "@/lib/connector-context/ConnectorContextStore";
+import {
+  type ExecutionResultSet,
+  resolveOrdinalIndex,
+  getSelectedItem,
+} from "@/lib/execution-result-set/ExecutionResultSet";
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -374,6 +379,9 @@ export class ExecutionIntentManager {
   /**
    * Consome o intent para uma mensagem de continuidade.
    * Retorna o goalType resolvido ou null se nao aplicavel.
+   *
+   * EF-41: Usa ExecutionResultSet (via RuntimeContextLayer) para resolver ordinais.
+   * Fallback: usa artifact.resultPaths (legado) se ResultSet nao disponivel.
    */
   static consume(message: string): { goalType: string; artifact: CurrentArtifact } | null {
     if (!isContinuationMessage(message)) return null;
@@ -394,40 +402,86 @@ export class ExecutionIntentManager {
       return null;
     }
 
-    // Avanca o cursor se for "proximo"
-    const lower   = message.toLowerCase();
     const artifact = { ...intent.currentArtifact };
-    if ((lower.includes("proximo") || lower.includes("próximo") || lower.includes("next")) &&
-        Array.isArray(artifact.resultPaths) && typeof artifact.cursorIndex === "number") {
-      artifact.cursorIndex = Math.min(
-        artifact.cursorIndex + 1,
-        artifact.resultPaths.length - 1,
-      );
-      // Injeta path do proximo resultado
-      artifact.path = artifact.resultPaths[artifact.cursorIndex];
-    } else if ((lower.includes("anterior") || lower.includes("prev") || lower.includes("volte")) &&
-               Array.isArray(artifact.resultPaths) && typeof artifact.cursorIndex === "number") {
-      artifact.cursorIndex = Math.max(artifact.cursorIndex - 1, 0);
-      artifact.path = artifact.resultPaths[artifact.cursorIndex];
-    } else if (lower.match(/\b(primeiro|first|1[oaº])\b/) && Array.isArray(artifact.resultPaths)) {
-      artifact.cursorIndex = 0;
-      artifact.path = artifact.resultPaths[0];
-    } else if (lower.match(/\b(segundo|second|2[oaº])\b/) && Array.isArray(artifact.resultPaths)) {
-      artifact.cursorIndex = 1;
-      artifact.path = artifact.resultPaths[1];
-    } else if (lower.match(/\b(terceiro|third|3[oaº])\b/) && Array.isArray(artifact.resultPaths)) {
-      artifact.cursorIndex = 2;
-      artifact.path = artifact.resultPaths[2];
-    } else if (lower.match(/\b(ultimo|last|[uú]ltimo)\b/) && Array.isArray(artifact.resultPaths)) {
-      artifact.cursorIndex = artifact.resultPaths.length - 1;
-      artifact.path = artifact.resultPaths[artifact.cursorIndex];
+
+    // ── EF-41: Resolve ordinal via ExecutionResultSet ─────────────────────────
+    let resolvedViaResultSet = false;
+    try {
+      const { runtimeContextLayer } = require("@/lib/runtime-context/RuntimeContextLayer");
+      const resultSet: ExecutionResultSet | null = runtimeContextLayer.getResultSet();
+
+      if (resultSet && resultSet.items.length > 0) {
+        const newIndex = resolveOrdinalIndex(resultSet, message);
+
+        if (newIndex !== null) {
+          // Update selectedIndex in the persisted ResultSet
+          const updatedResultSet: ExecutionResultSet = {
+            ...resultSet,
+            selectedIndex: newIndex,
+          };
+          runtimeContextLayer.setResultSet(updatedResultSet);
+
+          // Extract reference fields from the selected item into the artifact
+          const selectedItem = getSelectedItem(updatedResultSet);
+          if (selectedItem && selectedItem.reference && typeof selectedItem.reference === "object") {
+            const ref = selectedItem.reference as Record<string, unknown>;
+            if (ref["owner"])      artifact.owner  = String(ref["owner"]);
+            if (ref["name"])       artifact.repo   = String(ref["name"]);
+            if (ref["full_name"]) {
+              const parts = String(ref["full_name"]).split("/");
+              if (parts.length === 2) { artifact.owner = parts[0]; artifact.repo = parts[1]; }
+            }
+            if (ref["path"])      artifact.path   = String(ref["path"]);
+            if (ref["fileId"])    artifact.fileId  = String(ref["fileId"]);
+            // Inject cursorIndex for legacy compatibility
+            artifact.cursorIndex = newIndex;
+          }
+
+          resolvedViaResultSet = true;
+          console.log("[EXP-EXECUTION-INTENT] EF-41 ordinal resolved via ExecutionResultSet", {
+            message:      message.slice(0, 80),
+            selectedIndex: newIndex,
+            displayName:  getSelectedItem(updatedResultSet)?.displayName,
+            artifact,
+          });
+        }
+      }
+    } catch { /* non-blocking — fallback to legacy below */ }
+    // ── end EF-41 ─────────────────────────────────────────────────────────────
+
+    // ── Legacy fallback: resultPaths (only used if EF-41 did not resolve) ─────
+    if (!resolvedViaResultSet && Array.isArray(artifact.resultPaths)) {
+      const lower = message.toLowerCase();
+      if ((lower.includes("proximo") || lower.includes("próximo") || lower.includes("next")) &&
+          typeof artifact.cursorIndex === "number") {
+        artifact.cursorIndex = Math.min(artifact.cursorIndex + 1, artifact.resultPaths.length - 1);
+        artifact.path = artifact.resultPaths[artifact.cursorIndex];
+      } else if ((lower.includes("anterior") || lower.includes("prev") || lower.includes("volte")) &&
+                 typeof artifact.cursorIndex === "number") {
+        artifact.cursorIndex = Math.max(artifact.cursorIndex - 1, 0);
+        artifact.path = artifact.resultPaths[artifact.cursorIndex];
+      } else if (lower.match(/\b(primeiro|first|1[oaº])\b/)) {
+        artifact.cursorIndex = 0;
+        artifact.path = artifact.resultPaths[0];
+      } else if (lower.match(/\b(segundo|second|2[oaº])\b/)) {
+        artifact.cursorIndex = 1;
+        artifact.path = artifact.resultPaths[1];
+      } else if (lower.match(/\b(terceiro|third|3[oaº])\b/)) {
+        artifact.cursorIndex = 2;
+        artifact.path = artifact.resultPaths[2];
+      } else if (lower.match(/\b([uú]ltimo|last)\b/)) {
+        artifact.cursorIndex = artifact.resultPaths.length - 1;
+        artifact.path = artifact.resultPaths[artifact.cursorIndex];
+      }
     }
+    // ── end legacy fallback ───────────────────────────────────────────────────
 
     console.log("[EXP-EXECUTION-INTENT] ExecutionIntent Consumed", {
-      message:   message.slice(0, 80),
-      domain:    intent.domain,
-      purpose:   intent.purpose,
+      message:              message.slice(0, 80),
+      domain:               intent.domain,
+      purpose:              intent.purpose,
       goalType,
+      resolvedViaResultSet,
       artifact,
     });
 

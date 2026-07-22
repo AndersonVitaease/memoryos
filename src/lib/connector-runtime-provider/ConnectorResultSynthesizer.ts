@@ -22,6 +22,7 @@ import { base44 }            from "@/api/base44Client";
 import { SearchRanker }      from "@/lib/github-deep-analysis/SearchRanker";
 import { conversationStore } from "@/lib/conversation-platform/ConversationStore";
 import { buildContext }      from "@/lib/connector-context/ConnectorContextBuilderRegistry";
+import { executionResultSetBuilder } from "@/lib/execution-result-set/ExecutionResultSetBuilder";
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -169,6 +170,17 @@ export async function synthesizeConnectorResult(
       output:     s.output,
     };
   });
+
+  // ── EF-41: Build ExecutionResultSet and persist to RuntimeContextLayer ───────
+  // Non-blocking — never affects user response.
+  try {
+    const resultSet = executionResultSetBuilder.build(connectorData);
+    if (resultSet) {
+      const { runtimeContextLayer } = await import("@/lib/runtime-context/RuntimeContextLayer");
+      runtimeContextLayer.setResultSet(resultSet);
+    }
+  } catch { /* non-blocking */ }
+  // ── end EF-41 ────────────────────────────────────────────────────────────────
 
   // ── Synthesize with LLM ────────────────────────────────────────────────────
   try {

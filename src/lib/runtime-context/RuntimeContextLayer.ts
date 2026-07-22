@@ -73,6 +73,7 @@ import type {
   CurrentArtifact,
   ExecutionIntentRecord,
 } from "@/lib/execution-intent/ExecutionIntent";
+import type { ExecutionResultSet } from "@/lib/execution-result-set/ExecutionResultSet";
 
 // ── RuntimeContext types ──────────────────────────────────────────────────────
 
@@ -89,8 +90,10 @@ export interface RuntimeContextState {
   currentDomain:        ExecutionDomain;
   /** Artifact currently in context */
   currentArtifact:      CurrentArtifact;
-  /** Last result set items (max 20 paths for GitHub search) */
-  currentResultSet:     string[];
+  /** EF-41: NavigableResultSet from the last connector execution (official) */
+  currentResultSet:     ExecutionResultSet | null;
+  /** @deprecated Legacy string[] paths — kept for backward compat only */
+  currentResultSetPaths: string[];
   /** ExecutionIntent derived from last successful execution */
   executionIntent:      ExecutionIntentRecord | null;
   /** Session metadata */
@@ -124,16 +127,17 @@ const CONTEXT_SLOT = "runtime-context-layer";
 
 function _defaultState(): RuntimeContextState {
   return {
-    currentExecutionId: null,
-    currentGoalType:    null,
-    currentConnector:   null,
-    currentCapability:  null,
-    currentDomain:      "general",
-    currentArtifact:    {},
-    currentResultSet:   [],
-    executionIntent:    null,
-    sessionId:          null,
-    updatedAt:          0,
+    currentExecutionId:    null,
+    currentGoalType:       null,
+    currentConnector:      null,
+    currentCapability:     null,
+    currentDomain:         "general",
+    currentArtifact:       {},
+    currentResultSet:      null,
+    currentResultSetPaths: [],
+    executionIntent:       null,
+    sessionId:             null,
+    updatedAt:             0,
   };
 }
 
@@ -160,11 +164,12 @@ class RuntimeContextLayerClass {
     const intent = ExecutionIntentManager.load();
     const def = _defaultState();
     if (intent) {
-      def.executionIntent  = intent;
-      def.currentDomain    = intent.domain;
-      def.currentGoalType  = null; // intent doesn't carry goalType directly
-      def.currentArtifact  = intent.currentArtifact ?? {};
-      def.currentResultSet = intent.currentArtifact?.resultPaths ?? [];
+      def.executionIntent        = intent;
+      def.currentDomain          = intent.domain;
+      def.currentGoalType        = null;
+      def.currentArtifact        = intent.currentArtifact ?? {};
+      def.currentResultSetPaths  = intent.currentArtifact?.resultPaths ?? [];
+      // currentResultSet remains null until EF-41 Builder populates it
     }
     return def;
   }
@@ -221,16 +226,17 @@ class RuntimeContextLayerClass {
       const resultPaths = artifact.resultPaths ?? [];
 
       const next: RuntimeContextState = {
-        currentExecutionId: executionId,
-        currentGoalType:    goalType,
-        currentConnector:   connectorId,
-        currentCapability:  capability,
-        currentDomain:      domain,
-        currentArtifact:    artifact,
-        currentResultSet:   resultPaths,
-        executionIntent:    null, // will be loaded after ExecutionIntentManager.update
+        currentExecutionId:    executionId,
+        currentGoalType:       goalType,
+        currentConnector:      connectorId,
+        currentCapability:     capability,
+        currentDomain:         domain,
+        currentArtifact:       artifact,
+        currentResultSet:      null,           // populated by EF-41 Builder after synthesis
+        currentResultSetPaths: resultPaths,    // @deprecated legacy compat
+        executionIntent:       null,           // loaded after ExecutionIntentManager.update
         sessionId,
-        updatedAt:          Date.now(),
+        updatedAt:             Date.now(),
       };
 
       // Delegate ExecutionIntent persistence (existing experiment — no duplication)
@@ -314,6 +320,40 @@ class RuntimeContextLayerClass {
     } catch (e) {
       console.log("[RUNTIME CONTEXT] restore failed (non-blocking):", String(e));
     }
+  }
+
+  // ── EF-41: ResultSet API ──────────────────────────────────────────────────
+
+  /**
+   * Persists a freshly-built ExecutionResultSet into the current context.
+   * Called by ConnectorResultSynthesizer after the EF-41 Builder runs.
+   */
+  setResultSet(resultSet: ExecutionResultSet): void {
+    try {
+      const current = this.get();
+      const next: RuntimeContextState = {
+        ...current,
+        currentResultSet: resultSet,
+        updatedAt:        Date.now(),
+      };
+      this._persist(next);
+      console.log("[RUNTIME CONTEXT] ResultSet stored (EF-41)", {
+        id:         resultSet.id,
+        connector:  resultSet.connector,
+        capability: resultSet.capability,
+        entityType: resultSet.entityType,
+        itemCount:  resultSet.items.length,
+      });
+    } catch (e) {
+      console.log("[RUNTIME CONTEXT] setResultSet failed (non-blocking):", String(e));
+    }
+  }
+
+  /**
+   * Returns the current ExecutionResultSet, or null if none stored.
+   */
+  getResultSet(): ExecutionResultSet | null {
+    return this.get().currentResultSet ?? null;
   }
 
   // ── resolveContinuation ───────────────────────────────────────────────────
