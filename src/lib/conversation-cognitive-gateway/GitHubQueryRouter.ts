@@ -74,17 +74,14 @@ function extractRepoOwner(msg: string): { owner?: string; repo?: string } {
 }
 
 function extractFilePath(msg: string): string | undefined {
-  // Matches patterns like "src/lib/something.ts" or "ConnectionManager.ts"
   const longMatch = msg.match(/(?:in |at |file |from )?([a-zA-Z0-9_/-]+\.[a-zA-Z]{1,6})/i);
   if (longMatch) return longMatch[1];
-  // Match CamelCase names as file hints
   const camelMatch = msg.match(/([A-Z][a-zA-Z0-9]+(?:[A-Z][a-zA-Z0-9]+)+)/);
   if (camelMatch) return camelMatch[1];
   return undefined;
 }
 
 function extractSymbol(msg: string): string | undefined {
-  // Extract the main subject: CamelCase class/function/interface name
   const match = msg.match(/(?:class|function|interface|type|component|module|service|engine|connector|router|gateway|manager|handler|provider|factory|builder)\s+([A-Z][a-zA-Z0-9]+)/i)
     ?? msg.match(/([A-Z][a-zA-Z0-9]+(?:Engine|Manager|Service|Router|Gateway|Connector|Handler|Provider|Factory|Builder|Queue|Registry|Orchestrator|Pipeline|Composer|Executor|Dispatcher|Monitor))/);
   return match?.[1];
@@ -105,9 +102,12 @@ const PATTERNS: Pattern[] = [
     capability: "search.symbol",
     keywords: [
       "where is", "find class", "find function", "find interface", "find type",
-      "onde está", "onde fica", "search for", "locate", "implemented in",
+      "search for", "locate", "implemented in",
       "where is it defined", "where is it implemented", "find the class",
       "find the function", "look for class", "search class",
+      // IA-013: "onde está"/"onde fica" removidos daqui — eram frases genéricas
+      // demais em português, disparando busca de código do GitHub em qualquer
+      // pergunta cotidiana (ex: "onde está os arquivos em pdf").
     ],
     extractPayload: (msg) => {
       const sym = extractSymbol(msg);
@@ -464,7 +464,9 @@ export class GitHubQueryRouter {
 
     // Domain anchor: if the message explicitly mentions "github" or "repositorio/repository",
     // treat it as a GitHub query even with a partial keyword match.
-    const hasGitHubAnchor = lower.includes("github") || lower.includes("repositorio") || lower.includes("repository") || lower.includes("repo ");
+    // IA-013: âncora não dispara se a mensagem também mencionar "drive" —
+    // evita tratar "não é no github, é no drive" como confirmação de GitHub.
+    const hasGitHubAnchor = (lower.includes("github") || lower.includes("repositorio") || lower.includes("repository") || lower.includes("repo ")) && !lower.includes("drive");
     const anchorBoost = hasGitHubAnchor ? 0.4 : 0;
 
     const confidence    = Math.min(bestScore * 0.4 + anchorBoost, 1.0);
