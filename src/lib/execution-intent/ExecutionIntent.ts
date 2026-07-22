@@ -37,6 +37,7 @@ import {
   resolveOrdinalIndex,
   getSelectedItem,
 } from "@/lib/execution-result-set/ExecutionResultSet";
+import { conversationStore } from "@/lib/conversation-platform/ConversationStore";
 
 // ── Tipos ─────────────────────────────────────────────────────────────────────
 
@@ -334,7 +335,6 @@ export class ExecutionIntentManager {
       });
 
       // Persistir via ConversationStore (mecanismo oficial)
-      const { conversationStore } = require("@/lib/conversation-platform/ConversationStore");
       conversationStore.setConnectorContext(ExecutionIntentManager.CONNECTOR_ID, record);
 
       console.log("[EXP-EXECUTION-INTENT] ExecutionIntent Updated", {
@@ -357,7 +357,6 @@ export class ExecutionIntentManager {
    */
   static load(): ExecutionIntentRecord | null {
     try {
-      const { conversationStore } = require("@/lib/conversation-platform/ConversationStore");
       const raw = conversationStore.getConnectorContext(ExecutionIntentManager.CONNECTOR_ID);
       if (!raw || raw.connectorId !== "execution-intent") return null;
 
@@ -405,10 +404,12 @@ export class ExecutionIntentManager {
     const artifact = { ...intent.currentArtifact };
 
     // ── EF-41: Resolve ordinal via ExecutionResultSet ─────────────────────────
+    // Access the RuntimeContextLayer singleton via globalThis to avoid circular import.
+    // RuntimeContextLayer imports ExecutionIntent, so we cannot import it back statically.
     let resolvedViaResultSet = false;
     try {
-      const { runtimeContextLayer } = require("@/lib/runtime-context/RuntimeContextLayer");
-      const resultSet: ExecutionResultSet | null = runtimeContextLayer.getResultSet();
+      const _rcl = (globalThis as any)["__RUNTIME_CONTEXT_LAYER__"];
+      const resultSet: ExecutionResultSet | null = _rcl ? _rcl.getResultSet() : null;
 
       if (resultSet && resultSet.items.length > 0) {
         const newIndex = resolveOrdinalIndex(resultSet, message);
@@ -419,7 +420,7 @@ export class ExecutionIntentManager {
             ...resultSet,
             selectedIndex: newIndex,
           };
-          runtimeContextLayer.setResultSet(updatedResultSet);
+          if (_rcl) _rcl.setResultSet(updatedResultSet);
 
           // Extract reference fields from the selected item into the artifact
           const selectedItem = getSelectedItem(updatedResultSet);
@@ -493,7 +494,6 @@ export class ExecutionIntentManager {
    */
   static clear(): void {
     try {
-      const { conversationStore } = require("@/lib/conversation-platform/ConversationStore");
       conversationStore.clearConnectorContext(ExecutionIntentManager.CONNECTOR_ID);
       console.log("[EXP-EXECUTION-INTENT] ExecutionIntent Cleared");
     } catch { /* non-blocking */ }
