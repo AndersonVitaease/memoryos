@@ -262,6 +262,7 @@ import SprintEF492Page from '@/pages/SprintEF492Page';
 import SprintEF51Page from '@/pages/SprintEF51Page';
 import SprintEF52Page from '@/pages/SprintEF52Page';
 import SprintEF53Page from '@/pages/SprintEF53Page';
+import SprintEF54Page from '@/pages/SprintEF54Page';
 
 const AuthenticatedApp = () => {
   console.log('[RENDER] AuthenticatedApp');
@@ -541,6 +542,7 @@ const AuthenticatedApp = () => {
           <Route path="/sprint-ef51" element={<SprintEF51Page />} />
           <Route path="/sprint-ef52" element={<SprintEF52Page />} />
           <Route path="/sprint-ef53" element={<SprintEF53Page />} />
+          <Route path="/sprint-ef54" element={<SprintEF54Page />} />
         </Route>
       </Route>
       <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />
