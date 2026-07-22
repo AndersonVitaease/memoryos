@@ -1,3 +1,5 @@
+import { isConnected } from "@/lib/google-auth/GoogleAuthSession";
+
 /**
  * Connector Registry
  *
@@ -59,7 +61,10 @@ export const CONNECTOR_REGISTRY = [
     service: "documents",
     description: "Acessar e gerenciar arquivos no Google Drive.",
     category: "storage",
-    beta: false,
+    // IA-011: estava false — excluía o Drive de getConnectorsForService(), que
+    // filtra por beta===true, fazendo o Core acreditar que "nenhum conector
+    // está instalado" para o Drive, mesmo ele funcionando em produção.
+    beta: true,
     connected: false,
     intents: ["drive", "arquivo no drive"],
     capabilities: [],
@@ -91,6 +96,11 @@ export const CONNECTOR_REGISTRY = [
   },
 ];
 
+// IA-011: conectores Google cujo status real pode ser checado via GoogleAuthSession.
+// Os demais (whatsapp, shopify, erp) não têm mecanismo de autenticação implementado
+// ainda — para esses, connected:false continua correto, não é bug.
+const _GOOGLE_AUTH_CONNECTOR_IDS = new Set(["gmail", "googlecalendar", "googledrive"]);
+
 /**
  * Retorna apenas conectores disponíveis no Beta.
  */
@@ -108,7 +118,16 @@ export function getConnector(id) {
 /**
  * Encontra conectores disponíveis para um Serviço específico.
  * Usado pelo Connector Manager (Etapa 6 do Processo de Raciocínio).
+ *
+ * IA-011: connected agora reflete o estado real de autenticação (via
+ * GoogleAuthSession.isConnected) para conectores Google, em vez do
+ * valor fixo `false` que estava hardcoded no registro.
  */
 export function getConnectorsForService(serviceId) {
-  return CONNECTOR_REGISTRY.filter((c) => c.service === serviceId && c.beta);
+  return CONNECTOR_REGISTRY
+    .filter((c) => c.service === serviceId && c.beta)
+    .map((c) => _GOOGLE_AUTH_CONNECTOR_IDS.has(c.id)
+      ? { ...c, connected: isConnected("default") }
+      : c
+    );
 }
