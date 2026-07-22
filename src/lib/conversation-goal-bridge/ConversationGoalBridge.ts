@@ -58,12 +58,34 @@ export class ConversationGoalBridge {
   ): GoalBridgeResult {
     const t0 = Date.now();
 
-    // 1. Ask Registry: any signal match in the user message?
-    const match = GoalRegistry.matchBySignals(userMessage);
-
     let goalType:   GoalType;
     let parameters: Record<string, unknown>;
     let confidence: number;
+
+    // ── PASSO 1: RuntimeContextLayer priority ─────────────────────────────────
+    // If cognitiveIntent is already a resolved goalType from RuntimeContextLayer
+    // (injected by ConversationPipeline via _rclContinuation?.resolvedGoalType),
+    // use it directly — skip matchBySignals(), ImplicitDetector and resolveFromIntent().
+    // This is the ONLY path that executes when continuation is active.
+    //
+    // Detection: a resolved goalType contains a dot (e.g. "github.getFile",
+    // "drive.downloadFile") and is registered in the GoalRegistry — it is never
+    // a raw CognitiveIntent string like "general_conversation" or "repository_analysis".
+    //
+    // REVERSIBILITY: remove this block to restore the previous behaviour.
+    const _isResolvedGoalType = (s: string): s is GoalType =>
+      s.includes(".") && GoalRegistry.has(s as GoalType);
+
+    if (_isResolvedGoalType(cognitiveIntent)) {
+      goalType   = cognitiveIntent;
+      parameters = {};
+      confidence = 1.0;
+
+    } else {
+    // ── PASSO 2: Normal flow (no continuation) ────────────────────────────────
+
+    // 1. Ask Registry: any signal match in the user message?
+    const match = GoalRegistry.matchBySignals(userMessage);
 
     if (match) {
       // Signal match found: use the matched definition
@@ -91,6 +113,8 @@ export class ConversationGoalBridge {
           : cognitiveConfidence;
       }
     }
+
+    } // end PASSO 2
 
     const partial = {
       id:             makeConversationGoalId(),

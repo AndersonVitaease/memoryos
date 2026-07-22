@@ -101,6 +101,11 @@ class GoalRegistryClass {
   get size(): number {
     return this._definitions.length;
   }
+
+  /** Returns true if a GoalType is registered. */
+  has(type: GoalType): boolean {
+    return this._definitions.some((d) => d.type === type);
+  }
 }
 
 // ── Singleton ─────────────────────────────────────────────────────────────────
