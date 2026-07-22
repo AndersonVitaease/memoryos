@@ -225,6 +225,13 @@ class RuntimeContextLayerClass {
 
       const resultPaths = artifact.resultPaths ?? [];
 
+      // EF-43C: preserve the ResultSet already written by ConnectorResultSynthesizer
+      // update() is called by the Pipeline AFTER synthesis — the Synthesizer already
+      // persisted the ResultSet via setResultSet(). Resetting to null here was the
+      // root cause of currentResultSet staying null after every connector execution.
+      const existingState  = this.get();
+      const preservedRS    = existingState.currentResultSet;
+
       const next: RuntimeContextState = {
         currentExecutionId:    executionId,
         currentGoalType:       goalType,
@@ -232,7 +239,7 @@ class RuntimeContextLayerClass {
         currentCapability:     capability,
         currentDomain:         domain,
         currentArtifact:       artifact,
-        currentResultSet:      null,           // populated by EF-41 Builder after synthesis
+        currentResultSet:      preservedRS,    // EF-43C: keep ResultSet from Synthesizer
         currentResultSetPaths: resultPaths,    // @deprecated legacy compat
         executionIntent:       null,           // loaded after ExecutionIntentManager.update
         sessionId,
