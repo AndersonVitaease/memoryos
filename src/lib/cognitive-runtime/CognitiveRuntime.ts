@@ -24,6 +24,7 @@ import type { OptimizationReport, OptimizationSnapshot }  from "@/lib/self-optim
 import type { MetaReport }                                 from "@/lib/meta-cognition/MCTypes";
 import type { GoalMetadata, GoalContext, GoalResult }      from "@/lib/goal-runtime-v01/GoalTypes";
 import type { ExecutionPlan }                              from "@/lib/planning-engine/PlanningEngineTypes";
+import { OfficialRuntimeTraceStore }                       from "@/lib/runtime-trace/OfficialRuntimeTraceStore";
 
 // ── ExecutionContext — único, imutável por fase, enriquecido por cada engine ──
 
@@ -253,6 +254,11 @@ class CognitiveRuntimeImpl {
     const knowledgeBefore = KnowledgeStore.size;
     ctx = enrich(ctx, { knowledgeBefore });
 
+    // ── EF-60A: Begin Official Runtime Trace (transparent — no logic change) ──
+    const _trace = OfficialRuntimeTraceStore.beginTrace({
+      runId, runIndex, executionId: ctx.executionId, goal: input.goal,
+    });
+
     // ── STAGE 1: Goal Engine (GoalRuntime) ────────────────────────────────────
     const t_goal = Date.now();
     let goalResult: GoalResult | null = null;
@@ -279,6 +285,7 @@ class CognitiveRuntimeImpl {
     ctx = enrich(ctx, { goalId, goalResult: goalResult ?? undefined });
     const dur_goal = Date.now() - t_goal;
 
+    const _ctx_before_goal = { executionId: ctx.executionId, runIndex, knowledgeBefore };
     stages.push({
       stage: "goal", startedAt: t_goal, durationMs: dur_goal,
       artifactId: goalId,
@@ -288,6 +295,17 @@ class CognitiveRuntimeImpl {
         priority:    input.confidence >= 0.8 ? "HIGH" : "MEDIUM",
       },
       ctxSnapshot: { goalId, executionId: ctx.executionId },
+    });
+    // EF-60A trace
+    OfficialRuntimeTraceStore.recordStage({
+      trace: _trace, stage: "goal",
+      startedAt: t_goal, finishedAt: t_goal + dur_goal,
+      artifactId: goalId,
+      ctxBefore: _ctx_before_goal,
+      ctxAfter:  { executionId: ctx.executionId, runIndex, knowledgeBefore, goalId },
+      status: goalResult?.success ? "ok" : "fallback",
+      summary: `Goal ${goalResult?.success ? "CREATED" : "FALLBACK"}: ${input.goal.slice(0, 60)}`,
+      keyMetrics: { goalCreated: goalResult?.success ? 1 : 0, priority: input.confidence >= 0.8 ? "HIGH" : "MEDIUM" },
     });
 
     // ── STAGE 2: Planning Engine ──────────────────────────────────────────────
@@ -316,6 +334,7 @@ class CognitiveRuntimeImpl {
     ctx = enrich(ctx, { planId, plan: plan ?? undefined });
     const dur_plan = Date.now() - t_plan;
 
+    const _ctx_before_plan = { executionId: ctx.executionId, goalId: ctx.goalId };
     stages.push({
       stage: "planning", startedAt: t_plan, durationMs: dur_plan,
       artifactId: planId,
@@ -326,6 +345,17 @@ class CognitiveRuntimeImpl {
         estimatedMs:plan?.estimatedMs ?? 0,
       },
       ctxSnapshot: { goalId: ctx.goalId, planId },
+    });
+    // EF-60A trace
+    OfficialRuntimeTraceStore.recordStage({
+      trace: _trace, stage: "planning",
+      startedAt: t_plan, finishedAt: t_plan + dur_plan,
+      artifactId: planId,
+      ctxBefore: _ctx_before_plan,
+      ctxAfter:  { executionId: ctx.executionId, goalId: ctx.goalId, planId },
+      status: plan ? "ok" : "fallback",
+      summary: `Plan ${plan ? `READY: ${plan.steps.length} steps, complexity=${plan.complexity}` : "FALLBACK"}`,
+      keyMetrics: { steps: plan?.steps.length ?? 0, complexity: plan?.complexity ?? "LOW", estimatedMs: plan?.estimatedMs ?? 0 },
     });
 
     // ── STAGE 3: Execution Dispatcher ─────────────────────────────────────────
@@ -343,12 +373,24 @@ class CognitiveRuntimeImpl {
     ctx = enrich(ctx, { dispatchId });
     const dur_disp = Date.now() - t_disp;
 
+    const _ctx_before_disp = { executionId: ctx.executionId, goalId: ctx.goalId, planId: ctx.planId };
     stages.push({
       stage: "dispatch", startedAt: t_disp, durationMs: dur_disp,
       artifactId: dispatchId,
       summary: `Dispatched goalId=${goalId.slice(-12)} → dispatchId=${dispatchId.slice(-12)}`,
       keyMetrics: { dispatchMs: dur_disp },
       ctxSnapshot: { goalId: ctx.goalId, planId: ctx.planId, dispatchId },
+    });
+    // EF-60A trace
+    OfficialRuntimeTraceStore.recordStage({
+      trace: _trace, stage: "dispatch",
+      startedAt: t_disp, finishedAt: t_disp + dur_disp,
+      artifactId: dispatchId,
+      ctxBefore: _ctx_before_disp,
+      ctxAfter:  { executionId: ctx.executionId, goalId: ctx.goalId, planId: ctx.planId, dispatchId },
+      status: "ok",
+      summary: `Dispatched goalId=${goalId.slice(-12)} → dispatchId=${dispatchId.slice(-12)}`,
+      keyMetrics: { dispatchMs: dur_disp },
     });
 
     // ── STAGE 4: Episode construction (EF-50 contract format) ─────────────────
@@ -385,12 +427,24 @@ class CognitiveRuntimeImpl {
 
     ctx = enrich(ctx, { episodeId });
 
+    const _ctx_before_ep = { executionId: ctx.executionId, goalId: ctx.goalId, planId: ctx.planId, dispatchId: ctx.dispatchId };
     stages.push({
       stage: "episode", startedAt: t_ep, durationMs: dur_ep,
       artifactId: episode.id,
       summary: `Episode ${ctx.success ? "SUCCESS" : "FAILURE"} — all IDs propagated`,
       keyMetrics: { confidence: ctx.confidence, authority: ctx.authority },
       ctxSnapshot: { goalId: ctx.goalId, planId: ctx.planId, dispatchId: ctx.dispatchId, episodeId },
+    });
+    // EF-60A trace
+    OfficialRuntimeTraceStore.recordStage({
+      trace: _trace, stage: "episode",
+      startedAt: t_ep, finishedAt: t_ep + dur_ep,
+      artifactId: episodeId,
+      ctxBefore: _ctx_before_ep,
+      ctxAfter:  { executionId: ctx.executionId, goalId: ctx.goalId, planId: ctx.planId, dispatchId: ctx.dispatchId, episodeId },
+      status: "ok",
+      summary: `Episode ${ctx.success ? "SUCCESS" : "FAILURE"} — all IDs propagated`,
+      keyMetrics: { confidence: ctx.confidence, authority: ctx.authority, success: ctx.success ? 1 : 0 },
     });
 
     // ── STAGE 5: Learning — all accumulated episodes ───────────────────────────
@@ -402,6 +456,7 @@ class CognitiveRuntimeImpl {
 
     ctx = enrich(ctx, { learningId: learning.id });
 
+    const _ctx_before_lr = { executionId: ctx.executionId, goalId: ctx.goalId, planId: ctx.planId, dispatchId: ctx.dispatchId, episodeId: ctx.episodeId };
     stages.push({
       stage: "learning", startedAt: t_lr, durationMs: dur_lr,
       artifactId: learning.id,
@@ -415,6 +470,17 @@ class CognitiveRuntimeImpl {
       },
       ctxSnapshot: { learningId: learning.id, executionId: ctx.executionId },
     });
+    // EF-60A trace
+    OfficialRuntimeTraceStore.recordStage({
+      trace: _trace, stage: "learning",
+      startedAt: t_lr, finishedAt: t_lr + dur_lr,
+      artifactId: learning.id,
+      ctxBefore: _ctx_before_lr,
+      ctxAfter:  { ..._ctx_before_lr, learningId: learning.id },
+      status: "ok",
+      summary: `Learning: ${learning.knowledgeCreated} knowledge, ${learning.patternsFound} patterns from ${allEpisodes.length} episodes`,
+      keyMetrics: { episodesAnalyzed: learning.episodesAnalyzed, knowledgeCreated: learning.knowledgeCreated, patternsFound: learning.patternsFound, learningConf: +learning.metrics.learningConfidence.toFixed(3) },
+    });
 
     // ── STAGE 6: KnowledgeStore state (post-learning) ─────────────────────────
     const knowledgeAfter = KnowledgeStore.size;
@@ -424,12 +490,25 @@ class CognitiveRuntimeImpl {
 
     ctx = enrich(ctx, { knowledgeAfter });
 
+    const _t_ks = Date.now();
+    const _ctx_before_ks = { executionId: ctx.executionId, goalId: ctx.goalId, learningId: ctx.learningId, knowledgeBefore };
     stages.push({
-      stage: "knowledge_store", startedAt: Date.now(), durationMs: 0,
+      stage: "knowledge_store", startedAt: _t_ks, durationMs: 0,
       artifactId: ksArtifactId,
       summary: `KnowledgeStore: ${knowledgeAfter} rules (${knowledgeAfter >= knowledgeBefore ? "+" : ""}${knowledgeAfter - knowledgeBefore} this run)`,
       keyMetrics: { totalRules: knowledgeAfter, growth: knowledgeAfter - knowledgeBefore },
       ctxSnapshot: { knowledgeBefore, knowledgeAfter, learningId: ctx.learningId },
+    });
+    // EF-60A trace
+    OfficialRuntimeTraceStore.recordStage({
+      trace: _trace, stage: "knowledge_store",
+      startedAt: _t_ks, finishedAt: _t_ks,
+      artifactId: ksArtifactId,
+      ctxBefore: _ctx_before_ks,
+      ctxAfter:  { ..._ctx_before_ks, knowledgeAfter },
+      status: "ok",
+      summary: `KnowledgeStore: ${knowledgeAfter} rules (+${knowledgeAfter - knowledgeBefore} this run)`,
+      keyMetrics: { totalRules: knowledgeAfter, growth: knowledgeAfter - knowledgeBefore },
     });
 
     // ── STAGE 7: Reasoning — reads same KnowledgeStore that Learning just wrote ─
@@ -458,6 +537,7 @@ class CognitiveRuntimeImpl {
       inferenceDepth: reasoning.inferenceChain.depth,
     });
 
+    const _ctx_before_rr = { executionId: ctx.executionId, goalId: ctx.goalId, learningId: ctx.learningId, knowledgeAfter };
     stages.push({
       stage: "reasoning", startedAt: t_rr, durationMs: dur_rr,
       artifactId: reasoning.id,
@@ -475,6 +555,17 @@ class CognitiveRuntimeImpl {
         inferenceDepth: reasoning.inferenceChain.depth,
         knowledgeAfter,
       },
+    });
+    // EF-60A trace
+    OfficialRuntimeTraceStore.recordStage({
+      trace: _trace, stage: "reasoning",
+      startedAt: t_rr, finishedAt: t_rr + dur_rr,
+      artifactId: reasoning.id,
+      ctxBefore: _ctx_before_rr,
+      ctxAfter:  { ..._ctx_before_rr, reasoningId: reasoning.id, decisionConf: reasoning.decision.confidence, inferenceDepth: reasoning.inferenceChain.depth },
+      status: "ok",
+      summary: `Reasoning: depth=${reasoning.inferenceChain.depth} conf=${reasoning.decision.confidence.toFixed(3)} rules=${reasoning.metrics.knowledgeRetrieved}`,
+      keyMetrics: { inferenceDepth: reasoning.inferenceChain.depth, decisionConf: +reasoning.decision.confidence.toFixed(3), knowledgeRetrieved: reasoning.metrics.knowledgeRetrieved, conflictCount: reasoning.conflicts.length },
     });
 
     // ── STAGE 8: Self Optimization — uses ctx + all episode data + reasoning ───
@@ -503,6 +594,7 @@ class CognitiveRuntimeImpl {
 
     ctx = enrich(ctx, { optimizationId: optimization.id });
 
+    const _ctx_before_opt = { executionId: ctx.executionId, goalId: ctx.goalId, reasoningId: ctx.reasoningId, knowledgeAfter };
     stages.push({
       stage: "optimization", startedAt: t_opt, durationMs: dur_opt,
       artifactId: optimization.id,
@@ -517,6 +609,17 @@ class CognitiveRuntimeImpl {
         reasoningId:    ctx.reasoningId,
         knowledgeAfter,
       },
+    });
+    // EF-60A trace
+    OfficialRuntimeTraceStore.recordStage({
+      trace: _trace, stage: "optimization",
+      startedAt: t_opt, finishedAt: t_opt + dur_opt,
+      artifactId: optimization.id,
+      ctxBefore: _ctx_before_opt,
+      ctxAfter:  { ..._ctx_before_opt, optimizationId: optimization.id },
+      status: "ok",
+      summary: `Optimization: ${optimization.recommendations.length} recs, ${optimization.findings.length} findings`,
+      keyMetrics: { recommendations: optimization.recommendations.length, findings: optimization.findings.length, avgImpact: +optimization.metrics.avgImprovementScore.toFixed(3) },
     });
 
     // ── STAGE 9: Meta-Cognition — receives data from ALL previous stages ───────
@@ -547,6 +650,7 @@ class CognitiveRuntimeImpl {
       metaConf:     meta.metrics.metaConfidence,
     });
 
+    const _ctx_before_mc = { executionId: ctx.executionId, goalId: ctx.goalId, reasoningId: ctx.reasoningId, optimizationId: ctx.optimizationId };
     stages.push({
       stage: "meta_cognition", startedAt: t_mc, durationMs: dur_mc,
       artifactId: meta.id,
@@ -564,12 +668,25 @@ class CognitiveRuntimeImpl {
         optimizationId:ctx.optimizationId,
       },
     });
+    // EF-60A trace
+    OfficialRuntimeTraceStore.recordStage({
+      trace: _trace, stage: "meta_cognition",
+      startedAt: t_mc, finishedAt: t_mc + dur_mc,
+      artifactId: meta.id,
+      ctxBefore: _ctx_before_mc,
+      ctxAfter:  { ..._ctx_before_mc, metaId: meta.id, reflectionId: meta.reflection.id, metaConf: meta.metrics.metaConfidence },
+      status: "ok",
+      summary: `Meta: conf=${meta.metrics.metaConfidence.toFixed(3)} biases=${meta.biases.length} consistency=${meta.metrics.consistencyScore.toFixed(2)}`,
+      keyMetrics: { metaConf: +meta.metrics.metaConfidence.toFixed(3), reasoningQuality: +meta.metrics.reasoningQuality.toFixed(3), biasCount: meta.biases.length },
+    });
 
     // ── STAGE 10: Reflection — exposed from MetaReport ────────────────────────
     const reflection = meta.reflection;
+    const _t_ref = Date.now();
+    const _ctx_before_ref = { executionId: ctx.executionId, goalId: ctx.goalId, metaId: ctx.metaId };
 
     stages.push({
-      stage: "reflection", startedAt: Date.now(), durationMs: 0,
+      stage: "reflection", startedAt: _t_ref, durationMs: 0,
       artifactId: reflection.id,
       summary: `Reflection: +${reflection.strengths.length} strengths −${reflection.weaknesses.length} weaknesses ↑${reflection.improvements.length} improvements`,
       keyMetrics: {
@@ -579,6 +696,17 @@ class CognitiveRuntimeImpl {
         retentions:   reflection.retentions.length,
       },
       ctxSnapshot: { reflectionId: reflection.id, metaId: ctx.metaId },
+    });
+    // EF-60A trace
+    OfficialRuntimeTraceStore.recordStage({
+      trace: _trace, stage: "reflection",
+      startedAt: _t_ref, finishedAt: _t_ref,
+      artifactId: reflection.id,
+      ctxBefore: _ctx_before_ref,
+      ctxAfter:  { ..._ctx_before_ref, reflectionId: reflection.id },
+      status: "ok",
+      summary: `Reflection: +${reflection.strengths.length} strengths −${reflection.weaknesses.length} weaknesses ↑${reflection.improvements.length} improvements`,
+      keyMetrics: { strengths: reflection.strengths.length, weaknesses: reflection.weaknesses.length, improvements: reflection.improvements.length, retentions: reflection.retentions.length },
     });
 
     // ── Feedback for next run ─────────────────────────────────────────────────
@@ -623,6 +751,12 @@ class CognitiveRuntimeImpl {
       knowledgeGrowth:      knowledgeAfter - knowledgeBefore,
       feedbackForNext,
       summary,
+    });
+
+    // EF-60A: Finalize the official trace with the complete final ctx
+    OfficialRuntimeTraceStore.finalizeTrace({
+      trace: _trace,
+      ctxFinal: ctx as unknown as Record<string, unknown>,
     });
 
     this._runs.push(result);
