@@ -140,6 +140,96 @@ export interface RuntimeEvent {
   readonly timestamp:   number;
 }
 
+// ── ExecutionReport — ADR-003 — contrato oficial do Runtime ──────────────────
+//
+// Produzido exclusivamente pelo ConversationRuntimeEngine ao final de execute().
+// Nenhuma outra camada monta este objeto.
+// Consumidores (UI, Dashboard, Certification) apenas lêem — nunca reconstroem.
+
+export interface ExecutionReportRetrieval {
+  readonly reasoningId:       string;
+  readonly rulesRetrieved:    number;
+  readonly rulesUsed:         number;
+  readonly inferenceDepth:    number;
+  readonly decisionConf:      number;
+  readonly knowledgeInjected: boolean;
+  readonly contextLines:      number;
+  readonly ksLastWriteId:     string;
+}
+
+export interface ExecutionReportPlanner {
+  readonly planId:                  string | null;
+  readonly steps:                   number;
+  readonly mode:                    string;
+  readonly success:                 boolean;
+  readonly knowledgeRulesReceived:  number;
+  readonly knowledgeInjected:       boolean;
+}
+
+export interface ExecutionReportLearning {
+  readonly learningId:       string;
+  readonly episodesAnalyzed: number;
+  readonly knowledgeCreated: number;
+  readonly patternsFound:    number;
+  readonly patternsApproved: number;
+  readonly learningConf:     number;
+}
+
+export interface ExecutionReportMemory {
+  readonly total:       number;
+  readonly validated:   number;
+  readonly promoted:    number;
+  readonly retrievable: number;
+  readonly lastWriteId: string;
+}
+
+export interface ExecutionReportResponse {
+  readonly responseId:        string;
+  readonly chars:             number;
+  readonly words:             number;
+  readonly knowledgeInjected: boolean;
+  readonly rulesInjected:     number;
+  readonly retrievalId:       string | null;
+}
+
+export interface ExecutionReport {
+  // Identity
+  readonly executionId:   string;
+  readonly userMessage:   string;
+  readonly intent:        string | null;
+  readonly intentConf:    number;
+  readonly goalId:        string | null;
+  readonly goalType:      string | null;
+  readonly planId:        string | null;
+  readonly connector:     string;
+  readonly capability:    string;
+  readonly episodeId:     string | null;
+
+  // Knowledge chain
+  readonly knowledgeStoreBefore: number;
+  readonly knowledgeStoreAfter:  number;
+  readonly knowledgeGrowth:      number;
+  readonly ksLastWriteId:        string;
+
+  // Engine sub-reports (null when engine was not invoked)
+  readonly retrieval: ExecutionReportRetrieval | null;
+  readonly planner:   ExecutionReportPlanner   | null;
+  readonly learning:  ExecutionReportLearning  | null;
+  readonly memory:    ExecutionReportMemory    | null;
+  readonly response:  ExecutionReportResponse  | null;
+
+  // Timing & health
+  readonly totalDurationMs: number;
+  readonly errors:          readonly string[];
+  readonly warnings:        readonly string[];
+}
+
+// Retorno oficial de ConversationRuntimeEngine.execute() — ADR-003
+export interface ExecutionWithReport {
+  readonly executionResult: ExecutionResult;
+  readonly executionReport: ExecutionReport;
+}
+
 // ── ID factory ────────────────────────────────────────────────────────────────
 
 let _execSeq = 0;

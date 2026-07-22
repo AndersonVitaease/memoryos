@@ -28,6 +28,8 @@ import type { ExecutionPlan }           from "@/lib/planning-engine-e022/Executi
 import type {
   ExecutionStatus,
   ExecutionResult,
+  ExecutionReport,
+  ExecutionWithReport,
   RuntimeExecutionContext,
   ICapabilityExecutor,
   RuntimeEvent,
@@ -56,6 +58,41 @@ export class ConversationRuntimeEngine {
   private _totalFailed    = 0;
   private _totalCancelled = 0;
 
+  // ADR-003: Runtime-owned ExecutionReport factory.
+  // Called by _finalize() — only place where ExecutionReport is created.
+  private _buildReport(
+    ctx: RuntimeExecutionContext,
+    result: ExecutionResult,
+    t_start: number,
+    overrides: Partial<ExecutionReport> = {},
+  ): ExecutionReport {
+    return Object.freeze({
+      executionId:           result.executionId,
+      userMessage:           String(ctx.metadata["userMessage"] ?? ""),
+      intent:                String(ctx.metadata["intent"] ?? ""),
+      intentConf:            Number(ctx.metadata["intentConf"] ?? 0),
+      goalId:                result.goalId,
+      goalType:              String(ctx.metadata["goalType"] ?? ""),
+      planId:                result.planId,
+      connector:             String(ctx.metadata["connector"] ?? result.steps[0]?.connector ?? ""),
+      capability:            String(ctx.metadata["capability"] ?? result.steps[0]?.capability ?? ""),
+      episodeId:             String(ctx.metadata["episodeId"] ?? ""),
+      knowledgeStoreBefore:  Number(ctx.metadata["knowledgeStoreBefore"] ?? 0),
+      knowledgeStoreAfter:   Number(ctx.metadata["knowledgeStoreAfter"]  ?? 0),
+      knowledgeGrowth:       Number(ctx.metadata["knowledgeStoreAfter"]  ?? 0) - Number(ctx.metadata["knowledgeStoreBefore"] ?? 0),
+      ksLastWriteId:         String(ctx.metadata["ksLastWriteId"] ?? "none"),
+      retrieval:             (ctx.metadata["retrieval"] as ExecutionReport["retrieval"]) ?? null,
+      planner:               (ctx.metadata["planner"]  as ExecutionReport["planner"])   ?? null,
+      learning:              (ctx.metadata["learning"] as ExecutionReport["learning"])   ?? null,
+      memory:                (ctx.metadata["memory"]   as ExecutionReport["memory"])     ?? null,
+      response:              (ctx.metadata["response"] as ExecutionReport["response"])   ?? null,
+      totalDurationMs:       Date.now() - t_start,
+      errors:                result.errors,
+      warnings:              Object.freeze((ctx.metadata["warnings"] as string[]) ?? []),
+      ...overrides,
+    } satisfies ExecutionReport);
+  }
+
   constructor(
     executor: ICapabilityExecutor = new MockCapabilityExecutor(),
     policy:   ExecutionPolicy     = DEFAULT_EXECUTION_POLICY,
@@ -66,12 +103,14 @@ export class ConversationRuntimeEngine {
 
   // ── Public API ────────────────────────────────────────────────────────────
 
-  async execute(plan: ExecutionPlan): Promise<ExecutionResult> {
+  async execute(plan: ExecutionPlan): Promise<ExecutionWithReport> {
+    const t_start = Date.now();
+
     // [RUNTIME-PROBE][RTE-01] ConversationRuntimeEngine.execute() entered
     console.log("[RUNTIME-PROBE][RTE-01]", {
       probe:      "runtimeEngine:execute:entry",
       t:          performance.now(),
-      ts:         Date.now(),
+      ts:         t_start,
       planId:     plan.id,
       goalId:     plan.goalId,
       goalType:   plan.goalType,
@@ -83,9 +122,9 @@ export class ConversationRuntimeEngine {
     const ctx = executionContextFactory.create(plan, this._policy);
 
     if (!ctx) {
-      // Plan failed validation — return a structured failure result
+      // Plan failed validation — return a structured failure + empty report
       const now = Date.now();
-      return Object.freeze({
+      const executionResult = Object.freeze({
         executionId: makeExecutionId(),
         planId:      plan.id,
         goalId:      plan.goalId,
@@ -96,6 +135,15 @@ export class ConversationRuntimeEngine {
         durationMs:  0,
         errors:      Object.freeze(["Plan failed validation"]),
       });
+      const executionReport = this._buildReport(
+        { executionId: executionResult.executionId, planId: plan.id, goalId: plan.goalId,
+          plan, createdAt: now, startedAt: now, finishedAt: now, status: "failed",
+          currentStepIndex: 0, stepResults: [], cancelRequested: false, timeoutAt: null, metadata: {} },
+        executionResult,
+        t_start,
+        { errors: Object.freeze(["Plan failed validation"]) },
+      );
+      return { executionResult, executionReport };
     }
 
     this._contexts.set(ctx.executionId, ctx);
@@ -118,12 +166,12 @@ export class ConversationRuntimeEngine {
 
     try {
       if (plan.steps.length === 0) {
-        return this._finalize(ctx, "completed");
+        return this._finalize(ctx, "completed", t_start);
       }
 
       for (let i = 0; i < plan.steps.length; i++) {
-        if (ctx.cancelRequested) return this._finalize(ctx, "cancelled");
-        if (Date.now() > (ctx.timeoutAt ?? Infinity)) return this._finalize(ctx, "timeout");
+        if (ctx.cancelRequested) return this._finalize(ctx, "cancelled", t_start);
+        if (Date.now() > (ctx.timeoutAt ?? Infinity)) return this._finalize(ctx, "timeout", t_start);
 
         ctx.currentStepIndex = i;
         const step = plan.steps[i];
@@ -144,15 +192,15 @@ export class ConversationRuntimeEngine {
         this._emit(ctx, "execution_step_completed", step.id);
 
         if (stepResult.status === "failed" || stepResult.status === "timeout") {
-          return this._finalize(ctx, stepResult.status === "timeout" ? "timeout" : "failed");
+          return this._finalize(ctx, stepResult.status === "timeout" ? "timeout" : "failed", t_start);
         }
       }
 
-      return this._finalize(ctx, "completed");
+      return this._finalize(ctx, "completed", t_start);
 
     } catch (err) {
       ctx.metadata["fatalError"] = (err as Error).message;
-      return this._finalize(ctx, "failed");
+      return this._finalize(ctx, "failed", t_start);
     }
   }
 
@@ -194,7 +242,7 @@ export class ConversationRuntimeEngine {
 
   // ── Private ────────────────────────────────────────────────────────────────
 
-  private _finalize(ctx: RuntimeExecutionContext, status: ExecutionStatus): ExecutionResult {
+  private _finalize(ctx: RuntimeExecutionContext, status: ExecutionStatus, t_start: number): ExecutionWithReport {
     ctx.status     = status;
     ctx.finishedAt = Date.now();
 
@@ -218,17 +266,22 @@ export class ConversationRuntimeEngine {
       .filter((s) => s.error !== null)
       .map((s) => `[${s.connector}.${s.capability}] ${s.error}`);
 
-    return Object.freeze({
+    const executionResult: ExecutionResult = Object.freeze({
       executionId: ctx.executionId,
       planId:      ctx.planId,
       goalId:      ctx.goalId,
       status,
       steps:       Object.freeze([...ctx.stepResults]),
       startedAt:   ctx.startedAt ?? ctx.createdAt,
-      finishedAt:  ctx.finishedAt,
-      durationMs:  ctx.finishedAt - (ctx.startedAt ?? ctx.createdAt),
+      finishedAt:  ctx.finishedAt!,
+      durationMs:  ctx.finishedAt! - (ctx.startedAt ?? ctx.createdAt),
       errors:      Object.freeze(errors),
     });
+
+    // ADR-003: ExecutionReport built exclusively here — single source of truth
+    const executionReport = this._buildReport(ctx, executionResult, t_start);
+
+    return { executionResult, executionReport };
   }
 
   private _emit(

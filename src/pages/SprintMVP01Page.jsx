@@ -303,7 +303,8 @@ async function runCognitiveCycle(userMessage, onStageUpdate, includeRecall = fal
     try {
       const { getRealRuntimeEngine } = await import("@/lib/connector-runtime-provider/ConnectorRuntimeProvider");
       const engine = await getRealRuntimeEngine();
-      const execResult = await engine.execute(planResult.plan);
+      // ADR-003: engine.execute() returns { executionResult, executionReport }
+      const { executionResult: execResult } = await engine.execute(planResult.plan);
       report.executionId_runtime = execResult.executionId;
       report.executionStatus     = execResult.status;
       update("execution", {
