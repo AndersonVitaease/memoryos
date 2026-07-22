@@ -54,10 +54,17 @@ function _inferEntityType(capability: string): string {
   if (c.includes("commit"))        return "commit";
   if (c.includes("pull") || c.includes("pr")) return "pull_request";
   if (c.includes("issue"))         return "issue";
+  // IA-006: Drive checado ANTES da checagem genérica de "file" — capabilities
+  // como "drive.files.listByMime"/"drive.files.list"/"drive.files.search"
+  // contêm a substring "file" e caiam na regra abaixo, sendo classificadas
+  // como "file" (genérico) em vez de "drive_file". O resolvedor de
+  // continuidade (ExecutionIntent.ts) mapeia entityType "file" para
+  // "github.getFile" sempre — por isso "abrir o arquivo X" após uma
+  // listagem do Drive era roteado para o GitHub.
+  if (c.includes("drive"))         return "drive_file";
   if (c.includes("file") || c.includes("search.") || c.includes("search.symbol")) return "file";
   if (c.includes("message") || c.includes("email") || c.includes("inbox") || c.includes("mail")) return "email";
   if (c.includes("event") || c.includes("calendar")) return "event";
-  if (c.includes("drive"))         return "file";
   return "item";
 }
 
