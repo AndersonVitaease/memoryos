@@ -149,7 +149,13 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
   // === ETAPA 5: CONTEXT BUILDER ===
   // Monta um único contexto estruturado com: memória, especialistas, objetivo,
   // estratégia e resultados das capacidades executadas.
-  const historyText = historyMessages
+  // IA-022: limitado às últimas 20 mensagens — sem limite, conversas longas
+  // reenviavam o histórico bruto inteiro (ex: 154 mensagens) a cada resposta,
+  // fazendo o modelo "continuar" narrativas antigas mesmo depois de corrigidas.
+  // O session.summary (memory.sessionSummary, já incluído acima) é quem deve
+  // cobrir o contexto mais distante — esse é o próprio propósito dele.
+  const _recentHistory = historyMessages.slice(-20);
+  const historyText = _recentHistory
     .map((m) => `${m.role === "user" ? "Usuário" : "Assistente"}: ${m.content}`)
     .join("\n\n");
   const totalMessages = historyMessages.length;
