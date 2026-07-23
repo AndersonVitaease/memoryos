@@ -127,6 +127,36 @@ export function resolveOrdinalIndex(
 }
 
 /**
+ * IA-026: fallback por nome — quando a mensagem de continuidade menciona um
+ * nome/trecho (ex: "abra o documento rg") em vez de uma posição ("primeiro",
+ * "último"), busca esse nome dentro do displayName dos itens da lista
+ * anterior. Sem isso, mensagens com nome caíam sem seleção nenhuma, deixando
+ * espaço para o sistema inventar qual arquivo foi aberto.
+ */
+export function resolveByName(
+  resultSet: ExecutionResultSet,
+  message:   string,
+): number | null {
+  const len = resultSet.items.length;
+  if (len === 0) return null;
+
+  // Remove palavras de comando comuns, deixando só o que parece ser o nome buscado.
+  const stripped = message
+    .toLowerCase()
+    .replace(/\b(abra|abre|abrir|leia|leia o|ler|ler o|o|a|esse|essa|este|esta|arquivo|documento|por favor)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!stripped) return null;
+
+  const matchIndex = resultSet.items.findIndex((item) =>
+    item.displayName.toLowerCase().includes(stripped)
+  );
+
+  return matchIndex >= 0 ? matchIndex : null;
+}
+
+/**
  * Retorna o item no selectedIndex atual (ou indice 0 se nao houver selecao).
  * Retorna null se o ResultSet estiver vazio.
  */
