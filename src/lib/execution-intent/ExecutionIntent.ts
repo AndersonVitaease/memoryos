@@ -122,14 +122,14 @@ const CONTINUATION_SIGNALS: string[] = [
   "proximo", "próximo", "proxima", "próxima", "next",
   "anterior", "volte", "volta", "voltar", "previous", "prev",
   "esse", "essa", "este", "esta",
-  "o primeiro", "a primeira", "o segundo", "a segunda",
+  "o primeiro", "a primeira", "a segunda",
   "o terceiro", "a terceira", "o ultimo", "a ultima",
   "o ultimo resultado", "o primeiro resultado",
-  "mostre o", "mostre a", "mostrar o", "mostrar a",
-  "agora abra", "agora mostre", "agora leia",
+  "mostrar o", "mostrar a",
+  "abra", "mostre", "leia",
   "leia esse", "leia este", "leia o arquivo",
   "baixe esse", "baixe este",
-  "abra o arquivo", "abra o proximo", "abra o anterior",
+  "abra o arquivo", "abra", "abra o anterior",
 ];
 
 export function isContinuationMessage(message: string): boolean {
@@ -212,7 +212,7 @@ export function resolveGoalTypeFromIntent(
     ) {
       return intent.purpose === "list_repositories" ? "github.listFiles" : "github.getFile";
     }
-    // "mostre o primeiro/segundo resultado" — depende do purpose atual
+    // "o primeiro/segundo resultado" — depende do purpose atual
     if (lower.match(/\d+|primeiro|segundo|terceiro|ultimo/)) {
       return intent.purpose === "list_repositories" ? "github.listFiles" : "github.getFile";
     }
