@@ -94,7 +94,9 @@ function importanceScore(record, kind) {
  *   @param {string[]} opts.fields       - Campos do record para busca semântica
  *   @param {string}   opts.primaryField - Campo principal para riqueza
  *   @param {string}   opts.dateField    - Campo de data para recência
- *   @param {string}   opts.kind         - Tipo lógico (ex: "decision", "entity_empresa")
+ *   @param {string|Function} opts.kind  - Tipo lógico (ex: "decision", "entity_empresa"), ou
+ *                                        função (record) => tipo, para derivar o kind por
+ *                                        registro individual (ex: status de cada task)
  *   @param {Object}   [opts.weights]    - Pesos customizados (opcional)
  * @returns {{ score: number, breakdown: Object }}
  */
@@ -109,11 +111,12 @@ export function scoreRecord(record, opts = {}) {
   } = opts;
 
   const w = { ...DEFAULT_WEIGHTS, ...weights };
+  const resolvedKind = typeof kind === "function" ? kind(record) : kind;
 
   const s = semanticScore(record, keywords, fields);
   const r = recencyScore(record[dateField]);
   const ri = richnessScore(record, primaryField);
-  const im = importanceScore(record, kind);
+  const im = importanceScore(record, resolvedKind);
   const fr = 0.5; // frequência não temos dados diretos — neutro
 
   const score =

@@ -78,11 +78,13 @@ export function rankAllMemory(data, keywords = []) {
   }
 
   // Tarefas
+  // "kind" é calculado por registro (não pelo lote inteiro) para que o status
+  // individual de cada task determine sua própria importância na pontuação.
   if (data.tasks?.length > 0) {
     ranked.tasks = rankRecords(
       data.tasks,
       { keywords, fields: ["title", "description", "assignee"], primaryField: "title", dateField: "created_date",
-        kind: data.tasks[0]?.status === "pending" ? "task_pending" : "task_done" },
+        kind: (task) => (task?.status === "done" ? "task_done" : "task_pending") },
       TYPE_LIMITS.tasks
     ).filter((r) => priority(r.score) !== "DISCARD")
       .map((r) => ({

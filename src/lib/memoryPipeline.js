@@ -161,6 +161,12 @@ async function queryEntities(intent, sessionId, projectId) {
   keys.forEach((k, i) => {
     result[k] = values[i];
   });
+
+  // Tarefas concluídas não devem poluir o contexto de memória recuperado a cada turno.
+  if (Array.isArray(result.tasks)) {
+    result.tasks = result.tasks.filter((t) => t.status !== "done");
+  }
+
   result.sessionSummary = result._session?.[0]?.summary || "";
   return result;
 }
