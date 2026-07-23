@@ -235,7 +235,7 @@ const _builtins: CapabilityMapping[] = [
       {
         connector: "google-drive",
         capability: "drive.files.list",
-        params: { pageSize: 10, orderBy: "modifiedTime desc" },
+        params: { pageSize: 50, orderBy: "modifiedTime desc" },
       },
     ],
   },
