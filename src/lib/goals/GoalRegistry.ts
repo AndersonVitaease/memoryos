@@ -339,7 +339,7 @@ const _builtins: GoalDefinition[] = [
   },
 
   // ── Drive ──────────────────────────────────────────────────────────────────
-  // PRIORITY ORDER: downloadFile > openDocument > searchFiles > listRecent
+  // PRIORITY ORDER: downloadFile > listPDFs > listRecent > openDocument > searchFiles
   // matchBySignals() returns the FIRST hit in registration order.
   {
     type: "drive.downloadFile",
@@ -386,6 +386,26 @@ const _builtins: GoalDefinition[] = [
     extractParams: () => ({ mimeType: "application/pdf", pageSize: 20 }),
   },
   {
+    // IA-021: listRecent movido pra antes de openDocument, com sinais genéricos
+    // adicionados ("drive" solto, "mostrar arquivos", etc.) — frases vagas sobre
+    // o Drive (sem verbo de baixar, sem nome de arquivo) devem listar tudo,
+    // em vez de tentar abrir um arquivo específico sem nome e falhar.
+    type: "drive.listRecent",
+    namespace: "drive",
+    description: "List recently accessed Drive files",
+    signals: [
+      "arquivos recentes", "documentos recentes", "recent files",
+      "ultimos arquivos", "ver drive", "meus arquivos",
+      "listar drive", "liste o drive", "liste meu drive",
+      "mostrar arquivos", "mostre arquivos", "mostre os arquivos",
+      "me mostre os arquivos", "arquivos do drive", "arquivo do drive",
+      "todos os arquivos", "todos os arquivos do drive",
+      "o que tem no drive", "o que tem no meu drive",
+      "drive",
+    ],
+    extractParams: () => ({ maxResults: 20 }),
+  },
+  {
     type: "drive.openDocument",
     namespace: "drive",
     description: "Open or download a specific document in Drive",
@@ -427,16 +447,6 @@ const _builtins: GoalDefinition[] = [
       const nameMatch = msg.match(/(?:cnh|contrato|procure?|encontre?|tem)\s+(.+?)(?:\s+em\s+pdf|\?|$)/i)?.[1]?.trim();
       return { query: quoted ?? nameMatch ?? msg.trim() };
     },
-  },
-  {
-    type: "drive.listRecent",
-    namespace: "drive",
-    description: "List recently accessed Drive files",
-    signals: [
-      "arquivos recentes", "documentos recentes", "recent files",
-      "ultimos arquivos", "ver drive", "meus arquivos",
-    ],
-    extractParams: () => ({ maxResults: 10 }),
   },
 
   // ── GitHub — Sprint M-02 ─────────────────────────────────────────────────
