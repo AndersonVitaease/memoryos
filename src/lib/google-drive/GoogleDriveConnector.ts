@@ -306,28 +306,32 @@ export async function listFolders(opts: {
 // These are the ONLY methods that know about the Google Drive API URLs, tokens,
 // and HTTP semantics. DriveDownloadExecutor calls these — it never calls fetch().
 
-/** Search Drive files by name fragment. Returns raw minimal records for ranking. */
+/**
+ * Search Drive files by name fragment — direct `name contains` filter, no
+ * natural-language parsing. Returns full DriveFile records (same shape as
+ * listFiles/searchFiles) so callers can use it as the general "search by
+ * name" primitive, not just for download-resolution ranking.
+ *
+ * Errors propagate (no swallow-to-[]) — callers must handle them, same as
+ * every other Foundation method.
+ */
 export async function searchByName(
   name: string,
   opts: { pageSize?: number } = {},
-): Promise<Array<{ id: string; name: string; mimeType: string; modifiedTime: string | null }>> {
+): Promise<DriveFile[]> {
   await ensureValidToken(WS);
   const q = `name contains '${name.replace(/'/g, "\\'")}' and trashed=false`;
   const params = new URLSearchParams({
     q,
     pageSize: String(opts.pageSize ?? 20),
-    fields:   "files(id,name,mimeType,modifiedTime)",
+    fields:   `files(${FILE_FIELDS})`,
     orderBy:  "modifiedTime desc",
   });
-  try {
-    const raw = await _driveRequest<{ files: Array<{ id: string; name: string; mimeType: string; modifiedTime: string | null }> }>(
-      "drive.searchByName",
-      `https://www.googleapis.com/drive/v3/files?${params}`,
-    );
-    return raw.files ?? [];
-  } catch {
-    return [];
-  }
+  const raw = await _driveRequest<{ files: Record<string, unknown>[] }>(
+    "drive.searchByName",
+    `https://www.googleapis.com/drive/v3/files?${params}`,
+  );
+  return (raw.files ?? []).map(_normalizeFile);
 }
 
 /** Get minimal metadata for a fileId (id, name, mimeType, modifiedTime). */

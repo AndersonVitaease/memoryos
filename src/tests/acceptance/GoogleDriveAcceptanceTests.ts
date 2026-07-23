@@ -7,7 +7,7 @@
 
 import { getAccessToken, ensureValidToken, getConnection } from "@/lib/google-auth/GoogleAuthSession";
 import {
-  listFiles, searchFiles, readFileMetadata, downloadMedia, exportFile,
+  listFiles, searchFiles, searchByName, readFileMetadata, downloadMedia, exportFile,
   listFolders, getDriveHealth,
 } from "@/lib/google-drive/GoogleDriveConnector";
 
@@ -162,6 +162,30 @@ export async function runGoogleDriveAcceptanceTests(): Promise<AccTestResult[]> 
     const result = await searchFiles("RG", { pageSize: 10 });
     trace.add("searchFiles(RG)", "OK", `${result.files.length} results in ${result.durationMs}ms`);
     return { evidence: { query: result.searchQuery, count: result.files.length, found: result.files.map(f => ({ id: f.id, name: f.name, mimeType: f.mimeType, parents: f.parents })), durationMs: result.durationMs } };
+  });
+
+  // T3B: searchByName — direct name-contains filter (bugfix regression guard).
+  // Unlike DRV-T03 above (buildDriveQuery, requires a trigger verb like "procure"),
+  // this must find a file by a bare name fragment with no verb at all.
+  // Self-consistent by design: picks a REAL file from this account (via listFiles)
+  // and searches for a fragment of its own name, instead of hardcoding a term like
+  // "RG" that may not exist in every Drive account running this suite.
+  await run("DRV-T03B", "files.searchByName — bare name fragment, no trigger verb", async (trace) => {
+    const listing = await listFiles({ pageSize: 1 });
+    if (listing.files.length === 0) throw new Error("No files available in this Drive account to build a name-fragment search from.");
+    const target = listing.files[0];
+    const fragment = target.name.slice(0, Math.min(4, target.name.length));
+    trace.add("pick target file", "OK", `id=${target.id} name="${target.name}" fragment="${fragment}"`);
+
+    const files = await searchByName(fragment, { pageSize: 10 });
+    trace.add("searchByName(fragment)", "OK", `${files.length} results`);
+    if (!files.some(f => f.id === target.id)) {
+      throw new Error(`searchByName("${fragment}") did not return the source file "${target.name}" (id=${target.id}) among ${files.length} result(s) — regression.`);
+    }
+    const sample = files[0];
+    if (typeof sample.trashed !== "boolean") throw new Error("trashed field missing/wrong type from searchByName result — response shape regression");
+    if (!("webViewLink" in sample)) throw new Error("webViewLink field missing from searchByName result — response shape regression");
+    return { evidence: { fragment, targetId: target.id, count: files.length, found: files.map(f => ({ id: f.id, name: f.name, mimeType: f.mimeType, size: f.size })) } };
   });
 
   // T4: search PDFs
