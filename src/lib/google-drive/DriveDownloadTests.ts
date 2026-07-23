@@ -22,6 +22,7 @@ import {
 import type { RankingPolicy, ExportPolicy } from "./DriveDownloadPolicies";
 import { DRIVE_MIME } from "./GoogleDriveTypes";
 import { httpStatusToErrorCode } from "./DriveConnectorContract";
+import { searchErrorToDownloadCode } from "./DriveDownloadExecutor";
 
 // ── Test result types ─────────────────────────────────────────────────────────
 
@@ -282,6 +283,43 @@ async function suite7(): Promise<TestResult[]> {
   return r;
 }
 
+// ── Suite 8: Search error mapping (bugfix regression guard) ───────────────────
+// searchByName() now propagates errors (auth/network) instead of swallowing
+// them to []. This verifies executeDriveDownload's contract still holds:
+// every thrown error shape maps to a valid DownloadErrorCode, never leaks
+// as an unhandled exception.
+
+function suite8(): TestResult[] {
+  const S = "8 — Search Error Mapping";
+  const r: TestResult[] = [];
+
+  r.push(assert(S, "NOT_AUTHENTICATED → NOT_CONFIGURED",
+    searchErrorToDownloadCode({ code: "NOT_AUTHENTICATED", message: "Not authenticated" }), "NOT_CONFIGURED"));
+
+  r.push(assert(S, "HTTP_401 → NOT_CONFIGURED",
+    searchErrorToDownloadCode({ code: "HTTP_401", message: "Drive API 401: invalid_token" }), "NOT_CONFIGURED"));
+
+  r.push(assert(S, "HTTP_403 + quotaExceeded → QUOTA_EXCEEDED",
+    searchErrorToDownloadCode({ code: "HTTP_403", message: "Drive API 403: quotaExceeded" }), "QUOTA_EXCEEDED"));
+
+  r.push(assert(S, "HTTP_403 (no quota keyword) → NO_PERMISSION",
+    searchErrorToDownloadCode({ code: "HTTP_403", message: "Drive API 403: insufficientPermissions" }), "NO_PERMISSION"));
+
+  r.push(assert(S, "HTTP_404 → NOT_FOUND",
+    searchErrorToDownloadCode({ code: "HTTP_404", message: "Drive API 404: not found" }), "NOT_FOUND"));
+
+  r.push(assert(S, "HTTP_0 (network unreachable) → API_UNAVAILABLE",
+    searchErrorToDownloadCode({ code: "HTTP_0", message: "" }), "API_UNAVAILABLE"));
+
+  r.push(assert(S, "TIMEOUT body → TIMEOUT (regardless of status)",
+    searchErrorToDownloadCode({ code: "HTTP_0", message: "TIMEOUT" }), "TIMEOUT"));
+
+  r.push(assert(S, "unknown/missing code → API_UNAVAILABLE (safe fallback)",
+    searchErrorToDownloadCode({ message: "some unexpected error" }), "API_UNAVAILABLE"));
+
+  return r;
+}
+
 // ── Runner ────────────────────────────────────────────────────────────────────
 
 export interface DriveDownloadTestReport {
@@ -301,6 +339,7 @@ export async function runDriveDownloadTests(): Promise<DriveDownloadTestReport> 
     ...(await suite5()),
     ...suite6(),
     ...(await suite7()),
+    ...suite8(),
   ];
 
   const passed    = results.filter(r => r.passed).length;

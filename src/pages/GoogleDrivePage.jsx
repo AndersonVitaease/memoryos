@@ -99,10 +99,17 @@ export default function GoogleDrivePage() {
 
   const runSearch = useCallback(async () => {
     if (!searchQ.trim()) return;
-    setFilesLoading(true); setSearchResult(null);
-    const { searchFiles } = await import("@/lib/google-drive/GoogleDriveConnector");
-    const r = await searchFiles(searchQ, { pageSize: 20 }).catch((e) => ({ files: [], error: e.message }));
-    setSearchResult(r);
+    setFilesLoading(true); setSearchResult(null); setFilesError(null);
+    const query = searchQ.trim();
+    const t0 = Date.now();
+    const { searchByName } = await import("@/lib/google-drive/GoogleDriveConnector");
+    try {
+      const files = await searchByName(query, { pageSize: 20 });
+      setSearchResult({ searchQuery: query, files, durationMs: Date.now() - t0 });
+    } catch (e) {
+      setFilesError(e.message);
+      setSearchResult({ searchQuery: query, files: [], durationMs: Date.now() - t0 });
+    }
     setFilesLoading(false);
   }, [searchQ]);
 
@@ -202,7 +209,7 @@ export default function GoogleDrivePage() {
         <div className="flex gap-2 mb-3">
           <input
             className="flex-1 text-xs bg-muted/30 border border-border rounded-lg px-3 py-2 text-foreground placeholder-muted-foreground focus:outline-none focus:border-violet-500"
-            placeholder='Pesquisa em linguagem natural — ex: "planilha de vendas desta semana"'
+            placeholder='Buscar por nome do arquivo — ex: "CNH", "contrato ACME"'
             value={searchQ}
             onChange={(e) => setSearchQ(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && runSearch()}

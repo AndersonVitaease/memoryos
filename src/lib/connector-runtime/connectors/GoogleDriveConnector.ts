@@ -391,24 +391,51 @@ export class GoogleDriveConnector implements IConnector {
       }
 
       // ── Files Search ────────────────────────────────────────────────────────
-      // Delegates to GWS Foundation searchFiles() — which owns all HTTP.
-      // Sprint C-01 behaviour preserved: empty q falls back to listing all.
+      // Delegates to GWS Foundation searchByName() — direct `name contains`
+      // filter, no natural-language/trigger-word parsing. Bugfix: the old
+      // path read only payload.q while goal extraction produced payload.query,
+      // so the name was silently dropped and this always listed recent files.
+      // "query" is now the primary key; "q" kept as fallback for any other
+      // caller still using the old key name. Empty term preserves the
+      // original Sprint C-01 behaviour: list recent files instead of searching.
 
       case "drive.files.search": {
-        const q        = (typeof payload.q === "string" && payload.q.trim().length > 0)
-          ? payload.q.trim()
-          : "trashed=false";
+        const name = (typeof payload.query === "string" && payload.query.trim().length > 0)
+          ? payload.query.trim()
+          : (typeof payload.q === "string" ? payload.q.trim() : "");
         const pageSize = typeof payload.pageSize === "number" ? Math.min(payload.pageSize, 100) : 20;
 
-        const result = await gws.searchFiles(q, { pageSize });
-        this._recordResponseTime(result.durationMs);
-        logs.push(makeLog("info", `[${operation}] q=${q} ${result.files.length} files — ${result.durationMs}ms`));
+        try {
+          if (!name) {
+            const result = await gws.listFiles({ pageSize });
+            this._recordResponseTime(result.durationMs);
+            logs.push(makeLog("info", `[${operation}] no name term — listing recent — ${result.files.length} files — ${result.durationMs}ms`));
+            return ok({
+              query:         null,
+              files:         result.files.map(this._mapDriveFile),
+              nextPageToken: result.nextPageToken ?? null,
+            }, start, eid, logs, operation);
+          }
 
-        return ok({
-          query:         q,
-          files:         result.files.map(this._mapDriveFile),
-          nextPageToken: result.nextPageToken ?? null,
-        }, start, eid, logs, operation);
+          const t0    = Date.now();
+          const files = await gws.searchByName(name, { pageSize });
+          const durationMs = Date.now() - t0;
+          this._recordResponseTime(durationMs);
+          logs.push(makeLog("info", `[${operation}] name="${name}" ${files.length} files — ${durationMs}ms`));
+
+          return ok({
+            query:         name,
+            files:         files.map(this._mapDriveFile),
+            nextPageToken: null,
+          }, start, eid, logs, operation);
+        } catch (e) {
+          const msg  = (e as Error).message;
+          const code = (e as { code?: string }).code;
+          if (code === "NOT_AUTHENTICATED" || code === "HTTP_401" || code === "HTTP_403" || msg.includes("Not authenticated")) {
+            return fail(msg, "auth", start, eid, logs, operation);
+          }
+          return fail(msg, "external", start, eid, logs, operation);
+        }
       }
 
       // ── Files Get ───────────────────────────────────────────────────────────

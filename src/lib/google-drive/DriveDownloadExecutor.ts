@@ -40,6 +40,35 @@ import type { RankingPolicy, ExportPolicy, RankCandidate } from "./DriveDownload
 import { httpStatusToErrorCode } from "./DriveConnectorContract";
 import type { ConnectorAudit } from "./DriveConnectorContract";
 
+// ── Search error mapping ──────────────────────────────────────────────────────
+// searchByName() propagates errors (auth/network) instead of swallowing them
+// to []. Map those to DownloadErrorCode so this module keeps its contract of
+// never throwing — always resolving to a DownloadResult.
+
+function searchErrorToDownloadCode(e: unknown): DownloadErrorCode {
+  const err  = e as { message?: string; code?: string };
+  if (err.code === "NOT_AUTHENTICATED") return "NOT_CONFIGURED";
+  const httpMatch = /^HTTP_(\d+)$/.exec(err.code ?? "");
+  if (httpMatch) {
+    const mapped = httpStatusToErrorCode(Number(httpMatch[1]), err.message);
+    if (mapped === "NOT_AUTHENTICATED") return "NOT_CONFIGURED";
+    if (mapped === "INVALID_PARAMS")    return "UNKNOWN";
+    return mapped;
+  }
+  return "API_UNAVAILABLE";
+}
+
+function searchErrorMessage(code: DownloadErrorCode): string {
+  switch (code) {
+    case "NOT_CONFIGURED":  return "Sessão do Google expirada ou não conectada. Reconecte em /connections.";
+    case "NO_PERMISSION":   return "Sem permissão para buscar arquivos no Google Drive.";
+    case "TIMEOUT":         return "Timeout ao buscar arquivos no Google Drive.";
+    case "QUOTA_EXCEEDED":  return "Quota do Google Drive excedida. Aguarde e tente novamente.";
+    case "API_UNAVAILABLE": return "Google Drive API indisponível. Tente novamente.";
+    default:                return "Erro ao buscar arquivos no Google Drive.";
+  }
+}
+
 // ── Public result types ───────────────────────────────────────────────────────
 
 export type DownloadErrorCode =
@@ -232,7 +261,23 @@ export async function executeDriveDownload(
 
     // Delegate search to connector — no HTTP here
     const _searchT0 = Date.now();
-    const searchResults = await connector.searchByName(searchQuery, { pageSize: 20 });
+    let searchResults: Awaited<ReturnType<typeof connector.searchByName>>;
+    try {
+      searchResults = await connector.searchByName(searchQuery, { pageSize: 20 });
+    } catch (e) {
+      const code = searchErrorToDownloadCode(e);
+      try {
+        const { driveAuditStore, AUDIT_MODE } = await import("@/lib/audit/DriveAuditStore");
+        if (AUDIT_MODE) {
+          driveAuditStore.record("drive_search", "error", {
+            searchQuery, fileName, queryFallback, rawText,
+            error: (e as Error).message ?? String(e),
+            durationMs: Date.now() - _searchT0,
+          }, _searchT0);
+        }
+      } catch { /* non-blocking */ }
+      return fail(code, searchErrorMessage(code), null);
+    }
 
     // ── [M1.11 AUDIT PROBE — DRIVE SEARCH] ────────────────────────────────
     try {
@@ -244,7 +289,7 @@ export async function executeDriveDownload(
           queryFallback,
           rawText,
           resultCount:   searchResults.length,
-          results:       searchResults.slice(0, 10).map((f: Record<string, unknown>) => ({
+          results:       searchResults.slice(0, 10).map((f) => ({
             id:          f.id,
             name:        f.name,
             mimeType:    f.mimeType,
@@ -470,5 +515,5 @@ export async function executeDriveDownload(
 }
 
 // Re-export for backward compat with tests
-export { rankCandidates, resolveExportConfig, isGoogleWorkspaceMime };
+export { rankCandidates, resolveExportConfig, isGoogleWorkspaceMime, searchErrorToDownloadCode };
 export type { RankCandidate as CandidateFile };
