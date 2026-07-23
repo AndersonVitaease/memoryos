@@ -744,6 +744,9 @@ function detectDegradation(input: ComposerInput): { degraded: boolean; note: str
 // ── Evidence Footer ───────────────────────────────────────────────────────────
 
 function evidenceFooter(ev: EvidenceBlock): string {
+  // IA-025: rodapé técnico só em modo dev — usuários reais não devem ver
+  // IDs de execução, percentual de confiança interno ou status de pipeline.
+  if (!import.meta.env.DEV) return "";
   const parts: string[] = [];
   if (ev.sources.length > 0) parts.push(`Evidence: ${ev.sources.slice(0, 4).join(" · ")}`);
   if (ev.executionId)        parts.push(`Exec: ${ev.executionId}`);
@@ -897,7 +900,12 @@ export class CognitiveAnswerComposer {
   ): ComposedAnswer {
     const t0 = Date.now();
     const narrative = composeGitHubLive(userMessage, capability, connectorData, evidence)
-      + `\n\n---\n*Source: GitHub Live · Capability: ${capability} · ${evidence.slice(0, 3).join(" · ")} · ${durationMs}ms*`;
+      // IA-025: rodapé técnico (nome de capability, confiança, ms) só aparece
+      // em modo dev — em produção, usuários reais não devem ver detalhes
+      // internos do sistema.
+      + (import.meta.env.DEV
+          ? `\n\n---\n*Source: GitHub Live · Capability: ${capability} · ${evidence.slice(0, 3).join(" · ")} · ${durationMs}ms*`
+          : "");
 
     const ev: EvidenceBlock = {
       sources:          evidence,
