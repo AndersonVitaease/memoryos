@@ -76,7 +76,7 @@ const INTENT_PATTERNS: Array<{ intent: CognitiveIntent; keywords: string[]; requ
   { intent: "project_status",          keywords: ["status", "where did we stop", "onde paramos", "estado do projeto", "current state", "estado atual", "project state", "o que fizemos"], requiresCognitive: true },
   { intent: "next_sprint",             keywords: ["next sprint", "próximo sprint", "próxima sprint", "what next", "o que vem depois", "recommend", "recomend", "next step", "próxima etapa"], requiresCognitive: true },
   { intent: "repository_analysis",     keywords: ["reposit", "github", "branch", "commit", "code", "código", "repo", "pull request", "pr "], requiresCognitive: true },
-  { intent: "application_analysis",    keywords: ["application", "entities", "sessions", "projects", "base44", "database", "dados", "entidades", "sessions", "sessões"], requiresCognitive: true },
+  { intent: "application_analysis",    keywords: ["application", "entities", "sessions", "projects", "base44", "database", "entidades", "sessions", "sessões"], requiresCognitive: true },
   { intent: "knowledge_reconstruction",keywords: ["knowledge", "conhecimento", "reconstruct", "reconstruir", "what do we know", "o que sabemos", "knowledge graph"], requiresCognitive: true },
   { intent: "architecture_question",   keywords: ["architect", "arquitetura", "pipeline", "engine", "component", "componente", "module", "módulo", "layer", "camada"], requiresCognitive: true },
   { intent: "implementation_status",   keywords: ["implemented", "implementado", "done", "completo", "finished", "concluído", "what was built", "o que foi construído", "certification", "certified"], requiresCognitive: true },
