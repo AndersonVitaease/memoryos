@@ -121,15 +121,20 @@ const CONTINUATION_SIGNALS: string[] = [
   "continue", "continua", "continuar",
   "proximo", "próximo", "proxima", "próxima", "next",
   "anterior", "volte", "volta", "voltar", "previous", "prev",
-  "esse", "essa", "este", "esta",
-  "o primeiro", "a primeira", "a segunda",
+  "o primeiro", "a primeira", "o segundo", "a segunda",
   "o terceiro", "a terceira", "o ultimo", "a ultima",
   "o ultimo resultado", "o primeiro resultado",
-  "mostrar o", "mostrar a",
-  "abra", "mostre", "leia",
+  "agora abra", "agora mostre", "agora leia",
   "leia esse", "leia este", "leia o arquivo",
   "baixe esse", "baixe este",
-  "abra o arquivo", "abra", "abra o anterior",
+  "abra o arquivo", "abra o proximo", "abra o anterior",
+  // IA-017: "esse"/"essa"/"este"/"esta" e "mostre o"/"mostre a"/"mostrar o"/
+  // "mostrar a" soltos removidos — eram genéricos demais, disparando
+  // continuidade em qualquer mensagem contendo essas palavras comuns
+  // (ex: "me mostre os arquivos em pdf" era tratado como continuação de
+  // "ler meus emails", forçando o goalType errado gmail.readMessage).
+  // As combinações específicas ("leia esse", "baixe esse", "agora mostre")
+  // continuam cobertas acima.
 ];
 
 export function isContinuationMessage(message: string): boolean {
