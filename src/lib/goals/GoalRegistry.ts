@@ -339,7 +339,7 @@ const _builtins: GoalDefinition[] = [
   },
 
   // ── Drive ──────────────────────────────────────────────────────────────────
-  // PRIORITY ORDER: downloadFile > listPDFs > openDocument > searchFiles > listRecent
+  // PRIORITY ORDER: downloadFile > openDocument > searchFiles > listRecent
   // matchBySignals() returns the FIRST hit in registration order.
   {
     type: "drive.downloadFile",
@@ -403,7 +403,7 @@ const _builtins: GoalDefinition[] = [
       // recebido a mesma correção. Sem isso, "ler arquivos do drive" virava a
       // frase inteira como termo de busca.
       const stripped = msg
-        .replace(/\b(baixar|baixe|baixa|baixo|baixando|download|downloads|exportar|exporte|exporta|abrir|abra|abre|ler|leia|o arquivo|os arquivos|o documento|os documentos|arquivo|arquivos|documento|documentos|do drive|no drive|por favor)\b/gi, "")
+        .replace(/\b(baixar|baixe|baixa|baixo|baixando|download|downloads|exportar|exporte|exporta|abrir|abra|abre|ler|leia|o arquivo|os arquivos|o documento|os documentos|arquivo|arquivos|documento|documentos|do drive|no drive|drive|por favor)\b/gi, "")
         .replace(/[-–—]/g, " ")
         .replace(/\s+/g, " ")
         .trim();
