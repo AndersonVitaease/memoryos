@@ -58,6 +58,15 @@ function learnState(snap: Record<string, unknown>): Record<string, unknown> {
 function projState(snap: Record<string, unknown>): Record<string, unknown> {
   return (snap.projectState as Record<string, unknown>) ?? {};
 }
+// IA-018: proj.coverage é um objeto estruturado (CoverageReport: {overall, byArchitecture, ...}),
+// não um texto — interpolar ele direto na string sempre virava "[object Object]".
+function _formatCoverage(coverage: unknown): string {
+  if (coverage && typeof coverage === "object" && "overall" in (coverage as Record<string, unknown>)) {
+    const overall = (coverage as Record<string, unknown>).overall;
+    if (typeof overall === "number") return `${Math.round(overall * 100)}%`;
+  }
+  return "N/A";
+}
 function knowledgeState(snap: Record<string, unknown>): Record<string, unknown> {
   return (snap.knowledgeState as Record<string, unknown>) ?? {};
 }
@@ -188,7 +197,7 @@ function composeProjectHistory(input: ComposerInput): { sections: AnswerSection[
 
   const sections: AnswerSection[] = [
     sec("Project Overview",
-      `Entities: ${proj.totalEntities ?? "N/A"} · Relationships: ${proj.totalRelationships ?? "N/A"} · Coverage: ${proj.coverage ?? "N/A"}`
+      `Entities: ${proj.totalEntities ?? "N/A"} · Relationships: ${proj.totalRelationships ?? "N/A"} · Coverage: ${_formatCoverage(proj.coverage)}`
     ),
     sec("Knowledge Graph",
       `Nodes: ${know.graphNodes ?? "N/A"} · Items extracted: ${know.knowledgeExtracted ?? "N/A"}`
@@ -297,7 +306,7 @@ function composeTechnicalDebt(input: ComposerInput): { sections: AnswerSection[]
       risks.length > 0 ? formatList(risks) : "No risks flagged by current pipeline run."
     ),
     sec("Missing Coverage",
-      `Project coverage: ${proj.coverage ?? "N/A"} · Missing items: ${proj.missingKnowledge ?? 0}`
+      `Project coverage: ${_formatCoverage(proj.coverage)} · Missing items: ${proj.missingKnowledge ?? 0}`
     ),
     sec("Recommendations",
       String(goal.topRec ?? "Run pipeline with full connector access for detailed debt analysis.")
@@ -333,7 +342,7 @@ function composeImplementationProgress(input: ComposerInput): { sections: Answer
         : "GitHub not configured — repository metrics unavailable"
     ),
     sec("Knowledge Coverage",
-      `Project entities: ${proj.totalEntities ?? "N/A"} · Relationships: ${proj.totalRelationships ?? "N/A"} · Coverage: ${proj.coverage ?? "N/A"}`
+      `Project entities: ${proj.totalEntities ?? "N/A"} · Relationships: ${proj.totalRelationships ?? "N/A"} · Coverage: ${_formatCoverage(proj.coverage)}`
     ),
     sec("Pipeline Stages Completed",
       `${stgs.length} stage(s): ${stgs.join(", ")}`
