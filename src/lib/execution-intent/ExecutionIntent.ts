@@ -34,7 +34,8 @@
 import type { BaseConnectorContext } from "@/lib/connector-context/ConnectorContextStore";
 import {
   type ExecutionResultSet,
-  resolveOrdinalIndex,
+ resolveOrdinalIndex,
+  resolveByName,
   getSelectedItem,
 } from "@/lib/execution-result-set/ExecutionResultSet";
 import { conversationStore } from "@/lib/conversation-platform/ConversationStore";
@@ -464,7 +465,10 @@ export class ExecutionIntentManager {
       const resultSet: ExecutionResultSet | null = _rcl ? _rcl.getResultSet() : null;
 
       if (resultSet && resultSet.items.length > 0) {
-        const newIndex = resolveOrdinalIndex(resultSet, message);
+       // IA-026: tenta por posição primeiro ("segundo", "último"); se não
+        // achar, tenta por nome ("rg" dentro de "Rg (2).pdf") — sem isso,
+        // mensagens com nome ficavam sem seleção nenhuma.
+        const newIndex = resolveOrdinalIndex(resultSet, message) ?? resolveByName(resultSet, message);
 
         if (newIndex !== null) {
           // Update selectedIndex in the persisted ResultSet
