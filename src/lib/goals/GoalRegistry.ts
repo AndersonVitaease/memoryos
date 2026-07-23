@@ -403,7 +403,7 @@ const _builtins: GoalDefinition[] = [
       "o que tem no drive", "o que tem no meu drive",
       "drive",
     ],
-    extractParams: () => ({ maxResults: 20 }),
+    extractParams: () => ({ maxResults: 50 }),
   },
   {
     type: "drive.openDocument",
