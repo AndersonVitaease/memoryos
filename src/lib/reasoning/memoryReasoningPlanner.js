@@ -175,6 +175,65 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
     kfmContext,
   });
 
+  // === ETAPA 5.4: CLASSIFICAÇÃO SEMÂNTICA — ISSO É PEDIDO DE CONTEÚDO DE
+  // ARQUIVO? (IA-035) ===
+  // Substitui a abordagem de regex/palavra-chave (IA-033), que sempre teria
+  // buracos (ex: não cobria vídeo/áudio, ou frases não previstas). Em vez de
+  // tentar adivinhar por texto exato, pergunta pra própria IA, de forma
+  // estruturada (resposta obrigatoriamente em JSON, não texto livre): "essa
+  // mensagem está pedindo o conteúdo de um arquivo específico?". Isso usa
+  // compreensão real de linguagem, generalizando pra qualquer formato de
+  // arquivo e qualquer forma de perguntar — não uma lista fixa de padrões.
+  async function _classifyFileContentIntent(message) {
+    try {
+      return await base44.integrations.Core.InvokeLLM({
+        prompt: `O usuário disse: "${message}"
+
+Determine se essa mensagem está pedindo para VER, LER ou OBTER O CONTEÚDO de um arquivo/documento/vídeo/imagem específico — não apenas mencionando ou listando arquivos.
+
+Exemplos que SÃO pedido de conteúdo: "mostre o RG", "o que diz esse PDF", "leia o anderson.pdf", "quero ver os dados desse documento", "ler creatina.mp4", "o que tem nesse vídeo".
+Exemplos que NÃO são pedido de conteúdo: "liste os arquivos", "drive", "quais arquivos existem", conversas gerais que só mencionam um nome sem pedir pra ver o que tem dentro.`,
+        response_json_schema: {
+          type: "object",
+          properties: {
+            is_file_content_request: { type: "boolean" },
+            file_reference: { type: ["string", "null"] },
+          },
+          required: ["is_file_content_request", "file_reference"],
+        },
+      });
+    } catch {
+      return { is_file_content_request: false, file_reference: null };
+    }
+  }
+
+  const _hasRealDocRead = Boolean(
+    capabilityResult.capabilityResults?.officialLibrary?.selectedDocs?.length > 0
+  );
+  const _fileIntent = await _classifyFileContentIntent(userMsg);
+
+  if (_fileIntent?.is_file_content_request && !_hasRealDocRead) {
+    const response = "Ainda não tenho uma leitura real do conteúdo desse arquivo — não posso te mostrar dados dele sem antes acessá-lo de verdade. Se quiser, você pode anexar o arquivo direto aqui na conversa (eu leio na hora), ou me pedir para tentar abrir/baixar ele do Drive primeiro.";
+    const responseTimeMs = Date.now() - startTime;
+    const plan = {
+      goal: goal.id,
+      goalLabel: goal.label,
+      strategy: goal.strategy,
+      skills: skills.map((s) => ({ id: s.id, name: s.name, score: s.score })),
+      skillsCount: skills.length,
+      sourcesCount: sources.length,
+      contextLength: context ? context.length : 0,
+      capabilities: [],
+      capabilitiesCount: 0,
+      needsMoreInfo: false,
+      service: null,
+      responseTimeMs,
+      blockedByGuard: "IA-035",
+      fileReference: _fileIntent.file_reference,
+    };
+    return { response, plan, sources };
+  }
+
   // === ETAPA 6: UMA ÚNICA CHAMADA AO LLM ===
   // Todos os especialistas, memória, objetivo, estratégia e resultados de capacidades
   // estão neste único prompt. O LLM nunca é chamado por capacidade ou especialista.
@@ -182,17 +241,10 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
   const rawResponse = await base44.integrations.Core.InvokeLLM({ prompt });
 
   // === ETAPA 6.5: TRAVA DETERMINÍSTICA CONTRA CONFABULAÇÃO DE DOCUMENTO (IA-032) ===
-  // Diferente dos princípios 8-11 (que são PEDIDOS em texto no prompt — e provaram
-  // não ser suficientes sozinhos), esta é uma verificação de CÓDIGO, feita depois
-  // que o LLM já respondeu. Ela não depende do modelo "se comportar": procura por
-  // frases que indicam "finjo ter processado um documento" e, se nenhuma leitura
-  // real de documento aconteceu neste turno (capabilityResult.capabilityResults
-  // não tem officialLibrary com dado real), descarta a resposta do LLM e usa uma
-  // mensagem honesta fixa no lugar — garantida, não uma sugestão.
+  // Camada extra de segurança, mantida como rede de proteção secundária —
+  // caso a mensagem não bata no padrão da IA-035 acima mas o modelo ainda
+  // assim tente confabular sobre documento em algum outro formato de pergunta.
   const _rawText = typeof rawResponse === "string" ? rawResponse : String(rawResponse);
-  const _hadRealDocumentRead = Boolean(
-    capabilityResult.capabilityResults?.officialLibrary?.selectedDocs?.length > 0
-  );
   const _FAKE_DOCUMENT_MARKERS = [
     "processando documento", "análise concluída", "analise concluida",
     "documento está íntegro", "documento esta integro",
@@ -201,11 +253,14 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
     "dados extraídos", "dados extraidos",
     "documento foi localizado", "iniciando acesso ao documento",
     "conteúdo do arquivo processado", "conteudo do arquivo processado",
+    "pontos estruturados contidos", "conforme o nosso processamento",
+    "relatório de conformidade", "relatorio de conformidade",
+    "reexaminei o conteúdo", "reexaminei o conteudo",
   ];
   const _looksLikeFakeDocumentClaim = _FAKE_DOCUMENT_MARKERS.some((marker) =>
     _rawText.toLowerCase().includes(marker)
   );
-  const _finalRawResponse = (_looksLikeFakeDocumentClaim && !_hadRealDocumentRead)
+  const _finalRawResponse = (_looksLikeFakeDocumentClaim && !_hasRealDocRead)
     ? "Ainda não consegui ler o conteúdo real desse arquivo — não tenho um resultado de leitura confirmado para ele agora. Se quiser, você pode anexar o arquivo diretamente aqui na conversa, que eu leio na hora, ou me pedir para tentar abrir/baixar ele pelo Drive."
     : _rawText;
 
