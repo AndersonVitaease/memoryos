@@ -35,6 +35,7 @@ import {
   DEFAULT_RANKING_POLICY,
   DEFAULT_EXPORT_POLICY,
 } from "./DriveDownloadPolicies";
+import { isTooGenericDriveSearchQuery } from "./DriveSearchQueryPolicy";
 import { RuntimeDebug }             from "@/lib/debug/RuntimeDebug";
 import { DocumentProcessingEngine } from "@/lib/document-processing/DocumentProcessingEngine";
 import type { RankingPolicy, ExportPolicy, RankCandidate } from "./DriveDownloadPolicies";
@@ -68,44 +69,6 @@ function searchErrorMessage(code: DownloadErrorCode): string {
     case "API_UNAVAILABLE": return "Google Drive API indisponível. Tente novamente.";
     default:                return "Erro ao buscar arquivos no Google Drive.";
   }
-}
-
-function isTooGenericDriveSearchQuery(query: string): boolean {
-  const normalized = query
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ");
-
-  if (!normalized) return true;
-
-  const genericPhrases = [
-    "documentos pessoais",
-    "arquivos pessoais",
-    "meus documentos",
-    "meus arquivos",
-    "arquivo",
-    "arquivos",
-    "documento",
-    "documentos",
-    "pasta",
-    "pastas",
-    "pdf",
-    "pdfs",
-    "baixar",
-    "download",
-    "abrir",
-    "mostrar",
-  ];
-
-  if (genericPhrases.includes(normalized)) return true;
-
-  const words = normalized.split(" ").filter(Boolean);
-  if (words.length <= 2) {
-    return words.every((word) => genericPhrases.includes(word) || word.length <= 2);
-  }
-
-  return words.every((word) => genericPhrases.includes(word) || word.length <= 2);
 }
 
 // ── Public result types ───────────────────────────────────────────────────────
