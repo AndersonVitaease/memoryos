@@ -35,7 +35,7 @@ import {
   DEFAULT_RANKING_POLICY,
   DEFAULT_EXPORT_POLICY,
 } from "./DriveDownloadPolicies";
-import { isTooGenericDriveSearchQuery } from "./DriveSearchQueryPolicy";
+import { isTooGenericDriveSearchQuery, resolveDriveSearchQuery } from "./DriveSearchQueryPolicy";
 import { RuntimeDebug }             from "@/lib/debug/RuntimeDebug";
 import { DocumentProcessingEngine } from "@/lib/document-processing/DocumentProcessingEngine";
 import type { RankingPolicy, ExportPolicy, RankCandidate } from "./DriveDownloadPolicies";
@@ -255,7 +255,8 @@ export async function executeDriveDownload(
       return fail("NO_PARAMS", "Nenhum fileId ou fileName fornecido. Especifique o nome do arquivo para download.", null);
     }
   } else {
-    const searchQuery = fileName ?? queryFallback ?? rawText;
+    const rawSearchQuery = fileName ?? queryFallback ?? rawText ?? "";
+    const searchQuery = resolveDriveSearchQuery(rawSearchQuery);
     if (!searchQuery) {
       return fail("NO_PARAMS", "Nenhum fileId ou fileName fornecido. Especifique o nome do arquivo para download.", null);
     }
