@@ -125,4 +125,117 @@ export class PdfDocumentParser implements DocumentParser {
       parserUsed:   this.name,
       durationMs:   Date.now() - t0,
     };
+  }// ── IA-027: OCR via IA (fallback quando não há camada de texto) ─────────────
+  // doc.rawContent, quando vem de um PDF binário, é uma "string binária"
+  // (1 caractere por byte — ver GoogleDriveConnector.downloadMedia()), não
+  // texto legível nem base64 verdadeiro. Reconstruímos os bytes reais antes
+  // de montar o arquivo para upload.
+  private async _tryAiOcr(doc: RawDocument): Promise<string | null> {
+    try {
+      const { base44 } = await import("@/api/base44Client");
+
+      const bytes = Uint8Array.from(doc.rawContent, (c) => c.charCodeAt(0) & 0xff);
+      const blob  = new Blob([bytes], { type: doc.mimeType || "application/pdf" });
+      const file  = new File([blob], doc.fileName || "documento.pdf", { type: blob.type });
+
+      const uploadResult = await base44.integrations.Core.UploadFile({ file });
+      if (!uploadResult?.file_url) return null;
+
+      const ocrResponse = await base44.integrations.Core.InvokeLLM({
+        prompt:
+          "Analise este documento em detalhes. Extraia TODO o texto visível (OCR) — " +
+          "incluindo nomes, números de documento, datas e quaisquer outros dados presentes. " +
+          "Seja minucioso e preciso. Se não conseguir ler nenhum texto, responda apenas com a palavra VAZIO.",
+        file_urls: [uploadResult.file_url],
+      });
+
+      const text = typeof ocrResponse === "string"
+        ? ocrResponse
+        : (ocrResponse as { text?: string })?.text ?? "";
+
+      const trimmed = text.trim();
+      if (!trimmed || trimmed.toUpperCase() === "VAZIO" || trimmed.length < 10) return null;
+      return trimmed;
+    } catch {
+      // OCR é best-effort — qualquer falha (rede, upload, IA indisponível)
+      // apenas faz o parser cair no OCR_REQUIRED normal, sem quebrar o fluxo.
+      return null;
+    }
   }
+
+  // ── Extração de texto de PDF binário lido como string UTF-8 ──────────────────
+  // Técnica: PDFs textuais contêm streams de texto em operadores BT/ET.
+  // Os textos ficam entre parênteses: (texto aqui) Tj / TJ
+  // Também extrai strings em formato hexadecimal: <4865782068657265> Tj
+
+  private _extractTextFromPdfString(raw: string): string {
+    const parts: string[] = [];
+
+    // 1. Extrair texto de operadores Tj/TJ (formato string entre parênteses)
+    const btEtRegex = /BT[\s\S]*?ET/g;
+    let block: RegExpExecArray | null;
+    while ((block = btEtRegex.exec(raw)) !== null) {
+      const content = block[0];
+
+      // (texto) Tj ou [(texto)] TJ
+      const parenRegex = /\(([^)\\]*(?:\\.[^)\\]*)*)\)\s*(?:Tj|TJ)/g;
+      let m: RegExpExecArray | null;
+      while ((m = parenRegex.exec(content)) !== null) {
+        const decoded = this._decodePdfString(m[1]);
+        if (decoded.trim()) parts.push(decoded);
+      }
+
+      // <hex> Tj
+      const hexRegex = /<([0-9a-fA-F]+)>\s*(?:Tj|TJ)/g;
+      while ((m = hexRegex.exec(content)) !== null) {
+        const decoded = this._hexToString(m[1]);
+        if (decoded.trim()) parts.push(decoded);
+      }
+    }
+
+    // 2. Fallback: extrair qualquer string entre parênteses fora de BT/ET
+    if (parts.length === 0) {
+      const fallbackRegex = /\(([^\n\r()]{3,200})\)/g;
+      let m: RegExpExecArray | null;
+      while ((m = fallbackRegex.exec(raw)) !== null) {
+        const s = this._decodePdfString(m[1]);
+        if (this._isReadableText(s)) parts.push(s);
+      }
+    }
+
+    return this._cleanText(parts.join(" "));
+  }
+
+  private _decodePdfString(s: string): string {
+    return s
+      .replace(/\\n/g, "\n")
+      .replace(/\\r/g, "\r")
+      .replace(/\\t/g, "\t")
+      .replace(/\\\(/g, "(")
+      .replace(/\\\)/g, ")")
+      .replace(/\\\\/g, "\\")
+      .replace(/\\(\d{3})/g, (_, oct) => String.fromCharCode(parseInt(oct, 8)));
+  }
+
+  private _hexToString(hex: string): string {
+    let result = "";
+    for (let i = 0; i < hex.length - 1; i += 2) {
+      const code = parseInt(hex.slice(i, i + 2), 16);
+      if (code > 31 && code < 127) result += String.fromCharCode(code);
+    }
+    return result;
+  }
+
+  private _isReadableText(s: string): boolean {
+    if (s.length < 3) return false;
+    const printable = s.split("").filter(c => c.charCodeAt(0) > 31 && c.charCodeAt(0) < 127).length;
+    return printable / s.length > 0.7;
+  }
+
+  private _cleanText(text: string): string {
+    return text
+      .replace(/\s{3,}/g, "  ")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  }
+}
