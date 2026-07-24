@@ -271,7 +271,7 @@ export async function executeDriveDownload(
       // já foi checado acima, e rankCandidates preserva o tamanho do array),
       // mas evita o crash "Cannot read properties of undefined (reading 'score')"
       // observado em produção caso isso ocorra por qualquer motivo inesperado.
-      return fail("NOT_FOUND", `Arquivo não encontrado: "${searchQuery}". Verifique o nome ou o acesso ao Google Drive.`, null);
+      return fail("NOT_FOUND", `🔒 [IA-037-ATIVO] Arquivo não encontrado: "${searchQuery}". Verifique o nome ou o acesso ao Google Drive.`, null);
     } else {
       const scoreDiff = ranked[0].score - (ranked[1]?.score ?? 0);
       if (scoreDiff >= rankPolicy.ambiguityThreshold) {
@@ -282,7 +282,7 @@ export async function executeDriveDownload(
         return {
           ok:         false,
           code:       "AMBIGUOUS",
-          message:    `Encontrei ${ranked.length} arquivo(s) com nome similar a "${searchQuery}". Qual deseja baixar?\n\n${list}`,
+          message:    `🔒 [IA-037-ATIVO] Encontrei ${ranked.length} arquivo(s) com nome similar a "${searchQuery}". Qual deseja baixar?\n\n${list}`,
           fileId:     null,
           fileName,
           candidates: ranked.slice(0, 10),
