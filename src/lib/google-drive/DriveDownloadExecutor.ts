@@ -31,45 +31,14 @@ import {
   rankCandidates,
   resolveExportConfig,
   isGoogleWorkspaceMime,
-  filterDownloadCandidates,
   DEFAULT_RANKING_POLICY,
   DEFAULT_EXPORT_POLICY,
 } from "./DriveDownloadPolicies";
-import { isTooGenericDriveSearchQuery, resolveDriveSearchQuery } from "./DriveSearchQueryPolicy";
 import { RuntimeDebug }             from "@/lib/debug/RuntimeDebug";
 import { DocumentProcessingEngine } from "@/lib/document-processing/DocumentProcessingEngine";
 import type { RankingPolicy, ExportPolicy, RankCandidate } from "./DriveDownloadPolicies";
 import { httpStatusToErrorCode } from "./DriveConnectorContract";
 import type { ConnectorAudit } from "./DriveConnectorContract";
-
-// ── Search error mapping ──────────────────────────────────────────────────────
-// searchByName() propagates errors (auth/network) instead of swallowing them
-// to []. Map those to DownloadErrorCode so this module keeps its contract of
-// never throwing — always resolving to a DownloadResult.
-
-function searchErrorToDownloadCode(e: unknown): DownloadErrorCode {
-  const err  = e as { message?: string; code?: string };
-  if (err.code === "NOT_AUTHENTICATED") return "NOT_CONFIGURED";
-  const httpMatch = /^HTTP_(\d+)$/.exec(err.code ?? "");
-  if (httpMatch) {
-    const mapped = httpStatusToErrorCode(Number(httpMatch[1]), err.message);
-    if (mapped === "NOT_AUTHENTICATED") return "NOT_CONFIGURED";
-    if (mapped === "INVALID_PARAMS")    return "UNKNOWN";
-    return mapped;
-  }
-  return "API_UNAVAILABLE";
-}
-
-function searchErrorMessage(code: DownloadErrorCode): string {
-  switch (code) {
-    case "NOT_CONFIGURED":  return "Sessão do Google expirada ou não conectada. Reconecte em /connections.";
-    case "NO_PERMISSION":   return "Sem permissão para buscar arquivos no Google Drive.";
-    case "TIMEOUT":         return "Timeout ao buscar arquivos no Google Drive.";
-    case "QUOTA_EXCEEDED":  return "Quota do Google Drive excedida. Aguarde e tente novamente.";
-    case "API_UNAVAILABLE": return "Google Drive API indisponível. Tente novamente.";
-    default:                return "Erro ao buscar arquivos no Google Drive.";
-  }
-}
 
 // ── Public result types ───────────────────────────────────────────────────────
 
@@ -82,7 +51,6 @@ export type DownloadErrorCode =
   | "QUOTA_EXCEEDED"
   | "NO_PARAMS"
   | "NOT_CONFIGURED"
-  | "DOCUMENT_PROCESSING_FAILED"
   | "UNKNOWN";
 
 export interface DownloadSuccess {
@@ -255,41 +223,16 @@ export async function executeDriveDownload(
       return fail("NO_PARAMS", "Nenhum fileId ou fileName fornecido. Especifique o nome do arquivo para download.", null);
     }
   } else {
-    const rawSearchQuery = fileName ?? queryFallback ?? rawText ?? "";
-    const searchQuery = resolveDriveSearchQuery(rawSearchQuery);
+    const searchQuery = fileName ?? queryFallback ?? rawText;
     if (!searchQuery) {
       return fail("NO_PARAMS", "Nenhum fileId ou fileName fornecido. Especifique o nome do arquivo para download.", null);
-    }
-
-    if (isTooGenericDriveSearchQuery(searchQuery)) {
-      return fail(
-        "NO_PARAMS",
-        `Não foi possível confirmar qual arquivo do Drive corresponde a "${searchQuery}". Forneça um nome ou identificador mais específico.`,
-        null,
-      );
     }
 
     RuntimeDebug.emit({ executionId: _execId, connector: "google-drive", source: "DriveDownloadExecutor", event: "using strategy: search by name", payload: { searchQuery, fileName, queryFallback, rawText } });
 
     // Delegate search to connector — no HTTP here
     const _searchT0 = Date.now();
-    let searchResults: Awaited<ReturnType<typeof connector.searchByName>>;
-    try {
-      searchResults = await connector.searchByName(searchQuery, { pageSize: 20 });
-    } catch (e) {
-      const code = searchErrorToDownloadCode(e);
-      try {
-        const { driveAuditStore, AUDIT_MODE } = await import("@/lib/audit/DriveAuditStore");
-        if (AUDIT_MODE) {
-          driveAuditStore.record("drive_search", "error", {
-            searchQuery, fileName, queryFallback, rawText,
-            error: (e as Error).message ?? String(e),
-            durationMs: Date.now() - _searchT0,
-          }, _searchT0);
-        }
-      } catch { /* non-blocking */ }
-      return fail(code, searchErrorMessage(code), null);
-    }
+    const searchResults = await connector.searchByName(searchQuery, { pageSize: 20 });
 
     // ── [M1.11 AUDIT PROBE — DRIVE SEARCH] ────────────────────────────────
     try {
@@ -301,7 +244,7 @@ export async function executeDriveDownload(
           queryFallback,
           rawText,
           resultCount:   searchResults.length,
-          results:       searchResults.slice(0, 10).map((f) => ({
+          results:       searchResults.slice(0, 10).map((f: Record<string, unknown>) => ({
             id:          f.id,
             name:        f.name,
             mimeType:    f.mimeType,
@@ -317,15 +260,20 @@ export async function executeDriveDownload(
       return fail("NOT_FOUND", `Arquivo não encontrado: "${searchQuery}". Verifique o nome ou o acesso ao Google Drive.`, null);
     }
 
-    const filteredResults = filterDownloadCandidates(searchResults);
-    const ranked = rankCandidates(filteredResults, searchQuery, rankPolicy);
+    const ranked = rankCandidates(searchResults, searchQuery, rankPolicy);
     resolvedCandidates = ranked;
 
     if (ranked.length === 1) {
       resolvedFileId = ranked[0].id;
       resolvedBy     = "search";
+    } else if (ranked.length === 0) {
+      // IA-037: guarda defensiva — não deveria acontecer (searchResults.length > 0
+      // já foi checado acima, e rankCandidates preserva o tamanho do array),
+      // mas evita o crash "Cannot read properties of undefined (reading 'score')"
+      // observado em produção caso isso ocorra por qualquer motivo inesperado.
+      return fail("NOT_FOUND", `Arquivo não encontrado: "${searchQuery}". Verifique o nome ou o acesso ao Google Drive.`, null);
     } else {
-      const scoreDiff = ranked[0].score - ranked[1].score;
+      const scoreDiff = ranked[0].score - (ranked[1]?.score ?? 0);
       if (scoreDiff >= rankPolicy.ambiguityThreshold) {
         resolvedFileId = ranked[0].id;
         resolvedBy     = "search";
@@ -445,41 +393,10 @@ export async function executeDriveDownload(
     sourceConnector: "google-drive",
   });
 
-  if (!processingResult.ok) {
-    const dur = Date.now() - t0;
-    const message =
-      processingResult.errorCode === "OCR_REQUIRED"
-        ? `Não foi possível extrair texto do arquivo "${meta.name}" porque ele não possui camada de texto utilizável.`
-        : processingResult.errorCode === "PARSE_FAILED"
-          ? `Não foi possível processar o arquivo "${meta.name}" como documento legível.`
-          : `Falha no processamento do arquivo "${meta.name}".`;
-
-    RuntimeDebug.emit({
-      executionId: _execId,
-      connector:   "google-drive",
-      source:      "DriveDownloadExecutor",
-      event:       "document-processing-failed",
-      payload: {
-        fileName: meta.name,
-        mimeType: meta.mimeType,
-        errorCode: processingResult.errorCode,
-        message,
-      },
-    });
-
-    return {
-      ok: false,
-      code: "DOCUMENT_PROCESSING_FAILED",
-      message,
-      fileId: resolvedFileId,
-      fileName: meta.name,
-      durationMs: dur,
-      audit: makeAudit("failure", startedAt, dur, processingResult.errorCode ?? null),
-    };
-  }
-
   // Texto extraído (ou conteúdo bruto como fallback se o parser falhar)
-  const extractedText = processingResult.extractedText;
+  const extractedText = processingResult.ok
+    ? processingResult.extractedText
+    : downloadRaw.content;
 
   const processingMeta = processingResult.ok
     ? {
@@ -559,5 +476,5 @@ export async function executeDriveDownload(
 }
 
 // Re-export for backward compat with tests
-export { rankCandidates, resolveExportConfig, isGoogleWorkspaceMime, searchErrorToDownloadCode };
+export { rankCandidates, resolveExportConfig, isGoogleWorkspaceMime };
 export type { RankCandidate as CandidateFile };
