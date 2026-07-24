@@ -65,13 +65,22 @@ function classifyCapabilityEvidence(name, value) {
   };
 }
 
-function buildEvidenceGuardBlock(capabilityResults) {
+function buildEvidenceGuardBlock(capabilityResults, { useDefaultFallback = false } = {}) {
   const entries = Object.entries(capabilityResults || {})
     .map(([name, value]) => classifyCapabilityEvidence(name, value))
     .filter((entry) => entry.state !== "absent");
 
   if (entries.length === 0) {
-    return "";
+    if (!useDefaultFallback) {
+      return "";
+    }
+
+    return [
+      "## REGRA DE CUIDADO PARA CONTEXTO EXTERNO",
+      "Nenhuma nova confirmação executiva foi coletada neste turno sobre o arquivo, documento ou dado mencionado.",
+      "Não afirme que foi encontrado, aberto, lido ou verificado.",
+      "Trate o histórico da conversa como contexto, não como prova.",
+    ].join("\n");
   }
 
   return [
@@ -81,6 +90,19 @@ function buildEvidenceGuardBlock(capabilityResults) {
     "Só descreva com confiança quando houver confirmação explícita de execução.",
     ...entries.map((entry) => entry.instruction),
   ].join("\n");
+}
+
+function shouldUseExternalEvidenceGuard(userMsg, historyText) {
+  const combinedText = `${userMsg || ""}\n${historyText || ""}`.toLowerCase();
+  const evidenceMarkers = [
+    "arquivo", "arquivos", "documento", "documentos", "pdf", "planilha", "excel",
+    "word", "anexo", "anexos", "drive", "google drive", "relatório", "relatorio",
+    "imagem", "video", "áudio", "audio", "conteúdo", "conteudo", "dados",
+    "baixar", "abrir", "ler", "ver", "mostrar", "download", "resultado", "buscar",
+    "pesquisar", "consultar", "cnh",
+  ];
+
+  return evidenceMarkers.some((marker) => combinedText.includes(marker));
 }
 
 /**
@@ -199,7 +221,9 @@ export function buildReasoningContext({ userMsg, memory, skills, goal, historyTe
   const hasStructuredMemory = (context && context.length > 0) || sources.length > 0;
   const skillsBlock = buildSkillsPrompt(skills);
   const isMultiSkill = skills.length > 1;
-  const evidenceGuardBlock = buildEvidenceGuardBlock(capabilityResults);
+  const evidenceGuardBlock = shouldUseExternalEvidenceGuard(userMsg, historyText)
+    ? buildEvidenceGuardBlock(capabilityResults, { useDefaultFallback: true })
+    : "";
 
   return `Você é o MemoryOS Core.
 
