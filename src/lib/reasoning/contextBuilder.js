@@ -31,6 +31,13 @@ function classifyCapabilityEvidence(name, value) {
     value.status === "error" ||
     value.status === "ERROR";
 
+  const hasSuccessfulProcessing =
+    value.processing &&
+    typeof value.processing === "object" &&
+    value.processing.ok === true &&
+    !value.processing.parsingError &&
+    (typeof value.processing.charCount === "number" ? value.processing.charCount > 0 : true);
+
   const hasStrongConfirmation =
     value.ok === true &&
     (
@@ -40,7 +47,7 @@ function classifyCapabilityEvidence(name, value) {
     (
       (typeof value.content === "string" && value.content.length > 0) ||
       (typeof value.extractedText === "string" && value.extractedText.length > 0) ||
-      Boolean(value.processing) ||
+      hasSuccessfulProcessing ||
       value.resolvedBy === "fileId" ||
       value.resolvedBy === "search"
     );
