@@ -84,15 +84,15 @@ function resolveExportMime(mimeType: string): string {
   return GWS_EXPORT[mimeType] ?? mimeType;
 }
 
-function extractExplicitFileNameHint(rawQuery: string): string | null {
+export function extractExplicitFileNameHint(rawQuery: string): string | null {
   const trimmed = rawQuery.trim();
   if (!trimmed) return null;
 
-  const explicitFilePattern = /([A-Za-z0-9._()\- ]+\.(?:pdf|docx|xlsx|pptx|txt|csv|md|json|html|png|jpg|jpeg|gif|svg|zip|odt|ods|odp|rtf|xml))$/i;
+  const explicitFilePattern = /([\p{L}\p{N}._()\- ]+\.(?:pdf|docx|xlsx|pptx|txt|csv|md|json|html|png|jpg|jpeg|gif|svg|zip|odt|ods|odp|rtf|xml))$/iu;
   const directMatch = trimmed.match(explicitFilePattern);
   if (directMatch?.[1]) return directMatch[1].trim();
 
-  const pathLikeMatch = trimmed.match(/(?:^|[\\/])([A-Za-z0-9._()\- ]+\.(?:pdf|docx|xlsx|pptx|txt|csv|md|json|html|png|jpg|jpeg|gif|svg|zip|odt|ods|odp|rtf|xml))$/i);
+  const pathLikeMatch = trimmed.match(/(?:^|[\\/])([\p{L}\p{N}._()\- ]+\.(?:pdf|docx|xlsx|pptx|txt|csv|md|json|html|png|jpg|jpeg|gif|svg|zip|odt|ods|odp|rtf|xml))$/iu);
   return pathLikeMatch?.[1]?.trim() ?? null;
 }
 

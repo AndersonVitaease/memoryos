@@ -1,4 +1,15 @@
+import { extractExplicitFileNameHint } from "./GoogleDriveCapabilityExecutor";
+
+export function resolveDriveSearchQuery(query: string): string {
+  const explicitFileNameHint = extractExplicitFileNameHint(query);
+  return explicitFileNameHint ?? query.trim();
+}
+
 export function isTooGenericDriveSearchQuery(query: string): boolean {
+  if (extractExplicitFileNameHint(query)) {
+    return false;
+  }
+
   const normalized = query
     .toLowerCase()
     .trim()
