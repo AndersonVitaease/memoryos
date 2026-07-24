@@ -25,6 +25,10 @@ interface ResolvedFile {
 
 // ── Private helpers ───────────────────────────────────────────────────────────
 
+function isDriveFolder(mimeType: string): boolean {
+  return mimeType === DRIVE_MIME.FOLDER;
+}
+
 /** Guard: never allow empty/null/undefined fileId to reach the Drive API. */
 function validateFileId(fileId: string | null | undefined): CapResult | null {
   if (!fileId || fileId.trim() === "") {
@@ -45,7 +49,7 @@ function resolveSingleSearchResult(
 ): { status: "RESOLVED"; file: ResolvedFile }
  | { status: "NOT_FOUND"; error: string }
  | { status: "AMBIGUOUS"; requiresSelection: true; files: ResolvedFile[]; clarification: string } {
-  const files = searchResult.files ?? [];
+  const files = (searchResult.files ?? []).filter((file) => !isDriveFolder(file.mimeType));
 
   if (files.length === 0) {
     return { status: "NOT_FOUND", error: `No file found for: "${intent}"` };
