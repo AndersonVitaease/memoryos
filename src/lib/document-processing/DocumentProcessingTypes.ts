@@ -48,6 +48,9 @@ export interface DocumentProcessingResult {
   durationMs:    number;
   /** Metadados opcionais do parser (ex: nPages para PDF) */
   meta:          Record<string, unknown>;
+  /** Campos opcionais para manter compatibilidade com o fluxo de erro do Drive */
+  errorCode?:    DocumentErrorCode | null;
+  message?:      string | null;
 }
 
 // ── Resultado de falha ────────────────────────────────────────────────────────
