@@ -50,12 +50,15 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
   const startTime = Date.now();
 
   // === ETAPA 1: MEMORY KERNEL ===
+  // O Planner conhece apenas MemoryService — nunca a implementacao subjacente.
+  // A escolha de implementacao (Legacy/UCME/Shadow) e responsabilidade do MemoryServiceFactory.
   setPhase?.("retrieving");
   const memoryResult = await memoryService.retrieve({
     userMessage: userMsg,
     sessionId:   session.id,
     projectId:   session.project_id ?? null,
   });
+  // Adapta MemoryContext ao contrato que o restante do Planner ja conhece
   const memory = {
     context:        memoryResult.memories,
     sources:        memoryResult.sources,
@@ -65,13 +68,20 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
   };
 
   // === ETAPA 2: CONTEXT-AWARE SKILLS ENGINE ===
+  // Seleciona especialistas com base na mensagem + memória recuperada.
   const { context, sources, sessionSummary } = memory;
   const skills = detectSkills(userMsg, { sessionSummary, context, sources });
 
   // === ETAPA 3: GOAL DETECTION ===
+  // Identifica qual problema o usuário está tentando resolver.
   const goal = detectGoal(userMsg);
 
   // === ETAPA 3.5: SPECIALIST ROUTING ===
+  // O Planner NÃO conhece Specialists diretamente.
+  // O Specialist Router consulta o Registry e decide qual Specialist utilizar.
+  // Se um Specialist for encontrado, ele executa seu próprio pipeline e retorna
+  // o resultado — o LLM genérico do chat NÃO é chamado.
+  // Conformidade: MAS §4.3 (Specialists), MES §18 (Interface Oficial).
   const routing = SpecialistRouter.route(goal, { memory, session });
   if (routing && routing.specialist) {
     setPhase?.("analyzing");
@@ -119,12 +129,15 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
       }
       return { response, plan, sources: [] };
     } catch (err) {
+      // Em caso de falha no Specialist, informa o usuário — NÃO cai para o LLM genérico.
       const response = `## ⚠️ ${routing.specialist.name} — Erro\n\nNão foi possível concluir a execução através do Specialist oficial.\n\n**Erro:** ${err.message || "Falha desconhecida"}\n\nO Specialist foi invocado pelo Specialist Router, mas encontrou um problema durante a execução. Tente novamente.`;
       return { response, plan: { goal: goal.id, specialist: routing.specialist.id, error: err.message }, sources: [] };
     }
   }
 
   // === ETAPA 4: CAPABILITY ORCHESTRATOR ===
+  // Decide e executa capacidades: web search, cálculo determinístico, documentos.
+  // Resultados são injetados no Context Builder — NÃO chamam o LLM para responder.
   const capabilityResult = await orchestrateCapabilities({
     message: userMsg,
     memory,
@@ -134,6 +147,13 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
   });
 
   // === ETAPA 5: CONTEXT BUILDER ===
+  // Monta um único contexto estruturado com: memória, especialistas, objetivo,
+  // estratégia e resultados das capacidades executadas.
+  // IA-022: limitado às últimas 20 mensagens — sem limite, conversas longas
+  // reenviavam o histórico bruto inteiro (ex: 154 mensagens) a cada resposta,
+  // fazendo o modelo "continuar" narrativas antigas mesmo depois de corrigidas.
+  // O session.summary (memory.sessionSummary, já incluído acima) é quem deve
+  // cobrir o contexto mais distante — esse é o próprio propósito dele.
   const _recentHistory = historyMessages.slice(-20);
   const historyText = _recentHistory
     .map((m) => `${m.role === "user" ? "Usuário" : "Assistente"}: ${m.content}`)
@@ -219,6 +239,9 @@ Se envolver um nome de arquivo/pasta específico, extraia em "target" (sem palav
   const _driveAction = await _classifyDriveAction(userMsg);
 
   // ── NOVA CAPACIDADE: abrir uma pasta específica e listar o conteúdo ──────
+  // Isso não existia antes — "abrir pasta X" sempre caía na conversa livre
+  // e inventava, ou (depois do IA-038) só dizia "não sei fazer isso". Agora
+  // executa de verdade: busca a pasta pelo nome, lista o que tem dentro.
   if (_driveAction?.is_drive_action && _driveAction.action === "open_folder" && _driveAction.target) {
     try {
       const { searchByName, listFiles } = await import("@/lib/google-drive/GoogleDriveConnector");
@@ -230,14 +253,15 @@ Se envolver um nome de arquivo/pasta específico, extraia em "target" (sem palav
           .map((f) => `- ${f.name}${f.webViewLink ? ` — [Visualizar](${f.webViewLink})` : ""}`)
           .join("\n");
         const response = listing.files.length > 0
-          ? `Conteúdo da pasta **"${folder.name}"**:\n\n${itemLines}`
-          : `A pasta **"${folder.name}"** está vazia (ou não consegui ler o conteúdo dela).`;
+          ? `🔒 [IA-040-ATIVO] Conteúdo da pasta **"${folder.name}"**:\n\n${itemLines}`
+          : `🔒 [IA-040-ATIVO] A pasta **"${folder.name}"** está vazia (ou não consegui ler o conteúdo dela).`;
         return { response, plan: _makeDriveActionPlan({ action: "open_folder", target: folder.name }), sources };
       }
-      const response = `Não encontrei nenhuma pasta chamada "${_driveAction.target}" no seu Drive.`;
+      const response = `🔒 [IA-040-ATIVO] Não encontrei nenhuma pasta chamada "${_driveAction.target}" no seu Drive.`;
       return { response, plan: _makeDriveActionPlan({ action: "open_folder", target: _driveAction.target, found: false }), sources };
     } catch {
-      // Se a execução real falhar por qualquer motivo, cai no fluxo normal abaixo.
+      // Se a execução real falhar por qualquer motivo, cai no fluxo normal
+      // abaixo em vez de travar a resposta inteira.
     }
   }
 
@@ -246,11 +270,38 @@ Se envolver um nome de arquivo/pasta específico, extraia em "target" (sem palav
     return { response, plan: _makeDriveActionPlan({ action: "read_content", target: _driveAction.target }), sources };
   }
 
+  // ── IA-042: "download_file" agora EXECUTA de verdade — antes só era
+  // classificado e depois caía sem ação nenhuma na conversa livre, que
+  // então inventava algo parecido com mensagens anteriores da conversa.
+  if (_driveAction?.is_drive_action && _driveAction.action === "download_file" && _driveAction.target) {
+    try {
+      const { executeDriveDownload } = await import("@/lib/google-drive/DriveDownloadExecutor");
+      const dl = await executeDriveDownload({ fileName: _driveAction.target }, "");
+      let response;
+      if (dl.ok) {
+        const preview = dl.content && dl.content.trim().length > 0 && dl.content.length < 3000
+          ? `\n\n${dl.content.trim()}`
+          : "\n\n(Arquivo baixado com sucesso, mas o conteúdo não é texto legível diretamente.)";
+        response = `Arquivo **${dl.fileName}** baixado com sucesso.${preview}`;
+      } else {
+        response = dl.message || "Não foi possível baixar esse arquivo.";
+      }
+      return { response, plan: _makeDriveActionPlan({ action: "download_file", target: _driveAction.target, ok: dl.ok }), sources };
+    } catch {
+      // Se falhar por qualquer motivo, cai no fluxo normal abaixo.
+    }
+  }
+
   // === ETAPA 6: UMA ÚNICA CHAMADA AO LLM ===
+  // Todos os especialistas, memória, objetivo, estratégia e resultados de capacidades
+  // estão neste único prompt. O LLM nunca é chamado por capacidade ou especialista.
   setPhase?.("generating");
   const rawResponse = await base44.integrations.Core.InvokeLLM({ prompt });
 
   // === ETAPA 6.5: TRAVA DETERMINÍSTICA CONTRA CONFABULAÇÃO DE DOCUMENTO (IA-032) ===
+  // Camada extra de segurança, mantida como rede de proteção secundária —
+  // caso a mensagem não bata no padrão da IA-035 acima mas o modelo ainda
+  // assim tente confabular sobre documento em algum outro formato de pergunta.
   const _rawText = typeof rawResponse === "string" ? rawResponse : String(rawResponse);
   const _FAKE_DOCUMENT_MARKERS = [
     "processando documento", "análise concluída", "analise concluida",
@@ -272,11 +323,13 @@ Se envolver um nome de arquivo/pasta específico, extraia em "target" (sem palav
     : _rawText;
 
   // === ETAPA 7: MEMORY SYNTHESIZER ===
+  // Síntese determinística (sem LLM): elimina repetições, melhora fluidez.
   const response = synthesizeResponse(_finalRawResponse);
 
   const responseTimeMs = Date.now() - startTime;
 
   // === ETAPA 8: REGISTRO DE RACIOCÍNIO (APRENDIZADO) ===
+  // Metadados para otimização futura. Lightweight, não bloqueia a resposta.
   const activeCapabilities = Object.entries(capabilityResult.capabilities || {})
     .filter(([_, active]) => active)
     .map(([cap]) => cap);
