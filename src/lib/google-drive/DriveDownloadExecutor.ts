@@ -31,6 +31,7 @@ import {
   rankCandidates,
   resolveExportConfig,
   isGoogleWorkspaceMime,
+  filterDownloadCandidates,
   DEFAULT_RANKING_POLICY,
   DEFAULT_EXPORT_POLICY,
 } from "./DriveDownloadPolicies";
@@ -352,7 +353,8 @@ export async function executeDriveDownload(
       return fail("NOT_FOUND", `Arquivo não encontrado: "${searchQuery}". Verifique o nome ou o acesso ao Google Drive.`, null);
     }
 
-    const ranked = rankCandidates(searchResults, searchQuery, rankPolicy);
+    const filteredResults = filterDownloadCandidates(searchResults);
+    const ranked = rankCandidates(filteredResults, searchQuery, rankPolicy);
     resolvedCandidates = ranked;
 
     if (ranked.length === 1) {
