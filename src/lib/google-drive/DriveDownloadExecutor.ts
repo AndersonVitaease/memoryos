@@ -118,6 +118,7 @@ export type DownloadErrorCode =
   | "QUOTA_EXCEEDED"
   | "NO_PARAMS"
   | "NOT_CONFIGURED"
+  | "DOCUMENT_PROCESSING_FAILED"
   | "UNKNOWN";
 
 export interface DownloadSuccess {
@@ -478,10 +479,41 @@ export async function executeDriveDownload(
     sourceConnector: "google-drive",
   });
 
+  if (!processingResult.ok) {
+    const dur = Date.now() - t0;
+    const message =
+      processingResult.errorCode === "OCR_REQUIRED"
+        ? `Não foi possível extrair texto do arquivo "${meta.name}" porque ele não possui camada de texto utilizável.`
+        : processingResult.errorCode === "PARSE_FAILED"
+          ? `Não foi possível processar o arquivo "${meta.name}" como documento legível.`
+          : `Falha no processamento do arquivo "${meta.name}".`;
+
+    RuntimeDebug.emit({
+      executionId: _execId,
+      connector:   "google-drive",
+      source:      "DriveDownloadExecutor",
+      event:       "document-processing-failed",
+      payload: {
+        fileName: meta.name,
+        mimeType: meta.mimeType,
+        errorCode: processingResult.errorCode,
+        message,
+      },
+    });
+
+    return {
+      ok: false,
+      code: "DOCUMENT_PROCESSING_FAILED",
+      message,
+      fileId: resolvedFileId,
+      fileName: meta.name,
+      durationMs: dur,
+      audit: makeAudit("failure", startedAt, dur, processingResult.errorCode ?? null),
+    };
+  }
+
   // Texto extraído (ou conteúdo bruto como fallback se o parser falhar)
-  const extractedText = processingResult.ok
-    ? processingResult.extractedText
-    : downloadRaw.content;
+  const extractedText = processingResult.extractedText;
 
   const processingMeta = processingResult.ok
     ? {
