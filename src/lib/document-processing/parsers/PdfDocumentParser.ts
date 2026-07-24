@@ -125,7 +125,9 @@ export class PdfDocumentParser implements DocumentParser {
       parserUsed:   this.name,
       durationMs:   Date.now() - t0,
     };
-  }// ── IA-027: OCR via IA (fallback quando não há camada de texto) ─────────────
+  }
+
+  // ── IA-027: OCR via IA (fallback quando não há camada de texto) ─────────────
   // doc.rawContent, quando vem de um PDF binário, é uma "string binária"
   // (1 caractere por byte — ver GoogleDriveConnector.downloadMedia()), não
   // texto legível nem base64 verdadeiro. Reconstruímos os bytes reais antes
@@ -135,6 +137,17 @@ export class PdfDocumentParser implements DocumentParser {
       const { base44 } = await import("@/api/base44Client");
 
       const bytes = Uint8Array.from(doc.rawContent, (c) => c.charCodeAt(0) & 0xff);
+
+      // IA-036: se os bytes forem pequenos demais pra ser um documento
+      // digitalizado de verdade (ex: download falhou parcialmente e sobrou
+      // só um fragmento), não manda pra IA "adivinhar" — isso é exatamente
+      // o cenário onde a IA tende a inventar um documento plausível em vez
+      // de admitir que não recebeu nada de útil. Provamos hoje, com CPF e
+      // PIS mudando a cada tentativa, que isso acontece de verdade.
+      if (bytes.byteLength < 5000) {
+        return null;
+      }
+
       const blob  = new Blob([bytes], { type: doc.mimeType || "application/pdf" });
       const file  = new File([blob], doc.fileName || "documento.pdf", { type: blob.type });
 
@@ -143,9 +156,13 @@ export class PdfDocumentParser implements DocumentParser {
 
       const ocrResponse = await base44.integrations.Core.InvokeLLM({
         prompt:
-          "Analise este documento em detalhes. Extraia TODO o texto visível (OCR) — " +
-          "incluindo nomes, números de documento, datas e quaisquer outros dados presentes. " +
-          "Seja minucioso e preciso. Se não conseguir ler nenhum texto, responda apenas com a palavra VAZIO.",
+          "Analise esta imagem/documento e extraia o texto visível (OCR). Seja preciso, mas " +
+          "lembre-se que erros pontuais de leitura (ex: confundir um dígito de um número) são " +
+          "normais e aceitáveis — o importante é NUNCA inventar um documento inteiro do zero " +
+          "quando a imagem não carregou ou está genuinamente ilegível. Se um campo específico " +
+          "estiver difícil de ler com certeza (ex: um dígito borrado), marque esse campo com " +
+          "[incerto] em vez de simplesmente inventar um valor plausível ou omitir o campo. " +
+          "Se a imagem inteira não carregou ou está completamente ilegível, responda apenas VAZIO.",
         file_urls: [uploadResult.file_url],
       });
 
@@ -155,7 +172,12 @@ export class PdfDocumentParser implements DocumentParser {
 
       const trimmed = text.trim();
       if (!trimmed || trimmed.toUpperCase() === "VAZIO" || trimmed.length < 10) return null;
-      return trimmed;
+
+      // IA-036: como uma única chamada de IA não pode ser verificada com
+      // certeza absoluta, todo resultado de OCR carrega um aviso explícito
+      // — transparência é a proteção que resta quando não dá pra garantir
+      // 100% que não houve invenção.
+      return `${trimmed}\n\n⚠️ *Texto extraído automaticamente por IA (OCR) — pode conter erros de leitura. Confira os dados originais antes de usar para qualquer finalidade oficial.*`;
     } catch {
       // OCR é best-effort — qualquer falha (rede, upload, IA indisponível)
       // apenas faz o parser cair no OCR_REQUIRED normal, sem quebrar o fluxo.
