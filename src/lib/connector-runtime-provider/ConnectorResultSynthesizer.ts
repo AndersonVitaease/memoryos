@@ -276,7 +276,7 @@ function _buildErrorResponseFromMessage(errorMsg: string): string {
   if (e.includes("workspaceid") || e.includes("workspace_id")) {
     return "Nao foi possivel acessar o arquivo: configuracao de workspace ausente. Por favor, reconecte sua conta Google em **Conectores**.";
   }
-  if (e.includes("nao conectado") || e.includes("not connected") || e.includes("disconnected")) {
+  if (e.includes("nao conectado") || e.includes("não conectado") || e.includes("not connected") || e.includes("disconnected")) {
     return "Voce ainda nao conectou sua conta. Va em **Conectores** para autorizar o acesso.";
   }
   if (e.includes("401") || e.includes("expirado") || e.includes("expired") || e.includes("token")) {
@@ -285,10 +285,14 @@ function _buildErrorResponseFromMessage(errorMsg: string): string {
   if (e.includes("403") || e.includes("permission") || e.includes("acesso negado")) {
     return "Acesso negado. Por favor, reconecte sua conta em **Conectores** e autorize os escopos necessarios.";
   }
-  if (e.includes("404") || e.includes("not found") || e.includes("nao encontrado")) {
+  if (e.includes("404") || e.includes("not found") || e.includes("nao encontrado") || e.includes("não encontrado")) {
     return "O recurso solicitado nao foi encontrado.";
   }
-  return `Nao foi possivel completar a operacao: ${errorMsg}`;
+  // IA-025: em produção, nunca expor o erro técnico cru (nomes de conector/
+  // capability) ao usuário final — só em modo dev, pra facilitar diagnóstico.
+  return import.meta.env.DEV
+    ? `Nao foi possivel completar a operacao: ${errorMsg}`
+    : "Nao foi possivel completar essa operacao no momento. Tente novamente em instantes.";
 }
 
 function _buildErrorResponse(result: ExecutionResult): string {
@@ -300,25 +304,32 @@ function _buildErrorResponse(result: ExecutionResult): string {
     return "Ocorreu um erro ao executar a operacao. Por favor, tente novamente.";
   }
 
+  // IA-025: normaliza pra minúsculas antes de comparar — as checagens abaixo
+  // exigiam texto sem acento ("nao encontrado"), mas os erros reais vêm com
+  // acento ("não encontrado"), então nunca batiam e sempre caíam no fallback
+  // cru, expondo o nome técnico do conector ao usuário.
   const first = errors[0];
+  const firstLower = first.toLowerCase();
 
-  if (first.includes("nao conectado") || first.includes("nao conectad") || first.includes("disconnected")) {
+  if (firstLower.includes("nao conectado") || firstLower.includes("não conectado") || firstLower.includes("disconnected")) {
     return "Voce ainda nao conectou sua conta Google. Va em **Conectores** para autorizar o acesso.";
   }
-  if (first.includes("expirado") || first.includes("expired") || first.includes("invalido") || first.includes("401")) {
+  if (firstLower.includes("expirado") || firstLower.includes("expired") || firstLower.includes("invalido") || firstLower.includes("inválido") || firstLower.includes("401")) {
     return "Sua sessao Google expirou. Va em **Conectores** para reconectar.";
   }
-  if (first.includes("403") || first.includes("Acesso negado") || first.includes("escopos")) {
+  if (firstLower.includes("403") || firstLower.includes("acesso negado") || firstLower.includes("escopos")) {
     return "Acesso negado. Por favor, reconecte sua conta Google em **Conectores** e autorize os escopos necessarios.";
   }
-  if (first.includes("timeout") || first.includes("Timeout")) {
+  if (firstLower.includes("timeout")) {
     return "O servidor demorou para responder. Por favor, tente novamente em instantes.";
   }
-  if (first.includes("nao encontrado") || first.includes("404")) {
+  if (firstLower.includes("nao encontrado") || firstLower.includes("não encontrado") || firstLower.includes("404")) {
     return "O recurso solicitado nao foi encontrado.";
   }
 
-  return `Nao foi possivel completar a operacao: ${first}`;
+  return import.meta.env.DEV
+    ? `Nao foi possivel completar a operacao: ${first}`
+    : "Nao foi possivel completar essa operacao no momento. Tente novamente em instantes.";
 }
 
 function _buildSynthesisPrompt(
@@ -368,6 +379,7 @@ REGRAS OBRIGATORIAS (EF-44 — Verified Execution Layer):
 - NUNCA inventar ou inferir dados que nao estejam explicitamente presentes no JSON acima.
 - Se os dados forem validos e conterem informacao real → apresentar de forma clara e organizada em portugues.
 - Se forem emails: mostrar remetente, assunto e trecho de cada um.
+- Se os dados incluirem "webContentLink" para um arquivo, apresente esse link como "Baixar diretamente: [link]" — é um link de download direto, diferente do link de visualização (webViewLink).
 - NAO mencionar detalhes tecnicos como "connector", "capability", "ExecutionResult", "output" etc.
 - Resposta direta, sem introducao longa.`;
 }
