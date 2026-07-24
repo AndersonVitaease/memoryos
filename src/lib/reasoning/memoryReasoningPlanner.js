@@ -181,11 +181,37 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
   setPhase?.("generating");
   const rawResponse = await base44.integrations.Core.InvokeLLM({ prompt });
 
+  // === ETAPA 6.5: TRAVA DETERMINÍSTICA CONTRA CONFABULAÇÃO DE DOCUMENTO (IA-032) ===
+  // Diferente dos princípios 8-11 (que são PEDIDOS em texto no prompt — e provaram
+  // não ser suficientes sozinhos), esta é uma verificação de CÓDIGO, feita depois
+  // que o LLM já respondeu. Ela não depende do modelo "se comportar": procura por
+  // frases que indicam "finjo ter processado um documento" e, se nenhuma leitura
+  // real de documento aconteceu neste turno (capabilityResult.capabilityResults
+  // não tem officialLibrary com dado real), descarta a resposta do LLM e usa uma
+  // mensagem honesta fixa no lugar — garantida, não uma sugestão.
+  const _rawText = typeof rawResponse === "string" ? rawResponse : String(rawResponse);
+  const _hadRealDocumentRead = Boolean(
+    capabilityResult.capabilityResults?.officialLibrary?.selectedDocs?.length > 0
+  );
+  const _FAKE_DOCUMENT_MARKERS = [
+    "processando documento", "análise concluída", "analise concluida",
+    "documento está íntegro", "documento esta integro",
+    "extraí as informações", "extrai as informacoes",
+    "extraí os dados", "extrai os dados",
+    "dados extraídos", "dados extraidos",
+    "documento foi localizado", "iniciando acesso ao documento",
+    "conteúdo do arquivo processado", "conteudo do arquivo processado",
+  ];
+  const _looksLikeFakeDocumentClaim = _FAKE_DOCUMENT_MARKERS.some((marker) =>
+    _rawText.toLowerCase().includes(marker)
+  );
+  const _finalRawResponse = (_looksLikeFakeDocumentClaim && !_hadRealDocumentRead)
+    ? "Ainda não consegui ler o conteúdo real desse arquivo — não tenho um resultado de leitura confirmado para ele agora. Se quiser, você pode anexar o arquivo diretamente aqui na conversa, que eu leio na hora, ou me pedir para tentar abrir/baixar ele pelo Drive."
+    : _rawText;
+
   // === ETAPA 7: MEMORY SYNTHESIZER ===
   // Síntese determinística (sem LLM): elimina repetições, melhora fluidez.
-  const response = synthesizeResponse(
-    typeof rawResponse === "string" ? rawResponse : String(rawResponse)
-  );
+  const response = synthesizeResponse(_finalRawResponse);
 
   const responseTimeMs = Date.now() - startTime;
 
