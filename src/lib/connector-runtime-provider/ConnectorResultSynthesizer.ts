@@ -389,6 +389,7 @@ function _formatRawData(
   connectorData: { connector: string; capability: string; output: unknown }[],
 ): string {
   const lines: string[] = [`**Resultado de ${goalType}:**\n`];
+  let addedContent = false;
 
   for (const step of connectorData) {
     const out = step.output as Record<string, unknown> | null;
@@ -402,8 +403,34 @@ function _formatRawData(
         lines.push(`   De: ${m.from ?? "?"}`);
         if (m.snippet) lines.push(`   ${m.snippet.slice(0, 120)}...`);
       });
+      addedContent = true;
+    }
+
+    // IA-039: download de arquivo do Drive (ex: vídeo, ou qualquer arquivo sem
+    // parser de texto próprio) — antes não tinha caso nenhum aqui, e a resposta
+    // vinha vazia (só o título) sempre que a síntese principal por IA falhava.
+    const fileName = out["fileName"] as string | undefined;
+    if (fileName && !messages) {
+      const mimeType = out["mimeType"] as string | undefined;
+      const sizeBytes = out["sizeBytes"] as number | undefined;
+      lines.push(`Arquivo: **${fileName}**`);
+      if (mimeType) lines.push(`Tipo: ${mimeType}`);
+      if (typeof sizeBytes === "number") lines.push(`Tamanho: ${Math.round(sizeBytes / 1024)} KB`);
+      const content = out["content"] as string | undefined;
+      if (content && content.trim().length > 0 && content.length < 5000) {
+        lines.push("");
+        lines.push(content.trim());
+      } else if (content) {
+        lines.push("");
+        lines.push("(Arquivo baixado com sucesso, mas o conteúdo não é texto legível diretamente — ex: vídeo, imagem sem OCR, ou binário.)");
+      }
+      addedContent = true;
     }
   }
 
-  return lines.join("\n") || "Operacao concluida sem dados para exibir.";
+  if (!addedContent) {
+    lines.push("Operação concluída, mas não há um formato conhecido para exibir esse resultado ainda.");
+  }
+
+  return lines.join("\n");
 }
