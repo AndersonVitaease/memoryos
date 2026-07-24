@@ -109,6 +109,12 @@ export interface RankCandidate {
   score:        number;
 }
 
+export function filterDownloadCandidates(
+  files: Array<{ id: string; name: string; mimeType: string; modifiedTime: string | null }>,
+): Array<{ id: string; name: string; mimeType: string; modifiedTime: string | null }> {
+  return files.filter((file) => file.mimeType !== DRIVE_MIME.FOLDER);
+}
+
 export function rankCandidates(
   files: Array<{ id: string; name: string; mimeType: string; modifiedTime: string | null }>,
   query: string,
