@@ -1,5 +1,5 @@
 /**
- * PdfDocumentParser.ts — Sprint M1.4
+ * PdfDocumentParser.ts — Sprint M1.4 (+ IA-027)
  *
  * Parser para PDFs textuais.
  *
@@ -8,13 +8,17 @@
  *      (via res.text() do GoogleDriveConnector).
  *      Extrai texto usando regex sobre a estrutura interna do PDF.
  *   2. Se o encoding é "text" e o content parece texto legível → retorna diretamente.
- *   3. Se não consegue extrair texto → retorna DocumentErrorCode "OCR_REQUIRED"
- *      (sinaliza que o PDF não tem camada de texto — OCR necessário no futuro).
+ *   3. IA-027: se não consegue extrair texto (PDF escaneado/sem camada de texto),
+ *      tenta OCR via IA antes de desistir — sobe o arquivo pro Base44 e usa
+ *      InvokeLLM com file_urls (mesmo padrão já usado para imagens anexadas
+ *      em knowledgeIngestionPipeline.js). Se o OCR também falhar, retorna
+ *      DocumentErrorCode "OCR_REQUIRED".
  *
  * NÃO importa GoogleDriveConnector.
- * NÃO faz fetch().
- * NÃO conhece OAuth.
+ * NÃO conhece OAuth do Drive.
  * Recebe apenas RawDocument e retorna ProcessingResult.
+ * IA-027: chama base44.integrations.Core (UploadFile/InvokeLLM) como fallback —
+ * é um serviço genérico de IA, não específico de nenhum connector.
  */
 
 import type {
@@ -53,14 +57,30 @@ export class PdfDocumentParser implements DocumentParser {
       const extracted = this._extractTextFromPdfString(doc.rawContent);
 
       if (extracted.length < 20) {
-        // Sem camada de texto — PDF escaneado ou protegido
+        // IA-027: sem camada de texto — antes de desistir, tenta OCR via IA.
+        const ocrText = await this._tryAiOcr(doc);
+        if (ocrText) {
+          return {
+            ok:            true,
+            fileName:      doc.fileName,
+            mimeType:      doc.mimeType,
+            documentType:  "pdf",
+            extractedText: ocrText,
+            charCount:     ocrText.length,
+            parserUsed:    this.name,
+            durationMs:    Date.now() - t0,
+            meta:          { method: "ai-ocr-fallback" },
+          };
+        }
+
+        // OCR também não conseguiu (arquivo protegido, corrompido, ou IA indisponível)
         return {
           ok:           false,
           fileName:     doc.fileName,
           mimeType:     doc.mimeType,
           documentType: "pdf",
           errorCode:    "OCR_REQUIRED",
-          message:      `O arquivo "${doc.fileName}" parece ser um PDF escaneado (sem camada de texto). OCR será suportado em Sprint futura.`,
+          message:      `Não foi possível extrair o conteúdo de "${doc.fileName}", mesmo com OCR. O arquivo pode estar protegido ou corrompido.`,
           parserUsed:   this.name,
           durationMs:   Date.now() - t0,
         };
@@ -107,79 +127,22 @@ export class PdfDocumentParser implements DocumentParser {
     };
   }
 
-  // ── Extração de texto de PDF binário lido como string UTF-8 ──────────────────
-  // Técnica: PDFs textuais contêm streams de texto em operadores BT/ET.
-  // Os textos ficam entre parênteses: (texto aqui) Tj / TJ
-  // Também extrai strings em formato hexadecimal: <4865782068657265> Tj
+  // ── IA-027: OCR via IA (fallback quando não há camada de texto) ─────────────
+  // doc.rawContent, quando vem de um PDF binário, é uma "string binária"
+  // (1 caractere por byte — ver GoogleDriveConnector.downloadMedia()), não
+  // texto legível nem base64 verdadeiro. Reconstruímos os bytes reais antes
+  // de montar o arquivo para upload.
+  private async _tryAiOcr(doc: RawDocument): Promise<string | null> {
+    try {
+      const { base44 } = await import("@/api/base44Client");
 
-  private _extractTextFromPdfString(raw: string): string {
-    const parts: string[] = [];
+      const bytes = Uint8Array.from(doc.rawContent, (c) => c.charCodeAt(0) & 0xff);
+      const blob  = new Blob([bytes], { type: doc.mimeType || "application/pdf" });
+      const file  = new File([blob], doc.fileName || "documento.pdf", { type: blob.type });
 
-    // 1. Extrair texto de operadores Tj/TJ (formato string entre parênteses)
-    const btEtRegex = /BT[\s\S]*?ET/g;
-    let block: RegExpExecArray | null;
-    while ((block = btEtRegex.exec(raw)) !== null) {
-      const content = block[0];
+      const uploadResult = await base44.integrations.Core.UploadFile({ file });
+      if (!uploadResult?.file_url) return null;
 
-      // (texto) Tj ou [(texto)] TJ
-      const parenRegex = /\(([^)\\]*(?:\\.[^)\\]*)*)\)\s*(?:Tj|TJ)/g;
-      let m: RegExpExecArray | null;
-      while ((m = parenRegex.exec(content)) !== null) {
-        const decoded = this._decodePdfString(m[1]);
-        if (decoded.trim()) parts.push(decoded);
-      }
-
-      // <hex> Tj
-      const hexRegex = /<([0-9a-fA-F]+)>\s*(?:Tj|TJ)/g;
-      while ((m = hexRegex.exec(content)) !== null) {
-        const decoded = this._hexToString(m[1]);
-        if (decoded.trim()) parts.push(decoded);
-      }
-    }
-
-    // 2. Fallback: extrair qualquer string entre parênteses fora de BT/ET
-    if (parts.length === 0) {
-      const fallbackRegex = /\(([^\n\r()]{3,200})\)/g;
-      let m: RegExpExecArray | null;
-      while ((m = fallbackRegex.exec(raw)) !== null) {
-        const s = this._decodePdfString(m[1]);
-        if (this._isReadableText(s)) parts.push(s);
-      }
-    }
-
-    return this._cleanText(parts.join(" "));
-  }
-
-  private _decodePdfString(s: string): string {
-    return s
-      .replace(/\\n/g, "\n")
-      .replace(/\\r/g, "\r")
-      .replace(/\\t/g, "\t")
-      .replace(/\\\(/g, "(")
-      .replace(/\\\)/g, ")")
-      .replace(/\\\\/g, "\\")
-      .replace(/\\(\d{3})/g, (_, oct) => String.fromCharCode(parseInt(oct, 8)));
-  }
-
-  private _hexToString(hex: string): string {
-    let result = "";
-    for (let i = 0; i < hex.length - 1; i += 2) {
-      const code = parseInt(hex.slice(i, i + 2), 16);
-      if (code > 31 && code < 127) result += String.fromCharCode(code);
-    }
-    return result;
-  }
-
-  private _isReadableText(s: string): boolean {
-    if (s.length < 3) return false;
-    const printable = s.split("").filter(c => c.charCodeAt(0) > 31 && c.charCodeAt(0) < 127).length;
-    return printable / s.length > 0.7;
-  }
-
-  private _cleanText(text: string): string {
-    return text
-      .replace(/\s{3,}/g, "  ")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
-  }
-}
+      const ocrResponse = await base44.integrations.Core.InvokeLLM({
+        prompt:
+          "Analise este documento em detalhes.
