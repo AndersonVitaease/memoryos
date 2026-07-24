@@ -34,7 +34,7 @@
 import type { BaseConnectorContext } from "@/lib/connector-context/ConnectorContextStore";
 import {
   type ExecutionResultSet,
- resolveOrdinalIndex,
+  resolveOrdinalIndex,
   resolveByName,
   getSelectedItem,
 } from "@/lib/execution-result-set/ExecutionResultSet";
@@ -118,7 +118,12 @@ export interface ExecutionIntentRecord extends BaseConnectorContext {
 // ── Frases de continuidade ────────────────────────────────────────────────────
 
 const CONTINUATION_SIGNALS: string[] = [
-  "abra", "abre", "abrir",
+  // IA-041: "abra"/"abre"/"abrir" soltas REMOVIDAS — capturavam qualquer
+  // mensagem contendo essas palavras (ex: "abrir pasta video creatina"),
+  // interceptando a mensagem ANTES do GoalRegistry ou do roteador semântico
+  // de Drive (IA-040) — a mensagem nunca chegava nesses sistemas, por mais
+  // que fossem corrigidos. Combinações específicas ("abra esse", "abra o
+  // arquivo") continuam cobertas abaixo, que são seguras.
   "continue", "continua", "continuar",
   "proximo", "próximo", "proxima", "próxima", "next",
   "anterior", "volte", "volta", "voltar", "previous", "prev",
@@ -218,7 +223,7 @@ export function resolveGoalTypeFromIntent(
     ) {
       return intent.purpose === "list_repositories" ? "github.listFiles" : "github.getFile";
     }
-    // "o primeiro/segundo resultado" — depende do purpose atual
+    // "mostre o primeiro/segundo resultado" — depende do purpose atual
     if (lower.match(/\d+|primeiro|segundo|terceiro|ultimo/)) {
       return intent.purpose === "list_repositories" ? "github.listFiles" : "github.getFile";
     }
@@ -457,15 +462,13 @@ export class ExecutionIntentManager {
     const artifact = { ...intent.currentArtifact };
 
     // ── EF-41: Resolve ordinal via ExecutionResultSet ─────────────────────────
-    // Access the RuntimeContextLayer singleton via globalThis to avoid circular import.
-    // RuntimeContextLayer imports ExecutionIntent, so we cannot import it back statically.
     let resolvedViaResultSet = false;
     try {
       const _rcl = (globalThis as any)["__RUNTIME_CONTEXT_LAYER__"];
       const resultSet: ExecutionResultSet | null = _rcl ? _rcl.getResultSet() : null;
 
       if (resultSet && resultSet.items.length > 0) {
-       // IA-026: tenta por posição primeiro ("segundo", "último"); se não
+        // IA-026: tenta por posição primeiro ("segundo", "último"); se não
         // achar, tenta por nome ("rg" dentro de "Rg (2).pdf") — sem isso,
         // mensagens com nome ficavam sem seleção nenhuma.
         const newIndex = resolveOrdinalIndex(resultSet, message) ?? resolveByName(resultSet, message);
@@ -503,8 +506,6 @@ export class ExecutionIntentManager {
           });
 
           // ── EF-43A: Update GitHub ConversationStore context when repo is selected ──
-          // When the selected item is a repository, write owner/repo to the "github" slot
-          // so GitHubPlanningContextProvider picks up the CORRECT repo (not always first).
           try {
             const selectedItem2 = getSelectedItem(updatedResultSet);
             const ref2 = selectedItem2?.reference as Record<string, unknown> | undefined;
