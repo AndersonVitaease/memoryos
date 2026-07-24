@@ -18,100 +18,6 @@
 
 import { buildSkillsPrompt } from "@/lib/skills/detector";
 
-function classifyCapabilityEvidence(name, value) {
-  if (!value || typeof value !== "object") {
-    return { state: "absent", instruction: `- ${name}: sem resultado executado.` };
-  }
-
-  const hasExplicitFailure =
-    value.ok === false ||
-    value.error === true ||
-    Boolean(value.code) ||
-    value.status === "FAILED" ||
-    value.status === "error" ||
-    value.status === "ERROR";
-
-  const hasSuccessfulProcessing =
-    value.processing &&
-    typeof value.processing === "object" &&
-    value.processing.ok === true &&
-    !value.processing.parsingError &&
-    (typeof value.processing.charCount === "number" ? value.processing.charCount > 0 : true);
-
-  const hasStrongConfirmation =
-    value.ok === true &&
-    (
-      (typeof value.fileId === "string" && value.fileId.trim().length > 0) ||
-      (typeof value.id === "string" && value.id.trim().length > 0)
-    ) &&
-    (
-      (typeof value.content === "string" && value.content.length > 0) ||
-      (typeof value.extractedText === "string" && value.extractedText.length > 0) ||
-      hasSuccessfulProcessing ||
-      value.resolvedBy === "fileId" ||
-      value.resolvedBy === "search"
-    );
-
-  if (hasExplicitFailure) {
-    return {
-      state: "failed",
-      instruction: `- ${name}: este resultado FALHOU ou não foi confirmado - NÃO afirme que encontrou, NÃO invente metadados, diga que não foi possível confirmar.`,
-    };
-  }
-
-  if (hasStrongConfirmation) {
-    return {
-      state: "confirmed",
-      instruction: `- ${name}: este resultado está confirmado e pode ser descrito com confiança.`,
-    };
-  }
-
-  return {
-    state: "unverified",
-    instruction: `- ${name}: este resultado não teve confirmação forte (sem fileId/metadata/download verificados) - NÃO afirme que encontrou, NÃO invente metadados, diga que não foi possível confirmar.`,
-  };
-}
-
-function buildEvidenceGuardBlock(capabilityResults, { useDefaultFallback = false } = {}) {
-  const entries = Object.entries(capabilityResults || {})
-    .map(([name, value]) => classifyCapabilityEvidence(name, value))
-    .filter((entry) => entry.state !== "absent");
-
-  if (entries.length === 0) {
-    if (!useDefaultFallback) {
-      return "";
-    }
-
-    return [
-      "## REGRA DE CUIDADO PARA CONTEXTO EXTERNO",
-      "Nenhuma nova confirmação executiva foi coletada neste turno sobre o arquivo, documento ou dado mencionado.",
-      "Não afirme que foi encontrado, aberto, lido ou verificado.",
-      "Trate o histórico da conversa como contexto, não como prova.",
-    ].join("\n");
-  }
-
-  return [
-    "## REGRA DE EVIDÊNCIA PARA RESULTADOS DE EXECUÇÃO",
-    "Cada resultado abaixo deve ser tratado conforme seu estado real.",
-    "Se o resultado falhou ou não teve confirmação forte, NÃO afirme que encontrou, NÃO invente metadados e diga que não foi possível confirmar.",
-    "Só descreva com confiança quando houver confirmação explícita de execução.",
-    ...entries.map((entry) => entry.instruction),
-  ].join("\n");
-}
-
-function shouldUseExternalEvidenceGuard(userMsg, historyText) {
-  const combinedText = `${userMsg || ""}\n${historyText || ""}`.toLowerCase();
-  const evidenceMarkers = [
-    "arquivo", "arquivos", "documento", "documentos", "pdf", "planilha", "excel",
-    "word", "anexo", "anexos", "drive", "google drive", "relatório", "relatorio",
-    "imagem", "video", "áudio", "audio", "conteúdo", "conteudo", "dados",
-    "baixar", "abrir", "ler", "ver", "mostrar", "download", "resultado", "buscar",
-    "pesquisar", "consultar", "cnh",
-  ];
-
-  return evidenceMarkers.some((marker) => combinedText.includes(marker));
-}
-
 /**
  * Monta o contexto estruturado completo para o LLM.
  *
@@ -228,9 +134,6 @@ export function buildReasoningContext({ userMsg, memory, skills, goal, historyTe
   const hasStructuredMemory = (context && context.length > 0) || sources.length > 0;
   const skillsBlock = buildSkillsPrompt(skills);
   const isMultiSkill = skills.length > 1;
-  const evidenceGuardBlock = shouldUseExternalEvidenceGuard(userMsg, historyText)
-    ? buildEvidenceGuardBlock(capabilityResults, { useDefaultFallback: true })
-    : "";
 
   return `Você é o MemoryOS Core.
 
@@ -251,7 +154,9 @@ Ele nunca conversa diretamente com modelos de IA, APIs, aplicativos ou sistemas 
 5. Capacidades representam ações cognitivas (pesquisar, resumir, comparar, planejar, organizar, traduzir, interpretar, gerar imagens, analisar documentos). As Capacidades não conhecem sistemas externos.
 6. Serviços representam domínios funcionais (Serviço de E-mail, Serviço de Agenda, Serviço de Documentos, Serviço de Mensagens, etc.). O Serviço define O QUE precisa ser feito. Nunca COMO.
 7. Conectores traduzem linguagens. Cada Conector conhece apenas um sistema específico. Os Conectores nunca tomam decisões. Eles apenas executam.
-8. Você NUNCA afirma ou nega o status de um conector, conexão, autenticação, sincronização ou execução técnica (ex: "conector não configurado", "handshake bem-sucedido", "workspaceId validado", "conexão restabelecida") a menos que essa informação esteja EXPLICITAMENTE presente neste prompt (no bloco de Serviço/Conector abaixo, se houver) ou tenha vindo de um resultado real de execução. Se você não tem essa informação aqui, diga claramente ao usuário que não pode confirmar o status técnico agora, em vez de inventar uma explicação plausível.
+8. Você NUNCA afirma ou nega o status de um conector, conexão, autenticação, sincronização ou execução técnica (ex: "conector não configurado", "handshake bem-sucedido", "workspaceId validado", "conexão restabelecida", "Status da Execução") a menos que essa informação esteja EXPLICITAMENTE presente neste prompt (no bloco de Serviço/Conector abaixo, se houver) ou tenha vindo de um resultado real de execução. Se você não tem essa informação aqui, diga claramente ao usuário que não pode confirmar o status técnico agora, em vez de inventar uma explicação plausível.
+9. Respostas SUAS de turnos anteriores, presentes no histórico da conversa abaixo, NUNCA contam como confirmação de status técnico — mesmo que você mesmo tenha afirmado algo antes, isso não significa que era verdade. Trate suas próprias afirmações técnicas passadas com a mesma cautela do princípio 8: só repita como fato o que estiver comprovado neste prompt agora.
+10. Se o usuário pedir algo que o sistema não sabe fazer (ex: "criar uma pasta", ou qualquer ação sem uma capacidade correspondente), NUNCA copie ou reproduza trechos deste prompt (como "Project Overview", "Knowledge Graph", "Evidence Chain", nomes de módulos internos como "OfficialRuntimeBridge" ou "IRE"/"KRE"/"PRE", ou qualquer bloco de diagnóstico) como se fosse a resposta. Em vez disso, diga em português simples que essa ação específica não está disponível ainda, e pergunte se o usuário quer tentar de outra forma.
 
 ## COMO VOCÊ PENSA
 
@@ -389,6 +294,6 @@ ${sessionSummary ? `## RESUMO DA CONVERSA\n${sessionSummary}` : ""}
 
 ${historyText ? `## HISTÓRICO DA CONVERSA\n${historyText}` : ""}
 
-${serviceBlock ? `${serviceBlock}\n\n---\n` : ""}${needsMoreInfoBlock ? `${needsMoreInfoBlock}\n\n---\n` : ""}${evidenceGuardBlock ? `${evidenceGuardBlock}\n\n---\n` : ""}${capabilityBlocks.length > 0 ? `${capabilityBlocks.join("\n\n---\n\n")}\n\n---\n` : ""}## O QUE O USUÁRIO ACABOU DE DIZER
+${serviceBlock ? `${serviceBlock}\n\n---\n` : ""}${needsMoreInfoBlock ? `${needsMoreInfoBlock}\n\n---\n` : ""}${capabilityBlocks.length > 0 ? `${capabilityBlocks.join("\n\n---\n\n")}\n\n---\n` : ""}## O QUE O USUÁRIO ACABOU DE DIZER
 ${userMsg}`;
 }
