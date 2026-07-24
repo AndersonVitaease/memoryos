@@ -70,6 +70,9 @@ const NL_CASES: Array<[string, string, string]> = [
   ["NL-08", "Abra o arquivo orcamento",              "orcamento"],
   ["NL-09", "Procure arquivos contendo MemoryOS",    "MemoryOS"],
   ["NL-10", "Encontre o documento Sprint 26",        "Sprint 26"],
+  ["NL-11", "Abra Rg (2).pdf",                      "name contains 'Rg (2).pdf'"],
+  ["NL-12", "Abra relatório final",                 "name contains 'relatório final'"],
+  ["NL-13", "pdfs recentes",                        DRIVE_MIME.PDF],
 ];
 
 async function suiteNaturalLanguage(): Promise<DriveTestResult[]> {

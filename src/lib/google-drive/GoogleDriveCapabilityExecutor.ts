@@ -80,6 +80,32 @@ function resolveExportMime(mimeType: string): string {
   return GWS_EXPORT[mimeType] ?? mimeType;
 }
 
+function extractExplicitFileNameHint(rawQuery: string): string | null {
+  const trimmed = rawQuery.trim();
+  if (!trimmed) return null;
+
+  const explicitFilePattern = /([A-Za-z0-9._()\- ]+\.(?:pdf|docx|xlsx|pptx|txt|csv|md|json|html|png|jpg|jpeg|gif|svg|zip|odt|ods|odp|rtf|xml))$/i;
+  const directMatch = trimmed.match(explicitFilePattern);
+  if (directMatch?.[1]) return directMatch[1].trim();
+
+  const pathLikeMatch = trimmed.match(/(?:^|[\\/])([A-Za-z0-9._()\- ]+\.(?:pdf|docx|xlsx|pptx|txt|csv|md|json|html|png|jpg|jpeg|gif|svg|zip|odt|ods|odp|rtf|xml))$/i);
+  return pathLikeMatch?.[1]?.trim() ?? null;
+}
+
+function inferFileTypeFromExplicitFileName(fileName: string): string | null {
+  const ext = fileName.match(/\.([a-z0-9]{1,6})$/i)?.[1]?.toLowerCase();
+  switch (ext) {
+    case "pdf": return DRIVE_MIME.PDF;
+    case "doc":
+    case "docx": return DRIVE_MIME.DOCUMENT;
+    case "xls":
+    case "xlsx": return DRIVE_MIME.SPREADSHEET;
+    case "ppt":
+    case "pptx": return DRIVE_MIME.PRESENTATION;
+    default: return null;
+  }
+}
+
 // ── Natural Language → Drive Query ────────────────────────────────────────────
 
 const FILE_TYPE_MAP: Array<[RegExp, string]> = [
@@ -102,14 +128,20 @@ export function parseIntent(rawQuery: string): DriveQueryIntent {
   else if (/\bsemana|week|esta semana\b/i.test(rawQuery)) timeRange = "week";
   else if (/\bm[eê]s|month\b/i.test(rawQuery))       timeRange = "month";
 
-  for (const [re, mime] of FILE_TYPE_MAP) {
-    if (re.test(rawQuery)) { fileType = mime; break; }
-  }
+  const explicitFileNameHint = extractExplicitFileNameHint(rawQuery);
+  if (explicitFileNameHint) {
+    nameHint = explicitFileNameHint;
+    fileType = inferFileTypeFromExplicitFileName(explicitFileNameHint);
+  } else {
+    for (const [re, mime] of FILE_TYPE_MAP) {
+      if (re.test(rawQuery)) { fileType = mime; break; }
+    }
 
-  const nameMatch = rawQuery.match(
-    /(?:procure|encontre|abra|mostre|pesquise|busque|arquivo|documento|planilha|contrato|or[cç]amento)\s+(.+)/i,
-  );
-  if (nameMatch) nameHint = nameMatch[1].trim().replace(/['"]/g, "");
+    const nameMatch = rawQuery.match(
+      /(?:procure|encontre|abra|mostre|pesquise|busque|arquivo|documento|planilha|contrato|or[cç]amento)\s+(.+)/i,
+    );
+    if (nameMatch) nameHint = nameMatch[1].trim().replace(/['"]/g, "");
+  }
 
   const fullMatch = rawQuery.match(/\bcontendo\s+(.+)/i);
   const fullText  = fullMatch ? fullMatch[1].trim() : null;
