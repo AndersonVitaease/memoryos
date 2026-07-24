@@ -126,23 +126,3 @@ export class PdfDocumentParser implements DocumentParser {
       durationMs:   Date.now() - t0,
     };
   }
-
-  // ── IA-027: OCR via IA (fallback quando não há camada de texto) ─────────────
-  // doc.rawContent, quando vem de um PDF binário, é uma "string binária"
-  // (1 caractere por byte — ver GoogleDriveConnector.downloadMedia()), não
-  // texto legível nem base64 verdadeiro. Reconstruímos os bytes reais antes
-  // de montar o arquivo para upload.
-  private async _tryAiOcr(doc: RawDocument): Promise<string | null> {
-    try {
-      const { base44 } = await import("@/api/base44Client");
-
-      const bytes = Uint8Array.from(doc.rawContent, (c) => c.charCodeAt(0) & 0xff);
-      const blob  = new Blob([bytes], { type: doc.mimeType || "application/pdf" });
-      const file  = new File([blob], doc.fileName || "documento.pdf", { type: blob.type });
-
-      const uploadResult = await base44.integrations.Core.UploadFile({ file });
-      if (!uploadResult?.file_url) return null;
-
-      const ocrResponse = await base44.integrations.Core.InvokeLLM({
-        prompt:
-          "Analise este documento em detalhes.
