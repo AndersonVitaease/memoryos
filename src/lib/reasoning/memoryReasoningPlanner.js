@@ -50,15 +50,12 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
   const startTime = Date.now();
 
   // === ETAPA 1: MEMORY KERNEL ===
-  // O Planner conhece apenas MemoryService — nunca a implementacao subjacente.
-  // A escolha de implementacao (Legacy/UCME/Shadow) e responsabilidade do MemoryServiceFactory.
   setPhase?.("retrieving");
   const memoryResult = await memoryService.retrieve({
     userMessage: userMsg,
     sessionId:   session.id,
     projectId:   session.project_id ?? null,
   });
-  // Adapta MemoryContext ao contrato que o restante do Planner ja conhece
   const memory = {
     context:        memoryResult.memories,
     sources:        memoryResult.sources,
@@ -68,20 +65,13 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
   };
 
   // === ETAPA 2: CONTEXT-AWARE SKILLS ENGINE ===
-  // Seleciona especialistas com base na mensagem + memória recuperada.
   const { context, sources, sessionSummary } = memory;
   const skills = detectSkills(userMsg, { sessionSummary, context, sources });
 
   // === ETAPA 3: GOAL DETECTION ===
-  // Identifica qual problema o usuário está tentando resolver.
   const goal = detectGoal(userMsg);
 
   // === ETAPA 3.5: SPECIALIST ROUTING ===
-  // O Planner NÃO conhece Specialists diretamente.
-  // O Specialist Router consulta o Registry e decide qual Specialist utilizar.
-  // Se um Specialist for encontrado, ele executa seu próprio pipeline e retorna
-  // o resultado — o LLM genérico do chat NÃO é chamado.
-  // Conformidade: MAS §4.3 (Specialists), MES §18 (Interface Oficial).
   const routing = SpecialistRouter.route(goal, { memory, session });
   if (routing && routing.specialist) {
     setPhase?.("analyzing");
@@ -129,15 +119,12 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
       }
       return { response, plan, sources: [] };
     } catch (err) {
-      // Em caso de falha no Specialist, informa o usuário — NÃO cai para o LLM genérico.
       const response = `## ⚠️ ${routing.specialist.name} — Erro\n\nNão foi possível concluir a execução através do Specialist oficial.\n\n**Erro:** ${err.message || "Falha desconhecida"}\n\nO Specialist foi invocado pelo Specialist Router, mas encontrou um problema durante a execução. Tente novamente.`;
       return { response, plan: { goal: goal.id, specialist: routing.specialist.id, error: err.message }, sources: [] };
     }
   }
 
   // === ETAPA 4: CAPABILITY ORCHESTRATOR ===
-  // Decide e executa capacidades: web search, cálculo determinístico, documentos.
-  // Resultados são injetados no Context Builder — NÃO chamam o LLM para responder.
   const capabilityResult = await orchestrateCapabilities({
     message: userMsg,
     memory,
@@ -147,13 +134,6 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
   });
 
   // === ETAPA 5: CONTEXT BUILDER ===
-  // Monta um único contexto estruturado com: memória, especialistas, objetivo,
-  // estratégia e resultados das capacidades executadas.
-  // IA-022: limitado às últimas 20 mensagens — sem limite, conversas longas
-  // reenviavam o histórico bruto inteiro (ex: 154 mensagens) a cada resposta,
-  // fazendo o modelo "continuar" narrativas antigas mesmo depois de corrigidas.
-  // O session.summary (memory.sessionSummary, já incluído acima) é quem deve
-  // cobrir o contexto mais distante — esse é o próprio propósito dele.
   const _recentHistory = historyMessages.slice(-20);
   const historyText = _recentHistory
     .map((m) => `${m.role === "user" ? "Usuário" : "Assistente"}: ${m.content}`)
@@ -175,47 +155,47 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
     kfmContext,
   });
 
-  // === ETAPA 5.4: CLASSIFICAÇÃO SEMÂNTICA — ISSO É PEDIDO DE CONTEÚDO DE
-  // ARQUIVO? (IA-035) ===
-  // Substitui a abordagem de regex/palavra-chave (IA-033), que sempre teria
-  // buracos (ex: não cobria vídeo/áudio, ou frases não previstas). Em vez de
-  // tentar adivinhar por texto exato, pergunta pra própria IA, de forma
-  // estruturada (resposta obrigatoriamente em JSON, não texto livre): "essa
-  // mensagem está pedindo o conteúdo de um arquivo específico?". Isso usa
-  // compreensão real de linguagem, generalizando pra qualquer formato de
-  // arquivo e qualquer forma de perguntar — não uma lista fixa de padrões.
-  async function _classifyFileContentIntent(message) {
+  // === ETAPA 5.4: ROTEADOR SEMÂNTICO DE AÇÕES DO DRIVE (IA-040) ===
+  // Generaliza o IA-035: em vez de só reconhecer "pedido de conteúdo de
+  // arquivo", agora reconhece QUALQUER ação de Drive (listar, abrir pasta,
+  // baixar, ler conteúdo) por COMPREENSÃO DA FRASE, não por lista de
+  // palavras-chave — e, quando reconhece, EXECUTA a ação de verdade aqui
+  // mesmo, incluindo uma capacidade que não existia antes (abrir uma pasta
+  // específica e mostrar o que tem dentro). Isso só roda quando nada mais
+  // (GoalRegistry, Producer B) já resolveu a mensagem — é a rede de
+  // segurança semântica final, não uma substituição do sistema existente.
+  async function _classifyDriveAction(message) {
     try {
       return await base44.integrations.Core.InvokeLLM({
         prompt: `O usuário disse: "${message}"
 
-Determine se essa mensagem está pedindo para VER, LER ou OBTER O CONTEÚDO de um arquivo/documento/vídeo/imagem específico — não apenas mencionando ou listando arquivos.
+O usuário está conversando com o MemoryOS, um assistente conectado ao Google Drive. Determine se essa mensagem é um pedido de ação relacionada ao Drive, e qual ação exatamente.
 
-Exemplos que SÃO pedido de conteúdo: "mostre o RG", "o que diz esse PDF", "leia o anderson.pdf", "quero ver os dados desse documento", "ler creatina.mp4", "o que tem nesse vídeo".
-Exemplos que NÃO são pedido de conteúdo: "liste os arquivos", "drive", "quais arquivos existem", conversas gerais que só mencionam um nome sem pedir pra ver o que tem dentro.`,
+Ações possíveis:
+- "list_root": listar os arquivos/pastas recentes do Drive em geral (ex: "drive", "quais arquivos tenho").
+- "open_folder": abrir/ver o conteúdo de uma PASTA específica (ex: "abrir pasta X", "o que tem na pasta X").
+- "download_file": baixar um ARQUIVO específico (ex: "baixar X", "download de X").
+- "read_content": ver o CONTEÚDO/dados de dentro de um arquivo específico (ex: "mostre os dados de X", "leia X").
+- null: não é um pedido relacionado ao Drive.
+
+Se envolver um nome de arquivo/pasta específico, extraia em "target" (sem palavras de comando tipo "abrir", "baixar"). Se não houver nome específico, "target" deve ser null.`,
         response_json_schema: {
           type: "object",
           properties: {
-            is_file_content_request: { type: "boolean" },
-            file_reference: { type: ["string", "null"] },
+            is_drive_action: { type: "boolean" },
+            action: { type: ["string", "null"] },
+            target: { type: ["string", "null"] },
           },
-          required: ["is_file_content_request", "file_reference"],
+          required: ["is_drive_action", "action", "target"],
         },
       });
     } catch {
-      return { is_file_content_request: false, file_reference: null };
+      return { is_drive_action: false, action: null, target: null };
     }
   }
 
-  const _hasRealDocRead = Boolean(
-    capabilityResult.capabilityResults?.officialLibrary?.selectedDocs?.length > 0
-  );
-  const _fileIntent = await _classifyFileContentIntent(userMsg);
-
-  if (_fileIntent?.is_file_content_request && !_hasRealDocRead) {
-    const response = "Ainda não tenho uma leitura real do conteúdo desse arquivo — não posso te mostrar dados dele sem antes acessá-lo de verdade. Se quiser, você pode anexar o arquivo direto aqui na conversa (eu leio na hora), ou me pedir para tentar abrir/baixar ele do Drive primeiro.";
-    const responseTimeMs = Date.now() - startTime;
-    const plan = {
+  function _makeDriveActionPlan(extra = {}) {
+    return {
       goal: goal.id,
       goalLabel: goal.label,
       strategy: goal.strategy,
@@ -227,23 +207,50 @@ Exemplos que NÃO são pedido de conteúdo: "liste os arquivos", "drive", "quais
       capabilitiesCount: 0,
       needsMoreInfo: false,
       service: null,
-      responseTimeMs,
-      blockedByGuard: "IA-035",
-      fileReference: _fileIntent.file_reference,
+      responseTimeMs: Date.now() - startTime,
+      handledByGuard: "IA-040",
+      ...extra,
     };
-    return { response, plan, sources };
+  }
+
+  const _hasRealDocRead = Boolean(
+    capabilityResult.capabilityResults?.officialLibrary?.selectedDocs?.length > 0
+  );
+  const _driveAction = await _classifyDriveAction(userMsg);
+
+  // ── NOVA CAPACIDADE: abrir uma pasta específica e listar o conteúdo ──────
+  if (_driveAction?.is_drive_action && _driveAction.action === "open_folder" && _driveAction.target) {
+    try {
+      const { searchByName, listFiles } = await import("@/lib/google-drive/GoogleDriveConnector");
+      const candidates = await searchByName(_driveAction.target, { pageSize: 10 });
+      const folder = candidates.find((f) => f.mimeType === "application/vnd.google-apps.folder");
+      if (folder) {
+        const listing = await listFiles({ folderId: folder.id, pageSize: 30 });
+        const itemLines = listing.files
+          .map((f) => `- ${f.name}${f.webViewLink ? ` — [Visualizar](${f.webViewLink})` : ""}`)
+          .join("\n");
+        const response = listing.files.length > 0
+          ? `Conteúdo da pasta **"${folder.name}"**:\n\n${itemLines}`
+          : `A pasta **"${folder.name}"** está vazia (ou não consegui ler o conteúdo dela).`;
+        return { response, plan: _makeDriveActionPlan({ action: "open_folder", target: folder.name }), sources };
+      }
+      const response = `Não encontrei nenhuma pasta chamada "${_driveAction.target}" no seu Drive.`;
+      return { response, plan: _makeDriveActionPlan({ action: "open_folder", target: _driveAction.target, found: false }), sources };
+    } catch {
+      // Se a execução real falhar por qualquer motivo, cai no fluxo normal abaixo.
+    }
+  }
+
+  if (_driveAction?.is_drive_action && _driveAction.action === "read_content" && !_hasRealDocRead) {
+    const response = "🔒 [IA-035-ATIVO] Ainda não tenho uma leitura real do conteúdo desse arquivo — não posso te mostrar dados dele sem antes acessá-lo de verdade. Se quiser, você pode anexar o arquivo direto aqui na conversa (eu leio na hora), ou me pedir para tentar abrir/baixar ele do Drive primeiro.";
+    return { response, plan: _makeDriveActionPlan({ action: "read_content", target: _driveAction.target }), sources };
   }
 
   // === ETAPA 6: UMA ÚNICA CHAMADA AO LLM ===
-  // Todos os especialistas, memória, objetivo, estratégia e resultados de capacidades
-  // estão neste único prompt. O LLM nunca é chamado por capacidade ou especialista.
   setPhase?.("generating");
   const rawResponse = await base44.integrations.Core.InvokeLLM({ prompt });
 
   // === ETAPA 6.5: TRAVA DETERMINÍSTICA CONTRA CONFABULAÇÃO DE DOCUMENTO (IA-032) ===
-  // Camada extra de segurança, mantida como rede de proteção secundária —
-  // caso a mensagem não bata no padrão da IA-035 acima mas o modelo ainda
-  // assim tente confabular sobre documento em algum outro formato de pergunta.
   const _rawText = typeof rawResponse === "string" ? rawResponse : String(rawResponse);
   const _FAKE_DOCUMENT_MARKERS = [
     "processando documento", "análise concluída", "analise concluida",
@@ -265,13 +272,11 @@ Exemplos que NÃO são pedido de conteúdo: "liste os arquivos", "drive", "quais
     : _rawText;
 
   // === ETAPA 7: MEMORY SYNTHESIZER ===
-  // Síntese determinística (sem LLM): elimina repetições, melhora fluidez.
   const response = synthesizeResponse(_finalRawResponse);
 
   const responseTimeMs = Date.now() - startTime;
 
   // === ETAPA 8: REGISTRO DE RACIOCÍNIO (APRENDIZADO) ===
-  // Metadados para otimização futura. Lightweight, não bloqueia a resposta.
   const activeCapabilities = Object.entries(capabilityResult.capabilities || {})
     .filter(([_, active]) => active)
     .map(([cap]) => cap);
