@@ -18,6 +18,71 @@
 
 import { buildSkillsPrompt } from "@/lib/skills/detector";
 
+function classifyCapabilityEvidence(name, value) {
+  if (!value || typeof value !== "object") {
+    return { state: "absent", instruction: `- ${name}: sem resultado executado.` };
+  }
+
+  const hasExplicitFailure =
+    value.ok === false ||
+    value.error === true ||
+    Boolean(value.code) ||
+    value.status === "FAILED" ||
+    value.status === "error" ||
+    value.status === "ERROR";
+
+  const hasStrongConfirmation =
+    value.ok === true &&
+    (
+      (typeof value.fileId === "string" && value.fileId.trim().length > 0) ||
+      (typeof value.id === "string" && value.id.trim().length > 0)
+    ) &&
+    (
+      (typeof value.content === "string" && value.content.length > 0) ||
+      (typeof value.extractedText === "string" && value.extractedText.length > 0) ||
+      Boolean(value.processing) ||
+      value.resolvedBy === "fileId" ||
+      value.resolvedBy === "search"
+    );
+
+  if (hasExplicitFailure) {
+    return {
+      state: "failed",
+      instruction: `- ${name}: este resultado FALHOU ou não foi confirmado - NÃO afirme que encontrou, NÃO invente metadados, diga que não foi possível confirmar.`,
+    };
+  }
+
+  if (hasStrongConfirmation) {
+    return {
+      state: "confirmed",
+      instruction: `- ${name}: este resultado está confirmado e pode ser descrito com confiança.`,
+    };
+  }
+
+  return {
+    state: "unverified",
+    instruction: `- ${name}: este resultado não teve confirmação forte (sem fileId/metadata/download verificados) - NÃO afirme que encontrou, NÃO invente metadados, diga que não foi possível confirmar.`,
+  };
+}
+
+function buildEvidenceGuardBlock(capabilityResults) {
+  const entries = Object.entries(capabilityResults || {})
+    .map(([name, value]) => classifyCapabilityEvidence(name, value))
+    .filter((entry) => entry.state !== "absent");
+
+  if (entries.length === 0) {
+    return "";
+  }
+
+  return [
+    "## REGRA DE EVIDÊNCIA PARA RESULTADOS DE EXECUÇÃO",
+    "Cada resultado abaixo deve ser tratado conforme seu estado real.",
+    "Se o resultado falhou ou não teve confirmação forte, NÃO afirme que encontrou, NÃO invente metadados e diga que não foi possível confirmar.",
+    "Só descreva com confiança quando houver confirmação explícita de execução.",
+    ...entries.map((entry) => entry.instruction),
+  ].join("\n");
+}
+
 /**
  * Monta o contexto estruturado completo para o LLM.
  *
@@ -134,6 +199,7 @@ export function buildReasoningContext({ userMsg, memory, skills, goal, historyTe
   const hasStructuredMemory = (context && context.length > 0) || sources.length > 0;
   const skillsBlock = buildSkillsPrompt(skills);
   const isMultiSkill = skills.length > 1;
+  const evidenceGuardBlock = buildEvidenceGuardBlock(capabilityResults);
 
   return `Você é o MemoryOS Core.
 
@@ -292,6 +358,6 @@ ${sessionSummary ? `## RESUMO DA CONVERSA\n${sessionSummary}` : ""}
 
 ${historyText ? `## HISTÓRICO DA CONVERSA\n${historyText}` : ""}
 
-${serviceBlock ? `${serviceBlock}\n\n---\n` : ""}${needsMoreInfoBlock ? `${needsMoreInfoBlock}\n\n---\n` : ""}${capabilityBlocks.length > 0 ? `${capabilityBlocks.join("\n\n---\n\n")}\n\n---\n` : ""}## O QUE O USUÁRIO ACABOU DE DIZER
+${serviceBlock ? `${serviceBlock}\n\n---\n` : ""}${needsMoreInfoBlock ? `${needsMoreInfoBlock}\n\n---\n` : ""}${evidenceGuardBlock ? `${evidenceGuardBlock}\n\n---\n` : ""}${capabilityBlocks.length > 0 ? `${capabilityBlocks.join("\n\n---\n\n")}\n\n---\n` : ""}## O QUE O USUÁRIO ACABOU DE DIZER
 ${userMsg}`;
 }

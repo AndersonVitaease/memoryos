@@ -69,6 +69,44 @@ function searchErrorMessage(code: DownloadErrorCode): string {
   }
 }
 
+function isTooGenericDriveSearchQuery(query: string): boolean {
+  const normalized = query
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ");
+
+  if (!normalized) return true;
+
+  const genericPhrases = [
+    "documentos pessoais",
+    "arquivos pessoais",
+    "meus documentos",
+    "meus arquivos",
+    "arquivo",
+    "arquivos",
+    "documento",
+    "documentos",
+    "pasta",
+    "pastas",
+    "pdf",
+    "pdfs",
+    "baixar",
+    "download",
+    "abrir",
+    "mostrar",
+  ];
+
+  if (genericPhrases.includes(normalized)) return true;
+
+  const words = normalized.split(" ").filter(Boolean);
+  if (words.length <= 2) {
+    return words.every((word) => genericPhrases.includes(word) || word.length <= 2);
+  }
+
+  return words.every((word) => genericPhrases.includes(word) || word.length <= 2);
+}
+
 // ── Public result types ───────────────────────────────────────────────────────
 
 export type DownloadErrorCode =
@@ -255,6 +293,14 @@ export async function executeDriveDownload(
     const searchQuery = fileName ?? queryFallback ?? rawText;
     if (!searchQuery) {
       return fail("NO_PARAMS", "Nenhum fileId ou fileName fornecido. Especifique o nome do arquivo para download.", null);
+    }
+
+    if (isTooGenericDriveSearchQuery(searchQuery)) {
+      return fail(
+        "NO_PARAMS",
+        `Não foi possível confirmar qual arquivo do Drive corresponde a "${searchQuery}". Forneça um nome ou identificador mais específico.`,
+        null,
+      );
     }
 
     RuntimeDebug.emit({ executionId: _execId, connector: "google-drive", source: "DriveDownloadExecutor", event: "using strategy: search by name", payload: { searchQuery, fileName, queryFallback, rawText } });
