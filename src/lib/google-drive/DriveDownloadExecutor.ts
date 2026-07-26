@@ -321,7 +321,10 @@ export async function executeDriveDownload(
     const ranked = rankCandidates(filteredResults, searchQuery, rankPolicy);
     resolvedCandidates = ranked;
 
-    if (ranked.length === 1) {
+    if (ranked.length === 0) {
+      // All results were folders or filtered out
+      return fail("NOT_FOUND", `Nenhum arquivo encontrado: "${searchQuery}". Verifique o nome ou o acesso ao Google Drive.`, null);
+    } else if (ranked.length === 1) {
       resolvedFileId = ranked[0].id;
       resolvedBy     = "search";
     } else {
@@ -429,6 +432,41 @@ export async function executeDriveDownload(
       fileName: meta.name,
       durationMs: dur,
       audit: makeAudit("failure", startedAt, dur, code),
+    };
+  }
+
+  // ── Step 6: Check if file is binary-only (media) ──────────────────────────
+  // Skip DocumentProcessingEngine for pure binary formats (video, audio, images, archives)
+  // that have no extractable text layer.
+  
+  const isBinaryOnly = (
+    meta.mimeType.startsWith("video/") ||
+    meta.mimeType.startsWith("audio/") ||
+    meta.mimeType.startsWith("image/") && !meta.mimeType.includes("svg") ||
+    meta.mimeType.includes("zip") ||
+    meta.mimeType.includes("rar") ||
+    meta.mimeType.includes("7z") ||
+    meta.mimeType === "application/octet-stream"
+  );
+
+  // For binary-only files, return raw content without text extraction
+  if (isBinaryOnly) {
+    const dur = Date.now() - t0;
+    return {
+      ok: true,
+      fileId: resolvedFileId,
+      fileName: meta.name,
+      mimeType: meta.mimeType,
+      exportMime: meta.mimeType,
+      strategy,
+      content: downloadRaw.content,
+      encoding: downloadRaw.encoding,
+      sizeBytes: downloadRaw.sizeBytes,
+      apiUsed,
+      resolvedBy,
+      candidates: resolvedCandidates,
+      durationMs: dur,
+      audit: makeAudit("success", startedAt, dur, null),
     };
   }
 
