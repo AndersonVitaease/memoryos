@@ -24,7 +24,6 @@
  */
 
 import { base44 } from '@/api/base44Client';
-import { RuntimeDebug } from '@/lib/debug/RuntimeDebug';
 
 const STORAGE_KEY = "memoryos_gauth_v1";
 
@@ -55,48 +54,6 @@ const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000; // renova 5 min antes de expirar
 
 // ── In-memory token store (nunca persiste tokens em localStorage) ─────────────
 const _tokenStore = new Map(); // workspaceId → { accessToken, expiresAt }
-
-// ── [DIAG-TEMP] Probe helper — remove after proof ─────────────────────────────
-
-// Shared executionId for all TOKEN-PROBE events in the current page session.
-// Created lazily on first _probe() call, reused for the entire session.
-let _probeExecId = null;
-
-function _getProbeExecId() {
-  if (_probeExecId && RuntimeDebug.isOpen(_probeExecId)) return _probeExecId;
-  _probeExecId = RuntimeDebug.startExecution("google-drive", "TOKEN-PROBE — Auth Session Diagnostics");
-  return _probeExecId;
-}
-
-function _probe(step, workspaceId, extra = {}) {
-  const stored = _tokenStore.get(workspaceId) ?? null;
-  const tok = stored?.accessToken ?? null;
-  const payload = {
-    step,
-    ts:             new Date().toISOString(),
-    workspaceId,
-    tokenPrefix:    tok ? tok.slice(0, 12) : "NULL",
-    expiresAt:      stored?.expiresAt ? new Date(stored.expiresAt).toISOString() : "N/A",
-    tokenStoreSize: _tokenStore.size,
-    ...extra,
-  };
-  console.log(
-    `%c[TOKEN-PROBE][${step}]`,
-    "color:#f59e0b;font-weight:bold;font-size:11px",
-    payload
-  );
-  // Emit to RuntimeDebug so events appear in /drive-debug
-  try {
-    const execId = _getProbeExecId();
-    RuntimeDebug.emit({
-      executionId: execId,
-      connector:   "google-drive",
-      source:      "GoogleAuthSession",
-      event:       step,
-      payload,
-    });
-  } catch (_) { /* non-blocking — never break auth flow */ }
-}
 
 // ── Scopes ────────────────────────────────────────────────────────────────────
 
@@ -165,19 +122,16 @@ export function getAccessToken(workspaceId = "default") {
   if (!stored) {
     console.log({ result: "NULL", reason: "no-entry-in-tokenStore", workspaceId, storeSize: _tokenStore.size });
     console.groupEnd();
-    _probe("6-getAccessToken", workspaceId, { result: "NULL — no entry in _tokenStore" });
     return null;
   }
   const now = Date.now();
   if (now >= stored.expiresAt) {
     console.log({ result: "NULL", reason: "expired", workspaceId, expiresAt: stored.expiresAt, now });
     console.groupEnd();
-    _probe("6-getAccessToken", workspaceId, { result: "NULL — token expired", expiresAtMs: stored.expiresAt, nowMs: now });
     return null;
   }
   console.log({ result: "OK", tokenPrefix: stored.accessToken?.slice(0, 12) + "..." });
   console.groupEnd();
-  _probe("6-getAccessToken", workspaceId, { result: "OK" });
   return stored.accessToken;
 }
 
@@ -354,28 +308,11 @@ export async function refresh(workspaceId = "default", onStateChange) {
 
   onStateChange?.("REFRESHING");
 
-  // [DIAG-TEMP] Point 2 — before calling invokeFn
-  _probe("2-before-refresh-call", workspaceId, { backendFn: "googleOAuthRefresh" });
-
   const refreshRes = await invokeFn('googleOAuthRefresh', { workspaceId });
   const { accessToken, expiresAt } = refreshRes.data;
 
-  // [DIAG-TEMP] Point 3 — immediately after refresh() returned from backend
-  _probe("3-after-refresh-returned", workspaceId, {
-    returnedTokenPrefix: accessToken ? accessToken.slice(0, 12) : "NULL",
-    returnedExpiresAt:   expiresAt ? new Date(expiresAt).toISOString() : "N/A",
-    storeBeforeSet:      _tokenStore.has(workspaceId) ? "HAS_ENTRY" : "EMPTY",
-  });
-
   // Update token in memory
   _storeToken(workspaceId, accessToken, expiresAt);
-
-  // [DIAG-TEMP] Point 4+5 — value returned by refresh + _tokenStore content immediately after set
-  _probe("4+5-tokenStore-after-set", workspaceId, {
-    returnedTokenPrefix: accessToken ? accessToken.slice(0, 12) : "NULL",
-    storeAfterSet:       _tokenStore.has(workspaceId) ? "HAS_ENTRY" : "STILL_EMPTY",
-    storedEntry:         (() => { const e = _tokenStore.get(workspaceId); return e ? { prefix: e.accessToken.slice(0, 12), expiresAt: new Date(e.expiresAt).toISOString() } : "NULL"; })(),
-  });
 
   // Update metadata in localStorage
   const updated = {
@@ -436,8 +373,6 @@ export async function ensureValidToken(workspaceId = "default") {
     workspaceId,
     note:       "If this fires on a failing Drive request, failure is in OAuth/token layer — not in bootstrap registry.",
   });
-  // [DIAG-TEMP] Point 1 — entry of ensureValidToken
-  _probe("1-ensureValidToken-entry", workspaceId, { caller: new Error().stack?.split("\n")[2]?.trim() ?? "unknown" });
 
   const conn = getConnection(workspaceId);
   if (!conn || conn.state !== "CONNECTED") {

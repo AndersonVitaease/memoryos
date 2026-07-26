@@ -12,8 +12,7 @@
  *   - _mapFile() — eliminado
  *   - Tratamento HTTP (status codes, parsing) — eliminado
  *
- * Toda lógica HTTP, auth, rate limiting, audit logging e observabilidade
- * (TOKEN-PROBE, RuntimeDebug) existe SOMENTE em:
+ * Toda lógica HTTP, auth, rate limiting e audit logging existe SOMENTE em:
  *   src/lib/google-drive/GoogleDriveConnector.ts  (GWS Foundation)
  *
  * Arquitetura resultante:
@@ -364,7 +363,7 @@ export class GoogleDriveConnector implements IConnector {
 
       // ── Files List ──────────────────────────────────────────────────────────
       // Delegates to GWS Foundation listFiles() — which owns all HTTP, auth,
-      // rate limiting, audit logging, and TOKEN-PROBE instrumentation.
+      // rate limiting, and audit logging.
 
       case "drive.files.list": {
         const pageSize  = typeof payload.pageSize  === "number" ? Math.min(payload.pageSize, 100) : 20;
