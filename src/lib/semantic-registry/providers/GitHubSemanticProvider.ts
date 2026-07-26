@@ -228,7 +228,11 @@ export const GitHubSemanticProvider: SemanticProvider = Object.freeze({
   connectorId: "github",
 
   detect(lower: string, normalized: NormalizationResult): SemanticDetection {
-    const domain = computeGHDomainScore(lower, normalized.entity ?? lower);
+    // Sprint 2b (correção do antipadrão): `normalized.entity` é sempre uma
+    // string desde o Sprint 1 (nunca null/undefined) — o fallback `?? lower`
+    // já era código morto, mas removido explicitamente para não virar
+    // armadilha caso `entity` volte a ser nullable no futuro.
+    const domain = computeGHDomainScore(lower, normalized.entity);
     const match  = evaluateGHRules(lower);
 
     // ── Caso 1: Regra disparou + dominio confirmado ─────────────────────────
@@ -254,7 +258,7 @@ export const GitHubSemanticProvider: SemanticProvider = Object.freeze({
         goalType:   match.rule.goalType,
         confidence,
         evidences:  Object.freeze(evidences),
-        entities:   Object.freeze({ query: normalized.entity ?? lower.trim() }),
+        entities:   Object.freeze({}),
       });
     }
 
@@ -282,7 +286,7 @@ export const GitHubSemanticProvider: SemanticProvider = Object.freeze({
         goalType:   "github.searchCode" as GoalType,
         confidence,
         evidences:  Object.freeze(evidences),
-        entities:   Object.freeze({ query: normalized.entity ?? lower.trim() }),
+        entities:   Object.freeze({}),
       });
     }
 
