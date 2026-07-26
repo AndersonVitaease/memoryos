@@ -175,9 +175,12 @@ const _builtins: GoalDefinition[] = [
           .replace(/[?!.,;:]/g, "")
           .replace(/\s{2,}/g, " ")
           .trim();
-        return { query: stripped || msg.trim() };
+        // Sprint 3a (correção do antipadrão): sem entidade real extraída, não
+        // recriar a query a partir da frase de comando inteira — devolver
+        // null (ausência explícita), nunca msg.trim().
+        return { query: stripped || null };
       } catch {
-        return { query: msg.trim() };
+        return { query: null };
       }
     },
   },
@@ -381,8 +384,15 @@ const _builtins: GoalDefinition[] = [
       // que não batem no padrão "arquivo X" acima. Remove palavras de comando/filler conhecidas
       // em vez de usar a frase inteira (rawText) como busca — evita que "download"/"baixar" etc.
       // entrem no termo de busca do Drive.
+      //
+      // Correção adicional (mesmo padrão do Sprint 3c, aplicado a drive.openDocument):
+      // esta função é irmã de drive.openDocument (mapeiam para a mesma
+      // capability), mas nunca recebeu a mesma correção. "video"/"vídeo"
+      // (e "file"/"document" em inglês) não estavam na lista de remoção —
+      // "download video creatina.mp4" deixava fileName="video creatina.mp4"
+      // em vez de "creatina.mp4".
       const stripped = msg
-        .replace(/\b(baixar|baixe|baixa|baixo|baixando|download|downloads|exportar|exporte|exporta|abrir|abra|abre|ler|leia|o arquivo|os arquivos|o documento|os documentos|arquivo|arquivos|documento|documentos|por favor)\b/gi, "")
+        .replace(/\b(baixar|baixe|baixa|baixo|baixando|download|downloads|exportar|exporte|exporta|abrir|abra|abre|ler|leia|video|vídeo|o arquivo|os arquivos|o documento|os documentos|arquivo|arquivos|documento|documentos|file|files|document|documents|por favor)\b/gi, "")
         .replace(/[-–—]/g, " ")
         .replace(/\s+/g, " ")
         .trim();
@@ -415,8 +425,12 @@ const _builtins: GoalDefinition[] = [
     extractParams: (msg) => {
       const quoted = msg.match(/"([^"]+)"/)?.[1];
       const afterNoun = msg.match(/(?:o arquivo|o documento|arquivo|documento|file|document)\s+([a-z0-9\s\-_.]+?)(?:\s*$|\s+(?:no|em|do|da|de|in|of))/i)?.[1]?.trim();
+      // Sprint 3d (correção do antipadrão): a lista de remoção não cobria
+      // todos os próprios sinais deste goal ("obter"/"pegar"/"get"/"pull" +
+      // "secao(ões)"/"capitulo(s)"/"pagina(s)") — deixavam o sinal inteiro
+      // vazar como se fosse o nome do arquivo.
       const stripped = msg
-        .replace(/\b(extrair|extraia|extrai|extracao|extracao|extracao|extrair secao|extrair secoes|extrair capitulo|extrair paginas|extract|extract section|get section|pull section|archive|arquivo|document|arquivo|do drive|no drive|drive|por favor)\b/gi, "")
+        .replace(/\b(extrair|extraia|extrai|extracao|extrair secao|extrair secoes|extrair capitulo|extrair paginas|obter|pegar|get|pull|secao|secoes|seção|seções|capitulo|capitulos|capítulo|capítulos|pagina|paginas|página|páginas|trecho|trechos|chapter|chapters|page|pages|section|sections|extract|archive|arquivo|document|do drive|no drive|drive|por favor)\b/gi, "")
         .replace(/[-–—]/g, " ")
         .replace(/\s+/g, " ")
         .trim();
@@ -511,8 +525,13 @@ const _builtins: GoalDefinition[] = [
       // pra mesma capability "drive.downloadFile" internamente, mas nunca tinha
       // recebido a mesma correção. Sem isso, "ler arquivos do drive" virava a
       // frase inteira como termo de busca.
+      // Sprint 3c (correção do antipadrão): a lista de remoção não cobria os
+      // próprios sinais deste goal (assistir/watch/reproduzir/tocar/play/
+      // player/video/read/open/ver) — mensagens como "assistir", "watch",
+      // "abrir video" ou "ver arquivo de video" deixavam esses termos vazarem
+      // como se fossem o nome do arquivo.
       const stripped = msg
-        .replace(/\b(baixar|baixe|baixa|baixo|baixando|download|downloads|exportar|exporte|exporta|abrir|abra|abre|ler|leia|o arquivo|os arquivos|o documento|os documentos|arquivo|arquivos|documento|documentos|do drive|no drive|drive|por favor)\b/gi, "")
+        .replace(/\b(baixar|baixe|baixa|baixo|baixando|download|downloads|exportar|exporte|exporta|abrir|abra|abre|ler|leia|assistir|assista|watch|reproduzir|reproduza|tocar|toque|play|player|video|vídeo|read|open|ver|o arquivo|os arquivos|o documento|os documentos|arquivo|arquivos|documento|documentos|file|files|document|documents|do drive|no drive|drive|por favor)\b/gi, "")
         .replace(/[-–—]/g, " ")
         .replace(/\s+/g, " ")
         .trim();
@@ -534,7 +553,10 @@ const _builtins: GoalDefinition[] = [
       const quoted = msg.match(/"([^"]+)"/)?.[1];
       // Extract named entity after common search verbs
       const nameMatch = msg.match(/(?:cnh|contrato|procure?|encontre?|tem)\s+(.+?)(?:\s+em\s+pdf|\?|$)/i)?.[1]?.trim();
-      return { query: quoted ?? nameMatch ?? msg.trim() };
+      // Sprint 3d (correção do antipadrão): sem captura real (nem citação,
+      // nem nameMatch), não recriar a query a partir da frase de comando
+      // inteira — devolver null (ausência explícita), nunca msg.trim().
+      return { query: quoted ?? nameMatch ?? null };
     },
   },
 
@@ -711,9 +733,24 @@ const _builtins: GoalDefinition[] = [
       "onde está definido",
     ],
     extractParams: (msg) => {
+      // Sprint 3b (correção do antipadrão): a lista de remoção não cobria
+      // todos os próprios sinais deste goal ("implemented in", "search
+      // class/code/in code", "who imports/calls", "called by", "cross
+      // reference", "references", e as variantes "onde ... implementado/
+      // usado/usa/importa/definido") — deixavam o sinal inteiro (ou parte
+      // dele) vazar como se fosse o símbolo buscado.
+      //
+      // Também corrigido: o `\b` de fechamento do JavaScript NUNCA casa
+      // logo após um caractere acentuado (ex.: "á" em "está") seguido de
+      // espaço/fim de string — \w no JS é ASCII-only. Isso fazia o sinal
+      // "onde está" nunca ser removido, mesmo já estando na lista.
+      // Trocado o `\b` de fechamento por um lookahead de espaço/pontuação/
+      // fim de string, que não depende de classificação de caractere.
       const sym = msg.match(/([A-Z][a-zA-Z0-9]+(?:Engine|Manager|Service|Router|Gateway|Connector|Handler|Provider|Factory|Builder|Queue|Registry|Orchestrator|Pipeline|Composer|Executor|Dispatcher|Monitor))/)?.[1]
-        ?? msg.replace(/\b(where is|find|locate|search for|grep|procurar|encontrar|onde está|onde fica)\b/gi, "").trim();
-      return { query: sym || msg.trim() };
+        ?? msg.replace(/\b(?:where is|find|locate|search for|search class|search code|search in code|grep|implemented in|who imports|who calls|called by|cross reference|references|procurar|encontrar|onde está implementado|onde está definido|onde está|onde fica|onde é usado|quem usa|quem importa)(?=\s|$|[.,;:!?])/gi, "").trim();
+      // Sem símbolo real extraído, não recriar a query a partir da frase de
+      // comando inteira — devolver null (ausência explícita), nunca msg.trim().
+      return { query: sym || null };
     },
   },
   {
