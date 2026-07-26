@@ -1,0 +1,364 @@
+// VISUAL FLOW COMPARISON
+// This file documents the before/after data flow for quick reference
+
+// ════════════════════════════════════════════════════════════════════════════
+// BEFORE (Current Implementation) - BROKEN FOR BINARIES
+// ════════════════════════════════════════════════════════════════════════════
+
+/*
+
+USER INPUT: "abrir creatina.mp4"
+    ↓
+GOAL DETECTION:
+    ├─ Signals: ["assistir", "reproduzir", "play"] → Goal = drive.playVideo
+    └─ OR Signals: ["abrir"] → Goal = drive.openDocument ❌ WRONG FOR VIDEO
+    ↓
+EXECUTOR (DriveDownloadExecutor.executeDriveDownload)
+    ├─ Step 1: Resolve file ID → "ABC123"
+    ├─ Step 2: Get metadata → mimeType="video/mp4", size=9185277
+    ├─ Step 3: Download content → 9 MB raw bytes
+    ├─ Step 4: Process (REQUIRED)
+    │  └─ DocumentProcessingEngine.process()
+    │     └─ Try to extract text from MP4
+    │        └─ ❌ FAILS: "Falha no processamento do arquivo"
+    └─ Return FAILURE
+    ↓
+ERROR TO USER:
+    "Erro: Falha no processamento do arquivo"
+
+PROBLEMS:
+  ❌ 9 MB downloaded unnecessarily
+  ❌ Tried to extract text from binary
+  ❌ Goal fragmentation (which goal for video?)
+  ❌ Latency: 8-10 seconds (processing attempt)
+  ❌ User confusion (worked with different verb?)
+
+*/
+
+// ════════════════════════════════════════════════════════════════════════════
+// AFTER (Proposed Implementation) - HANDLES BINARIES CORRECTLY
+// ════════════════════════════════════════════════════════════════════════════
+
+/*
+
+USER INPUT: "abrir creatina.mp4" OR "assistir creatina.mp4" OR "reproduzir creatina.mp4"
+    ↓
+GOAL DETECTION (UNIFIED):
+    └─ Signals: [ALL VERBS] → Goal = drive.openOrStream ✅ CONSISTENT
+    ↓
+EXECUTOR (DriveDownloadExecutor v2.0)
+    ├─ Step 1: Resolve file ID → "ABC123"
+    ├─ Step 2: Get metadata → mimeType="video/mp4", size=9185277
+    ├─ Step 3: Decide processing
+    │  └─ BinaryContentHandler.shouldProcess("video/mp4")
+    │     └─ Returns false (video never processed)
+    ├─ Step 4: Create descriptor (NO PROCESSING)
+    │  └─ BinaryContentDescriptor {
+    │       kind: "binary",
+    │       mimeType: "video/mp4",
+    │       handle: { fileId: "ABC123", connector: "google-drive", ... },
+    │       size: 9185277,
+    │       previewAvailable: true
+    │     }
+    └─ Return SUCCESS with descriptor ✅
+    ↓
+SYNTHESIZER (ConnectorResultSynthesizer v2.0)
+    ├─ Detect: descriptor.kind === "binary" ✅
+    ├─ Get category: getMimeCategory("video/mp4") → "vídeo"
+    ├─ Build response:
+    │  └─ "📹 Vídeo pronto: creatina.mp4 (9.2 MB)\n\nDeseja que eu reproduza?"
+    └─ Return: {
+         handled: true,
+         response: "📹 Vídeo pronto...",
+         binaryHandle: { fileId, connector, mimeType, size },
+         metadata: { contentKind: "binary", mimeType: "video/mp4", ... }
+       }
+    ↓
+TO LLM:
+    Input: "📹 Vídeo pronto: creatina.mp4 (9.2 MB)\n\nDeseja que eu reproduza?"
+    Size: ~100 bytes ✅ (vs 9 MB before)
+    
+    LLM Response: "Claro! Reproduzindo o vídeo para você..."
+    ↓
+RUNTIME (New Decision Layer):
+    ├─ Receive: binaryHandle
+    ├─ Check: Can I preview this? Yes (video/mp4 is previewable)
+    ├─ Action: play (from DriveOpenOrStreamRuntime.decideAction)
+    ├─ If needed: Fetch via handle → GoogleDriveConnector.getFileContent(handle)
+    └─ Display: Video player UI
+
+SUCCESS TO USER:
+    "📹 Vídeo pronto: creatina.mp4 (9.2 MB)\n\nDeseja que eu reproduza?"
+    [Vídeo player opens]
+
+BENEFITS:
+  ✅ Only metadata downloaded (no 9 MB)
+  ✅ Goal unified (same intent for all verbs)
+  ✅ Latency: <100ms (no processing)
+  ✅ Consistent behavior
+  ✅ Never sends binary to LLM (only 100 bytes)
+  ✅ Extensible (new binary types = just update policy)
+
+*/
+
+// ════════════════════════════════════════════════════════════════════════════
+// COMPARISON: Different File Types (After Implementation)
+// ════════════════════════════════════════════════════════════════════════════
+
+/*
+
+CASE 1: PDF (Text-extractable)
+─────────────────────────────────
+
+User: "ler relatório.pdf"
+    ↓
+Goal: drive.openOrStream ✅
+    ↓
+BinaryContentHandler.shouldProcess("application/pdf") → true
+    ↓
+DocumentProcessingEngine.process() → Extract text
+    ↓
+Descriptor: TextContentDescriptor {
+  kind: "text",
+  textContent: "Chapter 1: Lorem ipsum...",
+  charCount: 5000,
+  parserUsed: "pdfium"
+}
+    ↓
+Synthesizer: Return full text to LLM
+    ↓
+LLM: Can summarize, answer questions about content
+
+
+CASE 2: MP4 (Binary, not text-extractable)
+───────────────────────────────────────────
+
+User: "assistir creatina.mp4"
+    ↓
+Goal: drive.openOrStream ✅ (same as PDF case)
+    ↓
+BinaryContentHandler.shouldProcess("video/mp4") → false
+    ↓
+DocumentProcessingEngine: SKIPPED ✅
+    ↓
+Descriptor: BinaryContentDescriptor {
+  kind: "binary",
+  handle: { fileId: "ABC123", connector: "google-drive" },
+  size: 9185277,
+  previewAvailable: true
+}
+    ↓
+Synthesizer: "📹 Vídeo pronto (9.2 MB)"
+    ↓
+LLM: Can discuss with user, Runtime handles playback
+
+
+CASE 3: ZIP (Compressed archive)
+────────────────────────────────
+
+User: "ver arquivo.zip"
+    ↓
+Goal: drive.openOrStream ✅
+    ↓
+BinaryContentHandler.shouldProcess("application/zip") → false
+    ↓
+DocumentProcessingEngine: SKIPPED ✅
+    ↓
+Descriptor: BinaryContentDescriptor {
+  kind: "binary",
+  handle: { fileId: "ZIP123", connector: "google-drive" },
+  size: 234000,
+  previewAvailable: false
+}
+    ↓
+Synthesizer: "📦 Arquivo comprimido (234 KB). Deseja listar conteúdo?"
+    ↓
+Runtime (Future): Can offer to extract/list files
+
+
+CASE 4: JPEG (Image)
+────────────────────
+
+User: "ver foto.jpg"
+    ↓
+Goal: drive.openOrStream ✅
+    ↓
+BinaryContentHandler.shouldProcess("image/jpeg") → false
+    ↓
+DocumentProcessingEngine: SKIPPED ✅
+    ↓
+Descriptor: BinaryContentDescriptor {
+  kind: "binary",
+  handle: { fileId: "IMG123", connector: "google-drive" },
+  size: 2048000,
+  previewAvailable: true
+}
+    ↓
+Synthesizer: "🖼️ Imagem: foto.jpg (2.0 MB). Posso analisar a imagem para você."
+    ↓
+LLM + Runtime: Can analyze image (future Vision API integration)
+
+*/
+
+// ════════════════════════════════════════════════════════════════════════════
+// DATA STRUCTURE EVOLUTION
+// ════════════════════════════════════════════════════════════════════════════
+
+/*
+
+BEFORE: DownloadSuccess (Always Text)
+─────────────────────────────────────
+
+interface DownloadSuccess {
+  ok: true;
+  fileId: string;
+  fileName: string;
+  content: string;              ← ALWAYS text
+  encoding: "text" | "base64";
+  processing: {
+    parserUsed: string;
+    charCount: number;
+    documentType: string;
+  };
+}
+
+Problems:
+  - If content is MP4: contains 9 MB base64
+  - If content is text: contains extracted text
+  - No way to distinguish
+  - Can't represent "we didn't process this"
+
+
+AFTER: DownloadSuccess (Text OR Binary)
+───────────────────────────────────────
+
+interface DownloadSuccess {
+  ok: true;
+  fileId: string;
+  fileName: string;
+  content: ContentDescriptor;   ← Either text OR binary
+}
+
+type ContentDescriptor = TextContentDescriptor | BinaryContentDescriptor;
+
+interface TextContentDescriptor {
+  kind: "text";
+  textContent: string;
+  charCount: number;
+  parserUsed?: string;
+  documentType?: string;
+}
+
+interface BinaryContentDescriptor {
+  kind: "binary";
+  handle: DownloadHandle;
+  size?: number;
+  previewAvailable?: boolean;
+}
+
+Benefits:
+  - Discriminated union: compiler knows which fields exist
+  - No 9 MB in LLM case
+  - Clear intent (was this processed or not?)
+  - Extensible (can add new kinds)
+
+*/
+
+// ════════════════════════════════════════════════════════════════════════════
+// DECISION MATRIX: When to Process
+// ════════════════════════════════════════════════════════════════════════════
+
+/*
+
+MIME Type                          | shouldProcess | Action
+─────────────────────────────────────────────────────────────
+text/*                             | TRUE          | Extract
+application/json                   | TRUE          | Parse + Extract
+application/xml                    | TRUE          | Parse + Extract
+application/pdf                    | TRUE          | PDF Reader
+application/vnd.ms-word...         | TRUE          | Convert + Extract
+application/vnd.ms-excel...        | TRUE          | Convert + Extract
+image/svg+xml                       | TRUE          | SVG Parser (has text)
+                                   |               |
+video/mp4                          | FALSE         | Return Handle
+video/mpeg                         | FALSE         | Return Handle
+audio/mpeg                         | FALSE         | Return Handle
+image/jpeg                         | FALSE         | Return Handle
+image/png                          | FALSE         | Return Handle
+application/zip                    | FALSE         | Return Handle
+application/octet-stream           | FALSE         | Return Handle (unknown)
+                                   |               |
+[Unknown type]                     | FALSE         | Return Handle (fail-safe)
+
+Policy location: BinaryContentHandler.ts
+                 DEFAULT_PROCESSING_POLICY
+
+Easy to customize:
+  - Add MIME to textMimePatterns to enable processing
+  - Add MIME to neverProcessMimes to force binary handling
+  - Add MIME to alwaysProcessMimes to override policy
+
+*/
+
+// ════════════════════════════════════════════════════════════════════════════
+// TOKEN USAGE: LLM Perspective
+// ════════════════════════════════════════════════════════════════════════════
+
+/*
+
+SCENARIO: User uploads 3 files (PDF, MP4, ZIP) and asks questions
+
+BEFORE (Current):
+─────────────────
+Input to LLM:
+  - PDF content: ~5000 chars = ~1250 tokens
+  - MP4 content: ~9 MB base64 = ~2,250,000 tokens ❌ EXCEEDS LIMIT
+  - ZIP: Can't represent
+  
+Result: LLM context overflows or file dropped
+
+AFTER (Proposed):
+─────────────────
+Input to LLM:
+  - PDF: {kind: "text", textContent: "...", charCount: 5000} = ~1250 tokens
+  - MP4: {kind: "binary", handle: "gdrive://...", size: 9185277} = ~50 tokens
+  - ZIP: {kind: "binary", handle: "gdrive://...", size: 234000} = ~50 tokens
+  
+Total: ~1350 tokens ✅ WITHIN BUDGET
+
+Savings: 2,248,700 tokens = 90,000x reduction
+
+Impact: 
+  - No token overflow
+  - LLM can focus on actual question
+  - Can handle arbitrary file sizes
+  - Runtime can fetch binary later if needed
+
+*/
+
+// ════════════════════════════════════════════════════════════════════════════
+// IMPLEMENTATION DIFFICULTY SCALE
+// ════════════════════════════════════════════════════════════════════════════
+
+/*
+
+Task                                    | Difficulty | Time
+──────────────────────────────────────────────────────────
+1. Create ContentDescriptor types       | ⭐ Easy    | 30 min
+2. Create BinaryContentHandler          | ⭐ Easy    | 1 hour
+3. Update DriveDownloadExecutor         | ⭐⭐ Med   | 2 hours
+4. Update ConnectorResultSynthesizer    | ⭐⭐ Med   | 2 hours
+5. Consolidate Goals                    | ⭐⭐ Med   | 1.5 hours
+6. Testing (BinaryContentHandler)       | ⭐ Easy    | 1 hour
+7. E2E Testing (full flow)              | ⭐⭐⭐ Hard | 3 hours
+8. Documentation                        | ⭐ Easy    | 1 hour
+9. Code Review + Adjustments            | ⭐⭐ Med   | 2 hours
+10. Deployment + Monitoring             | ⭐⭐⭐ Hard | 2 hours
+
+TOTAL ESTIMATED: 15.5 hours
+                 ≈ 2-3 days with a dedicated engineer
+                 ≈ 1-2 weeks with distributed team
+
+BACKWARDS COMPAT: ~2 hours additional (keep deprecated paths)
+
+*/
