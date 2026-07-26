@@ -33,7 +33,11 @@ export class UniversalConnectorRouter {
    */
   // B-04: connectorCtx added — carries real userId/workspaceId/sessionId to UCRBridge
   async route(executionId: string, step: ExecutionStep, connectorCtx?: ConnectorExecutionContext): Promise<RouterResult> {
+    console.group("[TRACE-ROUTER-04]");
     const connector = this._registry.lookup(step.connector);
+    console.log({ connector: step.connector, capability: step.capability, found: !!connector, regSize: this._registry.size() });
+    if (connector) console.log("Registry connectors:", this._registry.list());
+    console.groupEnd();
 
     // [RUNTIME-PROBE][UCR-01] UniversalConnectorRouter lookup result — THE DECISIVE PROBE
     console.log("[RUNTIME-PROBE][UCR-01]", {

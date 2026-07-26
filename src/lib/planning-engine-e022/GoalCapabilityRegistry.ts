@@ -209,6 +209,16 @@ const _builtins: CapabilityMapping[] = [
   //   drive.files.list   defaults: pageSize=10, orderBy=modifiedTime desc
   //   drive.files.get    requires "fileId" — no static default possible; goal.parameters must carry it
   {
+    goalType: "drive.createFolder" as GoalType,
+    descriptors: [
+      {
+        connector: "google-drive",
+        capability: "drive.createFolder",
+        params: {},
+      },
+    ],
+  },
+  {
     goalType: "drive.searchFiles",
     descriptors: [
       {

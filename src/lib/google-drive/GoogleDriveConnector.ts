@@ -53,7 +53,9 @@ function _emitProbe(step: string, payload: Record<string, unknown>): void {
 }
 
 function _authHeader(): string | null {
+  console.group("[TRACE-GWSF-08]");
   const token = getAccessToken(WS);
+  console.log({ tokenPresent: !!token, tokenPrefix: token?.slice(0, 12) + "..." });
   const payload = {
     step:        "7-_authHeader",
     ts:          new Date().toISOString(),
@@ -64,18 +66,25 @@ function _authHeader(): string | null {
   // [DIAG-TEMP] Point 7 — value produced by _authHeader()
   console.log("%c[TOKEN-PROBE][7-_authHeader]", "color:#f59e0b;font-weight:bold;font-size:11px", payload);
   _emitProbe("7-_authHeader", payload);
+  console.groupEnd();
   return token ? `Bearer ${token}` : null;
 }
 
 // ── Raw HTTP fetch with audit + rate limit ─────────────────────────────────────
 
 async function _driveRequest<T>(capability: string, url: string, opts: RequestInit = {}): Promise<T> {
+  console.group("[TRACE-GWSF-09]");
+  console.log({ capability, url, method: opts.method ?? "GET" });
   await GoogleWorkspaceRateLimiter.check(SVC);
   const rid = _rid();
   return GoogleWorkspaceAuditLogger.wrap(SVC, capability, "user", rid, async () => {
     GoogleWorkspaceRateLimiter.consume(SVC);
     const auth = _authHeader();
-    if (!auth) throw Object.assign(new Error("Not authenticated"), { code: "NOT_AUTHENTICATED" });
+    if (!auth) {
+      console.log({ error: "NOT_AUTHENTICATED" });
+      console.groupEnd();
+      throw Object.assign(new Error("Not authenticated"), { code: "NOT_AUTHENTICATED" });
+    }
     const p8 = {
       step:       "8-fetch-Authorization",
       ts:         new Date().toISOString(),
@@ -104,6 +113,7 @@ async function _driveRequest<T>(capability: string, url: string, opts: RequestIn
         "x-goog-request-params": res.headers.get("x-goog-request-params") ?? null,
       },
     };
+    console.log("[TRACE-GWSF-09]", { httpStatus: res.status, statusText: res.statusText });
     console.log("%c[TOKEN-PROBE][9-drive-response]", "color:#22d3ee;font-weight:bold;font-size:11px", p9);
     _emitProbe("9-drive-response", p9);
 
@@ -119,11 +129,15 @@ async function _driveRequest<T>(capability: string, url: string, opts: RequestIn
         body:       resBody.slice(0, 2000),
         stack:      err.stack?.split("\n").slice(0, 6).join(" | ") ?? null,
       };
+      console.log("[TRACE-GWSF-09] HTTP_ERROR", { status: res.status, body: resBody.slice(0, 500) });
       console.error("%c[TOKEN-PROBE][10-drive-error]", "color:#f87171;font-weight:bold;font-size:11px", p10);
       _emitProbe("10-drive-error", p10);
+      console.groupEnd();
       throw err;
     }
 
+    console.log("[TRACE-GWSF-09]", { result: "OK" });
+    console.groupEnd();
     return JSON.parse(resBody) as T;
   });
 }
@@ -302,6 +316,43 @@ export async function listFolders(opts: {
   }
 }
 
+/** Create a folder in Google Drive. */
+export async function createFolder(
+  folderName: string,
+  parentId?: string,
+): Promise<{ id: string; name: string; mimeType: string; parents: string[]; webViewLink: string | null; createdTime: string | null; modifiedTime: string | null }> {
+  await ensureValidToken(WS);
+
+  const body: Record<string, unknown> = {
+    name: folderName,
+    mimeType: "application/vnd.google-apps.folder",
+  };
+  if (parentId && parentId.trim().length > 0) {
+    body.parents = [parentId.trim()];
+  }
+
+  const params = new URLSearchParams({ fields: "id,name,mimeType,parents,webViewLink,createdTime,modifiedTime" });
+  const raw = await _driveRequest<Record<string, unknown>>(
+    "drive.createFolder",
+    `https://www.googleapis.com/drive/v3/files?${params}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+
+  return {
+    id: raw.id as string,
+    name: raw.name as string,
+    mimeType: raw.mimeType as string,
+    parents: (raw.parents as string[]) ?? [],
+    webViewLink: (raw.webViewLink as string) ?? null,
+    createdTime: (raw.createdTime as string) ?? null,
+    modifiedTime: (raw.modifiedTime as string) ?? null,
+  };
+}
+
 // ── Sprint EF-6.3.2: Connector Facade methods ─────────────────────────────────
 // These are the ONLY methods that know about the Google Drive API URLs, tokens,
 // and HTTP semantics. DriveDownloadExecutor calls these — it never calls fetch().
@@ -425,6 +476,152 @@ export async function exportFile(
     const isAbort = (e as Error).name === "AbortError";
     return { content: isAbort ? "TIMEOUT" : String(e), encoding: "text", sizeBytes: 0, ok: false, status: 0, durationMs: Date.now() - t0 };
   }
+}
+
+/** Move a file to a different folder (org-02) */
+export async function moveFile(
+  fileId: string,
+  newParentId: string,
+  previousParentId?: string,
+): Promise<DriveFile> {
+  await ensureValidToken(WS);
+  const params = new URLSearchParams({ fields: FILE_FIELDS });
+  if (newParentId) params.append("addParents", newParentId);
+  if (previousParentId) params.append("removeParents", previousParentId);
+
+  const raw = await _driveRequest<Record<string, unknown>>(
+    "drive.moveFile",
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?${params}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    },
+  );
+
+  return _normalizeFile(raw);
+}
+
+/** Upload a file to Google Drive (upload-01) */
+export async function uploadFile(
+  fileName: string,
+  mimeType: string,
+  fileContent: ArrayBuffer | Uint8Array | string,
+  folderId: string = "root",
+): Promise<DriveFile> {
+  await ensureValidToken(WS);
+  const url = "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=" + FILE_FIELDS;
+
+  // Build multipart body
+  const boundary = "memoryos_upload_boundary_" + Date.now();
+  const metadata = { name: fileName, mimeType, parents: [folderId] };
+  
+  // Convert fileContent to Uint8Array if needed
+  let contentBytes: Uint8Array;
+  if (typeof fileContent === "string") {
+    contentBytes = new TextEncoder().encode(fileContent);
+  } else if (fileContent instanceof ArrayBuffer) {
+    contentBytes = new Uint8Array(fileContent);
+  } else {
+    contentBytes = fileContent;
+  }
+
+  // Build multipart body
+  const metadataStr = JSON.stringify(metadata);
+  const metadataPart = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadataStr}\r\n`;
+  const contentHeaderPart = `--${boundary}\r\nContent-Type: ${mimeType}\r\n\r\n`;
+  const endPart = `\r\n--${boundary}--\r\n`;
+
+  // Combine parts
+  const metadataBytes = new TextEncoder().encode(metadataPart);
+  const contentHeaderBytes = new TextEncoder().encode(contentHeaderPart);
+  const endBytes = new TextEncoder().encode(endPart);
+  
+  const totalLength = metadataBytes.length + contentHeaderBytes.length + contentBytes.length + endBytes.length;
+  const body = new Uint8Array(totalLength);
+  let offset = 0;
+  
+  body.set(metadataBytes, offset);
+  offset += metadataBytes.length;
+  body.set(contentHeaderBytes, offset);
+  offset += contentHeaderBytes.length;
+  body.set(contentBytes, offset);
+  offset += contentBytes.length;
+  body.set(endBytes, offset);
+
+  const raw = await _driveRequest<Record<string, unknown>>(
+    "drive.uploadFile",
+    url,
+    {
+      method: "POST",
+      headers: { "Content-Type": `multipart/related; boundary=${boundary}` },
+      body: body,
+    },
+  );
+
+  return _normalizeFile(raw);
+}
+
+/** Delete a file from Google Drive (delete-01) */
+export async function deleteFile(
+  fileId: string,
+): Promise<void> {
+  await ensureValidToken(WS);
+  
+  await _driveRequest<void>(
+    "drive.deleteFile",
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}`,
+    {
+      method: "DELETE",
+    },
+  );
+}
+
+/** Rename a file or folder in Google Drive (rename-01) */
+export async function renameFile(
+  fileId: string,
+  newName: string,
+): Promise<DriveFile> {
+  await ensureValidToken(WS);
+  const raw = await _driveRequest<Record<string, unknown>>(
+    "drive.renameFile",
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=${FILE_FIELDS}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: newName }),
+    },
+  );
+
+  return _normalizeFile(raw);
+}
+
+/** Copy a file or folder in Google Drive (copy-01) */
+export async function copyFile(
+  fileId: string,
+  newName?: string,
+  parentFolderId?: string,
+): Promise<DriveFile> {
+  await ensureValidToken(WS);
+  const copyBody: Record<string, unknown> = {};
+  if (newName) {
+    copyBody.name = newName;
+  }
+  if (parentFolderId) {
+    copyBody.parents = [parentFolderId];
+  }
+
+  const raw = await _driveRequest<Record<string, unknown>>(
+    "drive.copyFile",
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/copy?fields=${FILE_FIELDS}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: Object.keys(copyBody).length > 0 ? JSON.stringify(copyBody) : undefined,
+    },
+  );
+
+  return _normalizeFile(raw);
 }
 
 // ── Bootstrap on first import ─────────────────────────────────────────────────

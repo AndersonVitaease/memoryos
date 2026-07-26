@@ -49,6 +49,9 @@ export class ExecutionDispatcher {
    */
   async dispatch(input: DispatchInput): Promise<StepResult> {
     const { executionId, step, stepTimeoutMs, connectorCtx } = input;
+    console.group("[TRACE-DISPATCH-03]");
+    console.log({ connector: step.connector, capability: step.capability, executionId });
+    console.groupEnd();
     const startedAt  = Date.now();
     const retryCtx: RetryContext = { attempt: 1, maxAttempts: 1, lastError: null };
     // [RUNTIME-PROBE][EXD-01] ExecutionDispatcher.dispatch() entered

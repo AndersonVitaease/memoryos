@@ -439,13 +439,39 @@ export async function executeDriveDownload(
 
   const processingResult = await DocumentProcessingEngine.process({
     fileName:        meta.name,
-    mimeType:        meta.mimeType,
+    mimeType:        strategy === "export" ? exportMime : meta.mimeType,
     rawContent:      downloadRaw.content,
     encoding:        downloadRaw.encoding,
     sourceConnector: "google-drive",
   });
 
+  let extractedText: string;
+  let processingMeta: {
+    parserUsed: string | null;
+    charCount?: number;
+    documentType?: string;
+    parsingMeta?: Record<string, unknown>;
+    parsingError?: string;
+    parsingMessage?: string;
+    fallback?: string;
+  };
+
   if (!processingResult.ok) {
+    const isGoogleDocsTextExport =
+      meta.mimeType === "application/vnd.google-apps.document" &&
+      strategy === "export" &&
+      downloadRaw.encoding === "text" &&
+      downloadRaw.content.trim().length > 0;
+
+    if (isGoogleDocsTextExport) {
+      extractedText = downloadRaw.content;
+      processingMeta = {
+        parserUsed:    processingResult.parserUsed ?? null,
+        parsingError:  processingResult.errorCode,
+        parsingMessage: processingResult.message,
+        fallback:      "google-docs-export-text",
+      };
+    } else {
     const dur = Date.now() - t0;
     const message =
       processingResult.errorCode === "OCR_REQUIRED"
@@ -476,23 +502,17 @@ export async function executeDriveDownload(
       durationMs: dur,
       audit: makeAudit("failure", startedAt, dur, processingResult.errorCode ?? null),
     };
+    }
+  } else {
+    extractedText = processingResult.extractedText;
+
+    processingMeta = {
+      parserUsed:    processingResult.parserUsed,
+      charCount:     processingResult.charCount,
+      documentType:  processingResult.documentType,
+      parsingMeta:   processingResult.meta,
+    };
   }
-
-  // Texto extraído (ou conteúdo bruto como fallback se o parser falhar)
-  const extractedText = processingResult.extractedText;
-
-  const processingMeta = processingResult.ok
-    ? {
-        parserUsed:    processingResult.parserUsed,
-        charCount:     processingResult.charCount,
-        documentType:  processingResult.documentType,
-        parsingMeta:   processingResult.meta,
-      }
-    : {
-        parserUsed:    processingResult.parserUsed ?? null,
-        parsingError:  processingResult.errorCode,
-        parsingMessage: processingResult.message,
-      };
 
   RuntimeDebug.emit({
     executionId: _execId,

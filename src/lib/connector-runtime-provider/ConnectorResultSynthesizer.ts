@@ -196,6 +196,22 @@ export async function synthesizeConnectorResult(
     };
   });
 
+  // Deterministic response for Drive folder creation.
+  if (goalType === "drive.createFolder") {
+    const first = connectorData[0]?.output as Record<string, unknown> | null;
+    const success = first?.["success"] === true || first?.["status"] === "success";
+    const folderId = (first?.["folderId"] as string | undefined) ?? null;
+    const folderName = (first?.["folderName"] as string | undefined) ?? null;
+
+    if (success && folderId && folderName) {
+      const response = `Sucesso ao criar pasta no Google Drive. ID: ${folderId}. Nome: ${folderName}.`;
+      return { handled: true, response, connectorData };
+    }
+
+    const response = `Falha ao criar pasta no Google Drive.`;
+    return { handled: true, response, connectorData };
+  }
+
   // ── EF-41 / EF-43A: Build ExecutionResultSet and persist to RuntimeContextLayer ──
   // Uses globalThis singleton access (same pattern as ExecutionIntent.consume) to
   // avoid dynamic import failures that silently drop the ResultSet.
@@ -390,6 +406,56 @@ function _formatRawData(
         lines.push(`   De: ${m.from ?? "?"}`);
         if (m.snippet) lines.push(`   ${m.snippet.slice(0, 120)}...`);
       });
+    }
+
+    // Google Drive files
+    const files = out["files"] as { name?: string; id?: string; mimeType?: string; size?: number; webViewLink?: string }[] | undefined;
+    if (files && Array.isArray(files) && files.length > 0) {
+      lines.push("**Arquivos encontrados:**");
+      files.slice(0, 20).forEach((f, i) => {
+        const name = f.name ?? "(sem nome)";
+        const size = f.size ? ` (${(Number(f.size) / 1024 / 1024).toFixed(2)} MB)` : "";
+        lines.push(`${i + 1}. **${name}**${size}`);
+        if (f.id) lines.push(`   ID: ${f.id}`);
+      });
+    }
+
+    // Google Drive folders
+    const folders = out["folders"] as { name?: string; id?: string }[] | undefined;
+    if (folders && Array.isArray(folders) && folders.length > 0) {
+      lines.push("**Pastas encontradas:**");
+      folders.slice(0, 20).forEach((f, i) => {
+        lines.push(`${i + 1}. **${f.name ?? "(sem nome)"}**`);
+        if (f.id) lines.push(`   ID: ${f.id}`);
+      });
+    }
+
+    // Drive operation result (e.g., folder creation)
+    if (out["success"] === true || out["status"] === "success") {
+      lines.push("✓ Operação concluída com sucesso.");
+      if (out["folderId"]) lines.push(`   Pasta criada: ${out["folderName"] ?? "(sem nome)"}`);
+      if (out["fileId"]) lines.push(`   Arquivo: ${out["fileName"] ?? "(sem nome)"}`);
+    }
+
+    // Drive download result (individual file)
+    if (out["fileName"] && out["content"] && typeof out["content"] === "string") {
+      lines.push(`**Arquivo: ${out["fileName"]}**`);
+      if (out["mimeType"]) lines.push(`   Tipo: ${out["mimeType"]}`);
+      if (out["sizeBytes"]) {
+        const mb = Number(out["sizeBytes"]) / 1024 / 1024;
+        lines.push(`   Tamanho: ${mb > 0.01 ? mb.toFixed(2) + " MB" : (Number(out["sizeBytes"]) / 1024).toFixed(2) + " KB"}`);
+      }
+      if (out["strategy"]) lines.push(`   Estratégia: ${out["strategy"]}`);
+      
+      // Preview conteúdo
+      const content = (out["content"] as string);
+      const isText = (out["encoding"] === "text" || out["mimeType"]?.toString().includes("text"));
+      if (isText && content.length > 0) {
+        const preview = content.slice(0, 300);
+        lines.push(`   Conteúdo:\n   ${preview}${content.length > 300 ? "..." : ""}`);
+      } else if (content.length > 0) {
+        lines.push(`   Conteúdo: [${content.length} caracteres codificados]`);
+      }
     }
   }
 

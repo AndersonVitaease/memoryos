@@ -339,8 +339,27 @@ const _builtins: GoalDefinition[] = [
   },
 
   // ── Drive ──────────────────────────────────────────────────────────────────
-  // PRIORITY ORDER: downloadFile > listPDFs > listRecent > openDocument > searchFiles
+  // PRIORITY ORDER: createFolder > downloadFile > listPDFs > listRecent > openDocument > searchFiles
   // matchBySignals() returns the FIRST hit in registration order.
+  {
+    type: "drive.createFolder" as GoalType,
+    namespace: "drive",
+    description: "Create a folder in Google Drive",
+    signals: [
+      "crie uma pasta", "criar pasta", "nova pasta", "novo diretorio",
+      "create folder", "new folder",
+    ],
+    extractParams: (msg) => {
+      const quoted = msg.match(/"([^"]+)"/)?.[1]?.trim();
+      const afterFolder = msg.match(/(?:pasta|folder)\s+([a-z0-9\s\-_.]+)$/i)?.[1]?.trim();
+      const stripped = msg
+        .replace(/\b(crie|criar|cria|nova|novo|new|create|folder|pasta|diretorio|diret[oó]rio|por favor)\b/gi, "")
+        .replace(/[-–—]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      return { folderName: quoted ?? afterFolder ?? (stripped || null) };
+    },
+  },
   {
     type: "drive.downloadFile",
     namespace: "drive",
@@ -364,6 +383,69 @@ const _builtins: GoalDefinition[] = [
       // entrem no termo de busca do Drive.
       const stripped = msg
         .replace(/\b(baixar|baixe|baixa|baixo|baixando|download|downloads|exportar|exporte|exporta|abrir|abra|abre|ler|leia|o arquivo|os arquivos|o documento|os documentos|arquivo|arquivos|documento|documentos|por favor)\b/gi, "")
+        .replace(/[-–—]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      return { fileName: quoted ?? afterNoun ?? (stripped || null), rawText: msg.trim() };
+    },
+  },
+  {
+    // read-04: Document section extraction
+    // PRIORITY: placed before summarizeDocument (more specific: "extract sections" vs general "summarize")
+    // This ensures explicit extraction requests match before summarization requests
+    type: "drive.extractSections" as GoalType,
+    namespace: "drive",
+    description: "Extract specific sections or pages from a document in Google Drive",
+    signals: [
+      // Portuguese
+      "extrair", "extraia", "extrai", "extracao",
+      "extrair secao", "extrair secoes", "extrair capitulo", "extrair capitulos",
+      "extrair paginas", "extrair pagina",
+      "extrair seção", "extrair seções", "extrair capítulo", "extrair capítulos",
+      "extrair trecho", "extrair trechos",
+      "obter secao", "obter secoes", "obter capitulo", "obter capitulos",
+      "pegar secao", "pegar secoes", "pegar pagina", "pegar paginas",
+      "extrair do arquivo", "extrair do documento",
+      "extrair da", "extrair de",
+      // English
+      "extract", "extract section", "extract sections", "extract chapter", "extract chapters",
+      "extract pages", "extract page", "get section", "get sections",
+      "pull section", "pull sections", "pull pages",
+    ],
+    extractParams: (msg) => {
+      const quoted = msg.match(/"([^"]+)"/)?.[1];
+      const afterNoun = msg.match(/(?:o arquivo|o documento|arquivo|documento|file|document)\s+([a-z0-9\s\-_.]+?)(?:\s*$|\s+(?:no|em|do|da|de|in|of))/i)?.[1]?.trim();
+      const stripped = msg
+        .replace(/\b(extrair|extraia|extrai|extracao|extracao|extracao|extrair secao|extrair secoes|extrair capitulo|extrair paginas|extract|extract section|get section|pull section|archive|arquivo|document|arquivo|do drive|no drive|drive|por favor)\b/gi, "")
+        .replace(/[-–—]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      return { fileName: quoted ?? afterNoun ?? (stripped || null), rawText: msg.trim(), sectionNames: (msg.match(/'([^']+)'/g) || []).map(s => s.replace(/'/g, '')), _method: "sections" };
+    },
+  },
+  {
+    // read-03: Document summarization via LLM
+    // PRIORITY: placed after extractSections (more specific) but before listPDFs, listRecent, openDocument (more generic)
+    type: "drive.summarizeDocument" as GoalType,
+    namespace: "drive",
+    description: "Summarize a document from Google Drive using LLM",
+    signals: [
+      // Portuguese
+      "resumir", "resuma", "resume", "resumo",
+      "resumir o arquivo", "resumir o documento",
+      "resumir arquivo", "resumir documento",
+      "fazer resumo", "faça resumo",
+      "resumo do arquivo", "resumo do documento",
+      "faz um resumo", "criar um resumo",
+      // English
+      "summarize", "make a summary",
+      "summarize file", "summarize document",
+    ],
+    extractParams: (msg) => {
+      const quoted = msg.match(/"([^"]+)"/)?.[1];
+      const afterNoun = msg.match(/(?:o arquivo|o documento|arquivo|documento|file|document)\s+([a-z0-9\s\-_.]+?)(?:\s*$|\s+(?:no|em|do|da|de|in|of))/i)?.[1]?.trim();
+      const stripped = msg
+        .replace(/\b(resumir|resuma|resume|resumo|fazer|faça|criar|summarize|make|document|arquivo|file|o arquivo|o documento|do drive|no drive|drive|por favor)\b/gi, "")
         .replace(/[-–—]/g, " ")
         .replace(/\s+/g, " ")
         .trim();
@@ -446,6 +528,160 @@ const _builtins: GoalDefinition[] = [
       // Extract named entity after common search verbs
       const nameMatch = msg.match(/(?:cnh|contrato|procure?|encontre?|tem)\s+(.+?)(?:\s+em\s+pdf|\?|$)/i)?.[1]?.trim();
       return { query: quoted ?? nameMatch ?? msg.trim() };
+    },
+  },
+
+  // ── Drive Organization — Sprint delete-01 ────────────────────────────────────
+  // delete-01: Deletar arquivo
+  {
+    type: "drive.deleteFile",
+    namespace: "drive",
+    description: "Delete a file from Google Drive",
+    signals: [
+      "deletar arquivo",
+      "delete arquivo",
+      "deleta arquivo",
+      "deletar file",
+      "delete file",
+      "remover arquivo",
+      "apagar arquivo",
+      "remove arquivo",
+      "eliminar arquivo",
+      "delete this",
+      "deletar isso",
+    ],
+    extractParams: (msg: string) => ({
+      fileId: null,
+      rawText: msg.trim(),
+    }),
+  },
+
+  // ── Drive Organization — Sprint create-folder-01 ───────────────────────────
+  // create-folder-01: Criar pasta
+  {
+    type: "drive.createFolder",
+    namespace: "drive",
+    description: "Create a new folder in Google Drive",
+    signals: [
+      "criar pasta",
+      "create folder",
+      "cria pasta",
+      "criar diretório",
+      "create directory",
+      "nova pasta",
+      "new folder",
+      "fazer pasta",
+      "make folder",
+      "adicionar pasta",
+      "add folder",
+    ],
+    extractParams: (msg: string) => ({
+      folderName: null,
+      rawText: msg.trim(),
+    }),
+  },
+
+  // ── Drive Organization — Sprint rename-01 ────────────────────────────────
+  // rename-01: Renomear arquivo
+  {
+    type: "drive.renameFile",
+    namespace: "drive",
+    description: "Rename a file or folder in Google Drive",
+    signals: [
+      "renomear arquivo",
+      "rename file",
+      "renomeia arquivo",
+      "renomear pasta",
+      "rename folder",
+      "renomeia pasta",
+      "alterar nome",
+      "change name",
+      "mudar nome",
+      "change file name",
+      "alter name",
+    ],
+    extractParams: (msg: string) => ({
+      fileId: null,
+      newName: null,
+      rawText: msg.trim(),
+    }),
+  },
+
+  // ── Drive Organization — Sprint copy-01 ──────────────────────────────────
+  // copy-01: Duplicar arquivo
+  {
+    type: "drive.copyFile",
+    namespace: "drive",
+    description: "Copy/duplicate a file or folder in Google Drive",
+    signals: [
+      "copiar arquivo",
+      "copy file",
+      "copia arquivo",
+      "copiar pasta",
+      "copy folder",
+      "copia pasta",
+      "duplicar arquivo",
+      "duplicate file",
+      "duplica arquivo",
+      "duplicar pasta",
+      "duplicate folder",
+      "fazer cópia",
+      "make a copy",
+      "criar cópia",
+    ],
+    extractParams: (msg: string) => ({
+      fileId: null,
+      newName: null,
+      rawText: msg.trim(),
+    }),
+  },
+
+  // ── Drive Organization — Sprint org-02 ───────────────────────────────────
+  // org-02: Mover arquivo para pasta
+  {
+    type: "drive.moveFile",
+    namespace: "drive",
+    description: "Move a file to a different folder in Google Drive",
+    signals: [
+      "mover arquivo", "mover para", "mova arquivo", "mova para",
+      "move file", "move to folder", "move to",
+      "organizar arquivo", "organize file",
+      "mover arquivo para pasta", "move file to folder",
+      "organize", "organizing",
+    ],
+    extractParams: (msg) => {
+      // Extract file name and destination folder if mentioned
+      const quoted = msg.match(/"([^"]+)"/)?.[1];
+      const afterMover = msg.match(/(?:mover|move)\s+(?:o\s+)?(?:arquivo\s+)?(.+?)(?:\s+para|\s+to|\s+em|$)/i)?.[1]?.trim();
+      return {
+        fileName: quoted ?? (afterMover || null),
+        rawText: msg.trim(),
+      };
+    },
+  },
+
+  // ── Drive Upload — Sprint upload-01 ────────────────────────────────────────
+  // upload-01: Upload arquivo para Google Drive
+  {
+    type: "drive.uploadFile",
+    namespace: "drive",
+    description: "Upload a file to Google Drive",
+    signals: [
+      "enviar arquivo", "envie arquivo", "envia arquivo",
+      "upload arquivo", "upload file", "fazer upload",
+      "faça upload", "subir arquivo", "suba arquivo",
+      "upload para", "upload to", "enviar para drive",
+      "envie para drive", "mandar arquivo", "mande arquivo",
+      "carregar arquivo", "carregue arquivo",
+    ],
+    extractParams: (msg) => {
+      // Extract file name if mentioned
+      const quoted = msg.match(/"([^"]+)"/)?.[1];
+      const afterUpload = msg.match(/(?:upload|enviar|envie|subir|carregar|suba|carregue|mandar|mande)\s+(?:um\s+)?(?:arquivo\s+)?(.+?)(?:\s+para|\s+to|\s+em|$)/i)?.[1]?.trim();
+      return {
+        fileName: quoted ?? (afterUpload || null),
+        rawText: msg.trim(),
+      };
     },
   },
 
