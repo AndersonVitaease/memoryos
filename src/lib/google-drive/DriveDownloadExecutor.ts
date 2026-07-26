@@ -258,7 +258,7 @@ export async function executeDriveDownload(
       rawText,
       strategy: explicitFileId
         ? "explicit fileId"
-        : !fileName && !queryFallback && !rawText
+        : !fileName && !queryFallback
           ? "conversation context"
           : "search by name",
     },
@@ -267,7 +267,7 @@ export async function executeDriveDownload(
   if (explicitFileId) {
     RuntimeDebug.emit({ executionId: _execId, connector: "google-drive", source: "DriveDownloadExecutor", event: "using strategy: explicit fileId", payload: { explicitFileId } });
     resolvedFileId = explicitFileId;
-  } else if (!fileName && !queryFallback && !rawText) {
+  } else if (!fileName && !queryFallback) {
     // No explicit identifier — attempt recovery from session-scoped ConversationStore.
     // Uses the generic connector context API: no Drive-specific types in the store.
     // Covers "Esse mesmo" / "faz o download" / "o terceiro" cross-turn references.
@@ -301,7 +301,7 @@ export async function executeDriveDownload(
     const _resolutionStart = Date.now();
 
     const resolveLegacySearch = async (): Promise<ResourceResolutionSearchOutcome<DriveResolutionPayload, DownloadFailure>> => {
-      const rawSearchQuery = fileName ?? queryFallback ?? rawText ?? "";
+      const rawSearchQuery = fileName ?? queryFallback ?? "";
       const searchQuery = resolveDriveSearchQuery(rawSearchQuery);
       if (!searchQuery) {
         return Object.freeze({
