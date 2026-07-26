@@ -354,7 +354,33 @@ function _buildSynthesisPrompt(
   connectorData: { connector: string; capability: string; output: unknown }[],
   kfmModel?:     UnifiedKnowledgeModel | null,
 ): string {
-  const dataJson = JSON.stringify(connectorData, null, 2);
+  // ── EF-44: Strip binary content before sending to LLM ────────────────────
+  // For binary files (videos, audio, etc), remove the payload and keep only metadata + handle.
+  const sanitizedData = connectorData.map((item) => {
+    const output = item.output as Record<string, unknown> | null;
+    if (!output || typeof output !== "object") {
+      return item;
+    }
+    
+    const hasHandle = output.rawContentHandle !== undefined;
+    const hasContent = output.content !== undefined;
+    
+    if (hasHandle && hasContent) {
+      // Binary file: keep metadata + handle, remove content
+      const { content, encoding, ...safeOutput } = output;
+      return {
+        ...item,
+        output: {
+          ...safeOutput,
+          _note: "Binary file — content stripped. Use rawContentHandle to retrieve.",
+        },
+      };
+    }
+    
+    return item;
+  });
+
+  const dataJson = JSON.stringify(sanitizedData, null, 2);
 
   // ── Sprint M-05: inject KFE knowledge context ──────────────────────────────
   // The UnifiedKnowledgeModel enriches the synthesis prompt with fused entities,
