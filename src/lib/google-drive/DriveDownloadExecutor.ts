@@ -92,12 +92,22 @@ export interface DownloadSuccess {
   mimeType:    string;
   exportMime:  string;
   strategy:    "export" | "media";
-  content:     string;
-  encoding:    "text" | "base64";
+  content?:    string;                        // Optional: present if text extracted or processed
+  encoding?:   "text" | "base64";             // Optional: encoding of content if present
   sizeBytes:   number;
   apiUsed:     "files.get" | "files.export";
   resolvedBy:  "fileId" | "search";
   candidates?: RankCandidate[];
+  rawContentHandle?: string;                  // For binary/large files: handle to retrieve later
+  processing?: {
+    parserUsed?: string | null;
+    charCount?: number;
+    documentType?: string;
+    parsingMeta?: Record<string, unknown>;
+    parsingError?: string;
+    parsingMessage?: string;
+    fallback?: string;
+  };
   durationMs:  number;
   audit:       ConnectorAudit;
 }
@@ -449,7 +459,7 @@ export async function executeDriveDownload(
     meta.mimeType === "application/octet-stream"
   );
 
-  // For binary-only files, return raw content without text extraction
+  // For binary-only files, return handle only (not the 9MB payload)
   if (isBinaryOnly) {
     const dur = Date.now() - t0;
     return {
@@ -459,12 +469,12 @@ export async function executeDriveDownload(
       mimeType: meta.mimeType,
       exportMime: meta.mimeType,
       strategy,
-      content: downloadRaw.content,
-      encoding: downloadRaw.encoding,
       sizeBytes: downloadRaw.sizeBytes,
       apiUsed,
       resolvedBy,
       candidates: resolvedCandidates,
+      // For binary files, store handle instead of payload
+      rawContentHandle: `drive://${resolvedFileId}`,
       durationMs: dur,
       audit: makeAudit("success", startedAt, dur, null),
     };
