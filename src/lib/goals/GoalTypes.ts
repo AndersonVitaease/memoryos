@@ -33,9 +33,17 @@ export type GoalType =
   | "calendar.listWeek"
   | "calendar.createEvent"
   // Drive
+  | "drive.createFolder"
   | "drive.downloadFile"
+  | "drive.summarizeDocument"
+  | "drive.extractSections"
   | "drive.openDocument"
   | "drive.searchFiles"
+  | "drive.moveFile"
+  | "drive.uploadFile"
+  | "drive.deleteFile"
+  | "drive.renameFile"
+  | "drive.copyFile"
   | "drive.listRecent"
   // GitHub — Sprint M-02
   // Connector id: "github" (GitHubConnector.ts:161)

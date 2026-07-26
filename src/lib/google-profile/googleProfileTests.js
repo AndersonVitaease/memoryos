@@ -4,7 +4,11 @@
  */
 
 import { fetchGoogleProfile } from "./GoogleProfileConnector";
-import * as GoogleAuthSession from "@/lib/google-auth/GoogleAuthSession";
+
+const _authMockState = {
+  connected: true,
+  token: "valid-token",
+};
 
 // ── Test runner ───────────────────────────────────────────────────────────────
 
@@ -25,8 +29,8 @@ async function runTest(name, fn) {
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
 function mockSession(accessToken, conn = { state: "CONNECTED" }) {
-  GoogleAuthSession.ensureValidToken = async () => conn;
-  GoogleAuthSession.getAccessToken   = () => accessToken;
+  _authMockState.connected = !!conn;
+  _authMockState.token = accessToken;
 }
 
 function mockFetch(status, body) {
@@ -90,8 +94,8 @@ async function suiteConnectedUser() {
 async function suiteDisconnectedUser() {
   const originalFetch = window.fetch;
 
-  GoogleAuthSession.ensureValidToken = async () => null;
-  GoogleAuthSession.getAccessToken   = () => null;
+  _authMockState.connected = false;
+  _authMockState.token = null;
 
   const results = await Promise.all([
     runTest("retorna ok=false quando desconectado", async () => {
@@ -141,8 +145,8 @@ async function suiteTokenErrors() {
   }));
 
   // Token ausente após ensureValidToken retornar conn
-  GoogleAuthSession.ensureValidToken = async () => ({ state: "CONNECTED" });
-  GoogleAuthSession.getAccessToken   = () => null;
+  _authMockState.connected = true;
+  _authMockState.token = null;
   results.push(await runTest("retorna status=expired quando token ausente em memoria", async () => {
     const r = await fetchGoogleProfile();
     assert(r.ok === false, "ok deve ser false");

@@ -99,15 +99,17 @@ export class GoogleDriveConnector implements IConnector {
       id: "google-drive",
       name: "Google Workspace — Drive Connector",
       version: "2.0.0",
-      description: "Google Drive integration via GWS Foundation. Lists, searches, and retrieves files. Read-only.",
+      description: "Google Drive integration via GWS Foundation. Lists, searches, retrieves files, and creates folders.",
       author: "MemoryOS",
       capabilities: [
         "drive.files.list",
         "drive.files.listByMime",
+        "drive.files.listShared",
         "drive.files.get",
         "drive.files.search",
         "drive.about.get",
         "drive.downloadFile",
+        "drive.createFolder",
         "connectivity.ping",
         "health.full",
       ],
@@ -197,12 +199,16 @@ export class GoogleDriveConnector implements IConnector {
   }
 
   async execute(operation: string, payload: Record<string, unknown>, context: ConnectorContext): Promise<ConnectorResult> {
+    console.group("[TRACE-GDC-05]");
+    console.log({ operation, executionId: context.executionId, workspaceId: context.workspaceId });
     const start = Date.now();
     const eid   = context.executionId ?? "";
     const logs: ConnectorLog[] = [makeLog("info", `[${operation}] executionId=${eid} Starting`)];
 
     // BUGFIX-SPRINT-001: workspaceId is required — no silent fallback to "default"
     if (!context.workspaceId) {
+      console.log({ error: "MISSING_WORKSPACE_ID" });
+      console.groupEnd();
       throw new Error("Google Drive execution requires workspaceId");
     }
     const workspaceId = context.workspaceId;
@@ -235,18 +241,25 @@ export class GoogleDriveConnector implements IConnector {
       note:         "tokenPresent===false here means auth failure, not registry failure.",
     });
     if (!token) {
+      console.log("[TRACE-GDC-05]", { action: "token-missing-attempting-refresh" });
       // Attempt refresh via GWS Foundation before giving up
       try {
         const { ensureValidToken } = await import("../../google-auth/GoogleAuthSession");
         await ensureValidToken(workspaceId);
-      } catch {
+      } catch (err) {
+        console.log("[TRACE-GDC-05]", { error: "ensureValidToken-failed", message: err instanceof Error ? err.message : String(err) });
+        console.groupEnd();
         return notConfigured(start, eid, logs, operation);
       }
       // Re-check after refresh attempt
       if (!getAccessToken(workspaceId)) {
+        console.log("[TRACE-GDC-05]", { error: "still-no-token-after-refresh" });
+        console.groupEnd();
         return notConfigured(start, eid, logs, operation);
       }
+      console.log("[TRACE-GDC-05]", { result: "token-obtained-after-refresh" });
     }
+    console.groupEnd();
 
     try {
       const result = await this._dispatch(operation, payload, start, eid, logs, workspaceId);
@@ -390,6 +403,26 @@ export class GoogleDriveConnector implements IConnector {
         }, start, eid, logs, operation);
       }
 
+      // ── Files List Shared ───────────────────────────────────────────────────
+      // Lists only shared files (shared=true and trashed=false)
+      // Useful for finding documents shared with the user or by the user
+
+      case "drive.files.listShared": {
+        const pageSize  = typeof payload.pageSize  === "number" ? Math.min(payload.pageSize, 100) : 20;
+        const pageToken = typeof payload.pageToken === "string" ? payload.pageToken : undefined;
+
+        const q = `shared=true and trashed=false`;
+        const result = await gws.searchFiles(q, { pageSize, pageToken });
+        this._recordResponseTime(result.durationMs);
+        logs.push(makeLog("info", `[${operation}] shared=true ${result.files.length} files — ${result.durationMs}ms`));
+
+        return ok({
+          shared: true,
+          files:         result.files.map(this._mapDriveFile),
+          nextPageToken: result.nextPageToken ?? null,
+        }, start, eid, logs, operation);
+      }
+
       // ── Files Search ────────────────────────────────────────────────────────
       // Delegates to GWS Foundation searchByName() — direct `name contains`
       // filter, no natural-language/trigger-word parsing. Bugfix: the old
@@ -491,6 +524,229 @@ export class GoogleDriveConnector implements IConnector {
           resolvedBy: result.resolvedBy,
           apiUsed:    result.apiUsed,
           durationMs: result.durationMs,
+        }, start, eid, logs, operation);
+      }
+
+      // ── Summarize Document ──────────────────────────────────────────────────
+      // read-03: Resumir documento via DocumentProcessingEngine + LLM
+
+      case "drive.summarizeDocument": {
+        const { executeDriveDocumentSummarize } = await import("../../google-drive/DriveDocumentSummarizeExecutor");
+        const enrichedPayload = { ...payload, _debugExecutionId: eid };
+        const result = await executeDriveDocumentSummarize(enrichedPayload, "");
+
+        if (!result.ok) {
+          return fail(result.error, result.code ?? "external", start, eid, logs, operation);
+        }
+
+        return ok({
+          summary:   result.summary,
+          fileId:    result.fileId,
+          fileName:  result.fileName,
+          mimeType:  result.mimeType,
+          style:     result.style,
+          tokens:    result.tokens,
+          model:     result.model,
+          durationMs: result.durationMs,
+        }, start, eid, logs, operation);
+      }
+
+      // ── Extract Sections ─────────────────────────────────────────────────────
+      // read-04: Extrair seções de documento
+
+      case "drive.extractSections": {
+        const { executeDriveDocumentExtract } = await import("../../google-drive/DriveDocumentExtractExecutor");
+        const enrichedPayload = { ...payload, _debugExecutionId: eid };
+        const result = await executeDriveDocumentExtract(enrichedPayload, "");
+
+        if (!result.ok) {
+          return fail(result.error, result.code ?? "external", start, eid, logs, operation);
+        }
+
+        return ok({
+          sections:        result.sections,
+          fileId:          result.fileId,
+          fileName:        result.fileName,
+          mimeType:        result.mimeType,
+          extractMethod:   result.extractMethod,
+          totalSections:   result.totalSections,
+          durationMs:      result.durationMs,
+        }, start, eid, logs, operation);
+      }
+
+      // ── Create Folder ───────────────────────────────────────────────────────
+
+      case "drive.createFolder": {
+        const folderName = typeof payload.folderName === "string"
+          ? payload.folderName.trim()
+          : typeof payload.fileName === "string"
+            ? payload.fileName.trim()
+            : "";
+
+        if (!folderName) {
+          return fail("folderName is required", "validation", start, eid, logs, operation);
+        }
+
+        const parentId = typeof payload.parentId === "string" && payload.parentId.trim().length > 0
+          ? payload.parentId.trim()
+          : undefined;
+
+        try {
+          const folder = await gws.createFolder(folderName, parentId);
+          logs.push(makeLog("info", `[${operation}] created folder name=\"${folder.name}\" id=${folder.id}`));
+
+          return ok({
+            success: true,
+            status: "success",
+            folderId: folder.id,
+            folderName: folder.name,
+            mimeType: folder.mimeType,
+            parents: folder.parents,
+            webViewLink: folder.webViewLink,
+            createdTime: folder.createdTime,
+            modifiedTime: folder.modifiedTime,
+          }, start, eid, logs, operation);
+        } catch (e) {
+          const msg  = (e as Error).message;
+          const code = (e as { code?: string }).code;
+          if (code === "NOT_AUTHENTICATED" || code === "HTTP_401" || code === "HTTP_403" || msg.includes("Not authenticated")) {
+            return fail(`Falha ao criar pasta: ${msg}`, "auth", start, eid, logs, operation);
+          }
+          return fail(`Falha ao criar pasta: ${msg}`, "external", start, eid, logs, operation);
+        }
+      }
+
+      // ── Move File ────────────────────────────────────────────────────────────
+      // org-02: Mover arquivo para pasta diferente
+
+      case "drive.moveFile": {
+        const { executeDriveDocumentMove } = await import("../../google-drive/DriveDocumentMoveExecutor");
+        const enrichedPayload = { ...payload, _debugExecutionId: eid };
+        const result = await executeDriveDocumentMove(enrichedPayload, "");
+
+        if (!result.ok) {
+          return fail(result.error, result.code ?? "external", start, eid, logs, operation);
+        }
+
+        return ok({
+          fileId:            result.fileId,
+          fileName:          result.fileName,
+          previousParentId:  result.previousParentId,
+          newParentId:       result.newParentId,
+          mimeType:          result.mimeType,
+          modifiedTime:      result.modifiedTime,
+          durationMs:        result.durationMs,
+        }, start, eid, logs, operation);
+      }
+
+      // upload-01: Upload arquivo para Google Drive
+
+      case "drive.uploadFile": {
+        const { executeDriveUpload } = await import("../../google-drive/DriveUploadExecutor");
+        const enrichedPayload = { ...payload, _debugExecutionId: eid };
+        const result = await executeDriveUpload(enrichedPayload, "");
+
+        if (!result.ok) {
+          return fail(result.error, result.code ?? "external", start, eid, logs, operation);
+        }
+
+        return ok({
+          fileId:       result.fileId,
+          fileName:     result.fileName,
+          mimeType:     result.mimeType,
+          size:         result.size,
+          folderId:     result.folderId,
+          webViewLink:  result.webViewLink,
+          modifiedTime: result.modifiedTime,
+          durationMs:   result.durationMs,
+        }, start, eid, logs, operation);
+      }
+
+      // delete-01: Deletar arquivo
+
+      case "drive.deleteFile": {
+        const { executeDriveDelete } = await import("../../google-drive/DriveDeleteExecutor");
+        const enrichedPayload = { ...payload, _debugExecutionId: eid };
+        const result = await executeDriveDelete(enrichedPayload, "");
+
+        if (!result.ok) {
+          return fail(result.error, result.errorCode ?? "external", start, eid, logs, operation);
+        }
+
+        return ok({
+          fileId:    result.fileId,
+          fileName:  result.fileName,
+          durationMs: result.durationMs,
+        }, start, eid, logs, operation);
+      }
+
+      // create-folder-01: Criar pasta
+
+      case "drive.createFolder": {
+        const { executeDriveCreateFolder } = await import("../../google-drive/DriveCreateFolderExecutor");
+        const enrichedPayload = { ...payload, _debugExecutionId: eid };
+        const result = await executeDriveCreateFolder(enrichedPayload, "");
+
+        if (!result.ok) {
+          return fail(result.error, result.errorCode ?? "external", start, eid, logs, operation);
+        }
+
+        const folder = result.folder ?? {};
+        return ok({
+          folderId:     folder.id,
+          folderName:   folder.name,
+          mimeType:     folder.mimeType,
+          parents:      folder.parents,
+          webViewLink:  folder.webViewLink,
+          createdTime:  folder.createdTime,
+          durationMs:   result.durationMs,
+        }, start, eid, logs, operation);
+      }
+
+      // rename-01: Renomear arquivo
+
+      case "drive.renameFile": {
+        const { executeDriveRename } = await import("../../google-drive/DriveRenameExecutor");
+        const enrichedPayload = { ...payload, _debugExecutionId: eid };
+        const result = await executeDriveRename(enrichedPayload, "");
+
+        if (!result.ok) {
+          return fail(result.error, result.errorCode ?? "external", start, eid, logs, operation);
+        }
+
+        const file = result.file ?? {};
+        return ok({
+          fileId:       file.id,
+          fileName:     file.name,
+          mimeType:     file.mimeType,
+          modifiedTime: file.modifiedTime,
+          parents:      file.parents,
+          webViewLink:  file.webViewLink,
+          durationMs:   result.durationMs,
+        }, start, eid, logs, operation);
+      }
+
+      // copy-01: Duplicar arquivo
+
+      case "drive.copyFile": {
+        const { executeDriveCopy } = await import("../../google-drive/DriveCopyExecutor");
+        const enrichedPayload = { ...payload, _debugExecutionId: eid };
+        const result = await executeDriveCopy(enrichedPayload, "");
+
+        if (!result.ok) {
+          return fail(result.error, result.errorCode ?? "external", start, eid, logs, operation);
+        }
+
+        const file = result.file ?? {};
+        return ok({
+          fileId:       file.id,
+          fileName:     file.name,
+          mimeType:     file.mimeType,
+          parents:      file.parents,
+          createdTime:  file.createdTime,
+          modifiedTime: file.modifiedTime,
+          webViewLink:  file.webViewLink,
+          durationMs:   result.durationMs,
         }, start, eid, logs, operation);
       }
 

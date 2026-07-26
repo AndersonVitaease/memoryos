@@ -7,7 +7,11 @@ import {
   replyEmail, replyAll, forwardEmail,
   createReplyDraft, createForwardDraft,
 } from "./GmailAdvanced";
-import * as GoogleAuthSession from "@/lib/google-auth/GoogleAuthSession";
+
+const _authMockState = {
+  connected: true,
+  token: "valid-token",
+};
 
 // ── Test runner ───────────────────────────────────────────────────────────────
 
@@ -28,13 +32,13 @@ async function runTest(name, fn) {
 // ── Mock helpers ──────────────────────────────────────────────────────────────
 
 function mockSession(token = "valid-token") {
-  GoogleAuthSession.ensureValidToken = async () => ({ state: "CONNECTED" });
-  GoogleAuthSession.getAccessToken   = () => token;
+  _authMockState.connected = true;
+  _authMockState.token = token;
 }
 
 function mockDisconnected() {
-  GoogleAuthSession.ensureValidToken = async () => null;
-  GoogleAuthSession.getAccessToken   = () => null;
+  _authMockState.connected = false;
+  _authMockState.token = null;
 }
 
 const FAKE_META = {

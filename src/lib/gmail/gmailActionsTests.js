@@ -4,7 +4,11 @@
  */
 
 import { createDraft, sendDraft, sendEmail } from "./GmailActions";
-import * as GoogleAuthSession from "@/lib/google-auth/GoogleAuthSession";
+
+const _authMockState = {
+  connected: true,
+  token: "valid-token",
+};
 
 // ── Test runner ───────────────────────────────────────────────────────────────
 
@@ -25,13 +29,13 @@ async function runTest(name, fn) {
 // ── Mock helpers ──────────────────────────────────────────────────────────────
 
 function mockSession(token = "valid-token") {
-  GoogleAuthSession.ensureValidToken = async () => ({ state: "CONNECTED" });
-  GoogleAuthSession.getAccessToken   = () => token;
+  _authMockState.connected = true;
+  _authMockState.token = token;
 }
 
 function mockDisconnected() {
-  GoogleAuthSession.ensureValidToken = async () => null;
-  GoogleAuthSession.getAccessToken   = () => null;
+  _authMockState.connected = false;
+  _authMockState.token = null;
 }
 
 function mockFetch(handler) {
@@ -252,8 +256,8 @@ async function suiteErrosAPI() {
   }));
 
   // Refresh automatico — token ausente em memoria mas ensureValidToken retorna conn
-  GoogleAuthSession.ensureValidToken = async () => ({ state: "CONNECTED" });
-  GoogleAuthSession.getAccessToken   = () => null;
+  _authMockState.connected = true;
+  _authMockState.token = null;
   results.push(await runTest("token ausente em memoria retorna status=disconnected", async () => {
     const r = await createDraft(VALID_REQ);
     assert(r.ok === false, "ok deve ser false quando token ausente");

@@ -51,6 +51,7 @@ export class CapabilityRuntime {
   private readonly _executions: Map<string, Execution> = new Map();
   private readonly _tel: CapabilityRuntimeTelemetry;
   private readonly _durations: number[] = [];
+  private readonly _registry: Map<string, any> = new Map();
 
   private _completed = 0;
   private _failed    = 0;
@@ -60,6 +61,28 @@ export class CapabilityRuntime {
 
   constructor(telemetry?: CapabilityRuntimeTelemetry) {
     this._tel = telemetry ?? new CapabilityRuntimeTelemetry();
+  }
+
+  // ── registerCapability() / register() ────────────────────────────────────────
+
+  registerCapability(id: string, capability: any): void {
+    this._registry.set(id, capability);
+  }
+
+  register(capability: any): void {
+    this._registry.set(capability.id, capability);
+  }
+
+  // ── getCapability() — retrieve capability by id ────────────────────────────
+
+  getCapability(id: string): any | undefined {
+    return this._registry.get(id);
+  }
+
+  // ── all() — get all registered capabilities ─────────────────────────────────
+
+  all(): any[] {
+    return Array.from(this._registry.values());
   }
 
   // ── start() ────────────────────────────────────────────────────────────────

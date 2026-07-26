@@ -19,6 +19,7 @@ import {
   DEFAULT_EXPORT_POLICY,
   OUTPUT_FORMAT_MIME,
 } from "./DriveDownloadPolicies";
+// import { readFile } from "node:fs/promises"; // Commented: not available in browser context
 import type { RankingPolicy, ExportPolicy } from "./DriveDownloadPolicies";
 import { DRIVE_MIME } from "./GoogleDriveTypes";
 import { httpStatusToErrorCode } from "./DriveConnectorContract";
@@ -320,6 +321,57 @@ function suite8(): TestResult[] {
   return r;
 }
 
+// ── Suite 9: Step 1/2 regression guards (Drive document reading) ────────────
+
+async function suite9(): Promise<TestResult[]> {
+  const S = "9 — Drive Read Regression Guards";
+  const r: TestResult[] = [];
+
+  const executorPath = new URL("./DriveDownloadExecutor.ts", import.meta.url);
+  const source = await readFile(executorPath, "utf8");
+
+  // PASSO 1: processing must use export MIME when strategy is export.
+  r.push(assertTrue(
+    S,
+    "Google Docs text/plain export is processed with exportMime (not original mimeType)",
+    source.includes("mimeType:        strategy === \"export\" ? exportMime : meta.mimeType") ||
+      source.includes("mimeType: strategy === \"export\" ? exportMime : meta.mimeType"),
+  ));
+
+  // PASSO 2: fallback only when Google Docs export produced non-empty text.
+  r.push(assertTrue(
+    S,
+    "Fallback is gated to Google Docs + export + text encoding + non-empty content",
+    source.includes("meta.mimeType === \"application/vnd.google-apps.document\"") &&
+      source.includes("strategy === \"export\"") &&
+      source.includes("downloadRaw.encoding === \"text\"") &&
+      source.includes("downloadRaw.content.trim().length > 0"),
+  ));
+
+  r.push(assertTrue(
+    S,
+    "When parser fails but fallback conditions hold, operation uses exported text and continues",
+    source.includes("extractedText = downloadRaw.content") &&
+      source.includes("fallback:      \"google-docs-export-text\"") &&
+      source.includes("const _finalResult = {") &&
+      source.includes("ok:          true as const"),
+  ));
+
+  // Fora do escopo: fallback must not apply and failure must be preserved.
+  r.push(assertTrue(
+    S,
+    "Out-of-scope formats still return DOCUMENT_PROCESSING_FAILED",
+    source.includes("code: \"DOCUMENT_PROCESSING_FAILED\"") &&
+      source.includes("if (!processingResult.ok)") &&
+      source.includes("if (isGoogleDocsTextExport)") &&
+      source.includes("} else {") &&
+      source.includes("return {") &&
+      source.includes("ok: false"),
+  ));
+
+  return r;
+}
+
 // ── Runner ────────────────────────────────────────────────────────────────────
 
 export interface DriveDownloadTestReport {
@@ -340,6 +392,7 @@ export async function runDriveDownloadTests(): Promise<DriveDownloadTestReport> 
     ...suite6(),
     ...(await suite7()),
     ...suite8(),
+    ...(await suite9()),
   ];
 
   const passed    = results.filter(r => r.passed).length;

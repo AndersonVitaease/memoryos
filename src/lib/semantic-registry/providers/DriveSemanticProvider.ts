@@ -88,6 +88,29 @@ const INTENT_RULES: readonly IntentRule[] = Object.freeze([
     }),
   },
 
+  // ── priority 11: summarize ──────────────────────────────────────────────────
+  // read-03: Document summarization via LLM
+  // HIGHER priority than list (15) to ensure summarization intent is recognized first
+  {
+    priority:  11,
+    goalType:  "drive.summarizeDocument",
+    baseScore: 0.55,
+    signals: [
+      "resumir", "resuma", "resume", "resumo",
+      "resumir o arquivo", "resumir o documento",
+      "resumir arquivo", "resumir documento",
+      "fazer resumo", "faça resumo",
+      "summarize", "summary", "make a summary",
+      "resumo do arquivo", "resumo do documento",
+      "summarize file", "summarize document",
+      "faz um resumo", "criar um resumo",
+    ],
+    extractEntities: (_lower, base) => ({
+      ...base,
+      intentAction: "summarize",
+    }),
+  },
+
   // ── priority 20: open ───────────────────────────────────────────────────────
   {
     priority:  20,

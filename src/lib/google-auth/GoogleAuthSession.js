@@ -160,15 +160,23 @@ function _getStoredToken(workspaceId) {
  * @returns {string | null}
  */
 export function getAccessToken(workspaceId = "default") {
+  console.group("[TRACE-GAS-06]");
   const stored = _getStoredToken(workspaceId);
   if (!stored) {
+    console.log({ result: "NULL", reason: "no-entry-in-tokenStore", workspaceId, storeSize: _tokenStore.size });
+    console.groupEnd();
     _probe("6-getAccessToken", workspaceId, { result: "NULL — no entry in _tokenStore" });
     return null;
   }
-  if (Date.now() >= stored.expiresAt) {
-    _probe("6-getAccessToken", workspaceId, { result: "NULL — token expired", expiresAtMs: stored.expiresAt, nowMs: Date.now() });
+  const now = Date.now();
+  if (now >= stored.expiresAt) {
+    console.log({ result: "NULL", reason: "expired", workspaceId, expiresAt: stored.expiresAt, now });
+    console.groupEnd();
+    _probe("6-getAccessToken", workspaceId, { result: "NULL — token expired", expiresAtMs: stored.expiresAt, nowMs: now });
     return null;
   }
+  console.log({ result: "OK", tokenPrefix: stored.accessToken?.slice(0, 12) + "..." });
+  console.groupEnd();
   _probe("6-getAccessToken", workspaceId, { result: "OK" });
   return stored.accessToken;
 }
@@ -418,6 +426,8 @@ export async function reconnect({ workspaceId = "default", scopes = WORKSPACE_SC
  *   - Assim _driveRequest pode confiar que o token está em _tokenStore.
  */
 export async function ensureValidToken(workspaceId = "default") {
+  console.group("[TRACE-GAS-07]");
+  console.log({ workspaceId, action: "ensureValidToken-entry" });
   // [RUNTIME-PROBE][GAS-01] ensureValidToken() reached — if this fires, execution passed GoogleDriveConnector
   console.log("[RUNTIME-PROBE][GAS-01]", {
     probe:      "googleAuthSession:ensureValidToken:entry",
@@ -431,6 +441,8 @@ export async function ensureValidToken(workspaceId = "default") {
 
   const conn = getConnection(workspaceId);
   if (!conn || conn.state !== "CONNECTED") {
+    console.log({ result: "ERROR", reason: "not-connected", connExists: !!conn, connState: conn?.state });
+    console.groupEnd();
     throw new Error("Google Workspace not connected. Please connect in /connections.");
   }
 
@@ -439,16 +451,38 @@ export async function ensureValidToken(workspaceId = "default") {
   // Token ausente em memória mas conexão existe — reload ou primeiro uso.
   // Faz refresh e propaga erro se falhar.
   if (!stored) {
-    return await refresh(workspaceId);
+    console.log({ action: "refresh-required", reason: "token-not-in-store" });
+    try {
+      const result = await refresh(workspaceId);
+      console.log({ result: "OK", reason: "refresh-successful" });
+      console.groupEnd();
+      return result;
+    } catch (err) {
+      console.log({ result: "ERROR", reason: "refresh-failed", error: err instanceof Error ? err.message : String(err) });
+      console.groupEnd();
+      throw err;
+    }
   }
 
   // Token presente mas expirado ou próximo de expirar — renova.
   const needsRefresh = Date.now() > stored.expiresAt - TOKEN_EXPIRY_BUFFER_MS;
   if (needsRefresh) {
-    return await refresh(workspaceId);
+    console.log({ action: "refresh-required", reason: "token-expiring-soon" });
+    try {
+      const result = await refresh(workspaceId);
+      console.log({ result: "OK", reason: "refresh-successful" });
+      console.groupEnd();
+      return result;
+    } catch (err) {
+      console.log({ result: "ERROR", reason: "refresh-failed", error: err instanceof Error ? err.message : String(err) });
+      console.groupEnd();
+      throw err;
+    }
   }
 
   // Token válido — garante que está no store antes de retornar.
+  console.log({ result: "OK", reason: "token-valid" });
+  console.groupEnd();
   return conn;
 }
 
