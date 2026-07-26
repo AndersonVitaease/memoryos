@@ -2,7 +2,19 @@ import { extractExplicitFileNameHint } from "./GoogleDriveCapabilityExecutor";
 
 export function resolveDriveSearchQuery(query: string): string {
   const explicitFileNameHint = extractExplicitFileNameHint(query);
-  return explicitFileNameHint ?? query.trim();
+  // Normalize query: remove accents to match Google Drive search behavior
+  const resolved = explicitFileNameHint ?? query.trim();
+  return normalizeQueryForComparison(resolved);
+}
+
+// Normalize query: lowercase + remove accents + collapse spaces
+function normalizeQueryForComparison(text: string): string {
+  return text
+    .toLowerCase()
+    .trim()
+    .replace(/[\u0300-\u036f]/g, "")  // Remove diacritics (accents)
+    .replace(/[^a-z0-9\s.]/g, " ")
+    .replace(/\s+/g, " ");
 }
 
 export function isTooGenericDriveSearchQuery(query: string): boolean {
@@ -10,11 +22,7 @@ export function isTooGenericDriveSearchQuery(query: string): boolean {
     return false;
   }
 
-  const normalized = query
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9\s.]/g, " ")
-    .replace(/\s+/g, " ");
+  const normalized = normalizeQueryForComparison(query);
 
   if (!normalized) return true;
 

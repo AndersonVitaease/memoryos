@@ -497,6 +497,13 @@ const _builtins: GoalDefinition[] = [
       "read file", "read document",
       "open document", "open file",
       "abrir arquivo", "abrir o arquivo", "abrir o documento",
+      "assistir", "assistir video", "assistir arquivo",
+      "watch", "watch video", "watch file",
+      "reproduzir", "reproduzir video", "tocar video",
+      "play", "play video", "play file",
+      "player", "video player",
+      "ver video", "ver arquivo de video",
+      "abrir video", "abrir arquivo de video",
     ],
     extractParams: (msg) => {
       const quoted = msg.match(/"([^"]+)"/)?.[1];
