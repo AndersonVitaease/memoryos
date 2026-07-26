@@ -88,11 +88,11 @@ export function extractExplicitFileNameHint(rawQuery: string): string | null {
   const trimmed = rawQuery.trim();
   if (!trimmed) return null;
 
-  const explicitFilePattern = /([\p{L}\p{N}._()\- ]+\.(?:pdf|docx|xlsx|pptx|txt|csv|md|json|html|png|jpg|jpeg|gif|svg|zip|odt|ods|odp|rtf|xml))$/iu;
+  const explicitFilePattern = /([\p{L}\p{N}._()\- ]+\.(?:pdf|docx|xlsx|pptx|txt|csv|md|json|html|png|jpg|jpeg|gif|svg|zip|odt|ods|odp|rtf|xml|mp4|webm|mpeg|mov|avi|mkv|flv|wmv|m4v|3gp|mp3|wav|flac|aac|ogg))$/iu;
   const directMatch = trimmed.match(explicitFilePattern);
   if (directMatch?.[1]) return directMatch[1].trim();
 
-  const pathLikeMatch = trimmed.match(/(?:^|[\\/])([\p{L}\p{N}._()\- ]+\.(?:pdf|docx|xlsx|pptx|txt|csv|md|json|html|png|jpg|jpeg|gif|svg|zip|odt|ods|odp|rtf|xml))$/iu);
+  const pathLikeMatch = trimmed.match(/(?:^|[\\\/])([\p{L}\p{N}._()\- ]+\.(?:pdf|docx|xlsx|pptx|txt|csv|md|json|html|png|jpg|jpeg|gif|svg|zip|odt|ods|odp|rtf|xml|mp4|webm|mpeg|mov|avi|mkv|flv|wmv|m4v|3gp|mp3|wav|flac|aac|ogg))$/iu);
   return pathLikeMatch?.[1]?.trim() ?? null;
 }
 
@@ -106,6 +106,26 @@ function inferFileTypeFromExplicitFileName(fileName: string): string | null {
     case "xlsx": return DRIVE_MIME.SPREADSHEET;
     case "ppt":
     case "pptx": return DRIVE_MIME.PRESENTATION;
+    case "mp4":
+    case "webm":
+    case "mpeg":
+    case "mov":
+    case "avi":
+    case "mkv":
+    case "flv":
+    case "wmv":
+    case "m4v":
+    case "3gp": return "video/*";
+    case "mp3":
+    case "wav":
+    case "flac":
+    case "aac":
+    case "ogg": return "audio/*";
+    case "png":
+    case "jpg":
+    case "jpeg":
+    case "gif":
+    case "svg": return "image/*";
     default: return null;
   }
 }
@@ -120,6 +140,8 @@ const FILE_TYPE_MAP: Array<[RegExp, string]> = [
   [/\b(form|formulari)\b/i,              `mimeType='${DRIVE_MIME.FORM}'`],
   [/\b(pasta|pastas|folders?)\b/i,       `mimeType='${DRIVE_MIME.FOLDER}'`],
   [/\b(imagens?|fotos?|photos?)\b/i,     "mimeType contains 'image/'"],
+  [/\b(videos?|filmes?|movies?|v[ií]deos?)\b/i, "mimeType contains 'video/'"],
+  [/\b(áudios?|audios?|m[uú]sicas?|musicas?|sons?|podcasts?)\b/i, "mimeType contains 'audio/'"],
 ];
 
 export function parseIntent(rawQuery: string): DriveQueryIntent {
