@@ -27,6 +27,8 @@ export interface DriveFile {
   fileType:     DriveFileType;
   size:         number | null;   // bytes — null for Google Workspace files
   webViewLink:  string | null;
+  /** IA-028: link de download direto (diferente de webViewLink, que só abre o visualizador) */
+  webContentLink: string | null;
   iconLink:     string | null;
   createdTime:  string | null;   // ISO 8601
   modifiedTime: string | null;

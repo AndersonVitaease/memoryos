@@ -1,5 +1,5 @@
 /**
- * PdfDocumentParser.ts — Sprint M1.4
+ * PdfDocumentParser.ts — Sprint M1.4 (+ IA-027)
  *
  * Parser para PDFs textuais.
  *
@@ -8,13 +8,17 @@
  *      (via res.text() do GoogleDriveConnector).
  *      Extrai texto usando regex sobre a estrutura interna do PDF.
  *   2. Se o encoding é "text" e o content parece texto legível → retorna diretamente.
- *   3. Se não consegue extrair texto → retorna DocumentErrorCode "OCR_REQUIRED"
- *      (sinaliza que o PDF não tem camada de texto — OCR necessário no futuro).
+ *   3. IA-027: se não consegue extrair texto (PDF escaneado/sem camada de texto),
+ *      tenta OCR via IA antes de desistir — sobe o arquivo pro Base44 e usa
+ *      InvokeLLM com file_urls (mesmo padrão já usado para imagens anexadas
+ *      em knowledgeIngestionPipeline.js). Se o OCR também falhar, retorna
+ *      DocumentErrorCode "OCR_REQUIRED".
  *
  * NÃO importa GoogleDriveConnector.
- * NÃO faz fetch().
- * NÃO conhece OAuth.
+ * NÃO conhece OAuth do Drive.
  * Recebe apenas RawDocument e retorna ProcessingResult.
+ * IA-027: chama base44.integrations.Core (UploadFile/InvokeLLM) como fallback —
+ * é um serviço genérico de IA, não específico de nenhum connector.
  */
 
 import type {
@@ -53,14 +57,30 @@ export class PdfDocumentParser implements DocumentParser {
       const extracted = this._extractTextFromPdfString(doc.rawContent);
 
       if (extracted.length < 20) {
-        // Sem camada de texto — PDF escaneado ou protegido
+        // IA-027: sem camada de texto — antes de desistir, tenta OCR via IA.
+        const ocrText = await this._tryAiOcr(doc);
+        if (ocrText) {
+          return {
+            ok:            true,
+            fileName:      doc.fileName,
+            mimeType:      doc.mimeType,
+            documentType:  "pdf",
+            extractedText: ocrText,
+            charCount:     ocrText.length,
+            parserUsed:    this.name,
+            durationMs:    Date.now() - t0,
+            meta:          { method: "ai-ocr-fallback" },
+          };
+        }
+
+        // OCR também não conseguiu (arquivo protegido, corrompido, ou IA indisponível)
         return {
           ok:           false,
           fileName:     doc.fileName,
           mimeType:     doc.mimeType,
           documentType: "pdf",
           errorCode:    "OCR_REQUIRED",
-          message:      `O arquivo "${doc.fileName}" parece ser um PDF escaneado (sem camada de texto). OCR será suportado em Sprint futura.`,
+          message:      `Não foi possível extrair o conteúdo de "${doc.fileName}", mesmo com OCR. O arquivo pode estar protegido ou corrompido.`,
           parserUsed:   this.name,
           durationMs:   Date.now() - t0,
         };
@@ -105,6 +125,64 @@ export class PdfDocumentParser implements DocumentParser {
       parserUsed:   this.name,
       durationMs:   Date.now() - t0,
     };
+  }
+
+  // ── IA-027: OCR via IA (fallback quando não há camada de texto) ─────────────
+  // doc.rawContent, quando vem de um PDF binário, é uma "string binária"
+  // (1 caractere por byte — ver GoogleDriveConnector.downloadMedia()), não
+  // texto legível nem base64 verdadeiro. Reconstruímos os bytes reais antes
+  // de montar o arquivo para upload.
+  private async _tryAiOcr(doc: RawDocument): Promise<string | null> {
+    try {
+      const { base44 } = await import("@/api/base44Client");
+
+      const bytes = Uint8Array.from(doc.rawContent, (c) => c.charCodeAt(0) & 0xff);
+
+      // IA-036: se os bytes forem pequenos demais pra ser um documento
+      // digitalizado de verdade (ex: download falhou parcialmente e sobrou
+      // só um fragmento), não manda pra IA "adivinhar" — isso é exatamente
+      // o cenário onde a IA tende a inventar um documento plausível em vez
+      // de admitir que não recebeu nada de útil. Provamos hoje, com CPF e
+      // PIS mudando a cada tentativa, que isso acontece de verdade.
+      if (bytes.byteLength < 5000) {
+        return null;
+      }
+
+      const blob  = new Blob([bytes], { type: doc.mimeType || "application/pdf" });
+      const file  = new File([blob], doc.fileName || "documento.pdf", { type: blob.type });
+
+      const uploadResult = await base44.integrations.Core.UploadFile({ file });
+      if (!uploadResult?.file_url) return null;
+
+      const ocrResponse = await base44.integrations.Core.InvokeLLM({
+        prompt:
+          "Analise esta imagem/documento e extraia o texto visível (OCR). Seja preciso, mas " +
+          "lembre-se que erros pontuais de leitura (ex: confundir um dígito de um número) são " +
+          "normais e aceitáveis — o importante é NUNCA inventar um documento inteiro do zero " +
+          "quando a imagem não carregou ou está genuinamente ilegível. Se um campo específico " +
+          "estiver difícil de ler com certeza (ex: um dígito borrado), marque esse campo com " +
+          "[incerto] em vez de simplesmente inventar um valor plausível ou omitir o campo. " +
+          "Se a imagem inteira não carregou ou está completamente ilegível, responda apenas VAZIO.",
+        file_urls: [uploadResult.file_url],
+      });
+
+      const text = typeof ocrResponse === "string"
+        ? ocrResponse
+        : (ocrResponse as { text?: string })?.text ?? "";
+
+      const trimmed = text.trim();
+      if (!trimmed || trimmed.toUpperCase() === "VAZIO" || trimmed.length < 10) return null;
+
+      // IA-036: como uma única chamada de IA não pode ser verificada com
+      // certeza absoluta, todo resultado de OCR carrega um aviso explícito
+      // — transparência é a proteção que resta quando não dá pra garantir
+      // 100% que não houve invenção.
+      return `${trimmed}\n\n⚠️ *Texto extraído automaticamente por IA (OCR) — pode conter erros de leitura. Confira os dados originais antes de usar para qualquer finalidade oficial.*`;
+    } catch {
+      // OCR é best-effort — qualquer falha (rede, upload, IA indisponível)
+      // apenas faz o parser cair no OCR_REQUIRED normal, sem quebrar o fluxo.
+      return null;
+    }
   }
 
   // ── Extração de texto de PDF binário lido como string UTF-8 ──────────────────

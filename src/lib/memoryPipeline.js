@@ -124,19 +124,13 @@ async function queryEntities(intent, sessionId, projectId) {
       : base44.entities.Document.filter({ processing_status: "completed" }, "-created_date", 30);
   }
   if (query_types.includes("decisions")) {
-    queries.decisions = projectId
-      ? base44.entities.Decision.filter({ project_id: projectId }, "-decided_date", 30)
-      : base44.entities.Decision.list("-decided_date", 30);
+    queries.decisions = base44.entities.Decision.list("-decided_date", 30);
   }
   if (query_types.includes("tasks")) {
-    queries.tasks = projectId
-      ? base44.entities.Task.filter({ project_id: projectId }, "-created_date", 50)
-      : base44.entities.Task.list("-created_date", 50);
+    queries.tasks = base44.entities.Task.list("-created_date", 50);
   }
   if (query_types.includes("topics")) {
-    queries.topics = projectId
-      ? base44.entities.Topic.filter({ project_id: projectId }, "-created_date", 30)
-      : base44.entities.Topic.list("-created_date", 30);
+    queries.topics = base44.entities.Topic.list("-created_date", 30);
   }
   if (query_types.includes("entities")) {
     queries.entities = projectId
@@ -162,10 +156,36 @@ async function queryEntities(intent, sessionId, projectId) {
     result[k] = values[i];
   });
 
-  // Tarefas concluídas não devem poluir o contexto de memória recuperado a cada turno.
-  if (Array.isArray(result.tasks)) {
-    result.tasks = result.tasks.filter((t) => t.status !== "done");
+  // IA-030: filtro de contaminação — bloqueia registros que ainda carreguem
+  // a narrativa fictícia de "auditoria arquitetural MAS/MES/Biblioteca Oficial"
+  // (nunca aconteceu de verdade — ver IA-010/015/016/021/022/029). Como a
+  // limpeza manual de Decisions/Tasks/KnowledgeEntity nunca cobriu 100% dos
+  // registros antigos, esse filtro barra qualquer um que ainda reste,
+  // resolvendo na raiz em vez de depender de faxina manual completa.
+  const _CONTAMINATION_MARKERS = [
+    "biblioteca oficial", "mas e mes", "mas/mes", " mas ", " mes ",
+    "macr", "compliance report", "auditoria arquitetural",
+    "módulo de acesso de segurança", "módulo de execução de serviços",
+    "módulo de visão", "módulo de processamento de sistema",
+  ];
+  function _isContaminated(record) {
+    try {
+      const text = JSON.stringify(record).toLowerCase();
+      return _CONTAMINATION_MARKERS.some((marker) => text.includes(marker));
+    } catch {
+      return false;
+    }
   }
+  ["decisions", "tasks", "entities", "documents", "topics", "keywords", "sessions", "messages"].forEach((key) => {
+    if (Array.isArray(result[key])) {
+      const before = result[key].length;
+      result[key] = result[key].filter((r) => !_isContaminated(r));
+      const removed = before - result[key].length;
+      if (removed > 0) {
+        console.log(`[IA-030] Filtrados ${removed} registro(s) contaminado(s) de "${key}"`);
+      }
+    }
+  });
 
   result.sessionSummary = result._session?.[0]?.summary || "";
   return result;
