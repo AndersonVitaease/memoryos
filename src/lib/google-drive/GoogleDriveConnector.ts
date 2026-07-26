@@ -16,7 +16,6 @@ import { getConnection, isConnected, getAccessToken, ensureValidToken }
   from "@/lib/google-auth/GoogleAuthSession";
 import { GoogleWorkspaceAuditLogger } from "@/lib/google-workspace/GoogleWorkspaceAuditLogger";
 import { GoogleWorkspaceRateLimiter }  from "@/lib/google-workspace/GoogleWorkspaceRateLimiter";
-import { RuntimeDebug } from "@/lib/debug/RuntimeDebug";
 // Sprint EF-6.4.0: UCR adapter registered on import
 import "@/lib/ucr/adapters/GoogleDriveAdapter";
 
@@ -34,38 +33,10 @@ function _rid() { return `drv-${Date.now()}-${(_seq++).toString().padStart(4, "0
 
 // ── Auth header ───────────────────────────────────────────────────────────────
 
-// [DIAG-TEMP] Get or reuse the shared TOKEN-PROBE execution from GoogleAuthSession
-function _getProbeExecId(): string | null {
-  const open = RuntimeDebug.getExecutions("google-drive")
-    .find((e) => !e.endedAt && e.label?.startsWith("TOKEN-PROBE"));
-  if (open) return open.executionId;
-  // Fallback: create one here if GoogleAuthSession didn't run first
-  return RuntimeDebug.startExecution("google-drive", "TOKEN-PROBE — Auth Session Diagnostics");
-}
-
-function _emitProbe(step: string, payload: Record<string, unknown>): void {
-  try {
-    const execId = _getProbeExecId();
-    if (execId) {
-      RuntimeDebug.emit({ executionId: execId, connector: "google-drive", source: "GoogleDriveConnector", event: step, payload });
-    }
-  } catch (_) { /* non-blocking */ }
-}
-
 function _authHeader(): string | null {
   console.group("[TRACE-GWSF-08]");
   const token = getAccessToken(WS);
   console.log({ tokenPresent: !!token, tokenPrefix: token?.slice(0, 12) + "..." });
-  const payload = {
-    step:        "7-_authHeader",
-    ts:          new Date().toISOString(),
-    workspaceId: WS,
-    tokenPrefix: token ? token.slice(0, 12) : "NULL",
-    result:      token ? `Bearer ${token.slice(0, 12)}...` : "NULL — Authorization header will be missing",
-  };
-  // [DIAG-TEMP] Point 7 — value produced by _authHeader()
-  console.log("%c[TOKEN-PROBE][7-_authHeader]", "color:#f59e0b;font-weight:bold;font-size:11px", payload);
-  _emitProbe("7-_authHeader", payload);
   console.groupEnd();
   return token ? `Bearer ${token}` : null;
 }
@@ -85,53 +56,13 @@ async function _driveRequest<T>(capability: string, url: string, opts: RequestIn
       console.groupEnd();
       throw Object.assign(new Error("Not authenticated"), { code: "NOT_AUTHENTICATED" });
     }
-    const p8 = {
-      step:       "8-fetch-Authorization",
-      ts:         new Date().toISOString(),
-      capability,
-      authPrefix: auth.slice(0, 19) + "...",
-      urlPath:    url.replace("https://www.googleapis.com", ""),
-    };
-    // [DIAG-TEMP] Point 8 — Authorization header sent to fetch()
-    console.log("%c[TOKEN-PROBE][8-fetch-Authorization]", "color:#34d399;font-weight:bold;font-size:11px", p8);
-    _emitProbe("8-fetch-Authorization", p8);
     const res = await fetch(url, { ...opts, headers: { Authorization: auth, ...opts.headers } });
     const resBody = await res.text().catch(() => "");
-
-    // [DIAG-TEMP] Probe 9 — Google Drive HTTP response
-    const p9: Record<string, unknown> = {
-      step:        "9-drive-response",
-      ts:          new Date().toISOString(),
-      capability,
-      status:      res.status,
-      statusText:  res.statusText,
-      url:         url.replace("https://www.googleapis.com", ""),
-      body:        resBody.slice(0, 2000), // cap at 2 KB to avoid oversized payloads
-      headers: {
-        "content-type":     res.headers.get("content-type")     ?? null,
-        "www-authenticate": res.headers.get("www-authenticate") ?? null,
-        "x-goog-request-params": res.headers.get("x-goog-request-params") ?? null,
-      },
-    };
     console.log("[TRACE-GWSF-09]", { httpStatus: res.status, statusText: res.statusText });
-    console.log("%c[TOKEN-PROBE][9-drive-response]", "color:#22d3ee;font-weight:bold;font-size:11px", p9);
-    _emitProbe("9-drive-response", p9);
 
     if (!res.ok) {
-      // [DIAG-TEMP] Probe 10 — Drive error detail
       const err = Object.assign(new Error(`Drive API ${res.status}: ${resBody}`), { code: `HTTP_${res.status}` });
-      const p10: Record<string, unknown> = {
-        step:       "10-drive-error",
-        ts:         new Date().toISOString(),
-        capability,
-        status:     res.status,
-        statusText: res.statusText,
-        body:       resBody.slice(0, 2000),
-        stack:      err.stack?.split("\n").slice(0, 6).join(" | ") ?? null,
-      };
       console.log("[TRACE-GWSF-09] HTTP_ERROR", { status: res.status, body: resBody.slice(0, 500) });
-      console.error("%c[TOKEN-PROBE][10-drive-error]", "color:#f87171;font-weight:bold;font-size:11px", p10);
-      _emitProbe("10-drive-error", p10);
       console.groupEnd();
       throw err;
     }
