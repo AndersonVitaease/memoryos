@@ -19,6 +19,13 @@ import type {
 } from "../ConnectorTypes";
 import { makeLog, makeExecutionId } from "../ConnectorTypes";
 import { isConnected, getConnection } from "@/lib/google-auth/GoogleAuthSession";
+import { isMultiCandidateResolutionEnabled } from "@/lib/google-drive/MultiCandidateResolutionFeatureFlag";
+import {
+  resourceResolutionEngine,
+  type ResourceCandidateSelector,
+} from "@/lib/resource-resolution-engine";
+import { GmailSearchProvider, type GmailSearchData } from "../search-providers/GmailSearchProvider";
+import { gmailResolutionAuditStore } from "../search-providers/GmailResolutionAuditStore";
 
 const CAPABILITIES = Object.freeze([
   "readInbox",
@@ -34,6 +41,8 @@ const CAPABILITIES = Object.freeze([
 
 export class GmailConnector implements IConnector {
   readonly id = "gmail";
+
+  private _searchProvider = new GmailSearchProvider();
 
   metadata(): ConnectorMetadata {
     return {
@@ -126,6 +135,108 @@ export class GmailConnector implements IConnector {
   }
 
   private async _dispatch(op: string, p: Record<string, unknown>): Promise<unknown> {
+    const parseCandidateSelectors = (): ResourceCandidateSelector[] => {
+      const raw = p["candidateSelectors"];
+      if (!Array.isArray(raw)) return [];
+
+      const parsed: ResourceCandidateSelector[] = [];
+      for (const item of raw) {
+        if (!item || typeof item !== "object") continue;
+        const rec = item as Record<string, unknown>;
+        const id = typeof rec.id === "string" ? rec.id : "";
+        const value = typeof rec.value === "string" ? rec.value : "";
+        const strategy = typeof rec.strategy === "string" ? rec.strategy : "unknown";
+        const priority = typeof rec.priority === "number" ? rec.priority : Number.MAX_SAFE_INTEGER;
+        const confidence = typeof rec.confidence === "number" ? rec.confidence : 0;
+        if (!id || !value) continue;
+        parsed.push(Object.freeze({ id, value, strategy, priority, confidence }));
+      }
+
+      return parsed;
+    };
+
+    const runLegacySearch = async (rawQuery: string, maxResults: number): Promise<GmailSearchData> => {
+      const { smartQueryBuilder } = await import("@/lib/gmail/SmartQueryBuilder");
+      const { smartQueryExecutor } = await import("@/lib/gmail/SmartQueryExecutor");
+      const strategy = smartQueryBuilder.build(rawQuery);
+      const result = await smartQueryExecutor.execute(
+        strategy,
+        async (q, max) => {
+          const providerResult = await this._searchProvider.searchRaw(q, { maxResults: max });
+          return {
+            ok: providerResult.error === null,
+            data: providerResult.value,
+            error: providerResult.error,
+          };
+        },
+        maxResults,
+      );
+
+      return (result.data as GmailSearchData) ?? Object.freeze({ messages: [], resultSizeEstimate: 0, query: rawQuery });
+    };
+
+    const resolveByEngine = async (rawQuery: string, maxResults: number): Promise<{
+      readonly data: GmailSearchData;
+      readonly provider: string;
+      readonly usedFallback: boolean;
+      readonly totalAttempts: number;
+      readonly winnerCandidate: string | null;
+      readonly winnerStrategy: string | null;
+      readonly success: boolean;
+      readonly durationMs: number;
+    }> => {
+      const t0 = Date.now();
+      const candidateSelectors = parseCandidateSelectors();
+      const featureEnabled = isMultiCandidateResolutionEnabled();
+
+      const resolution = await resourceResolutionEngine.resolve<GmailSearchData, null>({
+        connector: "gmail",
+        featureEnabled,
+        candidateSelectors,
+        metadata: Object.freeze({ operation: op, provider: this._searchProvider.providerId }),
+        searchCallback: async (candidate) => {
+          const result = await this._searchProvider.searchCandidate(candidate, { maxResults });
+          return Object.freeze({
+            success: result.success,
+            reason: result.reason,
+            value: result.value,
+            failure: null,
+          });
+        },
+        fallbackCallback: async () => {
+          const data = await runLegacySearch(rawQuery, maxResults);
+          return Object.freeze({
+            success: true,
+            reason: "legacy_fallback",
+            value: data,
+            failure: null,
+          });
+        },
+      });
+
+      gmailResolutionAuditStore.record(Object.freeze({
+        provider: this._searchProvider.providerId,
+        connector: "gmail",
+        winnerCandidate: resolution.winnerCandidate?.id ?? null,
+        winnerStrategy: resolution.winnerStrategy,
+        totalAttempts: resolution.attempts.length,
+        fallback: resolution.usedFallback,
+        success: resolution.success,
+        durationMs: Date.now() - t0,
+      }));
+
+      return Object.freeze({
+        data: resolution.result ?? Object.freeze({ messages: [], resultSizeEstimate: 0, query: rawQuery }),
+        provider: this._searchProvider.providerId,
+        usedFallback: resolution.usedFallback,
+        totalAttempts: resolution.attempts.length,
+        winnerCandidate: resolution.winnerCandidate?.id ?? null,
+        winnerStrategy: resolution.winnerStrategy,
+        success: resolution.success,
+        durationMs: Date.now() - t0,
+      });
+    };
+
     switch (op) {
       case "readInbox": {
         const { listMessages } = await import("@/lib/gmail/GmailConnector");
@@ -136,20 +247,23 @@ export class GmailConnector implements IConnector {
         });
       }
       case "searchEmails": {
-        const { searchMessages }    = await import("@/lib/gmail/GmailConnector");
-        const { smartQueryBuilder } = await import("@/lib/gmail/SmartQueryBuilder");
-        const { smartQueryExecutor } = await import("@/lib/gmail/SmartQueryExecutor");
         const rawQuery   = (p["query"] as string) ?? "";
         const maxResults = (p["maxResults"] as number) ?? 20;
-        const strategy   = smartQueryBuilder.build(rawQuery);
-        const result     = await smartQueryExecutor.execute(
-          strategy,
-          (q, max) => searchMessages(q, max) as Promise<{ ok: boolean; data: unknown; error: string | null }>,
-          maxResults,
-        );
+        const resolved = await resolveByEngine(rawQuery, maxResults);
         return {
           ok: true,
-          data: result.data ?? { messages: [], resultSizeEstimate: 0 },
+          data: {
+            ...(resolved.data ?? { messages: [], resultSizeEstimate: 0 }),
+            _resolution: {
+              provider: resolved.provider,
+              usedFallback: resolved.usedFallback,
+              totalAttempts: resolved.totalAttempts,
+              winnerCandidate: resolved.winnerCandidate,
+              winnerStrategy: resolved.winnerStrategy,
+              success: resolved.success,
+              durationMs: resolved.durationMs,
+            },
+          },
           error: null,
         };
       }
@@ -167,9 +281,24 @@ export class GmailConnector implements IConnector {
       }
       case "getAttachment": {
         const { getAttachment } = await import("@/lib/gmail/GmailConnector");
+        let messageId = ((p["messageId"] as string) ?? "").trim();
+        const attachmentId = ((p["attachmentId"] as string) ?? "").trim();
+
+        if (!messageId && attachmentId) {
+          const rawQuery = ((p["query"] as string) ?? (p["rawText"] as string) ?? "").trim();
+          const maxResults = (p["maxResults"] as number) ?? 20;
+          if (rawQuery) {
+            const resolved = await resolveByEngine(rawQuery, maxResults);
+            const firstMessageId = resolved.data.messages?.[0]?.id;
+            if (typeof firstMessageId === "string" && firstMessageId.trim()) {
+              messageId = firstMessageId.trim();
+            }
+          }
+        }
+
         return getAttachment(
-          (p["messageId"] as string) ?? "",
-          (p["attachmentId"] as string) ?? "",
+          messageId,
+          attachmentId,
         );
       }
       case "listLabels": {

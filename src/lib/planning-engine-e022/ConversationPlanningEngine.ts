@@ -42,6 +42,11 @@ import type {
   PlanningEvent,
   PlanStatus,
 } from "./ExecutionPlanTypes";
+import type { PlanningContext } from "./PlanningContextTypes";
+import { comparePlanningContext } from "./PlanningContextEquivalence";
+import { planningContextAuditStore } from "./PlanningContextAuditStore";
+import { resolvePlanningDualRead } from "./PlanningDualReadResolver";
+import { isCanonicalResourceReadEnabled } from "@/lib/resource-intent-canonicalization";
 
 // ── Event listener type ───────────────────────────────────────────────────────
 
@@ -68,20 +73,49 @@ export class ConversationPlanningEngine {
    * - Never invokes connectors or runtime
    * - Deterministic for the same goal and registry state
    */
-  /** Sprint M1.12: options.mode defaults to "live" — zero behavior change when omitted. */
-  plan(goal: ConversationGoal, options?: { mode?: ExecutionMode }): PlanningResult {
+  /**
+   * Sprint 3: optional PlanningContext intake for CRR architecture validation.
+   * Planning decisions remain based exclusively on the legacy goal contract.
+   */
+  plan(
+    goal: ConversationGoal,
+    options?: { mode?: ExecutionMode; context?: PlanningContext | null },
+  ): PlanningResult {
     const _mode: ExecutionMode = options?.mode ?? "live";
     const t0     = Date.now();
     const planId = makePlanId();
+    const dualReadEnabled = isCanonicalResourceReadEnabled();
+    const dualRead = resolvePlanningDualRead(goal, options?.context ?? null, dualReadEnabled);
+    const planningGoalType = dualRead.goalType;
+    const planningParameters = dualRead.parameters;
 
     this._emit({ type: "planning_started", goalId: goal.id, planId, planningTime: 0, stepCount: 0, timestamp: Date.now() });
+
+    // Sprint 3: passive validation/audit only — never influences planning path.
+    if (options?.context) {
+      try {
+        const comparison = comparePlanningContext(options.context);
+        planningContextAuditStore.record(Object.freeze({
+          timestamp: new Date().toISOString(),
+          goalType: goal.type,
+          goalId: goal.id,
+          featureFlagEnabled: options.context.metadata.featureFlagEnabled,
+          goal,
+          canonicalResourceRequest: options.context.canonicalResourceRequest,
+          comparison,
+          dualRead,
+        }));
+      } catch {
+        // Non-blocking: context validation must never break planning.
+      }
+    }
 
     try {
       if (!goal.valid) {
         return this._fail(planId, goal, "Goal is invalid", t0);
       }
 
-      const descriptors = GoalCapabilityRegistry.resolve(goal.type as GoalType);
+      const descriptors = GoalCapabilityRegistry.resolve(planningGoalType as GoalType);
 
       // Unknown goalType (not registered) — treat as empty
       if (descriptors === null || descriptors.length === 0) {
@@ -95,13 +129,13 @@ export class ConversationPlanningEngine {
       let idx = 0;
       const steps: ExecutionStep[] = descriptors.map((desc) => {
         idx++;
-        const mergedParams = { ...desc.params, ...goal.parameters };
+        const mergedParams = { ...desc.params, ...planningParameters };
         // Observabilidade: emite evento no RuntimeDebug para conectores Drive.
         // _debugExecutionId is injected by ConversationPipeline from the Runtime's executionId.
         // goal.id is a goal identifier, NOT an executionId — never used as one.
         if (desc.capability === "drive.downloadFile" || desc.connector === "google-drive") {
-          const execId = typeof (goal.parameters as Record<string, unknown>)?._debugExecutionId === "string"
-            ? (goal.parameters as Record<string, unknown>)._debugExecutionId as string
+          const execId = typeof (planningParameters as Record<string, unknown>)?._debugExecutionId === "string"
+            ? (planningParameters as Record<string, unknown>)._debugExecutionId as string
             : ""; // intentionally empty — correlation loss will be warned by RuntimeDebug
           RuntimeDebug.emit({
             executionId: execId,
@@ -109,11 +143,11 @@ export class ConversationPlanningEngine {
             source:      "Planner",
             event:       "drive step parameters",
             payload: {
-              goalType:          goal.type,
+              goalType:          planningGoalType,
               connector:         desc.connector,
               capability:        desc.capability,
               descParams:        desc.params,
-              goalParameters:    goal.parameters,
+              goalParameters:    planningParameters,
               mergedParams,
               "fileName in merged":  mergedParams.fileName  ?? null,
               "fileId in merged":    mergedParams.fileId    ?? null,
@@ -153,6 +187,7 @@ export class ConversationPlanningEngine {
       totalFailed:  this._totalFailed,
       registrySize: GoalCapabilityRegistry.size,
       lastPlans:    [...this._lastPlans].reverse().slice(0, 20),
+      contextValidation: planningContextAuditStore.getMetrics(),
     };
   }
 

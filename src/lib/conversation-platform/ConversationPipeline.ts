@@ -450,6 +450,39 @@ class ConversationPipeline {
         timestamp: Date.now(),
       });
 
+      // ── Sprint 2: Resource Intent Canonicalization Layer (RICL) ─────────
+      // Pass-through only: builds CanonicalResourceRequest in parallel.
+      // No planning/runtime decision depends on this output in this sprint.
+      let canonicalRequestForPlanning: import("@/lib/resource-intent-canonicalization").CanonicalResourceRequestV1 | null = null;
+      try {
+        const {
+          resourceIntentCanonicalizerProvider,
+        } = await import("@/lib/resource-intent-canonicalization");
+
+        const canonicalizer = resourceIntentCanonicalizerProvider.get();
+        const canonicalized = canonicalizer.canonicalize({
+          userMessage,
+          goal: goalBridgeResult.goal,
+          parameters: goalBridgeResult.goal.parameters,
+          traceId: executionId,
+        });
+        canonicalRequestForPlanning = canonicalized.request;
+
+        conversationStore.emit({
+          type: "PIPELINE_STEP",
+          executionId,
+          payload: {
+            step: "ricl_canonicalized",
+            canonicalizerId: canonicalizer.id,
+            contractVersion: canonicalized.request.version,
+            durationMs: canonicalized.durationMs,
+          },
+          timestamp: Date.now(),
+        });
+      } catch {
+        // Non-blocking by design: canonicalization must never alter flow.
+      }
+
       // ── [M1.11 AUDIT PROBE — GOAL] ────────────────────────────────────────
       try {
         const { driveAuditStore, AUDIT_MODE } = await import("@/lib/audit/DriveAuditStore");
@@ -507,9 +540,38 @@ class ConversationPipeline {
       // v2: Connector answer → ExecutionOutcome → ResponseCandidate
       if (goalBridgeResult.goal.valid) {
         const { conversationPlanningEngine } = await import("@/lib/planning-engine-e022/ConversationPlanningEngine");
+        const {
+          isCanonicalResourceRequestEnabled,
+          isCanonicalResourceReadEnabled,
+        } = await import("@/lib/resource-intent-canonicalization");
+        const crrEnabled = isCanonicalResourceRequestEnabled();
+        const crrReadEnabled = isCanonicalResourceReadEnabled();
+        const planningContextEnabled = crrEnabled || crrReadEnabled;
+
+        const planningContext: import("@/lib/planning-engine-e022/PlanningContextTypes").PlanningContext | null = planningContextEnabled
+          ? Object.freeze({
+              goal: goalBridgeResult.goal,
+              canonicalResourceRequest: canonicalRequestForPlanning,
+              runtimeContext: Object.freeze({
+                sessionId: session.id,
+                executionId,
+                routerIntent: routerResult.intent?.intent ?? null,
+              }),
+              metadata: Object.freeze({
+                source: "conversation-pipeline",
+                traceId: executionId,
+                featureFlagEnabled: planningContextEnabled,
+                receivedAtMs: Date.now(),
+              }),
+            })
+          : null;
+
         // [EF-49.2 probe] PlanningEngine
         try { const { ef492Store: _s } = await import("@/lib/ef492/RuntimePipelineInstrument"); _s.record(executionId, { layer: "ConversationPlanningEngine", source: "production_runtime", timestamp: Date.now(), durationMs: null, input: `goalType="${goalBridgeResult.goal.type}"`, output: "ExecutionPlan", caller: "ConversationPipeline", next: "ConversationRuntimeEngine", status: "executed" }); } catch { /* non-blocking */ }
-        const planResult = conversationPlanningEngine.plan(goalBridgeResult.goal, { mode: "live" });
+        const planResult = conversationPlanningEngine.plan(goalBridgeResult.goal, {
+          mode: "live",
+          context: planningContext,
+        });
 
         try {
           const { runtimeTraceStore } = await import("@/lib/runtime-trace/RuntimeTraceStore");
