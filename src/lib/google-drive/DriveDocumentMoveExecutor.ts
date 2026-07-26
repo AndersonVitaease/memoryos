@@ -77,13 +77,69 @@ export async function executeDriveDocumentMove(
 ): Promise<MoveResult> {
   const t0 = Date.now();
 
-  // [STEP 1] Validação de parâmetros
-  const fileId = typeof payload.fileId === "string" ? payload.fileId.trim() : null;
+  // [STEP 0] Resolução: nome → ID (correção — nunca existia antes; o
+  // MoveParameters já previa fileName/newFolderName no tipo, mas essa etapa
+  // nunca foi implementada, então esses campos eram sempre ignorados).
+  let fileId = typeof payload.fileId === "string" ? payload.fileId.trim() : null;
   const fileName = typeof payload.fileName === "string" ? payload.fileName.trim() : null;
-  const newParentId = typeof payload.newParentId === "string" ? payload.newParentId.trim() : null;
+  let newParentId = typeof payload.newParentId === "string" ? payload.newParentId.trim() : null;
+  const newFolderName = typeof payload.newFolderName === "string" ? payload.newFolderName.trim() : null;
   const debugExecId = typeof payload._debugExecutionId === "string" ? payload._debugExecutionId : "unknown";
 
-  console.log(`[org-02][STEP-1] Validação`, { fileId, fileName, newParentId, debugExecId });
+  if (!fileId && fileName) {
+    try {
+      const { searchByName } = await import("./GoogleDriveConnector");
+      const results = await searchByName(fileName, { pageSize: 5 });
+      const nonFolders = results.filter((f) => f.mimeType !== "application/vnd.google-apps.folder");
+      if (nonFolders.length === 0) {
+        return {
+          ok: false,
+          error: `File "${fileName}" not found in Google Drive`,
+          code: ERROR_CODES.FILE_NOT_FOUND,
+          durationMs: Date.now() - t0,
+        };
+      }
+      fileId = nonFolders[0].id;
+      console.log(`[org-02][STEP-0] fileName "${fileName}" resolvido para fileId="${fileId}"`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return {
+        ok: false,
+        error: `Failed to resolve fileName "${fileName}": ${msg}`,
+        code: ERROR_CODES.FILE_NOT_FOUND,
+        durationMs: Date.now() - t0,
+      };
+    }
+  }
+
+  if (!newParentId && newFolderName) {
+    try {
+      const { searchByName } = await import("./GoogleDriveConnector");
+      const results = await searchByName(newFolderName, { pageSize: 5 });
+      const folders = results.filter((f) => f.mimeType === "application/vnd.google-apps.folder");
+      if (folders.length === 0) {
+        return {
+          ok: false,
+          error: `Destination folder "${newFolderName}" not found in Google Drive`,
+          code: ERROR_CODES.FOLDER_NOT_FOUND,
+          durationMs: Date.now() - t0,
+        };
+      }
+      newParentId = folders[0].id;
+      console.log(`[org-02][STEP-0] newFolderName "${newFolderName}" resolvido para newParentId="${newParentId}"`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return {
+        ok: false,
+        error: `Failed to resolve newFolderName "${newFolderName}": ${msg}`,
+        code: ERROR_CODES.FOLDER_NOT_FOUND,
+        durationMs: Date.now() - t0,
+      };
+    }
+  }
+
+  // [STEP 1] Validação de parâmetros
+  console.log(`[org-02][STEP-1] Validação`, { fileId, fileName, newParentId, newFolderName, debugExecId });
 
   if (!fileId) {
     return {
