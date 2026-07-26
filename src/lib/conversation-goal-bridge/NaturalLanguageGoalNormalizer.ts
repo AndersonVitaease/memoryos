@@ -153,7 +153,15 @@ export function normalize(message: string): NormalizationResult {
     (a, b) => Math.max(...b.signals.map((s) => s.length)) - Math.max(...a.signals.map((s) => s.length))
   );
 
-  let entity       = stripped || trimmed;
+  // Sprint 1 (correção do antipadrão): `stripped` já é a forma correta da
+  // entidade — pode ser "" quando a mensagem inteira era ruído gramatical
+  // (verbo de comando sozinho, pontuação, etc). NÃO cair de volta para
+  // `trimmed` (a mensagem bruta) nesse caso — isso fazia o próprio verbo
+  // de comando virar "entidade extraída". O contrato público continua
+  // `entity: string` (nunca null/undefined) — apenas passa a poder ser
+  // uma string vazia, que os consumidores existentes já tratam
+  // corretamente via `.trim()` truthy-check.
+  let entity        = stripped;
   let isKnownEntity = false;
 
   for (const ke of sorted) {
@@ -201,7 +209,7 @@ const TEST_CASES: Array<{ input: string; expected: string }> = [
   { input: "Nota Fiscal",                          expected: "Nota Fiscal" },
   { input: "DANFE",                                expected: "DANFE" },
   { input: "DARF",                                 expected: "DARF" },
-  { input: "Boleto",                               expected: "Boleto" },
+  { input: "Boleto",                                expected: "Boleto" },
   { input: "Fatura",                               expected: "Fatura" },
   { input: "Contrato",                             expected: "Contrato" },
   { input: "Pagamento",                            expected: "Pagamento" },
