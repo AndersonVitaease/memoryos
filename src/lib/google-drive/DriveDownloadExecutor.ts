@@ -256,9 +256,17 @@ export async function executeDriveDownload(
       fileName,
       queryFallback,
       rawText,
+      // Sprint 4 (correção do antipadrão): rawText NÃO entra mais na decisão
+      // de estratégia — só nos logs de auditoria acima. Antes, rawText
+      // sempre vinha preenchido pelos estágios anteriores (GoalRegistry /
+      // Semantic Providers), mesmo sem fileName/query reais, e por estar
+      // aqui no gate, o fallback de contexto de conversa nunca disparava.
+      // Pós correções do GoalRegistry/Normalizer/Providers, fileName/query
+      // já chegam limpos (null quando não há entidade real) — rawText
+      // deixou de ser necessário como sinal de decisão.
       strategy: explicitFileId
         ? "explicit fileId"
-        : !fileName && !queryFallback && !rawText
+        : !fileName && !queryFallback
           ? "conversation context"
           : "search by name",
     },
@@ -267,7 +275,7 @@ export async function executeDriveDownload(
   if (explicitFileId) {
     RuntimeDebug.emit({ executionId: _execId, connector: "google-drive", source: "DriveDownloadExecutor", event: "using strategy: explicit fileId", payload: { explicitFileId } });
     resolvedFileId = explicitFileId;
-  } else if (!fileName && !queryFallback && !rawText) {
+  } else if (!fileName && !queryFallback) {
     // No explicit identifier — attempt recovery from session-scoped ConversationStore.
     // Uses the generic connector context API: no Drive-specific types in the store.
     // Covers "Esse mesmo" / "faz o download" / "o terceiro" cross-turn references.
@@ -301,7 +309,11 @@ export async function executeDriveDownload(
     const _resolutionStart = Date.now();
 
     const resolveLegacySearch = async (): Promise<ResourceResolutionSearchOutcome<DriveResolutionPayload, DownloadFailure>> => {
-      const rawSearchQuery = fileName ?? queryFallback ?? rawText ?? "";
+      // Sprint 4: `fileName ?? queryFallback` já garante um valor não-nulo
+      // aqui — a negação do gate acima garante que pelo menos um dos dois
+      // é verdadeiro. `rawText` removido da cadeia — nunca mais deve ser
+      // usado como termo de busca, só como dado de auditoria.
+      const rawSearchQuery = fileName ?? queryFallback ?? "";
       const searchQuery = resolveDriveSearchQuery(rawSearchQuery);
       if (!searchQuery) {
         return Object.freeze({
