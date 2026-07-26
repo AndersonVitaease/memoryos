@@ -41,6 +41,12 @@ import { DocumentProcessingEngine } from "@/lib/document-processing/DocumentProc
 import type { RankingPolicy, ExportPolicy, RankCandidate } from "./DriveDownloadPolicies";
 import { httpStatusToErrorCode } from "./DriveConnectorContract";
 import type { ConnectorAudit } from "./DriveConnectorContract";
+import { isMultiCandidateResolutionEnabled } from "./MultiCandidateResolutionFeatureFlag";
+import {
+  resourceResolutionEngine,
+  type ResourceCandidateSelector,
+  type ResourceResolutionSearchOutcome,
+} from "@/lib/resource-resolution-engine";
 
 // ── Search error mapping ──────────────────────────────────────────────────────
 // searchByName() propagates errors (auth/network) instead of swallowing them
@@ -69,6 +75,26 @@ function searchErrorMessage(code: DownloadErrorCode): string {
     case "API_UNAVAILABLE": return "Google Drive API indisponível. Tente novamente.";
     default:                return "Erro ao buscar arquivos no Google Drive.";
   }
+}
+
+function parseCandidateSelectors(parameters: Record<string, unknown>): ResourceCandidateSelector[] {
+  const raw = parameters.candidateSelectors;
+  if (!Array.isArray(raw)) return [];
+
+  const parsed: ResourceCandidateSelector[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const rec = item as Record<string, unknown>;
+    const id = typeof rec.id === "string" ? rec.id : "";
+    const value = typeof rec.value === "string" ? rec.value : "";
+    const strategy = typeof rec.strategy === "string" ? rec.strategy : "unknown";
+    const priority = typeof rec.priority === "number" ? rec.priority : Number.MAX_SAFE_INTEGER;
+    const confidence = typeof rec.confidence === "number" ? rec.confidence : 0;
+    if (!id || !value) continue;
+    parsed.push(Object.freeze({ id, value, strategy, priority, confidence }));
+  }
+
+  return parsed;
 }
 
 // ── Public result types ───────────────────────────────────────────────────────
@@ -125,6 +151,11 @@ export interface DownloadFailure {
 
 export type DownloadResult = DownloadSuccess | DownloadFailure;
 
+interface DriveResolutionPayload {
+  readonly fileId: string;
+  readonly ranked: readonly RankCandidate[];
+}
+
 // ── Execution options ─────────────────────────────────────────────────────────
 
 export interface DownloadOptions {
@@ -171,6 +202,8 @@ export async function executeDriveDownload(
   const outputFormat   = typeof parameters.outputFormat === "string" ? parameters.outputFormat.trim() : null;
   const queryFallback  = typeof parameters.query       === "string" ? parameters.query.trim()       : null;
   const rawText        = typeof parameters.rawText     === "string" ? parameters.rawText.trim()     : null;
+  const candidateSelectors = parseCandidateSelectors(parameters);
+  const multiCandidateResolutionEnabled = isMultiCandidateResolutionEnabled();
 
   // executionId is propagated from ConversationRuntimeEngine via parameters._debugExecutionId.
   // It is NEVER generated here. If missing, it means the Runtime did not inject it —
@@ -265,86 +298,126 @@ export async function executeDriveDownload(
       return fail("NO_PARAMS", "Nenhum fileId ou fileName fornecido. Especifique o nome do arquivo para download.", null);
     }
   } else {
-    const rawSearchQuery = fileName ?? queryFallback ?? rawText ?? "";
-    const searchQuery = resolveDriveSearchQuery(rawSearchQuery);
-    if (!searchQuery) {
-      return fail("NO_PARAMS", "Nenhum fileId ou fileName fornecido. Especifique o nome do arquivo para download.", null);
-    }
+    const _resolutionStart = Date.now();
 
-    if (isTooGenericDriveSearchQuery(searchQuery)) {
-      return fail(
-        "NO_PARAMS",
-        `Não foi possível confirmar qual arquivo do Drive corresponde a "${searchQuery}". Forneça um nome ou identificador mais específico.`,
-        null,
-      );
-    }
+    const resolveLegacySearch = async (): Promise<ResourceResolutionSearchOutcome<DriveResolutionPayload, DownloadFailure>> => {
+      const rawSearchQuery = fileName ?? queryFallback ?? rawText ?? "";
+      const searchQuery = resolveDriveSearchQuery(rawSearchQuery);
+      if (!searchQuery) {
+        return Object.freeze({
+          success: false,
+          reason: "missing_search_query",
+          value: null,
+          failure: fail("NO_PARAMS", "Nenhum fileId ou fileName fornecido. Especifique o nome do arquivo para download.", null),
+        });
+      }
 
-    RuntimeDebug.emit({ executionId: _execId, connector: "google-drive", source: "DriveDownloadExecutor", event: "using strategy: search by name", payload: { searchQuery, fileName, queryFallback, rawText } });
+      if (isTooGenericDriveSearchQuery(searchQuery)) {
+        return Object.freeze({
+          success: false,
+          reason: "generic_search_query",
+          value: null,
+          failure: fail(
+            "NO_PARAMS",
+            `Não foi possível confirmar qual arquivo do Drive corresponde a "${searchQuery}". Forneça um nome ou identificador mais específico.`,
+            null,
+          ),
+        });
+      }
 
-    // Delegate search to connector — no HTTP here
-    const _searchT0 = Date.now();
-    let searchResults: Awaited<ReturnType<typeof connector.searchByName>>;
-    try {
-      searchResults = await connector.searchByName(searchQuery, { pageSize: 20 });
-    } catch (e) {
-      const code = searchErrorToDownloadCode(e);
+      RuntimeDebug.emit({ executionId: _execId, connector: "google-drive", source: "DriveDownloadExecutor", event: "using strategy: search by name", payload: { searchQuery, fileName, queryFallback, rawText } });
+
+      const _searchT0 = Date.now();
+      let searchResults: Awaited<ReturnType<typeof connector.searchByName>>;
+      try {
+        searchResults = await connector.searchByName(searchQuery, { pageSize: 20 });
+      } catch (e) {
+        const code = searchErrorToDownloadCode(e);
+        try {
+          const { driveAuditStore, AUDIT_MODE } = await import("@/lib/audit/DriveAuditStore");
+          if (AUDIT_MODE) {
+            driveAuditStore.record("drive_search", "error", {
+              searchQuery, fileName, queryFallback, rawText,
+              error: (e as Error).message ?? String(e),
+              durationMs: Date.now() - _searchT0,
+            }, _searchT0);
+          }
+        } catch { /* non-blocking */ }
+
+        return Object.freeze({
+          success: false,
+          reason: "search_error",
+          value: null,
+          failure: fail(code, searchErrorMessage(code), null),
+        });
+      }
+
       try {
         const { driveAuditStore, AUDIT_MODE } = await import("@/lib/audit/DriveAuditStore");
         if (AUDIT_MODE) {
-          driveAuditStore.record("drive_search", "error", {
-            searchQuery, fileName, queryFallback, rawText,
-            error: (e as Error).message ?? String(e),
+          driveAuditStore.record("drive_search", searchResults.length > 0 ? "ok" : "error", {
+            searchQuery,
+            fileName,
+            queryFallback,
+            rawText,
+            resultCount:   searchResults.length,
+            results:       searchResults.slice(0, 10).map((f) => ({
+              id:          f.id,
+              name:        f.name,
+              mimeType:    f.mimeType,
+              modifiedTime: f.modifiedTime,
+            })),
             durationMs: Date.now() - _searchT0,
           }, _searchT0);
         }
       } catch { /* non-blocking */ }
-      return fail(code, searchErrorMessage(code), null);
-    }
 
-    // ── [M1.11 AUDIT PROBE — DRIVE SEARCH] ────────────────────────────────
-    try {
-      const { driveAuditStore, AUDIT_MODE } = await import("@/lib/audit/DriveAuditStore");
-      if (AUDIT_MODE) {
-        driveAuditStore.record("drive_search", searchResults.length > 0 ? "ok" : "error", {
-          searchQuery,
-          fileName,
-          queryFallback,
-          rawText,
-          resultCount:   searchResults.length,
-          results:       searchResults.slice(0, 10).map((f) => ({
-            id:          f.id,
-            name:        f.name,
-            mimeType:    f.mimeType,
-            modifiedTime: f.modifiedTime,
-          })),
-          durationMs: Date.now() - _searchT0,
-        }, _searchT0);
+      if (searchResults.length === 0) {
+        return Object.freeze({
+          success: false,
+          reason: "not_found",
+          value: null,
+          failure: fail("NOT_FOUND", `Arquivo não encontrado: "${searchQuery}". Verifique o nome ou o acesso ao Google Drive.`, null),
+        });
       }
-    } catch { /* non-blocking */ }
-    // ── [END M1.11 AUDIT PROBE] ───────────────────────────────────────────
 
-    if (searchResults.length === 0) {
-      return fail("NOT_FOUND", `Arquivo não encontrado: "${searchQuery}". Verifique o nome ou o acesso ao Google Drive.`, null);
-    }
+      const filteredResults = filterDownloadCandidates(searchResults);
+      const ranked = rankCandidates(filteredResults, searchQuery, rankPolicy);
 
-    const filteredResults = filterDownloadCandidates(searchResults);
-    const ranked = rankCandidates(filteredResults, searchQuery, rankPolicy);
-    resolvedCandidates = ranked;
+      if (ranked.length === 0) {
+        return Object.freeze({
+          success: false,
+          reason: "no_downloadable_results",
+          value: null,
+          failure: fail("NOT_FOUND", `Nenhum arquivo encontrado: "${searchQuery}". Verifique o nome ou o acesso ao Google Drive.`, null),
+        });
+      }
 
-    if (ranked.length === 0) {
-      // All results were folders or filtered out
-      return fail("NOT_FOUND", `Nenhum arquivo encontrado: "${searchQuery}". Verifique o nome ou o acesso ao Google Drive.`, null);
-    } else if (ranked.length === 1) {
-      resolvedFileId = ranked[0].id;
-      resolvedBy     = "search";
-    } else {
+      if (ranked.length === 1) {
+        return Object.freeze({
+          success: true,
+          reason: "resolved",
+          value: Object.freeze({ fileId: ranked[0].id, ranked }),
+          failure: null,
+        });
+      }
+
       const scoreDiff = ranked[0].score - ranked[1].score;
       if (scoreDiff >= rankPolicy.ambiguityThreshold) {
-        resolvedFileId = ranked[0].id;
-        resolvedBy     = "search";
-      } else {
-        const list = ranked.slice(0, 10).map((f, i) => `${i + 1}. ${f.name}`).join("\n");
-        return {
+        return Object.freeze({
+          success: true,
+          reason: "resolved",
+          value: Object.freeze({ fileId: ranked[0].id, ranked }),
+          failure: null,
+        });
+      }
+
+      const list = ranked.slice(0, 10).map((f, i) => `${i + 1}. ${f.name}`).join("\n");
+      return Object.freeze({
+        success: false,
+        reason: "ambiguous",
+        value: null,
+        failure: {
           ok:         false,
           code:       "AMBIGUOUS",
           message:    `Encontrei ${ranked.length} arquivo(s) com nome similar a "${searchQuery}". Qual deseja baixar?\n\n${list}`,
@@ -353,8 +426,76 @@ export async function executeDriveDownload(
           candidates: ranked.slice(0, 10),
           durationMs: Date.now() - t0,
           audit:      makeAudit("failure", startedAt, Date.now() - t0, "AMBIGUOUS"),
-        };
+        },
+      });
+    };
+
+    const resolution = await resourceResolutionEngine.resolve<DriveResolutionPayload, DownloadFailure>({
+      connector: "google-drive",
+      featureEnabled: multiCandidateResolutionEnabled,
+      candidateSelectors,
+      metadata: Object.freeze({ capability: "drive.downloadFile" }),
+      searchCallback: async (candidate) => {
+        const query = resolveDriveSearchQuery(candidate.value);
+        if (!query) {
+          return Object.freeze({ success: false, reason: "empty_query_after_normalization", value: null, failure: null });
+        }
+
+        if (isTooGenericDriveSearchQuery(query)) {
+          return Object.freeze({ success: false, reason: "query_too_generic", value: null, failure: null });
+        }
+
+        const searchResults = await connector.searchByName(query, { pageSize: 20 });
+        if (searchResults.length === 0) {
+          return Object.freeze({ success: false, reason: "not_found", value: null, failure: null });
+        }
+
+        const filtered = filterDownloadCandidates(searchResults);
+        const ranked = rankCandidates(filtered, query, rankPolicy);
+
+        if (ranked.length === 0) {
+          return Object.freeze({ success: false, reason: "no_downloadable_results", value: null, failure: null });
+        }
+
+        return Object.freeze({
+          success: true,
+          reason: "resolved",
+          value: Object.freeze({ fileId: ranked[0].id, ranked }),
+          failure: null,
+        });
+      },
+      fallbackCallback: resolveLegacySearch,
+    });
+
+    try {
+      const { driveAuditStore, AUDIT_MODE } = await import("@/lib/audit/DriveAuditStore");
+      if (AUDIT_MODE) {
+        driveAuditStore.record("candidate_resolution", resolution.success ? "ok" : "error", {
+          featureEnabled: multiCandidateResolutionEnabled,
+          connector: resolution.connector,
+          attempts: resolution.attempts,
+          totalAttempts: resolution.attempts.length,
+          winnerCandidateId: resolution.winnerCandidate?.id ?? null,
+          winnerStrategy: resolution.winnerStrategy,
+          exhausted: resolution.exhausted,
+          usedFallback: resolution.usedFallback,
+          durationMs: Date.now() - _resolutionStart,
+        }, _resolutionStart);
       }
+    } catch { /* non-blocking */ }
+
+    if (resolution.success && resolution.result) {
+      resolvedFileId = resolution.result.fileId;
+      resolvedBy = "search";
+      resolvedCandidates = [...resolution.result.ranked];
+    } else if (resolution.failure) {
+      return resolution.failure;
+    } else {
+      return fail(
+        "NOT_FOUND",
+        "Nenhum arquivo encontrado apos esgotar todos os CandidateSelectors fornecidos.",
+        null,
+      );
     }
   }
 
