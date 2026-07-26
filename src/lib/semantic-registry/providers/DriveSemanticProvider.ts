@@ -146,12 +146,20 @@ const INTENT_RULES: readonly IntentRule[] = Object.freeze([
       "encontrar arquivo", "pesquisar drive",
       "search drive", "find file",
     ],
-    extractEntities: (lower, base) => ({
-      ...base,
-      intentAction: "search",
-      // propagate full text as query when no fileName extracted
-      query: (base.fileName as string | undefined) ?? lower.trim(),
-    }),
+    extractEntities: (_lower, base) => {
+      // Sprint 2a (correção do antipadrão): o provider NÃO cria query a
+      // partir do texto bruto. `query` não faz parte do contrato de
+      // entidades deste arquivo (ver cabeçalho, linhas 29-30). Só
+      // repassamos `query` quando uma entidade real (`fileName`) foi
+      // extraída — do contrário, omitimos a chave inteiramente, e o
+      // `query: norm.entity` já injetado por ImplicitConnectorIntentDetector
+      // (produtor correto, Sprint 1) permanece intacto no merge.
+      const result: Record<string, unknown> = { ...base, intentAction: "search" };
+      if (typeof base.fileName === "string" && base.fileName.trim()) {
+        result.query = base.fileName;
+      }
+      return result;
+    },
   },
 
   // ── priority 40: list ───────────────────────────────────────────────────────
@@ -306,12 +314,18 @@ export const DriveSemanticProvider: SemanticProvider = Object.freeze({
     // The provider does NOT invent searchFiles.
     // The detector preserves null — it never decides.
     if (domain.score > 0) {
+      // Sprint 2a (correção do antipadrão): não sintetizar `query` a partir
+      // do texto bruto aqui também — mesmo padrão do Caso 1. Hoje esta
+      // branch é inerte do ponto de vista do pipeline oficial, porque
+      // ImplicitConnectorIntentDetector descarta `entities` sempre que
+      // `goalType === null` (ver ImplicitConnectorIntentDetector.ts) — mas
+      // é o mesmo defeito, no mesmo arquivo, e não deve ficar para trás.
       return Object.freeze({
         connector:  "drive",
         goalType:   null,
         confidence: domain.score,
         evidences:  Object.freeze([...domain.evidences, "domain-only:intent-unknown"]),
-        entities:   Object.freeze({ ...entities, query: lower.trim() }),
+        entities:   Object.freeze(entities),
       });
     }
 
