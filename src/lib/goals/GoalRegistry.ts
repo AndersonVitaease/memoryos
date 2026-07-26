@@ -677,13 +677,22 @@ const _builtins: GoalDefinition[] = [
       "organizar arquivo", "organize file",
       "mover arquivo para pasta", "move file to folder",
       "organize", "organizing",
+      // Correção: frases naturais como "mova X para Y" / "mover X para Y"
+      // não continham "mova arquivo"/"mova para" como substring contígua
+      // (o nome do arquivo fica no meio) — sinais soltos cobrem isso.
+      "mover", "mova", "move",
     ],
     extractParams: (msg) => {
       // Extract file name and destination folder if mentioned
       const quoted = msg.match(/"([^"]+)"/)?.[1];
-      const afterMover = msg.match(/(?:mover|move)\s+(?:o\s+)?(?:arquivo\s+)?(.+?)(?:\s+para|\s+to|\s+em|$)/i)?.[1]?.trim();
+      const afterMover = msg.match(/(?:mover|move|mova)\s+(?:o\s+)?(?:arquivo\s+)?(.+?)(?:\s+para|\s+to|\s+em|$)/i)?.[1]?.trim();
+      // Correção: extrai também o destino ("para X" / "to X") — antes essa
+      // informação era descartada, e o executor não tinha como resolver
+      // a pasta de destino a partir do nome.
+      const afterPara = msg.match(/(?:\spara|\sto)\s+(?:a\s+pasta\s+|the\s+folder\s+|pasta\s+|folder\s+)?(.+?)$/i)?.[1]?.trim();
       return {
         fileName: quoted ?? (afterMover || null),
+        newFolderName: afterPara || null,
         rawText: msg.trim(),
       };
     },
