@@ -201,7 +201,8 @@ const _builtins: CapabilityMapping[] = [
   // ── Drive ──────────────────────────────────────────────────────────────────
   // connector id: "google-drive"  (GoogleDriveConnector.ts:118)
   // capabilities: "drive.files.list", "drive.files.get", "drive.files.search",
-  //               "drive.about.get", "connectivity.ping", "health.full"
+  //               "drive.about.get", "drive.createFolder", "drive.uploadFile", "drive.moveFile",
+  //               "drive.deleteFile", "drive.renameFile", "drive.copyFile", "connectivity.ping", "health.full"
   //
   // Sprint C-01: default params added so every Drive goal produces a valid
   // payload even when the user intent carries no explicit parameters.
@@ -214,6 +215,56 @@ const _builtins: CapabilityMapping[] = [
       {
         connector: "google-drive",
         capability: "drive.createFolder",
+        params: {},
+      },
+    ],
+  },
+  {
+    goalType: "drive.uploadFile" as GoalType,
+    descriptors: [
+      {
+        connector: "google-drive",
+        capability: "drive.uploadFile",
+        params: {},
+      },
+    ],
+  },
+  {
+    goalType: "drive.moveFile" as GoalType,
+    descriptors: [
+      {
+        connector: "google-drive",
+        capability: "drive.moveFile",
+        params: {},
+      },
+    ],
+  },
+  {
+    goalType: "drive.deleteFile" as GoalType,
+    descriptors: [
+      {
+        connector: "google-drive",
+        capability: "drive.deleteFile",
+        params: {},
+      },
+    ],
+  },
+  {
+    goalType: "drive.renameFile" as GoalType,
+    descriptors: [
+      {
+        connector: "google-drive",
+        capability: "drive.renameFile",
+        params: {},
+      },
+    ],
+  },
+  {
+    goalType: "drive.copyFile" as GoalType,
+    descriptors: [
+      {
+        connector: "google-drive",
+        capability: "drive.copyFile",
         params: {},
       },
     ],
