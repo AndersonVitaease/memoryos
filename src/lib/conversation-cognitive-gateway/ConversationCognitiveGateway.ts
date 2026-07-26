@@ -76,12 +76,12 @@ const INTENT_PATTERNS: Array<{ intent: CognitiveIntent; keywords: string[]; requ
   { intent: "project_status",          keywords: ["status", "where did we stop", "onde paramos", "estado do projeto", "current state", "estado atual", "project state", "o que fizemos"], requiresCognitive: true },
   { intent: "next_sprint",             keywords: ["next sprint", "próximo sprint", "próxima sprint", "what next", "o que vem depois", "recommend", "recomend", "next step", "próxima etapa"], requiresCognitive: true },
   { intent: "repository_analysis",     keywords: ["reposit", "github", "branch", "commit", "code", "código", "repo", "pull request", "pr "], requiresCognitive: true },
-  { intent: "application_analysis",    keywords: ["application", "entities", "sessions", "projects", "base44", "database", "entidades", "sessions", "sessões"], requiresCognitive: true },
+  { intent: "application_analysis",    keywords: ["application", "entities", "sessions", "projects", "base44", "database", "entidades", "sessões"], requiresCognitive: true }, // IA-018: "dados" removido — genérico demais
   { intent: "knowledge_reconstruction",keywords: ["knowledge", "conhecimento", "reconstruct", "reconstruir", "what do we know", "o que sabemos", "knowledge graph"], requiresCognitive: true },
   { intent: "architecture_question",   keywords: ["architect", "arquitetura", "pipeline", "engine", "component", "componente", "module", "módulo", "layer", "camada"], requiresCognitive: true },
   { intent: "implementation_status",   keywords: ["implemented", "implementado", "done", "completo", "finished", "concluído", "what was built", "o que foi construído", "certification", "certified"], requiresCognitive: true },
   { intent: "connector_diagnostics",   keywords: ["connector", "conector", "diagnostic", "diagnóstico", "health", "saúde", "operational", "operacional", "ping"], requiresCognitive: true },
-  { intent: "project_history",         keywords: ["history", "histórico", "timeline", "what happened", "o que aconteceu", "past", "passado", "decisions", "decisões"], requiresCognitive: true },
+  { intent: "project_history",         keywords: ["history", "histórico", "timeline", "what happened", "o que aconteceu", "passado", "decisions", "decisões"], requiresCognitive: true }, // IA-038: "past" removido — substring de "pasta" (folder)
   { intent: "technical_debt",          keywords: ["debt", "dívida técnica", "tech debt", "refactor", "refatorar", "missing", "faltando", "gap", "issue", "problema pendente"], requiresCognitive: true },
 ];
 

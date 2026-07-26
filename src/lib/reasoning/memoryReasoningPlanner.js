@@ -175,17 +175,156 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
     kfmContext,
   });
 
+  // === ETAPA 5.4: ROTEADOR SEMÂNTICO DE AÇÕES DO DRIVE (IA-040) ===
+  // Generaliza o IA-035: em vez de só reconhecer "pedido de conteúdo de
+  // arquivo", agora reconhece QUALQUER ação de Drive (listar, abrir pasta,
+  // baixar, ler conteúdo) por COMPREENSÃO DA FRASE, não por lista de
+  // palavras-chave — e, quando reconhece, EXECUTA a ação de verdade aqui
+  // mesmo, incluindo uma capacidade que não existia antes (abrir uma pasta
+  // específica e mostrar o que tem dentro). Isso só roda quando nada mais
+  // (GoalRegistry, Producer B) já resolveu a mensagem — é a rede de
+  // segurança semântica final, não uma substituição do sistema existente.
+  async function _classifyDriveAction(message) {
+    try {
+      return await base44.integrations.Core.InvokeLLM({
+        prompt: `O usuário disse: "${message}"
+
+O usuário está conversando com o MemoryOS, um assistente conectado ao Google Drive. Determine se essa mensagem é um pedido de ação relacionada ao Drive, e qual ação exatamente.
+
+Ações possíveis:
+- "list_root": listar os arquivos/pastas recentes do Drive em geral (ex: "drive", "quais arquivos tenho").
+- "open_folder": abrir/ver o conteúdo de uma PASTA específica (ex: "abrir pasta X", "o que tem na pasta X").
+- "download_file": baixar um ARQUIVO específico (ex: "baixar X", "download de X").
+- "read_content": ver o CONTEÚDO/dados de dentro de um arquivo específico (ex: "mostre os dados de X", "leia X").
+- null: não é um pedido relacionado ao Drive.
+
+Se envolver um nome de arquivo/pasta específico, extraia em "target" (sem palavras de comando tipo "abrir", "baixar"). Se não houver nome específico, "target" deve ser null.`,
+        response_json_schema: {
+          type: "object",
+          properties: {
+            is_drive_action: { type: "boolean" },
+            action: { type: ["string", "null"] },
+            target: { type: ["string", "null"] },
+          },
+          required: ["is_drive_action", "action", "target"],
+        },
+      });
+    } catch {
+      return { is_drive_action: false, action: null, target: null };
+    }
+  }
+
+  function _makeDriveActionPlan(extra = {}) {
+    return {
+      goal: goal.id,
+      goalLabel: goal.label,
+      strategy: goal.strategy,
+      skills: skills.map((s) => ({ id: s.id, name: s.name, score: s.score })),
+      skillsCount: skills.length,
+      sourcesCount: sources.length,
+      contextLength: context ? context.length : 0,
+      capabilities: [],
+      capabilitiesCount: 0,
+      needsMoreInfo: false,
+      service: null,
+      responseTimeMs: Date.now() - startTime,
+      handledByGuard: "IA-040",
+      ...extra,
+    };
+  }
+
+  const _hasRealDocRead = Boolean(
+    capabilityResult.capabilityResults?.officialLibrary?.selectedDocs?.length > 0
+  );
+  const _driveAction = await _classifyDriveAction(userMsg);
+
+  // ── NOVA CAPACIDADE: abrir uma pasta específica e listar o conteúdo ──────
+  // Isso não existia antes — "abrir pasta X" sempre caía na conversa livre
+  // e inventava, ou (depois do IA-038) só dizia "não sei fazer isso". Agora
+  // executa de verdade: busca a pasta pelo nome, lista o que tem dentro.
+  if (_driveAction?.is_drive_action && _driveAction.action === "open_folder" && _driveAction.target) {
+    try {
+      const { searchByName, listFiles } = await import("@/lib/google-drive/GoogleDriveConnector");
+      const candidates = await searchByName(_driveAction.target, { pageSize: 10 });
+      const folder = candidates.find((f) => f.mimeType === "application/vnd.google-apps.folder");
+      if (folder) {
+        const listing = await listFiles({ folderId: folder.id, pageSize: 30 });
+        const itemLines = listing.files
+          .map((f) => `- ${f.name}${f.webViewLink ? ` — [Visualizar](${f.webViewLink})` : ""}`)
+          .join("\n");
+        const response = listing.files.length > 0
+          ? `🔒 [IA-040-ATIVO] Conteúdo da pasta **"${folder.name}"**:\n\n${itemLines}`
+          : `🔒 [IA-040-ATIVO] A pasta **"${folder.name}"** está vazia (ou não consegui ler o conteúdo dela).`;
+        return { response, plan: _makeDriveActionPlan({ action: "open_folder", target: folder.name }), sources };
+      }
+      const response = `🔒 [IA-040-ATIVO] Não encontrei nenhuma pasta chamada "${_driveAction.target}" no seu Drive.`;
+      return { response, plan: _makeDriveActionPlan({ action: "open_folder", target: _driveAction.target, found: false }), sources };
+    } catch {
+      // Se a execução real falhar por qualquer motivo, cai no fluxo normal
+      // abaixo em vez de travar a resposta inteira.
+    }
+  }
+
+  if (_driveAction?.is_drive_action && _driveAction.action === "read_content" && !_hasRealDocRead) {
+    const response = "🔒 [IA-035-ATIVO] Ainda não tenho uma leitura real do conteúdo desse arquivo — não posso te mostrar dados dele sem antes acessá-lo de verdade. Se quiser, você pode anexar o arquivo direto aqui na conversa (eu leio na hora), ou me pedir para tentar abrir/baixar ele do Drive primeiro.";
+    return { response, plan: _makeDriveActionPlan({ action: "read_content", target: _driveAction.target }), sources };
+  }
+
+  // ── IA-042: "download_file" agora EXECUTA de verdade — antes só era
+  // classificado e depois caía sem ação nenhuma na conversa livre, que
+  // então inventava algo parecido com mensagens anteriores da conversa.
+  if (_driveAction?.is_drive_action && _driveAction.action === "download_file" && _driveAction.target) {
+    try {
+      const { executeDriveDownload } = await import("@/lib/google-drive/DriveDownloadExecutor");
+      const dl = await executeDriveDownload({ fileName: _driveAction.target }, "");
+      let response;
+      if (dl.ok) {
+        const preview = dl.content && dl.content.trim().length > 0 && dl.content.length < 3000
+          ? `\n\n${dl.content.trim()}`
+          : "\n\n(Arquivo baixado com sucesso, mas o conteúdo não é texto legível diretamente.)";
+        response = `Arquivo **${dl.fileName}** baixado com sucesso.${preview}`;
+      } else {
+        response = dl.message || "Não foi possível baixar esse arquivo.";
+      }
+      return { response, plan: _makeDriveActionPlan({ action: "download_file", target: _driveAction.target, ok: dl.ok }), sources };
+    } catch {
+      // Se falhar por qualquer motivo, cai no fluxo normal abaixo.
+    }
+  }
+
   // === ETAPA 6: UMA ÚNICA CHAMADA AO LLM ===
   // Todos os especialistas, memória, objetivo, estratégia e resultados de capacidades
   // estão neste único prompt. O LLM nunca é chamado por capacidade ou especialista.
   setPhase?.("generating");
   const rawResponse = await base44.integrations.Core.InvokeLLM({ prompt });
 
+  // === ETAPA 6.5: TRAVA DETERMINÍSTICA CONTRA CONFABULAÇÃO DE DOCUMENTO (IA-032) ===
+  // Camada extra de segurança, mantida como rede de proteção secundária —
+  // caso a mensagem não bata no padrão da IA-035 acima mas o modelo ainda
+  // assim tente confabular sobre documento em algum outro formato de pergunta.
+  const _rawText = typeof rawResponse === "string" ? rawResponse : String(rawResponse);
+  const _FAKE_DOCUMENT_MARKERS = [
+    "processando documento", "análise concluída", "analise concluida",
+    "documento está íntegro", "documento esta integro",
+    "extraí as informações", "extrai as informacoes",
+    "extraí os dados", "extrai os dados",
+    "dados extraídos", "dados extraidos",
+    "documento foi localizado", "iniciando acesso ao documento",
+    "conteúdo do arquivo processado", "conteudo do arquivo processado",
+    "pontos estruturados contidos", "conforme o nosso processamento",
+    "relatório de conformidade", "relatorio de conformidade",
+    "reexaminei o conteúdo", "reexaminei o conteudo",
+  ];
+  const _looksLikeFakeDocumentClaim = _FAKE_DOCUMENT_MARKERS.some((marker) =>
+    _rawText.toLowerCase().includes(marker)
+  );
+  const _finalRawResponse = (_looksLikeFakeDocumentClaim && !_hasRealDocRead)
+    ? "Ainda não consegui ler o conteúdo real desse arquivo — não tenho um resultado de leitura confirmado para ele agora. Se quiser, você pode anexar o arquivo diretamente aqui na conversa, que eu leio na hora, ou me pedir para tentar abrir/baixar ele pelo Drive."
+    : _rawText;
+
   // === ETAPA 7: MEMORY SYNTHESIZER ===
   // Síntese determinística (sem LLM): elimina repetições, melhora fluidez.
-  const response = synthesizeResponse(
-    typeof rawResponse === "string" ? rawResponse : String(rawResponse)
-  );
+  const response = synthesizeResponse(_finalRawResponse);
 
   const responseTimeMs = Date.now() - startTime;
 

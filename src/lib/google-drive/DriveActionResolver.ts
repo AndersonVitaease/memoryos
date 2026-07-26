@@ -25,6 +25,8 @@ export interface SelectedFile {
   mimeType:     string;
   parents:      string[];
   webViewLink:  string | null;
+  /** IA-028: link de download direto */
+  webContentLink: string | null;
   createdTime:  string | null;
   modifiedTime: string | null;
   owners:       string[];
@@ -74,119 +76,4 @@ export function getDownloadConfig(mimeType: string): DownloadConfig {
 // ── Logger (EF-9) ─────────────────────────────────────────────────────────────
 
 export function driveLog(phase: string, data: Record<string, unknown>): void {
-  console.log(`[DriveActionResolver][${phase}]`, JSON.stringify(data, null, 2));
-}
-
-// ── Guards (EF-10) ────────────────────────────────────────────────────────────
-
-export function assertFileId(fileId: string | null | undefined, operation: string): void {
-  if (!fileId || fileId.trim() === "") {
-    const err = Object.assign(
-      new Error(`NO_FILE_SELECTED — ${operation} requires a fileId. Run a search first.`),
-      { code: "NO_FILE_SELECTED", operation },
-    );
-    driveLog("GUARD_VIOLATION", { operation, fileId: fileId ?? null });
-    throw err;
-  }
-}
-
-// ── Core resolver ─────────────────────────────────────────────────────────────
-
-export function resolveFromSearchResult(
-  searchResult: DriveListResult,
-  intent: string,
-): ResolveResult {
-  const files = searchResult.files ?? [];
-
-  driveLog("SEARCH", { intent, resultCount: files.length, query: searchResult.searchQuery });
-
-  if (files.length === 0) {
-    driveLog("NOT_FOUND", { intent });
-    return {
-      status: "NOT_FOUND",
-      selectedFile: null,
-      candidates: [],
-      clarification: null,
-      error: `Nenhum arquivo encontrado para: "${intent}"`,
-    };
-  }
-
-  // EF-4: single result — auto-select
-  if (files.length === 1) {
-    const f = toSelectedFile(files[0]);
-    driveLog("SELECTED", { intent, fileId: f.id, name: f.name, mimeType: f.mimeType });
-    return {
-      status: "RESOLVED",
-      selectedFile: f,
-      candidates: [f],
-      clarification: null,
-      error: null,
-    };
-  }
-
-  // EF-5: multiple results — request clarification
-  const candidates = files.slice(0, 10).map(toSelectedFile);
-  const list = candidates.map((c, i) => `${i + 1}. ${c.name} (${describeType(c.mimeType)})`).join("\n");
-  const clarification = `Encontrei ${files.length} arquivo(s). Qual deseja abrir?\n\n${list}`;
-
-  driveLog("AMBIGUOUS", { intent, count: files.length, candidates: candidates.map(c => c.name) });
-
-  return {
-    status: "AMBIGUOUS",
-    selectedFile: null,
-    candidates,
-    clarification,
-    error: null,
-  };
-}
-
-// ── Select by index from candidates ──────────────────────────────────────────
-
-export function selectCandidate(candidates: SelectedFile[], index: number): ResolveResult {
-  if (index < 0 || index >= candidates.length) {
-    return {
-      status: "NOT_FOUND",
-      selectedFile: null,
-      candidates,
-      clarification: null,
-      error: `Opção ${index + 1} inválida — escolha entre 1 e ${candidates.length}`,
-    };
-  }
-  const f = candidates[index];
-  driveLog("CANDIDATE_SELECTED", { fileId: f.id, name: f.name, index });
-  return {
-    status: "RESOLVED",
-    selectedFile: f,
-    candidates,
-    clarification: null,
-    error: null,
-  };
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function toSelectedFile(f: DriveFile): SelectedFile {
-  return {
-    id:           f.id,
-    name:         f.name,
-    mimeType:     f.mimeType,
-    parents:      f.parents,
-    webViewLink:  f.webViewLink,
-    createdTime:  f.createdTime,
-    modifiedTime: f.modifiedTime,
-    owners:       f.owners,
-  };
-}
-
-function describeType(mimeType: string): string {
-  const map: Record<string, string> = {
-    [DRIVE_MIME.DOCUMENT]:     "Google Docs",
-    [DRIVE_MIME.SPREADSHEET]:  "Google Sheets",
-    [DRIVE_MIME.PRESENTATION]: "Google Slides",
-    [DRIVE_MIME.PDF]:          "PDF",
-    [DRIVE_MIME.FOLDER]:       "Pasta",
-  };
-  if (map[mimeType]) return map[mimeType];
-  if (mimeType.startsWith("image/")) return "Imagem";
-  return mimeType;
-}
+  console.log(`[DriveActionResolver][${phase}]`,
