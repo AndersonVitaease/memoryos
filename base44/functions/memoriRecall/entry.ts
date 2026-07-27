@@ -76,9 +76,18 @@ Deno.serve(async (req) => {
 
     const parsed = JSON.parse(dataLine.slice('data: '.length));
 
+    const mcpResult = parsed.result;
+    const isToolError = mcpResult?.isError === true;
+    const errorText = isToolError ? (mcpResult?.content?.[0]?.text ?? 'Memori tool error') : null;
+
     if (parsed.error) {
-      console.error('[memoriRecall] MCP error', JSON.stringify(parsed.error));
+      console.error('[memoriRecall] MCP protocol error', JSON.stringify(parsed.error));
       return Response.json({ error: parsed.error.message ?? 'Memori MCP error' }, { status: 502 });
+    }
+
+    if (isToolError) {
+      console.error('[memoriRecall] Tool error', errorText);
+      return Response.json({ error: errorText }, { status: 502 });
     }
 
     const structuredContent = parsed.result?.structuredContent;

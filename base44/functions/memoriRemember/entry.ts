@@ -57,6 +57,7 @@ Deno.serve(async (req) => {
         params: {
           name: 'memori_advanced_augmentation',
           arguments: {
+            project_id: 'memoryos',
             user_message: userMessage,
             assistant_response: assistantResponse,
           },
@@ -83,9 +84,18 @@ Deno.serve(async (req) => {
 
     const parsed = JSON.parse(dataLine.slice('data: '.length));
 
+    const mcpResult = parsed.result;
+    const isToolError = mcpResult?.isError === true;
+    const errorText = isToolError ? (mcpResult?.content?.[0]?.text ?? 'Memori tool error') : null;
+
     if (parsed.error) {
-      console.error('[memoriRemember] MCP error', JSON.stringify(parsed.error));
+      console.error('[memoriRemember] MCP protocol error', JSON.stringify(parsed.error));
       return Response.json({ error: parsed.error.message ?? 'Memori MCP error' }, { status: 502 });
+    }
+
+    if (isToolError) {
+      console.error('[memoriRemember] Tool error', errorText);
+      return Response.json({ error: errorText }, { status: 502 });
     }
 
     return Response.json({
