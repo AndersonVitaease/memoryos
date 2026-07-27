@@ -97,7 +97,7 @@ export async function executeDriveCopy(
   const parentFolderId = payload.parentFolderId?.trim();
 
   try {
-    const token = await ensureValidToken("drive");
+    const token = await ensureValidToken("default");
     if (!token) {
       return {
         ok: false,
