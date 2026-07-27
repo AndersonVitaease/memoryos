@@ -395,16 +395,6 @@ const _builtins: GoalDefinition[] = [
     extractParams: () => ({ days: 7 }),
   },
   {
-    type: "calendar.listToday",
-    namespace: "calendar",
-    description: "List today's calendar events",
-    signals: [
-      "hoje", "today", "agenda", "compromissos", "reunioes", "eventos",
-      "calendario", "minha agenda", "meu calendario",
-    ],
-    extractParams: () => ({ dateOffset: 0 }),
-  },
-  {
     type: "calendar.listCalendars" as GoalType,
     namespace: "calendar",
     description: "List all Google Calendars available to the user",
@@ -414,6 +404,16 @@ const _builtins: GoalDefinition[] = [
       "list calendars", "my calendars", "show calendars",
     ],
     extractParams: () => ({}),
+  },
+  {
+    type: "calendar.listToday",
+    namespace: "calendar",
+    description: "List today's calendar events",
+    signals: [
+      "hoje", "today", "agenda", "compromissos", "reunioes", "eventos",
+      "calendario", "minha agenda", "meu calendario",
+    ],
+    extractParams: () => ({ dateOffset: 0 }),
   },
 
   // ── Drive ──────────────────────────────────────────────────────────────────
