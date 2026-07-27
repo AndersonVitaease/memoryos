@@ -637,3 +637,9 @@ export async function runCapabilityRuntimeTests(): Promise<CRTSuiteReport> {
     certified: failed === 0, cases, durationMs: Date.now() - t0Suite,
   };
 }
+
+export async function runCapabilityHardeningTests(): Promise<CRTTestCase[]> {
+  // TODO: suíte de "hardening tests" ainda não implementada.
+  // Retorna lista vazia por enquanto — não inventa resultados.
+  return [];
+}
