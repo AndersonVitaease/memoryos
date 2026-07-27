@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { runCapabilityRegistryTests }  from "@/lib/capability-registry/CapabilityRegistryTests";
+import { runCapabilityRegistryTests }  from "@/lib/capability-registry/capabilityRegistryTests";
 import { CapabilityRegistry }          from "@/lib/capability-registry/CapabilityRegistry";
 import { CapabilitySelectionEngine }   from "@/lib/capability-selection/CapabilitySelectionEngine";
 
