@@ -18,7 +18,7 @@
  * - VERIFICATION_ERROR
  */
 
-import { ensureValidToken } from "../google-auth/GoogleAuthSession";
+import { ensureValidToken, getAccessToken } from "../google-auth/GoogleAuthSession";
 
 const FILE_FIELDS = "id,name,mimeType,size,webViewLink,iconLink,createdTime,modifiedTime,owners(emailAddress),shared,starred,trashed,parents,description,thumbnailLink";
 
@@ -114,7 +114,8 @@ export async function executeDriveRename(
 
   // STEP-2: Verify file exists
   try {
-    const token = await ensureValidToken("default");
+    await ensureValidToken("default");
+    const token = getAccessToken("default");
     if (!token) {
       return {
         ok: false,

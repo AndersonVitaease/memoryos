@@ -17,7 +17,7 @@
  * - AUTH_REQUIRED
  */
 
-import { ensureValidToken } from "../google-auth/GoogleAuthSession";
+import { ensureValidToken, getAccessToken } from "../google-auth/GoogleAuthSession";
 
 const FILE_FIELDS = "id,name,mimeType,size,webViewLink,iconLink,createdTime,modifiedTime,owners(emailAddress),shared,starred,trashed,parents,description,thumbnailLink";
 
@@ -97,7 +97,8 @@ export async function executeDriveCopy(
   const parentFolderId = payload.parentFolderId?.trim();
 
   try {
-    const token = await ensureValidToken("default");
+    await ensureValidToken("default");
+    const token = getAccessToken("default");
     if (!token) {
       return {
         ok: false,
