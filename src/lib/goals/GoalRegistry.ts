@@ -421,19 +421,50 @@ const _builtins: GoalDefinition[] = [
   {
     type: "openrouter.chatCompletion" as GoalType,
     namespace: "openrouter",
-    description: "Send a prompt to a specific AI model via OpenRouter",
+    description: "Routes prompts to a category-appropriate AI model via OpenRouter",
     signals: [
       "perguntar ao modelo", "pergunte ao modelo", "perguntar para o modelo",
       "usar o modelo", "usando o modelo", "consultar o modelo",
       "ask the model", "ask model", "query model",
+      "perguntar à ia", "pergunte à ia", "perguntar pra ia", "pergunte pra ia",
+      "pergunta para a ia", "pergunta pra ia", "consultar a ia", "consulte a ia",
+      "traduzir", "traduza", "resuma isso", "resumir isso", "resuma",
+      "escrever codigo", "escreva codigo", "corrigir codigo", "corrija codigo",
+      "analisar documento", "analise este documento", "analisar este texto",
+      "transcrever", "transcreva",
+      "ask ai", "ask the ai", "query ai",
     ],
     extractParams: (msg: string) => {
-      const modelMatch = msg.match(/(?:modelo|model)\s+([a-zA-Z0-9_\-\/.:]+)/i)?.[1];
+      // Mapa de categoria → modelo. Ajustável aqui conforme necessário.
+      const TASK_MODEL_MAP: Record<string, string> = {
+        summarize:    "anthropic/claude-sonnet-5",
+        code:         "qwen/qwen3-coder-plus",
+        general:      "openai/gpt-5.6-sol",
+        document:     "anthropic/claude-opus-5",
+        transcribe:   "openai/gpt-audio",
+      };
+      const DEFAULT_MODEL = "openai/gpt-oss-20b";
+
+      const lower = msg.toLowerCase();
+      let category: string | null = null;
+      if (/resum|summar/i.test(lower)) category = "summarize";
+      else if (/codigo|código|code/i.test(lower)) category = "code";
+      else if (/documento|texto|document/i.test(lower)) category = "document";
+      else if (/transcrev|transcri/i.test(lower)) category = "transcribe";
+      else if (/pergunt|ask|query|consult/i.test(lower)) category = "general";
+
+      const explicitModelMatch = msg.match(/(?:modelo|model)\s+([a-zA-Z0-9_\-\/.:]+)/i)?.[1];
       const promptMatch = msg.match(/(?:pergunta|prompt|pergunte|pergunta:|:)\s*["']?(.+?)["']?$/i)?.[1];
+
+      const chosenModel = explicitModelMatch
+        ?? (category ? TASK_MODEL_MAP[category] : null)
+        ?? DEFAULT_MODEL;
+
       return {
-        model: modelMatch ?? null,
+        model: chosenModel,
         prompt: promptMatch ?? msg.trim(),
         rawText: msg.trim(),
+        _category: category ?? "default",
       };
     },
   },
