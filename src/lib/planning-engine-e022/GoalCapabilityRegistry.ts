@@ -153,6 +153,24 @@ const _builtins: CapabilityMapping[] = [
       { connector: "gmail", capability: "getAttachment", params: {} },
     ],
   },
+  {
+    goalType: "gmail.listLabels" as GoalType,
+    descriptors: [
+      { connector: "gmail", capability: "listLabels", params: {} },
+    ],
+  },
+  {
+    goalType: "gmail.createDraft" as GoalType,
+    descriptors: [
+      { connector: "gmail", capability: "createDraft", params: {} },
+    ],
+  },
+  {
+    goalType: "gmail.sendEmail" as GoalType,
+    descriptors: [
+      { connector: "gmail", capability: "sendEmail", params: {} },
+    ],
+  },
 
   // ── Calendar ───────────────────────────────────────────────────────────────
   // connector id: "google-calendar"  (GoogleCalendarConnector.ts:115)
