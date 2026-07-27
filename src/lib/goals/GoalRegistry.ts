@@ -19,6 +19,7 @@
 
 import type { GoalType } from "./GoalTypes";
 import type { CognitiveIntent } from "@/lib/conversation-cognitive-gateway/CCGTypes";
+import { pickModelForMessage } from "@/lib/openrouter/categoryRouter";
 
 // ── GoalDefinition ────────────────────────────────────────────────────────────
 
@@ -490,7 +491,6 @@ const _builtins: GoalDefinition[] = [
       "ask ai", "ask the ai", "query ai",
     ],
     extractParams: (msg: string) => {
-      const { pickModelForMessage } = require("@/lib/openrouter/categoryRouter");
       const explicitModelMatch = msg.match(/(?:modelo|model)\s+([a-zA-Z0-9_\-\/.:]+)/i)?.[1];
       const promptMatch = msg.match(/(?:pergunta|prompt|pergunte|pergunta:|:)\s*["']?(.+?)["']?$/i)?.[1];
 
