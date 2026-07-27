@@ -292,6 +292,54 @@ Se envolver um nome de arquivo/pasta específico, extraia em "target" (sem palav
     }
   }
 
+  // === ETAPA 5.6: DESVIO PARA SERVIÇO DE IA (OpenRouter) ===
+  // Quando o serviço detectado é "ai" (traduzir, resumir, gerar código,
+  // etc.), a resposta do modelo especializado do OpenRouter DEVE ser a
+  // resposta final, sem passar por outra chamada de LLM que reescreveria
+  // por cima (o que destruiria o propósito de escolher um modelo
+  // especializado). Por isso, aqui pulamos a ETAPA 6 inteiramente
+  // quando esse serviço é detectado e a mensagem tem conteúdo suficiente.
+  if (capabilityResult.serviceInfo?.id === "ai" && capabilityResult.serviceInfo?.hasConnector) {
+    try {
+      const { pickModelForMessage } = await import("@/lib/openrouter/categoryRouter");
+      const { OpenRouterConnector } = await import("@/lib/connector-runtime/connectors/OpenRouterConnector");
+      const { model } = pickModelForMessage(userMsg);
+      const connector = new OpenRouterConnector();
+      const result = await connector.execute(
+        "openrouter.chatCompletion",
+        { model, prompt: userMsg },
+        { executionId: `mrp-${Date.now()}`, workspaceId: "default" },
+      );
+      if (result.success && result.data?.reply) {
+        const response = result.data.reply;
+        return {
+          response,
+          plan: {
+            goal: goal.id,
+            goalLabel: goal.label,
+            strategy: goal.strategy,
+            skills: skills.map((s) => ({ id: s.id, name: s.name, score: s.score })),
+            skillsCount: skills.length,
+            sourcesCount: sources.length,
+            contextLength: context ? context.length : 0,
+            capabilities: [],
+            capabilitiesCount: 0,
+            needsMoreInfo: false,
+            service: "ai",
+            responseTimeMs: Date.now() - startTime,
+            handledByGuard: "AI-SERVICE-DIRECT",
+            model,
+          },
+          sources,
+        };
+      }
+    } catch (err) {
+      // Se a execução real falhar por qualquer motivo, cai no fluxo
+      // normal abaixo (a única chamada de LLM), em vez de travar a
+      // resposta inteira.
+    }
+  }
+
   // === ETAPA 6: UMA ÚNICA CHAMADA AO LLM ===
   // Todos os especialistas, memória, objetivo, estratégia e resultados de capacidades
   // estão neste único prompt. O LLM nunca é chamado por capacidade ou especialista.
