@@ -81,6 +81,10 @@ const OFFICIAL_FACTORIES: ConnectorFactory[] = [
     const { GitHubConnector } = await import("./connectors/GitHubConnector");
     return new GitHubConnector();
   },
+  async () => {
+    const { OpenRouterConnector } = await import("./connectors/OpenRouterConnector");
+    return new OpenRouterConnector();
+  },
 ];
 
 // ── ConnectorBootstrap ────────────────────────────────────────────────────────
