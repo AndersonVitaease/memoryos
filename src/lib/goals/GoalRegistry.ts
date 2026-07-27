@@ -578,11 +578,17 @@ const _builtins: GoalDefinition[] = [
       "eliminar arquivo",
       "delete this",
       "deletar isso",
+      // Correção: frases naturais como "deletar X" sem a palavra "arquivo".
+      "deletar", "delete", "deleta", "remover", "remove", "apagar", "eliminar",
     ],
-    extractParams: (msg: string) => ({
-      fileId: null,
-      rawText: msg.trim(),
-    }),
+    extractParams: (msg: string) => {
+      const quoted = msg.match(/"([^"]+)"/)?.[1];
+      const afterVerb = msg.match(/(?:deletar|delete|deleta|remover|remove|apagar|eliminar)\s+(?:o\s+)?(?:arquivo\s+)?(.+?)$/i)?.[1]?.trim();
+      return {
+        fileName: quoted ?? (afterVerb || null),
+        rawText: msg.trim(),
+      };
+    },
   },
 
   // ── Drive Organization — Sprint create-folder-01 ───────────────────────────
@@ -628,12 +634,17 @@ const _builtins: GoalDefinition[] = [
       "mudar nome",
       "change file name",
       "alter name",
+      // Correção: frases naturais como "renomear X para Y".
+      "renomear", "rename", "renomeia",
     ],
-    extractParams: (msg: string) => ({
-      fileId: null,
-      newName: null,
-      rawText: msg.trim(),
-    }),
+    extractParams: (msg: string) => {
+      const m = msg.match(/(?:renomear|rename|renomeia|mudar nome|change name|alterar nome|change file name|alter name)\s+(?:o\s+arquivo\s+|a\s+pasta\s+|de\s+)?(.+?)\s+(?:para|to)\s+(.+?)$/i);
+      return {
+        fileName: m?.[1]?.trim() ?? null,
+        newName: m?.[2]?.trim() ?? null,
+        rawText: msg.trim(),
+      };
+    },
   },
 
   // ── Drive Organization — Sprint copy-01 ──────────────────────────────────
@@ -657,12 +668,19 @@ const _builtins: GoalDefinition[] = [
       "fazer cópia",
       "make a copy",
       "criar cópia",
+      // Correção: frases naturais como "copiar X" sem a palavra "arquivo".
+      "copiar", "copy", "copia", "duplicar", "duplicate", "duplica",
     ],
-    extractParams: (msg: string) => ({
-      fileId: null,
-      newName: null,
-      rawText: msg.trim(),
-    }),
+    extractParams: (msg: string) => {
+      const quoted = msg.match(/"([^"]+)"/)?.[1];
+      const afterVerb = msg.match(/(?:copiar|copy|copia|duplicar|duplicate|duplica)\s+(?:o\s+arquivo\s+|a\s+pasta\s+)?(.+?)(?:\s+como|\s+as|\s+para|\s+to|$)/i)?.[1]?.trim();
+      const newName = msg.match(/(?:\scomo|\sas)\s+(.+?)$/i)?.[1]?.trim();
+      return {
+        fileName: quoted ?? (afterVerb || null),
+        newName: newName || null,
+        rawText: msg.trim(),
+      };
+    },
   },
 
   // ── Drive Organization — Sprint org-02 ───────────────────────────────────
