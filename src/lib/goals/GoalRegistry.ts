@@ -405,6 +405,38 @@ const _builtins: GoalDefinition[] = [
     ],
     extractParams: () => ({}),
   },
+
+  // ── OpenRouter ─────────────────────────────────────────────────────────────
+  {
+    type: "openrouter.listModels" as GoalType,
+    namespace: "openrouter",
+    description: "List available AI models via OpenRouter",
+    signals: [
+      "listar modelos de ia", "listar modelos", "quais modelos de ia",
+      "modelos disponiveis", "modelos disponíveis", "modelos de ia disponiveis",
+      "list ai models", "list models", "available models",
+    ],
+    extractParams: () => ({}),
+  },
+  {
+    type: "openrouter.chatCompletion" as GoalType,
+    namespace: "openrouter",
+    description: "Send a prompt to a specific AI model via OpenRouter",
+    signals: [
+      "perguntar ao modelo", "pergunte ao modelo", "perguntar para o modelo",
+      "usar o modelo", "usando o modelo", "consultar o modelo",
+      "ask the model", "ask model", "query model",
+    ],
+    extractParams: (msg: string) => {
+      const modelMatch = msg.match(/(?:modelo|model)\s+([a-zA-Z0-9_\-\/.:]+)/i)?.[1];
+      const promptMatch = msg.match(/(?:pergunta|prompt|pergunte|pergunta:|:)\s*["']?(.+?)["']?$/i)?.[1];
+      return {
+        model: modelMatch ?? null,
+        prompt: promptMatch ?? msg.trim(),
+        rawText: msg.trim(),
+      };
+    },
+  },
   {
     type: "calendar.listToday",
     namespace: "calendar",
