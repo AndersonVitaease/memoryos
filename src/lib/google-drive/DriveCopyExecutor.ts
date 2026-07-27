@@ -22,7 +22,8 @@ import { ensureValidToken } from "../google-auth/GoogleAuthSession";
 const FILE_FIELDS = "id,name,mimeType,size,webViewLink,iconLink,createdTime,modifiedTime,owners(emailAddress),shared,starred,trashed,parents,description,thumbnailLink";
 
 export interface CopyParameters {
-  fileId: string;
+  fileId?: string;
+  fileName?: string;
   newName?: string;
   parentFolderId?: string;
   _debugExecutionId?: string;
@@ -52,8 +53,38 @@ export async function executeDriveCopy(
 ): Promise<CopyResult> {
   const start = Date.now();
 
+  // STEP-0: Resolução: nome → ID (correção — nunca existia antes)
+  let fileId = payload.fileId?.trim() || null;
+  const sourceFileName = payload.fileName?.trim() || null;
+
+  if (!fileId && sourceFileName) {
+    try {
+      const { searchByName } = await import("./GoogleDriveConnector");
+      const results = await searchByName(sourceFileName, { pageSize: 5 });
+      const nonFolders = results.filter((f) => f.mimeType !== "application/vnd.google-apps.folder");
+      if (nonFolders.length === 0) {
+        return {
+          ok: false,
+          error: `File "${sourceFileName}" not found in Google Drive`,
+          errorCode: "FILE_NOT_FOUND",
+          durationMs: Date.now() - start,
+        };
+      }
+      fileId = nonFolders[0].id;
+      console.log(`[copy][STEP-0] fileName "${sourceFileName}" resolvido para fileId="${fileId}"`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return {
+        ok: false,
+        error: `Failed to resolve fileName "${sourceFileName}": ${msg}`,
+        errorCode: "FILE_NOT_FOUND",
+        durationMs: Date.now() - start,
+      };
+    }
+  }
+
   // STEP-1: Validate parameters
-  if (!payload.fileId || payload.fileId.trim().length === 0) {
+  if (!fileId) {
     return {
       ok: false,
       error: "fileId is required",
@@ -62,7 +93,6 @@ export async function executeDriveCopy(
     };
   }
 
-  const fileId = payload.fileId.trim();
   const newName = payload.newName?.trim();
   const parentFolderId = payload.parentFolderId?.trim();
 
