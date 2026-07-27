@@ -44,7 +44,7 @@ Deno.serve(async (req) => {
     try {
       const t0 = Date.now();
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      const timeoutId = setTimeout(() => controller.abort(), 3000);
       let res;
       try {
         res = await fetch('https://api.memorilabs.ai/mcp/', {
