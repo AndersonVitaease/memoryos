@@ -216,6 +216,20 @@ const _builtins: CapabilityMapping[] = [
     ],
   },
 
+  // ── OpenRouter ─────────────────────────────────────────────────────────────
+  {
+    goalType: "openrouter.chatCompletion" as GoalType,
+    descriptors: [
+      { connector: "openrouter", capability: "openrouter.chatCompletion", params: {} },
+    ],
+  },
+  {
+    goalType: "openrouter.listModels" as GoalType,
+    descriptors: [
+      { connector: "openrouter", capability: "openrouter.listModels", params: {} },
+    ],
+  },
+
   // ── Drive ──────────────────────────────────────────────────────────────────
   // connector id: "google-drive"  (GoogleDriveConnector.ts:118)
   // capabilities: "drive.files.list", "drive.files.get", "drive.files.search",
