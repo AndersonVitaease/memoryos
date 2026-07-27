@@ -43,28 +43,36 @@ Deno.serve(async (req) => {
 
     try {
       const t0 = Date.now();
-      const res = await fetch('https://api.memorilabs.ai/mcp/', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json, text/event-stream',
-          'X-Memori-API-Key': apiKey,
-          'X-Memori-Entity-Id': MEMORI_ENTITY_ID,
-        },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 1,
-          method: 'tools/call',
-          params: {
-            name: 'memori_advanced_augmentation',
-            arguments: {
-              project_id: 'memoryos',
-              user_message: userMessage,
-              assistant_response: assistantResponse,
-            },
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+      let res;
+      try {
+        res = await fetch('https://api.memorilabs.ai/mcp/', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json, text/event-stream',
+            'X-Memori-API-Key': apiKey,
+            'X-Memori-Entity-Id': MEMORI_ENTITY_ID,
           },
-        }),
-      });
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'tools/call',
+            params: {
+              name: 'memori_advanced_augmentation',
+              arguments: {
+                project_id: 'memoryos',
+                user_message: userMessage,
+                assistant_response: assistantResponse,
+              },
+            },
+          }),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
       console.log('[memoriRemember] FETCH COMPLETED', { status: res.status, ok: res.ok, headers: JSON.stringify([...res.headers.entries()]) });
       const durationMs = Date.now() - t0;
 
