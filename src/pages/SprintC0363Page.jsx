@@ -1,5 +1,5 @@
 import React, { useState, useRef } from "react";
-import { runCapabilityRuntimeTests }   from "@/lib/capability-runtime/CapabilityRuntimeTests";
+import { runCapabilityRuntimeTests }   from "@/lib/capability-runtime/capabilityRuntimeTests";
 import { CapabilityRuntime }           from "@/lib/capability-runtime/CapabilityRuntime";
 import { CapabilityRuntimeTelemetry }  from "@/lib/capability-runtime/CapabilityRuntimeTelemetry";
 
