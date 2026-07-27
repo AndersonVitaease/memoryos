@@ -421,50 +421,86 @@ const _builtins: GoalDefinition[] = [
   {
     type: "openrouter.chatCompletion" as GoalType,
     namespace: "openrouter",
-    description: "Routes prompts to a category-appropriate AI model via OpenRouter",
+    description: "Routes prompts to a category-appropriate AI model via OpenRouter (85 categories)",
     signals: [
       "perguntar ao modelo", "pergunte ao modelo", "perguntar para o modelo",
       "usar o modelo", "usando o modelo", "consultar o modelo",
       "ask the model", "ask model", "query model",
       "perguntar à ia", "pergunte à ia", "perguntar pra ia", "pergunte pra ia",
       "pergunta para a ia", "pergunta pra ia", "consultar a ia", "consulte a ia",
-      "traduzir", "traduza", "resuma isso", "resumir isso", "resuma",
-      "escrever codigo", "escreva codigo", "corrigir codigo", "corrija codigo",
+      "traduzir", "traduza", "tradução",
+      "resuma isso", "resumir isso", "resuma", "resumo",
+      "escrever codigo", "escreva codigo", "corrigir codigo", "corrija codigo", "codigo",
       "analisar documento", "analise este documento", "analisar este texto",
-      "transcrever", "transcreva",
+      "transcrever", "transcreva", "transcrição",
+      "revisar texto", "revise este texto", "corrigir gramatica", "corrija a gramatica",
+      "escreva uma historia", "escreva um roteiro", "escrita criativa",
+      "redija um email", "escreva um email formal",
+      "parafrasear", "parafraseie", "reescreva isso",
+      "sugira um titulo", "gere um titulo", "manchete",
+      "corrigir bug", "corrija esse bug", "revisar codigo",
+      "explique este codigo", "o que este codigo faz",
+      "gerar teste", "escreva um teste", "teste automatizado",
+      "converter codigo", "converta este codigo",
+      "documentar codigo", "documentação tecnica",
+      "escreva um sql", "consulta sql", "query sql",
+      "raciocinio logico", "calculo matematico", "resolva esta equação",
+      "analisar planilha", "analisar dados",
+      "comparar opções", "qual a melhor opção",
+      "verificar fato", "isso é verdade", "fact check",
+      "pesquisa aprofundada", "pesquise sobre",
+      "descreva esta imagem", "o que tem nesta imagem",
+      "leia este texto na imagem", "ocr",
+      "escreva uma proposta comercial",
+      "analisar contrato", "leia este contrato",
+      "planejar projeto", "planejamento de tarefas",
+      "gerar relatorio", "escreva um relatorio",
+      "brainstorm", "gere ideias",
+      "analise swot", "analise estrategica",
+      "descrição de produto",
+      "roteiro de vendas", "script de vendas",
+      "copywriting", "texto publicitario",
+      "post para instagram", "post para redes sociais",
+      "otimização seo", "seo",
+      "gerar hashtags", "sugestão de legenda",
+      "roteiro de video curto",
+      "sugestão de nome", "slogan",
+      "explique de forma didatica", "explique como se eu tivesse",
+      "ata de reuniao", "preencher formulario",
+      "criar apresentação", "estrutura de slides",
+      "organizar tarefas",
+      "responder objeção", "cold call", "prospecção",
+      "follow-up", "resumir historico de conversa",
+      "criar prova", "questoes de prova", "quiz",
+      "corrigir redação", "plano de aula",
+      "sugerir cortes", "timestamps do video", "sugestao de thumbnail",
+      "descrição de video", "extrair citações",
+      "perguntas frequentes", "faq",
+      "anuncio", "texto de anuncio", "teste ab",
+      "politica de troca", "politica de devolução",
+      "mensagem de aniversario", "mensagem de condolencia",
+      "ajude a decidir", "o que cozinhar",
+      "explicar contrato", "explicar documento burocratico",
+      "lista de compras",
+      "reclamação formal", "procon",
+      "explicar exame medico", "perguntas para o medico",
+      "cardapio", "restrição alimentar",
+      "explicar financiamento", "explicar emprestimo",
+      "organizar gastos", "produto financeiro",
       "ask ai", "ask the ai", "query ai",
     ],
     extractParams: (msg: string) => {
-      // Mapa de categoria → modelo. Ajustável aqui conforme necessário.
-      const TASK_MODEL_MAP: Record<string, string> = {
-        summarize:    "anthropic/claude-sonnet-5",
-        code:         "qwen/qwen3-coder-plus",
-        general:      "openai/gpt-5.6-sol",
-        document:     "anthropic/claude-opus-5",
-        transcribe:   "openai/gpt-audio",
-      };
-      const DEFAULT_MODEL = "openai/gpt-oss-20b";
-
-      const lower = msg.toLowerCase();
-      let category: string | null = null;
-      if (/resum|summar/i.test(lower)) category = "summarize";
-      else if (/codigo|código|code/i.test(lower)) category = "code";
-      else if (/documento|texto|document/i.test(lower)) category = "document";
-      else if (/transcrev|transcri/i.test(lower)) category = "transcribe";
-      else if (/pergunt|ask|query|consult/i.test(lower)) category = "general";
-
+      const { pickModelForMessage } = require("@/lib/openrouter/categoryRouter");
       const explicitModelMatch = msg.match(/(?:modelo|model)\s+([a-zA-Z0-9_\-\/.:]+)/i)?.[1];
       const promptMatch = msg.match(/(?:pergunta|prompt|pergunte|pergunta:|:)\s*["']?(.+?)["']?$/i)?.[1];
 
-      const chosenModel = explicitModelMatch
-        ?? (category ? TASK_MODEL_MAP[category] : null)
-        ?? DEFAULT_MODEL;
+      const { model: categoryModel, matched } = pickModelForMessage(msg);
 
       return {
-        model: chosenModel,
+        model: explicitModelMatch ?? categoryModel,
         prompt: promptMatch ?? msg.trim(),
         rawText: msg.trim(),
-        _category: category ?? "default",
+        _category: matched ? categoryModel : "default",
       };
     },
   },
