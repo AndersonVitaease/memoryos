@@ -202,7 +202,7 @@ const _builtins: CapabilityMapping[] = [
   // connector id: "google-drive"  (GoogleDriveConnector.ts:118)
   // capabilities: "drive.files.list", "drive.files.get", "drive.files.search",
   //               "drive.about.get", "drive.createFolder", "drive.uploadFile", "drive.moveFile",
-  //               "drive.deleteFile", "drive.renameFile", "drive.copyFile", "connectivity.ping", "health.full"
+  //               "drive.deleteFile", "drive.renameFile", "drive.copyFile", "drive.summarizeDocument", "drive.extractSections", "connectivity.ping", "health.full"
   //
   // Sprint C-01: default params added so every Drive goal produces a valid
   // payload even when the user intent carries no explicit parameters.
@@ -265,6 +265,26 @@ const _builtins: CapabilityMapping[] = [
       {
         connector: "google-drive",
         capability: "drive.copyFile",
+        params: {},
+      },
+    ],
+  },
+  {
+    goalType: "drive.summarizeDocument" as GoalType,
+    descriptors: [
+      {
+        connector: "google-drive",
+        capability: "drive.summarizeDocument",
+        params: {},
+      },
+    ],
+  },
+  {
+    goalType: "drive.extractSections" as GoalType,
+    descriptors: [
+      {
+        connector: "google-drive",
+        capability: "drive.extractSections",
         params: {},
       },
     ],
