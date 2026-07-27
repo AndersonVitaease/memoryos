@@ -23,7 +23,8 @@ import { ensureValidToken } from "../google-auth/GoogleAuthSession";
 const FILE_FIELDS = "id,name,mimeType,size,webViewLink,iconLink,createdTime,modifiedTime,owners(emailAddress),shared,starred,trashed,parents,description,thumbnailLink";
 
 export interface RenameParameters {
-  fileId: string;
+  fileId?: string;
+  fileName?: string;
   newName: string;
   _debugExecutionId?: string;
 }
@@ -45,16 +46,44 @@ export interface RenameResult {
   errorCode?: string;
 }
 
-const { ensureValidToken } = GoogleAuthSession;
-
 export async function executeDriveRename(
   payload: RenameParameters,
   _authToken?: string,
 ): Promise<RenameResult> {
   const start = Date.now();
 
+  // STEP-0: Resolução: nome → ID (correção — nunca existia antes)
+  let fileId = payload.fileId?.trim() || null;
+  const fileName = payload.fileName?.trim() || null;
+
+  if (!fileId && fileName) {
+    try {
+      const { searchByName } = await import("./GoogleDriveConnector");
+      const results = await searchByName(fileName, { pageSize: 5 });
+      const nonFolders = results.filter((f) => f.mimeType !== "application/vnd.google-apps.folder");
+      if (nonFolders.length === 0) {
+        return {
+          ok: false,
+          error: `File "${fileName}" not found in Google Drive`,
+          errorCode: "FILE_NOT_FOUND",
+          durationMs: Date.now() - start,
+        };
+      }
+      fileId = nonFolders[0].id;
+      console.log(`[rename][STEP-0] fileName "${fileName}" resolvido para fileId="${fileId}"`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return {
+        ok: false,
+        error: `Failed to resolve fileName "${fileName}": ${msg}`,
+        errorCode: "FILE_NOT_FOUND",
+        durationMs: Date.now() - start,
+      };
+    }
+  }
+
   // STEP-1: Validate parameters
-  if (!payload.fileId || payload.fileId.trim().length === 0) {
+  if (!fileId) {
     return {
       ok: false,
       error: "fileId is required",
@@ -96,7 +125,7 @@ export async function executeDriveRename(
     }
 
     const verifyResponse = await fetch(
-      `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(payload.fileId)}?fields=${FILE_FIELDS}`,
+      `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=${FILE_FIELDS}`,
       {
         method: "GET",
         headers: { Authorization: `Bearer ${token}` },
@@ -124,7 +153,7 @@ export async function executeDriveRename(
 
     // STEP-3: Execute PATCH to rename
     const patchResponse = await fetch(
-      `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(payload.fileId)}?fields=${FILE_FIELDS}`,
+      `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=${FILE_FIELDS}`,
       {
         method: "PATCH",
         headers: {
@@ -149,7 +178,7 @@ export async function executeDriveRename(
 
     // STEP-4: Confirm state (verify name changed, other fields preserved)
     const confirmResponse = await fetch(
-      `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(payload.fileId)}?fields=${FILE_FIELDS}`,
+      `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=${FILE_FIELDS}`,
       {
         method: "GET",
         headers: { Authorization: `Bearer ${token}` },
