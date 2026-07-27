@@ -332,6 +332,33 @@ const _builtins: GoalDefinition[] = [
       };
     },
   },
+  {
+    type: "gmail.sendEmail" as GoalType,
+    namespace: "gmail",
+    description: "Send an email via Gmail (requires explicit confirmation word in the phrase)",
+    signals: [
+      "enviar email confirmado",
+      "enviar e-mail confirmado",
+      "envie email confirmado",
+      "envie e-mail confirmado",
+      "confirmado enviar email",
+      "confirmado, enviar email",
+      "send confirmed email",
+      "send email confirmed",
+      "confirmed send email",
+    ],
+    extractParams: (msg: string) => {
+      const toMatch = msg.match(/(?:para|to)\s+([^\s,]+@[^\s,]+\.[^\s,]+)/i)?.[1];
+      const subjectMatch = msg.match(/(?:assunto|subject)[:\s]+["']?([^"'\n]+?)["']?(?:\s+(?:corpo|body|mensagem)|\s*$)/i)?.[1];
+      const bodyMatch = msg.match(/(?:corpo|body|mensagem)[:\s]+["']?([^"'\n]+?)["']?$/i)?.[1];
+      return {
+        to: toMatch ? [toMatch.trim()] : [],
+        subject: subjectMatch ? subjectMatch.trim() : "",
+        body: bodyMatch ? bodyMatch.trim() : "",
+        rawText: msg.trim(),
+      };
+    },
+  },
 
   // ── Calendar ───────────────────────────────────────────────────────────────
   {
