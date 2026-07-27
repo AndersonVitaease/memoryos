@@ -295,6 +295,43 @@ const _builtins: GoalDefinition[] = [
       return { messageId: messageIdMatch ?? null, attachmentId: attachmentIdMatch ?? null };
     },
   },
+  {
+    type: "gmail.listLabels" as GoalType,
+    namespace: "gmail",
+    description: "List all Gmail labels/folders",
+    signals: [
+      "listar labels", "listar etiquetas", "minhas labels", "minhas etiquetas",
+      "quais labels", "quais etiquetas", "mostrar labels", "mostrar etiquetas",
+      "list labels", "my labels", "show labels",
+    ],
+    extractParams: () => ({}),
+  },
+  {
+    type: "gmail.createDraft" as GoalType,
+    namespace: "gmail",
+    description: "Create a draft email in Gmail",
+    signals: [
+      "criar rascunho",
+      "criar um rascunho",
+      "novo rascunho",
+      "rascunho de email",
+      "rascunho de e-mail",
+      "create draft",
+      "new draft",
+      "draft email",
+    ],
+    extractParams: (msg: string) => {
+      const toMatch = msg.match(/(?:para|to)\s+([^\s,]+@[^\s,]+\.[^\s,]+)/i)?.[1];
+      const subjectMatch = msg.match(/(?:assunto|subject)[:\s]+["']?([^"'\n]+?)["']?(?:\s+(?:corpo|body|mensagem)|\s*$)/i)?.[1];
+      const bodyMatch = msg.match(/(?:corpo|body|mensagem)[:\s]+["']?([^"'\n]+?)["']?$/i)?.[1];
+      return {
+        to: toMatch ? [toMatch.trim()] : [],
+        subject: subjectMatch ? subjectMatch.trim() : "",
+        body: bodyMatch ? bodyMatch.trim() : "",
+        rawText: msg.trim(),
+      };
+    },
+  },
 
   // ── Calendar ───────────────────────────────────────────────────────────────
   {
