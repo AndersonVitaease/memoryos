@@ -114,7 +114,7 @@ export async function executeDriveRename(
 
   // STEP-2: Verify file exists
   try {
-    const token = await ensureValidToken("drive");
+    const token = await ensureValidToken("default");
     if (!token) {
       return {
         ok: false,

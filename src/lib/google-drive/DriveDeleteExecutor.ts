@@ -97,7 +97,7 @@ export async function executeDriveDelete(
 
   let fileData: Record<string, unknown>;
   try {
-    const token = await ensureValidToken("drive");
+    const token = await ensureValidToken("default");
     if (!token) {
       console.error(`[delete-01][STEP-2] Erro: Token inválido`);
       return {
@@ -162,7 +162,7 @@ export async function executeDriveDelete(
   console.log(`[delete-01][STEP-3] Execução: Deletando arquivo`);
 
   try {
-    const token = await ensureValidToken("drive");
+    const token = await ensureValidToken("default");
     if (!token) {
       console.error(`[delete-01][STEP-3] Erro: Token inválido`);
       return {
@@ -208,7 +208,7 @@ export async function executeDriveDelete(
   console.log(`[delete-01][STEP-4] Confirmação: Verificando deleção`);
 
   try {
-    const token = await ensureValidToken("drive");
+    const token = await ensureValidToken("default");
     if (!token) {
       // Token issue, but file was likely deleted
       console.log(`[delete-01][STEP-4] ⚠ Não pude confirmar (token inválido), mas arquivo provavelmente deletado`);
