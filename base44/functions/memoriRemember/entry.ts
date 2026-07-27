@@ -65,6 +65,7 @@ Deno.serve(async (req) => {
           },
         }),
       });
+      console.log('[memoriRemember] FETCH COMPLETED', { status: res.status, ok: res.ok, headers: JSON.stringify([...res.headers.entries()]) });
       const durationMs = Date.now() - t0;
 
       const rawText = await res.text();
