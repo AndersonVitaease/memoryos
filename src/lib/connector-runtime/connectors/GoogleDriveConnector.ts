@@ -114,6 +114,8 @@ export class GoogleDriveConnector implements IConnector {
         "drive.deleteFile",
         "drive.renameFile",
         "drive.copyFile",
+        "drive.summarizeDocument",
+        "drive.extractSections",
         "connectivity.ping",
         "health.full",
       ],
