@@ -15,7 +15,8 @@ import { ensureValidToken } from "../google-auth/GoogleAuthSession";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface DeleteParameters {
-  fileId: string;
+  fileId?: string;
+  fileName?: string;
   _debugExecutionId?: string;
 }
 
@@ -35,11 +36,39 @@ export async function executeDriveDelete(
   _authToken: string,
 ): Promise<DeleteResult> {
   const start = Date.now();
-  const fileId = typeof payload.fileId === "string" ? payload.fileId : null;
+  let fileId = typeof payload.fileId === "string" ? payload.fileId : null;
+  const fileName = typeof payload.fileName === "string" ? payload.fileName.trim() : null;
   const debugExecId = typeof payload._debugExecutionId === "string" ? payload._debugExecutionId : "";
 
+  // ─── STEP-0: Resolução: nome → ID (correção — nunca existia antes) ─────────
+  if (!fileId && fileName) {
+    try {
+      const { searchByName } = await import("./GoogleDriveConnector");
+      const results = await searchByName(fileName, { pageSize: 5 });
+      const nonFolders = results.filter((f) => f.mimeType !== "application/vnd.google-apps.folder");
+      if (nonFolders.length === 0) {
+        return {
+          ok: false,
+          error: `File "${fileName}" not found in Google Drive`,
+          errorCode: "FILE_NOT_FOUND",
+          durationMs: Date.now() - start,
+        };
+      }
+      fileId = nonFolders[0].id;
+      console.log(`[delete-01][STEP-0] fileName "${fileName}" resolvido para fileId="${fileId}"`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return {
+        ok: false,
+        error: `Failed to resolve fileName "${fileName}": ${msg}`,
+        errorCode: "FILE_NOT_FOUND",
+        durationMs: Date.now() - start,
+      };
+    }
+  }
+
   // ─── STEP-1: Validação de parâmetros ────────────────────────────────────────
-  console.log(`[delete-01][STEP-1] Validação`, { fileId, debugExecId });
+  console.log(`[delete-01][STEP-1] Validação`, { fileId, fileName, debugExecId });
 
   if (!fileId) {
     console.error(`[delete-01][STEP-1] Erro: fileId ausente`);
