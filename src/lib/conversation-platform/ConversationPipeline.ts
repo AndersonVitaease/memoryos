@@ -1058,6 +1058,7 @@ class ConversationPipeline {
     this._backgroundProcessing(session, [...messages, savedUser]).catch(() => {});
 
     } catch (err) {
+      console.error('[IA-044][PIPELINE-CATCH]', { message: err?.message, stack: err?.stack, name: err?.name });
       // ── Fallback: arbitrate with whatever candidates we have ──────────────
       // Even on error, we attempt to deliver the best available candidate.
       let finalResponse = "Nao consegui processar sua mensagem. Por favor, tente novamente.";
