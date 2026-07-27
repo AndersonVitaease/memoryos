@@ -404,6 +404,17 @@ const _builtins: GoalDefinition[] = [
     ],
     extractParams: () => ({ dateOffset: 0 }),
   },
+  {
+    type: "calendar.listCalendars" as GoalType,
+    namespace: "calendar",
+    description: "List all Google Calendars available to the user",
+    signals: [
+      "listar calendarios", "listar calendários", "meus calendarios", "meus calendários",
+      "quais calendarios", "quais calendários", "mostrar calendarios", "mostrar calendários",
+      "list calendars", "my calendars", "show calendars",
+    ],
+    extractParams: () => ({}),
+  },
 
   // ── Drive ──────────────────────────────────────────────────────────────────
   // PRIORITY ORDER: createFolder > downloadFile > listPDFs > listRecent > openDocument > searchFiles
