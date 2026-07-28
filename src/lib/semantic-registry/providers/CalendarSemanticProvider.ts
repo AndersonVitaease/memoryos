@@ -30,9 +30,22 @@ const RELATIVE_PHRASES = Object.freeze([
   "fin de semana", "fds", "fim de semana",
 ]);
 
+/**
+ * Verifica se `s` aparece em `lower` como palavra/frase INTEIRA.
+ * FIX (auditoria cognição): firstMatch() usava .includes() puro. A lista
+ * TEMPORAL_DIRECT tem "mes" (typo pra "mês", sem acento, pensado pra
+ * digitação sem acento) com peso 0.45 — sozinho já acima do
+ * MIN_SCORE_THRESHOLD (0.20) do ImplicitConnectorIntentDetector. "mes"
+ * é substring de "mesmo" e "mesa" — duas das palavras mais comuns do
+ * português ("isso mesmo", "eu mesmo fiz", "mesa de reunião"). Qualquer
+ * mensagem contendo "mesmo" disparava uma busca real no Calendário.
+ * Fronteira Unicode resolve sem precisar remover a palavra "mes".
+ */
 function firstMatch(lower: string, list: readonly string[]): string | null {
   for (const s of list) {
-    if (lower.includes(s)) return s;
+    const escaped = s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}([^\\p{L}\\p{N}]|$)`, "u");
+    if (pattern.test(lower)) return s;
   }
   return null;
 }
