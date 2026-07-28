@@ -252,12 +252,18 @@ Se envolver um nome de arquivo/pasta específico, extraia em "target" (sem palav
         const itemLines = listing.files
           .map((f) => `- ${f.name}${f.webViewLink ? ` — [Visualizar](${f.webViewLink})` : ""}`)
           .join("\n");
+        // FIX (auditoria cognição): a marcação interna "🔒 [IA-040-ATIVO]"
+        // estava colada direto no texto enviado ao usuário — vazamento de
+        // anotação de debug, violando a regra "nunca exponha detalhes
+        // técnicos ao usuário" do próprio prompt do sistema. Removida do
+        // texto visível; a rastreabilidade de qual regra respondeu já é
+        // suficiente com o comentário de código acima.
         const response = listing.files.length > 0
-          ? `🔒 [IA-040-ATIVO] Conteúdo da pasta **"${folder.name}"**:\n\n${itemLines}`
-          : `🔒 [IA-040-ATIVO] A pasta **"${folder.name}"** está vazia (ou não consegui ler o conteúdo dela).`;
+          ? `Conteúdo da pasta **"${folder.name}"**:\n\n${itemLines}`
+          : `A pasta **"${folder.name}"** está vazia (ou não consegui ler o conteúdo dela).`;
         return { response, plan: _makeDriveActionPlan({ action: "open_folder", target: folder.name }), sources };
       }
-      const response = `🔒 [IA-040-ATIVO] Não encontrei nenhuma pasta chamada "${_driveAction.target}" no seu Drive.`;
+      const response = `Não encontrei nenhuma pasta chamada "${_driveAction.target}" no seu Drive.`;
       return { response, plan: _makeDriveActionPlan({ action: "open_folder", target: _driveAction.target, found: false }), sources };
     } catch {
       // Se a execução real falhar por qualquer motivo, cai no fluxo normal
@@ -266,7 +272,9 @@ Se envolver um nome de arquivo/pasta específico, extraia em "target" (sem palav
   }
 
   if (_driveAction?.is_drive_action && _driveAction.action === "read_content" && !_hasRealDocRead) {
-    const response = "🔒 [IA-035-ATIVO] Ainda não tenho uma leitura real do conteúdo desse arquivo — não posso te mostrar dados dele sem antes acessá-lo de verdade. Se quiser, você pode anexar o arquivo direto aqui na conversa (eu leio na hora), ou me pedir para tentar abrir/baixar ele do Drive primeiro.";
+    // FIX (auditoria cognição): mesma correção — "🔒 [IA-035-ATIVO]"
+    // removido do texto visível ao usuário.
+    const response = "Ainda não tenho uma leitura real do conteúdo desse arquivo — não posso te mostrar dados dele sem antes acessá-lo de verdade. Se quiser, você pode anexar o arquivo direto aqui na conversa (eu leio na hora), ou me pedir para tentar abrir/baixar ele do Drive primeiro.";
     return { response, plan: _makeDriveActionPlan({ action: "read_content", target: _driveAction.target }), sources };
   }
 
