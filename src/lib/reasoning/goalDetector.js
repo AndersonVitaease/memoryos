@@ -151,6 +151,24 @@ function normalize(text) {
 }
 
 /**
+ * Verifica se `sig` aparece em `text` como palavra/frase INTEIRA.
+ * FIX (auditoria cognição): detectGoal() usava .includes() puro, que
+ * colidia como substring em vários casos reais: "total" (goal
+ * calculate) dentro de "totalmente" — uma das palavras mais comuns do
+ * português —, "gere" (execute_task) dentro de "gerente", "devo"
+ * (decide) dentro de "devolução", "faça" (execute_task) dentro de
+ * "satisfaça", "risco" (analyze_risks) dentro de "arrisco", "monte"
+ * (execute_task) dentro de "Monte Everest". Fronteira Unicode resolve
+ * todos de uma vez, sem precisar remover as palavras (que continuam
+ * válidas como match de palavra inteira).
+ */
+function _matchesWhole(text, sig) {
+  const escaped = sig.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}([^\\p{L}\\p{N}]|$)`, "u");
+  return pattern.test(text);
+}
+
+/**
  * Detecta o objetivo da pergunta do usuário.
  * @param {string} message
  * @returns {Object} { id, label, strategy, matchedKeywords }
@@ -166,7 +184,7 @@ export function detectGoal(message) {
     let score = 0;
     const matched = [];
     for (const kw of goal.keywords) {
-      if (normalized.includes(normalize(kw))) {
+      if (_matchesWhole(normalized, normalize(kw))) {
         score++;
         matched.push(kw);
       }
