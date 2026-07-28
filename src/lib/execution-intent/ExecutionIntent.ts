@@ -124,16 +124,17 @@ const CONTINUATION_SIGNALS: string[] = [
   // de Drive (IA-040) — a mensagem nunca chegava nesses sistemas, por mais
   // que fossem corrigidos. Combinações específicas ("abra esse", "abra o
   // arquivo") continuam cobertas abaixo, que são seguras.
-  "continue", "continua", "continuar",
-  "proximo", "próximo", "proxima", "próxima", "next",
-  "anterior", "volte", "volta", "voltar", "previous", "prev",
+  "continue de onde paramos", "continua de onde parou", "continuar de onde parei",
   "o primeiro", "a primeira", "o segundo", "a segunda",
   "o terceiro", "a terceira", "o ultimo", "a ultima",
   "o ultimo resultado", "o primeiro resultado",
+  "o proximo", "o próximo", "a proxima", "a próxima",
+  "o anterior", "a anterior",
   "agora abra", "agora mostre", "agora leia",
   "leia esse", "leia este", "leia o arquivo",
   "baixe esse", "baixe este",
-  "abra o arquivo", "abra o proximo", "abra o anterior",
+  "abra o arquivo", "abra o proximo", "abra o próximo", "abra o anterior",
+  "volte para o anterior", "volte ao anterior", "va para o proximo", "vá para o próximo",
   // IA-017: "esse"/"essa"/"este"/"esta" e "mostre o"/"mostre a"/"mostrar o"/
   // "mostrar a" soltos removidos — eram genéricos demais, disparando
   // continuidade em qualquer mensagem contendo essas palavras comuns
@@ -141,11 +142,38 @@ const CONTINUATION_SIGNALS: string[] = [
   // "ler meus emails", forçando o goalType errado gmail.readMessage).
   // As combinações específicas ("leia esse", "baixe esse", "agora mostre")
   // continuam cobertas acima.
+  //
+  // FIX (auditoria cognição): "next", "prev", "previous", "anterior",
+  // "volta", "volte", "voltar", "proximo"/"próximo"/"proxima" SOLTOS
+  // removidos — o matcher antigo usava `.includes()` (substring), então
+  // essas palavras casavam dentro de QUALQUER texto que as contivesse:
+  //   "Next.js" contém "next" → qualquer mensagem sobre o framework
+  //     era tratada como "vá para o próximo resultado".
+  //   "revolta", "voltagem", "devolta" contêm "volta".
+  //   "a versão anterior do código" contém "anterior".
+  // Isso sequestrava o goalType da mensagem atual para o da última
+  // execução de conector guardada (ex: reabria o último e-mail/arquivo
+  // sem o usuário ter pedido isso). Combinações específicas ("o próximo",
+  // "o anterior", "volte para o anterior") continuam cobertas acima —
+  // essas exigem a frase completa e usam matching por palavra inteira
+  // (ver _matchesSignal abaixo), então não casam como substring solta.
 ];
+
+/**
+ * Verifica se `sig` aparece em `lower` como PALAVRA/FRASE INTEIRA,
+ * nunca como substring de outra palavra. Usa fronteiras Unicode
+ * (letras/números) em vez de \b (que trata acentos e pontuação de
+ * forma inconsistente) — resolve o caso "Next.js" contendo "next".
+ */
+function _matchesSignal(lower: string, sig: string): boolean {
+  const escaped = sig.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}([^\\p{L}\\p{N}]|$)`, "u");
+  return pattern.test(lower);
+}
 
 export function isContinuationMessage(message: string): boolean {
   const lower = message.toLowerCase().trim();
-  return CONTINUATION_SIGNALS.some((sig) => lower.startsWith(sig) || lower.includes(sig));
+  return CONTINUATION_SIGNALS.some((sig) => _matchesSignal(lower, sig));
 }
 
 // ── Mapeamento Intent → GoalType ──────────────────────────────────────────────
@@ -549,11 +577,14 @@ export class ExecutionIntentManager {
     // ── Legacy fallback: resultPaths (only used if EF-41 did not resolve) ─────
     if (!resolvedViaResultSet && Array.isArray(artifact.resultPaths)) {
       const lower = message.toLowerCase();
-      if ((lower.includes("proximo") || lower.includes("próximo") || lower.includes("next")) &&
+      // FIX (auditoria cognição): mesmo bug do CONTINUATION_SIGNALS —
+      // .includes("next")/.includes("anterior") etc casavam substring
+      // ("Next.js", "revolta", "versão anterior"). Trocado para \b.
+      if (lower.match(/\b(proximo|próximo|next)\b/) &&
           typeof artifact.cursorIndex === "number") {
         artifact.cursorIndex = Math.min(artifact.cursorIndex + 1, artifact.resultPaths.length - 1);
         artifact.path = artifact.resultPaths[artifact.cursorIndex];
-      } else if ((lower.includes("anterior") || lower.includes("prev") || lower.includes("volte")) &&
+      } else if (lower.match(/\b(anterior|prev|previous|volte)\b/) &&
                  typeof artifact.cursorIndex === "number") {
         artifact.cursorIndex = Math.max(artifact.cursorIndex - 1, 0);
         artifact.path = artifact.resultPaths[artifact.cursorIndex];
