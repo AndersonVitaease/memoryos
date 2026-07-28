@@ -42,7 +42,7 @@ import { getConnectorsForService } from "@/lib/connectors/registry";
  */
 export async function orchestrateCapabilities({ message, memory, goal, sessionId, projectId }) {
   // === ETAPA 3: DETECTAR CAPACIDADES ===
-  const { capabilities, matchedReasons, hasEnoughInfo, missingInfoHint } = detectCapabilities(
+  const { capabilities, matchedReasons, hasEnoughInfo, missingInfoHint } = await detectCapabilities(
     message,
     memory,
     goal
