@@ -452,6 +452,29 @@ Se envolver um nome de arquivo/pasta específico do usuário, extraia em "target
     }
   }
 
+  // === ETAPA 6.7: TRAVA DETERMINÍSTICA — RASTREABILIDADE DE ORIGEM (IA-086) ===
+  // FIX (auditoria cognição): o princípio 16 do prompt exige que toda
+  // afirmação factual venha com etiqueta de origem — "(fonte: pesquisa)",
+  // "(fonte: memória)", "(fonte: documento)", "(conhecimento geral)".
+  // Como toda instrução de prompt já provou não ser 100% obedecida (ver
+  // IA-063, IA-068, IA-084, IA-085), esta é a rede de segurança
+  // determinística: só roda quando uma capacidade real de fato executou
+  // nesta mensagem (pesquisa web, cálculo, ou Biblioteca Oficial) — nesses
+  // casos, a resposta quase certamente deveria conter alguma etiqueta.
+  // Se nenhuma aparecer, avisa explicitamente em vez de deixar a origem
+  // da informação implícita.
+  const _hadRealCapability = Boolean(
+    (_webSearchResult && !_webSearchResult.error) ||
+    capabilityResult.capabilityResults?.calculation && !capabilityResult.capabilityResults.calculation.error ||
+    (capabilityResult.capabilityResults?.officialLibrary && !capabilityResult.capabilityResults.officialLibrary.error)
+  );
+  if (_hadRealCapability) {
+    const _hasSourceTag = /\((fonte:\s*(pesquisa|mem[oó]ria|documento)|conhecimento geral)\)/i.test(_finalResponseWithMcpCheck);
+    if (!_hasSourceTag && _finalResponseWithMcpCheck.length > 300) {
+      _finalResponseWithMcpCheck += `\n\n---\nℹ️ Esta resposta usou uma capacidade real (pesquisa/cálculo/biblioteca) mas não indicou a origem de cada afirmação. Trate os detalhes específicos com cautela até confirmar a fonte.`;
+    }
+  }
+
   // === ETAPA 7: MEMORY SYNTHESIZER ===
   // Síntese determinística (sem LLM): elimina repetições, melhora fluidez.
   const response = synthesizeResponse(_finalResponseWithMcpCheck);
