@@ -62,7 +62,7 @@ Deno.serve(async (req) => {
             params: {
               name: 'memori_advanced_augmentation',
               arguments: {
-                project_id: 'memoryos',
+                projectId: 'memoryos',
                 user_message: userMessage,
                 assistant_response: assistantResponse,
               },
