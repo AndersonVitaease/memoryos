@@ -1075,6 +1075,64 @@ const _builtins: GoalDefinition[] = [
     ],
     extractParams: () => ({}),
   },
+  {
+    type: "memori.remember" as GoalType,
+    namespace: "memori",
+    description: "Grava um fato ou preferência durável na memória de longo prazo (Memori Cloud)",
+    signals: [
+      "lembre que",
+      "lembra que",
+      "guarde essa informação",
+      "guarde isso",
+      "não esqueça que",
+      "nao esqueca que",
+      "anote que",
+      "salve na memoria",
+      "salve isso",
+      "grave isso",
+      "grave na memoria",
+      "remember that",
+      "save this",
+      "don't forget",
+      "dont forget",
+    ],
+    extractParams: (msg: string) => {
+      const cleaned = msg
+        .replace(/\b(lembre que|lembra que|guarde essa informa[cç][aã]o|guarde isso|n[aã]o esque[cç]a que|anote que|salve na mem[oó]ria|salve isso|grave isso|grave na mem[oó]ria|remember that|save this|don'?t forget)\b/gi, "")
+        .trim();
+      return {
+        userMessage: cleaned || msg.trim(),
+        rawText: msg.trim(),
+      };
+    },
+  },
+  {
+    type: "memori.recall" as GoalType,
+    namespace: "memori",
+    description: "Busca um fato ou preferência gravada anteriormente na memória de longo prazo (Memori Cloud)",
+    signals: [
+      "o que voce lembra sobre",
+      "o que você lembra sobre",
+      "voce lembra",
+      "você lembra",
+      "recupere informacao sobre",
+      "recupere informação sobre",
+      "o que sabe sobre",
+      "o que voce sabe sobre",
+      "o que você sabe sobre",
+      "consulte a memoria sobre",
+      "consulte a memória sobre",
+      "what do you remember about",
+      "do you remember",
+      "recall information about",
+    ],
+    extractParams: (msg: string) => {
+      return {
+        query: msg.trim(),
+        rawText: msg.trim(),
+      };
+    },
+  },
 ];
 
 // Register all builtins idempotently
