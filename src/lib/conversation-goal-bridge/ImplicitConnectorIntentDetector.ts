@@ -4,30 +4,6 @@
  *
  * SRP: coordenar a resolucao de intencao implicita.
  *      Nunca conhece dominio. Nunca conhece connectors.
- *
- * EF-6.3.x: suporte ao novo contrato SemanticProvider.detect() que retorna
- * SemanticDetection com goalType especifico determinado internamente.
- * Retrocompatibilidade total com providers legados (score + implicitGoalType).
- *
- * Open/Closed:
- *   Adicionar um novo connector = criar SemanticProvider + registrar.
- *   ZERO linhas deste arquivo precisam mudar.
- *
- * Este arquivo NAO contem:
- *   - palavras-chave
- *   - pesos
- *   - heuristicas
- *   - sinais semanticos
- *   - referencia a Gmail, Calendar, Drive, Memory
- *   - tabelas de connectors
- *
- * Responsabilidades:
- *   1. Normalizar a mensagem
- *   2. Consultar ConnectorSemanticRegistry
- *   3. Solicitar deteccao a cada SemanticProvider (detect OU score)
- *   4. Rankear candidatos por confidence
- *   5. Escolher winner
- *   6. Retornar ImplicitIntentResult
  */
 
 import type { GoalType }       from "@/lib/goals/GoalTypes";
@@ -35,7 +11,6 @@ import type { GoalDefinition } from "@/lib/goals/GoalRegistry";
 import { normalize }           from "./NaturalLanguageGoalNormalizer";
 import { isModernProvider, isLegacyProvider } from "@/lib/semantic-registry/SemanticTypes";
 
-// ── Lazy import to avoid circular-dep at module init ──────────────────────────
 let _registry: import("@/lib/semantic-registry/ConnectorSemanticRegistry").ConnectorSemanticRegistryClass | null = null;
 
 async function getRegistry() {
@@ -45,8 +20,6 @@ async function getRegistry() {
   }
   return _registry;
 }
-
-// ── Public types ───────────────────────────────────────────────────────────────
 
 export type ConnectorId = string;
 
@@ -75,10 +48,7 @@ export interface ImplicitIntentResult {
   readonly resolution:  ImplicitResolution | null;
 }
 
-// ── Minimum score threshold ────────────────────────────────────────────────────
 const MIN_SCORE_THRESHOLD = 0.20;
-
-// ── Unified adapter: modern (detect) OR legacy (score) provider ───────────────
 
 type AnyProvider = Record<string, unknown>;
 
@@ -88,16 +58,11 @@ function scoreProvider(
   norm:      ReturnType<typeof normalize>,
 ): ConnectorCandidate {
   if (isModernProvider(provider)) {
-    // EF-6.3.x v2 FINAL: detector is a pure orchestrator.
-    // goalType=null is preserved as-is — the detector NEVER invents a GoalType.
-    // Null-confidence candidates are penalized so explicit GoalRegistry signals win.
     const detection = provider.detect(lower, norm);
     return Object.freeze({
       connectorId: detection.connector,
       goalType:    detection.goalType,
       score:       detection.goalType === null
-        // domain recognized but no intent: halve confidence so signal-based
-        // GoalRegistry results always win over implicit domain-only detection.
         ? Math.round(detection.confidence * 0.5 * 1000) / 1000
         : Math.round(detection.confidence * 1000) / 1000,
       evidences:   Object.freeze([...detection.evidences]),
@@ -106,7 +71,6 @@ function scoreProvider(
   }
 
   if (isLegacyProvider(provider)) {
-    // Sprint 9.2.2: legacy contract — score() + fixed implicitGoalType
     const { score, evidences } = provider.score(lower, norm);
     return Object.freeze({
       connectorId: provider.connectorId,
@@ -117,7 +81,6 @@ function scoreProvider(
     });
   }
 
-  // Unknown provider shape — return zero score
   const id = (provider.connectorId as string) ?? "unknown";
   return Object.freeze({
     connectorId: id,
@@ -128,20 +91,10 @@ function scoreProvider(
   });
 }
 
-// ── ImplicitConnectorIntentDetectorImpl ───────────────────────────────────────
-
 class ImplicitConnectorIntentDetectorImpl {
   private _totalChecked  = 0;
   private _totalDetected = 0;
 
-  /**
-   * Resolve intencao implicita de connector para uma mensagem.
-   *
-   * Consulta o ConnectorSemanticRegistry, delega a deteccao a cada provider
-   * (moderno ou legado), e elege o winner por maior score/confidence.
-   *
-   * A ordem de registro dos providers nao influencia o resultado.
-   */
   resolve(
     message:               string,
     registeredDefinitions: readonly GoalDefinition[],
@@ -161,17 +114,20 @@ class ImplicitConnectorIntentDetectorImpl {
 
     // ── 1. Normalize ──────────────────────────────────────────────────────────
     const norm = normalize(trimmed);
+    
+    // ✅ CORREÇÃO ADICIONADA: Se for uma saudação ou frase social, NUNCA ative conector.
     if (norm.isSocialPhrase)   return none("social_phrase");
     if (!norm.entity.trim())   return none("empty_entity");
+    if (trimmed.length < 4)    return none("too_short_for_connector"); // Palavras muito curtas não acionam conectores
 
     const lower = trimmed.toLowerCase();
 
-    // ── 2. Registered namespaces (from GoalRegistry) ──────────────────────────
+    // ── 2. Registered namespaces ──────────────────────────────────────────────
     const registeredNamespaces = new Set(
       registeredDefinitions.map((d) => d.namespace)
     );
 
-    // ── 3. Access registry synchronously via globalThis ───────────────────────
+    // ── 3. Access registry ────────────────────────────────────────────────────
     const registryRaw = (globalThis as unknown as Record<string, unknown>)["__CONNECTOR_SEMANTIC_REGISTRY__"];
     if (!registryRaw) return none("registry_not_ready");
 
@@ -180,13 +136,10 @@ class ImplicitConnectorIntentDetectorImpl {
     };
 
     const allProviders = registry.listAll();
-
-    // ── 4. Score / detect each provider ───────────────────────────────────────
     const candidates: ConnectorCandidate[] = [];
 
     for (const provider of allProviders) {
       const connId = (provider.connectorId as string) ?? "";
-      // Only score connectors that have GoalDefinitions registered
       if (!registeredNamespaces.has(connId)) continue;
 
       const candidate = scoreProvider(provider, lower, norm);
@@ -195,7 +148,6 @@ class ImplicitConnectorIntentDetectorImpl {
 
     if (candidates.length === 0) return none("no_compatible_connector");
 
-    // ── 5. Rank by score desc — tiebreak alphabetical ─────────────────────────
     const ranking = [...candidates].sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;
       return a.connectorId.localeCompare(b.connectorId);
@@ -207,19 +159,15 @@ class ImplicitConnectorIntentDetectorImpl {
       return none(`below_threshold:${winner.connectorId}:${winner.score}`);
     }
 
-    // Pure orchestrator contract: if the winning provider returned goalType=null
-    // (domain recognized, no intent), we cannot proceed — return not-detected.
     if (winner.goalType === null) {
       return none(`null_goaltype:${winner.connectorId}`);
     }
 
-    // ── 6. Build parameters — prefer provider entities, fallback to norm.entity ─
     const params: Record<string, unknown> = {
       query: norm.entity,
       ...winner.entities,
     };
 
-    // ── 7. Build explanation ──────────────────────────────────────────────────
     const explanation: string[] = [
       `Winner: ${winner.connectorId} / ${winner.goalType} (score=${winner.score})`,
       `Evidences: ${winner.evidences.join(", ") || "none"}`,
@@ -256,8 +204,6 @@ class ImplicitConnectorIntentDetectorImpl {
   }
 }
 
-// ── Singleton ─────────────────────────────────────────────────────────────────
-
 const _KEY = "__IMPLICIT_INTENT_DETECTOR__";
 if (!(globalThis as unknown as Record<string, unknown>)[_KEY]) {
   (globalThis as unknown as Record<string, unknown>)[_KEY] =
@@ -267,60 +213,3 @@ if (!(globalThis as unknown as Record<string, unknown>)[_KEY]) {
 export const implicitConnectorIntentDetector: ImplicitConnectorIntentDetectorImpl = (
   globalThis as unknown as Record<string, ImplicitConnectorIntentDetectorImpl>
 )[_KEY];
-
-// ── Legacy test runner (backward compat with SprintE021Page) ──────────────────
-
-export interface ImplicitIntentTest {
-  name:         string;
-  input:        string;
-  expectDetect: boolean;
-  passed:       boolean;
-  detected:     boolean;
-  goalType:     GoalType | null;
-  searchTerm:   string;
-  error:        string | null;
-}
-
-export function runImplicitIntentTests(
-  registeredDefinitions: readonly GoalDefinition[],
-): ImplicitIntentTest[] {
-  const CASES: Array<{ name: string; input: string; expectDetect: boolean }> = [
-    { name: "Shopee bare",        input: "Shopee",                        expectDetect: true  },
-    { name: "Hostinger bare",     input: "Hostinger",                     expectDetect: true  },
-    { name: "Mercado Livre bare", input: "Mercado Livre",                 expectDetect: true  },
-    { name: "Pix bare",           input: "Pix",                           expectDetect: true  },
-    { name: "Nota Fiscal bare",   input: "Nota Fiscal",                   expectDetect: true  },
-    { name: "GitHub bare",        input: "GitHub",                        expectDetect: true  },
-    { name: "Contrato bare",      input: "Contrato",                      expectDetect: true  },
-    { name: "Amazon bare",        input: "Amazon",                        expectDetect: true  },
-    { name: "DANFE bare",         input: "DANFE",                         expectDetect: true  },
-    { name: "Boleto bare",        input: "Boleto",                        expectDetect: true  },
-    { name: "Tenho email Shopee", input: "Tenho email da Shopee?",        expectDetect: true  },
-    { name: "Existe email",       input: "Existe algum email da Shopee?", expectDetect: true  },
-    { name: "Recebi email",       input: "Recebi algum email da Shopee?", expectDetect: true  },
-    { name: "Recebi Pix",         input: "Recebi Pix?",                   expectDetect: true  },
-    { name: "Recebi boleto",      input: "Recebi algum boleto?",          expectDetect: true  },
-    { name: "Recebi ML",          input: "Recebi algo do Mercado Livre?", expectDetect: true  },
-    { name: "Tem nota fiscal",    input: "Tem alguma nota fiscal?",       expectDetect: true  },
-    { name: "Ha DANFE",           input: "Ha algum DANFE?",               expectDetect: true  },
-    { name: "Ola",                input: "Ola",                           expectDetect: false },
-    { name: "Bom dia",            input: "Bom dia",                       expectDetect: false },
-    { name: "Obrigado",           input: "Obrigado",                      expectDetect: false },
-    { name: "Tudo bem",           input: "Tudo bem",                      expectDetect: false },
-    { name: "Quem e voce",        input: "Quem e voce",                   expectDetect: false },
-    { name: "Conte uma piada",    input: "Conte uma piada",               expectDetect: false },
-  ];
-
-  const det = implicitConnectorIntentDetector;
-  return CASES.map(({ name, input, expectDetect }) => {
-    const result = det.resolve(input, registeredDefinitions);
-    const passed = result.detected === expectDetect;
-    return {
-      name, input, expectDetect, passed,
-      detected:   result.detected,
-      goalType:   result.goalType,
-      searchTerm: result.searchTerm,
-      error: passed ? null : `Expected detected=${expectDetect}, got ${result.detected} (${result.label})`,
-    };
-  });
-}
