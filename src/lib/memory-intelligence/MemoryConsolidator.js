@@ -12,12 +12,37 @@
  */
 function overlap(a, b) {
   if (!a || !b) return 0;
-  const setA = new Set(a.toLowerCase().split(/\W+/).filter((w) => w.length > 3));
-  const setB = new Set(b.toLowerCase().split(/\W+/).filter((w) => w.length > 3));
+  const normA = a.toLowerCase().trim();
+  const normB = b.toLowerCase().trim();
+
+  // Igualdade ou contenção direta (ex: "MemoryOS" dentro de "MemoryOS
+  // Base44") é sempre um duplicado seguro, independente de quantas
+  // palavras "significativas" sobram depois do filtro abaixo.
+  if (normA === normB) return 1;
+  if (normA.length > 3 && normB.length > 3 && (normA.includes(normB) || normB.includes(normA))) {
+    return 1;
+  }
+
+  const setA = new Set(normA.split(/\W+/).filter((w) => w.length > 3));
+  const setB = new Set(normB.split(/\W+/).filter((w) => w.length > 3));
   if (setA.size === 0 || setB.size === 0) return 0;
+
+  // FIX (auditoria cognição): exige pelo menos 2 palavras significativas
+  // em AMBOS os lados antes de aplicar a razão de sobreposição. Sem isso,
+  // dois registros DIFERENTES que compartilham só uma palavra genérica
+  // (ex: "Consolidadora Tyller" vs "Consolidadora CNT" — "CNT" tem 3
+  // letras e é descartado pelo filtro length>3, sobrando só
+  // "consolidadora" — ou "Banco do Brasil" vs "Banco Bradesco")
+  // batiam o threshold e eram fundidos num cluster só, escondendo um
+  // dos dois registros silenciosamente do contexto enviado ao LLM.
+  if (setA.size < 2 || setB.size < 2) return 0;
+
+  // Jaccard (interseção / união) — mais rigoroso que interseção/maior,
+  // que inflava o score quando um conjunto era bem menor que o outro.
+  const union = new Set([...setA, ...setB]);
   let common = 0;
   for (const w of setA) if (setB.has(w)) common++;
-  return common / Math.max(setA.size, setB.size);
+  return common / union.size;
 }
 
 /**
