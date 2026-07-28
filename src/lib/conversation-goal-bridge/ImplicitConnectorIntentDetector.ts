@@ -175,6 +175,16 @@ class ImplicitConnectorIntentDetectorImpl {
       `Entity: "${norm.entity}"`,
     ];
 
+    // FIX (auditoria cognição): a explicação da decisão (qual sinal exato
+    // bateu, com qual peso, e o ranking completo entre conectores) já era
+    // montada, mas nunca era impressa no console. Sem isso, um print de
+    // log do usuário mostrava só o RESULTADO (ex: "gmail.searchMessages"),
+    // nunca o MOTIVO — exigindo investigação manual arquivo por arquivo
+    // pra achar a causa real (ex: "nf" batendo dentro de "informe").
+    // Com este log, a evidência aparece direto no print: "financial-doc:
+    // \"nf\"" — apontando pro sinal exato e pro provider responsável.
+    console.log("[IMPLICIT-CONNECTOR-INTENT] Decisão:", explanation.join(" | "));
+
     const resolution: ImplicitResolution = Object.freeze({
       winner:      Object.freeze(winner),
       ranking:     Object.freeze([...ranking]),
