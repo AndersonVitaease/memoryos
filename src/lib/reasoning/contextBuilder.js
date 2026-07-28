@@ -75,7 +75,17 @@ export function buildReasoningContext({ userMsg, memory, skills, goal, historyTe
     );
   }
 
-  if (capabilityResults?.calculation) {
+  if (capabilityResults?.calculation?.error) {
+    // FIX (auditoria cognição): antes não existia checagem de erro aqui
+    // (diferente de webSearch/officialLibrary, que já checavam `.error`)
+    // — se executeCalculation() retornasse um erro (ex: divisão por
+    // zero), o código abaixo tentava ler `calc.expression`/`calc.result`
+    // de um objeto sem esses campos, produzindo "undefined" no prompt.
+    capabilityBlocks.push(
+      `## CÁLCULO\nNão foi possível calcular: ${capabilityResults.calculation.message}. ` +
+      `Explique ao usuário o motivo, não apresente nenhum valor numérico como resultado.`
+    );
+  } else if (capabilityResults?.calculation) {
     const calc = capabilityResults.calculation;
     capabilityBlocks.push(
       `## CÁLCULO DETERMINÍSTICO (executado automaticamente)\n` +
