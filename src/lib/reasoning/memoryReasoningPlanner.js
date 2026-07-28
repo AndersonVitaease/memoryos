@@ -58,6 +58,19 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
     sessionId:   session.id,
     projectId:   session.project_id ?? null,
   });
+  // FIX (auditoria cognição): memoryResult.diagnostics.error é preenchido
+  // por LegacyMemoryService quando runMemoryPipeline() lança uma exceção
+  // (ex: erro de rede, query malformada, schema JSON inválido no
+  // InvokeLLM), mas antes NADA verificava esse campo — o Planner seguia
+  // em frente com memória vazia, e o usuário recebia uma resposta como
+  // se simplesmente "não houvesse registro", sem nenhuma indicação de
+  // que a recuperação de memória falhou tecnicamente. Agora loga o erro
+  // e sinaliza pro Context Builder, que pode ser honesto sobre isso em
+  // vez de deixar o LLM interpretar silêncio como "não existe memória".
+  const _memoryRetrievalFailed = Boolean(memoryResult?.diagnostics?.error);
+  if (_memoryRetrievalFailed) {
+    console.error("[MemoryReasoningPlanner] Falha na recuperação de memória:", memoryResult.diagnostics.error);
+  }
   // Adapta MemoryContext ao contrato que o restante do Planner ja conhece
   const memory = {
     context:        memoryResult.memories,
@@ -171,6 +184,7 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
     capabilityResults: capabilityResult.capabilityResults,
     needsMoreInfo: capabilityResult.needsMoreInfo,
     missingInfoHint: capabilityResult.missingInfoHint,
+    memoryRetrievalFailed: _memoryRetrievalFailed,
     serviceInfo: capabilityResult.serviceInfo,
     kfmContext,
   });
@@ -194,14 +208,20 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
 ${contextBlock}
 O usuário está conversando com o MemoryOS, um assistente conectado ao Google Drive. Determine se essa mensagem é um pedido de ação relacionada ao Drive, e qual ação exatamente.
 
+CRITÉRIO OBRIGATÓRIO antes de classificar como ação de Drive: a mensagem precisa se referir a algo que está armazenado NO GOOGLE DRIVE DO USUÁRIO — um arquivo ou pasta que ELE possui, anexou ou já mencionou ter lá. Sinais disso: "meu(s)", "esse/este arquivo", "essa/esta pasta", "que anexei", "que subi", "na minha pasta X", ou um nome de arquivo/pasta específico.
+
+NÃO é ação de Drive (mesmo mencionando "documentação", "documento" ou "arquivo"):
+- Perguntas de CONHECIMENTO GERAL sobre a documentação técnica de um sistema, API ou empresa EXTERNA (ex: "documentação do Wooba", "documentação da API do Mercado Livre", "o que é necessário para instalar o conector X") — isso é uma pergunta de conteúdo/pesquisa, não um pedido de leitura de arquivo do Drive.
+- Pedidos de repetir, recapitular ou explicar de novo algo que já foi dito nesta própria conversa (ex: "fale de novo sobre a documentação exigida", "resuma o que você disse").
+
 Ações possíveis:
 - "list_root": listar os arquivos/pastas recentes do Drive em geral (ex: "drive", "quais arquivos tenho").
-- "open_folder": abrir/ver o conteúdo de uma PASTA específica (ex: "abrir pasta X", "o que tem na pasta X").
-- "download_file": baixar um ARQUIVO específico (ex: "baixar X", "download de X").
-- "read_content": ver o CONTEÚDO/dados de dentro de um ARQUIVO REAL do Drive específico (ex: "mostre os dados de X", "leia X"). NÃO use esta ação para pedidos de repetir, recapitular ou explicar de novo algo que já foi dito nesta própria conversa (ex: "fale de novo sobre a documentação exigida", "resuma o que você disse", "explica de novo aquilo") — isso é conversa normal, não uma ação de Drive, mesmo que a palavra "documentação"/"documento" apareça.
-- null: não é um pedido relacionado ao Drive.
+- "open_folder": abrir/ver o conteúdo de uma PASTA específica que o usuário possui (ex: "abrir minha pasta X", "o que tem na pasta X que criei").
+- "download_file": baixar um ARQUIVO específico do Drive do usuário (ex: "baixar meu arquivo X", "download do documento que anexei").
+- "read_content": ver o CONTEÚDO/dados de dentro de um ARQUIVO REAL do Drive do usuário (ex: "mostre os dados do arquivo que anexei", "leia esse PDF que subi").
+- null: não é um pedido relacionado ao Drive do usuário — inclui qualquer pergunta sobre documentação/informação de sistemas, empresas ou APIs externas.
 
-Se envolver um nome de arquivo/pasta específico, extraia em "target" (sem palavras de comando tipo "abrir", "baixar"). Se não houver nome específico, "target" deve ser null.`,
+Se envolver um nome de arquivo/pasta específico do usuário, extraia em "target" (sem palavras de comando tipo "abrir", "baixar"). Se não houver nome específico, "target" deve ser null.`,
         response_json_schema: {
           type: "object",
           properties: {
