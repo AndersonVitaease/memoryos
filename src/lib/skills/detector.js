@@ -35,6 +35,19 @@ function normalize(text) {
 }
 
 /**
+ * Verifica se `kw` aparece em `text` como palavra/frase INTEIRA.
+ * FIX (auditoria cognição): mesmo padrão de proteção já aplicado em
+ * outros componentes (ExecutionIntent, MemoryRelationshipEngine,
+ * serviceDetector) — evita que abreviações curtas colidam como
+ * substring de outras palavras.
+ */
+function _matchesWhole(text, kw) {
+  const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}([^\\p{L}\\p{N}]|$)`, "u");
+  return pattern.test(text);
+}
+
+/**
  * Conta quantas keywords de uma skill aparecem em um texto normalizado.
  * Retorna { score, matchedKeywords }.
  */
@@ -43,7 +56,7 @@ function scoreSkill(skill, text) {
   const normalized = normalize(text);
   const matched = [];
   for (const keyword of skill.keywords) {
-    if (normalized.includes(normalize(keyword))) {
+    if (_matchesWhole(normalized, normalize(keyword))) {
       matched.push(keyword);
     }
   }
