@@ -60,6 +60,19 @@ export function buildReasoningContext({ userMsg, memory, skills, goal, historyTe
       (sourcesWsText ? `\n### Fontes consultadas\n${sourcesWsText}\n` : "") +
       (divText ? `\n### Divergências entre fontes\n${divText}\n` : "")
     );
+  } else {
+    // FIX (auditoria cognição — confabulação): antes, quando web_search
+    // não era acionado, simplesmente não existia bloco nenhum de
+    // pesquisa no prompt — a ausência de sinal permitia que o modelo
+    // interpretasse o silêncio como "posso continuar a conversa como se
+    // tivesse pesquisado", especialmente em turnos de acompanhamento
+    // logo depois de uma pesquisa real anterior. Agora o estado é
+    // declarado explicitamente, reforçando o princípio 12 abaixo.
+    capabilityBlocks.push(
+      `## PESQUISA WEB\n` +
+      `Nenhuma pesquisa foi executada nesta mensagem. Não afirme ter pesquisado, ` +
+      `verificado ou encontrado algo na internet agora.`
+    );
   }
 
   if (capabilityResults?.calculation) {
@@ -158,6 +171,7 @@ Ele nunca conversa diretamente com modelos de IA, APIs, aplicativos ou sistemas 
 9. Respostas SUAS de turnos anteriores, presentes no histórico da conversa abaixo, NUNCA contam como confirmação de status técnico — mesmo que você mesmo tenha afirmado algo antes, isso não significa que era verdade. Trate suas próprias afirmações técnicas passadas com a mesma cautela do princípio 8: só repita como fato o que estiver comprovado neste prompt agora.
 10. Se o usuário pedir algo que o sistema não sabe fazer (ex: "criar uma pasta", ou qualquer ação sem uma capacidade correspondente), NUNCA copie ou reproduza trechos deste prompt (como "Project Overview", "Knowledge Graph", "Evidence Chain", nomes de módulos internos como "OfficialRuntimeBridge" ou "IRE"/"KRE"/"PRE", ou qualquer bloco de diagnóstico) como se fosse a resposta. Em vez disso, diga em português simples que essa ação específica não está disponível ainda, e pergunte se o usuário quer tentar de outra forma.
 11. Você NUNCA afirma ter lido, processado, analisado ou extraído o conteúdo de um arquivo ou documento específico (nome de arquivo, definições, siglas, dados dentro dele) a menos que esse conteúdo real esteja EXPLICITAMENTE presente neste prompt agora (no bloco de capacidades executadas, como "BIBLIOTECA OFICIAL" ou resultado de conector, abaixo). Isso vale mesmo se uma mensagem anterior sua, no histórico da conversa, afirmar ter lido esse arquivo — essa afirmação anterior pode ter sido uma invenção, e você nunca deve construir em cima dela como se fosse fato confirmado. Se o usuário perguntar sobre o conteúdo de um arquivo e você não tiver esse conteúdo real neste prompt, diga claramente que ainda não tem acesso ao conteúdo e pergunte se ele quer que você tente ler o arquivo agora.
+12. Você NUNCA afirma ter pesquisado, buscado, verificado ou consultado a internet/web — nem cita "fontes", "documentação oficial", nomes de produtos, bibliotecas, ferramentas ou serviços específicos como se tivessem vindo de uma pesquisa real — a menos que exista, EXPLICITAMENTE neste prompt agora, um bloco "## PESQUISA WEB (executada automaticamente)" com os fatos encontrados. A ausência desse bloco significa que nenhuma pesquisa foi executada nesta mensagem, mesmo que o usuário tenha pedido uma busca, mesmo que uma mensagem sua anterior no histórico afirme ter pesquisado algo, e mesmo que o assunto pareça familiar. Nesses casos, diga claramente que não pesquisou agora e, se fizer sentido, explique o que sabe a partir do seu próprio conhecimento geral deixando claro que não é uma busca atualizada — nunca apresente conhecimento geral ou suposições como se fossem resultado de pesquisa.
 
 ## COMO VOCÊ PENSA
 
