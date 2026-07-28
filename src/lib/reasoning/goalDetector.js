@@ -119,7 +119,13 @@ const GOALS = [
       "audite a arquitetura", "faça uma auditoria", "execute uma auditoria",
       "rodar auditoria", "iniciar auditoria", "architecture auditor",
       "conformidade arquitetural", "conformidade da arquitetura",
-      "macr", "compliance report", "relatório de conformidade",
+      // FIX (auditoria cognição): "macr" sozinho removido — colidia como
+      // substring com "macro" (macro do Excel, macro de código), palavra
+      // comum que não tem nada a ver com auditoria arquitetural. Disparava
+      // o Architecture Auditor Specialist (pipeline completo de auditoria)
+      // pra qualquer mensagem mencionando "macro". As frases mais
+      // específicas abaixo já cobrem a intenção real de MACR/compliance.
+      "compliance report", "relatório de conformidade",
       "auditar o projeto", "auditoria do projeto", "audit the project",
     ],
     strategy: "Delegar ao Architecture Auditor Specialist oficial. NÃO responder diretamente — o Specialist executa o pipeline completo de auditoria (ProjectReader → OfficialLibraryReader → CodeAnalyzer → ReportBuilder) e retorna o MACR.",
