@@ -60,7 +60,14 @@ export const SERVICE_REGISTRY = [
     id: "finance",
     name: "Serviço Financeiro",
     description: "Consultar transações, saldos e faturas.",
-    keywords: ["banco", "fatura", "saldo bancario", "transação bancaria", "conta bancaria"],
+    // FIX (auditoria cognição): "banco" sozinho foi removido — é uma
+    // palavra inteira legítima ("banco de dados"), não um problema de
+    // substring, mas ambígua: para um desenvolvedor que fala de "banco
+    // de dados" o tempo todo, disparava "Serviço Financeiro" em
+    // qualquer mensagem sobre schema/migration/conexão do banco de
+    // dados. As frases mais específicas abaixo já cobrem os casos
+    // financeiros reais sem essa ambiguidade.
+    keywords: ["fatura", "saldo bancario", "transação bancaria", "conta bancaria", "extrato bancario"],
     beta: false,
   },
   {
@@ -94,6 +101,19 @@ function normalize(text) {
 }
 
 /**
+ * Verifica se `sig` aparece em `lower` como palavra/frase INTEIRA.
+ * FIX (auditoria cognição): mesmo padrão dos outros componentes —
+ * .includes() puro casava "erp" dentro de "serpente"/"perpetuar" e
+ * "voo" dentro de "voou". Fronteira Unicode evita isso sem bloquear
+ * a palavra isolada.
+ */
+function _matchesWhole(lower, sig) {
+  const escaped = sig.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}([^\\p{L}\\p{N}]|$)`, "u");
+  return pattern.test(lower);
+}
+
+/**
  * Detecta qual Serviço é necessário com base na mensagem do usuário.
  *
  * Etapa 5 do Processo de Raciocínio:
@@ -107,7 +127,7 @@ export function detectService(message) {
 
   for (const service of SERVICE_REGISTRY) {
     const matched = service.keywords.some((kw) =>
-      normalized.includes(normalize(kw))
+      _matchesWhole(normalized, normalize(kw))
     );
     if (matched) return service;
   }
