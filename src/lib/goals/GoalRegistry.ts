@@ -76,11 +76,26 @@ class GoalRegistryClass {
   /**
    * Lookup por sinais de keyword no texto do usuario.
    * Retorna a primeira definicao que tiver ao menos um sinal presente.
+   *
+   * FIX (auditoria cognição): usava .includes() puro (substring). Como
+   * essa função é DETERMINÍSTICA (primeira correspondência já vence,
+   * sem threshold de confiança) e roda ANTES de qualquer outro sistema
+   * de roteamento, colisões aqui são as mais graves da auditoria:
+   *   "baixo" (drive.downloadFile) bate em "o preço está baixo" —
+   *     "baixo" é um adjetivo comum (baixo/baixa), não só o comando
+   *     de download.
+   *   "move" (drive.moveFile) bate em "remove esse item" — sentido
+   *     oposto: mover vs. remover.
+   * Fronteira Unicode resolve sem remover nenhum sinal válido.
    */
   matchBySignals(userMessage: string): GoalDefinition | null {
     const lower = userMessage.toLowerCase();
     for (const def of this._definitions) {
-      const hit = def.signals.some((s) => lower.includes(s));
+      const hit = def.signals.some((s) => {
+        const escaped = s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const pattern = new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}([^\\p{L}\\p{N}]|$)`, "u");
+        return pattern.test(lower);
+      });
       if (hit) return def;
     }
     return null;
@@ -542,7 +557,12 @@ const _builtins: GoalDefinition[] = [
     namespace: "drive",
     description: "Download or export a file from Google Drive",
     signals: [
-      "baixar", "baixe", "baixa", "baixo", "baixando",
+      // FIX (auditoria cognição): "baixa"/"baixo" removidos — são também
+      // os adjetivos mais comuns do português ("preço baixo", "voz
+      // baixa"), ambiguidade que fronteira de palavra não resolve (a
+      // palavra é a mesma, o significado que muda). "baixar"/"baixe"/
+      // "baixando" já cobrem o comando de download sem essa ambiguidade.
+      "baixar", "baixe", "baixando",
       "download", "exportar", "exporte", "exporta",
       "baixar o arquivo", "baixar o documento",
       "baixar arquivo", "baixar documento",
