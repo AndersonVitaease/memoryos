@@ -23,14 +23,29 @@ import { executeOfficialLibraryQuery } from "./capabilities/officialLibraryCapab
 /**
  * Executa pesquisa web e retorna dados estruturados (não resposta final).
  * Usa Gemini com add_context_from_internet=true.
+ *
+ * FIX (auditoria cognição): antes, só a mensagem atual (query) era
+ * enviada, sem nenhum contexto da conversa. Mensagens de acompanhamento
+ * curtas/vagas ("pesquise qual seria o melhor servidor pra mim") ficam
+ * ambíguas sem o assunto discutido antes (ex: "servidor" sozinho pode
+ * significar servidor MCP, servidor web, infraestrutura de nuvem...) —
+ * resultado real observado: a busca retornou dados sobre AWS/NVIDIA em
+ * vez de servidores MCP do Mercado Livre. Agora recebe um resumo do
+ * contexto (sessionSummary) pra ancorar a busca no assunto real.
  */
-async function executeWebSearch(query) {
+async function executeWebSearch(query, conversationContext = "") {
+  const contextBlock = conversationContext
+    ? `\nCONTEXTO DA CONVERSA (use para entender do que "${query}" está falando — a pergunta pode ser vaga/curta e depender deste contexto):\n${conversationContext}\n`
+    : "";
+
   const result = await base44.integrations.Core.InvokeLLM({
     prompt: `Pesquise na internet informações atualizadas e objetivas sobre: "${query}".
-
+${contextBlock}
 Retorne apenas fatos, dados, números, datas e informações verificáveis.
 Priorize fontes oficiais: documentação, órgãos reguladores, fabricantes, literatura científica.
 Se houver divergência entre fontes, apresente ambas.
+Se o CONTEXTO DA CONVERSA acima indicar um assunto específico (ex: um produto, tecnologia ou empresa
+sendo discutido), pesquise sobre ESSE assunto específico, não sobre o termo genérico isolado.
 
 Formato: lista de fatos objetivos, sem opinião ou interpretação.`,
     add_context_from_internet: true,
@@ -151,11 +166,18 @@ async function executeDocumentQuery(sessionId, projectId) {
  * @param {Object} params - { message, sessionId, projectId, memory }
  * @returns {Object} Resultados por capacidade: { webSearch, calculation, documents }
  */
-export async function executeCapabilities(capabilities, { message, sessionId, projectId }) {
+export async function executeCapabilities(capabilities, { message, sessionId, projectId, memory }) {
   const tasks = {};
 
   if (capabilities.web_search) {
-    tasks.webSearch = executeWebSearch(message).catch((err) => ({
+    // FIX (auditoria cognição): repassa o contexto da conversa (resumo da
+    // sessão + memória recuperada) pra busca não ficar "cega" quando a
+    // mensagem atual é vaga/curta (ver executeWebSearch acima).
+    const conversationContext = [memory?.sessionSummary, memory?.context]
+      .filter(Boolean)
+      .join("\n\n")
+      .slice(0, 1500); // limite razoável — só precisa ancorar o assunto, não replicar tudo
+    tasks.webSearch = executeWebSearch(message, conversationContext).catch((err) => ({
       error: true,
       message: err?.message || "Falha na pesquisa web",
     }));
