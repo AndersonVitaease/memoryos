@@ -167,9 +167,24 @@ export async function detectCapabilities(message, memory = {}, goal = {}) {
 
   // === OFFICIAL_LIBRARY: pergunta sobre a Biblioteca Oficial do MemoryOS ===
   const libMatch = matchKeywords(normalized, CAPABILITY_RULES.official_library.keywords);
-  if (libMatch.length > 0) {
+  // FIX (auditoria cognição): as keywords originais só cobriam frases
+  // exatas como "mas memoryos"/"mes memoryos" — ninguém fala assim.
+  // Uso real é "aderência ao MAS/MES", "arquitetura MAS", que nunca
+  // batiam, então a Biblioteca Oficial nunca carregava o conteúdo real
+  // dessas siglas, e o modelo ficava sem grounding pra responder o que
+  // MAS/MES significam de verdade — confirmado: ele inventou definições
+  // erradas ("Multi-Agent System"/"Memory Execution System") em vez das
+  // reais (MemoryOS Architecture/Engineering Specification).
+  // Aqui usamos a mensagem ORIGINAL (sem lowercase) pra detectar as
+  // siglas em CAIXA ALTA — isso distingue "MAS" (sigla) de "mas"
+  // (conjunção comum) e "MES" (sigla) de "mês"/"mes" (mês do calendário
+  // ou erro de digitação), sinal que o normalize() descarta.
+  const hasAcronymSignal = /\b(MAS|MES|MV|MPS)\b/.test(message);
+  if (libMatch.length > 0 || hasAcronymSignal) {
     capabilities.official_library = true;
-    matchedReasons.official_library = `Mencionou: ${libMatch.slice(0, 3).join(", ")}`;
+    matchedReasons.official_library = libMatch.length > 0
+      ? `Mencionou: ${libMatch.slice(0, 3).join(", ")}`
+      : "Sigla em maiúsculas detectada (MAS/MES/MV/MPS)";
   }
 
   // === DOCUMENTS: mencionou arquivo/PDF/documento OU existem documentos nas fontes ===
