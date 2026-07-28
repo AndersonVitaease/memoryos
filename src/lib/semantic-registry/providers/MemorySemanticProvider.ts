@@ -27,9 +27,18 @@ const SESSION_CONTEXT = Object.freeze([
   "ultimas conversas", "historico", "historico",
 ]);
 
+/**
+ * Verifica se `s` aparece em `lower` como palavra/frase INTEIRA.
+ * FIX (auditoria cognição): firstMatch() usava .includes() puro. "resumo"
+ * (SUMMARY_PHRASES) é substring de "presumo" ("presumo que sim" é frase
+ * comum, sem nenhuma relação com pedir um resumo), e "memoria" é
+ * substring de "memorial". Fronteira Unicode resolve sem remover sinais.
+ */
 function firstMatch(lower: string, list: readonly string[]): string | null {
   for (const s of list) {
-    if (lower.includes(s)) return s;
+    const escaped = s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}([^\\p{L}\\p{N}]|$)`, "u");
+    if (pattern.test(lower)) return s;
   }
   return null;
 }
