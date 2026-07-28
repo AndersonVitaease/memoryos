@@ -165,9 +165,28 @@ const ENGINEERING_COMPONENT_RE =
 
 // ── Signal matcher ────────────────────────────────────────────────────────────
 
+/**
+ * Verifica se `s` aparece em `lower` como palavra/frase INTEIRA.
+ * FIX (auditoria cognição): firstMatch() usava .includes() puro. "repo"
+ * (CODE_ENTITY_SIGNALS, peso 0.40 — sozinho já acima do
+ * MIN_SCORE_THRESHOLD de 0.20) é substring de "reportagem" e "repolho".
+ *
+ * A fronteira é CONDICIONAL: só exige fronteira Unicode no lado em que
+ * o próprio sinal começa/termina com letra ou número. Sinais como
+ * ".ts" ou "src/" já começam/terminam com caractere não-alfanumérico,
+ * que naturalmente separa palavras — exigir fronteira ali quebraria
+ * casos legítimos como "arquivo.ts" (o "o" antes do "." não seria mais
+ * reconhecido como fronteira válida).
+ */
 function firstMatch(lower: string, signals: readonly string[]): string | null {
   for (const s of signals) {
-    if (lower.includes(s)) return s;
+    const escaped = s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const startsWithWord = /^[\p{L}\p{N}]/u.test(s);
+    const endsWithWord = /[\p{L}\p{N}]$/u.test(s);
+    const prefix = startsWithWord ? "(^|[^\\p{L}\\p{N}])" : "";
+    const suffix = endsWithWord ? "([^\\p{L}\\p{N}]|$)" : "";
+    const pattern = new RegExp(`${prefix}${escaped}${suffix}`, "u");
+    if (pattern.test(lower)) return s;
   }
   return null;
 }
