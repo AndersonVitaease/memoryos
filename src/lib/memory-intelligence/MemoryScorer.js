@@ -25,7 +25,16 @@ const DEFAULT_WEIGHTS = {
  */
 function recencyScore(dateStr) {
   if (!dateStr) return 0.3;
-  const ageMs = Date.now() - new Date(dateStr).getTime();
+  const parsed = new Date(dateStr).getTime();
+  // FIX (auditoria cognição): data malformada/inválida gerava NaN, que se
+  // propagava por toda a fórmula do score final (score = ... + NaN + ...
+  // = NaN). priority(NaN) some pela regra "if (score >= 0.75)" (NaN em
+  // qualquer comparação é sempre false) até cair em "DISCARD" — o registro
+  // era descartado silenciosamente, mesmo que fosse uma decisão/tarefa
+  // importante, só porque a data não pôde ser interpretada. Agora trata
+  // como data ausente (mesmo score neutro 0.3).
+  if (Number.isNaN(parsed)) return 0.3;
+  const ageMs = Date.now() - parsed;
   const ageDays = ageMs / (1000 * 60 * 60 * 24);
   return Math.exp(-ageDays / 30);
 }
