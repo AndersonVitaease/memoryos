@@ -477,17 +477,33 @@ export class GitHubQueryRouter {
         ? bestPattern.extractPayload(message)
         : {};
 
-    // If anchor fired but no pattern matched, default to files.get for read-oriented queries,
-    // or repos.list as the safest fallback — never google-drive.
-    let resolvedCapability: GitHubCapability | null = isGitHubQuery ? bestCapability : null;
-    if (isGitHubQuery && resolvedCapability === null && hasGitHubAnchor) {
-      const lowerRead = lower.includes("ler") || lower.includes("read") || lower.includes("arquivo") || lower.includes("file");
-      resolvedCapability = lowerRead ? "files.get" : "repos.list";
-      reasoning = `Anchor match (github/repositorio) → defaulted to ${resolvedCapability}`;
+    // FIX (auditoria cognição): antes, quando a âncora disparava
+    // ("repositório"/"github" mencionados) mas nenhum padrão específico
+    // batia, o código "chutava" repos.list como "fallback mais seguro" —
+    // só que não é seguro: isso faz uma chamada REAL à API do GitHub
+    // pra listar OS SEUS PRÓPRIOS repositórios, mesmo quando a pergunta
+    // era outra coisa completamente diferente (ex: "identifique
+    // repositórios [públicos] que podem ter alguma vantagem..." — um
+    // pedido de pesquisa externa, não de introspecção do seu repo).
+    // O resultado nesses casos é irrelevante na melhor das hipóteses, ou
+    // o erro genérico "GitHub query could not be completed" na pior.
+    //
+    // Esse roteador só sabe consultar repositórios JÁ CONECTADOS — não
+    // existe capacidade de busca em repositórios públicos do GitHub
+    // neste sistema. Por isso, quando nenhum padrão específico bate,
+    // a mensagem não é mais tratada como uma GitHub query executável:
+    // ela cai de volta pro fluxo de conversa normal, que agora (com os
+    // princípios do contextBuilder.js) responde honestamente em vez de
+    // inventar ou chutar uma chamada de API.
+    const resolvedCapability: GitHubCapability | null =
+      isGitHubQuery && bestCapability !== null ? bestCapability : null;
+    const finalIsGitHubQuery = isGitHubQuery && resolvedCapability !== null;
+    if (isGitHubQuery && resolvedCapability === null) {
+      reasoning = `Anchor match (github/repositório) mas nenhuma capability específica reconhecida — não executado como GitHub query`;
     }
 
     return {
-      isGitHubQuery,
+      isGitHubQuery:   finalIsGitHubQuery,
       capability:      resolvedCapability,
       payload,
       confidence,
