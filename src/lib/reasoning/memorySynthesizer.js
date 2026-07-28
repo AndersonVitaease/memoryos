@@ -15,11 +15,34 @@
 
 /**
  * Remove parágrafos duplicados consecutivos.
+ *
+ * FIX (auditoria cognição): antes, removia QUALQUER linha idêntica à
+ * anterior — inclusive dentro de blocos de código (```...```) e linhas
+ * de tabela markdown (|...|). Isso apagava dados reais e legítimos:
+ * duas chamadas "console.log(x);" repetidas de propósito num exemplo
+ * de código, ou duas linhas de uma tabela que coincidem de ter os
+ * mesmos valores (ex: duas tarefas diferentes com o mesmo status) —
+ * a segunda ocorrência sumia silenciosamente, sem nenhum aviso.
+ * Essa função existe pra corrigir "gagueira" do LLM (repetir um
+ * parágrafo de texto por engano), não pra deduplicar dados
+ * estruturados, então agora ignora linhas dentro de blocos de código
+ * e linhas de tabela.
  */
 function deduplicateConsecutiveParagraphs(text) {
   const paragraphs = text.split(/\n/);
   const result = [];
+  let insideCodeFence = false;
   for (const p of paragraphs) {
+    if (/^\s*```/.test(p)) {
+      insideCodeFence = !insideCodeFence;
+      result.push(p);
+      continue;
+    }
+    const isTableRow = /^\s*\|/.test(p);
+    if (insideCodeFence || isTableRow) {
+      result.push(p);
+      continue;
+    }
     const last = result[result.length - 1];
     if (last !== undefined && last.trim() === p.trim() && p.trim() !== "") {
       continue; // skip consecutive duplicate
