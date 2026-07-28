@@ -58,8 +58,19 @@ export const GmailSemanticProvider: SemanticProvider = Object.freeze({
     const finDoc = firstMatch(lower, FINANCIAL_DOCS);
     if (finDoc) { score += 0.30; evidences.push(`financial-doc: "${finDoc}"`); }
 
+    // FIX (auditoria cognição): score de commercial-brand era 0.25 —
+    // sozinho já ultrapassava o MIN_SCORE_THRESHOLD (0.20) do
+    // ImplicitConnectorIntentDetector. Qualquer mensagem que apenas
+    // MENCIONASSE uma marca ("conector mcp mercado livre", pedindo
+    // ajuda com integração, sem nenhuma intenção de e-mail) disparava
+    // uma busca real na caixa de entrada do Gmail, trazendo e-mails de
+    // suporte/anúncios que não tinham nada a ver com o pedido. Reduzido
+    // pra 0.12 — agora precisa se combinar com um verbo de e-mail
+    // ("recebi", "enviei"...) ou palavra "email"/"mensagem" pra
+    // ultrapassar o threshold, preservando o caso legítimo ("recebi
+    // uma notificação do Mercado Livre").
     const brand = firstMatch(lower, COMMERCIAL_BRANDS);
-    if (brand) { score += 0.25; evidences.push(`commercial-brand: "${brand}"`); }
+    if (brand) { score += 0.12; evidences.push(`commercial-brand: "${brand}"`); }
 
     const verb = firstMatch(lower, EMAIL_VERBS);
     if (verb) { score += 0.20; evidences.push(`email-verb: "${verb}"`); }
