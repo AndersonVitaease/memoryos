@@ -1,13 +1,3 @@
-Segundo arquivo: `ConversationSessionManager.ts`.
-
-**Endereço no GitHub** (mesmo padrão do anterior, troca `blob` por `edit`):
-👉 **https://github.com/AndersonVitaease/memoryos/edit/main/src/lib/conversation-platform/ConversationSessionManager.ts**
-
-Mesma recomendação de antes: antes de colar por cima, dá uma olhada rápida na versão atual desse arquivo no GitHub (aba "Code", não "Raw") pra ver se bate com o que eu tenho — o zip pode estar um pouco atrás do que está lá.
-
-**Conteúdo completo pra copiar (Ctrl+A dentro do editor → colar isto por cima):**
-
-```typescript
 /**
  * ConversationSessionManager.ts
  * Manages session lifecycle: create, restore, archive, rename, close, switch, sync.
@@ -150,26 +140,3 @@ export const sessionManager: ConversationSessionManager = (
 )[_key];
 
 export { ConversationSessionManager };
-```
-
-**Commit message sugerida:**
-
-```
-fix(IA-044): RuntimeContextLayer não era limpo ao trocar/criar sessão
-
-ConversationStore.setConnectorContext() documenta o contexto como
-"scoped to the current session — never shared across sessions", mas
-isso não era verdade: connectorContexts é um mapa achatado por
-connectorId, sem sessionId na chave, e ExecutionIntentManager também
-não tem nenhum campo de sessão ou expiração por tempo.
-
-reset() (que limpa esse estado) só era chamado em close(). Nem
-createNewSession() nem switchSession() chamavam. Resultado: o
-goalType/artefato/resultSet da última execução de conector
-continuava vivo ao trocar de conversa, e podia ser "herdado" por
-uma sessão totalmente diferente assim que uma frase de continuidade
-fosse detectada (ver IA-043).
-
-Mudança: runtimeContextLayer.clear() agora roda no início de
-createNewSession() e switchSession().
-```
