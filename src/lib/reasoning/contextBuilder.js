@@ -35,13 +35,27 @@ import { buildSkillsPrompt } from "@/lib/skills/detector";
  * @param {Object} params.serviceInfo - Serviço identificado + conectores disponíveis
  * @returns {string} - Prompt completo pronto para UMA chamada ao LLM
  */
-export function buildReasoningContext({ userMsg, memory, skills, goal, historyText, totalMessages, capabilities, capabilityResults, needsMoreInfo, missingInfoHint, serviceInfo, kfmContext }) {
+export function buildReasoningContext({ userMsg, memory, skills, goal, historyText, totalMessages, capabilities, capabilityResults, needsMoreInfo, missingInfoHint, serviceInfo, kfmContext, memoryRetrievalFailed }) {
   const { context, sources, sessionSummary } = memory;
 
   // === BLOCO DE CAPACIDADES EXECUTADAS ===
   // Resultados brutos de web search, cálculo determinístico e documentos consultados.
   // O LLM usa esses dados como contexto — não responde em nome deles.
   const capabilityBlocks = [];
+
+  // FIX (auditoria cognição): antes, se a recuperação de memória falhasse
+  // tecnicamente (erro de rede, query malformada), o prompt simplesmente
+  // não tinha nenhuma memória — indistinguível de "não existe registro
+  // sobre isso". O usuário recebia uma resposta como se o assunto fosse
+  // novo, sem nenhuma pista de que houve uma falha técnica real.
+  if (memoryRetrievalFailed) {
+    capabilityBlocks.push(
+      `## ATENÇÃO: FALHA TÉCNICA NA RECUPERAÇÃO DE MEMÓRIA\n` +
+      `A consulta à memória armazenada falhou tecnicamente nesta mensagem (erro interno, não ausência de dados). ` +
+      `NÃO diga "não há registro sobre isso" ou "essa é a primeira vez que falamos disso" — isso seria enganoso. ` +
+      `Diga claramente que houve uma falha técnica ao consultar a memória agora e que pode tentar de novo.`
+    );
+  }
 
   if (capabilityResults?.webSearch && !capabilityResults.webSearch.error) {
     const ws = capabilityResults.webSearch;
