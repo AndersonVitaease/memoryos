@@ -184,18 +184,21 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
   // específica e mostrar o que tem dentro). Isso só roda quando nada mais
   // (GoalRegistry, Producer B) já resolveu a mensagem — é a rede de
   // segurança semântica final, não uma substituição do sistema existente.
-  async function _classifyDriveAction(message) {
+  async function _classifyDriveAction(message, recentContext = "") {
     try {
+      const contextBlock = recentContext
+        ? `\n\nCONTEXTO RECENTE DA CONVERSA (use para não confundir um pedido de "repetir/explicar de novo algo já dito" com um pedido real de abrir/ler um arquivo do Drive):\n${recentContext}\n`
+        : "";
       return await base44.integrations.Core.InvokeLLM({
         prompt: `O usuário disse: "${message}"
-
+${contextBlock}
 O usuário está conversando com o MemoryOS, um assistente conectado ao Google Drive. Determine se essa mensagem é um pedido de ação relacionada ao Drive, e qual ação exatamente.
 
 Ações possíveis:
 - "list_root": listar os arquivos/pastas recentes do Drive em geral (ex: "drive", "quais arquivos tenho").
 - "open_folder": abrir/ver o conteúdo de uma PASTA específica (ex: "abrir pasta X", "o que tem na pasta X").
 - "download_file": baixar um ARQUIVO específico (ex: "baixar X", "download de X").
-- "read_content": ver o CONTEÚDO/dados de dentro de um arquivo específico (ex: "mostre os dados de X", "leia X").
+- "read_content": ver o CONTEÚDO/dados de dentro de um ARQUIVO REAL do Drive específico (ex: "mostre os dados de X", "leia X"). NÃO use esta ação para pedidos de repetir, recapitular ou explicar de novo algo que já foi dito nesta própria conversa (ex: "fale de novo sobre a documentação exigida", "resuma o que você disse", "explica de novo aquilo") — isso é conversa normal, não uma ação de Drive, mesmo que a palavra "documentação"/"documento" apareça.
 - null: não é um pedido relacionado ao Drive.
 
 Se envolver um nome de arquivo/pasta específico, extraia em "target" (sem palavras de comando tipo "abrir", "baixar"). Se não houver nome específico, "target" deve ser null.`,
@@ -236,7 +239,18 @@ Se envolver um nome de arquivo/pasta específico, extraia em "target" (sem palav
   const _hasRealDocRead = Boolean(
     capabilityResult.capabilityResults?.officialLibrary?.selectedDocs?.length > 0
   );
-  const _driveAction = await _classifyDriveAction(userMsg);
+  // FIX (auditoria cognição): _classifyDriveAction recebia só a mensagem
+  // atual isolada. "Fale de novo sobre a documentação exigida" (um pedido
+  // de RECAPITULAR algo já dito na conversa) foi classificado como
+  // read_content (leitura de arquivo real do Drive), porque a palavra
+  // "documentação" sozinha, sem contexto, parece um pedido de arquivo.
+  // Passamos um recorte recente da conversa para o classificador poder
+  // distinguir "recapitular o que já foi dito" de "ler um arquivo real".
+  const _recentContextForDriveClassifier = _recentHistory
+    .slice(-4)
+    .map((m) => `${m.role === "user" ? "Usuário" : "Assistente"}: ${m.content}`.slice(0, 500))
+    .join("\n\n");
+  const _driveAction = await _classifyDriveAction(userMsg, _recentContextForDriveClassifier);
 
   // ── NOVA CAPACIDADE: abrir uma pasta específica e listar o conteúdo ──────
   // Isso não existia antes — "abrir pasta X" sempre caía na conversa livre
