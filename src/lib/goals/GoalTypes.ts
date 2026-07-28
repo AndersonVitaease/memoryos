@@ -1,25 +1,8 @@
 /**
  * GoalTypes.ts — Shared Platform Types
- * Engineering Sprint E-02.1A
- *
- * Modulo compartilhado de tipos de Goal para toda a plataforma.
- *
- * Utilizado por:
- *   - ConversationGoalBridge
- *   - GoalRegistry
- *   - Planning Engine (Sprint E-02.2)
- *   - Runtime (Sprint E-02.3+)
- *   - Connector Router
- *   - Observability / Analytics
- *   - Decision Engine
- *
- * SRP: apenas tipos e helpers de identificacao.
- * Sem logica. Sem chamadas de rede. Sem dependencias externas.
  */
 
 import type { CognitiveIntent } from "@/lib/conversation-cognitive-gateway/CCGTypes";
-
-// ── GoalType ──────────────────────────────────────────────────────────────────
 
 export type GoalType =
   // Gmail
@@ -45,8 +28,7 @@ export type GoalType =
   | "drive.renameFile"
   | "drive.copyFile"
   | "drive.listRecent"
-  // GitHub — Sprint M-02
-  // Connector id: "github" (GitHubConnector.ts:161)
+  // GitHub
   | "github.listRepos"
   | "github.listBranches"
   | "github.listCommits"
@@ -62,9 +44,8 @@ export type GoalType =
   | "memory.summarize"
   // General
   | "general.conversation"
+  | "general.webSearch"    // <--- ADICIONADO! Permite pesquisar na web
   | "unknown";
-
-// ── ConversationGoal ──────────────────────────────────────────────────────────
 
 export interface ConversationGoal {
   readonly id:               string;
@@ -83,14 +64,10 @@ export interface GoalBridgeResult {
   readonly durationMs: number;
 }
 
-// ── ID factory ────────────────────────────────────────────────────────────────
-
 let _seq = 0;
 export function makeConversationGoalId(): string {
   return `cg-${Date.now()}-${(++_seq).toString(36)}`;
 }
-
-// ── Validation ────────────────────────────────────────────────────────────────
 
 export function validateConversationGoal(
   goal: Omit<ConversationGoal, "valid" | "validationErrors">,
