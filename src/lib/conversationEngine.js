@@ -130,7 +130,21 @@ afirmações do Assistente como Decisão, Tarefa, Entidade ou fato do resumo,
 a menos que a mesma informação também apareça de forma clara na mensagem do
 "Usuário" ou seja um resultado técnico literal (ex: uma lista de arquivos,
 um erro do sistema). Na dúvida, não extraia — é preferível perder uma
-informação incerta do que gravar algo falso como memória permanente.`,
+informação incerta do que gravar algo falso como memória permanente.
+
+REGRA CRÍTICA (auditoria cognição): mensagens do "Assistente" frequentemente
+PROPÕEM ou SUGEREM tarefas e decisões sem que o Usuário tenha confirmado
+nada ainda — ex: "Você prefere que eu inicie o desenho da estrutura?",
+"Podemos focar em X ou Y primeiro?", "Como quer prosseguir?", listas de
+"próximos passos possíveis" apresentadas como opções. Isso NÃO são tarefas
+ou decisões reais — são perguntas abertas do Assistente aguardando resposta.
+NUNCA extraia como Tarefa ou Decisão algo que só apareceu como proposta,
+pergunta ou opção do Assistente. Só extraia uma Tarefa/Decisão quando o
+Usuário tiver claramente pedido, confirmado ou decidido aquilo em sua
+própria mensagem — a intenção precisa vir do Usuário, não do Assistente
+tentando adivinhar o que fazer a seguir. Isso evita que uma sugestão não
+confirmada vire "memória real" permanente e se autoalimente em conversas
+futuras, cada vez com mais detalhes fabricados.`,
     response_json_schema: CONVERSATION_SCHEMA,
   });
 
