@@ -97,12 +97,21 @@ function executeCalculation(message) {
     const a = parseFloat(exprMatch[1]);
     const op = exprMatch[2];
     const b = parseFloat(exprMatch[3]);
+    // FIX (auditoria cognição): divisão por zero retornava `null`, e
+    // `Math.round(null * 100) / 100` avalia para 0 (null vira 0 na
+    // coerção numérica do JS) — o resultado ia pro prompt como
+    // "Resultado: 0", um valor matematicamente ERRADO apresentado com
+    // a mesma confiança de um cálculo válido ("Use este resultado como
+    // base"). Agora retorna um erro explícito em vez de um número.
+    if (op === "/" && b === 0) {
+      return { error: true, message: "Divisão por zero — não é possível calcular." };
+    }
     let result;
     switch (op) {
       case "+": result = a + b; break;
       case "-": result = a - b; break;
       case "*": result = a * b; break;
-      case "/": result = b !== 0 ? a / b : null; break;
+      case "/": result = a / b; break;
       default: return null;
     }
     return {
