@@ -101,7 +101,7 @@ export async function orchestrateCapabilities({ message, memory, goal, sessionId
   const hasExecutable = Object.values(execCapabilities).some(Boolean);
 
   const capabilityResults = hasExecutable
-    ? await executeCapabilities(execCapabilities, { message, sessionId, projectId })
+    ? await executeCapabilities(execCapabilities, { message, sessionId, projectId, memory })
     : {};
 
   // === RETORNAR PARA O PLANNER ===
