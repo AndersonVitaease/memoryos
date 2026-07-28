@@ -30,9 +30,21 @@ export function buildEnrichedContext(data, intent, sessionId) {
   const keywords = intent?.search_keywords || [];
   const isListQuery = intent?.is_list_query || false;
 
+  // FIX (auditoria cognição): sessionId era recebido mas nunca usado.
+  // O buildContext() antigo (pré-MIP) excluía mensagens da sessão atual
+  // antes de rankear ("MENSAGENS DE OUTRAS SESSÕES"), mas essa filtragem
+  // se perdeu na migração pro MIP — rankAllMemory() rankeava TODAS as
+  // mensagens, incluindo as da conversa atual, e elas apareciam de volta
+  // no prompt rotuladas como "MEMÓRIA CROSS-SESSION", duplicando conteúdo
+  // que o LLM já recebe como histórico normal e confundindo o que é
+  // realmente de outra conversa.
+  const dataForRanking = sessionId && Array.isArray(data.messages)
+    ? { ...data, messages: data.messages.filter((m) => m.session_id !== sessionId) }
+    : data;
+
   // ── 1. Ranking ──────────────────────────────────────────────────────────────
-  const ranked = rankAllMemory(data, keywords);
-  const health = computeMemoryHealth(ranked, data);
+  const ranked = rankAllMemory(dataForRanking, keywords);
+  const health = computeMemoryHealth(ranked, dataForRanking);
 
   // ── 2. Grafo de relacionamentos ─────────────────────────────────────────────
   const graph = buildRelationshipGraph(data);
