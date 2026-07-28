@@ -137,6 +137,28 @@ function selectDocuments(message) {
     }
   }
 
+  // FIX (auditoria cognição — continuação do IA-064): a lista de keywords
+  // acima exige frases específicas ("mas memoryos", "segundo o mas") que
+  // ninguém digita naturalmente — uso real é "aderência ao MAS/MES",
+  // "arquitetura MAS". O IA-064 já corrigiu capabilityDetector.js pra
+  // ATIVAR a capacidade nesses casos, mas esta função (que decide QUAL
+  // documento carregar) tinha o mesmo problema e ficou de fora — mesmo
+  // com a capacidade ativa, nenhum documento real era selecionado, e o
+  // conteúdo verdadeiro de MAS/MES continuava fora do prompt. Mesma
+  // checagem case-sensitive na mensagem ORIGINAL (sigla em maiúsculas
+  // distingue de "mas"/conjunção e "mes"/mês do calendário).
+  const ACRONYM_DOC_MAP = {
+    MV:  "MV-MemoryOS-Vision",
+    MPS: "MPS-MemoryOS-Product-Specification",
+    MAS: "MAS-MemoryOS-Architecture-Specification",
+    MES: "MES-MemoryOS-Engineering-Specification",
+  };
+  for (const [acronym, doc] of Object.entries(ACRONYM_DOC_MAP)) {
+    if (new RegExp(`\\b${acronym}\\b`).test(message)) {
+      selected.add(doc);
+    }
+  }
+
   return Array.from(selected);
 }
 
