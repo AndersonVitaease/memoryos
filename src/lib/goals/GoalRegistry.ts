@@ -1100,8 +1100,10 @@ const _builtins: GoalDefinition[] = [
       const cleaned = msg
         .replace(/\b(lembre que|lembra que|guarde essa informa[cç][aã]o|guarde isso|n[aã]o esque[cç]a que|anote que|salve na mem[oó]ria|salve isso|grave isso|grave na mem[oó]ria|remember that|save this|don'?t forget)\b/gi, "")
         .trim();
+      const finalMessage = cleaned || msg.trim();
       return {
-        userMessage: cleaned || msg.trim(),
+        userMessage: finalMessage,
+        assistantResponse: `Anotado: ${finalMessage}`,
         rawText: msg.trim(),
       };
     },
