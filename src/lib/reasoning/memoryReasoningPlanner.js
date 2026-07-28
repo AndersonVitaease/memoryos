@@ -412,9 +412,49 @@ Se envolver um nome de arquivo/pasta específico do usuário, extraia em "target
     ? "Ainda não consegui ler o conteúdo real desse arquivo — não tenho um resultado de leitura confirmado para ele agora. Se quiser, você pode anexar o arquivo diretamente aqui na conversa, que eu leio na hora, ou me pedir para tentar abrir/baixar ele pelo Drive."
     : _rawText;
 
+  // === ETAPA 6.6: TRAVA DETERMINÍSTICA CONTRA ITEM FABRICADO EM LISTA REAL (IA-084) ===
+  // FIX (auditoria cognição): o princípio 14 do prompt (não completar uma
+  // lista de resultados de pesquisa real com um item extra "plausível")
+  // é só instrução — já confirmado, via análise externa, que o modelo
+  // não segue 100% das vezes (ex: "rg-mcp-mercadolivre", nome de
+  // repositório MCP que não existe em nenhuma fonte real, apareceu no
+  // meio de uma lista majoritariamente verdadeira). Diferente do
+  // MAS/MES (IA-064), aqui não dá pra "injetar o documento real" porque
+  // o nome fabricado é arbitrário, não uma sigla fixa — então a defesa
+  // possível é detectar e avisar, não impedir a geração.
+  // Só roda quando uma pesquisa web REAL aconteceu nesta mensagem —
+  // sem isso, não há "fatos reais" pra comparar contra.
+  let _finalResponseWithMcpCheck = _finalRawResponse;
+  const _webSearchResult = capabilityResult.capabilityResults?.webSearch;
+  if (_webSearchResult && !_webSearchResult.error) {
+    const _groundingText = [
+      ...(_webSearchResult.facts || []),
+      ...(_webSearchResult.sources || []),
+    ].join(" \n ").toLowerCase();
+
+    // Nomes de servidor/repositório MCP seguem um padrão previsível o
+    // suficiente pra detectar: são tokens com hífen/underscore/barra
+    // onde um dos pedaços é exatamente "mcp" (ex: "mercadolibre-mcp-
+    // server", "newerton/mcp-mercado-livre", "rg-mcp-mercadolivre").
+    const _tokenRe = /[a-z0-9]+(?:[-_/][a-z0-9]+)+/gi;
+    const _tokens = _finalRawResponse.match(_tokenRe) || [];
+    const _mentioned = [...new Set(
+      _tokens
+        .filter((t) => t.toLowerCase().split(/[-_/]/).includes("mcp"))
+        .map((s) => s.toLowerCase())
+    )];
+    const _unverified = _mentioned.filter((name) => !_groundingText.includes(name));
+
+    if (_unverified.length > 0) {
+      _finalResponseWithMcpCheck =
+        `${_finalRawResponse}\n\n---\n⚠️ **Não verificado**: ${_unverified.join(", ")} — ` +
+        `${_unverified.length > 1 ? "esses nomes" : "esse nome"} não ${_unverified.length > 1 ? "aparecem" : "aparece"} literalmente nos resultados da pesquisa realizada agora. Confirme antes de usar.`;
+    }
+  }
+
   // === ETAPA 7: MEMORY SYNTHESIZER ===
   // Síntese determinística (sem LLM): elimina repetições, melhora fluidez.
-  const response = synthesizeResponse(_finalRawResponse);
+  const response = synthesizeResponse(_finalResponseWithMcpCheck);
 
   const responseTimeMs = Date.now() - startTime;
 
