@@ -80,7 +80,28 @@ const INTENT_PATTERNS: Array<{ intent: CognitiveIntent; keywords: string[]; requ
   { intent: "knowledge_reconstruction",keywords: ["knowledge", "conhecimento", "reconstruct", "reconstruir", "what do we know", "o que sabemos", "knowledge graph"], requiresCognitive: true },
   { intent: "architecture_question",   keywords: ["architect", "arquitetura", "pipeline", "engine", "component", "componente", "module", "módulo", "layer", "camada"], requiresCognitive: true },
   { intent: "implementation_status",   keywords: ["implemented", "implementado", "done", "completo", "finished", "concluído", "what was built", "o que foi construído", "certification", "certified"], requiresCognitive: true },
-  { intent: "connector_diagnostics",   keywords: ["connector", "conector", "diagnostic", "diagnóstico", "health", "saúde", "operational", "operacional", "ping"], requiresCognitive: true },
+  {
+    intent: "connector_diagnostics",
+    // FIX (auditoria cognição): "connector"/"conector"/"health"/"saúde"/
+    // "operational"/"operacional"/"ping" sozinhos eram genéricos demais.
+    // Esse pipeline serve pra perguntar sobre o STATUS INTERNO dos
+    // conectores do próprio MemoryOS — mas qualquer mensagem que
+    // simplesmente MENCIONASSE a palavra "conector" (ex: "conector mcp
+    // para o mercado livre", pedindo ajuda pra integrar um serviço
+    // externo) era sequestrada pra esse pipeline de diagnóstico,
+    // retornando um dump técnico bruto ("Base44 Connector OPERATIONAL —
+    // 0 records fetched", "Pipeline Status", "Recovery Events") em vez
+    // de responder à pergunta real. Agora exige frases que indicam
+    // claramente intenção de checar o status interno.
+    keywords: [
+      "status dos conectores", "status do conector", "diagnóstico dos conectores",
+      "diagnóstico do conector", "conectores estão operacionais", "conector está operacional",
+      "saúde dos conectores", "saúde do conector", "conectores estão funcionando",
+      "ping nos conectores", "conector github está", "conector base44 está",
+      "connector status", "connector diagnostics", "connector health",
+    ],
+    requiresCognitive: true,
+  },
   { intent: "project_history",         keywords: ["history", "histórico", "timeline", "what happened", "o que aconteceu", "passado", "decisions", "decisões"], requiresCognitive: true }, // IA-038: "past" removido — substring de "pasta" (folder)
   { intent: "technical_debt",          keywords: ["debt", "dívida técnica", "tech debt", "refactor", "refatorar", "missing", "faltando", "gap", "issue", "problema pendente"], requiresCognitive: true },
 ];
