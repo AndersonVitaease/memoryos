@@ -40,6 +40,10 @@ export function useConversation() {
     return conversationManager.retry(text);
   }, []);
 
+  const appendMessage = useCallback((message) => {
+    conversationManager.appendMessage(message);
+  }, []);
+
   return {
     // State
     messages: state.messages,
