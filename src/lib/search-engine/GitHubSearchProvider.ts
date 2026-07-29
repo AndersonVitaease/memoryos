@@ -17,6 +17,19 @@ const DEFAULT_REPO = "memoryos";
 
 const _router = new GitHubQueryRouter();
 
+// FIX (achado real via teste): o IA-013 (correção anterior a hoje) removeu
+// "onde está"/"onde fica" das palavras-chave do roteador compartilhado,
+// porque essas frases sozinhas eram genéricas demais em português e
+// disparavam busca de código pra perguntas do dia a dia sem relação
+// (ex: "onde está os arquivos em pdf"). Isso deixou uma lacuna real:
+// perguntas que mencionam um NOME DE ARQUIVO DE CÓDIGO específico (ex:
+// "onde está o GoogleDriveConnector.ts") não disparavam nada. Diferente
+// do "onde está" genérico, mencionar um arquivo com extensão de código é
+// um sinal forte e seguro — não colide com perguntas cotidianas. Esse
+// sinal fica só aqui, no Search Engine, sem mexer no roteador
+// compartilhado usado no resto do app.
+const CODE_FILENAME_RE = /\b([a-zA-Z0-9_-]+\.(ts|tsx|js|jsx|py|java|go|rb|json|md))\b/;
+
 function toItems(capability: string, data: unknown): SearchResultItem[] {
   if (!data || typeof data !== "object") return [];
   const d = data as Record<string, unknown>;
@@ -58,26 +71,40 @@ export class GitHubSearchProvider implements SearchProvider {
   canHandle(query: string): number {
     try {
       const decision = _router.route(query);
-      return decision.isGitHubQuery ? decision.confidence : 0;
+      if (decision.isGitHubQuery) return decision.confidence;
     } catch {
-      return 0;
+      // segue pro fallback abaixo
     }
+    return CODE_FILENAME_RE.test(query) ? 0.55 : 0;
   }
 
   async search(query: string, _options?: SearchOptions): Promise<SearchResult> {
     const t0 = Date.now();
-    let decision;
+    let capability: string | null = null;
+    let payload: Record<string, unknown> = {};
+    let confidence = 0;
+
     try {
-      decision = _router.route(query);
-    } catch (err) {
-      return {
-        success: false, confidence: 0, items: [], provider: this.id,
-        durationMs: Date.now() - t0,
-        error: err instanceof Error ? err.message : String(err),
-      };
+      const decision = _router.route(query);
+      if (decision.isGitHubQuery && decision.capability) {
+        capability = decision.capability;
+        payload = decision.payload ?? {};
+        confidence = decision.confidence;
+      }
+    } catch {
+      // segue pro fallback abaixo
     }
 
-    if (!decision.isGitHubQuery || !decision.capability) {
+    if (!capability) {
+      const filenameMatch = query.match(CODE_FILENAME_RE);
+      if (filenameMatch) {
+        capability = "search.file";
+        payload = { query: filenameMatch[1] };
+        confidence = 0.55;
+      }
+    }
+
+    if (!capability) {
       return {
         success: false, confidence: 0, items: [], provider: this.id,
         durationMs: Date.now() - t0,
@@ -88,12 +115,12 @@ export class GitHubSearchProvider implements SearchProvider {
     try {
       const { GitHubConnector } = await import("@/lib/connector-runtime/connectors/GitHubConnector");
       const connector = new GitHubConnector();
-      const payload = {
+      const fullPayload = {
         owner: DEFAULT_OWNER,
         repo: DEFAULT_REPO,
-        ...decision.payload,
+        ...payload,
       };
-      const result = await connector.execute(decision.capability, payload, {
+      const result = await connector.execute(capability, fullPayload, {
         executionId: `search-engine-${Date.now()}`,
         userId: "search-engine",
         projectId: "default",
@@ -108,10 +135,10 @@ export class GitHubSearchProvider implements SearchProvider {
         };
       }
 
-      const items = toItems(decision.capability, result.data);
+      const items = toItems(capability, result.data);
       return {
         success: true,
-        confidence: items.length > 0 ? decision.confidence : 0.2,
+        confidence: items.length > 0 ? confidence : 0.2,
         items,
         provider: this.id,
         durationMs: Date.now() - t0,
@@ -127,3 +154,4 @@ export class GitHubSearchProvider implements SearchProvider {
 }
 
 export const githubSearchProvider = new GitHubSearchProvider();
+
