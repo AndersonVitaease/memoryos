@@ -81,7 +81,7 @@ export class OfficialDocsSearchProvider implements SearchProvider {
     const cached = await queryIndex(query);
     if (cached.length > 0) {
       const items: SearchResultItem[] = cached.slice(0, options?.maxResults ?? 10).map((r) => ({
-        title: r.search_term,
+        title: r.fact.slice(0, 80),
         snippet: r.fact,
         url: r.source_url,
         source: "official_docs",
@@ -124,7 +124,7 @@ Formato: lista de fatos objetivos, sem opinião ou interpretação.`,
       writeToIndex(query, facts, sources);
 
       const items: SearchResultItem[] = facts.slice(0, options?.maxResults ?? 10).map((fact, i) => ({
-        title: query,
+        title: fact.slice(0, 80),
         snippet: fact,
         url: sources[i]?.startsWith("http") ? sources[i] : undefined,
         source: "official_docs",
