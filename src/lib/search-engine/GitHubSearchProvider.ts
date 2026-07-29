@@ -149,9 +149,19 @@ export class GitHubSearchProvider implements SearchProvider {
       // repositório com milhares de arquivos.
       items = items.slice(0, 20);
 
+      // FIX (achado real via teste): a confiança inicial (0.55) pro
+      // sinal de nome de arquivo ficava sempre abaixo do limiar de 0.6
+      // do SearchEngine — mesmo quando a busca encontrava exatamente o
+      // arquivo certo (validado com teste real: 2 arquivos encontrados
+      // corretamente), a resposta nunca era considerada "resolvida" e
+      // sempre caía pro LLM à toa. Agora que sabemos que o filtro é
+      // confiável, uma busca por nome de arquivo com resultado(s)
+      // encontrado(s) merece confiança mais alta.
+      const finalConfidence = targetFilename && items.length > 0 ? 0.75 : confidence;
+
       return {
         success: true,
-        confidence: items.length > 0 ? confidence : 0.2,
+        confidence: items.length > 0 ? finalConfidence : 0.2,
         items,
         provider: this.id,
         durationMs: Date.now() - t0,
