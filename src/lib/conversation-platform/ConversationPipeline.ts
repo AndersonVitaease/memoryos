@@ -135,7 +135,11 @@ class ConversationPipeline {
         () => this._runPipeline(executionId, userMessage, steps),
         {
           maxAttempts: 1,
-          timeoutMs: 45_000,
+          // FIX (pedido do usuário): 45s ainda não era suficiente pra
+          // perguntas complexas (comparações, pesquisa + raciocínio
+          // combinados). Prioridade explícita do usuário: garantir
+          // resposta mesmo que demore mais, em vez de falhar rápido.
+          timeoutMs: 90_000,
           onRetry: () => conversationMetrics.recordRecoveryAttempt(executionId),
         }
       );
