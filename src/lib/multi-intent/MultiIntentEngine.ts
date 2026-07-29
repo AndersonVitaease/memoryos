@@ -88,7 +88,10 @@ export class MultiIntentEngine {
     const trimmed = text.trim();
     const paragraphs = trimmed.split(/\n{2,}/);
     const last = paragraphs[paragraphs.length - 1];
-    if (last && last.trim().endsWith("?") && last.trim().split(/\s+/).length <= 40) {
+    if (!last) return { content: trimmed, question: null };
+
+    const lastNoTag = last.trim().replace(/\s*\([^)]{1,40}\)\s*$/, "").trim();
+    if (lastNoTag.endsWith("?") && lastNoTag.split(/\s+/).length <= 40) {
       return {
         content: paragraphs.slice(0, -1).join("\n\n").trim(),
         question: last.trim(),
