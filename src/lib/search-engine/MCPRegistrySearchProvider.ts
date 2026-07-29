@@ -20,11 +20,23 @@ const REQUEST_TIMEOUT_MS = 15000;
 
 // Palavras de preenchimento comuns em perguntas sobre servidores MCP —
 // removidas pra extrair só o termo de busca real (nome do serviço/produto).
+// FIX (achado real via teste): faltavam vários verbos de comando comuns
+// em pedaços decompostos (ex: "confere se tem MCP do Mercado Livre" —
+// sem remover "confere", o termo de busca virava "confere Mercado
+// Livre", e como nenhum servidor real se chama "confere" algo, o filtro
+// de relevância descartava tudo, mesmo com resultados reais existindo).
+// Lista expandida reaproveitando os mesmos verbos já validados no
+// MessageDecomposer.ts.
 const FILLER_WORDS = new Set([
   "pesquise", "pesquisar", "pesquisa", "procure", "procurar", "verifique", "verificar",
   "existe", "existem", "ha", "há", "tem", "servidor", "servidores", "mcp", "oficial",
   "conector", "conectores", "para", "da", "de", "do", "das", "dos", "um", "uma", "algum",
   "alguma", "se", "o", "a", "os", "as", "e",
+  "confere", "confira", "conferir", "agenda", "agende", "manda", "mande", "envia", "envie",
+  "le", "lê", "leia", "resume", "resuma", "cria", "crie", "abre", "abra", "busca", "busque",
+  "procura", "liste", "lista", "deleta", "delete", "exclui", "exclua", "renomeia", "renomeie",
+  "copia", "copie", "move", "mova", "baixa", "baixe", "desconecta", "desconecte",
+  "conecta", "conecte", "adiciona", "adicione",
 ]);
 
 function extractSearchTerm(query: string): string {
