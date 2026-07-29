@@ -200,14 +200,20 @@ export default function ChatPage() {
         content: `**${result.displayName}** processado e salvo na memoria.\n\n${lines.join("\n")}`,
         memory_tier: "active",
       });
-
-      setProcessingItems((prev) => prev.filter((item) => item.id !== itemId));
-    } catch {
+    setProcessingItems((prev) => prev.filter((item) => item.id !== itemId));
+    } catch (err) {
+      console.error("[ChatPage] Falha ao processar anexo:", err);
+      const detail = err?.message || err?.error_message || "Motivo desconhecido.";
       setProcessingItems((prev) =>
         prev.map((item) =>
-          item.id === itemId ? { ...item, error: "Erro ao processar." } : item
+          item.id === itemId ? { ...item, error: `Erro ao processar: ${detail}` } : item
         )
       );
+      setTimeout(() => {
+        setProcessingItems((prev) => prev.filter((item) => item.id !== itemId));
+      }, 8000);
+    }
+  };
       setTimeout(() => {
         setProcessingItems((prev) => prev.filter((item) => item.id !== itemId));
       }, 3000);
