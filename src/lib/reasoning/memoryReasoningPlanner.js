@@ -49,6 +49,56 @@ import { formatMacrForChat } from "@/lib/reasoning/macrFormatterV4";
 export async function runReasoningPlan({ userMsg, session, historyMessages = [], setPhase, kfmContext }) {
   const startTime = Date.now();
 
+  // === ETAPA 0: DECOMPOSIÇÃO DE MÚLTIPLAS INTENÇÕES ===
+  // Reaproveita o PRÓPRIO pipeline (chamando runReasoningPlan de novo,
+  // uma vez por pedaço) em vez de reimplementar a execução de cada tipo
+  // de pedido — sem risco de recursão infinita: cada pedaço isolado
+  // (ex: "verifica meus emails") não decompõe em mais nada na chamada
+  // seguinte (decomposeMessage() só separa quando há sinal explícito de
+  // múltiplos pedidos), então a recursão para naturalmente depois de 1 nível.
+  try {
+    const { decomposeMessage } = await import("@/lib/multi-intent/MessageDecomposer");
+    const fragments = decomposeMessage(userMsg);
+
+    if (fragments.length > 1) {
+      const { MultiIntentEngine } = await import("@/lib/multi-intent/MultiIntentEngine");
+      const { ReasoningPlanIntentExecutor } = await import("@/lib/multi-intent/ReasoningPlanIntentExecutor");
+
+      const classifiedIntents = fragments.map((f) => ({
+        ...f,
+        goalType: null,
+        confidence: 1,
+        parameters: {},
+      }));
+
+      const executor = new ReasoningPlanIntentExecutor(runReasoningPlan, {
+        session, historyMessages, kfmContext,
+      });
+      const engine = new MultiIntentEngine(executor);
+      const outcome = await engine.executeAll(classifiedIntents);
+
+      console.log("[MultiIntentEngine] Mensagem decomposta:", {
+        totalFragments: fragments.length,
+        handled: outcome.handled,
+        durationMs: outcome.durationMs,
+      });
+
+      if (outcome.handled && outcome.aggregatedResponse) {
+        return {
+          response: outcome.aggregatedResponse,
+          plan: {
+            handledByGuard: "MULTI-INTENT",
+            totalIntents: outcome.totalIntents,
+            responseTimeMs: Date.now() - startTime,
+          },
+          sources: [],
+        };
+      }
+    }
+  } catch (err) {
+    console.warn("[MultiIntentEngine] Falhou, caindo pro fluxo normal (pedido único):", err);
+  }
+
   // === ETAPA 1: MEMORY KERNEL ===
   // O Planner conhece apenas MemoryService — nunca a implementacao subjacente.
   // A escolha de implementacao (Legacy/UCME/Shadow) e responsabilidade do MemoryServiceFactory.
