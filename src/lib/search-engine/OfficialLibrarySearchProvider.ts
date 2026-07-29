@@ -4,10 +4,6 @@
  * 100% sem LLM: os documentos já estão embutidos no próprio app
  * (OfficialLibraryManager.js), então "buscar" aqui é só carregar o
  * texto e procurar o trecho relevante — nenhuma chamada externa.
- *
- * Reaproveita a MESMA lógica de mapeamento sigla → documento que já
- * corrigimos hoje (IA-064/074) — sem duplicar e arriscar reintroduzir
- * o bug de "MAS"/"MES" não sendo reconhecidos.
  */
 
 import type { SearchProvider, SearchResult, SearchOptions, SearchResultItem } from "./SearchProviderTypes";
@@ -29,20 +25,24 @@ function detectAcronyms(query: string): string[] {
 
 function extractRelevantSnippet(docText: string, query: string): string {
   const queryWords = query
-    .toLowerCase()
-    .split(/[^a-zà-ú0-9]+/)
-    .filter((w) => w.length >= 4);
+    .split(/[^a-zA-Zà-úÀ-Ú0-9]+/)
+    .filter((w) => w.length >= 4 || /^[A-Z]{2,}$/.test(w))
+    .map((w) => w.toLowerCase());
 
-  const paragraphs = docText.split(/\n{2,}/).filter((p) => p.trim().length > 0);
+  const allParagraphs = docText.split(/\n{2,}/).filter((p) => p.trim().length > 0);
 
-  for (const p of paragraphs) {
-    const lowerP = p.toLowerCase();
+  const MIN_CONTENT_LENGTH = 80;
+  const contentParagraphs = allParagraphs.filter((p) => p.trim().length >= MIN_CONTENT_LENGTH);
+
+  for (let i = 0; i < contentParagraphs.length; i++) {
+    const lowerP = contentParagraphs[i].toLowerCase();
     if (queryWords.some((w) => lowerP.includes(w))) {
-      return p.trim().slice(0, 600);
+      const next = contentParagraphs[i + 1] ? `\n\n${contentParagraphs[i + 1]}` : "";
+      return `${contentParagraphs[i].trim()}${next}`.slice(0, 900);
     }
   }
 
-  return paragraphs[0]?.trim().slice(0, 600) ?? docText.slice(0, 600);
+  return contentParagraphs[0]?.trim().slice(0, 900) ?? allParagraphs[0]?.trim().slice(0, 900) ?? docText.slice(0, 900);
 }
 
 export class OfficialLibrarySearchProvider implements SearchProvider {

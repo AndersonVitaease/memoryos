@@ -56,14 +56,44 @@ export class MemorySearchProvider implements SearchProvider {
         return { success: true, confidence: 0, items: [], provider: this.id, durationMs: Date.now() - t0 };
       }
 
+      const queryWords = query.toLowerCase().split(/[^a-zà-ú0-9]+/).filter((w) => w.length >= 4);
+      const bulletItems = result.memories
+        .split(/\n(?=[*\-•]\s)/)
+        .map((b) => b.trim())
+        .filter((b) => b.length > 0);
+
+      const relevantItems = queryWords.length > 0
+        ? bulletItems.filter((b) => {
+            const lowerB = b.toLowerCase();
+            return queryWords.some((w) => lowerB.includes(w));
+          })
+        : [];
+
       const sourceTypes = [...new Set((result.sources ?? []).map((s) => s.type))];
+
+      if (relevantItems.length === 0) {
+        return {
+          success: true,
+          confidence: 0.25,
+          items: [{
+            title: `Memória geral recuperada (${sourceTypes.join(", ")}) — sem correspondência específica`,
+            snippet: result.memories.slice(0, 400),
+            source: "memory",
+            raw: { sources: result.sources, sessionSummary: result.sessionSummary },
+          }],
+          provider: this.id,
+          durationMs: Date.now() - t0,
+        };
+      }
+
+      const snippet = relevantItems.slice(0, options?.maxResults ?? 5).join("\n\n");
 
       return {
         success: true,
-        confidence: Math.min(0.5 + sourceCount * 0.05, 0.85),
+        confidence: Math.min(0.55 + relevantItems.length * 0.1, 0.9),
         items: [{
           title: `Memória recuperada (${sourceTypes.join(", ")})`,
-          snippet: result.memories.slice(0, options?.maxResults ? options.maxResults * 200 : 800),
+          snippet,
           source: "memory",
           raw: { sources: result.sources, sessionSummary: result.sessionSummary },
         }],
