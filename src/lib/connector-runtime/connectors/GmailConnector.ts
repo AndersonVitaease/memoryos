@@ -19,6 +19,8 @@ import type {
 } from "../ConnectorTypes";
 import { makeLog, makeExecutionId } from "../ConnectorTypes";
 import { isConnected, getConnection } from "@/lib/google-auth/GoogleAuthSession";
+import { findAccountByEmail } from "@/lib/google-auth/GoogleMultiAccount";
+import { getActiveWorkspaceId } from "@/lib/workspace/WorkspaceContext";
 import { isMultiCandidateResolutionEnabled } from "@/lib/google-drive/MultiCandidateResolutionFeatureFlag";
 import {
   resourceResolutionEngine,
@@ -135,6 +137,19 @@ export class GmailConnector implements IConnector {
   }
 
   private async _dispatch(op: string, p: Record<string, unknown>): Promise<unknown> {
+    // FEATURE (múltiplas contas — Fase 3): se o payload trouxer um
+    // accountEmail (resolvido a partir de uma menção na mensagem do
+    // usuário, ex: "verifica o e-mail da amazonnoconta01"), usa a conta
+    // correspondente. Sem isso, continua usando a conta principal
+    // ("default"), exatamente como sempre funcionou.
+    const _baseWorkspaceId = getActiveWorkspaceId();
+    const _accountEmail = (p["accountEmail"] as string) ?? null;
+    const _resolvedAccount = _accountEmail ? findAccountByEmail(_baseWorkspaceId, _accountEmail) : null;
+    const _workspaceId = _resolvedAccount?.workspaceId ?? _baseWorkspaceId;
+    if (_accountEmail && !_resolvedAccount) {
+      console.warn(`[GmailConnector] accountEmail "${_accountEmail}" foi pedido mas não corresponde a nenhuma conta conectada — usando a conta principal.`);
+    }
+
     const parseCandidateSelectors = (): ResourceCandidateSelector[] => {
       const raw = p["candidateSelectors"];
       if (!Array.isArray(raw)) return [];
@@ -244,6 +259,7 @@ export class GmailConnector implements IConnector {
           maxResults: (p["maxResults"] as number) ?? 20,
           labelIds:   (p["labelIds"] as string)   ?? undefined,
           pageToken:  (p["pageToken"] as string)  ?? undefined,
+          workspaceId: _workspaceId,
         });
       }
       case "searchEmails": {
@@ -269,7 +285,7 @@ export class GmailConnector implements IConnector {
       }
       case "readMessage": {
         const { getMessage } = await import("@/lib/gmail/GmailConnector");
-        return getMessage((p["messageId"] as string) ?? "");
+        return getMessage((p["messageId"] as string) ?? "", _workspaceId);
       }
       case "readEmail": {
         const { readEmail } = await import("@/lib/gmail/GmailReadEmail");
@@ -277,7 +293,7 @@ export class GmailConnector implements IConnector {
       }
       case "getThread": {
         const { getThread } = await import("@/lib/gmail/GmailConnector");
-        return getThread((p["threadId"] as string) ?? "");
+        return getThread((p["threadId"] as string) ?? "", _workspaceId);
       }
       case "getAttachment": {
         const { getAttachment } = await import("@/lib/gmail/GmailConnector");
@@ -299,11 +315,12 @@ export class GmailConnector implements IConnector {
         return getAttachment(
           messageId,
           attachmentId,
+          _workspaceId,
         );
       }
       case "listLabels": {
         const { listLabels } = await import("@/lib/gmail/GmailConnector");
-        return listLabels();
+        return listLabels(_workspaceId);
       }
       case "createDraft": {
         const { createDraft } = await import("@/lib/gmail/GmailActions");
