@@ -452,6 +452,30 @@ Se envolver um nome de arquivo/pasta específico do usuário, extraia em "target
     }
   }
 
+  // === ETAPA 6.65: TRAVA DETERMINÍSTICA CONTRA SHA/ARQUIVO FABRICADO (IA-090) ===
+  // FIX (auditoria cognição): confirmado — mesmo com o princípio 17 do
+  // prompt (não inventar caminhos de arquivo/SHA/violações do repo do
+  // usuário), o modelo continuou produzindo uma "auditoria" inteira com
+  // arquivos que não existem no repositório real (confirmado por busca
+  // direta: pasta "src/core/" nem existe) e um Git Blob SHA fabricado.
+  // Diferente da pesquisa web (que passa por capabilityResult.webSearch),
+  // ESTE caminho de código (memoryReasoningPlanner.js) NUNCA recebe dados
+  // reais de arquivo/repositório do GitHub — isso é responsabilidade de
+  // um sistema totalmente separado (GitHubQueryRouter/ConnectorRuntime),
+  // que intercepta a mensagem ANTES de chegar aqui quando há uma leitura
+  // real. Ou seja: se a execução chegou até este ponto (Etapa 6, LLM
+  // genérico), é estruturalmente IMPOSSÍVEL que exista um resultado real
+  // de leitura de arquivo do GitHub disponível — então qualquer hash no
+  // formato de SHA-1 do Git (40 caracteres hexadecimais) na resposta é,
+  // por definição, fabricado. Diferente do IA-084 (que só avisa), aqui a
+  // resposta INTEIRA é substituída, porque a presença de um SHA fabricado
+  // é sinal de uma narrativa de auditoria inteiramente inventada, não
+  // apenas um detalhe pontual a sinalizar.
+  const _FAKE_SHA_RE = /\b[0-9a-f]{40}\b/i;
+  if (_FAKE_SHA_RE.test(_finalResponseWithMcpCheck)) {
+    _finalResponseWithMcpCheck = "Percebi que eu estava prestes a apresentar um hash Git (SHA) ou dado técnico específico de arquivo que não tenho como ter obtido de verdade nesta conversa — isso teria sido inventado. Não tenho acesso a uma leitura real de arquivos/hashes do seu repositório nesta mensagem. Se quiser essa informação de verdade, me diga o nome exato do arquivo que você quer que eu tente ler ou verificar.";
+  }
+
   // === ETAPA 6.7: TRAVA DETERMINÍSTICA — RASTREABILIDADE DE ORIGEM (IA-086) ===
   // FIX (auditoria cognição): o princípio 16 do prompt exige que toda
   // afirmação factual venha com etiqueta de origem — "(fonte: pesquisa)",
