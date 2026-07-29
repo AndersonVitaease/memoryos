@@ -245,13 +245,14 @@ class ConversationPipeline {
       if (fragments.length > 1) {
         setPhase("consulting_specialists");
         const { MultiIntentEngine } = await import("@/lib/multi-intent/MultiIntentEngine");
-        const { ReasoningPlanIntentExecutor } = await import("@/lib/multi-intent/ReasoningPlanIntentExecutor");
+        const { ConnectorGoalIntentExecutor } = await import("@/lib/multi-intent/ConnectorGoalIntentExecutor");
         const { runReasoningPlan } = await import("@/lib/reasoning/memoryReasoningPlanner");
 
         const classifiedIntents = fragments.map((f) => ({ ...f, goalType: null, confidence: 1, parameters: {} }));
-        const executor = new ReasoningPlanIntentExecutor(runReasoningPlan, {
+        const executor = new ConnectorGoalIntentExecutor(runReasoningPlan, {
           session,
           historyMessages: [...messages, savedUser],
+          executionId,
         });
         const engine = new MultiIntentEngine(executor);
         const outcome = await engine.executeAll(classifiedIntents);
