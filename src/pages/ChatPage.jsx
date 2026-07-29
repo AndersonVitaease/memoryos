@@ -170,12 +170,13 @@ export default function ChatPage() {
       { id: itemId, name: displayName, type, stage: "receiving", error: null },
     ]);
 
-    await base44.entities.Message.create({
+    const savedUserMsg = await base44.entities.Message.create({
       session_id: session.id,
       role: "user",
       content: type === "link" ? `Adicionando link: ${url}` : `Adicionando: ${displayName}`,
       memory_tier: "active",
     });
+    conversation.appendMessage(savedUserMsg);
 
     try {
       const result = await ingestKnowledge({
