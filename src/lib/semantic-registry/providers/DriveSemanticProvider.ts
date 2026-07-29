@@ -248,9 +248,21 @@ function extractEntities(lower: string): Record<string, unknown> {
 
 // ── Signal matcher ────────────────────────────────────────────────────────────
 
+// FIX (achado real via teste): firstMatch() usava .includes() puro, sem
+// fronteira de palavra — o mesmo padrão de bug já corrigido hoje em
+// vários outros arquivos (GmailSemanticProvider, CalendarSemanticProvider,
+// GitHubSemanticProvider, MemorySemanticProvider, GoalRegistry), mas que
+// tinha passado despercebido aqui. Sintoma real: a pergunta "Onde está o
+// GoogleDriveConnector.ts?" continha "drive" como substring embutida no
+// nome do arquivo (sem separador — "google" + "drive" + "connector.ts"),
+// fazendo o DOMAIN_STORAGE_CONTEXT bater e a pergunta ser classificada
+// como uma busca no Google Drive do usuário, em vez de uma pergunta
+// sobre código.
 function firstMatch(lower: string, signals: readonly string[]): string | null {
   for (const s of signals) {
-    if (lower.includes(s)) return s;
+    const escaped = s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}([^\\p{L}\\p{N}]|$)`, "u");
+    if (pattern.test(lower)) return s;
   }
   return null;
 }
