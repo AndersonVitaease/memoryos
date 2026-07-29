@@ -382,6 +382,67 @@ Se envolver um nome de arquivo/pasta específico do usuário, extraia em "target
     }
   }
 
+  // === ETAPA 5.8: SEARCH ENGINE (antes do LLM principal) ===
+  try {
+    const { ensureProvidersRegistered } = await import("@/lib/search-engine/registerProviders");
+    const { searchEngine } = await import("@/lib/search-engine/SearchEngine");
+    const { formatSearchResultAsResponse } = await import("@/lib/search-engine/SearchResultFormatter");
+    ensureProvidersRegistered();
+
+    const searchOutcome = await searchEngine.search(userMsg, {
+      context: {
+        sessionId: session.id,
+        projectId: session.project_id ?? null,
+        sessionSummary: memory.sessionSummary,
+      },
+    });
+
+    console.log("[SearchEngine] Outcome:", {
+      resolved: searchOutcome.resolved,
+      bestProvider: searchOutcome.bestResult?.provider ?? null,
+      bestConfidence: searchOutcome.bestResult?.confidence ?? null,
+      durationMs: searchOutcome.durationMs,
+    });
+
+    if (searchOutcome.resolved && searchOutcome.bestResult) {
+      const response = formatSearchResultAsResponse(searchOutcome.bestResult);
+      const responseTimeMs = Date.now() - startTime;
+      const plan = {
+        goal: goal.id,
+        goalLabel: goal.label,
+        strategy: goal.strategy,
+        skills: skills.map((s) => ({ id: s.id, name: s.name, score: s.score })),
+        skillsCount: skills.length,
+        sourcesCount: sources.length,
+        contextLength: context ? context.length : 0,
+        capabilities: [],
+        capabilitiesCount: 0,
+        needsMoreInfo: false,
+        service: null,
+        responseTimeMs,
+        handledByGuard: "SEARCH-ENGINE",
+        searchProvider: searchOutcome.bestResult.provider,
+        searchConfidence: searchOutcome.bestResult.confidence,
+      };
+      try {
+        base44.analytics.track({
+          eventName: "search_engine_resolved",
+          properties: {
+            provider: searchOutcome.bestResult.provider,
+            confidence: searchOutcome.bestResult.confidence,
+            duration_ms: searchOutcome.durationMs,
+            response_time_ms: responseTimeMs,
+          },
+        });
+      } catch {
+        // analytics é opcional
+      }
+      return { response, plan, sources };
+    }
+  } catch (err) {
+    console.warn("[SearchEngine] Falhou, caindo pro fluxo normal:", err);
+  }
+
   // === ETAPA 6: UMA ÚNICA CHAMADA AO LLM ===
   // Todos os especialistas, memória, objetivo, estratégia e resultados de capacidades
   // estão neste único prompt. O LLM nunca é chamado por capacidade ou especialista.
