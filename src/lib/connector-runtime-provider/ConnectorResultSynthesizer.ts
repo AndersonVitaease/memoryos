@@ -87,8 +87,16 @@ export async function synthesizeConnectorResult(
 
   // ── Runtime failed (auth, network, timeout, 401, 403) ────────────────────
   if (result.status === "failed" || result.status === "timeout" || result.status === "cancelled") {
+    // FIX (bug pré-existente, encontrado via teste real): antes, handled=true
+    // era retornado aqui MESMO EM CASO DE FALHA — a mensagem de desculpa
+    // genérica ("não foi possível completar...") era tratada como resposta
+    // bem-sucedida e confiante (0.95 de confiança em ConversationPipeline.ts),
+    // o que travava QUALQUER fallback (LLM normal ou o novo Search Engine)
+    // de assumir a resposta. Agora handled=false — o pipeline já tem um
+    // caminho correto pra falha real (fromConnectorFailure, confiança 0),
+    // que permite o fallback funcionar como sempre deveria.
     const response = _buildErrorResponse(result);
-    return { handled: true, response, connectorData: null };
+    return { handled: false, response, connectorData: null };
   }
 
   // ── Runtime completed — extract data from step outputs ───────────────────
@@ -159,11 +167,13 @@ export async function synthesizeConnectorResult(
       ?? stepOutputError?.["message"] as string | undefined;
 
     if (embeddedError) {
+      // FIX (mesmo bug do ponto anterior): handled=false em vez de true.
       const response = _buildErrorResponseFromMessage(embeddedError);
-      return { handled: true, response, connectorData: null };
+      return { handled: false, response, connectorData: null };
     }
+    // FIX (mesmo bug): handled=false em vez de true.
     const response = _buildErrorResponse(result);
-    return { handled: true, response, connectorData: null };
+    return { handled: false, response, connectorData: null };
   }
 
   // ── A-10: Search Result Ranking ───────────────────────────────────────────
