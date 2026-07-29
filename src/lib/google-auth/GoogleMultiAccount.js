@@ -48,6 +48,19 @@ export async function connectAdditionalGoogleAccount(baseWorkspaceId, scopes, on
   return connect({ workspaceId: targetSlot, scopes, onStateChange });
 }
 
+/**
+ * Encontra a conexão de uma conta específica pelo e-mail, dentro deste
+ * workspace do MemoryOS. Usado pra resolver "a conta X" que o usuário
+ * menciona na conversa pro workspaceId (slot) real correspondente.
+ */
+export function findAccountByEmail(baseWorkspaceId, email) {
+  if (!email) return null;
+  const normalized = email.trim().toLowerCase();
+  return listGoogleAccounts(baseWorkspaceId).find(
+    (c) => c.email?.toLowerCase() === normalized
+  ) ?? null;
+}
+
 export async function disconnectGoogleAccount(accountWorkspaceId, onStateChange) {
   return disconnect(accountWorkspaceId, onStateChange);
 }
