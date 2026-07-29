@@ -135,6 +135,7 @@ class ConversationPipeline {
         () => this._runPipeline(executionId, userMessage, steps),
         {
           maxAttempts: 1,
+          timeoutMs: 45_000,
           onRetry: () => conversationMetrics.recordRecoveryAttempt(executionId),
         }
       );
