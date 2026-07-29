@@ -13,8 +13,13 @@
 import type { SearchProvider, SearchResult, SearchOptions, SearchResultItem } from "./SearchProviderTypes";
 
 const REGISTRY_BASE = "https://registry.modelcontextprotocol.io";
+// FIX (achado real via teste): 8s não foi suficiente — a API do
+// registro MCP está documentada oficialmente como "preview" (pode ter
+// instabilidade/lentidão). Aumentado pra 15s.
 const REQUEST_TIMEOUT_MS = 15000;
 
+// Palavras de preenchimento comuns em perguntas sobre servidores MCP —
+// removidas pra extrair só o termo de busca real (nome do serviço/produto).
 const FILLER_WORDS = new Set([
   "pesquise", "pesquisar", "pesquisa", "procure", "procurar", "verifique", "verificar",
   "existe", "existem", "ha", "há", "tem", "servidor", "servidores", "mcp", "oficial",
@@ -47,9 +52,17 @@ export class MCPRegistrySearchProvider implements SearchProvider {
 
   canHandle(query: string): number {
     const lower = query.toLowerCase();
-    const hasMcp = /\bmcp\b/i.test(lower);
-    const hasServerContext = /\bservidor(es)?\b|\bconector(es)?\b|\bregistry\b|\bregistro\b/i.test(lower);
-    if (hasMcp && hasServerContext) return 0.65;
+    // FIX (achado real via teste — regressão de confabulação): antes,
+    // exigia "mcp" JUNTO com "servidor/conector/registry/registro" na
+    // mesma frase. Isso funcionava pra frases completas ("existe
+    // servidor mcp oficial da X"), mas falhava em pedaços decompostos
+    // mais curtos (ex: "confere se tem MCP do Mercado Livre" — sem a
+    // palavra "servidor"). Quando o provider não disparava, a pergunta
+    // caía de volta no LLM puro, que reinventava nomes de repositório
+    // falsos (ex: "rg-mcp-mercadolivre" — já confirmado fabricado hoje
+    // de manhã). "mcp" sozinho já é um termo raro o suficiente em
+    // português pra não precisar desse reforço.
+    if (/\bmcp\b/i.test(lower)) return 0.65;
     return 0;
   }
 
@@ -75,8 +88,26 @@ export class MCPRegistrySearchProvider implements SearchProvider {
       const data = await res.json();
       const rawEntries: RegistryServerEntry[] = Array.isArray(data?.servers) ? data.servers : [];
 
+      // FIX (achado real via teste): um teste direto contra a API real
+      // mostrou que o parâmetro "search=" nem sempre filtra
+      // corretamente — uma busca por "shopee" devolveu resultados sem
+      // nenhuma relação (inference.sh, Tandem docs, etc.). Em vez de
+      // confiar cegamente na API, confere no próprio código se o nome
+      // ou a descrição de cada resultado realmente menciona o termo
+      // buscado antes de aceitar como relevante — evita mostrar um
+      // resultado errado com aparência de confiante.
       const lowerTerm = term.toLowerCase();
 
+      // FIX (achado real via teste — refinamento de precisão): antes,
+      // qualquer menção do termo em QUALQUER lugar (mesmo só na
+      // descrição) contava igual, misturando projetos de terceiros com
+      // possíveis donos oficiais, e trazendo duplicatas da mesma
+      // ferramenta em versões antigas. Agora: separa correspondências
+      // no NAMESPACE do dono (ex: "com.openai/...", sinal forte de
+      // propriedade real) das que só mencionam o termo em algum lugar
+      // (sinal fraco, projeto de terceiro/comunidade); e mantém só a
+      // versão mais recente (isLatest) de cada servidor, descartando
+      // duplicatas de versões antigas.
       function namespaceOwnerMatches(name: string): boolean {
         const namespace = name.split("/")[0]?.toLowerCase() ?? "";
         return new RegExp(`(^|\\.)${lowerTerm}(\\.|$)`).test(namespace);
@@ -89,6 +120,7 @@ export class MCPRegistrySearchProvider implements SearchProvider {
         return name.includes(lowerTerm) || desc.includes(lowerTerm) || title.includes(lowerTerm);
       });
 
+      // Deduplica por nome, mantendo só a versão mais recente de cada.
       const latestByName = new Map<string, RegistryServerEntry>();
       for (const e of relevant) {
         const name = e.server?.name ?? "";
@@ -103,6 +135,9 @@ export class MCPRegistrySearchProvider implements SearchProvider {
       const isOwnerVerified = ownerMatches.length > 0;
 
       if (entries.length === 0) {
+        // Busca real, sem resultados relevantes — confiança 0, mas
+        // SUCESSO (não é erro; é uma resposta negativa legítima e
+        // verificada, não apenas "a API não filtrou direito").
         return { success: true, confidence: 0, items: [], provider: this.id, durationMs: Date.now() - t0 };
       }
 
@@ -116,6 +151,9 @@ export class MCPRegistrySearchProvider implements SearchProvider {
 
       return {
         success: true,
+        // Confiança mais alta quando o namespace do dono realmente bate
+        // com o termo buscado (indício real de propriedade oficial);
+        // mais moderada quando são só menções de terceiros/comunidade.
         confidence: isOwnerVerified ? 0.85 : 0.55,
         items,
         provider: this.id,
