@@ -412,6 +412,30 @@ Se envolver um nome de arquivo/pasta específico do usuário, extraia em "target
     ? "Ainda não consegui ler o conteúdo real desse arquivo — não tenho um resultado de leitura confirmado para ele agora. Se quiser, você pode anexar o arquivo diretamente aqui na conversa, que eu leio na hora, ou me pedir para tentar abrir/baixar ele pelo Drive."
     : _rawText;
 
+  // === ETAPA 6.55: TRAVA DETERMINÍSTICA CONTRA NARRATIVA FICTÍCIA DE AUDITORIA (IA-091) ===
+  // FIX (auditoria cognição): confirmado — mesmo com o princípio 17 e o
+  // IA-090 (que só pega SHA fabricado), a narrativa fictícia inteira do
+  // "MACR" (Official Library Manager, componente fantasma, adapter_v1.ts,
+  // Pipeline Coordinator) continuou se sustentando por inércia narrativa
+  // ao longo de VÁRIOS turnos, mesmo sem nenhum grounding real — inclusive
+  // inventando uma nova "memória" de autorização que nunca aconteceu.
+  // Essa narrativa é a MESMA que o filtro de contaminação IA-030 já existe
+  // pra impedir de persistir na memória recuperada — aqui a barramos na
+  // GERAÇÃO, não só na recuperação. Marcadores específicos dessa
+  // fabulação recorrente (nomes que o modelo mesmo inventou e reutiliza).
+  const _FAKE_AUDIT_NARRATIVE_MARKERS = [
+    "macr", "r-iae", "official library manager", "adapter_v1",
+    "componente fantasma", "arquivo fantasma", "código fantasma", "codigo fantasma",
+    "pipeline coordinator", "biblioteca oficial no meu contexto",
+    "core cognitivo – status", "core cognitivo - status",
+  ];
+  const _looksLikeFakeAuditNarrative = _FAKE_AUDIT_NARRATIVE_MARKERS.some((marker) =>
+    _finalRawResponse.toLowerCase().includes(marker)
+  );
+  const _finalRawResponseAfterAuditCheck = (_looksLikeFakeAuditNarrative && !_hasRealDocRead)
+    ? "Preciso parar e ser direto: percebi que estava continuando uma narrativa de \"auditoria\" (MACR, Official Library Manager, componentes/arquivos \"fantasma\") que não tem nenhum grounding real — não tenho acesso a uma leitura de fato do seu repositório nesta conversa, e essa história provavelmente não deveria ter começado do jeito que começou. Não confie em nada do que eu disse sobre isso até aqui. Se você quiser uma auditoria real da arquitetura do MemoryOS, me diga e eu faço uma de verdade, lendo o código real."
+    : _finalRawResponse;
+
   // === ETAPA 6.6: TRAVA DETERMINÍSTICA CONTRA ITEM FABRICADO EM LISTA REAL (IA-084) ===
   // FIX (auditoria cognição): o princípio 14 do prompt (não completar uma
   // lista de resultados de pesquisa real com um item extra "plausível")
@@ -424,7 +448,7 @@ Se envolver um nome de arquivo/pasta específico do usuário, extraia em "target
   // possível é detectar e avisar, não impedir a geração.
   // Só roda quando uma pesquisa web REAL aconteceu nesta mensagem —
   // sem isso, não há "fatos reais" pra comparar contra.
-  let _finalResponseWithMcpCheck = _finalRawResponse;
+  let _finalResponseWithMcpCheck = _finalRawResponseAfterAuditCheck;
   const _webSearchResult = capabilityResult.capabilityResults?.webSearch;
   if (_webSearchResult && !_webSearchResult.error) {
     const _groundingText = [
@@ -437,7 +461,7 @@ Se envolver um nome de arquivo/pasta específico do usuário, extraia em "target
     // onde um dos pedaços é exatamente "mcp" (ex: "mercadolibre-mcp-
     // server", "newerton/mcp-mercado-livre", "rg-mcp-mercadolivre").
     const _tokenRe = /[a-z0-9]+(?:[-_/][a-z0-9]+)+/gi;
-    const _tokens = _finalRawResponse.match(_tokenRe) || [];
+    const _tokens = _finalResponseWithMcpCheck.match(_tokenRe) || [];
     const _mentioned = [...new Set(
       _tokens
         .filter((t) => t.toLowerCase().split(/[-_/]/).includes("mcp"))
@@ -447,7 +471,7 @@ Se envolver um nome de arquivo/pasta específico do usuário, extraia em "target
 
     if (_unverified.length > 0) {
       _finalResponseWithMcpCheck =
-        `${_finalRawResponse}\n\n---\n⚠️ **Não verificado**: ${_unverified.join(", ")} — ` +
+        `${_finalResponseWithMcpCheck}\n\n---\n⚠️ **Não verificado**: ${_unverified.join(", ")} — ` +
         `${_unverified.length > 1 ? "esses nomes" : "esse nome"} não ${_unverified.length > 1 ? "aparecem" : "aparece"} literalmente nos resultados da pesquisa realizada agora. Confirme antes de usar.`;
     }
   }
