@@ -1,9 +1,10 @@
 /**
  * MultiIntentEngine.ts — Motor de Múltiplas Intenções (Parte 2: Orquestrador)
  *
- * Recebe pedaços JÁ CLASSIFICADOS, e dispara a execução de cada um,
- * reaproveitando o que já existe (conectores, capacidades). Junta os
- * resultados numa resposta só.
+ * Recebe pedaços JÁ CLASSIFICADOS (não sabe nem se importa como foram
+ * separados — essa é responsabilidade do Decompositor, Parte 4/5), e
+ * dispara a execução de cada um, reaproveitando o que já existe
+ * (conectores, capacidades). Junta os resultados numa resposta só.
  */
 
 import type {
@@ -67,9 +68,32 @@ export class MultiIntentEngine {
 
   private _aggregate(results: IntentExecutionResult[]): string {
     const sorted = [...results].sort((a, b) => a.intent.order - b.intent.order);
-    const parts = sorted
-      .filter((r) => r.success && r.response)
-      .map((r) => r.response as string);
-    return parts.join("\n\n");
+    const successful = sorted.filter((r) => r.success && r.response);
+
+    let lastQuestion: string | null = null;
+    const contents = successful
+      .map((r) => {
+        const { content, question } = this._splitTrailingQuestion(r.response as string);
+        if (question) lastQuestion = question;
+        return content;
+      })
+      .filter((c) => c.length > 0);
+
+    let combined = contents.join("\n\n");
+    if (lastQuestion) combined += `\n\n${lastQuestion}`;
+    return combined;
+  }
+
+  private _splitTrailingQuestion(text: string): { content: string; question: string | null } {
+    const trimmed = text.trim();
+    const paragraphs = trimmed.split(/\n{2,}/);
+    const last = paragraphs[paragraphs.length - 1];
+    if (last && last.trim().endsWith("?") && last.trim().split(/\s+/).length <= 40) {
+      return {
+        content: paragraphs.slice(0, -1).join("\n\n").trim(),
+        question: last.trim(),
+      };
+    }
+    return { content: trimmed, question: null };
   }
 }
