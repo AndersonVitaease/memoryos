@@ -1,5 +1,5 @@
 /**
- * GmailConnector — Implementation 009
+ * GmailConnector — Implementation 009 + Multi-Account (Fase 3)
  * Conector de leitura do Gmail.
  *
  * Responsabilidade unica: consumir a Gmail API usando o token
@@ -10,6 +10,13 @@
  * NAO armazena tokens.
  * NAO envia, exclui, arquiva ou responde e-mails.
  * Apenas leitura.
+ *
+ * FEATURE (múltiplas contas — Fase 3): antes, todas as funções deste
+ * arquivo usavam sempre WORKSPACE_ID = "default" (a primeira conta
+ * conectada), não importa quantas contas o usuário tivesse conectado.
+ * Agora, cada função exportada aceita um `workspaceId` opcional — quando
+ * omitido, continua usando "default" (compatibilidade total com quem já
+ * chama essas funções sem se importar com múltiplas contas).
  */
 
 import { getAccessToken, ensureValidToken } from "@/lib/google-auth/GoogleAuthSession";
@@ -44,8 +51,8 @@ function apiError(msg) {
 
 // ── HTTP helper ───────────────────────────────────────────────────────────────
 
-async function gmailGet(path, params = {}) {
-  const token = getAccessToken(WORKSPACE_ID);
+async function gmailGet(path, params = {}, workspaceId = WORKSPACE_ID) {
+  const token = getAccessToken(workspaceId);
   if (!token) return { httpError: "no_token" };
 
   const url = new URL(`${GMAIL_BASE}${path}`);
@@ -54,7 +61,7 @@ async function gmailGet(path, params = {}) {
   });
 
   const masked = token.slice(0, 8) + "..." + token.slice(-4);
-  console.group(`[GmailConnector][DIAG] gmailGet(${path})`);
+  console.group(`[GmailConnector][DIAG] gmailGet(${path}) [workspace=${workspaceId}]`);
   console.log("[DIAG] token (mascarado):", masked);
   console.log("[DIAG] URL:", url.toString());
   console.log("[DIAG] Authorization header: Bearer", masked);
@@ -71,7 +78,6 @@ async function gmailGet(path, params = {}) {
 
     console.log("[DIAG] HTTP status:", res.status, res.ok ? "OK" : "ERRO");
 
-    // Clone para logar o body sem consumir o stream original
     const cloned = res.clone();
     cloned.json().then(body => {
       if (!res.ok) {
@@ -95,10 +101,10 @@ async function gmailGet(path, params = {}) {
 
 // ── Session guard ─────────────────────────────────────────────────────────────
 
-async function requireSession() {
-  console.group("[GmailConnector][DIAG] requireSession()");
+async function requireSession(workspaceId = WORKSPACE_ID) {
+  console.group(`[GmailConnector][DIAG] requireSession() [workspace=${workspaceId}]`);
 
-  const conn = await ensureValidToken(WORKSPACE_ID);
+  const conn = await ensureValidToken(workspaceId);
   console.log("[DIAG] ensureValidToken() →", conn ? `state=${conn.state}` : "NULL");
 
   if (!conn) {
@@ -107,7 +113,7 @@ async function requireSession() {
     return null;
   }
 
-  const token = getAccessToken(WORKSPACE_ID);
+  const token = getAccessToken(workspaceId);
   if (token) {
     const masked = token.slice(0, 8) + "..." + token.slice(-4);
     console.log("[DIAG] getAccessToken() →", masked);
@@ -132,7 +138,7 @@ function handleHttpError(res, context) {
   if (res.status === 403) return apiError("Acesso negado ao Gmail. Verifique os escopos autorizados.");
   if (res.status === 404) return apiError(`Recurso nao encontrado (${context}).`);
   if (!res.ok) return apiError(`Erro da API Gmail (${res.status}) em ${context}.`);
-  return null; // sem erro
+  return null;
 }
 
 // ── Message header extractor ──────────────────────────────────────────────────
@@ -157,32 +163,24 @@ function normalizeSummary(msg) {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-/**
- * Lista as ultimas mensagens da caixa de entrada.
- * @param {Object} opts
- * @param {number} [opts.maxResults=20]
- * @param {string} [opts.labelIds]       — Ex: "INBOX", "IMPORTANT"
- * @param {string} [opts.pageToken]
- * @returns {Promise<ConnectorResult>}
- */
-export async function listMessages({ maxResults = DEFAULT_MAX_RESULTS, labelIds, pageToken } = {}) {
-  log("listMessages()");
+export async function listMessages({ maxResults = DEFAULT_MAX_RESULTS, labelIds, pageToken, workspaceId = WORKSPACE_ID } = {}) {
+  log(`listMessages() [workspace=${workspaceId}]`);
 
-  const conn = await requireSession();
+  const conn = await requireSession(workspaceId);
   if (!conn) return disconnected();
 
   console.group("[GmailConnector][DIAG] listMessages — pre-call");
   console.log("[DIAG] conn.state  :", conn.state);
   console.log("[DIAG] conn.scopes :", conn.scopes);
   console.log("[DIAG] conn.email  :", conn.email);
-  console.log("[DIAG] token valido?", !!getAccessToken(WORKSPACE_ID));
+  console.log("[DIAG] token valido?", !!getAccessToken(workspaceId));
   console.groupEnd();
 
   const params = { maxResults };
   if (labelIds) params.labelIds = labelIds;
   if (pageToken) params.pageToken = pageToken;
 
-  const listRes = await gmailGet("/messages", params);
+  const listRes = await gmailGet("/messages", params, workspaceId);
   const err = handleHttpError(listRes, "listMessages");
   if (err) return err;
 
@@ -190,13 +188,12 @@ export async function listMessages({ maxResults = DEFAULT_MAX_RESULTS, labelIds,
   const messageRefs = body.messages ?? [];
 
   if (messageRefs.length === 0) {
-    return ok({ messages: [], nextPageToken: null, resultSizeEstimate: 0 });
+    return ok({ messages: [], nextPageToken: null, resultSizeEstimate: 0, accountEmail: conn.email });
   }
 
-  // Fetch summaries in parallel (capped at maxResults)
   const summaries = await Promise.all(
     messageRefs.slice(0, maxResults).map(async ({ id }) => {
-      const msgRes = await gmailGet(`/messages/${id}`, { format: "metadata", metadataHeaders: "Subject,From,To" });
+      const msgRes = await gmailGet(`/messages/${id}`, { format: "metadata", metadataHeaders: "Subject,From,To" }, workspaceId);
       if (msgRes.httpError || !msgRes.ok) return null;
       const msg = await msgRes.json();
       return normalizeSummary(msg);
@@ -207,26 +204,21 @@ export async function listMessages({ maxResults = DEFAULT_MAX_RESULTS, labelIds,
     messages: summaries.filter(Boolean),
     nextPageToken: body.nextPageToken ?? null,
     resultSizeEstimate: body.resultSizeEstimate ?? messageRefs.length,
+    accountEmail: conn.email,
   });
 }
 
-/**
- * Pesquisa mensagens usando a sintaxe de busca do Gmail.
- * @param {string} query — Ex: "from:amazon", "subject:ANVISA", "is:important"
- * @param {number} [maxResults=20]
- * @returns {Promise<ConnectorResult>}
- */
-export async function searchMessages(query, maxResults = DEFAULT_MAX_RESULTS) {
-  log(`searchMessages("${query}")`);
+export async function searchMessages(query, maxResults = DEFAULT_MAX_RESULTS, workspaceId = WORKSPACE_ID) {
+  log(`searchMessages("${query}") [workspace=${workspaceId}]`);
 
   if (!query || !query.trim()) {
     return apiError("Query de pesquisa nao pode estar vazia.");
   }
 
-  const conn = await requireSession();
+  const conn = await requireSession(workspaceId);
   if (!conn) return disconnected();
 
-  const listRes = await gmailGet("/messages", { q: query.trim(), maxResults });
+  const listRes = await gmailGet("/messages", { q: query.trim(), maxResults }, workspaceId);
   const err = handleHttpError(listRes, "searchMessages");
   if (err) return err;
 
@@ -234,12 +226,12 @@ export async function searchMessages(query, maxResults = DEFAULT_MAX_RESULTS) {
   const messageRefs = body.messages ?? [];
 
   if (messageRefs.length === 0) {
-    return ok({ messages: [], query, resultSizeEstimate: 0 });
+    return ok({ messages: [], query, resultSizeEstimate: 0, accountEmail: conn.email });
   }
 
   const summaries = await Promise.all(
     messageRefs.slice(0, maxResults).map(async ({ id }) => {
-      const msgRes = await gmailGet(`/messages/${id}`, { format: "metadata", metadataHeaders: "Subject,From,To" });
+      const msgRes = await gmailGet(`/messages/${id}`, { format: "metadata", metadataHeaders: "Subject,From,To" }, workspaceId);
       if (msgRes.httpError || !msgRes.ok) return null;
       const msg = await msgRes.json();
       return normalizeSummary(msg);
@@ -250,23 +242,19 @@ export async function searchMessages(query, maxResults = DEFAULT_MAX_RESULTS) {
     messages: summaries.filter(Boolean),
     query,
     resultSizeEstimate: body.resultSizeEstimate ?? messageRefs.length,
+    accountEmail: conn.email,
   });
 }
 
-/**
- * Recupera uma mensagem especifica pelo ID.
- * @param {string} messageId
- * @returns {Promise<ConnectorResult>}
- */
-export async function getMessage(messageId) {
-  log(`getMessage("${messageId}")`);
+export async function getMessage(messageId, workspaceId = WORKSPACE_ID) {
+  log(`getMessage("${messageId}") [workspace=${workspaceId}]`);
 
   if (!messageId) return apiError("messageId e obrigatorio.");
 
-  const conn = await requireSession();
+  const conn = await requireSession(workspaceId);
   if (!conn) return disconnected();
 
-  const res = await gmailGet(`/messages/${messageId}`, { format: "full" });
+  const res = await gmailGet(`/messages/${messageId}`, { format: "full" }, workspaceId);
   const err = handleHttpError(res, `getMessage(${messageId})`);
   if (err) return err;
 
@@ -284,23 +272,19 @@ export async function getMessage(messageId) {
     internalDate: msg.internalDate ?? "",
     labelIds:     msg.labelIds ?? [],
     sizeEstimate: msg.sizeEstimate ?? 0,
+    accountEmail: conn.email,
   };
 
   return ok(detail);
 }
 
-/**
- * Recupera uma thread completa pelo threadId.
- * @param {string} threadId
- * @returns {Promise<ConnectorResult>}
- */
-export async function getThread(threadId) {
-  log(`getThread("${threadId}")`);
+export async function getThread(threadId, workspaceId = WORKSPACE_ID) {
+  log(`getThread("${threadId}") [workspace=${workspaceId}]`);
   if (!threadId) return apiError("threadId e obrigatorio.");
-  const conn = await requireSession();
+  const conn = await requireSession(workspaceId);
   if (!conn) return disconnected();
 
-  const res = await gmailGet(`/threads/${threadId}`, { format: "full" });
+  const res = await gmailGet(`/threads/${threadId}`, { format: "full" }, workspaceId);
   const err = handleHttpError(res, `getThread(${threadId})`);
   if (err) return err;
 
@@ -315,22 +299,17 @@ export async function getThread(threadId) {
     snippet:  thread.snippet ?? "",
     messages,
     historyId: thread.historyId ?? "",
+    accountEmail: conn.email,
   });
 }
 
-/**
- * Baixa o conteúdo de um anexo específico.
- * @param {string} messageId
- * @param {string} attachmentId
- * @returns {Promise<ConnectorResult>}
- */
-export async function getAttachment(messageId, attachmentId) {
-  log(`getAttachment(${messageId}, ${attachmentId})`);
+export async function getAttachment(messageId, attachmentId, workspaceId = WORKSPACE_ID) {
+  log(`getAttachment(${messageId}, ${attachmentId}) [workspace=${workspaceId}]`);
   if (!messageId || !attachmentId) return apiError("messageId e attachmentId sao obrigatorios.");
-  const conn = await requireSession();
+  const conn = await requireSession(workspaceId);
   if (!conn) return disconnected();
 
-  const res = await gmailGet(`/messages/${messageId}/attachments/${attachmentId}`);
+  const res = await gmailGet(`/messages/${messageId}/attachments/${attachmentId}`, {}, workspaceId);
   const err = handleHttpError(res, `getAttachment(${messageId}, ${attachmentId})`);
   if (err) return err;
 
@@ -339,22 +318,18 @@ export async function getAttachment(messageId, attachmentId) {
     attachmentId,
     messageId,
     size:     body.size ?? 0,
-    data:     body.data ?? "",    // Base64URL encoded
+    data:     body.data ?? "",
     encoding: "base64url",
   });
 }
 
-/**
- * Lista todas as labels do usuario.
- * @returns {Promise<ConnectorResult>}
- */
-export async function listLabels() {
-  log("listLabels()");
+export async function listLabels(workspaceId = WORKSPACE_ID) {
+  log(`listLabels() [workspace=${workspaceId}]`);
 
-  const conn = await requireSession();
+  const conn = await requireSession(workspaceId);
   if (!conn) return disconnected();
 
-  const res = await gmailGet("/labels");
+  const res = await gmailGet("/labels", {}, workspaceId);
   const err = handleHttpError(res, "listLabels");
   if (err) return err;
 
@@ -369,5 +344,5 @@ export async function listLabels() {
     threadsUnread:       l.threadsUnread ?? 0,
   }));
 
-  return ok({ labels });
+  return ok({ labels, accountEmail: conn.email });
 }
