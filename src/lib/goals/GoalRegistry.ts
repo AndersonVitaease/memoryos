@@ -20,6 +20,8 @@
 import type { GoalType } from "./GoalTypes";
 import type { CognitiveIntent } from "@/lib/conversation-cognitive-gateway/CCGTypes";
 import { pickModelForMessage } from "@/lib/openrouter/categoryRouter";
+import { findAccountByMessageMention } from "@/lib/google-auth/GoogleMultiAccount";
+import { getActiveWorkspaceId } from "@/lib/workspace/WorkspaceContext";
 
 // ── GoalDefinition ────────────────────────────────────────────────────────────
 
@@ -269,7 +271,11 @@ const _builtins: GoalDefinition[] = [
     ],
     extractParams: (msg) => {
       const n = msg.match(/\b(\d+)\b/)?.[1];
-      return { maxResults: n ? Math.min(parseInt(n, 10), 50) : 10 };
+      const mentionedAccount = findAccountByMessageMention(getActiveWorkspaceId(), msg);
+      return {
+        maxResults: n ? Math.min(parseInt(n, 10), 50) : 10,
+        ...(mentionedAccount ? { accountEmail: mentionedAccount.email } : {}),
+      };
     },
   },
   {

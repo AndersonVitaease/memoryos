@@ -49,6 +49,28 @@ export async function connectAdditionalGoogleAccount(baseWorkspaceId, scopes, on
 }
 
 /**
+ * Detecta se a MENSAGEM do usuário menciona (mesmo que parcialmente) o
+ * e-mail de alguma conta conectada — ex: "ler emails amazonnoconta"
+ * deve reconhecer a conta "amazonnoconta01@gmail.com". Diferente de
+ * findAccountByEmail (que exige o e-mail completo e exato), esta função
+ * é tolerante a menções parciais/truncadas, como as pessoas realmente
+ * escrevem numa conversa.
+ */
+export function findAccountByMessageMention(baseWorkspaceId, message) {
+  if (!message) return null;
+  const lower = message.toLowerCase();
+  const tokens = lower.split(/[^a-z0-9]+/).filter((t) => t.length >= 5);
+  if (tokens.length === 0) return null;
+
+  for (const acc of listGoogleAccounts(baseWorkspaceId)) {
+    if (!acc.email) continue;
+    const localPart = acc.email.split("@")[0].toLowerCase();
+    if (tokens.some((token) => localPart.includes(token))) return acc;
+  }
+  return null;
+}
+
+/**
  * Encontra a conexão de uma conta específica pelo e-mail, dentro deste
  * workspace do MemoryOS. Usado pra resolver "a conta X" que o usuário
  * menciona na conversa pro workspaceId (slot) real correspondente.
