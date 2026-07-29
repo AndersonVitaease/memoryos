@@ -1,17 +1,30 @@
-import React from "react";
+import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Brain, FolderOpen, Search, LogOut, MessageSquare, Home as HomeIcon, Plug, ShieldCheck, Cpu, Network, Archive, BookOpen, Code, Activity, Layers, Database, ClipboardCheck, Shield, Waves, BookMarked, Terminal, Map, Zap, FlaskConical, Puzzle, Box, Route, Target, GitBranch, Users, GitMerge, Radio, Award, Blocks, Flag, Workflow, FileCode, Play, Server, Bug } from "lucide-react";
+import { Brain, FolderOpen, Search, LogOut, MessageSquare, Home as HomeIcon, Plug, ShieldCheck, Cpu, Network, Archive, BookOpen, Code, Activity, Layers, Database, ClipboardCheck, Shield, Waves, BookMarked, Terminal, Map, Zap, FlaskConical, Puzzle, Box, Route, Target, GitBranch, Users, GitMerge, Radio, Award, Blocks, Flag, Workflow, FileCode, Play, Server, Bug, ChevronDown, ChevronRight, Wrench } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 
-const navItems = [
+// FIX (bug de navegação — auditoria de UI): antes, os 122 itens abaixo
+// estavam todos numa lista só, misturando navegação real do dia a dia
+// (Início, Conversar, Memória...) com 111 páginas internas de
+// acompanhamento de sprint/desenvolvimento (Phase X.X, EF-XX, Beta-XX,
+// MERS, MADS...) acumuladas ao longo de meses. Resultado: era preciso
+// rolar a tela inteira pra achar qualquer coisa, inclusive o botão
+// "Sair". Agora estão em dois grupos: navegação principal (sempre
+// visível) e ferramentas de desenvolvimento (seção recolhível, fechada
+// por padrão — continuam a um clique de distância, mas não atrapalham
+// o uso do dia a dia).
+const CORE_NAV_ITEMS = [
   { label: "Início", icon: HomeIcon, path: "/" },
-  { label: "Drive Debug Panel", icon: Bug, path: "/drive-debug" },
   { label: "Conversar", icon: MessageSquare, path: "/chat" },
   { label: "Memória", icon: Brain, path: "/memory" },
   { label: "Espaços", icon: FolderOpen, path: "/projects" },
   { label: "Pesquisar", icon: Search, path: "/search" },
   { label: "Conectores", icon: Plug, path: "/connections" },
   { label: "Auditoria", icon: ShieldCheck, path: "/audit" },
+];
+
+const DEV_NAV_ITEMS = [
+  { label: "Drive Debug Panel", icon: Bug, path: "/drive-debug" },
   { label: "Memory Engine", icon: Cpu, path: "/memory-engine" },
   { label: "Cognitive Engine", icon: Network, path: "/cognitive-engine" },
   { label: "Foundation", icon: Archive, path: "/foundation" },
@@ -129,6 +142,32 @@ const navItems = [
 
 export default function Sidebar({ onNavigate }) {
   const location = useLocation();
+  // Abre automaticamente se a página atual for uma ferramenta de dev,
+  // pra você nunca "perder" onde está mesmo com a seção fechada.
+  const [devOpen, setDevOpen] = useState(() =>
+    DEV_NAV_ITEMS.some((item) => location.pathname.startsWith(item.path))
+  );
+
+  const renderItem = (item) => {
+    const isActive =
+      location.pathname === item.path ||
+      (item.path !== "/" && location.pathname.startsWith(item.path));
+    return (
+      <Link
+        key={item.path}
+        to={item.path}
+        onClick={onNavigate}
+        className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-all ${
+          isActive
+            ? "bg-violet-600/20 text-violet-300"
+            : "text-zinc-400 hover:text-white hover:bg-zinc-800/60"
+        }`}
+      >
+        <item.icon className="w-5 h-5 shrink-0" />
+        {item.label}
+      </Link>
+    );
+  };
 
   return (
     <aside className="h-full w-64 bg-zinc-950 text-white flex flex-col">
@@ -145,26 +184,19 @@ export default function Sidebar({ onNavigate }) {
       </div>
 
       <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-        {navItems.map((item) => {
-          const isActive =
-            location.pathname === item.path ||
-            (item.path !== "/" && location.pathname.startsWith(item.path));
-          return (
-            <Link
-              key={item.path}
-              to={item.path}
-              onClick={onNavigate}
-              className={`flex items-center gap-3 px-3 py-3 rounded-lg text-sm font-medium transition-all ${
-                isActive
-                  ? "bg-violet-600/20 text-violet-300"
-                  : "text-zinc-400 hover:text-white hover:bg-zinc-800/60"
-              }`}
-            >
-              <item.icon className="w-5 h-5 shrink-0" />
-              {item.label}
-            </Link>
-          );
-        })}
+        {CORE_NAV_ITEMS.map(renderItem)}
+
+        <button
+          onClick={() => setDevOpen((v) => !v)}
+          className="w-full flex items-center gap-2 px-3 py-2 mt-3 text-xs font-semibold uppercase tracking-wide text-zinc-500 hover:text-zinc-300 transition-colors"
+        >
+          {devOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+          <Wrench className="w-3.5 h-3.5" />
+          Ferramentas de Desenvolvimento
+          <span className="ml-auto text-zinc-600">{DEV_NAV_ITEMS.length}</span>
+        </button>
+
+        {devOpen && DEV_NAV_ITEMS.map(renderItem)}
       </nav>
 
       <div className="p-3 border-t border-zinc-800 shrink-0">

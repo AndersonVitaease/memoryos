@@ -124,13 +124,27 @@ async function queryEntities(intent, sessionId, projectId) {
       : base44.entities.Document.filter({ processing_status: "completed" }, "-created_date", 30);
   }
   if (query_types.includes("decisions")) {
-    queries.decisions = base44.entities.Decision.list("-decided_date", 30);
+    // FIX (auditoria cognição): antes ignorava projectId — trazia as 30
+    // decisões mais recentes de TODA a conta, misturando projetos/assuntos
+    // não relacionados no contexto do LLM. Agora escopado como
+    // documents/entities/keywords já faziam.
+    queries.decisions = projectId
+      ? base44.entities.Decision.filter({ project_id: projectId }, "-decided_date", 30)
+      : base44.entities.Decision.list("-decided_date", 30);
   }
   if (query_types.includes("tasks")) {
-    queries.tasks = base44.entities.Task.list("-created_date", 50);
+    // FIX (auditoria cognição): mesmo problema — tarefas de qualquer
+    // projeto apareciam junto, mesmo perguntando sobre um assunto específico.
+    queries.tasks = projectId
+      ? base44.entities.Task.filter({ project_id: projectId }, "-created_date", 50)
+      : base44.entities.Task.list("-created_date", 50);
   }
   if (query_types.includes("topics")) {
-    queries.topics = base44.entities.Topic.list("-created_date", 30);
+    // FIX (auditoria cognição): mesmo problema — assuntos de qualquer
+    // projeto apareciam junto.
+    queries.topics = projectId
+      ? base44.entities.Topic.filter({ project_id: projectId }, "-created_date", 30)
+      : base44.entities.Topic.list("-created_date", 30);
   }
   if (query_types.includes("entities")) {
     queries.entities = projectId

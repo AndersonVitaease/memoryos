@@ -94,6 +94,18 @@ export const CONNECTOR_REGISTRY = [
     capabilities: [],
     privacyNote: "",
   },
+  {
+    id: "openrouter",
+    name: "OpenRouter",
+    service: "ai",
+    description: "Traduz, resume, gera código e processa texto usando modelos de IA especializados via OpenRouter.",
+    category: "ai",
+    beta: true,
+    connected: true,
+    intents: ["traduzir", "resumir", "gerar codigo", "transcrever", "modelo de ia"],
+    capabilities: ["chat_completion", "list_models"],
+    privacyNote: "Envia o texto da sua mensagem para processamento por modelos de IA de terceiros via OpenRouter. Nenhum dado é armazenado pelo OpenRouter além do necessário para gerar a resposta.",
+  },
 ];
 
 // IA-011: conectores Google cujo status real pode ser checado via GoogleAuthSession.

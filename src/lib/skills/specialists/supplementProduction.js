@@ -13,14 +13,22 @@ export default {
   name: "Especialista em Produção de Suplementos",
   description: "Fabricação de suplementos, formulação, ANVISA, matérias-primas, QC",
   // Keywords diretas: aparecem na mensagem do usuário
+  // FIX (auditoria cognição): "lote", "validade", "produção", "qc" e "qa"
+  // sozinhos foram removidos — são palavras/siglas legítimas no domínio
+  // de suplementos, mas ambíguas para um usuário que também é
+  // desenvolvedor: "processamento em lote" (batch), "validade do token/
+  // sessão", "ambiente de produção", "testes de QA" são termos técnicos
+  // do dia a dia que ativavam por engano o especialista de suplementos.
+  // As frases específicas abaixo mantêm a detecção real sem a ambiguidade.
   keywords: [
-    "suplemento", "suplementos", "anvisa", "anvisa", "formulação", "formular",
+    "suplemento", "suplementos", "anvisa", "formulação", "formular",
     "matéria-prima", "materia prima", "encapsulagem", "encapsulado", "cápsula",
-    "comprimido", "tablete", "lote", "validade", "rotulagem", "bula",
+    "comprimido", "tablete", "número de lote", "lote de produção", "validade do produto",
+    "prazo de validade", "rotulagem", "bula",
     "nutracêutico", "nutraceutico", "cosmético", "cosmetico", "fármaco",
-    "fabrico", "fabricação", "produção", "linha de produção", "insumo inerte",
+    "fabrico", "fabricação", "linha de produção", "insumo inerte",
     "excipiente", "princípio ativo", "principio ativo", "controle de qualidade",
-    "qc", "qa", "garantia de qualidade", "boas práticas de fabricação",
+    "garantia de qualidade", "boas práticas de fabricação",
     "bpf", "gmp", "rdc", "resolução anvisa", "notificação anvisa",
     "registro anvisa", "catálogo anvisa", "embalagem primária",
   ],

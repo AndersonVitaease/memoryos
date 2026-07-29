@@ -15,11 +15,26 @@ function norm(s) {
 }
 
 /**
- * Verifica se textA menciona textB.
+ * Verifica se textA menciona textB como palavra/frase INTEIRA — nunca
+ * como substring solta de outra palavra.
+ *
+ * FIX (auditoria cognição): a versão anterior usava .includes() puro,
+ * então uma entidade curta como "IA" batia como substring em qualquer
+ * texto contendo "ia" em qualquer lugar — "estratégia", "polícia",
+ * "gráfica", etc. Isso criava arestas falsas no grafo de relacionamentos
+ * (ex: "IA → involves → decisão sobre preços") que iam pro contexto do
+ * LLM como se fossem relações reais. A fronteira de palavra Unicode
+ * abaixo resolve isso sem bloquear menções legítimas de entidades
+ * curtas (ex: "IA" ou "CNT" mencionadas como palavra isolada continuam
+ * funcionando normalmente).
  */
 function mentions(textA, textB) {
   if (!textA || !textB) return false;
-  return norm(textA).includes(norm(textB));
+  const a = norm(textA);
+  const b = norm(textB);
+  const escaped = b.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}([^\\p{L}\\p{N}]|$)`, "u");
+  return pattern.test(a);
 }
 
 /**

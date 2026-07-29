@@ -82,3 +82,34 @@ if (!(globalThis as unknown as Record<string, unknown>)[_KEY]) {
 export const ConnectorSemanticRegistry: ConnectorSemanticRegistryClass = (
   globalThis as unknown as Record<string, ConnectorSemanticRegistryClass>
 )[_KEY];
+
+// ── INJEÇÃO DE SEGURANÇA ──────────────────────────────────────────────────────
+
+/**
+ * Atenção: O ImplicitConnectorIntentDetector utiliza a função listAll()
+ * para obter a lista de conectores registrados.
+ * 
+ * Se você deseja que o sistema pare de tentar usar conectores como Gmail/GitHub
+ * automaticamente para qualquer pergunta, você deve garantir que o registro
+ * desses conectores NÃO seja feito neste arquivo (ele geralmente é feito em
+ * outro lugar, como um arquivo de inicialização index.ts ou main.ts).
+ * 
+ * Caso os conectores estejam sendo registrados em outro lugar, este arquivo
+ * permanece intacto e atua apenas como um container.
+ * 
+ * Se você deseja adicionar um "Conector de Conversa" (OpenRouter) para que
+ * o sistema entenda que existe uma opção de "general.conversation" ou 
+ * "general.webSearch", procure o arquivo onde os conectores são registrados
+ * e adicione uma linha como:
+ * 
+ * ConnectorSemanticRegistry.register({
+ *   connectorId: "openrouter",
+ *   detect: (lower, norm) => ({
+ *     connector: "openrouter",
+ *     goalType: "general.conversation",
+ *     confidence: norm.isSocialPhrase ? 0.95 : 0.60,
+ *     evidences: ["conversational_phrase"],
+ *     entities: {}
+ *   })
+ * });
+ */

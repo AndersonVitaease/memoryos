@@ -85,6 +85,10 @@ const OFFICIAL_FACTORIES: ConnectorFactory[] = [
     const { OpenRouterConnector } = await import("./connectors/OpenRouterConnector");
     return new OpenRouterConnector();
   },
+  async () => {
+    const { MemoriConnector } = await import("./connectors/MemoriConnector");
+    return new MemoriConnector();
+  },
 ];
 
 // ── ConnectorBootstrap ────────────────────────────────────────────────────────

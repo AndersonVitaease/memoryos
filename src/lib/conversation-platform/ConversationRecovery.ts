@@ -21,17 +21,24 @@ class ConversationRecovery {
    * Wrap any pipeline execution with automatic recovery.
    * Guarantees loading/status is always reset — no permanent stuck state.
    */
-  async guardedExecution<T>(
+ async guardedExecution<T>(
     executionId: string,
     fn: () => Promise<T>,
     options?: {
       maxAttempts?: number;
       strategy?: RecoveryStrategy;
       onRetry?: (attempt: number, error: Error) => void;
+      // FIX (pedido do usuário): antes o timeout era fixo em 30s, sem
+      // como ajustar por chamada. Respostas que dependem de conectores
+      // externos (pesquisa web, GitHub) às vezes legitimamente levam
+      // mais que isso. Agora é configurável — default continua 30s pra
+      // não mudar comportamento de quem não especificar.
+      timeoutMs?: number;
     }
   ): Promise<T | null> {
     const maxAttempts = options?.maxAttempts ?? this._maxAttempts;
     const strategy = options?.strategy ?? "retry";
+    const timeoutMs = options?.timeoutMs ?? 30_000;
     let attempt = 0;
 
     while (attempt < maxAttempts) {
@@ -39,7 +46,7 @@ class ConversationRecovery {
       try {
         const result = await Promise.race([
           fn(),
-          this._timeout(30_000, executionId),
+          this._timeout(timeoutMs, executionId),
         ]);
         return result as T;
       } catch (err) {

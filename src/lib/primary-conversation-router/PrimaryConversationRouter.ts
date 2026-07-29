@@ -14,6 +14,7 @@
 
 import { ConversationCognitiveGateway } from "../conversation-cognitive-gateway/ConversationCognitiveGateway";
 import type { CognitiveAnswer, IntentClassification } from "../conversation-cognitive-gateway/CCGTypes";
+import { GoalRegistry } from "@/lib/goals/GoalRegistry";
 
 export type RoutingDecision = "cognitive_pipeline" | "conversation_memory";
 
@@ -57,6 +58,11 @@ export class PrimaryConversationRouter {
 
     // Step 1: classify intent without side effects
     const intent = _gateway.classifyIntent(userMessage);
+
+    const goalMatch = GoalRegistry.matchBySignals(userMessage);
+    if (goalMatch) {
+      intent.requiresCognitive = false;
+    }
 
     let decision: RoutingDecision;
     let cognitiveAnswer: CognitiveAnswer | null = null;

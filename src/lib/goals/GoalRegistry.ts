@@ -19,6 +19,7 @@
 
 import type { GoalType } from "./GoalTypes";
 import type { CognitiveIntent } from "@/lib/conversation-cognitive-gateway/CCGTypes";
+import { pickModelForMessage } from "@/lib/openrouter/categoryRouter";
 
 // ── GoalDefinition ────────────────────────────────────────────────────────────
 
@@ -75,11 +76,26 @@ class GoalRegistryClass {
   /**
    * Lookup por sinais de keyword no texto do usuario.
    * Retorna a primeira definicao que tiver ao menos um sinal presente.
+   *
+   * FIX (auditoria cognição): usava .includes() puro (substring). Como
+   * essa função é DETERMINÍSTICA (primeira correspondência já vence,
+   * sem threshold de confiança) e roda ANTES de qualquer outro sistema
+   * de roteamento, colisões aqui são as mais graves da auditoria:
+   *   "baixo" (drive.downloadFile) bate em "o preço está baixo" —
+   *     "baixo" é um adjetivo comum (baixo/baixa), não só o comando
+   *     de download.
+   *   "move" (drive.moveFile) bate em "remove esse item" — sentido
+   *     oposto: mover vs. remover.
+   * Fronteira Unicode resolve sem remover nenhum sinal válido.
    */
   matchBySignals(userMessage: string): GoalDefinition | null {
     const lower = userMessage.toLowerCase();
     for (const def of this._definitions) {
-      const hit = def.signals.some((s) => lower.includes(s));
+      const hit = def.signals.some((s) => {
+        const escaped = s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const pattern = new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}([^\\p{L}\\p{N}]|$)`, "u");
+        return pattern.test(lower);
+      });
       if (hit) return def;
     }
     return null;
@@ -421,50 +437,85 @@ const _builtins: GoalDefinition[] = [
   {
     type: "openrouter.chatCompletion" as GoalType,
     namespace: "openrouter",
-    description: "Routes prompts to a category-appropriate AI model via OpenRouter",
+    description: "Routes prompts to a category-appropriate AI model via OpenRouter (85 categories)",
     signals: [
       "perguntar ao modelo", "pergunte ao modelo", "perguntar para o modelo",
       "usar o modelo", "usando o modelo", "consultar o modelo",
       "ask the model", "ask model", "query model",
       "perguntar à ia", "pergunte à ia", "perguntar pra ia", "pergunte pra ia",
       "pergunta para a ia", "pergunta pra ia", "consultar a ia", "consulte a ia",
-      "traduzir", "traduza", "resuma isso", "resumir isso", "resuma",
-      "escrever codigo", "escreva codigo", "corrigir codigo", "corrija codigo",
+      "traduzir", "traduza", "tradução",
+      "resuma isso", "resumir isso", "resuma", "resumo",
+      "escrever codigo", "escreva codigo", "corrigir codigo", "corrija codigo", "codigo",
       "analisar documento", "analise este documento", "analisar este texto",
-      "transcrever", "transcreva",
+      "transcrever", "transcreva", "transcrição",
+      "revisar texto", "revise este texto", "corrigir gramatica", "corrija a gramatica",
+      "escreva uma historia", "escreva um roteiro", "escrita criativa",
+      "redija um email", "escreva um email formal",
+      "parafrasear", "parafraseie", "reescreva isso",
+      "sugira um titulo", "gere um titulo", "manchete",
+      "corrigir bug", "corrija esse bug", "revisar codigo",
+      "explique este codigo", "o que este codigo faz",
+      "gerar teste", "escreva um teste", "teste automatizado",
+      "converter codigo", "converta este codigo",
+      "documentar codigo", "documentação tecnica",
+      "escreva um sql", "consulta sql", "query sql",
+      "raciocinio logico", "calculo matematico", "resolva esta equação",
+      "analisar planilha", "analisar dados",
+      "comparar opções", "qual a melhor opção",
+      "verificar fato", "isso é verdade", "fact check",
+      "pesquisa aprofundada", "pesquise sobre",
+      "descreva esta imagem", "o que tem nesta imagem",
+      "leia este texto na imagem", "ocr",
+      "escreva uma proposta comercial",
+      "analisar contrato", "leia este contrato",
+      "planejar projeto", "planejamento de tarefas",
+      "gerar relatorio", "escreva um relatorio",
+      "brainstorm", "gere ideias",
+      "analise swot", "analise estrategica",
+      "descrição de produto",
+      "roteiro de vendas", "script de vendas",
+      "copywriting", "texto publicitario",
+      "post para instagram", "post para redes sociais",
+      "otimização seo", "seo",
+      "gerar hashtags", "sugestão de legenda",
+      "roteiro de video curto",
+      "sugestão de nome", "slogan",
+      "explique de forma didatica", "explique como se eu tivesse",
+      "ata de reuniao", "preencher formulario",
+      "criar apresentação", "estrutura de slides",
+      "organizar tarefas",
+      "responder objeção", "cold call", "prospecção",
+      "follow-up", "resumir historico de conversa",
+      "criar prova", "questoes de prova", "quiz",
+      "corrigir redação", "plano de aula",
+      "sugerir cortes", "timestamps do video", "sugestao de thumbnail",
+      "descrição de video", "extrair citações",
+      "perguntas frequentes", "faq",
+      "anuncio", "texto de anuncio", "teste ab",
+      "politica de troca", "politica de devolução",
+      "mensagem de aniversario", "mensagem de condolencia",
+      "ajude a decidir", "o que cozinhar",
+      "explicar contrato", "explicar documento burocratico",
+      "lista de compras",
+      "reclamação formal", "procon",
+      "explicar exame medico", "perguntas para o medico",
+      "cardapio", "restrição alimentar",
+      "explicar financiamento", "explicar emprestimo",
+      "organizar gastos", "produto financeiro",
       "ask ai", "ask the ai", "query ai",
     ],
     extractParams: (msg: string) => {
-      // Mapa de categoria → modelo. Ajustável aqui conforme necessário.
-      const TASK_MODEL_MAP: Record<string, string> = {
-        summarize:    "anthropic/claude-sonnet-5",
-        code:         "qwen/qwen3-coder-plus",
-        general:      "openai/gpt-5.6-sol",
-        document:     "anthropic/claude-opus-5",
-        transcribe:   "openai/gpt-audio",
-      };
-      const DEFAULT_MODEL = "openai/gpt-oss-20b";
-
-      const lower = msg.toLowerCase();
-      let category: string | null = null;
-      if (/resum|summar/i.test(lower)) category = "summarize";
-      else if (/codigo|código|code/i.test(lower)) category = "code";
-      else if (/documento|texto|document/i.test(lower)) category = "document";
-      else if (/transcrev|transcri/i.test(lower)) category = "transcribe";
-      else if (/pergunt|ask|query|consult/i.test(lower)) category = "general";
-
       const explicitModelMatch = msg.match(/(?:modelo|model)\s+([a-zA-Z0-9_\-\/.:]+)/i)?.[1];
       const promptMatch = msg.match(/(?:pergunta|prompt|pergunte|pergunta:|:)\s*["']?(.+?)["']?$/i)?.[1];
 
-      const chosenModel = explicitModelMatch
-        ?? (category ? TASK_MODEL_MAP[category] : null)
-        ?? DEFAULT_MODEL;
+      const { model: categoryModel, matched } = pickModelForMessage(msg);
 
       return {
-        model: chosenModel,
+        model: explicitModelMatch ?? categoryModel,
         prompt: promptMatch ?? msg.trim(),
         rawText: msg.trim(),
-        _category: category ?? "default",
+        _category: matched ? categoryModel : "default",
       };
     },
   },
@@ -506,7 +557,12 @@ const _builtins: GoalDefinition[] = [
     namespace: "drive",
     description: "Download or export a file from Google Drive",
     signals: [
-      "baixar", "baixe", "baixa", "baixo", "baixando",
+      // FIX (auditoria cognição): "baixa"/"baixo" removidos — são também
+      // os adjetivos mais comuns do português ("preço baixo", "voz
+      // baixa"), ambiguidade que fronteira de palavra não resolve (a
+      // palavra é a mesma, o significado que muda). "baixar"/"baixe"/
+      // "baixando" já cobrem o comando de download sem essa ambiguidade.
+      "baixar", "baixe", "baixando",
       "download", "exportar", "exporte", "exporta",
       "baixar o arquivo", "baixar o documento",
       "baixar arquivo", "baixar documento",
@@ -1038,6 +1094,66 @@ const _builtins: GoalDefinition[] = [
       "o que eu disse", "quando foi", "encontrar na memoria",
     ],
     extractParams: () => ({}),
+  },
+  {
+    type: "memori.remember" as GoalType,
+    namespace: "memori",
+    description: "Grava um fato ou preferência durável na memória de longo prazo (Memori Cloud)",
+    signals: [
+      "lembre que",
+      "lembra que",
+      "guarde essa informação",
+      "guarde isso",
+      "não esqueça que",
+      "nao esqueca que",
+      "anote que",
+      "salve na memoria",
+      "salve isso",
+      "grave isso",
+      "grave na memoria",
+      "remember that",
+      "save this",
+      "don't forget",
+      "dont forget",
+    ],
+    extractParams: (msg: string) => {
+      const cleaned = msg
+        .replace(/\b(lembre que|lembra que|guarde essa informa[cç][aã]o|guarde isso|n[aã]o esque[cç]a que|anote que|salve na mem[oó]ria|salve isso|grave isso|grave na mem[oó]ria|remember that|save this|don'?t forget)\b/gi, "")
+        .trim();
+      const finalMessage = cleaned || msg.trim();
+      return {
+        userMessage: finalMessage,
+        assistantResponse: `Anotado: ${finalMessage}`,
+        rawText: msg.trim(),
+      };
+    },
+  },
+  {
+    type: "memori.recall" as GoalType,
+    namespace: "memori",
+    description: "Busca um fato ou preferência gravada anteriormente na memória de longo prazo (Memori Cloud)",
+    signals: [
+      "o que voce lembra sobre",
+      "o que você lembra sobre",
+      "voce lembra",
+      "você lembra",
+      "recupere informacao sobre",
+      "recupere informação sobre",
+      "o que sabe sobre",
+      "o que voce sabe sobre",
+      "o que você sabe sobre",
+      "consulte a memoria sobre",
+      "consulte a memória sobre",
+      "what do you remember about",
+      "do you remember",
+      "recall information about",
+    ],
+    extractParams: (msg: string) => {
+      return {
+        query: msg.trim(),
+        rawText: msg.trim(),
+      };
+    },
   },
 ];
 

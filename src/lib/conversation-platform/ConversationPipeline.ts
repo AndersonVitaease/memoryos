@@ -130,14 +130,38 @@ class ConversationPipeline {
     });
 
     try {
-      await conversationRecovery.guardedExecution(
+      const _guardedResult = await conversationRecovery.guardedExecution(
         executionId,
         () => this._runPipeline(executionId, userMessage, steps),
         {
           maxAttempts: 1,
+          // FIX (pedido do usuário): 45s ainda não era suficiente pra
+          // perguntas complexas (comparações, pesquisa + raciocínio
+          // combinados). Prioridade explícita do usuário: garantir
+          // resposta mesmo que demore mais, em vez de falhar rápido.
+          timeoutMs: 90_000,
           onRetry: () => conversationMetrics.recordRecoveryAttempt(executionId),
         }
       );
+      // FIX (auditoria cognição — duplicação de resposta): guardedExecution
+      // usa Promise.race([fn(), timeout]) — isso NÃO cancela _runPipeline()
+      // quando o timeout vence a corrida. O pipeline original continua
+      // rodando sozinho em segundo plano (era chamado "silenciosamente
+      // órfão"), e quando eventualmente termina (a pesquisa web real pode
+      // legitimamente levar mais que os 30s de timeout), ele ainda passa
+      // pelos guards "if (this._cancelled) return;" já existentes em
+      // _runPipeline() — só que _cancelled nunca era setado nesse caso
+      // (só era setado em cancel() explícito do usuário). Resultado: o
+      // usuário via "Tempo limite atingido", mandava a mensagem de novo
+      // (ou clicava "Tentar novamente"), e MAIS TARDE a execução órfã da
+      // primeira tentativa finalmente terminava e aplicava sua PRÓPRIA
+      // resposta no chat também — gerando duas respostas quase idênticas
+      // (cada uma de uma pesquisa/chamada de LLM independente) pra uma
+      // única mensagem do usuário. Setar _cancelled=true aqui faz a
+      // execução órfã respeitar os guards já existentes e não duplicar.
+      if (_guardedResult === null) {
+        this._cancelled = true;
+      }
     } finally {
       conversationRecovery.safeReset(executionId);
       this._currentExecutionId = null;
@@ -1058,6 +1082,7 @@ class ConversationPipeline {
     this._backgroundProcessing(session, [...messages, savedUser]).catch(() => {});
 
     } catch (err) {
+      console.error('[IA-044][PIPELINE-CATCH]', { message: err?.message, stack: err?.stack, name: err?.name });
       // ── Fallback: arbitrate with whatever candidates we have ──────────────
       // Even on error, we attempt to deliver the best available candidate.
       let finalResponse = "Nao consegui processar sua mensagem. Por favor, tente novamente.";
