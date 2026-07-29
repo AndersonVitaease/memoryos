@@ -13,9 +13,6 @@
 import type { SearchProvider, SearchResult, SearchOptions, SearchResultItem } from "./SearchProviderTypes";
 
 const REGISTRY_BASE = "https://registry.modelcontextprotocol.io";
-// FIX (achado real via teste): 8s não foi suficiente — a API do
-// registro MCP está documentada oficialmente como "preview" (pode ter
-// instabilidade/lentidão). Aumentado pra 15s.
 const REQUEST_TIMEOUT_MS = 15000;
 
 const FILLER_WORDS = new Set([
@@ -79,20 +76,39 @@ export class MCPRegistrySearchProvider implements SearchProvider {
       const rawEntries: RegistryServerEntry[] = Array.isArray(data?.servers) ? data.servers : [];
 
       const lowerTerm = term.toLowerCase();
-      const entries = rawEntries.filter((e) => {
+
+      function namespaceOwnerMatches(name: string): boolean {
+        const namespace = name.split("/")[0]?.toLowerCase() ?? "";
+        return new RegExp(`(^|\\.)${lowerTerm}(\\.|$)`).test(namespace);
+      }
+
+      const relevant = rawEntries.filter((e) => {
         const name = (e.server?.name ?? "").toLowerCase();
         const desc = (e.server?.description ?? "").toLowerCase();
         const title = (e.server?.title ?? "").toLowerCase();
         return name.includes(lowerTerm) || desc.includes(lowerTerm) || title.includes(lowerTerm);
       });
 
+      const latestByName = new Map<string, RegistryServerEntry>();
+      for (const e of relevant) {
+        const name = e.server?.name ?? "";
+        const isLatest = e._meta?.["io.modelcontextprotocol.registry/official"] as { isLatest?: boolean } | undefined;
+        const existing = latestByName.get(name);
+        if (!existing || isLatest?.isLatest) latestByName.set(name, e);
+      }
+      const deduped = [...latestByName.values()];
+
+      const ownerMatches = deduped.filter((e) => namespaceOwnerMatches(e.server?.name ?? ""));
+      const entries = ownerMatches.length > 0 ? ownerMatches : deduped;
+      const isOwnerVerified = ownerMatches.length > 0;
+
       if (entries.length === 0) {
         return { success: true, confidence: 0, items: [], provider: this.id, durationMs: Date.now() - t0 };
       }
 
-      const items: SearchResultItem[] = entries.map((e) => ({
+      const items: SearchResultItem[] = entries.slice(0, 10).map((e) => ({
         title: e.server?.name ?? "(sem nome)",
-        snippet: `${e.server?.description ?? "Sem descrição."}${e.server?.version ? ` (v${e.server.version})` : ""}${e._meta?.["io.modelcontextprotocol.registry/official"]?.status ? ` — status: ${e._meta["io.modelcontextprotocol.registry/official"].status}` : ""}`,
+        snippet: `${e.server?.description ?? "Sem descrição."}${e.server?.version ? ` (v${e.server.version})` : ""}${e._meta?.["io.modelcontextprotocol.registry/official"]?.status ? ` — status: ${e._meta["io.modelcontextprotocol.registry/official"].status}` : ""}${isOwnerVerified ? "" : " [projeto de terceiro/comunidade — namespace não corresponde ao termo buscado]"}`,
         url: e.server?.repository?.url,
         source: "mcp_registry",
         raw: e,
@@ -100,7 +116,7 @@ export class MCPRegistrySearchProvider implements SearchProvider {
 
       return {
         success: true,
-        confidence: 0.85,
+        confidence: isOwnerVerified ? 0.85 : 0.55,
         items,
         provider: this.id,
         durationMs: Date.now() - t0,
