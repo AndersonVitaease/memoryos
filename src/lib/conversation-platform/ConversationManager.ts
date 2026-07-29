@@ -27,6 +27,10 @@ class ConversationManager {
 
   // ── Send / Stop / Retry / Cancel ──────────────────────────────────────────
 
+  appendMessage(message: ConversationMessage): void {
+    conversationStore.appendMessage(message);
+  }
+
   async send(userMessage: string): Promise<void> {
     const msg = userMessage.trim();
     if (!msg) return;
