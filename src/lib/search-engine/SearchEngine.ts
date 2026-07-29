@@ -87,6 +87,15 @@ export class SearchEngine {
     const durationMs = Date.now() - t0;
     const resolved = Boolean(bestResult && bestResult.confidence >= MIN_CONFIDENCE_TO_SKIP_LLM);
 
+    console.log("[SearchEngine] Detalhes de cada provider tentado:", allResults.map((r) => ({
+      provider: r.provider,
+      success: r.success,
+      confidence: r.confidence,
+      itemCount: r.items.length,
+      error: r.error ?? null,
+      durationMs: r.durationMs,
+    })));
+
     console.log("[SearchEngine] Resultado:", {
       resolved,
       bestProvider: bestResult?.provider ?? null,
