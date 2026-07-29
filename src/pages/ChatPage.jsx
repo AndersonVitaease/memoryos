@@ -459,9 +459,9 @@ export default function ChatPage() {
             <button
               type="submit"
               disabled={conversation.isLoading || !input.trim()}
-              className="p-3 rounded-2xl bg-zinc-900 text-white hover:bg-zinc-800 disabled:opacity-30 transition-all"
+              className="p-4 rounded-2xl bg-zinc-900 text-white hover:bg-zinc-800 disabled:opacity-30 transition-all shadow-sm"
             >
-              <Send className="w-4 h-4" />
+              <Send className="w-5 h-5" />
             </button>
           </div>
         </form>
