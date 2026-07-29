@@ -377,10 +377,23 @@ const _builtins: GoalDefinition[] = [
       }
 
       const fromNick = msg.match(/(?:de|from)\s+([a-z0-9._-]{4,})/i)?.[1];
-      const fromAccount = fromNick ? findAccountByMessageMention(baseWorkspaceId, fromNick) : null;
+      let fromAccount = fromNick ? findAccountByMessageMention(baseWorkspaceId, fromNick) : null;
+      if (!fromAccount) {
+        const beforePara = msg.split(/\b(?:para|to)\b/i)[0];
+        fromAccount = findAccountByMessageMention(baseWorkspaceId, beforePara);
+      }
 
-      const subjectMatch = msg.match(/(?:assunto|subject)[:\s]+["']?([^"'\n]+?)["']?(?:\s+(?:corpo|body|mensagem)|\s*$)/i)?.[1];
-      const bodyMatch = msg.match(/(?:corpo|body|mensagem)[:\s]+["']?([^"'\n]+?)["']?$/i)?.[1];
+      const subjectRe = /(?:assunto|subject)[:\s]+["']?([^"'\n.!?]+[.!?]?)/i;
+      const subjectFullMatch = msg.match(subjectRe);
+      const subjectMatch = subjectFullMatch?.[1];
+      const subjectEndIndex = subjectFullMatch ? subjectFullMatch.index! + subjectFullMatch[0].length : null;
+
+      const explicitBodyMatch = msg.match(/(?:corpo|body|mensagem)[:\s]+["']?([^"'\n]+?)["']?$/i)?.[1];
+      let bodyMatch = explicitBodyMatch;
+      if (!bodyMatch && subjectEndIndex !== null) {
+        bodyMatch = msg.slice(subjectEndIndex).trim() || undefined;
+      }
+
       const fallbackSubject = bodyMatch ? bodyMatch.trim().slice(0, 60) : "Mensagem via MemoryOS";
       return {
         to: resolvedTo ? [resolvedTo] : [],
