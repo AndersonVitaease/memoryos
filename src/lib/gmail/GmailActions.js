@@ -1,5 +1,5 @@
 /**
- * GmailActions — Implementation 010
+ * GmailActions — Implementation 010 + Multi-Account (Fase 3)
  * Capacidades de escrita do Gmail: createDraft, sendDraft, sendEmail.
  *
  * Responsabilidade unica: operacoes de composicao e envio.
@@ -9,9 +9,6 @@
  * NAO armazena tokens.
  * NAO implementa Reply, Forward, Attachments, Archive, Delete.
  * Separado do GmailConnector (leitura) por SRP.
- *
- * SEGURANCA: sendEmail e sendDraft NUNCA devem ser chamados sem
- * confirmacao explicita do usuario na camada de UI/Runtime.
  */
 
 import { getAccessToken, ensureValidToken } from "@/lib/google-auth/GoogleAuthSession";
@@ -26,8 +23,6 @@ const REQUEST_TIMEOUT_MS = 15000;
 function log(msg) {
   if (import.meta.env.DEV) console.log(`${LOG_PREFIX} ${msg}`);
 }
-
-// ── Result builders ───────────────────────────────────────────────────────────
 
 function ok(data) {
   return { ok: true, data, error: null, status: "success" };
@@ -49,17 +44,13 @@ function apiError(msg) {
   return { ok: false, data: null, error: msg, status: "error" };
 }
 
-// ── Session guard ─────────────────────────────────────────────────────────────
-
-async function requireSession() {
-  const conn = await ensureValidToken(WORKSPACE_ID);
+async function requireSession(workspaceId = WORKSPACE_ID) {
+  const conn = await ensureValidToken(workspaceId);
   if (!conn) return null;
-  const token = getAccessToken(WORKSPACE_ID);
+  const token = getAccessToken(workspaceId);
   if (!token) return null;
   return token;
 }
-
-// ── Validation ────────────────────────────────────────────────────────────────
 
 function validateRequest(req) {
   if (!req.to || !Array.isArray(req.to) || req.to.length === 0) {
@@ -79,8 +70,6 @@ function validateRequest(req) {
   }
   return null;
 }
-
-// ── HTTP POST helper ──────────────────────────────────────────────────────────
 
 async function gmailPost(path, bodyObj, token) {
   const controller = new AbortController();
@@ -116,108 +105,47 @@ function handleHttpError(res, context) {
   return null;
 }
 
-// ── Public API ────────────────────────────────────────────────────────────────
-
-/**
- * Cria um rascunho no Gmail.
- *
- * @param {Object} req
- * @param {string[]} req.to
- * @param {string[]} [req.cc]
- * @param {string[]} [req.bcc]
- * @param {string} req.subject
- * @param {string} req.body
- * @param {boolean} [req.isHtml]
- * @returns {Promise<ActionResult>}
- */
-export async function createDraft(req) {
+export async function createDraft(req, workspaceId = WORKSPACE_ID) {
   log("createDraft()");
-
   const validErr = validateRequest(req);
   if (validErr) return validationError(validErr);
-
-  const token = await requireSession();
+  const token = await requireSession(workspaceId);
   if (!token) return disconnected();
-
   const raw = buildMime(req);
   const res = await gmailPost("/drafts", { message: { raw } }, token);
-
   const err = handleHttpError(res, "createDraft");
   if (err) return err;
-
   const body = await res.json();
   log(`Rascunho criado: ${body.id}`);
-
-  return ok({
-    id:       body.id,
-    threadId: body.message?.threadId ?? null,
-    status:   "draft",
-  });
+  return ok({ id: body.id, threadId: body.message?.threadId ?? null, status: "draft" });
 }
 
-/**
- * Envia um rascunho existente pelo ID.
- *
- * ATENCAO: Exigir confirmacao do usuario ANTES de chamar este metodo.
- *
- * @param {string} draftId
- * @returns {Promise<ActionResult>}
- */
-export async function sendDraft(draftId) {
+export async function sendDraft(draftId, workspaceId = WORKSPACE_ID) {
   log(`sendDraft("${draftId}")`);
-
   if (!draftId || !draftId.trim()) {
     return validationError("draftId e obrigatorio.");
   }
-
-  const token = await requireSession();
+  const token = await requireSession(workspaceId);
   if (!token) return disconnected();
-
   const res = await gmailPost("/drafts/send", { id: draftId }, token);
-
   const err = handleHttpError(res, `sendDraft(${draftId})`);
   if (err) return err;
-
   const body = await res.json();
   log(`Rascunho enviado: ${body.id}`);
-
-  return ok({
-    id:       body.id,
-    threadId: body.threadId ?? null,
-    status:   "sent",
-  });
+  return ok({ id: body.id, threadId: body.threadId ?? null, status: "sent" });
 }
 
-/**
- * Envia um e-mail diretamente (sem criar rascunho).
- *
- * ATENCAO: Exigir confirmacao do usuario ANTES de chamar este metodo.
- * Nunca chamar automaticamente sem acao explicita do usuario.
- *
- * @param {Object} req - mesmo formato de createDraft()
- * @returns {Promise<ActionResult>}
- */
-export async function sendEmail(req) {
+export async function sendEmail(req, workspaceId = WORKSPACE_ID) {
   log("sendEmail()");
-
   const validErr = validateRequest(req);
   if (validErr) return validationError(validErr);
-
-  const token = await requireSession();
+  const token = await requireSession(workspaceId);
   if (!token) return disconnected();
-
   const raw = buildMime(req);
   const res = await gmailPost("/messages/send", { raw }, token);
-
   const err = handleHttpError(res, "sendEmail");
   if (err) return err;
-
   const body = await res.json();
   log(`E-mail enviado: ${body.id}`);
-
-  return ok({
-    id:       body.id,
-    threadId: body.threadId ?? null,
-    status:   "sent",
-  });
+  return ok({ id: body.id, threadId: body.threadId ?? null, status: "sent" });
 }
