@@ -199,12 +199,13 @@ export default function ChatPage() {
       if (stats.tasks > 0) lines.push(`✓ ${stats.tasks} tarefas`);
       if (stats.topics > 0) lines.push(`✓ ${stats.topics} assuntos`);
 
-      await base44.entities.Message.create({
+      const savedAssistantMsg = await base44.entities.Message.create({
         session_id: session.id,
         role: "assistant",
         content: `**${result.displayName}** processado e salvo na memoria.\n\n${lines.join("\n")}`,
         memory_tier: "active",
       });
+      conversation.appendMessage(savedAssistantMsg);
 
       setProcessingItems((prev) => prev.filter((item) => item.id !== itemId));
     } catch (err) {
