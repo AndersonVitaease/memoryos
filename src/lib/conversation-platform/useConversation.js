@@ -56,11 +56,12 @@ export function useConversation() {
     isInitialized: state.isInitialized,
     isLoading: conversationManager.isLoading,
 
-    // Actions
+   // Actions
     send,
     stop,
     cancel,
     retry,
+    appendMessage,
 
     // Session
     newSession: (title) => conversationManager.newSession(title),
