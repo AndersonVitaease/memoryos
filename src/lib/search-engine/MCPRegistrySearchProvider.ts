@@ -13,7 +13,10 @@
 import type { SearchProvider, SearchResult, SearchOptions, SearchResultItem } from "./SearchProviderTypes";
 
 const REGISTRY_BASE = "https://registry.modelcontextprotocol.io";
-const REQUEST_TIMEOUT_MS = 8000;
+// FIX (achado real via teste): 8s não foi suficiente — a API do
+// registro MCP está documentada oficialmente como "preview" (pode ter
+// instabilidade/lentidão). Aumentado pra 15s.
+const REQUEST_TIMEOUT_MS = 15000;
 
 const FILLER_WORDS = new Set([
   "pesquise", "pesquisar", "pesquisa", "procure", "procurar", "verifique", "verificar",
