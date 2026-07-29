@@ -470,9 +470,22 @@ Se envolver um nome de arquivo/pasta específico do usuário, extraia em "target
   );
   if (_hadRealCapability) {
     const _hasSourceTag = /\((fonte:\s*(pesquisa|mem[oó]ria|documento)|conhecimento geral)\)/i.test(_finalResponseWithMcpCheck);
+    // FIX (diagnóstico): log explícito pra confirmar via console (F12) o
+    // que a trava está calculando, em vez de precisar inferir só pelo
+    // texto visível da resposta.
+    console.log("[IA-086] Rastreabilidade de origem:", {
+      hadWebSearch: Boolean(_webSearchResult && !_webSearchResult.error),
+      hadCalculation: Boolean(capabilityResult.capabilityResults?.calculation && !capabilityResult.capabilityResults.calculation.error),
+      hadOfficialLibrary: Boolean(capabilityResult.capabilityResults?.officialLibrary && !capabilityResult.capabilityResults.officialLibrary.error),
+      hasSourceTag: _hasSourceTag,
+      responseLength: _finalResponseWithMcpCheck.length,
+      willAppendWarning: !_hasSourceTag && _finalResponseWithMcpCheck.length > 300,
+    });
     if (!_hasSourceTag && _finalResponseWithMcpCheck.length > 300) {
       _finalResponseWithMcpCheck += `\n\n---\nℹ️ Esta resposta usou uma capacidade real (pesquisa/cálculo/biblioteca) mas não indicou a origem de cada afirmação. Trate os detalhes específicos com cautela até confirmar a fonte.`;
     }
+  } else {
+    console.log("[IA-086] Nenhuma capacidade real detectada nesta mensagem — trava não avaliada.");
   }
 
   // === ETAPA 7: MEMORY SYNTHESIZER ===
