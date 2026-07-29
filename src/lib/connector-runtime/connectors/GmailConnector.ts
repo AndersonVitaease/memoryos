@@ -328,7 +328,7 @@ export class GmailConnector implements IConnector {
           to:      (p["to"] as string[])    ?? [],
           subject: (p["subject"] as string) ?? "",
           body:    (p["body"] as string)    ?? "",
-        });
+        }, _workspaceId);
       }
       case "sendEmail": {
         const { sendEmail } = await import("@/lib/gmail/GmailActions");
@@ -336,7 +336,7 @@ export class GmailConnector implements IConnector {
           to:      (p["to"] as string[])    ?? [],
           subject: (p["subject"] as string) ?? "",
           body:    (p["body"] as string)    ?? "",
-        });
+        }, _workspaceId);
       }
       default:
         return { ok: false, data: null, error: `Unknown operation: ${op}` };
