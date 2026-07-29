@@ -17,17 +17,6 @@ const DEFAULT_REPO = "memoryos";
 
 const _router = new GitHubQueryRouter();
 
-// FIX (achado real via teste): o IA-013 (correção anterior a hoje) removeu
-// "onde está"/"onde fica" das palavras-chave do roteador compartilhado,
-// porque essas frases sozinhas eram genéricas demais em português e
-// disparavam busca de código pra perguntas do dia a dia sem relação
-// (ex: "onde está os arquivos em pdf"). Isso deixou uma lacuna real:
-// perguntas que mencionam um NOME DE ARQUIVO DE CÓDIGO específico (ex:
-// "onde está o GoogleDriveConnector.ts") não disparavam nada. Diferente
-// do "onde está" genérico, mencionar um arquivo com extensão de código é
-// um sinal forte e seguro — não colide com perguntas cotidianas. Esse
-// sinal fica só aqui, no Search Engine, sem mexer no roteador
-// compartilhado usado no resto do app.
 const CODE_FILENAME_RE = /\b([a-zA-Z0-9_-]+\.(ts|tsx|js|jsx|py|java|go|rb|json|md))\b/;
 
 function toItems(capability: string, data: unknown): SearchResultItem[] {
@@ -83,6 +72,7 @@ export class GitHubSearchProvider implements SearchProvider {
     let capability: string | null = null;
     let payload: Record<string, unknown> = {};
     let confidence = 0;
+    let targetFilename: string | null = null;
 
     try {
       const decision = _router.route(query);
@@ -98,8 +88,9 @@ export class GitHubSearchProvider implements SearchProvider {
     if (!capability) {
       const filenameMatch = query.match(CODE_FILENAME_RE);
       if (filenameMatch) {
-        capability = "search.file";
-        payload = { query: filenameMatch[1] };
+        capability = "files.list";
+        payload = {};
+        targetFilename = filenameMatch[1];
         confidence = 0.55;
       }
     }
@@ -135,7 +126,14 @@ export class GitHubSearchProvider implements SearchProvider {
         };
       }
 
-      const items = toItems(capability, result.data);
+      let items = toItems(capability, result.data);
+
+      if (targetFilename) {
+        const lowerTarget = targetFilename.toLowerCase();
+        const filtered = items.filter((it) => it.title.toLowerCase().endsWith(`/${lowerTarget}`) || it.title.toLowerCase() === lowerTarget);
+        items = filtered.length > 0 ? filtered : items.filter((it) => it.title.toLowerCase().includes(lowerTarget));
+      }
+
       return {
         success: true,
         confidence: items.length > 0 ? confidence : 0.2,
