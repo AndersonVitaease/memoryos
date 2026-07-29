@@ -236,6 +236,62 @@ class ConversationPipeline {
     });
     setStep("persist_user", "done");
 
+    // ── 2.5. Multi-Intent Decomposition (short-circuit) ──────────────────
+    if (this._cancelled) return;
+    try {
+      const { decomposeMessage } = await import("@/lib/multi-intent/MessageDecomposer");
+      const fragments = decomposeMessage(userMessage);
+
+      if (fragments.length > 1) {
+        setPhase("consulting_specialists");
+        const { MultiIntentEngine } = await import("@/lib/multi-intent/MultiIntentEngine");
+        const { ReasoningPlanIntentExecutor } = await import("@/lib/multi-intent/ReasoningPlanIntentExecutor");
+        const { runReasoningPlan } = await import("@/lib/reasoning/memoryReasoningPlanner");
+
+        const classifiedIntents = fragments.map((f) => ({ ...f, goalType: null, confidence: 1, parameters: {} }));
+        const executor = new ReasoningPlanIntentExecutor(runReasoningPlan, {
+          session,
+          historyMessages: [...messages, savedUser],
+        });
+        const engine = new MultiIntentEngine(executor);
+        const outcome = await engine.executeAll(classifiedIntents);
+
+        console.log("[MultiIntentEngine][Pipeline] Mensagem decomposta:", {
+          totalFragments: fragments.length,
+          handled: outcome.handled,
+          durationMs: outcome.durationMs,
+        });
+
+        if (outcome.handled && outcome.aggregatedResponse) {
+          setStep("finalize", "running");
+          conversationStore.setStatus("finalizing");
+          try {
+            const savedAssistant = await persistMessage({
+              sessionId:    session.id,
+              projectId:    session.project_id,
+              role:         "assistant",
+              content:      outcome.aggregatedResponse,
+              sources_used: [],
+            });
+            conversationStore.appendMessage(savedAssistant);
+            conversationStore.emit({
+              type: "MESSAGE_SAVED",
+              executionId,
+              payload: { messageId: savedAssistant.id, role: "assistant" },
+              timestamp: Date.now(),
+            });
+          } catch { /* non-critical */ }
+          conversationStore.setStatus("idle");
+          conversationStore.setReasoningPhase("idle");
+          setStep("finalize", "done");
+          this._backgroundProcessing(session, [...messages, savedUser]).catch(() => {});
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn("[MultiIntentEngine][Pipeline] Falhou, caindo pro fluxo normal (pedido único):", err);
+    }
+
     // ── 3. Build Context ─────────────────────────────────────────────────
     if (this._cancelled) return;
     setStep("context", "running");
