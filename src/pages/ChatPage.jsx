@@ -60,6 +60,17 @@ export default function ChatPage() {
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [lastUserMessage, setLastUserMessage] = useState("");
 
+  const [longWait, setLongWait] = useState(false);
+  useEffect(() => {
+    if (!conversation.isLoading) {
+      setLongWait(false);
+      return;
+    }
+    const timer = setTimeout(() => setLongWait(true), 15_000);
+    return () => clearTimeout(timer);
+  }, [conversation.isLoading]);
+
+
   // VXP Sprint 7.0.1: transcript review state
   const [pendingTranscript, setPendingTranscript] = useState(null);
 
@@ -76,15 +87,11 @@ export default function ChatPage() {
 
   const pipeline = useVoiceInteraction({
     onSend: async (text, opts) => {
-      // VXP: show transcript for review first — pause the pipeline
-      // The actual send happens in onConfirmTranscript
       setPendingTranscript(text);
-      // Return null to prevent VIP from auto-sending
       return null;
     },
   });
 
-  // Confirm transcript and send
   const onConfirmTranscript = useCallback(async () => {
     const text = pendingTranscript;
     setPendingTranscript(null);
@@ -119,11 +126,9 @@ export default function ChatPage() {
     const handleScroll = () => {
       const { scrollTop, scrollHeight, clientHeight } = container;
       const atBottom = scrollHeight - scrollTop - clientHeight < 80;
-      // If user scrolled UP, pause auto-scroll
       if (scrollTop < lastScrollTopRef.current - 5) {
         userScrolledRef.current = true;
       }
-      // If back at bottom, resume
       if (atBottom) {
         userScrolledRef.current = false;
       }
@@ -134,7 +139,6 @@ export default function ChatPage() {
     return () => container.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // Scroll to bottom when new messages arrive or streaming updates
   const streamingContent = conversation.messages.find((m) => m.isStreaming)?.streamingContent;
   useEffect(() => {
     if (userScrolledRef.current) return;
@@ -149,7 +153,7 @@ export default function ChatPage() {
     if (!text || conversation.isLoading) return;
     setLastUserMessage(text);
     setInput("");
-    userScrolledRef.current = false; // resume scroll on new send
+    userScrolledRef.current = false;
     await conversation.send(text);
   }, [input, conversation]);
 
@@ -200,7 +204,8 @@ export default function ChatPage() {
         content: `**${result.displayName}** processado e salvo na memoria.\n\n${lines.join("\n")}`,
         memory_tier: "active",
       });
-    setProcessingItems((prev) => prev.filter((item) => item.id !== itemId));
+
+      setProcessingItems((prev) => prev.filter((item) => item.id !== itemId));
     } catch (err) {
       console.error("[ChatPage] Falha ao processar anexo:", err);
       const detail = err?.message || err?.error_message || "Motivo desconhecido.";
@@ -212,11 +217,6 @@ export default function ChatPage() {
       setTimeout(() => {
         setProcessingItems((prev) => prev.filter((item) => item.id !== itemId));
       }, 8000);
-    }
-  };
-      setTimeout(() => {
-        setProcessingItems((prev) => prev.filter((item) => item.id !== itemId));
-      }, 3000);
     }
   };
 
@@ -332,6 +332,11 @@ export default function ChatPage() {
             <div className="flex justify-start">
               <div className="bg-white border border-zinc-200 rounded-2xl rounded-bl-md px-4 py-3 shadow-sm">
                 <ReasoningIndicator label={reasoningLabel} />
+                {longWait && (
+                  <p className="text-xs text-zinc-400 mt-1.5">
+                    Isso está demorando um pouco mais que o normal — ainda processando, não travou.
+                  </p>
+                )}
               </div>
             </div>
           )}
