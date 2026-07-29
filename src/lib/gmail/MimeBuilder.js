@@ -8,6 +8,20 @@
  */
 
 /**
+ * Codifica um cabeçalho de e-mail (ex: Subject) conforme RFC 2047 quando
+ * contém caracteres não-ASCII (acentos, ç, ã, etc.). Sem isso, um
+ * assunto como "Reunião amanhã" vira um cabeçalho tecnicamente
+ * malformado — alguns servidores de e-mail mais rígidos podem rejeitar
+ * ou exibir errado. Texto puramente ASCII passa direto, sem alteração.
+ */
+function encodeHeaderIfNeeded(text) {
+  if (!text) return text;
+  if (/^[\x00-\x7F]*$/.test(text)) return text;
+  const base64 = btoa(unescape(encodeURIComponent(text)));
+  return `=?UTF-8?B?${base64}?=`;
+}
+
+/**
  * Constroi uma mensagem MIME em base64url para a Gmail API.
  *
  * @param {Object} opts
@@ -27,7 +41,7 @@ export function buildMime({ to, cc, bcc, subject, body, isHtml = false, inReplyT
     `To: ${(to ?? []).join(", ")}`,
     cc?.length  ? `Cc: ${cc.join(", ")}`   : null,
     bcc?.length ? `Bcc: ${bcc.join(", ")}` : null,
-    `Subject: ${subject ?? ""}`,
+    `Subject: ${encodeHeaderIfNeeded(subject ?? "")}`,
     inReplyTo  ? `In-Reply-To: ${inReplyTo}`  : null,
     references ? `References: ${references}` : null,
     `MIME-Version: 1.0`,
