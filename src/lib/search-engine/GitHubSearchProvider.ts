@@ -23,8 +23,15 @@ function toItems(capability: string, data: unknown): SearchResultItem[] {
   if (!data || typeof data !== "object") return [];
   const d = data as Record<string, unknown>;
 
+  // FIX (achado real via teste): antes, o corte pros primeiros 20
+  // arquivos acontecia AQUI, antes de qualquer filtro por nome — num
+  // repositório com milhares de arquivos, o arquivo procurado
+  // frequentemente não estava entre os primeiros 20 (a ordem retornada
+  // pela API não é garantida), fazendo a busca por nome falhar mesmo
+  // quando o arquivo existia. Agora devolve a lista completa aqui; o
+  // corte de exibição acontece DEPOIS de filtrar (em search()).
   if (capability === "files.list" && Array.isArray(d.items)) {
-    return (d.items as Array<Record<string, unknown>>).slice(0, 20).map((f) => ({
+    return (d.items as Array<Record<string, unknown>>).map((f) => ({
       title: String(f.path ?? "(sem nome)"),
       snippet: `${f.path} — ${f.size ?? "?"} bytes`,
       source: "github",
@@ -128,11 +135,19 @@ export class GitHubSearchProvider implements SearchProvider {
 
       let items = toItems(capability, result.data);
 
+      // Filtra client-side pelo nome do arquivo específico que a
+      // pergunta mencionou, em vez de devolver a árvore inteira do repo.
       if (targetFilename) {
         const lowerTarget = targetFilename.toLowerCase();
         const filtered = items.filter((it) => it.title.toLowerCase().endsWith(`/${lowerTarget}`) || it.title.toLowerCase() === lowerTarget);
         items = filtered.length > 0 ? filtered : items.filter((it) => it.title.toLowerCase().includes(lowerTarget));
       }
+
+      // Corte de exibição só agora, DEPOIS do filtro — antes acontecia
+      // cedo demais (dentro de toItems()) e descartava o arquivo
+      // procurado se ele não estivesse entre os primeiros 20 de um
+      // repositório com milhares de arquivos.
+      items = items.slice(0, 20);
 
       return {
         success: true,
