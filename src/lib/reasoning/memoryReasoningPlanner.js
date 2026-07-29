@@ -469,7 +469,7 @@ Se envolver um nome de arquivo/pasta específico do usuário, extraia em "target
     (capabilityResult.capabilityResults?.officialLibrary && !capabilityResult.capabilityResults.officialLibrary.error)
   );
   if (_hadRealCapability) {
-    const _hasSourceTag = /\((fonte:\s*(pesquisa|mem[oó]ria|documento)|conhecimento geral)\)/i.test(_finalResponseWithMcpCheck);
+    const _hasSourceTag = /\((fonte:\s*(pesquisa|mem[oó]ria|documento)|conhecimento geral|sua an[aá]lise)\)/i.test(_finalResponseWithMcpCheck);
     // FIX (diagnóstico): log explícito pra confirmar via console (F12) o
     // que a trava está calculando, em vez de precisar inferir só pelo
     // texto visível da resposta.
