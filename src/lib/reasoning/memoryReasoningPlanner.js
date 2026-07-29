@@ -189,6 +189,83 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
     kfmContext,
   });
 
+  // === ETAPA 5.2: SEARCH ENGINE (antes de qualquer chamada de LLM) ===
+  // FEATURE (pedido do usuário): tenta responder via fontes estruturadas
+  // (GitHub, Web Search, Biblioteca Oficial, Memória) o mais cedo
+  // possível no pipeline — inclusive ANTES do classificador de ações do
+  // Drive (Etapa 5.4 logo abaixo), que também é uma chamada de LLM.
+  // FIX (achado real via teste): originalmente esta etapa rodava só
+  // antes da Etapa 6 (a chamada final) — mas perguntas como "onde está
+  // o GoogleDriveConnector.ts?" eram interceptadas ANTES disso pelo
+  // classificador de Drive, que confundia o nome do arquivo de código
+  // (menciona "Drive") com um arquivo guardado no Google Drive do
+  // usuário. Rodando mais cedo, o Search Engine tem a chance de
+  // resolver corretamente antes dessa confusão acontecer — e ainda
+  // economiza a chamada de LLM do próprio classificador de Drive nesses
+  // casos. Só retorna aqui se a confiança for alta o suficiente; caso
+  // contrário, cai no fluxo normal abaixo sem custo adicional.
+  try {
+    const { ensureProvidersRegistered } = await import("@/lib/search-engine/registerProviders");
+    const { searchEngine } = await import("@/lib/search-engine/SearchEngine");
+    const { formatSearchResultAsResponse } = await import("@/lib/search-engine/SearchResultFormatter");
+    ensureProvidersRegistered();
+
+    const searchOutcome = await searchEngine.search(userMsg, {
+      context: {
+        sessionId: session.id,
+        projectId: session.project_id ?? null,
+        sessionSummary: memory.sessionSummary,
+      },
+    });
+
+    console.log("[SearchEngine] Outcome:", {
+      resolved: searchOutcome.resolved,
+      bestProvider: searchOutcome.bestResult?.provider ?? null,
+      bestConfidence: searchOutcome.bestResult?.confidence ?? null,
+      durationMs: searchOutcome.durationMs,
+    });
+
+    if (searchOutcome.resolved && searchOutcome.bestResult) {
+      const response = formatSearchResultAsResponse(searchOutcome.bestResult);
+      const responseTimeMs = Date.now() - startTime;
+      const plan = {
+        goal: goal.id,
+        goalLabel: goal.label,
+        strategy: goal.strategy,
+        skills: skills.map((s) => ({ id: s.id, name: s.name, score: s.score })),
+        skillsCount: skills.length,
+        sourcesCount: sources.length,
+        contextLength: context ? context.length : 0,
+        capabilities: [],
+        capabilitiesCount: 0,
+        needsMoreInfo: false,
+        service: null,
+        responseTimeMs,
+        handledByGuard: "SEARCH-ENGINE",
+        searchProvider: searchOutcome.bestResult.provider,
+        searchConfidence: searchOutcome.bestResult.confidence,
+      };
+      try {
+        base44.analytics.track({
+          eventName: "search_engine_resolved",
+          properties: {
+            provider: searchOutcome.bestResult.provider,
+            confidence: searchOutcome.bestResult.confidence,
+            duration_ms: searchOutcome.durationMs,
+            response_time_ms: responseTimeMs,
+          },
+        });
+      } catch {
+        // analytics é opcional
+      }
+      return { response, plan, sources };
+    }
+  } catch (err) {
+    // Se o Search Engine falhar por qualquer motivo, cai no fluxo normal
+    // abaixo, em vez de travar a resposta inteira.
+    console.warn("[SearchEngine] Falhou, caindo pro fluxo normal:", err);
+  }
+
   // === ETAPA 5.4: ROTEADOR SEMÂNTICO DE AÇÕES DO DRIVE (IA-040) ===
   // Generaliza o IA-035: em vez de só reconhecer "pedido de conteúdo de
   // arquivo", agora reconhece QUALQUER ação de Drive (listar, abrir pasta,
@@ -380,67 +457,6 @@ Se envolver um nome de arquivo/pasta específico do usuário, extraia em "target
       // normal abaixo (a única chamada de LLM), em vez de travar a
       // resposta inteira.
     }
-  }
-
-  // === ETAPA 5.8: SEARCH ENGINE (antes do LLM principal) ===
-  try {
-    const { ensureProvidersRegistered } = await import("@/lib/search-engine/registerProviders");
-    const { searchEngine } = await import("@/lib/search-engine/SearchEngine");
-    const { formatSearchResultAsResponse } = await import("@/lib/search-engine/SearchResultFormatter");
-    ensureProvidersRegistered();
-
-    const searchOutcome = await searchEngine.search(userMsg, {
-      context: {
-        sessionId: session.id,
-        projectId: session.project_id ?? null,
-        sessionSummary: memory.sessionSummary,
-      },
-    });
-
-    console.log("[SearchEngine] Outcome:", {
-      resolved: searchOutcome.resolved,
-      bestProvider: searchOutcome.bestResult?.provider ?? null,
-      bestConfidence: searchOutcome.bestResult?.confidence ?? null,
-      durationMs: searchOutcome.durationMs,
-    });
-
-    if (searchOutcome.resolved && searchOutcome.bestResult) {
-      const response = formatSearchResultAsResponse(searchOutcome.bestResult);
-      const responseTimeMs = Date.now() - startTime;
-      const plan = {
-        goal: goal.id,
-        goalLabel: goal.label,
-        strategy: goal.strategy,
-        skills: skills.map((s) => ({ id: s.id, name: s.name, score: s.score })),
-        skillsCount: skills.length,
-        sourcesCount: sources.length,
-        contextLength: context ? context.length : 0,
-        capabilities: [],
-        capabilitiesCount: 0,
-        needsMoreInfo: false,
-        service: null,
-        responseTimeMs,
-        handledByGuard: "SEARCH-ENGINE",
-        searchProvider: searchOutcome.bestResult.provider,
-        searchConfidence: searchOutcome.bestResult.confidence,
-      };
-      try {
-        base44.analytics.track({
-          eventName: "search_engine_resolved",
-          properties: {
-            provider: searchOutcome.bestResult.provider,
-            confidence: searchOutcome.bestResult.confidence,
-            duration_ms: searchOutcome.durationMs,
-            response_time_ms: responseTimeMs,
-          },
-        });
-      } catch {
-        // analytics é opcional
-      }
-      return { response, plan, sources };
-    }
-  } catch (err) {
-    console.warn("[SearchEngine] Falhou, caindo pro fluxo normal:", err);
   }
 
   // === ETAPA 6: UMA ÚNICA CHAMADA AO LLM ===
