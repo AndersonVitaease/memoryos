@@ -19,6 +19,23 @@ const MEMORY_KEYWORDS = [
   "quem faz", "quem é responsável", "quem cuida de", "decidimos",
 ];
 
+// FIX (achado real via teste): a palavra "sobre" (e outras preposições/
+// conectores comuns) tem 4+ letras e aparecia em quase qualquer frase
+// em português, fazendo itens completamente sem relação com a pergunta
+// entrarem no resultado só por conterem "sobre" em algum lugar. Agora
+// essas palavras genéricas são ignoradas como termo de busca.
+const STOPWORDS = new Set([
+  "sobre", "para", "como", "isso", "esse", "essa", "este", "esta",
+  "muito", "muita", "muitos", "muitas", "quando", "onde", "qual", "quais",
+  "quem", "porque", "então", "assim", "mais", "menos", "cada", "todo",
+  "toda", "todos", "todas", "algum", "alguma", "alguns", "algumas",
+  "nunca", "sempre", "ainda", "também", "apenas", "aquilo", "aquele",
+  "aquela", "outro", "outra", "outros", "outras", "mesmo", "mesma",
+  "nosso", "nossa", "nossos", "nossas", "estar", "sendo", "sido",
+  "tenho", "temos", "houve", "havia", "fazer", "fazendo", "lembra",
+  "decidimos", "falamos", "conversamos",
+]);
+
 function firstMatch(lower: string, list: string[]): string | null {
   for (const s of list) {
     const escaped = s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -56,7 +73,10 @@ export class MemorySearchProvider implements SearchProvider {
         return { success: true, confidence: 0, items: [], provider: this.id, durationMs: Date.now() - t0 };
       }
 
-      const queryWords = query.toLowerCase().split(/[^a-zà-ú0-9]+/).filter((w) => w.length >= 4);
+      const queryWords = query
+        .toLowerCase()
+        .split(/[^a-zà-ú0-9]+/)
+        .filter((w) => w.length >= 4 && !STOPWORDS.has(w));
       const bulletItems = result.memories
         .split(/\n(?=[*\-•]\s)/)
         .map((b) => b.trim())
@@ -86,7 +106,10 @@ export class MemorySearchProvider implements SearchProvider {
         };
       }
 
-      const snippet = relevantItems.slice(0, options?.maxResults ?? 5).join("\n\n");
+      const snippet = relevantItems
+        .slice(0, options?.maxResults ?? 5)
+        .map((item) => (item.length > 400 ? `${item.slice(0, 400).trim()}...` : item))
+        .join("\n\n");
 
       return {
         success: true,
