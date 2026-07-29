@@ -143,17 +143,24 @@ export function rankAllMemory(data, keywords = []) {
   }
 
   // Sessões
+  // FIX (auditoria cognição): esse bloco era o ÚNICO sem o filtro
+  // ".filter((r) => priority(r.score) !== 'DISCARD')" que TODOS os
+  // outros tipos (decisions, tasks, entities, topics, documents,
+  // messages) aplicam. Sessões com score baixo (irrelevantes pra
+  // pergunta atual) vazavam pro contexto sempre, inflando o prompt
+  // com sessões antigas sem relação com o assunto.
   if (data.sessions?.length > 0) {
     ranked.sessions = rankRecords(
       data.sessions,
       { keywords, fields: ["title", "summary"], primaryField: "summary", dateField: "updated_date", kind: "session" },
       TYPE_LIMITS.sessions
-    ).map((r) => ({
-      ...r,
-      priority: priority(r.score),
-      confidence: confidence(r.score, r.breakdown.richness),
-      reason: reason(r.breakdown, "session"),
-    }));
+    ).filter((r) => priority(r.score) !== "DISCARD")
+      .map((r) => ({
+        ...r,
+        priority: priority(r.score),
+        confidence: confidence(r.score, r.breakdown.richness),
+        reason: reason(r.breakdown, "session"),
+      }));
   }
 
   // Mensagens

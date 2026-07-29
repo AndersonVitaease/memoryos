@@ -146,6 +146,23 @@ const INTENT_RULES: readonly IntentRule[] = Object.freeze([
       "encontrar arquivo", "pesquisar drive",
       "search drive", "find file",
     ],
+    // FIX (auditoria cognição): baseScore (0.45) sozinho já ultrapassava
+    // o MIN_SCORE_THRESHOLD (0.20) do ImplicitConnectorIntentDetector.
+    // Verbos genéricos de busca em português ("procure", "pesquise",
+    // "busque", "encontre" — os mesmos usados naturalmente pra pedir
+    // uma pesquisa qualquer, não necessariamente no Drive) disparavam
+    // uma busca REAL na sua conta do Google Drive mesmo em mensagens
+    // sem nenhuma relação com arquivos/documentos (ex: "procure
+    // servidores MCP que podem ser vantajosos", "pesquise qual seria
+    // o melhor"). Agora exige que a mensagem também contenha um sinal
+    // de domínio (tipo de arquivo/documento ou contexto de
+    // armazenamento) — sem isso, a regra não dispara, e o verbo de
+    // busca genérico fica livre para ser interpretado por outras
+    // capacidades (como web_search) em vez de sequestrado pelo Drive.
+    validator: (lower) =>
+      firstMatch(lower, DOMAIN_DOCUMENT_TYPES) !== null ||
+      firstMatch(lower, DOMAIN_STORAGE_CONTEXT) !== null ||
+      firstMatch(lower, DOMAIN_CONTRACT_DOCS) !== null,
     extractEntities: (_lower, base) => {
       // Sprint 2a (correção do antipadrão): o provider NÃO cria query a
       // partir do texto bruto. `query` não faz parte do contrato de

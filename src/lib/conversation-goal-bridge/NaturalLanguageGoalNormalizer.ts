@@ -164,8 +164,20 @@ export function normalize(message: string): NormalizationResult {
   let entity        = stripped;
   let isKnownEntity = false;
 
+  // FIX (auditoria cognição): o loop abaixo usava .includes() puro. Duas
+  // colisões reais confirmadas:
+  //   "nf" (Nota Fiscal) é substring de "informe", "confirme", "enfim" —
+  //     mesmo bug já corrigido em GmailSemanticProvider.ts (IA-069), mas
+  //     esse arquivo tem sua PRÓPRIA cópia da mesma lista de sinais.
+  //   "meta" (Meta/Facebook) é substring de "metade" — "a metade do
+  //     processo" virava uma entidade "Meta" sem nenhuma relação.
+  // Fronteira Unicode resolve sem remover nenhum sinal válido.
   for (const ke of sorted) {
-    if (ke.signals.some((s) => normalizedLower.includes(s))) {
+    if (ke.signals.some((s) => {
+      const escaped = s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const pattern = new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}([^\\p{L}\\p{N}]|$)`, "u");
+      return pattern.test(normalizedLower);
+    })) {
       entity        = ke.canonical;
       isKnownEntity = true;
       break;

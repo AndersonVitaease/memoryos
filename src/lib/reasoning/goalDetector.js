@@ -119,7 +119,13 @@ const GOALS = [
       "audite a arquitetura", "faça uma auditoria", "execute uma auditoria",
       "rodar auditoria", "iniciar auditoria", "architecture auditor",
       "conformidade arquitetural", "conformidade da arquitetura",
-      "macr", "compliance report", "relatório de conformidade",
+      // FIX (auditoria cognição): "macr" sozinho removido — colidia como
+      // substring com "macro" (macro do Excel, macro de código), palavra
+      // comum que não tem nada a ver com auditoria arquitetural. Disparava
+      // o Architecture Auditor Specialist (pipeline completo de auditoria)
+      // pra qualquer mensagem mencionando "macro". As frases mais
+      // específicas abaixo já cobrem a intenção real de MACR/compliance.
+      "compliance report", "relatório de conformidade",
       "auditar o projeto", "auditoria do projeto", "audit the project",
     ],
     strategy: "Delegar ao Architecture Auditor Specialist oficial. NÃO responder diretamente — o Specialist executa o pipeline completo de auditoria (ProjectReader → OfficialLibraryReader → CodeAnalyzer → ReportBuilder) e retorna o MACR.",
@@ -145,6 +151,24 @@ function normalize(text) {
 }
 
 /**
+ * Verifica se `sig` aparece em `text` como palavra/frase INTEIRA.
+ * FIX (auditoria cognição): detectGoal() usava .includes() puro, que
+ * colidia como substring em vários casos reais: "total" (goal
+ * calculate) dentro de "totalmente" — uma das palavras mais comuns do
+ * português —, "gere" (execute_task) dentro de "gerente", "devo"
+ * (decide) dentro de "devolução", "faça" (execute_task) dentro de
+ * "satisfaça", "risco" (analyze_risks) dentro de "arrisco", "monte"
+ * (execute_task) dentro de "Monte Everest". Fronteira Unicode resolve
+ * todos de uma vez, sem precisar remover as palavras (que continuam
+ * válidas como match de palavra inteira).
+ */
+function _matchesWhole(text, sig) {
+  const escaped = sig.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}([^\\p{L}\\p{N}]|$)`, "u");
+  return pattern.test(text);
+}
+
+/**
  * Detecta o objetivo da pergunta do usuário.
  * @param {string} message
  * @returns {Object} { id, label, strategy, matchedKeywords }
@@ -160,7 +184,7 @@ export function detectGoal(message) {
     let score = 0;
     const matched = [];
     for (const kw of goal.keywords) {
-      if (normalized.includes(normalize(kw))) {
+      if (_matchesWhole(normalized, normalize(kw))) {
         score++;
         matched.push(kw);
       }

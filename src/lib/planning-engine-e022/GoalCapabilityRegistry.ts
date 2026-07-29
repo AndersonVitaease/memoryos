@@ -230,6 +230,20 @@ const _builtins: CapabilityMapping[] = [
     ],
   },
 
+  // ── Memori ─────────────────────────────────────────────────────────────────
+  {
+    goalType: "memori.remember" as GoalType,
+    descriptors: [
+      { connector: "memori", capability: "memori.remember", params: {} },
+    ],
+  },
+  {
+    goalType: "memori.recall" as GoalType,
+    descriptors: [
+      { connector: "memori", capability: "memori.recall", params: {} },
+    ],
+  },
+
   // ── Drive ──────────────────────────────────────────────────────────────────
   // connector id: "google-drive"  (GoogleDriveConnector.ts:118)
   // capabilities: "drive.files.list", "drive.files.get", "drive.files.search",

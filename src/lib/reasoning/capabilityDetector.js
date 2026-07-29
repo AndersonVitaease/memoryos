@@ -21,6 +21,7 @@
  */
 
 import { OFFICIAL_LIBRARY_KEYWORDS } from "./capabilities/officialLibraryCapability";
+import { base44 } from "@/api/base44Client";
 
 const CAPABILITY_RULES = {
   official_library: {
@@ -29,9 +30,18 @@ const CAPABILITY_RULES = {
   web_search: {
     keywords: [
       "pesquise", "pesquisar", "pesquisa", "internet", "web", "google",
-      "consulte a documentação", "documentação", "veja se mudou", "verifique se",
-      "notícias", "noticia", "atualizado", "atualização", "legislação atualizada",
+      "consulte a documentação", "veja se mudou", "verifique se",
+      "notícias", "noticia", "legislação atualizada",
       "preço atual", "preços", "tendências", "tendencia", "fórum", "forum",
+      // FIX (auditoria cognição): "documentação" e "atualizado"/
+      // "atualização" sozinhas foram removidas — disparavam web_search
+      // em qualquer mensagem sobre o próprio código/projeto ("preciso
+      // escrever a documentação da API", "o arquivo já está
+      // atualizado"), fazendo o Orchestrator ativar pesquisa externa
+      // sem necessidade nenhuma. As frases mais específicas que já
+      // existiam ("consulte a documentação", "legislação atualizada")
+      // continuam cobrindo os casos em que o usuário realmente quer
+      // que algo seja checado/pesquisado por fora.
       "compare com sites", "pesquise na internet", "busque online", "online",
     ],
     // Nunca ativar web search se for pergunta que a memória pode responder
@@ -88,6 +98,48 @@ function matchKeywords(normalizedText, keywords) {
 }
 
 /**
+ * FIX (auditoria cognição — generalização): antes, web_search só disparava
+ * com um verbo exato de uma lista fixa ("pesquise", "procure", "busque",
+ * "encontre"...). Isso nunca escala — cada pessoa fala de um jeito
+ * diferente ("verifique", "confirme", "dá uma olhada", "tem algo sobre
+ * X?", "cola aí o que existe"...), e manter crescendo a lista de palavras
+ * pra sempre não é uma solução real (além de reintroduzir risco de falso
+ * positivo, como "verifique o código" que não tem nada a ver com internet).
+ *
+ * Em vez disso, quando o caminho rápido por palavra-chave não decide nada,
+ * este fallback pergunta a um modelo leve e rápido (mesmo padrão já usado
+ * em interpretIntent(), no memoryPipeline.js) se a mensagem realmente pede
+ * uma verificação externa — julgamento por entendimento da frase, não por
+ * casar string. Só roda quando o caminho rápido não decidiu nada, então
+ * não adiciona custo às mensagens já óbvias (rotineiras, sem ambiguidade).
+ */
+async function semanticWebSearchCheck(message) {
+  try {
+    const result = await base44.integrations.Core.InvokeLLM({
+      prompt: `A mensagem abaixo pede, direta ou indiretamente, para pesquisar, verificar, confirmar ou checar algo que exige informação externa e atual (não presente na memória do usuário, e que não é conhecimento geral estável que qualquer assistente já saberia)?
+
+Mensagem: "${message}"
+
+Exemplos que SIM precisam: "verifique se existe um servidor MCP pra X", "confirma se essa lib ainda é mantida", "tem algo novo sobre Y", "dá uma olhada no preço atual de Z".
+Exemplos que NÃO precisam: "verifique o código que colei", "confirma se entendeu", "dá uma olhada nessa lógica", perguntas sobre a própria conversa/memória/arquivos já carregados.`,
+      model: "gemini_3_flash",
+      response_json_schema: {
+        type: "object",
+        properties: {
+          needs_web_search: { type: "boolean", description: "true se precisa de busca externa real" },
+          reason: { type: "string", description: "motivo em poucas palavras" },
+        },
+        required: ["needs_web_search"],
+      },
+    });
+    return { needed: result?.needs_web_search === true, reason: result?.reason ?? "" };
+  } catch {
+    // Falha na chamada nunca bloqueia a resposta — só não ativa web_search.
+    return { needed: false, reason: "" };
+  }
+}
+
+/**
  * Detecta capacidades necessárias com base na mensagem, memória recuperada e contexto.
  *
  * @param {string} message - Mensagem do usuário
@@ -95,7 +147,7 @@ function matchKeywords(normalizedText, keywords) {
  * @param {Object} goal - Objetivo detectado pelo Goal Detector
  * @returns {Object} { capabilities, matchedReasons, hasEnoughInfo, missingInfoHint }
  */
-export function detectCapabilities(message, memory = {}, goal = {}) {
+export async function detectCapabilities(message, memory = {}, goal = {}) {
   const normalized = normalize(message);
   const { context = "", sources = [] } = memory;
 
@@ -115,9 +167,24 @@ export function detectCapabilities(message, memory = {}, goal = {}) {
 
   // === OFFICIAL_LIBRARY: pergunta sobre a Biblioteca Oficial do MemoryOS ===
   const libMatch = matchKeywords(normalized, CAPABILITY_RULES.official_library.keywords);
-  if (libMatch.length > 0) {
+  // FIX (auditoria cognição): as keywords originais só cobriam frases
+  // exatas como "mas memoryos"/"mes memoryos" — ninguém fala assim.
+  // Uso real é "aderência ao MAS/MES", "arquitetura MAS", que nunca
+  // batiam, então a Biblioteca Oficial nunca carregava o conteúdo real
+  // dessas siglas, e o modelo ficava sem grounding pra responder o que
+  // MAS/MES significam de verdade — confirmado: ele inventou definições
+  // erradas ("Multi-Agent System"/"Memory Execution System") em vez das
+  // reais (MemoryOS Architecture/Engineering Specification).
+  // Aqui usamos a mensagem ORIGINAL (sem lowercase) pra detectar as
+  // siglas em CAIXA ALTA — isso distingue "MAS" (sigla) de "mas"
+  // (conjunção comum) e "MES" (sigla) de "mês"/"mes" (mês do calendário
+  // ou erro de digitação), sinal que o normalize() descarta.
+  const hasAcronymSignal = /\b(MAS|MES|MV|MPS)\b/.test(message);
+  if (libMatch.length > 0 || hasAcronymSignal) {
     capabilities.official_library = true;
-    matchedReasons.official_library = `Mencionou: ${libMatch.slice(0, 3).join(", ")}`;
+    matchedReasons.official_library = libMatch.length > 0
+      ? `Mencionou: ${libMatch.slice(0, 3).join(", ")}`
+      : "Sigla em maiúsculas detectada (MAS/MES/MV/MPS)";
   }
 
   // === DOCUMENTS: mencionou arquivo/PDF/documento OU existem documentos nas fontes ===
@@ -159,20 +226,28 @@ export function detectCapabilities(message, memory = {}, goal = {}) {
       : "Objetivo: planejamento";
   }
 
-  // === WEB SEARCH: apenas quando explicitamente solicitado ou quando memória é insuficiente ===
+  // === WEB SEARCH: explicitamente solicitado, memória insuficiente, ou detecção semântica ===
   const webMatch = matchKeywords(normalized, CAPABILITY_RULES.web_search.keywords);
   const hasMemoryForTopic = context && context.length > 100;
-  // Ativa web search se:
-  // (a) usuário pediu explicitamente, OU
-  // (b) não há memória suficiente E o objetivo envolve localizar informação ou gerar conhecimento
-  const explicitlyRequested = webMatch.length > 0;
+  let explicitlyRequested = webMatch.length > 0;
   const memoryInsufficient = !hasMemoryForTopic && (goal.id === "locate_info" || goal.id === "generate_knowledge");
+
+  let semanticReason = "";
+  if (!explicitlyRequested && !memoryInsufficient) {
+    const semantic = await semanticWebSearchCheck(message);
+    if (semantic.needed) {
+      explicitlyRequested = true;
+      semanticReason = semantic.reason;
+    }
+  }
 
   if (explicitlyRequested || memoryInsufficient) {
     capabilities.web_search = true;
-    matchedReasons.web_search = explicitlyRequested
+    matchedReasons.web_search = webMatch.length > 0
       ? `Solicitado: ${webMatch.slice(0, 3).join(", ")}`
-      : "Memória insuficiente para o tópico";
+      : memoryInsufficient
+        ? "Memória insuficiente para o tópico"
+        : `Detecção semântica: ${semanticReason || "mensagem pede verificação externa"}`;
   }
 
   // === NEEDS_MORE_INFO: detecção de informação insuficiente ===

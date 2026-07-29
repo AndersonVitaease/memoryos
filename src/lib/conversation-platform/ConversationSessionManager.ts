@@ -5,6 +5,7 @@
  */
 
 import { conversationStore } from "./ConversationStore";
+import { runtimeContextLayer } from "@/lib/runtime-context/RuntimeContextLayer";
 import {
   getOrCreateActiveSession,
   loadMessages,
@@ -37,6 +38,12 @@ class ConversationSessionManager {
 
   async createNewSession(title?: string): Promise<ConversationSession> {
     const session = await createSession(title);
+    // BUGFIX (auditoria cognição): sem isto, o RuntimeContextLayer
+    // (goalType/artefato/executionIntent/resultSet da última execução
+    // de conector) permanecia vivo entre sessões — a sessão nova podia
+    // "herdar" contexto de execução de uma conversa completamente
+    // diferente assim que uma frase de continuidade fosse detectada.
+    runtimeContextLayer.clear();
     conversationStore.setSession(session);
     conversationStore.setMessages([]);
     conversationStore.emit({
@@ -55,6 +62,11 @@ class ConversationSessionManager {
     const target = sessions.find((s) => s.id === sessionId);
     if (!target) throw new Error(`Session not found: ${sessionId}`);
 
+    // BUGFIX (auditoria cognição): mesmo motivo do createNewSession —
+    // o contexto de execução (RuntimeContextLayer/ExecutionIntent) não
+    // era escopado por sessão, então a conversa alvo podia herdar o
+    // goalType/artefato da conversa de onde você estava saindo.
+    runtimeContextLayer.clear();
     conversationStore.setSession(target);
     const messages = await loadMessages(sessionId, 100);
     conversationStore.setMessages(messages);
