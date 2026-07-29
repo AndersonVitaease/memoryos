@@ -13,6 +13,7 @@ import { webSearchProvider } from "./WebSearchProvider";
 import { officialLibrarySearchProvider } from "./OfficialLibrarySearchProvider";
 import { memorySearchProvider } from "./MemorySearchProvider";
 import { mcpRegistrySearchProvider } from "./MCPRegistrySearchProvider";
+import { officialDocsSearchProvider } from "./OfficialDocsSearchProvider";
 
 let _registered = false;
 
@@ -24,6 +25,7 @@ export function ensureProvidersRegistered(): void {
   searchEngine.registerProvider(officialLibrarySearchProvider);
   searchEngine.registerProvider(memorySearchProvider);
   searchEngine.registerProvider(mcpRegistrySearchProvider);
+  searchEngine.registerProvider(officialDocsSearchProvider);
 
   _registered = true;
   console.log("[SearchEngine] Providers registrados:", searchEngine.listProviders());
