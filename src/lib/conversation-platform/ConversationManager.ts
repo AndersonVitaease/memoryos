@@ -10,7 +10,7 @@ import { conversationPipeline } from "./ConversationPipeline";
 import { sessionManager } from "./ConversationSessionManager";
 import { conversationMetrics } from "./ConversationMetrics";
 import { conversationRecovery } from "./ConversationRecovery";
-import type { ConversationState, ConversationEventType, ConversationEvent } from "./CXPTypes";
+import type { ConversationState, ConversationEventType, ConversationEvent, ConversationMessage } from "./CXPTypes";
 
 type StateListener = (state: ConversationState) => void;
 type EventListener = (event: ConversationEvent) => void;
