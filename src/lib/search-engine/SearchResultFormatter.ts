@@ -12,6 +12,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   web_search: "numa pesquisa na web",
   official_library: "na Biblioteca Oficial do MemoryOS",
   memory: "na sua memória",
+  mcp_registry: "no Registro Oficial de Servidores MCP",
 };
 
 function formatItem(item: SearchResultItem): string {

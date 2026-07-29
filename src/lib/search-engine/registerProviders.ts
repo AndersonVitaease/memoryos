@@ -12,6 +12,7 @@ import { githubSearchProvider } from "./GitHubSearchProvider";
 import { webSearchProvider } from "./WebSearchProvider";
 import { officialLibrarySearchProvider } from "./OfficialLibrarySearchProvider";
 import { memorySearchProvider } from "./MemorySearchProvider";
+import { mcpRegistrySearchProvider } from "./MCPRegistrySearchProvider";
 
 let _registered = false;
 
@@ -22,6 +23,7 @@ export function ensureProvidersRegistered(): void {
   searchEngine.registerProvider(webSearchProvider);
   searchEngine.registerProvider(officialLibrarySearchProvider);
   searchEngine.registerProvider(memorySearchProvider);
+  searchEngine.registerProvider(mcpRegistrySearchProvider);
 
   _registered = true;
   console.log("[SearchEngine] Providers registrados:", searchEngine.listProviders());
