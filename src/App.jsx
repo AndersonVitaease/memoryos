@@ -24,13 +24,11 @@ const ProjectDetail = lazy(() => import('@/pages/ProjectDetail'));
 const SearchPage = lazy(() => import('@/pages/SearchPage'));
 const Connections = lazy(() => import('@/pages/Connections'));
 const ArchitectureAudit = lazy(() => import('@/pages/ArchitectureAudit'));
-const MriValidation = lazy(() => import('@/pages/MriValidation'));
 const Foundation = lazy(() => import('@/pages/Foundation'));
 const DeveloperHandbook = lazy(() => import('@/pages/DeveloperHandbook'));
 const ApiReference = lazy(() => import('@/pages/ApiReference'));
 const ExecutionModel = lazy(() => import('@/pages/ExecutionModel'));
 const EngineeringBacklog = lazy(() => import('@/pages/EngineeringBacklog'));
-const Sprint1Validation = lazy(() => import('@/pages/Sprint1Validation'));
 const MersSystem = lazy(() => import('@/pages/MersSystem'));
 const MadsSystem = lazy(() => import('@/pages/MadsSystem'));
 const MeomSystem = lazy(() => import('@/pages/MeomSystem'));
@@ -76,9 +74,7 @@ const Phase58ValidationPage = lazy(() => import('@/pages/Phase58ValidationPage')
 const Phase581Page = lazy(() => import('@/pages/Phase581Page'));
 const Phase60Page = lazy(() => import('@/pages/Phase60Page'));
 const Phase601Page = lazy(() => import('@/pages/Phase601Page'));
-const Phase602Page = lazy(() => import('@/pages/Phase602Page'));
 const Phase603Page = lazy(() => import('@/pages/Phase603Page'));
-const Phase604Page = lazy(() => import('@/pages/Phase604Page'));
 const Phase643Page = lazy(() => import('@/pages/Phase643Page'));
 const Phase700Page = lazy(() => import('@/pages/Phase700Page'));
 const Phase711Page = lazy(() => import('@/pages/Phase711Page'));
@@ -112,9 +108,6 @@ const SprintEF640Page = lazy(() => import('@/pages/SprintEF640Page'));
 const SprintEF650Page = lazy(() => import('@/pages/SprintEF650Page'));
 const PlatformAuditPage = lazy(() => import('@/pages/PlatformAuditPage'));
 const PhaseEV4BPage = lazy(() => import('@/pages/PhaseEV4BPage'));
-const KnowledgeIngestionDashboard = lazy(() => import('@/pages/KnowledgeIngestionDashboard'));
-const PhaseEF38Page = lazy(() => import('@/pages/PhaseEF38Page'));
-const PhaseEF381Page = lazy(() => import('@/pages/PhaseEF381Page'));
 const DriveDebugPanel = lazy(() => import('@/pages/DriveDebugPanel'));
 const TokenLifecycleTestPage = lazy(() => import('@/pages/TokenLifecycleTestPage'));
 const RuntimeTracePage = lazy(() => import('@/pages/RuntimeTracePage'));
@@ -139,13 +132,6 @@ const SprintEF407Page = lazy(() => import('@/pages/SprintEF407Page'));
 const SprintEF407aPage = lazy(() => import('@/pages/SprintEF407aPage'));
 const SprintEF408Page = lazy(() => import('@/pages/SprintEF408Page'));
 const SprintEF408BPage = lazy(() => import('@/pages/SprintEF408BPage'));
-const SprintEF41Page = lazy(() => import('@/pages/SprintEF41Page'));
-const SprintEF41APage = lazy(() => import('@/pages/SprintEF41APage'));
-const SprintEF42Page = lazy(() => import('@/pages/SprintEF42Page'));
-const SprintEF425Page = lazy(() => import('@/pages/SprintEF425Page'));
-const SprintEF426Page = lazy(() => import('@/pages/SprintEF426Page'));
-const SprintEF427Page = lazy(() => import('@/pages/SprintEF427Page'));
-const SprintEF4210Page = lazy(() => import('@/pages/SprintEF4210Page'));
 const SprintEF43Page = lazy(() => import('@/pages/SprintEF43Page'));
 const SprintEF43APage = lazy(() => import('@/pages/SprintEF43APage'));
 const SprintEF43BPage = lazy(() => import('@/pages/SprintEF43BPage'));
@@ -153,7 +139,6 @@ const SprintEF43CPage = lazy(() => import('@/pages/SprintEF43CPage'));
 const SprintEF44Page = lazy(() => import('@/pages/SprintEF44Page'));
 const SprintEF492Page = lazy(() => import('@/pages/SprintEF492Page'));
 const SprintEF554RecertPage = lazy(() => import('@/pages/SprintEF554RecertPage'));
-const SprintEF57Page = lazy(() => import('@/pages/SprintEF57Page'));
 const SprintEF58ValidationPage = lazy(() => import('@/pages/SprintEF58ValidationPage'));
 const SprintEF59Page = lazy(() => import('@/pages/SprintEF59Page'));
 const ArchitecturalStabilizationPage = lazy(() => import('@/pages/ArchitecturalStabilizationPage'));
@@ -207,7 +192,6 @@ const AuthenticatedApp = () => {
           <Route path="/audit" element={<ArchitectureAudit />} />
           <Route path="/memory-engine" element={<MemoryEngine />} />
           <Route path="/cognitive-engine" element={<CognitiveEngine />} />
-          <Route path="/mri" element={<MriValidation />} />
           <Route path="/mqccs" element={<MqccsValidation />} />
           <Route path="/mpegs" element={<MpegsGovernance />} />
           <Route path="/foundation" element={<Foundation />} />
@@ -215,7 +199,6 @@ const AuthenticatedApp = () => {
           <Route path="/api-reference" element={<ApiReference />} />
           <Route path="/execution-model" element={<ExecutionModel />} />
           <Route path="/engineering-backlog" element={<EngineeringBacklog />} />
-          <Route path="/sprint1" element={<Sprint1Validation />} />
           <Route path="/sprint1-review" element={<Sprint1Review />} />
           <Route path="/mers" element={<MersSystem />} />
           <Route path="/mads" element={<MadsSystem />} />
@@ -295,9 +278,7 @@ const AuthenticatedApp = () => {
           <Route path="/phase59" element={<Phase59Page />} />
           <Route path="/phase60" element={<Phase60Page />} />
           <Route path="/phase601" element={<Phase601Page />} />
-          <Route path="/phase602" element={<Phase602Page />} />
           <Route path="/phase603" element={<Phase603Page />} />
-          <Route path="/phase604" element={<Phase604Page />} />
           <Route path="/phase610" element={<Phase610Page />} />
           <Route path="/phase611" element={<Phase611Page />} />
           <Route path="/phase620" element={<Phase620Page />} />
@@ -391,9 +372,6 @@ const AuthenticatedApp = () => {
           <Route path="/ev5" element={<PhaseEV5Page />} />
           <Route path="/production" element={<ProductionDashboard />} />
           <Route path="/ef36-kde" element={<PhaseEF36Page />} />
-          <Route path="/knowledge-ingestion" element={<KnowledgeIngestionDashboard />} />
-          <Route path="/ef38-uks" element={<PhaseEF38Page />} />
-          <Route path="/ef381-store" element={<PhaseEF381Page />} />
           <Route path="/ef39-memory-store" element={<PhaseEF39Page />} />
           <Route path="/ef393-certification" element={<PhaseEF393Page />} />
           <Route path="/drive-debug" element={<DriveDebugPanel />} />
@@ -419,15 +397,8 @@ const AuthenticatedApp = () => {
           <Route path="/sprint-ef407a" element={<SprintEF407aPage />} />
           <Route path="/sprint-ef408" element={<SprintEF408Page />} />
           <Route path="/sprint-ef408b" element={<SprintEF408BPage />} />
-          <Route path="/sprint-ef41" element={<SprintEF41Page />} />
-          <Route path="/sprint-ef41a" element={<SprintEF41APage />} />
-          <Route path="/sprint-ef42" element={<SprintEF42Page />} />
-          <Route path="/sprint-ef425" element={<SprintEF425Page />} />
-          <Route path="/sprint-ef426" element={<SprintEF426Page />} />
-          <Route path="/sprint-ef427" element={<SprintEF427Page />} />
           <Route path="/sprint-ef428" element={<SprintEF428Page />} />
           <Route path="/sprint-ef429" element={<SprintEF429Page />} />
-          <Route path="/sprint-ef4210" element={<SprintEF4210Page />} />
           <Route path="/sprint-ef43" element={<SprintEF43Page />} />
           <Route path="/sprint-ef43a" element={<SprintEF43APage />} />
           <Route path="/sprint-ef43b" element={<SprintEF43BPage />} />
@@ -448,7 +419,6 @@ const AuthenticatedApp = () => {
           <Route path="/arch-cert" element={<ArchitecturalCertPage />} />
           <Route path="/sprint-ef554" element={<SprintEF554RecertPage />} />
           <Route path="/sprint-ef56" element={<SprintEF56OperationalCertPage />} />
-          <Route path="/sprint-ef57" element={<SprintEF57Page />} />
           <Route path="/sprint-ef58-validation" element={<SprintEF58ValidationPage />} />
           <Route path="/sprint-ef59" element={<SprintEF59Page />} />
           <Route path="/arch-stabilization" element={<ArchitecturalStabilizationPage />} />
