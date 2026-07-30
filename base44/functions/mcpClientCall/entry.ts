@@ -90,7 +90,7 @@ function fetchWithHeaders(headers: Record<string, string>) {
  * de tamanho, e um erro grande demais (ex: corpo HTML de erro do servidor
  * remoto) causava uma FALHA SECUNDARIA ao tentar salvar, mascarando o
  * erro real por tras de "Field last_error exceeds the maximum allowed size". */
-function truncateError(msg: string, max = 500): string {
+function truncateError(msg: string, max = 4000): string {
   return msg.length > max ? msg.slice(0, max) + "... (truncado)" : msg;
 }
 
