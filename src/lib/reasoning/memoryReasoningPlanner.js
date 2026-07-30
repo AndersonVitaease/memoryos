@@ -430,8 +430,27 @@ Se envolver um nome de arquivo/pasta específico do usuário, extraia em "target
     : prompt;
   setPhase?.("generating");
   const _t6 = Date.now();
-  const rawResponse = await base44.integrations.Core.InvokeLLM({ prompt: finalPrompt });
-  console.log(`[DIAG][ReasoningPlanner] ETAPA 6 (InvokeLLM final, resposta) levou ${Date.now() - _t6}ms — prompt tinha ${finalPrompt.length} caracteres`);
+  // FIX (migracao de provider): resposta final agora passa pelo Registro de
+  // Providers de IA (prefere OpenRouter — mais rapido, mais modelos, cache
+  // de prompt no futuro). Se o provider preferido falhar por qualquer
+  // motivo, cai pro InvokeLLM do Base44 direto — nunca deixa a mensagem
+  // sem resposta por causa de uma falha de provider especifico.
+  const { ensureAIProvidersRegistered, aiProviderRegistry } = await import("@/lib/ai-provider-registry/AIProviderRegistry");
+  ensureAIProvidersRegistered();
+  const _aiProvider = await aiProviderRegistry.selectProvider("text-generation");
+  let rawResponse;
+  if (_aiProvider) {
+    const _aiResult = await _aiProvider.invoke(finalPrompt);
+    if (_aiResult.success) {
+      rawResponse = _aiResult.text;
+    } else {
+      console.warn(`[DIAG][ReasoningPlanner] ETAPA 6: provider "${_aiProvider.id}" falhou (${_aiResult.error}) — caindo pro Base44 direto`);
+      rawResponse = await base44.integrations.Core.InvokeLLM({ prompt: finalPrompt });
+    }
+  } else {
+    rawResponse = await base44.integrations.Core.InvokeLLM({ prompt: finalPrompt });
+  }
+  console.log(`[DIAG][ReasoningPlanner] ETAPA 6 (resposta final, provider: ${_aiProvider?.id ?? "base44-fallback"}) levou ${Date.now() - _t6}ms — prompt tinha ${finalPrompt.length} caracteres`);
 
   // === ETAPA 6.5: TRAVA DETERMINÍSTICA CONTRA CONFABULAÇÃO DE DOCUMENTO (IA-032) ===
   const _rawText = typeof rawResponse === "string" ? rawResponse : String(rawResponse);
