@@ -1,5 +1,5 @@
 import { base44 } from "@/api/base44Client";
-import { format } from "date-fns";
+import { safeFormat } from "@/lib/utils/safeDateFormat";
 import { buildEnrichedContext } from "@/lib/memory-intelligence/EnrichedContextBuilder";
 
 /**
@@ -253,7 +253,8 @@ function buildContext(data, intent, sessionId) {
       context += `### DECISÕES (${items.length})\n`;
       items.forEach((d) => {
         context += `- ${d.title}`;
-        if (d.decided_date) context += ` [${format(new Date(d.decided_date), "dd/MM/yyyy")}]`;
+        const decidedDateStr = safeFormat(d.decided_date, "dd/MM/yyyy");
+        if (decidedDateStr) context += ` [${decidedDateStr}]`;
         context += "\n";
         if (d.description) context += `  ${d.description}\n`;
         if (d.rationale) context += `  Motivo: ${d.rationale}\n`;
@@ -273,7 +274,8 @@ function buildContext(data, intent, sessionId) {
       context += `### TAREFAS (${items.length}, ${pending} pendentes)\n`;
       items.forEach((t) => {
         context += `- [${t.status === "done" ? "x" : " "}] ${t.title}`;
-        if (t.due_date) context += ` — Prazo: ${format(new Date(t.due_date), "dd/MM")}`;
+        const dueDateStr = safeFormat(t.due_date, "dd/MM");
+        if (dueDateStr) context += ` — Prazo: ${dueDateStr}`;
         if (t.assignee) context += ` — Resp: ${t.assignee}`;
         context += "\n";
         if (t.description) context += `  ${t.description}\n`;
