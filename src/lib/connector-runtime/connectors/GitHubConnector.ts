@@ -734,6 +734,40 @@ export class GitHubConnector implements IConnector {
         const repo   = typeof payload.repo   === "string" ? payload.repo   : null;
         if (!query) return fail("query required", "validation", start, eid, logs, operation);
 
+        // FIX (achado real via teste): a API de busca de código do GitHub
+        // (/search/code) tem suporte a CORS restrito, bloqueando chamadas
+        // diretas do navegador (net::ERR_FAILED) — já confirmado e
+        // corrigido hoje de manhã no provider do Search Engine, usando
+        // files.list (que funciona) + filtro de nome no próprio código.
+        // Aplicado aqui também: quando a query parece ser um NOME DE
+        // ARQUIVO (termina em extensão de código — com ponto, ou com
+        // espaço no lugar do ponto, artefato comum da limpeza de
+        // pontuação que acontece antes de chegar aqui), usa o mesmo
+        // caminho funcional em vez do endpoint quebrado. Buscas de
+        // conteúdo/símbolo genuínas (que não parecem nome de arquivo)
+        // continuam no caminho antigo — essa é uma limitação conhecida e
+        // separada, não resolvida por este fix.
+        const CODE_EXT_RE = /(?:\.| )(ts|tsx|js|jsx|py|java|go|rb|json|md|css|html|c|cpp|h|yml|yaml)$/i;
+        const looksLikeFilename = operation !== "search.text" && CODE_EXT_RE.test(query.trim());
+
+        if (looksLikeFilename && owner && repo) {
+          const targetFilename = query.trim().replace(/ (?=[a-z0-9]+$)/i, ".").split(/[\s/\\]/).pop() as string;
+          const treeRes = await githubFetch(`/repos/${owner}/${repo}/git/trees/HEAD?recursive=1`, token);
+          logs.push(makeLog("info", `[${operation}] (via files.list, CORS-safe) HTTP ${treeRes.status} — ${treeRes.responseTimeMs}ms`));
+          if (!treeRes.ok) { this.internalMetrics.externalFailures++; return fail(`HTTP ${treeRes.status}`, "external", start, eid, logs, operation); }
+          const td = treeRes.data as any;
+          const allFiles = ((td.tree ?? []) as any[]).filter((f) => f.type === "blob");
+          const lowerTarget = targetFilename.toLowerCase();
+          const matched = allFiles.filter((f) =>
+            String(f.path).toLowerCase().endsWith(`/${lowerTarget}`) || String(f.path).toLowerCase() === lowerTarget
+          );
+          const items = matched.slice(0, 20).map((f) => ({
+            path: f.path, repository: `${owner}/${repo}`, sha: f.sha,
+            url: `https://github.com/${owner}/${repo}/blob/HEAD/${f.path}`, textMatches: [],
+          }));
+          return ok({ query, operation, totalCount: items.length, items }, start, eid, logs, operation);
+        }
+
         // Build GitHub Code Search query
         const repoFilter = (owner && repo) ? `+repo:${owner}/${repo}` : "";
         const ext = operation === "search.file" ? "" : "";
