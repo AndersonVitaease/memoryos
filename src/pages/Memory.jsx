@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { Brain, CheckCircle2, ListTodo, Users, Tag as TagIcon, Calendar, FileText, Sparkles } from "lucide-react";
-import moment from "moment";
+import { format } from "date-fns";
 
 export default function Memory() {
   console.log('[RENDER] Memory');
@@ -114,7 +114,7 @@ export default function Memory() {
                     <h3 className="font-medium text-zinc-900">{d.title}</h3>
                     {d.description && <p className="text-sm text-zinc-500 mt-1">{d.description}</p>}
                     {d.rationale && <p className="text-xs text-zinc-400 mt-2 italic">Motivo: {d.rationale}</p>}
-                    {d.decided_date && <p className="text-xs text-zinc-400 mt-2">{moment(d.decided_date).format("DD/MM/YYYY")}</p>}
+                    {d.decided_date && <p className="text-xs text-zinc-400 mt-2">{format(new Date(d.decided_date), "dd/MM/yyyy")}</p>}
                   </div>
                 </div>
               </div>
@@ -143,7 +143,7 @@ export default function Memory() {
                   {t.description && <p className="text-xs text-zinc-400 mt-0.5">{t.description}</p>}
                   <div className="flex items-center gap-3 mt-1">
                     {t.assignee && <span className="text-xs text-zinc-400">👤 {t.assignee}</span>}
-                    {t.due_date && <span className="text-xs text-zinc-400">📅 {moment(t.due_date).format("DD/MM")}</span>}
+                    {t.due_date && <span className="text-xs text-zinc-400">📅 {format(new Date(t.due_date), "dd/MM")}</span>}
                   </div>
                 </div>
               </div>
