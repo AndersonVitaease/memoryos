@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { FileText, Users, Calendar, FolderOpen, Brain, Tag as TagIcon, Database } from "lucide-react";
-import moment from "moment";
+import { format } from "date-fns";
 import { base44 } from "@/api/base44Client";
 
 export default function ProjectOverview({ project, documents, folders, people, events }) {
@@ -84,7 +84,7 @@ export default function ProjectOverview({ project, documents, folders, people, e
                   <p className="text-sm font-medium text-zinc-700">{event.title}</p>
                   {event.category && <p className="text-xs text-zinc-400">{event.category}</p>}
                 </div>
-                <span className="text-xs text-zinc-400">{moment(event.event_date).format("DD/MM/YYYY")}</span>
+                <span className="text-xs text-zinc-400">{format(new Date(event.event_date), "dd/MM/yyyy")}</span>
               </div>
             ))}
           </div>
