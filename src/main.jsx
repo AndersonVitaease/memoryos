@@ -4,6 +4,7 @@ import App from '@/App.jsx'
 import '@/index.css'
 import { OfficialLibraryManager } from '@/lib/officialLibraryManager'
 import '@/lib/DebugRuntime.js'
+import '@/lib/mcp-client/GoogleWorkspaceMCPClient.js'
 
 // Inicializa a Biblioteca Oficial antes de renderizar o app.
 // Garante que Core e Specialists tenham acesso imediato aos documentos.
