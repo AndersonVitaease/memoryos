@@ -82,10 +82,13 @@ export const SERVICE_REGISTRY = [
     name: "Serviço de Processamento de IA",
     description: "Traduzir, resumir, gerar código e processar texto usando modelos de IA especializados.",
     keywords: [
-      "traduzir", "traduza", "tradução", "translate",
-      "resumir", "resuma", "resumo", "summarize",
+      // FIX: adicionadas as formas informais/imperativas mais comuns
+      // ("traduz", "resume", "transcreve") — testadas com 10 casos reais
+      // (incluindo negativos, ex: "resumi" no passado nao deve disparar).
+      "traduzir", "traduza", "traduz", "tradução", "translate",
+      "resumir", "resuma", "resume", "resumo", "summarize",
       "gerar codigo", "gerar código", "escrever codigo", "escrever código", "generate code",
-      "transcrever", "transcreva", "transcrição",
+      "transcrever", "transcreva", "transcreve", "transcrição",
       "modelo de ia", "modelos de ia", "ai model",
     ],
     beta: true,
