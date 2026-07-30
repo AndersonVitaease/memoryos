@@ -166,6 +166,9 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
 
   // === ETAPA 5.2: SEARCH ENGINE (antes de qualquer chamada de LLM) ===
   let _searchEngineGroundingNote = null;
+  // FIX: alimenta as travas IA-084/IA-086 mais abaixo, que antes so
+  // enxergavam o sistema de busca antigo (capabilityResult.capabilityResults.webSearch).
+  let _searchEngineGroundingText = "";
 
   try {
     const { ensureProvidersRegistered } = await import("@/lib/search-engine/registerProviders");
@@ -229,6 +232,10 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
       _searchEngineGroundingNote =
         `JÁ PESQUISAMOS ISSO ANTES DE VOCÊ (fonte real, verificada — não pesquise de novo nem invente dados adicionais):\n${snippet}\n` +
         `Se precisar responder sobre este assunto, use SÓ o que está listado acima. Não invente nomes de repositórios, produtos ou serviços que não estejam nessa lista.`;
+      _searchEngineGroundingText = (searchOutcome.bestResult.items ?? [])
+        .map((it) => `${it.title ?? ""} ${it.snippet ?? ""} ${it.url ?? ""}`)
+        .join(" \n ")
+        .toLowerCase();
     } else {
       const triedProviders = (searchOutcome.allResults ?? [])
         .filter((r) => r.success)
@@ -453,10 +460,12 @@ Se envolver um nome de arquivo/pasta específico do usuário, extraia em "target
   // === ETAPA 6.6: TRAVA DETERMINÍSTICA CONTRA ITEM FABRICADO EM LISTA REAL (IA-084) ===
   let _finalResponseWithMcpCheck = _finalRawResponseAfterAuditCheck;
   const _webSearchResult = capabilityResult.capabilityResults?.webSearch;
-  if (_webSearchResult && !_webSearchResult.error) {
+  const _hadAnyRealWebGrounding = Boolean((_webSearchResult && !_webSearchResult.error) || _searchEngineGroundingText);
+  if (_hadAnyRealWebGrounding) {
     const _groundingText = [
-      ...(_webSearchResult.facts || []),
-      ...(_webSearchResult.sources || []),
+      ...(_webSearchResult?.facts || []),
+      ...(_webSearchResult?.sources || []),
+      _searchEngineGroundingText,
     ].join(" \n ").toLowerCase();
 
     const _tokenRe = /[a-z0-9]+(?:[-_/][a-z0-9]+)+/gi;
@@ -483,14 +492,14 @@ Se envolver um nome de arquivo/pasta específico do usuário, extraia em "target
 
   // === ETAPA 6.7: TRAVA DETERMINÍSTICA — RASTREABILIDADE DE ORIGEM (IA-086) ===
   const _hadRealCapability = Boolean(
-    (_webSearchResult && !_webSearchResult.error) ||
+    _hadAnyRealWebGrounding ||
     capabilityResult.capabilityResults?.calculation && !capabilityResult.capabilityResults.calculation.error ||
     (capabilityResult.capabilityResults?.officialLibrary && !capabilityResult.capabilityResults.officialLibrary.error)
   );
   if (_hadRealCapability) {
     const _hasSourceTag = /\((fonte:\s*(pesquisa|mem[oó]ria|documento)|conhecimento geral|sua an[aá]lise)\)/i.test(_finalResponseWithMcpCheck);
     console.log("[IA-086] Rastreabilidade de origem:", {
-      hadWebSearch: Boolean(_webSearchResult && !_webSearchResult.error),
+      hadWebSearch: _hadAnyRealWebGrounding,
       hadCalculation: Boolean(capabilityResult.capabilityResults?.calculation && !capabilityResult.capabilityResults.calculation.error),
       hadOfficialLibrary: Boolean(capabilityResult.capabilityResults?.officialLibrary && !capabilityResult.capabilityResults.officialLibrary.error),
       hasSourceTag: _hasSourceTag,
