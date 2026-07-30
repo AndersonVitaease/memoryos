@@ -86,6 +86,14 @@ function fetchWithHeaders(headers: Record<string, string>) {
   return applyMiddlewares(middleware)(fetch);
 }
 
+/** Trunca mensagens de erro antes de salvar — campos de entity tem limite
+ * de tamanho, e um erro grande demais (ex: corpo HTML de erro do servidor
+ * remoto) causava uma FALHA SECUNDARIA ao tentar salvar, mascarando o
+ * erro real por tras de "Field last_error exceeds the maximum allowed size". */
+function truncateError(msg: string, max = 500): string {
+  return msg.length > max ? msg.slice(0, max) + "... (truncado)" : msg;
+}
+
 async function connect(serverUrl: string, headers: Record<string, string>) {
   const boundFetch = fetchWithHeaders(headers);
   const url = new URL(serverUrl);
@@ -151,7 +159,7 @@ Deno.serve(async (req) => {
 
     const { headers, error: headerError } = resolveHeaders(server, bearerToken);
     if (headerError) {
-      await base44.asServiceRole.entities.MCPServerConfig.update(serverId, { last_error: headerError });
+      await base44.asServiceRole.entities.MCPServerConfig.update(serverId, { last_error: truncateError(headerError) });
       return Response.json({ error: headerError }, { status: 500 });
     }
 
@@ -162,7 +170,7 @@ Deno.serve(async (req) => {
     } catch (e) {
       const errMsg = `Conexao/handshake falhou com '${server.name}': ${(e as Error).message}`;
       console.error('[mcpClientCall]', errMsg);
-      await base44.asServiceRole.entities.MCPServerConfig.update(serverId, { last_error: errMsg });
+      await base44.asServiceRole.entities.MCPServerConfig.update(serverId, { last_error: truncateError(errMsg) });
       return Response.json({ error: errMsg }, { status: 502 });
     }
 
@@ -196,7 +204,7 @@ Deno.serve(async (req) => {
       if (result.isError) {
         const errMsg = result.content?.[0]?.text ?? `Tool error em '${server.name}'`;
         console.error('[mcpClientCall] Tool error', errMsg);
-        await base44.asServiceRole.entities.MCPServerConfig.update(serverId, { last_error: errMsg });
+        await base44.asServiceRole.entities.MCPServerConfig.update(serverId, { last_error: truncateError(errMsg) });
         return Response.json({ error: errMsg }, { status: 502 });
       }
 
@@ -209,7 +217,7 @@ Deno.serve(async (req) => {
     } catch (e) {
       const errMsg = `Chamada MCP falhou em '${server.name}': ${(e as Error).message}`;
       console.error('[mcpClientCall]', errMsg);
-      await base44.asServiceRole.entities.MCPServerConfig.update(serverId, { last_error: errMsg });
+      await base44.asServiceRole.entities.MCPServerConfig.update(serverId, { last_error: truncateError(errMsg) });
       return Response.json({ error: errMsg }, { status: 502 });
     } finally {
       try {
