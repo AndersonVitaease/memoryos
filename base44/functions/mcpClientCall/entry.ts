@@ -218,8 +218,22 @@ Deno.serve(async (req) => {
           cursor = res.nextCursor;
         } while (cursor);
 
+        // FIX: mesma classe de bug do last_error — servidores com muitas
+        // ferramentas (ou descricoes/schemas bem detalhados, como o
+        // Google Workspace MCP) geram um JSON grande demais pro campo do
+        // banco. Guarda so nome + descricao curta pra cache/exibicao —
+        // o schema completo de cada ferramenta so importa na hora real
+        // de chamar ela (tools/call), nao precisa ficar cacheado aqui.
+        const compactTools = (allTools as any[]).map((t) => ({
+          name: t.name,
+          description: typeof t.description === 'string' ? t.description.slice(0, 200) : '',
+        }));
+        let discoveredToolsJson = JSON.stringify(compactTools);
+        if (discoveredToolsJson.length > 4000) {
+          discoveredToolsJson = JSON.stringify(compactTools.slice(0, 20)) ;
+        }
         await base44.asServiceRole.entities.MCPServerConfig.update(serverId, {
-          discovered_tools: JSON.stringify(allTools),
+          discovered_tools: discoveredToolsJson,
           last_discovered_at: new Date().toISOString(),
           last_error: '',
         });
