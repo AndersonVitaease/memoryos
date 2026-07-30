@@ -94,6 +94,32 @@ function truncateError(msg: string, max = 4000): string {
   return msg.length > max ? msg.slice(0, max) + "... (truncado)" : msg;
 }
 
+/**
+ * FIX (bug real, confirmado com Google Workspace MCP em Developer Preview):
+ * o SDK oficial as vezes lanca "Error POSTing to endpoint: <JSON>" mesmo
+ * quando o <JSON> embutido na propria mensagem de erro e uma resposta
+ * JSON-RPC de SUCESSO (tem campo "result"). E um bug conhecido do SDK
+ * nesse tipo de transporte com certos servidores (ver issues #804 e #340
+ * do repositorio oficial modelcontextprotocol/typescript-sdk — o padrao
+ * "diz que conectou certinho mas ainda assim lanca erro" e documentado).
+ * Em vez de falhar a chamada, extrai o resultado real de dentro da
+ * mensagem de erro.
+ */
+function tryRecoverResultFromError(err: unknown): any | null {
+  const msg = err instanceof Error ? err.message : String(err);
+  const jsonStart = msg.indexOf('{');
+  if (jsonStart === -1) return null;
+  try {
+    const parsed = JSON.parse(msg.slice(jsonStart));
+    if (parsed && typeof parsed === 'object' && 'result' in parsed && !('error' in parsed)) {
+      return parsed.result;
+    }
+  } catch {
+    // Nao era JSON valido de verdade — segue como erro normal.
+  }
+  return null;
+}
+
 async function connect(serverUrl: string, headers: Record<string, string>) {
   const boundFetch = fetchWithHeaders(headers);
   const url = new URL(serverUrl);
