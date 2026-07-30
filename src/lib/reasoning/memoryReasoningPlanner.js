@@ -432,53 +432,7 @@ Se envolver um nome de arquivo/pasta específico do usuário, extraia em "target
     }
   }
 
-  // === ETAPA 5.6: DESVIO PARA SERVIÇO DE IA (OpenRouter) ===
-  console.log(`[DIAG][AI-SERVICE-DIRECT] serviceInfo:`, capabilityResult.serviceInfo);
-  if (capabilityResult.serviceInfo?.id === "ai" && capabilityResult.serviceInfo?.hasConnector) {
-    console.log(`[DIAG][AI-SERVICE-DIRECT] Condicao bateu — tentando executar via OpenRouterConnector`);
-    try {
-      const { pickModelForMessage } = await import("@/lib/openrouter/categoryRouter");
-      const { OpenRouterConnector } = await import("@/lib/connector-runtime/connectors/OpenRouterConnector");
-      const { model } = pickModelForMessage(userMsg);
-      const connector = new OpenRouterConnector();
-      const result = await connector.execute(
-        "openrouter.chatCompletion",
-        { model, prompt: userMsg },
-        { executionId: `mrp-${Date.now()}`, workspaceId: "default" },
-      );
-      console.log(`[DIAG][AI-SERVICE-DIRECT] modelo escolhido: ${model} | result.success: ${result.success} | tem reply: ${Boolean(result.data?.reply)} | error: ${result.error || "nenhum"}`);
-      if (result.success && result.data?.reply) {
-        const response = result.data.reply;
-        return {
-          response,
-          plan: {
-            goal: goal.id,
-            goalLabel: goal.label,
-            strategy: goal.strategy,
-            skills: skills.map((s) => ({ id: s.id, name: s.name, score: s.score })),
-            skillsCount: skills.length,
-            sourcesCount: sources.length,
-            contextLength: context ? context.length : 0,
-            capabilities: [],
-            capabilitiesCount: 0,
-            needsMoreInfo: false,
-            service: "ai",
-            responseTimeMs: Date.now() - startTime,
-            handledByGuard: "AI-SERVICE-DIRECT",
-            model,
-          },
-          sources,
-        };
-      }
-    } catch (err) {
-      // Se a execução real falhar por qualquer motivo, cai no fluxo
-      // normal abaixo (a única chamada de LLM), em vez de travar a
-      // resposta inteira.
-      console.error(`[DIAG][AI-SERVICE-DIRECT] FALHOU:`, err?.message || err);
-    }
-  } else {
-    console.log(`[DIAG][AI-SERVICE-DIRECT] Condicao NAO bateu — id: ${capabilityResult.serviceInfo?.id}, hasConnector: ${capabilityResult.serviceInfo?.hasConnector}`);
-  }
+  // (ETAPA 5.6 antiga removida — desvio pra servico de IA agora roda no inicio da funcao, ETAPA 0, antes da memoria)
 
   // === ETAPA 6: UMA ÚNICA CHAMADA AO LLM ===
   const finalPrompt = _searchEngineGroundingNote
