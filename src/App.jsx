@@ -139,9 +139,6 @@ const SprintEF43CPage = lazy(() => import('@/pages/SprintEF43CPage'));
 const SprintEF44Page = lazy(() => import('@/pages/SprintEF44Page'));
 const SprintEF492Page = lazy(() => import('@/pages/SprintEF492Page'));
 const SprintEF554RecertPage = lazy(() => import('@/pages/SprintEF554RecertPage'));
-const SprintEF58ValidationPage = lazy(() => import('@/pages/SprintEF58ValidationPage'));
-const SprintEF59Page = lazy(() => import('@/pages/SprintEF59Page'));
-const SprintEF60BPage = lazy(() => import('@/pages/SprintEF60BPage'));
 const SprintEPICDPage = lazy(() => import('@/pages/SprintEPICDPage'));
 
 const AuthenticatedApp = () => {
@@ -417,9 +414,6 @@ const AuthenticatedApp = () => {
           <Route path="/arch-cert" element={<ArchitecturalCertPage />} />
           <Route path="/sprint-ef554" element={<SprintEF554RecertPage />} />
           <Route path="/sprint-ef56" element={<SprintEF56OperationalCertPage />} />
-          <Route path="/sprint-ef58-validation" element={<SprintEF58ValidationPage />} />
-          <Route path="/sprint-ef59" element={<SprintEF59Page />} />
-          <Route path="/sprint-ef60b" element={<SprintEF60BPage />} />
           <Route path="/sprint-mvp01" element={<SprintMVP01Page />} />
           <Route path="/sprint-epic-d" element={<SprintEPICDPage />} />
         </Route>
