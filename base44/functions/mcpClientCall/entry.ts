@@ -205,7 +205,15 @@ Deno.serve(async (req) => {
         const allTools: unknown[] = [];
         let cursor: string | undefined;
         do {
-          const res: any = await session.client.listTools({ cursor });
+          let res: any;
+          try {
+            res = await session.client.listTools({ cursor });
+          } catch (innerErr) {
+            const recovered = tryRecoverResultFromError(innerErr);
+            if (!recovered) throw innerErr;
+            console.warn('[mcpClientCall] SDK lancou erro mas resultado valido foi recuperado (bug conhecido do transporte)');
+            res = recovered;
+          }
           allTools.push(...(res.tools ?? []));
           cursor = res.nextCursor;
         } while (cursor);
@@ -225,7 +233,15 @@ Deno.serve(async (req) => {
         });
       }
 
-      const result: any = await session.client.callTool({ name: toolName as string, arguments: toolArgs ?? {} });
+      let result: any;
+      try {
+        result = await session.client.callTool({ name: toolName as string, arguments: toolArgs ?? {} });
+      } catch (innerErr) {
+        const recovered = tryRecoverResultFromError(innerErr);
+        if (!recovered) throw innerErr;
+        console.warn('[mcpClientCall] SDK lancou erro mas resultado valido foi recuperado (bug conhecido do transporte)');
+        result = recovered;
+      }
 
       if (result.isError) {
         const errMsg = result.content?.[0]?.text ?? `Tool error em '${server.name}'`;
