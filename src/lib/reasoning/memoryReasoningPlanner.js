@@ -396,6 +396,7 @@ Se envolver um nome de arquivo/pasta específico do usuário, extraia em "target
         { model, prompt: userMsg },
         { executionId: `mrp-${Date.now()}`, workspaceId: "default" },
       );
+      console.log(`[DIAG][AI-SERVICE-DIRECT] modelo escolhido: ${model} | result.success: ${result.success} | tem reply: ${Boolean(result.data?.reply)} | error: ${result.error || "nenhum"}`);
       if (result.success && result.data?.reply) {
         const response = result.data.reply;
         return {
