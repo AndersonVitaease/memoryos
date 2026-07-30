@@ -1,4 +1,4 @@
-/**
+1/**
  * registerProviders.ts — Search Engine (Passo 6a: Registro dos Providers)
  *
  * Ponto único onde os providers são cadastrados no motor. Adicionar um
@@ -9,7 +9,7 @@
 
 import { searchEngine } from "./SearchEngine";
 import { githubSearchProvider } from "./GitHubSearchProvider";
-import { webSearchProvider } from "./WebSearchProvider";
+import { serperSearchProvider } from "./SerperSearchProvider";
 import { officialLibrarySearchProvider } from "./OfficialLibrarySearchProvider";
 import { memorySearchProvider } from "./MemorySearchProvider";
 import { mcpRegistrySearchProvider } from "./MCPRegistrySearchProvider";
@@ -21,7 +21,7 @@ export function ensureProvidersRegistered(): void {
   if (_registered) return;
 
   searchEngine.registerProvider(githubSearchProvider);
-  searchEngine.registerProvider(webSearchProvider);
+  searchEngine.registerProvider(serperSearchProvider);
   searchEngine.registerProvider(officialLibrarySearchProvider);
   searchEngine.registerProvider(memorySearchProvider);
   searchEngine.registerProvider(mcpRegistrySearchProvider);
