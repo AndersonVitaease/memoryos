@@ -61,23 +61,54 @@ export class SearchEngine {
     }
 
     const candidates = scored.slice(0, MAX_PROVIDERS_PER_QUERY);
-    const allResults = await Promise.all(
-      candidates.map(async ({ provider }) => {
-        const tProvider = Date.now();
-        try {
-          return await provider.search(query, options);
-        } catch (err) {
-          return {
-            success: false,
-            confidence: 0,
-            items: [],
-            provider: provider.id,
-            durationMs: Date.now() - tProvider,
-            error: err instanceof Error ? err.message : String(err),
-          } as SearchResult;
-        }
-      })
-    );
+
+    // FIX (achado real via teste): antes usava Promise.all e esperava
+    // TODOS os providers terminarem, mesmo depois de um deles ja trazer
+    // uma resposta boa (ex: serper_search em 1.9s). Se outro provider
+    // (ex: mcp_registry, API externa em preview, ate 15s de timeout)
+    // estivesse lento naquele momento, o usuario esperava o pior caso
+    // inteiro por nada. Agora: resolve assim que QUALQUER provider bater
+    // o limiar de confianca (MIN_CONFIDENCE_TO_SKIP_LLM) — os que ainda
+    // estao rodando continuam em segundo plano so pra log, nunca
+    // bloqueiam a resposta. Se nenhum bater o limiar, o comportamento
+    // cai pro mesmo de antes (espera todos, escolhe o melhor disponivel).
+    const providerPromises = candidates.map(({ provider }) => {
+      const tProvider = Date.now();
+      return provider.search(query, options).catch((err) => ({
+        success: false,
+        confidence: 0,
+        items: [],
+        provider: provider.id,
+        durationMs: Date.now() - tProvider,
+        error: err instanceof Error ? err.message : String(err),
+      } as SearchResult));
+    });
+
+    const allResults: SearchResult[] = [];
+    let earlyWinner: SearchResult | null = null;
+    const pending = new Set(providerPromises);
+
+    while (pending.size > 0 && !earlyWinner) {
+      const wrapped = [...pending].map((p) => p.then((r) => ({ p, r })));
+      const settled = await Promise.race(wrapped);
+      pending.delete(settled.p);
+      allResults.push(settled.r);
+      if (settled.r.success && settled.r.items.length > 0 && settled.r.confidence >= MIN_CONFIDENCE_TO_SKIP_LLM) {
+        earlyWinner = settled.r;
+      }
+    }
+
+    if (pending.size > 0) {
+      // Providers restantes continuam rodando, mas nao sao mais aguardados
+      // — so logados quando (se) terminarem, sem impacto na resposta atual.
+      Promise.all([...pending]).then((rest) => {
+        console.log(
+          "[SearchEngine] Providers restantes terminaram em segundo plano (nao aguardados):",
+          rest.map((r) => ({ provider: r.provider, success: r.success, durationMs: r.durationMs })),
+        );
+      }).catch(() => {});
+    }
+
 
     const successful = allResults.filter((r) => r.success && r.items.length > 0);
     const bestResult = successful.length > 0
