@@ -131,6 +131,7 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
   }
 
   // === ETAPA 4: CAPABILITY ORCHESTRATOR ===
+  const _t4 = Date.now();
   const capabilityResult = await orchestrateCapabilities({
     message: userMsg,
     memory,
@@ -138,6 +139,7 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
     sessionId: session.id,
     projectId: session.project_id,
   });
+  console.log(`[DIAG][ReasoningPlanner] ETAPA 4 (orchestrateCapabilities) levou ${Date.now() - _t4}ms`);
 
   // === ETAPA 5: CONTEXT BUILDER ===
   const _recentHistory = historyMessages.slice(-20);
@@ -404,7 +406,9 @@ Se envolver um nome de arquivo/pasta específico do usuário, extraia em "target
     ? `${prompt}\n\n${_searchEngineGroundingNote}`
     : prompt;
   setPhase?.("generating");
+  const _t6 = Date.now();
   const rawResponse = await base44.integrations.Core.InvokeLLM({ prompt: finalPrompt });
+  console.log(`[DIAG][ReasoningPlanner] ETAPA 6 (InvokeLLM final, resposta) levou ${Date.now() - _t6}ms — prompt tinha ${finalPrompt.length} caracteres`);
 
   // === ETAPA 6.5: TRAVA DETERMINÍSTICA CONTRA CONFABULAÇÃO DE DOCUMENTO (IA-032) ===
   const _rawText = typeof rawResponse === "string" ? rawResponse : String(rawResponse);
@@ -504,6 +508,7 @@ Se envolver um nome de arquivo/pasta específico do usuário, extraia em "target
   const response = synthesizeResponse(_finalResponseWithMcpCheck);
 
   const responseTimeMs = Date.now() - startTime;
+  console.log(`[DIAG][ReasoningPlanner] TOTAL runReasoningPlan (todas as etapas) levou ${responseTimeMs}ms`);
 
   // === ETAPA 8: REGISTRO DE RACIOCÍNIO (APRENDIZADO) ===
   const activeCapabilities = Object.entries(capabilityResult.capabilities || {})
