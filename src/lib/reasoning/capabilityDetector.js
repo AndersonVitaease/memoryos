@@ -135,6 +135,7 @@ Exemplos que NÃO precisam: "verifique o código que colei", "confirma se entend
           reason: { type: "string", description: "motivo em poucas palavras" },
         },
         required: ["needs_web_search"],
+        },
       }),
       timeoutPromise,
     ]);
