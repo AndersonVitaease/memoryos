@@ -1,7 +1,6 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
 import { Brain } from "lucide-react";
-import moment from "moment";
 
 const spaceTypeLabels = {
   pessoal: "Pessoal",
