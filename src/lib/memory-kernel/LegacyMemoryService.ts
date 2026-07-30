@@ -37,6 +37,7 @@ export class LegacyMemoryService implements MemoryService {
     }
 
     const durationMs = Date.now() - t0;
+    console.log(`[DIAG][LegacyMemoryService] Recuperação de memória levou ${durationMs}ms (${sources.length} fontes, erro: ${error ?? "nenhum"})`);
 
     const diagnostics: MemoryContextDiagnostics = {
       provider:       "legacy",
