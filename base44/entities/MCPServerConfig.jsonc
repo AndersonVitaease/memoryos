@@ -1,0 +1,59 @@
+{
+  "name": "MCPServerConfig",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Nome legivel do servidor MCP (ex: 'memori-cloud', 'notion', 'slack')"
+    },
+    "server_url": {
+      "type": "string",
+      "description": "URL do endpoint MCP do servidor externo (ex: https://api.exemplo.com/mcp/)"
+    },
+    "transport": {
+      "type": "string",
+      "description": "Tipo de transporte HTTP da resposta: 'json' (JSON puro) ou 'sse' (event-stream, como o Memori Cloud)"
+    },
+    "auth_type": {
+      "type": "string",
+      "description": "Como autenticar contra o servidor: 'none' | 'api_key' | 'oauth'"
+    },
+    "api_key_secret_name": {
+      "type": "string",
+      "description": "Nome da secret (via `base44 secrets set`) que guarda a API key, quando auth_type='api_key'. Nunca armazenar a key aqui, so a referencia."
+    },
+    "auth_header_name": {
+      "type": "string",
+      "description": "Nome do header usado para enviar a API key (ex: 'X-Api-Key', 'Authorization'). Default: 'Authorization'"
+    },
+    "extra_headers": {
+      "type": "string",
+      "description": "JSON string com headers fixos adicionais exigidos pelo servidor (ex: entity id, tenant id). Ex: '{\"X-Memori-Entity-Id\":\"anderson_vitaease\"}'"
+    },
+    "enabled": {
+      "type": "boolean",
+      "description": "Se false, o connector generico ignora este registro ao carregar"
+    },
+    "discovered_tools": {
+      "type": "string",
+      "description": "Cache JSON do ultimo resultado de tools/list deste servidor (nome, descricao, inputSchema por tool)"
+    },
+    "last_discovered_at": {
+      "type": "string",
+      "description": "Timestamp ISO da ultima vez que tools/list foi chamado com sucesso"
+    },
+    "last_error": {
+      "type": "string",
+      "description": "Ultimo erro registrado ao chamar este servidor (diagnostico rapido)"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Notas livres sobre este servidor (limites, particularidades, contato)"
+    }
+  },
+  "required": [
+    "name",
+    "server_url",
+    "auth_type"
+  ]
+}
