@@ -383,7 +383,9 @@ Se envolver um nome de arquivo/pasta específico do usuário, extraia em "target
   }
 
   // === ETAPA 5.6: DESVIO PARA SERVIÇO DE IA (OpenRouter) ===
+  console.log(`[DIAG][AI-SERVICE-DIRECT] serviceInfo:`, capabilityResult.serviceInfo);
   if (capabilityResult.serviceInfo?.id === "ai" && capabilityResult.serviceInfo?.hasConnector) {
+    console.log(`[DIAG][AI-SERVICE-DIRECT] Condicao bateu — tentando executar via OpenRouterConnector`);
     try {
       const { pickModelForMessage } = await import("@/lib/openrouter/categoryRouter");
       const { OpenRouterConnector } = await import("@/lib/connector-runtime/connectors/OpenRouterConnector");
@@ -421,7 +423,10 @@ Se envolver um nome de arquivo/pasta específico do usuário, extraia em "target
       // Se a execução real falhar por qualquer motivo, cai no fluxo
       // normal abaixo (a única chamada de LLM), em vez de travar a
       // resposta inteira.
+      console.error(`[DIAG][AI-SERVICE-DIRECT] FALHOU:`, err?.message || err);
     }
+  } else {
+    console.log(`[DIAG][AI-SERVICE-DIRECT] Condicao NAO bateu — id: ${capabilityResult.serviceInfo?.id}, hasConnector: ${capabilityResult.serviceInfo?.hasConnector}`);
   }
 
   // === ETAPA 6: UMA ÚNICA CHAMADA AO LLM ===
