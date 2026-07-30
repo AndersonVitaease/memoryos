@@ -51,9 +51,49 @@ const INTENT_SCHEMA = {
 };
 
 /**
+ * Atalho rapido (sem LLM) para perguntas de listagem MUITO especificas e
+ * inequivocas, sobre um unico tipo de memoria. Qualquer sinal de pergunta
+ * composta/ambigua faz retornar null, caindo pro fluxo normal de LLM —
+ * mesma filosofia de "quando em duvida, inclua mais" que ja existe no
+ * fallback de erro logo abaixo. So cobre o caso mais comum e mais seguro:
+ * "quais sao minhas tarefas/projetos/decisoes/documentos/assuntos".
+ */
+function quickIntentGuess(question) {
+  const q = question.toLowerCase().trim();
+
+  const mixSignals = /\b(e |com |sobre |considerando|relacionado)/;
+  if (mixSignals.test(q)) return null;
+
+  const patterns = [
+    { re: /\b(minhas?|quais)\s+(tarefas?|to-?dos?)\b/, type: "tasks" },
+    { re: /\b(meus?|quais)\s+projetos?\b/, type: "projects" },
+    { re: /\b(minhas?|quais)\s+decis(a|õ)(o|e)s?\b/, type: "decisions" },
+    { re: /\b(meus?|minhas?|quais)\s+documentos?\b/, type: "documents" },
+    { re: /\b(meus?|minhas?|quais)\s+assuntos?\b/, type: "topics" },
+  ];
+
+  for (const p of patterns) {
+    if (p.re.test(q)) {
+      const isList = /\b(quais|todas?|todos?|lista)\b/.test(q);
+      return { query_types: [p.type], is_list_query: isList, search_keywords: [] };
+    }
+  }
+  return null;
+}
+
+/**
  * Passo 1: Interpretar a intenção da pergunta via LLM.
+ * FIX (otimizacao de latencia): pergunta simples e inequivoca pula a
+ * chamada de LLM inteira via quickIntentGuess() — corta ~1-3s do tempo
+ * total pra esses casos, sem chamar InvokeLLM. Qualquer duvida cai pro
+ * fluxo de LLM original, comportamento identico ao de antes.
  */
 async function interpretIntent(question) {
+  const quick = quickIntentGuess(question);
+  if (quick) {
+    console.log(`[DIAG][memoryPipeline] interpretIntent: atalho rapido usado (sem LLM) — ${JSON.stringify(quick)}`);
+    return quick;
+  }
   try {
     return await base44.integrations.Core.InvokeLLM({
       prompt: `Analise a pergunta do usuário e determine quais tipos de memória do sistema MemoryOS devem ser consultados.
