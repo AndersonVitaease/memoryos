@@ -37,12 +37,9 @@ const MeomSystem = lazy(() => import('@/pages/MeomSystem'));
 const MdokSystem = lazy(() => import('@/pages/MdokSystem'));
 const MipSystem = lazy(() => import('@/pages/MipSystem'));
 const MeemSystem = lazy(() => import('@/pages/MeemSystem'));
-const ReviewEngineRegistryPage = lazy(() => import('@/pages/ReviewEngineRegistry'));
 const Capabilities = lazy(() => import('@/pages/Capabilities'));
-const SpecialistRouterPage = lazy(() => import('@/pages/SpecialistRouter'));
 const ConnectorRuntimePage = lazy(() => import('@/pages/ConnectorRuntime'));
 const ConnectorRuntimeCertification = lazy(() => import('@/pages/ConnectorRuntimeCertification'));
-const CapabilityRuntimePage = lazy(() => import('@/pages/CapabilityRuntime'));
 const CognitivePipeline = lazy(() => import('@/pages/CognitivePipeline'));
 const ConnectorRuntimeFoundationPage = lazy(() => import('@/pages/ConnectorRuntimePage'));
 const EF31APage = lazy(() => import('@/pages/EF31APage'));
@@ -227,17 +224,14 @@ const AuthenticatedApp = () => {
           <Route path="/mip" element={<MipSystem />} />
           <Route path="/meem" element={<MeemSystem />} />
           <Route path="/sprint1-wme" element={<Sprint1WME />} />
-          <Route path="/review-registry" element={<ReviewEngineRegistryPage />} />
           <Route path="/capabilities" element={<Capabilities />} />
           <Route path="/journeys" element={<Journeys />} />
           <Route path="/goals" element={<Goals />} />
           <Route path="/planner" element={<Planner />} />
           <Route path="/planning-intelligence" element={<PlanningIntelligence />} />
-          <Route path="/specialist-router" element={<SpecialistRouterPage />} />
           <Route path="/strategy-fusion" element={<StrategyFusion />} />
           <Route path="/connector-runtime" element={<ConnectorRuntimePage />} />
           <Route path="/certification" element={<ConnectorRuntimeCertification />} />
-          <Route path="/capability-runtime" element={<CapabilityRuntimePage />} />
           <Route path="/abv" element={<ABVPage />} />
           <Route path="/abv-sprint" element={<ABVSprintPage />} />
           <Route path="/fce" element={<FCESprintPage />} />
