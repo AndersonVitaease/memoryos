@@ -10,7 +10,7 @@
 import { rankAllMemory, computeMemoryHealth } from "./MemoryRankingEngine";
 import { deduplicateForContext } from "./MemoryConsolidator";
 import { buildRelationshipGraph, graphToContextText } from "./MemoryRelationshipEngine";
-import { format } from "date-fns";
+import { safeFormat } from "@/lib/utils/safeDateFormat";
 
 const ENTITY_LABELS = {
   pessoa: "Pessoa", empresa: "Empresa", organizacao: "Org", produto: "Produto",
@@ -98,7 +98,8 @@ export function buildEnrichedContext(data, intent, sessionId) {
     decisionsToShow.forEach((d, i) => {
       const ranked_item = ranked.decisions?.find((r) => r.record.id === d.id);
       const scoreStr = ranked_item ? ` [score: ${ranked_item.score}]` : "";
-      context += `- **${d.title}**${d.decided_date ? ` [${format(new Date(d.decided_date), "dd/MM/yy")}]` : ""}${scoreStr}\n`;
+      const decidedDateStr = safeFormat(d.decided_date, "dd/MM/yy");
+      context += `- **${d.title}**${decidedDateStr ? ` [${decidedDateStr}]` : ""}${scoreStr}\n`;
       if (d.description) context += `  ${d.description}\n`;
       if (d.rationale) context += `  Motivo: ${d.rationale}\n`;
       if (d._consolidated) context += `  *(consolidado de ${d._mergedCount} registros similares)*\n`;
@@ -116,7 +117,8 @@ export function buildEnrichedContext(data, intent, sessionId) {
     context += `### TAREFAS (${tasksToShow.length}, ${pending} pendentes)\n`;
     tasksToShow.forEach((t) => {
       context += `- [${t.status === "done" ? "x" : " "}] **${t.title}**`;
-      if (t.due_date) context += ` — Prazo: ${format(new Date(t.due_date), "dd/MM")}`;
+      const dueDateStr = safeFormat(t.due_date, "dd/MM");
+      if (dueDateStr) context += ` — Prazo: ${dueDateStr}`;
       if (t.assignee) context += ` — Resp: ${t.assignee}`;
       context += "\n";
       if (t.description) context += `  ${t.description}\n`;
