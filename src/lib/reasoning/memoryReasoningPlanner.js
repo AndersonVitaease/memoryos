@@ -147,6 +147,7 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
     .map((m) => `${m.role === "user" ? "Usuário" : "Assistente"}: ${m.content}`)
     .join("\n\n");
   const totalMessages = historyMessages.length;
+  console.log(`[DIAG][PromptBreakdown] historyText: ${historyText.length} chars (${_recentHistory.length} mensagens) | memory.context: ${(memory.context || "").length} chars | sessionSummary: ${(memory.sessionSummary || "").length} chars`);
 
   const prompt = buildReasoningContext({
     userMsg,
