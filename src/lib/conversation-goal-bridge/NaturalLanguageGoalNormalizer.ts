@@ -82,6 +82,16 @@ const NOISE_PATTERNS: RegExp[] = [
   /\b(cheque?|checar?|verificar?|confirmar?)\b/gi,
   // Email/message nouns
   /\b(e-?mails?|mensagens?|messages?|inbox)\b/gi,
+  // FIX (achado real via teste): faltavam substantivos e conectivos comuns
+  // em pedidos de busca de ARQUIVO (diferente de e-mail/pedido/etc, que já
+  // eram tratados) — "arquivo", "documento", "me informe", "caminho
+  // completo", e a conjunção solta "e"/"me" vazavam pra dentro da
+  // "entidade" extraída, fazendo a frase inteira ser mandada como termo de
+  // busca pro conector (ex: GitHub), em vez de só o nome do arquivo.
+  /\b(arquivo[s]?|documento[s]?)\b/gi,
+  /\b(me informe?|informe?|informar?)\b/gi,
+  /\b(caminho completo|caminho)\b/gi,
+  /\b(e|me)\b/gi,
   // Prepositions / articles
   /\b(algum[a]?|algun[s]?|nenhum[a]?|todos?|todas?)\b/gi,
   /\b(da[s]?|do[s]?|de[s]?|no[s]?|na[s]?|sobre|para|com|por|um[a]?|o[s]?|a[s]?)\b/gi,
