@@ -1,6 +1,6 @@
 import React from "react";
 import { CheckCircle2, ListTodo, FileText, Tag } from "lucide-react";
-import moment from "moment";
+import { formatDistanceToNow } from "date-fns";
 
 const typeConfig = {
   decision: { icon: CheckCircle2, label: "Decisão", color: "text-emerald-500", bg: "bg-emerald-50" },
@@ -30,7 +30,7 @@ export default function RecentActivity({ activity }) {
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-zinc-700 leading-snug">{title}</p>
                 <p className="text-xs text-zinc-400 mt-0.5">
-                  {config.label} · {moment(item.created_date).fromNow()}
+                  {config.label} · {formatDistanceToNow(new Date(item.created_date), { addSuffix: true })}
                 </p>
               </div>
             </div>
