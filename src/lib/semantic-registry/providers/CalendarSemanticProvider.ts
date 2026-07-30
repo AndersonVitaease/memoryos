@@ -58,8 +58,17 @@ export const CalendarSemanticProvider: SemanticProvider = Object.freeze({
     const evidences: string[] = [];
     let score = 0;
 
+    // FIX (bug real observado em producao): TEMPORAL_DIRECT tinha peso 0.45,
+    // acima do MIN_SCORE_THRESHOLD (0.20) SOZINHO. Palavras dessa lista
+    // ("hoje", "semana", "ano"...) sao genericas e aparecem em qualquer
+    // assunto (ex: "o que devo priorizar hoje?", "pesquise noticias de
+    // hoje") — nao sao evidencia suficiente de intencao de Calendario por
+    // si so. Baixado pra 0.15 (abaixo do limiar): agora so dispara quando
+    // combinado com evidencia real de evento/agenda (EVENT_TYPES ou
+    // TIME_REFS), preservando os casos legitimos ("reuniao hoje",
+    // "agenda da semana") sem sequestrar mensagens genericas.
     const temporal = firstMatch(lower, TEMPORAL_DIRECT);
-    if (temporal) { score += 0.45; evidences.push(`temporal: "${temporal}"`); }
+    if (temporal) { score += 0.15; evidences.push(`temporal: "${temporal}"`); }
 
     const ev = firstMatch(lower, EVENT_TYPES);
     if (ev) { score += 0.35; evidences.push(`event-type: "${ev}"`); }
