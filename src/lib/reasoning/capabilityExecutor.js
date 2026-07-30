@@ -34,48 +34,39 @@ import { executeOfficialLibraryQuery } from "./capabilities/officialLibraryCapab
  * contexto (sessionSummary) pra ancorar a busca no assunto real.
  */
 async function executeWebSearch(query, conversationContext = "") {
-  const contextBlock = conversationContext
-    ? `\nCONTEXTO DA CONVERSA (use para entender do que "${query}" está falando — a pergunta pode ser vaga/curta e depender deste contexto):\n${conversationContext}\n`
-    : "";
+  // FIX (unificacao de pipelines paralelas): antes chamava InvokeLLM com
+  // add_context_from_internet=true (Gemini fazendo busca+leitura+sintese
+  // numa unica chamada de LLM — 26-43 segundos observados em producao).
+  // Agora delega pro SearchEngine (Serper), que faz busca pura sem LLM
+  // no meio — resposta em ~1-2 segundos. Mantem exatamente o mesmo
+  // contrato de retorno { facts, sources, divergences } — nenhum
+  // consumidor downstream (contextBuilder.js, travas IA-084/IA-086)
+  // precisa mudar.
+  //
+  // Trade-off conhecido: o antigo usava o contexto da conversa dentro do
+  // PROMPT do LLM pra desambiguar termos vagos (ex: "servidor" sozinho
+  // virava "servidor MCP Mercado Livre" com base no assunto discutido).
+  // Busca por palavra-chave pura (Serper) nao faz esse refinamento — a
+  // troca de velocidade por essa nuance de desambiguacao foi aceita
+  // conscientemente aqui.
+  const { ensureProvidersRegistered } = await import("@/lib/search-engine/registerProviders");
+  const { searchEngine } = await import("@/lib/search-engine/SearchEngine");
 
-  const result = await base44.integrations.Core.InvokeLLM({
-    prompt: `Pesquise na internet informações atualizadas e objetivas sobre: "${query}".
-${contextBlock}
-Retorne apenas fatos, dados, números, datas e informações verificáveis.
-Priorize fontes oficiais: documentação, órgãos reguladores, fabricantes, literatura científica.
-Se houver divergência entre fontes, apresente ambas.
-Se o CONTEXTO DA CONVERSA acima indicar um assunto específico (ex: um produto, tecnologia ou empresa
-sendo discutido), pesquise sobre ESSE assunto específico, não sobre o termo genérico isolado.
+  ensureProvidersRegistered();
 
-Formato: lista de fatos objetivos, sem opinião ou interpretação.`,
-    add_context_from_internet: true,
-    model: "gemini_3_flash",
-    response_json_schema: {
-      type: "object",
-      properties: {
-        facts: {
-          type: "array",
-          items: { type: "string" },
-          description: "Fatos objetivos encontrados na pesquisa",
-        },
-        sources: {
-          type: "array",
-          items: { type: "string" },
-          description: "Fontes consultadas (URLs ou nomes)",
-        },
-        divergences: {
-          type: "array",
-          items: { type: "string" },
-          description: "Divergências encontradas entre fontes, se houver",
-        },
-      },
-    },
+  const outcome = await searchEngine.search(query, {
+    context: { sessionSummary: conversationContext },
   });
 
+  const items = outcome.bestResult?.items ?? [];
+  if (items.length === 0) {
+    return { facts: [], sources: [], divergences: [] };
+  }
+
   return {
-    facts: result?.facts || [],
-    sources: result?.sources || [],
-    divergences: result?.divergences || [],
+    facts: items.map((it) => `${it.title ?? ""}: ${it.snippet ?? ""}`.trim()).filter(Boolean),
+    sources: items.map((it) => it.url).filter(Boolean),
+    divergences: [],
   };
 }
 
