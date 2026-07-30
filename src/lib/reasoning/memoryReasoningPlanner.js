@@ -49,6 +49,56 @@ import { formatMacrForChat } from "@/lib/reasoning/macrFormatterV4";
 export async function runReasoningPlan({ userMsg, session, historyMessages = [], setPhase, kfmContext }) {
   const startTime = Date.now();
 
+  // === ETAPA 0: DESVIO PRECOCE PARA SERVICO DE IA ===
+  // FIX (otimizacao real, medida em producao — 3+ segundos economizados):
+  // movido de depois da memoria/capacidades (ETAPA 4) pra antes de tudo.
+  // detectService() so precisa do texto da mensagem, nao depende de nada
+  // calculado depois — pedidos de traducao/resumo/transcricao/geracao de
+  // codigo agora sao respondidos sem gastar tempo com memoria e
+  // deteccao de capacidades que vao ser descartadas de qualquer jeito.
+  try {
+    const { detectService } = await import("@/lib/reasoning/serviceDetector");
+    const { getConnectorsForService } = await import("@/lib/connectors/registry");
+    const _earlyService = detectService(userMsg);
+    if (_earlyService && getConnectorsForService(_earlyService.id).length > 0) {
+      const { pickModelForMessage } = await import("@/lib/openrouter/categoryRouter");
+      const { OpenRouterConnector } = await import("@/lib/connector-runtime/connectors/OpenRouterConnector");
+      const { model } = pickModelForMessage(userMsg);
+      const connector = new OpenRouterConnector();
+      const result = await connector.execute(
+        "openrouter.chatCompletion",
+        { model, prompt: userMsg },
+        { executionId: `mrp-early-${Date.now()}`, workspaceId: "default" },
+      );
+      console.log(`[DIAG][AI-SERVICE-DIRECT-EARLY] servico: ${_earlyService.id} | modelo: ${model} | success: ${result.success} | tem reply: ${Boolean(result.data?.reply)}`);
+      if (result.success && result.data?.reply) {
+        return {
+          response: result.data.reply,
+          plan: {
+            goal: "ai_service_direct",
+            goalLabel: "Processamento direto de IA",
+            strategy: `Roteado direto pra ${model}, sem passar por memória/capacidades`,
+            skills: [],
+            skillsCount: 0,
+            sourcesCount: 0,
+            contextLength: 0,
+            capabilities: [],
+            capabilitiesCount: 0,
+            needsMoreInfo: false,
+            service: "ai",
+            responseTimeMs: Date.now() - startTime,
+            handledByGuard: "AI-SERVICE-DIRECT-EARLY",
+            model,
+          },
+          sources: [],
+        };
+      }
+    }
+  } catch (err) {
+    console.error(`[DIAG][AI-SERVICE-DIRECT-EARLY] FALHOU:`, err?.message || err);
+    // Cai pro fluxo normal abaixo — nunca trava a resposta por causa disso.
+  }
+
   // === ETAPA 1: MEMORY KERNEL ===
   // O Planner conhece apenas MemoryService — nunca a implementacao subjacente.
   // A escolha de implementacao (Legacy/UCME/Shadow) e responsabilidade do MemoryServiceFactory.
