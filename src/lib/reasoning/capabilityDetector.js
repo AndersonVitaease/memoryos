@@ -114,8 +114,13 @@ function matchKeywords(normalizedText, keywords) {
  * não adiciona custo às mensagens já óbvias (rotineiras, sem ambiguidade).
  */
 async function semanticWebSearchCheck(message) {
+  const SEMANTIC_CHECK_TIMEOUT_MS = 8000;
   try {
-    const result = await base44.integrations.Core.InvokeLLM({
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("semanticWebSearchCheck timeout")), SEMANTIC_CHECK_TIMEOUT_MS)
+    );
+    const result = await Promise.race([
+      base44.integrations.Core.InvokeLLM({
       prompt: `A mensagem abaixo pede, direta ou indiretamente, para pesquisar, verificar, confirmar ou checar algo que exige informação externa e atual (não presente na memória do usuário, e que não é conhecimento geral estável que qualquer assistente já saberia)?
 
 Mensagem: "${message}"
@@ -130,11 +135,14 @@ Exemplos que NÃO precisam: "verifique o código que colei", "confirma se entend
           reason: { type: "string", description: "motivo em poucas palavras" },
         },
         required: ["needs_web_search"],
-      },
-    });
+      }),
+      timeoutPromise,
+    ]);
     return { needed: result?.needs_web_search === true, reason: result?.reason ?? "" };
   } catch {
-    // Falha na chamada nunca bloqueia a resposta — só não ativa web_search.
+    // Falha OU timeout na chamada nunca bloqueia a resposta — só não ativa web_search.
+    // FIX: antes sem limite de tempo — uma unica chamada podia segurar o
+    // pipeline inteiro por dezenas de segundos sem aviso nenhum.
     return { needed: false, reason: "" };
   }
 }
@@ -233,7 +241,15 @@ export async function detectCapabilities(message, memory = {}, goal = {}) {
   const memoryInsufficient = !hasMemoryForTopic && (goal.id === "locate_info" || goal.id === "generate_knowledge");
 
   let semanticReason = "";
-  if (!explicitlyRequested && !memoryInsufficient) {
+  // FIX (achado real em producao): a condicao so pulava a checagem semantica
+  // quando ja se sabia com certeza que PRECISAVA buscar (memoryInsufficient).
+  // Nao pulava quando ja se sabia com razoavel confianca que NAO precisava
+  // (memoria com bastante contexto — hasMemoryForTopic). Isso fazia a
+  // maioria das mensagens comuns (sem palavra de busca, com memoria ok)
+  // pagar uma chamada de LLM inteira a toa — 11+ segundos observados em
+  // "quais sao minhas tarefas pendentes?", pergunta que obviamente nao
+  // precisa de busca externa.
+  if (!explicitlyRequested && !memoryInsufficient && !hasMemoryForTopic) {
     const semantic = await semanticWebSearchCheck(message);
     if (semantic.needed) {
       explicitlyRequested = true;
