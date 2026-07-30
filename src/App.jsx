@@ -185,50 +185,21 @@ const AuthenticatedApp = () => {
           <Route path="/search" element={<SearchPage />} />
           <Route path="/connections" element={<Connections />} />
           <Route path="/audit" element={<ArchitectureAudit />} />
-          <Route path="/memory-engine" element={<MemoryEngine />} />
-          <Route path="/cognitive-engine" element={<CognitiveEngine />} />
-          <Route path="/mqccs" element={<MqccsValidation />} />
-          <Route path="/mpegs" element={<MpegsGovernance />} />
           <Route path="/foundation" element={<Foundation />} />
           <Route path="/developer-handbook" element={<DeveloperHandbook />} />
           <Route path="/api-reference" element={<ApiReference />} />
           <Route path="/execution-model" element={<ExecutionModel />} />
           <Route path="/engineering-backlog" element={<EngineeringBacklog />} />
-          <Route path="/sprint1-review" element={<Sprint1Review />} />
           <Route path="/mers" element={<MersSystem />} />
           <Route path="/mads" element={<MadsSystem />} />
           <Route path="/meom" element={<MeomSystem />} />
           <Route path="/mdok" element={<MdokSystem />} />
           <Route path="/mip" element={<MipSystem />} />
           <Route path="/meem" element={<MeemSystem />} />
-          <Route path="/sprint1-wme" element={<Sprint1WME />} />
           <Route path="/capabilities" element={<Capabilities />} />
-          <Route path="/journeys" element={<Journeys />} />
-          <Route path="/goals" element={<Goals />} />
-          <Route path="/planner" element={<Planner />} />
-          <Route path="/planning-intelligence" element={<PlanningIntelligence />} />
-          <Route path="/strategy-fusion" element={<StrategyFusion />} />
           <Route path="/connector-runtime" element={<ConnectorRuntimePage />} />
           <Route path="/certification" element={<ConnectorRuntimeCertification />} />
-          <Route path="/abv" element={<ABVPage />} />
-          <Route path="/abv-sprint" element={<ABVSprintPage />} />
-          <Route path="/fce" element={<FCESprintPage />} />
-          <Route path="/goal-runtime" element={<GoalRuntimePage />} />
-          <Route path="/goal-registry-service" element={<GoalRegistryServicePage />} />
-          <Route path="/goal-scheduler" element={<GoalSchedulerPage />} />
-          <Route path="/goal-execution-queue" element={<GoalExecutionQueuePage />} />
-          <Route path="/execution-dispatcher" element={<ExecutionDispatcherPage />} />
-          <Route path="/decision-engine" element={<DecisionEnginePage />} />
-          <Route path="/planning-engine" element={<PlanningEnginePage />} />
-          <Route path="/reflection-engine" element={<ReflectionEnginePage />} />
-          <Route path="/self-evaluation-engine" element={<SelfEvaluationEnginePage />} />
-          <Route path="/knowledge-engine" element={<KnowledgeEnginePage />} />
-          <Route path="/learning-engine" element={<LearningEnginePage />} />
-          <Route path="/memory-engine-v1" element={<MemoryEnginePage />} />
-          <Route path="/retrieval-engine" element={<RetrievalEnginePage />} />
           <Route path="/cognitive-pipeline" element={<CognitivePipeline />} />
-          <Route path="/capability-registry" element={<CapabilityRegistryPage />} />
-          <Route path="/cognitive-pipeline-adapter" element={<CognitivePipelineAdapterPage />} />
           <Route path="/connector-runtime-ef31" element={<ConnectorRuntimeFoundationPage />} />
           <Route path="/ef31a" element={<EF31APage />} />
           <Route path="/ef31b" element={<EF31BPage />} />
@@ -246,54 +217,26 @@ const AuthenticatedApp = () => {
           <Route path="/ef36f" element={<EF36FPage />} />
           <Route path="/ef36g" element={<EF36GPage />} />
           <Route path="/ef36h" element={<EF36HPage />} />
-          <Route path="/ef36i" element={<EF36IPage />} />
           <Route path="/beta01" element={<Beta01Page />} />
           <Route path="/beta011" element={<Beta011Page />} />
           <Route path="/beta02" element={<Beta02Page />} />
-          <Route path="/beta03" element={<Beta03Page />} />
           <Route path="/beta031" element={<Beta031Page />} />
           <Route path="/beta032" element={<Beta032Page />} />
-          <Route path="/beta033" element={<Beta033Page />} />
           <Route path="/phase5" element={<Phase5Page />} />
           <Route path="/phase51" element={<Phase51Page />} />
-          <Route path="/phase52" element={<Phase52Page />} />
-          <Route path="/op-audit" element={<OperationalAuditPage />} />
-          <Route path="/phase53" element={<Phase53Page />} />
-          <Route path="/core-validation" element={<CoreValidationReportPage />} />
           <Route path="/phase54" element={<Phase54Page />} />
           <Route path="/phase55" element={<Phase55Page />} />
           <Route path="/phase56" element={<Phase56Page />} />
           <Route path="/phase561" element={<Phase561Page />} />
           <Route path="/phase562" element={<Phase562Page />} />
           <Route path="/phase563" element={<Phase563Page />} />
-          <Route path="/phase570" element={<Phase570Page />} />
           <Route path="/phase58" element={<Phase58Page />} />
           <Route path="/phase58-validation" element={<Phase58ValidationPage />} />
           <Route path="/phase581" element={<Phase581Page />} />
-          <Route path="/phase59" element={<Phase59Page />} />
           <Route path="/phase60" element={<Phase60Page />} />
           <Route path="/phase601" element={<Phase601Page />} />
           <Route path="/phase603" element={<Phase603Page />} />
-          <Route path="/phase610" element={<Phase610Page />} />
-          <Route path="/phase611" element={<Phase611Page />} />
-          <Route path="/phase620" element={<Phase620Page />} />
-          <Route path="/phase621" element={<Phase621Page />} />
-          <Route path="/phase622" element={<Phase622Page />} />
-          <Route path="/phase623" element={<Phase623Page />} />
-          <Route path="/phase624" element={<Phase624Page />} />
-          <Route path="/phase630" element={<Phase630Page />} />
-          <Route path="/phase631" element={<Phase631Page />} />
-          <Route path="/phase632" element={<Phase632Page />} />
-          <Route path="/phase633" element={<Phase633Page />} />
-          <Route path="/phase634" element={<Phase634Page />} />
-          <Route path="/phase635" element={<Phase635Page />} />
-          <Route path="/phase640" element={<Phase640Page />} />
-          <Route path="/phase641" element={<Phase641Page />} />
-          <Route path="/phase641a" element={<Phase641aPage />} />
-          <Route path="/phase642" element={<Phase642Page />} />
-          <Route path="/phase642a" element={<Phase642aPage />} />
           <Route path="/phase643" element={<Phase643Page />} />
-          <Route path="/phase710" element={<Phase710Page />} />
           <Route path="/phase700" element={<Phase700Page />} />
           <Route path="/phase711" element={<Phase711Page />} />
           <Route path="/google-drive" element={<GoogleDrivePage />} />
@@ -301,8 +244,6 @@ const AuthenticatedApp = () => {
           <Route path="/multi-connector" element={<MultiConnectorPage />} />
           <Route path="/missions" element={<MissionsPage />} />
           <Route path="/phase712" element={<Phase712Page />} />
-          <Route path="/phase713" element={<Phase713Page />} />
-          <Route path="/phase714" element={<Phase714Page />} />
           <Route path="/sprint-e021" element={<SprintE021Page />} />
           <Route path="/sprint-e023" element={<SprintE023Page />} />
           <Route path="/sprint-e024" element={<SprintE024Page />} />
@@ -315,60 +256,18 @@ const AuthenticatedApp = () => {
           <Route path="/sprint-e029" element={<SprintE029Page />} />
           <Route path="/gmail-certification" element={<GmailCertificationPage />} />
           <Route path="/gmail-production-certification" element={<GmailProductionCertPage />} />
-          <Route path="/certification-center" element={<CertificationCenterPage />} />
           <Route path="/sprint-e921" element={<SprintE921Page />} />
           <Route path="/sprint-e922" element={<SprintE922Page />} />
           <Route path="/sprint-811" element={<Sprint811Page />} />
           <Route path="/sprint-812" element={<Sprint812Page />} />
-          <Route path="/sprint-c022" element={<SprintC022Page />} />
-          <Route path="/sprint-c023" element={<SprintC023Page />} />
-          <Route path="/sprint-c024" element={<SprintC024Page />} />
-          <Route path="/sprint-c030" element={<SprintC030Page />} />
-          <Route path="/sprint-c036" element={<SprintC036Page />} />
-          <Route path="/sprint-c0361" element={<SprintC0361Page />} />
-          <Route path="/sprint-c0363" element={<SprintC0363Page />} />
-          <Route path="/sprint-c0364" element={<SprintC0364Page />} />
-          <Route path="/sprint-c040" element={<SprintC040Page />} />
-          <Route path="/sprint-p011a" element={<SprintP011APage />} />
-          <Route path="/sprint-p011b" element={<SprintP011BPage />} />
-          <Route path="/sprint-p011c" element={<SprintP011CPage />} />
-          <Route path="/avp" element={<AVPPage />} />
           <Route path="/sprint-p012" element={<SprintP012Page />} />
           <Route path="/sprint-ef63" element={<SprintEF63Page />} />
           <Route path="/sprint-ef631" element={<SprintEF631Page />} />
           <Route path="/sprint-ef632" element={<SprintEF632Page />} />
           <Route path="/sprint-ef640" element={<SprintEF640Page />} />
           <Route path="/sprint-ef650" element={<SprintEF650Page />} />
-          <Route path="/sprint-ef660" element={<SprintEF660Page />} />
-          <Route path="/sprint-ef661" element={<SprintEF661Page />} />
-          <Route path="/sprint-ef670" element={<SprintEF670Page />} />
-          <Route path="/phase720" element={<Phase720Page />} />
-          <Route path="/phase730" element={<Phase730Page />} />
-          <Route path="/sprint-p020" element={<SprintP020Page />} />
-          <Route path="/sprint-p021" element={<SprintP021Page />} />
-          <Route path="/beta-sprint-01" element={<BetaSprint01Page />} />
-          <Route path="/sprint-ol01" element={<SprintOL01Page />} />
-          <Route path="/sprint-ol02" element={<SprintOL02Page />} />
-          <Route path="/kb01" element={<PhaseKB01Page />} />
-          <Route path="/kb02" element={<PhaseKB02Page />} />
-          <Route path="/kb03" element={<PhaseKB03Page />} />
-          <Route path="/kb04" element={<PhaseKB04Page />} />
-          <Route path="/kb05" element={<PhaseKB05Page />} />
-          <Route path="/integration01" element={<PhaseIntegration01Page />} />
-          <Route path="/integration02" element={<PhaseIntegration02Page />} />
-          <Route path="/integration03" element={<PhaseIntegration03Page />} />
-          <Route path="/integration04" element={<PhaseIntegration04Page />} />
-          <Route path="/integration05" element={<PhaseIntegration05Page />} />
           <Route path="/platform-audit" element={<PlatformAuditPage />} />
-          <Route path="/ev1" element={<PhaseEV1Page />} />
-          <Route path="/ev2" element={<PhaseEV2Page />} />
-          <Route path="/ev4" element={<PhaseEV4Page />} />
           <Route path="/ev4b" element={<PhaseEV4BPage />} />
-          <Route path="/ev5" element={<PhaseEV5Page />} />
-          <Route path="/production" element={<ProductionDashboard />} />
-          <Route path="/ef36-kde" element={<PhaseEF36Page />} />
-          <Route path="/ef39-memory-store" element={<PhaseEF39Page />} />
-          <Route path="/ef393-certification" element={<PhaseEF393Page />} />
           <Route path="/drive-debug" element={<DriveDebugPanel />} />
           <Route path="/token-lifecycle-tests" element={<TokenLifecycleTestPage />} />
           <Route path="/runtime-trace" element={<RuntimeTracePage />} />
@@ -392,34 +291,17 @@ const AuthenticatedApp = () => {
           <Route path="/sprint-ef407a" element={<SprintEF407aPage />} />
           <Route path="/sprint-ef408" element={<SprintEF408Page />} />
           <Route path="/sprint-ef408b" element={<SprintEF408BPage />} />
-          <Route path="/sprint-ef428" element={<SprintEF428Page />} />
-          <Route path="/sprint-ef429" element={<SprintEF429Page />} />
           <Route path="/sprint-ef43" element={<SprintEF43Page />} />
           <Route path="/sprint-ef43a" element={<SprintEF43APage />} />
           <Route path="/sprint-ef43b" element={<SprintEF43BPage />} />
           <Route path="/sprint-ef43c" element={<SprintEF43CPage />} />
           <Route path="/sprint-ef44" element={<SprintEF44Page />} />
-          <Route path="/sprint-ef45" element={<SprintEF45Page />} />
-          <Route path="/sprint-ef46" element={<SprintEF46Page />} />
-          <Route path="/sprint-ef47" element={<SprintEF47Page />} />
-          <Route path="/sprint-ef48" element={<SprintEF48Page />} />
-          <Route path="/sprint-ef49" element={<SprintEF49Page />} />
-          <Route path="/sprint-ef491" element={<SprintEF491Page />} />
           <Route path="/sprint-ef492" element={<SprintEF492Page />} />
-          <Route path="/sprint-ef51" element={<SprintEF51Page />} />
-          <Route path="/sprint-ef52" element={<SprintEF52Page />} />
-          <Route path="/sprint-ef53" element={<SprintEF53Page />} />
-          <Route path="/sprint-ef54" element={<SprintEF54Page />} />
-          <Route path="/sprint-ef555" element={<SprintEF555Page />} />
-          <Route path="/arch-cert" element={<ArchitecturalCertPage />} />
           <Route path="/sprint-ef554" element={<SprintEF554RecertPage />} />
-          <Route path="/sprint-ef56" element={<SprintEF56OperationalCertPage />} />
-          <Route path="/sprint-mvp01" element={<SprintMVP01Page />} />
           <Route path="/sprint-epic-d" element={<SprintEPICDPage />} />
         </Route>
       </Route>
       <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />
-      <Route path="/ef398-cert" element={<EF398CertPage />} />
       <Route path="/ef399-validation" element={<EF399ValidationPage />} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
