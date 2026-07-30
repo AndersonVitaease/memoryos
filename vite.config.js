@@ -16,5 +16,33 @@ export default defineConfig({
       visualEditAgent: true
     }),
     react(),
-  ]
+  ],
+  build: {
+    rollupOptions: {
+      output: {
+        // Separa dependencias de terceiros (mudam raramente, versoes fixas
+        // no package.json) do codigo da aplicacao (muda a cada deploy) em
+        // chunks distintos. Assim o vendor bundle so precisa ser rebaixado
+        // pelo navegador quando uma dependencia e atualizada de verdade,
+        // nao toda vez que uma pagina qualquer do app e editada — melhora
+        // o cache em visitas recorrentes.
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return;
+          if (id.includes('react-router-dom') || id.includes('/react/') || id.includes('/react-dom/')) {
+            return 'vendor-react';
+          }
+          if (id.includes('@radix-ui')) {
+            return 'vendor-radix';
+          }
+          if (id.includes('recharts') || id.includes('d3-')) {
+            return 'vendor-charts';
+          }
+          if (id.includes('framer-motion')) {
+            return 'vendor-motion';
+          }
+          return 'vendor';
+        },
+      },
+    },
+  },
 });
