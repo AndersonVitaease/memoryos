@@ -42,16 +42,20 @@ import { getConnectorsForService } from "@/lib/connectors/registry";
  */
 export async function orchestrateCapabilities({ message, memory, goal, sessionId, projectId }) {
   // === ETAPA 3: DETECTAR CAPACIDADES ===
+  const _t3 = Date.now();
   const { capabilities, matchedReasons, hasEnoughInfo, missingInfoHint } = await detectCapabilities(
     message,
     memory,
     goal
   );
+  console.log(`[DIAG][Orchestrator] ETAPA 3 (detectCapabilities) levou ${Date.now() - _t3}ms`, capabilities);
 
   // === ETAPA 5: SERVICE LAYER ===
   // Identifica qual Serviço é necessário (ex: Serviço de E-mail).
   // O Serviço define O QUE precisa ser feito. Nunca COMO.
+  const _t5 = Date.now();
   const service = detectService(message);
+  console.log(`[DIAG][Orchestrator] ETAPA 5 (detectService) levou ${Date.now() - _t5}ms`);
 
   // === ETAPA 6: CONNECTOR MANAGER ===
   // Verifica se existe um Conector disponível para o Serviço identificado.
@@ -100,9 +104,11 @@ export async function orchestrateCapabilities({ message, memory, goal, sessionId
 
   const hasExecutable = Object.values(execCapabilities).some(Boolean);
 
+  const _tExec = Date.now();
   const capabilityResults = hasExecutable
     ? await executeCapabilities(execCapabilities, { message, sessionId, projectId, memory })
     : {};
+  console.log(`[DIAG][Orchestrator] executeCapabilities (${hasExecutable ? "rodou" : "pulado, nada ativo"}) levou ${Date.now() - _tExec}ms`, execCapabilities);
 
   // === RETORNAR PARA O PLANNER ===
   return {
