@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { Plus, Trash2, Calendar } from "lucide-react";
-import { format } from "date-fns";
+import { safeFormat } from "@/lib/utils/safeDateFormat";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -64,7 +64,7 @@ export default function EventTimeline({ projectId }) {
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-xs font-medium text-violet-600">
-                        {format(new Date(event.event_date), "dd/MM/yyyy")}
+                        {safeFormat(event.event_date, "dd/MM/yyyy")}
                       </span>
                       {event.category && (
                         <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-600">{event.category}</span>
