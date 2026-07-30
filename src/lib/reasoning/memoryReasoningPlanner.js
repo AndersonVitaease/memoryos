@@ -170,6 +170,20 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
   // enxergavam o sistema de busca antigo (capabilityResult.capabilityResults.webSearch).
   let _searchEngineGroundingText = "";
 
+  // FIX (unificacao de pipelines paralelas): a capability web_search
+  // (ETAPA 4, capabilityDetector.js) e este SearchEngine (ETAPA 5.2) agora
+  // usam o MESMO backend (Serper) — se a ETAPA 4 ja pesquisou com sucesso
+  // pra essa mensagem, pular essa segunda chamada evita gastar outra
+  // consulta a toa (mesma pergunta, mesmo resultado, so custo duplicado).
+  const _capabilityWebSearchAlreadyRan = Boolean(
+    capabilityResult.capabilityResults?.webSearch &&
+    !capabilityResult.capabilityResults.webSearch.error &&
+    (capabilityResult.capabilityResults.webSearch.facts?.length > 0)
+  );
+
+  if (_capabilityWebSearchAlreadyRan) {
+    console.log("[SearchEngine] Pulado — ETAPA 4 (capability web_search) ja pesquisou essa mensagem.");
+  } else {
   try {
     const { ensureProvidersRegistered } = await import("@/lib/search-engine/registerProviders");
     const { searchEngine } = await import("@/lib/search-engine/SearchEngine");
@@ -249,6 +263,7 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
     }
   } catch (err) {
     console.warn("[SearchEngine] Falhou, caindo pro fluxo normal:", err);
+  }
   }
 
   // === ETAPA 5.4: ROTEADOR SEMÂNTICO DE AÇÕES DO DRIVE (IA-040) ===
