@@ -65,6 +65,22 @@ export default function Connections() {
           </p>
         </div>
 
+        {/* Autenticacao e saude dos conectores (GitHub PAT, Base44, health monitor) */}
+        <Section title="Autenticação de Conectores">
+          <Link
+            to="/connector-auth"
+            className="flex items-center justify-between p-4 rounded-xl border border-border/40 bg-muted/5 hover:bg-muted/10 transition"
+          >
+            <div>
+              <p className="text-sm font-semibold">Central de Autenticação de Conectores</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Conectar GitHub (token PAT), Base44, monitorar saúde e rodar certificação
+              </p>
+            </div>
+            <Shield className="w-5 h-5 text-muted-foreground" />
+          </Link>
+        </Section>
+
         {/* Architecture Governance — Sprint 8.5 */}
         <Section title="Architecture Governance — Sprint 8.5">
           <ArchitectureGovernancePanel />
