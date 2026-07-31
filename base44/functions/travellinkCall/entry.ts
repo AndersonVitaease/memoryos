@@ -32,6 +32,20 @@ const SANDBOX_BASE_URL = 'https://wooba-sandbox-api.travellink.com.br/wcftravell
  * integrar aqui (ver sessao de testes — RSA_PKCS1_PADDING funciona pra
  * encrypt, so decrypt e' que tem restricao de seguranca no Node/Deno
  * recentes, e decrypt e' trabalho do lado da Travellink, nao nosso). */
+/** FIX (achado real, testado): chaves PEM coladas em campos de secret de
+ * uma linha so as vezes perdem a quebra de linha de verdade, virando um
+ * "\n" literal (barra invertida + n) no texto salvo. Detecta esse padrao
+ * e converte de volta pra quebra de linha real — sem custo se a chave ja
+ * estiver certa. */
+function normalizePemKey(pem: string): string {
+  const hasLiteralBackslashN = pem.indexOf('\\n') !== -1;
+  const hasRealNewlineBeforeFooter = pem.indexOf('\n-----') !== -1;
+  if (hasLiteralBackslashN && !hasRealNewlineBeforeFooter) {
+    return pem.split('\\n').join('\n');
+  }
+  return pem;
+}
+
 function encryptAccessCode(accessCode: string, publicKeyPem: string): string {
   const normalizedKey = normalizePemKey(publicKeyPem);
   const encrypted = publicEncrypt(
