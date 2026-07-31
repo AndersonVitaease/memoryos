@@ -85,6 +85,7 @@ const MultiConnectorPage = lazy(() => import('@/pages/MultiConnectorPage'));
 const MissionsPage = lazy(() => import('@/pages/MissionsPage'));
 const Phase712Page = lazy(() => import('@/pages/Phase712Page'));
 const GoogleOAuthCallback = lazy(() => import('@/pages/GoogleOAuthCallback'));
+const MicrosoftOAuthCallback = lazy(() => import('@/pages/MicrosoftOAuthCallback'));
 const SprintE021Page = lazy(() => import('@/pages/SprintE021Page'));
 const SprintE023Page = lazy(() => import('@/pages/SprintE023Page'));
 const SprintE024Page = lazy(() => import('@/pages/SprintE024Page'));
@@ -304,6 +305,7 @@ const AuthenticatedApp = () => {
         </Route>
       </Route>
       <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />
+      <Route path="/oauth/microsoft/callback" element={<MicrosoftOAuthCallback />} />
       <Route path="/ef399-validation" element={<EF399ValidationPage />} />
       <Route path="*" element={<PageNotFound />} />
     </Routes>
