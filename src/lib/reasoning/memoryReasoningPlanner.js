@@ -99,6 +99,55 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
     // Cai pro fluxo normal abaixo — nunca trava a resposta por causa disso.
   }
 
+  // === ETAPA 0.5: DESVIO PARA CONTEUDO COMPLETO DE DOCUMENTO ===
+  // FIX (pedido real do usuario): perguntas tipo "me mostre o conteudo"
+  // antes so recebiam um trecho de 500-800 caracteres (limite deliberado
+  // pra nao inflar o prompt final — mesmo motivo do bloco fixo de 16KB).
+  // Quando o pedido e explicitamente por conteudo INTEIRO, busca o texto
+  // completo salvo (Document.extracted_text, ja sem corte — o corte so
+  // acontecia na hora de montar contexto pra LLM) e retorna DIRETO, sem
+  // passar pela LLM — mais completo (nada e perdido/resumido pela IA) e
+  // mais rapido (sem chamada de LLM nem risco de prompt gigante).
+  try {
+    const { detectFullDocumentRequest, findMentionedDocument } = await import(
+      "@/lib/document-processing/FullDocumentContentDetector"
+    );
+    if (detectFullDocumentRequest(userMsg)) {
+      const recentDocs = await base44.entities.Document.filter(
+        { session_id: session.id, processing_status: "completed" },
+        "-created_date",
+        10,
+      );
+      if (recentDocs.length > 0) {
+        const target = findMentionedDocument(userMsg, recentDocs) || recentDocs[0];
+        const fullText = target.extracted_text || target.summary || "";
+        if (fullText.trim().length > 0) {
+          const response =
+            `📄 **${target.name}** (fonte: documento, conteúdo completo salvo)
+
+${fullText}`;
+          return {
+            response,
+            plan: {
+              goal: "full_document_content",
+              goalLabel: "Conteúdo completo de documento",
+              strategy: `Retornado direto de Document.extracted_text (${fullText.length} caracteres), sem passar por LLM`,
+              skills: [], skillsCount: 0, sourcesCount: 1,
+              contextLength: fullText.length,
+              capabilities: [], capabilitiesCount: 0, needsMoreInfo: false,
+              service: "document", responseTimeMs: Date.now() - startTime,
+              handledByGuard: "FULL-DOCUMENT-CONTENT-DIRECT",
+            },
+            sources: [{ type: "document", id: target.id, name: target.name }],
+          };
+        }
+      }
+    }
+  } catch (err) {
+    console.error(`[DIAG][FULL-DOCUMENT-CONTENT] FALHOU:`, err?.message || err);
+    // Cai pro fluxo normal abaixo — nunca trava a resposta por causa disso.
+  }
+
   // === ETAPA 1: MEMORY KERNEL ===
   // O Planner conhece apenas MemoryService — nunca a implementacao subjacente.
   // A escolha de implementacao (Legacy/UCME/Shadow) e responsabilidade do MemoryServiceFactory.
