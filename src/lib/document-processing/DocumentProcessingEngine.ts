@@ -17,6 +17,8 @@ import type { RawDocument, ProcessingResult } from "./DocumentProcessingTypes";
 import { documentTypeDetector } from "./DocumentTypeDetector";
 import { ParserRegistry }       from "./ParserRegistry";
 import { PdfDocumentParser }    from "./parsers/PdfDocumentParser";
+import { DocxDocumentParser }   from "./parsers/DocxDocumentParser";
+import { XlsxDocumentParser }   from "./parsers/XlsxDocumentParser";
 import { PlainTextParser }      from "./parsers/PlainTextParser";
 import { UnsupportedDocumentParser } from "./parsers/UnsupportedDocumentParser";
 
@@ -27,6 +29,8 @@ function _ensureBootstrapped(): void {
   if (_bootstrapped) return;
   _bootstrapped = true;
   ParserRegistry.register(new PdfDocumentParser());
+  ParserRegistry.register(new DocxDocumentParser());
+  ParserRegistry.register(new XlsxDocumentParser());
   ParserRegistry.register(new PlainTextParser());
   ParserRegistry.register(new UnsupportedDocumentParser());
 }
