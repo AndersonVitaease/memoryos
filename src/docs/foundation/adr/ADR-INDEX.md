@@ -28,6 +28,8 @@ Cada ADR registra:
 | ADR-007 | Processo RFC→ADR→Implementação obrigatório | Accepted | RFC-007 | 2026-07-10 |
 | ADR-008 | Minimum Sufficient Context como princípio da Foundation | Accepted | RFC-002 | 2026-07-11 |
 | ADR-009 | Adaptive Communication — adaptar a comunicação, nunca a verdade | Accepted | RFC-003 | 2026-07-11 |
+| ADR-010 | Unificação da Pipeline de Busca Web (Serper como motor único) | Implemented | N/A | 2026-07-30 |
+| ADR-011 | Registro de Providers de IA (multi-provider, extensível por capacidade) | Implemented | N/A | 2026-07-30 |
 | ADR-010 | Gap Analysis — hipótese arquitetural aguardando validação Engineering First | Draft | RFC-004 | 2026-07-11 |
 
 ---
