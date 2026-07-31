@@ -33,20 +33,12 @@ const SANDBOX_BASE_URL = 'https://wooba-sandbox-api.travellink.com.br/wcftravell
  * encrypt, so decrypt e' que tem restricao de seguranca no Node/Deno
  * recentes, e decrypt e' trabalho do lado da Travellink, nao nosso). */
 function encryptAccessCode(accessCode: string, publicKeyPem: string): string {
-  // FIX (achado real, testado): chaves PEM coladas em campos de secret de
-  // uma linha so as vezes perdem a quebra de linha de verdade, virando
-  // \n literal no texto. Normaliza isso antes de usar — sem custo se a
-  // chave ja estiver certa (replace so age se o padrao existir).
-  const normalizedKey = publicKeyPem.includes('\n') && !publicKeyPem.includes('
------')
-    ? publicKeyPem.replace(/\n/g, '
-')
-    : publicKeyPem;
+  const normalizedKey = normalizePemKey(publicKeyPem);
   const encrypted = publicEncrypt(
     { key: normalizedKey, padding: constants.RSA_PKCS1_PADDING },
-    Buffer.from(accessCode, 'utf8'),
+    Buffer.from(accessCode, "utf8"),
   );
-  return encrypted.toString('base64');
+  return encrypted.toString("base64");
 }
 
 Deno.serve(async (req) => {
