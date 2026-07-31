@@ -68,3 +68,28 @@
 - `tools/call` no MCP do Google Workspace — ver seção 4.
 - Auditoria do Planning Engine (suspeita de duplicação `planning-engine` vs `planning-engine-e022`, não investigada a fundo).
 - Tier 4 do mapeamento de código morto (97 pastas não classificadas na primeira passada, pode haver mais dívida técnica não descoberta).
+
+
+## Sessao 2026-07-31 -- Conectores nativos: Microsoft Graph + Travellink (base)
+
+### Microsoft Graph (Outlook Mail, Calendar, OneDrive)
+Conector nativo completo (nao MCP) -- 8 arquivos: entity + 3 functions de OAuth
+(init/exchange/refresh) + MicrosoftAuthSession.js (espelha GoogleAuthSession.js)
++ pagina de callback + MicrosoftGraphConnector.ts (8 capacidades: mail.list,
+mail.search, mail.read, mail.send, calendar.list, calendar.create, files.list,
+files.download). Build validado, registrado no ConnectorBootstrap.
+**Pendente:** usuario precisa criar App Registration no Azure Portal
+(MICROSOFT_CLIENT_ID) para o fluxo OAuth funcionar de ponta a ponta.
+
+### Travellink Web API (Aereo) -- base construida, aguardando credenciais
+Function generica travellinkCall -- cuida da parte dificil uma vez so
+(criptografia RSA-PKCS1 do Developer Access Code + Base64, testada
+isoladamente e confirmada) para qualquer servico da API (Disponibilidade,
+Tarifar, Reservar, etc. viriam depois, reaproveitando essa mesma function).
+**Achado tecnico real:** RSA_PKCS1_PADDING funciona para encrypt (nosso
+lado), mas Node/Deno recentes bloqueiam decrypt com esse padding por
+seguranca (CVE-2023-46809) -- irrelevante pro nosso caso, decrypt e
+trabalho da Travellink, nao nosso.
+**Pendente:** aguardando 3 credenciais do usuario (Developer Token,
+Developer Access Code, chave publica RSA) + estrutura exata do endpoint
+Disponibilidade (paths/campos ainda nao confirmados).
