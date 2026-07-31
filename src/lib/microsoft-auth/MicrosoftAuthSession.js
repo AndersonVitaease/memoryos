@@ -2,12 +2,12 @@
  * MicrosoftAuthSession.js — Implementation 007
  * Microsoft Graph OAuth 2.0 — Session Manager
  *
- * Responsabilidade única: manter o estado de autenticação Google
+ * Responsabilidade única: manter o estado de autenticação Microsoft
  * na sessão do browser (localStorage + memória segura), sem expor
  * refresh tokens. Access tokens são armazenados em memória (não localStorage).
  *
  * Arquitetura:
- *   - Refresh tokens: armazenados SOMENTE no backend (GoogleOAuthToken entity)
+ *   - Refresh tokens: armazenados SOMENTE no backend (MicrosoftOAuthToken entity)
  *   - Access tokens: armazenados em memória (sessionStorage), nunca em logs
  *   - localStorage: mantém apenas metadata da conexão (sem tokens)
  *   - Refresh automático quando o access token está próximo de expirar
@@ -15,7 +15,7 @@
  *
  * Fluxo real (Implementation 007):
  *   1. microsoftOAuthInit  → gera authUrl + state + codeVerifier
- *   2. Redirect Google  → usuário autoriza
+ *   2. Redirect Microsoft  → usuário autoriza
  *   3. microsoftOAuthExchange → troca code por tokens, armazena refresh no backend
  *   4. Retorna accessToken (curto prazo) ao frontend
  *   5. MicrosoftAuthSession armazena accessToken em memória
@@ -118,7 +118,7 @@ function _getStoredToken(workspaceId) {
  * @returns {string | null}
  */
 export function getAccessToken(workspaceId = "default") {
-  console.group("[TRACE-GAS-06]");
+  console.group("[TRACE-MAS-06]");
   const stored = _getStoredToken(workspaceId);
   if (!stored) {
     console.log({ result: "NULL", reason: "no-entry-in-tokenStore", workspaceId, storeSize: _tokenStore.size });
@@ -141,7 +141,7 @@ export function getAccessToken(workspaceId = "default") {
 /**
  * Retorna a conexão atual (metadata) para um workspace, ou null.
  * @param {string} workspaceId
- * @returns {GoogleConnection | null}
+ * @returns {MicrosoftConnection | null}
  */
 export function getConnection(workspaceId = "default") {
   const all = _load();
@@ -166,13 +166,13 @@ export function isConnected(workspaceId = "default") {
 
 /**
  * Inicia o fluxo OAuth real via backend function microsoftOAuthInit.
- * Abre popup para accounts.google.com.
+ * Abre popup para login.microsoftonline.com.
  *
  * @param {Object} opts
  * @param {string} opts.workspaceId
  * @param {string[]} opts.scopes
  * @param {Function} opts.onStateChange
- * @returns {Promise<GoogleConnection>}
+ * @returns {Promise<MicrosoftConnection>}
  */
 export async function connect({ workspaceId = "default", scopes = WORKSPACE_SCOPES, onStateChange } = {}) {
   onStateChange?.("AUTHENTICATING");
@@ -301,7 +301,7 @@ export async function connect({ workspaceId = "default", scopes = WORKSPACE_SCOP
  * Renova o access token via backend (refresh_token nunca sai do servidor).
  * @param {string} workspaceId
  * @param {Function} [onStateChange]
- * @returns {Promise<GoogleConnection>}
+ * @returns {Promise<MicrosoftConnection>}
  */
 export async function refresh(workspaceId = "default", onStateChange) {
   const conn = getConnection(workspaceId);
@@ -366,7 +366,7 @@ export async function reconnect({ workspaceId = "default", scopes = WORKSPACE_SC
 export async function ensureValidToken(workspaceId = "default") {
   console.group("[TRACE-MAS-07]");
   console.log({ workspaceId, action: "ensureValidToken-entry" });
-  // [RUNTIME-PROBE][MAS-01] ensureValidToken() reached — if this fires, execution passed GoogleDriveConnector
+  // [RUNTIME-PROBE][MAS-01] ensureValidToken() reached — if this fires, execution passed MicrosoftGraphConnector
   console.log("[RUNTIME-PROBE][MAS-01]", {
     probe:      "microsoftAuthSession:ensureValidToken:entry",
     t:          performance.now(),
