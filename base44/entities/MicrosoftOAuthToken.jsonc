@@ -1,0 +1,13 @@
+{
+  "name": "MicrosoftOAuthToken",
+  "type": "object",
+  "properties": {
+    "user_id": { "type": "string", "description": "ID do usuário proprietário do token" },
+    "workspace_id": { "type": "string", "description": "ID do workspace Microsoft (ex: default)" },
+    "refresh_token": { "type": "string", "description": "Refresh token Microsoft — armazenado apenas no backend, nunca exposto ao frontend" },
+    "email": { "type": "string", "description": "Email da conta Microsoft autenticada" },
+    "scopes": { "type": "string", "description": "Escopos autorizados (string separada por espaço)" },
+    "updated_at": { "type": "string", "description": "Última atualização do token" }
+  },
+  "required": ["user_id", "workspace_id", "refresh_token"]
+}
