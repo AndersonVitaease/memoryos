@@ -21,7 +21,7 @@ import type {
   ConnectorLog,
 } from "../ConnectorTypes";
 import { makeLog, makeExecutionId } from "../ConnectorTypes";
-import { isConnected, getConnection, ensureValidToken } from "@/lib/microsoft-auth/MicrosoftAuthSession";
+import { isConnected, getConnection, ensureValidToken, getAccessToken } from "@/lib/microsoft-auth/MicrosoftAuthSession";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
 
@@ -112,8 +112,12 @@ export class MicrosoftGraphConnector implements IConnector {
     const logs: ConnectorLog[] = [makeLog("info", `[${operation}] executionId=${eid}`)];
 
     try {
-      const conn = await ensureValidToken("default");
-      const accessToken = (conn as any)?.accessToken;
+      try {
+        await ensureValidToken("default");
+      } catch {
+        return fail("Microsoft 365 não conectado. Conecte em /connections.", start, eid, logs, operation);
+      }
+      const accessToken = getAccessToken("default");
       if (!accessToken) {
         return fail("Microsoft 365 não conectado. Conecte em /connections.", start, eid, logs, operation);
       }
