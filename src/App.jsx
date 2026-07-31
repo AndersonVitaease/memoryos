@@ -23,6 +23,7 @@ const Projects = lazy(() => import('@/pages/Projects'));
 const ProjectDetail = lazy(() => import('@/pages/ProjectDetail'));
 const SearchPage = lazy(() => import('@/pages/SearchPage'));
 const Connections = lazy(() => import('@/pages/Connections'));
+const ConnectorAuthCenter = lazy(() => import('@/pages/ConnectorAuthCenter'));
 const ArchitectureAudit = lazy(() => import('@/pages/ArchitectureAudit'));
 const Foundation = lazy(() => import('@/pages/Foundation'));
 const DeveloperHandbook = lazy(() => import('@/pages/DeveloperHandbook'));
@@ -184,6 +185,7 @@ const AuthenticatedApp = () => {
           <Route path="/projects/:id" element={<ProjectDetail />} />
           <Route path="/search" element={<SearchPage />} />
           <Route path="/connections" element={<Connections />} />
+          <Route path="/connector-auth" element={<ConnectorAuthCenter />} />
           <Route path="/audit" element={<ArchitectureAudit />} />
           <Route path="/foundation" element={<Foundation />} />
           <Route path="/developer-handbook" element={<DeveloperHandbook />} />
