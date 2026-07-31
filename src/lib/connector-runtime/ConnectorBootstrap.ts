@@ -89,6 +89,10 @@ const OFFICIAL_FACTORIES: ConnectorFactory[] = [
     const { MemoriConnector } = await import("./connectors/MemoriConnector");
     return new MemoriConnector();
   },
+  async () => {
+    const { MicrosoftGraphConnector } = await import("./connectors/MicrosoftGraphConnector");
+    return new MicrosoftGraphConnector();
+  },
 ];
 
 // ── ConnectorBootstrap ────────────────────────────────────────────────────────
