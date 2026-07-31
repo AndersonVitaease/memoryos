@@ -204,6 +204,32 @@ function truncate(text, max = MAX_CONTENT_LENGTH) {
 
 // === Extratores por tipo ===
 
+/**
+ * FIX (bug pre-existente, achado hoje): a interface ja anunciava aceitar
+ * .docx/.xlsx (ver ACCEPT_MAP acima) mas extractFromFile() sempre usava
+ * o servico gerenciado do Base44 (Core.ExtractDataFromUploadedFile), que
+ * nunca suportou esses formatos — "Unsupported file type: docx" era o
+ * erro real. Agora Word/Excel usam a function documentParser (mesma
+ * construida hoje, ja testada com arquivos reais), lendo o arquivo
+ * original direto do navegador (sem precisar rebaixar do file_url).
+ */
+async function extractFromOfficeFile(file, documentType) {
+  const base64Content = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(",")[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+  const res = await base44.functions.invoke("documentParser", {
+    documentType,
+    base64Content,
+    fileName: file.name,
+  });
+  const d = res?.data ?? res;
+  if (d?.error) throw new Error(d.error);
+  return d?.text || "";
+}
+
 async function extractFromFile(file_url) {
   const result = await base44.integrations.Core.ExtractDataFromUploadedFile({
     file_url,
@@ -262,7 +288,11 @@ export async function ingestKnowledge({
 
   if (type === "audio") {
     rawContent = await extractFromAudio(fileUrl);
-  } else if (type === "pdf" || type === "word" || type === "excel") {
+  } else if (type === "word") {
+    rawContent = await extractFromOfficeFile(file, "docx");
+  } else if (type === "excel") {
+    rawContent = await extractFromOfficeFile(file, "xlsx");
+  } else if (type === "pdf") {
     rawContent = await extractFromFile(fileUrl);
   } else if (type === "text") {
     rawContent = text || "";
