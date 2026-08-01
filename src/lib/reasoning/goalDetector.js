@@ -150,17 +150,10 @@ function normalize(text) {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
-// Pre-compile all keyword patterns once at module load — avoids creating
-// hundreds of RegExp objects on every detectGoal() call (was ~462ms/call).
+// Pre-normalize all keywords once at module load for fast includes() matching.
 const _COMPILED_GOALS = GOALS.map((goal) => ({
   ...goal,
-  _patterns: goal.keywords.map((kw) => {
-    const escaped = normalize(kw).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    return {
-      kw,
-      re: new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}([^\\p{L}\\p{N}]|$)`, "u"),
-    };
-  }),
+  _patterns: goal.keywords.map((kw) => ({ kw, norm: normalize(kw) })),
 }));
 
 /**
@@ -178,8 +171,8 @@ export function detectGoal(message) {
   for (const goal of _COMPILED_GOALS) {
     let score = 0;
     const matched = [];
-    for (const { kw, re } of goal._patterns) {
-      if (re.test(normalized)) {
+    for (const { kw, norm } of goal._patterns) {
+      if (normalized.includes(norm)) {
         score++;
         matched.push(kw);
       }

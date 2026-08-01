@@ -191,22 +191,26 @@ ${fullText}`;
   }
 
   console.log(`[DIAG][MRP] ETAPA 0 (early AI + doc bypass) levou ${Date.now() - _t0}ms`);
-  // === ETAPA 1: MEMORY KERNEL ===
-  const _t1 = Date.now();
-  // O Planner conhece apenas MemoryService — nunca a implementacao subjacente.
-  // A escolha de implementacao (Legacy/UCME/Shadow) e responsabilidade do MemoryServiceFactory.
+
+  // === ETAPAS 1+2+3 EM PARALELO: MEMORY + SKILLS + GOAL ===
+  // Skills e Goal só precisam da mensagem — não dependem da memória.
+  // Paralelizar economiza ~400ms (tempo do goalDetector+skills).
   setPhase?.("retrieving");
-  const memoryResult = await memoryService.retrieve({
-    userMessage: userMsg,
-    sessionId:   session.id,
-    projectId:   session.project_id ?? null,
-  });
+  const _t1 = Date.now();
+  const [memoryResult, skills, goal] = await Promise.all([
+    memoryService.retrieve({
+      userMessage: userMsg,
+      sessionId:   session.id,
+      projectId:   session.project_id ?? null,
+    }),
+    Promise.resolve(detectSkills(userMsg, {})),
+    Promise.resolve(detectGoal(userMsg)),
+  ]);
+
   const _memoryRetrievalFailed = Boolean(memoryResult?.diagnostics?.error);
   if (_memoryRetrievalFailed) {
     console.error("[MemoryReasoningPlanner] Falha na recuperação de memória:", memoryResult.diagnostics.error);
   }
-  // Hard-cap memory context here — before it reaches contextBuilder or capability
-  // orchestrator — so the entire downstream pipeline benefits from the reduced size.
   const _rawMemCtx = memoryResult.memories || "";
   const _cappedMemCtx = _rawMemCtx.length > 3000
     ? _rawMemCtx.slice(0, 3000) + "\n...(contexto truncado)"
@@ -222,18 +226,12 @@ ${fullText}`;
     mip:            {},
   };
 
-  console.log(`[DIAG][MRP] ETAPA 1 (memory) levou ${Date.now() - _t1}ms`);
-  // === ETAPA 2: CONTEXT-AWARE SKILLS ENGINE ===
-  const _t2 = Date.now();
-  const { context, sources, sessionSummary } = memory;
-  const skills = detectSkills(userMsg, { sessionSummary, context, sources });
+  console.log(`[DIAG][MRP] ETAPAS 1+2+3 (memory+skills+goal paralelo) levou ${Date.now() - _t1}ms`);
 
-  // === ETAPA 3: GOAL DETECTION ===
-  const goal = detectGoal(userMsg);
+  const { context, sources, sessionSummary } = memory;
 
   // === ETAPA 3.5: SPECIALIST ROUTING ===
   const routing = SpecialistRouter.route(goal, { memory, session });
-  console.log(`[DIAG][MRP] ETAPA 2+3 (skills+goal+routing) levou ${Date.now() - _t2}ms`);
   if (routing && routing.specialist) {
     setPhase?.("analyzing");
     try {
