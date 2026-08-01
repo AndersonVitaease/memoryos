@@ -74,7 +74,9 @@ export class MCPRegistrySearchProvider implements SearchProvider {
     // falsos (ex: "rg-mcp-mercadolivre" — já confirmado fabricado hoje
     // de manhã). "mcp" sozinho já é um termo raro o suficiente em
     // português pra não precisar desse reforço.
-    if (/\bmcp\b/i.test(lower)) return 0.65;
+    // Require explicit MCP intent — "mcp" alone in a general question is not enough.
+    // Must also have a search signal (server/connector/exists/registry).
+    if (/\bmcp\b/i.test(lower) && /\b(servidor|server|conector|connector|existe|existe.*mcp|registry|registro|oficial)\b/i.test(lower)) return 0.65;
     return 0;
   }
 
