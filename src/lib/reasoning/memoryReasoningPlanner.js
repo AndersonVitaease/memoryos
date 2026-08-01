@@ -377,30 +377,36 @@ ${fullText}`;
   }
 
   // === ETAPA 5.4: ROTEADOR SEMÂNTICO DE AÇÕES DO DRIVE (IA-040) ===
+  // Heurística rápida — evita chamar LLM para mensagens sem sinal de Drive.
+  // Só chama o LLM classificador se houver pelo menos um sinal explícito.
+  function _driveHeuristicCheck(message) {
+    const msg = message.toLowerCase();
+    const DRIVE_SIGNALS = [
+      "drive", "pasta", "folder", "arquivo", "file", "pdf", "docx", "planilha",
+      "abrir", "baixar", "download", "ler", "leia", "conteúdo", "conteudo",
+      "que subi", "que anexei", "meu arquivo", "minha pasta", "meus arquivos",
+      "minhas pastas", "upload", "documento que",
+    ];
+    return DRIVE_SIGNALS.some((s) => msg.includes(s));
+  }
+
   async function _classifyDriveAction(message, recentContext = "") {
+    // Atalho: sem sinal de Drive → não é ação de Drive (sem LLM)
+    if (!_driveHeuristicCheck(message)) {
+      return { is_drive_action: false, action: null, target: null };
+    }
     try {
       const contextBlock = recentContext
-        ? `\n\nCONTEXTO RECENTE DA CONVERSA (use para não confundir um pedido de "repetir/explicar de novo algo já dito" com um pedido real de abrir/ler um arquivo do Drive):\n${recentContext}\n`
+        ? `\n\nCONTEXTO RECENTE DA CONVERSA:\n${recentContext}\n`
         : "";
       return await base44.integrations.Core.InvokeLLM({
         prompt: `O usuário disse: "${message}"
 ${contextBlock}
-O usuário está conversando com o MemoryOS, um assistente conectado ao Google Drive. Determine se essa mensagem é um pedido de ação relacionada ao Drive, e qual ação exatamente.
+Determine se é um pedido de ação no Google Drive do usuário e qual ação.
 
-CRITÉRIO OBRIGATÓRIO antes de classificar como ação de Drive: a mensagem precisa se referir a algo que está armazenado NO GOOGLE DRIVE DO USUÁRIO — um arquivo ou pasta que ELE possui, anexou ou já mencionou ter lá. Sinais disso: "meu(s)", "esse/este arquivo", "essa/esta pasta", "que anexei", "que subi", "na minha pasta X", ou um nome de arquivo/pasta específico.
-
-NÃO é ação de Drive (mesmo mencionando "documentação", "documento" ou "arquivo"):
-- Perguntas de CONHECIMENTO GERAL sobre a documentação técnica de um sistema, API ou empresa EXTERNA (ex: "documentação do Wooba", "documentação da API do Mercado Livre", "o que é necessário para instalar o conector X") — isso é uma pergunta de conteúdo/pesquisa, não um pedido de leitura de arquivo do Drive.
-- Pedidos de repetir, recapitular ou explicar de novo algo que já foi dito nesta própria conversa (ex: "fale de novo sobre a documentação exigida", "resuma o que você disse").
-
-Ações possíveis:
-- "list_root": listar os arquivos/pastas recentes do Drive em geral (ex: "drive", "quais arquivos tenho").
-- "open_folder": abrir/ver o conteúdo de uma PASTA específica que o usuário possui (ex: "abrir minha pasta X", "o que tem na pasta X que criei").
-- "download_file": baixar um ARQUIVO específico do Drive do usuário (ex: "baixar meu arquivo X", "download do documento que anexei").
-- "read_content": ver o CONTEÚDO/dados de dentro de um ARQUIVO REAL do Drive do usuário (ex: "mostre os dados do arquivo que anexei", "leia esse PDF que subi").
-- null: não é um pedido relacionado ao Drive do usuário — inclui qualquer pergunta sobre documentação/informação de sistemas, empresas ou APIs externas.
-
-Se envolver um nome de arquivo/pasta específico do usuário, extraia em "target" (sem palavras de comando tipo "abrir", "baixar"). Se não houver nome específico, "target" deve ser null.`,
+Ações: "list_root", "open_folder", "download_file", "read_content", ou null.
+Se não for Drive do usuário (ex: pergunta sobre docs de API externa), retorne is_drive_action: false.
+Se for, extraia "target" (nome do arquivo/pasta sem verbos de comando).`,
         response_json_schema: {
           type: "object",
           properties: {
