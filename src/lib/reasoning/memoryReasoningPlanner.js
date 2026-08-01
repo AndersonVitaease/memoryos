@@ -49,6 +49,7 @@ import { formatMacrForChat } from "@/lib/reasoning/macrFormatterV4";
 export async function runReasoningPlan({ userMsg, session, historyMessages = [], setPhase, kfmContext }) {
   const startTime = Date.now();
 
+  const _t0 = Date.now();
   // === ETAPA 0: DESVIO PRECOCE PARA SERVICO DE IA ===
   // FIX (otimizacao real, medida em producao — 3+ segundos economizados):
   // movido de depois da memoria/capacidades (ETAPA 4) pra antes de tudo.
@@ -148,7 +149,9 @@ ${fullText}`;
     // Cai pro fluxo normal abaixo — nunca trava a resposta por causa disso.
   }
 
+  console.log(`[DIAG][MRP] ETAPA 0 (early AI + doc bypass) levou ${Date.now() - _t0}ms`);
   // === ETAPA 1: MEMORY KERNEL ===
+  const _t1 = Date.now();
   // O Planner conhece apenas MemoryService — nunca a implementacao subjacente.
   // A escolha de implementacao (Legacy/UCME/Shadow) e responsabilidade do MemoryServiceFactory.
   setPhase?.("retrieving");
@@ -169,7 +172,9 @@ ${fullText}`;
     mip:            {},
   };
 
+  console.log(`[DIAG][MRP] ETAPA 1 (memory) levou ${Date.now() - _t1}ms`);
   // === ETAPA 2: CONTEXT-AWARE SKILLS ENGINE ===
+  const _t2 = Date.now();
   const { context, sources, sessionSummary } = memory;
   const skills = detectSkills(userMsg, { sessionSummary, context, sources });
 
@@ -178,6 +183,7 @@ ${fullText}`;
 
   // === ETAPA 3.5: SPECIALIST ROUTING ===
   const routing = SpecialistRouter.route(goal, { memory, session });
+  console.log(`[DIAG][MRP] ETAPA 2+3 (skills+goal+routing) levou ${Date.now() - _t2}ms`);
   if (routing && routing.specialist) {
     setPhase?.("analyzing");
     try {
@@ -291,6 +297,7 @@ ${fullText}`;
     (capabilityResult.capabilityResults.webSearch.facts?.length > 0)
   );
 
+  const _t52 = Date.now();
   if (_capabilityWebSearchAlreadyRan) {
     console.log("[SearchEngine] Pulado — ETAPA 4 (capability web_search) ja pesquisou essa mensagem.");
   } else {
@@ -376,6 +383,7 @@ ${fullText}`;
   }
   }
 
+  console.log(`[DIAG][MRP] ETAPA 5.2 (SearchEngine) levou ${Date.now() - _t52}ms`);
   // === ETAPA 5.4: ROTEADOR SEMÂNTICO DE AÇÕES DO DRIVE (IA-040) ===
   // Heurística rápida — evita chamar LLM para mensagens sem sinal de Drive.
   // Só chama o LLM classificador se houver pelo menos um sinal explícito.
@@ -441,6 +449,7 @@ Se for, extraia "target" (nome do arquivo/pasta sem verbos de comando).`,
     };
   }
 
+  const _t54 = Date.now();
   const _hasRealDocRead = Boolean(
     capabilityResult.capabilityResults?.officialLibrary?.selectedDocs?.length > 0
   );
@@ -497,8 +506,7 @@ Se for, extraia "target" (nome do arquivo/pasta sem verbos de comando).`,
     }
   }
 
-  // (ETAPA 5.6 antiga removida — desvio pra servico de IA agora roda no inicio da funcao, ETAPA 0, antes da memoria)
-
+  console.log(`[DIAG][MRP] ETAPA 5.4 (DriveClassifier) levou ${Date.now() - _t54}ms`);
   // === ETAPA 6: UMA ÚNICA CHAMADA AO LLM ===
   const finalPrompt = _searchEngineGroundingNote
     ? `${prompt}\n\n${_searchEngineGroundingNote}`
