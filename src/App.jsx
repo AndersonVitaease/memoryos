@@ -146,6 +146,7 @@ const KnowledgeRegistryDashboard = lazy(() => import('@/pages/KnowledgeRegistryD
 const SprintP5Page = lazy(() => import('@/pages/SprintP5Page'));
 const SprintP6Page = lazy(() => import('@/pages/SprintP6Page'));
 const SprintP7Page = lazy(() => import('@/pages/SprintP7Page'));
+const SprintP8Page = lazy(() => import('@/pages/SprintP8Page'));
 
 const AuthenticatedApp = () => {
   console.log('[RENDER] AuthenticatedApp');
@@ -310,6 +311,7 @@ const AuthenticatedApp = () => {
           <Route path="/sprint-p5" element={<SprintP5Page />} />
           <Route path="/sprint-p6" element={<SprintP6Page />} />
           <Route path="/sprint-p7" element={<SprintP7Page />} />
+          <Route path="/sprint-p8" element={<SprintP8Page />} />
         </Route>
       </Route>
       <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />

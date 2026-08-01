@@ -83,9 +83,14 @@ SDKs oficiais conforme MDPS.
 - [ ] Matriz de compatibilidade avancada (P7.3)
 
 ### P8 — Developer Portal
-- [ ] Documentação interativa
-- [ ] Playground de Connectors
-- [ ] CLI do MemoryOS
+- [x] Documentacao interativa (6 docs: getting-started, sdk, specialists, knowledge-packages, marketplace, architecture)
+- [x] Playground de Capabilities (Specialists P5 + Knowledge Packages P6)
+- [x] DeveloperPortalTypes.ts — tipos imutaveis separados
+- [x] developerPortalTests.ts — suite de testes MDS §2.16 (8 cenarios)
+- [x] index.ts — exports oficiais
+- [x] Dashboard — src/pages/SprintP8Page.jsx (MDS §2.17)
+- [ ] CLI do MemoryOS (P8.1)
+- [ ] Documentacao de Connectors (P8.2)
 
 ### P9 — Capability Registry
 - [ ] Discovery automático
