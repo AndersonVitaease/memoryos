@@ -160,6 +160,6 @@ ${goal.strategy}
 ${skills.length > 0 ? `- Especialistas: ${skills.map((s) => s.name).join(", ")}.` : ""}
 ${hasStructuredMemory ? `- Memória recuperada: ${sources.length} registros (${sourceTypes.join(", ")}).` : "- Sem memória estruturada para esta pergunta."}
 
-${context ? `## MEMÓRIA ESTRUTURADA\n${context}\n` : ""}${sessionSummary ? `## RESUMO DA CONVERSA\n${sessionSummary}\n` : ""}${historyText ? `## HISTÓRICO\n${historyText}\n` : ""}${kfmContext ? `## CONHECIMENTO FUNDIDO\n${kfmContext.length > MAX_KFM_CONTEXT_CHARS ? kfmContext.slice(0, MAX_KFM_CONTEXT_CHARS) + "..." : kfmContext}\n` : ""}${serviceBlock ? `${serviceBlock}\n\n---\n` : ""}${needsMoreInfoBlock ? `${needsMoreInfoBlock}\n\n---\n` : ""}${capabilityBlocks.length > 0 ? `${capabilityBlocks.join("\n\n---\n\n")}\n\n---\n` : ""}## MENSAGEM DO USUÁRIO
+${context ? `## MEMÓRIA ESTRUTURADA (USE APENAS COMO CONTEXTO INTERNO — NUNCA CITE TAREFAS, ASSUNTOS, DECISÕES OU SESSÕES NA RESPOSTA A MENOS QUE O USUÁRIO TENHA PERGUNTADO EXPLICITAMENTE SOBRE ELES)\n${context}\n` : ""}${sessionSummary ? `## RESUMO DA CONVERSA\n${sessionSummary}\n` : ""}${historyText ? `## HISTÓRICO\n${historyText}\n` : ""}${kfmContext ? `## CONHECIMENTO FUNDIDO\n${kfmContext.length > MAX_KFM_CONTEXT_CHARS ? kfmContext.slice(0, MAX_KFM_CONTEXT_CHARS) + "..." : kfmContext}\n` : ""}${serviceBlock ? `${serviceBlock}\n\n---\n` : ""}${needsMoreInfoBlock ? `${needsMoreInfoBlock}\n\n---\n` : ""}${capabilityBlocks.length > 0 ? `${capabilityBlocks.join("\n\n---\n\n")}\n\n---\n` : ""}## MENSAGEM DO USUÁRIO
 ${userMsg}`;
 }
