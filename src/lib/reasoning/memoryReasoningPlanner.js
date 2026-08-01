@@ -352,10 +352,16 @@ ${fullText}`;
     (capabilityResult.capabilityResults.webSearch.facts?.length > 0)
   );
 
+  // ETAPA 5.2 só roda se houver sinal EXPLÍCITO de busca externa na mensagem.
+  // Palavras genéricas de conversa nunca justificam chamar providers externos.
+  const _EXPLICIT_SEARCH_SIGNAL = /\b(pesquise|pesquisar|busque|buscar|procure|procurar|mcp|servidor mcp|existe.*servidor|verifique se existe|confirma se existe|tem.*servidor|online|internet|web|google|notícia|noticia|preço atual|rate.?limit)\b/i;
+  const _needsSearchEngine = _EXPLICIT_SEARCH_SIGNAL.test(userMsg) && !_capabilityWebSearchAlreadyRan && !_isIdentityQuery;
+
   const _t52 = Date.now();
-  if (_capabilityWebSearchAlreadyRan || _isIdentityQuery) {
+  if (!_needsSearchEngine) {
     if (_capabilityWebSearchAlreadyRan) console.log("[SearchEngine] Pulado — ETAPA 4 (capability web_search) ja pesquisou essa mensagem.");
-  } else {
+    else console.log("[SearchEngine] Pulado — sem sinal explícito de busca externa na mensagem.");
+  } else if (_needsSearchEngine) {
   try {
     ensureProvidersRegistered();
 
