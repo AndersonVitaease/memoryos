@@ -22,23 +22,17 @@ const WEB_SEARCH_KEYWORDS = [
   "compare com sites", "pesquise na internet", "busque online", "online",
 ];
 
-function firstMatch(lower: string, list: string[]): string | null {
-  for (const s of list) {
-    const escaped = s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const pattern = new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}([^\\p{L}\\p{N}]|$)`, "u");
-    if (pattern.test(lower)) return s;
-  }
-  return null;
-}
-
 export class SerperSearchProvider implements SearchProvider {
   readonly id = "serper_search";
   readonly name = "Pesquisa Web (Serper)";
 
   canHandle(query: string): number {
-    const lower = query.toLowerCase();
-    const matched = firstMatch(lower, WEB_SEARCH_KEYWORDS);
-    return matched ? 0.5 : 0;
+    const lower = query.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const normalizedKeywords = WEB_SEARCH_KEYWORDS.map((k) =>
+      k.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    );
+    const matched = normalizedKeywords.some((k) => lower.includes(k));
+    return matched ? 0.75 : 0;
   }
 
   async search(query: string, options?: SearchOptions): Promise<SearchResult> {
