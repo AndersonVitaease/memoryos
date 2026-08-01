@@ -83,6 +83,8 @@ export interface ConversationContext {
   specialistContext?: string;
   /** [KR-02] StateView context — apenas quando injectEnabled=true no StateViewEngine */
   stateViewContext?: string;
+  /** [P2] Contexto persistido de sessões anteriores (cross-session memory) */
+  crossSessionContext?: string;
   builtAt: number;
 }
 

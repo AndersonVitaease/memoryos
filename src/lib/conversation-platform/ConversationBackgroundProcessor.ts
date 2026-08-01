@@ -83,6 +83,17 @@ export async function runBackgroundProcessing(
   }
   // ── [END KR-03] ──────────────────────────────────────────────────────────
 
+  // ── [P2] Memory Tiering — a cada 20 msgs ou primeira msg da sessão ───────
+  if (totalMessages === 1 || (totalMessages > 0 && totalMessages % 20 === 0)) {
+    try {
+      const { memoryTieringService } = await import("@/lib/memory-tiering/MemoryTieringService");
+      void memoryTieringService.run().then((r) => {
+        if (r.promoted > 0) console.debug(`[MemoryTiering] ${r.promoted} promovidos em ${r.durationMs}ms`);
+      }).catch(() => {});
+    } catch { /* nunca bloqueia */ }
+  }
+  // ── [END P2 Memory Tiering] ───────────────────────────────────────────────
+
   // ── Batch processing (a cada 5 msgs do usuario) ──────────────────────────
   const userCount = allMessages.filter((m) => m.role === "user").length;
   if (userCount % 5 !== 0) return;
