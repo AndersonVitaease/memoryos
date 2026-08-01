@@ -132,15 +132,16 @@ export const ConnectorBootstrap = Object.freeze({
       note:         "If this fires AFTER any CXP-01, the first request arrived before bootstrap began.",
     });
 
-    for (const factory of OFFICIAL_FACTORIES) {
-      let connector: IConnector | null = null;
-      try {
-        connector = await factory();
-      } catch (e) {
-        errors.push(`Factory failed: ${(e as Error).message}`);
+    // Carrega todos os connectors em paralelo para reduzir tempo de bootstrap
+    const results = await Promise.allSettled(OFFICIAL_FACTORIES.map((f) => f()));
+
+    for (const result of results) {
+      if (result.status === "rejected") {
+        errors.push(`Factory failed: ${(result.reason as Error)?.message ?? result.reason}`);
         continue;
       }
 
+      const connector = result.value;
       const err = validateConnector(connector);
       if (err) {
         errors.push(`Validation failed — ${err}`);
@@ -156,15 +157,13 @@ export const ConnectorBootstrap = Object.freeze({
         registry.register(connector);
         capabilitiesLoaded += connector.metadata().capabilities.length;
         loadedIds.push(connector.id);
-        // [RUNTIME-PROBE][CBS-02] Connector registered — Drive available from this point forward
         console.log("[RUNTIME-PROBE][CBS-02]", {
-          probe:           "bootstrap:connectorRegistered",
-          t:               performance.now(),
-          ts:              Date.now(),
-          connectorId:     connector.id,
-          regSizeNow:      registry.count(),
-          allRegistered:   loadedIds.slice(),
-          note:            "If connector_id=google-drive fires AFTER CXP-01, Drive request used placeholder.",
+          probe:         "bootstrap:connectorRegistered",
+          t:             performance.now(),
+          ts:            Date.now(),
+          connectorId:   connector.id,
+          regSizeNow:    registry.count(),
+          allRegistered: loadedIds.slice(),
         });
       } catch (e) {
         errors.push(`[${connector.id}] registry.register() threw: ${(e as Error).message}`);
