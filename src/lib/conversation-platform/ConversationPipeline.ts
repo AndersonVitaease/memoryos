@@ -33,6 +33,24 @@ import { primaryRouter } from "@/lib/primary-conversation-router/PrimaryConversa
 import { responseTracer } from "@/lib/response-binding/ResponseBindingTracer";
 import { conversationGoalBridge } from "@/lib/conversation-goal-bridge/ConversationGoalBridge";
 import { conversationPlanningEngine } from "@/lib/planning-engine-e022/ConversationPlanningEngine";
+import { runtimeContextLayer } from "@/lib/runtime-context/RuntimeContextLayer";
+import { unifiedContextBuilder } from "@/lib/unified-context/UnifiedContextBuilder";
+import { knowledgeFusionEngine } from "@/lib/knowledge-fusion-engine/KnowledgeFusionEngine";
+import { knowledgeNormalizer } from "@/lib/knowledge-fusion-engine/KnowledgeNormalizer";
+import { knowledgeGraphBridge } from "@/lib/knowledge-fusion-engine/KnowledgeGraphBridge";
+import { resourceIntentCanonicalizerProvider } from "@/lib/resource-intent-canonicalization";
+import { isCanonicalResourceRequestEnabled, isCanonicalResourceReadEnabled } from "@/lib/resource-intent-canonicalization";
+import { synthesizeConnectorResult } from "@/lib/connector-runtime-provider/ConnectorResultSynthesizer";
+
+// Identity/greeting bypass regex — evaluated once at module load
+const _IDENTITY_RE = /^(qual|quem|oi|olá|ola|bom dia|boa tarde|boa noite|como você|como voce|me diga|me fale)\b.{0,80}(nome|você|voce|vc|propósito|objetivo|funcao|função)?\b/i;
+const _IDENTITY_RE2 = /^(qual (é |e )?(o |seu |o seu )?(nome|propósito|objetivo|função|funcao))/i;
+
+const _IDENTITY_RESPONSES: Record<string, string> = {
+  greeting: "Olá! Sou o MemoryOS — sua memória permanente e inteligente. Como posso ajudar?",
+  name: "Sou o MemoryOS — sua memória viva e permanente. Não tenho um nome pessoal, mas você pode me chamar de MemoryOS.",
+  purpose: "Sou o MemoryOS, seu sistema operacional cognitivo. Preservo tudo que você aprende, decide e cria — para que você nunca precise repetir contexto.",
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -215,6 +233,29 @@ class ConversationPipeline {
       conversationStore.setReasoningPhase(phase);
     };
 
+    // ── 0. Identity/Greeting Hard Bypass (zero DB, zero LLM) ────────────
+    const _trimmed = userMessage.trim();
+    const _isIdentityMsg = _IDENTITY_RE.test(_trimmed) || _IDENTITY_RE2.test(_trimmed);
+    if (_isIdentityMsg) {
+      const _isGreeting = /^(oi|olá|ola|bom dia|boa tarde|boa noite)\b/i.test(_trimmed) && !/nome|propósito|objetivo|função|funcao/i.test(_trimmed);
+      const _isPurpose  = /propósito|objetivo|função|funcao/i.test(_trimmed);
+      const _reply = _IDENTITY_RESPONSES[_isGreeting ? "greeting" : _isPurpose ? "purpose" : "name"];
+      conversationStore.setStatus("streaming");
+      setPhase("responding");
+      const _idMsgId = makeMsgId();
+      conversationStore.appendMessage({ id: _idMsgId, session_id: session.id, role: "assistant", content: "", streamingContent: "", isStreaming: true, memory_tier: "active", sources_used: [] });
+      await conversationStreaming.streamResponse({ executionId, messageId: _idMsgId, fullContent: _reply, onChunk: () => {} });
+      try {
+        const savedUser = await persistMessage({ sessionId: session.id, projectId: session.project_id, role: "user", content: userMessage });
+        conversationStore.appendMessage(savedUser);
+        const savedAss = await persistMessage({ sessionId: session.id, projectId: session.project_id, role: "assistant", content: _reply, sources_used: [] });
+        conversationStore.updateMessage(_idMsgId, { id: savedAss.id, content: _reply, streamingContent: undefined, isStreaming: false, sources_used: [] });
+      } catch { /* non-critical */ }
+      conversationStore.setStatus("idle");
+      conversationStore.setReasoningPhase("idle");
+      return;
+    }
+
     // ── 1. Prepare ───────────────────────────────────────────────────────
     if (this._cancelled) return;
     setStep("prepare", "running");
@@ -242,8 +283,10 @@ class ConversationPipeline {
     setStep("persist_user", "done");
 
     // ── 2.5. Multi-Intent Decomposition (short-circuit) ──────────────────
+    // Only attempt decomposition if message has multiple clauses (e.g. "and", "also", comma)
     if (this._cancelled) return;
-    try {
+    const _mightBeMultiIntent = /\btambém\b|\be mais\b|,.*e /.test(userMessage) && userMessage.length > 30;
+    if (_mightBeMultiIntent) try {
       const { decomposeMessage } = await import("@/lib/multi-intent/MessageDecomposer");
       const fragments = decomposeMessage(userMessage);
 
@@ -301,15 +344,13 @@ class ConversationPipeline {
       }
     } catch (err) {
       console.warn("[MultiIntentEngine][Pipeline] Falhou, caindo pro fluxo normal (pedido único):", err);
-    }
+    } // end _mightBeMultiIntent
 
     // ── 3. Build Context ─────────────────────────────────────────────────
     if (this._cancelled) return;
 
-    // Fast bypass: identity/greeting queries never need memory context.
-    const _IDENTITY_RE = /^(qual|quem|oi|olá|ola|bom dia|boa tarde|boa noite|como você|como voce|me diga|me fale)\b.{0,80}(nome|você|voce|vc|propósito|objetivo|funcao|função)?\b/i;
-    const _isIdentityMsg = _IDENTITY_RE.test(userMessage.trim()) ||
-      /^(qual (é |e )?(o |seu |o seu )?(nome|propósito|objetivo|função|funcao))/i.test(userMessage.trim());
+    // Fast bypass: identity/greeting — already resolved above at step 0.
+    // _isIdentityMsg declared and resolved there; reuse it here.
 
     setStep("context", "running");
     conversationStore.setStatus("reasoning");
@@ -379,7 +420,6 @@ class ConversationPipeline {
       // ── Sprint 8.11: Unified Context Builder ────────────────────────────
       let unifiedCtx: import("@/lib/unified-context/UnifiedContextTypes").UnifiedContext | null = null;
       try {
-        const { unifiedContextBuilder } = await import("@/lib/unified-context/UnifiedContextBuilder");
         unifiedCtx = await unifiedContextBuilder.build(
           userMessage,
           session.id,
@@ -408,8 +448,6 @@ class ConversationPipeline {
       // ── Sprint 8.12: Knowledge Fusion Engine ────────────────────────────
       let kfmModel: import("@/lib/knowledge-fusion-engine/KFETypes").UnifiedKnowledgeModel | null = null;
       try {
-        const { knowledgeFusionEngine } = await import("@/lib/knowledge-fusion-engine/KnowledgeFusionEngine");
-        const { knowledgeNormalizer }   = await import("@/lib/knowledge-fusion-engine/KnowledgeNormalizer");
         const normResult = unifiedCtx
           ? knowledgeNormalizer.normalize(unifiedCtx)
           : { units: [], unitCount: 0, buildId: `kfe-${Date.now()}` };
@@ -441,7 +479,6 @@ class ConversationPipeline {
       // ── Sprint M-03: Knowledge Graph Population ──────────────────────────
       if (kfmModel !== null && kfmModel.statistics.totalEntities > 0) {
         try {
-          const { knowledgeGraphBridge } = await import("@/lib/knowledge-fusion-engine/KnowledgeGraphBridge");
           const bridgeResult = knowledgeGraphBridge.persist(kfmModel, session.id);
           conversationStore.emit({
             type: "PIPELINE_STEP",
@@ -547,14 +584,8 @@ class ConversationPipeline {
       });
 
       // ── Sprint 2: Resource Intent Canonicalization Layer (RICL) ─────────
-      // Pass-through only: builds CanonicalResourceRequest in parallel.
-      // No planning/runtime decision depends on this output in this sprint.
       let canonicalRequestForPlanning: import("@/lib/resource-intent-canonicalization").CanonicalResourceRequestV1 | null = null;
       try {
-        const {
-          resourceIntentCanonicalizerProvider,
-        } = await import("@/lib/resource-intent-canonicalization");
-
         const canonicalizer = resourceIntentCanonicalizerProvider.get();
         const canonicalized = canonicalizer.canonicalize({
           userMessage,
@@ -635,10 +666,6 @@ class ConversationPipeline {
       // ── PRODUCER B: Planning → Runtime → Connector → Synthesize ──────────
       // v2: Connector answer → ExecutionOutcome → ResponseCandidate
       if (goalBridgeResult.goal.valid) {
-        const {
-          isCanonicalResourceRequestEnabled,
-          isCanonicalResourceReadEnabled,
-        } = await import("@/lib/resource-intent-canonicalization");
         const crrEnabled = isCanonicalResourceRequestEnabled();
         const crrReadEnabled = isCanonicalResourceReadEnabled();
         const planningContextEnabled = crrEnabled || crrReadEnabled;
@@ -811,7 +838,6 @@ class ConversationPipeline {
           } catch { /* non-blocking */ }
 
           // Synthesize connector output → text answer
-          const { synthesizeConnectorResult } = await import("@/lib/connector-runtime-provider/ConnectorResultSynthesizer");
           const synthesis = await synthesizeConnectorResult(
             executionResult,
             userMessage,
@@ -850,7 +876,6 @@ class ConversationPipeline {
           // REVERSAO: remover este bloco try/catch
           if (synthesis.handled && synthesis.connectorData) {
             try {
-              const { runtimeContextLayer } = await import("@/lib/runtime-context/RuntimeContextLayer");
               const _enrichedOwner = (_activePlan.steps[0]?.parameters as Record<string, unknown>)?.owner as string | undefined;
               const _enrichedRepo  = (_activePlan.steps[0]?.parameters as Record<string, unknown>)?.repo  as string | undefined;
               const _connectorId   = _activePlan.steps[0]?.connector ?? "unknown";
