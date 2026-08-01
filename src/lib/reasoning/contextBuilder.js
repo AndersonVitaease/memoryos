@@ -43,8 +43,23 @@ Sua missão: interpretar intenções humanas, preservar contexto, coordenar espe
  * Monta o contexto dinâmico para o LLM — apenas o que varia por mensagem.
  * Não inclui o system prompt (use buildSystemPrompt() para isso).
  */
+// Hard cap on memory context injected into the LLM prompt.
+// 9000+ chars of context inflates the prompt to 20k+, slowing the LLM by ~1-2s.
+// The session summary already covers long-term context — recent structured memory
+// only needs the most relevant portion.
+const MAX_MEMORY_CONTEXT_CHARS = 4000;
+const MAX_SESSION_SUMMARY_CHARS = 600;
+
 export function buildReasoningContext({ userMsg, memory, skills, goal, historyText, totalMessages, capabilities, capabilityResults, needsMoreInfo, missingInfoHint, serviceInfo, kfmContext, memoryRetrievalFailed }) {
-  const { context, sources, sessionSummary } = memory;
+  const rawContext = memory.context;
+  const rawSummary = memory.sessionSummary;
+  const context = rawContext && rawContext.length > MAX_MEMORY_CONTEXT_CHARS
+    ? rawContext.slice(0, MAX_MEMORY_CONTEXT_CHARS) + "\n...(contexto truncado para otimização)"
+    : rawContext;
+  const sessionSummary = rawSummary && rawSummary.length > MAX_SESSION_SUMMARY_CHARS
+    ? rawSummary.slice(0, MAX_SESSION_SUMMARY_CHARS) + "..."
+    : rawSummary;
+  const { sources } = memory;
 
   // === BLOCO DE CAPACIDADES EXECUTADAS ===
   const capabilityBlocks = [];
