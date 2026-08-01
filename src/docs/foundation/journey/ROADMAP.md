@@ -55,15 +55,15 @@ SDKs oficiais conforme MDPS.
 ### P5 — Specialists Oficiais
 - [x] GeneralSpecialist (referência)
 - [x] GovernmentSpecialist (referência)
-- [ ] FinancialSpecialist
-- [ ] LegalSpecialist
-- [ ] MedicalSpecialist
-- [ ] TechSpecialist
+- [x] FinancialSpecialist — src/sdk/specialists/FinancialSpecialist.ts
+- [x] LegalSpecialist — src/sdk/specialists/LegalSpecialist.ts
+- [x] MedicalSpecialist — src/sdk/specialists/MedicalSpecialist.ts
+- [x] TechSpecialist — src/sdk/specialists/TechSpecialist.ts
 
 ### P6 — Knowledge Packages
-- [ ] Brazilian Government Package
-- [ ] Financial Package
-- [ ] Legal Package
+- [x] Brazilian Government Package — src/sdk/knowledge-packages/BrazilianGovernmentPackage.ts
+- [x] Financial Package — src/sdk/knowledge-packages/FinancialPackage.ts
+- [x] Legal Package — src/sdk/knowledge-packages/LegalPackage.ts
 
 ### P7 — Marketplace
 - [ ] Registry de Connectors
