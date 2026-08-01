@@ -28,6 +28,11 @@ import { responseArbiter } from "@/lib/response-arbiter/ResponseArbiter";
 import type { ResponseCandidate } from "@/lib/response-arbiter/ResponseCandidate";
 import type { ArbitrationContext } from "@/lib/response-arbiter/ResponseArbiter";
 import type { ExecutionDomain } from "@/lib/response-arbiter/ExecutionOutcomeTypes";
+import { runReasoningPlan } from "@/lib/reasoning/memoryReasoningPlanner";
+import { primaryRouter } from "@/lib/primary-conversation-router/PrimaryConversationRouter";
+import { responseTracer } from "@/lib/response-binding/ResponseBindingTracer";
+import { conversationGoalBridge } from "@/lib/conversation-goal-bridge/ConversationGoalBridge";
+import { conversationPlanningEngine } from "@/lib/planning-engine-e022/ConversationPlanningEngine";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -344,10 +349,7 @@ class ConversationPipeline {
     let preferredDomain: ArbitrationContext["preferredDomain"] = null;
 
     try {
-      const { runReasoningPlan }      = await import("@/lib/reasoning/memoryReasoningPlanner");
-      const { primaryRouter }         = await import("@/lib/primary-conversation-router/PrimaryConversationRouter");
-      const { responseTracer }        = await import("@/lib/response-binding/ResponseBindingTracer");
-      const { conversationGoalBridge }= await import("@/lib/conversation-goal-bridge/ConversationGoalBridge");
+      // (imports already at top of file — static for performance)
 
       const traceId     = responseTracer.beginTrace(userMessage, session.id);
       const t0route     = Date.now();
@@ -633,7 +635,6 @@ class ConversationPipeline {
       // ── PRODUCER B: Planning → Runtime → Connector → Synthesize ──────────
       // v2: Connector answer → ExecutionOutcome → ResponseCandidate
       if (goalBridgeResult.goal.valid) {
-        const { conversationPlanningEngine } = await import("@/lib/planning-engine-e022/ConversationPlanningEngine");
         const {
           isCanonicalResourceRequestEnabled,
           isCanonicalResourceReadEnabled,
@@ -969,7 +970,7 @@ class ConversationPipeline {
         // Nenhuma resposta ao usuario e afetada.
         try {
           const { MemoryContextProviderFactory } = await import("@/lib/memory-context/MemoryContextProviderFactory");
-          if (MemoryContextProviderFactory.getMode() === "SHADOW") {
+          if (MemoryContextProviderFactory.getMode() === "SHADOW" && !_isIdentityMsg) {
             const { runMemoryPipeline } = await import("@/lib/memoryPipeline");
             const { detectSkills }      = await import("@/lib/skills/detector");
             const { detectGoal }        = await import("@/lib/reasoning/goalDetector");
