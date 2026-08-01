@@ -13,7 +13,7 @@ const MAX_PROVIDERS_PER_QUERY = 3;
 const MIN_CANHANDLE_SCORE = 0.15;
 // Max time to wait for any single provider before giving up the whole search.
 // Prevents slow external APIs (mcp_registry, etc.) from blocking the LLM step.
-const SEARCH_ENGINE_TIMEOUT_MS = 2500;
+const SEARCH_ENGINE_TIMEOUT_MS = 800;
 
 export interface SearchEngineOutcome {
   resolved: boolean;
