@@ -354,9 +354,11 @@ ${fullText}`;
   // 1. A ETAPA 4 (capabilityDetector) já decidiu que web_search é necessário, OU
   // 2. Há sinal explícito de busca na mensagem (inclui/startsWith para evitar falha de \b)
   const _msgLower = userMsg.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  const _SEARCH_TERMS = ["pesquise", "pesquisar", "busque", "buscar", "procure", "procurar", "mcp", "servidor mcp", "online", "internet", "web", "google", "noticia", "preco atual", "rate limit"];
+  const _SEARCH_TERMS = ["pesquise", "pesquisar", "busque", "buscar", "procure", "procurar", "mcp", "servidor mcp", "online", "internet", "web", "google", "noticia", "preco atual", "rate limit",
+    "descubra", "investigue", "como conectar", "como integrar", "como usar", "existe api", "existe mcp", "como fazer", "verifique", "confirme", "cheque"];
   const _hasSearchSignal = _SEARCH_TERMS.some((t) => _msgLower.includes(t));
   const _capabilityRequestedSearch = Boolean(capabilityResult.capabilities?.web_search);
+  // Se capability web_search ativa OU sinal na mensagem → sempre busca
   const _needsSearchEngine = (_hasSearchSignal || _capabilityRequestedSearch) && !_capabilityWebSearchAlreadyRan && !_isIdentityQuery;
 
   const _t52 = Date.now();

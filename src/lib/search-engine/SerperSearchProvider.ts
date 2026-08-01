@@ -27,12 +27,14 @@ export class SerperSearchProvider implements SearchProvider {
   readonly name = "Pesquisa Web (Serper)";
 
   canHandle(query: string): number {
+    // Serper é o provider de busca web padrão — sempre disponível (0.2 base).
+    // Score sobe para 0.9 quando há palavra-chave explícita de busca.
     const lower = query.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     const normalizedKeywords = WEB_SEARCH_KEYWORDS.map((k) =>
       k.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     );
     const matched = normalizedKeywords.some((k) => lower.includes(k));
-    return matched ? 0.75 : 0;
+    return matched ? 0.9 : 0.2;
   }
 
   async search(query: string, options?: SearchOptions): Promise<SearchResult> {
@@ -56,7 +58,9 @@ export class SerperSearchProvider implements SearchProvider {
         return { success: true, confidence: 0, items: [], provider: this.id, durationMs: Date.now() - t0 };
       }
 
-      const confidence = Math.min(0.5 + rawItems.length * 0.05, 0.85);
+      // Serper sempre retorna resultados reais do Google — confidence mínimo de 0.75
+      // para garantir que o SearchEngine marque resolved=true e use os dados
+      const confidence = Math.max(0.75, Math.min(0.5 + rawItems.length * 0.05, 0.95));
       return { success: true, confidence, items: rawItems, provider: this.id, durationMs: Date.now() - t0 };
     } catch (err) {
       return {
