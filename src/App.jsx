@@ -147,7 +147,8 @@ const SprintP5Page = lazy(() => import('@/pages/SprintP5Page'));
 const SprintP6Page = lazy(() => import('@/pages/SprintP6Page'));
 const SprintP7Page = lazy(() => import('@/pages/SprintP7Page'));
 const SprintP8Page = lazy(() => import('@/pages/SprintP8Page'));
-const SprintP9Page = lazy(() => import('@/pages/SprintP9Page'));
+const SprintP9Page  = lazy(() => import('@/pages/SprintP9Page'));
+const SprintP10Page = lazy(() => import('@/pages/SprintP10Page'));
 
 const AuthenticatedApp = () => {
   console.log('[RENDER] AuthenticatedApp');
@@ -313,7 +314,8 @@ const AuthenticatedApp = () => {
           <Route path="/sprint-p6" element={<SprintP6Page />} />
           <Route path="/sprint-p7" element={<SprintP7Page />} />
           <Route path="/sprint-p8" element={<SprintP8Page />} />
-          <Route path="/sprint-p9" element={<SprintP9Page />} />
+          <Route path="/sprint-p9"  element={<SprintP9Page />} />
+          <Route path="/sprint-p10" element={<SprintP10Page />} />
         </Route>
       </Route>
       <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />
