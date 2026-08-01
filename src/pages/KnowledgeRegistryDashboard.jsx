@@ -65,11 +65,22 @@ export default function KnowledgeRegistryDashboard() {
       const refuted   = obs.filter(o => o.is_refuted).length;
       const byNature  = { Evidence: 0, Inference: 0, Hypothesis: 0 };
       const byScope   = {};
+      const byPayload = {};
+      const conflicts = obs.filter(o => o.payload_type === "conflict_alert" && !o.is_refuted).length;
       for (const o of obs) {
         byNature[o.nature] = (byNature[o.nature] ?? 0) + 1;
         byScope[o.context_scope] = (byScope[o.context_scope] ?? 0) + 1;
+        byPayload[o.payload_type] = (byPayload[o.payload_type] ?? 0) + 1;
       }
-      setMetrics({ total, active: total - refuted, refuted, byNature, byScope });
+
+      // Circuit Breaker metrics (in-memory — import dinâmico)
+      let breakerMetrics = null;
+      try {
+        const { registryCircuitBreaker } = await import("@/lib/knowledge-registry/RegistryCircuitBreaker");
+        breakerMetrics = registryCircuitBreaker.getMetrics();
+      } catch { /* ignore */ }
+
+      setMetrics({ total, active: total - refuted, refuted, conflicts, byNature, byScope, byPayload, breakerMetrics });
     } catch (e) {
       console.error(e);
     } finally {
@@ -116,26 +127,67 @@ export default function KnowledgeRegistryDashboard() {
             <MetricCard label="Total Observações" value={metrics.total} />
             <MetricCard label="Ativas" value={metrics.active} sub="is_refuted=false" />
             <MetricCard label="Refutadas" value={metrics.refuted} sub="is_refuted=true" />
-            <MetricCard
-              label="Por Nature"
-              value={`${metrics.byNature.Evidence}E · ${metrics.byNature.Inference}I · ${metrics.byNature.Hypothesis}H`}
-            />
+            <MetricCard label="Conflitos Ativos" value={metrics.conflicts ?? 0} sub="conflict_alert não resolvidos" />
           </div>
         )}
 
-        {/* Por Scope */}
-        {metrics?.byScope && Object.keys(metrics.byScope).length > 0 && (
+        {/* Circuit Breaker */}
+        {metrics?.breakerMetrics && (
           <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
-            <div className="text-zinc-400 text-xs mb-3 uppercase tracking-wider">Por Scope</div>
-            <div className="flex flex-wrap gap-2">
-              {Object.entries(metrics.byScope).map(([scope, count]) => (
-                <span key={scope} className={`text-sm font-mono ${SCOPE_COLORS[scope] ?? "text-zinc-300"}`}>
-                  {scope}: <span className="font-bold">{count}</span>
+            <div className="text-zinc-400 text-xs mb-2 uppercase tracking-wider flex items-center gap-2">
+              <span className={`w-2 h-2 rounded-full ${metrics.breakerMetrics.totalTripped > 0 ? "bg-amber-500" : "bg-emerald-500"}`} />
+              Circuit Breaker — CRS-01 §5.1
+            </div>
+            <div className="flex gap-6 text-sm">
+              <span className="text-zinc-400">Objetos monitorados: <span className="text-white font-mono">{metrics.breakerMetrics.trackedObjects}</span></span>
+              <span className="text-zinc-400">Trips: <span className={`font-mono ${metrics.breakerMetrics.totalTripped > 0 ? "text-amber-400" : "text-emerald-400"}`}>{metrics.breakerMetrics.totalTripped}</span></span>
+              <span className="text-zinc-400">Bloqueadas: <span className="text-red-400 font-mono">{metrics.breakerMetrics.totalBlocked}</span></span>
+              <span className="text-zinc-500 text-xs self-center">janela {metrics.breakerMetrics.config.WINDOW_MS / 1000}s · max {metrics.breakerMetrics.config.MAX_WRITES} escritas</span>
+            </div>
+          </div>
+        )}
+
+        {/* Nature breakdown */}
+        {metrics && (
+          <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
+            <div className="text-zinc-400 text-xs mb-3 uppercase tracking-wider">Por Nature</div>
+            <div className="flex gap-4">
+              {Object.entries(metrics.byNature).map(([n, c]) => (
+                <span key={n} className={`text-sm px-3 py-1 rounded border ${NATURE_COLORS[n] ?? ""}`}>
+                  {n}: <span className="font-bold font-mono">{c}</span>
                 </span>
               ))}
             </div>
           </div>
         )}
+
+        {/* Por Scope + Payload */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {metrics?.byScope && Object.keys(metrics.byScope).length > 0 && (
+            <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
+              <div className="text-zinc-400 text-xs mb-3 uppercase tracking-wider">Por Scope (contextToken)</div>
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(metrics.byScope).map(([scope, count]) => (
+                  <span key={scope} className={`text-sm font-mono ${SCOPE_COLORS[scope] ?? "text-zinc-300"}`}>
+                    {scope}: <span className="font-bold">{count}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          {metrics?.byPayload && Object.keys(metrics.byPayload).length > 0 && (
+            <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
+              <div className="text-zinc-400 text-xs mb-3 uppercase tracking-wider">Por PayloadType</div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                {Object.entries(metrics.byPayload).map(([pt, count]) => (
+                  <span key={pt} className="text-xs font-mono text-zinc-400">
+                    {pt}: <span className="text-zinc-200 font-bold">{count}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Filtros */}
         <div className="flex gap-2 flex-wrap">

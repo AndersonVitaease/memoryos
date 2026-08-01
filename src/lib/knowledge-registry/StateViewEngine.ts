@@ -25,6 +25,12 @@ import type {
   StateViewFeatureFlags,
 } from "./StateViewTypes";
 import type { ObservationNature, PayloadType, ContextScope } from "./KnowledgeRegistryTypes";
+import {
+  makeSessionToken,
+  makeProjectToken,
+  isScopeAuthorized,
+  type StateViewContextToken,
+} from "./StateViewContextToken";
 
 // ── Feature flags (alterar aqui para ativar/desativar) ────────────────────────
 
@@ -55,12 +61,18 @@ class StateViewEngineClass {
     sessionId: string,
     projectId?: string | null,
     limitDays = 30,
+    contextToken?: StateViewContextToken,
   ): Promise<StateViewQueryResult> {
     const t0 = Date.now();
 
     if (!PHASE2_FLAGS.readEnabled) {
       return this._empty(sessionId, t0, "feature_flag_disabled");
     }
+
+    // Cria contextToken se não fornecido (CRS-01 §2.2)
+    const token = contextToken ?? (
+      projectId ? makeProjectToken(sessionId, projectId) : makeSessionToken(sessionId)
+    );
 
     try {
       // Janela temporal: observacoes dos ultimos N dias
@@ -71,16 +83,20 @@ class StateViewEngineClass {
       const rawObs = await base44.entities.KnowledgeObservation.filter({
         session_id:  sessionId,
         is_refuted:  false,
-        // Base44 filter: created_date >= cutoff
         created_date: { $gte: cutoffDate },
       }, "-created_date", 200);
 
-      if (!rawObs || rawObs.length === 0) {
+      // Filtra por scopes autorizados pelo contextToken (CRS-01 §2.2)
+      const authorizedObs = (rawObs ?? []).filter(
+        (o) => isScopeAuthorized(token, (o.context_scope as ContextScope) ?? "session")
+      );
+
+      if (!authorizedObs || authorizedObs.length === 0) {
         return this._empty(sessionId, t0, "no_observations");
       }
 
       // Agrupa por targetObjectId
-      const grouped = this._groupByObject(rawObs);
+      const grouped = this._groupByObject(authorizedObs);
       const objects = this._buildObjectStates(grouped);
 
       const llmContext = PHASE2_FLAGS.injectEnabled
