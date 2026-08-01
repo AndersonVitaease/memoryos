@@ -58,6 +58,16 @@ export async function runBackgroundProcessing(
   }
   // ── [END KR-01] ──────────────────────────────────────────────────────────
 
+  // ── [KR-03] Cognitive Pruning — fire-and-forget, a cada 10 msgs ─────────
+  const totalMessages = allMessages.length;
+  if (totalMessages > 0 && totalMessages % 10 === 0) {
+    try {
+      const { cognitivePruningService } = await import("@/lib/knowledge-registry/CognitivePruningService");
+      void cognitivePruningService.runForSession(session.id, session.project_id).catch(() => {});
+    } catch { /* nunca bloqueia */ }
+  }
+  // ── [END KR-03] ──────────────────────────────────────────────────────────
+
   // ── Batch processing (a cada 5 msgs do usuario) ──────────────────────────
   const userCount = allMessages.filter((m) => m.role === "user").length;
   if (userCount % 5 !== 0) return;
