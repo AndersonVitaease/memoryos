@@ -47,8 +47,9 @@ Sua missão: interpretar intenções humanas, preservar contexto, coordenar espe
 // 9000+ chars of context inflates the prompt to 20k+, slowing the LLM by ~1-2s.
 // The session summary already covers long-term context — recent structured memory
 // only needs the most relevant portion.
-const MAX_MEMORY_CONTEXT_CHARS = 4000;
-const MAX_SESSION_SUMMARY_CHARS = 600;
+const MAX_MEMORY_CONTEXT_CHARS = 3000;
+const MAX_SESSION_SUMMARY_CHARS = 500;
+const MAX_KFM_CONTEXT_CHARS = 800;
 
 export function buildReasoningContext({ userMsg, memory, skills, goal, historyText, totalMessages, capabilities, capabilityResults, needsMoreInfo, missingInfoHint, serviceInfo, kfmContext, memoryRetrievalFailed }) {
   const rawContext = memory.context;
@@ -89,12 +90,10 @@ export function buildReasoningContext({ userMsg, memory, skills, goal, historyTe
       (sourcesWsText ? `\n### Fontes consultadas\n${sourcesWsText}\n` : "") +
       (divText ? `\n### Divergências entre fontes\n${divText}\n` : "")
     );
-  } else {
-    capabilityBlocks.push(
-      `## PESQUISA WEB\n` +
-      `Nenhuma pesquisa foi executada nesta mensagem. Não afirme ter pesquisado ou verificado algo na internet agora.`
-    );
   }
+  // When no web search ran, we don't add a block — the system prompt already
+  // instructs the model never to claim it searched. Adding a "no search" block
+  // every message wastes ~200 chars and slightly inflates token count.
 
   if (capabilityResults?.calculation?.error) {
     capabilityBlocks.push(
@@ -164,6 +163,6 @@ ${goal.strategy}
 ${skills.length > 0 ? `- Especialistas: ${skills.map((s) => s.name).join(", ")}.` : ""}
 ${hasStructuredMemory ? `- Memória recuperada: ${sources.length} registros (${sourceTypes.join(", ")}).` : "- Sem memória estruturada para esta pergunta."}
 
-${context ? `## MEMÓRIA ESTRUTURADA\n${context}\n` : ""}${sessionSummary ? `## RESUMO DA CONVERSA\n${sessionSummary}\n` : ""}${historyText ? `## HISTÓRICO\n${historyText}\n` : ""}${kfmContext ? `## CONHECIMENTO FUNDIDO\n${kfmContext}\n` : ""}${serviceBlock ? `${serviceBlock}\n\n---\n` : ""}${needsMoreInfoBlock ? `${needsMoreInfoBlock}\n\n---\n` : ""}${capabilityBlocks.length > 0 ? `${capabilityBlocks.join("\n\n---\n\n")}\n\n---\n` : ""}## MENSAGEM DO USUÁRIO
+${context ? `## MEMÓRIA ESTRUTURADA\n${context}\n` : ""}${sessionSummary ? `## RESUMO DA CONVERSA\n${sessionSummary}\n` : ""}${historyText ? `## HISTÓRICO\n${historyText}\n` : ""}${kfmContext ? `## CONHECIMENTO FUNDIDO\n${kfmContext.length > MAX_KFM_CONTEXT_CHARS ? kfmContext.slice(0, MAX_KFM_CONTEXT_CHARS) + "..." : kfmContext}\n` : ""}${serviceBlock ? `${serviceBlock}\n\n---\n` : ""}${needsMoreInfoBlock ? `${needsMoreInfoBlock}\n\n---\n` : ""}${capabilityBlocks.length > 0 ? `${capabilityBlocks.join("\n\n---\n\n")}\n\n---\n` : ""}## MENSAGEM DO USUÁRIO
 ${userMsg}`;
 }
