@@ -33,16 +33,11 @@ const CAPABILITY_RULES = {
       "consulte a documentação", "veja se mudou", "verifique se",
       "notícias", "noticia", "legislação atualizada",
       "preço atual", "preços", "tendências", "tendencia", "fórum", "forum",
-      // FIX (auditoria cognição): "documentação" e "atualizado"/
-      // "atualização" sozinhas foram removidas — disparavam web_search
-      // em qualquer mensagem sobre o próprio código/projeto ("preciso
-      // escrever a documentação da API", "o arquivo já está
-      // atualizado"), fazendo o Orchestrator ativar pesquisa externa
-      // sem necessidade nenhuma. As frases mais específicas que já
-      // existiam ("consulte a documentação", "legislação atualizada")
-      // continuam cobrindo os casos em que o usuário realmente quer
-      // que algo seja checado/pesquisado por fora.
       "compare com sites", "pesquise na internet", "busque online", "online",
+      // Perguntas de integração/conexão entre serviços externos
+      "como conectar", "como integrar", "como usar", "como acessar",
+      "tem api", "tem uma api", "possui api", "api disponível", "api publica",
+      "documentação oficial", "docs oficiais", "site oficial",
     ],
     // Nunca ativar web search se for pergunta que a memória pode responder
     negators: [],
