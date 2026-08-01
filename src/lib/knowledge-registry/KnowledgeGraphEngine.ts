@@ -1,19 +1,24 @@
 /**
  * KnowledgeGraphEngine.ts — P1: KnowledgeGraphEngine (produção)
  *
- * Engine de grafo real sobre as KnowledgeObservations do Registry.
- * Constrói um grafo de entidades/relacionamentos consultável pelo Planner.
+ * Engine de grafo DINÂMICO sobre as KnowledgeObservations do Registry.
+ * (Distinto do KnowledgeGraphStore em src/lib/project-knowledge/ que é
+ * um grafo ESTÁTICO do código-fonte / arquitetura.)
  *
  * Responsabilidades:
- *   1. Ler KnowledgeObservations do banco (via KnowledgeRegistry)
+ *   1. Ler KnowledgeObservations do banco (via base44)
  *   2. Construir nós (KGNode) e arestas (KGEdge) a partir dos payloads
- *   3. Expor API de consulta: findNeighbors, findPath, query
+ *   3. Expor API de consulta: queryAll, queryByType, findNeighbors, formatForPrompt
  *   4. Manter índice in-memory atualizado incrementalmente (append-only)
  *
  * GARANTIAS:
  *   - Nunca lança exceção para o caller
  *   - Singleton HMR-safe
  *   - Read-only para o Planner (grafo imutável após build)
+ *
+ * LOCALIZAÇÃO: src/lib/knowledge-registry/ — junto aos demais módulos do Registry.
+ * NÃO confundir com KnowledgeGraphStore (src/lib/project-knowledge/) que indexa
+ * entidades do código-fonte via RepositoryKnowledgeBuilder.
  */
 
 import { base44 } from "@/api/base44Client";
@@ -235,7 +240,7 @@ class KnowledgeGraphEngineClass {
       .slice(0, maxNodes);
 
     const lines = topNodes.map((n) => `[${n.type}] ${n.label} (conf=${Math.round(n.confidence * 100)}%)`);
-    return `KNOWLEDGE GRAPH (${graph.nodes.size} nos, ${graph.edges.size} arestas):\n${lines.join("\n")}`;
+    return `KNOWLEDGE GRAPH DINAMICO (${graph.nodes.size} nos, ${graph.edges.size} arestas):\n${lines.join("\n")}`;
   }
 
   getMetrics() {
