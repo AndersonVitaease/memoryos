@@ -352,10 +352,14 @@ ${fullText}`;
     (capabilityResult.capabilityResults.webSearch.facts?.length > 0)
   );
 
-  // ETAPA 5.2 só roda se houver sinal EXPLÍCITO de busca externa na mensagem.
-  // Palavras genéricas de conversa nunca justificam chamar providers externos.
-  const _EXPLICIT_SEARCH_SIGNAL = /\b(pesquise|pesquisar|busque|buscar|procure|procurar|mcp|servidor mcp|existe.*servidor|verifique se existe|confirma se existe|tem.*servidor|online|internet|web|google|notícia|noticia|preço atual|rate.?limit)\b/i;
-  const _needsSearchEngine = _EXPLICIT_SEARCH_SIGNAL.test(userMsg) && !_capabilityWebSearchAlreadyRan && !_isIdentityQuery;
+  // ETAPA 5.2 roda se:
+  // 1. A ETAPA 4 (capabilityDetector) já decidiu que web_search é necessário, OU
+  // 2. Há sinal explícito de busca na mensagem (inclui/startsWith para evitar falha de \b)
+  const _msgLower = userMsg.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const _SEARCH_TERMS = ["pesquise", "pesquisar", "busque", "buscar", "procure", "procurar", "mcp", "servidor mcp", "online", "internet", "web", "google", "noticia", "preco atual", "rate limit"];
+  const _hasSearchSignal = _SEARCH_TERMS.some((t) => _msgLower.includes(t));
+  const _capabilityRequestedSearch = Boolean(capabilityResult.capabilities?.web_search);
+  const _needsSearchEngine = (_hasSearchSignal || _capabilityRequestedSearch) && !_capabilityWebSearchAlreadyRan && !_isIdentityQuery;
 
   const _t52 = Date.now();
   if (!_needsSearchEngine) {
