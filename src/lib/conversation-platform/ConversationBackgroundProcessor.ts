@@ -62,7 +62,7 @@ export async function runBackgroundProcessing(
   const _userMsgsForKG = allMessages.filter((m) => m.role === "user").length;
   if (_userMsgsForKG > 0 && _userMsgsForKG % 5 === 0) {
     try {
-      const { knowledgeGraphEngine } = await import("@/lib/knowledge-graph/KnowledgeGraphEngine");
+      const { knowledgeGraphEngine } = await import("@/lib/knowledge-registry/KnowledgeGraphEngine");
       void knowledgeGraphEngine.buildForSession(session.id, session.project_id).then((r) => {
         if (r.ok) console.debug(`[KGE] Grafo atualizado: ${r.nodeCount} nós, ${r.edgeCount} arestas em ${r.durationMs}ms`);
       }).catch(() => {});
