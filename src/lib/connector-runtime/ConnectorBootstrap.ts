@@ -93,6 +93,19 @@ const OFFICIAL_FACTORIES: ConnectorFactory[] = [
     const { MicrosoftGraphConnector } = await import("./connectors/MicrosoftGraphConnector");
     return new MicrosoftGraphConnector();
   },
+  // ── P4 Official Connectors ────────────────────────────────────────────────
+  async () => {
+    const { EmailConnector } = await import("./connectors/EmailConnector");
+    return new EmailConnector();
+  },
+  async () => {
+    const { FileSystemConnector } = await import("./connectors/FileSystemConnector");
+    return new FileSystemConnector();
+  },
+  async () => {
+    const { DatabaseConnector } = await import("./connectors/DatabaseConnector");
+    return new DatabaseConnector();
+  },
 ];
 
 // ── ConnectorBootstrap ────────────────────────────────────────────────────────
