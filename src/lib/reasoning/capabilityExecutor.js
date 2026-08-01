@@ -58,7 +58,12 @@ async function executeWebSearch(query, conversationContext = "") {
     context: { sessionSummary: conversationContext },
   });
 
-  const items = outcome.bestResult?.items ?? [];
+  // Usa bestResult se disponível, senão tenta qualquer resultado com itens
+  const bestWithItems = outcome.bestResult?.items?.length > 0
+    ? outcome.bestResult
+    : outcome.allResults?.find((r) => r.items?.length > 0) ?? null;
+
+  const items = bestWithItems?.items ?? [];
   if (items.length === 0) {
     return { facts: [], sources: [], divergences: [] };
   }

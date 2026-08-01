@@ -420,12 +420,17 @@ ${fullText}`;
       return { response, plan, sources };
     }
 
-    if (searchOutcome.bestResult && searchOutcome.bestResult.items?.length > 0) {
-      const snippet = formatSearchResultAsResponse(searchOutcome.bestResult);
+    // Fallback: tenta qualquer provider que retornou itens, mesmo sem confidence alto
+    const _anyResultWithItems = !searchOutcome.bestResult?.items?.length
+      ? searchOutcome.allResults?.find((r) => r.success && r.items?.length > 0) ?? null
+      : searchOutcome.bestResult;
+
+    if (_anyResultWithItems && _anyResultWithItems.items?.length > 0) {
+      const snippet = formatSearchResultAsResponse(_anyResultWithItems);
       _searchEngineGroundingNote =
         `JÁ PESQUISAMOS ISSO ANTES DE VOCÊ (fonte real, verificada — não pesquise de novo nem invente dados adicionais):\n${snippet}\n` +
         `Se precisar responder sobre este assunto, use SÓ o que está listado acima. Não invente nomes de repositórios, produtos ou serviços que não estejam nessa lista.`;
-      _searchEngineGroundingText = (searchOutcome.bestResult.items ?? [])
+      _searchEngineGroundingText = (_anyResultWithItems.items ?? [])
         .map((it) => `${it.title ?? ""} ${it.snippet ?? ""} ${it.url ?? ""}`)
         .join(" \n ")
         .toLowerCase();
