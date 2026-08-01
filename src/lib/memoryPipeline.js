@@ -70,6 +70,8 @@ function quickIntentGuess(question) {
     { re: /\b(minhas?|quais)\s+decis(a|õ)(o|e)s?\b/, type: "decisions" },
     { re: /\b(meus?|minhas?|quais)\s+documentos?\b/, type: "documents" },
     { re: /\b(meus?|minhas?|quais)\s+assuntos?\b/, type: "topics" },
+    // Perguntas de identidade/sistema — não precisam consultar nenhuma entidade do banco
+    { re: /\b(qual.*seu\s+nome|como\s+(te\s+)?chama|quem\s+[eé]\s+(voc[eê]|vc)|o\s+que\s+[eé]\s+voc[eê]|me\s+(apresente|fale\s+sobre\s+voc[eê]))\b/, type: "_identity" },
   ];
 
   for (const p of patterns) {
@@ -149,6 +151,14 @@ function filterByKeywords(records, keywords, fields) {
 async function queryEntities(intent, sessionId, projectId) {
   const { query_types } = intent;
   const queries = {};
+
+  // Pergunta de identidade/sistema — só precisa do resumo da sessão, sem queries extras
+  if (query_types.includes("_identity")) {
+    const session = sessionId
+      ? await base44.entities.ChatSession.filter({ id: sessionId }, "-updated_date", 1)
+      : [];
+    return { sessionSummary: session[0]?.summary || "" };
+  }
 
   // Sempre busca a sessão atual (para o resumo)
   queries._session = sessionId

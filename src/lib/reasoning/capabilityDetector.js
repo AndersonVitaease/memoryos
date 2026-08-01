@@ -242,19 +242,24 @@ export async function detectCapabilities(message, memory = {}, goal = {}) {
   const memoryInsufficient = !hasMemoryForTopic && (goal.id === "locate_info" || goal.id === "generate_knowledge");
 
   let semanticReason = "";
-  // FIX (achado real em producao): a condicao so pulava a checagem semantica
-  // quando ja se sabia com certeza que PRECISAVA buscar (memoryInsufficient).
-  // Nao pulava quando ja se sabia com razoavel confianca que NAO precisava
-  // (memoria com bastante contexto — hasMemoryForTopic). Isso fazia a
-  // maioria das mensagens comuns (sem palavra de busca, com memoria ok)
-  // pagar uma chamada de LLM inteira a toa — 11+ segundos observados em
-  // "quais sao minhas tarefas pendentes?", pergunta que obviamente nao
-  // precisa de busca externa.
+  // FIX (performance): semanticWebSearchCheck só roda se:
+  // 1. Não foi explicitamente solicitado por keyword
+  // 2. Não há memória suficiente para o tópico
+  // 3. A mensagem tem sinais de que realmente pode precisar de busca externa
+  //    (verbo de verificação, referência a entidade externa, pergunta factual)
+  // Perguntas simples/conversacionais/identidade nunca precisam de busca.
+  const _CONVERSATIONAL_SKIP = /^(qual|quem|como|o que|me diga|me fale|você|voce|vc|seu|sua|teu|tua)\b/i;
+  const _hasExternalSignal = /\b(existe|existe.*servidor|disponível|disponivel|lançou|lançaram|lancou|saiu|mudou|está.*funcionando|funciona.*ainda|novo.*versão|nova.*versao|preço.*atual|rate.?limit|limite.*api)\b/i;
   if (!explicitlyRequested && !memoryInsufficient && !hasMemoryForTopic) {
-    const semantic = await semanticWebSearchCheck(message);
-    if (semantic.needed) {
-      explicitlyRequested = true;
-      semanticReason = semantic.reason;
+    // Pula a chamada LLM para perguntas conversacionais simples
+    const isConversational = _CONVERSATIONAL_SKIP.test(message.trim());
+    const hasExternalSignal = _hasExternalSignal.test(message);
+    if (!isConversational || hasExternalSignal) {
+      const semantic = await semanticWebSearchCheck(message);
+      if (semantic.needed) {
+        explicitlyRequested = true;
+        semanticReason = semantic.reason;
+      }
     }
   }
 
