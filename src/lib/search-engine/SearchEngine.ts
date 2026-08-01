@@ -8,12 +8,12 @@
 
 import type { SearchProvider, SearchResult, SearchOptions } from "./SearchProviderTypes";
 
-const MIN_CONFIDENCE_TO_SKIP_LLM = 0.6;
+const MIN_CONFIDENCE_TO_SKIP_LLM = 0.5;
 const MAX_PROVIDERS_PER_QUERY = 3;
 const MIN_CANHANDLE_SCORE = 0.15;
 // Max time to wait for any single provider before giving up the whole search.
 // Prevents slow external APIs (mcp_registry, etc.) from blocking the LLM step.
-const SEARCH_ENGINE_TIMEOUT_MS = 800;
+const SEARCH_ENGINE_TIMEOUT_MS = 3000;
 
 export interface SearchEngineOutcome {
   resolved: boolean;
