@@ -22,9 +22,9 @@ Implementação completa de todos os engines do Core.
 - [x] ExecutionEngine
 - [x] JourneyManager
 - [x] KnowledgeGraphEngine
-- [ ] DecisionEngine (produção)
-- [ ] PlanningEngine (produção)
-- [ ] ReasoningEngine (produção)
+- [x] DecisionEngine (produção) — ResponseArbiter + ConversationCognitiveGateway
+- [x] PlanningEngine (produção) — ConversationPlanningEngine (Sprint E-02.2A)
+- [x] ReasoningEngine (produção) — memoryReasoningPlanner (8 etapas)
 
 ### P2 — Runtime
 Implementação completa do Runtime conforme MRS.
