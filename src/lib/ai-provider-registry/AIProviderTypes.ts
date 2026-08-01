@@ -27,6 +27,8 @@ export interface AIProviderInvokeOptions {
   model?: string;
   maxTokens?: number;
   responseJsonSchema?: Record<string, unknown>;
+  /** System prompt separado — permite prompt caching no provider. */
+  systemPrompt?: string;
 }
 
 export interface AIProvider {
