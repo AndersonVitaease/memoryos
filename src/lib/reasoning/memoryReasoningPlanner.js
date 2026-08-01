@@ -7,6 +7,15 @@ import { synthesizeResponse } from "@/lib/reasoning/memorySynthesizer";
 import { orchestrateCapabilities } from "@/lib/reasoning/capabilityOrchestrator";
 import { SpecialistRouter } from "@/lib/routing/specialistRouter";
 import { formatMacrForChat } from "@/lib/reasoning/macrFormatterV4";
+import { detectService } from "@/lib/reasoning/serviceDetector";
+import { getConnectorsForService } from "@/lib/connectors/registry";
+import { pickModelForMessage } from "@/lib/openrouter/categoryRouter";
+import { OpenRouterConnector } from "@/lib/connector-runtime/connectors/OpenRouterConnector";
+import { detectFullDocumentRequest, findMentionedDocument } from "@/lib/document-processing/FullDocumentContentDetector";
+import { ensureProvidersRegistered } from "@/lib/search-engine/registerProviders";
+import { searchEngine } from "@/lib/search-engine/SearchEngine";
+import { formatSearchResultAsResponse } from "@/lib/search-engine/SearchResultFormatter";
+import { ensureAIProvidersRegistered, aiProviderRegistry } from "@/lib/ai-provider-registry/AIProviderRegistry";
 
 /**
  * Memory Reasoning Planner (MRP)
@@ -65,13 +74,8 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
   // codigo agora sao respondidos sem gastar tempo com memoria e
   // deteccao de capacidades que vao ser descartadas de qualquer jeito.
   try {
-    if (_isIdentityQuery) throw new Error("identity-bypass"); // pula ETAPA 0 inteira
-    const { detectService } = await import("@/lib/reasoning/serviceDetector");
-    const { getConnectorsForService } = await import("@/lib/connectors/registry");
-    const _earlyService = detectService(userMsg);
+    const _earlyService = _isIdentityQuery ? null : detectService(userMsg);
     if (_earlyService && getConnectorsForService(_earlyService.id).length > 0) {
-      const { pickModelForMessage } = await import("@/lib/openrouter/categoryRouter");
-      const { OpenRouterConnector } = await import("@/lib/connector-runtime/connectors/OpenRouterConnector");
       const { model } = pickModelForMessage(userMsg);
       const connector = new OpenRouterConnector();
       const result = await connector.execute(
@@ -104,7 +108,9 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
       }
     }
   } catch (err) {
-    console.error(`[DIAG][AI-SERVICE-DIRECT-EARLY] FALHOU:`, err?.message || err);
+    if (err?.message !== "identity-bypass") {
+      console.error(`[DIAG][AI-SERVICE-DIRECT-EARLY] FALHOU:`, err?.message || err);
+    }
     // Cai pro fluxo normal abaixo — nunca trava a resposta por causa disso.
   }
 
@@ -118,9 +124,6 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
   // passar pela LLM — mais completo (nada e perdido/resumido pela IA) e
   // mais rapido (sem chamada de LLM nem risco de prompt gigante).
   try {
-    const { detectFullDocumentRequest, findMentionedDocument } = await import(
-      "@/lib/document-processing/FullDocumentContentDetector"
-    );
     if (detectFullDocumentRequest(userMsg)) {
       const recentDocs = await base44.entities.Document.filter(
         { session_id: session.id, processing_status: "completed" },
@@ -306,13 +309,10 @@ ${fullText}`;
   );
 
   const _t52 = Date.now();
-  if (_capabilityWebSearchAlreadyRan) {
-    console.log("[SearchEngine] Pulado — ETAPA 4 (capability web_search) ja pesquisou essa mensagem.");
+  if (_capabilityWebSearchAlreadyRan || _isIdentityQuery) {
+    if (_capabilityWebSearchAlreadyRan) console.log("[SearchEngine] Pulado — ETAPA 4 (capability web_search) ja pesquisou essa mensagem.");
   } else {
   try {
-    const { ensureProvidersRegistered } = await import("@/lib/search-engine/registerProviders");
-    const { searchEngine } = await import("@/lib/search-engine/SearchEngine");
-    const { formatSearchResultAsResponse } = await import("@/lib/search-engine/SearchResultFormatter");
     ensureProvidersRegistered();
 
     const searchOutcome = await searchEngine.search(userMsg, {
@@ -526,7 +526,6 @@ Se for, extraia "target" (nome do arquivo/pasta sem verbos de comando).`,
   // de prompt no futuro). Se o provider preferido falhar por qualquer
   // motivo, cai pro InvokeLLM do Base44 direto — nunca deixa a mensagem
   // sem resposta por causa de uma falha de provider especifico.
-  const { ensureAIProvidersRegistered, aiProviderRegistry } = await import("@/lib/ai-provider-registry/AIProviderRegistry");
   ensureAIProvidersRegistered();
   const _aiProvider = await aiProviderRegistry.selectProvider("text-generation");
   const _systemPrompt = buildSystemPrompt();
