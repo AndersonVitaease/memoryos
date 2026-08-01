@@ -285,7 +285,12 @@ class ConversationPipeline {
           conversationStore.setStatus("idle");
           conversationStore.setReasoningPhase("idle");
           setStep("finalize", "done");
-          this._backgroundProcessing(session, [...messages, savedUser]).catch(() => {});
+          this._backgroundProcessing(session, [...messages, savedUser], {
+            executionId:  executionId,
+            userMessage:  userMessage,
+            producerPath: "multi_intent",
+            finalResponse: outcome.aggregatedResponse,
+          }).catch(() => {});
           return;
         }
       }
@@ -1136,7 +1141,16 @@ class ConversationPipeline {
     setStep("finalize", "done");
 
     // ── 7. Background batch processing ──────────────────────────────────
-    this._backgroundProcessing(session, [...messages, savedUser]).catch(() => {});
+    this._backgroundProcessing(session, [...messages, savedUser], {
+      executionId:     executionId,
+      userMessage:     userMessage,
+      goalType:        goalBridgeResult?.goal?.type ?? null,
+      goalValid:       goalBridgeResult?.goal?.valid,
+      goalConfidence:  goalBridgeResult?.goal?.confidence,
+      finalResponse:   finalResponse,
+      producerPath:    arbResult?.selected?.source ?? "unknown",
+      durationMs:      Date.now() - t0synth,
+    }).catch(() => {});
 
     } catch (err) {
       console.error('[IA-044][PIPELINE-CATCH]', { message: err?.message, stack: err?.stack, name: err?.name });
@@ -1177,25 +1191,16 @@ class ConversationPipeline {
   }
 
   // ── Background Processing ─────────────────────────────────────────────────
+  // Delegado para ConversationBackgroundProcessor (extraido para controle de tamanho).
 
-  private async _backgroundProcessing(
-    session: { id: string; title: string; project_id?: string },
-    allMessages: { role: string; content: string }[]
+  private _backgroundProcessing(
+    session:     { id: string; title: string; project_id?: string },
+    allMessages: { role: string; content: string }[],
+    obsCtx?:     { executionId: string; userMessage: string; goalType?: string | null; goalValid?: boolean; goalConfidence?: number; finalResponse?: string | null; producerPath?: string; durationMs?: number },
   ): Promise<void> {
-    const userCount = allMessages.filter((m) => m.role === "user").length;
-    if (userCount % 5 !== 0) return;
-    try {
-      const { processConversationBatch } = await import("@/lib/conversationEngine");
-      const knowledge = await processConversationBatch(session, allMessages, session.project_id);
-      if (knowledge?.summary) {
-        const { sessionManager } = await import("./ConversationSessionManager");
-        await sessionManager.syncSessionMetadata(session.id, { summary: knowledge.summary });
-      }
-      if (session.title === "Nova conversa" && allMessages.length > 0) {
-        const { sessionManager } = await import("./ConversationSessionManager");
-        await sessionManager.autoTitleIfNeeded(allMessages[0].content);
-      }
-    } catch { /* background — never block UI */ }
+    return import("./ConversationBackgroundProcessor").then(({ runBackgroundProcessing }) =>
+      runBackgroundProcessing(session, allMessages, obsCtx)
+    ).catch(() => { /* background never blocks */ });
   }
 
   // ── Cancel ────────────────────────────────────────────────────────────────
