@@ -241,10 +241,20 @@ ${fullText}`;
   console.log(`[DIAG][ReasoningPlanner] ETAPA 4 (orchestrateCapabilities) levou ${Date.now() - _t4}ms`);
 
   // === ETAPA 5: CONTEXT BUILDER ===
-  const _recentHistory = historyMessages.slice(-20);
-  const historyText = _recentHistory
+  // Limita o histórico às últimas 8 mensagens para evitar prompts massivos.
+  // O resumo da sessão (sessionSummary) já cobre o contexto de longo prazo —
+  // não é necessário carregar mensagens antigas no prompt de cada resposta.
+  const _MAX_HISTORY_MESSAGES = 8;
+  const _MAX_HISTORY_CHARS = 6000;
+  const _recentHistory = historyMessages.slice(-_MAX_HISTORY_MESSAGES);
+  let historyText = _recentHistory
     .map((m) => `${m.role === "user" ? "Usuário" : "Assistente"}: ${m.content}`)
     .join("\n\n");
+  // Segunda camada: se ainda ultrapassar o limite de chars, corta pelo início
+  if (historyText.length > _MAX_HISTORY_CHARS) {
+    historyText = "...(histórico anterior omitido para otimizar resposta)...\n\n" +
+      historyText.slice(-_MAX_HISTORY_CHARS);
+  }
   const totalMessages = historyMessages.length;
   console.log(`[DIAG][PromptBreakdown] historyText: ${historyText.length} chars (${_recentHistory.length} mensagens) | memory.context: ${(memory.context || "").length} chars | sessionSummary: ${(memory.sessionSummary || "").length} chars`);
 
