@@ -50,6 +50,13 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
   const startTime = Date.now();
 
   const _t0 = Date.now();
+  // === PRÉ-ETAPA 0: BYPASS PARA PERGUNTAS CONVERSACIONAIS SIMPLES ===
+  // Perguntas de identidade/saudação nunca precisam de service detection, memory ou capacidades.
+  // Detectar aqui evita todos os imports dinâmicos e chamadas de rede desnecessárias.
+  const _IDENTITY_BYPASS = /^(qual|quem|como|o que|me diga|me fale|oi|olá|ola|bom dia|boa tarde|boa noite)\b.{0,60}(nome|você|voce|vc|você é|voce é|se chama|és|é você)\b/i;
+  const _isIdentityQuery = _IDENTITY_BYPASS.test(userMsg.trim()) || 
+    /^(qual (é |e )?(o |seu |o seu )?(nome|propósito|objetivo|função|funcao))/i.test(userMsg.trim());
+
   // === ETAPA 0: DESVIO PRECOCE PARA SERVICO DE IA ===
   // FIX (otimizacao real, medida em producao — 3+ segundos economizados):
   // movido de depois da memoria/capacidades (ETAPA 4) pra antes de tudo.
@@ -58,6 +65,7 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
   // codigo agora sao respondidos sem gastar tempo com memoria e
   // deteccao de capacidades que vao ser descartadas de qualquer jeito.
   try {
+    if (_isIdentityQuery) throw new Error("identity-bypass"); // pula ETAPA 0 inteira
     const { detectService } = await import("@/lib/reasoning/serviceDetector");
     const { getConnectorsForService } = await import("@/lib/connectors/registry");
     const _earlyService = detectService(userMsg);
