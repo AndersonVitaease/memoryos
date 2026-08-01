@@ -300,12 +300,20 @@ class ConversationPipeline {
 
     // ── 3. Build Context ─────────────────────────────────────────────────
     if (this._cancelled) return;
+
+    // Fast bypass: identity/greeting queries never need memory context.
+    const _IDENTITY_RE = /^(qual|quem|oi|olá|ola|bom dia|boa tarde|boa noite|como você|como voce|me diga|me fale)\b.{0,80}(nome|você|voce|vc|propósito|objetivo|funcao|função)?\b/i;
+    const _isIdentityMsg = _IDENTITY_RE.test(userMessage.trim()) ||
+      /^(qual (é |e )?(o |seu |o seu )?(nome|propósito|objetivo|função|funcao))/i.test(userMessage.trim());
+
     setStep("context", "running");
     conversationStore.setStatus("reasoning");
     setPhase("retrieving_memory");
     const t0ctx = Date.now();
 
-    const ctx = await buildConversationContext(session, [...messages, savedUser], setPhase);
+    const ctx = _isIdentityMsg
+      ? { entitiesContext: null, topicsContext: null }
+      : await buildConversationContext(session, [...messages, savedUser], setPhase);
     conversationMetrics.recordContextBuildMs(executionId, Date.now() - t0ctx);
 
     conversationStore.emit({
