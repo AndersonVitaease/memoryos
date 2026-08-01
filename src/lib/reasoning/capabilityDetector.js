@@ -247,20 +247,19 @@ export async function detectCapabilities(message, memory = {}, goal = {}) {
   const webMatch = matchKeywords(normalized, CAPABILITY_RULES.web_search.keywords);
   const hasMemoryForTopic = context && context.length > 100;
   let explicitlyRequested = webMatch.length > 0;
-  // Nunca ativar por memoryInsufficient para perguntas conversacionais/identidade
-  const _CONVERSATIONAL_MSG = /^(qual|quem|como|o que|me diga|me fale|você|voce|vc|seu|sua|oi|olá|ola|bom dia|boa)\b/i;
+  // Nunca ativar memoryInsufficient para perguntas de identidade/saudação puras
+  // BUG FIX: "como" foi removido — "Como conectar X?", "Como integrar Y?" são perguntas
+  // de pesquisa externa, não conversacionais. Só excluir saudações e pronomes pessoais.
+  const _CONVERSATIONAL_MSG = /^(qual|quem|o que|me diga|me fale|você|voce|vc|seu|sua|oi|olá|ola|bom dia|boa)\b/i;
   const _isConversationalMsg = _CONVERSATIONAL_MSG.test(message.trim());
   const memoryInsufficient = !hasMemoryForTopic && !_isConversationalMsg && (goal.id === "locate_info" || goal.id === "generate_knowledge");
 
   let semanticReason = "";
-  // FIX (performance): semanticWebSearchCheck só roda se:
-  // 1. Não foi explicitamente solicitado por keyword
-  // 2. Não há memória suficiente para o tópico
-  // 3. A mensagem tem sinais de que realmente pode precisar de busca externa
-  //    (verbo de verificação, referência a entidade externa, pergunta factual)
-  // Perguntas simples/conversacionais/identidade nunca precisam de busca.
-  const _CONVERSATIONAL_SKIP = /^(qual|quem|como|o que|me diga|me fale|você|voce|vc|seu|sua|teu|tua)\b/i;
-  const _hasExternalSignal = /\b(existe|existe.*servidor|disponível|disponivel|lançou|lançaram|lancou|saiu|mudou|está.*funcionando|funciona.*ainda|novo.*versão|nova.*versao|preço.*atual|rate.?limit|limite.*api)\b/i;
+  // BUG FIX: "como" removido do skip — "Como conectar", "Como fazer integração"
+  // precisam de busca externa e não devem pular o semanticWebSearchCheck.
+  const _CONVERSATIONAL_SKIP = /^(qual|quem|o que|me diga|me fale|você|voce|vc|seu|sua|teu|tua)\b/i;
+  // Expandido: agora também captura "higgsfield", "conectar", "integrar", nomes de serviços externos
+  const _hasExternalSignal = /\b(existe|disponivel|lancou|lançou|saiu|mudou|funcionando|funciona.*ainda|novo.*versao|nova.*versao|preco.*atual|rate.?limit|limite.*api|conectar|integrar|higgsfield|descubra|descubrir|api.*publica|mcp.*server|servidor.*mcp)\b/i;
   if (!explicitlyRequested && !memoryInsufficient && !hasMemoryForTopic) {
     // Pula a chamada LLM para perguntas conversacionais simples
     const isConversational = _CONVERSATIONAL_SKIP.test(message.trim());
