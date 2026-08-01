@@ -30,6 +30,7 @@ import {
   REGISTERED_SCOPES,
   REGISTERED_PAYLOAD_TYPES,
 } from "./KnowledgeRegistryTypes";
+import { registryCircuitBreaker } from "./RegistryCircuitBreaker";
 
 // ── ID generator ──────────────────────────────────────────────────────────────
 
@@ -86,7 +87,13 @@ class KnowledgeRegistryClass {
       return this._fail(id, "missing_required_field", "targetObjectId, targetObjectType e producerId sao obrigatorios", t0);
     }
 
-    // ── Validacao 5: deteccao de ciclos ───────────────────────────────────
+    // ── Validacao 5: Circuit Breaker (CRS-01 §5.1) ───────────────────────
+    const breakerCheck = registryCircuitBreaker.check(input.targetObjectId);
+    if (!breakerCheck.allowed) {
+      return this._fail(id, "persist_failed", breakerCheck.reason!, t0);
+    }
+
+    // ── Validacao 6: deteccao de ciclos ───────────────────────────────────
     const deps = input.dependencyIds ?? [];
     if (deps.length > 0) {
       const cycleDetected = this._hasCycle(id, deps);
@@ -119,6 +126,9 @@ class KnowledgeRegistryClass {
       const msg = err instanceof Error ? err.message : "Erro desconhecido ao persistir";
       return this._fail(id, "persist_failed", msg, t0);
     }
+
+    // ── Registra no CircuitBreaker (conta escrita bem-sucedida) ──────────
+    registryCircuitBreaker.record(input.targetObjectId);
 
     // ── Atualiza metricas ─────────────────────────────────────────────────
     this._metrics.totalCommitted++;
