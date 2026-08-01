@@ -72,10 +72,15 @@ SDKs oficiais conforme MDPS.
 - [x] Dashboard — src/pages/SprintP6Page.jsx (MDS §2.17)
 
 ### P7 — Marketplace
-- [ ] Registry de Connectors
-- [ ] Registry de Specialists
-- [ ] Registry de Knowledge Packages
-- [ ] Portal de publicação
+- [x] CapabilityRegistry (singleton HMR-safe, publish, query, checkCompatibility, updateHealth)
+- [x] CapabilityBootstrap (carga automatica de todos os oficiais P5+P6)
+- [x] MarketplaceTypes.ts — tipos imutaveis separados
+- [x] marketplaceTests.ts — suite de testes MDS §2.16 (10 cenarios)
+- [x] index.ts — exports oficiais
+- [x] Dashboard — src/pages/SprintP7Page.jsx (MDS §2.17)
+- [ ] Portal de publicacao externo (P7.1)
+- [ ] Versionamento de capabilities (P7.2)
+- [ ] Matriz de compatibilidade avancada (P7.3)
 
 ### P8 — Developer Portal
 - [ ] Documentação interativa
