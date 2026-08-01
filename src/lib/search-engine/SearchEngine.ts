@@ -11,6 +11,9 @@ import type { SearchProvider, SearchResult, SearchOptions } from "./SearchProvid
 const MIN_CONFIDENCE_TO_SKIP_LLM = 0.6;
 const MAX_PROVIDERS_PER_QUERY = 3;
 const MIN_CANHANDLE_SCORE = 0.15;
+// Max time to wait for any single provider before giving up the whole search.
+// Prevents slow external APIs (mcp_registry, etc.) from blocking the LLM step.
+const SEARCH_ENGINE_TIMEOUT_MS = 2500;
 
 export interface SearchEngineOutcome {
   resolved: boolean;
@@ -88,9 +91,16 @@ export class SearchEngine {
     let earlyWinner: SearchResult | null = null;
     const pending = new Set(providerPromises);
 
+    // Global timeout — if no provider wins within SEARCH_ENGINE_TIMEOUT_MS,
+    // abort waiting and fall through to best available result (or nothing).
+    const _deadline = new Promise<null>((resolve) =>
+      setTimeout(() => resolve(null), SEARCH_ENGINE_TIMEOUT_MS)
+    );
+
     while (pending.size > 0 && !earlyWinner) {
       const wrapped = [...pending].map((p) => p.then((r) => ({ p, r })));
-      const settled = await Promise.race(wrapped);
+      const settled = await Promise.race([...wrapped, _deadline.then((v) => v)]);
+      if (settled === null) break; // deadline hit — stop waiting
       pending.delete(settled.p);
       allResults.push(settled.r);
       if (settled.r.success && settled.r.items.length > 0 && settled.r.confidence >= MIN_CONFIDENCE_TO_SKIP_LLM) {
