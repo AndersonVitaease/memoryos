@@ -239,7 +239,10 @@ export async function detectCapabilities(message, memory = {}, goal = {}) {
   const webMatch = matchKeywords(normalized, CAPABILITY_RULES.web_search.keywords);
   const hasMemoryForTopic = context && context.length > 100;
   let explicitlyRequested = webMatch.length > 0;
-  const memoryInsufficient = !hasMemoryForTopic && (goal.id === "locate_info" || goal.id === "generate_knowledge");
+  // Nunca ativar por memoryInsufficient para perguntas conversacionais/identidade
+  const _CONVERSATIONAL_MSG = /^(qual|quem|como|o que|me diga|me fale|você|voce|vc|seu|sua|oi|olá|ola|bom dia|boa)\b/i;
+  const _isConversationalMsg = _CONVERSATIONAL_MSG.test(message.trim());
+  const memoryInsufficient = !hasMemoryForTopic && !_isConversationalMsg && (goal.id === "locate_info" || goal.id === "generate_knowledge");
 
   let semanticReason = "";
   // FIX (performance): semanticWebSearchCheck só roda se:
@@ -254,7 +257,7 @@ export async function detectCapabilities(message, memory = {}, goal = {}) {
     // Pula a chamada LLM para perguntas conversacionais simples
     const isConversational = _CONVERSATIONAL_SKIP.test(message.trim());
     const hasExternalSignal = _hasExternalSignal.test(message);
-    if (!isConversational || hasExternalSignal) {
+    if (!isConversational && hasExternalSignal) {
       const semantic = await semanticWebSearchCheck(message);
       if (semantic.needed) {
         explicitlyRequested = true;
