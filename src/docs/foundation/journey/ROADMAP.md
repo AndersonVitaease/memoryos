@@ -47,10 +47,10 @@ SDKs oficiais conforme MDPS.
 - [x] HttpConnector (referência)
 - [x] MockEmailConnector (referência)
 - [x] MockGovConnector (referência)
-- [ ] EmailConnector (produção)
-- [ ] CalendarConnector
-- [ ] FileSystemConnector
-- [ ] DatabaseConnector
+- [x] EmailConnector (produção) — src/lib/connector-runtime/connectors/EmailConnector.ts
+- [x] CalendarConnector — GoogleCalendarConnector já existente
+- [x] FileSystemConnector (produção) — src/lib/connector-runtime/connectors/FileSystemConnector.ts
+- [x] DatabaseConnector (produção) — src/lib/connector-runtime/connectors/DatabaseConnector.ts
 
 ### P5 — Specialists Oficiais
 - [x] GeneralSpecialist (referência)
