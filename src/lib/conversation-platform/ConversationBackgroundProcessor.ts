@@ -58,6 +58,18 @@ export async function runBackgroundProcessing(
   }
   // ── [END KR-01] ──────────────────────────────────────────────────────────
 
+  // ── [P1] KnowledgeGraphEngine — build a cada 5 mensagens do usuário ─────
+  const _userMsgsForKG = allMessages.filter((m) => m.role === "user").length;
+  if (_userMsgsForKG > 0 && _userMsgsForKG % 5 === 0) {
+    try {
+      const { knowledgeGraphEngine } = await import("@/lib/knowledge-graph/KnowledgeGraphEngine");
+      void knowledgeGraphEngine.buildForSession(session.id, session.project_id).then((r) => {
+        if (r.ok) console.debug(`[KGE] Grafo atualizado: ${r.nodeCount} nós, ${r.edgeCount} arestas em ${r.durationMs}ms`);
+      }).catch(() => {});
+    } catch { /* nunca bloqueia */ }
+  }
+  // ── [END P1 KnowledgeGraphEngine] ────────────────────────────────────────
+
   // ── [KR-02] StateView — build periódico a cada 3 turnos do usuário ──────
   const _userMsgsForSV = allMessages.filter((m) => m.role === "user").length;
   if (_userMsgsForSV > 0 && _userMsgsForSV % 3 === 0) {
