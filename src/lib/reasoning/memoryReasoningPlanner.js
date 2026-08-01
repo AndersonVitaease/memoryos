@@ -205,10 +205,19 @@ ${fullText}`;
   if (_memoryRetrievalFailed) {
     console.error("[MemoryReasoningPlanner] Falha na recuperação de memória:", memoryResult.diagnostics.error);
   }
+  // Hard-cap memory context here — before it reaches contextBuilder or capability
+  // orchestrator — so the entire downstream pipeline benefits from the reduced size.
+  const _rawMemCtx = memoryResult.memories || "";
+  const _cappedMemCtx = _rawMemCtx.length > 3000
+    ? _rawMemCtx.slice(0, 3000) + "\n...(contexto truncado)"
+    : _rawMemCtx;
+
   const memory = {
-    context:        memoryResult.memories,
+    context:        _cappedMemCtx,
     sources:        memoryResult.sources,
-    sessionSummary: memoryResult.sessionSummary,
+    sessionSummary: memoryResult.sessionSummary
+      ? memoryResult.sessionSummary.slice(0, 500)
+      : null,
     intent:         null,
     mip:            {},
   };

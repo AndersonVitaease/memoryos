@@ -196,8 +196,17 @@ export async function detectCapabilities(message, memory = {}, goal = {}) {
       : "Sigla em maiúsculas detectada (MAS/MES/MV/MPS)";
   }
 
-  // === DOCUMENTS: mencionou arquivo/PDF/documento OU existem documentos nas fontes ===
-  const docKeywordMatch = matchKeywords(normalized, CAPABILITY_RULES.documents.keywords);
+  // === DOCUMENTS: só ativa se há sinal EXPLÍCITO de arquivo específico na mensagem ===
+  // Palavras genéricas como "arquivo" ou "documento" sozinhas não bastam —
+  // exige um contexto mais específico (PDF, planilha, nome de arquivo, etc.)
+  // ou referência direta ("esse arquivo", "o pdf que enviei").
+  const STRONG_DOC_KEYWORDS = [
+    "pdf", "planilha", "excel", "word", "docx", "csv",
+    "esse arquivo", "este arquivo", "esse documento", "este documento",
+    "o arquivo", "o documento", "anexo", "nota fiscal", "contrato",
+    "que enviei", "que subi", "que anexei", "que uplodei",
+  ];
+  const docKeywordMatch = matchKeywords(normalized, STRONG_DOC_KEYWORDS);
   const hasDocumentSources = sources.some((s) => s.type === "Documento");
   if (docKeywordMatch.length > 0 || hasDocumentSources) {
     capabilities.documents = true;
