@@ -2,7 +2,7 @@ import { base44 } from "@/api/base44Client";
 import { memoryService } from "@/lib/memory-kernel/MemoryServiceFactory";
 import { detectSkills } from "@/lib/skills/detector";
 import { detectGoal } from "@/lib/reasoning/goalDetector";
-import { buildReasoningContext } from "@/lib/reasoning/contextBuilder";
+import { buildReasoningContext, buildSystemPrompt } from "@/lib/reasoning/contextBuilder";
 import { synthesizeResponse } from "@/lib/reasoning/memorySynthesizer";
 import { orchestrateCapabilities } from "@/lib/reasoning/capabilityOrchestrator";
 import { SpecialistRouter } from "@/lib/routing/specialistRouter";
@@ -507,17 +507,19 @@ Se envolver um nome de arquivo/pasta específico do usuário, extraia em "target
   const { ensureAIProvidersRegistered, aiProviderRegistry } = await import("@/lib/ai-provider-registry/AIProviderRegistry");
   ensureAIProvidersRegistered();
   const _aiProvider = await aiProviderRegistry.selectProvider("text-generation");
+  const _systemPrompt = buildSystemPrompt();
   let rawResponse;
   if (_aiProvider) {
-    const _aiResult = await _aiProvider.invoke(finalPrompt);
+    // Passa system + user separados para permitir prompt caching no OpenRouter
+    const _aiResult = await _aiProvider.invoke(finalPrompt, { systemPrompt: _systemPrompt });
     if (_aiResult.success) {
       rawResponse = _aiResult.text;
     } else {
       console.warn(`[DIAG][ReasoningPlanner] ETAPA 6: provider "${_aiProvider.id}" falhou (${_aiResult.error}) — caindo pro Base44 direto`);
-      rawResponse = await base44.integrations.Core.InvokeLLM({ prompt: finalPrompt });
+      rawResponse = await base44.integrations.Core.InvokeLLM({ prompt: _systemPrompt + "\n\n" + finalPrompt });
     }
   } else {
-    rawResponse = await base44.integrations.Core.InvokeLLM({ prompt: finalPrompt });
+    rawResponse = await base44.integrations.Core.InvokeLLM({ prompt: _systemPrompt + "\n\n" + finalPrompt });
   }
   console.log(`[DIAG][ReasoningPlanner] ETAPA 6 (resposta final, provider: ${_aiProvider?.id ?? "base44-fallback"}) levou ${Date.now() - _t6}ms — prompt tinha ${finalPrompt.length} caracteres`);
 

@@ -29,9 +29,14 @@ export class OpenRouterLLMProvider implements AIProvider {
   async invoke(prompt: string, options?: AIProviderInvokeOptions): Promise<AIProviderResult> {
     const t0 = Date.now();
     try {
+      // Se systemPrompt for passado, enviamos como mensagem system separada
+      // (permite prompt caching no OpenRouter para modelos que suportam)
+      const messages = options?.systemPrompt
+        ? [{ role: "system", content: options.systemPrompt }, { role: "user", content: prompt }]
+        : [{ role: "user", content: prompt }];
       const res = await base44.functions.invoke("openrouterChat", {
         model: options?.model ?? DEFAULT_MODEL,
-        messages: [{ role: "user", content: prompt }],
+        messages,
         maxTokens: options?.maxTokens ?? 1024,
       });
       const d = (res as any)?.data ?? res;
