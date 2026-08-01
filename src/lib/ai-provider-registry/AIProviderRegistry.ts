@@ -17,6 +17,10 @@ import { openRouterLLMProvider } from "./OpenRouterLLMProvider";
 
 class AIProviderRegistryClass {
   private _providers: AIProvider[] = [];
+  // Cache de disponibilidade por provider — evita request de rede a cada mensagem.
+  // TTL de 5 minutos; null = ainda não verificado.
+  private _availabilityCache = new Map<string, { available: boolean; expiresAt: number }>();
+  private readonly _CACHE_TTL_MS = 5 * 60 * 1000;
 
   register(provider: AIProvider): void {
     if (this._providers.some((p) => p.id === provider.id)) return;
@@ -27,20 +31,22 @@ class AIProviderRegistryClass {
     return [...this._providers];
   }
 
-  /** Providers que declaram a capacidade pedida, na ordem de registro (preferencia). */
   findByCapability(capability: string): AIProvider[] {
     return this._providers.filter((p) => p.capabilities.includes(capability));
   }
 
-  /**
-   * Escolhe o primeiro provider disponivel para a capacidade — tenta na
-   * ordem de preferencia, cai pro proximo se o anterior nao estiver
-   * disponivel (ex: secret nao configurada).
-   */
+  private async _isAvailableCached(provider: AIProvider): Promise<boolean> {
+    const cached = this._availabilityCache.get(provider.id);
+    if (cached && Date.now() < cached.expiresAt) return cached.available;
+    const available = await provider.isAvailable();
+    this._availabilityCache.set(provider.id, { available, expiresAt: Date.now() + this._CACHE_TTL_MS });
+    return available;
+  }
+
   async selectProvider(capability: string): Promise<AIProvider | null> {
     const candidates = this.findByCapability(capability);
     for (const p of candidates) {
-      if (await p.isAvailable()) return p;
+      if (await this._isAvailableCached(p)) return p;
     }
     return null;
   }
@@ -51,10 +57,11 @@ export const aiProviderRegistry = new AIProviderRegistryClass();
 let _registered = false;
 export function ensureAIProvidersRegistered(): void {
   if (_registered) return;
-  // Ordem = preferencia. OpenRouter primeiro (acesso a mais modelos +
-  // potencial de cache de prompt), Base44 como fallback sempre disponivel.
   aiProviderRegistry.register(openRouterLLMProvider);
   aiProviderRegistry.register(base44LLMProvider);
   _registered = true;
   console.log("[AIProviderRegistry] Providers registrados:", aiProviderRegistry.listProviders().map((p) => p.id));
+  // Pré-aquece o cache de disponibilidade em background — sem await,
+  // para que a primeira mensagem do usuário não precise esperar pela verificação.
+  aiProviderRegistry.selectProvider("text-generation").catch(() => {});
 }
