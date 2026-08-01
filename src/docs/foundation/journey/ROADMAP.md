@@ -93,9 +93,13 @@ SDKs oficiais conforme MDPS.
 - [ ] Documentacao de Connectors (P8.2)
 
 ### P9 — Capability Registry
-- [ ] Discovery automático
-- [ ] Versioning de capabilities
-- [ ] Compatibility matrix
+- [x] CapabilityDiscoveryEngine — discovery automatico de P5+P6+P4+P7 (singleton HMR-safe)
+- [x] CapabilityVersioning — historico, changelog, deprecation, seed automatico
+- [x] CompatibilityMatrix — regras explicitas + inferencia, generate() para todos os pares
+- [x] CapabilityRegistryTypes.ts — tipos imutaveis separados
+- [x] capabilityRegistryTests.ts — suite de testes MDS §2.16 (10 cenarios)
+- [x] index.ts — exports oficiais
+- [x] Dashboard — src/pages/SprintP9Page.jsx (MDS §2.17)
 
 ### P10 — Beta
 - [ ] Ambiente de staging
