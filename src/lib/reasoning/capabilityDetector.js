@@ -38,6 +38,10 @@ const CAPABILITY_RULES = {
       "como conectar", "como integrar", "como usar", "como acessar",
       "tem api", "tem uma api", "possui api", "api disponível", "api publica",
       "documentação oficial", "docs oficiais", "site oficial",
+      "como é feito", "como ele faz", "como funciona", "investigue", "descubra",
+      "verifique como", "verifica como", "consegue se conectar", "consegue integrar",
+      "existe mcp", "existe api", "existe conector", "existe integração",
+      "como fazer integração", "como fazer a integração",
     ],
     // Nunca ativar web search se for pergunta que a memória pode responder
     negators: [],
