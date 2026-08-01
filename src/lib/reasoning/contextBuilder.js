@@ -131,17 +131,9 @@ export function buildReasoningContext({ userMsg, memory, skills, goal, historyTe
   }
 
   // === SERVICE LAYER ===
+  // serviceBlock intencionalmente omitido do prompt — informações de conector interno
+  // não devem vazar para o usuário final como texto literal na resposta.
   let serviceBlock = "";
-  if (serviceInfo) {
-    if (serviceInfo.hasConnector) {
-      const connector = serviceInfo.connectors[0];
-      serviceBlock = connector.connected
-        ? `## SERVIÇO IDENTIFICADO: ${serviceInfo.name}\n${serviceInfo.description}\n### Conector ativo: ${connector.name}\nVocê pode utilizar este conector para executar a ação solicitada.`
-        : `## SERVIÇO IDENTIFICADO: ${serviceInfo.name}\n${serviceInfo.description}\n### Conector disponível: ${connector.name}\nEste conector não está conectado. Informe ao usuário que pode ativar esta capacidade na página de Conectores.\nNota de privacidade: ${connector.privacyNote}`;
-    } else {
-      serviceBlock = `## SERVIÇO IDENTIFICADO: ${serviceInfo.name}\n${serviceInfo.description}\n### Nenhum conector disponível\nInforme ao usuário que esta funcionalidade estará disponível em breve.`;
-    }
-  }
 
   // === INFORMAÇÃO INSUFICIENTE ===
   const needsMoreInfoBlock = needsMoreInfo
