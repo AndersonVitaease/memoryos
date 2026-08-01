@@ -150,23 +150,18 @@ function normalize(text) {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
-/**
- * Verifica se `sig` aparece em `text` como palavra/frase INTEIRA.
- * FIX (auditoria cognição): detectGoal() usava .includes() puro, que
- * colidia como substring em vários casos reais: "total" (goal
- * calculate) dentro de "totalmente" — uma das palavras mais comuns do
- * português —, "gere" (execute_task) dentro de "gerente", "devo"
- * (decide) dentro de "devolução", "faça" (execute_task) dentro de
- * "satisfaça", "risco" (analyze_risks) dentro de "arrisco", "monte"
- * (execute_task) dentro de "Monte Everest". Fronteira Unicode resolve
- * todos de uma vez, sem precisar remover as palavras (que continuam
- * válidas como match de palavra inteira).
- */
-function _matchesWhole(text, sig) {
-  const escaped = sig.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const pattern = new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}([^\\p{L}\\p{N}]|$)`, "u");
-  return pattern.test(text);
-}
+// Pre-compile all keyword patterns once at module load — avoids creating
+// hundreds of RegExp objects on every detectGoal() call (was ~462ms/call).
+const _COMPILED_GOALS = GOALS.map((goal) => ({
+  ...goal,
+  _patterns: goal.keywords.map((kw) => {
+    const escaped = normalize(kw).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return {
+      kw,
+      re: new RegExp(`(^|[^\\p{L}\\p{N}])${escaped}([^\\p{L}\\p{N}]|$)`, "u"),
+    };
+  }),
+}));
 
 /**
  * Detecta o objetivo da pergunta do usuário.
@@ -180,11 +175,11 @@ export function detectGoal(message) {
   let best = DEFAULT_GOAL;
   let bestScore = 0;
 
-  for (const goal of GOALS) {
+  for (const goal of _COMPILED_GOALS) {
     let score = 0;
     const matched = [];
-    for (const kw of goal.keywords) {
-      if (_matchesWhole(normalized, normalize(kw))) {
+    for (const { kw, re } of goal._patterns) {
+      if (re.test(normalized)) {
         score++;
         matched.push(kw);
       }
