@@ -21,7 +21,7 @@ Implementação completa de todos os engines do Core.
 - [x] SecurityGate
 - [x] ExecutionEngine
 - [x] JourneyManager
-- [ ] KnowledgeGraphEngine
+- [x] KnowledgeGraphEngine
 - [ ] DecisionEngine (produção)
 - [ ] PlanningEngine (produção)
 - [ ] ReasoningEngine (produção)
@@ -31,9 +31,9 @@ Implementação completa do Runtime conforme MRS.
 
 - [x] Session Lifecycle
 - [x] Journey Lifecycle
-- [ ] Context Persistence entre sessões
-- [ ] Memory Tiering (active → historical → archived)
-- [ ] Graceful shutdown
+- [x] Context Persistence entre sessões
+- [x] Memory Tiering (active → historical → archived)
+- [x] Graceful shutdown
 
 ### P3 — SDKs
 SDKs oficiais conforme MDPS.

@@ -13,6 +13,7 @@
  */
 
 import { bootstrapConnectorContext } from "@/lib/connector-context/ConnectorContextBootstrap";
+import { gracefulShutdown } from "@/lib/conversation-platform/GracefulShutdown";
 
 // Future subsystem bootstraps — uncomment as they are implemented:
 // import { bootstrapGoalRegistry }      from "@/lib/goals/GoalRegistryBootstrap";
@@ -32,6 +33,9 @@ export function initializePlatform(): void {
 
   // ── Connector Context Builders ────────────────────────────────────────────
   bootstrapConnectorContext();
+
+  // ── Graceful Shutdown (P2) ────────────────────────────────────────────────
+  gracefulShutdown.register();
 
   // ── Future subsystems ─────────────────────────────────────────────────────
   // bootstrapGoalRegistry();
