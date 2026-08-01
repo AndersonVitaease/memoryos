@@ -246,7 +246,10 @@ export async function detectCapabilities(message, memory = {}, goal = {}) {
   // === WEB SEARCH: explicitamente solicitado, memória insuficiente, ou detecção semântica ===
   const webMatch = matchKeywords(normalized, CAPABILITY_RULES.web_search.keywords);
   const hasMemoryForTopic = context && context.length > 100;
-  let explicitlyRequested = webMatch.length > 0;
+  // Mensagens curtas de acompanhamento que claramente pedem execução/descoberta
+  const SHORT_ACTION_TRIGGERS = ["descubra", "pesquise", "busque", "investigue", "procure", "encontre", "como conectar", "como integrar", "como usar a api", "tente", "execute", "faça isso", "faz isso"];
+  const isShortActionFollowUp = SHORT_ACTION_TRIGGERS.some((t) => normalize(normalized).includes(normalize(t)));
+  let explicitlyRequested = webMatch.length > 0 || isShortActionFollowUp;
   // Nunca ativar memoryInsufficient para perguntas de identidade/saudação puras
   // BUG FIX: "como" foi removido — "Como conectar X?", "Como integrar Y?" são perguntas
   // de pesquisa externa, não conversacionais. Só excluir saudações e pronomes pessoais.
