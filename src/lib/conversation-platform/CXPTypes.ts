@@ -81,6 +81,8 @@ export interface ConversationContext {
   tasksContext?: string;
   connectorResults?: string;
   specialistContext?: string;
+  /** [KR-02] StateView context — apenas quando injectEnabled=true no StateViewEngine */
+  stateViewContext?: string;
   builtAt: number;
 }
 
