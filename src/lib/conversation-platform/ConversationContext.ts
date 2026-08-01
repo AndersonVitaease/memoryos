@@ -88,6 +88,16 @@ export async function buildConversationContext(
   } catch { /* nunca bloqueia contexto */ }
   // ── [END KR-02] ──────────────────────────────────────────────────────────
 
+  // ── [P2] Cross-Session Context Persistence ────────────────────────────────
+  let crossSessionContext: string | undefined;
+  try {
+    const { contextPersistenceManager } = await import("@/lib/memory-tiering/ContextPersistenceManager");
+    const crossCtx = await contextPersistenceManager.getCrossSessionContext(session.id, projectId);
+    const formatted = contextPersistenceManager.formatForPrompt(crossCtx);
+    if (formatted) crossSessionContext = formatted;
+  } catch { /* nunca bloqueia contexto */ }
+  // ── [END P2] ──────────────────────────────────────────────────────────────
+
   return {
     sessionId: session.id,
     projectId,
@@ -99,6 +109,7 @@ export async function buildConversationContext(
     decisionsContext,
     tasksContext,
     stateViewContext,
+    crossSessionContext,
     builtAt: Date.now(),
   };
 }
@@ -125,6 +136,9 @@ export function contextToPromptParts(ctx: ConversationContext): string {
   }
   if (ctx.knowledgeContext) {
     parts.push(`PALAVRAS-CHAVE: ${ctx.knowledgeContext}`);
+  }
+  if (ctx.crossSessionContext) {
+    parts.push(ctx.crossSessionContext);
   }
   if (ctx.stateViewContext) {
     parts.push(ctx.stateViewContext);
