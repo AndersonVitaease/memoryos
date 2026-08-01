@@ -26,6 +26,13 @@ export async function persistMessage(params: {
     memory_tier: params.memory_tier ?? "active",
     sources_used: params.sources_used ?? [],
   });
+
+  // Incrementa message_count e atualiza last_message_at na sessão (fire-and-forget)
+  base44.entities.ChatSession.updateMany(
+    { id: params.sessionId },
+    { $inc: { message_count: 1 }, $currentDate: { last_message_at: true } }
+  ).catch(() => {});
+
   return saved as ConversationMessage;
 }
 
