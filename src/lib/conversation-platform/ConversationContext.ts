@@ -76,6 +76,18 @@ export async function buildConversationContext(
       ? tasksData.filter((t) => t.status === "pending").map((t) => t.title).join("; ")
       : undefined;
 
+  // ── [KR-02] StateView injection (somente quando injectEnabled=true) ──────
+  let stateViewContext: string | undefined;
+  try {
+    const { stateViewEngine, getStateViewFlags } = await import("@/lib/knowledge-registry/StateViewEngine");
+    const flags = getStateViewFlags();
+    if (flags.injectEnabled) {
+      const sv = await stateViewEngine.buildForSession(session.id, projectId);
+      if (sv.llmContext) stateViewContext = sv.llmContext;
+    }
+  } catch { /* nunca bloqueia contexto */ }
+  // ── [END KR-02] ──────────────────────────────────────────────────────────
+
   return {
     sessionId: session.id,
     projectId,
@@ -86,6 +98,7 @@ export async function buildConversationContext(
     topicsContext,
     decisionsContext,
     tasksContext,
+    stateViewContext,
     builtAt: Date.now(),
   };
 }
@@ -112,6 +125,9 @@ export function contextToPromptParts(ctx: ConversationContext): string {
   }
   if (ctx.knowledgeContext) {
     parts.push(`PALAVRAS-CHAVE: ${ctx.knowledgeContext}`);
+  }
+  if (ctx.stateViewContext) {
+    parts.push(ctx.stateViewContext);
   }
 
   return parts.join("\n\n");

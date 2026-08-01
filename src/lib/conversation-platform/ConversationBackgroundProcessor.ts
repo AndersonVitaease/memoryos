@@ -58,6 +58,21 @@ export async function runBackgroundProcessing(
   }
   // ── [END KR-01] ──────────────────────────────────────────────────────────
 
+  // ── [KR-02] StateView — build periódico a cada 3 turnos do usuário ──────
+  const _userMsgsForSV = allMessages.filter((m) => m.role === "user").length;
+  if (_userMsgsForSV > 0 && _userMsgsForSV % 3 === 0) {
+    try {
+      const { stateViewEngine } = await import("@/lib/knowledge-registry/StateViewEngine");
+      const svResult = await stateViewEngine.buildForSession(session.id, session.project_id);
+      console.debug("[KR-02][StateView] built:", {
+        sessionId:    session.id,
+        totalObjects: svResult.totalObjects,
+        durationMs:   svResult.durationMs,
+      });
+    } catch { /* nunca bloqueia */ }
+  }
+  // ── [END KR-02] ──────────────────────────────────────────────────────────
+
   // ── [KR-03] Cognitive Pruning — fire-and-forget, a cada 10 msgs ─────────
   const totalMessages = allMessages.length;
   if (totalMessages > 0 && totalMessages % 10 === 0) {
