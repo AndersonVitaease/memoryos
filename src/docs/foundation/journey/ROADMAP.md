@@ -38,10 +38,10 @@ Implementação completa do Runtime conforme MRS.
 ### P3 — SDKs
 SDKs oficiais conforme MDPS.
 
-- [ ] Core SDK (TypeScript)
-- [ ] Connector SDK (TypeScript)
-- [ ] Specialist SDK (TypeScript)
-- [ ] Knowledge Package SDK
+- [x] Core SDK (TypeScript) — src/sdk/core/ (WorkingMemory, EventBus, AuditTrail, CoreContext)
+- [x] Connector SDK (TypeScript) — src/sdk/connector/ (BaseConnector, ConnectorBuilder, index)
+- [x] Specialist SDK (TypeScript) — src/sdk/specialist/ (BaseSpecialist, SpecialistBuilder, index)
+- [x] Knowledge Package SDK — src/sdk/knowledge/ (BaseKnowledgePackage, KnowledgePackageBuilder, index)
 
 ### P4 — Connectors Oficiais
 - [x] HttpConnector (referência)
