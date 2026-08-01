@@ -43,7 +43,7 @@ import { isCanonicalResourceRequestEnabled, isCanonicalResourceReadEnabled } fro
 import { synthesizeConnectorResult } from "@/lib/connector-runtime-provider/ConnectorResultSynthesizer";
 
 // Identity/greeting bypass regex — evaluated once at module load
-const _IDENTITY_RE = /^(qual|quem|oi|olá|ola|bom dia|boa tarde|boa noite|como você|como voce|me diga|me fale)\b.{0,80}(nome|você|voce|vc|propósito|objetivo|funcao|função)?\b/i;
+const _IDENTITY_RE = /^(qual|quem|oi|olá|ola|bom dia|boa tarde|boa noite)\b.{0,80}(nome|você|voce|vc|propósito|objetivo|funcao|função)\b/i;
 const _IDENTITY_RE2 = /^(qual (é |e )?(o |seu |o seu )?(nome|propósito|objetivo|função|funcao))/i;
 
 const _IDENTITY_RESPONSES: Record<string, string> = {
