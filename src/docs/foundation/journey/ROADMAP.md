@@ -53,17 +53,23 @@ SDKs oficiais conforme MDPS.
 - [x] DatabaseConnector (produção) — src/lib/connector-runtime/connectors/DatabaseConnector.ts
 
 ### P5 — Specialists Oficiais
-- [x] GeneralSpecialist (referência)
-- [x] GovernmentSpecialist (referência)
-- [x] FinancialSpecialist — src/sdk/specialists/FinancialSpecialist.ts
-- [x] LegalSpecialist — src/sdk/specialists/LegalSpecialist.ts
-- [x] MedicalSpecialist — src/sdk/specialists/MedicalSpecialist.ts
-- [x] TechSpecialist — src/sdk/specialists/TechSpecialist.ts
+- [x] FinancialSpecialist — src/lib/specialists/FinancialSpecialist.ts (MDS v2.0)
+- [x] LegalSpecialist — src/lib/specialists/LegalSpecialist.ts (MDS v2.0)
+- [x] MedicalSpecialist — src/lib/specialists/MedicalSpecialist.ts (MDS v2.0)
+- [x] TechSpecialist — src/lib/specialists/TechSpecialist.ts (MDS v2.0)
+- [x] SpecialistTypes.ts — tipos imutaveis separados
+- [x] specialistTests.ts — suite de testes MDS §2.16
+- [x] index.ts — exports oficiais
+- [x] Dashboard — src/pages/SprintP5Page.jsx (MDS §2.17)
 
 ### P6 — Knowledge Packages
-- [x] Brazilian Government Package — src/sdk/knowledge-packages/BrazilianGovernmentPackage.ts
-- [x] Financial Package — src/sdk/knowledge-packages/FinancialPackage.ts
-- [x] Legal Package — src/sdk/knowledge-packages/LegalPackage.ts
+- [x] FinancialPackage — src/lib/knowledge-packages/FinancialPackage.ts (MDS v2.0)
+- [x] LegalPackage — src/lib/knowledge-packages/LegalPackage.ts (MDS v2.0)
+- [x] BrazilianGovernmentPackage — src/lib/knowledge-packages/BrazilianGovernmentPackage.ts (MDS v2.0)
+- [x] KnowledgePackageTypes.ts — tipos imutaveis separados
+- [x] knowledgePackageTests.ts — suite de testes MDS §2.16
+- [x] index.ts — exports oficiais
+- [x] Dashboard — src/pages/SprintP6Page.jsx (MDS §2.17)
 
 ### P7 — Marketplace
 - [ ] Registry de Connectors
