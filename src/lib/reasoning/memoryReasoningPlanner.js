@@ -66,6 +66,36 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
   const _isIdentityQuery = _IDENTITY_BYPASS.test(userMsg.trim()) || 
     /^(qual (é |e )?(o |seu |o seu )?(nome|propósito|objetivo|função|funcao))/i.test(userMsg.trim());
 
+  // === PRÉ-ETAPA 0.1: RESPOSTA DIRETA PARA PERGUNTAS DE IDENTIDADE ===
+  // "qual o seu nome?", "quem é você?" etc. — nunca precisam de memória, LLM ou capacidades.
+  // Resposta fixa em <5ms, zero chamadas de rede.
+  if (_isIdentityQuery) {
+    const _greeting = /^(oi|olá|ola|bom dia|boa tarde|boa noite)\b/i.test(userMsg.trim());
+    const _askingName = /nome/i.test(userMsg);
+    const _askingPurpose = /propósito|objetivo|função|funcao/i.test(userMsg);
+    let _identityResponse;
+    if (_greeting && !_askingName && !_askingPurpose) {
+      _identityResponse = "Olá! Sou o MemoryOS — sua memória permanente e inteligente. Como posso ajudar?";
+    } else if (_askingPurpose) {
+      _identityResponse = "Sou o MemoryOS, seu sistema operacional cognitivo. Preservo tudo que você aprende, decide e cria — para que você nunca precise repetir contexto.";
+    } else {
+      _identityResponse = "Sou o MemoryOS — sua memória viva e permanente. Não tenho um nome pessoal, mas você pode me chamar de MemoryOS.";
+    }
+    return {
+      response: _identityResponse,
+      plan: {
+        goal: "identity",
+        goalLabel: "Pergunta de identidade",
+        strategy: "Bypass direto — sem memória nem LLM",
+        skills: [], skillsCount: 0, sourcesCount: 0, contextLength: 0,
+        capabilities: [], capabilitiesCount: 0, needsMoreInfo: false,
+        service: null, responseTimeMs: Date.now() - startTime,
+        handledByGuard: "IDENTITY-DIRECT",
+      },
+      sources: [],
+    };
+  }
+
   // === ETAPA 0: DESVIO PRECOCE PARA SERVICO DE IA ===
   // FIX (otimizacao real, medida em producao — 3+ segundos economizados):
   // movido de depois da memoria/capacidades (ETAPA 4) pra antes de tudo.
@@ -261,8 +291,13 @@ ${fullText}`;
   // Limita o histórico às últimas 8 mensagens para evitar prompts massivos.
   // O resumo da sessão (sessionSummary) já cobre o contexto de longo prazo —
   // não é necessário carregar mensagens antigas no prompt de cada resposta.
-  const _MAX_HISTORY_MESSAGES = 8;
-  const _MAX_HISTORY_CHARS = 6000;
+  // Conversas simples (sem busca, sem doc, sem capacidade ativa) usam histórico menor
+  const _isSimpleConversation = !capabilityResult.capabilities?.web_search &&
+    !capabilityResult.capabilities?.documents &&
+    !capabilityResult.capabilities?.official_library &&
+    !capabilityResult.capabilities?.calculation;
+  const _MAX_HISTORY_MESSAGES = _isSimpleConversation ? 4 : 8;
+  const _MAX_HISTORY_CHARS = _isSimpleConversation ? 3000 : 6000;
   const _recentHistory = historyMessages.slice(-_MAX_HISTORY_MESSAGES);
   let historyText = _recentHistory
     .map((m) => `${m.role === "user" ? "Usuário" : "Assistente"}: ${m.content}`)
