@@ -24,6 +24,188 @@ const PRIORITY_COLOR = {
   low:      "text-zinc-500",
 };
 
+function PlannerAuditPanel() {
+  const [msg, setMsg]           = useState("me avise quando chegar um email novo");
+  const [plannerLog, setPlannerLog] = useState([]);
+  const [dedupLog, setDedupLog]     = useState([]);
+  const [auditData, setAuditData]   = useState(null);
+  const [running, setRunning]       = useState(false);
+
+  const testPlanner = async () => {
+    setRunning(true);
+    const logs = [];
+    try {
+      const { watchPlannerBridge } = await import("@/lib/watch-engine/WatchPlannerBridge");
+      const hasIntent = watchPlannerBridge.hasMonitoringIntent(msg);
+      logs.push({ ok: true, msg: `hasMonitoringIntent: ${hasIntent}` });
+      if (hasIntent) {
+        const result = await watchPlannerBridge.processMessage(msg, "demo-session");
+        logs.push({ ok: result.detected, msg: `detected=${result.detected} | created=${result.created} | wasDuplicate=${result.wasDuplicate}` });
+        logs.push({ ok: true, msg: result.message });
+        if (result.watchId) logs.push({ ok: true, msg: `Watch ID: ${result.watchId}` });
+      }
+    } catch (e) {
+      logs.push({ ok: false, msg: `Erro: ${e.message}` });
+    } finally {
+      setRunning(false);
+    }
+    setPlannerLog(logs);
+  };
+
+  const testDedup = async () => {
+    setRunning(true);
+    const logs = [];
+    try {
+      const { watchDeduplicator } = await import("@/lib/watch-engine/WatchDeduplicator");
+      const tree1 = { kind: "leaf", provider: "gmail", action: "count_unread", params: {}, result_path: "count", comparator: "gt", value: 0 };
+      const r1 = await watchDeduplicator.check(tree1, "demo-session");
+      logs.push({ ok: true, msg: `Check gmail/count_unread → isDuplicate=${r1.isDuplicate} | matchType=${r1.matchType}` });
+      if (r1.isDuplicate) logs.push({ ok: true, msg: `Duplicata: "${r1.existingWatchName}" (${Math.round((r1.similarity ?? 1)*100)}% similar)` });
+
+      const tree2 = { kind: "leaf", provider: "drive", action: "list_recent", params: {}, result_path: "count", comparator: "gt", value: 0 };
+      const r2 = await watchDeduplicator.check(tree2, "demo-session");
+      logs.push({ ok: true, msg: `Check drive/list_recent → isDuplicate=${r2.isDuplicate} | matchType=${r2.matchType}` });
+    } catch (e) {
+      logs.push({ ok: false, msg: `Erro: ${e.message}` });
+    } finally {
+      setRunning(false);
+    }
+    setDedupLog(logs);
+  };
+
+  const loadAudit = async () => {
+    setRunning(true);
+    try {
+      const { watchAuditStore } = await import("@/lib/watch-engine/WatchAuditStore");
+      const [exec, actions] = await Promise.all([
+        watchAuditStore.getExecutionSummary(),
+        watchAuditStore.getPendingActionSummary(),
+      ]);
+      setAuditData({ exec, actions });
+    } catch (e) {
+      setAuditData({ error: e.message });
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Planner Bridge */}
+      <Card className="bg-zinc-900 border-zinc-800">
+        <CardHeader>
+          <CardTitle className="text-white text-sm">WatchPlannerBridge — Detecção "me avise quando..."</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-zinc-400 text-sm">Simula o Planner cognitivo detectando intenção de monitoramento e criando Watch automaticamente.</p>
+          <div className="flex gap-2 flex-wrap items-center">
+            <input
+              value={msg}
+              onChange={(e) => setMsg(e.target.value)}
+              className="flex-1 min-w-0 bg-zinc-800 border border-zinc-700 text-zinc-200 text-sm px-3 py-2 rounded"
+              placeholder="Digite uma mensagem..."
+            />
+            <button onClick={testPlanner} disabled={running}
+              className="text-sm bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded disabled:opacity-50 shrink-0">
+              {running ? "..." : "Testar"}
+            </button>
+          </div>
+          <div className="flex gap-1 flex-wrap text-xs">
+            {["me avise quando chegar um email", "monitore o Drive por arquivos novos", "fique de olho no calendar", "qual é o tempo hoje"].map((s) => (
+              <button key={s} onClick={() => setMsg(s)} className="bg-zinc-800 hover:bg-zinc-700 text-zinc-400 px-2 py-1 rounded">
+                {s}
+              </button>
+            ))}
+          </div>
+          {plannerLog.length > 0 && (
+            <div className="bg-zinc-800 rounded p-3 space-y-1">
+              {plannerLog.map((l, i) => (
+                <div key={i} className={`text-xs font-mono ${l.ok ? "text-emerald-400" : "text-red-400"}`}>{l.ok ? "✓" : "✗"} {l.msg}</div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Deduplicator */}
+      <Card className="bg-zinc-900 border-zinc-800">
+        <CardHeader>
+          <CardTitle className="text-white text-sm">WatchDeduplicator — Hash exato + Jaccard semântico</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-zinc-400 text-sm">Verifica se existem Watches semanticamente equivalentes antes de criar um novo (threshold Jaccard ≥ 80%).</p>
+          <button onClick={testDedup} disabled={running}
+            className="text-sm bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded disabled:opacity-50">
+            {running ? "..." : "Testar Deduplicação"}
+          </button>
+          {dedupLog.length > 0 && (
+            <div className="bg-zinc-800 rounded p-3 space-y-1">
+              {dedupLog.map((l, i) => (
+                <div key={i} className={`text-xs font-mono ${l.ok ? "text-emerald-400" : "text-red-400"}`}>{l.ok ? "✓" : "✗"} {l.msg}</div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Audit Dashboard */}
+      <Card className="bg-zinc-900 border-zinc-800">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-white text-sm">WatchAuditStore — Dashboard de Auditoria</CardTitle>
+            <button onClick={loadAudit} disabled={running}
+              className="text-xs bg-zinc-700 hover:bg-zinc-600 text-zinc-300 px-3 py-1 rounded disabled:opacity-50">
+              {running ? "..." : "Carregar"}
+            </button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {!auditData && <p className="text-zinc-500 text-sm">Clique em "Carregar" para ver os dados de auditoria.</p>}
+          {auditData?.error && <p className="text-red-400 text-sm">Erro: {auditData.error}</p>}
+          {auditData?.exec && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+                {[
+                  { label: "Execuções",  value: auditData.exec.totalExecutions,   color: "text-white" },
+                  { label: "Sucesso",    value: auditData.exec.successExecutions,  color: "text-emerald-400" },
+                  { label: "Falhas",     value: auditData.exec.failureExecutions,  color: "text-red-400" },
+                  { label: "Disparos",   value: auditData.exec.triggeredExecutions,color: "text-violet-400" },
+                  { label: "Avg ms",     value: auditData.exec.avgDurationMs,      color: "text-zinc-300" },
+                ].map((m, i) => (
+                  <div key={i} className="bg-zinc-800 rounded p-2 text-center">
+                    <div className={`font-bold text-base ${m.color}`}>{m.value}</div>
+                    <div className="text-zinc-500">{m.label}</div>
+                  </div>
+                ))}
+              </div>
+              {auditData.exec.topProviders.length > 0 && (
+                <div>
+                  <div className="text-xs text-zinc-500 mb-1">Top Providers</div>
+                  <div className="flex gap-2 flex-wrap">
+                    {auditData.exec.topProviders.map((p, i) => (
+                      <span key={i} className="text-xs bg-zinc-800 text-zinc-300 px-2 py-1 rounded">{p.provider}: {p.calls}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div>
+                <div className="text-xs text-zinc-500 mb-1">Outbox Actions</div>
+                <div className="flex gap-4 text-xs text-zinc-400">
+                  <span>Total: {auditData.actions.total}</span>
+                  <span className="text-amber-400">Pendentes: {auditData.actions.pending}</span>
+                  <span className="text-emerald-400">Despachados: {auditData.actions.dispatched}</span>
+                  <span className="text-red-400">Falhas: {auditData.actions.failed}</span>
+                  <span className="text-zinc-500">Expirados: {auditData.actions.expired}</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 function OutboxStatePanel() {
   const [log, setLog]     = useState([]);
   const [running, setRunning] = useState(false);
@@ -401,13 +583,13 @@ export default function SprintWE01Page() {
           <div>
             <div className="flex items-center gap-3 mb-1">
               <span className="text-2xl">👁️</span>
-              <h1 className="text-2xl font-bold text-white">Watch Engine — WE-01</h1>
-              <Badge className="bg-violet-500/10 text-violet-400 border-violet-500/20 border text-xs">
-                SPRINT WE-01
+              <h1 className="text-2xl font-bold text-white">Watch Engine — WE-01 a WE-04</h1>
+              <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 border text-xs">
+                EPIC-017 COMPLETO
               </Badge>
             </div>
             <p className="text-zinc-400 text-sm">
-              Foundation · Entidades + WatchTypes + WatchValidator + WatchRegistry
+              WE-01 Foundation · WE-02 Evaluator · WE-03 Outbox+State · WE-04 Planner+Dedup+Audit
             </p>
           </div>
           <Button
@@ -481,6 +663,7 @@ export default function SprintWE01Page() {
             { id: "create",    label: "Criar Watch" },
             { id: "evaluator", label: "Evaluator WE-02" },
             { id: "we03",      label: "Outbox+State WE-03" },
+            { id: "we04",      label: "Planner+Audit WE-04" },
             { id: "arch",      label: "Arquitetura" },
           ].map((tab) => (
             <button
@@ -634,6 +817,11 @@ export default function SprintWE01Page() {
           <OutboxStatePanel />
         )}
 
+        {/* Tab: WE-04 */}
+        {activeTab === "we04" && (
+          <PlannerAuditPanel />
+        )}
+
         {/* Tab: Arquitetura */}
         {activeTab === "arch" && (
           <div className="space-y-4">
@@ -657,7 +845,10 @@ export default function SprintWE01Page() {
                   { file: "src/lib/watch-engine/WatchScheduler.ts",  status: "done", label: "WatchScheduler — Fila por prioridade + Outbox enqueue" },
                   { file: "src/lib/watch-engine/WatchOutbox.ts",      status: "done", label: "WatchOutbox — Durable Worker com retry, TTL e fire-and-forget" },
                   { file: "src/lib/watch-engine/WatchStateTracker.ts",status: "done", label: "WatchStateTracker — Transição false→true, anti-spam, hydration" },
-                  { file: "src/lib/watch-engine/WatchCognitiveBridge.ts",status:"done",label:"WatchCognitiveBridge — Interface para Planner + runCycle()" },
+                  { file: "src/lib/watch-engine/WatchCognitiveBridge.ts",  status: "done", label: "WatchCognitiveBridge — Interface para Planner + runCycle()" },
+                  { file: "src/lib/watch-engine/WatchDeduplicator.ts",    status: "done", label: "WatchDeduplicator — Hash FNV-1a + Jaccard semantico (WE-04)" },
+                  { file: "src/lib/watch-engine/WatchPlannerBridge.ts",   status: "done", label: "WatchPlannerBridge — Deteccao automatica de 'me avise quando' (WE-04)" },
+                  { file: "src/lib/watch-engine/WatchAuditStore.ts",      status: "done", label: "WatchAuditStore — Dashboard de auditoria de execucoes (WE-04)" },
                 ].map((item, i) => (
                   <div key={i} className="flex items-center gap-2 text-xs">
                     <span className={item.status === "done" ? "text-emerald-400" : "text-amber-400"}>
@@ -678,7 +869,7 @@ export default function SprintWE01Page() {
                 {[
                   { sprint: "WE-02", label: "WatchEvaluator (Compilador) + WatchScheduler + ConnectorGateway (Token Bucket)", status: "planned" },
                   { sprint: "WE-03", label: "WatchOutbox + WatchStateTracker + WatchCognitiveBridge", status: "done" },
-                  { sprint: "WE-04", label: "Deduplicação via KnowledgeGraph + Dashboard de Auditoria + Performance", status: "planned" },
+                  { sprint: "WE-04", label: "WatchDeduplicator + WatchPlannerBridge + WatchAuditStore + Dashboard", status: "done" },
                 ].map((item, i) => (
                   <div key={i} className="flex items-center gap-3 text-sm">
                     <Badge className="bg-zinc-800 text-zinc-400 border-zinc-700 border text-xs shrink-0">
@@ -693,7 +884,7 @@ export default function SprintWE01Page() {
         )}
 
         <div className="text-center text-xs text-zinc-700 pt-2">
-          Watch Engine WE-01+WE-02+WE-03 · RFC-005 · ADR-012 · EPIC-017 · MemoryOS Engineering First · 2026-08-02
+          Watch Engine WE-01+WE-02+WE-03+WE-04 · RFC-005 · ADR-012 · EPIC-017 COMPLETO · MemoryOS Engineering First · 2026-08-02
         </div>
       </div>
     </div>
