@@ -123,8 +123,8 @@ function evaluateClock(conditionTree: any): boolean {
   const targetTotal = tH * 60 + tM;
   const diffMin = nowTotal - targetTotal;
 
-  // Janela de disparo: de 0 até +2 minutos após o horário alvo
-  const inWindow = diffMin >= 0 && diffMin <= 2;
+  // Janela de disparo: de 0 até +6 minutos após o horário alvo (cobre ciclo completo do cron de 5min)
+  const inWindow = diffMin >= 0 && diffMin <= 6;
   console.log(`[clock] target=${target} now=${nowH}:${String(nowM).padStart(2,'0')} diff=${diffMin}min inWindow=${inWindow}`);
   return inWindow;
 }
