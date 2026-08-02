@@ -59,54 +59,41 @@ import { stateViewEngine } from "@/lib/knowledge-registry/StateViewEngine";
 export async function runReasoningPlan({ userMsg, session, historyMessages = [], setPhase, kfmContext }) {
   const startTime = Date.now();
 
-  // === PRÉ-ETAPA -1: INTERCEPTAR PEDIDO DE ENVIO AGENDADO (v6) ===
-  // Detecta horário em QUALQUER linha da mensagem + linha "Para:" com email.
-  // Retorna IMEDIATAMENTE criando o Watch — nunca passa pelo LLM ou busca Gmail.
-  const _SCHED_TIME_RE = /(\d{1,2})[h:](\d{2})h?r?s?\b/i;
-  const _timeMatch = _SCHED_TIME_RE.exec(userMsg);
+  // === PRÉ-ETAPA -1: INTERCEPTAR PEDIDO DE ENVIO AGENDADO (v7) ===
+  // Detecta "Para: email@..." + horário HH:MMhrs em qualquer linha.
+  // Retorna IMEDIATAMENTE — nunca passa para o LLM, Gmail ou qualquer outra etapa.
+  // v7: lógica simplificada ao máximo para garantir execução sem falha silenciosa.
+  const _toMatchGlobal = /^para\s*:?\s*([^\s@]+@[^\s@]+\.[^\s@]+)/im.exec(userMsg);
+  const _timeMatch = /\b(\d{1,2})[h:](\d{2})h?r?s?\b/i.exec(userMsg);
 
-  // Extrai destinatário de qualquer linha da mensagem
-  const _toMatchGlobal = /^(?:para|to)\s*:?\s*([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/im.exec(userMsg);
+  console.log(`[SCHED-v7] timeMatch=${JSON.stringify(_timeMatch?.[0])} toMatch=${JSON.stringify(_toMatchGlobal?.[1])}`);
 
   if (_timeMatch && _toMatchGlobal) {
+    const _h = String(parseInt(_timeMatch[1], 10)).padStart(2, "0");
+    const _m = String(parseInt(_timeMatch[2], 10)).padStart(2, "0");
+    const _targetTime = `${_h}:${_m}`;
+    const _to = _toMatchGlobal[1].trim();
+    const _fromMatch = /^(?:de|from)\s*:?\s*([^\s@]+@[^\s@]+\.[^\s@]+)/im.exec(userMsg);
+    const _from = _fromMatch?.[1]?.trim() || null;
+    const _subjMatch = /^(?:assunto|subject)\s*:?\s*(.+)/im.exec(userMsg);
+    const _subject = _subjMatch?.[1]?.trim().split("\n")[0] || "Mensagem agendada";
+    const _subjLineIdx = userMsg.split("\n").findIndex(l => /^(?:assunto|subject)\s*:/i.test(l.trim()));
+    const _bodyLines = _subjLineIdx >= 0
+      ? userMsg.split("\n").slice(_subjLineIdx + 1).filter(l => {
+          const lt = l.trim().toLowerCase();
+          return lt.length > 0 && !lt.startsWith("não foram") && !lt.startsWith("nao foram")
+            && !lt.startsWith("chegou") && !lt.startsWith("horário") && !lt.startsWith("horario")
+            && !lt.startsWith("não") && !lt.startsWith("nao") && !lt.startsWith("⏰");
+        })
+      : [];
+    const _body = _bodyLines.length > 0 ? _bodyLines.join("\n").trim() : _subject;
+
     try {
-      const _h = String(parseInt(_timeMatch[1], 10)).padStart(2, "0");
-      const _m = String(parseInt(_timeMatch[2], 10)).padStart(2, "0");
-      const _targetTime = `${_h}:${_m}`;
-
-      const _to = _toMatchGlobal[1].trim();
-      const _fromMatch = /^(?:de|from)\s*:?\s*([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/im.exec(userMsg);
-      const _from = _fromMatch?.[1]?.trim() || null;
-      const _subjMatch = /^(?:assunto|subject)\s*:?\s*(.+)/im.exec(userMsg);
-      const _subject = _subjMatch?.[1]?.trim().split("\n")[0] || "Mensagem agendada";
-
-      // Corpo: linhas após o assunto, filtrando lixo de output do sistema colado
-      let _body = _subject;
-      if (_subjMatch) {
-        const _subjLineIdx = userMsg.split("\n").findIndex(l => /^(?:assunto|subject)\s*:/i.test(l.trim()));
-        if (_subjLineIdx >= 0) {
-          const _bodyLines = userMsg.split("\n").slice(_subjLineIdx + 1).filter(l => {
-            const lt = l.trim().toLowerCase();
-            return lt.length > 0 &&
-              !lt.startsWith("nao foram") && !lt.startsWith("não foram") &&
-              !lt.startsWith("a tarefa") && !lt.startsWith("mostrar") &&
-              !lt.startsWith("nao ha") && !lt.startsWith("não há") &&
-              !lt.startsWith("nenhum") && !lt.startsWith("deseja");
-          });
-          if (_bodyLines.length > 0) _body = _bodyLines.join("\n").trim();
-        }
-      }
-
-      const { base44: _b44 } = await import("@/api/base44Client");
       const _condition = {
         kind: "leaf", provider: "clock", action: "check_time",
         params: { target_time: _targetTime }, result_path: "count", comparator: "gt", value: 0,
       };
-      const _emailPayload = {
-        type: "send_email",
-        email: { from: _from, to: _to, subject: _subject, body: _body },
-      };
-      const _record = await _b44.entities.Watch.create({
+      const _record = await base44.entities.Watch.create({
         name: `Email às ${_targetTime} para ${_to}`,
         description: `Agendado via chat às ${_targetTime}`,
         condition_tree: JSON.stringify(_condition),
@@ -114,7 +101,7 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
         priority: "high",
         status: "active",
         on_trigger_type: "emit_event",
-        on_trigger_payload: JSON.stringify(_emailPayload),
+        on_trigger_payload: JSON.stringify({ type: "send_email", email: { from: _from, to: _to, subject: _subject, body: _body } }),
         last_evaluation_result: null,
         consecutive_failures: 0,
         trigger_count: 0,
@@ -123,14 +110,19 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
         session_id: session?.id,
         project_id: session?.project_id,
       });
-      console.log(`[SCHED-EMAIL-v5] Watch criado: ${_record.id} — ${_targetTime} → ${_to}`);
+      console.log(`[SCHED-v7] Watch criado: ${_record.id} — ${_targetTime} → ${_to}`);
       return {
         response: `Agendado! Email para \`${_to}\` será enviado às **${_targetTime}**.`,
-        plan: { goal: "scheduled_email", goalLabel: "Email agendado", strategy: "Watch Engine v5 — intercept direto", skills: [], skillsCount: 0, sourcesCount: 0, contextLength: 0, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: null, responseTimeMs: Date.now() - startTime, handledByGuard: "SCHED-EMAIL-v5", watchId: _record.id },
+        plan: { goal: "scheduled_email", goalLabel: "Email agendado", strategy: "Watch Engine v7", skills: [], skillsCount: 0, sourcesCount: 0, contextLength: 0, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: null, responseTimeMs: Date.now() - startTime, handledByGuard: "SCHED-v7", watchId: _record.id },
         sources: [],
       };
     } catch (err) {
-      console.warn("[SCHED-EMAIL-v5] Erro:", err?.message);
+      console.error(`[SCHED-v7] ERRO ao criar watch:`, err?.message);
+      return {
+        response: `Não consegui agendar o email automaticamente (erro: ${err?.message}). Tente novamente.`,
+        plan: { goal: "scheduled_email_error", goalLabel: "Erro ao agendar", strategy: "Watch Engine v7 — erro", skills: [], skillsCount: 0, sourcesCount: 0, contextLength: 0, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: null, responseTimeMs: Date.now() - startTime },
+        sources: [],
+      };
     }
   }
 
