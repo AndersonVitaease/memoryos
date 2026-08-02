@@ -731,9 +731,31 @@ Se for, extraia "target" (nome do arquivo/pasta sem verbos de comando).`,
     }
   }
 
-  if (_driveAction?.is_drive_action && _driveAction.action === "read_content" && !_hasRealDocRead) {
-    const response = "Ainda não tenho uma leitura real do conteúdo desse arquivo — não posso te mostrar dados dele sem antes acessá-lo de verdade. Se quiser, você pode anexar o arquivo direto aqui na conversa (eu leio na hora), ou me pedir para tentar abrir/baixar ele do Drive primeiro.";
-    return { response, plan: _makeDriveActionPlan({ action: "read_content", target: _driveAction.target }), sources };
+  if (_driveAction?.is_drive_action && _driveAction.action === "read_content") {
+    // Primeiro tenta encontrar o documento já salvo na memória (ingestão anterior)
+    try {
+      const docQuery = _driveAction.target
+        ? { session_id: session.id, processing_status: "completed" }
+        : { session_id: session.id, processing_status: "completed" };
+      const savedDocs = await base44.entities.Document.filter(docQuery, "-created_date", 20);
+      // Busca por nome similar ao target, ou pega o mais recente com extracted_text
+      const target = _driveAction.target
+        ? (savedDocs.find((d) => d.name?.toLowerCase().includes(_driveAction.target.toLowerCase())) || savedDocs.find((d) => d.extracted_text))
+        : savedDocs.find((d) => d.extracted_text);
+      if (target?.extracted_text?.trim()) {
+        const fullText = target.extracted_text;
+        return {
+          response: `📄 **${target.name}** (fonte: memória, conteúdo salvo)\n\n${fullText}`,
+          plan: _makeDriveActionPlan({ action: "read_content", target: target.name, handledByGuard: "SAVED-DOC-MEMORY" }),
+          sources: [{ type: "document", id: target.id, name: target.name }],
+        };
+      }
+    } catch { /* cai no bloco abaixo */ }
+
+    if (!_hasRealDocRead) {
+      const response = "Ainda não tenho uma leitura real do conteúdo desse arquivo — não posso te mostrar dados dele sem antes acessá-lo de verdade. Se quiser, você pode anexar o arquivo direto aqui na conversa (eu leio na hora), ou me pedir para tentar abrir/baixar ele do Drive primeiro.";
+      return { response, plan: _makeDriveActionPlan({ action: "read_content", target: _driveAction.target }), sources };
+    }
   }
 
   if (_driveAction?.is_drive_action && _driveAction.action === "download_file" && _driveAction.target) {
