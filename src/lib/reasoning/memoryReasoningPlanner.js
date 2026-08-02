@@ -60,23 +60,64 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
   const startTime = Date.now();
 
   // === PRÉ-ETAPA -1: INTERCEPTAR PEDIDO DE ENVIO AGENDADO ===
-  // Padrão: horário + verbo enviar + email — deve criar Watch direto, NUNCA busca Gmail.
-  // Executado ANTES de qualquer outra coisa, inclusive o bypass de IA.
-  const _SCHED_EMAIL_RE = /(?:[àa]s\s*|as\s+)?\d{1,2}[h:]\d{2}h?r?s?\b[\s\S]{0,200}(?:envie?|mande?|envia|manda|dispare?)/i;
-  if (_SCHED_EMAIL_RE.test(userMsg)) {
+  // Padrão: horário + email na mensagem — cria Watch direto, NUNCA busca Gmail.
+  // Executado ANTES de qualquer outra coisa.
+  const _SCHED_TIME_RE = /(?:[àa]s\s*|as\s+)?(\d{1,2})[h:](\d{2})h?r?s?\b/i;
+  const _HAS_EMAIL_ADDR = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/;
+  const _timeMatch = _SCHED_TIME_RE.exec(userMsg);
+  if (_timeMatch && _HAS_EMAIL_ADDR.test(userMsg)) {
     try {
-      const { watchPlannerBridge } = await import("@/lib/watch-engine/WatchPlannerBridge");
-      const _result = await watchPlannerBridge.processMessage(userMsg, session?.id, session?.project_id, historyMessages);
-      if (_result.created) {
-        return {
-          response: `Pronto! Alerta criado para o horário programado. O email será enviado automaticamente quando o horário chegar.`,
-          plan: { goal: "scheduled_email", goalLabel: "Email agendado", strategy: "Watch Engine — intercept direto", skills: [], skillsCount: 0, sourcesCount: 0, contextLength: 0, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: null, responseTimeMs: Date.now() - startTime, handledByGuard: "SCHED-EMAIL-INTERCEPT", watchId: _result.watchId },
-          sources: [],
+      const _h = String(parseInt(_timeMatch[1], 10)).padStart(2, "0");
+      const _m = String(parseInt(_timeMatch[2], 10)).padStart(2, "0");
+      const _targetTime = `${_h}:${_m}`;
+
+      // Extrai campos do email da mensagem
+      const _toMatch = /(?:para|to)\s*:?\s*([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/i.exec(userMsg);
+      const _fromMatch = /(?:de|from)\s*:?\s*([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/i.exec(userMsg);
+      const _subjMatch = /(?:assunto|subject)\s*:?\s*(.+)/i.exec(userMsg);
+
+      // Corpo: tudo após a linha do assunto
+      let _body = "";
+      if (_subjMatch) {
+        const _subjIdx = userMsg.search(/(?:assunto|subject)\s*:?/i);
+        const _bodyStart = userMsg.indexOf("\n", _subjIdx);
+        _body = _bodyStart >= 0 ? userMsg.slice(_bodyStart).trim() : "";
+      }
+
+      const _to = _toMatch?.[1];
+      const _from = _fromMatch?.[1];
+      const _subject = _subjMatch?.[1]?.trim().split("\n")[0] || "Mensagem agendada";
+
+      if (_to) {
+        const { base44: _b44 } = await import("@/api/base44Client");
+        const _condition = {
+          kind: "leaf", provider: "clock", action: "check_time",
+          params: { target_time: _targetTime }, result_path: "count", comparator: "gt", value: 0,
         };
-      } else if (_result.wasDuplicate) {
+        const _emailPayload = {
+          type: "send_email",
+          email: { from: _from || null, to: _to, subject: _subject, body: _body || _subject },
+        };
+        const _record = await _b44.entities.Watch.create({
+          name: `Email às ${_targetTime} para ${_to}`,
+          description: `Agendado via chat às ${_targetTime}`,
+          condition_tree: JSON.stringify(_condition),
+          frequency_minutes: 1,
+          priority: "high",
+          status: "active",
+          on_trigger_type: "emit_event",
+          on_trigger_payload: JSON.stringify(_emailPayload),
+          last_evaluation_result: null,
+          consecutive_failures: 0,
+          trigger_count: 0,
+          next_execution_at: new Date().toISOString(),
+          compiled_at: new Date().toISOString(),
+          session_id: session?.id,
+          project_id: session?.project_id,
+        });
         return {
-          response: `Já existe um alerta ativo para esse horário. Você será notificado quando o email for enviado.`,
-          plan: { goal: "scheduled_email_dup", goalLabel: "Email agendado duplicado", strategy: "Watch dedup", skills: [], skillsCount: 0, sourcesCount: 0, contextLength: 0, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: null, responseTimeMs: Date.now() - startTime, handledByGuard: "SCHED-EMAIL-INTERCEPT-DEDUP" },
+          response: `Pronto! Email agendado para **${_targetTime}** — será enviado para \`${_to}\` automaticamente.`,
+          plan: { goal: "scheduled_email", goalLabel: "Email agendado", strategy: "Watch Engine — intercept direto", skills: [], skillsCount: 0, sourcesCount: 0, contextLength: 0, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: null, responseTimeMs: Date.now() - startTime, handledByGuard: "SCHED-EMAIL-INTERCEPT", watchId: _record.id },
           sources: [],
         };
       }
