@@ -277,10 +277,10 @@ export default function ChatPage() {
       } catch { /* silencioso */ }
     };
 
-    // Polling a cada 30 segundos
-    const interval = setInterval(pollWatchActions, 30_000);
-    // Verificar imediatamente também
+    // Verifica imediatamente ao montar (captura alertas perdidos enquanto tela estava fechada)
+    // e depois a cada 30 segundos
     pollWatchActions();
+    const interval = setInterval(pollWatchActions, 30_000);
     return () => clearInterval(interval);
   }, [conversation.isInitialized, conversation.session?.id]);
 
