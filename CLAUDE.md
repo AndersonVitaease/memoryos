@@ -62,3 +62,27 @@ Follow the instructions in `AGENTS.md`.
 - Mensagens sem horário → pipeline cognitivo normal (sem impacto)
 
 **Testes validados:** Emails de 17:02 e 17:03 BRT chegaram na caixa correta, notificações apareceram no chat no horário exato, Watch marcado como `completed`.
+
+---
+
+### 2026-08-02 — Watch Engine: Gerenciamento via Chat + Proteção contra Horários Passados (cxp-sched-v2)
+
+**Doc completa:** `src/docs/01-operational-knowledge/SESSION-2026-08-02-WATCH-ENGINE-SCHEDULER-INTERCEPTOR.md`
+
+**Problemas resolvidos:**
+1. Watches com horário passado continuavam `active` e geravam notificações inúteis.
+2. Não havia forma conversacional de deletar/cancelar avisos já criados.
+
+**Mudanças em `ConversationManager.ts`:**
+
+1. **`isPast(targetTime)`** — verifica se o horário já passou há >6 min (BRT). Aplicado antes de criar qualquer Watch; recusa criação e retorna mensagem explicativa.
+
+2. **`tryManageWatches()`** — novo interceptor antes do scheduler. Detecta comandos de gerenciamento:
+   - `"cancelar todos"` / `"deletar todos"` → marca todos os Watches como `completed`
+   - `"deletar todos os outros"` / `"manter apenas o das HH:MM"` → remove todos exceto o especificado
+   - `"remover o das HH:MM"` → remove Watch específico por horário
+   - Usa `Watch.update({ status: "completed" })` (preserva histórico, não deleta)
+
+3. **Singleton incrementado para `cxp-sched-v2`** — força recriação com os novos interceptores.
+
+**Comportamento:** Interceptores rodam na ordem: `tryManageWatches` → `tryScheduleEmail` → pipeline cognitivo.
