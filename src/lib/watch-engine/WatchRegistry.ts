@@ -82,8 +82,11 @@ class WatchRegistryClass {
     }
 
     // 4. Calcular próxima execução
+    // Para clock: executar imediatamente (next_execution_at = agora) para que o
+    // scheduler avalie já no próximo tick, sem esperar frequency_minutes.
     const now = new Date();
-    const nextExecution = new Date(now.getTime() + intent.frequency_minutes * 60 * 1000);
+    const isClock = (intent.condition as any)?.provider === 'clock';
+    const nextExecution = isClock ? now : new Date(now.getTime() + intent.frequency_minutes * 60 * 1000);
 
     // 5. Persistir
     try {
