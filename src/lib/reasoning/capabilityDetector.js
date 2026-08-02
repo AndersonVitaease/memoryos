@@ -155,7 +155,7 @@ Exemplos que NÃO precisam: "verifique o código que colei", "confirma se entend
  * @param {Object} goal - Objetivo detectado pelo Goal Detector
  * @returns {Object} { capabilities, matchedReasons, hasEnoughInfo, missingInfoHint }
  */
-export async function detectCapabilities(message, memory = {}, goal = {}) {
+export async function detectCapabilities(message, memory = {}, goal = {}, sessionId = null) {
   const normalized = normalize(message);
   const { context = "", sources = [] } = memory;
 
@@ -273,6 +273,37 @@ export async function detectCapabilities(message, memory = {}, goal = {}) {
         explicitlyRequested = true;
         semanticReason = semantic.reason;
       }
+    }
+  }
+
+  // === [EF-413] SESSION ENTITY CACHE CHECK ===
+  // Só roda se: (1) web_search seria ativado, (2) temos sessionId, (3) sessão não é nova.
+  // Query lazy de KnowledgeEntity — feita UMA VEZ, apenas quando necessário.
+  // Suprime web_search se a mensagem menciona uma entidade já conhecida nesta sessão.
+  if ((explicitlyRequested || memoryInsufficient) && sessionId) {
+    try {
+      const sessionEntities = await base44.entities.KnowledgeEntity.filter(
+        { session_id: sessionId }, '-created_date', 60
+      );
+      if (sessionEntities && sessionEntities.length >= 3) {
+        // Deduplicar por value+type e normalizar para comparação
+        const seen = new Map();
+        for (const e of sessionEntities) {
+          const key = `${e.value}|${e.type}`;
+          if (!seen.has(key)) seen.set(key, normalize(e.value));
+        }
+        const knownValues = [...seen.values()];
+        const msgNorm = normalize(message);
+        const matchedEntity = knownValues.find(v => v.length > 2 && msgNorm.includes(v));
+        if (matchedEntity) {
+          explicitlyRequested = false;
+          console.log(`[EF-413][cache-hit] Entidade conhecida '${matchedEntity}' detectada — web_search suprimida`);
+        } else {
+          console.log(`[EF-413][cache-miss] Nenhuma entidade conhecida na mensagem — web_search prossegue`);
+        }
+      }
+    } catch {
+      // Falha silenciosa — web_search prossegue normalmente
     }
   }
 

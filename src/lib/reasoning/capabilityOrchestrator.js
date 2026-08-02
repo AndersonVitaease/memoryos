@@ -46,7 +46,8 @@ export async function orchestrateCapabilities({ message, memory, goal, sessionId
   const { capabilities, matchedReasons, hasEnoughInfo, missingInfoHint } = await detectCapabilities(
     message,
     memory,
-    goal
+    goal,
+    sessionId
   );
   console.log(`[DIAG][Orchestrator] ETAPA 3 (detectCapabilities) levou ${Date.now() - _t3}ms`, capabilities);
 
