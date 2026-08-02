@@ -59,6 +59,54 @@ import { stateViewEngine } from "@/lib/knowledge-registry/StateViewEngine";
 export async function runReasoningPlan({ userMsg, session, historyMessages = [], setPhase, kfmContext }) {
   const startTime = Date.now();
 
+  // === PRÉ-ETAPA WATCH-QUERY: Responder perguntas sobre watches ativos ===
+  const _WATCH_QUERY_PATTERNS = [
+    /qual.{0,20}(hora|horario|hor[aá]rio).{0,20}(alerta|aviso|watch|lembrete)/i,
+    /qual.{0,20}(alerta|aviso|watch|lembrete).{0,20}(hora|horario|ativo|agendado|programado)/i,
+    /(alerta|aviso|watch|lembrete).{0,30}(ativo|agendado|programado|qual|quando|que hora)/i,
+    /que hora.{0,20}(alerta|aviso|watch|lembrete)/i,
+    /quando.{0,20}(alerta|aviso|watch|lembrete)/i,
+    /perguntei.{0,30}(alerta|aviso|watch)/i,
+  ];
+  const _isWatchQuery = _WATCH_QUERY_PATTERNS.some(p => p.test(userMsg));
+  if (_isWatchQuery) {
+    try {
+      const activeWatches = await base44.entities.Watch.filter({ status: "active" }, "-created_date", 20);
+      const clockWatches = activeWatches.filter(w => {
+        try { const ct = JSON.parse(w.condition_tree || "{}"); return ct.provider === "clock"; } catch { return false; }
+      });
+      if (clockWatches.length > 0) {
+        const lines = clockWatches.map(w => {
+          try {
+            const ct = JSON.parse(w.condition_tree);
+            const hora = ct.params?.target_time || "horário desconhecido";
+            return `• **${w.name}** — às **${hora}** (disparos: ${w.trigger_count || 0})`;
+          } catch { return `• ${w.name}`; }
+        }).join("\n");
+        return {
+          response: `Seus alertas de horário ativos:\n\n${lines}`,
+          plan: { goal: "watch_query", goalLabel: "Consulta de alertas", strategy: "Watch query direto", skills: [], skillsCount: 0, sourcesCount: 0, contextLength: 0, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: null, responseTimeMs: Date.now() - startTime, handledByGuard: "WATCH-QUERY" },
+          sources: [],
+        };
+      } else if (activeWatches.length > 0) {
+        const lines = activeWatches.map(w => `• **${w.name}** (status: ${w.status})`).join("\n");
+        return {
+          response: `Seus alertas ativos:\n\n${lines}`,
+          plan: { goal: "watch_query", goalLabel: "Consulta de alertas", strategy: "Watch query direto", skills: [], skillsCount: 0, sourcesCount: 0, contextLength: 0, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: null, responseTimeMs: Date.now() - startTime, handledByGuard: "WATCH-QUERY" },
+          sources: [],
+        };
+      } else {
+        return {
+          response: "Não há alertas ativos no momento.",
+          plan: { goal: "watch_query", goalLabel: "Consulta de alertas", strategy: "Watch query direto", skills: [], skillsCount: 0, sourcesCount: 0, contextLength: 0, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: null, responseTimeMs: Date.now() - startTime, handledByGuard: "WATCH-QUERY" },
+          sources: [],
+        };
+      }
+    } catch (err) {
+      console.warn("[WatchQuery] Falhou:", err?.message);
+    }
+  }
+
   // === PRÉ-ETAPA WATCH: Detectar intenção de monitoramento ===
   // "me avise quando...", "monitore...", "fique de olho..." etc.
   // Aguarda a criação do Watch e retorna DIRETAMENTE se criado — sem passar pelo LLM.
