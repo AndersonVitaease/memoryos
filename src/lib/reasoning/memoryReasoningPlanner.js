@@ -59,7 +59,7 @@ import { stateViewEngine } from "@/lib/knowledge-registry/StateViewEngine";
 export async function runReasoningPlan({ userMsg, session, historyMessages = [], setPhase, kfmContext }) {
   const startTime = Date.now();
 
-  // === PRÉ-ETAPA -1: INTERCEPTAR PEDIDO DE ENVIO AGENDADO ===
+  // === PRÉ-ETAPA -1: INTERCEPTAR PEDIDO DE ENVIO AGENDADO (v4) ===
   // Padrão: horário + email na mensagem — cria Watch direto, NUNCA busca Gmail.
   // Executado ANTES de qualquer outra coisa.
   // Usa apenas as primeiras 20 linhas da mensagem para evitar falsos positivos
