@@ -263,23 +263,15 @@ export default function ChatPage() {
         const sessionId = conversation.session?.id;
         if (!sessionId) return;
 
-        // Busca pending + dispatched dos últimos 30 min (captura alertas perdidos com tela fechada)
-        // Busca 'pending' + 'dispatched' recentes (últimos 10 min) para capturar notificações perdidas
-        const [pendingActions, recentDispatched] = await Promise.all([
-          base44.entities.PendingWatchAction.filter({ status: 'pending' }),
-          base44.entities.PendingWatchAction.filter({ status: 'dispatched' }, '-created_date', 20),
-        ]);
-        const cutoff = Date.now() - 10 * 60 * 1000;
-        const recentOnes = recentDispatched.filter(a => new Date(a.created_date).getTime() > cutoff);
-        const allToProcess = [...pendingActions, ...recentOnes];
-        if (!allToProcess || allToProcess.length === 0) return;
+        // Busca apenas 'pending' — dispatched já foram processados
+        const pendingActions = await base44.entities.PendingWatchAction.filter({ status: 'pending' });
+        if (!pendingActions || pendingActions.length === 0) return;
 
-        for (const action of allToProcess) {
+        for (const action of pendingActions) {
           if (shownActionIds.has(action.id)) continue;
-
           shownActionIds.add(action.id);
 
-          // Marcar como dispatched PRIMEIRO para evitar processamento duplo
+          // Marcar como dispatched ANTES para evitar duplo processamento
           await base44.entities.PendingWatchAction.update(action.id, {
             status: 'dispatched',
             dispatched_at: new Date().toISOString(),
@@ -292,18 +284,16 @@ export default function ChatPage() {
             ? new Date(payload.timestamp).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' })
             : new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 
-          await base44.entities.Message.create({
+          const content = `⏰ **${payload.watchName || 'Aviso'}**\n\n${payload.message || 'Um Watch disparou!'}\n\n_Horário do disparo: ${triggerTime}_`;
+
+          // Salva no DB e injeta diretamente no state React (sem reload completo)
+          const savedMsg = await base44.entities.Message.create({
             session_id: sessionId,
             role: 'assistant',
-            content: `⏰ **${payload.watchName || 'Aviso'}**\n\n${payload.message || 'Um Watch disparou!'}\n\n_Horário do disparo: ${triggerTime}_`,
+            content,
             memory_tier: 'active',
           });
-
-          // Recarrega mensagens para garantir que apareça na UI
-          const updatedMessages = await base44.entities.Message.filter(
-            { session_id: sessionId }, 'created_date', 100
-          );
-          conversation.setMessages(updatedMessages);
+          conversation.appendMessage(savedMsg);
         }
       } catch { /* silencioso */ }
     };
