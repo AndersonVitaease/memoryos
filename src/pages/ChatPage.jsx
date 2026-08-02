@@ -199,10 +199,14 @@ export default function ChatPage() {
       if (stats.tasks > 0) lines.push(`✓ ${stats.tasks} tarefas`);
       if (stats.topics > 0) lines.push(`✓ ${stats.topics} assuntos`);
 
+      const emailLine = result.emailSent
+        ? `\n\n📧 Email enviado para \`${result.emailSent.to}\`\nAssunto: _${result.emailSent.subject}_`
+        : "";
+
       const savedAssistantMsg = await base44.entities.Message.create({
         session_id: session.id,
         role: "assistant",
-        content: `**${result.displayName}** processado e salvo na memoria.\n\n${lines.join("\n")}`,
+        content: `**${result.displayName}** processado e salvo na memoria.\n\n${lines.join("\n")}${emailLine}`,
         memory_tier: "active",
       });
       conversation.appendMessage(savedAssistantMsg);
