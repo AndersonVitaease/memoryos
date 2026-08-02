@@ -4,10 +4,12 @@
  * Foundation: Entidades + WatchTypes + WatchValidator + WatchRegistry
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { base44 } from "@/api/base44Client";
+import LiveStatusPanel from "@/components/watch-engine/LiveStatusPanel";
 
 const STATUS_COLOR = {
   active:    "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
@@ -664,6 +666,7 @@ export default function SprintWE01Page() {
             { id: "evaluator", label: "Evaluator WE-02" },
             { id: "we03",      label: "Outbox+State WE-03" },
             { id: "we04",      label: "Planner+Audit WE-04" },
+            { id: "live",      label: "Status ao Vivo" },
             { id: "arch",      label: "Arquitetura" },
           ].map((tab) => (
             <button
@@ -820,6 +823,11 @@ export default function SprintWE01Page() {
         {/* Tab: WE-04 */}
         {activeTab === "we04" && (
           <PlannerAuditPanel />
+        )}
+
+        {/* Tab: Live Status */}
+        {activeTab === "live" && (
+          <LiveStatusPanel onRefresh={loadData} />
         )}
 
         {/* Tab: Arquitetura */}
