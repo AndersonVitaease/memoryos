@@ -59,19 +59,21 @@ import { stateViewEngine } from "@/lib/knowledge-registry/StateViewEngine";
 export async function runReasoningPlan({ userMsg, session, historyMessages = [], setPhase, kfmContext }) {
   const startTime = Date.now();
 
-  // === PRÉ-ETAPA WATCH: Detectar intenção de monitoramento (fire-and-forget) ===
+  // === PRÉ-ETAPA WATCH: Detectar intenção de monitoramento ===
   // "me avise quando...", "monitore...", "fique de olho..." etc.
-  // Nunca bloqueia a resposta — roda em paralelo com o fluxo principal.
+  // Aguarda a criação do Watch para garantir que ele seja persistido antes de qualquer bypass.
+  let _watchBridgeResult = null;
   try {
     const { watchPlannerBridge } = await import("@/lib/watch-engine/WatchPlannerBridge");
     if (watchPlannerBridge.hasMonitoringIntent(userMsg)) {
-      watchPlannerBridge.processMessage(userMsg, session?.id, session?.project_id).then((result) => {
-        if (result.created) {
-          console.log(`[WatchPlannerBridge] Watch criado automaticamente: ${result.watchId} — ${result.watchName}`);
-        }
-      }).catch(() => { /* silencioso — nunca bloqueia */ });
+      _watchBridgeResult = await watchPlannerBridge.processMessage(userMsg, session?.id, session?.project_id);
+      if (_watchBridgeResult.created) {
+        console.log(`[WatchPlannerBridge] Watch criado: ${_watchBridgeResult.watchId} — ${_watchBridgeResult.watchName}`);
+      } else {
+        console.log(`[WatchPlannerBridge] Watch NÃO criado:`, _watchBridgeResult.message);
+      }
     }
-  } catch { /* silencioso */ }
+  } catch (err) { console.warn('[WatchPlannerBridge] Erro:', err?.message); }
 
   const _t0 = Date.now();
   // === PRÉ-ETAPA 0: BYPASS PARA PERGUNTAS CONVERSACIONAIS SIMPLES ===
@@ -130,8 +132,11 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
       );
       console.log(`[DIAG][AI-SERVICE-DIRECT-EARLY] servico: ${_earlyService.id} | modelo: ${model} | success: ${result.success} | tem reply: ${Boolean(result.data?.reply)}`);
       if (result.success && result.data?.reply) {
+        const _watchNote = _watchBridgeResult?.created
+          ? `\n\n_(Watch "${_watchBridgeResult.watchName}" criado — você será notificado automaticamente.)_`
+          : "";
         return {
-          response: result.data.reply,
+          response: result.data.reply + _watchNote,
           plan: {
             goal: "ai_service_direct",
             goalLabel: "Processamento direto de IA",
