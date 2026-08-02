@@ -101,7 +101,7 @@ class WatchRegistryClass {
         on_trigger_payload: intent.on_trigger.payload
           ? JSON.stringify(intent.on_trigger.payload)
           : undefined,
-        last_evaluation_result: false,
+        last_evaluation_result: null,
         consecutive_failures: 0,
         trigger_count: 0,
         next_execution_at: nextExecution.toISOString(),
