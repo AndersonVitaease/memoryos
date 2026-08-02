@@ -36,8 +36,8 @@ const INTENT_PATTERNS = [
   /verifica\s+periodicamente/i,
 ];
 
-// Regex para extrair horário da mensagem (ex: "09:24", "9h30", "às 14:00", "09:32hrs")
-const TIME_REGEX = /\b(\d{1,2})[h:](\d{2})(?:h?rs?)?\b|(?:às|as|ao)\s+(\d{1,2})(?:[h:](\d{2}))?/i;
+// Regex para extrair horário da mensagem (ex: "09:24", "9h30", "às 14:00", "09:32hrs", "14:06hrs", "14h06")
+const TIME_REGEX = /(?:às|as|ao)\s*(\d{1,2})[h:](\d{2})(?:h?rs?)?|(?:às|as|ao)\s*(\d{1,2})h\b|\b(\d{1,2})[h:](\d{2})(?:h?rs?)?\b|\b(\d{1,2})h(\d{2})\b/i;
 
 // Mapeia keywords de provedor detectados na mensagem
 const PROVIDER_HINTS: Array<{ pattern: RegExp; provider: string; action: string; label: string }> = [
@@ -70,9 +70,9 @@ export interface WatchIntentDetection {
 function extractTargetTime(message: string): string | null {
   const match = TIME_REGEX.exec(message);
   if (!match) return null;
-  // Grupos: (h:m) ou (às h) ou (às hm)
-  const h = match[1] ?? match[3];
-  const m = match[2] ?? match[4] ?? "00";
+  // Grupos: (às H:M) | (às H) | (H:M) | (Hh MM)
+  const h = match[1] ?? match[3] ?? match[4] ?? match[6];
+  const m = match[2] ?? match[5] ?? match[7] ?? "00";
   if (!h) return null;
   return `${h.padStart(2, "0")}:${m.padStart(2, "00")}`;
 }
