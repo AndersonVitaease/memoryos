@@ -1,0 +1,56 @@
+{
+  "name": "WatchExecution",
+  "type": "object",
+  "properties": {
+    "watch_id": {
+      "type": "string",
+      "description": "ID do Watch pai"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "success",
+        "failure",
+        "skipped",
+        "circuit_open"
+      ],
+      "description": "Resultado da execu\u00e7\u00e3o"
+    },
+    "evaluation_result": {
+      "type": "boolean",
+      "description": "Resultado booleano da avalia\u00e7\u00e3o da ConditionTree"
+    },
+    "triggered": {
+      "type": "boolean",
+      "default": false,
+      "description": "Se houve disparo (transi\u00e7\u00e3o false\u2192true)"
+    },
+    "providers_called": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Lista de providers chamados nesta execu\u00e7\u00e3o"
+    },
+    "provider_results": {
+      "type": "string",
+      "description": "JSON serializado dos resultados brutos dos providers"
+    },
+    "duration_ms": {
+      "type": "number",
+      "description": "Dura\u00e7\u00e3o total da execu\u00e7\u00e3o em milissegundos"
+    },
+    "error_message": {
+      "type": "string",
+      "description": "Mensagem de erro (quando status=failure)"
+    },
+    "session_id": {
+      "type": "string",
+      "description": "Sess\u00e3o de contexto"
+    }
+  },
+  "required": [
+    "watch_id",
+    "status"
+  ]
+}

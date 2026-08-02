@@ -1,0 +1,467 @@
+/**
+ * SprintWE01Page.jsx — Watch Engine WE-01 Dashboard
+ * Sprint WE-01 | RFC-005 | ADR-012 | EPIC-017
+ * Foundation: Entidades + WatchTypes + WatchValidator + WatchRegistry
+ */
+
+import { useState, useEffect } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
+const STATUS_COLOR = {
+  active:    "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+  paused:    "bg-amber-500/10 text-amber-400 border-amber-500/20",
+  error:     "bg-red-500/10 text-red-400 border-red-500/20",
+  invalid:   "bg-zinc-500/10 text-zinc-400 border-zinc-700",
+  completed: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+};
+
+const PRIORITY_COLOR = {
+  critical: "text-red-400",
+  high:     "text-orange-400",
+  normal:   "text-zinc-300",
+  low:      "text-zinc-500",
+};
+
+function MetricCard({ label, value, color = "text-white" }) {
+  return (
+    <div className="bg-zinc-800 rounded-lg p-4 text-center">
+      <div className={`text-3xl font-bold ${color}`}>{value}</div>
+      <div className="text-xs text-zinc-400 mt-1">{label}</div>
+    </div>
+  );
+}
+
+export default function SprintWE01Page() {
+  const [testResult, setTestResult]   = useState(null);
+  const [isRunning, setIsRunning]     = useState(false);
+  const [metrics, setMetrics]         = useState(null);
+  const [watches, setWatches]         = useState([]);
+  const [isCreating, setIsCreating]   = useState(false);
+  const [createResult, setCreateResult] = useState(null);
+  const [activeTab, setActiveTab]     = useState("overview");
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      const { watchRegistry } = await import("@/lib/watch-engine/WatchRegistry");
+      const [m, list] = await Promise.all([
+        watchRegistry.getMetrics(),
+        watchRegistry.list({ limit: 20 }),
+      ]);
+      setMetrics(m);
+      setWatches(list.watches);
+    } catch (err) {
+      console.error("[WE-01] Falha ao carregar dados:", err);
+    }
+  };
+
+  const runTests = async () => {
+    setIsRunning(true);
+    setTestResult(null);
+    try {
+      const { runWatchEngineTests } = await import("@/lib/watch-engine/watchEngineTests");
+      setTestResult(runWatchEngineTests());
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  const createSampleWatch = async () => {
+    setIsCreating(true);
+    setCreateResult(null);
+    try {
+      const { watchRegistry } = await import("@/lib/watch-engine/WatchRegistry");
+      const result = await watchRegistry.create({
+        name: "Monitor Gmail — Demo WE-01",
+        description: "Verifica se há novos emails não lidos no inbox",
+        condition: {
+          kind: "leaf",
+          provider: "gmail",
+          action: "count_unread",
+          params: { label: "INBOX" },
+          result_path: "count",
+          comparator: "gt",
+          value: 0,
+        },
+        frequency_minutes: 15,
+        priority: "normal",
+        on_trigger: { type: "notify_user" },
+      });
+      setCreateResult(result);
+      if (result.ok) await loadData();
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const createComplexWatch = async () => {
+    setIsCreating(true);
+    setCreateResult(null);
+    try {
+      const { watchRegistry } = await import("@/lib/watch-engine/WatchRegistry");
+      const result = await watchRegistry.create({
+        name: "Monitor Complexo — Gmail AND Drive",
+        description: "Dispara quando há emails E arquivos novos",
+        condition: {
+          kind: "AND",
+          conditions: [
+            {
+              kind: "leaf",
+              provider: "gmail",
+              action: "count_unread",
+              params: { label: "INBOX" },
+              result_path: "count",
+              comparator: "gt",
+              value: 0,
+            },
+            {
+              kind: "OR",
+              conditions: [
+                {
+                  kind: "leaf",
+                  provider: "drive",
+                  action: "list_recent",
+                  params: { days: 1 },
+                  result_path: "count",
+                  comparator: "gt",
+                  value: 0,
+                },
+                {
+                  kind: "NOT",
+                  condition: {
+                    kind: "leaf",
+                    provider: "calendar",
+                    action: "get_event_count",
+                    params: { today: true },
+                    result_path: "count",
+                    comparator: "eq",
+                    value: 0,
+                  },
+                },
+              ],
+            },
+          ],
+        },
+        frequency_minutes: 30,
+        priority: "high",
+        on_trigger: { type: "emit_event", payload: { event: "WatchTriggered" } },
+      });
+      setCreateResult(result);
+      if (result.ok) await loadData();
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const handlePause = async (id) => {
+    const { watchRegistry } = await import("@/lib/watch-engine/WatchRegistry");
+    await watchRegistry.pause(id);
+    await loadData();
+  };
+
+  const handleResume = async (id) => {
+    const { watchRegistry } = await import("@/lib/watch-engine/WatchRegistry");
+    await watchRegistry.resume(id);
+    await loadData();
+  };
+
+  const handleDelete = async (id) => {
+    const { watchRegistry } = await import("@/lib/watch-engine/WatchRegistry");
+    await watchRegistry.delete(id);
+    await loadData();
+  };
+
+  return (
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6">
+      <div className="max-w-6xl mx-auto space-y-6">
+
+        {/* Header */}
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <div className="flex items-center gap-3 mb-1">
+              <span className="text-2xl">👁️</span>
+              <h1 className="text-2xl font-bold text-white">Watch Engine — WE-01</h1>
+              <Badge className="bg-violet-500/10 text-violet-400 border-violet-500/20 border text-xs">
+                SPRINT WE-01
+              </Badge>
+            </div>
+            <p className="text-zinc-400 text-sm">
+              Foundation · Entidades + WatchTypes + WatchValidator + WatchRegistry
+            </p>
+          </div>
+          <Button
+            onClick={runTests}
+            disabled={isRunning}
+            variant="outline"
+            className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 text-sm"
+          >
+            {isRunning ? "Testando..." : "Executar Testes WE-01"}
+          </Button>
+        </div>
+
+        {/* Métricas */}
+        {metrics && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <MetricCard label="Total"     value={metrics.totalWatches}   color="text-white" />
+            <MetricCard label="Ativos"    value={metrics.activeWatches}  color="text-emerald-400" />
+            <MetricCard label="Pausados"  value={metrics.pausedWatches}  color="text-amber-400" />
+            <MetricCard label="Erros"     value={metrics.errorWatches}   color="text-red-400" />
+            <MetricCard label="Inválidos" value={metrics.invalidWatches} color="text-zinc-400" />
+            <MetricCard label="Disparos"  value={metrics.totalTriggers}  color="text-violet-400" />
+          </div>
+        )}
+
+        {/* Test Result */}
+        {testResult && (
+          <Card className="bg-zinc-900 border-zinc-800">
+            <CardContent className="pt-4 space-y-3">
+              <div className="flex items-center gap-6 flex-wrap">
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-emerald-400">{testResult.passed}</div>
+                  <div className="text-xs text-zinc-500">Passou</div>
+                </div>
+                <div className="text-center">
+                  <div className={`text-2xl font-bold ${testResult.failed > 0 ? "text-red-400" : "text-emerald-400"}`}>
+                    {testResult.failed}
+                  </div>
+                  <div className="text-xs text-zinc-500">Falhou</div>
+                </div>
+                <div className="text-center">
+                  <div className="text-2xl font-bold text-zinc-300">{testResult.durationMs}ms</div>
+                  <div className="text-xs text-zinc-500">Duração</div>
+                </div>
+                <div className="ml-auto">
+                  <Badge className={testResult.certified
+                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 border"
+                    : "bg-red-500/10 text-red-400 border-red-500/20 border"}>
+                    {testResult.certified ? "WE-01 CERTIFICADO" : "FALHOU"}
+                  </Badge>
+                </div>
+              </div>
+              <div className="space-y-1">
+                {testResult.results.map((r, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs">
+                    <span className={r.passed ? "text-emerald-400" : "text-red-400"}>
+                      {r.passed ? "✓" : "✗"}
+                    </span>
+                    <span className={r.passed ? "text-zinc-400" : "text-red-400"}>{r.scenario}</span>
+                    {r.error && <span className="text-red-500">— {r.error}</span>}
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Tabs */}
+        <div className="flex gap-1 border-b border-zinc-800">
+          {[
+            { id: "overview", label: "Watches Ativos" },
+            { id: "create",   label: "Criar Watch" },
+            { id: "arch",     label: "Arquitetura WE-01" },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-4 py-2 text-sm transition-colors ${
+                activeTab === tab.id
+                  ? "text-violet-400 border-b-2 border-violet-400"
+                  : "text-zinc-500 hover:text-zinc-300"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Tab: Watches */}
+        {activeTab === "overview" && (
+          <Card className="bg-zinc-900 border-zinc-800">
+            <CardHeader>
+              <CardTitle className="text-white text-sm">
+                Watches Registrados ({watches.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {watches.length === 0 && (
+                <p className="text-zinc-500 text-sm text-center py-4">
+                  Nenhum Watch criado ainda. Use a aba "Criar Watch" para começar.
+                </p>
+              )}
+              {watches.map((w) => (
+                <div key={w.id} className="bg-zinc-800/50 rounded-lg px-4 py-3 space-y-2">
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-zinc-200 font-medium">{w.name}</span>
+                        <span className={`text-xs font-semibold ${PRIORITY_COLOR[w.priority] ?? ""}`}>
+                          {w.priority}
+                        </span>
+                      </div>
+                      {w.description && (
+                        <p className="text-xs text-zinc-500 mt-0.5">{w.description}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Badge className={`border text-xs ${STATUS_COLOR[w.status] ?? ""}`}>
+                        {w.status}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4 text-xs text-zinc-500">
+                    <span>Frequência: {w.frequency_minutes}min</span>
+                    <span>Disparos: {w.trigger_count ?? 0}</span>
+                    <span>Falhas: {w.consecutive_failures ?? 0}</span>
+                    {w.last_execution_at && (
+                      <span>Última execução: {new Date(w.last_execution_at).toLocaleString("pt-BR")}</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {w.status === "active" && (
+                      <button
+                        onClick={() => handlePause(w.id)}
+                        className="text-xs text-amber-400 hover:text-amber-300 bg-amber-500/10 px-2 py-1 rounded"
+                      >
+                        Pausar
+                      </button>
+                    )}
+                    {(w.status === "paused" || w.status === "error") && (
+                      <button
+                        onClick={() => handleResume(w.id)}
+                        className="text-xs text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 px-2 py-1 rounded"
+                      >
+                        Retomar
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleDelete(w.id)}
+                      className="text-xs text-red-400 hover:text-red-300 bg-red-500/10 px-2 py-1 rounded"
+                    >
+                      Deletar
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Tab: Criar */}
+        {activeTab === "create" && (
+          <Card className="bg-zinc-900 border-zinc-800">
+            <CardHeader>
+              <CardTitle className="text-white text-sm">Criar Watch de Demonstração</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-zinc-400 text-sm">
+                Teste o WatchRegistry criando Watches de exemplo — um simples (leaf) e um complexo (AND/OR/NOT aninhado).
+              </p>
+
+              <div className="flex gap-3 flex-wrap">
+                <Button
+                  onClick={createSampleWatch}
+                  disabled={isCreating}
+                  className="bg-violet-600 hover:bg-violet-700 text-white text-sm"
+                >
+                  {isCreating ? "Criando..." : "Criar Watch Simples (leaf)"}
+                </Button>
+                <Button
+                  onClick={createComplexWatch}
+                  disabled={isCreating}
+                  variant="outline"
+                  className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 text-sm"
+                >
+                  {isCreating ? "Criando..." : "Criar Watch Complexo (AND/OR/NOT)"}
+                </Button>
+              </div>
+
+              {createResult && (
+                <div className={`rounded-lg px-4 py-3 text-sm ${
+                  createResult.ok
+                    ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-300"
+                    : "bg-red-500/10 border border-red-500/20 text-red-300"
+                }`}>
+                  {createResult.ok ? (
+                    <span>✓ Watch criado com sucesso — ID: <code className="font-mono">{createResult.watchId}</code></span>
+                  ) : (
+                    <div>
+                      <div>✗ Falha: {createResult.error}</div>
+                      {createResult.validationErrors?.length > 0 && (
+                        <ul className="mt-1 ml-4 list-disc text-xs">
+                          {createResult.validationErrors.map((e, i) => (
+                            <li key={i}>{e}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Tab: Arquitetura */}
+        {activeTab === "arch" && (
+          <div className="space-y-4">
+            <Card className="bg-zinc-900 border-zinc-800">
+              <CardHeader>
+                <CardTitle className="text-white text-sm">Entregáveis WE-01</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {[
+                  { file: "base44/entities/Watch.jsonc",             status: "done", label: "Entidade Watch" },
+                  { file: "base44/entities/WatchExecution.jsonc",    status: "done", label: "Entidade WatchExecution" },
+                  { file: "base44/entities/PendingWatchAction.jsonc",status: "done", label: "Entidade PendingWatchAction (Outbox)" },
+                  { file: "src/lib/watch-engine/WatchTypes.ts",      status: "done", label: "WatchTypes — todos os tipos imutáveis" },
+                  { file: "src/lib/watch-engine/WatchValidator.ts",  status: "done", label: "WatchValidator — validação + serialização" },
+                  { file: "src/lib/watch-engine/WatchRegistry.ts",   status: "done", label: "WatchRegistry — CRUD + Dry Run (singleton)" },
+                  { file: "src/lib/watch-engine/watchEngineTests.ts",status: "done", label: "watchEngineTests — 12 cenários MDS §2.16" },
+                  { file: "src/docs/foundation/rfc/RFC-005-Watch-Engine.md", status: "done", label: "RFC-005 — Aceita" },
+                  { file: "src/docs/foundation/adr/ADR-012.md",      status: "done", label: "ADR-012 — 7 decisões arquiteturais" },
+                ].map((item, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs">
+                    <span className={item.status === "done" ? "text-emerald-400" : "text-amber-400"}>
+                      {item.status === "done" ? "✓" : "○"}
+                    </span>
+                    <span className="text-zinc-300">{item.label}</span>
+                    <span className="text-zinc-600 font-mono ml-auto">{item.file}</span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+
+            <Card className="bg-zinc-900 border-zinc-800">
+              <CardHeader>
+                <CardTitle className="text-white text-sm">Próximos Sprints</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                {[
+                  { sprint: "WE-02", label: "WatchEvaluator (Compilador) + WatchScheduler + ConnectorGateway (Token Bucket)", status: "planned" },
+                  { sprint: "WE-03", label: "WatchOutbox (Worker Durable) + WatchStateTracker + Circuit Breaker por Provider", status: "planned" },
+                  { sprint: "WE-04", label: "Deduplicação via KnowledgeGraph + Dashboard de Auditoria + Performance", status: "planned" },
+                ].map((item, i) => (
+                  <div key={i} className="flex items-center gap-3 text-sm">
+                    <Badge className="bg-zinc-800 text-zinc-400 border-zinc-700 border text-xs shrink-0">
+                      {item.sprint}
+                    </Badge>
+                    <span className="text-zinc-400">{item.label}</span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        <div className="text-center text-xs text-zinc-700 pt-2">
+          Watch Engine WE-01 · RFC-005 · ADR-012 · EPIC-017 · MemoryOS Engineering First · 2026-08-02
+        </div>
+      </div>
+    </div>
+  );
+}
