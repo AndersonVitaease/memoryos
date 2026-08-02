@@ -274,9 +274,7 @@ export class WatchPlannerBridgeClass {
   }
 }
 
-// Singleton HMR-safe
+// Sempre recria para garantir que o código mais recente seja usado
 const _g = globalThis as unknown as Record<string, unknown>;
-if (!_g.__WatchPlannerBridge__) {
-  _g.__WatchPlannerBridge__ = new WatchPlannerBridgeClass();
-}
+_g.__WatchPlannerBridge__ = new WatchPlannerBridgeClass();
 export const watchPlannerBridge = _g.__WatchPlannerBridge__ as WatchPlannerBridgeClass;
