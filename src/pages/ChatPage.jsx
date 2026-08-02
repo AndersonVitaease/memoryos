@@ -258,18 +258,20 @@ export default function ChatPage() {
 
     const pollWatchActions = async () => {
       try {
-        // Busca pending E dispatched recentes (últimos 10 min) — captura alertas perdidos ao reabrir o app
+        const sessionId = conversation.session?.id;
+        if (!sessionId) return;
+
+        // Busca pending + dispatched dos últimos 30 min (captura alertas perdidos com tela fechada)
+        const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
         const allActions = await base44.entities.PendingWatchAction.filter({});
         if (!allActions || allActions.length === 0) return;
-
-        const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000);
 
         for (const action of allActions) {
           if (shownActionIds.has(action.id)) continue;
 
           const isPending = action.status === 'pending';
           const isRecentDispatched = action.status === 'dispatched' &&
-            action.dispatched_at && new Date(action.dispatched_at) >= tenMinAgo;
+            action.dispatched_at && new Date(action.dispatched_at) >= thirtyMinAgo;
 
           if (!isPending && !isRecentDispatched) continue;
 
@@ -281,9 +283,6 @@ export default function ChatPage() {
           const triggerTime = payload.timestamp
             ? new Date(payload.timestamp).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' })
             : new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-
-          const sessionId = conversation.session?.id;
-          if (!sessionId) continue;
 
           const notifMsg = await base44.entities.Message.create({
             session_id: sessionId,
