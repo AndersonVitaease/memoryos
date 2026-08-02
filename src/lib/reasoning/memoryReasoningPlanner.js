@@ -59,18 +59,13 @@ import { stateViewEngine } from "@/lib/knowledge-registry/StateViewEngine";
 export async function runReasoningPlan({ userMsg, session, historyMessages = [], setPhase, kfmContext }) {
   const startTime = Date.now();
 
-  // === PRÉ-ETAPA -1: INTERCEPTAR PEDIDO DE ENVIO AGENDADO (v5) ===
-  // Detecta horário nas primeiras 5 linhas + endereço de email em qualquer linha.
+  // === PRÉ-ETAPA -1: INTERCEPTAR PEDIDO DE ENVIO AGENDADO (v6) ===
+  // Detecta horário em QUALQUER linha da mensagem + linha "Para:" com email.
   // Retorna IMEDIATAMENTE criando o Watch — nunca passa pelo LLM ou busca Gmail.
-  // Versão 5: usa todo o texto da mensagem para extração de campos, mas só as
-  // primeiras 5 linhas para detectar o horário de disparo.
   const _SCHED_TIME_RE = /(\d{1,2})[h:](\d{2})h?r?s?\b/i;
-  const _HAS_EMAIL_ADDR = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/;
-  const _msgLines = userMsg.split("\n");
-  const _msgTop5 = _msgLines.slice(0, 5).join("\n");
-  const _timeMatch = _SCHED_TIME_RE.exec(_msgTop5);
+  const _timeMatch = _SCHED_TIME_RE.exec(userMsg);
 
-  // Extrai destinatário de qualquer linha da mensagem (busca em todo o texto)
+  // Extrai destinatário de qualquer linha da mensagem
   const _toMatchGlobal = /^(?:para|to)\s*:?\s*([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/im.exec(userMsg);
 
   if (_timeMatch && _toMatchGlobal) {
