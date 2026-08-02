@@ -52,10 +52,10 @@
 
 | Sprint | Foco | Entregável | Status |
 |---|---|---|---|
-| WE-01 | Foundation de Dados | Entidades Watch/WatchExecution/PendingWatchAction + WatchRegistry + WatchTypes | 🔄 Planned |
-| WE-02 | Motor de Execução | WatchEvaluator (Compilador de Lógica) + WatchScheduler + ConnectorGateway (Token Bucket) | 🔄 Planned |
-| WE-03 | Resiliência e Entrega Garantida | WatchOutbox (Durable Outbox) + WatchStateTracker + Circuit Breaker por Provider | 🔄 Planned |
-| WE-04 | Inteligência e Governança | Deduplicação via KnowledgeGraph + Dashboard de Auditoria + Performance (Lazy Hydration) | 🔄 Planned |
+| WE-01 | Foundation de Dados | Entidades Watch/WatchExecution/PendingWatchAction + WatchRegistry + WatchTypes | ✅ Done |
+| WE-02 | Motor de Execucao | WatchEvaluator + WatchScheduler (backend, 5-min cron, multi-tick) + ConnectorGateway (Token Bucket + Circuit Breaker) | ✅ Done |
+| WE-03 | Resiliencia e Entrega Garantida | WatchOutbox (Durable Outbox) + WatchStateTracker + Missed Recovery + Circuit Breaker + Providers reais (Gmail, Calendar) | ✅ Done |
+| WE-04 | Inteligencia e Governanca | WatchPlannerBridge (deteccao de intencao) + WatchDeduplicator + Dashboard (/sprint-we01) + UI polling no ChatPage | ✅ Done |
 
 ---
 

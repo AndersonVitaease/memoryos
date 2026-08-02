@@ -41,12 +41,12 @@ const TIME_REGEX = /\b(\d{1,2})[h:](\d{2})(?:h?rs?)?\b|(?:às|as|ao)\s+(\d{1,2})
 
 // Mapeia keywords de provedor detectados na mensagem
 const PROVIDER_HINTS: Array<{ pattern: RegExp; provider: string; action: string; label: string }> = [
-  { pattern: /rel[oó]gio|hor[aá]rio|hora|[aà]s\s+\d{1,2}[h:]\d{2}|[aà]s\s+\d{1,2}h\b|\d{1,2}:\d{2}|daqui|minutos?|horas?|acorde|lembr/i, provider: "clock", action: "check_time", label: "horario especifico" },
-  { pattern: /e.?mail|gmail|inbox/i,                    provider: "gmail",    action: "count_unread",   label: "emails nao lidos" },
-  { pattern: /drive|arquivo|pasta|documento/i,          provider: "drive",    action: "list_recent",    label: "arquivos no Drive" },
-  { pattern: /calend[aá]rio|reuniao|evento/i,           provider: "calendar", action: "get_event_count",label: "eventos no Calendario" },
-  { pattern: /github|commit|pr|pull request|issue/i,    provider: "github",   action: "list_events",    label: "atividade no GitHub" },
-  { pattern: /slack|mensagem|canal/i,                   provider: "slack",    action: "count_messages", label: "mensagens no Slack" },
+  { pattern: /rel[oó]gio|hor[aá]rio|hora|[aà]s\s+\d{1,2}[h:]\d{2}|[aà]s\s+\d{1,2}h\b|\d{1,2}:\d{2}|daqui|minutos?|horas?|acorde|lembr/i, provider: "clock",    action: "check_time",      label: "horario especifico" },
+  { pattern: /e.?mail|gmail|inbox|caixa\s+(de\s+entrada|postal)|novo.{0,10}email/i, provider: "gmail",    action: "count_unread",    label: "emails nao lidos no Gmail" },
+  { pattern: /calend[aá]rio|reuniao|reuni[oã]o|evento|compromisso/i,                provider: "calendar", action: "get_event_count",  label: "eventos no Google Calendar" },
+  { pattern: /drive|arquivo|pasta|documento/i,                                      provider: "drive",    action: "list_recent",     label: "arquivos no Drive" },
+  { pattern: /github|commit|pr|pull request|issue/i,                                provider: "github",   action: "list_events",     label: "atividade no GitHub" },
+  { pattern: /slack|mensagem|canal/i,                                               provider: "slack",    action: "count_messages",  label: "mensagens no Slack" },
 ];
 
 export interface PlannerBridgeResult {
