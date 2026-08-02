@@ -234,15 +234,15 @@ class ConnectorGatewayClass {
     return [...this._handlers.keys()];
   }
 
-  // ── Stub de simulação para providers não conectados ───────────────────────
+  // ── Stub de simulacao para providers nao conectados ──────────────────────
+  // Usado apenas quando nenhum handler real foi registrado para o provider.
+  // No scheduler backend os providers reais sao avaliados diretamente via API.
 
   private async _simulateProvider(
     provider: string,
     action:   string,
     _params:  Record<string, unknown>,
   ): Promise<unknown> {
-    // Stub determinístico por provider/action — para testes e WE-01/02
-    // O WatchEvaluator funciona sem connectors reais registrados
     const stubs: Record<string, Record<string, unknown>> = {
       gmail:    { count_unread: { count: 0 }, list_emails: { items: [], count: 0 } },
       drive:    { list_recent: { count: 0, files: [] }, get_file: null },
