@@ -211,6 +211,35 @@ Tempo de resposta: 595ms. Email enviado via conta `amazonnoconta01@gmail.com`.
 
 ---
 
+## 11. FIX: PDF SALVO NA MEMÓRIA NÃO EXIBIDO AO PEDIR "ABRIR PDF X" (2026-08-02 ~18:03 BRT)
+
+### Problema
+Ao digitar "abrir pdf glicina 250g" no chat, o `_classifyDriveAction()` classificava como `action: "read_content"`. A trava IA-040 em `memoryReasoningPlanner.js` retornava imediatamente a mensagem padrão "Ainda não tenho uma leitura real do conteúdo desse arquivo", **sem consultar o banco de dados** onde o conteúdo do PDF já estava salvo desde a ingestão anterior.
+
+### Causa Raiz
+`_hasRealDocRead` era calculado apenas com base em `capabilityResult.capabilityResults?.officialLibrary` (biblioteca de código-fonte). Nunca verificava `Document.extracted_text` do banco — o campo onde o pipeline de ingestão salva o texto extraído do PDF.
+
+### Fix (`memoryReasoningPlanner.js` — ETAPA 5.4)
+```js
+// ANTES: bloqueava direto sem consultar memória
+if (_driveAction?.action === "read_content" && !_hasRealDocRead) {
+  return { response: "Ainda não tenho uma leitura real..." };
+}
+
+// DEPOIS: consulta Documents primeiro
+const savedDocs = await base44.entities.Document.filter({ session_id, processing_status: "completed" });
+const target = savedDocs.find(d => d.name.includes(target)) || savedDocs.find(d => d.extracted_text);
+if (target?.extracted_text) {
+  return { response: `📄 **${target.name}** (fonte: memória, conteúdo salvo)\n\n${fullText}` };
+}
+// Só então dispara o erro se não encontrar nada
+```
+
+### Resultado
+"abrir pdf glicina 250g" → exibiu o conteúdo completo do PDF já processado direto da memória.
+
+---
+
 ## 9. PRÓXIMOS PASSOS SUGERIDOS
 
 1. **Testar encoding completo** — criar watch com acentos no assunto e corpo, confirmar chegada correta

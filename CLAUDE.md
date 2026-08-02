@@ -101,3 +101,19 @@ Follow the instructions in `AGENTS.md`.
 3. **`src/lib/knowledgeIngestionPipeline.js`** — substituído `Core.SendEmail` por `base44.functions.invoke("sendPdfReport", {...})`.
 
 **Validado:** `sendPdfReport` retornou `{ ok: true, method: "gmail_oauth", to: "borecomba@gmail.com" }` em 595ms.
+
+---
+
+### 2026-08-02 — Fix: Conteúdo de PDF salvo na memória não era exibido ao pedir "abrir pdf X"
+
+**Problema:** Ao pedir "abrir pdf glicina 250g", o `_classifyDriveAction()` retornava `action: "read_content"`. A trava IA-040 bloqueava imediatamente com a mensagem "não tenho leitura real", **sem nem verificar se o documento já estava salvo na memória** (ingestão anterior via pipeline).
+
+**Causa raiz:** O guard `!_hasRealDocRead` usava apenas `officialLibrary` (biblioteca de código) como sinal de "leitura real" — nunca consultava `Document.extracted_text` do banco.
+
+**Fix em `memoryReasoningPlanner.js`** (ETAPA 5.4):
+- Antes de disparar a trava, busca `Document.filter({ session_id, processing_status: "completed" })`
+- Localiza o doc por nome similar ao `target` (ou o mais recente com `extracted_text`)
+- Se encontrar conteúdo salvo → retorna direto com `📄 **nome** (fonte: memória, conteúdo salvo)`
+- Só dispara o erro de "não tenho leitura real" se não encontrar nada na memória
+
+**Validado:** "abrir pdf glicina 250g" → exibiu conteúdo completo do PDF já processado.
