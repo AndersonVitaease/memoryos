@@ -62,26 +62,30 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
   // === PRÉ-ETAPA -1: INTERCEPTAR PEDIDO DE ENVIO AGENDADO ===
   // Padrão: horário + email na mensagem — cria Watch direto, NUNCA busca Gmail.
   // Executado ANTES de qualquer outra coisa.
+  // Usa apenas as primeiras 5 linhas da mensagem para evitar falsos positivos
+  // quando o usuário cola output anterior do sistema junto com o pedido.
   const _SCHED_TIME_RE = /(?:[àa]s\s*|as\s+)?(\d{1,2})[h:](\d{2})h?r?s?\b/i;
   const _HAS_EMAIL_ADDR = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/;
-  const _timeMatch = _SCHED_TIME_RE.exec(userMsg);
-  if (_timeMatch && _HAS_EMAIL_ADDR.test(userMsg)) {
+  // Analisa apenas o início da mensagem (antes de linhas de "resposta" coladas)
+  const _msgHeader = userMsg.split("\n").slice(0, 15).join("\n");
+  const _timeMatch = _SCHED_TIME_RE.exec(_msgHeader);
+  if (_timeMatch && _HAS_EMAIL_ADDR.test(_msgHeader)) {
     try {
       const _h = String(parseInt(_timeMatch[1], 10)).padStart(2, "0");
       const _m = String(parseInt(_timeMatch[2], 10)).padStart(2, "0");
       const _targetTime = `${_h}:${_m}`;
 
-      // Extrai campos do email da mensagem
-      const _toMatch = /(?:para|to)\s*:?\s*([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/i.exec(userMsg);
-      const _fromMatch = /(?:de|from)\s*:?\s*([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/i.exec(userMsg);
-      const _subjMatch = /(?:assunto|subject)\s*:?\s*(.+)/i.exec(userMsg);
+      // Extrai campos do email apenas do cabeçalho da mensagem (ignora lixo colado)
+      const _toMatch = /(?:para|to)\s*:?\s*([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/i.exec(_msgHeader);
+      const _fromMatch = /(?:de|from)\s*:?\s*([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/i.exec(_msgHeader);
+      const _subjMatch = /(?:assunto|subject)\s*:?\s*(.+)/i.exec(_msgHeader);
 
-      // Corpo: tudo após a linha do assunto
+      // Corpo: tudo após a linha do assunto (dentro do cabeçalho)
       let _body = "";
       if (_subjMatch) {
-        const _subjIdx = userMsg.search(/(?:assunto|subject)\s*:?/i);
-        const _bodyStart = userMsg.indexOf("\n", _subjIdx);
-        _body = _bodyStart >= 0 ? userMsg.slice(_bodyStart).trim() : "";
+        const _subjIdx = _msgHeader.search(/(?:assunto|subject)\s*:?/i);
+        const _bodyStart = _msgHeader.indexOf("\n", _subjIdx);
+        _body = _bodyStart >= 0 ? _msgHeader.slice(_bodyStart).trim() : "";
       }
 
       const _to = _toMatch?.[1];
