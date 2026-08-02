@@ -59,85 +59,89 @@ import { stateViewEngine } from "@/lib/knowledge-registry/StateViewEngine";
 export async function runReasoningPlan({ userMsg, session, historyMessages = [], setPhase, kfmContext }) {
   const startTime = Date.now();
 
-  // === PRÉ-ETAPA -1: INTERCEPTAR PEDIDO DE ENVIO AGENDADO (v4) ===
-  // Padrão: horário + email na mensagem — cria Watch direto, NUNCA busca Gmail.
-  // Executado ANTES de qualquer outra coisa.
-  // Usa apenas as primeiras 20 linhas da mensagem para evitar falsos positivos
-  // quando o usuário cola output anterior do sistema junto com o pedido.
-  const _SCHED_TIME_RE = /(?:[àa]s\s*|as\s+)?(\d{1,2})[h:](\d{2})h?r?s?\b/i;
+  // === PRÉ-ETAPA -1: INTERCEPTAR PEDIDO DE ENVIO AGENDADO (v5) ===
+  // Detecta horário nas primeiras 5 linhas + endereço de email em qualquer linha.
+  // Retorna IMEDIATAMENTE criando o Watch — nunca passa pelo LLM ou busca Gmail.
+  // Versão 5: usa todo o texto da mensagem para extração de campos, mas só as
+  // primeiras 5 linhas para detectar o horário de disparo.
+  const _SCHED_TIME_RE = /(\d{1,2})[h:](\d{2})h?r?s?\b/i;
   const _HAS_EMAIL_ADDR = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/;
-  // Analisa apenas o início da mensagem (antes de linhas de "resposta" coladas)
-  const _msgHeader = userMsg.split("\n").slice(0, 20).join("\n");
-  const _timeMatch = _SCHED_TIME_RE.exec(_msgHeader);
-  if (_timeMatch && _HAS_EMAIL_ADDR.test(_msgHeader)) {
+  const _msgLines = userMsg.split("\n");
+  const _msgTop5 = _msgLines.slice(0, 5).join("\n");
+  const _timeMatch = _SCHED_TIME_RE.exec(_msgTop5);
+
+  // Extrai destinatário de qualquer linha da mensagem (busca em todo o texto)
+  const _toMatchGlobal = /^(?:para|to)\s*:?\s*([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/im.exec(userMsg);
+
+  if (_timeMatch && _toMatchGlobal) {
     try {
       const _h = String(parseInt(_timeMatch[1], 10)).padStart(2, "0");
       const _m = String(parseInt(_timeMatch[2], 10)).padStart(2, "0");
       const _targetTime = `${_h}:${_m}`;
 
-      // Extrai campos do email — aceita "Para:", "para:", "Para :", "To:" etc.
-      const _toMatch = /^(?:para|to)\s*:?\s*([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/im.exec(_msgHeader);
-      const _fromMatch = /^(?:de|from)\s*:?\s*([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/im.exec(_msgHeader);
-      const _subjMatch = /^(?:assunto|subject)\s*:?\s*(.+)/im.exec(_msgHeader);
-
-      // Corpo: tudo após a linha do assunto, antes de qualquer separador de resposta colada
-      let _body = "";
-      if (_subjMatch) {
-        const _subjIdx = _msgHeader.search(/^(?:assunto|subject)\s*:?/im);
-        const _bodyStart = _msgHeader.indexOf("\n", _subjIdx);
-        const _rawBody = _bodyStart >= 0 ? _msgHeader.slice(_bodyStart).trim() : "";
-        // Remove linhas que parecem ser output do sistema colado (começa com "Não foram", "avisos", etc.)
-        _body = _rawBody.split("\n").filter(l => {
-          const lt = l.trim().toLowerCase();
-          return !lt.startsWith("não foram") && !lt.startsWith("avisos") && !lt.startsWith("nenhum");
-        }).join("\n").trim();
-      }
-
-      const _to = _toMatch?.[1];
-      const _from = _fromMatch?.[1];
+      const _to = _toMatchGlobal[1].trim();
+      const _fromMatch = /^(?:de|from)\s*:?\s*([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/im.exec(userMsg);
+      const _from = _fromMatch?.[1]?.trim() || null;
+      const _subjMatch = /^(?:assunto|subject)\s*:?\s*(.+)/im.exec(userMsg);
       const _subject = _subjMatch?.[1]?.trim().split("\n")[0] || "Mensagem agendada";
 
-      if (_to) {
-        const { base44: _b44 } = await import("@/api/base44Client");
-        const _condition = {
-          kind: "leaf", provider: "clock", action: "check_time",
-          params: { target_time: _targetTime }, result_path: "count", comparator: "gt", value: 0,
-        };
-        const _emailPayload = {
-          type: "send_email",
-          email: { from: _from || null, to: _to, subject: _subject, body: _body || _subject },
-        };
-        const _record = await _b44.entities.Watch.create({
-          name: `Email às ${_targetTime} para ${_to}`,
-          description: `Agendado via chat às ${_targetTime}`,
-          condition_tree: JSON.stringify(_condition),
-          frequency_minutes: 1,
-          priority: "high",
-          status: "active",
-          on_trigger_type: "emit_event",
-          on_trigger_payload: JSON.stringify(_emailPayload),
-          last_evaluation_result: null,
-          consecutive_failures: 0,
-          trigger_count: 0,
-          next_execution_at: new Date().toISOString(),
-          compiled_at: new Date().toISOString(),
-          session_id: session?.id,
-          project_id: session?.project_id,
-        });
-        return {
-          response: `Pronto! Email agendado para **${_targetTime}** — será enviado para \`${_to}\` automaticamente.`,
-          plan: { goal: "scheduled_email", goalLabel: "Email agendado", strategy: "Watch Engine — intercept direto", skills: [], skillsCount: 0, sourcesCount: 0, contextLength: 0, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: null, responseTimeMs: Date.now() - startTime, handledByGuard: "SCHED-EMAIL-INTERCEPT", watchId: _record.id },
-          sources: [],
-        };
+      // Corpo: linhas após o assunto, filtrando lixo de output do sistema colado
+      let _body = _subject;
+      if (_subjMatch) {
+        const _subjLineIdx = userMsg.split("\n").findIndex(l => /^(?:assunto|subject)\s*:/i.test(l.trim()));
+        if (_subjLineIdx >= 0) {
+          const _bodyLines = userMsg.split("\n").slice(_subjLineIdx + 1).filter(l => {
+            const lt = l.trim().toLowerCase();
+            return lt.length > 0 &&
+              !lt.startsWith("nao foram") && !lt.startsWith("não foram") &&
+              !lt.startsWith("a tarefa") && !lt.startsWith("mostrar") &&
+              !lt.startsWith("nao ha") && !lt.startsWith("não há") &&
+              !lt.startsWith("nenhum") && !lt.startsWith("deseja");
+          });
+          if (_bodyLines.length > 0) _body = _bodyLines.join("\n").trim();
+        }
       }
+
+      const { base44: _b44 } = await import("@/api/base44Client");
+      const _condition = {
+        kind: "leaf", provider: "clock", action: "check_time",
+        params: { target_time: _targetTime }, result_path: "count", comparator: "gt", value: 0,
+      };
+      const _emailPayload = {
+        type: "send_email",
+        email: { from: _from, to: _to, subject: _subject, body: _body },
+      };
+      const _record = await _b44.entities.Watch.create({
+        name: `Email às ${_targetTime} para ${_to}`,
+        description: `Agendado via chat às ${_targetTime}`,
+        condition_tree: JSON.stringify(_condition),
+        frequency_minutes: 1,
+        priority: "high",
+        status: "active",
+        on_trigger_type: "emit_event",
+        on_trigger_payload: JSON.stringify(_emailPayload),
+        last_evaluation_result: null,
+        consecutive_failures: 0,
+        trigger_count: 0,
+        next_execution_at: new Date().toISOString(),
+        compiled_at: new Date().toISOString(),
+        session_id: session?.id,
+        project_id: session?.project_id,
+      });
+      console.log(`[SCHED-EMAIL-v5] Watch criado: ${_record.id} — ${_targetTime} → ${_to}`);
+      return {
+        response: `Agendado! Email para \`${_to}\` será enviado às **${_targetTime}**.`,
+        plan: { goal: "scheduled_email", goalLabel: "Email agendado", strategy: "Watch Engine v5 — intercept direto", skills: [], skillsCount: 0, sourcesCount: 0, contextLength: 0, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: null, responseTimeMs: Date.now() - startTime, handledByGuard: "SCHED-EMAIL-v5", watchId: _record.id },
+        sources: [],
+      };
     } catch (err) {
-      console.warn("[SCHED-EMAIL-INTERCEPT] Erro:", err?.message);
+      console.warn("[SCHED-EMAIL-v5] Erro:", err?.message);
     }
   }
 
   // === PRÉ-ETAPA WATCH-QUERY: Responder perguntas sobre watches ativos ===
   // GUARD: não rodar se a mensagem é um pedido de agendamento com horário + email
-  const _isSchedulingRequest = Boolean(_timeMatch && _HAS_EMAIL_ADDR.test(_msgHeader));
+  const _isSchedulingRequest = Boolean(_timeMatch && _toMatchGlobal);
   const _WATCH_QUERY_PATTERNS = [
     /qual.{0,20}(hora|horario|hor[aá]rio).{0,20}(alerta|aviso|watch|lembrete|agendamento)/i,
     /qual.{0,20}(alerta|aviso|watch|lembrete|agendamento).{0,20}(hora|horario|ativo|agendado|programado)/i,
@@ -206,7 +210,7 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
   // GUARD: Se já foi detectado agendamento com email na PRÉ-ETAPA -1 (mesmo que _to estava vazio),
   // não chama o bridge — evita falsos positivos em palavras do corpo do email ("atch", "watch").
   let _watchBridgeResult = null;
-  const _alreadyHandledAsScheduledEmail = Boolean(_timeMatch && _HAS_EMAIL_ADDR.test(_msgHeader));
+  const _alreadyHandledAsScheduledEmail = Boolean(_timeMatch && _toMatchGlobal);
   try {
     const { watchPlannerBridge } = await import("@/lib/watch-engine/WatchPlannerBridge");
     const _hasIntent = !_alreadyHandledAsScheduledEmail && watchPlannerBridge.hasMonitoringIntent(userMsg);
