@@ -7,11 +7,6 @@
  *   - clock        : comparacao de horario em BRT (nao precisa de OAuth)
  *   - gmail        : count_unread via Gmail API (usa GoogleOAuthToken)
  *   - calendar     : get_event_count via Calendar API (usa GoogleOAuthToken)
- *
- * Seguranca:
- *   - Token OAuth nunca exposto ao frontend
- *   - Refresh automatico via /token do Google quando necessario
- *   - Circuit breaker: 3 falhas consecutivas → status='error'
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 
@@ -19,7 +14,7 @@ async function delay(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// ── OAuth helper — obtem access token a partir do GoogleOAuthToken entity ──
+// ── OAuth helper ─────────────────────────────────────────────────────────────
 
 async function getGoogleAccessToken(base44: any, userId: string): Promise<string | null> {
   const records = await base44.asServiceRole.entities.GoogleOAuthToken.filter({
@@ -47,123 +42,82 @@ async function getGoogleAccessToken(base44: any, userId: string): Promise<string
   return data.access_token ?? null;
 }
 
+// ── Hora atual em BRT (minutos desde meia-noite) ──────────────────────────────
+
+function nowBRTMinutes(): { h: number; m: number; totalMin: number } {
+  const nowUTC = new Date();
+  const hStr = new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: false, timeZone: 'America/Sao_Paulo' }).format(nowUTC);
+  const mStr = new Intl.DateTimeFormat('en-US', { minute: 'numeric', timeZone: 'America/Sao_Paulo' }).format(nowUTC);
+  const h = parseInt(hStr, 10);
+  const m = parseInt(mStr, 10);
+  return { h, m, totalMin: h * 60 + m };
+}
+
 // ── Provider: clock ───────────────────────────────────────────────────────────
 
-function evaluateClock(watch: any, conditionTree: any): boolean {
+function evaluateClock(conditionTree: any): boolean {
   const target = conditionTree.params?.target_time;
   if (!target) return false;
 
-  const nowUTC = new Date();
-  const hPart = new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: false, timeZone: 'America/Sao_Paulo' }).format(nowUTC);
-  const mPart = new Intl.DateTimeFormat('en-US', { minute: 'numeric', timeZone: 'America/Sao_Paulo' }).format(nowUTC);
-  const nowH = parseInt(hPart, 10);
-  const nowM = parseInt(mPart, 10);
+  const { h: nowH, m: nowM, totalMin: nowTotal } = nowBRTMinutes();
   const [tH, tM] = target.split(':').map(Number);
-  const nowTotalMin  = nowH * 60 + nowM;
-  const targetTotalMin = tH * 60 + tM;
-  const diffMin = nowTotalMin - targetTotalMin;
+  const targetTotal = tH * 60 + tM;
+  const diffMin = nowTotal - targetTotal;
 
-  const neverEvaluated   = !watch.last_execution_at;
-  // Janela normal: horário exato ou até 1 minuto após (não antes)
-  const isInNormalWindow = diffMin >= 0 && diffMin <= 1;
-  // Recuperação de miss: nunca avaliado e passou até 10 min
-  const isMissedRecovery = neverEvaluated && diffMin > 1 && diffMin <= 10;
-
-  const result = isInNormalWindow || isMissedRecovery;
-  console.log(`[clock] target=${target} nowBRT=${nowH}:${String(nowM).padStart(2,'0')} diff=${diffMin} normalWindow=${isInNormalWindow} missedRecovery=${isMissedRecovery} match=${result}`);
-  return result;
+  // Janela de disparo: de 0 até +2 minutos após o horário alvo
+  const inWindow = diffMin >= 0 && diffMin <= 2;
+  console.log(`[clock] target=${target} now=${nowH}:${String(nowM).padStart(2,'0')} diff=${diffMin}min inWindow=${inWindow}`);
+  return inWindow;
 }
 
-// ── Provider: gmail count_unread ─────────────────────────────────────────────
+// ── Provider: gmail ───────────────────────────────────────────────────────────
 
 async function evaluateGmail(conditionTree: any, accessToken: string): Promise<boolean> {
-  const action = conditionTree.action ?? 'count_unread';
-  if (action !== 'count_unread') return false;
-
   const res = await fetch(
     'https://gmail.googleapis.com/gmail/v1/users/me/labels/INBOX',
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
-  if (!res.ok) {
-    console.warn(`[gmail] Labels API returned ${res.status}`);
-    return false;
-  }
+  if (!res.ok) { console.warn(`[gmail] API ${res.status}`); return false; }
   const data = await res.json();
   const unread = data.messagesUnread ?? 0;
   const threshold = conditionTree.value ?? 0;
-  const result = unread > threshold;
-  console.log(`[gmail] count_unread=${unread} threshold=${threshold} match=${result}`);
-  return result;
+  return unread > threshold;
 }
 
-// ── Provider: calendar get_event_count ───────────────────────────────────────
+// ── Provider: calendar ────────────────────────────────────────────────────────
 
 async function evaluateCalendar(conditionTree: any, accessToken: string): Promise<boolean> {
-  const action = conditionTree.action ?? 'get_event_count';
-  if (action !== 'get_event_count') return false;
-
-  const now     = new Date();
-  const timeMin = now.toISOString();
-  const timeMax = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
-
+  const now = new Date();
   const params = new URLSearchParams({
-    timeMin, timeMax, maxResults: '10', singleEvents: 'true',
+    timeMin: now.toISOString(),
+    timeMax: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+    maxResults: '10',
+    singleEvents: 'true',
   });
   const res = await fetch(
     `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
-  if (!res.ok) {
-    console.warn(`[calendar] Events API returned ${res.status}`);
-    return false;
-  }
+  if (!res.ok) { console.warn(`[calendar] API ${res.status}`); return false; }
   const data = await res.json();
-  const count = (data.items ?? []).length;
-  const threshold = conditionTree.value ?? 0;
-  const result = count > threshold;
-  console.log(`[calendar] event_count=${count} threshold=${threshold} match=${result}`);
-  return result;
+  return (data.items ?? []).length > (conditionTree.value ?? 0);
 }
 
 // ── Tick principal ────────────────────────────────────────────────────────────
 
 async function runOneTick(base44: any, googleTokenCache: Map<string, string>): Promise<{
-  processed: number; triggered: number; failed: number; skipped: number; completed: number;
+  processed: number; triggered: number; failed: number; skipped: number;
 }> {
   const now = new Date().toISOString();
-  const allWatches = await base44.asServiceRole.entities.Watch.filter({ status: 'active' });
+  const allActive = await base44.asServiceRole.entities.Watch.filter({ status: 'active' });
 
-  // Separar watches de clock que já passaram há mais de 10 minutos sem disparar → completar
-  const nowUTC = new Date();
-  const completedIds: string[] = [];
-  for (const w of allWatches) {
-    try {
-      const ct = JSON.parse(w.condition_tree || '{}');
-      if (ct.provider !== 'clock') continue;
-      const target = ct.params?.target_time;
-      if (!target) continue;
-      const hPart = new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: false, timeZone: 'America/Sao_Paulo' }).format(nowUTC);
-      const mPart = new Intl.DateTimeFormat('en-US', { minute: 'numeric', timeZone: 'America/Sao_Paulo' }).format(nowUTC);
-      const nowH = parseInt(hPart, 10);
-      const nowM = parseInt(mPart, 10);
-      const [tH, tM] = target.split(':').map(Number);
-      const diffMin = (nowH * 60 + nowM) - (tH * 60 + tM);
-      // Se já passou mais de 15 minutos E nunca disparou (trigger_count=0), marca completed (horário perdido)
-      // Se disparou (trigger_count>0), também completa — já fez o que tinha que fazer
-      if (diffMin > 15 || (w.trigger_count || 0) > 0) {
-        await base44.asServiceRole.entities.Watch.update(w.id, { status: 'completed' });
-        completedIds.push(w.id);
-      }
-    } catch { /* ignora */ }
-  }
-
-  const activeWatches = allWatches.filter((w: any) => !completedIds.includes(w.id));
-  const dueWatches = activeWatches.filter((w: any) => {
-    if (!w.next_execution_at) return true; // sem agendamento → executar agora
+  // Filtrar watches que estão no horário de execução
+  const dueWatches = allActive.filter((w: any) => {
+    if (!w.next_execution_at) return true;
     return new Date(w.next_execution_at) <= new Date(now);
   });
 
-  const result = { processed: 0, triggered: 0, failed: 0, skipped: activeWatches.length - dueWatches.length, completed: completedIds.length };
+  const result = { processed: 0, triggered: 0, failed: 0, skipped: allActive.length - dueWatches.length };
 
   for (const watch of dueWatches) {
     try {
@@ -174,10 +128,10 @@ async function runOneTick(base44: any, googleTokenCache: Map<string, string>): P
 
       const provider = conditionTree.provider ?? 'unknown';
       let evaluationResult = false;
-      const executionStart = Date.now();
+      const t0 = Date.now();
 
       if (provider === 'clock') {
-        evaluationResult = evaluateClock(watch, conditionTree);
+        evaluationResult = evaluateClock(conditionTree);
 
       } else if (provider === 'gmail' || provider === 'calendar') {
         const userId = watch.created_by_id;
@@ -188,36 +142,30 @@ async function runOneTick(base44: any, googleTokenCache: Map<string, string>): P
             if (token) googleTokenCache.set(userId, token);
           }
           if (token) {
-            if (provider === 'gmail') {
-              evaluationResult = await evaluateGmail(conditionTree, token);
-            } else if (provider === 'calendar') {
-              evaluationResult = await evaluateCalendar(conditionTree, token);
-            }
-          } else {
-            console.warn(`[${provider}] Sem token OAuth para user ${userId} — avaliacao pulada`);
+            evaluationResult = provider === 'gmail'
+              ? await evaluateGmail(conditionTree, token)
+              : await evaluateCalendar(conditionTree, token);
           }
-        } else {
-          console.warn(`[${provider}] Watch ${watch.id} sem created_by_id — avaliacao pulada`);
         }
       }
 
-      const durationMs = Date.now() - executionStart;
-
-      // wasTriggered: true quando a condição passou para true (inclui null→true para watches novos)
+      const durationMs = Date.now() - t0;
       const prevResult = watch.last_evaluation_result;
+
+      // Dispara apenas na transição false→true (ou null→true para primeira avaliação)
       const wasTriggered = evaluationResult === true && prevResult !== true;
 
-      // Clock: após disparar → completed (one-shot). Se não disparou, agenda próxima verificação em 1min.
-      // Mas o first-schedule é calculado pelo WatchRegistry para o horário exato — só recalcula aqui se já executou.
-      const freqMin = provider === 'clock' ? 1 : (watch.frequency_minutes || 60);
-      const nextExec = new Date(Date.now() + freqMin * 60 * 1000).toISOString();
+      // Para clock: se disparou → completed (one-shot). Senão → continua ativo, tenta em 1min.
+      // Para outros providers → agenda próxima execução conforme frequência.
       const newStatus = (provider === 'clock' && wasTriggered) ? 'completed' : 'active';
+      const freqMin = provider === 'clock' ? 1 : (watch.frequency_minutes || 60);
+      const nextExec = newStatus === 'completed' ? null : new Date(Date.now() + freqMin * 60 * 1000).toISOString();
 
       await base44.asServiceRole.entities.Watch.update(watch.id, {
         last_execution_at:      now,
-        next_execution_at:      newStatus === 'completed' ? null : nextExec,
+        next_execution_at:      nextExec,
         last_evaluation_result: evaluationResult,
-        trigger_count:          wasTriggered ? (watch.trigger_count || 0) + 1 : (watch.trigger_count || 0),
+        trigger_count:          (watch.trigger_count || 0) + (wasTriggered ? 1 : 0),
         consecutive_failures:   0,
         status:                 newStatus,
       });
@@ -235,34 +183,32 @@ async function runOneTick(base44: any, googleTokenCache: Map<string, string>): P
       if (wasTriggered) {
         result.triggered++;
 
-        // Se o watch tem payload de email, envia direto
+        // Enviar email se configurado no on_trigger_payload
         if (watch.on_trigger_payload) {
           try {
-            const triggerPayload = JSON.parse(watch.on_trigger_payload);
-            if (triggerPayload?.type === 'send_email' && triggerPayload?.email) {
-              const { to, subject, body } = triggerPayload.email;
-              if (to && subject) {
-                await base44.asServiceRole.integrations.Core.SendEmail({ to, subject, body: body || subject });
-                console.log(`[watchScheduler] Email enviado para ${to} — assunto: ${subject}`);
-              }
+            const tp = JSON.parse(watch.on_trigger_payload);
+            if (tp?.type === 'send_email' && tp?.email?.to && tp?.email?.subject) {
+              await base44.asServiceRole.integrations.Core.SendEmail({
+                to:      tp.email.to,
+                subject: tp.email.subject,
+                body:    tp.email.body || tp.email.subject,
+              });
+              console.log(`[watchScheduler] Email enviado para ${tp.email.to}`);
             }
-          } catch (emailErr: any) {
-            console.warn(`[watchScheduler] Falha ao enviar email: ${emailErr?.message}`);
+          } catch (e: any) {
+            console.warn(`[watchScheduler] Erro ao enviar email: ${e?.message}`);
           }
         }
 
-        // Extrai horário alvo para mensagem amigável
-        let friendlyMsg = `Chegou o momento! O alerta "${watch.name.replace(/ — Auto WE-04$/, '')}" disparou.`;
-        try {
-          const _ct = JSON.parse(watch.condition_tree || '{}');
-          if (_ct.provider === 'clock' && _ct.params?.target_time) {
-            friendlyMsg = `Chegou a hora! São ${_ct.params.target_time} — você pediu para ser avisado neste horário.`;
-          }
-        } catch { /* usa mensagem padrão */ }
+        // Montar mensagem amigável
+        let friendlyMsg = `O alerta "${watch.name.replace(/ — Auto WE-04$/, '')}" disparou.`;
+        if (conditionTree.provider === 'clock' && conditionTree.params?.target_time) {
+          friendlyMsg = `Chegou a hora! ${conditionTree.params.target_time} — você pediu para ser avisado neste horário.`;
+        }
 
         await base44.asServiceRole.entities.PendingWatchAction.create({
           watch_id:    watch.id,
-          action_type: watch.on_trigger_type || 'notify_user',
+          action_type: 'notify_user',
           payload:     JSON.stringify({
             watchId:   watch.id,
             watchName: watch.name.replace(/ — Auto WE-04$/, ''),
@@ -277,14 +223,14 @@ async function runOneTick(base44: any, googleTokenCache: Map<string, string>): P
         });
       }
 
-    } catch (watchErr: any) {
+    } catch (err: any) {
       result.failed++;
       try {
-        const newFailures = (watch.consecutive_failures || 0) + 1;
+        const fails = (watch.consecutive_failures || 0) + 1;
         await base44.asServiceRole.entities.Watch.update(watch.id, {
-          consecutive_failures: newFailures,
-          status:               newFailures >= 3 ? 'error' : 'active',
-          error_message:        watchErr.message,
+          consecutive_failures: fails,
+          status:               fails >= 3 ? 'error' : 'active',
+          error_message:        err.message,
         });
       } catch { /* silent */ }
     }
@@ -302,18 +248,14 @@ export default async function(req: Request): Promise<Response> {
     if (!isAuth) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     const totals = { processed: 0, triggered: 0, failed: 0, iterations: 0 };
-
-    // Cache de tokens OAuth por userId — evita multiplos refreshes na mesma invocacao
     const googleTokenCache = new Map<string, string>();
 
-    // 5 iteracoes de 1 minuto cada = cobre toda a janela de 5 minutos do cron
     for (let i = 0; i < 5; i++) {
       const r = await runOneTick(base44, googleTokenCache);
-      totals.processed  += r.processed;
-      totals.triggered  += r.triggered;
-      totals.failed     += r.failed;
+      totals.processed += r.processed;
+      totals.triggered += r.triggered;
+      totals.failed    += r.failed;
       totals.iterations++;
-
       if (i < 4) await delay(60_000);
     }
 
