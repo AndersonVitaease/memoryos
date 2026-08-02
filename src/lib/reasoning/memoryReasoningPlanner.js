@@ -385,25 +385,15 @@ ${fullText}`;
     });
 
     if (searchOutcome.resolved && searchOutcome.bestResult) {
-      const response = formatSearchResultAsResponse(searchOutcome.bestResult);
-      const responseTimeMs = Date.now() - startTime;
-      const plan = {
-        goal: goal.id,
-        goalLabel: goal.label,
-        strategy: goal.strategy,
-        skills: skills.map((s) => ({ id: s.id, name: s.name, score: s.score })),
-        skillsCount: skills.length,
-        sourcesCount: sources.length,
-        contextLength: context ? context.length : 0,
-        capabilities: [],
-        capabilitiesCount: 0,
-        needsMoreInfo: false,
-        service: null,
-        responseTimeMs,
-        handledByGuard: "SEARCH-ENGINE",
-        searchProvider: searchOutcome.bestResult.provider,
-        searchConfidence: searchOutcome.bestResult.confidence,
-      };
+      // Injeta os resultados como grounding para o LLM — NÃO retorna direto ao usuário.
+      // O LLM deve sintetizar uma resposta contextualizada, não listar links crus.
+      const snippet = formatSearchResultAsResponse(searchOutcome.bestResult);
+      _searchEngineGroundingNote =
+        `RESULTADOS DA PESQUISA WEB (use estes dados para responder — não liste os links, sintetize uma resposta útil e completa em português):\n${snippet}`;
+      _searchEngineGroundingText = (searchOutcome.bestResult.items ?? [])
+        .map((it) => `${it.title ?? ""} ${it.snippet ?? ""} ${it.url ?? ""}`)
+        .join(" \n ")
+        .toLowerCase();
       try {
         base44.analytics.track({
           eventName: "search_engine_resolved",
@@ -411,13 +401,11 @@ ${fullText}`;
             provider: searchOutcome.bestResult.provider,
             confidence: searchOutcome.bestResult.confidence,
             duration_ms: searchOutcome.durationMs,
-            response_time_ms: responseTimeMs,
           },
         });
       } catch {
         // analytics é opcional
       }
-      return { response, plan, sources };
     }
 
     // Fallback: tenta qualquer provider que retornou itens, mesmo sem confidence alto
