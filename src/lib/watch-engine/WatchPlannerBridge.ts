@@ -122,6 +122,7 @@ function extractTargetTime(message: string): string | null {
 
 function detectWatchIntent(message: string): WatchIntentDetection {
   const hasIntent = INTENT_PATTERNS.some((p) => p.test(message));
+  console.log(`[WatchBridge] detectIntent: hasIntent=${hasIntent} | msg="${message.slice(0, 80).replace(/\n/g, '\\n')}"`);
   if (!hasIntent) return { hasIntent: false };
 
   for (const hint of PROVIDER_HINTS) {
