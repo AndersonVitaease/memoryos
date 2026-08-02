@@ -24,6 +24,109 @@ const PRIORITY_COLOR = {
   low:      "text-zinc-500",
 };
 
+function OutboxStatePanel() {
+  const [log, setLog]     = useState([]);
+  const [running, setRunning] = useState(false);
+  const [status, setStatus]   = useState(null);
+
+  const runCycle = async () => {
+    setRunning(true);
+    const logs = [];
+    try {
+      const { watchCognitiveBridge } = await import("@/lib/watch-engine/WatchCognitiveBridge");
+      await watchCognitiveBridge.init();
+      const cycle = await watchCognitiveBridge.runCycle();
+      logs.push({ ok: true, msg: `Scheduler: processados=${cycle.schedulerProcessed} | disparados=${cycle.schedulerTriggered}` });
+      logs.push({ ok: true, msg: `Outbox: despachados=${cycle.outboxDispatched} | falhas=${cycle.outboxFailed}` });
+      logs.push({ ok: true, msg: `Ciclo completo em ${cycle.durationMs}ms` });
+      const s = await watchCognitiveBridge.getSystemStatus();
+      setStatus(s);
+    } catch (e) {
+      logs.push({ ok: false, msg: `Erro: ${e.message}` });
+    } finally {
+      setRunning(false);
+    }
+    setLog(logs);
+  };
+
+  const testStateTracker = async () => {
+    setRunning(true);
+    const logs = [];
+    try {
+      const { WatchStateTrackerClass } = await import("@/lib/watch-engine/WatchStateTracker");
+      const tracker = new WatchStateTrackerClass();
+      const s1 = tracker.record("demo", false);
+      logs.push({ ok: true, msg: `record(false) → triggered=${s1.isTriggered} | consecutiveFalse=${s1.consecutiveFalse}` });
+      const s2 = tracker.record("demo", true);
+      logs.push({ ok: s2.isTriggered, msg: `record(true) → triggered=${s2.isTriggered} (transição false→true detectada)` });
+      const s3 = tracker.record("demo", true);
+      logs.push({ ok: !s3.isTriggered, msg: `record(true) novamente → triggered=${s3.isTriggered} (anti-spam: correto)` });
+      const m = tracker.getMetrics();
+      logs.push({ ok: true, msg: `Métricas: trackedWatches=${m.trackedWatches} | currentlyTrue=${m.currentlyTrue}` });
+    } catch (e) {
+      logs.push({ ok: false, msg: `Erro: ${e.message}` });
+    } finally {
+      setRunning(false);
+    }
+    setLog(logs);
+  };
+
+  return (
+    <Card className="bg-zinc-900 border-zinc-800">
+      <CardHeader>
+        <CardTitle className="text-white text-sm">WatchOutbox + WatchStateTracker — Demo WE-03</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-zinc-400 text-sm">
+          Testa o ciclo completo Scheduler → Outbox via WatchCognitiveBridge e o StateTracker com detecção de transição false→true.
+        </p>
+        <div className="flex gap-3 flex-wrap">
+          <button
+            onClick={runCycle}
+            disabled={running}
+            className="text-sm bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded disabled:opacity-50"
+          >
+            {running ? "Executando..." : "Rodar Ciclo Completo"}
+          </button>
+          <button
+            onClick={testStateTracker}
+            disabled={running}
+            className="text-sm bg-zinc-700 hover:bg-zinc-600 text-zinc-200 px-4 py-2 rounded disabled:opacity-50"
+          >
+            {running ? "..." : "Testar StateTracker"}
+          </button>
+        </div>
+
+        {status && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+            {[
+              { label: "Watches ativos",   value: status.registry.activeWatches },
+              { label: "Rastreados",        value: status.tracker.trackedWatches },
+              { label: "Currently true",    value: status.tracker.currentlyTrue },
+              { label: "Outbox runs",       value: status.outbox.runCount },
+            ].map((m, i) => (
+              <div key={i} className="bg-zinc-800 rounded p-2 text-center">
+                <div className="text-zinc-200 font-bold">{m.value}</div>
+                <div className="text-zinc-500">{m.label}</div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {log.length > 0 && (
+          <div className="bg-zinc-800 rounded-lg p-3 space-y-1">
+            {log.map((l, i) => (
+              <div key={i} className={`text-xs font-mono ${l.ok ? "text-emerald-400" : "text-red-400"}`}>
+                {l.ok ? "✓" : "✗"} {l.msg}
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function EvaluatorPanel() {
   const [evalLog, setEvalLog] = useState([]);
   const [gwMetrics, setGwMetrics] = useState(null);
@@ -372,12 +475,13 @@ export default function SprintWE01Page() {
         )}
 
         {/* Tabs */}
-        <div className="flex gap-1 border-b border-zinc-800">
+        <div className="flex gap-1 border-b border-zinc-800 overflow-x-auto">
           {[
-            { id: "overview", label: "Watches Ativos" },
-            { id: "create",   label: "Criar Watch" },
+            { id: "overview",  label: "Watches Ativos" },
+            { id: "create",    label: "Criar Watch" },
             { id: "evaluator", label: "Evaluator WE-02" },
-            { id: "arch",     label: "Arquitetura" },
+            { id: "we03",      label: "Outbox+State WE-03" },
+            { id: "arch",      label: "Arquitetura" },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -525,6 +629,11 @@ export default function SprintWE01Page() {
           <EvaluatorPanel />
         )}
 
+        {/* Tab: WE-03 */}
+        {activeTab === "we03" && (
+          <OutboxStatePanel />
+        )}
+
         {/* Tab: Arquitetura */}
         {activeTab === "arch" && (
           <div className="space-y-4">
@@ -546,6 +655,9 @@ export default function SprintWE01Page() {
                   { file: "src/lib/watch-engine/WatchEvaluator.ts",  status: "done", label: "WatchEvaluator — Compilador ConditionTree → fn JS pura" },
                   { file: "src/lib/watch-engine/ConnectorGateway.ts",status: "done", label: "ConnectorGateway — Token Bucket + Circuit Breaker por provider" },
                   { file: "src/lib/watch-engine/WatchScheduler.ts",  status: "done", label: "WatchScheduler — Fila por prioridade + Outbox enqueue" },
+                  { file: "src/lib/watch-engine/WatchOutbox.ts",      status: "done", label: "WatchOutbox — Durable Worker com retry, TTL e fire-and-forget" },
+                  { file: "src/lib/watch-engine/WatchStateTracker.ts",status: "done", label: "WatchStateTracker — Transição false→true, anti-spam, hydration" },
+                  { file: "src/lib/watch-engine/WatchCognitiveBridge.ts",status:"done",label:"WatchCognitiveBridge — Interface para Planner + runCycle()" },
                 ].map((item, i) => (
                   <div key={i} className="flex items-center gap-2 text-xs">
                     <span className={item.status === "done" ? "text-emerald-400" : "text-amber-400"}>
@@ -565,7 +677,7 @@ export default function SprintWE01Page() {
               <CardContent className="space-y-2">
                 {[
                   { sprint: "WE-02", label: "WatchEvaluator (Compilador) + WatchScheduler + ConnectorGateway (Token Bucket)", status: "planned" },
-                  { sprint: "WE-03", label: "WatchOutbox (Worker Durable) + WatchStateTracker + Circuit Breaker por Provider", status: "planned" },
+                  { sprint: "WE-03", label: "WatchOutbox + WatchStateTracker + WatchCognitiveBridge", status: "done" },
                   { sprint: "WE-04", label: "Deduplicação via KnowledgeGraph + Dashboard de Auditoria + Performance", status: "planned" },
                 ].map((item, i) => (
                   <div key={i} className="flex items-center gap-3 text-sm">
@@ -581,7 +693,7 @@ export default function SprintWE01Page() {
         )}
 
         <div className="text-center text-xs text-zinc-700 pt-2">
-          Watch Engine WE-01+WE-02 · RFC-005 · ADR-012 · EPIC-017 · MemoryOS Engineering First · 2026-08-02
+          Watch Engine WE-01+WE-02+WE-03 · RFC-005 · ADR-012 · EPIC-017 · MemoryOS Engineering First · 2026-08-02
         </div>
       </div>
     </div>

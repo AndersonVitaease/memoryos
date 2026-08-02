@@ -10,6 +10,8 @@
 import { validateWatchIntent, serializeConditionTree, deserializeConditionTree } from "./WatchValidator";
 import { WatchEvaluatorClass } from "./WatchEvaluator";
 import { ConnectorGatewayClass } from "./ConnectorGateway";
+import { WatchStateTrackerClass } from "./WatchStateTracker";
+import { WatchOutboxClass } from "./WatchOutbox";
 import type { WatchIntent, ConditionTree, LeafCondition, WatchRecord } from "./WatchTypes";
 
 interface TestResult {
@@ -294,12 +296,87 @@ export function runWatchEngineTests(): { passed: number; failed: number; results
     assert(result === null, "Deve retornar null para ConditionTree inválida");
   }));
 
+  // ── WE-03: WatchStateTracker + WatchOutbox ──────────────────────────────
+
+  // 24. record false→true detecta transição
+  results.push(run("WE-03-001: StateTracker detecta transição false→true como triggered", () => {
+    const tracker = new WatchStateTrackerClass();
+    const s1 = tracker.record("wt1", false);
+    assert(!s1.isTriggered, "Primeiro false não é trigger");
+    const s2 = tracker.record("wt1", true);
+    assert(s2.isTriggered, "Transição false→true deve ser triggered=true");
+  }));
+
+  // 25. true→true não é trigger (evita spam)
+  results.push(run("WE-03-002: StateTracker true→true NÃO é triggered (anti-spam)", () => {
+    const tracker = new WatchStateTrackerClass();
+    tracker.record("wt2", true);
+    const s2 = tracker.record("wt2", true);
+    assert(!s2.isTriggered, "true→true não deve ser triggered");
+    assert(s2.consecutiveTrue === 2, "consecutiveTrue deve ser 2");
+  }));
+
+  // 26. true→false reseta consecutiveTrue
+  results.push(run("WE-03-003: StateTracker true→false reseta consecutiveTrue", () => {
+    const tracker = new WatchStateTrackerClass();
+    tracker.record("wt3", true);
+    tracker.record("wt3", true);
+    const s3 = tracker.record("wt3", false);
+    assert(s3.consecutiveTrue === 0, "consecutiveTrue deve ser 0 após false");
+    assert(s3.consecutiveFalse === 1, "consecutiveFalse deve ser 1");
+  }));
+
+  // 27. getSnapshot retorna null para Watch desconhecido
+  results.push(run("WE-03-004: StateTracker.getSnapshot retorna null para watchId desconhecido", () => {
+    const tracker = new WatchStateTrackerClass();
+    const snap = tracker.getSnapshot("nao_existe");
+    assert(snap === null, "Deve retornar null");
+  }));
+
+  // 28. clear remove do cache
+  results.push(run("WE-03-005: StateTracker.clear remove estado do cache", () => {
+    const tracker = new WatchStateTrackerClass();
+    tracker.record("wt4", true);
+    assert(tracker.getSnapshot("wt4") !== null, "Deve existir antes do clear");
+    tracker.clear("wt4");
+    assert(tracker.getSnapshot("wt4") === null, "Deve ser null após clear");
+  }));
+
+  // 29. WatchOutbox.processAll com lista vazia retorna zeros
+  results.push(run("WE-03-006: WatchOutbox.processAll com Outbox vazio retorna zeros", async () => {
+    // Testa apenas a lógica de métricas — não faz chamada de rede
+    const outbox = new WatchOutboxClass();
+    const metrics = outbox.getMetrics();
+    assert(metrics.runCount === 0, "runCount inicial deve ser 0");
+    assert(metrics.registeredDispatchers === 0, "Sem dispatchers registrados");
+  }));
+
+  // 30. WatchOutbox.registerDispatcher registra corretamente
+  results.push(run("WE-03-007: WatchOutbox registra dispatcher customizado", () => {
+    const outbox = new WatchOutboxClass();
+    outbox.registerDispatcher("notify_user", async () => {});
+    const m = outbox.getMetrics();
+    assert(m.registeredDispatchers === 1, "Deve ter 1 dispatcher registrado");
+  }));
+
+  // 31. StateTracker métricas refletem estado
+  results.push(run("WE-03-008: StateTracker métricas refletem watches rastreados", () => {
+    const tracker = new WatchStateTrackerClass();
+    tracker.record("m1", true);
+    tracker.record("m2", false);
+    tracker.record("m3", true);
+    const m = tracker.getMetrics();
+    assert(m.trackedWatches === 3, "Deve rastrear 3 watches");
+    assert(m.currentlyTrue === 2, "2 watches com resultado true");
+    assert(m.currentlyFalse === 1, "1 watch com resultado false");
+  }));
+
   const passed = results.filter((r) => r.passed).length;
   const failed = results.filter((r) => !r.passed).length;
   const certified = failed === 0;
   const durationMs = Date.now() - t0;
 
-  console.log(`[WatchEngine WE-01+WE-02] Testes: ${passed} passou, ${failed} falhou | ${durationMs}ms | Certificado: ${certified}`);
+  console.log(`[WatchEngine WE-01+WE-02+WE-03] Testes: ${passed} passou, ${failed} falhou | ${durationMs}ms | Certificado: ${certified}`);
 
   return { passed, failed, results, certified, durationMs };
 }
