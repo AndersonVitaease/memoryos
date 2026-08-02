@@ -468,6 +468,55 @@ Seja minucioso. Não perca nenhuma informação importante.`,
   // 7 — Finalizar
   onStage?.("finalizing");
 
+  // 8 — Disparar email de automação PDF (se Watch ativo configurado)
+  if (type === "pdf") {
+    try {
+      const pdfWatches = await base44.entities.Watch.filter({ status: "active", on_trigger_type: "emit_event" });
+      const pdfWatch = pdfWatches.find((w) => {
+        try {
+          const p = JSON.parse(w.on_trigger_payload || "{}");
+          return p?.type === "send_email" && p?.pipeline_steps?.length > 0;
+        } catch { return false; }
+      });
+
+      if (pdfWatch) {
+        const payload = JSON.parse(pdfWatch.on_trigger_payload);
+        const { to, from, subject } = payload.email;
+        const steps = payload.pipeline_steps || [];
+
+        const emailBody = `Novo PDF processado pelo MemoryOS
+
+Arquivo: ${displayName || file?.name || "PDF"}
+Categoria: ${extraction.category || "outro"}
+
+--- RESUMO ---
+${extraction.summary || "Resumo não disponível"}
+
+--- ETAPAS EXECUTADAS ---
+${steps.map((s) => `✓ ${s}`).join("\n")}
+
+--- ENTIDADES EXTRAÍDAS ---
+Pessoas: ${(extraction.people || []).map((p) => p.name).join(", ") || "Nenhuma"}
+Empresas: ${(extraction.companies || []).map((c) => c.name).join(", ") || "Nenhuma"}
+Palavras-chave: ${(extraction.keywords || []).join(", ") || "Nenhuma"}
+
+Processado automaticamente pelo MemoryOS Watch Engine.`;
+
+        await base44.integrations.Core.SendEmail({
+          from_name: "MemoryOS",
+          to,
+          subject: subject || `Resumo do PDF: ${displayName || file?.name}`,
+          body: emailBody,
+        });
+
+        console.log(`[PDF-AUTO] Email enviado para ${to} com resumo do PDF: ${doc.id}`);
+      }
+    } catch (err) {
+      console.warn("[PDF-AUTO] Falha ao enviar email de automação:", err?.message);
+      // Non-critical — não bloqueia o resultado do pipeline
+    }
+  }
+
   return {
     document: doc,
     displayName: displayName || file?.name || "Conteúdo",
