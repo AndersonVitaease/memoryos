@@ -308,10 +308,12 @@ export default function ChatPage() {
       } catch { /* silencioso */ }
     };
 
-    // Aguarda 4s após inicialização para garantir que mensagens carregaram, depois a cada 30s
+    // Poll a cada 15s + imediato ao voltar para a aba
     const initialDelay = setTimeout(pollWatchActions, 4000);
-    const interval = setInterval(pollWatchActions, 30_000);
-    return () => { clearTimeout(initialDelay); clearInterval(interval); };
+    const interval = setInterval(pollWatchActions, 15_000);
+    const onVisible = () => { if (document.visibilityState === 'visible') pollWatchActions(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearTimeout(initialDelay); clearInterval(interval); document.removeEventListener('visibilitychange', onVisible); };
   }, [conversation.isInitialized, conversation.session?.id]);
 
   // ── Loading guard ────────────────────────────────────────────────────────
