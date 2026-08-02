@@ -132,6 +132,53 @@ ChatPage.sendMessage(text)
 
 ---
 
+## Atualização — Gerenciamento de Watches e Proteção contra Horários Passados (cxp-sched-v2)
+
+### Problemas resolvidos nesta iteração
+
+1. **Watches com horário passado continuavam ativos** — o scheduler disparava alertas de horas anteriores, gerando notificações inúteis ou duplicadas.
+2. **Impossível deletar watches via chat** — não havia nenhuma forma conversacional de cancelar avisos já criados.
+
+### Soluções implementadas
+
+#### `isPast(targetTime)` — Proteção contra horários passados
+
+```typescript
+function isPast(targetTime: string): boolean {
+  // Converte horário atual para BRT e compara com targetTime
+  // Retorna true se targetTime já passou há mais de 6 minutos
+}
+```
+
+- Aplicado tanto em `tryScheduleEmail` quanto no Watch de aviso simples.
+- Se o horário já passou → Watch não é criado; resposta imediata explicando.
+
+#### `tryManageWatches()` — Gerenciamento conversacional
+
+Interceptor novo chamado antes do scheduler. Detecta comandos como:
+- `"deletar todos os outros"` → mantém apenas o especificado, remove os demais
+- `"cancelar todos"` → marca todos os Watches ativos como `completed`
+- `"remover o das 17:10"` → remove Watch específico por horário
+- `"manter apenas o das 17:10"` → remove todos exceto o do horário informado
+
+Watches removidos são marcados como `completed` (não deletados), preservando histórico.
+
+#### Singleton incrementado para `cxp-sched-v2`
+
+Força recriação do ConversationManager com os novos interceptores.
+
+### Comportamentos adicionados
+
+| Mensagem | Ação |
+|---|---|
+| `cancelar todos os avisos` | Marca todos os Watches ativos como `completed` |
+| `deletar todos os outros` | Remove todos exceto o mais recente |
+| `manter apenas o das 17:10` | Remove todos exceto o Watch das 17:10 |
+| `remover o das 16:00` | Remove Watch específico das 16:00 |
+| `me avise as 16:00` (passado) | Recusa criação, avisa que horário já passou |
+
+---
+
 ## Testes Validados (17:02 / 17:03 BRT)
 
 - ✅ Email chegou na caixa do destinatário via Gmail OAuth (remetente correto)
