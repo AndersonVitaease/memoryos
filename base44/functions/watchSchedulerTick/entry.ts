@@ -33,14 +33,18 @@ async function runOneTick(base44: any): Promise<{ processed: number; triggered: 
       if (conditionTree.kind === 'leaf' && conditionTree.provider === 'clock') {
         const target = conditionTree.params?.target_time;
         if (target) {
-          const nowLocal = new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' });
-          const nowTime = new Date(nowLocal);
-          const [h, m] = target.split(':').map(Number);
-          const nowTotalMin = nowTime.getHours() * 60 + nowTime.getMinutes();
-          const targetTotalMin = h * 60 + m;
+          // Usar Intl para extrair hora/minuto em BRT sem depender de Date parse
+          const nowUTC = new Date();
+          const hPart = new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: false, timeZone: 'America/Sao_Paulo' }).format(nowUTC);
+          const mPart = new Intl.DateTimeFormat('en-US', { minute: 'numeric', timeZone: 'America/Sao_Paulo' }).format(nowUTC);
+          const nowH = parseInt(hPart, 10);
+          const nowM = parseInt(mPart, 10);
+          const [tH, tM] = target.split(':').map(Number);
+          const nowTotalMin = nowH * 60 + nowM;
+          const targetTotalMin = tH * 60 + tM;
           // Janela de ±2 minutos para absorver atrasos de scheduler
           evaluationResult = Math.abs(nowTotalMin - targetTotalMin) <= 2;
-          console.log(`[clock] target=${target} now=${nowTime.getHours()}:${String(nowTime.getMinutes()).padStart(2,'0')} nowMin=${nowTotalMin} targetMin=${targetTotalMin} diff=${Math.abs(nowTotalMin - targetTotalMin)} match=${evaluationResult}`);
+          console.log(`[clock] target=${target} nowBRT=${nowH}:${String(nowM).padStart(2,'0')} diff=${Math.abs(nowTotalMin - targetTotalMin)} match=${evaluationResult}`);
         }
       }
 
