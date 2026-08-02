@@ -11,7 +11,7 @@ Status: OFFICIAL
 
 | Métrica | Valor |
 |---|---|
-| Total de ADRs | 7 |
+| Total de ADRs | 8 |
 | Status Proposed | 7 |
 | Status Accepted | 0 |
 | Status Rejected | 0 |
@@ -218,5 +218,23 @@ ADR-007 (Reasoning Engine)
 
 ---
 
+---
+
+### ADR-012 — Watch Engine: Arquitetura e Decisões de Implementação
+
+| Campo | Valor |
+|---|---|
+| **ADR-ID** | ADR-012 |
+| **Status** | Accepted |
+| **RFC Origem** | RFC-005 |
+| **EPIC** | EPIC-017 |
+| **Prioridade** | ALTA |
+| **Sprints afetadas** | WE-01, WE-02, WE-03, WE-04 |
+| **Arquivo** | `src/docs/foundation/adr/ADR-012.md` |
+
+**Resumo:** Define 7 decisões arquiteturais para o Watch Engine: localização em módulo isolado, compilação de lógica booleana para função JS pura (sem eval), Durable Outbox para entrega garantida, Token Bucket por provider, Circuit Breaker por provider, controle de transição de estado, e deduplicação via KnowledgeGraph no Sprint 4.
+
+---
+
 *SPR-ADR-01 · 2026-07-11 · Engineering First*
-*Todos os ADRs em status Proposed. Nenhuma decisão tomada.*
+*Atualizado em 2026-08-02 — ADR-012 Watch Engine adicionado*

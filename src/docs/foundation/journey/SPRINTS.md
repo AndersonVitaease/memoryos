@@ -48,4 +48,15 @@
 
 ---
 
+## Watch Engine (WE-01 — WE-04)
+
+| Sprint | Foco | Entregável | Status |
+|---|---|---|---|
+| WE-01 | Foundation de Dados | Entidades Watch/WatchExecution/PendingWatchAction + WatchRegistry + WatchTypes | 🔄 Planned |
+| WE-02 | Motor de Execução | WatchEvaluator (Compilador de Lógica) + WatchScheduler + ConnectorGateway (Token Bucket) | 🔄 Planned |
+| WE-03 | Resiliência e Entrega Garantida | WatchOutbox (Durable Outbox) + WatchStateTracker + Circuit Breaker por Provider | 🔄 Planned |
+| WE-04 | Inteligência e Governança | Deduplicação via KnowledgeGraph + Dashboard de Auditoria + Performance (Lazy Hydration) | 🔄 Planned |
+
+---
+
 *MemoryOS Foundation v1.0.0 — 2026-07-10*

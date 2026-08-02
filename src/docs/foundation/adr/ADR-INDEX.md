@@ -31,6 +31,7 @@ Cada ADR registra:
 | ADR-010 | Unificação da Pipeline de Busca Web (Serper como motor único) | Implemented | N/A | 2026-07-30 |
 | ADR-011 | Registro de Providers de IA (multi-provider, extensível por capacidade) | Implemented | N/A | 2026-07-30 |
 | ADR-010 | Gap Analysis — hipótese arquitetural aguardando validação Engineering First | Draft | RFC-004 | 2026-07-11 |
+| ADR-012 | Watch Engine — Arquitetura e Decisões de Implementação | Accepted | RFC-005 | 2026-08-02 |
 
 ---
 

@@ -56,6 +56,7 @@ EPIC (domínio de implementação)
 | EPIC-014 | Marketplace | MDPS Cap.4 | — | 14 |
 | EPIC-015 | Developer Portal | MDPS Cap.5 | — | 15 |
 | EPIC-016 | Foundation UI | MEB (este doc) | — | 16 |
+| EPIC-017 | Watch Engine | MES §21, MES §12 | RFC-005 | WE-01 a WE-04 |
 
 ---
 
@@ -519,4 +520,87 @@ Toda implementação **não pode**:
 
 ---
 
+---
+
+### EPIC-017 — Watch Engine
+
+**RFC-005 | ADR-012 | Sprints WE-01 a WE-04**
+
+**FEAT-110** WatchTypes + WatchRegistry Foundation (Sprint WE-01)
+- Objetivo: Definir todos os tipos TypeScript imutáveis + CRUD de Watches com validação e Dry Run
+- Escopo: `WatchTypes.ts`, `WatchRegistry.ts`, entidades `Watch`, `WatchExecution`, `PendingWatchAction`
+- Dependências: KnowledgeEntity, CognitiveEventBus
+- Critério: `create()` valida e persiste Watch simples e complexo (AND/OR/NOT); status `invalid` em falha de compilação
+
+**FEAT-111** WatchEvaluator + Compilador de Lógica (Sprint WE-02)
+- Objetivo: Compilar `ConditionTree` para função JS pura (sem `eval()`); executar pipeline de avaliação
+- Escopo: `WatchEvaluator.ts`, `CompiledWatch` interface
+- Dependências: FEAT-110, ConnectorGateway
+- Critério: `compile()` retorna `CompiledWatch`; `evaluate()` retorna boolean correto para todos os operadores (AND/OR/NOT aninhados); sem `eval()`
+
+**FEAT-112** WatchScheduler + ConnectorGateway (Sprint WE-02)
+- Objetivo: Coordenar execução por prioridade e frequência; abstrair providers com Token Bucket
+- Escopo: `WatchScheduler.ts`, `ConnectorGateway.ts`
+- Dependências: FEAT-111
+- Critério: Priority Queue funcional (critical primeiro); Token Bucket por provider; timeout de 10s por execução
+
+**FEAT-113** WatchOutbox + WatchStateTracker (Sprint WE-03)
+- Objetivo: Garantir entrega de eventos (Durable Outbox); detectar transição `false → true`
+- Escopo: `WatchOutbox.ts`, `WatchStateTracker.ts`, entidade `PendingWatchAction`
+- Dependências: FEAT-112
+- Critério: Evento `WatchTriggered` só disparado na transição; `PendingWatchAction` persiste antes do dispatch; Worker re-tenta até ACK
+
+**FEAT-114** Circuit Breaker por Provider (Sprint WE-03)
+- Objetivo: Isolar falhas de provider para não contaminar outros Watches
+- Escopo: `ConnectorGateway.ts` (extensão)
+- Dependências: FEAT-112
+- Critério: 3 falhas consecutivas → OPEN; 5 min → HALF-OPEN; sucesso → CLOSED
+
+**FEAT-115** Deduplicação via KnowledgeGraph + Dashboard (Sprint WE-04)
+- Objetivo: Evitar criação de Watches redundantes; dashboard de auditoria e monitoramento
+- Escopo: Extensão de `WatchRegistry.ts` + página `src/pages/SprintWE04Page.jsx`
+- Dependências: FEAT-110, KnowledgeGraphEngine
+- Critério: Query de grafo detecta condição duplicada; dashboard mostra status/execuções/circuit breakers
+
+---
+
+### EPIC-017 — Stories e Tasks
+
+**STORY-030** — Criação de Watch com Condição Simples
+Como Planner, quero criar um Watch com uma condição leaf (provider + comparator + value) para que o sistema monitore uma métrica específica.
+_AC: Watch persiste com status `active`; `compile()` retorna CompiledWatch; Dry Run valida provider_
+
+**STORY-031** — Avaliação com Lógica Booleana Complexa
+Como WatchEvaluator, quero avaliar uma ConditionTree com AND/OR/NOT aninhados para suportar condições compostas.
+_AC: AND([true, false]) → false; OR([true, false]) → true; NOT(true) → false; aninhamento de 5 níveis funciona_
+
+**STORY-032** — Disparo na Transição de Estado
+Como WatchStateTracker, quero disparar `WatchTriggered` apenas quando a condição muda de false para true para evitar spam de notificações.
+_AC: condição true consecutiva → sem novo evento; transição false→true → 1 evento; transição true→false → sem evento_
+
+**STORY-033** — Recuperação de Falha via Outbox
+Como WatchOutbox, quero garantir que se o sistema reiniciar após a avaliação mas antes do dispatch, o evento seja re-tentado.
+_AC: Watch dispara, `PendingWatchAction` persiste, sistema reinicia, Worker re-lê e despacha corretamente_
+
+| Task | Descrição | Sprint | Prioridade |
+|---|---|---|---|
+| TASK-110 | Criar WatchTypes.ts com todos os tipos imutáveis | WE-01 | P0 |
+| TASK-111 | Criar entidades Watch, WatchExecution, PendingWatchAction | WE-01 | P0 |
+| TASK-112 | Implementar WatchRegistry.create() com validação e Dry Run | WE-01 | P0 |
+| TASK-113 | Implementar WatchRegistry.list(), get(), pause(), resume(), delete() | WE-01 | P0 |
+| TASK-114 | Implementar WatchEvaluator.compile() — compilador de ConditionTree | WE-02 | P0 |
+| TASK-115 | Implementar WatchEvaluator.evaluate() — executor do pipeline compilado | WE-02 | P0 |
+| TASK-116 | Implementar ConnectorGateway com Token Bucket por provider | WE-02 | P0 |
+| TASK-117 | Implementar WatchScheduler com Priority Queue | WE-02 | P0 |
+| TASK-118 | Implementar WatchStateTracker (last_result + detecção de transição) | WE-03 | P0 |
+| TASK-119 | Implementar WatchOutbox (persistência antes do dispatch + Worker re-try) | WE-03 | P0 |
+| TASK-120 | Implementar Circuit Breaker por provider em ConnectorGateway | WE-03 | P0 |
+| TASK-121 | Escrever watchEngineTests.ts (mínimo 10 cenários MDS §2.16) | WE-03 | P0 |
+| TASK-122 | Deduplicação via KnowledgeGraph em WatchRegistry.create() | WE-04 | P1 |
+| TASK-123 | Dashboard SprintWE04Page.jsx (status, execuções, circuit breakers) | WE-04 | P1 |
+| TASK-124 | Lazy Hydration + Performance hardening | WE-04 | P1 |
+
+---
+
 *MEB — MemoryOS Engineering Backlog v1.0 — Engineering Reference — 2026-07-10*
+*Atualizado em 2026-08-02 — EPIC-017 Watch Engine adicionado*
