@@ -275,7 +275,11 @@ export class WatchPlannerBridgeClass {
   }
 }
 
-// Sempre recria para garantir que o código mais recente seja usado
+// Versão do módulo — incrementar força reinstanciação do singleton
+const _MODULE_VERSION = "we04-v7";
 const _g = globalThis as unknown as Record<string, unknown>;
-_g.__WatchPlannerBridge__ = new WatchPlannerBridgeClass();
+if (_g.__WatchPlannerBridgeVersion__ !== _MODULE_VERSION) {
+  _g.__WatchPlannerBridge__ = new WatchPlannerBridgeClass();
+  _g.__WatchPlannerBridgeVersion__ = _MODULE_VERSION;
+}
 export const watchPlannerBridge = _g.__WatchPlannerBridge__ as WatchPlannerBridgeClass;
