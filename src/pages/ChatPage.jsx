@@ -302,11 +302,10 @@ export default function ChatPage() {
       } catch { /* silencioso */ }
     };
 
-    // Verifica imediatamente ao montar (captura alertas perdidos enquanto tela estava fechada)
-    // e depois a cada 30 segundos
-    pollWatchActions();
+    // Aguarda 2s após inicialização para garantir que mensagens carregaram, depois a cada 30s
+    const initialDelay = setTimeout(pollWatchActions, 2000);
     const interval = setInterval(pollWatchActions, 30_000);
-    return () => clearInterval(interval);
+    return () => { clearTimeout(initialDelay); clearInterval(interval); };
   }, [conversation.isInitialized, conversation.session?.id]);
 
   // ── Loading guard ────────────────────────────────────────────────────────
