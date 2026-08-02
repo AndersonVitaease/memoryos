@@ -62,12 +62,12 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
   // === PRÉ-ETAPA -1: INTERCEPTAR PEDIDO DE ENVIO AGENDADO ===
   // Padrão: horário + email na mensagem — cria Watch direto, NUNCA busca Gmail.
   // Executado ANTES de qualquer outra coisa.
-  // Usa apenas as primeiras 5 linhas da mensagem para evitar falsos positivos
+  // Usa apenas as primeiras 20 linhas da mensagem para evitar falsos positivos
   // quando o usuário cola output anterior do sistema junto com o pedido.
   const _SCHED_TIME_RE = /(?:[àa]s\s*|as\s+)?(\d{1,2})[h:](\d{2})h?r?s?\b/i;
   const _HAS_EMAIL_ADDR = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/;
   // Analisa apenas o início da mensagem (antes de linhas de "resposta" coladas)
-  const _msgHeader = userMsg.split("\n").slice(0, 15).join("\n");
+  const _msgHeader = userMsg.split("\n").slice(0, 20).join("\n");
   const _timeMatch = _SCHED_TIME_RE.exec(_msgHeader);
   if (_timeMatch && _HAS_EMAIL_ADDR.test(_msgHeader)) {
     try {
@@ -75,17 +75,22 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
       const _m = String(parseInt(_timeMatch[2], 10)).padStart(2, "0");
       const _targetTime = `${_h}:${_m}`;
 
-      // Extrai campos do email apenas do cabeçalho da mensagem (ignora lixo colado)
-      const _toMatch = /(?:para|to)\s*:?\s*([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/i.exec(_msgHeader);
-      const _fromMatch = /(?:de|from)\s*:?\s*([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/i.exec(_msgHeader);
-      const _subjMatch = /(?:assunto|subject)\s*:?\s*(.+)/i.exec(_msgHeader);
+      // Extrai campos do email — aceita "Para:", "para:", "Para :", "To:" etc.
+      const _toMatch = /^(?:para|to)\s*:?\s*([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/im.exec(_msgHeader);
+      const _fromMatch = /^(?:de|from)\s*:?\s*([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/im.exec(_msgHeader);
+      const _subjMatch = /^(?:assunto|subject)\s*:?\s*(.+)/im.exec(_msgHeader);
 
-      // Corpo: tudo após a linha do assunto (dentro do cabeçalho)
+      // Corpo: tudo após a linha do assunto, antes de qualquer separador de resposta colada
       let _body = "";
       if (_subjMatch) {
-        const _subjIdx = _msgHeader.search(/(?:assunto|subject)\s*:?/i);
+        const _subjIdx = _msgHeader.search(/^(?:assunto|subject)\s*:?/im);
         const _bodyStart = _msgHeader.indexOf("\n", _subjIdx);
-        _body = _bodyStart >= 0 ? _msgHeader.slice(_bodyStart).trim() : "";
+        const _rawBody = _bodyStart >= 0 ? _msgHeader.slice(_bodyStart).trim() : "";
+        // Remove linhas que parecem ser output do sistema colado (começa com "Não foram", "avisos", etc.)
+        _body = _rawBody.split("\n").filter(l => {
+          const lt = l.trim().toLowerCase();
+          return !lt.startsWith("não foram") && !lt.startsWith("avisos") && !lt.startsWith("nenhum");
+        }).join("\n").trim();
       }
 
       const _to = _toMatch?.[1];
@@ -131,6 +136,8 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
   }
 
   // === PRÉ-ETAPA WATCH-QUERY: Responder perguntas sobre watches ativos ===
+  // GUARD: não rodar se a mensagem é um pedido de agendamento com horário + email
+  const _isSchedulingRequest = Boolean(_timeMatch && _HAS_EMAIL_ADDR.test(_msgHeader));
   const _WATCH_QUERY_PATTERNS = [
     /qual.{0,20}(hora|horario|hor[aá]rio).{0,20}(alerta|aviso|watch|lembrete|agendamento)/i,
     /qual.{0,20}(alerta|aviso|watch|lembrete|agendamento).{0,20}(hora|horario|ativo|agendado|programado)/i,
@@ -142,7 +149,7 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
     /listar?\s+(alertas?|avisos?|watches?|agendamentos?|lembretes?)/i,
     /ver?\s+(alertas?|avisos?|watches?|agendamentos?|lembretes?)\s*(ativos?|programados?|pendentes?)?/i,
   ];
-  const _isWatchQuery = _WATCH_QUERY_PATTERNS.some(p => p.test(userMsg));
+  const _isWatchQuery = !_isSchedulingRequest && _WATCH_QUERY_PATTERNS.some(p => p.test(userMsg));
   if (_isWatchQuery) {
     try {
       const activeWatches = await base44.entities.Watch.filter({ status: "active" }, "-created_date", 20);
