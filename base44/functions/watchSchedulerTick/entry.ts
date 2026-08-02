@@ -48,7 +48,9 @@ export default async function(req: Request): Promise<Response> {
         if (conditionTree.kind === 'leaf' && conditionTree.provider === 'clock') {
           const target = conditionTree.params?.target_time;
           if (target) {
-            const nowTime = new Date();
+            // Converte UTC → America/Sao_Paulo para comparar com o horário local do usuário
+            const nowLocal = new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' });
+            const nowTime = new Date(nowLocal);
             const [h, m] = target.split(':').map(Number);
             evaluationResult = nowTime.getHours() === h && nowTime.getMinutes() === m;
           }
