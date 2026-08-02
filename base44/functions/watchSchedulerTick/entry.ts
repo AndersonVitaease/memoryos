@@ -16,11 +16,18 @@ async function delay(ms: number) {
 
 // ── OAuth helper ─────────────────────────────────────────────────────────────
 
-async function getGoogleAccessToken(base44: any, userId: string): Promise<string | null> {
-  const records = await base44.asServiceRole.entities.GoogleOAuthToken.filter({
-    user_id: userId,
-    workspace_id: 'default',
-  });
+async function getGoogleAccessToken(base44: any, userId: string, preferEmail?: string): Promise<{ token: string; email: string } | null> {
+  // Se preferEmail especificado, tenta pegar token daquele email específico
+  let records = preferEmail
+    ? await base44.asServiceRole.entities.GoogleOAuthToken.filter({ user_id: userId, email: preferEmail })
+    : [];
+
+  // Fallback: qualquer token do user com gmail.send scope
+  if (!records.length) {
+    const all = await base44.asServiceRole.entities.GoogleOAuthToken.filter({ user_id: userId });
+    records = all.filter((r: any) => r.scopes?.includes('gmail.send') && r.refresh_token);
+  }
+
   if (!records.length || !records[0].refresh_token) return null;
 
   const clientId     = Deno.env.get('GOOGLE_CLIENT_ID');
@@ -38,8 +45,43 @@ async function getGoogleAccessToken(base44: any, userId: string): Promise<string
     }),
   });
   const data = await res.json();
-  if (!res.ok || data.error) return null;
-  return data.access_token ?? null;
+  if (!res.ok || data.error) {
+    console.warn(`[oauth] Token refresh failed: ${data.error} — ${data.error_description}`);
+    return null;
+  }
+  return { token: data.access_token, email: records[0].email };
+}
+
+// ── Gmail send via OAuth ──────────────────────────────────────────────────────
+
+async function sendGmailOAuth(accessToken: string, fromEmail: string, to: string, subject: string, body: string): Promise<void> {
+  // Monta email RFC 2822 em base64url
+  const emailLines = [
+    `From: ${fromEmail}`,
+    `To: ${to}`,
+    `Subject: ${subject}`,
+    `Content-Type: text/plain; charset=UTF-8`,
+    ``,
+    body,
+  ].join('\r\n');
+
+  const encoded = btoa(unescape(encodeURIComponent(emailLines)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+  const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ raw: encoded }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Gmail send failed ${res.status}: ${JSON.stringify(err)}`);
+  }
+  console.log(`[gmail-send] Email enviado para ${to} via OAuth Gmail`);
 }
 
 // ── Hora atual em BRT (minutos desde meia-noite) ──────────────────────────────
@@ -138,8 +180,11 @@ async function runOneTick(base44: any, googleTokenCache: Map<string, string>): P
         if (userId) {
           let token = googleTokenCache.get(userId);
           if (!token) {
-            token = await getGoogleAccessToken(base44, userId) ?? undefined;
-            if (token) googleTokenCache.set(userId, token);
+            const result = await getGoogleAccessToken(base44, userId);
+            if (result) {
+              token = result.token;
+              googleTokenCache.set(userId, token);
+            }
           }
           if (token) {
             evaluationResult = provider === 'gmail'
@@ -188,12 +233,31 @@ async function runOneTick(base44: any, googleTokenCache: Map<string, string>): P
           try {
             const tp = JSON.parse(watch.on_trigger_payload);
             if (tp?.type === 'send_email' && tp?.email?.to && tp?.email?.subject) {
-              await base44.asServiceRole.integrations.Core.SendEmail({
-                to:      tp.email.to,
-                subject: tp.email.subject,
-                body:    tp.email.body || tp.email.subject,
-              });
-              console.log(`[watchScheduler] Email enviado para ${tp.email.to}`);
+              const userId = watch.created_by_id;
+              // Prefere enviar pelo email "from" especificado, senão qualquer conta OAuth do user
+              const fromEmail = tp.email.from || null;
+              const oauthResult = userId
+                ? await getGoogleAccessToken(base44, userId, fromEmail)
+                : null;
+
+              if (oauthResult) {
+                // Envia via Gmail OAuth — aparece com o remetente real
+                await sendGmailOAuth(
+                  oauthResult.token,
+                  oauthResult.email,
+                  tp.email.to,
+                  tp.email.subject,
+                  tp.email.body || tp.email.subject,
+                );
+              } else {
+                // Fallback: Base44 SendEmail
+                await base44.asServiceRole.integrations.Core.SendEmail({
+                  to:      tp.email.to,
+                  subject: tp.email.subject,
+                  body:    tp.email.body || tp.email.subject,
+                });
+                console.log(`[watchScheduler] Email enviado via Base44 (fallback) para ${tp.email.to}`);
+              }
             }
           } catch (e: any) {
             console.warn(`[watchScheduler] Erro ao enviar email: ${e?.message}`);
