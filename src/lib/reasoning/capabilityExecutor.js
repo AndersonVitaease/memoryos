@@ -33,28 +33,53 @@ import { executeOfficialLibraryQuery } from "./capabilities/officialLibraryCapab
  * vez de servidores MCP do Mercado Livre. Agora recebe um resumo do
  * contexto (sessionSummary) pra ancorar a busca no assunto real.
  */
+/**
+ * Constrói uma query de busca otimizada para o Serper.
+ * Quando a mensagem do usuário é vaga ("Descubra", "Como conectar") ou curta,
+ * extrai o tópico real do contexto da conversa e monta uma query descritiva.
+ */
+async function buildSearchQuery(userMessage, conversationContext) {
+  const normalized = userMessage.trim().toLowerCase();
+  const isVague = userMessage.length < 40 ||
+    /^(descubra|pesquise|busque|investigue|procure|encontre|tente|como conectar|como integrar|como usar|execute|faça|faz)\s*\.?$/i.test(normalized);
+
+  if (!isVague) return userMessage;
+
+  // Mensagem vaga — extrai o tópico do contexto e monta query descritiva
+  if (!conversationContext || conversationContext.length < 20) return userMessage;
+
+  try {
+    const result = await base44.integrations.Core.InvokeLLM({
+      prompt: `Dado o contexto da conversa abaixo e a mensagem curta do usuário, gere uma query de busca Google otimizada (máximo 10 palavras, em inglês se for sobre tecnologia externa) que capture o que o usuário realmente quer descobrir.
+
+Contexto da conversa (resumo):
+${conversationContext.slice(0, 800)}
+
+Mensagem do usuário: "${userMessage}"
+
+Retorne APENAS a query de busca, sem explicações. Exemplo: "Higgsfield AI integration API developers"`,
+      model: "gemini_3_flash",
+    });
+    const q = typeof result === "string" ? result.trim().replace(/^["']|["']$/g, "") : "";
+    return q.length > 5 ? q : userMessage;
+  } catch {
+    return userMessage;
+  }
+}
+
 async function executeWebSearch(query, conversationContext = "") {
-  // FIX (unificacao de pipelines paralelas): antes chamava InvokeLLM com
-  // add_context_from_internet=true (Gemini fazendo busca+leitura+sintese
-  // numa unica chamada de LLM — 26-43 segundos observados em producao).
-  // Agora delega pro SearchEngine (Serper), que faz busca pura sem LLM
-  // no meio — resposta em ~1-2 segundos. Mantem exatamente o mesmo
-  // contrato de retorno { facts, sources, divergences } — nenhum
-  // consumidor downstream (contextBuilder.js, travas IA-084/IA-086)
-  // precisa mudar.
-  //
-  // Trade-off conhecido: o antigo usava o contexto da conversa dentro do
-  // PROMPT do LLM pra desambiguar termos vagos (ex: "servidor" sozinho
-  // virava "servidor MCP Mercado Livre" com base no assunto discutido).
-  // Busca por palavra-chave pura (Serper) nao faz esse refinamento — a
-  // troca de velocidade por essa nuance de desambiguacao foi aceita
-  // conscientemente aqui.
   const { ensureProvidersRegistered } = await import("@/lib/search-engine/registerProviders");
   const { searchEngine } = await import("@/lib/search-engine/SearchEngine");
 
   ensureProvidersRegistered();
 
-  const outcome = await searchEngine.search(query, {
+  // Constrói query otimizada quando a mensagem original é vaga/curta
+  const optimizedQuery = await buildSearchQuery(query, conversationContext);
+  if (optimizedQuery !== query) {
+    console.log(`[WebSearch] Query otimizada: "${query}" → "${optimizedQuery}"`);
+  }
+
+  const outcome = await searchEngine.search(optimizedQuery, {
     context: { sessionSummary: conversationContext },
   });
 
