@@ -286,20 +286,23 @@ export default function ChatPage() {
             ? new Date(payload.timestamp).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' })
             : new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 
-          const notifMsg = await base44.entities.Message.create({
+          await base44.entities.Message.create({
             session_id: sessionId,
             role: 'assistant',
             content: `⏰ **${payload.watchName || 'Aviso'}**\n\n${payload.message || 'Um Watch disparou!'}\n\n_Horário do disparo: ${triggerTime}_`,
             memory_tier: 'active',
           });
-          conversation.appendMessage(notifMsg);
 
-          if (isPending) {
-            await base44.entities.PendingWatchAction.update(action.id, {
-              status: 'dispatched',
-              dispatched_at: new Date().toISOString(),
-            });
-          }
+          await base44.entities.PendingWatchAction.update(action.id, {
+            status: 'dispatched',
+            dispatched_at: new Date().toISOString(),
+          });
+
+          // Recarrega mensagens da sessão para garantir que apareçam na UI
+          const updatedMessages = await base44.entities.Message.filter(
+            { session_id: sessionId }, 'created_date', 100
+          );
+          conversation.setMessages(updatedMessages);
         }
       } catch { /* silencioso */ }
     };
