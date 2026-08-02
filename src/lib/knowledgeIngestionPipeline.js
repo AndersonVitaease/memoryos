@@ -513,7 +513,7 @@ Processado automaticamente pelo MemoryOS Watch Engine.`;
 
         console.log(`[PDF-AUTO] sendPdfReport resultado:`, res?.data);
         if (res?.data?.ok) {
-          emailSent = { to, subject: finalSubject };
+          emailSent = { to, subject: finalSubject, messageId: res?.data?.messageId || null };
         }
       }
     } catch (err) {

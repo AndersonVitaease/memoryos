@@ -29,9 +29,9 @@ export default async function(req: Request): Promise<Response> {
     const oauthResult = await getGoogleOAuthToken(base44, fromEmail);
 
     if (oauthResult) {
-      await sendGmailOAuth(oauthResult.token, oauthResult.email, to, subject, body);
-      console.log(`[sendPdfReport] Email enviado via Gmail OAuth para ${to}`);
-      return Response.json({ ok: true, method: 'gmail_oauth', to });
+      const messageId = await sendGmailOAuth(oauthResult.token, oauthResult.email, to, subject, body);
+      console.log(`[sendPdfReport] Email enviado via Gmail OAuth para ${to} — messageId: ${messageId}`);
+      return Response.json({ ok: true, method: 'gmail_oauth', to, messageId });
     }
 
     // Fallback: Base44 SendEmail (só funciona para usuários registrados)

@@ -39,7 +39,7 @@ export async function getGoogleOAuthToken(base44: any, fromEmail: string): Promi
   return { token: data.access_token, email: record.email };
 }
 
-export async function sendGmailOAuth(accessToken: string, fromEmail: string, to: string, subject: string, body: string): Promise<void> {
+export async function sendGmailOAuth(accessToken: string, fromEmail: string, to: string, subject: string, body: string): Promise<string | null> {
   const encodeHeader = (str: string) => {
     const b64 = btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (_, p1) =>
       String.fromCharCode(parseInt(p1, 16))
@@ -74,5 +74,8 @@ export async function sendGmailOAuth(accessToken: string, fromEmail: string, to:
     const err = await res.json().catch(() => ({}));
     throw new Error(`Gmail send failed ${res.status}: ${JSON.stringify(err)}`);
   }
-  console.log(`[gmailSend] Email enviado para ${to}`);
+  const data = await res.json().catch(() => ({}));
+  const messageId = data.id || null;
+  console.log(`[gmailSend] Email enviado para ${to} — messageId: ${messageId}`);
+  return messageId;
 }
