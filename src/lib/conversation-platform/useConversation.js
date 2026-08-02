@@ -44,6 +44,10 @@ export function useConversation() {
     conversationManager.appendMessage(message);
   }, []);
 
+  const setMessages = useCallback((messages) => {
+    conversationManager.setMessages(messages);
+  }, []);
+
   return {
     // State
     messages: state.messages,
@@ -62,6 +66,7 @@ export function useConversation() {
     cancel,
     retry,
     appendMessage,
+    setMessages,
 
     // Session
     newSession: (title) => conversationManager.newSession(title),

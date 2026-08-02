@@ -31,6 +31,10 @@ class ConversationManager {
     conversationStore.appendMessage(message);
   }
 
+  setMessages(messages: ConversationMessage[]): void {
+    conversationStore.setMessages(messages);
+  }
+
   async send(userMessage: string): Promise<void> {
     const msg = userMessage.trim();
     if (!msg) return;
