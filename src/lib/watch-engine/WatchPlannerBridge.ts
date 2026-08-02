@@ -39,6 +39,37 @@ const INTENT_PATTERNS = [
 // Regex para extrair horário da mensagem (ex: "09:24", "9h30", "às 14:00", "09:32hrs", "14:06hrs", "14h06")
 const TIME_REGEX = /(?:às|as|ao)\s*(\d{1,2})[h:](\d{2})(?:h?rs?)?|(?:às|as|ao)\s*(\d{1,2})h\b|\b(\d{1,2})[h:](\d{2})(?:h?rs?)?\b|\b(\d{1,2})h(\d{2})\b/i;
 
+// Regex para extrair dados de email da mensagem
+const EMAIL_TO_REGEX = /para:\s*([^\s\n]+@[^\s\n]+)/i;
+const EMAIL_FROM_REGEX = /de:\s*([^\s\n]+@[^\s\n]+)/i;
+const EMAIL_SUBJECT_REGEX = /assunto:\s*(.+)/i;
+
+interface EmailPayload {
+  to: string;
+  from?: string;
+  subject: string;
+  body: string;
+}
+
+function extractEmailPayload(message: string): EmailPayload | null {
+  const toMatch = EMAIL_TO_REGEX.exec(message);
+  const fromMatch = EMAIL_FROM_REGEX.exec(message);
+  const subjectMatch = EMAIL_SUBJECT_REGEX.exec(message);
+  if (!toMatch || !subjectMatch) return null;
+
+  // Extrai o corpo: tudo após a linha do assunto até o final
+  const subjectIdx = message.toLowerCase().indexOf("assunto:");
+  const bodyStart = message.indexOf("\n", subjectIdx);
+  const body = bodyStart >= 0 ? message.slice(bodyStart).trim() : "";
+
+  return {
+    to: toMatch[1].trim(),
+    from: fromMatch?.[1]?.trim(),
+    subject: subjectMatch[1].trim(),
+    body,
+  };
+}
+
 // Mapeia keywords de provedor detectados na mensagem
 const PROVIDER_HINTS: Array<{ pattern: RegExp; provider: string; action: string; label: string }> = [
   { pattern: /rel[oó]gio|hor[aá]rio|hora|[aà]s\s+\d{1,2}[h:]\d{2}|[aà]s\s+\d{1,2}h\b|\d{1,2}:\d{2}|daqui|minutos?|horas?|acorde|lembr/i, provider: "clock",    action: "check_time",      label: "horario especifico" },
@@ -166,14 +197,24 @@ export class WatchPlannerBridgeClass {
       };
     }
 
+    // Detectar se há payload de email na mensagem
+    const emailPayload = extractEmailPayload(message);
+    const hasEmail = Boolean(emailPayload);
+
+    const watchLabel = hasEmail && detection.provider === "clock"
+      ? `${name} + email para ${emailPayload!.to}`
+      : name;
+
     // Criar o Watch
     const intent: WatchIntent = {
-      name,
+      name: watchLabel,
       description: `Criado automaticamente a partir da mensagem: "${message.slice(0, 80)}"`,
       condition: detection.condition,
       frequency_minutes: detection.provider === "clock" ? 1 : 30,
       priority: detection.provider === "clock" ? "high" : "normal",
-      on_trigger: { type: "notify_user" },
+      on_trigger: hasEmail
+        ? { type: "emit_event", payload: { type: "send_email", email: emailPayload } }
+        : { type: "notify_user" },
       session_id: sessionId,
       project_id: projectId,
     };
@@ -181,13 +222,17 @@ export class WatchPlannerBridgeClass {
     const result = await watchRegistry.create(intent);
 
     if (result.ok) {
+      const targetTime = (detection.condition as any).params?.target_time;
+      const confirmMsg = hasEmail
+        ? `Alerta criado${targetTime ? ` para às ${targetTime}` : ""}. Vou enviar email para ${emailPayload!.to} quando o horário chegar.`
+        : `Watch criado: "${name}". Vou monitorar ${detection.label} e te avisar quando houver novidade.`;
       return {
         detected: true,
         created: true,
         watchId: result.watchId,
-        watchName: name,
+        watchName: watchLabel,
         wasDuplicate: false,
-        message: `Watch criado: "${name}". Vou monitorar ${detection.label} e te avisar quando houver novidade.`,
+        message: confirmMsg,
       };
     }
 
