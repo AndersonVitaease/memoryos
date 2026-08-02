@@ -129,7 +129,7 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
   try {
     const { watchPlannerBridge } = await import("@/lib/watch-engine/WatchPlannerBridge");
     if (watchPlannerBridge.hasMonitoringIntent(userMsg)) {
-      _watchBridgeResult = await watchPlannerBridge.processMessage(userMsg, session?.id, session?.project_id);
+      _watchBridgeResult = await watchPlannerBridge.processMessage(userMsg, session?.id, session?.project_id, historyMessages);
       if (_watchBridgeResult.created) {
         console.log(`[WatchPlannerBridge] Watch criado: ${_watchBridgeResult.watchId} — ${_watchBridgeResult.watchName}`);
         // Retorna direto — o LLM não precisa ser chamado para confirmar algo já persistido

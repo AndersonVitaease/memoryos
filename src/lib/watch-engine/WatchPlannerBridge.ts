@@ -40,9 +40,10 @@ const INTENT_PATTERNS = [
 const TIME_REGEX = /(?:às|as|ao)\s*(\d{1,2})[h:](\d{2})(?:h?rs?)?|(?:às|as|ao)\s*(\d{1,2})h\b|\b(\d{1,2})[h:](\d{2})(?:h?rs?)?\b|\b(\d{1,2})h(\d{2})\b/i;
 
 // Regex para extrair dados de email da mensagem
-const EMAIL_TO_REGEX = /para:\s*([^\s\n]+@[^\s\n]+)/i;
-const EMAIL_FROM_REGEX = /de:\s*([^\s\n]+@[^\s\n]+)/i;
-const EMAIL_SUBJECT_REGEX = /assunto:\s*(.+)/i;
+// Captura formatos: "Para: email", "Para : email", "para email@..." etc.
+const EMAIL_TO_REGEX = /(?:para|to)\s*:?\s*([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/i;
+const EMAIL_FROM_REGEX = /(?:de|from)\s*:?\s*([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/i;
+const EMAIL_SUBJECT_REGEX = /(?:assunto|subject)\s*:?\s*(.+)/i;
 
 interface EmailPayload {
   to: string;
@@ -58,15 +59,15 @@ function extractEmailPayload(message: string): EmailPayload | null {
   if (!toMatch || !subjectMatch) return null;
 
   // Extrai o corpo: tudo após a linha do assunto até o final
-  const subjectIdx = message.toLowerCase().indexOf("assunto:");
+  const subjectIdx = message.toLowerCase().search(/(?:assunto|subject)\s*:?/i);
   const bodyStart = message.indexOf("\n", subjectIdx);
   const body = bodyStart >= 0 ? message.slice(bodyStart).trim() : "";
 
   return {
     to: toMatch[1].trim(),
     from: fromMatch?.[1]?.trim(),
-    subject: subjectMatch[1].trim(),
-    body,
+    subject: subjectMatch[1].trim().split("\n")[0].trim(), // só primeira linha
+    body: body || subjectMatch[1].trim(),
   };
 }
 
@@ -166,11 +167,14 @@ export class WatchPlannerBridgeClass {
    * Analisa a mensagem do usuário e, se contiver intenção de monitoramento,
    * cria um Watch automaticamente. Retorna resultado para o Planner incluir
    * na resposta ao usuário.
+   *
+   * historyMessages: array de { role, content } para buscar email em mensagens anteriores.
    */
   async processMessage(
     message: string,
     sessionId?: string,
-    projectId?: string
+    projectId?: string,
+    historyMessages?: Array<{ role: string; content: string }>
   ): Promise<PlannerBridgeResult> {
     const detection = detectWatchIntent(message);
 
@@ -197,8 +201,14 @@ export class WatchPlannerBridgeClass {
       };
     }
 
-    // Detectar se há payload de email na mensagem
-    const emailPayload = extractEmailPayload(message);
+    // Detectar email: primeiro tenta na mensagem atual, depois varre o histórico
+    // (cobre caso onde o usuário deu os dados em mensagens anteriores)
+    let emailPayload = extractEmailPayload(message);
+    if (!emailPayload && historyMessages?.length) {
+      const recentHistory = historyMessages.slice(-10);
+      const combined = recentHistory.map(m => m.content).join("\n");
+      emailPayload = extractEmailPayload(combined);
+    }
     const hasEmail = Boolean(emailPayload);
 
     const watchLabel = hasEmail && detection.provider === "clock"
