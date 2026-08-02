@@ -34,6 +34,10 @@ const INTENT_PATTERNS = [
   /quando\s+.+(chegar|aparecer|mudar|atualiz)/i,
   /avisa\s+(se|quando)/i,
   /verifica\s+periodicamente/i,
+  // Padrões de envio agendado: "às HH:MM envie/mande/envia..."
+  /[àa]s\s+\d{1,2}[h:]\d{2}/i,
+  /\d{1,2}[h:]\d{2}h?r?s?\s+(envie?|mande?|envia|manda|dispare?)/i,
+  /(envie?|mande?|envia|manda)\s+.{0,40}(e.?mail|mensagem)/i,
 ];
 
 // Regex para extrair horário da mensagem (ex: "09:24", "9h30", "às 14:00", "09:32hrs", "14:06hrs", "14h06")
@@ -72,13 +76,15 @@ function extractEmailPayload(message: string): EmailPayload | null {
 }
 
 // Mapeia keywords de provedor detectados na mensagem
+// IMPORTANTE: clock deve vir primeiro — mensagens com horário + email devem
+// ser tratadas como clock (envio agendado), não como monitoramento de Gmail.
 const PROVIDER_HINTS: Array<{ pattern: RegExp; provider: string; action: string; label: string }> = [
-  { pattern: /rel[oó]gio|hor[aá]rio|hora|[aà]s\s+\d{1,2}[h:]\d{2}|[aà]s\s+\d{1,2}h\b|\d{1,2}:\d{2}|daqui|minutos?|horas?|acorde|lembr/i, provider: "clock",    action: "check_time",      label: "horario especifico" },
-  { pattern: /e.?mail|gmail|inbox|caixa\s+(de\s+entrada|postal)|novo.{0,10}email/i, provider: "gmail",    action: "count_unread",    label: "emails nao lidos no Gmail" },
+  { pattern: /[àa]s\s+\d{1,2}[h:]\d{2}|rel[oó]gio|hor[aá]rio|\d{1,2}[h:]\d{2}h?r?s?|daqui\s+\d|minutos?\s+envi|acorde|lembr[ae]/i, provider: "clock",    action: "check_time",      label: "horario especifico" },
   { pattern: /calend[aá]rio|reuniao|reuni[oã]o|evento|compromisso/i,                provider: "calendar", action: "get_event_count",  label: "eventos no Google Calendar" },
   { pattern: /drive|arquivo|pasta|documento/i,                                      provider: "drive",    action: "list_recent",     label: "arquivos no Drive" },
   { pattern: /github|commit|pr|pull request|issue/i,                                provider: "github",   action: "list_events",     label: "atividade no GitHub" },
   { pattern: /slack|mensagem|canal/i,                                               provider: "slack",    action: "count_messages",  label: "mensagens no Slack" },
+  { pattern: /e.?mail|gmail|inbox|caixa\s+(de\s+entrada|postal)|novo.{0,10}email/i, provider: "gmail",    action: "count_unread",    label: "emails nao lidos no Gmail" },
 ];
 
 export interface PlannerBridgeResult {
