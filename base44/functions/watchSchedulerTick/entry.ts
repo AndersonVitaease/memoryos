@@ -203,6 +203,8 @@ async function runOneTick(base44: any, googleTokenCache: Map<string, string>): P
 
       if (wasTriggered) {
         result.triggered++;
+        // Cria a acao como 'pending' — o frontend polling vai pegar e marcar 'dispatched'
+        // NUNCA marcar 'dispatched' aqui no scheduler (race condition)
         await base44.asServiceRole.entities.PendingWatchAction.create({
           watch_id:    watch.id,
           action_type: watch.on_trigger_type || 'notify_user',
