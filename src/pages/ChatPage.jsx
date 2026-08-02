@@ -251,10 +251,12 @@ export default function ChatPage() {
     conversation.isLoading && !["streaming"].includes(conversation.status);
 
   // ── Watch Engine: polling para notificações proativas ────────────────────
+  const shownActionIdsRef = useRef(new Set());
+
   useEffect(() => {
     if (!conversation.isInitialized) return;
 
-    const shownActionIds = new Set();
+    const shownActionIds = shownActionIdsRef.current;
 
     const pollWatchActions = async () => {
       try {
@@ -302,8 +304,8 @@ export default function ChatPage() {
       } catch { /* silencioso */ }
     };
 
-    // Aguarda 2s após inicialização para garantir que mensagens carregaram, depois a cada 30s
-    const initialDelay = setTimeout(pollWatchActions, 2000);
+    // Aguarda 4s após inicialização para garantir que mensagens carregaram, depois a cada 30s
+    const initialDelay = setTimeout(pollWatchActions, 4000);
     const interval = setInterval(pollWatchActions, 30_000);
     return () => { clearTimeout(initialDelay); clearInterval(interval); };
   }, [conversation.isInitialized, conversation.session?.id]);
