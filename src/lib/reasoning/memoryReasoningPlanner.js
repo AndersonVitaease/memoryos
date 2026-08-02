@@ -203,10 +203,13 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
   // === PRÉ-ETAPA WATCH: Detectar intenção de monitoramento ===
   // "me avise quando...", "monitore...", "fique de olho...", "às HH:MM envie..." etc.
   // Aguarda a criação do Watch e retorna DIRETAMENTE se criado — sem passar pelo LLM.
+  // GUARD: Se já foi detectado agendamento com email na PRÉ-ETAPA -1 (mesmo que _to estava vazio),
+  // não chama o bridge — evita falsos positivos em palavras do corpo do email ("atch", "watch").
   let _watchBridgeResult = null;
+  const _alreadyHandledAsScheduledEmail = Boolean(_timeMatch && _HAS_EMAIL_ADDR.test(_msgHeader));
   try {
     const { watchPlannerBridge } = await import("@/lib/watch-engine/WatchPlannerBridge");
-    const _hasIntent = watchPlannerBridge.hasMonitoringIntent(userMsg);
+    const _hasIntent = !_alreadyHandledAsScheduledEmail && watchPlannerBridge.hasMonitoringIntent(userMsg);
     console.log(`[MRP][WATCH-GUARD] hasIntent=${_hasIntent} | msg="${userMsg.slice(0,60).replace(/\n/g,'\\n')}"`);
     // Checa sempre — o bridge decide internamente se há intenção
     if (_hasIntent) {

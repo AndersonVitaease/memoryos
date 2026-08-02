@@ -160,9 +160,11 @@ export async function detectCapabilities(message, memory = {}, goal = {}, sessio
   const { context = "", sources = [] } = memory;
 
   // === GUARD: pedido de envio agendado (clock + email) — nunca é busca Gmail ===
-  // Padrão: horário explícito ("16:05hrs", "às 16h", etc.) + verbo de envio + email
-  const _SCHEDULED_EMAIL_RE = /(?:[àa]s\s*)?\d{1,2}[h:]\d{2}h?r?s?\b.*(?:envie?|mande?|envia|manda|dispare?)/i;
-  const _hasScheduledEmailIntent = _SCHEDULED_EMAIL_RE.test(message);
+  // Padrão: horário explícito nas primeiras 5 linhas + endereço de email na mensagem
+  const _msgTop = message.split("\n").slice(0, 5).join("\n");
+  const _SCHEDULED_EMAIL_RE = /(?:[àa]s\s*)?\d{1,2}[h:]\d{2}h?r?s?/i;
+  const _HAS_EMAIL_RE = /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/;
+  const _hasScheduledEmailIntent = _SCHEDULED_EMAIL_RE.test(_msgTop) && _HAS_EMAIL_RE.test(message);
   if (_hasScheduledEmailIntent) {
     return {
       capabilities: {
