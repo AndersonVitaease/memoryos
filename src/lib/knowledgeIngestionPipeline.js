@@ -469,6 +469,7 @@ Seja minucioso. Não perca nenhuma informação importante.`,
   onStage?.("finalizing");
 
   // 8 — Disparar email de automação PDF (se Watch ativo configurado)
+  let emailSent = null;
   if (type === "pdf") {
     try {
       const pdfWatches = await base44.entities.Watch.filter({ status: "active", on_trigger_type: "emit_event" });
@@ -510,6 +511,7 @@ Processado automaticamente pelo MemoryOS Watch Engine.`;
         });
 
         console.log(`[PDF-AUTO] Email enviado para ${to} com resumo do PDF: ${doc.id}`);
+        emailSent = { to, subject: subject || `Resumo do PDF: ${displayName || file?.name}` };
       }
     } catch (err) {
       console.warn("[PDF-AUTO] Falha ao enviar email de automação:", err?.message);
@@ -521,6 +523,7 @@ Processado automaticamente pelo MemoryOS Watch Engine.`;
     document: doc,
     displayName: displayName || file?.name || "Conteúdo",
     type,
+    emailSent,
     stats: {
       entities: entities.length,
       keywords: extraction.keywords?.length || 0,
