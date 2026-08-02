@@ -264,10 +264,17 @@ export default function ChatPage() {
         if (!sessionId) return;
 
         // Busca pending + dispatched dos últimos 30 min (captura alertas perdidos com tela fechada)
-        const pendingActions = await base44.entities.PendingWatchAction.filter({ status: 'pending' });
-        if (!pendingActions || pendingActions.length === 0) return;
+        // Busca 'pending' + 'dispatched' recentes (últimos 10 min) para capturar notificações perdidas
+        const [pendingActions, recentDispatched] = await Promise.all([
+          base44.entities.PendingWatchAction.filter({ status: 'pending' }),
+          base44.entities.PendingWatchAction.filter({ status: 'dispatched' }, '-created_date', 20),
+        ]);
+        const cutoff = Date.now() - 10 * 60 * 1000;
+        const recentOnes = recentDispatched.filter(a => new Date(a.created_date).getTime() > cutoff);
+        const allToProcess = [...pendingActions, ...recentOnes];
+        if (!allToProcess || allToProcess.length === 0) return;
 
-        for (const action of pendingActions) {
+        for (const action of allToProcess) {
           if (shownActionIds.has(action.id)) continue;
 
           shownActionIds.add(action.id);
