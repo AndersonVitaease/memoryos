@@ -35,11 +35,11 @@ const INTENT_PATTERNS = [
   /avisa\s+(se|quando)/i,
   /verifica\s+periodicamente/i,
   // Padrões de envio agendado: "às HH:MM envie/mande/envia..." / "as HH:MMhrs envie..."
-  /[àa]s\s+\d{1,2}[h:]\d{2}/i,
-  /\d{1,2}[h:]\d{2}h?r?s?\s+(envie?|mande?|envia|manda|dispare?)/i,
+  /[àa]s\s*\d{1,2}[h:]\d{2}/i,
+  /as\s*\d{1,2}[h:]\d{2}/i,
+  /\d{1,2}[h:]\d{2}h?r?s?\s*(envie?|mande?|envia|manda|dispare?)/i,
   /\d{1,2}[h:]\d{2}hrs?\b/i,
   /(envie?|mande?|envia|manda)\s+.{0,40}(e.?mail|mensagem)/i,
-  /as\s+\d{1,2}[h:]\d{2}/i,
 ];
 
 // Regex para extrair horário — cobre: "15:22", "15:22hrs", "15h22", "às 15:22", "15:22h", "15:54hrs"
@@ -276,7 +276,7 @@ export class WatchPlannerBridgeClass {
 }
 
 // Versão do módulo — incrementar força reinstanciação do singleton
-const _MODULE_VERSION = "we04-v7";
+const _MODULE_VERSION = "we04-v8";
 const _g = globalThis as unknown as Record<string, unknown>;
 if (_g.__WatchPlannerBridgeVersion__ !== _MODULE_VERSION) {
   _g.__WatchPlannerBridge__ = new WatchPlannerBridgeClass();
