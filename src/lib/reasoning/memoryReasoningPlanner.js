@@ -123,11 +123,12 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
   }
 
   // === PRÉ-ETAPA WATCH: Detectar intenção de monitoramento ===
-  // "me avise quando...", "monitore...", "fique de olho..." etc.
+  // "me avise quando...", "monitore...", "fique de olho...", "às HH:MM envie..." etc.
   // Aguarda a criação do Watch e retorna DIRETAMENTE se criado — sem passar pelo LLM.
   let _watchBridgeResult = null;
   try {
     const { watchPlannerBridge } = await import("@/lib/watch-engine/WatchPlannerBridge");
+    // Checa sempre — o bridge decide internamente se há intenção
     if (watchPlannerBridge.hasMonitoringIntent(userMsg)) {
       _watchBridgeResult = await watchPlannerBridge.processMessage(userMsg, session?.id, session?.project_id, historyMessages);
       if (_watchBridgeResult.created) {
