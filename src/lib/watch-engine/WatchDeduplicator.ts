@@ -22,7 +22,11 @@ const SEMANTIC_THRESHOLD = 0.8;
 
 function extractTokens(tree: ConditionTree): string[] {
   if (tree.kind === "leaf") {
-    return [`${tree.provider}:${tree.action}`];
+    // Inclui params relevantes no token para diferenciar, ex: clock:check_time:14:06 vs clock:check_time:14:15
+    const paramSuffix = tree.params && Object.keys(tree.params).length > 0
+      ? ":" + Object.values(tree.params).join(":")
+      : "";
+    return [`${tree.provider}:${tree.action}${paramSuffix}`];
   }
   if (tree.kind === "NOT") {
     return extractTokens(tree.condition);
