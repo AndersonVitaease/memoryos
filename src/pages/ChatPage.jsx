@@ -272,6 +272,12 @@ export default function ChatPage() {
 
           shownActionIds.add(action.id);
 
+          // Marcar como dispatched PRIMEIRO para evitar processamento duplo
+          await base44.entities.PendingWatchAction.update(action.id, {
+            status: 'dispatched',
+            dispatched_at: new Date().toISOString(),
+          });
+
           let payload = {};
           try { payload = JSON.parse(action.payload || '{}'); } catch {}
 
@@ -286,12 +292,7 @@ export default function ChatPage() {
             memory_tier: 'active',
           });
 
-          await base44.entities.PendingWatchAction.update(action.id, {
-            status: 'dispatched',
-            dispatched_at: new Date().toISOString(),
-          });
-
-          // Recarrega mensagens da sessão para garantir que apareçam na UI
+          // Recarrega mensagens para garantir que apareça na UI
           const updatedMessages = await base44.entities.Message.filter(
             { session_id: sessionId }, 'created_date', 100
           );
