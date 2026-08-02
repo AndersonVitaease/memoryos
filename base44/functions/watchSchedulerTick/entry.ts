@@ -48,15 +48,16 @@ export default async function(req: Request): Promise<Response> {
         if (conditionTree.kind === 'leaf' && conditionTree.provider === 'clock') {
           const target = conditionTree.params?.target_time;
           if (target) {
-            // Converte UTC → America/Sao_Paulo para comparar com o horário local do usuário
+            // Converte UTC → America/Sao_Paulo
             const nowLocal = new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' });
             const nowTime = new Date(nowLocal);
             const [h, m] = target.split(':').map(Number);
-            evaluationResult = nowTime.getHours() === h && nowTime.getMinutes() === m;
+            const hMatch = nowTime.getHours() === h;
+            const mMatch = nowTime.getMinutes() === m;
+            evaluationResult = hMatch && mMatch;
+            console.log(`[clock] target=${target} now=${nowTime.getHours()}:${nowTime.getMinutes()} match=${evaluationResult}`);
           }
         } else {
-          // Para outros tipos: avalia como falso por agora (sem acesso real ao Gmail/Drive/etc no backend)
-          // O ConnectorGateway frontend é quem realmente executa — aqui apenas controlamos o scheduling
           evaluationResult = false;
         }
 
