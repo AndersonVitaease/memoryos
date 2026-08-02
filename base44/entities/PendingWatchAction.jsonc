@@ -1,0 +1,71 @@
+{
+  "name": "PendingWatchAction",
+  "type": "object",
+  "properties": {
+    "watch_id": {
+      "type": "string",
+      "description": "ID do Watch que gerou esta a\u00e7\u00e3o"
+    },
+    "watch_execution_id": {
+      "type": "string",
+      "description": "ID da WatchExecution que originou o disparo"
+    },
+    "action_type": {
+      "type": "string",
+      "enum": [
+        "notify_user",
+        "run_pipeline",
+        "emit_event"
+      ],
+      "description": "Tipo de a\u00e7\u00e3o a despachar"
+    },
+    "payload": {
+      "type": "string",
+      "description": "JSON serializado do payload completo para despacho"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "dispatched",
+        "failed",
+        "expired"
+      ],
+      "default": "pending",
+      "description": "Estado do item no Outbox"
+    },
+    "retry_count": {
+      "type": "number",
+      "default": 0,
+      "description": "N\u00famero de tentativas de despacho"
+    },
+    "max_retries": {
+      "type": "number",
+      "default": 3,
+      "description": "M\u00e1ximo de tentativas antes de marcar como failed"
+    },
+    "dispatched_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp do despacho bem-sucedido"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "TTL \u2014 se n\u00e3o processado at\u00e9 aqui, marcar como expired (24h)"
+    },
+    "error_message": {
+      "type": "string",
+      "description": "\u00daltimo erro de despacho"
+    },
+    "session_id": {
+      "type": "string",
+      "description": "Sess\u00e3o de contexto"
+    }
+  },
+  "required": [
+    "watch_id",
+    "action_type",
+    "payload"
+  ]
+}

@@ -149,6 +149,7 @@ const SprintP7Page = lazy(() => import('@/pages/SprintP7Page'));
 const SprintP8Page = lazy(() => import('@/pages/SprintP8Page'));
 const SprintP9Page  = lazy(() => import('@/pages/SprintP9Page'));
 const SprintP10Page = lazy(() => import('@/pages/SprintP10Page'));
+const SprintWE01Page = lazy(() => import('@/pages/SprintWE01Page'));
 
 const AuthenticatedApp = () => {
   console.log('[RENDER] AuthenticatedApp');
@@ -316,6 +317,7 @@ const AuthenticatedApp = () => {
           <Route path="/sprint-p8" element={<SprintP8Page />} />
           <Route path="/sprint-p9"  element={<SprintP9Page />} />
           <Route path="/sprint-p10" element={<SprintP10Page />} />
+          <Route path="/sprint-we01" element={<SprintWE01Page />} />
         </Route>
       </Route>
       <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />

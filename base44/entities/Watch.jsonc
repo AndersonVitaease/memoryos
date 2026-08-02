@@ -1,0 +1,107 @@
+{
+  "name": "Watch",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Nome leg\u00edvel do Watch (ex: 'Alerta de Email do Jo\u00e3o')"
+    },
+    "description": {
+      "type": "string",
+      "description": "Descri\u00e7\u00e3o do objetivo do monitoramento"
+    },
+    "condition_tree": {
+      "type": "string",
+      "description": "JSON serializado da ConditionTree (AND/OR/NOT recursivo ou LeafCondition)"
+    },
+    "frequency_minutes": {
+      "type": "number",
+      "default": 60,
+      "description": "Intervalo de polling em minutos"
+    },
+    "priority": {
+      "type": "string",
+      "enum": [
+        "critical",
+        "high",
+        "normal",
+        "low"
+      ],
+      "default": "normal",
+      "description": "Prioridade de execu\u00e7\u00e3o na fila do Scheduler"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "paused",
+        "error",
+        "invalid",
+        "completed"
+      ],
+      "default": "active",
+      "description": "Estado atual do Watch"
+    },
+    "on_trigger_type": {
+      "type": "string",
+      "enum": [
+        "notify_user",
+        "run_pipeline",
+        "emit_event"
+      ],
+      "default": "notify_user",
+      "description": "O que fazer quando a condi\u00e7\u00e3o disparar"
+    },
+    "on_trigger_payload": {
+      "type": "string",
+      "description": "JSON serializado do payload da a\u00e7\u00e3o de disparo (opcional)"
+    },
+    "last_evaluation_result": {
+      "type": "boolean",
+      "description": "\u00daltimo resultado de avalia\u00e7\u00e3o (para controle de transi\u00e7\u00e3o false\u2192true)"
+    },
+    "last_execution_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp da \u00faltima execu\u00e7\u00e3o do Evaluator"
+    },
+    "next_execution_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Pr\u00f3ximo agendamento de execu\u00e7\u00e3o (indexado para query eficiente)"
+    },
+    "consecutive_failures": {
+      "type": "number",
+      "default": 0,
+      "description": "Contador de falhas consecutivas (Circuit Breaker: pausa em 3)"
+    },
+    "error_message": {
+      "type": "string",
+      "description": "Mensagem do \u00faltimo erro (quando status=error)"
+    },
+    "session_id": {
+      "type": "string",
+      "description": "Sess\u00e3o de origem (contexto cognitivo)"
+    },
+    "project_id": {
+      "type": "string",
+      "description": "Projeto relacionado (opcional)"
+    },
+    "compiled_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp da \u00faltima compila\u00e7\u00e3o da ConditionTree"
+    },
+    "trigger_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Total de vezes que o Watch disparou (transi\u00e7\u00e3o false\u2192true)"
+    }
+  },
+  "required": [
+    "name",
+    "condition_tree",
+    "frequency_minutes",
+    "priority"
+  ]
+}
