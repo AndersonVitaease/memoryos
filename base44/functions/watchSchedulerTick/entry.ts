@@ -55,17 +55,34 @@ async function getGoogleAccessToken(base44: any, userId: string, preferEmail?: s
 // ── Gmail send via OAuth ──────────────────────────────────────────────────────
 
 async function sendGmailOAuth(accessToken: string, fromEmail: string, to: string, subject: string, body: string): Promise<void> {
-  // Monta email RFC 2822 em base64url
+  // Encode subject em base64 para suportar UTF-8 / acentos
+  const encodeHeader = (str: string) => {
+    const b64 = btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (_, p1) =>
+      String.fromCharCode(parseInt(p1, 16))
+    ));
+    return `=?UTF-8?B?${b64}?=`;
+  };
+
+  // Monta email RFC 2822 com encoding correto
   const emailLines = [
-    `From: ${fromEmail}`,
+    `From: MemoryOS <${fromEmail}>`,
     `To: ${to}`,
-    `Subject: ${subject}`,
+    `Subject: ${encodeHeader(subject)}`,
+    `MIME-Version: 1.0`,
     `Content-Type: text/plain; charset=UTF-8`,
+    `Content-Transfer-Encoding: 8bit`,
     ``,
     body,
   ].join('\r\n');
 
-  const encoded = btoa(unescape(encodeURIComponent(emailLines)))
+  // Converte para Uint8Array para preservar UTF-8 antes do base64url
+  const encoder = new TextEncoder();
+  const bytes = encoder.encode(emailLines);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  const encoded = btoa(binary)
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
   const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
