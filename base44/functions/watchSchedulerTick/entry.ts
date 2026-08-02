@@ -36,8 +36,11 @@ async function runOneTick(base44: any): Promise<{ processed: number; triggered: 
           const nowLocal = new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' });
           const nowTime = new Date(nowLocal);
           const [h, m] = target.split(':').map(Number);
-          evaluationResult = nowTime.getHours() === h && nowTime.getMinutes() === m;
-          console.log(`[clock] target=${target} now=${nowTime.getHours()}:${String(nowTime.getMinutes()).padStart(2,'0')} match=${evaluationResult}`);
+          const nowTotalMin = nowTime.getHours() * 60 + nowTime.getMinutes();
+          const targetTotalMin = h * 60 + m;
+          // Janela de ±2 minutos para absorver atrasos de scheduler
+          evaluationResult = Math.abs(nowTotalMin - targetTotalMin) <= 2;
+          console.log(`[clock] target=${target} now=${nowTime.getHours()}:${String(nowTime.getMinutes()).padStart(2,'0')} nowMin=${nowTotalMin} targetMin=${targetTotalMin} diff=${Math.abs(nowTotalMin - targetTotalMin)} match=${evaluationResult}`);
         }
       }
 
