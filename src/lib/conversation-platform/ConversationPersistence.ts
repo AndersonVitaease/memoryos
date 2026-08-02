@@ -92,7 +92,20 @@ export async function listSessions(limit = 20): Promise<ConversationSession[]> {
 }
 
 export async function getOrCreateActiveSession(): Promise<ConversationSession> {
-  const existing = await loadActiveSession();
-  if (existing) return existing;
+  // Busca todas as sessões ativas e escolhe a que tem last_message_at mais recente.
+  // Ignorar sessões vazias (message_count = 0 e last_message_at nulo) que ficam
+  // penduradas sem mensagens — elas aparecem no topo quando sorted por -last_message_at
+  // com null, causando perda de contexto a cada reload.
+  const sessions = await base44.entities.ChatSession.filter(
+    { status: "active" },
+    "-last_message_at",
+    10
+  );
+  const withMessages = (sessions as ConversationSession[]).filter(
+    (s) => s.message_count && s.message_count > 0 && s.last_message_at
+  );
+  if (withMessages.length > 0) return withMessages[0];
+  // Nenhuma sessão com mensagens — usa qualquer ativa existente ou cria nova
+  if (sessions.length > 0) return sessions[0] as ConversationSession;
   return createSession();
 }
