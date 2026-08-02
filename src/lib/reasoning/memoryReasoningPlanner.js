@@ -61,35 +61,50 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
 
   // === PRÉ-ETAPA WATCH-QUERY: Responder perguntas sobre watches ativos ===
   const _WATCH_QUERY_PATTERNS = [
-    /qual.{0,20}(hora|horario|hor[aá]rio).{0,20}(alerta|aviso|watch|lembrete)/i,
-    /qual.{0,20}(alerta|aviso|watch|lembrete).{0,20}(hora|horario|ativo|agendado|programado)/i,
-    /(alerta|aviso|watch|lembrete).{0,30}(ativo|agendado|programado|qual|quando|que hora)/i,
-    /que hora.{0,20}(alerta|aviso|watch|lembrete)/i,
-    /quando.{0,20}(alerta|aviso|watch|lembrete)/i,
-    /perguntei.{0,30}(alerta|aviso|watch)/i,
+    /qual.{0,20}(hora|horario|hor[aá]rio).{0,20}(alerta|aviso|watch|lembrete|agendamento)/i,
+    /qual.{0,20}(alerta|aviso|watch|lembrete|agendamento).{0,20}(hora|horario|ativo|agendado|programado)/i,
+    /(alerta|aviso|watch|lembrete|agendamento).{0,30}(ativo|agendado|programado|qual|quando|que hora)/i,
+    /que hora.{0,20}(alerta|aviso|watch|lembrete|agendamento)/i,
+    /quando.{0,20}(alerta|aviso|watch|lembrete|agendamento)/i,
+    /perguntei.{0,30}(alerta|aviso|watch|agendamento)/i,
+    /mostrar?\s+(alertas?|avisos?|watches?|agendamentos?|lembretes?)\s*(ativos?|programados?|pendentes?)?/i,
+    /listar?\s+(alertas?|avisos?|watches?|agendamentos?|lembretes?)/i,
+    /ver?\s+(alertas?|avisos?|watches?|agendamentos?|lembretes?)\s*(ativos?|programados?|pendentes?)?/i,
   ];
   const _isWatchQuery = _WATCH_QUERY_PATTERNS.some(p => p.test(userMsg));
   if (_isWatchQuery) {
     try {
       const activeWatches = await base44.entities.Watch.filter({ status: "active" }, "-created_date", 20);
-      const clockWatches = activeWatches.filter(w => {
-        try { const ct = JSON.parse(w.condition_tree || "{}"); return ct.provider === "clock"; } catch { return false; }
-      });
-      if (clockWatches.length > 0) {
-        const lines = clockWatches.map(w => {
+      if (activeWatches.length > 0) {
+        const lines = activeWatches.map(w => {
           try {
-            const ct = JSON.parse(w.condition_tree);
-            const hora = ct.params?.target_time || "horário desconhecido";
-            return `• **${w.name}** — às **${hora}** (disparos: ${w.trigger_count || 0})`;
+            const ct = JSON.parse(w.condition_tree || "{}");
+            const provider = ct.provider || "desconhecido";
+            let detail = "";
+            if (provider === "clock") {
+              const hora = ct.params?.target_time || "horário desconhecido";
+              detail = `⏰ às **${hora}**`;
+            } else if (provider === "gmail") {
+              detail = `📧 Gmail — novos emails`;
+            } else if (provider === "calendar") {
+              detail = `📅 Google Calendar`;
+            } else {
+              detail = `🔔 ${provider}`;
+            }
+            // Verificar se tem email agendado
+            let emailInfo = "";
+            if (w.on_trigger_payload) {
+              try {
+                const tp = JSON.parse(w.on_trigger_payload);
+                if (tp?.type === "send_email" && tp?.email?.to) {
+                  emailInfo = ` + 📨 email para ${tp.email.to}`;
+                }
+              } catch {}
+            }
+            const cleanName = w.name.replace(/ — Auto WE-04$/, "").replace(/ \+ email para .+$/, "");
+            return `• **${cleanName}** — ${detail}${emailInfo} _(disparos: ${w.trigger_count || 0})_`;
           } catch { return `• ${w.name}`; }
         }).join("\n");
-        return {
-          response: `Seus alertas de horário ativos:\n\n${lines}`,
-          plan: { goal: "watch_query", goalLabel: "Consulta de alertas", strategy: "Watch query direto", skills: [], skillsCount: 0, sourcesCount: 0, contextLength: 0, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: null, responseTimeMs: Date.now() - startTime, handledByGuard: "WATCH-QUERY" },
-          sources: [],
-        };
-      } else if (activeWatches.length > 0) {
-        const lines = activeWatches.map(w => `• **${w.name}** (status: ${w.status})`).join("\n");
         return {
           response: `Seus alertas ativos:\n\n${lines}`,
           plan: { goal: "watch_query", goalLabel: "Consulta de alertas", strategy: "Watch query direto", skills: [], skillsCount: 0, sourcesCount: 0, contextLength: 0, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: null, responseTimeMs: Date.now() - startTime, handledByGuard: "WATCH-QUERY" },

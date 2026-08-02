@@ -207,7 +207,8 @@ async function runOneTick(base44: any, googleTokenCache: Map<string, string>): P
       const prevResult = watch.last_evaluation_result;
       const wasTriggered = evaluationResult === true && prevResult !== true;
 
-      // Clock: após disparar → completed (one-shot). Se não disparou, agenda próxima em 1min.
+      // Clock: após disparar → completed (one-shot). Se não disparou, agenda próxima verificação em 1min.
+      // Mas o first-schedule é calculado pelo WatchRegistry para o horário exato — só recalcula aqui se já executou.
       const freqMin = provider === 'clock' ? 1 : (watch.frequency_minutes || 60);
       const nextExec = new Date(Date.now() + freqMin * 60 * 1000).toISOString();
       const newStatus = (provider === 'clock' && wasTriggered) ? 'completed' : 'active';
@@ -233,6 +234,23 @@ async function runOneTick(base44: any, googleTokenCache: Map<string, string>): P
 
       if (wasTriggered) {
         result.triggered++;
+
+        // Se o watch tem payload de email, envia direto
+        if (watch.on_trigger_payload) {
+          try {
+            const triggerPayload = JSON.parse(watch.on_trigger_payload);
+            if (triggerPayload?.type === 'send_email' && triggerPayload?.email) {
+              const { to, subject, body } = triggerPayload.email;
+              if (to && subject) {
+                await base44.asServiceRole.integrations.Core.SendEmail({ to, subject, body: body || subject });
+                console.log(`[watchScheduler] Email enviado para ${to} — assunto: ${subject}`);
+              }
+            }
+          } catch (emailErr: any) {
+            console.warn(`[watchScheduler] Falha ao enviar email: ${emailErr?.message}`);
+          }
+        }
+
         // Extrai horário alvo para mensagem amigável
         let friendlyMsg = `Chegou o momento! O alerta "${watch.name.replace(/ — Auto WE-04$/, '')}" disparou.`;
         try {
