@@ -36,8 +36,8 @@ const INTENT_PATTERNS = [
   /verifica\s+periodicamente/i,
 ];
 
-// Regex para extrair horário da mensagem (ex: "09:24", "9h30", "às 14:00")
-const TIME_REGEX = /\b(\d{1,2})[h:](\d{2})\b|(?:às|as|ao)\s+(\d{1,2})(?:[h:](\d{2}))?/i;
+// Regex para extrair horário da mensagem (ex: "09:24", "9h30", "às 14:00", "09:32hrs")
+const TIME_REGEX = /\b(\d{1,2})[h:](\d{2})(?:h?rs?)?\b|(?:às|as|ao)\s+(\d{1,2})(?:[h:](\d{2}))?/i;
 
 // Mapeia keywords de provedor detectados na mensagem
 const PROVIDER_HINTS: Array<{ pattern: RegExp; provider: string; action: string; label: string }> = [

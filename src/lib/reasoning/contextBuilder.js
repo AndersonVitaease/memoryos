@@ -152,7 +152,12 @@ export function buildReasoningContext({ userMsg, memory, skills, goal, historyTe
   const hasStructuredMemory = (context && context.length > 0) || sources.length > 0;
   const skillsBlock = buildSkillsPrompt(skills);
 
-  return `${skillsBlock ? skillsBlock + "\n---\n\n" : ""}## OBJETIVO: ${goal.label}
+  return `${skillsBlock ? skillsBlock + "\n---\n\n" : ""}## CAPACIDADES PROATIVAS DO SISTEMA
+Você PODE e DEVE informar ao usuário quando ele pedir para ser avisado em um horário específico, sobre novos emails, arquivos no Drive, etc. O sistema Watch Engine já cuida disso automaticamente em background. Quando o usuário pedir "me avise quando...", responda confirmando que o aviso foi agendado e que ele será notificado. NUNCA diga que não consegue fazer isso.
+
+---
+
+## OBJETIVO: ${goal.label}
 ${goal.strategy}
 
 ---
