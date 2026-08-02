@@ -81,6 +81,22 @@ export async function runBackgroundProcessing(
         totalObjects: svResult.totalObjects,
         durationMs:   svResult.durationMs,
       });
+      // Sprint EF-412: emite evento no CognitiveEventBus ao construir o Read Model
+      if (obsCtx && svResult.totalObjects > 0) {
+        try {
+          const { cognitiveEventBus } = await import("@/lib/cognitive-event-bus/CognitiveEventBus");
+          cognitiveEventBus.emit(
+            'state_view_built',
+            session.id,
+            obsCtx.executionId,
+            {
+              totalObjects: svResult.totalObjects,
+              durationMs:   svResult.durationMs,
+              hasLLMContext: !!svResult.llmContext,
+            },
+          );
+        } catch { /* nunca bloqueia */ }
+      }
     } catch { /* nunca bloqueia */ }
   }
   // ── [END KR-02] ──────────────────────────────────────────────────────────

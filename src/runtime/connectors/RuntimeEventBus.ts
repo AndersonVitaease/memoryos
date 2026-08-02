@@ -23,7 +23,14 @@ export type RuntimeEventType =
   | 'ConnectorHealthChanged'
   | 'ConnectorRecovered'
   | 'ConnectorDeprecated'
-  | 'ConnectorShutdown';
+  | 'ConnectorShutdown'
+  // ── Cognitive Events (Sprint EF-410) ──────────────────────────────────────
+  | 'PlanningStarted'
+  | 'PlanningCompleted'
+  | 'PlanningFailed'
+  | 'LLMResponseGenerated'
+  | 'KnowledgeObservationGenerated'
+  | 'StateViewBuilt';
 
 export interface RuntimeEvent {
   readonly id: string;

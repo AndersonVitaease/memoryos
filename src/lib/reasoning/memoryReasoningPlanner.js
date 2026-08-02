@@ -16,6 +16,7 @@ import { ensureProvidersRegistered } from "@/lib/search-engine/registerProviders
 import { searchEngine } from "@/lib/search-engine/SearchEngine";
 import { formatSearchResultAsResponse } from "@/lib/search-engine/SearchResultFormatter";
 import { ensureAIProvidersRegistered, aiProviderRegistry } from "@/lib/ai-provider-registry/AIProviderRegistry";
+import { stateViewEngine } from "@/lib/knowledge-registry/StateViewEngine";
 
 /**
  * Memory Reasoning Planner (MRP)
@@ -317,6 +318,19 @@ ${fullText}`;
   const totalMessages = historyMessages.length;
   console.log(`[DIAG][PromptBreakdown] historyText: ${historyText.length} chars (${_recentHistory.length} mensagens) | memory.context: ${(memory.context || "").length} chars | sessionSummary: ${(memory.sessionSummary || "").length} chars`);
 
+  // === ETAPA 5.1: ESTADO COGNITIVO (Sprint EF-412 — Read Model) ===
+  // Consulta o StateViewEngine para injetar o contexto do Read Model no prompt.
+  // Fire-and-forget com fallback seguro — nunca bloqueia a resposta.
+  let _stateViewContext = null;
+  try {
+    const svResult = await stateViewEngine.buildForSession(session.id, session.project_id ?? null);
+    if (svResult.llmContext && svResult.llmContext.trim().length > 0) {
+      _stateViewContext = svResult.llmContext;
+    }
+  } catch {
+    // falha silenciosa — o LLM segue sem o stateView
+  }
+
   const prompt = buildReasoningContext({
     userMsg,
     memory,
@@ -331,6 +345,7 @@ ${fullText}`;
     memoryRetrievalFailed: _memoryRetrievalFailed,
     serviceInfo: capabilityResult.serviceInfo,
     kfmContext,
+    stateViewContext: _stateViewContext,
   });
 
   // === ETAPA 5.2: SEARCH ENGINE (antes de qualquer chamada de LLM) ===

@@ -36,7 +36,8 @@ export type PayloadType =
   | "connector_result"
   | "goal_execution"
   | "conflict_alert"
-  | "resolution";
+  | "resolution"
+  | "llm_response";   // Sprint EF-411: fato aprendido pela IA neste turno
 
 export const REGISTERED_PAYLOAD_TYPES: ReadonlySet<PayloadType> = new Set([
   "conversation_turn",
@@ -48,6 +49,7 @@ export const REGISTERED_PAYLOAD_TYPES: ReadonlySet<PayloadType> = new Set([
   "goal_execution",
   "conflict_alert",
   "resolution",
+  "llm_response",
 ]);
 
 // ── Observation Input (o que o produtor fornece) ──────────────────────────────
