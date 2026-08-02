@@ -263,22 +263,11 @@ export default function ChatPage() {
         const sessionId = conversation.session?.id;
         if (!sessionId) return;
 
-        // Busca pending + dispatched recentes (últimos 10min) — cobre caso de reload de página
-        const fiveMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-        const [pendingActions, recentDispatched] = await Promise.all([
-          base44.entities.PendingWatchAction.filter({ status: 'pending' }),
-          base44.entities.PendingWatchAction.filter({ status: 'dispatched' }),
-        ]);
+        // Busca apenas ações pendentes — dispatched nunca são re-exibidos
+        const pendingActions = await base44.entities.PendingWatchAction.filter({ status: 'pending' });
 
-        // Filtra dispatched recentes (nos últimos 10 min) que ainda não foram mostrados
-        const recentDispatchedFiltered = recentDispatched.filter(a =>
-          a.dispatched_at && a.dispatched_at > fiveMinAgo
-        );
-
-        const actionsToShow = [
-          ...pendingActions,
-          ...recentDispatchedFiltered.filter(a => !pendingActions.find(p => p.id === a.id)),
-        ];
+        // Apenas pendentes — nunca re-exibir dispatched (evita duplicação após reload)
+        const actionsToShow = pendingActions;
 
         if (!actionsToShow.length) return;
 
@@ -286,13 +275,11 @@ export default function ChatPage() {
           if (shownActionIds.has(action.id)) continue;
           shownActionIds.add(action.id);
 
-          // Marcar pending como dispatched
-          if (action.status === 'pending') {
-            await base44.entities.PendingWatchAction.update(action.id, {
-              status: 'dispatched',
-              dispatched_at: new Date().toISOString(),
-            });
-          }
+          // Marcar como dispatched imediatamente para evitar re-exibição
+          await base44.entities.PendingWatchAction.update(action.id, {
+            status: 'dispatched',
+            dispatched_at: new Date().toISOString(),
+          });
 
           let payload = {};
           try { payload = JSON.parse(action.payload || '{}'); } catch {}
