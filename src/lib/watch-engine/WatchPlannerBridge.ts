@@ -36,9 +36,13 @@ const INTENT_PATTERNS = [
   /verifica\s+periodicamente/i,
 ];
 
+// Regex para extrair horário da mensagem (ex: "09:24", "9h30", "às 14:00")
+const TIME_REGEX = /\b(\d{1,2})[h:](\d{2})\b|(?:às|as|ao)\s+(\d{1,2})(?:[h:](\d{2}))?/i;
+
 // Mapeia keywords de provedor detectados na mensagem
 const PROVIDER_HINTS: Array<{ pattern: RegExp; provider: string; action: string; label: string }> = [
-  { pattern: /e.?mail|gmail|inbox|mensagem/i,          provider: "gmail",    action: "count_unread",   label: "emails nao lidos" },
+  { pattern: /rel[oó]gio|hor[aá]rio|hora|[aà]s\s+\d{1,2}[h:]\d{2}|[aà]s\s+\d{1,2}h\b|\d{1,2}:\d{2}|daqui|minutos?|horas?|acorde|lembr/i, provider: "clock", action: "check_time", label: "horario especifico" },
+  { pattern: /e.?mail|gmail|inbox/i,                    provider: "gmail",    action: "count_unread",   label: "emails nao lidos" },
   { pattern: /drive|arquivo|pasta|documento/i,          provider: "drive",    action: "list_recent",    label: "arquivos no Drive" },
   { pattern: /calend[aá]rio|reuniao|evento/i,           provider: "calendar", action: "get_event_count",label: "eventos no Calendario" },
   { pattern: /github|commit|pr|pull request|issue/i,    provider: "github",   action: "list_events",    label: "atividade no GitHub" },
@@ -63,17 +67,33 @@ export interface WatchIntentDetection {
   condition?: ConditionTree;
 }
 
+function extractTargetTime(message: string): string | null {
+  const match = TIME_REGEX.exec(message);
+  if (!match) return null;
+  // Grupos: (h:m) ou (às h) ou (às hm)
+  const h = match[1] ?? match[3];
+  const m = match[2] ?? match[4] ?? "00";
+  if (!h) return null;
+  return `${h.padStart(2, "0")}:${m.padStart(2, "00")}`;
+}
+
 function detectWatchIntent(message: string): WatchIntentDetection {
   const hasIntent = INTENT_PATTERNS.some((p) => p.test(message));
   if (!hasIntent) return { hasIntent: false };
 
   for (const hint of PROVIDER_HINTS) {
     if (hint.pattern.test(message)) {
+      // Para o provider clock, extrair o horário alvo
+      const params: Record<string, unknown> = {};
+      if (hint.provider === "clock") {
+        const targetTime = extractTargetTime(message);
+        if (targetTime) params.target_time = targetTime;
+      }
       const condition: ConditionTree = {
         kind: "leaf",
         provider: hint.provider,
         action: hint.action,
-        params: {},
+        params,
         result_path: "count",
         comparator: "gt",
         value: 0,
@@ -82,7 +102,7 @@ function detectWatchIntent(message: string): WatchIntentDetection {
         hasIntent: true,
         provider: hint.provider,
         action: hint.action,
-        label: hint.label,
+        label: hint.provider === "clock" && params.target_time ? `aviso às ${params.target_time}` : hint.label,
         condition,
       };
     }

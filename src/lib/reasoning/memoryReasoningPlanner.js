@@ -59,6 +59,20 @@ import { stateViewEngine } from "@/lib/knowledge-registry/StateViewEngine";
 export async function runReasoningPlan({ userMsg, session, historyMessages = [], setPhase, kfmContext }) {
   const startTime = Date.now();
 
+  // === PRÉ-ETAPA WATCH: Detectar intenção de monitoramento (fire-and-forget) ===
+  // "me avise quando...", "monitore...", "fique de olho..." etc.
+  // Nunca bloqueia a resposta — roda em paralelo com o fluxo principal.
+  try {
+    const { watchPlannerBridge } = await import("@/lib/watch-engine/WatchPlannerBridge");
+    if (watchPlannerBridge.hasMonitoringIntent(userMsg)) {
+      watchPlannerBridge.processMessage(userMsg, session?.id, session?.project_id).then((result) => {
+        if (result.created) {
+          console.log(`[WatchPlannerBridge] Watch criado automaticamente: ${result.watchId} — ${result.watchName}`);
+        }
+      }).catch(() => { /* silencioso — nunca bloqueia */ });
+    }
+  } catch { /* silencioso */ }
+
   const _t0 = Date.now();
   // === PRÉ-ETAPA 0: BYPASS PARA PERGUNTAS CONVERSACIONAIS SIMPLES ===
   // Perguntas de identidade/saudação nunca precisam de service detection, memory ou capacidades.
