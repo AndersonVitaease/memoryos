@@ -254,25 +254,51 @@ export default function ChatPage() {
   useEffect(() => {
     if (!conversation.isInitialized) return;
 
+    const shownActionIds = new Set();
+
     const pollWatchActions = async () => {
       try {
-        const pending = await base44.entities.PendingWatchAction.filter({ status: 'pending' });
-        if (!pending || pending.length === 0) return;
+        // Busca pending E dispatched recentes (últimos 10 min) — captura alertas perdidos ao reabrir o app
+        const allActions = await base44.entities.PendingWatchAction.filter({});
+        if (!allActions || allActions.length === 0) return;
 
-        for (const action of pending) {
+        const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000);
+
+        for (const action of allActions) {
+          if (shownActionIds.has(action.id)) continue;
+
+          const isPending = action.status === 'pending';
+          const isRecentDispatched = action.status === 'dispatched' &&
+            action.dispatched_at && new Date(action.dispatched_at) >= tenMinAgo;
+
+          if (!isPending && !isRecentDispatched) continue;
+
+          shownActionIds.add(action.id);
+
           let payload = {};
           try { payload = JSON.parse(action.payload || '{}'); } catch {}
 
+          const triggerTime = payload.timestamp
+            ? new Date(payload.timestamp).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+            : new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+
+          const sessionId = conversation.session?.id;
+          if (!sessionId) continue;
+
           const notifMsg = await base44.entities.Message.create({
-            session_id: conversation.session?.id || action.session_id,
+            session_id: sessionId,
             role: 'assistant',
-            content: `⏰ **Aviso do Watch Engine**\n\n${payload.message || payload.watchName || 'Um Watch disparou!'}\n\n_Horário: ${new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' })}_`,
+            content: `⏰ **${payload.watchName || 'Aviso'}**\n\n${payload.message || 'Um Watch disparou!'}\n\n_Horário do disparo: ${triggerTime}_`,
             memory_tier: 'active',
           });
           conversation.appendMessage(notifMsg);
 
-          // Marcar como despachado
-          await base44.entities.PendingWatchAction.update(action.id, { status: 'dispatched', dispatched_at: new Date().toISOString() });
+          if (isPending) {
+            await base44.entities.PendingWatchAction.update(action.id, {
+              status: 'dispatched',
+              dispatched_at: new Date().toISOString(),
+            });
+          }
         }
       } catch { /* silencioso */ }
     };
