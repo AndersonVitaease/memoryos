@@ -254,23 +254,28 @@ async function runOneTick(base44: any, googleTokenCache: Map<string, string>): P
               const fromEmail = tp.email.from || null;
               let userId = watch.created_by_id;
 
-              // Se created_by_id é conta de serviço ou inválido, busca o user_id pelo email "from"
-              if (!userId || userId.startsWith('service_')) {
-                if (fromEmail) {
-                  const tokenRecords = await base44.asServiceRole.entities.GoogleOAuthToken.filter({ email: fromEmail });
-                  if (tokenRecords.length > 0) userId = tokenRecords[0].user_id;
-                }
-                // Fallback: qualquer user com token Gmail
-                if (!userId || userId.startsWith('service_')) {
-                  const allTokens = await base44.asServiceRole.entities.GoogleOAuthToken.filter({});
-                  const gmailToken = allTokens.find((t: any) => t.scopes?.includes('gmail'));
-                  if (gmailToken) userId = gmailToken.user_id;
+              // Sempre busca pelo email "from" primeiro — é o remetente correto
+              // Se não encontrar por from, usa created_by_id como fallback
+              let oauthResult = null;
+              if (fromEmail) {
+                const fromTokens = await base44.asServiceRole.entities.GoogleOAuthToken.filter({ email: fromEmail });
+                const fromToken = fromTokens.find((t: any) => t.scopes?.includes('gmail.send') && t.refresh_token);
+                if (fromToken) {
+                  const refreshed = await getGoogleAccessToken(base44, fromToken.user_id, fromEmail);
+                  if (refreshed) oauthResult = refreshed;
                 }
               }
-
-              const oauthResult = userId
-                ? await getGoogleAccessToken(base44, userId, fromEmail)
-                : null;
+              // Fallback: token do created_by_id
+              if (!oauthResult && userId && !userId.startsWith('service_')) {
+                oauthResult = await getGoogleAccessToken(base44, userId, fromEmail ?? undefined);
+              }
+              // Último fallback: qualquer token com gmail.send
+              if (!oauthResult) {
+                const allTokens = await base44.asServiceRole.entities.GoogleOAuthToken.filter({});
+                const best = allTokens.find((t: any) => t.scopes?.includes('gmail.send') && t.refresh_token);
+                if (best) oauthResult = await getGoogleAccessToken(base44, best.user_id, best.email);
+              }
+              console.log(`[watchScheduler] oauthResult found: ${!!oauthResult} for from=${fromEmail}`);
 
               if (oauthResult) {
                 // Envia via Gmail OAuth — aparece com o remetente real
