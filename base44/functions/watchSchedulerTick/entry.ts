@@ -63,8 +63,8 @@ export default async function(req: Request): Promise<Response> {
         const durationMs = Date.now() - executionStart;
         const wasTriggered = evaluationResult && (watch.last_evaluation_result === false || watch.last_evaluation_result === null || watch.last_evaluation_result === undefined);
 
-        // Calcular próxima execução
-        const freqMin = watch.frequency_minutes || 60;
+        // Calcular próxima execução — Watches de clock rodam a cada 1 minuto
+        const freqMin = (conditionTree.provider === 'clock') ? 1 : (watch.frequency_minutes || 60);
         const nextExec = new Date(Date.now() + freqMin * 60 * 1000).toISOString();
 
         // Atualizar o Watch
