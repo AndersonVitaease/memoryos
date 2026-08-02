@@ -75,6 +75,82 @@ async function tryManageWatches(
   return `Removido${toDelete.length > 1 ? "s" : ""}: ${names}${keepMsg}`;
 }
 
+// ─── PDF Automation Flow Interceptor ─────────────────────────────────────────
+// Detecta pedidos de automação: "quando PDF chegar → processar → enviar email"
+// sem horário fixo. Cria Watch com provider=drive + on_trigger=emit_event(send_email).
+
+async function tryPdfAutomationFlow(
+  userMessage: string,
+  sessionId?: string,
+  projectId?: string
+): Promise<string | null> {
+  // Precisa ter sinal de PDF/documento + sinal de email + algum trigger de evento
+  const hasPdf = /\bpdf\b|novo\s+pdf|documento\s+(chegar|novo)|arquivo\s+(chegar|novo)/i.test(userMessage);
+  const hasEmailSignal = /enviar?\s+e.?mail|envi[ao]\s+e.?mail|mand[ae]\s+e.?mail|notific[ae]\s+(por\s+)?e.?mail/i.test(userMessage);
+  const hasEventTrigger = /quando\s+.*(chegar|aparecer|novo|detectado)|se\s+.*(chegar|aparecer|novo)|fluxo\s+de\s+automa/i.test(userMessage);
+
+  if (!hasPdf || !hasEmailSignal) return null;
+
+  // Extrair dados de email da mensagem
+  const toMatch = /(?:para|to)\s*:?\s*([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/i.exec(userMessage);
+  const fromMatch = /(?:de|from)\s*:?\s*([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/i.exec(userMessage);
+  const subjectMatch = /(?:assunto|subject)\s*:?\s*(.+)/i.exec(userMessage);
+
+  const to = toMatch?.[1]?.trim();
+  const from = fromMatch?.[1]?.trim() || null;
+  const subject = subjectMatch?.[1]?.trim().split("\n")[0] || "Novo PDF processado";
+
+  if (!to) return null;
+
+  // Detectar ações de processamento pedidas
+  const steps: string[] = [];
+  if (/ocr|extrair\s+texto|extrai\s+texto/i.test(userMessage)) steps.push("OCR");
+  if (/resumo|resumir|gerar\s+resumo/i.test(userMessage)) steps.push("resumo");
+  if (/classific/i.test(userMessage)) steps.push("classificação");
+  if (/registry|registrar|salvar/i.test(userMessage)) steps.push("salvar no registry");
+  const stepsSummary = steps.length > 0 ? steps.join(" → ") : "processamento";
+
+  const body = `Um novo PDF foi detectado e processado automaticamente.\n\nEtapas executadas: ${stepsSummary}\n\nEste email foi enviado automaticamente pelo MemoryOS Watch Engine.`;
+
+  // Criar Watch com provider=drive, trigger=new_pdf
+  const conditionTree = {
+    kind: "leaf",
+    provider: "drive",
+    action: "list_recent",
+    params: { filter_type: "pdf", max_age_minutes: 30 },
+    result_path: "count",
+    comparator: "gt",
+    value: 0,
+  };
+
+  const record = await (base44 as any).entities.Watch.create({
+    name: `PDF automacao -> email para ${to}`,
+    description: `Fluxo: detectar novo PDF → ${stepsSummary} → enviar email`,
+    condition_tree: JSON.stringify(conditionTree),
+    frequency_minutes: 5,
+    priority: "high",
+    status: "active",
+    on_trigger_type: "emit_event",
+    on_trigger_payload: JSON.stringify({
+      type: "send_email",
+      pipeline_steps: steps,
+      email: { from, to, subject, body },
+    }),
+    last_evaluation_result: null,
+    consecutive_failures: 0,
+    trigger_count: 0,
+    next_execution_at: new Date().toISOString(),
+    compiled_at: new Date().toISOString(),
+    session_id: sessionId,
+    project_id: projectId,
+  });
+
+  console.log(`[CXP-PDF-AUTO] Watch criado: ${record.id} → ${to}`);
+
+  const stepsLine = steps.length > 0 ? `\n- ${steps.join("\n- ")}` : "";
+  return `Fluxo criado! Quando um novo PDF for detectado no Drive, vou executar automaticamente:${stepsLine}\n\nE enviar o resultado por email para \`${to}\`${from ? ` (de \`${from}\`)` : ""}.`;
+}
+
 // ─── Scheduled Email Interceptor ──────────────────────────────────────────────
 // Detecta "Para: email" + horario HH:MMhrs em qualquer linha da mensagem.
 // Retorna resposta imediata sem passar pelo pipeline cognitivo.
@@ -232,6 +308,17 @@ class ConversationManager {
       return;
     }
 
+    // Interceptar fluxo de automação PDF → email
+    const pdfAutoResponse = await tryPdfAutomationFlow(msg, session?.id, (session as any)?.project_id).catch(() => null);
+    if (pdfAutoResponse) {
+      const { base44: b44 } = await import("@/api/base44Client");
+      const userMsg = await (b44 as any).entities.Message.create({ session_id: session?.id, role: "user", content: msg, memory_tier: "active" });
+      conversationStore.appendMessage(userMsg);
+      const assistantMsg = await (b44 as any).entities.Message.create({ session_id: session?.id, role: "assistant", content: pdfAutoResponse, memory_tier: "active" });
+      conversationStore.appendMessage(assistantMsg);
+      return;
+    }
+
     // Interceptar agendamento de email antes do pipeline cognitivo
     const schedResponse = await tryScheduleEmail(msg, session?.id, (session as any)?.project_id).catch(() => null);
     if (schedResponse) {
@@ -350,7 +437,7 @@ class ConversationManager {
 
 const _key = "__CXP_MANAGER__";
 const _ver = "__CXP_MANAGER_VER__";
-const _currentVer = "cxp-sched-v2";
+const _currentVer = "cxp-sched-v3";
 const _g = globalThis as unknown as Record<string, unknown>;
 if (!_g[_key] || _g[_ver] !== _currentVer) {
   _g[_key] = new ConversationManager();
