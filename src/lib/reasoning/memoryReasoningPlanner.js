@@ -61,7 +61,7 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
 
   // === PRÉ-ETAPA WATCH: Detectar intenção de monitoramento ===
   // "me avise quando...", "monitore...", "fique de olho..." etc.
-  // Aguarda a criação do Watch para garantir que ele seja persistido antes de qualquer bypass.
+  // Aguarda a criação do Watch e retorna DIRETAMENTE se criado — sem passar pelo LLM.
   let _watchBridgeResult = null;
   try {
     const { watchPlannerBridge } = await import("@/lib/watch-engine/WatchPlannerBridge");
@@ -69,6 +69,27 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
       _watchBridgeResult = await watchPlannerBridge.processMessage(userMsg, session?.id, session?.project_id);
       if (_watchBridgeResult.created) {
         console.log(`[WatchPlannerBridge] Watch criado: ${_watchBridgeResult.watchId} — ${_watchBridgeResult.watchName}`);
+        // Retorna direto — o LLM não precisa ser chamado para confirmar algo já persistido
+        return {
+          response: `Pronto! Vou te avisar quando chegar o horário. O alerta "${_watchBridgeResult.watchName}" está ativo e será disparado automaticamente.`,
+          plan: {
+            goal: "watch_created",
+            goalLabel: "Alerta criado",
+            strategy: "Watch Engine — bypass direto, sem LLM",
+            skills: [], skillsCount: 0, sourcesCount: 0, contextLength: 0,
+            capabilities: [], capabilitiesCount: 0, needsMoreInfo: false,
+            service: null, responseTimeMs: Date.now() - startTime,
+            handledByGuard: "WATCH-DIRECT",
+            watchId: _watchBridgeResult.watchId,
+          },
+          sources: [],
+        };
+      } else if (_watchBridgeResult.wasDuplicate) {
+        return {
+          response: `Já existe um alerta ativo para isso: "${_watchBridgeResult.existingWatchId ? 'Watch #' + _watchBridgeResult.existingWatchId.slice(-6) : 'alerta anterior'}". Você será notificado quando disparar.`,
+          plan: { goal: "watch_duplicate", goalLabel: "Alerta duplicado", strategy: "Watch dedup", skills: [], skillsCount: 0, sourcesCount: 0, contextLength: 0, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: null, responseTimeMs: Date.now() - startTime, handledByGuard: "WATCH-DEDUP" },
+          sources: [],
+        };
       } else {
         console.log(`[WatchPlannerBridge] Watch NÃO criado:`, _watchBridgeResult.message);
       }
