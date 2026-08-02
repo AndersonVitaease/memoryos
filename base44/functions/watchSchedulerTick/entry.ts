@@ -1,9 +1,104 @@
 /**
- * watchSchedulerTick — Backend function chamada pelo workflow agendado
- * Roda o ciclo completo do Watch Engine: Scheduler + Outbox
- * Chamada a cada 1 minuto pelo workflow WatchEngineScheduler
+ * watchSchedulerTick — Backend function chamada pelo workflow agendado (a cada 5 min)
+ * Executa 5 iterações internas com delay de 60s cada, cobrindo todos os minutos
+ * da janela de 5 minutos para não perder nenhum alarme de horário exato.
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+
+async function delay(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function runOneTick(base44: any): Promise<{ processed: number; triggered: number; failed: number; skipped: number }> {
+  const now = new Date().toISOString();
+
+  const allWatches = await base44.asServiceRole.entities.Watch.filter({ status: 'active' });
+  const dueWatches = allWatches.filter((w: any) => {
+    if (!w.next_execution_at) return true;
+    return new Date(w.next_execution_at) <= new Date(now);
+  });
+
+  const result = { processed: 0, triggered: 0, failed: 0, skipped: allWatches.length - dueWatches.length };
+
+  for (const watch of dueWatches) {
+    try {
+      result.processed++;
+
+      let conditionTree: any = {};
+      try { conditionTree = JSON.parse(watch.condition_tree || '{}'); } catch {}
+
+      let evaluationResult = false;
+      const executionStart = Date.now();
+
+      if (conditionTree.kind === 'leaf' && conditionTree.provider === 'clock') {
+        const target = conditionTree.params?.target_time;
+        if (target) {
+          const nowLocal = new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' });
+          const nowTime = new Date(nowLocal);
+          const [h, m] = target.split(':').map(Number);
+          evaluationResult = nowTime.getHours() === h && nowTime.getMinutes() === m;
+          console.log(`[clock] target=${target} now=${nowTime.getHours()}:${String(nowTime.getMinutes()).padStart(2,'0')} match=${evaluationResult}`);
+        }
+      }
+
+      const durationMs = Date.now() - executionStart;
+      const wasTriggered = evaluationResult && !watch.last_evaluation_result;
+
+      // Clock watches: next execution in 1 minute; others: use their frequency
+      const freqMin = conditionTree.provider === 'clock' ? 1 : (watch.frequency_minutes || 60);
+      const nextExec = new Date(Date.now() + freqMin * 60 * 1000).toISOString();
+
+      await base44.asServiceRole.entities.Watch.update(watch.id, {
+        last_execution_at: now,
+        next_execution_at: nextExec,
+        last_evaluation_result: evaluationResult,
+        trigger_count: wasTriggered ? (watch.trigger_count || 0) + 1 : (watch.trigger_count || 0),
+        consecutive_failures: 0,
+      });
+
+      await base44.asServiceRole.entities.WatchExecution.create({
+        watch_id: watch.id,
+        status: 'success',
+        evaluation_result: evaluationResult,
+        triggered: wasTriggered,
+        duration_ms: durationMs,
+        providers_called: [conditionTree.provider || 'unknown'],
+        session_id: watch.session_id || null,
+      });
+
+      if (wasTriggered) {
+        result.triggered++;
+        await base44.asServiceRole.entities.PendingWatchAction.create({
+          watch_id: watch.id,
+          action_type: watch.on_trigger_type || 'notify_user',
+          payload: JSON.stringify({
+            watchId: watch.id,
+            watchName: watch.name,
+            message: `Watch disparou: ${watch.name}`,
+            timestamp: now,
+          }),
+          status: 'pending',
+          retry_count: 0,
+          max_retries: 3,
+          expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          session_id: watch.session_id || null,
+        });
+      }
+
+    } catch (watchErr: any) {
+      result.failed++;
+      try {
+        await base44.asServiceRole.entities.Watch.update(watch.id, {
+          consecutive_failures: (watch.consecutive_failures || 0) + 1,
+          status: (watch.consecutive_failures || 0) >= 2 ? 'error' : 'active',
+          error_message: watchErr.message,
+        });
+      } catch { /* silent */ }
+    }
+  }
+
+  return result;
+}
 
 export default async function(req: Request): Promise<Response> {
   try {
@@ -11,120 +106,21 @@ export default async function(req: Request): Promise<Response> {
     const isAuth = await base44.auth.isAuthenticated();
     if (!isAuth) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const now = new Date().toISOString();
+    const totals = { processed: 0, triggered: 0, failed: 0, iterations: 0 };
 
-    // Busca Watches ativos que precisam ser executados agora
-    const allWatches = await base44.asServiceRole.entities.Watch.filter({ status: 'active' });
-    const dueWatches = allWatches.filter((w: any) => {
-      if (!w.next_execution_at) return true; // nunca executado
-      return new Date(w.next_execution_at) <= new Date(now);
-    });
+    // 5 iterações de 1 minuto cada = cobre toda a janela de 5 minutos do cron
+    for (let i = 0; i < 5; i++) {
+      const r = await runOneTick(base44);
+      totals.processed += r.processed;
+      totals.triggered += r.triggered;
+      totals.failed += r.failed;
+      totals.iterations++;
 
-    const results = {
-      processed: 0,
-      triggered: 0,
-      failed: 0,
-      skipped: allWatches.length - dueWatches.length,
-      timestamp: now,
-    };
-
-    for (const watch of dueWatches) {
-      try {
-        results.processed++;
-
-        // Parse da condition_tree
-        let conditionTree: any;
-        try {
-          conditionTree = JSON.parse(watch.condition_tree || '{}');
-        } catch {
-          conditionTree = {};
-        }
-
-        // Avaliar condição baseada no tipo
-        let evaluationResult = false;
-        const executionStart = Date.now();
-
-        // Para Watches de horário (time-based)
-        if (conditionTree.kind === 'leaf' && conditionTree.provider === 'clock') {
-          const target = conditionTree.params?.target_time;
-          if (target) {
-            // Converte UTC → America/Sao_Paulo
-            const nowLocal = new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' });
-            const nowTime = new Date(nowLocal);
-            const [h, m] = target.split(':').map(Number);
-            const hMatch = nowTime.getHours() === h;
-            const mMatch = nowTime.getMinutes() === m;
-            evaluationResult = hMatch && mMatch;
-            console.log(`[clock] target=${target} now=${nowTime.getHours()}:${nowTime.getMinutes()} match=${evaluationResult}`);
-          }
-        } else {
-          evaluationResult = false;
-        }
-
-        const durationMs = Date.now() - executionStart;
-        const wasTriggered = evaluationResult && (watch.last_evaluation_result === false || watch.last_evaluation_result === null || watch.last_evaluation_result === undefined);
-
-        // Calcular próxima execução — Watches de clock rodam a cada 1 minuto
-        const freqMin = (conditionTree.provider === 'clock') ? 1 : (watch.frequency_minutes || 60);
-        const nextExec = new Date(Date.now() + freqMin * 60 * 1000).toISOString();
-
-        // Atualizar o Watch
-        await base44.asServiceRole.entities.Watch.update(watch.id, {
-          last_execution_at: now,
-          next_execution_at: nextExec,
-          last_evaluation_result: evaluationResult,
-          trigger_count: wasTriggered ? (watch.trigger_count || 0) + 1 : (watch.trigger_count || 0),
-          consecutive_failures: 0,
-        });
-
-        // Registrar execução
-        await base44.asServiceRole.entities.WatchExecution.create({
-          watch_id: watch.id,
-          status: 'success',
-          evaluation_result: evaluationResult,
-          triggered: wasTriggered,
-          duration_ms: durationMs,
-          providers_called: [conditionTree.provider || 'unknown'],
-          session_id: watch.session_id || null,
-        });
-
-        if (wasTriggered) {
-          results.triggered++;
-
-          // Criar ação pendente no Outbox
-          const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-          const payload = JSON.stringify({
-            watchId: watch.id,
-            watchName: watch.name,
-            message: `Watch disparou: ${watch.name}`,
-            timestamp: now,
-          });
-
-          await base44.asServiceRole.entities.PendingWatchAction.create({
-            watch_id: watch.id,
-            action_type: watch.on_trigger_type || 'notify_user',
-            payload,
-            status: 'pending',
-            retry_count: 0,
-            max_retries: 3,
-            expires_at: expiresAt,
-            session_id: watch.session_id || null,
-          });
-        }
-
-      } catch (watchErr: any) {
-        results.failed++;
-        try {
-          await base44.asServiceRole.entities.Watch.update(watch.id, {
-            consecutive_failures: (watch.consecutive_failures || 0) + 1,
-            status: (watch.consecutive_failures || 0) >= 2 ? 'error' : 'active',
-            error_message: watchErr.message,
-          });
-        } catch { /* silent */ }
-      }
+      // Aguarda 60s antes da próxima iteração (exceto na última)
+      if (i < 4) await delay(60_000);
     }
 
-    return Response.json({ ok: true, ...results });
+    return Response.json({ ok: true, ...totals, timestamp: new Date().toISOString() });
 
   } catch (error: any) {
     return Response.json({ error: error.message }, { status: 500 });
