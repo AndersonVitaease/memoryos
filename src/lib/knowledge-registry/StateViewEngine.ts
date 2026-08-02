@@ -100,7 +100,7 @@ class StateViewEngineClass {
       const objects = this._buildObjectStates(grouped);
 
       const llmContext = PHASE2_FLAGS.injectEnabled
-        ? this._formatLLMContext(objects, sessionId)
+        ? await this._fetchSemanticContext(sessionId)
         : null;
 
       this._totalBuilds++;
@@ -194,32 +194,48 @@ class StateViewEngineClass {
     return {};
   }
 
-  private _formatLLMContext(objects: readonly KnowledgeObjectState[], sessionId: string): string {
-    if (objects.length === 0) return "";
+  private async _fetchSemanticContext(sessionId: string): Promise<string> {
+    try {
+      const [rawEntities, rawTopics, rawDecisions] = await Promise.all([
+        base44.entities.KnowledgeEntity.filter({ session_id: sessionId }, "-created_date", 60),
+        base44.entities.Topic.filter({ session_id: sessionId, status: "active" }, "-created_date", 30),
+        base44.entities.Decision.filter({ session_id: sessionId }, "-created_date", 10),
+      ]);
 
-    const lines: string[] = ["[StateView — Contexto da Sessao]"];
-
-    // Agrupa por payloadType para ter um resumo compacto
-    const goalTypes = new Set<string>();
-    const producers = new Set<string>();
-    let turnCount   = 0;
-
-    for (const obj of objects) {
-      for (const obs of obj.observations) {
-        if (obs.payloadType === "conversation_turn") turnCount++;
-        if (obs.payloadType === "goal_execution") {
-          const gt = obs.data?.goalType;
-          if (typeof gt === "string") goalTypes.add(gt);
-        }
-        producers.add(obs.producerId);
+      // Deduplicar entidades por value+type
+      const seenEntities = new Map<string, { value: string; type: string }>();
+      for (const e of (rawEntities ?? [])) {
+        const key = `${e.value}|${e.type}`;
+        if (!seenEntities.has(key)) seenEntities.set(key, { value: e.value, type: e.type });
       }
+      const entities = [...seenEntities.values()];
+
+      // Deduplicar topicos por name
+      const seenTopics = new Map<string, string>();
+      for (const t of (rawTopics ?? [])) {
+        if (!seenTopics.has(t.name)) seenTopics.set(t.name, t.name);
+      }
+      const topics = [...seenTopics.values()];
+
+      const decisions = (rawDecisions ?? []).slice(0, 4);
+
+      const lines: string[] = ["[Estado Cognitivo da Sessao]"];
+      if (topics.length > 0)
+        lines.push(`- Topicos: ${topics.slice(0, 6).join(", ")}`);
+      if (entities.length > 0)
+        lines.push(`- Entidades: ${entities.slice(0, 8).map(e => `${e.value} (${e.type})`).join(", ")}`);
+      if (decisions.length > 0)
+        lines.push(`- Decisoes: ${decisions.map(d => d.title).join("; ")}`);
+
+      return lines.length > 1 ? lines.join("\n") : "";
+    } catch {
+      return "";
     }
+  }
 
-    if (turnCount > 0)        lines.push(`- Turnos na sessao: ${turnCount}`);
-    if (goalTypes.size > 0)   lines.push(`- Goals executados: ${[...goalTypes].join(", ")}`);
-    if (objects.some(o => o.hasConflict)) lines.push("- ATENCAO: Conflitos detectados nesta sessao");
-
-    return lines.join("\n");
+  private _formatLLMContext(objects: readonly KnowledgeObjectState[], sessionId: string): string {
+    // Retorna placeholder — conteudo real e preenchido por buildForSession via _fetchSemanticContext
+    return "";
   }
 
   private _empty(sessionId: string, t0: number, reason: string): StateViewQueryResult {
