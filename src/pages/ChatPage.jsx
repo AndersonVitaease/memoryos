@@ -250,6 +250,40 @@ export default function ChatPage() {
   const showReasoningIndicator =
     conversation.isLoading && !["streaming"].includes(conversation.status);
 
+  // ── Watch Engine: polling para notificações proativas ────────────────────
+  useEffect(() => {
+    if (!conversation.isInitialized) return;
+
+    const pollWatchActions = async () => {
+      try {
+        const pending = await base44.entities.PendingWatchAction.filter({ status: 'pending' });
+        if (!pending || pending.length === 0) return;
+
+        for (const action of pending) {
+          let payload = {};
+          try { payload = JSON.parse(action.payload || '{}'); } catch {}
+
+          const notifMsg = await base44.entities.Message.create({
+            session_id: conversation.session?.id || action.session_id,
+            role: 'assistant',
+            content: `⏰ **Aviso do Watch Engine**\n\n${payload.message || payload.watchName || 'Um Watch disparou!'}\n\n_Horário: ${new Date().toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo' })}_`,
+            memory_tier: 'active',
+          });
+          conversation.appendMessage(notifMsg);
+
+          // Marcar como despachado
+          await base44.entities.PendingWatchAction.update(action.id, { status: 'dispatched', dispatched_at: new Date().toISOString() });
+        }
+      } catch { /* silencioso */ }
+    };
+
+    // Polling a cada 30 segundos
+    const interval = setInterval(pollWatchActions, 30_000);
+    // Verificar imediatamente também
+    pollWatchActions();
+    return () => clearInterval(interval);
+  }, [conversation.isInitialized, conversation.session?.id]);
+
   // ── Loading guard ────────────────────────────────────────────────────────
 
   if (!conversation.isInitialized) {
