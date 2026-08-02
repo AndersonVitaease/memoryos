@@ -250,9 +250,24 @@ async function runOneTick(base44: any, googleTokenCache: Map<string, string>): P
           try {
             const tp = JSON.parse(watch.on_trigger_payload);
             if (tp?.type === 'send_email' && tp?.email?.to && tp?.email?.subject) {
-              const userId = watch.created_by_id;
-              // Prefere enviar pelo email "from" especificado, senão qualquer conta OAuth do user
+              // Tenta o created_by_id primeiro; se for conta de serviço, busca por email "from"
               const fromEmail = tp.email.from || null;
+              let userId = watch.created_by_id;
+
+              // Se created_by_id é conta de serviço ou inválido, busca o user_id pelo email "from"
+              if (!userId || userId.startsWith('service_')) {
+                if (fromEmail) {
+                  const tokenRecords = await base44.asServiceRole.entities.GoogleOAuthToken.filter({ email: fromEmail });
+                  if (tokenRecords.length > 0) userId = tokenRecords[0].user_id;
+                }
+                // Fallback: qualquer user com token Gmail
+                if (!userId || userId.startsWith('service_')) {
+                  const allTokens = await base44.asServiceRole.entities.GoogleOAuthToken.filter({});
+                  const gmailToken = allTokens.find((t: any) => t.scopes?.includes('gmail'));
+                  if (gmailToken) userId = gmailToken.user_id;
+                }
+              }
+
               const oauthResult = userId
                 ? await getGoogleAccessToken(base44, userId, fromEmail)
                 : null;
