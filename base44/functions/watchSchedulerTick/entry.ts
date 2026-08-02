@@ -64,8 +64,10 @@ function evaluateClock(watch: any, conditionTree: any): boolean {
   const diffMin = nowTotalMin - targetTotalMin;
 
   const neverEvaluated   = !watch.last_execution_at;
-  const isInNormalWindow = Math.abs(diffMin) <= 2;
-  const isMissedRecovery = neverEvaluated && diffMin > 0 && diffMin <= 10;
+  // Janela normal: horário exato ou até 1 minuto após (não antes)
+  const isInNormalWindow = diffMin >= 0 && diffMin <= 1;
+  // Recuperação de miss: nunca avaliado e passou até 10 min
+  const isMissedRecovery = neverEvaluated && diffMin > 1 && diffMin <= 10;
 
   const result = isInNormalWindow || isMissedRecovery;
   console.log(`[clock] target=${target} nowBRT=${nowH}:${String(nowM).padStart(2,'0')} diff=${diffMin} normalWindow=${isInNormalWindow} missedRecovery=${isMissedRecovery} match=${result}`);
@@ -231,13 +233,22 @@ async function runOneTick(base44: any, googleTokenCache: Map<string, string>): P
 
       if (wasTriggered) {
         result.triggered++;
+        // Extrai horário alvo para mensagem amigável
+        let friendlyMsg = `Chegou o momento! O alerta "${watch.name.replace(/ — Auto WE-04$/, '')}" disparou.`;
+        try {
+          const _ct = JSON.parse(watch.condition_tree || '{}');
+          if (_ct.provider === 'clock' && _ct.params?.target_time) {
+            friendlyMsg = `Chegou a hora! São ${_ct.params.target_time} — você pediu para ser avisado neste horário.`;
+          }
+        } catch { /* usa mensagem padrão */ }
+
         await base44.asServiceRole.entities.PendingWatchAction.create({
           watch_id:    watch.id,
           action_type: watch.on_trigger_type || 'notify_user',
           payload:     JSON.stringify({
             watchId:   watch.id,
-            watchName: watch.name,
-            message:   `Alerta: ${watch.name}`,
+            watchName: watch.name.replace(/ — Auto WE-04$/, ''),
+            message:   friendlyMsg,
             timestamp: now,
           }),
           status:      'pending',
