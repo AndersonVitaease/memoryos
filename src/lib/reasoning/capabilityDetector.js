@@ -159,6 +159,23 @@ export async function detectCapabilities(message, memory = {}, goal = {}, sessio
   const normalized = normalize(message);
   const { context = "", sources = [] } = memory;
 
+  // === GUARD: pedido de envio agendado (clock + email) — nunca é busca Gmail ===
+  // Padrão: horário explícito ("16:05hrs", "às 16h", etc.) + verbo de envio + email
+  const _SCHEDULED_EMAIL_RE = /(?:[àa]s\s*)?\d{1,2}[h:]\d{2}h?r?s?\b.*(?:envie?|mande?|envia|manda|dispare?)/i;
+  const _hasScheduledEmailIntent = _SCHEDULED_EMAIL_RE.test(message);
+  if (_hasScheduledEmailIntent) {
+    return {
+      capabilities: {
+        memory: true, documents: false, web_search: false,
+        calculation: false, comparison: false, planning: false,
+        official_library: false, specialists: false, needs_more_info: false,
+      },
+      matchedReasons: { scheduled_email: "Pedido de envio agendado detectado — redirecionado para Watch Engine" },
+      hasEnoughInfo: true,
+      missingInfoHint: null,
+    };
+  }
+
   const capabilities = {
     memory: true, // sempre — o pipeline já corre
     documents: false,
