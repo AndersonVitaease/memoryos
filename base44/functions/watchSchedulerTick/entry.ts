@@ -126,16 +126,42 @@ async function evaluateCalendar(conditionTree: any, accessToken: string): Promis
 // ── Tick principal ────────────────────────────────────────────────────────────
 
 async function runOneTick(base44: any, googleTokenCache: Map<string, string>): Promise<{
-  processed: number; triggered: number; failed: number; skipped: number;
+  processed: number; triggered: number; failed: number; skipped: number; completed: number;
 }> {
   const now = new Date().toISOString();
   const allWatches = await base44.asServiceRole.entities.Watch.filter({ status: 'active' });
-  const dueWatches = allWatches.filter((w: any) => {
-    if (!w.next_execution_at) return true;
+
+  // Separar watches de clock que já passaram há mais de 10 minutos sem disparar → completar
+  const nowUTC = new Date();
+  const completedIds: string[] = [];
+  for (const w of allWatches) {
+    try {
+      const ct = JSON.parse(w.condition_tree || '{}');
+      if (ct.provider !== 'clock') continue;
+      const target = ct.params?.target_time;
+      if (!target) continue;
+      const hPart = new Intl.DateTimeFormat('en-US', { hour: 'numeric', hour12: false, timeZone: 'America/Sao_Paulo' }).format(nowUTC);
+      const mPart = new Intl.DateTimeFormat('en-US', { minute: 'numeric', timeZone: 'America/Sao_Paulo' }).format(nowUTC);
+      const nowH = parseInt(hPart, 10);
+      const nowM = parseInt(mPart, 10);
+      const [tH, tM] = target.split(':').map(Number);
+      const diffMin = (nowH * 60 + nowM) - (tH * 60 + tM);
+      // Se já passou mais de 15 minutos E nunca disparou (trigger_count=0), marca completed (horário perdido)
+      // Se disparou (trigger_count>0), também completa — já fez o que tinha que fazer
+      if (diffMin > 15 || (w.trigger_count || 0) > 0) {
+        await base44.asServiceRole.entities.Watch.update(w.id, { status: 'completed' });
+        completedIds.push(w.id);
+      }
+    } catch { /* ignora */ }
+  }
+
+  const activeWatches = allWatches.filter((w: any) => !completedIds.includes(w.id));
+  const dueWatches = activeWatches.filter((w: any) => {
+    if (!w.next_execution_at) return true; // sem agendamento → executar agora
     return new Date(w.next_execution_at) <= new Date(now);
   });
 
-  const result = { processed: 0, triggered: 0, failed: 0, skipped: allWatches.length - dueWatches.length };
+  const result = { processed: 0, triggered: 0, failed: 0, skipped: activeWatches.length - dueWatches.length, completed: completedIds.length };
 
   for (const watch of dueWatches) {
     try {
@@ -152,7 +178,6 @@ async function runOneTick(base44: any, googleTokenCache: Map<string, string>): P
         evaluationResult = evaluateClock(watch, conditionTree);
 
       } else if (provider === 'gmail' || provider === 'calendar') {
-        // Obtem token OAuth — usa cache da iteracao para evitar multiplos refreshes
         const userId = watch.created_by_id;
         if (userId) {
           let token = googleTokenCache.get(userId);
@@ -173,45 +198,46 @@ async function runOneTick(base44: any, googleTokenCache: Map<string, string>): P
           console.warn(`[${provider}] Watch ${watch.id} sem created_by_id — avaliacao pulada`);
         }
       }
-      // Providers desconhecidos: evaluationResult permanece false
 
       const durationMs = Date.now() - executionStart;
-      const prevResult = watch.last_evaluation_result === true;
-      const wasTriggered = evaluationResult && !prevResult;
 
-      // Clock: proxima execucao em 1 minuto; outros: usa frequencia do watch
+      // wasTriggered: true quando a condição passou para true (inclui null→true para watches novos)
+      const prevResult = watch.last_evaluation_result;
+      const wasTriggered = evaluationResult === true && prevResult !== true;
+
+      // Clock: após disparar → completed (one-shot). Se não disparou, agenda próxima em 1min.
       const freqMin = provider === 'clock' ? 1 : (watch.frequency_minutes || 60);
       const nextExec = new Date(Date.now() + freqMin * 60 * 1000).toISOString();
+      const newStatus = (provider === 'clock' && wasTriggered) ? 'completed' : 'active';
 
       await base44.asServiceRole.entities.Watch.update(watch.id, {
         last_execution_at:      now,
-        next_execution_at:      nextExec,
+        next_execution_at:      newStatus === 'completed' ? null : nextExec,
         last_evaluation_result: evaluationResult,
         trigger_count:          wasTriggered ? (watch.trigger_count || 0) + 1 : (watch.trigger_count || 0),
         consecutive_failures:   0,
+        status:                 newStatus,
       });
 
       await base44.asServiceRole.entities.WatchExecution.create({
-        watch_id:         watch.id,
-        status:           'success',
+        watch_id:          watch.id,
+        status:            'success',
         evaluation_result: evaluationResult,
-        triggered:        wasTriggered,
-        duration_ms:      durationMs,
-        providers_called: [provider],
-        session_id:       watch.session_id || null,
+        triggered:         wasTriggered,
+        duration_ms:       durationMs,
+        providers_called:  [provider],
+        session_id:        watch.session_id || null,
       });
 
       if (wasTriggered) {
         result.triggered++;
-        // Cria a acao como 'pending' — o frontend polling vai pegar e marcar 'dispatched'
-        // NUNCA marcar 'dispatched' aqui no scheduler (race condition)
         await base44.asServiceRole.entities.PendingWatchAction.create({
           watch_id:    watch.id,
           action_type: watch.on_trigger_type || 'notify_user',
           payload:     JSON.stringify({
             watchId:   watch.id,
             watchName: watch.name,
-            message:   `Watch disparou: ${watch.name}`,
+            message:   `Alerta: ${watch.name}`,
             timestamp: now,
           }),
           status:      'pending',
