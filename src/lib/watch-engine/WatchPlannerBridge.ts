@@ -40,8 +40,8 @@ const INTENT_PATTERNS = [
   /(envie?|mande?|envia|manda)\s+.{0,40}(e.?mail|mensagem)/i,
 ];
 
-// Regex para extrair horário da mensagem (ex: "09:24", "9h30", "às 14:00", "09:32hrs", "14:06hrs", "14h06")
-const TIME_REGEX = /(?:às|as|ao)\s*(\d{1,2})[h:](\d{2})(?:h?rs?)?|(?:às|as|ao)\s*(\d{1,2})h\b|\b(\d{1,2})[h:](\d{2})(?:h?rs?)?\b|\b(\d{1,2})h(\d{2})\b/i;
+// Regex para extrair horário — cobre: "15:22", "15:22hrs", "15h22", "às 15:22", "15:22h"
+const TIME_REGEX = /(?:[àa]s?\s*)(\d{1,2})[h:](\d{2})(?:h?r?s?)?|(?:[àa]s?\s*)(\d{1,2})h\b|(\d{1,2})[h:](\d{2})(?:h?r?s?)?\b|(\d{1,2})h(\d{2})\b/i;
 
 // Regex para extrair dados de email da mensagem
 // Captura formatos: "Para: email", "Para : email", "para email@..." etc.
@@ -108,11 +108,14 @@ export interface WatchIntentDetection {
 function extractTargetTime(message: string): string | null {
   const match = TIME_REGEX.exec(message);
   if (!match) return null;
-  // Grupos: (às H:M) | (às H) | (H:M) | (Hh MM)
+  // Grupos capturados: (àsH:M) | (àsH) | (H:M) | (HhMM)
   const h = match[1] ?? match[3] ?? match[4] ?? match[6];
   const m = match[2] ?? match[5] ?? match[7] ?? "00";
   if (!h) return null;
-  return `${h.padStart(2, "0")}:${m.padStart(2, "00")}`;
+  const hNum = parseInt(h, 10);
+  const mNum = parseInt(m, 10);
+  if (isNaN(hNum) || hNum > 23 || mNum > 59) return null;
+  return `${String(hNum).padStart(2, "0")}:${String(mNum).padStart(2, "0")}`;
 }
 
 function detectWatchIntent(message: string): WatchIntentDetection {
