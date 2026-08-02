@@ -86,3 +86,18 @@ Follow the instructions in `AGENTS.md`.
 3. **Singleton incrementado para `cxp-sched-v2`** — força recriação com os novos interceptores.
 
 **Comportamento:** Interceptores rodam na ordem: `tryManageWatches` → `tryScheduleEmail` → pipeline cognitivo.
+
+---
+
+### 2026-08-02 — PDF Automation: Email via Backend Function `sendPdfReport`
+
+**Doc completa:** `src/docs/01-operational-knowledge/SESSION-2026-08-02-WATCH-ENGINE-EMAIL.md` (seção 10)
+
+**Problema:** `knowledgeIngestionPipeline.js` usava `base44.integrations.Core.SendEmail` para enviar o resumo do PDF processado, mas esse relay rejeita destinatários externos (não registrados no app). O erro era engolido silenciosamente pelo `catch`.
+
+**Solução:**
+1. **`base44/shared/gmailSend.ts`** — módulo compartilhado extraído com `getGoogleOAuthToken()` e `sendGmailOAuth()`, reutilizável por `watchSchedulerTick` e `sendPdfReport`.
+2. **`base44/functions/sendPdfReport/entry.ts`** — nova backend function que envia email via Gmail OAuth; fallback para `Core.SendEmail` se OAuth não disponível.
+3. **`src/lib/knowledgeIngestionPipeline.js`** — substituído `Core.SendEmail` por `base44.functions.invoke("sendPdfReport", {...})`.
+
+**Validado:** `sendPdfReport` retornou `{ ok: true, method: "gmail_oauth", to: "borecomba@gmail.com" }` em 595ms.

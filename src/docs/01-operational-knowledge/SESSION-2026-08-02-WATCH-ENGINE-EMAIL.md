@@ -178,6 +178,39 @@ src/pages/ChatPage.jsx                           → polling apenas pending, sem
 
 ---
 
+## 10. PDF AUTOMATION — EMAIL VIA BACKEND FUNCTION (2026-08-02 ~17:57 BRT)
+
+### Problema
+`knowledgeIngestionPipeline.js` usava `base44.integrations.Core.SendEmail` diretamente do frontend para enviar o resumo do PDF processado. Esse relay **rejeita endereços externos** (não registrados no app). O `catch` silencioso engolia o erro — a automação aparecia como concluída no chat mas o email nunca chegava.
+
+### Solução
+
+**1. `base44/shared/gmailSend.ts`** — módulo shared extraído com:
+- `getGoogleOAuthToken(base44, fromEmail)` — busca token pelo email do remetente, fallback para qualquer token com `gmail.send`
+- `sendGmailOAuth(accessToken, fromEmail, to, subject, body)` — envia via Gmail API com encoding RFC 2047 + UTF-8
+
+**2. `base44/functions/sendPdfReport/entry.ts`** — nova backend function:
+- Recebe `{ to, from, subject, body }`
+- Tenta Gmail OAuth primeiro; fallback para `Core.SendEmail`
+- Retorna `{ ok, method, to }`
+
+**3. `src/lib/knowledgeIngestionPipeline.js`** — substituição:
+```js
+// ANTES (falha silenciosa para externos)
+await base44.integrations.Core.SendEmail({ to, subject, body });
+
+// DEPOIS (Gmail OAuth via backend)
+const res = await base44.functions.invoke("sendPdfReport", { to, from, subject, body });
+```
+
+### Resultado validado
+```json
+{ "ok": true, "method": "gmail_oauth", "to": "borecomba@gmail.com" }
+```
+Tempo de resposta: 595ms. Email enviado via conta `amazonnoconta01@gmail.com`.
+
+---
+
 ## 9. PRÓXIMOS PASSOS SUGERIDOS
 
 1. **Testar encoding completo** — criar watch com acentos no assunto e corpo, confirmar chegada correta
