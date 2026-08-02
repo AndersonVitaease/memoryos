@@ -172,7 +172,7 @@ export class WatchPlannerBridgeClass {
       description: `Criado automaticamente a partir da mensagem: "${message.slice(0, 80)}"`,
       condition: detection.condition,
       frequency_minutes: detection.provider === "clock" ? 1 : 30,
-      priority: "normal",
+      priority: detection.provider === "clock" ? "high" : "normal",
       on_trigger: { type: "notify_user" },
       session_id: sessionId,
       project_id: projectId,

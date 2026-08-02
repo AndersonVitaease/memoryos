@@ -42,14 +42,22 @@ async function runOneTick(base44: any): Promise<{ processed: number; triggered: 
           const [tH, tM] = target.split(':').map(Number);
           const nowTotalMin = nowH * 60 + nowM;
           const targetTotalMin = tH * 60 + tM;
-          // Janela de ±2 minutos para absorver atrasos de scheduler
-          evaluationResult = Math.abs(nowTotalMin - targetTotalMin) <= 2;
-          console.log(`[clock] target=${target} nowBRT=${nowH}:${String(nowM).padStart(2,'0')} diff=${Math.abs(nowTotalMin - targetTotalMin)} match=${evaluationResult}`);
+          const diffMin = nowTotalMin - targetTotalMin;
+          // Janela normal: ±2 min (absorve atrasos do scheduler)
+          // Recuperação: se nunca foi avaliado e o horário passou há menos de 10 min,
+          // dispara de qualquer forma para não perder alarmes criados próximo ao horário
+          const neverEvaluated = !watch.last_execution_at;
+          const isInNormalWindow = Math.abs(diffMin) <= 2;
+          const isMissedRecovery = neverEvaluated && diffMin > 0 && diffMin <= 10;
+          evaluationResult = isInNormalWindow || isMissedRecovery;
+          console.log(`[clock] target=${target} nowBRT=${nowH}:${String(nowM).padStart(2,'0')} diff=${diffMin} normalWindow=${isInNormalWindow} missedRecovery=${isMissedRecovery} match=${evaluationResult}`);
         }
       }
 
       const durationMs = Date.now() - executionStart;
-      const wasTriggered = evaluationResult && !watch.last_evaluation_result;
+      // Dispara se: condição true E (nunca avaliado antes OU transição false→true)
+      const prevResult = watch.last_evaluation_result === true;
+      const wasTriggered = evaluationResult && !prevResult;
 
       // Clock watches: next execution in 1 minute; others: use their frequency
       const freqMin = conditionTree.provider === 'clock' ? 1 : (watch.frequency_minutes || 60);
