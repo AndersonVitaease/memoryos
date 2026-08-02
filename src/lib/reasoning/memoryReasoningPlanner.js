@@ -59,6 +59,32 @@ import { stateViewEngine } from "@/lib/knowledge-registry/StateViewEngine";
 export async function runReasoningPlan({ userMsg, session, historyMessages = [], setPhase, kfmContext }) {
   const startTime = Date.now();
 
+  // === PRÉ-ETAPA -1: INTERCEPTAR PEDIDO DE ENVIO AGENDADO ===
+  // Padrão: horário + verbo enviar + email — deve criar Watch direto, NUNCA busca Gmail.
+  // Executado ANTES de qualquer outra coisa, inclusive o bypass de IA.
+  const _SCHED_EMAIL_RE = /(?:[àa]s\s*|as\s+)?\d{1,2}[h:]\d{2}h?r?s?\b[\s\S]{0,200}(?:envie?|mande?|envia|manda|dispare?)/i;
+  if (_SCHED_EMAIL_RE.test(userMsg)) {
+    try {
+      const { watchPlannerBridge } = await import("@/lib/watch-engine/WatchPlannerBridge");
+      const _result = await watchPlannerBridge.processMessage(userMsg, session?.id, session?.project_id, historyMessages);
+      if (_result.created) {
+        return {
+          response: `Pronto! Alerta criado para o horário programado. O email será enviado automaticamente quando o horário chegar.`,
+          plan: { goal: "scheduled_email", goalLabel: "Email agendado", strategy: "Watch Engine — intercept direto", skills: [], skillsCount: 0, sourcesCount: 0, contextLength: 0, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: null, responseTimeMs: Date.now() - startTime, handledByGuard: "SCHED-EMAIL-INTERCEPT", watchId: _result.watchId },
+          sources: [],
+        };
+      } else if (_result.wasDuplicate) {
+        return {
+          response: `Já existe um alerta ativo para esse horário. Você será notificado quando o email for enviado.`,
+          plan: { goal: "scheduled_email_dup", goalLabel: "Email agendado duplicado", strategy: "Watch dedup", skills: [], skillsCount: 0, sourcesCount: 0, contextLength: 0, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: null, responseTimeMs: Date.now() - startTime, handledByGuard: "SCHED-EMAIL-INTERCEPT-DEDUP" },
+          sources: [],
+        };
+      }
+    } catch (err) {
+      console.warn("[SCHED-EMAIL-INTERCEPT] Erro:", err?.message);
+    }
+  }
+
   // === PRÉ-ETAPA WATCH-QUERY: Responder perguntas sobre watches ativos ===
   const _WATCH_QUERY_PATTERNS = [
     /qual.{0,20}(hora|horario|hor[aá]rio).{0,20}(alerta|aviso|watch|lembrete|agendamento)/i,
