@@ -263,19 +263,36 @@ export default function ChatPage() {
         const sessionId = conversation.session?.id;
         if (!sessionId) return;
 
-        // Busca apenas 'pending' — dispatched já foram processados
-        const pendingActions = await base44.entities.PendingWatchAction.filter({ status: 'pending' });
-        if (!pendingActions || pendingActions.length === 0) return;
+        // Busca pending + dispatched recentes (últimos 10min) — cobre caso de reload de página
+        const fiveMinAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+        const [pendingActions, recentDispatched] = await Promise.all([
+          base44.entities.PendingWatchAction.filter({ status: 'pending' }),
+          base44.entities.PendingWatchAction.filter({ status: 'dispatched' }),
+        ]);
 
-        for (const action of pendingActions) {
+        // Filtra dispatched recentes (nos últimos 10 min) que ainda não foram mostrados
+        const recentDispatchedFiltered = recentDispatched.filter(a =>
+          a.dispatched_at && a.dispatched_at > fiveMinAgo
+        );
+
+        const actionsToShow = [
+          ...pendingActions,
+          ...recentDispatchedFiltered.filter(a => !pendingActions.find(p => p.id === a.id)),
+        ];
+
+        if (!actionsToShow.length) return;
+
+        for (const action of actionsToShow) {
           if (shownActionIds.has(action.id)) continue;
           shownActionIds.add(action.id);
 
-          // Marcar como dispatched ANTES para evitar duplo processamento
-          await base44.entities.PendingWatchAction.update(action.id, {
-            status: 'dispatched',
-            dispatched_at: new Date().toISOString(),
-          });
+          // Marcar pending como dispatched
+          if (action.status === 'pending') {
+            await base44.entities.PendingWatchAction.update(action.id, {
+              status: 'dispatched',
+              dispatched_at: new Date().toISOString(),
+            });
+          }
 
           let payload = {};
           try { payload = JSON.parse(action.payload || '{}'); } catch {}
@@ -286,7 +303,6 @@ export default function ChatPage() {
 
           const content = `⏰ **${payload.watchName || 'Aviso'}**\n\n${payload.message || 'Um Watch disparou!'}\n\n_Horário do disparo: ${triggerTime}_`;
 
-          // Salva no DB e injeta diretamente no state React (sem reload completo)
           const savedMsg = await base44.entities.Message.create({
             session_id: sessionId,
             role: 'assistant',
