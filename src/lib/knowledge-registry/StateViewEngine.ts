@@ -35,8 +35,8 @@ import {
 // ── Feature flags (alterar aqui para ativar/desativar) ────────────────────────
 
 const PHASE2_FLAGS: StateViewFeatureFlags = Object.freeze({
-  readEnabled:   true,   // le observacoes do banco e constroi StateView
-  injectEnabled: false,  // NAO injeta no LLM ainda (Fase 3)
+  readEnabled:   true,  // le observacoes do banco e constroi StateView
+  injectEnabled: true,  // Sprint EF-412: injeta no LLM via contextBuilder
 });
 
 export function getStateViewFlags(): StateViewFeatureFlags {

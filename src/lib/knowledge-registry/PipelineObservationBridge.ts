@@ -1,5 +1,5 @@
 /**
- * PipelineObservationBridge.ts — Ponte Pipeline → KnowledgeRegistry (Fase 1)
+ * PipelineObservationBridge.ts — Ponte Pipeline → KnowledgeRegistry
  *
  * Unica responsabilidade: transformar o contexto de uma execucao da pipeline
  * em ObservationInputs e entrega-los ao KnowledgeRegistry.
@@ -10,12 +10,14 @@
  *   - Nunca importa componentes da pipeline diretamente
  *   - Zero side-effects no conversationStore
  *
- * FASE 1: Apenas observacoes do tipo "conversation_turn" e "goal_execution".
- * Fases futuras adicionarao "entity_mention", "connector_result", etc.
+ * Sprint EF-411 (Observation Engine):
+ *   Observacao 3: "llm_response" — o fato aprendido neste turno.
+ *   Emite CognitiveEventBus.knowledge_observation_generated ao concluir.
  */
 
 import { knowledgeRegistry } from "./KnowledgeRegistry";
 import type { ObservationInput, ContextScope } from "./KnowledgeRegistryTypes";
+import { cognitiveEventBus } from "@/lib/cognitive-event-bus/CognitiveEventBus";
 
 // ── Input da bridge ───────────────────────────────────────────────────────────
 
@@ -89,6 +91,45 @@ class PipelineObservationBridgeClass {
         producerId:     "ConversationGoalBridge",
         executionId:    input.executionId,
       });
+    }
+
+    // ── Observacao 3: llm_response (Sprint EF-411 — Observation Engine) ──
+    // Registra o fato que a IA aprendeu neste turno — o conhecimento
+    // gerado, não apenas o evento de conversa. Esta é a observação que
+    // alimenta o Read Model (StateView) na Sprint EF-412.
+    if (input.finalResponse && input.finalResponse.trim().length > 20) {
+      const obsResult = await knowledgeRegistry.commit({
+        targetObjectId:   input.executionId,
+        targetObjectType: "message",
+        nature:           "Inference",
+        payloadType:      "llm_response",
+        data: {
+          responseHead:  input.finalResponse.slice(0, 600),
+          responseLen:   input.finalResponse.length,
+          producerPath:  input.producerPath ?? "unknown",
+          goalType:      input.goalType ?? null,
+          durationMs:    input.durationMs ?? null,
+        },
+        contextScope:   scope,
+        sessionId:      input.sessionId,
+        projectId:      input.projectId ?? undefined,
+        confidence:     0.8,
+        producerId:     "ObservationEngine",
+        executionId:    input.executionId,
+      });
+
+      // Emite no CognitiveEventBus para desacoplar consumidores futuros
+      cognitiveEventBus.emit(
+        'knowledge_observation_generated',
+        input.sessionId,
+        input.executionId,
+        {
+          observationId: obsResult.observationId ?? null,
+          payloadType:   "llm_response",
+          producerPath:  input.producerPath ?? "unknown",
+          goalType:      input.goalType ?? null,
+        },
+      );
     }
   }
 }

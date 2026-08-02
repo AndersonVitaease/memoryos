@@ -58,7 +58,7 @@ const MAX_MEMORY_CONTEXT_CHARS = 3000;
 const MAX_SESSION_SUMMARY_CHARS = 500;
 const MAX_KFM_CONTEXT_CHARS = 800;
 
-export function buildReasoningContext({ userMsg, memory, skills, goal, historyText, totalMessages, capabilities, capabilityResults, needsMoreInfo, missingInfoHint, serviceInfo, kfmContext, memoryRetrievalFailed }) {
+export function buildReasoningContext({ userMsg, memory, skills, goal, historyText, totalMessages, capabilities, capabilityResults, needsMoreInfo, missingInfoHint, serviceInfo, kfmContext, stateViewContext, memoryRetrievalFailed }) {
   const rawContext = memory.context;
   const rawSummary = memory.sessionSummary;
   const context = rawContext && rawContext.length > MAX_MEMORY_CONTEXT_CHARS
@@ -162,6 +162,6 @@ ${goal.strategy}
 ${skills.length > 0 ? `- Especialistas: ${skills.map((s) => s.name).join(", ")}.` : ""}
 ${hasStructuredMemory ? `- Memória recuperada: ${sources.length} registros (${sourceTypes.join(", ")}).` : "- Sem memória estruturada para esta pergunta."}
 
-${context ? `## MEMÓRIA ESTRUTURADA (USE APENAS COMO CONTEXTO INTERNO — NUNCA CITE TAREFAS, ASSUNTOS, DECISÕES OU SESSÕES NA RESPOSTA A MENOS QUE O USUÁRIO TENHA PERGUNTADO EXPLICITAMENTE SOBRE ELES)\n${context}\n` : ""}${sessionSummary ? `## RESUMO DA CONVERSA\n${sessionSummary}\n` : ""}${historyText ? `## HISTÓRICO\n${historyText}\n` : ""}${kfmContext ? `## CONHECIMENTO FUNDIDO\n${kfmContext.length > MAX_KFM_CONTEXT_CHARS ? kfmContext.slice(0, MAX_KFM_CONTEXT_CHARS) + "..." : kfmContext}\n` : ""}${serviceBlock ? `${serviceBlock}\n\n---\n` : ""}${needsMoreInfoBlock ? `${needsMoreInfoBlock}\n\n---\n` : ""}${capabilityBlocks.length > 0 ? `${capabilityBlocks.join("\n\n---\n\n")}\n\n---\n` : ""}## MENSAGEM DO USUÁRIO
+${context ? `## MEMÓRIA ESTRUTURADA (USE APENAS COMO CONTEXTO INTERNO — NUNCA CITE TAREFAS, ASSUNTOS, DECISÕES OU SESSÕES NA RESPOSTA A MENOS QUE O USUÁRIO TENHA PERGUNTADO EXPLICITAMENTE SOBRE ELES)\n${context}\n` : ""}${sessionSummary ? `## RESUMO DA CONVERSA\n${sessionSummary}\n` : ""}${stateViewContext ? `## ESTADO COGNITIVO DA SESSÃO (Read Model — fatos aprendidos nesta sessão)\n${stateViewContext}\n` : ""}${historyText ? `## HISTÓRICO\n${historyText}\n` : ""}${kfmContext ? `## CONHECIMENTO FUNDIDO\n${kfmContext.length > MAX_KFM_CONTEXT_CHARS ? kfmContext.slice(0, MAX_KFM_CONTEXT_CHARS) + "..." : kfmContext}\n` : ""}${serviceBlock ? `${serviceBlock}\n\n---\n` : ""}${needsMoreInfoBlock ? `${needsMoreInfoBlock}\n\n---\n` : ""}${capabilityBlocks.length > 0 ? `${capabilityBlocks.join("\n\n---\n\n")}\n\n---\n` : ""}## MENSAGEM DO USUÁRIO
 ${userMsg}`;
 }
