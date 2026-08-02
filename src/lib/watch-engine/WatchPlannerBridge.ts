@@ -34,14 +34,16 @@ const INTENT_PATTERNS = [
   /quando\s+.+(chegar|aparecer|mudar|atualiz)/i,
   /avisa\s+(se|quando)/i,
   /verifica\s+periodicamente/i,
-  // Padrões de envio agendado: "às HH:MM envie/mande/envia..."
+  // Padrões de envio agendado: "às HH:MM envie/mande/envia..." / "as HH:MMhrs envie..."
   /[àa]s\s+\d{1,2}[h:]\d{2}/i,
   /\d{1,2}[h:]\d{2}h?r?s?\s+(envie?|mande?|envia|manda|dispare?)/i,
+  /\d{1,2}[h:]\d{2}hrs?\b/i,
   /(envie?|mande?|envia|manda)\s+.{0,40}(e.?mail|mensagem)/i,
+  /as\s+\d{1,2}[h:]\d{2}/i,
 ];
 
-// Regex para extrair horário — cobre: "15:22", "15:22hrs", "15h22", "às 15:22", "15:22h"
-const TIME_REGEX = /(?:[àa]s?\s*)(\d{1,2})[h:](\d{2})(?:h?r?s?)?|(?:[àa]s?\s*)(\d{1,2})h\b|(\d{1,2})[h:](\d{2})(?:h?r?s?)?\b|(\d{1,2})h(\d{2})\b/i;
+// Regex para extrair horário — cobre: "15:22", "15:22hrs", "15h22", "às 15:22", "15:22h", "15:54hrs"
+const TIME_REGEX = /(?:[àa]s?\s*)(\d{1,2})[h:](\d{2})(?:hrs?)?|(\d{1,2})[h:](\d{2})(?:hrs?)\b|(?:[àa]s?\s*)(\d{1,2})h\b|(\d{1,2})[h:](\d{2})\b|(\d{1,2})h(\d{2})\b/i;
 
 // Regex para extrair dados de email da mensagem
 // Captura formatos: "Para: email", "Para : email", "para email@..." etc.
@@ -79,7 +81,7 @@ function extractEmailPayload(message: string): EmailPayload | null {
 // IMPORTANTE: clock deve vir primeiro — mensagens com horário + email devem
 // ser tratadas como clock (envio agendado), não como monitoramento de Gmail.
 const PROVIDER_HINTS: Array<{ pattern: RegExp; provider: string; action: string; label: string }> = [
-  { pattern: /[àa]s\s+\d{1,2}[h:]\d{2}|rel[oó]gio|hor[aá]rio|\d{1,2}[h:]\d{2}h?r?s?|daqui\s+\d|minutos?\s+envi|acorde|lembr[ae]/i, provider: "clock",    action: "check_time",      label: "horario especifico" },
+  { pattern: /[àa]s\s+\d{1,2}[h:]\d{2}|as\s+\d{1,2}[h:]\d{2}|rel[oó]gio|hor[aá]rio|\d{1,2}[h:]\d{2}h?r?s?|daqui\s+\d|minutos?\s+envi|acorde|lembr[ae]/i, provider: "clock",    action: "check_time",      label: "horario especifico" },
   { pattern: /calend[aá]rio|reuniao|reuni[oã]o|evento|compromisso/i,                provider: "calendar", action: "get_event_count",  label: "eventos no Google Calendar" },
   { pattern: /drive|arquivo|pasta|documento/i,                                      provider: "drive",    action: "list_recent",     label: "arquivos no Drive" },
   { pattern: /github|commit|pr|pull request|issue/i,                                provider: "github",   action: "list_events",     label: "atividade no GitHub" },
@@ -108,9 +110,9 @@ export interface WatchIntentDetection {
 function extractTargetTime(message: string): string | null {
   const match = TIME_REGEX.exec(message);
   if (!match) return null;
-  // Grupos capturados: (àsH:M) | (àsH) | (H:M) | (HhMM)
-  const h = match[1] ?? match[3] ?? match[4] ?? match[6];
-  const m = match[2] ?? match[5] ?? match[7] ?? "00";
+  // Grupos: 1,2 = àsH:M(hrs) | 3,4 = H:M(hrs) | 5 = àsH | 6,7 = H:M | 8,9 = HhMM
+  const h = match[1] ?? match[3] ?? match[5] ?? match[6] ?? match[8];
+  const m = match[2] ?? match[4] ?? match[7] ?? match[9] ?? "00";
   if (!h) return null;
   const hNum = parseInt(h, 10);
   const mNum = parseInt(m, 10);
