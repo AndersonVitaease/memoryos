@@ -200,7 +200,7 @@ export default function ChatPage() {
       if (stats.topics > 0) lines.push(`✓ ${stats.topics} assuntos`);
 
       const emailLine = result.emailSent
-        ? `\n\n📧 Email enviado para \`${result.emailSent.to}\`\nAssunto: _${result.emailSent.subject}_`
+        ? `\n\n📧 Email enviado para \`${result.emailSent.to}\`\nAssunto: _${result.emailSent.subject}_${result.emailSent.messageId ? `\nID Gmail: \`${result.emailSent.messageId}\`` : ""}`
         : "";
 
       const savedAssistantMsg = await base44.entities.Message.create({
