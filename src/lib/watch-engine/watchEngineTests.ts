@@ -1,16 +1,16 @@
 /**
- * watchEngineTests.ts — Suite de testes WE-01
+ * watchEngineTests.ts — Suite de testes WE-01 + WE-02
  *
- * Sprint WE-01 | RFC-005 | ADR-012 | EPIC-017
- * Padrão MDS §2.16 — mínimo 10 cenários
+ * Sprint WE-02 | RFC-005 | ADR-012 | EPIC-017
+ * Padrão MDS §2.16 — mínimo 10 cenários por sprint
  *
- * Testa: WatchValidator + WatchTypes (serialização/deserialização)
- * WE-02 adicionará testes de WatchEvaluator e WatchScheduler.
- * WE-03 adicionará testes de WatchOutbox e WatchStateTracker.
+ * Testa: WatchValidator + WatchTypes + WatchEvaluator + ConnectorGateway
  */
 
 import { validateWatchIntent, serializeConditionTree, deserializeConditionTree } from "./WatchValidator";
-import type { WatchIntent, ConditionTree, LeafCondition } from "./WatchTypes";
+import { WatchEvaluatorClass } from "./WatchEvaluator";
+import { ConnectorGatewayClass } from "./ConnectorGateway";
+import type { WatchIntent, ConditionTree, LeafCondition, WatchRecord } from "./WatchTypes";
 
 interface TestResult {
   scenario: string;
@@ -175,12 +175,131 @@ export function runWatchEngineTests(): { passed: number; failed: number; results
     assert(r.errors.some((e) => e.includes("on_trigger")), "Erro deve mencionar 'on_trigger'");
   }));
 
+  // ── WE-02: WatchEvaluator ────────────────────────────────────────────────
+
+  // 13. Compilação de leaf simples
+  results.push(run("WE-02-001: Compilação de leaf simples retorna CompiledWatch", () => {
+    const evaluator = new WatchEvaluatorClass();
+    const tree: ConditionTree = LEAF_SIMPLE;
+    const compiled = evaluator.compile("w1", serializeConditionTree(tree));
+    assert(compiled !== null, "CompiledWatch não deve ser null");
+    assert(compiled!.watchId === "w1", "watchId deve ser 'w1'");
+    assert(compiled!.pipeline.length === 1, "Pipeline deve ter 1 step");
+    assert(compiled!.pipeline[0].provider === "gmail", "Provider deve ser 'gmail'");
+  }));
+
+  // 14. Avaliação com resultado positivo (gt 0)
+  results.push(run("WE-02-002: Avaliação leaf 'gt 0' retorna true quando count=5", () => {
+    const evaluator = new WatchEvaluatorClass();
+    const compiled = evaluator.compile("w2", serializeConditionTree(LEAF_SIMPLE));
+    assert(compiled !== null, "Deve compilar");
+    const resultKey = compiled!.pipeline[0].resultKey;
+    const evalResult = compiled!.evaluate({ [resultKey]: { count: 5 } });
+    assert(evalResult === true, "Deve retornar true quando count=5 > 0");
+  }));
+
+  // 15. Avaliação com resultado negativo
+  results.push(run("WE-02-003: Avaliação leaf 'gt 0' retorna false quando count=0", () => {
+    const evaluator = new WatchEvaluatorClass();
+    const compiled = evaluator.compile("w3", serializeConditionTree(LEAF_SIMPLE));
+    const resultKey = compiled!.pipeline[0].resultKey;
+    const evalResult = compiled!.evaluate({ [resultKey]: { count: 0 } });
+    assert(evalResult === false, "Deve retornar false quando count=0");
+  }));
+
+  // 16. Compilação AND — ambas verdadeiras
+  results.push(run("WE-02-004: AND com 2 leafs — ambas true → true", () => {
+    const evaluator = new WatchEvaluatorClass();
+    const tree: ConditionTree = {
+      kind: "AND",
+      conditions: [
+        LEAF_SIMPLE,
+        { ...LEAF_SIMPLE, provider: "drive", action: "list_recent", result_path: "count" },
+      ],
+    };
+    const compiled = evaluator.compile("w4", serializeConditionTree(tree));
+    assert(compiled!.pipeline.length === 2, "Pipeline deve ter 2 steps");
+    const [s0, s1] = compiled!.pipeline;
+    const r = compiled!.evaluate({ [s0.resultKey]: { count: 3 }, [s1.resultKey]: { count: 2 } });
+    assert(r === true, "AND(true, true) deve ser true");
+  }));
+
+  // 17. AND — uma falsa → false
+  results.push(run("WE-02-005: AND com uma leaf false → false", () => {
+    const evaluator = new WatchEvaluatorClass();
+    const tree: ConditionTree = {
+      kind: "AND",
+      conditions: [LEAF_SIMPLE, { ...LEAF_SIMPLE, provider: "drive", action: "list_recent", result_path: "count" }],
+    };
+    const compiled = evaluator.compile("w5", serializeConditionTree(tree));
+    const [s0, s1] = compiled!.pipeline;
+    const r = compiled!.evaluate({ [s0.resultKey]: { count: 5 }, [s1.resultKey]: { count: 0 } });
+    assert(r === false, "AND(true, false) deve ser false");
+  }));
+
+  // 18. NOT inverte resultado
+  results.push(run("WE-02-006: NOT inverte avaliação corretamente", () => {
+    const evaluator = new WatchEvaluatorClass();
+    const tree: ConditionTree = { kind: "NOT", condition: LEAF_SIMPLE };
+    const compiled = evaluator.compile("w6", serializeConditionTree(tree));
+    const [s0] = compiled!.pipeline;
+    const r = compiled!.evaluate({ [s0.resultKey]: { count: 0 } });
+    assert(r === true, "NOT(false) deve ser true");
+  }));
+
+  // 19. ConnectorGateway — stub executa sem erro
+  results.push(run("WE-02-007: ConnectorGateway executa stub de provider", async () => {
+    const gw = new ConnectorGatewayClass();
+    const result = await (gw as unknown as { execute: (p: string, a: string, params: Record<string, unknown>) => Promise<unknown> }).execute("gmail", "count_unread", {});
+    assert(result !== undefined, "Resultado não deve ser undefined");
+  }));
+
+  // 20. ConnectorGateway — Token Bucket esgota após muitas chamadas
+  results.push(run("WE-02-008: ConnectorGateway respeita rate limit (Token Bucket)", async () => {
+    const gw = new ConnectorGatewayClass();
+    let rateLimitHit = false;
+    // Consome todos os tokens (20 default + margem)
+    for (let i = 0; i < 25; i++) {
+      try {
+        await (gw as unknown as { execute: (p: string, a: string, params: Record<string, unknown>) => Promise<unknown> }).execute("gmail", "count_unread", {});
+      } catch (err) {
+        if (err instanceof Error && err.message.includes("Rate limit")) {
+          rateLimitHit = true;
+          break;
+        }
+      }
+    }
+    assert(rateLimitHit, "Token Bucket deve esgotar após 20+ chamadas sem refill");
+  }));
+
+  // 21. WatchEvaluator.invalidate limpa cache
+  results.push(run("WE-02-009: invalidate() remove do cache", () => {
+    const evaluator = new WatchEvaluatorClass();
+    evaluator.compile("w_cache", serializeConditionTree(LEAF_SIMPLE));
+    assert(evaluator.getCacheSize() === 1, "Cache deve ter 1 entry");
+    evaluator.invalidate("w_cache");
+    assert(evaluator.getCacheSize() === 0, "Cache deve estar vazio após invalidate");
+  }));
+
+  // 22. ConditionTree deserialização inválida retorna null
+  results.push(run("WE-02-010: deserializeConditionTree com JSON inválido retorna null", () => {
+    const result = deserializeConditionTree("não é json");
+    assert(result === null, "Deve retornar null para JSON inválido");
+  }));
+
+  // 23. compile com JSON inválido retorna null
+  results.push(run("WE-02-011: compile com ConditionTree inválida retorna null", () => {
+    const evaluator = new WatchEvaluatorClass();
+    const result = evaluator.compile("w_bad", "{ invalid json }");
+    assert(result === null, "Deve retornar null para ConditionTree inválida");
+  }));
+
   const passed = results.filter((r) => r.passed).length;
   const failed = results.filter((r) => !r.passed).length;
   const certified = failed === 0;
   const durationMs = Date.now() - t0;
 
-  console.log(`[WatchEngine WE-01] Testes: ${passed} passou, ${failed} falhou | ${durationMs}ms | Certificado: ${certified}`);
+  console.log(`[WatchEngine WE-01+WE-02] Testes: ${passed} passou, ${failed} falhou | ${durationMs}ms | Certificado: ${certified}`);
 
   return { passed, failed, results, certified, durationMs };
 }

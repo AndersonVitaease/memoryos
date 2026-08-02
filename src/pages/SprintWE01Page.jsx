@@ -4,7 +4,7 @@
  * Foundation: Entidades + WatchTypes + WatchValidator + WatchRegistry
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,6 +23,119 @@ const PRIORITY_COLOR = {
   normal:   "text-zinc-300",
   low:      "text-zinc-500",
 };
+
+function EvaluatorPanel() {
+  const [evalLog, setEvalLog] = useState([]);
+  const [gwMetrics, setGwMetrics] = useState(null);
+  const [isEval, setIsEval] = useState(false);
+
+  const runEval = async () => {
+    setIsEval(true);
+    const logs = [];
+    try {
+      const { WatchEvaluatorClass } = await import("@/lib/watch-engine/WatchEvaluator");
+      const { ConnectorGatewayClass } = await import("@/lib/watch-engine/ConnectorGateway");
+      const { serializeConditionTree } = await import("@/lib/watch-engine/WatchValidator");
+
+      const gw = new ConnectorGatewayClass();
+      const ev = new WatchEvaluatorClass();
+
+      const tree = {
+        kind: "AND",
+        conditions: [
+          { kind: "leaf", provider: "gmail", action: "count_unread", params: {}, result_path: "count", comparator: "gt", value: 0 },
+          { kind: "OR", conditions: [
+            { kind: "leaf", provider: "drive", action: "list_recent", params: {}, result_path: "count", comparator: "gt", value: 0 },
+            { kind: "NOT", condition: { kind: "leaf", provider: "calendar", action: "get_event_count", params: {}, result_path: "count", comparator: "eq", value: 0 } },
+          ]},
+        ],
+      };
+
+      const compiled = ev.compile("demo-eval", serializeConditionTree(tree));
+      logs.push({ ok: true, msg: `Compilado: ${compiled.pipeline.length} steps no pipeline` });
+
+      // Executa cada step via gateway stub
+      const providerResults = {};
+      for (const step of compiled.pipeline) {
+        try {
+          const r = await gw.execute(step.provider, step.action, step.params);
+          providerResults[step.resultKey] = r;
+          logs.push({ ok: true, msg: `${step.provider}.${step.action} → ${JSON.stringify(r)}` });
+        } catch (e) {
+          logs.push({ ok: false, msg: `${step.provider}.${step.action} FALHOU: ${e.message}` });
+        }
+      }
+
+      const result = compiled.evaluate(providerResults);
+      logs.push({ ok: true, msg: `Resultado final: ${result} (stubs retornam count=0)` });
+
+      setGwMetrics(gw.getMetrics());
+    } catch (e) {
+      logs.push({ ok: false, msg: `Erro: ${e.message}` });
+    } finally {
+      setIsEval(false);
+    }
+    setEvalLog(logs);
+  };
+
+  const runSchedulerTick = async () => {
+    setIsEval(true);
+    try {
+      const { watchScheduler } = await import("@/lib/watch-engine/WatchScheduler");
+      const result = await watchScheduler.tick();
+      setEvalLog([{ ok: true, msg: `Tick concluído: processados=${result.processed} | disparados=${result.triggered} | falhas=${result.failed} | ${result.durationMs}ms` }]);
+    } catch (e) {
+      setEvalLog([{ ok: false, msg: `Erro no tick: ${e.message}` }]);
+    } finally {
+      setIsEval(false);
+    }
+  };
+
+  return (
+    <Card className="bg-zinc-900 border-zinc-800">
+      <CardHeader>
+        <CardTitle className="text-white text-sm">WatchEvaluator + ConnectorGateway — Demo WE-02</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-zinc-400 text-sm">
+          Testa o compilador de ConditionTree (AND/OR/NOT → função JS pura) e o ConnectorGateway com Token Bucket e Circuit Breaker.
+        </p>
+        <div className="flex gap-3 flex-wrap">
+          <button
+            onClick={runEval}
+            disabled={isEval}
+            className="text-sm bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded disabled:opacity-50"
+          >
+            {isEval ? "Executando..." : "Testar Compilador + Gateway"}
+          </button>
+          <button
+            onClick={runSchedulerTick}
+            disabled={isEval}
+            className="text-sm bg-zinc-700 hover:bg-zinc-600 text-zinc-200 px-4 py-2 rounded disabled:opacity-50"
+          >
+            {isEval ? "Executando..." : "Disparar Scheduler Tick"}
+          </button>
+        </div>
+        {gwMetrics && (
+          <div className="flex gap-4 text-xs text-zinc-400">
+            <span>Calls totais: {gwMetrics.totalCalls}</span>
+            <span>Erros: {gwMetrics.totalErrors}</span>
+            <span>Providers registrados: {gwMetrics.registeredCount}</span>
+          </div>
+        )}
+        {evalLog.length > 0 && (
+          <div className="bg-zinc-800 rounded-lg p-3 space-y-1">
+            {evalLog.map((l, i) => (
+              <div key={i} className={`text-xs font-mono ${l.ok ? "text-emerald-400" : "text-red-400"}`}>
+                {l.ok ? "✓" : "✗"} {l.msg}
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 function MetricCard({ label, value, color = "text-white" }) {
   return (
@@ -263,7 +376,8 @@ export default function SprintWE01Page() {
           {[
             { id: "overview", label: "Watches Ativos" },
             { id: "create",   label: "Criar Watch" },
-            { id: "arch",     label: "Arquitetura WE-01" },
+            { id: "evaluator", label: "Evaluator WE-02" },
+            { id: "arch",     label: "Arquitetura" },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -406,6 +520,11 @@ export default function SprintWE01Page() {
           </Card>
         )}
 
+        {/* Tab: Evaluator WE-02 */}
+        {activeTab === "evaluator" && (
+          <EvaluatorPanel />
+        )}
+
         {/* Tab: Arquitetura */}
         {activeTab === "arch" && (
           <div className="space-y-4">
@@ -421,9 +540,12 @@ export default function SprintWE01Page() {
                   { file: "src/lib/watch-engine/WatchTypes.ts",      status: "done", label: "WatchTypes — todos os tipos imutáveis" },
                   { file: "src/lib/watch-engine/WatchValidator.ts",  status: "done", label: "WatchValidator — validação + serialização" },
                   { file: "src/lib/watch-engine/WatchRegistry.ts",   status: "done", label: "WatchRegistry — CRUD + Dry Run (singleton)" },
-                  { file: "src/lib/watch-engine/watchEngineTests.ts",status: "done", label: "watchEngineTests — 12 cenários MDS §2.16" },
+                  { file: "src/lib/watch-engine/watchEngineTests.ts",status: "done", label: "watchEngineTests — 23 cenários WE-01+WE-02" },
                   { file: "src/docs/foundation/rfc/RFC-005-Watch-Engine.md", status: "done", label: "RFC-005 — Aceita" },
                   { file: "src/docs/foundation/adr/ADR-012.md",      status: "done", label: "ADR-012 — 7 decisões arquiteturais" },
+                  { file: "src/lib/watch-engine/WatchEvaluator.ts",  status: "done", label: "WatchEvaluator — Compilador ConditionTree → fn JS pura" },
+                  { file: "src/lib/watch-engine/ConnectorGateway.ts",status: "done", label: "ConnectorGateway — Token Bucket + Circuit Breaker por provider" },
+                  { file: "src/lib/watch-engine/WatchScheduler.ts",  status: "done", label: "WatchScheduler — Fila por prioridade + Outbox enqueue" },
                 ].map((item, i) => (
                   <div key={i} className="flex items-center gap-2 text-xs">
                     <span className={item.status === "done" ? "text-emerald-400" : "text-amber-400"}>
@@ -459,7 +581,7 @@ export default function SprintWE01Page() {
         )}
 
         <div className="text-center text-xs text-zinc-700 pt-2">
-          Watch Engine WE-01 · RFC-005 · ADR-012 · EPIC-017 · MemoryOS Engineering First · 2026-08-02
+          Watch Engine WE-01+WE-02 · RFC-005 · ADR-012 · EPIC-017 · MemoryOS Engineering First · 2026-08-02
         </div>
       </div>
     </div>
