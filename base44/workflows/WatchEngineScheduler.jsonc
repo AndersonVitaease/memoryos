@@ -1,0 +1,45 @@
+{
+  "name": "Watch Engine Scheduler",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "*/5 * * * *",
+      "one_time_date": null,
+      "timezone": "America/Sao_Paulo",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  },
+  "description": "Roda o ciclo do Watch Engine a cada 5 minutos \u2014 avalia condi\u00e7\u00f5es dos Watches ativos e dispara a\u00e7\u00f5es pendentes",
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "watch_engine_scheduler",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "run_watch_cycle": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "watchSchedulerTick",
+            "args": {}
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "Executar ciclo do Watch Engine",
+            "description": "Scheduler + Outbox a cada 5 min"
+          }
+        }
+      }
+    ]
+  }
+}
