@@ -112,7 +112,21 @@ SDKs oficiais conforme MDPS.
 - [x] index.ts — exports oficiais
 - [x] Dashboard — src/pages/SprintP10Page.jsx (MDS §2.17)
 
-## STATUS FINAL: ROADMAP P1-P10 COMPLETO
+### P11 — Watch Engine (Proactive Monitoring Layer)
+RFC: RFC-005 | ADR: ADR-012 | EPIC: EPIC-017 | Sprints: WE-01 a WE-04
+
+- [ ] WE-01 — Foundation: Entidades + WatchRegistry + WatchTypes (Sprint WE-01)
+- [ ] WE-02 — Motor: WatchEvaluator (Compilador) + WatchScheduler + ConnectorGateway (Sprint WE-02)
+- [ ] WE-03 — Resiliência: Durable Outbox + StateTracker + Circuit Breaker (Sprint WE-03)
+- [ ] WE-04 — Inteligência: KnowledgeGraph Deduplication + Auditoria + Dashboard (Sprint WE-04)
+
+**Princípios de Implementação P11:**
+- Módulo completamente isolado em `src/lib/watch-engine/` — zero modificação em arquivos existentes nos Sprints 1-3
+- Nenhum `eval()` — compilação de lógica para função JS pura
+- Falha de um provider nunca trava outro (Circuit Breaker por provider)
+- Durable Outbox garante zero perda de eventos mesmo em crash
+
+## STATUS FINAL: ROADMAP P1-P10 COMPLETO | P11 WATCH ENGINE EM ANDAMENTO
 
 ---
 
