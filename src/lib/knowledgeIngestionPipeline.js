@@ -503,15 +503,18 @@ Palavras-chave: ${(extraction.keywords || []).join(", ") || "Nenhuma"}
 
 Processado automaticamente pelo MemoryOS Watch Engine.`;
 
-        await base44.integrations.Core.SendEmail({
-          from_name: "MemoryOS",
+        const finalSubject = subject || `Resumo do PDF: ${displayName || file?.name}`;
+        const res = await base44.functions.invoke("sendPdfReport", {
           to,
-          subject: subject || `Resumo do PDF: ${displayName || file?.name}`,
+          from: from || null,
+          subject: finalSubject,
           body: emailBody,
         });
 
-        console.log(`[PDF-AUTO] Email enviado para ${to} com resumo do PDF: ${doc.id}`);
-        emailSent = { to, subject: subject || `Resumo do PDF: ${displayName || file?.name}` };
+        console.log(`[PDF-AUTO] sendPdfReport resultado:`, res?.data);
+        if (res?.data?.ok) {
+          emailSent = { to, subject: finalSubject };
+        }
       }
     } catch (err) {
       console.warn("[PDF-AUTO] Falha ao enviar email de automação:", err?.message);
