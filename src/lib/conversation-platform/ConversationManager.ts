@@ -24,7 +24,38 @@ async function tryScheduleEmail(
 ): Promise<string | null> {
   const toMatch = /^para\s*:?\s*([^\s@]+@[^\s@]+\.[^\s@]+)/im.exec(userMessage);
   const timeMatch = /\b(\d{1,2})[h:](\d{2})h?r?s?\b/i.exec(userMessage);
-  if (!toMatch || !timeMatch) return null;
+  // Precisa de horário; email é opcional
+  if (!timeMatch) return null;
+  // Se não tem email mas tem "me avise", trata como watch de notificação simples
+  if (!toMatch) {
+    const hasNotify = /\bme\s+avis[ea]\b/i.test(userMessage);
+    if (!hasNotify) return null;
+    const h = String(parseInt(timeMatch[1], 10)).padStart(2, "0");
+    const m = String(parseInt(timeMatch[2], 10)).padStart(2, "0");
+    const targetTime = `${h}:${m}`;
+    console.log(`[CXP-SCHED] Aviso simples: ${targetTime}`);
+    await (base44 as any).entities.Watch.create({
+      name: `Aviso as ${targetTime}`,
+      description: `Lembrete agendado via chat`,
+      condition_tree: JSON.stringify({
+        kind: "leaf", provider: "clock", action: "check_time",
+        params: { target_time: targetTime }, result_path: "count", comparator: "gt", value: 0,
+      }),
+      frequency_minutes: 1,
+      priority: "high",
+      status: "active",
+      on_trigger_type: "notify_user",
+      on_trigger_payload: null,
+      last_evaluation_result: null,
+      consecutive_failures: 0,
+      trigger_count: 0,
+      next_execution_at: new Date().toISOString(),
+      compiled_at: new Date().toISOString(),
+      session_id: sessionId,
+      project_id: projectId,
+    });
+    return `Ok! Vou te avisar aqui no chat as **${targetTime}**.`;
+  }
 
   const h = String(parseInt(timeMatch[1], 10)).padStart(2, "0");
   const m = String(parseInt(timeMatch[2], 10)).padStart(2, "0");
@@ -73,7 +104,14 @@ async function tryScheduleEmail(
     project_id: projectId,
   });
 
+  // Verificar se também foi pedido aviso no chat
+  const hasNotifyRequest = /\bme\s+avis[ea]\b/i.test(userMessage);
+
   console.log(`[CXP-SCHED] Watch criado: ${record.id}`);
+
+  if (hasNotifyRequest) {
+    return `Agendado! As **${targetTime}** vou:\n1. Te avisar aqui no chat\n2. Enviar o email para \`${to}\``;
+  }
   return `Agendado! Email para \`${to}\` sera enviado as **${targetTime}**.`;
 }
 
