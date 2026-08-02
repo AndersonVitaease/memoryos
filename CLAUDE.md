@@ -104,6 +104,31 @@ Follow the instructions in `AGENTS.md`.
 
 ---
 
+### 2026-08-02 — Gmail messageId exibido no chat como confirmação de envio
+
+**Motivação:** Usuário queria ver o hash/ID real do Gmail como prova de entrega do email agendado.
+
+**Mudanças:**
+
+1. **`base44/shared/gmailSend.ts`** — `sendGmailOAuth()` agora retorna `string | null` com o `id` da mensagem (campo retornado pela Gmail API no corpo da resposta).
+
+2. **`base44/functions/sendPdfReport/entry.ts`** — captura o `messageId` retornado por `sendGmailOAuth` e inclui na resposta JSON: `{ ok: true, method: "gmail_oauth", to, messageId }`.
+
+3. **`src/lib/knowledgeIngestionPipeline.js`** — `emailSent` agora inclui `messageId: res?.data?.messageId`.
+
+4. **`src/pages/ChatPage.jsx`** — linha de confirmação no chat exibe o ID: `ID Gmail: \`18f3a2c1d4b5e6f7\`` quando disponível.
+
+**Resultado no chat:**
+```
+📧 Email enviado para borecomba@gmail.com
+Assunto: resumo do pdf
+ID Gmail: `18f3a2c1d4b5e6f7`
+```
+
+**Validado:** messageId real do Gmail apareceu no chat após envio do resumo do PDF.
+
+---
+
 ### 2026-08-02 — Fix: Conteúdo de PDF salvo na memória não era exibido ao pedir "abrir pdf X"
 
 **Problema:** Ao pedir "abrir pdf glicina 250g", o `_classifyDriveAction()` retornava `action: "read_content"`. A trava IA-040 bloqueava imediatamente com a mensagem "não tenho leitura real", **sem nem verificar se o documento já estava salvo na memória** (ingestão anterior via pipeline).
