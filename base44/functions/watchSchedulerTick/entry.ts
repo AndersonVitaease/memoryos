@@ -154,7 +154,10 @@ async function evaluateGmail(
   // Usa a query `after:<timestamp>` do Gmail - retorna so mensagens recebidas apos
   // o timestamp informado. Assim, nao dispara por emails ja existentes.
   const baseline = lastExecAt || watchCreatedAt || new Date().toISOString();
-  const afterSeconds = Math.floor(new Date(baseline).getTime() / 1000);
+  // Buffer de 3min: evita condicao de corrida onde o scheduler roda logo apos
+  // o email chegar, atualiza last_execution_at para depois do email, e a busca
+  // after: nao o encontra. O buffer olha 3min atras para garantir deteccao.
+  const afterSeconds = Math.floor(new Date(baseline).getTime() / 1000) - 180;
   const query = `after:${afterSeconds} is:unread`;
   const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}&maxResults=5`;
   const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
@@ -298,12 +301,14 @@ async function runOneTick(base44: any, googleTokenCache: Map<string, string>): P
       const prevResult = watch.last_evaluation_result;
 
       // Clock: dispara na primeira avaliacao (null->true) - alarme one-shot.
-      // Gmail: busca `after:` so retorna mensagens novas - se encontrou, dispara sempre.
+      // Gmail: dispara na transicao false->true (buffer de 3min no after: evita
+      // race condition, mas pode ver o mesmo email em execucoes consecutivas -
+      // transition-based evita duplicatas).
       // Calendar: dispara na transicao false->true.
       const wasTriggered = provider === 'clock'
         ? (evaluationResult === true && prevResult !== true)
         : provider === 'gmail'
-          ? evaluationResult === true
+          ? (evaluationResult === true && prevResult !== true)
           : (evaluationResult === true && prevResult === false);
 
       // Para clock: se disparou → completed (one-shot). Senão → continua ativo, tenta em 1min.
