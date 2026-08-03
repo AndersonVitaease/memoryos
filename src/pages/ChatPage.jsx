@@ -362,9 +362,9 @@ export default function ChatPage({ projectId } = {}) {
                   ? <User className="w-4 h-4 text-white" />
                   : <Brain className="w-4 h-4 text-white" />}
               </div>
-              <div className={`flex-1 min-w-0 rounded-2xl px-4 py-3 text-[15px] leading-relaxed ${
+              <div className={`flex-1 min-w-0 rounded-2xl px-4 py-3 text-base leading-relaxed ${
                 msg.role === "user"
-                  ? "bg-violet-50/70 border border-violet-100/70 text-zinc-700"
+                  ? "bg-violet-100/60 border border-violet-200/70 text-zinc-700"
                   : "bg-white border border-zinc-200/80 text-zinc-700 shadow-sm"
               }`}>
                 {msg.role === "assistant" ? (
