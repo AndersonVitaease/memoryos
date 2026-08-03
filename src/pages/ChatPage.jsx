@@ -74,18 +74,37 @@ export default function ChatPage() {
   }, [conversation.isLoading]);
 
   // Fase 4 — Timeline mode: timeline unificada (Messages + SystemEvents)
+  // Paginada: carrega 50 itens mais recentes; "Carregar mais" puxa os anteriores.
+  const TIMELINE_PAGE = 50;
   const [timelineMode, setTimelineMode] = useState(false);
   const [timelineItems, setTimelineItems] = useState([]);
   const [timelineLoading, setTimelineLoading] = useState(false);
+  const [timelineHasMore, setTimelineHasMore] = useState(false);
+  const [timelineLoadingMore, setTimelineLoadingMore] = useState(false);
 
   useEffect(() => {
-    if (!timelineMode) { setTimelineItems([]); return; }
+    if (!timelineMode) { setTimelineItems([]); setTimelineHasMore(false); return; }
     let cancelled = false;
     const fetchTimeline = async () => {
       setTimelineLoading(true);
       try {
-        const items = await conversationManager.getTimeline();
-        if (!cancelled) setTimelineItems(items);
+        const items = await conversationManager.getTimeline(undefined, TIMELINE_PAGE);
+        if (!cancelled) {
+          // Mescla os 50 mais recentes com itens mais antigos ja carregados
+          // (preserva o que o usuario carregou via "Carregar mais").
+          setTimelineItems(prev => {
+            if (!prev.length) return items;
+            const freshIds = new Set(items.map(i => i.id));
+            const freshOldest = items.length
+              ? new Date(items[items.length - 1].timestamp).getTime()
+              : 0;
+            const older = prev.filter(
+              i => !freshIds.has(i.id) && new Date(i.timestamp).getTime() < freshOldest
+            );
+            return [...items, ...older];
+          });
+          setTimelineHasMore(items.length === TIMELINE_PAGE);
+        }
       } catch {
         /* silent */
       } finally {
@@ -96,6 +115,23 @@ export default function ChatPage() {
     const interval = setInterval(fetchTimeline, 10_000);
     return () => { cancelled = true; clearInterval(interval); };
   }, [timelineMode, conversation.session?.id]);
+
+  const loadMoreTimeline = useCallback(async () => {
+    if (!timelineItems.length || timelineLoadingMore) return;
+    const oldest = timelineItems[timelineItems.length - 1];
+    setTimelineLoadingMore(true);
+    try {
+      const older = await conversationManager.getTimeline(undefined, TIMELINE_PAGE, oldest.timestamp);
+      const existingIds = new Set(timelineItems.map(i => i.id));
+      const newItems = older.filter(i => !existingIds.has(i.id));
+      setTimelineItems(prev => [...prev, ...newItems]);
+      setTimelineHasMore(older.length === TIMELINE_PAGE);
+    } catch {
+      /* silent */
+    } finally {
+      setTimelineLoadingMore(false);
+    }
+  }, [timelineItems, timelineLoadingMore]);
 
 
   // VXP Sprint 7.0.1: transcript review state
@@ -492,13 +528,27 @@ export default function ChatPage() {
               <p className="text-sm text-zinc-400">Nenhum evento na linha do tempo ainda.</p>
             </div>
           ) : (
-            timelineItems.map((item) =>
-              item.kind === "event" ? (
-                <TimelineEventRenderer key={item.id} event={item} />
-              ) : (
-                <MessageBubble key={item.id} msg={item} />
-              )
-            )
+            <>
+              {timelineItems.map((item) =>
+                item.kind === "event" ? (
+                  <TimelineEventRenderer key={item.id} event={item} />
+                ) : (
+                  <MessageBubble key={item.id} msg={item} />
+                )
+              )}
+              {timelineHasMore && (
+                <div className="flex justify-center pt-2 pb-1">
+                  <button
+                    type="button"
+                    onClick={loadMoreTimeline}
+                    disabled={timelineLoadingMore}
+                    className="px-4 py-2 rounded-full text-xs font-medium text-zinc-500 hover:text-violet-600 hover:bg-violet-50 border border-zinc-200 disabled:opacity-50 transition"
+                  >
+                    {timelineLoadingMore ? "Carregando..." : "Carregar mais"}
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

@@ -490,15 +490,22 @@ class ConversationManager {
    * Cada item tem `kind: "message" | "event"` para o render polimorfico.
    * Nao substitui `messages` — e uma API nova para a view de Timeline.
    */
-  async getTimeline(sessionId?: string) {
+  async getTimeline(sessionId?: string, limit = 50, beforeTimestamp?: string) {
     const sid = sessionId || this.session?.id;
     if (!sid) return [];
-    // IMPORTANTE: ordenar por "-created_date" (desc) para buscar os 200 itens
-    // MAIS RECENTES. Antes era "created_date" (asc) + limit 200, o que retornava
-    // as 200 mensagens mais antigas e exclua a atividade recente (uploads, etc.).
+    // Paginacao via cursor (beforeTimestamp): carrega os `limit` itens mais
+    // recentes (ou os mais antigos antes do cursor) — evita puxar centenas de
+    // registros de uma vez. O botao "Carregar mais" passa o timestamp do item
+    // mais antigo visivel como cursor.
+    const msgQuery: any = { session_id: sid };
+    const evtQuery: any = { conversationId: sid };
+    if (beforeTimestamp) {
+      msgQuery.created_date = { $lt: beforeTimestamp };
+      evtQuery.created_date = { $lt: beforeTimestamp };
+    }
     const [messages, events] = await Promise.all([
-      base44.entities.Message.filter({ session_id: sid }, "-created_date", 200),
-      (base44 as any).entities.SystemEvent.filter({ conversationId: sid }, "-created_date", 200),
+      base44.entities.Message.filter(msgQuery, "-created_date", limit),
+      (base44 as any).entities.SystemEvent.filter(evtQuery, "-created_date", limit),
     ]);
     // Oculta eventos cognitivos internos (PlanningStarted, LLMResponseGenerated, etc.)
     // — sao ruido tecnico ao lado da resposta do assistente. Watch, ingestao de
