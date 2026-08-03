@@ -134,6 +134,19 @@ export default function ChatPage() {
     }
   }, [timelineItems, timelineLoadingMore]);
 
+  // Rola para o fim (mensagens mais recentes = hoje) ao entrar na timeline.
+  // A timeline fica em ordem de chat (recentes embaixo); sem isso, quem vem do
+  // chat (ja rolado para baixo) veria o rodape = mensagens mais antigas.
+  const timelineBottomRef = useRef(null);
+  const timelineInitialScrollRef = useRef(false);
+  useEffect(() => {
+    if (timelineMode && timelineItems.length > 0 && !timelineInitialScrollRef.current) {
+      timelineInitialScrollRef.current = true;
+      timelineBottomRef.current?.scrollIntoView({ behavior: "auto" });
+    }
+    if (!timelineMode) timelineInitialScrollRef.current = false;
+  }, [timelineMode, timelineItems.length]);
+
 
   // VXP Sprint 7.0.1: transcript review state
   const [pendingTranscript, setPendingTranscript] = useState(null);
@@ -535,25 +548,26 @@ export default function ChatPage() {
             </div>
           ) : (
             <>
-              {timelineItems.map((item) =>
-                item.kind === "event" ? (
-                  <TimelineEventRenderer key={item.id} event={item} />
-                ) : (
-                  <MessageBubble key={item.id} msg={item} />
-                )
-              )}
               {timelineHasMore && (
-                <div className="flex justify-center pt-2 pb-1">
+                <div className="flex justify-center pb-2">
                   <button
                     type="button"
                     onClick={loadMoreTimeline}
                     disabled={timelineLoadingMore}
                     className="px-4 py-2 rounded-full text-xs font-medium text-zinc-500 hover:text-violet-600 hover:bg-violet-50 border border-zinc-200 disabled:opacity-50 transition"
                   >
-                    {timelineLoadingMore ? "Carregando..." : "Carregar mais"}
+                    {timelineLoadingMore ? "Carregando..." : "Carregar anteriores"}
                   </button>
                 </div>
               )}
+              {timelineItems.slice().reverse().map((item) =>
+                item.kind === "event" ? (
+                  <TimelineEventRenderer key={item.id} event={item} />
+                ) : (
+                  <MessageBubble key={item.id} msg={item} />
+                )
+              )}
+              <div ref={timelineBottomRef} />
             </>
           )}
         </div>
