@@ -13,7 +13,7 @@ import { base44 } from "@/api/base44Client";
 // visível) e ferramentas de desenvolvimento (seção recolhível, fechada
 // por padrão — continuam a um clique de distância, mas não atrapalham
 // o uso do dia a dia).
-const CORE_NAV_ITEMS = [
+export const CORE_NAV_ITEMS = [
   { label: "Início", icon: HomeIcon, path: "/" },
   { label: "Conversar", icon: MessageSquare, path: "/chat" },
   { label: "Memória", icon: Brain, path: "/memory" },
@@ -23,7 +23,7 @@ const CORE_NAV_ITEMS = [
   { label: "Auditoria", icon: ShieldCheck, path: "/audit" },
 ];
 
-const DEV_NAV_ITEMS = [
+export const DEV_NAV_ITEMS = [
   { label: "Drive Debug Panel", icon: Bug, path: "/drive-debug" },
   { label: "Memory Engine", icon: Cpu, path: "/memory-engine" },
   { label: "Cognitive Engine", icon: Network, path: "/cognitive-engine" },

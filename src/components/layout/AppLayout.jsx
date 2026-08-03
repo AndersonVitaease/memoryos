@@ -1,6 +1,6 @@
 import React, { useState, Component } from "react";
 import { Outlet } from "react-router-dom";
-import Sidebar from "./Sidebar";
+import ContextAwareSidebar from "./ContextAwareSidebar";
 import MemoryActivityIndicator from "./MemoryActivityIndicator";
 import GlobalSyncStatus from "./GlobalSyncStatus";
 import { Menu, X } from "lucide-react";
@@ -49,7 +49,7 @@ export default function AppLayout() {
 
       {/* Desktop sidebar — fixed, fora do fluxo do documento */}
       <div className="hidden lg:block fixed inset-y-0 left-0 w-64 z-10">
-        <Sidebar />
+        <ContextAwareSidebar />
       </div>
 
       {/* Mobile drawer — overlay + sidebar deslizante */}
@@ -64,7 +64,7 @@ export default function AppLayout() {
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <Sidebar onNavigate={closeDrawer} />
+        <ContextAwareSidebar onNavigate={closeDrawer} />
       </div>
 
       {/* Conteúdo principal — 100% da largura no mobile */}
