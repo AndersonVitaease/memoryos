@@ -357,17 +357,22 @@ class ConversationPipeline {
     setPhase("retrieving_memory");
     const t0ctx = Date.now();
 
-    const ctx = _isIdentityMsg
-      ? { entitiesContext: null, topicsContext: null }
-      : await buildConversationContext(session, [...messages, savedUser], setPhase);
-    conversationMetrics.recordContextBuildMs(executionId, Date.now() - t0ctx);
-
-    conversationStore.emit({
-      type: "CONTEXT_READY",
-      executionId,
-      payload: { hasEntities: !!ctx.entitiesContext, hasTopics: !!ctx.topicsContext },
-      timestamp: Date.now(),
-    });
+    // O resultado de buildConversationContext NAO e consumido pelo pipeline
+    // (runReasoningPlan recupera sua propria memoria). Awaita-lo na critical
+    // path so atrasa a resposta em ~centenas de ms (5 queries de DB + 2 imports
+    // dinamicos). Fire-and-forget: o evento CONTEXT_READY ainda e emitido para
+    // observadores, sem bloquear a resposta do usuario.
+    void buildConversationContext(session, [...messages, savedUser], undefined)
+      .then((ctx) => {
+        conversationMetrics.recordContextBuildMs(executionId, Date.now() - t0ctx);
+        conversationStore.emit({
+          type: "CONTEXT_READY",
+          executionId,
+          payload: { hasEntities: !!ctx.entitiesContext, hasTopics: !!ctx.topicsContext },
+          timestamp: Date.now(),
+        });
+      })
+      .catch(() => { /* observabilidade nunca bloqueia a resposta */ });
     setStep("context", "done");
 
     // ── 4. Route + Reason + Collect Candidates ───────────────────────────

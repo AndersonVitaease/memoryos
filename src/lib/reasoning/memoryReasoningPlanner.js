@@ -561,8 +561,15 @@ ${fullText}`;
     }
   }
 
-  // === ETAPA 4: CAPABILITY ORCHESTRATOR ===
+  // === ETAPA 4: CAPABILITY ORCHESTRATOR (em paralelo com StateView) ===
   const _t4 = Date.now();
+  // StateView (ETAPA 5.1) e uma leitura independente do Orchestrator — dispara
+  // em paralelo para esconder seu custo (~200ms) atras do orchestrateCapabilities
+  // em vez de somar no final.
+  const _stateViewPromise = stateViewEngine
+    .buildForSession(session.id, session.project_id ?? null)
+    .catch(() => null);
+
   const capabilityResult = await orchestrateCapabilities({
     message: userMsg,
     memory,
@@ -602,8 +609,8 @@ ${fullText}`;
   // Fire-and-forget com fallback seguro — nunca bloqueia a resposta.
   let _stateViewContext = null;
   try {
-    const svResult = await stateViewEngine.buildForSession(session.id, session.project_id ?? null);
-    if (svResult.llmContext && svResult.llmContext.trim().length > 0) {
+    const svResult = await _stateViewPromise;
+    if (svResult?.llmContext && svResult.llmContext.trim().length > 0) {
       _stateViewContext = svResult.llmContext;
     }
   } catch {
