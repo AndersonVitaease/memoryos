@@ -82,13 +82,6 @@ const CONVERSATION_SCHEMA = {
 };
 
 /**
- * Verifica se é hora de processar um lote de mensagens.
- */
-export function shouldProcessBatch(messageCount) {
-  return messageCount > 0 && messageCount % BATCH_SIZE === 0;
-}
-
-/**
  * Processa um lote de mensagens de uma sessão.
  * Extrai conhecimento e atualiza o resumo incremental.
  */
@@ -231,27 +224,4 @@ futuras, cada vez com mais detalhes fabricados.`,
   }
 
   return knowledge;
-}
-
-/**
- * Cria ou recupera a sessão ativa do usuário.
- */
-export async function getOrCreateActiveSession(projectId) {
-  const filter = projectId
-    ? { project_id: projectId, status: "active" }
-    : { status: "active" };
-
-  const sessions = await base44.entities.ChatSession.filter(filter, "-last_message_at", 1);
-
-  if (sessions.length > 0) return sessions[0];
-
-  // Criar nova sessão
-  const session = await base44.entities.ChatSession.create({
-    title: "Nova conversa",
-    project_id: projectId || undefined,
-    status: "active",
-    message_count: 0,
-  });
-
-  return session;
 }
