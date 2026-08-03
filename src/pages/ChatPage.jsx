@@ -24,6 +24,7 @@ import StreamingMessage from "@/components/chat/StreamingMessage";
 import ReasoningIndicator from "@/components/chat/ReasoningIndicator";
 import TimelineEventRenderer from "@/components/timeline/TimelineEventRenderer";
 import MessageBubble from "@/components/timeline/MessageBubble";
+import { formatTime } from "@/components/timeline/formatTime";
 import { conversationManager } from "@/lib/conversation-platform/ConversationManager";
 
 // ─── VXP Status labels ────────────────────────────────────────────────────────
@@ -491,6 +492,11 @@ export default function ChatPage() {
                   )
                 ) : (
                   <p className="whitespace-pre-wrap">{msg.content}</p>
+                )}
+                {msg.created_date && (
+                  <div className="text-[10px] mt-1.5 text-zinc-400">
+                    {formatTime(msg.created_date)}
+                  </div>
                 )}
               </div>
             </div>
