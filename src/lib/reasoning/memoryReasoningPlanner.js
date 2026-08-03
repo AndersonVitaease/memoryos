@@ -380,14 +380,12 @@ ${fullText}`;
 
   console.log(`[DIAG][MRP] ETAPA 0 (early AI + doc bypass) levou ${Date.now() - _t0}ms`);
 
-  // === ETAPA 0.6: LEITURA DIRETA DE EMAIL (Gmail) ===
-  // "ler email", "ver emails", "caixa de entrada", "meus emails" etc.
-  // Chama o GmailConnector para buscar emails reais e retorna direto,
-  // sem passar pelo LLM. Evita que o LLM alucine "agendei monitoramento"
-  // quando o usuario pediu leitura imediata — antes, o capabilityDetector
-  // nao tinha capacidade de email, entao o serviceInfo (metadata only)
-  // chegava ao LLM sem nenhum email real, e ele inventava uma resposta
-  // proativa de monitoramento.
+  // === ETAPA 0.6: LEITURA DIRETA DE EMAIL (Gmail) — MULTI-CONTA ===
+  // "ler email", "ver emails", "caixa de entrada", "ler email amazon" etc.
+  // Detecta TODAS as contas Google conectadas. Se o usuario mencionar uma
+  // conta especifica (ex: "ler email amazon"), le so dela. Se nao mencionar
+  // e houver multiplas contas, le de TODAS e agrupa por conta.
+  // Retorna direto sem LLM — evita alucinacao de "agendei monitoramento".
   // GUARD: nao ativa se ha sinal de monitoramento ("me avise quando...")
   // ou envio ("envie email") — nesses casos o fluxo normal trata.
   const _EMAIL_READ_RE = /\b(ler|leia|ver|veja|mostrar?|lista[r]?)\s+(os?\s+)?e.?mails?\b|\bcaixa\s+de\s+entrada\b|\bmeus?\s+e.?mails?\b|\b(que|quais|quantos)\s+e.?mails?\b|\b(últimos?|recentes?)\s+e.?mails?\b/i;
@@ -397,32 +395,74 @@ ${fullText}`;
   if (_isEmailReadIntent) {
     try {
       const { listMessages } = await import("@/lib/gmail/GmailConnector");
-      const result = await listMessages({ maxResults: 10 });
-      if (!result.ok) {
+      const { listGoogleAccounts, findAccountByMessageMention } = await import("@/lib/google-auth/GoogleMultiAccount");
+      const { getActiveWorkspaceId } = await import("@/lib/workspace/WorkspaceContext");
+      const _baseWs = getActiveWorkspaceId();
+      const _allAccounts = listGoogleAccounts(_baseWs);
+      if (_allAccounts.length === 0) {
         return {
-          response: result.error || "Não consegui ler seus emails.",
+          response: "Para ler seus emails, conecte sua conta Google primeiro. Vá em **Conectores** e autorize o Google Workspace.",
+          plan: { goal: "email_read_error", goalLabel: "Leitura de email", strategy: "Gmail direto — sem contas", skills: [], skillsCount: 0, sourcesCount: 0, contextLength: 0, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: "email", responseTimeMs: Date.now() - startTime, handledByGuard: "EMAIL-READ-NO-ACCOUNTS" },
+          sources: [],
+        };
+      }
+      // Se o usuario mencionou uma conta especifica, le so dela
+      const _mentioned = findAccountByMessageMention(_baseWs, userMsg);
+      const _targets = _mentioned ? [_mentioned] : _allAccounts;
+      // Le de cada conta-alvo em paralelo
+      const _results = await Promise.allSettled(
+        _targets.map((acc) => listMessages({ maxResults: 10, workspaceId: acc.workspaceId })),
+      );
+      const _perAccount = _results.map((r, i) => ({
+        email: _targets[i].email ?? _targets[i].workspaceId,
+        result: r.status === "fulfilled" ? r.value : null,
+      }));
+      const _anyOk = _perAccount.some((a) => a.result?.ok);
+      if (!_anyOk) {
+        const _firstErr = _perAccount[0]?.result?.error || "Não consegui ler seus emails.";
+        return {
+          response: _firstErr,
           plan: { goal: "email_read_error", goalLabel: "Leitura de email", strategy: "Gmail direto — erro", skills: [], skillsCount: 0, sourcesCount: 0, contextLength: 0, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: "email", responseTimeMs: Date.now() - startTime, handledByGuard: "EMAIL-READ-ERROR" },
           sources: [],
         };
       }
-      const msgs = result.data?.messages ?? [];
-      if (msgs.length === 0) {
-        return {
-          response: "Sua caixa de entrada está vazia — nenhum email encontrado.",
-          plan: { goal: "email_read_empty", goalLabel: "Caixa vazia", strategy: "Gmail direto — vazio", skills: [], skillsCount: 0, sourcesCount: 0, contextLength: 0, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: "email", responseTimeMs: Date.now() - startTime, handledByGuard: "EMAIL-READ-EMPTY" },
-          sources: [],
-        };
-      }
-      const lines = msgs.map(m => {
+      const _formatMsgs = (msgs) => msgs.map(m => {
         const date = m.internalDate ? new Date(parseInt(m.internalDate)).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
         const unread = m.labelIds?.includes("UNREAD") ? "🔵 " : "";
         return `${unread}**${m.subject}**\n   De: ${m.from} | ${date}\n   _${m.snippet}_`;
       }).join("\n\n");
-      const accountInfo = result.data?.accountEmail ? ` (conta: ${result.data.accountEmail})` : "";
+      let _response;
+      let _totalMsgs = 0;
+      const _allSources = [];
+      if (_perAccount.length === 1) {
+        const a = _perAccount[0];
+        const msgs = a.result?.data?.messages ?? [];
+        _totalMsgs = msgs.length;
+        msgs.forEach(m => _allSources.push({ type: "Email", id: m.id, name: m.subject, account: a.email }));
+        const accountInfo = a.email ? ` (conta: ${a.email})` : "";
+        _response = msgs.length > 0
+          ? `📧 **Caixa de entrada**${accountInfo} — ${msgs.length} emails recentes:\n\n${_formatMsgs(msgs)}`
+          : `Sua caixa de entrada${accountInfo} está vazia — nenhum email encontrado.`;
+      } else {
+        const sections = _perAccount.map(a => {
+          const msgs = a.result?.data?.messages ?? [];
+          msgs.forEach(m => _allSources.push({ type: "Email", id: m.id, name: m.subject, account: a.email }));
+          _totalMsgs += msgs.length;
+          const header = `**${a.email}** — ${msgs.length} email${msgs.length === 1 ? "" : "s"}`;
+          if (msgs.length === 0) return `${header}\n_(caixa de entrada vazia)_`;
+          return `${header}\n${_formatMsgs(msgs)}`;
+        }).join("\n\n---\n\n");
+        _response = `📧 **Caixa de entrada — ${_perAccount.length} contas conectadas** (${_totalMsgs} emails no total):\n\n${sections}`;
+      }
+      if (_totalMsgs === 0) {
+        _response = _perAccount.length > 1
+          ? `Suas ${_perAccount.length} caixas de entrada estão vazias — nenhum email encontrado.`
+          : "Sua caixa de entrada está vazia — nenhum email encontrado.";
+      }
       return {
-        response: `📧 **Caixa de entrada**${accountInfo} — ${msgs.length} emails recentes:\n\n${lines}`,
-        plan: { goal: "email_read", goalLabel: "Leitura de email", strategy: "Gmail direto — sem LLM", skills: [], skillsCount: 0, sourcesCount: msgs.length, contextLength: lines.length, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: "email", responseTimeMs: Date.now() - startTime, handledByGuard: "EMAIL-READ-DIRECT" },
-        sources: msgs.map(m => ({ type: "Email", id: m.id, name: m.subject })),
+        response: _response,
+        plan: { goal: "email_read", goalLabel: "Leitura de email", strategy: `Gmail direto — ${_perAccount.length} conta(s), sem LLM`, skills: [], skillsCount: 0, sourcesCount: _totalMsgs, contextLength: _response.length, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: "email", responseTimeMs: Date.now() - startTime, handledByGuard: "EMAIL-READ-DIRECT" },
+        sources: _allSources,
       };
     } catch (err) {
       console.error("[EmailReadDirect] Falhou:", err?.message);
