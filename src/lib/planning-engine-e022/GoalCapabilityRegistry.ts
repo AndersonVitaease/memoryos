@@ -473,6 +473,52 @@ const _builtins: CapabilityMapping[] = [
     descriptors: [],
   },
 
+  // ── Microsoft Graph (Contacts + To Do) — Fase 2 (MS-EXP-02) RFC-006/ADR-013
+  // Connector id: "microsoft-graph"  (MicrosoftGraphConnector.ts)
+  // Capabilities via Capability Executors: contacts.* , todo.*
+  {
+    goalType: "ms.contacts.list" as GoalType,
+    descriptors: [
+      { connector: "microsoft-graph", capability: "contacts.list", params: {} },
+    ],
+  },
+  {
+    goalType: "ms.contacts.search" as GoalType,
+    descriptors: [
+      { connector: "microsoft-graph", capability: "contacts.search", params: {} },
+    ],
+  },
+  {
+    goalType: "ms.contacts.create" as GoalType,
+    descriptors: [
+      { connector: "microsoft-graph", capability: "contacts.create", params: {} },
+    ],
+  },
+  {
+    goalType: "ms.todo.listLists" as GoalType,
+    descriptors: [
+      { connector: "microsoft-graph", capability: "todo.listLists", params: {} },
+    ],
+  },
+  {
+    goalType: "ms.todo.listTasks" as GoalType,
+    descriptors: [
+      { connector: "microsoft-graph", capability: "todo.listTasks", params: {} },
+    ],
+  },
+  {
+    goalType: "ms.todo.createTask" as GoalType,
+    descriptors: [
+      { connector: "microsoft-graph", capability: "todo.createTask", params: {} },
+    ],
+  },
+  {
+    goalType: "ms.todo.completeTask" as GoalType,
+    descriptors: [
+      { connector: "microsoft-graph", capability: "todo.completeTask", params: {} },
+    ],
+  },
+
   // ── WhatsApp — Meta Cloud API oficial (Evolution/Baileys como stubs futuros)
   // Connector id: "whatsapp"  (WhatsAppConnector.ts)
   // Capabilities: "whatsapp.sendMessage", "whatsapp.sendTemplate", "whatsapp.getMessageStatus"

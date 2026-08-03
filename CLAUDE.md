@@ -587,3 +587,30 @@ A `UCRBridge.ts` (que envolve TODO connector no runtime) ja emite `ConnectorExec
 **Proximo passo:** Fase 2 (MS-EXP-02) — Contacts + To Do. Aguarda autorizacao.
 
   ---
+
+### 2026-08-03 — Microsoft Graph Connector Fase 2 (MS-EXP-02): Contacts + To Do
+
+**RFC/ADR:** `RFC-006` + `ADR-013`
+
+**Status:** Fase 2 EXECUTADA. Adicionados 2 servicos do Microsoft 365 (Contacts + To Do) seguindo o padrao Capability Executors estabelecido na Fase 0. O shell `MicrosoftGraphConnector` NAO foi tocado — so o Registry cresceu.
+
+**Arquivos novos (2) em `src/lib/connector-runtime/connectors/microsoft/`:**
+- `ContactsCapability.ts` — 3 capacidades: `contacts.list`, `contacts.search`, `contacts.create` (Graph `/me/contacts`). Escopo: `Contacts.ReadWrite`.
+- `ToDoCapability.ts` — 4 capacidades: `todo.listLists`, `todo.listTasks`, `todo.createTask`, `todo.completeTask` (Graph `/me/todo/lists`). Escopo: `Tasks.ReadWrite`.
+
+**Arquivos editados (3):**
+- `MicrosoftCapabilityRegistry.ts` — adicionados `ContactsCapability` + `ToDoCapability` ao array `CAPABILITIES`. Nenhuma logica nova, so registro.
+- `GoalCapabilityRegistry.ts` — adicionados 7 mappings (`ms.contacts.list/search/create`, `ms.todo.listLists/listTasks/createTask/completeTask`) com `connector: "microsoft-graph"`. Inseridos ANTES do bloco WhatsApp, mesma convencao dos mappings Google.
+- `MicrosoftAuthSession.js` — adicionados `Contacts.ReadWrite` e `Tasks.ReadWrite` ao `WORKSPACE_SCOPES`. Escopos anteriores preservados (Mail/Calendar/Files).
+
+**Nao-quebra verificada:**
+- O shell nao muda — `resolveCapability(operation)` agora cobre 7 operations a mais automaticamente.
+- `metadata.capabilities` (via `listAllOperations()`) agora retorna 15 operations (8 originais + 7 novas) sem mudanca de versao do conector (ainda 1.0.0 — adicao de capability e extensao, nao mudanca de comportamento existente).
+- Event Layer (UCRBridge) e Observation Layer envolvem automaticamente — nenhuma acao necessaria.
+- Escopos OAuth: novo consent exigira re-autorizacao do usuario em `/connections` (escopos adicionados, nao substituidos).
+
+**Dependencia externa:** usuario precisa re-conectar Microsoft 365 em `/connections` para conceder os 2 novos escopos (Contacts.ReadWrite + Tasks.ReadWrite). Sem isso, Graph retorna 403 ao chamar `/me/contacts` ou `/me/todo/*`.
+
+**Proximo passo:** Fase 3 (MS-EXP-03) — OneNote + Teams + SharePoint. Aguarda autorizacao (atencao: Teams/SharePoint exigem tenant corporativo — contas pessoais @outlook.com podem nao ter acesso).
+
+  ---

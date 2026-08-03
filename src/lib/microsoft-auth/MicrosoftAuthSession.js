@@ -69,6 +69,9 @@ export const WORKSPACE_SCOPES = [
   "https://graph.microsoft.com/Mail.Send",
   "https://graph.microsoft.com/Calendars.ReadWrite",
   "https://graph.microsoft.com/Files.Read.All",
+  // Fase 2 (MS-EXP-02) — Contacts + To Do
+  "https://graph.microsoft.com/Contacts.ReadWrite",
+  "https://graph.microsoft.com/Tasks.ReadWrite",
 ];
 
 // ── Storage (somente metadata — sem tokens) ───────────────────────────────────
