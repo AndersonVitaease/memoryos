@@ -321,6 +321,32 @@ A `UCRBridge.ts` (que envolve TODO connector no runtime) ja emite `ConnectorExec
 
 ---
 
+### 2026-08-03 — Chat: Limpeza de Timeline Legada + Auditoria de Pipeline Antigo
+
+**Doc completa:** `src/docs/01-operational-knowledge/SESSION-2026-08-03-CHAT-LEGACY-CLEANUP-AUDIT.md`
+
+**Resumo do que foi feito (executado):**
+
+1. **Limpeza de timeline orfaos (7 arquivos deletados):** `MessageBubble.jsx`, `TimelineEventRenderer.jsx`, `EventShell.jsx`, `WatchEventCard.jsx`, `KnowledgeEventCard.jsx`, `ConnectorEventCard.jsx`, `CognitiveEventCard.jsx` — cluster fechado, nenhum consumidor vivo apos a remocao do "Modo Timeline" do ChatPage.
+2. **Metodo removido do ConversationManager:** `getTimeline(sessionId?, limit?, beforeTimestamp?)` — API nova opcional (merge Message + SystemEvent), nunca consumida pelo hook ou ChatPage. Zero impacto.
+3. **Preservado:** `src/components/timeline/formatTime.js` — ainda importado por ChatPage para timestamps BRT dos bubbles.
+
+**Auditoria de codigo morto/legado no caminho do chat:**
+
+- **ChatPage (CXP v2):** limpo. Unico morto: import do icone `X` sem uso no JSX (pendente remocao de 1 token).
+- **Pipeline antiga AINDA VIVA** (legado, nao morto): `ChatInterface.jsx` + `contextRetrieval.js` + `conversationEngine.js` usados pela aba de chat de `ProjectDetail.jsx` (linha 11). Dois motores de chat coexistem: ChatPage usa CXP v2 (arbiter + execution outcomes), ProjectDetail usa pipeline antiga (InvokeLLM direto + conversationEngine).
+- **Descoberta critica:** `conversationEngine.processConversationBatch` e **COMPARTILHADO** — o `ConversationBackgroundProcessor.ts` (linha 130) da propria CXP o importa e chama a cada 5 mensagens. NAO e deletavel; so `getOrCreateActiveSession`/`shouldProcessBatch`/`ChatInterface`/`contextRetrieval` sao removiveis apos migracao.
+- **Bloqueador:** `ProjectDetail` importa `ChatInterface` para a aba de chat do projeto. Nao e limpeza, e migracao.
+
+**Plano de migracao segura (5 fases aditivas, aguardando autorizacao):**
+- Fase 0: adicionar escopo de projeto na CXP (getOrCreateActiveSession/createSession/loadActiveSession com `projectId?` — backward compatible).
+- Fase 1: isolar sessao por escopo (chave localStorage por projeto: `memoryos_last_session_id__proj_${id}`).
+- Fase 2: reusar `<ChatPage projectId={id} />` no ProjectDetail (swap de 1 linha).
+- Fase 3: verificar paridade (extracao de conhecimento, resumo, historico, isolamento).
+- Fase 4: delecao segura (ChatInterface + contextRetrieval + 2 exports do conversationEngine; mantem `processConversationBatch`).
+
+---
+
 ### 2026-08-03 — Arquitetura Event-Driven Timeline (Planejamento — Opcao B)
 
 **Doc completa:** `src/docs/01-operational-knowledge/SESSION-2026-08-03-EVENT-DRIVEN-TIMELINE-ARCHITECTURE.md`
