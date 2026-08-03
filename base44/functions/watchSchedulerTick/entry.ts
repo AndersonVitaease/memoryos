@@ -7,6 +7,7 @@
  *   - clock        : comparacao de horario em BRT (nao precisa de OAuth)
  *   - gmail        : count_unread via Gmail API (usa GoogleOAuthToken)
  *   - calendar     : get_event_count via Calendar API (usa GoogleOAuthToken)
+ *   - microsoft    : count_unread_mail via Microsoft Graph API (usa MicrosoftOAuthToken) — MS-EXP-05
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 
@@ -58,6 +59,48 @@ async function getGoogleAccessToken(base44: any, userId: string, preferEmail?: s
     return null;
   }
   return { token: data.access_token, email: records[0].email };
+}
+
+// ── Microsoft Graph OAuth helper (MS-EXP-05) ─────────────────────────────────
+
+async function getMicrosoftAccessToken(base44: any, userId: string): Promise<{ token: string; email: string } | null> {
+  const records = await base44.asServiceRole.entities.MicrosoftOAuthToken.filter({ user_id: userId });
+  if (!records.length || !records[0].refresh_token) return null;
+
+  const clientId = Deno.env.get('MICROSOFT_CLIENT_ID');
+  const clientSecret = Deno.env.get('MICROSOFT_CLIENT_SECRET');
+  if (!clientId) return null;
+
+  const payload: Record<string, string> = {
+    refresh_token: records[0].refresh_token,
+    client_id: clientId,
+    grant_type: 'refresh_token',
+  };
+  if (clientSecret) payload.client_secret = clientSecret;
+
+  const res = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams(payload),
+  });
+  const data = await res.json();
+  if (!res.ok || data.error) {
+    console.warn(`[ms-oauth] Token refresh failed: ${data.error} — ${data.error_description}`);
+    return null;
+  }
+
+  // Microsoft as vezes rotaciona o refresh_token — atualiza se vier um novo
+  const newRefreshToken = data.refresh_token;
+  if (newRefreshToken && newRefreshToken !== records[0].refresh_token) {
+    try {
+      await base44.asServiceRole.entities.MicrosoftOAuthToken.update(records[0].id, {
+        refresh_token: newRefreshToken,
+        updated_at: new Date().toISOString(),
+      });
+    } catch { /* silent */ }
+  }
+
+  return { token: data.access_token, email: records[0].email ?? '' };
 }
 
 // ── Gmail send via OAuth ──────────────────────────────────────────────────────
@@ -217,9 +260,64 @@ async function evaluateCalendar(conditionTree: any, accessToken: string): Promis
   return (data.items ?? []).length > (conditionTree.value ?? 0);
 }
 
+// ── Provider: microsoft (Outlook Mail via Microsoft Graph — MS-EXP-05) ───────
+
+interface MicrosoftNewMessage { id: string; subject: string; from: string; snippet: string; date: string }
+
+async function evaluateMicrosoft(
+  conditionTree: any,
+  accessToken: string,
+  lastExecAt?: string | null,
+  watchCreatedAt?: string | null,
+): Promise<{ triggered: boolean; messages: MicrosoftNewMessage[] }> {
+  const action = conditionTree.action ?? 'count_unread_mail';
+  const fromEmail = conditionTree.params?.fromEmail as string | undefined;
+
+  // Baseline: ultima verificacao ou criacao do watch. Buffer de 3min (mesmo
+  // principio do gmail) evita perder emails que chegam na borda do ciclo.
+  const baseline = lastExecAt || watchCreatedAt || new Date().toISOString();
+  const sinceISO = new Date(new Date(baseline).getTime() - 180_000).toISOString();
+
+  // OData filter: emails nao lidos recebidos apos o baseline. Se fromEmail
+  // informado, filtra por remetente. Aspas simples em OData sao escapadas com ''.
+  let filter = `isRead eq false and receivedDateTime ge ${sinceISO}`;
+  if (fromEmail) {
+    const escaped = fromEmail.replace(/'/g, "''");
+    filter += ` and from/emailAddress/address eq '${escaped}'`;
+  }
+
+  const url = `https://graph.microsoft.com/v1.0/me/messages?$filter=${encodeURIComponent(filter)}&$select=id,subject,from,bodyPreview,receivedDateTime&$top=3&$count=true`;
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      ConsistencyLevel: 'eventual', // exigido pelo Graph para $count com $filter em /me/messages
+    },
+  });
+
+  if (!res.ok) {
+    console.warn(`[microsoft] Graph ${res.status} - action=${action} filter="${filter}"`);
+    return { triggered: false, messages: [] };
+  }
+
+  const data = await res.json();
+  const items: any[] = data.value ?? [];
+
+  const messages: MicrosoftNewMessage[] = items.map((m: any) => ({
+    id: m.id,
+    subject: m.subject ?? '(sem assunto)',
+    from: m.from?.emailAddress?.address ?? '',
+    snippet: m.bodyPreview ?? '',
+    date: m.receivedDateTime
+      ? new Date(m.receivedDateTime).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+      : '',
+  }));
+
+  return { triggered: messages.length > 0, messages };
+}
+
 // ── Tick principal ────────────────────────────────────────────────────────────
 
-async function runOneTick(base44: any, googleTokenCache: Map<string, string>): Promise<{
+async function runOneTick(base44: any, googleTokenCache: Map<string, string>, microsoftTokenCache: Map<string, string>): Promise<{
   processed: number; triggered: number; failed: number; skipped: number;
 }> {
   const now = new Date().toISOString();
@@ -295,6 +393,24 @@ async function runOneTick(base44: any, googleTokenCache: Map<string, string>): P
             }
           }
         }
+      } else if (provider === 'microsoft') {
+        const userId = watch.created_by_id;
+        if (userId) {
+          let msToken = microsoftTokenCache.get(userId);
+          if (!msToken) {
+            const msResult = await getMicrosoftAccessToken(base44, userId);
+            if (msResult) {
+              msToken = msResult.token;
+              microsoftTokenCache.set(userId, msToken);
+            }
+          }
+          if (msToken) {
+            const msResult = await evaluateMicrosoft(conditionTree, msToken, watch.last_execution_at, watch.compiled_at || watch.created_date);
+            evaluationResult = msResult.triggered;
+            // Reusa a mesma estrutura (id/subject/from/snippet/date) para a mensagem amigavel
+            gmailNewMessages = msResult.messages as unknown as GmailNewMessage[];
+          }
+        }
       }
 
       const durationMs = Date.now() - t0;
@@ -307,7 +423,7 @@ async function runOneTick(base44: any, googleTokenCache: Map<string, string>): P
       // Calendar: dispara na transicao false->true.
       const wasTriggered = provider === 'clock'
         ? (evaluationResult === true && prevResult !== true)
-        : provider === 'gmail'
+        : (provider === 'gmail' || provider === 'microsoft')
           ? (evaluationResult === true && prevResult !== true)
           : (evaluationResult === true && prevResult === false);
 
@@ -416,6 +532,14 @@ async function runOneTick(base44: any, googleTokenCache: Map<string, string>): P
           ).join('\n\n');
           friendlyMsg = `📧 Novo email recebido${acctLabel}:\n\n${emailLines}`;
         }
+        if (provider === 'microsoft' && gmailNewMessages.length > 0) {
+          const acct = conditionTree.params?.accountEmail ?? '';
+          const acctLabel = acct ? ` em ${acct}` : '';
+          const emailLines = gmailNewMessages.map((m: GmailNewMessage) =>
+            `**${m.subject}**\n   De: ${m.from} | ${m.date}\n   _${m.snippet}_`,
+          ).join('\n\n');
+          friendlyMsg = `📧 Novo email no Outlook${acctLabel}:\n\n${emailLines}`;
+        }
         if (_sentTo) {
           if (_sentMessageId) {
             friendlyMsg += `\n\n📧 Email enviado para \`${_sentTo}\`\nID Gmail: \`${_sentMessageId}\``;
@@ -495,9 +619,10 @@ export default async function(req: Request): Promise<Response> {
 
     const totals = { processed: 0, triggered: 0, failed: 0, iterations: 0 };
     const googleTokenCache = new Map<string, string>();
+    const microsoftTokenCache = new Map<string, string>();
 
     for (let i = 0; i < 5; i++) {
-      const r = await runOneTick(base44, googleTokenCache);
+      const r = await runOneTick(base44, googleTokenCache, microsoftTokenCache);
       totals.processed += r.processed;
       totals.triggered += r.triggered;
       totals.failed    += r.failed;
