@@ -483,8 +483,10 @@ ${fullText}`;
     !capabilityResult.capabilities?.documents &&
     !capabilityResult.capabilities?.official_library &&
     !capabilityResult.capabilities?.calculation;
-  const _MAX_HISTORY_MESSAGES = _isSimpleConversation ? 4 : 8;
-  const _MAX_HISTORY_CHARS = _isSimpleConversation ? 3000 : 6000;
+  // Conversas simples precisam de histórico maior — contextos conversacionais
+  // (ex: "Hermes Agent") são exatamente esse tipo e se perdem com janela pequena.
+  const _MAX_HISTORY_MESSAGES = _isSimpleConversation ? 12 : 16;
+  const _MAX_HISTORY_CHARS = _isSimpleConversation ? 6000 : 10000;
   const _recentHistory = historyMessages.slice(-_MAX_HISTORY_MESSAGES);
   let historyText = _recentHistory
     .map((m) => `${m.role === "user" ? "Usuário" : "Assistente"}: ${m.content}`)
