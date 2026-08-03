@@ -220,15 +220,39 @@ async function runOneTick(base44: any, googleTokenCache: Map<string, string>): P
   processed: number; triggered: number; failed: number; skipped: number;
 }> {
   const now = new Date().toISOString();
+  const nowMs = Date.now();
   const allActive = await base44.asServiceRole.entities.Watch.filter({ status: 'active' });
 
+  // Auto-recuperação: incluir watches em 'error' que estão há mais de 5min sem execução.
+  // Isso evita que um erro transiente (ex: validação booleana do backend) trav o watch para sempre.
+  const errorWatches = await base44.asServiceRole.entities.Watch.filter({ status: 'error' });
+  const recoverableErrors = errorWatches.filter((w: any) => {
+    if (!w.last_execution_at) return true;
+    const elapsed = nowMs - new Date(w.last_execution_at).getTime();
+    return elapsed > 5 * 60 * 1000; // 5min de cooldown
+  });
+  // Resetar watches recuperáveis para 'active' antes de processá-los
+  for (const w of recoverableErrors) {
+    try {
+      await base44.asServiceRole.entities.Watch.update(w.id, {
+        status: 'active',
+        consecutive_failures: 0,
+        error_message: '',
+        next_execution_at: now,
+      });
+      console.log(`[scheduler] Auto-recuperando watch ${w.id.slice(-6)} do erro`);
+    } catch { /* silent */ }
+  }
+
+  const allProcessable = [...allActive, ...recoverableErrors];
+
   // Filtrar watches que estão no horário de execução
-  const dueWatches = allActive.filter((w: any) => {
+  const dueWatches = allProcessable.filter((w: any) => {
     if (!w.next_execution_at) return true;
     return new Date(w.next_execution_at) <= new Date(now);
   });
 
-  const result = { processed: 0, triggered: 0, failed: 0, skipped: allActive.length - dueWatches.length };
+  const result = { processed: 0, triggered: 0, failed: 0, skipped: allProcessable.length - dueWatches.length };
 
   for (const watch of dueWatches) {
     try {
@@ -291,7 +315,7 @@ async function runOneTick(base44: any, googleTokenCache: Map<string, string>): P
       await base44.asServiceRole.entities.Watch.update(watch.id, {
         last_execution_at:      now,
         next_execution_at:      nextExec,
-        last_evaluation_result: evaluationResult,
+        last_evaluation_result: Boolean(evaluationResult),
         trigger_count:          (watch.trigger_count || 0) + (wasTriggered ? 1 : 0),
         consecutive_failures:   0,
         status:                 newStatus,
