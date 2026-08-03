@@ -148,6 +148,27 @@ Follow the instructions in `AGENTS.md`.
 
 ---
 
+### 2026-08-03 — Fix: Perda de contexto ao fechar e reabrir a aba
+
+**Problema:** Ao fechar e reabrir a aba, o contexto da conversa se perdia — o sistema não lembrava de informações discutidas anteriormente (ex: "Hermes Agent").
+
+**Causa raiz (3 pontos):**
+1. `globalThis` é limpo quando a aba fecha — o estado em memória não sobrevive.
+2. Histórico passado ao LLM era limitado a apenas 4 mensagens para "conversas simples" — qualquer tópico sem busca web/docs era truncado.
+3. `memoryPipeline.interpretIntent` não incluía `"messages"` para perguntas do tipo "me fale sobre X" — informações de sessões anteriores não eram buscadas.
+
+**Correções:**
+
+1. **`ConversationPersistence.ts`** — `getOrCreateActiveSession()` agora salva o ID da sessão ativa no `localStorage` (`memoryos_last_session_id`) e o restaura ao reabrir a aba, antes de qualquer fallback.
+
+2. **`ConversationSessionManager.ts`** — `createNewSession()` e `switchSession()` agora chamam `saveLastSessionId()` para manter o `localStorage` sempre atualizado.
+
+3. **`memoryReasoningPlanner.js`** — Limite de histórico aumentado: conversas simples passam 12 mensagens/6000 chars ao LLM (era 4/3000); conversas complexas passam 16/10000 (era 8/6000).
+
+4. **`memoryPipeline.js`** — Busca cross-session aumentada de 50 para 100 mensagens no fallback; prompt de `interpretIntent` agora instrui explicitamente que "me fale sobre X" sempre inclui `"messages"` nos `query_types`; fallback de erro também inclui `"messages"` por padrão.
+
+---
+
 ### 2026-08-02 — Gmail messageId exibido no chat como confirmação de envio
 
 **Motivação:** Usuário queria ver o hash/ID real do Gmail como prova de entrega do email agendado.
