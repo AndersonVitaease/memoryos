@@ -492,3 +492,29 @@ A `UCRBridge.ts` (que envolve TODO connector no runtime) ja emite `ConnectorExec
 **Estado:** Fase 1 iniciada em 2026-08-03. Componentes criados: `MemoryActivityIndicator.jsx`, `GlobalSyncStatus.jsx` (integração ao `AppLayout.jsx`).
 
 ---
+
+### 2026-08-03 — Otimizacoes de Performance do Pipeline de Conversa
+
+**Doc completa:** `src/docs/01-operational-knowledge/SESSION-2026-08-03-CHAT-PERFORMANCE-OPTIMIZATIONS.md`
+
+**Contexto:** Usuario reportou lentidao recorrente nas respostas do chat. Inspecionada a critical path (mensagem normal entre `persistMessage` do usuario e a chamada do LLM) — identificados pontos de latencia pre-LLM. O LLM principal (`google/gemini-2.5-flash`, ~2-4s) e o custo dominante e **nao foi tocado**; todas as otimizacoes visam reduzir o overhead pre-LLM sem alterar a qualidade da resposta.
+
+**5 otimizacoes aplicadas (todas na critical path, build verde):**
+
+1. **`buildConversationContext` fire-and-forget** (`ConversationPipeline.ts`) — antes `await`-ado, so alimentava RCL/observabilidade; `memoryService.retrieve` ja fornece memoria ao LLM. Remove ~200-400ms de leitura de memoria da critical path.
+
+2. **`stateViewEngine.buildForSession` paralelizado com `orchestrateCapabilities`** (`memoryReasoningPlanner.js`) — rodavam em serie (ETAPA 2 e 3); agora `Promise.all`. Reduz pela duracao da menor (~150-300ms).
+
+3. **Gatilho do classificador de Drive restrito a substantivos fortes** (`memoryReasoningPlanner.js`, `_driveHeuristicCheck`) — antes disparava LLM auxiliar (~1-2s) pra verbos genericos ("abrir", "ler", "conteudo"); agora so com substantivos de arquivo (drive/pasta/arquivo/pdf/docx/planilha/baixar/download/upload). Corta ~1-2s na maioria das mensagens comuns.
+
+4. **`unifiedContextBuilder.build` (+ KFE + Knowledge Graph) fire-and-forget** (`ConversationPipeline.ts`) — refazia as mesmas 5 queries de memoria so pra enriquecer prompt (kfmContext) e persistir grafo; para chat normal (0 entidades) nao muda nada. `memoryService.retrieve` ja fornece memoria. Remove ~300ms de DB redundante de TODAS as mensagens.
+
+5. **Timeout do `semanticWebSearchCheck` capado de 8s pra 2s** (`capabilityDetector.js`) — chamada de LLM (`InvokeLLM`) que so decide "precisa busca web?" podia segurar a resposta por 8s; agora cap em 2s. Se nao responder a tempo, fallback gracioso (sem web search, LLM responde com o que tem).
+
+**Resultado:** ~500-900ms removidos da critical path pre-LLM. LLM continua sendo o custo dominante restante.
+
+**Trade-offs documentados:** perda do enriquecimento kfmContext (suplementar — memoriaService.retrieve supre) para sessoes com entidades; mensagens com sinal externo podem perder web search se classificacao semantica >2s (fallback gracioso). Nenhum desses afeta conversas normais.
+
+**Nao alterado (explicitamente):** modelo do LLM, tamanho do prompt, `memoryService.retrieve`, `classifyIntent` (regex puro, ja rapido).
+
+---
