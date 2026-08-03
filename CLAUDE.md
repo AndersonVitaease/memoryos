@@ -35,7 +35,11 @@ Follow the instructions in `AGENTS.md`.
 
 **7. Conectores nativos novos (base construida, aguardando credenciais do usuario):**
 - **Microsoft Graph** (Outlook/Calendar/OneDrive) -- OAuth completo espelhando GoogleAuthSession.js, `MicrosoftGraphConnector.ts` com 8 capacidades. Falta: usuario criar App Registration no Azure Portal.
-- **Travellink Web API (Aereo)** -- function `travellinkCall` com criptografia RSA-PKCS1 do Developer Access Code (testada isoladamente, confirmada). Falta: usuario aguardando 3 credenciais do suporte da Travellink (api.travellink@wooba.com.br) + estrutura exata do endpoint Disponibilidade.
+- **Travellink Web API (Aereo)** -- function `travellinkCall` com criptografia RSA-PKCS1 do Developer Access Code (testada isoladamente, confirmada — RSA_PKCS1_PADDING funciona pra encrypt, decrypt e bloqueado por CVE-2023-46809 mas irrelevante, decrypt e do lado da Travellink).
+  - **Credenciais necessarias (usuario nao tem nenhuma ainda):** Developer Token, Developer Access Code, chave publica RSA (formato PEM) — pedir pro suporte, nao existe forma de conseguir sozinho.
+  - **Contatos confirmados da Wooba/Travellink:** email `api.travellink@wooba.com.br` (dev/API), WhatsApp +55 61 9148-0799 (comercial/service), telefone +55 (61) 3435-0420, portal suportewooba.com.br. Email de pedido de credencial sandbox ja foi redigido e enviado (ver historico da conversa se precisar reenviar).
+  - **ARMADILHA achada, nao repetir:** existe uma API Swagger/REST mais nova em `wooba-sandbox.travellink.com.br/TravellinkWebApi` (categorias Bus/Car/Cruise/Hotels/Insurance/Sales/Ota/Services) — **NAO tem busca/disponibilidade de voo**, so 2 webhooks em "Air". Nao e substituta da API antiga (`AereoNoSession.svc`) que o usuario realmente precisa. Ache o endpoint `Disponibilidade` exato SO na doc original do Postman, nao nessa API nova.
+  - Endpoint `/api/help/generatedeveloperaccesscode` dessa API nova poderia ajudar a testar a criptografia com credencial real, mas exige `AccessCredentials` (Company.Identifier + Password) — outra credencial que o usuario tambem nao tem ainda.
 
 **Licoes de metodologia (relevantes pra qualquer sessao futura):**
 - Commit (via ferramenta de terminal) != Publish -- so vale no app real apos o usuario clicar "Publicar"
