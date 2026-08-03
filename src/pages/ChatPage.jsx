@@ -7,7 +7,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   Send, Brain, Sparkles, ChevronDown, ChevronUp,
-  Volume2, Paperclip, RotateCcw, Square, Clock,
+  Volume2, Paperclip, RotateCcw, Square, Clock, User,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { useConversation } from "@/lib/conversation-platform/useConversation";
@@ -354,11 +354,18 @@ export default function ChatPage({ projectId } = {}) {
           )}
 
           {conversation.messages.map((msg) => (
-            <div key={msg.id} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${
+            <div key={msg.id} className="flex gap-3">
+              <div className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center ${
+                msg.role === "user" ? "bg-zinc-900" : "bg-gradient-to-br from-violet-500 to-indigo-600"
+              }`}>
+                {msg.role === "user"
+                  ? <User className="w-4 h-4 text-white" />
+                  : <Brain className="w-4 h-4 text-white" />}
+              </div>
+              <div className={`flex-1 min-w-0 rounded-2xl px-4 py-3 text-sm ${
                 msg.role === "user"
-                  ? "bg-zinc-900 text-white rounded-br-md"
-                  : "bg-white border border-zinc-200 text-zinc-700 rounded-bl-md shadow-sm"
+                  ? "bg-zinc-50 text-zinc-800"
+                  : "bg-white border border-zinc-200 text-zinc-700 shadow-sm"
               }`}>
                 {msg.role === "assistant" ? (
                   msg.isStreaming ? (
