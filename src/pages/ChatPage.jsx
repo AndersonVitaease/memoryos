@@ -211,6 +211,24 @@ export default function ChatPage() {
       });
       conversation.appendMessage(savedAssistantMsg);
 
+      // Fase 3 — Event-Driven Timeline (aditivo/shadow): publica SystemEvent
+      // ao concluir a ingestao, alongside a Message de confirmacao.
+      try {
+        await base44.entities.SystemEvent.create({
+          conversationId: session.id,
+          type: "knowledge_ingested",
+          source: "KnowledgeIngestion",
+          actor: "system",
+          status: "success",
+          payload: {
+            displayName: result.displayName,
+            stats,
+            emailSent: result.emailSent || null,
+          },
+          metadata: {},
+        });
+      } catch { /* fire-and-forget — nunca quebra a ingestao */ }
+
       setProcessingItems((prev) => prev.filter((item) => item.id !== itemId));
     } catch (err) {
       console.error("[ChatPage] Falha ao processar anexo:", err);
