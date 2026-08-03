@@ -16,6 +16,7 @@ import {
   FileText, Tag, ArrowLeft,
 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
+import { useAuth } from "@/lib/AuthContext";
 import { CORE_NAV_ITEMS, DEV_NAV_ITEMS } from "./Sidebar";
 import { useNavigationContext } from "@/hooks/useNavigationContext";
 
@@ -93,9 +94,11 @@ function ProjectContextSection({ projectId, onNavigate }) {
 export default function ContextAwareSidebar({ onNavigate }) {
   const location = useLocation();
   const { scope, projectId } = useNavigationContext();
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
 
   const [devOpen, setDevOpen] = useState(() =>
-    DEV_NAV_ITEMS.some((item) => location.pathname.startsWith(item.path))
+    isAdmin && DEV_NAV_ITEMS.some((item) => location.pathname.startsWith(item.path))
   );
 
   const renderItem = (item) => {
@@ -144,21 +147,25 @@ export default function ContextAwareSidebar({ onNavigate }) {
       <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
         {CORE_NAV_ITEMS.map(renderItem)}
 
-        <button
-          onClick={() => setDevOpen((v) => !v)}
-          className="w-full flex items-center gap-2 px-3 py-2 mt-3 text-xs font-semibold uppercase tracking-wide text-zinc-500 hover:text-zinc-300 transition-colors"
-        >
-          {devOpen ? (
-            <ChevronDown className="w-3.5 h-3.5" />
-          ) : (
-            <ChevronRight className="w-3.5 h-3.5" />
-          )}
-          <Wrench className="w-3.5 h-3.5" />
-          Ferramentas de Desenvolvimento
-          <span className="ml-auto text-zinc-600">{DEV_NAV_ITEMS.length}</span>
-        </button>
+        {isAdmin && (
+          <>
+            <button
+              onClick={() => setDevOpen((v) => !v)}
+              className="w-full flex items-center gap-2 px-3 py-2 mt-3 text-xs font-semibold uppercase tracking-wide text-zinc-500 hover:text-zinc-300 transition-colors"
+            >
+              {devOpen ? (
+                <ChevronDown className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronRight className="w-3.5 h-3.5" />
+              )}
+              <Wrench className="w-3.5 h-3.5" />
+              Ferramentas de Desenvolvimento
+              <span className="ml-auto text-zinc-600">{DEV_NAV_ITEMS.length}</span>
+            </button>
 
-        {devOpen && DEV_NAV_ITEMS.map(renderItem)}
+            {devOpen && DEV_NAV_ITEMS.map(renderItem)}
+          </>
+        )}
       </nav>
 
       <div className="p-3 border-t border-zinc-800 shrink-0">
