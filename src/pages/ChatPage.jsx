@@ -27,7 +27,10 @@ import CopyButton from "@/components/chat/CopyButton";
 import RegenerateButton from "@/components/chat/RegenerateButton";
 import SuggestedPrompts from "@/components/chat/SuggestedPrompts";
 import SessionSwitcher from "@/components/chat/SessionSwitcher";
+import ScrollToBottomButton from "@/components/chat/ScrollToBottomButton";
+import DateSeparator from "@/components/chat/DateSeparator";
 import { formatTime } from "@/components/timeline/formatTime";
+import { formatDateLabel, dayKey } from "@/components/timeline/formatDateLabel";
 
 // ─── VXP Status labels ────────────────────────────────────────────────────────
 
@@ -67,6 +70,7 @@ export default function ChatPage({ projectId } = {}) {
   const [timelineOpen, setTimelineOpen] = useState(false);
 
   const [longWait, setLongWait] = useState(false);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   useEffect(() => {
     if (!conversation.isLoading) {
       setLongWait(false);
@@ -138,6 +142,7 @@ export default function ChatPage({ projectId } = {}) {
         userScrolledRef.current = false;
       }
       lastScrollTopRef.current = scrollTop;
+      setShowScrollToBottom(!atBottom && scrollHeight - clientHeight > 400);
     };
 
     container.addEventListener("scroll", handleScroll, { passive: true });
@@ -336,6 +341,11 @@ export default function ChatPage({ projectId } = {}) {
             currentSession={conversation.session}
             onNew={() => conversation.newSession(undefined, projectId)}
             onSwitch={(id) => conversation.switchSession(id)}
+            onRename={(id, title) => conversation.renameSession(id, title)}
+            onArchive={async () => {
+              await conversation.archiveCurrentSession();
+              await conversation.newSession(undefined, projectId);
+            }}
             disabled={conversation.isLoading}
           />
           {conversation.session?.summary && (
@@ -383,8 +393,15 @@ export default function ChatPage({ projectId } = {}) {
             </div>
           )}
 
-          {conversation.messages.map((msg, index) => (
-            <div key={msg.id} className="flex gap-3 group">
+          {conversation.messages.map((msg, index) => {
+            const prev = conversation.messages[index - 1];
+            const showDateSep = !prev || dayKey(prev.created_date) !== dayKey(msg.created_date);
+            return (
+            <React.Fragment key={msg.id}>
+              {showDateSep && msg.created_date && (
+                <DateSeparator date={formatDateLabel(msg.created_date)} />
+              )}
+            <div className="flex gap-3 group">
               <div className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center ${
                 msg.role === "user" ? "bg-zinc-900" : "bg-gradient-to-br from-violet-500 to-indigo-600"
               }`}>
@@ -426,7 +443,9 @@ export default function ChatPage({ projectId } = {}) {
                 )}
                 </div>
                 </div>
-                ))}
+            </React.Fragment>
+            );
+          })}
 
           {/* Thinking indicator — VXP progressive states */}
           {showReasoningIndicator && (
@@ -448,6 +467,16 @@ export default function ChatPage({ projectId } = {}) {
 
           <div ref={bottomRef} />
         </div>
+
+        {showScrollToBottom && (
+          <ScrollToBottomButton
+            onClick={() => {
+              userScrolledRef.current = false;
+              bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+              setShowScrollToBottom(false);
+            }}
+          />
+        )}
       </div>
 
       {/* Voice speaking status bar */}
