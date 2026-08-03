@@ -1,0 +1,47 @@
+{
+  "name": "SystemEvent",
+  "type": "object",
+  "properties": {
+    "conversationId": {
+      "type": "string",
+      "description": "ID da sessao de conversa pai (rastreabilidade)"
+    },
+    "correlationId": {
+      "type": "string",
+      "description": "ID da transacao/execucao que originou este evento"
+    },
+    "parentId": {
+      "type": "string",
+      "description": "ID do evento que causou este (para visualizacao em arvore)"
+    },
+    "type": {
+      "type": "string",
+      "description": "Tipo do evento (watch_triggered, email_sent, connector_exec, planning_completed, etc.)"
+    },
+    "source": {
+      "type": "string",
+      "description": "Modulo de origem (CognitiveEventBus, RuntimeEventBus, WatchEngine, Planner)"
+    },
+    "actor": {
+      "type": "string",
+      "description": "Quem originou (system, user, worker_id)"
+    },
+    "status": {
+      "type": "string",
+      "description": "success, failure, pending, running"
+    },
+    "payload": {
+      "type": "object",
+      "description": "Dados principais visiveis ao usuario no card do evento"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Dados tecnicos de debug/telemetria (seq, eventId original, durationMs, etc.)"
+    }
+  },
+  "required": [
+    "conversationId",
+    "type",
+    "source"
+  ]
+}
