@@ -6,6 +6,46 @@ Follow the instructions in `AGENTS.md`.
 
 ## Session Notes
 
+### 2026-07-30 a 2026-07-31 — Performance, limpeza de codigo morto, multi-provider de IA, MCP, documentos, conectores nativos
+
+**Doc completa:** `src/docs/05-project-memory/Decisions.md` (secao "Sessao 2026-07-30") + `src/docs/foundation/adr/ADR-010.md` + `ADR-011.md`
+
+**Sessao de um dia inteiro, com acesso real ao repositorio via ferramenta de terminal (Node, npm, git, esbuild, vite build) -- toda mudanca validada com build real antes de commit, nao so sintaxe.**
+
+**1. Performance (numeros medidos em producao):**
+- Busca web: 26.000-43.000ms -> 1.500-2.900ms (substituicao de `InvokeLLM+grounding` por Serper API -- ver ADR-010)
+- `SearchEngine` parou de esperar o provider mais lento (`Promise.all` -> resolve no primeiro provider bom)
+- `memoryPipeline.js`: atalho por regex pra perguntas simples de memoria (pula chamada de LLM)
+- `capabilityDetector.js`: timeout de 8s na checagem semantica (antes sem limite, contribuia pros timeouts globais de 90s)
+- ETAPA 6 (resposta final) migrada pra registro de providers de IA (OpenRouter primeiro, ~600-900ms, fallback Base44) -- ver ADR-011
+- Desvio de "servico de IA direto" (traducao/resumo/transcricao) corrigido e movido pro inicio do pipeline (ETAPA 0)
+
+**2. Limpeza de codigo morto:**
+- 103 pastas de `src/lib` removidas (183 -> 91), 121+ paginas de `src/pages` removidas (269 -> ~148)
+- Metodologia corrigida no meio do processo: regex teve falso positivo/negativo reais (quase apagou `Connections.jsx`, pagina real, por engano) -- toda analise final usou `esbuild`/`vite build` reais
+- **Regressao causada e corrigida:** `Phase570Page.jsx` (autenticacao GitHub/Base44) foi apagada por engano -- so era alcancada por URL direta (rota real sem nenhum `import` apontando pra ela, ponto cego da analise por import). Restaurada como `ConnectorAuthCenter.jsx`, agora linkada de verdade em `Connections.jsx`.
+
+**3. Registro de Providers de IA:** `src/lib/ai-provider-registry/` -- extensivel, mesmo padrao do `ConnectorRegistry`. Hoje: Base44 + OpenRouter (text-generation).
+
+**4. Cliente MCP generico + Google Workspace MCP:** `base44/functions/mcpClientCall/entry.ts` (SDK oficial, Streamable HTTP + SSE fallback). Testado com sucesso contra o Gmail MCP oficial do Google, reaproveitando token OAuth ja existente (13 ferramentas retornadas). Bug do SDK oficial contornado (`tryRecoverResultFromError` -- issues #804/#340 do repo oficial). `tools/call` (execucao real) ainda falha por credencial -- nao resolvido.
+
+**5. Document Processing:** `base44/functions/documentParser/entry.ts` (mammoth + xlsx/SheetJS) preenche gap de DOCX/XLSX documentado como "planejado, nunca implementado". Corrigido bug pre-existente: upload de anexo no chat anunciava aceitar .docx/.xlsx mas sempre falhava. Nova capacidade: conteudo completo de documento sem o corte de 500/800 chars do contexto normal (`FullDocumentContentDetector.js`).
+
+**6. Bug de roteamento:** `CalendarSemanticProvider.ts` sequestrava mensagens com palavra generica de tempo ("hoje", "semana") sozinha -- peso ajustado de 0.45 pra 0.15 (abaixo do limiar sozinho).
+
+**7. Conectores nativos novos (base construida, aguardando credenciais do usuario):**
+- **Microsoft Graph** (Outlook/Calendar/OneDrive) -- OAuth completo espelhando GoogleAuthSession.js, `MicrosoftGraphConnector.ts` com 8 capacidades. Falta: usuario criar App Registration no Azure Portal.
+- **Travellink Web API (Aereo)** -- function `travellinkCall` com criptografia RSA-PKCS1 do Developer Access Code (testada isoladamente, confirmada). Falta: usuario aguardando 3 credenciais do suporte da Travellink (api.travellink@wooba.com.br) + estrutura exata do endpoint Disponibilidade.
+
+**Licoes de metodologia (relevantes pra qualquer sessao futura):**
+- Commit (via ferramenta de terminal) != Publish -- so vale no app real apos o usuario clicar "Publicar"
+- `vite build`/`esbuild` reais > regex, sempre, pra qualquer analise de "isso e usado?" ou "isso esta quebrado?"
+- Reachability por import != reachability por rota (React Router) -- pagina pode ter `<Route>` real sem nenhum `import` apontando pra ela
+- Sandbox da ferramenta de terminal e efemero -- pode reiniciar entre chamadas
+
+---
+
+
 ### 2026-08-02 — Watch Engine: Email Agendado via Gmail OAuth
 
 **Doc completa:** `src/docs/01-operational-knowledge/SESSION-2026-08-02-WATCH-ENGINE-EMAIL.md`
