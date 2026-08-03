@@ -179,7 +179,7 @@ export default function ChatPage({ projectId } = {}) {
     conversation.appendMessage(savedUserMsg);
 
     try {
-      const result = await ingestKnowledge({
+      await ingestKnowledge({
         type, file, url, text,
         name: displayName,
         sessionId: session.id,
@@ -191,44 +191,8 @@ export default function ChatPage({ projectId } = {}) {
         },
       });
 
-      const stats = result.stats;
-      const lines = [];
-      if (stats.entities > 0) lines.push(`✓ ${stats.entities} entidades`);
-      if (stats.keywords > 0) lines.push(`✓ ${stats.keywords} palavras-chave`);
-      if (stats.decisions > 0) lines.push(`✓ ${stats.decisions} decisoes`);
-      if (stats.tasks > 0) lines.push(`✓ ${stats.tasks} tarefas`);
-      if (stats.topics > 0) lines.push(`✓ ${stats.topics} assuntos`);
-
-      const emailLine = result.emailSent
-        ? `\n\n📧 Email enviado para \`${result.emailSent.to}\`\nAssunto: _${result.emailSent.subject}_${result.emailSent.messageId ? `\nID Gmail: \`${result.emailSent.messageId}\`` : ""}`
-        : "";
-
-      const savedAssistantMsg = await base44.entities.Message.create({
-        session_id: session.id,
-        role: "assistant",
-        content: `**${result.displayName}** processado e salvo na memoria.\n\n${lines.join("\n")}${emailLine}`,
-        memory_tier: "active",
-      });
-      conversation.appendMessage(savedAssistantMsg);
-
-      // Fase 3 — Event-Driven Timeline (aditivo/shadow): publica SystemEvent
-      // ao concluir a ingestao, alongside a Message de confirmacao.
-      try {
-        await base44.entities.SystemEvent.create({
-          conversationId: session.id,
-          type: "knowledge_ingested",
-          source: "KnowledgeIngestion",
-          actor: "system",
-          status: "success",
-          payload: {
-            displayName: result.displayName,
-            stats,
-            emailSent: result.emailSent || null,
-          },
-          metadata: {},
-        });
-      } catch { /* fire-and-forget — nunca quebra a ingestao */ }
-
+      // Fase 3 — Feedback via NotificationHub (toast) + SystemEvent persistido pelo pipeline.
+      // O chat fica limpo: nenhuma Message de confirmação é injetada aqui.
       setProcessingItems((prev) => prev.filter((item) => item.id !== itemId));
     } catch (err) {
       console.error("[ChatPage] Falha ao processar anexo:", err);

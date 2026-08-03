@@ -488,20 +488,14 @@ Seja minucioso. Não perca nenhuma informação importante.`,
   // 7 — Finalizar
   onStage?.("finalizing");
 
-  // Fase 1 — Observabilidade: sinaliza memória registrada
-  try {
-    cognitiveEventBus.emit("knowledge_observation_generated", sessionId || "", ingestionExecId, {
-      source: "knowledge_ingestion",
-      documentId: doc.id,
-      stats: {
-        entities: entities.length,
-        keywords: extraction.keywords?.length || 0,
-        decisions: extraction.decisions?.length || 0,
-        tasks: extraction.tasks?.length || 0,
-        topics: extraction.topics?.length || 0,
-      },
-    });
-  } catch { /* fire-and-forget — observabilidade apenas */ }
+  const ingestionStats = {
+    entities: entities.length,
+    keywords: extraction.keywords?.length || 0,
+    decisions: extraction.decisions?.length || 0,
+    tasks: extraction.tasks?.length || 0,
+    topics: extraction.topics?.length || 0,
+  };
+  const ingestionDisplayName = displayName || file?.name || "Conteúdo";
 
   // 8 — Disparar email de automação PDF (se Watch ativo configurado)
   let emailSent = null;
@@ -556,6 +550,33 @@ Processado automaticamente pelo MemoryOS Watch Engine.`;
       // Non-critical — não bloqueia o resultado do pipeline
     }
   }
+
+  // Fase 3 — Feedback ativo: sinaliza conclusão ao NotificationHub (toast em tempo real)
+  // e persiste um SystemEvent durável (timeline). Fire-and-forget em ambos.
+  try {
+    cognitiveEventBus.emit("knowledge_observation_generated", sessionId || "", ingestionExecId, {
+      source: "knowledge_ingestion",
+      documentId: doc.id,
+      displayName: ingestionDisplayName,
+      stats: ingestionStats,
+      emailSent: emailSent || null,
+    });
+  } catch { /* fire-and-forget */ }
+  try {
+    await base44.entities.SystemEvent.create({
+      conversationId: sessionId || "",
+      type: "knowledge_ingested",
+      source: "KnowledgeIngestion",
+      actor: "system",
+      status: "success",
+      payload: {
+        displayName: ingestionDisplayName,
+        stats: ingestionStats,
+        emailSent: emailSent || null,
+      },
+      metadata: {},
+    });
+  } catch { /* fire-and-forget — nunca quebra a ingestão */ }
 
   return {
     document: doc,
