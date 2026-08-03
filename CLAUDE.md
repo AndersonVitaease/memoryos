@@ -422,3 +422,34 @@ A `UCRBridge.ts` (que envolve TODO connector no runtime) ja emite `ConnectorExec
 **Principios de nao-quebra:** aditivo (nunca destrutivo), merge no frontend, fallback para chat, bridge fire-and-forget, render com default seguro, modo default = Conversacao.
 
 ---
+
+### 2026-08-03 — Inspecao de Codigo Morto: 85 arquivos removidos com seguranca
+
+**Objetivo:** Auditoria sistematica de modulos orfaos no repositorio, removendo apenas o que tem certeza de nao quebrar nada (regra do usuario: "so deleta se for certeza que nao teremos problemas").
+
+**Metodologia de verificacao (em 2 passos, para evitar falsos positivos):**
+1. **Grafo de import 1-passo:** varre todos os arquivos `src/` + `base44/`, extrai specifiers de import/export via regex, resolve cada um (alias `@/`, relativo `../`, extensoes `.ts/.tsx/.js/.jsx` + `index.ts` para barrels). Um arquivo com zero importadores-resolvidos e candidato a morto.
+2. **Classificador de mencionadores (anti-falso-positivo):** para cada candidato, separa mencionadores em `importLine` (linha e `import`/`export...from` contendo o token) vs `stringMention` (mencao em string/comentario). So deleta se `importLine === 0` (a mencao e so string/doc, nao import real). Arquivos com imports reais confirmados = VIVOS, nunca deletar.
+
+**Bug de metodologia descoberto e corrigido no meio:** o classificador de barrels (`index.ts`) conta falsos positivos — `import { X } from '@/lib/dir/Sibling'` contem "dir" como substring do path mas importa o SIBLING, nao o barrel. Decisao: barrels com sinal conflitante (zero importadores resolvidos no grafo, mas aparecem no classificador) ficam de fora por incerteza. Nao deletar.
+
+**Remocoes executadas (85 arquivos total):**
+
+1. **Libs orfaos (12 arquivos):** providers defuntos (`OpenAI*.js`, `Anthropic*.js`), audit stores antigos, modulos de reason/providers sem nenhum importador. Zero refs em codigo.
+2. **UI components/hooks orfaos (65 arquivos):** cluster `ef40` de certificacao (defunto), test runners de UI, componentes de timeline mortos (`MessageBubble`, `TimelineEventRenderer`, `EventShell`, `*EventCard`), hooks sem uso. Verificacao: cada um tinha zero imports confirmados.
+3. **Arquivos com mencao so em string (5 arquivos):** `RKBInstrumented.ts`, `WebSearchProvider.ts`, `GmailAdapter.ts` (ucr), `CertificationMetrics.jsx`, `LearningTestRunner.jsx` — mencionados apenas em strings/docs, nunca importados.
+4. **Funcao de backend orfa (1 arquivo):** `base44/functions/cleanupContaminatedRecords/entry.ts` — zero referencias em codigo, workflows e agentes. Script one-off de limpeza, nunca invocado.
+5. **Entidades legacy sem uso (2 arquivos):** `base44/entities/ChatMessage.jsonc` + `base44/entities/Conversation.jsonc` — zero chamadas `base44.entities.X` no codigo, zero acesso dinamico (`entities[...]`), zero referencias em workflows/agentes, **zero registros salvos** (confirmado via SDK: ambas as colecoes estavam vazias). Superseded por `Message` (ChatMessage) e `ChatSession` (Conversation).
+
+**Verificacao pre-delecao de entidades (modelo a repetir):** antes de afirmar "seguro" em entidades, checar 4 coisas — (a) contagem de registros via `base44.entities.X.list()`, (b) `entities.X` estatico em codigo, (c) `entities[X]` dinamico, (d) nome em workflows/agentes `.jsonc`. So deletar se todos 4 = zero.
+
+**Nao deletado (decisao explicita):**
+- 21 barrels `index.ts` com sinal conflitante (grafo diz morto, classificador conta paths de siblings como "importers"). Incerteza > risco. Preservados.
+- 133 arquivos de teste sem runner (`*.test.ts`, `*Tests.ts`, `*.spec.ts`) — decisao de produto, nao de codigo. Sem runner configurado, mas podem ser revividos. Preservados ate decisao do usuario.
+- ~50 arquivos de raiz (`test_*.mjs`, `*_FINAL.md`, `AUDITORIA_*.md`, `MATRIZ_*.md`) — scripts de teste manual e relatorios pontuais da raiz do projeto. Decisao de produto. Preservados.
+
+**Build verificado:** apos cada batch de delecao, nenhum WARNING de import nao resolvido. App continua compilando.
+
+**Licao de metodologia (reutilizar):** regex de import-resolve tem dois modos de falhar — falsos negativos (nao pegou um import real, marca vivo como morto) e falsos positivos (pega path de sibling como import do barrel, marca morto como vivo). Para limpeza, o classificador de mencionadores e o freio de seguranca: ele confirma com evidencia direta (a linha e um import contendo o token) antes de deletar. Sempre rodar os dois juntos; nunca deletar com base em um so.
+
+---
