@@ -362,10 +362,10 @@ export default function ChatPage({ projectId } = {}) {
                   ? <User className="w-4 h-4 text-white" />
                   : <Brain className="w-4 h-4 text-white" />}
               </div>
-              <div className={`flex-1 min-w-0 rounded-2xl px-4 py-3 text-sm ${
+              <div className={`flex-1 min-w-0 rounded-2xl px-4 py-3 text-[15px] leading-relaxed ${
                 msg.role === "user"
-                  ? "bg-zinc-50 text-zinc-800"
-                  : "bg-white border border-zinc-200 text-zinc-700 shadow-sm"
+                  ? "bg-violet-50/70 border border-violet-100/70 text-zinc-700"
+                  : "bg-white border border-zinc-200/80 text-zinc-700 shadow-sm"
               }`}>
                 {msg.role === "assistant" ? (
                   msg.isStreaming ? (
@@ -379,7 +379,7 @@ export default function ChatPage({ projectId } = {}) {
                   <p className="whitespace-pre-wrap">{msg.content}</p>
                 )}
                 {msg.created_date && (
-                  <div className="text-[10px] mt-1.5 text-zinc-400">
+                  <div className="text-[11px] mt-1.5 text-zinc-400">
                     {formatTime(msg.created_date)}
                   </div>
                 )}
