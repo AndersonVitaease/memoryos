@@ -281,8 +281,16 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
   // codigo agora sao respondidos sem gastar tempo com memoria e
   // deteccao de capacidades que vao ser descartadas de qualquer jeito.
   try {
+    // FIX (bug real encontrado em producao, 2026-08-0X): a condicao original
+    // nao checava _earlyService.id === "ai" — qualquer servico detectado com
+    // conector disponivel (ex: "email", que tem um sistema proprio via
+    // UCRBridge/Gmail) tambem desviava pra OpenRouter cru, sem contexto,
+    // ignorando toda a pipeline de capacidade real. "ler email" disparava
+    // esse desvio incorretamente, gerando resposta generica em ingles.
+    // Restrito de volta pro escopo original documentado no ADR-011:
+    // so traducao/resumo/transcricao/geracao de codigo (servico "ai").
     const _earlyService = _isIdentityQuery ? null : detectService(userMsg);
-    if (_earlyService && getConnectorsForService(_earlyService.id).length > 0) {
+    if (_earlyService && _earlyService.id === "ai" && getConnectorsForService(_earlyService.id).length > 0) {
       const { model } = pickModelForMessage(userMsg);
       const connector = new OpenRouterConnector();
       const result = await connector.execute(
