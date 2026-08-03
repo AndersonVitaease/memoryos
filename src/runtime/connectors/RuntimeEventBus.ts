@@ -148,3 +148,16 @@ export class RuntimeEventBus {
     };
   }
 }
+// ── Singleton HMR-safe ────────────────────────────────────────────────────────
+// FIX (religado em 2026-08-02+): antes so a classe era exportada, sem
+// instancia compartilhada — cada import criava um bus separado, isolado.
+// Mesmo padrao ja usado por CognitiveEventBus/KnowledgeRegistry.
+
+const _RUNTIME_EVENT_BUS_KEY = '__RUNTIME_EVENT_BUS__';
+if (!(globalThis as unknown as Record<string, unknown>)[_RUNTIME_EVENT_BUS_KEY]) {
+  (globalThis as unknown as Record<string, unknown>)[_RUNTIME_EVENT_BUS_KEY] = new RuntimeEventBus();
+}
+
+export const runtimeEventBus: RuntimeEventBus = (
+  globalThis as unknown as Record<string, RuntimeEventBus>
+)[_RUNTIME_EVENT_BUS_KEY];
