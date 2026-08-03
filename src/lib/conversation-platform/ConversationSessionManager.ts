@@ -20,6 +20,15 @@ class ConversationSessionManager {
   // ── Initialize / Restore ──────────────────────────────────────────────────
 
   async initializeSession(): Promise<ConversationSession> {
+    const existing = conversationStore.session;
+    // Se já há sessão e mensagens carregadas em memória, não relê do banco.
+    // Isso preserva o contexto durante HMR e re-renders.
+    // Mas se há sessão sem mensagens (reload de página, contexto perdido),
+    // sempre recarrega as mensagens do banco.
+    if (existing && conversationStore.messages.length > 0) {
+      return existing;
+    }
+
     const session = await getOrCreateActiveSession();
     conversationStore.setSession(session);
     conversationStore.emit({

@@ -436,12 +436,9 @@ class ConversationManager {
 // ─── Singleton ────────────────────────────────────────────────────────────────
 
 const _key = "__CXP_MANAGER__";
-const _ver = "__CXP_MANAGER_VER__";
-const _currentVer = "cxp-sched-v3";
 const _g = globalThis as unknown as Record<string, unknown>;
-if (!_g[_key] || _g[_ver] !== _currentVer) {
+if (!_g[_key]) {
   _g[_key] = new ConversationManager();
-  _g[_ver] = _currentVer;
 }
 
 export const conversationManager: ConversationManager = (

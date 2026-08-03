@@ -17,10 +17,9 @@ export function useConversation() {
     return unsub;
   }, []);
 
-  // Initialize once
+  // Initialize — sempre chama, mas o SessionManager decide internamente
+  // se relê do banco (store vazio) ou mantém o que já está em memória.
   useEffect(() => {
-    if (initializedRef.current) return;
-    initializedRef.current = true;
     conversationManager.initialize().catch(console.error);
   }, []);
 
