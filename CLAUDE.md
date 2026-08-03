@@ -320,3 +320,37 @@ A `UCRBridge.ts` (que envolve TODO connector no runtime) ja emite `ConnectorExec
 - Nenhuma documentacao no `EVENT-CATALOG.md` oficial (catalogo FROZEN — eventos de WhatsApp sao internos ao RuntimeEventBus por enquanto).
 
 ---
+
+### 2026-08-03 — Arquitetura Event-Driven Timeline (Planejamento — Opcao B)
+
+**Doc completa:** `src/docs/01-operational-knowledge/SESSION-2026-08-03-EVENT-DRIVEN-TIMELINE-ARCHITECTURE.md`
+
+**Status:** APENAS PLANEJAMENTO. Nenhum codigo implementado nesta sessao.
+
+**Contexto:** Decisao arquitetural de migrar da arquitetura Message-based (todas ocorrencias do sistema como `Message` no banco) para Event-Driven Timeline (ocorrencias de sistema publicadas como `SystemEvent` via Event Bus). O chat passa a ser apenas um tipo de evento dentro da timeline.
+
+**Verificacao feita antes de planejar (mapeamento do estado real):**
+- `CognitiveEventBus.ts` — VIVO, singleton HMR-safe, 6 tipos de evento, em memoria apenas (200 historico), `onAny()` disponivel. Base ideal para plugar persistence bridge.
+- `RuntimeEventBus.ts` — VIVO mas PARALELO (barramento separado, nao compartilha historia com CognitiveEventBus). 15 tipos de conector + 6 cognitive.
+- `ConversationStore.ts` — VIVO, tem seu PROPRIO event system interno (independente dos dois buses acima).
+- `CXPTypes.ts` (linhas 185-191) — JA define interface `ConversationEvent` (in-memory, 13 tipos, NAO persistida).
+
+**Conflito de nomenclatura detectado (CRITICO):** A interface `ConversationEvent` em CXPTypes ja existe para eventos in-memory do pipeline. A nova entidade persistida NAO pode se chamar `ConversationEvent`. Nome proposto: **`SystemEvent`**.
+
+**Schema proposto (`SystemEvent`):** schema-agnostic via `payload` + `metadata` (type: object), com `correlationId`, `parentId`, `timestamp`, `type`, `source`, `actor`, `status`. Extensivel sem alteracao de schema para futuros tipos de evento.
+
+**Plano em 4 fases (sem quebras):**
+1. **Fundacao:** Criar entidade `SystemEvent` + `EventPersistenceBridge` (escuta `cognitiveEventBus.onAny`, persiste fire-and-forget) + `getTimeline()` no ConversationManager (merge Message + SystemEvent ordenados por timestamp).
+2. **Instrumentacao passiva:** Estender bridge para escutar `RuntimeEventBus` tambem. Render polimorfico no ChatPage (card generico para eventos, ChatBubble para messages).
+3. **Migracao das fontes:** Watch Engine, Connector Runtime e Knowledge Ingestion param de criar `Message` para confirmacoes de sistema e passam a publicar `SystemEvent`. `Message` fica exclusiva para role user/assistant.
+4. **Modo Timeline:** Switcher no ChatPage ("Conversacao" vs "Linha do Tempo") + cards ricos (EmailEventCard, WatchEventCard).
+
+**Mapa de risco documentado:**
+- VIVO (extensivel): CognitiveEventBus, ConversationManager, ConversationStore, ChatPage, Message.
+- PARALELO (precaucao): RuntimeEventBus (fonte independente), CXPTypes `ConversationEvent` (nao confundir com nova entidade).
+- LEGADO (apos Fase 3): `PendingWatchAction.jsonc` (torna-se redundante), injecao de `Message` para confirmacoes de sistema.
+- A CRIAR: `SystemEvent.jsonc`, `EventPersistenceBridge.ts`, `src/components/timeline/*`.
+
+**Principios de nao-quebra:** aditivo (nunca destrutivo), merge no frontend, fallback para chat, bridge fire-and-forget, render com default seguro, modo default = Conversacao.
+
+---
