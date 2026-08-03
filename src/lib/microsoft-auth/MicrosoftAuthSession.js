@@ -72,6 +72,11 @@ export const WORKSPACE_SCOPES = [
   // Fase 2 (MS-EXP-02) — Contacts + To Do
   "https://graph.microsoft.com/Contacts.ReadWrite",
   "https://graph.microsoft.com/Tasks.ReadWrite",
+  // Fase 3 (MS-EXP-03) — OneNote + Teams + SharePoint
+  "https://graph.microsoft.com/Notes.ReadWrite",
+  "https://graph.microsoft.com/Chat.Read",
+  "https://graph.microsoft.com/ChatMessage.Send",
+  "https://graph.microsoft.com/Sites.ReadWrite.All",
 ];
 
 // ── Storage (somente metadata — sem tokens) ───────────────────────────────────
