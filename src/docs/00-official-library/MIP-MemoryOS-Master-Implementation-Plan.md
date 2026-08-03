@@ -408,4 +408,38 @@ Toda evolução deverá utilizar este plano como referência para priorização 
 
 ---
 
+## Capítulo 11 — UX Evolution Layer (Sprint 8.1)
+
+**Declarado em:** 2026-08-03  
+**Status:** Engineering Execution — Fase 1 em andamento  
+**Princípio:** Aditivo e não-destrutivo. Camada de observabilidade que consome EventBuses existentes sem reescrever o motor de processamento.
+
+### Motivação
+
+O MemoryOS evoluiu de um chat monolítico para um sistema com EventBuses, WatchEngine, Connector Runtime e Knowledge Ingestion. A interface precisa refletir essa complexidade ao usuário (Transparência Cognitiva) sem poluir o chat nem arriscar o fluxo do `ConversationPipeline`.
+
+### Plano de 4 Fases
+
+| Fase | Nome | Risco | Entrega |
+|---|---|---|---|
+| **1** | Observabilidade "Shadow" | Zero | `MemoryActivityIndicator` + `GlobalSyncStatus` no `AppLayout` (stubs passivos) |
+| **2** | Sidebar Contextual | Baixo | `ContextAwareSidebar` + `useNavigationContext` (Global vs Projeto) |
+| **3** | Feedback Ativo | Baixo/Médio | `SystemEvent` substitui `Message` de confirmação; `NotificationHub` + Toasts (`sonner`) |
+| **4** | Timeline Híbrida | Médio | `TimelineDrawer` (`vaul`) com merge `SystemEvent` + `Message` |
+
+### Regra de Não-Quebra
+
+- Novos componentes **apenas leem** `cognitiveEventBus` / `runtimeEventBus` — nunca `emit()`.
+- Nenhuma fase altera `useConversation`, `ConversationPipeline` ou `ConversationManager`.
+- Indicadores usam overlay fixed — não shiftam containers do `AppLayout`.
+
+### Critério de Conclusão por Fase
+
+- **F1:** Indicadores reagem a eventos cognitivos/de conector em tempo real sem quebrar o build.
+- **F2:** Sidebar troca conteúdo ao navegar Global ↔ Projeto, mantendo estado.
+- **F3:** Ingestão de conhecimento gera Toast em vez de bubble no chat; chat fica limpo.
+- **F4:** Drawer exibe timeline de eventos da sessão sincronizada com o chat.
+
+---
+
 *MIP v1.0 — MemoryOS Foundation v1.0 — Declarado em 2026-07-10*
