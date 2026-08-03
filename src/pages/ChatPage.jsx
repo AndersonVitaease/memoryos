@@ -26,6 +26,7 @@ import ReasoningIndicator from "@/components/chat/ReasoningIndicator";
 import CopyButton from "@/components/chat/CopyButton";
 import RegenerateButton from "@/components/chat/RegenerateButton";
 import SuggestedPrompts from "@/components/chat/SuggestedPrompts";
+import SessionSwitcher from "@/components/chat/SessionSwitcher";
 import { formatTime } from "@/components/timeline/formatTime";
 
 // ─── VXP Status labels ────────────────────────────────────────────────────────
@@ -328,31 +329,39 @@ export default function ChatPage({ projectId } = {}) {
 
   return (
     <div className="flex flex-col h-[calc(100vh-3.5rem)] lg:h-screen">
-      {/* Session summary toggle */}
-      {conversation.session?.summary && (
-        <div className="border-b border-zinc-100 bg-white">
-          <button
-            onClick={() => setShowSummary(!showSummary)}
-            className="w-full flex items-center gap-2 px-4 lg:px-6 py-2.5 text-left hover:bg-zinc-50 transition"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-violet-500 shrink-0" />
-            <span className="text-xs font-medium text-zinc-500 truncate">
-              Memoria ativa — {conversation.messages.length} mensagens
-            </span>
-            {showSummary
-              ? <ChevronUp className="w-3.5 h-3.5 text-zinc-400 ml-auto shrink-0" />
-              : <ChevronDown className="w-3.5 h-3.5 text-zinc-400 ml-auto shrink-0" />}
-          </button>
-          {showSummary && (
-            <div className="px-4 lg:px-6 pb-4">
-              <div className="bg-violet-50/50 rounded-xl p-4 border border-violet-100">
-                <p className="text-xs font-semibold text-violet-600 uppercase tracking-wide mb-2">Resumo</p>
-                <p className="text-sm text-zinc-600 whitespace-pre-wrap">{conversation.session.summary}</p>
-              </div>
-            </div>
+      {/* Session header — switcher + summary toggle */}
+      <div className="border-b border-zinc-100 bg-white">
+        <div className="w-full flex items-center gap-2 px-4 lg:px-6 py-2.5">
+          <SessionSwitcher
+            currentSession={conversation.session}
+            onNew={() => conversation.newSession(undefined, projectId)}
+            onSwitch={(id) => conversation.switchSession(id)}
+            disabled={conversation.isLoading}
+          />
+          {conversation.session?.summary && (
+            <button
+              onClick={() => setShowSummary(!showSummary)}
+              className="flex items-center gap-2 px-2 py-1.5 text-left hover:bg-zinc-50 rounded-lg transition ml-auto"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-violet-500 shrink-0" />
+              <span className="text-xs font-medium text-zinc-500 truncate">
+                Resumo — {conversation.messages.length} mensagens
+              </span>
+              {showSummary
+                ? <ChevronUp className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                : <ChevronDown className="w-3.5 h-3.5 text-zinc-400 shrink-0" />}
+            </button>
           )}
         </div>
-      )}
+        {showSummary && conversation.session?.summary && (
+          <div className="px-4 lg:px-6 pb-4">
+            <div className="bg-violet-50/50 rounded-xl p-4 border border-violet-100">
+              <p className="text-xs font-semibold text-violet-600 uppercase tracking-wide mb-2">Resumo</p>
+              <p className="text-sm text-zinc-600 whitespace-pre-wrap">{conversation.session.summary}</p>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Messages — smart auto-scroll container */}
       <div
