@@ -380,6 +380,56 @@ ${fullText}`;
 
   console.log(`[DIAG][MRP] ETAPA 0 (early AI + doc bypass) levou ${Date.now() - _t0}ms`);
 
+  // === ETAPA 0.6: LEITURA DIRETA DE EMAIL (Gmail) ===
+  // "ler email", "ver emails", "caixa de entrada", "meus emails" etc.
+  // Chama o GmailConnector para buscar emails reais e retorna direto,
+  // sem passar pelo LLM. Evita que o LLM alucine "agendei monitoramento"
+  // quando o usuario pediu leitura imediata — antes, o capabilityDetector
+  // nao tinha capacidade de email, entao o serviceInfo (metadata only)
+  // chegava ao LLM sem nenhum email real, e ele inventava uma resposta
+  // proativa de monitoramento.
+  // GUARD: nao ativa se ha sinal de monitoramento ("me avise quando...")
+  // ou envio ("envie email") — nesses casos o fluxo normal trata.
+  const _EMAIL_READ_RE = /\b(ler|leia|ver|veja|mostrar?|lista[r]?)\s+(os?\s+)?e.?mails?\b|\bcaixa\s+de\s+entrada\b|\bmeus?\s+e.?mails?\b|\b(que|quais|quantos)\s+e.?mails?\b|\b(últimos?|recentes?)\s+e.?mails?\b/i;
+  const _MONITOR_SIGNAL_RE = /\b(me\s+avis[ea]|monitore|fique\s+de\s+olho|alerta\s+quando|me\s+notifi[cq])\b/i;
+  const _SEND_EMAIL_RE = /\b(enviar|envie|mande|escrever|redigir)\s+(um\s+)?e.?mail\b/i;
+  const _isEmailReadIntent = _EMAIL_READ_RE.test(userMsg) && !_MONITOR_SIGNAL_RE.test(userMsg) && !_SEND_EMAIL_RE.test(userMsg);
+  if (_isEmailReadIntent) {
+    try {
+      const { listMessages } = await import("@/lib/gmail/GmailConnector");
+      const result = await listMessages({ maxResults: 10 });
+      if (!result.ok) {
+        return {
+          response: result.error || "Não consegui ler seus emails.",
+          plan: { goal: "email_read_error", goalLabel: "Leitura de email", strategy: "Gmail direto — erro", skills: [], skillsCount: 0, sourcesCount: 0, contextLength: 0, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: "email", responseTimeMs: Date.now() - startTime, handledByGuard: "EMAIL-READ-ERROR" },
+          sources: [],
+        };
+      }
+      const msgs = result.data?.messages ?? [];
+      if (msgs.length === 0) {
+        return {
+          response: "Sua caixa de entrada está vazia — nenhum email encontrado.",
+          plan: { goal: "email_read_empty", goalLabel: "Caixa vazia", strategy: "Gmail direto — vazio", skills: [], skillsCount: 0, sourcesCount: 0, contextLength: 0, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: "email", responseTimeMs: Date.now() - startTime, handledByGuard: "EMAIL-READ-EMPTY" },
+          sources: [],
+        };
+      }
+      const lines = msgs.map(m => {
+        const date = m.internalDate ? new Date(parseInt(m.internalDate)).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
+        const unread = m.labelIds?.includes("UNREAD") ? "🔵 " : "";
+        return `${unread}**${m.subject}**\n   De: ${m.from} | ${date}\n   _${m.snippet}_`;
+      }).join("\n\n");
+      const accountInfo = result.data?.accountEmail ? ` (conta: ${result.data.accountEmail})` : "";
+      return {
+        response: `📧 **Caixa de entrada**${accountInfo} — ${msgs.length} emails recentes:\n\n${lines}`,
+        plan: { goal: "email_read", goalLabel: "Leitura de email", strategy: "Gmail direto — sem LLM", skills: [], skillsCount: 0, sourcesCount: msgs.length, contextLength: lines.length, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: "email", responseTimeMs: Date.now() - startTime, handledByGuard: "EMAIL-READ-DIRECT" },
+        sources: msgs.map(m => ({ type: "Email", id: m.id, name: m.subject })),
+      };
+    } catch (err) {
+      console.error("[EmailReadDirect] Falhou:", err?.message);
+      // Cai pro fluxo normal — nunca trava a resposta
+    }
+  }
+
   // === ETAPAS 1+2+3 EM PARALELO: MEMORY + SKILLS + GOAL ===
   // Skills e Goal só precisam da mensagem — não dependem da memória.
   // Paralelizar economiza ~400ms (tempo do goalDetector+skills).
