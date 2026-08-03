@@ -8,7 +8,23 @@ import React from "react";
 import ReactMarkdown from "react-markdown";
 import StreamingMessage from "@/components/chat/StreamingMessage";
 
+// Mesma normalizacao UTC do TimelineEventRenderer: o SDK entrega created_date
+// sem sufixo de fuso, entao forçamos "Z" antes de converter para BRT.
+function formatTime(iso) {
+  if (!iso) return "";
+  const normalized =
+    typeof iso === "string" && !/[zZ]$|[+-]\d{2}:?\d{2}$/.test(iso)
+      ? iso + "Z"
+      : iso;
+  return new Date(normalized).toLocaleTimeString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export default function MessageBubble({ msg }) {
+  const time = formatTime(msg.created_date);
   return (
     <div className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
       <div className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${
@@ -26,6 +42,11 @@ export default function MessageBubble({ msg }) {
           )
         ) : (
           <p className="whitespace-pre-wrap">{msg.content}</p>
+        )}
+        {time && (
+          <div className={`text-[10px] mt-1.5 ${msg.role === "user" ? "text-zinc-400" : "text-zinc-400"}`}>
+            {time}
+          </div>
         )}
       </div>
     </div>
