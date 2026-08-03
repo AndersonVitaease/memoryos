@@ -12,6 +12,8 @@ import { conversationMetrics } from "./ConversationMetrics";
 import { conversationRecovery } from "./ConversationRecovery";
 import type { ConversationState, ConversationEventType, ConversationEvent, ConversationMessage } from "./CXPTypes";
 import { base44 } from "@/api/base44Client";
+// Fase 1 — Event-Driven Timeline: ativa a persistencia de eventos cognitivos em SystemEvent
+import "@/lib/event-persistence";
 
 // ─── Watch Management Interceptor ────────────────────────────────────────────
 // Detecta comandos de gerenciamento de avisos: deletar, cancelar, listar.
@@ -478,6 +480,31 @@ class ConversationManager {
 
   getEventHistory() {
     return conversationStore.getEventHistory();
+  }
+
+  // ── Timeline (Fase 1 — Event-Driven Architecture) ────────────────────────
+
+  /**
+   * Retorna a timeline unificada de uma sessao: Messages (conversa) +
+   * SystemEvents (ocorrencias de sistema), ordenados por criacao.
+   * Cada item tem `kind: "message" | "event"` para o render polimorfico.
+   * Nao substitui `messages` — e uma API nova para a view de Timeline.
+   */
+  async getTimeline(sessionId?: string) {
+    const sid = sessionId || this.session?.id;
+    if (!sid) return [];
+    const [messages, events] = await Promise.all([
+      base44.entities.Message.filter({ session_id: sid }, "created_date", 200),
+      (base44 as any).entities.SystemEvent.filter({ conversationId: sid }, "created_date", 200),
+    ]);
+    const merged = [
+      ...messages.map((m: any) => ({ kind: "message" as const, ...m, timestamp: m.created_date })),
+      ...events.map((e: any) => ({ kind: "event" as const, ...e, timestamp: e.created_date })),
+    ];
+    merged.sort((a: any, b: any) =>
+      new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+    );
+    return merged;
   }
 }
 
