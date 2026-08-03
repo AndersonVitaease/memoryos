@@ -86,6 +86,7 @@ const PROVIDER_HINTS: Array<{ pattern: RegExp; provider: string; action: string;
   { pattern: /drive|arquivo|pasta|documento/i,                                      provider: "drive",    action: "list_recent",     label: "arquivos no Drive" },
   { pattern: /github|commit|pr|pull request|issue/i,                                provider: "github",   action: "list_events",     label: "atividade no GitHub" },
   { pattern: /slack|mensagem|canal/i,                                               provider: "slack",    action: "count_messages",  label: "mensagens no Slack" },
+  { pattern: /outlook|microsoft\s+365|microsoft\s+mail/i,                                           provider: "microsoft", action: "count_unread_mail", label: "emails no Outlook" },
   { pattern: /e.?mail|gmail|inbox|caixa\s+(de\s+entrada|postal)|novo.{0,10}email/i, provider: "gmail",    action: "count_unread",    label: "emails nao lidos no Gmail" },
 ];
 

@@ -23,6 +23,7 @@ import { makeLog, makeExecutionId } from "../ConnectorTypes";
 import { isConnected, getConnection, ensureValidToken, getAccessToken } from "@/lib/microsoft-auth/MicrosoftAuthSession";
 import { fail } from "./microsoft/MicrosoftGraphHelper";
 import { resolveCapability, listAllOperations } from "./microsoft/MicrosoftCapabilityRegistry";
+import "./microsoft/MicrosoftWatchProvider"; // side-effect: registra "microsoft" no ConnectorGateway do Watch Engine (MS-EXP-05)
 
 export class MicrosoftGraphConnector implements IConnector {
   readonly id = "microsoft-graph";
