@@ -3,6 +3,7 @@ import { Outlet } from "react-router-dom";
 import ContextAwareSidebar from "./ContextAwareSidebar";
 import MemoryActivityIndicator from "./MemoryActivityIndicator";
 import GlobalSyncStatus from "./GlobalSyncStatus";
+import NotificationHub from "./NotificationHub";
 import { Menu, X } from "lucide-react";
 
 class OutletErrorBoundary extends Component {
@@ -46,6 +47,7 @@ export default function AppLayout() {
       {/* Fase 1 — Observabilidade Shadow: indicadores passivos (fixed overlay, não shiftam layout) */}
       <GlobalSyncStatus />
       <MemoryActivityIndicator />
+      <NotificationHub />
 
       {/* Desktop sidebar — fixed, fora do fluxo do documento */}
       <div className="hidden lg:block fixed inset-y-0 left-0 w-64 z-10">
