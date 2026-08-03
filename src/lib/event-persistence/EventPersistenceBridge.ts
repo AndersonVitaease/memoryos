@@ -14,7 +14,28 @@
 
 import { cognitiveEventBus } from "@/lib/cognitive-event-bus/CognitiveEventBus";
 import type { CognitiveEvent } from "@/lib/cognitive-event-bus/CognitiveEventBus";
+import { runtimeEventBus } from "@/runtime/connectors/RuntimeEventBus";
+import type { RuntimeEvent, RuntimeEventType } from "@/runtime/connectors/RuntimeEventBus";
 import { base44 } from "@/api/base44Client";
+
+// ── Mapeamento de tipo de evento de conector → status SystemEvent ────────────
+const RUNTIME_STATUS_MAP: Partial<Record<RuntimeEventType, string>> = {
+  ConnectorExecutionStarted:   "running",
+  ConnectorExecutionCompleted: "success",
+  ConnectorExecutionFailed:    "failure",
+  ConnectorRetry:               "running",
+  ConnectorTimeout:             "failure",
+  ConnectorRateLimited:         "failure",
+  ConnectorHealthChanged:       "running",
+  ConnectorRecovered:           "success",
+  ConnectorRegistered:          "success",
+  ConnectorLoaded:              "success",
+  ConnectorInitialized:         "success",
+  ConnectorConnected:           "success",
+  ConnectorDisconnected:       "failure",
+  ConnectorDeprecated:          "running",
+  ConnectorShutdown:            "running",
+};
 
 class EventPersistenceBridgeClass {
   private _active = false;
@@ -28,11 +49,44 @@ class EventPersistenceBridgeClass {
   start(): void {
     if (this._active) return;
     this._active = true;
+    // Fonte 1: CognitiveEventBus (planning, llm, knowledge, stateview)
     cognitiveEventBus.onAny((event) => {
-      // fire-and-forget — nao aguarda, nao bloqueia o bus
       void this._persist(event);
     });
-    console.log("[EventPersistenceBridge] ativo — escutando CognitiveEventBus");
+    // Fonte 2: RuntimeEventBus (connector lifecycle + execution)
+    runtimeEventBus.onAny((event) => {
+      void this._persistRuntime(event);
+    });
+    console.log("[EventPersistenceBridge] ativo — escutando CognitiveEventBus + RuntimeEventBus");
+  }
+
+  /**
+   * Persiste um evento do RuntimeEventBus (conectores) como SystemEvent.
+   * Mesmo padrao fire-and-forget do _persist cognitivo.
+   */
+  private async _persistRuntime(event: RuntimeEvent): Promise<void> {
+    try {
+      const status = RUNTIME_STATUS_MAP[event.type] ?? "success";
+      await base44.entities.SystemEvent.create({
+        conversationId: (event.payload?.sessionId as string) || "",
+        correlationId:  event.id,
+        type:           event.type,
+        source:         "RuntimeEventBus",
+        actor:          "system",
+        status,
+        payload:        { ...event.payload } as Record<string, unknown>,
+        metadata:       {
+          connectorId:     event.connectorId,
+          sequenceNumber: event.sequenceNumber,
+          eventId:        event.id,
+          timestamp:      event.timestamp,
+        },
+      });
+      this._persisted++;
+    } catch (err) {
+      this._failed++;
+      console.warn("[EventPersistenceBridge] falha ao persistir evento de runtime:", err);
+    }
   }
 
   /**
