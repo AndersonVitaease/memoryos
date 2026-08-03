@@ -23,6 +23,9 @@ import PasteTextDialog from "@/components/chat/PasteTextDialog";
 import LinkDialog from "@/components/chat/LinkDialog";
 import StreamingMessage from "@/components/chat/StreamingMessage";
 import ReasoningIndicator from "@/components/chat/ReasoningIndicator";
+import CopyButton from "@/components/chat/CopyButton";
+import RegenerateButton from "@/components/chat/RegenerateButton";
+import SuggestedPrompts from "@/components/chat/SuggestedPrompts";
 import { formatTime } from "@/components/timeline/formatTime";
 
 // ─── VXP Status labels ────────────────────────────────────────────────────────
@@ -157,6 +160,23 @@ export default function ChatPage({ projectId } = {}) {
     userScrolledRef.current = false;
     await conversation.send(text);
   }, [input, conversation]);
+
+  // ── Regenerate last assistant response ────────────────────────────────────
+  const handleRegenerate = useCallback(async () => {
+    const lastUser = [...conversation.messages].reverse().find((m) => m.role === "user");
+    if (!lastUser || conversation.isLoading) return;
+    setLastUserMessage(lastUser.content);
+    await conversation.retry(lastUser.content);
+  }, [conversation]);
+
+  // ── Pick a suggested prompt ───────────────────────────────────────────────
+  const handlePickPrompt = useCallback(async (prompt) => {
+    if (conversation.isLoading) return;
+    setLastUserMessage(prompt);
+    setInput("");
+    userScrolledRef.current = false;
+    await conversation.send(prompt);
+  }, [conversation]);
 
   // ── Attachments ───────────────────────────────────────────────────────────
 
@@ -350,11 +370,12 @@ export default function ChatPage({ projectId } = {}) {
               <p className="text-sm text-zinc-400 mt-1 max-w-md">
                 Converse naturalmente. O MemoryOS organiza, relaciona e preserva todo o conhecimento automaticamente.
               </p>
+              <SuggestedPrompts onPick={handlePickPrompt} />
             </div>
           )}
 
-          {conversation.messages.map((msg) => (
-            <div key={msg.id} className="flex gap-3">
+          {conversation.messages.map((msg, index) => (
+            <div key={msg.id} className="flex gap-3 group">
               <div className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center ${
                 msg.role === "user" ? "bg-zinc-900" : "bg-gradient-to-br from-violet-500 to-indigo-600"
               }`}>
@@ -383,9 +404,20 @@ export default function ChatPage({ projectId } = {}) {
                     {formatTime(msg.created_date)}
                   </div>
                 )}
-              </div>
-            </div>
-          ))}
+                {msg.role === "assistant" && !msg.isStreaming && (
+                  <div className="flex items-center gap-1 mt-2 -mb-1 opacity-0 group-hover:opacity-100 transition">
+                    <CopyButton text={msg.content} />
+                    {index === conversation.messages.length - 1 && (
+                      <RegenerateButton
+                        onRegenerate={handleRegenerate}
+                        disabled={conversation.isLoading}
+                      />
+                    )}
+                  </div>
+                )}
+                </div>
+                </div>
+                ))}
 
           {/* Thinking indicator — VXP progressive states */}
           {showReasoningIndicator && (
