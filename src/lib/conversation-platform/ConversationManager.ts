@@ -218,7 +218,7 @@ async function tryScheduleEmail(
   const subjMatch = /^(?:assunto|subject)\s*:?\s*(.+)/im.exec(userMessage);
   const subject = subjMatch?.[1]?.trim().split("\n")[0] || "Mensagem agendada";
 
-  const subjLineIdx = userMessage.split("\n").findIndex(l => /^(?:assunto|subject)\s*:/i.test(l.trim()));
+  const subjLineIdx = userMessage.split("\n").findIndex(l => /^(?:assunto|subject)\s*:?\s*\S/i.test(l.trim()));
   const bodyLines = subjLineIdx >= 0
     ? userMessage.split("\n").slice(subjLineIdx + 1).filter(l => {
         const lt = l.trim().toLowerCase();
@@ -227,7 +227,9 @@ async function tryScheduleEmail(
           && !lt.startsWith("nao ha") && !lt.startsWith("chegou")
           && !lt.startsWith("horario") && !lt.startsWith("horário")
           && !lt.startsWith("nao") && !lt.startsWith("nao") && !lt.startsWith("⏰")
-          && !lt.startsWith("não");
+          && !lt.startsWith("não")
+          && !lt.startsWith("me avise") && !lt.startsWith("me avisar")
+          && !lt.startsWith("me notifique");
       })
     : [];
   const body = bodyLines.length > 0 ? bodyLines.join("\n").trim() : subject;
