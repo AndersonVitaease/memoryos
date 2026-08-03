@@ -4,13 +4,11 @@
  * ChatPage uses ONLY this hook.
  */
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { conversationManager } from "./ConversationManager";
 
 export function useConversation() {
   const [state, setState] = useState(() => conversationManager.state);
-  const initializedRef = useRef(false);
-
   // Subscribe to store changes
   useEffect(() => {
     const unsub = conversationManager.subscribe((s) => setState({ ...s }));
