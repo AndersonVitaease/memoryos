@@ -114,11 +114,40 @@ class UCRConnectorBridge implements UCRConnector {
       "context.workspaceId": context.workspaceId,
       "context.projectId":   context.projectId,
     });
-    const result = await this._inner.execute(
-      input.capability,
-      input.parameters as Record<string, unknown>,
-      context,
-    );
+    // FIX (religado em 2026-08-02+): RuntimeEventBus existia mas nunca era
+    // chamado por aqui — instrumentacao pura, nunca muda o resultado real.
+    try {
+      runtimeEventBus.emit("ConnectorExecutionStarted", this._inner.id, {
+        capability: input.capability,
+        executionId: eid,
+      });
+    } catch { /* nunca deixa o bus atrapalhar a execucao real */ }
+
+    let result: Awaited<ReturnType<typeof this._inner.execute>>;
+    try {
+      result = await this._inner.execute(
+        input.capability,
+        input.parameters as Record<string, unknown>,
+        context,
+      );
+    } catch (execError) {
+      try {
+        runtimeEventBus.emit("ConnectorExecutionFailed", this._inner.id, {
+          capability: input.capability,
+          executionId: eid,
+          errorMessage: (execError as Error)?.message ?? String(execError),
+        });
+      } catch { /* nunca deixa o bus atrapalhar a execucao real */ }
+      throw execError; // comportamento original preservado — so observa, nao muda
+    }
+
+    try {
+      runtimeEventBus.emit(
+        result.success ? "ConnectorExecutionCompleted" : "ConnectorExecutionFailed",
+        this._inner.id,
+        { capability: input.capability, executionId: eid, durationMs: result.duration, status: result.status },
+      );
+    } catch { /* nunca deixa o bus atrapalhar a execucao real */ }
 
     // [UCRBRIDGE-PROBE-02] RuntimeConnector returned ConnectorTypes.ConnectorResult
     console.log("[UCRBRIDGE-PROBE-02]", {
