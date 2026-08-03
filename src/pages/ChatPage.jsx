@@ -7,7 +7,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   Send, Brain, Sparkles, ChevronDown, ChevronUp,
-  Radio, Volume2, Paperclip, RotateCcw, Square, Clock,
+  Volume2, Paperclip, RotateCcw, Square, Clock,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { useConversation } from "@/lib/conversation-platform/useConversation";
@@ -16,7 +16,7 @@ import { ingestKnowledge, ACCEPT_MAP } from "@/lib/knowledgeIngestionPipeline";
 import { base44 } from "@/api/base44Client";
 import VoicePanel from "@/components/voice/VoicePanel";
 import TimelineDrawer from "@/components/timeline/TimelineDrawer";
-import VoiceMode from "@/components/chat/VoiceMode";
+
 import AttachmentMenu from "@/components/chat/AttachmentMenu";
 import ProcessingBubble from "@/components/chat/ProcessingBubble";
 import PasteTextDialog from "@/components/chat/PasteTextDialog";
@@ -55,7 +55,6 @@ export default function ChatPage({ projectId } = {}) {
   const conversation = useConversation({ projectId });
   const [input, setInput] = useState("");
   const [showSummary, setShowSummary] = useState(false);
-  const [continuousMode, setContinuousMode] = useState(false);
   const [attachmentMenuOpen, setAttachmentMenuOpen] = useState(false);
   const [processingItems, setProcessingItems] = useState([]);
   const [pasteDialogOpen, setPasteDialogOpen] = useState(false);
@@ -441,14 +440,6 @@ export default function ChatPage({ projectId } = {}) {
           <div className="flex items-center gap-2 mb-2">
             <button
               type="button"
-              onClick={() => setContinuousMode(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-zinc-400 hover:text-violet-600 hover:bg-violet-50 transition"
-            >
-              <Radio className="w-3.5 h-3.5" />
-              Conversa Continua
-            </button>
-            <button
-              type="button"
               onClick={() => setTimelineOpen(true)}
               disabled={!conversation.session?.id}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-zinc-400 hover:text-violet-600 hover:bg-violet-50 transition disabled:opacity-30"
@@ -554,21 +545,6 @@ export default function ChatPage({ projectId } = {}) {
         onOpenChange={setLinkDialogOpen}
         onSubmit={(url) => runIngestion({ type: "link", url })}
       />
-
-      {continuousMode && (
-        <VoiceMode
-          onSendAndReceive={async (text) => {
-            await conversation.send(text);
-            const msgs = conversation.messages;
-            const last = msgs[msgs.length - 1];
-            return last?.role === "assistant" ? last.content : null;
-          }}
-          onClose={() => {
-            setContinuousMode(false);
-            pipeline.stopSpeaking?.();
-          }}
-        />
-      )}
 
       <TimelineDrawer
         open={timelineOpen}
