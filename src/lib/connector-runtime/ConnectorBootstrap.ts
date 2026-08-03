@@ -107,6 +107,12 @@ const OFFICIAL_FACTORIES: ConnectorFactory[] = [
     const { DatabaseConnector } = await import("./connectors/DatabaseConnector");
     return new DatabaseConnector();
   },
+  async () => {
+    // WhatsApp Business — 5 camadas: Provider/Meta+Evolution+Baileys,
+    // Event (RuntimeEventBus), Observation (KnowledgeRegistry), Watch (ConnectorGateway)
+    const { WhatsAppConnector } = await import("./connectors/WhatsAppConnector");
+    return new WhatsAppConnector();
+  },
 ];
 
 // ── ConnectorBootstrap ────────────────────────────────────────────────────────
