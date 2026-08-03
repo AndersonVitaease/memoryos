@@ -110,8 +110,10 @@ Exemplos:
 - "O que decidimos sobre o fornecedor ACME?" → query_types: ["decisions", "entities", "documents"], is_list_query: false, search_keywords: ["fornecedor", "ACME"]
 - "Continuar de onde paramos" → query_types: ["sessions", "messages"], is_list_query: false, search_keywords: []
 - "O que você sabe sobre a empresa XYZ?" → query_types: ["entities", "documents", "decisions", "messages"], is_list_query: false, search_keywords: ["XYZ"]
+- "Me fale sobre o Hermes Agent" → query_types: ["messages", "documents", "topics", "entities"], is_list_query: false, search_keywords: ["hermes", "agent"]
+- "O que é X?" / "Me fale sobre X" / "Fale sobre X" → query_types: ["messages", "documents", "topics", "entities", "decisions"], is_list_query: false, search_keywords: ["X"]
 
-Regra: quando houver dúvida, inclua mais tipos em vez de menos. É melhor consultar demais do que de menos.
+Regra CRÍTICA: perguntas do tipo "me fale sobre X", "o que é X", "fale sobre X" onde X é um nome específico (pessoa, produto, projeto, conceito) SEMPRE incluem "messages" nos query_types — o usuário pode ter mencionado X em uma conversa anterior. Quando houver dúvida, inclua mais tipos em vez de menos.
 
 Pergunta: "${question}"`,
       response_json_schema: INTENT_SCHEMA,
@@ -119,7 +121,7 @@ Pergunta: "${question}"`,
   } catch {
     const stopwords = ["o", "a", "os", "as", "de", "da", "do", "das", "dos", "e", "ou", "que", "para", "com", "em", "um", "uma", "no", "na", "nos", "nas", "quando", "como", "qual", "quais", "quem", "onde", "foi", "ser", "tem", "ha"];
     return {
-      query_types: ["projects", "documents", "decisions", "tasks", "topics", "entities", "sessions", "keywords"],
+      query_types: ["projects", "documents", "decisions", "tasks", "topics", "entities", "sessions", "keywords", "messages"],
       is_list_query: false,
       search_keywords: question
         .toLowerCase()
@@ -210,7 +212,8 @@ async function queryEntities(intent, sessionId, projectId) {
       : base44.entities.Keyword.list("-created_date", 30);
   }
   if (query_types.includes("messages")) {
-    queries.messages = base44.entities.Message.list("-created_date", 50);
+    // Busca mensagens de todas as sessões para memória cross-session
+    queries.messages = base44.entities.Message.list("-created_date", 100);
   }
 
   const keys = Object.keys(queries);
