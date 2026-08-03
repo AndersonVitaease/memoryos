@@ -583,6 +583,53 @@ const _builtins: CapabilityMapping[] = [
     ],
   },
 
+  // ── Microsoft Graph (Excel + Word + PowerPoint) — Fase 4 (MS-EXP-04) RFC-006/ADR-013
+  // Connector id: "microsoft-graph"  (MicrosoftGraphConnector.ts)
+  // Excel = Workbook API real (read/write ranges). Word = texto via documentParser.
+  // PowerPoint = metadata/download (Graph REST nao expoe texto de slides).
+  {
+    goalType: "ms.excel.listWorksheets" as GoalType,
+    descriptors: [
+      { connector: "microsoft-graph", capability: "excel.listWorksheets", params: {} },
+    ],
+  },
+  {
+    goalType: "ms.excel.getRange" as GoalType,
+    descriptors: [
+      { connector: "microsoft-graph", capability: "excel.getRange", params: {} },
+    ],
+  },
+  {
+    goalType: "ms.excel.updateRange" as GoalType,
+    descriptors: [
+      { connector: "microsoft-graph", capability: "excel.updateRange", params: {} },
+    ],
+  },
+  {
+    goalType: "ms.word.listDocuments" as GoalType,
+    descriptors: [
+      { connector: "microsoft-graph", capability: "word.listDocuments", params: {} },
+    ],
+  },
+  {
+    goalType: "ms.word.getDocumentText" as GoalType,
+    descriptors: [
+      { connector: "microsoft-graph", capability: "word.getDocumentText", params: {} },
+    ],
+  },
+  {
+    goalType: "ms.pptx.listDocuments" as GoalType,
+    descriptors: [
+      { connector: "microsoft-graph", capability: "pptx.listDocuments", params: {} },
+    ],
+  },
+  {
+    goalType: "ms.pptx.getDocumentDownload" as GoalType,
+    descriptors: [
+      { connector: "microsoft-graph", capability: "pptx.getDocumentDownload", params: {} },
+    ],
+  },
+
   // ── WhatsApp — Meta Cloud API oficial (Evolution/Baileys como stubs futuros)
   // Connector id: "whatsapp"  (WhatsAppConnector.ts)
   // Capabilities: "whatsapp.sendMessage", "whatsapp.sendTemplate", "whatsapp.getMessageStatus"
