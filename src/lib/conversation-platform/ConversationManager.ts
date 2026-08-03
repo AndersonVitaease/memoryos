@@ -482,44 +482,6 @@ class ConversationManager {
     return conversationStore.getEventHistory();
   }
 
-  // ── Timeline (Fase 1 — Event-Driven Architecture) ────────────────────────
-
-  /**
-   * Retorna a timeline unificada de uma sessao: Messages (conversa) +
-   * SystemEvents (ocorrencias de sistema), ordenados por criacao.
-   * Cada item tem `kind: "message" | "event"` para o render polimorfico.
-   * Nao substitui `messages` — e uma API nova para a view de Timeline.
-   */
-  async getTimeline(sessionId?: string, limit = 50, beforeTimestamp?: string) {
-    const sid = sessionId || this.session?.id;
-    if (!sid) return [];
-    // Paginacao via cursor (beforeTimestamp): carrega os `limit` itens mais
-    // recentes (ou os mais antigos antes do cursor) — evita puxar centenas de
-    // registros de uma vez. O botao "Carregar mais" passa o timestamp do item
-    // mais antigo visivel como cursor.
-    const msgQuery: any = { session_id: sid };
-    const evtQuery: any = { conversationId: sid };
-    if (beforeTimestamp) {
-      msgQuery.created_date = { $lt: beforeTimestamp };
-      evtQuery.created_date = { $lt: beforeTimestamp };
-    }
-    const [messages, events] = await Promise.all([
-      base44.entities.Message.filter(msgQuery, "-created_date", limit),
-      (base44 as any).entities.SystemEvent.filter(evtQuery, "-created_date", limit),
-    ]);
-    // Oculta eventos cognitivos internos (PlanningStarted, LLMResponseGenerated, etc.)
-    // — sao ruido tecnico ao lado da resposta do assistente. Watch, ingestao de
-    // conhecimento e ciclo de conectores continuam visiveis.
-    const visibleEvents = events.filter((e: any) => e.source !== "CognitiveEventBus");
-    const merged = [
-      ...messages.map((m: any) => ({ kind: "message" as const, ...m, timestamp: m.created_date })),
-      ...visibleEvents.map((e: any) => ({ kind: "event" as const, ...e, timestamp: e.created_date })),
-    ];
-    merged.sort((a: any, b: any) =>
-      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
-    );
-    return merged;
-  }
 }
 
 // ─── Singleton ────────────────────────────────────────────────────────────────
