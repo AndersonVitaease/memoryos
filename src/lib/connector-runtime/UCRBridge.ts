@@ -25,6 +25,7 @@ import type {
 import type { ConnectorResultStatus as RuntimeStatus } from "./ConnectorTypes";
 import { ConnectorRegistry as UCRRegistry } from "@/lib/connector-router/ConnectorRegistry";
 import { ConnectorRegistry as RuntimeRegistry } from "./ConnectorRegistry";
+import { runtimeEventBus } from "@/runtime/connectors/RuntimeEventBus";
 // A-02: makeExecutionId removed — UCRBridge no longer generates fallback IDs.
 
 // ── C-01/C-05: Status mapping — runtime → UCR ────────────────────────────────
