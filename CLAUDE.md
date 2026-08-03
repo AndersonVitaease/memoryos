@@ -321,6 +321,48 @@ A `UCRBridge.ts` (que envolve TODO connector no runtime) ja emite `ConnectorExec
 
 ---
 
+### 2026-08-03 — Migracao do Chat de Projeto para CXP v2 (Implementacao Detalhada — APROVADO)
+
+**Doc completa:** `src/docs/01-operational-knowledge/SESSION-2026-08-03-CHAT-PROJECT-MIGRATION-IMPLEMENTATION.md`
+
+**Status:** APROVADO em 2026-08-03 17:24 BRT. Documento linha-a-linha pronto. Nenhum codigo alterado ainda.
+
+**Objetivo:** Migrar a aba de chat de `ProjectDetail.jsx` da pipeline antiga (`ChatInterface` + `conversationEngine` + `contextRetrieval`) para a CXP v2 (`ChatPage` + `useConversation`), adicionando escopo de projeto na CXP, sem quebrar o chat global nem perder dados.
+
+**Snapshot do estado atual (antes da migracao):**
+- `ConversationPersistence.ts`: `getOrCreateActiveSession()`, `createSession(title)`, `loadActiveSession()`, `saveLastSessionId(id)`, `getLastSessionId()` — todos sem escopo de projeto. Filtro global `{ status: "active" }` retorna sessoes de projeto tambem (vazamento).
+- `ConversationSessionManager.ts`: `initializeSession()`, `createNewSession(title)` — sem param de projeto.
+- `ConversationManager.ts`: `initialize()`, `newSession(title)` — sem param de projeto.
+- `useConversation.js`: `useConversation()` — sem opcoes.
+- `ChatPage.jsx`: `ChatPage()` — sem props.
+- `ProjectDetail.jsx` linha 11: `import ChatInterface`; linhas 124-126: `<ChatInterface projectId={id} projectName={project.name} />`.
+
+**Plano em 5 fases (cada fase aditiva e reversivel):**
+
+- **Fase 0 — Adicionar escopo de projeto na CXP (aditivo, backward compatible):**
+  - `ConversationPersistence.ts`: `saveLastSessionId(id, projectId?)`/`getLastSessionId(projectId?)` com chaves por escopo (`memoryos_last_session_id` global, `memoryos_last_session_id__proj_${id}` projeto); `loadActiveSession(projectId?)` com filtro `{ project_id: projectId }` (projeto) ou `{ project_id: null }` (global, exclui projeto); `createSession(title?, projectId?)`; `getOrCreateActiveSession(projectId?)`.
+  - `ConversationSessionManager.ts`: `initializeSession(projectId?)`, `createNewSession(title?, projectId?)`.
+  - `ConversationManager.ts`: `initialize(projectId?)`, `newSession(title?, projectId?)`.
+  - `useConversation.js`: `useConversation({ projectId })`, init com `useEffect([projectId])`.
+  - `ChatPage.jsx`: `ChatPage({ projectId })`.
+  - Risco: filtro `{ project_id: null }` — validar com query real; fallback `$exists: false` / `$or`.
+
+- **Fase 1 — Isolar sessao por escopo (validacao):** confirma filtro `project_id: null` + chaves localStorage separadas + isolamento manual cruzando global/projeto A/projeto B.
+
+- **Fase 2 — Reusar ChatPage no ProjectDetail (swap, revertivel):** `ProjectDetail.jsx` linha 11 troca `import ChatInterface` por `import ChatPage`; linhas 124-126 trocam `<ChatInterface projectId={id} projectName={project.name} />` por `<ChatPage projectId={id} />`.
+
+- **Fase 3 — Verificar paridade (checklist):** extracao de conhecimento (`processConversationBatch` roda igual), resumo (`syncSessionMetadata`), historico antigo (sessoes com `project_id` lidas), isolamento (A nao vaza em global/B), re-init ao trocar escopo, voice/anexos/watch/scroll na aba de projeto.
+
+- **Fase 4 — Delecao segura (so apos Fase 3 100% verde):** deleta `ChatInterface.jsx` + `contextRetrieval.js`; remove `getOrCreateActiveSession` + `shouldProcessBatch` do `conversationEngine.js` (MANTem `processConversationBatch` — compartilhado com CXP); remove import `X` morto do `ChatPage.jsx`; build final.
+
+**Riscos principais:** (1) filtro `project_id: null` suportado pelo backend Base44; (2) guard `isInitialized` bloqueia re-init ao trocar escopo; (3) sessoes orfas sem `project_id` do ChatInterface antigo viram "globais" se nao houver atribuicao retroativa; (4) `ConversationBackgroundProcessor` ja passa `session.project_id` para `processConversationBatch` (linha 131) — confirmar.
+
+**Estado final esperado:** unico motor de chat (CXP v2), chat global e de projeto diferenciados apenas por `projectId`, `conversationEngine.js` mantem so `processConversationBatch`, `ChatInterface` + `contextRetrieval` deletados, zero perda de dados.
+
+**Ordem de execucao:** Fase 0 (batch unico de 5 arquivos) -> build -> Fase 1 (validacao) -> Fase 2 (2 linhas) -> build + preview -> Fase 3 (checklist) -> Fase 4 (delecoes + limpeza) -> build final.
+
+---
+
 ### 2026-08-03 — Chat: Limpeza de Timeline Legada + Auditoria de Pipeline Antigo
 
 **Doc completa:** `src/docs/01-operational-knowledge/SESSION-2026-08-03-CHAT-LEGACY-CLEANUP-AUDIT.md`
