@@ -379,7 +379,7 @@ export default function ChatPage({ projectId } = {}) {
                   <p className="whitespace-pre-wrap">{msg.content}</p>
                 )}
                 {msg.created_date && (
-                  <div className="text-[11px] mt-1.5 text-zinc-400">
+                  <div className="text-[11px] mt-1.5 text-zinc-500">
                     {formatTime(msg.created_date)}
                   </div>
                 )}
