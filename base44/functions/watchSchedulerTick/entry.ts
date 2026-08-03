@@ -54,7 +54,7 @@ async function getGoogleAccessToken(base44: any, userId: string, preferEmail?: s
 
 // ── Gmail send via OAuth ──────────────────────────────────────────────────────
 
-async function sendGmailOAuth(accessToken: string, fromEmail: string, to: string, subject: string, body: string): Promise<void> {
+async function sendGmailOAuth(accessToken: string, fromEmail: string, to: string, subject: string, body: string): Promise<string | null> {
   // Encode subject em base64 para suportar UTF-8 / acentos
   const encodeHeader = (str: string) => {
     const b64 = btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (_, p1) =>
@@ -98,7 +98,10 @@ async function sendGmailOAuth(accessToken: string, fromEmail: string, to: string
     const err = await res.json().catch(() => ({}));
     throw new Error(`Gmail send failed ${res.status}: ${JSON.stringify(err)}`);
   }
-  console.log(`[gmail-send] Email enviado para ${to} via OAuth Gmail`);
+  const _sendData = await res.json().catch(() => ({}));
+  const _msgId = _sendData?.id ?? null;
+  console.log(`[gmail-send] Email enviado para ${to} via OAuth Gmail — ID: ${_msgId ?? 'N/A'}`);
+  return _msgId;
 }
 
 // ── Hora atual em BRT (minutos desde meia-noite) ──────────────────────────────
@@ -194,13 +197,15 @@ async function runOneTick(base44: any, googleTokenCache: Map<string, string>): P
 
       } else if (provider === 'gmail' || provider === 'calendar') {
         const userId = watch.created_by_id;
+        const _acctEmail = conditionTree.params?.accountEmail ?? undefined;
         if (userId) {
-          let token = googleTokenCache.get(userId);
+          const _cacheKey = `${userId}:${_acctEmail ?? 'default'}`;
+          let token = googleTokenCache.get(_cacheKey);
           if (!token) {
-            const result = await getGoogleAccessToken(base44, userId);
+            const result = await getGoogleAccessToken(base44, userId, _acctEmail);
             if (result) {
               token = result.token;
-              googleTokenCache.set(userId, token);
+              googleTokenCache.set(_cacheKey, token);
             }
           }
           if (token) {
@@ -245,11 +250,16 @@ async function runOneTick(base44: any, googleTokenCache: Map<string, string>): P
       if (wasTriggered) {
         result.triggered++;
 
+        let _sentMessageId: string | null = null;
+        let _sentTo: string | null = null;
+        let _sentVia = '';
+
         // Enviar email se configurado no on_trigger_payload
         if (watch.on_trigger_payload) {
           try {
             const tp = JSON.parse(watch.on_trigger_payload);
             if (tp?.type === 'send_email' && tp?.email?.to && tp?.email?.subject) {
+              _sentTo = tp.email.to;
               // Tenta o created_by_id primeiro; se for conta de serviço, busca por email "from"
               const fromEmail = tp.email.from || null;
               let userId = watch.created_by_id;
@@ -279,7 +289,8 @@ async function runOneTick(base44: any, googleTokenCache: Map<string, string>): P
 
               if (oauthResult) {
                 // Envia via Gmail OAuth — aparece com o remetente real
-                await sendGmailOAuth(
+                _sentVia = 'gmail_oauth';
+                _sentMessageId = await sendGmailOAuth(
                   oauthResult.token,
                   oauthResult.email,
                   tp.email.to,
@@ -288,6 +299,7 @@ async function runOneTick(base44: any, googleTokenCache: Map<string, string>): P
                 );
               } else {
                 // Fallback: Base44 SendEmail
+                _sentVia = 'base44_relay';
                 await base44.asServiceRole.integrations.Core.SendEmail({
                   to:      tp.email.to,
                   subject: tp.email.subject,
@@ -301,20 +313,30 @@ async function runOneTick(base44: any, googleTokenCache: Map<string, string>): P
           }
         }
 
-        // Montar mensagem amigável
+        // Montar mensagem amigável — inclui confirmação de email + hash se enviado
         let friendlyMsg = `O alerta "${watch.name.replace(/ — Auto WE-04$/, '')}" disparou.`;
         if (conditionTree.provider === 'clock' && conditionTree.params?.target_time) {
           friendlyMsg = `Chegou a hora! ${conditionTree.params.target_time} — você pediu para ser avisado neste horário.`;
+        }
+        if (_sentTo) {
+          if (_sentMessageId) {
+            friendlyMsg += `\n\n📧 Email enviado para \`${_sentTo}\`\nID Gmail: \`${_sentMessageId}\``;
+          } else if (_sentVia === 'base44_relay') {
+            friendlyMsg += `\n\n📧 Email enviado para \`${_sentTo}\` (via relay)`;
+          } else {
+            friendlyMsg += `\n\n📧 Email enviado para \`${_sentTo}\``;
+          }
         }
 
         await base44.asServiceRole.entities.PendingWatchAction.create({
           watch_id:    watch.id,
           action_type: 'notify_user',
           payload:     JSON.stringify({
-            watchId:   watch.id,
-            watchName: watch.name.replace(/ — Auto WE-04$/, ''),
-            message:   friendlyMsg,
-            timestamp: now,
+            watchId:    watch.id,
+            watchName:  watch.name.replace(/ — Auto WE-04$/, ''),
+            message:    friendlyMsg,
+            timestamp:  now,
+            emailSent:  _sentMessageId ? { to: _sentTo, messageId: _sentMessageId } : null,
           }),
           status:      'pending',
           retry_count: 0,

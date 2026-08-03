@@ -244,6 +244,48 @@ export class WatchPlannerBridgeClass {
     const result = await watchRegistry.create(intent);
 
     if (result.ok) {
+      // Auto-criar Gmail watch para a conta destinataria se for uma conta conectada
+      // — assim o usuario e avisado quando o email chegar na caixa de entrada
+      if (hasEmail && detection.provider === "clock") {
+        try {
+          const { listGoogleAccounts } = await import("@/lib/google-auth/GoogleMultiAccount");
+          const { getActiveWorkspaceId } = await import("@/lib/workspace/WorkspaceContext");
+          const _baseWs = getActiveWorkspaceId();
+          const _accounts = listGoogleAccounts(_baseWs);
+          const _recipient = _accounts.find(
+            (a: any) => a.email?.toLowerCase() === emailPayload!.to.toLowerCase(),
+          );
+          if (_recipient?.email) {
+            const _gmailCondition: ConditionTree = {
+              kind: "leaf",
+              provider: "gmail",
+              action: "count_unread",
+              params: { accountEmail: _recipient.email },
+              result_path: "count",
+              comparator: "gt",
+              value: 0,
+            };
+            const _gmailDedup = await watchDeduplicator.check(_gmailCondition, sessionId);
+            if (!_gmailDedup.isDuplicate) {
+              const _gmailIntent: WatchIntent = {
+                name: `Monitorar caixa de entrada de ${_recipient.email} — Auto WE-04`,
+                description: `Auto-criado: email agendado para ${_recipient.email}`,
+                condition: _gmailCondition,
+                frequency_minutes: 5,
+                priority: "high",
+                on_trigger: { type: "notify_user" },
+                session_id: sessionId,
+                project_id: projectId,
+              };
+              await watchRegistry.create(_gmailIntent);
+              console.log(`[WatchPlannerBridge] Gmail watch auto-criado para ${_recipient.email}`);
+            }
+          }
+        } catch (e: any) {
+          console.warn(`[WatchPlannerBridge] Falha ao auto-criar Gmail watch: ${e?.message}`);
+        }
+      }
+
       const targetTime = (detection.condition as any).params?.target_time;
       const confirmMsg = hasEmail
         ? `Alerta criado${targetTime ? ` para às ${targetTime}` : ""}. Vou enviar email para ${emailPayload!.to} quando o horário chegar.`
