@@ -500,9 +500,13 @@ class ConversationManager {
       base44.entities.Message.filter({ session_id: sid }, "-created_date", 200),
       (base44 as any).entities.SystemEvent.filter({ conversationId: sid }, "-created_date", 200),
     ]);
+    // Oculta eventos cognitivos internos (PlanningStarted, LLMResponseGenerated, etc.)
+    // — sao ruido tecnico ao lado da resposta do assistente. Watch, ingestao de
+    // conhecimento e ciclo de conectores continuam visiveis.
+    const visibleEvents = events.filter((e: any) => e.source !== "CognitiveEventBus");
     const merged = [
       ...messages.map((m: any) => ({ kind: "message" as const, ...m, timestamp: m.created_date })),
-      ...events.map((e: any) => ({ kind: "event" as const, ...e, timestamp: e.created_date })),
+      ...visibleEvents.map((e: any) => ({ kind: "event" as const, ...e, timestamp: e.created_date })),
     ];
     merged.sort((a: any, b: any) =>
       new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
