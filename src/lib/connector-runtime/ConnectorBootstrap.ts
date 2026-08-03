@@ -14,6 +14,7 @@
 
 import type { IConnector } from "./IConnector";
 import type { ConnectorRegistry } from "./ConnectorRegistry";
+import { runtimeEventBus } from "@/runtime/connectors/RuntimeEventBus";
 
 // ── Public types ──────────────────────────────────────────────────────────────
 
@@ -165,6 +166,14 @@ export const ConnectorBootstrap = Object.freeze({
           regSizeNow:    registry.count(),
           allRegistered: loadedIds.slice(),
         });
+        // FIX (religado em 2026-08-02+): RuntimeEventBus existia mas nunca
+        // era chamado por aqui. Emite ConnectorRegistered pra cada conector
+        // que sobe com sucesso — fire-and-forget, nunca bloqueia bootstrap.
+        try {
+          runtimeEventBus.emit("ConnectorRegistered", connector.id, {
+            capabilities: connector.metadata().capabilities,
+          });
+        } catch { /* nunca deixa o bus quebrar o bootstrap */ }
       } catch (e) {
         errors.push(`[${connector.id}] registry.register() threw: ${(e as Error).message}`);
       }
