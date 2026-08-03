@@ -745,9 +745,13 @@ ${fullText}`;
   // Só chama o LLM classificador se houver pelo menos um sinal explícito.
   function _driveHeuristicCheck(message) {
     const msg = message.toLowerCase();
+    // O classificador de Drive chama um LLM inteiro — limitar o gatilho a
+    // substantivos fortes de arquivo evita disparar essa chamada (~1-2s) em
+    // mensagens genéricas ("ler", "abrir", "conteúdo") que nunca sao acao de
+    // Drive. Acoes reais de Drive quase sempre nomeiam o arquivo/pasta/pdf.
     const DRIVE_SIGNALS = [
       "drive", "pasta", "folder", "arquivo", "file", "pdf", "docx", "planilha",
-      "abrir", "baixar", "download", "ler", "leia", "conteúdo", "conteudo",
+      "baixar", "download",
       "que subi", "que anexei", "meu arquivo", "minha pasta", "meus arquivos",
       "minhas pastas", "upload", "documento que",
     ];
