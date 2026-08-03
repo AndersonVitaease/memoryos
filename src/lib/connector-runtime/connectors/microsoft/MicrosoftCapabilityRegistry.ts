@@ -14,6 +14,9 @@ import { OutlookCalendarCapability } from "./OutlookCalendarCapability";
 import { OneDriveCapability } from "./OneDriveCapability";
 import { ContactsCapability } from "./ContactsCapability";
 import { ToDoCapability } from "./ToDoCapability";
+import { OneNoteCapability } from "./OneNoteCapability";
+import { TeamsCapability } from "./TeamsCapability";
+import { SharePointCapability } from "./SharePointCapability";
 
 const CAPABILITIES: readonly MicrosoftCapability[] = [
   OutlookMailCapability,
@@ -21,6 +24,9 @@ const CAPABILITIES: readonly MicrosoftCapability[] = [
   OneDriveCapability,
   ContactsCapability,
   ToDoCapability,
+  OneNoteCapability,
+  TeamsCapability,
+  SharePointCapability,
 ];
 
 const _byOperation = new Map<string, MicrosoftCapability>();

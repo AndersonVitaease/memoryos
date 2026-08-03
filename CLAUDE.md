@@ -614,3 +614,33 @@ A `UCRBridge.ts` (que envolve TODO connector no runtime) ja emite `ConnectorExec
 **Proximo passo:** Fase 3 (MS-EXP-03) — OneNote + Teams + SharePoint. Aguarda autorizacao (atencao: Teams/SharePoint exigem tenant corporativo — contas pessoais @outlook.com podem nao ter acesso).
 
   ---
+
+### 2026-08-03 — Microsoft Graph Connector Fase 3 (MS-EXP-03): OneNote + Teams + SharePoint
+
+**RFC/ADR:** `RFC-006` + `ADR-013`
+
+**Status:** Fase 3 EXECUTADA. Adicionados 3 servicos do Microsoft 365 seguindo o padrao Capability Executors. O shell `MicrosoftGraphConnector` NAO foi tocado — so o Registry cresceu.
+
+**Arquivos novos (3) em `src/lib/connector-runtime/connectors/microsoft/`:**
+- `OneNoteCapability.ts` — 3 capacidades: `onenote.listNotebooks`, `onenote.listPages`, `onenote.createPage` (Graph `/me/onenote/*`). Escopo: `Notes.ReadWrite`. CreatePage envia HTML (`application/xhtml+xml`).
+- `TeamsCapability.ts` — 3 capacidades: `teams.listChats`, `teams.listMessages`, `teams.sendMessage` (Graph `/me/chats` + `/chats/{id}/messages`). Escopos: `Chat.Read` + `ChatMessage.Send`.
+- `SharePointCapability.ts` — 4 capacidades: `sharepoint.listSites`, `sharepoint.listLists`, `sharepoint.listItems`, `sharepoint.createItem` (Graph `/sites/*`). Escopo: `Sites.ReadWrite.All`.
+
+**Arquivos editados (3):**
+- `MicrosoftCapabilityRegistry.ts` — adicionados os 3 executores ao array `CAPABILITIES`.
+- `GoalCapabilityRegistry.ts` — adicionados 10 mappings (`ms.onenote.*`, `ms.teams.*`, `ms.sharepoint.*`) com `connector: "microsoft-graph"`. Inseridos ANTES do bloco WhatsApp, mesma convencao.
+- `MicrosoftAuthSession.js` — adicionados 4 escopos ao `WORKSPACE_SCOPES`: `Notes.ReadWrite`, `Chat.Read`, `ChatMessage.Send`, `Sites.ReadWrite.All`. Escopos anteriores preservados.
+
+**CAVEAT critico (documentado no proprio codigo dos executores):** Teams e SharePoint exigem tenant corporativo. Contas pessoais @outlook.com podem receber 403/404 do Graph ao chamar `/me/chats` ou `/sites?search=*` — nao e bug, e limite da conta Microsoft. OneNote funciona em contas pessoais.
+
+**Nao-quebra verificada:**
+- O shell nao muda — `resolveCapability(operation)` agora cobre 10 operations a mais automaticamente.
+- `metadata.capabilities` agora retorna 25 operations (15 da Fase 2 + 10 novas) sem mudanca de versao do conector.
+- Event Layer (UCRBridge) e Observation Layer envolvem automaticamente.
+- Escopos OAuth: novo consent exigira re-autorizacao em `/connections`.
+
+**Dependencia externa:** usuario precisa re-conectar Microsoft 365 em `/connections` para conceder os 4 novos escopos. Teams/SharePoint so funcionam se a conta for corporativa (work/school).
+
+**Proximo passo:** Fase 4 (MS-EXP-04) — Excel + Word + PowerPoint Online. Aguarda autorizacao.
+
+  ---

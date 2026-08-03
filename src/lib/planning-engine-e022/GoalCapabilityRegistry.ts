@@ -519,6 +519,70 @@ const _builtins: CapabilityMapping[] = [
     ],
   },
 
+  // ── Microsoft Graph (OneNote + Teams + SharePoint) — Fase 3 (MS-EXP-03) RFC-006/ADR-013
+  // Connector id: "microsoft-graph"  (MicrosoftGraphConnector.ts)
+  // CAVEAT: Teams/SharePoint exigem tenant corporativo (contas pessoais podem 403).
+  {
+    goalType: "ms.onenote.listNotebooks" as GoalType,
+    descriptors: [
+      { connector: "microsoft-graph", capability: "onenote.listNotebooks", params: {} },
+    ],
+  },
+  {
+    goalType: "ms.onenote.listPages" as GoalType,
+    descriptors: [
+      { connector: "microsoft-graph", capability: "onenote.listPages", params: {} },
+    ],
+  },
+  {
+    goalType: "ms.onenote.createPage" as GoalType,
+    descriptors: [
+      { connector: "microsoft-graph", capability: "onenote.createPage", params: {} },
+    ],
+  },
+  {
+    goalType: "ms.teams.listChats" as GoalType,
+    descriptors: [
+      { connector: "microsoft-graph", capability: "teams.listChats", params: {} },
+    ],
+  },
+  {
+    goalType: "ms.teams.listMessages" as GoalType,
+    descriptors: [
+      { connector: "microsoft-graph", capability: "teams.listMessages", params: {} },
+    ],
+  },
+  {
+    goalType: "ms.teams.sendMessage" as GoalType,
+    descriptors: [
+      { connector: "microsoft-graph", capability: "teams.sendMessage", params: {} },
+    ],
+  },
+  {
+    goalType: "ms.sharepoint.listSites" as GoalType,
+    descriptors: [
+      { connector: "microsoft-graph", capability: "sharepoint.listSites", params: {} },
+    ],
+  },
+  {
+    goalType: "ms.sharepoint.listLists" as GoalType,
+    descriptors: [
+      { connector: "microsoft-graph", capability: "sharepoint.listLists", params: {} },
+    ],
+  },
+  {
+    goalType: "ms.sharepoint.listItems" as GoalType,
+    descriptors: [
+      { connector: "microsoft-graph", capability: "sharepoint.listItems", params: {} },
+    ],
+  },
+  {
+    goalType: "ms.sharepoint.createItem" as GoalType,
+    descriptors: [
+      { connector: "microsoft-graph", capability: "sharepoint.createItem", params: {} },
+    ],
+  },
+
   // ── WhatsApp — Meta Cloud API oficial (Evolution/Baileys como stubs futuros)
   // Connector id: "whatsapp"  (WhatsAppConnector.ts)
   // Capabilities: "whatsapp.sendMessage", "whatsapp.sendTemplate", "whatsapp.getMessageStatus"
