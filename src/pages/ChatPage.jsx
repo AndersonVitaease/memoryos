@@ -145,14 +145,37 @@ export default function ChatPage({ projectId } = {}) {
       setShowScrollToBottom(!atBottom && scrollHeight - clientHeight > 400);
     };
 
+    // Pausa imediata do auto-scroll ao primeiro gesto manual para cima (mouse ou touch)
+    const handleWheel = (e) => {
+      if (e.deltaY < 0) userScrolledRef.current = true;
+    };
+    let lastTouchY = null;
+    const handleTouchStart = (e) => { lastTouchY = e.touches?.[0]?.clientY ?? null; };
+    const handleTouchMove = (e) => {
+      const y = e.touches?.[0]?.clientY;
+      if (lastTouchY != null && y != null && y > lastTouchY) userScrolledRef.current = true;
+      lastTouchY = y;
+    };
+
     container.addEventListener("scroll", handleScroll, { passive: true });
-    return () => container.removeEventListener("scroll", handleScroll);
+    container.addEventListener("wheel", handleWheel, { passive: true });
+    container.addEventListener("touchstart", handleTouchStart, { passive: true });
+    container.addEventListener("touchmove", handleTouchMove, { passive: true });
+    return () => {
+      container.removeEventListener("scroll", handleScroll);
+      container.removeEventListener("wheel", handleWheel);
+      container.removeEventListener("touchstart", handleTouchStart);
+      container.removeEventListener("touchmove", handleTouchMove);
+    };
   }, []);
 
   const streamingContent = conversation.messages.find((m) => m.isStreaming)?.streamingContent;
   useEffect(() => {
     if (userScrolledRef.current) return;
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    // Scroll instantaneo (sem animacao) para que o texto nao "suba" durante o streaming;
+    // o gesto manual para cima interrompe imediatamente (userScrolledRef) e o carregamento continua.
+    const container = scrollContainerRef.current;
+    if (container) container.scrollTop = container.scrollHeight;
   }, [conversation.messages.length, conversation.isLoading, streamingContent]);
 
   // ── Send (text) ───────────────────────────────────────────────────────────
@@ -409,7 +432,7 @@ export default function ChatPage({ projectId } = {}) {
                   ? <User className="w-4 h-4 text-white" />
                   : <Brain className="w-4 h-4 text-white" />}
               </div>
-              <div className={`flex-1 min-w-0 rounded-2xl px-4 py-3 text-base leading-relaxed ${
+              <div className={`flex-1 min-w-0 rounded-2xl px-4 py-3 text-lg leading-relaxed ${
                 msg.role === "user"
                   ? "bg-violet-100/60 border border-violet-200/70 text-zinc-700"
                   : "bg-white border border-zinc-200/80 text-zinc-700 shadow-sm"
