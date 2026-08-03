@@ -493,16 +493,19 @@ class ConversationManager {
   async getTimeline(sessionId?: string) {
     const sid = sessionId || this.session?.id;
     if (!sid) return [];
+    // IMPORTANTE: ordenar por "-created_date" (desc) para buscar os 200 itens
+    // MAIS RECENTES. Antes era "created_date" (asc) + limit 200, o que retornava
+    // as 200 mensagens mais antigas e exclua a atividade recente (uploads, etc.).
     const [messages, events] = await Promise.all([
-      base44.entities.Message.filter({ session_id: sid }, "created_date", 200),
-      (base44 as any).entities.SystemEvent.filter({ conversationId: sid }, "created_date", 200),
+      base44.entities.Message.filter({ session_id: sid }, "-created_date", 200),
+      (base44 as any).entities.SystemEvent.filter({ conversationId: sid }, "-created_date", 200),
     ]);
     const merged = [
       ...messages.map((m: any) => ({ kind: "message" as const, ...m, timestamp: m.created_date })),
       ...events.map((e: any) => ({ kind: "event" as const, ...e, timestamp: e.created_date })),
     ];
     merged.sort((a: any, b: any) =>
-      new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
     );
     return merged;
   }
