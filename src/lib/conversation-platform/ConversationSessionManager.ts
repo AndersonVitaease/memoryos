@@ -13,6 +13,7 @@ import {
   archiveSession,
   createSession,
   listSessions,
+  saveLastSessionId,
 } from "./ConversationPersistence";
 import type { ConversationSession } from "./CXPTypes";
 
@@ -47,6 +48,7 @@ class ConversationSessionManager {
 
   async createNewSession(title?: string): Promise<ConversationSession> {
     const session = await createSession(title);
+    saveLastSessionId(session.id);
     // BUGFIX (auditoria cognição): sem isto, o RuntimeContextLayer
     // (goalType/artefato/executionIntent/resultSet da última execução
     // de conector) permanecia vivo entre sessões — a sessão nova podia
@@ -77,6 +79,7 @@ class ConversationSessionManager {
     // goalType/artefato da conversa de onde você estava saindo.
     runtimeContextLayer.clear();
     conversationStore.setSession(target);
+    saveLastSessionId(sessionId);
     const messages = await loadMessages(sessionId, 100);
     conversationStore.setMessages(messages);
   }
