@@ -113,7 +113,10 @@ function matchKeywords(normalizedText, keywords) {
  * não adiciona custo às mensagens já óbvias (rotineiras, sem ambiguidade).
  */
 async function semanticWebSearchCheck(message) {
-  const SEMANTIC_CHECK_TIMEOUT_MS = 8000;
+  // CAP 2s: essa chamada de LLM so decide se web_search deve rodar — nao pode
+  // segurar a resposta do usuario por ate 8s. Se nao responder a tempo, cai no
+  // fallback (web_search nao ativa) e o LLM responde com o que tem.
+  const SEMANTIC_CHECK_TIMEOUT_MS = 2000;
   try {
     const timeoutPromise = new Promise((_, reject) =>
       setTimeout(() => reject(new Error("semanticWebSearchCheck timeout")), SEMANTIC_CHECK_TIMEOUT_MS)
