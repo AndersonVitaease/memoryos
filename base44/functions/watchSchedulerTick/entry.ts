@@ -17,18 +17,26 @@ async function delay(ms: number) {
 // ── OAuth helper ─────────────────────────────────────────────────────────────
 
 async function getGoogleAccessToken(base44: any, userId: string, preferEmail?: string): Promise<{ token: string; email: string } | null> {
-  // Se preferEmail especificado, tenta pegar token daquele email específico
+  // Filtra tokens que tem algum scope do Gmail (read ou send) e refresh_token
+  const hasGmailScope = (r: any) => r.refresh_token && (
+    r.scopes?.includes('gmail.readonly') ||
+    r.scopes?.includes('gmail.send') ||
+    r.scopes?.includes('gmail.compose') ||
+    r.scopes?.includes('mail.google.com')
+  );
+
+  // Se preferEmail especificado, pega tokens daquele email e filtra por scope do Gmail
   let records = preferEmail
-    ? await base44.asServiceRole.entities.GoogleOAuthToken.filter({ user_id: userId, email: preferEmail })
+    ? (await base44.asServiceRole.entities.GoogleOAuthToken.filter({ user_id: userId, email: preferEmail })).filter(hasGmailScope)
     : [];
 
-  // Fallback: qualquer token do user com gmail.send scope
+  // Fallback: qualquer token do user com gmail scope
   if (!records.length) {
     const all = await base44.asServiceRole.entities.GoogleOAuthToken.filter({ user_id: userId });
-    records = all.filter((r: any) => r.scopes?.includes('gmail.send') && r.refresh_token);
+    records = all.filter(hasGmailScope);
   }
 
-  if (!records.length || !records[0].refresh_token) return null;
+  if (!records.length) return null;
 
   const clientId     = Deno.env.get('GOOGLE_CLIENT_ID');
   const clientSecret = Deno.env.get('GOOGLE_CLIENT_SECRET');
@@ -134,16 +142,57 @@ function evaluateClock(conditionTree: any): boolean {
 
 // ── Provider: gmail ───────────────────────────────────────────────────────────
 
-async function evaluateGmail(conditionTree: any, accessToken: string): Promise<boolean> {
-  const res = await fetch(
-    'https://gmail.googleapis.com/gmail/v1/users/me/labels/INBOX',
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  );
-  if (!res.ok) { console.warn(`[gmail] API ${res.status}`); return false; }
+interface GmailNewMessage { id: string; subject: string; from: string; snippet: string; date: string }
+
+async function evaluateGmail(
+  conditionTree: any,
+  accessToken: string,
+  lastExecAt?: string | null,
+  watchCreatedAt?: string | null,
+): Promise<{ triggered: boolean; messages: GmailNewMessage[] }> {
+  // Busca mensagens NOVAS desde a ultima verificacao (ou desde a criacao do watch).
+  // Usa a query `after:<timestamp>` do Gmail - retorna so mensagens recebidas apos
+  // o timestamp informado. Assim, nao dispara por emails ja existentes.
+  const baseline = lastExecAt || watchCreatedAt || new Date().toISOString();
+  const afterSeconds = Math.floor(new Date(baseline).getTime() / 1000);
+  const query = `after:${afterSeconds} is:unread`;
+  const url = `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}&maxResults=5`;
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!res.ok) {
+    console.warn(`[gmail] API ${res.status} - query="${query}"`);
+    // Fallback: labels/INBOX (comportamento antigo) — so para nao ficar cego
+    const fb = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/labels/INBOX',
+      { headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!fb.ok) return { triggered: false, messages: [] };
+    const fd = await fb.json();
+    const hasUnread = (fd.messagesUnread ?? 0) > (conditionTree.value ?? 0);
+    return { triggered: hasUnread, messages: [] };
+  }
   const data = await res.json();
-  const unread = data.messagesUnread ?? 0;
-  const threshold = conditionTree.value ?? 0;
-  return unread > threshold;
+  const messageIds: Array<{ id: string }> = data.messages ?? [];
+  if (messageIds.length === 0) return { triggered: false, messages: [] };
+
+  // Busca detalhes (Subject, From, snippet) de cada mensagem nova
+  const messages: GmailNewMessage[] = [];
+  for (const m of messageIds.slice(0, 3)) {
+    try {
+      const dr = await fetch(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From`,
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+      );
+      if (!dr.ok) continue;
+      const d = await dr.json();
+      const headers = d.payload?.headers ?? [];
+      const subject = headers.find((h: any) => h.name === 'Subject')?.value ?? '(sem assunto)';
+      const from = headers.find((h: any) => h.name === 'From')?.value ?? '';
+      const snippet = d.snippet ?? '';
+      const date = d.internalDate
+        ? new Date(parseInt(d.internalDate)).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+        : '';
+      messages.push({ id: m.id, subject, from, snippet, date });
+    } catch { /* skip individual failures */ }
+  }
+  return { triggered: true, messages };
 }
 
 // ── Provider: calendar ────────────────────────────────────────────────────────
@@ -190,6 +239,7 @@ async function runOneTick(base44: any, googleTokenCache: Map<string, string>): P
 
       const provider = conditionTree.provider ?? 'unknown';
       let evaluationResult = false;
+      let gmailNewMessages: GmailNewMessage[] = [];
       const t0 = Date.now();
 
       if (provider === 'clock') {
@@ -209,9 +259,13 @@ async function runOneTick(base44: any, googleTokenCache: Map<string, string>): P
             }
           }
           if (token) {
-            evaluationResult = provider === 'gmail'
-              ? await evaluateGmail(conditionTree, token)
-              : await evaluateCalendar(conditionTree, token);
+            if (provider === 'gmail') {
+              const gResult = await evaluateGmail(conditionTree, token, watch.last_execution_at, watch.compiled_at || watch.created_date);
+              evaluationResult = gResult.triggered;
+              gmailNewMessages = gResult.messages;
+            } else {
+              evaluationResult = await evaluateCalendar(conditionTree, token);
+            }
           }
         }
       }
@@ -219,8 +273,14 @@ async function runOneTick(base44: any, googleTokenCache: Map<string, string>): P
       const durationMs = Date.now() - t0;
       const prevResult = watch.last_evaluation_result;
 
-      // Dispara apenas na transição false→true (ou null→true para primeira avaliação)
-      const wasTriggered = evaluationResult === true && prevResult !== true;
+      // Clock: dispara na primeira avaliacao (null->true) - alarme one-shot.
+      // Gmail: busca `after:` so retorna mensagens novas - se encontrou, dispara sempre.
+      // Calendar: dispara na transicao false->true.
+      const wasTriggered = provider === 'clock'
+        ? (evaluationResult === true && prevResult !== true)
+        : provider === 'gmail'
+          ? evaluationResult === true
+          : (evaluationResult === true && prevResult === false);
 
       // Para clock: se disparou → completed (one-shot). Senão → continua ativo, tenta em 1min.
       // Para outros providers → agenda próxima execução conforme frequência.
@@ -317,6 +377,15 @@ async function runOneTick(base44: any, googleTokenCache: Map<string, string>): P
         let friendlyMsg = `O alerta "${watch.name.replace(/ — Auto WE-04$/, '')}" disparou.`;
         if (conditionTree.provider === 'clock' && conditionTree.params?.target_time) {
           friendlyMsg = `Chegou a hora! ${conditionTree.params.target_time} — você pediu para ser avisado neste horário.`;
+        }
+        // Gmail: inclui assunto, remetente, data e snippet de cada email novo
+        if (provider === 'gmail' && gmailNewMessages.length > 0) {
+          const acct = conditionTree.params?.accountEmail ?? '';
+          const acctLabel = acct ? ` em ${acct}` : '';
+          const emailLines = gmailNewMessages.map((m: GmailNewMessage) =>
+            `**${m.subject}**\n   De: ${m.from} | ${m.date}\n   _${m.snippet}_`,
+          ).join('\n\n');
+          friendlyMsg = `📧 Novo email recebido${acctLabel}:\n\n${emailLines}`;
         }
         if (_sentTo) {
           if (_sentMessageId) {
