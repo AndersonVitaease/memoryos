@@ -1,154 +1,143 @@
 import { base44 } from "@/api/base44Client";
 
 /**
- * Recuperação Inteligente de Contexto
+ * Recuperacao inteligente de contexto (legado, usado por SearchPage).
  *
- * Em vez de carregar toda a conversa, busca apenas o conhecimento relevante
- * para a pergunta do usuário.
+ * Estrategia: extrai palavras-chave da query -> busca Entidades, Documentos
+ * e Mensagens relacionadas -> monta um bloco de contexto textual + lista de
+ * fontes + mensagens recentes da sessao (quando aplicavel).
  *
- * Estratégia:
- * 1. Extrair palavras-chave da pergunta
- * 2. Buscar entidades + keywords que correspondam
- * 3. Recuperar documentos relacionados
- * 4. Combinar: resumo da sessão + contexto relevante + mensagens recentes
- * 5. Limitar tokens injetados
+ * Contrato: retrieveContext(query, sessionId, projectId) ->
+ *   { context: string, sources: Document[], recentMessages: Message[] }
  */
 
-const MAX_CONTEXT_CHARS = 8000;
-const RECENT_MESSAGES_COUNT = 20;
+const STOPWORDS = new Set([
+  "a", "o", "as", "os", "de", "do", "da", "dos", "das", "e", "ou", "um", "uma",
+  "uns", "umas", "no", "na", "nos", "nas", "em", "para", "por", "com", "que",
+  "se", "ao", "aos", "pelo", "pela", "pelos", "pelas", "me", "te", "lhe", "nos",
+  "vos", "lhes", "isso", "este", "esta", "estes", "estas", "esse", "essa",
+  "esses", "essas", "aquele", "aquela", "quando", "onde", "como", "qual",
+  "quais", "sobre", "apos", "ate", "entre", "desde", "the", "is", "at", "of",
+]);
 
-/**
- * Extrai palavras-chave de uma pergunta usando LLM (rápido, schema simples).
- */
-async function extractQueryKeywords(question) {
-  try {
-    const result = await base44.integrations.Core.InvokeLLM({
-      prompt: `Extraia 3-8 palavras-chave de busca da seguinte pergunta em português.
-Retorne apenas as palavras, sem explicações.
+function extractKeywords(query) {
+  const tokens = (query || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .split(/[^a-z0-9]+/i)
+    .filter((t) => t.length > 2 && !STOPWORDS.has(t));
+  // Remove duplicados preservando ordem
+  return Array.from(new Set(tokens)).slice(0, 12);
+}
 
-Pergunta: "${question}"`,
-      response_json_schema: {
-        type: "object",
-        properties: {
-          keywords: { type: "array", items: { type: "string" } },
-        },
-        required: ["keywords"],
-      },
-    });
-    return result.keywords || [];
-  } catch {
-    // Fallback: dividir por espaços e filtrar stopwords
-    const stopwords = ["o", "a", "os", "as", "de", "da", "do", "das", "dos", "e", "ou", "que", "para", "com", "em", "um", "uma", "no", "na", "nos", "nas", "quando", "como", "qual", "quais", "quem", "onde", "foi", "ser", "tem", "ha", "muito", "muita", "esse", "essa", "este", "esta"];
-    return question
-      .toLowerCase()
-      .split(/\s+/)
-      .filter((w) => w.length > 3 && !stopwords.includes(w))
-      .slice(0, 6);
-  }
+function buildRegex(keywords) {
+  if (!keywords.length) return null;
+  // Match any keyword as whole word (case-insensitive)
+  const escaped = keywords.map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return new RegExp(`\\b(${escaped.join("|")})\\b`, "i");
 }
 
 /**
- * Recupera contexto relevante para uma pergunta.
- * @param {string} question - Pergunta do usuário
- * @param {string} sessionId - Sessão ativa
- * @param {string} projectId - Projeto (opcional)
- * @returns {Object} { context, sources, recentMessages }
+ * Recupera contexto relevante para a query do usuario.
  */
-export async function retrieveContext(question, sessionId, projectId) {
-  // 1. Extrair palavras-chave da pergunta
-  const queryKeywords = await extractQueryKeywords(question);
+export async function retrieveContext(query, sessionId = null, projectId = null) {
+  const keywords = extractKeywords(query);
+  const regex = buildRegex(keywords);
 
-  // 2. Buscar paralelamente: resumo da sessão, mensagens recentes, conhecimento relevante
-  const [sessions, recentMessages, allEntities, allKeywords, documents] = await Promise.all([
-    sessionId ? base44.entities.ChatSession.filter({ id: sessionId }, "-updated_date", 1) : [],
-    sessionId ? base44.entities.Message.filter({ session_id: sessionId }, "-created_date", RECENT_MESSAGES_COUNT) : [],
-    base44.entities.KnowledgeEntity.filter(
-      projectId ? { project_id: projectId } : {},
-      "-created_date", 200
-    ),
-    base44.entities.Keyword.filter(
-      projectId ? { project_id: projectId } : {},
-      "-created_date", 200
-    ),
-    projectId
-      ? base44.entities.Document.filter({ project_id: projectId, processing_status: "completed" }, "-created_date", 50)
-      : base44.entities.Document.filter({ processing_status: "completed" }, "-created_date", 50),
+  // Sem keywords uteis: retorna historico recente da sessao (se houver) sem contexto
+  if (!regex) {
+    const recentMessages = sessionId ? await loadRecentMessages(sessionId, 8) : [];
+    return { context: "", sources: [], recentMessages };
+  }
+
+  // Busca paralela: Entidades, Documentos, Mensagens por keyword
+  const [entities, documents, recentMessages] = await Promise.all([
+    searchEntities(regex, projectId),
+    searchDocuments(regex, projectId),
+    sessionId ? loadRecentMessages(sessionId, 8) : Promise.resolve([]),
   ]);
 
-  const session = sessions[0];
-  const sessionSummary = session?.summary || "";
+  // Monta o bloco de contexto textual
+  const parts = [];
 
-  // 3. Filtrar entidades e keywords por relevância à pergunta
-  const questionLower = question.toLowerCase();
-
-  const relevantEntities = allEntities.filter((e) => {
-    const valueMatch = queryKeywords.some((kw) => e.value?.toLowerCase().includes(kw));
-    const directMatch = e.value && questionLower.includes(e.value.toLowerCase());
-    return valueMatch || directMatch;
-  }).slice(0, 30);
-
-  const relevantKeywords = allKeywords.filter((k) => {
-    return queryKeywords.some((qk) => k.keyword?.includes(qk) || qk.includes(k.keyword));
-  }).slice(0, 20);
-
-  // 4. Filtrar documentos relevantes (por keywords ou entidades)
-  const relevantDocIds = new Set();
-  for (const kw of relevantKeywords) {
-    if (kw.document_id) relevantDocIds.add(kw.document_id);
-  }
-  for (const ent of relevantEntities) {
-    if (ent.document_id) relevantDocIds.add(ent.document_id);
+  if (entities.length > 0) {
+    parts.push(
+      "ENTIDADES CONHECIDAS:\n" +
+        entities
+          .slice(0, 15)
+          .map((e) => `- ${e.type}: ${e.value}${e.context ? ` (ctx: ${e.context.slice(0, 120)})` : ""}`)
+          .join("\n")
+    );
   }
 
-  const relevantDocs = documents.filter((d) => relevantDocIds.has(d.id));
-  // Se não encontrou docs relevantes, usar os mais recentes como fallback (top 5)
-  const docsToUse = relevantDocs.length > 0 ? relevantDocs : documents.slice(0, 5);
-
-  // 5. Construir contexto (com limite de tokens)
-  let context = "";
-  const sources = [];
-
-  // Resumo da sessão
-  if (sessionSummary) {
-    context += `## RESUMO DA CONVERSA\n${sessionSummary}\n\n`;
+  if (documents.length > 0) {
+    parts.push(
+      "DOCUMENTOS RELACIONADOS:\n" +
+        documents
+          .slice(0, 10)
+          .map((d) => `- ${d.name}${d.summary ? ` — ${d.summary.slice(0, 180)}` : ""}`)
+          .join("\n")
+    );
   }
 
-  // Documentos relevantes (apenas resumos)
-  for (const doc of docsToUse) {
-    const docContent = doc.summary || doc.extracted_text?.substring(0, 800) || "";
-    if (!docContent) continue;
-    const docBlock = `### ${doc.name} (${doc.category || "sem categoria"})\n${docContent}\n\n`;
-    if ((context + docBlock).length > MAX_CONTEXT_CHARS) break;
-    context += docBlock;
-    sources.push({ type: "document", id: doc.id, name: doc.name });
+  // Mensagens recentes relevantes (das carregadas, filtra as que tocam keywords)
+  const relevantMessages = recentMessages.filter(
+    (m) => m.content && regex.test(m.content)
+  );
+  if (relevantMessages.length > 0) {
+    parts.push(
+      "MENSAGENS RECENTES RELACIONADAS:\n" +
+        relevantMessages
+          .slice(0, 8)
+          .map((m) => `${m.role === "user" ? "Usuario" : "Assistente"}: ${m.content.slice(0, 280)}`)
+          .join("\n\n")
+    );
   }
 
-  // Entidades relevantes
-  if (relevantEntities.length > 0) {
-    const entityBlock = "## ENTIDADES RELEVANTES\n" +
-      relevantEntities.map((e) => `- ${e.type}: ${e.value}`).join("\n") + "\n\n";
-    if ((context + entityBlock).length < MAX_CONTEXT_CHARS) {
-      context += entityBlock;
-    }
+  const context = parts.join("\n\n");
+  return { context, sources: documents, recentMessages };
+}
+
+// ─── Helpers ───────────────────────────────────────────────────────────────
+
+async function searchEntities(regex, projectId) {
+  try {
+    // Carrega um lote razoavel e filtra em memoria por relevancia (sem full-text)
+    const filter = projectId ? { project_id: projectId } : {};
+    const all = await base44.entities.KnowledgeEntity.filter(filter, "-created_date", 200);
+    return (all || []).filter(
+      (e) => (e.value && regex.test(e.value)) || (e.context && regex.test(e.context))
+    );
+  } catch {
+    return [];
   }
+}
 
-  // Keywords relevantes
-  if (relevantKeywords.length > 0) {
-    const kwBlock = "## PALAVRAS-CHAVE RELACIONADAS\n" +
-      relevantKeywords.map((k) => k.keyword).join(", ") + "\n\n";
-    if ((context + kwBlock).length < MAX_CONTEXT_CHARS) {
-      context += kwBlock;
-    }
+async function searchDocuments(regex, projectId) {
+  try {
+    const filter = projectId ? { project_id: projectId } : {};
+    const all = await base44.entities.Document.filter(filter, "-created_date", 100);
+    return (all || []).filter(
+      (d) =>
+        (d.name && regex.test(d.name)) ||
+        (d.summary && regex.test(d.summary)) ||
+        (d.extracted_text && regex.test(d.extracted_text))
+    );
+  } catch {
+    return [];
   }
+}
 
-  // Inverter mensagens recentes (cronológico)
-  const sortedRecent = [...recentMessages].reverse();
-
-  return {
-    context: context.trim(),
-    sources,
-    recentMessages: sortedRecent,
-    sessionSummary,
-    hasMemory: recentMessages.length > 0 || !!sessionSummary || allEntities.length > 0 || allKeywords.length > 0,
-  };
+async function loadRecentMessages(sessionId, limit) {
+  try {
+    const msgs = await base44.entities.Message.filter(
+      { session_id: sessionId },
+      "-created_date",
+      limit
+    );
+    return (msgs || []).reverse();
+  } catch {
+    return [];
+  }
 }

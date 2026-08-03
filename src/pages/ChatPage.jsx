@@ -7,7 +7,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   Send, Brain, Sparkles, ChevronDown, ChevronUp,
-  Radio, Volume2, X, Paperclip, RotateCcw, Square,
+  Radio, Volume2, Paperclip, RotateCcw, Square,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { useConversation } from "@/lib/conversation-platform/useConversation";
