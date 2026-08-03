@@ -517,4 +517,40 @@ A `UCRBridge.ts` (que envolve TODO connector no runtime) ja emite `ConnectorExec
 
 **Nao alterado (explicitamente):** modelo do LLM, tamanho do prompt, `memoryService.retrieve`, `classifyIntent` (regex puro, ja rapido).
 
----
+  ---
+
+### 2026-08-03 — Microsoft Graph Connector Expansion: Planejamento (RFC-006 + ADR-013)
+
+**Doc oficial:** `src/docs/foundation/rfc/RFC-006-Microsoft-Graph-Provider-Expansion.md` + `src/docs/foundation/adr/ADR-013.md`
+
+**Status:** APENAS PLANEJAMENTO. Nenhum codigo implementado nesta sessao.
+
+**Contexto:** Usuario pediu expansao do conector Microsoft Graph para cobrir 11 servicos do Microsoft 365 (Outlook, Calendar, OneDrive ja existem; adicionar Contacts, To Do, OneNote, Teams, SharePoint, Excel/Word/PowerPoint Online). Discutiu-se se seria "provider" ou "conector" e qual a melhor forma de construir.
+
+**Decisao arquitetural (Caminho 2 — Capability Executors):**
+- O `MicrosoftGraphConnector` atual tem 8 capacidades num unico `switch` monolitico em `execute()`.
+- Adotar o padrao de **Capability Executors** (shell fino + 1 executor por servico em arquivo isolado), alinhando com o padrao JA vivo dos conectores Google (`GmailCapabilityExecutor`, `GoogleDriveCapabilityExecutor`, `GoogleCalendarCapabilityExecutor`).
+- **Nao** replicar a arquitetura 5-camadas do WhatsApp — o Microsoft Graph e provedor unico oficial, nao ha concorrentes a abstrair (indirecao sem beneficio).
+
+**Por que "conector" e nao "provider" (no sentido WhatsApp):**
+- WhatsApp precisou de camada de Provider porque existiam 3 provedores concorrentes (Meta oficial, Evolution, Baileys). A camada abstrai QUAL backend usar.
+- Microsoft Graph e a unica API oficial — nao ha o que abstrair. E somente um Connector (expoe capacidades ao Planner).
+- O Microsoft pode se tornar um **Watch provider** (no sentido do Watch Engine) se houver demanda de monitoramento proativo de email/Teams — mas isso e opcional e fase futura.
+
+**Caveat critico — Excel/Word/PowerPoint "Online":** o Graph da acesso a arquivo + leitura/criacao de conteudo programatico (getRange, updateRange, getText, listSlides), mas NAO e edicao colaborativa estilo Office Online. Esse limite e da propria API Microsoft, nao da arquitetura.
+
+**Escopos OAuth a adicionar (7 novos):** `Contacts.ReadWrite`, `Tasks.ReadWrite`, `Notes.ReadWrite`, `Chat.Read`, `ChatMessage.Send`, `Sites.ReadWrite.All`, `Files.ReadWrite`. Observacao: Teams/SharePoint exigem tenant corporativo — contas pessoais (@outlook.com) podem nao ter acesso.
+
+**Fases de implementacao (aditivas e reversiveis):**
+- Fase 0 — Extracao: mover 8 cases existentes para 3 executors + helper, sem mudar comportamento.
+- Fase 1 — Registry: criar `MicrosoftCapabilityRegistry`, shell delega via mapa.
+- Fase 2 — Contacts + To Do.
+- Fase 3 — OneNote + Teams + SharePoint.
+- Fase 4 — Excel/Word/PowerPoint Online.
+- Fase 5 (opcional) — MicrosoftWatchProvider para monitoramento proativo.
+
+**Camadas existentes (nenhuma acao necessaria):** Event Layer (UCRBridge) e Observation Layer (PipelineObservationBridge) ja cobrem qualquer conector automaticamente. Capability Layer so precisa de novos mappings no GoalCapabilityRegistry.
+
+**Proximo passo:** aguardar autorizacao para iniciar Fase 0 (extracao puramente mecanica, zero comportamento novo).
+
+  ---

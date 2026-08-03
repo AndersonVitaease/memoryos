@@ -236,5 +236,23 @@ ADR-007 (Reasoning Engine)
 
 ---
 
+---
+
+### ADR-013 — Microsoft Graph Connector: Capability Executors Pattern
+
+| Campo | Valor |
+|---|---|
+| **ADR-ID** | ADR-013 |
+| **Status** | Accepted |
+| **RFC Origem** | RFC-006 |
+| **Prioridade** | ALTA |
+| **Sprints afetadas** | MS-EXP-01, MS-EXP-02, MS-EXP-03, MS-EXP-04 |
+| **Arquivo** | `src/docs/foundation/adr/ADR-013.md` |
+
+**Resumo:** Define a expansao do conector Microsoft Graph para 11 servicos do Microsoft 365 usando o padrao Capability Executors (shell fino + 1 executor por servico em arquivo isolado), alinhando com o padrao ja vivo dos conectores Google. Rejeita replicar a arquitetura 5-camadas do WhatsApp — o Graph e provedor unico oficial, nao ha concorrentes a abstrair.
+
+---
+
 *SPR-ADR-01 · 2026-07-11 · Engineering First*
 *Atualizado em 2026-08-02 — ADR-012 Watch Engine adicionado*
+*Atualizado em 2026-08-03 — ADR-013 Microsoft Graph Expansion adicionado*
