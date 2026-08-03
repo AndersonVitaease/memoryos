@@ -644,3 +644,37 @@ A `UCRBridge.ts` (que envolve TODO connector no runtime) ja emite `ConnectorExec
 **Proximo passo:** Fase 4 (MS-EXP-04) — Excel + Word + PowerPoint Online. Aguarda autorizacao.
 
   ---
+
+### 2026-08-03 — Microsoft Graph Connector Fase 4 (MS-EXP-04): Excel + Word + PowerPoint Online
+
+**RFC/ADR:** `RFC-006` + `ADR-013`
+
+**Status:** Fase 4 EXECUTADA — ultima fase obrigatoria do RFC-006. Adicionados 3 servicos "Office Online" seguindo o padrao Capability Executors. O shell `MicrosoftGraphConnector` NAO foi tocado — so o Registry cresceu.
+
+**Arquivos novos (3) em `src/lib/connector-runtime/connectors/microsoft/`:**
+- `ExcelCapability.ts` — 3 capacidades: `excel.listWorksheets`, `excel.getRange`, `excel.updateRange` (Graph Workbook API `/me/drive/items/{id}/workbook/*`). Workbook API e a UNICA via REST real do Graph para Office — le/escrive intervalos programaticamente (nao e edicao colaborativa estilo Excel Online). Escopo: `Files.ReadWrite` (para updateRange).
+- `WordCapability.ts` — 2 capacidades: `word.listDocuments`, `word.getDocumentText`. Graph REST nao expoe texto de Word (so binario .docx); `getDocumentText` baixa o binario via URL pre-autenticada `@microsoft.graph.downloadUrl`, converte para base64 e REUTILIZA o backend `documentParser` (mammoth) para extrair texto — mesmo parser do pipeline de ingestao. Escopo: `Files.Read`.
+- `PowerPointCapability.ts` — 2 capacidades: `pptx.listDocuments`, `pptx.getDocumentDownload`. CAVEAT: Graph REST nao expoe texto de slides (sem Workbook API equivalente) e o `documentParser` nao suporta .pptx hoje. `getDocumentDownload` retorna a URL pre-autenticada + nome para download manual; extracao de texto de slides fica como limitacao explicita documentada no header do arquivo. Escopo: `Files.Read`.
+
+**Arquivos editados (3):**
+- `MicrosoftCapabilityRegistry.ts` — adicionados `ExcelCapability`, `WordCapability`, `PowerPointCapability` ao array `CAPABILITIES`.
+- `GoalCapabilityRegistry.ts` — adicionados 7 mappings (`ms.excel.*`, `ms.word.*`, `ms.pptx.*`) com `connector: "microsoft-graph"`. Inseridos ANTES do bloco WhatsApp.
+- `MicrosoftAuthSession.js` — adicionado `Files.ReadWrite` ao `WORKSPACE_SCOPES` (necessario para `excel.updateRange` PATCH). `Files.Read.All` ja cobre Word/PowerPoint read.
+
+**Honestidade tecnica (limites reais da API Microsoft, documentados no proprio codigo):**
+- Excel: Workbook API REST real — leitura/escrita de intervalos funciona de verdade.
+- Word: texto extraivel via documentParser (mammoth) apos baixar binario — funciona.
+- PowerPoint: Graph REST NAO tem API de slides; documentParser nao suporta .pptx. So metadata + downloadUrl. Extracao de texto de slides e limitacao real, nao bug da arquitetura.
+- Nenhum dos tres e edicao colaborativa estilo Office Online (limite da propria API Graph).
+
+**Nao-quebra verificada:**
+- O shell nao muda — `resolveCapability(operation)` agora cobre 7 operations a mais.
+- `metadata.capabilities` agora retorna 32 operations (25 da Fase 3 + 7 novas) sem mudanca de versao do conector.
+- Event Layer (UCRBridge) e Observation Layer envolvem automaticamente.
+- WordCapability importa `base44` de `@/api/base44Client` (pre-inicializado) — mesmo padrao ja usado por KnowledgeIngestionPipeline e outros executors do frontend.
+
+**Dependencia externa:** usuario precisa re-conectar Microsoft 365 em `/connections` para conceder `Files.ReadWrite` (escopo novo). Excel updateRange falha com 403 sem ele.
+
+**Estado final do RFC-006 (fases obrigatorias):** CONCLUIDO. 11 servicos do Microsoft 365 cobertos (Mail, Calendar, OneDrive, Contacts, To Do, OneNote, Teams, SharePoint, Excel, Word, PowerPoint) por 11 Capability Executors isolados, 1 shell fino, 1 helper compartilhado, 1 registry. Fase 5 (MicrosoftWatchProvider, monitoramento proativo) fica como opcional futura.
+
+  ---
