@@ -134,15 +134,17 @@ export default function ChatPage({ projectId } = {}) {
 
     const handleScroll = () => {
       const { scrollTop, scrollHeight, clientHeight } = container;
-      const atBottom = scrollHeight - scrollTop - clientHeight < 80;
-      if (scrollTop < lastScrollTopRef.current - 5) {
+      const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+      // Qualquer movimento para cima (mesmo 1px) pausa o auto-scroll imediatamente
+      if (scrollTop < lastScrollTopRef.current) {
         userScrolledRef.current = true;
       }
-      if (atBottom) {
+      // So retoma o auto-scroll quando realmente estiver colado no fundo
+      if (distanceFromBottom < 4) {
         userScrolledRef.current = false;
       }
       lastScrollTopRef.current = scrollTop;
-      setShowScrollToBottom(!atBottom && scrollHeight - clientHeight > 400);
+      setShowScrollToBottom(distanceFromBottom > 120);
     };
 
     // Pausa imediata do auto-scroll ao primeiro gesto manual para cima (mouse ou touch)
