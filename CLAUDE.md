@@ -554,3 +554,36 @@ A `UCRBridge.ts` (que envolve TODO connector no runtime) ja emite `ConnectorExec
 **Proximo passo:** aguardar autorizacao para iniciar Fase 0 (extracao puramente mecanica, zero comportamento novo).
 
   ---
+
+### 2026-08-03 — Microsoft Graph Connector Fase 0 (MS-EXP-01): Extracao Concluida
+
+**RFC/ADR:** `RFC-006` + `ADR-013`
+
+**Status:** Fase 0 EXECUTADA. Extracao puramente mecanica — ZERO comportamento novo. As mesmas 8 capacidades (`mail.list`, `mail.search`, `mail.read`, `mail.send`, `calendar.list`, `calendar.create`, `files.list`, `files.download`) continuam funcionando, agora delegadas a executors isolados em vez de um switch monolitico.
+
+**Arquivos novos (6) em `src/lib/connector-runtime/connectors/microsoft/`:**
+- `MicrosoftGraphHelper.ts` — `graphFetch`, `ok`, `fail`, `GRAPH_BASE`, `MS_CONNECTOR_ID` extraidos do conector original. Compartilhado por todos os executors.
+- `MicrosoftCapabilityTypes.ts` — interface `MicrosoftCapability` (id, operations, execute) + `MicrosoftCapabilityContext`.
+- `MicrosoftCapabilityRegistry.ts` — mapa `operation -> executor` + `listAllOperations()` (alimenta `metadata.capabilities`).
+- `OutlookMailCapability.ts` — 4 cases de mail extraidos.
+- `OutlookCalendarCapability.ts` — 2 cases de calendar extraidos.
+- `OneDriveCapability.ts` — 2 cases de files extraidos.
+
+**Arquivo reescrito (1):**
+- `MicrosoftGraphConnector.ts` — agora SHELL FINO. Mantem apenas `metadata`, `health`, `validate`, `initialize`, `shutdown` e `execute` (token + roteamento via `resolveCapability`). Logica de servico removida. `metadata.version` mantido `1.0.0` (zero comportamento novo). `metadata.capabilities` agora vem de `listAllOperations()` (mesmas 8 operations, mesma ordem de registro).
+
+**Verificacao de nao-quebra feita:**
+- Os helpers `ok`/`fail`/`graphFetch`/`GRAPH_BASE`/`CAPABILITIES` do conector original eram **privados de modulo** (sem `export`) — nenhum importador externo quebrado.
+- `ConnectorBootstrap.ts` registra o conector pela classe `MicrosoftGraphConnector` — import inalterado, classe mantida, mesmo `id`.
+- `UCRBridge` (Event Layer) e `PipelineObservationBridge` (Observation Layer) envolvem qualquer conector automaticamente — nenhuma acao necessaria.
+- Ordem de operacoes em `metadata.capabilities` preservada (mail.* -> calendar.* -> files.*), mesma sequencia do `CAPABILITIES` original.
+
+**Cuidados tomados (criterios do usuario):**
+- Nenhum codigo morto/legado/paralelo criado — os executors sao o unico caminho vivo; o switch antigo foi removido (nao deixado como legado).
+- Nenhum `require()`/`module.exports` — ESM puro com `import`/`export`.
+- Imports via caminho relativo `../../ConnectorTypes` (contado corretamente: `connectors/microsoft/` -> `connector-runtime/` = 2 niveis).
+- Cada executor e testavel isoladamente (recebe `accessToken` + `ctx`, sem estado global).
+
+**Proximo passo:** Fase 2 (MS-EXP-02) — Contacts + To Do. Aguarda autorizacao.
+
+  ---
