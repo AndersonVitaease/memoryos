@@ -422,84 +422,83 @@ class ConversationPipeline {
       );
       responseTracer.recordRouterDecision(traceId, routerResult.decision, routerResult.intent?.intent, routerResult.durationMs);
 
-      // ── Sprint 8.11: Unified Context Builder ────────────────────────────
-      let unifiedCtx: import("@/lib/unified-context/UnifiedContextTypes").UnifiedContext | null = null;
-      try {
-        unifiedCtx = await unifiedContextBuilder.build(
-          userMessage,
-          session.id,
-          session.project_id ?? null,
-          session.summary ?? null,
-          historyMessages.map((m) => ({ role: m.role, content: m.content })),
-        );
-        conversationStore.emit({
-          type: "PIPELINE_STEP",
-          executionId,
-          payload: {
-            step:        "unified_context_built",
-            buildId:     unifiedCtx.buildId,
-            intent:      unifiedCtx.intent,
-            durationMs:  unifiedCtx.durationMs,
-            confidence:  unifiedCtx.confidence,
-            sourceCount: unifiedCtx.sources.length,
-            sourcesUsed: unifiedCtx.sources.map((s) => s.sourceId),
-            connectors:  unifiedCtx.connectorAvailability,
-          },
-          timestamp: Date.now(),
-        });
-      } catch { /* non-blocking */ }
-      // ── end Sprint 8.11 ─────────────────────────────────────────────────
-
-      // ── Sprint 8.12: Knowledge Fusion Engine ────────────────────────────
+      // ── Sprint 8.11/8.12/M-03: Unified Context + KFE + Graph (fire-and-forget) ──
+      // kfmModel so enriquece o prompt do LLM (kfmContext) quando ha entidades
+      // detectadas; para chat normal (0 entidades) nao muda nada. memoryService.
+      // retrieve (dentro do runReasoningPlan) ja fornece contexto de memoria ao
+      // LLM. Rodar essa cadeia na critical path soma ~300ms de leituras de DB
+      // redundantes antes do LLM. Deferimos — kfmModel fica null (mesmo
+      // comportamento de uma sessao sem entidades); observabilidade e persistencia
+      // do grafo continuam rodando em segundo plano.
       let kfmModel: import("@/lib/knowledge-fusion-engine/KFETypes").UnifiedKnowledgeModel | null = null;
-      try {
-        const normResult = unifiedCtx
-          ? knowledgeNormalizer.normalize(unifiedCtx)
-          : { units: [], unitCount: 0, buildId: `kfe-${Date.now()}` };
-        const kfeResult = knowledgeFusionEngine.fuse({
-          buildId:   normResult.buildId,
-          units:     normResult.units,
-          sessionId: session.id,
-        });
-        if (kfeResult.success) {
-          kfmModel = kfeResult.model;
-          conversationStore.emit({
-            type: "PIPELINE_STEP",
-            executionId,
-            payload: {
-              step:          "knowledge_model_built",
-              modelId:       kfmModel.modelId,
-              entities:      kfmModel.statistics.totalEntities,
-              relationships: kfmModel.statistics.totalRelationships,
-              conflicts:     kfmModel.statistics.totalConflicts,
-              duplicates:    kfmModel.statistics.duplicatesRemoved,
-              confidence:    kfmModel.confidence,
-              durationMs:    kfeResult.durationMs,
-            },
-            timestamp: Date.now(),
-          });
-        }
-      } catch { /* non-blocking */ }
-
-      // ── Sprint M-03: Knowledge Graph Population ──────────────────────────
-      if (kfmModel !== null && kfmModel.statistics.totalEntities > 0) {
+      void (async () => {
         try {
-          const bridgeResult = knowledgeGraphBridge.persist(kfmModel, session.id);
+          const uc = await unifiedContextBuilder.build(
+            userMessage,
+            session.id,
+            session.project_id ?? null,
+            session.summary ?? null,
+            historyMessages.map((m) => ({ role: m.role, content: m.content })),
+          );
           conversationStore.emit({
             type: "PIPELINE_STEP",
             executionId,
             payload: {
-              step:        "knowledge_graph_updated",
-              persisted:   bridgeResult.persisted,
-              reason:      bridgeResult.reason,
-              entityCount: bridgeResult.entityCount,
-              durationMs:  bridgeResult.durationMs,
+              step:        "unified_context_built",
+              buildId:     uc.buildId,
+              intent:      uc.intent,
+              durationMs:  uc.durationMs,
+              confidence:  uc.confidence,
+              sourceCount: uc.sources.length,
+              sourcesUsed: uc.sources.map((s) => s.sourceId),
+              connectors:  uc.connectorAvailability,
             },
             timestamp: Date.now(),
           });
+          const normResult = knowledgeNormalizer.normalize(uc);
+          const kfeResult = knowledgeFusionEngine.fuse({
+            buildId:   normResult.buildId,
+            units:     normResult.units,
+            sessionId: session.id,
+          });
+          if (kfeResult.success && kfeResult.model) {
+            const km = kfeResult.model;
+            conversationStore.emit({
+              type: "PIPELINE_STEP",
+              executionId,
+              payload: {
+                step:          "knowledge_model_built",
+                modelId:       km.modelId,
+                entities:      km.statistics.totalEntities,
+                relationships: km.statistics.totalRelationships,
+                conflicts:     km.statistics.totalConflicts,
+                duplicates:    km.statistics.duplicatesRemoved,
+                confidence:    km.confidence,
+                durationMs:    kfeResult.durationMs,
+              },
+              timestamp: Date.now(),
+            });
+            if (km.statistics.totalEntities > 0) {
+              try {
+                const bridgeResult = knowledgeGraphBridge.persist(km, session.id);
+                conversationStore.emit({
+                  type: "PIPELINE_STEP",
+                  executionId,
+                  payload: {
+                    step:        "knowledge_graph_updated",
+                    persisted:   bridgeResult.persisted,
+                    reason:      bridgeResult.reason,
+                    entityCount: bridgeResult.entityCount,
+                    durationMs:  bridgeResult.durationMs,
+                  },
+                  timestamp: Date.now(),
+                });
+              } catch { /* graph persist non-blocking */ }
+            }
+          }
         } catch { /* non-blocking */ }
-      }
-      // ── end Sprint M-03 / 8.12 ──────────────────────────────────────────
+      })();
+      // ── end fire-and-forget Unified Context + KFE + Graph ──────────────
 
       // ── [EF-42] Runtime Introspection Intercept ──────────────────────────────
       // Detects questions about the Runtime's own internal state and answers
