@@ -453,3 +453,42 @@ A `UCRBridge.ts` (que envolve TODO connector no runtime) ja emite `ConnectorExec
 **Licao de metodologia (reutilizar):** regex de import-resolve tem dois modos de falhar — falsos negativos (nao pegou um import real, marca vivo como morto) e falsos positivos (pega path de sibling como import do barrel, marca morto como vivo). Para limpeza, o classificador de mencionadores e o freio de seguranca: ele confirma com evidencia direta (a linha e um import contendo o token) antes de deletar. Sempre rodar os dois juntos; nunca deletar com base em um so.
 
 ---
+
+
+### 2026-08-03 — [ROADMAP] Evolucao da Interface: UX Multi-Contexto (Sprint 8.1)
+
+**Doc oficial:** `src/docs/00-official-library/MIP-MemoryOS-Master-Implementation-Plan.md` (Capitulo 11 — UX Evolution Layer)
+
+**Objetivo:** Transicionar do Chat Monolitico para Interface Multi-Contexto (Transparencia Cognitiva + Context Switching + Feedback Visual), sem quebrar o motor de processamento existente.
+
+**Principio arquitetural:** aditivo e nao-destrutivo. Novos componentes apenas "escutam" EventBuses ja existentes (CognitiveEventBus, RuntimeEventBus) — nunca interrompem ou reescrevem o fluxo do `useConversation` ou do `ConversationPipeline`.
+
+**Plano de Implementacao (4 Fases):**
+
+- **Fase 1 — Observabilidade "Shadow" (zero risco):**
+  - Criar `MemoryActivityIndicator.jsx` (escuta `cognitiveEventBus.onAny` — exibe atividade cognitiva recente: planning, llm_response, knowledge_observation).
+  - Criar `GlobalSyncStatus.jsx` (escuta `runtimeEventBus.onAny` — reflete estado de sincronizacao de conectores).
+  - Integrar ao `AppLayout.jsx` como stubs passivos (fixed top-right, overlay — nao shifta layout). Se falharem, apenas somem.
+
+- **Fase 2 — Sidebar Contextual (risco baixo):**
+  - Extrair `Sidebar` atual para `ContextAwareSidebar.jsx`.
+  - Hook `useNavigationContext` decide conteudo: Global (projetos) vs Projeto (docs/tags locais).
+  - `Home.jsx`/`ProjectDetail.jsx` continuam recebendo as mesmas props; apenas o que a sidebar exibe muda.
+
+- **Fase 3 — Feedback Ativo / Notificacoes (risco baixo/medio):**
+  - `knowledgeIngestionPipeline.js` passa a emitir `SystemEvent` em vez de injetar `Message` de confirmacao no chat.
+  - `NotificationHub.jsx` (no `AppLayout`) converte `SystemEvents` de sucesso em Toasts via `sonner`.
+  - Chat fica limpo; feedback visual rapido valida o que a IA aprendeu.
+
+- **Fase 4 — Visualizacao Hibrida / Timeline Drawer (risco medio):**
+  - Adicionar botao "Linha do Tempo" no ChatPage que abre `TimelineDrawer` (via `vaul`).
+  - Drawer carrega `SystemEvents` da sessao (merge com `Messages`), sincronizado com o chat.
+  - Chat intocado; nova visualizacao apenas consome a mesma fonte de dados.
+
+**Riscos e mitigacao documentados:**
+- HMR/state loss em `ChatPage`: desenvolver componentes isolados primeiro (so leem, nunca interrompem `useConversation`).
+- CSS/mobile: usar overlay fixed para indicadores — nao alterar containers do `AppLayout`.
+
+**Estado:** Fase 1 iniciada em 2026-08-03. Componentes criados: `MemoryActivityIndicator.jsx`, `GlobalSyncStatus.jsx` (integração ao `AppLayout.jsx`).
+
+---

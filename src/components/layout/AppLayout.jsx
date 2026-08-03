@@ -1,6 +1,8 @@
 import React, { useState, Component } from "react";
 import { Outlet } from "react-router-dom";
 import Sidebar from "./Sidebar";
+import MemoryActivityIndicator from "./MemoryActivityIndicator";
+import GlobalSyncStatus from "./GlobalSyncStatus";
 import { Menu, X } from "lucide-react";
 
 class OutletErrorBoundary extends Component {
@@ -41,6 +43,10 @@ export default function AppLayout() {
   console.log('[CHAIN][3-AppLayout] → RETORNANDO JSX com <Outlet />');
   return (
     <div className="min-h-screen bg-zinc-50">
+      {/* Fase 1 — Observabilidade Shadow: indicadores passivos (fixed overlay, não shiftam layout) */}
+      <GlobalSyncStatus />
+      <MemoryActivityIndicator />
+
       {/* Desktop sidebar — fixed, fora do fluxo do documento */}
       <div className="hidden lg:block fixed inset-y-0 left-0 w-64 z-10">
         <Sidebar />
