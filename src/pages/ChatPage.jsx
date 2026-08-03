@@ -22,6 +22,9 @@ import PasteTextDialog from "@/components/chat/PasteTextDialog";
 import LinkDialog from "@/components/chat/LinkDialog";
 import StreamingMessage from "@/components/chat/StreamingMessage";
 import ReasoningIndicator from "@/components/chat/ReasoningIndicator";
+import TimelineEventRenderer from "@/components/timeline/TimelineEventRenderer";
+import MessageBubble from "@/components/timeline/MessageBubble";
+import { conversationManager } from "@/lib/conversation-platform/ConversationManager";
 
 // ─── VXP Status labels ────────────────────────────────────────────────────────
 
@@ -69,6 +72,30 @@ export default function ChatPage() {
     const timer = setTimeout(() => setLongWait(true), 15_000);
     return () => clearTimeout(timer);
   }, [conversation.isLoading]);
+
+  // Fase 4 — Timeline mode: timeline unificada (Messages + SystemEvents)
+  const [timelineMode, setTimelineMode] = useState(false);
+  const [timelineItems, setTimelineItems] = useState([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
+
+  useEffect(() => {
+    if (!timelineMode) { setTimelineItems([]); return; }
+    let cancelled = false;
+    const fetchTimeline = async () => {
+      setTimelineLoading(true);
+      try {
+        const items = await conversationManager.getTimeline();
+        if (!cancelled) setTimelineItems(items);
+      } catch {
+        /* silent */
+      } finally {
+        if (!cancelled) setTimelineLoading(false);
+      }
+    };
+    fetchTimeline();
+    const interval = setInterval(fetchTimeline, 10_000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, [timelineMode, conversation.session?.id]);
 
 
   // VXP Sprint 7.0.1: transcript review state
@@ -369,12 +396,35 @@ export default function ChatPage() {
         </div>
       )}
 
+      {/* Fase 4 — Timeline mode switcher */}
+      <div className="border-b border-zinc-100 bg-white px-4 lg:px-6 py-2 flex items-center gap-2">
+        <div className="inline-flex rounded-lg border border-zinc-200 p-0.5 bg-zinc-50">
+          <button
+            type="button"
+            onClick={() => setTimelineMode(false)}
+            className={`px-3 py-1 text-xs font-medium rounded-md transition ${!timelineMode ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-700"}`}
+          >
+            Conversação
+          </button>
+          <button
+            type="button"
+            onClick={() => setTimelineMode(true)}
+            className={`px-3 py-1 text-xs font-medium rounded-md transition ${timelineMode ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-700"}`}
+          >
+            Linha do Tempo
+          </button>
+        </div>
+        {timelineMode && (
+          <span className="text-[10px] text-zinc-400">Mensagens + eventos de sistema, ordenados por hora</span>
+        )}
+      </div>
+
       {/* Messages — smart auto-scroll container */}
       <div
         ref={scrollContainerRef}
         className="flex-1 overflow-y-auto px-3 sm:px-4 lg:px-6 py-4 lg:py-6"
       >
-        <div className="max-w-3xl mx-auto space-y-3 lg:space-y-4">
+        <div className={`max-w-3xl mx-auto space-y-3 lg:space-y-4 ${timelineMode ? "hidden" : ""}`}>
 
           {conversation.messages.length === 0 && !conversation.isLoading && (
             <div className="flex flex-col items-center justify-center h-full text-center py-20">
@@ -429,6 +479,27 @@ export default function ChatPage() {
           ))}
 
           <div ref={bottomRef} />
+        </div>
+
+        {/* Fase 4 — Timeline render (polimorfico: MessageBubble | TimelineEventRenderer) */}
+        <div className={`max-w-3xl mx-auto space-y-3 lg:space-y-4 ${!timelineMode ? "hidden" : ""}`}>
+          {timelineLoading && timelineItems.length === 0 ? (
+            <div className="flex justify-center py-10">
+              <div className="w-6 h-6 border-4 border-zinc-200 border-t-violet-600 rounded-full animate-spin" />
+            </div>
+          ) : timelineItems.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center">
+              <p className="text-sm text-zinc-400">Nenhum evento na linha do tempo ainda.</p>
+            </div>
+          ) : (
+            timelineItems.map((item) =>
+              item.kind === "event" ? (
+                <TimelineEventRenderer key={item.id} event={item} />
+              ) : (
+                <MessageBubble key={item.id} msg={item} />
+              )
+            )
+          )}
         </div>
       </div>
 
