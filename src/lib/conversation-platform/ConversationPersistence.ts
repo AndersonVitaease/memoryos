@@ -61,20 +61,29 @@ export async function updateMessageContent(
 
 // ─── Session Persistence ──────────────────────────────────────────────────────
 
-export async function loadActiveSession(): Promise<ConversationSession | null> {
+export async function loadActiveSession(projectId?: string): Promise<ConversationSession | null> {
+  // Escopo global exclui sessões de projeto (project_id nulo/ausente).
+  // Escopo de projeto filtra exatamente pelo project_id.
+  const filter = projectId
+    ? { project_id: projectId, status: "active" }
+    : { project_id: null, status: "active" };
   const sessions = await base44.entities.ChatSession.filter(
-    { status: "active" },
+    filter,
     "-last_message_at",
     1
   );
   return sessions.length > 0 ? (sessions[0] as ConversationSession) : null;
 }
 
-export async function createSession(title = "Nova conversa"): Promise<ConversationSession> {
+export async function createSession(
+  title = "Nova conversa",
+  projectId?: string
+): Promise<ConversationSession> {
   const session = await base44.entities.ChatSession.create({
     title,
     status: "active",
     message_count: 0,
+    ...(projectId ? { project_id: projectId } : {}),
   });
   return session as ConversationSession;
 }
@@ -95,19 +104,24 @@ export async function listSessions(limit = 20): Promise<ConversationSession[]> {
   return sessions as ConversationSession[];
 }
 
-const LAST_SESSION_KEY = "memoryos_last_session_id";
+const LAST_SESSION_KEY_GLOBAL = "memoryos_last_session_id";
 
-export function saveLastSessionId(sessionId: string): void {
-  try { localStorage.setItem(LAST_SESSION_KEY, sessionId); } catch {}
+function lastSessionKey(projectId?: string): string {
+  return projectId
+    ? `memoryos_last_session_id__proj_${projectId}`
+    : LAST_SESSION_KEY_GLOBAL;
 }
 
-export function getLastSessionId(): string | null {
-  try { return localStorage.getItem(LAST_SESSION_KEY); } catch { return null; }
+export function saveLastSessionId(sessionId: string, projectId?: string): void {
+  try { localStorage.setItem(lastSessionKey(projectId), sessionId); } catch {}
+}
+export function getLastSessionId(projectId?: string): string | null {
+  try { return localStorage.getItem(lastSessionKey(projectId)); } catch { return null; }
 }
 
-export async function getOrCreateActiveSession(): Promise<ConversationSession> {
-  // 1. Tenta restaurar a última sessão usada (salva no localStorage)
-  const lastId = getLastSessionId();
+export async function getOrCreateActiveSession(projectId?: string): Promise<ConversationSession> {
+  // 1. Tenta restaurar a última sessão usada do ESCOPO (chave por projeto ou global)
+  const lastId = getLastSessionId(projectId);
   if (lastId) {
     try {
       const session = await base44.entities.ChatSession.get(lastId) as ConversationSession;
@@ -117,9 +131,13 @@ export async function getOrCreateActiveSession(): Promise<ConversationSession> {
     } catch {}
   }
 
-  // 2. Fallback: busca a sessão ativa com mensagens mais recente
+  // 2. Fallback: busca a sessão ativa do escopo com mensagens mais recente.
+  // Escopo global exclui sessões de projeto; escopo de projeto filtra por project_id.
+  const filter = projectId
+    ? { project_id: projectId, status: "active" }
+    : { project_id: null, status: "active" };
   const sessions = await base44.entities.ChatSession.filter(
-    { status: "active" },
+    filter,
     "-last_message_at",
     10
   );
@@ -127,14 +145,16 @@ export async function getOrCreateActiveSession(): Promise<ConversationSession> {
     (s) => s.message_count && s.message_count > 0 && s.last_message_at
   );
   if (withMessages.length > 0) {
-    saveLastSessionId(withMessages[0].id);
+    saveLastSessionId(withMessages[0].id, projectId);
     return withMessages[0];
   }
   if (sessions.length > 0) {
-    saveLastSessionId((sessions[0] as ConversationSession).id);
+    saveLastSessionId((sessions[0] as ConversationSession).id, projectId);
     return sessions[0] as ConversationSession;
   }
-  const newSession = await createSession();
-  saveLastSessionId(newSession.id);
+
+  // 3. Cria nova sessão no escopo
+  const newSession = await createSession("Nova conversa", projectId);
+  saveLastSessionId(newSession.id, projectId);
   return newSession;
 }

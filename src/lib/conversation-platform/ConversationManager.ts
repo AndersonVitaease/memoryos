@@ -326,9 +326,18 @@ type EventListener = (event: ConversationEvent) => void;
 class ConversationManager {
   // ── Initialization ────────────────────────────────────────────────────────
 
-  async initialize(): Promise<void> {
-    if (conversationStore.state.isInitialized) return;
-    await sessionManager.initializeSession();
+  async initialize(projectId?: string): Promise<void> {
+    // Se já inicializado, só re-inicializa se o ESCOPO mudou
+    // (global <-> projeto, ou projeto A <-> projeto B). Caso contrário
+    // preserva o estado em memória (HMR / re-renders).
+    if (conversationStore.state.isInitialized) {
+      const currentScope = (conversationStore.session as any)?.project_id ?? undefined;
+      const requestedScope = projectId ?? undefined;
+      if (currentScope === requestedScope) return;
+      // Escopo mudou — limpa o estado em memória para carregar a sessão certa.
+      conversationStore.reset();
+    }
+    await sessionManager.initializeSession(projectId);
   }
 
   // ── Send / Stop / Retry / Cancel ──────────────────────────────────────────
@@ -448,8 +457,8 @@ class ConversationManager {
 
   // ── Session Management ────────────────────────────────────────────────────
 
-  async newSession(title?: string) {
-    return sessionManager.createNewSession(title);
+  async newSession(title?: string, projectId?: string) {
+    return sessionManager.createNewSession(title, projectId);
   }
 
   async switchSession(sessionId: string) {

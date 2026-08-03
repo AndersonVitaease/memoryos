@@ -8,7 +8,7 @@ import FilesTab from "@/components/projects/FilesTab";
 import PersonManager from "@/components/projects/PersonManager";
 import EventTimeline from "@/components/projects/EventTimeline";
 import TagManager from "@/components/projects/TagManager";
-import ChatInterface from "@/components/chat/ChatInterface";
+import ChatPage from "@/pages/ChatPage";
 
 const typeLabels = {
   pessoal: "Pessoal", empresa: "Empresa", condominio: "Condomínio", turismo: "Turismo", outro: "Outro"
@@ -122,7 +122,7 @@ export default function ProjectDetail() {
         </TabsContent>
 
         <TabsContent value="chat" className="flex-1 overflow-hidden m-0">
-          <ChatInterface projectId={id} projectName={project.name} />
+          <ChatPage projectId={id} />
         </TabsContent>
       </Tabs>
     </div>
