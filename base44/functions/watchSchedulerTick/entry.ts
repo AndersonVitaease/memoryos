@@ -442,6 +442,31 @@ async function runOneTick(base44: any, googleTokenCache: Map<string, string>): P
           expires_at:  new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
           session_id:  watch.session_id || null,
         });
+
+        // Fase 3 — Event-Driven Timeline (aditivo/shadow): publica SystemEvent
+        // ao disparar, alongside PendingWatchAction. Nao substitui nada —
+        // o chat continua exibindo via polling de PendingWatchAction.
+        try {
+          await base44.asServiceRole.entities.SystemEvent.create({
+            conversationId: watch.session_id || '',
+            correlationId:  watch.id,
+            type:           'watch_triggered',
+            source:         'WatchEngine',
+            actor:          'system',
+            status:         'success',
+            payload: {
+              watchId:   watch.id,
+              watchName: watch.name.replace(/ — Auto WE-04$/, ''),
+              message:   friendlyMsg,
+              provider,
+              emailSent: _sentMessageId ? { to: _sentTo, messageId: _sentMessageId } : null,
+            },
+            metadata: {
+              triggeredAt:  now,
+              triggerCount: (watch.trigger_count || 0) + 1,
+            },
+          });
+        } catch { /* fire-and-forget — nunca quebra o tick */ }
       }
 
     } catch (err: any) {
