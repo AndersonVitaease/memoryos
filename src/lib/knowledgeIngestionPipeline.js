@@ -1,4 +1,5 @@
 import { base44 } from "@/api/base44Client";
+import { cognitiveEventBus } from "@/lib/cognitive-event-bus/CognitiveEventBus";
 
 /**
  * Pipeline Universal de Ingestão de Conhecimento — Beta 0.2
@@ -277,6 +278,16 @@ export async function ingestKnowledge({
   // 1 — Receber
   onStage?.("receiving");
 
+  // Fase 1 — Observabilidade: sinaliza início da ingestão ao indicador cognitivo
+  const ingestionExecId = `ingest_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  try {
+    cognitiveEventBus.emit("planning_started", sessionId || "", ingestionExecId, {
+      source: "knowledge_ingestion",
+      contentType: type,
+      name: name || null,
+    });
+  } catch { /* fire-and-forget — observabilidade apenas */ }
+
   if (sourceType === "file" && file) {
     const uploadResult = await base44.integrations.Core.UploadFile({ file });
     fileUrl = uploadResult.file_url;
@@ -303,6 +314,15 @@ export async function ingestKnowledge({
 
   // 3 — Interpretar + Extrair conhecimento
   onStage?.("interpreting");
+
+  // Fase 1 — Observabilidade: sinaliza chamada LLM de extração
+  try {
+    cognitiveEventBus.emit("llm_response_generated", sessionId || "", ingestionExecId, {
+      source: "knowledge_ingestion",
+      contentType: type,
+      displayName,
+    });
+  } catch { /* fire-and-forget — observabilidade apenas */ }
 
   let llmParams;
   let displayName = name;
@@ -467,6 +487,21 @@ Seja minucioso. Não perca nenhuma informação importante.`,
 
   // 7 — Finalizar
   onStage?.("finalizing");
+
+  // Fase 1 — Observabilidade: sinaliza memória registrada
+  try {
+    cognitiveEventBus.emit("knowledge_observation_generated", sessionId || "", ingestionExecId, {
+      source: "knowledge_ingestion",
+      documentId: doc.id,
+      stats: {
+        entities: entities.length,
+        keywords: extraction.keywords?.length || 0,
+        decisions: extraction.decisions?.length || 0,
+        tasks: extraction.tasks?.length || 0,
+        topics: extraction.topics?.length || 0,
+      },
+    });
+  } catch { /* fire-and-forget — observabilidade apenas */ }
 
   // 8 — Disparar email de automação PDF (se Watch ativo configurado)
   let emailSent = null;
