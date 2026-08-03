@@ -139,8 +139,10 @@ export default function ChatPage({ projectId } = {}) {
       if (scrollTop < lastScrollTopRef.current) {
         userScrolledRef.current = true;
       }
-      // So retoma o auto-scroll quando realmente estiver colado no fundo
-      if (distanceFromBottom < 4) {
+      // So retoma se o PROPRIO USUARIO voltar ao fundo enquanto pausado.
+      // O guard (userScrolledRef.current) impede que o snap automatico
+      // (que tambem termina no fundo) religue a pausa e brigue com o gesto.
+      if (userScrolledRef.current && distanceFromBottom < 4) {
         userScrolledRef.current = false;
       }
       lastScrollTopRef.current = scrollTop;
