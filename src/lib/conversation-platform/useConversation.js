@@ -7,7 +7,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { conversationManager } from "./ConversationManager";
 
-export function useConversation() {
+export function useConversation({ projectId } = {}) {
   const [state, setState] = useState(() => conversationManager.state);
   // Subscribe to store changes
   useEffect(() => {
@@ -17,9 +17,10 @@ export function useConversation() {
 
   // Initialize — sempre chama, mas o SessionManager decide internamente
   // se relê do banco (store vazio) ou mantém o que já está em memória.
+  // Re-inicializa quando o escopo (projectId) muda.
   useEffect(() => {
-    conversationManager.initialize().catch(console.error);
-  }, []);
+    conversationManager.initialize(projectId).catch(console.error);
+  }, [projectId]);
 
   const send = useCallback(async (text) => {
     return conversationManager.send(text);
@@ -66,7 +67,7 @@ export function useConversation() {
     setMessages,
 
     // Session
-    newSession: (title) => conversationManager.newSession(title),
+    newSession: (title) => conversationManager.newSession(title, projectId),
     switchSession: (id) => conversationManager.switchSession(id),
     renameSession: (id, title) => conversationManager.renameSession(id, title),
     archiveCurrentSession: () => conversationManager.archiveCurrentSession(),

@@ -20,7 +20,7 @@ import type { ConversationSession } from "./CXPTypes";
 class ConversationSessionManager {
   // ── Initialize / Restore ──────────────────────────────────────────────────
 
-  async initializeSession(): Promise<ConversationSession> {
+  async initializeSession(projectId?: string): Promise<ConversationSession> {
     const existing = conversationStore.session;
     // Se já há sessão e mensagens carregadas em memória, não relê do banco.
     // Isso preserva o contexto durante HMR e re-renders.
@@ -30,7 +30,7 @@ class ConversationSessionManager {
       return existing;
     }
 
-    const session = await getOrCreateActiveSession();
+    const session = await getOrCreateActiveSession(projectId);
     conversationStore.setSession(session);
     conversationStore.emit({
       type: "SESSION_RESTORED",
@@ -46,9 +46,9 @@ class ConversationSessionManager {
 
   // ── Create ────────────────────────────────────────────────────────────────
 
-  async createNewSession(title?: string): Promise<ConversationSession> {
-    const session = await createSession(title);
-    saveLastSessionId(session.id);
+  async createNewSession(title?: string, projectId?: string): Promise<ConversationSession> {
+    const session = await createSession(title, projectId);
+    saveLastSessionId(session.id, projectId);
     // BUGFIX (auditoria cognição): sem isto, o RuntimeContextLayer
     // (goalType/artefato/executionIntent/resultSet da última execução
     // de conector) permanecia vivo entre sessões — a sessão nova podia

@@ -50,8 +50,8 @@ const STATUS_LABELS = {
 
 // ─── ChatPage ─────────────────────────────────────────────────────────────────
 
-export default function ChatPage() {
-  const conversation = useConversation();
+export default function ChatPage({ projectId } = {}) {
+  const conversation = useConversation({ projectId });
   const [input, setInput] = useState("");
   const [showSummary, setShowSummary] = useState(false);
   const [continuousMode, setContinuousMode] = useState(false);
