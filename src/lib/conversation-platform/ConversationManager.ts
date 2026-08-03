@@ -258,12 +258,58 @@ async function tryScheduleEmail(
   // Verificar se também foi pedido aviso no chat
   const hasNotifyRequest = /\bme\s+avis[ea]\b/i.test(userMessage);
 
+  // Verificar se pediu monitoramento de chegada de email em alguma conta
+  // Ex: "me avise se chegar algum email no email borecomba@gmail.com"
+  const monitorMatch = /me\s+avis[ea].{0,60}([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})/i.exec(userMessage);
+  let gmailWatchCreated = false;
+  let gmailWatchAccount = "";
+  if (monitorMatch) {
+    gmailWatchAccount = monitorMatch[1].trim().toLowerCase();
+    // Nao duplica se a conta ja e monitorada por um watch ativo
+    const existing = await (base44 as any).entities.Watch.filter({ status: "active" });
+    const alreadyMonitored = existing.some((w: any) => {
+      try {
+        const ct = JSON.parse(w.condition_tree || "{}");
+        return ct.provider === "gmail" && ct.params?.accountEmail?.toLowerCase() === gmailWatchAccount;
+      } catch { return false; }
+    });
+    if (!alreadyMonitored) {
+      await (base44 as any).entities.Watch.create({
+        name: `Monitorar caixa de entrada de ${gmailWatchAccount}`,
+        description: `Auto-criado: monitorar novos emails em ${gmailWatchAccount}`,
+        condition_tree: JSON.stringify({
+          kind: "leaf", provider: "gmail", action: "count_unread",
+          params: { accountEmail: gmailWatchAccount },
+          result_path: "count", comparator: "gt", value: 0,
+        }),
+        frequency_minutes: 2,
+        priority: "high",
+        status: "active",
+        on_trigger_type: "notify_user",
+        on_trigger_payload: null,
+        last_evaluation_result: null,
+        consecutive_failures: 0,
+        trigger_count: 0,
+        next_execution_at: new Date().toISOString(),
+        compiled_at: new Date().toISOString(),
+        session_id: sessionId,
+        project_id: projectId,
+      });
+      gmailWatchCreated = true;
+      console.log(`[CXP-SCHED] Gmail watch criado para ${gmailWatchAccount}`);
+    }
+  }
+
   console.log(`[CXP-SCHED] Watch criado: ${record.id}`);
 
   if (isPast(targetTime)) return `Esse horario (${targetTime}) ja passou — agendamento nao criado. Tente um horario futuro.`;
 
-  if (hasNotifyRequest) {
-    return `Agendado! As **${targetTime}** vou:\n1. Te avisar aqui no chat\n2. Enviar o email para \`${to}\``;
+  const lines: string[] = [];
+  if (hasNotifyRequest) lines.push("Te avisar aqui no chat");
+  lines.push(`Enviar o email para \`${to}\``);
+  if (gmailWatchCreated) lines.push(`Te avisar quando chegar um novo email em \`${gmailWatchAccount}\``);
+  if (lines.length > 0) {
+    return `Agendado! As **${targetTime}** vou:\n${lines.map((l, i) => `${i + 1}. ${l}`).join("\n")}`;
   }
   return `Agendado! Email para \`${to}\` sera enviado as **${targetTime}**.`;
 }
