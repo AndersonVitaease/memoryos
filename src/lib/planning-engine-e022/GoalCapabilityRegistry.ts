@@ -473,6 +473,28 @@ const _builtins: CapabilityMapping[] = [
     descriptors: [],
   },
 
+  // ── WhatsApp — Meta Cloud API oficial (Evolution/Baileys como stubs futuros)
+  // Connector id: "whatsapp"  (WhatsAppConnector.ts)
+  // Capabilities: "whatsapp.sendMessage", "whatsapp.sendTemplate", "whatsapp.getMessageStatus"
+  {
+    goalType: "whatsapp.sendMessage" as GoalType,
+    descriptors: [
+      { connector: "whatsapp", capability: "whatsapp.sendMessage", params: {} },
+    ],
+  },
+  {
+    goalType: "whatsapp.sendTemplate" as GoalType,
+    descriptors: [
+      { connector: "whatsapp", capability: "whatsapp.sendTemplate", params: {} },
+    ],
+  },
+  {
+    goalType: "whatsapp.getMessageStatus" as GoalType,
+    descriptors: [
+      { connector: "whatsapp", capability: "whatsapp.getMessageStatus", params: {} },
+    ],
+  },
+
   // ── General / Unknown — no capability steps; Runtime handles gracefully ───
   {
     goalType: "general.conversation",
