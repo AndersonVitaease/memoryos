@@ -256,3 +256,67 @@ ID Gmail: `18f3a2c1d4b5e6f7`
 
 ---
 
+### 2026-08-03 — WhatsApp Connector: Arquitetura de 5 Camadas Completa (scaffold)
+
+**Doc completa:** `src/docs/01-operational-knowledge/SESSION-2026-08-03-WHATSAPP-CONNECTOR-5-LAYERS.md`
+
+**Contexto:** Usuario pediu WhatsApp Connector seguindo arquitetura explicita de 5 camadas (Capability / Provider / Event / Observation / Watch), com Provider Layer abstraindo multiplos provedores (Meta Cloud oficial + Evolution API + Baileys como stubs futuros). O Planner NUNCA conhece o provedor ativo — so chama capabilities.
+
+**METODO DE VERIFICACAO USADO antes de codar (reutilizar sempre):**
+1. Leu `PipelineObservationBridge.ts` + `KnowledgeRegistry.ts` + `KnowledgeRegistryTypes.ts` para confirmar o padrao exato da Observation Layer (payload types FROZEN, singleton HMR-safe via globalThis, fire-and-forget).
+2. Leu `ConnectorGateway.ts` + `WatchTypes.ts` para confirmar como o Watch Engine registra providers (`connectorGateway.registerProvider(id, handler)` — handler recebe `action` + `params`).
+3. Leu `openrouterChat/entry.ts` para confirmar o padrao real do backend function em producao (`Deno.serve` + `Deno.env.get()` + `createClientFromRequest` — NAO usa `export default async function` nem `secrets.get()` do base44:runtime, apesar do guia dizer isso).
+
+**DECISAO CRITICA — Observation Layer:** `KnowledgeRegistryTypes.ts` tem `REGISTERED_SCOPES` e `REGISTERED_PAYLOAD_TYPES` como sets FROZEN. NAO existem "whatsapp" scope nem payload type whatsapp-specific. Em vez de modificar tipos frozen (risco de quebrar validacao existente), usei:
+- `payloadType: "connector_result"` (ja registrado, usado pela Pipeline para resultados de connectors)
+- `contextScope: "session"` (ja registrado)
+- `producerId: "WhatsAppConnector"` (identifica a origem no campo `data`)
+
+**Arquivos criados (9 novos) + 2 edicoes em arquivos existentes:**
+
+| Camada | Arquivo | Funcao |
+|---|---|---|
+| **Tipos** | `src/lib/whatsapp/WhatsAppProviderTypes.ts` | Interface `WhatsAppProvider` que todo provedor implementa (sendMessage, sendTemplate, getMessageStatus, isAvailable). Sem imports de runtime. |
+| **Provider** | `src/lib/whatsapp/providers/MetaCloudProvider.ts` | Provedor oficial via Meta Cloud API. Delega para backend function `whatsappApi`. `isOfficial=true`. |
+| **Provider** | `src/lib/whatsapp/providers/EvolutionAPIProvider.ts` | STUB. Self-hosted, nao exige Business Manager, risco de banimento. `isAvailable()=false`. |
+| **Provider** | `src/lib/whatsapp/providers/BaileysProvider.ts` | STUB. Biblioteca que emula WhatsApp Web. `isAvailable()=false`. |
+| **Provider** | `src/lib/whatsapp/WhatsAppProviderRegistry.ts` | Singleton HMR-safe. Registra os 3 provedores no load. Default ativo: `meta-cloud`. `setActive(id)` para trocar. |
+| **Capability** | `src/lib/connector-runtime/connectors/WhatsAppConnector.ts` | Implementa `IConnector`. Delega ao `whatsappProviderRegistry.getActive()`. Chama `whatsAppObservationBridge.observe()` fire-and-forget apos cada execucao (sucesso OU falha). Import side-effect de `WhatsAppWatchProvider`. |
+| **Observation** | `src/lib/whatsapp/WhatsAppObservationBridge.ts` | Singleton HMR-safe. Transforma resultado de execucao em `ObservationInput` e commita no `KnowledgeRegistry` (fire-and-forget, nunca lanca excecao). |
+| **Watch** | `src/lib/whatsapp/WhatsAppWatchProvider.ts` | Self-registra no module load: `connectorGateway.registerProvider("whatsapp", handler)`. Handler retorna stubs (`count_new_messages: 0`) ate webhook inbound ser implementado. |
+| **Backend** | `base44/functions/whatsappApi/entry.ts` | Backend function Deno. Chama Meta Graph API v21.0. Secret-gated: retorna 503 se `WHATSAPP_ACCESS_TOKEN` ou `WHATSAPP_PHONE_NUMBER_ID` nao definidos. |
+| **Edicao 1** | `src/lib/connector-runtime/ConnectorBootstrap.ts` | Adicionada factory `WhatsAppConnector` no `OFFICIAL_FACTORIES` (apos DatabaseConnector). Bootstrap paralelizado (`Promise.allSettled`) ja existia. |
+| **Edicao 2** | `src/lib/planning-engine-e022/GoalCapabilityRegistry.ts` | Adicionados 3 mappings: `whatsapp.sendMessage`, `whatsapp.sendTemplate`, `whatsapp.getMessageStatus` — todos `{ connector: "whatsapp", capability: "whatsapp.*", params: {} }`. Inseridos ANTES do bloco `general.conversation`/`unknown` no final do `_builtins`. |
+
+**Event Layer (Camada 3) — ZERO codigo novo:**
+A `UCRBridge.ts` (que envolve TODO connector no runtime) ja emite `ConnectorExecutionStarted` / `ConnectorExecutionCompleted` / `ConnectorExecutionFailed` no `RuntimeEventBus` para qualquer connector, inclusive WhatsApp. O `ConnectorBootstrap.ts` tambem emite `ConnectorRegistered` no registro (religado em 2026-08-02+). Nada a instrumentar do lado do WhatsApp.
+
+**O que esta FUNCIONANDO agora (sem secrets):**
+- Bootstrap carrega `WhatsAppConnector` junto com os outros 11 connectors — `validateConnector()` passa, `registry.register()` executa, `runtimeEventBus.emit("ConnectorRegistered", "whatsapp", ...)` dispara.
+- `GoalCapabilityRegistry` tem os 3 mappings de WhatsApp — o Planner pode resolver goals `whatsapp.*` para capabilities.
+- `ConnectorGateway` tem o provider "whatsapp" registrado — Watches com `provider: "whatsapp"` podem ser criados e o `WatchEvaluator` chama o handler (retorna `count: 0`).
+- `WhatsAppObservationBridge` commita no `KnowledgeRegistry` apos cada `execute()` — observacoes aparecem na entidade `KnowledgeObservation` com `producer_id: "WhatsAppConnector"`.
+- Backend function `whatsappApi` deployado e validando — retorna 503 gracioso se secrets faltam, nao quebra o app.
+
+**O que PRECISA para funcionar de verdade (pendente do usuario):**
+1. **Secrets (Settings > Environment Variables):**
+   - `WHATSAPP_ACCESS_TOKEN` — token permanente do System User no Meta Business Manager
+   - `WHATSAPP_PHONE_NUMBER_ID` — ID do numero verificado no WhatsApp Manager > Phone Numbers
+2. **Verificar numero de teste:** no WhatsApp Manager, adicionar o numero de teste aos recipients (sem isso, Meta rejeita mesmo com token valido na sandbox).
+3. **Templates aprovados:** para `sendTemplate`, o template precisa estar criado e aprovado no WhatsApp Manager (pode levar horas para aprovacao).
+
+**O que ficou como STUB para o futuro (nao quebra nada hoje):**
+- `EvolutionAPIProvider` e `BaileysProvider`: `isAvailable()=false`, metodos `throw`. Para ativar: implementar chamadas reais (provavelmente novas backend functions `whatsappEvolutionApi` / `whatsappBaileysApi`) e `whatsappProviderRegistry.setActive("evolution-api")`.
+- `WhatsAppWatchProvider` handler inbound: retorna `count: 0`. Para ativar: configurar webhook no Meta Business Suite (`POST` para uma URL publica), criar backend function `whatsappWebhook` para receber e armazenar mensagens inbound em uma nova entidade, e o handler do Watch ler essa entidade.
+- Observation Layer: ainda em Shadow Mode (Fase 1) — persiste mas nada le as observacoes ainda (limitacao do sistema inteiro, nao so do WhatsApp — ver `KnowledgeRegistry.ts` docstring).
+
+**Teste de validacao rodado:**
+- `test_backend_function("whatsappApi", { operation: "sendMessage", to: "5511999999999", message: "teste" })` → retornou erro esperado "missing required secrets: WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID" — confirma que a funcao esta deployada e valida secrets corretamente.
+
+**NAO foi feito (explicitamente fora do escopo desta sessao):**
+- Nenhum teste de envio real de mensagem (sem secrets).
+- Nenhuma UI de chat/Connections para WhatsApp (o Connector e registrou, mas `Connections.jsx` e `ChatPage.jsx` nao foram tocados — se o usuario pedir "enviar WhatsApp para X" no chat, o Planner pode resolver o goal, mas o backend vai retornar 503 ate ter secrets).
+- Nenhum webhook inbound (requer URL publica + Meta Business Suite config).
+- Nenhuma documentacao no `EVENT-CATALOG.md` oficial (catalogo FROZEN — eventos de WhatsApp sao internos ao RuntimeEventBus por enquanto).
+
+---
