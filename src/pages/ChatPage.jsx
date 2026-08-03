@@ -480,7 +480,13 @@ export default function ChatPage({ projectId } = {}) {
               }}
               placeholder="Converse com sua memoria..."
               rows={1}
-              className={`flex-1 resize-none px-4 py-3 rounded-2xl border text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 transition-all bg-white max-h-32 ${
+              ref={(el) => {
+                if (el) {
+                  el.style.height = "auto";
+                  el.style.height = Math.min(el.scrollHeight, 280) + "px";
+                }
+              }}
+              className={`flex-1 resize-none px-4 py-3 rounded-2xl border text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 transition-all bg-white max-h-72 overflow-y-auto ${
                 pipeline.isListening ? "border-red-300 bg-red-50/30" : "border-zinc-200"
               }`}
               readOnly={pipeline.isListening}
