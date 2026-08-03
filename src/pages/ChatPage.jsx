@@ -7,7 +7,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   Send, Brain, Sparkles, ChevronDown, ChevronUp,
-  Radio, Volume2, Paperclip, RotateCcw, Square,
+  Radio, Volume2, Paperclip, RotateCcw, Square, Clock,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { useConversation } from "@/lib/conversation-platform/useConversation";
@@ -15,6 +15,7 @@ import { useVoiceInteraction } from "@/lib/voice-platform/useVoiceInteraction";
 import { ingestKnowledge, ACCEPT_MAP } from "@/lib/knowledgeIngestionPipeline";
 import { base44 } from "@/api/base44Client";
 import VoicePanel from "@/components/voice/VoicePanel";
+import TimelineDrawer from "@/components/timeline/TimelineDrawer";
 import VoiceMode from "@/components/chat/VoiceMode";
 import AttachmentMenu from "@/components/chat/AttachmentMenu";
 import ProcessingBubble from "@/components/chat/ProcessingBubble";
@@ -60,6 +61,7 @@ export default function ChatPage({ projectId } = {}) {
   const [pasteDialogOpen, setPasteDialogOpen] = useState(false);
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [lastUserMessage, setLastUserMessage] = useState("");
+  const [timelineOpen, setTimelineOpen] = useState(false);
 
   const [longWait, setLongWait] = useState(false);
   useEffect(() => {
@@ -445,6 +447,15 @@ export default function ChatPage({ projectId } = {}) {
               <Radio className="w-3.5 h-3.5" />
               Conversa Continua
             </button>
+            <button
+              type="button"
+              onClick={() => setTimelineOpen(true)}
+              disabled={!conversation.session?.id}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-zinc-400 hover:text-violet-600 hover:bg-violet-50 transition disabled:opacity-30"
+            >
+              <Clock className="w-3.5 h-3.5" />
+              Linha do Tempo
+            </button>
           </div>
 
           <div className="flex items-end gap-2">
@@ -558,6 +569,12 @@ export default function ChatPage({ projectId } = {}) {
           }}
         />
       )}
+
+      <TimelineDrawer
+        open={timelineOpen}
+        onOpenChange={setTimelineOpen}
+        sessionId={conversation.session?.id}
+      />
     </div>
   );
 }
