@@ -207,3 +207,52 @@ ID Gmail: `18f3a2c1d4b5e6f7`
 - Só dispara o erro de "não tenho leitura real" se não encontrar nada na memória
 
 **Validado:** "abrir pdf glicina 250g" → exibiu conteúdo completo do PDF já processado.
+### 2026-08-02+ (planejamento) — WhatsApp Connector: arquitetura de 4 camadas, verificacao completa do que ja existe
+
+**Contexto:** Usuario pediu WhatsApp Connector seguindo arquitetura especifica de 4 camadas (Provider/Capability/Event/Observation), com Planner NUNCA conhecendo WhatsApp diretamente, so Goals/Capabilities. Pediu verificacao explicita do que ja existe antes de construir, pra nao duplicar.
+
+**METODO DE VERIFICACAO USADO (reutilizar antes de qualquer nova alteracao arquitetural):**
+1. `find`/`grep` por nome de arquivo candidato em `src/lib/` E `src/runtime/` E `src/sdk/` (existem 3 arvores de pastas paralelas no projeto — busca em uma so pode dar falso negativo).
+2. Rodar o script de forward-reachability (a partir das paginas reais: Login/Register/Home/ChatPage/Memory/Projects/ProjectDetail/SearchPage/Connections/GoogleDrivePage/GoogleCalendarPage/MultiConnectorPage/MissionsPage/GoogleOAuthCallback + AppLayout.jsx/AuthContext.jsx/ProtectedRoute.jsx como roots) pra confirmar se o arquivo candidato esta genuinamente no caminho vivo, nao so existe no disco.
+3. Ler o arquivo de verdade (nao confiar so no nome) — varios arquivos com nome parecido podem ser versoes duplicadas/mortas de sprints antigos.
+4. Conferir `git diff <primeiro-commit-do-periodo>^ <ultimo-commit-do-periodo> -- <arquivo>` pra saber exatamente o que mudou num periodo, sem depender de resumo em prosa.
+
+**RESULTADO DA VERIFICACAO (2026-08-02, confirmado no codigo real, nao suposicao):**
+
+| Camada | Status | Arquivo real | Evidencia |
+|---|---|---|---|
+| 2. Capability Layer | ✅ VIVA, em uso hoje por Gmail/Calendar/Drive | `src/lib/planning-engine-e022/GoalCapabilityRegistry.ts` | Docstring literal: "Open/Closed: novos Connectors registram suas proprias capabilities via GoalCapabilityRegistry.register() — o Planner nao muda." Padrao de nome ja usado: `connector: "gmail"`, `capability: "searchEmails"` etc. |
+| 3. Event Layer | ⚠️ EXISTE, bem construida, mas ORFA (nao ligada ao ConnectorBootstrap real) | `src/runtime/connectors/RuntimeEventBus.ts` | 15 tipos de evento de conector (ConnectorExecutionStarted/Completed/Failed/Retry/Timeout/etc) + 6 tipos cognitivos adicionados em 02/08 (so union type, sem uso real). `grep -c "RuntimeEventBus" src/lib/connector-runtime/ConnectorBootstrap.ts` = 0 — confirmado NUNCA importado la. Quem usa hoje: paginas mortas (EF31APage/EF31BPage) e uma arvore paralela `src/sdk/connectors/` que NAO e a usada em producao (a real e `src/lib/connector-runtime/connectors/`). |
+| 4. Observation Layer | ✅ VIVA hoje, ja tem exemplo funcionando pro pipeline principal | `src/lib/knowledge-registry/KnowledgeRegistry.ts` + `PipelineObservationBridge.ts` | Aceita `ObservationInput` (Evidence/Inference/Hypothesis — exatamente a nomenclatura pedida). RESSALVA: proprio codigo se declara "FASE 1 (Shadow Mode) — apenas persiste, nada ainda le essas observacoes". Nao e limitacao especifica do WhatsApp, e do sistema inteiro hoje. |
+
+**Catalogo Oficial de Eventos** (`src/docs/00-official-library/EVENT-CATALOG.md`, status `OFFICIAL · FROZEN`) ja define o dominio "Capability" com `capability.registered.v1`, `capability.executed.v1`, `capability.failed.v1` seguindo convencao `{dominio}.{entidade}.{acao}.v{N}`. Se formalizar eventos de WhatsApp no catalogo oficial (nao so uso interno), esse e o formato a seguir — MAS o catalogo esta FROZEN, mudanca requer processo de governanca (ver RFC-004.md como exemplo do processo Draft->Accepted). Ate la, tratar eventos de WhatsApp como internos ao RuntimeEventBus, nao oficiais.
+
+**CONFIRMADO (git log completo, 140 commits, 01/08-02/08): ZERO arquivos relacionados a WhatsApp existem em qualquer lugar do repositorio.** Nao ha nada pronto pra reaproveitar especificamente de WhatsApp — a estrutura reaproveitavel e generica (Capability Registry, Event Bus, Knowledge Registry), nao especifica do WhatsApp.
+
+**O que MAIS foi adicionado em 01/08-02/08 (nao relacionado a WhatsApp, registrar pra nao redescobrir depois):**
+- Watch Engine completo (`src/lib/watch-engine/*`, 12 arquivos) — agendamento de emails/avisos, ver secao anterior deste arquivo.
+- 3 conectores novos E JA LIGADOS de verdade no ConnectorBootstrap: `EmailConnector`, `FileSystemConnector`, `DatabaseConnector`.
+- Bootstrap de conectores paralelizado (`Promise.allSettled` em vez de loop sequencial) — deve ter reduzido o tempo de boot medido hoje (3-8s).
+- Volume grande de arquitetura nova AINDA NAO VERIFICADA se esta viva: `src/lib/marketplace/`, `src/lib/specialists/`, `src/lib/knowledge-packages/`, `src/lib/developer-portal/`, `src/lib/beta/`, e as mesmas pastas espelhadas em `src/sdk/`. Dado o padrao ja visto hoje (codigo construido sem ser ligado), NAO assumir que esta em uso sem rodar o metodo de verificacao acima primeiro.
+- Novas paginas Sprint (`SprintP5-10Page.jsx`, `SprintWE01Page.jsx`) — seguem o mesmo padrao de paginas de auditoria interna ja mapeado, provavelmente candidatas a limpeza futura, nao verificado ainda.
+
+**PLANO DE IMPLEMENTACAO (proximos passos, no momento em que este documento foi escrito, nada abaixo foi feito ainda):**
+
+1. **Religar RuntimeEventBus no ConnectorBootstrap.ts real:**
+   - Instanciar um singleton do `RuntimeEventBus` (HMR-safe via globalThis, mesmo padrao do `CognitiveEventBus`/`KnowledgeRegistry`).
+   - Em `src/lib/connector-runtime/ConnectorBootstrap.ts`, apos cada `registry.register(connector)`, emitir `runtimeEventBus.emit('ConnectorRegistered', connector.id, {...})`.
+   - Em `UCRBridge`/`ExecutionDispatcher` (onde `execute()` de qualquer conector e chamado), emitir `ConnectorExecutionStarted`/`ConnectorExecutionCompleted`/`ConnectorExecutionFailed` ao redor da chamada.
+   - Validar com o mesmo rigor de hoje: esbuild por arquivo + `vite build` completo antes de considerar pronto.
+
+2. **WhatsApp Connector — Camada 1 (Provider) + Camada 2 (Capability):**
+   - Decidir provider tecnico ainda pendente — usuario NAO decidiu entre API oficial (Meta Cloud API, zero risco, exige Business Manager + verificacao + templates) ou nao-oficial (Baileys/whatsmeow, risco real de banimento — usuario ja recusou essa opcao numa conversa anterior no mesmo dia). Assumir API oficial exclusivamente ate segunda ordem.
+   - Seguir exatamente o molde de `src/lib/connector-runtime/connectors/MicrosoftGraphConnector.ts` (construido hoje) — IConnector, capabilities como metodo, sem estado.
+   - Registrar capabilities no `GoalCapabilityRegistry` com nomes `whatsapp.sendMessage`, `whatsapp.readConversation`, etc — mesma convencao ja usada por gmail/calendar/drive.
+
+3. **Camada 4 (Observation) para WhatsApp:**
+   - Espelhar `PipelineObservationBridge.ts` — criar bridge equivalente que transforma execucoes do WhatsApp Connector em `ObservationInput` e chama `knowledgeRegistry.commit()` (fire-and-forget, nunca lanca excecao, mesmo padrao).
+
+**IMPORTANTE PRA QUALQUER SESSAO FUTURA LENDO ISTO:** antes de assumir que qualquer peca acima ja foi implementada, rodar o metodo de verificacao descrito no topo desta secao — nao confiar so nesta descricao, o codigo pode ter mudado depois desta data.
+
+---
+
