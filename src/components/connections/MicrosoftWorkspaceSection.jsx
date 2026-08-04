@@ -23,6 +23,10 @@ import {
   getActiveMicrosoftWorkspaceId, setActiveMicrosoftWorkspaceId,
 } from "@/lib/microsoft-auth/MicrosoftMultiAccount";
 import { getActiveWorkspaceId } from "@/lib/workspace/WorkspaceContext";
+import { base44 } from "@/api/base44Client";
+import {
+  MICROSOFT_APP_USER_CONNECTOR_ID, isAppUserConnected, setAppUserConnected,
+} from "@/lib/connector-runtime/connectors/microsoft-providers/MicrosoftAppUserConfig";
 
 const BASE_WORKSPACE_ID = getActiveWorkspaceId();
 
@@ -54,6 +58,8 @@ export default function MicrosoftWorkspaceSection() {
   const [loading, setLoading]     = useState(false);
   const [loadingAccountId, setLoadingAccountId] = useState(null);
   const [error, setError]        = useState(null);
+  const [appUserConnected, setAppUserConnectedState] = useState(() => isAppUserConnected());
+  const [appUserBusy, setAppUserBusy] = useState(false);
 
   const syncAccounts = useCallback(() => {
     setAccounts(listMicrosoftAccounts(BASE_WORKSPACE_ID));
@@ -66,6 +72,12 @@ export default function MicrosoftWorkspaceSection() {
     window.addEventListener("memoryos:ms-active-account-changed", handler);
     return () => window.removeEventListener("memoryos:ms-active-account-changed", handler);
   }, [syncAccounts]);
+
+  useEffect(() => {
+    const handler = () => setAppUserConnectedState(isAppUserConnected());
+    window.addEventListener("memoryos:ms-appuser-changed", handler);
+    return () => window.removeEventListener("memoryos:ms-appuser-changed", handler);
+  }, []);
 
   const onStateChange = useCallback((s) => {
     setAuth(s);
@@ -107,6 +119,39 @@ export default function MicrosoftWorkspaceSection() {
   const handleSetActive = (accountWorkspaceId) => {
     setActiveMicrosoftWorkspaceId(accountWorkspaceId);
     syncAccounts();
+  };
+
+  const handleAppUserConnect = async () => {
+    if (!MICROSOFT_APP_USER_CONNECTOR_ID) return;
+    setAppUserBusy(true); setError(null);
+    try {
+      const url = await base44.connectors.connectAppUser(MICROSOFT_APP_USER_CONNECTOR_ID);
+      const popup = window.open(url, "_blank");
+      const timer = setInterval(() => {
+        if (!popup || popup.closed) {
+          clearInterval(timer);
+          // Otimista: marca como conectado. O proxy valida o token de verdade
+          // na proxima chamada — se falhar, o router cai no OfficialGraphProvider.
+          setAppUserConnected(true);
+          setAppUserConnectedState(true);
+          setAppUserBusy(false);
+        }
+      }, 500);
+    } catch (e) {
+      setError(e?.message ?? "Falha ao iniciar conexao Base44.");
+      setAppUserBusy(false);
+    }
+  };
+
+  const handleAppUserDisconnect = async () => {
+    if (!MICROSOFT_APP_USER_CONNECTOR_ID) return;
+    setAppUserBusy(true);
+    try {
+      await base44.connectors.disconnectAppUser(MICROSOFT_APP_USER_CONNECTOR_ID);
+    } catch { /* best-effort */ }
+    setAppUserConnected(false);
+    setAppUserConnectedState(false);
+    setAppUserBusy(false);
   };
 
   const connectedAccounts = accounts.filter((c) => c.state === "CONNECTED");
@@ -197,6 +242,37 @@ export default function MicrosoftWorkspaceSection() {
       </div>
 
       <p className="text-xs text-muted-foreground/70 mt-3">{PRIVACY_NOTE}</p>
+
+      {/* Base44 App-User Connector (Fase 4 — ADR-014 / RFC-007) */}
+      <div className="mt-4 p-3 rounded-lg border border-dashed border-border bg-muted/20">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-xs font-semibold text-foreground">Base44 App-User Connector</span>
+          {appUserConnected
+            ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-[#0078D4] text-white"><Check className="w-2.5 h-2.5" /> Conectado</span>
+            : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-zinc-100 text-zinc-500">Alternativo</span>}
+        </div>
+        <p className="text-xs text-muted-foreground mb-2">
+          Segunda via de acesso: cada usuario conecta a propria conta Microsoft usando o OAuth gerenciado pela Base44 (token server-side). Cobre as 8 operacoes core (mail, calendar, files); o restante cai no fluxo OAuth proprio.
+        </p>
+        {!MICROSOFT_APP_USER_CONNECTOR_ID ? (
+          <p className="text-xs text-amber-600 flex items-center gap-1.5">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            Registro do conector pendente — e preciso cadastrar o App-User Connector "outlook" nas definicoes.
+          </p>
+        ) : appUserConnected ? (
+          <button onClick={handleAppUserDisconnect} disabled={appUserBusy}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium text-red-600 hover:bg-red-50 border border-red-200 disabled:opacity-40 transition">
+            {appUserBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <LogOut className="w-3 h-3" />}
+            Desconectar Base44
+          </button>
+        ) : (
+          <button onClick={handleAppUserConnect} disabled={appUserBusy}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-[#0078D4] text-white hover:bg-[#106EBE] border border-[#0078D4] disabled:opacity-40 transition">
+            {appUserBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Plug className="w-3 h-3" />}
+            Conectar via Base44
+          </button>
+        )}
+      </div>
 
       {error && (
         <div className="mt-3 flex items-center gap-2 p-2 rounded-lg bg-red-50 border border-red-100 text-xs text-red-600">
