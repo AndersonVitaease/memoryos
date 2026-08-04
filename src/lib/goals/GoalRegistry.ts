@@ -397,6 +397,15 @@ const _builtins: GoalDefinition[] = [
       if (!bodyMatch && subjectEndIndex !== null) {
         bodyMatch = msg.slice(subjectEndIndex).trim() || undefined;
       }
+      // Sem marcadores explicitos (assunto:/corpo:): o texto apos o
+      // destinatario e o corpo. "envie email para X: Olá, vamos marcar" ->
+      // body = "Olá, vamos marcar", subject derivado do slice.
+      if (!bodyMatch && resolvedTo) {
+        const _afterTo = msg.split(/(?:para|to)[:\s]+[^\s,]+@[^\s,]+\.[^\s,]+/i)[1];
+        if (_afterTo) {
+          bodyMatch = _afterTo.replace(/^[\s:,\-–—]+/, "").trim() || undefined;
+        }
+      }
       // FIX: trunca uma clausula " e <verbo de comando> ..." (2ª intenção) no fim
       // do corpo — "corpo: ... e liste meus arquivos" nao envia o pedido de arquivos
       // dentro do email. O decompositor normalmente separa; isto e guarda pro path
