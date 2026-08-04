@@ -71,12 +71,7 @@ export class SafetyGate {
         `Corpo: ${body ? (body.length > 120 ? body.slice(0, 117) + "..." : body) : "(vazio)"}`,
       ].filter(Boolean);
       const action = capability === "sendEmail" ? "Enviar e-mail" : "Criar rascunho";
-      let base = `${action}:\n${lines.join("\n")}`;
-      if (prepared.gaps.length > 0) {
-        const lista = prepared.gaps.map((g) => `- ${g.field}: ${g.reason}`).join("\n");
-        base += `\n\nCampos pendentes:\n${lista}`;
-      }
-      return base;
+      return `${action}:\n${lines.join("\n")}`;
     }
 
     // Resumo generico (demais capabilities).
@@ -88,11 +83,6 @@ export class SafetyGate {
       const preview = keys.slice(0, 5).map((k) => `${k}=${this._previewValue(params[k])}`).join(", ");
       const extra = keys.length > 5 ? `, +${keys.length - 5} campo(s)` : "";
       base = `Executar ${connectorId}.${capability} com: ${preview}${extra}.`;
-    }
-    // EI-06: anexa gaps detectados pelos investigators (se houver).
-    if (prepared.gaps.length > 0) {
-      const lista = prepared.gaps.map((g) => `- ${g.field}: ${g.reason}`).join("\n");
-      return `${base}\n\nCampos pendentes:\n${lista}`;
     }
     return base;
   }
