@@ -1396,3 +1396,17 @@ O `ConnectorMetadata.capabilities` e `string[]` (contrato existente, validado no
 **Estado final EPIC-019:** CONCLUIDO. 7 sprints (EI-01 a EI-07) entregues incrementalmente, caminho antigo intocado. Proximo pos-EI-07: migrar o primeiro caller vivo (EI-04 sub-step) — `gmail.sendEmail` e candidato natural (irreversivel + EmailInvestigator ativo).
 
 ---
+
+### 2026-08-04 — EI-04 sub-step: primeira migracao de caller vivo (reversible-first)
+
+**Status:** Primeiro caller vivo migrado para `processCapability`. Escolhido `ConnectorGoalIntentExecutor` (path multi-intent) — isolado, com fallback ao `runReasoningPlan`. Decisao: **reversible-first** (nao `gmail.sendEmail` irreversivel) para nao quebrar automacao no primeiro movimento.
+
+**Mudanca (`src/lib/multi-intent/ConnectorGoalIntentExecutor.ts`):** para planos de 1 step, tenta `getExecutionRuntime().processCapability(...)` primeiro. Se `outcome.status === "success"` (safe/reversible despachados pelo SafetyGate), mapeia `ExecutionOutcome` → `ExecutionResult` (helper `_outcomeToExecutionResult`) e alimenta o `synthesizeConnectorResult` (comportamento identico + enriquecimento da Intelligence). Se `needs_confirmation`/`blocked`/`failed` (irreversivel sem `confirmedByUser` — ex.: `mail.send`), cai no `realEngine.execute` original → **automacao irreversivel preservada**. try/catch: erro na cadeia EI cai no realEngine (zero regressao). Planos multi-step: caminho antigo.
+
+**Por que reversible-first:** `reversible`/`safe` passam direto pelo SafetyGate (`approved`) → dispatch identico, so ganham enriquecimento. `irreversible` sem confirmacao → `needs_confirmation` → fallback → comportamento original. Capabilities reversiveis validam a cadeia EI em producao sem risco a fluxos automaticos.
+
+**Nao-quebra:** multi-intent path so ativa em mensagens multi-clausula que mapeiam a goal de connector. Path principal (ConversationPipeline) intocado. `realEngine.execute` 100% disponivel como fallback.
+
+**Proximo:** quando estavel, migrar `gmail.sendEmail` (irreversivel) — exigira definir como `confirmedByUser` chega do usuario.
+
+---

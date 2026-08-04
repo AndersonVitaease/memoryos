@@ -17,6 +17,8 @@
  */
 
 import type { ClassifiedIntent, IntentExecutionResult, IntentExecutor } from "./IntentTypes";
+import type { ExecutionResult } from "@/lib/runtime-engine/RuntimeTypes";
+import type { ExecutionOutcome } from "@/lib/execution-intelligence";
 
 interface ReasoningPlanResult {
   response: string;
@@ -86,8 +88,40 @@ export class ConnectorGoalIntentExecutor implements IntentExecutor {
         goalId:      goalBridgeResult.goal.id,
         origin:      "multi-intent-pipeline",
       });
+      const execId = `${executionId}-frag-${intent.id}`;
 
-      const { executionResult } = await realEngine.execute(planResult.plan, `${executionId}-frag-${intent.id}`, connCtx);
+      // EI-04 (pos-EI-07): primeiro caller vivo migrado para processCapability.
+      // Planos de 1 step tentam a cadeia Execution Intelligence + Safety Gate primeiro.
+      // safe/reversible despacham via EI (enriquecimento + safety); needs_confirmation/
+      // blocked/failed (irreversivel sem confirmar) caem no realEngine.execute original
+      // → automacao irreversivel (mail.send agendado, watches) preservada. Reversible-first.
+      let executionResult!: ExecutionResult;
+      const singleStep = planResult.plan.steps.length === 1 ? planResult.plan.steps[0] : null;
+      let usedEI = false;
+      if (singleStep) {
+        try {
+          const { getExecutionRuntime } = await import("@/lib/execution-intelligence");
+          const eiRuntime = await getExecutionRuntime();
+          const outcome = await eiRuntime.processCapability({
+            connectorId: singleStep.connector,
+            capability: singleStep.capability,
+            params: singleStep.parameters ?? {},
+            context: connCtx,
+            executionId: execId,
+          });
+          if (outcome.status === "success") {
+            executionResult = _outcomeToExecutionResult(outcome, execId);
+            usedEI = true;
+          }
+        } catch (err) {
+          console.warn("[ConnectorGoalIntentExecutor] EI dispatch falhou, caindo pro realEngine:", err);
+        }
+      }
+      if (!usedEI) {
+        const { executionResult: er } = await realEngine.execute(planResult.plan, execId, connCtx);
+        executionResult = er;
+      }
+
       const synthesis = await synthesizeConnectorResult(executionResult, intent.text, goalBridgeResult.goal.type, null);
 
       if (synthesis.handled && synthesis.response) {
@@ -131,4 +165,40 @@ export class ConnectorGoalIntentExecutor implements IntentExecutor {
       };
     }
   }
+}
+
+/**
+ * EI-04: mapeia um ExecutionOutcome bem-sucedido (dispatch via processCapability)
+ * de volta ao shape ExecutionResult que o ConnectorResultSynthesizer consome. So
+ * chamado quando outcome.status === "success" (safe/reversible despachados pelo
+ * Safety Gate). needs_confirmation/blocked/failed nao chegam aqui — o executor
+ * cai no realEngine.execute original (automacao irreversivel preservada).
+ */
+function _outcomeToExecutionResult(outcome: ExecutionOutcome, executionId: string): ExecutionResult {
+  const now = Date.now();
+  const durationMs = outcome.durationMs ?? 0;
+  return {
+    executionId: outcome.executionId ?? executionId,
+    planId: "ei-adapter",
+    goalId: `ei-${outcome.executionId ?? executionId}`,
+    status: "completed",
+    steps: [
+      {
+        stepId: "ei-step-1",
+        connector: outcome.connectorId,
+        capability: outcome.capability,
+        status: "completed",
+        output: outcome.output,
+        error: null,
+        startedAt: now - durationMs,
+        finishedAt: now,
+        durationMs,
+        attempt: 1,
+      },
+    ],
+    startedAt: now - durationMs,
+    finishedAt: now,
+    durationMs,
+    errors: [],
+  };
 }
