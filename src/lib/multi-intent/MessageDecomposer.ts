@@ -31,7 +31,14 @@ const COMMAND_VERBS = [
 ].join("|");
 
 const SEPARATOR_RE = new RegExp(
-  "\\.\\s+(?=[A-ZÀ-Ú])" +
+  // FIX: "ponto + maiúscula" era genérico demais — quebrava o corpo do email
+  // ("Assunto: Ola.\n\nOlá, tudo bem" virava 2 fragmentos, separando o corpo
+  // do comando). Agora só separa se a próxima palavra for um verbo de comando.
+  `\\.\\s+(?=(?:${COMMAND_VERBS})\\b)` +
+  // FIX: verbo de comando no início de linha (após linha em branco) separa —
+  // "Anderson Pires\n\nliste meus arquivos" separa o "liste" como 2ª intenção
+  // sem quebrar o corpo do email (que não tem linha em branco + comando).
+  `|\\n\\s*\\n(?=(?:${COMMAND_VERBS})\\b)` +
   "|;\\s*" +
   "|\\s+e\\s+depois\\s+" +
   "|\\s+e\\s+tamb[ée]m\\s+" +
