@@ -36,7 +36,10 @@ const SEPARATOR_RE = new RegExp(
   "|\\s+e\\s+depois\\s+" +
   "|\\s+e\\s+tamb[ée]m\\s+" +
   "|\\s+depois\\s+disso\\s*,?\\s*" +
-  `|,\\s+(?:e\\s+)?(?=(?:${COMMAND_VERBS})\\b)`,
+  `|,\\s+(?:e\\s+)?(?=(?:${COMMAND_VERBS})\\b)` +
+  // FIX: " e " + verbo de comando (sem vírgula) também separa — evita que
+  // "...corpo X e liste meus arquivos" vaze a 2ª intenção no corpo do email.
+  `|\\s+e\\s+(?=(?:${COMMAND_VERBS})\\b)`,
   "gi"
 );
 
