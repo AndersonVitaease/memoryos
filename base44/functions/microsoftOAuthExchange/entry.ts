@@ -48,7 +48,8 @@ Deno.serve(async (req) => {
 
     console.info('[microsoftOAuthExchange] code:', mask(code), '| verifier:', mask(codeVerifier));
 
-    const tokenRes = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+    const tenant = Deno.env.get('MICROSOFT_TENANT_ID') || 'common';
+    const tokenRes = await fetch(`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams(payload),
