@@ -285,7 +285,7 @@ class ConversationPipeline {
     // ── 2.5. Multi-Intent Decomposition (short-circuit) ──────────────────
     // Only attempt decomposition if message has multiple clauses (e.g. "and", "also", comma)
     if (this._cancelled) return;
-    const _mightBeMultiIntent = /\btambém\b|\be mais\b|,.*e /.test(userMessage) && userMessage.length > 30;
+    const _mightBeMultiIntent = (/\btambém\b|\be mais\b|,.*e |\n\s*\n/.test(userMessage)) && userMessage.length > 30;
     if (_mightBeMultiIntent) try {
       const { decomposeMessage } = await import("@/lib/multi-intent/MessageDecomposer");
       const fragments = decomposeMessage(userMessage);
