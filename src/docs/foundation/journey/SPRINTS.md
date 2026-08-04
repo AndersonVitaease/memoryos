@@ -63,9 +63,9 @@
 
 | Sprint | Foco | Entregável | Status |
 |---|---|---|---|
-| MS-PR-01 | Tipos + Registry | `MicrosoftProviderTypes.ts` + `MicrosoftProviderRegistry.ts` (singleton HMR-safe, 0 providers ativos) | Planned |
-| MS-PR-02 | OfficialGraphProvider | Re-home do shell atual; paridade das 32 operations; shell delega ao router | Planned |
-| MS-PR-03 | Stubs MCP + REST/SDK | `McpMicrosoftProvider` + `RestSdkProvider` interface-conformes (`isAvailable()=false`) | Planned |
+| MS-PR-01 | Tipos + Registry | `MicrosoftProviderTypes.ts` + `MicrosoftProviderRegistry.ts` (singleton HMR-safe) | ✅ Done |
+| MS-PR-02 | OfficialGraphProvider | Re-home do shell atual; paridade das 32 operations; shell delega ao router | ✅ Done |
+| MS-PR-03 | Stubs MCP + REST/SDK | `McpMicrosoftProvider` + `RestSdkProvider` interface-conformes (`isAvailable()=false`) | ✅ Done |
 | MS-PR-04 | Base44OutlookProvider (opcional) | Segundo provider de verdade via App-User Connector; resolve dilema OAuth | Planned |
 
 > **Documentação:** RFC-007 + ADR-014 (Fase 0 concluída em 2026-08-04). Emenda circunscrita a ADR-013. MS-EXP-05 (MicrosoftWatchProvider) desvinculado, permanece opcional.

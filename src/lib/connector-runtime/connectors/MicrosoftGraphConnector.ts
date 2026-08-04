@@ -3,13 +3,17 @@
  * (Outlook Mail, Calendar, OneDrive, e futuros servicos) via Microsoft Graph API.
  *
  * ADR-013 / RFC-006 — padrao Capability Executors (Caminho 2).
+ * ADR-014 / RFC-007 — camada de Provider Router (workspaceId-aware).
  *
- * Este arquivo e um SHELL FINO: mantem apenas token, health, metadata e
- * roteamento (operation -> executor). Toda logica de servico vive em
- * Capability Executors isolados em ./microsoft/*.ts.
+ * Este arquivo e um SHELL FINO: mantem apenas health, metadata e roteamento
+ * (operation -> provider -> executor). A decisao de "qual credencial usar"
+ * (OAuth proprio vs App-User Connector vs MCP vs SDK) vive no
+ * MicrosoftProviderRegistry (./microsoft-providers/). A logica de servico
+ * vive em Capability Executors isolados em ./microsoft/*.ts.
  *
  * Adicionar um servico novo NAO mexe aqui — apenas em MicrosoftCapabilityRegistry
- * + um novo arquivo de executor.
+ * + um novo arquivo de executor. Adicionar um provedor novo NAO mexe aqui —
+ * apenas em MicrosoftProviderRegistry + um novo arquivo de provider.
  */
 import type { IConnector } from "../IConnector";
 import type {
@@ -20,9 +24,10 @@ import type {
   ConnectorLog,
 } from "../ConnectorTypes";
 import { makeLog, makeExecutionId } from "../ConnectorTypes";
-import { isConnected, getConnection, ensureValidToken, getAccessToken } from "@/lib/microsoft-auth/MicrosoftAuthSession";
+import { isConnected, getConnection } from "@/lib/microsoft-auth/MicrosoftAuthSession";
 import { fail } from "./microsoft/MicrosoftGraphHelper";
-import { resolveCapability, listAllOperations } from "./microsoft/MicrosoftCapabilityRegistry";
+import { listAllOperations } from "./microsoft/MicrosoftCapabilityRegistry";
+import { microsoftProviderRegistry } from "./microsoft-providers/MicrosoftProviderRegistry";
 import "./microsoft/MicrosoftWatchProvider"; // side-effect: registra "microsoft" no ConnectorGateway do Watch Engine (MS-EXP-05)
 
 export class MicrosoftGraphConnector implements IConnector {
@@ -71,23 +76,17 @@ export class MicrosoftGraphConnector implements IConnector {
     const eid = context.executionId ?? makeExecutionId();
     const logs: ConnectorLog[] = [makeLog("info", `[${operation}] executionId=${eid}`)];
 
-    try {
-      try {
-        await ensureValidToken("default");
-      } catch {
-        return fail("Microsoft 365 não conectado. Conecte em /connections.", start, eid, logs, operation);
-      }
-      const accessToken = getAccessToken("default");
-      if (!accessToken) {
-        return fail("Microsoft 365 não conectado. Conecte em /connections.", start, eid, logs, operation);
-      }
+    // workspaceId: multi-conta (ADR-014 / RFC-007). Default "default" preserva
+    // comportamento anterior. UI de switcher (Fase 2/4) populata identityContext.
+    const workspaceId =
+      (context.identityContext?.microsoftWorkspaceId as string | undefined) ?? "default";
 
-      const capability = resolveCapability(operation);
-      if (!capability) {
+    try {
+      const provider = await microsoftProviderRegistry.resolveProvider(operation, workspaceId);
+      if (!provider) {
         return fail(`Unknown operation: "${operation}"`, start, eid, logs, operation);
       }
-
-      return await capability.execute(operation, payload, accessToken, { start, eid, logs });
+      return await provider.execute(operation, payload, { workspaceId, start, eid, logs });
     } catch (e) {
       return fail((e as Error).message, start, eid, logs, operation);
     }
