@@ -204,6 +204,76 @@ export default function GitHubWorkspaceSection() {
     } finally { setBatchLoading(false); }
   };
 
+  const runBatchAllAccounts = async () => {
+    const connected = accounts.filter((c) => c.state === "CONNECTED");
+    if (connected.length === 0) return;
+    setBatchLoading(true); setError(null);
+    try {
+      await hydrateAll();
+      // Coleta (account, token, repo) de todas as contas conectadas
+      const jobs = [];
+      for (const acc of connected) {
+        const token = getAccessToken(acc.workspaceId);
+        if (!token) continue;
+        const sel = getSelectedRepos(acc.workspaceId);
+        for (const repoFullName of sel) jobs.push({ account: acc.accountLogin || acc.workspaceId, token, repo: repoFullName });
+      }
+      if (jobs.length === 0) {
+        setError("Nenhum repositorio selecionado nas contas conectadas. Selecione repos em cada conta.");
+        return;
+      }
+      const CONCURRENCY = 4;
+      const out = [];
+      let i = 0;
+      const fetchOne = async (job) => {
+        const res = await fetch(`https://api.github.com/repos/${job.repo}`, {
+          headers: { Authorization: `Bearer ${job.token}`, Accept: "application/vnd.github+json" },
+        });
+        const d = res.ok ? await res.json() : null;
+        let lastCommit = null;
+        if (res.ok && d?.default_branch) {
+          try {
+            const cr = await fetch(`https://api.github.com/repos/${job.repo}/commits/${d.default_branch}`, {
+              headers: { Authorization: `Bearer ${job.token}`, Accept: "application/vnd.github+json" },
+            });
+            lastCommit = cr.ok ? await cr.json() : null;
+          } catch {}
+        }
+        out.push({
+          account: job.account,
+          repo: job.repo,
+          ok: res.ok,
+          status: res.status,
+          defaultBranch: d?.default_branch ?? null,
+          language: d?.language ?? null,
+          stars: d?.stargazers_count ?? 0,
+          openIssues: d?.open_issues_count ?? 0,
+          pushedAt: d?.pushed_at ?? null,
+          lastCommitSha: lastCommit?.sha?.slice(0, 7) ?? null,
+          lastCommitMsg: lastCommit?.commit?.message?.split("\n")[0] ?? null,
+          lastCommitDate: lastCommit?.commit?.author?.date ?? null,
+          error: res.ok ? null : `HTTP ${res.status}`,
+        });
+      };
+      while (i < jobs.length) {
+        const chunk = jobs.slice(i, i + CONCURRENCY);
+        await Promise.all(chunk.map(fetchOne));
+        i += CONCURRENCY;
+      }
+      // Ordena por conta pra agrupar visualmente
+      out.sort((a, b) => a.account.localeCompare(b.account) || a.repo.localeCompare(b.repo));
+      setBatchResults({
+        count: out.length,
+        succeeded: out.filter((r) => r.ok).length,
+        accountsCovered: connected.length,
+        crossAccount: true,
+        items: out,
+      });
+    } catch (e) {
+      setError(e?.message ?? "Falha ao acessar repositorios em lote cross-conta.");
+    } finally { setBatchLoading(false); }
+  };
+
   const connectedAccounts = accounts.filter((c) => c.state === "CONNECTED");
   const hasAnyConnected = connectedAccounts.length > 0;
   const activeAccount = connectedAccounts.find((c) => c.workspaceId === activeWs) ?? connectedAccounts[0] ?? null;
@@ -345,31 +415,48 @@ export default function GitHubWorkspaceSection() {
             <div>
               <p className="text-sm font-semibold text-foreground">Acesso em lote</p>
               <p className="text-xs text-muted-foreground">
-                Acessa os {selectedRepos.length} repositorios selecionados em paralelo (metadados + ultimo commit).
+                Acessa os repositorios selecionados em paralelo (metadados + ultimo commit). "Conta ativa" usa a conta selecionada acima; "Todas as contas" varre os repos selecionados em cada conta conectada, cada um com seu proprio token.
               </p>
             </div>
-            <button onClick={runBatchAccess} disabled={batchLoading}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-40 transition">
-              {batchLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <GitBranch className="w-3.5 h-3.5" />}
-              {batchLoading ? "Acessando..." : "Acessar todos em lote"}
-            </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button onClick={runBatchAccess} disabled={batchLoading}
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-40 transition">
+                {batchLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <GitBranch className="w-3.5 h-3.5" />}
+                Conta ativa
+              </button>
+              {connectedAccounts.length > 1 && (
+                <button onClick={runBatchAllAccounts} disabled={batchLoading}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium bg-zinc-900 text-white hover:bg-zinc-800 disabled:opacity-40 transition">
+                  {batchLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Github className="w-3.5 h-3.5" />}
+                  Todas as contas ({connectedAccounts.length})
+                </button>
+              )}
+            </div>
           </div>
           {batchResults && (
             <div className="space-y-2">
-              <div className="flex items-center gap-2 text-xs">
+              <div className="flex items-center gap-2 text-xs flex-wrap">
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
                   <Check className="w-3 h-3" /> {batchResults.succeeded} ok
                 </span>
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-600">
                   {batchResults.count - batchResults.succeeded} falha
                 </span>
+                {batchResults.crossAccount && batchResults.accountsCovered && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-100 text-violet-700">
+                    <Github className="w-3 h-3" /> {batchResults.accountsCovered} contas
+                  </span>
+                )}
               </div>
               <div className="space-y-1.5 max-h-72 overflow-auto pr-1">
                 {batchResults.items.map((r) => (
-                  <div key={r.repo} className={`p-2 rounded-md border text-xs ${r.ok ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
+                  <div key={`${r.account ?? ""}/${r.repo}`} className={`p-2 rounded-md border text-xs ${r.ok ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
                     <div className="flex items-center gap-2">
                       <Github className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
                       <span className="font-semibold text-foreground truncate">{r.repo}</span>
+                      {r.account && (
+                        <span className="shrink-0 px-1.5 py-0.5 rounded bg-zinc-200 text-zinc-700 text-[10px] font-bold">@{r.account}</span>
+                      )}
                       {!r.ok && <span className="ml-auto text-red-600 font-medium">{r.error}</span>}
                     </div>
                     {r.ok && (
