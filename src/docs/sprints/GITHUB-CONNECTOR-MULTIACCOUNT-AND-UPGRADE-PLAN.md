@@ -1,7 +1,7 @@
 # GITHUB CONNECTOR — Multi-conta OAuth + Plano de Upgrades
 
 **Data:** 2026-08-04
-**Status:** Multi-conta CONCLUÍDO · Upgrades PROPOSTO (não iniciados)
+**Status:** Multi-conta CONCLUÍDO · Upgrade 2 (Token Bucket) CONCLUÍDO · Upgrade 5 (Retry) CONCLUÍDO · demais PROPOSTOS
 **Escopo:** `src/lib/connector-runtime/connectors/GitHubConnector.ts`, `src/lib/github-auth/*`, `src/components/connections/GitHubWorkspaceSection.jsx`
 
 ---

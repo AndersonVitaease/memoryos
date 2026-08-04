@@ -34,9 +34,17 @@ import {
   getAccessToken as _getGitHubActiveAccessToken,
   getActiveGitHubWorkspaceId as _getActiveGitHubWs,
 } from "@/lib/github-auth/GitHubAuthSession";
+// Upgrade 2 (Token Bucket por conta) + Upgrade 5 (Retry com backoff).
+// Limiter indexado por token (cada conta GitHub tem seu proprio budget).
+import {
+  gitHubRateLimiter,
+  isRetryable,
+  computeBackoffMs,
+} from "./github/GitHubRateLimiter";
 
 const GITHUB_API = "https://api.github.com";
 const DEFAULT_TIMEOUT_MS = 10000;
+const MAX_FETCH_ATTEMPTS = 3;
 
 // ── Production Metrics ────────────────────────────────────────────────────────
 
@@ -132,7 +140,9 @@ interface FetchResult {
   headers?: Record<string, string>;
 }
 
-async function githubFetch(path: string, token: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<FetchResult> {
+// Core HTTP — faz UMA chamada, sem retry/limiter. Mantido separado pra o
+// wrapper abaixo poder orquestrar tentativas sem duplicar a logica de fetch.
+async function githubFetchCore(path: string, token: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<FetchResult> {
   const t0 = Date.now();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -156,6 +166,51 @@ async function githubFetch(path: string, token: string, timeoutMs = DEFAULT_TIME
     const isAbort = (err as Error).name === "AbortError";
     return { ok: false, status: 0, data: null, responseTimeMs: Date.now() - t0, error: isAbort ? "Request timed out" : (err as Error).message };
   }
+}
+
+// githubFetch (public) = Token Bucket pre-check + core + post-update + retry.
+// Assinatura identica a versao antiga → todos os ~30 call sites no _dispatch
+// ganham limiter e retry sem nenhuma mudanca.
+async function githubFetch(path: string, token: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<FetchResult> {
+  let lastRes: FetchResult | null = null;
+  for (let attempt = 1; attempt <= MAX_FETCH_ATTEMPTS; attempt++) {
+    // 1) Pre-check do Token Bucket (por token = por conta)
+    const rl = gitHubRateLimiter.check(token);
+    if (!rl.allowed) {
+      gitHubRateLimiter.rateLimitedRequests++;
+      if (attempt < MAX_FETCH_ATTEMPTS) {
+        const wait = Math.min(rl.waitMs, 60_000);
+        gitHubRateLimiter.waitedMs += wait;
+        await new Promise((r) => setTimeout(r, wait));
+        continue;
+      }
+      // Esgotou tentativas esperando o reset — falha rapido com 429 sintetico.
+      return {
+        ok: false, status: 429, data: null, responseTimeMs: 0, headers: {},
+        error: `Rate limit exhausted; retry in ${Math.ceil(rl.waitMs / 1000)}s`,
+      };
+    }
+
+    // 2) Dispara
+    const res = await githubFetchCore(path, token, timeoutMs);
+    // 3) Alimenta o limiter com os headers/body desta resposta
+    gitHubRateLimiter.update(token, res.headers, res.data);
+    lastRes = res;
+
+    // 4) Sucesso ou erro nao-retentavel → retorna
+    if (res.ok || !isRetryable(res)) return res;
+
+    // 5) Retentavel (5xx / 429 / 403-rate-limit) → backoff
+    if (attempt < MAX_FETCH_ATTEMPTS) {
+      gitHubRateLimiter.retries++;
+      const wait = computeBackoffMs(res, attempt, { waitMs: rl.waitMs });
+      gitHubRateLimiter.waitedMs += wait;
+      await new Promise((r) => setTimeout(r, wait));
+      continue;
+    }
+    return res;
+  }
+  return lastRes ?? { ok: false, status: 0, data: null, responseTimeMs: 0, error: "Exhausted retries" };
 }
 
 // Files that should be ignored during tree traversal
