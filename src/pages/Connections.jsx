@@ -11,6 +11,7 @@ import ConnectorRegistry from "@/components/connections/ConnectorRegistry";
 import RuntimeBootstrapPanel from "@/components/connections/RuntimeBootstrapPanel";
 import GoogleWorkspaceSection from "@/components/connections/GoogleWorkspaceSection";
 import MicrosoftWorkspaceSection from "@/components/connections/MicrosoftWorkspaceSection";
+import GitHubWorkspaceSection from "@/components/connections/GitHubWorkspaceSection";
 import GoogleProfileCard from "@/components/connections/GoogleProfileCard";
 import GmailConnectorCard from "@/components/connections/GmailConnectorCard";
 import GmailActionsCard from "@/components/connections/GmailActionsCard";
@@ -107,6 +108,11 @@ export default function Connections() {
         {/* Microsoft 365 (multi-conta — ADR-014 / RFC-007) */}
         <Section title="Microsoft 365 — Provider Router">
           <MicrosoftWorkspaceSection />
+        </Section>
+
+        {/* GitHub (multi-conta OAuth + seletor de repos) */}
+        <Section title="GitHub — Multi-conta OAuth">
+          <GitHubWorkspaceSection />
         </Section>
 
         {/* Profile */}
