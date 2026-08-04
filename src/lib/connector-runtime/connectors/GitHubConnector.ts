@@ -34,6 +34,9 @@ import {
   getAccessToken as _getGitHubActiveAccessToken,
   getActiveGitHubWorkspaceId as _getActiveGitHubWs,
 } from "@/lib/github-auth/GitHubAuthSession";
+// Upgrade 4 — Code Search server-side proxy: /search/code bloqueia CORS no
+// browser, entao as buscas de conteudo/simbolo rodam no backend (Deno).
+import { base44 } from "@/api/base44Client";
 // Upgrade 2 (Token Bucket por conta) + Upgrade 5 (Retry com backoff).
 // Limiter indexado por token (cada conta GitHub tem seu proprio budget).
 import {
@@ -939,30 +942,27 @@ export class GitHubConnector implements IConnector {
           return ok({ query, operation, totalCount: items.length, items }, start, eid, logs, operation);
         }
 
-        // Build GitHub Code Search query
-        const repoFilter = (owner && repo) ? `+repo:${owner}/${repo}` : "";
-        const ext = operation === "search.file" ? "" : "";
-        const q = encodeURIComponent(query) + repoFilter;
-        const res = await githubFetch(`/search/code?q=${q}&per_page=20`, token);
-        logs.push(makeLog("info", `[${operation}] HTTP ${res.status} — ${res.responseTimeMs}ms`));
-        if (res.status === 403) return fail("Search rate limited — wait 30s and retry", "external", start, eid, logs, operation);
-        if (res.status === 422) return fail("Query too complex for GitHub search", "validation", start, eid, logs, operation);
-        if (!res.ok) { this.internalMetrics.externalFailures++; return fail(`HTTP ${res.status}`, "external", start, eid, logs, operation); }
-        const d = res.data as any;
-        const items = (d.items ?? []) as any[];
+        // Upgrade 4 — /search/code bloqueia CORS no browser; roteia pelo
+        // proxy server-side (githubCodeSearch) que roda no Deno sem restricao.
+        const wsId = _getActiveGitHubWs();
+        const proxyRes = await base44.functions.invoke("githubCodeSearch", {
+          query, owner, repo, workspaceId: wsId, per_page: 20,
+        });
+        const pd = (proxyRes as any)?.data ?? {};
+        if (pd.error) {
+          logs.push(makeLog("warn", `[${operation}] proxy error: ${pd.error}`));
+          if (proxyRes.status === 429) return fail("Search rate limited — wait 30s and retry", "external", start, eid, logs, operation);
+          if (proxyRes.status === 422) return fail("Query too complex for GitHub search", "validation", start, eid, logs, operation);
+          this.internalMetrics.externalFailures++;
+          return fail(`Proxy: ${pd.error}`, "external", start, eid, logs, operation);
+        }
+        logs.push(makeLog("info", `[${operation}] proxy returned ${pd.items?.length ?? 0} items`));
         return ok({
-          query,
-          operation,
-          totalCount: d.total_count ?? 0,
-          items: items.slice(0, 20).map((i: any) => ({
-            path:       i.path,
-            repository: i.repository?.full_name ?? null,
-            sha:        i.sha,
-            url:        i.html_url,
-            textMatches: (i.text_matches ?? []).map((m: any) => ({
-              fragment:  m.fragment,
-              matches:   (m.matches ?? []).map((mm: any) => mm.text).slice(0, 3),
-            })).slice(0, 3),
+          query, operation,
+          totalCount: pd.totalCount ?? 0,
+          items: (pd.items ?? []).map((i: any) => ({
+            path: i.path, repository: i.repository, sha: i.sha, url: i.url,
+            textMatches: (i.textMatches ?? []).map((m: any) => ({ fragment: m.fragment, matches: (m.matches ?? []).map((mm: any) => mm.text).slice(0, 3) })).slice(0, 3),
           })),
         }, start, eid, logs, operation);
       }
