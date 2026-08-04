@@ -58,12 +58,20 @@ export class SafetyGate {
     const { connectorId, capability } = prepared.request;
     const params = prepared.enrichedParams;
     const keys = Object.keys(params);
+    let base: string;
     if (keys.length === 0) {
-      return `Executar ${connectorId}.${capability}.`;
+      base = `Executar ${connectorId}.${capability}.`;
+    } else {
+      const preview = keys.slice(0, 5).map((k) => `${k}=${this._previewValue(params[k])}`).join(", ");
+      const extra = keys.length > 5 ? `, +${keys.length - 5} campo(s)` : "";
+      base = `Executar ${connectorId}.${capability} com: ${preview}${extra}.`;
     }
-    const preview = keys.slice(0, 5).map((k) => `${k}=${this._previewValue(params[k])}`).join(", ");
-    const extra = keys.length > 5 ? `, +${keys.length - 5} campo(s)` : "";
-    return `Executar ${connectorId}.${capability} com: ${preview}${extra}.`;
+    // EI-06: anexa gaps detectados pelos investigators (se houver).
+    if (prepared.gaps.length > 0) {
+      const lista = prepared.gaps.map((g) => `- ${g.field}: ${g.reason}`).join("\n");
+      return `${base}\n\nCampos pendentes:\n${lista}`;
+    }
+    return base;
   }
 
   private _previewValue(v: unknown): string {

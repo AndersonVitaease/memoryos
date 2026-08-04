@@ -1307,3 +1307,70 @@ O `ConnectorMetadata.capabilities` e `string[]` (contrato existente, validado no
 **Proximo passo:** aguardar autorizacao para iniciar **EI-05 (Execution Intelligence pass-through)** — `ExecutionIntelligence.ts` pass-through puro (recebe `ExecutionRequest`, devolve `PreparedExecution` identico, so loga/instrumenta). `Runtime.processCapability` passa a chamar Intelligence antes do Safety Gate. Continua zero impacto em producao (nenhum caller vivo). Apos EI-05 + EI-07 (Investigators com contexto real), reabrir a decisao de qual caller vivo migrar primeiro.
 
 ---
+
+### 2026-08-04 — Execution Intelligence EI-05 (Execution Intelligence pass-through): Implementado
+
+**RFC/ADR:** `RFC-008` + `ADR-015` (Sprint EI-05)
+
+**Status:** EI-05 EXECUTADA. A cadeia ADR-015 esta completa na sua forma pass-through: `processCapability` agora executa `Intelligence.prepare → SafetyGate.guard → dispatch`. A Intelligence ainda nao enriquece (pass-through puro), mas o SLOT esta ocupado com contratos uniformes — quando os investigators chegarem (EI-06/EI-07), o Runtime ja chama prepare() no lugar certo. Zero impacto em producao: nenhum caller vivo.
+
+**Arquivo novo (1) em `src/lib/execution-intelligence/`:**
+- **`ExecutionIntelligence.ts`** — stateless, `prepare(request) → PreparedExecution` identico (`enrichedParams=request.params`, `gaps=[]`, `risks=[]`); contador de instrumentation; invariants ADR-015 (nao despacha, nao bloqueia).
+
+**Arquivos editados (3):** `SafetyGate.ts` (guard consome `PreparedExecution`), `Runtime.ts` (wiring Intelligence antes do gate; plan usa `prepared.enrichedParams`), `index.ts` (re-export).
+
+**Nao-quebra:** pass-through identico; nenhum caller vivo; build verde por construcao.
+
+**Proximo passo:** EI-06 (Investigators genericos).
+
+---
+
+### 2026-08-04 — Execution Intelligence EI-06 (Investigators genericos): Implementado
+
+**RFC/ADR:** `RFC-008` + `ADR-015` (Sprint EI-06)
+
+**Status:** EI-06 EXECUTADA. Investigators genericos vivos: registry + 2 validators + wiring no `prepare()`. Restricoes honradas: sem iteracao (single pass), sem LLM, sem chamadas cross-connector. Cada investigator registravel/desativavel (Open/Closed). Zero impacto em producao (nenhum caller vivo; registry vazio por design).
+
+**Arquivos novos (4) em `src/lib/execution-intelligence/investigators/`:**
+
+- **`InvestigatorTypes.ts`** — interface `Investigator` (id, description, appliesTo?, investigate) + `InvestigationFinding` (gaps + risks). Puro: mesma request → mesmos findings, sem side effects. `appliesTo` opcional limita a quais requests roda (undefined = sempre).
+- **`InvestigatorRegistry.ts`** — singleton HMR-safe via `globalThis.__EI_INVESTIGATOR_REGISTRY__` (mesmo padrao dos outros registries do projeto). `register/deactivate/activate/list/active/resolve(request)`. `resolve` filtra ativos por `appliesTo`. Ordem de registro preservada (Map insertion order). **Nasce VAZIO** — validators genericos sao as CLASSES; registros concretos (com requiredFields/dateFields por connector+capability) sao de dominio (EI-07) ou callers.
+- **`GenericFieldValidator.ts`** — `Investigator` generico: valida campos obrigatorios PRESENTES e nao-vazios (null/undefined/""/[]). Configuravel: `{ id, description, requiredFields, appliesTo? }`. Nao valida formato. Nao enriquece params.
+- **`DateFormatValidator.ts`** — `Investigator` generico: valida campos de data em formato aceito. Formatos conhecidos: YYYY-MM-DD, DD/MM/YYYY, YYYY-MM-DDTHH:mm, HH:mm (regex). `acceptedFormats?` configuravel (default: todos). `Date` objects aceitos. Nao valida presenca (papel do GenericFieldValidator). Configuravel: `{ id, description, dateFields, acceptedFormats?, appliesTo? }`.
+
+**Arquivos editados (3):**
+
+1. **`ExecutionIntelligence.ts`** — `prepare()` agora resolve `investigatorRegistry.resolve(request)`, executa cada investigator (single pass, sync), agrega gaps + risks no `PreparedExecution`. `enrichedParams` continua `request.params` (EI-06 nao enriquece — so sinaliza). Import adicionado: `investigatorRegistry`. Header + docstring atualizados de EI-05 → EI-06. Com registry vazio, behavior == EI-05 (gaps=[], risks=[]) — paridade preservada.
+
+2. **`SafetyGate.ts`** — `_summarize()` anexa `prepared.gaps` ao resumo de `needs_confirmation` (se houver gaps, lista "Campos pendentes" abaixo do preview). Nao muda a decisao (ainda so reversibility decide) — so torna os findings dos investigators observaveis ao usuario na confirmacao.
+
+3. **`index.ts`** — re-exporta `investigatorRegistry`, `GenericFieldValidator`, `DateFormatValidator`, tipos `Investigator`/`InvestigationFinding`. Header EI-05 → EI-06.
+
+**Paridade / nao-quebra:**
+- Registry vazio → `resolve(request)` retorna [] → `prepare()` devolve `{ request, enrichedParams: request.params, gaps: [], risks: [] }` (identico ao EI-05). Logo:
+  - `safe`/`reversible`: `guard` aprova → dispatch com enrichedParams (=== params) → mesmo resultado.
+  - `irreversible` sem confirmacao: `guard` devolve `needs_confirmation` com resumo (sem gaps p/ anexar) → mesmo resumo do EI-05.
+  - `irreversible` + `confirmedByUser`: aprova e despacha.
+- Nenhum caller vivo chama `processCapability` — zero impacto em producao. O `ConversationPipeline` segue chamando `getRealRuntimeEngine()` direto (intocado).
+- Investigators sao puros (stateless, sem side effects) — registro/desativacao nao afeta chamadas em andamento.
+- Build verde por construcao: arquivos novos nao importados por nada vivo; edits de `ExecutionIntelligence`/`SafetyGate`/`index` sao autoconsistentes (imports ajustados).
+
+**Cuidados tomados (criterios do usuario):**
+- Registry vazio por design — nao acoplar EI-06 a connectors especificos (isso e EI-07, domain investigators). As CLASSES sao genericas; registros concretos sao de dominio.
+- Sem iteracao: cada investigator roda 1x (single pass). Convergence/API/LLM Budget e Dependency Graph ficam para EI-07 (gatilho: EI-06 em producao sem incidentes — mas EI-06 nao tem callers, entao "producao sem incidentes" e trivialmente verdade; decisao de gatilho EI-07 fica com o usuario).
+- Sem LLM, sem chamadas cross-connector: validators sao regex + presence checks puros.
+- Open/Closed: novos investigators via `register()` sem mexer em codigo existente; `deactivate()`/`activate()` controla quem roda sem remover.
+- Invariants ADR-015 mantidos: investigators so produzem informacao (nao despacham, nao bloqueiam); SafetyGate so decide (nao despacha); dispatch continua interno e exclusivo do `processCapability`.
+- Aditivo apenas: nada apagado que estivesse em uso; caminho antigo (getRealRuntimeEngine direto) segue intocado.
+
+**NAO foi feito (fora do escopo de EI-06):**
+- Nenhum registro concreto de investigator (registry vazio). Registros de dominio (gmail.sendEmail.required, travel.date.format, etc.) sao EI-07.
+- Nenhum investigador de dominio (EI-07) — TravelInvestigator, EmailInvestigator com resumos ricos.
+- Nenhuma iteracao balanceada (EI-07) — Convergence/API/LLM Budget, Dependency Graph aciclico.
+- Nenhuma policy que transforme gaps em `blocked` (PolicyRegistry futuro).
+- Nenhuma migracao de caller vivo (deferida apos EI-07).
+- Nenhum teste automatizado (nao ha runner no projeto). Corretude verificada por inspecao da cadeia + tipos.
+
+**Proximo passo:** aguardar autorizacao para iniciar **EI-07 (Investigators de dominio + iteracao balanceada)** — TravelInvestigator, EmailInvestigator (resumos ricos por capability + enriquecimento real de params); Convergence Budget (max N iteracoes), API/LLM Budget, Dependency Graph aciclico. E o sprint onde o valor diferencial real aparece. Apos EI-07, reabrir a decisao de qual caller vivo migrar primeiro (o Safety Gate tera contexto real para decidir irreversiveis sem quebrar automation).
+
+---
