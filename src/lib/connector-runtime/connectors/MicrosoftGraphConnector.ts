@@ -25,6 +25,7 @@ import type {
 } from "../ConnectorTypes";
 import { makeLog, makeExecutionId } from "../ConnectorTypes";
 import { isConnected, getConnection } from "@/lib/microsoft-auth/MicrosoftAuthSession";
+import { getActiveMicrosoftWorkspaceId } from "@/lib/microsoft-auth/MicrosoftMultiAccount";
 import { fail } from "./microsoft/MicrosoftGraphHelper";
 import { listAllOperations } from "./microsoft/MicrosoftCapabilityRegistry";
 import { microsoftProviderRegistry } from "./microsoft-providers/MicrosoftProviderRegistry";
@@ -76,10 +77,12 @@ export class MicrosoftGraphConnector implements IConnector {
     const eid = context.executionId ?? makeExecutionId();
     const logs: ConnectorLog[] = [makeLog("info", `[${operation}] executionId=${eid}`)];
 
-    // workspaceId: multi-conta (ADR-014 / RFC-007). Default "default" preserva
-    // comportamento anterior. UI de switcher (Fase 2/4) populata identityContext.
+    // workspaceId: multi-conta (ADR-014 / RFC-007). Se identityContext especificar
+    // microsoftWorkspaceId, usa ele; senao cai na conta ativa do switcher em
+    // /connections (getActiveMicrosoftWorkspaceId), que por default e "default".
     const workspaceId =
-      (context.identityContext?.microsoftWorkspaceId as string | undefined) ?? "default";
+      (context.identityContext?.microsoftWorkspaceId as string | undefined) ??
+      getActiveMicrosoftWorkspaceId();
 
     try {
       const provider = await microsoftProviderRegistry.resolveProvider(operation, workspaceId);
