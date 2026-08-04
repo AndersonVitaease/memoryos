@@ -813,6 +813,16 @@ const _builtins: CapabilityMapping[] = [
     ],
   },
 
+  // ── Base44 (Analytics) — B44-EXP-04 (RFC-009/ADR-016)
+  // Connector id: "base44"  (Base44Connector.ts)
+  // Capability: analytics.track  (Reversibility: reversible)
+  {
+    goalType: "base44.analytics.track" as GoalType,
+    descriptors: [
+      { connector: "base44", capability: "analytics.track", params: {} },
+    ],
+  },
+
   // ── General / Unknown — no capability steps; Runtime handles gracefully ───
   {
     goalType: "general.conversation",
