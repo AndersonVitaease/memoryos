@@ -1152,3 +1152,57 @@ O `ConnectorMetadata.capabilities` e `string[]` (contrato existente, validado no
 **Proximo passo:** aguardar autorizacao para iniciar **EI-02 (Tipos + Runtime Facade)** — `ExecutionTypes.ts` (contratos uniformes) + `Runtime.ts` com `processCapability` que hoje so delega ao RuntimeEngine existente. Nenhum caller o chama. Zero risco.
 
 ---
+
+### 2026-08-04 — Execution Intelligence EI-02 (Tipos + Runtime Facade): Implementado
+
+**RFC/ADR:** `RFC-008` + `ADR-015` (Sprint EI-02)
+
+**Status:** EI-02 EXECUTADA. Novo diretorio `src/lib/execution-intelligence/` com 2 arquivos. Nenhum caller invoca `processCapability` ainda — a classe existe, compila, e esta pronta para EI-04 (migracao gradual de callers). Zero risco em producao: nada importa estes arquivos hoje.
+
+**Arquitetura estudada antes de codar (metodo de verificacao do usuario):**
+- Lido `src/lib/runtime-engine/ConversationRuntimeEngine.ts` — o engine atual executa `ExecutionPlan` (multi-step) via `ExecutionDispatcher.dispatch()` → `ICapabilityExecutor.execute()` → UCRBridge → connector. E plan-based.
+- Lido `src/lib/runtime-engine/ExecutionDispatcher.ts` — intermediary per-step com timeout via Promise.race, metricas via `connectorMetrics.record()`. Nao e capability-based.
+- Lido `src/lib/connector-runtime/ConnectorRegistry.ts` — `get(id)` retorna o `IConnector` vivo; `connector.execute(capability, params, context)` e o caminho direto para uma capability unica.
+- **Decisao:** a Facade `processCapability` e capability-based (1 capability por chamada — o que o Planner produz por goal via GoalCapabilityRegistry), nao plan-based. Delega via `ConnectorRegistry.get(id).execute()` — o caminho direto. Nao acopla a `ExecutionPlan`/`ExecutionDispatcher` (que sao multi-step). Quando callers migrarem em EI-04, a Facade substitui o que faziam chamando o registry/engine direto.
+
+**Arquivos criados (2) em `src/lib/execution-intelligence/` (NOVO diretorio, em `src/lib/`, NAO em `src/runtime/` nem `src/sdk/` — arvores paralelas mortas, dead end recorrente):**
+
+1. **`ExecutionTypes.ts`** — contratos uniformes da cadeia:
+   - `ExecutionRequest` — entrada: `{ connectorId, capability, params, context, confirmedByUser? }`.
+   - `PreparedExecution` — saida da Intelligence (EI-05+): `{ request, enrichedParams, gaps, risks }`.
+   - `ExecutionGap` — info faltante detectada: `{ field, reason }`.
+   - `SafetyDecision` — decisao do Safety Gate (EI-03+): `approved | needs_confirmation | blocked`.
+   - `ExecutionOutcome` — terminal: `{ status, connectorId, capability, result, error, reversibility }`. Status: `success | failed | needs_confirmation | blocked`.
+   - `ExecutionContext` — contrato uniforme: `{ request, prepared, safety, outcome }` (todos nullable exceto request).
+   - `ExecutionStage` — `{ id, process(ctx): Promise<ExecutionContext> }`. Os 3 componentes (Intelligence, SafetyGate, Dispatcher) vao implementar isto em EI-03/EI-05. Pipeline-ready desde EI-02: extracao futura e plug-in.
+
+2. **`Runtime.ts`** — Facade publica:
+   - Classe `ExecutionRuntime` com constructor `(registry: ConnectorRegistry)` (dependency injection).
+   - Unico metodo publico: `processCapability(request: ExecutionRequest): Promise<ExecutionOutcome>`.
+   - Hoje (EI-02): pass-through puro — resolve connector no registry, le `reversibility` do `metadata.capabilityReversibility` (campo adicionado em EI-01), chama `connector.execute(capability, params, context)`, mapeia `ConnectorResult` → `ExecutionOutcome`.
+   - Helper privado `_buildOutcome()` — constroi o `ExecutionOutcome` imutavel (Object.freeze).
+   - **Nenhum singleton criado** — nao exporta instancia. Zero side-effect em import. Callers (EI-04) criaram/injetarao a instancia com o registry real.
+
+**Invariants arquiteturais honrados desde EI-02:**
+1. **Bypass impossivel por construcao** — o dispatch (`connector.execute`) e interno a `processCapability`. Nenhum metodo `dispatch` publico e exportado de arquivo algum. O simbolo `dispatch` nao existe fora do metodo.
+2. **Nenhum exempt caller** — so existe `processCapability` como entrada publica.
+3. **`processCapability` e puro wiring** — hoje 1 chamada (dispatch) + 1 leitura de metadata + mapeamento. Zero logica de negocio. Em EI-03 vira `Intelligence → Safety → dispatch` (3 chamadas), ainda zero logica (logica vive nos componentes).
+4. **Contrato uniforme desde EI-02** — `ExecutionStage` define a assinatura que EI-03 (SafetyGate) e EI-05 (Intelligence) vao implementar. Extracao para Pipeline generica sera plug-in.
+
+**Nao-quebra verificada:**
+- Nenhum arquivo existente foi editado. Apenas 2 novos arquivos criados.
+- Nenhum import adicionado a arquivos vivos. Nada importa `ExecutionTypes.ts` ou `Runtime.ts` hoje.
+- `ConnectorRegistry` importado como `type` only (sem side-effect em runtime).
+- `ConnectorResult`, `ConnectorMetadata`, `Reversibility`, `ConnectorContext` importados como `type` de `ConnectorTypes.ts` (ja existentes, Reversibility adicionado em EI-01).
+- Build verde por construcao: arquivos novos nao importados nao quebram nada.
+
+**NAO foi feito (explicitamente fora do escopo de EI-02):**
+- Nenhum SafetyGate (EI-03) — `processCapability` hoje nao checa reversibility para bloquear; apenas a inclui no outcome.
+- Nenhum ExecutionIntelligence (EI-05) — sem enriquecimento.
+- Nenhum caller migrado (EI-04) — nada chama `processCapability`.
+- Nenhum singleton/factory exportado — a classe existe mas nao e instanciada em lugar nenhum.
+- Nenhuma UI tocada.
+
+**Proximo passo:** aguardar autorizacao para iniciar **EI-03 (Safety Gate)** — `SafetyGate.ts` que le `reversibility` do metadata: se `irreversible` e sem `confirmedByUser` → retorna `NeedsConfirmation` com resumo; `safe`/`reversible` passam direto. `Runtime.processCapability` passa a chamar `SafetyGate.guard()` antes do dispatch. So ativa para quem chama `processCapability` (nenhum caller migrou ainda em EI-03).
+
+---

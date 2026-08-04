@@ -77,7 +77,7 @@
 | Sprint | Foco | Entregável | Status |
 |---|---|---|---|
 | EI-01 | Reversibility Metadata | Campo `capabilityReversibility` (tipo `Reversibility = safe \| reversible \| irreversible`) em `ConnectorTypes.ts` + declarado nos 8 connectors com capabilities nao-safe (Gmail, Drive, Memori, Email, FileSystem, Database, WhatsApp, MicrosoftGraph). 3 read-only (Calendar, GitHub, OpenRouter) omitidos — default `safe` cobre. Nada le o campo ainda. | ✅ Done |
-| EI-02 | Tipos + Runtime Facade | `ExecutionTypes.ts` (contratos uniformes) + `Runtime.ts` com `processCapability` que hoje so delega ao RuntimeEngine existente. Nenhum caller o chama. | Planned |
+| EI-02 | Tipos + Runtime Facade | `src/lib/execution-intelligence/ExecutionTypes.ts` (contratos uniformes: ExecutionRequest, PreparedExecution, SafetyDecision, ExecutionOutcome, ExecutionContext, ExecutionStage) + `Runtime.ts` com `ExecutionRuntime.processCapability()` (pass-through puro hoje — resolve connector no registry, le reversibility do metadata, chama `connector.execute()`, mapeia para ExecutionOutcome). Nenhum caller o chama. | ✅ Done |
 | EI-03 | Safety Gate | `SafetyGate.ts`. Le `reversibility`. Irreversible sem `confirmedByUser` → `NeedsConfirmation` com resumo. Runtime passa a chamar Safety antes de despachar. | Planned |
 | EI-04 | Migracao gradual de callers | Callers migrados um a um de `RuntimeEngine.execute()` → `Runtime.processCapability()`. Cada migracao independente e reversivel. Ultimo caller migrado → Dispatcher vira privado por convencao. | Planned |
 | EI-05 | Execution Intelligence pass-through | `ExecutionIntelligence.ts` pass-through puro (recebe, devolve identico, so loga/instrumenta). Runtime passa a chamar Intelligence antes do Safety. | Planned |
