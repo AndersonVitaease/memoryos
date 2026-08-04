@@ -846,6 +846,14 @@ class ConversationPipeline {
             }
           }
 
+          // FIX: "Unknown connector" e erro de infraestrutura (registry do EI nao
+          // populado / race de bootstrap), NAO falha real da capability. Nulifica o
+          // outcome pra cair no realEngine (caminho provado) em vez de hard-falar.
+          if (_eiOutcome && _eiOutcome.status === "failed" && /Unknown connector/.test(_eiOutcome.message ?? "")) {
+            console.warn("[ConversationPipeline] EI registry miss, fallback pra realEngine:", _eiOutcome.message);
+            _eiOutcome = null;
+          }
+
           if (_eiCancelled) {
             const _cancelMsg = "Acao cancelada pelo usuario.";
             setStep("route", "done"); setStep("synthesize", "done"); setStep("stream", "running");
