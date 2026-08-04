@@ -921,3 +921,68 @@ Calendar + OneDrive + Contacts + To Do disponiveis.
 
 ---
 
+### 2026-08-04 — Microsoft 365 OAuth: Tenant-Specific Authority end-to-end (login confirmado pelo usuario)
+
+**Contexto:** Continuacao da sessao anterior (4 causas raiz). O `microsoftOAuthInit` ja usava `MICROSOFT_TENANT_ID` (com fallback `common`), mas `microsoftOAuthExchange` e `microsoftOAuthRefresh` ainda batiam hardcoded em `https://login.microsoftonline.com/common/oauth2/v2.0/token`. Isso podia causar mismatch de authority entre autorizacao (tenant-specific) e troca de codigo (sempre common) — a Microsoft rejeita troca de codigo se o authority da requisicao de token nao bater com o da autorizacao.
+
+**Mudanca feita (3 backend functions,一致性 end-to-end):**
+
+1. **`base44/functions/microsoftOAuthInit/entry.ts`** (ja estava pronto da sessao anterior):
+   - `const tenant = Deno.env.get('MICROSOFT_TENANT_ID') || 'common';`
+   - `authUrl = https://login.microsoftonline.com/${tenant}/oauth2/v2.0/authorize?...`
+
+2. **`base44/functions/microsoftOAuthExchange/entry.ts`** (EDITADO nesta sessao):
+   - Antes: `fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', ...)`
+   - Depois: `const tenant = Deno.env.get('MICROSOFT_TENANT_ID') || 'common'; fetch(\`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token\`, ...)`
+   - Garante que a troca do code por tokens use o MESMO authority da URL de autorizacao gerada pelo Init.
+
+3. **`base44/functions/microsoftOAuthRefresh/entry.ts`** (EDITADO nesta sessao):
+   - Antes: `fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', ...)`
+   - Depois: `const tenant = Deno.env.get('MICROSOFT_TENANT_ID') || 'common'; fetch(\`https://login.microsoftonline.com/${tenant}/oauth2/v2.0/token\`, ...)`
+   - Garante que a renovacao do access_token tambem use o mesmo authority. Microsoft as vezes rejeita refresh se o authority divergir do usado na emissao original.
+
+**Estado final dos secrets (confirmado pelo painel):**
+
+`MICROSOFT_TENANT_ID` esta **AUSENTE** (nao configurado). Razao (documentada na sessao anterior, Causa 2): o App Registration tem `signInAudience: "AzureADandPersonalMicrosoftAccount"` (multi-tenant + contas pessoais). Esse tipo de app **DEVE** usar o endpoint `/common/` — nunca um tenant especifico. Configurar `MICROSOFT_TENANT_ID` pra esse app causa o MESMO erro `AADSTS700016`. O fallback `|| 'common'` no codigo garante que, com o secret ausente, as 3 functions batem todas em `common` — consistente ponta a ponta.
+
+**Resultado final confirmado pelo usuario (2026-08-04 ~14:28 BRT):** "chat consegui fazer login na conta microsoft." Login Microsoft 365 funcionando.
+
+**Licao arquitetural (reutilizar):**
+
+- Authority de OAuth **DEVE ser consistente em TODAS as etapas** que falam com o endpoint da Microsoft: autorizacao (Init), troca de code (Exchange) e renovacao (Refresh). Se uma das tres divergir, a Microsoft pode rejeitar com erros obscuros (`AADSTS700016`, `AADSTS50011`, `invalid_grant`).
+- O padrao `Deno.env.get('MICROSOFT_TENANT_ID') || 'common'` e a forma correta de suportar os dois casos (single-tenant com tenant-specific vs multi-tenant com common) sem precisar mudar codigo — so mudar a presenca/ausencia do secret.
+- Para apps multi-tenant (`AzureADandPersonalMicrosoftAccount`): manter `MICROSOFT_TENANT_ID` **ausente**.
+- Para apps single-tenant (`AzureADMyOrg`): configurar `MICROSOFT_TENANT_ID` com o Tenant ID do diretorio.
+- **NAO assumir** que um tenant-specific authority resolve sempre — depende do `signInAudience` do App Registration. O comentario original no codigo ("Se MICROSOFT_TENANT_ID estiver definido, evita AADSTS700016") so e verdade pra single-tenant; e falso (e piora) pra multi-tenant.
+
+**Mapa completo do fluxo OAuth Microsoft (apos todas as sessoes):**
+
+```
+Frontend (MicrosoftAuthSession.js)
+  ├─ connect() → invokeFn('microsoftOAuthInit', { scopes, redirectUri })
+  │    └─ Backend microsoftOAuthInit → authUrl (tenant = MICROSOFT_TENANT_ID || 'common')
+  ├─ Popup Microsoft login → redirect /oauth/microsoft/callback
+  ├─ Callback page → postMessage { code, state }
+  ├─ handleMessage → invokeFn('microsoftOAuthExchange', { code, codeVerifier, redirectUri, workspaceId })
+  │    └─ Backend microsoftOAuthExchange → POST token endpoint (mesmo tenant) → access_token + refresh_token
+  │         └─ refresh_token salvo em MicrosoftOAuthToken (backend, nunca exposto)
+  │         └─ access_token retornado ao frontend (memoria, nunca localStorage)
+  └─ Conectado. getAccessToken(workspaceId) usado pelos connectors.
+  └─ ensureValidToken() → invokeFn('microsoftOAuthRefresh') quando expira
+       └─ Backend microsoftOAuthRefresh → POST token endpoint (mesmo tenant) → novo access_token
+```
+
+**Componentes vivos no fluxo (NAO mexer sem revalidar):**
+
+- `src/lib/microsoft-auth/MicrosoftAuthSession.js` — session manager frontend, PKCE, multi-workspace, token em memoria.
+- `src/lib/microsoft-auth/MicrosoftMultiAccount.js` — multi-conta (espelha Google).
+- `src/pages/MicrosoftOAuthCallback.jsx` — recebe redirect da Microsoft, faz postMessage pra janela opener.
+- `src/components/connections/MicrosoftWorkspaceSection.jsx` — card UI de conexao no /connections.
+- `base44/functions/microsoftOAuthInit/entry.ts` — gera authUrl + state + codeVerifier (PKCE).
+- `base44/functions/microsoftOAuthExchange/entry.ts` — troca code por tokens, salva refresh_token.
+- `base44/functions/microsoftOAuthRefresh/entry.ts` — renova access_token via refresh_token.
+- `base44/entities/MicrosoftOAuthToken.jsonc` — armazena refresh_token por user_id + workspace_id (backend only).
+- `src/lib/connector-runtime/connectors/MicrosoftGraphConnector.ts` — shell fino (Provider Router ADR-014).
+- `src/lib/connector-runtime/connectors/microsoft-providers/OfficialGraphProvider.ts` — provider que chama Graph via token do workspaceId ativo.
+
+---
