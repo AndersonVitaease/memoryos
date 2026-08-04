@@ -872,6 +872,26 @@ class ConversationPipeline {
             executionResult = _r.executionResult;
           }
           console.log("[EI-04][pipeline]", _eiOutcome ? `ei_${_eiOutcome.status}` : "ei_fallback", { connector: _singleStep?.connector, capability: _singleStep?.capability, executionId });
+
+          // EI-04 honest failure: se o dispatch irreversivel confirmado FALHOU, mostrar o
+          // erro real direto e NAO deixar o LLM alucinar "enviado" por cima do erro (causa
+          // raiz do usuario receber "email enviado" sem o email chegar). Antes o candidato
+          // de erro tinha baixa confianca e o LLM (Producer C) vencia a arbitragem mentindo.
+          if (_eiOutcome && (_eiOutcome.status === "failed" || _eiOutcome.status === "blocked")) {
+            const _failMsg = `Não foi possível concluir a ação (${_eiOutcome.connectorId}.${_eiOutcome.capability}): ${_eiOutcome.message ?? "falha desconhecida"}`;
+            setStep("route", "done"); setStep("synthesize", "done"); setStep("stream", "running");
+            conversationStore.setStatus("streaming"); setPhase("responding");
+            const _fMsgId = makeMsgId();
+            conversationStore.appendMessage({ id: _fMsgId, session_id: session.id, role: "assistant", content: "", streamingContent: "", isStreaming: true, memory_tier: "active", sources_used: [] });
+            await conversationStreaming.streamResponse({ executionId, messageId: _fMsgId, fullContent: _failMsg, onChunk: () => {} });
+            setStep("stream", "done"); setStep("finalize", "running"); conversationStore.setStatus("finalizing");
+            try {
+              const _fSaved = await persistMessage({ sessionId: session.id, projectId: session.project_id, role: "assistant", content: _failMsg, sources_used: [] });
+              conversationStore.updateMessage(_fMsgId, { id: _fSaved.id, content: _failMsg, streamingContent: undefined, isStreaming: false, sources_used: [] });
+            } catch { /* non-critical */ }
+            conversationStore.setStatus("idle"); conversationStore.setReasoningPhase("idle"); setStep("finalize", "done");
+            return;
+          }
           const t0connector = Date.now();
 
           conversationStore.emit({
