@@ -28,6 +28,12 @@ import type {
   ConnectorValidationResult,
 } from "../ConnectorTypes";
 import { makeLog, makeExecutionId } from "../ConnectorTypes";
+// Workspace-aware GitHub OAuth (multi-conta) — prefere o token da conta ativa
+// (GitHubAuthSession, em memoria) antes do legacy PAT global.
+import {
+  getAccessToken as _getGitHubActiveAccessToken,
+  getActiveGitHubWorkspaceId as _getActiveGitHubWs,
+} from "@/lib/github-auth/GitHubAuthSession";
 
 const GITHUB_API = "https://api.github.com";
 const DEFAULT_TIMEOUT_MS = 10000;
@@ -410,6 +416,13 @@ export class GitHubConnector implements IConnector {
   }
 
   private getToken(): string | null {
+    // Workspace-aware: token da conta GitHub ativa (OAuth multi-conta).
+    // Fallback pro path PAT legacy (setado por GitHubAuthFlow.setToken).
+    try {
+      const activeWs = _getActiveGitHubWs();
+      const wsToken = _getGitHubActiveAccessToken(activeWs);
+      if (wsToken) return wsToken;
+    } catch { /* non-blocking — fallback abaixo */ }
     return (globalThis as any).__GITHUB_TOKEN__
       ?? (globalThis as any).__env__?.GITHUB_TOKEN
       ?? (globalThis as any).import?.meta?.env?.VITE_GITHUB_TOKEN
