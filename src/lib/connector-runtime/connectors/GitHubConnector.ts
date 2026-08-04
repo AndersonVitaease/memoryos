@@ -41,6 +41,9 @@ import {
   isRetryable,
   computeBackoffMs,
 } from "./github/GitHubRateLimiter";
+// Upgrade 1 — write operations (issues, PRs, files). Extraido em modulo proprio
+// pra manter o conector enxuto. Reversibility declarada no metadata().
+import { isWriteOp, dispatchWriteOp } from "./github/GitHubWriteOps";
 
 const GITHUB_API = "https://api.github.com";
 const DEFAULT_TIMEOUT_MS = 10000;
@@ -142,19 +145,31 @@ interface FetchResult {
 
 // Core HTTP — faz UMA chamada, sem retry/limiter. Mantido separado pra o
 // wrapper abaixo poder orquestrar tentativas sem duplicar a logica de fetch.
-async function githubFetchCore(path: string, token: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<FetchResult> {
+async function githubFetchCore(
+  path: string,
+  token: string,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  method: string = "GET",
+  body?: unknown,
+): Promise<FetchResult> {
   const t0 = Date.now();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(`${GITHUB_API}${path}`, {
+    const init: RequestInit = {
+      method,
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
       },
       signal: controller.signal,
-    });
+    };
+    if (body !== undefined) {
+      (init.headers as Record<string, string>)["Content-Type"] = "application/json";
+      init.body = JSON.stringify(body);
+    }
+    const res = await fetch(`${GITHUB_API}${path}`, init);
     clearTimeout(timer);
     let data: unknown = null;
     try { data = await res.json(); } catch { /* non-JSON body */ }
@@ -171,7 +186,13 @@ async function githubFetchCore(path: string, token: string, timeoutMs = DEFAULT_
 // githubFetch (public) = Token Bucket pre-check + core + post-update + retry.
 // Assinatura identica a versao antiga → todos os ~30 call sites no _dispatch
 // ganham limiter e retry sem nenhuma mudanca.
-async function githubFetch(path: string, token: string, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<FetchResult> {
+async function githubFetch(
+  path: string,
+  token: string,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  method: string = "GET",
+  body?: unknown,
+): Promise<FetchResult> {
   let lastRes: FetchResult | null = null;
   for (let attempt = 1; attempt <= MAX_FETCH_ATTEMPTS; attempt++) {
     // 1) Pre-check do Token Bucket (por token = por conta)
@@ -192,7 +213,7 @@ async function githubFetch(path: string, token: string, timeoutMs = DEFAULT_TIME
     }
 
     // 2) Dispara
-    const res = await githubFetchCore(path, token, timeoutMs);
+    const res = await githubFetchCore(path, token, timeoutMs, method, body);
     // 3) Alimenta o limiter com os headers/body desta resposta
     gitHubRateLimiter.update(token, res.headers, res.data);
     lastRes = res;
@@ -262,7 +283,27 @@ export class GitHubConnector implements IConnector {
         "history.file",
         "pullRequests.list", "pullRequest.details",
         "issues.list", "issue.search",
+        // Upgrade 1 — Write operations (commits via Contents API, issues, PRs).
+        "issues.create", "issues.update", "issues.comment", "issues.close",
+        "pullRequests.create", "pullRequests.merge",
+        "files.create", "files.update", "files.delete",
       ],
+      // Upgrade 1 — Reversibility classification (EI-01). O Safety Gate (EI-03)
+      // so freia "irreversible". Reads/default ausentes = "safe". Creates/updates
+      // sao git-tracked → reversible. Merge e delete de arquivo removem estado
+      // do HEAD de forma nao trivial → irreversible (pedem confirmacao quando o
+      // caller rotear via ExecutionRuntime.processCapability).
+      capabilityReversibility: {
+        "issues.create": "reversible",
+        "issues.update": "reversible",
+        "issues.comment": "reversible",
+        "issues.close": "reversible",
+        "pullRequests.create": "reversible",
+        "pullRequests.merge": "irreversible",
+        "files.create": "reversible",
+        "files.update": "reversible",
+        "files.delete": "irreversible",
+      },
     };
   }
 
@@ -1263,6 +1304,13 @@ export class GitHubConnector implements IConnector {
       case "health.full": {
         const report = await this.health();
         return ok(report, start, eid, logs, operation);
+      }
+
+      // ── Write operations (Upgrade 1) — delegado a GitHubWriteOps ──────────
+      if (isWriteOp(operation)) {
+        return await dispatchWriteOp(operation, payload, token, githubFetch, {
+          start, eid, logs, metrics: this.internalMetrics,
+        });
       }
 
       default:
