@@ -111,6 +111,12 @@ const CAPABILITIES: ConnectorCapability[] = [
   { id: "files.upload",          type: "WRITE", description: "Upload file to app storage",              requiredAuth: true,  readOnly: false, paginated: false },
   { id: "files.extractData",     type: "READ",  description: "Extract structured data from uploaded file", requiredAuth: true, readOnly: true,  paginated: false },
   { id: "email.send",            type: "WRITE", description: "Send email to registered app user",       requiredAuth: true,  readOnly: false, paginated: false },
+  // B44-EXP-03 — User Management (RFC-009/ADR-016)
+  // SDK: base44.users.inviteUser / base44.entities.User.list / base44.auth.updateMe / base44.auth.logout
+  { id: "users.invite",          type: "WRITE", description: "Invite a new user by email + role",      requiredAuth: true,  readOnly: false, paginated: false },
+  { id: "users.list",            type: "LIST",  description: "List app users (admin only)",            requiredAuth: true,  readOnly: true,  paginated: true  },
+  { id: "auth.updateMe",         type: "WRITE", description: "Persist extra data on current user",     requiredAuth: true,  readOnly: false, paginated: false },
+  { id: "auth.logout",           type: "WRITE", description: "Logout current session",                 requiredAuth: true,  readOnly: false, paginated: false },
 ];
 
 // ── Connector ─────────────────────────────────────────────────────────────────
@@ -178,6 +184,13 @@ export class Base44Connector implements IConnector, IProductionConnector {
         "files.upload": "reversible" as Reversibility,
         "files.extractData": "safe" as Reversibility,
         "email.send": "irreversible" as Reversibility,
+        // B44-EXP-03 — User Management. invite/updateMe/logout = reversible;
+        // list = safe (leitura). User records NAO sao criaveis (platform limit —
+        // create retorna 405); so via users.invite. invite exige role admin p/ role=admin.
+        "users.invite": "reversible" as Reversibility,
+        "users.list": "safe" as Reversibility,
+        "auth.updateMe": "reversible" as Reversibility,
+        "auth.logout": "reversible" as Reversibility,
       },
     };
   }
@@ -871,6 +884,56 @@ export class Base44Connector implements IConnector, IProductionConnector {
         try { res = await sdk.integrations.Core.SendEmail(req); }
         catch (err) { this.internalMetrics.externalFailures++; return fail(`SendEmail threw: ${err instanceof Error ? err.message : err}`, "external", start, eid, logs, operation); }
         return ok({ sent: true, to, result: res ?? null }, start, eid, logs, operation);
+      }
+
+      // ── B44-EXP-03 — User Management (RFC-009/ADR-016) ─────────────────────
+      // SDK: base44.users.inviteUser(email, role) / base44.entities.User.list()
+      //      / base44.auth.updateMe(data) / base44.auth.logout(redirectUrl?).
+      // Reversibility: invite/updateMe/logout = reversible; list = safe.
+      // User records NAO podem ser criados (platform limit — create retorna 405).
+      // inviteUser so funciona se o caller tem permissao p/ o role alvo (admin p/ admin).
+
+      case "users.invite": {
+        const email = typeof payload.email === "string" ? payload.email : null;
+        const role = typeof payload.role === "string" ? payload.role : "user";
+        if (!email) return fail("payload.email (string) required", "validation", start, eid, logs, operation);
+        if (role !== "user" && role !== "admin") return fail(`payload.role must be "user" or "admin" (got "${role}")`, "validation", start, eid, logs, operation);
+        let res: unknown;
+        try { res = await sdk.users.inviteUser(email, role); }
+        catch (err) { this.internalMetrics.externalFailures++; return fail(`users.inviteUser threw: ${err instanceof Error ? err.message : err}`, "external", start, eid, logs, operation); }
+        return ok({ invited: true, email, role, result: res ?? null }, start, eid, logs, operation);
+      }
+
+      case "users.list": {
+        const limit = typeof payload.limit === "number" && payload.limit > 0 ? payload.limit : 50;
+        let users: unknown;
+        try { users = await sdk.entities.User.list("-created_date", limit); }
+        catch (err) { this.internalMetrics.externalFailures++; return fail(`User.list() threw: ${err instanceof Error ? err.message : err}`, "external", start, eid, logs, operation); }
+        const v = requireArray(users, "users"); if (!v.valid) { this.internalMetrics.invalidResponses++; return fail(v.reason, "validation", start, eid, logs, operation); }
+        const arr = users as any[];
+        return ok({
+          count: arr.length,
+          items: arr.map(u => ({ id: u.id, email: u.email, full_name: u.full_name, role: u.role, created_date: u.created_date })),
+        }, start, eid, logs, operation);
+      }
+
+      case "auth.updateMe": {
+        const data = (payload.data && typeof payload.data === "object" && !Array.isArray(payload.data)) ? payload.data : null;
+        if (!data) return fail("payload.data (object) required", "validation", start, eid, logs, operation);
+        let updated: unknown;
+        try { updated = await sdk.auth.updateMe(data); }
+        catch (err) { this.internalMetrics.externalFailures++; return fail(`auth.updateMe threw: ${err instanceof Error ? err.message : err}`, "external", start, eid, logs, operation); }
+        const v = requireObject(updated, "updatedMe"); if (!v.valid) { this.internalMetrics.invalidResponses++; return fail(v.reason, "validation", start, eid, logs, operation); }
+        return ok({ updated: true, user: updated }, start, eid, logs, operation);
+      }
+
+      case "auth.logout": {
+        const redirectUrl = typeof payload.redirectUrl === "string" ? payload.redirectUrl : undefined;
+        try { await sdk.auth.logout(redirectUrl); }
+        catch (err) { this.internalMetrics.externalFailures++; return fail(`auth.logout threw: ${err instanceof Error ? err.message : err}`, "external", start, eid, logs, operation); }
+        this._initialized = false;
+        this._authenticatedUser = null;
+        return ok({ loggedOut: true }, start, eid, logs, operation);
       }
 
       default:
