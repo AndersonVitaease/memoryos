@@ -53,8 +53,10 @@ Deno.serve(async (req) => {
       prompt: 'consent',
     });
 
-    // 'common' aceita tanto contas pessoais (Outlook/Hotmail) quanto corporativas
-    const authUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?${params.toString()}`;
+    // Se MICROSOFT_TENANT_ID estiver definido, usa o tenant especifico (evita AADSTS700016);
+    // senao cai em 'common' (aceita contas pessoais e corporativas).
+    const tenant = Deno.env.get('MICROSOFT_TENANT_ID') || 'common';
+    const authUrl = `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/authorize?${params.toString()}`;
 
     return Response.json({ authUrl, state, codeVerifier, redirectUri });
   } catch (error) {
