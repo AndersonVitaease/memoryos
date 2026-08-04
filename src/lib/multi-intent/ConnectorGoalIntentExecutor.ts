@@ -102,17 +102,54 @@ export class ConnectorGoalIntentExecutor implements IntentExecutor {
         try {
           const { getExecutionRuntime } = await import("@/lib/execution-intelligence");
           const eiRuntime = await getExecutionRuntime();
-          const outcome = await eiRuntime.processCapability({
+          const baseRequest = {
             connectorId: singleStep.connector,
             capability: singleStep.capability,
             params: singleStep.parameters ?? {},
             context: connCtx,
             executionId: execId,
-          });
+          };
+          const outcome = await eiRuntime.processCapability(baseRequest);
           if (outcome.status === "success") {
             executionResult = _outcomeToExecutionResult(outcome, execId);
             usedEI = true;
+          } else if (outcome.status === "needs_confirmation") {
+            // EI-04 (irreversivel): pedir confirmacao ao usuario via
+            // RuntimeConfirmationEngine. NAO cai no fallback auto-send — e a
+            // seguranca efetiva do Safety Gate (EPIC-019).
+            const { requestConfirmation } = await import("@/lib/runtime/RuntimeConfirmationEngine");
+            const confirmResult = await requestConfirmation({
+              capability:  `${outcome.connectorId}.${outcome.capability}`,
+              title:       "Confirmar acao irreversivel",
+              description: outcome.message ?? `Confirmar execucao de ${outcome.capability}`,
+              payload:     { connectorId: outcome.connectorId, capability: outcome.capability },
+            });
+            if (confirmResult.confirmed) {
+              const confirmedOutcome = await eiRuntime.processCapability({ ...baseRequest, confirmedByUser: true });
+              if (confirmedOutcome.status === "success") {
+                executionResult = _outcomeToExecutionResult(confirmedOutcome, execId);
+                usedEI = true;
+              } else {
+                // Confirmado mas dispatch falhou: nao cair no fallback (evita auto-send duplicado).
+                return {
+                  intent,
+                  success: false,
+                  response: null,
+                  error: confirmedOutcome.message ?? "Falha apos confirmacao.",
+                  durationMs: Date.now() - t0,
+                };
+              }
+            } else {
+              return {
+                intent,
+                success: true,
+                response: "Acao cancelada pelo usuario.",
+                error: null,
+                durationMs: Date.now() - t0,
+              };
+            }
           }
+          // blocked/failed: cai no fallback realEngine.execute (abaixo).
         } catch (err) {
           console.warn("[ConnectorGoalIntentExecutor] EI dispatch falhou, caindo pro realEngine:", err);
         }

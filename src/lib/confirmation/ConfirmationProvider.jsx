@@ -1,14 +1,20 @@
 /**
- * ConfirmationProvider — Engineering Sprint E-01
+ * ConfirmationProvider — Engineering Sprint E-01 (+ EI-04 confirm bridge)
  * Provider React centralizado para comunicacao com RuntimeConfirmationEngine.
  *
- * A UI nao conversa diretamente com o Engine.
- * Sempre atraves deste Provider.
+ * A UI nao conversa diretamente com o Engine. Sempre atraves deste Provider.
  *
  * Expoe: dialog (JSX), requestAction(opts, action) → Promise<result|null>
+ *
+ * EI-04: poll bridge — renderiza o dialog para solicitacoes criadas
+ * EXTERNAMENTE (pelo pipeline / cadeia Execution Intelligence), nao apenas as
+ * criadas via requestAction. Prevencao de dialogo duplicado via shownIdsRef:
+ * requestAction marca o id da solicitacao que ela mesma cria; o poll so exibe
+ * ids ainda nao rastreados. Assim o pipeline pode chamar requestConfirmation
+ * (engine) direto e o dialog aparece aqui.
  */
 
-import { createContext, useContext, useState, useCallback } from "react";
+import { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
 import { ShieldAlert } from "lucide-react";
 import {
   requestConfirmation, confirm, cancel, listPending,
@@ -52,7 +58,12 @@ function ConfirmationDialog({ request, onConfirm, onCancel }) {
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 export function ConfirmationProvider({ children }) {
+  // requestAction path (React-side)
   const [pendingUI, setPendingUI] = useState(null);
+  // External path (pipeline / EI) — solicitacoes criadas fora do requestAction
+  const [externalPending, setExternalPending] = useState(null);
+  // IDs ja rastreados (requestAction ou poll) para evitar dialogo duplicado
+  const shownIdsRef = useRef(new Set());
 
   /**
    * Solicita confirmacao ao usuario e, se confirmado, executa `action`.
@@ -70,6 +81,8 @@ export function ConfirmationProvider({ children }) {
     // Obter a solicitacao recem-criada
     const pending = listPending();
     const req = pending[pending.length - 1];
+    // Marcar como rastreado para o poll nao duplicar
+    shownIdsRef.current.add(req.id);
 
     // Mostrar dialog
     setPendingUI({ request: req, resolveDecision });
@@ -88,6 +101,35 @@ export function ConfirmationProvider({ children }) {
     return action();
   }, []);
 
+  // EI-04: poll bridge — exibe dialogs para solicitacoes criadas pelo pipeline
+  // (via requestConfirmation direto). Enquanto um dialog externo esta aberto,
+  // nao substitui; ao resolver, o proximo poll pega a proxima pendente.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (externalPending) return; // ja exibindo um
+      const pending = listPending();
+      const external = pending.find(r => !shownIdsRef.current.has(r.id));
+      if (external) {
+        shownIdsRef.current.add(external.id);
+        setExternalPending(external);
+      }
+    }, 400);
+    return () => clearInterval(interval);
+  }, [externalPending]);
+
+  const handleExternalConfirm = useCallback(() => {
+    if (!externalPending) return;
+    confirm(externalPending.id);
+    setExternalPending(null);
+  }, [externalPending]);
+
+  const handleExternalCancel = useCallback(() => {
+    if (!externalPending) return;
+    cancel(externalPending.id);
+    setExternalPending(null);
+  }, [externalPending]);
+
+  // requestAction dialog (inalterado)
   const dialog = pendingUI ? (
     <ConfirmationDialog
       request={pendingUI.request}
@@ -96,10 +138,19 @@ export function ConfirmationProvider({ children }) {
     />
   ) : null;
 
+  const externalDialog = externalPending ? (
+    <ConfirmationDialog
+      request={externalPending}
+      onConfirm={handleExternalConfirm}
+      onCancel={handleExternalCancel}
+    />
+  ) : null;
+
   return (
     <ConfirmationCtx.Provider value={{ requestAction }}>
       {children}
       {dialog}
+      {externalDialog}
     </ConfirmationCtx.Provider>
   );
 }
