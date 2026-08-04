@@ -22,30 +22,30 @@
  */
 
 import type { Reversibility } from "@/lib/connector-runtime/ConnectorTypes";
-import type { ExecutionRequest, SafetyDecision } from "./ExecutionTypes";
+import type { PreparedExecution, SafetyDecision } from "./ExecutionTypes";
 
 export class SafetyGate {
   /**
    * Decide se a capability pode ser despachada.
-   * @param request    A requisicao original (com confirmedByUser opcional).
+   * @param prepared   O PreparedExecution (da ExecutionIntelligence — EI-05).
    * @param reversibility Classificacao da capability (lida do metadata).
    * @returns SafetyDecision — approved | needs_confirmation | blocked.
    */
-  guard(request: ExecutionRequest, reversibility: Reversibility): SafetyDecision {
+  guard(prepared: PreparedExecution, reversibility: Reversibility): SafetyDecision {
     // safe / reversible sempre passam.
     if (reversibility === "safe" || reversibility === "reversible") {
       return { type: "approved" };
     }
 
     // irreversible: exige confirmacao explicita do usuario.
-    if (request.confirmedByUser === true) {
+    if (prepared.request.confirmedByUser === true) {
       return { type: "approved" };
     }
 
     return {
       type: "needs_confirmation",
-      reason: `A capability "${request.capability}" e irreversivel e requer confirmacao antes de executar.`,
-      summary: this._summarize(request),
+      reason: `A capability "${prepared.request.capability}" e irreversivel e requer confirmacao antes de executar.`,
+      summary: this._summarize(prepared),
     };
   }
 
@@ -54,8 +54,9 @@ export class SafetyGate {
    * dominio que produzem resumos ricos por capability — ex: TravelInvestigator,
    * EmailInvestigator). Hoje: connector.capability + preview dos params.
    */
-  private _summarize(request: ExecutionRequest): string {
-    const { connectorId, capability, params } = request;
+  private _summarize(prepared: PreparedExecution): string {
+    const { connectorId, capability } = prepared.request;
+    const params = prepared.enrichedParams;
     const keys = Object.keys(params);
     if (keys.length === 0) {
       return `Executar ${connectorId}.${capability}.`;

@@ -1,17 +1,18 @@
 /**
- * Runtime.ts — EI-04 (RFC-008 / ADR-015)
+ * Runtime.ts — EI-05 (RFC-008 / ADR-015)
  *
  * Facade publica unica. Refatorada em EI-04 para delegar o dispatch ao
  * ConversationRuntimeEngine EXISTENTE (preserva metricas, eventos, timeout
  * e o mapeamento de status do UCRBridge). Antes (EI-02/EI-03) chamava
  * connector.execute() direto — bypassava toda a instrumentacao de producao.
  *
- * Cadeia (EI-04):
+ * Cadeia (EI-05):
  *   processCapability(request)
  *     → resolve connector no ConnectorRegistry (real)
  *     → le reversibility do metadata (EI-01)
- *     → SafetyGate.guard(request, reversibility)
- *     → se approved: build 1-step ExecutionPlan → engine.execute() →
+ *     → ExecutionIntelligence.prepare(request) → PreparedExecution (EI-05)
+ *     → SafetyGate.guard(prepared, reversibility)
+ *     → se approved: build 1-step ExecutionPlan (enrichedParams) → engine.execute() →
  *         map ExecutionResult → ExecutionOutcome
  *     → se needs_confirmation/blocked: retorna SEM despachar
  *
@@ -21,7 +22,7 @@
  * observabilidade de producao — nao reimplementation.
  *
  * Nenhum caller vivo usa processCapability ainda (migracao de callers e
- * EI-04 sub-step futuro, apos EI-05/EI-07 darem ao gate contexto real para
+ * EI-04 sub-step futuro, apos EI-06/EI-07 darem ao gate contexto real para
  * decidir irreversiveis sem quebrar automation). O caminho antigo
  * (getRealRuntimeEngine direto, usado pelo ConversationPipeline) segue 100%
  * intocado.
@@ -43,30 +44,33 @@ import type {
 } from "@/lib/runtime-engine/RuntimeTypes";
 import type { ExecutionPlan, ExecutionStep } from "@/lib/planning-engine-e022/ExecutionPlanTypes";
 import { makePlanId, makeStepId } from "@/lib/planning-engine-e022/ExecutionPlanTypes";
-import type { ExecutionRequest, ExecutionOutcome, SafetyDecision } from "./ExecutionTypes";
+import type { ExecutionRequest, ExecutionOutcome, PreparedExecution, SafetyDecision } from "./ExecutionTypes";
+import { ExecutionIntelligence } from "./ExecutionIntelligence";
 import { SafetyGate } from "./SafetyGate";
 
 export class ExecutionRuntime {
+  private readonly _intelligence: ExecutionIntelligence;
   private readonly _safety: SafetyGate;
 
   constructor(
     private readonly _registry: ConnectorRegistry,
     private readonly _engine: ConversationRuntimeEngine,
   ) {
-    // SafetyGate stateless — instanciado internamente, sem DI.
+    // Intelligence + SafetyGate stateless — instanciados internamente, sem DI.
+    this._intelligence = new ExecutionIntelligence();
     this._safety = new SafetyGate();
   }
 
   /**
    * Unica entrada publica para execucao de capability.
    *
-   * Hoje (EI-04): resolve connector → le reversibility → SafetyGate →
-   * (se approved) build 1-step plan → delega ao engine real (preserva
+   * Hoje (EI-05): resolve connector → le reversibility → Intelligence.prepare →
+   * (se approved) build 1-step plan (enrichedParams) → delega ao engine real (preserva
    * metricas/eventos/timeout) → map ExecutionResult → ExecutionOutcome.
    * Se o SafetyGate pedir confirmacao ou bloquear, retorna sem despachar.
    */
   async processCapability(request: ExecutionRequest): Promise<ExecutionOutcome> {
-    const { connectorId, capability, params, context } = request;
+    const { connectorId, capability, context } = request;
 
     const connector = this._registry.get(connectorId);
     if (!connector) {
@@ -77,19 +81,23 @@ export class ExecutionRuntime {
     const meta: ConnectorMetadata = connector.metadata();
     const reversibility: Reversibility = meta.capabilityReversibility?.[capability] ?? "safe";
 
-    // EI-03: Safety Gate antes do dispatch.
-    const decision: SafetyDecision = this._safety.guard(request, reversibility);
+    // EI-05: Execution Intelligence enriquece a requisicao (hoje pass-through).
+    // EI-07 adicionara investigators de dominio aqui; a assinatura prepare() nao muda.
+    const prepared: PreparedExecution = this._intelligence.prepare(request);
+
+    // EI-03: Safety Gate consome o PreparedExecution (EI-05).
+    const decision: SafetyDecision = this._safety.guard(prepared, reversibility);
     if (decision.type !== "approved") {
       const message = decision.type === "needs_confirmation" ? decision.summary : decision.reason;
       return this._buildOutcome(request, decision.type, null, message, reversibility, null, null);
     }
 
-    // Approved → build 1-step ExecutionPlan e delegar ao engine existente.
+    // Approved → build 1-step ExecutionPlan com os enrichedParams e delegar.
     const step: ExecutionStep = Object.freeze({
       id: makeStepId(1),
       connector: connectorId,
       capability,
-      parameters: params,
+      parameters: prepared.enrichedParams,
     });
     const plan: ExecutionPlan = Object.freeze({
       id: makePlanId(),
