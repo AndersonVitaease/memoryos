@@ -103,6 +103,14 @@ const CAPABILITIES: ConnectorCapability[] = [
   { id: "entities.filter",     type: "LIST",  description: "Filter entity records by query",          requiredAuth: true,  readOnly: true,  paginated: true  },
   { id: "entities.bulkCreate", type: "WRITE", description: "Bulk create entity records",              requiredAuth: true,  readOnly: false, paginated: false },
   { id: "entities.bulkUpdate", type: "WRITE", description: "Bulk update entity records",              requiredAuth: true,  readOnly: false, paginated: false },
+  // B44-EXP-02 — Core Integrations (RFC-009/ADR-016)
+  // SDK: base44.integrations.Core.<Endpoint>(data)
+  { id: "ai.invokeLLM",          type: "WRITE", description: "LLM inference (text/JSON generation)",     requiredAuth: true,  readOnly: false, paginated: false },
+  { id: "ai.generateImage",      type: "WRITE", description: "Generate image from prompt",              requiredAuth: true,  readOnly: false, paginated: false },
+  { id: "ai.generateSpeech",     type: "WRITE", description: "Text-to-speech (TTS) audio generation",    requiredAuth: true,  readOnly: false, paginated: false },
+  { id: "files.upload",          type: "WRITE", description: "Upload file to app storage",              requiredAuth: true,  readOnly: false, paginated: false },
+  { id: "files.extractData",     type: "READ",  description: "Extract structured data from uploaded file", requiredAuth: true, readOnly: true,  paginated: false },
+  { id: "email.send",            type: "WRITE", description: "Send email to registered app user",       requiredAuth: true,  readOnly: false, paginated: false },
 ];
 
 // ── Connector ─────────────────────────────────────────────────────────────────
@@ -161,6 +169,15 @@ export class Base44Connector implements IConnector, IProductionConnector {
         "entities.filter": "safe" as Reversibility,
         "entities.bulkCreate": "reversible" as Reversibility,
         "entities.bulkUpdate": "reversible" as Reversibility,
+        // B44-EXP-02 — Core Integrations. LLM/Image/Speech/Extract = safe (geracao/leitura,
+        // nao alteram estado persistente alheio). UploadFile = reversible (pode deletar).
+        // SendEmail = irreversible (nao da pra "desenviar" um email entregue).
+        "ai.invokeLLM": "safe" as Reversibility,
+        "ai.generateImage": "safe" as Reversibility,
+        "ai.generateSpeech": "safe" as Reversibility,
+        "files.upload": "reversible" as Reversibility,
+        "files.extractData": "safe" as Reversibility,
+        "email.send": "irreversible" as Reversibility,
       },
     };
   }
@@ -768,6 +785,92 @@ export class Base44Connector implements IConnector, IProductionConnector {
         try { updated = await entityApi.bulkUpdate(records); }
         catch (err) { this.internalMetrics.externalFailures++; return fail(`${entityName}.bulkUpdate() threw: ${err instanceof Error ? err.message : err}`, "external", start, eid, logs, operation); }
         return ok({ entity: entityName, count: Array.isArray(updated) ? updated.length : 0, records: updated }, start, eid, logs, operation);
+      }
+
+      // ── B44-EXP-02 — Core Integrations (RFC-009/ADR-016) ───────────────────
+      // SDK: base44.integrations.Core.<Endpoint>(data). Reversibility:
+      // LLM/Image/Speech/Extract = safe; UploadFile = reversible; SendEmail = irreversible.
+      // SendEmail so entrega para usuarios registrados do app (platform limit) —
+      // enderecos externos sao rejeitados pelo SDK; o erro da SDK e repassado.
+
+      case "ai.invokeLLM": {
+        const prompt = typeof payload.prompt === "string" ? payload.prompt : null;
+        if (!prompt) return fail("payload.prompt (string) required", "validation", start, eid, logs, operation);
+        const req: Record<string, unknown> = { prompt };
+        if (typeof payload.add_context_from_internet === "boolean") req.add_context_from_internet = payload.add_context_from_internet;
+        if (payload.response_json_schema && typeof payload.response_json_schema === "object") req.response_json_schema = payload.response_json_schema;
+        if (Array.isArray(payload.file_urls)) req.file_urls = payload.file_urls;
+        if (typeof payload.model === "string") req.model = payload.model;
+        let res: unknown;
+        try { res = await sdk.integrations.Core.InvokeLLM(req); }
+        catch (err) { this.internalMetrics.externalFailures++; return fail(`InvokeLLM threw: ${err instanceof Error ? err.message : err}`, "external", start, eid, logs, operation); }
+        if (res === null || res === undefined) { this.internalMetrics.invalidResponses++; return fail("InvokeLLM returned empty response", "validation", start, eid, logs, operation); }
+        return ok({ response: res }, start, eid, logs, operation);
+      }
+
+      case "ai.generateImage": {
+        const prompt = typeof payload.prompt === "string" ? payload.prompt : null;
+        if (!prompt) return fail("payload.prompt (string) required", "validation", start, eid, logs, operation);
+        const req: Record<string, unknown> = { prompt };
+        if (Array.isArray(payload.existing_image_urls)) req.existing_image_urls = payload.existing_image_urls;
+        let res: unknown;
+        try { res = await sdk.integrations.Core.GenerateImage(req); }
+        catch (err) { this.internalMetrics.externalFailures++; return fail(`GenerateImage threw: ${err instanceof Error ? err.message : err}`, "external", start, eid, logs, operation); }
+        const r = res as any;
+        if (!r?.url) { this.internalMetrics.invalidResponses++; return fail("GenerateImage returned no url", "validation", start, eid, logs, operation); }
+        return ok({ url: r.url }, start, eid, logs, operation);
+      }
+
+      case "ai.generateSpeech": {
+        const text = typeof payload.text === "string" ? payload.text : null;
+        if (!text) return fail("payload.text (string) required", "validation", start, eid, logs, operation);
+        if (text.length > 5000) return fail("payload.text exceeds 5000 chars", "validation", start, eid, logs, operation);
+        const req: Record<string, unknown> = { text };
+        if (typeof payload.voice === "string") req.voice = payload.voice;
+        if (typeof payload.language_code === "string") req.language_code = payload.language_code;
+        let res: unknown;
+        try { res = await sdk.integrations.Core.GenerateSpeech(req); }
+        catch (err) { this.internalMetrics.externalFailures++; return fail(`GenerateSpeech threw: ${err instanceof Error ? err.message : err}`, "external", start, eid, logs, operation); }
+        const r = res as any;
+        if (!r?.url) { this.internalMetrics.invalidResponses++; return fail("GenerateSpeech returned no url", "validation", start, eid, logs, operation); }
+        return ok({ url: r.url }, start, eid, logs, operation);
+      }
+
+      case "files.upload": {
+        const file = payload.file;
+        if (!file) return fail("payload.file (File/Blob) required", "validation", start, eid, logs, operation);
+        let res: unknown;
+        try { res = await sdk.integrations.Core.UploadFile({ file }); }
+        catch (err) { this.internalMetrics.externalFailures++; return fail(`UploadFile threw: ${err instanceof Error ? err.message : err}`, "external", start, eid, logs, operation); }
+        const r = res as any;
+        if (!r?.file_url) { this.internalMetrics.invalidResponses++; return fail("UploadFile returned no file_url", "validation", start, eid, logs, operation); }
+        return ok({ file_url: r.file_url }, start, eid, logs, operation);
+      }
+
+      case "files.extractData": {
+        const file_url = typeof payload.file_url === "string" ? payload.file_url : null;
+        const json_schema = (payload.json_schema && typeof payload.json_schema === "object") ? payload.json_schema : null;
+        if (!file_url) return fail("payload.file_url (string) required", "validation", start, eid, logs, operation);
+        if (!json_schema) return fail("payload.json_schema (object) required", "validation", start, eid, logs, operation);
+        let res: unknown;
+        try { res = await sdk.integrations.Core.ExtractDataFromUploadedFile({ file_url, json_schema }); }
+        catch (err) { this.internalMetrics.externalFailures++; return fail(`ExtractDataFromUploadedFile threw: ${err instanceof Error ? err.message : err}`, "external", start, eid, logs, operation); }
+        const r = res as any;
+        if (!r || r.status === "error") { this.internalMetrics.invalidResponses++; return fail(`Extraction failed: ${r?.details ?? "unknown"}`, "external", start, eid, logs, operation); }
+        return ok({ status: r.status, output: r.output ?? null }, start, eid, logs, operation);
+      }
+
+      case "email.send": {
+        const to = typeof payload.to === "string" ? payload.to : null;
+        const subject = typeof payload.subject === "string" ? payload.subject : null;
+        const body = typeof payload.body === "string" ? payload.body : null;
+        if (!to || !subject || !body) return fail("payload.to, payload.subject, payload.body all required", "validation", start, eid, logs, operation);
+        const req: Record<string, unknown> = { to, subject, body };
+        if (typeof payload.from_name === "string") req.from_name = payload.from_name;
+        let res: unknown;
+        try { res = await sdk.integrations.Core.SendEmail(req); }
+        catch (err) { this.internalMetrics.externalFailures++; return fail(`SendEmail threw: ${err instanceof Error ? err.message : err}`, "external", start, eid, logs, operation); }
+        return ok({ sent: true, to, result: res ?? null }, start, eid, logs, operation);
       }
 
       default:

@@ -742,6 +742,48 @@ const _builtins: CapabilityMapping[] = [
     ],
   },
 
+  // ── Base44 (Core Integrations) — B44-EXP-02 (RFC-009/ADR-016)
+  // Connector id: "base44"  (Base44Connector.ts)
+  // Capabilities: ai.invokeLLM, ai.generateImage, ai.generateSpeech,
+  //               files.upload, files.extractData, email.send
+  // Reversibility: LLM/Image/Speech/Extract = safe; upload = reversible; email = irreversible.
+  {
+    goalType: "base44.ai.invokeLLM" as GoalType,
+    descriptors: [
+      { connector: "base44", capability: "ai.invokeLLM", params: {} },
+    ],
+  },
+  {
+    goalType: "base44.ai.generateImage" as GoalType,
+    descriptors: [
+      { connector: "base44", capability: "ai.generateImage", params: {} },
+    ],
+  },
+  {
+    goalType: "base44.ai.generateSpeech" as GoalType,
+    descriptors: [
+      { connector: "base44", capability: "ai.generateSpeech", params: {} },
+    ],
+  },
+  {
+    goalType: "base44.files.upload" as GoalType,
+    descriptors: [
+      { connector: "base44", capability: "files.upload", params: {} },
+    ],
+  },
+  {
+    goalType: "base44.files.extractData" as GoalType,
+    descriptors: [
+      { connector: "base44", capability: "files.extractData", params: {} },
+    ],
+  },
+  {
+    goalType: "base44.email.send" as GoalType,
+    descriptors: [
+      { connector: "base44", capability: "email.send", params: {} },
+    ],
+  },
+
   // ── General / Unknown — no capability steps; Runtime handles gracefully ───
   {
     goalType: "general.conversation",
