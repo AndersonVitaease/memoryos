@@ -122,6 +122,15 @@ export class ConnectorGoalIntentExecutor implements IntentExecutor {
         executionResult = er;
       }
 
+      // EI-04 observabilidade: distingue despacho via cadeia EI vs fallback ao
+      // realEngine, para confirmar em producao que a migracao esta viva.
+      console.log("[EI-04][multi-intent]", usedEI ? "ei_dispatched" : "ei_fallback", {
+        steps: planResult.plan.steps.length,
+        firstConnector: planResult.plan.steps[0]?.connector,
+        firstCapability: planResult.plan.steps[0]?.capability,
+        executionId: execId,
+      });
+
       const synthesis = await synthesizeConnectorResult(executionResult, intent.text, goalBridgeResult.goal.type, null);
 
       if (synthesis.handled && synthesis.response) {
