@@ -117,6 +117,9 @@ const CAPABILITIES: ConnectorCapability[] = [
   { id: "users.list",            type: "LIST",  description: "List app users (admin only)",            requiredAuth: true,  readOnly: true,  paginated: true  },
   { id: "auth.updateMe",         type: "WRITE", description: "Persist extra data on current user",     requiredAuth: true,  readOnly: false, paginated: false },
   { id: "auth.logout",           type: "WRITE", description: "Logout current session",                 requiredAuth: true,  readOnly: false, paginated: false },
+  // B44-EXP-04 — Analytics (RFC-009/ADR-016)
+  // SDK: base44.analytics.track({ eventName, properties? }).
+  { id: "analytics.track",       type: "WRITE", description: "Track a custom analytics event",        requiredAuth: true,  readOnly: false, paginated: false },
 ];
 
 // ── Connector ─────────────────────────────────────────────────────────────────
@@ -191,6 +194,8 @@ export class Base44Connector implements IConnector, IProductionConnector {
         "users.list": "safe" as Reversibility,
         "auth.updateMe": "reversible" as Reversibility,
         "auth.logout": "reversible" as Reversibility,
+        // B44-EXP-04 — Analytics. track = reversible (so registra evento, sem mutacao de estado).
+        "analytics.track": "reversible" as Reversibility,
       },
     };
   }
@@ -934,6 +939,28 @@ export class Base44Connector implements IConnector, IProductionConnector {
         this._initialized = false;
         this._authenticatedUser = null;
         return ok({ loggedOut: true }, start, eid, logs, operation);
+      }
+
+      // ── B44-EXP-04 — Analytics (RFC-009/ADR-016) ───────────────────────────
+      // SDK: base44.analytics.track({ eventName, properties? }).
+      // Reversibility: reversible (registra evento, sem mutacao de estado de dominio).
+      // Properties values: string | number | boolean | null (sem PII).
+
+      case "analytics.track": {
+        const eventName = typeof payload.eventName === "string" ? payload.eventName : null;
+        if (!eventName) return fail("payload.eventName (string) required", "validation", start, eid, logs, operation);
+        const req: { eventName: string; properties?: Record<string, string | number | boolean | null> } = { eventName };
+        if (payload.properties && typeof payload.properties === "object" && !Array.isArray(payload.properties)) {
+          const raw = payload.properties as Record<string, unknown>;
+          const props: Record<string, string | number | boolean | null> = {};
+          for (const [k, v] of Object.entries(raw)) {
+            if (typeof v === "string" || typeof v === "number" || typeof v === "boolean" || v === null) props[k] = v;
+          }
+          if (Object.keys(props).length > 0) req.properties = props;
+        }
+        try { await sdk.analytics.track(req); }
+        catch (err) { this.internalMetrics.externalFailures++; return fail(`analytics.track threw: ${err instanceof Error ? err.message : err}`, "external", start, eid, logs, operation); }
+        return ok({ tracked: true, eventName, propertiesCount: req.properties ? Object.keys(req.properties).length : 0 }, start, eid, logs, operation);
       }
 
       default:
