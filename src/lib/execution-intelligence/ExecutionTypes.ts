@@ -16,11 +16,8 @@
  * contrato que EI-03/EI-05/EI-07 vao implementar.
  */
 
-import type {
-  ConnectorContext,
-  ConnectorResult,
-  Reversibility,
-} from "@/lib/connector-runtime/ConnectorTypes";
+import type { Reversibility } from "@/lib/connector-runtime/ConnectorTypes";
+import type { ConnectorExecutionContext } from "@/lib/runtime-engine/RuntimeTypes";
 
 // ── Request ──────────────────────────────────────────────────────────────────
 
@@ -35,8 +32,10 @@ export interface ExecutionRequest {
   readonly capability: string;
   /** Parametros da capability. */
   readonly params: Record<string, unknown>;
-  /** Contexto de execucao (userId, workspaceId, sessionId, executionId, etc.). */
-  readonly context: ConnectorContext;
+  /** Identidade propagada ao engine/connector (userId, workspaceId, sessionId, goalId, origin). */
+  readonly context: ConnectorExecutionContext;
+  /** ID de execucao para correlacao (vira o pipelineExecutionId do engine). Opcional. */
+  readonly executionId?: string;
   /**
    * EI-03: Safety Gate exige isto para capabilities `irreversible`.
    * Se ausente e a capability for irreversible → NeedsConfirmation.
@@ -88,7 +87,8 @@ export interface ExecutionOutcome {
   readonly status: "success" | "failed" | "needs_confirmation" | "blocked";
   readonly connectorId: string;
   readonly capability: string;
-  readonly result: ConnectorResult | null;
+  /** Dados retornados pelo connector (StepResult.output do engine). Null em falha/confirmacao. */
+  readonly output: unknown | null;
   /**
    * Texto humano legivel para status nao-success:
    *  - failed: mensagem de erro (do connector ou excecao).
@@ -97,6 +97,10 @@ export interface ExecutionOutcome {
    */
   readonly message: string | null;
   readonly reversibility: Reversibility;
+  /** ID da execucao no engine (correlacao com metricas/eventos). Null se nao despachado. */
+  readonly executionId: string | null;
+  /** Duracao total da execucao no engine (ms). Null se nao despachado. */
+  readonly durationMs: number | null;
 }
 
 // ── Contrato uniforme dos 3 componentes (Pipeline-ready desde EI-02) ─────────

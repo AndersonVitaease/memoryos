@@ -1250,3 +1250,60 @@ O `ConnectorMetadata.capabilities` e `string[]` (contrato existente, validado no
 **Proximo passo:** aguardar autorizacao para iniciar **EI-04 (Migracao gradual de callers)** — substituir, 1 caller por vez (reversivel), as chamadas diretas a `ConnectorRegistry.get(id).execute()` por `runtime.processCapability()`. Cada migracao independente e reversivel. E aqui que o Safety Gate comeca a freiar irreversiveis de verdade em producao. Ate la, EI-03 e morto (existe mas nao e exercitado).
 
 ---
+
+### 2026-08-04 — Execution Intelligence EI-04 (Option C — Wiring + Refactor): Implementado
+
+**RFC/ADR:** `RFC-008` + `ADR-015` (Sprint EI-04, Option C)
+
+**Status:** EI-04 EXECUTADA na modalidade Option C (wiring + refactor, ZERO callers vivos migrados). Decisao de produto: a primeira migracao de caller vivo fica deferida para apos EI-05/EI-07, quando o Safety Gate tiver contexto real (Execution Intelligence + Investigators) para decidir irreversiveis sem quebrar automation (Watch Engine / email agendado). Razo: o gate hoje (EI-03) decide so com `confirmedByUser` (boolean do Planner); migrar o chat irreversivel agora colocaria uma rede de segurança ingênua sobre envio de email — exatamente a regressao que o MemoryOS quer evitar. E o MemoryOS nao tem irreversivel urgente em producao (Travellink/passagens pendente de credenciais).
+
+**Grafo de dispatch estudado antes do refactor (metodo de verificacao do usuario):**
+- Lido `src/lib/conversation-platform/ConversationPipeline.ts` (linhas 778-803): o path de producao e `getRealRuntimeEngine()` + `getRealConnectorRegistry()` de `@/lib/connector-runtime-provider/ConnectorRuntimeProvider`, depois `_realEngine.execute(plan, executionId, connectorCtx)`.
+- Lido `src/lib/connector-runtime-provider/ConnectorRuntimeProvider.ts`: `getRealRuntimeEngine()`/`getRealConnectorRegistry()` expoe o engine real (wired com `ConnectorCapabilityExecutor` → `UniversalConnectorRouter` → `UCRBridge` → connectors) e o registry populado. Bootstrap dispara eager no module load; HMR-safe via globalThis.
+- Lido `src/lib/connector-runtime/UCRBridge.ts`: o leaf que envolve cada `connector.execute()` com eventos do `RuntimeEventBus` (ConnectorExecutionStarted/Completed/Failed) + mapeamento de status runtime→UCR. Chamar `connector.execute()` direto (como o EI-02/EI-03 fazia) bypassa tudo isso.
+- Lido `src/lib/runtime-engine/ConversationRuntimeEngine.ts` + `ExecutionDispatcher.ts`: o engine executa `ExecutionPlan` (multi-step) via `ExecutionDispatcher.dispatch()` → `ICapabilityExecutor` → UCRBridge, com timeout (Promise.race), metricas (`connectorMetrics.record()`), observabilidade (`runtimeObsStore`) e eventos.
+- Lido `src/lib/planning-engine-e022/ExecutionPlanTypes.ts`: `ExecutionStep = { id, connector, capability, parameters }`, `ExecutionPlan = { id, goalId, goalType, status, steps, createdAt, durationMs, mode? }`, factories `makePlanId()`/`makeStepId(n)`.
+- Lido `src/lib/runtime-engine/RuntimeTypes.ts`: `ConnectorExecutionContext = { userId, workspaceId, sessionId, goalId?, requestId?, origin? }`, `ExecutionResult = { executionId, planId, goalId, status, steps: StepResult[], durationMs, errors }`, `ExecutionWithReport = { executionResult, executionReport }`.
+- Lido `src/lib/connector-runtime/ConnectorTypes.ts`: `ConnectorContext = { executionId, userId, projectId, sessionId, goalId?, ... }` — NAO tem `workspaceId`. Por isso `ExecutionRequest.context` foi trocado de `ConnectorContext` para `ConnectorExecutionContext` (que tem `workspaceId`, essencial p/ multi-conta Microsoft/Google).
+
+**Decisao arquitetural (Option C):** `processCapability` nao chama `connector.execute()` direto. Em vez disso, builda um `ExecutionPlan` de 1 step a partir do `ExecutionRequest` e delega ao `ConversationRuntimeEngine` existente. Assim herda TODA a observabilidade de producao (eventos, metricas, timeout, mapeamento de status) — nao reimplementation. O "Dispatcher" da cadeia ADR-015 e o engine existente, exatamente como o ADR previa.
+
+**Arquivo novo (1) em `src/lib/execution-intelligence/`:**
+
+- **`index.ts`** — wiring. Exporta `getExecutionRuntime(): Promise<ExecutionRuntime>` — instancia wired ao REAL `ConversationRuntimeEngine` + `ConnectorRegistry` (via dynamic import de `ConnectorRuntimeProvider`). Lazy: primeira chamada aguarda o bootstrap do engine/registry real (que o ConnectorRuntimeProvider ja dispara eager). Idempotente (cache em `_runtime`; chamadas concorrentes compartilham `_runtimePromise`; reset em caso de falha). Re-exports `ExecutionRuntime`, `SafetyGate` e os tipos de `ExecutionTypes`.
+
+**Arquivos editados (2):**
+
+1. **`ExecutionTypes.ts`**:
+   - `ExecutionRequest.context`: `ConnectorContext` → `ConnectorExecutionContext` (de RuntimeTypes — tem `workspaceId`, essencial p/ multi-conta). Adicionado `executionId?: string` (vira o `pipelineExecutionId` do engine). Import ajustado: removido `ConnectorContext`, adicionado `ConnectorExecutionContext` de RuntimeTypes.
+   - `ExecutionOutcome`: `result: ConnectorResult | null` → `output: unknown | null` (o `StepResult.output` do engine). Adicionados `executionId: string | null` e `durationMs: number | null` (correlacao com metricas/eventos do engine). Removido import nao-mais-usado de `ConnectorResult`.
+
+2. **`Runtime.ts`** (refactor EI-04):
+   - Constructor agora recebe `(registry: ConnectorRegistry, engine: ConversationRuntimeEngine)` — DI do engine real (wiring via `index.ts`).
+   - `processCapability` cadeia: resolve connector → le reversibility → `SafetyGate.guard()` → (se approved) build 1-step `ExecutionPlan` (`makePlanId()`/`makeStepId(1)`, `goalType: "execution_intelligence"`, `mode: "live"`) → build `ConnectorExecutionContext` do `request.context` → `engine.execute(plan, request.executionId, connectorCtx)` → map `ExecutionWithReport` → `ExecutionOutcome`.
+   - Map: `executionResult.status === "completed"` → outcome "success" + `output = stepResult.output`; senao "failed" + `message = errors[0] ?? stepResult.error`. `executionId`/`durationMs` do `executionResult`.
+   - `SafetyGate` instanciado internamente (stateless). Invariants ADR-015 mantidos: dispatch (`engine.execute`) interno a `processCapability` (bypass impossivel); puro wiring (zero logica de negocio).
+
+**Nao-quebra verificada:**
+- Nenhum caller vivo importa `index.ts` ou chama `processCapability` — zero impacto em producao. O `ConversationPipeline` segue chamando `getRealRuntimeEngine()` direto (intocado).
+- Os tipos mudaram (`ExecutionRequest.context`, `ExecutionOutcome.output/executionId/durationMs`) mas nenhum consumidor existia (EI-02/EI-03 nao tinham callers), entao rename e seguro.
+- `Runtime.ts` importa `ConversationRuntimeEngine` e `ConnectorExecutionContext`/`ExecutionWithReport` como `type` only; `makePlanId`/`makeStepId` como valores (pure functions).
+- Build verde por construcao: arquivos novos/nao-importados nao quebram nada; os edits de tipo sao autoconsistentes.
+
+**Cuidados tomados (criterios do usuario):**
+- Option C escolhida por seguranca (sistema de segurança com heuristica frágil e pior que nenhum). Decisao documentada e justificada.
+- Refactor delega ao engine existente em vez de reimplementar observabilidade — alinha com "Dispatcher = engine existente" do ADR-015 e evita duplicar UCRBridge/ExecutionDispatcher.
+- `ConnectorExecutionContext` (nao `ConnectorContext`) para preservar `workspaceId` (multi-conta) — bug de tipo pegado antes de commit lendo `ConnectorTypes.ts`.
+- ZERO callers migrados — a primeira migracao de caller vivo exige o gate com contexto real (EI-05/EI-07). Nao quebrar automation (Watch Engine/email agendado) e prioridade do projeto.
+- Aditivo apenas: nada apagado que estivesse em uso; o caminho antigo segue intocado.
+
+**NAO foi feito (fora do escopo de EI-04 Option C):**
+- Nenhuma migracao de caller vivo (deferida para apos EI-05/EI-07). EI-04 "prep" nao exercita o gate em producao.
+- Nenhum ExecutionIntelligence (EI-05) — `processCapability` ainda nao enriquece antes do Safety Gate.
+- Nenhum investigador de dominio (EI-07) — resumos do SafetyGate continuam genericos.
+- Nenhuma UI de confirmacao (sem caller produzindo `needs_confirmation` para consumir).
+- Nenhum teste automatizado (nao ha runner no projeto). Corretude verificada por inspecao + leitura dos tipos reais.
+
+**Proximo passo:** aguardar autorizacao para iniciar **EI-05 (Execution Intelligence pass-through)** — `ExecutionIntelligence.ts` pass-through puro (recebe `ExecutionRequest`, devolve `PreparedExecution` identico, so loga/instrumenta). `Runtime.processCapability` passa a chamar Intelligence antes do Safety Gate. Continua zero impacto em producao (nenhum caller vivo). Apos EI-05 + EI-07 (Investigators com contexto real), reabrir a decisao de qual caller vivo migrar primeiro.
+
+---
