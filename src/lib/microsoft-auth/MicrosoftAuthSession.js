@@ -221,6 +221,7 @@ export async function connect({ workspaceId = "default", scopes = WORKSPACE_SCOP
 
     // 4. Listen for callback message from popup
     const handleMessage = async (event) => {
+      console.log("[DIAG][MS-OAUTH] handleMessage recebido — origin:", event.origin, "| esperado:", window.location.origin, "| type:", event.data?.type);
       if (event.origin !== window.location.origin) return;
       if (event.data?.type !== 'MICROSOFT_OAUTH_CALLBACK') return;
 
@@ -228,8 +229,10 @@ export async function connect({ workspaceId = "default", scopes = WORKSPACE_SCOP
       clearInterval(pollClosed);
 
       const { code, returnedState, error } = event.data;
+      console.log("[DIAG][MS-OAUTH] code presente:", Boolean(code), "| returnedState:", returnedState, "| error:", error);
 
       if (error) {
+        console.error("[DIAG][MS-OAUTH] erro veio da propria popup:", error);
         onStateChange?.("NOT_CONNECTED");
         reject(new Error(error));
         return;
@@ -237,6 +240,7 @@ export async function connect({ workspaceId = "default", scopes = WORKSPACE_SCOP
 
       // Verify CSRF state
       const savedState = sessionStorage.getItem('msauth_state');
+      console.log("[DIAG][MS-OAUTH] savedState (sessionStorage):", savedState, "| returnedState (popup):", returnedState, "| batem?", returnedState === savedState);
       if (returnedState !== savedState) {
         onStateChange?.("NOT_CONNECTED");
         reject(new Error('OAuth state mismatch — possible CSRF attack'));
@@ -244,6 +248,7 @@ export async function connect({ workspaceId = "default", scopes = WORKSPACE_SCOP
       }
 
       try {
+        console.log("[DIAG][MS-OAUTH] chamando microsoftOAuthExchange — codeVerifier presente:", Boolean(codeVerifier), "| redirectUri:", `${window.location.origin}/oauth/microsoft/callback`);
         // 5. Exchange code for tokens via backend
         const exchangeRes = await invokeFn('microsoftOAuthExchange', {
           code,
@@ -251,6 +256,7 @@ export async function connect({ workspaceId = "default", scopes = WORKSPACE_SCOP
           redirectUri: `${window.location.origin}/oauth/microsoft/callback`,
           workspaceId,
         });
+        console.log("[DIAG][MS-OAUTH] exchangeRes recebido:", exchangeRes);
 
         const { accessToken, expiresAt, email, displayName, avatarUrl, scopes: grantedScopes } = exchangeRes.data;
 
