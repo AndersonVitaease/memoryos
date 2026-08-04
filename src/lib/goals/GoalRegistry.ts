@@ -360,7 +360,9 @@ const _builtins: GoalDefinition[] = [
     description: "Send an email via Gmail",
     signals: [
       "enviar email", "enviar e-mail", "envie email", "envie e-mail",
+      "enviar um email", "enviar um e-mail", "envie um email", "envie um e-mail",
       "mandar email", "mandar e-mail", "mande email", "mande e-mail",
+      "mandar um email", "mandar um e-mail", "mande um email", "mande um e-mail",
       "send email", "send an email",
     ],
     extractParams: (msg: string) => {
