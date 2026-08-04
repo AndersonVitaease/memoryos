@@ -387,7 +387,7 @@ const _builtins: GoalDefinition[] = [
 
       // Subject para no proximo campo (corpo/body/mensagem) ou fim — evita que
       // "assunto: Ola corpo: ..." vaze o corpo dentro do assunto.
-      const subjectRe = /(?:assunto|subject)[:\s]+["']?([^"'\n]+?)(?=\s+(?:corpo|body|mensagem)[:\s]|$)/i;
+      const subjectRe = /(?:assunto|subject)[:\s]+["']?(.+?)(?=\s+(?:corpo|body|mensagem)[:\s]|$)/im;
       const subjectFullMatch = msg.match(subjectRe);
       const subjectMatch = subjectFullMatch?.[1];
       const subjectEndIndex = subjectFullMatch ? subjectFullMatch.index! + subjectFullMatch[0].length : null;
@@ -411,7 +411,10 @@ const _builtins: GoalDefinition[] = [
       // dentro do email. O decompositor normalmente separa; isto e guarda pro path
       // single-intent e mensagens nao-split.
       const _CMD = "envia|envie|manda|mande|lista|liste|verifica|verifique|confere|confira|agenda|agende|le|lê|leia|resume|resuma|pesquisa|pesquise|cria|crie|abre|abra|busca|busque|procura|procure|deleta|delete|exclui|exclua|renomeia|renomeie|copia|copie|move|mova|baixa|baixe|conecta|conecte|desconecta|desconecte|adiciona|adicione";
-      const _cleanBody = (bodyMatch ?? "").replace(new RegExp(`\\s+e\\s+(?:${_CMD})\\b.*$`, "i"), "").trim();
+      const _cleanBody = (bodyMatch ?? "")
+        .replace(new RegExp(`\\s+e\\s+(?:${_CMD})\\b.*$`, "i"), "")
+        .replace(new RegExp(`\\n\\s*\\n(?:${_CMD})\\b.*$`, "i"), "")
+        .trim();
 
       // Sem fallback hardcoded "Mensagem via MemoryOS": se faltar assunto, deriva
       // do corpo; se faltar corpo, deixa vazio e deixa a validacao do GmailActions
