@@ -296,6 +296,8 @@ export class GitHubConnector implements IConnector {
         "actions.listWorkflows", "actions.listRuns", "actions.getRun", "actions.listJobs",
         "actions.rerunRun", "actions.downloadRunLogs",
         "releases.list", "releases.get", "releases.getLatest", "releases.getByTag",
+        // Upgrade 3 — webhooks (registro via GitHub App / repo hooks)
+        "repos.createWebhook", "repos.listWebhooks", "repos.deleteWebhook",
       ],
       // Upgrade 1 — Reversibility classification (EI-01). O Safety Gate (EI-03)
       // so freia "irreversible". Reads/default ausentes = "safe". Creates/updates
@@ -314,6 +316,9 @@ export class GitHubConnector implements IConnector {
         "files.delete": "irreversible",
         // Upgrade 6 — rerun e reversivel (so re-dispara); restantes sao leituras (safe).
         "actions.rerunRun": "reversible",
+        // Upgrade 3 — webhooks: create/delete/list sao administrativos e reversiveis.
+        "repos.createWebhook": "reversible",
+        "repos.deleteWebhook": "reversible",
       },
     };
   }

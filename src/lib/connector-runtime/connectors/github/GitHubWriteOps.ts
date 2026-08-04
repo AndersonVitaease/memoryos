@@ -20,6 +20,8 @@ export const WRITE_OPS = new Set([
   "issues.create", "issues.update", "issues.comment", "issues.close",
   "pullRequests.create", "pullRequests.merge",
   "files.create", "files.update", "files.delete",
+  // Upgrade 3 — webhooks (registro/gerenciamento).
+  "repos.createWebhook", "repos.listWebhooks", "repos.deleteWebhook",
 ]);
 
 export function isWriteOp(operation: string): boolean {
@@ -225,6 +227,61 @@ export async function dispatchWriteOp(
       const d = res.data as any;
       const commit = d?.commit ?? {};
       return ok({ path, deleted: true, commitSha: commit.sha ?? null, commitUrl: commit.html_url ?? null }, start, eid, logs, operation);
+    }
+
+    // ── Webhooks (Upgrade 3) ────────────────────────────────────────────
+    case "repos.createWebhook": {
+      // Reversible — webhook pode ser removido a qualquer momento.
+      const owner = str(payload.owner, "owner");
+      const repo  = str(payload.repo, "repo");
+      const webhookUrl = str(payload.webhookUrl, "webhookUrl");
+      const secret = str(payload.secret, "secret");
+      if (!owner || !repo || !webhookUrl) return fail("owner, repo and webhookUrl required", "validation", start, eid, logs, operation);
+      const events = Array.isArray(payload.events) ? payload.events : ["push", "pull_request"];
+      const reqBody = {
+        name: "web",
+        active: payload.active !== false,
+        events,
+        config: {
+          url: webhookUrl,
+          content_type: "json",
+          secret: secret || undefined,
+        },
+      };
+      const res = await githubFetch(`/repos/${owner}/${repo}/hooks`, token, DEFAULT_TIMEOUT_MS, "POST", reqBody);
+      if (res.status === 404) return fail(`Repository "${owner}/${repo}" not found`, "external", start, eid, logs, operation);
+      if (res.status === 403) { metrics.authFailures++; return fail("Token lacks 'admin:repo_hook' scope (403)", "auth", start, eid, logs, operation); }
+      if (res.status === 422) return fail("Webhook already exists or config invalid (422)", "validation", start, eid, logs, operation);
+      if (!res.ok) { metrics.externalFailures++; return fail(`HTTP ${res.status}`, "external", start, eid, logs, operation); }
+      const h = res.data as any;
+      return ok({ id: h.id, url: h.url, active: h.active, events: h.events, createdAt: h.created_at }, start, eid, logs, operation);
+    }
+
+    case "repos.listWebhooks": {
+      const owner = str(payload.owner, "owner");
+      const repo  = str(payload.repo, "repo");
+      if (!owner || !repo) return fail("owner and repo required", "validation", start, eid, logs, operation);
+      const res = await githubFetch(`/repos/${owner}/${repo}/hooks?per_page=50`, token);
+      if (res.status === 404) return fail(`Repository "${owner}/${repo}" not found`, "external", start, eid, logs, operation);
+      if (!res.ok) { metrics.externalFailures++; return fail(`HTTP ${res.status}`, "external", start, eid, logs, operation); }
+      const d = res.data as any;
+      const items = (d ?? []) as any[];
+      return ok({
+        count: items.length,
+        items: items.map((h) => ({ id: h.id, url: h.config?.url, active: h.active, events: h.events, name: h.name })),
+      }, start, eid, logs, operation);
+    }
+
+    case "repos.deleteWebhook": {
+      const owner = str(payload.owner, "owner");
+      const repo  = str(payload.repo, "repo");
+      const hookId = num(payload.hook_id);
+      if (!owner || !repo || hookId === null) return fail("owner, repo and hook_id required", "validation", start, eid, logs, operation);
+      const res = await githubFetch(`/repos/${owner}/${repo}/hooks/${hookId}`, token, DEFAULT_TIMEOUT_MS, "DELETE");
+      if (res.status === 404) return fail(`Webhook ${hookId} not found`, "external", start, eid, logs, operation);
+      if (res.status === 403) { metrics.authFailures++; return fail("Token lacks 'admin:repo_hook' scope (403)", "auth", start, eid, logs, operation); }
+      if (!res.ok) { metrics.externalFailures++; return fail(`HTTP ${res.status}`, "external", start, eid, logs, operation); }
+      return ok({ deleted: true, hookId }, start, eid, logs, operation);
     }
 
     default:
