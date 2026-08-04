@@ -89,7 +89,13 @@ export interface ExecutionOutcome {
   readonly connectorId: string;
   readonly capability: string;
   readonly result: ConnectorResult | null;
-  readonly error: string | null;
+  /**
+   * Texto humano legivel para status nao-success:
+   *  - failed: mensagem de erro (do connector ou excecao).
+   *  - needs_confirmation: resumo da acao irreversivel (do SafetyGate).
+   *  - blocked: motivo da politica (do SafetyGate/PolicyRegistry).
+   */
+  readonly message: string | null;
   readonly reversibility: Reversibility;
 }
 

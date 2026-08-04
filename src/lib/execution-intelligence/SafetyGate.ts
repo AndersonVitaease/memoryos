@@ -1,0 +1,74 @@
+/**
+ * SafetyGate.ts — EI-03 (RFC-008 / ADR-015)
+ *
+ * Camada que freia a execucao de capabilities irreversiveis.
+ *
+ * Regra (EI-03):
+ *   - safe / reversible            → approved (pass-through, despacha).
+ *   - irreversible + confirmedByUser=true → approved.
+ *   - irreversible sem confirmacao → needs_confirmation (pede confirmacao ao
+ *     usuario; NAO despacha). Retorna um resumo generico da acao.
+ *
+ * Nao ha "blocked" hardcoded ainda — polices obrigatorias (hard policies)
+ * vêm com o PolicyRegistry futuro. Hoje o Safety Gate so freia por reversibility.
+ *
+ * Componente puro: stateless, sem dependencias. Recebe a request + a
+ * reversibility (lida pelo Runtime do metadata do connector) e devolve a
+ * decisao. Investigadores de dominio (resumos ricos por capability) vêm em
+ * EI-07; hoje o resumo e generico (capability + preview de params).
+ *
+ * Invariant ADR-015: o SafetyGate NUNCA despacha — so decide. O dispatch
+ * continua interno e exclusivo do Runtime.processCapability().
+ */
+
+import type { Reversibility } from "@/lib/connector-runtime/ConnectorTypes";
+import type { ExecutionRequest, SafetyDecision } from "./ExecutionTypes";
+
+export class SafetyGate {
+  /**
+   * Decide se a capability pode ser despachada.
+   * @param request    A requisicao original (com confirmedByUser opcional).
+   * @param reversibility Classificacao da capability (lida do metadata).
+   * @returns SafetyDecision — approved | needs_confirmation | blocked.
+   */
+  guard(request: ExecutionRequest, reversibility: Reversibility): SafetyDecision {
+    // safe / reversible sempre passam.
+    if (reversibility === "safe" || reversibility === "reversible") {
+      return { type: "approved" };
+    }
+
+    // irreversible: exige confirmacao explicita do usuario.
+    if (request.confirmedByUser === true) {
+      return { type: "approved" };
+    }
+
+    return {
+      type: "needs_confirmation",
+      reason: `A capability "${request.capability}" e irreversivel e requer confirmacao antes de executar.`,
+      summary: this._summarize(request),
+    };
+  }
+
+  /**
+   * Resumo generico da acao irreversivel (EI-07 trara investigadores de
+   * dominio que produzem resumos ricos por capability — ex: TravelInvestigator,
+   * EmailInvestigator). Hoje: connector.capability + preview dos params.
+   */
+  private _summarize(request: ExecutionRequest): string {
+    const { connectorId, capability, params } = request;
+    const keys = Object.keys(params);
+    if (keys.length === 0) {
+      return `Executar ${connectorId}.${capability}.`;
+    }
+    const preview = keys.slice(0, 5).map((k) => `${k}=${this._previewValue(params[k])}`).join(", ");
+    const extra = keys.length > 5 ? `, +${keys.length - 5} campo(s)` : "";
+    return `Executar ${connectorId}.${capability} com: ${preview}${extra}.`;
+  }
+
+  private _previewValue(v: unknown): string {
+    if (v === null || v === undefined) return "—";
+    if (typeof v === "string") return v.length > 60 ? `"${v.slice(0, 57)}..."` : `"${v}"`;
+    if (typeof v === "number" || typeof v === "boolean") return String(v);
+    return "[objeto]";
+  }
+}
