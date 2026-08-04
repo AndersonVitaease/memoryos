@@ -82,9 +82,24 @@ export class ConnectorGoalIntentExecutor implements IntentExecutor {
       const { synthesizeConnectorResult } = await import("@/lib/connector-runtime-provider/ConnectorResultSynthesizer");
 
       const realEngine = await getRealRuntimeEngine();
+      // FIX (EI-04 multi-intent): userId/workspaceId reais — o valor falso
+      // "multi-intent"/"default" fazia a resolucao de token OAuth falhar e todo
+      // conector autenticado (Gmail sendEmail, etc.) silenciosamente falhar,
+      // caindo no LLM que alucinava "enviado". Mesmo padrao do pipeline principal.
+      let _miUserId = "multi-intent";
+      let _miWorkspaceId = "default";
+      try {
+        const { base44 } = await import("@/api/base44Client");
+        const _me = await base44.auth.me();
+        if (_me?.id) _miUserId = _me.id;
+      } catch { /* non-blocking */ }
+      try {
+        const { getActiveWorkspaceId } = await import("@/lib/workspace/WorkspaceContext");
+        _miWorkspaceId = getActiveWorkspaceId();
+      } catch { /* non-blocking */ }
       const connCtx = Object.freeze({
-        userId:      "multi-intent",
-        workspaceId: "default",
+        userId:      _miUserId,
+        workspaceId: _miWorkspaceId,
         sessionId:   session.id,
         goalId:      goalBridgeResult.goal.id,
         origin:      "multi-intent-pipeline",

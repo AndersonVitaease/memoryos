@@ -397,10 +397,14 @@ const _builtins: GoalDefinition[] = [
       }
 
       const fallbackSubject = bodyMatch ? bodyMatch.trim().slice(0, 60) : "Mensagem via MemoryOS";
+      // FIX: body vazio falhava na validacao do GmailActions (que exige corpo).
+      // Defaulta pro subject (ou fallback) — "envie email com assunto Ola" agora
+      // envia de verdade em vez de silenciosamente falhar.
+      const resolvedSubject = subjectMatch ? subjectMatch.trim() : fallbackSubject;
       return {
         to: resolvedTo ? [resolvedTo] : [],
-        subject: subjectMatch ? subjectMatch.trim() : fallbackSubject,
-        body: bodyMatch ? bodyMatch.trim() : "",
+        subject: resolvedSubject,
+        body: bodyMatch ? bodyMatch.trim() : resolvedSubject,
         rawText: msg.trim(),
         ...(fromAccount ? { accountEmail: fromAccount.email } : {}),
       };
