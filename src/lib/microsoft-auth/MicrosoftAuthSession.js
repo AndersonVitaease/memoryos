@@ -307,6 +307,7 @@ export async function connect({ workspaceId = "default", scopes = WORKSPACE_SCOP
     // Detect popup closed without completing flow
     const pollClosed = setInterval(() => {
       if (popup.closed) {
+        console.error("[DIAG][MS-OAUTH] popup.closed detectado ANTES do postMessage chegar — a mensagem nunca foi recebida pela janela principal.");
         clearInterval(pollClosed);
         window.removeEventListener('message', handleMessage);
         onStateChange?.("NOT_CONNECTED");
