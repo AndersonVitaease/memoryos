@@ -44,6 +44,8 @@ import {
 // Upgrade 1 — write operations (issues, PRs, files). Extraido em modulo proprio
 // pra manter o conector enxuto. Reversibility declarada no metadata().
 import { isWriteOp, dispatchWriteOp } from "./github/GitHubWriteOps";
+// Upgrade 6 — GitHub Actions & Releases (workflows, runs, jobs, releases).
+import { isActionsOp, dispatchActionsOp } from "./github/GitHubActionsOps";
 
 const GITHUB_API = "https://api.github.com";
 const DEFAULT_TIMEOUT_MS = 10000;
@@ -287,6 +289,10 @@ export class GitHubConnector implements IConnector {
         "issues.create", "issues.update", "issues.comment", "issues.close",
         "pullRequests.create", "pullRequests.merge",
         "files.create", "files.update", "files.delete",
+        // Upgrade 6 — GitHub Actions & Releases
+        "actions.listWorkflows", "actions.listRuns", "actions.getRun", "actions.listJobs",
+        "actions.rerunRun", "actions.downloadRunLogs",
+        "releases.list", "releases.get", "releases.getLatest", "releases.getByTag",
       ],
       // Upgrade 1 — Reversibility classification (EI-01). O Safety Gate (EI-03)
       // so freia "irreversible". Reads/default ausentes = "safe". Creates/updates
@@ -303,6 +309,8 @@ export class GitHubConnector implements IConnector {
         "files.create": "reversible",
         "files.update": "reversible",
         "files.delete": "irreversible",
+        // Upgrade 6 — rerun e reversivel (so re-dispara); restantes sao leituras (safe).
+        "actions.rerunRun": "reversible",
       },
     };
   }
@@ -1309,6 +1317,13 @@ export class GitHubConnector implements IConnector {
       // ── Write operations (Upgrade 1) — delegado a GitHubWriteOps ──────────
       if (isWriteOp(operation)) {
         return await dispatchWriteOp(operation, payload, token, githubFetch, {
+          start, eid, logs, metrics: this.internalMetrics,
+        });
+      }
+
+      // ── Actions & Releases (Upgrade 6) — delegado a GitHubActionsOps ──────
+      if (isActionsOp(operation)) {
+        return await dispatchActionsOp(operation, payload, token, githubFetch, {
           start, eid, logs, metrics: this.internalMetrics,
         });
       }
