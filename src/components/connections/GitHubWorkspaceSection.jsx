@@ -49,6 +49,9 @@ export default function GitHubWorkspaceSection() {
   const [reposLoading, setReposLoading] = useState(false);
   const [selectedRepos, setSelectedReposState] = useState(() => getSelectedRepos(activeWs));
 
+  const [batchLoading, setBatchLoading] = useState(false);
+  const [batchResults, setBatchResults] = useState(null);
+
   const syncAccounts = useCallback(() => {
     setAccounts(listGitHubAccounts(BASE_WORKSPACE_ID));
   }, []);
@@ -146,6 +149,59 @@ export default function GitHubWorkspaceSection() {
     const willOpen = !reposOpen;
     setReposOpen(willOpen);
     if (willOpen && repos.length === 0) loadRepos();
+  };
+
+  const runBatchAccess = async () => {
+    const sel = getSelectedRepos(activeWs);
+    if (sel.length === 0) return;
+    setBatchLoading(true); setError(null);
+    try {
+      await hydrateToken(activeWs);
+      const token = getAccessToken(activeWs);
+      if (!token) throw new Error("Token GitHub nao disponivel para a conta ativa.");
+      // Acessa todos os repos selecionados EM PARALELO (limite de 4 por vez)
+      const CONCURRENCY = 4;
+      const out = [];
+      let i = 0;
+      const fetchOne = async (fullName) => {
+        const res = await fetch(`https://api.github.com/repos/${fullName}`, {
+          headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" },
+        });
+        const d = res.ok ? await res.json() : null;
+        // ultimo commit
+        let lastCommit = null;
+        if (res.ok && d?.default_branch) {
+          try {
+            const cr = await fetch(`https://api.github.com/repos/${fullName}/commits/${d.default_branch}`, {
+              headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" },
+            });
+            lastCommit = cr.ok ? await cr.json() : null;
+          } catch {}
+        }
+        out.push({
+          repo: fullName,
+          ok: res.ok,
+          status: res.status,
+          defaultBranch: d?.default_branch ?? null,
+          language: d?.language ?? null,
+          stars: d?.stargazers_count ?? 0,
+          openIssues: d?.open_issues_count ?? 0,
+          pushedAt: d?.pushed_at ?? null,
+          lastCommitSha: lastCommit?.sha?.slice(0, 7) ?? null,
+          lastCommitMsg: lastCommit?.commit?.message?.split("\n")[0] ?? null,
+          lastCommitDate: lastCommit?.commit?.author?.date ?? null,
+          error: res.ok ? null : `HTTP ${res.status}`,
+        });
+      };
+      while (i < sel.length) {
+        const chunk = sel.slice(i, i + CONCURRENCY);
+        await Promise.all(chunk.map(fetchOne));
+        i += CONCURRENCY;
+      }
+      setBatchResults({ count: out.length, succeeded: out.filter((r) => r.ok).length, items: out });
+    } catch (e) {
+      setError(e?.message ?? "Falha ao acessar repositorios em lote.");
+    } finally { setBatchLoading(false); }
   };
 
   const connectedAccounts = accounts.filter((c) => c.state === "CONNECTED");
@@ -278,6 +334,58 @@ export default function GitHubWorkspaceSection() {
                   )}
                 </>
               )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {hasAnyConnected && selectedRepos.length > 0 && (
+        <div className="mt-4 rounded-lg border border-border p-3 space-y-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div>
+              <p className="text-sm font-semibold text-foreground">Acesso em lote</p>
+              <p className="text-xs text-muted-foreground">
+                Acessa os {selectedRepos.length} repositorios selecionados em paralelo (metadados + ultimo commit).
+              </p>
+            </div>
+            <button onClick={runBatchAccess} disabled={batchLoading}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-40 transition">
+              {batchLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <GitBranch className="w-3.5 h-3.5" />}
+              {batchLoading ? "Acessando..." : "Acessar todos em lote"}
+            </button>
+          </div>
+          {batchResults && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 text-xs">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                  <Check className="w-3 h-3" /> {batchResults.succeeded} ok
+                </span>
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-600">
+                  {batchResults.count - batchResults.succeeded} falha
+                </span>
+              </div>
+              <div className="space-y-1.5 max-h-72 overflow-auto pr-1">
+                {batchResults.items.map((r) => (
+                  <div key={r.repo} className={`p-2 rounded-md border text-xs ${r.ok ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
+                    <div className="flex items-center gap-2">
+                      <Github className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                      <span className="font-semibold text-foreground truncate">{r.repo}</span>
+                      {!r.ok && <span className="ml-auto text-red-600 font-medium">{r.error}</span>}
+                    </div>
+                    {r.ok && (
+                      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-muted-foreground">
+                        <span>branch: <span className="font-medium text-foreground">{r.defaultBranch}</span></span>
+                        {r.language && <span>lang: <span className="font-medium text-foreground">{r.language}</span></span>}
+                        {r.stars > 0 && <span>★ {r.stars}</span>}
+                        {r.openIssues > 0 && <span>issues: {r.openIssues}</span>}
+                        {r.lastCommitSha && (
+                          <span className="truncate">last: <span className="font-mono text-foreground">{r.lastCommitSha}</span> {r.lastCommitMsg}</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
