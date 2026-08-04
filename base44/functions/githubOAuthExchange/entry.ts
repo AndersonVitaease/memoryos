@@ -53,8 +53,16 @@ Deno.serve(async (req) => {
     const profileRes = await fetch('https://api.github.com/user', {
       headers: { Authorization: `Bearer ${access_token}`, Accept: 'application/vnd.github+json' },
     });
-    const profile = await profileRes.json();
-    const accountLogin = profile.login ?? '';
+    let profile: Record<string, unknown> = {};
+    const profileText = await profileRes.text();
+    try {
+      profile = profileText ? JSON.parse(profileText) : {};
+    } catch {
+      // GitHub retornou corpo não-JSON (ex: "Request forbidden by administrative rules").
+      // O token ainda é válido — salvamos sem o login do perfil.
+      profile = {};
+    }
+    const accountLogin = (profile as any).login ?? '';
 
     phase = 'ENTITY_FILTER';
     const existing = await base44.asServiceRole.entities.GitHubOAuthToken.filter({
