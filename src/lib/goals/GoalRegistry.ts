@@ -385,7 +385,9 @@ const _builtins: GoalDefinition[] = [
         fromAccount = findAccountByMessageMention(baseWorkspaceId, beforePara);
       }
 
-      const subjectRe = /(?:assunto|subject)[:\s]+["']?([^"'\n.!?]+[.!?]?)/i;
+      // Subject para no proximo campo (corpo/body/mensagem) ou fim — evita que
+      // "assunto: Ola corpo: ..." vaze o corpo dentro do assunto.
+      const subjectRe = /(?:assunto|subject)[:\s]+["']?([^"'\n]+?)(?=\s+(?:corpo|body|mensagem)[:\s]|$)/i;
       const subjectFullMatch = msg.match(subjectRe);
       const subjectMatch = subjectFullMatch?.[1];
       const subjectEndIndex = subjectFullMatch ? subjectFullMatch.index! + subjectFullMatch[0].length : null;
@@ -395,8 +397,14 @@ const _builtins: GoalDefinition[] = [
       if (!bodyMatch && subjectEndIndex !== null) {
         bodyMatch = msg.slice(subjectEndIndex).trim() || undefined;
       }
+      // FIX: trunca uma clausula " e <verbo de comando> ..." (2ª intenção) no fim
+      // do corpo — "corpo: ... e liste meus arquivos" nao envia o pedido de arquivos
+      // dentro do email. O decompositor normalmente separa; isto e guarda pro path
+      // single-intent e mensagens nao-split.
+      const _CMD = "envia|envie|manda|mande|lista|liste|verifica|verifique|confere|confira|agenda|agende|le|lê|leia|resume|resuma|pesquisa|pesquise|cria|crie|abre|abra|busca|busque|procura|procure|deleta|delete|exclui|exclua|renomeia|renomeie|copia|copie|move|mova|baixa|baixe|conecta|conecte|desconecta|desconecte|adiciona|adicione";
+      const _cleanBody = (bodyMatch ?? "").replace(new RegExp(`\\s+e\\s+(?:${_CMD})\\b.*$`, "i"), "").trim();
 
-      const fallbackSubject = bodyMatch ? bodyMatch.trim().slice(0, 60) : "Mensagem via MemoryOS";
+      const fallbackSubject = _cleanBody ? _cleanBody.slice(0, 60) : "Mensagem via MemoryOS";
       // FIX: body vazio falhava na validacao do GmailActions (que exige corpo).
       // Defaulta pro subject (ou fallback) — "envie email com assunto Ola" agora
       // envia de verdade em vez de silenciosamente falhar.
@@ -404,7 +412,7 @@ const _builtins: GoalDefinition[] = [
       return {
         to: resolvedTo ? [resolvedTo] : [],
         subject: resolvedSubject,
-        body: bodyMatch ? bodyMatch.trim() : resolvedSubject,
+        body: _cleanBody || resolvedSubject,
         rawText: msg.trim(),
         ...(fromAccount ? { accountEmail: fromAccount.email } : {}),
       };
