@@ -294,6 +294,9 @@ export async function connect({ workspaceId = "default", scopes = WORKSPACE_SCOP
         onStateChange?.("CONNECTED");
         resolve(connection);
       } catch (err) {
+        console.error("[DIAG][MS-OAUTH] EXCECAO capturada:", err?.message || err);
+        console.error("[DIAG][MS-OAUTH] err.response?.data:", err?.response?.data);
+        console.error("[DIAG][MS-OAUTH] err completo:", err);
         onStateChange?.("NOT_CONNECTED");
         reject(err);
       }
