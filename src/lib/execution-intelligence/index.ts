@@ -1,5 +1,5 @@
 /**
- * index.ts — EI-04 wiring (RFC-008 / ADR-015)
+ * index.ts — EI-05 wiring (RFC-008 / ADR-015)
  *
  * Expoe getExecutionRuntime() — uma ExecutionRuntime wired ao REAL
  * ConversationRuntimeEngine + ConnectorRegistry (de ConnectorRuntimeProvider,
@@ -10,7 +10,7 @@
  * concorrentes compartilham a mesma Promise.
  *
  * Nenhum caller vivo importa este modulo ainda — a migracao de callers e
- * EI-04 sub-step futuro, apos EI-05/EI-07 darem ao Safety Gate contexto real
+ * EI-04 sub-step futuro, apos EI-06/EI-07 darem ao Safety Gate contexto real
  * para decidir irreversiveis sem quebrar automation (Watch Engine / email
  * agendado). Aqui so preparamos o wiring, zero impacto em producao.
  */
@@ -52,6 +52,7 @@ export async function getExecutionRuntime(): Promise<ExecutionRuntime> {
 
 export { ExecutionRuntime } from "./Runtime";
 export { SafetyGate } from "./SafetyGate";
+export { ExecutionIntelligence } from "./ExecutionIntelligence";
 export type {
   ExecutionRequest,
   PreparedExecution,
