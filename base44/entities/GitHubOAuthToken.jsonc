@@ -1,0 +1,35 @@
+{
+  "name": "GitHubOAuthToken",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "description": "ID do usuario proprietario do token"
+    },
+    "workspace_id": {
+      "type": "string",
+      "description": "ID do workspace GitHub (ex: default, default__ghacct2)"
+    },
+    "access_token": {
+      "type": "string",
+      "description": "GitHub OAuth access token \u2014 armazenado apenas no backend, nunca persistido no frontend"
+    },
+    "account_login": {
+      "type": "string",
+      "description": "Login (username) da conta GitHub autenticada"
+    },
+    "scopes": {
+      "type": "string",
+      "description": "Escopos autorizados (string separada por espaco)"
+    },
+    "updated_at": {
+      "type": "string",
+      "description": "Ultima atualizacao do token"
+    }
+  },
+  "required": [
+    "user_id",
+    "workspace_id",
+    "access_token"
+  ]
+}
