@@ -1,5 +1,5 @@
 /**
- * index.ts — EI-06 wiring (RFC-008 / ADR-015)
+ * index.ts — EI-07 wiring (RFC-008 / ADR-015)
  *
  * Expoe getExecutionRuntime() — uma ExecutionRuntime wired ao REAL
  * ConversationRuntimeEngine + ConnectorRegistry (de ConnectorRuntimeProvider,
@@ -16,6 +16,9 @@
  */
 
 import type { ExecutionRuntime } from "./Runtime";
+
+// EI-07: registra investigators de dominio (Travel, Email) no load do wiring.
+import "./investigators/registerDefaults";
 
 let _runtime: ExecutionRuntime | null = null;
 let _runtimePromise: Promise<ExecutionRuntime> | null = null;
@@ -56,13 +59,18 @@ export { ExecutionIntelligence } from "./ExecutionIntelligence";
 export { investigatorRegistry } from "./investigators/InvestigatorRegistry";
 export { GenericFieldValidator } from "./investigators/GenericFieldValidator";
 export { DateFormatValidator } from "./investigators/DateFormatValidator";
+export { TravelInvestigator } from "./investigators/TravelInvestigator";
+export { EmailInvestigator } from "./investigators/EmailInvestigator";
+export { registerDefaultInvestigators } from "./investigators/registerDefaults";
 export type { Investigator, InvestigationFinding } from "./investigators/InvestigatorTypes";
 export type {
   ExecutionRequest,
   PreparedExecution,
   ExecutionGap,
+  IntelligenceBudget,
   SafetyDecision,
   ExecutionOutcome,
   ExecutionContext,
   ExecutionStage,
 } from "./ExecutionTypes";
+export { DEFAULT_BUDGET } from "./ExecutionTypes";

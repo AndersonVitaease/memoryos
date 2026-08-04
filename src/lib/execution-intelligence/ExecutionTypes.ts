@@ -61,6 +61,27 @@ export interface PreparedExecution {
   readonly risks: readonly string[];
 }
 
+// ── IntelligenceBudget (EI-07 — travas de balanceamento) ──────────────────────
+
+/**
+ * Orcamento de custo por dispatch do Execution Intelligence. As 3 travas
+ * (Convergence Budget = maxIterations, API/LLM Budget = maxLlmCalls/maxApiCalls,
+ * Dependency Graph aciclico via InvestigatorRegistry) impedem loop infinito,
+ * explosao de custo e dependencia circular. ADR-015 secao 4.
+ */
+export interface IntelligenceBudget {
+  readonly maxIterations: number;
+  readonly maxLlmCalls: number;
+  readonly maxApiCalls: number;
+}
+
+/** Budget padrao (EI-07): 5 iteracoes, 3 chamadas de LLM, 4 chamadas de API. */
+export const DEFAULT_BUDGET: IntelligenceBudget = {
+  maxIterations: 5,
+  maxLlmCalls: 3,
+  maxApiCalls: 4,
+};
+
 // ── SafetyDecision (produzido pela Safety Gate — EI-03+) ────────────────────
 
 /**
