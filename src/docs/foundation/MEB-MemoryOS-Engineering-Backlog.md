@@ -57,6 +57,7 @@ EPIC (domínio de implementação)
 | EPIC-015 | Developer Portal | MDPS Cap.5 | — | 15 |
 | EPIC-016 | Foundation UI | MEB (este doc) | — | 16 |
 | EPIC-017 | Watch Engine | MES §21, MES §12 | RFC-005 | WE-01 a WE-04 |
+| EPIC-018 | Microsoft Graph Provider Router | MES §16, MCF | RFC-007 / ADR-014 | MS-PR-01 a MS-PR-04 |
 
 ---
 

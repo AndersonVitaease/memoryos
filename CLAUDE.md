@@ -678,3 +678,142 @@ A `UCRBridge.ts` (que envolve TODO connector no runtime) ja emite `ConnectorExec
 **Estado final do RFC-006 (fases obrigatorias):** CONCLUIDO. 11 servicos do Microsoft 365 cobertos (Mail, Calendar, OneDrive, Contacts, To Do, OneNote, Teams, SharePoint, Excel, Word, PowerPoint) por 11 Capability Executors isolados, 1 shell fino, 1 helper compartilhado, 1 registry. Fase 5 (MicrosoftWatchProvider, monitoramento proativo) fica como opcional futura.
 
   ---
+
+### 2026-08-04 — Microsoft Graph Provider Router: Planejamento (RFC-007 + ADR-014)
+
+**Doc oficial:** `src/docs/foundation/rfc/RFC-007-Microsoft-Graph-Provider-Router.md` + `src/docs/foundation/adr/ADR-014.md`
+
+**Status:** APENAS PLANEJAMENTO. Nenhum codigo implementado nesta sessao. Apenas documentacao escrita.
+
+**Contexto:** Ao configurar o redirect URI do Microsoft App Registration (ver secao anterior sobre `https://ever-mind-core.base44.app`), descobriu-se que existem DOIS fluxos OAuth viaveis e concorrentes para acessar o mesmo Microsoft Graph:
+
+1. **Flow 1 — OAuth proprio** (ja existe): `microsoftOAuthInit`/`Exchange` + entidade `MicrosoftOAuthToken`, redirect URI na rota do app (`/oauth/microsoft/callback`), refresh no backend, multi-conta via `workspaceId`.
+2. **Flow 2 — Base44 App-User Connector** (descoberto 2026-08-04): `register_workspace_connector` (integration_type `outlook`) + `base44.connectors.connectAppUser(connectorId)`, redirect URI gerenciada pelo Base44 (unica por app, ambientes Live + Preview + Custom domain, visivel em Workspace Settings > Integrations > Connectors > "View redirect URIs for your apps"), gestao de token delegada a plataforma (`getCurrentAppUserConnection`).
+
+Sem um Provider Router, escolher entre os dois fluxos exigiria `if` espalhado pelo codigo — padrao rejeitado pelo projeto. O usuario pediu adicionalmente multi-conta simultanea (ja existente no Google Workspace) como requisito de primeira classe.
+
+**DECISAO CRITICA — Emenda a ADR-013 (circunscrita, NAO revogacao):**
+
+O ADR-013 (escrito 2026-08-03) rejeitou explicitamente a alternativa C (Provider Registry estilo WhatsApp) com a justificativa: "o Microsoft Graph e uma unica API oficial — nao ha provedores concorrentes a abstrair. Criar MicrosoftProviderRegistry com um unico GraphProvider seria indirecao sem beneficio."
+
+Essa justificativa **continua correta para o Graph como API**, mas o **contexto evoluiu**: hoje existem dois fluxos OAuth viaveis para a mesma API. O ADR-014 **emenda** a rejeicao sem revogar o restante do ADR-013:
+
+- **O que permanece valido em ADR-013:** o padrao Capability Executors (shell fino + 11 executors isolados), o `MicrosoftCapabilityRegistry`, o `MicrosoftGraphHelper`, os escopos OAuth incrementais. Os 11 executors e o registry de executors NAO SAO TOCADOS — viram internos do `OfficialGraphProvider`.
+- **O que e emendado:** a rejeicao da camada de Provider. A indirecao agora traz valor (resolve o dilema OAuth sem `if`s espalhados + suporta multi-conta de primeira classe).
+- **Escopo da emenda:** exclusivamente a introducao da camada de Provider Router.
+
+**Diferenca sutil vs. WhatsApp (importante pra qualquer sessao futura):** No WhatsApp, o Provider abstrai QUAL backend chamar (APIs diferentes: Meta, Evolution, Baileys). No Microsoft, o Provider abstrai QUAL CREDENCIAL usar para chamar a MESMA API (Graph). Os providers nao sao APIs concorrentes; sao ESTRATEGIAS DE ACESSO a mesma API. Sutil, mas fundamental — e o por que a rejeicao original de ADR-013 nao estava "errada", apenas o contexto mudou.
+
+**Arquitetura proposta:**
+
+```
+Planner > GoalCapabilityRegistry (ms.* -> "microsoft-graph", INALTERADO)
+  > MicrosoftGraphConnector (shell fino, id INALTERADO)
+    > MicrosoftProviderRegistry (NOVO, singleton HMR-safe, workspaceId-aware)
+      > resolveProvider(operation, workspaceId) -> MicrosoftProvider
+        - OfficialGraphProvider (re-home do shell atual, Flow 1)
+        - Base44OutlookProvider (NOVO opcional, Flow 2)
+        - McpMicrosoftProvider (stub, Softeria descartado)
+        - RestSdkProvider (stub)
+```
+
+Para FORA do conector: nada muda. `id`, `execute`, `metadata`, `health`, `validate` continuam identicos. `UCRBridge` (Event Layer), `PipelineObservationBridge` (Observation Layer), `ConnectorBootstrap`, `GoalCapabilityRegistry` — todos intocados.
+
+**Multi-conta (requisito de primeira classe):**
+
+O `MicrosoftAuthSession.js` JA suporta multi-conta via `workspaceId` (`connect({ workspaceId })`, `_storeToken(workspaceId, ...)`, `getConnection(workspaceId)`). O que falta e SUBIR o `workspaceId` ao router, porque hoje o shell pega sempre `"default"`. Mudancas:
+
+1. `MicrosoftProviderContext` ganha `workspaceId` — repassado pelo shell em `execute()`, igual Gmail/Drive ja fazem com `accountEmail`/`workspaceId`.
+2. `OfficialGraphProvider` extrai token por `workspaceId` — `ensureValidToken(workspaceId)` + `getAccessToken(workspaceId)` ja existem; so parametrizar.
+3. UI de multi-conta no `/connections` — switcher "Conta Microsoft 1 / 2 / 3" (espelha switcher do Google). Cada conta = 1 linha em `MicrosoftOAuthToken` + 1 entrada de `localStorage` (metadata so, sem token — token nunca sai do backend).
+4. Watch Engine — `MicrosoftWatchProvider` ja recebe `action` + `params`; basta incluir `workspaceId` nos params ao criar um Watch.
+
+**Interface do Provider (workspaceId-aware, espelha WhatsApp mas com workspaceId):**
+
+```typescript
+interface MicrosoftProviderContext { workspaceId: string; start: number; eid: string; logs: ConnectorLog[]; }
+interface MicrosoftProvider {
+  readonly id: string;
+  readonly displayName: string;
+  readonly isOfficial: boolean;
+  readonly operations: readonly string[];
+  isAvailable(workspaceId: string): Promise<boolean>;
+  execute(operation, payload, ctx: MicrosoftProviderContext): Promise<ConnectorResult>;
+}
+```
+
+**Localizacao dos arquivos (cuidado contra arvore paralela — dead end recorrente):**
+
+```
+src/lib/connector-runtime/connectors/
+  MicrosoftGraphConnector.ts            # shell (edicao Fase 2)
+  microsoft/                            # INALTERADO (vira interno do OfficialGraphProvider)
+    MicrosoftGraphHelper.ts
+    MicrosoftCapabilityTypes.ts
+    MicrosoftCapabilityRegistry.ts
+    *Capability.ts (11 executors)
+    MicrosoftWatchProvider.ts
+  microsoft-providers/                   # NOVO (irmao de microsoft/, DENTRO de connectors/)
+    MicrosoftProviderTypes.ts             # NOVO
+    MicrosoftProviderRegistry.ts         # NOVO (singleton HMR-safe)
+    OfficialGraphProvider.ts             # NOVO (re-home da logica atual do shell)
+    Base44OutlookProvider.ts              # NOVO (Fase 4, opcional)
+    McpMicrosoftProvider.ts               # NOVO stub (Fase 3)
+    RestSdkProvider.ts                    # NOVO stub (Fase 3)
+```
+
+`microsoft-providers/` fica DENTRO de `connectors/` (irmao de `microsoft/`), NAO em `src/lib/` raiz. Motivo: o router e interno ao conector Microsoft Graph, nao e camada global do runtime. Evita criar arvore paralela (dead end recorrente: `src/sdk/` vs `src/lib/` vs `src/runtime/`).
+
+**Softeria MCP — PERMANECE DESCARTADO:**
+
+O Softeria MS-365 MCP Server ja esta na lista de becos-sem-saida (incompativel com sandbox Deno, exige stdio/WAM local, risco de provisioning tenant-wide de Dataverse). O slot `McpMicrosoftProvider` e STUB interface-conforme (`isAvailable()=false` sempre), NAO implementacao ativa. O slot fica reservado para um MCP compativel no futuro, sem reescrever nada quando ele surgir. NAO reanimar o Softeria.
+
+**Fases de implementacao (aditivas, reversiveis, nada quebra):**
+
+- **Fase 0 — Documentacao (esta secao + RFC-007 + ADR-014):** so documento, zero codigo. CONCLUIDO nesta sessao.
+- **Fase 1 — Tipos + Registry:** `MicrosoftProviderTypes.ts` + `MicrosoftProviderRegistry.ts` (singleton HMR-safe), 0 providers ativos. Build verde, nada muda em producao.
+- **Fase 2 — OfficialGraphProvider (refator, comportamento identico):** extrai logica atual do `MicrosoftGraphConnector.execute()` (token + `resolveCapability` + delegacao) para dentro de `OfficialGraphProvider`. Shell vira fino: delega ao `microsoftProviderRegistry.resolveProvider(op, workspaceId)`. Mesmo `id`, mesma assinatura `execute`, mesmo `metadata` → `UCRBridge`/`GoalCapabilityRegistry`/`ConnectorBootstrap` intocados. Build verde = paridade confirmada. Os 11 executors e o `MicrosoftCapabilityRegistry` NAO SAO TOCADOS — viram internos do OfficialGraphProvider.
+- **Fase 3 — Stubs MCP + REST/SDK (aditivo, isAvailable=false):** `McpMicrosoftProvider` + `RestSdkProvider` interface-conformes, registrados mas nunca ativos. Arquitetura pronta, zero impacto em runtime.
+- **Fase 4 — Base44OutlookProvider (opcional, valor real):** segundo provider de verdade. Usa `base44.asServiceRole.connectors.getCurrentAppUserConnection(connectorId)` para pegar token e chama Graph com ele. Exige `register_workspace_connector` (integration_type `outlook`) + UI de connect via `connectAppUser`. E aqui que o dilema OAuth se resolve de verdade.
+- **Fase 5 (opcional) — Watch:** `MicrosoftWatchProvider` ja e stub. O router poderia alimenta-lo no futuro, mas fica fora deste escopo. MS-EXP-05 desvinculado do MS-PR.
+
+**Por que NAO quebra (verificacao):**
+
+- Conector continua registrado como `"microsoft-graph"` no `ConnectorBootstrap` — router e interno, invisivel pro resto do runtime.
+- `GoalCapabilityRegistry` continua mapeando `ms.*` → `connector: "microsoft-graph"` — zero mudanca.
+- `UCRBridge` (Event Layer) e `PipelineObservationBridge` (Observation Layer) envolvem o conector automaticamente — nada a instrumentar.
+- Side-effect import do `MicrosoftWatchProvider` no shell e preservado.
+- Fases 1-3 nao adicionam comportamento; so Fase 4 traz capacidade nova, e OPCIONAL.
+
+**Escalabilidade (milhares de usuarios):**
+
+- Sem estado no router — mapa em memoria + lookup por operation/workspaceId. O(1).
+- Token por usuario/conta, nunca por app — cada provider pega token do `workspaceId` corrente. Mil usuarios = mil tokens isolados.
+- Provider e stateless — instancia unica compartilhada (singleton), nao guarda nada entre chamadas. Escala horizontal sem nada.
+- Custo marginal de novo usuario e zero no router; so cresce o backend de tokens (que ja escala sozinho no Base44).
+- `isAvailable(workspaceId)` e chamada so na resolucao, nao em todo request — e barata.
+
+**Atualizabilidade (futuro):**
+
+Tudo e slot. Novo provider = 1 arquivo + 1 linha no registry. Nova capability = adicionar a `operations` do provider. Trocar provider padrao = `registry.setPreferred(op, "base44-outlook")`. Deprecar provider = `isAvailable()=false`. A/B ou rollback = registrar dois providers para mesma operation. Softeria descartado vira stub interface-conforme, nao codigo morto.
+
+**Documentacao escrita nesta sessao (Fase 0):**
+
+1. `src/docs/foundation/rfc/RFC-007-Microsoft-Graph-Provider-Router.md` — NOVO (RFC completo, espelha estrutura do RFC-006).
+2. `src/docs/foundation/adr/ADR-014.md` — NOVO (ADR completa, espelha estrutura do ADR-013, declara emenda circunscrita).
+3. `src/docs/foundation/adr/ADR-MASTER-INDEX.md` — EDITADO (entrada ADR-014 adicionada, footer atualizado com data 2026-08-04).
+4. `src/docs/foundation/journey/SPRINTS.md` — EDITADO (secao "Microsoft Graph Provider Router (MS-PR-01 a MS-PR-04)" adicionada).
+5. `src/docs/foundation/MEB-MemoryOS-Engineering-Backlog.md` — EDITADO (EPIC-018 "Microsoft Graph Provider Router" adicionado a tabela de Epics, RFC-007/ADR-014, sprint MS-PR-01 a MS-PR-04).
+6. `CLAUDE.md` — EDITADO (esta secao).
+
+**NAO foi feito (explicitamente fora do escopo desta sessao):**
+
+- Nenhum codigo TypeScript/JavaScript alterado ou criado (Fase 0 e so documentacao).
+- Nenhum `register_workspace_connector` chamado (isso seria Fase 4, apos autorizacao).
+- Nenhuma UI de `/connections` tocada (multi-conta switcher seria Fase 2/4).
+- Nenhum teste de paridade executado (seria Fase 2 apos o refator).
+- Nenhuma mudanca no `MicrosoftGraphConnector.ts` atual (Fase 2).
+
+**Proximo passo:** aguardar autorizacao para iniciar **Fase 1 (Tipos + Registry)** — arquivo novo `microsoft-providers/MicrosoftProviderTypes.ts` + `MicrosoftProviderRegistry.ts`, 0 providers ativos, build verde, zero impacto em runtime.
+
+---
