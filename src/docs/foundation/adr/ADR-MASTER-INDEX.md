@@ -253,6 +253,23 @@ ADR-007 (Reasoning Engine)
 
 ---
 
+### ADR-014 — Microsoft Graph Connector: Provider Router + Multi-Account
+
+| Campo | Valor |
+|---|---|
+| **ADR-ID** | ADR-014 |
+| **Status** | Accepted |
+| **RFC Origem** | RFC-007 |
+| **Emenda a** | ADR-013 (circunscrita à camada de Provider; restante de ADR-013 permanece) |
+| **Prioridade** | ALTA |
+| **Sprints afetadas** | MS-PR-01, MS-PR-02, MS-PR-03, MS-PR-04 (MS-EXP-05 desvinculado, permanece opcional) |
+| **Arquivo** | `src/docs/foundation/adr/ADR-014.md` |
+
+**Resumo:** Introduz camada de Provider Router entre o shell do conector Microsoft Graph e a execução, tornando-o workspaceId-aware (multi-conta de primeira classe, espelhando o Google Workspace). Emenda ADR-013: a rejeição original da camada de Provider ("indireção sem benefício porque Graph é provedor único") era correta para a API, mas o contexto evoluiu — hoje existem dois fluxos OAuth viáveis para a mesma API (OAuth próprio + Base44 App-User Connector), e a indireção agora resolve o dilema sem `if`s espalhados. Os 11 Capability Executors e o registry de executors (ADR-013) permanecem intactos como internos do OfficialGraphProvider.
+
+---
+
 *SPR-ADR-01 · 2026-07-11 · Engineering First*
 *Atualizado em 2026-08-02 — ADR-012 Watch Engine adicionado*
 *Atualizado em 2026-08-03 — ADR-013 Microsoft Graph Expansion adicionado*
+*Atualizado em 2026-08-04 — ADR-014 Microsoft Graph Provider Router adicionado*
