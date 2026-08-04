@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
 
-    const { query, maxResults } = body as { query?: string; maxResults?: number };
+    const { query, maxResults, depth } = body as { query?: string; maxResults?: number; depth?: number };
     if (!query || typeof query !== 'string') {
       return Response.json({ error: 'Missing required field: query' }, { status: 400 });
     }
@@ -41,37 +41,99 @@ Deno.serve(async (req) => {
       );
     }
 
-    const res = await fetch('https://google.serper.dev/search', {
+    // Pesquisa progressiva (EPIC-PWS): 1=robusta (web), 2=muito (web+news),
+    // 3=super (web+news+videos). Quanto maior o depth, mais fontes agregadas.
+    const d = Math.min(3, Math.max(1, Math.floor(Number(depth) || 1)));
+    const limit = maxResults ?? (d === 1 ? 10 : d === 2 ? 20 : 30);
+    const serperHeaders = { 'X-API-KEY': apiKey, 'Content-Type': 'application/json' };
+
+    const seen = new Set<string>();
+    const items: any[] = [];
+    const keyOf = (title: string, link?: string) => (link || title || '').toLowerCase();
+
+    // 1. /search (web organico) — todos os niveis
+    const webRes = await fetch('https://google.serper.dev/search', {
       method: 'POST',
-      headers: {
-        'X-API-KEY': apiKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ q: query }),
+      headers: serperHeaders,
+      body: JSON.stringify({ q: query, num: limit }),
     });
 
-    const durationMs = Date.now() - t0;
-
-    if (!res.ok) {
-      const errText = await res.text();
+    if (!webRes.ok) {
+      const errText = await webRes.text();
       return Response.json(
-        { error: `Serper retornou HTTP ${res.status}: ${errText.slice(0, 300)}`, durationMs },
+        { error: `Serper retornou HTTP ${webRes.status}: ${errText.slice(0, 300)}`, durationMs: Date.now() - t0 },
         { status: 502 },
       );
     }
 
-    const data = await res.json();
-    const organic = Array.isArray(data?.organic) ? data.organic : [];
-    const limit = maxResults ?? 10;
+    const webData = await webRes.json();
+    const organic = Array.isArray(webData?.organic) ? webData.organic : [];
+    for (const r of organic) {
+      const title = r.title ?? '';
+      const link = r.link ?? undefined;
+      const k = keyOf(title, link);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      items.push({ title, snippet: r.snippet ?? '', url: link, source: 'serper_web' });
+    }
+    // Knowledge Graph (quando existe) — agrega como item de destaque no topo
+    const kg = webData?.knowledgeGraph;
+    if (kg?.title && kg?.description) {
+      items.unshift({
+        title: String(kg.title),
+        snippet: String(kg.description).slice(0, 500),
+        url: kg.website ?? undefined,
+        source: 'serper_kg',
+      });
+    }
 
-    const items = organic.slice(0, limit).map((r: any) => ({
-      title: r.title ?? '',
-      snippet: r.snippet ?? '',
-      url: r.link ?? undefined,
-      source: 'serper',
-    }));
+    // 2. /news — depth >= 2 ("muito")
+    if (d >= 2) {
+      try {
+        const newsRes = await fetch('https://google.serper.dev/news', {
+          method: 'POST',
+          headers: serperHeaders,
+          body: JSON.stringify({ q: query, num: 10 }),
+        });
+        if (newsRes.ok) {
+          const newsData = await newsRes.json();
+          const news = Array.isArray(newsData?.news) ? newsData.news : [];
+          for (const r of news) {
+            const title = r.title ?? '';
+            const link = r.link ?? undefined;
+            const k = keyOf(title, link);
+            if (seen.has(k)) continue;
+            seen.add(k);
+            items.push({ title, snippet: r.snippet ?? r.date ?? '', url: link, source: 'serper_news' });
+          }
+        }
+      } catch { /* non-blocking — web results ja estao disponiveis */ }
+    }
 
-    return Response.json({ items, count: items.length, durationMs });
+    // 3. /videos — depth 3 ("super")
+    if (d >= 3) {
+      try {
+        const vidRes = await fetch('https://google.serper.dev/videos', {
+          method: 'POST',
+          headers: serperHeaders,
+          body: JSON.stringify({ q: query, num: 10 }),
+        });
+        if (vidRes.ok) {
+          const vidData = await vidRes.json();
+          const videos = Array.isArray(vidData?.videos) ? vidData.videos : [];
+          for (const r of videos) {
+            const title = r.title ?? '';
+            const link = r.link ?? undefined;
+            const k = keyOf(title, link);
+            if (seen.has(k)) continue;
+            seen.add(k);
+            items.push({ title, snippet: r.source ?? r.date ?? '', url: link, source: 'serper_videos' });
+          }
+        }
+      } catch { /* non-blocking */ }
+    }
+
+    return Response.json({ items, count: items.length, depth: d, durationMs: Date.now() - t0 });
   } catch (e) {
     return Response.json({ error: (e as Error).message, durationMs: Date.now() - t0 }, { status: 500 });
   }
