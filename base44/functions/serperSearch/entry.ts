@@ -51,22 +51,31 @@ Deno.serve(async (req) => {
     const items: any[] = [];
     const keyOf = (title: string, link?: string) => (link || title || '').toLowerCase();
 
-    // 1. /search (web organico) — todos os niveis
-    const webRes = await fetch('https://google.serper.dev/search', {
-      method: 'POST',
-      headers: serperHeaders,
-      body: JSON.stringify({ q: query, num: limit }),
-    });
+    // Otimizacao: dispara todos os endpoints necessarios em paralelo (Promise.allSettled).
+    // Antes eram sequenciais (soma das latencias); agora o tempo total e o da
+    // chamada mais lenta. /search e obrigatorio (502 se falhar); /news e /videos
+    // sao opcionais (non-blocking) e so rodam nos depths correspondentes.
+    const endpoints: { url: string; body: Record<string, unknown> }[] = [
+      { url: 'https://google.serper.dev/search', body: { q: query, num: limit } },
+    ];
+    if (d >= 2) endpoints.push({ url: 'https://google.serper.dev/news', body: { q: query, num: 10 } });
+    if (d >= 3) endpoints.push({ url: 'https://google.serper.dev/videos', body: { q: query, num: 10 } });
 
-    if (!webRes.ok) {
-      const errText = await webRes.text();
+    const responses = await Promise.allSettled(
+      endpoints.map((e) => fetch(e.url, { method: 'POST', headers: serperHeaders, body: JSON.stringify(e.body) })),
+    );
+
+    // /search (index 0) e obrigatorio
+    const webRes = responses[0];
+    if (webRes.status === 'rejected' || !webRes.value.ok) {
+      const errText = webRes.status === 'fulfilled' ? await webRes.value.text() : String(webRes.reason);
       return Response.json(
-        { error: `Serper retornou HTTP ${webRes.status}: ${errText.slice(0, 300)}`, durationMs: Date.now() - t0 },
+        { error: `Serper retornou erro no /search: ${errText.slice(0, 300)}`, durationMs: Date.now() - t0 },
         { status: 502 },
       );
     }
 
-    const webData = await webRes.json();
+    const webData = await webRes.value.json();
     const organic = Array.isArray(webData?.organic) ? webData.organic : [];
     for (const r of organic) {
       const title = r.title ?? '';
@@ -87,48 +96,34 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 2. /news — depth >= 2 ("muito")
-    if (d >= 2) {
+    // /news (index 1, se existir) — optional, non-blocking
+    if (responses[1]?.status === 'fulfilled' && responses[1].value.ok) {
       try {
-        const newsRes = await fetch('https://google.serper.dev/news', {
-          method: 'POST',
-          headers: serperHeaders,
-          body: JSON.stringify({ q: query, num: 10 }),
-        });
-        if (newsRes.ok) {
-          const newsData = await newsRes.json();
-          const news = Array.isArray(newsData?.news) ? newsData.news : [];
-          for (const r of news) {
-            const title = r.title ?? '';
-            const link = r.link ?? undefined;
-            const k = keyOf(title, link);
-            if (seen.has(k)) continue;
-            seen.add(k);
-            items.push({ title, snippet: r.snippet ?? r.date ?? '', url: link, source: 'serper_news' });
-          }
+        const newsData = await responses[1].value.json();
+        const news = Array.isArray(newsData?.news) ? newsData.news : [];
+        for (const r of news) {
+          const title = r.title ?? '';
+          const link = r.link ?? undefined;
+          const k = keyOf(title, link);
+          if (seen.has(k)) continue;
+          seen.add(k);
+          items.push({ title, snippet: r.snippet ?? r.date ?? '', url: link, source: 'serper_news' });
         }
-      } catch { /* non-blocking — web results ja estao disponiveis */ }
+      } catch { /* non-blocking */ }
     }
 
-    // 3. /videos — depth 3 ("super")
-    if (d >= 3) {
+    // /videos (index 2, se existir) — optional, non-blocking
+    if (responses[2]?.status === 'fulfilled' && responses[2].value.ok) {
       try {
-        const vidRes = await fetch('https://google.serper.dev/videos', {
-          method: 'POST',
-          headers: serperHeaders,
-          body: JSON.stringify({ q: query, num: 10 }),
-        });
-        if (vidRes.ok) {
-          const vidData = await vidRes.json();
-          const videos = Array.isArray(vidData?.videos) ? vidData.videos : [];
-          for (const r of videos) {
-            const title = r.title ?? '';
-            const link = r.link ?? undefined;
-            const k = keyOf(title, link);
-            if (seen.has(k)) continue;
-            seen.add(k);
-            items.push({ title, snippet: r.source ?? r.date ?? '', url: link, source: 'serper_videos' });
-          }
+        const vidData = await responses[2].value.json();
+        const videos = Array.isArray(vidData?.videos) ? vidData.videos : [];
+        for (const r of videos) {
+          const title = r.title ?? '';
+          const link = r.link ?? undefined;
+          const k = keyOf(title, link);
+          if (seen.has(k)) continue;
+          seen.add(k);
+          items.push({ title, snippet: r.source ?? r.date ?? '', url: link, source: 'serper_videos' });
         }
       } catch { /* non-blocking */ }
     }
