@@ -699,6 +699,49 @@ const _builtins: CapabilityMapping[] = [
     ],
   },
 
+  // ── Base44 (Entity Writes) — B44-EXP-01 (RFC-009/ADR-016)
+  // Connector id: "base44"  (Base44Connector.ts)
+  // Capabilities: entities.create/update/delete/filter/bulkCreate/bulkUpdate
+  // Reversibility: create/update/bulk* = reversible, delete = irreversible (Safety Gate freia),
+  //                filter = safe.
+  // User records NAO podem ser criados (platform limit — create retorna 405).
+  {
+    goalType: "base44.entities.create" as GoalType,
+    descriptors: [
+      { connector: "base44", capability: "entities.create", params: {} },
+    ],
+  },
+  {
+    goalType: "base44.entities.update" as GoalType,
+    descriptors: [
+      { connector: "base44", capability: "entities.update", params: {} },
+    ],
+  },
+  {
+    goalType: "base44.entities.delete" as GoalType,
+    descriptors: [
+      { connector: "base44", capability: "entities.delete", params: {} },
+    ],
+  },
+  {
+    goalType: "base44.entities.filter" as GoalType,
+    descriptors: [
+      { connector: "base44", capability: "entities.filter", params: {} },
+    ],
+  },
+  {
+    goalType: "base44.entities.bulkCreate" as GoalType,
+    descriptors: [
+      { connector: "base44", capability: "entities.bulkCreate", params: {} },
+    ],
+  },
+  {
+    goalType: "base44.entities.bulkUpdate" as GoalType,
+    descriptors: [
+      { connector: "base44", capability: "entities.bulkUpdate", params: {} },
+    ],
+  },
+
   // ── General / Unknown — no capability steps; Runtime handles gracefully ───
   {
     goalType: "general.conversation",

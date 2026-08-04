@@ -22,7 +22,7 @@
 import type { IConnector } from "../IConnector";
 import type {
   ConnectorContext, ConnectorHealthReport, ConnectorMetadata,
-  ConnectorResult, ConnectorLog, ConnectorValidationResult,
+  ConnectorResult, ConnectorLog, ConnectorValidationResult, Reversibility,
 } from "../ConnectorTypes";
 import { makeLog, makeExecutionId } from "../ConnectorTypes";
 import type { IProductionConnector, AuthResult, AuthenticationDiagnostics, ExecutionLogEntry, AuthorizationResult } from "../../production-connector-standard/IProductionConnector";
@@ -96,6 +96,13 @@ const CAPABILITIES: ConnectorCapability[] = [
   { id: "health.full",         type: "READ",  description: "Full structured health report",            requiredAuth: false, readOnly: true,  paginated: false },
   { id: "test.ping",           type: "READ",  description: "No-op ping for test isolation",            requiredAuth: false, readOnly: true,  paginated: false },
   { id: "test.echo",           type: "READ",  description: "Echo payload for test isolation",          requiredAuth: false, readOnly: true,  paginated: false },
+  // B44-EXP-01 — Entity Writes (RFC-009/ADR-016)
+  { id: "entities.create",     type: "WRITE", description: "Create entity record",                    requiredAuth: true,  readOnly: false, paginated: false },
+  { id: "entities.update",     type: "WRITE", description: "Update entity record by ID",              requiredAuth: true,  readOnly: false, paginated: false },
+  { id: "entities.delete",     type: "WRITE", description: "Delete entity record by ID",             requiredAuth: true,  readOnly: false, paginated: false },
+  { id: "entities.filter",     type: "LIST",  description: "Filter entity records by query",          requiredAuth: true,  readOnly: true,  paginated: true  },
+  { id: "entities.bulkCreate", type: "WRITE", description: "Bulk create entity records",              requiredAuth: true,  readOnly: false, paginated: false },
+  { id: "entities.bulkUpdate", type: "WRITE", description: "Bulk update entity records",              requiredAuth: true,  readOnly: false, paginated: false },
 ];
 
 // ── Connector ─────────────────────────────────────────────────────────────────
@@ -143,6 +150,18 @@ export class Base44Connector implements IConnector, IProductionConnector {
       description: "Base44 Production Connector — Beta-02 PCS certified. Second official MemoryOS Production Connector.",
       author: "MemoryOS",
       capabilities: CAPABILITIES.map(c => c.id),
+      // B44-EXP-01 (RFC-009/ADR-016) — Reversibility classification for Safety Gate (ADR-015).
+      // As 15 capabilities originais sao read-only (safe implicito). As 6 novas de escrita
+      // declaram explicitamente: create/update/bulk* = reversible, delete = irreversible,
+      // filter = safe (leitura). O Safety Gate freia "entities.delete" sem confirmedByUser.
+      capabilityReversibility: {
+        "entities.create": "reversible" as Reversibility,
+        "entities.update": "reversible" as Reversibility,
+        "entities.delete": "irreversible" as Reversibility,
+        "entities.filter": "safe" as Reversibility,
+        "entities.bulkCreate": "reversible" as Reversibility,
+        "entities.bulkUpdate": "reversible" as Reversibility,
+      },
     };
   }
 
@@ -660,6 +679,96 @@ export class Base44Connector implements IConnector, IProductionConnector {
 
       case "test.ping":   return ok({ pong: true }, start, eid, logs, operation);
       case "test.echo":   return ok({ echo: payload }, start, eid, logs, operation);
+
+      // ── B44-EXP-01 — Entity Writes (RFC-009/ADR-016) ────────────────────────
+      // 6 novas capabilities de escrita/filtro em entidades. Reversibility:
+      // create/update/bulk* = reversible; delete = irreversible (Safety Gate freia);
+      // filter = safe (leitura). Validacao: entityName deve existir em sdk.entities
+      // (mesmo check do entities.list/count original). User records NAO podem ser
+      // criados (platform limit — create retorna 405); so via users.invite (B44-EXP-03).
+
+      case "entities.create": {
+        const entityName = typeof payload.entity === "string" ? payload.entity : null;
+        if (!entityName) return fail("payload.entity required", "validation", start, eid, logs, operation);
+        const entityApi = sdk.entities[entityName];
+        if (!entityApi) return fail(`Entity "${entityName}" not found in SDK`, "validation", start, eid, logs, operation);
+        const data = (payload.data && typeof payload.data === "object" && !Array.isArray(payload.data)) ? payload.data : null;
+        if (!data) return fail("payload.data (object) required", "validation", start, eid, logs, operation);
+        let created: unknown;
+        try { created = await entityApi.create(data); }
+        catch (err) { this.internalMetrics.externalFailures++; return fail(`${entityName}.create() threw: ${err instanceof Error ? err.message : err}`, "external", start, eid, logs, operation); }
+        const v = requireObject(created, "created"); if (!v.valid) { this.internalMetrics.invalidResponses++; return fail(v.reason, "validation", start, eid, logs, operation); }
+        return ok({ entity: entityName, record: created }, start, eid, logs, operation);
+      }
+
+      case "entities.update": {
+        const entityName = typeof payload.entity === "string" ? payload.entity : null;
+        const id = typeof payload.id === "string" ? payload.id : null;
+        if (!entityName) return fail("payload.entity required", "validation", start, eid, logs, operation);
+        if (!id) return fail("payload.id required", "validation", start, eid, logs, operation);
+        const entityApi = sdk.entities[entityName];
+        if (!entityApi) return fail(`Entity "${entityName}" not found in SDK`, "validation", start, eid, logs, operation);
+        const data = (payload.data && typeof payload.data === "object" && !Array.isArray(payload.data)) ? payload.data : null;
+        if (!data) return fail("payload.data (object) required", "validation", start, eid, logs, operation);
+        let updated: unknown;
+        try { updated = await entityApi.update(id, data); }
+        catch (err) { this.internalMetrics.externalFailures++; return fail(`${entityName}.update() threw: ${err instanceof Error ? err.message : err}`, "external", start, eid, logs, operation); }
+        const v = requireObject(updated, "updated"); if (!v.valid) { this.internalMetrics.invalidResponses++; return fail(v.reason, "validation", start, eid, logs, operation); }
+        return ok({ entity: entityName, id, record: updated }, start, eid, logs, operation);
+      }
+
+      case "entities.delete": {
+        const entityName = typeof payload.entity === "string" ? payload.entity : null;
+        const id = typeof payload.id === "string" ? payload.id : null;
+        if (!entityName) return fail("payload.entity required", "validation", start, eid, logs, operation);
+        if (!id) return fail("payload.id required", "validation", start, eid, logs, operation);
+        const entityApi = sdk.entities[entityName];
+        if (!entityApi) return fail(`Entity "${entityName}" not found in SDK`, "validation", start, eid, logs, operation);
+        try { await entityApi.delete(id); }
+        catch (err) { this.internalMetrics.externalFailures++; return fail(`${entityName}.delete() threw: ${err instanceof Error ? err.message : err}`, "external", start, eid, logs, operation); }
+        return ok({ entity: entityName, id, deleted: true }, start, eid, logs, operation);
+      }
+
+      case "entities.filter": {
+        const entityName = typeof payload.entity === "string" ? payload.entity : null;
+        if (!entityName) return fail("payload.entity required", "validation", start, eid, logs, operation);
+        const entityApi = sdk.entities[entityName];
+        if (!entityApi) return fail(`Entity "${entityName}" not found in SDK`, "validation", start, eid, logs, operation);
+        const query = (payload.query && typeof payload.query === "object" && !Array.isArray(payload.query)) ? payload.query : {};
+        const sort = typeof payload.sort === "string" ? payload.sort : "-updated_date";
+        const limit = typeof payload.limit === "number" && payload.limit > 0 ? payload.limit : 50;
+        let items: unknown;
+        try { items = await entityApi.filter(query, sort, limit); }
+        catch (err) { this.internalMetrics.externalFailures++; return fail(`${entityName}.filter() threw: ${err instanceof Error ? err.message : err}`, "external", start, eid, logs, operation); }
+        const v = requireArray(items, entityName); if (!v.valid) { this.internalMetrics.invalidResponses++; return fail(v.reason, "validation", start, eid, logs, operation); }
+        return ok({ entity: entityName, count: (items as any[]).length, items }, start, eid, logs, operation);
+      }
+
+      case "entities.bulkCreate": {
+        const entityName = typeof payload.entity === "string" ? payload.entity : null;
+        if (!entityName) return fail("payload.entity required", "validation", start, eid, logs, operation);
+        const entityApi = sdk.entities[entityName];
+        if (!entityApi) return fail(`Entity "${entityName}" not found in SDK`, "validation", start, eid, logs, operation);
+        const records = Array.isArray(payload.records) ? payload.records : null;
+        if (!records || records.length === 0) return fail("payload.records (non-empty array) required", "validation", start, eid, logs, operation);
+        let created: unknown;
+        try { created = await entityApi.bulkCreate(records); }
+        catch (err) { this.internalMetrics.externalFailures++; return fail(`${entityName}.bulkCreate() threw: ${err instanceof Error ? err.message : err}`, "external", start, eid, logs, operation); }
+        return ok({ entity: entityName, count: Array.isArray(created) ? created.length : 0, records: created }, start, eid, logs, operation);
+      }
+
+      case "entities.bulkUpdate": {
+        const entityName = typeof payload.entity === "string" ? payload.entity : null;
+        if (!entityName) return fail("payload.entity required", "validation", start, eid, logs, operation);
+        const entityApi = sdk.entities[entityName];
+        if (!entityApi) return fail(`Entity "${entityName}" not found in SDK`, "validation", start, eid, logs, operation);
+        const records = Array.isArray(payload.records) ? payload.records : null;
+        if (!records || records.length === 0) return fail("payload.records (non-empty array of {id, ...fields}) required", "validation", start, eid, logs, operation);
+        let updated: unknown;
+        try { updated = await entityApi.bulkUpdate(records); }
+        catch (err) { this.internalMetrics.externalFailures++; return fail(`${entityName}.bulkUpdate() threw: ${err instanceof Error ? err.message : err}`, "external", start, eid, logs, operation); }
+        return ok({ entity: entityName, count: Array.isArray(updated) ? updated.length : 0, records: updated }, start, eid, logs, operation);
+      }
 
       default:
         return fail(`Unknown operation: "${operation}"`, "internal", start, eid, logs, operation);
