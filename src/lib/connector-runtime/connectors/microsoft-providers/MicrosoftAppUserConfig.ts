@@ -12,7 +12,7 @@
  * provider fica indisponivel (router cai no OfficialGraphProvider).
  */
 
-export const MICROSOFT_APP_USER_CONNECTOR_ID = "";
+export const MICROSOFT_APP_USER_CONNECTOR_ID = "6a71f1c4d264e5562948bb0b";
 
 const FLAG_KEY = "memoryos_ms_appuser_connected";
 
