@@ -312,3 +312,22 @@ entre uma e outra.
 
 Aguardar autorizacao para iniciar **B44-EXP-01 (Entity Writes)** — 6 cases
 novos + `capabilityReversibility` + mappings. Zero risco, maior valor.
+
+---
+
+## 12. Status de execucao (atualizado 2026-08-04 20:41 BRT)
+
+| Sprint | Status | Notas |
+|---|---|---|
+| B44-EXP-01 | EXECUTADO | 6 capabilities (create, update, delete, filter, bulkCreate, bulkUpdate). Smoke test via exec_tool OK (entidade Task). |
+| B44-EXP-02 | EXECUTADO | 8 capabilities: ai.invokeLLM, ai.generateImage, ai.generateSpeech, ai.generateVideo, ai.transcribeAudio, files.upload, files.extractData, email.send. invokeLLM validado ao vivo (InvokeLLM real). generateVideo = irreversible (custo 5 credits/s). |
+| B44-EXP-03 | EXECUTADO | 4 capabilities (users.invite, users.list, auth.updateMe, auth.logout). |
+| B44-EXP-04 | DEFERRED | SDK runtime (`base44.connectors`) so expoe `connectAppUser`/`disconnectAppUser` — sem `connectors.list`/`connectors.appUserStatus`. |
+| B44-EXP-05 | DEFERRED | Nao existe `base44.workflows` no client runtime — workflows sao ferramentas de plataforma (`manage_workflow`, `get_workflow_run`), nao SDK do app. |
+| B44-EXP-06 | EXECUTADO | analytics.track (reversible). |
+
+**Contagem final:** 15 (originais) + 15 (EXP-01/02/03/06) = 30 capabilities. EXP-04/05 somam +6 quando o SDK liberar (30 -> 36, abaixo das 38 previstas).
+
+**Invariante preservado:** as 15 capabilities read-only originais, `IProductionConnector` e `ConnectorBootstrap` intocados. Nenhum caller vivo migrado (deferido, conforme decisao 4).
+
+**Desbloqueio de EXP-04/05:** requer a plataforma expor metodos SDK de runtime para (a) listar conectores/estado de app-user e (b) gerenciar workflows do app. Ate la, essas duas frentes ficam como placeholder conceitual no roadmap, sem codigo que fabrica chamadas inexistentes.

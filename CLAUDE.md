@@ -1511,3 +1511,38 @@ O `ConnectorMetadata.capabilities` e `string[]` (contrato existente, validado no
 **Proximo passo:** aguardar autorizacao para iniciar **B44-EXP-01 (Entity Writes)** — 6 cases novos + `capabilityReversibility` + mappings no `GoalCapabilityRegistry`. Zero risco, maior valor direto no chat.
 
 ---
+
+### 2026-08-04 — Base44 Connector Expansion: B44-EXP-01/02/03/06 (execucao) + EXP-04/05 (deferred por SDK)
+
+**Status:** 4 de 6 fases EXECUTADAS em codigo. EXP-04 e EXP-05 DEFERRED por limite de SDK runtime.
+
+**Arquivos editados (2, aditivo):**
+1. `src/lib/connector-runtime/connectors/Base44Connector.ts` — +15 capabilities no `CAPABILITIES`, +15 entradas em `capabilityReversibility`, +15 cases no `_dispatch`.
+2. `src/lib/planning-engine-e022/GoalCapabilityRegistry.ts` — +15 mappings `base44.*` antes do bloco `general.*`.
+
+**Fases executadas:**
+
+| Sprint | Escopo | Capabilities | Reversibilidade | Status |
+|---|---|---|---|---|
+| B44-EXP-01 | Entity Writes | entities.create, update, delete, filter, bulkCreate, bulkUpdate | create/update/bulk = reversible; delete = irreversible; filter = safe | EXECUTADO |
+| B44-EXP-02 | Integracoes Core | ai.invokeLLM, ai.generateImage, ai.generateSpeech, ai.generateVideo, ai.transcribeAudio, files.upload, files.extractData, email.send | invokeLLM/generateImage/generateSpeech/transcribeAudio/extractData = safe; generateVideo = irreversible (custo 5 credits/s + asset); upload = reversible; email.send = irreversible | EXECUTADO |
+| B44-EXP-03 | User Management | users.invite, users.list, auth.updateMe, auth.logout | invite/updateMe/logout = reversible; list = safe | EXECUTADO |
+| B44-EXP-04 | Connector Visibility | connectors.list, connectors.appUserStatus | safe | DEFERRED |
+| B44-EXP-05 | Workflows | workflows.list, activate, deactivate, runs | safe / reversible | DEFERRED |
+| B44-EXP-06 | Analytics | analytics.track | reversible | EXECUTADO |
+
+**Validacao:**
+- B44-EXP-01: smoke test via `exec_tool` (SDK direto) — create/filter/update/bulkCreate/bulkUpdate/delete encadeados OK em entidade `Task`.
+- B44-EXP-02: `ai.invokeLLM` verificado ao vivo via `exec_tool` (InvokeLLM real). generateVideo/transcribeAudio validados por inspecao de assinatura (endpoints `Core.GenerateVideo`/`Core.TranscribeAudio` existem no SDK).
+
+**Motivo do DEFERRED de EXP-04/05 (descoberta de SDK runtime, 2026-08-04 20:38 BRT):**
+- Inspecionei o client `base44` (`@/api/base44Client`) em runtime via `exec_tool`. Top-level keys: `actors, agents, aiGateway, analytics, appLogs, asServiceRole, auth, cleanup, connectors, entities, functions, getConfig, integrations, setToken, users`.
+- `base44.connectors` expoe apenas `connectAppUser` e `disconnectAppUser` — NAO ha `connectors.list` nem `connectors.appUserStatus` para suportar EXP-04.
+- NAO existe `base44.workflows` no client runtime — workflows sao gerenciados via ferramentas de plataforma (`manage_workflow`, `get_workflow_run`) disponiveis ao agente builder, nao ao codigo do app. Sem metodo SDK para `workflows.list/activate/deactivate/runs`, EXP-05 nao pode ser implementada sem fabricar chamadas.
+- Decisao: declarar capabilities que sempre falham (NOT_SUPPORTED) adicionaria ruido ao planner sem valor — melhor deferir ate a plataforma expor metodos SDK de runtime para connectors listing e workflows management.
+
+**Nao-quebra:** as 15 capabilities read-only originais ficam 100% intocadas. `IProductionConnector` intocado. `UCRBridge` e `PipelineObservationBridge` envolvem automaticamente os novos cases. Nenhum caller vivo migrado (deferido, conforme decisao 4 da RFC).
+
+**Contagem final de capabilities do Base44Connector:** 15 (originais) + 15 (EXP-01/02/03/06) = 30. EXP-04/05 adicionariam +6 quando o SDK liberar (30 -> 36).
+
+---
