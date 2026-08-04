@@ -1091,3 +1091,64 @@ EI-07 e onde o valor diferencial real aparece. EI-01 a EI-06 sao fundacao increm
 **Proximo passo:** aguardar autorizacao para iniciar **EI-01 (Reversibility Metadata)** — campo `reversibility` no metadata de cada connector existente. Zero risco, fundacao para Safety Gate.
 
 ---
+
+### 2026-08-04 — Execution Intelligence EI-01 (Reversibility Metadata): Implementado
+
+**RFC/ADR:** `RFC-008` + `ADR-015` (Sprint EI-01)
+
+**Status:** EI-01 EXECUTADA. Zero comportamento novo — apenas metadata. Nenhum codigo le o campo `capabilityReversibility` ainda (Safety Gate que le vem em EI-03). Build verde por construcao: campo opcional, connectors que nao declaram continuam funcionando.
+
+**Decisao de design (por que mapa per-capability e nao campo no connector):**
+O `ConnectorMetadata.capabilities` e `string[]` (contrato existente, validado no `ConnectorBootstrap.validateConnector`). Trocar para `Array<string | { id; reversibility }>` quebraria o contrato e exigiria mudar a validacao + todos os consumers. Em vez disso, adicionou-se um campo **opcional** `capabilityReversibility?: Record<string, Reversibility>` ao lado de `capabilities`. O array `string[]` fica intacto; o mapa e so uma anotacao. Connectors 100% read-only (Calendar, GitHub, OpenRouter) nem declaram o campo — o default `safe` ja cobre todas as suas capabilities. Mudanca aditiva, zero quebra.
+
+**Tipo adicionado (1 arquivo):**
+- `src/lib/connector-runtime/ConnectorTypes.ts` — `export type Reversibility = "safe" | "reversible" | "irreversible"` + campo `capabilityReversibility?: Record<string, Reversibility>` em `ConnectorMetadata`.
+
+**Connectors editados (8 com capabilities nao-safe):**
+
+| Connector | irreversible | reversible | safe (implicitos) |
+|---|---|---|---|
+| GmailConnector | sendEmail | createDraft | readInbox, searchEmails, readMessage, readEmail, getThread, getAttachment, listLabels |
+| GoogleDriveConnector | drive.deleteFile | createFolder, uploadFile, moveFile, renameFile, copyFile | files.list, files.get, files.search, about.get, downloadFile, summarizeDocument, extractSections, connectivity.ping, health.full |
+| MemoriConnector | — | memori.remember | memori.recall |
+| EmailConnector | email.send | email.createDraft | listInbox, read, search, connectivity.ping |
+| FileSystemConnector | fs.delete | fs.upload, fs.createFolder | list, read, search, connectivity.ping |
+| DatabaseConnector | db.delete | db.create, db.update | query, get, count, connectivity.ping |
+| WhatsAppConnector | sendMessage, sendTemplate | — | getMessageStatus |
+| MicrosoftGraphConnector | mail.send, teams.sendMessage | calendar.create, contacts.create, todo.createTask, todo.completeTask, onenote.createPage, sharepoint.createItem, excel.updateRange | todas as demais (list/read/search/download) |
+
+**Connectores NAO editados (3 — 100% read-only, default `safe` cobre):**
+- GoogleCalendarConnector — descricao literal "Read-only."; todas as 5 capabilities sao leitura.
+- GitHubConnector — todas as ~40 capabilities sao GET (read-only). Nenhuma escrita.
+- OpenRouterConnector — chatCompletion e listModels sao inferencia LLM read-only (sem efeito colateral).
+
+**Classificacoes de juicio (documentadas no proprio codigo):**
+- `drive.deleteFile` = `irreversible`: Drive move para trash (restauravel por 30 dias), mas a intencao do usuario ao pedir "deletar" e remocao; confiar no restore da trash e fragil. Conservador = `irreversible` (Safety Gate vai pedir confirmacao). Reversivel tecnicamente, mas irreversivel na pratica de UX.
+- `mail.send` / `email.send` / `whatsapp.sendMessage` / `whatsapp.sendTemplate` / `teams.sendMessage` = `irreversible`: mensagens enviadas nao podem ser "desenviadas".
+- `db.delete` = `irreversible`: remocao de registro no banco; tecnicamente restauravel por backup, mas da perspectiva do app e irreversivel.
+- `memori.remember` = `reversible`: fatos gravados no Memori Cloud podem ser esquecidos/deletados.
+- Create/upload/move/rename/copy/update = `reversible`: podem ser desfeitos (deletar o criado, reverter o update).
+
+**Nao-quebra verificada:**
+- `ConnectorBootstrap.validateConnector` so checa `capabilities` (array) — o novo campo opcional nao e validado, nao quebra bootstrap.
+- `UCRBridge.capabilities()` mapeia `metadata().capabilities` (array) — nao le `capabilityReversibility`. Intocado.
+- `ConnectorRegistry`, `GoalCapabilityRegistry`, `PipelineObservationBridge` — nenhum le o novo campo. Todos intocados.
+- Os 3 connectors sem o campo (Calendar, GitHub, OpenRouter) compilam e funcionam identico ao antes.
+- Nenhum `require()`/`module.exports` — ESM puro.
+- Tipo `Reversibility` exportado de `ConnectorTypes.ts` (mesmo arquivo dos outros tipos de connector).
+
+**Cuidados tomados (criterios do usuario):**
+- Metodo de verificacao aplicado: lido o `ConnectorBootstrap.ts` (arvore viva — `src/lib/connector-runtime/`), confirmados os 11 factories. Nao mexido em `src/runtime/` nem `src/sdk/` (arvores paralelas mortas — dead end recorrente).
+- Lidos os 11 connectors reais (nao confiar no nome) para classificar as capabilities com precisao.
+- Nenhum codigo morto/legado/paralelo criado — o campo e opcional e os 3 read-only simplesmente nao o declaram.
+- Mudanca aditiva apenas — nada apagado, nenhum contrato quebrado.
+
+**NAO foi feito (explicitamente fora do escopo de EI-01):**
+- Nenhum reader/helper que le `capabilityReversibility` (vem em EI-03, Safety Gate). O campo existe mas nada o consome.
+- Nenhum caller migrado (EI-04).
+- Nenhuma UI tocada.
+- Nenhum teste de paridade executado (nao ha behavior novo para testar — e so metadata).
+
+**Proximo passo:** aguardar autorizacao para iniciar **EI-02 (Tipos + Runtime Facade)** — `ExecutionTypes.ts` (contratos uniformes) + `Runtime.ts` com `processCapability` que hoje so delega ao RuntimeEngine existente. Nenhum caller o chama. Zero risco.
+
+---

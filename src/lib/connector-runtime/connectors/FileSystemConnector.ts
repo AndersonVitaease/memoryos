@@ -84,6 +84,16 @@ export class FileSystemConnector implements IConnector {
       description: "Official file system abstraction connector — delegates to active provider (Google Drive).",
       author: "MemoryOS",
       capabilities: [...CAPABILITIES],
+      // EI-01 (RFC-008/ADR-015): per-capability reversibility. Default "safe".
+      capabilityReversibility: {
+        "fs.list": "safe",
+        "fs.read": "safe",
+        "fs.search": "safe",
+        "fs.upload": "reversible",
+        "fs.createFolder": "reversible",
+        "fs.delete": "irreversible",
+        "connectivity.ping": "safe",
+      },
     };
   }
 

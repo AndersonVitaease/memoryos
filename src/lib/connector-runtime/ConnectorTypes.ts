@@ -46,6 +46,12 @@ export interface ConnectorLog {
 
 // ── Metadata ─────────────────────────────────────────────────────────────────
 
+// EI-01 (RFC-008 / ADR-015) — Reversibility classification.
+// Toda capability declara "safe" | "reversible" | "irreversible".
+// Safety Gate (EI-03) so freia "irreversible". Default "safe" quando ausente.
+// NADA le este campo ainda — EI-01 e apenas metadata (zero risco).
+export type Reversibility = "safe" | "reversible" | "irreversible";
+
 export interface ConnectorMetadata {
   id: string;
   name: string;
@@ -53,6 +59,9 @@ export interface ConnectorMetadata {
   description: string;
   author: string;
   capabilities: string[];
+  // EI-01: mapa opcional capability-id -> Reversibility.
+  // Capabilities nao listadas assumem "safe". Nada le ainda.
+  capabilityReversibility?: Record<string, Reversibility>;
 }
 
 // ── Health ────────────────────────────────────────────────────────────────────

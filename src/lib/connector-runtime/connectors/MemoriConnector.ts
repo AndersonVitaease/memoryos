@@ -45,6 +45,11 @@ export class MemoriConnector implements IConnector {
       description: "Memória persistente de longo prazo via Memori Cloud (MCP) — grava e recupera fatos/preferências.",
       author: "MemoryOS",
       capabilities: [...CAPABILITIES],
+      // EI-01 (RFC-008/ADR-015): per-capability reversibility. Default "safe".
+      capabilityReversibility: {
+        "memori.remember": "reversible",
+        "memori.recall": "safe",
+      },
     };
   }
 
