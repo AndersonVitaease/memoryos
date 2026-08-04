@@ -670,11 +670,27 @@ ${fullText}`;
   try {
     ensureProvidersRegistered();
 
+    // === Pesquisa Progressiva (EPIC-PWS) ===
+    // Resolve a profundidade por sessao: 1=robusta, 2=muito, 3=super.
+    // Escala se o usuario repete o topico OU usa palavra de aprofundamento.
+    // Depth 3 aciona sintese IA (mais lento) — janela de timeout ampliada.
+    const { resolveSearchDepth } = await import("@/lib/search-engine/SearchDepthTracker");
+    const _searchDepth = resolveSearchDepth(session.id, userMsg);
+    const _searchTimeoutMs = _searchDepth >= 3 ? 45000 : _searchDepth === 2 ? 8000 : 3000;
+    const _depthLabel = _searchDepth >= 3
+      ? "PESQUISA SUPER (web + notícias + vídeos + síntese IA)"
+      : _searchDepth === 2
+        ? "PESQUISA AMPLA (web + notícias)"
+        : "PESQUISA WEB";
+    console.log(`[SearchEngine] depth=${_searchDepth} timeoutMs=${_searchTimeoutMs} query="${userMsg.slice(0, 80)}"`);
+
     const searchOutcome = await searchEngine.search(userMsg, {
+      timeoutMs: _searchTimeoutMs,
       context: {
         sessionId: session.id,
         projectId: session.project_id ?? null,
         sessionSummary: memory.sessionSummary,
+        depth: _searchDepth,
       },
     });
 
@@ -733,6 +749,13 @@ ${fullText}`;
           `NÃO foi encontrado nada relevante nessas fontes específicas. Não invente nomes de repositórios, produtos ou serviços — ` +
           `seja honesto que a busca nessas fontes específicas não encontrou resultado, mas você pode mencionar seu conhecimento geral sobre o tema se for claramente identificado como tal.`;
       }
+    }
+
+    // Selo do nivel de profundidade no topo do grounding — orienta o LLM a
+    // aprofundar a resposta conforme o usuario insistiu (robusta → muito → super).
+    if (_searchEngineGroundingNote) {
+      _searchEngineGroundingNote =
+        `🔍 ${_depthLabel}\n\n${_searchEngineGroundingNote}`;
     }
   } catch (err) {
     console.warn("[SearchEngine] Falhou, caindo pro fluxo normal:", err);

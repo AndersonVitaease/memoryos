@@ -39,10 +39,15 @@ export class SerperSearchProvider implements SearchProvider {
 
   async search(query: string, options?: SearchOptions): Promise<SearchResult> {
     const t0 = Date.now();
+    // Pesquisa progressiva (EPIC-PWS): depth 1=robusta, 2=muito (web+news),
+    // 3=super (web+news+videos + sintese IA). Resolvido pelo SearchDepthTracker
+    // no planner e injetado via options.context.depth.
+    const depth = Number(options?.context?.depth ?? 1) || 1;
     try {
       const res = await base44.functions.invoke("serperSearch", {
         query,
         maxResults: options?.maxResults ?? 10,
+        depth,
       });
       const d = (res as any)?.data ?? res;
 
@@ -54,13 +59,43 @@ export class SerperSearchProvider implements SearchProvider {
       }
 
       const rawItems: SearchResultItem[] = Array.isArray(d?.items) ? d.items : [];
+
+      // Depth 3 ("super"): alem de agregar mais fontes (web+news+videos),
+      // aciona uma sintese por IA com web grounding (Gemini) pra entregar um
+      // resumo profundo e atualizado. So roda no 3o nivel — quando o usuario
+      // insistiu — porque e mais lento e custa creditos de integracao.
+      if (depth >= 3 && rawItems.length > 0) {
+        try {
+          const synth = await base44.integrations.Core.InvokeLLM({
+            prompt:
+              `Pesquise na internet e sintetize uma resposta detalhada, atualizada e bem estruturada em português sobre: "${query}". ` +
+              `Cubra os pontos mais relevantes, contextos recentes, dados-chave e, quando aplicável, nomes/fontes verificáveis. ` +
+              `Seja aprofundado — esta é uma pesquisa "super" solicitada após o usuário insistir no tema.`,
+            add_context_from_internet: true,
+            model: "gemini_3_flash",
+          });
+          const synthText = typeof synth === "string" ? synth : String(synth ?? "");
+          if (synthText.trim().length > 0) {
+            rawItems.unshift({
+              title: "Síntese da pesquisa profunda",
+              snippet: synthText.slice(0, 2500),
+              url: undefined,
+              source: "serper_synthesis",
+            });
+          }
+        } catch (e) {
+          // Sintese falhou — mantem so os resultados agregados do Serper.
+          console.warn("[SerperSearchProvider] Sintese IA (depth 3) falhou, mantendo só Serper:", e);
+        }
+      }
+
       if (rawItems.length === 0) {
         return { success: true, confidence: 0, items: [], provider: this.id, durationMs: Date.now() - t0 };
       }
 
-      // Serper sempre retorna resultados reais do Google — confidence mínimo de 0.75
-      // para garantir que o SearchEngine marque resolved=true e use os dados
-      const confidence = Math.max(0.75, Math.min(0.5 + rawItems.length * 0.05, 0.95));
+      // Confidence escala com o depth: mais fontes (e sintese) = mais confiavel.
+      const baseConfidence = depth >= 3 ? 0.9 : depth === 2 ? 0.82 : 0.75;
+      const confidence = Math.max(baseConfidence, Math.min(0.5 + rawItems.length * 0.03, 0.97));
       return { success: true, confidence, items: rawItems, provider: this.id, durationMs: Date.now() - t0 };
     } catch (err) {
       return {

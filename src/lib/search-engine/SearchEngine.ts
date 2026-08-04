@@ -91,10 +91,12 @@ export class SearchEngine {
     let earlyWinner: SearchResult | null = null;
     const pending = new Set(providerPromises);
 
-    // Global timeout — if no provider wins within SEARCH_ENGINE_TIMEOUT_MS,
+    // Global timeout — if no provider wins within the configured window,
     // abort waiting and fall through to best available result (or nothing).
+    // Callers may override the default (e.g. deep/super search needs longer).
+    const _effectiveTimeoutMs = options?.timeoutMs ?? SEARCH_ENGINE_TIMEOUT_MS;
     const _deadline = new Promise<null>((resolve) =>
-      setTimeout(() => resolve(null), SEARCH_ENGINE_TIMEOUT_MS)
+      setTimeout(() => resolve(null), _effectiveTimeoutMs)
     );
 
     while (pending.size > 0 && !earlyWinner) {

@@ -21,6 +21,8 @@
 
 export interface SearchOptions {
   maxResults?: number;
+  /** Janela maxima (ms) que o SearchEngine aguarda providers antes de desistir. */
+  timeoutMs?: number;
   context?: Record<string, unknown>;
 }
 
