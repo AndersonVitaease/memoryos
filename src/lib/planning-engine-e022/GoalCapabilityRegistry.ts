@@ -784,6 +784,35 @@ const _builtins: CapabilityMapping[] = [
     ],
   },
 
+  // ── Base44 (User Management) — B44-EXP-03 (RFC-009/ADR-016)
+  // Connector id: "base44"  (Base44Connector.ts)
+  // Capabilities: users.invite, users.list, auth.updateMe, auth.logout
+  // Reversibility: invite/updateMe/logout = reversible; list = safe.
+  {
+    goalType: "base44.users.invite" as GoalType,
+    descriptors: [
+      { connector: "base44", capability: "users.invite", params: { role: "user" } },
+    ],
+  },
+  {
+    goalType: "base44.users.list" as GoalType,
+    descriptors: [
+      { connector: "base44", capability: "users.list", params: {} },
+    ],
+  },
+  {
+    goalType: "base44.auth.updateMe" as GoalType,
+    descriptors: [
+      { connector: "base44", capability: "auth.updateMe", params: {} },
+    ],
+  },
+  {
+    goalType: "base44.auth.logout" as GoalType,
+    descriptors: [
+      { connector: "base44", capability: "auth.logout", params: {} },
+    ],
+  },
+
   // ── General / Unknown — no capability steps; Runtime handles gracefully ───
   {
     goalType: "general.conversation",
