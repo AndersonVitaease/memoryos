@@ -817,3 +817,61 @@ Tudo e slot. Novo provider = 1 arquivo + 1 linha no registry. Nova capability = 
 **Proximo passo:** aguardar autorizacao para iniciar **Fase 1 (Tipos + Registry)** — arquivo novo `microsoft-providers/MicrosoftProviderTypes.ts` + `MicrosoftProviderRegistry.ts`, 0 providers ativos, build verde, zero impacto em runtime.
 
 ---
+
+### 2026-08-04 — Microsoft Graph Provider Router: Fases 1-3 Implementadas (MS-PR-01 a MS-PR-03)
+
+**Doc oficial:** `src/docs/foundation/rfc/RFC-007-Microsoft-Graph-Provider-Router.md` + `src/docs/foundation/adr/ADR-014.md`
+
+**Status:** Fases 1-3 EXECUTADAS. A Fase 4 (Base44OutlookProvider, opcional) permanece pendente de autorizacao. Nenhum codigo morto/legado/paralelo criado.
+
+**Arquivos novos (5) em `src/lib/connector-runtime/connectors/microsoft-providers/` (NOVO diretorio, irmao de `microsoft/`, DENTRO de `connectors/`):**
+
+- `MicrosoftProviderTypes.ts` — interfaces `MicrosoftProvider` (id, displayName, isOfficial, operations, isAvailable, execute), `MicrosoftProviderContext` (workspaceId, start, eid, logs), `MicrosoftAccountInfo`. workspaceId-aware. Espelha `WhatsAppProvider` mas com `workspaceId` em toda chamada que toca credencial.
+- `MicrosoftProviderRegistry.ts` — singleton HMR-safe via `globalThis.__MICROSOFT_PROVIDER_REGISTRY__` (mesmo padrao do `WhatsAppProviderRegistry`). Registra OfficialGraph + Mcp + RestSdk no load. `resolveProvider(operation, workspaceId)` async com politica de 4 passos: (1) preferido declarado, (2) primeiro disponivel que cobre a op, (3) fallback: primeiro que cobre a op mesmo indisponivel (preserva paridade — provider emite "nao conectado" em vez de router devolver "Unknown operation"), (4) null → "Unknown operation". `setPreferred`, `list`, `listAccounts` (stub para UI futura).
+- `OfficialGraphProvider.ts` — re-home EXATO da logica que vivia em `MicrosoftGraphConnector.execute()` (ADR-013): `ensureValidToken(workspaceId)` + `getAccessToken(workspaceId)` + `resolveCapability(operation)` + delegacao ao executor. Mensagens de erro identicas ("Microsoft 365 nao conectado. Conecte em /connections." e "Unknown operation"). `operations` = `listAllOperations()` via getter (reflete mudancas no registry sem reinstanciar). `isAvailable` = `isConnected(workspaceId)`. Export auxiliar `listOfficialAccounts()` para UI de switcher.
+- `McpMicrosoftProvider.ts` — STUB interface-conforme. `operations: []`, `isAvailable()=false` sempre. Nunca cobre nenhuma operation, nunca e selecionado pelo router. Slot reservado para MCP compativel (Softeria PERMANECE DESCARTADO).
+- `RestSdkProvider.ts` — STUB interface-conforme. `operations: []`, `isAvailable()=false` sempre. Slot reservado para Graph JS SDK / REST alternativo.
+
+**Arquivo editado (1):**
+
+- `MicrosoftGraphConnector.ts` (shell):
+  - Imports: removidos `ensureValidToken`, `getAccessToken`, `resolveCapability` (movidos para OfficialGraphProvider). Adicionado `microsoftProviderRegistry` de `./microsoft-providers/MicrosoftProviderRegistry`. Mantidos `isConnected`/`getConnection` (health), `fail` (Unknown operation + catch), `listAllOperations` (metadata), side-effect import do `MicrosoftWatchProvider`.
+  - `execute()`: agora extrai `workspaceId` de `context.identityContext?.microsoftWorkspaceId` (default `"default"` — preserva comportamento anterior) e delega ao `microsoftProviderRegistry.resolveProvider(operation, workspaceId)`. Top-level try/catch e mensagem "Unknown operation" preservados.
+  - Cabecalho atualizado: menciona ADR-014/RFC-007 e descreve a nova camada (operation -> provider -> executor).
+  - `metadata.capabilities` continua `listAllOperations()` (mesmas 32 operations). `id` continua `"microsoft-graph"`. `health()` intocado.
+
+**Paridade verificada (comportamento identico ao shell antigo):**
+
+- Operacao conhecida + conectado: router passo 2 retorna OfficialGraph (disponivel) → mesmo fluxo de token + executor → mesmo resultado.
+- Operacao conhecida + NAO conectado: router passo 2 pula OfficialGraph (isAvailable=false), passo 3 retorna OfficialGraph mesmo assim → `ensureValidToken` lanca → mesma mensagem "Microsoft 365 nao conectado. Conecte em /connections." (NAO vira "Unknown operation").
+- Operacao desconhecida: nenhum provider cobre → router passo 4 null → mesma mensagem `Unknown operation: "..."`.
+- Erro inesperado no executor: top-level catch do shell preservado → mesma mensagem `(e as Error).message`.
+
+**Nao-quebra verificada:**
+
+- `ConnectorBootstrap.ts` registra o conector pela classe `MicrosoftGraphConnector` — import inalterado, mesmo `id`.
+- `GoalCapabilityRegistry` continua mapeando `ms.*` → `connector: "microsoft-graph"` — zero mudanca.
+- `UCRBridge` (Event Layer) e `PipelineObservationBridge` (Observation Layer) envolvem o conector automaticamente — nada a instrumentar.
+- Side-effect import do `MicrosoftWatchProvider` no shell preservado.
+- Os 11 Capability Executors e o `MicrosoftCapabilityRegistry` (ADR-013) NAO foram tocados — viram internos do OfficialGraphProvider.
+- `microsoft-providers/` fica DENTRO de `connectors/` (irmao de `microsoft/`), nao em `src/lib/` raiz — evita arvore paralela (dead end recorrente).
+
+**Cuidados tomados:**
+
+- Nenhum codigo morto/legado/paralelo criado. Os stubs sao interface-conformes (`operations: []` + `isAvailable()=false`) — slots reservados, nunca codigo morto (remocao segura se o slot for reusado por outro MCP/SDK).
+- Nenhum `require()`/`module.exports` — ESM puro com `import`/`export`.
+- Imports via `@/` alias (MicrosoftAuthSession) e caminho relativo `../../ConnectorTypes` e `../microsoft/*` (contado corretamente: `microsoft-providers/` -> `connectors/` -> `connector-runtime/`).
+- `operations` como getter no OfficialGraphProvider (reflece `listAllOperations()` ao vivo, nao snapshot no load).
+- `listAccounts()` no registry e stub honesto (retorna contas do OfficialGraph via MicrosoftAuthSession.listConnections) — interface-conforme, sem consumidor ativo hoje (UI de switcher e Fase 2/4).
+
+**Estado final apos Fases 1-3:** Provider Router vivo e workspaceId-aware. O shell delega ao registry; OfficialGraph cobre as 32 operations com paridade total; MCP e REST/SDK sao stubs registrados mas inativos. Tudo pronto para a Fase 4 (Base44OutlookProvider) adicionar o segundo provider de verdade sem tocar o shell.
+
+**NAO foi feito (explicitamente fora do escopo desta sessao):**
+
+- Fase 4 (Base44OutlookProvider) — opcional, exige `register_workspace_connector` (integration_type `outlook`) + UI de connect via `connectAppUser`. Aguarda autorizacao.
+- UI de switcher multi-conta no `/connections` (espelhar Google) — Fase 2/4, aguarda autorizacao.
+- Nenhum teste de paridade automatizado executado (nao ha runner configurado no projeto — ver secao 2026-08-03 "Inspecao de Codigo Morto"). Paridade verificada por inspecao manual da logica do shell antigo vs OfficialGraphProvider.
+
+**Proximo passo:** aguardar autorizacao para iniciar **Fase 4 (Base44OutlookProvider, opcional)** — segundo provider de verdade via App-User Connector; e onde o dilema OAuth (Flow 1 vs Flow 2) se resolve de fato. Alternativamente, UI de switcher multi-conta no `/connections` para validar o `workspaceId` fluindo ponta a ponta.
+
+---
