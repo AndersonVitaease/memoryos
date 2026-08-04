@@ -15,8 +15,7 @@
  *   - official-graph  (OfficialGraphProvider) — ativo, cobre as 32 operations
  *   - mcp-microsoft   (McpMicrosoftProvider)  — stub, operations=[]
  *   - rest-sdk        (RestSdkProvider)        — stub, operations=[]
- *
- * Fase 4 (opcional) adicionara base44-outlook aqui.
+ *   - base44-outlook (Base44OutlookProvider) — Fase 4, cobre 8 ops core via App-User Connector
  *
  * Politica de resolucao (resolveProvider):
  *   1. Preferido declarado para a operation (se cobre e esta disponivel).
@@ -33,6 +32,7 @@ import type {
 import { OfficialGraphProvider, listOfficialAccounts } from "./OfficialGraphProvider";
 import { McpMicrosoftProvider } from "./McpMicrosoftProvider";
 import { RestSdkProvider } from "./RestSdkProvider";
+import { Base44OutlookProvider } from "./Base44OutlookProvider";
 
 class MicrosoftProviderRegistryClass {
   private readonly _providers = new Map<string, MicrosoftProvider>();
@@ -45,6 +45,10 @@ class MicrosoftProviderRegistryClass {
     this.register(OfficialGraphProvider);
     this.register(McpMicrosoftProvider);
     this.register(RestSdkProvider);
+    // Fase 4: Base44Outlook apos os stubs — OfficialGraph segue como default
+    // (passo 2). Base44Outlook vira fallback das 8 ops core quando o app user
+    // conecta via App-User Connector mas nao tem OAuth proprio conectado.
+    this.register(Base44OutlookProvider);
   }
 
   register(provider: MicrosoftProvider): void {
