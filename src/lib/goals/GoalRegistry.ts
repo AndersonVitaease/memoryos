@@ -368,17 +368,17 @@ const _builtins: GoalDefinition[] = [
     extractParams: (msg: string) => {
       const baseWorkspaceId = getActiveWorkspaceId();
 
-      const toMatch = msg.match(/(?:para|to)\s+([^\s,]+@[^\s,]+\.[^\s,]+)/i)?.[1];
+      const toMatch = msg.match(/(?:para|to)[:\s]+([^\s,]+@[^\s,]+\.[^\s,]+)/i)?.[1];
       let resolvedTo = toMatch ? toMatch.trim() : null;
       if (!resolvedTo) {
-        const toNick = msg.match(/(?:para|to)\s+([a-z0-9._-]{4,})/i)?.[1];
+        const toNick = msg.match(/(?:para|to)[:\s]+([a-z0-9._-]{4,})/i)?.[1];
         if (toNick) {
           const toAccount = findAccountByMessageMention(baseWorkspaceId, toNick);
           if (toAccount) resolvedTo = toAccount.email;
         }
       }
 
-      const fromNick = msg.match(/(?:de|from)\s+([a-z0-9._-]{4,})/i)?.[1];
+      const fromNick = msg.match(/(?:de|from)[:\s]+([a-z0-9._-]{4,})/i)?.[1];
       let fromAccount = fromNick ? findAccountByMessageMention(baseWorkspaceId, fromNick) : null;
       if (!fromAccount) {
         const beforePara = msg.split(/\b(?:para|to)\b/i)[0];
