@@ -50,17 +50,22 @@ Deno.serve(async (req) => {
     const { access_token, scope } = tokenData;
 
     phase = 'FETCH_PROFILE';
-    const profileRes = await fetch('https://api.github.com/user', {
-      headers: { Authorization: `Bearer ${access_token}`, Accept: 'application/vnd.github+json' },
-    });
     let profile: Record<string, unknown> = {};
-    const profileText = await profileRes.text();
-    try {
-      profile = profileText ? JSON.parse(profileText) : {};
-    } catch {
-      // GitHub retornou corpo não-JSON (ex: "Request forbidden by administrative rules").
-      // O token ainda é válido — salvamos sem o login do perfil.
-      profile = {};
+    // O GitHub pode recusar a primeira chamada de /user com "Request forbidden
+    // by administrative rules" (bloqueio transitório). Tentamos até 3 vezes.
+    for (let attempt = 1; attempt <= 3 && !(profile as any).login; attempt++) {
+      const profileRes = await fetch('https://api.github.com/user', {
+        headers: { Authorization: `Bearer ${access_token}`, Accept: 'application/vnd.github+json' },
+      });
+      const profileText = await profileRes.text();
+      try {
+        profile = profileText ? JSON.parse(profileText) : {};
+      } catch {
+        profile = {};
+      }
+      if (!(profile as any).login && attempt < 3) {
+        await new Promise((r) => setTimeout(r, 600 * attempt));
+      }
     }
     const accountLogin = (profile as any).login ?? '';
 
