@@ -585,6 +585,60 @@ export class GitHubConnector implements IConnector {
         return ok({ health_percentage: p.health_percentage, description: p.description, files: p.files }, start, eid, logs, operation);
       }
 
+      // ── Multi-repo batch (selected repos → same op in parallel) ───────────
+      case "repos.batch": {
+        const repos = Array.isArray(payload.repos) ? (payload.repos as unknown[]) : null;
+        const subOperation = typeof payload.operation === "string" ? payload.operation : null;
+        if (!repos || repos.length === 0) return fail("repos (non-empty array) required", "validation", start, eid, logs, operation);
+        if (!subOperation) return fail("operation (sub-operation name) required", "validation", start, eid, logs, operation);
+
+        // Normaliza cada item em { owner, repo, fullName }
+        const targets: { owner: string; repo: string; fullName: string }[] = [];
+        for (const r of repos) {
+          if (typeof r !== "string" || !r.includes("/")) continue;
+          const [owner, ...rest] = r.split("/");
+          const repoName = rest.join("/");
+          if (owner && repoName) targets.push({ owner, repo: repoName, fullName: r });
+        }
+        if (targets.length === 0) return fail("No valid 'owner/repo' entries in repos", "validation", start, eid, logs, operation);
+
+        // Concorrência limitada (evita estouro de rate-limit e thundering herd)
+        const CONCURRENCY = Math.min(typeof payload.concurrency === "number" ? payload.concurrency : 4, 8);
+        const results: { repo: string; success: boolean; status: string; data?: any; error?: string }[] = [];
+        let idx = 0;
+
+        async function runOne(ctx: GitHubConnector, owner: string, repo: string, fullName: string) {
+          const subPayload = { ...(payload as Record<string, unknown>), owner, repo };
+          delete (subPayload as any).repos;
+          delete (subPayload as any).operation;
+          delete (subPayload as any).concurrency;
+          try {
+            const r = await ctx.execute(subOperation, subPayload, { ...context, executionId: `${eid}#${fullName}` });
+            results.push({ repo: fullName, success: r.status === "success", status: r.status, data: (r as any).data ?? null, error: (r as any).error ?? undefined });
+          } catch (e) {
+            results.push({ repo: fullName, success: false, status: "internal", error: e instanceof Error ? e.message : String(e) });
+          }
+        }
+
+        // Pool de concorrência simples
+        while (idx < targets.length) {
+          const batch = targets.slice(idx, idx + CONCURRENCY);
+          await Promise.all(batch.map((t) => runOne(this, t.owner, t.repo, t.fullName)));
+          idx += CONCURRENCY;
+        }
+
+        const succeeded = results.filter((r) => r.success).length;
+        const failed = results.length - succeeded;
+        logs.push(makeLog("info", `[${operation}] ${succeeded}/${results.length} ok, ${failed} failed`));
+        return ok({
+          count: results.length,
+          succeeded,
+          failed,
+          operation: subOperation,
+          results,
+        }, start, eid, logs, operation);
+      }
+
       // ── Branches ───────────────────────────────────────────────────────────
 
       case "repos.branches":
