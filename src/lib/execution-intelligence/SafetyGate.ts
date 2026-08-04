@@ -56,7 +56,30 @@ export class SafetyGate {
    */
   private _summarize(prepared: PreparedExecution): string {
     const { connectorId, capability } = prepared.request;
-    const params = prepared.enrichedParams;
+    const params = prepared.enrichedParams as Record<string, unknown>;
+
+    // Resumo especializado por capability — legivel pro usuario no dialog.
+    if (capability === "sendEmail" || capability === "createDraft") {
+      const to = Array.isArray(params.to) ? (params.to as unknown[]).join(", ") : String(params.to ?? "—");
+      const subject = typeof params.subject === "string" ? params.subject : "—";
+      const body = typeof params.body === "string" ? params.body : "—";
+      const from = typeof params.accountEmail === "string" ? params.accountEmail : null;
+      const lines = [
+        from ? `De: ${from}` : null,
+        `Para: ${to}`,
+        `Assunto: ${subject || "(vazio)"}`,
+        `Corpo: ${body ? (body.length > 120 ? body.slice(0, 117) + "..." : body) : "(vazio)"}`,
+      ].filter(Boolean);
+      const action = capability === "sendEmail" ? "Enviar e-mail" : "Criar rascunho";
+      let base = `${action}:\n${lines.join("\n")}`;
+      if (prepared.gaps.length > 0) {
+        const lista = prepared.gaps.map((g) => `- ${g.field}: ${g.reason}`).join("\n");
+        base += `\n\nCampos pendentes:\n${lista}`;
+      }
+      return base;
+    }
+
+    // Resumo generico (demais capabilities).
     const keys = Object.keys(params);
     let base: string;
     if (keys.length === 0) {
@@ -76,6 +99,10 @@ export class SafetyGate {
 
   private _previewValue(v: unknown): string {
     if (v === null || v === undefined) return "—";
+    if (Array.isArray(v)) {
+      const items = v.map((i) => (typeof i === "string" ? i : String(i))).join(", ");
+      return items.length > 60 ? `"${items.slice(0, 57)}..."` : `"${items}"`;
+    }
     if (typeof v === "string") return v.length > 60 ? `"${v.slice(0, 57)}..."` : `"${v}"`;
     if (typeof v === "number" || typeof v === "boolean") return String(v);
     return "[objeto]";

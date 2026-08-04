@@ -404,15 +404,16 @@ const _builtins: GoalDefinition[] = [
       const _CMD = "envia|envie|manda|mande|lista|liste|verifica|verifique|confere|confira|agenda|agende|le|lê|leia|resume|resuma|pesquisa|pesquise|cria|crie|abre|abra|busca|busque|procura|procure|deleta|delete|exclui|exclua|renomeia|renomeie|copia|copie|move|mova|baixa|baixe|conecta|conecte|desconecta|desconecte|adiciona|adicione";
       const _cleanBody = (bodyMatch ?? "").replace(new RegExp(`\\s+e\\s+(?:${_CMD})\\b.*$`, "i"), "").trim();
 
-      const fallbackSubject = _cleanBody ? _cleanBody.slice(0, 60) : "Mensagem via MemoryOS";
-      // FIX: body vazio falhava na validacao do GmailActions (que exige corpo).
-      // Defaulta pro subject (ou fallback) — "envie email com assunto Ola" agora
-      // envia de verdade em vez de silenciosamente falhar.
-      const resolvedSubject = subjectMatch ? subjectMatch.trim() : fallbackSubject;
+      // Sem fallback hardcoded "Mensagem via MemoryOS": se faltar assunto, deriva
+      // do corpo; se faltar corpo, deixa vazio e deixa a validacao do GmailActions
+      // devolver o erro real ("Assunto/Corpo obrigatorio") em vez de enviar lixo.
+      const resolvedSubject = subjectMatch
+        ? subjectMatch.trim()
+        : (_cleanBody ? _cleanBody.slice(0, 60) : "");
       return {
         to: resolvedTo ? [resolvedTo] : [],
         subject: resolvedSubject,
-        body: _cleanBody || resolvedSubject,
+        body: _cleanBody,
         rawText: msg.trim(),
         ...(fromAccount ? { accountEmail: fromAccount.email } : {}),
       };

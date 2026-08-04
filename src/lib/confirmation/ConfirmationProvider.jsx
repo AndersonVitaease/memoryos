@@ -33,7 +33,7 @@ function ConfirmationDialog({ request, onConfirm, onCancel }) {
           <ShieldAlert className="w-5 h-5 text-amber-500 mt-0.5 shrink-0" />
           <div>
             <p className="font-semibold text-zinc-800 text-sm">{request.title}</p>
-            <p className="text-sm text-zinc-600 mt-1">{request.description}</p>
+            <p className="text-sm text-zinc-600 mt-1 whitespace-pre-wrap leading-relaxed">{request.description}</p>
           </div>
         </div>
         <div className="flex gap-2 justify-end">
