@@ -1410,3 +1410,42 @@ O `ConnectorMetadata.capabilities` e `string[]` (contrato existente, validado no
 **Proximo:** quando estavel, migrar `gmail.sendEmail` (irreversivel) — exigira definir como `confirmedByUser` chega do usuario.
 
 ---
+
+### 2026-08-04 — EI-04 Main Pipeline + Gmail multi-intent: correcoes de parsing e decomposicao
+
+**Contexto:** Usuario testou envio de email com sintaxe multi-linha (Assunto/corpo em linhas separadas) + segunda intencao ("liste meus arquivos") na mesma mensagem. 3 bugs encadeados foram corrigidos, um escondendo o proximo.
+
+**Bug 1 — Assunto em linha separada chegava vazio ("Assunto e obrigatorio"):**
+- Sintaxe usada: `Assunto: Ola.` numa linha, corpo nas linhas seguintes (sem marcador `corpo:`).
+- Causa: o regex do assunto em `GoalRegistry.ts` (`gmail.sendEmail.extractParams`) usava `[^"'\n]+?(?=...|$)` — excluia newlines e o `$` sem flag `m` so bater no fim da string. Como o assunto estava numa linha e o corpo vinha depois (newline), o lookahead `$` nunca era alcancado pelo captura que nao cruzava newline → subjectMatch = null → assunto vazio.
+- Fix: regex trocado para `(.+?)(?=\s+(?:corpo|body|mensagem)[:\s]|$)` com flag `m` (multiline) — `$` agora = fim da linha. Captura "Ola." na linha do "Assunto:".
+- Alem disso: o corpo (`body`) agora e extraido via `msg.slice(subjectEndIndex)` (tudo apos a linha do assunto), e o `_cleanBody` ganhou uma 2a regra `.replace` que remove uma segunda intenção no final apos linha em branco (`\n\s*\n(?:<verbo de comando>)\b.*$`).
+
+**Bug 2 — "liste meus arquivos" (2a intencao) ficava no corpo do email:**
+- Causa: o `MessageDecomposer.ts` so separava " e <verbo>" / ", <verbo>" / ponto+maiuscula generico. Nao separava um verbo de comando no inicio de uma nova linha apos linha em branco.
+- Alem disso, a regra "ponto + maiuscula" (`\.\s+(?=[A-ZÀ-Ú])`) era generica demais — quebrava o corpo do email: "Assunto: Ola.\n\nOlá, tudo bem" virava 2 fragmentos, separando o corpo do comando de email.
+- Fix em `MessageDecomposer.ts` (SEPARATOR_RE):
+  - Regra "ponto + maiuscula" restrita para so separar se a proxima palavra for um verbo de comando: `\.\s+(?=(?:${COMMAND_VERBS})\b)`.
+  - Nova regra: verbo de comando apos linha em branco separa: `\n\s*\n(?=(?:${COMMAND_VERBS})\b)`.
+- Resultado: "Anderson Pires\n\nliste meus arquivos" → splita "liste meus arquivos" como 2o fragmento; "Assunto: Ola.\n\nOlá, tudo bem" NAO splita mais (corpo fica junto com o comando de email).
+
+**Bug 3 — Decompositor multi-intento nunca rodava (mensagem nao disparava o gatilho):**
+- Causa: o `ConversationPipeline.ts` so ativava o bloco multi-intent se `_mightBeMultiIntent` fosse true, e esse check so olhava `/\btambém\b|\be mais\b|,.*e /`. A mensagem do usuario (separada por linhas em branco) nao continha nenhum desses → decompositor nunca rodava → "liste meus arquivos" nunca era separado e executado.
+- Fix: `_mightBeMultiIntent` agora tambem dispara quando a mensagem tem linha em branco: `(/\btambém\b|\be mais\b|,.*e |\n\s*\n/.test(userMessage)) && userMessage.length > 30`.
+- Resultado: o decompositor roda, separa [comando de email + corpo] e [liste meus arquivos], cada fragmento e executado pela `MultiIntentEngine`.
+
+**Arquivos editados (3):**
+1. `src/lib/goals/GoalRegistry.ts` — regex do assunto (flag `m`) + 2a regra de limpeza de corpo (`\n\s*\n<cmd>`).
+2. `src/lib/multi-intent/MessageDecomposer.ts` — SEPARATOR_RE: regra ponto+maiuscula restrita a verbo de comando + nova regra verboapos-linha-em-branco.
+3. `src/lib/conversation-platform/ConversationPipeline.ts` — `_mightBeMultiIntent` expandido para incluir `\n\s*\n`.
+
+**Validado pelo usuario (2026-08-04 18:53 BRT):**
+- Email enviado com sucesso (ID: 19fcec355919d2bb), assunto "Ola.", corpo "Olá, tudo bem ? Ass, Anderson Pires" intacto.
+- Arquivos do Google Drive listados como segunda intenção (arquivos + pastas recentes retornados).
+
+**Licoes:**
+- Regex de captura multi-linha precisa de flag `m` quando o marcador (`Assunto:`) fica numa linha e o limite e o fim da linha, nao da string.
+- Decompositores de multi-intento por heuristica precisam cobrir separacao por newline + verbo de comando, nao so conectivos explicitos (" e ", ", ").
+- O gatilho do decompositor no pipeline precisa ser tao permissivo quanto o decompositor — senao o decompositor correto nunca roda. Linha em branco e um sinal forte o suficiente pra tentar (o decompositor e barato e idempotente: se nao splita, cai no fluxo normal).
+
+---
