@@ -1,5 +1,5 @@
 /**
- * index.ts — EI-05 wiring (RFC-008 / ADR-015)
+ * index.ts — EI-06 wiring (RFC-008 / ADR-015)
  *
  * Expoe getExecutionRuntime() — uma ExecutionRuntime wired ao REAL
  * ConversationRuntimeEngine + ConnectorRegistry (de ConnectorRuntimeProvider,
@@ -53,6 +53,10 @@ export async function getExecutionRuntime(): Promise<ExecutionRuntime> {
 export { ExecutionRuntime } from "./Runtime";
 export { SafetyGate } from "./SafetyGate";
 export { ExecutionIntelligence } from "./ExecutionIntelligence";
+export { investigatorRegistry } from "./investigators/InvestigatorRegistry";
+export { GenericFieldValidator } from "./investigators/GenericFieldValidator";
+export { DateFormatValidator } from "./investigators/DateFormatValidator";
+export type { Investigator, InvestigationFinding } from "./investigators/InvestigatorTypes";
 export type {
   ExecutionRequest,
   PreparedExecution,
