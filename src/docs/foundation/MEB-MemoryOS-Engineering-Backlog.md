@@ -58,6 +58,7 @@ EPIC (domínio de implementação)
 | EPIC-016 | Foundation UI | MEB (este doc) | — | 16 |
 | EPIC-017 | Watch Engine | MES §21, MES §12 | RFC-005 | WE-01 a WE-04 |
 | EPIC-018 | Microsoft Graph Provider Router | MES §16, MCF | RFC-007 / ADR-014 | MS-PR-01 a MS-PR-04 |
+| EPIC-019 | Execution Intelligence Engine | MRS, MCS, MREM | RFC-008 / ADR-015 | EI-01 a EI-07 |
 
 ---
 
@@ -603,5 +604,66 @@ _AC: Watch dispara, `PendingWatchAction` persiste, sistema reinicia, Worker re-l
 
 ---
 
+---
+
+### EPIC-019 — Execution Intelligence Engine
+
+**RFC-008 | ADR-015 | Sprints EI-01 a EI-07**
+
+**FEAT-130** Reversibility Metadata (Sprint EI-01)
+- Objetivo: Adicionar campo `reversibility: 'safe' | 'reversible' | 'irreversible'` no metadata de cada connector. Default `safe` quando ausente. Nenhuma logica le o campo ainda.
+- Escopo: `ConnectorTypes.ts` (metadata), cada connector existente (Gmail, Microsoft, Drive, Calendar, GitHub, WhatsApp)
+- Dependências: Nenhuma
+- Critério: Todos os connectors declaram reversibility; build verde; comportamento de execucao idêntico ao anterior
+
+**FEAT-131** Tipos + Runtime Facade (Sprint EI-02)
+- Objetivo: Criar `ExecutionTypes.ts` (contratos uniformes: `ExecutionRequest`, `PreparedExecution`, `ApprovedExecution`, `ExecutionOutcome`, `NeedsInput`, `Blocked`) + `Runtime.ts` com `processCapability` que hoje so delega ao RuntimeEngine existente. Nenhum caller o chama.
+- Escopo: `src/lib/execution-intelligence/ExecutionTypes.ts`, `src/lib/execution-intelligence/Runtime.ts`
+- Dependências: FEAT-130
+- Critério: `processCapability` definido e compila; nenhum caller migrado; caminho antigo 100% intocado; build verde
+
+**FEAT-132** Safety Gate (Sprint EI-03)
+- Objetivo: Criar `SafetyGate.ts`. Le `reversibility` do metadata. Se `irreversible` e sem `confirmedByUser` → retorna `NeedsConfirmation` com resumo. `Runtime.processCapability` passa a chamar `SafetyGate.guard()` antes de despachar.
+- Escopo: `src/lib/execution-intelligence/SafetyGate.ts`, `src/lib/execution-intelligence/policies/ReversibilityPolicy.ts`
+- Dependências: FEAT-131
+- Critério: `irreversible` sem confirmacao retorna `NeedsConfirmation`; `safe` e `reversible` passam direto; so ativa para quem chama `processCapability` (nenhum caller migrou ainda)
+
+**FEAT-133** Migracao gradual de callers (Sprint EI-04)
+- Objetivo: Migrar callers um a um de `RuntimeEngine.execute()` → `Runtime.processCapability()`. Cada migracao independente e reversivel. Quando o ultimo caller migra, Dispatcher vira privado por convencao de chamada (nao apagado).
+- Escopo: `ConversationCognitiveGateway`, `ConversationPipeline`, futuros callers (confirmar no inicio da sprint)
+- Dependências: FEAT-132
+- Critério: Cada caller migrado isoladamente; se algo quebrar, reverte 1 caller e os outros seguem no caminho antigo; cadeia nova ativa ponta a ponta
+
+**FEAT-134** Execution Intelligence pass-through (Sprint EI-05)
+- Objetivo: Criar `ExecutionIntelligence.ts` pass-through puro — recebe `ExecutionRequest`, devolve `PreparedExecution` identico, so loga/instrumenta. `Runtime` passa a chamar `Intelligence.enrich()` antes do SafetyGate.
+- Escopo: `src/lib/execution-intelligence/ExecutionIntelligence.ts`
+- Dependências: FEAT-133
+- Critério: Pass-through = comportamento identico ao de antes da fase; so adiciona observabilidade; build verde
+
+**FEAT-135** Investigators genericos (Sprint EI-06)
+- Objetivo: Adicionar investigators genericos dentro de Intelligence — validacao de campos obrigatorios, formato de datas. Ainda sem iteracao, sem chamadas de LLM, sem chamadas cross-connector. Descoberta estatica do plano.
+- Escopo: `src/lib/execution-intelligence/investigators/InvestigatorRegistry.ts`, `GenericFieldValidator.ts`, `DateFormatValidator.ts`
+- Dependências: FEAT-134
+- Critério: Cada investigator e registravel (Open/Closed); se um investigator der problema, desativa-se o registro dele; Intelligence sem investigators = pass-through
+
+**FEAT-136** Investigators de dominio + iteracao balanceada (Sprint EI-07)
+- Objetivo: Adicionar TravelInvestigator, EmailInvestigator. Convergence Budget (max N iteracoes por execucao), API/LLM Budget (orcamento de custo por dispatch), Dependency Graph aciclico declarado por capability.
+- Escopo: `src/lib/execution-intelligence/investigators/TravelInvestigator.ts`, `EmailInvestigator.ts`, `ConvergenceController.ts`, `BudgetController.ts`, `DependencyGraph.ts`
+- Dependências: FEAT-135 validada em producao sem incidentes
+- Critério: Convergence Budget impede loop infinito; API/LLM Budget impede explosao de custo; Dependency Graph impede ciclo; investigacao continua ate context completo ou budget esgotado
+
+---
+
+### EPIC-019 — Invariants arquiteturais (nao-negociaveis)
+
+1. **Bypass impossivel por construcao** — Dispatcher e closure-local dentro da factory do Runtime, nunca exportado de arquivo algum
+2. **Nenhum exempt caller** — unica forma de executar uma capability e atraves da cadeia completa, sem excecoes, sem callers confiaveis, sem fast path
+3. **`processCapability` e puro wiring** — 3 chamadas em sequencia, zero logica; metricas/log/error-handling vivem nos componentes internos
+4. **Contrato uniforme desde EI-02** — os 3 componentes ja nascem compativeis com Pipeline futura
+5. **Aditivo apenas** — nada e apagado ate EI-04 conclusiva; o caminho antigo segue 100% intocado ate os callers migrarem
+
+---
+
 *MEB — MemoryOS Engineering Backlog v1.0 — Engineering Reference — 2026-07-10*
 *Atualizado em 2026-08-02 — EPIC-017 Watch Engine adicionado*
+*Atualizado em 2026-08-04 — EPIC-019 Execution Intelligence Engine adicionado*
