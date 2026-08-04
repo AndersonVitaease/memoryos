@@ -1,28 +1,30 @@
 /**
- * Runtime.ts — EI-02 (RFC-008 / ADR-015)
+ * Runtime.ts — EI-03 (RFC-008 / ADR-015)
  *
  * Facade publica unica para execucao de capabilities.
  *
- * Cadeia (hoje, EI-02 — pass-through):
+ * Cadeia (EI-03):
  *   processCapability(request)
  *     → resolve connector no ConnectorRegistry
- *     → connector.execute(capability, params, context)
- *     → mapeia ConnectorResult → ExecutionOutcome
+ *     → le reversibility do metadata (EI-01)
+ *     → SafetyGate.guard(request, reversibility)          [NOVO EI-03]
+ *     → se approved: connector.execute() → ExecutionOutcome
+ *     → se needs_confirmation/blocked: retorna SEM despachar
  *
  * Cadeia futura:
- *   EI-03: insere SafetyGate antes do dispatch (le reversibility).
- *   EI-05: insere ExecutionIntelligence antes do SafetyGate (enriquece).
+ *   EI-05 insere ExecutionIntelligence antes do SafetyGate (enriquece).
  *
  * Invariants arquiteturais (ADR-015, nao-negociaveis):
  *   1. Bypass impossivel por construcao — o dispatch (connector.execute) e
- *      interno a processCapability. Nenhum metodo `dispatch` publico e exportado.
+ *      interno a processCapability. Nenhum metodo `dispatch` publico e
+ *      exportado. O SafetyGate NUNCA despacha — so decide.
  *   2. Nenhum exempt caller — so existe processCapability como entrada.
- *   3. processCapability e puro wiring — hoje 1 chamada (dispatch), zero logica.
- *      Em EI-03/EI-05 vira 3 chamadas (Intelligence → Safety → dispatch), ainda
- *      zero logica (logica vive nos componentes).
+ *   3. processCapability e puro wiring — 3 chamadas (resolve+guard+dispatch),
+ *      zero logica de negocio (logica vive no SafetyGate e nos connectors).
  *
- * Hoje (EI-02): NENHUM caller invoca processCapability. A classe existe, compila,
- * e esta pronta para EI-04 (migracao gradual de callers). Zero risco em producao.
+ * So ativa para quem chama processCapability. Nenhum caller migrou ainda
+ * (isso e EI-04) — o caminho antigo (ConnectorRegistry direto) segue 100%
+ * intocado.
  */
 
 import type { ConnectorRegistry } from "@/lib/connector-runtime/ConnectorRegistry";
@@ -31,21 +33,23 @@ import type {
   ConnectorResult,
   Reversibility,
 } from "@/lib/connector-runtime/ConnectorTypes";
-import type { ExecutionRequest, ExecutionOutcome } from "./ExecutionTypes";
+import type { ExecutionRequest, ExecutionOutcome, SafetyDecision } from "./ExecutionTypes";
+import { SafetyGate } from "./SafetyGate";
 
 export class ExecutionRuntime {
-  constructor(private readonly _registry: ConnectorRegistry) {}
+  private readonly _safety: SafetyGate;
+
+  constructor(private readonly _registry: ConnectorRegistry) {
+    // SafetyGate e stateless — instanciado internamente, sem DI.
+    this._safety = new SafetyGate();
+  }
 
   /**
    * Unica entrada publica para execucao de capability.
    *
-   * Hoje (EI-02): pass-through puro.
-   *   - Resolve o connector no registry.
-   *   - Le reversibility do metadata (EI-01) para incluir no outcome.
-   *   - Chama connector.execute() e mapeia o resultado.
-   *
-   * Nenhum Safety Gate, nenhuma Intelligence ainda — vêm em EI-03/EI-05.
-   * O dispatch (connector.execute) e interno: bypass impossivel.
+   * Hoje (EI-03): resolve connector → le reversibility → SafetyGate →
+   * (se approved) dispatch. Se o SafetyGate pedir confirmacao ou bloquear,
+   * retorna imediatamente sem despachar (protecao do irreversivel).
    */
   async processCapability(request: ExecutionRequest): Promise<ExecutionOutcome> {
     const { connectorId, capability, params, context } = request;
@@ -59,6 +63,14 @@ export class ExecutionRuntime {
     const meta: ConnectorMetadata = connector.metadata();
     const reversibility: Reversibility = meta.capabilityReversibility?.[capability] ?? "safe";
 
+    // EI-03: Safety Gate antes do dispatch.
+    const decision: SafetyDecision = this._safety.guard(request, reversibility);
+    if (decision.type !== "approved") {
+      const message = decision.type === "needs_confirmation" ? decision.summary : decision.reason;
+      return this._buildOutcome(request, decision.type, null, message, reversibility);
+    }
+
+    // Approved → dispatch (interno; bypass impossivel).
     try {
       const result: ConnectorResult = await connector.execute(capability, params, context);
       const status: ExecutionOutcome["status"] = result.success ? "success" : "failed";
@@ -72,7 +84,7 @@ export class ExecutionRuntime {
     request: ExecutionRequest,
     status: ExecutionOutcome["status"],
     result: ConnectorResult | null,
-    error: string | null,
+    message: string | null,
     reversibility: Reversibility,
   ): ExecutionOutcome {
     return Object.freeze({
@@ -80,7 +92,7 @@ export class ExecutionRuntime {
       connectorId: request.connectorId,
       capability: request.capability,
       result,
-      error,
+      message,
       reversibility,
     });
   }

@@ -1206,3 +1206,47 @@ O `ConnectorMetadata.capabilities` e `string[]` (contrato existente, validado no
 **Proximo passo:** aguardar autorizacao para iniciar **EI-03 (Safety Gate)** — `SafetyGate.ts` que le `reversibility` do metadata: se `irreversible` e sem `confirmedByUser` → retorna `NeedsConfirmation` com resumo; `safe`/`reversible` passam direto. `Runtime.processCapability` passa a chamar `SafetyGate.guard()` antes do dispatch. So ativa para quem chama `processCapability` (nenhum caller migrou ainda em EI-03).
 
 ---
+
+### 2026-08-04 — Execution Intelligence EI-03 (Safety Gate): Implementado
+
+**RFC/ADR:** `RFC-008` + `ADR-015` (Sprint EI-03)
+
+**Status:** EI-03 EXECUTADA. Safety Gate vivo e integrado ao Runtime. So ativa para quem chama `processCapability` — nenhum caller migrou ainda (isso e EI-04), entao zero impacto em producao. O caminho antigo (ConnectorRegistry direto) segue 100% intocado.
+
+**Arquivo novo (1) em `src/lib/execution-intelligence/`:**
+
+- **`SafetyGate.ts`** — classe `SafetyGate`, stateless, sem dependencias:
+  - Metodo `guard(request: ExecutionRequest, reversibility: Reversibility): SafetyDecision`.
+  - Regra: `safe`/`reversible` → `approved`; `irreversible` + `confirmedByUser` → `approved`; `irreversible` sem confirmacao → `needs_confirmation` (reason + summary).
+  - `summary` generico hoje: `connectorId.capability` + preview dos primeiros 5 params (strings truncadas a 60 chars). Investigadores de dominio (resumos ricos por capability) vêm em EI-07.
+  - Nao ha `blocked` hardcoded — polices obrigatorias vêm com o PolicyRegistry futuro. Hoje so freia por reversibility.
+  - Invariant ADR-015: o SafetyGate NUNCA despacha — so decide. O dispatch continua interno e exclusivo do `Runtime.processCapability()`.
+
+**Arquivos editados (2):**
+
+1. **`ExecutionTypes.ts`** — `ExecutionOutcome.error` renomeado para `message` (semantico: carrega texto humano para qualquer status nao-success). Nenhum consumidor do tipo existia (EI-02), rename seguro.
+
+2. **`Runtime.ts`** — `processCapability` agora executa a cadeia EI-03: resolve connector → le reversibility → **`SafetyGate.guard()`** → se `approved`, dispatch; se `needs_confirmation`/`blocked`, retorna sem despachar. `SafetyGate` instanciado internamente no constructor (stateless, sem DI). Invariants mantidos: dispatch interno (bypass impossivel); `processCapability` e puro wiring (3 chamadas, zero logica).
+
+**Paridade / nao-quebra:**
+- `safe`/`reversible` (maioria): comportamento identico ao EI-02 — `guard()` aprova e dispatch prossegue.
+- `irreversible` sem `confirmedByUser`: agora retorna `needs_confirmation` em vez de despachar. **Comportamento esperado** — e a protecao que o Safety Gate existe para fornecer. Quem chama `processCapability` deve inspecionar `outcome.status` e, se `needs_confirmation`, pedir confirmacao ao usuario e re-chamar com `confirmedByUser: true`.
+- Nenhum caller migrou (EI-04), entao nenhuma capability irreversivel e despachada via `processCapability` hoje. O caminho antigo (ConnectorRegistry direto / ConversationRuntimeEngine) nao passa pelo Safety Gate — intocado.
+- `SafetyGate` e stateless; nenhum arquivo vivo o importa. Build verde por construcao.
+
+**Cuidados tomados:**
+- Componente puro: `guard()` e funcao sobre `(request, reversibility)` — sem estado, sem side-effects, sem dependencias. Testavel isoladamente.
+- A leitura de `reversibility` do metadata ficou no Runtime (que ja o fazia); o SafetyGate recebe o valor pronto — desacoplado do `ConnectorRegistry` (SRP: so decide, nao resolve).
+- Resumo generico marcado como temporario (EI-07 trara investigadores de dominio). YAGNI: nao inventar resumos ricos por capability agora.
+- Nenhum `blocked` hardcoded — so `needs_confirmation`. Polices obrigatorias ficam para o PolicyRegistry futuro.
+
+**NAO foi feito:**
+- Nenhum PolicyRegistry / hard policy (futuro).
+- Nenhum investigador de dominio (EI-07).
+- Nenhum caller migrado (EI-04) — o Safety Gate nao freia nada em producao ainda.
+- Nenhuma UI de confirmacao (precisa de EI-04 para ter um caller que produza `needs_confirmation` para a UI consumir).
+- Nenhum teste automatizado (nao ha runner no projeto). Paridade por inspecao da logica.
+
+**Proximo passo:** aguardar autorizacao para iniciar **EI-04 (Migracao gradual de callers)** — substituir, 1 caller por vez (reversivel), as chamadas diretas a `ConnectorRegistry.get(id).execute()` por `runtime.processCapability()`. Cada migracao independente e reversivel. E aqui que o Safety Gate comeca a freiar irreversiveis de verdade em producao. Ate la, EI-03 e morto (existe mas nao e exercitado).
+
+---
