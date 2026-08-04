@@ -42,6 +42,44 @@ export class MicrosoftGraphConnector implements IConnector {
       description: "Outlook Mail, Calendar e OneDrive via Microsoft Graph API.",
       author: "MemoryOS",
       capabilities: listAllOperations(),
+      // EI-01 (RFC-008/ADR-015): per-capability reversibility. Default "safe".
+      // mail.send e teams.sendMessage = irreversible (nao podem ser desfeitos).
+      // calendar.create / contacts.create / todo.* / onenote.createPage /
+      // sharepoint.createItem / excel.updateRange = reversible.
+      capabilityReversibility: {
+        "mail.list": "safe",
+        "mail.search": "safe",
+        "mail.read": "safe",
+        "mail.send": "irreversible",
+        "calendar.list": "safe",
+        "calendar.create": "reversible",
+        "files.list": "safe",
+        "files.download": "safe",
+        "contacts.list": "safe",
+        "contacts.search": "safe",
+        "contacts.create": "reversible",
+        "todo.listLists": "safe",
+        "todo.listTasks": "safe",
+        "todo.createTask": "reversible",
+        "todo.completeTask": "reversible",
+        "onenote.listNotebooks": "safe",
+        "onenote.listPages": "safe",
+        "onenote.createPage": "reversible",
+        "teams.listChats": "safe",
+        "teams.listMessages": "safe",
+        "teams.sendMessage": "irreversible",
+        "sharepoint.listSites": "safe",
+        "sharepoint.listLists": "safe",
+        "sharepoint.listItems": "safe",
+        "sharepoint.createItem": "reversible",
+        "excel.listWorksheets": "safe",
+        "excel.getRange": "safe",
+        "excel.updateRange": "reversible",
+        "word.listDocuments": "safe",
+        "word.getDocumentText": "safe",
+        "pptx.listDocuments": "safe",
+        "pptx.getDocumentDownload": "safe",
+      },
     };
   }
 

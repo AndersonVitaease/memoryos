@@ -70,6 +70,16 @@ export class DatabaseConnector implements IConnector {
       description: "Official database abstraction connector — delegates to Base44 entities layer.",
       author: "MemoryOS",
       capabilities: [...CAPABILITIES],
+      // EI-01 (RFC-008/ADR-015): per-capability reversibility. Default "safe".
+      capabilityReversibility: {
+        "db.query": "safe",
+        "db.get": "safe",
+        "db.count": "safe",
+        "db.create": "reversible",
+        "db.update": "reversible",
+        "db.delete": "irreversible",
+        "connectivity.ping": "safe",
+      },
     };
   }
 

@@ -119,6 +119,27 @@ export class GoogleDriveConnector implements IConnector {
         "connectivity.ping",
         "health.full",
       ],
+      // EI-01 (RFC-008/ADR-015): per-capability reversibility. Default "safe".
+      // drive.deleteFile = irreversible (intencao de remocao; trash auto-purga em 30d).
+      capabilityReversibility: {
+        "drive.files.list": "safe",
+        "drive.files.listByMime": "safe",
+        "drive.files.listShared": "safe",
+        "drive.files.get": "safe",
+        "drive.files.search": "safe",
+        "drive.about.get": "safe",
+        "drive.downloadFile": "safe",
+        "drive.summarizeDocument": "safe",
+        "drive.extractSections": "safe",
+        "drive.createFolder": "reversible",
+        "drive.uploadFile": "reversible",
+        "drive.moveFile": "reversible",
+        "drive.renameFile": "reversible",
+        "drive.copyFile": "reversible",
+        "drive.deleteFile": "irreversible",
+        "connectivity.ping": "safe",
+        "health.full": "safe",
+      },
     };
   }
 

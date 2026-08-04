@@ -54,6 +54,18 @@ export class GmailConnector implements IConnector {
       description: "Conector oficial do Gmail para o MemoryOS — Sprint 8.3",
       author: "MemoryOS",
       capabilities: [...CAPABILITIES],
+      // EI-01 (RFC-008/ADR-015): per-capability reversibility. Default "safe".
+      capabilityReversibility: {
+        readInbox: "safe",
+        searchEmails: "safe",
+        readMessage: "safe",
+        readEmail: "safe",
+        getThread: "safe",
+        getAttachment: "safe",
+        listLabels: "safe",
+        createDraft: "reversible",
+        sendEmail: "irreversible",
+      },
     };
   }
 

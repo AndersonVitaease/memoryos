@@ -82,6 +82,15 @@ export class EmailConnector implements IConnector {
       description: "Official email abstraction connector — delegates to active provider (Gmail).",
       author: "MemoryOS",
       capabilities: [...CAPABILITIES],
+      // EI-01 (RFC-008/ADR-015): per-capability reversibility. Default "safe".
+      capabilityReversibility: {
+        "email.listInbox": "safe",
+        "email.read": "safe",
+        "email.search": "safe",
+        "email.createDraft": "reversible",
+        "email.send": "irreversible",
+        "connectivity.ping": "safe",
+      },
     };
   }
 

@@ -58,6 +58,13 @@ export class WhatsAppConnector implements IConnector {
       description: "Envio de mensagens via WhatsApp Business (Meta Cloud API oficial, Evolution, Baileys).",
       author: "MemoryOS",
       capabilities: [...CAPABILITIES],
+      // EI-01 (RFC-008/ADR-015): per-capability reversibility. Default "safe".
+      // Mensagens enviadas nao podem ser "desenviadas".
+      capabilityReversibility: {
+        "whatsapp.sendMessage": "irreversible",
+        "whatsapp.sendTemplate": "irreversible",
+        "whatsapp.getMessageStatus": "safe",
+      },
     };
   }
 
