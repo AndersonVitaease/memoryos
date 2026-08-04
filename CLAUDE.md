@@ -1374,3 +1374,25 @@ O `ConnectorMetadata.capabilities` e `string[]` (contrato existente, validado no
 **Proximo passo:** aguardar autorizacao para iniciar **EI-07 (Investigators de dominio + iteracao balanceada)** — TravelInvestigator, EmailInvestigator (resumos ricos por capability + enriquecimento real de params); Convergence Budget (max N iteracoes), API/LLM Budget, Dependency Graph aciclico. E o sprint onde o valor diferencial real aparece. Apos EI-07, reabrir a decisao de qual caller vivo migrar primeiro (o Safety Gate tera contexto real para decidir irreversiveis sem quebrar automation).
 
 ---
+
+### 2026-08-04 — Execution Intelligence EI-07 (Investigators de dominio + iteracao balanceada): Implementado
+
+**RFC/ADR:** `RFC-008` + `ADR-015` (Sprint EI-07 — final do EPIC-019)
+
+**Status:** EI-07 EXECUTADA. Sprint final. Cadeia ADR-015 completa com iteracao balanceada: `processCapability` → `Intelligence.prepare (iteracao com 3 travas)` → `SafetyGate.guard` → dispatch. `prepare()` async. Investigators de dominio (Travel, Email) auto-registrados no load do wiring. Zero impacto em producao (nenhum caller vivo).
+
+**Arquivos novos (3) em `investigators/`:** `TravelInvestigator.ts` (passagem aerea: valida campos, normaliza DD/MM/YYYY→YYYY-MM-DD, default passengerType; dorme ate connector Travellink), `EmailInvestigator.ts` (envio: valida to/subject/body, detecta "to" sem "@", trim), `registerDefaults.ts` (side-effect import em index.ts; registra Travel+Email).
+
+**Reescritos (2):** `InvestigatorTypes.ts` (paramPatches, cost, provides/requires, investigate async), `InvestigatorRegistry.ts` (topo-sort Kahn + deteccao de ciclo; resolve em ordem topologica), `ExecutionIntelligence.ts` (`prepare` async com iteracao balanceada + 3 travas: Convergence Budget 5, API/LLM Budget 3/4, Dependency Graph aciclico; finalGaps = ultima iteracao).
+
+**Editados (3):** `ExecutionTypes.ts` (`IntelligenceBudget` + `DEFAULT_BUDGET`), `Runtime.ts` (await prepare), `index.ts` (side-effect import registerDefaults + re-exports).
+
+**Paridade:** registry vazio → pass-through (paridade EI-06). Investigators deterministicos (sem LLM/cross-connector) → budget nunca esgota. Auto-registro so dispara quando index.ts e importado (nenhum vivo hoje). Topo-sort: Travel/Email sem requires → indegree 0, sem ciclo.
+
+**Cuidados:** 3 travas como controles internos (nao Pipeline generica; cadeia direta mantida). Domain investigators deterministicos — enriquecimento real via LLM/connector fica pos-migracao (exigiria injetar ConnectorRegistry no Intelligence). Dependency Graph declarado por provides/requires, ciclo rejeitado no register (fail-fast). Budgets conservadores 5/3/4 configuraveis. Open/Closed. Aditivo; invariants ADR-015 mantidos.
+
+**NAO feito:** enriquecimento real via LLM/cross-connector (pos-migracao); PolicyRegistry (gaps→blocked); migracao de caller vivo (deferida — EI-07 entregou o contexto que o Safety Gate precisava); testes automatizados (sem runner).
+
+**Estado final EPIC-019:** CONCLUIDO. 7 sprints (EI-01 a EI-07) entregues incrementalmente, caminho antigo intocado. Proximo pos-EI-07: migrar o primeiro caller vivo (EI-04 sub-step) — `gmail.sendEmail` e candidato natural (irreversivel + EmailInvestigator ativo).
+
+---

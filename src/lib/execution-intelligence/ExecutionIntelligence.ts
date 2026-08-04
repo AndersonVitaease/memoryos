@@ -1,60 +1,105 @@
 /**
- * ExecutionIntelligence.ts — EI-05 (RFC-008 / ADR-015)
+ * ExecutionIntelligence.ts — EI-07 (RFC-008 / ADR-015)
  *
  * Camada que enriquece a requisicao ANTES do Safety Gate, produzindo a melhor
  * execucao possivel com o contexto disponivel.
  *
- * Hoje (EI-06): roda os investigators ativos aplicaveis (InvestigatorRegistry)
- * e agrega seus findings (gaps + risks) no PreparedExecution. Nao enriquece
- * params (isso sera EI-07) — so sinaliza. Com registry vazio, behavior ==
- * EI-05 (gaps=[], risks=[]) — paridade preservada.
+ * Hoje (EI-07): iteracao balanceada. Cada iteracao resolve os investigators
+ * ativos aplicaveis (em ordem topologica — grafo aciclico), executa-os, agrega
+ * gaps/risks e mergeia paramPatches em enrichedParams. Se params mudaram, itera
+ * novamente (novos params podem destravar novos investigators). 3 travas:
+ *  - Convergence Budget: max N iteracoes (budget.maxIterations).
+ *  - API/LLM Budget: max LLM/API calls acumulados (cost reportado pelos
+ *    investigators; budget.maxLlmCalls/maxApiCalls). Esgotado, para e pede o
+ *    que falta ao usuario (via risks).
+ *  - Dependency Graph aciclico: garantido no InvestigatorRegistry (register).
  *
- * EI-07 adicionara investigators de dominio (Travel, Email) + iteracao
- * balanceada (Convergence/API/LLM Budget, Dependency Graph aciclico). A
- * assinatura publica `prepare(request) → PreparedExecution` nao muda.
+ * Com registry vazio, behavior == pass-through (gaps=[], risks=[],
+ * enrichedParams = copia de request.params) — paridade com EI-06 preservada.
  *
- * Componente puro: stateless, sem dependencias externas (so o registry). A
- * Intelligence nunca despacha nem bloqueia — so coleta informacao. Decidir
- * e papel do Safety Gate; despachar e papel do Runtime.
+ * EI-07 investigators de dominio (Travel, Email) sao deterministicos hoje (sem
+ * LLM/cross-connector); o hook cost/paramPatches fica pronto para enriquecimento
+ * real pos-migracao de callers. A assinatura publica `prepare(request) →
+ * Promise<PreparedExecution>` (async desde EI-07) e estavel.
  *
  * Invariant ADR-015: a Intelligence NUNCA despacha e NUNCA bloqueia — so
- * enriquece. Decidir (freiar) e papel do Safety Gate; despachar e papel do
- * Runtime. A Intelligence produz informacao; os outros dois consomem.
+ * enriquece e sinaliza. Decidir e papel do Safety Gate; despachar e papel do
+ * Runtime.
  */
 
-import type { ExecutionGap, ExecutionRequest, PreparedExecution } from "./ExecutionTypes";
+import { DEFAULT_BUDGET } from "./ExecutionTypes";
+import type { ExecutionGap, ExecutionRequest, IntelligenceBudget, PreparedExecution } from "./ExecutionTypes";
 import { investigatorRegistry } from "./investigators/InvestigatorRegistry";
 
 export class ExecutionIntelligence {
-  /** Contador de instrumentation (in-memory, so para observabilidade local). */
   private _prepareCount = 0;
+  private readonly _budget: IntelligenceBudget;
+
+  constructor(budget: IntelligenceBudget = DEFAULT_BUDGET) {
+    this._budget = budget;
+  }
 
   /**
-   * Produz o PreparedExecution a partir da request.
-   *
-   * EI-06: resolve os investigators ativos aplicaveis a request, executa cada
-   * um (single pass, sincrono), agrega gaps + risks. enrichedParams continua
-   * request.params (EI-06 nao enriquece — so sinaliza). Com registry vazio,
-   * devolve o PreparedExecution identico ao EI-05 (paridade).
-   *
-   * Invariant: nunca despacha, nunca bloqueia. Os gaps/risks ficam no
-   * PreparedExecution; o SafetyGate pode inclui-los no resumo de
-   * needs_confirmation; policies futuras podem transforma-los em `blocked`.
+   * Produz o PreparedExecution a partir da request, iterando investigators ativos
+   * ate convergir (sem patches) ou esgotar Convergence/API/LLM Budget.
    */
-  prepare(request: ExecutionRequest): PreparedExecution {
+  async prepare(request: ExecutionRequest): Promise<PreparedExecution> {
     this._prepareCount += 1;
-    const investigators = investigatorRegistry.resolve(request);
-    const gaps: ExecutionGap[] = [];
+
+    let currentParams: Record<string, unknown> = { ...request.params };
+    let llmUsed = 0;
+    let apiUsed = 0;
     const risks: string[] = [];
-    for (const inv of investigators) {
-      const finding = inv.investigate(request);
-      for (const g of finding.gaps) gaps.push(g);
-      for (const r of finding.risks) risks.push(r);
+    let finalGaps: ExecutionGap[] = [];
+    let budgetExhausted = false;
+
+    for (let iter = 0; iter < this._budget.maxIterations && !budgetExhausted; iter++) {
+      const workingRequest: ExecutionRequest = { ...request, params: currentParams };
+      const investigators = investigatorRegistry.resolve(workingRequest);
+
+      const iterGaps: ExecutionGap[] = [];
+      let changed = false;
+
+      for (const inv of investigators) {
+        const finding = await inv.investigate(workingRequest);
+
+        // API/LLM Budget: acumula e verifica.
+        if (finding.cost) {
+          llmUsed += finding.cost.llmCalls ?? 0;
+          apiUsed += finding.cost.apiCalls ?? 0;
+        }
+        if (llmUsed > this._budget.maxLlmCalls || apiUsed > this._budget.maxApiCalls) {
+          risks.push(
+            "API/LLM Budget esgotado — investigacao interrompida; gaps remanescentes exigidos ao usuario.",
+          );
+          budgetExhausted = true;
+          break;
+        }
+
+        for (const g of finding.gaps) {
+          if (!iterGaps.some((x) => x.field === g.field && x.reason === g.reason)) iterGaps.push(g);
+        }
+        for (const r of finding.risks) {
+          if (!risks.includes(r)) risks.push(r);
+        }
+
+        if (finding.paramPatches) {
+          const next = { ...currentParams, ...finding.paramPatches };
+          if (JSON.stringify(next) !== JSON.stringify(currentParams)) {
+            currentParams = next;
+            changed = true;
+          }
+        }
+      }
+
+      finalGaps = iterGaps;
+      if (!changed) break; // convergiu
     }
+
     return {
       request,
-      enrichedParams: request.params,
-      gaps,
+      enrichedParams: currentParams,
+      gaps: finalGaps,
       risks,
     };
   }

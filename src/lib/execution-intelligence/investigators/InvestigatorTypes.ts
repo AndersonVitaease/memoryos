@@ -1,43 +1,52 @@
 /**
- * InvestigatorTypes.ts — EI-06 (RFC-008 / ADR-015)
+ * InvestigatorTypes.ts — EI-07 (RFC-008 / ADR-015)
  *
- * Contrato dos Investigators: componentes puros que INSPECTIONAM a ExecutionRequest
- * e produzem findings (gaps + risks) sem despachar nem bloquear.
+ * Contrato dos Investigators: componentes puros que INSPECTIONAM a
+ * ExecutionRequest e produzem findings (gaps + risks + paramPatches) sem
+ * despachar nem bloquear.
  *
- * Restricoes do EI-06 (genericos):
- *  - Sem iteracao (single pass — cada investigator roda 1x).
- *  - Sem LLM.
- *  - Sem chamadas cross-connector.
- *  - Registraveis/desativaveis (Open/Closed) via InvestigatorRegistry.
+ * EI-06: validators genericos (presenca, formato) — sync, single-pass.
+ * EI-07: investigators de dominio (Travel, Email) + iteracao balanceada.
+ *   - investigate pode ser async (LLM/cross-connector futuros).
+ *   - paramPatches enriquece enrichedParams (merge parcial); se altera params,
+ *     a Intelligence itera novamente.
+ *   - provides/requires declara o grafo de dependencias (aciclivo, via registry).
+ *   - cost reporta consumo de LLM/API para o API/LLM Budget.
  *
- * Invariant ADR-015: investigators so PRODUZEM informacao. Decidir (freiar) e
- * papel do Safety Gate; despachar e papel do Runtime. Um investigator nunca
- * lanca, nunca rejeita, nunca enriquece params (so sinaliza gaps/risks).
+ * Invariant ADR-015: investigators so PRODUZEM informacao/enriquecimento. Decidir
+ * (freiar) e papel do Safety Gate; despachar e papel do Runtime.
  */
 
 import type { ExecutionGap, ExecutionRequest } from "../ExecutionTypes";
 
 /**
- * Achados de um investigator: gaps (campos faltantes/invalidos) e risks (notas
- * de risco nao-bloqueantes). Ambos opcionais — um investigator pode so reportar
- * gaps, so risks, ou ambos.
+ * Achados de um investigator.
+ *  - gaps: campos faltantes/invalidos (nao-bloqueantes; SafetyGate pode exibi-los).
+ *  - risks: notas de risco nao-bloqueantes.
+ *  - paramPatches (EI-07): overrides parciais mergeados em enrichedParams. Se
+ *    non-empty e altera params, a Intelligence itera novamente.
+ *  - cost (EI-07): consumo de LLM/API desta chamada (para budget enforcement).
  */
 export interface InvestigationFinding {
   readonly gaps: readonly ExecutionGap[];
   readonly risks: readonly string[];
+  readonly paramPatches?: Readonly<Record<string, unknown>>;
+  readonly cost?: { readonly llmCalls?: number; readonly apiCalls?: number };
 }
 
 /**
- * Um investigator generico. Puro: mesma request → mesmos findings (sem side
- * effects, sem estado). `appliesTo` opcional limita a quais requests ele roda
- * (undefined = roda sempre). EI-07 adiciona investigators de dominio com
- * `appliesTo` mais especifico (ex: so para connector "gmail" capability "sendEmail").
+ * Um investigator. Puro: mesma request (e params correntes) → mesmos findings.
+ *  - appliesTo: limita a quais requests roda (undefined = sempre).
+ *  - provides/requires (EI-07): declara enriquecimento/dependencia de campos
+ *    para o grafo aciclivo do InvestigatorRegistry. B.requires campo X → B roda
+ *    depois de qualquer A que A.provides X.
+ *  - investigate: sync (EI-06) ou async (EI-07, se chamar LLM/connector).
  */
 export interface Investigator {
   readonly id: string;
   readonly description: string;
-  /** Se presente, so roda quando retorna true. Undefined = sempre. */
   readonly appliesTo?: (request: ExecutionRequest) => boolean;
-  /** Inspeciona a request e devolve findings. Puro, sincrono (EI-06). */
-  investigate(request: ExecutionRequest): InvestigationFinding;
+  readonly provides?: readonly string[];
+  readonly requires?: readonly string[];
+  investigate(request: ExecutionRequest): InvestigationFinding | Promise<InvestigationFinding>;
 }

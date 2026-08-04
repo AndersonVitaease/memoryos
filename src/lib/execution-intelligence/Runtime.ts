@@ -64,7 +64,7 @@ export class ExecutionRuntime {
   /**
    * Unica entrada publica para execucao de capability.
    *
-   * Hoje (EI-05): resolve connector → le reversibility → Intelligence.prepare →
+   * Hoje (EI-07): resolve connector → le reversibility → Intelligence.prepare →
    * (se approved) build 1-step plan (enrichedParams) → delega ao engine real (preserva
    * metricas/eventos/timeout) → map ExecutionResult → ExecutionOutcome.
    * Se o SafetyGate pedir confirmacao ou bloquear, retorna sem despachar.
@@ -81,9 +81,9 @@ export class ExecutionRuntime {
     const meta: ConnectorMetadata = connector.metadata();
     const reversibility: Reversibility = meta.capabilityReversibility?.[capability] ?? "safe";
 
-    // EI-05: Execution Intelligence enriquece a requisicao (hoje pass-through).
-    // EI-07 adicionara investigators de dominio aqui; a assinatura prepare() nao muda.
-    const prepared: PreparedExecution = this._intelligence.prepare(request);
+    // EI-07: Execution Intelligence itera investigators ativos (Convergence/API/LLM
+    // Budget + grafo aciclivo) e enriquece enrichedParams antes do Safety Gate.
+    const prepared: PreparedExecution = await this._intelligence.prepare(request);
 
     // EI-03: Safety Gate consome o PreparedExecution (EI-05).
     const decision: SafetyDecision = this._safety.guard(prepared, reversibility);
