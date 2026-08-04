@@ -875,3 +875,49 @@ Tudo e slot. Novo provider = 1 arquivo + 1 linha no registry. Nova capability = 
 **Proximo passo:** aguardar autorizacao para iniciar **Fase 4 (Base44OutlookProvider, opcional)** — segundo provider de verdade via App-User Connector; e onde o dilema OAuth (Flow 1 vs Flow 2) se resolve de fato. Alternativamente, UI de switcher multi-conta no `/connections` para validar o `workspaceId` fluindo ponta a ponta.
 
 ---
+
+## Sessao 2026-08-04 -- Microsoft 365 OAuth: 4 causas raiz encontradas e corrigidas (App User Connector customizado)
+
+**Contexto:** Usuario configurou Microsoft 365 pela primeira vez, seguindo o conector nativo customizado
+(nao o App User Connector oficial do Base44 -- ver ADR anterior sobre a diferenca). Erro persistente por
+varias horas de troubleshooting ate isolar 4 causas raiz distintas, uma escondendo a proxima.
+
+**Causa 1 -- Client ID mal copiado:** dois caracteres transpostos (`046f` em vez de `04f6` no final do GUID).
+Sintoma: AADSTS700016 "Application not found in directory" com o MESMO valor aparecendo como app ID e tenant ID
+(coincidencia -- na verdade eram dois valores DIFERENTES, o do erro nao correspondia a nenhum app real).
+Fix: recopiar usando o botao de copiar do Azure, nunca selecao manual de texto.
+
+**Causa 2 -- MICROSOFT_TENANT_ID configurado incorretamente:** o app tem
+`signInAudience: "AzureADandPersonalMicrosoftAccount"` (multi-tenant + contas pessoais) -- esse tipo de app
+DEVE usar o endpoint `/common/`, nunca um tenant especifico. Configurar MICROSOFT_TENANT_ID pra esse tipo de
+app causa o MESMO erro AADSTS700016. Fix: manter MICROSOFT_TENANT_ID ausente (nao configurado) pra esse app.
+**Isso e o oposto do que a documentacao interna do codigo sugeria** ("Se MICROSOFT_TENANT_ID estiver definido,
+evita AADSTS700016") -- aquele comentario assume um app single-tenant, nao e universal. Adicionado aviso no
+codigo sobre isso (ver microsoftOAuthInit/entry.ts).
+
+**Causa 3 -- Redirect URI do preview nao cadastrada:** erro AADSTS50011 especificamente no ambiente de
+PREVIEW do Base44 (`https://preview--ever-mind-core.base44.app/oauth/microsoft/callback`), nao afeta o app
+publicado. Nao corrigido (usuario so usa o app publicado) -- se precisar testar em preview no futuro, cadastrar
+essa URI adicional no Azure.
+
+**Causa 4 -- Client Secret: Value vs Secret ID:** a tela "Certificados e segredos" do Azure mostra DUAS
+colunas parecidas ao criar um secret -- "Value" (o segredo de verdade) e "Secret ID" (so um identificador do
+registro). Copiar a coluna errada causa AADSTS7000215 ("Invalid client secret provided... not the client
+secret ID"), SO detectavel na etapa de troca de codigo por token (microsoftOAuthExchange), nao na etapa de
+autorizacao inicial -- por isso o erro so aparecia depois do usuario completar o login inteiro.
+
+**Metodologia que funcionou -- reutilizar em problemas de OAuth futuros:**
+1. Erros de autenticacao raramente tem mensagem completa na tela do navegador -- sempre pegar o JSON de
+   `Response` (nao `Headers`) da requisicao que falhou, via aba Network do DevTools, com "Preserve log"
+   marcado (senao a lista some no redirect do OAuth).
+2. Testar com `code: 'teste'` (valor falso) SO serve pra confirmar que a function responde -- a Microsoft
+   rejeita qualquer codigo malformado antes de checar credenciais, entao esse teste NAO isola bugs de
+   client_secret/tenant. So um fluxo real (login completo) revela esses erros.
+3. GUIDs parecidos (Client ID vs Tenant ID vs Secret Value vs Secret ID) sao a fonte de erro mais comum --
+   sempre usar o botao de copiar da interface do Azure, nunca seleção manual de texto.
+
+**Resultado final confirmado:** Microsoft 365 conectado (memoryos1@outlook.com), 12 escopos, Outlook Mail +
+Calendar + OneDrive + Contacts + To Do disponiveis.
+
+---
+
