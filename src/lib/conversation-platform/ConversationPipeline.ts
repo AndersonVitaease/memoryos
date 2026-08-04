@@ -800,7 +800,78 @@ class ConversationPipeline {
             goalId:      goalBridgeResult.goal.id,
             origin:      "pipeline",
           });
-          const { executionResult } = await _realEngine.execute(_activePlan, executionId, _pipelineConnCtx);
+
+          // ── EI-04 (main pipeline): single-step plans passam pela cadeia Execution
+          // Intelligence + Safety Gate. Irreversiveis (sendEmail) pedem confirmacao
+          // ao usuario (RuntimeConfirmationEngine + ConfirmationProvider dialog).
+          // safe/reversible despacham direto; needs_confirmation bloqueia ate decisao
+          // (confirmado -> re-despacha com confirmedByUser; cancelado -> short-circuit
+          // "acao cancelada"); blocked/failed -> candidate de erro (NAO auto-envia).
+          // Multi-step plans e exceptions caem no _realEngine.execute original.
+          const { outcomeToExecutionResult, outcomeToFailedResult } = await import("@/lib/execution-intelligence/outcomeAdapter");
+          const _singleStep = _activePlan.steps.length === 1 ? _activePlan.steps[0] : null;
+          let _eiOutcome: import("@/lib/execution-intelligence").ExecutionOutcome | null = null;
+          let _eiCancelled = false;
+          if (_singleStep) {
+            try {
+              const { getExecutionRuntime } = await import("@/lib/execution-intelligence");
+              const _ei = await getExecutionRuntime();
+              const _baseReq = {
+                connectorId: _singleStep.connector,
+                capability:  _singleStep.capability,
+                params:      (_singleStep.parameters as Record<string, unknown>) ?? {},
+                context:     _pipelineConnCtx,
+                executionId,
+              };
+              const _o = await _ei.processCapability(_baseReq);
+              if (_o.status === "success" || _o.status === "failed" || _o.status === "blocked") {
+                _eiOutcome = _o;
+              } else if (_o.status === "needs_confirmation") {
+                const { requestConfirmation } = await import("@/lib/runtime/RuntimeConfirmationEngine");
+                const _c = await requestConfirmation({
+                  capability:  `${_o.connectorId}.${_o.capability}`,
+                  title:       "Confirmar acao irreversivel",
+                  description: _o.message ?? `Confirmar execucao de ${_o.capability}`,
+                  payload:     { connectorId: _o.connectorId, capability: _o.capability },
+                });
+                if (_c.confirmed) {
+                  const _co = await _ei.processCapability({ ..._baseReq, confirmedByUser: true });
+                  _eiOutcome = _co;
+                } else {
+                  _eiCancelled = true;
+                }
+              }
+            } catch (err) {
+              console.warn("[ConversationPipeline] EI dispatch falhou, caindo pro realEngine:", err);
+            }
+          }
+
+          if (_eiCancelled) {
+            const _cancelMsg = "Acao cancelada pelo usuario.";
+            setStep("route", "done"); setStep("synthesize", "done"); setStep("stream", "running");
+            conversationStore.setStatus("streaming"); setPhase("responding");
+            const _cMsgId = makeMsgId();
+            conversationStore.appendMessage({ id: _cMsgId, session_id: session.id, role: "assistant", content: "", streamingContent: "", isStreaming: true, memory_tier: "active", sources_used: [] });
+            await conversationStreaming.streamResponse({ executionId, messageId: _cMsgId, fullContent: _cancelMsg, onChunk: () => {} });
+            setStep("stream", "done"); setStep("finalize", "running"); conversationStore.setStatus("finalizing");
+            try {
+              const _cSaved = await persistMessage({ sessionId: session.id, projectId: session.project_id, role: "assistant", content: _cancelMsg, sources_used: [] });
+              conversationStore.updateMessage(_cMsgId, { id: _cSaved.id, content: _cancelMsg, streamingContent: undefined, isStreaming: false, sources_used: [] });
+            } catch { /* non-critical */ }
+            conversationStore.setStatus("idle"); conversationStore.setReasoningPhase("idle"); setStep("finalize", "done");
+            return;
+          }
+
+          let executionResult: import("@/lib/runtime-engine/RuntimeTypes").ExecutionResult;
+          if (_eiOutcome && _eiOutcome.status === "success") {
+            executionResult = outcomeToExecutionResult(_eiOutcome, executionId);
+          } else if (_eiOutcome && (_eiOutcome.status === "failed" || _eiOutcome.status === "blocked")) {
+            executionResult = outcomeToFailedResult(_eiOutcome, executionId, _singleStep?.connector ?? "unknown", _singleStep?.capability ?? "unknown");
+          } else {
+            const _r = await _realEngine.execute(_activePlan, executionId, _pipelineConnCtx);
+            executionResult = _r.executionResult;
+          }
+          console.log("[EI-04][pipeline]", _eiOutcome ? `ei_${_eiOutcome.status}` : "ei_fallback", { connector: _singleStep?.connector, capability: _singleStep?.capability, executionId });
           const t0connector = Date.now();
 
           conversationStore.emit({

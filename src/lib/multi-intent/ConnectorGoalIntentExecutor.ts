@@ -19,6 +19,7 @@
 import type { ClassifiedIntent, IntentExecutionResult, IntentExecutor } from "./IntentTypes";
 import type { ExecutionResult } from "@/lib/runtime-engine/RuntimeTypes";
 import type { ExecutionOutcome } from "@/lib/execution-intelligence";
+import { outcomeToExecutionResult } from "@/lib/execution-intelligence/outcomeAdapter";
 
 interface ReasoningPlanResult {
   response: string;
@@ -111,7 +112,7 @@ export class ConnectorGoalIntentExecutor implements IntentExecutor {
           };
           const outcome = await eiRuntime.processCapability(baseRequest);
           if (outcome.status === "success") {
-            executionResult = _outcomeToExecutionResult(outcome, execId);
+            executionResult = outcomeToExecutionResult(outcome, execId);
             usedEI = true;
           } else if (outcome.status === "needs_confirmation") {
             // EI-04 (irreversivel): pedir confirmacao ao usuario via
@@ -127,7 +128,7 @@ export class ConnectorGoalIntentExecutor implements IntentExecutor {
             if (confirmResult.confirmed) {
               const confirmedOutcome = await eiRuntime.processCapability({ ...baseRequest, confirmedByUser: true });
               if (confirmedOutcome.status === "success") {
-                executionResult = _outcomeToExecutionResult(confirmedOutcome, execId);
+                executionResult = outcomeToExecutionResult(confirmedOutcome, execId);
                 usedEI = true;
               } else {
                 // Confirmado mas dispatch falhou: nao cair no fallback (evita auto-send duplicado).
@@ -213,38 +214,4 @@ export class ConnectorGoalIntentExecutor implements IntentExecutor {
   }
 }
 
-/**
- * EI-04: mapeia um ExecutionOutcome bem-sucedido (dispatch via processCapability)
- * de volta ao shape ExecutionResult que o ConnectorResultSynthesizer consome. So
- * chamado quando outcome.status === "success" (safe/reversible despachados pelo
- * Safety Gate). needs_confirmation/blocked/failed nao chegam aqui — o executor
- * cai no realEngine.execute original (automacao irreversivel preservada).
- */
-function _outcomeToExecutionResult(outcome: ExecutionOutcome, executionId: string): ExecutionResult {
-  const now = Date.now();
-  const durationMs = outcome.durationMs ?? 0;
-  return {
-    executionId: outcome.executionId ?? executionId,
-    planId: "ei-adapter",
-    goalId: `ei-${outcome.executionId ?? executionId}`,
-    status: "completed",
-    steps: [
-      {
-        stepId: "ei-step-1",
-        connector: outcome.connectorId,
-        capability: outcome.capability,
-        status: "completed",
-        output: outcome.output,
-        error: null,
-        startedAt: now - durationMs,
-        finishedAt: now,
-        durationMs,
-        attempt: 1,
-      },
-    ],
-    startedAt: now - durationMs,
-    finishedAt: now,
-    durationMs,
-    errors: [],
-  };
-}
+// _outcomeToExecutionResult extraido para src/lib/execution-intelligence/outcomeAdapter.ts (EI-04 shared).
