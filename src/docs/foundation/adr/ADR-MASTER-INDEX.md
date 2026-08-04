@@ -269,7 +269,26 @@ ADR-007 (Reasoning Engine)
 
 ---
 
+---
+
+### ADR-015 — Execution Intelligence Engine
+
+| Campo | Valor |
+|---|---|
+| **ADR-ID** | ADR-015 |
+| **Status** | Proposed |
+| **RFC Origem** | RFC-008 |
+| **EPIC** | EPIC-019 |
+| **Prioridade** | ALTA |
+| **Sprints afetadas** | EI-01, EI-02, EI-03, EI-04, EI-05, EI-06, EI-07 |
+| **Arquivo** | `src/docs/foundation/adr/ADR-015.md` |
+
+**Resumo:** Introduz a cadeia `Runtime.processCapability() → Execution Intelligence → Safety Gate → Execution Dispatcher (privado) → Connector`. Componente unico encapsulado entre o Capability Registry e o Execution Dispatcher, com 7 modulos internos. Filosofia: produzir a melhor execucao possivel (nao apenas impedir erros). Separacao Intelligence × Safety Gate (eixos de mudanca ortogonais: dominio, risco, infraestrutura). Reversibility Classification (`safe` / `reversible` / `irreversible`) no metadata de cada connector. Dispatcher deixa de ser API publica — bypass impossibilitado por construcao (closure-local, nunca exportado). Contrato uniforme dos 3 componentes desde EI-02 para extracao futura para Pipeline generica ser plug-in (regra de disparo: 4º estagio concreto). Rejeita criar novo Engine independente (God Component, "dois runtimes"), Safety Gate embutido no Dispatcher (acumula responsabilidade) e Pipeline generica prematura (over-engineering). Reusa o padrao "shell fino + modulos internos" ja vivo em MicrosoftGraphConnector e WhatsAppConnector.
+
+---
+
 *SPR-ADR-01 · 2026-07-11 · Engineering First*
 *Atualizado em 2026-08-02 — ADR-012 Watch Engine adicionado*
 *Atualizado em 2026-08-03 — ADR-013 Microsoft Graph Expansion adicionado*
 *Atualizado em 2026-08-04 — ADR-014 Microsoft Graph Provider Router adicionado*
+*Atualizado em 2026-08-04 — ADR-015 Execution Intelligence Engine adicionado*

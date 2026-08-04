@@ -986,3 +986,108 @@ Frontend (MicrosoftAuthSession.js)
 - `src/lib/connector-runtime/connectors/microsoft-providers/OfficialGraphProvider.ts` — provider que chama Graph via token do workspaceId ativo.
 
 ---
+
+### 2026-08-04 — Execution Intelligence Engine: Arquitetura Aprovada (RFC-008 + ADR-015)
+
+**Doc oficial:** `src/docs/foundation/rfc/RFC-008-Execution-Intelligence-Engine.md` + `src/docs/foundation/adr/ADR-015.md`
+
+**Status:** APENAS DOCUMENTACAO. Nenhum codigo TypeScript/JavaScript alterado ou criado nesta sessao. Sera implementado em 7 sprints (EI-01 a EI-07), cada um aditivo e reversivel.
+
+**Contexto:** O MemoryOS fara emissoes na vida real (passagem aerea via Travellink, envio de email via Gmail/Microsoft, futuros PIX). A protecao de acoes irreversiveis e um requisito de primeira classe. Hoje toda execucao de capability passa por `Planner → Capability Registry → RuntimeEngine → ExecutionDispatcher → UCRBridge → Connector` sem nenhuma camada que investigue, enriqueca ou proteja a execucao antes de despachar.
+
+**Arquitetura aprovada (cadeia nova):**
+
+```
+Intent Layer
+  ↓
+Planner
+  ↓
+Capability Registry
+  ↓
+Runtime.processCapability()         (Facade publica unica)
+  ↓
+Execution Intelligence               (enriquece — 7 modulos internos encapsulados)
+  ↓ PreparedExecution
+Safety Gate                          (freia o irreversivel)
+  ↓ ApprovedExecution
+Execution Dispatcher (privado)       (so despacha — igual ao atual, intocados)
+  ↓
+Connector
+```
+
+**Decisoes arquiteturais (8):**
+
+1. **Componente encapsulado** entre Capability Registry e Execution Dispatcher. Nao e novo Engine, nao e novo Runtime. Externamente 1 novo componente; internamente 7 modulos.
+2. **Separacao Intelligence × Safety Gate** — camadas distintas, eixos de mudanca ortogonais (dominio, risco, infraestrutura). Intelligence produz a melhor execucao possivel; Safety freia o irreversivel.
+3. **Runtime como Facade publica unica** — `Runtime.processCapability()`. Dispatcher deixa de ser API publica, vira implementacao interna. Bypass impossibilitado por construcao (closure-local, nunca exportado), nao por convencao.
+4. **Contrato uniforme dos 3 componentes** desde EI-02 — assinatura compativel com Pipeline futura. Extracao para Pipeline generica sera plug-in, nao refatoracao profunda.
+5. **Cadeia direta hoje, Pipeline so quando necessario** — regra de disparo: 4º estagio concreto, ou mesmo interceptor em 2+ estagios, ou ordem muda por config. Ate la, cadeia direta. Evita over-engineering (3 estagios nao justificam framework).
+6. **Reversibility Classification** — toda capability declara `safe` / `reversible` / `irreversible` no metadata. Safety so freia `irreversible`.
+7. **3 travas de balanceamento** (Convergence Budget, API/LLM Budget, Dependency Graph aciclico) — controles internos do Execution Intelligence, aplicados a partir de EI-07.
+8. **Renomeacao do metodo publico** — `processCapability`, nao `executeCapability`. A capability pode nunca chegar a execucao (Intelligence pode descobrir info faltante e so responder ao usuario).
+
+**Alternativas rejeitadas (documentadas em ADR-015):**
+- (A) Execution Intelligence Engine independente — rejeitada: quebra SRP do Dispatcher, cria "dois runtimes", 2 novas entidades externas.
+- (B) Safety Gate embutido no Dispatcher — rejeitada: Dispatcher volta a acumular responsabilidades (God Component).
+- (C) Pipeline generica desde o inicio — rejeitada: over-engineering, 3 estagios nao justificam framework.
+- (D) Dispatcher publicamente callable — rejeitada: protecao vira convencao, nao garantia; bypass possivel.
+
+**Invariants arquiteturais (nao-negociaveis):**
+1. Bypass impossivel por construcao — Dispatcher e closure-local, nunca exportado.
+2. Nenhum exempt caller — unica forma de executar capability e pela cadeia completa, sem excecoes.
+3. `processCapability` e puro wiring — 3 chamadas, zero logica.
+4. Contrato uniforme desde EI-02.
+5. Aditivo apenas — nada apagado ate EI-04 conclusiva; caminho antigo intocado ate callers migrarem.
+
+**Reuso de padrao ja vivo:**
+- `MicrosoftGraphConnector` (shell) + 11 Capability Executors em `microsoft/`
+- `WhatsAppConnector` (shell) + 3 providers + observation bridge
+- `GoalCapabilityRegistry` (registry + mappings registrados no load)
+A Execution Intelligence segue o mesmo padrao: shell fino que orquestra 7 modulos internos, cada um testavel isoladamente, cada um registravel/desativavel (Open/Closed). Nao inventa padrao novo.
+
+**Localizacao dos arquivos (futuro):**
+```
+src/lib/execution-intelligence/                 (NOVO diretorio — em src/lib/, NAO em src/runtime/ ou src/sdk/)
+  ExecutionTypes.ts
+  Runtime.ts
+  ExecutionIntelligence.ts
+  SafetyGate.ts
+  investigators/
+    InvestigatorRegistry.ts
+    GenericFieldValidator.ts                     (EI-06)
+    DateFormatValidator.ts                       (EI-06)
+    TravelInvestigator.ts                        (EI-07, futuro)
+    EmailInvestigator.ts                          (EI-07, futuro)
+  policies/
+    PolicyRegistry.ts
+    ReversibilityPolicy.ts                       (EI-03)
+    MandatoryFieldsPolicy.ts                     (EI-03, opcional)
+```
+
+**Fases de implementacao (7 sprints):**
+- EI-01: Reversibility Metadata (zero risco)
+- EI-02: Tipos + Runtime Facade (zero risco, nenhum caller)
+- EI-03: Safety Gate (baixo risco, so ativa para quem migra)
+- EI-04: Migracao gradual de callers (baixo risco, 1 caller por vez, reversivel)
+- EI-05: Execution Intelligence pass-through (zero risco)
+- EI-06: Investigators genericos (baixo risco, registravel/desativavel)
+- EI-07: Investigators de dominio + iteracao balanceada (medio risco — gatilho: EI-06 em producao sem incidentes)
+
+EI-07 e onde o valor diferencial real aparece. EI-01 a EI-06 sao fundacao incremental.
+
+**Nao-quebra verificada:**
+- `ExecutionDispatcher` existente e per-step e continua intocado. O "Dispatcher" da nova cadeia e o RuntimeEngine + Dispatcher existentes, que viram privado por convencao de chamada apos EI-04. Zero renomeacao, zero reescrita.
+- `UCRBridge` (Event Layer), `PipelineObservationBridge` (Observation Layer), `ConnectorBootstrap`, `GoalCapabilityRegistry` — todos intocados.
+- Caminho antigo (RuntimeEngine direto) segue 100% intocado ate EI-04.
+- Cada migracao de caller (EI-04) e independente e reversivel.
+
+**NAO foi feito (explicitamente fora do escopo desta sessao):**
+- Nenhum codigo TypeScript/JavaScript alterado ou criado (esta sessao e so documentacao).
+- Nenhuma UI de chat/Connections tocada.
+- Nenhum teste de paridade executado (seria EI-02+).
+- Pipeline generica (so quando 4º estagio concreto aparecer).
+- Interceptors (so quando mesmo interceptor precisar rodar em 2+ estagios).
+
+**Proximo passo:** aguardar autorizacao para iniciar **EI-01 (Reversibility Metadata)** — campo `reversibility` no metadata de cada connector existente. Zero risco, fundacao para Safety Gate.
+
+---
