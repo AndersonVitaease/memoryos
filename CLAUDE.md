@@ -1449,3 +1449,29 @@ O `ConnectorMetadata.capabilities` e `string[]` (contrato existente, validado no
 - O gatilho do decompositor no pipeline precisa ser tao permissivo quanto o decompositor — senao o decompositor correto nunca roda. Linha em branco e um sinal forte o suficiente pra tentar (o decompositor e barato e idempotente: se nao splita, cai no fluxo normal).
 
 ---
+
+### 2026-08-04 — GitHub Connector Upgrade 3 (Webhooks): Receptor + ops de registro
+
+**Doc completa:** `src/docs/01-operational-knowledge/SESSION-2026-08-04-GITHUB-CONNECTOR-UPGRADE3-WEBHOOKS.md`
+
+**Status:** Upgrade 3 EXECUTADO. Fecha o plano completo do conector GitHub (multi-conta + 6 upgrades). Receptor de webhook publico valida assinatura HMAC e persiste SystemEvent; conector ganha ops de registro/listagem/remocao de webhook (reversiveis).
+
+**Arquivo novo (1):**
+- `base44/functions/githubWebhook/entry.ts` — endpoint PUBLICO (sem auth de usuario, chamado pelo GitHub). Valida `x-hub-signature-256` (HMAC-SHA256) contra `GITHUB_WEBHOOK_SECRET` via Web Crypto (importKey + sign + comparacao constant-time). Aceita eventos `push`, `pull_request`, `issues`, `release`, `workflow_run` (outros passam como genericos). Persiste um `SystemEvent` resumido (type `github_webhook_<event>`, source `GitHubWebhook`, correlationId = delivery ID, payload com repo/sender/dados do evento) para o WatchEngine/CognitiveEventBus consumir. Responde 200 em <10s (requisito do GitHub); mesmo em erro responde 200 pra evitar retransmissao infinita. Sem secret configurado → 503.
+
+**Arquivos editados (3):**
+1. `src/lib/connector-runtime/connectors/github/GitHubWriteOps.ts` — adicionadas 3 ops ao `WRITE_OPS`: `repos.createWebhook` (POST /repos/{o}/{r}/hooks, config {url, content_type:json, secret}), `repos.listWebhooks` (GET), `repos.deleteWebhook` (DELETE por hook_id). Escopo necessario: `admin:repo_hook` (403 claro se faltar).
+2. `src/lib/connector-runtime/connectors/GitHubConnector.ts` — metadata.capabilities adiciona as 3 ops; `capabilityReversibility` marca `repos.createWebhook` e `repos.deleteWebhook` como `reversible` (webhooks podem ser removidos a qualquer momento; `listWebhooks` e leitura = safe implicito).
+3. `src/docs/sprints/GITHUB-CONNECTOR-MULTIACCOUNT-AND-UPGRADE-PLAN.md` — status atualizado para TODOS CONCLUÍDOS (Upgrade 3 agora EXECUTADO, nao mais PROPOSTO).
+
+**Para ativar (passos manuais do usuario):**
+1. Configurar `GITHUB_WEBHOOK_SECRET` em Dashboard > Settings > Environment Variables (NAO esta na lista de secrets atuais — adicionar manualmente). Nao usado `set_secrets` (dead-end: usuario rejeitou configuracao automatica anteriormente).
+2. Pegar URL publica da funcao `githubWebhook` em Dashboard > Code > Functions.
+3. Registrar o webhook num repo via `repos.createWebhook` (passando a mesma URL + secret) ou direto nas settings do repo no GitHub.
+4. Disparar um evento (push, abrir PR) — o receptor valida a assinatura e grava um `SystemEvent` que aparece na timeline.
+
+**Nao-quebra:** receptor e endpoint novo (nao afeta fluxos existentes); ops de webhook sao novos cases no dispatch (leituras/escritas existentes intocadas); `GITHUB_WEBHOOK_SECRET` ausente so rejeita webhooks recebidos (503), nao afeta OAuth multi-conta.
+
+**Estado final do conector GitHub:** TODOS os 6 upgrades do plano concluidos — (1) Escritas, (2) Token Bucket por conta, (3) Webhooks, (4) Code Search proxy, (5) Retry com backoff, (6) Actions/Releases. Multi-conta OAuth ativa desde sprint anterior.
+
+---
