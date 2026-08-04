@@ -52,7 +52,10 @@ export default function MicrosoftOAuthCallback() {
         returnedState: state,
       }, window.location.origin);
       setStatus("success");
-      setTimeout(() => window.close(), 800);
+      // FIX (diagnostico 2026-08-04): aumentado de 800ms pra 2500ms —
+      // possivel corrida entre o fechamento da popup e o postMessage
+      // chegando na janela principal (COOP pode atrasar a entrega).
+      setTimeout(() => window.close(), 2500);
     } else {
       // Not in popup — redirect back with params in hash for SPA handling
       setStatus("no-opener");
