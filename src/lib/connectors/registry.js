@@ -1,4 +1,5 @@
 import { isConnected } from "@/lib/google-auth/GoogleAuthSession";
+import { isConnected as isMicrosoftConnected } from "@/lib/microsoft-auth/MicrosoftAuthSession";
 
 /**
  * Connector Registry
@@ -28,6 +29,20 @@ export const CONNECTOR_REGISTRY = [
     capabilities: ["read_email", "send_email", "search_email"],
     privacyNote:
       "Acessa seus e-mails do Gmail. Permissão: ler e enviar mensagens. Você pode desconectar a qualquer momento.",
+  },
+
+  {
+    id: "microsoft365",
+    name: "Outlook (Microsoft 365)",
+    service: "email",
+    description: "Ler e enviar e-mails através da sua conta Outlook/Microsoft 365.",
+    category: "communication",
+    beta: true,
+    connected: false,
+    intents: ["outlook", "microsoft", "microsoft 365", "office 365", "hotmail", "caixa de entrada do outlook", "email do outlook"],
+    capabilities: ["mail.list", "mail.search", "mail.read", "mail.send"],
+    privacyNote:
+      "Acessa seus e-mails do Outlook. Permissão: ler e enviar mensagens. Você pode desconectar a qualquer momento.",
   },
 
   // === CONECTORES FUTUROS (não disponíveis no Beta) ===
@@ -112,6 +127,7 @@ export const CONNECTOR_REGISTRY = [
 // Os demais (whatsapp, shopify, erp) não têm mecanismo de autenticação implementado
 // ainda — para esses, connected:false continua correto, não é bug.
 const _GOOGLE_AUTH_CONNECTOR_IDS = new Set(["gmail", "googlecalendar", "googledrive"]);
+const _MICROSOFT_AUTH_CONNECTOR_IDS = new Set(["microsoft365"]);
 
 /**
  * Retorna apenas conectores disponíveis no Beta.
@@ -138,8 +154,9 @@ export function getConnector(id) {
 export function getConnectorsForService(serviceId) {
   return CONNECTOR_REGISTRY
     .filter((c) => c.service === serviceId && c.beta)
-    .map((c) => _GOOGLE_AUTH_CONNECTOR_IDS.has(c.id)
-      ? { ...c, connected: isConnected("default") }
-      : c
-    );
+    .map((c) => {
+      if (_GOOGLE_AUTH_CONNECTOR_IDS.has(c.id)) return { ...c, connected: isConnected("default") };
+      if (_MICROSOFT_AUTH_CONNECTOR_IDS.has(c.id)) return { ...c, connected: isMicrosoftConnected("default") };
+      return c;
+    });
 }
