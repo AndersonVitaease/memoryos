@@ -172,6 +172,53 @@ const _builtins: CapabilityMapping[] = [
     ],
   },
 
+  // ── Microsoft 365 / Outlook (2026-08-04, preenche gap achado em producao —
+  // conector existia e estava conectado, mas sem mapeamento de goal nenhum,
+  // entao o Planner nunca conseguia rotear pra ele) ───────────────────────────
+  // connector id: "microsoft365"  (MicrosoftGraphConnector.ts)
+  {
+    goalType: "microsoft365.readInbox" as GoalType,
+    descriptors: [
+      { connector: "microsoft365", capability: "mail.list", params: {} },
+    ],
+  },
+  {
+    goalType: "microsoft365.searchMessages" as GoalType,
+    descriptors: [
+      { connector: "microsoft365", capability: "mail.search", params: {} },
+    ],
+  },
+  {
+    goalType: "microsoft365.readMessage" as GoalType,
+    descriptors: [
+      { connector: "microsoft365", capability: "mail.read", params: {} },
+    ],
+  },
+  {
+    goalType: "microsoft365.sendEmail" as GoalType,
+    descriptors: [
+      { connector: "microsoft365", capability: "mail.send", params: {} },
+    ],
+  },
+  {
+    goalType: "microsoft365.listEvents" as GoalType,
+    descriptors: [
+      { connector: "microsoft365", capability: "calendar.list", params: {} },
+    ],
+  },
+  {
+    goalType: "microsoft365.createEvent" as GoalType,
+    descriptors: [
+      { connector: "microsoft365", capability: "calendar.create", params: {} },
+    ],
+  },
+  {
+    goalType: "microsoft365.listFiles" as GoalType,
+    descriptors: [
+      { connector: "microsoft365", capability: "files.list", params: {} },
+    ],
+  },
+
   // ── Calendar ───────────────────────────────────────────────────────────────
   // connector id: "google-calendar"  (GoogleCalendarConnector.ts:115)
   // capabilities: "calendar.events.list", "calendar.events.get",
