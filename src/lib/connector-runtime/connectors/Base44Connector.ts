@@ -110,6 +110,8 @@ const CAPABILITIES: ConnectorCapability[] = [
   { id: "ai.generateSpeech",     type: "WRITE", description: "Text-to-speech (TTS) audio generation",    requiredAuth: true,  readOnly: false, paginated: false },
   { id: "files.upload",          type: "WRITE", description: "Upload file to app storage",              requiredAuth: true,  readOnly: false, paginated: false },
   { id: "files.extractData",     type: "READ",  description: "Extract structured data from uploaded file", requiredAuth: true, readOnly: true,  paginated: false },
+  { id: "ai.generateVideo",      type: "WRITE", description: "Generate AI video (Veo) from prompt",    requiredAuth: true,  readOnly: false, paginated: false },
+  { id: "ai.transcribeAudio",     type: "WRITE", description: "Transcribe audio file to text (Whisper)", requiredAuth: true, readOnly: false, paginated: false },
   { id: "email.send",            type: "WRITE", description: "Send email to registered app user",       requiredAuth: true,  readOnly: false, paginated: false },
   // B44-EXP-03 — User Management (RFC-009/ADR-016)
   // SDK: base44.users.inviteUser / base44.entities.User.list / base44.auth.updateMe / base44.auth.logout
@@ -186,6 +188,8 @@ export class Base44Connector implements IConnector, IProductionConnector {
         "ai.generateSpeech": "safe" as Reversibility,
         "files.upload": "reversible" as Reversibility,
         "files.extractData": "safe" as Reversibility,
+        "ai.generateVideo": "irreversible" as Reversibility,   // custo alto (5 credits/s) + asset persistente
+        "ai.transcribeAudio": "reversible" as Reversibility,
         "email.send": "irreversible" as Reversibility,
         // B44-EXP-03 — User Management. invite/updateMe/logout = reversible;
         // list = safe (leitura). User records NAO sao criaveis (platform limit —
@@ -876,6 +880,30 @@ export class Base44Connector implements IConnector, IProductionConnector {
         const r = res as any;
         if (!r || r.status === "error") { this.internalMetrics.invalidResponses++; return fail(`Extraction failed: ${r?.details ?? "unknown"}`, "external", start, eid, logs, operation); }
         return ok({ status: r.status, output: r.output ?? null }, start, eid, logs, operation);
+      }
+
+      case "ai.generateVideo": {
+        const prompt = typeof payload.prompt === "string" ? payload.prompt : null;
+        if (!prompt) return fail("payload.prompt (string) required", "validation", start, eid, logs, operation);
+        const req: Record<string, unknown> = { prompt };
+        if (typeof payload.duration === "number" && [4, 6, 8].includes(payload.duration)) req.duration = payload.duration;
+        if (payload.aspect_ratio === "16:9" || payload.aspect_ratio === "9:16") req.aspect_ratio = payload.aspect_ratio;
+        if (typeof payload.generate_audio === "boolean") req.generate_audio = payload.generate_audio;
+        let res: unknown;
+        try { res = await sdk.integrations.Core.GenerateVideo(req); }
+        catch (err) { this.internalMetrics.externalFailures++; return fail(`GenerateVideo threw: ${err instanceof Error ? err.message : err}`, "external", start, eid, logs, operation); }
+        const r = (res ?? {}) as Record<string, unknown>;
+        return ok({ generated: true, url: typeof r.url === "string" ? r.url : null, result: r }, start, eid, logs, operation);
+      }
+
+      case "ai.transcribeAudio": {
+        const audio_url = typeof payload.audio_url === "string" ? payload.audio_url : null;
+        if (!audio_url) return fail("payload.audio_url (string, file_url from UploadFile) required", "validation", start, eid, logs, operation);
+        let res: unknown;
+        try { res = await sdk.integrations.Core.TranscribeAudio({ audio_url }); }
+        catch (err) { this.internalMetrics.externalFailures++; return fail(`TranscribeAudio threw: ${err instanceof Error ? err.message : err}`, "external", start, eid, logs, operation); }
+        const transcript = typeof res === "string" ? res : ((res as any)?.transcript ?? null);
+        return ok({ transcribed: true, transcript, result: res ?? null }, start, eid, logs, operation);
       }
 
       case "email.send": {

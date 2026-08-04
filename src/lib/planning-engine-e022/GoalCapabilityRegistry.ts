@@ -807,6 +807,18 @@ const _builtins: CapabilityMapping[] = [
     ],
   },
   {
+    goalType: "base44.ai.generateVideo" as GoalType,
+    descriptors: [
+      { connector: "base44", capability: "ai.generateVideo", params: {} },
+    ],
+  },
+  {
+    goalType: "base44.ai.transcribeAudio" as GoalType,
+    descriptors: [
+      { connector: "base44", capability: "ai.transcribeAudio", params: {} },
+    ],
+  },
+  {
     goalType: "base44.auth.logout" as GoalType,
     descriptors: [
       { connector: "base44", capability: "auth.logout", params: {} },
