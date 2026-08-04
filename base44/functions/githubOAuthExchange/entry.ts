@@ -7,23 +7,28 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.38';
 
 Deno.serve(async (req) => {
+  let phase = 'INIT';
   try {
+    phase = 'AUTH';
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
+    phase = 'PARSE_BODY';
     const body = await req.json().catch(() => ({}));
     const { code, redirectUri, workspaceId = 'default' } = body;
     if (!code || !redirectUri) {
       return Response.json({ error: 'Missing code or redirectUri' }, { status: 400 });
     }
 
+    phase = 'ENV_VARS';
     const clientId = Deno.env.get('GITHUB_CLIENT_ID');
     const clientSecret = Deno.env.get('GITHUB_CLIENT_SECRET');
     if (!clientId || !clientSecret) {
       return Response.json({ error: 'GitHub OAuth not configured (GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET)' }, { status: 500 });
     }
 
+    phase = 'TOKEN_EXCHANGE';
     const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -44,12 +49,14 @@ Deno.serve(async (req) => {
 
     const { access_token, scope } = tokenData;
 
+    phase = 'FETCH_PROFILE';
     const profileRes = await fetch('https://api.github.com/user', {
       headers: { Authorization: `Bearer ${access_token}`, Accept: 'application/vnd.github+json' },
     });
     const profile = await profileRes.json();
     const accountLogin = profile.login ?? '';
 
+    phase = 'ENTITY_FILTER';
     const existing = await base44.asServiceRole.entities.GitHubOAuthToken.filter({
       user_id: user.id,
       workspace_id: workspaceId,
@@ -62,6 +69,7 @@ Deno.serve(async (req) => {
       scopes: scope ?? '',
       updated_at: new Date().toISOString(),
     };
+    phase = 'ENTITY_WRITE';
     if (existing.length > 0) {
       await base44.asServiceRole.entities.GitHubOAuthToken.update(existing[0].id, record);
     } else {
@@ -77,6 +85,6 @@ Deno.serve(async (req) => {
       name: profile.name ?? '',
     });
   } catch (error) {
-    return Response.json({ error: (error as Error).message }, { status: 500 });
+    return Response.json({ error: `[${phase}] ${(error as Error).message}` }, { status: 500 });
   }
 });

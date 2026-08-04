@@ -26,14 +26,31 @@ const REPOS_KEY = "memoryos_gh_selected_repos";
 const _tokenStore = new Map(); // workspaceId -> { accessToken }
 
 async function invokeFn(name, payload) {
-  const res = await base44.functions.invoke(name, payload ?? {});
-  const d = res.data ?? res;
-  if (d?.error) {
-    const err = new Error(d.error);
-    err._backendError = d.error;
+  try {
+    const res = await base44.functions.invoke(name, payload ?? {});
+    const d = res.data ?? res;
+    if (d?.error) {
+      const err = new Error(d.error);
+      err._backendError = d.error;
+      throw err;
+    }
+    return { data: d };
+  } catch (e) {
+    // Surface the backend error message instead of the generic Axios
+    // "Request failed with status code 500". The real message lives in
+    // e.response.data.error (HTTP error) or e.response.data (raw).
+    const respData = e?.response?.data;
+    const realMsg =
+      (typeof respData === 'string' && respData) ||
+      respData?.error ||
+      (respData && JSON.stringify(respData)) ||
+      e?.message ||
+      'Erro desconhecido';
+    const err = new Error(realMsg);
+    err._backendError = realMsg;
+    err._status = e?.response?.status ?? null;
     throw err;
   }
-  return { data: d };
 }
 
 export const BASE_SCOPES = ['repo', 'read:org', 'read:user'];
