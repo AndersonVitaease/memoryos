@@ -224,18 +224,11 @@ export default function PdfToolsButton({ doc, allPdfs = [], onNotification }) {
   // OCR por visao: envia o PDF original diretamente ao LLM de visao (Gemini suporta PDFs nativamente)
   const runOcrFallback = async () => {
     const llmRes = await base44.integrations.Core.InvokeLLM({
-      prompt: "Você é um motor de OCR. Analise este documento PDF e extraia TODO o texto visível em cada página, preservando a estrutura, parágrafos, tabelas e ordem de leitura. Se o PDF tiver páginas escaneadas/imagem, faça OCR delas. Retorne apenas o texto extraído, sem comentários.",
+      prompt: "Extraia todo o texto visível deste PDF, página por página, preservando parágrafos e ordem de leitura. Retorne apenas o texto.",
       file_urls: [doc.file_url],
       model: "gemini_3_flash",
-      response_json_schema: {
-        type: "object",
-        properties: {
-          text: { type: "string", description: "Todo o texto extraído do documento, página por página" },
-        },
-        required: ["text"],
-      },
     });
-    return (llmRes?.text || "").trim();
+    return (typeof llmRes === "string" ? llmRes : (llmRes?.text || "")).trim();
   };
 
   const isBusy = !!busy;
