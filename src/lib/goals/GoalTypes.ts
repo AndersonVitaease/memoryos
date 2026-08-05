@@ -42,6 +42,8 @@ export type GoalType =
   // Memory
   | "memory.query"
   | "memory.summarize"
+  // Adaptive Process (AP-05 / RFC-010)
+  | "deepResearch"
   // General
   | "general.conversation"
   | "general.webSearch"    // <--- ADICIONADO! Permite pesquisar na web

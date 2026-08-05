@@ -478,6 +478,33 @@ const _builtins: GoalDefinition[] = [
     extractParams: () => ({}),
   },
 
+  // ── Adaptive Process (Deep Research) — AP-05 (RFC-010/ADR-017) ─────────────
+  // Registrado ANTES do OpenRouter para vencer "pesquisa aprofundada" (que
+  // antes roteava para openrouter.chatCompletion — um unico call LLM, sem loop
+  // reflexivo). Deep Research e o handler correto: plan -> invoke -> reflect
+  // -> synthesize com sub-capabilities correlacionadas via parentExecutionId.
+  // Demais sinais do OpenRouter nao colidem → roteiam identico (paridade).
+  {
+    type: "deepResearch" as GoalType,
+    namespace: "adaptive-process",
+    description: "Deep Research — investigacao aprofundada multi-etapa (Adaptive Process)",
+    signals: [
+      "pesquise a fundo", "investigue a fundo",
+      "pesquisa aprofundada", "pesquisa profunda",
+      "investigacao aprofundada",
+      "deep research",
+    ],
+    extractParams: (msg: string) => {
+      const stripped = msg
+        .replace(/\b(pesquise a fundo|investigue a fundo|pesquisa aprofundada|pesquisa profunda|investigacao aprofundada|deep research)\b/gi, "")
+        .replace(/\b(sobre|about|on|de|do|da)\b/gi, " ")
+        .replace(/[?!.,;:]/g, "")
+        .replace(/\s{2,}/g, " ")
+        .trim();
+      return { query: stripped || msg.trim() };
+    },
+  },
+
   // ── OpenRouter ─────────────────────────────────────────────────────────────
   {
     type: "openrouter.listModels" as GoalType,
@@ -520,7 +547,7 @@ const _builtins: GoalDefinition[] = [
       "analisar planilha", "analisar dados",
       "comparar opções", "qual a melhor opção",
       "verificar fato", "isso é verdade", "fact check",
-      "pesquisa aprofundada", "pesquise sobre",
+      "pesquise sobre",
       "descreva esta imagem", "o que tem nesta imagem",
       "leia este texto na imagem", "ocr",
       "escreva uma proposta comercial",
