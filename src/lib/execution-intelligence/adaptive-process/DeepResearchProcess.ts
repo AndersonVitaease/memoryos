@@ -34,14 +34,24 @@ class DeepResearchProcess implements AdaptiveProcess {
 
   async plan(ctx: AdaptiveProcessContext): Promise<readonly ResearchStep[]> {
     const prompt = `Voce e o planejador de uma pesquisa aprofundada. Dada a query do usuario,
-identifique 1-5 sub-pesquisas necessarias para respondê-la com suficiencia.
+identifique 1-5 sub-pesquisas necessarias para responde-la com suficiencia.
 Responda APENAS um JSON array de objetos {connectorId, capability, params, rationale}.
 
-Capabilities disponiveis para busca:
-- serperSearch (web): {query} — busca web generica
-- github.searchCode (code): {query} — busca de codigo em repos
-- github.getFile (code): {owner, repo, path} — le arquivo de repo
-- google-drive.searchFiles (docs): {query} — busca documentos do Drive do usuario
+Capabilities disponiveis para busca (USE APENAS ESTAS — todas sao connectors reais e vivos):
+- base44 (web grounding): {capability: "ai.invokeLLM", params: {prompt: "...", add_context_from_internet: true}} — busca web generica com Gemini + Google Search. Use para perguntas factuais, localizar repos, verificar existencia publica.
+- github (code): {capability: "files.get", params: {owner, repo, path}} — le um arquivo especifico de um repo GitHub publico.
+- github (code): {capability: "search.symbol", params: {query}} — busca de codigo/simbolos em repos.
+- google-drive (docs): {capability: "drive.files.search", params: {query}} — busca documentos do Drive do usuario.
+
+REGRAS CRITICAS:
+1. Se a query menciona um repo GitHub no formato "owner/repo" (ex: "newerton/mcp-mercado-livre"),
+   extraia owner e repo e SEMPRE inclua passos para ler os arquivos principais:
+   - {connectorId: "github", capability: "files.get", params: {owner, repo, path: "README.md"}}
+   - {connectorId: "github", capability: "files.get", params: {owner, repo, path: "package.json"}}
+   Nunca conclua que um repo e "privado/inacessivel" sem antes tentar ler o README.md.
+2. Inclua pelo menos um passo de web grounding (base44.ai.invokeLLM com add_context_from_internet: true)
+   para corroborar informacoes factuais sobre o topico da query.
+3. NAO use capabilities que nao estao listadas acima (ex: serperSearch, mcpClientCall). Elas nao existem como connector e falham.
 
 Query do usuario: "${ctx.query}"
 
@@ -105,10 +115,29 @@ Responda JSON array, sem texto adicional.`;
     const successes = results.filter((r) => r.status === "success").length;
     const coverage = steps.length > 0 ? successes / steps.length : 0;
 
+    // AP-refine: alimenta o LLM com o CONTEUDO real das evidencias (truncado), nao
+    // apenas contagens. Sem isto, o LLM nao tem como distinguir "passo falhou por path
+    // errado" de "alvo e inacessivel" — e alucina "privado/sem documentacao".
+    const evidenceSnippet = steps.map((s, i) => {
+      const r = results[i];
+      const out = r.status === "success" && r.output != null
+        ? JSON.stringify(r.output).slice(0, 800)
+        : `(falhou: ${r.message ?? r.status})`;
+      return `[${s.id}] ${s.call.connectorId}.${s.call.capability} -> ${r.status}\n  params: ${JSON.stringify(s.call.params).slice(0, 200)}\n  output: ${out}`;
+    }).join("\n\n");
+
     const prompt = `Avalie a suficiencia de uma pesquisa aprofundada.
 Query original: "${ctx.query}"
 Passos planejados: ${steps.length}
 Passos com sucesso: ${successes}
+
+Evidencias coletadas (truncadas):
+${evidenceSnippet}
+
+Avalie se a query esta GENUINAMENTE respondida com as evidencias acima.
+- Um passo que falhou NAO significa que o alvo e inacessivel — pode ser path errado.
+- Se o README.md de um repo foi lido com sucesso, a existencia e o conteudo do repo sao fato.
+- Nao invente "inacessivel/privado" se alguma evidencia mostra o contrario.
 
 Responda APENAS JSON: {sufficiency: number 0..1, gaps: [string, ...]}
 - sufficiency: 1.0 se a query esta totalmente respondida com os resultados; <0.75 se faltam pecas importantes.
@@ -160,7 +189,12 @@ Evidencias coletadas (JSON):
 ${JSON.stringify(evidence, null, 2)}
 
 Produza um relatorio estruturado em markdown, citando os passos (step-id) ao usar cada evidencia.
-Inclua secao "Lacunas" se houver gaps remanescentes.`;
+REGRAS CRITICAS:
+- Baseie-se APENAS nas evidencias coletadas. Nao invente fatos.
+- Se uma evidencia mostra que o alvo existe e e publico (ex: README.md lido com sucesso), AFIRME isso.
+- NUNCA afirme "privado/inacessivel/sem documentacao" se alguma evidencia (ex: README lido) prova o contrario.
+- Se um passo falhou mas outro obteve o conteudo, priorize o que foi obtido.
+- Inclua secao "Lacunas" apenas se houver gaps remanescentes reais.`;
 
     const res = await base44.integrations.Core.InvokeLLM({ prompt });
     return res as string;
