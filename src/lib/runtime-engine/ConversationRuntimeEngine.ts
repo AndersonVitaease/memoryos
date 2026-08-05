@@ -135,8 +135,13 @@ export class ConversationRuntimeEngine {
 
   // A-01: accept pipelineExecutionId so the Runtime reuses the Pipeline's canonical ID.
   // B-02: accept connectorCtx so real identity propagates to every connector.execute().
-  async execute(plan: ExecutionPlan, pipelineExecutionId?: string, connectorCtx?: ConnectorExecutionContext): Promise<ExecutionWithReport> {
+  async execute(plan: ExecutionPlan, pipelineExecutionId?: string, connectorCtx?: ConnectorExecutionContext, policyOverride?: ExecutionPolicy): Promise<ExecutionWithReport> {
     const t_start = Date.now();
+    // AP-04 (RFC-010/ADR-017): composite capabilities (Adaptive Process) recebem
+    // uma policy estendida (COMPOSITE_EXECUTION_POLICY) — o step unico engloba o
+    // loop reflexivo inteiro. Non-composite: policyOverride undefined → usa
+    // this._policy (paridade ADR-015, comportamento 100% identico ao anterior).
+    const policy = policyOverride ?? this._policy;
 
     // [RUNTIME-PROBE][RTE-01] ConversationRuntimeEngine.execute() entered
     console.log("[RUNTIME-PROBE][RTE-01]", {
@@ -153,7 +158,7 @@ export class ConversationRuntimeEngine {
     });
     // A-01: pass pipelineExecutionId into context so ECF reuses it instead of generating new one.
     // B-02: pass connectorCtx so real identity is stored in RuntimeExecutionContext.
-    const ctx = executionContextFactory.create(plan, this._policy, pipelineExecutionId, connectorCtx);
+    const ctx = executionContextFactory.create(plan, policy, pipelineExecutionId, connectorCtx);
 
     if (!ctx) {
       // Plan failed validation — return a structured failure + empty report.
@@ -190,7 +195,7 @@ export class ConversationRuntimeEngine {
     this._contexts.set(ctx.executionId, ctx);
     ctx.status    = "running";
     ctx.startedAt = Date.now();
-    ctx.timeoutAt = Date.now() + this._policy.timeoutMs;
+    ctx.timeoutAt = Date.now() + policy.timeoutMs;
 
     // ── Single source of truth for executionId ────────────────────────────────
     // ConversationRuntimeEngine is the ONLY component that creates executionIds.
@@ -258,7 +263,7 @@ export class ConversationRuntimeEngine {
           executionId:   ctx.executionId,
           step,
           stepTimeoutMs: Math.min(
-            this._policy.stepTimeoutMs,
+            policy.stepTimeoutMs,
             (ctx.timeoutAt ?? Infinity) - Date.now(),
           ),
           connectorCtx: ctx.connectorCtx,
