@@ -15,6 +15,12 @@
  */
 const BASE_URL = "https://api.firecrawl.dev";
 const TIMEOUT_MS = 60000;
+// Search deve ser rapido (como Serper ~1-2s). Antes usava TIMEOUT_MS (60s)
+// e scrapeOptions markdown completo de cada resultado -> 40s + 1.3MB por
+// busca, travando o chat quando o SearchEngine escalonava pra depth 3
+// (deadline 45s). 15s e suficiente e nunca bloqueia a resposta do chat.
+const SEARCH_TIMEOUT_MS = 15000;
+const SEARCH_MARKDOWN_CAP = 2000;
 const CRAWL_POLL_INTERVAL_MS = 2000;
 const CRAWL_MAX_WAIT_MS = 45000;
 
@@ -26,11 +32,11 @@ function jsonError(status: number, message: string, extra: Record<string, unknow
   return Response.json({ ok: false, error: message, ...extra }, { status });
 }
 
-function withTimeout<T>(p: Promise<T>): Promise<T> {
+function withTimeout<T>(p: Promise<T>, ms: number = TIMEOUT_MS): Promise<T> {
   return Promise.race([
     p,
     new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error("Timeout contacting Firecrawl")), TIMEOUT_MS)
+      setTimeout(() => reject(new Error("Timeout contacting Firecrawl")), ms)
     ),
   ]);
 }
@@ -65,21 +71,30 @@ export default async function (req: Request): Promise<Response> {
           query,
           limit,
           sources: ["web"],
-          scrapeOptions: { formats: ["markdown"] },
         }),
-      }));
+      }), SEARCH_TIMEOUT_MS);
       if (!r.ok) return jsonError(r.status, `Firecrawl search failed: ${(await r.text().catch(() => "")).slice(0, 300)}`);
       const data = await r.json();
       // v2/search retorna {success, data: {web: [...], news: [...], images: [...]}}
       const webResults = Array.isArray(data?.data?.web) ? data.data.web : [];
       const newsResults = Array.isArray(data?.data?.news) ? data.data.news : [];
       const rawItems = [...webResults, ...newsResults];
-      const items = rawItems.map((d: any) => ({
-        title: d?.metadata?.title ?? d?.metadata?.sourceURL ?? "",
-        url: d?.metadata?.sourceURL ?? d?.metadata?.url ?? "",
-        markdown: typeof d?.markdown === "string" ? d.markdown : "",
-        source: "firecrawl_search",
-      }));
+      // v2/search pode retornar campos no top-level (sem scrapeOptions) ou
+      // aninhados em metadata (com scrapeOptions). Aceitar ambos.
+      const items = rawItems.map((d: any) => {
+        const md = typeof d?.markdown === "string" ? d.markdown : "";
+        const title = d?.title ?? d?.metadata?.title ?? "";
+        const url = d?.url ?? d?.metadata?.sourceURL ?? d?.metadata?.url ?? "";
+        // Sem scrapeOptions o markdown vem vazio — usar description como
+        // snippet pra o provider ter algo util em vez de so a URL.
+        const snippet = md.slice(0, SEARCH_MARKDOWN_CAP) || (typeof d?.description === "string" ? d.description : "");
+        return {
+          title,
+          url,
+          markdown: snippet,
+          source: "firecrawl_search",
+        };
+      });
       return Response.json({ ok: true, items, count: items.length, operation: "search" });
     }
 
