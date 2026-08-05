@@ -164,12 +164,37 @@ export default function PdfToolsButton({ doc, allPdfs = [], onNotification }) {
     setOpen(false);
     setBusy("pdfToText");
     try {
-      const data = await callStirling("pdfToText");
-      const text = data.text || "";
-      if (!text.trim()) {
-        notify("O PDF não possui camada de texto (provavelmente é escaneado/imagem). Extração retornou vazio.", "error");
-        return;
+      const res = await base44.functions.invoke("stirlingPdfCall", {
+        operation: "pdfToText",
+        fileUrl: doc.file_url,
+      });
+      const data = res?.data ?? res;
+      const text = data?.text || "";
+
+      // Fallback de OCR por visao: PDF escaneado/imagem ou reparo indisponivel
+      if (!data?.ok || !text.trim()) {
+        if (data?.needOcr) {
+          notify("Sem camada de texto. Aplicando OCR por visão (pode levar alguns segundos)...", "info");
+          const ocrText = await runOcrFallback();
+          if (!ocrText) {
+            notify("OCR por visão não conseguiu extrair texto do PDF.", "error");
+            return;
+          }
+          const blob = new Blob([ocrText], { type: "text/plain;charset=utf-8" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = doc.name.replace(/\.pdf$/i, "") + "_ocr.txt";
+          a.click();
+          URL.revokeObjectURL(url);
+          notify(`Texto extraído por OCR de visão (${ocrText.length} caracteres).`, "success");
+          return;
+        }
+        const extra = data?.repairDetail || data?.extractDetail || data?.detail || "";
+        const detail = extra ? ` (${extra.slice(0, 200)})` : "";
+        throw new Error(`${data?.error || "Falha na extração"}${detail}`);
       }
+
       const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -183,6 +208,23 @@ export default function PdfToolsButton({ doc, allPdfs = [], onNotification }) {
     } finally {
       setBusy(null);
     }
+  };
+
+  // OCR por visao: envia o PDF original diretamente ao LLM de visao (Gemini suporta PDFs nativamente)
+  const runOcrFallback = async () => {
+    const llmRes = await base44.integrations.Core.InvokeLLM({
+      prompt: "Você é um motor de OCR. Analise este documento PDF e extraia TODO o texto visível em cada página, preservando a estrutura, parágrafos, tabelas e ordem de leitura. Se o PDF tiver páginas escaneadas/imagem, faça OCR delas. Retorne apenas o texto extraído, sem comentários.",
+      file_urls: [doc.file_url],
+      model: "gemini_3_flash",
+      response_json_schema: {
+        type: "object",
+        properties: {
+          text: { type: "string", description: "Todo o texto extraído do documento, página por página" },
+        },
+        required: ["text"],
+      },
+    });
+    return (llmRes?.text || "").trim();
   };
 
   const isBusy = !!busy;

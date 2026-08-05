@@ -245,7 +245,8 @@ export default async function (req: Request): Promise<Response> {
     }
 
     // pdfToText: extrair texto (v2.14: /convert/pdf/text exige outputFormat=txt)
-    // Auto-repara se o PDF estiver corrompido/danificado.
+    // Auto-repara se o PDF estiver corrompido/danificado. Se ainda falhar, sinaliza
+    // para o frontend usar o fallback de OCR por visao (needOcr=true).
     if (operation === "pdfToText") {
       const fileUrl = String(body.fileUrl ?? "");
       if (!fileUrl) return jsonError(400, "fileUrl required");
@@ -267,37 +268,33 @@ export default async function (req: Request): Promise<Response> {
       };
 
       let result = await tryExtract(originalBlob);
-      if (!result.ok) {
-        const det = (result.detail || "").toLowerCase();
-        const corrupted = det.includes("corrupt") || det.includes("damag") || det.includes("repair");
-        if (corrupted) {
-          // Tenta reparar e extrair novamente
-          const repForm = new FormData();
-          repForm.append("fileInput", originalBlob, "input.pdf");
-          const repR = await withTimeout(fetch(`${baseUrl}/api/v1/misc/repair`, {
-            method: "POST",
-            headers: { "X-API-KEY": apiKey },
-            body: repForm,
-          }));
-          if (!repR.ok) {
-            const repDetail = (await repR.text().catch(() => "")).slice(0, 400);
-            return jsonError(500, "Reparo falhou no Stirling-PDF.", {
-              repairStatus: repR.status,
-              repairDetail: repDetail,
-            });
-          }
-          const repairedBlob = await repR.blob();
-          result = await tryExtract(repairedBlob);
-          if (result.ok) {
-            return Response.json({ ok: true, text: result.text, repaired: true });
-          }
-          return jsonError(500, "Reparo ok, mas texto ainda nao extraivel (provavelmente PDF escaneado/imagem).", {
-            extractDetail: result.detail,
-          });
-        }
-        return jsonError(result.status || 500, `Stirling pdfToText failed`, { detail: result.detail });
+      if (result.ok && (result.text || "").trim()) {
+        return Response.json({ ok: true, text: result.text });
       }
-      return Response.json({ ok: true, text: result.text });
+
+      // Texto vazio ou erro -> tenta reparar e extrair novamente
+      const repForm = new FormData();
+      repForm.append("fileInput", originalBlob, "input.pdf");
+      const repR = await withTimeout(fetch(`${baseUrl}/api/v1/misc/repair`, {
+        method: "POST",
+        headers: { "X-API-KEY": apiKey },
+        body: repForm,
+      }));
+      if (repR.ok) {
+        const repairedBlob = await repR.blob();
+        result = await tryExtract(repairedBlob);
+        if (result.ok && (result.text || "").trim()) {
+          return Response.json({ ok: true, text: result.text, repaired: true });
+        }
+      }
+
+      // Reparo falhou ou texto ainda vazio -> sinaliza fallback de OCR por visao
+      return Response.json({
+        ok: false,
+        needOcr: true,
+        error: "Texto nao extraivel (PDF escaneado/imagem ou reparo indisponivel). Use OCR por visao.",
+        repairFailed: !repR.ok,
+      });
     }
 
     return jsonError(400, `Unknown operation: ${operation}`);
