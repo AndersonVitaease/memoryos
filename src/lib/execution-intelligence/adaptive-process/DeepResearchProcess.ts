@@ -82,7 +82,7 @@ Responda JSON array, sem texto adicional.`;
 
     const data = (res as { steps?: Array<Record<string, unknown>> }).steps ?? [];
     const llmSteps = data.map((s, i) => ({
-      id: `step-${i + 2}`,
+      id: `step-llm-${i + 1}`,
       call: {
         connectorId: String(s.connectorId ?? ""),
         capability: String(s.capability ?? ""),
@@ -91,14 +91,15 @@ Responda JSON array, sem texto adicional.`;
       rationale: String(s.rationale ?? ""),
     }));
 
-    // AP-refine: prepend a DETERMINISTIC web-grounding step. The LLM planner is
-    // non-deterministic and frequently omits web search (or emits invalid connectors
-    // like the removed "serperSearch"), leaving synthesis with zero real evidence —
-    // which produced the "no documentation / inaccessible" hallucination. This step
-    // ALWAYS runs first, providing grounded facts via Gemini + Google Search. It is
-    // a real, live capability (base44.ai.invokeLLM with add_context_from_internet)
-    // that returns concrete, sourced answers — verified to work for this exact query.
-    const webStep: ResearchStep = {
+    // AP-refine: prepend DETERMINISTIC steps. The LLM planner is non-deterministic
+    // and frequently omits critical steps (or emits invalid connectors), leaving
+    // synthesis with zero real evidence — which produced the "no documentation /
+    // inaccessible" hallucination. These steps ALWAYS run, independent of the LLM.
+
+    const deterministicSteps: ResearchStep[] = [];
+
+    // 1. Web grounding (Gemini + Google Search) — garante evidencia web real.
+    deterministicSteps.push({
       id: "step-web-grounding",
       call: {
         connectorId: "base44",
@@ -109,8 +110,37 @@ Responda JSON array, sem texto adicional.`;
         },
       },
       rationale: "Web grounding deterministico (Gemini + Google Search) — garante evidencia real independente do planner LLM.",
-    };
-    return [webStep, ...llmSteps];
+    });
+
+    // 2. GitHub primary-source reads — se a query menciona "owner/repo", ler o
+    //    README.md e package.json DIRETAMENTE do GitHub (fonte primaria verbatim).
+    //    O LLM planner frequentemente omite estes passos; sem eles, a sintese so
+    //    tem o resumo web (LLM-gerado, nao fonte primaria) — aterramento fraco.
+    const repoMatch = ctx.query.match(/\b([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,38}[a-zA-Z0-9])?)\/([a-zA-Z0-9._-]+)\b/);
+    if (repoMatch) {
+      const owner = repoMatch[1];
+      const repo = repoMatch[2];
+      deterministicSteps.push({
+        id: "step-github-readme",
+        call: {
+          connectorId: "github",
+          capability: "files.get",
+          params: { owner, repo, path: "README.md" },
+        },
+        rationale: `Leitura direta do README.md de ${owner}/${repo} — fonte primaria verbatim (nao resumo web).`,
+      });
+      deterministicSteps.push({
+        id: "step-github-package",
+        call: {
+          connectorId: "github",
+          capability: "files.get",
+          params: { owner, repo, path: "package.json" },
+        },
+        rationale: `Leitura direta do package.json de ${owner}/${repo} — confirma dependencias, scripts e tipo do projeto.`,
+      });
+    }
+
+    return [...deterministicSteps, ...llmSteps];
   }
 
   async invoke(
