@@ -37,6 +37,20 @@ function jsonError(status: number, message: string, extra: Record<string, unknow
   return Response.json({ ok: false, error: message, ...extra }, { status });
 }
 
+function bufToBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let bin = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(bin);
+}
+
+function pdfJson(buf: ArrayBuffer, contentType = "application/pdf"): Response {
+  return Response.json({ ok: true, contentType, base64: bufToBase64(buf) });
+}
+
 function withTimeout(fetchPromise: Promise<Response>): Promise<Response> {
   return Promise.race([
     fetchPromise,
@@ -101,7 +115,7 @@ export default async function (req: Request): Promise<Response> {
       }));
       if (!r.ok) return jsonError(r.status, `Stirling merge failed`, { detail: (await r.text().catch(() => "")) });
       const buf = await r.arrayBuffer();
-      return new Response(buf, { headers: { "Content-Type": "application/pdf" } });
+      return pdfJson(buf);
     }
 
     // Split: um PDF em varias paginas
@@ -127,7 +141,7 @@ export default async function (req: Request): Promise<Response> {
       // Split retorna ZIP (multiplas paginas) ou PDF (intervalo)
       const ctype = r.headers.get("content-type") ?? "application/zip";
       const buf = await r.arrayBuffer();
-      return new Response(buf, { headers: { "Content-Type": ctype } });
+      return pdfJson(buf, ctype);
     }
 
     // Rotate: girar paginas
@@ -148,7 +162,7 @@ export default async function (req: Request): Promise<Response> {
       }));
       if (!r.ok) return jsonError(r.status, `Stirling rotate failed`, { detail: (await r.text().catch(() => "")) });
       const buf = await r.arrayBuffer();
-      return new Response(buf, { headers: { "Content-Type": "application/pdf" } });
+      return pdfJson(buf);
     }
 
     // AddPassword: proteger PDF
@@ -168,7 +182,7 @@ export default async function (req: Request): Promise<Response> {
       }));
       if (!r.ok) return jsonError(r.status, `Stirling addPassword failed`, { detail: (await r.text().catch(() => "")) });
       const buf = await r.arrayBuffer();
-      return new Response(buf, { headers: { "Content-Type": "application/pdf" } });
+      return pdfJson(buf);
     }
 
     // RemovePassword: remover senha
@@ -188,7 +202,7 @@ export default async function (req: Request): Promise<Response> {
       }));
       if (!r.ok) return jsonError(r.status, `Stirling removePassword failed`, { detail: (await r.text().catch(() => "")) });
       const buf = await r.arrayBuffer();
-      return new Response(buf, { headers: { "Content-Type": "application/pdf" } });
+      return pdfJson(buf);
     }
 
     // pdfToText: extrair texto
