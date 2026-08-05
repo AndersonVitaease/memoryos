@@ -14,6 +14,7 @@ import { officialLibrarySearchProvider } from "./OfficialLibrarySearchProvider";
 import { memorySearchProvider } from "./MemorySearchProvider";
 import { mcpRegistrySearchProvider } from "./MCPRegistrySearchProvider";
 import { officialDocsSearchProvider } from "./OfficialDocsSearchProvider";
+import { firecrawlSearchProvider } from "./FirecrawlSearchProvider";
 
 let _registered = false;
 
@@ -26,6 +27,7 @@ export function ensureProvidersRegistered(): void {
   searchEngine.registerProvider(memorySearchProvider);
   searchEngine.registerProvider(mcpRegistrySearchProvider);
   searchEngine.registerProvider(officialDocsSearchProvider);
+  searchEngine.registerProvider(firecrawlSearchProvider);
 
   _registered = true;
   console.log("[SearchEngine] Providers registrados:", searchEngine.listProviders());
