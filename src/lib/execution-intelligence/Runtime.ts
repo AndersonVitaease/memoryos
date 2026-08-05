@@ -47,6 +47,7 @@ import { makePlanId, makeStepId } from "@/lib/planning-engine-e022/ExecutionPlan
 import type { ExecutionRequest, ExecutionOutcome, PreparedExecution, SafetyDecision } from "./ExecutionTypes";
 import { ExecutionIntelligence } from "./ExecutionIntelligence";
 import { SafetyGate } from "./SafetyGate";
+import { COMPOSITE_EXECUTION_POLICY } from "@/lib/runtime-engine/ExecutionPolicy";
 
 export class ExecutionRuntime {
   private readonly _intelligence: ExecutionIntelligence;
@@ -137,6 +138,10 @@ export class ExecutionRuntime {
         plan,
         request.executionId,
         connectorCtx,
+        // AP-04: composite (Adaptive Process) detem loop reflexivo num unico step.
+        // Policy estendida acomoda plan -> invoke -> reflect -> synthesize com
+        // sub-capabilities. Non-composite: undefined → engine usa policy padrao (paridade).
+        isComposite ? COMPOSITE_EXECUTION_POLICY : undefined,
       );
       const completed = executionResult.status === "completed";
       const stepResult = executionResult.steps[0] ?? null;

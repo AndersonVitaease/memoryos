@@ -78,6 +78,18 @@ export const DEFAULT_EXECUTION_POLICY: ExecutionPolicy = Object.freeze({
   rateLimit:     Object.freeze({ enabled: false, requestsPerMs: 0 }),
 });
 
+// ── Composite policy (AP-04 / RFC-010 / ADR-017) ─────────────────────────────
+// Adaptive Processes (composite capabilities) detem um loop reflexivo multi-etapa
+// (plan -> invoke -> reflect -> synthesize) dentro de um UNICO step do engine.
+// O stepTimeout padrao (10s) e o timeout total (30s) sao curtos demais — matam o
+// deepResearch no primeiro InvokeLLM. Esta policy estende ambos para acomodar
+// o loop completo com sub-capabilities reentrando via processCapability.
+export const COMPOSITE_EXECUTION_POLICY: ExecutionPolicy = Object.freeze({
+  ...DEFAULT_EXECUTION_POLICY,
+  timeoutMs:     240_000,   // 4 min — orca o loop completo (plan + N sub-caps + reflect + synthesize)
+  stepTimeoutMs:  240_000,   // 4 min — o step unico engloba o loop reflexivo inteiro
+});
+
 // ── Policy builder (fluent, for testing and future use) ───────────────────────
 
 export function buildPolicy(overrides: Partial<ExecutionPolicy>): ExecutionPolicy {
