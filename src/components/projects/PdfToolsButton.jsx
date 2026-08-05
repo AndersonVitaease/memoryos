@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { Wand2, RotateCw, Lock, Unlock, FileText, Loader2, ChevronDown, X, Layers, Scissors } from "lucide-react";
+import { Wand2, RotateCw, Lock, Unlock, FileText, Loader2, ChevronDown, X, Layers, Scissors, Wrench } from "lucide-react";
 
 /**
  * PdfToolsButton — menu de ações PDF powered by Stirling-PDF (stirlingPdfCall).
@@ -144,6 +144,21 @@ export default function PdfToolsButton({ doc, allPdfs = [], onNotification }) {
     }
   };
 
+  const runRepair = async () => {
+    setOpen(false);
+    setBusy("repair");
+    try {
+      const data = await callStirling("repair");
+      const baseName = doc.name.replace(/\.pdf$/i, "");
+      downloadBase64(data.base64, `${baseName}_repaired.pdf`, "application/pdf");
+      notify("PDF reparado com sucesso.", "success");
+    } catch (e) {
+      notify(`Erro ao reparar: ${e.message}`, "error");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const runExtractText = async () => {
     setOpen(false);
     setBusy("pdfToText");
@@ -161,7 +176,7 @@ export default function PdfToolsButton({ doc, allPdfs = [], onNotification }) {
       a.download = doc.name.replace(/\.pdf$/i, "") + ".txt";
       a.click();
       URL.revokeObjectURL(url);
-      notify(`Texto extraído (${text.length} caracteres).`, "success");
+      notify(`Texto extraído (${text.length} caracteres)${data.repaired ? " — PDF foi reparado automaticamente." : ""}.`, "success");
     } catch (e) {
       notify(`Erro ao extrair texto: ${e.message}`, "error");
     } finally {
@@ -197,6 +212,7 @@ export default function PdfToolsButton({ doc, allPdfs = [], onNotification }) {
           <MenuItem icon={Layers} label="Mesclar com outros" onClick={() => setPromptState({ kind: "merge" })} disabled={isBusy || allPdfs.length === 0} />
           <MenuItem icon={Scissors} label="Dividir / extrair páginas" onClick={() => setPromptState({ kind: "split" })} disabled={isBusy} />
           <div className="border-t border-zinc-100 my-1" />
+          <MenuItem icon={Wrench} label="Reparar PDF" onClick={runRepair} disabled={isBusy} />
           <MenuItem icon={FileText} label="Extrair texto" onClick={runExtractText} disabled={isBusy} />
         </div>
       )}

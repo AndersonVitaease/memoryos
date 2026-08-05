@@ -226,23 +226,71 @@ export default async function (req: Request): Promise<Response> {
       return pdfJson(buf);
     }
 
-    // pdfToText: extrair texto (v2.14: /convert/pdf/text exige outputFormat=txt)
-    if (operation === "pdfToText") {
+    // Repair: reparar PDF corrompido/danificado
+    if (operation === "repair") {
       const fileUrl = String(body.fileUrl ?? "");
       if (!fileUrl) return jsonError(400, "fileUrl required");
       const form = new FormData();
       const f = await fetch(fileUrl);
       if (!f.ok) return jsonError(502, `Failed to fetch file: ${f.status}`);
       form.append("fileInput", await f.blob(), "input.pdf");
-      form.append("outputFormat", "txt");
-      const r = await withTimeout(fetch(`${baseUrl}/api/v1/convert/pdf/text`, {
+      const r = await withTimeout(fetch(`${baseUrl}/api/v1/misc/repair`, {
         method: "POST",
         headers: { "X-API-KEY": apiKey },
         body: form,
       }));
-      if (!r.ok) return jsonError(r.status, `Stirling pdfToText failed`, { detail: (await r.text().catch(() => "")) });
-      const text = await r.text();
-      return Response.json({ ok: true, text });
+      if (!r.ok) return jsonError(r.status, `Stirling repair failed`, { detail: (await r.text().catch(() => "")) });
+      const buf = await r.arrayBuffer();
+      return pdfJson(buf);
+    }
+
+    // pdfToText: extrair texto (v2.14: /convert/pdf/text exige outputFormat=txt)
+    // Auto-repara se o PDF estiver corrompido/danificado.
+    if (operation === "pdfToText") {
+      const fileUrl = String(body.fileUrl ?? "");
+      if (!fileUrl) return jsonError(400, "fileUrl required");
+      const f = await fetch(fileUrl);
+      if (!f.ok) return jsonError(502, `Failed to fetch file: ${f.status}`);
+      const originalBlob = await f.blob();
+
+      const tryExtract = async (blob: Blob): Promise<{ ok: boolean; text?: string; detail?: string; status?: number }> => {
+        const form = new FormData();
+        form.append("fileInput", blob, "input.pdf");
+        form.append("outputFormat", "txt");
+        const r = await withTimeout(fetch(`${baseUrl}/api/v1/convert/pdf/text`, {
+          method: "POST",
+          headers: { "X-API-KEY": apiKey },
+          body: form,
+        }));
+        if (!r.ok) return { ok: false, status: r.status, detail: (await r.text().catch(() => "")) };
+        return { ok: true, text: await r.text() };
+      };
+
+      let result = await tryExtract(originalBlob);
+      if (!result.ok) {
+        const det = (result.detail || "").toLowerCase();
+        const corrupted = det.includes("corrupt") || det.includes("damag") || det.includes("repair");
+        if (corrupted) {
+          // Tenta reparar e extrair novamente
+          const repForm = new FormData();
+          repForm.append("fileInput", originalBlob, "input.pdf");
+          const repR = await withTimeout(fetch(`${baseUrl}/api/v1/misc/repair`, {
+            method: "POST",
+            headers: { "X-API-KEY": apiKey },
+            body: repForm,
+          }));
+          if (repR.ok) {
+            const repairedBlob = await repR.blob();
+            result = await tryExtract(repairedBlob);
+            if (result.ok) {
+              return Response.json({ ok: true, text: result.text, repaired: true });
+            }
+          }
+          return jsonError(500, "PDF corrompido: a reparacao automatica falhou. Tente reparar manualmente.", { detail: result.detail });
+        }
+        return jsonError(result.status || 500, `Stirling pdfToText failed`, { detail: result.detail });
+      }
+      return Response.json({ ok: true, text: result.text });
     }
 
     return jsonError(400, `Unknown operation: ${operation}`);
