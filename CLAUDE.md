@@ -1571,3 +1571,71 @@ O `ConnectorMetadata.capabilities` e `string[]` (contrato existente, validado no
 **Contagem final de capabilities do Base44Connector:** 15 (originais) + 15 (EXP-01/02/03/06) = 30. EXP-04/05 adicionariam +6 quando o SDK liberar (30 -> 36).
 
 ---
+
+### 2026-08-05 — Adaptive Process Engine: Planejamento (RFC-010 + ADR-017)
+
+**Doc oficial:** `src/docs/foundation/rfc/RFC-010-Adaptive-Process-Engine.md` + `src/docs/foundation/adr/ADR-017.md`
+
+**Status:** APENAS PLANEJAMENTO. Nenhum codigo TypeScript/JavaScript alterado ou criado nesta sessao. Sera implementado em 5 sprints (AP-01 a AP-05), cada um aditivo e reversivel.
+
+**Contexto:** Discussao arquitetural sobre onde o Deep Research deveria morar. Conclusao: Deep Research nao e uma Capability comum (acao atomica) nem um Goal (Planner e declarativo/estatico). Possui 3 propriedades estruturais que inauguram uma nova categoria: (1) auto-orquestracao dinamica de capabilities, (2) loop reflexivo com criterio de parada nao-trivial, (3) estrategia de parada propria baseada em suficiencia de evidencia. A mesma forma interna (plan → invoke → reflect → gap → stop → synthesize) aparecerá em futuros processos (Deep Planning, Root Cause Analysis, Opportunity Discovery, Strategy Builder, Multi-Agent Investigation, Compliance, Negotiation, Optimization).
+
+**Decisao arquitetural — abordagem hibrida:**
+- **Externo:** Deep Research continua sendo apenas uma capability (`deepResearch()`) na arquitetura publica de 4 elementos (Planner → Capability Registry → Dispatcher → Connector). Modelo mental do desenvolvedor nao muda.
+- **Interno:** implementado por um **Adaptive Process** (`DeepResearchProcess implements AdaptiveProcess`) — nova categoria arquitetural interna, invisivel na arquitetura publica.
+- **Metadata `composite`:** campo opcional `capabilityComposite?: Record<string, boolean>` em `ConnectorMetadata` (`ConnectorTypes.ts`), espelhando `capabilityReversibility` (EI-01). O Runtime le o flag e aplica politica de execucao composta (sub-budget proprio, correlation tree via `parentExecutionId`, timeout estendido, auth propagation, circuit breaker isolado). Sem o flag, o hibridismo cria bifurcacao invisivel (capabilities atomicas e compostas indistinguiveis — bug silencioso de timeout/audit/auth). Com o flag, a bifurcacao e declarada e barata (~30 linhas no Runtime).
+- **Reentrada pela cadeia completa:** `DeepResearchProcess` invoca sub-capabilities via `runtime.processCapability({ ..., parentExecutionId })`. Cada sub-cap passa por Intelligence + Safety + Dispatch (bypass impossivel por construcao, herda ADR-015). Correlacao em arvore via `SystemEvent.parentId`.
+- **Nome "Adaptive Process", nao "Cognitive Process":** a propriedade ontologica real e adaptacao ao plano, nao cognicao. "Cognitive" limitaria a LLM-driven; "Adaptive" sobrevive a Compliance/Negotiation/Optimization nao-cognitivos que tem as mesmas 3 propriedades estruturais.
+
+**ACHADO CRITICO (anti-dead-end, antes de escrever):**
+- Existem **2 Capability Registries paralelos** no repositorio: `src/lib/marketplace/CapabilityRegistry.ts` (P7 Marketplace, `CapabilityManifest`) e `src/lib/capabilities/registry/CapabilityRegistry.ts` (Foundation v1.0, `Capability`). **NENHUM** esta no caminho de execucao vivo. O caminho vivo e: `GoalCapabilityRegistry` (goal → connector+capability) → `ExecutionRuntime.processCapability` (ADR-015) → `ConnectorRegistry.get(connectorId)` → `connector.execute(capability)` → `UCRBridge` → connector. O metadata de capability vive em `ConnectorMetadata` em `ConnectorTypes.ts` (lido por `processCapability`).
+- **Decisao:** o flag `composite` mora em `ConnectorMetadata` (caminho vivo, espelha `capabilityReversibility`). NAO tocar nos 2 Capability Registries paralelos — seriam becos sem saida (ADR-004 ja documenta a triplicacao).
+- Codigo em `src/lib/execution-intelligence/adaptive-process/` (diretorio VIVO da cadeia ADR-015), NAO em `src/runtime/` ou `src/sdk/` (arvores paralelas mortas — dead end recorrente).
+
+**Alternativas rejeitadas (documentadas em ADR-017):**
+- (A) Deep Research como Goal — rejeitada: Planner e declarativo/estatico por SRP; iteracao reflexiva nao e sua responsabilidade. Criaria "segundo Planner".
+- (B) Deep Research como Capability comum sem flag — rejeitada: cria bifurcacao invisivel (Runtime aplica politica atomica a processo composto — bug silencioso de timeout/audit/auth/correlation).
+- (C) Adaptive Process como categoria publica (5º elemento) — rejeitada: aumenta modelo mental sem necessidade. Hibridismo preserva simplicidade externa + abstracao reutilizavel interna.
+- (D) AdaptiveProcessRegistry desde o inicio — rejeitada por YAGNI: 1 processo nao justifica abstracao. A interface `AdaptiveProcess` nasce agora; o registry surge com o 2º.
+- (E) Nome "Cognitive Process" — rejeitado: limita a LLM-driven. "Adaptive" captura a propriedade real sem vies de mecanismo.
+
+**Fases de implementacao (aditivas, reversíveis, nada quebra):**
+- AP-01 (zero risco): `composite` metadata flag em `ConnectorTypes.ts`. Espelha `capabilityReversibility`. Nada le o campo ainda.
+- AP-02 (zero risco): `AdaptiveProcess.ts` interface + `DeepResearchProcess.ts` em `src/lib/execution-intelligence/adaptive-process/`. Nenhum connector, nenhum wiring, nenhum caller. Scaffold puro.
+- AP-03 (baixo risco): `AdaptiveProcessConnector.ts` (id `"adaptive-process"`, capability `["deepResearch"]`, `composite: true`, reversibility `safe`) no `ConnectorBootstrap`. Mapping no `GoalCapabilityRegistry`. Goal sem sinais no `GoalRegistry` → Planner nao roteia → zero producao. Connector inerte.
+- AP-04 (medio risco): Runtime le `composite` → sub-budget, `parentExecutionId` threading, timeout estendido. `DeepResearchProcess` invoca sub-caps via `runtime.processCapability({ ..., parentExecutionId })`. Correlacao em arvore. Gatilho: AP-03 verde em staging.
+- AP-05 (baixo risco): Sinais `deepResearch` no `GoalRegistry` ("pesquise a fundo", "investigue a fundo", "deep research"). Planner roteia. Primeiro uso real.
+
+**Nao-quebra verificada:**
+- `ExecutionRuntime.processCapability` (ADR-015) ganha um branch de politica (AP-04) em helper isolado, nao reescrita. `processCapability` permanece puro wiring (ADR-015 invariant #3). Caminho nao-composite identico.
+- Os 11 executors do Microsoft Graph (ADR-013), 3 providers do WhatsApp, 11 executors do Base44 (RFC-009), Execution Intelligence completo (EI-01..EI-07) — todos intocados.
+- `UCRBridge` (Event Layer), `PipelineObservationBridge` (Observation Layer), `ConnectorBootstrap`, `GoalCapabilityRegistry` — intocados ate AP-03 (registro aditivo) e AP-05 (sinais aditivos).
+- Ate AP-05, `deepResearch` nao tem sinais no `GoalRegistry` → Planner nunca roteia → nenhum caller vivo. `AdaptiveProcessConnector` (AP-03) inerte ate AP-05.
+- Cada sprint deploya sozinha; build verde entre fases.
+
+**Cuidados tomados (criterios do usuario):**
+- Metodo de verificacao aplicado: lidos os 2 Capability Registries paralelos + `ConnectorTypes.ts` + `Runtime.ts` (ADR-015) para confirmar onde o flag mora (caminho vivo) e onde NAO mora (scaffolds paralelos).
+- Nenhum codigo morto/legado/paralelo criado: a interface `AdaptiveProcess` e a implementacao `DeepResearchProcess` sao o unico caminho vivo; o `AdaptiveProcessConnector` e shell fino (nao deixa switch antigo como legado).
+- Sem `AdaptiveProcessRegistry` (YAGNI — 1 processo). O connector detem diretamente a instancia. Quando o 2º processo chegar, a abstracao ja estara la (interface) e o registry surgira naturalmente.
+- Codigo em `src/lib/execution-intelligence/adaptive-process/` (vivo), nao em `src/runtime/`/`src/sdk/` (paralelas mortas) nem nos 2 Capability Registries paralelos.
+- Nenhum `require()`/`module.exports` — ESM puro (quando implementado).
+- Aditivo apenas: nada apagado; caminho antigo intocado ate AP-05.
+
+**Documentacao escrita nesta sessao (AP-00 — so documentacao):**
+1. `src/docs/foundation/rfc/RFC-010-Adaptive-Process-Engine.md` — NOVO (RFC completo, espelha estrutura do RFC-008).
+2. `src/docs/foundation/adr/ADR-017.md` — NOVO (ADR completa, espelha estrutura do ADR-015).
+3. `src/docs/foundation/adr/ADR-MASTER-INDEX.md` — EDITADO (entrada ADR-017 adicionada, footer atualizado).
+4. `src/docs/foundation/journey/SPRINTS.md` — EDITADO (secao "Adaptive Process Engine (AP-01 — AP-05)" adicionada).
+5. `src/docs/foundation/MEB-MemoryOS-Engineering-Backlog.md` — EDITADO (EPIC-020 "Adaptive Process Engine" adicionado a tabela de Epics + FEAT-140..144 + invariants).
+6. `CLAUDE.md` — EDITADO (esta secao).
+
+**NAO foi feito (explicitamente fora do escopo desta sessao):**
+- Nenhum codigo TypeScript/JavaScript alterado ou criado (AP-00 e so documentacao).
+- Nenhum `AdaptiveProcessRegistry` (YAGNI — 2º processo nao existe).
+- Nenhum outro Adaptive Process (Deep Planning, RCA, etc.) — a interface nasce pronta, mas so `DeepResearchProcess` e entregue.
+- Nenhuma migracao de caller vivo (deepResearch so roteia em AP-05).
+- Nenhum teste de paridade executado (seria AP-04).
+
+**Proximo passo:** aguardar autorizacao para iniciar **AP-01 (`composite` metadata flag)** — campo opcional em `ConnectorTypes.ts`, espelhando `capabilityReversibility`. Zero risco, fundacao para o Runtime ler em AP-04.
+
+---
