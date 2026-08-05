@@ -71,25 +71,44 @@ export default async function (req: Request): Promise<Response> {
   }
   const operation = String(body.operation ?? "health");
 
-  // ── health: diagnostico de conectividade + API key ─────────────────────
+  // ── health: diagnostico de conectividade + validade REAL da API key ─────
+  // NOTA: /api/v1/info/status é PUBLICO no Stirling-PDF — retorna 200 mesmo sem
+  // chave, logo NÃO serve para validar a API key. Precisamos bater num endpoint
+  // protegido (extract/pdf-to-text) e checar: 401 => chave invalida; 400/500 =>
+  // chave valida (requisição malformada, mas autenticada).
   if (operation === "health") {
+    const key = getApiKey();
     const tries: Array<{ url: string; status: number; ok: boolean; body: string | null }> = [];
-    // 1. UI root (sem auth) — confirma que o servico responde
+    // 1. status publico — confirma apenas que o servico responde
     try {
-      const r0 = await withTimeout(fetch(`${baseUrl}/`));
-      tries.push({ url: `${baseUrl}/`, status: r0.status, ok: r0.ok, body: (await r0.text().catch(() => "")).slice(0, 120) });
-    } catch (e) {
-      tries.push({ url: `${baseUrl}/`, status: -1, ok: false, body: String(e) });
-    }
-    // 2. status com API key
-    try {
-      const r1 = await withTimeout(fetch(`${baseUrl}/api/v1/info/status`, { headers: authHeaders() }));
-      tries.push({ url: `/api/v1/info/status`, status: r1.status, ok: r1.ok, body: (await r1.text().catch(() => "")).slice(0, 200) });
+      const r0 = await withTimeout(fetch(`${baseUrl}/api/v1/info/status`));
+      tries.push({ url: `/api/v1/info/status`, status: r0.status, ok: r0.ok, body: (await r0.text().catch(() => "")).slice(0, 200) });
     } catch (e) {
       tries.push({ url: `/api/v1/info/status`, status: -1, ok: false, body: String(e) });
     }
-    const anyOk = tries.some(t => t.ok);
-    return Response.json({ ok: anyOk, baseUrl, apiKeyConfigured: !!getApiKey(), tries });
+    // 2. endpoint protegido sem file — valida a API key de verdade
+    let keyValid = false;
+    try {
+      const r1 = await withTimeout(fetch(`${baseUrl}/api/v1/extract/pdf-to-text`, {
+        method: "POST",
+        headers: { "X-API-KEY": key, "Accept": "application/json" },
+      }));
+      const body1 = (await r1.text().catch(() => "")).slice(0, 200);
+      tries.push({ url: `/api/v1/extract/pdf-to-text (key probe)`, status: r1.status, ok: r1.status !== 401, body: body1 });
+      keyValid = r1.status !== 401;
+    } catch (e) {
+      tries.push({ url: `/api/v1/extract/pdf-to-text (key probe)`, status: -1, ok: false, body: String(e) });
+    }
+    return Response.json({
+      ok: keyValid,
+      baseUrl,
+      apiKeyConfigured: !!key,
+      apiKeyValid: keyValid,
+      tries,
+      note: keyValid
+        ? "API key valida — operacoes devem funcionar."
+        : "API key INVALIDA — /info/status é publico e mascara o erro. Verifique SECURITY_CUSTOMGLOBALAPIKEY no VPS e redefina o secret STIRLING_PDF_API_KEY.",
+    });
   }
 
   // ── Operacoes que exigem API key ──────────────────────────────────────
