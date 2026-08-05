@@ -279,14 +279,21 @@ export default async function (req: Request): Promise<Response> {
             headers: { "X-API-KEY": apiKey },
             body: repForm,
           }));
-          if (repR.ok) {
-            const repairedBlob = await repR.blob();
-            result = await tryExtract(repairedBlob);
-            if (result.ok) {
-              return Response.json({ ok: true, text: result.text, repaired: true });
-            }
+          if (!repR.ok) {
+            const repDetail = (await repR.text().catch(() => "")).slice(0, 400);
+            return jsonError(500, "Reparo falhou no Stirling-PDF.", {
+              repairStatus: repR.status,
+              repairDetail: repDetail,
+            });
           }
-          return jsonError(500, "PDF corrompido: a reparacao automatica falhou. Tente reparar manualmente.", { detail: result.detail });
+          const repairedBlob = await repR.blob();
+          result = await tryExtract(repairedBlob);
+          if (result.ok) {
+            return Response.json({ ok: true, text: result.text, repaired: true });
+          }
+          return jsonError(500, "Reparo ok, mas texto ainda nao extraivel (provavelmente PDF escaneado/imagem).", {
+            extractDetail: result.detail,
+          });
         }
         return jsonError(result.status || 500, `Stirling pdfToText failed`, { detail: result.detail });
       }
