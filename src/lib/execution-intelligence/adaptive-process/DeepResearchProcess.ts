@@ -81,8 +81,8 @@ Responda JSON array, sem texto adicional.`;
     });
 
     const data = (res as { steps?: Array<Record<string, unknown>> }).steps ?? [];
-    return data.map((s, i) => ({
-      id: `step-${i + 1}`,
+    const llmSteps = data.map((s, i) => ({
+      id: `step-${i + 2}`,
       call: {
         connectorId: String(s.connectorId ?? ""),
         capability: String(s.capability ?? ""),
@@ -90,6 +90,27 @@ Responda JSON array, sem texto adicional.`;
       },
       rationale: String(s.rationale ?? ""),
     }));
+
+    // AP-refine: prepend a DETERMINISTIC web-grounding step. The LLM planner is
+    // non-deterministic and frequently omits web search (or emits invalid connectors
+    // like the removed "serperSearch"), leaving synthesis with zero real evidence —
+    // which produced the "no documentation / inaccessible" hallucination. This step
+    // ALWAYS runs first, providing grounded facts via Gemini + Google Search. It is
+    // a real, live capability (base44.ai.invokeLLM with add_context_from_internet)
+    // that returns concrete, sourced answers — verified to work for this exact query.
+    const webStep: ResearchStep = {
+      id: "step-web-grounding",
+      call: {
+        connectorId: "base44",
+        capability: "ai.invokeLLM",
+        params: {
+          prompt: `Pesquise na web e responda com fontes: ${ctx.query}. Inclua fatos concretos e, se aplicavel: existencia publica do projeto/repositorio, instrucoes de instalacao e configuracao, transporte usado (stdio vs HTTP/SSE), e ferramentas/funcionalidades expostas.`,
+          add_context_from_internet: true,
+        },
+      },
+      rationale: "Web grounding deterministico (Gemini + Google Search) — garante evidencia real independente do planner LLM.",
+    };
+    return [webStep, ...llmSteps];
   }
 
   async invoke(
