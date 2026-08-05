@@ -126,6 +126,25 @@
 
 ---
 
+## KI-010 — Incompatible MCP Servers (stdio / local-process only)
+
+**Description:** Some MCP servers cannot be consumed by the MemoryOS MCP client (`base44/functions/mcpClientCall/entry.ts`) because they require a local process (stdio transport) or local filesystem, neither available in the Base44 Deno cloud sandbox. The MCP client only supports Streamable HTTP + SSE transports (via the official `@modelcontextprotocol/client` SDK). Confirmed incompatible servers (do NOT re-evaluate):
+
+| Server | Transport | Blocker | Alternative already in MemoryOS |
+|---|---|---|---|
+| Softeria MS-365 MCP Server | stdio + local WAM/Dataverse | Requires local stdio; tenant-wide Dataverse provisioning risk | `MicrosoftGraphConnector` (native, OAuth, 32 capabilities via Provider Router) |
+| pinkpixel-dev/deep-research-mcp | stdio (`npx @pinkpixel/deep-research-mcp`) | stdio incompatible with cloud Deno; writes research docs/images to local disk (no persistent FS in sandbox); requires `TAVILY_API_KEY` (not configured) | `serperSearch` backend function (Serper API, `SERPER_API_KEY` configured) + `InvokeLLM` with `add_context_from_internet: true` (Google Search grounding) |
+
+**Impact:** NONE — these servers simply cannot be connected. Documented to prevent repeated investigation.
+
+**Workaround:** Use the native alternatives listed above. For any new MCP server, verify it exposes an HTTP/SSE endpoint (not stdio) before attempting integration. stdio-only servers are a structural dead-end in the cloud sandbox.
+
+**Priority:** P4 (documentation only)
+
+**Status:** ACCEPTED — Platform limitation. Re-evaluate only if a server ships an HTTP transport variant.
+
+---
+
 ## KI-009 — Knowledge Graph Requires Manual Bootstrap on Each Page Load
 
 **Description:** `OfficialKnowledgeGraph` does not persist its in-memory graph between page loads. Every page load requires re-bootstrapping from the ingestion registry files.
