@@ -134,6 +134,7 @@
 |---|---|---|---|
 | Softeria MS-365 MCP Server | stdio + local WAM/Dataverse | Requires local stdio; tenant-wide Dataverse provisioning risk | `MicrosoftGraphConnector` (native, OAuth, 32 capabilities via Provider Router) |
 | pinkpixel-dev/deep-research-mcp | stdio (`npx @pinkpixel/deep-research-mcp`) | stdio incompatible with cloud Deno; writes research docs/images to local disk (no persistent FS in sandbox); requires `TAVILY_API_KEY` (not configured) | `serperSearch` backend function (Serper API, `SERPER_API_KEY` configured) + `InvokeLLM` with `add_context_from_internet: true` (Google Search grounding) |
+| newerton/mcp-mercado-livre | stdio (`npx` / `node main.js`) | stdio incompatible with cloud Deno sandbox (no local process spawning, no stdin/stdout I/O); offers `get-produtos` (Mercado Livre data) via stdio only | No native Mercado Livre connector. Requires an external stdio→HTTP/SSE gateway (hosted outside MemoryOS) to expose the server over HTTP/SSE the sandbox can consume |
 
 **Impact:** NONE — these servers simply cannot be connected. Documented to prevent repeated investigation.
 

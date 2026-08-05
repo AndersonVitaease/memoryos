@@ -1639,3 +1639,20 @@ O `ConnectorMetadata.capabilities` e `string[]` (contrato existente, validado no
 **Proximo passo:** aguardar autorizacao para iniciar **AP-01 (`composite` metadata flag)** — campo opcional em `ConnectorTypes.ts`, espelhando `capabilityReversibility`. Zero risco, fundacao para o Runtime ler em AP-04.
 
 ---
+
+### 2026-08-05 — Restricao arquitetural stdio no system prompt do LLM de conversa + acentuacao no DeepResearch
+
+**Problema:** Perguntas de follow-up sobre compatibilidade de servidores MCP (ex: "compare com a estrutura do memoryos e me diga se e compativel para se conectar com ele") nao passavam pelo DeepResearch — iam pro LLM de conversa geral, que desconhecia a restricao arquitetural (sandbox Deno sem spawning/stdio) e alucinava "compativel, basta um conector que faca spawn do processo", citando "(fonte: memoria: Integracao MCP)" como evidencia tecnica inexistente. A verificacao deterministica de transporte no DeepResearch tambem nao casava "compativel" (sem acento) com "compativel" (com acento) na query do usuario.
+
+**Correcao (2 arquivos, minima):**
+1. `src/lib/reasoning/contextBuilder.js` (`buildSystemPrompt`) — adicionado o **Principio 9 de Grounding** ("nao negocie estes"): declara explicitamente que o MemoryOS roda em sandbox Deno em nuvem sem spawning de processos locais nem I/O stdio, portanto servidores MCP stdio sao INCOMPATIVEIS; a unica via e HTTP/SSE; proibe citar "(fonte: memória: Integração MCP)" como evidencia. Este e o system prompt fixo enviado a TODA chamada de conversa — o LLM agora sempre sabe da restricao.
+2. `src/lib/execution-intelligence/adaptive-process/DeepResearchProcess.ts` (`_checkMcpTransportCompatibility`) — normalizada acentuacao da query (NFD + strip de combining marks) antes do match, para que "compatível" (acentuado) dispare o veredicto deterministico INCOMPATIVEL.
+
+**Documentacao atualizada:**
+3. `src/docs/01-operational-knowledge/KNOWN-ISSUES.md` — `newerton/mcp-mercado-livre` adicionado a tabela do KI-010 (servidores MCP incompativeis por stdio).
+
+**Resultado verificado em producao:** o mesmo follow-up agora responde **INCOMPATIVEL** com a restricao arquitetural corretamente citada e aplicada, em vez de fabricar compatibilidade.
+
+**Licao:** quando uma verificacao deterministica existe num caminho especializado (DeepResearch) mas o caminho geral (LLM de conversa) desconhece a mesma restricao, a fabricacao migra pro caminho geral. A restricao tem que viver no system prompt fixo (alcance universal), nao so no caminho especializado.
+
+---
