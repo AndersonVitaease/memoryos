@@ -900,6 +900,35 @@ class ConversationPipeline {
             conversationStore.setStatus("idle"); conversationStore.setReasoningPhase("idle"); setStep("finalize", "done");
             return;
           }
+
+          // ── AP: deepResearch produz um relatorio aterrado (markdown) que JA E a
+          // resposta final. Nao passar pelo ConnectorResultSynthesizer (segunda
+          // passagem LLM generica que reinterpreta o relatorio como "dados" e fabrica
+          // detalhes nao suportados — ex: opcao npx inexistente, claude_desktop_config).
+          // Stream direto preserva o aterramento e as regras anti-alucinacao da sintese
+          // interna do DeepResearchProcess. Identificacao simples: deepResearch e
+          // composite + output e string (relatorio markdown) e nao objeto estruturado.
+          if (
+            _eiOutcome &&
+            _eiOutcome.status === "success" &&
+            _singleStep?.connector === "adaptive-process" &&
+            _singleStep?.capability === "deepResearch" &&
+            typeof _eiOutcome.output === "string"
+          ) {
+            const _report = _eiOutcome.output;
+            setStep("route", "done"); setStep("synthesize", "done"); setStep("stream", "running");
+            conversationStore.setStatus("streaming"); setPhase("responding");
+            const _drMsgId = makeMsgId();
+            conversationStore.appendMessage({ id: _drMsgId, session_id: session.id, role: "assistant", content: "", streamingContent: "", isStreaming: true, memory_tier: "active", sources_used: [] });
+            await conversationStreaming.streamResponse({ executionId, messageId: _drMsgId, fullContent: _report, onChunk: () => {} });
+            setStep("stream", "done"); setStep("finalize", "running"); conversationStore.setStatus("finalizing");
+            try {
+              const _drSaved = await persistMessage({ sessionId: session.id, projectId: session.project_id, role: "assistant", content: _report, sources_used: [] });
+              conversationStore.updateMessage(_drMsgId, { id: _drSaved.id, content: _report, streamingContent: undefined, isStreaming: false, sources_used: [] });
+            } catch { /* non-critical */ }
+            conversationStore.setStatus("idle"); conversationStore.setReasoningPhase("idle"); setStep("finalize", "done");
+            return;
+          }
           const t0connector = Date.now();
 
           conversationStore.emit({
