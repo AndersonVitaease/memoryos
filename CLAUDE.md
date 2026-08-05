@@ -1512,6 +1512,31 @@ O `ConnectorMetadata.capabilities` e `string[]` (contrato existente, validado no
 
 ---
 
+### 2026-08-05 — GitHub: Roteamento de Leitura de Arquivo + Hidratação de Token
+
+**Doc completa:** `src/docs/01-operational-knowledge/SESSION-2026-08-05-GITHUB-ROUTING-AND-TOKEN-HYDRATION.md`
+
+**Problema:** Usuário conectou GitHub via OAuth e pediu "leia o arquivo README.md do repositório Anderson/repo". Dois bugs encadeados:
+
+1. **Roteamento errado** — a frase casava com sinais do Google Drive (`drive.openDocument`) em vez de `github.getFile`, pois os goals do GitHub estavam registrados DEPOIS do Drive no `GoalRegistry._builtins` (first-match-wins).
+2. **Token em memória perdido** — após corrigir o roteamento, o `GitHubConnector.getToken()` retornava null porque o `_tokenStore` (Map em memória do `GitHubAuthSession`) é volátil e se perde no reload/HMR, mesmo com o token persistido no backend (`GitHubOAuthToken`).
+
+**Correção 1 — Roteamento (`src/lib/goals/GoalRegistry.ts`):**
+- Blocos `github.listFiles` e `github.getFile` movidos para ANTES de todos os goals do Drive no `_builtins`.
+- `github.getFile` ganhou sinais discriminadores: `"do repositorio"`, `"do repo"`, `"no repositorio"`, `"no repo"` — vencem o sinal genérico "leia o arquivo" do `drive.openDocument` (registrado depois).
+- `matchBySignals` agora normaliza a entrada com `toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")` — sinais em ASCII puro casam com input acentuado do usuário. Antipadrão corrigido: acentos em string literals TS quebram o build Vite; ASCII puro + NFD na entrada é mais robusto.
+- Regex de matching usa `(^|[^\p{L}\p{N}])` ... `([^\p{L}\p{N}]|$)` com flag `u` (fronteira de palavra Unicode) — evita colisões por substring.
+
+**Correção 2 — Hidratação de token (`src/lib/connector-runtime/connectors/GitHubConnector.ts`):**
+- Em `_dispatch`, se `getToken()` retorna null, tenta `hydrateToken(workspaceId)` (já existente em `GitHubAuthSession`) que chama a backend `githubRefreshToken`, lê `GitHubOAuthToken` do backend e repovoa o `_tokenStore` em memória.
+- Hidratação é sob demanda (no `_dispatch` async), não eager no boot — `getToken()` permanece síncrono para `validateAsync`/`health`/`initialize` (caminhos de diagnóstico).
+
+**Validado:** "leia o arquivo README.md do repositório Anderson/repo" roteia para `github.getFile` (simulado via exec_tool) e o conector hidrata o token e lê o arquivo com sucesso.
+
+**Lições:** (1) ordem de registro em registries first-match-wins importa — goal mais específico DEVE ser registrado antes; (2) sinais ASCII puro + NFD na entrada > acentos em literals TS; (3) tokens OAuth em memória são voláteis — hidratação sob demanda é o padrão correto; (4) `hydrateToken`/`ensureValidToken` já existiam no `GitHubAuthSession`, só não eram chamados pelo conector — verificar utilitários existentes antes de criar lógica nova.
+
+---
+
 ### 2026-08-04 — Base44 Connector Expansion: B44-EXP-01/02/03/06 (execucao) + EXP-04/05 (deferred por SDK)
 
 **Status:** 4 de 6 fases EXECUTADAS em codigo. EXP-04 e EXP-05 DEFERRED por limite de SDK runtime.
