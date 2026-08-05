@@ -1,0 +1,114 @@
+/**
+ * AdaptiveProcess.ts — AP-02 (RFC-010 / ADR-017)
+ *
+ * Categoria arquitetural interna: Adaptive Process.
+ *
+ * Um Adaptive Process possui 3 propriedades estruturais que o diferenciam de
+ * uma capability comum:
+ *   1. Auto-orquestracao dinamica de capabilities (decide quais chamar).
+ *   2. Loop reflexivo com criterio de parada nao-trivial (gap-detection -> re-plan).
+ *   3. Estrategia de parada propria (suficiencia de evidencia, nao contador fixo).
+ *
+ * Externo: continua sendo apenas uma capability (deepResearch, etc.) na
+ * arquitetura publica de 4 elementos. Internamente e implementado por um
+ * Adaptive Process. O metadata `composite` (AP-01) declara a bifurcacao
+ * atomica-vs-composta ao Runtime.
+ *
+ * Nenhum caller importa este modulo ainda (AP-02 = scaffold puro, zero risco).
+ * AP-03 conecta o AdaptiveProcessConnector; AP-04 wired o dispatch com
+ * parentExecutionId; AP-05 expoe sinais no GoalRegistry.
+ */
+
+import type { ExecutionRequest, ExecutionOutcome } from "../ExecutionTypes";
+
+// ── Sub-capability call ──────────────────────────────────────────────────────
+
+/** Uma chamada de sub-capability que o processo decide executar dinamicamente. */
+export interface SubCapabilityCall {
+  readonly connectorId: string;
+  readonly capability: string;
+  readonly params: Record<string, unknown>;
+}
+
+/** Um step do plano de pesquisa: a chamada + o porque (rastreabilidade). */
+export interface ResearchStep {
+  readonly id: string;
+  readonly call: SubCapabilityCall;
+  readonly rationale: string;
+}
+
+// ── Reflection ───────────────────────────────────────────────────────────────
+
+/** Avaliacao dos resultados de uma rodada de invocacao. */
+export interface Reflection {
+  /** Resultados por step (stepId -> outcome). */
+  readonly byStep: ReadonlyMap<string, ExecutionOutcome>;
+  /** Lacunas de evidencia detectadas (o que ainda falta para responder). */
+  readonly gaps: readonly string[];
+  /** Score de suficiencia 0..1 — quando >= threshold, stop() = true. */
+  readonly sufficiency: number;
+}
+
+// ── Contexto injetado no processo ────────────────────────────────────────────
+
+/**
+ * Contexto que o AdaptiveProcessConnector (AP-03) passa ao processo.
+ * `dispatch` e o callback que chama runtime.processCapability com
+ * parentExecutionId threading (AP-04). Reentrada pela cadeia completa —
+ * sub-caps passam por Intelligence + Safety + Dispatch, nunca por atalho.
+ */
+export interface AdaptiveProcessContext {
+  /** A requisicao original que chegou ao connector (deepResearch). */
+  readonly request: ExecutionRequest;
+  /** ID da execucao pai — vira parentExecutionId nas sub-chamadas. */
+  readonly parentExecutionId: string;
+  /** Dispatch de uma sub-capability (runtime.processCapability com parentExecutionId). */
+  readonly dispatch: (sub: SubCapabilityCall) => Promise<ExecutionOutcome>;
+  /** Query/pergunta original do usuario (extraida de request.params). */
+  readonly query: string;
+}
+
+// ── Interface base ───────────────────────────────────────────────────────────
+
+/**
+ * Contrato de um Adaptive Process. Cada futuro processo (Deep Planning,
+ * Root Cause Analysis, etc.) implementa esta interface.
+ *
+ * YAGNI: nao ha AdaptiveProcessRegistry enquanto houver 1 processo. O
+ * AdaptiveProcessConnector (AP-03) detem diretamente a instancia. O
+ * registry surge naturalmente com o 2º processo.
+ */
+export interface AdaptiveProcess {
+  readonly id: string;
+  readonly description: string;
+
+  /** Monta plano dinamico de sub-capabilities para a query. */
+  plan(ctx: AdaptiveProcessContext): Promise<readonly ResearchStep[]>;
+
+  /** Executa os steps do plano, retornando os outcomes na ordem. */
+  invoke(
+    steps: readonly ResearchStep[],
+    ctx: AdaptiveProcessContext,
+  ): Promise<readonly ExecutionOutcome[]>;
+
+  /** Avalia os resultados, detecta lacunas e mede suficiencia. */
+  reflect(
+    steps: readonly ResearchStep[],
+    results: readonly ExecutionOutcome[],
+    ctx: AdaptiveProcessContext,
+  ): Promise<Reflection>;
+
+  /** Decide se parou (suficiencia alcancada ou budget esgotado). */
+  stop(reflection: Reflection): boolean;
+
+  /** Sintetiza o output final a partir dos resultados + reflection. */
+  synthesize(
+    steps: readonly ResearchStep[],
+    results: readonly ExecutionOutcome[],
+    reflection: Reflection,
+    ctx: AdaptiveProcessContext,
+  ): Promise<unknown>;
+
+  /** Orquestra o loop completo: plan -> invoke -> reflect -> (gap? re-plan) -> synthesize. */
+  run(ctx: AdaptiveProcessContext): Promise<ExecutionOutcome>;
+}
