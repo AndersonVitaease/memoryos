@@ -224,7 +224,7 @@ export default async function (req: Request): Promise<Response> {
       return pdfJson(buf);
     }
 
-    // pdfToText: extrair texto (endpoint mudou em 2.14: /convert/pdf/text)
+    // pdfToText: extrair texto (v2.14: /convert/pdf/text exige outputFormat=txt)
     if (operation === "pdfToText") {
       const fileUrl = String(body.fileUrl ?? "");
       if (!fileUrl) return jsonError(400, "fileUrl required");
@@ -232,9 +232,10 @@ export default async function (req: Request): Promise<Response> {
       const f = await fetch(fileUrl);
       if (!f.ok) return jsonError(502, `Failed to fetch file: ${f.status}`);
       form.append("fileInput", await f.blob(), "input.pdf");
+      form.append("outputFormat", "txt");
       const r = await withTimeout(fetch(`${baseUrl}/api/v1/convert/pdf/text`, {
         method: "POST",
-        headers: { "X-API-KEY": apiKey, "Accept": "text/plain,application/json" },
+        headers: { "X-API-KEY": apiKey },
         body: form,
       }));
       if (!r.ok) return jsonError(r.status, `Stirling pdfToText failed`, { detail: (await r.text().catch(() => "")) });
