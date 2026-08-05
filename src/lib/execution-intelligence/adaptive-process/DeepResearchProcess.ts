@@ -340,11 +340,13 @@ Responda APENAS JSON: {sufficiency: number 0..1, gaps: [string, ...]}
     evidence: readonly { step: string; verbatim: string | null }[],
     query: string,
   ): string | null {
-    // 1. A query precisa ser sobre conectar/integrar o servidor com o MemoryOS
-    const q = query.toLowerCase();
+    // 1. A query precisa ser sobre conectar/integrar o servidor com o MemoryOS.
+    //    Normaliza acentos para corresponder "compatível" (com acento) ao padrao
+    //    "compativel" (sem acento) — acentuacao portuguesa quebraria a regex.
+    const q = query.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     const asksConnection =
       /\b(conectar|conectar com|integrar|integracao|integrar com|compativel|compatibilidade|usar com)\b/.test(q)
-      && /\b(memoryos|memory os|memory-os)\b/.test(q);
+      && /\b(memoryos|memory os|memory os)\b/.test(q);
     if (!asksConnection) return null;
 
     // 2. Concatena todo o verbatim coletado (README, package.json, web)
