@@ -52,6 +52,14 @@ export interface ConnectorLog {
 // NADA le este campo ainda — EI-01 e apenas metadata (zero risco).
 export type Reversibility = "safe" | "reversible" | "irreversible";
 
+// AP-01 (RFC-010 / ADR-017) — Composite capability flag.
+// Declara que uma capability e um Adaptive Process composto (nao atomica).
+// O Runtime le o flag (AP-04) para aplicar politica de execucao composta:
+// sub-budget proprio, correlation tree via parentExecutionId, timeout estendido,
+// propagacao de auth context, circuit breaker isolado.
+// Default nao-composite quando ausente. NADA le este campo ainda — AP-01 e
+// apenas metadata (zero risco). Espelha exatamente o padrao de capabilityReversibility.
+
 export interface ConnectorMetadata {
   id: string;
   name: string;
@@ -62,6 +70,10 @@ export interface ConnectorMetadata {
   // EI-01: mapa opcional capability-id -> Reversibility.
   // Capabilities nao listadas assumem "safe". Nada le ainda.
   capabilityReversibility?: Record<string, Reversibility>;
+  // AP-01: mapa opcional capability-id -> composite flag.
+  // Capabilities nao listadas assumem nao-composite (atomic). Nada le ainda.
+  // Adaptive Process (Deep Research e futuros) declaram true aqui.
+  capabilityComposite?: Record<string, boolean>;
 }
 
 // ── Health ────────────────────────────────────────────────────────────────────
