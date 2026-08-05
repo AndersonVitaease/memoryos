@@ -964,10 +964,25 @@ export class GitHubConnector implements IConnector {
 
         // Upgrade 4 — /search/code bloqueia CORS no browser; roteia pelo
         // proxy server-side (githubCodeSearch) que roda no Deno sem restricao.
+        // IMPORTANTE: base44.functions.invoke LANCA (nao retorna {error}) quando
+        // o backend responde HTTP 429/5xx. Sem try/catch, a excecao subia pro
+        // catch generico do execute() e virava "Unhandled exception [internal]",
+        // mascarando a verdadeira causa (rate limit do GitHub Search API).
         const wsId = _getActiveGitHubWs();
-        const proxyRes = await base44.functions.invoke("githubCodeSearch", {
-          query, owner, repo, workspaceId: wsId, per_page: 20,
-        });
+        let proxyRes: any;
+        try {
+          proxyRes = await base44.functions.invoke("githubCodeSearch", {
+            query, owner, repo, workspaceId: wsId, per_page: 20,
+          });
+        } catch (invokeErr: any) {
+          const msg = invokeErr?.message ?? String(invokeErr);
+          logs.push(makeLog("warn", `[${operation}] proxy invoke threw: ${msg}`));
+          if (/429|rate.?limit|secondary.?rate/i.test(msg)) {
+            return fail("Busca do GitHub limitada (429) — a API de /search/code tem rate limit baixo. Aguarde ~30s e tente novamente.", "external", start, eid, logs, operation);
+          }
+          this.internalMetrics.externalFailures++;
+          return fail(`Proxy invoke failed: ${msg}`, "external", start, eid, logs, operation);
+        }
         const pd = (proxyRes as any)?.data ?? {};
         if (pd.error) {
           logs.push(makeLog("warn", `[${operation}] proxy error: ${pd.error}`));
