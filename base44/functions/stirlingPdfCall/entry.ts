@@ -267,12 +267,26 @@ export default async function (req: Request): Promise<Response> {
         return { ok: true, text: await r.text() };
       };
 
+      // forceOcr: pula Stirling e vai direto ao OCR por visao (mais rapido para PDFs escaneados)
+      if (body.forceOcr) {
+        return Response.json({ ok: false, needOcr: true, forced: true });
+      }
+
       let result = await tryExtract(originalBlob);
       if (result.ok && (result.text || "").trim()) {
         return Response.json({ ok: true, text: result.text });
       }
 
-      // Texto vazio ou erro -> tenta reparar e extrair novamente
+      // Texto vazio -> sinaliza fallback de OCR por visao (reparo removido: lento e instavel no VPS)
+      if (body.skipRepair || result.status === 400) {
+        return Response.json({
+          ok: false,
+          needOcr: true,
+          error: "Texto nao extraivel (PDF escaneado/imagem). Use OCR por visao.",
+        });
+      }
+
+      // Reparo apenas se solicitado explicitamente e extracao retornou erro tratavel
       const repForm = new FormData();
       repForm.append("fileInput", originalBlob, "input.pdf");
       const repR = await withTimeout(fetch(`${baseUrl}/api/v1/misc/repair`, {
@@ -292,7 +306,7 @@ export default async function (req: Request): Promise<Response> {
       return Response.json({
         ok: false,
         needOcr: true,
-        error: "Texto nao extraivel (PDF escaneado/imagem ou reparo indisponivel). Use OCR por visao.",
+        error: "Texto nao extraivel apos reparo. Use OCR por visao.",
         repairFailed: !repR.ok,
       });
     }
