@@ -3,6 +3,7 @@ import { base44 } from "@/api/base44Client";
 import { FileText, Trash2, ExternalLink, Loader2, CheckCircle2, AlertCircle, Brain, Tag as TagIcon } from "lucide-react";
 import FileUploader from "@/components/projects/FileUploader";
 import FolderList from "@/components/projects/FolderList";
+import PdfToolsButton from "@/components/projects/PdfToolsButton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import ReactMarkdown from "react-markdown";
 
@@ -32,6 +33,12 @@ export default function FilesTab({ projectId, folders, documents, onRefresh }) {
   const [detailDoc, setDetailDoc] = useState(null);
   const [entities, setEntities] = useState([]);
   const [keywords, setKeywords] = useState([]);
+  const [toast, setToast] = useState(null); // { msg, type }
+
+  const notify = (msg, type = "info") => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 4000);
+  };
 
   const filteredDocs = selectedFolderId
     ? documents.filter((d) => d.folder_id === selectedFolderId)
@@ -97,6 +104,9 @@ export default function FilesTab({ projectId, folders, documents, onRefresh }) {
                       <button onClick={() => openDetail(doc)} className="p-1.5 rounded-lg hover:bg-violet-50 transition text-zinc-400 hover:text-violet-600">
                         <Brain className="w-4 h-4" />
                       </button>
+                    )}
+                    {doc.file_type === "pdf" && doc.file_url && (
+                      <PdfToolsButton doc={doc} onNotification={notify} />
                     )}
                     <a href={doc.file_url} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded-lg hover:bg-zinc-100 transition text-zinc-400 hover:text-zinc-600">
                       <ExternalLink className="w-4 h-4" />
@@ -188,6 +198,20 @@ export default function FilesTab({ projectId, folders, documents, onRefresh }) {
           )}
         </DialogContent>
       </Dialog>
+
+      {toast && (
+        <div
+          className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl shadow-lg text-sm font-medium animate-in fade-in slide-in-from-bottom-2 ${
+            toast.type === "success"
+              ? "bg-emerald-600 text-white"
+              : toast.type === "error"
+              ? "bg-red-600 text-white"
+              : "bg-zinc-900 text-white"
+          }`}
+        >
+          {toast.msg}
+        </div>
+      )}
     </div>
   );
 }
