@@ -119,6 +119,46 @@ Responda JSON array, sem texto adicional.`;
   ): Promise<readonly ExecutionOutcome[]> {
     const outcomes: ExecutionOutcome[] = [];
     for (const step of steps) {
+      // AP-refine: o passo de web grounding (base44.ai.invokeLLM com
+      // add_context_from_internet) e DETERMINISTICO, seguro e somente leitura.
+      // Executa-o DIRETAMENTE via SDK em vez de ctx.dispatch (engine.execute).
+      // Motivo: o engine aplica DEFAULT_EXECUTION_POLICY (stepTimeoutMs=10s) nas
+      // sub-caps nao-composite. InvokeLLM com web search (Gemini + Google Search)
+      // costuma levar 10-20s — o step timeout mata a busca web antes dela retornar,
+      // deixando a sintese sem evidencia real (causa raiz das respostas "pesquisa
+      // falhou / nenhum dado encontrado"). Chamando direto, o web grounding roda
+      // reliably (provado em teste isolado). Outros sub-caps (github.files.get)
+      // seguem pela cadeia completa via ctx.dispatch (Intelligence + Safety + Dispatch).
+      if (step.call.connectorId === "base44" && step.call.capability === "ai.invokeLLM") {
+        try {
+          const res = await base44.integrations.Core.InvokeLLM({
+            prompt: String(step.call.params.prompt ?? ""),
+            add_context_from_internet: Boolean(step.call.params.add_context_from_internet),
+          });
+          outcomes.push(Object.freeze({
+            status: "success" as const,
+            connectorId: step.call.connectorId,
+            capability: step.call.capability,
+            output: res,
+            message: null,
+            reversibility: "safe" as const,
+            executionId: ctx.parentExecutionId,
+            durationMs: null,
+          }));
+        } catch (e) {
+          outcomes.push(Object.freeze({
+            status: "failed" as const,
+            connectorId: step.call.connectorId,
+            capability: step.call.capability,
+            output: null,
+            message: (e as Error).message,
+            reversibility: "safe" as const,
+            executionId: ctx.parentExecutionId,
+            durationMs: null,
+          }));
+        }
+        continue;
+      }
       const outcome = await ctx.dispatch(step.call);
       outcomes.push(outcome);
     }
