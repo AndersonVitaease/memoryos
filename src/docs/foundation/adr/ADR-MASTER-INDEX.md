@@ -287,8 +287,27 @@ ADR-007 (Reasoning Engine)
 
 ---
 
+---
+
+### ADR-017 — Adaptive Process Engine
+
+| Campo | Valor |
+|---|---|
+| **ADR-ID** | ADR-017 |
+| **Status** | Proposed |
+| **RFC Origem** | RFC-010 |
+| **EPIC** | EPIC-020 |
+| **Prioridade** | ALTA |
+| **Sprints afetadas** | AP-01, AP-02, AP-03, AP-04, AP-05 |
+| **Arquivo** | `src/docs/foundation/adr/ADR-017.md` |
+
+**Resumo:** Introduz a categoria arquitetural interna "Adaptive Process" para processos cognitivos compostos (Deep Research e futuros Deep Planning, Root Cause Analysis, Opportunity Discovery, Strategy Builder, Multi-Agent Investigation, Compliance, Negotiation, Optimization) que possuem auto-orquestração dinâmica, loop reflexivo com critério de parada próprio e síntese. Abordagem hibrida: externamente continua sendo apenas uma capability (`deepResearch()`) na arquitetura publica de 4 elementos (Planner → Capability Registry → Dispatcher → Connector); internamente e implementado por um Adaptive Process. O metadata `composite` no `ConnectorMetadata` (espelhando `capabilityReversibility` do EI-01) declara a bifurcacao atômica-vs-composta ao Runtime, evitando bifurcacao invisivel (timeout/audit/auth/correlation tree silenciosos). Reentrada pela cadeia completa: sub-capabilities invocadas pelo processo passam por `processCapability` (Intelligence + Safety + Dispatch) com `parentExecutionId` para correlation tree. Sem `AdaptiveProcessRegistry` (YAGNI — 1 processo nao justifica). Codigo em `src/lib/execution-intelligence/adaptive-process/` (diretorio vivo), nao em arvores paralelas mortas nem nos 2 Capability Registries paralelos. Rejeita Deep Research como Goal (Planner e declarativo/estatico, nao iterativo), como Capability comum sem flag (bifurcacao invisivel), como categoria publica (aumenta modelo mental sem necessidade) e o nome "Cognitive Process" (limita a LLM-driven; "Adaptive" cobre processos nao-cognitivos).
+
+---
+
 *SPR-ADR-01 · 2026-07-11 · Engineering First*
 *Atualizado em 2026-08-02 — ADR-012 Watch Engine adicionado*
 *Atualizado em 2026-08-03 — ADR-013 Microsoft Graph Expansion adicionado*
 *Atualizado em 2026-08-04 — ADR-014 Microsoft Graph Provider Router adicionado*
 *Atualizado em 2026-08-04 — ADR-015 Execution Intelligence Engine adicionado*
+*Atualizado em 2026-08-05 — ADR-017 Adaptive Process Engine adicionado*

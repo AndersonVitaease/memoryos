@@ -88,4 +88,18 @@
 
 ---
 
+## Adaptive Process Engine (AP-01 — AP-05)
+
+| Sprint | Foco | Entregável | Status |
+|---|---|---|---|
+| AP-01 | `composite` metadata flag | Campo `capabilityComposite?: Record<string, boolean>` em `ConnectorTypes.ts` (espelha `capabilityReversibility` do EI-01). Nada le o campo ainda. | Planned |
+| AP-02 | AdaptiveProcess interface + DeepResearchProcess | `src/lib/execution-intelligence/adaptive-process/AdaptiveProcess.ts` (interface base: plan/invoke/reflect/gap/stop/synthesize) + `DeepResearchProcess.ts` (primeira instancia). Nenhum connector, nenhum wiring. | Planned |
+| AP-03 | AdaptiveProcessConnector + mapping (inerte) | `AdaptiveProcessConnector.ts` (id `"adaptive-process"`, capability `deepResearch`, `composite: true`, reversibility `safe`) no `ConnectorBootstrap`. Mapping no `GoalCapabilityRegistry`. Goal sem sinais no `GoalRegistry` ainda → Planner nao roteia. Zero producao. | Planned |
+| AP-04 | Runtime: política de execução composta + nested invocation | `processCapability` le `composite` → sub-budget, `parentExecutionId` threading, timeout estendido. `DeepResearchProcess` invoca sub-caps via `runtime.processCapability({ ..., parentExecutionId })`. Correlação em arvore via `SystemEvent.parentId`. | Planned |
+| AP-05 | Exposição ao usuário | Sinais `deepResearch` no `GoalRegistry` ("pesquise a fundo", "investigue a fundo", "deep research"). Planner roteia. Primeiro uso real. | Planned |
+
+> **Documentação:** RFC-010 + ADR-017 (documentacao concluida em 2026-08-05). Abordagem hibrida: externamente capability, internamente Adaptive Process. Metadata `composite` no `ConnectorMetadata` declara bifurcacao atomica-vs-composta ao Runtime. Reentrada pela cadeia completa (sub-caps via `processCapability` com `parentExecutionId`). Sem `AdaptiveProcessRegistry` (YAGNI — 1 processo nao justifica). Codigo em `src/lib/execution-intelligence/adaptive-process/` (vivo), nao em arvores paralelas nem nos 2 Capability Registries paralelos. Rejeita: Deep Research como Goal (Planner declarativo/estatico), como Capability comum sem flag (bifurcacao invisivel), como categoria publica (aumenta modelo mental) e o nome "Cognitive Process" (limita a LLM-driven).
+
+---
+
 *MemoryOS Foundation v1.0.0 — 2026-07-10*

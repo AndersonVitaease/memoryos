@@ -59,6 +59,7 @@ EPIC (domínio de implementação)
 | EPIC-017 | Watch Engine | MES §21, MES §12 | RFC-005 | WE-01 a WE-04 |
 | EPIC-018 | Microsoft Graph Provider Router | MES §16, MCF | RFC-007 / ADR-014 | MS-PR-01 a MS-PR-04 |
 | EPIC-019 | Execution Intelligence Engine | MRS, MCS, MREM | RFC-008 / ADR-015 | EI-01 a EI-07 |
+| EPIC-020 | Adaptive Process Engine | MRS, MCS, MREM | RFC-010 / ADR-017 | AP-01 a AP-05 |
 
 ---
 
@@ -664,6 +665,53 @@ _AC: Watch dispara, `PendingWatchAction` persiste, sistema reinicia, Worker re-l
 
 ---
 
+### EPIC-020 — Adaptive Process Engine
+
+**RFC-010 | ADR-017 | Sprints AP-01 a AP-05**
+
+**FEAT-140** `composite` metadata flag (Sprint AP-01)
+- Objetivo: Adicionar campo `capabilityComposite?: Record<string, boolean>` em `ConnectorTypes.ts`, espelhando `capabilityReversibility` (EI-01). Default nao-composite quando ausente. Nenhuma logica le o campo ainda.
+- Escopo: `src/lib/connector-runtime/ConnectorTypes.ts`
+- Dependências: Nenhuma
+- Critério: Campo definido e compila; build verde; comportamento de execucao identico ao anterior
+
+**FEAT-141** AdaptiveProcess interface + DeepResearchProcess (Sprint AP-02)
+- Objetivo: Criar `AdaptiveProcess.ts` (interface base: plan/invoke/reflect/gap/stop/synthesize) + `DeepResearchProcess.ts` (primeira instancia concreta). Nenhum connector, nenhum wiring, nenhum caller.
+- Escopo: `src/lib/execution-intelligence/adaptive-process/AdaptiveProcess.ts`, `DeepResearchProcess.ts`
+- Dependências: FEAT-140
+- Critério: Interface e implementacao compilam; nada as importa; build verde; caminho antigo 100% intocado
+
+**FEAT-142** AdaptiveProcessConnector + mapping (Sprint AP-03)
+- Objetivo: Criar `AdaptiveProcessConnector.ts` (id `"adaptive-process"`, capability `["deepResearch"]`, `composite: true`, reversibility `safe`) registrado no `ConnectorBootstrap`. Mapping `deepResearch` no `GoalCapabilityRegistry`. O connector delega `execute("deepResearch")` ao `DeepResearchProcess`. O goal ainda nao tem sinais no `GoalRegistry` → Planner nao roteia → zero producao.
+- Escopo: `src/lib/connector-runtime/connectors/AdaptiveProcessConnector.ts`, edicao aditiva em `ConnectorBootstrap.ts` e `GoalCapabilityRegistry.ts`
+- Dependências: FEAT-141
+- Critério: Connector registrado e valida no bootstrap; mapping presente; `deepResearch` nao roteavel pelo Planner ainda (sem sinais); build verde; zero impacto em producao
+
+**FEAT-143** Runtime: política de execução composta + nested invocation (Sprint AP-04)
+- Objetivo: `processCapability` le `composite` do metadata → aplica sub-budget proprio, `parentExecutionId` threading (correlacao em arvore via `SystemEvent.parentId`), timeout estendido, propagacao de auth context. `DeepResearchProcess` invoca sub-capabilities via `runtime.processCapability({ ..., parentExecutionId })` — reentrada pela cadeia completa (Intelligence + Safety + Dispatch).
+- Escopo: `src/lib/execution-intelligence/Runtime.ts` (branch de politica em helper isolado; `processCapability` permanece puro wiring), `DeepResearchProcess.ts` (invoke via runtime)
+- Dependências: FEAT-142 validada em staging
+- Critério: Sub-caps correlacionadas como filhas do deepResearch em `SystemEvent`; sub-budget isolado (burst de N sub-caps nao dispara breakers globais); auth context propagado; `processCapability` nao-composite identico ao anterior (paridade ADR-015)
+
+**FEAT-144** Exposição ao usuário (Sprint AP-05)
+- Objetivo: Adicionar sinais `deepResearch` no `GoalRegistry` ("pesquise a fundo", "investigue a fundo", "deep research", "pesquisa aprofundada"). Planner passa a rotear intents de pesquisa profunda para `deepResearch`. Primeiro uso real.
+- Escopo: `src/lib/goals/GoalRegistry.ts` (sinais aditivos)
+- Dependências: FEAT-143
+- Critério: "pesquise a fundo X" roteia para `deepResearch` → `AdaptiveProcessConnector` → `DeepResearchProcess` → sub-caps correlacionadas → relatorio sintetizado; capabilities nao-composite permanecem roteando identico
+
+---
+
+### EPIC-020 — Invariants arquiteturais (nao-negociaveis)
+
+1. **Arquitetura publica inalterada** — 4 elementos (Planner → Capability Registry → Dispatcher → Connector). Adaptive Process e detalhe de implementacao, nao elemento publico
+2. **Bifurcacao declarada, nao invisivel** — o flag `composite` no metadata diz a verdade ao Runtime sobre o que esta executando
+3. **Reentrada pela cadeia completa** — sub-capabilities invocadas pelo Adaptive Process passam por `processCapability` (Intelligence + Safety + Dispatch), nao por atalho. Bypass impossivel por construcao (herda ADR-015 invariant #1)
+4. **YAGNI no registry** — sem `AdaptiveProcessRegistry` ate o 2º processo existir. A interface `AdaptiveProcess` nasce agora; o connector detem diretamente a instancia. O registry surge quando houver 2 instancias para discriminar
+5. **Aditivo apenas** — nada e apagado ate AP-05; o caminho antigo segue 100% intocado ate `deepResearch` ser roteado pelo Planner
+
+---
+
 *MEB — MemoryOS Engineering Backlog v1.0 — Engineering Reference — 2026-07-10*
 *Atualizado em 2026-08-02 — EPIC-017 Watch Engine adicionado*
 *Atualizado em 2026-08-04 — EPIC-019 Execution Intelligence Engine adicionado*
+*Atualizado em 2026-08-05 — EPIC-020 Adaptive Process Engine adicionado*
