@@ -568,7 +568,22 @@ export class GitHubConnector implements IConnector {
     operation: string, payload: Record<string, unknown>,
     start: number, eid: string, logs: ConnectorLog[],
   ): Promise<ConnectorResult> {
-    const token = this.getToken();
+    let token = this.getToken();
+
+    // FIX: o mapa de tokens OAuth em memoria (GitHubAuthSession) e volatil —
+    // se perde no reload/HMR mesmo com o token persistido no backend
+    // (entidade GitHubOAuthToken). Antes de declarar NOT_CONFIGURED, tenta
+    // hidratar do backend via githubRefreshToken. A metadata da conexao
+    // (localStorage) persiste entre reloads, entao hydrateToken consegue
+    // repovoar o token em memoria.
+    if (!token) {
+      try {
+        const activeWs = _getActiveGitHubWs();
+        const { hydrateToken } = await import("@/lib/github-auth/GitHubAuthSession");
+        const hydrated = await hydrateToken(activeWs);
+        if (hydrated) token = this.getToken();
+      } catch { /* fall through to notConfigured */ }
+    }
 
     if (!token) {
       this.internalMetrics.authFailures++;
