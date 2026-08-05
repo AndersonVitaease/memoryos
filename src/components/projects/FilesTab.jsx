@@ -106,7 +106,11 @@ export default function FilesTab({ projectId, folders, documents, onRefresh }) {
                       </button>
                     )}
                     {doc.file_type === "pdf" && doc.file_url && (
-                      <PdfToolsButton doc={doc} onNotification={notify} />
+                      <PdfToolsButton
+                        doc={doc}
+                        allPdfs={documents.filter((d) => d.file_type === "pdf" && d.file_url)}
+                        onNotification={notify}
+                      />
                     )}
                     <a href={doc.file_url} target="_blank" rel="noopener noreferrer" className="p-1.5 rounded-lg hover:bg-zinc-100 transition text-zinc-400 hover:text-zinc-600">
                       <ExternalLink className="w-4 h-4" />

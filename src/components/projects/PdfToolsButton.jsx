@@ -1,21 +1,22 @@
 import React, { useState, useRef, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { Wand2, RotateCw, Lock, Unlock, FileText, Loader2, ChevronDown, X } from "lucide-react";
+import { Wand2, RotateCw, Lock, Unlock, FileText, Loader2, ChevronDown, X, Layers, Scissors } from "lucide-react";
 
 /**
  * PdfToolsButton — menu de ações PDF powered by Stirling-PDF (stirlingPdfCall).
  * Opera sobre um documento PDF ja ingerido (file_url armazenado no entity Document).
  *
- * Acoes disponiveis (single-file):
+ * Acoes disponiveis:
  *   - rotate        (90/180/270)
  *   - addPassword   (prompt de senha)
  *   - removePassword (prompt de senha atual)
  *   - pdfToText     (extrai texto -> download .txt)
+ *   - merge         (mescla com outros PDFs do mesmo projeto)
+ *   - split         (divide por intervalos ou faixa de paginas)
  *
- * Resultados binarios (rotate, addPassword, removePassword) retornam como base64 JSON
- * e sao baixados como blobs .pdf.
+ * Resultados binarios retornam como base64 JSON e sao baixados como blobs.
  */
-export default function PdfToolsButton({ doc, onNotification }) {
+export default function PdfToolsButton({ doc, allPdfs = [], onNotification }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(null); // operation id em execucao
   const [promptState, setPromptState] = useState(null); // { kind: "password"|"remove"|"rotate", ... }
@@ -54,6 +55,45 @@ export default function PdfToolsButton({ doc, onNotification }) {
     const data = res?.data ?? res;
     if (!data?.ok) throw new Error(data?.error || `Falha na operacao ${operation}`);
     return data;
+  };
+
+  const runMerge = async (otherDocs) => {
+    setPromptState(null);
+    setBusy("merge");
+    try {
+      const fileUrls = [doc.file_url, ...otherDocs.map((d) => d.file_url)];
+      const data = await callStirling("merge", { fileUrls });
+      const baseName = doc.name.replace(/\.pdf$/i, "");
+      downloadBase64(data.base64, `${baseName}_merged.pdf`, "application/pdf");
+      notify(`PDF mesclado com ${otherDocs.length} arquivo(s).`, "success");
+    } catch (e) {
+      notify(`Erro ao mesclar: ${e.message}`, "error");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const runSplit = async ({ mode, intervals, firstPage, lastPage }) => {
+    setPromptState(null);
+    setBusy("split");
+    try {
+      const extra = { mode };
+      if (mode === "intervals") extra.intervals = intervals;
+      if (mode === "pages") {
+        extra.firstPage = firstPage;
+        extra.lastPage = lastPage;
+      }
+      const data = await callStirling("split", extra);
+      const baseName = doc.name.replace(/\.pdf$/i, "");
+      const mime = data.contentType || "application/zip";
+      const ext = mime.includes("zip") ? "zip" : "pdf";
+      downloadBase64(data.base64, `${baseName}_split.${ext}`, mime);
+      notify(mode === "intervals" ? "PDF dividido (ZIP)." : "Faixa extraída.", "success");
+    } catch (e) {
+      notify(`Erro ao dividir: ${e.message}`, "error");
+    } finally {
+      setBusy(null);
+    }
   };
 
   const runRotate = async (angle) => {
@@ -147,6 +187,9 @@ export default function PdfToolsButton({ doc, onNotification }) {
           <MenuItem icon={Lock} label="Adicionar senha" onClick={() => setPromptState({ kind: "addPassword" })} disabled={isBusy} />
           <MenuItem icon={Unlock} label="Remover senha" onClick={() => setPromptState({ kind: "removePassword" })} disabled={isBusy} />
           <div className="border-t border-zinc-100 my-1" />
+          <MenuItem icon={Layers} label="Mesclar com outros" onClick={() => setPromptState({ kind: "merge" })} disabled={isBusy || allPdfs.length === 0} />
+          <MenuItem icon={Scissors} label="Dividir / extrair páginas" onClick={() => setPromptState({ kind: "split" })} disabled={isBusy} />
+          <div className="border-t border-zinc-100 my-1" />
           <MenuItem icon={FileText} label="Extrair texto" onClick={runExtractText} disabled={isBusy} />
         </div>
       )}
@@ -174,6 +217,24 @@ export default function PdfToolsButton({ doc, onNotification }) {
           confirmLabel={promptState.kind === "addPassword" ? "Proteger" : "Desbloquear"}
           onCancel={() => setPromptState(null)}
           onConfirm={promptState.kind === "addPassword" ? runAddPassword : runRemovePassword}
+          busy={isBusy}
+        />
+      )}
+
+      {open && promptState?.kind === "merge" && (
+        <MergePrompt
+          currentDoc={doc}
+          allPdfs={allPdfs}
+          onCancel={() => setPromptState(null)}
+          onConfirm={runMerge}
+          busy={isBusy}
+        />
+      )}
+
+      {open && promptState?.kind === "split" && (
+        <SplitPrompt
+          onCancel={() => setPromptState(null)}
+          onConfirm={runSplit}
           busy={isBusy}
         />
       )}
@@ -240,6 +301,146 @@ function PasswordPrompt({ title, confirmLabel, onConfirm, onCancel, busy }) {
           className="flex-1 px-3 py-1.5 rounded-lg bg-violet-600 text-white text-sm font-medium hover:bg-violet-700 transition disabled:opacity-50"
         >
           {confirmLabel}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function MergePrompt({ currentDoc, allPdfs, onCancel, onConfirm, busy }) {
+  const [selected, setSelected] = useState([]);
+  const others = allPdfs.filter((d) => d.id !== currentDoc.id && d.file_url);
+  const toggle = (d) =>
+    setSelected((prev) => (prev.some((s) => s.id === d.id) ? prev.filter((s) => s.id !== d.id) : [...prev, d]));
+  return (
+    <div className="absolute right-0 top-full mt-1 z-30 w-64 bg-white rounded-xl border border-zinc-200 shadow-lg p-3">
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs font-semibold text-zinc-700">Mesclar com (ordem: atual primeiro)</p>
+        <button onClick={onCancel} className="text-zinc-400 hover:text-zinc-600">
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+      <div className="max-h-44 overflow-y-auto space-y-1 mb-2">
+        {others.length === 0 ? (
+          <p className="text-xs text-zinc-400 px-1 py-2">Nenhum outro PDF no projeto.</p>
+        ) : (
+          others.map((d) => {
+            const checked = selected.some((s) => s.id === d.id);
+            const idx = selected.findIndex((s) => s.id === d.id);
+            return (
+              <button
+                key={d.id}
+                onClick={() => toggle(d)}
+                className={`w-full text-left px-2 py-1.5 rounded-lg text-xs flex items-center gap-2 transition ${
+                  checked ? "bg-violet-50 text-violet-700" : "hover:bg-zinc-50 text-zinc-600"
+                }`}
+              >
+                <span className="w-4 text-center font-semibold">{checked ? `${idx + 2}` : "•"}</span>
+                <span className="flex-1 truncate">{d.name}</span>
+              </button>
+            );
+          })
+        )}
+      </div>
+      <div className="flex gap-2">
+        <button
+          onClick={onCancel}
+          disabled={busy}
+          className="flex-1 px-3 py-1.5 rounded-lg bg-zinc-100 text-zinc-600 text-sm font-medium hover:bg-zinc-200 transition disabled:opacity-50"
+        >
+          Cancelar
+        </button>
+        <button
+          onClick={() => onConfirm(selected)}
+          disabled={busy || selected.length === 0}
+          className="flex-1 px-3 py-1.5 rounded-lg bg-violet-600 text-white text-sm font-medium hover:bg-violet-700 transition disabled:opacity-50"
+        >
+          Mesclar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SplitPrompt({ onCancel, onConfirm, busy }) {
+  const [mode, setMode] = useState("intervals");
+  const [intervals, setIntervals] = useState("");
+  const [firstPage, setFirstPage] = useState("");
+  const [lastPage, setLastPage] = useState("");
+  const valid = mode === "intervals" ? /^\d+(-\d+)?(,\d+(-\d+)?)*$/.test(intervals.trim()) : firstPage && lastPage;
+  return (
+    <div className="absolute right-0 top-full mt-1 z-30 w-64 bg-white rounded-xl border border-zinc-200 shadow-lg p-3">
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs font-semibold text-zinc-700">Dividir PDF</p>
+        <button onClick={onCancel} className="text-zinc-400 hover:text-zinc-600">
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+      <div className="flex gap-1 mb-2 bg-zinc-100 rounded-lg p-0.5">
+        <button
+          onClick={() => setMode("intervals")}
+          className={`flex-1 px-2 py-1 rounded-md text-xs font-medium transition ${
+            mode === "intervals" ? "bg-white text-violet-700 shadow-sm" : "text-zinc-500"
+          }`}
+        >
+          Intervalos (ZIP)
+        </button>
+        <button
+          onClick={() => setMode("pages")}
+          className={`flex-1 px-2 py-1 rounded-md text-xs font-medium transition ${
+            mode === "pages" ? "bg-white text-violet-700 shadow-sm" : "text-zinc-500"
+          }`}
+        >
+          Faixa (PDF)
+        </button>
+      </div>
+      {mode === "intervals" ? (
+        <input
+          value={intervals}
+          autoFocus
+          onChange={(e) => setIntervals(e.target.value)}
+          placeholder="Ex: 1-3,4-6,7"
+          className="w-full px-2.5 py-1.5 rounded-lg border border-zinc-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-400 mb-2"
+        />
+      ) : (
+        <div className="flex gap-2 mb-2">
+          <input
+            value={firstPage}
+            onChange={(e) => setFirstPage(e.target.value)}
+            placeholder="De"
+            type="number"
+            min="1"
+            className="flex-1 px-2.5 py-1.5 rounded-lg border border-zinc-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-400"
+          />
+          <input
+            value={lastPage}
+            onChange={(e) => setLastPage(e.target.value)}
+            placeholder="Até"
+            type="number"
+            min="1"
+            className="flex-1 px-2.5 py-1.5 rounded-lg border border-zinc-200 text-sm focus:outline-none focus:ring-2 focus:ring-violet-200 focus:border-violet-400"
+          />
+        </div>
+      )}
+      <p className="text-[10px] text-zinc-400 mb-2 leading-relaxed">
+        {mode === "intervals"
+          ? "Cada intervalo vira um PDF. Resultado em ZIP."
+          : "Extrai páginas contíguas num único PDF."}
+      </p>
+      <div className="flex gap-2">
+        <button
+          onClick={onCancel}
+          disabled={busy}
+          className="flex-1 px-3 py-1.5 rounded-lg bg-zinc-100 text-zinc-600 text-sm font-medium hover:bg-zinc-200 transition disabled:opacity-50"
+        >
+          Cancelar
+        </button>
+        <button
+          onClick={() => valid && onConfirm(mode === "intervals" ? { mode, intervals: intervals.trim() } : { mode, firstPage: Number(firstPage), lastPage: Number(lastPage) })}
+          disabled={busy || !valid}
+          className="flex-1 px-3 py-1.5 rounded-lg bg-violet-600 text-white text-sm font-medium hover:bg-violet-700 transition disabled:opacity-50"
+        >
+          Dividir
         </button>
       </div>
     </div>
