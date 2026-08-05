@@ -91,7 +91,7 @@ class GoalRegistryClass {
    * Fronteira Unicode resolve sem remover nenhum sinal válido.
    */
   matchBySignals(userMessage: string): GoalDefinition | null {
-    const lower = userMessage.toLowerCase();
+    const lower = userMessage.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     for (const def of this._definitions) {
       const hit = def.signals.some((s) => {
         const escaped = s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -588,27 +588,31 @@ const _builtins: GoalDefinition[] = [
 
   // ── GitHub (alta prioridade: deve vencer o Drive em leituras de repo) ──────
   // Registrado ANTES do Drive porque frases como "leia o arquivo X do
-  // repositório Y" contêm o sinal genérico "leia o arquivo" do
-  // drive.openDocument. Sem este bloco antes, o Drive rouba a intenção e
+  // repositorio Y" contem o sinal generico "leia o arquivo" do
+  // drive.openDocument. Sem este bloco antes, o Drive rouba a intencao e
   // tenta baixar do Google Drive. listFiles vem antes de getFile para que
-  // "listar arquivos do repositório" case em listFiles (verbo de listagem)
-  // e não em getFile. O discriminador de getFile é o trecho estável
-  // "do repositório"/"do repo" (o filename fica entre "arquivo" e "do
-  // repositório", então não dá para casar a frase inteira).
+  // "listar arquivos do repositorio" case em listFiles (verbo de listagem)
+  // e nao em getFile. O discriminador de getFile e o trecho estavel
+  // "do repositorio"/"do repo" (o filename fica entre "arquivo" e "do
+  // repositorio", entao nao da para casar a frase inteira).
+  // Sinais em ASCII puro: acentos em string literals TS quebram o build.
+  // A normalizacao NFD em matchBySignals torna o casamento insensivel a
+  // acentos, entao "repositorio" (sinal) casa com "repositório" (input).
   {
     type: "github.listFiles",
     namespace: "github",
     description: "List files in the repository tree",
     signals: [
       "list files", "show files", "source files",
-      "listar arquivos do repositorio", "listar arquivos do repositório",
+      "listar arquivos do repositorio",
       "listar arquivos do repo",
-      "mostre os arquivos do repositorio", "mostre os arquivos do repositório",
+      "mostre os arquivos do repositorio",
       "mostre os arquivos do repo",
       "file tree", "repository tree", "show structure",
     ],
     extractParams: (msg) => {
-      const repoMatch = msg.match(/(?:reposit[oó]rio|repo)\s+([A-Za-z0-9_.\-]+\/[A-Za-z0-9_.\-]+)/i);
+      const norm = msg.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+      const repoMatch = norm.match(/(?:repositorio|repo)\s+([A-Za-z0-9_.\-]+\/[A-Za-z0-9_.\-]+)/i);
       const owner = repoMatch?.[1]?.split("/")[0] ?? null;
       const repo = repoMatch?.[1]?.split("/")[1] ?? null;
       return { owner, repo };
@@ -621,13 +625,14 @@ const _builtins: GoalDefinition[] = [
     signals: [
       "read file", "show file", "content of", "open file",
       "source code", "codigo fonte", "conteudo do arquivo",
-      // PT — discriminador "repositório"/"repo": vence o sinal genérico
+      // PT — discriminador "repositorio"/"repo": vence o sinal generico
       // "leia o arquivo" do drive.openDocument (registrado depois).
-      "do repositorio", "do repositório", "do repo",
-      "no repositorio", "no repositório", "no repo",
+      "do repositorio", "do repo",
+      "no repositorio", "no repo",
     ],
     extractParams: (msg) => {
-      const repoMatch = msg.match(/(?:reposit[oó]rio|repo)\s+([A-Za-z0-9_.\-]+\/[A-Za-z0-9_.\-]+)/i);
+      const norm = msg.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+      const repoMatch = norm.match(/(?:repositorio|repo)\s+([A-Za-z0-9_.\-]+\/[A-Za-z0-9_.\-]+)/i);
       const owner = repoMatch?.[1]?.split("/")[0] ?? null;
       const repo = repoMatch?.[1]?.split("/")[1] ?? null;
       const path = msg.match(/([a-zA-Z0-9_\-/.]+\.[a-zA-Z]{1,6})/i)?.[1];
