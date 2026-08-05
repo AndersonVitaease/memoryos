@@ -34,7 +34,8 @@ import type {
 import { makeLog, makeExecutionId } from "../ConnectorTypes";
 import { getDeepResearchProcess } from "@/lib/execution-intelligence/adaptive-process/DeepResearchProcess";
 import type { AdaptiveProcessContext } from "@/lib/execution-intelligence/adaptive-process/AdaptiveProcess";
-import type { ExecutionOutcome } from "@/lib/execution-intelligence/ExecutionTypes";
+import type { ExecutionOutcome, ExecutionRequest } from "@/lib/execution-intelligence/ExecutionTypes";
+import type { ConnectorExecutionContext } from "@/lib/runtime-engine/RuntimeTypes";
 
 const CAPABILITIES = Object.freeze(["deepResearch"]);
 
@@ -53,12 +54,7 @@ export interface AdaptiveProcessDispatchCall {
 }
 
 export interface AdaptiveProcessRuntime {
-  processCapability(req: {
-    readonly connectorId: string;
-    readonly capability: string;
-    readonly params: Record<string, unknown>;
-    readonly parentExecutionId?: string;
-  }): Promise<ExecutionOutcome>;
+  processCapability(req: ExecutionRequest): Promise<ExecutionOutcome>;
 }
 
 let _runtime: AdaptiveProcessRuntime | null = null;
@@ -149,21 +145,36 @@ export class AdaptiveProcessConnector implements IConnector {
 
     const query = typeof payload.query === "string" ? payload.query : "";
 
+    // AP-04: auth context propagado as sub-capabilities. O connector recebe
+    // ConnectorContext (projectId) e mapeia para ConnectorExecutionContext
+    // (workspaceId) — preserva userId/sessionId/goalId da execucao pai.
+    const parentCtx: ConnectorExecutionContext = {
+      userId: context.userId,
+      workspaceId: (context as { workspaceId?: string }).workspaceId ?? context.projectId,
+      sessionId: context.sessionId,
+      goalId: context.goalId,
+      origin: "adaptive-process",
+    };
+
     const processCtx: AdaptiveProcessContext = {
       request: {
         connectorId: this.id,
         capability: operation,
         params: payload,
-        context: context as unknown as AdaptiveProcessContext["request"]["context"],
+        context: parentCtx,
         executionId: eid,
       },
       parentExecutionId: eid,
       query,
       dispatch: async (sub) => {
+        // AP-04: reentrada pela cadeia completa — sub-cap invoca processCapability
+        // (Intelligence + Safety + Dispatch), nunca por atalho. parentExecutionId
+        // threads o eid do deepResearch pai para correlacao em arvore.
         const outcome = await _runtime!.processCapability({
           connectorId: sub.connectorId,
           capability: sub.capability,
           params: sub.params,
+          context: parentCtx,
           parentExecutionId: eid,
         });
         return outcome;
