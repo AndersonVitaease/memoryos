@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { Wand2, RotateCw, Lock, Unlock, FileText, Loader2, ChevronDown, X, Layers, Scissors, Wrench } from "lucide-react";
+import { Wand2, RotateCw, Lock, Unlock, FileText, Loader2, ChevronDown, X, Layers, Scissors, Wrench, ScanLine } from "lucide-react";
 
 /**
  * PdfToolsButton — menu de ações PDF powered by Stirling-PDF (stirlingPdfCall).
@@ -160,10 +160,23 @@ export default function PdfToolsButton({ doc, allPdfs = [], onNotification }) {
     }
   };
 
-  const runExtractText = async () => {
+  const runExtractText = async (forceOcr = false) => {
     setOpen(false);
     setBusy("pdfToText");
     try {
+      // forceOcr pula Stirling inteiramente — direto ao Gemini (mais rapido para PDFs escaneados)
+      if (forceOcr) {
+        notify("OCR por visão (pode levar alguns segundos)...", "info");
+        const ocrText = await runOcrFallback();
+        if (!ocrText) {
+          notify("OCR por visão não conseguiu extrair texto do PDF.", "error");
+          return;
+        }
+        downloadText(ocrText, "_ocr.txt");
+        notify(`Texto extraído por OCR de visão (${ocrText.length} caracteres).`, "success");
+        return;
+      }
+
       const res = await base44.functions.invoke("stirlingPdfCall", {
         operation: "pdfToText",
         fileUrl: doc.file_url,
@@ -180,13 +193,7 @@ export default function PdfToolsButton({ doc, allPdfs = [], onNotification }) {
             notify("OCR por visão não conseguiu extrair texto do PDF.", "error");
             return;
           }
-          const blob = new Blob([ocrText], { type: "text/plain;charset=utf-8" });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = doc.name.replace(/\.pdf$/i, "") + "_ocr.txt";
-          a.click();
-          URL.revokeObjectURL(url);
+          downloadText(ocrText, "_ocr.txt");
           notify(`Texto extraído por OCR de visão (${ocrText.length} caracteres).`, "success");
           return;
         }
@@ -195,19 +202,23 @@ export default function PdfToolsButton({ doc, allPdfs = [], onNotification }) {
         throw new Error(`${data?.error || "Falha na extração"}${detail}`);
       }
 
-      const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = doc.name.replace(/\.pdf$/i, "") + ".txt";
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadText(text, ".txt");
       notify(`Texto extraído (${text.length} caracteres)${data.repaired ? " — PDF foi reparado automaticamente." : ""}.`, "success");
     } catch (e) {
       notify(`Erro ao extrair texto: ${e.message}`, "error");
     } finally {
       setBusy(null);
     }
+  };
+
+  const downloadText = (content, suffix) => {
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = doc.name.replace(/\.pdf$/i, "") + suffix;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   // OCR por visao: envia o PDF original diretamente ao LLM de visao (Gemini suporta PDFs nativamente)
@@ -256,7 +267,8 @@ export default function PdfToolsButton({ doc, allPdfs = [], onNotification }) {
           <MenuItem icon={Scissors} label="Dividir / extrair páginas" onClick={() => setPromptState({ kind: "split" })} disabled={isBusy} />
           <div className="border-t border-zinc-100 my-1" />
           <MenuItem icon={Wrench} label="Reparar PDF" onClick={runRepair} disabled={isBusy} />
-          <MenuItem icon={FileText} label="Extrair texto" onClick={runExtractText} disabled={isBusy} />
+          <MenuItem icon={FileText} label="Extrair texto" onClick={() => runExtractText(false)} disabled={isBusy} />
+          <MenuItem icon={ScanLine} label="Extrair por OCR (visão)" onClick={() => runExtractText(true)} disabled={isBusy} />
         </div>
       )}
 
