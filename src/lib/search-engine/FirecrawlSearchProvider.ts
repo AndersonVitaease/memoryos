@@ -20,9 +20,9 @@ import { base44 } from "@/api/base44Client";
 
 // Palavras-chave que indicam necessidade de conteúdo profundo (não só links)
 const DEEP_CONTENT_KEYWORDS = [
-  "documentação", "documentacao", "docs", "documentação oficial",
-  "scrape", "scraping", "crawl", "extrair conteúdo", "extrair conteudo",
-  "conteúdo da página", "conteudo da pagina", "ler o site", "leia o site",
+  "documentacao", "docs", "documentacao oficial",
+  "scrape", "scraping", "crawl", "extrair conteudo",
+  "conteudo da pagina", "ler o site", "leia o site",
   "pesquise a fundo", "pesquisa profunda", "deep research", "a fundo",
 ];
 
@@ -37,7 +37,7 @@ function extractUrl(query: string): string | null {
 
 // Sinais que distinguem "owner/repo" (referência a repo GitHub) de paths
 // comuns (src/components, node_modules/x). Sem um sinal, não trata como repo.
-const REPO_SIGNALS = ["github", "repositorio", "repositório", "repo", "readme", "documentação", "documentacao", "docs"];
+const REPO_SIGNALS = ["github", "repositorio", "repo", "readme", "documentacao", "docs"];
 
 // Diretórios de path que NÃO são owners de repo GitHub — evita falso positivo
 // em "src/components", "lib/utils", "node_modules/react", etc.
