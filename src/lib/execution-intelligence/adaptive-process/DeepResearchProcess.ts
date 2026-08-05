@@ -319,6 +319,112 @@ Responda APENAS JSON: {sufficiency: number 0..1, gaps: [string, ...]}
     return "";
   }
 
+  /**
+   * Verificacao deterministica de compatibilidade de transporte MCP.
+   *
+   * Causa raiz (dead-end documentado): o MemoryOS roda no sandbox Deno em
+   * nuvem da Base44, que NAO consegue spawning de processos locais nem I/O
+   * stdio. Servidores MCP que usam transporte stdio (Standard Input/Output)
+   * sao INCOMPATIVEIS com o MemoryOS em producao — so seriam compativeis se
+   * expusessem transporte HTTP/SSE, o que o sandbox consegue consumir.
+   *
+   * O LLM de sintese frequentemente alucina "compativel, basta um conector
+   * que faca spawn de processo" porque nao conhece essa restricao arquitetural.
+   * Esta verificacao deterministica detecta o padrao nas evidencias verbatim
+   * e sobrescreve a sintese com o veredicto correto quando aplicavel.
+   *
+   * Retorna o veredicto deterministico (markdown) se a incompatibilidade for
+   * detectada, ou null se a verificacao nao se aplica.
+   */
+  private _checkMcpTransportCompatibility(
+    evidence: readonly { step: string; verbatim: string | null }[],
+    query: string,
+  ): string | null {
+    // 1. A query precisa ser sobre conectar/integrar o servidor com o MemoryOS
+    const q = query.toLowerCase();
+    const asksConnection =
+      /\b(conectar|conectar com|integrar|integracao|integrar com|compativel|compatibilidade|usar com)\b/.test(q)
+      && /\b(memoryos|memory os|memory-os)\b/.test(q);
+    if (!asksConnection) return null;
+
+    // 2. Concatena todo o verbatim coletado (README, package.json, web)
+    const allText = (evidence
+      .map((e) => e.verbatim ?? "")
+      .join("\n")
+    ).toLowerCase();
+
+    // 3. Detecta transporte HTTP/SSE (COMPATIVEL com o sandbox).
+    //    CUIDADO: "http" aparece em URLs (https://github.com/...) e em
+    //    "http calls to <api>" (cliente HTTP, nao transporte do servidor).
+    //    So conta como transporte se houver indicador explicito de modo
+    //    HTTP/SSE para o servidor MCP, nao mencao generica de HTTP.
+    const textNoUrls = allText.replace(/https?:\/\/[^\s)]+/g, " ");
+    const hasHttpTransport =
+      /\b(http transport|transport:\s*["']?http|sse transport|transport:\s*["']?sse|server-sent events|http\/sse|--http\b|http server|http-based|express server|fastify|hono)\b/.test(textNoUrls);
+
+    // 4. Detecta transporte stdio (INCOMPATIVEL com o sandbox)
+    const stdioIndicators = [
+      "stdio",
+      "standard input",
+      "standard output",
+      "stdin",
+      "stdout",
+      "npx ",
+      "node main",
+      "node dist/main",
+      "node build/main",
+      "node index.js",
+      "node index",
+      "spawn",
+      "child_process",
+      "command",
+      "transport: \"stdio\"",
+      "transport: 'stdio'",
+    ];
+    const hasStdio = stdioIndicators.some((ind) => allText.includes(ind));
+
+    // 5. So emite veredicto se houver evidencia clara de stdio E sem HTTP/SSE
+    if (!hasStdio) return null;
+    if (hasHttpTransport) return null; // HTTP/SSE presente = compativel, nao sobrescreve
+
+    // 6. Cita os step-ids cujo verbatim revelou stdio (rastreabilidade)
+    const stdioSources = evidence
+      .filter((e) => {
+        const t = (e.verbatim ?? "").toLowerCase();
+        return stdioIndicators.some((ind) => t.includes(ind));
+      })
+      .map((e) => e.step);
+
+    return `# Veredicto de Compatibilidade: INCOMPATIVEL (producao)
+
+## Resposta direta
+
+Nao. O servidor MCP pesquisado **nao e compativel** para conexao direta com o MemoryOS em producao, porque utiliza transporte **stdio (Standard Input/Output)**, que exige um processo local — algo que o MemoryOS nao consegue hospedar.
+
+## Por que e incompativel (restricao arquitetural)
+
+O MemoryOS roda em um **sandbox Deno em nuvem** (Base44). Esse ambiente:
+
+- Nao consegue fazer **spawning de processos locais** (ex: \`npx\`, \`node main.js\`).
+- Nao tem acesso a **I/O stdio** (stdin/stdout de um processo filho).
+
+Portanto, um servidor MCP baseado em stdio — que deve ser executado como um processo local e comunicado via entrada/saida padrao — **nao pode ser integrado** pelo MemoryOS. A unica via de integracao seria se o servidor MCP expusesse um transporte **HTTP/SSE** (que o sandbox consegue consumir como cliente HTTP), mas as evidencias coletadas nao indicam esse transporte.
+
+## Evidencias (fonte primaria verbatim)
+
+Transporte stdio detectado nos seguintes trechos coletados:
+${stdioSources.map((s) => `- [${s}]`).join("\n")}
+
+## O que seria necessario para tornar compativel
+
+1. **Forcar transporte HTTP/SSE no servidor MCP** (ex: adicionar um modo \`--http\` ou um wrapper que exponha o servidor via HTTP). Se o servidor so suporta stdio, isso exige modificar o codigo-fonte dele.
+2. **Ou** hospedar o servidor em uma infraestrutura propria (VM/container com processo local) que atue como proxy HTTP -> stdio, expondo um endpoint HTTP/SSE que o MemoryOS possa consumir. Isso e infraestrutura externa, nao conector nativo.
+
+## Lacunas
+
+- Se houver um modo HTTP/SSE nao documentado no README, ele nao foi detectado nas evidencias — re-pesquisar o codigo-fonte do servidor por configuracoes de transporte alternativas pode ser necessario.`;
+  }
+
   async synthesize(
     steps: readonly ResearchStep[],
     results: readonly ExecutionOutcome[],
@@ -343,6 +449,15 @@ Responda APENAS JSON: {sufficiency: number 0..1, gaps: [string, ...]}
       const errors = evidence.map((e) => `${e.step}: ${e.error ?? "no content"}`).join("; ");
       return `# Pesquisa aprofundada: ${ctx.query}\n\n## Sem evidencia coletada\n\nNenhuma das etapas de pesquisa retornou conteudo utilizavel.\n\nErros por etapa: ${errors}\n\n## Lacunas\n- Requer re-execucao ou ajuste dos passos de coleta.`;
     }
+
+    // ── Verificacao deterministica de compatibilidade de transporte MCP ──
+    // Antes do LLM: se a query e sobre conectar um servidor MCP com o MemoryOS
+    // e as evidencias mostram transporte stdio (sem HTTP/SSE), o veredicto e
+    // INCOMPATIVEL — restricao arquitetural do sandbox Deno em nuvem. O LLM
+    // frequentemente alucina "compativel com conector que faca spawn" porque
+    // desconhece essa restricao; este veredicto e autoritativo.
+    const stdioVerdict = this._checkMcpTransportCompatibility(evidence, ctx.query);
+    if (stdioVerdict) return stdioVerdict;
 
     // ── Passo 1: relatorio aterrado com CITACAO VERBATIM ──
     const draftPrompt = `Sintetize um relatorio de pesquisa aprofundada em portugues (markdown).
