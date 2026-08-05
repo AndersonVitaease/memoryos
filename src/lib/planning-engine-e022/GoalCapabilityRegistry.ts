@@ -835,6 +835,18 @@ const _builtins: CapabilityMapping[] = [
     ],
   },
 
+  // ── Adaptive Process (Deep Research) — AP-03 (RFC-010/ADR-017)
+  // Connector id: "adaptive-process"  (AdaptiveProcessConnector.ts)
+  // Capability: deepResearch  (composite: true, reversibility: safe)
+  // INERTE em producao ate AP-05: o goalType existe no mapping, mas ainda nao
+  // tem sinais no GoalRegistry → Planner nao roteia → zero impacto.
+  {
+    goalType: "deepResearch" as GoalType,
+    descriptors: [
+      { connector: "adaptive-process", capability: "deepResearch", params: {} },
+    ],
+  },
+
   // ── General / Unknown — no capability steps; Runtime handles gracefully ───
   {
     goalType: "general.conversation",

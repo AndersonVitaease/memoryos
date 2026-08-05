@@ -113,6 +113,12 @@ const OFFICIAL_FACTORIES: ConnectorFactory[] = [
     const { WhatsAppConnector } = await import("./connectors/WhatsAppConnector");
     return new WhatsAppConnector();
   },
+  // AP-03 (RFC-010/ADR-017): Adaptive Process shell connector — composite capability.
+  // Inerte ate AP-04 (runtime wiring) e AP-05 (sinais no GoalRegistry).
+  async () => {
+    const { AdaptiveProcessConnector } = await import("./connectors/AdaptiveProcessConnector");
+    return new AdaptiveProcessConnector();
+  },
 ];
 
 // ── ConnectorBootstrap ────────────────────────────────────────────────────────
