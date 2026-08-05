@@ -1097,17 +1097,60 @@ const _builtins: GoalDefinition[] = [
     ],
     extractParams: (msg) => {
       // Extrai o nome da pasta/repo apos "procure por"/"procure no"/"pasta".
-      // "procure por essa pasta no github" -> "essa pasta" (deixativo, sera
-      // resolvido pelo historico no synthesizer se precisar); pega o que vier.
+      // Causa raiz do bug "essa pasta": o extrator devolvia "essa pasta"
+      // (pronome demonstrativo + substantivo) como termo de busca literal
+      // pro GitHub, que retornava repos cuja DESCRICAO continha "essa pasta".
+      // Agora: se o termo extraido for SO um deixativo + pasta/repo,
+      // resolver contra o historico da conversa (nome concreto mencionado
+      // antes). Sem historico, devolver null (nao disparar busca de lixo).
       const norm = msg.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const quoted = msg.match(/"([^"]+)"/)?.[1]?.trim();
       const afterPor = norm.match(/(?:procure por|procure no|procurar no|buscar no|encontrar no|achar no)\s+(.+?)(?:\s+no\s+github|\s*$)/i)?.[1]?.trim();
       const afterPasta = norm.match(/pasta\s+([a-z0-9_.\-]+)\b/i)?.[1]?.trim();
-      const quoted = msg.match(/"([^"]+)"/)?.[1]?.trim();
-      const stripped = norm
-        .replace(/\b(procure|procurar|buscar|encontrar|achar|pesquisar|pasta|repositorio|repo|no|na|por|essa|este|esse|um|uma|github|search|find|for|repository)\b/gi, "")
-        .replace(/\s{2,}/g, " ")
-        .trim();
-      return { query: quoted ?? afterPor ?? afterPasta ?? (stripped || null) };
+      const ownerRepo = norm.match(/\b([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,38}[a-zA-Z0-9]?)\/[a-zA-Z0-9._-]+)\b/)?.[1]?.trim();
+
+      // Candidato bruto (antes da resolucao deixativa)
+      const raw = quoted ?? ownerRepo ?? afterPor ?? afterPasta ?? null;
+
+      // Detecta se o candidato e SO um deixativo + pasta/repo (sem nome concreto).
+      // Ex: "essa pasta", "esse repo", "este repositorio", "a mesma pasta".
+      const isDemonstrative = /^(ess[ae]|est[ae]|aquela|aquele|a\s+mesma|o\s+mesmo|est[ae]\s+mesm[ao])\s+(pasta|repo|repositorio|diretorio|pasta)$/i
+        .test((raw ?? "").trim());
+
+      if (raw && !isDemonstrative && raw.trim().length > 0) {
+        return { query: raw };
+      }
+
+      // ── Resolucao contra o historico da conversa ──
+      // Procura nas mensagens recentes do usuario (excluindo a atual) por um
+      // nome concreto de pasta/repo mencionado antes: aspas, owner/repo, ou
+      // palavra logo apos "pasta"/"repo"/"repositorio"/"chamadX"/"nome".
+      try {
+        const { conversationStore } = require("@/lib/conversation-platform/ConversationStore");
+        const recent = (conversationStore.messages ?? [])
+          .filter((m: { role: string }) => m.role === "user")
+          .map((m: { content?: string }) => (m.content ?? "").trim())
+          .filter((c: string) => c.length > 0 && c !== msg.trim())
+          .slice(-8)
+          .reverse() as string[];
+
+        for (const prev of recent) {
+          const pq = prev.match(/"([^"]+)"/)?.[1]?.trim();
+          if (pq && pq.length >= 2) return { query: pq };
+          const pOwnerRepo = prev.match(/\b([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,38}[a-zA-Z0-9]?)\/[a-zA-Z0-9._-]+)\b/)?.[1]?.trim();
+          if (pOwnerRepo) return { query: pOwnerRepo };
+          const pAfterNoun = prev
+            .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+            .match(/(?:pasta|repo|repositorio|chamad[ao]|nome)\s+([a-z0-9][a-z0-9_.\-]{1,60})\b/i)?.[1]?.trim();
+          if (pAfterNoun) return { query: pAfterNoun };
+        }
+      } catch {
+        // Store nao disponivel (SSR/test) — fall through
+      }
+
+      // Sem nome concreto nem no texto nem no historico: nao disparar busca
+      // de lixo. Downstream tratara query=null como intencao sem alvo.
+      return { query: null };
     },
   },
   {
