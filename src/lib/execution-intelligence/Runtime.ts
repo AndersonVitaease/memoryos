@@ -80,6 +80,14 @@ export class ExecutionRuntime {
     // Reversibility do metadata (EI-01). Default "safe" quando nao declarado.
     const meta: ConnectorMetadata = connector.metadata();
     const reversibility: Reversibility = meta.capabilityReversibility?.[capability] ?? "safe";
+    // AP-04 (RFC-010/ADR-017): le o flag composite (AP-01). Default nao-composite.
+    // Composite = Adaptive Process: o connector detem um loop reflexivo que invoca
+    // sub-capabilities via processCapability (reentrada pela cadeia completa).
+    // Politica composta: auth propagada (ja via connectorCtx), parentExecutionId
+    // threading (requestId), sub-budget via MAX_ITERATIONS do processo, timeout
+    // estendido e breaker isolado sao concerns do processo/engine (futuro).
+    // Non-composite segue 100% identico ao anterior (paridade ADR-015).
+    const isComposite: boolean = meta.capabilityComposite?.[capability] ?? false;
 
     // EI-07: Execution Intelligence itera investigators ativos (Convergence/API/LLM
     // Budget + grafo aciclivo) e enriquece enrichedParams antes do Safety Gate.
@@ -117,7 +125,11 @@ export class ExecutionRuntime {
       workspaceId: context.workspaceId,
       sessionId: context.sessionId,
       goalId: context.goalId,
-      origin: context.origin ?? "execution-intelligence",
+      // AP-04: composite marcado no origin para observabilidade/tracing.
+      origin: isComposite ? "execution-intelligence:composite" : (context.origin ?? "execution-intelligence"),
+      // AP-04: parentExecutionId threading — sub-caps correlate as children via
+      // requestId (end-to-end trace). Undefined para non-composite (paridade ADR-015).
+      requestId: request.parentExecutionId ?? context.requestId,
     };
 
     try {

@@ -37,6 +37,13 @@ export interface ExecutionRequest {
   /** ID de execucao para correlacao (vira o pipelineExecutionId do engine). Opcional. */
   readonly executionId?: string;
   /**
+   * AP-04 (RFC-010/ADR-017): ID da execucao pai quando esta e uma sub-capability
+   * invocada por um Adaptive Process (composite). Threaded como requestId no
+   * ConnectorExecutionContext → correlacao em arvore (SystemEvent.parentId).
+   * Undefined para capabilities atomicas (paridade ADR-015).
+   */
+  readonly parentExecutionId?: string;
+  /**
    * EI-03: Safety Gate exige isto para capabilities `irreversible`.
    * Se ausente e a capability for irreversible → NeedsConfirmation.
    */

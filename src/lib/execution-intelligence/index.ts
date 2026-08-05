@@ -39,7 +39,20 @@ export async function getExecutionRuntime(): Promise<ExecutionRuntime> {
     getRealRuntimeEngine(),
     getRealConnectorRegistry(),
   ]);
-  return new Cls(registry, engine);
+  const runtime = new Cls(registry, engine);
+
+  // AP-04 (RFC-010/ADR-017): wired o AdaptiveProcessConnector ao runtime real.
+  // O connector delega `execute("deepResearch")` ao DeepResearchProcess, cujo
+  // dispatch invoca runtime.processCapability({ ..., parentExecutionId }) —
+  // reentrada pela cadeia completa (Intelligence + Safety + Dispatch).
+  // Structural typing: ExecutionRuntime.processCapability satisfaz
+  // AdaptiveProcessRuntime.processCapability (mesmo signature ExecutionRequest).
+  const { setAdaptiveProcessRuntime } = await import(
+    "@/lib/connector-runtime/connectors/AdaptiveProcessConnector"
+  );
+  setAdaptiveProcessRuntime(runtime);
+
+  return runtime;
 }
 
 export { ExecutionRuntime } from "./Runtime";
