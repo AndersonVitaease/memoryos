@@ -501,7 +501,61 @@ const _builtins: GoalDefinition[] = [
         .replace(/[?!.,;:]/g, "")
         .replace(/\s{2,}/g, " ")
         .trim();
-      return { query: stripped || msg.trim() };
+
+      // ── Resolucao de pronomes demonstrativos contra o historico ──
+      // Causa raiz do bug "pesquise a fundo se e possivel essa conexao":
+      // apos stripar o comando, sobra "se e possivel essa conexao" — o
+      // pronome "essa" referencia o Stirling-PDF da mensagem anterior, mas
+      // o planner so recebe "essa conexao" e pesquisa "conexao" generica
+      // (desanda pra "conexão profunda / como a internet e conectada").
+      // Quando o query resultante contem deixativo (essa/esse/este/isso/
+      // aquelo/este servidor/essa pesquisa/etc.), reconstroi o contexto
+      // concatenando o conteudo concreto das mensagens anteriores do
+      // usuario. O Stirling-PDF mencionado antes vira o topico real.
+      const DEMONSTRATIVE_RE = /\b(ess[ae]|est[ae]|aquela|aquele|aquilo|isso|isto|esse\s+servidor|essa\s+(conexao|pesquisa|integracao|ferramenta|aplicacao)|o\s+mesmo|a\s+mesma)\b/i;
+      const hasDemonstrative = DEMONSTRATIVE_RE.test(stripped);
+      let resolvedQuery = stripped;
+
+      if (hasDemonstrative || stripped.length < 12) {
+        try {
+          const { conversationStore } = require("@/lib/conversation-platform/ConversationStore");
+          const recentUser = (conversationStore.messages ?? [])
+            .filter((m: { role: string }) => m.role === "user")
+            .map((m: { content?: string }) => (m.content ?? "").trim())
+            .filter((c: string) => c.length > 0 && c !== msg.trim())
+            .slice(-4)
+            .reverse() as string[];
+
+          // Extrai o "sujeito concreto" de cada mensagem anterior: termo
+          // entre aspas, owner/repo, ou capitalizado (ex: "Stirling-PDF",
+          // "MemoryOS"). Usa o primeiro que achar.
+          const subjects: string[] = [];
+          for (const prev of recentUser) {
+            const quoted = prev.match(/"([^"]+)"/)?.[1]?.trim();
+            if (quoted && quoted.length >= 2) { subjects.push(quoted); continue; }
+            const ownerRepo = prev.match(/\b([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,38}[a-zA-Z0-9]?)\/[a-zA-Z0-9._-]+)\b/)?.[1]?.trim();
+            if (ownerRepo) { subjects.push(ownerRepo); continue; }
+            // Capitalized token hifenizado/camel (Stirling-PDF, MemoryOS, NotionAPI)
+            const cap = prev.match(/\b([A-Z][a-zA-Z]+(?:[-_][a-zA-Z0-9]+)+)\b/)?.[1]?.trim();
+            if (cap) { subjects.push(cap); continue; }
+            const capWord = prev.match(/\b([A-Z][a-zA-Z]{3,})\b/)?.[1]?.trim();
+            if (capWord && !/\b(o|a|de|da|do|que|com|para| MemoryOS|Memory)\b/i.test(capWord)) { subjects.push(capWord); continue; }
+          }
+
+          if (subjects.length > 0) {
+            // Monta: "<sujeito concreto> — <framing atual sem o deixativo>"
+            const subject = subjects[0];
+            const framing = stripped.replace(DEMONSTRATIVE_RE, " ").replace(/\s{2,}/g, " ").trim();
+            resolvedQuery = framing
+              ? `${subject} — ${framing}`
+              : subject;
+          }
+        } catch {
+          // Store nao disponivel (SSR/test) — mantem stripped
+        }
+      }
+
+      return { query: resolvedQuery || msg.trim() };
     },
   },
 
