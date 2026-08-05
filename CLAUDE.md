@@ -1656,3 +1656,27 @@ O `ConnectorMetadata.capabilities` e `string[]` (contrato existente, validado no
 **Licao:** quando uma verificacao deterministica existe num caminho especializado (DeepResearch) mas o caminho geral (LLM de conversa) desconhece a mesma restricao, a fabricacao migra pro caminho geral. A restricao tem que viver no system prompt fixo (alcance universal), nao so no caminho especializado.
 
 ---
+
+### 2026-08-05 — PDF Tools (Stirling-PDF) + OCR Fallback por Visao
+
+**Doc completa:** `src/docs/01-operational-knowledge/SESSION-2026-08-05-PDF-TOOLS-STIRLING-OCR.md`
+
+**Problema:** O `PdfToolsButton` usava `stirlingPdfCall` (Stirling-PDF self-hosted em VPS) para extrair texto de PDFs. PDFs escaneados/imagem (sem camada de texto) retornavam vazio e o fluxo falhava. O reparo automatico (`/api/v1/misc/repair`) era lento (~5-15s) e instavel (qpdf "unknown argument" no VPS). O OCR por visao original dependia de converter PDF em imagem via Stirling (endpoint `/api/v1/convert/pdf-to-image` inexistente nessa versao).
+
+**Solucao:** OCR por visao direto no PDF original via Gemini (`gemini_3_flash` suporta PDFs nativamente como `file_urls`), sem conversao Stirling.
+
+**Mudancas (3 arquivos):**
+
+1. **`base44/functions/stirlingPdfCall/entry.ts`** — `pdfToText`: removido reparo automatico obrigatorio (lento + instavel); retorna `needOcr: true` imediatamente quando texto vazio. Adicionado `forceOcr` (pula Stirling inteiramente) e `skipRepair`. Removidas operacoes diagnosticas mortas (`probeImage`, `swagger`, `pdfToImage`).
+
+2. **`src/components/projects/PdfToolsButton.jsx`** — `runOcrFallback()` simplificado: envia `doc.file_url` direto ao `InvokeLLM` (gemini_3_flash, sem `response_json_schema` — texto puro, mais rapido). `runExtractText(forceOcr)` — quando `forceOcr=true`, pula Stirling e vai direto ao Gemini. Adicionada opcao "Extrair por OCR (visao)" no menu (icone ScanLine). Helper `downloadText` extraido.
+
+**Otimizacoes de latencia:** (1) reparo removido do caminho padrao (~5-15s); (2) `forceOcr` pula Stirling; (3) `response_json_schema` removido do OCR; (4) prompt encurtado.
+
+**Dead ends (nao repetir):** endpoint `/api/v1/convert/pdf-to-image` inexistente na versao do Stirling no VPS; `/api/v1/misc/repair` (qpdf) falha consistente; `response_json_schema` em OCR adiciona latencia sem beneficio.
+
+**Nao-quebra:** operacoes `merge`/`split`/`rotate`/`addPassword`/`removePassword`/`repair`/`health` intocadas. Menu "Extrair texto" mantem comportamento anterior (Stirling primeiro, fallback OCR automatico). Nova opcao "Extrair por OCR (visao)" e aditiva.
+
+**Validado pelo usuario (2026-08-05 20:11 BRT):** OCR por visao funcionou em PDF escaneado. Otimizacoes de latencia confirmadas.
+
+---
