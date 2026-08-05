@@ -82,6 +82,31 @@ const GH_INTENT_RULES: readonly GHIntentRule[] = Object.freeze([
     ],
   },
 
+  // ── priority 18: busca de REPOSITORIO/PASTA por nome (ANTES do searchCode) ─
+  // Causa raiz do bug: "procure por essa pasta no github" mencionava "github"
+  // (CODE_ENTITY_SIGNAL), mas nao casava nenhuma rela de searchCode. Caia no
+  // Caso 2 (domain-only) que defaultava pra github.searchCode -> /search/code
+  // (rate limit 10/min, semanticamente errado — procurar "claude.me" como
+  // simbolo de codigo). Esta rela captura "procure ... no github" e roteia
+  // pra github.searchRepo -> /search/repositories (30/min, achar repo por nome).
+  {
+    priority:  18,
+    goalType:  "github.searchRepo" as GoalType,
+    baseScore: 0.55,
+    signals: [
+      // PT — busca de repo/pasta por nome
+      "procure no github", "procure por", "procurar no github",
+      "procurar pasta no github", "procurar repositorio no github",
+      "buscar pasta no github", "buscar repositorio no github",
+      "encontrar pasta no github", "encontrar repositorio no github",
+      "achar repositorio no github", "achar pasta no github",
+      "existe um repo", "existe um repositorio",
+      // EN
+      "search repo", "find repo", "find repository", "search repository",
+      "search repos", "find repos", "search github for",
+    ],
+  },
+
   // ── priority 30: listagem de arquivos / estrutura ───────────────────────────
   {
     priority:  30,
@@ -283,7 +308,12 @@ export const GitHubSemanticProvider: SemanticProvider = Object.freeze({
 
     // ── Caso 2: Apenas dominio de codigo sem verbo de intencao especifico ───
     // Ex: "RuntimeDebug" sozinho, ou "src/lib/runtime"
-    // Usar github.searchCode como goalType padrao para consultas de codigo sem verbo
+    // FIX: antes defaultava pra github.searchCode (/search/code, rate limit
+    // 10/min, semanticamente "procurar simbolo de codigo"). Para menções
+    // genéricas de "github" sem verbo de código explícito, o intent natural é
+    // achar um REPOSITÓRIO por nome — github.searchRepo (/search/repositories,
+    // 30/min). Isto elimina o 429 recorrente em "procure por essa pasta no
+    // github" e alinha o routing ao que o usuário realmente pede.
     if (domain.score > 0) {
       const confidence = Math.min(domain.score, 1.0);
       const evidences  = [
@@ -296,13 +326,13 @@ export const GitHubSemanticProvider: SemanticProvider = Object.freeze({
         message:    lower,
         signals:    domain.evidences,
         score:      confidence,
-        goalType:   "github.searchCode",
+        goalType:   "github.searchRepo",
         connector:  "github",
       });
 
       return Object.freeze({
         connector:  "github",
-        goalType:   "github.searchCode" as GoalType,
+        goalType:   "github.searchRepo" as GoalType,
         confidence,
         evidences:  Object.freeze(evidences),
         entities:   Object.freeze({}),

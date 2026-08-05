@@ -476,6 +476,12 @@ const _builtins: CapabilityMapping[] = [
     ],
   },
   {
+    goalType: "github.searchRepo" as GoalType,
+    descriptors: [
+      { connector: "github", capability: "repos.search", params: {} },
+    ],
+  },
+  {
     goalType: "github.searchCode",
     descriptors: [
       { connector: "github", capability: "search.symbol", params: {} },
