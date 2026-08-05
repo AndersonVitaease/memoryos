@@ -1,4 +1,4 @@
-1/**
+/**
  * registerProviders.ts — Search Engine (Passo 6a: Registro dos Providers)
  *
  * Ponto único onde os providers são cadastrados no motor. Adicionar um
