@@ -35,6 +35,26 @@ function extractUrl(query: string): string | null {
   return m ? m[1] : null;
 }
 
+// Sinais que distinguem "owner/repo" (referência a repo GitHub) de paths
+// comuns (src/components, node_modules/x). Sem um sinal, não trata como repo.
+const REPO_SIGNALS = ["github", "repositorio", "repositório", "repo", "readme", "documentação", "documentacao", "docs"];
+
+// Diretórios de path que NÃO são owners de repo GitHub — evita falso positivo
+// em "src/components", "lib/utils", "node_modules/react", etc.
+const NON_REPO_DIRS = ["src", "lib", "node_modules", "dist", "build", "public", "test", "tests", "docs", "api", "app", "components", "utils", "config", "scripts", "assets", "styles", "types", "interfaces", "models", "views", "pages", "hooks", "context", "store", "services"];
+
+function extractRepo(query: string): { owner: string; repo: string } | null {
+  // Se a query já tem URL, extractUrl cuida disso — não competir.
+  if (hasUrl(query)) return null;
+  const lower = normalize(query);
+  const hasSignal = REPO_SIGNALS.some((s) => lower.includes(normalize(s)));
+  if (!hasSignal) return null;
+  const m = query.match(/\b([a-zA-Z0-9](?:[a-zA-Z0-9-]{0,38}[a-zA-Z0-9]?)?)\/([a-zA-Z0-9._-]{2,})\b/);
+  if (!m) return null;
+  if (NON_REPO_DIRS.includes(m[1].toLowerCase())) return null;
+  return { owner: m[1], repo: m[2] };
+}
+
 function normalize(s: string): string {
   return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
@@ -46,6 +66,8 @@ export class FirecrawlSearchProvider implements SearchProvider {
   canHandle(query: string): number {
     // URL explícita na query → scrape direto (score alto)
     if (hasUrl(query)) return 0.95;
+    // "owner/repo" com sinal de repo/docs → scrape do README do repo (score alto)
+    if (extractRepo(query)) return 0.9;
 
     const lower = normalize(query);
     const matched = DEEP_CONTENT_KEYWORDS.some((k) => lower.includes(normalize(k)));
@@ -80,7 +102,31 @@ export class FirecrawlSearchProvider implements SearchProvider {
         };
       }
 
-      // Sem URL → busca web com markdown extraído de cada resultado
+      // "owner/repo" (sem URL) → scrape do README do repo GitHub público.
+      // O githubSearchProvider é escopado a um repo hardcoded (memoryos); este
+      // caminho cobre QUALQUER repo público via renderização do GitHub → markdown.
+      const repo = extractRepo(query);
+      if (repo) {
+        const repoRes = await base44.functions.invoke("firecrawlCall", {
+          operation: "scrape",
+          url: `https://github.com/${repo.owner}/${repo.repo}`,
+        });
+        const rd = (repoRes as any)?.data ?? repoRes;
+        if (rd?.ok && rd?.markdown) {
+          const repoUrl = `https://github.com/${repo.owner}/${repo.repo}`;
+          const items: SearchResultItem[] = [{
+            title: `${repo.owner}/${repo.repo} (README)`,
+            snippet: rd.markdown.slice(0, 2000),
+            url: repoUrl,
+            source: "firecrawl_github_repo",
+            raw: { markdown: rd.markdown, owner: repo.owner, repo: repo.repo, url: repoUrl },
+          }];
+          return { success: true, confidence: 0.9, items, provider: this.id, durationMs: Date.now() - t0 };
+        }
+        // Scrape falhou → cai pra busca web abaixo
+      }
+
+      // Sem URL e sem repo → busca web com markdown extraído de cada resultado
       const res = await base44.functions.invoke("firecrawlCall", {
         operation: "search",
         query,
