@@ -271,7 +271,7 @@ export class GitHubConnector implements IConnector {
       capabilities: [
         "auth.user", "auth.validate", "auth.permissions",
         "connectivity.ping",
-        "repos.list", "repos.get", "repos.stats", "repos.languages", "repos.health",
+        "repos.list", "repos.search", "repos.get", "repos.stats", "repos.languages", "repos.health",
         "branches.list", "branches.default", "branches.protected",
         "commits.list", "commits.get",
         "files.list", "files.get",
@@ -657,6 +657,36 @@ export class GitHubConnector implements IConnector {
         const vA = requireArray(res.data, "repos"); if (!vA.valid) { this.internalMetrics.invalidResponses++; return fail(vA.reason, "validation", start, eid, logs, operation); }
         const repos = res.data as any[];
         return ok({ count: repos.length, items: repos.map(r => ({ id: r.id, name: r.name, full_name: r.full_name, private: r.private, language: r.language, default_branch: r.default_branch, stargazers_count: r.stargazers_count, forks_count: r.forks_count, open_issues_count: r.open_issues_count, visibility: r.visibility, owner: r.owner?.login, updated_at: r.updated_at })) }, start, eid, logs, operation);
+      }
+
+      // ── repos.search — busca publica de repositorios por nome (/search/repositories).
+      //    Rate limit 30/min (vs 10/min do /search/code). SEM auth necessario para
+      //    resultados publicos. Esta e a capability correta para "procure por essa
+      //    pasta/repo no github" — busca de REPOSITORIO por nome, nao de simbolo de
+      //    codigo. Antes, menções genéricas a "github" caíam no default do
+      //    GitHubSemanticProvider (github.searchCode -> /search/code) que tem rate
+      //    limit baixíssimo e é semanticamente errado (procurar "claude.me" como
+      //    símbolo de código vs. como nome de repo).
+      case "repos.search": {
+        const query   = typeof payload.query === "string" ? payload.query.trim() : null;
+        const perPage = typeof payload.per_page === "number" ? Math.min(payload.per_page, 30) : 15;
+        if (!query) return fail("query required", "validation", start, eid, logs, operation);
+        const res = await githubFetch(`/search/repositories?q=${encodeURIComponent(query)}&per_page=${perPage}&sort=stars`, token);
+        logs.push(makeLog("info", `[${operation}] HTTP ${res.status} — ${res.responseTimeMs}ms`));
+        if (res.status === 422) return fail("Query too complex for GitHub search", "validation", start, eid, logs, operation);
+        if (!res.ok) { this.internalMetrics.externalFailures++; return fail(`HTTP ${res.status}`, "external", start, eid, logs, operation); }
+        const items = ((res.data as any)?.items ?? []) as any[];
+        return ok({
+          query,
+          totalCount: (res.data as any)?.total_count ?? items.length,
+          items: items.map((r) => ({
+            id: r.id, name: r.name, full_name: r.full_name,
+            description: r.description, url: r.html_url,
+            stars: r.stargazers_count, forks: r.forks_count,
+            language: r.language, owner: r.owner?.login ?? null,
+            private: r.private, updated_at: r.updated_at,
+          })),
+        }, start, eid, logs, operation);
       }
 
       case "repos.get": {

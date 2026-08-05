@@ -1075,6 +1075,41 @@ const _builtins: GoalDefinition[] = [
   // ── GitHub — Sprint M-02 ─────────────────────────────────────────────────
   // All signals are specific enough to avoid collision with Gmail/Calendar/Drive.
   // Signal matching priority: more-specific goals listed first.
+  // ── GitHub — busca de REPOSITORIO por nome (rate limit 30/min, vs 10/min do
+  //    searchCode). Prioridade ALTA: deve vencer searchCode quando a intencao e
+  //    "procure essa pasta/repo no github" — antes cairia no default do semaforo
+  //    (github.searchCode -> /search/code) que e semanticamente errado e 429-frequente.
+  {
+    type: "github.searchRepo" as GoalType,
+    namespace: "github",
+    description: "Search GitHub repositories by name (find a repo/folder by name)",
+    signals: [
+      // PT — busca de repositorio/pasta por nome no GitHub
+      "procure no github", "procure por", "procurar no github",
+      "procurar pasta no github", "procurar repositorio no github",
+      "buscar pasta no github", "buscar repositorio no github",
+      "encontrar pasta no github", "encontrar repositorio no github",
+      "achar repositorio no github", "achar pasta no github",
+      "existe um repo", "existe um repositorio",
+      // EN
+      "search repo", "find repo", "find repository", "search repository",
+      "search repos", "find repos", "search github for",
+    ],
+    extractParams: (msg) => {
+      // Extrai o nome da pasta/repo apos "procure por"/"procure no"/"pasta".
+      // "procure por essa pasta no github" -> "essa pasta" (deixativo, sera
+      // resolvido pelo historico no synthesizer se precisar); pega o que vier.
+      const norm = msg.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const afterPor = norm.match(/(?:procure por|procure no|procurar no|buscar no|encontrar no|achar no)\s+(.+?)(?:\s+no\s+github|\s*$)/i)?.[1]?.trim();
+      const afterPasta = norm.match(/pasta\s+([a-z0-9_.\-]+)\b/i)?.[1]?.trim();
+      const quoted = msg.match(/"([^"]+)"/)?.[1]?.trim();
+      const stripped = norm
+        .replace(/\b(procure|procurar|buscar|encontrar|achar|pesquisar|pasta|repositorio|repo|no|na|por|essa|este|esse|um|uma|github|search|find|for|repository)\b/gi, "")
+        .replace(/\s{2,}/g, " ")
+        .trim();
+      return { query: quoted ?? afterPor ?? afterPasta ?? (stripped || null) };
+    },
+  },
   {
     type: "github.searchCode",
     namespace: "github",
