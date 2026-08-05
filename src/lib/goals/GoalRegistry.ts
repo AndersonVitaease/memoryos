@@ -586,6 +586,55 @@ const _builtins: GoalDefinition[] = [
     extractParams: () => ({ dateOffset: 0 }),
   },
 
+  // ── GitHub (alta prioridade: deve vencer o Drive em leituras de repo) ──────
+  // Registrado ANTES do Drive porque frases como "leia o arquivo X do
+  // repositório Y" contêm o sinal genérico "leia o arquivo" do
+  // drive.openDocument. Sem este bloco antes, o Drive rouba a intenção e
+  // tenta baixar do Google Drive. listFiles vem antes de getFile para que
+  // "listar arquivos do repositório" case em listFiles (verbo de listagem)
+  // e não em getFile. O discriminador de getFile é o trecho estável
+  // "do repositório"/"do repo" (o filename fica entre "arquivo" e "do
+  // repositório", então não dá para casar a frase inteira).
+  {
+    type: "github.listFiles",
+    namespace: "github",
+    description: "List files in the repository tree",
+    signals: [
+      "list files", "show files", "source files",
+      "listar arquivos do repositorio", "listar arquivos do repositório",
+      "listar arquivos do repo",
+      "mostre os arquivos do repositorio", "mostre os arquivos do repositório",
+      "mostre os arquivos do repo",
+      "file tree", "repository tree", "show structure",
+    ],
+    extractParams: (msg) => {
+      const repoMatch = msg.match(/(?:reposit[oó]rio|repo)\s+([A-Za-z0-9_.\-]+\/[A-Za-z0-9_.\-]+)/i);
+      const owner = repoMatch?.[1]?.split("/")[0] ?? null;
+      const repo = repoMatch?.[1]?.split("/")[1] ?? null;
+      return { owner, repo };
+    },
+  },
+  {
+    type: "github.getFile",
+    namespace: "github",
+    description: "Read the content of a specific file in the repository",
+    signals: [
+      "read file", "show file", "content of", "open file",
+      "source code", "codigo fonte", "conteudo do arquivo",
+      // PT — discriminador "repositório"/"repo": vence o sinal genérico
+      // "leia o arquivo" do drive.openDocument (registrado depois).
+      "do repositorio", "do repositório", "do repo",
+      "no repositorio", "no repositório", "no repo",
+    ],
+    extractParams: (msg) => {
+      const repoMatch = msg.match(/(?:reposit[oó]rio|repo)\s+([A-Za-z0-9_.\-]+\/[A-Za-z0-9_.\-]+)/i);
+      const owner = repoMatch?.[1]?.split("/")[0] ?? null;
+      const repo = repoMatch?.[1]?.split("/")[1] ?? null;
+      const path = msg.match(/([a-zA-Z0-9_\-/.]+\.[a-zA-Z]{1,6})/i)?.[1];
+      return { path: path ?? null, owner, repo };
+    },
+  },
+
   // ── Drive ──────────────────────────────────────────────────────────────────
   // PRIORITY ORDER: createFolder > downloadFile > listPDFs > listRecent > openDocument > searchFiles
   // matchBySignals() returns the FIRST hit in registration order.
@@ -1096,29 +1145,7 @@ const _builtins: GoalDefinition[] = [
     ],
     extractParams: () => ({ per_page: 20 }),
   },
-  {
-    type: "github.listFiles",
-    namespace: "github",
-    description: "List files in the repository tree",
-    signals: [
-      "list files", "show files", "source files", "listar arquivos do repositorio",
-      "file tree", "repository tree", "show structure",
-    ],
-    extractParams: () => ({}),
-  },
-  {
-    type: "github.getFile",
-    namespace: "github",
-    description: "Read the content of a specific file in the repository",
-    signals: [
-      "read file", "show file", "content of", "open file",
-      "source code", "codigo fonte", "conteudo do arquivo",
-    ],
-    extractParams: (msg) => {
-      const path = msg.match(/(?:in |at |file |from )?([a-zA-Z0-9_/-]+\.[a-zA-Z]{1,6})/i)?.[1];
-      return { path: path ?? null };
-    },
-  },
+
   {
     type: "github.listRepos",
     namespace: "github",
