@@ -33,8 +33,10 @@ function authHeaders(): Record<string, string> {
   return headers;
 }
 
-function jsonError(status: number, message: string, extra: Record<string, unknown> = {}): Response {
-  return Response.json({ ok: false, error: message, ...extra }, { status });
+function jsonError(_status: number, message: string, extra: Record<string, unknown> = {}): Response {
+  // Sempre retorna HTTP 200 com ok:false para o invoke client nao lancar
+  // erro generico — o frontend le o campo `error`/`detail` diretamente.
+  return Response.json({ ok: false, error: message, ...extra }, { status: 200 });
 }
 
 function bufToBase64(buf: ArrayBuffer): string {
