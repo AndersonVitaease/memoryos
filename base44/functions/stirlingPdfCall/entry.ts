@@ -89,12 +89,12 @@ export default async function (req: Request): Promise<Response> {
     // 2. endpoint protegido sem file — valida a API key de verdade
     let keyValid = false;
     try {
-      const r1 = await withTimeout(fetch(`${baseUrl}/api/v1/extract/pdf-to-text`, {
+      const r1 = await withTimeout(fetch(`${baseUrl}/api/v1/convert/pdf/text`, {
         method: "POST",
         headers: { "X-API-KEY": key, "Accept": "application/json" },
       }));
       const body1 = (await r1.text().catch(() => "")).slice(0, 200);
-      tries.push({ url: `/api/v1/extract/pdf-to-text (key probe)`, status: r1.status, ok: r1.status !== 401, body: body1 });
+      tries.push({ url: `/api/v1/convert/pdf/text (key probe)`, status: r1.status, ok: r1.status !== 401, body: body1 });
       keyValid = r1.status !== 401;
     } catch (e) {
       tries.push({ url: `/api/v1/extract/pdf-to-text (key probe)`, status: -1, ok: false, body: String(e) });
@@ -224,7 +224,7 @@ export default async function (req: Request): Promise<Response> {
       return pdfJson(buf);
     }
 
-    // pdfToText: extrair texto
+    // pdfToText: extrair texto (endpoint mudou em 2.14: /convert/pdf/text)
     if (operation === "pdfToText") {
       const fileUrl = String(body.fileUrl ?? "");
       if (!fileUrl) return jsonError(400, "fileUrl required");
@@ -232,9 +232,9 @@ export default async function (req: Request): Promise<Response> {
       const f = await fetch(fileUrl);
       if (!f.ok) return jsonError(502, `Failed to fetch file: ${f.status}`);
       form.append("fileInput", await f.blob(), "input.pdf");
-      const r = await withTimeout(fetch(`${baseUrl}/api/v1/extract/pdf-to-text`, {
+      const r = await withTimeout(fetch(`${baseUrl}/api/v1/convert/pdf/text`, {
         method: "POST",
-        headers: { "X-API-KEY": apiKey },
+        headers: { "X-API-KEY": apiKey, "Accept": "text/plain,application/json" },
         body: form,
       }));
       if (!r.ok) return jsonError(r.status, `Stirling pdfToText failed`, { detail: (await r.text().catch(() => "")) });
