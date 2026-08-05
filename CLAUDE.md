@@ -1680,3 +1680,15 @@ O `ConnectorMetadata.capabilities` e `string[]` (contrato existente, validado no
 **Validado pelo usuario (2026-08-05 20:11 BRT):** OCR por visao funcionou em PDF escaneado. Otimizacoes de latencia confirmadas.
 
 ---
+
+### 2026-08-05 — Infraestrutura Stirling-PDF (VPS + DuckDNS): doc operacional
+
+**Doc completa:** `src/docs/01-operational-knowledge/STIRLING-PDF-SERVER-INFRASTRUCTURE.md`
+
+**Motivo:** O Stirling-PDF self-hosted em VPS acumulou conhecimento operacional que se perdia entre sessões — versão instalada, endpoints que existem vs não existem, autenticação `X-API-KEY`, DuckDNS como rota pública (sandbox Deno bloqueia IP cru), diagnostico real de API key (endpoint público mascara chave inválida), tratamento de erros (HTTP 200 + `ok:false`), binários como base64 em JSON, manutenção do VPS.
+
+**Conteudo:** topologia (frontend → backend function → DuckDNS → VPS:8080), tabela de endpoints testados (funcionais vs inexistentes nesta versão), probe duplo do `health` (público + protegido), contrato de erro backend↔frontend, manutenção (update Docker, renew DuckDNS, rotacionar API key), 6 lições reutilizáveis para futuras integrações self-hosted.
+
+**Sem mudanca de codigo** — apenas documentacao operacional para evitar re-descobrir endpoints/versao/auth em sessões futuras.
+
+---
