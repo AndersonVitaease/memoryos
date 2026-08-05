@@ -147,6 +147,10 @@ export default function PdfToolsButton({ doc, allPdfs = [], onNotification }) {
     try {
       const data = await callStirling("pdfToText");
       const text = data.text || "";
+      if (!text.trim()) {
+        notify("O PDF não possui camada de texto (provavelmente é escaneado/imagem). Extração retornou vazio.", "error");
+        return;
+      }
       const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -154,7 +158,7 @@ export default function PdfToolsButton({ doc, allPdfs = [], onNotification }) {
       a.download = doc.name.replace(/\.pdf$/i, "") + ".txt";
       a.click();
       URL.revokeObjectURL(url);
-      notify("Texto extraído do PDF.", "success");
+      notify(`Texto extraído (${text.length} caracteres).`, "success");
     } catch (e) {
       notify(`Erro ao extrair texto: ${e.message}`, "error");
     } finally {
