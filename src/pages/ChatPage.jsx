@@ -7,7 +7,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   Send, Brain, Sparkles, ChevronDown, ChevronUp,
-  Volume2, Paperclip, RotateCcw, Square, Clock, User,
+  Volume2, Paperclip, RotateCcw, Square, Clock, User, FileText, ExternalLink,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { useConversation } from "@/lib/conversation-platform/useConversation";
@@ -29,6 +29,7 @@ import SuggestedPrompts from "@/components/chat/SuggestedPrompts";
 import SessionSwitcher from "@/components/chat/SessionSwitcher";
 import ScrollToBottomButton from "@/components/chat/ScrollToBottomButton";
 import DateSeparator from "@/components/chat/DateSeparator";
+import PdfToolsButton from "@/components/projects/PdfToolsButton";
 import { formatTime } from "@/components/timeline/formatTime";
 import { formatDateLabel, dayKey } from "@/components/timeline/formatDateLabel";
 
@@ -68,6 +69,12 @@ export default function ChatPage({ projectId } = {}) {
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [lastUserMessage, setLastUserMessage] = useState("");
   const [timelineOpen, setTimelineOpen] = useState(false);
+  const [sessionPdfs, setSessionPdfs] = useState([]);
+  const [pdfToast, setPdfToast] = useState(null);
+  const notifyPdf = useCallback((msg, type = "info") => {
+    setPdfToast({ msg, type });
+    setTimeout(() => setPdfToast(null), 4000);
+  }, []);
 
   const [longWait, setLongWait] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
@@ -82,6 +89,20 @@ export default function ChatPage({ projectId } = {}) {
 
   // VXP Sprint 7.0.1: transcript review state
   const [pendingTranscript, setPendingTranscript] = useState(null);
+
+  // ── Session PDFs (para ferramentas Stirling-PDF inline no chat) ──────────
+  const refreshSessionPdfs = useCallback(async (sessionId) => {
+    if (!sessionId) { setSessionPdfs([]); return; }
+    try {
+      const docs = await base44.entities.Document.filter({ session_id: sessionId, file_type: "pdf" }, "-created_date", 50);
+      setSessionPdfs(docs.filter((d) => d.file_url));
+    } catch { /* silencioso */ }
+  }, []);
+
+  useEffect(() => {
+    if (!conversation.isInitialized) return;
+    refreshSessionPdfs(conversation.session?.id);
+  }, [conversation.isInitialized, conversation.session?.id, refreshSessionPdfs]);
 
   // Smart auto-scroll
   const scrollContainerRef = useRef(null);
@@ -248,7 +269,7 @@ export default function ChatPage({ projectId } = {}) {
     conversation.appendMessage(savedUserMsg);
 
     try {
-      await ingestKnowledge({
+      const result = await ingestKnowledge({
         type, file, url, text,
         name: displayName,
         sessionId: session.id,
@@ -263,6 +284,9 @@ export default function ChatPage({ projectId } = {}) {
       // Fase 3 — Feedback via NotificationHub (toast) + SystemEvent persistido pelo pipeline.
       // O chat fica limpo: nenhuma Message de confirmação é injetada aqui.
       setProcessingItems((prev) => prev.filter((item) => item.id !== itemId));
+      if (result?.document?.file_type === "pdf" && result.document.file_url) {
+        setSessionPdfs((prev) => [result.document, ...prev.filter((p) => p.id !== result.document.id)]);
+      }
     } catch (err) {
       console.error("[ChatPage] Falha ao processar anexo:", err);
       const detail = err?.message || err?.error_message || "Motivo desconhecido.";
@@ -508,6 +532,42 @@ export default function ChatPage({ projectId } = {}) {
             <ProcessingBubble key={item.id} item={item} />
           ))}
 
+          {sessionPdfs.length > 0 && (
+            <div className="pt-2 pb-1">
+              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2 px-1">
+                PDFs desta conversa
+              </p>
+              <div className="space-y-2">
+                {sessionPdfs.map((pdf) => (
+                  <div key={pdf.id} className="flex items-center gap-3 bg-white border border-zinc-200/80 rounded-xl px-4 py-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center shrink-0">
+                      <FileText className="w-4 h-4 text-red-500" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-zinc-700 truncate">{pdf.name}</p>
+                      {pdf.summary && (
+                        <p className="text-xs text-zinc-400 truncate">{pdf.summary}</p>
+                      )}
+                    </div>
+                    <a
+                      href={pdf.file_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-1.5 rounded-lg hover:bg-zinc-100 transition text-zinc-400 hover:text-zinc-600 shrink-0"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+                    <PdfToolsButton
+                      doc={pdf}
+                      allPdfs={sessionPdfs}
+                      onNotification={notifyPdf}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div ref={bottomRef} />
         </div>
       </div>
@@ -678,6 +738,20 @@ export default function ChatPage({ projectId } = {}) {
         onOpenChange={setTimelineOpen}
         sessionId={conversation.session?.id}
       />
+
+      {pdfToast && (
+        <div
+          className={`fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl shadow-lg text-sm font-medium ${
+            pdfToast.type === "success"
+              ? "bg-emerald-600 text-white"
+              : pdfToast.type === "error"
+              ? "bg-red-600 text-white"
+              : "bg-zinc-900 text-white"
+          }`}
+        >
+          {pdfToast.msg}
+        </div>
+      )}
     </div>
   );
 }
