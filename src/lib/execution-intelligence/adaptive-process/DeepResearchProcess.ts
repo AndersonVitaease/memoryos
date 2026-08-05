@@ -25,7 +25,11 @@ import type {
   ResearchStep,
 } from "./AdaptiveProcess";
 
-const MAX_ITERATIONS = 5;
+// OPT: 5 iteracoes x (1 plan + N invoke + 1 reflect) + 3 sinteses = ~38
+// chamadas LLM, estourando o timeout COMPOSITE de 4min. Reduzido para 2 — a
+// 2a iteracao so roda se a 1a deixar gaps reais; na pratica a deterministica
+// (README + package.json + web grounding) ja resolve a maioria das queries.
+const MAX_ITERATIONS = 2;
 const SUFFICIENCY_THRESHOLD = 0.75;
 
 class DeepResearchProcess implements AdaptiveProcess {
@@ -147,10 +151,10 @@ Responda JSON array, sem texto adicional.`;
     steps: readonly ResearchStep[],
     ctx: AdaptiveProcessContext,
   ): Promise<readonly ExecutionOutcome[]> {
-    const outcomes: ExecutionOutcome[] = [];
-    // Resolve o registry real UMA vez (lazy) para chamadas diretas de leitura.
-    // Evita o timeout de 10s do engine (DEFAULT_EXECUTION_POLICY) que mata
-    // leituras de fonte primaria antes de retornarem.
+    // OPT: passos de coleta sao INDEPENDENTES (leituras read-only, sem
+    // dependencia entre si). Rodar em PARALELO (Promise.all) em vez do
+    // for-loop sequencial corta o tempo de invoke de ~N*10s para ~10s
+    // (limitado pelo passo mais lento, tipicamente o web grounding).
     let registry: import("@/lib/connector-runtime/ConnectorRegistry").ConnectorRegistry | null = null;
     try {
       const { getRealConnectorRegistry } = await import(
@@ -159,15 +163,7 @@ Responda JSON array, sem texto adicional.`;
       registry = await getRealConnectorRegistry();
     } catch { registry = null; }
 
-    for (const step of steps) {
-      // ── Passos de leitura deterministica (safe, read-only) → SDK/connector
-      //    direto. Motivo: o engine aplica DEFAULT_EXECUTION_POLICY (stepTimeoutMs=10s)
-      //    nas sub-caps nao-composite. InvokeLLM com web search (10-20s) e leituras
-      //    GitHub (rede/token hydrate) frequentemente excedem 10s — o timeout mata
-      //    a etapa antes de retornar, deixando a sintese sem evidencia real (causa
-      //    raiz das respostas "pesquisa falhou / nenhum dado encontrado"). Chamando
-      //    direto, as leituras rodam reliably. Outros sub-caps seguem pela cadeia
-      //    completa via ctx.dispatch (Intelligence + Safety + Dispatch).
+    const runOne = async (step: ResearchStep): Promise<ExecutionOutcome> => {
       const isDirectWeb = step.call.connectorId === "base44" && step.call.capability === "ai.invokeLLM";
       const isDirectGithubRead = step.call.connectorId === "github" && step.call.capability === "files.get";
 
@@ -177,11 +173,10 @@ Responda JSON array, sem texto adicional.`;
             prompt: String(step.call.params.prompt ?? ""),
             add_context_from_internet: Boolean(step.call.params.add_context_from_internet),
           });
-          outcomes.push(this._okOutcome(step, ctx, res));
+          return this._okOutcome(step, ctx, res);
         } catch (e) {
-          outcomes.push(this._failOutcome(step, ctx, (e as Error).message));
+          return this._failOutcome(step, ctx, (e as Error).message);
         }
-        continue;
       }
 
       if (isDirectGithubRead && registry) {
@@ -197,21 +192,19 @@ Responda JSON array, sem texto adicional.`;
           };
           const result = await connector.execute("files.get", step.call.params, connCtx);
           if (result.success && result.data) {
-            outcomes.push(this._okOutcome(step, ctx, result.data));
-          } else {
-            outcomes.push(this._failOutcome(step, ctx, result.error ?? `status=${result.status}`));
+            return this._okOutcome(step, ctx, result.data);
           }
+          return this._failOutcome(step, ctx, result.error ?? `status=${result.status}`);
         } catch (e) {
-          outcomes.push(this._failOutcome(step, ctx, (e as Error).message));
+          return this._failOutcome(step, ctx, (e as Error).message);
         }
-        continue;
       }
 
       // Demais sub-caps: cadeia completa (Intelligence + Safety + Dispatch).
-      const outcome = await ctx.dispatch(step.call);
-      outcomes.push(outcome);
-    }
-    return outcomes;
+      return await ctx.dispatch(step.call);
+    };
+
+    return Promise.all(steps.map(runOne));
   }
 
   private _okOutcome(step: ResearchStep, ctx: AdaptiveProcessContext, output: unknown): ExecutionOutcome {
@@ -461,7 +454,12 @@ ${stdioSources.map((s) => `- [${s}]`).join("\n")}
     const stdioVerdict = this._checkMcpTransportCompatibility(evidence, ctx.query);
     if (stdioVerdict) return stdioVerdict;
 
-    // ── Passo 1: relatorio aterrado com CITACAO VERBATIM ──
+    // ── Sintese em CHAMADA UNICA (OPT) ──
+    // Antes: draft + verify + strip = 3 chamadas LLM sequenciais (~30-45s).
+    // Agora: uma unica chamada com auto-verificacao embutida no prompt.
+    // O determinista _checkMcpTransportCompatibility (acima) ja cobre o caso
+    // mais grave de alucinacao ("compativel com spawn de processo"); a
+    // instrucao de aterramento estrito + auto-check no prompt cobre o resto.
     const draftPrompt = `Sintetize um relatorio de pesquisa aprofundada em portugues (markdown).
 Query original: "${ctx.query}"
 Suficiencia alcancada: ${reflection.sufficiency}
@@ -471,7 +469,7 @@ Evidencias coletadas (cada uma com trecho VERBATIM da fonte primaria):
 ${JSON.stringify(evidence, null, 2)}
 
 Produza um relatorio estruturado em markdown respondendo a query.
-REGRAS CRITICAS (Aterramento estrito):
+REGRAS CRITICAS (Aterramento estrito + AUTO-VERIFICACAO):
 - Baseie-se APENAS no conteudo verbatim das evidencias acima. NAO invente, infira ou estenda.
 - Cada afirmacao factual DEVE ser suportada por um trecho verbatim de alguma evidencia. Nao afirme nada que nao esteja literalmente no verbatim.
 - NAO inclua opcoes de configuracao, comandos, nomes de arquivos ou passos de instalacao que NAO aparecam literalmente em algum verbatim. Se o verbatim nao contem, NAO afirme.
@@ -479,53 +477,12 @@ REGRAS CRITICAS (Aterramento estrito):
 - Se um passo falhou, NAO conclua "inacessivel/privado" — so diga que aquela etapa falhou (pode ser path errado).
 - Priorize o conteudo da fonte primaria (README/arquivo lido) sobre o resumo web quando ambos existirem.
 - Cite o step-id (ex: [step-2]) ao lado de cada bloco derivado de uma evidencia.
-- Inclua secao "Lacunas" apenas se houver gaps remanescentes reais.`;
+- AUTO-CHECK: antes de finalizar, revise cada afirmacao do seu relatorio contra o verbatim. Se algo nao esta literalmente suportado, REMOVA-O voce mesmo (nao inclua uma secao "afirmacoes removidas" — apenas nao escreva o que nao tem base).
+- Inclua secao "Lacunas" apenas se houver gaps remanescentes reais.
+- Se a query pede comparacao (ex: "compare com a estrutura do MemoryOS"), faca a comparacao explicitamente, mas so afirme sobre o MemoryOS o que estiver nas evidencias OU for restricao arquitetural conhecida (sandbox Deno em nuvem, sem stdio/spawn).`;
 
-    const draft = (await base44.integrations.Core.InvokeLLM({ prompt: draftPrompt })) as string;
-
-    // ── Passo 2: VERIFICACAO — checa cada afirmacao contra o verbatim ──
-    const verifyPrompt = `Voce e um verificador rigoroso. Cheque se o relatorio abaixo e aterrado EXCLUSIVAMENTE nas evidencias verbatim fornecidas.
-
-Evidencias verbatim disponiveis (fonte primaria):
-${JSON.stringify(successEvidence.map((e) => ({ step: e.step, verbatim: e.verbatim?.slice(0, 3000) })), null, 2)}
-
-Relatorio a verificar:
-${draft}
-
-Tarefa: identifique TODAS as afirmacoes factuais, comandos, opcoes de configuracao, nomes de arquivo ou passos no relatorio que NAO aparecem literalmente em nenhum verbatim acima. Liste-os. Se nao houver inventados, diga "OK".
-
-Responda APENAS JSON: {fabricados: [string], veredict: "OK" | "HAS_FABRICATION"}`;
-
-    let verified = draft;
-    try {
-      const verifyRes = await base44.integrations.Core.InvokeLLM({
-        prompt: verifyPrompt,
-        response_json_schema: {
-          type: "object",
-          properties: {
-            fabricados: { type: "array", items: { type: "string" } },
-            veredict: { type: "string" },
-          },
-          required: ["fabricados", "veredict"],
-        },
-      });
-      const v = verifyRes as { fabricados?: string[]; veredict?: string };
-      if (v.veredict === "HAS_FABRICATION" && v.fabricados && v.fabricados.length > 0) {
-        // Re-sintese REMOVENDO os trechos fabricados identificados.
-        const stripPrompt = `Reescreva o relatorio abaixo REMOVENDO estritamente as afirmacoes listadas como fabricadas (nao suportadas pelo verbatim). Mantenha o restante intacto. Se uma secao inteira depende de fabricacao, remova a secao. NAO adicione nada novo.
-
-Afirmacoes a REMOVER (nao suportadas pelas evidencias):
-${v.fabricados.map((f, i) => `${i + 1}. ${f}`).join("\n")}
-
-Relatorio original:
-${draft}
-
-Responda apenas o relatorio reescrito em markdown.`;
-        verified = (await base44.integrations.Core.InvokeLLM({ prompt: stripPrompt })) as string;
-      }
-    } catch { /* se a verificacao falhar, mantem o draft */ }
-
-    return verified;
+    const report = (await base44.integrations.Core.InvokeLLM({ prompt: draftPrompt })) as string;
+    return report;
   }
 
   async run(ctx: AdaptiveProcessContext): Promise<ExecutionOutcome> {
