@@ -88,6 +88,9 @@ export default function ChatPage({ projectId } = {}) {
   const bottomRef = useRef(null);
   const userScrolledRef = useRef(false);
   const lastScrollTopRef = useRef(0);
+  // Mirror do estado de streaming pra o listener de scroll (passivo, nao
+  // consegue ler state direto sem re-bind). Trava o guard durante o streaming.
+  const isStreamingRef = useRef(false);
 
   const fileInputRef = useRef(null);
   const fileInputTypeRef = useRef(null);
@@ -136,13 +139,17 @@ export default function ChatPage({ projectId } = {}) {
       const { scrollTop, scrollHeight, clientHeight } = container;
       const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
       // Qualquer movimento para cima (mesmo 1px) pausa o auto-scroll imediatamente
-      if (scrollTop < lastScrollTopRef.current) {
+      if (scrollTop < lastScrollTopRef.current - 2) {
         userScrolledRef.current = true;
       }
-      // So retoma se o PROPRIO USUARIO voltar ao fundo enquanto pausado.
-      // O guard (userScrolledRef.current) impede que o snap automatico
-      // (que tambem termina no fundo) religue a pausa e brigue com o gesto.
-      if (userScrolledRef.current && distanceFromBottom < 4) {
+      // So retoma se o PROPRIO USUARIO voltar ao fundo ENQUANTO NAO ESTIVER
+      // streamando. Durante o streaming o guard fica TRAVADO em true — isso
+      // impede o race em que um token chega, o snap automatico poe
+      // distanceFromBottom<4 e religa a pausa, puxando o usuario de volta
+      // pro fundo a cada token (sintoma: "nao consigo rolar pra cima enquanto
+      // a resposta sobe"). O guard so rearma ao clicar no botao "ir pro fundo"
+      // ou ao enviar nova mensagem.
+      if (userScrolledRef.current && !isStreamingRef.current && distanceFromBottom < 4) {
         userScrolledRef.current = false;
       }
       lastScrollTopRef.current = scrollTop;
@@ -174,6 +181,14 @@ export default function ChatPage({ projectId } = {}) {
   }, []);
 
   const streamingContent = conversation.messages.find((m) => m.isStreaming)?.streamingContent;
+  const isStreaming = conversation.isLoading && !!streamingContent;
+  // Mantem o ref espelhado pro listener de scroll (que nao tem acesso ao
+  // state no momento do event). isStreamingRef=true => guard travado.
+  useEffect(() => { isStreamingRef.current = isStreaming; }, [isStreaming]);
+  // Quando o streaming TERMINA, libera o guard pra proxima interacao.
+  useEffect(() => {
+    if (!conversation.isLoading) userScrolledRef.current = false;
+  }, [conversation.isLoading]);
   useEffect(() => {
     if (userScrolledRef.current) return;
     // Scroll instantaneo (sem animacao) para que o texto nao "suba" durante o streaming;
