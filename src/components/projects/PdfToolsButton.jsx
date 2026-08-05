@@ -53,7 +53,10 @@ export default function PdfToolsButton({ doc, allPdfs = [], onNotification }) {
       ...extra,
     });
     const data = res?.data ?? res;
-    if (!data?.ok) throw new Error(data?.error || `Falha na operacao ${operation}`);
+    if (!data?.ok) {
+      const detail = data?.detail ? ` (${data.detail.slice(0, 200)})` : "";
+      throw new Error(`${data?.error || `Falha na operacao ${operation}`}${detail}`);
+    }
     return data;
   };
 
