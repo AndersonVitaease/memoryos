@@ -21,8 +21,13 @@ const SESSION_TTL_MS = 10 * 60 * 1000; // 10 min
 const JACCARD_THRESHOLD = 0.35;
 
 const ESCALATION_KEYWORDS = [
-  "mais", "a fundo", "afundo", "profundamente", "profundo", "detalhes", "detalhe",
-  "continue", "continuar", "insista", "insistir", "de novo", "novamente",
+  // FIX: "mais" e "continue"/"continuar"/"novamente" removidos — palavras
+  // conversacionais extremamente comuns em portugues ("mais fica travado",
+  // "continue a explicacao", "tente novamente") que disparavam escalonamento
+  // falso pra "pesquisa super" (timeout 45s + sintese IA), travando o chat.
+  // Mantidas so as frases EXPLICITAS de aprofundamento real.
+  "a fundo", "afundo", "profundamente", "profundo", "detalhes", "detalhe",
+  "insista", "insistir", "de novo",
   "complemente", "complementar", "melhore", "reforce", "aprofunde", "amplie",
   "ampliar", "expandir", "expanda", "outros resultados", "mais resultados",
   "mais sobre", "melhores resultados", "super pesquisa", "pesquisa profunda",
