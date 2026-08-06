@@ -239,7 +239,11 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
   // === PRÉ-ETAPA 0: BYPASS PARA PERGUNTAS CONVERSACIONAIS SIMPLES ===
   // Perguntas de identidade/saudação nunca precisam de service detection, memory ou capacidades.
   // Detectar aqui evita todos os imports dinâmicos e chamadas de rede desnecessárias.
-  const _IDENTITY_BYPASS = /^(qual|quem|como|o que|me diga|me fale|oi|olá|ola|bom dia|boa tarde|boa noite)\b.{0,60}(nome|você|voce|vc|você é|voce é|se chama|és|é você)\b/i;
+  // FIX: "vc"/"voce"/"voce" soltos casavam com "vc leu", "voce viu" etc. em
+  // mensagens comuns (qual pasta vc leu?). So manter formacoes de identidade
+  // explicitas (nome, propósito, "é você"). Janela 60->40 pra nao pegar "vc"
+  // longe do inicio.
+  const _IDENTITY_BYPASS = /^(qual|quem|como|o que|me diga|me fale|oi|olá|ola|bom dia|boa tarde|boa noite)\b.{0,40}(nome|propósito|objetivo|funcao|função|se chama|és|é você|é voce|é vc)\b/i;
   const _isIdentityQuery = _IDENTITY_BYPASS.test(userMsg.trim()) || 
     /^(qual (é |e )?(o |seu |o seu )?(nome|propósito|objetivo|função|funcao))/i.test(userMsg.trim());
 
