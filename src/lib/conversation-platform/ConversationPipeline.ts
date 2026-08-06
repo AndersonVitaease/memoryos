@@ -1516,7 +1516,7 @@ function _classifyError(error: string): import("@/lib/response-arbiter/Execution
 
 initializePlatform();
 
-const _key = "__CXP_PIPELINE__";
+const _key = "__CXP_PIPELINE_V2__";
 if (!(globalThis as unknown as Record<string, unknown>)[_key]) {
   (globalThis as unknown as Record<string, unknown>)[_key] = new ConversationPipeline();
 }
