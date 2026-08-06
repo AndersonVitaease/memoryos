@@ -81,11 +81,16 @@ class ConversationStore {
   }
 
   appendMessage(message: ConversationMessage): void {
-    // FIX: mensagens anexadas sem created_date (placeholder de streaming,
-    // respostas de bypass, etc.) caem para epoch 0 no sort do ChatPage e
-    // aparecem ACIMA da pergunta do usuario. Garante timestamp client-side
-    // cronologicamente apos a mensagem anterior — sort correto.
-    const withDate = message.created_date ? message : { ...message, created_date: new Date().toISOString() };
+    // FIX (ordenação): o ChatPage ordena por created_date. A mensagem do
+    // usuario vem com created_date do SERVIDOR (persistMessage), e a do
+    // assistente com created_date do CLIENTE (new Date). Se os relogios
+    // diferem, a resposta aparece ACIMA da pergunta. Sobrepondo sempre
+    // com um timestamp cliente >= (ultima mensagem + 1ms) garantimos
+    // ordem cronologica == ordem de inserção, independente do clock do server.
+    const last = this._state.messages[this._state.messages.length - 1];
+    const lastMs = last?.created_date ? new Date(last.created_date).getTime() : 0;
+    const ts = Math.max(Date.now(), lastMs + 1);
+    const withDate = { ...message, created_date: new Date(ts).toISOString() };
     this._patch({ messages: [...this._state.messages, withDate] });
   }
 
