@@ -324,17 +324,28 @@ class ConversationPipeline {
     setStep("persist_user", "running");
     conversationStore.setStatus("persisting");
 
-    const savedUser = await persistMessage({
+    // FIX (latencia): o persist da mensagem do usuario era AWAIT na critical
+    // path (~200ms de DB write que a resposta nao depende). Agora fire-and-
+    // forget: anexa um placeholder imediatamente (pra display) e persiste em
+    // background, atualizando o id real quando terminar. Corta ~200ms.
+    const _userTempId = `msg-${Date.now()}-u`;
+    const savedUser = {
+      id: _userTempId, session_id: session.id, role: "user",
+      content: userMessage, memory_tier: "active" as const, sources_used: [],
+    };
+    conversationStore.appendMessage(savedUser);
+    persistMessage({
       sessionId: session.id,
       projectId: session.project_id,
       role: "user",
       content: userMessage,
-    });
-    conversationStore.appendMessage(savedUser);
+    }).then((_saved) => {
+      conversationStore.updateMessage(_userTempId, { id: _saved.id });
+    }).catch(() => { /* non-critical */ });
     conversationStore.emit({
       type: "MESSAGE_SAVED",
       executionId,
-      payload: { messageId: savedUser.id, role: "user" },
+      payload: { messageId: _userTempId, role: "user" },
       timestamp: Date.now(),
     });
     setStep("persist_user", "done");

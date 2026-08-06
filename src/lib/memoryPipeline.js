@@ -72,6 +72,15 @@ function quickIntentGuess(question) {
     { re: /\b(meus?|minhas?|quais)\s+assuntos?\b/, type: "topics" },
     // Perguntas de identidade/sistema — não precisam consultar nenhuma entidade do banco
     { re: /\b(qual.*seu\s+nome|como\s+(te\s+)?chama|quem\s+[eé]\s+(voc[eê]|vc)|o\s+que\s+[eé]\s+voc[eê]|me\s+(apresente|fale\s+sobre\s+voc[eê]))\b/, type: "_identity" },
+    // Otimizacao de latencia: conversa casual (saudacoes, agradecimentos,
+    // respostas curtas) nao precisa consultar entidades do banco nem chamar
+    // o LLM do interpretIntent. Reusa o path _identity (so busca o resumo da
+    // sessao) cortando ~1-3s do tempo de resposta dessas mensagens.
+    // Match estrito (mensagem inteira == saudacao/curta) pra nao engolir
+    // perguntas reais que comecam com "oi".
+    { re: /^(oi|ol[áa]|ola|opa|eai|e ai|hello|hi|hey|bom dia|boa tarde|boa noite)\b[!?.\s]*$/i, type: "_identity" },
+    { re: /^(obrigad[oa]|valeu|obg|vlw|thanks|muito obrigad[oa]|perfeito|show|legal|massa|entendid[oa]|entendi|tudo certo|blz|beleza|certo)\b[!?.\s]*$/i, type: "_identity" },
+    { re: /^(sim|n[ãa]o|nao|claro|com certeza|pode ser|talvez|aham|hum|ok)\b[!?.\s]*$/i, type: "_identity" },
   ];
 
   for (const p of patterns) {

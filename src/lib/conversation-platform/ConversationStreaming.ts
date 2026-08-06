@@ -76,9 +76,11 @@ class ConversationStreaming {
         timestamp: Date.now(),
       });
 
-      // Variable delay — perceptible to the user (~30-60ms per token)
+      // Variable delay — perceptible but fast. Antes era 28-55ms por token,
+      // o que fazia uma resposta de 300 tokens demorar ~12s só pra aparecer.
+      // Reduzido pra a resposta aparecer ~4x mais rapido mantendo o efeito.
       const len = token.trim().length;
-      const delay = len > 8 ? 55 : len > 4 ? 40 : 28;
+      const delay = len > 8 ? 14 : len > 4 ? 10 : 6;
       await this._sleep(delay);
     }
 
