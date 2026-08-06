@@ -105,23 +105,40 @@ async function interpretIntent(question) {
     console.log(`[DIAG][memoryPipeline] interpretIntent: atalho rapido usado (sem LLM) — ${JSON.stringify(quick)}`);
     return quick;
   }
-  // FIX (latencia): antes chamava InvokeLLM pra decidir quais tipos de
-  // memoria consultar (~1-3s de round-trip). A filtragem final por
-  // palavras-chave ja e client-side (filterByKeywords em buildContext),
-  // entao o LLM so servia pra reduzir QUAIS entidades consultar — nao a
-  // relevancia do resultado. Agora usa um intent amplo padrao (consulta
-  // os tipos principais em paralelo, ~200-400ms de DB) e extrai keywords
-  // por stopwords. Corta ~1-3s de cada mensagem que nao e saudacao/lista.
-  const stopwords = ["o", "a", "os", "as", "de", "da", "do", "das", "dos", "e", "ou", "que", "para", "com", "em", "um", "uma", "no", "na", "nos", "nas", "quando", "como", "qual", "quais", "quem", "onde", "foi", "ser", "tem", "ha"];
-  return {
-    query_types: ["projects", "documents", "decisions", "tasks", "topics", "entities", "sessions", "keywords", "messages"],
-    is_list_query: false,
-    search_keywords: question
-      .toLowerCase()
-      .split(/\s+/)
-      .filter((w) => w.length > 3 && !stopwords.includes(w))
-      .slice(0, 8),
-  };
+  try {
+    return await base44.integrations.Core.InvokeLLM({
+      prompt: `Analise a pergunta do usuário e determine quais tipos de memória do sistema MemoryOS devem ser consultados.
+
+Tipos disponíveis: projects, documents, decisions, tasks, topics, entities, sessions, keywords, messages
+
+Exemplos:
+- "Quais projetos existem?" → query_types: ["projects"], is_list_query: true, search_keywords: []
+- "Qual foi nossa última decisão?" → query_types: ["decisions"], is_list_query: false, search_keywords: []
+- "Quais tarefas estão abertas?" → query_types: ["tasks"], is_list_query: true, search_keywords: []
+- "Quais empresas já discutimos?" → query_types: ["entities"], is_list_query: true, search_keywords: ["empresa"]
+- "O que decidimos sobre o fornecedor ACME?" → query_types: ["decisions", "entities", "documents"], is_list_query: false, search_keywords: ["fornecedor", "ACME"]
+- "Continuar de onde paramos" → query_types: ["sessions", "messages"], is_list_query: false, search_keywords: []
+- "O que você sabe sobre a empresa XYZ?" → query_types: ["entities", "documents", "decisions", "messages"], is_list_query: false, search_keywords: ["XYZ"]
+- "Me fale sobre o Hermes Agent" → query_types: ["messages", "documents", "topics", "entities"], is_list_query: false, search_keywords: ["hermes", "agent"]
+- "O que é X?" / "Me fale sobre X" / "Fale sobre X" → query_types: ["messages", "documents", "topics", "entities", "decisions"], is_list_query: false, search_keywords: ["X"]
+
+Regra CRÍTICA: perguntas do tipo "me fale sobre X", "o que é X", "fale sobre X" onde X é um nome específico (pessoa, produto, projeto, conceito) SEMPRE incluem "messages" nos query_types — o usuário pode ter mencionado X em uma conversa anterior. Quando houver dúvida, inclua mais tipos em vez de menos.
+
+Pergunta: "${question}"`,
+      response_json_schema: INTENT_SCHEMA,
+    });
+  } catch {
+    const stopwords = ["o", "a", "os", "as", "de", "da", "do", "das", "dos", "e", "ou", "que", "para", "com", "em", "um", "uma", "no", "na", "nos", "nas", "quando", "como", "qual", "quais", "quem", "onde", "foi", "ser", "tem", "ha"];
+    return {
+      query_types: ["projects", "documents", "decisions", "tasks", "topics", "entities", "sessions", "keywords", "messages"],
+      is_list_query: false,
+      search_keywords: question
+        .toLowerCase()
+        .split(/\s+/)
+        .filter((w) => w.length > 3 && !stopwords.includes(w))
+        .slice(0, 8),
+    };
+  }
 }
 
 /**
