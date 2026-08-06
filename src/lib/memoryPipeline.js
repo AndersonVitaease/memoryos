@@ -96,8 +96,19 @@ async function interpretIntent(question) {
     console.log(`[DIAG][memoryPipeline] interpretIntent: atalho rapido usado (sem LLM) — ${JSON.stringify(quick)}`);
     return quick;
   }
+  // FIX (latencia da resposta): essa chamada de LLM so decide QUAIS tipos
+  // de memoria consultar — nao pode segurar a resposta sem limite. Sem
+  // teto, se o LLM demorava 5-8s, o usuario esperava tudo isso antes
+  // mesmo de buscar a memoria. Com teto de 2.5s: rapido -> usa a
+  // intencao refinada; lento -> cai no fallback (busca ampla em paralelo)
+  // sem travar. Comportamento identico quando rapido.
+  const INTENT_TIMEOUT_MS = 2500;
+  const _intentTimeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error("interpretIntent timeout")), INTENT_TIMEOUT_MS)
+  );
   try {
-    return await base44.integrations.Core.InvokeLLM({
+    return await Promise.race([
+      base44.integrations.Core.InvokeLLM({
       prompt: `Analise a pergunta do usuário e determine quais tipos de memória do sistema MemoryOS devem ser consultados.
 
 Tipos disponíveis: projects, documents, decisions, tasks, topics, entities, sessions, keywords, messages
@@ -117,7 +128,9 @@ Regra CRÍTICA: perguntas do tipo "me fale sobre X", "o que é X", "fale sobre X
 
 Pergunta: "${question}"`,
       response_json_schema: INTENT_SCHEMA,
-    });
+      }),
+      _intentTimeout,
+    ]);
   } catch {
     const stopwords = ["o", "a", "os", "as", "de", "da", "do", "das", "dos", "e", "ou", "que", "para", "com", "em", "um", "uma", "no", "na", "nos", "nas", "quando", "como", "qual", "quais", "quem", "onde", "foi", "ser", "tem", "ha"];
     return {
