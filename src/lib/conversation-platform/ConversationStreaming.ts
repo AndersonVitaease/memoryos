@@ -51,18 +51,26 @@ class ConversationStreaming {
     let index = 0;
     const firstTokenAt = Date.now();
 
-    for (const token of tokens) {
+    // FIX (velocidade de reveal): antes revelava 1 palavra por vez com
+    // 6-14ms cada — uma resposta de 300 palavras demorava ~3s pra preencher.
+    // Agora revela em LOTES de ate 4 palavras com 5ms por lote (~4x mais
+    // rapido). O efeito de "digitando" continua, mas o texto aparece num
+    // ritmo confortavel. O controle pra parar e ler ja existe no ChatPage:
+    // rolar pra cima pausa o auto-scroll imediatamente.
+    const BATCH_SIZE = 4;
+    const BATCH_DELAY = 5;
+    for (let i = 0; i < tokens.length; i += BATCH_SIZE) {
       if (ctrl.cancelled) break;
 
-      accumulated += token;
+      const batch = tokens.slice(i, i + BATCH_SIZE).join("");
+      accumulated += batch;
 
-      // Update streaming content on the placeholder message
-      conversationStore.updateStreamingContent(token);
+      conversationStore.updateStreamingContent(batch);
 
       const chunk: StreamChunk = {
         executionId,
         index: index++,
-        token,
+        token: batch,
         accumulated,
         timestamp: Date.now(),
       };
@@ -76,12 +84,7 @@ class ConversationStreaming {
         timestamp: Date.now(),
       });
 
-      // Variable delay — perceptible but fast. Antes era 28-55ms por token,
-      // o que fazia uma resposta de 300 tokens demorar ~12s só pra aparecer.
-      // Reduzido pra a resposta aparecer ~4x mais rapido mantendo o efeito.
-      const len = token.trim().length;
-      const delay = len > 8 ? 14 : len > 4 ? 10 : 6;
-      await this._sleep(delay);
+      await this._sleep(BATCH_DELAY);
     }
 
     if (ctrl.cancelled) {
