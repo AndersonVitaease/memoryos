@@ -1692,3 +1692,46 @@ O `ConnectorMetadata.capabilities` e `string[]` (contrato existente, validado no
 **Sem mudanca de codigo** — apenas documentacao operacional para evitar re-descobrir endpoints/versao/auth em sessões futuras.
 
 ---
+
+### 2026-08-06 — Travelport TripServices GDS Flight Connector: Planejamento (RFC-011 + ADR-018)
+
+**Doc oficial:** `src/docs/foundation/rfc/RFC-011-Travelport-GDS-Flight-Connector.md` + `src/docs/foundation/adr/ADR-018.md`
+
+**Status:** APENAS PLANEJAMENTO (GDS-00). Nenhum código TypeScript/JavaScript alterado ou criado nesta sessão.
+
+**Contexto:** Usuário recebeu email de credenciais de **trial** (pré-produção) da **Travelport TripServices JSON API** — API REST moderna do GDS Galileo (confirmado via developer.travelport.com/support.travelport.com: NÃO é o Galileo XML/SOAP legado, NÃO é a Universal API antiga). Cobre Flights/Stays/Pay, OAuth2 two-legged grant `password`.
+
+**Credenciais recebidas (usuário, NÃO cadastradas por Claude):** username `TP66208284`, client_id `2C9uuTkO7EC96maT3ewQLANt6tag6knC`, PCC `6LG7_1G`, Access Group `54623514-9FE3-4429-A34A-5EFCE0AFD236`, região LATAM Argentina, moeda ARS, GDS carriers (AA AM AR AV CM IB LA UA UX G3 1G), NDC carriers (AA UA QF SQ). **Client Secret do email parece truncado (só 3 caracteres) — usuário precisa confirmar valor completo no MyTravelport (Credential Access Manager) antes de cadastrar.** Password e client_secret NUNCA manipulados por Claude — usuário cadastra ele mesmo em Base44 Settings > Environment Variables (mesma política já usada para WhatsApp/GitHub webhook secret).
+
+**Auth confirmada (busca + fetch da doc oficial):**
+```
+POST https://auth.pp.travelport.net/oauth/token (pré-produção) | https://auth.travelport.net/oauth/token (produção)
+Body: grant_type=password, username, password, client_id, client_secret
+→ access_token válido 24h — CACHEAR, nunca gerar por request. Rate limit: 50 token req/s por IP.
+```
+Base paths pré-produção: Air `/11/air/`, Hotel `/12/hotel/`, Pay `/11/payment/` sob `https://api.pp.travelport.net`.
+
+**Escopo aprovado pelo usuário:** pacote completo incremental — Shopping (busca) → Pricing → Booking (PNR) → Ticketing (emissão) → Exchange (reemissão), maximizando capabilities ao longo do tempo.
+
+**Decisão arquitetural chave — Provider Router de DOMÍNIO (não é o caso do Microsoft/ADR-014):** usuário confirmou que quer Travelport (GDS, internacional) e o conector Travellink/Wooba já existente (parado, sem credenciais desde 30/07) **simultâneos**. Diferente do Microsoft (onde providers abstraem qual credencial/OAuth flow usar pra MESMA API), aqui são **APIs concorrentes de verdade** pro mesmo domínio de negócio — exatamente o caso original que motivou o padrão Provider no WhatsApp. Arquitetura aprovada (ADR-018):
+
+```
+Planner → GoalCapabilityRegistry (flight.* → connector logico "flight-gds")
+  → FlightConnector (shell fino)
+    → FlightProviderRegistry (NOVO, singleton HMR-safe, chave = cobertura de carrier/rota, NAO workspaceId)
+      → TravelportProvider (GDS Galileo) | TravellinkProvider (Wooba, quando credenciado)
+```
+
+**Capability Layer do Travelport (mesmo padrão ADR-013 do Microsoft — Capability Executors):** `src/lib/connector-runtime/connectors/travelport/` com `TravelportHelper.ts`, `TravelportCapabilityRegistry.ts`, e executors `AirShoppingCapability`/`AirPricingCapability`/`AirBookingCapability`/`AirTicketingCapability`/`AirExchangeCapability`. Backend: `base44/functions/travelportProxy/entry.ts` (proxy genérico com auth+cache de token, mesmo padrão do `microsoftGraphProxy`) — client_secret/password só existem no backend.
+
+**Reversibilidade (ADR-015) já classificada:** `flight.search`/`flight.price` = `safe`; `flight.book` = `reversible` (PNR cancelável antes da emissão); `flight.ticket`/`flight.reissue` = `irreversible` (efeito financeiro real, não pode ser desfeito).
+
+**ACHADO IMPORTANTE:** `flight.ticket`/`flight.reissue` são o primeiro caso REAL com credenciais em produção onde o Safety Gate (EI-03, ADR-015) tem trabalho de verdade a fazer. Sessões anteriores de Execution Intelligence (EI-04 a EI-07) documentaram explicitamente que a migração do primeiro caller irreversível ficou deferida por "falta de caso real — Travellink/passagens pendente de credenciais". Isso deixou de ser verdade. GDS-06 (emissão) é candidato natural pra primeira migração de caller irreversível via `runtime.processCapability()`.
+
+**Fases planejadas (aditivas, aguardando autorização uma a uma):** GDS-00 (doc, feito) → GDS-01 (travelportProxy backend) → GDS-02 (tipos+registry scaffold) → GDS-03 (Shopping real) → GDS-04 (Pricing) → GDS-05 (Booking) → GDS-06 (Ticketing + 1º caller irreversível migrado) → GDS-07 (Exchange/reemissão) → GDS-08 (FlightProviderRegistry unificando Travelport+Travellink) → GDS-09 opcional (Hotel/Pay).
+
+**NÃO foi feito:** nenhum código TS/JS criado ou alterado. Nenhum secret cadastrado. Formato exato de envio do PCC/Access Group por endpoint (header vs corpo) ainda não confirmado — fica para GDS-01/02, ao ler a API Reference do Air Shopping.
+
+**Próximo passo:** usuário cadastra os secrets (`TRAVELPORT_USERNAME`, `TRAVELPORT_PASSWORD`, `TRAVELPORT_CLIENT_ID`, `TRAVELPORT_CLIENT_SECRET`, `TRAVELPORT_PCC`, `TRAVELPORT_ACCESS_GROUP`, `TRAVELPORT_ENV=pp`) em Base44 Settings > Environment Variables; depois aguardar autorização para iniciar **GDS-01 (travelportProxy)**.
+
+---
