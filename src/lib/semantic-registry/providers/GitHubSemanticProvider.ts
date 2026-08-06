@@ -333,10 +333,15 @@ export const GitHubSemanticProvider: SemanticProvider = Object.freeze({
     if (domain.score > 0) {
       const confidence = Math.min(domain.score, 1.0);
       // FIX: se o dominio veio de uma EXTENSAO de arquivo (.md, .ts, ...), o
-      // intent natural eh achar o ARQUIVO (searchCode) — ex: "claude.md",
-      // "README.md". Se veio so de "github"/"repo" solto, eh achar REPOSITORIO
-      // por nome (searchRepo) — ex: "procure por essa pasta no github".
-      const goalType = (domain.fileExtension ? "github.searchCode" : "github.searchRepo") as GoalType;
+      // intent natural eh localizar o ARQUIVO na arvore do repo (listFiles /
+      // git tree) — ex: "claude.md", "README.md", "qual pasta do claude.md".
+      // Antes routearmos pra searchCode (busca por CONTEUDO, /search/code)
+      // nao achava o arquivo pelo nome — retornava nada ou match de texto
+      // solto em outros arquivos. listFiles traz a arvore recursiva e o
+      // Planner/synthesizer acha o caminho do arquivo e responde "qual pasta".
+      // Se veio so de "github"/"repo" solto, eh achar REPOSITORIO por nome
+      // (searchRepo) — ex: "procure por essa pasta no github".
+      const goalType = (domain.fileExtension ? "github.listFiles" : "github.searchRepo") as GoalType;
       const evidences  = [
         domain.fileExtension ? "domain-only:file-extension" : "domain-only:code-context",
         ...domain.evidences,
