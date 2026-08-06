@@ -65,6 +65,36 @@ export const OFFICIAL_LIBRARY_KEYWORDS = [
   "missão do memoryos",
   "responsabilidade do core",
   "responsabilidade do specialist",
+  // Conectores / arquitetura real de implementacao
+  "conector",
+  "conectores",
+  "novo conector",
+  "criar conector",
+  "implementar conector",
+  "construir conector",
+  "adicionar conector",
+  "padrao dos conectores",
+  "padrão dos conectores",
+  "mesma logica",
+  "mesma lógica",
+  "seguir a logica",
+  "seguir a lógica",
+  "seguir o mesmo padrao",
+  "arquitetura dos conectores",
+  "arquitetura de conectores",
+  "iconnector",
+  "authsession",
+  "capability executor",
+  "provider registry",
+  "claude.md",
+  "claude md",
+  "adr-013",
+  "adr-014",
+  "adr-015",
+  "adr-017",
+  "capabilityreversibility",
+  "goalcapabilityregistry",
+  "connectorbootstrap",
 ];
 
 /**
@@ -92,6 +122,18 @@ const DOC_SELECTION_RULES = [
     docs: ["Architecture-Auditor-Specialist"],
     keywords: ["architecture auditor", "auditoria completa", "auditoria do core", "auditoria do memoryos", "audit architecture", "auditoria arquitetural", "especialista de auditoria"],
   },
+  {
+    docs: ["CONNECTOR-BUILD-GUIDE", "MAS-MemoryOS-Architecture-Specification"],
+    keywords: [
+      "conector", "conectores", "novo conector", "criar conector", "implementar conector",
+      "construir conector", "adicionar conector", "padrao dos conectores", "padrão dos conectores",
+      "mesma logica", "mesma lógica", "seguir a logica", "seguir a lógica", "seguir o mesmo padrao",
+      "arquitetura dos conectores", "arquitetura de conectores", "iconnector", "authsession",
+      "capability executor", "provider registry", "claude.md", "claude md",
+      "adr-013", "adr-014", "adr-015", "adr-017", "capabilityreversibility",
+      "goalcapabilityregistry", "connectorbootstrap",
+    ],
+  },
 ];
 
 const FULL_LIBRARY_DOC_NAMES = [
@@ -100,6 +142,7 @@ const FULL_LIBRARY_DOC_NAMES = [
   "MAS-MemoryOS-Architecture-Specification",
   "MES-MemoryOS-Engineering-Specification",
   "Architecture-Auditor-Specialist",
+  "CONNECTOR-BUILD-GUIDE",
 ];
 
 const AUDIT_KEYWORDS = ["auditoria completa", "auditoria do core", "auditoria do memoryos", "audit architecture", "auditoria arquitetural"];

@@ -325,6 +325,97 @@ Uma implementacao somente sera considerada concluida quando: respeitar o MV, MPS
 
 Documento Oficial: MES — MemoryOS Engineering Specification | Versao: 1.0 | Status: Aprovado`,
 
+  "CONNECTOR-BUILD-GUIDE": `# Guia Oficial: Como Construir um Conector do MemoryOS
+
+Versao: 1.0 | Status: Oficial | Tipo: Guia Tecnico de Implementacao
+
+---
+
+## 1. Fonte
+
+Este guia e o resumo autoritativo da arquitetura REAL dos conectores do MemoryOS, extraido do codigo vivo em src/lib/connector-runtime/, das ADRs (ADR-013, ADR-014, ADR-015, ADR-017) e do CLAUDE.md (memoria de projeto do builder). Use-o como molda ao criar qualquer novo conector. Tudo aqui e verificavel no codigo.
+
+## 2. O que NAO existe (nunca afirme o contrario)
+
+Os seguintes elementos NAO existem no MemoryOS. Qualquer resposta que os cite e FABRICACAO:
+- NAO existe classe "BaseProvider". Conectores implementam a interface IConnector (composicao), nao herdam de uma base.
+- NAO existe "AuthHandler centralizado". A autenticacao e por-conector, em arquivos *AuthSession.js separados.
+- NAO existe "Manifest.json" por provider. Capabilities sao declaradas via metodo metadata() que retorna ConnectorMetadata.
+- NAO existe "RequestClient" central com exponential backoff. Rate limit e por-conector (ex: GitHubRateLimiter, token bucket).
+- NAO existe "Vault". Secrets ficam em Base44 Settings > Environment Variables (lidos no backend via Deno.env.get). Tokens OAuth sao persistidos em entidades de backend (GoogleOAuthToken, MicrosoftOAuthToken, GitHubOAuthToken) - nunca expostos ao frontend, nunca em localStorage.
+
+## 3. Interface real (IConnector)
+
+Todo conector implementa src/lib/connector-runtime/IConnector.ts:
+\`\`\`
+interface IConnector {
+  readonly id: string;
+  metadata(): ConnectorMetadata;
+  initialize(context): Promise<void>;
+  shutdown(): Promise<void>;
+  health(): Promise<ConnectorHealthReport>;
+  execute(operation, payload, context): Promise<ConnectorResult>;
+  validate(): boolean;
+}
+\`\`\`
+Nao ha base class. O conector e uma classe que implementa essa interface.
+
+## 4. Padrao Shell Fino + Capability Executors (ADR-013)
+
+Para um provedor unico (uma so API oficial): shell fino + 1 executor por servico em arquivo isolado. Molde: src/lib/connector-runtime/connectors/MicrosoftGraphConnector.ts (shell) + src/lib/connector-runtime/connectors/microsoft/ (MicrosoftCapabilityRegistry, *Capability.ts por servico, MicrosoftGraphHelper compartilhado).
+- O shell so tem: metadata, health, validate, initialize, shutdown, execute (token + roteamento via resolveCapability).
+- Cada executor e testavel isoladamente, recebe accessToken + ctx, sem estado global.
+- metadata.capabilities vem de listAllOperations() do registry.
+
+## 5. Padrao Provider Registry (ADR-014) - para provedores concorrentes
+
+So use quando ha APIs/credenciais CONCORRENTES pro mesmo dominio (ex: Travelport GDS vs Travellink/Wooba; ou OAuth proprio vs App-User Connector). Molde: src/lib/connector-runtime/connectors/microsoft-providers/ (MicrosoftProviderRegistry singleton HMR-safe, OfficialGraphProvider, etc.). O shell delega a microsoftProviderRegistry.resolveProvider(operation, workspaceId). Se so ha uma API oficial, NAO crie provider registry - e indirecao sem beneficio (use so o padrao 4).
+
+## 6. Autenticacao real (por-conector)
+
+Cada familia de conector tem seu *AuthSession.js: src/lib/google-auth/GoogleAuthSession.js, src/lib/microsoft-auth/MicrosoftAuthSession.js, src/lib/github-auth/GitHubAuthSession.js. Padrao:
+- Frontend: AuthSession gerencia PKCE, popup OAuth, token em memoria (nunca localStorage).
+- Backend: backend function proxy (ex: base44/functions/microsoftGraphProxy/entry.ts, base44/functions/travelportProxy/entry.ts) le secrets via Deno.env.get(), cacheia o access_token em memoria de modulo (nunca gera token por request), e expoe passthrough generico.
+- Refresh token / credenciais permanentes persistem em entidade de backend (*OAuthToken), acessadas só pelo backend.
+
+## 7. Registro de Capabilities (GoalCapabilityRegistry)
+
+Capabilities sao mapeadas em src/lib/planning-engine-e022/GoalCapabilityRegistry.ts antes do bloco general.*. Convencao de nome: connector: "microsoft-graph", capability: "ms.mail.list". O Planner resolve goals -> capabilities; nunca conhece o conector diretamente (Open/Closed).
+
+## 8. Reversibilidade e Safety Gate (ADR-015 / EI-01..EI-07)
+
+Todo conector declara capabilityReversibility?: Record<string, Reversibility> no metadata (ConnectorTypes.ts). Reversibility = "safe" | "reversible" | "irreversible". Exemplos: mail.send/email.send/whatsapp.sendMessage = irreversible; create/upload/move/rename = reversible; list/read/search/download = safe. O Safety Gate (src/lib/execution-intelligence/SafetyGate.ts) freia irreversible sem confirmedByUser. O Runtime.processCapability (src/lib/execution-intelligence/Runtime.ts) e a facade unica: Intelligence.prepare -> SafetyGate.guard -> dispatch. Bypass impossivel por construcao.
+
+## 9. Camadas que envolvem TODO conector automaticamente
+
+Nao instrumente manualmente:
+- Event Layer: src/lib/connector-runtime/UCRBridge.ts envolve cada execute() com eventos do RuntimeEventBus (ConnectorExecutionStarted/Completed/Failed).
+- Observation Layer: PipelineObservationBridge committa observacoes no KnowledgeRegistry apos cada execucao (fire-and-forget).
+- Bootstrap: src/lib/connector-runtime/ConnectorBootstrap.ts registra todos via OFFICIAL_FACTORIES (Promise.allSettled paralelo).
+
+## 10. Molde recomendado para um novo conector
+
+1. Criar *Connector.ts (shell implementando IConnector) em src/lib/connector-runtime/connectors/.
+2. Para provedor unico: criar subpasta com *CapabilityRegistry.ts + *Helper.ts + 1 *Capability.ts por servico (ADR-013). Para concorrentes: subpasta *-providers/ com *ProviderRegistry.ts + *Provider.ts (ADR-014).
+3. Criar *AuthSession.js (PKCE + multi-workspace, espelhar GoogleAuthSession.js).
+4. Criar backend function proxy em base44/functions/*Proxy/entry.ts (Deno.env.get secrets + cache de token + passthrough).
+5. Registrar capabilities em GoalCapabilityRegistry.ts (antes do bloco general.*).
+6. Declarar capabilityReversibility no metadata (irreversible para envios/emissao).
+7. Registrar factory em ConnectorBootstrap.ts OFFICIAL_FACTORIES.
+8. Documentar decisao em ADR + CLAUDE.md.
+
+## 11. Caminho de leitura recomendado
+
+Antes de responder sobre conectores, LEIA no codigo real: src/lib/connector-runtime/IConnector.ts, src/lib/connector-runtime/ConnectorTypes.ts, src/lib/connector-runtime/connectors/MicrosoftGraphConnector.ts, src/lib/connector-runtime/connectors/GitHubConnector.ts. Se uma afirmacao sobre a arquitetura nao for suportada por esses arquivos, ela e fabricacao - diga que nao sabe em vez de inventar.
+
+## 12. Sobre o CLAUDE.md
+
+CLAUDE.md e a memoria de projeto do builder (decisoes arquiteturais por sessao, dead-ends, padroes). Ele NAO e carregado automaticamente no chat do app. Para cita-lo como fonte, o conteudo relevante deve estar explicitamente no prompt agora (bloco BIBLIOTECA OFICIAL). Sem isso, citar "segundo o claude.md" e fabricacao de rastreabilidade.
+
+---
+
+Documento Oficial: CONNECTOR-BUILD-GUIDE - Como Construir um Conector do MemoryOS | Versao: 1.0 | Status: Aprovado`,
+
   "Architecture-Auditor-Specialist": `# Architecture Auditor Specialist
 
 Versao: 3.1 | Status: Aprovado | Conformidade: CONFORME | Situacao: Estavel | Tipo: Especialista Oficial
