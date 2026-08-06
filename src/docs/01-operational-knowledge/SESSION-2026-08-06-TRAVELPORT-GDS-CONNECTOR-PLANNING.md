@@ -117,7 +117,32 @@ Isto é o padrão do **WhatsApp** (múltiplos backends concorrentes de verdade p
 
 `flight.ticket` e `flight.reissue` serão o primeiro caso real de migração de um caller irreversível para `runtime.processCapability()` (cadeia Execution Intelligence, ADR-015, já construída em EI-01 a EI-07 mas nunca exercitada em produção por falta de caso real — ver `CLAUDE.md`, sessões EI-04/EI-07). Isso é intencional e documentado — não é acidente de escopo.
 
-## 6. Próxima Ação Exata (GDS-01)
+## 6. Próxima Ação Exata (ATUALIZADO — GDS-01 já feito, bloqueado em credenciais)
+
+**GDS-01 já está implementado.** Não recrie nada disto — só valide quando as credenciais forem corrigidas:
+- `base44/functions/travelportProxy/entry.ts` — proxy completo (cache de token em memória de módulo, ação `authTest`, passthrough genérico).
+- `src/pages/TravelportAuthTestPage.jsx` + rota `/travelport-auth-test` em `src/App.jsx` — página de diagnóstico temporária (SDK real via `base44.functions.invoke`).
+
+**Erro atual (bloqueador):** a Travelport responde `{"ok": false, "error": "Wrong email or password."}` ao chamar `authTest`. O usuário confirmou que os secrets cadastrados batem com o e-mail original — não é erro de transcrição. O problema está do lado da Travelport (credenciais do trial com problema) ou requer alguma ativação adicional que não fizemos. Usuário está resolvendo direto com o suporte deles.
+
+**Quando o usuário confirmar que a Travelport corrigiu as credenciais, faça nesta ordem:**
+
+1. **Não pergunte se precisa recriar o backend** — ele já existe e está correto. Vá direto pro teste.
+2. Peça pro usuário (ou, se tiver acesso ao navegador conectado, faça você mesmo) abrir a página `/travelport-auth-test` na pré-visualização do Base44 (botão "Atualizar" primeiro, pra garantir que pegou o código mais recente) e clicar em "Rodar authTest".
+3. Se retornar `{"ok": true, "data": {"ok": true, "tokenPreview": "...", ...}}` — GDS-01 está validado. Vá pro passo 4.
+4. **Remova a página de diagnóstico** — ela não faz parte da arquitetura final:
+   - Delete `src/pages/TravelportAuthTestPage.jsx`
+   - Remova o `lazy(() => import('@/pages/TravelportAuthTestPage'))` e a `<Route path="/travelport-auth-test" .../>` do `src/App.jsx`
+5. Documente a validação no `CLAUDE.md` (nova entrada de sessão).
+6. **Só então**, com autorização explícita do usuário, comece **GDS-02** (scaffold de tipos + `TravelportCapabilityRegistry`), seguindo o que já estava planejado na RFC-011.
+
+**Se o teste continuar falhando mesmo depois do usuário confirmar que a Travelport corrigiu:** não assuma que é outro problema de credencial de novo. Verifique primeiro se o token da Travelport mudou de formato/endpoint (a doc pode ter mudado), e só depois volte a suspeitar de secret errado.
+
+**Nota técnica importante para debug futuro:** NUNCA teste credenciais do Travelport via `Base44:run_command` (terminal genérico) — ele NÃO tem acesso confiável aos secrets do app (gera falsos positivos/negativos). O único jeito confiável de testar é rodando a function de verdade via UI (a página de diagnóstico, ou qualquer chamada real de `base44.functions.invoke` a partir do frontend autenticado). O CLI `base44 exec`/`base44 logs` também funciona mas exige login interativo via device code (não automatizado neste ambiente sandbox).
+
+---
+
+## 6b. Seção original de GDS-01 (mantida como referência histórica do que foi planejado — já executado)
 
 Se o usuário disser "continue" ou "pode começar", a próxima coisa a fazer é **GDS-01**, nesta ordem:
 
