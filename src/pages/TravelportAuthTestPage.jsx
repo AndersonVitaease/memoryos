@@ -20,7 +20,13 @@ export default function TravelportAuthTestPage() {
       const res = await base44.functions.invoke("travelportProxy", { action: "authTest" });
       setResult({ ok: true, data: res?.data ?? res });
     } catch (e) {
-      setResult({ ok: false, error: e?.message || String(e) });
+      const respData = e?.response?.data;
+      setResult({
+        ok: false,
+        error: e?.message || String(e),
+        status: e?.response?.status,
+        responseData: respData ?? null,
+      });
     } finally {
       setLoading(false);
     }
