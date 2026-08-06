@@ -1735,3 +1735,30 @@ Planner → GoalCapabilityRegistry (flight.* → connector logico "flight-gds")
 **Próximo passo:** usuário cadastra os secrets (`TRAVELPORT_USERNAME`, `TRAVELPORT_PASSWORD`, `TRAVELPORT_CLIENT_ID`, `TRAVELPORT_CLIENT_SECRET`, `TRAVELPORT_PCC`, `TRAVELPORT_ACCESS_GROUP`, `TRAVELPORT_ENV=pp`) em Base44 Settings > Environment Variables; depois aguardar autorização para iniciar **GDS-01 (travelportProxy)**.
 
 ---
+
+### 2026-08-06 (continuação) — GDS-01 implementado e testado. BLOQUEADO: Travelport rejeita credenciais do trial
+
+**Status:** GDS-01 (backend proxy) está CODADO e FUNCIONANDO tecnicamente. Bloqueado esperando a Travelport corrigir/reemitir as credenciais do trial — usuário já está em contato com o suporte deles.
+
+**O que foi implementado (código real, não só planejamento):**
+- `base44/functions/travelportProxy/entry.ts` — proxy completo: cache de token em memória de módulo (nunca gera token por request), ação `authTest` de diagnóstico, passthrough genérico `{service, path, method, body}` para Air/Hotel/Payment, headers `Authorization: Bearer` + `XAUTH_TRAVELPORT_ACCESSGROUP` (confirmado via doc oficial — Access Group prevalece sobre `TVP-PCC-CORE` quando os dois são enviados).
+- `src/pages/TravelportAuthTestPage.jsx` + rota `/travelport-auth-test` em `src/App.jsx` — página de diagnóstico TEMPORÁRIA (remover quando GDS-01 for validado) que chama `base44.functions.invoke("travelportProxy", {action:"authTest"})` pelo SDK real, exibindo `error.response.data` (não só `error.message`, que no axios vem genérico tipo "Request failed with status code 500").
+- Os 7 secrets estão cadastrados no Base44 (nomes corretos, confirmados por print do usuário): `TRAVELPORT_USERNAME`, `TRAVELPORT_PASSWORD`, `TRAVELPORT_CLIENT_ID`, `TRAVELPORT_CLIENT_SECRET`, `TRAVELPORT_PCC`, `TRAVELPORT_ACCESS_GROUP`, `TRAVELPORT_ENV`.
+
+**Achado técnico importante — onde NÃO testar credenciais:** o terminal genérico (`Base44:run_command`) NÃO tem acesso confiável aos secrets do app (uma checagem mostrou "set: yes", a checagem seguinte mostrou os mesmos 5 secrets com tamanho 0/vazios — falso positivo por escaping de shell). Testar autenticação só é confiável rodando a function de verdade, via UI (página de diagnóstico + botão) ou teoricamente via `base44 exec`/`base44 logs` do CLI oficial (ambos pediram login interativo via device code neste sandbox, não foi possível autenticar sem o usuário abrir o link — não usado ao final, a página de diagnóstico na UI resolveu).
+
+**Erro real da Travelport (via `authTest`, após corrigir o bug do axios que escondia o erro real):**
+```json
+{ "ok": false, "error": "Wrong email or password." }
+```
+HTTP 500 do lado do proxy (repassando o erro), mas a MENSAGEM é da própria Travelport — confirma que o problema é especificamente no par **username/password**, não no client_secret (que foi a suspeita inicial por parecer truncado no email — `client_secret` NÃO é mais suspeito principal, mesmo assim nunca confirmado 100% correto).
+
+**Diagnóstico tentado e descartado:** reconferência cuidadosa de copy/paste da senha (`{nJ~)r12V)evA2` tem caracteres especiais `{ ~ )` propensos a corrupção em copy/paste entre apps) — usuário confirmou que os valores cadastrados no Base44 ESTÃO CORRETOS (bateram com o email original). Ou seja, não é erro de transcrição do usuário — as credenciais em si, como enviadas pela Travelport, não estão sendo aceitas pelo endpoint de auth.
+
+**Ação em andamento (fora do MemoryOS):** usuário está em contato direto com o suporte da Travelport para resolver a rejeição de credenciais (username/password do trial). Caminhos já mapeados nesta sessão caso precise: portal https://my.travelport.com (login separado do usuário técnico `TP66208284` — normalmente é o e-mail usado para solicitar o trial), seção Administration > Manage Users > Credential Access Manager para conferir/reemitir credenciais; se o reset de senha do portal não chegar por e-mail (usuário relatou 4 tentativas sem receber), o caminho mais rápido é responder diretamente o e-mail original "Welcome to Travelport TripServices" pedindo confirmação/reemissão, já que abrir chamado via MyTravelport também exige login (circular).
+
+**NÃO foi feito:** nenhuma capability de negócio (Shopping/Pricing/Booking/Ticketing/Exchange) — GDS-02 em diante ficam bloqueados até a autenticação funcionar. O código do GDS-01 em si está pronto e não precisa de retrabalho quando as credenciais forem corrigidas — só rodar o `authTest` de novo.
+
+**Próximo passo (quando retomar):** 1) confirmar com o usuário se o suporte da Travelport já resolveu as credenciais; 2) se sim, rodar `/travelport-auth-test` de novo (botão "Rodar authTest") — se retornar `ok:true` com `tokenPreview`, GDS-01 está validado; 3) remover a página de diagnóstico (`TravelportAuthTestPage.jsx` + rota) da árvore, ela não faz parte da arquitetura final; 4) seguir para GDS-02 (scaffold de tipos + `TravelportCapabilityRegistry`), com autorização do usuário.
+
+---
