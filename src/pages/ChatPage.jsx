@@ -460,59 +460,118 @@ export default function ChatPage({ projectId } = {}) {
             </div>
           )}
 
-          {conversation.messages.map((msg, index) => {
-            const prev = conversation.messages[index - 1];
-            const showDateSep = !prev || dayKey(prev.created_date) !== dayKey(msg.created_date);
-            return (
-            <React.Fragment key={msg.id}>
-              {showDateSep && msg.created_date && (
-                <DateSeparator date={formatDateLabel(msg.created_date)} />
-              )}
-            <div className="flex gap-3 group">
-              <div className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center ${
-                msg.role === "user" ? "bg-zinc-900" : "bg-gradient-to-br from-violet-500 to-indigo-600"
-              }`}>
-                {msg.role === "user"
-                  ? <User className="w-4 h-4 text-white" />
-                  : <Brain className="w-4 h-4 text-white" />}
-              </div>
-              <div className={`flex-1 min-w-0 rounded-2xl px-4 py-3 text-lg leading-relaxed ${
-                msg.role === "user"
-                  ? "bg-violet-100/60 border border-violet-200/70 text-zinc-700"
-                  : "bg-white border border-zinc-200/80 text-zinc-700 shadow-sm"
-              }`}>
-                {msg.role === "assistant" ? (
-                  msg.isStreaming ? (
-                    <StreamingMessage content={msg.streamingContent ?? ""} />
-                  ) : (
-                    <div className="prose prose-sm prose-zinc max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-                      <ReactMarkdown>{msg.content}</ReactMarkdown>
-                    </div>
-                  )
-                ) : (
-                  <p className="whitespace-pre-wrap">{msg.content}</p>
-                )}
-                {msg.created_date && (
-                  <div className="text-[11px] mt-1.5 text-zinc-500">
-                    {formatTime(msg.created_date)}
-                  </div>
-                )}
-                {msg.role === "assistant" && !msg.isStreaming && (
-                  <div className="flex items-center gap-1 mt-2 -mb-1 opacity-0 group-hover:opacity-100 transition">
-                    <CopyButton text={msg.content} />
-                    {index === conversation.messages.length - 1 && (
-                      <RegenerateButton
-                        onRegenerate={handleRegenerate}
-                        disabled={conversation.isLoading}
-                      />
+          {(() => {
+            // FIX: PDFs agora sao renderizados INLINE em ordem cronologica
+            // (por created_date), no ponto da conversa onde foram adicionados
+            // — antes ficavam todos acumulados num bloco fixo no fim do chat,
+            // com qualquer texto novo aparecendo acima deles.
+            const timeline = [
+              ...conversation.messages.map((m) => ({ kind: "message", data: m, sortKey: m.created_date })),
+              ...sessionPdfs.map((p) => ({ kind: "pdf", data: p, sortKey: p.created_date })),
+            ].sort((a, b) => new Date(a.sortKey || 0).getTime() - new Date(b.sortKey || 0).getTime());
+
+            return timeline.map((item, index) => {
+              const prev = timeline[index - 1];
+              const showDateSep = !prev || dayKey(prev.sortKey) !== dayKey(item.sortKey);
+
+              if (item.kind === "pdf") {
+                const pdf = item.data;
+                return (
+                  <React.Fragment key={`pdf-${pdf.id}`}>
+                    {showDateSep && item.sortKey && (
+                      <DateSeparator date={formatDateLabel(item.sortKey)} />
                     )}
-                  </div>
+                    <div className="flex gap-3 group">
+                      <div className="w-8 h-8 rounded-full shrink-0 flex items-center justify-center bg-red-50">
+                        <FileText className="w-4 h-4 text-red-500" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-3 bg-white border border-zinc-200/80 rounded-2xl px-4 py-2.5 shadow-sm">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-zinc-700 truncate">{pdf.name}</p>
+                            {pdf.summary && (
+                              <p className="text-xs text-zinc-400 truncate">{pdf.summary}</p>
+                            )}
+                          </div>
+                          <a
+                            href={pdf.file_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1.5 rounded-lg hover:bg-zinc-100 transition text-zinc-400 hover:text-zinc-600 shrink-0"
+                          >
+                            <ExternalLink className="w-4 h-4" />
+                          </a>
+                          <PdfToolsButton
+                            doc={pdf}
+                            allPdfs={sessionPdfs}
+                            onNotification={notifyPdf}
+                          />
+                        </div>
+                        {pdf.created_date && (
+                          <div className="text-[11px] mt-1.5 text-zinc-500">
+                            {formatTime(pdf.created_date)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </React.Fragment>
+                );
+              }
+
+              const msg = item.data;
+              const msgIndex = conversation.messages.indexOf(msg);
+              const isLastMessage = msgIndex === conversation.messages.length - 1;
+              return (
+              <React.Fragment key={msg.id}>
+                {showDateSep && msg.created_date && (
+                  <DateSeparator date={formatDateLabel(msg.created_date)} />
                 )}
+              <div className="flex gap-3 group">
+                <div className={`w-8 h-8 rounded-full shrink-0 flex items-center justify-center ${
+                  msg.role === "user" ? "bg-zinc-900" : "bg-gradient-to-br from-violet-500 to-indigo-600"
+                }`}>
+                  {msg.role === "user"
+                    ? <User className="w-4 h-4 text-white" />
+                    : <Brain className="w-4 h-4 text-white" />}
                 </div>
-                </div>
-            </React.Fragment>
-            );
-          })}
+                <div className={`flex-1 min-w-0 rounded-2xl px-4 py-3 text-lg leading-relaxed ${
+                  msg.role === "user"
+                    ? "bg-violet-100/60 border border-violet-200/70 text-zinc-700"
+                    : "bg-white border border-zinc-200/80 text-zinc-700 shadow-sm"
+                }`}>
+                  {msg.role === "assistant" ? (
+                    msg.isStreaming ? (
+                      <StreamingMessage content={msg.streamingContent ?? ""} />
+                    ) : (
+                      <div className="prose prose-sm prose-zinc max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+                        <ReactMarkdown>{msg.content}</ReactMarkdown>
+                      </div>
+                    )
+                  ) : (
+                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                  )}
+                  {msg.created_date && (
+                    <div className="text-[11px] mt-1.5 text-zinc-500">
+                      {formatTime(msg.created_date)}
+                    </div>
+                  )}
+                  {msg.role === "assistant" && !msg.isStreaming && (
+                    <div className="flex items-center gap-1 mt-2 -mb-1 opacity-0 group-hover:opacity-100 transition">
+                      <CopyButton text={msg.content} />
+                      {isLastMessage && (
+                        <RegenerateButton
+                          onRegenerate={handleRegenerate}
+                          disabled={conversation.isLoading}
+                        />
+                      )}
+                    </div>
+                  )}
+                  </div>
+                  </div>
+              </React.Fragment>
+              );
+            });
+          })()}
 
           {/* Thinking indicator — VXP progressive states */}
           {showReasoningIndicator && (
@@ -531,42 +590,6 @@ export default function ChatPage({ projectId } = {}) {
           {processingItems.map((item) => (
             <ProcessingBubble key={item.id} item={item} />
           ))}
-
-          {sessionPdfs.length > 0 && (
-            <div className="pt-2 pb-1">
-              <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-2 px-1">
-                PDFs desta conversa
-              </p>
-              <div className="space-y-2">
-                {sessionPdfs.map((pdf) => (
-                  <div key={pdf.id} className="flex items-center gap-3 bg-white border border-zinc-200/80 rounded-xl px-4 py-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center shrink-0">
-                      <FileText className="w-4 h-4 text-red-500" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-zinc-700 truncate">{pdf.name}</p>
-                      {pdf.summary && (
-                        <p className="text-xs text-zinc-400 truncate">{pdf.summary}</p>
-                      )}
-                    </div>
-                    <a
-                      href={pdf.file_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="p-1.5 rounded-lg hover:bg-zinc-100 transition text-zinc-400 hover:text-zinc-600 shrink-0"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                    </a>
-                    <PdfToolsButton
-                      doc={pdf}
-                      allPdfs={sessionPdfs}
-                      onNotification={notifyPdf}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
           <div ref={bottomRef} />
         </div>
