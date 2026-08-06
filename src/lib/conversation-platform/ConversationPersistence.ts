@@ -40,16 +40,18 @@ export async function loadMessages(
   sessionId: string,
   limit = 100
 ): Promise<ConversationMessage[]> {
-  // Busca as `limit` mensagens MAIS RECENTES (DESC) e inverte para ordem de chat
-  // (mais antiga no topo, mais recente no rodape). Antes ordenava por
-  // "created_date" (ASC), o que carregava as mensagens mais antigas da sessao
-  // (de semanas/meses atras) em vez das atuais.
+  // Busca as `limit` mensagens MAIS RECENTES (DESC) e ordena ASCENDENTE por
+  // created_date. Antes usava .reverse(), que dependia do sort da API estar
+  // correto — se a API ignorasse o "-created_date", o reverse produzia ordem
+  // DECRESCENTE e o chat aparecia ao contrario. Sort explicito e robusto.
   const msgs = await base44.entities.Message.filter(
     { session_id: sessionId },
     "-created_date",
     limit
   );
-  return (msgs as ConversationMessage[]).reverse();
+  return (msgs as ConversationMessage[]).sort((a, b) =>
+    new Date(a.created_date || 0).getTime() - new Date(b.created_date || 0).getTime()
+  );
 }
 
 export async function updateMessageContent(
