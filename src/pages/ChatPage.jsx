@@ -158,9 +158,10 @@ export default function ChatPage({ projectId } = {}) {
     const handleScroll = () => {
       const { scrollTop, scrollHeight, clientHeight } = container;
       const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-      // Fonte unica de verdade: perto do fundo (< 100px) = seguindo o texto.
-      // Simples e robusto — sem deteccao de direcao, sem race conditions.
-      isNearBottomRef.current = distanceFromBottom < 100;
+      // SO reativa quando o usuario rolar manualmente ate bem perto do fundo
+      // (< 20px). Nunca desativa aqui — evita a race onde rolar um pouco pra
+      // cima reativava o auto-scroll e puxava de volta.
+      if (distanceFromBottom < 20) isNearBottomRef.current = true;
       setShowScrollToBottom(distanceFromBottom > 120);
     };
 
