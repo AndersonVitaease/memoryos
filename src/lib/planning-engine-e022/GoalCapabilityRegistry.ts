@@ -853,6 +853,23 @@ const _builtins: CapabilityMapping[] = [
     ],
   },
 
+  // ── MCP (cliente MCP generico) — chama mcpClientCall via MCPConnector
+  // Connector id: "mcp"  (MCPConnector.ts)
+  // Capabilities: mcp.listTools (safe), mcp.callTool (safe)
+  // Servidores resolvidos via entidade MCPServerConfig (serverName -> id).
+  {
+    goalType: "mcp.listTools" as GoalType,
+    descriptors: [
+      { connector: "mcp", capability: "mcp.listTools", params: {} },
+    ],
+  },
+  {
+    goalType: "mcp.callTool" as GoalType,
+    descriptors: [
+      { connector: "mcp", capability: "mcp.callTool", params: {} },
+    ],
+  },
+
   // ── General / Unknown — no capability steps; Runtime handles gracefully ───
   {
     goalType: "general.conversation",
