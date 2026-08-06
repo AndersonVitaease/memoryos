@@ -493,6 +493,20 @@ const _builtins: GoalDefinition[] = [
       "pesquisa aprofundada", "pesquisa profunda",
       "investigacao aprofundada",
       "deep research",
+      // "leia a documentacao e compare" — roteia para deepResearch (le repo
+      // via github.files.get/search.symbol + web grounding + sintese) em vez
+      // de cair em github.listFiles (so lista caminhos) ou general LLM.
+      "leia a documentacao e compare",
+      "leia os arquivos e compare",
+      "leia o repositorio e compare",
+      "leia o repo e compare",
+      "compare com a documentacao",
+      "compare com os arquivos do repositorio",
+      "compare com os arquivos do repo",
+      "leia a documentacao e me diga",
+      "leia os arquivos e me diga o que",
+      "leia o repositorio e me diga",
+      "leia o repo e me diga",
     ],
     extractParams: (msg: string) => {
       const stripped = msg
@@ -1400,6 +1414,44 @@ const _builtins: GoalDefinition[] = [
         query: msg.trim(),
         rawText: msg.trim(),
       };
+    },
+  },
+
+  // ── MCP (cliente MCP generico — chama mcpClientCall via MCPConnector) ─────
+  // Servidores sao registrados na entidade MCPServerConfig (name, server_url,
+  // auth_type). O conector resolve serverName -> id filtrando a entidade.
+  {
+    type: "mcp.listTools" as GoalType,
+    namespace: "mcp",
+    description: "List tools exposed by a registered MCP server (MCPServerConfig)",
+    signals: [
+      "liste as ferramentas do mcp", "listar ferramentas mcp",
+      "ferramentas do mcp", "quais ferramentas o mcp",
+      "ferramentas do servidor mcp", "ferramentas do servidor",
+      "mcp tools", "list mcp tools",
+    ],
+    extractParams: (msg) => {
+      const afterServidor = msg.match(/servidor\s+([a-z0-9_.\-]+)/i)?.[1]?.trim();
+      const afterMcp = msg.match(/mcp\s+([a-z0-9_.\-]+)/i)?.[1]?.trim();
+      return { serverName: afterServidor ?? afterMcp ?? null };
+    },
+  },
+  {
+    type: "mcp.callTool" as GoalType,
+    namespace: "mcp",
+    description: "Call a specific tool on a registered MCP server (MCPServerConfig)",
+    signals: [
+      "chame a ferramenta do mcp", "chamar ferramenta do mcp",
+      "execute a ferramenta do mcp", "executar ferramenta do mcp",
+      "use a ferramenta do mcp", "usar ferramenta do mcp",
+      "invocar ferramenta do mcp", "invoque a ferramenta do mcp",
+      "call mcp tool", "invoke mcp tool",
+    ],
+    extractParams: (msg) => {
+      const toolMatch = msg.match(/ferramenta\s+([a-zA-Z0-9_.\-]+)\s+(?:do\s+)?mcp/i)?.[1]?.trim();
+      const afterServidor = msg.match(/servidor\s+([a-z0-9_.\-]+)/i)?.[1]?.trim();
+      const afterMcp = msg.match(/mcp\s+([a-z0-9_.\-]+)/i)?.[1]?.trim();
+      return { toolName: toolMatch ?? null, serverName: afterServidor ?? afterMcp ?? null };
     },
   },
 ];

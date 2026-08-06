@@ -91,6 +91,12 @@ const OFFICIAL_FACTORIES: ConnectorFactory[] = [
     return new MemoriConnector();
   },
   async () => {
+    // MCP generico: chama servidores MCP externos (MCPServerConfig) via
+    // backend function mcpClientCall (Streamable HTTP + SSE).
+    const { MCPConnector } = await import("./connectors/MCPConnector");
+    return new MCPConnector();
+  },
+  async () => {
     const { MicrosoftGraphConnector } = await import("./connectors/MicrosoftGraphConnector");
     return new MicrosoftGraphConnector();
   },
