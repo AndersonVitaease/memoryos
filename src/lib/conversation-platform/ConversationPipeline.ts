@@ -184,6 +184,48 @@ class ConversationPipeline {
       // execução órfã respeitar os guards já existentes e não duplicar.
       if (_guardedResult === null) {
         this._cancelled = true;
+        // FIX: antes o timeout so setava _cancelled e o usuario via apenas uma
+        // barra de erro discreta (ou nada) — "a resposta nunca aparece". Agora
+        // garante uma resposta de fallback visivel no chat, finalizando qualquer
+        // mensagem de streaming parcial ou criando uma nova, pra o usuario
+        // nunca ficar sem resposta quando o pipeline trava.
+        try {
+          const _session = conversationStore.session;
+          if (_session) {
+            const _fbText = "Demorei demais para montar uma resposta e o tempo limite foi atingido. Pode tentar de novo? Mensagens mais curtas costumam responder bem mais rápido.";
+            const _existing = conversationStore.messages.find(
+              (m) => m.role === "assistant" && m.isStreaming,
+            );
+            if (_existing) {
+              await conversationStreaming.streamResponse({
+                executionId, messageId: _existing.id, fullContent: _fbText, onChunk: () => {},
+              });
+              conversationStore.updateMessage(_existing.id, {
+                content: _fbText, streamingContent: undefined, isStreaming: false, sources_used: [],
+              });
+            } else {
+              const _fbMsgId = `msg-${Date.now()}-to`;
+              conversationStore.appendMessage({
+                id: _fbMsgId, session_id: _session.id, role: "assistant",
+                content: "", streamingContent: "", isStreaming: true,
+                memory_tier: "active", sources_used: [],
+              });
+              await conversationStreaming.streamResponse({
+                executionId, messageId: _fbMsgId, fullContent: _fbText, onChunk: () => {},
+              });
+              try {
+                const _fbSaved = await persistMessage({
+                  sessionId: _session.id, projectId: _session.project_id,
+                  role: "assistant", content: _fbText, sources_used: [],
+                });
+                conversationStore.updateMessage(_fbMsgId, {
+                  id: _fbSaved.id, content: _fbText, streamingContent: undefined,
+                  isStreaming: false, sources_used: [],
+                });
+              } catch { /* non-critical */ }
+            }
+          }
+        } catch { /* fallback nunca propaga */ }
       }
     } finally {
       conversationRecovery.safeReset(executionId);
