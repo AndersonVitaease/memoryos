@@ -81,7 +81,12 @@ class ConversationStore {
   }
 
   appendMessage(message: ConversationMessage): void {
-    this._patch({ messages: [...this._state.messages, message] });
+    // FIX: mensagens anexadas sem created_date (placeholder de streaming,
+    // respostas de bypass, etc.) caem para epoch 0 no sort do ChatPage e
+    // aparecem ACIMA da pergunta do usuario. Garante timestamp client-side
+    // cronologicamente apos a mensagem anterior — sort correto.
+    const withDate = message.created_date ? message : { ...message, created_date: new Date().toISOString() };
+    this._patch({ messages: [...this._state.messages, withDate] });
   }
 
   updateMessage(id: string, updates: Partial<ConversationMessage>): void {
