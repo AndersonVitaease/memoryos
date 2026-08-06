@@ -43,8 +43,9 @@ import { isCanonicalResourceRequestEnabled, isCanonicalResourceReadEnabled } fro
 import { synthesizeConnectorResult } from "@/lib/connector-runtime-provider/ConnectorResultSynthesizer";
 
 // Identity/greeting bypass regex — evaluated once at module load
-const _IDENTITY_RE = /^(qual|quem|oi|olá|ola|bom dia|boa tarde|boa noite)\b.{0,80}(nome|você|voce|vc|propósito|objetivo|funcao|função)\b/i;
-const _IDENTITY_RE2 = /^(qual (é |e )?(o |seu |o seu )?(nome|propósito|objetivo|função|funcao))/i;
+const _IDENTITY_RE = /^(qual|quem|oi|olá|ola|bom dia|boa tarde|boa noite)\b.{0,15}(nome|você|voce|propósito|objetivo|funcao|função)\b/i;
+const _IDENTITY_RE2 = /^(qual (é |e )?(o |seu |o seu |a sua |a )?(nome|propósito|objetivo|função|funcao))/i;
+const _IDENTITY_RE_VC = /^(quem (é |e |eh )?(você|voce|vc))\b/i;
 
 const _IDENTITY_RESPONSES: Record<string, string> = {
   greeting: "Olá! Sou o MemoryOS — sua memória permanente e inteligente. Como posso ajudar?",
@@ -305,7 +306,7 @@ class ConversationPipeline {
 
     // ── 0. Identity/Greeting Hard Bypass (zero DB, zero LLM) ────────────
     const _trimmed = userMessage.trim();
-    const _isIdentityMsg = _IDENTITY_RE.test(_trimmed) || _IDENTITY_RE2.test(_trimmed);
+    const _isIdentityMsg = _IDENTITY_RE.test(_trimmed) || _IDENTITY_RE2.test(_trimmed) || _IDENTITY_RE_VC.test(_trimmed);
     if (_isIdentityMsg) {
       const _isGreeting = /^(oi|olá|ola|bom dia|boa tarde|boa noite)\b/i.test(_trimmed) && !/nome|propósito|objetivo|função|funcao/i.test(_trimmed);
       const _isPurpose  = /propósito|objetivo|função|funcao/i.test(_trimmed);
