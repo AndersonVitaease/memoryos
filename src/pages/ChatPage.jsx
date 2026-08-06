@@ -163,14 +163,11 @@ export default function ChatPage({ projectId } = {}) {
       if (scrollTop < lastScrollTopRef.current - 2) {
         userScrolledRef.current = true;
       }
-      // So retoma se o PROPRIO USUARIO voltar ao fundo ENQUANTO NAO ESTIVER
-      // streamando. Durante o streaming o guard fica TRAVADO em true — isso
-      // impede o race em que um token chega, o snap automatico poe
-      // distanceFromBottom<4 e religa a pausa, puxando o usuario de volta
-      // pro fundo a cada token (sintoma: "nao consigo rolar pra cima enquanto
-      // a resposta sobe"). O guard so rearma ao clicar no botao "ir pro fundo"
-      // ou ao enviar nova mensagem.
-      if (userScrolledRef.current && !isStreamingRef.current && distanceFromBottom < 4) {
+      // So retoma o auto-scroll se o usuario voltar EXPLICITAMENTE ao fundo
+      // (cola no fundo, distance < 3px) E nao estiver streamando. Durante o
+      // streaming o guard fica TRAVADO em true — impede o snap-back. Apos o
+      // streaming, o usuario precisa rolar ate colar no fundo pra reativar.
+      if (userScrolledRef.current && !isStreamingRef.current && distanceFromBottom < 3) {
         userScrolledRef.current = false;
       }
       lastScrollTopRef.current = scrollTop;
@@ -446,6 +443,7 @@ export default function ChatPage({ projectId } = {}) {
       <div
         ref={scrollContainerRef}
         className="h-full overflow-y-auto px-3 sm:px-4 lg:px-6 py-4 lg:py-6"
+        style={{ overflowAnchor: "none" }}
       >
         <div className="max-w-3xl mx-auto space-y-3 lg:space-y-4">
 
