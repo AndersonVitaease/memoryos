@@ -158,8 +158,10 @@ const GH_INTENT_RULES: readonly GHIntentRule[] = Object.freeze([
 // Cada grupo tem peso proprio. Presenca de qualquer sinal do grupo soma o peso.
 
 const CODE_ENTITY_SIGNALS = Object.freeze([
-  // extensoes de arquivo
+  // extensoes de arquivo de codigo
   ".ts", ".tsx", ".jsx", ".js", ".py", ".go", ".java", ".kt", ".swift",
+  // extensoes de documento/config comuns em repos (CLAUDE.md, README.md, etc.)
+  ".md", ".json", ".yml", ".yaml", ".sh", ".toml", ".env",
   // caminhos de diretorio
   "src/", "lib/", "/lib/", "src\\",
   // linguagens / runtime
@@ -169,6 +171,14 @@ const CODE_ENTITY_SIGNALS = Object.freeze([
   // controle de versao
   "branch", "commit", "pull request",
 ]);
+
+// Sinais que sao EXTENSOES de arquivo (para diferenciar o routing no Caso 2:
+// extensao de arquivo -> procurar o arquivo (searchCode); "github"/"repo"
+// solto -> procurar repositorio por nome (searchRepo)).
+const FILE_EXTENSION_SIGNALS = Object.freeze(
+  [".ts", ".tsx", ".jsx", ".js", ".py", ".go", ".java", ".kt", ".swift",
+   ".md", ".json", ".yml", ".yaml", ".sh", ".toml", ".env"],
+);
 
 const CODE_CONCEPT_SIGNALS = Object.freeze([
   // construcoes de linguagem
@@ -219,19 +229,25 @@ function firstMatch(lower: string, signals: readonly string[]): string | null {
 // ── Domain score ──────────────────────────────────────────────────────────────
 
 interface DomainResult {
-  score:     number;
-  evidences: string[];
+  score:          number;
+  evidences:      string[];
+  fileExtension:  boolean;
 }
 
 function computeGHDomainScore(lower: string, original: string): DomainResult {
   const evidences: string[] = [];
   let score = 0;
+  let fileExtension = false;
 
   // Caminho de arquivo ou extensao de codigo (sinal forte)
   const codeEnt = firstMatch(lower, CODE_ENTITY_SIGNALS);
   if (codeEnt) {
     score += 0.40;
     evidences.push(`code-entity:"${codeEnt}"`);
+    // Se o sinal que casou eh uma extensao de arquivo (.md, .ts, ...), marca
+    // pra o Caso 2 rotear pra searchCode (achar o arquivo) em vez de searchRepo
+    // (achar repositorio por nome — errado pra "claude.md", "README.md" etc.).
+    if (FILE_EXTENSION_SIGNALS.includes(codeEnt)) fileExtension = true;
   }
 
   // Conceito de engenharia de software
@@ -248,7 +264,7 @@ function computeGHDomainScore(lower: string, original: string): DomainResult {
     evidences.push(`engineering-component:"${pascal}"`);
   }
 
-  return { score, evidences };
+  return { score, evidences, fileExtension };
 }
 
 // ── Rule evaluator ─────────────────────────────────────────────────────────────
@@ -316,8 +332,13 @@ export const GitHubSemanticProvider: SemanticProvider = Object.freeze({
     // github" e alinha o routing ao que o usuário realmente pede.
     if (domain.score > 0) {
       const confidence = Math.min(domain.score, 1.0);
+      // FIX: se o dominio veio de uma EXTENSAO de arquivo (.md, .ts, ...), o
+      // intent natural eh achar o ARQUIVO (searchCode) — ex: "claude.md",
+      // "README.md". Se veio so de "github"/"repo" solto, eh achar REPOSITORIO
+      // por nome (searchRepo) — ex: "procure por essa pasta no github".
+      const goalType = (domain.fileExtension ? "github.searchCode" : "github.searchRepo") as GoalType;
       const evidences  = [
-        "domain-only:code-context",
+        domain.fileExtension ? "domain-only:file-extension" : "domain-only:code-context",
         ...domain.evidences,
       ];
 
@@ -326,13 +347,13 @@ export const GitHubSemanticProvider: SemanticProvider = Object.freeze({
         message:    lower,
         signals:    domain.evidences,
         score:      confidence,
-        goalType:   "github.searchRepo",
+        goalType,
         connector:  "github",
       });
 
       return Object.freeze({
         connector:  "github",
-        goalType:   "github.searchRepo" as GoalType,
+        goalType,
         confidence,
         evidences:  Object.freeze(evidences),
         entities:   Object.freeze({}),
