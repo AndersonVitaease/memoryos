@@ -711,7 +711,15 @@ class ConversationPipeline {
 
       // ── PRODUCER B: Planning → Runtime → Connector → Synthesize ──────────
       // v2: Connector answer → ExecutionOutcome → ResponseCandidate
-      if (goalBridgeResult.goal.valid) {
+      // FIX: general.conversation / unknown com confidence 0 passavam em
+      // validateConversationGoal (so checa confidence >= 0) e entravam no
+      // caminho de Connector Runtime — conhecido-falho ("runtime nao
+      // inicializado") — em vez de ir direto pro LLM. Conversa geral nao tem
+      // acao de conector: pula Planning+Runtime e deixa cair no LLM (Producer C).
+      const _isActionableGoal = goalBridgeResult.goal.valid
+        && goalBridgeResult.goal.type !== "general.conversation"
+        && goalBridgeResult.goal.type !== "unknown";
+      if (_isActionableGoal) {
         const crrEnabled = isCanonicalResourceRequestEnabled();
         const crrReadEnabled = isCanonicalResourceReadEnabled();
         const planningContextEnabled = crrEnabled || crrReadEnabled;
