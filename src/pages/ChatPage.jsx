@@ -107,11 +107,10 @@ export default function ChatPage({ projectId } = {}) {
   // Smart auto-scroll
   const scrollContainerRef = useRef(null);
   const bottomRef = useRef(null);
-  const userScrolledRef = useRef(false);
-  const lastScrollTopRef = useRef(0);
-  // Mirror do estado de streaming pra o listener de scroll (passivo, nao
-  // consegue ler state direto sem re-bind). Trava o guard durante o streaming.
-  const isStreamingRef = useRef(false);
+  // Rastreia se o usuario esta perto do fundo (seguindo o texto). Inverso
+  // do userScrolledRef anterior — baseado na posicao real do scroll, nao em
+  // deteccao de direcao de evento (que tinha race condition e snap-back).
+  const isNearBottomRef = useRef(true);
 
   const fileInputRef = useRef(null);
   const fileInputTypeRef = useRef(null);
@@ -159,30 +158,23 @@ export default function ChatPage({ projectId } = {}) {
     const handleScroll = () => {
       const { scrollTop, scrollHeight, clientHeight } = container;
       const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-      // Qualquer movimento para cima (mesmo 1px) pausa o auto-scroll imediatamente
-      if (scrollTop < lastScrollTopRef.current - 2) {
-        userScrolledRef.current = true;
-      }
-      // So retoma o auto-scroll se o usuario voltar EXPLICITAMENTE ao fundo
-      // (cola no fundo, distance < 3px) E nao estiver streamando. Durante o
-      // streaming o guard fica TRAVADO em true — impede o snap-back. Apos o
-      // streaming, o usuario precisa rolar ate colar no fundo pra reativar.
-      if (userScrolledRef.current && !isStreamingRef.current && distanceFromBottom < 3) {
-        userScrolledRef.current = false;
-      }
-      lastScrollTopRef.current = scrollTop;
+      // Fonte unica de verdade: perto do fundo (< 100px) = seguindo o texto.
+      // Simples e robusto — sem deteccao de direcao, sem race conditions.
+      isNearBottomRef.current = distanceFromBottom < 100;
       setShowScrollToBottom(distanceFromBottom > 120);
     };
 
-    // Pausa imediata do auto-scroll ao primeiro gesto manual para cima (mouse ou touch)
+    // Pausa imediata ANTES do scroll acontecer (previne race com o effect de
+    // auto-scroll que roda na mesma frame). handleScroll corrige depois se o
+    // usuario ainda estiver perto do fundo.
     const handleWheel = (e) => {
-      if (e.deltaY < 0) userScrolledRef.current = true;
+      if (e.deltaY < 0) isNearBottomRef.current = false;
     };
     let lastTouchY = null;
     const handleTouchStart = (e) => { lastTouchY = e.touches?.[0]?.clientY ?? null; };
     const handleTouchMove = (e) => {
       const y = e.touches?.[0]?.clientY;
-      if (lastTouchY != null && y != null && y > lastTouchY) userScrolledRef.current = true;
+      if (lastTouchY != null && y != null && y > lastTouchY) isNearBottomRef.current = false;
       lastTouchY = y;
     };
 
@@ -199,20 +191,12 @@ export default function ChatPage({ projectId } = {}) {
   }, []);
 
   const streamingContent = conversation.messages.find((m) => m.isStreaming)?.streamingContent;
-  const isStreaming = conversation.isLoading && !!streamingContent;
-  // Mantem o ref espelhado pro listener de scroll (que nao tem acesso ao
-  // state no momento do event). isStreamingRef=true => guard travado.
-  useEffect(() => { isStreamingRef.current = isStreaming; }, [isStreaming]);
-  // FIX (snap-back): antes, quando o streaming terminava (isLoading=false),
-  // este effect resetava userScrolledRef pra false — e o effect de
-  // auto-scroll rodava na mesma renderizacao e snapping pro fundo,
-  // arrancando o usuario de onde ele tinha rolado pra ler. Agora o guard
-  // so e liberado quando o usuario envia nova mensagem (ja resetado nos
-  // handlers de send) ou rola manualmente pro fundo (handleScroll).
+  // Auto-scroll: so segue se o usuario estiver perto do fundo. Se rolou
+  // pra cima (isNearBottomRef=false), NAO segue — fica onde esta pra ler.
+  // Reativa automaticamente quando rolar de volta ao fundo, ou ao enviar
+  // nova mensagem / clicar no botao "ir pro fundo".
   useEffect(() => {
-    if (userScrolledRef.current) return;
-    // Scroll instantaneo (sem animacao) para que o texto nao "suba" durante o streaming;
-    // o gesto manual para cima interrompe imediatamente (userScrolledRef) e o carregamento continua.
+    if (!isNearBottomRef.current) return;
     const container = scrollContainerRef.current;
     if (container) container.scrollTop = container.scrollHeight;
   }, [conversation.messages.length, conversation.isLoading, streamingContent]);
@@ -225,7 +209,7 @@ export default function ChatPage({ projectId } = {}) {
     if (!text || conversation.isLoading) return;
     setLastUserMessage(text);
     setInput("");
-    userScrolledRef.current = false;
+    isNearBottomRef.current = true;
     await conversation.send(text);
   }, [input, conversation]);
 
@@ -242,7 +226,7 @@ export default function ChatPage({ projectId } = {}) {
     if (conversation.isLoading) return;
     setLastUserMessage(prompt);
     setInput("");
-    userScrolledRef.current = false;
+    isNearBottomRef.current = true;
     await conversation.send(prompt);
   }, [conversation]);
 
@@ -623,7 +607,7 @@ export default function ChatPage({ projectId } = {}) {
         {showScrollToBottom && (
           <ScrollToBottomButton
             onClick={() => {
-              userScrolledRef.current = false;
+              isNearBottomRef.current = true;
               bottomRef.current?.scrollIntoView({ behavior: "smooth" });
               setShowScrollToBottom(false);
             }}
