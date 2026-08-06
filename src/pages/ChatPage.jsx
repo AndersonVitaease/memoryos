@@ -465,10 +465,35 @@ export default function ChatPage({ projectId } = {}) {
             // (por created_date), no ponto da conversa onde foram adicionados
             // — antes ficavam todos acumulados num bloco fixo no fim do chat,
             // com qualquer texto novo aparecendo acima deles.
-            const timeline = [
-              ...conversation.messages.map((m) => ({ kind: "message", data: m, sortKey: m.created_date })),
-              ...sessionPdfs.map((p) => ({ kind: "pdf", data: p, sortKey: p.created_date })),
-            ].sort((a, b) => new Date(a.sortKey || 0).getTime() - new Date(b.sortKey || 0).getTime());
+            // FIX (ordenação invertida): antes concatenava mensagens + PDFs e
+            // ordenava TUDO por created_date num sort global. Se os timestamps
+            // do servidor e cliente diferem (ou sao iguais no mesmo segundo),
+            // esse sort inverte a ordem inteira do chat. Agora as mensagens
+            // seguem a ordem do array (que ja e cronologica: loadMessages
+            // ascendente + appendMessage no fim) e os PDFs sao inseridos pela
+            // sua posicao cronologica (created_date) sem reordenar as mensagens.
+            const _pdfsSorted = [...sessionPdfs].sort((a, b) =>
+              new Date(a.created_date || 0).getTime() - new Date(b.created_date || 0).getTime()
+            );
+            const timeline = [];
+            let _pi = 0;
+            for (let _mi = 0; _mi < conversation.messages.length; _mi++) {
+              const _msg = conversation.messages[_mi];
+              const _msgTime = _msg.created_date ? new Date(_msg.created_date).getTime() : Infinity;
+              while (_pi < _pdfsSorted.length) {
+                const _pdf = _pdfsSorted[_pi];
+                const _pdfTime = _pdf.created_date ? new Date(_pdf.created_date).getTime() : Infinity;
+                if (_pdfTime <= _msgTime) {
+                  timeline.push({ kind: "pdf", data: _pdf, sortKey: _pdf.created_date });
+                  _pi++;
+                } else break;
+              }
+              timeline.push({ kind: "message", data: _msg, sortKey: _msg.created_date });
+            }
+            while (_pi < _pdfsSorted.length) {
+              timeline.push({ kind: "pdf", data: _pdfsSorted[_pi], sortKey: _pdfsSorted[_pi].created_date });
+              _pi++;
+            }
 
             return timeline.map((item, index) => {
               const prev = timeline[index - 1];
