@@ -206,10 +206,12 @@ export default function ChatPage({ projectId } = {}) {
   // Mantem o ref espelhado pro listener de scroll (que nao tem acesso ao
   // state no momento do event). isStreamingRef=true => guard travado.
   useEffect(() => { isStreamingRef.current = isStreaming; }, [isStreaming]);
-  // Quando o streaming TERMINA, libera o guard pra proxima interacao.
-  useEffect(() => {
-    if (!conversation.isLoading) userScrolledRef.current = false;
-  }, [conversation.isLoading]);
+  // FIX (snap-back): antes, quando o streaming terminava (isLoading=false),
+  // este effect resetava userScrolledRef pra false — e o effect de
+  // auto-scroll rodava na mesma renderizacao e snapping pro fundo,
+  // arrancando o usuario de onde ele tinha rolado pra ler. Agora o guard
+  // so e liberado quando o usuario envia nova mensagem (ja resetado nos
+  // handlers de send) ou rola manualmente pro fundo (handleScroll).
   useEffect(() => {
     if (userScrolledRef.current) return;
     // Scroll instantaneo (sem animacao) para que o texto nao "suba" durante o streaming;
