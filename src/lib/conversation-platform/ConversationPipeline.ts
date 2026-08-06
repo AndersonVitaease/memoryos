@@ -158,11 +158,12 @@ class ConversationPipeline {
         () => this._runPipeline(executionId, userMessage, steps),
         {
           maxAttempts: 1,
-          // 30s: respostas legitmas do LLM chegam bem antes disso; se algo
-          // travar (connector runtime nao inicializado, busca pendurada),
-          // o fallback visivel aparece em 30s em vez de fazer o usuario
-          // esperar 90s em silencio.
-          timeoutMs: 30_000,
+          // FIX (resposta cortada no meio): 30s cortava pesquisas web profundas
+          // (SearchEngine depth 3 leva ate 45s) e respostas longas legitimas.
+          // Subido pra 90s pra dar folga ao calculo + streaming. O fallback
+          // so roda se nao ha stream ativo (check abaixo), entao um stream em
+          // andamento nunca e cortado.
+          timeoutMs: 90_000,
           onRetry: () => conversationMetrics.recordRecoveryAttempt(executionId),
         }
       );
@@ -183,6 +184,17 @@ class ConversationPipeline {
       // única mensagem do usuário. Setar _cancelled=true aqui faz a
       // execução órfã respeitar os guards já existentes e não duplicar.
       if (_guardedResult === null) {
+        // FIX (resposta cortada no meio + pergunta reaparece): se o pipeline
+        // orfao ja esta ATIVAMENTE streamando uma resposta real, o timeout
+        // disparou durante o streaming de uma resposta legitima. NAO cancelar
+        // e NAO rodar o fallback — deixar o orfao terminar. Antes, cancelar
+        // aqui zerava o streamingContent da resposta em andamento e o fallback
+        // corria uma segunda stream em paralelo, cortando o texto no meio e
+        // embaralhando a saida. So roda o fallback se nao ha stream ativo
+        // (o calculo travou antes de qualquer resposta comecar).
+        if (conversationStreaming.isStreaming(executionId)) {
+          console.log("[ConversationPipeline] Timeout durante stream ativo — orfao vai terminar a resposta.");
+        } else {
         this._cancelled = true;
         // FIX: antes o timeout so setava _cancelled e o usuario via apenas uma
         // barra de erro discreta (ou nada) — "a resposta nunca aparece". Agora
@@ -241,6 +253,7 @@ class ConversationPipeline {
             } catch { /* non-critical */ }
           }
         } catch { /* fallback nunca propaga */ }
+        }
       }
     } finally {
       conversationRecovery.safeReset(executionId);

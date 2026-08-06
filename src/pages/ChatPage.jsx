@@ -158,10 +158,16 @@ export default function ChatPage({ projectId } = {}) {
     const handleScroll = () => {
       const { scrollTop, scrollHeight, clientHeight } = container;
       const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
-      // SO reativa quando o usuario rolar manualmente ate bem perto do fundo
-      // (< 20px). Nunca desativa aqui — evita a race onde rolar um pouco pra
-      // cima reativava o auto-scroll e puxava de volta.
       if (distanceFromBottom < 20) isNearBottomRef.current = true;
+      // FIX (scroll via barra/teclado): antes so desativava o auto-scroll no
+      // wheel/touch up. Arrastar a barra de rolagem ou usar PageUp/Setas so
+      // disparava handleScroll — isNearBottomRef ficava true e o proximo
+      // token puxava de volta pro fundo. Agora desativa tambem aqui quando o
+      // usuario se afasta claramente do fundo (>80px). O auto-scroll
+      // programatico poe scrollTop no fundo (distance=0), nunca ativa isso;
+      // crescimento de conteudo nao dispara scroll. So acao manual deliberada
+      // desativa. Threshold alto (80) evita flutuacao de reflow.
+      else if (distanceFromBottom > 80) isNearBottomRef.current = false;
       setShowScrollToBottom(distanceFromBottom > 120);
     };
 
