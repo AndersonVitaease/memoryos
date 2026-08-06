@@ -158,11 +158,11 @@ class ConversationPipeline {
         () => this._runPipeline(executionId, userMessage, steps),
         {
           maxAttempts: 1,
-          // FIX (pedido do usuário): 45s ainda não era suficiente pra
-          // perguntas complexas (comparações, pesquisa + raciocínio
-          // combinados). Prioridade explícita do usuário: garantir
-          // resposta mesmo que demore mais, em vez de falhar rápido.
-          timeoutMs: 90_000,
+          // 30s: respostas legitmas do LLM chegam bem antes disso; se algo
+          // travar (connector runtime nao inicializado, busca pendurada),
+          // o fallback visivel aparece em 30s em vez de fazer o usuario
+          // esperar 90s em silencio.
+          timeoutMs: 30_000,
           onRetry: () => conversationMetrics.recordRecoveryAttempt(executionId),
         }
       );
@@ -192,38 +192,53 @@ class ConversationPipeline {
         try {
           const _session = conversationStore.session;
           if (_session) {
-            const _fbText = "Demorei demais para montar uma resposta e o tempo limite foi atingido. Pode tentar de novo? Mensagens mais curtas costumam responder bem mais rápido.";
-            const _existing = conversationStore.messages.find(
+            // FIX: antes o fallback era so uma mensagem generica ("demorei demais").
+            // Agora chama o LLM diretamente (InvokeLLM) com a pergunta + historico
+            // recente — contorna toda a orquestracao pesada que travou e devolve uma
+            // resposta REAL. Se ate o LLM direto falhar, mostra a mensagem generica.
+            // Reusa mensagem de streaming parcial pendente (se houver) ou cria nova.
+            const _partial = conversationStore.messages.find(
               (m) => m.role === "assistant" && m.isStreaming,
             );
-            if (_existing) {
-              await conversationStreaming.streamResponse({
-                executionId, messageId: _existing.id, fullContent: _fbText, onChunk: () => {},
-              });
-              conversationStore.updateMessage(_existing.id, {
-                content: _fbText, streamingContent: undefined, isStreaming: false, sources_used: [],
-              });
-            } else {
-              const _fbMsgId = `msg-${Date.now()}-to`;
+            const _fbMsgId = _partial?.id ?? `msg-${Date.now()}-to`;
+            if (!_partial) {
               conversationStore.appendMessage({
                 id: _fbMsgId, session_id: _session.id, role: "assistant",
                 content: "", streamingContent: "", isStreaming: true,
                 memory_tier: "active", sources_used: [],
               });
-              await conversationStreaming.streamResponse({
-                executionId, messageId: _fbMsgId, fullContent: _fbText, onChunk: () => {},
-              });
-              try {
-                const _fbSaved = await persistMessage({
-                  sessionId: _session.id, projectId: _session.project_id,
-                  role: "assistant", content: _fbText, sources_used: [],
-                });
-                conversationStore.updateMessage(_fbMsgId, {
-                  id: _fbSaved.id, content: _fbText, streamingContent: undefined,
-                  isStreaming: false, sources_used: [],
-                });
-              } catch { /* non-critical */ }
+            } else {
+              conversationStore.updateMessage(_partial.id, { isStreaming: true, streamingContent: "" });
             }
+            let _fbText = "Demorei demais para montar uma resposta e o tempo limite foi atingido. Pode tentar de novo? Mensagens mais curtas costumam responder bem mais rápido.";
+            try {
+              const { base44 } = await import("@/api/base44Client");
+              const _recent = conversationStore.messages
+                .filter((m) => !m.isStreaming && m.content)
+                .slice(-6)
+                .map((m) => `${m.role === "user" ? "Usuario" : "Assistente"}: ${m.content}`)
+                .join("\n\n");
+              const _llmPrompt = `Voce e o MemoryOS, a memoria permanente e inteligente do usuario. Responda de forma direta e util em portugues. Se nao souber, diga.\n\nContexto recente:\n${_recent}\n\nPergunta: ${userMessage}`;
+              const _llmRes = await Promise.race([
+                base44.integrations.Core.InvokeLLM({ prompt: _llmPrompt }),
+                new Promise((_, rej) => setTimeout(() => rej(new Error("llm_timeout")), 20_000)),
+              ]);
+              const _llmText = typeof _llmRes === "string" ? _llmRes : ((_llmRes as any)?.text ?? (_llmRes as any)?.response ?? "");
+              if (_llmText && _llmText.trim()) _fbText = _llmText.trim();
+            } catch { /* LLM direto falhou — usa mensagem generica */ }
+            await conversationStreaming.streamResponse({
+              executionId, messageId: _fbMsgId, fullContent: _fbText, onChunk: () => {},
+            });
+            try {
+              const _fbSaved = await persistMessage({
+                sessionId: _session.id, projectId: _session.project_id,
+                role: "assistant", content: _fbText, sources_used: [],
+              });
+              conversationStore.updateMessage(_fbMsgId, {
+                id: _fbSaved.id, content: _fbText, streamingContent: undefined,
+                isStreaming: false, sources_used: [],
+              });
+            } catch { /* non-critical */ }
           }
         } catch { /* fallback nunca propaga */ }
       }
