@@ -2,12 +2,14 @@
 
 **Para quem está lendo isto:** este documento existe pra que QUALQUER agente (Claude, a IA builder do Base44, ou um humano) consiga continuar este trabalho exatamente de onde parou, sem precisar reconstruir contexto perdido. Leia este arquivo inteiro antes de escrever qualquer código.
 
-**Onde estamos agora:** fim da fase **GDS-00 (documentação)**. Zero código escrito. Próximo passo é **GDS-01**, descrito em detalhe na seção "Próxima Ação Exata" abaixo.
+**Onde estamos agora (ATUALIZADO):** GDS-01 (backend proxy) está **codado e tecnicamente funcionando**, mas **BLOQUEADO** — a Travelport está rejeitando as credenciais do trial com `"Wrong email or password."`. O usuário confirmou que os valores cadastrados no Base44 batem exatamente com o e-mail original (não é erro de digitação/cópia). Ele está em contato direto com o suporte da Travelport pra resolver. **Não adianta debugar mais nada no código até isso ser resolvido do lado deles.**
+
+**Antes de fazer qualquer coisa:** pergunte ao usuário se o suporte da Travelport já resolveu as credenciais. Se não, não há nada a fazer no MemoryOS — espere. Se sim, vá direto para "Próxima Ação Exata" (seção 6, atualizada abaixo).
 
 **Docs relacionados (leia também):**
 - `src/docs/foundation/rfc/RFC-011-Travelport-GDS-Flight-Connector.md` — a RFC completa (arquitetura, fases, escopo)
 - `src/docs/foundation/adr/ADR-018.md` — a decisão de usar Provider Router de domínio (Travelport + Travellink)
-- `CLAUDE.md`, seção "2026-08-06 — Travelport TripServices GDS Flight Connector" — resumo da sessão
+- `CLAUDE.md`, seções "2026-08-06 — Travelport TripServices GDS Flight Connector" e "2026-08-06 (continuação) — GDS-01 implementado e testado" — histórico completo, incluindo o debug da autenticação
 
 ---
 
