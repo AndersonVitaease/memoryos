@@ -38,6 +38,7 @@ const CAPABILITIES = Object.freeze([
   "getAttachment",
   "listLabels",
   "createDraft",
+  "sendDraft",
   "sendEmail",
 ]);
 
@@ -64,6 +65,7 @@ export class GmailConnector implements IConnector {
         getAttachment: "safe",
         listLabels: "safe",
         createDraft: "reversible",
+        sendDraft: "irreversible",
         sendEmail: "irreversible",
       },
     };
@@ -341,6 +343,10 @@ export class GmailConnector implements IConnector {
           subject: (p["subject"] as string) ?? "",
           body:    (p["body"] as string)    ?? "",
         }, _workspaceId);
+      }
+      case "sendDraft": {
+        const { sendDraft } = await import("@/lib/gmail/GmailActions");
+        return sendDraft((p["draftId"] as string) ?? "", _workspaceId);
       }
       case "sendEmail": {
         const { sendEmail } = await import("@/lib/gmail/GmailActions");

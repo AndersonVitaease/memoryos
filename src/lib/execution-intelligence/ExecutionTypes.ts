@@ -110,9 +110,11 @@ export type SafetyDecision =
  * - "failed": connector falhou ou nao foi encontrado.
  * - "needs_confirmation": Safety Gate pediu confirmacao (irreversible sem confirmedByUser).
  * - "blocked": Safety Gate bloqueou por politica.
+ * - "cancelled": usuario cancelou a confirmacao (nao despachado — nao e falha).
+ * - "expired": confirmacao expirou por timeout (nao despachado — nao e falha).
  */
 export interface ExecutionOutcome {
-  readonly status: "success" | "failed" | "needs_confirmation" | "blocked";
+  readonly status: "success" | "failed" | "needs_confirmation" | "blocked" | "cancelled" | "expired";
   readonly connectorId: string;
   readonly capability: string;
   /** Dados retornados pelo connector (StepResult.output do engine). Null em falha/confirmacao. */

@@ -2,8 +2,16 @@
  * GmailActionsCard — Implementation 010 / 010.5
  * UI para createDraft, sendDraft e sendEmail.
  *
- * Confirmacao delegada exclusivamente ao RuntimeConfirmationEngine.
- * Nenhuma logica de confirmacao existe aqui.
+ * Consistência EI-04: TODOS os envios irreversíveis (sendEmail, sendDraft)
+ * rodam pelo caminho arquitetural — IrreversibleCaller →
+ * ExecutionRuntime.processCapability → SafetyGate →
+ * RuntimeConfirmationEngine. Rascunho (createDraft, reversible) segue direto.
+ * Nenhuma lógica de gate ad-hoc (withConfirmation) permanece; o único adapter
+ * de UI é o ConfirmationDialog, que resolve a solicitação pendente no engine.
+ *
+ * ResultBanner distingue cancelled/expired (âmbar — decisão do usuário/timeout)
+ * de failed (vermelho — falha real do connector), refletindo os statuses
+ * dedicados do ExecutionOutcome.
  */
 
 import { useState } from "react";
@@ -11,16 +19,11 @@ import {
   Send, FileText, Loader2, Play,
   CheckCircle2, XCircle, AlertTriangle, ShieldAlert,
 } from "lucide-react";
-import { createDraft, sendDraft } from "@/lib/gmail/GmailActions";
+import { createDraft } from "@/lib/gmail/GmailActions";
 import { IrreversibleCaller } from "@/lib/execution-intelligence/IrreversibleCaller";
 import { runGmailActionsTests } from "@/lib/gmail/gmailActionsTests";
 import { runRuntimeConfirmationTests } from "@/lib/runtime/runtimeConfirmationTests";
-import {
-  requestConfirmation,
-  confirm,
-  cancel,
-  listPending,
-} from "@/lib/runtime/RuntimeConfirmationEngine";
+import { confirm, cancel } from "@/lib/runtime/RuntimeConfirmationEngine";
 
 // ── Confirmation dialog (UI adapter for RuntimeConfirmationEngine) ─────────────
 
@@ -33,7 +36,7 @@ function ConfirmationDialog({ request, onConfirm, onCancel }) {
           <ShieldAlert className="w-5 h-5 text-amber-500 mt-0.5 shrink-0" />
           <div>
             <p className="font-semibold text-zinc-800 text-sm">{request.title}</p>
-            <p className="text-sm text-zinc-600 mt-1">{request.description}</p>
+            <p className="text-sm text-zinc-600 mt-1 whitespace-pre-line">{request.description}</p>
           </div>
         </div>
         <div className="flex gap-2 justify-end">
@@ -56,6 +59,8 @@ function ConfirmationDialog({ request, onConfirm, onCancel }) {
 }
 
 // ── Result banner ─────────────────────────────────────────────────────────────
+// Três estados: success (verde), cancelled/expired (âmbar — não é falha),
+// failed (vermelho — falha real do connector).
 
 function ResultBanner({ result }) {
   if (!result) return null;
@@ -68,12 +73,54 @@ function ResultBanner({ result }) {
       </span>
     </div>
   );
+  if (result.cancelled || result.expired) return (
+    <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-100 text-sm text-amber-700">
+      <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+      {result.error}
+    </div>
+  );
   return (
     <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 border border-red-100 text-sm text-red-700">
       <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
       {result.error}
     </div>
   );
+}
+
+// ── Helpers compartilhados (sendEmail + sendDraft) ─────────────────────────────
+
+/**
+ * Normaliza um ExecutionOutcome no shape que o ResultBanner consome.
+ * - success → { ok, data } (data = inner data do connector, ex: { id, status })
+ * - cancelled/expired → { ok:false, cancelled|expired:true, error }
+ * - failed/blocked → { ok:false, error }
+ */
+function outcomeToResult(outcome) {
+  const out = outcome.output;
+  if (outcome.status === "success") {
+    return out && typeof out === "object" && "ok" in out
+      ? out
+      : { ok: true, data: out };
+  }
+  if (outcome.status === "cancelled") {
+    return { ok: false, cancelled: true, error: outcome.message ?? "Ação cancelada." };
+  }
+  if (outcome.status === "expired") {
+    return { ok: false, expired: true, error: outcome.message ?? "Confirmação expirou." };
+  }
+  return { ok: false, error: outcome.message ?? "Operação falhou." };
+}
+
+/**
+ * Factory do handler onPending para o IrreversibleCaller: surfaceia o dialog
+ * e resolve a solicitação no RuntimeConfirmationEngine ao confirmar/cancelar.
+ */
+function makePendingHandler(setPendingConfirm) {
+  return (pendingReq) => setPendingConfirm({
+    request: pendingReq,
+    onConfirm: () => { confirm(pendingReq.id); setPendingConfirm(null); },
+    onCancel: () => { cancel(pendingReq.id); setPendingConfirm(null); },
+  });
 }
 
 // ── Compose form ──────────────────────────────────────────────────────────────
@@ -256,36 +303,7 @@ export default function GmailActionsCard() {
   const [tab, setTab]           = useState("compose");
   const [loading, setLoading]   = useState(false);
   const [result, setResult]     = useState(null);
-  // State for the active confirmation dialog
   const [pendingConfirm, setPendingConfirm] = useState(null); // { request, onConfirm, onCancel }
-
-  // Unified send-with-confirmation via RuntimeConfirmationEngine
-  const withConfirmation = async (capability, title, description, payload, action) => {
-    let resolveConfirm;
-    const userDecision = new Promise(res => { resolveConfirm = res; });
-
-    // Create engine request (synchronously adds to pending before first await)
-    const enginePromise = requestConfirmation({ capability, title, description, payload });
-    const pending = listPending();
-    const req = pending[pending.length - 1];
-
-    setPendingConfirm({ request: req, onConfirm: () => resolveConfirm(true), onCancel: () => resolveConfirm(false) });
-
-    // Wait for user to decide via dialog
-    const decided = await userDecision;
-
-    if (decided) {
-      confirm(req.id);
-    } else {
-      cancel(req.id);
-    }
-
-    const confirmResult = await enginePromise;
-    setPendingConfirm(null);
-
-    if (!confirmResult.confirmed) return null;
-    return action();
-  };
 
   const handleDraft = async (req) => {
     setLoading(true); setResult(null);
@@ -294,34 +312,15 @@ export default function GmailActionsCard() {
     setLoading(false);
   };
 
-  // MIGRADO (EI-04): gmail.sendEmail agora roda pelo caminho irreversivel
-  // arquitetural — ExecutionRuntime.processCapability + SafetyGate +
-  // RuntimeConfirmationEngine — em vez do gate UI ad-hoc + chamada direta
-  // a GmailActions.sendEmail. O dispatch real herda metricas/eventos/timeout
-  // do mesmo engine do pipeline de producao.
+  // Caminho arquitetural irreversível (sendEmail).
   const handleSendEmail = async (req) => {
     setLoading(true); setResult(null);
     try {
-      const irrev = await IrreversibleCaller.execute(
+      const { outcome } = await IrreversibleCaller.execute(
         { connectorId: "gmail", capability: "sendEmail", params: req },
-        {
-          onPending: (pendingReq) => setPendingConfirm({
-            request: pendingReq,
-            onConfirm: () => { confirm(pendingReq.id); setPendingConfirm(null); },
-            onCancel: () => { cancel(pendingReq.id); setPendingConfirm(null); },
-          }),
-        },
+        { onPending: makePendingHandler(setPendingConfirm) },
       );
-      const { outcome } = irrev;
-      const out = outcome.output;
-      // output chega no shape legacy { ok, data, error } (GmailActions via
-      // connector); normaliza defensivamente para o ResultBanner.
-      const r = outcome.status === "success"
-        ? (out && typeof out === "object" && "ok" in out
-            ? out
-            : { ok: true, data: out })
-        : { ok: false, error: outcome.message ?? "Envio falhou." };
-      setResult(r);
+      setResult(outcomeToResult(outcome));
     } catch (e) {
       setResult({ ok: false, error: e?.message ?? "Envio falhou." });
     } finally {
@@ -329,17 +328,23 @@ export default function GmailActionsCard() {
     }
   };
 
+  // MIGRADO (consistência EI-04): sendDraft agora roda pelo mesmo caminho
+  // arquitetural de sendEmail — antes usava o gate ad-hoc withConfirmation +
+  // chamada direta a GmailActions.sendDraft, bypassando SafetyGate e o engine
+  // de produção.
   const handleSendDraft = async (draftId) => {
     setLoading(true); setResult(null);
-    const r = await withConfirmation(
-      "gmail.sendDraft",
-      "Confirmar envio de rascunho",
-      `Enviar rascunho ID: "${draftId}"`,
-      { draftId },
-      () => sendDraft(draftId)
-    );
-    setResult(r);
-    setLoading(false);
+    try {
+      const { outcome } = await IrreversibleCaller.execute(
+        { connectorId: "gmail", capability: "sendDraft", params: { draftId } },
+        { onPending: makePendingHandler(setPendingConfirm) },
+      );
+      setResult(outcomeToResult(outcome));
+    } catch (e) {
+      setResult({ ok: false, error: e?.message ?? "Envio falhou." });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const tabs = [
@@ -373,7 +378,7 @@ export default function GmailActionsCard() {
         <div className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-50 border border-amber-100 mb-4">
           <ShieldAlert className="w-3.5 h-3.5 text-amber-500 mt-0.5 shrink-0" />
           <p className="text-xs text-amber-700">
-            Envio requer confirmacao via <span className="font-mono">RuntimeConfirmationEngine</span>. Rascunhos nao exigem confirmacao.
+            Envios (e-mail e rascunho) requerem confirmacao via <span className="font-mono">RuntimeConfirmationEngine</span>. Rascunhos nao exigem confirmacao.
           </p>
         </div>
 

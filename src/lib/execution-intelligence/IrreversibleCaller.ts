@@ -141,11 +141,14 @@ export const IrreversibleCaller = {
     // 4. Aguarda decisao do usuario (confirm/cancel/expira).
     const confirmation = (await enginePromise) as ConfirmationResult;
 
-    // 6a. Cancelado/Expirado → outcome sintetizado, nao despacha.
+    // 6a. Cancelado/Expirado → outcome sintetizado com status dedicado (nao
+    // despacha). Antes sintetizava "failed" — semanticamente errado: um
+    // cancelamento do usuario ou timeout de confirmacao nao e falha do
+    // connector, e nao deve poluir metricas de failure rate do OIE.
     if (!confirmation.confirmed) {
       return {
         outcome: Object.freeze({
-          status: "failed",
+          status: confirmation.cancelled ? "cancelled" : "expired",
           connectorId: request.connectorId,
           capability: request.capability,
           output: null,
