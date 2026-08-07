@@ -154,6 +154,7 @@ const SprintP9Page  = lazy(() => import('@/pages/SprintP9Page'));
 const SprintP10Page = lazy(() => import('@/pages/SprintP10Page'));
 const SprintWE01Page = lazy(() => import('@/pages/SprintWE01Page'));
 const TravelportAuthTestPage = lazy(() => import('@/pages/TravelportAuthTestPage'));
+const OIEPage = lazy(() => import('@/pages/OIEPage'));
 
 const AuthenticatedApp = () => {
   console.log('[RENDER] AuthenticatedApp');
