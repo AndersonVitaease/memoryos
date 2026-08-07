@@ -1,0 +1,86 @@
+{
+  "name": "BugFinding",
+  "type": "object",
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "description": "ID da execucao do Bug Hunter que originou esta finding (correlacao)"
+    },
+    "target_url": {
+      "type": "string",
+      "description": "URL da pagina do app publicada onde o bug foi encontrado (ex: https://ever-mind-core.base44.app/chat)"
+    },
+    "title": {
+      "type": "string",
+      "description": "Resumo curto do bug (1 linha)"
+    },
+    "description": {
+      "type": "string",
+      "description": "Descricao detalhada do comportamento observado"
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "critical",
+        "high",
+        "medium",
+        "low",
+        "info"
+      ],
+      "default": "medium",
+      "description": "Severidade estimada pelo agente"
+    },
+    "steps_to_reproduce": {
+      "type": "string",
+      "description": "Passos para reproduzir (texto ou JSON serializado da sequencia de acoes do agente)"
+    },
+    "expected": {
+      "type": "string",
+      "description": "Comportamento esperado"
+    },
+    "actual": {
+      "type": "string",
+      "description": "Comportamento real observado"
+    },
+    "screenshot_url": {
+      "type": "string",
+      "description": "URL do screenshot capturado pelo Playwright (quando disponivel)"
+    },
+    "console_errors": {
+      "type": "string",
+      "description": "Erros de console do browser capturados durante a navegacao (truncados)"
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "ui",
+        "functional",
+        "broken_flow",
+        "error",
+        "performance",
+        "auth",
+        "data",
+        "other"
+      ],
+      "default": "functional",
+      "description": "Categoria do bug"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "open",
+        "confirmed",
+        "fixed",
+        "wontfix",
+        "false_positive"
+      ],
+      "default": "open",
+      "description": "Estado da finding no fluxo de triagem"
+    }
+  },
+  "required": [
+    "target_url",
+    "title",
+    "severity"
+  ]
+}
