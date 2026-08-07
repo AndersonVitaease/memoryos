@@ -23,6 +23,12 @@ export interface OIEThresholds {
   readonly failureRateCritical: number;
   /** Janela de cooldown entre alertas de mesmo id, em ms. Default 60000 (60s). */
   readonly alertCooldownMs: number;
+  /** Quantos buckets a frente o AnomalyPredictor projeta. Default 3. */
+  readonly predictionHorizonBuckets: number;
+  /** Minimo de buckets necessarios para calcular um trend (abaixo disso nao projeta). Default 4. */
+  readonly predictionMinSamples: number;
+  /** Slope minimo por bucket (em valor absoluto da metrica) que conta como "subindo". Default 0.02. */
+  readonly predictionSlopeSignificance: number;
 }
 
 export interface OIEConfigShape {
@@ -35,6 +41,7 @@ export interface OIEConfigShape {
     readonly regression: boolean;
     readonly evidence: boolean;
     readonly explainer: boolean;
+    readonly prediction: boolean;
     readonly alerts: boolean;
   };
   /** Limiares de deteccao. */
@@ -55,12 +62,16 @@ export const DEFAULT_OIE_CONFIG: OIEConfigShape = Object.freeze({
     regression: true,
     evidence: true,
     explainer: true,
+    prediction: true,
     alerts: true,
   }),
   thresholds: Object.freeze({
     failureRateWarning: 0.05,
     failureRateCritical: 0.15,
     alertCooldownMs: 60000,
+    predictionHorizonBuckets: 3,
+    predictionMinSamples: 4,
+    predictionSlopeSignificance: 0.02,
   }),
   alertBusPaused: false,
 });
@@ -89,12 +100,16 @@ function loadConfig(): OIEConfigShape {
         regression: _b(parsed?.modules?.regression, true),
         evidence: _b(parsed?.modules?.evidence, true),
         explainer: _b(parsed?.modules?.explainer, true),
+        prediction: _b(parsed?.modules?.prediction, true),
         alerts: _b(parsed?.modules?.alerts, true),
       },
       thresholds: {
         failureRateWarning: _n(parsed?.thresholds?.failureRateWarning, DEFAULT_OIE_CONFIG.thresholds.failureRateWarning),
         failureRateCritical: _n(parsed?.thresholds?.failureRateCritical, DEFAULT_OIE_CONFIG.thresholds.failureRateCritical),
         alertCooldownMs: _n(parsed?.thresholds?.alertCooldownMs, DEFAULT_OIE_CONFIG.thresholds.alertCooldownMs),
+        predictionHorizonBuckets: _n(parsed?.thresholds?.predictionHorizonBuckets, DEFAULT_OIE_CONFIG.thresholds.predictionHorizonBuckets),
+        predictionMinSamples: _n(parsed?.thresholds?.predictionMinSamples, DEFAULT_OIE_CONFIG.thresholds.predictionMinSamples),
+        predictionSlopeSignificance: _n(parsed?.thresholds?.predictionSlopeSignificance, DEFAULT_OIE_CONFIG.thresholds.predictionSlopeSignificance),
       },
       alertBusPaused: typeof parsed.alertBusPaused === "boolean" ? parsed.alertBusPaused : false,
     };

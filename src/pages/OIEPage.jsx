@@ -27,6 +27,8 @@ import {
   DecisionAnalyzer,
   EvidenceEngine,
   Explainer,
+  AnomalyPredictor,
+  OIEConfig,
 } from "@/lib/operational-intelligence";
 import LiveExplanationsPanel from "@/components/oie/LiveExplanationsPanel";
 import OIEConfigPanel from "@/components/oie/OIEConfigPanel";
@@ -288,6 +290,53 @@ function SessionExplainerSection({ externalSessionId }) {
   );
 }
 
+// ── Predictive Anomaly Detection (Sprint 11) ────────────────────────────────
+function PredictionSection() {
+  const [report, setReport] = useState(null);
+  const [err, setErr] = useState(null);
+
+  useEffect(() => {
+    AnomalyPredictor.predict("day", OIEConfig.get())
+      .then(setReport)
+      .catch((e) => setErr(e.message));
+  }, []);
+
+  if (err) return <Section title="Previsão de anomalias"><p className="text-red-400 text-sm">{err}</p></Section>;
+  if (!report) return <Section title="Previsão de anomalias"><p className="text-zinc-500 text-sm">Carregando…</p></Section>;
+
+  return (
+    <Section
+      title="Previsão de anomalias (preditivo)"
+      subtitle="AnomalyPredictor — regressão linear (least-squares) sobre buckets de ExecutionObservation. Prevê breach de limiares. Determinístico, sem LLM."
+    >
+      {report.findings.length === 0 ? (
+        <p className="text-xs text-emerald-400">Nenhuma tendência de anomalia detectada — failure_rate estável ou decrescente nos buckets recentes.</p>
+      ) : (
+        <div className="space-y-3">
+          {report.findings.map((f, i) => (
+            <div key={i} className={`border rounded p-3 text-xs ${SEVERITY_COLOR[f.severity]}`}>
+              <div className="font-medium mb-1">
+                <Badge variant="outline" className="mr-2 border-zinc-700 text-zinc-300">{f.type}</Badge>
+                <span className="text-zinc-200">{f.metric}</span>
+              </div>
+              <p className="opacity-90 mb-1">{f.detail}</p>
+              {f.breachBucket && <p className="opacity-80 mb-1"><strong>Breach projetado:</strong> bucket {f.breachBucket}</p>}
+              <details className="mt-1">
+                <summary className="cursor-pointer opacity-60">{f.evidence.length} bucket(s) de base</summary>
+                <ul className="mt-1 space-y-0.5 opacity-70">
+                  {f.evidence.map((pt, j) => (
+                    <li key={j}>{pt.bucket}: {pt.value.toFixed(3)}</li>
+                  ))}
+                </ul>
+              </details>
+            </div>
+          ))}
+        </div>
+      )}
+    </Section>
+  );
+}
+
 export default function OIEPage() {
   // Drill-in: LiveExplanationsPanel repassa o sessionId de um alerta clicado
   // para o SessionExplainerSection analisar a sessao completa automaticamente.
@@ -317,6 +366,7 @@ export default function OIEPage() {
       <HealthSection />
       <ArchitectureSection />
       <TrendSection />
+      <PredictionSection />
       <SessionExplainerSection externalSessionId={pickedSession} />
     </div>
   );

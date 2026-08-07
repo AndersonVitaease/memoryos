@@ -26,6 +26,7 @@
 import type { CoverageAnalysis } from "./CoverageAnalyzer";
 import type { DecisionAnalysis, IntentGroup } from "./DecisionAnalyzer";
 import type { RegressionReport } from "./RegressionAnalyzer";
+import type { PredictionReport } from "./AnomalyPredictor";
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -140,6 +141,45 @@ export const EvidenceEngine = {
           });
         }
       }
+      return Object.freeze({
+        findingType: f.type,
+        executionId: null,
+        summary: f.detail,
+        claims: Object.freeze(claims),
+      });
+    });
+  },
+
+  /**
+   * Transforma um PredictionReport (Sprint 11) em EvidencePackets — um por
+   * finding preditivo. Cada packet carrega os buckets usados como base da
+   * regressao + um claim de severidade (lido pelo template do Explainer para
+   * connector_degradation, cuja severidade e dinamica).
+   */
+  fromPrediction(report: PredictionReport): EvidencePacket[] {
+    return report.findings.map((f) => {
+      const claims: EvidenceClaim[] = f.evidence.map((pt) => ({
+        source: "ExecutionObservation" as const,
+        executionId: null,
+        locator: `bucket=${pt.bucket}`,
+        value: `value=${pt.value}`,
+        timestamp: pt.bucket,
+      }));
+      // claim de metadados para o Explainer (severidade dinamica por connector)
+      claims.push({
+        source: "ExecutionObservation",
+        executionId: null,
+        locator: "prediction.severity",
+        value: f.severity,
+        timestamp: null,
+      });
+      claims.push({
+        source: "ExecutionObservation",
+        executionId: null,
+        locator: "prediction.breachBucket",
+        value: f.breachBucket ?? "none",
+        timestamp: null,
+      });
       return Object.freeze({
         findingType: f.type,
         executionId: null,
