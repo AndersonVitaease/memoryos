@@ -2444,3 +2444,21 @@ Princípio mantido: **Consultivo, nunca autônomo.**
 3. **Mem0 Cloud** — gravação via backend function `memoriRemember` (`memori_advanced_augmentation`, `agent_id=memoryos`, `entity_id=anderson_vitaease`), para que a memória de longo prazo do MemoryOS e ferramentas cross-tool (Claude Desktop/ChatGPT via MCP) tenham o contexto da migração do IrreversibleCaller.
 
 **Motivo:** a sessão estabeleceu um padrão arquitetural reutilizável (IrreversibleCaller como ponte canônica para qualquer capability irreversível vinda de UI). Documentar nas três frentes garante que qualquer agente futuro (Claude, IA builder, ou humano) reproduza o padrão em vez de reinventar gates ad-hoc.
+
+---
+
+### 2026-08-07 (continuação 9) — EI-04 chat-pipeline CONFIRMADO VIVO (correção do registro "deferido")
+
+**Doc completa:** `src/docs/01-operational-knowledge/SESSION-2026-08-07-EI04-CHATPIPELINE-CONFIRMED.md`
+
+**Status:** CORREÇÃO DE REGISTRO. A "continuação 7" e o session doc da migração dos cards Gmail afirmavam que o roteamento de irreversíveis do chat-pipeline pelo `processCapability` estava "deferido" e que o `ConversationPipeline` seguia "100% intocado". **Isso estava incorreto** — a migração single-step do chat-pipeline está **viva em produção** e foi confirmada pelo usuário no preview ("atualmente ele já informa que é uma ação irreversível").
+
+**Estado real (código):** `src/lib/conversation-platform/ConversationPipeline.ts` linhas ~917-1015 já roteia planos single-step pela cadeia `getExecutionRuntime().processCapability` → `SafetyGate.guard` → `needs_confirmation` → `requestConfirmation` (`RuntimeConfirmationEngine` + `ConfirmationProvider` poll-bridge) → 2ª chamada com `confirmedByUser=true` → dispatch. Cancelamento vira short-circuit "Ação cancelada pelo usuário"; falha real do connector após confirmação é streamada honestamente (o LLM não alucina "enviado" por cima do erro). Fallback defensivo: outcome `failed` com `/Unknown connector/` (registry do EI não populado/race de bootstrap) nulifica e cai no `_realEngine.execute` provado. Multi-step e exceptions caem no `_realEngine.execute(plan)` original. O caminho multi-intent (`ConnectorGoalIntentExecutor.ts` ~117-172) já segue o mesmo padrão. Adapter compartilhado: `src/lib/execution-intelligence/outcomeAdapter.ts`.
+
+**Por que o registro defasou:** a "continuação 7" foi escrita na janela dos cards Gmail (chat-pipeline intocado naquele momento). A migração single-step do chat-pipeline foi implementada numa janela posterior que não atualizou o CLAUDE.md nem o session doc — daí a divergência.
+
+**Único gap real restante:** planos **multi-step** com steps irreversíveis caem no `_realEngine.execute(plan)` direto (bypass SafetyGate). Cenário raro (a maioria dos goals de connector é single-step; `deepResearch` composite tem handling próprio e não é irreversível). Semântica de confirmação parcial (plano inteiro vs. step-a-step) é decisão de produto aberta — sem caso real de uso, atacar agora é prematuro. **NÃO é gap:** Watch/scheduled despacha direto por design (automação não abre dialog; o Watch foi autorizado ao criá-lo).
+
+**Nenhum código alterado nesta sessão** — apenas documentação nas 3 frentes (este CLAUDE.md + session doc + Mem0 Cloud via `memoriRemember`). Mudar código seria retrabalho desnecessário.
+
+**Recomendação ao próximo agente:** antes de "implementar EI-04 do chat-pipeline", verifique `ConversationPipeline.ts` ~917-1015 — provavelmente já está lá. Extensão a multi-step exige caso de uso real primeiro.
