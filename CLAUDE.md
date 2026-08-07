@@ -2353,3 +2353,43 @@ Princípio mantido: **Consultivo, nunca autônomo.**
 **Mem0 Cloud — integrado (beco-sem-saída self-hosted):** self-hostar `mem0-mcp` via GitHub source falhou (`No module named mcp.server.fastmcp`); `npx -y mem0-mcp` incompatível. Solução: **Mem0 Cloud oficial** (endpoint HTTP, `MEM0_API_KEY` no painel), mesmo `mcpClientCall` com `auth_type: api_key` + prefixo `Token` (não `Bearer` — suporte ao prefixo `Token` adicionado ao `mcpClientCall`). Uso atual documentado na seção OIE: recuperação/escrita do plano via `add_memory`/`search_memory` no servidor `mem0` (`MCPServerConfig` id `6a75e32f4f9a530d71e90170`), `agent_id=memoryos-oie-plan`, `user_id=anderson_vitaease`. Cross-tool: Claude Desktop/ChatGPT leem a mesma memória via MCP do Mem0.
 
 **Nada mais alterado:** verificação de mtimes confirma que todos os outros arquivos OIE (14:44–17:45) já estão documentados; nenhuma página, backend function, entidade, workflow ou agente novo no disco além do que esta memória já registra (142 páginas, 31 funções, 26 entidades, 1 workflow, 0 agentes, 1 shared).
+
+---
+
+### 2026-08-07 (continuação 6) — OIE promovido de Shadow Mode para Modo Ativo Consultivo (Track 1 + Track 2)
+
+**Status:** EXECUTADO. O OIE deixa o shadow mode (existia, persistia, mas nada consumia suas descobertas em tempo real) e passa a **modo ativo consultivo**: publica findings críticos/warning em tempo real para a UI, mantendo a política de nunca agir autonomamente — só informa e recomenda. Fiel à preferência do projeto ("consultivo: recomenda, NUNCA age").
+
+**Duas tracks implementadas em paralelo:**
+
+#### Track 1 — OIEAlertBus (ativo consultivo)
+
+- **`src/lib/operational-intelligence/OIEAlertBus.ts`** (novo) — pub/sub in-memory com cache rolling (cap 50 alertas) + dedupe por `id` (findingType+executionId+sessionId). `publish()`/`subscribe()`/`snapshot()`. `extractAlerts({ explanations, executionId, sessionId, completedAt })` normaliza `Explanation` → `OIEAlert` (filtra só critical/warning; info fica fora do bus para não virar ruído). Listener com catch interno — falha no subscriber nunca quebra o publisher.
+- **`OIEOrchestrator.ts`** (editado) — ao final de `orchestrate()`, extrai alertas e publica no `OIEAlertBus` (fire-and-forget, catch silencioso). O orchestrator nunca bloqueia nem quebra se o bus falhar.
+- **`src/components/oie/OIEAlertListener.jsx`** (novo) — componente "fantasma" montado globalmente no `AppLayout.jsx`. Subscreve no bus, mostra toast (sonner) por alerta crítico (12s, action "Ver no OIE" → `/oie`) e warning (8s). Dedupe por id em Set ref para evitar toast duplicado. `null` como JSX — só existe pra observar.
+- **`src/components/layout/AppLayout.jsx`** (editado) — `<OIEAlertListener />` montado junto aos overlays globais (GlobalSyncStatus, MemoryActivityIndicator). Padrão aditivo: se falhar, simplesmente some (mesma resiliência dos outros shadow listeners).
+
+#### Track 2 — LiveExplanationsPanel (UI do Explainer)
+
+- **`src/components/oie/LiveExplanationsPanel.jsx`** (novo) — painel reativo que subscreve no `OIEAlertBus.snapshot()` e exibe as explicações recentes em `/oie` sem precisar digitar `session_id`. Cada card mostra título, severity badge (critical/warning), cadeia causal (colapsável), recomendação consultiva, e refs de evidência. `timeAgo` relativo; refresh manual + tick periódico de 15s. **Drill-in:** clicar num alerta repassa `sessionId` ao `onPickSession`, que dispara a análise completa no `SessionExplainerSection` abaixo (auto-análise da sessão).
+- **`src/pages/OIEPage.jsx`** (editado) — `LiveExplanationsPanel` montado no topo (abaixo do header), antes do Health Snapshot. `SessionExplainerSection` recebe `externalSessionId` e, via `useEffect`, ao mudar chama `doAnalyze(externalSessionId)` automaticamente — conserta o bug onde o drill-in anterior chamava `analyze` (nome antigo inexistente). Função renomeada para `doAnalyze` e usa `id` consistentemente (não `sessionId.trim()`), removendo o guard órfão `if (!sessionId.trim()) return;`.
+
+**Index atualizado:** `src/lib/operational-intelligence/index.ts` agora exporta `OIEAlertBus`, `extractAlerts`, `OIEAlert` (Track 1).
+
+**Nao-quebra verificada:**
+- OIEAlertBus é pub/sub puro — nenhum módulo vivo o importa para tomar decisões (só `OIEOrchestrator` publica; listeners são UI optional). Se nenhum listener existir, `publish` é no-op.
+- `OIEOrchestrator.orchestrate()` já rodava fire-and-forget no hook point do pipeline (Finalize). Adicionar a publicação no bus não muda o fluxo do pipeline — continua consultivo, read-only, sem bloqueio.
+- `OIEAlertListener` retorna `null` e tem catch em todo subscriber — nunca quebra o `AppLayout`.
+- `OIEPage` mantém todas as seções existentes (Health, Architecture, Trend, SessionExplainer); o `LiveExplanationsPanel` é aditivo no topo.
+
+**Cuidados tomados:**
+- Consultivo mantido: o bus **publica** findings, mas **nada** no sistema os consome para tomar decisões autônomas. O toast informa; o painel explica; o usuário decide. Nenhum freio, nenhum patch, nenhuma correção automática.
+- Dedupe dupla: no bus (cache rolling por id) e no listener (Set ref). Evita spam de toasts se o mesmo alerta for republicado.
+- `extractAlerts` filtra `info` — só critical/warning viram alertas acionáveis. Findings info ficam disponíveis via `OIEPage`/`SessionExplainer` sob demanda, não no bus.
+- `LiveExplanationsPanel` é read-only: subscreve, exibe, permite drill-in. Nunca muta estado do bus.
+
+**Validação:** ao executar uma ação de connector no chat (ex: listar emails não lidos), o `OIEOrchestrator` roda ao final; se detectar anomalia (ex: `AllExecutionsFailed`, `NoConnectorExecution`), um toast aparece em ~tempo real e o painel "Explicações ao vivo" em `/oie` popula. Se a execução for limpa (success sem anomalia), nenhum toast — só o Health Snapshot incrementa.
+
+**Princípios mantidos:** OIE continua read-only, deterministico, sem LLM nas fases de análise. A promoção para "ativo" refere-se só ao **consumo em tempo real** das descobertas (antes só disponíveis sob demanda manual); o comportamento consultivo (recomenda, nunca age) é preservado integralmente.
+
+**NAO foi feito (fora do escopo):** UI de configuração de OIE (ligar/desligar módulos, limiares); expansão para detecção preditiva de anomalias (continua deterministica Tier-1).
