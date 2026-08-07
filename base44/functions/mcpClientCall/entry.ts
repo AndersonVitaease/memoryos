@@ -15,137 +15,18 @@
  * Suporta duas acoes:
  *   - action: "list"  -> tools/list (paginado), cacheia em discovered_tools.
  *   - action: "call"  -> tools/call com { toolName, arguments }.
+ *
+ * Logica compartilhada (connect, resolveHeaders, etc) em base44/shared/mcpClient.ts.
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.38';
 import {
-  Client,
-  StreamableHTTPClientTransport,
-  SSEClientTransport,
-  createMiddleware,
-  applyMiddlewares,
-} from 'npm:@modelcontextprotocol/client';
-
-interface MCPServerConfigRecord {
-  id: string;
-  name: string;
-  server_url: string;
-  auth_type: string; // 'none' | 'api_key' | 'oauth'
-  api_key_secret_name?: string;
-  auth_header_name?: string;
-  extra_headers?: string; // JSON string
-  enabled?: boolean;
-}
-
-/** Monta os headers fixos que devem ir em toda requisicao. */
-function resolveHeaders(
-  server: MCPServerConfigRecord,
-  bearerToken?: string,
-): { headers: Record<string, string>; error?: string } {
-  const headers: Record<string, string> = {};
-
-  if (server.extra_headers) {
-    try {
-      Object.assign(headers, JSON.parse(server.extra_headers) as Record<string, string>);
-    } catch {
-      return { headers, error: `extra_headers invalido (nao e JSON valido) em '${server.name}'` };
-    }
-  }
-
-  // Token OAuth passado na chamada tem prioridade sobre a secret fixa —
-  // permite reaproveitar um token de sessao ja obtido (ex: Google OAuth
-  // que os conectores nativos ja usam), sem precisar guardar nada novo
-  // no servidor.
-  if (bearerToken) {
-    headers['Authorization'] = `Bearer ${bearerToken}`;
-    return { headers };
-  }
-
-  if (server.auth_type === 'api_key') {
-    if (!server.api_key_secret_name) {
-      return { headers, error: `auth_type='api_key' mas api_key_secret_name nao configurado em '${server.name}'` };
-    }
-    const apiKey = Deno.env.get(server.api_key_secret_name);
-    if (!apiKey) {
-      return { headers, error: `Secret '${server.api_key_secret_name}' nao configurada (use: base44 secrets set)` };
-    }
-    const headerName = server.auth_header_name || 'Authorization';
-    // FIX (Mem0 Cloud): alguns servidores MCP exigem o prefixo "Token" em vez
-    // de "Bearer" no header Authorization. auth_token_prefix (default "Bearer")
-    // permite configurar isso por servidor sem mudar o codigo.
-    const tokenPrefix = server.auth_token_prefix || 'Bearer';
-    headers[headerName] = headerName.toLowerCase() === 'authorization' ? `${tokenPrefix} ${apiKey}` : apiKey;
-  } else if (server.auth_type === 'oauth' && !bearerToken) {
-    return { headers, error: `auth_type='oauth' mas nenhum bearerToken foi passado na chamada para '${server.name}'` };
-  }
-
-  return { headers };
-}
-
-function fetchWithHeaders(headers: Record<string, string>) {
-  const middleware = createMiddleware(async (next: any, input: any, init: any) => {
-    const merged = new Headers(init?.headers);
-    for (const [k, v] of Object.entries(headers)) merged.set(k, v);
-    return next(input, { ...init, headers: merged });
-  });
-  return applyMiddlewares(middleware)(fetch);
-}
-
-/** Trunca mensagens de erro antes de salvar — campos de entity tem limite
- * de tamanho, e um erro grande demais (ex: corpo HTML de erro do servidor
- * remoto) causava uma FALHA SECUNDARIA ao tentar salvar, mascarando o
- * erro real por tras de "Field last_error exceeds the maximum allowed size". */
-function truncateError(msg: string, max = 4000): string {
-  return msg.length > max ? msg.slice(0, max) + "... (truncado)" : msg;
-}
-
-/**
- * FIX (bug real, confirmado com Google Workspace MCP em Developer Preview):
- * o SDK oficial as vezes lanca "Error POSTing to endpoint: <JSON>" mesmo
- * quando o <JSON> embutido na propria mensagem de erro e uma resposta
- * JSON-RPC de SUCESSO (tem campo "result"). E um bug conhecido do SDK
- * nesse tipo de transporte com certos servidores (ver issues #804 e #340
- * do repositorio oficial modelcontextprotocol/typescript-sdk — o padrao
- * "diz que conectou certinho mas ainda assim lanca erro" e documentado).
- * Em vez de falhar a chamada, extrai o resultado real de dentro da
- * mensagem de erro.
- */
-function tryRecoverResultFromError(err: unknown): any | null {
-  const msg = err instanceof Error ? err.message : String(err);
-  const jsonStart = msg.indexOf('{');
-  if (jsonStart === -1) return null;
-  try {
-    const parsed = JSON.parse(msg.slice(jsonStart));
-    if (parsed && typeof parsed === 'object' && 'result' in parsed && !('error' in parsed)) {
-      return parsed.result;
-    }
-  } catch {
-    // Nao era JSON valido de verdade — segue como erro normal.
-  }
-  return null;
-}
-
-async function connect(serverUrl: string, headers: Record<string, string>) {
-  const boundFetch = fetchWithHeaders(headers);
-  const url = new URL(serverUrl);
-
-  try {
-    const client = new Client({ name: 'memoryos', version: '1.0.0' });
-    const transport = new StreamableHTTPClientTransport(url, { fetch: boundFetch });
-    await client.connect(transport);
-    return { client, transport, transportUsed: 'streamable-http' as const };
-  } catch (streamableErr) {
-    try {
-      const client = new Client({ name: 'memoryos', version: '1.0.0' });
-      const transport = new SSEClientTransport(url, { fetch: boundFetch } as any);
-      await client.connect(transport);
-      return { client, transport, transportUsed: 'sse' as const };
-    } catch (sseErr) {
-      throw new Error(
-        `Falha ao conectar (streamable-http: ${(streamableErr as Error).message}; sse: ${(sseErr as Error).message})`,
-      );
-    }
-  }
-}
+  connect,
+  resolveHeaders,
+  truncateError,
+  tryRecoverResultFromError,
+  compactToolsForCache,
+  type MCPServerConfigRecord,
+} from '../../shared/mcpClient.ts';
 
 Deno.serve(async (req) => {
   const START_MS = Date.now();
@@ -222,22 +103,8 @@ Deno.serve(async (req) => {
           cursor = res.nextCursor;
         } while (cursor);
 
-        // FIX: mesma classe de bug do last_error — servidores com muitas
-        // ferramentas (ou descricoes/schemas bem detalhados, como o
-        // Google Workspace MCP) geram um JSON grande demais pro campo do
-        // banco. Guarda so nome + descricao curta pra cache/exibicao —
-        // o schema completo de cada ferramenta so importa na hora real
-        // de chamar ela (tools/call), nao precisa ficar cacheado aqui.
-        const compactTools = (allTools as any[]).map((t) => ({
-          name: t.name,
-          description: typeof t.description === 'string' ? t.description.slice(0, 200) : '',
-        }));
-        let discoveredToolsJson = JSON.stringify(compactTools);
-        if (discoveredToolsJson.length > 4000) {
-          discoveredToolsJson = JSON.stringify(compactTools.slice(0, 20)) ;
-        }
         await base44.asServiceRole.entities.MCPServerConfig.update(serverId, {
-          discovered_tools: discoveredToolsJson,
+          discovered_tools: compactToolsForCache(allTools as any[]),
           last_discovered_at: new Date().toISOString(),
           last_error: '',
         });
