@@ -1762,3 +1762,84 @@ HTTP 500 do lado do proxy (repassando o erro), mas a MENSAGEM é da própria Tra
 **Próximo passo (quando retomar):** 1) confirmar com o usuário se o suporte da Travelport já resolveu as credenciais; 2) se sim, rodar `/travelport-auth-test` de novo (botão "Rodar authTest") — se retornar `ok:true` com `tokenPreview`, GDS-01 está validado; 3) remover a página de diagnóstico (`TravelportAuthTestPage.jsx` + rota) da árvore, ela não faz parte da arquitetura final; 4) seguir para GDS-02 (scaffold de tipos + `TravelportCapabilityRegistry`), com autorização do usuário.
 
 ---
+
+### 2026-08-07 — Notion MCP Server (Self-Hosted na VPS): planejamento + primeiro passo (EM ANDAMENTO)
+
+**Objetivo:** integrar o Notion ao MemoryOS via MCP genérico (`MCPConnector` + `mcpClientCall`), reaproveitando a infraestrutura já existente. NÃO é um conector nativo novo — usa o MCPConnector genérico já construído na sessão 2026-07-30/31 e a backend function `mcpClientCall` (SDK oficial `@modelcontextprotocol/client`, Streamable HTTP + SSE fallback).
+
+**Decisão arquitetural — Opção B (self-hosted na VPS da Hostinger), NÃO Opção A (OAuth PKCE hospedado):**
+- O Notion MCP oficial suporta 2 formas de auth:
+  1. **Opção A — OAuth PKCE hospedado** (Notion for Developers > Connections > Public connection): fluxo OAuth completo que eu teria que construir do zero (redirect URI, code exchange, refresh, multi-conta). Trabalho grande, desnecessário dado que o usuário tem VPS.
+  2. **Opção B — Integration Token `ntn_...` + self-hosted MCP server na VPS** (Internal connection): auth simples (header `Notion-Token: ntn_...`), backend já suporta nativamente (`mcpClientCall` com `auth_type: "api_key"` + `auth_header_name: "Notion-Token"`), roda em segundos.
+- Usuário tem VPS Hostinger → Opção B ganha por simplicidade e controle de infra.
+
+**O que o usuário JÁ FEZ (confirmado por prints):**
+1. Criou internal connection no Notion Developers portal (`app.notion.com/developers/connections` → "+ Nova conexão" → Interna).
+2. Nomeou como "Memoryos".
+3. **Capabilities marcadas:** ✅ Read content, ✅ Update content, ✅ Insert content (comentários e info de usuário não marcados — não precisam pro escopo atual).
+4. Gerou o **Integration Token** (`ntn_...`) — copiado do campo "Access token". Este token autentica as chamadas API do workspace como a integração.
+5. Anotou o workspace associado ("Espaço de Borecomba").
+6. **FALTA FAZER (no Notion):** compartilhar com a integração as páginas/bases que quer dar acesso (botão *Share* na página → *Invite people* → escolher a integração `Memoryos`). Sem isso, o token retorna "resource not found" mesmo com token válido.
+
+**O que falta fazer (passo a passo, devagar — sessão em andamento):**
+
+- **Passo 1 (EM ANDAMENTO — usuário travou aqui):** Acessar a VPS Hostinger via SSH.
+  - Usuário precisa do **IP público** da VPS (painel Hostinger > VPS > instância).
+  - Comando: `ssh root@<IP_REAL>` (ex: `ssh root@82.102.33.12`).
+  - **Bug encontrado e corrigido:** usuário colou literalmente `ssh root@IP_DA_SUA_VPS` no PowerShell → erro "Could not resolve hostname ip_da_sua_vps: Este host não é conhecido". Instrução reenviada para substituir pelo IP real (4 blocos numéricos), não o placeholder.
+
+- **Passo 2 (após SSH conectar):** Instalar Node 18+ se não houver, e o servidor MCP oficial da Notion na VPS:
+  ```bash
+  mkdir -p ~/notion-mcp && cd ~/notion-mcp
+  npm init -y
+  npm install @notionhq/notion-mcp-server
+  # Rodar com 2 env vars:
+  #   NOTION_API_KEY=<token ntn_...>  (a integração)
+  #   AUTH_TOKEN=<segredo que o usuário inventa>  (protege o endpoint público)
+  NOTION_API_KEY=ntn_xxx AUTH_TOKEN=SEGREDO_LONGO \
+    npx @notionhq/notion-mcp-server --transport http --port 3005 --auth-token "$AUTH_TOKEN"
+  ```
+  Anotar 2 valores: o `ntn_...` e o `AUTH_TOKEN` inventado.
+
+- **Passo 3:** Expor com HTTPS (Nginx ou Caddy — preferir Caddy por auto-HTTPS):
+  ```caddy
+  mcp.seudominio.com { reverse_proxy localhost:3005 }
+  ```
+  Apontar subdomínio na DNS da Hostinger/Cloudflare pro IP da VPS. Resultado: `https://mcp.seudominio.com/mcp`.
+
+- **Passo 4 (opcional, recomendado):** Testar com `curl -X POST .../mcp` antes de me mandar, pra validar que responde JSON-RPC.
+
+- **Passo 5 — o que EU (Claude) faço quando o servidor estiver no ar e o usuário me mandar os 3 valores:**
+  1. `set_secrets` com 2 secrets: `NOTION_API_KEY` (o `ntn_...`) e `NOTION_MCP_GATEWAY_TOKEN` (o `AUTH_TOKEN` que protege o endpoint).
+  2. Criar registro em entidade `MCPServerConfig`:
+     - `name: "notion"`
+     - `server_url: "https://mcp.seudominio.com/mcp"`
+     - `auth_type: "api_key"`
+     - `api_key_secret_name: "NOTION_API_KEY"`
+     - `auth_header_name: "Notion-Token"`
+     - `extra_headers: '{"Authorization":"Bearer NOTION_MCP_GATEWAY_TOKEN"}'` (o gateway token vai como Bearer para autorizar o acesso ao endpoint público da VPS, não ao Notion; o Notion-Token autentica contra o Notion)
+     - `enabled: true`
+  3. Testar `tools/list` via `test_backend_function("mcpClientCall", { serverId, action: "list" })` — devem aparecer ~22 ferramentas (`notion_search`, `notion_get_page`, `notion_create_page`, `notion_update_block`, etc.).
+
+**Bugs removidos nesta sessão:**
+- **Literal placeholder no SSH:** usuário colou `IP_DA_SUA_VPS` (texto do meu placeholder) em vez do IP real. Corrigido instruindo a pegar o IP real no painel Hostinger (VPS > instância > IP do servidor) e usar o valor numérico.
+
+**Onde estamos AGORA (estado atual):**
+- Integração Notion criada e token gerado (lado Notion: ✅).
+- VPS ainda NÃO acessada (SSH ainda não conectou — travado no Passo 1 por causa do placeholder).
+- Servidor MCP ainda NÃO instalado na VPS.
+- Secrets ainda NÃO setados no Base44.
+- `MCPServerConfig` ainda NÃO criado.
+- Nenhum teste de `tools/list` rodado.
+
+**Arquitetura reutilizada (NENHUM código novo foi escrito nesta sessão — é tudo wiring):**
+- `MCPConnector.ts` (`src/lib/connector-runtime/connectors/`) — já registrado no `ConnectorBootstrap` desde 2026-07-30/31.
+- `mcpClientCall` (`base44/functions/mcpClientCall/entry.ts`) — backend com SDK oficial, Streamable HTTP + SSE fallback, contorna bug do SDK (`tryRecoverResultFromError`).
+- `GoalRegistry` já tem sinais `mcp.listTools` e `mcp.callTool` registrados (2026-07-30/31).
+- `GoalCapabilityRegistry` já mapeia `mcp.listTools`/`mcp.callTool` → `MCPConnector` (2026-07-30/31).
+
+**Dead end conhecido (de sessão anterior, relevante):** `tools/call` (execução real de ferramenta MCP) falhou contra o Gmail MCP oficial do Google por credencial — NÃO resolvido. Para o Notion (self-hosted com integration token), a expectativa é que `tools/call` funcione porque o token é direto e não depende de OAuth de sessão, mas só testando confirma. Se falhar por credencial, a depuração é a mesma: inspecionar `error.response.data` (não só `error.message`) e conferir se o token tem acesso às páginas compartilhadas (o bug do Gmail era falta de compartilhamento explícito da página com a integração).
+
+**Próximo passo imediato:** aguardar usuário conseguir conectar via SSH na VPS (com o IP real, não o placeholder) → avançar para Passo 2 (instalar Node + servidor MCP).
+
+---
