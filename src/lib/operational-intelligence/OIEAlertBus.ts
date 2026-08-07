@@ -15,6 +15,7 @@
  */
 
 import type { Severity } from "./Explainer";
+import { OIEConfig } from "./OIEConfig";
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -38,6 +39,18 @@ type Listener = (alert: OIEAlert) => void;
 const MAX_CACHE = 50;
 const _listeners = new Set<Listener>();
 const _cache: OIEAlert[] = [];
+// id -> ultimo timestamp em que foi publicado. Suporta cooldown por config.
+const _lastPublishedAt = new Map<string, number>();
+
+function _isSuppressed(alert: OIEAlert): boolean {
+  const cfg = OIEConfig.get();
+  if (cfg.alertBusPaused) return true;            // bus pausado -> nao publica
+  if (!cfg.modules.alerts) return true;           // modulo de alertas desligado
+  const cooldown = cfg.thresholds.alertCooldownMs;
+  if (cooldown <= 0) return false;               // 0 = sem cooldown
+  const last = _lastPublishedAt.get(alert.id) ?? 0;
+  return Date.now() - last < cooldown;           // dentro da janela -> suprime
+}
 
 // ── OIEAlertBus ───────────────────────────────────────────────────────────────
 
@@ -48,9 +61,11 @@ export const OIEAlertBus = {
     return () => { _listeners.delete(cb); };
   },
 
-  /** Publica alertas (critical/warning apenas). Never throws. */
+  /** Publica alertas (critical/warning apenas). Never throws. Respeita pause + cooldown. */
   publish(alerts: readonly OIEAlert[]): void {
     for (const a of alerts) {
+      if (_isSuppressed(a)) continue;             // pausado ou em cooldown -> silencioso
+      _lastPublishedAt.set(a.id, Date.now());
       _cache.unshift(a);
       if (_cache.length > MAX_CACHE) _cache.pop();
       for (const cb of _listeners) {
@@ -64,9 +79,14 @@ export const OIEAlertBus = {
     return _cache.slice(0, limit);
   },
 
-  /** Limpa o cache (apenas testes / reset manual). */
+  /** Limpa o cache (apenas testes / reset manual). Nao limpa o cooldown. */
   clear(): void {
     _cache.length = 0;
+  },
+
+  /** Limpa o mapa de cooldown (para testes ou reset manual de supressao). */
+  clearCooldown(): void {
+    _lastPublishedAt.clear();
   },
 };
 

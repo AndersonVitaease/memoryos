@@ -58,6 +58,10 @@ export type { Explanation, ExplanationSummary, Severity } from "./Explainer";
 export { OIEAlertBus, extractAlerts } from "./OIEAlertBus";
 export type { OIEAlert } from "./OIEAlertBus";
 
+// Sprint 10 — OIEConfig: configuracao consultiva (master switch, modulos, limiares, bus pause)
+export { OIEConfig, DEFAULT_OIE_CONFIG } from "./OIEConfig";
+export type { OIEConfigShape, OIEThresholds } from "./OIEConfig";
+
 // Orchestrator — coordena todas as fases
 export { OIEOrchestrator } from "./OIEOrchestrator";
 export type { OIEAnalysisResult } from "./OIEOrchestrator";
