@@ -2393,3 +2393,54 @@ Princípio mantido: **Consultivo, nunca autônomo.**
 **Princípios mantidos:** OIE continua read-only, deterministico, sem LLM nas fases de análise. A promoção para "ativo" refere-se só ao **consumo em tempo real** das descobertas (antes só disponíveis sob demanda manual); o comportamento consultivo (recomenda, nunca age) é preservado integralmente.
 
 **NAO foi feito (fora do escopo):** UI de configuração de OIE (ligar/desligar módulos, limiares); expansão para detecção preditiva de anomalias (continua deterministica Tier-1).
+
+---
+
+### 2026-08-07 (continuação 7) — EI-04 sub-step: IrreversibleCaller + migração dos cards Gmail (compose/reply/forward)
+
+**Doc completa:** `src/docs/01-operational-knowledge/SESSION-2026-08-07-EI04-IRREVERSIBLE-CALLER-MIGRATION.md`
+
+**Status:** EXECUTADO. O `IrreversibleCaller` (ponte reutilizável para capabilities irreversíveis) está vivo, e os dois únicos gates ad-hoc de UI (`GmailActionsCard` e `GmailAdvancedCard`) foram migrados ao caminho arquitetural `IrreversibleCaller → ExecutionRuntime.processCapability → SafetyGate → RuntimeConfirmationEngine`. Rascunhos (reversíveis) seguem diretos. O sub-step EI-04 do chat-pipeline (rotear irreversíveis do Planner pelo `processCapability`) permanece deferido — é a próxima fronteira (opção 1 do próximo bloco).
+
+**O que foi feito nesta sessão (4 mudanças):**
+
+1. **`src/lib/execution-intelligence/IrreversibleCaller.ts`** (criado na janela anterior) — ponte reutilizável. Orquestra o ciclo de vida: 1ª chamada `processCapability` → se `needs_confirmation`, cria `ConfirmationRequest` no `RuntimeConfirmationEngine` e notifica via `onPending` callback (UI surfaceia dialog) → usuário confirma/cancela → 2ª chamada `processCapability` com `confirmedByUser=true` → dispatch. Sintetiza outcomes `cancelled`/`expired` sem disparar connector (decisão do usuário/timeout, não falha). Resolve context (workspaceId/userId/sessionId) do estado ativo.
+
+2. **`ExecutionTypes.ts` / `SafetyGate.ts`** — `ExecutionOutcome.status` ganhou `cancelled` e `expired` (distinguem decisão do usuário/timeout de falha real do connector). `IrreversibleCaller` trata ambos como não-falha. SafetyGate ganhou sumários ricos para `sendDraft`, `replyEmail`, `replyAll`, `forwardEmail` (De/Para/Assunto/Corpo, Mensagem original, etc.) — legíveis no dialog de confirmação.
+
+3. **`src/lib/connector-runtime/connectors/GmailConnector.ts`** — `sendDraft`, `replyEmail`, `replyAll`, `forwardEmail` declarados como capabilities irreversíveis (`capabilityReversibility`) + dispatch cases delegando a `GmailActions.sendDraft` / `GmailAdvanced.{replyEmail,replyAll,forwardEmail}`. Antes esses envios eram chamadas diretas a funções legacy (bypassando SafetyGate e engine de produção).
+
+4. **`src/lib/execution-intelligence/irreversibleUi.js`** (NOVO) — helpers compartilhados extraídos: `outcomeToResult` (normaliza `ExecutionOutcome` → shape de `ResultBanner`: success/cancelled/expired/failed) + `makePendingHandler` (factory do handler `onPending`: surfaceia dialog + resolve no `RuntimeConfirmationEngine` via `confirm`/`cancel`). DRY entre os dois cards Gmail.
+
+5. **`src/components/connections/GmailActionsCard.jsx`** — `sendEmail` e `sendDraft` rodam pelo `IrreversibleCaller` (antes `sendDraft` usava gate ad-hoc `withConfirmation` + chamada direta). `createDraft` (reversível) segue direto. `ResultBanner` distingue cancelled/expired (âmbar) de failed (vermelho). Imports de helpers locais removidos → `irreversibleUi.js`.
+
+6. **`src/components/connections/GmailAdvancedCard.jsx`** — `replyEmail`/`replyAll`/`forwardEmail` rodam pelo `IrreversibleCaller` (antes usavam gate ad-hoc `ConfirmationProvider` + `useConfirmation().requestAction` + chamada direta a `GmailAdvanced`). `createReplyDraft`/`createForwardDraft` (reversíveis) seguem diretos. O `ConfirmationProvider`/`useConfirmation`/`requestAction` foi removido; o único adapter de UI é o `ConfirmationDialog` local + `makePendingHandler`.
+
+**Mapeamento dos gates ad-hoc (verificação feita):** grep por `useConfirmation`/`requestAction`/`requestConfirmation` em `src/components` + `src/pages` achou EXATAMENTE dois callers — `GmailActionsCard` e `GmailAdvancedCard`. Ambos migrados. Não há mais gates ad-hoc de UI.
+
+**Nao-quebra verificada:**
+- `IrreversibleCaller` e helpers são aditivos — nenhum módulo vivo os importava antes; agora só os dois cards Gmail os usam.
+- Os dispatch cases novos no `GmailConnector` delegam às mesmas funções legacy (`GmailActions`/`GmailAdvanced`) — mesmo comportamento HTTP, agora roteado pela cadeia EI (observabilidade do engine + trava do SafetyGate).
+- `SafetyGate` continua stateless e nunca despacha — invariante ADR-015 mantido.
+- `RuntimeConfirmationEngine` intocado (reusado como está).
+- O caminho do chat-pipeline (`ConversationPipeline` → `getRealRuntimeEngine().execute` direto) segue 100% intocado — irreversíveis do chat (WhatsApp send, GitHub merge, Calendar createEvent, Drive delete) ainda bypassam o SafetyGate. Essa é a sub-step EI-04 deferida.
+
+**Fronteira restante (próxima — opção 1 do próximo bloco):**
+- Rotear irreversíveis do chat-pipeline pelo `processCapability` em vez de `engine.execute` direto. Exige modo "automation-safe" (Watch Engine/agendamento não pode abrir dialog) — senão quebra automação. O `ConfirmationProvider` já tem poll-bridge para confirmações vindas do pipeline (UI pronta); falta o pipeline pedir confirmação para irreversíveis interativos.
+- `CapabilityExecutor`/`ConversationPipeline` é onde o dispatch acontece. Migrar requer distinguir origem interativa (chat) de automação (Watch/scheduled).
+
+**Cuidados tomados:**
+- Decisão EI-04 Option C (janela anterior) mantida: primeira migração de caller irreversível do chat ficou deferida até o SafetyGate ter contexto real. Os cards manuais (compose/reply/forward) são seguros porque o usuário está explicitamente interagindo — não há risco de quebrar automação.
+- Helpers extraídos para módulo compartilhado (DRY) — não duplicados entre os dois cards.
+- `cancelled`/`expired` como statuses dedicados (não `failed`) para que o `ResultBanner` e a telemetria distingam decisão do usuário de falha real do connector.
+
+---
+
+### 2026-08-07 (continuação 8) — Documentação tridirecional: biblioteca oficial + CLAUDE.md + Mem0 Cloud
+
+**Status:** EXECUTADO. Documentação da sessão gravada em três frentes para persistência de conhecimento de longo prazo:
+1. **Biblioteca oficial** — `src/docs/01-operational-knowledge/SESSION-2026-08-07-EI04-IRREVERSIBLE-CALLER-MIGRATION.md` (handoff completo, formato padrão das sessions docs).
+2. **CLAUDE.md** — esta seção (sessão appendada ao histórico cronológico do projeto).
+3. **Mem0 Cloud** — gravação via backend function `memoriRemember` (`memori_advanced_augmentation`, `agent_id=memoryos`, `entity_id=anderson_vitaease`), para que a memória de longo prazo do MemoryOS e ferramentas cross-tool (Claude Desktop/ChatGPT via MCP) tenham o contexto da migração do IrreversibleCaller.
+
+**Motivo:** a sessão estabeleceu um padrão arquitetural reutilizável (IrreversibleCaller como ponte canônica para qualquer capability irreversível vinda de UI). Documentar nas três frentes garante que qualquer agente futuro (Claude, IA builder, ou humano) reproduza o padrão em vez de reinventar gates ad-hoc.
