@@ -324,6 +324,7 @@ const AuthenticatedApp = () => {
           <Route path="/sprint-p10" element={<SprintP10Page />} />
           <Route path="/sprint-we01" element={<SprintWE01Page />} />
           <Route path="/travelport-auth-test" element={<TravelportAuthTestPage />} />
+          <Route path="/oie" element={<OIEPage />} />
         </Route>
       </Route>
       <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />
