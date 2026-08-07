@@ -1843,3 +1843,94 @@ HTTP 500 do lado do proxy (repassando o erro), mas a MENSAGEM é da própria Tra
 **Próximo passo imediato:** aguardar usuário conseguir conectar via SSH na VPS (com o IP real, não o placeholder) → avançar para Passo 2 (instalar Node + servidor MCP).
 
 ---
+
+### 2026-08-07 — Operational Intelligence Engine (OIE) — Plano de Implementação Final
+
+**Doc completa:** este bloco + Mem0 Cloud (registro `memoryos-oie-plan` no `agent_id` `memoryos-oie-plan`).
+
+**1. Missão (revisada — não é "diagnosticar", é "explicar continuamente o comportamento")**
+
+O OIE existe para **explicar continuamente o comportamento do MemoryOS**. Diagnóstico é subproduto. Learning é projeção temporal. Produto é domínio futuro no mesmo engine. Essa definição mudou a arquitetura: o trigger não é "incidente", é "sempre" — roda mesmo em `status=success`, porque a cadeia causal existe independentemente do outcome.
+
+**2. Princípios arquiteturais**
+
+1. **Um único engine, infraestrutura compartilhada, múltiplos domínios** — mesmo padrão do Connector Runtime (um `IConnector`, dezenas de implementações). Não existe "GitHub Engine" nem "Drive Engine" — um runtime, implementações por domínio. Inteligência segue o mesmo: um OIE, domínios por área. Criar PIE separado violaria esse princípio (infraestrutura duplicada = antipadrão).
+2. **Causalidade determinística** — o grafo causal é montado a partir de edges reais do `ArchitectureMap` + transições reais do `ExecutionObservation`. LLM **renderiza** a narrativa a partir do grafo grounded; LLM **nunca gera** edges. Se o grafo está vazio, a explicação diz "não sei por quê" — honesto, não falha.
+3. **OIE é consultivo, nunca autônomo** — diagnostica, não corrige. A ação fica com o agente externo (Claude Code, OpenHands, dev). Essa fronteira protege o sistema de virar o "Adaptive Process que reescreve o próprio runtime" (antipadrão já documentado em `dead_ends`: ABV in-place patching).
+4. **`behavior_signature` captura falha silenciosa** (`status=success` + intenção não cumprida). `error_signature` captura falha que lança exceção. A maioria dos problemas reais do MemoryOS é silenciosa — por isso as duas assinaturas são complementares e ambas necessárias.
+
+**3. Domínios (4, não 6 — Runtime/Connector/Coverage são slices, não domínios)**
+
+| Domínio | Consumidor | Output | Ação | Cadência |
+|---|---|---|---|---|
+| Engineering Intelligence | dev / Claude Code / OpenHands | "corrija arquivo X" | patch | por execução |
+| User Intelligence | sistema (ground-truth) | "usuário repetiu 4x" | enriquece `behavior_signature` | por sessão |
+| Product Intelligence (futuro) | roadmap / design | "90% fazem X→Y" | redesign de fluxo | por mês |
+| Trend Layer (cross-cutting) | todos | "compare X entre sprint A e B" | decisão de prioridade | por sprint |
+
+- **Runtime / Connector / Coverage** são **vistas filtradas** dentro de Engineering, não domínios paralelos. Fazer delas domínios gera "dashboard com 40 abas que ninguém usa" — cada slice vira uma aba mostrando a mesma entity sob filtro diferente.
+
+**4. Fases de implementação**
+
+| Fase | Conteúdo | Emite `behavior_signature` |
+|---|---|---|
+| 1 | Observer + `ExecutionObservation` (campos: `status`, `error_signature`, `behavior_signature`) | — |
+| 1.5 | Intent Recorder (`InteractionEvent` onde `actor=user`) | — |
+| 2 | Architecture Indexer + página `/oie` | — |
+| 2.5 | Decision Analyzer | `WrongConnectorSelection`, `PlannerFallbackLoop` |
+| 3 | Coverage Analyzer | `PartialRepositoryTraversal`, `EmptySearchWithExistingResults`, `UnexpectedEarlyTermination` |
+| 4 | Regression + Health + Trend Layer | agrega por `behavior_signature` + `error_signature` |
+| 4.5 | Evidence Engine (`collect` → `prioritize` interno → `serialize`, payload ≤50KB, top-20, dedup) | — |
+| 5 | Explainer (grafo causal determinístico + LLM renderiza narrativa grounded) | — |
+
+**5. Decisões arquiteturais rejeitadas (e por quê)**
+
+- **Expectation Builder** — rejeitado. Oráculo circular (LLM que gera a expectation é o mesmo tipo que executa → se errou a interpretação, erra a expectation do mesmo jeito) ou regex infinito (tabela manual de "quantificador → número" que quebra na primeira frase não prevista). A função útil (número esperado) já está no Coverage via ground-truth de API (`github.listFiles` → `total_count` do GitHub, `drive.searchFiles` → `totalFiles` do Drive).
+- **Behavior Analyzer (original)** — rejeitado. Tentava responder "o Planner escolheu o Connector certo?", pergunta que exige um oráculo que sabe o certo — circular. Substituído por Decision Analyzer determinístico que mede **consistência** (mesmo `Intent` → Goal diferente em X% das vezes) sem oráculo.
+- **Recommendation Engine (LLM)** — rejeitado. Gera hipóteses, alucina. Substituído por Evidence Engine que **empacota fatos** (não gera nada).
+- **Evidence Prioritizer como módulo separado** — rejeitado. Priorização é acoplada ao consumidor (Slack quer top-3, Claude Code top-20, OpenHands top-20 com arquivos). Extrair módulo obrigaria a parametrizar tudo sem reuso real. Vira função interna `prioritize()` do Evidence Engine + requisito explícito "payload ≤50KB, top-20, dedup".
+- **Learning Intelligence como domínio** — rejeitado. Todas as suas perguntas são métricas dos outros domínios projetadas no tempo ("usuários repetem menos?" = User Intelligence + eixo temporal; "tempo diminuindo?" = Engineering `duration_ms` + eixo temporal). Como domínio: duplica medição, gera métrica de vaidade ("MemoryOS aprendeu 12%" → e aí?), e convida autonomia (framing "aprendendo" convida "acelere o aprendizado" → antipadrão ABV). Vira **Trend Layer** cross-cutting — projeta o que já existe, não mede nada novo.
+- **PIE como engine separado** — rejeitado (corrigindo meu próprio conselho anterior). Infraestrutura é compartilhada (InteractionEvent, ArchitectureMap, ExecutionObservation, Evidence Engine) → um engine, não dois. PIE é domínio futuro no mesmo OIE, com critério de graduação: ≥50 WAU E backlog de produto explicitamente separado do de engenharia.
+
+**6. `behavior_signature` — enum controlado (≤15 inicialmente)**
+
+- `PartialRepositoryTraversal` — Coverage: `coverage_executed / coverage_requested < 0.1` em `github.listFiles`
+- `PartialLibraryTraversal` — Coverage: mesmo critério em `drive.searchFiles` / library reads
+- `WrongConnectorSelection` — Decision Analyzer: `goal_type` diverge do majoritário para mesmo `Intent` hash
+- `EmptySearchWithExistingResults` — Coverage: API retornou 0 mas `coverage_requested > 0`
+- `UnexpectedEarlyTermination` — Coverage: `steps_planned > steps_executed` em Adaptive Process
+- `PlannerFallbackLoop` — Decision Analyzer: mesmo `Intent` reemitido N≥3 sem progresso
+- `IdentityBypass` — Decision Analyzer: pergunta do usuário não passou pelo classificador de identidade
+- `SilentFallback` — Decision Analyzer: LLM barato usado para tarefa que `categoryRouter` marcou como complexa
+- Regra de higiene: signature com <5 ocorrências/mês é degradada a `OtherAnomaly` (evita inflação de enum em 80 signatures das quais 70 aparecem uma vez)
+
+**7. Sprints — 8 sprints de 3 dias cada = 24 dias até Fase 5 completa**
+
+| Sprint | Fase | Duração |
+|---|---|---|
+| S1 | Fase 1 (Observer + entity) | 3 dias |
+| S2 | Fase 1.5 (Intent Recorder) | 3 dias |
+| S3 | Fase 2 (Architecture Indexer + /oie) | 3 dias |
+| S4 | Fase 2.5 (Decision Analyzer) | 3 dias |
+| S5 | Fase 3 (Coverage Analyzer) | 3 dias |
+| S6 | Fase 4 (Regression + Health + Trend) | 3 dias |
+| S7 | Fase 4.5 (Evidence Engine) | 3 dias |
+| S8 | Fase 5 (Explainer) | 3 dias |
+
+**8. Garantia de não-quebra**
+
+- Cada fase é **aditiva** — nenhum módulo novo substitui lógica existente.
+- O `RuntimeObserver` roda em **shadow mode** na Fase 1: escreve `ExecutionObservation` mas **nada lê**. Promover de shadow para ativo só após validação de cada fase.
+- `ExecutionObservation` e `InteractionEvent` são entidades novas — não tocam em `Message`, `ChatSession`, `SystemEvent`, `KnowledgeObservation`.
+- A página `/oie` é somente leitura — não expõe mutação, não pode corromper estado.
+- O Explainer (Fase 5) usa LLM apenas para **renderizar** a cadeia causal a partir do grafo grounded — nunca para gerar edges. Se o grafo está vazio, retorna "não sei por quê" — não alucina.
+
+**9. Endereçamento da documentação**
+
+- **Local:** `CLAUDE.md` (este bloco) + `Mem0 Cloud` (registro `memoryos-oie-plan`, `agent_id=memoryos-oie-plan`, `user_id=anderson_vitaease`).
+- **Recuperação:** via `mcpClientCall` → `add_memory` (escrita) / `search_memory` (leitura) no servidor `mem0` (`MCPServerConfig` id `6a75e32f4f9a530d71e90170`).
+- **Cross-tool:** Claude Desktop e ChatGPT podem ler a mesma memória via MCP do Mem0 (portabilidade — elimina silos de contexto entre ferramentas).
+
+**Próximo passo imediato:** iniciar Sprint 1 (Fase 1) — criar entidade `ExecutionObservation` com campos `status`, `error_signature`, `behavior_signature` + `RuntimeObserver` em shadow mode.
+
+---
