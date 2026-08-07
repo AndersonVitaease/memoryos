@@ -38,3 +38,11 @@ export type { DecisionAnalysis, IntentGroup } from "./DecisionAnalyzer";
 // Fase 3 (Sprint 4) — Coverage Analyzer
 export { CoverageAnalyzer } from "./CoverageAnalyzer";
 export type { CoverageAnalysis, IntentProjection, ActualExecution } from "./CoverageAnalyzer";
+
+// Fase 4 (Sprint 6) — Regression Analyzer + Health Monitor + Trend Layer
+export { RegressionAnalyzer } from "./RegressionAnalyzer";
+export type { SprintProfile, RegressionFinding, RegressionReport } from "./RegressionAnalyzer";
+export { HealthMonitor } from "./HealthMonitor";
+export type { HealthSnapshot, ConnectorHealth } from "./HealthMonitor";
+export { TrendLayer } from "./TrendLayer";
+export type { TrendMetric, BucketGranularity, TrendPoint, TrendProjection } from "./TrendLayer";
