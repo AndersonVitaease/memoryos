@@ -50,3 +50,7 @@ export type { TrendMetric, BucketGranularity, TrendPoint, TrendProjection } from
 // Fase 4.5 (Sprint 7) — Evidence Engine
 export { EvidenceEngine } from "./EvidenceEngine";
 export type { EvidencePacket, EvidenceClaim } from "./EvidenceEngine";
+
+// Fase 5 (Sprint 8) — Explainer (modulo final)
+export { Explainer } from "./Explainer";
+export type { Explanation, ExplanationSummary, Severity } from "./Explainer";
