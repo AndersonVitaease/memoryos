@@ -45,6 +45,7 @@ import { resourceIntentCanonicalizerProvider } from "@/lib/resource-intent-canon
 // rejeita, nunca bloqueia o pipeline. correlation_id = executionId
 // vincula com ExecutionObservation (o que o sistema fez).
 import { IntentRecorder } from "@/lib/operational-intelligence/IntentRecorder";
+import { OIEOrchestrator } from "@/lib/operational-intelligence/OIEOrchestrator";
 import { isCanonicalResourceRequestEnabled, isCanonicalResourceReadEnabled } from "@/lib/resource-intent-canonicalization";
 import { synthesizeConnectorResult } from "@/lib/connector-runtime-provider/ConnectorResultSynthesizer";
 
