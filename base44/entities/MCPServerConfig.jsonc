@@ -26,6 +26,10 @@
       "type": "string",
       "description": "Nome do header usado para enviar a API key (ex: 'X-Api-Key', 'Authorization'). Default: 'Authorization'"
     },
+    "auth_token_prefix": {
+      "type": "string",
+      "description": "Prefixo do valor do header de auth quando auth_header_name='Authorization'. Default: 'Bearer'. Alguns servidores (ex: Mem0 Cloud) exigem 'Token' em vez de 'Bearer'. So relevante quando o header e 'Authorization'."
+    },
     "extra_headers": {
       "type": "string",
       "description": "JSON string com headers fixos adicionais exigidos pelo servidor (ex: entity id, tenant id). Ex: '{\"X-Memori-Entity-Id\":\"anderson_vitaease\"}'"
