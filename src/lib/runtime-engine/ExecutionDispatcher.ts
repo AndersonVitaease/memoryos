@@ -24,6 +24,11 @@ import type {
   RetryContext,
 } from "./RuntimeTypes";
 import { connectorMetrics }           from "@/lib/connector-runtime/ConnectorMetricsStore";
+// OIE Fase 1 (Sprint 1): RuntimeObserver em shadow mode — escreve
+// ExecutionObservation apos cada dispatch. Fire-and-forget: nunca
+// rejeita, nunca bloqueia, nunca altera o StepResult. Erro de
+// instrumentacao nao pode quebrar a execucao real.
+import { RuntimeObserver }            from "@/lib/operational-intelligence/RuntimeObserver";
 
 // ── DispatchInput ─────────────────────────────────────────────────────────────
 
@@ -88,6 +93,23 @@ export class ExecutionDispatcher {
       // ── Metrics ─────────────────────────────────────────────────────────
       connectorMetrics.record(step.connector, success, durationMs, output.error ?? undefined);
 
+      // OIE Fase 1: observa a execucao em shadow mode (fire-and-forget).
+      // O .catch(() => {}) aqui e redundante (o Observer tem catch interno),
+      // mas garante que nenhuma promise rejeitada flutue mesmo em edge cases
+      // de build/transpile. Shadow = nada le esta observacao ainda.
+      RuntimeObserver.observe({
+        executionId,
+        stepId: step.id,
+        connector: step.connector,
+        capability: step.capability,
+        status: output.status as StepStatus,
+        error: output.error ?? null,
+        durationMs,
+        startedAt,
+        finishedAt,
+        sessionId: connectorCtx.sessionId,
+      }).catch(() => { /* shadow mode: swallow */ });
+
       return Object.freeze({
         stepId:     step.id,
         connector:  step.connector,
@@ -114,6 +136,20 @@ export class ExecutionDispatcher {
 
       // ── Metrics ─────────────────────────────────────────────────────────
       connectorMetrics.record(step.connector, false, durationMs, errMsg);
+
+      // OIE Fase 1: observa a falha em shadow mode (fire-and-forget).
+      RuntimeObserver.observe({
+        executionId,
+        stepId: step.id,
+        connector: step.connector,
+        capability: step.capability,
+        status: (isTimeout ? "timeout" : "failed") as StepStatus,
+        error: errMsg,
+        durationMs,
+        startedAt,
+        finishedAt,
+        sessionId: connectorCtx.sessionId,
+      }).catch(() => { /* shadow mode: swallow */ });
 
       return Object.freeze({
         stepId:     step.id,
