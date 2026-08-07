@@ -1,0 +1,82 @@
+{
+  "name": "ExecutionObservation",
+  "type": "object",
+  "properties": {
+    "execution_id": {
+      "type": "string",
+      "description": "ID da execucao (correlacao com SystemEvent / pipelineExecutionId)"
+    },
+    "session_id": {
+      "type": "string",
+      "description": "Sessao de chat de origem (isolamento por usuario/sessao)"
+    },
+    "step_id": {
+      "type": "string",
+      "description": "ID do step no ExecutionPlan que originou esta observacao"
+    },
+    "connector": {
+      "type": "string",
+      "description": "Connector executado (ex: gmail, google-drive, github, microsoft-graph)"
+    },
+    "capability": {
+      "type": "string",
+      "description": "Capability executada (ex: sendEmail, downloadFile, listFiles)"
+    },
+    "goal_type": {
+      "type": "string",
+      "description": "GoalType detectado pelo Planner (ex: gmail.sendEmail, drive.downloadFile). Populado a partir da Fase 1.5 (Intent Recorder). Null na Fase 1."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "success",
+        "completed",
+        "failed",
+        "timeout",
+        "needs_confirmation",
+        "blocked"
+      ],
+      "description": "Status terminal da execucao (mesmo vocabulario do StepResult)"
+    },
+    "error_signature": {
+      "type": "string",
+      "description": "Classe de erro normalizada quando status=failed/timeout (ex: Timeout, AuthenticationError, PermissionDenied, NotFoundError, RateLimitError, NetworkError, ValidationError, UnknownError). Null em success/completed."
+    },
+    "behavior_signature": {
+      "type": "string",
+      "description": "Falha silenciosa detectada (ex: PartialRepositoryTraversal, EmptySearchWithExistingResults, UnexpectedEarlyTermination, WrongConnectorSelection, PlannerFallbackLoop, IdentityBypass, SilentFallback). Null quando nao ha anomalia. Populado pelas Fases 2.5 (Decision Analyzer) e 3 (Coverage Analyzer), nao pela Fase 1."
+    },
+    "duration_ms": {
+      "type": "number",
+      "description": "Duracao da execucao em milissegundos (connectorDurationMs se disponivel, senao dispatcher wall-clock)"
+    },
+    "error_message": {
+      "type": "string",
+      "description": "Mensagem de erro bruta (truncada em 4000 chars). Null em success/completed."
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp de inicio (ISO 8601)"
+    },
+    "finished_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp de termino (ISO 8601)"
+    },
+    "sprint_tag": {
+      "type": "string",
+      "description": "Tag de sprint para analise de regressao entre versoes (ex: S1-OIE, S2-OIE)"
+    },
+    "payload": {
+      "type": "string",
+      "description": "JSON serializado de contexto adicional (params sanitized, coverage data, correlationIds). Opcional na Fase 1."
+    }
+  },
+  "required": [
+    "execution_id",
+    "connector",
+    "capability",
+    "status"
+  ]
+}
