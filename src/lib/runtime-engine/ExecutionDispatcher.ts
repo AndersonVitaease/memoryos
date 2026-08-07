@@ -151,6 +151,8 @@ export class ExecutionDispatcher {
         startedAt,
         finishedAt,
         sessionId: connectorCtx.sessionId,
+        goalType: step.goalType,
+        sprintTag: "S1-OIE",
       }).catch(() => { /* shadow mode: swallow */ });
 
       return Object.freeze({
