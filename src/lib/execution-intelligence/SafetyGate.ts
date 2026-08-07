@@ -79,6 +79,21 @@ export class SafetyGate {
       return `Enviar rascunho existente:\nID do rascunho: ${draftId}`;
     }
 
+    if (capability === "replyEmail" || capability === "replyAll") {
+      const messageId = typeof params.messageId === "string" ? params.messageId : "—";
+      const body = typeof params.body === "string" ? params.body : "";
+      const action = capability === "replyAll" ? "Responder para todos" : "Responder e-mail";
+      return `${action}:\nMensagem original: ${messageId}\nResposta: ${body ? (body.length > 120 ? body.slice(0, 117) + "..." : body) : "(vazia)"}`;
+    }
+
+    if (capability === "forwardEmail") {
+      const messageId = typeof params.messageId === "string" ? params.messageId : "—";
+      const to = Array.isArray(params.recipients)
+        ? (params.recipients as unknown[]).map(String).join(", ")
+        : String(params.recipients ?? "—");
+      return `Encaminhar e-mail:\nMensagem original: ${messageId}\nPara: ${to}`;
+    }
+
     // Resumo generico (demais capabilities).
     const keys = Object.keys(params);
     let base: string;
