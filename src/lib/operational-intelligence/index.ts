@@ -46,3 +46,7 @@ export { HealthMonitor } from "./HealthMonitor";
 export type { HealthSnapshot, ConnectorHealth } from "./HealthMonitor";
 export { TrendLayer } from "./TrendLayer";
 export type { TrendMetric, BucketGranularity, TrendPoint, TrendProjection } from "./TrendLayer";
+
+// Fase 4.5 (Sprint 7) — Evidence Engine
+export { EvidenceEngine } from "./EvidenceEngine";
+export type { EvidencePacket, EvidenceClaim } from "./EvidenceEngine";
