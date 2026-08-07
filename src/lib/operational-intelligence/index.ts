@@ -21,3 +21,8 @@
 export { RuntimeObserver } from "./RuntimeObserver";
 export type { ObservationInput } from "./RuntimeObserver";
 export { classifyErrorSignature } from "./errorSignatureClassifier";
+
+// Fase 1.5 (Sprint 2) — Intent Recorder
+export { IntentRecorder } from "./IntentRecorder";
+export type { IntentRecordInput } from "./IntentRecorder";
+export { computeIntentHash, normalizeIntent, extractQuantifiers, fnv1a32 } from "./intentNormalizer";
