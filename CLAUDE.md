@@ -2339,3 +2339,17 @@ Princípio mantido: **Consultivo, nunca autônomo.**
 **Princípios mantidos:** todos os módulos em shadow mode (consultivo, read-only, deterministico). Nenhuma nova entidade criada. EvidenceEngine e Explainer sao transformações puras sobre os objetos de análise já produzidos pelas Fases 2-4 — nunca re-query, nunca inventam dados. Cada Explanation cita os claims do packet, então a explicacao e sempre aterrada — nunca alucina (missão OIE: "explicar continuamente o comportamento").
 
 **NAO foi feito (fora do escopo desta sessao):** nenhuma UI nova (a /oie ja existe e consome via Orchestrator); nenhuma promocao de shadow para ativo (decisão de produto futura); nenhum teste E2E automatizado (sem runner no projeto — validação via exec_tool inline).
+
+---
+
+### 2026-08-07 (continuação 5) — Verificação de disco: Notion MCP CONCLUÍDO + Mem0 Cloud integrado (não registrados)
+
+**Gatilho:** verificar alterações não registradas na memória. A doc `src/docs/01-operational-knowledge/SESSION-2026-08-07-MCP-MEMORY-INTEGRATION.md` (mtime 13:36) registra progresso que o CLAUDE.md deixava "travado no placeholder SSH".
+
+**Notion MCP — CONCLUÍDO (continuação após o bug do placeholder):** em vez do subdomínio customizado planejado, usou **nip.io** (`2-25-96-245.nip.io` resolve pro IP da VPS) + **Caddy v2.11.4** reverse proxy com TLS automático (Let's Encrypt). Servidor Notion MCP em `127.0.0.1:3000` (`~/notion-mcp`, `bin/cli.mjs --transport http`, bearer token fixo), exposto em `https://2-25-96-245.nip.io/mcp`. Registro `MCPServerConfig` id `6a75dd415e1f118a7b29164c` (name `notion`, `auth_type: api_key`, `api_key_secret_name: NOTION_MCP_TOKEN`, `auth_header_name: Authorization` Bearer). Validação: `mcpClientCall` action `list` → 200 OK, API completa do Notion (~1.5s).
+
+**Lições da doc:** (1) path do endpoint importa — SDK posta na `server_url` exata; Notion MCP serve JSON-RPC em `/mcp`, não na raiz (sem path → "Cannot POST /" HTML 404 no erro do SDK); (2) header `Accept: application/json, text/event-stream` obrigatório — curl manual falha 406 sem ambos (SDK envia sozinho); (3) token errado → `{"code":-32002,"message":"Forbidden: Invalid bearer token"}` no JSON de erro.
+
+**Mem0 Cloud — integrado (beco-sem-saída self-hosted):** self-hostar `mem0-mcp` via GitHub source falhou (`No module named mcp.server.fastmcp`); `npx -y mem0-mcp` incompatível. Solução: **Mem0 Cloud oficial** (endpoint HTTP, `MEM0_API_KEY` no painel), mesmo `mcpClientCall` com `auth_type: api_key` + prefixo `Token` (não `Bearer` — suporte ao prefixo `Token` adicionado ao `mcpClientCall`). Uso atual documentado na seção OIE: recuperação/escrita do plano via `add_memory`/`search_memory` no servidor `mem0` (`MCPServerConfig` id `6a75e32f4f9a530d71e90170`), `agent_id=memoryos-oie-plan`, `user_id=anderson_vitaease`. Cross-tool: Claude Desktop/ChatGPT leem a mesma memória via MCP do Mem0.
+
+**Nada mais alterado:** verificação de mtimes confirma que todos os outros arquivos OIE (14:44–17:45) já estão documentados; nenhuma página, backend function, entidade, workflow ou agente novo no disco além do que esta memória já registra (142 páginas, 31 funções, 26 entidades, 1 workflow, 0 agentes, 1 shared).
