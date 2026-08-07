@@ -30,3 +30,7 @@ export { computeIntentHash, normalizeIntent, extractQuantifiers, fnv1a32 } from 
 // Fase 2 (Sprint 3) — Architecture Indexer
 export { ArchitectureIndexer } from "./ArchitectureIndexer";
 export type { ArchitectureMap, ExpectedCapability, ConnectorMetaProjection, DriftReport, DriftFinding } from "./ArchitectureIndexer";
+
+// Fase 3 (Sprint 4) — Coverage Analyzer
+export { CoverageAnalyzer } from "./CoverageAnalyzer";
+export type { CoverageAnalysis, IntentProjection, ActualExecution } from "./CoverageAnalyzer";
