@@ -4,6 +4,7 @@ import ContextAwareSidebar from "./ContextAwareSidebar";
 import MemoryActivityIndicator from "./MemoryActivityIndicator";
 import GlobalSyncStatus from "./GlobalSyncStatus";
 import NotificationHub from "./NotificationHub";
+import OIEAlertListener from "@/components/oie/OIEAlertListener";
 import { Menu, X } from "lucide-react";
 
 class OutletErrorBoundary extends Component {
@@ -48,6 +49,8 @@ export default function AppLayout() {
       <GlobalSyncStatus />
       <MemoryActivityIndicator />
       <NotificationHub />
+      {/* OIE ativo (consultivo): toasta findings critical/warning em tempo real */}
+      <OIEAlertListener />
 
       {/* Desktop sidebar — fixed, fora do fluxo do documento */}
       <div className="hidden lg:block fixed inset-y-0 left-0 w-64 z-10">

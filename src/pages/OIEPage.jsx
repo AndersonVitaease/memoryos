@@ -28,6 +28,7 @@ import {
   EvidenceEngine,
   Explainer,
 } from "@/lib/operational-intelligence";
+import LiveExplanationsPanel from "@/components/oie/LiveExplanationsPanel";
 
 const SEVERITY_COLOR = {
   critical: "bg-red-500/10 text-red-400 border-red-500/20",
@@ -186,22 +187,34 @@ function TrendSection() {
 }
 
 // ── Session Explainer (Fases 2.5, 3, 4.5, 5 encadeadas) ─────────────────────
-function SessionExplainerSection() {
+function SessionExplainerSection({ externalSessionId }) {
   const [sessionId, setSessionId] = useState("");
   const [loading, setLoading] = useState(false);
   const [explanations, setExplanations] = useState(null);
   const [summary, setSummary] = useState(null);
   const [err, setErr] = useState(null);
 
-  const analyze = async () => {
-    if (!sessionId.trim()) return;
+  // Drill-in: ao clicar num alerta do LiveExplanationsPanel, repassa o
+  // sessionId e dispara a analise completa automaticamente.
+  useEffect(() => {
+    if (externalSessionId && externalSessionId !== sessionId) {
+      setSessionId(externalSessionId);
+      // dispara analise apos o state atualizar
+      setTimeout(() => doAnalyze(externalSessionId), 0);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [externalSessionId]);
+
+  const doAnalyze = async (sid) => {
+    const id = (sid ?? sessionId).trim();
+    if (!id) return;
     setLoading(true);
     setErr(null);
     setExplanations(null);
     try {
       const [coverageList, decision] = await Promise.all([
-        CoverageAnalyzer.analyzeRecent(sessionId.trim(), 20),
-        DecisionAnalyzer.analyzeSession(sessionId.trim()),
+        CoverageAnalyzer.analyzeRecent(id, 20),
+        DecisionAnalyzer.analyzeSession(id),
       ]);
       const packets = [
         ...coverageList.flatMap((c) => EvidenceEngine.fromCoverage(c)),
@@ -229,7 +242,7 @@ function SessionExplainerSection() {
           onChange={(e) => setSessionId(e.target.value)}
           className="bg-zinc-950 border-zinc-800 text-zinc-100"
         />
-        <Button onClick={analyze} disabled={loading || !sessionId.trim()}>
+        <Button onClick={() => doAnalyze()} disabled={loading || !sessionId.trim()}>
           {loading ? "Analisando…" : "Explicar"}
         </Button>
       </div>
@@ -275,6 +288,10 @@ function SessionExplainerSection() {
 }
 
 export default function OIEPage() {
+  // Drill-in: LiveExplanationsPanel repassa o sessionId de um alerta clicado
+  // para o SessionExplainerSection analisar a sessao completa automaticamente.
+  const [pickedSession, setPickedSession] = useState("");
+
   return (
     <div className="min-h-screen bg-zinc-950 p-6 space-y-4">
       <div>
@@ -284,10 +301,19 @@ export default function OIEPage() {
           learning é projeção temporal. Consultivo — nunca autônomo. Somente leitura.
         </p>
       </div>
+
+      {/* Track 2 — explicações ao vivo (rolling cache do OIEAlertBus) */}
+      <Section
+        title="Explicações ao vivo"
+        subtitle="OIEOrchestrator → OIEAlertBus — findings critical/warning das execuções recentes do pipeline, sem precisar digitar session_id. Clique num alerta para analisar a sessão completa abaixo."
+      >
+        <LiveExplanationsPanel onPickSession={setPickedSession} />
+      </Section>
+
       <HealthSection />
       <ArchitectureSection />
       <TrendSection />
-      <SessionExplainerSection />
+      <SessionExplainerSection externalSessionId={pickedSession} />
     </div>
   );
 }
