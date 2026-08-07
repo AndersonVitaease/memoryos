@@ -69,7 +69,11 @@ function resolveHeaders(
       return { headers, error: `Secret '${server.api_key_secret_name}' nao configurada (use: base44 secrets set)` };
     }
     const headerName = server.auth_header_name || 'Authorization';
-    headers[headerName] = headerName.toLowerCase() === 'authorization' ? `Bearer ${apiKey}` : apiKey;
+    // FIX (Mem0 Cloud): alguns servidores MCP exigem o prefixo "Token" em vez
+    // de "Bearer" no header Authorization. auth_token_prefix (default "Bearer")
+    // permite configurar isso por servidor sem mudar o codigo.
+    const tokenPrefix = server.auth_token_prefix || 'Bearer';
+    headers[headerName] = headerName.toLowerCase() === 'authorization' ? `${tokenPrefix} ${apiKey}` : apiKey;
   } else if (server.auth_type === 'oauth' && !bearerToken) {
     return { headers, error: `auth_type='oauth' mas nenhum bearerToken foi passado na chamada para '${server.name}'` };
   }
