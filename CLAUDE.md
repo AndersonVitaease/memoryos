@@ -1984,3 +1984,101 @@ Somente leitura, zero mutacao (mantem a garantia de nao-quebra #4 do plano origi
 **Proximo passo:** nenhuma acao pendente imediata nas duas frentes. OIE: Fases 2-5 aguardam uso real do MemoryOS para popular `ExecutionObservation`/`InteractionEvent` em volume (a pagina `/oie` funciona, mas a maioria dos paineis fica vazia ate ter dados reais acumulados). Docs: considerar limpar as 3 referencias secundarias remanescentes numa sessao futura, sem urgencia.
 
 ---
+---
+
+### 2026-08-07 (continuação 2) — OIE Full Code Audit: Status Completo + Bloqueadores Críticos para Funcional
+
+**Gatilho:** Anderson pediu para verificar TUDO que falta para deixar a OIE "totalmente funcional". Leitura completa do código real: todas as 5 fases, ambos os hooks ativos (RuntimeObserver, IntentRecorder), UI (/oie), entidades, e integração na ConversationPipeline.
+
+**ACHADO 1 — Mapa do Status Real (código verificado):**
+
+```
+✅ JÁ IMPLEMENTADO E ATIVO:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Fase 1:     RuntimeObserver.ts          — ATIVO em ExecutionDispatcher.ts:100 (shadow mode)
+Fase 1.5:   IntentRecorder.ts           — ATIVO em ConversationPipeline.ts:102 (shadow mode)
+Fase 2:     ArchitectureIndexer.ts      — codado, SEM consumidor no pipeline
+Fase 2.5:   DecisionAnalyzer.ts         — codado, SEM consumidor no pipeline
+Fase 3:     CoverageAnalyzer.ts         — codado, SEM consumidor no pipeline
+Fase 4:     RegressionAnalyzer.ts       — codado, SEM consumidor no pipeline
+Fase 4:     HealthMonitor.ts            — codado, chamado APENAS via OIEPage.jsx (manual)
+Fase 4:     TrendLayer.ts               — codado, chamado APENAS via OIEPage.jsx (manual)
+Fase 4.5:   EvidenceEngine.ts           — codado, SEM consumidor no pipeline
+Fase 5:     Explainer.ts                — codado, SEM consumidor no pipeline
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Entidades:  ExecutionObservation        — schema completo (14 campos)
+Entidades:  InteractionEvent            — schema completo (9 campos)
+UI:         OIEPage.jsx                 — criada, rota /oie, read-only, consulta HealthMonitor/TrendLayer
+```
+
+Confirmado: todas as 10 classes modulares estão codadas, tipos corretos, sem erros de compilação (build verde). A UI (/oie) funciona quando chama os módulos manualmente.
+
+**ACHADO 2 — Três Bloqueadores Críticos para Funcional:**
+
+#### BLOQUEADOR 1: ExecutionDispatcher.observe() está incompleto (~10 minutos)
+
+**Localização:** `src/lib/runtime-engine/ExecutionDispatcher.ts` linhas 100–118
+
+**O problema:**
+- FALTAM: goalType (necessário para DecisionAnalyzer agrupar por intent)
+- FALTAM: sprintTag (necessário para RegressionAnalyzer comparar sprints)
+- Observações são registradas mas vazias de contexto planejamento-tempo
+
+**Impacto:** Sem goalType, DecisionAnalyzer não detecta SameIntentMultipleGoals. Sem sprintTag, RegressionAnalyzer não consegue comparar sprints.
+
+**Solução:**
+- Adicionar dois campos na chamada RuntimeObserver.observe():
+  - goalType: step.goalType ?? plan?.goalType ?? null
+  - sprintTag: "S1-OIE" (ou ler de config global)
+
+---
+
+#### BLOQUEADOR 2: Sem Orchestrator, Fases 2–5 nunca rodam (~2–3 horas)
+
+**O problema:** Todas as 5 fases (2, 2.5, 3, 4, 4.5, 5) são módulos síncronos/assincronos mas nunca instanciados no fluxo de execução real. Ninguém chama DecisionAnalyzer.analyzeSession() após uma execução terminar. Ninguém agrega os resultados em EvidenceEngine. Ninguém chama Explainer.
+
+**A solução:** OIE Orchestrator
+
+Novo arquivo: `src/lib/operational-intelligence/OIEOrchestrator.ts`
+
+Responsabilidade: após cada execução, coordenar cascata:
+1. CoverageAnalyzer.analyzeRecent(sessionId) → CoverageAnalysis[]
+2. DecisionAnalyzer.analyzeSession(sessionId) → DecisionAnalysis
+3. RegressionAnalyzer.compareSprints(current, baseline) → RegressionReport
+4. EvidenceEngine.fromCoverage(...) + fromDecision(...) + fromRegression(...) → EvidencePacket[]
+5. Explainer.explainAll(packets) → Explanation[]
+6. (opcional) persistir findings em OIEFinding (nova entidade)
+
+**Integração no pipeline:**
+- Hook em `ConversationPipeline.ts` método `Finalize` (pós-resposta ao usuário)
+- Fire-and-forget (nunca bloqueia chat)
+- Shadow mode (nenhuma decisão autônoma, só observação)
+
+---
+
+#### BLOQUEADOR 3: Data Flow Gaps (~1 hora)
+
+**O problema:** Três campos ficam NULL quando deveriam ser preenchidos:
+- goal_type — fica null porque ExecutionDispatcher não passa
+- behavior_signature — fica null porque ninguém escreve de volta após DecisionAnalyzer/CoverageAnalyzer
+- payload — fica null, deveria ter contexto de quantifiers/coverage gaps
+
+**Solução (recomendada):** behavior_signature como "computed-on-read" em vez de "stored"
+- DecisionAnalyzer/CoverageAnalyzer já conseguem ler ExecutionObservation + InteractionEvent em paralelo
+- Explainer consome as análises (CoverageAnalysis, DecisionAnalysis objects) diretamente
+- Sem mutação, mais simples
+
+---
+
+**ACHADO 3 — Roadmap para Funcional Completo (hoje, ~4–5 horas):**
+
+| # | Tarefa | Tempo | Crítico? |
+|---|--------|-------|---------|
+| 1 | Fix ExecutionDispatcher.observe() → add goalType + sprintTag | 10 min | 🔴 SIM |
+| 2 | Criar OIEOrchestrator.ts (cascata de 5 fases) | 2h | 🔴 SIM |
+| 3 | Integrar OIEOrchestrator hook em ConversationPipeline | 30 min | 🔴 SIM |
+| 4 | Test real data flow end-to-end (chat → phases 1-5 → UI) | 1h | 🟠 IMP |
+| 5 | Fix OIEPage.jsx para consumir dados ao vivo | 30 min | 🟠 IMP |
+
+**Acao:** Anderson iniciando implementação agora. Bloqueador #1 (10 min) → #2 (OIEOrchestrator 2h) → #3 (hook 30 min).
+
