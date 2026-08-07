@@ -40,6 +40,9 @@ const CAPABILITIES = Object.freeze([
   "createDraft",
   "sendDraft",
   "sendEmail",
+  "replyEmail",
+  "replyAll",
+  "forwardEmail",
 ]);
 
 export class GmailConnector implements IConnector {
@@ -67,6 +70,9 @@ export class GmailConnector implements IConnector {
         createDraft: "reversible",
         sendDraft: "irreversible",
         sendEmail: "irreversible",
+        replyEmail: "irreversible",
+        replyAll: "irreversible",
+        forwardEmail: "irreversible",
       },
     };
   }
@@ -355,6 +361,29 @@ export class GmailConnector implements IConnector {
           subject: (p["subject"] as string) ?? "",
           body:    (p["body"] as string)    ?? "",
         }, _workspaceId);
+      }
+      case "replyEmail": {
+        const { replyEmail } = await import("@/lib/gmail/GmailAdvanced");
+        return replyEmail({
+          messageId: (p["messageId"] as string) ?? "",
+          body:      (p["body"] as string) ?? "",
+          replyAll:  Boolean(p["replyAll"]),
+        });
+      }
+      case "replyAll": {
+        const { replyAll } = await import("@/lib/gmail/GmailAdvanced");
+        return replyAll({
+          messageId: (p["messageId"] as string) ?? "",
+          body:      (p["body"] as string) ?? "",
+        });
+      }
+      case "forwardEmail": {
+        const { forwardEmail } = await import("@/lib/gmail/GmailAdvanced");
+        return forwardEmail({
+          messageId:  (p["messageId"] as string) ?? "",
+          recipients: (p["recipients"] as string[]) ?? [],
+          body:       (p["body"] as string) ?? "",
+        });
       }
       default:
         return { ok: false, data: null, error: `Unknown operation: ${op}` };
