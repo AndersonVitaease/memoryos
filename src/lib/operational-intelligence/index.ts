@@ -54,3 +54,6 @@ export type { EvidencePacket, EvidenceClaim } from "./EvidenceEngine";
 // Fase 5 (Sprint 8) — Explainer (modulo final)
 export { Explainer } from "./Explainer";
 export type { Explanation, ExplanationSummary, Severity } from "./Explainer";
+// Orchestrator — coordena todas as fases
+export { OIEOrchestrator } from "./OIEOrchestrator";
+export type { OIEAnalysisResult } from "./OIEOrchestrator";
