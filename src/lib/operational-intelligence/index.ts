@@ -26,3 +26,7 @@ export { classifyErrorSignature } from "./errorSignatureClassifier";
 export { IntentRecorder } from "./IntentRecorder";
 export type { IntentRecordInput } from "./IntentRecorder";
 export { computeIntentHash, normalizeIntent, extractQuantifiers, fnv1a32 } from "./intentNormalizer";
+
+// Fase 2 (Sprint 3) — Architecture Indexer
+export { ArchitectureIndexer } from "./ArchitectureIndexer";
+export type { ArchitectureMap, ExpectedCapability, ConnectorMetaProjection, DriftReport, DriftFinding } from "./ArchitectureIndexer";
