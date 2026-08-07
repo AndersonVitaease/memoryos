@@ -1,0 +1,43 @@
+{
+  "name": "InteractionEvent",
+  "type": "object",
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "description": "Sessao de chat de origem (isolamento por usuario/sessao)"
+    },
+    "correlation_id": {
+      "type": "string",
+      "description": "ID de execucao/correlacao. Para eventos actor=user, e o executionId do pipeline (mesmo que vira o execution_id em ExecutionObservation). Para eventos actor=system, e o ID do evento sistemico correspondente."
+    },
+    "actor": {
+      "type": "string",
+      "enum": [
+        "user",
+        "system"
+      ],
+      "description": "Quem originou o evento. user = acao do usuario (mensagem, clique, abandono). system = acao do MemoryOS (capability executada, evento emitido)."
+    },
+    "event_type": {
+      "type": "string",
+      "description": "Tipo do evento. Exemplos actor=user: message_sent, message_repeated, session_idle, session_abandoned. Exemplos actor=system: capability_executed, watch_triggered, event_emitted."
+    },
+    "intent_hash": {
+      "type": "string",
+      "description": "Hash deterministico da inten\u00e7\u00e3o normalizada (FNV-1a 32-bit, hex). Usado pelo Decision Analyzer para detectar mesma-intencao-roteada-para-goals-diferentes e repeticao de pergunta. Null para eventos que nao tem texto de intencao (ex: session_idle)."
+    },
+    "raw_text": {
+      "type": "string",
+      "description": "Texto bruto do evento (mensagem do usuario, comando, etc.) truncado em 4000 chars. Null para eventos sem texto."
+    },
+    "payload": {
+      "type": "string",
+      "description": "JSON serializado de contexto adicional deterministico. Para actor=user message_sent: { quantifiers, entity_mentions, char_count }. Opcional."
+    }
+  },
+  "required": [
+    "session_id",
+    "actor",
+    "event_type"
+  ]
+}

@@ -39,6 +39,12 @@ import { knowledgeFusionEngine } from "@/lib/knowledge-fusion-engine/KnowledgeFu
 import { knowledgeNormalizer } from "@/lib/knowledge-fusion-engine/KnowledgeNormalizer";
 import { knowledgeGraphBridge } from "@/lib/knowledge-fusion-engine/KnowledgeGraphBridge";
 import { resourceIntentCanonicalizerProvider } from "@/lib/resource-intent-canonicalization";
+// OIE Fase 1.5 (Sprint 2): IntentRecorder em shadow mode — registra a
+// intencao do usuario ANTES do Planner interpretar (preserva o que o
+// usuario PEDIU, nao o que o sistema ENTENDEU). Fire-and-forget: nunca
+// rejeita, nunca bloqueia o pipeline. correlation_id = executionId
+// vincula com ExecutionObservation (o que o sistema fez).
+import { IntentRecorder } from "@/lib/operational-intelligence/IntentRecorder";
 import { isCanonicalResourceRequestEnabled, isCanonicalResourceReadEnabled } from "@/lib/resource-intent-canonicalization";
 import { synthesizeConnectorResult } from "@/lib/connector-runtime-provider/ConnectorResultSynthesizer";
 
@@ -88,6 +94,16 @@ class ConversationPipeline {
 
     const executionId = makeId();
     this._currentExecutionId = executionId;
+
+    // OIE Fase 1.5: registra a intencao do usuario em shadow mode, ANTES
+    // de qualquer interpretacao (Prepare/Reason/Route). correlation_id =
+    // executionId vincula com as ExecutionObservation que o Dispatcher vai
+    // gerar para esta mesma execucao. Fire-and-forget: o pipeline nao aguarda.
+    IntentRecorder.record({
+      sessionId: session.id,
+      correlationId: executionId,
+      rawText: userMessage,
+    }).catch(() => { /* shadow mode: swallow */ });
 
     const steps: PipelineStep[] = [
       makeStep("prepare",      "Preparando"),
