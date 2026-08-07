@@ -2283,3 +2283,59 @@ OIE agora é um engine autônomo que roda em **background sem interferir no pipe
 
 Princípio mantido: **Consultivo, nunca autônomo.**
 
+---
+
+### 2026-08-07 (continuação 4) — OIE Sprint 7 (Fase 4.5 — EvidenceEngine) + Sprint 8 (Fase 5 — Explainer): Implementados e validados
+
+**Status:** Sprints 7 e 8 EXECUTADAS — módulos finais do OIE. EvidenceEngine e Explainer agora são implementações próprias (não código orfão pré-existente), com template registry por findingType, provenance apontada, e validação 12/12 cenários.
+
+#### Sprint 7 — Fase 4.5: EvidenceEngine (`src/lib/operational-intelligence/EvidenceEngine.ts`)
+
+**Responsabilidade:** transformar descobertas das Fases 1-4 (Coverage, Decision, Regression) em `EvidencePacket`s com `EvidenceClaim`s apontadas — cada claim referencia registro concreto (source `InteractionEvent`|`ExecutionObservation` + executionId + locator + value), sustentando o Explainer com provenance. Nada e inventado: puro transform sobre os objetos de análise já produzidos. Read-only, deterministico, sem LLM, sem nova entidade.
+
+**3 transformações:**
+- `fromCoverage(analysis)` → 1 packet por behavior_signature detectada (NoConnectorExecution, PartialRepositoryTraversal, AllExecutionsFailed, PartialSuccess, CoverageGap); claims citam intent (InteractionEvent) + observacoes (ExecutionObservation) + coverageGap.
+- `fromDecision(analysis)` → 1 packet por grupo flagado (SameIntentMultipleGoals, RepeatedQuestion); claims citam os executionIds + goalTypes distintos.
+- `fromRegression(report)` → 1 packet por finding (new_error_signature, new_behavior_signature, failure_rate_increase); claims citam contagens das duas sprints.
+
+**Tipos exportados:** `EvidencePacket` (findingType, executionId, summary, claims) + `EvidenceClaim` (source, executionId, locator, value, timestamp).
+
+**Validação:** 4/4 cenários (NoConnectorExecution, CoverageGap, SameIntentMultipleGoals, regression com 3 findings) — todos produziram packets com claims corretos.
+
+#### Sprint 8 — Fase 5: Explainer (`src/lib/operational-intelligence/Explainer.ts`) — módulo final
+
+**Responsabilidade:** consumir `EvidencePacket`s e produzir `Explanation`s determinísticas com cadeia causal + citações de evidência + recomendação consultiva. Template registry por `findingType` — cada template constrói a explicacao aterrada nos claims do packet (cite = `[source locator] value`). Consultivo: recomenda, NUNCA age.
+
+**Template Registry (10 findingTypes + fallback genérico):**
+- Coverage: NoConnectorExecution (warning), PartialRepositoryTraversal (warning), AllExecutionsFailed (critical), PartialSuccess (warning), CoverageGap (warning)
+- Decision: SameIntentMultipleGoals (warning), RepeatedQuestion (info)
+- Regression: new_error_signature (critical), new_behavior_signature (warning), failure_rate_increase (critical)
+- Fallback: findingType sem template → explicacao generica com os claims + recomendacao de adicionar template.
+
+**3 métodos:**
+- `explain(packet)` → 1 Explanation (template ou fallback)
+- `explainAll(packets)` → array de Explanations
+- `summarize(explanations)` → `ExplanationSummary` (total, critical, warning, info, byFindingType) para dashboards
+
+**Tipos exportados:** `Explanation` (findingType, title, severity, causalChain, evidenceRefs, recommendation) + `ExplanationSummary` + `Severity` ("info"|"warning"|"critical").
+
+**Validação:** 12/12 cenários — 10 templates + fallback + summarize; todos produziram severity, causalChain, evidenceRefs e recommendation corretos (citações no formato `[Source locator] value`).
+
+#### Estado final do OIE — 5 fases, 8 sprints completas
+
+| Sprint | Fase | Módulo | Status |
+|---|---|---|---|
+| S1 | Fase 1 | `RuntimeObserver` + `errorSignatureClassifier` | ✅ ativo (shadow mode) |
+| S2 | Fase 1.5 | `IntentRecorder` + `intentNormalizer` | ✅ ativo (plugged no pipeline) |
+| S3 | Fase 2 | `ArchitectureIndexer` | ✅ codado (consumido via /oie) |
+| S5 | Fase 2.5 | `DecisionAnalyzer` | ✅ codado (consumido via Orchestrator + /oie) |
+| S4 | Fase 3 | `CoverageAnalyzer` | ✅ codado (consumido via Orchestrator + /oie) |
+| S6 | Fase 4 | `RegressionAnalyzer` + `HealthMonitor` + `TrendLayer` | ✅ codado (consumido via Orchestrator + /oie) |
+| S7 | Fase 4.5 | `EvidenceEngine` | ✅ codado (consumido via Orchestrator + /oie) |
+| S8 | Fase 5 | `Explainer` | ✅ codado (consumido via Orchestrator + /oie) |
+
+**Index atualizado:** `src/lib/operational-intelligence/index.ts` agora exporta `EvidenceEngine`/`EvidencePacket`/`EvidenceClaim` (Fase 4.5) e `Explainer`/`Explanation`/`ExplanationSummary`/`Severity` (Fase 5) — já estava exportando `OIEOrchestrator` da continuação 3.
+
+**Princípios mantidos:** todos os módulos em shadow mode (consultivo, read-only, deterministico). Nenhuma nova entidade criada. EvidenceEngine e Explainer sao transformações puras sobre os objetos de análise já produzidos pelas Fases 2-4 — nunca re-query, nunca inventam dados. Cada Explanation cita os claims do packet, então a explicacao e sempre aterrada — nunca alucina (missão OIE: "explicar continuamente o comportamento").
+
+**NAO foi feito (fora do escopo desta sessao):** nenhuma UI nova (a /oie ja existe e consome via Orchestrator); nenhuma promocao de shadow para ativo (decisão de produto futura); nenhum teste E2E automatizado (sem runner no projeto — validação via exec_tool inline).
