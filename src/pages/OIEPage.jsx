@@ -29,6 +29,7 @@ import {
   Explainer,
 } from "@/lib/operational-intelligence";
 import LiveExplanationsPanel from "@/components/oie/LiveExplanationsPanel";
+import OIEConfigPanel from "@/components/oie/OIEConfigPanel";
 
 const SEVERITY_COLOR = {
   critical: "bg-red-500/10 text-red-400 border-red-500/20",
@@ -301,6 +302,9 @@ export default function OIEPage() {
           learning é projeção temporal. Consultivo — nunca autônomo. Somente leitura.
         </p>
       </div>
+
+      {/* Configuracao consultiva — master switch, modulos, limiares, bus pause */}
+      <OIEConfigPanel />
 
       {/* Track 2 — explicações ao vivo (rolling cache do OIEAlertBus) */}
       <Section
