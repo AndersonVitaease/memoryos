@@ -11,7 +11,8 @@ import {
   Send, FileText, Loader2, Play,
   CheckCircle2, XCircle, AlertTriangle, ShieldAlert,
 } from "lucide-react";
-import { createDraft, sendDraft, sendEmail } from "@/lib/gmail/GmailActions";
+import { createDraft, sendDraft } from "@/lib/gmail/GmailActions";
+import { IrreversibleCaller } from "@/lib/execution-intelligence/IrreversibleCaller";
 import { runGmailActionsTests } from "@/lib/gmail/gmailActionsTests";
 import { runRuntimeConfirmationTests } from "@/lib/runtime/runtimeConfirmationTests";
 import {
@@ -256,7 +257,7 @@ export default function GmailActionsCard() {
   const [loading, setLoading]   = useState(false);
   const [result, setResult]     = useState(null);
   // State for the active confirmation dialog
-  const [pendingConfirm, setPendingConfirm] = useState(null); // { request, resolve }
+  const [pendingConfirm, setPendingConfirm] = useState(null); // { request, onConfirm, onCancel }
 
   // Unified send-with-confirmation via RuntimeConfirmationEngine
   const withConfirmation = async (capability, title, description, payload, action) => {
@@ -268,7 +269,7 @@ export default function GmailActionsCard() {
     const pending = listPending();
     const req = pending[pending.length - 1];
 
-    setPendingConfirm({ request: req, resolveConfirm });
+    setPendingConfirm({ request: req, onConfirm: () => resolveConfirm(true), onCancel: () => resolveConfirm(false) });
 
     // Wait for user to decide via dialog
     const decided = await userDecision;
@@ -293,17 +294,39 @@ export default function GmailActionsCard() {
     setLoading(false);
   };
 
+  // MIGRADO (EI-04): gmail.sendEmail agora roda pelo caminho irreversivel
+  // arquitetural — ExecutionRuntime.processCapability + SafetyGate +
+  // RuntimeConfirmationEngine — em vez do gate UI ad-hoc + chamada direta
+  // a GmailActions.sendEmail. O dispatch real herda metricas/eventos/timeout
+  // do mesmo engine do pipeline de producao.
   const handleSendEmail = async (req) => {
     setLoading(true); setResult(null);
-    const r = await withConfirmation(
-      "gmail.sendEmail",
-      "Confirmar envio de e-mail",
-      `Enviar para: ${req.to.join(", ")} — Assunto: "${req.subject}"`,
-      req,
-      () => sendEmail(req)
-    );
-    setResult(r);
-    setLoading(false);
+    try {
+      const irrev = await IrreversibleCaller.execute(
+        { connectorId: "gmail", capability: "sendEmail", params: req },
+        {
+          onPending: (pendingReq) => setPendingConfirm({
+            request: pendingReq,
+            onConfirm: () => { confirm(pendingReq.id); setPendingConfirm(null); },
+            onCancel: () => { cancel(pendingReq.id); setPendingConfirm(null); },
+          }),
+        },
+      );
+      const { outcome } = irrev;
+      const out = outcome.output;
+      // output chega no shape legacy { ok, data, error } (GmailActions via
+      // connector); normaliza defensivamente para o ResultBanner.
+      const r = outcome.status === "success"
+        ? (out && typeof out === "object" && "ok" in out
+            ? out
+            : { ok: true, data: out })
+        : { ok: false, error: outcome.message ?? "Envio falhou." };
+      setResult(r);
+    } catch (e) {
+      setResult({ ok: false, error: e?.message ?? "Envio falhou." });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSendDraft = async (draftId) => {
@@ -329,8 +352,8 @@ export default function GmailActionsCard() {
       {pendingConfirm && (
         <ConfirmationDialog
           request={pendingConfirm.request}
-          onConfirm={() => pendingConfirm.resolveConfirm(true)}
-          onCancel={() => pendingConfirm.resolveConfirm(false)}
+          onConfirm={pendingConfirm.onConfirm}
+          onCancel={pendingConfirm.onCancel}
         />
       )}
 
