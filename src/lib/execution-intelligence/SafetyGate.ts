@@ -74,6 +74,11 @@ export class SafetyGate {
       return `${action}:\n${lines.join("\n")}`;
     }
 
+    if (capability === "sendDraft") {
+      const draftId = typeof params.draftId === "string" ? params.draftId : "—";
+      return `Enviar rascunho existente:\nID do rascunho: ${draftId}`;
+    }
+
     // Resumo generico (demais capabilities).
     const keys = Object.keys(params);
     let base: string;
