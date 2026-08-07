@@ -54,6 +54,10 @@ export type { EvidencePacket, EvidenceClaim } from "./EvidenceEngine";
 // Fase 5 (Sprint 8) — Explainer (modulo final)
 export { Explainer } from "./Explainer";
 export type { Explanation, ExplanationSummary, Severity } from "./Explainer";
+// Track 1 (Sprint 9) — OIEAlertBus: promove OIE de shadow -> ativo (consultivo)
+export { OIEAlertBus, extractAlerts } from "./OIEAlertBus";
+export type { OIEAlert } from "./OIEAlertBus";
+
 // Orchestrator — coordena todas as fases
 export { OIEOrchestrator } from "./OIEOrchestrator";
 export type { OIEAnalysisResult } from "./OIEOrchestrator";

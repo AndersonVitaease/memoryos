@@ -27,6 +27,9 @@ import { DecisionAnalyzer, type DecisionAnalysis } from "./DecisionAnalyzer";
 import { RegressionAnalyzer, type RegressionReport } from "./RegressionAnalyzer";
 import { EvidenceEngine, type EvidencePacket } from "./EvidenceEngine";
 import { Explainer, type Explanation, type ExplanationSummary } from "./Explainer";
+// Track 1 (promover a ativo, consultivo): publica findings critical/warning
+// no OIEAlertBus para o listener de UI mostrar toasts + popular o painel /oie.
+import { OIEAlertBus, extractAlerts } from "./OIEAlertBus";
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -117,6 +120,19 @@ export const OIEOrchestrator = {
         explanations: explanations.length, evidence: evidencePackets.length, errors: errors.length,
       });
     }
+
+    // Track 1: publica alertas acionaveis (critical/warning) no bus. Consultivo
+    // — so informa, nunca age. Fire-and-forget; falha aqui e silenciosa por
+    // design (o bus tem catch interno no publisher e no listener).
+    try {
+      const alerts = extractAlerts({
+        explanations: result.explanations,
+        executionId: result.executionId,
+        sessionId: result.sessionId,
+        completedAt: result.completedAt,
+      });
+      if (alerts.length > 0) OIEAlertBus.publish(alerts);
+    } catch { /* nunca quebra o orchestrator */ }
 
     return Object.freeze(result);
   },
