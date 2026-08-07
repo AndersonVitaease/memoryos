@@ -2,7 +2,7 @@
 
 Este diretório contém relatórios de auditoria de conformidade arquitetural.
 
-Os relatórios são gerados pelo **Architecture Auditor Specialist** (definido em `00-official-library/Architecture-Auditor-Specialist.md`) e verificam se a implementação respeita:
+Os relatórios são gerados pelo **Architecture Auditor Specialist** (definido em `_archived/00-official-library-PRE-FOUNDATION/Architecture-Auditor-Specialist.md` — arquivado; ver `src/docs/foundation/` para a especificação ativa) e verificam se a implementação respeita:
 
 - O MAS (MemoryOS Architecture Specification).
 - O MES (MemoryOS Engineering Specification).
