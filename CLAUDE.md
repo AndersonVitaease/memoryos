@@ -1934,3 +1934,53 @@ O OIE existe para **explicar continuamente o comportamento do MemoryOS**. Diagn�
 **Próximo passo imediato:** iniciar Sprint 1 (Fase 1) — criar entidade `ExecutionObservation` com campos `status`, `error_signature`, `behavior_signature` + `RuntimeObserver` em shadow mode.
 
 ---
+
+### 2026-08-07 (continuação) — Auditoria de código real: OIE muito mais avançado que o registrado + árvore de docs duplicada arquivada
+
+**Gatilho:** usuário pediu para verificar diretamente no código (não só na doc) o que já estava implementado do plano OIE acima.
+
+**ACHADO 1 — OIE muito mais implementado do que este `CLAUDE.md` registrava:**
+
+Outra sessão (8 commits entre 14:45–15:03 UTC de hoje, mesmo dia do plano) já tinha codado **todos os módulos das Fases 1 a 5**, não só a Fase 1:
+
+```
+src/lib/operational-intelligence/
+  RuntimeObserver.ts        Fase 1   — ATIVO (chamado em ExecutionDispatcher.ts, 2 call sites)
+  IntentRecorder.ts         Fase 1.5 — ATIVO (chamado em ConversationPipeline.ts)
+  ArchitectureIndexer.ts    Fase 2   — codado, SEM consumidor ate esta sessao
+  DecisionAnalyzer.ts       Fase 2.5 — codado, SEM consumidor ate esta sessao
+  CoverageAnalyzer.ts       Fase 3   — codado, SEM consumidor ate esta sessao
+  RegressionAnalyzer.ts     Fase 4   — codado, SEM consumidor ate esta sessao
+  HealthMonitor.ts          Fase 4   — codado, SEM consumidor ate esta sessao
+  TrendLayer.ts              Fase 4   — codado, SEM consumidor ate esta sessao
+  EvidenceEngine.ts         Fase 4.5 — codado, SEM consumidor ate esta sessao
+  Explainer.ts              Fase 5   — codado, SEM consumidor ate esta sessao
+```
+
+Entidades `ExecutionObservation` e `InteractionEvent` confirmadas no schema real, com todos os campos do plano. `index.ts` ja exportava tudo. Ou seja: **código completo, mas só Fase 1/1.5 estavam de fato ligadas ao pipeline** — Fases 2 a 5 eram codigo orfao (sem pagina `/oie`, sem rota, sem cron, nada consumindo).
+
+**Ação tomada:** criada `src/pages/OIEPage.jsx` (rota `/oie`, registrada em `App.jsx`) — primeira UI consumidora real das Fases 2–5:
+- **Health Snapshot** (`HealthMonitor.snapshot()`) — total de observações, success rate, top error/behavior signatures, worst connectors.
+- **Architecture Map** (`ArchitectureIndexer.buildArchitectureMap()` + `validateMappingIntegrity()`) — contagem de goals/connectors/capabilities esperadas + drift findings.
+- **Trend** (`TrendLayer.project("failure_rate", "day")`) — serie temporal dos ultimos 14 dias.
+- **Explicar uma sessão** (input manual de `session_id`) — encadeia `CoverageAnalyzer.analyzeRecent` + `DecisionAnalyzer.analyzeSession` → `EvidenceEngine.fromCoverage/fromDecision` → `Explainer.explainAll/summarize`, exercitando as Fases 2.5, 3, 4.5 e 5 juntas.
+
+Somente leitura, zero mutacao (mantem a garantia de nao-quebra #4 do plano original). Build verde confirmado (`vite build`, exit 0).
+
+**Nao mudou:** RuntimeObserver e IntentRecorder continuam em shadow mode, sem alteracao de comportamento. Nenhuma entidade nova criada. Nenhum modulo teve sua logica interna alterada — so ganharam um consumidor.
+
+---
+
+**ACHADO 2 — Duas arvores de documentacao "oficial" convivendo (risco de drift de leitura):**
+
+`src/docs/00-official-library/` (90 arquivos, MDS revisao 1.1 a 1.6, "MemoryOS Constitution", RFC-001 proprio) coexistia com `src/docs/foundation/` (a que este `CLAUDE.md` sempre referenciou). Confirmado via git log: `00-official-library/` comecou 2026-07-05 e teve ultimo commit 2026-08-03; `foundation/` comecou 2026-07-10 e contem `TRANSITION-DECLARATION.md` + `CANONICAL-SOURCE.md`, ambos datados 2026-07-11, declarando explicitamente a transicao "Engineering First" e a nova arvore como canonica. A arvore antiga nunca foi removida — ficou quase um mes convivendo com a nova, live no repo.
+
+**Verificacao de seguranca antes de mexer:** confirmado que nenhum codigo vivo le `00-official-library/` em runtime — `OfficialLibrarySource.ts` (Knowledge Reconstruction Engine) so referencia o caminho em comentario, seu `load()` real retorna catalogo estatico hardcoded; o mecanismo que leria de verdade (`ViteDocumentDiscovery.ts`, descrito em `OfficialLibraryFlowPage.jsx`) **nao existe** no repositorio; o caminho realmente conectado em producao (`officialLibraryManager.js`) usa `EMBEDDED_DOCS` — 5 docs embutidos como strings JS, nao lidos do disco (confirmado por auditoria anterior do proprio projeto, `SprintEF403Page.jsx`/`SprintEF404Page.jsx`).
+
+**Acao tomada:** pasta inteira movida (`cp` + `rm`, `git mv` falhou com "Invalid cross-device link" no sandbox) para `src/docs/_archived/00-official-library-PRE-FOUNDATION/`, com um `ARCHIVED-NOTICE.md` novo no topo explicando o porque, a verificacao de seguranca feita, e onde achar a especificacao atual (`src/docs/foundation/`). Atualizadas as 2 referencias mais importantes que apontavam pro caminho antigo (`src/docs/05-project-memory/README.md`, `src/docs/06-audits/README.md`).
+
+**Nao feito:** 3 referencias secundarias (`ANTI-PATTERNS.md`, `BEST-PRACTICES.md`, um doc de sessao de 2026-08-03) ainda apontam pro caminho antigo — sao exemplos ilustrativos dentro de texto corrido, baixa prioridade, nao corrigidas nesta sessao.
+
+**Proximo passo:** nenhuma acao pendente imediata nas duas frentes. OIE: Fases 2-5 aguardam uso real do MemoryOS para popular `ExecutionObservation`/`InteractionEvent` em volume (a pagina `/oie` funciona, mas a maioria dos paineis fica vazia ate ter dados reais acumulados). Docs: considerar limpar as 3 referencias secundarias remanescentes numa sessao futura, sem urgencia.
+
+---
