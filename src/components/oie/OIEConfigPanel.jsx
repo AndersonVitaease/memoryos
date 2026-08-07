@@ -25,6 +25,7 @@ const MODULE_LABELS = [
   { key: "regression", label: "Regression Analyzer", hint: "Compara sprints e detecta regressao de assinaturas" },
   { key: "evidence", label: "Evidence Engine", hint: "Costura analises em EvidencePackets com provenance" },
   { key: "explainer", label: "Explainer", hint: "Gera explicacoes determinísticas por template" },
+  { key: "prediction", label: "Anomaly Predictor", hint: "Regressão linear sobre buckets — prevê breach de limiares (determinístico, sem LLM)" },
   { key: "alerts", label: "Alertas (bus)", hint: "Publica critical/warning no OIEAlertBus (toasts + painel)" },
 ];
 
@@ -73,12 +74,21 @@ export default function OIEConfigPanel() {
   const [draftWarn, setDraftWarn] = useState(() => config.thresholds.failureRateWarning);
   const [draftCrit, setDraftCrit] = useState(() => config.thresholds.failureRateCritical);
   const [draftCooldown, setDraftCooldown] = useState(() => config.thresholds.alertCooldownMs);
+  const [draftHorizon, setDraftHorizon] = useState(() => config.thresholds.predictionHorizonBuckets);
+  const [draftMinSamples, setDraftMinSamples] = useState(() => config.thresholds.predictionMinSamples);
+  const [draftSlope, setDraftSlope] = useState(() => config.thresholds.predictionSlopeSignificance);
 
   useEffect(() => {
     setDraftWarn(config.thresholds.failureRateWarning);
     setDraftCrit(config.thresholds.failureRateCritical);
     setDraftCooldown(config.thresholds.alertCooldownMs);
-  }, [config.thresholds.failureRateWarning, config.thresholds.failureRateCritical, config.thresholds.alertCooldownMs]);
+    setDraftHorizon(config.thresholds.predictionHorizonBuckets);
+    setDraftMinSamples(config.thresholds.predictionMinSamples);
+    setDraftSlope(config.thresholds.predictionSlopeSignificance);
+  }, [
+    config.thresholds.failureRateWarning, config.thresholds.failureRateCritical, config.thresholds.alertCooldownMs,
+    config.thresholds.predictionHorizonBuckets, config.thresholds.predictionMinSamples, config.thresholds.predictionSlopeSignificance,
+  ]);
 
   const applyThresholds = () => {
     OIEConfig.update({
@@ -86,6 +96,9 @@ export default function OIEConfigPanel() {
         failureRateWarning: Math.max(0, Math.min(1, draftWarn || 0)),
         failureRateCritical: Math.max(0, Math.min(1, draftCrit || 0)),
         alertCooldownMs: Math.max(0, Math.round(draftCooldown || 0)),
+        predictionHorizonBuckets: Math.max(1, Math.round(draftHorizon || 3)),
+        predictionMinSamples: Math.max(2, Math.round(draftMinSamples || 4)),
+        predictionSlopeSignificance: Math.max(0, draftSlope || 0),
       },
     });
   };
@@ -165,6 +178,32 @@ export default function OIEConfigPanel() {
               min={0}
               step={1000}
               suffix="ms"
+            />
+            <NumberField
+              label="Horizonte de projeção (buckets)"
+              value={draftHorizon}
+              onChange={setDraftHorizon}
+              hint="Quantos buckets a frente o AnomalyPredictor extrapola. 3 = 3 dias (granularidade day)."
+              min={1}
+              step={1}
+              suffix="buckets"
+            />
+            <NumberField
+              label="Amostras mínimas para trend"
+              value={draftMinSamples}
+              onChange={setDraftMinSamples}
+              hint="Abaixo disso não projeta — poucos buckets = slope não confiável. Mín. 2."
+              min={2}
+              step={1}
+              suffix="buckets"
+            />
+            <NumberField
+              label="Slope mínimo (significância)"
+              value={draftSlope}
+              onChange={setDraftSlope}
+              hint="Slope por bucket acima do qual conta como 'subindo'. 0.02 = 2pts/bucket. 0 = qualquer subida."
+              min={0}
+              step={0.005}
             />
           </div>
           <div className="flex gap-2 mt-3">

@@ -54,6 +54,10 @@ export type { EvidencePacket, EvidenceClaim } from "./EvidenceEngine";
 // Fase 5 (Sprint 8) — Explainer (modulo final)
 export { Explainer } from "./Explainer";
 export type { Explanation, ExplanationSummary, Severity } from "./Explainer";
+
+// Sprint 11 — AnomalyPredictor: camada preditiva deterministica (least-squares sobre buckets)
+export { AnomalyPredictor } from "./AnomalyPredictor";
+export type { PredictionReport, PredictionFinding, PredictionFindingType, PredictionPoint } from "./AnomalyPredictor";
 // Track 1 (Sprint 9) — OIEAlertBus: promove OIE de shadow -> ativo (consultivo)
 export { OIEAlertBus, extractAlerts } from "./OIEAlertBus";
 export type { OIEAlert } from "./OIEAlertBus";

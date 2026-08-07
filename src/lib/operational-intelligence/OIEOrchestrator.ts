@@ -25,6 +25,7 @@ import { base44 } from "@/api/base44Client";
 import { CoverageAnalyzer, type CoverageAnalysis } from "./CoverageAnalyzer";
 import { DecisionAnalyzer, type DecisionAnalysis } from "./DecisionAnalyzer";
 import { RegressionAnalyzer, type RegressionReport } from "./RegressionAnalyzer";
+import { AnomalyPredictor, type PredictionReport } from "./AnomalyPredictor";
 import { EvidenceEngine, type EvidencePacket } from "./EvidenceEngine";
 import { Explainer, type Explanation, type ExplanationSummary } from "./Explainer";
 // Track 1 (promover a ativo, consultivo): publica findings critical/warning
@@ -40,6 +41,7 @@ export interface OIEAnalysisResult {
   readonly coverageAnalysis: CoverageAnalysis[] | null;
   readonly decisionAnalysis: DecisionAnalysis | null;
   readonly regressionReport: RegressionReport | null;
+  readonly predictionReport: PredictionReport | null;
   readonly evidencePackets: EvidencePacket[];
   readonly explanations: Explanation[];
   readonly explanationSummary: ExplanationSummary;
@@ -55,6 +57,7 @@ function _emptyResult(sessionId: string, executionId: string | undefined, errors
     coverageAnalysis: null,
     decisionAnalysis: null,
     regressionReport: null,
+    predictionReport: null,
     evidencePackets: Object.freeze([]),
     explanations: Object.freeze([]),
     explanationSummary: emptySummary,
@@ -77,6 +80,7 @@ export const OIEOrchestrator = {
     let coverageAnalysis: CoverageAnalysis[] | null = null;
     let decisionAnalysis: DecisionAnalysis | null = null;
     let regressionReport: RegressionReport | null = null;
+    let predictionReport: PredictionReport | null = null;
     const evidencePackets: EvidencePacket[] = [];
     const explanations: Explanation[] = [];
 
@@ -98,6 +102,11 @@ export const OIEOrchestrator = {
           .then((r) => { regressionReport = r; })
           .catch((err) => { errors.push(`RegressionAnalyzer failed: ${err}`); }));
       }
+      if (cfg.modules.prediction) {
+        tasks.push(AnomalyPredictor.predict("day", cfg)
+          .then((r) => { predictionReport = r; })
+          .catch((err) => { errors.push(`AnomalyPredictor failed: ${err}`); }));
+      }
       await Promise.all(tasks);
 
       // Evidence Engine costura as analises em packets. Se desligado, nao
@@ -113,6 +122,9 @@ export const OIEOrchestrator = {
         }
         if (regressionReport) {
           evidencePackets.push(...EvidenceEngine.fromRegression(regressionReport));
+        }
+        if (predictionReport) {
+          evidencePackets.push(...EvidenceEngine.fromPrediction(predictionReport));
         }
       }
 
@@ -153,6 +165,7 @@ export const OIEOrchestrator = {
       coverageAnalysis,
       decisionAnalysis,
       regressionReport,
+      predictionReport,
       evidencePackets: Object.freeze(evidencePackets),
       explanations: Object.freeze(explanations),
       explanationSummary: Object.freeze(explanationSummary),

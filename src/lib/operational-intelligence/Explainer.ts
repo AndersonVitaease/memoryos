@@ -192,6 +192,61 @@ const TEMPLATES: Record<string, TemplateFn> = {
       recommendation: "Verificar se ha load maior, timeout diminuido, ou recurso compartilhado saturado. Considerar rollback se ultrapassar limiar critico.",
     };
   },
+
+  // ── Anomaly Predictor (Sprint 11 — preditivo deterministico) ───────────────
+  failure_rate_rising: (p) => ({
+    title: "Taxa de falha em tendencia de alta",
+    severity: "warning",
+    causalChain: [
+      `Regressao linear (least-squares) sobre buckets de failure_rate mostra slope positivo: ${p.summary}.`,
+      "O sistema ainda nao cruzou o limiar critico, mas a direcao e de degradacao.",
+      "Se a tendencia persistir, a confiabilidade cai antes do proximo alerta critico.",
+    ],
+    evidenceRefs: p.claims.map(cite),
+    recommendation: "Investigar a causa do aumento (load, timeout, recurso saturado). Agir antes do breach — nao esperar virar critical.",
+  }),
+
+  failure_rate_projected_breach: (p) => ({
+    title: "Taxa de falha projetada para cruzar limiar critico",
+    severity: "critical",
+    causalChain: [
+      `A tendencia de failure_rate, extrapolada, cruza o limiar critico dentro do horizonte configurado: ${p.summary}.`,
+      "Predicao deterministica (least-squares sobre buckets recentes), nao palpite.",
+      "Sem intervencao, o sistema atinge failure rate critico no bucket projetado.",
+    ],
+    evidenceRefs: p.claims.map(cite),
+    recommendation: "Intervencao imediata: identificar o connector/assinatura que puxa a taxa e aplicar correcao ou rollback. Nao esperar o breach.",
+  }),
+
+  connector_degradation: (p) => {
+    const sevClaim = p.claims.find((c) => c.locator === "prediction.severity");
+    const severity: Severity = sevClaim?.value === "critical" ? "critical" : "warning";
+    return {
+      title: "Connector em degradacao",
+      severity,
+      causalChain: [
+        `A failure_rate deste connector sobe por bucket (slope positivo): ${p.summary}.`,
+        severity === "critical"
+          ? "A projecao cruza o limiar critico dentro do horizonte — breach iminente."
+          : "A projecao ainda nao cruza o limiar critico, mas a direcao e de degradacao.",
+        "Degradacao de connector individual precede queda de confiabilidade global.",
+      ],
+      evidenceRefs: p.claims.map(cite),
+      recommendation: "Verificar tokens, rate limits, scopes e saude do endpoint deste connector. Considerar circuit breaker preventivo.",
+    };
+  },
+
+  error_signature_accelerating: (p) => ({
+    title: "Assinatura de erro acelerando",
+    severity: "warning",
+    causalChain: [
+      `Uma error_signature cresce por bucket (slope positivo): ${p.summary}.`,
+      "Erro que era ocasional vira recorrente — tendencia de normalizacao da falha.",
+      "Se nao contido, domina o ranking de erros e eleva a failure rate global.",
+    ],
+    evidenceRefs: p.claims.map(cite),
+    recommendation: "Bisect para localizar a introducao da assinatura. Corrigir antes que vire padrao dominante.",
+  }),
 };
 
 // ── Explainer ─────────────────────────────────────────────────────────────────
