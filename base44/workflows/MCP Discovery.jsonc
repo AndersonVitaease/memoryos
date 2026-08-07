@@ -1,0 +1,45 @@
+{
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "0 3 * * *",
+      "one_time_date": null,
+      "timezone": "America/Sao_Paulo",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "mcp_discovery",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "discover": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "mcpDiscoverAll",
+            "args": {}
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "Descobrir tools dos servidores MCP",
+            "description": "tools/list em todos os MCPServerConfig habilitados"
+          }
+        }
+      }
+    ]
+  },
+  "description": "Discovery periodico de servidores MCP: roda tools/list em todos os MCPServerConfig habilitados e atualiza discovered_tools / last_discovered_at / last_error.",
+  "name": "MCP Discovery"
+}
