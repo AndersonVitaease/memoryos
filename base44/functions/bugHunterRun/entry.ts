@@ -557,10 +557,14 @@ export default async function (req) {
       let decision = null;
       try {
         const promptFn = finalMode === 'conversation' ? buildConversationPrompt : buildPrompt;
-        const llmRes = await base44.asServiceRole.integrations.Core.InvokeLLM({
-          prompt: promptFn(targetUrl, scenario, history.slice(-MAX_HISTORY_ITEMS), snapshotText, consoleErrorsText, { loginEmail: finalLoginEmail, loginPassword: finalLoginPassword }, refs, priorQuestions),
-          response_json_schema: DECISION_SCHEMA,
-        });
+        const llmRes = await withTimeout(
+          base44.asServiceRole.integrations.Core.InvokeLLM({
+            prompt: promptFn(targetUrl, scenario, history.slice(-MAX_HISTORY_ITEMS), snapshotText, consoleErrorsText, { loginEmail: finalLoginEmail, loginPassword: finalLoginPassword }, refs, priorQuestions),
+            response_json_schema: DECISION_SCHEMA,
+          }),
+          MCP_CALL_TIMEOUT_MS * 3,
+          'InvokeLLM'
+        );
         decision = llmRes;
       } catch (e) {
         history.push({ step, action: 'llm_decision', description: 'LLM call failed', error: e.message });
