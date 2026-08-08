@@ -27,6 +27,11 @@ const TIME_BUDGET_MS = 120000;
 // mais que isso. Sem este guardiao, um snapshot/navigate pendurado no Playwright
 // trava o loop e a funcao morre no limite de 300s sem persistir o resultado.
 const MCP_CALL_TIMEOUT_MS = 20000;
+// Timeout para TODAS as chamadas SDK (entity filter/update/create). Sem isto, uma
+// chamada SDK pendurada sob carga da plataforma trava a funcao ate o limite de
+// 300s e a entidade fica presa em "running" para sempre. 8s e suficiente para
+// operacoes normais; se passar, aborta e segue (best-effort).
+const SDK_TIMEOUT_MS = 8000;
 
 function withTimeout(promise, ms, label) {
   return Promise.race([
@@ -394,7 +399,7 @@ export default async function (req) {
 
     if (continuous && isResume) {
       try {
-        const rec = (await base44.asServiceRole.entities.BugHunterRun.filter({ run_id: runId }))[0];
+        const rec = (await withTimeout(base44.asServiceRole.entities.BugHunterRun.filter({ run_id: runId }), SDK_TIMEOUT_MS, 'resume_filter'))[0];
         if (rec) {
           runRecordId = rec.id;
           cumulativeQuestionsSent = rec.questions_sent || 0;
@@ -413,12 +418,12 @@ export default async function (req) {
     // ── Persiste/cria o registro da run ────────────────────────────────────
     try {
       if (continuous && runRecordId) {
-        await base44.asServiceRole.entities.BugHunterRun.update(runRecordId, {
+        await withTimeout(base44.asServiceRole.entities.BugHunterRun.update(runRecordId, {
           status: 'running',
           stop_requested: false,
-        });
+        }), SDK_TIMEOUT_MS, 'resume_update');
       } else {
-        const created = await base44.entities.BugHunterRun.create({
+        const created = await withTimeout(base44.entities.BugHunterRun.create({
           run_id: runId,
           target_url: targetUrl,
           mode: finalMode,
@@ -435,7 +440,7 @@ export default async function (req) {
           chunk_count: 0,
           chat_session_id: chatSessionId || '',
           stop_requested: false,
-        });
+        }), SDK_TIMEOUT_MS, 'run_create');
         runRecordId = created.id;
       }
     } catch (e) { /* best-effort */ }
@@ -451,6 +456,10 @@ export default async function (req) {
       await navigateWithRetry(targetUrl);
       history.push({ step: 0, action: 'browser_navigate', description: 'Navigated to ' + targetUrl });
     } catch (e) {
+      // Marca como failed ANTES de retornar — sem isto a entidade fica presa em "running".
+      if (runRecordId) {
+        try { await withTimeout(base44.asServiceRole.entities.BugHunterRun.update(runRecordId, { status: 'failed', history: JSON.stringify(history, null, 2) }), SDK_TIMEOUT_MS, 'nav_fail_persist'); } catch (er) { /* best-effort */ }
+      }
       return Response.json({ ok: false, error: 'Initial navigate failed: ' + e.message, run_id: runId, history }, { status: 502 });
     }
 
@@ -531,7 +540,7 @@ export default async function (req) {
       // Stop check (modo continuo): rele o registro a cada 5 passos.
       if (continuous && step % 5 === 0) {
         try {
-          const rec = (await base44.asServiceRole.entities.BugHunterRun.filter({ run_id: runId }))[0];
+          const rec = (await withTimeout(base44.asServiceRole.entities.BugHunterRun.filter({ run_id: runId }), SDK_TIMEOUT_MS, 'stop_check'))[0];
           if (rec && rec.stop_requested) {
             stoppedByUser = true;
             history.push({ step, action: 'stopped', description: 'Stop requested by user — ending chunk' });
@@ -602,12 +611,12 @@ export default async function (req) {
       // Sem isto, o frontend nao ve progresso durante o LLM e o watchdog dispara.
       if (runRecordId) {
         try {
-          await base44.asServiceRole.entities.BugHunterRun.update(runRecordId, {
+          await withTimeout(base44.asServiceRole.entities.BugHunterRun.update(runRecordId, {
             questions_sent: cumulativeQuestionsSent + questionsSent,
             questions_answered: cumulativeQuestionsAnswered + questionsAnswered,
             findings_count: cumulativeFindings + findings.length,
             history: JSON.stringify(history.slice(-12), null, 2),
-          });
+          }), SDK_TIMEOUT_MS, 'heartbeat');
         } catch (e) { /* best-effort */ }
       }
       try {
@@ -647,7 +656,7 @@ export default async function (req) {
             reportedBugSignatures.add(sig);
             const b = decision.bug;
             try {
-              const finding = await base44.entities.BugFinding.create({
+              const finding = await withTimeout(base44.entities.BugFinding.create({
                 run_id: runId,
                 target_url: targetUrl,
                 title: b.title,
@@ -659,7 +668,7 @@ export default async function (req) {
                 actual: '[CAPTURED PAGE CONTENT (last 1500 chars of snapshot)]\n' + responseEvidence + '\n\n[LLM ANALYSIS]\n' + (b.actual || ''),
                 console_errors: consoleErrors.map((m) => m.text || '').join('\n').slice(0, 4000),
                 status: 'open',
-              });
+              }), SDK_TIMEOUT_MS, 'finding_create');
               findings.push({ id: finding.id, title: finding.title, severity: finding.severity, category: finding.category });
             } catch (e) { /* finding creation failed; continue exploring */ }
           }
@@ -775,12 +784,12 @@ export default async function (req) {
       // do chunk, e o usuario acha que travou. Atualiza a cada 3 passos.
       if (runRecordId) {
         try {
-          await base44.asServiceRole.entities.BugHunterRun.update(runRecordId, {
+          await withTimeout(base44.asServiceRole.entities.BugHunterRun.update(runRecordId, {
             questions_sent: cumulativeQuestionsSent + questionsSent,
             questions_answered: cumulativeQuestionsAnswered + questionsAnswered,
             findings_count: cumulativeFindings + findings.length,
             history: JSON.stringify(history.slice(-12), null, 2),
-          });
+          }), SDK_TIMEOUT_MS, 'partial_persist');
         } catch (e) { /* best-effort */ }
       }
     }
