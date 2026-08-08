@@ -838,6 +838,9 @@ export default async function (req) {
     const totalAnswered = cumulativeQuestionsAnswered + questionsAnswered;
     const totalFindings = cumulativeFindings + findings.length;
     const mergedTranscript = cumulativeTranscript.concat(transcript);
+    // Cleanup: mantém apenas últimas 100 perguntas no transcript para evitar
+    // JSON gigante que fica lento para persistir/deserializar entre chunks.
+    const cleanedTranscript = mergedTranscript.slice(-100);
     const chunkDurationMs = Date.now() - START;
     const totalDurationMs = cumulativeDurationMs + chunkDurationMs;
     const newChunkCount = existingChunkCount + 1;
@@ -879,7 +882,7 @@ export default async function (req) {
           questions_sent: totalSent,
           questions_answered: totalAnswered,
           findings_count: totalFindings,
-          transcript: JSON.stringify(mergedTranscript, null, 2),
+          transcript: JSON.stringify(cleanedTranscript, null, 2),
           history: JSON.stringify(history, null, 2),
           duration_ms: totalDurationMs,
           chat_session_id: capturedSessionId,
@@ -910,7 +913,7 @@ export default async function (req) {
       questionsAnswered: totalAnswered,
       targetQuestions: targetQuestions || 0,
       minQuestions: MIN_QUESTIONS,
-      transcript: mergedTranscript,
+      transcript: cleanedTranscript,
       findingsCreated: findings.length,
       findings,
       history,
