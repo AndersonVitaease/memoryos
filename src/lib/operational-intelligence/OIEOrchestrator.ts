@@ -31,6 +31,7 @@ import { Explainer, type Explanation, type ExplanationSummary } from "./Explaine
 // Track 1 (promover a ativo, consultivo): publica findings critical/warning
 // no OIEAlertBus para o listener de UI mostrar toasts + popular o painel /oie.
 import { OIEAlertBus, extractAlerts } from "./OIEAlertBus";
+import { OIEBugFindingBridge } from "./OIEBugFindingBridge";
 import { OIEConfig } from "./OIEConfig";
 
 // ── Tipos ────────────────────────────────────────────────────────────────────
@@ -191,6 +192,17 @@ export const OIEOrchestrator = {
         completedAt: result.completedAt,
       });
       if (alerts.length > 0) OIEAlertBus.publish(alerts);
+    } catch { /* nunca quebra o orchestrator */ }
+
+    // Ponte OIE -> BugFinding: persiste findings critical/warning como
+    // BugFinding para que cheguem ao BugInsightsChat (unifica observacao
+    // interna do OIE com a externa do Playwright Bug Hunter). Fire-and-forget.
+    try {
+      OIEBugFindingBridge.publish(
+        result.explanations,
+        result.sessionId,
+        result.executionId,
+      ).catch(() => {});
     } catch { /* nunca quebra o orchestrator */ }
 
     return Object.freeze(result);
