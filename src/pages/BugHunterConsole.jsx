@@ -222,7 +222,7 @@ export default function BugHunterConsole() {
           return;
         }
       } catch (e) {}
-      if (Date.now() - startTime > 180000) {
+      if (Date.now() - startTime > 280000) {
         clearInterval(pollIntervalRef.current); pollIntervalRef.current = null;
         setAutoRunning(false); setBgRunId(null);
         localStorage.removeItem(LOCALSTORAGE_KEY);
