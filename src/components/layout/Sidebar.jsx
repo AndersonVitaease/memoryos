@@ -24,6 +24,8 @@ export const CORE_NAV_ITEMS = [
 ];
 
 export const DEV_NAV_ITEMS = [
+  { label: "Bug Hunter", icon: Bug, path: "/bug-hunter" },
+  { label: "OIE — Intelligence Engine", icon: Activity, path: "/oie" },
   { label: "Drive Debug Panel", icon: Bug, path: "/drive-debug" },
   { label: "Memory Engine", icon: Cpu, path: "/memory-engine" },
   { label: "Cognitive Engine", icon: Network, path: "/cognitive-engine" },
