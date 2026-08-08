@@ -1,0 +1,293 @@
+import React, { useState, useEffect, useCallback } from "react";
+import { base44 } from "@/api/base44Client";
+import {
+  Bug, Loader2, RefreshCw, Globe, Camera, TerminalSquare,
+  MousePointerClick, XCircle, CheckCircle2, AlertTriangle, Power,
+} from "lucide-react";
+
+/**
+ * BugHunterConsole — painel de teste manual do Playwright MCP (Bug Hunter infra).
+ *
+ * Permite dirigir o browser headless da VPS manualmente via mcpClientCall
+ * (action: "call") para validar a infraestrutura antes do orquestrador
+ * automatizado (bugHunterRun). Cada botao chama uma tool do Playwright MCP:
+ *   - browser_navigate    -> abrir URL alvo
+ *   - browser_snapshot     -> ler arvore de acessibilidade (estrutura da pagina)
+ *   - browser_console_messages -> capturar erros de console
+ *   - browser_take_screenshot -> evidencia visual
+ *   - browser_close        -> encerrar contexto (libera RAM na VPS)
+ *
+ * O serverId do MCPServerConfig 'playwright-bug-hunter' e resolvido no mount.
+ */
+const SERVER_NAME = "playwright-bug-hunter";
+
+export default function BugHunterConsole() {
+  const [serverId, setServerId] = useState(null);
+  const [targetUrl, setTargetUrl] = useState("https://ever-mind-core.base44.app/");
+  const [busy, setBusy] = useState(null);
+  const [lastResult, setLastResult] = useState(null);
+  const [error, setError] = useState(null);
+  const [log, setLog] = useState([]);
+
+  // Resolve o serverId do registro MCPServerConfig pelo name.
+  useEffect(() => {
+    (async () => {
+      try {
+        const records = await base44.entities.MCPServerConfig.filter({ name: SERVER_NAME });
+        if (records.length > 0) {
+          setServerId(records[0].id);
+        } else {
+          setError(`Registro MCPServerConfig '${SERVER_NAME}' nao encontrado.`);
+        }
+      } catch (e) {
+        setError(`Erro ao buscar MCPServerConfig: ${e.message}`);
+      }
+    })();
+  }, []);
+
+  const appendLog = (entry) => setLog((prev) => [...prev.slice(-50), { ts: new Date().toLocaleTimeString(), ...entry }]);
+
+  const callTool = useCallback(async (toolName, args = {}, label) => {
+    if (!serverId) {
+      setError("ServerId nao resolvido ainda.");
+      return null;
+    }
+    setBusy(toolName);
+    setError(null);
+    setLastResult(null);
+    const t0 = Date.now();
+    try {
+      const res = await base44.functions.invoke("mcpClientCall", {
+        serverId,
+        action: "call",
+        toolName,
+        arguments: args,
+      });
+      const data = res?.data ?? res;
+      if (data?.error) {
+        setError(data.error);
+        appendLog({ tool: label || toolName, ok: false, ms: Date.now() - t0, msg: data.error });
+        return null;
+      }
+      setLastResult(data?.result ?? data);
+      appendLog({ tool: label || toolName, ok: true, ms: Date.now() - t0 });
+      return data?.result ?? data;
+    } catch (e) {
+      const msg = e?.message ?? "Falha na chamada MCP";
+      setError(msg);
+      appendLog({ tool: label || toolName, ok: false, ms: Date.now() - t0, msg });
+      return null;
+    } finally {
+      setBusy(null);
+    }
+  }, [serverId]);
+
+  const handleNavigate = () => callTool("browser_navigate", { url: targetUrl }, "Navigate");
+  const handleSnapshot = () => callTool("browser_snapshot", {}, "Snapshot");
+  const handleConsole = () => callTool("browser_console_messages", { level: "error" }, "Console Errors");
+  const handleScreenshot = () => callTool("browser_take_screenshot", {}, "Screenshot");
+  const handleClose = () => callTool("browser_close", {}, "Close");
+
+  return (
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6">
+      <div className="max-w-5xl mx-auto space-y-5">
+        {/* Header */}
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center">
+            <Bug className="w-5 h-5 text-amber-400" />
+          </div>
+          <div>
+            <h1 className="text-lg font-semibold">Bug Hunter Console</h1>
+            <p className="text-xs text-zinc-500">Playwright MCP — teste manual da infraestrutura</p>
+          </div>
+          <div className="ml-auto flex items-center gap-2 text-xs">
+            <span className={`px-2 py-1 rounded-md font-mono ${serverId ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-zinc-800 text-zinc-500"}`}>
+              {serverId ? "server conectado" : "resolvendo server..."}
+            </span>
+          </div>
+        </div>
+
+        {/* Target URL */}
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 space-y-3">
+          <label className="block text-xs font-medium text-zinc-400">URL alvo (app publicado)</label>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+              <input
+                value={targetUrl}
+                onChange={(e) => setTargetUrl(e.target.value)}
+                placeholder="https://seu-app.base44.app/"
+                className="w-full pl-9 pr-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-amber-500/40 focus:border-amber-500/40"
+              />
+            </div>
+            <button
+              onClick={handleNavigate}
+              disabled={!serverId || !!busy}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-amber-500 text-zinc-950 hover:bg-amber-400 disabled:opacity-40 transition"
+            >
+              {busy === "browser_navigate" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Globe className="w-4 h-4" />}
+              Navegar
+            </button>
+          </div>
+        </div>
+
+        {/* Action buttons */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <ActionButton
+            icon={MousePointerClick}
+            label="Snapshot"
+            sub="árvore de acessibilidade"
+            onClick={handleSnapshot}
+            busy={busy === "browser_snapshot"}
+            disabled={!serverId || !!busy}
+          />
+          <ActionButton
+            icon={TerminalSquare}
+            label="Console Errors"
+            sub="erros de JS da página"
+            onClick={handleConsole}
+            busy={busy === "browser_console_messages"}
+            disabled={!serverId || !!busy}
+          />
+          <ActionButton
+            icon={Camera}
+            label="Screenshot"
+            sub="evidência visual"
+            onClick={handleScreenshot}
+            busy={busy === "browser_take_screenshot"}
+            disabled={!serverId || !!busy}
+          />
+          <ActionButton
+            icon={Power}
+            label="Close"
+            sub="encerrar contexto (libera RAM)"
+            onClick={handleClose}
+            busy={busy === "browser_close"}
+            disabled={!serverId || !!busy}
+            danger
+          />
+        </div>
+
+        {/* Error banner */}
+        {error && (
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-300">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+            <span className="font-mono text-xs break-all">{error}</span>
+          </div>
+        )}
+
+        {/* Result */}
+        {lastResult && (
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-800">
+              <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">Resultado</span>
+              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+            </div>
+            <ResultViewer result={lastResult} />
+          </div>
+        )}
+
+        {/* Log */}
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-800">
+            <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">Log de execucao</span>
+            <button onClick={() => setLog([])} className="text-xs text-zinc-500 hover:text-zinc-300 flex items-center gap-1">
+              <XCircle className="w-3 h-3" /> limpar
+            </button>
+          </div>
+          <div className="max-h-56 overflow-y-auto p-3 space-y-1 font-mono text-xs">
+            {log.length === 0 ? (
+              <p className="text-zinc-600 italic">Nenhuma chamada ainda.</p>
+            ) : (
+              log.slice().reverse().map((e, i) => (
+                <div key={i} className="flex items-center gap-2 py-0.5">
+                  <span className="text-zinc-600">{e.ts}</span>
+                  {e.ok ? <CheckCircle2 className="w-3 h-3 text-emerald-400" /> : <XCircle className="w-3 h-3 text-red-400" />}
+                  <span className={e.ok ? "text-zinc-300" : "text-red-300"}>{e.tool}</span>
+                  <span className="text-zinc-600 ml-auto">{e.ms}ms</span>
+                  {!e.ok && e.msg && <span className="text-red-400/70 truncate max-w-[200px]" title={e.msg}>{e.msg}</span>}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <p className="text-xs text-zinc-600 leading-relaxed">
+          Este console e apenas para validacao manual da infra. O orquestrador automatizado
+          (<span className="font-mono">bugHunterRun</span>) — loop LLM + Playwright que cria findings em
+          <span className="font-mono"> BugFinding</span> — sera implementado na proxima sprint.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ActionButton({ icon: Icon, label, sub, onClick, busy, disabled, danger }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`flex flex-col items-start gap-1 p-3 rounded-xl border text-left transition disabled:opacity-40 ${
+        danger
+          ? "border-red-500/20 bg-red-500/5 hover:bg-red-500/10"
+          : "border-zinc-800 bg-zinc-900/50 hover:bg-zinc-800/50"
+      }`}
+    >
+      <div className="flex items-center gap-2">
+        {busy ? <Loader2 className="w-4 h-4 animate-spin text-amber-400" /> : <Icon className={`w-4 h-4 ${danger ? "text-red-400" : "text-amber-400"}`} />}
+        <span className="text-sm font-medium text-zinc-200">{label}</span>
+      </div>
+      <span className="text-[10px] text-zinc-500">{sub}</span>
+    </button>
+  );
+}
+
+function ResultViewer({ result }) {
+  // Screenshot: Playwright retorna { images: [{ data, mimeType }], ... } em structuredContent
+  if (result?.images?.length > 0) {
+    const img = result.images[0];
+    return (
+      <div className="p-3">
+        <img
+          src={`data:${img.mimeType || "image/png"};base64,${img.data}`}
+          alt="screenshot"
+          className="w-full rounded-lg border border-zinc-800"
+        />
+      </div>
+    );
+  }
+  // Snapshot: arvore de acessibilidade em { content: [...] }
+  if (result?.content?.length > 0) {
+    return (
+      <div className="p-3 max-h-80 overflow-y-auto">
+        {result.content.map((c, i) => (
+          <pre key={i} className="text-xs text-zinc-400 whitespace-pre-wrap break-words font-mono">
+            {c.text || JSON.stringify(c, null, 2)}
+          </pre>
+        ))}
+      </div>
+    );
+  }
+  // Console messages: { messages: [...] }
+  if (result?.messages) {
+    return (
+      <div className="p-3 space-y-1 max-h-80 overflow-y-auto">
+        {result.messages.length === 0 ? (
+          <p className="text-xs text-zinc-500 italic">Nenhum erro de console.</p>
+        ) : (
+          result.messages.map((m, i) => (
+            <div key={i} className="text-xs font-mono p-2 rounded bg-red-500/5 border border-red-500/10 text-red-300">
+              <span className="text-red-500">[{m.type || "error"}]</span> {m.text}
+            </div>
+          ))
+        )}
+      </div>
+    );
+  }
+  // Generic
+  return (
+    <pre className="p-3 max-h-80 overflow-y-auto text-xs text-zinc-400 whitespace-pre-wrap break-words font-mono">
+      {JSON.stringify(result, null, 2)}
+    </pre>
+  );
+}

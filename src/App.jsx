@@ -155,6 +155,7 @@ const SprintP10Page = lazy(() => import('@/pages/SprintP10Page'));
 const SprintWE01Page = lazy(() => import('@/pages/SprintWE01Page'));
 const TravelportAuthTestPage = lazy(() => import('@/pages/TravelportAuthTestPage'));
 const OIEPage = lazy(() => import('@/pages/OIEPage'));
+const BugHunterConsole = lazy(() => import('@/pages/BugHunterConsole'));
 
 const AuthenticatedApp = () => {
   console.log('[RENDER] AuthenticatedApp');
@@ -325,6 +326,7 @@ const AuthenticatedApp = () => {
           <Route path="/sprint-we01" element={<SprintWE01Page />} />
           <Route path="/travelport-auth-test" element={<TravelportAuthTestPage />} />
           <Route path="/oie" element={<OIEPage />} />
+          <Route path="/bug-hunter" element={<BugHunterConsole />} />
         </Route>
       </Route>
       <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />
