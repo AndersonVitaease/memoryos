@@ -71,6 +71,26 @@ function extractConsoleErrors(cons) {
   return [];
 }
 
+// Extrai refs de elementos conhecidos deterministicamente da arvore de
+// acessibilidade (snapshot). O LLM e instavel em procurar o textarea do chat
+// num snapshot de milhares de chars; aqui achamos por regex e injetamos o ref
+// direto no prompt, eliminando a dependencia de "o LLM achou o ref certo".
+function extractElementRefs(snapshotText) {
+  const refs = {};
+  if (!snapshotText || typeof snapshotText !== 'string') return refs;
+  // Textarea do chat (placeholder "Converse com sua memoria...")
+  const chatMatch = snapshotText.match(/(?:textbox|input|textarea)[^\n]*(?:Converse|memoria|mensagem)[^\n]*\[ref=(\w+)\]/i);
+  if (chatMatch) refs.chatInput = chatMatch[1];
+  // Campos de login
+  const emailMatch = snapshotText.match(/(?:textbox|input)[^\n]*(?:email|e-mail)[^\n]*\[ref=(\w+)\]/i);
+  if (emailMatch) refs.email = emailMatch[1];
+  const passwordMatch = snapshotText.match(/(?:textbox|input)[^\n]*(?:password|senha)[^\n]*\[ref=(\w+)\]/i);
+  if (passwordMatch) refs.password = passwordMatch[1];
+  const submitMatch = snapshotText.match(/(?:button)[^\n]*(?:Entrar|Login|Sign in|Acessar|Continuar|Acessar conta|Entrar na conta)[^\n]*\[ref=(\w+)\]/i);
+  if (submitMatch) refs.submit = submitMatch[1];
+  return refs;
+}
+
 function buildPrompt(targetUrl, scenario, history, snapshotText, consoleErrorsText) {
   const historyText = history.map((h) => `${h.step}. ${h.action}: ${h.description}${h.error ? ' [ERROR: ' + h.error + ']' : ''}`).join('\n') || '(none yet)';
   const goal = scenario || 'Freely explore the app by clicking links and buttons, filling forms, and navigating between pages. Look for JavaScript console errors, broken flows, missing content, visual glitches, and auth issues.';
@@ -110,7 +130,8 @@ function buildPrompt(targetUrl, scenario, history, snapshotText, consoleErrorsTe
   ].join('\n');
 }
 
-function buildConversationPrompt(targetUrl, scenario, history, snapshotText, consoleErrorsText, ctx) {
+function buildConversationPrompt(targetUrl, scenario, history, snapshotText, consoleErrorsText, ctx, refs) {
+  const _refs = refs || {};
   const historyText = history.map((h) => `${h.step}. ${h.action}: ${h.description}${h.error ? ' [ERROR: ' + h.error + ']' : ''}`).join('\n') || '(none yet)';
   const loginHint = (ctx && ctx.loginEmail && ctx.loginPassword)
     ? '\nLOGIN CREDENTIALS (use them if you encounter a login page): email="' + ctx.loginEmail + '" password="' + ctx.loginPassword + '". Fill the email field, click continue/next, fill the password field, then submit. Do NOT report the login flow itself as a bug.'
