@@ -22,7 +22,7 @@ const MAX_SNAPSHOT_CHARS = 12000;
 const MAX_HISTORY_ITEMS = 12;
 // Orcamento de tempo por chunk: 200s deixa margem segura sob o limite de 5min
 // (300s) da plataforma, considerando login (~10s) + navigate + capture (~10s).
-const TIME_BUDGET_MS = 170000;
+const TIME_BUDGET_MS = 120000;
 // Timeout por chamada MCP: nenhuma chamada individual pode bloquear o loop por
 // mais que isso. Sem este guardiao, um snapshot/navigate pendurado no Playwright
 // trava o loop e a funcao morre no limite de 300s sem persistir o resultado.
@@ -569,8 +569,8 @@ export default async function (req) {
         /* non-fatal: keep going with default snapshotText */
       }
       // Hard-stop: se ja passamos de 250s, persiste agora (nao espera a proxima iteracao).
-      if ((Date.now() - START) > 250000) {
-        history.push({ step, action: 'hard_stop', description: 'Hard stop at >250s — persisting now' });
+      if ((Date.now() - START) > 150000) {
+        history.push({ step, action: 'hard_stop', description: 'Hard stop at >150s — persisting now' });
         break;
       }
       if (justSentMessage && transcript.length > 0) {
@@ -593,8 +593,8 @@ export default async function (req) {
       // Pre-LLM hard stop: o InvokeLLM pode levar ate 60s. Se estamos alem de
       // 170s, nao inicia o LLM — persiste agora para nao ser morto pelo limite
       // de 300s da plataforma no meio do persist final.
-      if ((Date.now() - START) > 170000) {
-        history.push({ step, action: 'pre_llm_stop', description: 'Hard stop before LLM (>170s) — persisting now' });
+      if ((Date.now() - START) > 120000) {
+        history.push({ step, action: 'pre_llm_stop', description: 'Hard stop before LLM (>120s) — persisting now' });
         break;
       }
       let decision = null;
@@ -605,7 +605,7 @@ export default async function (req) {
             prompt: promptFn(targetUrl, scenario, history.slice(-MAX_HISTORY_ITEMS), snapshotText, consoleErrorsText, { loginEmail: finalLoginEmail, loginPassword: finalLoginPassword }, refs, priorQuestions),
             response_json_schema: DECISION_SCHEMA,
           }),
-          MCP_CALL_TIMEOUT_MS * 3,
+          45000,
           'InvokeLLM'
         );
         decision = llmRes;
