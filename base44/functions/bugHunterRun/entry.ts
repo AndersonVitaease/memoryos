@@ -731,7 +731,7 @@ export default async function (req) {
       // aparentar travamento. Agora so skip se houver botao de LOGIN explicito
       // (refs.submit = "Entrar"/"Login"/"Sign in"). typeViaEvaluate ja retorna
       // "no-textarea" em paginas de login (so ha inputs, nenhum textarea).
-      if (finalMode === 'conversation' && na && na.tool === 'browser_type' && na.submit === true && na.text && !refs.submit) {
+      if (finalMode === 'conversation' && na && na.tool === 'browser_type' && na.text && !refs.submit) {
         try {
           const result = await typeViaEvaluate(na.text);
           const r = String(result);
@@ -779,7 +779,7 @@ export default async function (req) {
         history.push({ step, action: 'none', description: 'No action' });
       }
 
-      justSentMessage = !!(na && na.tool === 'browser_type' && na.submit === true);
+      justSentMessage = !!(domSent || (na && na.tool === 'browser_type' && na.submit === true));
       if (justSentMessage && na.text) {
         questionsSent++;
         lastSentText = na.text;
