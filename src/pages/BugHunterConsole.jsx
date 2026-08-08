@@ -3,7 +3,7 @@ import { base44 } from "@/api/base44Client";
 import {
   Bug, Loader2, RefreshCw, Globe, Camera, TerminalSquare,
   MousePointerClick, XCircle, CheckCircle2, AlertTriangle, Power,
-  Sparkles, Play, MessageSquare, Compass,
+  Sparkles, Play, MessageSquare, Compass, Repeat, Plug, Brain,
 } from "lucide-react";
 import BugFindingsList from "@/components/bug-hunter/BugFindingsList";
 
@@ -111,6 +111,23 @@ export default function BugHunterConsole() {
   }, []);
 
   useEffect(() => { loadFindings(); }, [loadFindings]);
+
+  // Cenarios prontos — preenchem modo + scenario + maxSteps em um clique.
+  const applyPreset = (key) => {
+    if (key === "repetition") {
+      setMode("conversation");
+      setScenario("Teste de TEIMOSIA/REPETICAO. Faca uma pergunta factual ao chat (ex: 'quais sao minhas tarefas pendentes?' ou 'quais emails recebi hoje?'). Espere a resposta. Depois FAC A MESMA PERGUNTA DE NOVO. Espere. Depois peca explicitamente 'pesquise novamente' ou 'quero que pesquise de novo'. O comportamento CORRETO e o MemoryOS re-executar a busca. Se em vez disso o assistente RECUSAR ou afirmar que ja pesquisou ('ja pesquisei', 'pesquisei 3 vezes', 'ja respondi isso', 'nao preciso pesquisar de novo'), isso e um BUG DE COMPORTAMENTO (teimosia) — reporte como finding categoria functional, severidade high, com a frase exata da recusa no campo actual.");
+      setMaxSteps("14");
+    } else if (key === "connectors") {
+      setMode("conversation");
+      setScenario("Proble TODOS os connectors do MemoryOS (Google Workspace: Gmail/Drive/Calendar, Microsoft 365: Outlook/OneDrive/Calendar, GitHub, WhatsApp). Para cada connector faca UMA pergunta que exercite uma capability, avalie a resposta contra os BUG CRITERIA, depois passe ao proximo.");
+      setMaxSteps("16");
+    } else if (key === "continuity") {
+      setMode("conversation");
+      setScenario("Teste de CONTINUIDADE DE MEMORIA. Faca uma pergunta que dependa de contexto pessoal do usuario (ex: 'o que voce sabe sobre mim?'). Depois faca uma pergunta de follow-up que so faz sentido com a resposta anterior. Avalie se o MemoryOS demonstra continuidade citando o contexto anterior. Se a resposta ignora o contexto anterior ou age como se fosse uma conversa nova, reporte como bug (categoria data, severidade high).");
+      setMaxSteps("12");
+    }
+  };
 
   const handleAutoRun = async () => {
     if (!targetUrl) return;
@@ -294,6 +311,16 @@ export default function BugHunterConsole() {
               : "O LLM navega o app livremente clicando em links e botoes, procurando erros de console e fluxos quebrados."}
           </p>
 
+          {/* Cenarios prontos */}
+          <div className="space-y-1.5">
+            <span className="block text-[10px] font-medium text-zinc-500">Cenarios prontos (clique para preencher)</span>
+            <div className="flex flex-wrap gap-1.5">
+              <PresetChip label="Teimosia / Repeticao" icon={Repeat} onClick={() => applyPreset("repetition")} />
+              <PresetChip label="Probar todos os connectors" icon={Plug} onClick={() => applyPreset("connectors")} />
+              <PresetChip label="Continuidade de memoria" icon={Brain} onClick={() => applyPreset("continuity")} />
+            </div>
+          </div>
+
           {/* Login credentials (conversation mode only) */}
           {mode === "conversation" && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 rounded-lg bg-zinc-900/60 border border-zinc-800">
@@ -426,6 +453,18 @@ function SeverityBadge({ severity }) {
     <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-medium border shrink-0 ${cls}`}>
       {severity || "medium"}
     </span>
+  );
+}
+
+function PresetChip({ label, icon: Icon, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium bg-zinc-900 border border-zinc-800 text-zinc-300 hover:bg-zinc-800 hover:border-violet-500/40 hover:text-violet-300 transition"
+    >
+      <Icon className="w-3.5 h-3.5" />
+      {label}
+    </button>
   );
 }
 
