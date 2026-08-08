@@ -545,6 +545,8 @@ export default async function (req) {
     let targetReached = false;
 
     for (let step = 1; step <= maxSteps; step++) {
+      const elapsed = Date.now() - START;
+      if (step % 5 === 0) console.log(`[bugHunterRun] Step ${step}, elapsed ${(elapsed/1000).toFixed(1)}s, asked ${cumulativeQuestionsSent + questionsSent}, answered ${cumulativeQuestionsAnswered + questionsAnswered}, findings ${cumulativeFindings + findings.length}`);
       // Stop check (modo continuo): rele o registro a cada 5 passos.
       if (continuous && step % 5 === 0) {
         try {
@@ -560,7 +562,8 @@ export default async function (req) {
       // segura sob o limite de 5min (300s) da plataforma e sempre persistir o resultado.
       if ((Date.now() - START) > TIME_BUDGET_MS) {
         timeBudgetHit = true;
-        history.push({ step, action: 'time_budget', description: 'Time budget reached (' + TIME_BUDGET_MS + 'ms)' + (continuous ? ' — will request next chunk' : ' — finishing run') });
+        console.log('[bugHunterRun] TIME_BUDGET_HIT at step ' + step + ', elapsed ' + (Date.now() - START) + 'ms');
+      history.push({ step, action: 'time_budget', description: 'Time budget reached (' + TIME_BUDGET_MS + 'ms)' + (continuous ? ' — will request next chunk' : ' — finishing run') });
         break;
       }
       // Meta de perguntas (modo continuo): para ao alcancar o alvo acumulado.
@@ -587,7 +590,8 @@ export default async function (req) {
       }
       // Hard-stop: se ja passamos de 250s, persiste agora (nao espera a proxima iteracao).
       if ((Date.now() - START) > 250000) {
-        history.push({ step, action: 'hard_stop', description: 'Hard stop at >150s — persisting now' });
+        console.log('[bugHunterRun] HARD_STOP at step ' + step + ', elapsed ' + (Date.now() - START) + 'ms, asked ' + (cumulativeQuestionsSent + questionsSent));
+      history.push({ step, action: 'hard_stop', description: 'Hard stop at >150s — persisting now' });
         break;
       }
       if (justSentMessage && transcript.length > 0) {
