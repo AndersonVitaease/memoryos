@@ -4,6 +4,7 @@ import {
   Bug, Loader2, Send, Sparkles, RefreshCw, Lightbulb,
   TrendingDown, Wrench, ShieldAlert, Brain, ChevronDown, ChevronRight,
 } from "lucide-react";
+import CorrectionBriefModal from "@/components/bug-hunter/CorrectionBriefModal";
 
 const SUGGESTED_QUESTIONS = [
   "Quais padroes recorrentes voce ve nos bugs encontrados?",
@@ -22,6 +23,7 @@ export default function BugInsightsChat() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [showBriefModal, setShowBriefModal] = useState(false);
   const scrollRef = useRef(null);
 
   // Load findings
@@ -156,6 +158,15 @@ export default function BugInsightsChat() {
             {loadingFindings ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
             Atualizar
           </button>
+          <button
+            onClick={() => setShowBriefModal(true)}
+            disabled={selectedCount === 0}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-500/15 border border-amber-500/30 text-amber-400 hover:bg-amber-500/20 transition disabled:opacity-40"
+            title={selectedCount === 0 ? "Selecione bugs para gerar o brief" : "Gera brief de correcao unificado (bugs + OIE)"}
+          >
+            <Wrench className="w-3.5 h-3.5" />
+            Brief de Correcao
+          </button>
         </div>
       </header>
 
@@ -267,6 +278,13 @@ export default function BugInsightsChat() {
           </div>
         </main>
       </div>
+
+      {showBriefModal && (
+        <CorrectionBriefModal
+          findings={findings.filter((f) => selectedIds.has(f.id))}
+          onClose={() => setShowBriefModal(false)}
+        />
+      )}
     </div>
   );
 }
