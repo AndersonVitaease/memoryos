@@ -29,7 +29,12 @@ const DECISION_SCHEMA = {
       type: 'object',
       properties: {
         tool: { type: 'string', enum: ['browser_navigate', 'browser_click', 'browser_type', 'browser_snapshot', 'browser_navigate_back', 'browser_press_key', 'none'] },
-        args: { type: 'object', description: 'Tool arguments: browser_navigate={url}, browser_click={target,element}, browser_type={target,text,submit}, browser_press_key={key}, browser_snapshot={}, browser_navigate_back={}' },
+        url: { type: 'string', description: 'URL for browser_navigate (e.g. "https://example.com/page")' },
+        target: { type: 'string', description: 'Element ref from the snapshot for browser_click/browser_type (e.g. "s1e2")' },
+        element: { type: 'string', description: 'Human-readable description of the target element (optional)' },
+        text: { type: 'string', description: 'Text to type into the field for browser_type' },
+        submit: { type: 'boolean', description: 'For browser_type: press Enter after typing (true to send chat message / submit form)' },
+        key: { type: 'string', description: 'Key to press for browser_press_key (e.g. "Enter")' },
         description: { type: 'string', description: 'Human-readable description of what this action does' }
       },
       required: ['tool']
@@ -76,16 +81,16 @@ function buildPrompt(targetUrl, scenario, history, snapshotText, consoleErrorsTe
     'TARGET URL: ' + targetUrl,
     'EXPLORATION GOAL: ' + goal,
     '',
-    'AVAILABLE PLAYWRIGHT MCP TOOLS (use these in next_action.tool):',
-    '- browser_navigate       args: { url }                          -> open a URL',
-    '- browser_click          args: { target, element }              -> click an element (target is the ref from the snapshot, e.g. "s1e2")',
-    '- browser_type          args: { target, text, submit }          -> type text into an input (target is the ref from the snapshot; submit=true to press Enter after)',
-    '- browser_press_key     args: { key }                           -> press a keyboard key (e.g. "Enter")',
-    '- browser_snapshot      args: {}                                -> re-read the page structure',
-    '- browser_navigate_back args: {}                                -> go back to previous page',
-    '- none                  args: {}                                -> do nothing this step',
+    'AVAILABLE PLAYWRIGHT MCP TOOLS (set next_action.tool and the corresponding flat fields):',
+    '- browser_navigate       fields: url="https://..."                                      -> open a URL',
+    '- browser_click          fields: target="s1e2" element="login button"                    -> click an element (target is the ref from the snapshot)',
+    '- browser_type          fields: target="s1e2" text="hello" submit=true                   -> type text into an input (target is the ref; submit=true presses Enter after)',
+    '- browser_press_key     fields: key="Enter"                                             -> press a keyboard key',
+    '- browser_snapshot      fields: (none)                                                  -> re-read the page structure',
+    '- browser_navigate_back fields: (none)                                                  -> go back to previous page',
+    '- none                   fields: (none)                                                  -> do nothing this step',
     '',
-    'NOTE: The "target" parameter must be a ref string from the snapshot above (e.g. "s1e2"). The "element" parameter is a human-readable description (optional).',
+    'NOTE: "target" must be a ref string from the snapshot above (e.g. "s1e2"). "element" is a human-readable description (optional). For browser_type, set submit=true to press Enter after typing (useful for sending a chat message or submitting a form).',
     '',
     'PREVIOUS ACTIONS TAKEN:',
     historyText,
@@ -119,16 +124,16 @@ function buildConversationPrompt(targetUrl, scenario, history, snapshotText, con
     'CONVERSATION GOAL: ' + goal,
     loginHint,
     '',
-    'AVAILABLE PLAYWRIGHT MCP TOOLS (use these in next_action.tool):',
-    '- browser_navigate       args: { url }                          -> open a URL',
-    '- browser_click          args: { target, element }              -> click an element (target is the ref from the snapshot, e.g. "s1e2")',
-    '- browser_type          args: { target, text, submit }          -> type text into an input (target is the ref from the snapshot; set submit=true to press Enter after typing — use this to send a chat message)',
-    '- browser_press_key     args: { key }                           -> press a keyboard key (e.g. "Enter")',
-    '- browser_snapshot      args: {}                                -> re-read the page structure (use AFTER sending a message to read the assistant response)',
-    '- browser_navigate_back args: {}                                -> go back to previous page',
-    '- none                  args: {}                                -> do nothing this step',
+    'AVAILABLE PLAYWRIGHT MCP TOOLS (set next_action.tool and the corresponding flat fields):',
+    '- browser_navigate       fields: url="https://..."                                      -> open a URL',
+    '- browser_click          fields: target="s1e2" element="login button"                    -> click an element (target is the ref from the snapshot)',
+    '- browser_type          fields: target="s1e2" text="hello" submit=true                   -> type text into an input (target is the ref; submit=true presses Enter after — use this to send a chat message)',
+    '- browser_press_key     fields: key="Enter"                                             -> press a keyboard key',
+    '- browser_snapshot      fields: (none)                                                  -> re-read the page structure (use AFTER sending a message to read the assistant response)',
+    '- browser_navigate_back fields: (none)                                                  -> go back to previous page',
+    '- none                   fields: (none)                                                  -> do nothing this step',
     '',
-    'NOTE: The "target" parameter must be a ref string from the snapshot above (e.g. "s1e2"). The "element" parameter is a human-readable description (optional).',
+    'NOTE: "target" must be a ref string from the snapshot above (e.g. "s1e2"). For browser_type, set submit=true to press Enter after typing (sends chat message or submits form).',
     '',
     'CONVERSATION HISTORY SO FAR:',
     historyText,
@@ -141,15 +146,15 @@ function buildConversationPrompt(targetUrl, scenario, history, snapshotText, con
     '',
     'CRITICAL RULES:',
     '- NEVER use browser_navigate to go to a URL you are already on. If the Page URL in the snapshot matches your target, INTERACT with the page (click/type) instead of navigating.',
-    '- When using browser_navigate, you MUST include the url in args: { "url": "https://..." }. Without url the action is silently skipped.',
-    '- When using browser_click, you MUST include target in args: { "target": "s1e2", "element": "login button" }. The target is a ref from the snapshot.',
-    '- When using browser_type, you MUST include target and text in args: { "target": "s1e2", "text": "user@email.com", "submit": false }. The target is a ref from the snapshot. Set submit=true to press Enter after typing (useful for sending chat messages or submitting forms).',
+    '- For browser_navigate: set next_action.url to the full URL. Without url the action is skipped.',
+    '- For browser_click: set next_action.target to a ref from the snapshot (e.g. "s1e2"). Without target the action is skipped.',
+    '- For browser_type: set next_action.target (ref from snapshot) AND next_action.text (the text to type). Without either, the action is skipped. Set next_action.submit=true to press Enter after typing.',
     '',
     'TASK (autonomous - you decide what to ask, nobody feeds you questions):',
-    '1. LOGIN: If the snapshot shows a login form (email input, password input, and a submit/Entrar button), you MUST log in by TYPING into the fields — do NOT navigate away. Steps: browser_type the email into the email field (use its ref), then browser_type the password into the password field (use its ref), then browser_click the submit button. After submitting, set next_action.tool to browser_snapshot to see the result. Do NOT report the login flow itself as a bug.',
+    '1. LOGIN: If the snapshot shows a login form (email input, password input, and a submit/Entrar button), you MUST log in by TYPING into the fields — do NOT navigate away. Steps: set next_action.tool="browser_type", next_action.target="<email-field-ref>", next_action.text="<login-email>" to type the email; then next_action.tool="browser_type", next_action.target="<password-field-ref>", next_action.text="<login-password>" to type the password; then next_action.tool="browser_click", next_action.target="<submit-button-ref>" to submit. After submitting, set next_action.tool="browser_snapshot" to see the result. Do NOT report the login flow itself as a bug.',
     '2. If you are NOT on a login page and NOT in the chat, use browser_navigate ONCE to reach the chat URL. Do not repeat the navigation.',
     '3. If the assistant has JUST responded to your last question: EVALUATE the response. A bug is any of: empty/blank response, an error message shown to the user, a response that does NOT demonstrate memory continuity, broken or missing UI elements, or console errors. If you find one, set bug_detected=true with full details. Do NOT report the same bug twice.',
-    '4. If you are in the chat and want to ask a question: generate a question YOURSELF that probes the user memory (personal facts, past decisions, tasks, entities, timeline). Use browser_type to type the question into the chat input textarea, then browser_press key "Enter" to send.',
+    '4. If you are in the chat and want to ask a question: generate a question YOURSELF that probes the user memory (personal facts, past decisions, tasks, entities, timeline). Use browser_type with target="<chat-input-ref>" text="<your question>" submit=true to type and send the message in one step.',
     '5. After sending a message, set next_action.tool to browser_snapshot so you can read the response on the next step. NEVER send two messages in a row without reading the response in between.',
     '6. Set done=true after you have asked and evaluated several questions (roughly half of maxSteps turns) or if the chat is completely broken.',
     '',
@@ -300,17 +305,37 @@ export default async function (req) {
         break;
       }
 
-      // Execute next action
+      // Execute next action — build args from flat fields (more reliable than nested object from LLM)
       const na = decision.next_action;
-      const argsStr = JSON.stringify(na?.args || {}).slice(0, 300);
+      console.log('[bugHunterRun] RAW decision.next_action:', JSON.stringify(na, null, 2));
       if (na && na.tool && na.tool !== 'none') {
+        // Construct args from flat fields based on tool type
+        let args = {};
+        if (na.tool === 'browser_navigate') {
+          args = { url: na.url };
+        } else if (na.tool === 'browser_click') {
+          args = { target: na.target, element: na.element || '' };
+        } else if (na.tool === 'browser_type') {
+          args = { target: na.target, text: na.text, submit: na.submit === true };
+        } else if (na.tool === 'browser_press_key') {
+          args = { key: na.key };
+        } else {
+          // browser_snapshot, browser_navigate_back, browser_close — no args needed
+        }
+        const argsStr = JSON.stringify(args).slice(0, 300);
         try {
-          const args = na.args || {};
           if (na.tool === 'browser_navigate') {
             if (!args.url || typeof args.url !== 'string') {
               history.push({ step, action: na.tool, description: (na.description || '') + ' [skipped: no url]', args: argsStr });
             } else {
               await navigateWithRetry(args.url);
+              history.push({ step, action: na.tool, description: na.description || '', args: argsStr });
+            }
+          } else if (na.tool === 'browser_click' || na.tool === 'browser_type') {
+            if (!args.target || typeof args.target !== 'string') {
+              history.push({ step, action: na.tool, description: (na.description || '') + ' [skipped: no target]', args: argsStr });
+            } else {
+              await callMcp(na.tool, args);
               history.push({ step, action: na.tool, description: na.description || '', args: argsStr });
             }
           } else {
