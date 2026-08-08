@@ -18,7 +18,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { connect as mcpConnect, resolveHeaders as mcpResolveHeaders, tryRecoverResultFromError } from '../../shared/mcpClient.ts';
 
 const PLAYWRIGHT_SERVER_NAME = 'playwright-bug-hunter';
-const MAX_SNAPSHOT_CHARS = 4000;
+const MAX_SNAPSHOT_CHARS = 12000;
 const MAX_HISTORY_ITEMS = 12;
 
 const DECISION_SCHEMA = {
