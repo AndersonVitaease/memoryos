@@ -20,9 +20,20 @@ import { connect as mcpConnect, resolveHeaders as mcpResolveHeaders, tryRecoverR
 const PLAYWRIGHT_SERVER_NAME = 'playwright-bug-hunter';
 const MAX_SNAPSHOT_CHARS = 12000;
 const MAX_HISTORY_ITEMS = 12;
-// Orcamento de tempo por chunk: 230s deixa margem segura sob o limite de 5min
+// Orcamento de tempo por chunk: 200s deixa margem segura sob o limite de 5min
 // (300s) da plataforma, considerando login (~10s) + navigate + capture (~10s).
-const TIME_BUDGET_MS = 230000;
+const TIME_BUDGET_MS = 200000;
+// Timeout por chamada MCP: nenhuma chamada individual pode bloquear o loop por
+// mais que isso. Sem este guardiao, um snapshot/navigate pendurado no Playwright
+// trava o loop e a funcao morre no limite de 300s sem persistir o resultado.
+const MCP_CALL_TIMEOUT_MS = 20000;
+
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('MCP timeout (' + ms + 'ms): ' + label)), ms)),
+  ]);
+}
 
 const MEMORYOS_ARCHITECTURE_BRIEF = [
   'MEMORYOS ARCHITECTURE — CONNECTORS AND CAPABILITIES TO PROBE AUTONOMOUSLY:',
@@ -282,7 +293,7 @@ export default async function (req) {
     const callMcp = async (toolName, args = {}) => {
       let result;
       try {
-        result = await mcpSession.client.callTool({ name: toolName, arguments: args });
+        result = await withTimeout(mcpSession.client.callTool({ name: toolName, arguments: args }), MCP_CALL_TIMEOUT_MS, toolName);
       } catch (innerErr) {
         const recovered = tryRecoverResultFromError(innerErr);
         if (!recovered) throw innerErr;
@@ -295,7 +306,7 @@ export default async function (req) {
       return result.structuredContent ?? result.content ?? result;
     };
 
-    const navigateWithRetry = async (url, attempts = 3) => {
+    const navigateWithRetry = async (url, attempts = 2) => {
       let lastErr = null;
       for (let i = 0; i < attempts; i++) {
         try {
@@ -504,7 +515,21 @@ export default async function (req) {
       }
       let snapshotText = '(snapshot failed)';
       let consoleErrors = [];
-      try { snapshotText = extractSnapshotText(await callMcp('browser_snapshot', {})); } catch (e) { /* non-fatal */ }
+      try {
+        snapshotText = extractSnapshotText(await callMcp('browser_snapshot', {}));
+      } catch (e) {
+        const msg = String(e.message || e);
+        if (/MCP timeout/.test(msg)) {
+          history.push({ step, action: 'snapshot_timeout', description: 'Snapshot timed out (' + MCP_CALL_TIMEOUT_MS + 'ms) — ending run to persist' });
+          break;
+        }
+        /* non-fatal: keep going with default snapshotText */
+      }
+      // Hard-stop: se ja passamos de 250s, persiste agora (nao espera a proxima iteracao).
+      if ((Date.now() - START) > 250000) {
+        history.push({ step, action: 'hard_stop', description: 'Hard stop at >250s — persisting now' });
+        break;
+      }
       if (justSentMessage && transcript.length > 0) {
         questionsAnswered++;
         const lastEntry = transcript[transcript.length - 1];
