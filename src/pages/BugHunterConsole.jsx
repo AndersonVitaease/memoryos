@@ -160,12 +160,19 @@ export default function BugHunterConsole() {
       }
       if (!rec) return;
 
+      // Usuario pediu para parar -> finaliza IMEDIATAMENTE, mesmo se o backend
+      // ainda esta "running" (funcao pode estar presa num InvokeLLM sem timeout).
+      if (rec.stop_requested) {
+        finalizeContinuous(runId, "stopped");
+        return;
+      }
+
       if (rec.status === "running") return; // chunk em execucao
 
-      // Alvo alcancado ou parado/completed/failed -> finaliza
+      // Alvo alcancado ou completed/failed -> finaliza
       const target = rec.target_questions || 0;
       const reached = target > 0 && (rec.questions_answered || 0) >= target;
-      if (rec.status === "completed" || rec.status === "failed" || rec.stop_requested || reached) {
+      if (rec.status === "completed" || rec.status === "failed" || reached) {
         finalizeContinuous(runId, rec.status || (reached ? "completed" : "stopped"));
         return;
       }
