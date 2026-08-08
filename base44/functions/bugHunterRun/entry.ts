@@ -102,6 +102,50 @@ function buildPrompt(targetUrl, scenario, history, snapshotText, consoleErrorsTe
   ].join('\n');
 }
 
+function buildConversationPrompt(targetUrl, scenario, history, snapshotText, consoleErrorsText, ctx) {
+  const historyText = history.map((h) => `${h.step}. ${h.action}: ${h.description}${h.error ? ' [ERROR: ' + h.error + ']' : ''}`).join('\n') || '(none yet)';
+  const loginHint = (ctx && ctx.loginEmail && ctx.loginPassword)
+    ? '\nLOGIN CREDENTIALS (use them if you encounter a login page): email="' + ctx.loginEmail + '" password="' + ctx.loginPassword + '". Fill the email field, click continue/next, fill the password field, then submit. Do NOT report the login flow itself as a bug.'
+    : '\nNo login credentials were provided. If the app requires login, report it as a bug (category: auth) and set done=true.';
+  const goal = scenario || "Test the MemoryOS chat by having a multi-turn conversation. Ask varied questions that probe the user's memory: personal facts, past decisions, tasks, topics, entities. Evaluate whether each assistant response demonstrates continuity (cites prior context), is not empty or broken, and contains no errors.";
+  return [
+    'You are an autonomous QA agent ("Bug Hunter") testing a chat application called MemoryOS.',
+    'Your job is to have a natural multi-turn CONVERSATION with the app to find bugs. You do NOT need anyone to feed you questions - you generate the questions yourself based on the conversation so far.',
+    '',
+    'TARGET URL: ' + targetUrl,
+    'CONVERSATION GOAL: ' + goal,
+    loginHint,
+    '',
+    'AVAILABLE PLAYWRIGHT MCP TOOLS (use these in next_action.tool):',
+    '- browser_navigate   args: { url }                  -> open a URL',
+    '- browser_click      args: { element, ref }         -> click an element (ref comes from the snapshot)',
+    '- browser_type       args: { element, ref, text }   -> type text into the chat input field',
+    '- browser_press      args: { key }                  -> press a key (use "Enter" to send a chat message)',
+    '- browser_snapshot   args: {}                       -> re-read the page structure (use AFTER sending a message to read the assistant response)',
+    '- browser_go_back    args: {}                      -> go back to previous page',
+    '- none               args: {}                       -> do nothing this step',
+    '',
+    'CONVERSATION HISTORY SO FAR:',
+    historyText,
+    '',
+    'CURRENT PAGE SNAPSHOT (accessibility tree; element refs like ref="s1e2" are clickable targets; look for the chat input textarea field):',
+    snapshotText.slice(0, MAX_SNAPSHOT_CHARS),
+    '',
+    'CONSOLE ERRORS ON CURRENT PAGE:',
+    consoleErrorsText || '(none)',
+    '',
+    'TASK (autonomous - you decide what to ask, nobody feeds you questions):',
+    '1. If you are on a login page, log in using the provided credentials. If no credentials were provided and login is required, report it as a bug (category: auth) and set done=true.',
+    '2. If you are NOT yet in the chat: navigate to the chat page (usually the URL path "/chat") or click the chat entry point in the UI.',
+    '3. If the assistant has JUST responded to your last question: EVALUATE the response. A bug is any of: empty/blank response, an error message shown to the user, a response that does NOT demonstrate memory continuity (e.g. "I do not have access to that" when it should remember), broken or missing UI elements, or console errors. If you find one, set bug_detected=true with full details (title, severity, category, expected vs actual). Do NOT report the same bug twice.',
+    '4. If you have not asked a question yet, or want a follow-up: generate a question YOURSELF that probes the user memory (personal facts, past decisions, tasks, entities, timeline). Make follow-up questions build on the previous answer to test whether the app remembers the conversation. Type the question into the chat input and press Enter to send.',
+    '5. After sending a message, set next_action.tool to browser_snapshot so you can read the response on the next step. NEVER send two messages in a row without reading the response in between.',
+    '6. Set done=true after you have asked and evaluated several questions (roughly half of maxSteps turns) or if the chat is completely broken.',
+    '',
+    'Return only the JSON matching the schema.'
+  ].join('\n');
+}
+
 export default async function (req) {
   try {
     const base44 = createClientFromRequest(req);
@@ -111,7 +155,7 @@ export default async function (req) {
 
     let body = {};
     try { body = await req.json(); } catch { return Response.json({ error: 'Invalid JSON body' }, { status: 400 }); }
-    const { targetUrl, maxSteps = 5, scenario } = body;
+    const { targetUrl, maxSteps = 5, scenario, mode = 'explore', loginEmail, loginPassword } = body;
     if (!targetUrl) return Response.json({ error: 'Missing required field: targetUrl' }, { status: 400 });
 
     const servers = await base44.asServiceRole.entities.MCPServerConfig.filter({ name: PLAYWRIGHT_SERVER_NAME });
@@ -170,8 +214,9 @@ export default async function (req) {
       // LLM decision
       let decision = null;
       try {
+        const promptFn = mode === 'conversation' ? buildConversationPrompt : buildPrompt;
         const llmRes = await base44.asServiceRole.integrations.Core.InvokeLLM({
-          prompt: buildPrompt(targetUrl, scenario, history.slice(-MAX_HISTORY_ITEMS), snapshotText, consoleErrorsText),
+          prompt: promptFn(targetUrl, scenario, history.slice(-MAX_HISTORY_ITEMS), snapshotText, consoleErrorsText, { loginEmail, loginPassword }),
           response_json_schema: DECISION_SCHEMA,
         });
         decision = llmRes;
