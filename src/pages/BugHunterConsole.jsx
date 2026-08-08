@@ -49,6 +49,7 @@ export default function BugHunterConsole() {
   const [continuous, setContinuous] = useState(false);
   const [targetQuestions, setTargetQuestions] = useState(200);
   const [contProgress, setContProgress] = useState(null);
+  const [simpleProgress, setSimpleProgress] = useState(null);
   const [stopping, setStopping] = useState(false);
 
   useEffect(() => {
@@ -209,12 +210,13 @@ export default function BugHunterConsole() {
   const startPolling = useCallback((runId, startTime) => {
     if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     setBgRunId(runId);
+    setSimpleProgress({ questionsAnswered: 0, questionsSent: 0, findings: 0, steps: 0, status: "running" });
     pollIntervalRef.current = setInterval(async () => {
       try {
         const stored = JSON.parse(localStorage.getItem(LOCALSTORAGE_KEY) || "{}");
         if (stored.runId === runId && stored.completed) {
           clearInterval(pollIntervalRef.current); pollIntervalRef.current = null;
-          setAutoRunning(false); setBgRunId(null);
+          setAutoRunning(false); setBgRunId(null); setSimpleProgress(null);
           if (stored.error) setAutoError(stored.error);
           else setAutoResult({ ...stored.result, wallMs: stored.completedAt - startTime });
           loadFindings();
@@ -224,13 +226,28 @@ export default function BugHunterConsole() {
       } catch (e) {}
       if (Date.now() - startTime > 280000) {
         clearInterval(pollIntervalRef.current); pollIntervalRef.current = null;
-        setAutoRunning(false); setBgRunId(null);
+        setAutoRunning(false); setBgRunId(null); setSimpleProgress(null);
         localStorage.removeItem(LOCALSTORAGE_KEY);
         return;
       }
       try {
         const recs = await base44.entities.BugFinding.filter({ run_id: runId });
         setLiveFindings(recs || []);
+      } catch (e) {}
+      // Le o registro BugHunterRun para progresso ao vivo (parcial persistido pelo backend)
+      try {
+        const runRecs = await base44.entities.BugHunterRun.filter({ run_id: runId });
+        const rec = runRecs && runRecs[0];
+        if (rec) {
+          setSimpleProgress({
+            questionsAnswered: rec.questions_answered || 0,
+            questionsSent: rec.questions_sent || 0,
+            findings: rec.findings_count || 0,
+            steps: rec.steps_executed || 0,
+            status: rec.status || "running",
+            ageSec: Math.round((Date.now() - new Date(rec.created_date).getTime())/1000),
+          });
+        }
       } catch (e) {}
     }, 3000);
   }, [loadFindings]);
@@ -241,6 +258,7 @@ export default function BugHunterConsole() {
     setAutoResult(null);
     setAutoError(null);
     setLiveFindings([]);
+    setSimpleProgress(null);
     setContProgress(continuous ? { questionsAnswered: 0, questionsSent: 0, findings: 0, chunks: 0, status: "running", target: Number(targetQuestions) || 0, stopped: false } : null);
 
     const runId = `bugHunter_${Date.now()}`;
@@ -491,6 +509,26 @@ export default function BugHunterConsole() {
             <div className="flex items-start gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-300">
               <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
               <span className="font-mono text-xs break-all">{autoError}</span>
+            </div>
+          )}
+
+          {/* Progresso ao vivo (modo simples) */}
+          {autoRunning && !continuous && simpleProgress && (
+            <div className="p-3 rounded-lg bg-violet-500/10 border border-violet-500/20 space-y-2">
+              <div className="flex items-center gap-2 text-sm text-violet-300">
+                <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                <span className="flex-1">Cacando bugs — o hunt navega e faz perguntas em loop (ate ~3min).</span>
+                {simpleProgress.ageSec != null && <span className="text-[10px] text-zinc-500 font-mono">{simpleProgress.ageSec}s</span>}
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-center">
+                <ProgressStat label="Perguntas enviadas" value={simpleProgress.questionsSent} />
+                <ProgressStat label="Perguntas respondidas" value={simpleProgress.questionsAnswered} />
+                <ProgressStat label="Bugs encontrados" value={simpleProgress.findings} />
+                <ProgressStat label="Status" value={simpleProgress.status === "running" ? "executando" : simpleProgress.status} />
+              </div>
+              {liveFindings.length > 0 && (
+                <p className="text-[10px] text-zinc-500">{liveFindings.length} bug(s) detectado(s) ate agora — veja abaixo.</p>
+              )}
             </div>
           )}
 

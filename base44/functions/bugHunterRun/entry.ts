@@ -661,6 +661,20 @@ export default async function (req) {
         lastSentText = na.text;
         transcript.push({ step, question: na.text, response_evidence: '', read_step: null });
       }
+
+      // Persiste progresso parcial para feedback ao vivo no frontend.
+      // Sem isto, o registro fica status='running' com history vazio ate o fim
+      // do chunk, e o usuario acha que travou. Atualiza a cada 3 passos.
+      if (runRecordId && step % 3 === 0) {
+        try {
+          await base44.asServiceRole.entities.BugHunterRun.update(runRecordId, {
+            questions_sent: cumulativeQuestionsSent + questionsSent,
+            questions_answered: cumulativeQuestionsAnswered + questionsAnswered,
+            findings_count: cumulativeFindings + findings.length,
+            history: JSON.stringify(history.slice(-12), null, 2),
+          });
+        } catch (e) { /* best-effort */ }
+      }
     }
 
     // ── Persiste o resultado final do chunk ──────────────────────────────
