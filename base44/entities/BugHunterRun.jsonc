@@ -4,7 +4,7 @@
   "properties": {
     "run_id": {
       "type": "string",
-      "description": "ID unico da execucao (correlaciona com BugFinding.run_id)"
+      "description": "ID unico da execucao (correlaciona com BugFinding.run_id). Estavel entre chunks no modo continuo."
     },
     "target_url": {
       "type": "string",
@@ -24,48 +24,74 @@
     },
     "max_steps": {
       "type": "number",
-      "description": "Limite de passos configurado"
+      "description": "Limite de passos configurado por chunk"
     },
     "steps_executed": {
       "type": "number",
-      "description": "Passos realmente executados"
+      "description": "Passos realmente executados (acumulado entre chunks)"
     },
     "questions_sent": {
       "type": "number",
       "default": 0,
-      "description": "Perguntas enviadas ao chat"
+      "description": "Perguntas enviadas ao chat (acumulado entre chunks)"
     },
     "questions_answered": {
       "type": "number",
       "default": 0,
-      "description": "Perguntas enviadas E com resposta lida (snapshot apos envio). 0 findings so e confiavel se questions_answered >= MIN_QUESTIONS."
+      "description": "Perguntas enviadas E com resposta lida (snapshot apos envio). 0 findings so e confiavel se questions_answered >= MIN_QUESTIONS. Acumulado entre chunks."
     },
     "findings_count": {
       "type": "number",
       "default": 0,
-      "description": "Total de BugFindings criados nesta run"
+      "description": "Total de BugFindings criados (acumulado entre chunks)"
     },
     "transcript": {
       "type": "string",
-      "description": "JSON array de {step, question, response_evidence, read_step}. Evidencia real de que perguntas foram feitas e respondidas."
+      "description": "JSON array de {step, question, response_evidence, read_step}. Evidencia real de que perguntas foram feitas e respondidas. Acumulado entre chunks."
     },
     "history": {
       "type": "string",
-      "description": "JSON serializado do historico de acoes"
+      "description": "JSON serializado do historico de acoes (do ultimo chunk)"
     },
     "duration_ms": {
       "type": "number",
-      "description": "Duracao total em ms"
+      "description": "Duracao total acumulada em ms (entre chunks)"
     },
     "status": {
       "type": "string",
       "enum": [
         "running",
+        "awaiting_next_chunk",
         "completed",
+        "stopped",
         "failed"
       ],
       "default": "running",
-      "description": "Estado da run"
+      "description": "Estado da run. running = chunk em execucao. awaiting_next_chunk = chunk terminou mas faltam mais (frontend encadeia). completed = alvo alcancado ou done. stopped = usuario pediu para parar. failed = erro."
+    },
+    "stop_requested": {
+      "type": "boolean",
+      "default": false,
+      "description": "Sinalizado pelo usuario (botao Parar) para interromper o loop e o encadeamento."
+    },
+    "chat_session_id": {
+      "type": "string",
+      "description": "ID da sessao de chat do MemoryOS usada nesta run. Permite retomar a mesma conversa entre chunks (via localStorage memoryos_last_session_id)."
+    },
+    "target_questions": {
+      "type": "number",
+      "default": 0,
+      "description": "Meta total de perguntas respondidas. 0 = modo continuo ate o usuario parar."
+    },
+    "chunk_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Quantos chunks (blocos de ~4min) ja rodaram nesta run."
+    },
+    "continuous": {
+      "type": "boolean",
+      "default": false,
+      "description": "Se true, a roda em modo continuo encadeado (varios chunks numa mesma conversa)."
     }
   },
   "required": [

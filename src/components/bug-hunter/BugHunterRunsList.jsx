@@ -67,6 +67,8 @@ export default function BugHunterRunsList() {
                   <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium border shrink-0 ${
                     r.status === "completed" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" :
                     r.status === "running" ? "bg-blue-500/10 text-blue-400 border-blue-500/20" :
+                    r.status === "awaiting_next_chunk" ? "bg-violet-500/10 text-violet-400 border-violet-500/20" :
+                    r.status === "stopped" ? "bg-zinc-500/10 text-zinc-400 border-zinc-500/20" :
                     "bg-red-500/10 text-red-400 border-red-500/20"
                   }`}>{r.status}</span>
                   <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium border shrink-0 ${
@@ -76,6 +78,8 @@ export default function BugHunterRunsList() {
                     {r.questions_answered || 0} respondidas
                   </span>
                   <span className="text-[10px] text-zinc-500 shrink-0">{r.questions_sent || 0} enviadas</span>
+                  {r.chunk_count > 0 && <span className="text-[10px] text-zinc-500 shrink-0">{r.chunk_count} bloco(s)</span>}
+                  {r.target_questions > 0 && <span className="text-[10px] text-zinc-500 shrink-0">meta: {r.target_questions}</span>}
                   <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-medium shrink-0">
                     {r.findings_count || 0} findings
                   </span>
