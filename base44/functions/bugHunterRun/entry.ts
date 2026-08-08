@@ -598,6 +598,18 @@ export default async function (req) {
         break;
       }
       let decision = null;
+      // Heartbeat: persiste updated_date ANTES do InvokeLLM (que pode levar 45s).
+      // Sem isto, o frontend nao ve progresso durante o LLM e o watchdog dispara.
+      if (runRecordId) {
+        try {
+          await base44.asServiceRole.entities.BugHunterRun.update(runRecordId, {
+            questions_sent: cumulativeQuestionsSent + questionsSent,
+            questions_answered: cumulativeQuestionsAnswered + questionsAnswered,
+            findings_count: cumulativeFindings + findings.length,
+            history: JSON.stringify(history.slice(-12), null, 2),
+          });
+        } catch (e) { /* best-effort */ }
+      }
       try {
         const promptFn = finalMode === 'conversation' ? buildConversationPrompt : buildPrompt;
         const llmRes = await withTimeout(
@@ -667,6 +679,13 @@ export default async function (req) {
       }
 
       const na = decision.next_action;
+
+      // Pre-action hard stop: o LLM pode ter demorado ate 45s. Se ja passamos de
+      // 100s, NAO iniciar outra acao (navigate retry pode levar 40s+). Persiste agora.
+      if ((Date.now() - START) > 100000) {
+        history.push({ step, action: 'pre_action_stop', description: 'Hard stop before action (>100s) — persisting now' });
+        break;
+      }
 
       // DOUBLE-SEND PREVENTION
       if (justSentMessage && na && na.tool === 'browser_type' && na.submit === true) {
