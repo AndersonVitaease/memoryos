@@ -227,9 +227,10 @@ export default function BugInsightsChat() {
               ) : visibleFindings.length === 0 ? (
                 <p className="text-xs text-zinc-600 italic text-center py-6">Nenhum bug encontrado.</p>
               ) : (
-                visibleFindings.map((f) => {
+                visibleFindings.map((f, idx) => {
                   const selected = selectedIds.has(f.id);
                   const info = getBugDisplayInfo(f);
+                  const relTime = formatRelativeTime(f.created_date);
                   return (
                     <div
                       key={f.id}
@@ -259,6 +260,15 @@ export default function BugInsightsChat() {
                         <span className="text-[9px] text-zinc-600 font-mono ml-auto">{info.categoryLabel}</span>
                       </div>
                       <p className="text-xs text-zinc-300 leading-snug line-clamp-2">{info.enhancedTitle}</p>
+                      <div className="flex items-center gap-1.5 mt-1.5">
+                        <span className="text-[9px] font-mono text-zinc-600">
+                          #{visibleFindings.length - idx}
+                        </span>
+                        <span className="text-[9px] text-zinc-600">·</span>
+                        <span className="text-[9px] text-zinc-600" title={f.created_date ? new Date(f.created_date).toLocaleString('pt-BR') : ''}>
+                          {relTime}
+                        </span>
+                      </div>
                     </div>
                   );
                 })
@@ -448,6 +458,21 @@ function inlineFormat(text) {
 function truncate(str, max) {
   if (!str) return "";
   return str.length > max ? str.slice(0, max) + "..." : str;
+}
+
+function formatRelativeTime(dateStr) {
+  if (!dateStr) return "—";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "—";
+  const diffMs = Date.now() - d.getTime();
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return "agora";
+  if (diffMin < 60) return `há ${diffMin}min`;
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24) return `há ${diffH}h`;
+  const diffD = Math.floor(diffH / 24);
+  if (diffD < 7) return `há ${diffD}d`;
+  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
 
 function SeverityDot({ severity }) {
