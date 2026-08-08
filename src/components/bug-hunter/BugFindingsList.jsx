@@ -4,6 +4,7 @@ import {
   ListChecks, RefreshCw, ChevronDown, ChevronRight, Bug,
   CheckCircle2, XCircle, Ban, Wrench, Clock,
 } from "lucide-react";
+import { getBugDisplayInfo } from "@/components/bug-hunter/bugDisplayLabel";
 
 const STATUS_META = {
   open:           { label: "Aberto",        icon: Bug,           cls: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
@@ -117,6 +118,7 @@ export default function BugFindingsList({ findings, onRefresh }) {
             const expanded = expandedId === f.id;
             const sm = STATUS_META[f.status] || STATUS_META.open;
             const StatusIcon = sm.icon;
+            const info = getBugDisplayInfo(f);
             return (
               <div key={f.id} className="rounded-lg bg-zinc-900/60 border border-zinc-800 overflow-hidden">
                 {/* Row */}
@@ -126,9 +128,14 @@ export default function BugFindingsList({ findings, onRefresh }) {
                 >
                   <SeverityBadge severity={f.severity} />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-zinc-200 leading-snug">{f.title}</p>
+                    {info.serviceLabel && (
+                      <span className={`inline-block text-[9px] font-semibold px-1.5 py-0.5 rounded border mb-1 ${info.serviceColor}`}>
+                        {info.serviceLabel}
+                      </span>
+                    )}
+                    <p className="text-sm text-zinc-200 leading-snug">{info.enhancedTitle}</p>
                     <p className="text-[10px] text-zinc-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
-                      <span className="font-mono">{f.category}</span>
+                      <span className="font-mono">{info.categoryLabel}</span>
                       <span className="text-zinc-700">·</span>
                       <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border ${sm.cls}`}>
                         <StatusIcon className="w-2.5 h-2.5" /> {sm.label}

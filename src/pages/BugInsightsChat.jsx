@@ -5,6 +5,7 @@ import {
   TrendingDown, Wrench, ShieldAlert, Brain, ChevronDown, ChevronRight,
 } from "lucide-react";
 import CorrectionBriefModal from "@/components/bug-hunter/CorrectionBriefModal";
+import { getBugDisplayInfo } from "@/components/bug-hunter/bugDisplayLabel";
 
 const SUGGESTED_QUESTIONS = [
   "Quais padroes recorrentes voce ve nos bugs encontrados?",
@@ -193,6 +194,7 @@ export default function BugInsightsChat() {
               ) : (
                 findings.map((f) => {
                   const selected = selectedIds.has(f.id);
+                  const info = getBugDisplayInfo(f);
                   return (
                     <button
                       key={f.id}
@@ -203,12 +205,17 @@ export default function BugInsightsChat() {
                           : "bg-zinc-900/60 border-zinc-800 hover:border-zinc-700"
                       }`}
                     >
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex items-center gap-2 mb-1.5">
                         <SeverityDot severity={f.severity} />
+                        {info.serviceLabel && (
+                          <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded border ${info.serviceColor}`}>
+                            {info.serviceLabel}
+                          </span>
+                        )}
                         <span className={`text-[9px] font-mono px-1 py-0.5 rounded ${statusColor(f.status)}`}>{f.status}</span>
-                        <span className="text-[9px] text-zinc-600 font-mono ml-auto">{f.category}</span>
+                        <span className="text-[9px] text-zinc-600 font-mono ml-auto">{info.categoryLabel}</span>
                       </div>
-                      <p className="text-xs text-zinc-300 leading-snug line-clamp-2">{f.title}</p>
+                      <p className="text-xs text-zinc-300 leading-snug line-clamp-2">{info.enhancedTitle}</p>
                     </button>
                   );
                 })
