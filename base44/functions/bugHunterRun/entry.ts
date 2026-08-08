@@ -94,8 +94,8 @@ function buildPrompt(targetUrl, scenario, history, snapshotText, consoleErrorsTe
     consoleErrorsText || '(none)',
     '',
     'TASK:',
-    '1. Analyze the snapshot and console errors. If you spot a bug (JS error, broken flow, missing/empty content, visual anomaly, auth failure), set bug_detected=true and fill in the bug details (title, severity, category, expected vs actual). Do NOT report the same bug twice.',
-    '2. Decide the next action to keep exploring. Pick a tool and its args. For browser_click/browser_type, use a ref that exists in the snapshot above.',
+    '1. Analyze the snapshot and console errors. If you spot a bug (JS error, broken flow, missing/empty content, visual anomaly, auth failure), set bug_detected=true and fill in the bug details (title, severity, category, expected vs actual). Do NOT report the same bug twice. NOTE: transient 502/503/504 Bad Gateway on a navigation attempt is NOT a bug — the orchestrator already retries those; only report it as a bug if the page is genuinely broken after a successful load (missing content, JS errors, broken flow).',
+    '2. Decide the next action to keep exploring. Pick a tool and its args. For browser_click/browser_type, use a ref that exists in the snapshot above. Do NOT re-navigate to the same URL you are already on.',
     '3. Set done=true when you have explored the main flows or keep re-encountering the same state.',
     '',
     'Return only the JSON matching the schema.'
@@ -126,14 +126,34 @@ export default async function (req) {
       return data?.result ?? data;
     };
 
+    // Navigate with retry — descarta 502 transitório (cold-start do Base44) antes de falhar.
+    const navigateWithRetry = async (url, attempts = 3) => {
+      let lastErr = null;
+      for (let i = 0; i < attempts; i++) {
+        try {
+          return await callMcp('browser_navigate', { url });
+        } catch (e) {
+          lastErr = e;
+          const msg = String(e.message || e);
+          // 502/503/504/transient — tenta de novo apos pausa curta
+          if (/50[234]|Bad Gateway|timeout|ECONNRESET|ETIMEDOUT|fetch failed/i.test(msg) && i < attempts - 1) {
+            await new Promise((r) => setTimeout(r, 1500 * (i + 1)));
+            continue;
+          }
+          throw e;
+        }
+      }
+      throw lastErr;
+    };
+
     const findings = [];
     const history = [];
     const reportedBugSignatures = new Set();
     const START = Date.now();
 
-    // Step 0: navigate to target
+    // Step 0: navigate to target (com retry para descartar 502 transitório)
     try {
-      await callMcp('browser_navigate', { url: targetUrl });
+      await navigateWithRetry(targetUrl);
       history.push({ step: 0, action: 'browser_navigate', description: 'Navigated to ' + targetUrl });
     } catch (e) {
       return Response.json({ ok: false, error: 'Initial navigate failed: ' + e.message, run_id: runId, history }, { status: 502 });
@@ -201,8 +221,11 @@ export default async function (req) {
       const na = decision.next_action;
       if (na && na.tool && na.tool !== 'none') {
         try {
-          await callMcp(na.tool, na.args || {});
-          history.push({ step, action: na.tool, description: na.description || '', args: na.args });
+          const args = na.args || {};
+          const result = na.tool === 'browser_navigate' && args.url
+            ? await navigateWithRetry(args.url)
+            : await callMcp(na.tool, args);
+          history.push({ step, action: na.tool, description: na.description || '', args });
         } catch (e) {
           history.push({ step, action: na.tool, description: na.description || '', error: e.message });
         }
