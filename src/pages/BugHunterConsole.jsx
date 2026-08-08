@@ -33,7 +33,7 @@ export default function BugHunterConsole() {
 
   // Autonomous run state
   const [autoRunning, setAutoRunning] = useState(false);
-  const [maxSteps, setMaxSteps] = useState(5);
+  const [maxSteps, setMaxSteps] = useState(12);
   const [scenario, setScenario] = useState("");
   const [autoResult, setAutoResult] = useState(null);
   const [autoError, setAutoError] = useState(null);
