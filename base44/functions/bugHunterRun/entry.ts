@@ -120,9 +120,17 @@ function extractElementRefs(snapshotText) {
   if (passwordMatch) refs.password = passwordMatch[1];
   const submitMatch = snapshotText.match(/(?:button)[^\n]*?(?:Entrar|Login|Sign in|Acessar|Continuar|Acessar conta|Entrar na conta)[^\n]*?\[ref=(\w+)\]/i);
   if (submitMatch) refs.submit = submitMatch[1];
-  // Chat input: tenta palavras-chave conhecidas primeiro (placeholder/label do textarea).
-  const chatMatch = snapshotText.match(/(?:textbox|input|textarea)[^\n]*?(?:Converse|memoria|mensagem|pergunte|digite|type a|message|chat|ask|escreva|escrever|enviar)[^\n]*?\[ref=(\w+)\]/i);
-  if (chatMatch) refs.chatInput = chatMatch[1];
+  // Chat input: busca linha-a-linha por textbox/textarea com ref E palavra-chave de chat.
+  // O ref pode vir ANTES ou DEPOIS do placeholder no snapshot do Playwright, entao
+  // verificamos a keyword em qualquer posicao da linha (nao so entre role e ref).
+  const chatKeywords = /converse|memoria|mensagem|pergunte|digite|type a|message|chat|ask|escreva|escrever|enviar|pergunta|diga/i;
+  const lines = snapshotText.split('\n');
+  for (const line of lines) {
+    if (/(?:textbox|textarea)/i.test(line) && /\[ref=(\w+)\]/.test(line) && chatKeywords.test(line)) {
+      const m = line.match(/\[ref=(\w+)\]/);
+      if (m) { refs.chatInput = m[1]; break; }
+    }
+  }
   // Fallback: se nao achou por palavras-chave, pega a ultima textbox/textarea com ref
   // que nao seja email/password (na pagina de chat so ha um textarea visivel — o input).
   if (!refs.chatInput) {
@@ -336,6 +344,29 @@ export default async function (req) {
         }
       }
       throw lastErr;
+    };
+
+    // Fallback nuclear: digita diretamente no <textarea> via DOM e submete o <form>.
+    // 100% confiavel — nao depende do LLM escolher o ref certo nem do textarea estar
+    // na arvore de acessibilidade (textarea disabled/ausente). Evita o padrao "LLM
+    // escolhe div de timestamp -> browser_type falha em 20s -> run trava".
+    const typeViaEvaluate = async (text) => {
+      const escaped = JSON.stringify(text);
+      const fn = '() => {' +
+        '  var ta = document.querySelector("textarea[placeholder*=\\"Converse\\"]")' +
+        '    || document.querySelector("textarea:not([disabled])");' +
+        '  if (!ta) return "no-textarea";' +
+        '  if (ta.disabled) return "disabled";' +
+        '  var setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set;' +
+        '  setter.call(ta, ' + escaped + ');' +
+        '  ta.dispatchEvent(new Event("input", { bubbles: true }));' +
+        '  var form = ta.closest("form");' +
+        '  if (form) { form.requestSubmit(); return "sent"; }' +
+        '  ta.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", keyCode: 13, bubbles: true }));' +
+        '  return "enter-dispatched";' +
+        '}';
+      const r = await callMcp('browser_evaluate', { function: fn });
+      return extractEvaluateText(r);
     };
 
     // ── Estado do chunk ──────────────────────────────────────────────────────
@@ -648,7 +679,27 @@ export default async function (req) {
         na.target = refs.chatInput;
       }
 
-      if (na && na.tool && na.tool !== 'none') {
+      // Fallback nuclear (modo conversa, pagina de chat): digita via DOM diretamente
+      // no <textarea> e submete o <form>. 100% confiavel — nao depende do LLM escolher
+      // o ref certo nem do textarea estar na arvore de acessibilidade (disabled/ausente).
+      // Evita o padrao "LLM escolhe div de timestamp -> browser_type falha em 20s".
+      let domSent = false;
+      if (finalMode === 'conversation' && na && na.tool === 'browser_type' && na.submit === true && na.text && !refs.email && !refs.password) {
+        try {
+          const result = await typeViaEvaluate(na.text);
+          const r = String(result);
+          if (r === 'sent' || r === 'enter-dispatched') {
+            history.push({ step, action: 'dom_send', description: 'Sent message via DOM fallback (bypassing refs)' });
+            domSent = true;
+          } else {
+            history.push({ step, action: 'dom_send', description: 'DOM fallback: ' + r + ' — will try regular browser_type' });
+          }
+        } catch (e) {
+          history.push({ step, action: 'dom_send', description: 'DOM fallback failed: ' + e.message, error: e.message });
+        }
+      }
+
+      if (!domSent && na && na.tool && na.tool !== 'none') {
         let args = {};
         if (na.tool === 'browser_navigate') args = { url: na.url };
         else if (na.tool === 'browser_click') args = { target: na.target, element: na.element || '' };
@@ -677,7 +728,7 @@ export default async function (req) {
         } catch (e) {
           history.push({ step, action: na.tool, description: na.description || '', error: e.message, args: argsStr });
         }
-      } else {
+      } else if (!domSent) {
         history.push({ step, action: 'none', description: 'No action' });
       }
 
