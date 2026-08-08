@@ -3,6 +3,7 @@ import { base44 } from "@/api/base44Client";
 import {
   Bug, Loader2, Send, Sparkles, RefreshCw, Lightbulb,
   TrendingDown, Wrench, ShieldAlert, Brain, ChevronDown, ChevronRight,
+  X, RotateCcw,
 } from "lucide-react";
 import CorrectionBriefModal from "@/components/bug-hunter/CorrectionBriefModal";
 import { getBugDisplayInfo } from "@/components/bug-hunter/bugDisplayLabel";
@@ -25,7 +26,44 @@ export default function BugInsightsChat() {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [showBriefModal, setShowBriefModal] = useState(false);
+  const [showExcluded, setShowExcluded] = useState(false);
+  const [excludingId, setExcludingId] = useState(null);
   const scrollRef = useRef(null);
+
+  // Bugs visiveis = open/confirmed. Excluidos = false_positive (nao sao bug).
+  const visibleFindings = findings.filter((f) => f.status === "open" || f.status === "confirmed");
+  const excludedFindings = findings.filter((f) => f.status === "false_positive");
+
+  // Exclui um bug (nao e bug real) — marca false_positive, some do painel.
+  // So volta se o Bug Hunter detectar o mesmo bug de novo (novo registro open).
+  const excludeBug = async (id, e) => {
+    e?.stopPropagation();
+    setExcludingId(id);
+    try {
+      await base44.entities.BugFinding.update(id, { status: "false_positive" });
+      setFindings((prev) => prev.map((f) => (f.id === id ? { ...f, status: "false_positive" } : f)));
+      setSelectedIds((prev) => {
+        const n = new Set(prev);
+        n.delete(id);
+        return n;
+      });
+    } catch (err) {
+      // silent
+    } finally {
+      setExcludingId(null);
+    }
+  };
+
+  // Restaura um bug excluido — volta para open e reaparece no painel.
+  const restoreBug = async (id, e) => {
+    e?.stopPropagation();
+    try {
+      await base44.entities.BugFinding.update(id, { status: "open" });
+      setFindings((prev) => prev.map((f) => (f.id === id ? { ...f, status: "open" } : f)));
+    } catch (err) {
+      // silent
+    }
+  };
 
   // Load findings
   const loadFindings = useCallback(async () => {
@@ -189,22 +227,30 @@ export default function BugInsightsChat() {
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="w-5 h-5 animate-spin text-zinc-600" />
                 </div>
-              ) : findings.length === 0 ? (
+              ) : visibleFindings.length === 0 ? (
                 <p className="text-xs text-zinc-600 italic text-center py-6">Nenhum bug encontrado.</p>
               ) : (
-                findings.map((f) => {
+                visibleFindings.map((f) => {
                   const selected = selectedIds.has(f.id);
                   const info = getBugDisplayInfo(f);
                   return (
-                    <button
+                    <div
                       key={f.id}
                       onClick={() => toggleBug(f.id)}
-                      className={`w-full text-left p-2.5 rounded-lg border transition ${
+                      className={`w-full text-left p-2.5 pr-8 rounded-lg border transition cursor-pointer relative group ${
                         selected
                           ? "bg-violet-500/10 border-violet-500/30"
                           : "bg-zinc-900/60 border-zinc-800 hover:border-zinc-700"
                       }`}
                     >
+                      <button
+                        onClick={(e) => excludeBug(f.id, e)}
+                        disabled={excludingId === f.id}
+                        className="absolute top-1.5 right-1.5 p-1 rounded text-zinc-600 hover:text-red-400 hover:bg-red-500/10 transition opacity-30 group-hover:opacity-100 disabled:opacity-40"
+                        title="Excluir (nao e bug)"
+                      >
+                        {excludingId === f.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <X className="w-3 h-3" />}
+                      </button>
                       <div className="flex items-center gap-2 mb-1.5">
                         <SeverityDot severity={f.severity} />
                         {info.serviceLabel && (
@@ -216,11 +262,47 @@ export default function BugInsightsChat() {
                         <span className="text-[9px] text-zinc-600 font-mono ml-auto">{info.categoryLabel}</span>
                       </div>
                       <p className="text-xs text-zinc-300 leading-snug line-clamp-2">{info.enhancedTitle}</p>
-                    </button>
+                    </div>
                   );
                 })
               )}
             </div>
+
+            {/* Excluidos (falsos positivos) — colapsados por padrao */}
+            {excludedFindings.length > 0 && (
+              <div className="shrink-0 border-t border-zinc-800 px-3 py-2">
+                <button
+                  onClick={() => setShowExcluded((v) => !v)}
+                  className="flex items-center gap-1 text-[10px] text-zinc-500 hover:text-zinc-300 transition"
+                >
+                  {showExcluded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                  {showExcluded ? "Ocultar excluidos" : `Ver excluidos (${excludedFindings.length})`}
+                </button>
+                {showExcluded && (
+                  <div className="mt-2 space-y-1.5">
+                    {excludedFindings.map((f) => {
+                      const info = getBugDisplayInfo(f);
+                      return (
+                        <div key={f.id} className="p-2 rounded-lg bg-zinc-900/40 border border-zinc-800 border-dashed opacity-60">
+                          <div className="flex items-center gap-2 mb-1">
+                            <SeverityDot severity={f.severity} />
+                            <span className="text-[9px] font-mono px-1 py-0.5 rounded bg-blue-500/15 text-blue-400">falso positivo</span>
+                            <button
+                              onClick={(e) => restoreBug(f.id, e)}
+                              className="ml-auto text-[10px] text-zinc-400 hover:text-emerald-400 flex items-center gap-1 transition"
+                              title="Restaurar para open"
+                            >
+                              <RotateCcw className="w-3 h-3" /> restaurar
+                            </button>
+                          </div>
+                          <p className="text-[11px] text-zinc-400 leading-snug line-clamp-2">{info.enhancedTitle}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </aside>
         )}
 
