@@ -69,3 +69,6 @@ export type { OIEConfigShape, OIEThresholds } from "./OIEConfig";
 // Orchestrator — coordena todas as fases
 export { OIEOrchestrator } from "./OIEOrchestrator";
 export type { OIEAnalysisResult } from "./OIEOrchestrator";
+
+// Ponte OIE -> BugFinding (unifica observacao interna com Bug Hunter externo)
+export { OIEBugFindingBridge } from "./OIEBugFindingBridge";
