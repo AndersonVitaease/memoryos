@@ -22,7 +22,7 @@ const MAX_SNAPSHOT_CHARS = 12000;
 const MAX_HISTORY_ITEMS = 12;
 // Orcamento de tempo por chunk: 200s deixa margem segura sob o limite de 5min
 // (300s) da plataforma, considerando login (~10s) + navigate + capture (~10s).
-const TIME_BUDGET_MS = 200000;
+const TIME_BUDGET_MS = 170000;
 // Timeout por chamada MCP: nenhuma chamada individual pode bloquear o loop por
 // mais que isso. Sem este guardiao, um snapshot/navigate pendurado no Playwright
 // trava o loop e a funcao morre no limite de 300s sem persistir o resultado.
@@ -590,6 +590,13 @@ export default async function (req) {
       const consoleErrorsText = consoleErrors.map((m) => '[' + (m.type || 'error') + '] ' + (m.text || '')).join('\n').slice(0, 2000) || '(none)';
       const refs = extractElementRefs(snapshotText);
 
+      // Pre-LLM hard stop: o InvokeLLM pode levar ate 60s. Se estamos alem de
+      // 170s, nao inicia o LLM — persiste agora para nao ser morto pelo limite
+      // de 300s da plataforma no meio do persist final.
+      if ((Date.now() - START) > 170000) {
+        history.push({ step, action: 'pre_llm_stop', description: 'Hard stop before LLM (>170s) — persisting now' });
+        break;
+      }
       let decision = null;
       try {
         const promptFn = finalMode === 'conversation' ? buildConversationPrompt : buildPrompt;
@@ -747,7 +754,7 @@ export default async function (req) {
       // Persiste progresso parcial para feedback ao vivo no frontend.
       // Sem isto, o registro fica status='running' com history vazio ate o fim
       // do chunk, e o usuario acha que travou. Atualiza a cada 3 passos.
-      if (runRecordId && step % 2 === 0) {
+      if (runRecordId) {
         try {
           await base44.asServiceRole.entities.BugHunterRun.update(runRecordId, {
             questions_sent: cumulativeQuestionsSent + questionsSent,

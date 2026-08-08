@@ -136,7 +136,7 @@ export default function BugHunterConsole() {
     if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     setBgRunId(runId);
     setAutoError(null);
-    // Watchdog: se um chunk ficar "running" > 300s sem progresso (q_answered/chunk_count mudou), finaliza.
+    // Watchdog: se nao houve progresso (q_answered/chunk_count/updated_date) em 120s, o chunk travou.
     let lastProgressSig = "";
     let lastProgressAt = Date.now();
     pollIntervalRef.current = setInterval(async () => {
@@ -156,6 +156,13 @@ export default function BugHunterConsole() {
           target: rec.target_questions || 0,
           stopped: !!rec.stop_requested,
         });
+        // Inicializa o watchdog com base no updated_date real da entidade.
+        // Se a run ja esta sem atualizar ha mais de 120s, o watchdog dispara
+        // imediatamente em vez de esperar 120s a partir do retorno do usuario.
+        if (lastProgressSig === "") {
+          const sinceUpdate = Date.now() - new Date(rec.updated_date).getTime();
+          lastProgressAt = Date.now() - sinceUpdate;
+        }
         try {
           const recs2 = await base44.entities.BugFinding.filter({ run_id: runId });
           setLiveFindings(recs2 || []);
