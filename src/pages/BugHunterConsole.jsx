@@ -3,6 +3,7 @@ import { base44 } from "@/api/base44Client";
 import {
   Bug, Loader2, RefreshCw, Globe, Camera, TerminalSquare,
   MousePointerClick, XCircle, CheckCircle2, AlertTriangle, Power,
+  Sparkles, Play, ListChecks,
 } from "lucide-react";
 
 /**
@@ -28,6 +29,14 @@ export default function BugHunterConsole() {
   const [lastResult, setLastResult] = useState(null);
   const [error, setError] = useState(null);
   const [log, setLog] = useState([]);
+
+  // Autonomous run state
+  const [autoRunning, setAutoRunning] = useState(false);
+  const [maxSteps, setMaxSteps] = useState(5);
+  const [scenario, setScenario] = useState("");
+  const [autoResult, setAutoResult] = useState(null);
+  const [autoError, setAutoError] = useState(null);
+  const [findings, setFindings] = useState([]);
 
   // Resolve o serverId do registro MCPServerConfig pelo name.
   useEffect(() => {
@@ -87,6 +96,43 @@ export default function BugHunterConsole() {
   const handleConsole = () => callTool("browser_console_messages", { level: "error" }, "Console Errors");
   const handleScreenshot = () => callTool("browser_take_screenshot", {}, "Screenshot");
   const handleClose = () => callTool("browser_close", {}, "Close");
+
+  const loadFindings = useCallback(async () => {
+    try {
+      const recs = await base44.entities.BugFinding.list("-created_date", 20);
+      setFindings(recs || []);
+    } catch (e) {
+      // silent
+    }
+  }, []);
+
+  useEffect(() => { loadFindings(); }, [loadFindings]);
+
+  const handleAutoRun = async () => {
+    if (!targetUrl) return;
+    setAutoRunning(true);
+    setAutoResult(null);
+    setAutoError(null);
+    const t0 = Date.now();
+    try {
+      const res = await base44.functions.invoke("bugHunterRun", {
+        targetUrl,
+        maxSteps: Number(maxSteps) || 5,
+        scenario: scenario.trim() || undefined,
+      });
+      const data = res?.data ?? res;
+      if (data?.error) {
+        setAutoError(data.error);
+      } else {
+        setAutoResult({ ...data, wallMs: Date.now() - t0 });
+        loadFindings();
+      }
+    } catch (e) {
+      setAutoError(e?.message ?? "Run falhou");
+    } finally {
+      setAutoRunning(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6">
@@ -212,13 +258,145 @@ export default function BugHunterConsole() {
           </div>
         </div>
 
+        {/* Autonomous run */}
+        <div className="rounded-xl border border-violet-500/20 bg-violet-500/5 p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-violet-400" />
+            <h3 className="text-sm font-semibold text-zinc-200">Hunt Autonomo</h3>
+            <span className="text-[10px] text-zinc-500">bugHunterRun — LLM + Playwright em loop</span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-[10px] font-medium text-zinc-500 mb-1">Max steps</label>
+              <input
+                type="number"
+                min="1"
+                max="12"
+                value={maxSteps}
+                onChange={(e) => setMaxSteps(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-[10px] font-medium text-zinc-500 mb-1">Cenario (opcional — guia a exploracao)</label>
+              <input
+                value={scenario}
+                onChange={(e) => setScenario(e.target.value)}
+                placeholder="ex: faca login, abra o chat, envie uma mensagem"
+                className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+              />
+            </div>
+          </div>
+
+          <button
+            onClick={handleAutoRun}
+            disabled={autoRunning || !targetUrl}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-violet-500 text-white hover:bg-violet-400 disabled:opacity-40 transition"
+          >
+            {autoRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+            {autoRunning ? "Caçando bugs..." : "Rodar Hunt Autonomo"}
+          </button>
+
+          {autoError && (
+            <div className="flex items-start gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-300">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              <span className="font-mono text-xs break-all">{autoError}</span>
+            </div>
+          )}
+
+          {autoResult && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-3 text-xs">
+                <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
+                  <CheckCircle2 className="w-3.5 h-3.5" /> concluido
+                </span>
+                <span className="text-zinc-500">{autoResult.stepsExecuted} passos</span>
+                <span className="text-zinc-500">{autoResult.durationMs}ms (backend)</span>
+                <span className="text-zinc-500">{autoResult.wallMs}ms (total)</span>
+                <span className="ml-auto px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20 font-medium">
+                  {autoResult.findingsCreated} finding(s)
+                </span>
+              </div>
+              {autoResult.findings?.length > 0 && (
+                <div className="space-y-1.5">
+                  {autoResult.findings.map((f) => (
+                    <div key={f.id} className="flex items-start gap-2 p-2.5 rounded-lg bg-zinc-900/60 border border-zinc-800">
+                      <SeverityBadge severity={f.severity} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-zinc-200 truncate">{f.title}</p>
+                        <p className="text-[10px] text-zinc-500 font-mono">{f.category} · {f.id}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <details className="text-xs">
+                <summary className="cursor-pointer text-zinc-500 hover:text-zinc-300">historico de acoes</summary>
+                <div className="mt-2 space-y-0.5 font-mono text-[11px] text-zinc-500 max-h-40 overflow-y-auto">
+                  {autoResult.history?.map((h, i) => (
+                    <div key={i} className={h.error ? "text-red-400/70" : ""}>
+                      {h.step}. {h.action}: {h.description}{h.error ? " — " + h.error : ""}
+                    </div>
+                  ))}
+                </div>
+              </details>
+            </div>
+          )}
+        </div>
+
+        {/* Findings list */}
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-800">
+            <span className="flex items-center gap-2 text-xs font-semibold text-zinc-400 uppercase tracking-wide">
+              <ListChecks className="w-3.5 h-3.5" /> Findings recentes
+            </span>
+            <button onClick={loadFindings} className="text-xs text-zinc-500 hover:text-zinc-300 flex items-center gap-1">
+              <RefreshCw className="w-3 h-3" /> atualizar
+            </button>
+          </div>
+          <div className="p-3 space-y-1.5 max-h-64 overflow-y-auto">
+            {findings.length === 0 ? (
+              <p className="text-xs text-zinc-600 italic py-2">Nenhum finding registrado ainda.</p>
+            ) : (
+              findings.map((f) => (
+                <div key={f.id} className="flex items-start gap-2 p-2.5 rounded-lg bg-zinc-900/60 border border-zinc-800">
+                  <SeverityBadge severity={f.severity} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-zinc-200">{f.title}</p>
+                    <p className="text-[10px] text-zinc-500 mt-0.5">
+                      {f.category} · {f.status} · {new Date(f.created_date).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
         <p className="text-xs text-zinc-600 leading-relaxed">
-          Este console e apenas para validacao manual da infra. O orquestrador automatizado
-          (<span className="font-mono">bugHunterRun</span>) — loop LLM + Playwright que cria findings em
-          <span className="font-mono"> BugFinding</span> — sera implementado na proxima sprint.
+          O <span className="font-mono">bugHunterRun</span> navega o app, o LLM decide cada acao com base no
+          snapshot + erros de console, e cria <span className="font-mono">BugFinding</span>s quando detecta
+          bugs. O browser e fechado no fim para liberar RAM na VPS.
         </p>
       </div>
     </div>
+  );
+}
+
+function SeverityBadge({ severity }) {
+  const map = {
+    critical: "bg-red-500/15 text-red-400 border-red-500/30",
+    high: "bg-orange-500/15 text-orange-400 border-orange-500/30",
+    medium: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+    low: "bg-blue-500/15 text-blue-400 border-blue-500/30",
+    info: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
+  };
+  const cls = map[severity] || map.medium;
+  return (
+    <span className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-medium border shrink-0 ${cls}`}>
+      {severity || "medium"}
+    </span>
   );
 }
 
