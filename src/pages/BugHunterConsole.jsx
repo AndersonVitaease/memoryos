@@ -3,8 +3,9 @@ import { base44 } from "@/api/base44Client";
 import {
   Bug, Loader2, RefreshCw, Globe, Camera, TerminalSquare,
   MousePointerClick, XCircle, CheckCircle2, AlertTriangle, Power,
-  Sparkles, Play, ListChecks, MessageSquare, Compass,
+  Sparkles, Play, MessageSquare, Compass,
 } from "lucide-react";
+import BugFindingsList from "@/components/bug-hunter/BugFindingsList";
 
 /**
  * BugHunterConsole — painel de teste manual do Playwright MCP (Bug Hunter infra).
@@ -399,34 +400,8 @@ export default function BugHunterConsole() {
           )}
         </div>
 
-        {/* Findings list */}
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-800">
-            <span className="flex items-center gap-2 text-xs font-semibold text-zinc-400 uppercase tracking-wide">
-              <ListChecks className="w-3.5 h-3.5" /> Findings recentes
-            </span>
-            <button onClick={loadFindings} className="text-xs text-zinc-500 hover:text-zinc-300 flex items-center gap-1">
-              <RefreshCw className="w-3 h-3" /> atualizar
-            </button>
-          </div>
-          <div className="p-3 space-y-1.5 max-h-64 overflow-y-auto">
-            {findings.length === 0 ? (
-              <p className="text-xs text-zinc-600 italic py-2">Nenhum finding registrado ainda.</p>
-            ) : (
-              findings.map((f) => (
-                <div key={f.id} className="flex items-start gap-2 p-2.5 rounded-lg bg-zinc-900/60 border border-zinc-800">
-                  <SeverityBadge severity={f.severity} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-zinc-200">{f.title}</p>
-                    <p className="text-[10px] text-zinc-500 mt-0.5">
-                      {f.category} · {f.status} · {new Date(f.created_date).toLocaleString()}
-                    </p>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
+        {/* Findings report */}
+        <BugFindingsList findings={findings} onRefresh={loadFindings} />
 
         <p className="text-xs text-zinc-600 leading-relaxed">
           O <span className="font-mono">bugHunterRun</span> navega o app, o LLM decide cada acao com base no
