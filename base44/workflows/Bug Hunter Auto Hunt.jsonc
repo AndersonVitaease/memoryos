@@ -14,7 +14,7 @@
           "with": {
             "function_name": "bugHunterRun",
             "args": {
-              "targetUrl": "https://ever-mind-core.base44.app/chat",
+              "targetUrl": "https://ever-mind-core.base44.app/login",
               "maxSteps": 8,
               "mode": "conversation",
               "scenario": "Teste autonomo do comportamento do MemoryOS: faca perguntas variadas sobre memoria pessoal, decisoes passadas, tarefas e entidades. Avalie continuidade, respostas vazias, erros de console e fluxos quebrados."
