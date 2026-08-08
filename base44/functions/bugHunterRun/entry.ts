@@ -222,7 +222,7 @@ export default async function (req) {
 
     let body = {};
     try { body = await req.json(); } catch { return Response.json({ error: 'Invalid JSON body' }, { status: 400 }); }
-    const { targetUrl, maxSteps = 5, scenario, mode = 'explore', loginEmail, loginPassword } = body;
+    const { targetUrl, maxSteps = 5, scenario, mode = 'explore', loginEmail, loginPassword, runId: clientRunId } = body;
     const _envEmail = (typeof Deno !== 'undefined' && Deno.env) ? (Deno.env.get('BUGHUNTER_TEST_EMAIL') || '') : '';
     const _envPass = (typeof Deno !== 'undefined' && Deno.env) ? (Deno.env.get('BUGHUNTER_TEST_PASSWORD') || '') : '';
     const finalLoginEmail = loginEmail || _envEmail || undefined;
@@ -247,7 +247,7 @@ export default async function (req) {
       return Response.json({ error: 'MCP connect failed: ' + e.message, run_id: 'bugHunter_' + Date.now() }, { status: 502 });
     }
 
-    const runId = 'bugHunter_' + Date.now();
+    const runId = clientRunId || ('bugHunter_' + Date.now());
     const callMcp = async (toolName, args = {}) => {
       let result;
       try {
