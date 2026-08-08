@@ -2462,3 +2462,19 @@ Princípio mantido: **Consultivo, nunca autônomo.**
 **Nenhum código alterado nesta sessão** — apenas documentação nas 3 frentes (este CLAUDE.md + session doc + Mem0 Cloud via `memoriRemember`). Mudar código seria retrabalho desnecessário.
 
 **Recomendação ao próximo agente:** antes de "implementar EI-04 do chat-pipeline", verifique `ConversationPipeline.ts` ~917-1015 — provavelmente já está lá. Extensão a multi-step exige caso de uso real primeiro.
+
+---
+
+### 2026-08-08 — Bug Hunter: Estabilidade Hardening + BugInsightsChat
+
+**Doc completa:** `src/docs/01-operational-knowledge/SESSION-2026-08-08-BUG-HUNTER-STABILITY-HARDENING.md`
+
+**Problema:** O `bugHunterRun` (modo conversa/continuo) travava recorrentemente. O LLM escolhia um ref errado (`f1e6` = `<div id="root">`) para digitar no chat do MemoryOS, fazendo `browser_type` falhar com timeout de 20s. Runs continuas ficavam presas em status `running` ate o limite de 5min da plataforma.
+
+**Causa raiz:** (1) LLM instavel em selecionar refs em snapshots grandes; (2) Guard `!refs.submit` do DOM fallback dava falso-positivo no chat apos muitas mensagens (botoes no historico de conversa casavam com keywords de login), desativando o fallback permanentemente.
+
+**Correcoes em `base44/functions/bugHunterRun/entry.ts`:** DOM fallback nuclear (`typeViaEvaluate` — digita direto no `<textarea>` via DOM), retry de textarea disabled, guard trocado para `isLoginPage` (`refs.email && refs.password`), skip de `browser_type` quebrado (`domSkipBroken`), ref override deterministico, timeouts obrigatorios (MCP 20s, SDK 8s, pre-LLM 120s), heartbeat antes do InvokeLLM.
+
+**BugInsightsChat:** pagina `/bug-insights` (`src/pages/BugInsightsChat.jsx`) + `BugFindingsList` com filtros por status, service labels humanizadas (`bugDisplayLabel.js`), expansao de detalhes e acoes de triagem. Permite conversar com a IA sobre os findings para diagnostico.
+
+**Validado:** teste direto — 10 perguntas enviadas, 9 respondidas em 89s, sem o erro `f1e6`.
