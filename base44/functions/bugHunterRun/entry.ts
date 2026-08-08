@@ -731,6 +731,7 @@ export default async function (req) {
       // o ref certo nem do textarea estar na arvore de acessibilidade (disabled/ausente).
       // Evita o padrao "LLM escolhe div de timestamp -> browser_type falha em 20s".
       let domSent = false;
+      let domSkipBroken = false;
       // Guard mudado: era "!refs.email && !refs.password" mas o regex de email/password
       // dava falso-positivo na pagina de chat (conversa menciona "email" ao testar
       // connectors, e o snapshot tem textboxes). Isso desativava o fallback
@@ -740,20 +741,36 @@ export default async function (req) {
       // "no-textarea" em paginas de login (so ha inputs, nenhum textarea).
       if (finalMode === 'conversation' && na && na.tool === 'browser_type' && na.text && !refs.submit) {
         try {
-          const result = await typeViaEvaluate(na.text);
-          const r = String(result);
+          let result = await typeViaEvaluate(na.text);
+          let r = String(result);
+          // Retry once if textarea was temporarily disabled (assistant generating).
+          // O textarea fica disabled enquanto o assistente gera a resposta. Sem retry,
+          // o fallback retorna "disabled", cai no browser_type quebrado do LLM (ref
+          // <div id="root">), gasta 20s em timeout e o LLM entra em panico e navega
+          // fora do chat — aparentando "travamento".
+          if ((r === 'disabled' || r === 'no-textarea') && (Date.now() - START) < 95000) {
+            try { await callMcp('browser_wait_for', { time: 5 }); } catch (e) { /* best-effort */ }
+            result = await typeViaEvaluate(na.text);
+            r = String(result);
+          }
           if (r === 'sent' || r === 'enter-dispatched') {
             history.push({ step, action: 'dom_send', description: 'Sent message via DOM fallback (bypassing refs)' });
             domSent = true;
           } else {
-            history.push({ step, action: 'dom_send', description: 'DOM fallback: ' + r + ' — will try regular browser_type' });
+            // DOM falhou (disabled/no-textarea apos retry). NAO cair no browser_type
+            // quebrado do LLM (ref <div id="root"> = "Element is not an <input>") —
+            // isso desperdica 20s em timeout e faz o LLM navegar fora do chat em
+            // panico. Pula o path quebrado e deixa o loop re-snapshotear no proximo
+            // step (o textarea provavelmente estara re-enabled).
+            history.push({ step, action: 'dom_send', description: 'DOM fallback: ' + r + ' — skipping broken browser_type, will retry next step' });
+            domSkipBroken = true;
           }
         } catch (e) {
           history.push({ step, action: 'dom_send', description: 'DOM fallback failed: ' + e.message, error: e.message });
         }
       }
 
-      if (!domSent && na && na.tool && na.tool !== 'none') {
+      if (!domSent && !domSkipBroken && na && na.tool && na.tool !== 'none') {
         let args = {};
         if (na.tool === 'browser_navigate') args = { url: na.url };
         else if (na.tool === 'browser_click') args = { target: na.target, element: na.element || '' };
