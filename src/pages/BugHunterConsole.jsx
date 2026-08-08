@@ -6,6 +6,7 @@ import {
   Sparkles, Play, MessageSquare, Compass, Repeat, Plug, Brain,
 } from "lucide-react";
 import BugFindingsList from "@/components/bug-hunter/BugFindingsList";
+import BugHunterRunsList from "@/components/bug-hunter/BugHunterRunsList";
 
 /**
  * BugHunterConsole — painel de teste manual do Playwright MCP (Bug Hunter infra).
@@ -512,6 +513,15 @@ export default function BugHunterConsole() {
                 <span className="ml-auto px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20 font-medium">
                   {autoResult.findingsCreated} finding(s)
                 </span>
+                {autoResult.questionsAnswered !== undefined && (
+                  <span className={`px-2 py-0.5 rounded-md font-medium border ${
+                    autoResult.questionsAnswered >= (autoResult.minQuestions || 1)
+                      ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                      : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                  }`} title="Perguntas enviadas E com resposta lida. 0 findings so e confiavel se >= min.">
+                    {autoResult.questionsAnswered}/{autoResult.minQuestions || 1} respondidas
+                  </span>
+                )}
               </div>
               {autoResult.findings?.length > 0 && (
                 <div className="space-y-1.5">
@@ -536,9 +546,29 @@ export default function BugHunterConsole() {
                   ))}
                 </div>
               </details>
+              {autoResult.transcript?.length > 0 && (
+                <details className="text-xs" open>
+                  <summary className="cursor-pointer text-violet-400/80 hover:text-violet-300 font-medium">transcript (perguntas e respostas — prova de conversa)</summary>
+                  <div className="mt-2 space-y-2 max-h-60 overflow-y-auto">
+                    {autoResult.transcript.map((t, i) => (
+                      <div key={i} className="p-2.5 rounded-lg bg-zinc-900/60 border border-zinc-800">
+                        <p className="text-[11px] text-violet-300 font-medium break-words">P{t.step}: {t.question}</p>
+                        {t.response_evidence ? (
+                          <p className="text-[10px] text-zinc-500 mt-1 line-clamp-4 font-mono break-words">{t.response_evidence.slice(0, 300)}</p>
+                        ) : (
+                          <p className="text-[10px] text-amber-500 mt-1">resposta nao lida (run terminou antes do snapshot)</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
             </div>
           )}
         </div>
+
+        {/* Runs recentes — transcript persistido (prova de conversa) */}
+        <BugHunterRunsList />
 
         {/* Findings report */}
         <BugFindingsList findings={findings} onRefresh={loadFindings} />

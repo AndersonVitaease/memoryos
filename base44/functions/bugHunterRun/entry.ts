@@ -293,7 +293,28 @@ export default async function (req) {
     const reportedBugSignatures = new Set();
     let justSentMessage = false; // true when previous step sent a chat message (next step can evaluate the response)
     let questionsSent = 0; // total questions actually sent to the chat (premature-done guard)
+    let questionsAnswered = 0; // questions sent AND followed by a response read (snapshot after send). 0 findings only trustworthy when >= MIN_QUESTIONS.
     let lastSentText = ''; // last message text sent (exact-duplicate prevention)
+    const transcript = []; // [{step, question, response_evidence, read_step}] — proof that questions were asked AND answered
+
+    // Persist the run so "0 findings" is verifiable. Without this record, a run
+    // that asked 0 questions and a run that asked 5 and got clean answers look
+    // identical (both 0 BugFindings). The transcript proves the difference.
+    try {
+      await base44.entities.BugHunterRun.create({
+        run_id: runId,
+        target_url: targetUrl,
+        mode: finalMode,
+        scenario: scenario || '',
+        max_steps: maxSteps,
+        status: 'running',
+        questions_sent: 0,
+        questions_answered: 0,
+        findings_count: 0,
+        transcript: '[]',
+        history: '[]',
+      });
+    } catch (e) { /* best-effort — run continues even if persistence fails */ }
     // MIN_QUESTIONS: minimum questions that must be sent+read before done is allowed.
     // The LLM frequently hallucinates "I have probed several connectors" after sending
     // 0-1 questions — it reads the ARCHITECTURE BRIEF as if it were action history.
@@ -351,6 +372,18 @@ export default async function (req) {
       let snapshotText = '(snapshot failed)';
       let consoleErrors = [];
       try { snapshotText = extractSnapshotText(await callMcp('browser_snapshot', {})); } catch (e) { /* non-fatal */ }
+      // RESPONSE READ TRACKING: if the previous step sent a chat message, THIS
+      // snapshot shows the assistant response. Record it as an answered question
+      // — this is the proof a real conversation happened (not just sends).
+      // questionsAnswered (not questionsSent) is what gates the done guard.
+      if (justSentMessage && transcript.length > 0) {
+        questionsAnswered++;
+        const lastEntry = transcript[transcript.length - 1];
+        if (lastEntry && !lastEntry.response_evidence) {
+          lastEntry.response_evidence = snapshotText.slice(-1500);
+          lastEntry.read_step = step;
+        }
+      }
       try { consoleErrors = extractConsoleErrors(await callMcp('browser_console_messages', { level: 'error' })); } catch (e) { /* non-fatal */ }
       const consoleErrorsText = consoleErrors.map((m) => '[' + (m.type || 'error') + '] ' + (m.text || '')).join('\n').slice(0, 2000) || '(none)';
       const refs = extractElementRefs(snapshotText);
@@ -432,8 +465,8 @@ export default async function (req) {
         // PREMATURE-DONE GUARD: block done until enough questions were sent+read.
         // The LLM hallucinates "I have already probed several connectors" after
         // sending 0-1 questions. Force it to keep going until questionsSent >= MIN.
-        if (questionsSent < MIN_QUESTIONS) {
-          history.push({ step, action: 'done_blocked', description: 'Premature done BLOCKED: only ' + questionsSent + '/' + MIN_QUESTIONS + ' questions sent. Forcing continuation.' });
+        if (questionsAnswered < MIN_QUESTIONS) {
+          history.push({ step, action: 'done_blocked', description: 'Premature done BLOCKED: only ' + questionsAnswered + '/' + MIN_QUESTIONS + ' questions answered (sent + response read). Forcing continuation.' });
           // Don't break — fall through to action execution (the LLM must probe more)
         } else {
           history.push({ step, action: 'done', description: decision.reasoning || 'Agent signaled completion' });
@@ -508,8 +541,27 @@ export default async function (req) {
       if (justSentMessage && na.text) {
         questionsSent++;
         lastSentText = na.text;
+        transcript.push({ step, question: na.text, response_evidence: '', read_step: null });
       }
     }
+
+    // Persist the final run result — transcript proves questions were asked
+    // and answered. Without this, "0 findings" is unverifiable after navigation.
+    try {
+      const runRecord = (await base44.asServiceRole.entities.BugHunterRun.filter({ run_id: runId }))[0];
+      if (runRecord) {
+        await base44.asServiceRole.entities.BugHunterRun.update(runRecord.id, {
+          status: 'completed',
+          steps_executed: history.length - 1,
+          questions_sent: questionsSent,
+          questions_answered: questionsAnswered,
+          findings_count: findings.length,
+          transcript: JSON.stringify(transcript, null, 2),
+          history: JSON.stringify(history, null, 2),
+          duration_ms: Date.now() - START,
+        });
+      }
+    } catch (e) { /* best-effort */ }
 
     // Close browser to free RAM on the VPS, then terminate the MCP session
     try { await callMcp('browser_close', {}); } catch (e) { /* best-effort */ }
@@ -525,6 +577,10 @@ export default async function (req) {
       run_id: runId,
       targetUrl,
       stepsExecuted: history.length - 1,
+      questionsSent,
+      questionsAnswered,
+      minQuestions: MIN_QUESTIONS,
+      transcript,
       findingsCreated: findings.length,
       findings,
       history,

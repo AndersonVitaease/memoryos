@@ -1,0 +1,76 @@
+{
+  "name": "BugHunterRun",
+  "type": "object",
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "description": "ID unico da execucao (correlaciona com BugFinding.run_id)"
+    },
+    "target_url": {
+      "type": "string",
+      "description": "URL alvo testada"
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "explore",
+        "conversation"
+      ],
+      "description": "Modo de execucao"
+    },
+    "scenario": {
+      "type": "string",
+      "description": "Cenario guia (vazio se exploracao livre)"
+    },
+    "max_steps": {
+      "type": "number",
+      "description": "Limite de passos configurado"
+    },
+    "steps_executed": {
+      "type": "number",
+      "description": "Passos realmente executados"
+    },
+    "questions_sent": {
+      "type": "number",
+      "default": 0,
+      "description": "Perguntas enviadas ao chat"
+    },
+    "questions_answered": {
+      "type": "number",
+      "default": 0,
+      "description": "Perguntas enviadas E com resposta lida (snapshot apos envio). 0 findings so e confiavel se questions_answered >= MIN_QUESTIONS."
+    },
+    "findings_count": {
+      "type": "number",
+      "default": 0,
+      "description": "Total de BugFindings criados nesta run"
+    },
+    "transcript": {
+      "type": "string",
+      "description": "JSON array de {step, question, response_evidence, read_step}. Evidencia real de que perguntas foram feitas e respondidas."
+    },
+    "history": {
+      "type": "string",
+      "description": "JSON serializado do historico de acoes"
+    },
+    "duration_ms": {
+      "type": "number",
+      "description": "Duracao total em ms"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "running",
+        "completed",
+        "failed"
+      ],
+      "default": "running",
+      "description": "Estado da run"
+    }
+  },
+  "required": [
+    "run_id",
+    "target_url",
+    "status"
+  ]
+}
