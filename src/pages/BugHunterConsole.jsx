@@ -169,10 +169,10 @@ export default function BugHunterConsole() {
 
       if (rec.status === "running") return; // chunk em execucao
 
-      // Alvo alcancado ou completed/failed -> finaliza
+      // Alvo alcancado, completed, failed ou stopped -> finaliza
       const target = rec.target_questions || 0;
       const reached = target > 0 && (rec.questions_answered || 0) >= target;
-      if (rec.status === "completed" || rec.status === "failed" || reached) {
+      if (rec.status === "completed" || rec.status === "failed" || rec.status === "stopped" || reached) {
         finalizeContinuous(runId, rec.status || (reached ? "completed" : "stopped"));
         return;
       }
