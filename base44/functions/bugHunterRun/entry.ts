@@ -556,6 +556,18 @@ export default async function (req) {
           if (cleanId && cleanId !== 'null' && cleanId !== 'undefined' && cleanId !== '') {
             capturedSessionId = cleanId;
             history.push({ step: 0.9, action: 'capture_session', description: 'Captured chat session_id: ' + capturedSessionId });
+        
+        // Aguardar conectores novamente (mesmo se é resume — conectores precisam estar prontos)
+        try {
+          const connReady = await withTimeout(waitForConnectors(15000), 20000, 'waitForConnectors-resume');
+          if (connReady) {
+            history.push({ step: 0.91, action: 'connectors_ready', description: 'Connectors ready after resume' });
+          } else {
+            history.push({ step: 0.91, action: 'connectors_timeout', description: 'Connectors timeout after resume (15s) — proceeding' });
+          }
+        } catch (e) {
+          history.push({ step: 0.91, action: 'connectors_check_failed', description: 'Connectors check (resume) failed: ' + e.message });
+        }
           } else {
             history.push({ step: 0.9, action: 'capture_session', description: 'No session_id in localStorage yet (chat may still be initializing)' });
           }
