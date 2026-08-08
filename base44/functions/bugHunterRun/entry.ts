@@ -156,6 +156,11 @@ export default async function (req) {
     let body = {};
     try { body = await req.json(); } catch { return Response.json({ error: 'Invalid JSON body' }, { status: 400 }); }
     const { targetUrl, maxSteps = 5, scenario, mode = 'explore', loginEmail, loginPassword } = body;
+    const _envEmail = (typeof Deno !== 'undefined' && Deno.env) ? (Deno.env.get('BUGHUNTER_TEST_EMAIL') || '') : '';
+    const _envPass = (typeof Deno !== 'undefined' && Deno.env) ? (Deno.env.get('BUGHUNTER_TEST_PASSWORD') || '') : '';
+    const finalLoginEmail = loginEmail || _envEmail || undefined;
+    const finalLoginPassword = loginPassword || _envPass || undefined;
+    const finalMode = mode !== 'explore' ? mode : (_envEmail ? 'conversation' : 'explore');
     if (!targetUrl) return Response.json({ error: 'Missing required field: targetUrl' }, { status: 400 });
 
     const servers = await base44.asServiceRole.entities.MCPServerConfig.filter({ name: PLAYWRIGHT_SERVER_NAME });
@@ -214,9 +219,9 @@ export default async function (req) {
       // LLM decision
       let decision = null;
       try {
-        const promptFn = mode === 'conversation' ? buildConversationPrompt : buildPrompt;
+        const promptFn = finalMode === 'conversation' ? buildConversationPrompt : buildPrompt;
         const llmRes = await base44.asServiceRole.integrations.Core.InvokeLLM({
-          prompt: promptFn(targetUrl, scenario, history.slice(-MAX_HISTORY_ITEMS), snapshotText, consoleErrorsText, { loginEmail, loginPassword }),
+          prompt: promptFn(targetUrl, scenario, history.slice(-MAX_HISTORY_ITEMS), snapshotText, consoleErrorsText, { loginEmail: finalLoginEmail, loginPassword: finalLoginPassword }),
           response_json_schema: DECISION_SCHEMA,
         });
         decision = llmRes;
