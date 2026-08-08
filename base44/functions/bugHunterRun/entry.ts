@@ -561,6 +561,15 @@ export default async function (req) {
       }
       // Orcamento de tempo (todos os modos): termina em ~230s para deixar margem
       // segura sob o limite de 5min (300s) da plataforma e sempre persistir o resultado.
+      // STALL DETECTION: se passou 90s sem ler uma resposta nova, chat provavelmente travou
+      const timesSinceLastRead = questionsAnswered > 0 ? (Date.now() - START) - (questionsAnswered * 5000) : 0;  // estimate
+      if (questionsAnswered > 0 && (Date.now() - START) > 90000 && questionsAnswered === questionsAnswered) {
+        // Se estamos enviando mas não lendo respostas, pode estar preso
+        if (questionsSent > questionsAnswered + 3) {
+          history.push({ step, action: 'stall_detected', description: 'Stall detected: ' + (questionsSent - questionsAnswered) + ' questions unanswered for >90s — stopping to persist' });
+          break;
+        }
+      }
       if ((Date.now() - START) > TIME_BUDGET_MS) {
         timeBudgetHit = true;
         console.log('[bugHunterRun] TIME_BUDGET_HIT at step ' + step + ', elapsed ' + (Date.now() - START) + 'ms');
