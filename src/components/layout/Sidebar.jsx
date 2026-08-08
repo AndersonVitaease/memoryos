@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Brain, FolderOpen, Search, LogOut, MessageSquare, Home as HomeIcon, Plug, ShieldCheck, Cpu, Network, Archive, BookOpen, Code, Activity, Layers, Database, ClipboardCheck, Shield, Waves, BookMarked, Terminal, Map, Zap, FlaskConical, Puzzle, Box, Route, Target, GitBranch, Users, GitMerge, Radio, Award, Blocks, Flag, Workflow, FileCode, Play, Server, Bug, ChevronDown, ChevronRight, Wrench } from "lucide-react";
+import { Brain, FolderOpen, Search, LogOut, MessageSquare, Home as HomeIcon, Plug, ShieldCheck, Cpu, Network, Archive, BookOpen, Code, Activity, Layers, Database, ClipboardCheck, Shield, Waves, BookMarked, Terminal, Map, Zap, FlaskConical, Puzzle, Box, Route, Target, GitBranch, Users, GitMerge, Radio, Award, Blocks, Flag, Workflow, FileCode, Play, Server, Bug, ChevronDown, ChevronRight, Wrench, Lightbulb } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 
 // FIX (bug de navegação — auditoria de UI): antes, os 122 itens abaixo
@@ -25,6 +25,7 @@ export const CORE_NAV_ITEMS = [
 
 export const DEV_NAV_ITEMS = [
   { label: "Bug Hunter", icon: Bug, path: "/bug-hunter" },
+  { label: "Bug Insights Chat", icon: Lightbulb, path: "/bug-insights" },
   { label: "OIE — Intelligence Engine", icon: Activity, path: "/oie" },
   { label: "Drive Debug Panel", icon: Bug, path: "/drive-debug" },
   { label: "Memory Engine", icon: Cpu, path: "/memory-engine" },
