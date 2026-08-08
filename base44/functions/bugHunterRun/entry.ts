@@ -475,7 +475,7 @@ export default async function (req) {
     // ── Login deterministico (conversation mode com credenciais) ─────────
     if (finalMode === 'conversation' && finalLoginEmail && finalLoginPassword) {
       try {
-        try { await callMcp('browser_wait_for', { time: 5 }); } catch (e) { /* best-effort */ }
+        try { await callMcp('browser_wait_for', { time: 8 });  // Aumentado de 5s para 8s (permitir que chat inicialize completamente) } catch (e) { /* best-effort */ }
         const loginSnap = extractSnapshotText(await callMcp('browser_snapshot', {}));
         const loginRefs = extractElementRefs(loginSnap);
         if (loginRefs.email && loginRefs.password) {
@@ -516,7 +516,7 @@ export default async function (req) {
       // Navega deterministtamente para /chat (nao depende do LLM achar o chat).
       try {
         await navigateWithRetry(chatUrl);
-        try { await callMcp('browser_wait_for', { time: 6 }); } catch (e) { /* best-effort */ }
+        try { await callMcp('browser_wait_for', { time: 10 });  // Aumentado de 6s para 10s (conectores precisam inicializar) } catch (e) { /* best-effort */ }
         history.push({ step: 0.8, action: 'browser_navigate', description: 'Navigated to ' + chatUrl });
       } catch (e) {
         history.push({ step: 0.8, action: 'browser_navigate', description: 'Navigate to /chat failed: ' + e.message });
