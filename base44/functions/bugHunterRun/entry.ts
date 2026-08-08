@@ -165,6 +165,12 @@ function buildConversationPrompt(targetUrl, scenario, history, snapshotText, con
     'CONSOLE ERRORS ON CURRENT PAGE:',
     consoleErrorsText || '(none)',
     '',
+    'DETECTED ELEMENT REFS (use these EXACT ref strings — do NOT search the snapshot yourself):',
+    '- Chat input (textarea): ' + (_refs.chatInput || 'NOT FOUND — if you are on the chat page, take a browser_snapshot next step and it should appear'),
+    '- Email field: ' + (_refs.email || 'N/A'),
+    '- Password field: ' + (_refs.password || 'N/A'),
+    '- Submit/Login button: ' + (_refs.submit || 'N/A'),
+    '',
     'CRITICAL RULES:',
     '- NEVER use browser_navigate to go to a URL you are already on. If the Page URL in the snapshot matches your target, INTERACT with the page (click/type) instead of navigating.',
     '- For browser_navigate: set next_action.url to the full URL. Without url the action is skipped.',
@@ -172,10 +178,10 @@ function buildConversationPrompt(targetUrl, scenario, history, snapshotText, con
     '- For browser_type: set next_action.target (ref from snapshot) AND next_action.text (the text to type). Without either, the action is skipped. Set next_action.submit=true to press Enter after typing.',
     '',
     'TASK (autonomous - you decide what to ask, nobody feeds you questions):',
-    '1. LOGIN: If the snapshot shows a login form (email input, password input, and a submit/Entrar button), you MUST log in by TYPING into the fields — do NOT navigate away. Steps: set next_action.tool="browser_type", next_action.target="<email-field-ref>", next_action.text="<login-email>" to type the email; then next_action.tool="browser_type", next_action.target="<password-field-ref>", next_action.text="<login-password>" to type the password; then next_action.tool="browser_click", next_action.target="<submit-button-ref>" to submit. After submitting, set next_action.tool="browser_snapshot" to see the result. Do NOT report the login flow itself as a bug.',
+    '1. LOGIN: If the DETECTED ELEMENT REFS above show an Email field AND Password field, log in: browser_type target="' + (_refs.email || '<email-ref>') + '" text="' + (ctx.loginEmail || '<email>') + '", then browser_type target="' + (_refs.password || '<password-ref>') + '" text="' + (ctx.loginPassword || '<password>') + '" submit=true. Then next step browser_snapshot. If no email/password refs detected, you are already logged in — skip to step 4. Do NOT report login as a bug.',
     '2. If you are NOT on a login page and NOT in the chat, use browser_navigate ONCE to reach the chat URL. Do not repeat the navigation.',
     '3. If the assistant has JUST responded to your last question: EVALUATE the response. A bug is any of: empty/blank response, an error message shown to the user, a response that does NOT demonstrate memory continuity, broken or missing UI elements, or console errors. If you find one, set bug_detected=true with full details. Do NOT report the same bug twice.',
-    '4. If you are in the chat and want to ask a question: generate a question YOURSELF that probes the user memory (personal facts, past decisions, tasks, entities, timeline). Use browser_type with target="<chat-input-ref>" text="<your question>" submit=true to type and send the message in one step.',
+    '4. To ask a question: generate a question YOURSELF that probes the user memory (personal facts, past decisions, tasks, entities, timeline, Google Workspace, Microsoft 365, integrations). Use browser_type with target="' + (_refs.chatInput || '<chat-input-ref>') + '" text="<your question>" submit=true to type and send the message in one step. The chat input ref is provided above in DETECTED ELEMENT REFS — use it exactly.',
     '5. After sending a message, set next_action.tool to browser_snapshot so you can read the response on the next step. NEVER send two messages in a row without reading the response in between.',
     '6. Set done=true after you have asked and evaluated several questions (roughly half of maxSteps turns) or if the chat is completely broken.',
     '',
@@ -271,6 +277,33 @@ export default async function (req) {
       return Response.json({ ok: false, error: 'Initial navigate failed: ' + e.message, run_id: runId, history }, { status: 502 });
     }
 
+    // Deterministic login pre-step (conversation mode com credenciais).
+    // O LLM e instavel em preencher login multi-campo; fazemos deterministicamente
+    // quando detectamos email+password no snapshot inicial. Tambem espera 5s
+    // para o SPA inicializar (conversation.isInitialized) antes do snapshot.
+    if (finalMode === 'conversation' && finalLoginEmail && finalLoginPassword) {
+      try {
+        try { await callMcp('browser_wait_for', { time: 5 }); } catch (e) { /* best-effort */ }
+        const loginSnap = extractSnapshotText(await callMcp('browser_snapshot', {}));
+        const loginRefs = extractElementRefs(loginSnap);
+        if (loginRefs.email && loginRefs.password) {
+          await callMcp('browser_type', { target: loginRefs.email, text: finalLoginEmail });
+          if (loginRefs.submit) {
+            await callMcp('browser_type', { target: loginRefs.password, text: finalLoginPassword });
+            await callMcp('browser_click', { target: loginRefs.submit, element: 'submit button' });
+          } else {
+            await callMcp('browser_type', { target: loginRefs.password, text: finalLoginPassword, submit: true });
+          }
+          try { await callMcp('browser_wait_for', { time: 4 }); } catch (e) { /* best-effort */ }
+          history.push({ step: 0.5, action: 'auto_login', description: 'Auto-filled login: email + password + submit' });
+        } else {
+          history.push({ step: 0.5, action: 'auto_login', description: 'No login form detected — already authenticated or no login wall' });
+        }
+      } catch (e) {
+        history.push({ step: 0.5, action: 'auto_login', description: 'Auto-login skipped: ' + e.message });
+      }
+    }
+
     for (let step = 1; step <= maxSteps; step++) {
       // Gather page context
       let snapshotText = '(snapshot failed)';
@@ -278,13 +311,14 @@ export default async function (req) {
       try { snapshotText = extractSnapshotText(await callMcp('browser_snapshot', {})); } catch (e) { /* non-fatal */ }
       try { consoleErrors = extractConsoleErrors(await callMcp('browser_console_messages', { level: 'error' })); } catch (e) { /* non-fatal */ }
       const consoleErrorsText = consoleErrors.map((m) => '[' + (m.type || 'error') + '] ' + (m.text || '')).join('\n').slice(0, 2000) || '(none)';
+      const refs = extractElementRefs(snapshotText);
 
       // LLM decision
       let decision = null;
       try {
         const promptFn = finalMode === 'conversation' ? buildConversationPrompt : buildPrompt;
         const llmRes = await base44.asServiceRole.integrations.Core.InvokeLLM({
-          prompt: promptFn(targetUrl, scenario, history.slice(-MAX_HISTORY_ITEMS), snapshotText, consoleErrorsText, { loginEmail: finalLoginEmail, loginPassword: finalLoginPassword }),
+          prompt: promptFn(targetUrl, scenario, history.slice(-MAX_HISTORY_ITEMS), snapshotText, consoleErrorsText, { loginEmail: finalLoginEmail, loginPassword: finalLoginPassword }, refs),
           response_json_schema: DECISION_SCHEMA,
         });
         decision = llmRes;
