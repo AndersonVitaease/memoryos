@@ -183,8 +183,8 @@ export default function BugHunterConsole() {
         if (sig !== lastProgressSig) {
           lastProgressSig = sig;
           lastProgressAt = Date.now();
-        } else if (Date.now() - lastProgressAt > 120000) {
-          appendLog({ tool: "watchdog", ok: false, ms: 0, msg: "chunk travado > 120s sem progresso — finalizando" });
+        } else if (Date.now() - lastProgressAt > 90000) {
+          appendLog({ tool: "watchdog", ok: false, ms: 0, msg: "chunk travado > 90s sem progresso — finalizando" });
           try { await base44.entities.BugHunterRun.update(rec.id, { status: "stopped", stop_requested: true }); } catch (e) {}
           finalizeContinuous(runId, "stopped");
           return;
