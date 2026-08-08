@@ -123,13 +123,15 @@ services:
 > `--host 0.0.0.0` dentro do container + bind `127.0.0.1:8931` no host = so o host
 > (e o Caddy) alcancam. Nunca expor 8931 direto na internet.
 
-### 3. Caddy reverse proxy (API key gate)
+### 3. Caddy reverse proxy (API key gate + Host rewrite)
 Adicionar ao `Caddyfile` (mesmo Caddy que atende o Stirling-PDF):
 ```
 playwright-mcp.<seu>.duckdns.org {
   @haskey header X-Api-Key {key}
   handle @haskey {
-    reverse_proxy localhost:8931
+    reverse_proxy localhost:8931 {
+      header_up Host localhost:8931
+    }
   }
   handle {
     respond "Unauthorized" 401
@@ -138,6 +140,15 @@ playwright-mcp.<seu>.duckdns.org {
 ```
 Gerar a key: `openssl rand -hex 32` -> salvar como secret `PLAYWRIGHT_MCP_API_KEY`
 no Base44 e no Caddyfile.
+
+> **CRITICO — Host header rewrite (`header_up Host localhost:8931`):** o
+> Playwright MCP valida o header `Host` da requisicao (protecao CSRF) e rejeita
+> (`Access is only allowed at localhost:8931`) qualquer requisicao cujo Host nao
+> seja exatamente `localhost:8931`. Sem o `header_up`, o Caddy repassa o Host
+> original (`playwright-mcp.<seu>.duckdns.org`) e o servidor bloqueia todas as
+> chamadas com resposta vazia / 522. O `header_up Host localhost:8931`
+> sobrescreve o Host antes de encaminhar ao upstream, mantendo a protecao CSRF
+> satisfeita. Causa raiz do bug 522/empty-response na sessao 2026-08-08.
 
 ### 4. Subir
 ```bash
