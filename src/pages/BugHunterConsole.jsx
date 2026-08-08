@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { base44 } from "@/api/base44Client";
 import {
   Bug, Loader2, RefreshCw, Globe, Camera, TerminalSquare,
@@ -30,6 +30,12 @@ export default function BugHunterConsole() {
   const [lastResult, setLastResult] = useState(null);
   const [error, setError] = useState(null);
   const [log, setLog] = useState([]);
+
+  // Background run tracking — permite navegar fora da pagina sem interromper
+  const LOCALSTORAGE_KEY = "bugHunter_activeRun";
+  const pollIntervalRef = useRef(null);
+  const [bgRunId, setBgRunId] = useState(null);
+  const [liveFindings, setLiveFindings] = useState([]);
 
   // Autonomous run state
   const [autoRunning, setAutoRunning] = useState(false);
@@ -129,44 +135,131 @@ export default function BugHunterConsole() {
     }
   };
 
-  const handleAutoRun = async () => {
+  // Poll BugFinding by run_id — mostra progresso ao vivo e detecta conclusao
+  // via localStorage (escrito pelo .then()/.catch() do invoke fire-and-forget).
+  const startPolling = useCallback((runId, startTime) => {
+    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    setBgRunId(runId);
+    pollIntervalRef.current = setInterval(async () => {
+      // Check localStorage for completion marker (written by invoke .then/.catch)
+      try {
+        const stored = JSON.parse(localStorage.getItem(LOCALSTORAGE_KEY) || "{}");
+        if (stored.runId === runId && stored.completed) {
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+          setAutoRunning(false);
+          setBgRunId(null);
+          if (stored.error) {
+            setAutoError(stored.error);
+          } else {
+            setAutoResult({ ...stored.result, wallMs: stored.completedAt - startTime });
+          }
+          loadFindings();
+          localStorage.removeItem(LOCALSTORAGE_KEY);
+          return;
+        }
+      } catch (e) { /* ignore */ }
+
+      // Safety timeout (3 minutes)
+      if (Date.now() - startTime > 180000) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+        setAutoRunning(false);
+        setBgRunId(null);
+        localStorage.removeItem(LOCALSTORAGE_KEY);
+        return;
+      }
+
+      // Poll for live findings progress
+      try {
+        const recs = await base44.entities.BugFinding.filter({ run_id: runId });
+        setLiveFindings(recs || []);
+      } catch (e) { /* ignore */ }
+    }, 3000);
+  }, [loadFindings]);
+
+  const handleAutoRun = () => {
     if (!targetUrl) return;
     setAutoRunning(true);
     setAutoResult(null);
     setAutoError(null);
-    const t0 = Date.now();
-    try {
-      const res = await base44.functions.invoke("bugHunterRun", {
-        targetUrl,
-        maxSteps: Number(maxSteps) || 5,
-        scenario: scenario.trim() || undefined,
-        mode,
-        loginEmail: mode === "conversation" ? loginEmail.trim() || undefined : undefined,
-        loginPassword: mode === "conversation" ? loginPassword || undefined : undefined,
+    setLiveFindings([]);
+
+    const runId = `bugHunter_${Date.now()}`;
+    const startTime = Date.now();
+
+    // Save to localStorage so we can resume if user navigates away
+    localStorage.setItem(LOCALSTORAGE_KEY, JSON.stringify({
+      runId, startTime, targetUrl, maxSteps: Number(maxSteps) || 5, completed: false,
+    }));
+
+    // Fire and forget — the server runs it regardless of frontend state.
+    // .then/.catch write completion to localStorage; polling picks it up.
+    base44.functions.invoke("bugHunterRun", {
+      targetUrl,
+      maxSteps: Number(maxSteps) || 5,
+      scenario: scenario.trim() || undefined,
+      mode,
+      loginEmail: mode === "conversation" ? loginEmail.trim() || undefined : undefined,
+      loginPassword: mode === "conversation" ? loginPassword || undefined : undefined,
+      runId,
+    })
+      .then((res) => {
+        const data = res?.data ?? res;
+        try {
+          const stored = JSON.parse(localStorage.getItem(LOCALSTORAGE_KEY) || "{}");
+          if (stored.runId === runId) {
+            localStorage.setItem(LOCALSTORAGE_KEY, JSON.stringify({
+              ...stored, completed: true, result: data, completedAt: Date.now(),
+            }));
+          }
+        } catch (e) { /* ignore */ }
+      })
+      .catch((e) => {
+        const cause =
+          e?.response?.data?.error ||
+          e?.response?.data ||
+          e?.data?.error ||
+          e?.data ||
+          e?.message ||
+          "Run falhou";
+        try {
+          const stored = JSON.parse(localStorage.getItem(LOCALSTORAGE_KEY) || "{}");
+          if (stored.runId === runId) {
+            localStorage.setItem(LOCALSTORAGE_KEY, JSON.stringify({
+              ...stored, completed: true,
+              error: typeof cause === "string" ? cause : JSON.stringify(cause),
+              completedAt: Date.now(),
+            }));
+          }
+        } catch (err) { /* ignore */ }
       });
-      const data = res?.data ?? res;
-      if (data?.error) {
-        setAutoError(data.error);
-      } else {
-        setAutoResult({ ...data, wallMs: Date.now() - t0 });
-        loadFindings();
-      }
-    } catch (e) {
-      // O bugHunterRun retorna 502 com { error: '...' } quando o MCP connect
-      // ou o navigate inicial falham. Sem extrair o corpo, o usuario so ve
-      // "Request failed with status code 502". Achamos a causa real.
-      const cause =
-        e?.response?.data?.error ||
-        e?.response?.data ||
-        e?.data?.error ||
-        e?.data ||
-        e?.message ||
-        "Run falhou";
-      setAutoError(typeof cause === "string" ? cause : JSON.stringify(cause));
-    } finally {
-      setAutoRunning(false);
-    }
+
+    // Start polling for live progress + completion
+    startPolling(runId, startTime);
   };
+
+  // Resume background run if user navigated away and came back
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(LOCALSTORAGE_KEY) || "{}");
+      if (stored.runId && !stored.completed) {
+        setAutoRunning(true);
+        startPolling(stored.runId, stored.startTime);
+      } else if (stored.runId && stored.completed) {
+        setAutoResult({ ...stored.result, wallMs: stored.completedAt - stored.startTime });
+        if (stored.error) setAutoError(stored.error);
+        localStorage.removeItem(LOCALSTORAGE_KEY);
+      }
+    } catch (e) { /* ignore */ }
+
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, [startPolling]);
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6">
@@ -394,6 +487,16 @@ export default function BugHunterConsole() {
             <div className="flex items-start gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-300">
               <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
               <span className="font-mono text-xs break-all">{autoError}</span>
+            </div>
+          )}
+
+          {autoRunning && bgRunId && (
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-violet-500/10 border border-violet-500/20 text-sm text-violet-300">
+              <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+              <span className="flex-1">
+                Executando em segundo plano — {liveFindings.length} bug(s) encontrado(s) ate agora.
+                Voce pode navegar em outras paginas; a busca continua no servidor.
+              </span>
             </div>
           )}
 

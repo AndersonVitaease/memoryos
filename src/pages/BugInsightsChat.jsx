@@ -71,8 +71,6 @@ export default function BugInsightsChat() {
     try {
       const recs = await base44.entities.BugFinding.list("-created_date", 30);
       setFindings(recs || []);
- // Nenhum bug selecionado por padrao — o usuario escolhe quais analisar.
-      setSelectedIds(new Set());
     } catch (e) {
       // silent
     } finally {
