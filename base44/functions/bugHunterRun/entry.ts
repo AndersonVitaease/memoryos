@@ -229,7 +229,7 @@ function buildConversationPrompt(targetUrl, scenario, history, snapshotText, con
     historyText,
     '',
     'CURRENT PAGE SNAPSHOT (accessibility tree; element refs like ref="s1e2" are clickable targets; look for the chat input textarea field):',
-    snapshotText.slice(0, MAX_SNAPSHOT_CHARS),
+    snapshotText.slice(0, 8000),
     '',
     'CONSOLE ERRORS ON CURRENT PAGE:',
     consoleErrorsText || '(none)',
