@@ -603,7 +603,9 @@ export default async function (req) {
           lastEntry.read_step = step;
         }
       }
-      // Reseta justSentMessage APOS ler a resposta (snapshot). Sem isto, o LLM
+      // Reseta justSentMessage APOS ler a resposta (snapshot).
+      // Também reseta domFallbackFailCount — a pergunta anterior foi lida com sucesso.
+      domFallbackFailCount = 0; Sem isto, o LLM
       // envia no passo N (justSentMessage=true), le a resposta no passo N+1, mas
       // justSentMessage continua true -> double_send_prevented bloqueia o proximo
       // envio legítimo, desperdicando steps e fazendo parecer "travado".
