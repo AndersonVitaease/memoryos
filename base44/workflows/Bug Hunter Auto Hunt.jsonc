@@ -4,7 +4,7 @@
     "document": {
       "dsl": "1.0.0",
       "name": "bug_hunter_auto_hunt",
-      "version": "1.1",
+      "version": "1.2",
       "namespace": "base44"
     },
     "do": [
@@ -14,22 +14,21 @@
           "with": {
             "function_name": "bugHunterRun",
             "args": {
-              "targetUrl": "https://ever-mind-core.base44.app/login",
-              "maxSteps": 16,
-              "mode": "conversation",
-              "scenario": "Teste autonomo: faca perguntas separadas (uma por vez) sobre CADA topico: 1) memoria pessoal e decisoes passadas, 2) tarefas e entidades, 3) o que o MemoryOS acessa no Google Workspace (Gmail, Drive, Calendar), 4) o que ele acessa no Microsoft 365 / Outlook (emails, calendario, OneDrive). Avalie cada resposta: bug se mostrar erro interno bruto, rotear para conector errado (ex Gmail ao perguntar sobre Outlook), resposta vazia ou sem continuidade. NAO pare apos achar um bug; va para o proximo topico."
+              "targetUrl": "https://ever-mind-core.base44.app/chat",
+              "maxSteps": 12,
+              "mode": "conversation"
             }
           },
           "then": "end",
           "x-base44": {
             "title": "Executar Bug Hunter",
-            "description": "Hunt autonomo no chat cobrindo memoria pessoal + integracoes Google Workspace e Microsoft 365"
+            "description": "Hunt autonomo no chat cobrindo todos os connectors listados no Architecture Brief (Gmail, Drive, Calendar, Outlook, OneDrive, GitHub, WhatsApp, Mem0)"
           }
         }
       }
     ]
   },
-  "description": "Executa o Bug Hunter autonomamente todos os dias as 6h testando o comportamento do MemoryOS (chat) com login automatico via secrets BUGHUNTER_TEST_EMAIL/BUGHUNTER_TEST_PASSWORD. Cobre memoria pessoal, Google Workspace e Microsoft 365.",
+  "description": "Executa o Bug Hunter autonomamente todos os dias as 6h. Sem cenario fixo \u2014 o LLM le o Architecture Brief e probeia cada connector (memoria, Google Workspace, Microsoft 365, GitHub, WhatsApp). MIN_QUESTIONS escala com maxSteps para impedir done prematuro. Login automatico via secrets BUGHUNTER_TEST_EMAIL/BUGHUNTER_TEST_PASSWORD.",
   "trigger": {
     "condition": null,
     "config": {
