@@ -1,16 +1,16 @@
 /**
- * bugHunterRun — Orquestrador autonomo do Bug Hunter.
+ * bugHunterRun — Orquestrador autonomo do Bug Hunter (modo simples + continuo encadeado).
  *
- * Loop LLM + Playwright MCP que navega o app publicado, interage com a pagina,
- * detecta bugs (erros de console, fluxos quebrados, anomalias visuais) e cria
- * registros em BugFinding. Cada passo:
- *   1. browser_snapshot   -> ler arvore de acessibilidade (estado da pagina)
- *   2. browser_console_messages -> capturar erros de JS
- *   3. InvokeLLM           -> decide proxima acao + detecta bug (JSON estruturado)
- *   4. executar acao       -> browser_click / browser_type / browser_navigate / ...
- *   5. se bug detectado    -> criar BugFinding (dedupe por titulo)
- * Termina quando o LLM sinaliza done ou atinge maxSteps. Fecha o browser no fim
- * para liberar RAM na VPS.
+ * MODO SIMPLES (legacy): um bloco de ate maxSteps passos. Cria BugHunterRun, navega,
+ * loop LLM + Playwright, cria BugFindings, finaliza status=completed.
+ *
+ * MODO CONTINUO (continuous=true): encadeia varios blocos (chunks) numa MESMA
+ * conversa do MemoryOS, para construir um contexto grande (150-200+ perguntas) e
+ * testar a memoria de longa duracao. Cada chunk roda ate o ORCAMENTO DE TEMPO
+ * (~230s, margem segura sob o limite de 5min da plataforma), captura/injeta o
+ * session_id do chat via localStorage (browser_evaluate) para retomar a conversa,
+ * e persiste status='awaiting_next_chunk' para o frontend encadear o proximo.
+ * O usuario pode parar a qualquer momento (stop_requested na entidade).
  *
  * Admin-only: cria dados e dirige um browser remoto.
  */
@@ -20,6 +20,9 @@ import { connect as mcpConnect, resolveHeaders as mcpResolveHeaders, tryRecoverR
 const PLAYWRIGHT_SERVER_NAME = 'playwright-bug-hunter';
 const MAX_SNAPSHOT_CHARS = 12000;
 const MAX_HISTORY_ITEMS = 12;
+// Orcamento de tempo por chunk: 230s deixa margem segura sob o limite de 5min
+// (300s) da plataforma, considerando login (~10s) + navigate + capture (~10s).
+const TIME_BUDGET_MS = 230000;
 
 const MEMORYOS_ARCHITECTURE_BRIEF = [
   'MEMORYOS ARCHITECTURE — CONNECTORS AND CAPABILITIES TO PROBE AUTONOMOUSLY:',
@@ -99,11 +102,8 @@ function extractConsoleErrors(cons) {
 function extractElementRefs(snapshotText) {
   const refs = {};
   if (!snapshotText || typeof snapshotText !== 'string') return refs;
-  // Textarea do chat (placeholder "Converse com sua memoria...")
   const chatMatch = snapshotText.match(/(?:textbox|input|textarea)[^\n]*?(?:Converse|memoria|mensagem)[^\n]*?\[ref=(\w+)\]/i);
   if (chatMatch) refs.chatInput = chatMatch[1];
-  // Campos de login — non-greedy [^\n]*? captura o PRIMEIRO ref apos o label,
-  // nao o ultimo ref da linha (greedy pegava o ref do link "Cadastre-se").
   const emailMatch = snapshotText.match(/(?:textbox|input)[^\n]*?(?:email|e-mail)[^\n]*?\[ref=(\w+)\]/i);
   if (emailMatch) refs.email = emailMatch[1];
   const passwordMatch = snapshotText.match(/(?:textbox|input)[^\n]*?(?:password|senha)[^\n]*?\[ref=(\w+)\]/i);
@@ -111,6 +111,19 @@ function extractElementRefs(snapshotText) {
   const submitMatch = snapshotText.match(/(?:button)[^\n]*?(?:Entrar|Login|Sign in|Acessar|Continuar|Acessar conta|Entrar na conta)[^\n]*?\[ref=(\w+)\]/i);
   if (submitMatch) refs.submit = submitMatch[1];
   return refs;
+}
+
+// Extrai o valor de retorno de browser_evaluate. O Playwright MCP devolve o
+// resultado como texto no formato "### Result\n<valor>\n### Ran Playwright code\n...".
+// Esta funcao pega o conteudo entre "### Result\n" e o proximo "### " (ou fim).
+function extractEvaluateText(res) {
+  let text = '';
+  if (Array.isArray(res) && res[0] && typeof res[0].text === 'string') text = res.map((c) => c.text || '').join('\n');
+  else if (res && Array.isArray(res.content)) text = res.content.map((c) => c.text || '').join('\n');
+  else if (typeof res === 'string') text = res;
+  else text = JSON.stringify(res);
+  const m = text.match(/### Result\n([\s\S]*?)(?:\n### |$)/);
+  return m ? m[1].trim() : text.trim();
 }
 
 function buildPrompt(targetUrl, scenario, history, snapshotText, consoleErrorsText) {
@@ -152,13 +165,22 @@ function buildPrompt(targetUrl, scenario, history, snapshotText, consoleErrorsTe
   ].join('\n');
 }
 
-function buildConversationPrompt(targetUrl, scenario, history, snapshotText, consoleErrorsText, ctx, refs) {
+function buildConversationPrompt(targetUrl, scenario, history, snapshotText, consoleErrorsText, ctx, refs, priorQuestions) {
   const _refs = refs || {};
+  const _prior = priorQuestions || [];
   const historyText = history.map((h) => `${h.step}. ${h.action}: ${h.description}${h.error ? ' [ERROR: ' + h.error + ']' : ''}`).join('\n') || '(none yet)';
   const loginHint = (ctx && ctx.loginEmail && ctx.loginPassword)
     ? '\nLOGIN CREDENTIALS (use them if you encounter a login page): email="' + ctx.loginEmail + '" password="' + ctx.loginPassword + '". Fill the email field, click continue/next, fill the password field, then submit. Do NOT report the login flow itself as a bug.'
     : '\nNo login credentials were provided. If the app requires login, report it as a bug (category: auth) and set done=true.';
   const goal = scenario || "Autonomously probe the MemoryOS chat by asking targeted questions about EACH connector and capability listed in the ARCHITECTURE BRIEF. For each connector, ask ONE question that exercises a representative capability, evaluate the response against the BUG CRITERIA, then move to the next connector. Cover ALL connectors — do not stop after finding one bug.";
+  const priorBlock = _prior.length > 0
+    ? [
+      '',
+      'QUESTIONS YOU ALREADY ASKED IN PREVIOUS CHUNKS (do NOT repeat any of these — ask something NEW each time. Vary the connector, the capability, or the specifics so every question is fresh):',
+      ..._prior.map((q, i) => '  ' + (i + 1) + '. ' + String(q).slice(0, 160)),
+      '',
+    ].join('\n')
+    : '';
   return [
     'You are an autonomous QA agent ("Bug Hunter") testing a chat application called MemoryOS.',
     'Your job is to have a natural multi-turn CONVERSATION with the app to find bugs. You do NOT need anyone to feed you questions - you generate the questions yourself based on the conversation so far.',
@@ -168,7 +190,7 @@ function buildConversationPrompt(targetUrl, scenario, history, snapshotText, con
     loginHint,
     '',
     MEMORYOS_ARCHITECTURE_BRIEF,
-    '',
+    priorBlock,
     'AVAILABLE PLAYWRIGHT MCP TOOLS (set next_action.tool and the corresponding flat fields):',
     '- browser_navigate       fields: url="https://..."                                      -> open a URL',
     '- browser_click          fields: target="s1e2" element="login button"                    -> click an element (target is the ref from the snapshot)',
@@ -180,7 +202,7 @@ function buildConversationPrompt(targetUrl, scenario, history, snapshotText, con
     '',
     'NOTE: "target" must be a ref string from the snapshot above (e.g. "s1e2"). For browser_type, set submit=true to press Enter after typing (sends chat message or submits form).',
     '',
-    'CONVERSATION HISTORY SO FAR:',
+    'CONVERSATION HISTORY (this chunk so far):',
     historyText,
     '',
     'CURRENT PAGE SNAPSHOT (accessibility tree; element refs like ref="s1e2" are clickable targets; look for the chat input textarea field):',
@@ -205,9 +227,9 @@ function buildConversationPrompt(targetUrl, scenario, history, snapshotText, con
     '1. LOGIN: If the DETECTED ELEMENT REFS above show an Email field AND Password field, log in: browser_type target="' + (_refs.email || '<email-ref>') + '" text="' + (ctx.loginEmail || '<email>') + '", then browser_type target="' + (_refs.password || '<password-ref>') + '" text="' + (ctx.loginPassword || '<password>') + '" submit=true. Then next step browser_snapshot. If no email/password refs detected, you are already logged in — skip to step 4. Do NOT report login as a bug.',
     '2. If you are NOT on a login page and NOT in the chat, use browser_navigate ONCE to reach the chat URL. Do not repeat the navigation.',
     '3. If the assistant has JUST responded (this is a READ step): EVALUATE the actual response text. To report a bug you MUST quote the exact response text in bug.actual. Only report if the response itself shows a real problem: empty/blank, a raw technical error string visible to the user, or broken/missing UI. If you have not read a response yet this step, set bug_detected=false. Do NOT report the same bug twice.',
-    '4. PROBE EACH CONNECTOR: Work through the connectors listed in the ARCHITECTURE BRIEF above, ONE at a time. For each connector, ask the chat ONE question that exercises a representative capability (e.g. "voce consegue listar meus emails recentes do Outlook?" for Microsoft 365 Outlook, "quais arquivos voce encontra no meu Google Drive sobre X?" for Google Drive, "voce consegue criar um evento na minha agenda do Google Calendar?" for Calendar, "voce consegue buscar codigo no GitHub?" for GitHub). Ask ONE question at a time, wait for the response (browser_snapshot next step), evaluate it against the BUG CRITERIA, then move to the next connector. Do NOT combine multiple connectors into one question. Use browser_type with target="' + (_refs.chatInput || '<chat-input-ref>') + '" text="<your question>" submit=true to type and send the message in one step.',
+    '4. PROBE THE MEMORY / CONNECTORS: Ask ONE NEW question at a time (never repeat a question from the QUESTIONS YOU ALREADY ASKED list). Vary between memory-continuity probes (e.g. "o que voce lembra sobre mim ate agora?", "resuma o que conversamos ate aqui") and connector-capability probes from the ARCHITECTURE BRIEF. Use browser_type with target="' + (_refs.chatInput || '<chat-input-ref>') + '" text="<your question>" submit=true to type and send the message in one step.',
     '5. After sending a message, set next_action.tool to browser_snapshot so you can read the response on the next step. NEVER send two messages in a row without reading the response in between.',
-    '6. Set done=true ONLY when you have probed EVERY connector listed in the ARCHITECTURE BRIEF above. Finding a bug does NOT mean done — continue to the next connector. You have maxSteps turns; use them all to cover every connector. If the chat is completely broken (not just one error), then done=true.',
+    '6. Set done=true ONLY when you have genuinely finished. The orchestrator will keep asking you to continue if the target is not reached — do NOT declare done prematurely; just keep asking new questions.',
     '',
     'Return only the JSON matching the schema.'
   ].join('\n');
@@ -222,21 +244,30 @@ export default async function (req) {
 
     let body = {};
     try { body = await req.json(); } catch { return Response.json({ error: 'Invalid JSON body' }, { status: 400 }); }
-    const { targetUrl, maxSteps = 5, scenario, mode = 'explore', loginEmail, loginPassword, runId: clientRunId } = body;
+    const {
+      targetUrl,
+      maxSteps = 5,
+      scenario,
+      mode = 'explore',
+      loginEmail,
+      loginPassword,
+      runId: clientRunId,
+      continuous = false,
+      chatSessionId = '',
+      targetQuestions = 0,
+      chunkIndex = 0,
+    } = body;
     const _envEmail = (typeof Deno !== 'undefined' && Deno.env) ? (Deno.env.get('BUGHUNTER_TEST_EMAIL') || '') : '';
     const _envPass = (typeof Deno !== 'undefined' && Deno.env) ? (Deno.env.get('BUGHUNTER_TEST_PASSWORD') || '') : '';
     const finalLoginEmail = loginEmail || _envEmail || undefined;
     const finalLoginPassword = loginPassword || _envPass || undefined;
-    const finalMode = mode !== 'explore' ? mode : (_envEmail ? 'conversation' : 'explore');
+    const finalMode = continuous ? 'conversation' : (mode !== 'explore' ? mode : (_envEmail ? 'conversation' : 'explore'));
     if (!targetUrl) return Response.json({ error: 'Missing required field: targetUrl' }, { status: 400 });
 
     const servers = await base44.asServiceRole.entities.MCPServerConfig.filter({ name: PLAYWRIGHT_SERVER_NAME });
     if (servers.length === 0) return Response.json({ error: "MCPServerConfig '" + PLAYWRIGHT_SERVER_NAME + "' not found" }, { status: 404 });
     const server = servers[0];
 
-    // Connect to Playwright MCP ONCE — all tool calls share the same browser session.
-    // Without this, each mcpClientCall creates a new session and browser_snapshot
-    // sees about:blank (the page from a previous navigate is in a different session).
     const { headers, error: headerError } = mcpResolveHeaders(server);
     if (headerError) return Response.json({ error: headerError }, { status: 500 });
 
@@ -264,20 +295,16 @@ export default async function (req) {
       return result.structuredContent ?? result.content ?? result;
     };
 
-    // Navigate with retry — descarta 502 transitório (cold-start do Base44) antes de falhar.
-    // After successful navigate, wait 2s for SPA to render before snapshot.
     const navigateWithRetry = async (url, attempts = 3) => {
       let lastErr = null;
       for (let i = 0; i < attempts; i++) {
         try {
           const result = await callMcp('browser_navigate', { url });
-          // Give the SPA time to render after navigation
           try { await callMcp('browser_wait_for', { time: 2 }); } catch (e) { /* best-effort */ }
           return result;
         } catch (e) {
           lastErr = e;
           const msg = String(e.message || e);
-          // 502/503/504/transient — tenta de novo apos pausa curta
           if (/50[234]|Bad Gateway|timeout|ECONNRESET|ETIMEDOUT|fetch failed/i.test(msg) && i < attempts - 1) {
             await new Promise((r) => setTimeout(r, 1500 * (i + 1)));
             continue;
@@ -288,46 +315,84 @@ export default async function (req) {
       throw lastErr;
     };
 
+    // ── Estado do chunk ──────────────────────────────────────────────────────
     const findings = [];
     const history = [];
     const reportedBugSignatures = new Set();
-    let justSentMessage = false; // true when previous step sent a chat message (next step can evaluate the response)
-    let questionsSent = 0; // total questions actually sent to the chat (premature-done guard)
-    let questionsAnswered = 0; // questions sent AND followed by a response read (snapshot after send). 0 findings only trustworthy when >= MIN_QUESTIONS.
-    let lastSentText = ''; // last message text sent (exact-duplicate prevention)
-    const transcript = []; // [{step, question, response_evidence, read_step}] — proof that questions were asked AND answered
+    let justSentMessage = false;
+    let questionsSent = 0;
+    let questionsAnswered = 0;
+    let lastSentText = '';
+    const transcript = [];
 
-    // Persist the run so "0 findings" is verifiable. Without this record, a run
-    // that asked 0 questions and a run that asked 5 and got clean answers look
-    // identical (both 0 BugFindings). The transcript proves the difference.
+    // ── Estado acumulado (modo continuo): carrega do registro existente ────
+    let cumulativeQuestionsSent = 0;
+    let cumulativeQuestionsAnswered = 0;
+    let cumulativeFindings = 0;
+    let cumulativeDurationMs = 0;
+    let cumulativeTranscript = [];
+    let existingChunkCount = 0;
+    let priorQuestions = [];
+    let capturedSessionId = chatSessionId || '';
+    let runRecordId = null;
+
+    const isResume = continuous && chunkIndex > 0 && !!chatSessionId;
+
+    if (continuous && isResume) {
+      try {
+        const rec = (await base44.asServiceRole.entities.BugHunterRun.filter({ run_id: runId }))[0];
+        if (rec) {
+          runRecordId = rec.id;
+          cumulativeQuestionsSent = rec.questions_sent || 0;
+          cumulativeQuestionsAnswered = rec.questions_answered || 0;
+          cumulativeFindings = rec.findings_count || 0;
+          cumulativeDurationMs = rec.duration_ms || 0;
+          existingChunkCount = rec.chunk_count || 0;
+          try {
+            cumulativeTranscript = JSON.parse(rec.transcript || '[]');
+            priorQuestions = cumulativeTranscript.map((t) => t.question).filter(Boolean);
+          } catch { /* best-effort */ }
+        }
+      } catch (e) { /* best-effort */ }
+    }
+
+    // ── Persiste/cria o registro da run ────────────────────────────────────
     try {
-      await base44.entities.BugHunterRun.create({
-        run_id: runId,
-        target_url: targetUrl,
-        mode: finalMode,
-        scenario: scenario || '',
-        max_steps: maxSteps,
-        status: 'running',
-        questions_sent: 0,
-        questions_answered: 0,
-        findings_count: 0,
-        transcript: '[]',
-        history: '[]',
-      });
-    } catch (e) { /* best-effort — run continues even if persistence fails */ }
-    // MIN_QUESTIONS: minimum questions that must be sent+read before done is allowed.
-    // The LLM frequently hallucinates "I have probed several connectors" after sending
-    // 0-1 questions — it reads the ARCHITECTURE BRIEF as if it were action history.
-    // For a targeted scenario (e.g. "test memory"), 1 question is enough. For a full
-    // architecture probe (no specific scenario), scale up — capped by available steps
-    // (each probe = 1 send + 1 read = 2 steps, +1 for done).
+      if (continuous && runRecordId) {
+        await base44.asServiceRole.entities.BugHunterRun.update(runRecordId, {
+          status: 'running',
+          stop_requested: false,
+        });
+      } else {
+        const created = await base44.entities.BugHunterRun.create({
+          run_id: runId,
+          target_url: targetUrl,
+          mode: finalMode,
+          scenario: scenario || '',
+          max_steps: maxSteps,
+          status: 'running',
+          questions_sent: 0,
+          questions_answered: 0,
+          findings_count: 0,
+          transcript: '[]',
+          history: '[]',
+          continuous: !!continuous,
+          target_questions: targetQuestions || 0,
+          chunk_count: 0,
+          chat_session_id: chatSessionId || '',
+          stop_requested: false,
+        });
+        runRecordId = created.id;
+      }
+    } catch (e) { /* best-effort */ }
+
     const _isTargetedScenario = !!(scenario && scenario.trim().length > 0);
     const MIN_QUESTIONS = finalMode === 'conversation'
       ? (_isTargetedScenario ? 1 : Math.max(1, Math.min(3, Math.floor((maxSteps - 1) / 2))))
       : 0;
     const START = Date.now();
 
-    // Step 0: navigate to target (com retry para descartar 502 transitório)
+    // ── Step 0: navega para o alvo (login ou app) ─────────────────────────
     try {
       await navigateWithRetry(targetUrl);
       history.push({ step: 0, action: 'browser_navigate', description: 'Navigated to ' + targetUrl });
@@ -335,10 +400,7 @@ export default async function (req) {
       return Response.json({ ok: false, error: 'Initial navigate failed: ' + e.message, run_id: runId, history }, { status: 502 });
     }
 
-    // Deterministic login pre-step (conversation mode com credenciais).
-    // O LLM e instavel em preencher login multi-campo; fazemos deterministicamente
-    // quando detectamos email+password no snapshot inicial. Tambem espera 5s
-    // para o SPA inicializar (conversation.isInitialized) antes do snapshot.
+    // ── Login deterministico (conversation mode com credenciais) ─────────
     if (finalMode === 'conversation' && finalLoginEmail && finalLoginPassword) {
       try {
         try { await callMcp('browser_wait_for', { time: 5 }); } catch (e) { /* best-effort */ }
@@ -362,20 +424,86 @@ export default async function (req) {
       }
     }
 
+    // ── Modo continuo: garante /chat com a sessao correta (resume) e captura o session_id (primeiro chunk) ──
+    let origin = targetUrl;
+    try { origin = new URL(targetUrl).origin; } catch (e) { /* keep targetUrl */ }
+    const chatUrl = origin + '/chat';
+
+    if (continuous) {
+      // Resume: injeta o session_id no localStorage para o chat carregar a conversa anterior.
+      if (chatSessionId) {
+        try {
+          await callMcp('browser_evaluate', {
+            function: '() => { try { localStorage.setItem("memoryos_last_session_id", ' + JSON.stringify(chatSessionId) + '); return true; } catch(e) { return false; } }'
+          });
+          history.push({ step: 0.7, action: 'inject_session', description: 'Injected chat session_id into localStorage for resume' });
+        } catch (e) {
+          history.push({ step: 0.7, action: 'inject_session', description: 'Inject session failed: ' + e.message });
+        }
+      }
+      // Navega deterministtamente para /chat (nao depende do LLM achar o chat).
+      try {
+        await navigateWithRetry(chatUrl);
+        try { await callMcp('browser_wait_for', { time: 6 }); } catch (e) { /* best-effort */ }
+        history.push({ step: 0.8, action: 'browser_navigate', description: 'Navigated to ' + chatUrl });
+      } catch (e) {
+        history.push({ step: 0.8, action: 'browser_navigate', description: 'Navigate to /chat failed: ' + e.message });
+      }
+      // Primeiro chunk: captura o session_id que o chat criou.
+      if (!chatSessionId) {
+        try {
+          const r = await callMcp('browser_evaluate', { function: "() => localStorage.getItem('memoryos_last_session_id')" });
+          const v = extractEvaluateText(r);
+          // browser_evaluate serializa strings de volta com aspas (JSON) — limpa.
+          const cleanId = v.replace(/^"|"$/g, '').replace(/\\"/g, '"');
+          if (cleanId && cleanId !== 'null' && cleanId !== 'undefined' && cleanId !== '') {
+            capturedSessionId = cleanId;
+            history.push({ step: 0.9, action: 'capture_session', description: 'Captured chat session_id: ' + capturedSessionId });
+          } else {
+            history.push({ step: 0.9, action: 'capture_session', description: 'No session_id in localStorage yet (chat may still be initializing)' });
+          }
+        } catch (e) {
+          history.push({ step: 0.9, action: 'capture_session', description: 'Capture session failed: ' + e.message });
+        }
+      }
+    }
+
+    // ── Loop principal ──────────────────────────────────────────────────────
+    let stoppedByUser = false;
+    let timeBudgetHit = false;
+    let targetReached = false;
+
     for (let step = 1; step <= maxSteps; step++) {
-      // If the previous step sent a chat message, wait for the response to
-      // render before snapshotting — otherwise we snapshot mid-stream.
+      // Stop check (modo continuo): rele o registro a cada 5 passos.
+      if (continuous && step % 5 === 0) {
+        try {
+          const rec = (await base44.asServiceRole.entities.BugHunterRun.filter({ run_id: runId }))[0];
+          if (rec && rec.stop_requested) {
+            stoppedByUser = true;
+            history.push({ step, action: 'stopped', description: 'Stop requested by user — ending chunk' });
+            break;
+          }
+        } catch (e) { /* best-effort */ }
+      }
+      // Orcamento de tempo (modo continuo): termina o chunk em ~230s.
+      if (continuous && (Date.now() - START) > TIME_BUDGET_MS) {
+        timeBudgetHit = true;
+        history.push({ step, action: 'time_budget', description: 'Chunk time budget reached (' + TIME_BUDGET_MS + 'ms) — will request next chunk' });
+        break;
+      }
+      // Meta de perguntas (modo continuo): para ao alcancar o alvo acumulado.
+      if (continuous && targetQuestions > 0 && (cumulativeQuestionsAnswered + questionsAnswered) >= targetQuestions) {
+        targetReached = true;
+        history.push({ step, action: 'target_reached', description: 'Target questions reached (' + targetQuestions + ')' });
+        break;
+      }
+
       if (justSentMessage) {
         try { await callMcp('browser_wait_for', { time: 3 }); } catch (e) { /* best-effort */ }
       }
-      // Gather page context
       let snapshotText = '(snapshot failed)';
       let consoleErrors = [];
       try { snapshotText = extractSnapshotText(await callMcp('browser_snapshot', {})); } catch (e) { /* non-fatal */ }
-      // RESPONSE READ TRACKING: if the previous step sent a chat message, THIS
-      // snapshot shows the assistant response. Record it as an answered question
-      // — this is the proof a real conversation happened (not just sends).
-      // questionsAnswered (not questionsSent) is what gates the done guard.
       if (justSentMessage && transcript.length > 0) {
         questionsAnswered++;
         const lastEntry = transcript[transcript.length - 1];
@@ -388,12 +516,11 @@ export default async function (req) {
       const consoleErrorsText = consoleErrors.map((m) => '[' + (m.type || 'error') + '] ' + (m.text || '')).join('\n').slice(0, 2000) || '(none)';
       const refs = extractElementRefs(snapshotText);
 
-      // LLM decision
       let decision = null;
       try {
         const promptFn = finalMode === 'conversation' ? buildConversationPrompt : buildPrompt;
         const llmRes = await base44.asServiceRole.integrations.Core.InvokeLLM({
-          prompt: promptFn(targetUrl, scenario, history.slice(-MAX_HISTORY_ITEMS), snapshotText, consoleErrorsText, { loginEmail: finalLoginEmail, loginPassword: finalLoginPassword }, refs),
+          prompt: promptFn(targetUrl, scenario, history.slice(-MAX_HISTORY_ITEMS), snapshotText, consoleErrorsText, { loginEmail: finalLoginEmail, loginPassword: finalLoginPassword }, refs, priorQuestions),
           response_json_schema: DECISION_SCHEMA,
         });
         decision = llmRes;
@@ -408,86 +535,61 @@ export default async function (req) {
       }
 
       // Bug detection — dedupe by title signature.
-      // GUARD: in conversation mode, only evaluate bugs on READ steps (justSentMessage=true
-      // = previous step sent a chat message, so THIS snapshot shows the assistant response).
-      // On send/navigate steps the hunter hasn't seen the response yet — any bug_detected
-      // there is speculation and is suppressed. In explore mode, every snapshot is a valid
-      // read (the hunter is looking at the actual page), so no suppression.
       if (decision.bug_detected && decision.bug && decision.bug.title) {
         if (finalMode === 'conversation' && !justSentMessage) {
           history.push({ step, action: 'bug_suppressed', description: 'bug_detected ignored: conversation mode + no assistant response read yet (send/navigate step)' });
         } else {
-        const sig = String(decision.bug.title).toLowerCase().slice(0, 60);
-        // REAL EVIDENCE: capture the last 1500 chars of the snapshot (most recent
-        // chat content the hunter actually saw) so findings are verifiable, not
-        // just LLM inference. Stored in the `actual` field of the BugFinding.
-        const responseEvidence = snapshotText.slice(-1500);
-        // INFRA FILTER: 502/503/504 Bad Gateway e about:blank sao falhas da
-        // plataforma Base44 (cold-start/timeout do app publicado), nao bugs do
-        // MemoryOS. Ignora silenciosamente em vez de criar BugFinding (ruido).
-        const _bugText = (String(decision.bug.title) + ' ' + String(decision.bug.description || '') + ' ' + String(decision.bug.actual || '') + ' ' + String(decision.bug.expected || '')).toLowerCase();
-        if (/50[234]|bad gateway|about:blank/.test(_bugText)) {
-          history.push({ step, action: 'infra_skip', description: 'Bug ignored: infra 502/503/504/about:blank (not a MemoryOS bug)' });
-        }
-        // SELF-LIMITATION FILTER: "chat input not found/missing/inaccessible"
-        // e variantes sao falsos positivos do proprio hunter — ele acabou os
-        // passos antes de chegar no chat, ou nao completou o login. O campo
-        // de mensagem do ChatPage e um <textarea> normal (sempre presente).
-        // Nao e bug do MemoryOS; e limitacao do robo. Ignora.
-        else if (/chat input (field )?(not found|missing|inaccessible|not visible|not present|not available)|input field (not found|missing|inaccessible)|cannot find (the )?(chat )?input|no (chat )?input (field|element|area)/.test(_bugText)) {
-          history.push({ step, action: 'self_limitation_skip', description: 'Bug ignored: hunter self-limitation (chat input not found = ran out of steps / did not reach chat page, not a MemoryOS bug)' });
-        } else if (!reportedBugSignatures.has(sig)) {
-          reportedBugSignatures.add(sig);
-          const b = decision.bug;
-          try {
-            const finding = await base44.entities.BugFinding.create({
-              run_id: runId,
-              target_url: targetUrl,
-              title: b.title,
-              description: b.description || '',
-              severity: b.severity || 'medium',
-              category: b.category || 'functional',
-              steps_to_reproduce: JSON.stringify(history.map((h) => ({ step: h.step, action: h.action, description: h.description })), null, 2),
-              expected: b.expected || '',
-              actual: '[CAPTURED PAGE CONTENT (last 1500 chars of snapshot)]\n' + responseEvidence + '\n\n[LLM ANALYSIS]\n' + (b.actual || ''),
-              console_errors: consoleErrors.map((m) => m.text || '').join('\n').slice(0, 4000),
-              status: 'open',
-            });
-            findings.push({ id: finding.id, title: finding.title, severity: finding.severity, category: finding.category });
-          } catch (e) {
-            // finding creation failed; continue exploring
+          const sig = String(decision.bug.title).toLowerCase().slice(0, 60);
+          const responseEvidence = snapshotText.slice(-1500);
+          const _bugText = (String(decision.bug.title) + ' ' + String(decision.bug.description || '') + ' ' + String(decision.bug.actual || '') + ' ' + String(decision.bug.expected || '')).toLowerCase();
+          if (/50[234]|bad gateway|about:blank/.test(_bugText)) {
+            history.push({ step, action: 'infra_skip', description: 'Bug ignored: infra 502/503/504/about:blank (not a MemoryOS bug)' });
+          } else if (/chat input (field )?(not found|missing|inaccessible|not visible|not present|not available)|input field (not found|missing|inaccessible)|cannot find (the )?(chat )?input|no (chat )?input (field|element|area)/.test(_bugText)) {
+            history.push({ step, action: 'self_limitation_skip', description: 'Bug ignored: hunter self-limitation (chat input not found = ran out of steps / did not reach chat page, not a MemoryOS bug)' });
+          } else if (!reportedBugSignatures.has(sig)) {
+            reportedBugSignatures.add(sig);
+            const b = decision.bug;
+            try {
+              const finding = await base44.entities.BugFinding.create({
+                run_id: runId,
+                target_url: targetUrl,
+                title: b.title,
+                description: b.description || '',
+                severity: b.severity || 'medium',
+                category: b.category || 'functional',
+                steps_to_reproduce: JSON.stringify(history.map((h) => ({ step: h.step, action: h.action, description: h.description })), null, 2),
+                expected: b.expected || '',
+                actual: '[CAPTURED PAGE CONTENT (last 1500 chars of snapshot)]\n' + responseEvidence + '\n\n[LLM ANALYSIS]\n' + (b.actual || ''),
+                console_errors: consoleErrors.map((m) => m.text || '').join('\n').slice(0, 4000),
+                status: 'open',
+              });
+              findings.push({ id: finding.id, title: finding.title, severity: finding.severity, category: finding.category });
+            } catch (e) { /* finding creation failed; continue exploring */ }
           }
         }
-        } // end justSentMessage guard
       }
 
+      // Done handling: modo continuo ignora "done" (continua ate tempo/alvo/stop).
       if (decision.done) {
-        // PREMATURE-DONE GUARD: block done until enough questions were sent+read.
-        // The LLM hallucinates "I have already probed several connectors" after
-        // sending 0-1 questions. Force it to keep going until questionsSent >= MIN.
-        if (questionsAnswered < MIN_QUESTIONS) {
-          history.push({ step, action: 'done_blocked', description: 'Premature done BLOCKED: only ' + questionsAnswered + '/' + MIN_QUESTIONS + ' questions answered (sent + response read). Forcing continuation.' });
-          // Don't break — fall through to action execution (the LLM must probe more)
+        if (continuous) {
+          history.push({ step, action: 'done_ignored', description: 'Continuous mode: LLM done ignored (continues until target/stop/time budget)' });
+        } else if (questionsAnswered < MIN_QUESTIONS) {
+          history.push({ step, action: 'done_blocked', description: 'Premature done BLOCKED: only ' + questionsAnswered + '/' + MIN_QUESTIONS + ' questions answered. Forcing continuation.' });
         } else {
           history.push({ step, action: 'done', description: decision.reasoning || 'Agent signaled completion' });
           break;
         }
       }
 
-      // Execute next action — build args from flat fields (more reliable than nested object from LLM)
       const na = decision.next_action;
 
-      // DOUBLE-SEND PREVENTION: if the previous step sent a message (justSentMessage=true,
-      // meaning THIS step already snapshotted the response at the top of the loop), the
-      // LLM must NOT send another message — it should evaluate the response it just read.
-      // If it tries to send again, skip it: we already read the response, just move on.
+      // DOUBLE-SEND PREVENTION
       if (justSentMessage && na && na.tool === 'browser_type' && na.submit === true) {
-        history.push({ step, action: 'double_send_prevented', description: 'Skipped duplicate send — response already read this step. LLM must evaluate or move to next probe.' });
-        justSentMessage = false; // we did NOT send this step
-        continue; // skip execution, go to next step fresh
+        history.push({ step, action: 'double_send_prevented', description: 'Skipped duplicate send — response already read this step.' });
+        justSentMessage = false;
+        continue;
       }
-      // EXACT DUPLICATE PREVENTION: if the LLM sends the exact same text as the last
-      // send, skip it (wastes a step, doesn't probe anything new).
+      // EXACT DUPLICATE PREVENTION
       if (na && na.tool === 'browser_type' && na.submit === true && na.text && na.text === lastSentText) {
         history.push({ step, action: 'duplicate_send_prevented', description: 'Skipped exact duplicate message: "' + String(na.text).slice(0, 60) + '"' });
         justSentMessage = false;
@@ -495,19 +597,11 @@ export default async function (req) {
       }
 
       if (na && na.tool && na.tool !== 'none') {
-        // Construct args from flat fields based on tool type
         let args = {};
-        if (na.tool === 'browser_navigate') {
-          args = { url: na.url };
-        } else if (na.tool === 'browser_click') {
-          args = { target: na.target, element: na.element || '' };
-        } else if (na.tool === 'browser_type') {
-          args = { target: na.target, text: na.text, submit: na.submit === true };
-        } else if (na.tool === 'browser_press_key') {
-          args = { key: na.key };
-        } else {
-          // browser_snapshot, browser_navigate_back, browser_close — no args needed
-        }
+        if (na.tool === 'browser_navigate') args = { url: na.url };
+        else if (na.tool === 'browser_click') args = { target: na.target, element: na.element || '' };
+        else if (na.tool === 'browser_type') args = { target: na.target, text: na.text, submit: na.submit === true };
+        else if (na.tool === 'browser_press_key') args = { key: na.key };
         const argsStr = JSON.stringify(args).slice(0, 300);
         try {
           if (na.tool === 'browser_navigate') {
@@ -535,8 +629,6 @@ export default async function (req) {
         history.push({ step, action: 'none', description: 'No action' });
       }
 
-      // Track if this step sent a chat message — the next step's bug detection
-      // only runs when this is true (the snapshot then shows the response).
       justSentMessage = !!(na && na.tool === 'browser_type' && na.submit === true);
       if (justSentMessage && na.text) {
         questionsSent++;
@@ -545,25 +637,58 @@ export default async function (req) {
       }
     }
 
-    // Persist the final run result — transcript proves questions were asked
-    // and answered. Without this, "0 findings" is unverifiable after navigation.
+    // ── Persiste o resultado final do chunk ──────────────────────────────
+    const totalSent = cumulativeQuestionsSent + questionsSent;
+    const totalAnswered = cumulativeQuestionsAnswered + questionsAnswered;
+    const totalFindings = cumulativeFindings + findings.length;
+    const mergedTranscript = cumulativeTranscript.concat(transcript);
+    const chunkDurationMs = Date.now() - START;
+    const totalDurationMs = cumulativeDurationMs + chunkDurationMs;
+    const newChunkCount = existingChunkCount + 1;
+
+    // Re-le stop_requested para decidir o estado final com certeza.
+    let stopRequestedFlag = false;
     try {
-      const runRecord = (await base44.asServiceRole.entities.BugHunterRun.filter({ run_id: runId }))[0];
-      if (runRecord) {
-        await base44.asServiceRole.entities.BugHunterRun.update(runRecord.id, {
-          status: 'completed',
-          steps_executed: history.length - 1,
-          questions_sent: questionsSent,
-          questions_answered: questionsAnswered,
-          findings_count: findings.length,
-          transcript: JSON.stringify(transcript, null, 2),
+      const rec = (await base44.asServiceRole.entities.BugHunterRun.filter({ run_id: runId }))[0];
+      if (rec) {
+        stopRequestedFlag = !!rec.stop_requested;
+        if (!runRecordId) runRecordId = rec.id;
+      }
+    } catch (e) { /* best-effort */ }
+
+    let finalStatus;
+    let shouldContinue = false;
+    if (stopRequestedFlag || stoppedByUser) {
+      finalStatus = 'stopped';
+    } else if (continuous && targetQuestions > 0 && totalAnswered >= targetQuestions) {
+      finalStatus = 'completed';
+    } else if (continuous) {
+      // Modo continuo: qualquer fim que nao seja stop/meta atingida pede o proximo bloco
+      // (maxSteps ou orcamento de tempo ou LLM invalido). O frontend encadeia.
+      finalStatus = 'awaiting_next_chunk';
+      shouldContinue = true;
+    } else {
+      finalStatus = 'completed';
+    }
+
+    try {
+      if (runRecordId) {
+        await base44.asServiceRole.entities.BugHunterRun.update(runRecordId, {
+          status: finalStatus,
+          steps_executed: (continuous ? (history.length - 1) : (history.length - 1)),
+          questions_sent: totalSent,
+          questions_answered: totalAnswered,
+          findings_count: totalFindings,
+          transcript: JSON.stringify(mergedTranscript, null, 2),
           history: JSON.stringify(history, null, 2),
-          duration_ms: Date.now() - START,
+          duration_ms: totalDurationMs,
+          chat_session_id: capturedSessionId,
+          chunk_count: newChunkCount,
+          target_questions: targetQuestions || 0,
         });
       }
     } catch (e) { /* best-effort */ }
 
-    // Close browser to free RAM on the VPS, then terminate the MCP session
     try { await callMcp('browser_close', {}); } catch (e) { /* best-effort */ }
     try {
       if (mcpSession.transportUsed === 'streamable-http' && typeof mcpSession.transport.terminateSession === 'function') {
@@ -576,15 +701,22 @@ export default async function (req) {
       ok: true,
       run_id: runId,
       targetUrl,
+      continuous: !!continuous,
+      chunk_index: newChunkCount,
+      chat_session_id: capturedSessionId,
+      continue: shouldContinue,
       stepsExecuted: history.length - 1,
-      questionsSent,
-      questionsAnswered,
+      questionsSent: totalSent,
+      questionsAnswered: totalAnswered,
+      targetQuestions: targetQuestions || 0,
       minQuestions: MIN_QUESTIONS,
-      transcript,
+      transcript: mergedTranscript,
       findingsCreated: findings.length,
       findings,
       history,
-      durationMs: Date.now() - START,
+      durationMs: totalDurationMs,
+      chunkDurationMs,
+      status: finalStatus,
     });
   } catch (error) {
     return Response.json({ error: error.message }, { status: 500 });
