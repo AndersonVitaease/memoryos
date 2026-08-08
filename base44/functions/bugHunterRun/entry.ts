@@ -485,10 +485,11 @@ export default async function (req) {
           }
         } catch (e) { /* best-effort */ }
       }
-      // Orcamento de tempo (modo continuo): termina o chunk em ~230s.
-      if (continuous && (Date.now() - START) > TIME_BUDGET_MS) {
+      // Orcamento de tempo (todos os modos): termina em ~230s para deixar margem
+      // segura sob o limite de 5min (300s) da plataforma e sempre persistir o resultado.
+      if ((Date.now() - START) > TIME_BUDGET_MS) {
         timeBudgetHit = true;
-        history.push({ step, action: 'time_budget', description: 'Chunk time budget reached (' + TIME_BUDGET_MS + 'ms) — will request next chunk' });
+        history.push({ step, action: 'time_budget', description: 'Time budget reached (' + TIME_BUDGET_MS + 'ms)' + (continuous ? ' — will request next chunk' : ' — finishing run') });
         break;
       }
       // Meta de perguntas (modo continuo): para ao alcancar o alvo acumulado.
