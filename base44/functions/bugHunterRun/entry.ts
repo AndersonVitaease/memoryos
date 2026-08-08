@@ -280,7 +280,13 @@ export default async function (req) {
       // Bug detection (dedupe by title signature)
       if (decision.bug_detected && decision.bug && decision.bug.title) {
         const sig = String(decision.bug.title).toLowerCase().slice(0, 60);
-        if (!reportedBugSignatures.has(sig)) {
+        // INFRA FILTER: 502/503/504 Bad Gateway e about:blank sao falhas da
+        // plataforma Base44 (cold-start/timeout do app publicado), nao bugs do
+        // MemoryOS. Ignora silenciosamente em vez de criar BugFinding (ruido).
+        const _bugText = (String(decision.bug.title) + ' ' + String(decision.bug.description || '') + ' ' + String(decision.bug.actual || '')).toLowerCase();
+        if (/50[234]|bad gateway|about:blank/.test(_bugText)) {
+          history.push({ step, action: 'infra_skip', description: 'Bug ignored: infra 502/503/504/about:blank (not a MemoryOS bug)' });
+        } else if (!reportedBugSignatures.has(sig)) {
           reportedBugSignatures.add(sig);
           const b = decision.bug;
           try {
