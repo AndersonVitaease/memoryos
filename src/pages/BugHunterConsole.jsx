@@ -136,6 +136,9 @@ export default function BugHunterConsole() {
     if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
     setBgRunId(runId);
     setAutoError(null);
+    // Watchdog: se um chunk ficar "running" > 300s sem progresso (q_answered/chunk_count mudou), finaliza.
+    let lastProgressSig = "";
+    let lastProgressAt = Date.now();
     pollIntervalRef.current = setInterval(async () => {
       let rec = null;
       try {
@@ -167,7 +170,20 @@ export default function BugHunterConsole() {
         return;
       }
 
-      if (rec.status === "running") return; // chunk em execucao
+      if (rec.status === "running") {
+        // Watchdog: se nao houve progresso (q_answered/chunk_count) em 300s, o chunk travou.
+        const sig = (rec.questions_answered || 0) + ":" + (rec.chunk_count || 0);
+        if (sig !== lastProgressSig) {
+          lastProgressSig = sig;
+          lastProgressAt = Date.now();
+        } else if (Date.now() - lastProgressAt > 300000) {
+          appendLog({ tool: "watchdog", ok: false, ms: 0, msg: "chunk travado > 300s sem progresso — finalizando" });
+          try { await base44.entities.BugHunterRun.update(rec.id, { status: "stopped", stop_requested: true }); } catch (e) {}
+          finalizeContinuous(runId, "stopped");
+          return;
+        }
+        return; // chunk em execucao
+      }
 
       // Alvo alcancado, completed, failed ou stopped -> finaliza
       const target = rec.target_questions || 0;
