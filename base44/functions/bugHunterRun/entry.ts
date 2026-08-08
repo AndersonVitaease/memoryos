@@ -352,7 +352,32 @@ export default async function (req) {
       throw lastErr;
     };
 
-    // Fallback nuclear: digita diretamente no <textarea> via DOM e submete o <form>.
+      // Aguarda os conectores inicializarem (connectionsMounted === true).
+  // Sem isto, perguntas são roteadas para general_conversation que diz "não consigo"
+  // e todas as execuções falham, aparentando travamento.
+  const waitForConnectors = async (maxWaitMs = 30000) => {
+    const startWait = Date.now();
+    while ((Date.now() - startWait) < maxWaitMs) {
+      try {
+        const snap = await callMcp('browser_snapshot', {});
+        const snapText = extractSnapshotText(snap);
+        // Verifica se connectionsMounted === true no __MEMORY_DEBUG__
+        // via browser_evaluate (mais confiável que regex no snapshot)
+        const checkResult = await callMcp('browser_evaluate', {
+          function: "() => { try { return window.__MEMORY_DEBUG__?.React?.connectionsMounted === true; } catch(e) { return false; } }"
+        });
+        const evalText = extractEvaluateText(checkResult);
+        if (evalText === 'true' || evalText === 'true
+') {
+          return true;  // Conectores prontos
+        }
+      } catch (e) { /* best-effort */ }
+      try { await callMcp('browser_wait_for', { time: 2 }); } catch (e) { /* best-effort */ }
+    }
+    return false;  // Timeout — conectores não inicializaram a tempo
+  };
+
+// Fallback nuclear: digita diretamente no <textarea> via DOM e submete o <form>.// Fallback nuclear: digita diretamente no <textarea> via DOM e submete o <form>\.
     // 100% confiavel — nao depende do LLM escolher o ref certo nem do textarea estar
     // na arvore de acessibilidade (textarea disabled/ausente). Evita o padrao "LLM
     // escolhe div de timestamp -> browser_type falha em 20s -> run trava".
