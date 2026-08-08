@@ -1,0 +1,50 @@
+{
+  "name": "Bug Hunter Auto Hunt",
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "bug_hunter_auto_hunt",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "run_hunt": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "bugHunterRun",
+            "args": {
+              "targetUrl": "https://ever-mind-core.base44.app/chat",
+              "maxSteps": 8,
+              "mode": "conversation",
+              "scenario": "Teste autonomo do comportamento do MemoryOS: faca perguntas variadas sobre memoria pessoal, decisoes passadas, tarefas e entidades. Avalie continuidade, respostas vazias, erros de console e fluxos quebrados."
+            }
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "Executar Bug Hunter",
+            "description": "Hunt autonomo no chat"
+          }
+        }
+      }
+    ]
+  },
+  "description": "Executa o Bug Hunter autonomamente todos os dias as 6h testando o comportamento do MemoryOS (chat) com login automatico via secrets BUGHUNTER_TEST_EMAIL/BUGHUNTER_TEST_PASSWORD",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "0 6 * * *",
+      "one_time_date": null,
+      "timezone": "America/Sao_Paulo",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  }
+}
