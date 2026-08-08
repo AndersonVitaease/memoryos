@@ -71,11 +71,8 @@ export default function BugInsightsChat() {
     try {
       const recs = await base44.entities.BugFinding.list("-created_date", 30);
       setFindings(recs || []);
-      // Auto-select open + confirmed
-      const auto = new Set(
-        (recs || []).filter((f) => f.status === "open" || f.status === "confirmed").map((f) => f.id)
-      );
-      setSelectedIds(auto);
+ // Nenhum bug selecionado por padrao — o usuario escolhe quais analisar.
+      setSelectedIds(new Set());
     } catch (e) {
       // silent
     } finally {
