@@ -311,7 +311,6 @@ export default async function (req) {
 
       // Execute next action — build args from flat fields (more reliable than nested object from LLM)
       const na = decision.next_action;
-      console.log('[bugHunterRun] RAW decision.next_action:', JSON.stringify(na, null, 2));
       if (na && na.tool && na.tool !== 'none') {
         // Construct args from flat fields based on tool type
         let args = {};
