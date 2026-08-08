@@ -292,6 +292,18 @@ export default async function (req) {
     const history = [];
     const reportedBugSignatures = new Set();
     let justSentMessage = false; // true when previous step sent a chat message (next step can evaluate the response)
+    let questionsSent = 0; // total questions actually sent to the chat (premature-done guard)
+    let lastSentText = ''; // last message text sent (exact-duplicate prevention)
+    // MIN_QUESTIONS: minimum questions that must be sent+read before done is allowed.
+    // The LLM frequently hallucinates "I have probed several connectors" after sending
+    // 0-1 questions — it reads the ARCHITECTURE BRIEF as if it were action history.
+    // For a targeted scenario (e.g. "test memory"), 1 question is enough. For a full
+    // architecture probe (no specific scenario), scale up — capped by available steps
+    // (each probe = 1 send + 1 read = 2 steps, +1 for done).
+    const _isTargetedScenario = !!(scenario && scenario.trim().length > 0);
+    const MIN_QUESTIONS = finalMode === 'conversation'
+      ? (_isTargetedScenario ? 1 : Math.max(1, Math.min(3, Math.floor((maxSteps - 1) / 2))))
+      : 0;
     const START = Date.now();
 
     // Step 0: navigate to target (com retry para descartar 502 transitório)
@@ -417,12 +429,38 @@ export default async function (req) {
       }
 
       if (decision.done) {
-        history.push({ step, action: 'done', description: decision.reasoning || 'Agent signaled completion' });
-        break;
+        // PREMATURE-DONE GUARD: block done until enough questions were sent+read.
+        // The LLM hallucinates "I have already probed several connectors" after
+        // sending 0-1 questions. Force it to keep going until questionsSent >= MIN.
+        if (questionsSent < MIN_QUESTIONS) {
+          history.push({ step, action: 'done_blocked', description: 'Premature done BLOCKED: only ' + questionsSent + '/' + MIN_QUESTIONS + ' questions sent. Forcing continuation.' });
+          // Don't break — fall through to action execution (the LLM must probe more)
+        } else {
+          history.push({ step, action: 'done', description: decision.reasoning || 'Agent signaled completion' });
+          break;
+        }
       }
 
       // Execute next action — build args from flat fields (more reliable than nested object from LLM)
       const na = decision.next_action;
+
+      // DOUBLE-SEND PREVENTION: if the previous step sent a message (justSentMessage=true,
+      // meaning THIS step already snapshotted the response at the top of the loop), the
+      // LLM must NOT send another message — it should evaluate the response it just read.
+      // If it tries to send again, skip it: we already read the response, just move on.
+      if (justSentMessage && na && na.tool === 'browser_type' && na.submit === true) {
+        history.push({ step, action: 'double_send_prevented', description: 'Skipped duplicate send — response already read this step. LLM must evaluate or move to next probe.' });
+        justSentMessage = false; // we did NOT send this step
+        continue; // skip execution, go to next step fresh
+      }
+      // EXACT DUPLICATE PREVENTION: if the LLM sends the exact same text as the last
+      // send, skip it (wastes a step, doesn't probe anything new).
+      if (na && na.tool === 'browser_type' && na.submit === true && na.text && na.text === lastSentText) {
+        history.push({ step, action: 'duplicate_send_prevented', description: 'Skipped exact duplicate message: "' + String(na.text).slice(0, 60) + '"' });
+        justSentMessage = false;
+        continue;
+      }
+
       if (na && na.tool && na.tool !== 'none') {
         // Construct args from flat fields based on tool type
         let args = {};
@@ -467,6 +505,10 @@ export default async function (req) {
       // Track if this step sent a chat message — the next step's bug detection
       // only runs when this is true (the snapshot then shows the response).
       justSentMessage = !!(na && na.tool === 'browser_type' && na.submit === true);
+      if (justSentMessage && na.text) {
+        questionsSent++;
+        lastSentText = na.text;
+      }
     }
 
     // Close browser to free RAM on the VPS, then terminate the MCP session
