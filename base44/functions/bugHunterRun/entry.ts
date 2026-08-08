@@ -113,14 +113,26 @@ function extractConsoleErrors(cons) {
 function extractElementRefs(snapshotText) {
   const refs = {};
   if (!snapshotText || typeof snapshotText !== 'string') return refs;
-  const chatMatch = snapshotText.match(/(?:textbox|input|textarea)[^\n]*?(?:Converse|memoria|mensagem)[^\n]*?\[ref=(\w+)\]/i);
-  if (chatMatch) refs.chatInput = chatMatch[1];
+  // Extrai email/password/submit ANTES do chatInput para o fallback poder exclui-los.
   const emailMatch = snapshotText.match(/(?:textbox|input)[^\n]*?(?:email|e-mail)[^\n]*?\[ref=(\w+)\]/i);
   if (emailMatch) refs.email = emailMatch[1];
   const passwordMatch = snapshotText.match(/(?:textbox|input)[^\n]*?(?:password|senha)[^\n]*?\[ref=(\w+)\]/i);
   if (passwordMatch) refs.password = passwordMatch[1];
   const submitMatch = snapshotText.match(/(?:button)[^\n]*?(?:Entrar|Login|Sign in|Acessar|Continuar|Acessar conta|Entrar na conta)[^\n]*?\[ref=(\w+)\]/i);
   if (submitMatch) refs.submit = submitMatch[1];
+  // Chat input: tenta palavras-chave conhecidas primeiro (placeholder/label do textarea).
+  const chatMatch = snapshotText.match(/(?:textbox|input|textarea)[^\n]*?(?:Converse|memoria|mensagem|pergunte|digite|type a|message|chat|ask|escreva|escrever|enviar)[^\n]*?\[ref=(\w+)\]/i);
+  if (chatMatch) refs.chatInput = chatMatch[1];
+  // Fallback: se nao achou por palavras-chave, pega a ultima textbox/textarea com ref
+  // que nao seja email/password (na pagina de chat so ha um textarea visivel — o input).
+  if (!refs.chatInput) {
+    const allInputs = [...snapshotText.matchAll(/(?:textbox|textarea)[^\n]*?\[ref=(\w+)\]/gi)];
+    if (allInputs.length > 0) {
+      const excluded = new Set([refs.email, refs.password].filter(Boolean));
+      const candidate = allInputs.map((m) => m[1]).reverse().find((r) => !excluded.has(r));
+      if (candidate) refs.chatInput = candidate;
+    }
+  }
   return refs;
 }
 
@@ -620,6 +632,16 @@ export default async function (req) {
         history.push({ step, action: 'duplicate_send_prevented', description: 'Skipped exact duplicate message: "' + String(na.text).slice(0, 60) + '"' });
         justSentMessage = false;
         continue;
+      }
+
+      // Override deterministico (modo conversa): o LLM frequentemente escolhe um ref
+      // errado para o input do chat (ex: um <div> de timestamp). Quando ele decide
+      // enviar uma mensagem (browser_type com submit=true) e detectamos o chat input,
+      // sobrescrevemos o target pelo ref correto para evitar loops de "Element is not
+      // an <input>" que desperdicam passos e aparentam travamento.
+      if (finalMode === 'conversation' && na && na.tool === 'browser_type' && na.submit === true && refs.chatInput && na.target !== refs.chatInput) {
+        history.push({ step, action: 'ref_override', description: 'Overrode LLM target "' + na.target + '" -> detected chat input "' + refs.chatInput + '"' });
+        na.target = refs.chatInput;
       }
 
       if (na && na.tool && na.tool !== 'none') {
