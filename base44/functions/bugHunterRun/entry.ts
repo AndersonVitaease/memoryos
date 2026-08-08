@@ -581,6 +581,11 @@ export default async function (req) {
           lastEntry.read_step = step;
         }
       }
+      // Reseta justSentMessage APOS ler a resposta (snapshot). Sem isto, o LLM
+      // envia no passo N (justSentMessage=true), le a resposta no passo N+1, mas
+      // justSentMessage continua true -> double_send_prevented bloqueia o proximo
+      // envio legítimo, desperdicando steps e fazendo parecer "travado".
+      justSentMessage = false;
       try { consoleErrors = extractConsoleErrors(await callMcp('browser_console_messages', { level: 'error' })); } catch (e) { /* non-fatal */ }
       const consoleErrorsText = consoleErrors.map((m) => '[' + (m.type || 'error') + '] ' + (m.text || '')).join('\n').slice(0, 2000) || '(none)';
       const refs = extractElementRefs(snapshotText);
@@ -742,7 +747,7 @@ export default async function (req) {
       // Persiste progresso parcial para feedback ao vivo no frontend.
       // Sem isto, o registro fica status='running' com history vazio ate o fim
       // do chunk, e o usuario acha que travou. Atualiza a cada 3 passos.
-      if (runRecordId && step % 3 === 0) {
+      if (runRecordId && step % 2 === 0) {
         try {
           await base44.asServiceRole.entities.BugHunterRun.update(runRecordId, {
             questions_sent: cumulativeQuestionsSent + questionsSent,
