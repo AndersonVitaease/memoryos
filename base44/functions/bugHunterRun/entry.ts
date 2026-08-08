@@ -23,7 +23,7 @@ const MAX_HISTORY_ITEMS = 12;
 
 const MEMORYOS_ARCHITECTURE_BRIEF = [
   'MEMORYOS ARCHITECTURE — CONNECTORS AND CAPABILITIES TO PROBE AUTONOMOUSLY:',
-  'The MemoryOS chat routes user requests to external connectors. Each connector has capabilities. When a user asks the chat to do something, the planner should route to the RIGHT connector. Your job is to probe EACH connector by asking the chat to perform a representative capability, then evaluate the response.',
+  'The MemoryOS chat routes user requests to external connectors. Your job: probe each connector by asking the chat to perform a representative capability, then READ the response on the next step.',
   '',
   'CONNECTORS:',
   '1. Google Workspace (Gmail: readInbox/sendEmail, Drive: listFiles/downloadFile/uploadFile/createFolder/delete/rename, Calendar: listEvents/createEvent, Profile)',
@@ -33,15 +33,13 @@ const MEMORYOS_ARCHITECTURE_BRIEF = [
   '5. Memori/Mem0 MCP (remember, recall)',
   '6. Stirling-PDF (rotate, merge, split, extractText, passwordProtect)',
   '',
-  'BUG CRITERIA (report a finding when ANY of these happen):',
-  '- RAW internal error exposed to user (e.g. "token not configured", "[connector.capability] error", stack traces, JSON error objects) instead of a friendly "you need to connect X" message.',
-  '- WRONG CONNECTOR ROUTING: the chat routes to the wrong connector (e.g. runs a Gmail function when asked about Outlook/Microsoft 365).',
-  '- Empty or blank response from the assistant.',
-  '- Response that does NOT demonstrate memory continuity (ignores prior context).',
-  '- Console JavaScript errors.',
-  '- BEHAVIOR BUG / TEIMOSIA: the assistant REFUSES to repeat or re-run an action when the user explicitly asks again, claiming it already did ("ja pesquisei", "pesquisei 3 vezes", "ja respondi", "nao preciso pesquisar de novo", "I already searched"). The correct behavior is to re-execute or re-search when the user requests it again, not to argue. This is a BEHAVIOR bug (category: functional), not an error. Detect it especially when the CONVERSATION GOAL is a repetition test.',
-  '',
-  'NOTE: An integration not being connected is NOT a bug by itself. But if the chat shows a raw technical error string instead of guiding the user to connect, THAT is a bug (error exposure).'
+  'OBSERVATION RULES (neutral — observe what happens, do NOT hunt for specific bug types):',
+  '- After sending a question, you MUST take a browser_snapshot on the next step and READ the assistant response before deciding anything.',
+  '- You may ONLY set bug_detected=true on a step where you just READ the assistant response. NEVER on a send or navigate step.',
+  '- To report a bug you MUST quote the EXACT response text the assistant returned in bug.actual. If you cannot quote real response text, set bug_detected=false.',
+  '- An integration not being connected is NOT a bug. A friendly prompt to connect is correct behavior. Only report a bug if the assistant shows a RAW technical error string (stack trace, JSON error object, "token not configured") visible to the user.',
+  '- You CANNOT see which connector was called internally. You can only observe the text returned to the user. Do NOT report "wrong connector routing" — you have no way to observe that from the page.',
+  '- Console JavaScript errors that break functionality may be reported, but only if the page is actually broken (not just a transient network error).'
 ].join('\n');
 
 const DECISION_SCHEMA = {
@@ -62,7 +60,7 @@ const DECISION_SCHEMA = {
       },
       required: ['tool']
     },
-    bug_detected: { type: 'boolean', description: 'true if a bug was found on the current page' },
+    bug_detected: { type: 'boolean', description: 'true ONLY on a READ step (after snapshotting the assistant response). You must quote response text in bug.actual. false on send/navigate steps.' },
     bug: {
       type: 'object',
       description: 'Bug details (only when bug_detected=true)',
@@ -72,7 +70,7 @@ const DECISION_SCHEMA = {
         description: { type: 'string' },
         category: { type: 'string', enum: ['ui', 'functional', 'broken_flow', 'error', 'performance', 'auth', 'data', 'other'] },
         expected: { type: 'string' },
-        actual: { type: 'string' }
+        actual: { type: 'string', description: 'EXACT assistant response text you observed on the page (not inference). Required to report a bug.' }
       }
     },
     done: { type: 'boolean', description: 'true when exploration is complete' }
@@ -206,7 +204,7 @@ function buildConversationPrompt(targetUrl, scenario, history, snapshotText, con
     'TASK (autonomous - you decide what to ask, nobody feeds you questions):',
     '1. LOGIN: If the DETECTED ELEMENT REFS above show an Email field AND Password field, log in: browser_type target="' + (_refs.email || '<email-ref>') + '" text="' + (ctx.loginEmail || '<email>') + '", then browser_type target="' + (_refs.password || '<password-ref>') + '" text="' + (ctx.loginPassword || '<password>') + '" submit=true. Then next step browser_snapshot. If no email/password refs detected, you are already logged in — skip to step 4. Do NOT report login as a bug.',
     '2. If you are NOT on a login page and NOT in the chat, use browser_navigate ONCE to reach the chat URL. Do not repeat the navigation.',
-    '3. If the assistant has JUST responded to your last question: EVALUATE the response. A bug is any of: empty/blank response, an error message shown to the user, a response that does NOT demonstrate memory continuity, broken or missing UI elements, or console errors. If you find one, set bug_detected=true with full details. Do NOT report the same bug twice.',
+    '3. If the assistant has JUST responded (this is a READ step): EVALUATE the actual response text. To report a bug you MUST quote the exact response text in bug.actual. Only report if the response itself shows a real problem: empty/blank, a raw technical error string visible to the user, or broken/missing UI. If you have not read a response yet this step, set bug_detected=false. Do NOT report the same bug twice.',
     '4. PROBE EACH CONNECTOR: Work through the connectors listed in the ARCHITECTURE BRIEF above, ONE at a time. For each connector, ask the chat ONE question that exercises a representative capability (e.g. "voce consegue listar meus emails recentes do Outlook?" for Microsoft 365 Outlook, "quais arquivos voce encontra no meu Google Drive sobre X?" for Google Drive, "voce consegue criar um evento na minha agenda do Google Calendar?" for Calendar, "voce consegue buscar codigo no GitHub?" for GitHub). Ask ONE question at a time, wait for the response (browser_snapshot next step), evaluate it against the BUG CRITERIA, then move to the next connector. Do NOT combine multiple connectors into one question. Use browser_type with target="' + (_refs.chatInput || '<chat-input-ref>') + '" text="<your question>" submit=true to type and send the message in one step.',
     '5. After sending a message, set next_action.tool to browser_snapshot so you can read the response on the next step. NEVER send two messages in a row without reading the response in between.',
     '6. Set done=true ONLY when you have probed EVERY connector listed in the ARCHITECTURE BRIEF above. Finding a bug does NOT mean done — continue to the next connector. You have maxSteps turns; use them all to cover every connector. If the chat is completely broken (not just one error), then done=true.',
@@ -293,6 +291,7 @@ export default async function (req) {
     const findings = [];
     const history = [];
     const reportedBugSignatures = new Set();
+    let justSentMessage = false; // true when previous step sent a chat message (next step can evaluate the response)
     const START = Date.now();
 
     // Step 0: navigate to target (com retry para descartar 502 transitório)
@@ -331,6 +330,11 @@ export default async function (req) {
     }
 
     for (let step = 1; step <= maxSteps; step++) {
+      // If the previous step sent a chat message, wait for the response to
+      // render before snapshotting — otherwise we snapshot mid-stream.
+      if (justSentMessage) {
+        try { await callMcp('browser_wait_for', { time: 3 }); } catch (e) { /* best-effort */ }
+      }
       // Gather page context
       let snapshotText = '(snapshot failed)';
       let consoleErrors = [];
@@ -358,16 +362,25 @@ export default async function (req) {
         break;
       }
 
-      // Bug detection (dedupe by title signature)
+      // Bug detection — dedupe by title signature.
+      // GUARD: in conversation mode, only evaluate bugs on READ steps (justSentMessage=true
+      // = previous step sent a chat message, so THIS snapshot shows the assistant response).
+      // On send/navigate steps the hunter hasn't seen the response yet — any bug_detected
+      // there is speculation and is suppressed. In explore mode, every snapshot is a valid
+      // read (the hunter is looking at the actual page), so no suppression.
       if (decision.bug_detected && decision.bug && decision.bug.title) {
+        if (finalMode === 'conversation' && !justSentMessage) {
+          history.push({ step, action: 'bug_suppressed', description: 'bug_detected ignored: conversation mode + no assistant response read yet (send/navigate step)' });
+        } else {
         const sig = String(decision.bug.title).toLowerCase().slice(0, 60);
+        // REAL EVIDENCE: capture the last 1500 chars of the snapshot (most recent
+        // chat content the hunter actually saw) so findings are verifiable, not
+        // just LLM inference. Stored in the `actual` field of the BugFinding.
+        const responseEvidence = snapshotText.slice(-1500);
         // INFRA FILTER: 502/503/504 Bad Gateway e about:blank sao falhas da
         // plataforma Base44 (cold-start/timeout do app publicado), nao bugs do
         // MemoryOS. Ignora silenciosamente em vez de criar BugFinding (ruido).
         const _bugText = (String(decision.bug.title) + ' ' + String(decision.bug.description || '') + ' ' + String(decision.bug.actual || '') + ' ' + String(decision.bug.expected || '')).toLowerCase();
-        // INFRA FILTER: 502/503/504 Bad Gateway e about:blank sao falhas da
-        // plataforma Base44 (cold-start/timeout do app publicado), nao bugs do
-        // MemoryOS. Ignora silenciosamente em vez de criar BugFinding (ruido).
         if (/50[234]|bad gateway|about:blank/.test(_bugText)) {
           history.push({ step, action: 'infra_skip', description: 'Bug ignored: infra 502/503/504/about:blank (not a MemoryOS bug)' });
         }
@@ -391,7 +404,7 @@ export default async function (req) {
               category: b.category || 'functional',
               steps_to_reproduce: JSON.stringify(history.map((h) => ({ step: h.step, action: h.action, description: h.description })), null, 2),
               expected: b.expected || '',
-              actual: b.actual || '',
+              actual: '[CAPTURED PAGE CONTENT (last 1500 chars of snapshot)]\n' + responseEvidence + '\n\n[LLM ANALYSIS]\n' + (b.actual || ''),
               console_errors: consoleErrors.map((m) => m.text || '').join('\n').slice(0, 4000),
               status: 'open',
             });
@@ -400,6 +413,7 @@ export default async function (req) {
             // finding creation failed; continue exploring
           }
         }
+        } // end justSentMessage guard
       }
 
       if (decision.done) {
@@ -449,6 +463,10 @@ export default async function (req) {
       } else {
         history.push({ step, action: 'none', description: 'No action' });
       }
+
+      // Track if this step sent a chat message — the next step's bug detection
+      // only runs when this is true (the snapshot then shows the response).
+      justSentMessage = !!(na && na.tool === 'browser_type' && na.submit === true);
     }
 
     // Close browser to free RAM on the VPS, then terminate the MCP session
