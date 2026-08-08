@@ -391,6 +391,7 @@ export default async function (req) {
     let cumulativeFindings = 0;
     let cumulativeDurationMs = 0;
     let cumulativeTranscript = [];
+    let domFallbackFailCount = 0;  // Detecta loop de retry infinito no typeViaEvaluate
     let existingChunkCount = 0;
     let priorQuestions = [];
     let capturedSessionId = chatSessionId || '';
@@ -763,6 +764,17 @@ export default async function (req) {
             try { await callMcp('browser_wait_for', { time: 5 }); } catch (e) { /* best-effort */ }
             result = await typeViaEvaluate(na.text);
             r = String(result);
+          }
+          // ANTI-LOOP: se typeViaEvaluate falhar 2+ vezes (disabled/no-textarea persistente),
+          // para de tentar e declara done para evitar loop infinito de retry que trava a run.
+          if ((r === 'disabled' || r === 'no-textarea')) {
+            domFallbackFailCount++;
+            if (domFallbackFailCount >= 2) {
+              history.push({ step, action: 'dom_fallback_loop_break', description: 'TypeViaEvaluate failed ' + domFallbackFailCount + ' times (textarea disabled/missing persistently) — breaking loop to avoid infinite retry' });
+              break;  // Sai do loop principal
+            }
+          } else if (r === 'sent' || r === 'enter-dispatched') {
+            domFallbackFailCount = 0;  // Reset counter on success
           }
           if (r === 'sent' || r === 'enter-dispatched') {
             history.push({ step, action: 'dom_send', description: 'Sent message via DOM fallback (bypassing refs)' });
