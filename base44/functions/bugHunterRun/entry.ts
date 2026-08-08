@@ -15,6 +15,7 @@
  * Admin-only: cria dados e dirige um browser remoto.
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+import { connect as mcpConnect, resolveHeaders as mcpResolveHeaders, tryRecoverResultFromError } from '../../shared/mcpClient.ts';
 
 const PLAYWRIGHT_SERVER_NAME = 'playwright-bug-hunter';
 const MAX_SNAPSHOT_CHARS = 4000;
@@ -27,8 +28,8 @@ const DECISION_SCHEMA = {
     next_action: {
       type: 'object',
       properties: {
-        tool: { type: 'string', enum: ['browser_navigate', 'browser_click', 'browser_type', 'browser_snapshot', 'browser_go_back', 'browser_press', 'none'] },
-        args: { type: 'object', description: 'Tool arguments, e.g. { url }, { element, ref }, { element, ref, text }, { key }' },
+        tool: { type: 'string', enum: ['browser_navigate', 'browser_click', 'browser_type', 'browser_snapshot', 'browser_navigate_back', 'browser_press_key', 'none'] },
+        args: { type: 'object', description: 'Tool arguments: browser_navigate={url}, browser_click={target,element}, browser_type={target,text,submit}, browser_press_key={key}, browser_snapshot={}, browser_navigate_back={}' },
         description: { type: 'string', description: 'Human-readable description of what this action does' }
       },
       required: ['tool']
@@ -76,13 +77,15 @@ function buildPrompt(targetUrl, scenario, history, snapshotText, consoleErrorsTe
     'EXPLORATION GOAL: ' + goal,
     '',
     'AVAILABLE PLAYWRIGHT MCP TOOLS (use these in next_action.tool):',
-    '- browser_navigate   args: { url }                  -> open a URL',
-    '- browser_click      args: { element, ref }         -> click an element (ref comes from the snapshot)',
-    '- browser_type       args: { element, ref, text }  -> type text into an input',
-    '- browser_press      args: { key }                 -> press a keyboard key',
-    '- browser_snapshot   args: {}                      -> re-read the page structure',
-    '- browser_go_back    args: {}                      -> go back to previous page',
-    '- none               args: {}                      -> do nothing this step',
+    '- browser_navigate       args: { url }                          -> open a URL',
+    '- browser_click          args: { target, element }              -> click an element (target is the ref from the snapshot, e.g. "s1e2")',
+    '- browser_type          args: { target, text, submit }          -> type text into an input (target is the ref from the snapshot; submit=true to press Enter after)',
+    '- browser_press_key     args: { key }                           -> press a keyboard key (e.g. "Enter")',
+    '- browser_snapshot      args: {}                                -> re-read the page structure',
+    '- browser_navigate_back args: {}                                -> go back to previous page',
+    '- none                  args: {}                                -> do nothing this step',
+    '',
+    'NOTE: The "target" parameter must be a ref string from the snapshot above (e.g. "s1e2"). The "element" parameter is a human-readable description (optional).',
     '',
     'PREVIOUS ACTIONS TAKEN:',
     historyText,
@@ -117,13 +120,15 @@ function buildConversationPrompt(targetUrl, scenario, history, snapshotText, con
     loginHint,
     '',
     'AVAILABLE PLAYWRIGHT MCP TOOLS (use these in next_action.tool):',
-    '- browser_navigate   args: { url }                  -> open a URL',
-    '- browser_click      args: { element, ref }         -> click an element (ref comes from the snapshot)',
-    '- browser_type       args: { element, ref, text }   -> type text into the chat input field',
-    '- browser_press      args: { key }                  -> press a key (use "Enter" to send a chat message)',
-    '- browser_snapshot   args: {}                       -> re-read the page structure (use AFTER sending a message to read the assistant response)',
-    '- browser_go_back    args: {}                      -> go back to previous page',
-    '- none               args: {}                       -> do nothing this step',
+    '- browser_navigate       args: { url }                          -> open a URL',
+    '- browser_click          args: { target, element }              -> click an element (target is the ref from the snapshot, e.g. "s1e2")',
+    '- browser_type          args: { target, text, submit }          -> type text into an input (target is the ref from the snapshot; set submit=true to press Enter after typing — use this to send a chat message)',
+    '- browser_press_key     args: { key }                           -> press a keyboard key (e.g. "Enter")',
+    '- browser_snapshot      args: {}                                -> re-read the page structure (use AFTER sending a message to read the assistant response)',
+    '- browser_navigate_back args: {}                                -> go back to previous page',
+    '- none                  args: {}                                -> do nothing this step',
+    '',
+    'NOTE: The "target" parameter must be a ref string from the snapshot above (e.g. "s1e2"). The "element" parameter is a human-readable description (optional).',
     '',
     'CONVERSATION HISTORY SO FAR:',
     historyText,
@@ -134,11 +139,17 @@ function buildConversationPrompt(targetUrl, scenario, history, snapshotText, con
     'CONSOLE ERRORS ON CURRENT PAGE:',
     consoleErrorsText || '(none)',
     '',
+    'CRITICAL RULES:',
+    '- NEVER use browser_navigate to go to a URL you are already on. If the Page URL in the snapshot matches your target, INTERACT with the page (click/type) instead of navigating.',
+    '- When using browser_navigate, you MUST include the url in args: { "url": "https://..." }. Without url the action is silently skipped.',
+    '- When using browser_click, you MUST include target in args: { "target": "s1e2", "element": "login button" }. The target is a ref from the snapshot.',
+    '- When using browser_type, you MUST include target and text in args: { "target": "s1e2", "text": "user@email.com", "submit": false }. The target is a ref from the snapshot. Set submit=true to press Enter after typing (useful for sending chat messages or submitting forms).',
+    '',
     'TASK (autonomous - you decide what to ask, nobody feeds you questions):',
-    '1. If you are on a login page, log in using the provided credentials. If no credentials were provided and login is required, report it as a bug (category: auth) and set done=true.',
-    '2. If you are NOT yet in the chat: navigate to the chat page (usually the URL path "/chat") or click the chat entry point in the UI.',
-    '3. If the assistant has JUST responded to your last question: EVALUATE the response. A bug is any of: empty/blank response, an error message shown to the user, a response that does NOT demonstrate memory continuity (e.g. "I do not have access to that" when it should remember), broken or missing UI elements, or console errors. If you find one, set bug_detected=true with full details (title, severity, category, expected vs actual). Do NOT report the same bug twice.',
-    '4. If you have not asked a question yet, or want a follow-up: generate a question YOURSELF that probes the user memory (personal facts, past decisions, tasks, entities, timeline). Make follow-up questions build on the previous answer to test whether the app remembers the conversation. Type the question into the chat input and press Enter to send.',
+    '1. LOGIN: If the snapshot shows a login form (email input, password input, and a submit/Entrar button), you MUST log in by TYPING into the fields — do NOT navigate away. Steps: browser_type the email into the email field (use its ref), then browser_type the password into the password field (use its ref), then browser_click the submit button. After submitting, set next_action.tool to browser_snapshot to see the result. Do NOT report the login flow itself as a bug.',
+    '2. If you are NOT on a login page and NOT in the chat, use browser_navigate ONCE to reach the chat URL. Do not repeat the navigation.',
+    '3. If the assistant has JUST responded to your last question: EVALUATE the response. A bug is any of: empty/blank response, an error message shown to the user, a response that does NOT demonstrate memory continuity, broken or missing UI elements, or console errors. If you find one, set bug_detected=true with full details. Do NOT report the same bug twice.',
+    '4. If you are in the chat and want to ask a question: generate a question YOURSELF that probes the user memory (personal facts, past decisions, tasks, entities, timeline). Use browser_type to type the question into the chat input textarea, then browser_press key "Enter" to send.',
     '5. After sending a message, set next_action.tool to browser_snapshot so you can read the response on the next step. NEVER send two messages in a row without reading the response in between.',
     '6. Set done=true after you have asked and evaluated several questions (roughly half of maxSteps turns) or if the chat is completely broken.',
     '',
@@ -165,14 +176,36 @@ export default async function (req) {
 
     const servers = await base44.asServiceRole.entities.MCPServerConfig.filter({ name: PLAYWRIGHT_SERVER_NAME });
     if (servers.length === 0) return Response.json({ error: "MCPServerConfig '" + PLAYWRIGHT_SERVER_NAME + "' not found" }, { status: 404 });
-    const serverId = servers[0].id;
+    const server = servers[0];
+
+    // Connect to Playwright MCP ONCE — all tool calls share the same browser session.
+    // Without this, each mcpClientCall creates a new session and browser_snapshot
+    // sees about:blank (the page from a previous navigate is in a different session).
+    const { headers, error: headerError } = mcpResolveHeaders(server);
+    if (headerError) return Response.json({ error: headerError }, { status: 500 });
+
+    let mcpSession = null;
+    try {
+      mcpSession = await mcpConnect(server.server_url, headers);
+    } catch (e) {
+      return Response.json({ error: 'MCP connect failed: ' + e.message, run_id: 'bugHunter_' + Date.now() }, { status: 502 });
+    }
 
     const runId = 'bugHunter_' + Date.now();
     const callMcp = async (toolName, args = {}) => {
-      const res = await base44.functions.invoke('mcpClientCall', { serverId, action: 'call', toolName, arguments: args });
-      const data = res?.data ?? res;
-      if (data?.error) throw new Error(String(data.error));
-      return data?.result ?? data;
+      let result;
+      try {
+        result = await mcpSession.client.callTool({ name: toolName, arguments: args });
+      } catch (innerErr) {
+        const recovered = tryRecoverResultFromError(innerErr);
+        if (!recovered) throw innerErr;
+        result = recovered;
+      }
+      if (result.isError) {
+        const errMsg = result.content?.[0]?.text || 'Tool error';
+        throw new Error(String(errMsg));
+      }
+      return result.structuredContent ?? result.content ?? result;
     };
 
     // Navigate with retry — descarta 502 transitório (cold-start do Base44) antes de falhar.
@@ -269,23 +302,37 @@ export default async function (req) {
 
       // Execute next action
       const na = decision.next_action;
+      const argsStr = JSON.stringify(na?.args || {}).slice(0, 300);
       if (na && na.tool && na.tool !== 'none') {
         try {
           const args = na.args || {};
-          const result = na.tool === 'browser_navigate' && args.url
-            ? await navigateWithRetry(args.url)
-            : await callMcp(na.tool, args);
-          history.push({ step, action: na.tool, description: na.description || '', args });
+          if (na.tool === 'browser_navigate') {
+            if (!args.url || typeof args.url !== 'string') {
+              history.push({ step, action: na.tool, description: (na.description || '') + ' [skipped: no url]', args: argsStr });
+            } else {
+              await navigateWithRetry(args.url);
+              history.push({ step, action: na.tool, description: na.description || '', args: argsStr });
+            }
+          } else {
+            await callMcp(na.tool, args);
+            history.push({ step, action: na.tool, description: na.description || '', args: argsStr });
+          }
         } catch (e) {
-          history.push({ step, action: na.tool, description: na.description || '', error: e.message });
+          history.push({ step, action: na.tool, description: na.description || '', error: e.message, args: argsStr });
         }
       } else {
         history.push({ step, action: 'none', description: 'No action' });
       }
     }
 
-    // Close browser to free RAM on the VPS
+    // Close browser to free RAM on the VPS, then terminate the MCP session
     try { await callMcp('browser_close', {}); } catch (e) { /* best-effort */ }
+    try {
+      if (mcpSession.transportUsed === 'streamable-http' && typeof mcpSession.transport.terminateSession === 'function') {
+        await mcpSession.transport.terminateSession();
+      }
+      await mcpSession.client.close();
+    } catch (e) { /* best-effort */ }
 
     return Response.json({
       ok: true,
