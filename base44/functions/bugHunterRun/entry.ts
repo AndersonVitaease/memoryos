@@ -283,9 +283,20 @@ export default async function (req) {
         // INFRA FILTER: 502/503/504 Bad Gateway e about:blank sao falhas da
         // plataforma Base44 (cold-start/timeout do app publicado), nao bugs do
         // MemoryOS. Ignora silenciosamente em vez de criar BugFinding (ruido).
-        const _bugText = (String(decision.bug.title) + ' ' + String(decision.bug.description || '') + ' ' + String(decision.bug.actual || '')).toLowerCase();
+        const _bugText = (String(decision.bug.title) + ' ' + String(decision.bug.description || '') + ' ' + String(decision.bug.actual || '') + ' ' + String(decision.bug.expected || '')).toLowerCase();
+        // INFRA FILTER: 502/503/504 Bad Gateway e about:blank sao falhas da
+        // plataforma Base44 (cold-start/timeout do app publicado), nao bugs do
+        // MemoryOS. Ignora silenciosamente em vez de criar BugFinding (ruido).
         if (/50[234]|bad gateway|about:blank/.test(_bugText)) {
           history.push({ step, action: 'infra_skip', description: 'Bug ignored: infra 502/503/504/about:blank (not a MemoryOS bug)' });
+        }
+        // SELF-LIMITATION FILTER: "chat input not found/missing/inaccessible"
+        // e variantes sao falsos positivos do proprio hunter — ele acabou os
+        // passos antes de chegar no chat, ou nao completou o login. O campo
+        // de mensagem do ChatPage e um <textarea> normal (sempre presente).
+        // Nao e bug do MemoryOS; e limitacao do robo. Ignora.
+        else if (/chat input (field )?(not found|missing|inaccessible|not visible|not present|not available)|input field (not found|missing|inaccessible)|cannot find (the )?(chat )?input|no (chat )?input (field|element|area)/.test(_bugText)) {
+          history.push({ step, action: 'self_limitation_skip', description: 'Bug ignored: hunter self-limitation (chat input not found = ran out of steps / did not reach chat page, not a MemoryOS bug)' });
         } else if (!reportedBugSignatures.has(sig)) {
           reportedBugSignatures.add(sig);
           const b = decision.bug;
