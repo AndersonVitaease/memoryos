@@ -617,7 +617,7 @@ export default async function (req) {
             prompt: promptFn(targetUrl, scenario, history.slice(-MAX_HISTORY_ITEMS), snapshotText, consoleErrorsText, { loginEmail: finalLoginEmail, loginPassword: finalLoginPassword }, refs, priorQuestions),
             response_json_schema: DECISION_SCHEMA,
           }),
-          45000,
+          30000,
           'InvokeLLM'
         );
         decision = llmRes;
@@ -795,9 +795,11 @@ export default async function (req) {
     const newChunkCount = existingChunkCount + 1;
 
     // Re-le stop_requested para decidir o estado final com certeza.
+    // SEM timeout esta chamada pode pendurar a funcao se o SDK travar — a entidade
+    // fica presa em "running" para sempre. 10s e mais que suficiente para um filter.
     let stopRequestedFlag = false;
     try {
-      const rec = (await base44.asServiceRole.entities.BugHunterRun.filter({ run_id: runId }))[0];
+      const rec = (await withTimeout(base44.asServiceRole.entities.BugHunterRun.filter({ run_id: runId }), 10000, 'final_filter_stop_requested'))[0];
       if (rec) {
         stopRequestedFlag = !!rec.stop_requested;
         if (!runRecordId) runRecordId = rec.id;
@@ -819,9 +821,11 @@ export default async function (req) {
       finalStatus = 'completed';
     }
 
+    // Persist final: SEM timeout, se o SDK travar a funcao morre no limite de 300s
+    // da plataforma e a entidade fica presa em "running" para sempre. 15s resolve.
     try {
       if (runRecordId) {
-        await base44.asServiceRole.entities.BugHunterRun.update(runRecordId, {
+        await withTimeout(base44.asServiceRole.entities.BugHunterRun.update(runRecordId, {
           status: finalStatus,
           steps_executed: (continuous ? (history.length - 1) : (history.length - 1)),
           questions_sent: totalSent,
@@ -833,7 +837,7 @@ export default async function (req) {
           chat_session_id: capturedSessionId,
           chunk_count: newChunkCount,
           target_questions: targetQuestions || 0,
-        });
+        }), 15000, 'final_persist');
       }
     } catch (e) { /* best-effort */ }
 
