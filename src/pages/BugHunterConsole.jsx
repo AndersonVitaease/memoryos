@@ -152,7 +152,17 @@ export default function BugHunterConsole() {
         loadFindings();
       }
     } catch (e) {
-      setAutoError(e?.message ?? "Run falhou");
+      // O bugHunterRun retorna 502 com { error: '...' } quando o MCP connect
+      // ou o navigate inicial falham. Sem extrair o corpo, o usuario so ve
+      // "Request failed with status code 502". Achamos a causa real.
+      const cause =
+        e?.response?.data?.error ||
+        e?.response?.data ||
+        e?.data?.error ||
+        e?.data ||
+        e?.message ||
+        "Run falhou";
+      setAutoError(typeof cause === "string" ? cause : JSON.stringify(cause));
     } finally {
       setAutoRunning(false);
     }
