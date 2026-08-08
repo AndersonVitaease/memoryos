@@ -543,6 +543,18 @@ export default async function (req) {
         await navigateWithRetry(chatUrl);
         try { await callMcp('browser_wait_for', { time: 10 });  // Aumentado de 6s para 10s (conectores precisam inicializar) } catch (e) { /* best-effort */ }
         history.push({ step: 0.8, action: 'browser_navigate', description: 'Navigated to ' + chatUrl });
+        
+        // CRITICAL: Aguarda os conectores inicializarem antes de enviar perguntas.
+        try {
+          const connReady = await withTimeout(waitForConnectors(30000), 35000, 'waitForConnectors');
+          if (connReady) {
+            history.push({ step: 0.81, action: 'connectors_ready', description: 'Connectors initialized (connectionsMounted === true)' });
+          } else {
+            history.push({ step: 0.81, action: 'connectors_timeout', description: 'Connectors timeout after 30s — proceeding with caution' });
+          }
+        } catch (e) {
+          history.push({ step: 0.81, action: 'connectors_check_failed', description: 'Connectors check failed: ' + e.message });
+        }
       } catch (e) {
         history.push({ step: 0.8, action: 'browser_navigate', description: 'Navigate to /chat failed: ' + e.message });
       }
