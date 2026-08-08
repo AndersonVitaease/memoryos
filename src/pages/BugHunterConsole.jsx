@@ -3,7 +3,7 @@ import { base44 } from "@/api/base44Client";
 import {
   Bug, Loader2, RefreshCw, Globe, Camera, TerminalSquare,
   MousePointerClick, XCircle, CheckCircle2, AlertTriangle, Power,
-  Sparkles, Play, ListChecks,
+  Sparkles, Play, ListChecks, MessageSquare, Compass,
 } from "lucide-react";
 
 /**
@@ -37,6 +37,9 @@ export default function BugHunterConsole() {
   const [autoResult, setAutoResult] = useState(null);
   const [autoError, setAutoError] = useState(null);
   const [findings, setFindings] = useState([]);
+  const [mode, setMode] = useState("explore");
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
 
   // Resolve o serverId do registro MCPServerConfig pelo name.
   useEffect(() => {
@@ -119,6 +122,9 @@ export default function BugHunterConsole() {
         targetUrl,
         maxSteps: Number(maxSteps) || 5,
         scenario: scenario.trim() || undefined,
+        mode,
+        loginEmail: mode === "conversation" ? loginEmail.trim() || undefined : undefined,
+        loginPassword: mode === "conversation" ? loginPassword || undefined : undefined,
       });
       const data = res?.data ?? res;
       if (data?.error) {
@@ -266,13 +272,61 @@ export default function BugHunterConsole() {
             <span className="text-[10px] text-zinc-500">bugHunterRun — LLM + Playwright em loop</span>
           </div>
 
+          {/* Mode toggle */}
+          <div className="flex gap-2">
+            <button
+              onClick={() => setMode("explore")}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition ${mode === "explore" ? "bg-violet-500/15 border-violet-500/40 text-violet-300" : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200"}`}
+            >
+              <Compass className="w-4 h-4" /> Exploracao livre
+            </button>
+            <button
+              onClick={() => setMode("conversation")}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition ${mode === "conversation" ? "bg-violet-500/15 border-violet-500/40 text-violet-300" : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200"}`}
+            >
+              <MessageSquare className="w-4 h-4" /> Conversa autonoma
+            </button>
+          </div>
+          <p className="text-[11px] text-zinc-500 leading-relaxed">
+            {mode === "conversation"
+              ? "O LLM gera as perguntas sozinho, envia ao chat do MemoryOS, avalia cada resposta (continuidade, erros, respostas vazias) e cria findings. Voce so intervem para triar os bugs encontrados."
+              : "O LLM navega o app livremente clicando em links e botoes, procurando erros de console e fluxos quebrados."}
+          </p>
+
+          {/* Login credentials (conversation mode only) */}
+          {mode === "conversation" && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-3 rounded-lg bg-zinc-900/60 border border-zinc-800">
+              <div>
+                <label className="block text-[10px] font-medium text-zinc-500 mb-1">Login email (teste)</label>
+                <input
+                  type="email"
+                  value={loginEmail}
+                  onChange={(e) => setLoginEmail(e.target.value)}
+                  placeholder="usuario@teste.com"
+                  className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-medium text-zinc-500 mb-1">Login senha (teste)</label>
+                <input
+                  type="password"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  placeholder="senha de teste"
+                  className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+                />
+              </div>
+              <p className="md:col-span-2 text-[10px] text-zinc-600">Use credenciais de teste. Elas passam pelo prompt do LLM para que o hunter faca login sozinho.</p>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
               <label className="block text-[10px] font-medium text-zinc-500 mb-1">Max steps</label>
               <input
                 type="number"
                 min="1"
-                max="12"
+                max="20"
                 value={maxSteps}
                 onChange={(e) => setMaxSteps(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/40"
@@ -283,7 +337,7 @@ export default function BugHunterConsole() {
               <input
                 value={scenario}
                 onChange={(e) => setScenario(e.target.value)}
-                placeholder="ex: faca login, abra o chat, envie uma mensagem"
+                placeholder={mode === "conversation" ? "ex: pergunte sobre minhas tarefas, decisoes e memoria pessoal" : "ex: faca login, abra o chat, envie uma mensagem"}
                 className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/40"
               />
             </div>
@@ -294,8 +348,8 @@ export default function BugHunterConsole() {
             disabled={autoRunning || !targetUrl}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-violet-500 text-white hover:bg-violet-400 disabled:opacity-40 transition"
           >
-            {autoRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-            {autoRunning ? "Caçando bugs..." : "Rodar Hunt Autonomo"}
+            {autoRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : (mode === "conversation" ? <MessageSquare className="w-4 h-4" /> : <Play className="w-4 h-4" />)}
+            {autoRunning ? (mode === "conversation" ? "Conversando..." : "Cacando bugs...") : (mode === "conversation" ? "Iniciar Conversa Autonoma" : "Rodar Hunt Autonomo")}
           </button>
 
           {autoError && (
