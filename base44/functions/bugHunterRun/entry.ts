@@ -739,7 +739,14 @@ export default async function (req) {
       // aparentar travamento. Agora so skip se houver botao de LOGIN explicito
       // (refs.submit = "Entrar"/"Login"/"Sign in"). typeViaEvaluate ja retorna
       // "no-textarea" em paginas de login (so ha inputs, nenhum textarea).
-      if (finalMode === 'conversation' && na && na.tool === 'browser_type' && na.text && !refs.submit) {
+      // Guard: so pular o DOM fallback em pagina de LOGIN real (email E password
+      // detectados). Antes usavamos !refs.submit mas o regex de submit ("Acessar"|
+      // "Continuar"|"Entrar") dava falso-positivo na pagina de chat apos muitas
+      // mensagens — botoes no historico de conversa casavam com as keywords e
+      // desativavam o fallback permanentemente, fazendo o LLM usar refs errados
+      // (<div id="root">) e aparentar travamento.
+      const isLoginPage = !!(refs.email && refs.password);
+      if (finalMode === 'conversation' && na && na.tool === 'browser_type' && na.text && !isLoginPage) {
         try {
           let result = await typeViaEvaluate(na.text);
           let r = String(result);
