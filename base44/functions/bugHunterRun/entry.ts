@@ -724,7 +724,14 @@ export default async function (req) {
       // o ref certo nem do textarea estar na arvore de acessibilidade (disabled/ausente).
       // Evita o padrao "LLM escolhe div de timestamp -> browser_type falha em 20s".
       let domSent = false;
-      if (finalMode === 'conversation' && na && na.tool === 'browser_type' && na.submit === true && na.text && !refs.email && !refs.password) {
+      // Guard mudado: era "!refs.email && !refs.password" mas o regex de email/password
+      // dava falso-positivo na pagina de chat (conversa menciona "email" ao testar
+      // connectors, e o snapshot tem textboxes). Isso desativava o fallback
+      // permanentemente, fazendo o LLM usar refs errados (ex: <div id="root">) e
+      // aparentar travamento. Agora so skip se houver botao de LOGIN explicito
+      // (refs.submit = "Entrar"/"Login"/"Sign in"). typeViaEvaluate ja retorna
+      // "no-textarea" em paginas de login (so ha inputs, nenhum textarea).
+      if (finalMode === 'conversation' && na && na.tool === 'browser_type' && na.submit === true && na.text && !refs.submit) {
         try {
           const result = await typeViaEvaluate(na.text);
           const r = String(result);
