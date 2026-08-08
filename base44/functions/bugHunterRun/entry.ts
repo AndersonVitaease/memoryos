@@ -451,6 +451,13 @@ export default async function (req) {
       : 0;
     const START = Date.now();
 
+    // ── Step -1: limpa qualquer browser/sessao MCP pendurada de runs anteriores ──
+    // Sem isto, um Chrome orfao de uma run morta pelo limite de 5min da plataforma
+    // segura o SingletonLock e a nova run falha com "Browser is already in use".
+    try {
+      await withTimeout(mcpSession.client.callTool({ name: 'browser_close', arguments: {} }), 5000, 'pre_close');
+    } catch (e) { /* best-effort: sem sessao ativa e esperado */ }
+
     // ── Step 0: navega para o alvo (login ou app) ─────────────────────────
     try {
       await navigateWithRetry(targetUrl);
