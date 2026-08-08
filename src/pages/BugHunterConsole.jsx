@@ -228,13 +228,24 @@ export default function BugHunterConsole() {
   }, [targetUrl, maxSteps, scenario, mode, loginEmail, loginPassword, finalizeContinuous]);
 
   const handleStop = useCallback(async () => {
-    if (!bgRunId) return;
+    if (!bgRunId) {
+      // Defensive: no bg run tracked — just reset UI
+      if (pollIntervalRef.current) { clearInterval(pollIntervalRef.current); pollIntervalRef.current = null; }
+      setAutoRunning(false);
+      setStopping(false);
+      try { localStorage.removeItem(LOCALSTORAGE_KEY); } catch (e) {}
+      return;
+    }
     setStopping(true);
+    // Best-effort: signal backend to stop (entity update). Do NOT wait for polling
+    // to confirm — if the backend is hung (browser lock, SDK overload), the polling
+    // never detects stop_requested and the UI stays frozen forever. Reset UI now.
     try {
       const recs = await base44.entities.BugHunterRun.filter({ run_id: bgRunId });
-      if (recs[0]) await base44.entities.BugHunterRun.update(recs[0].id, { stop_requested: true });
-    } catch (e) {}
-  }, [bgRunId]);
+      if (recs[0]) await base44.entities.BugHunterRun.update(recs[0].id, { stop_requested: true, status: "stopped" });
+    } catch (e) { /* best-effort — UI resets regardless */ }
+    finalizeContinuous(bgRunId, "stopped");
+  }, [bgRunId, finalizeContinuous]);
 
   // ── Polling do modo simples (legacy): localStorage + BugFinding ──
   const startPolling = useCallback((runId, startTime) => {
