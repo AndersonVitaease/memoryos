@@ -4,7 +4,7 @@
     "document": {
       "dsl": "1.0.0",
       "name": "bug_hunter_auto_hunt",
-      "version": "1.0",
+      "version": "1.1",
       "namespace": "base44"
     },
     "do": [
@@ -15,21 +15,21 @@
             "function_name": "bugHunterRun",
             "args": {
               "targetUrl": "https://ever-mind-core.base44.app/login",
-              "maxSteps": 8,
+              "maxSteps": 16,
               "mode": "conversation",
-              "scenario": "Teste autonomo do comportamento do MemoryOS: faca perguntas variadas sobre memoria pessoal, decisoes passadas, tarefas e entidades. Avalie continuidade, respostas vazias, erros de console e fluxos quebrados."
+              "scenario": "Teste autonomo: faca perguntas separadas (uma por vez) sobre CADA topico: 1) memoria pessoal e decisoes passadas, 2) tarefas e entidades, 3) o que o MemoryOS acessa no Google Workspace (Gmail, Drive, Calendar), 4) o que ele acessa no Microsoft 365 / Outlook (emails, calendario, OneDrive). Avalie cada resposta: bug se mostrar erro interno bruto, rotear para conector errado (ex Gmail ao perguntar sobre Outlook), resposta vazia ou sem continuidade. NAO pare apos achar um bug; va para o proximo topico."
             }
           },
           "then": "end",
           "x-base44": {
             "title": "Executar Bug Hunter",
-            "description": "Hunt autonomo no chat"
+            "description": "Hunt autonomo no chat cobrindo memoria pessoal + integracoes Google Workspace e Microsoft 365"
           }
         }
       }
     ]
   },
-  "description": "Executa o Bug Hunter autonomamente todos os dias as 6h testando o comportamento do MemoryOS (chat) com login automatico via secrets BUGHUNTER_TEST_EMAIL/BUGHUNTER_TEST_PASSWORD",
+  "description": "Executa o Bug Hunter autonomamente todos os dias as 6h testando o comportamento do MemoryOS (chat) com login automatico via secrets BUGHUNTER_TEST_EMAIL/BUGHUNTER_TEST_PASSWORD. Cobre memoria pessoal, Google Workspace e Microsoft 365.",
   "trigger": {
     "condition": null,
     "config": {
