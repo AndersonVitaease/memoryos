@@ -20,6 +20,7 @@ import { connect as mcpConnect, resolveHeaders as mcpResolveHeaders, tryRecoverR
 const PLAYWRIGHT_SERVER_NAME = 'playwright-bug-hunter';
 const MAX_SNAPSHOT_CHARS = 12000;
 const MAX_HISTORY_ITEMS = 12;
+const MAX_PRIOR_QUESTIONS = 40;  // Limita historico de perguntas no prompt para evitar LLM lento
 // Orcamento de tempo por chunk: 200s deixa margem segura sob o limite de 5min
 // (300s) da plataforma, considerando login (~10s) + navigate + capture (~10s).
 const TIME_BUDGET_MS = 240000;  // Aumentado de 120s para 240s para permitir mais perguntas por chunk
@@ -409,7 +410,7 @@ export default async function (req) {
           existingChunkCount = rec.chunk_count || 0;
           try {
             cumulativeTranscript = JSON.parse(rec.transcript || '[]');
-            priorQuestions = cumulativeTranscript.map((t) => t.question).filter(Boolean);
+            priorQuestions = cumulativeTranscript.map((t) => t.question).filter(Boolean).slice(-MAX_PRIOR_QUESTIONS);  // Últimas MAX_PRIOR_QUESTIONS
           } catch { /* best-effort */ }
         }
       } catch (e) { /* best-effort */ }
