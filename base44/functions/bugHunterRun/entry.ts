@@ -634,8 +634,7 @@ export default async function (req) {
             prompt: promptFn(targetUrl, scenario, history.slice(-MAX_HISTORY_ITEMS), snapshotText, consoleErrorsText, { loginEmail: finalLoginEmail, loginPassword: finalLoginPassword }, refs, priorQuestions),
             response_json_schema: DECISION_SCHEMA,
           }),
-          30000,
-          'InvokeLLM'
+          45000,  // Aumentado de 30s para 45s (prompt pode crescer em modo continuo)
         );
         decision = llmRes;
       } catch (e) {
