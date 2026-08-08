@@ -304,7 +304,7 @@ export default async function (req) {
 
     let mcpSession = null;
     try {
-      mcpSession = await mcpConnect(server.server_url, headers);
+      mcpSession = await withTimeout(mcpConnect(server.server_url, headers), MCP_CALL_TIMEOUT_MS, 'mcpConnect');
     } catch (e) {
       return Response.json({ error: 'MCP connect failed: ' + e.message, run_id: 'bugHunter_' + Date.now() }, { status: 502 });
     }
@@ -814,9 +814,9 @@ export default async function (req) {
     try { await callMcp('browser_close', {}); } catch (e) { /* best-effort */ }
     try {
       if (mcpSession.transportUsed === 'streamable-http' && typeof mcpSession.transport.terminateSession === 'function') {
-        await mcpSession.transport.terminateSession();
+        await withTimeout(mcpSession.transport.terminateSession(), MCP_CALL_TIMEOUT_MS, 'terminateSession');
       }
-      await mcpSession.client.close();
+      await withTimeout(mcpSession.client.close(), MCP_CALL_TIMEOUT_MS, 'client.close');
     } catch (e) { /* best-effort */ }
 
     return Response.json({
