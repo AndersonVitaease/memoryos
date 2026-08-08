@@ -214,11 +214,15 @@ export default async function (req) {
     };
 
     // Navigate with retry — descarta 502 transitório (cold-start do Base44) antes de falhar.
+    // After successful navigate, wait 2s for SPA to render before snapshot.
     const navigateWithRetry = async (url, attempts = 3) => {
       let lastErr = null;
       for (let i = 0; i < attempts; i++) {
         try {
-          return await callMcp('browser_navigate', { url });
+          const result = await callMcp('browser_navigate', { url });
+          // Give the SPA time to render after navigation
+          try { await callMcp('browser_wait_for', { time: 2 }); } catch (e) { /* best-effort */ }
+          return result;
         } catch (e) {
           lastErr = e;
           const msg = String(e.message || e);
