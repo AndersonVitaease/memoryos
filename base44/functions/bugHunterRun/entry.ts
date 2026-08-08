@@ -21,6 +21,28 @@ const PLAYWRIGHT_SERVER_NAME = 'playwright-bug-hunter';
 const MAX_SNAPSHOT_CHARS = 12000;
 const MAX_HISTORY_ITEMS = 12;
 
+const MEMORYOS_ARCHITECTURE_BRIEF = [
+  'MEMORYOS ARCHITECTURE — CONNECTORS AND CAPABILITIES TO PROBE AUTONOMOUSLY:',
+  'The MemoryOS chat routes user requests to external connectors. Each connector has capabilities. When a user asks the chat to do something, the planner should route to the RIGHT connector. Your job is to probe EACH connector by asking the chat to perform a representative capability, then evaluate the response.',
+  '',
+  'CONNECTORS:',
+  '1. Google Workspace (Gmail: readInbox/sendEmail, Drive: listFiles/downloadFile/uploadFile/createFolder/delete/rename, Calendar: listEvents/createEvent, Profile)',
+  '2. Microsoft 365 (Outlook Mail: readInbox/sendEmail, Outlook Calendar: listEvents/createEvent, OneDrive: listFiles/downloadFile, Contacts, Excel, Word, PowerPoint, OneNote, Teams, SharePoint, ToDo)',
+  '3. GitHub (searchCode, listRepos, readRepo, createIssue)',
+  '4. WhatsApp (sendMessage)',
+  '5. Memori/Mem0 MCP (remember, recall)',
+  '6. Stirling-PDF (rotate, merge, split, extractText, passwordProtect)',
+  '',
+  'BUG CRITERIA (report a finding when ANY of these happen):',
+  '- RAW internal error exposed to user (e.g. "token not configured", "[connector.capability] error", stack traces, JSON error objects) instead of a friendly "you need to connect X" message.',
+  '- WRONG CONNECTOR ROUTING: the chat routes to the wrong connector (e.g. runs a Gmail function when asked about Outlook/Microsoft 365).',
+  '- Empty or blank response from the assistant.',
+  '- Response that does NOT demonstrate memory continuity (ignores prior context).',
+  '- Console JavaScript errors.',
+  '',
+  'NOTE: An integration not being connected is NOT a bug by itself. But if the chat shows a raw technical error string instead of guiding the user to connect, THAT is a bug (error exposure).'
+].join('\n');
+
 const DECISION_SCHEMA = {
   type: 'object',
   properties: {
@@ -79,14 +101,15 @@ function extractElementRefs(snapshotText) {
   const refs = {};
   if (!snapshotText || typeof snapshotText !== 'string') return refs;
   // Textarea do chat (placeholder "Converse com sua memoria...")
-  const chatMatch = snapshotText.match(/(?:textbox|input|textarea)[^\n]*(?:Converse|memoria|mensagem)[^\n]*\[ref=(\w+)\]/i);
+  const chatMatch = snapshotText.match(/(?:textbox|input|textarea)[^\n]*?(?:Converse|memoria|mensagem)[^\n]*?\[ref=(\w+)\]/i);
   if (chatMatch) refs.chatInput = chatMatch[1];
-  // Campos de login
-  const emailMatch = snapshotText.match(/(?:textbox|input)[^\n]*(?:email|e-mail)[^\n]*\[ref=(\w+)\]/i);
+  // Campos de login — non-greedy [^\n]*? captura o PRIMEIRO ref apos o label,
+  // nao o ultimo ref da linha (greedy pegava o ref do link "Cadastre-se").
+  const emailMatch = snapshotText.match(/(?:textbox|input)[^\n]*?(?:email|e-mail)[^\n]*?\[ref=(\w+)\]/i);
   if (emailMatch) refs.email = emailMatch[1];
-  const passwordMatch = snapshotText.match(/(?:textbox|input)[^\n]*(?:password|senha)[^\n]*\[ref=(\w+)\]/i);
+  const passwordMatch = snapshotText.match(/(?:textbox|input)[^\n]*?(?:password|senha)[^\n]*?\[ref=(\w+)\]/i);
   if (passwordMatch) refs.password = passwordMatch[1];
-  const submitMatch = snapshotText.match(/(?:button)[^\n]*(?:Entrar|Login|Sign in|Acessar|Continuar|Acessar conta|Entrar na conta)[^\n]*\[ref=(\w+)\]/i);
+  const submitMatch = snapshotText.match(/(?:button)[^\n]*?(?:Entrar|Login|Sign in|Acessar|Continuar|Acessar conta|Entrar na conta)[^\n]*?\[ref=(\w+)\]/i);
   if (submitMatch) refs.submit = submitMatch[1];
   return refs;
 }
@@ -136,7 +159,7 @@ function buildConversationPrompt(targetUrl, scenario, history, snapshotText, con
   const loginHint = (ctx && ctx.loginEmail && ctx.loginPassword)
     ? '\nLOGIN CREDENTIALS (use them if you encounter a login page): email="' + ctx.loginEmail + '" password="' + ctx.loginPassword + '". Fill the email field, click continue/next, fill the password field, then submit. Do NOT report the login flow itself as a bug.'
     : '\nNo login credentials were provided. If the app requires login, report it as a bug (category: auth) and set done=true.';
-  const goal = scenario || "Test the MemoryOS chat by having a multi-turn conversation. Ask ONE question at a time about each of these topics, probing them one by one in separate messages: 1) personal facts and past decisions, 2) tasks and entities, 3) what the MemoryOS can access in Google Workspace (Gmail, Drive, Calendar), 4) what it can access in Microsoft 365 / Outlook (emails, calendar, OneDrive). Evaluate each response individually: a bug is any of empty/blank response, a raw internal error message shown to the user (e.g. 'token not configured', stack traces), a response that does NOT demonstrate memory continuity, wrong connector routing (e.g. running a Gmail function when asked about Outlook), or console errors. Do NOT stop after finding one bug — continue to the next topic until ALL topics are covered.";
+  const goal = scenario || "Autonomously probe the MemoryOS chat by asking targeted questions about EACH connector and capability listed in the ARCHITECTURE BRIEF. For each connector, ask ONE question that exercises a representative capability, evaluate the response against the BUG CRITERIA, then move to the next connector. Cover ALL connectors — do not stop after finding one bug.";
   return [
     'You are an autonomous QA agent ("Bug Hunter") testing a chat application called MemoryOS.',
     'Your job is to have a natural multi-turn CONVERSATION with the app to find bugs. You do NOT need anyone to feed you questions - you generate the questions yourself based on the conversation so far.',
@@ -144,6 +167,8 @@ function buildConversationPrompt(targetUrl, scenario, history, snapshotText, con
     'TARGET URL: ' + targetUrl,
     'CONVERSATION GOAL: ' + goal,
     loginHint,
+    '',
+    MEMORYOS_ARCHITECTURE_BRIEF,
     '',
     'AVAILABLE PLAYWRIGHT MCP TOOLS (set next_action.tool and the corresponding flat fields):',
     '- browser_navigate       fields: url="https://..."                                      -> open a URL',
@@ -181,9 +206,9 @@ function buildConversationPrompt(targetUrl, scenario, history, snapshotText, con
     '1. LOGIN: If the DETECTED ELEMENT REFS above show an Email field AND Password field, log in: browser_type target="' + (_refs.email || '<email-ref>') + '" text="' + (ctx.loginEmail || '<email>') + '", then browser_type target="' + (_refs.password || '<password-ref>') + '" text="' + (ctx.loginPassword || '<password>') + '" submit=true. Then next step browser_snapshot. If no email/password refs detected, you are already logged in — skip to step 4. Do NOT report login as a bug.',
     '2. If you are NOT on a login page and NOT in the chat, use browser_navigate ONCE to reach the chat URL. Do not repeat the navigation.',
     '3. If the assistant has JUST responded to your last question: EVALUATE the response. A bug is any of: empty/blank response, an error message shown to the user, a response that does NOT demonstrate memory continuity, broken or missing UI elements, or console errors. If you find one, set bug_detected=true with full details. Do NOT report the same bug twice.',
-    '4. To ask a question: generate a question YOURSELF that probes the user memory (personal facts, past decisions, tasks, entities, timeline, Google Workspace, Microsoft 365, integrations). Ask ONE question at a time about ONE topic — do NOT combine multiple topics into a single message. If the CONVERSATION GOAL lists multiple topics, work through them one by one in separate messages. Use browser_type with target="' + (_refs.chatInput || '<chat-input-ref>') + '" text="<your question>" submit=true to type and send the message in one step. The chat input ref is provided above in DETECTED ELEMENT REFS — use it exactly.',
+    '4. PROBE EACH CONNECTOR: Work through the connectors listed in the ARCHITECTURE BRIEF above, ONE at a time. For each connector, ask the chat ONE question that exercises a representative capability (e.g. "voce consegue listar meus emails recentes do Outlook?" for Microsoft 365 Outlook, "quais arquivos voce encontra no meu Google Drive sobre X?" for Google Drive, "voce consegue criar um evento na minha agenda do Google Calendar?" for Calendar, "voce consegue buscar codigo no GitHub?" for GitHub). Ask ONE question at a time, wait for the response (browser_snapshot next step), evaluate it against the BUG CRITERIA, then move to the next connector. Do NOT combine multiple connectors into one question. Use browser_type with target="' + (_refs.chatInput || '<chat-input-ref>') + '" text="<your question>" submit=true to type and send the message in one step.',
     '5. After sending a message, set next_action.tool to browser_snapshot so you can read the response on the next step. NEVER send two messages in a row without reading the response in between.',
-    '6. Set done=true ONLY when you have asked AND evaluated a separate question for EVERY topic mentioned in the CONVERSATION GOAL above. Finding a bug does NOT mean done — continue to the next topic. You have maxSteps turns; use them. If the chat is completely broken (not just one error), then done=true.',
+    '6. Set done=true ONLY when you have probed EVERY connector listed in the ARCHITECTURE BRIEF above. Finding a bug does NOT mean done — continue to the next connector. You have maxSteps turns; use them all to cover every connector. If the chat is completely broken (not just one error), then done=true.',
     '',
     'Return only the JSON matching the schema.'
   ].join('\n');
