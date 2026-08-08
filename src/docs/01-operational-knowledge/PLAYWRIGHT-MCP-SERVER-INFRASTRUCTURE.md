@@ -187,6 +187,44 @@ eh cacheado apos o list com sucesso.
 
 ---
 
+## Browser Binary (chromium) — Gotcha Critico
+
+O `@playwright/mcp` precisa do binario Chromium instalado para QUALQUER tool de
+navegacao (browser_navigate, browser_click, ...). O handshake `initialize`
+**nao** precisa do browser — ele passa mesmo com o chromium ausente, mascarando
+o problema. O erro so aparece na primeira tool de navegacao:
+
+```
+Error: Browser "chrome-for-testing" is not installed; expected executable
+at /ms-playwright/chromium-1237/chrome-linux64/chrome.
+Run `npx @playwright/mcp install-browser chrome-for-testing` to install
+```
+
+**Causa raiz:** mismatch entre a versao do `@playwright/mcp` (que espera um
+build especifico do chromium, ex: chromium-1237) e a imagem Docker
+`mcr.microsoft.com/playwright:vX.Y.Z` (que traz o chromium da versao X.Y.Z).
+Usar `@playwright/mcp@latest` com uma imagem pinada em versao antiga quebra.
+
+**2 fixes (um deles resolve):**
+
+1. **Pinar a versao do MCP para casar com a imagem** (recomendado, permanente):
+   ```yaml
+   command: npx @playwright/mcp@1.49.0 --port 8931 --host 0.0.0.0 --headless
+   ```
+   A imagem `mcr.microsoft.com/playwright:v1.49.0-jammy` ja traz o chromium
+   que essa versao espera. Reconstruir: `docker compose up -d --force-recreate`.
+
+2. **Instalar o browser no container atual** (rapido, porem fragil — quebra no
+   proximo `docker compose up --force-recreate` que recria o container):
+   ```bash
+   docker exec -it playwright-mcp npx @playwright/mcp@latest install-browser chrome-for-testing
+   ```
+
+> **Regra:** sempre pino a versao do `@playwright/mcp` para casar com a tag da
+> imagem Docker. `@latest` + imagem pinada = mismatch de browser garantido.
+
+---
+
 ## Versao e Surface de Tools
 
 **Versao recomendada:** `@playwright/mcp` matching `mcr.microsoft.com/playwright:v1.49.0`.
