@@ -39,6 +39,7 @@ const MEMORYOS_ARCHITECTURE_BRIEF = [
   '- Empty or blank response from the assistant.',
   '- Response that does NOT demonstrate memory continuity (ignores prior context).',
   '- Console JavaScript errors.',
+  '- BEHAVIOR BUG / TEIMOSIA: the assistant REFUSES to repeat or re-run an action when the user explicitly asks again, claiming it already did ("ja pesquisei", "pesquisei 3 vezes", "ja respondi", "nao preciso pesquisar de novo", "I already searched"). The correct behavior is to re-execute or re-search when the user requests it again, not to argue. This is a BEHAVIOR bug (category: functional), not an error. Detect it especially when the CONVERSATION GOAL is a repetition test.',
   '',
   'NOTE: An integration not being connected is NOT a bug by itself. But if the chat shows a raw technical error string instead of guiding the user to connect, THAT is a bug (error exposure).'
 ].join('\n');
