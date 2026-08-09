@@ -418,6 +418,7 @@ export default async function (req) {
     let cumulativeDurationMs = 0;
     let cumulativeTranscript = [];
     let domFallbackFailCount = 0;  // Detecta loop de retry infinito no typeViaEvaluate
+    let browserTypeSkippedCount = 0;  // PATCH 15: Detecta se browser_type falha repetidamente
     let existingChunkCount = 0;
     let priorQuestions = [];
     let capturedSessionId = chatSessionId || '';
@@ -634,6 +635,7 @@ export default async function (req) {
       }
 
       if (justSentMessage) {
+        browserTypeSkippedCount = 0;  // PATCH 15: reset contador após sucesso
         try { await callMcp('browser_wait_for', { time: 3 }); } catch (e) { /* best-effort */ }
       }
       let snapshotText = '(snapshot failed)';
@@ -697,7 +699,7 @@ export default async function (req) {
         const promptFn = finalMode === 'conversation' ? buildConversationPrompt : buildPrompt;
         const llmRes = await withTimeout(
           base44.asServiceRole.integrations.Core.InvokeLLM({
-            prompt: promptFn(targetUrl, scenario, history.slice(-MAX_HISTORY_ITEMS), snapshotText, consoleErrorsText, { loginEmail: finalLoginEmail, loginPassword: finalLoginPassword }, refs, priorQuestions),
+            prompt: promptFn(targetUrl, scenario, history.slice(-MAX_HISTORY_ITEMS), snapshotText, consoleErrorsText, { loginEmail: finalLoginEmail, loginPassword: finalLoginPassword }, refs, priorQuestions) + extraWarning,
             response_json_schema: DECISION_SCHEMA,
           }),
           45000,  // Aumentado de 30s para 45s (prompt pode crescer em modo continuo)
@@ -767,7 +769,8 @@ export default async function (req) {
 
       // PATCH 13: Força preenchimento de 'text' em browser_type
       if (na && na.tool === 'browser_type' && !na.text) {
-        history.push({ step, action: 'browser_type_skipped', description: 'browser_type tool selected but next_action.text was empty — LLM did not provide the text to type. Skipping this action.' });
+        browserTypeSkippedCount++;  // PATCH 15: incrementa contador
+        history.push({ step, action: 'browser_type_skipped', description: 'browser_type tool selected but next_action.text was empty — LLM did not provide the text to type. Skipping this action. (skip_count: ' + browserTypeSkippedCount + ')' });
         na.tool = 'none';  // força 'none' para não executar sem texto
       }
 
