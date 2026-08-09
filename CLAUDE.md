@@ -2764,57 +2764,19 @@ Patches não são suficientes para um problema que é da própria decisão arqui
 
 ## 🚀 OPÇÃO 1 IMPLEMENTADA: Playwright Direto (2026-08-09 17:25)
 
-### O que foi feito:
+`send_message_auto` substituiu `browser_type`: LLM decide a mensagem, sistema digita via `typeViaEvaluate` (DOM direto) + Enter automático + aguarda resposta. Schema/prompt/handler atualizados. LLM não controla digitação → sem loop infinito, sem ref errado. Build OK, pronto pra teste.
 
-**PASSO 1: Schema Update**
-- ✅ Removido `browser_type` do DECISION_SCHEMA
-- ✅ Adicionado `send_message_auto` (nova ação)
+---
 
-**PASSO 2: Prompt Update**
-- ✅ Removidas instruções de browser_type
-- ✅ Adicionadas instruções para send_message_auto
-- ✅ LLM agora sabe que "enviar mensagem" = send_message_auto
+### 2026-08-09 — Web Connector: Correção loginVerified + Mapeamento do que Falta
 
-**PASSO 3: Handler Implementation**
-- ✅ Novo handler para `send_message_auto`
-- ✅ Usa `typeViaEvaluate` (Playwright automaticamente)
-- ✅ Digita + envia Enter + aguarda resposta
-- ✅ Registra em history
+**Docs:** `SESSION-2026-08-09-WEB-CONNECTOR-LOGINVERIFIED-FIX.md` (operacional) + RFC-012 seção "Implementação"
 
-### Como funciona agora:
+**Bug corrigido:** `login` do Web Connector funcionava (navegava pra `/secure`) mas `loginVerified=false` travava o botão "Confirmar". Causa: `browser_run_code_unsafe` devolvia JSON duplamente codificado → `loginOutcome.url` undefined. Correção: parse recursivo + fallback via snapshot (marcadores `logout`/`secure area` sem campo de senha = authed). Fluxo completo `start`→`login`→`confirm`→`active` validado no the-internet.
 
-```
-LLM: "Vou enviar pergunta: 'Qual é seu nome?'"
-  ↓
-decision.tool = 'send_message_auto'
-decision.text = 'Qual é seu nome?'
-  ↓
-Handler executa:
-  1. typeViaEvaluate('Qual é seu nome?')  ← Playwright digita
-  2. Pressiona Enter automaticamente
-  3. justSentMessage = true
-  4. questionsSent++
-  5. Aguarda 3s para resposta
-  6. Próximo step: LLM lê resposta
-  ↓
-LLM vê resposta no contexto (new snapshot)
-LLM continua com próxima ação
-```
+**Lição:** `browser_run_code_unsafe` não tem contrato estável de serialização — nunca confiar em parse único; sempre fallback visual via snapshot.
 
-### Vantagens:
-
-- ✅ **LLM não controla digitação** → nenhum erro possível
-- ✅ **Não há loop infinito** → typeViaEvaluate é confiável
-- ✅ **Sistema determina timing** → aguarda resposta corretamente
-- ✅ **Clean separation** → LLM: decide | Sistema: executa
-
-### Status:
-
-- ✅ Build: OK
-- ✅ Compilação: OK
-- ⏳ Pronto para teste
-
-### Próximo passo:
-
-Rodar BugHunter com esta nova arquitetura!
-
+**O que falta no Web Connector (3 frentes):**
+- **RFC-012 (A, validado):** reuso de sessão (reinjetar cookies via `context.addCookies`); sweep de expiração TTL (workflow scheduled que marca `expired`).
+- **RFC-013 (B, draft):** motor de descoberta de capabilities (risco alto, gate GO/NO-GO; fallback = cadastro manual).
+- **RFC-014 (C, draft):** `WebConnector.ts` estendendo `BaseConnector`, registro no `ConnectorRuntime` (não-regressivo), fila Outbox.
