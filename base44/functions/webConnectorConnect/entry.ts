@@ -265,9 +265,18 @@ export default async function (req) {
 
       let loginOutcome = null;
       try {
-        const m = fillResult.match(/```(?:json)?\n?([\s\S]*?)\n?```/) || [null, fillResult];
-        loginOutcome = JSON.parse((m[1] || fillResult).trim());
-      } catch (e) { /* best-effort */ }
+        let candidate = fillResult;
+        const m = candidate.match(/```(?:json)?\n?([\s\S]*?)\n?```/);
+        if (m) candidate = m[1];
+        candidate = candidate.trim();
+        loginOutcome = JSON.parse(candidate);
+        // Handle double-encoding: MCP pode devolver o JSON.stringify() do
+        // retorno como uma string JSON codificada de novo -> parse resulta
+        // em string. Parse de novo pra obter o objeto real.
+        if (typeof loginOutcome === 'string') {
+          loginOutcome = JSON.parse(loginOutcome);
+        }
+      } catch (e) { /* best-effort: fallback via snapshot abaixo */ }
 
       if (loginOutcome && (loginOutcome.error === 'no-password-field' || loginOutcome.error === 'no-email-field')) {
         const snap = await callMcp('browser_snapshot', {});
@@ -284,10 +293,24 @@ export default async function (req) {
         const urlHasLogin = /\/login/.test(loginOutcome.url);
         authed = !loginOutcome.stillHasPassword && !urlHasLogin;
       }
-      session._loginVerified = authed;
 
       const postSnap = await callMcp('browser_snapshot', {});
       const postSnapshotText = extractSnapshotText(postSnap);
+
+      // Fallback: se o parse do DOM falhou (double-encoding que não resolveu),
+      // checa o snapshot pós-login por marcadores positivos de auth (logout/
+      // welcome/secure area) sem campo de senha. É o caso do the-internet
+      // onde o DOM retorna corretamente mas o JSON vem codificado de forma
+      // que não parseia — o snapshot é a fonte de verdade visual.
+      if (!authed) {
+        const hasAuthMarker = /log\s*out|sign\s*out|logout|welcome|secure area|you logged into/i.test(postSnapshotText);
+        const stillOnLogin = /(?:password|senha)[^\n]*?\[ref=/i.test(postSnapshotText);
+        if (hasAuthMarker && !stillOnLogin) {
+          authed = true;
+        }
+      }
+      session._loginVerified = authed;
+
       const loginVerified = session._loginVerified === true;
       const stillShowsLogin = /(?:password|senha)[^\n]*?\[ref=/i.test(postSnapshotText);
       const alertMsg = (loginOutcome && loginOutcome.alert) || '';
