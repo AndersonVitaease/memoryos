@@ -251,7 +251,11 @@ export default async function (req) {
           '  await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});' +
           '  const finalUrl = page.url();' +
           '  const stillHasPass = await page.$("input[type=password]");' +
-          '  return JSON.stringify({ url: finalUrl, stillHasPassword: !!stillHasPass });' +
+          '  const alertText = await page.evaluate(() => {' +
+          '    const a = document.querySelector(".flash, .alert, [role=alert], #flash");' +
+          '    return a ? a.textContent.trim().slice(0, 300) : "";' +
+          '  });' +
+          '  return JSON.stringify({ url: finalUrl, stillHasPassword: !!stillHasPass, alert: alertText });' +
           '}';
         const res = await callMcp('browser_run_code_unsafe', { code });
         fillResult = extractRunCodeText(res);
@@ -286,6 +290,20 @@ export default async function (req) {
       const postSnapshotText = extractSnapshotText(postSnap);
       const loginVerified = session._loginVerified === true;
       const stillShowsLogin = /(?:password|senha)[^\n]*?\[ref=/i.test(postSnapshotText);
+      const alertMsg = (loginOutcome && loginOutcome.alert) || '';
+
+      // Se voltou pro login com mensagem de erro, inclui no retorno pra
+      // o usuario saber que foram credenciais invalidas (nao bug do sistema).
+      if (!loginVerified && alertMsg) {
+        return Response.json({
+          ok: false,
+          webSessionId: session.id,
+          status: 'pending_login',
+          snapshotText: postSnapshotText.slice(0, 8000),
+          loginVerified: false,
+          message: 'Login falhou — o site retornou à página de login: "' + alertMsg + '". Verifique se as credenciais estão corretas.',
+        });
+      }
 
       // Marca que a operacao login foi tentada — o confirm exige este
       // marcador (last_used_at) para gravar a sessao. Sem isto, um usuario
