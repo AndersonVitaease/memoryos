@@ -767,5 +767,5 @@ export default async function (req) {
 
       // PATCH 13: Força preenchimento de 'text' em browser_type
       if (na && na.tool === 'browser_type' && !na.text) {
-        history.push({ step, action: 'browser_type_skipped', description: 'browser_type tool selected but next_action.text was empty — LLM did not provide the text to type. Skipping this action. (skip_count: ' + browserTypeSkippedCount + ')' });
+        history.push({ step, action: 'browser_type_skipped', description: 'browser_type tool selected but next_action.text was empty — LLM did not provide the text to type. Skipping this action.' });
         na.tool = 'none';  // força 'none' para não executar sem texto
