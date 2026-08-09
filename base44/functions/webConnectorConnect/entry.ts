@@ -191,6 +191,15 @@ export default async function (req) {
         return Response.json({ error: 'WebSession is not pending_login (status: ' + session.status + ')' }, { status: 409 });
       }
 
+      // Garante que o browser está na URL de login da sessão. O Playwright MCP
+      // pode ter reiniciado o browser entre a operação start e login (são
+      // invocações separadas), deixando o snapshot em about:blank. Sem isto,
+      // refs.email/password ficam vazios e o login falha.
+      try {
+        await callMcp('browser_navigate', { url: session.site_url });
+        try { await callMcp('browser_wait_for', { time: 2 }); } catch (e) { /* best-effort */ }
+      } catch (e) { /* best-effort: segue com snapshot do estado atual */ }
+
       const snap = await callMcp('browser_snapshot', {});
       const snapshotText = extractSnapshotText(snap);
       const refs = extractLoginRefs(snapshotText);
