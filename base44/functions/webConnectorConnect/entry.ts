@@ -214,45 +214,63 @@ export default async function (req) {
         try { await callMcp('browser_wait_for', { time: 2 }); } catch (e) { /* best-effort */ }
       } catch (e) { /* best-effort: segue com snapshot do estado atual */ }
 
-      const snap = await callMcp('browser_snapshot', {});
-      const snapshotText = extractSnapshotText(snap);
-      const refs = extractLoginRefs(snapshotText);
-
-      if (!refs.email || !refs.password) {
-        return Response.json({ ok: false, error: 'Login fields not detected on current page', snapshotText: snapshotText.slice(0, 4000) }, { status: 422 });
+      // ABORDAGEM DOM (100% confiável): em vez de depender da regex sobre o
+      // snapshot de acessibilidade (que falha em sites como the-internet onde
+      // o label "Username" não casa com o padrão esperado, criando loop de
+      // "Login fields not detected"), preenchemos o formulário direto pelo
+      // DOM via browser_run_code_unsafe. Acha input[type=password] + o input
+      // de texto/email mais próximo, preenche, e submete o form. Mesmo padrão
+      // do typeViaEvaluate do bugHunterRun.
+      const escapedEmail = JSON.stringify(email || '');
+      const escapedPassword = JSON.stringify(password || '');
+      let fillResult = 'unknown';
+      try {
+        const code = 'async (page) => {' +
+          '  const pass = await page.$("input[type=password]");' +
+          '  if (!pass) return "no-password-field";' +
+          '  const form = await pass.evaluate((el) => el.closest("form"));' +
+          '  const emailSelector = "input[type=email], input[name=username], input[name=email], input[type=text]";' +
+          '  let emailEl = form ? await form.$(emailSelector) : null;' +
+          '  if (!emailEl) emailEl = await page.$(emailSelector);' +
+          '  if (!emailEl) return "no-email-field";' +
+          '  await emailEl.fill(' + escapedEmail + ');' +
+          '  await pass.fill(' + escapedPassword + ');' +
+          '  let submitBtn = form ? await form.$("button[type=submit], input[type=submit], button") : null;' +
+          '  if (!submitBtn) submitBtn = await page.$("button[type=submit], input[type=submit]");' +
+          '  if (submitBtn) { await submitBtn.click(); return "submitted-click"; }' +
+          '  await pass.press("Enter");' +
+          '  return "submitted-enter";' +
+          '}';
+        const res = await callMcp('browser_run_code_unsafe', { code });
+        fillResult = extractRunCodeText(res);
+      } catch (e) {
+        return Response.json({ error: 'DOM login fill failed: ' + e.message }, { status: 502 });
       }
 
+      if (/no-password-field|no-email-field/.test(fillResult)) {
+        const snap = await callMcp('browser_snapshot', {});
+        const snapshotText = extractSnapshotText(snap);
+        return Response.json({ ok: false, error: 'Login form not found on page (DOM check: ' + fillResult + '). Verifique se a URL da sessão é a página de login.', snapshotText: snapshotText.slice(0, 4000) }, { status: 422 });
+      }
+
+      // Espera a navegação concluir de fato (poll do URL/snapshot), nao so
+      // um timer fixo. Sem isto, o snapshot pós-login pode ser tirado no
+      // meio do redirect e o cookie de sessao (rack.session) ainda nao foi
+      // emitido quando o confirm captura — resulta em WebSession active
+      // mas sem cookie de auth (o bug que vimos no teste do herokuapp).
+      let authed = false;
       try {
-        // Credenciais transitam aqui só de passagem — nunca persistidas, nunca
-        // logadas (ver ADR-019, Adendo 2026-08-09).
-        await callMcp('browser_type', { target: refs.email, text: email || '' });
-        if (refs.submit) {
-          await callMcp('browser_type', { target: refs.password, text: password || '' });
-          await callMcp('browser_click', { target: refs.submit, element: 'submit button' });
-        } else {
-          await callMcp('browser_type', { target: refs.password, text: password || '', submit: true });
-        }
-        // Espera a navegação concluir de fato (poll do URL/snapshot), nao so
-        // um timer fixo. Sem isto, o snapshot pós-login pode ser tirado no
-        // meio do redirect e o cookie de sessao (rack.session) ainda nao foi
-        // emitido quando o confirm captura — resulta em WebSession active
-        // mas sem cookie de auth (o bug que vimos no teste do herokuapp).
-        let authed = false;
         for (let attempt = 0; attempt < 5; attempt++) {
           try { await callMcp('browser_wait_for', { time: 2 }); } catch (e) { /* best-effort */ }
           const s = await callMcp('browser_snapshot', {});
           const t = extractSnapshotText(s);
-          // Heuristica de autenticacao: sumiu o campo de password E apareceu
-          // indicio de area logada (logout/sign out/welcome/secure/flash).
           const stillOnLogin = /(?:password|senha)[^\n]*?\[ref=/i.test(t);
           const hasAuthMarker = /log\s*out|sign\s*out|logout|welcome|secure area|you logged into/i.test(t);
           if (!stillOnLogin && hasAuthMarker) { authed = true; break; }
-          if (!stillOnLogin) { authed = true; break; } // navegou pra fora do login
+          if (!stillOnLogin) { authed = true; break; }
         }
-        session._loginVerified = authed; // flag informal para a resposta
-      } catch (e) {
-        return Response.json({ error: 'Login submission failed: ' + e.message }, { status: 502 });
-      }
+      } catch (e) { /* best-effort: o snapshot pode falhar durante redirect */ }
+      session._loginVerified = authed;
 
       const postSnap = await callMcp('browser_snapshot', {});
       const postSnapshotText = extractSnapshotText(postSnap);
