@@ -544,7 +544,8 @@ export default async function (req) {
       // Navega deterministtamente para /chat (nao depende do LLM achar o chat).
       try {
         await navigateWithRetry(chatUrl);
-        try { await callMcp('browser_wait_for', { time: 10 });  // Aumentado de 6s para 10s (conectores precisam inicializar) } catch (e) { /* best-effort */ }
+        // Aumentado de 6s para 10s (conectores precisam inicializar)
+        try { await callMcp('browser_wait_for', { time: 10 }); } catch (e) { /* best-effort */ }
         history.push({ step: 0.8, action: 'browser_navigate', description: 'Navigated to ' + chatUrl });
         
         // CRITICAL: Aguarda os conectores inicializarem antes de enviar perguntas.
