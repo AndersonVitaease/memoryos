@@ -200,12 +200,12 @@ export default async function (req) {
 
       let cookies = [];
       try {
-        // browser_run_code_unsafe insere o `code` dentro de parenteses (contexto
-        // de expressao) — os dois erros anteriores ("Unexpected token 'const'"
-        // e depois "Unexpected identifier 'cookies'") confirmam isso: statements
-        // com const/return quebram. Passar so a expressao pura resolve.
+        // browser_run_code_unsafe insere o `code` num contexto NAO-assincrono
+        // (o erro "Unexpected identifier 'page'" apos `await` confirma: await
+        // foi lido como identificador comum, nao como keyword). Devolve a
+        // Promise crua sem await — o mecanismo por fora deve resolve-la.
         const result = await callMcp('browser_run_code_unsafe', {
-          code: 'await page.context().cookies()',
+          code: 'page.context().cookies()',
         });
         const rawText = Array.isArray(result?.content) ? result.content.map((c) => c.text || '').join('') : String(result ?? '');
         if (Array.isArray(result?.structuredContent)) {
