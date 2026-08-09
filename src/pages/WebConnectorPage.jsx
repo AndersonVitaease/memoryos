@@ -321,13 +321,10 @@ export default function WebConnectorPage() {
         {webSessionId && status === 'pending_login' && (
           <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 space-y-3">
             <p className="text-sm text-zinc-300">
-              Página carregada. {detectedFields?.email && detectedFields?.password
-                ? 'Campos de login detectados — preencha abaixo e clique em Entrar.'
-                : 'Campos de login não detectados nesta tela. Se o site exige login, encerre esta sessão e use a URL da página de login (ex: .../login) no passo "Iniciar conexão".'}
+              Página carregada. Preencha email e senha abaixo e clique em Entrar — o login é feito direto no formulário da página (DOM), não depende de detecção automática de campos.
             </p>
 
-            {detectedFields?.email && detectedFields?.password && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[10px] font-medium text-zinc-500 mb-1">Email / usuário</label>
                   <input
@@ -350,8 +347,7 @@ export default function WebConnectorPage() {
                   <ShieldCheck className="w-3 h-3" />
                   Usada só para este login — nunca é salva (ver ADR-019).
                 </p>
-              </div>
-            )}
+            </div>
 
             {snapshotText && (
               <details className="text-xs">
@@ -361,7 +357,6 @@ export default function WebConnectorPage() {
             )}
 
             <div className="flex flex-wrap gap-2">
-              {detectedFields?.email && detectedFields?.password && (
                 <button
                   onClick={handleLogin}
                   disabled={busy || !email || !password}
@@ -370,7 +365,6 @@ export default function WebConnectorPage() {
                   {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                   Entrar
                 </button>
-              )}
               {loginVerified && (
                 <button
                   onClick={handleConfirm}
