@@ -773,13 +773,7 @@ export default async function (req) {
         history.push({ step, action: 'browser_type_skipped', description: 'browser_type tool selected but next_action.text was empty — LLM did not provide the text to type. Skipping this action. (skip_count: ' + browserTypeSkippedCount + ')' });
         na.tool = 'none';  // força 'none' para não executar sem texto
       }
-      
-      // PATCH 17: Se browser_type falhou muito, BLOQUEIA e força typeViaEvaluate
-      if (browserTypeSkippedCount > 3 && na && na.tool === 'browser_type') {
-        history.push({ step, action: 'browser_type_blocked', description: 'browser_type BLOCKED: failed ' + browserTypeSkippedCount + ' times. Forcing typeViaEvaluate fallback instead.' });
-        na.tool = 'typeViaEvaluate';  // Força método alternativo
-        if (!na.text) na.text = (priorQuestions && priorQuestions.length > 0) ? priorQuestions[priorQuestions.length - 1] : '';  // Usa última pergunta
-      }
+
 
       // Pre-action hard stop: o LLM pode ter demorado ate 45s. Se ja passamos de
       // 100s, NAO iniciar outra acao (navigate retry pode levar 40s+). Persiste agora.
