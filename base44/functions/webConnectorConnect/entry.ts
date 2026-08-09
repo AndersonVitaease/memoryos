@@ -215,6 +215,18 @@ export default async function (req) {
       const loginVerified = session._loginVerified === true;
       const stillShowsLogin = /(?:password|senha)[^\n]*?\[ref=/i.test(postSnapshotText);
 
+      // Marca que a operacao login foi tentada — o confirm exige este
+      // marcador (last_used_at) para gravar a sessao. Sem isto, um usuario
+      // que faz start na URL base (sem /login) e clica confirm direto ativa
+      // uma sessao sem nenhum cookie de auth (o bug reportado).
+      if (loginVerified) {
+        try {
+          await withTimeout(base44.entities.WebSession.update(session.id, {
+            last_used_at: new Date().toISOString(),
+          }), SDK_TIMEOUT_MS, 'session_mark_login');
+        } catch (e) { /* best-effort: nao bloqueia o retorno do login */ }
+      }
+
       return Response.json({
         ok: true,
         webSessionId: session.id,
@@ -236,6 +248,16 @@ export default async function (req) {
 
       const session = await withTimeout(base44.entities.WebSession.get(webSessionId), SDK_TIMEOUT_MS, 'session_get');
       if (!session) return Response.json({ error: 'WebSession not found' }, { status: 404 });
+
+      // Guarda: o confirm só é permitido se a operação 'login' foi chamada
+      // antes (marca last_used_at). Sem isto, um start na URL base + confirm
+      // direto ativa uma sessão sem cookie de auth — exatamente o bug que
+      // vimos no teste do herokuapp.
+      if (!session.last_used_at) {
+        return Response.json({
+          error: 'Login ainda não foi executado. Use a opção "Entrar" para preencher credenciais antes de confirmar a sessão.',
+        }, { status: 409 });
+      }
 
       // Verificação de segurança: captura um snapshot antes dos cookies e
       // recusa o confirm se a página ainda está no formulário de login.
