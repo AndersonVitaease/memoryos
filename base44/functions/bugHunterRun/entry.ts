@@ -752,11 +752,13 @@ export default async function (req) {
       if (decision.done) {
         if (continuous) {
           history.push({ step, action: 'done_ignored', description: 'Continuous mode: LLM done ignored (continues until target/stop/time budget)' });
+          // NÃO FAZER BREAK! Modo contínuo ignora done
         } else if (questionsAnswered < MIN_QUESTIONS) {
           history.push({ step, action: 'done_blocked', description: 'Premature done BLOCKED: only ' + questionsAnswered + '/' + MIN_QUESTIONS + ' questions answered. Forcing continuation.' });
+          // NÃO FAZER BREAK! MIN_QUESTIONS não atingido
         } else {
           history.push({ step, action: 'done', description: decision.reasoning || 'Agent signaled completion' });
-          break;
+          break;  // OK: somente break em modo explore/simple com MIN_QUESTIONS atingido
         }
       }
 
