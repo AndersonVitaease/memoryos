@@ -255,6 +255,7 @@ function buildConversationPrompt(targetUrl, scenario, history, snapshotText, con
     '- Submit/Login button: ' + (_refs.submit || 'N/A'),
     '',
     'CRITICAL RULES:',
+    '*** FOR browser_type WITH NEXT_ACTION.TOOL="browser_type": YOU MUST ALWAYS FILL NEXT_ACTION.TEXT. If you do not provide text, the action is SKIPPED and nothing happens. NEVER send browser_type without text. ***',
     '- NEVER use browser_navigate to go to a URL you are already on. If the Page URL in the snapshot matches your target, INTERACT with the page (click/type) instead of navigating.',
     '- For browser_navigate: set next_action.url to the full URL. Without url the action is skipped.',
     '- For browser_click: set next_action.target to a ref from the snapshot (e.g. "s1e2"). Without target the action is skipped.',
@@ -760,6 +761,12 @@ export default async function (req) {
       }
 
       const na = decision.next_action;
+
+      // PATCH 13: Força preenchimento de 'text' em browser_type
+      if (na && na.tool === 'browser_type' && !na.text) {
+        history.push({ step, action: 'browser_type_skipped', description: 'browser_type tool selected but next_action.text was empty — LLM did not provide the text to type. Skipping this action.' });
+        na.tool = 'none';  // força 'none' para não executar sem texto
+      }
 
       // Pre-action hard stop: o LLM pode ter demorado ate 45s. Se ja passamos de
       // 100s, NAO iniciar outra acao (navigate retry pode levar 40s+). Persiste agora.
