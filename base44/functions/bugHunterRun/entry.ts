@@ -666,11 +666,11 @@ export default async function (req) {
         }
       }
       // Reseta justSentMessage APOS ler a resposta (snapshot).
-      // Também reseta domFallbackFailCount — a pergunta anterior foi lida com sucesso.
-      domFallbackFailCount = 0; Sem isto, o LLM
+      // Também reseta domFallbackFailCount — a pergunta anterior foi lida com sucesso. Sem isto, o LLM
       // envia no passo N (justSentMessage=true), le a resposta no passo N+1, mas
       // justSentMessage continua true -> double_send_prevented bloqueia o proximo
       // envio legítimo, desperdicando steps e fazendo parecer "travado".
+      domFallbackFailCount = 0;
       justSentMessage = false;
       try { consoleErrors = extractConsoleErrors(await callMcp('browser_console_messages', { level: 'error' })); } catch (e) { /* non-fatal */ }
       const consoleErrorsText = consoleErrors.map((m) => '[' + (m.type || 'error') + '] ' + (m.text || '')).join('\n').slice(0, 2000) || '(none)';
