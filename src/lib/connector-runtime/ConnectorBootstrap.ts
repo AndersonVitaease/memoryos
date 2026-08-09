@@ -91,6 +91,13 @@ const OFFICIAL_FACTORIES: ConnectorFactory[] = [
     return new MemoriConnector();
   },
   async () => {
+    // RFC-014: Web Connector — sessoes autenticadas (WebSession) + capabilities
+    // descobertas (CapabilityMap) via Playwright MCP. Delegacao para backend
+    // functions seguras (webConnectorConnect/webConnectorDiscover).
+    const { WebConnector } = await import("./connectors/WebConnector");
+    return new WebConnector();
+  },
+  async () => {
     // MCP generico: chama servidores MCP externos (MCPServerConfig) via
     // backend function mcpClientCall (Streamable HTTP + SSE).
     const { MCPConnector } = await import("./connectors/MCPConnector");
