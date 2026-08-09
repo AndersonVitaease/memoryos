@@ -635,7 +635,7 @@ export default async function (req) {
       }
 
       if (justSentMessage) {
-        browserTypeSkippedCount = 0;  // PATCH 15: reset contador após sucesso
+        browserTypeSkippedCount = 0;  // PATCH 15: reset contador após sucesso (PATCH 17: simplificado)
         try { await callMcp('browser_wait_for', { time: 3 }); } catch (e) { /* best-effort */ }
       }
       let snapshotText = '(snapshot failed)';
@@ -772,6 +772,10 @@ export default async function (req) {
         browserTypeSkippedCount++;  // PATCH 15: incrementa contador
         history.push({ step, action: 'browser_type_skipped', description: 'browser_type tool selected but next_action.text was empty — LLM did not provide the text to type. Skipping this action. (skip_count: ' + browserTypeSkippedCount + ')' });
         na.tool = 'none';  // força 'none' para não executar sem texto
+        if (browserTypeSkippedCount > 3) {
+          history.push({ step, action: 'browser_type_limit_reached', description: 'browser_type skipped ' + browserTypeSkippedCount + ' times. Stopping to break loop.' });
+          break;  // SAIR DO LOOP SE BROWSER_TYPE FALHA MUITO
+        }
       }
 
 
