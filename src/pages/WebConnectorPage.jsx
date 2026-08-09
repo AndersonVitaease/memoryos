@@ -10,6 +10,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { Loader2, Link as LinkIcon, CheckCircle2, XCircle, ShieldCheck, Search, Sparkles } from 'lucide-react';
+import WebCapabilityExecutor from '@/components/web-connector/WebCapabilityExecutor';
 
 async function callWebConnector(operation, payload) {
   try {
@@ -513,6 +514,8 @@ export default function WebConnectorPage() {
                 </div>
               )}
             </div>
+
+            <WebCapabilityExecutor webSessionId={webSessionId} siteUrl={siteUrl} />
           </div>
         )}
 
