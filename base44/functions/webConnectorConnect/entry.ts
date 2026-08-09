@@ -29,40 +29,12 @@
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { connect as mcpConnect, resolveHeaders as mcpResolveHeaders, tryRecoverResultFromError } from '../../shared/mcpClient.ts';
+import { withTimeout, extractSnapshotText, extractRunCodeText, makeCallMcp } from '../../shared/mcpHelpers.ts';
 
 const PLAYWRIGHT_SERVER_NAME = 'playwright-web-connector';
 const MCP_CALL_TIMEOUT_MS = 20000;
 const SDK_TIMEOUT_MS = 8000;
 const DEFAULT_SESSION_TTL_MS = 30 * 60 * 1000; // 30min — revalidável, ver WebSession.expires_at
-
-function withTimeout(promise, ms, label) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => setTimeout(() => reject(new Error('MCP timeout (' + ms + 'ms): ' + label)), ms)),
-  ]);
-}
-
-function extractSnapshotText(snap) {
-  if (!snap) return '(no snapshot)';
-  if (Array.isArray(snap.content)) return snap.content.map((c) => c.text || '').join('\n');
-  if (typeof snap === 'string') return snap;
-  return JSON.stringify(snap);
-}
-
-// Mesmo padrao do extractEvaluateText usado em bugHunterRun para
-// browser_evaluate/browser_run_code_unsafe: o callMcp ja desembrulha o
-// resultado (structuredContent ?? content ?? result), entao aqui `res` pode
-// vir como array de content items, string, ou objeto cru. O tool as vezes
-// envolve o valor de retorno num bloco "### Result\n<valor>\n### ...".
-function extractRunCodeText(res) {
-  let text;
-  if (Array.isArray(res)) text = res.map((c) => c?.text || '').join('\n');
-  else if (res && Array.isArray(res.content)) text = res.content.map((c) => c.text || '').join('\n');
-  else if (typeof res === 'string') text = res;
-  else text = JSON.stringify(res);
-  const m = text.match(/### Result\n([\s\S]*?)(?:\n### |$)/);
-  return m ? m[1].trim() : text.trim();
-}
 
 // Mesma heurística de extração de refs usada em bugHunterRun (regex sobre o
 // snapshot de acessibilidade), reimplementada aqui de forma isolada — não
@@ -103,21 +75,7 @@ export default async function (req) {
       return Response.json({ error: 'MCP connect failed: ' + e.message }, { status: 502 });
     }
 
-    const callMcp = async (toolName, args = {}) => {
-      let result;
-      try {
-        result = await withTimeout(mcpSession.client.callTool({ name: toolName, arguments: args }), MCP_CALL_TIMEOUT_MS, toolName);
-      } catch (innerErr) {
-        const recovered = tryRecoverResultFromError(innerErr);
-        if (!recovered) throw innerErr;
-        result = recovered;
-      }
-      if (result.isError) {
-        const errMsg = result.content?.[0]?.text || 'Tool error';
-        throw new Error(String(errMsg));
-      }
-      return result.structuredContent ?? result.content ?? result;
-    };
+    const callMcp = makeCallMcp(mcpSession, MCP_CALL_TIMEOUT_MS, tryRecoverResultFromError);
 
     // ── operation: start ──────────────────────────────────────────────
     if (operation === 'start') {

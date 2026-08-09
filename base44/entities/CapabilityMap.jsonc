@@ -1,0 +1,41 @@
+{
+  "name": "CapabilityMap",
+  "type": "object",
+  "properties": {
+    "site_url": {
+      "type": "string",
+      "description": "URL base do sistema (chave natural \u2014 um mapa por site, compartilhado entre usuarios que conectam o mesmo sistema)"
+    },
+    "site_name": {
+      "type": "string",
+      "description": "Nome legivel do sistema"
+    },
+    "capabilities": {
+      "type": "string",
+      "description": "JSON array de capabilities validadas: [{id, description, inputSchema, outputSchema, discoveredFrom}]"
+    },
+    "version": {
+      "type": "number",
+      "default": 1,
+      "description": "Versao do mapa (incrementa quando capabilities sao adicionadas ou atualizadas)"
+    },
+    "last_validated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp da ultima validacao de uma capability neste mapa"
+    }
+  },
+  "required": [
+    "site_url",
+    "capabilities"
+  ],
+  "rls": {
+    "read": {},
+    "update": {
+      "created_by_id": "{{user.id}}"
+    },
+    "delete": {
+      "created_by_id": "{{user.id}}"
+    }
+  }
+}
