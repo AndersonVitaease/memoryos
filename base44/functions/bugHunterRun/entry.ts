@@ -502,7 +502,8 @@ export default async function (req) {
     // ── Login deterministico (conversation mode com credenciais) ─────────
     if (finalMode === 'conversation' && finalLoginEmail && finalLoginPassword) {
       try {
-        try { await callMcp('browser_wait_for', { time: 8 });  // Aumentado de 5s para 8s (permitir que chat inicialize completamente) } catch (e) { /* best-effort */ }
+        // Aumentado de 5s para 8s (permitir que chat inicialize completamente)
+        try { await callMcp('browser_wait_for', { time: 8 }); } catch (e) { /* best-effort */ }
         const loginSnap = extractSnapshotText(await callMcp('browser_snapshot', {}));
         const loginRefs = extractElementRefs(loginSnap);
         if (loginRefs.email && loginRefs.password) {
