@@ -188,20 +188,44 @@ export default async function (req) {
         } else {
           await callMcp('browser_type', { target: refs.password, text: password || '', submit: true });
         }
-        try { await callMcp('browser_wait_for', { time: 3 }); } catch (e) { /* best-effort */ }
+        // Espera a navegação concluir de fato (poll do URL/snapshot), nao so
+        // um timer fixo. Sem isto, o snapshot pós-login pode ser tirado no
+        // meio do redirect e o cookie de sessao (rack.session) ainda nao foi
+        // emitido quando o confirm captura — resulta em WebSession active
+        // mas sem cookie de auth (o bug que vimos no teste do herokuapp).
+        let authed = false;
+        for (let attempt = 0; attempt < 5; attempt++) {
+          try { await callMcp('browser_wait_for', { time: 2 }); } catch (e) { /* best-effort */ }
+          const s = await callMcp('browser_snapshot', {});
+          const t = extractSnapshotText(s);
+          // Heuristica de autenticacao: sumiu o campo de password E apareceu
+          // indicio de area logada (logout/sign out/welcome/secure/flash).
+          const stillOnLogin = /(?:password|senha)[^\n]*?\[ref=/i.test(t);
+          const hasAuthMarker = /log\s*out|sign\s*out|logout|welcome|secure area|you logged into/i.test(t);
+          if (!stillOnLogin && hasAuthMarker) { authed = true; break; }
+          if (!stillOnLogin) { authed = true; break; } // navegou pra fora do login
+        }
+        session._loginVerified = authed; // flag informal para a resposta
       } catch (e) {
         return Response.json({ error: 'Login submission failed: ' + e.message }, { status: 502 });
       }
 
       const postSnap = await callMcp('browser_snapshot', {});
       const postSnapshotText = extractSnapshotText(postSnap);
+      const loginVerified = session._loginVerified === true;
+      const stillShowsLogin = /(?:password|senha)[^\n]*?\[ref=/i.test(postSnapshotText);
 
       return Response.json({
         ok: true,
         webSessionId: session.id,
         status: 'pending_login',
         snapshotText: postSnapshotText.slice(0, 8000),
-        message: 'Revise a tela acima. Se o login foi bem-sucedido, confirme para capturar a sessão.',
+        loginVerified,
+        message: loginVerified
+          ? (stillShowsLogin
+            ? 'Atenção: a página ainda mostra campos de login — o submit pode não ter funcionado. Revise antes de confirmar.'
+            : 'Login parece ter funcionado (página saiu do formulário de login). Confirme para capturar a sessão.')
+          : 'Não foi possível confirmar que o login ocorreu (página ainda no formulário). Revise o snapshot antes de confirmar.',
       });
     }
 
@@ -212,6 +236,22 @@ export default async function (req) {
 
       const session = await withTimeout(base44.entities.WebSession.get(webSessionId), SDK_TIMEOUT_MS, 'session_get');
       if (!session) return Response.json({ error: 'WebSession not found' }, { status: 404 });
+
+      // Verificação de segurança: captura um snapshot antes dos cookies e
+      // recusa o confirm se a página ainda está no formulário de login.
+      // Evita gravar uma WebSession "active" sem cookie de auth (o bug do
+      // teste do herokuapp, onde só vieram cookies de analytics).
+      let preSnapText = '';
+      try {
+        const preSnap = await callMcp('browser_snapshot', {});
+        preSnapText = extractSnapshotText(preSnap);
+      } catch (e) { /* best-effort: segue para captura mesmo se snapshot falhar */ }
+      if (/(?:password|senha)[^\n]*?\[ref=/i.test(preSnapText)) {
+        return Response.json({
+          error: 'Página atual ainda mostra campos de login — o login não foi concluído. Volte e preencha as credenciais (opção Entrar) antes de confirmar.',
+          snapshotText: preSnapText.slice(0, 4000),
+        }, { status: 409 });
+      }
 
       let cookies = [];
       try {
