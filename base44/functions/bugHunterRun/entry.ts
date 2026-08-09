@@ -777,6 +777,6 @@ export default async function (req) {
         history.push({ step, action: 'send_message_auto', description: 'Message sent automatically: "' + na.text.substring(0, 50) + '..." (' + result + ')' });
         justSentMessage = true;
         questionsSent++;
-        try { await callMcp('browser_wait_for', { time: 3 }); } catch (e) { /* best-effort */ }
+        try { await callMcp('browser_wait_for', { time: 8 }); } catch (e) { /* best-effort */ }
       }
         na.tool = 'none';  // força 'none' para não executar sem texto
