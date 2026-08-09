@@ -2478,3 +2478,42 @@ Princípio mantido: **Consultivo, nunca autônomo.**
 **BugInsightsChat:** pagina `/bug-insights` (`src/pages/BugInsightsChat.jsx`) + `BugFindingsList` com filtros por status, service labels humanizadas (`bugDisplayLabel.js`), expansao de detalhes e acoes de triagem. Permite conversar com a IA sobre os findings para diagnostico.
 
 **Validado:** teste direto — 10 perguntas enviadas, 9 respondidas em 89s, sem o erro `f1e6`.
+---
+
+## 🚨 2026-08-09 00:18 — BUG HUNTER TRAVAMENTO (Session Capture Failure)
+
+**Run:** `bugHunter_1786234481104`  
+**Status:** STOPPED (stuck after 22 questions)  
+**Duration:** ~3m 23s  
+**Transcript:** EMPTY (critical!)  
+**Chat Session ID:** "" (not captured!)  
+
+### Problema Identificado:
+
+Após 12 patches de otimização:
+- ✅ Timeouts aumentados (240s)
+- ✅ Anti-loop retry (break após 2 falhas)  
+- ✅ Stall detection (para se >90s sem resposta)
+- ✅ **waitForConnectors() aguarda connectionsMounted === true**
+
+**O bugHunterRun consegue enviar perguntas (22 enviadas)**  
+**MAS não consegue capturar respostas (transcript vazio, session_id vazio)**
+
+### Histórico Terminal:
+```
+step 23-28: "none" (preso em retry loop)
+step 25-27: "bug_suppressed" (conversation mode, sem resposta lida)
+```
+
+### Hipótese:
+O chat não está respondendo ao LLM — ou conectores não inicializam, ou LLM crash, ou pipeline resposta quebrado.
+
+### Próximos Passos:
+1. ❌ **waitForConnectors()** parece OK (checks `window.__MEMORY_DEBUG__?.React?.connectionsMounted`)
+2. ❌ Precisamos de **real-time observability** — logs do chat durante teste
+3. ❌ Verificar se `/chat` está retornando HTML corretamente
+4. ❌ Testar manualmente: abrir `/chat`, enviar 1 pergunta, verificar resposta
+5. ❌ Possível raiz: `ConversationPipeline` não está invocando o LLM corretamente após PATCH 12
+
+**BLOQUEADOR:** Sem transcrição, não conseguimos validar os 12 patches anteriores.
+
