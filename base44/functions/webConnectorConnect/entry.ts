@@ -147,6 +147,7 @@ export default async function (req) {
         ok: true,
         webSessionId: session.id,
         status: 'pending_login',
+        siteUrl: finalSiteUrl,
         snapshotText: snapshotText.slice(0, 8000),
         detectedFields,
       });
@@ -167,8 +168,14 @@ export default async function (req) {
       // pode ter reiniciado o browser entre a operação start e login (são
       // invocações separadas), deixando o snapshot em about:blank. Sem isto,
       // refs.email/password ficam vazios e o login falha.
+      //
+      // O usuario pode sobrescrever a URL de login (body.loginUrl) quando a URL
+      // base nao expoe o formulario de login (home, dashboard com botao login,
+      // path diferente de /login). Sem isto, o login falha com no-password-field.
+      const loginUrlOverride = (body.loginUrl && typeof body.loginUrl === 'string' && /^https?:\/\//i.test(body.loginUrl.trim())) ? body.loginUrl.trim() : null;
+      const navTarget = loginUrlOverride || session.site_url;
       try {
-        await callMcp('browser_navigate', { url: session.site_url });
+        await callMcp('browser_navigate', { url: navTarget });
         try { await callMcp('browser_wait_for', { time: 2 }); } catch (e) { /* best-effort */ }
       } catch (e) { /* best-effort: segue com snapshot do estado atual */ }
 

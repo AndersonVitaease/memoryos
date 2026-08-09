@@ -63,6 +63,7 @@ export default function WebConnectorPage() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loginUrl, setLoginUrl] = useState('');
   const [loginVerified, setLoginVerified] = useState(false);
   const [sessionValid, setSessionValid] = useState(null);
   const [candidates, setCandidates] = useState([]);
@@ -96,6 +97,7 @@ export default function WebConnectorPage() {
       setStatus(data.status);
       setSnapshotText(data.snapshotText || '');
       setDetectedFields(data.detectedFields || null);
+      setLoginUrl(data.siteUrl || '');
       setLoginVerified(false);
     } catch (e) {
       setError(e.message || 'Falha ao iniciar conexão');
@@ -109,7 +111,7 @@ export default function WebConnectorPage() {
     setBusy(true);
     setError(null);
     try {
-      const data = await callWebConnector('login', { webSessionId, email, password });
+      const data = await callWebConnector('login', { webSessionId, email, password, ...(loginUrl ? { loginUrl } : {}) });
       setStatus(data.status);
       setSnapshotText(data.snapshotText || '');
       setLoginVerified(data.loginVerified === true);
@@ -150,6 +152,7 @@ export default function WebConnectorPage() {
       setSiteUrl('');
       setSiteName('');
       setEmail('');
+      setLoginUrl('');
       setLoginVerified(false);
       setSessionValid(null);
     } catch (e) {
@@ -325,8 +328,18 @@ export default function WebConnectorPage() {
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[10px] font-medium text-zinc-500 mb-1">Email / usuário</label>
+              <div className="md:col-span-2">
+                <label className="block text-[10px] font-medium text-zinc-500 mb-1">URL da página de login</label>
+                <input
+                  value={loginUrl}
+                  onChange={(e) => setLoginUrl(e.target.value)}
+                  placeholder="https://site.com/login"
+                  className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+                />
+                <p className="text-[10px] text-zinc-600 mt-1">Ajuste se a página atual não tem formulário de login — o "Entrar" navega para esta URL antes de preencher.</p>
+              </div>
+              <div>
+                <label className="block text-[10px] font-medium text-zinc-500 mb-1">Email / usuário</label>
                   <input
                     type="text"
                     value={email}
