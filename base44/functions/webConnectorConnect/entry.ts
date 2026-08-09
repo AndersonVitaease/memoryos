@@ -214,33 +214,44 @@ export default async function (req) {
         try { await callMcp('browser_wait_for', { time: 2 }); } catch (e) { /* best-effort */ }
       } catch (e) { /* best-effort: segue com snapshot do estado atual */ }
 
-      // ABORDAGEM DOM (100% confiável): em vez de depender da regex sobre o
-      // snapshot de acessibilidade (que falha em sites como the-internet onde
-      // o label "Username" não casa com o padrão esperado, criando loop de
-      // "Login fields not detected"), preenchemos o formulário direto pelo
-      // DOM via browser_run_code_unsafe. Acha input[type=password] + o input
-      // de texto/email mais próximo, preenche, e submete o form. Mesmo padrão
-      // do typeViaEvaluate do bugHunterRun.
+      // ABORDAGEM DOM (100% confiável): preenche o form direto pelo DOM e
+      // espera a navegação terminar ANTES de checar o resultado. Retorna o
+      // URL final + se ainda há campo de senha, para decidir auth sem o
+      // falso-positivo do snapshot durante redirect (o bug que marcava
+      // "authed=true" no meio do POST e voltava pra /login com falha).
       const escapedEmail = JSON.stringify(email || '');
       const escapedPassword = JSON.stringify(password || '');
       let fillResult = 'unknown';
       try {
         const code = 'async (page) => {' +
           '  const pass = await page.$("input[type=password]");' +
-          '  if (!pass) return "no-password-field";' +
+          '  if (!pass) return JSON.stringify({ error: "no-password-field" });' +
           '  const formHandle = await pass.evaluateHandle((el) => el.closest("form"));' +
           '  const formEl = formHandle && formHandle.asElement ? formHandle.asElement() : null;' +
           '  const emailSelector = "input[type=email], input[name=username], input[name=email], input[type=text]";' +
           '  let emailEl = formEl ? await formEl.$(emailSelector) : null;' +
           '  if (!emailEl) emailEl = await page.$(emailSelector);' +
-          '  if (!emailEl) return "no-email-field";' +
+          '  if (!emailEl) return JSON.stringify({ error: "no-email-field" });' +
           '  await emailEl.fill(' + escapedEmail + ');' +
           '  await pass.fill(' + escapedPassword + ');' +
-          '  let submitBtn = formEl ? await formEl.$("button[type=submit], input[type=submit], button") : null;' +
+          '  let submitBtn = formEl ? await formEl.$("button[type=submit], input[type=submit]") : null;' +
           '  if (!submitBtn) submitBtn = await page.$("button[type=submit], input[type=submit]");' +
-          '  if (submitBtn) { await submitBtn.click(); return "submitted-click"; }' +
-          '  await pass.press("Enter");' +
-          '  return "submitted-enter";' +
+          '  if (!submitBtn) submitBtn = formEl ? await formEl.$("button") : null;' +
+          '  if (submitBtn) {' +
+          '    await Promise.all([' +
+          '      page.waitForNavigation({ waitUntil: "load", timeout: 10000 }).catch(() => {}),' +
+          '      submitBtn.click(),' +
+          '    ]);' +
+          '  } else {' +
+          '    await Promise.all([' +
+          '      page.waitForNavigation({ waitUntil: "load", timeout: 10000 }).catch(() => {}),' +
+          '      pass.press("Enter"),' +
+          '    ]);' +
+          '  }' +
+          '  await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});' +
+          '  const finalUrl = page.url();' +
+          '  const stillHasPass = await page.$("input[type=password]");' +
+          '  return JSON.stringify({ url: finalUrl, stillHasPassword: !!stillHasPass });' +
           '}';
         const res = await callMcp('browser_run_code_unsafe', { code });
         fillResult = extractRunCodeText(res);
@@ -248,29 +259,27 @@ export default async function (req) {
         return Response.json({ error: 'DOM login fill failed: ' + e.message }, { status: 502 });
       }
 
-      if (/no-password-field|no-email-field/.test(fillResult)) {
+      let loginOutcome = null;
+      try {
+        const m = fillResult.match(/```(?:json)?\n?([\s\S]*?)\n?```/) || [null, fillResult];
+        loginOutcome = JSON.parse((m[1] || fillResult).trim());
+      } catch (e) { /* best-effort */ }
+
+      if (loginOutcome && (loginOutcome.error === 'no-password-field' || loginOutcome.error === 'no-email-field')) {
         const snap = await callMcp('browser_snapshot', {});
         const snapshotText = extractSnapshotText(snap);
-        return Response.json({ ok: false, error: 'Login form not found on page (DOM check: ' + fillResult + '). Verifique se a URL da sessão é a página de login.', snapshotText: snapshotText.slice(0, 4000) }, { status: 422 });
+        return Response.json({ ok: false, error: 'Login form not found on page (DOM check: ' + loginOutcome.error + '). Verifique se a URL da sessão é a página de login.', snapshotText: snapshotText.slice(0, 4000) }, { status: 422 });
       }
 
-      // Espera a navegação concluir de fato (poll do URL/snapshot), nao so
-      // um timer fixo. Sem isto, o snapshot pós-login pode ser tirado no
-      // meio do redirect e o cookie de sessao (rack.session) ainda nao foi
-      // emitido quando o confirm captura — resulta em WebSession active
-      // mas sem cookie de auth (o bug que vimos no teste do herokuapp).
+      // Decide authed de forma confiável: o submit já esperou a navegação
+      // terminar. authed = true só se NÃO há mais campo de senha E o URL
+      // final não é mais /login. Se voltou pra /login (credenciais erradas),
+      // stillHasPassword=true ou url tem /login -> authed=false.
       let authed = false;
-      try {
-        for (let attempt = 0; attempt < 5; attempt++) {
-          try { await callMcp('browser_wait_for', { time: 2 }); } catch (e) { /* best-effort */ }
-          const s = await callMcp('browser_snapshot', {});
-          const t = extractSnapshotText(s);
-          const stillOnLogin = /(?:password|senha)[^\n]*?\[ref=/i.test(t);
-          const hasAuthMarker = /log\s*out|sign\s*out|logout|welcome|secure area|you logged into/i.test(t);
-          if (!stillOnLogin && hasAuthMarker) { authed = true; break; }
-          if (!stillOnLogin) { authed = true; break; }
-        }
-      } catch (e) { /* best-effort: o snapshot pode falhar durante redirect */ }
+      if (loginOutcome && loginOutcome.url) {
+        const urlHasLogin = /\/login/.test(loginOutcome.url);
+        authed = !loginOutcome.stillHasPassword && !urlHasLogin;
+      }
       session._loginVerified = authed;
 
       const postSnap = await callMcp('browser_snapshot', {});
