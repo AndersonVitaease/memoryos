@@ -2628,3 +2628,64 @@ Rodar bugHunterRun com PATCH 13+14, deve fazer >5 perguntas antes de parar
 
 A transcrição agora é capturada corretamente, e o modo contínuo executa múltiplas perguntas sem travar após a primeira.
 
+
+---
+
+## 🔧 PATCH 15 — Anti-Loop browser_type_skipped (2026-08-09 00:50)
+
+### Problema Detectado:
+
+Run `bugHunter_1786236289304` travou em **LOOP INFINITO**:
+```
+step 7-12: dom_send + none (repetindo!)
+```
+
+**Causa raiz:**
+1. LLM retorna `browser_type` SEM `text`
+2. PATCH 13 valida e força `tool='none'`
+3. DOM fallback tenta enviar
+4. **Próximo loop:** LLM tenta browser_type de novo SEM text
+5. **LOOP INFINITO** 🔄
+
+### Solução (PATCH 15):
+
+1. **Contador** `browserTypeSkippedCount`:
+   - Incrementa quando browser_type é skipped
+   - Reseta quando uma ação bem-sucedida ocorre
+
+2. **Detecção de padrão**:
+   - Se `browserTypeSkippedCount > 2` → LLM está preso
+   - Envia aviso crítico ao LLM: STOP usando browser_type!
+
+3. **Forçar alternativa**:
+   - Instrui LLM usar `typeViaEvaluate` ou `browser_press_key` em vez de browser_type
+   - Quebra o loop
+
+### Código Adicionado:
+
+```typescript
+let browserTypeSkippedCount = 0;  // Detecta falhas repetidas
+
+// Quando browser_type é skipped:
+browserTypeSkippedCount++;
+history.push({ step, action: 'browser_type_skipped', description: '... (skip_count: ' + browserTypeSkippedCount + ')' });
+
+// Reset após sucesso:
+if (justSentMessage) {
+  browserTypeSkippedCount = 0;
+}
+
+// Aviso ao LLM:
+if (browserTypeSkippedCount > 2) {
+  extraWarning = ' *** WARNING: browser_type has been skipped ' + browserTypeSkippedCount + ' times. STOP using browser_type. Use typeViaEvaluate or browser_press_key instead. ***';
+}
+```
+
+### Resultado esperado:
+
+- ✅ Se browser_type falha 3x, LLM muda para typeViaEvaluate
+- ✅ Não mais loop infinito
+- ✅ Continua enviando mensagens normalmente
+
+**Build:** ✅ Vite build OK
+
