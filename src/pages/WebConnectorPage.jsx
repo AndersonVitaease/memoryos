@@ -67,6 +67,7 @@ export default function WebConnectorPage() {
   const [candidates, setCandidates] = useState([]);
   const [discovering, setDiscovering] = useState(false);
   const [discoverSummary, setDiscoverSummary] = useState(null);
+  const [candidateBusyId, setCandidateBusyId] = useState(null);
 
   // Carrega candidatos existentes quando a sessao fica ativa (permite
   // revisar descobertas de runs anteriores da mesma WebSession).
@@ -194,6 +195,76 @@ export default function WebConnectorPage() {
       setDiscovering(false);
     }
   }, [webSessionId]);
+
+  const refreshCandidates = useCallback(async () => {
+    if (!webSessionId) return;
+    try {
+      const recs = await base44.entities.CapabilityCandidate.filter({ web_session_id: webSessionId });
+      setCandidates(recs || []);
+    } catch (e) { /* best-effort */ }
+  }, [webSessionId]);
+
+  const handleValidateCandidate = useCallback(async (cand) => {
+    setCandidateBusyId(cand.id);
+    setError(null);
+    try {
+      let fields = [];
+      try { fields = JSON.parse(cand.input_fields || '[]'); } catch (e) { fields = []; }
+      const props = {};
+      (Array.isArray(fields) ? fields : []).forEach((f) => { props[f] = { type: 'string' }; });
+      const capObj = {
+        id: cand.suggested_id,
+        description: cand.description || '',
+        inputSchema: { type: 'object', properties: props },
+        discoveredFrom: cand.discovered_from_url || '',
+      };
+      const existing = await base44.entities.CapabilityMap.filter({ site_url: cand.site_url });
+      if (existing.length > 0) {
+        const map = existing[0];
+        let caps = [];
+        try { caps = JSON.parse(map.capabilities || '[]'); } catch (e) { caps = []; }
+        if (!Array.isArray(caps)) caps = [];
+        if (!caps.find((x) => x.id === capObj.id)) caps.push(capObj);
+        await base44.entities.CapabilityMap.update(map.id, {
+          capabilities: JSON.stringify(caps),
+          last_validated_at: new Date().toISOString(),
+        });
+      } else {
+        await base44.entities.CapabilityMap.create({
+          site_url: cand.site_url,
+          capabilities: JSON.stringify([capObj]),
+          last_validated_at: new Date().toISOString(),
+        });
+      }
+      await base44.entities.CapabilityCandidate.update(cand.id, {
+        status: 'validated',
+        validation_notes: 'Promovido para CapabilityMap pelo usuario.',
+      });
+      await refreshCandidates();
+    } catch (e) {
+      setError(e.message || 'Falha ao validar candidato');
+    } finally {
+      setCandidateBusyId(null);
+    }
+  }, [refreshCandidates]);
+
+  const handleRejectCandidate = useCallback(async (cand) => {
+    const reason = window.prompt('Motivo da rejeicao (opcional):', '');
+    if (reason === null) return;
+    setCandidateBusyId(cand.id);
+    setError(null);
+    try {
+      await base44.entities.CapabilityCandidate.update(cand.id, {
+        status: 'rejected',
+        rejected_reason: reason,
+      });
+      await refreshCandidates();
+    } catch (e) {
+      setError(e.message || 'Falha ao rejeitar candidato');
+    } finally {
+      setCandidateBusyId(null);
+    }
+  }, [refreshCandidates]);
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6">
@@ -407,6 +478,33 @@ export default function WebConnectorPage() {
                           )}
                           {c.discovered_from_url && (
                             <p className="text-[9px] text-zinc-600 mt-1 font-mono truncate">{c.discovered_from_url}</p>
+                          )}
+                          {c.status === 'candidate' && (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              <button
+                                onClick={() => handleValidateCandidate(c)}
+                                disabled={candidateBusyId === c.id}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium bg-emerald-500/90 text-zinc-950 hover:bg-emerald-400 disabled:opacity-40 transition"
+                              >
+                                {candidateBusyId === c.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+                                Validar
+                              </button>
+                              <button
+                                onClick={() => handleRejectCandidate(c)}
+                                disabled={candidateBusyId === c.id}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 disabled:opacity-40 transition"
+                              >
+                                Rejeitar
+                              </button>
+                            </div>
+                          )}
+                          {c.status === 'rejected' && c.rejected_reason && (
+                            <p className="text-[10px] text-red-400/80 mt-1.5">Rejeitado: {c.rejected_reason}</p>
+                          )}
+                          {c.status === 'validated' && (
+                            <p className="text-[10px] text-emerald-400/80 mt-1.5 flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3" /> Promovido para CapabilityMap
+                            </p>
                           )}
                         </div>
                       );
