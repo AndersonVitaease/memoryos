@@ -234,7 +234,7 @@ function buildConversationPrompt(targetUrl, scenario, history, snapshotText, con
     '- browser_click          fields: target="s1e2" element="login button"                    -> click an element (target is the ref from the snapshot)',
     '',
     '- browser_press_key     fields: key="Enter"                                             -> press a keyboard key',
-    '- send_message_auto     fields: text="your message here"                                  -> send a message to the chat (SYSTEM will type automatically)'
+    '- send_message_auto     fields: text="your message here"                                  -> send a message to the chat (SYSTEM will type automatically)',
     '- browser_snapshot      fields: (none)                                                  -> re-read the page structure (use AFTER sending a message to read the assistant response)',
     '- browser_navigate_back fields: (none)                                                  -> go back to previous page',
     '- none                   fields: (none)                                                  -> do nothing this step',
