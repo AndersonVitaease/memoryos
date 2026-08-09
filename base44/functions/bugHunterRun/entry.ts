@@ -69,7 +69,8 @@ const DECISION_SCHEMA = {
     next_action: {
       type: 'object',
       properties: {
-        tool: { type: 'string', enum: ['browser_navigate', 'browser_click', 'send_message_auto', 'browser_snapshot', 'browser_navigate_back', 'browser_press_key', 'none']  // OPÇÃO 1: browser_type → send_message_auto (sistema digita automaticamente) },
+        // OPÇÃO 1: browser_type → send_message_auto (sistema digita automaticamente)
+        tool: { type: 'string', enum: ['browser_navigate', 'browser_click', 'send_message_auto', 'browser_snapshot', 'browser_navigate_back', 'browser_press_key', 'none'] },
         url: { type: 'string', description: 'URL for browser_navigate (e.g. "https://example.com/page")' },
         target: { type: 'string', description: 'Element ref from the snapshot for browser_click/browser_type (e.g. "s1e2")' },
         element: { type: 'string', description: 'Human-readable description of the target element (optional)' },
