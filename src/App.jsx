@@ -156,6 +156,7 @@ const SprintWE01Page = lazy(() => import('@/pages/SprintWE01Page'));
 const TravelportAuthTestPage = lazy(() => import('@/pages/TravelportAuthTestPage'));
 const OIEPage = lazy(() => import('@/pages/OIEPage'));
 const BugHunterConsole = lazy(() => import('@/pages/BugHunterConsole'));
+const WebConnectorPage = lazy(() => import('@/pages/WebConnectorPage'));
 const BugInsightsChat = lazy(() => import('@/pages/BugInsightsChat'));
 
 const AuthenticatedApp = () => {
