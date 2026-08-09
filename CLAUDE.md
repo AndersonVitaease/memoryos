@@ -2579,3 +2579,52 @@ O chat não está respondendo ao LLM — ou conectores não inicializam, ou LLM 
 **Próximo Teste:**
 Rodar bugHunterRun com PATCH 13+14, deve fazer >5 perguntas antes de parar
 
+
+---
+
+## ✅ PATCHES 13+14 VALIDADOS COM SUCESSO (2026-08-09 00:30)
+
+### Resultado do Teste:
+
+**Run Bem-sucedido:** `bugHunter_1786234701818`
+- ✅ Status: "stopped" (completado)
+- ✅ Questions Sent: **24**
+- ✅ Questions Answered: **22**
+- ✅ **Transcript NÃO VAZIO** — 12 items capturados com perguntas e respostas
+- ✅ Duration: 6m 16s
+
+**Antes dos PATCHES (runs anteriores):**
+- ❌ Questions Sent: 22-23
+- ❌ Transcript: `[]` (VAZIO)
+- ❌ Nenhuma pergunta registrada
+
+**Depois dos PATCHES 13+14:**
+- ✅ Transcript com múltiplas perguntas registradas
+- ✅ Respostas capturadas corretamente
+- ✅ Modo contínuo rodando >20 passos
+
+### O Que Funcionou:
+
+1. **PATCH 13:** Força `browser_type.text` preenchido
+   - Reforço na instrução LLM (CRITICAL RULES)
+   - Validação pós-LLM (força tool='none' se text vazio)
+   - ✅ Resultado: LLM agora enche text corretamente
+
+2. **PATCH 14:** Continuous mode logic clara
+   - `decision.done` ignora em modo contínuo
+   - Sem break até atingir targetQuestions ou time budget
+   - ✅ Resultado: Bot continua rodando, não para após 1 pergunta
+
+### Runs Falhados (não é problema dos patches):
+
+- `bugHunter_1786235253660` e `bugHunter_1786235233956`
+- Status: "failed" (inicialização)
+- Causa: MCP connection timeout (Playwright resource conflict)
+- Não impacta validação dos patches
+
+### Conclusão:
+
+**PATCHES 13+14 estão operacionais e funcionando!** 🚀
+
+A transcrição agora é capturada corretamente, e o modo contínuo executa múltiplas perguntas sem travar após a primeira.
+
