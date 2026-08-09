@@ -418,7 +418,6 @@ export default async function (req) {
     let cumulativeDurationMs = 0;
     let cumulativeTranscript = [];
     let domFallbackFailCount = 0;  // Detecta loop de retry infinito no typeViaEvaluate
-    let browserTypeSkippedCount = 0;  // PATCH 15: Detecta se browser_type falha repetidamente
     let existingChunkCount = 0;
     let priorQuestions = [];
     let capturedSessionId = chatSessionId || '';
@@ -635,7 +634,6 @@ export default async function (req) {
       }
 
       if (justSentMessage) {
-        browserTypeSkippedCount = 0;  // PATCH 15: reset contador após sucesso (PATCH 17: simplificado)
         try { await callMcp('browser_wait_for', { time: 3 }); } catch (e) { /* best-effort */ }
       }
       let snapshotText = '(snapshot failed)';
@@ -699,7 +697,7 @@ export default async function (req) {
         const promptFn = finalMode === 'conversation' ? buildConversationPrompt : buildPrompt;
         const llmRes = await withTimeout(
           base44.asServiceRole.integrations.Core.InvokeLLM({
-            prompt: promptFn(targetUrl, scenario, history.slice(-MAX_HISTORY_ITEMS), snapshotText, consoleErrorsText, { loginEmail: finalLoginEmail, loginPassword: finalLoginPassword }, refs, priorQuestions) + (browserTypeSkippedCount > 2 ? ' *** CRITICAL: browser_type has failed ' + browserTypeSkippedCount + ' times. STOP using it. Use typeViaEvaluate or browser_press_key instead. ***' : ''),
+            prompt: promptFn(targetUrl, scenario, history.slice(-MAX_HISTORY_ITEMS), snapshotText, consoleErrorsText, { loginEmail: finalLoginEmail, loginPassword: finalLoginPassword }, refs, priorQuestions),
             response_json_schema: DECISION_SCHEMA,
           }),
           45000,  // Aumentado de 30s para 45s (prompt pode crescer em modo continuo)
@@ -769,252 +767,5 @@ export default async function (req) {
 
       // PATCH 13: Força preenchimento de 'text' em browser_type
       if (na && na.tool === 'browser_type' && !na.text) {
-        browserTypeSkippedCount++;  // PATCH 15: incrementa contador
         history.push({ step, action: 'browser_type_skipped', description: 'browser_type tool selected but next_action.text was empty — LLM did not provide the text to type. Skipping this action. (skip_count: ' + browserTypeSkippedCount + ')' });
         na.tool = 'none';  // força 'none' para não executar sem texto
-        if (browserTypeSkippedCount > 3) {
-          history.push({ step, action: 'browser_type_limit_reached', description: 'browser_type skipped ' + browserTypeSkippedCount + ' times. Stopping to break loop.' });
-          break;  // SAIR DO LOOP SE BROWSER_TYPE FALHA MUITO
-        }
-      }
-
-
-      // Pre-action hard stop: o LLM pode ter demorado ate 45s. Se ja passamos de
-      // 100s, NAO iniciar outra acao (navigate retry pode levar 40s+). Persiste agora.
-      if ((Date.now() - START) > 200000) {
-        history.push({ step, action: 'pre_action_stop', description: 'Hard stop before action (>100s) — persisting now' });
-        break;
-      }
-
-      // DOUBLE-SEND PREVENTION
-      if (justSentMessage && na && na.tool === 'browser_type' && na.submit === true) {
-        history.push({ step, action: 'double_send_prevented', description: 'Skipped duplicate send — response already read this step.' });
-        justSentMessage = false;
-        continue;
-      }
-      // EXACT DUPLICATE PREVENTION
-      if (na && na.tool === 'browser_type' && na.submit === true && na.text && na.text === lastSentText) {
-        history.push({ step, action: 'duplicate_send_prevented', description: 'Skipped exact duplicate message: "' + String(na.text).slice(0, 60) + '"' });
-        justSentMessage = false;
-        continue;
-      }
-
-      // Override deterministico (modo conversa): o LLM frequentemente escolhe um ref
-      // errado para o input do chat (ex: um <div> de timestamp). Quando ele decide
-      // enviar uma mensagem (browser_type com submit=true) e detectamos o chat input,
-      // sobrescrevemos o target pelo ref correto para evitar loops de "Element is not
-      // an <input>" que desperdicam passos e aparentam travamento.
-      if (finalMode === 'conversation' && na && na.tool === 'browser_type' && na.submit === true && refs.chatInput && na.target !== refs.chatInput) {
-        history.push({ step, action: 'ref_override', description: 'Overrode LLM target "' + na.target + '" -> detected chat input "' + refs.chatInput + '"' });
-        na.target = refs.chatInput;
-      }
-
-      // Fallback nuclear (modo conversa, pagina de chat): digita via DOM diretamente
-      // no <textarea> e submete o <form>. 100% confiavel — nao depende do LLM escolher
-      // o ref certo nem do textarea estar na arvore de acessibilidade (disabled/ausente).
-      // Evita o padrao "LLM escolhe div de timestamp -> browser_type falha em 20s".
-      let domSent = false;
-      let domSkipBroken = false;
-      // Guard mudado: era "!refs.email && !refs.password" mas o regex de email/password
-      // dava falso-positivo na pagina de chat (conversa menciona "email" ao testar
-      // connectors, e o snapshot tem textboxes). Isso desativava o fallback
-      // permanentemente, fazendo o LLM usar refs errados (ex: <div id="root">) e
-      // aparentar travamento. Agora so skip se houver botao de LOGIN explicito
-      // (refs.submit = "Entrar"/"Login"/"Sign in"). typeViaEvaluate ja retorna
-      // "no-textarea" em paginas de login (so ha inputs, nenhum textarea).
-      // Guard: so pular o DOM fallback em pagina de LOGIN real (email E password
-      // detectados). Antes usavamos !refs.submit mas o regex de submit ("Acessar"|
-      // "Continuar"|"Entrar") dava falso-positivo na pagina de chat apos muitas
-      // mensagens — botoes no historico de conversa casavam com as keywords e
-      // desativavam o fallback permanentemente, fazendo o LLM usar refs errados
-      // (<div id="root">) e aparentar travamento.
-      const isLoginPage = !!(refs.email && refs.password);
-      if (finalMode === 'conversation' && na && na.tool === 'browser_type' && na.text && !isLoginPage) {
-        try {
-          let result = await typeViaEvaluate(na.text);
-          let r = String(result);
-          // Retry once if textarea was temporarily disabled (assistant generating).
-          // O textarea fica disabled enquanto o assistente gera a resposta. Sem retry,
-          // o fallback retorna "disabled", cai no browser_type quebrado do LLM (ref
-          // <div id="root">), gasta 20s em timeout e o LLM entra em panico e navega
-          // fora do chat — aparentando "travamento".
-          if ((r === 'disabled' || r === 'no-textarea') && (Date.now() - START) < 95000) {
-            try { await callMcp('browser_wait_for', { time: 5 }); } catch (e) { /* best-effort */ }
-            result = await typeViaEvaluate(na.text);
-            r = String(result);
-          }
-          // ANTI-LOOP: se typeViaEvaluate falhar 2+ vezes (disabled/no-textarea persistente),
-          // para de tentar e declara done para evitar loop infinito de retry que trava a run.
-          if ((r === 'disabled' || r === 'no-textarea')) {
-            domFallbackFailCount++;
-            if (domFallbackFailCount >= 2) {
-              history.push({ step, action: 'dom_fallback_loop_break', description: 'TypeViaEvaluate failed ' + domFallbackFailCount + ' times (textarea disabled/missing persistently) — breaking loop to avoid infinite retry' });
-              break;  // Sai do loop principal
-            }
-          } else if (r === 'sent' || r === 'enter-dispatched') {
-            domFallbackFailCount = 0;  // Reset counter on success
-          }
-          if (r === 'sent' || r === 'enter-dispatched') {
-            history.push({ step, action: 'dom_send', description: 'Sent message via DOM fallback (bypassing refs)' });
-            domSent = true;
-          } else {
-            // DOM falhou (disabled/no-textarea apos retry). NAO cair no browser_type
-            // quebrado do LLM (ref <div id="root"> = "Element is not an <input>") —
-            // isso desperdica 20s em timeout e faz o LLM navegar fora do chat em
-            // panico. Pula o path quebrado e deixa o loop re-snapshotear no proximo
-            // step (o textarea provavelmente estara re-enabled).
-            history.push({ step, action: 'dom_send', description: 'DOM fallback: ' + r + ' — skipping broken browser_type, will retry next step' });
-            domSkipBroken = true;
-          }
-        } catch (e) {
-          history.push({ step, action: 'dom_send', description: 'DOM fallback failed: ' + e.message, error: e.message });
-        }
-      }
-
-      if (!domSent && !domSkipBroken && na && na.tool && na.tool !== 'none') {
-        let args = {};
-        if (na.tool === 'browser_navigate') args = { url: na.url };
-        else if (na.tool === 'browser_click') args = { target: na.target, element: na.element || '' };
-        else if (na.tool === 'browser_type') args = { target: na.target, text: na.text, submit: na.submit === true };
-        else if (na.tool === 'browser_press_key') args = { key: na.key };
-        const argsStr = JSON.stringify(args).slice(0, 300);
-        try {
-          if (na.tool === 'browser_navigate') {
-            if (!args.url || typeof args.url !== 'string') {
-              history.push({ step, action: na.tool, description: (na.description || '') + ' [skipped: no url]', args: argsStr });
-            } else {
-              await navigateWithRetry(args.url);
-              history.push({ step, action: na.tool, description: na.description || '', args: argsStr });
-            }
-          } else if (na.tool === 'browser_click' || na.tool === 'browser_type') {
-            if (!args.target || typeof args.target !== 'string') {
-              history.push({ step, action: na.tool, description: (na.description || '') + ' [skipped: no target]', args: argsStr });
-            } else {
-              await callMcp(na.tool, args);
-              history.push({ step, action: na.tool, description: na.description || '', args: argsStr });
-            }
-          } else {
-            await callMcp(na.tool, args);
-            history.push({ step, action: na.tool, description: na.description || '', args: argsStr });
-          }
-        } catch (e) {
-          history.push({ step, action: na.tool, description: na.description || '', error: e.message, args: argsStr });
-        }
-      } else if (!domSent) {
-        history.push({ step, action: 'none', description: 'No action' });
-      }
-
-      justSentMessage = !!(domSent || (na && na.tool === 'browser_type' && na.submit === true));
-      if (justSentMessage && na.text) {
-        questionsSent++;
-        lastSentText = na.text;
-        transcript.push({ step, question: na.text, response_evidence: '', read_step: null });
-      }
-
-      // Persiste progresso parcial para feedback ao vivo no frontend.
-      // Sem isto, o registro fica status='running' com history vazio ate o fim
-      // do chunk, e o usuario acha que travou. Atualiza a cada 3 passos.
-      if (runRecordId) {
-        try {
-          await withTimeout(base44.asServiceRole.entities.BugHunterRun.update(runRecordId, {
-            questions_sent: cumulativeQuestionsSent + questionsSent,
-            questions_answered: cumulativeQuestionsAnswered + questionsAnswered,
-            findings_count: cumulativeFindings + findings.length,
-            history: JSON.stringify(history.slice(-12), null, 2),
-          }), SDK_TIMEOUT_MS, 'partial_persist');
-        } catch (e) { /* best-effort */ }
-      }
-    }
-
-    // ── Persiste o resultado final do chunk ──────────────────────────────
-    const totalSent = cumulativeQuestionsSent + questionsSent;
-    const totalAnswered = cumulativeQuestionsAnswered + questionsAnswered;
-    const totalFindings = cumulativeFindings + findings.length;
-    const mergedTranscript = cumulativeTranscript.concat(transcript);
-    // Cleanup: mantém apenas últimas 100 perguntas no transcript para evitar
-    // JSON gigante que fica lento para persistir/deserializar entre chunks.
-    const cleanedTranscript = mergedTranscript.slice(-100);
-    const chunkDurationMs = Date.now() - START;
-    const totalDurationMs = cumulativeDurationMs + chunkDurationMs;
-    const newChunkCount = existingChunkCount + 1;
-
-    // Re-le stop_requested para decidir o estado final com certeza.
-    // SEM timeout esta chamada pode pendurar a funcao se o SDK travar — a entidade
-    // fica presa em "running" para sempre. 10s e mais que suficiente para um filter.
-    let stopRequestedFlag = false;
-    try {
-      const rec = (await withTimeout(base44.asServiceRole.entities.BugHunterRun.filter({ run_id: runId }), 10000, 'final_filter_stop_requested'))[0];
-      if (rec) {
-        stopRequestedFlag = !!rec.stop_requested;
-        if (!runRecordId) runRecordId = rec.id;
-      }
-    } catch (e) { /* best-effort */ }
-
-    let finalStatus;
-    let shouldContinue = false;
-    if (stopRequestedFlag || stoppedByUser) {
-      finalStatus = 'stopped';
-    } else if (continuous && targetQuestions > 0 && totalAnswered >= targetQuestions) {
-      finalStatus = 'completed';
-    } else if (continuous) {
-      // Modo continuo: qualquer fim que nao seja stop/meta atingida pede o proximo bloco
-      // (maxSteps ou orcamento de tempo ou LLM invalido). O frontend encadeia.
-      finalStatus = 'awaiting_next_chunk';
-      shouldContinue = true;
-    } else {
-      finalStatus = 'completed';
-    }
-
-    // Persist final: SEM timeout, se o SDK travar a funcao morre no limite de 300s
-    // da plataforma e a entidade fica presa em "running" para sempre. 15s resolve.
-    try {
-      if (runRecordId) {
-        await withTimeout(base44.asServiceRole.entities.BugHunterRun.update(runRecordId, {
-          status: finalStatus,
-          steps_executed: (continuous ? (history.length - 1) : (history.length - 1)),
-          questions_sent: totalSent,
-          questions_answered: totalAnswered,
-          findings_count: totalFindings,
-          transcript: JSON.stringify(cleanedTranscript, null, 2),
-          history: JSON.stringify(history, null, 2),
-          duration_ms: totalDurationMs,
-          chat_session_id: capturedSessionId,
-          chunk_count: newChunkCount,
-          target_questions: targetQuestions || 0,
-        }), 15000, 'final_persist');
-      }
-    } catch (e) { /* best-effort */ }
-
-    try { await callMcp('browser_close', {}); } catch (e) { /* best-effort */ }
-    try {
-      if (mcpSession.transportUsed === 'streamable-http' && typeof mcpSession.transport.terminateSession === 'function') {
-        await withTimeout(mcpSession.transport.terminateSession(), MCP_CALL_TIMEOUT_MS, 'terminateSession');
-      }
-      await withTimeout(mcpSession.client.close(), MCP_CALL_TIMEOUT_MS, 'client.close');
-    } catch (e) { /* best-effort */ }
-
-    return Response.json({
-      ok: true,
-      run_id: runId,
-      targetUrl,
-      continuous: !!continuous,
-      chunk_index: newChunkCount,
-      chat_session_id: capturedSessionId,
-      continue: shouldContinue,
-      stepsExecuted: history.length - 1,
-      questionsSent: totalSent,
-      questionsAnswered: totalAnswered,
-      targetQuestions: targetQuestions || 0,
-      minQuestions: MIN_QUESTIONS,
-      transcript: cleanedTranscript,
-      findingsCreated: findings.length,
-      findings,
-      history,
-      durationMs: totalDurationMs,
-      chunkDurationMs,
-      status: finalStatus,
-    });
-  } catch (error) {
-    return Response.json({ error: error.message }, { status: 500 });
-  }
-}
