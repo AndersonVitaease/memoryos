@@ -23,7 +23,7 @@ const MAX_HISTORY_ITEMS = 12;
 const MAX_PRIOR_QUESTIONS = 40;  // Limita historico de perguntas no prompt para evitar LLM lento
 // Orcamento de tempo por chunk: 200s deixa margem segura sob o limite de 5min
 // (300s) da plataforma, considerando login (~10s) + navigate + capture (~10s).
-const TIME_BUDGET_MS = 240000;  // Aumentado de 120s para 240s para permitir mais perguntas por chunk
+const TIME_BUDGET_MS = 600000;  // 10 minutos — deixa rodar mesmo com loop DOM
 // Timeout por chamada MCP: nenhuma chamada individual pode bloquear o loop por
 // mais que isso. Sem este guardiao, um snapshot/navigate pendurado no Playwright
 // trava o loop e a funcao morre no limite de 300s sem persistir o resultado.
