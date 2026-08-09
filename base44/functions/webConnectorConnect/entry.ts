@@ -222,13 +222,15 @@ export default async function (req) {
         const result = await callMcp('browser_run_code_unsafe', {
           code: 'async (page) => { const cookies = await page.context().cookies(); return JSON.stringify(cookies); }',
         });
-        const rawText = Array.isArray(result?.content) ? result.content.map((c) => c.text || '').join('') : String(result ?? '');
-        if (Array.isArray(result?.structuredContent)) {
-          cookies = result.structuredContent;
-        } else {
-          const m = rawText.match(/```(?:json)?\n?([\s\S]*?)\n?```/) || [null, rawText];
-          cookies = JSON.parse((m[1] || rawText).trim());
-        }
+        const text = extractRunCodeText(result);
+        // O valor de retorno e a string JSON.stringify(cookies) que a funcao
+        // devolveu, possivelmente com aspas de codeblock markdown ao redor.
+        const m = text.match(/```(?:json)?\n?([\s\S]*?)\n?```/) || [null, text];
+        const candidate = (m[1] || text).trim();
+        const parsed = JSON.parse(candidate);
+        // Se o valor ja veio como string JSON dupla (JSON.stringify aninhado),
+        // faz um segundo parse.
+        cookies = typeof parsed === 'string' ? JSON.parse(parsed) : parsed;
       } catch (e) {
         return Response.json({ error: 'Cookie capture failed: ' + e.message }, { status: 502 });
       }
