@@ -129,6 +129,20 @@ export default async function (req) {
       let siteUrl = rawSiteUrl.trim();
       if (!/^https?:\/\//i.test(siteUrl)) siteUrl = 'https://' + siteUrl;
 
+      // Validação: rejeita URLs com espaços, sem domínio válido, ou que parecem
+      // texto acidentalmente colado no campo (ex: mensagens de erro). Sem isto,
+      // o Playwright tenta navegar pra "https://Login fields not detected..." e
+      // falha com ERR_NAME_NOT_RESOLVED, criando loop de tentativas inúteis.
+      try {
+        const parsed = new URL(siteUrl);
+        // Domínio precisa ter pelo menos um ponto e não conter espaços.
+        if (!parsed.hostname || !parsed.hostname.includes('.') || /\s/.test(parsed.hostname)) {
+          return Response.json({ error: 'URL inválida: "' + rawSiteUrl + '" não é um endereço válido. Use o formato site.com ou https://site.com.' }, { status: 400 });
+        }
+      } catch (e) {
+        return Response.json({ error: 'URL inválida: "' + rawSiteUrl + '". Use o formato site.com ou https://site.com.' }, { status: 400 });
+      }
+
       // Limpa qualquer sessão de browser pendurada (mesmo guardião do bugHunterRun).
       try { await callMcp('browser_close', {}); } catch (e) { /* best-effort: sem sessao ativa e esperado */ }
 
