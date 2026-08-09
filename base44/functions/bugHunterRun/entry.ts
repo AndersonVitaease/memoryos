@@ -769,4 +769,14 @@ export default async function (req) {
       // PATCH 13: Força preenchimento de 'text' em browser_type
       if (na && na.tool === 'browser_type' && !na.text) {
         history.push({ step, action: 'browser_type_skipped', description: 'browser_type tool selected but next_action.text was empty — LLM did not provide the text to type. Skipping this action.' });
+
+      // OPÇÃO 1: Handler para send_message_auto
+      if (na && na.tool === 'send_message_auto' && na.text) {
+        // Sistema digita e envia automaticamente
+        const result = await typeViaEvaluate(na.text);
+        history.push({ step, action: 'send_message_auto', description: 'Message sent automatically: "' + na.text.substring(0, 50) + '..." (' + result + ')' });
+        justSentMessage = true;
+        questionsSent++;
+        try { await callMcp('browser_wait_for', { time: 3 }); } catch (e) { /* best-effort */ }
+      }
         na.tool = 'none';  // força 'none' para não executar sem texto
