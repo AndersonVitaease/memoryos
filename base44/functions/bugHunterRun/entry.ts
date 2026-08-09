@@ -633,7 +633,7 @@ export default async function (req) {
       }
 
       if (justSentMessage) {
-        try { await callMcp('browser_wait_for', { time: 6 }); } catch (e) { /* best-effort */ }
+        try { await callMcp('browser_wait_for', { time: 10 }); } catch (e) { /* best-effort */ }
       }
       let snapshotText = '(snapshot failed)';
       let consoleErrors = [];
