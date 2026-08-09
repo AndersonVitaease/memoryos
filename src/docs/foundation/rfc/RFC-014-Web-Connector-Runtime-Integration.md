@@ -82,4 +82,22 @@ Registrar `WebConnector` no `ConnectorRuntime` é a única operação desta fren
 
 ---
 
+## Sequenciamento de sprints (visão consolidada RFC-012/013/014)
+
+5 sprints até o Web Connector funcionar ponta a ponta com 1 site real. Extensão Chrome e Fases 2/3 de escala ficam para depois — não bloqueiam esta sequência.
+
+| Sprint | Entrega | Depende de | Risco |
+|---|---|---|---|
+| **0** | Fundação: entidade `WebSession` + novo `MCPServerConfig` (`playwright-web-connector`) | nada | baixo |
+| **1** (WEB-CONN-01) | Captura de sessão: função `webConnectorConnect`, página "conectar novo sistema", cookies salvos e reutilizáveis | Sprint 0 | baixo — mecânico |
+| **2** (WEB-CONN-04, parcial) | Esqueleto do `WebConnector.ts` no padrão `BaseConnector`, ações básicas (`navigate`/`snapshot`) sobre uma `WebSession` existente, `ef34Tests.ts` | Sprint 1 | baixo |
+| **3** (WEB-CONN-02) | Spike de descoberta de capabilities — motor LLM+Playwright cataloga operações num site de teste | Sprint 1 | **alto** — gate GO/NO-GO próprio (RFC-013) |
+| **4** (WEB-CONN-05) | Integração final: registro do `WebConnector` no `ConnectorRuntime`, fila via Outbox, testes de não-regressão | Sprints 2 e 3* | médio |
+
+\* Se o Sprint 3 não passar no critério de sucesso do spike (RFC-013), o Sprint 4 não trava — capabilities entram cadastradas manualmente como fallback, e a integração segue normalmente.
+
+**Resultado ao fim do Sprint 4:** Web Connector registrado e funcional, conectando 1 site real por sessão capturada (sem senha armazenada), executando ações via fila durável, sem regressão em `GitHubConnector`/`Base44Connector`/Bug Hunter.
+
+---
+
 *RFC-014 — Web Connector: Integração ao Runtime e Escala — 2026-08-09 — Draft*
