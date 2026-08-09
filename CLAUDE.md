@@ -2555,3 +2555,27 @@ O chat não está respondendo ao LLM — ou conectores não inicializam, ou LLM 
 - Esperado: transcript não vazio, perguntas registradas
 - Se ainda vazio: history mostrará `browser_type_skipped` para diagnóstico
 
+
+---
+
+## 📋 DIAGNÓSTICO PATCH 13-14 (2026-08-09 00:22)
+
+**Achado:** bugHunterRun com `continuous: true` + credenciais:
+- ✅ Envia 1 pergunta
+- ✅ Recebe 1 resposta  
+- ❌ Para após 1 pergunta (finaliza como "completed")
+
+**Causa Raiz:**
+1. LLM retorna `next_action.tool = 'browser_type'` SEM `next_action.text`
+2. PATCH 13 força `tool='none'` se text vazio → nenhuma pergunta capturada
+3. Resultado: `questionsAnswered = 0` ou `1`
+4. LLM retorna `done: true` após 1 pergunta
+5. Mesmo com `continuous: true`, algo está causando parada
+
+**Patches Aplicados:**
+- **PATCH 13:** Reforço LLM + validação browser_type sem text
+- **PATCH 14:** Clareza de lógica `decision.done` (continua em continuous mode)
+
+**Próximo Teste:**
+Rodar bugHunterRun com PATCH 13+14, deve fazer >5 perguntas antes de parar
+
