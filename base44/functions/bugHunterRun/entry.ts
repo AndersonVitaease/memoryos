@@ -768,9 +768,21 @@ export default async function (req) {
 
       const na = decision.next_action;
 
-      // PATCH 13: Força preenchimento de 'text' em browser_type
+      // ================================================================
+      // RECONSTRUÍDO POR CLAUDE — 2026-08-09
+      // O arquivo original terminava abruptamente logo após o handler de
+      // send_message_auto (causa desconhecida, anterior a esta sessão).
+      // Os handlers de tool restantes + fechamento do loop + persistência
+      // final + resposta HTTP foram reconstruídos seguindo o padrão já
+      // estabelecido no resto do arquivo. REVISAR antes de confiar em
+      // produção — recomendo 1 teste manual via BugHunterConsole primeiro.
+      // ================================================================
+
+      // PATCH 13: Força preenchimento de 'text' em browser_type (deprecated — ver OPÇÃO 1)
       if (na && na.tool === 'browser_type' && !na.text) {
         history.push({ step, action: 'browser_type_skipped', description: 'browser_type tool selected but next_action.text was empty — LLM did not provide the text to type. Skipping this action.' });
+        na.tool = 'none';  // força 'none' para não executar sem texto
+      }
 
       // OPÇÃO 1: Handler para send_message_auto
       if (na && na.tool === 'send_message_auto' && na.text) {
@@ -781,4 +793,110 @@ export default async function (req) {
         questionsSent++;
         try { await callMcp('browser_wait_for', { time: 8 }); } catch (e) { /* best-effort */ }
       }
-        na.tool = 'none';  // força 'none' para não executar sem texto
+
+      if (na && na.tool === 'browser_navigate' && na.url) {
+        try {
+          await navigateWithRetry(na.url);
+          history.push({ step, action: 'browser_navigate', description: na.description || ('Navigated to ' + na.url) });
+        } catch (e) {
+          history.push({ step, action: 'browser_navigate', description: 'Navigate failed: ' + e.message, error: e.message });
+        }
+      } else if (na && na.tool === 'browser_navigate' && !na.url) {
+        history.push({ step, action: 'browser_navigate_skipped', description: 'browser_navigate selected but next_action.url was empty — skipping' });
+      }
+
+      if (na && na.tool === 'browser_click' && na.target) {
+        try {
+          await callMcp('browser_click', { target: na.target, element: na.element || 'element' });
+          history.push({ step, action: 'browser_click', description: na.description || ('Clicked ' + (na.element || na.target)) });
+        } catch (e) {
+          history.push({ step, action: 'browser_click', description: 'Click failed: ' + e.message, error: e.message });
+        }
+      } else if (na && na.tool === 'browser_click' && !na.target) {
+        history.push({ step, action: 'browser_click_skipped', description: 'browser_click selected but next_action.target was empty — skipping' });
+      }
+
+      if (na && na.tool === 'browser_navigate_back') {
+        try {
+          await callMcp('browser_navigate_back', {});
+          history.push({ step, action: 'browser_navigate_back', description: na.description || 'Navigated back' });
+        } catch (e) {
+          history.push({ step, action: 'browser_navigate_back', description: 'Navigate back failed: ' + e.message, error: e.message });
+        }
+      }
+
+      if (na && na.tool === 'browser_press_key' && na.key) {
+        try {
+          await callMcp('browser_press_key', { key: na.key });
+          history.push({ step, action: 'browser_press_key', description: na.description || ('Pressed key ' + na.key) });
+        } catch (e) {
+          history.push({ step, action: 'browser_press_key', description: 'Press key failed: ' + e.message, error: e.message });
+        }
+      }
+
+      if (na && na.tool === 'browser_snapshot') {
+        // Cada iteração do loop já tira um snapshot no topo — este handler só
+        // registra a intenção explícita do LLM, sem chamada MCP redundante.
+        history.push({ step, action: 'browser_snapshot', description: na.description || 'Re-read page structure (snapshot already captured this step)' });
+      }
+
+      if (!na || na.tool === 'none') {
+        history.push({ step, action: 'none', description: (na && na.description) || 'No action taken this step' });
+      }
+    }
+    // ── Fim do loop principal ──────────────────────────────────────────────
+
+    const elapsedMs = Date.now() - START;
+    const stepsExecuted = history.length > 0 ? Math.ceil(history[history.length - 1].step) : 0;
+
+    let finalStatus;
+    if (stoppedByUser) {
+      finalStatus = 'stopped';
+    } else if (continuous && targetReached) {
+      finalStatus = 'completed';
+    } else if (continuous) {
+      // timeBudgetHit, stall, hard_stop ou erro em modo contínuo: ainda há
+      // orcamento de chunks — deixa o frontend decidir encadear o próximo.
+      finalStatus = 'awaiting_next_chunk';
+    } else {
+      finalStatus = 'completed';
+    }
+
+    if (runRecordId) {
+      try {
+        await withTimeout(base44.asServiceRole.entities.BugHunterRun.update(runRecordId, {
+          status: finalStatus,
+          questions_sent: cumulativeQuestionsSent + questionsSent,
+          questions_answered: cumulativeQuestionsAnswered + questionsAnswered,
+          findings_count: cumulativeFindings + findings.length,
+          duration_ms: cumulativeDurationMs + elapsedMs,
+          chunk_count: existingChunkCount + 1,
+          chat_session_id: capturedSessionId || chatSessionId || '',
+          transcript: JSON.stringify([...cumulativeTranscript, ...transcript], null, 2),
+          history: JSON.stringify(history.slice(-MAX_HISTORY_ITEMS), null, 2),
+          stop_requested: false,
+        }), SDK_TIMEOUT_MS, 'final_persist');
+      } catch (e) { /* best-effort */ }
+    }
+
+    try { await callMcp('browser_close', {}); } catch (e) { /* best-effort: libera RAM na VPS */ }
+
+    return Response.json({
+      ok: true,
+      run_id: runId,
+      status: finalStatus,
+      stepsExecuted,
+      durationMs: elapsedMs,
+      findingsCreated: findings.length,
+      findings,
+      questionsAnswered,
+      minQuestions: MIN_QUESTIONS,
+      chatSessionId: capturedSessionId || chatSessionId || '',
+      history,
+      transcript,
+    });
+
+  } catch (e) {
+    return Response.json({ ok: false, error: e.message || String(e) }, { status: 500 });
+  }
+}
