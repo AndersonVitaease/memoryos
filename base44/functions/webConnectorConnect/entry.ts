@@ -228,14 +228,15 @@ export default async function (req) {
         const code = 'async (page) => {' +
           '  const pass = await page.$("input[type=password]");' +
           '  if (!pass) return "no-password-field";' +
-          '  const form = await pass.evaluate((el) => el.closest("form"));' +
+          '  const formHandle = await pass.evaluateHandle((el) => el.closest("form"));' +
+          '  const formEl = formHandle && formHandle.asElement ? formHandle.asElement() : null;' +
           '  const emailSelector = "input[type=email], input[name=username], input[name=email], input[type=text]";' +
-          '  let emailEl = form ? await form.$(emailSelector) : null;' +
+          '  let emailEl = formEl ? await formEl.$(emailSelector) : null;' +
           '  if (!emailEl) emailEl = await page.$(emailSelector);' +
           '  if (!emailEl) return "no-email-field";' +
           '  await emailEl.fill(' + escapedEmail + ');' +
           '  await pass.fill(' + escapedPassword + ');' +
-          '  let submitBtn = form ? await form.$("button[type=submit], input[type=submit], button") : null;' +
+          '  let submitBtn = formEl ? await formEl.$("button[type=submit], input[type=submit], button") : null;' +
           '  if (!submitBtn) submitBtn = await page.$("button[type=submit], input[type=submit]");' +
           '  if (submitBtn) { await submitBtn.click(); return "submitted-click"; }' +
           '  await pass.press("Enter");' +
