@@ -751,14 +751,15 @@ export default async function (req) {
       // Done handling: modo continuo ignora "done" (continua ate tempo/alvo/stop).
       if (decision.done) {
         if (continuous) {
+          // PATCH 14: Continuous mode SEMPRE ignora done
           history.push({ step, action: 'done_ignored', description: 'Continuous mode: LLM done ignored (continues until target/stop/time budget)' });
-          // NÃO FAZER BREAK! Modo contínuo ignora done
+          // NÃO FAZER BREAK em modo contínuo!
         } else if (questionsAnswered < MIN_QUESTIONS) {
           history.push({ step, action: 'done_blocked', description: 'Premature done BLOCKED: only ' + questionsAnswered + '/' + MIN_QUESTIONS + ' questions answered. Forcing continuation.' });
-          // NÃO FAZER BREAK! MIN_QUESTIONS não atingido
+          // NÃO FAZER BREAK até atingir MIN_QUESTIONS!
         } else {
           history.push({ step, action: 'done', description: decision.reasoning || 'Agent signaled completion' });
-          break;  // OK: somente break em modo explore/simple com MIN_QUESTIONS atingido
+          break;  // OK: somente break quando conditions estão OK (explore mode + MIN_QUESTIONS atingido)
         }
       }
 
