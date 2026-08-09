@@ -170,8 +170,8 @@ export default function WebConnectorPage() {
           <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 space-y-3">
             <p className="text-sm text-zinc-300">
               Página carregada. {detectedFields?.email && detectedFields?.password
-                ? 'Campos de login detectados — preencha abaixo para entrar.'
-                : 'Campos de login não detectados automaticamente nesta tela.'}
+                ? 'Campos de login detectados — preencha abaixo e clique em Entrar.'
+                : 'Campos de login não detectados nesta tela. Se o site exige login, encerre esta sessão e use a URL da página de login (ex: .../login) no passo "Iniciar conexão".'}
             </p>
 
             {detectedFields?.email && detectedFields?.password && (
