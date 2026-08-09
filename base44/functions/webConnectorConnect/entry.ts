@@ -189,6 +189,7 @@ export default async function (req) {
       let fillResult = 'unknown';
       try {
         const code = 'async (page) => {' +
+          '  await page.waitForSelector("input[type=password]", { timeout: 8000 }).catch(() => {});' +
           '  const pass = await page.$("input[type=password]");' +
           '  if (!pass) return JSON.stringify({ error: "no-password-field" });' +
           '  const formHandle = await pass.evaluateHandle((el) => el.closest("form"));' +
