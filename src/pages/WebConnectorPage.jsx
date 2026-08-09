@@ -8,7 +8,7 @@
  * Página nova e isolada — não reaproveita nem modifica BugHunterConsole.jsx.
  */
 import React, { useState, useCallback } from 'react';
-import { base44 } from '@/lib/base44Client';
+import { base44 } from '@/api/base44Client';
 import { Loader2, Link as LinkIcon, CheckCircle2, XCircle, ShieldCheck } from 'lucide-react';
 
 async function callWebConnector(operation, payload) {
