@@ -121,8 +121,13 @@ export default async function (req) {
 
     // ── operation: start ──────────────────────────────────────────────
     if (operation === 'start') {
-      const { siteUrl, siteName } = body;
-      if (!siteUrl) return Response.json({ error: 'Missing required field: siteUrl' }, { status: 400 });
+      const { siteUrl: rawSiteUrl, siteName } = body;
+      if (!rawSiteUrl) return Response.json({ error: 'Missing required field: siteUrl' }, { status: 400 });
+
+      // Normaliza: prependa https:// se o usuario colou sem protocolo
+      // (ex: "the-internet.herokuapp.com" -> "https://the-internet.herokuapp.com").
+      let siteUrl = rawSiteUrl.trim();
+      if (!/^https?:\/\//i.test(siteUrl)) siteUrl = 'https://' + siteUrl;
 
       // Limpa qualquer sessão de browser pendurada (mesmo guardião do bugHunterRun).
       try { await callMcp('browser_close', {}); } catch (e) { /* best-effort: sem sessao ativa e esperado */ }
