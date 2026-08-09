@@ -2517,3 +2517,41 @@ O chat não está respondendo ao LLM — ou conectores não inicializam, ou LLM 
 
 **BLOQUEADOR:** Sem transcrição, não conseguimos validar os 12 patches anteriores.
 
+
+---
+
+## 🚀 PATCH 13 (2026-08-09 00:20) — Force browser_type Text Population
+
+**Problema:** bugHunterRun enviava 22 perguntas, mas `transcript` era vazio (`[]`)
+- LLM retornava `next_action.tool = 'browser_type'` **SEM** `next_action.text` preenchido
+- Código dependia de `if (justSentMessage && na.text)` para adicionar pergunta ao transcript
+- Resultado: **22 perguntas enviadas mas 0 registradas**
+
+**Raiz:** `DECISION_SCHEMA` declara `next_action.text` como OPCIONAL → LLM não priorizava preenchê-lo
+
+**Solução Implementada:**
+1. **Reforço na instrução LLM:** Adicionou `CRITICAL RULES` exigindo preenchimento: 
+   ```
+   *** FOR browser_type WITH NEXT_ACTION.TOOL="browser_type": YOU MUST ALWAYS FILL NEXT_ACTION.TEXT. 
+   If you do not provide text, the action is SKIPPED and nothing happens. NEVER send browser_type without text. ***
+   ```
+
+2. **Validação pós-LLM (nova):** Se `browser_type` chegar sem `text`:
+   ```typescript
+   if (na && na.tool === 'browser_type' && !na.text) {
+     history.push({ step, action: 'browser_type_skipped', description: 'browser_type tool selected but next_action.text was empty' });
+     na.tool = 'none';  // força 'none' para not executar sem texto
+   }
+   ```
+   
+3. **Benefício:** Próximo run capturará EXATAMENTE onde o LLM está falhando (veremos `browser_type_skipped` no history)
+
+**Arquivos alterados:**
+- `base44/functions/bugHunterRun/entry.ts` (2 mudanças: linha ~261 + linha ~762)
+
+**Build:** ✅ Vite build OK
+
+**Próximo passo:** Re-rodar bugHunterRun com new PATCH 13 + credenciais + modo continuous
+- Esperado: transcript não vazio, perguntas registradas
+- Se ainda vazio: history mostrará `browser_type_skipped` para diagnóstico
+
