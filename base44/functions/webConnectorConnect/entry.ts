@@ -49,6 +49,21 @@ function extractSnapshotText(snap) {
   return JSON.stringify(snap);
 }
 
+// Mesmo padrao do extractEvaluateText usado em bugHunterRun para
+// browser_evaluate/browser_run_code_unsafe: o callMcp ja desembrulha o
+// resultado (structuredContent ?? content ?? result), entao aqui `res` pode
+// vir como array de content items, string, ou objeto cru. O tool as vezes
+// envolve o valor de retorno num bloco "### Result\n<valor>\n### ...".
+function extractRunCodeText(res) {
+  let text;
+  if (Array.isArray(res)) text = res.map((c) => c?.text || '').join('\n');
+  else if (res && Array.isArray(res.content)) text = res.content.map((c) => c.text || '').join('\n');
+  else if (typeof res === 'string') text = res;
+  else text = JSON.stringify(res);
+  const m = text.match(/### Result\n([\s\S]*?)(?:\n### |$)/);
+  return m ? m[1].trim() : text.trim();
+}
+
 // Mesma heurística de extração de refs usada em bugHunterRun (regex sobre o
 // snapshot de acessibilidade), reimplementada aqui de forma isolada — não
 // importa de bugHunterRun para manter as duas funções desacopladas.
