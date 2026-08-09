@@ -12,10 +12,24 @@ import { base44 } from '@/api/base44Client';
 import { Loader2, Link as LinkIcon, CheckCircle2, XCircle, ShieldCheck } from 'lucide-react';
 
 async function callWebConnector(operation, payload) {
-  const res = await base44.functions.invoke('webConnectorConnect', { operation, ...payload });
-  const data = res?.data ?? res;
-  if (data?.error) throw new Error(data.error);
-  return data;
+  try {
+    const res = await base44.functions.invoke('webConnectorConnect', { operation, ...payload });
+    const data = res?.data ?? res;
+    if (data?.error) throw new Error(data.error);
+    return data;
+  } catch (err) {
+    // O client Base44 lança em respostas não-2xx sem expor o corpo JSON no
+    // .message (vira "Request failed with status code 502" genérico). O erro
+    // real que a função devolveu fica em err.response.data.error — extrai
+    // de lá antes de cair no fallback genérico.
+    const real =
+      err?.response?.data?.error ||
+      (typeof err?.response?.data === 'string' ? err.response.data : null) ||
+      err?.data?.error ||
+      err?.message ||
+      'Falha desconhecida ao chamar webConnectorConnect';
+    throw new Error(real);
+  }
 }
 
 export default function WebConnectorPage() {
