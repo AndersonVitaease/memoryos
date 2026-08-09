@@ -401,63 +401,28 @@ export default async function (req) {
       if (!session) return Response.json({ error: 'WebSession not found' }, { status: 404 });
 
       // Guarda: o confirm só é permitido se a operação 'login' foi chamada
-      // antes (marca last_used_at). Sem isto, um start na URL base + confirm
-      // direto ativa uma sessão sem cookie de auth — exatamente o bug que
-      // vimos no teste do herokuapp.
+      // antes (marca last_used_at) E capturou cookies. Os cookies são
+      // capturados DURANTE o login (mesma chamada, context ativo e
+      // autenticado), não aqui — o Playwright MCP pode não persistir o
+      // context entre chamadas backend separadas, e re-capturar aqui
+      // retornava só cookies de analytics (o bug do rack.session ausente).
       if (!session.last_used_at) {
         return Response.json({
           error: 'Login ainda não foi executado. Use a opção "Entrar" para preencher credenciais antes de confirmar a sessão.',
         }, { status: 409 });
       }
 
-      // Verificação de segurança: re-navega para a URL autenticada da sessão
-      // e exige marcadores POSITIVOS de auth (logout/secure area/welcome) sem
-      // campo de senha antes de capturar cookies. Antes só checava ausência
-      // de campo de senha — mas about:blank ou um contexto resetado também
-      // não tem campo de senha, e a captura vinha só com cookies de analytics
-      // (sem o cookie de auth HttpOnly, ex: rack.session do the-internet).
-      // Re-navegar garante que o context ativo tem o cookie de auth real.
-      try {
-        await callMcp('browser_navigate', { url: session.site_url });
-        try { await callMcp('browser_wait_for', { time: 2 }); } catch (e) { /* best-effort */ }
-      } catch (e) { /* best-effort: segue com snapshot do estado atual */ }
-
-      let preSnapText = '';
-      try {
-        const preSnap = await callMcp('browser_snapshot', {});
-        preSnapText = extractSnapshotText(preSnap);
-      } catch (e) { /* best-effort: segue para captura mesmo se snapshot falhar */ }
-      const preHasLoginField = /(?:password|senha)[^\n]*?\[ref=/i.test(preSnapText);
-      const preHasAuthMarker = /log\s*out|sign\s*out|logout|welcome|secure area|you logged into/i.test(preSnapText);
-      if (preHasLoginField || !preHasAuthMarker) {
-        return Response.json({
-          error: preHasLoginField
-            ? 'Página atual ainda mostra campos de login — o login não foi concluído. Volte e preencha as credenciais (opção Entrar) antes de confirmar.'
-            : 'Não foi possível confirmar autenticação na página (sem marcadores como Logout/Secure Area). O login pode não ter persistido — refaça start+login e tente confirmar imediatamente.',
-          snapshotText: preSnapText.slice(0, 4000),
-        }, { status: 409 });
-      }
-
+      // Validação: cookies devem ter sido capturados pelo login. Se a
+      // operação login não conseguiu capturar (erro best-effort), o usuário
+      // deve refazer login — confirm não tem como recuperar o contexto.
       let cookies = [];
       try {
-        // browser_run_code_unsafe invoca `code` como __fn__(page) internamente
-        // (revelado pelo erro "__fn__ is not a function" quando code virava um
-        // valor em vez de funcao). code precisa AVALIAR para uma funcao que
-        // recebe `page` como argumento.
-        const result = await callMcp('browser_run_code_unsafe', {
-          code: 'async (page) => { const cookies = await page.context().cookies(); return JSON.stringify(cookies); }',
-        });
-        const text = extractRunCodeText(result);
-        // O valor de retorno e a string JSON.stringify(cookies) que a funcao
-        // devolveu, possivelmente com aspas de codeblock markdown ao redor.
-        const m = text.match(/```(?:json)?\n?([\s\S]*?)\n?```/) || [null, text];
-        const candidate = (m[1] || text).trim();
-        const parsed = JSON.parse(candidate);
-        // Se o valor ja veio como string JSON dupla (JSON.stringify aninhado),
-        // faz um segundo parse.
-        cookies = typeof parsed === 'string' ? JSON.parse(parsed) : parsed;
-      } catch (e) {
-        return Response.json({ error: 'Cookie capture failed: ' + e.message }, { status: 502 });
+        cookies = JSON.parse(session.cookies || '[]');
+      } catch (e) { /* corrupted */ }
+      if (!Array.isArray(cookies) || cookies.length === 0) {
+        return Response.json({
+          error: 'Cookies de sessão não foram capturados durante o login. Refaça start+login (o login captura os cookies automaticamente ao verificar autenticação).',
+        }, { status: 409 });
       }
 
       const expiresAt = new Date(Date.now() + DEFAULT_SESSION_TTL_MS).toISOString();

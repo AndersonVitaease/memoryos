@@ -1,0 +1,44 @@
+{
+  "name": "Web Session Sweep",
+  "description": "Varre WebSessions ativas cujo TTL (expires_at) venceu e as marca como 'expired', exigindo reautenticacao manual. Roda a cada 30 min (o TTL padrao de sessao e 30min).",
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "web_session_sweep",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "sweep": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "webSessionSweep"
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "Varrer sessoes expiradas",
+            "description": "Marca WebSessions vencidas como expired"
+          }
+        }
+      }
+    ]
+  },
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "*/30 * * * *",
+      "one_time_date": null,
+      "timezone": "America/Sao_Paulo",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  }
+}
