@@ -1,6 +1,6 @@
 # RFC-012 — Web Connector: Captura de Sessão (Frente A)
 
-**Status:** Draft (aguardando início do Sprint WEB-CONN-00)
+**Status:** Sprint 1 implementado (2026-08-09) — ver seção "Implementação" no final
 **ADR relacionada:** ADR-019
 **Sprints:** WEB-CONN-00 (fundação), WEB-CONN-01 (captura)
 **Data:** 2026-08-09
