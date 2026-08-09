@@ -200,12 +200,12 @@ export default async function (req) {
 
       let cookies = [];
       try {
-        // browser_run_code_unsafe insere o `code` num contexto NAO-assincrono
-        // (o erro "Unexpected identifier 'page'" apos `await` confirma: await
-        // foi lido como identificador comum, nao como keyword). Devolve a
-        // Promise crua sem await — o mecanismo por fora deve resolve-la.
+        // browser_run_code_unsafe invoca `code` como __fn__(page) internamente
+        // (revelado pelo erro "__fn__ is not a function" quando code virava um
+        // valor em vez de funcao). code precisa AVALIAR para uma funcao que
+        // recebe `page` como argumento.
         const result = await callMcp('browser_run_code_unsafe', {
-          code: 'page.context().cookies()',
+          code: 'async (page) => { const cookies = await page.context().cookies(); return JSON.stringify(cookies); }',
         });
         const rawText = Array.isArray(result?.content) ? result.content.map((c) => c.text || '').join('') : String(result ?? '');
         if (Array.isArray(result?.structuredContent)) {
