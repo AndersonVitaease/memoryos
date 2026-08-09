@@ -69,12 +69,12 @@ const DECISION_SCHEMA = {
     next_action: {
       type: 'object',
       properties: {
-        tool: { type: 'string', enum: ['browser_navigate', 'browser_click', 'browser_type', 'browser_snapshot', 'browser_navigate_back', 'browser_press_key', 'none'] },
+        tool: { type: 'string', enum: ['browser_navigate', 'browser_click', 'send_message_auto', 'browser_snapshot', 'browser_navigate_back', 'browser_press_key', 'none']  // OPÇÃO 1: browser_type → send_message_auto (sistema digita automaticamente) },
         url: { type: 'string', description: 'URL for browser_navigate (e.g. "https://example.com/page")' },
         target: { type: 'string', description: 'Element ref from the snapshot for browser_click/browser_type (e.g. "s1e2")' },
         element: { type: 'string', description: 'Human-readable description of the target element (optional)' },
-        text: { type: 'string', description: 'Text to type into the field for browser_type' },
-        submit: { type: 'boolean', description: 'For browser_type: press Enter after typing (true to send chat message / submit form)' },
+        text: { type: 'string', description: 'Message to send for send_message_auto (system will type automatically)' },
+        submit: { type: 'boolean', description: '[DEPRECATED] No longer used. send_message_auto always presses Enter.' },
         key: { type: 'string', description: 'Key to press for browser_press_key (e.g. "Enter")' },
         description: { type: 'string', description: 'Human-readable description of what this action does' }
       },
