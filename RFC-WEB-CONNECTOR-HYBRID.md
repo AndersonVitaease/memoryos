@@ -1,9 +1,28 @@
 # RFC-001: Web Connector Architecture (Hybrid MVP → Enterprise)
 
 **Date:** 2026-08-09
-**Status:** DRAFT
+**Status:** SUPERSEDED — ver aviso abaixo
 **Author:** Anderson (MemoryOS)
 **Scope:** WebConnector para múltiplos sites, multi-usuário, escalável
+
+---
+
+> ## ⚠️ SUPERSEDED (2026-08-09)
+>
+> Este documento está **desatualizado no modelo de autenticação** (Seção 2.2, entidade `UserCredential` com `encryptedEmail`/`encryptedPassword`). A arquitetura corrigida elimina completamente o armazenamento de senha de terceiros — autenticação passa a ser por **captura de sessão** (cookies, após login direto do usuário no site), nunca por credenciais guardadas.
+>
+> **Decisão formal e motivo da correção:** ver `src/docs/foundation/adr/ADR-019.md`.
+>
+> **Substituído por:**
+> - `src/docs/foundation/rfc/RFC-012-Web-Connector-Session-Capture.md` (captura de sessão)
+> - `src/docs/foundation/rfc/RFC-013-Web-Connector-Capability-Discovery.md` (descoberta de capabilities)
+> - `src/docs/foundation/rfc/RFC-014-Web-Connector-Runtime-Integration.md` (integração ao Connector Runtime + escala)
+>
+> **Nota de numeração:** este arquivo se autodenomina "RFC-001", mas nunca esteve na árvore canônica `src/docs/foundation/rfc/`, que já tem um `RFC-001.md` real e não relacionado a este assunto. Os documentos substitutos usam a numeração canônica correta (012-014) para não repetir essa confusão.
+>
+> O conteúdo original abaixo é preservado como registro histórico — não usar como especificação para implementação.
+
+---
 
 ---
 
