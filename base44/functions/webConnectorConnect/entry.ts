@@ -529,6 +529,156 @@ export default async function (req) {
       return Response.json({ ok: true, webSessionId, status: 'revoked' });
     }
 
+    // ── operation: executeCapability ─────────────────────────────────
+    // RFC-014: executa uma capability validada (CapabilityMap) contra uma
+    // WebSession ativa. Read-only: injeta cookies, navega para a URL onde a
+    // capability foi descoberta, localiza o formulario de busca/consulta,
+    // preenche os campos, submete e captura o resultado via snapshot.
+    //
+    // GUARDA DE ESCRITA (enforced no DOM, nao no prompt): antes de submeter,
+    // inspeciona os botoes do formulario. Se algum botao casa com keywords
+    // de escrita (Salvar/Excluir/Editar/Enviar/Criar...), ABORTA sem submeter.
+    // Isto garante que mesmo um falso-positivo da descoberta (um formulario de
+    // criacao marcado erroneamente como busca) nao cause escrita.
+    if (operation === 'executeCapability') {
+      const { webSessionId, discoveredFromUrl, inputFields, inputs } = body;
+      if (!webSessionId) return Response.json({ error: 'Missing required field: webSessionId' }, { status: 400 });
+      if (!discoveredFromUrl) return Response.json({ error: 'Missing required field: discoveredFromUrl' }, { status: 400 });
+      if (!Array.isArray(inputFields) || inputFields.length === 0) return Response.json({ error: 'inputFields must be a non-empty array' }, { status: 400 });
+      if (!inputs || typeof inputs !== 'object') return Response.json({ error: 'inputs must be an object' }, { status: 400 });
+
+      const session = await withTimeout(base44.entities.WebSession.get(webSessionId), SDK_TIMEOUT_MS, 'session_get');
+      if (!session) return Response.json({ error: 'WebSession not found' }, { status: 404 });
+      if (session.status !== 'active') return Response.json({ error: 'WebSession is not active (status: ' + session.status + ')' }, { status: 409 });
+
+      let cookies = [];
+      try { cookies = JSON.parse(session.cookies || '[]'); } catch (e) { /* corrupted */ }
+      if (!Array.isArray(cookies) || cookies.length === 0) {
+        return Response.json({ error: 'No cookies stored in this WebSession.' }, { status: 409 });
+      }
+
+      let targetUrl = String(discoveredFromUrl).trim();
+      if (!/^https?:\/\//i.test(targetUrl)) targetUrl = 'https://' + targetUrl;
+
+      const fieldsWithValues = inputFields.map((name) => ({
+        name: String(name),
+        value: inputs[name] != null ? String(inputs[name]) : '',
+      }));
+
+      try { await callMcp('browser_close', {}); } catch (e) { /* best-effort */ }
+
+      const escapedCookies = JSON.stringify(cookies);
+      const escapedFields = JSON.stringify(fieldsWithValues);
+      const escapedUrl = JSON.stringify(targetUrl);
+      let execResult = '';
+      try {
+        const code = `async (page) => {
+  await page.context().addCookies(${escapedCookies});
+  await page.goto(${escapedUrl}, { waitUntil: "load", timeout: 15000 }).catch(() => {});
+  await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});
+  if (/\\/login/i.test(page.url())) return JSON.stringify({ error: "session_expired", url: page.url() });
+  const fields = ${escapedFields};
+  const matchField = (frm, n) => frm.evaluateHandle((el, a) => {
+    const nn = String(a.n || "").toLowerCase();
+    const els = Array.from(el.querySelectorAll("input, select, textarea"));
+    for (const e of els) { if ((e.getAttribute("name")||"").toLowerCase()===nn || (e.getAttribute("id")||"").toLowerCase()===nn) return e; }
+    for (const e of els) {
+      const ph=(e.getAttribute("placeholder")||"").toLowerCase();
+      const al=(e.getAttribute("aria-label")||"").toLowerCase();
+      let lt=""; if (e.id){const lbl=el.querySelector('label[for="'+e.id+'"]'); if(lbl)lt=lbl.textContent.toLowerCase();}
+      if(!lt){const w=e.closest("label"); if(w)lt=w.textContent.toLowerCase();}
+      if((ph&&ph.includes(nn))||(al&&al.includes(nn))||(lt&&lt.includes(nn)))return e;
+    }
+    return null;
+  }, { n });
+  const forms = await page.$$("form");
+  let best=null, bestScore=0;
+  for (const form of forms) {
+    let score=0;
+    for (const f of fields) {
+      const h = await matchField(form, f.name).catch(()=>null);
+      if (h && h.asElement && h.asElement()) score++;
+    }
+    if (score>bestScore){bestScore=score;best=form;}
+  }
+  if (!best || bestScore===0) return JSON.stringify({ error: "form_not_found" });
+  const guard = await best.evaluate((frm) => {
+    const btns = Array.from(frm.querySelectorAll("button, input[type=submit], input[type=button]"));
+    const re = /(salvar|excluir|deletar|apagar|cancelar|enviar|criar|editar|create|edit|delete|remove|update|submeter)/i;
+    return JSON.stringify({ offending: btns.map((b)=>(b.textContent||b.value||"").trim()).filter((t)=>re.test(t)) });
+  }).catch(() => JSON.stringify({ offending: [] }));
+  let gp={}; try { const s = typeof guard==="string"?guard:JSON.stringify(guard); gp=JSON.parse(s); if(typeof gp==="string")gp=JSON.parse(gp);}catch(e){}
+  if (gp.offending && gp.offending.length>0) return JSON.stringify({ error: "write_guard", buttons: gp.offending });
+  const filled=[];
+  for (const f of fields) {
+    const h = await matchField(best, f.name).catch(()=>null);
+    const el = h && h.asElement ? h.asElement() : null;
+    if (el) {
+      try {
+        const tag = await el.evaluate((x)=>x.tagName.toLowerCase()).catch(()=>"input");
+        if (tag==="select") await el.select(f.value);
+        else await el.fill(f.value);
+        filled.push(f.name);
+      } catch(e){}
+    }
+  }
+  if (filled.length===0) return JSON.stringify({ error: "no_field_filled" });
+  const sBtnH = await best.evaluateHandle((frm) => {
+    const btns = Array.from(frm.querySelectorAll("button, input[type=submit]"));
+    const re = /(buscar|pesquisar|consultar|filtrar|search|find|consult|listar|go)/i;
+    return btns.find((b)=>re.test((b.textContent||b.value||"").trim())) || btns[0] || null;
+  }).catch(()=>null);
+  const sBtn = sBtnH && sBtnH.asElement ? sBtnH.asElement() : null;
+  await Promise.all([
+    page.waitForNavigation({ waitUntil: "load", timeout: 10000 }).catch(() => {}),
+    sBtn ? sBtn.click() : best.press("Enter"),
+  ]);
+  await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});
+  return JSON.stringify({ url: page.url(), filled });
+}`;
+        const res = await callMcp('browser_run_code_unsafe', { code });
+        execResult = extractRunCodeText(res);
+      } catch (e) {
+        return Response.json({ error: 'Execute failed: ' + e.message }, { status: 502 });
+      }
+
+      let outcome = null;
+      try {
+        let candidate = execResult;
+        const m = candidate.match(/```(?:json)?\n?([\s\S]*?)\n?```/) || [null, candidate];
+        candidate = (m[1] || candidate).trim();
+        outcome = JSON.parse(candidate);
+        if (typeof outcome === 'string') outcome = JSON.parse(outcome);
+      } catch (e) { /* fallback below */ }
+
+      if (outcome && outcome.error) {
+        const msgs = {
+          session_expired: 'Sessao expirou (redirecionou para login). Reautentique via start+login+confirm.',
+          form_not_found: 'Nenhum formulario com os campos informados foi encontrado na pagina.',
+          write_guard: 'Guarda de escrita: o formulario possui botoes de escrita (' + (outcome.buttons ? outcome.buttons.join(', ') : '') + '). Execucao abortada por seguranca.',
+          no_field_filled: 'Nao foi possivel preencher nenhum dos campos no formulario.',
+        };
+        return Response.json({ ok: false, error: msgs[outcome.error] || outcome.error, outcome }, { status: 422 });
+      }
+
+      let snapshotText = '';
+      try {
+        const snap = await callMcp('browser_snapshot', {});
+        snapshotText = extractSnapshotText(snap);
+      } catch (e) { /* best-effort */ }
+
+      try { await callMcp('browser_close', {}); } catch (e) { /* best-effort */ }
+
+      return Response.json({
+        ok: true,
+        webSessionId: session.id,
+        finalUrl: outcome && outcome.url ? outcome.url : '',
+        filled: outcome && outcome.filled ? outcome.filled : [],
+        snapshotText: snapshotText.slice(0, 12000),
+        message: 'Capability executada (read-only). Resultado capturado via snapshot da pagina pos-submissao.',
+      });
+    }
+
     return Response.json({ error: 'Unknown operation: ' + operation }, { status: 400 });
 
   } catch (e) {

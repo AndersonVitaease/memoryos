@@ -36,6 +36,7 @@ const CAPABILITIES = Object.freeze([
   "web.capability.list",
   "web.discover",
   "web.session.use",
+  "web.capability.execute",
   "connectivity.ping",
 ]);
 
@@ -68,6 +69,7 @@ export class WebConnector implements IConnector {
         "web.capability.list": "safe",
         "web.discover": "safe",
         "web.session.use": "safe",
+        "web.capability.execute": "safe",
         "connectivity.ping": "safe",
       },
     };
@@ -176,6 +178,32 @@ export class WebConnector implements IConnector {
           if (d?.error) return fail(String(d.error), start, eid, logs, operation);
           return ok(
             { sessionValid: d?.sessionValid === true, snapshotText: (d?.snapshotText as string) || "" },
+            start,
+            eid,
+            logs,
+            operation,
+          );
+        }
+
+        case "web.capability.execute": {
+          const webSessionId = typeof payload.webSessionId === "string" ? payload.webSessionId.trim() : null;
+          const discoveredFromUrl = typeof payload.discoveredFromUrl === "string" ? payload.discoveredFromUrl.trim() : null;
+          const inputFields = Array.isArray(payload.inputFields) ? payload.inputFields.map((f) => String(f)) : [];
+          const inputs = payload.inputs && typeof payload.inputs === "object" ? (payload.inputs as Record<string, unknown>) : {};
+          if (!webSessionId) return fail("webSessionId e obrigatorio para web.capability.execute", start, eid, logs, operation);
+          if (!discoveredFromUrl) return fail("discoveredFromUrl e obrigatorio para web.capability.execute", start, eid, logs, operation);
+          if (inputFields.length === 0) return fail("inputFields (array nao vazio) e obrigatorio", start, eid, logs, operation);
+          const res = await base44.functions.invoke("webConnectorConnect", {
+            operation: "executeCapability",
+            webSessionId,
+            discoveredFromUrl,
+            inputFields,
+            inputs,
+          });
+          const d = (res?.data ?? res) as Record<string, unknown> | null;
+          if (d?.error) return fail(String(d.error), start, eid, logs, operation);
+          return ok(
+            { finalUrl: d?.finalUrl ?? "", filled: d?.filled ?? [], snapshotText: d?.snapshotText ?? "" },
             start,
             eid,
             logs,
