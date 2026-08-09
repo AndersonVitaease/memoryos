@@ -2759,3 +2759,62 @@ if (browserTypeSkippedCount > 2) {
 
 Patches não são suficientes para um problema que é da própria decisão arquitetural de como LLM interage com browser.
 
+
+---
+
+## 🚀 OPÇÃO 1 IMPLEMENTADA: Playwright Direto (2026-08-09 17:25)
+
+### O que foi feito:
+
+**PASSO 1: Schema Update**
+- ✅ Removido `browser_type` do DECISION_SCHEMA
+- ✅ Adicionado `send_message_auto` (nova ação)
+
+**PASSO 2: Prompt Update**
+- ✅ Removidas instruções de browser_type
+- ✅ Adicionadas instruções para send_message_auto
+- ✅ LLM agora sabe que "enviar mensagem" = send_message_auto
+
+**PASSO 3: Handler Implementation**
+- ✅ Novo handler para `send_message_auto`
+- ✅ Usa `typeViaEvaluate` (Playwright automaticamente)
+- ✅ Digita + envia Enter + aguarda resposta
+- ✅ Registra em history
+
+### Como funciona agora:
+
+```
+LLM: "Vou enviar pergunta: 'Qual é seu nome?'"
+  ↓
+decision.tool = 'send_message_auto'
+decision.text = 'Qual é seu nome?'
+  ↓
+Handler executa:
+  1. typeViaEvaluate('Qual é seu nome?')  ← Playwright digita
+  2. Pressiona Enter automaticamente
+  3. justSentMessage = true
+  4. questionsSent++
+  5. Aguarda 3s para resposta
+  6. Próximo step: LLM lê resposta
+  ↓
+LLM vê resposta no contexto (new snapshot)
+LLM continua com próxima ação
+```
+
+### Vantagens:
+
+- ✅ **LLM não controla digitação** → nenhum erro possível
+- ✅ **Não há loop infinito** → typeViaEvaluate é confiável
+- ✅ **Sistema determina timing** → aguarda resposta corretamente
+- ✅ **Clean separation** → LLM: decide | Sistema: executa
+
+### Status:
+
+- ✅ Build: OK
+- ✅ Compilação: OK
+- ⏳ Pronto para teste
+
+### Próximo passo:
+
+Rodar BugHunter com esta nova arquitetura!
+
