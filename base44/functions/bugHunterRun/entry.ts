@@ -69,7 +69,7 @@ const DECISION_SCHEMA = {
     next_action: {
       type: 'object',
       properties: {
-        tool: { type: 'string', enum: ['browser_navigate', 'browser_click', 'browser_snapshot', 'browser_navigate_back', 'browser_press_key', 'none'] },  // PATCH 19: Removido browser_type
+        tool: { type: 'string', enum: ['browser_navigate', 'browser_click', 'browser_type', 'browser_snapshot', 'browser_navigate_back', 'browser_press_key', 'none'] },
         url: { type: 'string', description: 'URL for browser_navigate (e.g. "https://example.com/page")' },
         target: { type: 'string', description: 'Element ref from the snapshot for browser_click/browser_type (e.g. "s1e2")' },
         element: { type: 'string', description: 'Human-readable description of the target element (optional)' },
@@ -254,7 +254,7 @@ function buildConversationPrompt(targetUrl, scenario, history, snapshotText, con
     '- Submit/Login button: ' + (_refs.submit || 'N/A'),
     '',
     'CRITICAL RULES:',
-    '*** PATCH 19: browser_type foi REMOVIDO. Use browser_snapshot e então browser_press_key para enviar mensagens (ou deixe o sistema digitar automaticamente). ***',
+    '*** FOR browser_type WITH NEXT_ACTION.TOOL="browser_type": YOU MUST ALWAYS FILL NEXT_ACTION.TEXT. If you do not provide text, the action is SKIPPED and nothing happens. NEVER send browser_type without text. ***',
     '- NEVER use browser_navigate to go to a URL you are already on. If the Page URL in the snapshot matches your target, INTERACT with the page (click/type) instead of navigating.',
     '- For browser_navigate: set next_action.url to the full URL. Without url the action is skipped.',
     '- For browser_click: set next_action.target to a ref from the snapshot (e.g. "s1e2"). Without target the action is skipped.',
