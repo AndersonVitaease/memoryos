@@ -332,11 +332,49 @@ export default async function (req) {
       // marcador (last_used_at) para gravar a sessao. Sem isto, um usuario
       // que faz start na URL base (sem /login) e clica confirm direto ativa
       // uma sessao sem nenhum cookie de auth (o bug reportado).
+      //
+      // Também atualiza site_url para a URL autenticada real (ex: /secure em
+      // vez de /login). Sem isto, a operação use reusa cookies mas navega de
+      // volta pra /login — que obviamente mostra o formulário e falsamente
+      // reporta a sessão como expirada. A URL final vem do header "Page URL:"
+      // do snapshot pós-login (loginOutcome.url pode estar undefined se o
+      // parse DOM falhou — ver bug do double-encoding).
       if (loginVerified) {
+        let finalUrl = '';
+        if (loginOutcome && loginOutcome.url) {
+          finalUrl = loginOutcome.url;
+        } else {
+          const urlMatch = postSnapshotText.match(/Page URL:\s*(\S+)/);
+          if (urlMatch) finalUrl = urlMatch[1];
+        }
+
+        // Captura os cookies AGORA — neste exato momento o context ativo
+        // tem o cookie de auth HttpOnly (ex: rack.session do the-internet).
+        // O confirm é uma chamada backend SEPARADA e o Playwright MCP pode
+        // não persistir o context entre chamadas, perdendo o cookie de auth
+        // e deixando só cookies de analytics (o bug que vimos: 4 cookies
+        // optimizely, zero rack.session). Capturar aqui, na mesma chamada
+        // que verificou auth, garante que os cookies reais de sessão ficam
+        // salvos para reuso posterior.
+        let capturedCookies = '[]';
         try {
-          await withTimeout(base44.entities.WebSession.update(session.id, {
-            last_used_at: new Date().toISOString(),
-          }), SDK_TIMEOUT_MS, 'session_mark_login');
+          const cookieResult = await callMcp('browser_run_code_unsafe', {
+            code: 'async (page) => { const cookies = await page.context().cookies(); return JSON.stringify(cookies); }',
+          });
+          const cookieText = extractRunCodeText(cookieResult);
+          const cm = cookieText.match(/```(?:json)?\n?([\s\S]*?)\n?```/) || [null, cookieText];
+          let parsedCookies = JSON.parse((cm[1] || cookieText).trim());
+          if (typeof parsedCookies === 'string') parsedCookies = JSON.parse(parsedCookies);
+          capturedCookies = JSON.stringify(parsedCookies);
+        } catch (e) { /* best-effort: segue sem cookies */ }
+
+        const updateData = { last_used_at: new Date().toISOString() };
+        if (capturedCookies !== '[]') updateData.cookies = capturedCookies;
+        if (finalUrl && finalUrl !== session.site_url && !/\/login/.test(finalUrl)) {
+          updateData.site_url = finalUrl;
+        }
+        try {
+          await withTimeout(base44.entities.WebSession.update(session.id, updateData), SDK_TIMEOUT_MS, 'session_mark_login');
         } catch (e) { /* best-effort: nao bloqueia o retorno do login */ }
       }
 
@@ -372,18 +410,30 @@ export default async function (req) {
         }, { status: 409 });
       }
 
-      // Verificação de segurança: captura um snapshot antes dos cookies e
-      // recusa o confirm se a página ainda está no formulário de login.
-      // Evita gravar uma WebSession "active" sem cookie de auth (o bug do
-      // teste do herokuapp, onde só vieram cookies de analytics).
+      // Verificação de segurança: re-navega para a URL autenticada da sessão
+      // e exige marcadores POSITIVOS de auth (logout/secure area/welcome) sem
+      // campo de senha antes de capturar cookies. Antes só checava ausência
+      // de campo de senha — mas about:blank ou um contexto resetado também
+      // não tem campo de senha, e a captura vinha só com cookies de analytics
+      // (sem o cookie de auth HttpOnly, ex: rack.session do the-internet).
+      // Re-navegar garante que o context ativo tem o cookie de auth real.
+      try {
+        await callMcp('browser_navigate', { url: session.site_url });
+        try { await callMcp('browser_wait_for', { time: 2 }); } catch (e) { /* best-effort */ }
+      } catch (e) { /* best-effort: segue com snapshot do estado atual */ }
+
       let preSnapText = '';
       try {
         const preSnap = await callMcp('browser_snapshot', {});
         preSnapText = extractSnapshotText(preSnap);
       } catch (e) { /* best-effort: segue para captura mesmo se snapshot falhar */ }
-      if (/(?:password|senha)[^\n]*?\[ref=/i.test(preSnapText)) {
+      const preHasLoginField = /(?:password|senha)[^\n]*?\[ref=/i.test(preSnapText);
+      const preHasAuthMarker = /log\s*out|sign\s*out|logout|welcome|secure area|you logged into/i.test(preSnapText);
+      if (preHasLoginField || !preHasAuthMarker) {
         return Response.json({
-          error: 'Página atual ainda mostra campos de login — o login não foi concluído. Volte e preencha as credenciais (opção Entrar) antes de confirmar.',
+          error: preHasLoginField
+            ? 'Página atual ainda mostra campos de login — o login não foi concluído. Volte e preencha as credenciais (opção Entrar) antes de confirmar.'
+            : 'Não foi possível confirmar autenticação na página (sem marcadores como Logout/Secure Area). O login pode não ter persistido — refaça start+login e tente confirmar imediatamente.',
           snapshotText: preSnapText.slice(0, 4000),
         }, { status: 409 });
       }
@@ -426,6 +476,121 @@ export default async function (req) {
       try { await callMcp('browser_close', {}); } catch (e) { /* best-effort: libera RAM na VPS */ }
 
       return Response.json({ ok: true, webSessionId: session.id, status: 'active', expiresAt });
+    }
+
+    // ── operation: use ───────────────────────────────────────────────
+    // Reusa uma WebSession ativa: injeta os cookies salvos num novo contexto
+    // Playwright e navega para a URL do site, verificando se a sessão ainda
+    // é válida (não redirecionou para login). Sem isto, os cookies capturados
+    // na operação confirm nunca são reutilizados — a sessão "ativa" não serve
+    // pra nada na prática. Esta é a operação que fecha o critério de aceite
+    // "Segunda chamada à mesma sessão reutiliza cookies salvos" do RFC-012.
+    if (operation === 'use') {
+      const { webSessionId } = body;
+      if (!webSessionId) return Response.json({ error: 'Missing required field: webSessionId' }, { status: 400 });
+
+      const session = await withTimeout(base44.entities.WebSession.get(webSessionId), SDK_TIMEOUT_MS, 'session_get');
+      if (!session) return Response.json({ error: 'WebSession not found' }, { status: 404 });
+      if (session.status !== 'active') {
+        return Response.json({ error: 'WebSession is not active (status: ' + session.status + '). Reautentique via start+login+confirm.' }, { status: 409 });
+      }
+
+      let cookies = [];
+      try {
+        cookies = JSON.parse(session.cookies || '[]');
+      } catch (e) {
+        return Response.json({ error: 'Stored cookies are corrupted: ' + e.message }, { status: 500 });
+      }
+      if (!Array.isArray(cookies) || cookies.length === 0) {
+        return Response.json({ error: 'No cookies stored in this WebSession.' }, { status: 409 });
+      }
+
+      // Limpa qualquer browser/sessão pendurada de runs anteriores.
+      try { await callMcp('browser_close', {}); } catch (e) { /* best-effort */ }
+
+      // Navegação inicial para a URL do site — estabelece um page/context
+      // para o domínio alvo (necessário antes de addCookies, que opera no
+      // context ativo). Sem cookies, provavelmente redireciona pra /login,
+      // mas isso é esperado e irrelevante — só precisamos do context.
+      try {
+        await callMcp('browser_navigate', { url: session.site_url });
+        try { await callMcp('browser_wait_for', { time: 1 }); } catch (e) { /* best-effort */ }
+      } catch (e) { /* best-effort: segue para injeção mesmo se redirecionou */ }
+
+      // Tudo numa ÚNICA chamada browser_run_code_unsafe para garantir que
+      // addCookies e a navegação final operam no MESMO page.context().
+      // Tentativas anteriores com addCookies numa chamada e browser_navigate
+      // em outra falharam porque o MCP pode criar/rotacionar contextos entre
+      // chamadas, perdendo os cookies injetados. Aqui o contexto é o mesmo
+      // durante toda a execução da função.
+      const escapedCookies = JSON.stringify(cookies);
+      const escapedSiteUrl = JSON.stringify(session.site_url);
+      let useResult = '';
+      try {
+        const code = 'async (page) => {' +
+          '  await page.context().addCookies(' + escapedCookies + ');' +
+          '  await page.goto(' + escapedSiteUrl + ', { waitUntil: "load", timeout: 15000 }).catch(() => {});' +
+          '  await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});' +
+          '  const finalUrl = page.url();' +
+          '  const stillHasPass = await page.$("input[type=password]");' +
+          '  const alertText = await page.evaluate(() => {' +
+          '    const a = document.querySelector(".flash, .alert, [role=alert], #flash");' +
+          '    return a ? a.textContent.trim().slice(0, 300) : "";' +
+          '  });' +
+          '  return JSON.stringify({ url: finalUrl, stillHasPassword: !!stillHasPass, alert: alertText });' +
+          '}';
+        const res = await callMcp('browser_run_code_unsafe', { code });
+        useResult = extractRunCodeText(res);
+      } catch (e) {
+        return Response.json({ error: 'Cookie injection + navigation failed: ' + e.message }, { status: 502 });
+      }
+
+      let useOutcome = null;
+      try {
+        let candidate = useResult;
+        const m = candidate.match(/```(?:json)?\n?([\s\S]*?)\n?```/);
+        if (m) candidate = m[1];
+        candidate = candidate.trim();
+        useOutcome = JSON.parse(candidate);
+        if (typeof useOutcome === 'string') useOutcome = JSON.parse(useOutcome);
+      } catch (e) { /* best-effort: fallback via snapshot abaixo */ }
+
+      const snap = await callMcp('browser_snapshot', {});
+      const snapshotText = extractSnapshotText(snap);
+
+      // Verifica se a sessão ainda é válida: se a página mostra campos de
+      // login (senha), a sessão expirou e precisa reautenticar. Marcadores
+      // positivos (logout/secure area/welcome) sem campo de senha = válida.
+      // Combina o resultado do DOM (useOutcome) com o snapshot pós-navegação
+      // para robustez — mesmo padrão do login (double-encoding + fallback).
+      let stillOnLogin = /(?:password|senha)[^\n]*?\[ref=/i.test(snapshotText);
+      let hasAuthMarker = /log\s*out|sign\s*out|logout|welcome|secure area|you logged into/i.test(snapshotText);
+      if (useOutcome && useOutcome.url) {
+        const urlHasLogin = /\/login/.test(useOutcome.url);
+        if (useOutcome.stillHasPassword || urlHasLogin) stillOnLogin = true;
+        else if (!stillOnLogin) hasAuthMarker = true;
+      }
+      const stillValid = !stillOnLogin && hasAuthMarker;
+
+      // Atualiza last_used_at se a sessão foi reutilizada com sucesso.
+      if (stillValid) {
+        try {
+          await withTimeout(base44.entities.WebSession.update(session.id, {
+            last_used_at: new Date().toISOString(),
+          }), SDK_TIMEOUT_MS, 'session_mark_use');
+        } catch (e) { /* best-effort */ }
+      }
+
+      return Response.json({
+        ok: true,
+        webSessionId: session.id,
+        status: 'active',
+        sessionValid: stillValid,
+        snapshotText: snapshotText.slice(0, 8000),
+        message: stillValid
+          ? 'Sessão reutilizada com sucesso — cookies injetados e página carregada sem redirecionamento para login.'
+          : 'Sessão parece ter expirado — a página redirecionou para o formulário de login. Reautentique via start+login+confirm.',
+      });
     }
 
     // ── operation: revoke ─────────────────────────────────────────────

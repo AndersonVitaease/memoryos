@@ -46,6 +46,7 @@ export default function WebConnectorPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loginVerified, setLoginVerified] = useState(false);
+  const [sessionValid, setSessionValid] = useState(null);
 
   const handleStart = useCallback(async () => {
     if (!siteUrl) return;
@@ -112,8 +113,25 @@ export default function WebConnectorPage() {
       setSiteName('');
       setEmail('');
       setLoginVerified(false);
+      setSessionValid(null);
     } catch (e) {
       setError(e.message || 'Falha ao desconectar');
+    } finally {
+      setBusy(false);
+    }
+  }, [webSessionId]);
+
+  const handleTestSession = useCallback(async () => {
+    if (!webSessionId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const data = await callWebConnector('use', { webSessionId });
+      setSessionValid(data.sessionValid === true);
+      setSnapshotText(data.snapshotText || '');
+    } catch (e) {
+      setError(e.message || 'Falha ao testar sessão');
+      setSessionValid(false);
     } finally {
       setBusy(false);
     }
@@ -243,13 +261,35 @@ export default function WebConnectorPage() {
               <CheckCircle2 className="w-4 h-4" />
               Sessão ativa — conectado com sucesso.
             </div>
-            <button
-              onClick={handleRevoke}
-              disabled={busy}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-red-500/90 text-white hover:bg-red-500 disabled:opacity-50 transition"
-            >
-              Desconectar
-            </button>
+            {sessionValid === true && (
+              <p className="text-xs text-emerald-400">Sessão revalidada — cookies reutilizáveis, página carregou autenticada.</p>
+            )}
+            {sessionValid === false && (
+              <p className="text-xs text-amber-400">Sessão expirou — reautentique (Iniciar conexão → Entrar → Confirmar).</p>
+            )}
+            {snapshotText && sessionValid !== null && (
+              <details className="text-xs">
+                <summary className="cursor-pointer text-zinc-500 hover:text-zinc-300">Ver estado da página (snapshot)</summary>
+                <pre className="mt-2 p-2 rounded bg-zinc-950/50 border border-zinc-800 text-[10px] text-zinc-500 whitespace-pre-wrap max-h-60 overflow-y-auto">{snapshotText}</pre>
+              </details>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={handleTestSession}
+                disabled={busy}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-violet-500 text-white hover:bg-violet-400 disabled:opacity-40 transition"
+              >
+                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+                Testar sessão
+              </button>
+              <button
+                onClick={handleRevoke}
+                disabled={busy}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-red-500/90 text-white hover:bg-red-500 disabled:opacity-50 transition"
+              >
+                Desconectar
+              </button>
+            </div>
           </div>
         )}
 
