@@ -370,8 +370,7 @@ export default async function (req) {
           function: "() => { try { return window.__MEMORY_DEBUG__?.React?.connectionsMounted === true; } catch(e) { return false; } }"
         });
         const evalText = extractEvaluateText(checkResult);
-        if (evalText === 'true' || evalText === 'true
-') {
+        if (evalText === 'true' || evalText === 'true\n') {
           return true;  // Conectores prontos
         }
       } catch (e) { /* best-effort */ }
