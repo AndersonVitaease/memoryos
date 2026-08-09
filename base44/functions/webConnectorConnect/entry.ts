@@ -174,10 +174,12 @@ export default async function (req) {
       // path diferente de /login). Sem isto, o login falha com no-password-field.
       const loginUrlOverride = (body.loginUrl && typeof body.loginUrl === 'string' && /^https?:\/\//i.test(body.loginUrl.trim())) ? body.loginUrl.trim() : null;
       const navTarget = loginUrlOverride || session.site_url;
-      try {
-        await callMcp('browser_navigate', { url: navTarget });
-        try { await callMcp('browser_wait_for', { time: 2 }); } catch (e) { /* best-effort */ }
-      } catch (e) { /* best-effort: segue com snapshot do estado atual */ }
+      const escapedNavTarget = JSON.stringify(navTarget);
+      // Navegacao DENTRO do browser_run_code_unsafe (nao via browser_navigate
+      // MCP separado) para garantir que goto + fill operam no MESMO page/context.
+      // O MCP pode rotacionar contextos entre chamadas, fazendo o run_code rodar
+      // numa pagina diferente da navegada (about:blank) — sintoma:
+      // no-password-field mesmo na pagina certa de login (ex: Bling SPA).
 
       // ABORDAGEM DOM (100% confiável): preenche o form direto pelo DOM e
       // espera a navegação terminar ANTES de checar o resultado. Retorna o
@@ -189,6 +191,8 @@ export default async function (req) {
       let fillResult = 'unknown';
       try {
         const code = 'async (page) => {' +
+          '  await page.goto(' + escapedNavTarget + ', { waitUntil: "load", timeout: 15000 }).catch(() => {});' +
+          '  await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});' +
           '  await page.waitForSelector("input[type=password]", { timeout: 8000 }).catch(() => {});' +
           '  const pass = await page.$("input[type=password]");' +
           '  if (!pass) return JSON.stringify({ error: "no-password-field" });' +
