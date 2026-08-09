@@ -130,4 +130,24 @@ Página nova (`WebConnectorPage.jsx` ou dentro de uma seção "Conectores" já e
 
 ---
 
-*RFC-012 — Web Connector: Captura de Sessão — 2026-08-09 — Draft*
+## Implementação (Sprint 0 + Sprint 1, 2026-08-09)
+
+**Infraestrutura (Sprint 0):**
+- Entidade `WebSession` criada
+- Container `playwright-web-connector` na VPS (porta 8932, `/root/playwright-mcp/docker-compose.yml`)
+- Caddy: bloco `memoryos-webconnector.duckdns.org` (`/etc/caddy/Caddyfile`), auth via `X-Api-Key`
+- `MCPServerConfig` registrado (`server_url: https://memoryos-webconnector.duckdns.org/mcp`)
+- Secret `PLAYWRIGHT_WEB_CONNECTOR_API_KEY` cadastrado pelo usuário
+
+**Código (Sprint 1):**
+- `base44/functions/webConnectorConnect/entry.ts` — operations `start`/`login`/`confirm`/`revoke`
+- `src/pages/WebConnectorPage.jsx` — UI do fluxo de conexão
+- Rota `/web-connector` registrada em `src/App.jsx` (aditivo, ao lado de `/bug-hunter`)
+
+**Adendo à ADR-019** documentando a decisão de bootstrap de login via snapshot/relay (não streaming de tela) — ver ADR-019 para detalhes e a consequência de segurança explícita (senha transita transitoriamente, nunca persistida).
+
+**Pendente de validação:** 1 teste manual ponta a ponta com site real (login → confirm → cookies capturados) ainda não executado nesta sessão — recomendado antes de avançar para RFC-013.
+
+---
+
+*RFC-012 — Web Connector: Captura de Sessão — 2026-08-09 — Sprint 1 implementado*
