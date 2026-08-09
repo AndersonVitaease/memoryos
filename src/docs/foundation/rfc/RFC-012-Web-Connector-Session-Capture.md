@@ -146,7 +146,9 @@ Página nova (`WebConnectorPage.jsx` ou dentro de uma seção "Conectores" já e
 
 **Adendo à ADR-019** documentando a decisão de bootstrap de login via snapshot/relay (não streaming de tela) — ver ADR-019 para detalhes e a consequência de segurança explícita (senha transita transitoriamente, nunca persistida).
 
-**Pendente de validação:** 1 teste manual ponta a ponta com site real (login → confirm → cookies capturados) ainda não executado nesta sessão — recomendado antes de avançar para RFC-013.
+**Validado (2026-08-09):** teste ponta a ponta real executado via `/web-connector` contra `https://the-internet.herokuapp.com` — `WebSession` criada, status transicionou para `active`, cookies reais capturados e persistidos (verificado via `query_entities`, não só pela UI). Caminho testado: `start` → `confirm` direto (site sem formulário de login na URL testada). **Ainda pendente:** caminho `login` (digitar credenciais + submit) com um site que tenha formulário real; reuso de sessão numa segunda chamada; expiração de TTL.
+
+Durante a validação, `browser_run_code_unsafe` (usada na operação `confirm` para capturar cookies via `context.cookies()`) precisou de 5 iterações para descobrir sua convenção real de chamada (não documentada): o parâmetro `code` deve avaliar para uma **função** `async (page) => { ... }`, que a tool invoca internamente como `__fn__(page)` — statements soltos, blocos, ou expressões com `await` fora de função falham com SyntaxError/TypeError. Documentado em comentário no código (`webConnectorConnect/entry.ts`) para a próxima vez que essa tool for usada.
 
 ---
 
