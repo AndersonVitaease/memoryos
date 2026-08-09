@@ -329,6 +329,7 @@ const AuthenticatedApp = () => {
           <Route path="/travelport-auth-test" element={<TravelportAuthTestPage />} />
           <Route path="/oie" element={<OIEPage />} />
           <Route path="/bug-hunter" element={<BugHunterConsole />} />
+          <Route path="/web-connector" element={<WebConnectorPage />} />
           <Route path="/bug-insights" element={<BugInsightsChat />} />
         </Route>
       </Route>
