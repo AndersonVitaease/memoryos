@@ -200,14 +200,20 @@ export default async function (req) {
 
       let cookies = [];
       try {
-        // browser_run_code_unsafe espera o código como corpo de função (entre
-        // chaves) — statements soltos com `return` na raiz dão SyntaxError.
+        // browser_run_code_unsafe insere o `code` dentro de parenteses (contexto
+        // de expressao) — os dois erros anteriores ("Unexpected token 'const'"
+        // e depois "Unexpected identifier 'cookies'") confirmam isso: statements
+        // com const/return quebram. Passar so a expressao pura resolve.
         const result = await callMcp('browser_run_code_unsafe', {
-          code: '{ const cookies = await page.context().cookies(); return JSON.stringify(cookies); }',
+          code: 'await page.context().cookies()',
         });
-        const text = Array.isArray(result?.content) ? result.content.map((c) => c.text || '').join('') : String(result);
-        const m = text.match(/```(?:json)?\n?([\s\S]*?)\n?```/) || [null, text];
-        cookies = JSON.parse((m[1] || text).trim());
+        const rawText = Array.isArray(result?.content) ? result.content.map((c) => c.text || '').join('') : String(result ?? '');
+        if (Array.isArray(result?.structuredContent)) {
+          cookies = result.structuredContent;
+        } else {
+          const m = rawText.match(/```(?:json)?\n?([\s\S]*?)\n?```/) || [null, rawText];
+          cookies = JSON.parse((m[1] || rawText).trim());
+        }
       } catch (e) {
         return Response.json({ error: 'Cookie capture failed: ' + e.message }, { status: 502 });
       }
