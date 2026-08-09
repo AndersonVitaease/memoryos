@@ -45,6 +45,7 @@ export default function WebConnectorPage() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [loginVerified, setLoginVerified] = useState(false);
 
   const handleStart = useCallback(async () => {
     if (!siteUrl) return;
@@ -56,6 +57,7 @@ export default function WebConnectorPage() {
       setStatus(data.status);
       setSnapshotText(data.snapshotText || '');
       setDetectedFields(data.detectedFields || null);
+      setLoginVerified(false);
     } catch (e) {
       setError(e.message || 'Falha ao iniciar conexão');
     } finally {
@@ -71,6 +73,7 @@ export default function WebConnectorPage() {
       const data = await callWebConnector('login', { webSessionId, email, password });
       setStatus(data.status);
       setSnapshotText(data.snapshotText || '');
+      setLoginVerified(data.loginVerified === true);
       // Credenciais só existem no state desta página até aqui — não são
       // reenviadas em nenhuma chamada seguinte (confirm/revoke não as usam).
       setPassword('');
@@ -108,6 +111,7 @@ export default function WebConnectorPage() {
       setSiteUrl('');
       setSiteName('');
       setEmail('');
+      setLoginVerified(false);
     } catch (e) {
       setError(e.message || 'Falha ao desconectar');
     } finally {
@@ -219,14 +223,16 @@ export default function WebConnectorPage() {
                   Entrar
                 </button>
               )}
-              <button
-                onClick={handleConfirm}
-                disabled={busy}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-emerald-500 text-zinc-950 hover:bg-emerald-400 disabled:opacity-40 transition"
-              >
-                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                Confirmar login e capturar sessão
-              </button>
+              {loginVerified && (
+                <button
+                  onClick={handleConfirm}
+                  disabled={busy}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-emerald-500 text-zinc-950 hover:bg-emerald-400 disabled:opacity-40 transition"
+                >
+                  {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                  Confirmar login e capturar sessão
+                </button>
+              )}
             </div>
           </div>
         )}
