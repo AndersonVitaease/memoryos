@@ -200,8 +200,10 @@ export default async function (req) {
 
       let cookies = [];
       try {
+        // browser_run_code_unsafe espera o código como corpo de função (entre
+        // chaves) — statements soltos com `return` na raiz dão SyntaxError.
         const result = await callMcp('browser_run_code_unsafe', {
-          code: 'const cookies = await page.context().cookies(); return JSON.stringify(cookies);',
+          code: '{ const cookies = await page.context().cookies(); return JSON.stringify(cookies); }',
         });
         const text = Array.isArray(result?.content) ? result.content.map((c) => c.text || '').join('') : String(result);
         const m = text.match(/```(?:json)?\n?([\s\S]*?)\n?```/) || [null, text];
