@@ -7,9 +7,9 @@
  *
  * Página nova e isolada — não reaproveita nem modifica BugHunterConsole.jsx.
  */
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
-import { Loader2, Link as LinkIcon, CheckCircle2, XCircle, ShieldCheck } from 'lucide-react';
+import { Loader2, Link as LinkIcon, CheckCircle2, XCircle, ShieldCheck, Search, Sparkles } from 'lucide-react';
 
 async function callWebConnector(operation, payload) {
   try {
@@ -32,6 +32,23 @@ async function callWebConnector(operation, payload) {
   }
 }
 
+async function callDiscover(operation, payload) {
+  try {
+    const res = await base44.functions.invoke('webConnectorDiscover', { operation, ...payload });
+    const data = res?.data ?? res;
+    if (data?.error) throw new Error(data.error);
+    return data;
+  } catch (err) {
+    const real =
+      err?.response?.data?.error ||
+      (typeof err?.response?.data === 'string' ? err.response.data : null) ||
+      err?.data?.error ||
+      err?.message ||
+      'Falha desconhecida ao chamar webConnectorDiscover';
+    throw new Error(real);
+  }
+}
+
 export default function WebConnectorPage() {
   const [siteUrl, setSiteUrl] = useState('');
   const [siteName, setSiteName] = useState('');
@@ -47,6 +64,25 @@ export default function WebConnectorPage() {
   const [password, setPassword] = useState('');
   const [loginVerified, setLoginVerified] = useState(false);
   const [sessionValid, setSessionValid] = useState(null);
+  const [candidates, setCandidates] = useState([]);
+  const [discovering, setDiscovering] = useState(false);
+  const [discoverSummary, setDiscoverSummary] = useState(null);
+
+  // Carrega candidatos existentes quando a sessao fica ativa (permite
+  // revisar descobertas de runs anteriores da mesma WebSession).
+  useEffect(() => {
+    if (webSessionId && status === 'active') {
+      (async () => {
+        try {
+          const recs = await base44.entities.CapabilityCandidate.filter({ web_session_id: webSessionId });
+          setCandidates(recs || []);
+        } catch (e) { /* best-effort */ }
+      })();
+    } else {
+      setCandidates([]);
+      setDiscoverSummary(null);
+    }
+  }, [webSessionId, status]);
 
   const handleStart = useCallback(async () => {
     if (!siteUrl) return;
@@ -134,6 +170,28 @@ export default function WebConnectorPage() {
       setSessionValid(false);
     } finally {
       setBusy(false);
+    }
+  }, [webSessionId]);
+
+  const handleDiscover = useCallback(async () => {
+    if (!webSessionId) return;
+    setDiscovering(true);
+    setError(null);
+    try {
+      const data = await callDiscover('discover', { webSessionId });
+      setDiscoverSummary({
+        pages_explored: data.pages_explored,
+        candidates_discovered: data.candidates_discovered,
+        visited_urls: data.visited_urls,
+      });
+      try {
+        const recs = await base44.entities.CapabilityCandidate.filter({ web_session_id: webSessionId });
+        setCandidates(recs || []);
+      } catch (e) { /* best-effort */ }
+    } catch (e) {
+      setError(e.message || 'Falha na descoberta de capabilities');
+    } finally {
+      setDiscovering(false);
     }
   }, [webSessionId]);
 
@@ -289,6 +347,73 @@ export default function WebConnectorPage() {
               >
                 Desconectar
               </button>
+            </div>
+
+            {/* RFC-013: Descoberta de capabilities (read-only) */}
+            <div className="pt-3 border-t border-zinc-800/60 space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={handleDiscover}
+                  disabled={discovering}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-violet-500/90 text-white hover:bg-violet-500 disabled:opacity-40 transition"
+                >
+                  {discovering ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                  Descobrir capabilities
+                </button>
+              </div>
+              <p className="text-[10px] text-zinc-600 leading-relaxed">
+                Navega o sistema autenticado e cataloga operações de leitura (buscas, consultas, listagens).
+                Nunca executa escrita — apenas observa. Candidatos ficam como <span className="font-mono">CapabilityCandidate</span> para validação humana.
+              </p>
+
+              {discoverSummary && (
+                <div className="text-xs text-zinc-400 space-y-1">
+                  <p className="text-emerald-400">
+                    {discoverSummary.candidates_discovered} candidato(s) encontrado(s) em {discoverSummary.pages_explored} página(s).
+                  </p>
+                  {discoverSummary.visited_urls?.length > 0 && (
+                    <details>
+                      <summary className="cursor-pointer text-zinc-500 hover:text-zinc-300">Páginas visitadas</summary>
+                      <ul className="mt-1 ml-4 list-disc text-zinc-600 font-mono text-[10px]">
+                        {discoverSummary.visited_urls.map((u) => <li key={u}>{u}</li>)}
+                      </ul>
+                    </details>
+                  )}
+                </div>
+              )}
+
+              {candidates.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-zinc-400 flex items-center gap-1.5">
+                    <Search className="w-3.5 h-3.5" /> Candidatos descobertos ({candidates.length})
+                  </p>
+                  <div className="space-y-2">
+                    {candidates.map((c) => {
+                      let fields = [];
+                      try { fields = JSON.parse(c.input_fields || '[]'); } catch (e) { fields = []; }
+                      return (
+                        <div key={c.id} className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-2.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-mono text-violet-300">{c.suggested_id}</span>
+                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 uppercase tracking-wide">{c.status}</span>
+                          </div>
+                          {c.description && <p className="text-[11px] text-zinc-500 mt-1">{c.description}</p>}
+                          {Array.isArray(fields) && fields.length > 0 && (
+                            <div className="mt-1.5 flex flex-wrap gap-1">
+                              {fields.map((f) => (
+                                <span key={f} className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-800/60 text-zinc-500 font-mono">{f}</span>
+                              ))}
+                            </div>
+                          )}
+                          {c.discovered_from_url && (
+                            <p className="text-[9px] text-zinc-600 mt-1 font-mono truncate">{c.discovered_from_url}</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
