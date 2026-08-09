@@ -699,7 +699,7 @@ export default async function (req) {
         const promptFn = finalMode === 'conversation' ? buildConversationPrompt : buildPrompt;
         const llmRes = await withTimeout(
           base44.asServiceRole.integrations.Core.InvokeLLM({
-            prompt: promptFn(targetUrl, scenario, history.slice(-MAX_HISTORY_ITEMS), snapshotText, consoleErrorsText, { loginEmail: finalLoginEmail, loginPassword: finalLoginPassword }, refs, priorQuestions) + extraWarning,
+            prompt: promptFn(targetUrl, scenario, history.slice(-MAX_HISTORY_ITEMS), snapshotText, consoleErrorsText, { loginEmail: finalLoginEmail, loginPassword: finalLoginPassword }, refs, priorQuestions),
             response_json_schema: DECISION_SCHEMA,
           }),
           45000,  // Aumentado de 30s para 45s (prompt pode crescer em modo continuo)
