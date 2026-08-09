@@ -2689,3 +2689,73 @@ if (browserTypeSkippedCount > 2) {
 
 **Build:** ✅ Vite build OK
 
+
+---
+
+## 🛑 CHECKPOINT: Fim dos Patches Incrementais (2026-08-09 17:10)
+
+### Status Atual:
+- ✅ PATCHES 13+14 funcionaram (run anterior: 22 respostas)
+- ❌ PATCHES 15-20 quebraram compilação/funcionalidade repetidamente (8+ tentativas)
+- 🔴 **Problema arquitetural, não de código**
+
+### Problema Raiz Identificado:
+
+**LLM ignora instruções críticas:**
+1. LLM retorna `browser_type` **SEM** campo obrigatório `text`
+2. PATCH 13 force `tool='none'` → DOM fallback envia
+3. **Próximo step:** LLM tenta `browser_type` de novo SEM `text`
+4. **LOOP INFINITO** ♻️ não é quebrável por patches
+
+**Por que patches não funcionam:**
+- ❌ LLM não "aprende" dentro do mesmo run
+- ❌ Contador de falhas não informa o LLM
+- ❌ Aviso no prompt é ignorado
+- ❌ Remover ferramenta quebra completamente
+- ❌ Cada tentativa causa novo erro de sintaxe/lógica
+
+### O Que Funcionou:
+
+**Run bem-sucedido: `bugHunter_1786234701818`**
+```
+- 24 perguntas enviadas
+- 22 respondidas
+- 12 itens no transcript
+- Status: "stopped" (completou normalmente)
+- Método: PATCHES 13+14 APENAS (reforço LLM + continuous logic clara)
+```
+
+### Solução de Longo Prazo (Redesign Necessário):
+
+**Opção 1 — Usar Playwright MCP direto** ⭐ RECOMENDADO
+```typescript
+// Não pedir LLM para "digitar"
+// Usar Playwright MCP para digitar automaticamente
+// LLM apenas: decide → percebe → próximo passo
+```
+**Tempo:** 45 min | **Confiabilidade:** 95%
+
+**Opção 2 — Múltiplos LLMs para falha-over**
+```typescript
+// Se LLM retorna browser_type sem text
+// → Try Sonnet (default)
+// → If fails, try Opus
+// → If fails, use typeViaEvaluate automático
+```
+**Tempo:** 30 min | **Confiabilidade:** 80%
+
+**Opção 3 — Sistema de "validation loop"**
+```typescript
+// LLM escreve decision
+// Sistema valida completude ANTES de executar
+// Se incompleto: retorna erro estruturado ao LLM
+// LLM tenta de novo mesma pergunta
+```
+**Tempo:** 60 min | **Confiabilidade:** 90%
+
+### Decisão Tomada:
+
+**PARAR patches incrementais. Iniciar REDESIGN Opção 1 ou 3.**
+
+Patches não são suficientes para um problema que é da própria decisão arquitetural de como LLM interage com browser.
+
