@@ -195,7 +195,10 @@ export default async function (req) {
           '  await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});' +
           '  await page.waitForSelector("input[type=password]", { timeout: 8000 }).catch(() => {});' +
           '  const pass = await page.$("input[type=password]");' +
-          '  if (!pass) return JSON.stringify({ error: "no-password-field" });' +
+          '  if (!pass) {' +
+          '    const dbg = { error: "no-password-field", url: page.url(), title: await page.title().catch(() => ""), bodySnippet: await page.evaluate(() => document.body ? document.body.innerText.slice(0, 400) : "(sem body)").catch(() => "") };' +
+          '    return JSON.stringify(dbg);' +
+          '  }' +
           '  const formHandle = await pass.evaluateHandle((el) => el.closest("form"));' +
           '  const formEl = formHandle && formHandle.asElement ? formHandle.asElement() : null;' +
           '  const emailSelector = "input[type=email], input[name=username], input[name=email], input[type=text]";' +
@@ -251,7 +254,8 @@ export default async function (req) {
       if (loginOutcome && (loginOutcome.error === 'no-password-field' || loginOutcome.error === 'no-email-field')) {
         const snap = await callMcp('browser_snapshot', {});
         const snapshotText = extractSnapshotText(snap);
-        return Response.json({ ok: false, error: 'Login form not found on page (DOM check: ' + loginOutcome.error + '). Verifique se a URL da sessão é a página de login.', snapshotText: snapshotText.slice(0, 4000) }, { status: 422 });
+        const dbg = ' [pagina carregada: ' + (loginOutcome.url || '?') + ' | titulo: ' + (loginOutcome.title || '?') + ' | corpo: ' + (loginOutcome.bodySnippet || '').slice(0, 200) + ']';
+        return Response.json({ ok: false, error: 'Login form not found on page (DOM check: ' + loginOutcome.error + '). Verifique se a URL da sessão é a página de login.' + dbg, snapshotText: snapshotText.slice(0, 4000) }, { status: 422 });
       }
 
       // Decide authed de forma confiável: o submit já esperou a navegação
