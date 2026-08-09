@@ -177,6 +177,7 @@ function buildPrompt(targetUrl, scenario, history, snapshotText, consoleErrorsTe
     '- browser_navigate       fields: url="https://..."                                      -> open a URL',
     '- browser_click          fields: target="s1e2" element="login button"                    -> click an element (target is the ref from the snapshot)',
     '- browser_press_key     fields: key="Enter"                                             -> press a keyboard key',
+    '- send_message_auto     fields: text="your message here"                                  -> send a message to the chat (SYSTEM will type automatically)'
     '- browser_snapshot      fields: (none)                                                  -> re-read the page structure',
     '- browser_navigate_back fields: (none)                                                  -> go back to previous page',
     '- none                   fields: (none)                                                  -> do nothing this step',
@@ -232,6 +233,7 @@ function buildConversationPrompt(targetUrl, scenario, history, snapshotText, con
     '- browser_click          fields: target="s1e2" element="login button"                    -> click an element (target is the ref from the snapshot)',
     '',
     '- browser_press_key     fields: key="Enter"                                             -> press a keyboard key',
+    '- send_message_auto     fields: text="your message here"                                  -> send a message to the chat (SYSTEM will type automatically)'
     '- browser_snapshot      fields: (none)                                                  -> re-read the page structure (use AFTER sending a message to read the assistant response)',
     '- browser_navigate_back fields: (none)                                                  -> go back to previous page',
     '- none                   fields: (none)                                                  -> do nothing this step',
@@ -254,7 +256,7 @@ function buildConversationPrompt(targetUrl, scenario, history, snapshotText, con
     '- Submit/Login button: ' + (_refs.submit || 'N/A'),
     '',
     'CRITICAL RULES:',
-    '*** FOR browser_type WITH NEXT_ACTION.TOOL="browser_type": YOU MUST ALWAYS FILL NEXT_ACTION.TEXT. If you do not provide text, the action is SKIPPED and nothing happens. NEVER send browser_type without text. ***',
+    '*** OPÇÃO 1: Use send_message_auto to send chat messages. The SYSTEM will handle typing and pressing Enter automatically. ***',
     '- NEVER use browser_navigate to go to a URL you are already on. If the Page URL in the snapshot matches your target, INTERACT with the page (click/type) instead of navigating.',
     '- For browser_navigate: set next_action.url to the full URL. Without url the action is skipped.',
     '- For browser_click: set next_action.target to a ref from the snapshot (e.g. "s1e2"). Without target the action is skipped.',
