@@ -134,14 +134,30 @@ export default async function (req) {
         return Response.json({ error: 'Navigate failed: ' + e.message }, { status: 502 });
       }
 
-      const snap = await callMcp('browser_snapshot', {});
-      const snapshotText = extractSnapshotText(snap);
-      const detectedFields = extractLoginRefs(snapshotText);
+      let snap = await callMcp('browser_snapshot', {});
+      let snapshotText = extractSnapshotText(snap);
+      let detectedFields = extractLoginRefs(snapshotText);
+
+      // Se não achou campos de login e a URL não termina em /login, tenta
+      // automaticamente URL + '/login' (evita o usuário ter que lembrar de
+      // colar a URL certa — base + /login é o padrão de 90% dos sites).
+      let finalSiteUrl = siteUrl;
+      if (!detectedFields.email && !detectedFields.password && !/\/login\/?$/.test(siteUrl)) {
+        const tryLoginUrl = siteUrl.replace(/\/$/, '') + '/login';
+        try {
+          await callMcp('browser_navigate', { url: tryLoginUrl });
+          try { await callMcp('browser_wait_for', { time: 2 }); } catch (e) { /* best-effort */ }
+          snap = await callMcp('browser_snapshot', {});
+          snapshotText = extractSnapshotText(snap);
+          detectedFields = extractLoginRefs(snapshotText);
+          if (detectedFields.email || detectedFields.password) finalSiteUrl = tryLoginUrl;
+        } catch (e) { /* best-effort: mantém URL original */ }
+      }
 
       let session;
       try {
         session = await withTimeout(base44.entities.WebSession.create({
-          site_url: siteUrl,
+          site_url: finalSiteUrl,
           site_name: siteName || '',
           browser_context_id: 'shared', // ver LIMITAÇÃO CONHECIDA no topo do arquivo
           status: 'pending_login',
