@@ -1,0 +1,69 @@
+{
+  "name": "CapabilityCandidate",
+  "type": "object",
+  "properties": {
+    "web_session_id": {
+      "type": "string",
+      "description": "Sessao usada na exploracao que originou este candidato"
+    },
+    "site_url": {
+      "type": "string",
+      "description": "URL base do sistema conectado"
+    },
+    "suggested_id": {
+      "type": "string",
+      "description": "ID sugerido da capability (ex: 'reservation.search', 'passenger.search')"
+    },
+    "description": {
+      "type": "string",
+      "description": "Descricao curta do que a capability faz, inferida pelo LLM"
+    },
+    "evidence": {
+      "type": "string",
+      "description": "JSON: snapshot/seletor/fluxo que originou a sugestao. Evidencia da observacao, nao codigo executavel."
+    },
+    "input_fields": {
+      "type": "string",
+      "description": "JSON array dos campos de entrada identificados no formulario (nome/label/tipo). Estrutura da operacao."
+    },
+    "discovered_from_url": {
+      "type": "string",
+      "description": "URL da pagina onde o candidato foi encontrado"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "candidate",
+        "validating",
+        "validated",
+        "rejected"
+      ],
+      "default": "candidate",
+      "description": "candidate = recem-descoberto; validating = em validacao read-only; validated = promovido para CapabilityMap; rejected = falso-positivo ou invalido"
+    },
+    "validation_notes": {
+      "type": "string",
+      "description": "Notas da validacao (o que foi checado, por que foi validado ou rejeitado)"
+    },
+    "rejected_reason": {
+      "type": "string",
+      "description": "Motivo da rejeicao quando status=rejected (ex: 'botao decorativo', 'nao e formulario', 'requer escrita')"
+    }
+  },
+  "required": [
+    "site_url",
+    "suggested_id",
+    "status"
+  ],
+  "rls": {
+    "read": {
+      "created_by_id": "{{user.id}}"
+    },
+    "update": {
+      "created_by_id": "{{user.id}}"
+    },
+    "delete": {
+      "created_by_id": "{{user.id}}"
+    }
+  }
+}
