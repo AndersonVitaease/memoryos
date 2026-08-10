@@ -11,7 +11,7 @@ import WebConnectorSection from '@/components/connections/WebConnectorSection';
 
 export default function WebConnectorPage() {
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6">
+    <div className="min-h-screen bg-zinc-950 text-foreground p-6">
       <div className="max-w-3xl mx-auto space-y-5">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-violet-500/15 border border-violet-500/30 flex items-center justify-center">
@@ -19,7 +19,7 @@ export default function WebConnectorPage() {
           </div>
           <div>
             <h1 className="text-lg font-semibold">Conectar novo sistema</h1>
-            <p className="text-xs text-zinc-500">Também disponível na página de Conectores</p>
+            <p className="text-xs text-muted-foreground">Também disponível na página de Conectores</p>
           </div>
         </div>
         <WebConnectorSection />

@@ -145,26 +145,26 @@ export default function LiveLoginPanel({ onSessionActive }) {
       )}
 
       {!webSessionId && (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 space-y-3">
+        <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
           <div>
-            <label className="block text-xs font-medium text-zinc-400 mb-1">URL do sistema</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">URL do sistema</label>
             <input
               value={siteUrl}
               onChange={(e) => setSiteUrl(e.target.value)}
               placeholder="https://portal.empresa.com"
-              className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+              className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/40"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-zinc-400 mb-1">Nome (opcional)</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Nome (opcional)</label>
             <input
               value={siteName}
               onChange={(e) => setSiteName(e.target.value)}
               placeholder="ex: Wooba, CRM interno"
-              className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+              className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/40"
             />
           </div>
-          <div className="flex items-start gap-2 text-[11px] text-zinc-500 bg-zinc-950/40 border border-zinc-800/60 rounded-lg p-2.5">
+          <div className="flex items-start gap-2 text-[11px] text-muted-foreground bg-muted/30 border border-border rounded-lg p-2.5">
             <Monitor className="w-3.5 h-3.5 shrink-0 mt-0.5 text-violet-400" />
             <span>
               Modo live: abre um navegador visivel (noVNC) onde voce faz o login manualmente,
@@ -195,7 +195,7 @@ export default function LiveLoginPanel({ onSessionActive }) {
             )}
           </div>
 
-          <p className="text-xs text-zinc-300 leading-relaxed">
+          <p className="text-xs text-foreground leading-relaxed">
             Uma janela com o navegador abriu em nova aba. Faca o login no site la
             (resolve CAPTCHA/2FA normalmente). Quando terminar, volte aqui e clique
             em <span className="text-amber-300 font-medium">Capturar sessao</span>.
@@ -206,14 +206,14 @@ export default function LiveLoginPanel({ onSessionActive }) {
               href={novncUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium bg-zinc-800 text-zinc-200 hover:bg-zinc-700 transition"
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium bg-muted text-foreground hover:bg-muted transition"
             >
               <ExternalLink className="w-3.5 h-3.5" />
               Reabrir noVNC
             </a>
           </div>
 
-          <div className="flex items-center gap-1.5 text-[10px] text-zinc-600">
+          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
             <ShieldCheck className="w-3 h-3" />
             A senha que voce digitar no navegador live nao e armazenada — apenas os cookies de sessao.
           </div>

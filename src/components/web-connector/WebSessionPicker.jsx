@@ -48,12 +48,12 @@ export default function WebSessionPicker({ onRetomar, onNew, currentSessionId, s
   React.useEffect(() => { load(); }, [load]);
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 space-y-3">
+    <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <p className="text-xs font-medium text-zinc-400 flex items-center gap-1.5">
+        <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
           <Globe className="w-3.5 h-3.5" /> Sessoes conectadas ({sessions.length})
         </p>
-        <button onClick={load} disabled={loading} className="inline-flex items-center gap-1 text-[10px] text-zinc-500 hover:text-zinc-300">
+        <button onClick={load} disabled={loading} className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground">
           {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
           Atualizar
         </button>
@@ -67,7 +67,7 @@ export default function WebSessionPicker({ onRetomar, onNew, currentSessionId, s
       )}
 
       {!loading && sessions.length === 0 && !error && (
-        <p className="text-[11px] text-zinc-600">Nenhuma sessao ativa. Conecte um novo site abaixo.</p>
+        <p className="text-[11px] text-muted-foreground">Nenhuma sessao ativa. Conecte um novo site abaixo.</p>
       )}
 
       <div className="space-y-2">
@@ -77,16 +77,16 @@ export default function WebSessionPicker({ onRetomar, onNew, currentSessionId, s
           const expiry = fmtExpiry(s.expires_at);
           const expired = expiry === 'expirada';
           return (
-            <div key={s.id} className={"rounded-lg border p-2.5 flex items-center justify-between gap-2 " + (isCurrent ? "border-emerald-500/40 bg-emerald-500/5" : "border-zinc-800 bg-zinc-900/50")}>
+            <div key={s.id} className={"rounded-lg border p-2.5 flex items-center justify-between gap-2 " + (isCurrent ? "border-emerald-500/40 bg-emerald-500/5" : "border-border bg-muted/20")}>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
                   <CheckCircle2 className={"w-3.5 h-3.5 shrink-0 " + (expired ? "text-amber-400" : "text-emerald-400")} />
-                  <span className="text-xs font-mono text-zinc-200 truncate">{host}</span>
+                  <span className="text-xs font-mono text-foreground truncate">{host}</span>
                   {isCurrent && <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 uppercase tracking-wide">ativa</span>}
                 </div>
                 <div className="flex items-center gap-1 mt-0.5">
-                  <Clock className={"w-3 h-3 " + (expired ? "text-amber-400" : "text-zinc-600")} />
-                  <span className={"text-[10px] " + (expired ? "text-amber-400" : "text-zinc-500")}>{expiry}</span>
+                  <Clock className={"w-3 h-3 " + (expired ? "text-amber-400" : "text-muted-foreground")} />
+                  <span className={"text-[10px] " + (expired ? "text-amber-400" : "text-muted-foreground")}>{expiry}</span>
                 </div>
               </div>
               <button
@@ -104,7 +104,7 @@ export default function WebSessionPicker({ onRetomar, onNew, currentSessionId, s
       {showNewButton && (
         <button
           onClick={onNew}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-zinc-800 text-zinc-200 hover:bg-zinc-700 transition"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-muted text-foreground hover:bg-muted transition"
         >
           <Plus className="w-3.5 h-3.5" />
           Conectar novo site
