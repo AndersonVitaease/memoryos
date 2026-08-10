@@ -229,8 +229,35 @@ export default async function (req) {
         stealthScript: STEALTH_INIT_SCRIPT,
       });
       if (_warmup.stillOnLogin) {
+        // Diagnostico persistente (2026-08-10): o Bling (e SPAs OAuth
+        // parecidos) ainda redirecionavam pra /login mesmo apos warm-up, sem
+        // deixar rastro. Captura URL final + snapshot preview + contagem de
+        // cookies pra entender se e refresh token invalido, dominio errado,
+        // ou SPA que nao dispara bootstrap na raiz.
+        let _diagSnapshot = '';
+        try {
+          const snap = await callMcp('browser_snapshot', {});
+          _diagSnapshot = extractSnapshotText(snap).slice(0, 1500);
+        } catch (e) { /* best-effort */ }
+        try {
+          await base44.asServiceRole.entities.InteractionEvent.create({
+            session_id: '',
+            actor: 'system',
+            event_type: 'web_warmup_failed',
+            raw_text: String(session.site_url || '').slice(0, 500),
+            payload: JSON.stringify({
+              finalUrl: _warmup.finalUrl,
+              stillOnLogin: _warmup.stillOnLogin,
+              error: _warmup.error || null,
+              cookieCount: Array.isArray(_warmup.refreshedCookies) ? _warmup.refreshedCookies.length : 0,
+              storedCookieCount: cookies.length,
+              snapshotPreview: _diagSnapshot,
+            }),
+          });
+        } catch (e2) { /* best-effort */ }
+        try { await callMcp('browser_close', {}); } catch (e) { /* best-effort */ }
         return Response.json({
-          error: 'Sessão expirou durante o aquecimento (redirecionou para login). Reautentique via start+login+confirm.',
+          error: 'Sessão expirou durante o aquecimento (redirecionou para login). Reautentique via start+login+confirm. Diagnostico capturado.',
           candidates_discovered: 0,
         }, { status: 409 });
       }
