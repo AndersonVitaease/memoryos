@@ -501,7 +501,6 @@ export default async function (req) {
           '  await page.context().addCookies(' + escapedCookies + ');' +
           '  await page.goto(' + escapedSiteUrl + ', { waitUntil: "load", timeout: 15000 }).catch(() => {});' +
           '  await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});' +
-          '  // Warm-up pos-navegacao: da 3s pro SPA renovar o access token.' +
           '  await new Promise((r) => setTimeout(r, 3000));' +
           '  await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});' +
           '  const finalUrl = page.url();' +
