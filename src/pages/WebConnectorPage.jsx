@@ -12,6 +12,7 @@ import { base44 } from '@/api/base44Client';
 import { Loader2, Link as LinkIcon, CheckCircle2, XCircle, ShieldCheck, Search, Sparkles } from 'lucide-react';
 import WebCapabilityExecutor from '@/components/web-connector/WebCapabilityExecutor';
 import LiveLoginPanel from '@/components/web-connector/LiveLoginPanel';
+import WebSessionPicker from '@/components/web-connector/WebSessionPicker';
 
 async function callWebConnector(operation, payload) {
   try {
@@ -55,6 +56,7 @@ export default function WebConnectorPage() {
   const [siteUrl, setSiteUrl] = useState('');
   const [siteName, setSiteName] = useState('');
   const [mode, setMode] = useState('automated'); // 'automated' (Playwright DOM) | 'live' (Selenium noVNC, RFC-015)
+  const [showNewConnection, setShowNewConnection] = useState(false); // Topico A: true = mostra form de conexao, false = mostra seletor
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -73,16 +75,18 @@ export default function WebConnectorPage() {
   const [discoverSummary, setDiscoverSummary] = useState(null);
   const [candidateBusyId, setCandidateBusyId] = useState(null);
 
-  // Retoma automaticamente a sessao ativa mais recente ao montar a pagina.
+  // Topico A (multi-site): auto-retomar SOMENTE se houver exatamente 1 sessao
+  // ativa (mantem UX atual para caso simples). Se houver multiplas, o
+  // WebSessionPicker aparece no topo para o usuario escolher qual retomar.
   // Sem isso, um F5/reload perdia a referencia da sessao mesmo com ela ainda
   // ativa e valida no banco (bug observado na sessao RFC-015 2026-08-10).
   useEffect(() => {
     if (webSessionId) return;
     (async () => {
       try {
-        const recent = await base44.entities.WebSession.filter({ status: 'active' }, '-created_date', 1);
-        if (recent && recent.length > 0) {
-          const s = recent[0];
+        const recs = await base44.entities.WebSession.filter({ status: 'active' }, '-created_date', 20);
+        if (recs && recs.length === 1) {
+          const s = recs[0];
           setWebSessionId(s.id);
           setStatus('active');
           setSiteUrl(s.site_url || '');
@@ -92,6 +96,35 @@ export default function WebConnectorPage() {
       } catch (e) { /* best-effort: sem sessao pra retomar, segue tela inicial */ }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleRetomarSessao = useCallback((s) => {
+    setWebSessionId(s.id);
+    setStatus('active');
+    setSiteUrl(s.site_url || '');
+    setLoginUrl(s.site_url || '');
+    setSiteName(s.site_name || '');
+    setSnapshotText('');
+    setDetectedFields(null);
+    setLoginVerified(false);
+    setSessionValid(null);
+    setShowNewConnection(false);
+  }, []);
+
+  const handleConectarNovo = useCallback(() => {
+    // Limpa a sessao atual sem revogar — so muda a view pro fluxo de conexao.
+    setWebSessionId(null);
+    setStatus(null);
+    setSiteUrl('');
+    setSiteName('');
+    setLoginUrl('');
+    setEmail('');
+    setPassword('');
+    setSnapshotText('');
+    setDetectedFields(null);
+    setLoginVerified(false);
+    setSessionValid(null);
+    setShowNewConnection(true);
   }, []);
 
   // Carrega candidatos existentes quando a sessao fica ativa (permite
@@ -178,6 +211,7 @@ export default function WebConnectorPage() {
       setLoginUrl('');
       setLoginVerified(false);
       setSessionValid(null);
+      setShowNewConnection(false);
     } catch (e) {
       setError(e.message || 'Falha ao desconectar');
     } finally {
@@ -314,14 +348,18 @@ export default function WebConnectorPage() {
           </div>
         )}
 
-        {!webSessionId && (
+        {!webSessionId && !showNewConnection && (
+          <WebSessionPicker onRetomar={handleRetomarSessao} onNew={handleConectarNovo} currentSessionId={webSessionId} />
+        )}
+
+        {!webSessionId && showNewConnection && (
           <div className="flex gap-1 p-1 rounded-lg bg-zinc-900/60 border border-zinc-800 w-fit">
             <button onClick={() => setMode('automated')} className={"px-3 py-1.5 rounded-md text-xs font-medium transition " + (mode === 'automated' ? 'bg-violet-500 text-white' : 'text-zinc-400 hover:text-zinc-200')}>Automatico (DOM)</button>
             <button onClick={() => setMode('live')} className={"px-3 py-1.5 rounded-md text-xs font-medium transition " + (mode === 'live' ? 'bg-violet-500 text-white' : 'text-zinc-400 hover:text-zinc-200')}>Live (manual)</button>
           </div>
         )}
 
-        {!webSessionId && mode === 'automated' && (
+        {!webSessionId && showNewConnection && mode === 'automated' && (
           <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 space-y-3">
             <div>
               <label className="block text-xs font-medium text-zinc-400 mb-1">URL do sistema</label>
@@ -352,8 +390,8 @@ export default function WebConnectorPage() {
           </div>
         )}
 
-        {!webSessionId && mode === 'live' && (
-          <LiveLoginPanel onSessionActive={(id, url) => { setWebSessionId(id); setStatus('active'); setSiteUrl(url); setLoginUrl(url); }} />
+        {!webSessionId && showNewConnection && mode === 'live' && (
+          <LiveLoginPanel onSessionActive={(id, url) => { setWebSessionId(id); setStatus('active'); setSiteUrl(url); setLoginUrl(url); setShowNewConnection(false); }} />
         )}
 
         {webSessionId && status === 'pending_login' && (
