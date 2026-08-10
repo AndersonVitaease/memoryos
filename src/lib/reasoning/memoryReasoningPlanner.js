@@ -573,8 +573,29 @@ ${fullText}`;
       const _links = Array.isArray(_d?.links) ? _d.links : [];
       if (_snap) {
         const _filled = Array.isArray(_d?.filled) ? _d.filled.join(", ") : "";
-        const _linksBlock = _links.length > 0
-          ? `\n\nDADOS REAIS DOS ANUNCIOS (cada item tem titulo, cardText com preco/parcelas/frete/condicao/avaliacao, e o href real do anuncio — use o href como o link do produto):\n` + _links.map((l) => `- TITULO: ${l.text}\n  CARD: ${l.cardText || "(sem card)"}\n  LINK: ${l.href}`).join("\n")
+        // Fix (2026-08-10): links de resultado de busca (ex: Mercado Livre)
+        // costumam vir como URL de redirecionamento/rastreamento gigante
+        // (centenas de caracteres, ex: click1.mercadolivre.com.br/mclics/...).
+        // Isso inflava MUITO o tamanho do prompt e provavelmente estourava o
+        // orcamento de tokens da resposta antes da IA terminar de listar os
+        // 10 produtos pedidos (sintoma observado: so 1 produto retornado em
+        // vez de 10). Encurta pra URL canonica do produto (so o ID) ANTES de
+        // mandar pra IA — aponta pro mesmo produto, ocupa uma fracao do espaco.
+        const _shortenProductUrl = (href) => {
+          if (!href) return href;
+          const m = String(href).match(/(?:item_id[%3A:=]+|[/-])(MLB-?\d{6,})/i);
+          if (m) {
+            const id = m[1].replace(/^MLB-?/i, 'MLB-');
+            try {
+              const host = new URL(href).hostname;
+              return `https://produto.${host.replace(/^(click1|www)\./, '')}/p/${id}`;
+            } catch (e) { return `https://produto.mercadolivre.com.br/p/${id}`; }
+          }
+          return href; // sem ID reconhecivel: mantem o original, melhor que quebrar o link
+        };
+        const _linksShort = _links.map((l) => ({ ...l, href: _shortenProductUrl(l.href) }));
+        const _linksBlock = _linksShort.length > 0
+          ? `\n\nDADOS REAIS DOS ANUNCIOS (cada item tem titulo, cardText com preco/parcelas/frete/condicao/avaliacao, e o href real do anuncio — use o href como o link do produto):\n` + _linksShort.map((l) => `- TITULO: ${l.text}\n  CARD: ${l.cardText || "(sem card)"}\n  LINK: ${l.href}`).join("\n")
           : "";
         _webConnectorGroundingNote =
           `RESULTADO REAL DA BUSCA NO SITE ${hostOf(_webIntent.siteUrl)} (capability "${_webIntent.capability.id}"${_filled ? `, preenchido: ${_filled}` : ""}). ` +
