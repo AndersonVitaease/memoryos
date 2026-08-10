@@ -23,6 +23,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { connect as mcpConnect, resolveHeaders as mcpResolveHeaders, tryRecoverResultFromError } from '../../shared/mcpClient.ts';
 import { withTimeout, extractSnapshotText, extractRunCodeText, makeCallMcp } from '../../shared/mcpHelpers.ts';
+import { warmupSession } from '../../shared/webSessionWarmup.ts';
 
 const PLAYWRIGHT_SERVER_NAME = 'playwright-web-connector';
 const MCP_CALL_TIMEOUT_MS = 25000;
@@ -213,6 +214,31 @@ export default async function (req) {
 
       // Limpa browser pendurado de runs anteriores.
       try { await callMcp('browser_close', {}); } catch (e) { /* best-effort */ }
+
+      // Warm-up (fix Bling/OAuth): antes de catalogar qualquer pagina, injeta
+      // cookies, navega pro site e espera 3s pro SPA renovar o access token
+      // via refresh token. Sem isto, sites com access token de vida curta
+      // redirecionam pra /login na PRIMEIRA navegacao da descoberta, antes
+      // mesmo de comecar a catalogar — exatamente o bug do Bling.
+      const _warmup = await warmupSession({
+        callMcp,
+        cookies,
+        siteUrl: session.site_url,
+        base44,
+        sessionId: session.id,
+        stealthScript: STEALTH_INIT_SCRIPT,
+      });
+      if (_warmup.stillOnLogin) {
+        return Response.json({
+          error: 'Sessão expirou durante o aquecimento (redirecionou para login). Reautentique via start+login+confirm.',
+          candidates_discovered: 0,
+        }, { status: 409 });
+      }
+      // Cookies renovados pelo SPA ficam no context; atualiza a variavel
+      // local para que as navegacoes seguintes da fila usem o token fresco.
+      if (_warmup.refreshedCookies && _warmup.refreshedCookies.length > 0) {
+        cookies = _warmup.refreshedCookies;
+      }
 
       let pageIdx = 0;
       while (queue.length > 0 && pageIdx < pageLimit) {
