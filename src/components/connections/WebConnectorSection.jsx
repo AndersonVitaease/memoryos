@@ -287,47 +287,26 @@ export default function WebConnectorSection() {
   const refreshCandidates = useCallback(async () => {
     if (!webSessionId) return;
     try {
-      const recs = await base44.entities.CapabilityCandidate.filter({ web_session_id: webSessionId });
-      setCandidates(recs || []);
+      if (isAdmin) {
+        const data = await callGovernance('listAllCandidates', { siteUrl });
+        setCandidates(data.candidates || []);
+      } else {
+        const recs = await base44.entities.CapabilityCandidate.filter({ web_session_id: webSessionId });
+        setCandidates(recs || []);
+      }
     } catch (e) { /* best-effort */ }
-  }, [webSessionId]);
+  }, [webSessionId, isAdmin, siteUrl]);
 
+  // Governanca (2026-08-10): validar/rejeitar agora passam pela function
+  // capabilityGovernance (admin-only, checado no backend) em vez de escrever
+  // direto nas entidades. Isso e o que garante que so administrador decide o
+  // que vira CapabilityMap oficial — antes, qualquer usuario autenticado
+  // conseguia promover um candidato pra uma capability GLOBAL compartilhada.
   const handleValidateCandidate = useCallback(async (cand) => {
     setCandidateBusyId(cand.id);
     setError(null);
     try {
-      let fields = [];
-      try { fields = JSON.parse(cand.input_fields || '[]'); } catch (e) { fields = []; }
-      const props = {};
-      (Array.isArray(fields) ? fields : []).forEach((f) => { props[f] = { type: 'string' }; });
-      const capObj = {
-        id: cand.suggested_id,
-        description: cand.description || '',
-        inputSchema: { type: 'object', properties: props },
-        discoveredFrom: cand.discovered_from_url || '',
-      };
-      const existing = await base44.entities.CapabilityMap.filter({ site_url: cand.site_url });
-      if (existing.length > 0) {
-        const map = existing[0];
-        let caps = [];
-        try { caps = JSON.parse(map.capabilities || '[]'); } catch (e) { caps = []; }
-        if (!Array.isArray(caps)) caps = [];
-        if (!caps.find((x) => x.id === capObj.id)) caps.push(capObj);
-        await base44.entities.CapabilityMap.update(map.id, {
-          capabilities: JSON.stringify(caps),
-          last_validated_at: new Date().toISOString(),
-        });
-      } else {
-        await base44.entities.CapabilityMap.create({
-          site_url: cand.site_url,
-          capabilities: JSON.stringify([capObj]),
-          last_validated_at: new Date().toISOString(),
-        });
-      }
-      await base44.entities.CapabilityCandidate.update(cand.id, {
-        status: 'validated',
-        validation_notes: 'Promovido para CapabilityMap pelo usuario.',
-      });
+      await callGovernance('validate', { candidateId: cand.id });
       await refreshCandidates();
     } catch (e) {
       setError(e.message || 'Falha ao validar candidato');
@@ -342,10 +321,7 @@ export default function WebConnectorSection() {
     setCandidateBusyId(cand.id);
     setError(null);
     try {
-      await base44.entities.CapabilityCandidate.update(cand.id, {
-        status: 'rejected',
-        rejected_reason: reason,
-      });
+      await callGovernance('reject', { candidateId: cand.id, reason });
       await refreshCandidates();
     } catch (e) {
       setError(e.message || 'Falha ao rejeitar candidato');
