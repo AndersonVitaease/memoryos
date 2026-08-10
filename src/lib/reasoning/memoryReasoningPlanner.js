@@ -487,7 +487,7 @@ ${fullText}`;
       // B3: valida TTL da sessao antes de executar
       if (_webIntent.webSessionExpiresAt && new Date(_webIntent.webSessionExpiresAt) < new Date()) {
         return {
-          response: `Sua sessão de **${hostOf(_webIntent.siteUrl)}** expirou. Reconecte em **Web Connector** (\`/web-connector\`) para eu poder buscar lá de novo.`,
+          response: `Sua sessão de **${hostOf(_webIntent.siteUrl)}** expirou. Reconecte em **Conectores** (\`/connections\`) para eu poder buscar lá de novo.`,
           plan: { goal: "web_connector_expired", goalLabel: "Web Connector — sessão expirada", strategy: "Guard Web Connector", skills: [], skillsCount: 0, sourcesCount: 0, contextLength: 0, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: "web", responseTimeMs: Date.now() - startTime, handledByGuard: "WEB-CONNECTOR-EXPIRED" },
           sources: [],
         };
