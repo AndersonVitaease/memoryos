@@ -130,7 +130,7 @@ export default async function (req) {
       // script roda ANTES de qualquer JS da pagina em toda navegacao dentro
       // do context, mascarando os sinais mais comuns.
       const STEALTH_INIT_SCRIPT =
-        'Object.defineProperty(navigator, "webdriver", { get: () => undefined }); ' +
+        'Object.defineProperty(navigator, "webdriver", { get: () => false }); ' +
         'window.chrome = window.chrome || { runtime: {} }; ' +
         'Object.defineProperty(navigator, "plugins", { get: () => [1,2,3,4,5] }); ' +
         'Object.defineProperty(navigator, "languages", { get: () => ["pt-BR","pt","en-US","en"] });';
