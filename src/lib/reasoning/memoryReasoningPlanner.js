@@ -511,7 +511,7 @@ ${fullText}`;
       if (_snap) {
         const _filled = Array.isArray(_d?.filled) ? _d.filled.join(", ") : "";
         const _linksBlock = _links.length > 0
-          ? `\n\nLINKS REAIS DOS ANUNCIOS (casa o texto de cada link com o titulo/valor no snapshot acima, e use o href correspondente como o link do produto):\n` + _links.map((l) => `- ${l.text} -> ${l.href}`).join("\n")
+          ? `\n\nDADOS REAIS DOS ANUNCIOS (cada item tem titulo, cardText com preco/parcelas/frete/condicao, e o href real do anuncio — use o href como o link clicavel do produto):\n` + _links.map((l) => `- TITULO: ${l.text}\n  CARD: ${l.cardText || "(sem card)"}\n  LINK: ${l.href}`).join("\n")
           : "";
         _webConnectorGroundingNote =
           `RESULTADO REAL DA BUSCA NO SITE ${hostOf(_webIntent.siteUrl)} (capability "${_webIntent.capability.id}"${_filled ? `, preenchido: ${_filled}` : ""}). ` +
