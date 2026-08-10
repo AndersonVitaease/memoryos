@@ -113,44 +113,105 @@ export default async function (req) {
         return Response.json({ error: 'No cookies stored in this WebSession.' }, { status: 409 });
       }
 
-      const pageLimit = Math.min(Math.max(parseInt(maxPages, 10) || DEFAULT_MAX_PAGES, 1), 5);
-      const visitedUrls = [session.site_url];
+      const pageLimit = Math.min(Math.max(parseInt(maxPages, 10) || DEFAULT_MAX_PAGES, 1), MAX_PAGES_HARD_CAP);
+      const visitedUrls = [];
+      const visitedSet = new Set();
+      const queuedSet = new Set([session.site_url]);
+      const queue = [session.site_url];
       const allCandidates = [];
-      let currentUrl = session.site_url;
       let debugLastPageLinks = [];
       let debugLastHovered = null;
       let debugLastError = null;
       let debugRawLinksCount = null;
       let debugLastSnapshotPreview = '';
 
+      // Anti-deteccao (fix 2026-08-10): sites com anti-bot (Cloudflare,
+      // hCaptcha, WAF) recusam sessoes com sinais obvios de automacao. Este
+      // script roda ANTES de qualquer JS da pagina em toda navegacao dentro
+      // do context, mascarando os sinais mais comuns.
+      const STEALTH_INIT_SCRIPT =
+        'Object.defineProperty(navigator, "webdriver", { get: () => undefined }); ' +
+        'window.chrome = window.chrome || { runtime: {} }; ' +
+        'Object.defineProperty(navigator, "plugins", { get: () => [1,2,3,4,5] }); ' +
+        'Object.defineProperty(navigator, "languages", { get: () => ["pt-BR","pt","en-US","en"] });';
+
+      // Fix 3b (2026-08-10): aceita qualquer subdominio do mesmo dominio raiz
+      // (nao so hostname identico) — sites grandes usam subdominios diferentes
+      // pra areas de conta (ex: myaccount.mercadolivre.com.br).
+      const baseHost = (() => { try { return new URL(session.site_url).hostname.replace(/^www\./, ''); } catch (e) { return null; } })();
+      const sameDomain = (href) => {
+        if (!baseHost) return true;
+        try {
+          const h = new URL(href).hostname.replace(/^www\./, '');
+          return h === baseHost || h.endsWith('.' + baseHost);
+        } catch (e) { return false; }
+      };
+
+      // Palavras-chave de areas de conta relevantes (compras, vendas,
+      // anuncios, financeiro, perguntas) — usado como fallback quando a IA
+      // nao sugere navigation_links uteis, e para descoberta AUTOMATICA de
+      // multiplas areas numa unica chamada (fix 2026-08-10, branching).
+      const ACCOUNT_AREA_KEYWORDS = /compra|pedido|venda|anuncio|publica|purchase|order|sale|listing|conta|account|central.?do.?vendedor|seller|historico|extrato|fatura|nota|pergunta|question|financeiro|reputa/i;
+
+      async function extractAllLinks() {
+        const res = await callMcp('browser_run_code_unsafe', {
+          code: 'async (page) => { ' +
+            'const links = await page.$$eval("a[href]", (els) => els.map((e) => ({ text: (e.innerText || e.textContent || "").trim(), href: e.href })).filter((l) => l.href && l.text)); ' +
+            'return JSON.stringify({ links: links.slice(0, 300) }); ' +
+            '}',
+        });
+        const text = extractRunCodeText(res);
+        const m = text.match(/```(?:json)?\n?([\s\S]*?)\n?```/) || [null, text];
+        let outcome = JSON.parse((m[1] || text).trim());
+        if (typeof outcome === 'string') outcome = JSON.parse(outcome);
+        return (outcome && Array.isArray(outcome.links)) ? outcome.links : [];
+      }
+
+      async function revealHoverMenus() {
+        // Dispara hover (mouse+pointer events) nos elementos mais provaveis de
+        // serem gatilho de menu de conta/usuario — read-only, so revela DOM ja
+        // existente via CSS/JS state (React 17+ pode usar mouse ou pointer).
+        try {
+          const res = await callMcp('browser_run_code_unsafe', {
+            code: 'async (page) => { ' +
+              'const candidates = Array.from(document.querySelectorAll("header *, nav *, [class*=user], [class*=account], [class*=avatar], [class*=perfil], [class*=conta]")); ' +
+              'const fireHover = (el) => { ' +
+              '  for (const type of ["mouseover","mouseenter","pointerover","pointerenter"]) { ' +
+              '    try { el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window })); } catch (e2) {} ' +
+              '  } ' +
+              '}; ' +
+              'candidates.slice(0, 40).forEach(fireHover); ' +
+              'await new Promise((r) => setTimeout(r, 500)); ' +
+              'return JSON.stringify({ hovered: candidates.length }); ' +
+              '}',
+          });
+          const text = extractRunCodeText(res);
+          const m = text.match(/```(?:json)?\n?([\s\S]*?)\n?```/) || [null, text];
+          let outcome = JSON.parse((m[1] || text).trim());
+          if (typeof outcome === 'string') outcome = JSON.parse(outcome);
+          return outcome && typeof outcome.hovered === 'number' ? outcome.hovered : null;
+        } catch (e) { return null; }
+      }
+
       // Limpa browser pendurado de runs anteriores.
       try { await callMcp('browser_close', {}); } catch (e) { /* best-effort */ }
 
-      for (let pageIdx = 0; pageIdx < pageLimit; pageIdx++) {
-        // Injeta cookies + navega para currentUrl numa UNICA chamada
-        // (mesmo padrao da operacao 'use' do webConnectorConnect — garante
-        // que addCookies e goto operam no mesmo context).
-        //
-        // Anti-deteccao (fix 2026-08-10): confirmado via debug que o
-        // Mercado Livre retorna HTTP 403 pro motor de descoberta (Playwright
-        // headless) mesmo com cookies validos — bloqueio de WAF/anti-bot na
-        // borda. addInitScript roda ANTES de qualquer script da pagina em
-        // toda navegacao dentro do context, mascarando os sinais JS mais
-        // comuns de automacao (navigator.webdriver, plugins vazios, chrome
-        // object ausente). Nao resolve tudo (User-Agent com "HeadlessChrome"
-        // exige mudanca de infra no container, ver SETUP.md), mas cobre a
-        // deteccao client-side mais comum.
+      let pageIdx = 0;
+      while (queue.length > 0 && pageIdx < pageLimit) {
+        const currentUrl = queue.shift();
+        if (visitedSet.has(currentUrl)) continue;
+        visitedSet.add(currentUrl);
+        visitedUrls.push(currentUrl);
+
+        // Injeta cookies + navega para currentUrl numa UNICA chamada (mesmo
+        // padrao da operacao 'use' do webConnectorConnect — garante que
+        // addCookies e goto operam no mesmo context). addInitScript mascara
+        // sinais de automacao antes de qualquer script da pagina rodar.
         const escapedCookies = JSON.stringify(cookies);
         const escapedUrl = JSON.stringify(currentUrl);
-        let navOk = true;
         try {
           const code = 'async (page) => {' +
-            '  await page.context().addInitScript(() => {' +
-            '    Object.defineProperty(navigator, "webdriver", { get: () => undefined });' +
-            '    window.chrome = window.chrome || { runtime: {} };' +
-            '    Object.defineProperty(navigator, "plugins", { get: () => [1,2,3,4,5] });' +
-            '    Object.defineProperty(navigator, "languages", { get: () => ["pt-BR","pt","en-US","en"] });' +
-            '  });' +
+            '  await page.context().addInitScript(() => {' + STEALTH_INIT_SCRIPT + '});' +
             '  await page.context().addCookies(' + escapedCookies + ');' +
             '  await page.goto(' + escapedUrl + ', { waitUntil: "load", timeout: 15000 }).catch(() => {});' +
             '  await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});' +
@@ -161,7 +222,8 @@ export default async function (req) {
           const m = navText.match(/```(?:json)?\n?([\s\S]*?)\n?```/) || [null, navText];
           let navOutcome = JSON.parse((m[1] || navText).trim());
           if (typeof navOutcome === 'string') navOutcome = JSON.parse(navOutcome);
-          // Se redirecionou pra login, a sessao expirou — aborta.
+          // Se redirecionou pra login, a sessao expirou — aborta tudo (cookies
+          // compartilhados, qualquer outra pagina da fila teria o mesmo problema).
           if (navOutcome && /\/login/.test(navOutcome.url)) {
             return Response.json({
               error: 'Sessao expirou durante a descoberta (redirecionou para login). Reautentique via start+login+confirm.',
@@ -169,8 +231,9 @@ export default async function (req) {
             }, { status: 409 });
           }
         } catch (e) {
-          navOk = false;
           debugLastError = 'nav_step_failed: ' + (e && e.message ? e.message : String(e));
+          pageIdx++;
+          continue; // pula esta pagina, tenta a proxima da fila
         }
 
         let snapshotText = '';
@@ -180,15 +243,15 @@ export default async function (req) {
           debugLastSnapshotPreview = snapshotText.slice(0, 500);
         } catch (e) {
           debugLastError = 'snapshot_step_failed: ' + (e && e.message ? e.message : String(e));
-          // Sem snapshot, nao da pra descobrir nesta pagina — pula.
-          break;
+          pageIdx++;
+          continue;
         }
 
         // LLM: identifica candidatos read-only + links de navegacao.
         let llmResult = null;
         try {
           const prompt = buildDiscoveryPrompt(snapshotText, session.site_url, visitedUrls);
-          const llmRes = await withTimeout(
+          llmResult = await withTimeout(
             base44.integrations.Core.InvokeLLM({
               prompt,
               response_json_schema: {
@@ -222,11 +285,10 @@ export default async function (req) {
             60000,
             'InvokeLLM_discover'
           );
-          llmResult = llmRes;
         } catch (e) {
-          // LLM falhou nesta pagina — segue com o que tem (nav links podem
-          // estar vazios, encerra o loop por falta de proxima pagina).
-          break;
+          // LLM falhou nesta pagina — segue para a proxima da fila (se houver).
+          pageIdx++;
+          continue;
         }
 
         const pageCandidates = (llmResult && Array.isArray(llmResult.candidates)) ? llmResult.candidates.slice(0, MAX_CANDIDATES_PER_PAGE) : [];
@@ -255,105 +317,31 @@ export default async function (req) {
           } catch (e) { /* best-effort: segue para proximo candidato */ }
         }
 
-        // Decide proxima pagina: pega um nav link cuja URL ainda nao foi
-        // visitada. Sem o Playwright expor browser_click aqui, usamos
-        // browser_run_code_unsafe read-only para extrair o href do link e
-        // navegar no proximo iteration via goto (read-only).
-        // NOTA (fix 2026-08-10): os "ref" do snapshot de acessibilidade do
-        // Playwright (ex: s1e5) sao IDs internos do snapshot, NAO atributos
-        // reais do DOM — um seletor CSS "[ref=s1e5]" nunca casa com nada. A
-        // versao anterior caia sempre no fallback ", a" e pegava o PRIMEIRO
-        // <a> da pagina inteira, ignorando qual link a IA realmente sugeriu.
-        // Fix: extrai todos os links da pagina (texto + href) numa unica
-        // chamada e casa pelo texto do label sugerido pela IA (case-insensitive,
-        // substring nos dois sentidos) — nao depende de refs inexistentes.
-        //
-        // Fix 2 (2026-08-10): areas uteis de conta (compras, vendas, pedidos)
-        // costumam ficar dentro de menus que so renderizam os links no DOM
-        // apos hover (padrao comum em SPAs React) — o snapshot de
-        // acessibilidade so ve o que esta visivel, entao a IA nunca sugere
-        // esses links. Disparamos um evento de hover (mouseenter/mouseover)
-        // via JS nos elementos candidatos a gatilho de menu — isso e
-        // estritamente leitura (nao navega, nao envia dados, so revela o que
-        // ja existe na pagina) e NAO e um clique. Depois de revelar, aplica
-        // um fallback por palavras-chave comuns de area de conta, caso a IA
-        // nao tenha sugerido nada usavel.
-        const ACCOUNT_AREA_KEYWORDS = /compra|pedido|venda|purchase|order|sale|conta|account|central.?do.?vendedor|seller|historico|extrato|fatura|nota/i;
-
-        async function extractAllLinks() {
-          const res = await callMcp('browser_run_code_unsafe', {
-            code: 'async (page) => { ' +
-              'const links = await page.$$eval("a[href]", (els) => els.map((e) => ({ text: (e.innerText || e.textContent || "").trim(), href: e.href })).filter((l) => l.href && l.text)); ' +
-              'return JSON.stringify({ links: links.slice(0, 300) }); ' +
-              '}',
-          });
-          const text = extractRunCodeText(res);
-          const m = text.match(/```(?:json)?\n?([\s\S]*?)\n?```/) || [null, text];
-          let outcome = JSON.parse((m[1] || text).trim());
-          if (typeof outcome === 'string') outcome = JSON.parse(outcome);
-          return (outcome && Array.isArray(outcome.links)) ? outcome.links : [];
-        }
-
-        async function revealHoverMenus() {
-          // Dispara hover (mouseenter/mouseover/pointerover/pointerenter) nos
-          // elementos mais provaveis de serem gatilho de menu de conta/usuario
-          // (avatar, nome, icone de perfil) — read-only, so revela DOM ja
-          // existente via CSS/JS state. Cobre tanto listeners baseados em mouse
-          // quanto em pointer events (React 17+ pode usar qualquer um).
-          try {
-            const res = await callMcp('browser_run_code_unsafe', {
-              code: 'async (page) => { ' +
-                'const candidates = Array.from(document.querySelectorAll("header *, nav *, [class*=user], [class*=account], [class*=avatar], [class*=perfil], [class*=conta]")); ' +
-                'const fireHover = (el) => { ' +
-                '  for (const type of ["mouseover","mouseenter","pointerover","pointerenter"]) { ' +
-                '    try { el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window })); } catch (e2) {} ' +
-                '  } ' +
-                '}; ' +
-                'candidates.slice(0, 40).forEach(fireHover); ' +
-                'await new Promise((r) => setTimeout(r, 500)); ' +
-                'return JSON.stringify({ hovered: candidates.length }); ' +
-                '}',
-            });
-            const text = extractRunCodeText(res);
-            const m = text.match(/```(?:json)?\n?([\s\S]*?)\n?```/) || [null, text];
-            let outcome = JSON.parse((m[1] || text).trim());
-            if (typeof outcome === 'string') outcome = JSON.parse(outcome);
-            return outcome && typeof outcome.hovered === 'number' ? outcome.hovered : null;
-          } catch (e) { return null; /* best-effort: hover falhou, segue sem menu revelado */ }
-        }
-
-        const navLinks = (llmResult && Array.isArray(llmResult.navigation_links)) ? llmResult.navigation_links : [];
-        let nextUrl = null;
+        // Descoberta AUTOMATICA multi-area (fix 2026-08-10, branching): em vez
+        // de seguir 1 unico link por pagina (trilha linear), junta TODOS os
+        // links promissores desta pagina (sugeridos pela IA + casados por
+        // palavra-chave de area de conta) e poe todos na fila. Isso permite
+        // uma unica chamada descobrir compras, vendas, anuncios, perguntas etc.
+        // sem precisar de intervencao manual reapontando a sessao a cada area.
         try {
-          // Fix 3 (2026-08-10): restringe candidatos ao MESMO dominio da sessao.
-          // Sites regionais (ex: Mercado Livre) tem seletor de pais/idioma que
-          // leva a um dominio TOTALMENTE diferente (mercadolibre.com vs
-          // mercadolivre.com.br) — o texto desses links (nomes de pais,
-          // bandeiras) as vezes casa por acidente com o label sugerido pela IA,
-          // consumindo todo o orcamento de paginas num loop entre dominios sem
-          // nunca chegar em area util. So navega dentro do mesmo dominio raiz de
-          // onde a sessao comecou.
-          //
-          // Fix 3b (2026-08-10): comparar hostname EXATO era rigido demais —
-          // sites grandes usam subdominios diferentes pra areas de conta (ex:
-          // myaccount.mercadolivre.com.br, compras.mercadolivre.com.br), entao
-          // a comparacao exata descartava TODOS os links da pagina, deixando a
-          // lista de candidatos vazia sem erro nenhum. Agora aceita qualquer
-          // subdominio do mesmo dominio raiz (sufixo), nao so o hostname identico.
-          const baseHost = (() => { try { return new URL(session.site_url).hostname.replace(/^www\./, ''); } catch (e) { return null; } })();
-          const sameDomain = (href) => {
-            if (!baseHost) return true;
-            try {
-              const h = new URL(href).hostname.replace(/^www\./, '');
-              return h === baseHost || h.endsWith('.' + baseHost);
-            } catch (e) { return false; }
-          };
-
           let rawLinks = await extractAllLinks();
           debugRawLinksCount = rawLinks.length;
           let pageLinks = rawLinks.filter((pl) => sameDomain(pl.href));
 
-          // Tentativa 1: casar com os nav_links sugeridos pela IA (texto do label).
+          const navLinks = (llmResult && Array.isArray(llmResult.navigation_links)) ? llmResult.navigation_links : [];
+          const newlyQueued = [];
+
+          const tryQueue = (href) => {
+            if (!href) return false;
+            if (visitedSet.has(href) || queuedSet.has(href)) return false;
+            if (/\/login|\/logout/.test(href)) return false;
+            queue.push(href);
+            queuedSet.add(href);
+            newlyQueued.push(href);
+            return true;
+          };
+
+          // Todos os links cujo texto casa com algum navigation_link sugerido pela IA.
           for (const link of navLinks) {
             const wantedLabel = (link.label || '').trim().toLowerCase();
             if (!wantedLabel) continue;
@@ -361,32 +349,24 @@ export default async function (req) {
               const plText = (pl.text || '').toLowerCase();
               return plText && (plText.includes(wantedLabel) || wantedLabel.includes(plText));
             });
-            if (match && match.href && !visitedUrls.includes(match.href) && !/\/login|\/logout/.test(match.href)) {
-              nextUrl = match.href;
-              break;
+            if (match) tryQueue(match.href);
+          }
+
+          // Todos os links que casam por palavra-chave de area de conta.
+          for (const pl of pageLinks) {
+            if (ACCOUNT_AREA_KEYWORDS.test(pl.text || '') || ACCOUNT_AREA_KEYWORDS.test(pl.href || '')) {
+              tryQueue(pl.href);
             }
           }
 
-          // Tentativa 2: fallback por palavras-chave de area de conta, direto
-          // nos links ja visiveis (sem hover ainda).
-          if (!nextUrl) {
-            const kwMatch = pageLinks.find((pl) =>
-              ACCOUNT_AREA_KEYWORDS.test(pl.text || '') || ACCOUNT_AREA_KEYWORDS.test(pl.href || '')
-            );
-            if (kwMatch && kwMatch.href && !visitedUrls.includes(kwMatch.href) && !/\/login|\/logout/.test(kwMatch.href)) {
-              nextUrl = kwMatch.href;
-            }
-          }
-
-          // Tentativa 3: revela menus escondidos via hover e tenta de novo.
-          if (!nextUrl) {
+          // Se nada foi enfileirado ainda, revela menus escondidos via hover e tenta de novo.
+          if (newlyQueued.length === 0) {
             debugLastHovered = await revealHoverMenus();
             pageLinks = (await extractAllLinks()).filter((pl) => sameDomain(pl.href));
-            const kwMatch = pageLinks.find((pl) =>
-              ACCOUNT_AREA_KEYWORDS.test(pl.text || '') || ACCOUNT_AREA_KEYWORDS.test(pl.href || '')
-            );
-            if (kwMatch && kwMatch.href && !visitedUrls.includes(kwMatch.href) && !/\/login|\/logout/.test(kwMatch.href)) {
-              nextUrl = kwMatch.href;
+            for (const pl of pageLinks) {
+              if (ACCOUNT_AREA_KEYWORDS.test(pl.text || '') || ACCOUNT_AREA_KEYWORDS.test(pl.href || '')) {
+                tryQueue(pl.href);
+              }
             }
           }
 
@@ -395,9 +375,7 @@ export default async function (req) {
           debugLastError = e && e.message ? e.message : String(e);
         }
 
-        if (!nextUrl) break; // sem mais paginas para explorar
-        visitedUrls.push(nextUrl);
-        currentUrl = nextUrl;
+        pageIdx++;
       }
 
       // Libera RAM na VPS.
