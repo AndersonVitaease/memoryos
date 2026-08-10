@@ -287,7 +287,21 @@ export default async function (req) {
         const navLinks = (llmResult && Array.isArray(llmResult.navigation_links)) ? llmResult.navigation_links : [];
         let nextUrl = null;
         try {
-          let pageLinks = await extractAllLinks();
+          // Fix 3 (2026-08-10): restringe candidatos ao MESMO dominio da sessao.
+          // Sites regionais (ex: Mercado Livre) tem seletor de pais/idioma que
+          // leva a um dominio TOTALMENTE diferente (mercadolibre.com vs
+          // mercadolivre.com.br) — o texto desses links (nomes de pais,
+          // bandeiras) as vezes casa por acidente com o label sugerido pela IA,
+          // consumindo todo o orcamento de paginas num loop entre dominios sem
+          // nunca chegar em area util. So navega dentro do mesmo hostname de
+          // onde a sessao comecou.
+          const baseHost = (() => { try { return new URL(session.site_url).hostname; } catch (e) { return null; } })();
+          const sameDomain = (href) => {
+            if (!baseHost) return true;
+            try { return new URL(href).hostname === baseHost; } catch (e) { return false; }
+          };
+
+          let pageLinks = (await extractAllLinks()).filter((pl) => sameDomain(pl.href));
 
           // Tentativa 1: casar com os nav_links sugeridos pela IA (texto do label).
           for (const link of navLinks) {
@@ -317,7 +331,7 @@ export default async function (req) {
           // Tentativa 3: revela menus escondidos via hover e tenta de novo.
           if (!nextUrl) {
             await revealHoverMenus();
-            pageLinks = await extractAllLinks();
+            pageLinks = (await extractAllLinks()).filter((pl) => sameDomain(pl.href));
             const kwMatch = pageLinks.find((pl) =>
               ACCOUNT_AREA_KEYWORDS.test(pl.text || '') || ACCOUNT_AREA_KEYWORDS.test(pl.href || '')
             );
