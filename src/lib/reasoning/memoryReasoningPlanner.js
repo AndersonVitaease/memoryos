@@ -583,14 +583,8 @@ ${fullText}`;
         // mandar pra IA — aponta pro mesmo produto, ocupa uma fracao do espaco.
         const _shortenProductUrl = (href) => {
           if (!href) return href;
-          const m = String(href).match(/(?:item_id[%3A:=]+|[/-])(MLB-?\d{6,})/i);
-          if (m) {
-            const id = m[1].replace(/^MLB-?/i, 'MLB-');
-            try {
-              const host = new URL(href).hostname;
-              return `https://produto.${host.replace(/^(click1|www)\./, '')}/p/${id}`;
-            } catch (e) { return `https://produto.mercadolivre.com.br/p/${id}`; }
-          }
+          const m = String(href).match(/MLB-?(\d{6,})/i);
+          if (m) return `https://produto.mercadolivre.com.br/MLB-${m[1]}`;
           return href; // sem ID reconhecivel: mantem o original, melhor que quebrar o link
         };
         const _linksShort = _links.map((l) => ({ ...l, href: _shortenProductUrl(l.href) }));
