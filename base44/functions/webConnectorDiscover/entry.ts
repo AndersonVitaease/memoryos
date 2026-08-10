@@ -27,7 +27,14 @@ import { withTimeout, extractSnapshotText, extractRunCodeText, makeCallMcp } fro
 const PLAYWRIGHT_SERVER_NAME = 'playwright-web-connector';
 const MCP_CALL_TIMEOUT_MS = 25000;
 const SDK_TIMEOUT_MS = 10000;
-const DEFAULT_MAX_PAGES = 3;
+// Fix 2026-08-10 (branching automatico): antes o motor seguia 1 unico link
+// por pagina (trilha linear), exigindo reapontar manualmente a sessao pra
+// cada area do site (compras, vendas, anuncios...). Agora enfileira TODOS os
+// links promissores de cada pagina (BFS), entao uma unica chamada cobre
+// varias areas sozinha. DEFAULT subiu de 3 pra 10 paginas; hard cap de
+// seguranca em 20 (protege tempo de execucao e custo de chamadas LLM).
+const DEFAULT_MAX_PAGES = 10;
+const MAX_PAGES_HARD_CAP = 20;
 const MAX_CANDIDATES_PER_PAGE = 5;
 
 // Prompt do LLM: pede candidatos a capability (read-only) + links de
