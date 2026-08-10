@@ -1,0 +1,59 @@
+version: "3.8"
+
+# Playwright MCP — infraestrutura versionada (RFC-012/013/015).
+#
+# Dois containers separados, mesma imagem, propósitos diferentes:
+#   - playwright-mcp (8931): uso geral (bug hunter, etc.)
+#   - playwright-web-connector (8932): motor de descoberta (RFC-013) e
+#     execução de capabilities (RFC-014) do Web Connector.
+#
+# LIÇÕES DE 2026-08-10 (não remover sem entender por quê):
+#   1. --isolated é OBRIGATÓRIO no playwright-web-connector. Sem isso,
+#      descoberta (discover) e execução (executeCapability) brigam pelo
+#      MESMO perfil de navegador e travam com "Browser is already in use
+#      for <profile>, use --isolated..." — erro que se propaga como falso
+#      "sessão expirada" pro usuário final. Ver SETUP.md.
+#   2. O volume nomeado `playwright-browsers` em /ms-playwright é
+#      OBRIGATÓRIO. Sem ele, todo `docker compose up -d --force-recreate`
+#      apaga o binário Chrome for Testing baixado manualmente, e a próxima
+#      execução falha com "Browser chrome-for-testing is not installed".
+#      Com o volume, o binário sobrevive a recriações do container.
+#   3. web-connector-config.json (montado read-only) define user-agent e
+#      args anti-detecção. Precisa de manutenção periódica — a versão do
+#      Chrome no user-agent fica desatualizada com o tempo e vira ela mesma
+#      um sinal de bot pra sistemas anti-fraude mais novos.
+
+services:
+  playwright-mcp:
+    image: mcr.microsoft.com/playwright:v1.49.0-jammy
+    container_name: playwright-mcp
+    restart: unless-stopped
+    command: npx @playwright/mcp@latest --port 8931 --host 0.0.0.0 --headless
+    ports:
+      - "127.0.0.1:8931:8931"
+    volumes:
+      - playwright-browsers:/ms-playwright
+    environment:
+      - PLAYWRIGHT_MCP_BROWSER=chromium
+    shm_size: "1gb"
+    tmpfs:
+      - /tmp
+
+  playwright-web-connector:
+    image: mcr.microsoft.com/playwright:v1.49.0-jammy
+    container_name: playwright-web-connector
+    restart: unless-stopped
+    command: npx @playwright/mcp@latest --port 8932 --host 0.0.0.0 --isolated --browser chromium --config /config/web-connector-config.json
+    ports:
+      - "127.0.0.1:8932:8932"
+    volumes:
+      - ./config:/config:ro
+      - playwright-browsers:/ms-playwright
+    environment:
+      - PLAYWRIGHT_MCP_BROWSER=chromium
+    shm_size: "1gb"
+    tmpfs:
+      - /tmp
+
+volumes:
+  playwright-browsers:
