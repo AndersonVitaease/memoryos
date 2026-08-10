@@ -493,7 +493,7 @@ ${fullText}`;
     if (!_webIntent && _webIntentResult?.debugReason && _webIntentResult.debugReason !== 'no_active_sessions' && _webIntentResult.debugReason !== 'empty_message') {
       try {
         await base44.entities.InteractionEvent.create({
-          session_id: sessionId || '',
+          session_id: session?.id || '',
           actor: 'system',
           event_type: 'web_intent_resolve_failed',
           raw_text: String(userMsg || '').slice(0, 500),
