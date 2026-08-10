@@ -547,7 +547,27 @@ ${fullText}`;
             }),
           });
         } catch (e2) { /* best-effort: diagnostico nunca bloqueia a resposta */ }
-        throw new Error(String(_d.error));
+        // Fix (2026-08-10): antes, QUALQUER erro aqui (infra, timeout, bug) caia
+        // no catch generico la embaixo sem contexto nenhum — o LLM downstream,
+        // sem grounding, respondia "reconecte no Web Connector" mesmo quando
+        // reconectar nao resolveria nada (ex: navegador travado na VPS). So
+        // erros que sao GENUINAMENTE sessao expirada (redirecionou pra /login)
+        // devem pedir reconexao — qualquer outra falha deve ser reportada como
+        // problema tecnico temporario, honesto, sem culpar a sessao do usuario.
+        const _errStr = String(_d.error || '');
+        const _isRealSessionExpiry = /session_expired|redirecionou para login/i.test(_errStr);
+        if (_isRealSessionExpiry) {
+          return {
+            response: `Sua sessão de **${hostOf(_webIntent.siteUrl)}** expirou de verdade (o site redirecionou para a tela de login). Reconecte em **Conectores** (\`/connections\`) para eu poder buscar de novo.`,
+            plan: { goal: "web_connector_expired", goalLabel: "Web Connector — sessão expirada", strategy: "Guard Web Connector", skills: [], skillsCount: 0, sourcesCount: 0, contextLength: 0, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: "web", responseTimeMs: Date.now() - startTime, handledByGuard: "WEB-CONNECTOR-EXPIRED-REAL" },
+            sources: [],
+          };
+        }
+        return {
+          response: `Tive um problema técnico temporário ao buscar no ${hostOf(_webIntent.siteUrl)} — não é sua sessão (ela continua conectada), foi uma falha momentânea do sistema. Tenta de novo em alguns segundos.`,
+          plan: { goal: "web_connector_technical_error", goalLabel: "Web Connector — erro técnico", strategy: "Guard Web Connector", skills: [], skillsCount: 0, sourcesCount: 0, contextLength: 0, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: "web", responseTimeMs: Date.now() - startTime, handledByGuard: "WEB-CONNECTOR-TECHNICAL-ERROR" },
+          sources: [],
+        };
       }
       const _snap = String(_d?.snapshotText || "").slice(0, 6000);
       const _links = Array.isArray(_d?.links) ? _d.links : [];
