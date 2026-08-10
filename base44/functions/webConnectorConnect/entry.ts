@@ -500,7 +500,7 @@ export default async function (req) {
           '  });' +
           '  return JSON.stringify({ url: finalUrl, stillHasPassword: !!stillHasPass, alert: alertText });' +
           '}';
-        const res = await callMcp('browser_run_code_unsafe', { code });
+        const res = await callMcpWithRetry('browser_run_code_unsafe', { code });
         useResult = extractRunCodeText(res);
       } catch (e) {
         return Response.json({ error: 'Cookie injection + navigation failed: ' + e.message }, { status: 502 });
