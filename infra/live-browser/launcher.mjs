@@ -202,6 +202,21 @@ const server = http.createServer(async (req, res) => {
 
   if (path === '/close' && req.method === 'POST') {
     const body = await readBody(req);
+    // Fix definitivo (2026-08-10): antes so fechava se soubesse o sessionId
+    // EXATO — se o usuario abandonasse o fluxo (fechou aba, caiu conexao,
+    // esqueceu de capturar), a trava so liberava sozinha apos o TTL de 15min,
+    // e ninguem sem acesso SSH a VPS conseguia destravar antes disso. Como so
+    // existe NO MAXIMO 1 sessao por vez (limite do MVP), fechar "tudo" e
+    // sempre seguro — nao ha risco de fechar a sessao de outro usuario.
+    // { all: true } ou ausencia de sessionId fecha qualquer sessao pendurada.
+    if (body.all === true || !body.sessionId) {
+      const ids = Array.from(sessions.keys());
+      for (const id of ids) {
+        try { await sessions.get(id).driver.quit(); } catch {}
+        closeSession(id, 'force-all');
+      }
+      return json(res, 200, { ok: true, closedCount: ids.length });
+    }
     if (!sessions.has(body.sessionId)) return json(res, 200, { ok: true, alreadyClosed: true });
     try { await sessions.get(body.sessionId).driver.quit(); } catch {}
     closeSession(body.sessionId, 'explicit');
