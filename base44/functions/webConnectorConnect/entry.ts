@@ -650,8 +650,26 @@ export default async function (req) {
     sBtn ? sBtn.click() : best.press("Enter"),
   ]);
   await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});
-  return JSON.stringify({ url: page.url(), filled });
-}`;
+  const links = await page.evaluate(() => {
+    const out = [];
+    const origin = location.origin;
+    const anchors = Array.from(document.querySelectorAll('a[href]'));
+    for (const a of anchors) {
+      const href = a.href;
+      if (!href) continue;
+      try { if (new URL(href).origin !== origin) continue; } catch (e) { continue; }
+      if (/\\/(login|logout|signup|register|auth|conta|minha-conta|ajuda|vendas|favoritos|carrinho)\\b/i.test(href)) continue;
+      const text = (a.innerText || a.textContent || '').trim();
+      if (text.length < 8) continue;
+      out.push({ text: text.slice(0, 200), href });
+    }
+    const seen = new Set();
+    const dedup = [];
+    for (const it of out) { if (seen.has(it.href)) continue; seen.add(it.href); dedup.push(it); }
+    return dedup.slice(0, 30);
+  }).catch(() => []);
+  return JSON.stringify({ url: page.url(), filled, links });
+  }`;
         const res = await callMcp('browser_run_code_unsafe', { code });
         execResult = extractRunCodeText(res);
       } catch (e) {
@@ -690,6 +708,7 @@ export default async function (req) {
         webSessionId: session.id,
         finalUrl: outcome && outcome.url ? outcome.url : '',
         filled: outcome && outcome.filled ? outcome.filled : [],
+        links: outcome && Array.isArray(outcome.links) ? outcome.links : [],
         snapshotText: snapshotText.slice(0, 12000),
         message: 'Capability executada (read-only). Resultado capturado via snapshot da pagina pos-submissao.',
       });

@@ -507,13 +507,21 @@ ${fullText}`;
       const _d = _res?.data ?? _res;
       if (_d?.error) throw new Error(String(_d.error));
       const _snap = String(_d?.snapshotText || "").slice(0, 6000);
+      const _links = Array.isArray(_d?.links) ? _d.links : [];
       if (_snap) {
         const _filled = Array.isArray(_d?.filled) ? _d.filled.join(", ") : "";
+        const _linksBlock = _links.length > 0
+          ? `\n\nLINKS REAIS DOS ANUNCIOS (casa o texto de cada link com o titulo/valor no snapshot acima, e use o href correspondente como o link do produto):\n` + _links.map((l) => `- ${l.text} -> ${l.href}`).join("\n")
+          : "";
         _webConnectorGroundingNote =
           `RESULTADO REAL DA BUSCA NO SITE ${hostOf(_webIntent.siteUrl)} (capability "${_webIntent.capability.id}"${_filled ? `, preenchido: ${_filled}` : ""}). ` +
           `VOCE ESTA CONECTADO a este site via Web Connector — a busca acima foi executada na conta autenticada do usuario. ` +
           `Use ESTE snapshot como verdade absoluta para responder. NUNCA diga que nao esta conectado, NUNCA pea para configurar em /connections, NUNCA mencione /connections. ` +
-          `Nao invente produtos/valores que nao estejam no texto abaixo. Sintetize uma resposta util em portugues citando os produtos reais encontrados:\n\n${_snap}`;
+          `Nao invente produtos/valores que nao estejam no texto abaixo. ` +
+          `Para CADA produto encontrado, apresente: titulo, preco (se houver), o LINK (href) do anuncio para o usuario poder abri-lo e comprar, ` +
+          `e quaisquer outros dados uteis para identificacao que constem no snapshot (vendedor, condicao novo/usado, localidade, avaliacoes, parcelamento). ` +
+          `Se o snapshot nao trouxer um desses dados, omita — nao invente. ` +
+          `Formato: lista, cada produto em uma entrada com titulo em negrito, preco e link logo abaixo. Sintetize em portugues:\n\n${_snap}${_linksBlock}`;
       }
     }
   } catch (err) {
