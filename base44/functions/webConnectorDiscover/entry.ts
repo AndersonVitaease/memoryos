@@ -266,24 +266,31 @@ export default async function (req) {
         }
 
         async function revealHoverMenus() {
-          // Dispara hover (mouseenter/mouseover) nos elementos mais provaveis
-          // de serem gatilho de menu de conta/usuario (avatar, nome, icone de
-          // perfil) — read-only, so revela DOM ja existente via CSS/JS state.
+          // Dispara hover (mouseenter/mouseover/pointerover/pointerenter) nos
+          // elementos mais provaveis de serem gatilho de menu de conta/usuario
+          // (avatar, nome, icone de perfil) — read-only, so revela DOM ja
+          // existente via CSS/JS state. Cobre tanto listeners baseados em mouse
+          // quanto em pointer events (React 17+ pode usar qualquer um).
           try {
-            await callMcp('browser_run_code_unsafe', {
+            const res = await callMcp('browser_run_code_unsafe', {
               code: 'async (page) => { ' +
                 'const candidates = Array.from(document.querySelectorAll("header *, nav *, [class*=user], [class*=account], [class*=avatar], [class*=perfil], [class*=conta]")); ' +
                 'const fireHover = (el) => { ' +
-                '  for (const type of ["mouseover","mouseenter"]) { ' +
-                '    el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window })); ' +
+                '  for (const type of ["mouseover","mouseenter","pointerover","pointerenter"]) { ' +
+                '    try { el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window })); } catch (e2) {} ' +
                 '  } ' +
                 '}; ' +
                 'candidates.slice(0, 40).forEach(fireHover); ' +
-                'await new Promise((r) => setTimeout(r, 400)); ' +
+                'await new Promise((r) => setTimeout(r, 500)); ' +
                 'return JSON.stringify({ hovered: candidates.length }); ' +
                 '}',
             });
-          } catch (e) { /* best-effort: hover falhou, segue sem menu revelado */ }
+            const text = extractRunCodeText(res);
+            const m = text.match(/```(?:json)?\n?([\s\S]*?)\n?```/) || [null, text];
+            let outcome = JSON.parse((m[1] || text).trim());
+            if (typeof outcome === 'string') outcome = JSON.parse(outcome);
+            return outcome && typeof outcome.hovered === 'number' ? outcome.hovered : null;
+          } catch (e) { return null; /* best-effort: hover falhou, segue sem menu revelado */ }
         }
 
         const navLinks = (llmResult && Array.isArray(llmResult.navigation_links)) ? llmResult.navigation_links : [];
