@@ -595,6 +595,12 @@ export default async function (req) {
       let execResult = '';
       try {
         const code = `async (page) => {
+  await page.context().addInitScript(() => {
+    Object.defineProperty(navigator, "webdriver", { get: () => undefined });
+    window.chrome = window.chrome || { runtime: {} };
+    Object.defineProperty(navigator, "plugins", { get: () => [1,2,3,4,5] });
+    Object.defineProperty(navigator, "languages", { get: () => ["pt-BR","pt","en-US","en"] });
+  });
   await page.context().addCookies(${escapedCookies});
   await page.goto(${escapedUrl}, { waitUntil: "load", timeout: 15000 }).catch(() => {});
   await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});
