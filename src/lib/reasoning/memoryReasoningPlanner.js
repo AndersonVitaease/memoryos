@@ -511,17 +511,27 @@ ${fullText}`;
       if (_snap) {
         const _filled = Array.isArray(_d?.filled) ? _d.filled.join(", ") : "";
         const _linksBlock = _links.length > 0
-          ? `\n\nDADOS REAIS DOS ANUNCIOS (cada item tem titulo, cardText com preco/parcelas/frete/condicao, e o href real do anuncio — use o href como o link clicavel do produto):\n` + _links.map((l) => `- TITULO: ${l.text}\n  CARD: ${l.cardText || "(sem card)"}\n  LINK: ${l.href}`).join("\n")
+          ? `\n\nDADOS REAIS DOS ANUNCIOS (cada item tem titulo, cardText com preco/parcelas/frete/condicao/avaliacao, e o href real do anuncio — use o href como o link do produto):\n` + _links.map((l) => `- TITULO: ${l.text}\n  CARD: ${l.cardText || "(sem card)"}\n  LINK: ${l.href}`).join("\n")
           : "";
         _webConnectorGroundingNote =
           `RESULTADO REAL DA BUSCA NO SITE ${hostOf(_webIntent.siteUrl)} (capability "${_webIntent.capability.id}"${_filled ? `, preenchido: ${_filled}` : ""}). ` +
           `VOCE ESTA CONECTADO a este site via Web Connector — a busca acima foi executada na conta autenticada do usuario. ` +
           `Use ESTE snapshot como verdade absoluta para responder. NUNCA diga que nao esta conectado, NUNCA pea para configurar em /connections, NUNCA mencione /connections. ` +
           `Nao invente produtos/valores que nao estejam no texto abaixo. ` +
-          `Para CADA produto encontrado, apresente: titulo, preco (se houver), o LINK (href) do anuncio para o usuario poder abri-lo e comprar, ` +
-          `e quaisquer outros dados uteis para identificacao que constem no snapshot (vendedor, condicao novo/usado, localidade, avaliacoes, parcelamento). ` +
-          `Se o snapshot nao trouxer um desses dados, omita — nao invente. ` +
-          `Formato: lista, cada produto em uma entrada com titulo em negrito, preco e link logo abaixo. Sintetize em portugues:\n\n${_snap}${_linksBlock}`;
+          `\n\nFORMATO OBRIGATORIO (siga EXATAMENTE este layout):\n` +
+          `Apresente EXATAMENTE 10 produtos (ou todos os encontrados, se menos de 10). Para CADA produto use este formato:\n\n` +
+          `1. <Titulo do Produto em negrito>\n` +
+          `R$ <preco> · <desconto se houver>\n` +
+          `<frete/entrega se houver>\n` +
+          `[Ver anuncio](<href do produto>)\n\n` +
+          `REGRAS DO FORMATO:\n` +
+          `- O link deve ser SEMPRE no formato markdown [Ver anuncio](href) — NUNCA mostre a URL crua/longa no texto. O texto visivel e "Ver anuncio", e o href vai dentro do parenteses do markdown. Isso encurta visualmente o link e deixa o layout limpo.\n` +
+          `- Extraia o preco do cardText (procure por "R$" seguido de numero). Se houver preco riscado + desconto, mostre o preco final e o desconto (ex: "R$ 159,99 . 55% OFF").\n` +
+          `- Frete: se o cardText tiver "Frete gratis" ou "Frete grat"s", mostre "Frete gratis". Se tiver "Chega amanha" ou data de entrega, mostre essa info.\n` +
+          `- Se um dado (preco, frete, desconto) nao existir no cardText, OMITA a linha — nao invente.\n` +
+          `- Cada produto separado por uma linha em branco.\n` +
+          `- Nao adicione intro/rodape desnecessario — so a lista de 10 produtos.\n` +
+          `Sintetize em portugues:\n\n${_snap}${_linksBlock}`;
       }
     }
   } catch (err) {
