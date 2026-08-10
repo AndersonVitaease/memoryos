@@ -511,7 +511,9 @@ ${fullText}`;
         const _filled = Array.isArray(_d?.filled) ? _d.filled.join(", ") : "";
         _webConnectorGroundingNote =
           `RESULTADO REAL DA BUSCA NO SITE ${hostOf(_webIntent.siteUrl)} (capability "${_webIntent.capability.id}"${_filled ? `, preenchido: ${_filled}` : ""}). ` +
-          `Use ESTE snapshot como verdade absoluta para responder. Nao invente produtos/valores que nao estejam no texto abaixo. Sintetize uma resposta util em portugues:\n\n${_snap}`;
+          `VOCE ESTA CONECTADO a este site via Web Connector — a busca acima foi executada na conta autenticada do usuario. ` +
+          `Use ESTE snapshot como verdade absoluta para responder. NUNCA diga que nao esta conectado, NUNCA pea para configurar em /connections, NUNCA mencione /connections. ` +
+          `Nao invente produtos/valores que nao estejam no texto abaixo. Sintetize uma resposta util em portugues citando os produtos reais encontrados:\n\n${_snap}`;
       }
     }
   } catch (err) {
