@@ -9,10 +9,27 @@
  */
 import React, { useState, useCallback, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
-import { Loader2, Link as LinkIcon, CheckCircle2, XCircle, ShieldCheck, Search, Sparkles, Plus } from 'lucide-react';
+import { Loader2, Link as LinkIcon, CheckCircle2, XCircle, ShieldCheck, Search, Sparkles, Plus, Lock } from 'lucide-react';
 import WebCapabilityExecutor from '@/components/web-connector/WebCapabilityExecutor';
 import LiveLoginPanel from '@/components/web-connector/LiveLoginPanel';
 import WebSessionPicker from '@/components/web-connector/WebSessionPicker';
+
+async function callGovernance(operation, payload) {
+  try {
+    const res = await base44.functions.invoke('capabilityGovernance', { operation, ...payload });
+    const data = res?.data ?? res;
+    if (data?.error) throw new Error(data.error);
+    return data;
+  } catch (err) {
+    const real =
+      err?.response?.data?.error ||
+      (typeof err?.response?.data === 'string' ? err.response.data : null) ||
+      err?.data?.error ||
+      err?.message ||
+      'Falha desconhecida ao chamar capabilityGovernance';
+    throw new Error(real);
+  }
+}
 
 async function callWebConnector(operation, payload) {
   try {
