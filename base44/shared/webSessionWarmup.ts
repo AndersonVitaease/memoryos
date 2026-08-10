@@ -52,14 +52,10 @@ export async function warmupSession(opts: {
       '  await page.context().addCookies(' + escapedCookies + ');' +
       '  await page.goto(' + escapedUrl + ', { waitUntil: "load", timeout: 15000 }).catch(() => {});' +
       '  await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});' +
-      '  // Warm-up: da 3s pro SPA disparar chamadas de bootstrap (que' +
-      '  // renovam o access token via refresh token automaticamente).' +
       '  await new Promise((r) => setTimeout(r, 3000));' +
       '  await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});' +
       '  const finalUrl = page.url();' +
       '  const stillHasPass = await page.$("input[type=password]");' +
-      '  // Re-captura cookies: o context agora tem o access token renovado' +
-      '  // (se o SPA fez o refresh). Persistir isso estende a vida util.' +
       '  const freshCookies = await page.context().cookies();' +
       '  return JSON.stringify({ url: finalUrl, stillHasPassword: !!stillHasPass, cookies: freshCookies });' +
       '}';
