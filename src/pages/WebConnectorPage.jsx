@@ -73,6 +73,27 @@ export default function WebConnectorPage() {
   const [discoverSummary, setDiscoverSummary] = useState(null);
   const [candidateBusyId, setCandidateBusyId] = useState(null);
 
+  // Retoma automaticamente a sessao ativa mais recente ao montar a pagina.
+  // Sem isso, um F5/reload perdia a referencia da sessao mesmo com ela ainda
+  // ativa e valida no banco (bug observado na sessao RFC-015 2026-08-10).
+  useEffect(() => {
+    if (webSessionId) return;
+    (async () => {
+      try {
+        const recent = await base44.entities.WebSession.filter({ status: 'active' }, '-created_date', 1);
+        if (recent && recent.length > 0) {
+          const s = recent[0];
+          setWebSessionId(s.id);
+          setStatus('active');
+          setSiteUrl(s.site_url || '');
+          setLoginUrl(s.site_url || '');
+          setSiteName(s.site_name || '');
+        }
+      } catch (e) { /* best-effort: sem sessao pra retomar, segue tela inicial */ }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Carrega candidatos existentes quando a sessao fica ativa (permite
   // revisar descobertas de runs anteriores da mesma WebSession).
   useEffect(() => {
