@@ -330,30 +330,30 @@ export default function WebConnectorSection() {
       )}
 
       {!webSessionId && showNewConnection && (
-        <div className="flex gap-1 p-1 rounded-lg bg-zinc-900/60 border border-zinc-800 w-fit">
-          <button onClick={() => setMode('automated')} className={"px-3 py-1.5 rounded-md text-xs font-medium transition " + (mode === 'automated' ? 'bg-violet-500 text-white' : 'text-zinc-400 hover:text-zinc-200')}>Automático (DOM)</button>
-          <button onClick={() => setMode('live')} className={"px-3 py-1.5 rounded-md text-xs font-medium transition " + (mode === 'live' ? 'bg-violet-500 text-white' : 'text-zinc-400 hover:text-zinc-200')}>Live (manual)</button>
+        <div className="flex gap-1 p-1 rounded-lg bg-muted/30 border border-border w-fit">
+          <button onClick={() => setMode('automated')} className={"px-3 py-1.5 rounded-md text-xs font-medium transition " + (mode === 'automated' ? 'bg-violet-500 text-white' : 'text-muted-foreground hover:text-foreground')}>Automático (DOM)</button>
+          <button onClick={() => setMode('live')} className={"px-3 py-1.5 rounded-md text-xs font-medium transition " + (mode === 'live' ? 'bg-violet-500 text-white' : 'text-muted-foreground hover:text-foreground')}>Live (manual)</button>
         </div>
       )}
 
       {!webSessionId && showNewConnection && mode === 'automated' && (
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 space-y-3">
+        <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
           <div>
-            <label className="block text-xs font-medium text-zinc-400 mb-1">URL do sistema</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">URL do sistema</label>
             <input
               value={siteUrl}
               onChange={(e) => setSiteUrl(e.target.value)}
               placeholder="https://portal.empresa.com"
-              className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+              className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/40"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-zinc-400 mb-1">Nome (opcional)</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Nome (opcional)</label>
             <input
               value={siteName}
               onChange={(e) => setSiteName(e.target.value)}
               placeholder="ex: Wooba, CRM interno"
-              className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+              className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/40"
             />
           </div>
           <button
@@ -373,40 +373,40 @@ export default function WebConnectorSection() {
 
       {webSessionId && status === 'pending_login' && (
         <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 space-y-3">
-          <p className="text-sm text-zinc-300">
+          <p className="text-sm text-foreground">
             Página carregada. Preencha email e senha abaixo e clique em Entrar — o login é feito direto no formulário da página (DOM), não depende de detecção automática de campos.
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="md:col-span-2">
-              <label className="block text-[10px] font-medium text-zinc-500 mb-1">URL da página de login</label>
+              <label className="block text-[10px] font-medium text-muted-foreground mb-1">URL da página de login</label>
               <input
                 value={loginUrl}
                 onChange={(e) => setLoginUrl(e.target.value)}
                 placeholder="https://site.com/login"
-                className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+                className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm font-mono focus:outline-none focus:ring-2 focus:ring-amber-500/40"
               />
-              <p className="text-[10px] text-zinc-600 mt-1">Ajuste se a página atual não tem formulário de login — o "Entrar" navega para esta URL antes de preencher.</p>
+              <p className="text-[10px] text-muted-foreground mt-1">Ajuste se a página atual não tem formulário de login — o "Entrar" navega para esta URL antes de preencher.</p>
             </div>
             <div>
-              <label className="block text-[10px] font-medium text-zinc-500 mb-1">Email / usuário</label>
+              <label className="block text-[10px] font-medium text-muted-foreground mb-1">Email / usuário</label>
                 <input
                   type="text"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+                  className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm font-mono focus:outline-none focus:ring-2 focus:ring-amber-500/40"
                 />
               </div>
               <div>
-                <label className="block text-[10px] font-medium text-zinc-500 mb-1">Senha</label>
+                <label className="block text-[10px] font-medium text-muted-foreground mb-1">Senha</label>
                 <input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-amber-500/40"
+                  className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm font-mono focus:outline-none focus:ring-2 focus:ring-amber-500/40"
                 />
               </div>
-              <p className="md:col-span-2 text-[10px] text-zinc-600 flex items-center gap-1">
+              <p className="md:col-span-2 text-[10px] text-muted-foreground flex items-center gap-1">
                 <ShieldCheck className="w-3 h-3" />
                 Usada só para este login — nunca é salva (ver ADR-019).
               </p>
@@ -414,8 +414,8 @@ export default function WebConnectorSection() {
 
           {snapshotText && (
             <details className="text-xs">
-              <summary className="cursor-pointer text-zinc-500 hover:text-zinc-300">Ver estado da página (snapshot)</summary>
-              <pre className="mt-2 p-2 rounded bg-zinc-950/50 border border-zinc-800 text-[10px] text-zinc-500 whitespace-pre-wrap max-h-60 overflow-y-auto">{snapshotText}</pre>
+              <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Ver estado da página (snapshot)</summary>
+              <pre className="mt-2 p-2 rounded bg-muted/40 border border-border text-[10px] text-muted-foreground whitespace-pre-wrap max-h-60 overflow-y-auto">{snapshotText}</pre>
             </details>
           )}
 
@@ -456,8 +456,8 @@ export default function WebConnectorSection() {
           )}
           {snapshotText && sessionValid !== null && (
             <details className="text-xs">
-              <summary className="cursor-pointer text-zinc-500 hover:text-zinc-300">Ver estado da página (snapshot)</summary>
-              <pre className="mt-2 p-2 rounded bg-zinc-950/50 border border-zinc-800 text-[10px] text-zinc-500 whitespace-pre-wrap max-h-60 overflow-y-auto">{snapshotText}</pre>
+              <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Ver estado da página (snapshot)</summary>
+              <pre className="mt-2 p-2 rounded bg-muted/40 border border-border text-[10px] text-muted-foreground whitespace-pre-wrap max-h-60 overflow-y-auto">{snapshotText}</pre>
             </details>
           )}
           <div className="flex flex-wrap gap-2">
@@ -472,7 +472,7 @@ export default function WebConnectorSection() {
             <button
               onClick={handleConectarNovo}
               disabled={busy}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-zinc-800 text-zinc-200 hover:bg-zinc-700 disabled:opacity-50 transition"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-muted text-foreground hover:bg-muted disabled:opacity-50 transition"
             >
               <Plus className="w-4 h-4" />
               Conectar novo site
@@ -486,7 +486,7 @@ export default function WebConnectorSection() {
             </button>
           </div>
 
-          <div className="pt-3 border-t border-zinc-800/60 space-y-3">
+          <div className="pt-3 border-t border-border space-y-3">
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={handleDiscover}
@@ -497,20 +497,20 @@ export default function WebConnectorSection() {
                 Descobrir capabilities
               </button>
             </div>
-            <p className="text-[10px] text-zinc-600 leading-relaxed">
+            <p className="text-[10px] text-muted-foreground leading-relaxed">
               Navega o sistema autenticado e cataloga operações de leitura (buscas, consultas, listagens).
               Nunca executa escrita — apenas observa. Candidatos ficam como <span className="font-mono">CapabilityCandidate</span> para validação humana.
             </p>
 
             {discoverSummary && (
-              <div className="text-xs text-zinc-400 space-y-1">
+              <div className="text-xs text-muted-foreground space-y-1">
                 <p className="text-emerald-400">
                   {discoverSummary.candidates_discovered} candidato(s) encontrado(s) em {discoverSummary.pages_explored} página(s).
                 </p>
                 {discoverSummary.visited_urls?.length > 0 && (
                   <details>
-                    <summary className="cursor-pointer text-zinc-500 hover:text-zinc-300">Páginas visitadas</summary>
-                    <ul className="mt-1 ml-4 list-disc text-zinc-600 font-mono text-[10px]">
+                    <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Páginas visitadas</summary>
+                    <ul className="mt-1 ml-4 list-disc text-muted-foreground font-mono text-[10px]">
                       {discoverSummary.visited_urls.map((u) => <li key={u}>{u}</li>)}
                     </ul>
                   </details>
@@ -522,20 +522,20 @@ export default function WebConnectorSection() {
                       {discoverSummary.debug.error && (
                         <p className="text-red-400 text-[10px]">Erro: {discoverSummary.debug.error}</p>
                       )}
-                      <p className="text-zinc-600 text-[10px]">
+                      <p className="text-muted-foreground text-[10px]">
                         Links brutos antes do filtro de domínio: {discoverSummary.debug.raw_links_found_before_domain_filter ?? '—'}
                       </p>
-                      <p className="text-zinc-600 text-[10px]">
+                      <p className="text-muted-foreground text-[10px]">
                         Hover disparado em {discoverSummary.debug.hover_triggered_on_elements ?? '—'} elemento(s).
                       </p>
                       {discoverSummary.debug.snapshot_preview && (
                         <div>
-                          <p className="text-zinc-600 text-[10px]">Preview do snapshot da página (o que o motor realmente viu):</p>
-                          <pre className="mt-1 p-2 rounded bg-zinc-950/60 border border-zinc-800 text-[9px] text-zinc-500 whitespace-pre-wrap max-h-40 overflow-y-auto">{discoverSummary.debug.snapshot_preview}</pre>
+                          <p className="text-muted-foreground text-[10px]">Preview do snapshot da página (o que o motor realmente viu):</p>
+                          <pre className="mt-1 p-2 rounded bg-muted/40 border border-border text-[9px] text-muted-foreground whitespace-pre-wrap max-h-40 overflow-y-auto">{discoverSummary.debug.snapshot_preview}</pre>
                         </div>
                       )}
-                      <p className="text-zinc-600 text-[10px]">Links vistos na última página (amostra):</p>
-                      <ul className="list-disc text-zinc-600 font-mono text-[10px] max-h-40 overflow-y-auto">
+                      <p className="text-muted-foreground text-[10px]">Links vistos na última página (amostra):</p>
+                      <ul className="list-disc text-muted-foreground font-mono text-[10px] max-h-40 overflow-y-auto">
                         {(discoverSummary.debug.last_page_links_sample || []).map((l, i) => (
                           <li key={i} className="truncate">{l.text || '(sem texto)'} → {l.href}</li>
                         ))}
@@ -548,7 +548,7 @@ export default function WebConnectorSection() {
 
             {candidates.length > 0 && (
               <div className="space-y-2">
-                <p className="text-xs font-medium text-zinc-400 flex items-center gap-1.5">
+                <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
                   <Search className="w-3.5 h-3.5" /> Candidatos descobertos ({candidates.length})
                 </p>
                 <div className="space-y-2">
@@ -556,21 +556,21 @@ export default function WebConnectorSection() {
                     let fields = [];
                     try { fields = JSON.parse(c.input_fields || '[]'); } catch (e) { fields = []; }
                     return (
-                      <div key={c.id} className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-2.5">
+                      <div key={c.id} className="rounded-lg border border-border bg-muted/20 p-2.5">
                         <div className="flex items-center justify-between gap-2">
                           <span className="text-xs font-mono text-violet-300">{c.suggested_id}</span>
-                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 uppercase tracking-wide">{c.status}</span>
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground uppercase tracking-wide">{c.status}</span>
                         </div>
-                        {c.description && <p className="text-[11px] text-zinc-500 mt-1">{c.description}</p>}
+                        {c.description && <p className="text-[11px] text-muted-foreground mt-1">{c.description}</p>}
                         {Array.isArray(fields) && fields.length > 0 && (
                           <div className="mt-1.5 flex flex-wrap gap-1">
                             {fields.map((f) => (
-                              <span key={f} className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-800/60 text-zinc-500 font-mono">{f}</span>
+                              <span key={f} className="text-[9px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono">{f}</span>
                             ))}
                           </div>
                         )}
                         {c.discovered_from_url && (
-                          <p className="text-[9px] text-zinc-600 mt-1 font-mono truncate">{c.discovered_from_url}</p>
+                          <p className="text-[9px] text-muted-foreground mt-1 font-mono truncate">{c.discovered_from_url}</p>
                         )}
                         {c.status === 'candidate' && (
                           <div className="mt-2 flex flex-wrap gap-2">
@@ -585,7 +585,7 @@ export default function WebConnectorSection() {
                             <button
                               onClick={() => handleRejectCandidate(c)}
                               disabled={candidateBusyId === c.id}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium bg-zinc-800 text-zinc-300 hover:bg-zinc-700 disabled:opacity-40 transition"
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium bg-muted text-foreground hover:bg-muted disabled:opacity-40 transition"
                             >
                               Rejeitar
                             </button>
@@ -611,7 +611,7 @@ export default function WebConnectorSection() {
         </div>
       )}
 
-      <p className="text-xs text-zinc-600 leading-relaxed">
+      <p className="text-xs text-muted-foreground leading-relaxed">
         O MemoryOS nunca armazena sua senha. Ela é usada só para preencher o formulário
         de login desta única vez; a partir daí, apenas os cookies da sessão (já autenticada)
         ficam salvos para reuso. Ver <span className="font-mono">ADR-019</span> para detalhes.
