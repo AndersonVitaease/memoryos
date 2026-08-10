@@ -123,11 +123,27 @@ export default async function (req) {
         // Injeta cookies + navega para currentUrl numa UNICA chamada
         // (mesmo padrao da operacao 'use' do webConnectorConnect — garante
         // que addCookies e goto operam no mesmo context).
+        //
+        // Anti-deteccao (fix 2026-08-10): confirmado via debug que o
+        // Mercado Livre retorna HTTP 403 pro motor de descoberta (Playwright
+        // headless) mesmo com cookies validos — bloqueio de WAF/anti-bot na
+        // borda. addInitScript roda ANTES de qualquer script da pagina em
+        // toda navegacao dentro do context, mascarando os sinais JS mais
+        // comuns de automacao (navigator.webdriver, plugins vazios, chrome
+        // object ausente). Nao resolve tudo (User-Agent com "HeadlessChrome"
+        // exige mudanca de infra no container, ver SETUP.md), mas cobre a
+        // deteccao client-side mais comum.
         const escapedCookies = JSON.stringify(cookies);
         const escapedUrl = JSON.stringify(currentUrl);
         let navOk = true;
         try {
           const code = 'async (page) => {' +
+            '  await page.context().addInitScript(() => {' +
+            '    Object.defineProperty(navigator, "webdriver", { get: () => undefined });' +
+            '    window.chrome = window.chrome || { runtime: {} };' +
+            '    Object.defineProperty(navigator, "plugins", { get: () => [1,2,3,4,5] });' +
+            '    Object.defineProperty(navigator, "languages", { get: () => ["pt-BR","pt","en-US","en"] });' +
+            '  });' +
             '  await page.context().addCookies(' + escapedCookies + ');' +
             '  await page.goto(' + escapedUrl + ', { waitUntil: "load", timeout: 15000 }).catch(() => {});' +
             '  await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});' +
