@@ -474,6 +474,50 @@ ${fullText}`;
     }
   }
 
+  // === ETAPA 0.7: WEB CONNECTOR ROUTING (Topico B) ===
+  // Roteia "buscar X no <site>" -> capability descoberta + validada do site.
+  // 100% aditivo: miss/erro cai pro fluxo normal. Match deterministico (sem LLM).
+  // Executa a capability (form-fill read-only) e injeta o snapshot como
+  // grounding note pro LLM — mesmo padrao do SearchEngine (ETAPA 5.2).
+  let _webConnectorGroundingNote = null;
+  try {
+    const { resolveWebIntent, hostOf } = await import("@/lib/web-connector/WebSiteIntentResolver");
+    const _webIntent = await resolveWebIntent(userMsg);
+    if (_webIntent) {
+      // B3: valida TTL da sessao antes de executar
+      if (_webIntent.webSessionExpiresAt && new Date(_webIntent.webSessionExpiresAt) < new Date()) {
+        return {
+          response: `Sua sessão de **${hostOf(_webIntent.siteUrl)}** expirou. Reconecte em **Web Connector** (\`/web-connector\`) para eu poder buscar lá de novo.`,
+          plan: { goal: "web_connector_expired", goalLabel: "Web Connector — sessão expirada", strategy: "Guard Web Connector", skills: [], skillsCount: 0, sourcesCount: 0, contextLength: 0, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: "web", responseTimeMs: Date.now() - startTime, handledByGuard: "WEB-CONNECTOR-EXPIRED" },
+          sources: [],
+        };
+      }
+      // Mapeia o termo de busca extraido -> primeiro campo da capability
+      const _inputs = {};
+      if (_webIntent.inputFields.length > 0) {
+        _inputs[_webIntent.inputFields[0]] = _webIntent.searchTerm || "";
+      }
+      const _res = await base44.functions.invoke("webConnectorConnect", {
+        operation: "executeCapability",
+        webSessionId: _webIntent.webSessionId,
+        discoveredFromUrl: _webIntent.discoveredFromUrl,
+        inputFields: _webIntent.inputFields,
+        inputs: _inputs,
+      });
+      const _d = _res?.data ?? _res;
+      if (_d?.error) throw new Error(String(_d.error));
+      const _snap = String(_d?.snapshotText || "").slice(0, 6000);
+      if (_snap) {
+        const _filled = Array.isArray(_d?.filled) ? _d.filled.join(", ") : "";
+        _webConnectorGroundingNote =
+          `RESULTADO REAL DA BUSCA NO SITE ${hostOf(_webIntent.siteUrl)} (capability "${_webIntent.capability.id}"${_filled ? `, preenchido: ${_filled}` : ""}). ` +
+          `Use ESTE snapshot como verdade absoluta para responder. Nao invente produtos/valores que nao estejam no texto abaixo. Sintetize uma resposta util em portugues:\n\n${_snap}`;
+      }
+    }
+  } catch (err) {
+    console.warn("[WebConnectorRouting] Falhou, caindo pro fluxo normal:", err?.message);
+  }
+
   // === ETAPAS 1+2+3 EM PARALELO: MEMORY + SKILLS + GOAL ===
   // Skills e Goal só precisam da mensagem — não dependem da memória.
   // Paralelizar economiza ~400ms (tempo do goalDetector+skills).
@@ -917,9 +961,9 @@ Se for, extraia "target" (nome do arquivo/pasta sem verbos de comando).`,
 
   console.log(`[DIAG][MRP] ETAPA 5.4 (DriveClassifier) levou ${Date.now() - _t54}ms`);
   // === ETAPA 6: UMA ÚNICA CHAMADA AO LLM ===
-  const finalPrompt = _searchEngineGroundingNote
-    ? `${prompt}\n\n${_searchEngineGroundingNote}`
-    : prompt;
+  let finalPrompt = prompt;
+  if (_searchEngineGroundingNote) finalPrompt += "\n\n" + _searchEngineGroundingNote;
+  if (_webConnectorGroundingNote) finalPrompt += "\n\n" + _webConnectorGroundingNote;
   setPhase?.("generating");
   const _t6 = Date.now();
   // FIX (migracao de provider): resposta final agora passa pelo Registro de
