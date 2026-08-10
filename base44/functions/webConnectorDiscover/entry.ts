@@ -296,8 +296,34 @@ export default async function (req) {
           // Se redirecionou pra login, a sessao expirou — aborta tudo (cookies
           // compartilhados, qualquer outra pagina da fila teria o mesmo problema).
           if (navOutcome && /\/login/.test(navOutcome.url)) {
+            // Diagnostico persistente (2026-08-10): o warm-up passou mas uma
+            // pagina especifica do crawl redirecionou pra /login. Captura
+            // qual URL tentou, pra onde redirecionou, e snapshot pra entender
+            // se e escopo de cookie, subdominio, ou SPA que exige re-auth.
+            let _diagSnapshot = '';
+            try {
+              const snap = await callMcp('browser_snapshot', {});
+              _diagSnapshot = extractSnapshotText(snap).slice(0, 1500);
+            } catch (e) { /* best-effort */ }
+            try {
+              await base44.asServiceRole.entities.InteractionEvent.create({
+                session_id: '',
+                actor: 'system',
+                event_type: 'web_discover_page_login_redirect',
+                raw_text: String(currentUrl || '').slice(0, 500),
+                payload: JSON.stringify({
+                  attemptedUrl: currentUrl,
+                  finalUrl: navOutcome.url,
+                  siteUrl: session.site_url,
+                  visitedCount: visitedUrls.length,
+                  cookieCount: cookies.length,
+                  snapshotPreview: _diagSnapshot,
+                }),
+              });
+            } catch (e2) { /* best-effort */ }
+            try { await callMcp('browser_close', {}); } catch (e) { /* best-effort */ }
             return Response.json({
-              error: 'Sessao expirou durante a descoberta (redirecionou para login). Reautentique via start+login+confirm.',
+              error: 'Sessao expirou durante a descoberta (redirecionou para login na pagina ' + currentUrl + '). Reautentique via start+login+confirm. Diagnostico capturado.',
               candidates_discovered: allCandidates.length,
             }, { status: 409 });
           }
