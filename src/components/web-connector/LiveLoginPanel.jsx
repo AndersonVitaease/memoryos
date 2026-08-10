@@ -123,7 +123,24 @@ export default function LiveLoginPanel({ onSessionActive }) {
       {error && (
         <div className="flex items-start gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-300">
           <XCircle className="w-4 h-4 shrink-0 mt-0.5" />
-          <span>{error}</span>
+          <div className="flex-1">
+            <span>{error}</span>
+            {showForceRelease && (
+              <div className="mt-2">
+                <button
+                  onClick={handleForceRelease}
+                  disabled={releasing}
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-500/90 text-zinc-950 hover:bg-amber-400 disabled:opacity-50 transition"
+                >
+                  {releasing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                  {releasing ? 'Liberando...' : 'Liberar sessão travada e tentar de novo'}
+                </button>
+                <p className="mt-1 text-[10px] text-red-300/70">
+                  Isso encerra qualquer sessão live pendurada (ex: alguém fechou a aba sem capturar) e tenta iniciar de novo automaticamente.
+                </p>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
