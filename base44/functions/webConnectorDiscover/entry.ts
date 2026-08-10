@@ -322,9 +322,18 @@ export default async function (req) {
               });
             } catch (e2) { /* best-effort */ }
             try { await callMcp('browser_close', {}); } catch (e) { /* best-effort */ }
+            // Diferencia Cloudflare anti-bot de sessao realmente expirada —
+            // reautenticar nao resolve Cloudflare (bloqueia o browser headless
+            // independente dos cookies), entao a mensagem nao pode pedir reauth
+            // inutil. O usuario precisa saber que e limitacao do site, nao dele.
+            const _isCloudflare = /verifica.{0,3}o de seguran|just a moment|cloudflare|prote.ao contra bots|ray id/i.test(_diagSnapshot);
+            const _err = _isCloudflare
+              ? 'O Bling bloqueou o navegador automatico com Cloudflare (anti-bot, HTTP 403 "Executando verificacao de seguranca"). Isso NAO e sessao expirada — e o site recusando automacao. Reautenticar nao resolve. Sites com Cloudflare nao podem ser descobertos automaticamente pelo Web Connector neste ambiente.'
+              : 'Sessao expirou durante a descoberta (redirecionou para login na pagina ' + currentUrl + '). Reautentique via start+login+confirm. Diagnostico capturado.';
             return Response.json({
-              error: 'Sessao expirou durante a descoberta (redirecionou para login na pagina ' + currentUrl + '). Reautentique via start+login+confirm. Diagnostico capturado.',
+              error: _err,
               candidates_discovered: allCandidates.length,
+              cloudflare_blocked: _isCloudflare,
             }, { status: 409 });
           }
         } catch (e) {
