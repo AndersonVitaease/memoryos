@@ -11,6 +11,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { Loader2, Link as LinkIcon, CheckCircle2, XCircle, ShieldCheck, Search, Sparkles } from 'lucide-react';
 import WebCapabilityExecutor from '@/components/web-connector/WebCapabilityExecutor';
+import LiveLoginPanel from '@/components/web-connector/LiveLoginPanel';
 
 async function callWebConnector(operation, payload) {
   try {
@@ -53,6 +54,7 @@ async function callDiscover(operation, payload) {
 export default function WebConnectorPage() {
   const [siteUrl, setSiteUrl] = useState('');
   const [siteName, setSiteName] = useState('');
+  const [mode, setMode] = useState('automated'); // 'automated' (Playwright DOM) | 'live' (Selenium noVNC, RFC-015)
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -291,6 +293,13 @@ export default function WebConnectorPage() {
         )}
 
         {!webSessionId && (
+          <div className="flex gap-1 p-1 rounded-lg bg-zinc-900/60 border border-zinc-800 w-fit">
+            <button onClick={() => setMode('automated')} className={"px-3 py-1.5 rounded-md text-xs font-medium transition " + (mode === 'automated' ? 'bg-violet-500 text-white' : 'text-zinc-400 hover:text-zinc-200')}>Automatico (DOM)</button>
+            <button onClick={() => setMode('live')} className={"px-3 py-1.5 rounded-md text-xs font-medium transition " + (mode === 'live' ? 'bg-violet-500 text-white' : 'text-zinc-400 hover:text-zinc-200')}>Live (manual)</button>
+          </div>
+        )}
+
+        {!webSessionId && mode === 'automated' && (
           <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 space-y-3">
             <div>
               <label className="block text-xs font-medium text-zinc-400 mb-1">URL do sistema</label>
@@ -319,6 +328,10 @@ export default function WebConnectorPage() {
               {busy ? 'Conectando...' : 'Iniciar conexão'}
             </button>
           </div>
+        )}
+
+        {!webSessionId && mode === 'live' && (
+          <LiveLoginPanel onSessionActive={(id, url) => { setWebSessionId(id); setStatus('active'); setSiteUrl(url); setLoginUrl(url); }} />
         )}
 
         {webSessionId && status === 'pending_login' && (
