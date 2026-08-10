@@ -2,7 +2,7 @@
  * ChatPage.jsx — Conversation Experience Platform consumer
  * Sprint 7.0.1 (VXP): Smart auto-scroll, transcript review, VXP status states.
  * Architecture: render only. All logic in useConversation() + useVoiceInteraction().
- * rev: BRT-time-fix (forca recompile do chunk para puxar formatTime novo)
+ * rev: BRT-time-fix-r2 (forca recompile do chunk para puxar formatTime novo)
  */
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
