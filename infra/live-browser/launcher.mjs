@@ -51,11 +51,13 @@ const sessions = new Map();
 let webdriver = null;
 let until = null;
 let By = null;
+let chrome = null;
 try {
   const sw = await import('selenium-webdriver');
   webdriver = sw.default;
   until = sw.until;
   By = sw.By;
+  chrome = await import('selenium-webdriver/chrome.js');
 } catch (e) {
   console.error('[launcher] selenium-webdriver não instalado. Rode: npm install selenium-webdriver');
   process.exit(1);
@@ -108,11 +110,40 @@ function closeSession(sessionId, reason) {
 // container mantém o session store. Se indisponível, capturamos criando um
 // novo driver e navegando para currentUrl — mas isso perde a sessão. Por isso
 // o MVP usa um driver PERSISTENTE por launch (guardado no mapa).
+//
+// Anti-deteccao (patch 2026-08-10): sites com anti-bot (Cloudflare, hCaptcha,
+// Datadome) e o proprio Google recusam sessoes com sinais obvios de
+// automacao Selenium ("Chrome is being controlled by automated test
+// software", navigator.webdriver=true). Isso reduz a deteccao mas NAO e
+// garantia — Google especificamente detecta o uso do protocolo CDP em si,
+// nao so essas flags, e pode continuar bloqueando login via Google mesmo
+// assim. Funciona melhor para formularios de login nativos (sem OAuth de
+// terceiros) e a maioria dos anti-bots comerciais.
 async function buildPersistentDriver() {
+  const chromeOptions = new chrome.Options();
+  chromeOptions.excludeSwitches('enable-automation');
+  chromeOptions.addArguments(
+    '--disable-blink-features=AutomationControlled',
+    '--disable-infobars',
+    '--window-size=1366,768'
+  );
+  chromeOptions.setUserPreferences({ credentials_enable_service: false });
   const driver = await new webdriver.Builder()
     .usingServer(SELENIUM_REMOTE_URL)
     .forBrowser('chrome')
+    .setChromeOptions(chromeOptions)
     .build();
+  // Mascara navigator.webdriver antes de qualquer script da pagina rodar,
+  // via CDP Page.addScriptToEvaluateOnNewDocument — persiste entre navegacoes
+  // dentro da mesma sessao (diferente de executeScript, que so roda uma vez).
+  try {
+    const cdpConnection = await driver.createCDPConnection('page');
+    await cdpConnection.execute('Page.addScriptToEvaluateOnNewDocument', 1, {
+      source: "Object.defineProperty(navigator, 'webdriver', { get: () => undefined });",
+    });
+  } catch (e) {
+    console.warn('[launcher] CDP stealth script falhou (nao critico):', e.message);
+  }
   return driver;
 }
 
