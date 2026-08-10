@@ -27,7 +27,7 @@ function fmtExpiry(expiresAt) {
   } catch (e) { return ''; }
 }
 
-export default function WebSessionPicker({ onRetomar, onNew, currentSessionId }) {
+export default function WebSessionPicker({ onRetomar, onNew, currentSessionId, showNewButton = true }) {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -101,13 +101,15 @@ export default function WebSessionPicker({ onRetomar, onNew, currentSessionId })
         })}
       </div>
 
-      <button
-        onClick={onNew}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-zinc-800 text-zinc-200 hover:bg-zinc-700 transition"
-      >
-        <Plus className="w-3.5 h-3.5" />
-        Conectar novo site
-      </button>
+      {showNewButton && (
+        <button
+          onClick={onNew}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium bg-zinc-800 text-zinc-200 hover:bg-zinc-700 transition"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Conectar novo site
+        </button>
+      )}
     </div>
   );
 }

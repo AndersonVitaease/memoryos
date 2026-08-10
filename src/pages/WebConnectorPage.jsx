@@ -352,8 +352,8 @@ export default function WebConnectorPage() {
           </div>
         )}
 
-        {!webSessionId && !showNewConnection && (
-          <WebSessionPicker onRetomar={handleRetomarSessao} onNew={handleConectarNovo} currentSessionId={webSessionId} />
+        {!webSessionId && (
+          <WebSessionPicker onRetomar={handleRetomarSessao} onNew={handleConectarNovo} currentSessionId={webSessionId} showNewButton={!showNewConnection} />
         )}
 
         {!webSessionId && showNewConnection && (
