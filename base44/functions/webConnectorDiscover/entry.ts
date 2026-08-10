@@ -236,36 +236,96 @@ export default async function (req) {
         // Fix: extrai todos os links da pagina (texto + href) numa unica
         // chamada e casa pelo texto do label sugerido pela IA (case-insensitive,
         // substring nos dois sentidos) — nao depende de refs inexistentes.
-        const navLinks = (llmResult && Array.isArray(llmResult.navigation_links)) ? llmResult.navigation_links : [];
-        let nextUrl = null;
-        if (navLinks.length > 0) {
+        //
+        // Fix 2 (2026-08-10): areas uteis de conta (compras, vendas, pedidos)
+        // costumam ficar dentro de menus que so renderizam os links no DOM
+        // apos hover (padrao comum em SPAs React) — o snapshot de
+        // acessibilidade so ve o que esta visivel, entao a IA nunca sugere
+        // esses links. Disparamos um evento de hover (mouseenter/mouseover)
+        // via JS nos elementos candidatos a gatilho de menu — isso e
+        // estritamente leitura (nao navega, nao envia dados, so revela o que
+        // ja existe na pagina) e NAO e um clique. Depois de revelar, aplica
+        // um fallback por palavras-chave comuns de area de conta, caso a IA
+        // nao tenha sugerido nada usavel.
+        const ACCOUNT_AREA_KEYWORDS = /compra|pedido|venda|purchase|order|sale|conta|account|central.?do.?vendedor|seller|historico|extrato|fatura|nota/i;
+
+        async function extractAllLinks() {
+          const res = await callMcp('browser_run_code_unsafe', {
+            code: 'async (page) => { ' +
+              'const links = await page.$$eval("a[href]", (els) => els.map((e) => ({ text: (e.innerText || e.textContent || "").trim(), href: e.href })).filter((l) => l.href && l.text)); ' +
+              'return JSON.stringify({ links: links.slice(0, 300) }); ' +
+              '}',
+          });
+          const text = extractRunCodeText(res);
+          const m = text.match(/```(?:json)?\n?([\s\S]*?)\n?```/) || [null, text];
+          let outcome = JSON.parse((m[1] || text).trim());
+          if (typeof outcome === 'string') outcome = JSON.parse(outcome);
+          return (outcome && Array.isArray(outcome.links)) ? outcome.links : [];
+        }
+
+        async function revealHoverMenus() {
+          // Dispara hover (mouseenter/mouseover) nos elementos mais provaveis
+          // de serem gatilho de menu de conta/usuario (avatar, nome, icone de
+          // perfil) — read-only, so revela DOM ja existente via CSS/JS state.
           try {
-            const allLinksRes = await callMcp('browser_run_code_unsafe', {
+            await callMcp('browser_run_code_unsafe', {
               code: 'async (page) => { ' +
-                'const links = await page.$$eval("a[href]", (els) => els.map((e) => ({ text: (e.innerText || e.textContent || "").trim(), href: e.href })).filter((l) => l.href && l.text)); ' +
-                'return JSON.stringify({ links: links.slice(0, 200) }); ' +
+                'const candidates = Array.from(document.querySelectorAll("header *, nav *, [class*=user], [class*=account], [class*=avatar], [class*=perfil], [class*=conta]")); ' +
+                'const fireHover = (el) => { ' +
+                '  for (const type of ["mouseover","mouseenter"]) { ' +
+                '    el.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, view: window })); ' +
+                '  } ' +
+                '}; ' +
+                'candidates.slice(0, 40).forEach(fireHover); ' +
+                'await new Promise((r) => setTimeout(r, 400)); ' +
+                'return JSON.stringify({ hovered: candidates.length }); ' +
                 '}',
             });
-            const allLinksText = extractRunCodeText(allLinksRes);
-            const alm = allLinksText.match(/```(?:json)?\n?([\s\S]*?)\n?```/) || [null, allLinksText];
-            let allLinksOutcome = JSON.parse((alm[1] || allLinksText).trim());
-            if (typeof allLinksOutcome === 'string') allLinksOutcome = JSON.parse(allLinksOutcome);
-            const pageLinks = (allLinksOutcome && Array.isArray(allLinksOutcome.links)) ? allLinksOutcome.links : [];
-
-            for (const link of navLinks) {
-              const wantedLabel = (link.label || '').trim().toLowerCase();
-              if (!wantedLabel) continue;
-              const match = pageLinks.find((pl) => {
-                const plText = (pl.text || '').toLowerCase();
-                return plText && (plText.includes(wantedLabel) || wantedLabel.includes(plText));
-              });
-              if (match && match.href && !visitedUrls.includes(match.href) && !/\/login|\/logout/.test(match.href)) {
-                nextUrl = match.href;
-                break;
-              }
-            }
-          } catch (e) { /* best-effort: sem links extraidos, encerra descoberta */ }
+          } catch (e) { /* best-effort: hover falhou, segue sem menu revelado */ }
         }
+
+        const navLinks = (llmResult && Array.isArray(llmResult.navigation_links)) ? llmResult.navigation_links : [];
+        let nextUrl = null;
+        try {
+          let pageLinks = await extractAllLinks();
+
+          // Tentativa 1: casar com os nav_links sugeridos pela IA (texto do label).
+          for (const link of navLinks) {
+            const wantedLabel = (link.label || '').trim().toLowerCase();
+            if (!wantedLabel) continue;
+            const match = pageLinks.find((pl) => {
+              const plText = (pl.text || '').toLowerCase();
+              return plText && (plText.includes(wantedLabel) || wantedLabel.includes(plText));
+            });
+            if (match && match.href && !visitedUrls.includes(match.href) && !/\/login|\/logout/.test(match.href)) {
+              nextUrl = match.href;
+              break;
+            }
+          }
+
+          // Tentativa 2: fallback por palavras-chave de area de conta, direto
+          // nos links ja visiveis (sem hover ainda).
+          if (!nextUrl) {
+            const kwMatch = pageLinks.find((pl) =>
+              ACCOUNT_AREA_KEYWORDS.test(pl.text || '') || ACCOUNT_AREA_KEYWORDS.test(pl.href || '')
+            );
+            if (kwMatch && kwMatch.href && !visitedUrls.includes(kwMatch.href) && !/\/login|\/logout/.test(kwMatch.href)) {
+              nextUrl = kwMatch.href;
+            }
+          }
+
+          // Tentativa 3: revela menus escondidos via hover e tenta de novo.
+          if (!nextUrl) {
+            await revealHoverMenus();
+            pageLinks = await extractAllLinks();
+            const kwMatch = pageLinks.find((pl) =>
+              ACCOUNT_AREA_KEYWORDS.test(pl.text || '') || ACCOUNT_AREA_KEYWORDS.test(pl.href || '')
+            );
+            if (kwMatch && kwMatch.href && !visitedUrls.includes(kwMatch.href) && !/\/login|\/logout/.test(kwMatch.href)) {
+              nextUrl = kwMatch.href;
+            }
+          }
+        } catch (e) { /* best-effort: sem links extraidos, encerra descoberta */ }
 
         if (!nextUrl) break; // sem mais paginas para explorar
         visitedUrls.push(nextUrl);
