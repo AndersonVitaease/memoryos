@@ -561,7 +561,23 @@ export default function ChatPage({ projectId } = {}) {
                       <StreamingMessage content={msg.streamingContent ?? ""} />
                     ) : (
                       <div className="prose prose-sm prose-zinc max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-                        <ReactMarkdown>{msg.content}</ReactMarkdown>
+                        <ReactMarkdown
+                          components={{
+                            // Fix (2026-08-10): sem target="_blank", o link tentava
+                            // navegar dentro do MESMO frame onde o MemoryOS esta
+                            // rodando (ex: iframe de preview do Base44). Sites como
+                            // o Mercado Livre detectam estar sendo carregados dentro
+                            // de outro site e redirecionam pra uma pagina generica
+                            // em vez do produto. Abrir sempre em aba nova evita isso
+                            // por completo, alem de ser a pratica padrao segura pra
+                            // links externos.
+                            a: ({ node, ...props }) => (
+                              <a {...props} target="_blank" rel="noopener noreferrer" />
+                            ),
+                          }}
+                        >
+                          {msg.content}
+                        </ReactMarkdown>
                       </div>
                     )
                   ) : (
