@@ -114,6 +114,7 @@ export default async function (req) {
       let debugLastHovered = null;
       let debugLastError = null;
       let debugRawLinksCount = null;
+      let debugLastSnapshotPreview = '';
 
       // Limpa browser pendurado de runs anteriores.
       try { await callMcp('browser_close', {}); } catch (e) { /* best-effort */ }
@@ -393,6 +394,7 @@ export default async function (req) {
           hover_triggered_on_elements: debugLastHovered,
           error: debugLastError,
           raw_links_found_before_domain_filter: debugRawLinksCount,
+          snapshot_preview: debugLastSnapshotPreview,
         } : undefined,
       });
     }
