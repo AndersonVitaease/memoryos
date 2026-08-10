@@ -206,7 +206,7 @@ export default function WebConnectorPage() {
     setDiscovering(true);
     setError(null);
     try {
-      const data = await callDiscover('discover', { webSessionId });
+      const data = await callDiscover('discover', { webSessionId, maxPages: 5 });
       setDiscoverSummary({
         pages_explored: data.pages_explored,
         candidates_discovered: data.candidates_discovered,
