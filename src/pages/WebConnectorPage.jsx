@@ -501,6 +501,9 @@ export default function WebConnectorPage() {
                           <p className="text-red-400 text-[10px]">Erro: {discoverSummary.debug.error}</p>
                         )}
                         <p className="text-zinc-600 text-[10px]">
+                          Links brutos antes do filtro de domínio: {discoverSummary.debug.raw_links_found_before_domain_filter ?? '—'}
+                        </p>
+                        <p className="text-zinc-600 text-[10px]">
                           Hover disparado em {discoverSummary.debug.hover_triggered_on_elements ?? '—'} elemento(s).
                         </p>
                         <p className="text-zinc-600 text-[10px]">Links vistos na última página (amostra):</p>
