@@ -37,11 +37,20 @@ export default function LiveLoginPanel({ onSessionActive }) {
   const [webSessionId, setWebSessionId] = useState(null);
   const [novncUrl, setNovncUrl] = useState('');
   const [expiresAt, setExpiresAt] = useState(null);
+  // Fix definitivo (2026-08-10): se algum usuario abandonar o fluxo (fechar
+  // aba, cair conexao, esquecer de capturar), o launcher trava com "ja existe
+  // sessao ativa" ate o TTL de 15min expirar sozinho. Antes disso, so quem
+  // tinha acesso SSH a VPS conseguia destravar. Agora, quando /launch falha
+  // com esse erro especifico, mostramos um botao self-service que qualquer
+  // usuario pode clicar.
+  const [showForceRelease, setShowForceRelease] = useState(false);
+  const [releasing, setReleasing] = useState(false);
 
   const handleLaunch = useCallback(async () => {
     if (!siteUrl) return;
     setBusy(true);
     setError(null);
+    setShowForceRelease(false);
     try {
       const data = await callLive('launch', { siteUrl, siteName });
       setWebSessionId(data.webSessionId);
@@ -50,11 +59,30 @@ export default function LiveLoginPanel({ onSessionActive }) {
       // Abre o noVNC em nova aba automaticamente
       if (data.novncUrl) window.open(data.novncUrl, '_blank', 'noopener');
     } catch (e) {
-      setError(e.message || 'Falha ao iniciar navegador live');
+      const msg = e.message || 'Falha ao iniciar navegador live';
+      setError(msg);
+      if (/j[aá] existe uma sess[aã]o live ativa/i.test(msg)) {
+        setShowForceRelease(true);
+      }
     } finally {
       setBusy(false);
     }
   }, [siteUrl, siteName]);
+
+  const handleForceRelease = useCallback(async () => {
+    setReleasing(true);
+    setError(null);
+    try {
+      await callLive('forceRelease', {});
+      setShowForceRelease(false);
+      // Tenta iniciar de novo automaticamente apos liberar a trava.
+      await handleLaunch();
+    } catch (e) {
+      setError(e.message || 'Falha ao liberar sessao travada');
+    } finally {
+      setReleasing(false);
+    }
+  }, [handleLaunch]);
 
   const handleCapture = useCallback(async () => {
     if (!webSessionId) return;
