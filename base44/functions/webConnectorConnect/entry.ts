@@ -77,6 +77,28 @@ export default async function (req) {
 
     const callMcp = makeCallMcp(mcpSession, MCP_CALL_TIMEOUT_MS, tryRecoverResultFromError);
 
+    // Robustez definitiva (2026-08-10): 'discover' e 'use'/'executeCapability'
+    // compartilham o MESMO navegador Playwright na VPS. Se um processo nao
+    // fechar limpo (ex: descoberta BFS interrompida), o proximo browser_*
+    // falha com "Browser is already in use for <profile>, use --isolated..." —
+    // um erro de INFRAESTRUTURA que a UI/chat mostrava erroneamente como
+    // "sessao expirada" (a real causa ficava escondida, levando horas de
+    // debug). callMcpWithRetry detecta esse erro especifico, forca um
+    // browser_close e tenta de novo automaticamente antes de desistir —
+    // a maioria dos casos se autocorrige sem o usuario perceber.
+    async function callMcpWithRetry(op, args) {
+      try {
+        return await callMcp(op, args);
+      } catch (e) {
+        if (/already in use/i.test(e?.message || '')) {
+          try { await callMcp('browser_close', {}); } catch (e2) { /* best-effort */ }
+          await new Promise((r) => setTimeout(r, 1500));
+          return await callMcp(op, args); // segunda tentativa: deixa o erro propagar se falhar de novo
+        }
+        throw e;
+      }
+    }
+
     // ── operation: start ──────────────────────────────────────────────
     if (operation === 'start') {
       const { siteUrl: rawSiteUrl, siteName } = body;
