@@ -303,12 +303,22 @@ export default async function (req) {
           // mercadolivre.com.br) — o texto desses links (nomes de pais,
           // bandeiras) as vezes casa por acidente com o label sugerido pela IA,
           // consumindo todo o orcamento de paginas num loop entre dominios sem
-          // nunca chegar em area util. So navega dentro do mesmo hostname de
+          // nunca chegar em area util. So navega dentro do mesmo dominio raiz de
           // onde a sessao comecou.
-          const baseHost = (() => { try { return new URL(session.site_url).hostname; } catch (e) { return null; } })();
+          //
+          // Fix 3b (2026-08-10): comparar hostname EXATO era rigido demais —
+          // sites grandes usam subdominios diferentes pra areas de conta (ex:
+          // myaccount.mercadolivre.com.br, compras.mercadolivre.com.br), entao
+          // a comparacao exata descartava TODOS os links da pagina, deixando a
+          // lista de candidatos vazia sem erro nenhum. Agora aceita qualquer
+          // subdominio do mesmo dominio raiz (sufixo), nao so o hostname identico.
+          const baseHost = (() => { try { return new URL(session.site_url).hostname.replace(/^www\./, ''); } catch (e) { return null; } })();
           const sameDomain = (href) => {
             if (!baseHost) return true;
-            try { return new URL(href).hostname === baseHost; } catch (e) { return false; }
+            try {
+              const h = new URL(href).hostname.replace(/^www\./, '');
+              return h === baseHost || h.endsWith('.' + baseHost);
+            } catch (e) { return false; }
           };
 
           let pageLinks = (await extractAllLinks()).filter((pl) => sameDomain(pl.href));
