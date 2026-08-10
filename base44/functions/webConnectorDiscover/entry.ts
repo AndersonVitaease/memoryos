@@ -235,7 +235,7 @@ export default async function (req) {
             '  await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});' +
             '  return JSON.stringify({ url: page.url() });' +
             '}';
-          const res = await callMcp('browser_run_code_unsafe', { code });
+          const res = await callMcpWithRetry('browser_run_code_unsafe', { code });
           const navText = extractRunCodeText(res);
           const m = navText.match(/```(?:json)?\n?([\s\S]*?)\n?```/) || [null, navText];
           let navOutcome = JSON.parse((m[1] || navText).trim());
