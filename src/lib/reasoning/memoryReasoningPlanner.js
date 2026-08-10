@@ -482,7 +482,31 @@ ${fullText}`;
   let _webConnectorGroundingNote = null;
   try {
     const { resolveWebIntent, hostOf } = await import("@/lib/web-connector/WebSiteIntentResolver");
-    const _webIntent = await resolveWebIntent(userMsg);
+    const _webIntentResult = await resolveWebIntent(userMsg);
+    const _webIntent = _webIntentResult?.intent || null;
+    // Diagnostico persistente (2026-08-10): resolveWebIntent falhava
+    // silenciosamente sem deixar rastro nenhum, tornando impossivel saber
+    // por que uma pergunta clara ("mostre 10 chuteiras no mercado livre")
+    // caia no fallback generico mesmo com sessao ativa e capability validada.
+    // Persiste o motivo exato como InteractionEvent (best-effort, nunca
+    // bloqueia a resposta) para inspecao posterior via query direta.
+    if (!_webIntent && _webIntentResult?.debugReason && _webIntentResult.debugReason !== 'no_active_sessions' && _webIntentResult.debugReason !== 'empty_message') {
+      try {
+        await base44.entities.InteractionEvent.create({
+          session_id: sessionId || '',
+          actor: 'system',
+          event_type: 'web_intent_resolve_failed',
+          raw_text: String(userMsg || '').slice(0, 500),
+          payload: JSON.stringify({
+            debugReason: _webIntentResult.debugReason,
+            debugSessionSites: _webIntentResult.debugSessionSites || null,
+            debugSiteOrigin: _webIntentResult.debugSiteOrigin || null,
+            debugKnownOrigins: _webIntentResult.debugKnownOrigins || null,
+            debugCapabilityIds: _webIntentResult.debugCapabilityIds || null,
+          }),
+        });
+      } catch (e) { /* best-effort: diagnostico nunca bloqueia a resposta */ }
+    }
     if (_webIntent) {
       // B3: valida TTL da sessao antes de executar
       if (_webIntent.webSessionExpiresAt && new Date(_webIntent.webSessionExpiresAt) < new Date()) {
