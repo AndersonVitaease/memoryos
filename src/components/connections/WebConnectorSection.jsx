@@ -87,6 +87,20 @@ export default function WebConnectorSection() {
   const [discovering, setDiscovering] = useState(false);
   const [discoverSummary, setDiscoverSummary] = useState(null);
   const [candidateBusyId, setCandidateBusyId] = useState(null);
+  // Governanca (2026-08-10): so admin pode ver candidatos de OUTROS usuarios
+  // e validar/rejeitar. Usuario comum ve so os proprios (RLS nativa) e nao
+  // tem os botoes de acao — evita que qualquer pessoa autenticada promova
+  // uma capability incorreta pra CapabilityMap, que e global/compartilhada.
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const me = await base44.auth.me();
+        setIsAdmin(me?.role === 'admin');
+      } catch (e) { /* best-effort: assume nao-admin por seguranca */ }
+    })();
+  }, []);
 
   useEffect(() => {
     if (webSessionId) return;
