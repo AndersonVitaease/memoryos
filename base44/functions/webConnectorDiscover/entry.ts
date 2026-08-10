@@ -368,6 +368,13 @@ export default async function (req) {
         candidates: allCandidates,
         visited_urls: visitedUrls,
         message: 'Descoberta concluida. ' + allCandidates.length + ' candidato(s) salvo(s) como CapabilityCandidate (status=candidate). Validacao humana necessaria antes de promover para CapabilityMap.',
+        // Debug temporario (2026-08-10): quando 0 candidatos, mostra os links
+        // reais que o motor viu na ultima pagina + quantos elementos receberam
+        // hover — permite diagnosticar sem tentativa e erro as cegas.
+        debug: allCandidates.length === 0 ? {
+          last_page_links_sample: debugLastPageLinks.map((l) => ({ text: l.text, href: l.href })),
+          hover_triggered_on_elements: debugLastHovered,
+        } : undefined,
       });
     }
 
