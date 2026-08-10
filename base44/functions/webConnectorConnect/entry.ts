@@ -605,6 +605,24 @@ export default async function (req) {
       if(!lt){const w=e.closest("label"); if(w)lt=w.textContent.toLowerCase();}
       if((ph&&ph.includes(nn))||(al&&al.includes(nn))||(lt&&lt.includes(nn)))return e;
     }
+    // Passo 3: match semantico por palavra-chave de busca. Se o nome do campo
+    // descoberto contem termo de busca (digite/buscar/pesquisar/procurar/
+    // search/find/query/palavra), casa com qualquer input cujos atributos
+    // tambem tem termo de busca. Resolve o caso Mercado Livre: a descoberta
+    // capturou "Digite o que voce quer encontrar" mas o placeholder real do
+    // campo e "Buscar produtos, marcas e muito mais..." — os textos nao se
+    // sobrepoe, mas ambos indicam um campo de busca.
+    const searchRe = /(digite|buscar|pesquisar|procurar|search|find|query|keyword|palavra|as_word)/i;
+    if (searchRe.test(nn)) {
+      for (const e of els) {
+        if (e.type === 'search') return e;
+        const ph2=(e.getAttribute("placeholder")||"").toLowerCase();
+        const al2=(e.getAttribute("aria-label")||"").toLowerCase();
+        const nm2=(e.getAttribute("name")||"").toLowerCase();
+        const id2=(e.getAttribute("id")||"").toLowerCase();
+        if (searchRe.test(ph2)||searchRe.test(al2)||searchRe.test(nm2)||searchRe.test(id2)) return e;
+      }
+    }
     return null;
   }, { n });
   const forms = await page.$$("form");
@@ -650,19 +668,69 @@ export default async function (req) {
     sBtn ? sBtn.click() : best.press("Enter"),
   ]);
   await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});
+  // Scroll progressivo para disparar lazy-load dos cards de produto (ML/
+  // ecommerce carrega os cards via IntersectionObserver conforme o usuario
+  // rola). Sem isto, os anchors de produto nao existem no DOM na hora da
+  // extracao — so nav/categorias sao capturados.
+  await page.evaluate(() => {
+    return new Promise((resolve) => {
+      let count = 0;
+      const step = () => {
+        window.scrollBy(0, Math.max(window.innerHeight * 2, 1200));
+        count++;
+        if (count < 5) setTimeout(step, 500);
+        else { window.scrollTo(0, 0); resolve(); }
+      };
+      step();
+    });
+  }).catch(() => {});
+  await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
   const links = await page.evaluate(() => {
-    const out = [];
-    const origin = location.origin;
-    const anchors = Array.from(document.querySelectorAll('a[href]'));
-    for (const a of anchors) {
-      const href = a.href;
-      if (!href) continue;
-      try { if (new URL(href).origin !== origin) continue; } catch (e) { continue; }
-      if (/\\/(login|logout|signup|register|auth|conta|minha-conta|ajuda|vendas|favoritos|carrinho)\\b/i.test(href)) continue;
-      const text = (a.innerText || a.textContent || '').trim();
-      if (text.length < 8) continue;
-      out.push({ text: text.slice(0, 200), href });
-    }
+    // Dominio registravel (ex: lista.mercadolivre.com.br -> mercadolivre.com.br).
+    // A pagina de resultados do ML fica em lista.mercadolivre.com.br mas os
+    // produtos apontam pra www.mercadolivre.com.br/.../p/ID — filtro strict
+    // same-origin exclui os links de produto. Comparar pelo registrable
+    // domain inclui todos os subdominios do mesmo site.
+    const rd = (() => {
+      const parts = location.hostname.split('.');
+      const twoPartTlds = ['com.br','co.uk','com.au','org.br','net.br','com.ar','com.mx','co.za'];
+      const last2 = parts.slice(-2).join('.');
+      if (twoPartTlds.includes(last2) && parts.length >= 3) return parts.slice(-3).join('.');
+      return last2;
+    })();
+    const curPath = location.pathname;
+    // Padroes de URL de produto/detalhe (genericos + ML/Amazon/etc). Links que
+    // casam sao priorizados — sem isto, os 30 links capturados sao so nav/
+    // categoria (que aparecem antes no DOM), cortando os produtos reais.
+    const productRe = /\\/(p|dp|produto|item|pd|listados|detalle|product)\\/|MLB-?\\d|\\/item\\//i;
+    const catRe = /\\/(c|categorias|ofertas|l|gz|assinaturas|importados|mais-vendidos|categorias)\\b/i;
+    const collect = (filter) => {
+      const list = [];
+      const anchors = Array.from(document.querySelectorAll('a[href]'));
+      for (const a of anchors) {
+        const href = a.href;
+        if (!href) continue;
+        let h;
+        try { h = new URL(href); } catch (e) { continue; }
+        if (!h.hostname.endsWith(rd)) continue;
+        if (/\\/(login|logout|signup|register|auth|conta|minha-conta|ajuda|vendas|favoritos|carrinho|ofertas)\\b/i.test(h.pathname)) continue;
+        if (h.pathname === curPath || h.pathname === '/' || h.pathname === '') continue;
+        if (!filter(h, a)) continue;
+        const text = (a.innerText || a.textContent || '').trim();
+        if (text.length < 8) continue;
+        // Captura o texto do card/container ancestral (inclui preco, parcelas,
+        // frete) para o LLM ter dados de identificacao alem do titulo.
+        const card = a.closest('li, article, [class*=ui-search-result], [class*=item], [class*=card], [class*=product]');
+        const cardText = card ? (card.innerText || '').trim().slice(0, 400) : '';
+        list.push({ text: text.slice(0, 200), href, cardText });
+      }
+      return list;
+    };
+    // Passo 1: anchors de produto (href casa productRe e NAO e categoria).
+    const productAnchors = collect((h) => productRe.test(h.pathname + h.search) && !catRe.test(h.pathname));
+    // Passo 2 (fallback): anchors genericos do mesmo dominio, excluindo categorias.
+    const genericAnchors = collect((h) => !catRe.test(h.pathname));
+    const out = productAnchors.length > 0 ? productAnchors : genericAnchors;
     const seen = new Set();
     const dedup = [];
     for (const it of out) { if (seen.has(it.href)) continue; seen.add(it.href); dedup.push(it); }
