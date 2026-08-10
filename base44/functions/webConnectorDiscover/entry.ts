@@ -113,6 +113,7 @@ export default async function (req) {
       let debugLastPageLinks = [];
       let debugLastHovered = null;
       let debugLastError = null;
+      let debugRawLinksCount = null;
 
       // Limpa browser pendurado de runs anteriores.
       try { await callMcp('browser_close', {}); } catch (e) { /* best-effort */ }
@@ -321,7 +322,9 @@ export default async function (req) {
             } catch (e) { return false; }
           };
 
-          let pageLinks = (await extractAllLinks()).filter((pl) => sameDomain(pl.href));
+          let rawLinks = await extractAllLinks();
+          debugRawLinksCount = rawLinks.length;
+          let pageLinks = rawLinks.filter((pl) => sameDomain(pl.href));
 
           // Tentativa 1: casar com os nav_links sugeridos pela IA (texto do label).
           for (const link of navLinks) {
@@ -388,6 +391,7 @@ export default async function (req) {
           last_page_links_sample: debugLastPageLinks.map((l) => ({ text: l.text, href: l.href })),
           hover_triggered_on_elements: debugLastHovered,
           error: debugLastError,
+          raw_links_found_before_domain_filter: debugRawLinksCount,
         } : undefined,
       });
     }
