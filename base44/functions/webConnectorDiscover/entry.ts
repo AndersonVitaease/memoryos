@@ -339,7 +339,7 @@ export default async function (req) {
 
           // Tentativa 3: revela menus escondidos via hover e tenta de novo.
           if (!nextUrl) {
-            await revealHoverMenus();
+            debugLastHovered = await revealHoverMenus();
             pageLinks = (await extractAllLinks()).filter((pl) => sameDomain(pl.href));
             const kwMatch = pageLinks.find((pl) =>
               ACCOUNT_AREA_KEYWORDS.test(pl.text || '') || ACCOUNT_AREA_KEYWORDS.test(pl.href || '')
@@ -348,6 +348,8 @@ export default async function (req) {
               nextUrl = kwMatch.href;
             }
           }
+
+          debugLastPageLinks = pageLinks.slice(0, 40);
         } catch (e) { /* best-effort: sem links extraidos, encerra descoberta */ }
 
         if (!nextUrl) break; // sem mais paginas para explorar
