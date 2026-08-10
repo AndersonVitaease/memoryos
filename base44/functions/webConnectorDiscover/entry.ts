@@ -112,6 +112,7 @@ export default async function (req) {
       let currentUrl = session.site_url;
       let debugLastPageLinks = [];
       let debugLastHovered = null;
+      let debugLastError = null;
 
       // Limpa browser pendurado de runs anteriores.
       try { await callMcp('browser_close', {}); } catch (e) { /* best-effort */ }
@@ -350,7 +351,9 @@ export default async function (req) {
           }
 
           debugLastPageLinks = pageLinks.slice(0, 40);
-        } catch (e) { /* best-effort: sem links extraidos, encerra descoberta */ }
+        } catch (e) {
+          debugLastError = e && e.message ? e.message : String(e);
+        }
 
         if (!nextUrl) break; // sem mais paginas para explorar
         visitedUrls.push(nextUrl);
@@ -374,6 +377,7 @@ export default async function (req) {
         debug: allCandidates.length === 0 ? {
           last_page_links_sample: debugLastPageLinks.map((l) => ({ text: l.text, href: l.href })),
           hover_triggered_on_elements: debugLastHovered,
+          error: debugLastError,
         } : undefined,
       });
     }
