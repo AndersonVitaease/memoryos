@@ -228,23 +228,43 @@ export default async function (req) {
         // visitada. Sem o Playwright expor browser_click aqui, usamos
         // browser_run_code_unsafe read-only para extrair o href do link e
         // navegar no proximo iteration via goto (read-only).
+        // NOTA (fix 2026-08-10): os "ref" do snapshot de acessibilidade do
+        // Playwright (ex: s1e5) sao IDs internos do snapshot, NAO atributos
+        // reais do DOM — um seletor CSS "[ref=s1e5]" nunca casa com nada. A
+        // versao anterior caia sempre no fallback ", a" e pegava o PRIMEIRO
+        // <a> da pagina inteira, ignorando qual link a IA realmente sugeriu.
+        // Fix: extrai todos os links da pagina (texto + href) numa unica
+        // chamada e casa pelo texto do label sugerido pela IA (case-insensitive,
+        // substring nos dois sentidos) — nao depende de refs inexistentes.
         const navLinks = (llmResult && Array.isArray(llmResult.navigation_links)) ? llmResult.navigation_links : [];
         let nextUrl = null;
-        for (const link of navLinks) {
-          if (!link.ref) continue;
+        if (navLinks.length > 0) {
           try {
-            const hrefRes = await callMcp('browser_run_code_unsafe', {
-              code: 'async (page) => { const el = await page.$("[ref=' + JSON.stringify(link.ref) + '], a"); const href = el ? await el.evaluate((e) => e.href || "") : ""; return JSON.stringify({ href }); }',
+            const allLinksRes = await callMcp('browser_run_code_unsafe', {
+              code: 'async (page) => { ' +
+                'const links = await page.$$eval("a[href]", (els) => els.map((e) => ({ text: (e.innerText || e.textContent || "").trim(), href: e.href })).filter((l) => l.href && l.text)); ' +
+                'return JSON.stringify({ links: links.slice(0, 200) }); ' +
+                '}',
             });
-            const hrefText = extractRunCodeText(hrefRes);
-            const hm = hrefText.match(/```(?:json)?\n?([\s\S]*?)\n?```/) || [null, hrefText];
-            let hrefOutcome = JSON.parse((hm[1] || hrefText).trim());
-            if (typeof hrefOutcome === 'string') hrefOutcome = JSON.parse(hrefOutcome);
-            if (hrefOutcome && hrefOutcome.href && !visitedUrls.includes(hrefOutcome.href) && !/\/login/.test(hrefOutcome.href)) {
-              nextUrl = hrefOutcome.href;
-              break;
+            const allLinksText = extractRunCodeText(allLinksRes);
+            const alm = allLinksText.match(/```(?:json)?\n?([\s\S]*?)\n?```/) || [null, allLinksText];
+            let allLinksOutcome = JSON.parse((alm[1] || allLinksText).trim());
+            if (typeof allLinksOutcome === 'string') allLinksOutcome = JSON.parse(allLinksOutcome);
+            const pageLinks = (allLinksOutcome && Array.isArray(allLinksOutcome.links)) ? allLinksOutcome.links : [];
+
+            for (const link of navLinks) {
+              const wantedLabel = (link.label || '').trim().toLowerCase();
+              if (!wantedLabel) continue;
+              const match = pageLinks.find((pl) => {
+                const plText = (pl.text || '').toLowerCase();
+                return plText && (plText.includes(wantedLabel) || wantedLabel.includes(plText));
+              });
+              if (match && match.href && !visitedUrls.includes(match.href) && !/\/login|\/logout/.test(match.href)) {
+                nextUrl = match.href;
+                break;
+              }
             }
-          } catch (e) { /* best-effort: tenta proximo link */ }
+          } catch (e) { /* best-effort: sem links extraidos, encerra descoberta */ }
         }
 
         if (!nextUrl) break; // sem mais paginas para explorar
