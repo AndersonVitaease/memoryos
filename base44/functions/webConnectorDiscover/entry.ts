@@ -110,6 +110,8 @@ export default async function (req) {
       const visitedUrls = [session.site_url];
       const allCandidates = [];
       let currentUrl = session.site_url;
+      let debugLastPageLinks = [];
+      let debugLastHovered = null;
 
       // Limpa browser pendurado de runs anteriores.
       try { await callMcp('browser_close', {}); } catch (e) { /* best-effort */ }
