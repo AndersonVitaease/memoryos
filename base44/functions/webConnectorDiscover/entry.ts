@@ -92,6 +92,24 @@ export default async function (req) {
 
     const callMcp = makeCallMcp(mcpSession, MCP_CALL_TIMEOUT_MS, tryRecoverResultFromError);
 
+    // Robustez definitiva (2026-08-10): discovery e execucao (webConnectorConnect)
+    // compartilham o MESMO navegador Playwright na VPS. Um crawl BFS longo que
+    // nao fecha limpo deixa o profile travado, quebrando TODAS as chamadas
+    // seguintes (inclusive de outros usuarios/operacoes) com "Browser is
+    // already in use". Mesmo retry automatico usado em webConnectorConnect.
+    async function callMcpWithRetry(op, args) {
+      try {
+        return await callMcp(op, args);
+      } catch (e) {
+        if (/already in use/i.test(e?.message || '')) {
+          try { await callMcp('browser_close', {}); } catch (e2) { /* best-effort */ }
+          await new Promise((r) => setTimeout(r, 1500));
+          return await callMcp(op, args);
+        }
+        throw e;
+      }
+    }
+
     // ── operation: discover ────────────────────────────────────────────
     if (operation === 'discover') {
       const { webSessionId, maxPages } = body;
