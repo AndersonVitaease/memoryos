@@ -92,7 +92,11 @@ export default function WebConnectorPage() {
           setSiteUrl(s.site_url || '');
           setLoginUrl(s.site_url || '');
           setSiteName(s.site_name || '');
+        } else if (!recs || recs.length === 0) {
+          // 0 sessoes ativas -> vai direto pro form de conexao (nao trava no seletor vazio)
+          setShowNewConnection(true);
         }
+        // 2+ sessoes: mantem showNewConnection=false -> WebSessionPicker aparece
       } catch (e) { /* best-effort: sem sessao pra retomar, segue tela inicial */ }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
