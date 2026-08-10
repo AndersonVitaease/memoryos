@@ -184,6 +184,45 @@ export default async function (req) {
       return Response.json({ ok: true, webSessionId, status: 'revoked' });
     }
 
+    // ── operation: forceRelease ───────────────────────────────────────
+    // Fix definitivo (2026-08-10): antes, se um usuario abandonasse o fluxo
+    // de login live (fechou aba, caiu conexao, esqueceu de "Capturar sessao"),
+    // a trava do launcher (max 1 sessao por vez) so liberava sozinha apos
+    // 15min de TTL, e ninguem sem acesso SSH a VPS conseguia destravar antes
+    // disso na pratica. Esta operacao e self-service: qualquer usuario
+    // autenticado pode chamar para (1) mandar o launcher fechar QUALQUER
+    // sessao pendurada (seguro, pois so existe 1 por vez no MVP) e (2) marcar
+    // como revoked qualquer WebSession travada em pending_login. Usada pelo
+    // botao "Liberar sessao travada" no frontend quando /launch retorna 409.
+    if (operation === 'forceRelease') {
+      let launcherResult = null;
+      try {
+        launcherResult = await callLauncher('/close', 'POST', { all: true });
+      } catch (e) {
+        // best-effort: mesmo se o launcher falhar, ainda limpamos o lado DB
+        launcherResult = { error: e.message };
+      }
+
+      let revokedCount = 0;
+      try {
+        const stale = await base44.entities.WebSession.filter({ status: 'pending_login' });
+        for (const s of (stale || [])) {
+          try {
+            await base44.entities.WebSession.update(s.id, { status: 'revoked' });
+            revokedCount++;
+          } catch (e) { /* best-effort: segue para a proxima */ }
+        }
+      } catch (e) { /* best-effort */ }
+
+      return Response.json({
+        ok: true,
+        launcherClosed: launcherResult && typeof launcherResult.closedCount === 'number' ? launcherResult.closedCount : null,
+        launcherError: launcherResult && launcherResult.error ? launcherResult.error : null,
+        webSessionsRevoked: revokedCount,
+        message: 'Trava liberada. Tente iniciar o navegador live novamente.',
+      });
+    }
+
     // ── operation: status ─────────────────────────────────────────────
     if (operation === 'status') {
       const { webSessionId } = body;
