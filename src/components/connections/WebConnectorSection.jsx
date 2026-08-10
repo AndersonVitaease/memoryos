@@ -154,15 +154,22 @@ export default function WebConnectorSection() {
     if (webSessionId && status === 'active') {
       (async () => {
         try {
-          const recs = await base44.entities.CapabilityCandidate.filter({ web_session_id: webSessionId });
-          setCandidates(recs || []);
+          if (isAdmin) {
+            // Admin ve candidatos de TODOS os usuarios pra este site (nao so os
+            // proprios) — supervisao real, nao so o que este navegador descobriu.
+            const data = await callGovernance('listAllCandidates', { siteUrl });
+            setCandidates(data.candidates || []);
+          } else {
+            const recs = await base44.entities.CapabilityCandidate.filter({ web_session_id: webSessionId });
+            setCandidates(recs || []);
+          }
         } catch (e) { /* best-effort */ }
       })();
     } else {
       setCandidates([]);
       setDiscoverSummary(null);
     }
-  }, [webSessionId, status]);
+  }, [webSessionId, status, isAdmin, siteUrl]);
 
   const handleStart = useCallback(async () => {
     if (!siteUrl) return;
