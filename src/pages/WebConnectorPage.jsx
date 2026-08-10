@@ -211,6 +211,7 @@ export default function WebConnectorPage() {
         pages_explored: data.pages_explored,
         candidates_discovered: data.candidates_discovered,
         visited_urls: data.visited_urls,
+        debug: data.debug || null,
       });
       try {
         const recs = await base44.entities.CapabilityCandidate.filter({ web_session_id: webSessionId });
