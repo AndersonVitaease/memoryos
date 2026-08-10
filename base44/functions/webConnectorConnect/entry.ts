@@ -760,7 +760,7 @@ export default async function (req) {
   }).catch(() => []);
   return JSON.stringify({ url: page.url(), filled, links });
   }`;
-        const res = await callMcp('browser_run_code_unsafe', { code });
+        const res = await callMcpWithRetry('browser_run_code_unsafe', { code });
         execResult = extractRunCodeText(res);
       } catch (e) {
         return Response.json({ error: 'Execute failed: ' + e.message }, { status: 502 });
