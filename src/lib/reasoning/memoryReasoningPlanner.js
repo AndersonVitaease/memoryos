@@ -529,7 +529,26 @@ ${fullText}`;
         inputs: _inputs,
       });
       const _d = _res?.data ?? _res;
-      if (_d?.error) throw new Error(String(_d.error));
+      if (_d?.error) {
+        // Diagnostico persistente (2026-08-10): executeCapability falhava e o
+        // erro sumia no catch generico la embaixo, sem deixar rastro nenhum —
+        // impossivel saber se foi WAF, sessao expirada de verdade, timeout, etc.
+        try {
+          await base44.entities.InteractionEvent.create({
+            session_id: session?.id || '',
+            actor: 'system',
+            event_type: 'web_execute_capability_failed',
+            raw_text: String(userMsg || '').slice(0, 500),
+            payload: JSON.stringify({
+              error: String(_d.error).slice(0, 1000),
+              webSessionId: _webIntent.webSessionId,
+              capabilityId: _webIntent.capability?.id || null,
+              discoveredFromUrl: _webIntent.discoveredFromUrl,
+            }),
+          });
+        } catch (e2) { /* best-effort: diagnostico nunca bloqueia a resposta */ }
+        throw new Error(String(_d.error));
+      }
       const _snap = String(_d?.snapshotText || "").slice(0, 6000);
       const _links = Array.isArray(_d?.links) ? _d.links : [];
       if (_snap) {
