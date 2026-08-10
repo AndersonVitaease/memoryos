@@ -506,6 +506,12 @@ export default function WebConnectorPage() {
                         <p className="text-zinc-600 text-[10px]">
                           Hover disparado em {discoverSummary.debug.hover_triggered_on_elements ?? '—'} elemento(s).
                         </p>
+                        {discoverSummary.debug.snapshot_preview && (
+                          <div>
+                            <p className="text-zinc-600 text-[10px]">Preview do snapshot da página (o que o motor realmente viu):</p>
+                            <pre className="mt-1 p-2 rounded bg-zinc-950/60 border border-zinc-800 text-[9px] text-zinc-500 whitespace-pre-wrap max-h-40 overflow-y-auto">{discoverSummary.debug.snapshot_preview}</pre>
+                          </div>
+                        )}
                         <p className="text-zinc-600 text-[10px]">Links vistos na última página (amostra):</p>
                         <ul className="list-disc text-zinc-600 font-mono text-[10px] max-h-40 overflow-y-auto">
                           {(discoverSummary.debug.last_page_links_sample || []).map((l, i) => (
