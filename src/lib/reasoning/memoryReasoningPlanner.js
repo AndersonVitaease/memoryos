@@ -582,13 +582,24 @@ ${fullText}`;
     // Diagnostico persistente (2026-08-10): ultima rede de seguranca — pega
     // qualquer excecao no bloco inteiro (rede, timeout, bug de codigo) que nao
     // tenha sido capturada pelos pontos de diagnostico mais especificos acima.
+    // FIX: err.message do base44.functions.invoke em erro HTTP e generico
+    // ("Request failed with status code 502") — a mensagem real fica no corpo
+    // da resposta (err.response.data.error), igual ao padrao ja usado na UI
+    // (WebConnectorPage.jsx). Sem isso o diagnostico so mostra o envelope,
+    // nao a causa.
+    const _realErr =
+      err?.response?.data?.error ||
+      (typeof err?.response?.data === 'string' ? err.response.data : null) ||
+      err?.data?.error ||
+      err?.message ||
+      String(err);
     try {
       await base44.entities.InteractionEvent.create({
         session_id: session?.id || '',
         actor: 'system',
         event_type: 'web_connector_routing_exception',
         raw_text: String(userMsg || '').slice(0, 500),
-        payload: JSON.stringify({ error: String(err?.message || err).slice(0, 1000) }),
+        payload: JSON.stringify({ error: String(_realErr).slice(0, 1000), rawMessage: String(err?.message || '').slice(0, 300) }),
       });
     } catch (e2) { /* best-effort */ }
   }
