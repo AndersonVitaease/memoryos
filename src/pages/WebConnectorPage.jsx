@@ -493,6 +493,22 @@ export default function WebConnectorPage() {
                       </ul>
                     </details>
                   )}
+                  {discoverSummary.debug && (
+                    <details>
+                      <summary className="cursor-pointer text-amber-500 hover:text-amber-300">Debug: por que 0 candidatos?</summary>
+                      <div className="mt-1 ml-4 space-y-1">
+                        <p className="text-zinc-600 text-[10px]">
+                          Hover disparado em {discoverSummary.debug.hover_triggered_on_elements ?? '—'} elemento(s).
+                        </p>
+                        <p className="text-zinc-600 text-[10px]">Links vistos na última página (amostra):</p>
+                        <ul className="list-disc text-zinc-600 font-mono text-[10px] max-h-40 overflow-y-auto">
+                          {(discoverSummary.debug.last_page_links_sample || []).map((l, i) => (
+                            <li key={i} className="truncate">{l.text || '(sem texto)'} → {l.href}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </details>
+                  )}
                 </div>
               )}
 
