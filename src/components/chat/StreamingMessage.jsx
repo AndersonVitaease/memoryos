@@ -54,7 +54,18 @@ export default function StreamingMessage({ content }) {
 
   return (
     <div className="prose prose-sm prose-zinc max-w-none [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
-      <ReactMarkdown>{content}</ReactMarkdown>
+      <ReactMarkdown
+        components={{
+          // Mesmo fix do ChatPage.jsx: forca links a abrir em aba nova, senao
+          // tentam navegar dentro do frame do MemoryOS e sites externos (ex:
+          // Mercado Livre) detectam o embed e redirecionam pra pagina generica.
+          a: ({ node, ...props }) => (
+            <a {...props} target="_blank" rel="noopener noreferrer" />
+          ),
+        }}
+      >
+        {content}
+      </ReactMarkdown>
       <span className="vxp-cursor" aria-hidden="true" />
     </div>
   );
