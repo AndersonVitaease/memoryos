@@ -163,6 +163,7 @@ export default async function (req) {
           }
         } catch (e) {
           navOk = false;
+          debugLastError = 'nav_step_failed: ' + (e && e.message ? e.message : String(e));
         }
 
         let snapshotText = '';
@@ -171,6 +172,7 @@ export default async function (req) {
           snapshotText = extractSnapshotText(snap);
           debugLastSnapshotPreview = snapshotText.slice(0, 500);
         } catch (e) {
+          debugLastError = 'snapshot_step_failed: ' + (e && e.message ? e.message : String(e));
           // Sem snapshot, nao da pra descobrir nesta pagina — pula.
           break;
         }
