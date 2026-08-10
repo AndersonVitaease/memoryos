@@ -1,31 +1,26 @@
 /**
- * Connections — Engineering Sprint E-01
- * Pagina refatorada: orquestra secoes independentes.
- * Sem logica de negocio aqui — apenas composicao de componentes.
+ * Connections — página unificada de Conectores.
+ *
+ * Simplificação (2026-08-10): a página acumulou, ao longo de vários sprints,
+ * painéis de diagnóstico/teste interno (OAuth diagnostics, validação por
+ * "Implementation NNN", Architecture Governance, Runtime Bootstrap) ao lado
+ * dos cartões de conexão que o usuário realmente usa no dia a dia. Isso
+ * tornava a página poluída e difícil de navegar. Removidos os painéis
+ * puramente internos/de validação; mantidos apenas os conectores de uso
+ * real. O Web Connector (antes só acessível pela rota separada
+ * /web-connector) agora vive aqui como uma seção de primeira classe —
+ * reduz o número de lugares que o usuário precisa lembrar para gerenciar
+ * conexões. A rota /web-connector continua existindo por compatibilidade
+ * com links diretos, mas usa o mesmo componente (WebConnectorSection).
  */
 
-import { Shield, Lock, ArrowLeft } from "lucide-react";
+import { Shield, Lock, ArrowLeft, Link as LinkIcon } from "lucide-react";
 import { Link } from "react-router-dom";
 
-import ConnectorRegistry from "@/components/connections/ConnectorRegistry";
-import RuntimeBootstrapPanel from "@/components/connections/RuntimeBootstrapPanel";
+import WebConnectorSection from "@/components/connections/WebConnectorSection";
 import GoogleWorkspaceSection from "@/components/connections/GoogleWorkspaceSection";
 import MicrosoftWorkspaceSection from "@/components/connections/MicrosoftWorkspaceSection";
 import GitHubWorkspaceSection from "@/components/connections/GitHubWorkspaceSection";
-import GoogleProfileCard from "@/components/connections/GoogleProfileCard";
-import GmailConnectorCard from "@/components/connections/GmailConnectorCard";
-import GmailActionsCard from "@/components/connections/GmailActionsCard";
-import GmailAdvancedCard from "@/components/connections/GmailAdvancedCard";
-import ArchitectureGovernancePanel from "@/components/connections/ArchitectureGovernancePanel";
-import {
-  OAuthInitDiagnosticsPanel,
-  OAuth007TestPanel,
-  WorkspaceIntegrationPanel,
-  AuthTestPanel,
-  GmailCISTestPanel,
-  CalendarTestPanel,
-  DriveTestPanel,
-} from "@/components/connections/DiagnosticsSection";
 
 const FUTURE_CONNECTORS = [
   { id: "whatsapp", name: "WhatsApp",  description: "Enviar e receber mensagens." },
@@ -62,112 +57,29 @@ export default function Connections() {
           </Link>
           <h1 className="text-2xl font-heading font-bold text-foreground">Conectores</h1>
           <p className="text-sm text-muted-foreground mt-1 max-w-lg">
-            Conecte seus servicos para ampliar as capacidades do MemoryOS. Cada conexao e opcional —
-            voce constroi seu proprio MemoryOS, no seu ritmo.
+            Conecte seus serviços para ampliar as capacidades do MemoryOS. Cada conexão é opcional —
+            você constrói seu próprio MemoryOS, no seu ritmo.
           </p>
         </div>
 
-        {/* Autenticacao e saude dos conectores (GitHub PAT, Base44, health monitor) */}
-        <Section title="Autenticação de Conectores">
-          <Link
-            to="/connector-auth"
-            className="flex items-center justify-between p-4 rounded-xl border border-border/40 bg-muted/5 hover:bg-muted/10 transition"
-          >
-            <div>
-              <p className="text-sm font-semibold">Central de Autenticação de Conectores</p>
-              <p className="text-xs text-muted-foreground mt-1">
-                Conectar GitHub (token PAT), Base44, monitorar saúde e rodar certificação
-              </p>
-            </div>
-            <Shield className="w-5 h-5 text-muted-foreground" />
-          </Link>
-        </Section>
-
-        {/* Architecture Governance — Sprint 8.5 */}
-        <Section title="Architecture Governance — Sprint 8.5">
-          <ArchitectureGovernancePanel />
-        </Section>
-
-        {/* Runtime Bootstrap — Sprint 8.2 */}
-        <Section title="Runtime Bootstrap — Sprint 8.2">
-          <div className="p-4 rounded-xl border border-border/40 bg-muted/5">
-            <RuntimeBootstrapPanel />
-          </div>
-        </Section>
-
-        {/* Connector Registry */}
-        <Section title="Connector Registry">
-          <ConnectorRegistry />
+        {/* Web Connector — RFC-012/013/015: conectar qualquer site (login, com ou sem CAPTCHA/2FA) */}
+        <Section title="Sistemas Web (qualquer site)">
+          <WebConnectorSection />
         </Section>
 
         {/* Google Workspace */}
-        <Section title="Disponivel agora">
+        <Section title="Google Workspace">
           <GoogleWorkspaceSection />
         </Section>
 
-        {/* Microsoft 365 (multi-conta — ADR-014 / RFC-007) */}
-        <Section title="Microsoft 365 — Provider Router">
+        {/* Microsoft 365 (multi-conta) */}
+        <Section title="Microsoft 365">
           <MicrosoftWorkspaceSection />
         </Section>
 
         {/* GitHub (multi-conta OAuth + seletor de repos) */}
-        <Section title="GitHub — Multi-conta OAuth">
+        <Section title="GitHub">
           <GitHubWorkspaceSection />
-        </Section>
-
-        {/* Profile */}
-        <Section title="Perfil Google — Implementation 008">
-          <GoogleProfileCard />
-        </Section>
-
-        {/* Gmail read */}
-        <Section title="Gmail — Implementation 009">
-          <GmailConnectorCard />
-        </Section>
-
-        {/* Gmail write */}
-        <Section title="Gmail Acoes — Implementation 010">
-          <GmailActionsCard />
-        </Section>
-
-        {/* Gmail advanced */}
-        <Section title="Gmail Avancado — Implementation 011">
-          <GmailAdvancedCard />
-        </Section>
-
-        {/* OAuth Diagnostics */}
-        <Section title="Diagnostico OAuth Init">
-          <OAuthInitDiagnosticsPanel />
-        </Section>
-
-        {/* OAuth 007 tests */}
-        <Section title="OAuth 2.0 Backend — Implementation 007">
-          <OAuth007TestPanel />
-        </Section>
-
-        {/* Workspace integration */}
-        <Section title="Google Workspace Integration — Implementation 006">
-          <WorkspaceIntegrationPanel />
-        </Section>
-
-        {/* Tests 001 */}
-        <Section title="Validacao — Implementation 001 (GoogleAuthSession)">
-          <AuthTestPanel />
-        </Section>
-
-        {/* Tests 002/003 */}
-        <Section title="Validacao — Implementation 002/003 (GmailConnector + CIS)">
-          <GmailCISTestPanel />
-        </Section>
-
-        {/* Tests 004 */}
-        <Section title="Validacao — Implementation 004 (GoogleCalendarConnector)">
-          <CalendarTestPanel />
-        </Section>
-
-        {/* Tests 005 */}
-        <Section title="Validacao — Implementation 005 (GoogleDriveConnector)">
-          <DriveTestPanel />
         </Section>
 
         {/* Future connectors */}
@@ -188,6 +100,19 @@ export default function Connections() {
           </div>
         </div>
 
+        {/* Diagnóstico avançado — só quando algo dá errado, não é fluxo do dia a dia */}
+        <div className="mb-8">
+          <Link
+            to="/connector-auth"
+            className="flex items-center justify-between p-3 rounded-xl border border-border/30 bg-muted/5 hover:bg-muted/10 transition text-xs text-muted-foreground"
+          >
+            <span className="flex items-center gap-2">
+              <LinkIcon className="w-3.5 h-3.5" />
+              Diagnóstico avançado de conectores (GitHub PAT, saúde, certificação)
+            </span>
+          </Link>
+        </div>
+
         {/* Privacy */}
         <div className="p-4 rounded-xl bg-muted/50 border border-border">
           <div className="flex items-start gap-3">
@@ -195,9 +120,9 @@ export default function Connections() {
             <div>
               <p className="text-sm font-medium text-foreground">Privacidade e Controle</p>
               <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                Toda integracao informa claramente quais dados serao acessados e quais permissoes
-                serao concedidas. Voce pode desconectar qualquer servico a qualquer momento. Sua
-                memoria permanece preservada — o que pertence a voce, fica com voce.
+                Toda integração informa claramente quais dados serão acessados e quais permissões
+                serão concedidas. Você pode desconectar qualquer serviço a qualquer momento. Sua
+                memória permanece preservada — o que pertence a você, fica com você.
               </p>
             </div>
           </div>
