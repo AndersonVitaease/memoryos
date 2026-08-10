@@ -30,6 +30,7 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { connect as mcpConnect, resolveHeaders as mcpResolveHeaders, tryRecoverResultFromError } from '../../shared/mcpClient.ts';
 import { withTimeout, extractSnapshotText, extractRunCodeText, makeCallMcp } from '../../shared/mcpHelpers.ts';
+import { warmupSession } from '../../shared/webSessionWarmup.ts';
 
 const PLAYWRIGHT_SERVER_NAME = 'playwright-web-connector';
 const MCP_CALL_TIMEOUT_MS = 20000;
@@ -469,14 +470,22 @@ export default async function (req) {
       // Limpa qualquer browser/sessão pendurada de runs anteriores.
       try { await callMcp('browser_close', {}); } catch (e) { /* best-effort */ }
 
-      // Navegação inicial para a URL do site — estabelece um page/context
-      // para o domínio alvo (necessário antes de addCookies, que opera no
-      // context ativo). Sem cookies, provavelmente redireciona pra /login,
-      // mas isso é esperado e irrelevante — só precisamos do context.
-      try {
-        await callMcp('browser_navigate', { url: session.site_url });
-        try { await callMcp('browser_wait_for', { time: 1 }); } catch (e) { /* best-effort */ }
-      } catch (e) { /* best-effort: segue para injeção mesmo se redirecionou */ }
+      // Warm-up (fix Bling/OAuth): injeta cookies, navega, espera 3s pro
+      // SPA disparar chamadas de bootstrap (que renovam o access token via
+      // refresh token automaticamente), re-captura cookies renovados e
+      // persiste. Sem isto, sites com access token de vida curta redirecionam
+      // pra /login mesmo com refresh token valido no cookie store.
+      const _warmup = await warmupSession({ callMcp, cookies, siteUrl: session.site_url, base44, sessionId: session.id });
+      if (_warmup.stillOnLogin) {
+        return Response.json({
+          ok: true,
+          webSessionId: session.id,
+          status: 'active',
+          sessionValid: false,
+          snapshotText: '',
+          message: 'Sessão expirou durante o aquecimento (redirecionou para login). Reautentique via start+login+confirm.',
+        });
+      }
 
       // Tudo numa ÚNICA chamada browser_run_code_unsafe para garantir que
       // addCookies e a navegação final operam no MESMO page.context().
@@ -492,6 +501,9 @@ export default async function (req) {
           '  await page.context().addCookies(' + escapedCookies + ');' +
           '  await page.goto(' + escapedSiteUrl + ', { waitUntil: "load", timeout: 15000 }).catch(() => {});' +
           '  await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});' +
+          '  // Warm-up pos-navegacao: da 3s pro SPA renovar o access token.' +
+          '  await new Promise((r) => setTimeout(r, 3000));' +
+          '  await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});' +
           '  const finalUrl = page.url();' +
           '  const stillHasPass = await page.$("input[type=password]");' +
           '  const alertText = await page.evaluate(() => {' +
@@ -614,6 +626,9 @@ export default async function (req) {
   await page.context().addCookies(${escapedCookies});
   await page.goto(${escapedUrl}, { waitUntil: "load", timeout: 15000 }).catch(() => {});
   await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});
+  // Warm-up: da 3s pro SPA renovar o access token antes de interagir.
+  await new Promise((r) => setTimeout(r, 3000));
+  await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
   if (/\\/login/i.test(page.url())) return JSON.stringify({ error: "session_expired", url: page.url() });
   const fields = ${escapedFields};
   const matchField = (frm, n) => frm.evaluateHandle((el, a) => {
