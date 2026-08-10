@@ -9,7 +9,7 @@
  */
 import React, { useState, useCallback, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
-import { Loader2, Link as LinkIcon, CheckCircle2, XCircle, ShieldCheck, Search, Sparkles } from 'lucide-react';
+import { Loader2, Link as LinkIcon, CheckCircle2, XCircle, ShieldCheck, Search, Sparkles, Plus } from 'lucide-react';
 import WebCapabilityExecutor from '@/components/web-connector/WebCapabilityExecutor';
 import LiveLoginPanel from '@/components/web-connector/LiveLoginPanel';
 import WebSessionPicker from '@/components/web-connector/WebSessionPicker';
@@ -495,6 +495,14 @@ export default function WebConnectorPage() {
               >
                 {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
                 Testar sessão
+              </button>
+              <button
+                onClick={handleConectarNovo}
+                disabled={busy}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-zinc-800 text-zinc-200 hover:bg-zinc-700 disabled:opacity-50 transition"
+              >
+                <Plus className="w-4 h-4" />
+                Conectar novo site
               </button>
               <button
                 onClick={handleRevoke}
