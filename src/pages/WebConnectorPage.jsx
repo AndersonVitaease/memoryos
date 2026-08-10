@@ -497,6 +497,9 @@ export default function WebConnectorPage() {
                     <details>
                       <summary className="cursor-pointer text-amber-500 hover:text-amber-300">Debug: por que 0 candidatos?</summary>
                       <div className="mt-1 ml-4 space-y-1">
+                        {discoverSummary.debug.error && (
+                          <p className="text-red-400 text-[10px]">Erro: {discoverSummary.debug.error}</p>
+                        )}
                         <p className="text-zinc-600 text-[10px]">
                           Hover disparado em {discoverSummary.debug.hover_triggered_on_elements ?? '—'} elemento(s).
                         </p>
