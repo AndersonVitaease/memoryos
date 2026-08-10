@@ -579,6 +579,18 @@ ${fullText}`;
     }
   } catch (err) {
     console.warn("[WebConnectorRouting] Falhou, caindo pro fluxo normal:", err?.message);
+    // Diagnostico persistente (2026-08-10): ultima rede de seguranca — pega
+    // qualquer excecao no bloco inteiro (rede, timeout, bug de codigo) que nao
+    // tenha sido capturada pelos pontos de diagnostico mais especificos acima.
+    try {
+      await base44.entities.InteractionEvent.create({
+        session_id: session?.id || '',
+        actor: 'system',
+        event_type: 'web_connector_routing_exception',
+        raw_text: String(userMsg || '').slice(0, 500),
+        payload: JSON.stringify({ error: String(err?.message || err).slice(0, 1000) }),
+      });
+    } catch (e2) { /* best-effort */ }
   }
 
   // === ETAPAS 1+2+3 EM PARALELO: MEMORY + SKILLS + GOAL ===
