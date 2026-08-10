@@ -94,41 +94,44 @@ function extractSearchTerm(message, session) {
 }
 
 export async function resolveWebIntent(message) {
-  if (!message || !String(message).trim()) return null;
+  if (!message || !String(message).trim()) return { intent: null, debugReason: 'empty_message' };
   try {
     const sessions = await base44.entities.WebSession.filter({ status: "active" }, "-created_date", 20);
-    if (!sessions || sessions.length === 0) return null;
+    if (!sessions || sessions.length === 0) return { intent: null, debugReason: 'no_active_sessions' };
 
     let matched = null;
     for (const s of sessions) {
       if (siteMentioned(message, s)) { matched = s; break; }
     }
-    if (!matched) return null;
+    if (!matched) return { intent: null, debugReason: 'no_session_site_mentioned', debugSessionSites: sessions.map((s) => s.site_url) };
 
     const maps = await base44.entities.CapabilityMap.filter({});
     const siteOrigin = originOf(matched.site_url);
     const map = (maps || []).find((m) => originOf(m.site_url) === siteOrigin);
-    if (!map) return null;
+    if (!map) return { intent: null, debugReason: 'no_capability_map_for_origin', debugSiteOrigin: siteOrigin, debugKnownOrigins: (maps || []).map((m) => originOf(m.site_url)) };
 
     let capabilities = [];
     try { capabilities = JSON.parse(map.capabilities || "[]"); } catch (e) { capabilities = []; }
     const cap = pickSearchCapability(capabilities);
-    if (!cap) return null;
+    if (!cap) return { intent: null, debugReason: 'no_search_capability_in_map', debugCapabilityIds: capabilities.map((c) => c.id) };
 
     const inputFields = (cap.inputSchema && cap.inputSchema.properties) ? Object.keys(cap.inputSchema.properties) : [];
     const searchTerm = extractSearchTerm(message, matched);
 
     return {
-      siteUrl: matched.site_url,
-      webSessionId: matched.id,
-      webSessionExpiresAt: matched.expires_at,
-      discoveredFromUrl: cap.discoveredFrom || matched.site_url,
-      capability: cap,
-      inputFields,
-      searchTerm,
+      intent: {
+        siteUrl: matched.site_url,
+        webSessionId: matched.id,
+        webSessionExpiresAt: matched.expires_at,
+        discoveredFromUrl: cap.discoveredFrom || matched.site_url,
+        capability: cap,
+        inputFields,
+        searchTerm,
+      },
+      debugReason: null,
     };
   } catch (e) {
     console.warn("[WebSiteIntentResolver] Falhou:", e?.message);
-    return null;
+    return { intent: null, debugReason: 'exception: ' + (e?.message || String(e)) };
   }
 }
