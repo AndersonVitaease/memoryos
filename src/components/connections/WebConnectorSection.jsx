@@ -586,7 +586,7 @@ export default function WebConnectorSection() {
                         {c.discovered_from_url && (
                           <p className="text-[9px] text-muted-foreground mt-1 font-mono truncate">{c.discovered_from_url}</p>
                         )}
-                        {c.status === 'candidate' && (
+                        {c.status === 'candidate' && isAdmin && (
                           <div className="mt-2 flex flex-wrap gap-2">
                             <button
                               onClick={() => handleValidateCandidate(c)}
@@ -604,6 +604,11 @@ export default function WebConnectorSection() {
                               Rejeitar
                             </button>
                           </div>
+                        )}
+                        {c.status === 'candidate' && !isAdmin && (
+                          <p className="text-[10px] text-amber-500/80 mt-1.5 flex items-center gap-1">
+                            <Lock className="w-3 h-3" /> Aguardando revisão do administrador
+                          </p>
                         )}
                         {c.status === 'rejected' && c.rejected_reason && (
                           <p className="text-[10px] text-red-400/80 mt-1.5">Rejeitado: {c.rejected_reason}</p>
