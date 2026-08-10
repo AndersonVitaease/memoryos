@@ -152,6 +152,7 @@ export default async function (req) {
         try {
           const snap = await callMcp('browser_snapshot', {});
           snapshotText = extractSnapshotText(snap);
+          debugLastSnapshotPreview = snapshotText.slice(0, 500);
         } catch (e) {
           // Sem snapshot, nao da pra descobrir nesta pagina — pula.
           break;
