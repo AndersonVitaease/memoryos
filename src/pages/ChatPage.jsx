@@ -15,6 +15,7 @@ import { useConversation } from "@/lib/conversation-platform/useConversation";
 import { useVoiceInteraction } from "@/lib/voice-platform/useVoiceInteraction";
 import { ingestKnowledge, ACCEPT_MAP } from "@/lib/knowledgeIngestionPipeline";
 import { base44 } from "@/api/base44Client";
+import { persistMessage } from "@/lib/conversation-platform/ConversationPersistence";
 import VoicePanel from "@/components/voice/VoicePanel";
 import TimelineDrawer from "@/components/timeline/TimelineDrawer";
 
@@ -251,11 +252,10 @@ export default function ChatPage({ projectId } = {}) {
       { id: itemId, name: displayName, type, stage: "receiving", error: null },
     ]);
 
-    const savedUserMsg = await base44.entities.Message.create({
-      session_id: session.id,
+    const savedUserMsg = await persistMessage({
+      sessionId: session.id,
       role: "user",
       content: type === "link" ? `Adicionando link: ${url}` : `Adicionando: ${displayName}`,
-      memory_tier: "active",
     });
     conversation.appendMessage(savedUserMsg);
 
@@ -265,6 +265,8 @@ export default function ChatPage({ projectId } = {}) {
         name: displayName,
         sessionId: session.id,
         projectId: session.project_id,
+        workspaceId: session.workspace_id,
+        scope: session.scope,
         onStage: (stage) => {
           setProcessingItems((prev) =>
             prev.map((item) => (item.id === itemId ? { ...item, stage } : item))
@@ -360,11 +362,10 @@ export default function ChatPage({ projectId } = {}) {
 
           const content = `⏰ **${payload.watchName || 'Aviso'}**\n\n${payload.message || 'Um Watch disparou!'}\n\n_Horário do disparo: ${triggerTime}_`;
 
-          const savedMsg = await base44.entities.Message.create({
-            session_id: sessionId,
+          const savedMsg = await persistMessage({
+            sessionId,
             role: 'assistant',
             content,
-            memory_tier: 'active',
           });
           conversation.appendMessage(savedMsg);
         }
