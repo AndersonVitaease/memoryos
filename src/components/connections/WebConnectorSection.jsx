@@ -83,6 +83,7 @@ export default function WebConnectorSection() {
   const [loginUrl, setLoginUrl] = useState('');
   const [loginVerified, setLoginVerified] = useState(false);
   const [sessionValid, setSessionValid] = useState(null);
+  const [sessionSource, setSessionSource] = useState(null);
   const [candidates, setCandidates] = useState([]);
   const [discovering, setDiscovering] = useState(false);
   const [discoverSummary, setDiscoverSummary] = useState(null);
@@ -114,6 +115,7 @@ export default function WebConnectorSection() {
           setSiteUrl(s.site_url || '');
           setLoginUrl(s.site_url || '');
           setSiteName(s.site_name || '');
+          setSessionSource(s.source || null);
         } else if (!recs || recs.length === 0) {
           setShowNewConnection(true);
         }
@@ -128,6 +130,7 @@ export default function WebConnectorSection() {
     setSiteUrl(s.site_url || '');
     setLoginUrl(s.site_url || '');
     setSiteName(s.site_name || '');
+    setSessionSource(s.source || null);
     setSnapshotText('');
     setDetectedFields(null);
     setLoginVerified(false);
@@ -147,6 +150,7 @@ export default function WebConnectorSection() {
     setDetectedFields(null);
     setLoginVerified(false);
     setSessionValid(null);
+    setSessionSource(null);
     setShowNewConnection(true);
   }, []);
 
@@ -475,14 +479,16 @@ export default function WebConnectorSection() {
             </details>
           )}
           <div className="flex flex-wrap gap-2">
-            <button
-              onClick={handleTestSession}
-              disabled={busy}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-violet-500 text-white hover:bg-violet-400 disabled:opacity-40 transition"
-            >
-              {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
-              Testar sessão
-            </button>
+            {sessionSource !== 'extension' && (
+              <button
+                onClick={handleTestSession}
+                disabled={busy}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-violet-500 text-white hover:bg-violet-400 disabled:opacity-40 transition"
+              >
+                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+                Testar sessão
+              </button>
+            )}
             <button
               onClick={handleConectarNovo}
               disabled={busy}
@@ -501,16 +507,28 @@ export default function WebConnectorSection() {
           </div>
 
           <div className="pt-3 border-t border-border space-y-3">
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={handleDiscover}
-                disabled={discovering}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-violet-500/90 text-white hover:bg-violet-500 disabled:opacity-40 transition"
-              >
-                {discovering ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                Descobrir capabilities
-              </button>
-            </div>
+            {sessionSource === 'extension' ? (
+              <div className="rounded-lg border border-violet-500/20 bg-violet-500/5 p-3 text-xs text-foreground space-y-1">
+                <p className="font-medium flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-violet-400" />
+                  Sessão conectada via extensão Chrome
+                </p>
+                <p className="text-muted-foreground leading-relaxed">
+                  Para descobrir capabilities, abra o <strong>popup da extensão</strong> (clique no ícone do MemoryOS na barra do Chrome) com a aba do site ativa e clique em "Descobrir no site ativo". Os candidatos aparecerão aqui automaticamente para validação.
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={handleDiscover}
+                  disabled={discovering}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-violet-500/90 text-white hover:bg-violet-500 disabled:opacity-40 transition"
+                >
+                  {discovering ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                  Descobrir capabilities
+                </button>
+              </div>
+            )}
             <p className="text-[10px] text-muted-foreground leading-relaxed">
               Navega o sistema autenticado e cataloga operações de leitura (buscas, consultas, listagens).
               Nunca executa escrita — apenas observa. Candidatos ficam como <span className="font-mono">CapabilityCandidate</span> para validação humana.
@@ -626,7 +644,13 @@ export default function WebConnectorSection() {
             )}
           </div>
 
-          <WebCapabilityExecutor webSessionId={webSessionId} siteUrl={siteUrl} />
+          {sessionSource === 'extension' ? (
+            <div className="rounded-lg border border-border bg-muted/20 p-3 text-[11px] text-muted-foreground">
+              Execução de capabilities para sessões da extensão é feita pelo <strong>popup da extensão</strong> (seletor de capability + campo de busca).
+            </div>
+          ) : (
+            <WebCapabilityExecutor webSessionId={webSessionId} siteUrl={siteUrl} />
+          )}
         </div>
       )}
 
