@@ -40,7 +40,7 @@ function renderSessions(sessions, activeId) {
     row.className = 'session-row' + (isActive ? ' session-row-active' : '');
     row.innerHTML =
       '<div class="session-row-main">' +
-        '<div class="session-row-host">' + (isActive ? '● ' : '') + hostOf(s.siteUrl) + '</div>' +
+        '<div class="session-row-host">' + (isActive ? '● ' : '') + hostOf(s.siteUrl) + (s.discoveryRunning ? ' <span class="badge-discovering">descobrindo…</span>' : '') + '</div>' +
         '<div class="session-row-meta">expira ' + fmtExpires(s.expiresAt) + '</div>' +
       '</div>' +
       '<div class="session-row-actions">' +
