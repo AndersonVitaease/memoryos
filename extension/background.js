@@ -786,3 +786,20 @@ chrome.tabs.onRemoved.addListener((tabId) => {
     }
   })();
 });
+
+// ── Startup: recria o heartbeat alarm se ja existem sessoes ─────────────
+// Fix (2026-08-11): o Chrome LIMPA todos os chrome.alarms quando a extensao
+// e recarregada. Sem este bloco, o service worker carrega, registra os
+// listeners, dorme apos 30s de inatividade (MV3) e NUNCA acorda — nenhum
+// heartbeat, nenhuma tarefa pendente e pega, mesmo com sessoes validas no
+// chrome.storage.local. Este IIFE roda no startup do service worker e
+// recria o alarm se houver sessoes, restaurando o ciclo de heartbeat.
+(async () => {
+  try {
+    const sessions = await getSessions();
+    if (sessions.length > 0) {
+      await chrome.alarms.clear(HEARTBEAT_ALARM);
+      chrome.alarms.create(HEARTBEAT_ALARM, { periodInMinutes: HEARTBEAT_INTERVAL_MIN });
+    }
+  } catch (e) { /* best-effort: se falhar, o popup reconcilia depois */ }
+})();
