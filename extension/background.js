@@ -2,17 +2,26 @@
  * background.js — Service worker (MV3) do MemoryOS Browser Bridge.
  *
  * Multi-site: guarda um ARRAY de sessoes (uma por aba/site conectada) em
- * chrome.storage.local. O popup escolhe qual sessao esta "ativa" para
- * descobrir/executar. O heartbeat percorre TODAS as sessoes ativas; se a
- * aba de alguma fechou, revoga automaticamente.
+ * chrome.storage.local. O popup escolhe qual sessao esta "ativa" para a UI,
+ * mas descoberta e execucao podem rodar em QUALQUER sessao conectada,
+ * inclusive em PARALELO — nao dependem mais de "trocar a sessao ativa".
+ *
+ * Fix (2026-08-11): antes, o estado de descoberta (fila BFS, visitados, aba)
+ * vivia numa UNICA chave global (memos_discovery) — iniciar descoberta em um
+ * segundo site sobrescrevia o estado do primeiro, quebrando os dois. Agora e
+ * um MAPA por webSessionId (memos_discovery = { [webSessionId]: {...} }),
+ * entao cada site tem sua propria fila/estado, e varias descobertas rodam
+ * em paralelo de verdade sem interferir uma na outra. O mesmo vale para
+ * execucao de capability, que agora aceita webSessionId explicito em vez de
+ * depender implicitamente da "sessao ativa".
  *
  * Sprint 1: captura do token, registerSession multi, heartbeat, revoke.
- * Sprint 2: descoberta BFS (operando na sessao ativa).
- * Sprint 3: execucao de capability (operando na sessao ativa).
+ * Sprint 2: descoberta BFS (agora paralela, por site).
+ * Sprint 3: execucao de capability (agora paralela, por site).
  */
 const HEARTBEAT_ALARM = 'memos-heartbeat';
 const HEARTBEAT_INTERVAL_MIN = 5;
-const DISCOVERY_STATE_KEY = 'memos_discovery';
+const DISCOVERY_STATE_KEY = 'memos_discovery'; // agora um MAPA: { [webSessionId]: discoveryState }
 const SESSIONS_KEY = 'memos_sessions';
 const ACTIVE_KEY = 'memos_active_session_id';
 const DISCOVERY_MAX_PAGES = 10;
@@ -59,7 +68,36 @@ async function getActiveSession() {
   if (!activeId) return sessions[0] || null;
   return sessions.find((s) => s.webSessionId === activeId) || sessions[0] || null;
 }
+async function getSessionById(webSessionId) {
+  const sessions = await getSessions();
+  return sessions.find((s) => s.webSessionId === webSessionId) || null;
+}
 function originOf(url) { try { return new URL(url).origin; } catch (e) { return ''; } }
+
+// ── Helpers de descoberta MULTI-SITE (mapa por webSessionId) ─────────────
+async function getDiscoveryMap() {
+  const s = await chrome.storage.local.get([DISCOVERY_STATE_KEY]);
+  return s[DISCOVERY_STATE_KEY] || {};
+}
+async function getDiscovery(webSessionId) {
+  const map = await getDiscoveryMap();
+  return map[webSessionId] || null;
+}
+async function setDiscovery(webSessionId, state) {
+  const map = await getDiscoveryMap();
+  if (state === null) { delete map[webSessionId]; }
+  else { map[webSessionId] = state; }
+  await chrome.storage.local.set({ [DISCOVERY_STATE_KEY]: map });
+}
+async function findDiscoveryByTabId(tabId) {
+  const map = await getDiscoveryMap();
+  for (const webSessionId of Object.keys(map)) {
+    if (map[webSessionId] && map[webSessionId].tabId === tabId) {
+      return { webSessionId, state: map[webSessionId] };
+    }
+  }
+  return null;
+}
 
 // ── Message router ───────────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -75,21 +113,26 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
-  // Status (popup)
+  // Status (popup) — agora inclui discoveryRunning POR sessao, nao so global
   if (msg.type === 'MEMOS_GET_STATUS') {
     (async () => {
-      const [sessions, activeId, disc] = await Promise.all([
+      const [sessions, activeId, discMap] = await Promise.all([
         getSessions(),
         getActiveId(),
-        chrome.storage.local.get([DISCOVERY_STATE_KEY]),
+        getDiscoveryMap(),
       ]);
-      const d = disc[DISCOVERY_STATE_KEY];
+      const sessionsWithStatus = sessions.map((s) => ({
+        ...s,
+        discoveryRunning: !!(discMap[s.webSessionId] && discMap[s.webSessionId].running),
+      }));
       sendResponse({
         hasToken: !!(await chrome.storage.local.get(['memos_token'])).memos_token,
         appBaseUrl: (await chrome.storage.local.get(['memos_app_base_url'])).memos_app_base_url || null,
-        sessions,
+        sessions: sessionsWithStatus,
         activeSessionId: activeId || (sessions[0] ? sessions[0].webSessionId : null),
-        discoveryRunning: !!(d && d.running),
+        // Compatibilidade com UIs antigas: true se QUALQUER site esta descobrindo.
+        discoveryRunning: Object.keys(discMap).some((k) => discMap[k] && discMap[k].running),
+        discoveryCount: Object.keys(discMap).filter((k) => discMap[k] && discMap[k].running).length,
       });
     })();
     return true;
@@ -141,7 +184,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
-  // Trocar sessao ativa
+  // Trocar sessao ativa (so afeta qual sessao a UI do popup mostra por
+  // padrao — descoberta/execucao ja podem mirar qualquer webSessionId
+  // explicitamente, independente de qual esta "ativa").
   if (msg.type === 'MEMOS_SET_ACTIVE') {
     (async () => {
       await setActiveId(msg.webSessionId);
@@ -168,11 +213,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (target && activeId === target.webSessionId) {
           await setActiveId(remaining[0] ? remaining[0].webSessionId : null);
         }
-        // Limpa descoberta se era dessa sessao
-        const d = await getDiscovery();
-        if (d && target && d.webSessionId === target.webSessionId) {
-          await chrome.storage.local.remove(DISCOVERY_STATE_KEY);
-        }
+        // Limpa descoberta dessa sessao especifica (nao mexe nas outras)
+        if (target) await setDiscovery(target.webSessionId, null);
         if (remaining.length === 0) await chrome.alarms.clear(HEARTBEAT_ALARM);
         sendResponse({ ok: true, remaining });
       } catch (e) {
@@ -182,13 +224,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
-  // Iniciar descoberta (na sessao ativa)
+  // Iniciar descoberta — aceita webSessionId explicito (multi-site em
+  // paralelo); se omitido, usa a sessao ativa (compatibilidade). Duas
+  // descobertas em SITES DIFERENTES podem rodar ao mesmo tempo; a mesma
+  // sessao nao pode ter duas descobertas simultaneas (nao faria sentido).
   if (msg.type === 'MEMOS_START_DISCOVERY') {
     (async () => {
       try {
-        const session = await getActiveSession();
+        const session = msg.webSessionId ? await getSessionById(msg.webSessionId) : await getActiveSession();
         if (!session) {
           sendResponse({ ok: false, error: 'Nenhum site conectado. Conecte um site primeiro.' });
+          return;
+        }
+        const already = await getDiscovery(session.webSessionId);
+        if (already && already.running) {
+          sendResponse({ ok: false, error: 'Ja existe uma descoberta em andamento para este site.' });
           return;
         }
         const d = {
@@ -202,9 +252,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           running: true,
           expectingSnapshot: false,
         };
-        await chrome.storage.local.set({ [DISCOVERY_STATE_KEY]: d });
-        await discoveryStep();
-        sendResponse({ ok: true });
+        await setDiscovery(session.webSessionId, d);
+        await discoveryStep(session.webSessionId);
+        sendResponse({ ok: true, webSessionId: session.webSessionId });
       } catch (e) {
         sendResponse({ ok: false, error: e.message || String(e) });
       }
@@ -212,20 +262,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
-  // Parar descoberta
+  // Parar descoberta — de um site especifico (ou o ativo, por compatibilidade)
   if (msg.type === 'MEMOS_STOP_DISCOVERY') {
     (async () => {
-      await chrome.storage.local.remove(DISCOVERY_STATE_KEY);
+      const session = msg.webSessionId ? await getSessionById(msg.webSessionId) : await getActiveSession();
+      if (session) await setDiscovery(session.webSessionId, null);
       sendResponse({ ok: true });
     })();
     return true;
   }
 
-  // Listar capabilities validadas do site ativo
+  // Listar capabilities validadas de um site (ativo por padrao, ou explicito)
   if (msg.type === 'MEMOS_LIST_CAPABILITIES') {
     (async () => {
       try {
-        const session = await getActiveSession();
+        const session = msg.webSessionId ? await getSessionById(msg.webSessionId) : await getActiveSession();
         if (!session) {
           sendResponse({ ok: false, error: 'Nenhum site conectado.' });
           return;
@@ -242,13 +293,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
-  // Executar capability (na sessao ativa)
+  // Executar capability — aceita webSessionId explicito (multi-site em
+  // paralelo, ex: a camada de inteligencia do chat disparando buscas em
+  // varios sites conectados pra responder uma unica pergunta). Sem
+  // webSessionId, usa a sessao ativa (compatibilidade com o popup atual).
   if (msg.type === 'MEMOS_EXECUTE_CAPABILITY') {
     (async () => {
       try {
-        const session = await getActiveSession();
+        const session = msg.webSessionId ? await getSessionById(msg.webSessionId) : await getActiveSession();
         if (!session) {
-          sendResponse({ ok: false, error: 'Nenhum site conectado.' });
+          sendResponse({ ok: false, error: 'Site nao conectado.' });
           return;
         }
         const spec = { discoveredFromUrl: msg.discoveredFromUrl, inputFields: msg.inputFields, inputs: msg.inputs };
@@ -269,7 +323,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             result,
           });
         } catch (e) { /* best-effort */ }
-        sendResponse({ ok: true, result });
+        sendResponse({ ok: true, result, webSessionId: session.webSessionId });
       } catch (e) {
         sendResponse({ ok: false, error: e.message || String(e) });
       }
@@ -277,12 +331,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
-  // Snapshot recebido do content-site.js
+  // Snapshot recebido do content-site.js — identifica a QUAL descoberta
+  // pertence pelo tabId do sender (nao existe mais "a" descoberta unica).
   if (msg.type === 'MEMOS_SNAPSHOT_RESULT') {
     (async () => {
-      const d = await getDiscovery();
-      if (!d || !d.running) { sendResponse({ ok: true, ignored: true }); return true; }
-      if (msg.error) { await discoveryStep(); sendResponse({ ok: true }); return true; }
+      const tabId = sender.tab ? sender.tab.id : null;
+      const found = tabId != null ? await findDiscoveryByTabId(tabId) : null;
+      if (!found || !found.state || !found.state.running) { sendResponse({ ok: true, ignored: true }); return true; }
+      const webSessionId = found.webSessionId;
+      const d = found.state;
+      if (msg.error) { await discoveryStep(webSessionId); sendResponse({ ok: true }); return true; }
       try {
         const result = await invokeFunction('webConnectorExtension', {
           operation: 'submitSnapshot',
@@ -309,9 +367,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         return ak - bk;
       });
       for (const l of newLinks.slice(0, 30)) d.queue.push(l.href);
-      await chrome.storage.local.set({ [DISCOVERY_STATE_KEY]: d });
-      chrome.runtime.sendMessage({ type: 'MEMOS_DISCOVERY_PROGRESS', pagesDone: d.pagesDone, candidatesSoFar: d.candidatesSoFar }, () => { void chrome.runtime.lastError; });
-      await discoveryStep();
+      await setDiscovery(webSessionId, d);
+      chrome.runtime.sendMessage({ type: 'MEMOS_DISCOVERY_PROGRESS', webSessionId, siteUrl: d.siteUrl, pagesDone: d.pagesDone, candidatesSoFar: d.candidatesSoFar }, () => { void chrome.runtime.lastError; });
+      await discoveryStep(webSessionId);
       sendResponse({ ok: true });
     })();
     return true;
@@ -449,11 +507,7 @@ function pageExecute(spec) {
   })();
 }
 
-// ── Driver de descoberta (BFS orientado a eventos) ───────────────────────
-async function getDiscovery() {
-  const s = await chrome.storage.local.get([DISCOVERY_STATE_KEY]);
-  return s[DISCOVERY_STATE_KEY] || null;
-}
+// ── Driver de descoberta (BFS orientado a eventos, MULTI-SITE) ───────────
 function hostOf(u) { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return ''; } }
 function sameDomain(a, b) {
   const ha = hostOf(a), hb = hostOf(b);
@@ -461,30 +515,33 @@ function sameDomain(a, b) {
   return ha === hb || ha.endsWith('.' + hb) || hb.endsWith('.' + ha);
 }
 
-async function discoveryStep() {
-  const d = await getDiscovery();
+async function discoveryStep(webSessionId) {
+  const d = await getDiscovery(webSessionId);
   if (!d || !d.running) return;
   if (d.pagesDone >= DISCOVERY_MAX_PAGES || d.queue.length === 0) {
-    await chrome.storage.local.remove(DISCOVERY_STATE_KEY);
-    chrome.runtime.sendMessage({ type: 'MEMOS_DISCOVERY_DONE', candidatesSoFar: d.candidatesSoFar || 0, pagesDone: d.pagesDone || 0 }, () => { void chrome.runtime.lastError; });
+    await setDiscovery(webSessionId, null);
+    chrome.runtime.sendMessage({ type: 'MEMOS_DISCOVERY_DONE', webSessionId, siteUrl: d.siteUrl, candidatesSoFar: d.candidatesSoFar || 0, pagesDone: d.pagesDone || 0 }, () => { void chrome.runtime.lastError; });
     return;
   }
   const nextUrl = d.queue.shift();
-  if (d.visited.indexOf(nextUrl) !== -1) { await discoveryStep(); return; }
+  if (d.visited.indexOf(nextUrl) !== -1) { await discoveryStep(webSessionId); return; }
   d.visited.push(nextUrl);
   d.expectingSnapshot = true;
-  await chrome.storage.local.set({ [DISCOVERY_STATE_KEY]: d });
+  await setDiscovery(webSessionId, d);
   try { await chrome.tabs.update(d.tabId, { url: nextUrl }); }
-  catch (e) { await chrome.storage.local.remove(DISCOVERY_STATE_KEY); }
+  catch (e) { await setDiscovery(webSessionId, null); }
 }
 
+// Roteia updates de aba para a descoberta correta (por tabId), permitindo
+// que varias abas naveguem simultaneamente sem se confundirem.
 chrome.tabs.onUpdated.addListener((tabId, info) => {
   (async () => {
-    const d = await getDiscovery();
-    if (!d || d.tabId !== tabId || !d.running || !d.expectingSnapshot) return;
     if (info.status !== 'complete') return;
+    const found = await findDiscoveryByTabId(tabId);
+    if (!found || !found.state || !found.state.running || !found.state.expectingSnapshot) return;
+    const { webSessionId, state: d } = found;
     d.expectingSnapshot = false;
-    await chrome.storage.local.set({ [DISCOVERY_STATE_KEY]: d });
+    await setDiscovery(webSessionId, d);
     try { await chrome.scripting.executeScript({ target: { tabId }, files: ['content-site.js'] }); }
     catch (e) { /* best-effort */ }
   })();
@@ -509,6 +566,8 @@ chrome.alarms.onAlarm.addListener((alarm) => {
         try { await invokeFunction('webConnectorExtension', { operation: 'heartbeat', webSessionId: s.webSessionId }); }
         catch (e) { /* heartbeat falhou mas aba existe: mantem */ }
         surviving.push(s);
+      } else {
+        await setDiscovery(s.webSessionId, null);
       }
     }
     if (surviving.length !== sessions.length) {
@@ -535,9 +594,8 @@ chrome.tabs.onRemoved.addListener((tabId) => {
       if (activeId === target.webSessionId) {
         await setActiveId(remaining[0] ? remaining[0].webSessionId : null);
       }
+      await setDiscovery(target.webSessionId, null);
       if (remaining.length === 0) await chrome.alarms.clear(HEARTBEAT_ALARM);
     }
-    const d = await getDiscovery();
-    if (d && d.tabId === tabId) { await chrome.storage.local.remove(DISCOVERY_STATE_KEY); }
   })();
 });
