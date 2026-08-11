@@ -4,21 +4,24 @@ import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ProjectCard from "@/components/projects/ProjectCard";
 import CreateProjectDialog from "@/components/projects/CreateProjectDialog";
+import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 
 export default function Projects() {
   console.log('[RENDER] Projects');
+  const { activeWorkspaceId } = useWorkspace();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
 
   useEffect(() => {
     loadProjects();
-  }, []);
+  }, [activeWorkspaceId]);
 
   const loadProjects = async () => {
+    if (!activeWorkspaceId || activeWorkspaceId === 'default') return;
     setLoading(true);
     try {
-      const data = await base44.entities.Project.list("-created_date", 50);
+      const data = await base44.entities.Project.filter({ workspace_id: activeWorkspaceId }, "-created_date", 50);
       setProjects(data);
     } catch (error) {
       console.error('[CRASH] Projects loadProjects()', error?.message, error);

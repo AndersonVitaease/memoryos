@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Brain, FolderOpen, Search, LogOut, MessageSquare, Home as HomeIcon, Plug, ShieldCheck, Cpu, Network, Archive, BookOpen, Code, Activity, Layers, Database, ClipboardCheck, Shield, Waves, BookMarked, Terminal, Map, Zap, FlaskConical, Puzzle, Box, Route, Target, GitBranch, Users, GitMerge, Radio, Award, Blocks, Flag, Workflow, FileCode, Play, Server, Bug, ChevronDown, ChevronRight, Wrench, Lightbulb } from "lucide-react";
+import { Brain, FolderOpen, Search, LogOut, MessageSquare, Home as HomeIcon, Plug, ShieldCheck, Cpu, Network, Archive, BookOpen, Code, Activity, Layers, Database, ClipboardCheck, Shield, Waves, BookMarked, Terminal, Map, Zap, FlaskConical, Puzzle, Box, Route, Target, GitBranch, Users, GitMerge, Radio, Award, Blocks, Flag, Workflow, FileCode, Play, Server, Bug, ChevronDown, ChevronRight, Wrench, Lightbulb, Building2 } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 
 // FIX (bug de navegação — auditoria de UI): antes, os 122 itens abaixo
@@ -15,6 +15,7 @@ import { base44 } from "@/api/base44Client";
 // o uso do dia a dia).
 export const CORE_NAV_ITEMS = [
   { label: "Início", icon: HomeIcon, path: "/" },
+  { label: "Workspace", icon: Building2, path: "/workspace" },
   { label: "Conversar", icon: MessageSquare, path: "/chat" },
   { label: "Memória", icon: Brain, path: "/memory" },
   { label: "Espaços", icon: FolderOpen, path: "/projects" },
