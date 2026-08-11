@@ -42,11 +42,25 @@ async function invokeFunction(name, payload) {
     throw new Error('MemoryOS nao conectado. Abra o app MemoryOS no Chrome para autenticar a extensao.');
   }
   const url = `${memos_app_base_url}/functions/${name}`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${memos_token}` },
-    body: JSON.stringify(payload),
-  });
+  // Fix (2026-08-11): sem timeout o fetch podia ficar pendurado pra sempre
+  // se o backend demorava/nao respondia — o callback do popup nunca disparava
+  // e o botao "Conectar" travava em "Conectando…". 30s e um balanco entre
+  // dar tempo pra rede lenta e nao prender a UI indefinidamente.
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000);
+  let res;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${memos_token}` },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+  } catch (e) {
+    clearTimeout(timeoutId);
+    throw new Error(e && e.name === 'AbortError' ? 'Tempo esgotado ao falar com o MemoryOS (30s). Verifique sua internet.' : (e.message || String(e)));
+  }
+  clearTimeout(timeoutId);
   let data = null;
   try { data = await res.json(); } catch (e) { /* non-JSON */ }
   if (!res.ok) {
