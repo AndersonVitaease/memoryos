@@ -18,22 +18,21 @@ export async function persistMessage(params: {
   memory_tier?: MessageTier;
   sources_used?: string[];
 }): Promise<ConversationMessage> {
-  const saved = await base44.entities.Message.create({
-    session_id: params.sessionId,
-    project_id: params.projectId,
+  // Fase 3: workspace_id e scope sao RESOLVIDOS no backend (conversationContext).
+  // O frontend nao envia workspace_id — o backend herda da ChatSession pai e
+  // valida membership. Impede spoofing de workspace pelo frontend.
+  const res: any = await base44.functions.invoke("conversationContext", {
+    operation: "persistMessage",
+    sessionId: params.sessionId,
+    projectId: params.projectId,
     role: params.role,
     content: params.content,
-    memory_tier: params.memory_tier ?? "active",
-    sources_used: params.sources_used ?? [],
+    memoryTier: params.memory_tier ?? "active",
+    sourcesUsed: params.sources_used ?? [],
   });
-
-  // Incrementa message_count e atualiza last_message_at na sessão (fire-and-forget)
-  base44.entities.ChatSession.updateMany(
-    { id: params.sessionId },
-    { $inc: { message_count: 1 }, $currentDate: { last_message_at: true } }
-  ).catch(() => {});
-
-  return saved as ConversationMessage;
+  const data = res?.data ?? res;
+  if (!data?.ok) throw new Error(data?.error || "Falha ao persistir mensagem");
+  return data.message as ConversationMessage;
 }
 
 export async function loadMessages(
@@ -64,30 +63,32 @@ export async function updateMessageContent(
 // ─── Session Persistence ──────────────────────────────────────────────────────
 
 export async function loadActiveSession(projectId?: string): Promise<ConversationSession | null> {
-  // Escopo global exclui sessões de projeto (project_id nulo/ausente).
-  // Escopo de projeto filtra exatamente pelo project_id.
-  const filter = projectId
-    ? { project_id: projectId, status: "active" }
-    : { project_id: null, status: "active" };
-  const sessions = await base44.entities.ChatSession.filter(
-    filter,
-    "-last_message_at",
-    1
-  );
-  return sessions.length > 0 ? (sessions[0] as ConversationSession) : null;
+  // Fase 3: limitado ao workspace ativo (resolvido no backend).
+  const res: any = await base44.functions.invoke("conversationContext", {
+    operation: "listSessions",
+    projectId,
+    limit: 1,
+  });
+  const data = res?.data ?? res;
+  if (!data?.ok) return null;
+  const arr = (data.sessions || []) as ConversationSession[];
+  return arr.length > 0 ? arr[0] : null;
 }
 
 export async function createSession(
   title = "Nova conversa",
   projectId?: string
 ): Promise<ConversationSession> {
-  const session = await base44.entities.ChatSession.create({
+  // Fase 3: criacao via backend — workspace_id = workspace ativo do usuario,
+  // validado por membership. Rejeita se nao houver workspace ativo valido.
+  const res: any = await base44.functions.invoke("conversationContext", {
+    operation: "createSession",
     title,
-    status: "active",
-    message_count: 0,
-    ...(projectId ? { project_id: projectId } : {}),
+    projectId,
   });
-  return session as ConversationSession;
+  const data = res?.data ?? res;
+  if (!data?.ok) throw new Error(data?.error || "Falha ao criar sessao");
+  return data.session as ConversationSession;
 }
 
 export async function updateSession(
@@ -102,8 +103,14 @@ export async function archiveSession(sessionId: string): Promise<void> {
 }
 
 export async function listSessions(limit = 20): Promise<ConversationSession[]> {
-  const sessions = await base44.entities.ChatSession.list("-last_message_at", limit);
-  return sessions as ConversationSession[];
+  // Fase 3: lista somente sessoes do workspace ativo (resolvido no backend).
+  const res: any = await base44.functions.invoke("conversationContext", {
+    operation: "listSessions",
+    limit,
+  });
+  const data = res?.data ?? res;
+  if (!data?.ok) return [];
+  return (data.sessions || []) as ConversationSession[];
 }
 
 const LAST_SESSION_KEY_GLOBAL = "memoryos_last_session_id";
@@ -122,41 +129,17 @@ export function getLastSessionId(projectId?: string): string | null {
 }
 
 export async function getOrCreateActiveSession(projectId?: string): Promise<ConversationSession> {
-  // 1. Tenta restaurar a última sessão usada do ESCOPO (chave por projeto ou global)
+  // Fase 3: resolve no backend — restaura/cria a sessao ativa do workspace
+  // ativo do usuario. O backend valida membership e rejeita sem workspace.
   const lastId = getLastSessionId(projectId);
-  if (lastId) {
-    try {
-      const session = await base44.entities.ChatSession.get(lastId) as ConversationSession;
-      if (session && session.status === "active") {
-        return session;
-      }
-    } catch {}
-  }
-
-  // 2. Fallback: busca a sessão ativa do escopo com mensagens mais recente.
-  // Escopo global exclui sessões de projeto; escopo de projeto filtra por project_id.
-  const filter = projectId
-    ? { project_id: projectId, status: "active" }
-    : { project_id: null, status: "active" };
-  const sessions = await base44.entities.ChatSession.filter(
-    filter,
-    "-last_message_at",
-    10
-  );
-  const withMessages = (sessions as ConversationSession[]).filter(
-    (s) => s.message_count && s.message_count > 0 && s.last_message_at
-  );
-  if (withMessages.length > 0) {
-    saveLastSessionId(withMessages[0].id, projectId);
-    return withMessages[0];
-  }
-  if (sessions.length > 0) {
-    saveLastSessionId((sessions[0] as ConversationSession).id, projectId);
-    return sessions[0] as ConversationSession;
-  }
-
-  // 3. Cria nova sessão no escopo
-  const newSession = await createSession("Nova conversa", projectId);
-  saveLastSessionId(newSession.id, projectId);
-  return newSession;
+  const res: any = await base44.functions.invoke("conversationContext", {
+    operation: "resolveActiveSession",
+    projectId,
+    lastSessionId: lastId || undefined,
+  });
+  const data = res?.data ?? res;
+  if (!data?.ok) throw new Error(data?.error || "Falha ao resolver sessao ativa");
+  const session = data.session as ConversationSession;
+  saveLastSessionId(session.id, projectId);
+  return session;
 }

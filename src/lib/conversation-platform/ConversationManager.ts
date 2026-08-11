@@ -10,6 +10,7 @@ import { conversationPipeline } from "./ConversationPipeline";
 import { sessionManager } from "./ConversationSessionManager";
 import { conversationMetrics } from "./ConversationMetrics";
 import { conversationRecovery } from "./ConversationRecovery";
+import { persistMessage } from "./ConversationPersistence";
 import type { ConversationState, ConversationEventType, ConversationEvent, ConversationMessage } from "./CXPTypes";
 import { base44 } from "@/api/base44Client";
 // Fase 1 — Event-Driven Timeline: ativa a persistencia de eventos cognitivos em SystemEvent
@@ -145,6 +146,8 @@ async function tryPdfAutomationFlow(
     compiled_at: new Date().toISOString(),
     session_id: sessionId,
     project_id: projectId,
+    workspace_id: (conversationStore.session as any)?.workspace_id,
+    scope: (conversationStore.session as any)?.scope,
   });
 
   console.log(`[CXP-PDF-AUTO] Watch criado: ${record.id} → ${to}`);
@@ -204,6 +207,8 @@ async function tryScheduleEmail(
       compiled_at: new Date().toISOString(),
       session_id: sessionId,
       project_id: projectId,
+      workspace_id: (conversationStore.session as any)?.workspace_id,
+      scope: (conversationStore.session as any)?.scope,
       status: isPast(targetTime) ? "completed" : "active",
       });
       if (isPast(targetTime)) return `Esse horario (${targetTime}) ja passou — aviso nao criado. Tente um horario futuro.`;
@@ -257,6 +262,8 @@ async function tryScheduleEmail(
     compiled_at: new Date().toISOString(),
     session_id: sessionId,
     project_id: projectId,
+    workspace_id: (conversationStore.session as any)?.workspace_id,
+    scope: (conversationStore.session as any)?.scope,
   });
 
   // Verificar se também foi pedido aviso no chat
@@ -359,10 +366,9 @@ class ConversationManager {
     const session = conversationStore.session;
     const manageResponse = await tryManageWatches(msg, session?.id).catch(() => null);
     if (manageResponse) {
-      const { base44: b44 } = await import("@/api/base44Client");
-      const userMsg = await (b44 as any).entities.Message.create({ session_id: session?.id, role: "user", content: msg, memory_tier: "active" });
+      const userMsg = await persistMessage({ sessionId: session?.id, role: "user", content: msg });
       conversationStore.appendMessage(userMsg);
-      const assistantMsg = await (b44 as any).entities.Message.create({ session_id: session?.id, role: "assistant", content: manageResponse, memory_tier: "active" });
+      const assistantMsg = await persistMessage({ sessionId: session?.id, role: "assistant", content: manageResponse });
       conversationStore.appendMessage(assistantMsg);
       return;
     }
@@ -370,10 +376,9 @@ class ConversationManager {
     // Interceptar fluxo de automação PDF → email
     const pdfAutoResponse = await tryPdfAutomationFlow(msg, session?.id, (session as any)?.project_id).catch(() => null);
     if (pdfAutoResponse) {
-      const { base44: b44 } = await import("@/api/base44Client");
-      const userMsg = await (b44 as any).entities.Message.create({ session_id: session?.id, role: "user", content: msg, memory_tier: "active" });
+      const userMsg = await persistMessage({ sessionId: session?.id, role: "user", content: msg });
       conversationStore.appendMessage(userMsg);
-      const assistantMsg = await (b44 as any).entities.Message.create({ session_id: session?.id, role: "assistant", content: pdfAutoResponse, memory_tier: "active" });
+      const assistantMsg = await persistMessage({ sessionId: session?.id, role: "assistant", content: pdfAutoResponse });
       conversationStore.appendMessage(assistantMsg);
       return;
     }
@@ -381,21 +386,10 @@ class ConversationManager {
     // Interceptar agendamento de email antes do pipeline cognitivo
     const schedResponse = await tryScheduleEmail(msg, session?.id, (session as any)?.project_id).catch(() => null);
     if (schedResponse) {
-      // Persiste user + assistant direto, sem passar pelo pipeline
-      const { base44: b44 } = await import("@/api/base44Client");
-      const userMsg = await (b44 as any).entities.Message.create({
-        session_id: session?.id,
-        role: "user",
-        content: msg,
-        memory_tier: "active",
-      });
+      // Persiste user + assistant via persistMessage (workspace_id resolvido no backend)
+      const userMsg = await persistMessage({ sessionId: session?.id, role: "user", content: msg });
       conversationStore.appendMessage(userMsg);
-      const assistantMsg = await (b44 as any).entities.Message.create({
-        session_id: session?.id,
-        role: "assistant",
-        content: schedResponse,
-        memory_tier: "active",
-      });
+      const assistantMsg = await persistMessage({ sessionId: session?.id, role: "assistant", content: schedResponse });
       conversationStore.appendMessage(assistantMsg);
       return;
     }
