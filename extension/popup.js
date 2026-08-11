@@ -225,11 +225,17 @@ discoverBtn.addEventListener('click', () => {
 });
 
 chrome.runtime.onMessage.addListener((msg) => {
+  // Fix (2026-08-11): com descobertas paralelas, mensagens de progresso
+  // chegam de VARIOS sites ao mesmo tempo — so atualiza a UI se for do site
+  // atualmente ativo/exibido no popup, senao a barra de status vira uma
+  // mistura confusa de progresso de sites diferentes.
   if (msg && msg.type === 'MEMOS_DISCOVERY_PROGRESS') {
+    if (msg.webSessionId && msg.webSessionId !== activeSessionId) return;
     discoveryStatus.textContent = 'Descobrindo: ' + msg.pagesDone + ' pagina(s), ' + msg.candidatesSoFar + ' candidato(s).';
     discoveryStatus.classList.remove('hidden');
   }
   if (msg && msg.type === 'MEMOS_DISCOVERY_DONE') {
+    if (msg.webSessionId && msg.webSessionId !== activeSessionId) { refreshStatus(); return; }
     discoveryStatus.textContent = 'Descoberta concluida: ' + msg.candidatesSoFar + ' candidato(s). Valide no /connections do MemoryOS.';
     discoveryStatus.classList.remove('hidden');
     discoverBtn.disabled = false;
