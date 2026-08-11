@@ -48,7 +48,7 @@
     },
     "status": {
       "default": "pending",
-      "description": "pending = aguardando extensao pegar; in_progress = extensao executando; completed/failed = terminado",
+      "description": "pending = aguardando extensao pegar; in_progress = extensao executando (claimada); completed/failed = terminado",
       "enum": [
         "pending",
         "in_progress",
@@ -62,19 +62,28 @@
       "type": "string"
     },
     "workspace_id": {
-      "description": "ID do workspace de origem. pollTasks valida que a sessao/bridge solicitante pertence ao mesmo workspace + usuario.",
+      "description": "ID do workspace de origem. pollTasks valida que a sessao/bridge solicitante pertence ao mesmo workspace + usuario. Preenchido server-side pelo planner (resolve do active_workspace_id).",
       "type": "string"
     },
     "bridge_id": {
-      "description": "ID da bridge (extensao) que deve executar esta tarefa. pollTasks so entrega tarefas cujo bridge_id bate com a bridge solicitante.",
+      "description": "ID da bridge (extensao) que deve executar esta tarefa. Preenchido pelo planner a partir do WebSession.bridge_id. pollTasks valida que a bridge solicitante bate.",
       "type": "string"
     },
     "browser_session_id": {
-      "description": "ID da sessao de browser (aba) que deve executar. pollTasks valida que a WebSession da solicitante tem este browser_session_id.",
+      "description": "ID da sessao de browser (aba) que deve executar. Derivado do WebSession.browser_session_id. Usado para serializacao de tarefas na mesma aba.",
       "type": "string"
     },
     "connector_id": {
-      "description": "ID logico do connector web (ex: 'web-connector'). Autorizacao contextual de execucao.",
+      "description": "ID logico do connector web ('web-connector'). Preenchido pelo planner. Autorizacao contextual de execucao via connectorWorkspace.authorizeExecution.",
+      "type": "string"
+    },
+    "claimed_by": {
+      "description": "bridge_id que fez o claim atomico da tarefa (pollTasks). completeTask valida que quem conclui == quem claimou. Prevencao contra conclusao por bridge errado.",
+      "type": "string"
+    },
+    "claimed_at": {
+      "description": "Timestamp do claim atomico. Permite detectar claims abandonados (in_progress sem completed por muito tempo) e reatribuir.",
+      "format": "date-time",
       "type": "string"
     }
   },

@@ -567,11 +567,51 @@ ${fullText}`;
       // extensao pega todos juntos no proximo heartbeat (~30s) e executa em
       // paralelo la tambem (background.js), entao N sites via extensao nao
       // custam N minutos, custam ~1 ciclo + tempo de execucao em paralelo.
+      //
+      // FASE 5: cada intent passa pelo gate authorizeExecution (connectorWorkspace)
+      // ANTES de criar a WebExecutionRequest — sem bypass. So cria a tarefa se
+      // autorizado (WorkspaceConnector web habilitado + WebSession ativa do caller
+      // + bridge online). Preenche workspace_id/bridge_id/browser_session_id/
+      // connector_id a partir do WebSession (resolvido server-side no gate).
       let _queuedExtensionCount = 0;
+      let _rejectedAuthCount = 0;
       if (_extensionIntents.length > 0) {
         const _batchId = (crypto.randomUUID ? crypto.randomUUID() : ('batch_' + Date.now() + '_' + Math.random().toString(36).slice(2)));
         for (const intent of _extensionIntents) {
           try {
+            // Gate Fase 4/5: authorizeExecution valida workspace membership + connector
+            // habilitado + WebSession ativa + bridge online. Nenhum bypass.
+            const _authRes = await base44.functions.invoke('connectorWorkspace', {
+              operation: 'authorizeExecution',
+              connectorId: 'web-connector',
+              capabilityId: intent.capability?.id || 'product.search',
+              webSessionId: intent.webSessionId,
+            });
+            const _auth = _authRes?.data ?? _authRes;
+            if (!_auth || _auth.authorized === false) {
+              _rejectedAuthCount++;
+              // Registra diagnostico do reject (best-effort)
+              try {
+                await base44.entities.InteractionEvent.create({
+                  session_id: session?.id || '',
+                  actor: 'system',
+                  event_type: 'web_execution_rejected',
+                  raw_text: String(userMsg || '').slice(0, 300),
+                  payload: JSON.stringify({ reason: _auth?.reason || 'unknown', detail: _auth?.detail || '', webSessionId: intent.webSessionId, siteUrl: intent.siteUrl }),
+                });
+              } catch { /* best-effort */ }
+              continue; // nao cria tarefa se nao autorizado
+            }
+
+            // Resolve WebSession para popular bridge_id/browser_session_id (server-side truth)
+            let _bridgeId = '', _browserSessionId = '', _wsId = _auth.workspaceId || '';
+            try {
+              const _ws = await base44.entities.WebSession.get(intent.webSessionId);
+              _bridgeId = _ws?.bridge_id || '';
+              _browserSessionId = _ws?.browser_session_id || '';
+              if (!_wsId) _wsId = _ws?.workspace_id || '';
+            } catch { /* best-effort */ }
+
             const _inputs = {};
             if (intent.inputFields.length > 0) _inputs[intent.inputFields[0]] = intent.searchTerm || "";
             await base44.entities.WebExecutionRequest.create({
@@ -585,6 +625,10 @@ ${fullText}`;
               site_url: intent.siteUrl,
               status: 'pending',
               requested_at: new Date().toISOString(),
+              workspace_id: _wsId,
+              bridge_id: _bridgeId,
+              browser_session_id: _browserSessionId,
+              connector_id: 'web-connector',
             });
             _queuedExtensionCount++;
           } catch (e) { /* best-effort: essa fila falhou, segue sem ela */ }

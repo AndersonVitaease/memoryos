@@ -32,8 +32,55 @@ const HEARTBEAT_INTERVAL_MIN = 0.5;
 const DISCOVERY_STATE_KEY = 'memos_discovery'; // agora um MAPA: { [webSessionId]: discoveryState }
 const SESSIONS_KEY = 'memos_sessions';
 const ACTIVE_KEY = 'memos_active_session_id';
+const BRIDGE_KEY = 'memos_bridge_id'; // Fase 5: identidade persistente da extensao
 const DISCOVERY_MAX_PAGES = 10;
 const ACCOUNT_AREA_KEYWORDS = /compra|pedido|venda|anuncio|publica|purchase|order|sale|listing|conta|account|historico|extrato|fatura|nota|pergunta|question|financeiro|reputa|relatorio|dashboard|estoque|produto/i;
+
+// ── Fase 5: Bridge registry — identidade persistente da extensao ──────
+// A extensao chama registerBridge no startup (se tem token). O backend
+// emite um bridge_id estavel vinculado a user+workspace ativo, armazenado
+// em chrome.storage.local e reapresentado em TODAS as operacoes. Reinstalacao
+// (storage apagado) gera bridge novo — nunca herda identidade anterior.
+async function ensureBridgeRegistered() {
+  const { memos_token, memos_bridge_id, memos_app_base_url } = await chrome.storage.local.get(['memos_token', 'memos_bridge_id', 'memos_app_base_url']);
+  if (!memos_token || !memos_app_base_url) return null;
+  try {
+    const url = `${memos_app_base_url}/functions/webConnectorExtension`;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${memos_token}` },
+      body: JSON.stringify({ operation: 'registerBridge', bridgeId: memos_bridge_id || '', extensionVersion: chrome.runtime.getManifest().version || '' }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    const data = await res.json();
+    if (res.ok && data.bridgeId) {
+      await chrome.storage.local.set({ memos_bridge_id: data.bridgeId });
+      return data.bridgeId;
+    }
+  } catch (e) { /* best-effort: tenta de novo no proximo ciclo */ }
+  return memos_bridge_id || null;
+}
+
+async function getBridgeId() {
+  const { memos_bridge_id } = await chrome.storage.local.get([BRIDGE_KEY]);
+  return memos_bridge_id || null;
+}
+
+async function heartbeatBridge(bridgeId) {
+  if (!bridgeId) return;
+  const { memos_token, memos_app_base_url } = await chrome.storage.local.get(['memos_token', 'memos_app_base_url']);
+  if (!memos_token) return;
+  try {
+    await fetch(`${memos_app_base_url}/functions/webConnectorExtension`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${memos_token}` },
+      body: JSON.stringify({ operation: 'heartbeatBridge', bridgeId }),
+    });
+  } catch (e) { /* best-effort */ }
+}
 
 // ── Helper: invoca uma backend function do MemoryOS ──────────────────────
 async function invokeFunction(name, payload) {
@@ -175,7 +222,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       memos_token: msg.token,
       memos_app_base_url: msg.appBaseUrl || (sender.tab && sender.tab.url ? sender.tab.url.replace(/\/$/, '') : ''),
       memos_captured_at: Date.now(),
-    }, () => sendResponse({ ok: true }));
+    }, () => {
+      // Fase 5: registra o bridge logo apos capturar o token (identidade persistente)
+      ensureBridgeRegistered().then(() => {
+        // Garante o heartbeat rodando apos o primeiro login
+        chrome.alarms.clear(HEARTBEAT_ALARM);
+        chrome.alarms.create(HEARTBEAT_ALARM, { periodInMinutes: HEARTBEAT_INTERVAL_MIN });
+      }).catch(() => {});
+      sendResponse({ ok: true });
+    });
     return true;
   }
 
@@ -245,6 +300,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           siteUrl,
           siteName: new URL(siteUrl).hostname,
           tabId: String(tab.id),
+          bridgeId: await getBridgeId() || '',
+          browserSessionId: String(tab.id),
         });
         const session = {
           webSessionId: result.webSessionId,
@@ -683,6 +740,11 @@ chrome.tabs.onUpdated.addListener((tabId, info) => {
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name !== HEARTBEAT_ALARM) return;
   (async () => {
+    // Fase 5: garante bridge registrado + heartbeat a cada ciclo
+    let bridgeId = await getBridgeId();
+    if (!bridgeId) bridgeId = await ensureBridgeRegistered();
+    if (bridgeId) heartbeatBridge(bridgeId); // fire-and-forget
+
     const sessions = await getSessions();
     if (sessions.length === 0) { await chrome.alarms.clear(HEARTBEAT_ALARM); return; }
     const surviving = [];
@@ -724,46 +786,64 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   })();
 });
 
-// Busca tarefas pendentes (de qualquer site conectado) e executa todas em
-// paralelo. Cada tarefa roda na aba do seu proprio site (independente),
-// entao rodar N tarefas ao mesmo tempo nao trava umas nas outras.
+// Busca tarefas pendentes (de qualquer site conectado) e executa. Fase 5:
+// envia bridgeId (validado server-side) e SERIALIZA por aba — tarefas na
+// MESMA aba rodam em sequencia (nao se corrompem), tarefas em abas diferentes
+// rodam em paralelo.
 async function pollAndRunPendingTasks(sessions) {
   const webSessionIds = sessions.map((s) => s.webSessionId);
-  const pollRes = await invokeFunction('webConnectorExtension', { operation: 'pollTasks', webSessionIds });
+  const bridgeId = await getBridgeId();
+  if (!bridgeId) return; // sem bridge registrado, pollTasks rejeitaria
+  const pollRes = await invokeFunction('webConnectorExtension', { operation: 'pollTasks', bridgeId, webSessionIds });
   const tasks = (pollRes && Array.isArray(pollRes.tasks)) ? pollRes.tasks : [];
   if (tasks.length === 0) return;
 
-  await Promise.all(tasks.map(async (task) => {
+  // Agrupa tarefas por tabId (aba/browser_session). Tarefas da mesma aba
+  // rodam em SEQUENCIA (await cada uma antes da proxima — evita duas
+  // chrome.tabs.update no mesmo tabId concorrentes). Tarefas de abas
+  // diferentes rodam em PARALELO (Promise.all dos grupos).
+  const groupsByTab = {};
+  for (const task of tasks) {
     const session = sessions.find((s) => s.webSessionId === task.web_session_id);
-    if (!session) {
-      try { await invokeFunction('webConnectorExtension', { operation: 'completeTask', requestId: task.id, error: 'site_not_connected_in_this_browser' }); } catch (e) {}
+    const tabKey = session ? String(session.tabId) : '__no_session__';
+    if (!groupsByTab[tabKey]) groupsByTab[tabKey] = { session, tasks: [] };
+    groupsByTab[tabKey].tasks.push(task);
+  }
+
+  await Promise.all(Object.values(groupsByTab).map(async (group) => {
+    // Sem sessao valida para estas tarefas? Marca erro e segue.
+    if (!group.session) {
+      for (const task of group.tasks) {
+        try { await invokeFunction('webConnectorExtension', { operation: 'completeTask', bridgeId, requestId: task.id, error: 'site_not_connected_in_this_browser' }); } catch (e) {}
+      }
       return;
     }
-    try {
-      let inputFields = [];
-      let inputs = {};
-      try { inputFields = JSON.parse(task.input_fields || '[]'); } catch (e) {}
-      try { inputs = JSON.parse(task.inputs || '{}'); } catch (e) {}
-      const spec = { discoveredFromUrl: task.discovered_from_url, inputFields, inputs };
-      await navigateAndWait(session.tabId, spec.discoveredFromUrl);
-      // Fase 1: preenche + submete (dispara navegacao para a pagina de resultados).
-      const fillRes = await chrome.scripting.executeScript({ target: { tabId: session.tabId }, func: pageFillSubmit, args: [spec] });
-      const fillResult = (fillRes && fillRes[0] && fillRes[0].result) ? fillRes[0].result : null;
-      if (fillResult && fillResult.error) {
-        await invokeFunction('webConnectorExtension', { operation: 'completeTask', requestId: task.id, error: String(fillResult.error) });
-        return;
+    // SEQUENCIA dentro da mesma aba — cada tarefa so comeca quando a anterior termina.
+    for (const task of group.tasks) {
+      try {
+        let inputFields = [];
+        let inputs = {};
+        try { inputFields = JSON.parse(task.input_fields || '[]'); } catch (e) {}
+        try { inputs = JSON.parse(task.inputs || '{}'); } catch (e) {}
+        const spec = { discoveredFromUrl: task.discovered_from_url, inputFields, inputs };
+        await navigateAndWait(group.session.tabId, spec.discoveredFromUrl);
+        const fillRes = await chrome.scripting.executeScript({ target: { tabId: group.session.tabId }, func: pageFillSubmit, args: [spec] });
+        const fillResult = (fillRes && fillRes[0] && fillRes[0].result) ? fillRes[0].result : null;
+        if (fillResult && fillResult.error) {
+          await invokeFunction('webConnectorExtension', { operation: 'completeTask', bridgeId, requestId: task.id, error: String(fillResult.error) });
+          continue;
+        }
+        await waitForTabComplete(group.session.tabId, 15000);
+        const scrapeRes = await chrome.scripting.executeScript({ target: { tabId: group.session.tabId }, func: pageScrapeResults });
+        const result = (scrapeRes && scrapeRes[0] && scrapeRes[0].result) ? scrapeRes[0].result : { error: 'no_result' };
+        if (result && result.error) {
+          await invokeFunction('webConnectorExtension', { operation: 'completeTask', bridgeId, requestId: task.id, error: String(result.error) });
+        } else {
+          await invokeFunction('webConnectorExtension', { operation: 'completeTask', bridgeId, requestId: task.id, result });
+        }
+      } catch (e) {
+        try { await invokeFunction('webConnectorExtension', { operation: 'completeTask', bridgeId, requestId: task.id, error: e.message || String(e) }); } catch (e2) {}
       }
-      // Fase 2: espera carregar e raspa os resultados.
-      await waitForTabComplete(session.tabId, 15000);
-      const scrapeRes = await chrome.scripting.executeScript({ target: { tabId: session.tabId }, func: pageScrapeResults });
-      const result = (scrapeRes && scrapeRes[0] && scrapeRes[0].result) ? scrapeRes[0].result : { error: 'no_result' };
-      if (result && result.error) {
-        await invokeFunction('webConnectorExtension', { operation: 'completeTask', requestId: task.id, error: String(result.error) });
-      } else {
-        await invokeFunction('webConnectorExtension', { operation: 'completeTask', requestId: task.id, result });
-      }
-    } catch (e) {
-      try { await invokeFunction('webConnectorExtension', { operation: 'completeTask', requestId: task.id, error: e.message || String(e) }); } catch (e2) {}
     }
   }));
 }
@@ -794,8 +874,11 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 // heartbeat, nenhuma tarefa pendente e pega, mesmo com sessoes validas no
 // chrome.storage.local. Este IIFE roda no startup do service worker e
 // recria o alarm se houver sessoes, restaurando o ciclo de heartbeat.
+// Fase 5: tambem registra o bridge no startup (identidade persistente).
 (async () => {
   try {
+    // Fase 5: garante bridge registrado antes de qualquer operacao
+    await ensureBridgeRegistered();
     const sessions = await getSessions();
     if (sessions.length > 0) {
       await chrome.alarms.clear(HEARTBEAT_ALARM);
