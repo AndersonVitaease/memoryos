@@ -31,17 +31,30 @@ Deno.serve(async (req) => {
     const users = await base44.asServiceRole.entities.User.list();
     const summary = [];
     for (const u of users || []) {
-      if (u.workspace_migrated_at) { summary.push({ user: u.id, skipped: true }); continue; }
+      if (u.workspace_migrated_at && !body?.force) { summary.push({ user: u.id, skipped: true }); continue; }
       const prov = await provisionPersonalWorkspace(base44, u.id);
       const wsId = prov.workspace_id;
       const entityCounts = {};
       for (const entName of DATA_ENTITIES) {
         try {
           const res = await base44.asServiceRole.entities[entName].updateMany(
-            { workspace_id: null, created_by_id: u.id },
+            { created_by_id: u.id, workspace_id: { $exists: false } },
             { $set: { workspace_id: wsId, scope: 'personal' } }
           );
-          entityCounts[entName] = res?.modified_count || res?.count || 0;
+          const n = res?.updated ?? res?.modified_count ?? res?.count ?? 0;
+          // updateMany processa no max 500 por chamada; se has_more, continua
+          let total = n;
+          let guard = 0;
+          while (res?.has_more && guard < 20) {
+            const r2 = await base44.asServiceRole.entities[entName].updateMany(
+              { created_by_id: u.id, workspace_id: { $exists: false } },
+              { $set: { workspace_id: wsId, scope: 'personal' } }
+            );
+            total += r2?.updated ?? 0;
+            res.has_more = r2?.has_more;
+            guard++;
+          }
+          entityCounts[entName] = total;
         } catch (e) {
           entityCounts[entName] = { error: e.message };
         }
