@@ -28,6 +28,7 @@ body {
 .error { color: #ef4444; font-size: 12px; margin-top: 6px; }
 .footer { margin-top: 10px; padding-top: 8px; border-top: 1px solid #f3f4f6; }
 .hidden { display: none; }
+.connect-hint { font-size: 11px; color: #6b7280; margin-top: 8px; margin-bottom: 4px; }
 .sessions-list { margin-bottom: 4px; }
 .session-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; border: 1px solid #e5e7eb; border-radius: 6px; margin-bottom: 4px; }
 .session-row-active { border-color: #7c3aed; background: #f5f3ff; }
