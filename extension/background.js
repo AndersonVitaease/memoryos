@@ -82,6 +82,50 @@ async function getSessionById(webSessionId) {
 }
 function originOf(url) { try { return new URL(url).origin; } catch (e) { return ''; } }
 
+// Reconciliacao (2026-08-11): busca sessoes ativas no backend e MESCLA com o
+// cache local. So adiciona sessoes que faltam localmente E cuja aba (tabId
+// salvo no servidor) ainda existe de verdade neste navegador — tabIds nao
+// sao estaveis entre reinicios do Chrome, entao uma sessao cujo tabId nao
+// resolve mais pra uma aba real e ignorada (fica orfa ate expirar sozinha
+// pelo TTL, sem quebrar nada).
+async function reconcileSessionsWithBackend() {
+  const { memos_token } = await chrome.storage.local.get(['memos_token']);
+  if (!memos_token) return; // nao autenticado ainda, nada a reconciliar
+
+  let remoteSessions = [];
+  try {
+    const res = await invokeFunction('webConnectorExtension', { operation: 'listActiveSessions' });
+    remoteSessions = (res && Array.isArray(res.sessions)) ? res.sessions : [];
+  } catch (e) { return; } // best-effort: sem rede/erro, mantem cache local como esta
+
+  const localSessions = await getSessions();
+  const localIds = new Set(localSessions.map((s) => s.webSessionId));
+  const toAdd = [];
+  for (const r of remoteSessions) {
+    if (localIds.has(r.webSessionId)) continue;
+    if (!r.tabId) continue; // sem tabId salvo, nao da pra saber qual aba usar
+    try {
+      const tab = await chrome.tabs.get(r.tabId);
+      if (!tab || !tab.url) continue;
+      // Confirma que a aba ainda e do mesmo site (tabId pode ter sido reciclado pelo Chrome)
+      if (originOf(tab.url) !== originOf(r.siteUrl)) continue;
+      toAdd.push({
+        webSessionId: r.webSessionId,
+        tabId: r.tabId,
+        siteUrl: r.siteUrl,
+        siteName: r.siteName || new URL(r.siteUrl).hostname,
+        expiresAt: r.expiresAt,
+        connectedAt: Date.now(),
+      });
+    } catch (e) { /* aba nao existe mais neste navegador: ignora, deixa expirar */ }
+  }
+  if (toAdd.length > 0) {
+    await setSessions([...localSessions, ...toAdd]);
+    await chrome.alarms.clear(HEARTBEAT_ALARM);
+    chrome.alarms.create(HEARTBEAT_ALARM, { periodInMinutes: HEARTBEAT_INTERVAL_MIN });
+  }
+}
+
 // ── Helpers de descoberta MULTI-SITE (mapa por webSessionId) ─────────────
 async function getDiscoveryMap() {
   const s = await chrome.storage.local.get([DISCOVERY_STATE_KEY]);
