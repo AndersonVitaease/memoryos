@@ -2,11 +2,11 @@
   "name": "WebSession",
   "properties": {
     "browser_context_id": {
-      "description": "ID do contexto Playwright associado, para reuso",
+      "description": "ID do contexto Playwright associado, para reuso (headless/live); para extension armazena o tabId da aba Chrome",
       "type": "string"
     },
     "cookies": {
-      "description": "JSON serializado dos cookies capturados. Nunca armazenar senha, email de login, ou qualquer credencial \u2014 ver ADR-019.",
+      "description": "JSON serializado dos cookies capturados. Nunca armazenar senha, email de login, ou qualquer credencial - ver ADR-019.",
       "type": "string"
     },
     "error_message": {
@@ -14,26 +14,36 @@
       "type": "string"
     },
     "expires_at": {
-      "description": "TTL da sess\u00e3o \u2014 reautentica\u00e7\u00e3o manual solicitada ap\u00f3s expirar",
+      "description": "TTL da sessao - reautenticacao manual solicitada apos expirar",
       "format": "date-time",
       "type": "string"
     },
     "last_used_at": {
-      "description": "\u00daltima vez que esta sess\u00e3o foi reutilizada com sucesso",
+      "description": "Ultima vez que esta sessao foi reutilizada com sucesso (ou heartbeat da extensao)",
       "format": "date-time",
       "type": "string"
     },
     "site_name": {
-      "description": "Nome leg\u00edvel (ex: 'Wooba', 'CRM interno')",
+      "description": "Nome legivel (ex: 'Wooba', 'CRM interno')",
       "type": "string"
     },
     "site_url": {
       "description": "URL base do sistema conectado",
       "type": "string"
     },
+    "source": {
+      "description": "Origem da sessao: 'headless' = Playwright MCP (automacao DOM); 'live' = Selenium/noVNC (login manual humano); 'extension' = extensao Chrome na aba ativa do usuario (passa por anti-bot como Cloudflare nativamente). Default 'headless' preserva comportamento das sessoes existentes.",
+      "enum": [
+        "headless",
+        "live",
+        "extension"
+      ],
+      "default": "headless",
+      "type": "string"
+    },
     "status": {
       "default": "pending_login",
-      "description": "pending_login = aguardando o usu\u00e1rio confirmar login manual; active = sess\u00e3o capturada e reutiliz\u00e1vel; expired = TTL vencido, requer novo login; revoked = usu\u00e1rio desconectou; failed = site bloqueou automa\u00e7\u00e3o ou outro erro irrecuper\u00e1vel",
+      "description": "pending_login = aguardando o usuario confirmar login manual; active = sessao capturada e reutilizavel; expired = TTL vencido, requer novo login; revoked = usuario desconectou; failed = site bloqueou automacao ou outro erro irrecuperavel",
       "enum": [
         "pending_login",
         "active",
