@@ -481,9 +481,9 @@ ${fullText}`;
   // grounding note pro LLM — mesmo padrao do SearchEngine (ETAPA 5.2).
   let _webConnectorGroundingNote = null;
   try {
-    const { resolveWebIntent, hostOf } = await import("@/lib/web-connector/WebSiteIntentResolver");
-    const _webIntentResult = await resolveWebIntent(userMsg);
-    const _webIntent = _webIntentResult?.intent || null;
+    const { resolveWebIntents, hostOf } = await import("@/lib/web-connector/WebSiteIntentResolver");
+    const _webIntentsResult = await resolveWebIntents(userMsg);
+    const _allIntents = _webIntentsResult?.intents || [];
     // Diagnostico persistente (2026-08-10): resolveWebIntent falhava
     // silenciosamente sem deixar rastro nenhum, tornando impossivel saber
     // por que uma pergunta clara ("mostre 10 chuteiras no mercado livre")
