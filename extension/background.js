@@ -20,12 +20,15 @@
  * Sprint 3: execucao de capability (agora paralela, por site).
  */
 const HEARTBEAT_ALARM = 'memos-heartbeat';
-// Fix (2026-08-11): reduzido de 5min para 1min — o minimo pratico do
-// chrome.alarms em producao (MV3 nao aceita menos que isso de forma
-// confiavel). Isso limita o pior caso de latencia pra respostas do chat que
-// dependem da extensao: no maximo ~1 ciclo de heartbeat + tempo de execucao
-// em paralelo, nao os 5min anteriores.
-const HEARTBEAT_INTERVAL_MIN = 1;
+// Fix (2026-08-11): 30s — confirmado que desde o Chrome 120 esse e o minimo
+// oficial pra chrome.alarms em producao (era 1min em versoes anteriores).
+// Isso e um relogio de INTERVALO FIXO, nao reativo: a cada 30s ele acorda,
+// pega TODAS as tarefas pendentes de uma vez (pode ser 1, pode ser 10) e
+// roda todas em paralelo no mesmo ciclo — nao processa uma tarefa por vez
+// esperando 30s entre cada. O atraso de ate 30s so existe pra PRIMEIRA vez
+// que uma tarefa nova e percebida; depois disso todo o lote pendente sai
+// junto.
+const HEARTBEAT_INTERVAL_MIN = 0.5;
 const DISCOVERY_STATE_KEY = 'memos_discovery'; // agora um MAPA: { [webSessionId]: discoveryState }
 const SESSIONS_KEY = 'memos_sessions';
 const ACTIVE_KEY = 'memos_active_session_id';
