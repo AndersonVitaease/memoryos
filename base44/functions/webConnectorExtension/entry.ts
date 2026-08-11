@@ -243,6 +243,109 @@ export default async function (req) {
       return Response.json({ ok: true, webSessionId });
     }
 
+    // ── operation: pollTasks (multi-site paralelo) ────────────────
+    // A extensao chama isto a cada heartbeat (agora a cada ~1min, o minimo
+    // pratico do MV3 chrome.alarms em producao) passando TODOS os
+    // webSessionId que ela mantem vivos. Retorna TODAS as tarefas pendentes
+    // de uma vez (nao uma por vez) — a extensao executa todas em PARALELO
+    // (cada uma na sua propria aba), entao 3 sites numa mesma pergunta do
+    // chat custam ~1 ciclo de heartbeat + tempo de execucao em paralelo
+    // (segundos), nao 3 ciclos sequenciais.
+    if (operation === 'pollTasks') {
+      const { webSessionIds } = body;
+      if (!Array.isArray(webSessionIds) || webSessionIds.length === 0) {
+        return Response.json({ ok: true, tasks: [] });
+      }
+      const pending = await base44.entities.WebExecutionRequest.filter({ status: 'pending' });
+      const mine = (pending || []).filter((t) => webSessionIds.includes(t.web_session_id));
+      const marked = [];
+      for (const t of mine) {
+        try {
+          await base44.entities.WebExecutionRequest.update(t.id, { status: 'in_progress' });
+          marked.push({ ...t, status: 'in_progress' });
+        } catch (e) { /* best-effort: pula essa, extensao tenta no proximo ciclo */ }
+      }
+      return Response.json({ ok: true, tasks: marked });
+    }
+
+    // ── operation: completeTask ──────────────────────────
+    // A extensao chama isto pra cada tarefa que executou (sucesso ou falha).
+    // Quando a ULTIMA tarefa de um batch termina, sintetiza a resposta final
+    // (juntando os resultados de todos os sites do batch) e posta como nova
+    // mensagem na sessao de chat original — e assim que o usuario recebe a
+    // resposta "atrasada" apos a extensao processar em segundo plano.
+    if (operation === 'completeTask') {
+      const { requestId, result, error } = body;
+      if (!requestId) return Response.json({ error: 'Missing required field: requestId' }, { status: 400 });
+
+      const task = await base44.entities.WebExecutionRequest.get(requestId);
+      if (!task) return Response.json({ error: 'WebExecutionRequest not found' }, { status: 404 });
+
+      try {
+        await base44.entities.WebExecutionRequest.update(requestId, {
+          status: error ? 'failed' : 'completed',
+          result: result ? JSON.stringify(result) : undefined,
+          error: error || undefined,
+          completed_at: new Date().toISOString(),
+        });
+      } catch (e) {
+        return Response.json({ error: 'Failed to update task: ' + e.message }, { status: 500 });
+      }
+
+      // Verifica se o batch inteiro terminou (nenhuma tarefa irma ainda pending/in_progress).
+      const siblings = await base44.entities.WebExecutionRequest.filter({ batch_id: task.batch_id });
+      const stillRunning = (siblings || []).some((s) => s.id !== requestId && (s.status === 'pending' || s.status === 'in_progress'));
+      if (stillRunning) {
+        return Response.json({ ok: true, requestId, batchComplete: false });
+      }
+
+      // Batch completo: sintetiza resposta unica juntando todos os sites.
+      try {
+        const allDone = (siblings || []).map((s) => (s.id === requestId ? { ...s, status: error ? 'failed' : 'completed', result: result ? JSON.stringify(result) : s.result, error: error || s.error } : s));
+        const successBlocks = [];
+        const failBlocks = [];
+        for (const s of allDone) {
+          if (s.status === 'completed') {
+            let r = {};
+            try { r = JSON.parse(s.result || '{}'); } catch (e) { r = {}; }
+            successBlocks.push(`SITE: ${s.site_url}\nCAPABILITY: ${s.capability_id}\nRESULTADO: ${JSON.stringify(r).slice(0, 3000)}`);
+          } else {
+            failBlocks.push(`SITE: ${s.site_url} — falhou (${s.error || 'motivo desconhecido'})`);
+          }
+        }
+        const chatSessionId = allDone[0] && allDone[0].chat_session_id;
+        if (chatSessionId && successBlocks.length + failBlocks.length > 0) {
+          const synthPrompt =
+            'Voce e o MemoryOS. O usuario pediu uma informacao que exigiu consultar VARIOS sites em paralelo. ' +
+            'Aqui estao os resultados de cada site:\n\n' + successBlocks.join('\n\n') +
+            (failBlocks.length > 0 ? '\n\nSites que falharam:\n' + failBlocks.join('\n') : '') +
+            '\n\nMonte UMA resposta consolidada e clara em portugues, organizada por site, ' +
+            'citando os dados reais encontrados. Se algum site falhou, mencione brevemente sem ' +
+            'inventar motivo tecnico. Formato limpo, sem jargao interno.';
+          let finalText = 'Consultei os sites solicitados, mas nao consegui montar um resumo automatico.';
+          try {
+            const synthResult = await withTimeout(
+              base44.integrations.Core.InvokeLLM({ prompt: synthPrompt }),
+              45000,
+              'InvokeLLM_multiSiteSynthesis'
+            );
+            finalText = (synthResult && (synthResult.output || synthResult.text || synthResult.response)) || finalText;
+          } catch (e) { /* usa o texto padrao de fallback */ }
+
+          try {
+            await base44.entities.Message.create({
+              session_id: chatSessionId,
+              role: 'assistant',
+              content: finalText,
+              memory_tier: 'active',
+            });
+          } catch (e) { /* best-effort: nao ha como notificar o usuario se isso falhar */ }
+        }
+      } catch (e) { /* best-effort: batch marcado completo mesmo se a sintese falhar */ }
+
+      return Response.json({ ok: true, requestId, batchComplete: true });
+    }
+
     return Response.json({ error: 'Unknown operation: ' + operation }, { status: 400 });
 
   } catch (e) {
