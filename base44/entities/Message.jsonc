@@ -85,6 +85,9 @@
         }
       ]
     },
+    "create": {
+      "data.workspace_id": "{{user.data.active_workspace_id}}"
+    },
     "update": {
       "$or": [
         {
