@@ -18,6 +18,13 @@
   <button id="discover-btn" class="btn btn-secondary hidden">Descobrir via extensao</button>
   <button id="disconnect-btn" class="btn btn-danger hidden">Desconectar</button>
   <div id="discovery-status" class="discovery-status hidden"></div>
+  <div id="exec-panel" class="exec-panel hidden">
+    <div class="section-title">Executar capability</div>
+    <select id="cap-select" class="select"></select>
+    <input id="cap-input" class="input" placeholder="Termo de busca" />
+    <button id="exec-btn" class="btn btn-primary" disabled>Executar</button>
+    <div id="exec-status" class="discovery-status hidden"></div>
+  </div>
   <div id="error-msg" class="error hidden"></div>
   <div class="footer muted">Abra o app MemoryOS no Chrome para autenticar.</div>
   <script src="popup.js"></script>

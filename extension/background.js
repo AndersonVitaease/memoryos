@@ -173,6 +173,69 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
+  // Listar capabilities validadas do site (Sprint 3)
+  if (msg.type === 'MEMOS_LIST_CAPABILITIES') {
+    (async () => {
+      try {
+        const { memos_session } = await chrome.storage.local.get(['memos_session']);
+        if (!memos_session || !memos_session.webSessionId) {
+          sendResponse({ ok: false, error: 'Nenhum site conectado.' });
+          return;
+        }
+        const result = await invokeFunction('webConnectorExtension', {
+          operation: 'listCapabilities',
+          webSessionId: memos_session.webSessionId,
+        });
+        sendResponse({ ok: true, capabilities: result.capabilities || [] });
+      } catch (e) {
+        sendResponse({ ok: false, error: e.message || String(e) });
+      }
+    })();
+    return true;
+  }
+
+  // Executar capability (Sprint 3): navega a aba ate a URL de descoberta,
+  // injeta pageExecute (fill + write-guard + submit + captura links), e
+  // registra o resultado no backend. O write-guard e enforced no DOM —
+  // formulario com botao de escrita (Salvar/Excluir/...) aborta.
+  if (msg.type === 'MEMOS_EXECUTE_CAPABILITY') {
+    (async () => {
+      try {
+        const { memos_session } = await chrome.storage.local.get(['memos_session']);
+        if (!memos_session || !memos_session.webSessionId) {
+          sendResponse({ ok: false, error: 'Nenhum site conectado.' });
+          return;
+        }
+        const spec = {
+          discoveredFromUrl: msg.discoveredFromUrl,
+          inputFields: msg.inputFields,
+          inputs: msg.inputs,
+        };
+        await navigateAndWait(memos_session.tabId, spec.discoveredFromUrl);
+        const injectRes = await chrome.scripting.executeScript({
+          target: { tabId: memos_session.tabId },
+          func: pageExecute,
+          args: [spec],
+        });
+        const result = (injectRes && injectRes[0] && injectRes[0].result) ? injectRes[0].result : { error: 'no_result' };
+        try {
+          await invokeFunction('webConnectorExtension', {
+            operation: 'recordExecution',
+            webSessionId: memos_session.webSessionId,
+            discoveredFromUrl: spec.discoveredFromUrl,
+            inputFields: spec.inputFields,
+            inputs: spec.inputs,
+            result,
+          });
+        } catch (e) { /* best-effort: auditoria */ }
+        sendResponse({ ok: true, result });
+      } catch (e) {
+        sendResponse({ ok: false, error: e.message || String(e) });
+      }
+    })();
+    return true;
+  }
+
   // Snapshot recebido do content-site.js (uma por pagina)
   if (msg.type === 'MEMOS_SNAPSHOT_RESULT') {
     (async () => {
@@ -220,6 +283,178 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 });
+
+// ── Execucao de capability (Sprint 3) ────────────────────────────────────
+// Navega a aba ate a URL alvo e espera carregar (com timeout). O service
+// worker MV3 nao tem timers; usa o evento tabs.onUpdated + fallback de
+// setTimeout para garantir resolucao mesmo se o evento nao disparar.
+function navigateAndWait(tabId, url) {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      chrome.tabs.onUpdated.removeListener(listener);
+      resolve();
+    };
+    const listener = (id, info) => {
+      if (id === tabId && info.status === 'complete') finish();
+    };
+    chrome.tabs.onUpdated.addListener(listener);
+    chrome.tabs.update(tabId, { url }).then(() => setTimeout(finish, 10000)).catch(() => finish());
+    setTimeout(finish, 12000);
+  });
+}
+
+// pageExecute roda no DOM da aba autenticada (isolated world). Espelha a
+// logica de field-matching + write-guard + captura de links do
+// webConnectorConnect.executeCapability (headless), mas operando direto em
+// document. Recebe { discoveredFromUrl, inputFields, inputs } via args.
+function pageExecute(spec) {
+  return (async () => {
+    const fields = (spec.inputFields || []).map(function (n) {
+      return { name: String(n), value: spec.inputs && spec.inputs[n] != null ? String(spec.inputs[n]) : '' };
+    });
+    var matchField = function (frm, n) {
+      var nn = String(n || '').toLowerCase();
+      var els = Array.from(frm.querySelectorAll('input, select, textarea'));
+      for (var i = 0; i < els.length; i++) {
+        var e = els[i];
+        if ((e.getAttribute('name') || '').toLowerCase() === nn || (e.getAttribute('id') || '').toLowerCase() === nn) return e;
+      }
+      for (var j = 0; j < els.length; j++) {
+        var e2 = els[j];
+        var ph = (e2.getAttribute('placeholder') || '').toLowerCase();
+        var al = (e2.getAttribute('aria-label') || '').toLowerCase();
+        var lt = '';
+        if (e2.id) {
+          var lbl = frm.querySelector('label[for="' + e2.id + '"]');
+          if (lbl) lt = lbl.textContent.toLowerCase();
+        }
+        if (!lt) {
+          var w = e2.closest('label');
+          if (w) lt = w.textContent.toLowerCase();
+        }
+        if ((ph && ph.indexOf(nn) !== -1) || (al && al.indexOf(nn) !== -1) || (lt && lt.indexOf(nn) !== -1)) return e2;
+      }
+      var searchRe = /(digite|buscar|pesquisar|procurar|search|find|query|keyword|palavra|as_word)/i;
+      if (searchRe.test(nn)) {
+        for (var k = 0; k < els.length; k++) {
+          var e3 = els[k];
+          if (e3.type === 'search') return e3;
+          var ph2 = (e3.getAttribute('placeholder') || '').toLowerCase();
+          var al2 = (e3.getAttribute('aria-label') || '').toLowerCase();
+          var nm2 = (e3.getAttribute('name') || '').toLowerCase();
+          var id2 = (e3.getAttribute('id') || '').toLowerCase();
+          if (searchRe.test(ph2) || searchRe.test(al2) || searchRe.test(nm2) || searchRe.test(id2)) return e3;
+        }
+      }
+      return null;
+    };
+    var forms = Array.from(document.querySelectorAll('form'));
+    var best = null, bestScore = 0;
+    for (var f = 0; f < forms.length; f++) {
+      var score = 0;
+      for (var g = 0; g < fields.length; g++) {
+        if (matchField(forms[f], fields[g].name)) score++;
+      }
+      if (score > bestScore) { bestScore = score; best = forms[f]; }
+    }
+    if (!best || bestScore === 0) return { error: 'form_not_found', url: location.href };
+    var btns = Array.from(best.querySelectorAll('button, input[type=submit], input[type=button]'));
+    var guardRe = /(salvar|excluir|deletar|apagar|cancelar|enviar|criar|editar|create|edit|delete|remove|update|submeter)/i;
+    var offending = btns.map(function (b) { return (b.textContent || b.value || '').trim(); }).filter(function (t) { return guardRe.test(t); });
+    if (offending.length > 0) return { error: 'write_guard', buttons: offending };
+    var filled = [];
+    for (var h = 0; h < fields.length; h++) {
+      var el = matchField(best, fields[h].name);
+      if (el) {
+        try {
+          if (el.tagName.toLowerCase() === 'select') {
+            el.value = fields[h].value;
+          } else {
+            el.focus();
+            el.value = fields[h].value;
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+          filled.push(fields[h].name);
+        } catch (e) {}
+      }
+    }
+    if (filled.length === 0) return { error: 'no_field_filled', url: location.href };
+    var sBtn = null;
+    for (var b = 0; b < btns.length; b++) {
+      var t = (btns[b].textContent || btns[b].value || '').trim();
+      if (/(buscar|pesquisar|consultar|filtrar|search|find|consult|listar|go)/i.test(t)) { sBtn = btns[b]; break; }
+    }
+    if (!sBtn) sBtn = btns[0] || null;
+    await new Promise(function (resolve) {
+      var done2 = false;
+      var fin = function () { if (!done2) { done2 = true; resolve(); } };
+      if (window.navigation) { try { window.navigation.addEventListener('navigatesuccess', fin, { once: true }); } catch (e) {} }
+      setTimeout(fin, 8000);
+      try {
+        if (sBtn) sBtn.click();
+        else if (best.requestSubmit) best.requestSubmit();
+        else best.submit();
+      } catch (e) { try { best.submit(); } catch (e2) { fin(); } }
+    });
+    await new Promise(function (r) { setTimeout(r, 2000); });
+    await new Promise(function (resolve) {
+      var c = 0;
+      var s = function () {
+        window.scrollBy(0, Math.max(window.innerHeight * 2, 1200));
+        c++;
+        if (c < 5) setTimeout(s, 400);
+        else { window.scrollTo(0, 0); resolve(); }
+      };
+      s();
+    });
+    await new Promise(function (r) { setTimeout(r, 1000); });
+    var rd = (function () {
+      var parts = location.hostname.split('.');
+      var tld = ['com.br', 'co.uk', 'com.au', 'org.br', 'net.br'];
+      var last2 = parts.slice(-2).join('.');
+      if (tld.indexOf(last2) !== -1 && parts.length >= 3) return parts.slice(-3).join('.');
+      return last2;
+    })();
+    var productRe = /\/(p|dp|produto|item|pd|listados|detalle|product)\/|MLB-?\d|\/item\//i;
+    var catRe = /\/(c|categorias|ofertas|l|gz|assinaturas|importados|mais-vendidos|categorias)\b/i;
+    var curPath = location.pathname;
+    var collect = function (filter) {
+      var list = [];
+      var anchors = Array.from(document.querySelectorAll('a[href]'));
+      for (var a = 0; a < anchors.length; a++) {
+        var aEl = anchors[a];
+        var href = aEl.href;
+        if (!href) continue;
+        var h;
+        try { h = new URL(href); } catch (e) { continue; }
+        if (!h.hostname.endsWith(rd)) continue;
+        if (/\/(login|logout|signup|register|auth|conta|minha-conta|ajuda|vendas|favoritos|carrinho|ofertas)\b/i.test(h.pathname)) continue;
+        if (h.pathname === curPath || h.pathname === '/' || h.pathname === '') continue;
+        if (!filter(h, aEl)) continue;
+        var text = (aEl.innerText || aEl.textContent || '').trim();
+        if (text.length < 8) continue;
+        var card = aEl.closest('li, article, [class*=ui-search-result], [class*=item], [class*=card], [class*=product]');
+        var cardText = card ? (card.innerText || '').trim().slice(0, 400) : '';
+        list.push({ text: text.slice(0, 200), href: href, cardText: cardText });
+      }
+      return list;
+    };
+    var productAnchors = collect(function (h) { return productRe.test(h.pathname + h.search) && !catRe.test(h.pathname); });
+    var genericAnchors = collect(function (h) { return !catRe.test(h.pathname); });
+    var out = productAnchors.length > 0 ? productAnchors : genericAnchors;
+    var seen = {}, dedup = [];
+    for (var i = 0; i < out.length; i++) {
+      if (seen[out[i].href]) continue;
+      seen[out[i].href] = true;
+      dedup.push(out[i]);
+    }
+    return { url: location.href, filled: filled, links: dedup.slice(0, 30) };
+  })();
+}
 
 // ── Driver de descoberta (BFS orientado a eventos) ───────────────────────
 async function getDiscovery() {

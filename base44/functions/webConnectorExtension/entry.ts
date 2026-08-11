@@ -183,6 +183,66 @@ export default async function (req) {
       });
     }
 
+    // ── operation: listCapabilities (Sprint 3) ──────────────────────────
+    // Retorna as capabilities validadas (CapabilityMap) do site da sessao,
+    // para a extensao popular o seletor de execucao no popup. Compara por
+    // origin (nao URL exata) — o site_url da sessao e o origin, o do mapa
+    // pode incluir path.
+    if (operation === 'listCapabilities') {
+      const { webSessionId } = body;
+      if (!webSessionId) return Response.json({ error: 'Missing required field: webSessionId' }, { status: 400 });
+      const session = await base44.entities.WebSession.get(webSessionId);
+      if (!session) return Response.json({ error: 'WebSession not found' }, { status: 404 });
+      if (session.source !== 'extension') return Response.json({ error: 'WebSession is not an extension session' }, { status: 409 });
+
+      const sessionOrigin = (() => { try { return new URL(session.site_url).origin; } catch (e) { return null; } })();
+      const maps = await base44.asServiceRole.entities.CapabilityMap.list();
+      const capabilities = [];
+      for (const m of maps) {
+        const mOrigin = (() => { try { return new URL(m.site_url).origin; } catch (e) { return null; } })();
+        if (sessionOrigin && mOrigin === sessionOrigin) {
+          let caps = [];
+          try { caps = JSON.parse(m.capabilities || '[]'); } catch (e) { caps = []; }
+          for (const c of caps) capabilities.push({ id: c.id, description: c.description, inputSchema: c.inputSchema, discoveredFrom: c.discoveredFrom });
+        }
+      }
+      return Response.json({ ok: true, webSessionId, capabilities });
+    }
+
+    // ── operation: recordExecution (Sprint 3) ──────────────────────────
+    // Persiste o resultado de uma execucao de capability na aba do usuario.
+    // A execucao acontece no DOM (pageExecute via chrome.scripting, com a
+    // mesma guarda de escrita do headless); o backend so valida a sessao e
+    // registra o evento (auditoria/telemetria).
+    if (operation === 'recordExecution') {
+      const { webSessionId, discoveredFromUrl, inputFields, inputs, result } = body;
+      if (!webSessionId) return Response.json({ error: 'Missing required field: webSessionId' }, { status: 400 });
+      const session = await base44.entities.WebSession.get(webSessionId);
+      if (!session) return Response.json({ error: 'WebSession not found' }, { status: 404 });
+      if (session.source !== 'extension') return Response.json({ error: 'WebSession is not an extension session' }, { status: 409 });
+      if (session.status !== 'active') return Response.json({ error: 'WebSession is not active' }, { status: 409 });
+
+      try {
+        await base44.asServiceRole.entities.InteractionEvent.create({
+          session_id: '',
+          actor: 'system',
+          event_type: 'capability_executed',
+          raw_text: String(discoveredFromUrl || '').slice(0, 500),
+          payload: JSON.stringify({
+            webSessionId,
+            discoveredFromUrl,
+            inputFields,
+            inputs,
+            result,
+          }),
+        });
+      } catch (e) { /* best-effort: nao bloqueia o retorno */ }
+
+      try { await base44.entities.WebSession.update(webSessionId, { last_used_at: new Date().toISOString() }); } catch (e) { /* best-effort */ }
+
+      return Response.json({ ok: true, webSessionId });
+    }
+
     return Response.json({ error: 'Unknown operation: ' + operation }, { status: 400 });
 
   } catch (e) {
