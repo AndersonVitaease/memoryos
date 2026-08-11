@@ -541,28 +541,54 @@ function pageFillSubmit(spec) {
     var guardRe = /(salvar|excluir|deletar|apagar|cancelar|enviar|criar|editar|create|edit|delete|remove|update|submeter)/i;
     var offending = btns.map(function (b) { return (b.textContent || b.value || '').trim(); }).filter(function (t) { return guardRe.test(t); });
     if (offending.length > 0) return { error: 'write_guard', buttons: offending };
+    // Fix (2026-08-11): ML e outros SPAs (React) nao reagem a el.value= + Event('input').
+    // O React so "ve" o valor se setado via o native setter do prototype; senao o submit
+    // vai com o input vazio, a busca nao navega e o scrape rodava na home (nav links).
+    var setNativeValue = function (el, value) {
+      try {
+        var proto = el.tagName.toLowerCase() === 'textarea' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+        var desc = Object.getOwnPropertyDescriptor(proto, 'value');
+        if (desc && desc.set) desc.set.call(el, value); else el.value = value;
+      } catch (e) { el.value = value; }
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    };
     var filled = [];
+    var firstInput = null;
     for (var h = 0; h < fields.length; h++) {
       var el = matchField(best, fields[h].name);
       if (el) {
         try {
           if (el.tagName.toLowerCase() === 'select') { el.value = fields[h].value; }
-          else { el.focus(); el.value = fields[h].value; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }
+          else { el.focus(); setNativeValue(el, fields[h].value); }
+          if (!firstInput) firstInput = el;
           filled.push(fields[h].name);
         } catch (e) {}
       }
     }
     if (filled.length === 0) return { error: 'no_field_filled', url: location.href };
+    // Dispara a busca: Enter no input (ML e SPAs navegam no Enter) e tambem clica
+    // num botao submit (type=submit ou aria-label de busca). Retorna imediatamente.
+    try {
+      if (firstInput) {
+        firstInput.focus();
+        firstInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }));
+        firstInput.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }));
+        firstInput.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }));
+      }
+    } catch (e) {}
     var sBtn = null;
-    for (var b = 0; b < btns.length; b++) {
-      var t = (btns[b].textContent || btns[b].value || '').trim();
-      if (/(buscar|pesquisar|consultar|filtrar|search|find|consult|listar|go)/i.test(t)) { sBtn = btns[b]; break; }
+    var allBtns = Array.from(best.querySelectorAll('button, input[type=submit], input[type=button]'));
+    for (var b = 0; b < allBtns.length; b++) {
+      var t = (allBtns[b].textContent || allBtns[b].value || '').trim();
+      var al = (allBtns[b].getAttribute('aria-label') || '').toLowerCase();
+      var ty = (allBtns[b].getAttribute('type') || '').toLowerCase();
+      if (/(buscar|pesquisar|consultar|filtrar|search|find|consult|listar|go)/i.test(t) || /buscar|search|pesquisar/i.test(al) || ty === 'submit') { sBtn = allBtns[b]; break; }
     }
-    if (!sBtn) sBtn = btns[0] || null;
-    // Dispara o submit e retorna IMEDIATAMENTE — a navegacao para a pagina
-    // de resultados vai destruir este contexto; o scrape roda na fase 2.
-    try { if (sBtn) sBtn.click(); else if (best.requestSubmit) best.requestSubmit(); else best.submit(); }
-    catch (e) { try { best.submit(); } catch (e2) {} }
+    setTimeout(function () {
+      try { if (sBtn) sBtn.click(); else if (best.requestSubmit) best.requestSubmit(); else best.submit(); }
+      catch (e) { try { best.submit(); } catch (e2) {} }
+    }, 80);
     return { filled: filled, submittedFrom: location.href };
   })();
 }
