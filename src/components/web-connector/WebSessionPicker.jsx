@@ -36,7 +36,7 @@ export default function WebSessionPicker({ onRetomar, onNew, currentSessionId, s
     setLoading(true);
     setError(null);
     try {
-      const recs = await base44.entities.WebSession.filter({ status: 'active' }, '-created_date', 20);
+      const recs = await base44.entities.WebSession.filter({}, '-created_date', 20);
       setSessions(recs || []);
     } catch (e) {
       setError(e.message || 'Falha ao carregar sessoes ativas');
@@ -51,7 +51,7 @@ export default function WebSessionPicker({ onRetomar, onNew, currentSessionId, s
     <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-          <Globe className="w-3.5 h-3.5" /> Sessoes conectadas ({sessions.length})
+          <Globe className="w-3.5 h-3.5" /> Sessões ({sessions.filter((s) => s.status === 'active').length} ativa(s))
         </p>
         <button onClick={load} disabled={loading} className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-foreground">
           {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
@@ -67,7 +67,7 @@ export default function WebSessionPicker({ onRetomar, onNew, currentSessionId, s
       )}
 
       {!loading && sessions.length === 0 && !error && (
-        <p className="text-[11px] text-muted-foreground">Nenhuma sessao ativa. Conecte um novo site abaixo.</p>
+        <p className="text-[11px] text-muted-foreground">Nenhuma sessão registrada. Conecte um novo site abaixo.</p>
       )}
 
       <div className="space-y-2">
@@ -75,27 +75,41 @@ export default function WebSessionPicker({ onRetomar, onNew, currentSessionId, s
           const host = hostOf(s.site_url);
           const isCurrent = currentSessionId === s.id;
           const expiry = fmtExpiry(s.expires_at);
-          const expired = expiry === 'expirada';
+          const isActive = s.status === 'active';
+          const isExpired = s.status === 'expired' || expiry === 'expirada';
+          const statusLabel = isActive ? 'conectado' : isExpired ? 'expirado' : s.status === 'revoked' ? 'desconectado' : (s.status || '?');
+          const statusColor = isActive ? 'text-emerald-400' : isExpired ? 'text-amber-400' : 'text-muted-foreground';
+          const statusBg = isActive ? 'bg-emerald-500/20 text-emerald-300' : isExpired ? 'bg-amber-500/20 text-amber-300' : 'bg-muted text-muted-foreground';
+          const subLabel = isActive ? expiry : isExpired ? 'sessão expirou — reconecte' : 'desconectado manualmente';
           return (
             <div key={s.id} className={"rounded-lg border p-2.5 flex items-center justify-between gap-2 " + (isCurrent ? "border-emerald-500/40 bg-emerald-500/5" : "border-border bg-muted/20")}>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5">
-                  <CheckCircle2 className={"w-3.5 h-3.5 shrink-0 " + (expired ? "text-amber-400" : "text-emerald-400")} />
+                  <CheckCircle2 className={"w-3.5 h-3.5 shrink-0 " + statusColor} />
                   <span className="text-xs font-mono text-foreground truncate">{host}</span>
-                  {isCurrent && <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 uppercase tracking-wide">ativa</span>}
+                  <span className={"text-[9px] px-1.5 py-0.5 rounded uppercase tracking-wide " + statusBg}>{statusLabel}</span>
                 </div>
                 <div className="flex items-center gap-1 mt-0.5">
-                  <Clock className={"w-3 h-3 " + (expired ? "text-amber-400" : "text-muted-foreground")} />
-                  <span className={"text-[10px] " + (expired ? "text-amber-400" : "text-muted-foreground")}>{expiry}</span>
+                  <Clock className={"w-3 h-3 " + statusColor} />
+                  <span className={"text-[10px] " + statusColor}>{subLabel}</span>
                 </div>
               </div>
-              <button
-                onClick={() => onRetomar(s)}
-                disabled={isCurrent}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium bg-violet-500/90 text-white hover:bg-violet-500 disabled:opacity-40 disabled:cursor-not-allowed transition shrink-0"
-              >
-                {isCurrent ? 'atual' : 'Retomar'}
-              </button>
+              {isActive ? (
+                <button
+                  onClick={() => onRetomar(s)}
+                  disabled={isCurrent}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium bg-violet-500/90 text-white hover:bg-violet-500 disabled:opacity-40 disabled:cursor-not-allowed transition shrink-0"
+                >
+                  {isCurrent ? 'atual' : 'Retomar'}
+                </button>
+              ) : (
+                <button
+                  onClick={onNew}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-medium bg-muted text-foreground hover:bg-muted transition shrink-0"
+                >
+                  Reconectar
+                </button>
+              )}
             </div>
           );
         })}
