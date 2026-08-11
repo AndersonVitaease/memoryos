@@ -45,7 +45,11 @@ export default async function (req: Request): Promise<Response> {
     const body = await req.json().catch(() => ({}));
     const op = body.operation;
     const userId = user.id;
-    const activeWs = user.data?.active_workspace_id || null;
+    // auth.me() nao hidrata os campos custom do User (active_workspace_id,
+    // workspace_ids). Busca o registro completo via asServiceRole para obter
+    // o seletor de workspace ativo validado.
+    const fullUser = await base44.asServiceRole.entities.User.get(userId).catch(() => null);
+    const activeWs = (fullUser as any)?.active_workspace_id || user.data?.active_workspace_id || null;
 
     // ── createSession ──────────────────────────────────────────────────
     if (op === 'createSession') {
