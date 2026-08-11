@@ -115,7 +115,7 @@ connectBtn.addEventListener('click', () => {
   connectBtn.textContent = 'Conectando…';
   chrome.runtime.sendMessage({ type: 'MEMOS_CONNECT_SITE' }, (res) => {
     connectBtn.disabled = false;
-    connectBtn.textContent = 'Conectar este site';
+    connectBtn.textContent = 'Conectar a aba atual';
     if (res && res.ok) {
       if (res.alreadyConnected) showError('Este site ja estava conectado — ativado.');
       refreshStatus();
