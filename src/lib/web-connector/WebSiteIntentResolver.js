@@ -123,6 +123,7 @@ export async function resolveWebIntent(message) {
         siteUrl: matched.site_url,
         webSessionId: matched.id,
         webSessionExpiresAt: matched.expires_at,
+        webSessionSource: matched.source || 'headless',
         discoveredFromUrl: cap.discoveredFrom || matched.site_url,
         capability: cap,
         inputFields,
