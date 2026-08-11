@@ -1,8 +1,9 @@
 {
   "name": "WebExecutionRequest",
+  "type": "object",
   "properties": {
     "batch_id": {
-      "description": "Agrupa varias requests da MESMA pergunta do chat (ex: 3 sites numa pergunta) para saber quando todas terminaram",
+      "description": "Agrupa varias requests da MESMA pergunta do chat (ex: 3 sites numa pergunta). Equivale a request_group_id.",
       "type": "string"
     },
     "capability_id": {
@@ -10,7 +11,7 @@
       "type": "string"
     },
     "chat_session_id": {
-      "description": "Session de chat para onde a resposta final deve ser postada quando o batch terminar",
+      "description": "Session de chat para onde a resposta final deve ser postada quando o batch terminar. Equivale a conversation_id.",
       "type": "string"
     },
     "completed_at": {
@@ -47,7 +48,7 @@
     },
     "status": {
       "default": "pending",
-      "description": "pending = aguardando extensao pegar; in_progress = extensao esta executando; completed/failed = terminado",
+      "description": "pending = aguardando extensao pegar; in_progress = extensao executando; completed/failed = terminado",
       "enum": [
         "pending",
         "in_progress",
@@ -59,6 +60,22 @@
     "web_session_id": {
       "description": "WebSession (source=extension) alvo desta execucao",
       "type": "string"
+    },
+    "workspace_id": {
+      "description": "ID do workspace de origem. pollTasks valida que a sessao/bridge solicitante pertence ao mesmo workspace + usuario.",
+      "type": "string"
+    },
+    "bridge_id": {
+      "description": "ID da bridge (extensao) que deve executar esta tarefa. pollTasks so entrega tarefas cujo bridge_id bate com a bridge solicitante.",
+      "type": "string"
+    },
+    "browser_session_id": {
+      "description": "ID da sessao de browser (aba) que deve executar. pollTasks valida que a WebSession da solicitante tem este browser_session_id.",
+      "type": "string"
+    },
+    "connector_id": {
+      "description": "ID logico do connector web (ex: 'web-connector'). Autorizacao contextual de execucao.",
+      "type": "string"
     }
   },
   "required": [
@@ -66,5 +83,42 @@
     "batch_id",
     "status"
   ],
-  "type": "object"
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
 }

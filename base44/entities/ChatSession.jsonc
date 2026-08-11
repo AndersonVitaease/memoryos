@@ -14,6 +14,20 @@
       "type": "string",
       "description": "Projeto relacionado (opcional)"
     },
+    "workspace_id": {
+      "type": "string",
+      "description": "ID do workspace. Null durante migracao. Acesso decidido por RLS (created_by_id OU workspace_id in user.workspace_ids)."
+    },
+    "scope": {
+      "type": "string",
+      "enum": [
+        "personal",
+        "workspace",
+        "session"
+      ],
+      "default": "personal",
+      "description": "Classificacao de memoria (NAO mecanismo de seguranca). Seguranca via RLS + membership. 'personal' = privada do dono; 'workspace' = compartilhada no workspace; 'session' = efemera da sessao."
+    },
     "message_count": {
       "type": "number",
       "default": 0,
@@ -37,5 +51,48 @@
   },
   "required": [
     "title"
-  ]
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "data.workspace_id": {
+            "$in": "{{user.data.workspace_ids}}"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
 }

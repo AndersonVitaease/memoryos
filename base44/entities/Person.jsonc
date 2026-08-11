@@ -6,6 +6,10 @@
       "type": "string",
       "description": "ID do projeto ao qual pertence"
     },
+    "workspace_id": {
+      "type": "string",
+      "description": "ID do workspace. Null durante migracao."
+    },
     "name": {
       "type": "string",
       "description": "Nome da pessoa"
@@ -45,5 +49,48 @@
   "required": [
     "project_id",
     "name"
-  ]
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "data.workspace_id": {
+            "$in": "{{user.data.workspace_ids}}"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
 }

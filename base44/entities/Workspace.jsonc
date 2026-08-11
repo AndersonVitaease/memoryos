@@ -1,55 +1,56 @@
 {
-  "name": "TimelineEvent",
+  "name": "Workspace",
   "type": "object",
   "properties": {
-    "project_id": {
+    "name": {
       "type": "string",
-      "description": "ID do projeto ao qual pertence"
-    },
-    "workspace_id": {
-      "type": "string",
-      "description": "ID do workspace. Null durante migracao."
-    },
-    "title": {
-      "type": "string",
-      "description": "T\u00edtulo do evento"
+      "description": "Nome do workspace"
     },
     "description": {
       "type": "string",
-      "description": "Descri\u00e7\u00e3o do evento"
+      "description": "Descricao do workspace"
     },
-    "event_date": {
+    "type": {
       "type": "string",
-      "format": "date",
-      "description": "Data do evento"
+      "enum": [
+        "pessoal",
+        "empresa",
+        "equipe"
+      ],
+      "default": "pessoal",
+      "description": "Tipo do workspace. 'pessoal' = workspace individual automatico; 'empresa'/'equipe' = compartilhado."
     },
-    "category": {
+    "owner_id": {
       "type": "string",
-      "description": "Categoria do evento (ex: Vendas, Fornecedor, Produto)"
+      "description": "ID do usuario proprietario (criador). Igual a created_by_id."
     },
-    "tags": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      },
-      "description": "IDs das tags associadas"
+    "plan": {
+      "type": "string",
+      "enum": [
+        "free",
+        "pro",
+        "business"
+      ],
+      "default": "free",
+      "description": "Plano do workspace"
+    },
+    "icon": {
+      "type": "string",
+      "description": "Icone do workspace"
+    },
+    "color": {
+      "type": "string",
+      "description": "Cor de identificacao visual"
     }
   },
   "required": [
-    "project_id",
-    "title",
-    "event_date"
+    "name"
   ],
   "rls": {
     "read": {
       "$or": [
         {
           "created_by_id": "{{user.id}}"
-        },
-        {
-          "data.workspace_id": {
-            "$in": "{{user.data.workspace_ids}}"
-          }
         },
         {
           "user_condition": {

@@ -1,0 +1,78 @@
+{
+  "name": "WorkspaceMember",
+  "type": "object",
+  "properties": {
+    "workspace_id": {
+      "type": "string",
+      "description": "ID do workspace ao qual o usuario pertence"
+    },
+    "user_id": {
+      "type": "string",
+      "description": "ID do usuario membro"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "owner",
+        "admin",
+        "member",
+        "viewer"
+      ],
+      "default": "member",
+      "description": "Papel do membro no workspace"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "pending",
+        "invited",
+        "removed"
+      ],
+      "default": "active",
+      "description": "Estado da membership. So 'active' concede acesso (entra em User.workspace_ids). 'removed'/'pending'/'invited' nao concedem."
+    },
+    "invited_by": {
+      "type": "string",
+      "description": "ID do usuario que convidou"
+    },
+    "joined_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Quando o usuario entrou (status=active)"
+    }
+  },
+  "required": [
+    "workspace_id",
+    "user_id"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "data.user_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

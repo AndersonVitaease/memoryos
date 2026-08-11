@@ -18,6 +18,20 @@
       "type": "string",
       "description": "ID do projeto (isolamento)"
     },
+    "workspace_id": {
+      "type": "string",
+      "description": "ID do workspace. Null durante migracao."
+    },
+    "scope": {
+      "type": "string",
+      "enum": [
+        "personal",
+        "workspace",
+        "session"
+      ],
+      "default": "personal",
+      "description": "Classificacao de memoria (NAO seguranca)."
+    },
     "source_type": {
       "type": "string",
       "enum": [
@@ -68,5 +82,48 @@
     "source_type",
     "type",
     "value"
-  ]
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "data.workspace_id": {
+            "$in": "{{user.data.workspace_ids}}"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
 }
