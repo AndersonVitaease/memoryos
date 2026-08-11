@@ -8,7 +8,7 @@
     },
     "target_url": {
       "type": "string",
-      "description": "URL da pagina do app publicada onde o bug foi encontrado (ex: https://ever-mind-core.base44.app/chat)"
+      "description": "URL da pagina do app publicada onde o bug foi encontrado"
     },
     "title": {
       "type": "string",
@@ -32,7 +32,7 @@
     },
     "steps_to_reproduce": {
       "type": "string",
-      "description": "Passos para reproduzir (texto ou JSON serializado da sequencia de acoes do agente)"
+      "description": "Passos para reproduzir (texto ou JSON serializado)"
     },
     "expected": {
       "type": "string",
@@ -82,5 +82,43 @@
     "target_url",
     "title",
     "severity"
-  ]
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
 }

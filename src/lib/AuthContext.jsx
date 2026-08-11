@@ -2,6 +2,7 @@ import React, { createContext, useState, useContext, useEffect } from 'react';
 import { base44 } from '@/api/base44Client';
 import { appParams } from '@/lib/app-params';
 import { createAxiosClient } from '@base44/sdk/dist/utils/axios-client';
+import { initWorkspaceContext } from '@/lib/workspace/WorkspaceContext';
 
 const AuthContext = createContext();
 
@@ -89,6 +90,8 @@ export const AuthProvider = ({ children }) => {
       setIsAuthenticated(true);
       setIsLoadingAuth(false);
       setAuthChecked(true);
+      // Fase 1: garante workspace pessoal + resolve workspace ativo (best-effort, nao bloqueia login)
+      initWorkspaceContext().catch((e) => console.warn('[AuthContext] initWorkspaceContext falhou:', e?.message));
       console.log('[DIAG][checkUserAuth] FIM — isAuthenticated=true, isLoadingAuth=false, authChecked=true');
     } catch (error) {
       console.error('[DIAG][checkUserAuth] ERRO em me():', error?.status, error?.message, error);

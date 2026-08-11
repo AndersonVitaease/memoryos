@@ -8,7 +8,7 @@
     },
     "workspace_id": {
       "type": "string",
-      "description": "ID do workspace Google (ex: default)"
+      "description": "ID do workspace Google. Dinamico apos Fase 1 (era fixo 'default'). O token em si e PRIVADO do dono (RLS por user_id); membros do workspace usam o connector via binding + backend asServiceRole, nunca leem o token bruto."
     },
     "refresh_token": {
       "type": "string",
@@ -31,5 +31,43 @@
     "user_id",
     "workspace_id",
     "refresh_token"
-  ]
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "data.user_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "data.user_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "data.user_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
 }

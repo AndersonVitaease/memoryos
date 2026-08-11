@@ -4,7 +4,7 @@
   "properties": {
     "target_object_id": {
       "type": "string",
-      "description": "ID do objeto de conhecimento alvo (ex: session_id, document_id, entity_id)"
+      "description": "ID do objeto de conhecimento alvo"
     },
     "target_object_type": {
       "type": "string",
@@ -21,7 +21,7 @@
     },
     "payload_type": {
       "type": "string",
-      "description": "Chave do schema do payload (ex: conversation_turn, entity_mention, topic_signal)"
+      "description": "Chave do schema do payload"
     },
     "data": {
       "type": "string",
@@ -32,7 +32,7 @@
       "items": {
         "type": "string"
       },
-      "description": "IDs de observacoes das quais esta depende (para deteccao de ciclos)"
+      "description": "IDs de observacoes das quais esta depende"
     },
     "context_scope": {
       "type": "string",
@@ -77,5 +77,43 @@
     "context_scope",
     "confidence",
     "producer_id"
-  ]
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
 }
