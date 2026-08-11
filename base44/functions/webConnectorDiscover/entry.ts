@@ -348,7 +348,7 @@ export default async function (req) {
 
         // Salva candidatos como CapabilityCandidate records (logica compartilhada
         // em saveDiscoveryCandidates — mesma funcao usada pela extensao Chrome).
-        const savedCandidates = await saveDiscoveryCandidates({ base44, session, llmResult, currentUrl, pageIdx, sdkTimeoutMs: SDK_TIMEOUT_MS });
+        const savedCandidates = await saveDiscoveryCandidates({ base44, session, llmResult, currentUrl, pageIdx, sdkTimeoutMs: SDK_TIMEOUT_MS, snapshotText });
         for (const sc of savedCandidates) allCandidates.push(sc);
 
         // Descoberta AUTOMATICA multi-area (fix 2026-08-10, branching): em vez

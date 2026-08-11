@@ -243,7 +243,7 @@ export default async function (req) {
           60000, 'InvokeLLM_extension_discover'
         );
       } catch (e) { return Response.json({ error: 'Discovery LLM failed: ' + e.message }, { status: 502 }); }
-      const saved = await saveDiscoveryCandidates({ base44, session, llmResult, currentUrl: url, pageIdx: 0, sdkTimeoutMs: 10000 });
+      const saved = await saveDiscoveryCandidates({ base44, session, llmResult, currentUrl: url, pageIdx: 0, sdkTimeoutMs: 10000, snapshotText });
       const navLinks = parseDiscoveryLLMResult(llmResult).navigationLinks;
       await base44.entities.WebSession.update(webSessionId, { last_used_at: new Date().toISOString() }).catch(() => {});
       return Response.json({ ok: true, webSessionId, currentUrl: url, candidatesSaved: saved.length, candidates: saved, navigationLinks: navLinks });
