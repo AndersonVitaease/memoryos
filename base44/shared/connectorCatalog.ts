@@ -83,8 +83,15 @@ export const CONNECTOR_CATALOG: Record<string, CatalogEntry> = {
     displayName: "Web Connector",
     providerKind: "web",
     credentialEntity: "web",
+    // Capabilities TECNICAS do Web Connector (verbs), alinhadas com
+    // WebConnector.ts. NAO cadastrar capabilities especificas de sites
+    // (ex: reservation.search, order.lookup) aqui — essas vivem no
+    // CapabilityMap de cada site. O authorizeExecution usa gate bifasico
+    // para web: G1 confirma o verb tecnico contra este catalogo; G2 valida
+    // a capability especifica do site contra o CapabilityMap.
     capabilities: [
-      "product.search", "page.snapshot", "form.fill", "link.extract",
+      "web.session.list", "web.capability.list", "web.discover",
+      "web.session.use", "web.capability.execute", "connectivity.ping",
     ],
   },
 };

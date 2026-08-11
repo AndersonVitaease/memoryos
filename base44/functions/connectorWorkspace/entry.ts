@@ -241,10 +241,38 @@ export default async function (req: Request): Promise<Response> {
       }
 
       // G) capability disponivel no ConnectorDefinition
-      const hasCap = entry.capabilities.some((c) => capabilityId === c || capabilityId.startsWith(c.split(".")[0] + ".") || c === capabilityId.split(".")[0]);
-      checks.push({ name: "G_capability_available", passed: hasCap, detail: hasCap ? capabilityId : `nao em [${entry.capabilities.slice(0, 4).join(", ")}...]` });
-      if (!hasCap) {
-        return _reject("capability_unavailable", "Capability nao disponivel neste ConnectorDefinition", checks);
+      // Para Web Connector (credentialEntity === "web" com webSessionId): gate
+      // BIFASICO. Preserva a distincao arquitetural:
+      //   G1 = capacidade TECNICA do connector (exact match contra o catalogo).
+      //        O caller deve passar o verb tecnico (ex: "web.capability.execute")
+      //        como capabilityId — NUNCA o ID especifico do site. Fail-closed.
+      //   G2 = capability especifica do SITE existe no CapabilityMap cujo origin
+      //        bate com o origin da WebSession (resolvida server-side), e nao
+      //        esta rejeitada/desabilitada.
+      // Para connectors NAO-web: mantem o comportamento atual (match fuzzy).
+      const isWebGate = entry.credentialEntity === "web" && body.webSessionId;
+      if (isWebGate) {
+        // G1: exact match do verb tecnico contra o catalogo (fail-closed).
+        // Um siteCapabilityId spoofado aqui (ex: "reservation.search") nao e
+        // catalogo → rejeita. O catalogo e a unica fonte de verdade tecnica.
+        const g1 = entry.capabilities.includes(capabilityId);
+        checks.push({ name: "G1_technical_capability", passed: g1, detail: g1 ? capabilityId : `"${capabilityId}" nao e um verb tecnico do Web Connector (esperado um de: ${entry.capabilities.join(", ")})` });
+        if (!g1) {
+          return _reject("technical_capability_unavailable", "Web Connector nao possui esta capacidade tecnica. Passe o verb tecnico (ex: web.capability.execute) como capabilityId.", checks);
+        }
+        // G2: site capability existe no CapabilityMap do site da WebSession.
+        const siteCapabilityId = typeof body.siteCapabilityId === "string" ? body.siteCapabilityId.trim() : "";
+        const g2 = await _checkSiteCapability(base44, siteCapabilityId, String(body.webSessionId));
+        checks.push({ name: "G2_site_capability", passed: g2.ok, detail: g2.detail });
+        if (!g2.ok) {
+          return _reject(g2.reason || "site_capability_not_found", g2.detail, checks);
+        }
+      } else {
+        const hasCap = entry.capabilities.some((c) => capabilityId === c || capabilityId.startsWith(c.split(".")[0] + ".") || c === capabilityId.split(".")[0]);
+        checks.push({ name: "G_capability_available", passed: hasCap, detail: hasCap ? capabilityId : `nao em [${entry.capabilities.slice(0, 4).join(", ")}...]` });
+        if (!hasCap) {
+          return _reject("capability_unavailable", "Capability nao disponivel neste ConnectorDefinition", checks);
+        }
       }
 
       return Response.json({
@@ -343,5 +371,42 @@ async function _checkWebSession(base44: any, webSessionId: string, userId: strin
     return { ok: true, detail: `WebSession ativa (bridge ${session.bridge_id} online)`, bridgeDetail: `bridge ${bridge.bridge_id} status=online` };
   } catch (e) {
     return { ok: false, detail: `check web session erro: ${e?.message || e}` };
+  }
+}
+
+/**
+ * Check G2 (web especifico): valida que a capability especifica do site
+ * existe no CapabilityMap cujo origin bate com o origin da WebSession, e nao
+ * esta rejeitada/desabilitada. Nao confia em site_url do frontend — resolve
+ * o site_url da WebSession (ja validada em E/F/H/I/K) server-side e cruza
+ * com o CapabilityMap por origin.
+ *
+ * RLS do CapabilityMap e read={} (publico a qualquer auth), entao asServiceRole
+ * e usado apenas para consistencia — a protecao real e o match de origin contra
+ * a WebSession do caller.
+ */
+async function _checkSiteCapability(base44: any, siteCapabilityId: string, webSessionId: string): Promise<{ ok: boolean; detail: string; reason?: string }> {
+  try {
+    if (!siteCapabilityId) return { ok: false, reason: "site_capability_not_provided", detail: "siteCapabilityId e obrigatorio para execucao de capability web" };
+    // Resolve a WebSession (ja validada em E/F/H/I/K) para obter site_url server-side
+    const session = await base44.asServiceRole.entities.WebSession.get(webSessionId).catch(() => null);
+    if (!session) return { ok: false, reason: "session_not_found", detail: "WebSession nao encontrada para validacao de site capability" };
+    const sessionOrigin = (() => { try { return new URL(session.site_url).origin; } catch { return null; } })();
+    if (!sessionOrigin) return { ok: false, reason: "session_invalid_origin", detail: `WebSession.site_url invalido: ${session.site_url}` };
+    // Busca o CapabilityMap cujo origin bate com o da WebSession
+    const maps = await base44.asServiceRole.entities.CapabilityMap.list();
+    const map = (maps || []).find((m) => { try { return new URL(m.site_url).origin === sessionOrigin; } catch { return false; } });
+    if (!map) return { ok: false, reason: "capability_map_not_found", detail: `Nenhum CapabilityMap para origin ${sessionOrigin}` };
+    let caps: any[] = []; try { caps = JSON.parse(map.capabilities || "[]"); } catch { caps = []; }
+    const cap = caps.find((c) => c && c.id === siteCapabilityId);
+    if (!cap) return { ok: false, reason: "site_capability_not_found", detail: `Capability "${siteCapabilityId}" nao encontrada no CapabilityMap de ${sessionOrigin}` };
+    // Defensivo: se a capability tem status explicito rejeitado/disabled, rejeita.
+    // (Schema atual do CapabilityMap nao tem esses campos por capability — e
+    // forward-compatible para quando o status por-capability for adicionado.)
+    if (cap.status === "rejected") return { ok: false, reason: "site_capability_rejected", detail: `Capability "${siteCapabilityId}" marcada como rejected no CapabilityMap` };
+    if (cap.disabled === true) return { ok: false, reason: "site_capability_disabled", detail: `Capability "${siteCapabilityId}" marcada como disabled no CapabilityMap` };
+    return { ok: true, detail: `Capability "${siteCapabilityId}" validada no CapabilityMap de ${sessionOrigin}` };
+  } catch (e) {
+    return { ok: false, detail: `check site capability erro: ${e?.message || e}` };
   }
 }
