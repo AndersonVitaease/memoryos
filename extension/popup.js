@@ -95,14 +95,25 @@ function refreshStatus() {
     statusDot.className = 'dot dot-on';
     connectBtn.disabled = false;
     renderSessions(status.sessions, status.activeSessionId);
-    if (status.discoveryRunning) {
+    // Fix (2026-08-11): antes o botao "Descobrir" ficava travado se QUALQUER
+    // site estivesse descobrindo (checagem global). Agora checa so o estado
+    // do site ATIVO — varias descobertas rodam em paralelo em sites
+    // diferentes sem travar o botao dos outros.
+    const activeSession = (status.sessions || []).find((s) => s.webSessionId === status.activeSessionId);
+    if (activeSession && activeSession.discoveryRunning) {
       discoverBtn.disabled = true;
       discoverBtn.textContent = 'Descobrindo…';
-      discoveryStatus.textContent = 'Descoberta em andamento no site ativo.';
+      discoveryStatus.textContent = 'Descoberta em andamento neste site' + (status.discoveryCount > 1 ? ' (' + status.discoveryCount + ' sites descobrindo ao mesmo tempo)' : '') + '.';
       discoveryStatus.classList.remove('hidden');
     } else {
       discoverBtn.disabled = false;
       discoverBtn.textContent = 'Descobrir no site ativo';
+      if (status.discoveryCount > 0) {
+        discoveryStatus.textContent = status.discoveryCount + ' outro(s) site(s) descobrindo em paralelo.';
+        discoveryStatus.classList.remove('hidden');
+      } else {
+        discoveryStatus.classList.add('hidden');
+      }
     }
   });
 }
