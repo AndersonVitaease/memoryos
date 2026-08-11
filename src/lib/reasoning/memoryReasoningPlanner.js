@@ -564,7 +564,7 @@ ${fullText}`;
       }));
 
       // Enfileira os intents de extensao (assincronos) num BATCH so — a
-      // extensao pega todos juntos no proximo heartbeat (~1min) e executa em
+      // extensao pega todos juntos no proximo heartbeat (~30s) e executa em
       // paralelo la tambem (background.js), entao N sites via extensao nao
       // custam N minutos, custam ~1 ciclo + tempo de execucao em paralelo.
       let _queuedExtensionCount = 0;
@@ -605,7 +605,7 @@ ${fullText}`;
           }
         }
         const _siteNames = _extensionIntents.map((i) => hostOf(i.siteUrl)).join(', ');
-        _parts.push(`🔎 Também estou verificando em **${_siteNames}** (conectado via extensão) — te aviso aqui assim que tiver o resultado, em até ~1 minuto.`);
+        _parts.push(`🔎 Também estou verificando em **${_siteNames}** (conectado via extensão) — te aviso aqui assim que tiver o resultado, em até ~30 segundos.`);
         if (_expiredIntents.length > 0) {
           _parts.push(`⚠️ Sessão expirada em: ${_expiredIntents.map((i) => hostOf(i.siteUrl)).join(', ')} — reconecte em **Conectores** (\`/connections\`) se precisar desses.`);
         }
