@@ -346,6 +346,29 @@ export default async function (req) {
       return Response.json({ ok: true, requestId, batchComplete: true });
     }
 
+    // ── operation: listActiveSessions (reconciliacao apos reinstalar a extensao) ──
+    // Fix (2026-08-11): o cache local da extensao (chrome.storage.local) e
+    // apagado quando o usuario desinstala/reinstala a extensao (comportamento
+    // padrao do Chrome). Sem isso, sessoes que continuam ATIVAS no backend
+    // (Bling, Mercado Livre, etc.) somem da lista do popup mesmo estando
+    // conectadas de verdade. Esta operacao devolve todas as WebSession
+    // ativas de origem 'extension' deste usuario, incluindo o tabId salvo no
+    // momento do registerSession, pra o background.js reidratar o cache
+    // local (so mantem as que a aba ainda existe neste navegador).
+    if (operation === 'listActiveSessions') {
+      const sessions = await base44.entities.WebSession.filter({ status: 'active', source: 'extension' }, '-created_date', 50);
+      const result = (sessions || [])
+        .filter((s) => s.created_by_id === user.id)
+        .map((s) => ({
+          webSessionId: s.id,
+          siteUrl: s.site_url,
+          siteName: s.site_name || '',
+          tabId: s.browser_context_id && /^\d+$/.test(s.browser_context_id) ? parseInt(s.browser_context_id, 10) : null,
+          expiresAt: s.expires_at,
+        }));
+      return Response.json({ ok: true, sessions: result });
+    }
+
     return Response.json({ error: 'Unknown operation: ' + operation }, { status: 400 });
 
   } catch (e) {
