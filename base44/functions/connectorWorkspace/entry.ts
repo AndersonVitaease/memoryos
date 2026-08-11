@@ -196,6 +196,13 @@ export default async function (req: Request): Promise<Response> {
       const connectorRec = wc[0] ?? null;
       checks.push({ name: "B_workspace_connector_exists", passed: !!connectorRec, detail: connectorRec ? `id=${connectorRec.id}` : "nenhum para (workspace, connector, caller)" });
       if (!connectorRec) {
+        // Distingue: existe WorkspaceConnector deste connector neste workspace de OUTRO usuario?
+        const anyWc = await base44.asServiceRole.entities.WorkspaceConnector.filter({
+          workspace_id: activeWsId, connector_id: connectorId, status: "connected",
+        });
+        if (anyWc && anyWc.length > 0) {
+          return _reject("not_credential_owner", "WorkspaceConnector existe mas pertence a outro usuario — caller nao e o dono da credencial", checks);
+        }
         return _reject("not_configured", "WorkspaceConnector nao existe para este usuario+connector neste workspace", checks);
       }
 
