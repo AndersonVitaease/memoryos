@@ -19,6 +19,7 @@ import { base44 } from "@/api/base44Client";
 import { useAuth } from "@/lib/AuthContext";
 import { CORE_NAV_ITEMS, DEV_NAV_ITEMS } from "./Sidebar";
 import { useNavigationContext } from "@/hooks/useNavigationContext";
+import WorkspaceSwitcher from "@/components/workspace/WorkspaceSwitcher";
 
 // ── Seção contextual de projeto (read-only) ───────────────────────────────────
 
@@ -139,6 +140,8 @@ export default function ContextAwareSidebar({ onNavigate }) {
           </div>
         </Link>
       </div>
+
+      <WorkspaceSwitcher />
 
       {scope === "project" && projectId && (
         <ProjectContextSection projectId={projectId} onNavigate={onNavigate} />

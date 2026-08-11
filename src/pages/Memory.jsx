@@ -2,9 +2,11 @@ import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { Brain, CheckCircle2, ListTodo, Users, Tag as TagIcon, Calendar, FileText, Sparkles } from "lucide-react";
 import { safeFormat } from "@/lib/utils/safeDateFormat";
+import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 
 export default function Memory() {
   console.log('[RENDER] Memory');
+  const { activeWorkspaceId } = useWorkspace();
   const [loading, setLoading] = useState(true);
   const [sessions, setSessions] = useState([]);
   const [decisions, setDecisions] = useState([]);
@@ -13,17 +15,19 @@ export default function Memory() {
   const [entities, setEntities] = useState([]);
   const [tab, setTab] = useState("decisions");
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [activeWorkspaceId]);
 
   const load = async () => {
+    if (!activeWorkspaceId || activeWorkspaceId === 'default') return;
     setLoading(true);
     try {
+      const wq = { workspace_id: activeWorkspaceId };
       const [sess, decs, tks, tops, ents] = await Promise.all([
-        base44.entities.ChatSession.list("-updated_date", 20),
-        base44.entities.Decision.list("-decided_date", 50),
-        base44.entities.Task.list("-created_date", 50),
-        base44.entities.Topic.list("-created_date", 50),
-        base44.entities.KnowledgeEntity.list("-created_date", 100),
+        base44.entities.ChatSession.filter(wq, "-updated_date", 20),
+        base44.entities.Decision.filter(wq, "-decided_date", 50),
+        base44.entities.Task.filter(wq, "-created_date", 50),
+        base44.entities.Topic.filter(wq, "-created_date", 50),
+        base44.entities.KnowledgeEntity.filter(wq, "-created_date", 100),
       ]);
       setSessions(sess);
       setDecisions(decs);

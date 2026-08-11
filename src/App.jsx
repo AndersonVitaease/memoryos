@@ -158,6 +158,7 @@ const OIEPage = lazy(() => import('@/pages/OIEPage'));
 const BugHunterConsole = lazy(() => import('@/pages/BugHunterConsole'));
 const WebConnectorPage = lazy(() => import('@/pages/WebConnectorPage'));
 const BugInsightsChat = lazy(() => import('@/pages/BugInsightsChat'));
+const WorkspacePage = lazy(() => import('@/pages/WorkspacePage'));
 
 const AuthenticatedApp = () => {
   console.log('[RENDER] AuthenticatedApp');
@@ -331,6 +332,7 @@ const AuthenticatedApp = () => {
           <Route path="/bug-hunter" element={<BugHunterConsole />} />
           <Route path="/web-connector" element={<WebConnectorPage />} />
           <Route path="/bug-insights" element={<BugInsightsChat />} />
+          <Route path="/workspace" element={<WorkspacePage />} />
         </Route>
       </Route>
       <Route path="/oauth/google/callback" element={<GoogleOAuthCallback />} />

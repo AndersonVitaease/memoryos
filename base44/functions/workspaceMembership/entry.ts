@@ -41,7 +41,52 @@ Deno.serve(async (req) => {
           workspaces.push({ ...ws, role: members.find((m) => m.workspace_id === id)?.role });
         } catch (e) { /* workspace removido: ignora */ }
       }
-      return Response.json({ ok: true, workspaces, active_workspace_id: (await base44.asServiceRole.entities.User.get(user.id))?.active_workspace_id });
+      const me = await base44.asServiceRole.entities.User.get(user.id);
+      return Response.json({ ok: true, workspaces, active_workspace_id: me?.active_workspace_id || null });
+    }
+
+    if (operation === 'listMembers') {
+      const { workspaceId } = body;
+      if (!workspaceId) return Response.json({ error: 'workspaceId obrigatório' }, { status: 400 });
+      // Qualquer membro ativo pode listar membros do seu workspace
+      try { await assertWorkspaceMember(base44, user.id, workspaceId); }
+      catch (e) { return Response.json({ error: 'Não é membro ativo deste workspace' }, { status: 403 }); }
+      const members = await base44.asServiceRole.entities.WorkspaceMember.filter({
+        workspace_id: workspaceId,
+      });
+      const out = [];
+      for (const m of members || []) {
+        let email = null, full_name = null;
+        try {
+          const u = await base44.asServiceRole.entities.User.get(m.user_id);
+          email = u?.email || null;
+          full_name = u?.full_name || null;
+        } catch (e) { /* usuario removido */ }
+        out.push({
+          member_id: m.id,
+          user_id: m.user_id,
+          email,
+          full_name,
+          role: m.role,
+          status: m.status,
+          joined_at: m.joined_at,
+          invited_by: m.invited_by || null,
+        });
+      }
+      return Response.json({ ok: true, members: out });
+    }
+
+    if (operation === 'listUsers') {
+      // Admin global pode listar usuarios (para o picker de adicionar membro)
+      if (user.role !== 'admin') return Response.json({ error: 'Admin only' }, { status: 403 });
+      const users = await base44.asServiceRole.entities.User.list();
+      const out = (users || []).map((u) => ({
+        id: u.id,
+        email: u.email || null,
+        full_name: u.full_name || null,
+        role: u.role || null,
+      }));
+      return Response.json({ ok: true, users: out });
     }
 
     if (operation === 'addMember') {

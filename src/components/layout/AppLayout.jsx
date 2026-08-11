@@ -1,5 +1,6 @@
 import React, { useState, Component } from "react";
 import { Outlet } from "react-router-dom";
+import { WorkspaceProvider } from "@/lib/workspace/WorkspaceContext";
 import ContextAwareSidebar from "./ContextAwareSidebar";
 import MemoryActivityIndicator from "./MemoryActivityIndicator";
 import GlobalSyncStatus from "./GlobalSyncStatus";
@@ -44,6 +45,7 @@ export default function AppLayout() {
 
   console.log('[CHAIN][3-AppLayout] → RETORNANDO JSX com <Outlet />');
   return (
+    <WorkspaceProvider>
     <div className="min-h-screen bg-zinc-50">
       {/* Fase 1 — Observabilidade Shadow: indicadores passivos (fixed overlay, não shiftam layout) */}
       <GlobalSyncStatus />
@@ -92,5 +94,6 @@ export default function AppLayout() {
         </div>
       </main>
     </div>
+    </WorkspaceProvider>
   );
 }
