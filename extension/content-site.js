@@ -53,7 +53,7 @@
       const isLinky = (tag === 'a' || tag === 'button' || el.getAttribute('role') === 'button' || el.getAttribute('role') === 'link');
       if (text && isLinky) desc += ' text="' + text + '"';
       if (tag === 'a' && el.href) desc += ' href=' + el.href;
-      lines.push(desc);
+      lines.push(desc + ' [ref=r' + n + ']');
       n++;
     }
     return lines.join('\n');

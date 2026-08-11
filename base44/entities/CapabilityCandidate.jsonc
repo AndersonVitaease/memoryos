@@ -12,15 +12,15 @@
     },
     "suggested_id": {
       "type": "string",
-      "description": "ID sugerido da capability (ex: 'reservation.search', 'passenger.search')"
+      "description": "ID sugerido da capability (ex: 'reservation.search', 'passenger.search'). Original, preservado durante consolidacao."
     },
     "description": {
       "type": "string",
-      "description": "Descricao curta do que a capability faz, inferida pelo LLM"
+      "description": "Descricao curta do que a capability faz, inferida pelo LLM. Original, preservada durante consolidacao."
     },
     "evidence": {
       "type": "string",
-      "description": "JSON: snapshot/seletor/fluxo que originou a sugestao. Evidencia da observacao, nao codigo executavel."
+      "description": "JSON array de objetos de evidencia. Cada evidencia: { element_ref, element (dados reais do DOM recuperados do snapshot por ref, ou null), snapshot_ref_found, page_url, page_index, action_inferred, source, has_write_actions }. Evidencia da observacao, nao codigo executavel. Crece com cada consolidacao (append, nunca overwrite)."
     },
     "input_fields": {
       "type": "string",
@@ -28,7 +28,7 @@
     },
     "discovered_from_url": {
       "type": "string",
-      "description": "URL da pagina onde o candidato foi encontrado"
+      "description": "URL da primeira pagina onde o candidato foi encontrado. URLs subsequentes (consolidadas) ficam em evidence[].page_url."
     },
     "status": {
       "type": "string",
@@ -48,6 +48,19 @@
     "rejected_reason": {
       "type": "string",
       "description": "Motivo da rejeicao quando status=rejected (ex: 'botao decorativo', 'nao e formulario', 'requer escrita')"
+    },
+    "canonical_id": {
+      "type": "string",
+      "description": "ID canonico normalizado (lowercase, sinonimos PT/EN, singular). Usado para deduplication. Ex: 'product.search'. Null em registros legados (pre-Passo-2)."
+    },
+    "identity_hash": {
+      "type": "string",
+      "description": "Hash deterministico de (site_origin + canonical_id + inputs_canonizados_ordenados). Usado para deduplication exata. Null em registros legados (pre-Passo-2)."
+    },
+    "consolidated_count": {
+      "type": "number",
+      "default": 1,
+      "description": "Quantas descobertas foram consolidadas nesta candidate. 1 = descoberta unica. Incrementa a cada consolidacao."
     }
   },
   "required": [
