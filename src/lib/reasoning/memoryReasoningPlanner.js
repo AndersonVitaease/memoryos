@@ -584,7 +584,12 @@ ${fullText}`;
             const _authRes = await base44.functions.invoke('connectorWorkspace', {
               operation: 'authorizeExecution',
               connectorId: 'web-connector',
-              capabilityId: intent.capability?.id || 'product.search',
+              // Bifasico: capabilityId = verb tecnico (gate G1 contra catalogo);
+              // siteCapabilityId = ID especifico do site (gate G2 contra
+              // CapabilityMap do site da WebSession). Antes passavamos o ID do
+              // site como capabilityId e o gate rejeitava (mismatch catalog).
+              capabilityId: 'web.capability.execute',
+              siteCapabilityId: intent.capability?.id || '',
               webSessionId: intent.webSessionId,
             });
             const _auth = _authRes?.data ?? _authRes;
