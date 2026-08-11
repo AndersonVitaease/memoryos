@@ -20,7 +20,12 @@
  * Sprint 3: execucao de capability (agora paralela, por site).
  */
 const HEARTBEAT_ALARM = 'memos-heartbeat';
-const HEARTBEAT_INTERVAL_MIN = 5;
+// Fix (2026-08-11): reduzido de 5min para 1min — o minimo pratico do
+// chrome.alarms em producao (MV3 nao aceita menos que isso de forma
+// confiavel). Isso limita o pior caso de latencia pra respostas do chat que
+// dependem da extensao: no maximo ~1 ciclo de heartbeat + tempo de execucao
+// em paralelo, nao os 5min anteriores.
+const HEARTBEAT_INTERVAL_MIN = 1;
 const DISCOVERY_STATE_KEY = 'memos_discovery'; // agora um MAPA: { [webSessionId]: discoveryState }
 const SESSIONS_KEY = 'memos_sessions';
 const ACTIVE_KEY = 'memos_active_session_id';
