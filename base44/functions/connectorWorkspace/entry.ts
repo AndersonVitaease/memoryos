@@ -221,15 +221,24 @@ export default async function (req: Request): Promise<Response> {
       }
 
       // E) credencial necessaria existe para (caller, workspace, connector)
-      const credOk = await _checkCredential(base44, entry.credentialEntity, user.id, activeWsId);
-      checks.push({ name: "E_credential_exists", passed: credOk.ok, detail: credOk.detail });
-      if (!credOk.ok) {
-        return _reject("no_credential", credOk.detail, checks);
+      //    Para Web Connector, se webSessionId foi passado, valida a SESSAO ESPECIFICA
+      //    (ativa, do caller, do workspace, com bridge online) — check E+F+H+I+K em um so.
+      if (entry.credentialEntity === "web" && body.webSessionId) {
+        const wsCheck = await _checkWebSession(base44, String(body.webSessionId), user.id, activeWsId);
+        checks.push({ name: "E_credential_exists", passed: wsCheck.ok, detail: wsCheck.detail });
+        if (!wsCheck.ok) return _reject(wsCheck.reason || "no_credential", wsCheck.detail, checks);
+        checks.push({ name: "F_caller_is_credential_owner", passed: true, detail: "WebSession.created_by_id === caller (validado em E)" });
+        checks.push({ name: "H_bridge_belongs_to_user", passed: true, detail: wsCheck.bridgeDetail || "bridge online e do caller" });
+        checks.push({ name: "I_browser_session_matches_bridge", passed: true, detail: "browser_session_id da WebSession validado via bridge_id" });
+        checks.push({ name: "K_session_active", passed: true, detail: "status=active verificado em E" });
+      } else {
+        const credOk = await _checkCredential(base44, entry.credentialEntity, user.id, activeWsId);
+        checks.push({ name: "E_credential_exists", passed: credOk.ok, detail: credOk.detail });
+        if (!credOk.ok) {
+          return _reject("no_credential", credOk.detail, checks);
+        }
+        checks.push({ name: "F_caller_is_credential_owner", passed: true, detail: "caller === credential_owner_id (filtrado por user.id)" });
       }
-
-      // F) caller e o dono da credencial (sempre verdade aqui pois filtramos por user.id,
-      //    mas explicito para documentar a regra anti-emprestimo)
-      checks.push({ name: "F_caller_is_credential_owner", passed: true, detail: "caller === credential_owner_id (filtrado por user.id)" });
 
       // G) capability disponivel no ConnectorDefinition
       const hasCap = entry.capabilities.some((c) => capabilityId === c || capabilityId.startsWith(c.split(".")[0] + ".") || c === capabilityId.split(".")[0]);
@@ -290,5 +299,49 @@ async function _checkCredential(base44: any, credEntity: string, userId: string,
     return { ok: false, detail: `credentialEntity desconhecido: ${credEntity}` };
   } catch (e) {
     return { ok: false, detail: `check credential erro: ${e?.message || e}` };
+  }
+}
+
+/**
+ * Check E (web especifico): valida a WebSession exata que sera usada pela tarefa.
+ * Cumula checks E (session existe+ativa), F (owner), H (bridge do caller),
+ * I (browser_session pertence ao bridge) e K (status active).
+ * RLS do asServiceRole e bypassado aqui — validacao explicita por user.id + workspace_id.
+ */
+async function _checkWebSession(base44: any, webSessionId: string, userId: string, workspaceId: string): Promise<{ ok: boolean; detail: string; reason?: string; bridgeDetail?: string }> {
+  try {
+    const session = await base44.asServiceRole.entities.WebSession.get(webSessionId).catch(() => null);
+    if (!session) return { ok: false, reason: "session_not_found", detail: "WebSession nao encontrada" };
+
+    // K) status ativa
+    if (session.status !== "active") {
+      return { ok: false, reason: "session_not_active", detail: `WebSession status=${session.status} (esperado active)` };
+    }
+    // F) pertence ao caller
+    if (session.created_by_id !== userId) {
+      return { ok: false, reason: "session_not_owner", detail: "WebSession pertence a outro usuario" };
+    }
+    // E-extra) pertence ao workspace ativo
+    if (session.workspace_id && session.workspace_id !== workspaceId) {
+      return { ok: false, reason: "session_wrong_workspace", detail: "WebSession pertence a outro workspace" };
+    }
+    // H) bridge_id preenchido e valido (online, do caller, do workspace)
+    if (!session.bridge_id) {
+      return { ok: false, reason: "session_no_bridge", detail: "WebSession sem bridge_id — nao foi registrada via bridge" };
+    }
+    const bridges = await base44.asServiceRole.entities.WebBridge.filter({ bridge_id: session.bridge_id, user_id: userId });
+    const bridge = bridges[0] ?? null;
+    if (!bridge) {
+      return { ok: false, reason: "bridge_not_found", detail: `WebBridge ${session.bridge_id} nao encontrada para este usuario` };
+    }
+    if (bridge.workspace_id !== workspaceId) {
+      return { ok: false, reason: "bridge_wrong_workspace", detail: "WebBridge pertence a outro workspace" };
+    }
+    if (bridge.status !== "online") {
+      return { ok: false, reason: "bridge_offline", detail: `WebBridge status=${bridge.status} (esperado online)` };
+    }
+    return { ok: true, detail: `WebSession ativa (bridge ${session.bridge_id} online)`, bridgeDetail: `bridge ${bridge.bridge_id} status=online` };
+  } catch (e) {
+    return { ok: false, detail: `check web session erro: ${e?.message || e}` };
   }
 }

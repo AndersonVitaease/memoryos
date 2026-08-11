@@ -1,0 +1,97 @@
+{
+  "name": "WebBridge",
+  "type": "object",
+  "properties": {
+    "bridge_id": {
+      "type": "string",
+      "description": "ID estavel emitido pelo backend que identifica esta instancia da extensao Chrome. Persistido em chrome.storage.local da extensao; reapresentado em todas as operacoes. Se a extensao for reinstalada (storage local apagado), um novo bridge_id e emitido \u2014 nunca assume a identidade de uma instalacao anterior."
+    },
+    "user_id": {
+      "type": "string",
+      "description": "user_id do dono do bridge. Validado server-side: pollTasks/completeTask so aceitam se caller == bridge.user_id."
+    },
+    "workspace_id": {
+      "type": "string",
+      "description": "ID do workspace ao qual o bridge esta registrado. O bridge e workspace-scoped \u2014 um usuario com 2 workspaces registra 2 bridges separados."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "online",
+        "offline"
+      ],
+      "default": "offline",
+      "description": "online = heartbeat recente (<2min); offline = sem heartbeat (extensao fechada/Chrome dormiu). pollTasks exige online."
+    },
+    "last_seen_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Ultimo heartbeat recebido. Atualizado por heartbeatBridge e registerBridge."
+    },
+    "extension_version": {
+      "type": "string",
+      "description": "Versao da extensao (manifest.json), opcional para diagnostico."
+    },
+    "registered_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Quando o bridge foi registrado pela primeira vez."
+    }
+  },
+  "required": [
+    "bridge_id",
+    "user_id",
+    "workspace_id",
+    "status"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "create": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
+}
