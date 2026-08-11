@@ -490,7 +490,7 @@ ${fullText}`;
     // caia no fallback generico mesmo com sessao ativa e capability validada.
     // Persiste o motivo exato como InteractionEvent (best-effort, nunca
     // bloqueia a resposta) para inspecao posterior via query direta.
-    if (!_webIntent && _webIntentResult?.debugReason && _webIntentResult.debugReason !== 'no_active_sessions' && _webIntentResult.debugReason !== 'empty_message') {
+    if (_allIntents.length === 0 && _webIntentsResult?.debugReason && _webIntentsResult.debugReason !== 'no_active_sessions' && _webIntentsResult.debugReason !== 'empty_message') {
       try {
         await base44.entities.InteractionEvent.create({
           session_id: session?.id || '',
@@ -498,11 +498,11 @@ ${fullText}`;
           event_type: 'web_intent_resolve_failed',
           raw_text: String(userMsg || '').slice(0, 500),
           payload: JSON.stringify({
-            debugReason: _webIntentResult.debugReason,
-            debugSessionSites: _webIntentResult.debugSessionSites || null,
-            debugSiteOrigin: _webIntentResult.debugSiteOrigin || null,
-            debugKnownOrigins: _webIntentResult.debugKnownOrigins || null,
-            debugCapabilityIds: _webIntentResult.debugCapabilityIds || null,
+            debugReason: _webIntentsResult.debugReason,
+            debugSessionSites: _webIntentsResult.debugSessionSites || null,
+            debugSiteOrigin: _webIntentsResult.debugSiteOrigin || null,
+            debugKnownOrigins: _webIntentsResult.debugKnownOrigins || null,
+            debugCapabilityIds: _webIntentsResult.debugCapabilityIds || null,
           }),
         });
       } catch (e) { /* best-effort: diagnostico nunca bloqueia a resposta */ }
