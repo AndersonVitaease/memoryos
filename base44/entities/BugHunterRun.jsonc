@@ -38,7 +38,7 @@
     "questions_answered": {
       "type": "number",
       "default": 0,
-      "description": "Perguntas enviadas E com resposta lida (snapshot apos envio). 0 findings so e confiavel se questions_answered >= MIN_QUESTIONS. Acumulado entre chunks."
+      "description": "Perguntas enviadas E com resposta lida. Acumulado entre chunks."
     },
     "findings_count": {
       "type": "number",
@@ -47,7 +47,7 @@
     },
     "transcript": {
       "type": "string",
-      "description": "JSON array de {step, question, response_evidence, read_step}. Evidencia real de que perguntas foram feitas e respondidas. Acumulado entre chunks."
+      "description": "JSON array de {step, question, response_evidence, read_step}. Acumulado entre chunks."
     },
     "history": {
       "type": "string",
@@ -67,16 +67,16 @@
         "failed"
       ],
       "default": "running",
-      "description": "Estado da run. running = chunk em execucao. awaiting_next_chunk = chunk terminou mas faltam mais (frontend encadeia). completed = alvo alcancado ou done. stopped = usuario pediu para parar. failed = erro."
+      "description": "Estado da run."
     },
     "stop_requested": {
       "type": "boolean",
       "default": false,
-      "description": "Sinalizado pelo usuario (botao Parar) para interromper o loop e o encadeamento."
+      "description": "Sinalizado pelo usuario (botao Parar) para interromper o loop."
     },
     "chat_session_id": {
       "type": "string",
-      "description": "ID da sessao de chat do MemoryOS usada nesta run. Permite retomar a mesma conversa entre chunks (via localStorage memoryos_last_session_id)."
+      "description": "ID da sessao de chat do MemoryOS usada nesta run."
     },
     "target_questions": {
       "type": "number",
@@ -86,17 +86,55 @@
     "chunk_count": {
       "type": "number",
       "default": 0,
-      "description": "Quantos chunks (blocos de ~4min) ja rodaram nesta run."
+      "description": "Quantos chunks ja rodaram nesta run."
     },
     "continuous": {
       "type": "boolean",
       "default": false,
-      "description": "Se true, a roda em modo continuo encadeado (varios chunks numa mesma conversa)."
+      "description": "Se true, roda em modo continuo encadeado."
     }
   },
   "required": [
     "run_id",
     "target_url",
     "status"
-  ]
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
 }

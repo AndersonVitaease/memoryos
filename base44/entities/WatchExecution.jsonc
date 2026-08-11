@@ -38,7 +38,7 @@
     },
     "duration_ms": {
       "type": "number",
-      "description": "Dura\u00e7\u00e3o total da execu\u00e7\u00e3o em milissegundos"
+      "description": "Duracao total da execucao em milissegundos"
     },
     "error_message": {
       "type": "string",
@@ -46,11 +46,49 @@
     },
     "session_id": {
       "type": "string",
-      "description": "Sess\u00e3o de contexto"
+      "description": "Sessao de contexto"
     }
   },
   "required": [
     "watch_id",
     "status"
-  ]
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
 }

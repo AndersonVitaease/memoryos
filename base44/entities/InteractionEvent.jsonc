@@ -8,7 +8,7 @@
     },
     "correlation_id": {
       "type": "string",
-      "description": "ID de execucao/correlacao. Para eventos actor=user, e o executionId do pipeline (mesmo que vira o execution_id em ExecutionObservation). Para eventos actor=system, e o ID do evento sistemico correspondente."
+      "description": "ID de execucao/correlacao. Para eventos actor=user, e o executionId do pipeline. Para actor=system, e o ID do evento sistemico correspondente."
     },
     "actor": {
       "type": "string",
@@ -16,7 +16,7 @@
         "user",
         "system"
       ],
-      "description": "Quem originou o evento. user = acao do usuario (mensagem, clique, abandono). system = acao do MemoryOS (capability executada, evento emitido)."
+      "description": "Quem originou o evento. user = acao do usuario. system = acao do MemoryOS."
     },
     "event_type": {
       "type": "string",
@@ -24,20 +24,58 @@
     },
     "intent_hash": {
       "type": "string",
-      "description": "Hash deterministico da inten\u00e7\u00e3o normalizada (FNV-1a 32-bit, hex). Usado pelo Decision Analyzer para detectar mesma-intencao-roteada-para-goals-diferentes e repeticao de pergunta. Null para eventos que nao tem texto de intencao (ex: session_idle)."
+      "description": "Hash deterministico da intencao normalizada (FNV-1a 32-bit, hex). Null para eventos sem texto de intencao."
     },
     "raw_text": {
       "type": "string",
-      "description": "Texto bruto do evento (mensagem do usuario, comando, etc.) truncado em 4000 chars. Null para eventos sem texto."
+      "description": "Texto bruto do evento truncado em 4000 chars. Null para eventos sem texto."
     },
     "payload": {
       "type": "string",
-      "description": "JSON serializado de contexto adicional deterministico. Para actor=user message_sent: { quantifiers, entity_mentions, char_count }. Opcional."
+      "description": "JSON serializado de contexto adicional deterministico. Opcional."
     }
   },
   "required": [
     "session_id",
     "actor",
     "event_type"
-  ]
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    }
+  }
 }

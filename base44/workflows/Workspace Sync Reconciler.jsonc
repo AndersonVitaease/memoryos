@@ -1,0 +1,44 @@
+{
+  "description": "Recomputa User.workspace_ids a partir das memberships ativas (fail-closed). Corrige drift de falhas parciais nas mutacoes de membership. Seguro: status=removed nunca e re-adicionado.",
+  "name": "Workspace Sync Reconciler",
+  "trigger": {
+    "condition": null,
+    "config": {
+      "trigger_type": "scheduled",
+      "events": [],
+      "schedule_mode": "recurring",
+      "cron_expression": "*/30 * * * *",
+      "one_time_date": null,
+      "timezone": "UTC",
+      "interval_value": null,
+      "interval_unit": null,
+      "interval_anchor": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  },
+  "definition": {
+    "document": {
+      "dsl": "1.0.0",
+      "name": "workspace_sync_reconciler",
+      "version": "1.0",
+      "namespace": "base44"
+    },
+    "do": [
+      {
+        "reconcile": {
+          "call": "invoke_backend_function",
+          "with": {
+            "function_name": "workspaceSyncReconcile"
+          },
+          "then": "end",
+          "x-base44": {
+            "title": "Reconciliar workspace_ids",
+            "description": "Recompute memberships ativas"
+          }
+        }
+      }
+    ]
+  }
+}
