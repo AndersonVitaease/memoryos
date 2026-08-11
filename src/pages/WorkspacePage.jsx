@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useWorkspace } from '@/lib/workspace/WorkspaceContext';
 import WorkspaceMembers from '@/components/workspace/WorkspaceMembers';
+import WorkspaceConnectorsSection from '@/components/workspace/WorkspaceConnectorsSection';
 
 const TABS = [
   { id: 'overview', label: 'Visão geral', icon: Building2 },
@@ -90,7 +91,8 @@ export default function WorkspacePage() {
       <div className="bg-white rounded-xl border border-zinc-200 p-6">
         {tab === 'overview' && <OverviewTab workspace={activeWorkspace} myRole={myRole} />}
         {tab === 'members' && <WorkspaceMembers workspaceId={activeWorkspaceId} />}
-        {['documents', 'memory', 'connectors', 'agents', 'automations'].includes(tab) && (
+        {tab === 'connectors' && <WorkspaceConnectorsSection />}
+        {['documents', 'memory', 'agents', 'automations'].includes(tab) && (
           <EmptyState tab={tab} />
         )}
       </div>

@@ -1,0 +1,97 @@
+{
+  "name": "WorkspaceConnector",
+  "type": "object",
+  "properties": {
+    "workspace_id": {
+      "type": "string",
+      "description": "ID do workspace dono da conexao."
+    },
+    "connector_id": {
+      "type": "string",
+      "description": "ID do ConnectorDefinition (ex: 'gmail','google-drive','google-calendar','github','microsoft-graph','web-connector'). Deve bater com o ConnectorRegistry do frontend."
+    },
+    "credential_owner_id": {
+      "type": "string",
+      "description": "user_id do dono da credencial vinculada. Metadado \u2014 o token em si fica na entidade de token (RLS user_id). authorizeExecution valida caller === credential_owner_id."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "connected",
+        "disconnected",
+        "error"
+      ],
+      "default": "connected",
+      "description": "Estado da conexao."
+    },
+    "enabled": {
+      "type": "boolean",
+      "default": true,
+      "description": "Gate on/off. Se false, authorizeExecution rejeita mesmo com credencial valida. Admin do workspace alterna."
+    },
+    "provider_kind": {
+      "type": "string",
+      "enum": [
+        "oauth_google",
+        "oauth_github",
+        "oauth_microsoft",
+        "web",
+        "mcp",
+        "base44"
+      ],
+      "description": "Tipo de credencial associada."
+    },
+    "display_label": {
+      "type": "string",
+      "description": "Label humano (ex: 'Gmail \u2014 user@email.com'). NAO-SEGREDO."
+    },
+    "configuration": {
+      "type": "string",
+      "description": "JSON NAO-SEGRETO (email, scopes, account_login, site_url). NUNCA tokens ou refresh_tokens."
+    },
+    "last_connected_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_error": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "workspace_id",
+    "connector_id",
+    "credential_owner_id",
+    "status"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "data.workspace_id": {
+            "$in": "{{user.data.workspace_ids}}"
+          }
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}

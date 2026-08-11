@@ -168,6 +168,17 @@ export async function connect({ workspaceId = "default", scopes = BASE_SCOPES, o
         all[workspaceId] = connection;
         _save(all);
 
+        // Fase 4: registrar WorkspaceConnector (github). Non-blocking.
+        try {
+          await base44.functions.invoke("connectorWorkspace", {
+            operation: "connect",
+            connectorId: "github",
+            displayLabel: `GitHub — ${accountLogin || email || ""}`,
+            configuration: JSON.stringify({ accountLogin, email, scopes: grantedScopes ?? scopes }),
+            providerKind: "oauth_github",
+          });
+        } catch (e) { console.warn("[Fase4] connectorWorkspace.connect(github) falhou:", e?.message || e); }
+
         sessionStorage.removeItem('ghauth_state');
         sessionStorage.removeItem('ghauth_workspace_id');
 
