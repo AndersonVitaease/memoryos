@@ -136,3 +136,48 @@ export async function resolveWebIntent(message) {
     return { intent: null, debugReason: 'exception: ' + (e?.message || String(e)) };
   }
 }
+
+// resolveWebIntents (plural) — MESMA logica, mas encontra TODOS os sites
+// mencionados na mensagem (nao para no primeiro match). Necessario pra
+// perguntas do tipo "compare X no site A e no site B" ou "veja meus pedidos
+// no Bling e minhas vendas no Mercado Livre" (2026-08-11, camada de
+// inteligencia multi-site).
+export async function resolveWebIntents(message) {
+  if (!message || !String(message).trim()) return { intents: [], debugReason: 'empty_message' };
+  try {
+    const sessions = await base44.entities.WebSession.filter({ status: "active" }, "-created_date", 20);
+    if (!sessions || sessions.length === 0) return { intents: [], debugReason: 'no_active_sessions' };
+
+    const matchedSessions = sessions.filter((s) => siteMentioned(message, s));
+    if (matchedSessions.length === 0) return { intents: [], debugReason: 'no_session_site_mentioned', debugSessionSites: sessions.map((s) => s.site_url) };
+
+    const maps = await base44.entities.CapabilityMap.filter({});
+    const intents = [];
+    for (const matched of matchedSessions) {
+      const siteOrigin = originOf(matched.site_url);
+      const map = (maps || []).find((m) => originOf(m.site_url) === siteOrigin);
+      if (!map) continue;
+      let capabilities = [];
+      try { capabilities = JSON.parse(map.capabilities || "[]"); } catch (e) { capabilities = []; }
+      const cap = pickSearchCapability(capabilities);
+      if (!cap) continue;
+      const inputFields = (cap.inputSchema && cap.inputSchema.properties) ? Object.keys(cap.inputSchema.properties) : [];
+      const searchTerm = extractSearchTerm(message, matched);
+      intents.push({
+        siteUrl: matched.site_url,
+        webSessionId: matched.id,
+        webSessionExpiresAt: matched.expires_at,
+        webSessionSource: matched.source || 'headless',
+        discoveredFromUrl: cap.discoveredFrom || matched.site_url,
+        capability: cap,
+        inputFields,
+        searchTerm,
+      });
+    }
+    if (intents.length === 0) return { intents: [], debugReason: 'sites_matched_but_no_capability' };
+    return { intents, debugReason: null };
+  } catch (e) {
+    console.warn("[WebSiteIntentResolver] resolveWebIntents falhou:", e?.message);
+    return { intents: [], debugReason: 'exception: ' + (e?.message || String(e)) };
+  }
+}
