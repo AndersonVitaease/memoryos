@@ -12,13 +12,30 @@
     },
     "plan": {
       "type": "string",
-      "description": "Plano do usu\u00e1rio",
+      "description": "Plano do usuario",
       "enum": [
         "free",
         "pro",
         "business"
       ],
       "default": "free"
+    },
+    "workspace_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "IDs dos workspaces dos quais o usuario e membro ativo. Espelho de WorkspaceMember(status=active). Fonte de verdade para RLS workspace-scoped ({ data.workspace_id: { $in: {{user.data.workspace_ids}} } }). Mantido por sync fail-closed + reconciler periodico. Acesso e decidido por esta lista, NUNCA por active_workspace_id.",
+      "default": []
+    },
+    "active_workspace_id": {
+      "type": "string",
+      "description": "Workspace atualmente selecionado pelo usuario. Apenas um seletor de contexto de UI/operacao. NAO concede acesso \u2014 acesso e decidido por RLS via workspace_ids + validacao backend (resolveActiveWorkspace). Backend valida que este id esta em workspace_ids antes de usa-lo."
+    },
+    "workspace_migrated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp do backfill de dados legados (workspace_id=null -> workspace pessoal do dono). Null = ainda nao migrado."
     }
   },
   "required": [
