@@ -6,6 +6,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { conversationManager } from "./ConversationManager";
+import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 
 export function useConversation({ projectId } = {}) {
   const [state, setState] = useState(() => conversationManager.state);
@@ -14,6 +15,15 @@ export function useConversation({ projectId } = {}) {
     const unsub = conversationManager.subscribe((s) => setState({ ...s }));
     return unsub;
   }, []);
+
+  // Fase 3: reseta e recarrega a conversa quando o workspace ativo muda.
+  // Sem isto, trocar de workspace mantém as mensagens/sessão do workspace
+  // anterior na tela (vazamento cruzado de contexto na UI).
+  const { activeWorkspaceId } = useWorkspace();
+  useEffect(() => {
+    if (!activeWorkspaceId || activeWorkspaceId === 'default') return;
+    conversationManager.resetForWorkspace().catch(console.error);
+  }, [activeWorkspaceId]);
 
   // Initialize — sempre chama, mas o SessionManager decide internamente
   // se relê do banco (store vazio) ou mantém o que já está em memória.

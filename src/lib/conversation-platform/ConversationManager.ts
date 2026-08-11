@@ -305,6 +305,8 @@ async function tryScheduleEmail(
         compiled_at: new Date().toISOString(),
         session_id: sessionId,
         project_id: projectId,
+        workspace_id: (conversationStore.session as any)?.workspace_id,
+        scope: (conversationStore.session as any)?.scope,
       });
       gmailWatchCreated = true;
       console.log(`[CXP-SCHED] Gmail watch criado para ${gmailWatchAccount}`);
@@ -345,6 +347,15 @@ class ConversationManager {
       conversationStore.reset();
     }
     await sessionManager.initializeSession(projectId);
+  }
+
+  // Fase 3: chamado quando o workspace ativo muda — limpa o estado em memoria
+  // (sessao/mensagens do workspace anterior) e recarrega do zero pro novo
+  // workspace. O backend (conversationContext) resolve a sessao ativa do
+  // novo workspace a partir de user.active_workspace_id.
+  async resetForWorkspace(): Promise<void> {
+    conversationStore.reset();
+    await sessionManager.initializeSession(undefined);
   }
 
   // ── Send / Stop / Retry / Cancel ──────────────────────────────────────────
