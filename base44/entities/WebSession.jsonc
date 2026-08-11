@@ -1,5 +1,6 @@
 {
   "name": "WebSession",
+  "type": "object",
   "properties": {
     "browser_context_id": {
       "description": "ID do contexto Playwright associado, para reuso (headless/live); para extension armazena o tabId da aba Chrome",
@@ -32,7 +33,7 @@
       "type": "string"
     },
     "source": {
-      "description": "Origem da sessao: 'headless' = Playwright MCP (automacao DOM); 'live' = Selenium/noVNC (login manual humano); 'extension' = extensao Chrome na aba ativa do usuario (passa por anti-bot como Cloudflare nativamente). Default 'headless' preserva comportamento das sessoes existentes.",
+      "description": "Origem da sessao: 'headless' = Playwright MCP; 'live' = Selenium/noVNC; 'extension' = extensao Chrome. Default 'headless'.",
       "enum": [
         "headless",
         "live",
@@ -43,7 +44,7 @@
     },
     "status": {
       "default": "pending_login",
-      "description": "pending_login = aguardando o usuario confirmar login manual; active = sessao capturada e reutilizavel; expired = TTL vencido, requer novo login; revoked = usuario desconectou; failed = site bloqueou automacao ou outro erro irrecuperavel",
+      "description": "pending_login = aguardando login; active = capturada e reutilizavel; expired = TTL vencido; revoked = desconectado; failed = bloqueado",
       "enum": [
         "pending_login",
         "active",
@@ -52,6 +53,18 @@
         "failed"
       ],
       "type": "string"
+    },
+    "workspace_id": {
+      "description": "ID do workspace dono da sessao. Sessao web e PRIVADA por usuario (RLS por created_by_id); workspace_id e metadata para pollTasks validar contexto.",
+      "type": "string"
+    },
+    "bridge_id": {
+      "description": "ID estavel da instancia do MemoryOS Bridge (extensao Chrome) que detem esta sessao. pollTasks valida que a bridge solicitante bate com a bridge da sessao.",
+      "type": "string"
+    },
+    "browser_session_id": {
+      "description": "ID da sessao de browser (tabId Chrome para extension, contextId para Playwright). Composta com bridge_id valida que a tarefa roda na aba certa.",
+      "type": "string"
     }
   },
   "required": [
@@ -59,15 +72,41 @@
     "status"
   ],
   "rls": {
-    "delete": {
-      "created_by_id": "{{user.id}}"
-    },
     "read": {
-      "created_by_id": "{{user.id}}"
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
     },
     "update": {
-      "created_by_id": "{{user.id}}"
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
     }
-  },
-  "type": "object"
+  }
 }
