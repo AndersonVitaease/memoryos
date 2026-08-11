@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "MemoryOS Browser Bridge",
+  "version": "0.1.0",
+  "description": "Conecta sites autenticados ao MemoryOS, rodando dentro do seu Chrome real (passa por Cloudflare/anti-bot nativamente).",
+  "permissions": [
+    "storage",
+    "alarms",
+    "tabs",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://ever-mind-core.base44.app/*",
+    "https://preview--ever-mind-core.base44.app/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://ever-mind-core.base44.app/*",
+        "https://preview--ever-mind-core.base44.app/*"
+      ],
+      "js": ["content-app.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "MemoryOS Browser Bridge"
+  }
+}

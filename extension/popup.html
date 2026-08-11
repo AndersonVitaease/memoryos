@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="header">
+    <strong>MemoryOS Bridge</strong>
+    <span id="status-dot" class="dot dot-off"></span>
+  </div>
+  <div id="auth-status" class="muted">Verificando…</div>
+  <div id="session-info" class="session-info hidden">
+    <div><span class="label">Site:</span> <span id="session-site"></span></div>
+    <div><span class="label">Expira:</span> <span id="session-expires"></span></div>
+  </div>
+  <button id="connect-btn" class="btn btn-primary" disabled>Conectar este site</button>
+  <button id="disconnect-btn" class="btn btn-danger hidden">Desconectar</button>
+  <div id="error-msg" class="error hidden"></div>
+  <div class="footer muted">Abra o app MemoryOS no Chrome para autenticar.</div>
+  <script src="popup.js"></script>
+</body>
+</html>
