@@ -244,7 +244,7 @@ export default async function (req) {
     }
 
     // ── operation: pollTasks (multi-site paralelo) ────────────────
-    // A extensao chama isto a cada heartbeat (agora a cada ~1min, o minimo
+    // A extensao chama isto a cada heartbeat (agora a cada ~30s, o minimo
     // pratico do MV3 chrome.alarms em producao) passando TODOS os
     // webSessionId que ela mantem vivos. Retorna TODAS as tarefas pendentes
     // de uma vez (nao uma por vez) — a extensao executa todas em PARALELO
