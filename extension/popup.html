@@ -10,23 +10,24 @@
     <span id="status-dot" class="dot dot-off"></span>
   </div>
   <div id="auth-status" class="muted">Verificando…</div>
-  <div id="session-info" class="session-info hidden">
-    <div><span class="label">Site:</span> <span id="session-site"></span></div>
-    <div><span class="label">Expira:</span> <span id="session-expires"></span></div>
-  </div>
+
+  <div class="section-title">Sites conectados</div>
+  <div id="sessions-list" class="sessions-list"></div>
+
   <button id="connect-btn" class="btn btn-primary" disabled>Conectar este site</button>
-  <button id="discover-btn" class="btn btn-secondary hidden">Descobrir via extensao</button>
-  <button id="disconnect-btn" class="btn btn-danger hidden">Desconectar</button>
+  <button id="discover-btn" class="btn btn-secondary hidden">Descobrir no site ativo</button>
   <div id="discovery-status" class="discovery-status hidden"></div>
+
   <div id="exec-panel" class="exec-panel hidden">
-    <div class="section-title">Executar capability</div>
+    <div class="section-title">Executar capability (<span id="active-site-label"></span>)</div>
     <select id="cap-select" class="select"></select>
     <input id="cap-input" class="input" placeholder="Termo de busca" />
     <button id="exec-btn" class="btn btn-primary" disabled>Executar</button>
     <div id="exec-status" class="discovery-status hidden"></div>
   </div>
+
   <div id="error-msg" class="error hidden"></div>
-  <div class="footer muted">Abra o app MemoryOS no Chrome para autenticar.</div>
+  <div class="footer muted">Conecte varios sites: cada aba vira uma sessao. Abra o app MemoryOS no Chrome para autenticar.</div>
   <script src="popup.js"></script>
 </body>
 </html>

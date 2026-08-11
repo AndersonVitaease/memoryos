@@ -1,29 +1,21 @@
 /**
  * background.js — Service worker (MV3) do MemoryOS Browser Bridge.
  *
- * Sprint 1: captura do token de auth (via content-app.js no dominio do app),
- * registro de sessao (registerSession), heartbeat periodico via chrome.alarms
- * + deteccao de aba fechada (revoke automatico).
+ * Multi-site: guarda um ARRAY de sessoes (uma por aba/site conectada) em
+ * chrome.storage.local. O popup escolhe qual sessao esta "ativa" para
+ * descobrir/executar. O heartbeat percorre TODAS as sessoes ativas; se a
+ * aba de alguma fechou, revoga automaticamente.
  *
- * Sprint 2: descoberta de capabilities. O service worker dirige a BFS —
- * navega a aba autenticada, injeta content-site.js (via chrome.scripting) a
- * cada pagina carregada, recebe o snapshot+links, chama o backend
- * submitSnapshot (que roda o LLM e salva CapabilityCandidate), enfileira os
- * links novos do mesmo dominio e repete. O estado da descoberta vive em
- * chrome.storage.local (sobrevive a reinicios do service worker MV3, que e
- * efemero).
- *
- * O service worker MV3 nao mantem timers; toda logica periodica usa
- * chrome.alarms. O driver de descoberta e orientado a eventos:
- * tabs.onUpdated (complete) -> injeta extrator -> mensagem -> proxima pagina.
+ * Sprint 1: captura do token, registerSession multi, heartbeat, revoke.
+ * Sprint 2: descoberta BFS (operando na sessao ativa).
+ * Sprint 3: execucao de capability (operando na sessao ativa).
  */
-
 const HEARTBEAT_ALARM = 'memos-heartbeat';
 const HEARTBEAT_INTERVAL_MIN = 5;
 const DISCOVERY_STATE_KEY = 'memos_discovery';
+const SESSIONS_KEY = 'memos_sessions';
+const ACTIVE_KEY = 'memos_active_session_id';
 const DISCOVERY_MAX_PAGES = 10;
-// Palavras-chave de areas de conta relevantes — usadas para priorizar quais
-// links enfileirar primeiro (mesma heuristica do webConnectorDiscover BFS).
 const ACCOUNT_AREA_KEYWORDS = /compra|pedido|venda|anuncio|publica|purchase|order|sale|listing|conta|account|historico|extrato|fatura|nota|pergunta|question|financeiro|reputa|relatorio|dashboard|estoque|produto/i;
 
 // ── Helper: invoca uma backend function do MemoryOS ──────────────────────
@@ -35,10 +27,7 @@ async function invokeFunction(name, payload) {
   const url = `${memos_app_base_url}/functions/${name}`;
   const res = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${memos_token}`,
-    },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${memos_token}` },
     body: JSON.stringify(payload),
   });
   let data = null;
@@ -50,7 +39,29 @@ async function invokeFunction(name, payload) {
   return data;
 }
 
-// ── Message router (um unico listener, todos os tipos) ──────────────────
+// ── Helpers de armazenamento de sessoes ──────────────────────────────────
+async function getSessions() {
+  const s = await chrome.storage.local.get([SESSIONS_KEY]);
+  return s[SESSIONS_KEY] || [];
+}
+async function setSessions(arr) {
+  await chrome.storage.local.set({ [SESSIONS_KEY]: arr });
+}
+async function getActiveId() {
+  const s = await chrome.storage.local.get([ACTIVE_KEY]);
+  return s[ACTIVE_KEY] || null;
+}
+async function setActiveId(id) {
+  await chrome.storage.local.set({ [ACTIVE_KEY]: id });
+}
+async function getActiveSession() {
+  const [sessions, activeId] = await Promise.all([getSessions(), getActiveId()]);
+  if (!activeId) return sessions[0] || null;
+  return sessions.find((s) => s.webSessionId === activeId) || sessions[0] || null;
+}
+function originOf(url) { try { return new URL(url).origin; } catch (e) { return ''; } }
+
+// ── Message router ───────────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || !msg.type) return;
 
@@ -66,18 +77,25 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   // Status (popup)
   if (msg.type === 'MEMOS_GET_STATUS') {
-    chrome.storage.local.get(['memos_token', 'memos_app_base_url', 'memos_session', DISCOVERY_STATE_KEY], (s) => {
+    (async () => {
+      const [sessions, activeId, disc] = await Promise.all([
+        getSessions(),
+        getActiveId(),
+        chrome.storage.local.get([DISCOVERY_STATE_KEY]),
+      ]);
+      const d = disc[DISCOVERY_STATE_KEY];
       sendResponse({
-        hasToken: !!s.memos_token,
-        appBaseUrl: s.memos_app_base_url || null,
-        session: s.memos_session || null,
-        discoveryRunning: !!(s[DISCOVERY_STATE_KEY] && s[DISCOVERY_STATE_KEY].running),
+        hasToken: !!(await chrome.storage.local.get(['memos_token'])).memos_token,
+        appBaseUrl: (await chrome.storage.local.get(['memos_app_base_url'])).memos_app_base_url || null,
+        sessions,
+        activeSessionId: activeId || (sessions[0] ? sessions[0].webSessionId : null),
+        discoveryRunning: !!(d && d.running),
       });
-    });
+    })();
     return true;
   }
 
-  // Conectar o site da aba ativa
+  // Conectar o site da aba ativa (multi: adiciona ao array, nao sobrescreve)
   if (msg.type === 'MEMOS_CONNECT_SITE') {
     (async () => {
       try {
@@ -87,6 +105,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           return;
         }
         const siteUrl = new URL(tab.url).origin;
+        const sessions = await getSessions();
+        // Ja conectado neste site? Apenas ativa.
+        const existing = sessions.find((s) => originOf(s.siteUrl) === siteUrl);
+        if (existing) {
+          await setActiveId(existing.webSessionId);
+          sendResponse({ ok: true, session: existing, alreadyConnected: true });
+          return;
+        }
         const result = await invokeFunction('webConnectorExtension', {
           operation: 'registerSession',
           siteUrl,
@@ -97,10 +123,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           webSessionId: result.webSessionId,
           tabId: tab.id,
           siteUrl,
+          siteName: new URL(siteUrl).hostname,
           expiresAt: result.expiresAt,
           connectedAt: Date.now(),
         };
-        await chrome.storage.local.set({ memos_session: session });
+        sessions.push(session);
+        await setSessions(sessions);
+        await setActiveId(session.webSessionId);
+        // Garante o heartbeat (unico alarme percorre todas as sessoes)
         await chrome.alarms.clear(HEARTBEAT_ALARM);
         chrome.alarms.create(HEARTBEAT_ALARM, { periodInMinutes: HEARTBEAT_INTERVAL_MIN });
         sendResponse({ ok: true, session });
@@ -111,22 +141,40 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
-  // Desconectar
+  // Trocar sessao ativa
+  if (msg.type === 'MEMOS_SET_ACTIVE') {
+    (async () => {
+      await setActiveId(msg.webSessionId);
+      sendResponse({ ok: true });
+    })();
+    return true;
+  }
+
+  // Desconectar uma sessao especifica (ou a ativa se nao informada)
   if (msg.type === 'MEMOS_DISCONNECT') {
     (async () => {
       try {
-        const { memos_session } = await chrome.storage.local.get(['memos_session']);
-        if (memos_session && memos_session.webSessionId) {
+        const sessions = await getSessions();
+        let target = msg.webSessionId ? sessions.find((s) => s.webSessionId === msg.webSessionId) : await getActiveSession();
+        if (target) {
           try {
-            await invokeFunction('webConnectorExtension', {
-              operation: 'revoke',
-              webSessionId: memos_session.webSessionId,
-            });
+            await invokeFunction('webConnectorExtension', { operation: 'revoke', webSessionId: target.webSessionId });
           } catch (e) { /* best-effort */ }
         }
-        await chrome.storage.local.remove(['memos_session', DISCOVERY_STATE_KEY]);
-        await chrome.alarms.clear(HEARTBEAT_ALARM);
-        sendResponse({ ok: true });
+        const remaining = target ? sessions.filter((s) => s.webSessionId !== target.webSessionId) : sessions;
+        await setSessions(remaining);
+        // Se a ativa foi removida, escolhe outra
+        const activeId = await getActiveId();
+        if (target && activeId === target.webSessionId) {
+          await setActiveId(remaining[0] ? remaining[0].webSessionId : null);
+        }
+        // Limpa descoberta se era dessa sessao
+        const d = await getDiscovery();
+        if (d && target && d.webSessionId === target.webSessionId) {
+          await chrome.storage.local.remove(DISCOVERY_STATE_KEY);
+        }
+        if (remaining.length === 0) await chrome.alarms.clear(HEARTBEAT_ALARM);
+        sendResponse({ ok: true, remaining });
       } catch (e) {
         sendResponse({ ok: false, error: e.message || String(e) });
       }
@@ -134,20 +182,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
-  // Iniciar descoberta (Sprint 2)
+  // Iniciar descoberta (na sessao ativa)
   if (msg.type === 'MEMOS_START_DISCOVERY') {
     (async () => {
       try {
-        const { memos_session } = await chrome.storage.local.get(['memos_session']);
-        if (!memos_session || !memos_session.webSessionId) {
+        const session = await getActiveSession();
+        if (!session) {
           sendResponse({ ok: false, error: 'Nenhum site conectado. Conecte um site primeiro.' });
           return;
         }
         const d = {
-          webSessionId: memos_session.webSessionId,
-          tabId: memos_session.tabId,
-          siteUrl: memos_session.siteUrl,
-          queue: [memos_session.siteUrl],
+          webSessionId: session.webSessionId,
+          tabId: session.tabId,
+          siteUrl: session.siteUrl,
+          queue: [session.siteUrl],
           visited: [],
           pagesDone: 0,
           candidatesSoFar: 0,
@@ -173,18 +221,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
-  // Listar capabilities validadas do site (Sprint 3)
+  // Listar capabilities validadas do site ativo
   if (msg.type === 'MEMOS_LIST_CAPABILITIES') {
     (async () => {
       try {
-        const { memos_session } = await chrome.storage.local.get(['memos_session']);
-        if (!memos_session || !memos_session.webSessionId) {
+        const session = await getActiveSession();
+        if (!session) {
           sendResponse({ ok: false, error: 'Nenhum site conectado.' });
           return;
         }
         const result = await invokeFunction('webConnectorExtension', {
           operation: 'listCapabilities',
-          webSessionId: memos_session.webSessionId,
+          webSessionId: session.webSessionId,
         });
         sendResponse({ ok: true, capabilities: result.capabilities || [] });
       } catch (e) {
@@ -194,26 +242,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
-  // Executar capability (Sprint 3): navega a aba ate a URL de descoberta,
-  // injeta pageExecute (fill + write-guard + submit + captura links), e
-  // registra o resultado no backend. O write-guard e enforced no DOM —
-  // formulario com botao de escrita (Salvar/Excluir/...) aborta.
+  // Executar capability (na sessao ativa)
   if (msg.type === 'MEMOS_EXECUTE_CAPABILITY') {
     (async () => {
       try {
-        const { memos_session } = await chrome.storage.local.get(['memos_session']);
-        if (!memos_session || !memos_session.webSessionId) {
+        const session = await getActiveSession();
+        if (!session) {
           sendResponse({ ok: false, error: 'Nenhum site conectado.' });
           return;
         }
-        const spec = {
-          discoveredFromUrl: msg.discoveredFromUrl,
-          inputFields: msg.inputFields,
-          inputs: msg.inputs,
-        };
-        await navigateAndWait(memos_session.tabId, spec.discoveredFromUrl);
+        const spec = { discoveredFromUrl: msg.discoveredFromUrl, inputFields: msg.inputFields, inputs: msg.inputs };
+        await navigateAndWait(session.tabId, spec.discoveredFromUrl);
         const injectRes = await chrome.scripting.executeScript({
-          target: { tabId: memos_session.tabId },
+          target: { tabId: session.tabId },
           func: pageExecute,
           args: [spec],
         });
@@ -221,13 +262,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         try {
           await invokeFunction('webConnectorExtension', {
             operation: 'recordExecution',
-            webSessionId: memos_session.webSessionId,
+            webSessionId: session.webSessionId,
             discoveredFromUrl: spec.discoveredFromUrl,
             inputFields: spec.inputFields,
             inputs: spec.inputs,
             result,
           });
-        } catch (e) { /* best-effort: auditoria */ }
+        } catch (e) { /* best-effort */ }
         sendResponse({ ok: true, result });
       } catch (e) {
         sendResponse({ ok: false, error: e.message || String(e) });
@@ -236,16 +277,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return true;
   }
 
-  // Snapshot recebido do content-site.js (uma por pagina)
+  // Snapshot recebido do content-site.js
   if (msg.type === 'MEMOS_SNAPSHOT_RESULT') {
     (async () => {
       const d = await getDiscovery();
       if (!d || !d.running) { sendResponse({ ok: true, ignored: true }); return true; }
-      if (msg.error) {
-        await discoveryStep();
-        sendResponse({ ok: true });
-        return true;
-      }
+      if (msg.error) { await discoveryStep(); sendResponse({ ok: true }); return true; }
       try {
         const result = await invokeFunction('webConnectorExtension', {
           operation: 'submitSnapshot',
@@ -256,11 +293,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         });
         const saved = (result && result.candidatesSaved) ? result.candidatesSaved : 0;
         d.candidatesSoFar = (d.candidatesSoFar || 0) + saved;
-      } catch (e) {
-        // erro no backend: segue para a proxima pagina
-      }
+      } catch (e) { /* segue pra proxima */ }
       d.pagesDone = (d.pagesDone || 0) + 1;
-      // Enfileira links novos (mesmo dominio, nao visitados, nao login).
       const newLinks = [];
       for (const l of (msg.links || [])) {
         if (!l || !l.href) continue;
@@ -285,31 +319,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 });
 
 // ── Execucao de capability (Sprint 3) ────────────────────────────────────
-// Navega a aba ate a URL alvo e espera carregar (com timeout). O service
-// worker MV3 nao tem timers; usa o evento tabs.onUpdated + fallback de
-// setTimeout para garantir resolucao mesmo se o evento nao disparar.
 function navigateAndWait(tabId, url) {
   return new Promise((resolve) => {
     let done = false;
-    const finish = () => {
-      if (done) return;
-      done = true;
-      chrome.tabs.onUpdated.removeListener(listener);
-      resolve();
-    };
-    const listener = (id, info) => {
-      if (id === tabId && info.status === 'complete') finish();
-    };
+    const finish = () => { if (done) return; done = true; chrome.tabs.onUpdated.removeListener(listener); resolve(); };
+    const listener = (id, info) => { if (id === tabId && info.status === 'complete') finish(); };
     chrome.tabs.onUpdated.addListener(listener);
     chrome.tabs.update(tabId, { url }).then(() => setTimeout(finish, 10000)).catch(() => finish());
     setTimeout(finish, 12000);
   });
 }
 
-// pageExecute roda no DOM da aba autenticada (isolated world). Espelha a
-// logica de field-matching + write-guard + captura de links do
-// webConnectorConnect.executeCapability (headless), mas operando direto em
-// document. Recebe { discoveredFromUrl, inputFields, inputs } via args.
 function pageExecute(spec) {
   return (async () => {
     const fields = (spec.inputFields || []).map(function (n) {
@@ -327,14 +347,8 @@ function pageExecute(spec) {
         var ph = (e2.getAttribute('placeholder') || '').toLowerCase();
         var al = (e2.getAttribute('aria-label') || '').toLowerCase();
         var lt = '';
-        if (e2.id) {
-          var lbl = frm.querySelector('label[for="' + e2.id + '"]');
-          if (lbl) lt = lbl.textContent.toLowerCase();
-        }
-        if (!lt) {
-          var w = e2.closest('label');
-          if (w) lt = w.textContent.toLowerCase();
-        }
+        if (e2.id) { var lbl = frm.querySelector('label[for="' + e2.id + '"]'); if (lbl) lt = lbl.textContent.toLowerCase(); }
+        if (!lt) { var w = e2.closest('label'); if (w) lt = w.textContent.toLowerCase(); }
         if ((ph && ph.indexOf(nn) !== -1) || (al && al.indexOf(nn) !== -1) || (lt && lt.indexOf(nn) !== -1)) return e2;
       }
       var searchRe = /(digite|buscar|pesquisar|procurar|search|find|query|keyword|palavra|as_word)/i;
@@ -355,9 +369,7 @@ function pageExecute(spec) {
     var best = null, bestScore = 0;
     for (var f = 0; f < forms.length; f++) {
       var score = 0;
-      for (var g = 0; g < fields.length; g++) {
-        if (matchField(forms[f], fields[g].name)) score++;
-      }
+      for (var g = 0; g < fields.length; g++) { if (matchField(forms[f], fields[g].name)) score++; }
       if (score > bestScore) { bestScore = score; best = forms[f]; }
     }
     if (!best || bestScore === 0) return { error: 'form_not_found', url: location.href };
@@ -370,14 +382,8 @@ function pageExecute(spec) {
       var el = matchField(best, fields[h].name);
       if (el) {
         try {
-          if (el.tagName.toLowerCase() === 'select') {
-            el.value = fields[h].value;
-          } else {
-            el.focus();
-            el.value = fields[h].value;
-            el.dispatchEvent(new Event('input', { bubbles: true }));
-            el.dispatchEvent(new Event('change', { bubbles: true }));
-          }
+          if (el.tagName.toLowerCase() === 'select') { el.value = fields[h].value; }
+          else { el.focus(); el.value = fields[h].value; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }
           filled.push(fields[h].name);
         } catch (e) {}
       }
@@ -394,21 +400,13 @@ function pageExecute(spec) {
       var fin = function () { if (!done2) { done2 = true; resolve(); } };
       if (window.navigation) { try { window.navigation.addEventListener('navigatesuccess', fin, { once: true }); } catch (e) {} }
       setTimeout(fin, 8000);
-      try {
-        if (sBtn) sBtn.click();
-        else if (best.requestSubmit) best.requestSubmit();
-        else best.submit();
-      } catch (e) { try { best.submit(); } catch (e2) { fin(); } }
+      try { if (sBtn) sBtn.click(); else if (best.requestSubmit) best.requestSubmit(); else best.submit(); }
+      catch (e) { try { best.submit(); } catch (e2) { fin(); } }
     });
     await new Promise(function (r) { setTimeout(r, 2000); });
     await new Promise(function (resolve) {
       var c = 0;
-      var s = function () {
-        window.scrollBy(0, Math.max(window.innerHeight * 2, 1200));
-        c++;
-        if (c < 5) setTimeout(s, 400);
-        else { window.scrollTo(0, 0); resolve(); }
-      };
+      var s = function () { window.scrollBy(0, Math.max(window.innerHeight * 2, 1200)); c++; if (c < 5) setTimeout(s, 400); else { window.scrollTo(0, 0); resolve(); } };
       s();
     });
     await new Promise(function (r) { setTimeout(r, 1000); });
@@ -429,8 +427,7 @@ function pageExecute(spec) {
         var aEl = anchors[a];
         var href = aEl.href;
         if (!href) continue;
-        var h;
-        try { h = new URL(href); } catch (e) { continue; }
+        var h; try { h = new URL(href); } catch (e) { continue; }
         if (!h.hostname.endsWith(rd)) continue;
         if (/\/(login|logout|signup|register|auth|conta|minha-conta|ajuda|vendas|favoritos|carrinho|ofertas)\b/i.test(h.pathname)) continue;
         if (h.pathname === curPath || h.pathname === '/' || h.pathname === '') continue;
@@ -447,11 +444,7 @@ function pageExecute(spec) {
     var genericAnchors = collect(function (h) { return !catRe.test(h.pathname); });
     var out = productAnchors.length > 0 ? productAnchors : genericAnchors;
     var seen = {}, dedup = [];
-    for (var i = 0; i < out.length; i++) {
-      if (seen[out[i].href]) continue;
-      seen[out[i].href] = true;
-      dedup.push(out[i]);
-    }
+    for (var i = 0; i < out.length; i++) { if (seen[out[i].href]) continue; seen[out[i].href] = true; dedup.push(out[i]); }
     return { url: location.href, filled: filled, links: dedup.slice(0, 30) };
   })();
 }
@@ -461,7 +454,6 @@ async function getDiscovery() {
   const s = await chrome.storage.local.get([DISCOVERY_STATE_KEY]);
   return s[DISCOVERY_STATE_KEY] || null;
 }
-
 function hostOf(u) { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return ''; } }
 function sameDomain(a, b) {
   const ha = hostOf(a), hb = hostOf(b);
@@ -482,15 +474,10 @@ async function discoveryStep() {
   d.visited.push(nextUrl);
   d.expectingSnapshot = true;
   await chrome.storage.local.set({ [DISCOVERY_STATE_KEY]: d });
-  try {
-    await chrome.tabs.update(d.tabId, { url: nextUrl });
-  } catch (e) {
-    // aba fechou -> limpa descoberta
-    await chrome.storage.local.remove(DISCOVERY_STATE_KEY);
-  }
+  try { await chrome.tabs.update(d.tabId, { url: nextUrl }); }
+  catch (e) { await chrome.storage.local.remove(DISCOVERY_STATE_KEY); }
 }
 
-// Quando a aba de descoberta termina de carregar, injeta o extrator.
 chrome.tabs.onUpdated.addListener((tabId, info) => {
   (async () => {
     const d = await getDiscovery();
@@ -498,54 +485,59 @@ chrome.tabs.onUpdated.addListener((tabId, info) => {
     if (info.status !== 'complete') return;
     d.expectingSnapshot = false;
     await chrome.storage.local.set({ [DISCOVERY_STATE_KEY]: d });
-    try {
-      await chrome.scripting.executeScript({ target: { tabId }, files: ['content-site.js'] });
-    } catch (e) { /* best-effort: tab pode ter navegado pra fora do alcance */ }
+    try { await chrome.scripting.executeScript({ target: { tabId }, files: ['content-site.js'] }); }
+    catch (e) { /* best-effort */ }
   })();
 });
 
-// ── Heartbeat periodico + deteccao de aba fechada ───────────────────────
+// ── Heartbeat periodico: percorre TODAS as sessoes ───────────────────────
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name !== HEARTBEAT_ALARM) return;
   (async () => {
-    const { memos_session } = await chrome.storage.local.get(['memos_session']);
-    if (!memos_session || !memos_session.webSessionId) {
-      await chrome.alarms.clear(HEARTBEAT_ALARM);
-      return;
+    const sessions = await getSessions();
+    if (sessions.length === 0) { await chrome.alarms.clear(HEARTBEAT_ALARM); return; }
+    const surviving = [];
+    for (const s of sessions) {
+      let alive = true;
+      try { await chrome.tabs.get(s.tabId); }
+      catch (e) {
+        alive = false;
+        try { await invokeFunction('webConnectorExtension', { operation: 'revoke', webSessionId: s.webSessionId }); }
+        catch (e2) { /* best-effort */ }
+      }
+      if (alive) {
+        try { await invokeFunction('webConnectorExtension', { operation: 'heartbeat', webSessionId: s.webSessionId }); }
+        catch (e) { /* heartbeat falhou mas aba existe: mantem */ }
+        surviving.push(s);
+      }
     }
-    try {
-      await chrome.tabs.get(memos_session.tabId);
-    } catch (e) {
-      try {
-        await invokeFunction('webConnectorExtension', { operation: 'revoke', webSessionId: memos_session.webSessionId });
-      } catch (e2) { /* best-effort */ }
-      await chrome.storage.local.remove(['memos_session', DISCOVERY_STATE_KEY]);
-      await chrome.alarms.clear(HEARTBEAT_ALARM);
-      return;
-    }
-    try {
-      await invokeFunction('webConnectorExtension', { operation: 'heartbeat', webSessionId: memos_session.webSessionId });
-    } catch (e) {
-      await chrome.storage.local.remove('memos_session');
-      await chrome.alarms.clear(HEARTBEAT_ALARM);
+    if (surviving.length !== sessions.length) {
+      await setSessions(surviving);
+      const activeId = await getActiveId();
+      if (activeId && !surviving.find((x) => x.webSessionId === activeId)) {
+        await setActiveId(surviving[0] ? surviving[0].webSessionId : null);
+      }
+      if (surviving.length === 0) await chrome.alarms.clear(HEARTBEAT_ALARM);
     }
   })();
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   (async () => {
-    const { memos_session } = await chrome.storage.local.get(['memos_session']);
-    if (memos_session && memos_session.tabId === tabId) {
-      try {
-        await invokeFunction('webConnectorExtension', { operation: 'revoke', webSessionId: memos_session.webSessionId });
-      } catch (e) { /* best-effort */ }
-      await chrome.storage.local.remove(['memos_session', DISCOVERY_STATE_KEY]);
-      await chrome.alarms.clear(HEARTBEAT_ALARM);
+    const sessions = await getSessions();
+    const target = sessions.find((s) => s.tabId === tabId);
+    if (target) {
+      try { await invokeFunction('webConnectorExtension', { operation: 'revoke', webSessionId: target.webSessionId }); }
+      catch (e) { /* best-effort */ }
+      const remaining = sessions.filter((s) => s.webSessionId !== target.webSessionId);
+      await setSessions(remaining);
+      const activeId = await getActiveId();
+      if (activeId === target.webSessionId) {
+        await setActiveId(remaining[0] ? remaining[0].webSessionId : null);
+      }
+      if (remaining.length === 0) await chrome.alarms.clear(HEARTBEAT_ALARM);
     }
-    // Limpa descoberta se a aba fechada era a de descoberta
     const d = await getDiscovery();
-    if (d && d.tabId === tabId) {
-      await chrome.storage.local.remove(DISCOVERY_STATE_KEY);
-    }
+    if (d && d.tabId === tabId) { await chrome.storage.local.remove(DISCOVERY_STATE_KEY); }
   })();
 });

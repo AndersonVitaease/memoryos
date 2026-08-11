@@ -28,3 +28,15 @@ body {
 .error { color: #ef4444; font-size: 12px; margin-top: 6px; }
 .footer { margin-top: 10px; padding-top: 8px; border-top: 1px solid #f3f4f6; }
 .hidden { display: none; }
+.sessions-list { margin-bottom: 4px; }
+.session-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; border: 1px solid #e5e7eb; border-radius: 6px; margin-bottom: 4px; }
+.session-row-active { border-color: #7c3aed; background: #f5f3ff; }
+.session-row-main { flex: 1; min-width: 0; }
+.session-row-host { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.session-row-meta { font-size: 11px; color: #6b7280; }
+.session-row-actions { display: flex; gap: 4px; margin-left: 6px; }
+.btn-mini { padding: 3px 8px; border: 1px solid #e5e7eb; border-radius: 4px; font-size: 11px; cursor: pointer; background: white; }
+.btn-activate { background: #7c3aed; color: white; border-color: #7c3aed; }
+.btn-danger-mini { background: white; color: #ef4444; border-color: #fecaca; }
+.btn-danger-mini:hover { background: #fef2f2; }
+.small { font-size: 11px; }
