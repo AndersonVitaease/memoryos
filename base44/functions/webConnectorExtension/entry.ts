@@ -19,6 +19,8 @@
  * O campo `source` distingue as tres origens para o roteamento do planner.
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+import { buildDiscoveryPrompt, DISCOVERY_LLM_SCHEMA, saveDiscoveryCandidates, parseDiscoveryLLMResult } from '../../shared/webDiscovery.ts';
+import { withTimeout } from '../../shared/mcpHelpers.ts';
 
 const DEFAULT_SESSION_TTL_MS = 30 * 60 * 1000; // 30min — mesmo TTL das outras origens
 
@@ -126,6 +128,59 @@ export default async function (req) {
         return Response.json({ error: 'Failed to revoke session: ' + e.message }, { status: 500 });
       }
       return Response.json({ ok: true, webSessionId, status: 'revoked' });
+    }
+
+    // ── operation: submitSnapshot (Sprint 2 — descoberta via extensao) ──
+    // A extensao (content-site.js) extrai um snapshot do DOM da aba autenticada
+    // do usuario + os links do mesmo dominio, e envia aqui. O backend roda o
+    // MESMO prompt de descoberta do webConnectorDiscover (compartilhado em
+    // webDiscovery.ts) e salva CapabilityCandidate — fluxo de validacao admin
+    // intacto. A BFS e dirigida pelo service worker da extensao, que navega a
+    // aba e chama submitSnapshot a cada pagina. Backend stateless por pagina.
+    if (operation === 'submitSnapshot') {
+      const { webSessionId, currentUrl, snapshotText } = body;
+      if (!webSessionId) return Response.json({ error: 'Missing required field: webSessionId' }, { status: 400 });
+      if (!snapshotText || typeof snapshotText !== 'string') return Response.json({ error: 'Missing required field: snapshotText' }, { status: 400 });
+
+      const session = await base44.entities.WebSession.get(webSessionId);
+      if (!session) return Response.json({ error: 'WebSession not found' }, { status: 404 });
+      if (session.source !== 'extension') {
+        return Response.json({ error: 'WebSession is not an extension session (source: ' + session.source + ')' }, { status: 409 });
+      }
+      if (session.status !== 'active') {
+        return Response.json({ error: 'WebSession is not active (status: ' + session.status + ')' }, { status: 409 });
+      }
+
+      const url = currentUrl || session.site_url;
+      let llmResult = null;
+      try {
+        llmResult = await withTimeout(
+          base44.integrations.Core.InvokeLLM({
+            prompt: buildDiscoveryPrompt(snapshotText, session.site_url, [url]),
+            response_json_schema: DISCOVERY_LLM_SCHEMA,
+          }),
+          60000,
+          'InvokeLLM_extension_discover'
+        );
+      } catch (e) {
+        return Response.json({ error: 'Discovery LLM failed: ' + e.message }, { status: 502 });
+      }
+
+      const saved = await saveDiscoveryCandidates({ base44: base44, session: session, llmResult: llmResult, currentUrl: url, pageIdx: 0, sdkTimeoutMs: 10000 });
+      const navLinks = parseDiscoveryLLMResult(llmResult).navigationLinks;
+
+      try {
+        await base44.entities.WebSession.update(webSessionId, { last_used_at: new Date().toISOString() });
+      } catch (e) { /* best-effort */ }
+
+      return Response.json({
+        ok: true,
+        webSessionId: webSessionId,
+        currentUrl: url,
+        candidatesSaved: saved.length,
+        candidates: saved,
+        navigationLinks: navLinks,
+      });
     }
 
     return Response.json({ error: 'Unknown operation: ' + operation }, { status: 400 });

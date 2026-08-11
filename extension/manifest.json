@@ -7,11 +7,13 @@
     "storage",
     "alarms",
     "tabs",
-    "activeTab"
+    "activeTab",
+    "scripting"
   ],
   "host_permissions": [
     "https://ever-mind-core.base44.app/*",
-    "https://preview--ever-mind-core.base44.app/*"
+    "https://preview--ever-mind-core.base44.app/*",
+    "<all_urls>"
   ],
   "background": {
     "service_worker": "background.js"

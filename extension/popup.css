@@ -18,6 +18,9 @@ body {
 .btn-primary { background: #7c3aed; color: white; }
 .btn-primary:disabled { background: #d1d5db; cursor: not-allowed; }
 .btn-danger { background: #ef4444; color: white; }
+.btn-secondary { background: #f3f4f6; color: #374151; }
+.btn-secondary:disabled { color: #9ca3af; }
+.discovery-status { font-size: 12px; margin-top: 6px; padding: 6px; background: #eff6ff; border-radius: 6px; color: #1e40af; }
 .error { color: #ef4444; font-size: 12px; margin-top: 6px; }
 .footer { margin-top: 10px; padding-top: 8px; border-top: 1px solid #f3f4f6; }
 .hidden { display: none; }

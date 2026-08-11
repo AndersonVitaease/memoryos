@@ -24,6 +24,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { connect as mcpConnect, resolveHeaders as mcpResolveHeaders, tryRecoverResultFromError } from '../../shared/mcpClient.ts';
 import { withTimeout, extractSnapshotText, extractRunCodeText, makeCallMcp } from '../../shared/mcpHelpers.ts';
 import { warmupSession } from '../../shared/webSessionWarmup.ts';
+import { buildDiscoveryPrompt, DISCOVERY_LLM_SCHEMA, saveDiscoveryCandidates } from '../../shared/webDiscovery.ts';
 
 const PLAYWRIGHT_SERVER_NAME = 'playwright-web-connector';
 const MCP_CALL_TIMEOUT_MS = 25000;
@@ -36,36 +37,10 @@ const SDK_TIMEOUT_MS = 10000;
 // seguranca em 20 (protege tempo de execucao e custo de chamadas LLM).
 const DEFAULT_MAX_PAGES = 10;
 const MAX_PAGES_HARD_CAP = 20;
-const MAX_CANDIDATES_PER_PAGE = 5;
 
-// Prompt do LLM: pede candidatos a capability (read-only) + links de
-// navegacao. Explicitamente proibe sugerir acoes de escrita/submissao.
-function buildDiscoveryPrompt(snapshotText, siteUrl, visitedUrls) {
-  return [
-    'Voce e um motor de descoberta de capabilities para um sistema web autenticado em ' + siteUrl + '.',
-    'Seu objetivo: catalogar operacoes READ-ONLY que o sistema expoe (buscas, consultas, listagens, relatorios).',
-    '',
-    'REGRAS INEGOCIAVEIS:',
-    '1. NUNCA sugira acoes de escrita (criar, editar, cancelar, enviar, deletar, submeter).',
-    '2. So catalogue operacoes que podem ser executadas sem alterar dados (buscas, filtros, listagens, visualizacoes).',
-    '3. Um botao so e candidato se pertence a um formulario de BUSCA/CONSULTA (tem inputs + botao de busca/filtrar).',
-    '4. Botoes decorativos ou de acao (Salvar, Excluir, Cancelar, Enviar) NAO sao candidatos — ignore-os.',
-    '',
-    'Analise o snapshot de acessibilidade abaixo e retorne JSON com:',
-    '- candidates: lista de capabilities read-only encontradas nesta pagina (ate ' + MAX_CANDIDATES_PER_PAGE + ').',
-    '  Cada candidate: { suggested_id (ex: reservation.search), description, input_fields (lista de nomes/labels dos campos do formulario) }',
-    '- navigation_links: links de navegacao para OUTRAS areas funcionais do sistema (nao links externos/logout).',
-    '  Cada link: { label, ref } — use o ref exato do snapshot.',
-    '- has_write_actions: boolean indicando se a pagina tem acoes de escrita (para fins de registro, NAO para executar).',
-    '',
-    'Se a pagina atual nao tem formulario de busca/consulta, retorne candidates=[] e so os navigation_links.',
-    '',
-    'URLs ja visitadas (NAO sugira navegar para elas): ' + (visitedUrls.length ? visitedUrls.join(', ') : '(nenhuma)') + '.',
-    '',
-    'SNAPSHOT:',
-    snapshotText.slice(0, 12000),
-  ].join('\n');
-}
+// buildDiscoveryPrompt + DISCOVERY_LLM_SCHEMA + saveDiscoveryCandidates agora
+// vivem em ../../shared/webDiscovery.ts (Sprint 2: reusados pela extensao Chrome
+// via webConnectorExtension.submitSnapshot — mesmo prompt nas duas origens).
 
 export default async function (req) {
   try {
@@ -360,33 +335,7 @@ export default async function (req) {
           llmResult = await withTimeout(
             base44.integrations.Core.InvokeLLM({
               prompt,
-              response_json_schema: {
-                type: 'object',
-                properties: {
-                  candidates: {
-                    type: 'array',
-                    items: {
-                      type: 'object',
-                      properties: {
-                        suggested_id: { type: 'string' },
-                        description: { type: 'string' },
-                        input_fields: { type: 'array', items: { type: 'string' } },
-                      },
-                    },
-                  },
-                  navigation_links: {
-                    type: 'array',
-                    items: {
-                      type: 'object',
-                      properties: {
-                        label: { type: 'string' },
-                        ref: { type: 'string' },
-                      },
-                    },
-                  },
-                  has_write_actions: { type: 'boolean' },
-                },
-              },
+              response_json_schema: DISCOVERY_LLM_SCHEMA,
             }),
             60000,
             'InvokeLLM_discover'
@@ -397,31 +346,10 @@ export default async function (req) {
           continue;
         }
 
-        const pageCandidates = (llmResult && Array.isArray(llmResult.candidates)) ? llmResult.candidates.slice(0, MAX_CANDIDATES_PER_PAGE) : [];
-
-        // Salva candidatos como CapabilityCandidate records.
-        for (const cand of pageCandidates) {
-          if (!cand.suggested_id) continue;
-          try {
-            const record = await withTimeout(base44.entities.CapabilityCandidate.create({
-              web_session_id: session.id,
-              site_url: session.site_url,
-              suggested_id: cand.suggested_id,
-              description: cand.description || '',
-              evidence: JSON.stringify({ page_index: pageIdx, url: currentUrl, has_write_actions: llmResult.has_write_actions || false }),
-              input_fields: JSON.stringify(cand.input_fields || []),
-              discovered_from_url: currentUrl,
-              status: 'candidate',
-            }), SDK_TIMEOUT_MS, 'candidate_create');
-            allCandidates.push({
-              id: record.id,
-              suggested_id: cand.suggested_id,
-              description: cand.description,
-              input_fields: cand.input_fields || [],
-              discovered_from_url: currentUrl,
-            });
-          } catch (e) { /* best-effort: segue para proximo candidato */ }
-        }
+        // Salva candidatos como CapabilityCandidate records (logica compartilhada
+        // em saveDiscoveryCandidates — mesma funcao usada pela extensao Chrome).
+        const savedCandidates = await saveDiscoveryCandidates({ base44, session, llmResult, currentUrl, pageIdx, sdkTimeoutMs: SDK_TIMEOUT_MS });
+        for (const sc of savedCandidates) allCandidates.push(sc);
 
         // Descoberta AUTOMATICA multi-area (fix 2026-08-10, branching): em vez
         // de seguir 1 unico link por pagina (trilha linear), junta TODOS os
