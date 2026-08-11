@@ -516,6 +516,18 @@ ${fullText}`;
           sources: [],
         };
       }
+      // B4: sessao origem extensao nao roda via Playwright headless (trava no
+      // Cloudflare). A execucao por chat exige push WebSocket ate a extensao,
+      // que ainda nao existe (Opcao C — popup-driven). Orienta o usuario a
+      // executar pelo popup da extensao, que ja esta conectado a aba ativa.
+      if (_webIntent.webSessionSource === 'extension') {
+        const _capDesc = _webIntent.capability?.description || _webIntent.capability?.id || 'busca';
+        return {
+          response: `Encontrei a capability **${_capDesc}** do **${hostOf(_webIntent.siteUrl)}**, mas essa sessão foi conectada via extensão do Chrome — ainda não consigo disparar a execução direto daqui no chat.\n\nPara rodar agora: abra o **popup da extensão MemoryOS Bridge** no topo do Chrome (com a aba do ${hostOf(_webIntent.siteUrl)} ativa), escolha a capability no seletor, digite \`${_webIntent.searchTerm || 'o termo de busca'}\` e clique em **Executar**. O resultado aparece na aba do site.`,
+          plan: { goal: "web_connector_extension_manual", goalLabel: "Web Connector — execução via extensão", strategy: "Guard Web Connector — extensão exige popup", skills: [], skillsCount: 0, sourcesCount: 0, contextLength: 0, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: "web", responseTimeMs: Date.now() - startTime, handledByGuard: "WEB-CONNECTOR-EXTENSION-MANUAL" },
+          sources: [],
+        };
+      }
       // Mapeia o termo de busca extraido -> primeiro campo da capability
       const _inputs = {};
       if (_webIntent.inputFields.length > 0) {
