@@ -1,0 +1,70 @@
+{
+  "name": "WebExecutionRequest",
+  "properties": {
+    "batch_id": {
+      "description": "Agrupa varias requests da MESMA pergunta do chat (ex: 3 sites numa pergunta) para saber quando todas terminaram",
+      "type": "string"
+    },
+    "capability_id": {
+      "description": "ID da capability sendo executada (ex: product.search)",
+      "type": "string"
+    },
+    "chat_session_id": {
+      "description": "Session de chat para onde a resposta final deve ser postada quando o batch terminar",
+      "type": "string"
+    },
+    "completed_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "discovered_from_url": {
+      "description": "URL da pagina onde a capability foi descoberta (onde a extensao deve navegar)",
+      "type": "string"
+    },
+    "error": {
+      "description": "Mensagem de erro quando status=failed",
+      "type": "string"
+    },
+    "input_fields": {
+      "description": "JSON array dos nomes de campo a preencher",
+      "type": "string"
+    },
+    "inputs": {
+      "description": "JSON object com os valores a preencher em cada campo",
+      "type": "string"
+    },
+    "requested_at": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "result": {
+      "description": "JSON com o resultado (snapshot/links) quando status=completed",
+      "type": "string"
+    },
+    "site_url": {
+      "description": "URL base do site (para compor a resposta final)",
+      "type": "string"
+    },
+    "status": {
+      "default": "pending",
+      "description": "pending = aguardando extensao pegar; in_progress = extensao esta executando; completed/failed = terminado",
+      "enum": [
+        "pending",
+        "in_progress",
+        "completed",
+        "failed"
+      ],
+      "type": "string"
+    },
+    "web_session_id": {
+      "description": "WebSession (source=extension) alvo desta execucao",
+      "type": "string"
+    }
+  },
+  "required": [
+    "web_session_id",
+    "batch_id",
+    "status"
+  ],
+  "type": "object"
+}
