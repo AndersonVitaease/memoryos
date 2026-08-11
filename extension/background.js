@@ -583,8 +583,54 @@ chrome.alarms.onAlarm.addListener((alarm) => {
       }
       if (surviving.length === 0) await chrome.alarms.clear(HEARTBEAT_ALARM);
     }
+
+    // Fix (2026-08-11): a cada heartbeat, tambem verifica se o chat pediu
+    // alguma execucao em algum dos sites conectados ("camada de
+    // inteligencia" multi-site). Busca TODAS as tarefas pendentes de uma vez
+    // e executa TODAS EM PARALELO (Promise.all) — se o chat pediu dados de
+    // 3 sites diferentes numa mesma pergunta, os 3 rodam juntos neste unico
+    // ciclo, nao um atras do outro.
+    if (surviving.length > 0) {
+      try { await pollAndRunPendingTasks(surviving); }
+      catch (e) { /* best-effort: tenta de novo no proximo ciclo */ }
+    }
   })();
 });
+
+// Busca tarefas pendentes (de qualquer site conectado) e executa todas em
+// paralelo. Cada tarefa roda na aba do seu proprio site (independente),
+// entao rodar N tarefas ao mesmo tempo nao trava umas nas outras.
+async function pollAndRunPendingTasks(sessions) {
+  const webSessionIds = sessions.map((s) => s.webSessionId);
+  const pollRes = await invokeFunction('webConnectorExtension', { operation: 'pollTasks', webSessionIds });
+  const tasks = (pollRes && Array.isArray(pollRes.tasks)) ? pollRes.tasks : [];
+  if (tasks.length === 0) return;
+
+  await Promise.all(tasks.map(async (task) => {
+    const session = sessions.find((s) => s.webSessionId === task.web_session_id);
+    if (!session) {
+      try { await invokeFunction('webConnectorExtension', { operation: 'completeTask', requestId: task.id, error: 'site_not_connected_in_this_browser' }); } catch (e) {}
+      return;
+    }
+    try {
+      let inputFields = [];
+      let inputs = {};
+      try { inputFields = JSON.parse(task.input_fields || '[]'); } catch (e) {}
+      try { inputs = JSON.parse(task.inputs || '{}'); } catch (e) {}
+      const spec = { discoveredFromUrl: task.discovered_from_url, inputFields, inputs };
+      await navigateAndWait(session.tabId, spec.discoveredFromUrl);
+      const injectRes = await chrome.scripting.executeScript({ target: { tabId: session.tabId }, func: pageExecute, args: [spec] });
+      const result = (injectRes && injectRes[0] && injectRes[0].result) ? injectRes[0].result : { error: 'no_result' };
+      if (result && result.error) {
+        await invokeFunction('webConnectorExtension', { operation: 'completeTask', requestId: task.id, error: String(result.error) });
+      } else {
+        await invokeFunction('webConnectorExtension', { operation: 'completeTask', requestId: task.id, result });
+      }
+    } catch (e) {
+      try { await invokeFunction('webConnectorExtension', { operation: 'completeTask', requestId: task.id, error: e.message || String(e) }); } catch (e2) {}
+    }
+  }));
+}
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   (async () => {
