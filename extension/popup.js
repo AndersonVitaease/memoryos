@@ -1,5 +1,7 @@
 const connectBtn = document.getElementById('connect-btn');
 const disconnectBtn = document.getElementById('disconnect-btn');
+const discoverBtn = document.getElementById('discover-btn');
+const discoveryStatus = document.getElementById('discovery-status');
 const authStatus = document.getElementById('auth-status');
 const sessionInfo = document.getElementById('session-info');
 const sessionSite = document.getElementById('session-site');
@@ -39,6 +41,13 @@ chrome.runtime.sendMessage({ type: 'MEMOS_GET_STATUS' }, (status) => {
     sessionInfo.classList.remove('hidden');
     connectBtn.classList.add('hidden');
     disconnectBtn.classList.remove('hidden');
+    discoverBtn.classList.remove('hidden');
+    if (status.discoveryRunning) {
+      discoverBtn.disabled = true;
+      discoverBtn.textContent = 'Descobrindo…';
+      discoveryStatus.textContent = 'Descoberta em andamento neste site.';
+      discoveryStatus.classList.remove('hidden');
+    }
   } else {
     connectBtn.disabled = false;
   }
@@ -69,6 +78,8 @@ disconnectBtn.addEventListener('click', () => {
     if (res && res.ok) {
       sessionInfo.classList.add('hidden');
       disconnectBtn.classList.add('hidden');
+      discoverBtn.classList.add('hidden');
+      discoveryStatus.classList.add('hidden');
       connectBtn.classList.remove('hidden');
       connectBtn.disabled = false;
       connectBtn.textContent = 'Conectar este site';
@@ -76,4 +87,35 @@ disconnectBtn.addEventListener('click', () => {
       showError(res && res.error ? res.error : 'Falha ao desconectar.');
     }
   });
+});
+
+discoverBtn.addEventListener('click', () => {
+  clearError();
+  discoverBtn.disabled = true;
+  discoverBtn.textContent = 'Iniciando…';
+  chrome.runtime.sendMessage({ type: 'MEMOS_START_DISCOVERY' }, (res) => {
+    if (res && res.ok) {
+      discoveryStatus.textContent = 'Descoberta iniciada — a aba do site vai navegar automaticamente. Nao feche o site.';
+      discoveryStatus.classList.remove('hidden');
+      discoverBtn.textContent = 'Descobrindo…';
+    } else {
+      discoverBtn.disabled = false;
+      discoverBtn.textContent = 'Descobrir via extensao';
+      showError(res && res.error ? res.error : 'Falha ao iniciar descoberta.');
+    }
+  });
+});
+
+// Atualiza o estado da descoberta enquanto o popup estiver aberto.
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg && msg.type === 'MEMOS_DISCOVERY_PROGRESS') {
+    discoveryStatus.textContent = 'Descobrindo: ' + msg.pagesDone + ' pagina(s), ' + msg.candidatesSoFar + ' candidato(s).';
+    discoveryStatus.classList.remove('hidden');
+  }
+  if (msg && msg.type === 'MEMOS_DISCOVERY_DONE') {
+    discoveryStatus.textContent = 'Descoberta concluida: ' + msg.candidatesSoFar + ' candidato(s). Valide no /connections do MemoryOS.';
+    discoveryStatus.classList.remove('hidden');
+    discoverBtn.disabled = false;
+    discoverBtn.textContent = 'Descobrir via extensao';
+  }
 });
