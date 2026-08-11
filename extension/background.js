@@ -404,7 +404,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           return;
         }
         // Fase 2: espera a pagina de resultados carregar e raspa os links.
-        await waitForTabComplete(session.tabId, 10000);
+        await waitForTabComplete(session.tabId, 15000);
         const scrapeRes = await chrome.scripting.executeScript({
           target: { tabId: session.tabId },
           func: pageScrapeResults,
@@ -581,16 +581,18 @@ function waitForTabComplete(tabId, timeoutMs) {
 }
 
 // Fase 2: rola a pagina de resultados (carrega lazy-load) e coleta os
-// links de produtos, com fallback para links genericos do mesmo dominio.
+// links de produtos. Deteccao em CAMADAS: primeiro por card com preco
+// (mais robusto pra e-commerce — funciona mesmo se o href for redirect),
+// depois por URL de produto, depois genericos. Espera mais (ML e pesado).
 function pageScrapeResults() {
   return (async () => {
-    await new Promise(function (r) { setTimeout(r, 1500); });
+    await new Promise(function (r) { setTimeout(r, 3000); });
     await new Promise(function (resolve) {
       var c = 0;
-      var s = function () { window.scrollBy(0, Math.max(window.innerHeight * 2, 1200)); c++; if (c < 5) setTimeout(s, 400); else { window.scrollTo(0, 0); resolve(); } };
+      var s = function () { window.scrollBy(0, Math.max(window.innerHeight * 2, 1200)); c++; if (c < 6) setTimeout(s, 500); else { window.scrollTo(0, 0); resolve(); } };
       s();
     });
-    await new Promise(function (r) { setTimeout(r, 1000); });
+    await new Promise(function (r) { setTimeout(r, 2000); });
     var rd = (function () {
       var parts = location.hostname.split('.');
       var tld = ['com.br', 'co.uk', 'com.au', 'org.br', 'net.br'];
@@ -600,8 +602,11 @@ function pageScrapeResults() {
     })();
     var productRe = /\/(p|dp|produto|item|pd|listados|detalle|product)\/|MLB-?\d|\/item\//i;
     var catRe = /\/(c|categorias|ofertas|l|gz|assinaturas|importados|mais-vendidos|categorias)\b/i;
+    var skipRe = /\/(login|logout|signup|register|auth|conta|minha-conta|ajuda|vendas|favoritos|carrinho|ofertas)\b/i;
+    var priceRe = /R\$\s?\d|^\d+[,\.]\d{2}$/i;
     var curPath = location.pathname;
-    var collect = function (filter) {
+    var cardSel = 'li, article, [class*=ui-search-result], [class*=ui-search-layout__item], [class*=item], [class*=card], [class*=product]';
+    var collect = function (opts) {
       var list = [];
       var anchors = Array.from(document.querySelectorAll('a[href]'));
       for (var a = 0; a < anchors.length; a++) {
@@ -610,23 +615,27 @@ function pageScrapeResults() {
         if (!href) continue;
         var h; try { h = new URL(href); } catch (e) { continue; }
         if (!h.hostname.endsWith(rd)) continue;
-        if (/\/(login|logout|signup|register|auth|conta|minha-conta|ajuda|vendas|favoritos|carrinho|ofertas)\b/i.test(h.pathname)) continue;
+        if (skipRe.test(h.pathname)) continue;
         if (h.pathname === curPath || h.pathname === '/' || h.pathname === '') continue;
-        if (!filter(h, aEl)) continue;
+        if (opts.excludeCat && catRe.test(h.pathname)) continue;
+        if (opts.requireProduct && !productRe.test(h.pathname + h.search)) continue;
         var text = (aEl.innerText || aEl.textContent || '').trim();
-        if (text.length < 8) continue;
-        var card = aEl.closest('li, article, [class*=ui-search-result], [class*=item], [class*=card], [class*=product]');
-        var cardText = card ? (card.innerText || '').trim().slice(0, 400) : '';
+        if (text.length < (opts.minText || 8)) continue;
+        var card = aEl.closest(cardSel);
+        var cardText = card ? (card.innerText || '').trim().slice(0, 500) : '';
+        if (opts.requirePrice && !priceRe.test(cardText)) continue;
         list.push({ text: text.slice(0, 200), href: href, cardText: cardText });
       }
       return list;
     };
-    var productAnchors = collect(function (h) { return productRe.test(h.pathname + h.search) && !catRe.test(h.pathname); });
-    var genericAnchors = collect(function (h) { return !catRe.test(h.pathname); });
-    var out = productAnchors.length > 0 ? productAnchors : genericAnchors;
+    var priceAnchors = collect({ requirePrice: true, minText: 8 });
+    var productAnchors = collect({ requireProduct: true, excludeCat: true, minText: 8 });
+    var genericAnchors = collect({ excludeCat: true, minText: 15 });
+    var anyAnchors = collect({ minText: 15 });
+    var out = priceAnchors.length > 0 ? priceAnchors : productAnchors.length > 0 ? productAnchors : genericAnchors.length > 0 ? genericAnchors : anyAnchors;
     var seen = {}, dedup = [];
     for (var i = 0; i < out.length; i++) { if (seen[out[i].href]) continue; seen[out[i].href] = true; dedup.push(out[i]); }
-    return { url: location.href, links: dedup.slice(0, 30) };
+    return { url: location.href, links: dedup.slice(0, 30), debug: { totalAnchors: document.querySelectorAll('a[href]').length, priceHits: priceAnchors.length, productHits: productAnchors.length, genericHits: genericAnchors.length, anyHits: anyAnchors.length, finalCount: dedup.length } };
   })();
 }
 
@@ -745,7 +754,7 @@ async function pollAndRunPendingTasks(sessions) {
         return;
       }
       // Fase 2: espera carregar e raspa os resultados.
-      await waitForTabComplete(session.tabId, 10000);
+      await waitForTabComplete(session.tabId, 15000);
       const scrapeRes = await chrome.scripting.executeScript({ target: { tabId: session.tabId }, func: pageScrapeResults });
       const result = (scrapeRes && scrapeRes[0] && scrapeRes[0].result) ? scrapeRes[0].result : { error: 'no_result' };
       if (result && result.error) {
