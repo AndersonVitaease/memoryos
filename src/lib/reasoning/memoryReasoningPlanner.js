@@ -507,104 +507,147 @@ ${fullText}`;
         });
       } catch (e) { /* best-effort: diagnostico nunca bloqueia a resposta */ }
     }
-    if (_webIntent) {
-      // B3: valida TTL da sessao antes de executar
-      if (_webIntent.webSessionExpiresAt && new Date(_webIntent.webSessionExpiresAt) < new Date()) {
-        return {
-          response: `Sua sessão de **${hostOf(_webIntent.siteUrl)}** expirou. Reconecte em **Conectores** (\`/connections\`) para eu poder buscar lá de novo.`,
-          plan: { goal: "web_connector_expired", goalLabel: "Web Connector — sessão expirada", strategy: "Guard Web Connector", skills: [], skillsCount: 0, sourcesCount: 0, contextLength: 0, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: "web", responseTimeMs: Date.now() - startTime, handledByGuard: "WEB-CONNECTOR-EXPIRED" },
-          sources: [],
-        };
-      }
-      // B4: sessao origem extensao nao roda via Playwright headless (trava no
-      // Cloudflare). A execucao por chat exige push WebSocket ate a extensao,
-      // que ainda nao existe (Opcao C — popup-driven). Orienta o usuario a
-      // executar pelo popup da extensao, que ja esta conectado a aba ativa.
-      if (_webIntent.webSessionSource === 'extension') {
-        const _capDesc = _webIntent.capability?.description || _webIntent.capability?.id || 'busca';
-        return {
-          response: `Encontrei a capability **${_capDesc}** do **${hostOf(_webIntent.siteUrl)}**, mas essa sessão foi conectada via extensão do Chrome — ainda não consigo disparar a execução direto daqui no chat.\n\nPara rodar agora: abra o **popup da extensão MemoryOS Bridge** no topo do Chrome (com a aba do ${hostOf(_webIntent.siteUrl)} ativa), escolha a capability no seletor, digite \`${_webIntent.searchTerm || 'o termo de busca'}\` e clique em **Executar**. O resultado aparece na aba do site.`,
-          plan: { goal: "web_connector_extension_manual", goalLabel: "Web Connector — execução via extensão", strategy: "Guard Web Connector — extensão exige popup", skills: [], skillsCount: 0, sourcesCount: 0, contextLength: 0, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: "web", responseTimeMs: Date.now() - startTime, handledByGuard: "WEB-CONNECTOR-EXTENSION-MANUAL" },
-          sources: [],
-        };
-      }
-      // Mapeia o termo de busca extraido -> primeiro campo da capability
-      const _inputs = {};
-      if (_webIntent.inputFields.length > 0) {
-        _inputs[_webIntent.inputFields[0]] = _webIntent.searchTerm || "";
-      }
-      const _res = await base44.functions.invoke("webConnectorConnect", {
-        operation: "executeCapability",
-        webSessionId: _webIntent.webSessionId,
-        discoveredFromUrl: _webIntent.discoveredFromUrl,
-        inputFields: _webIntent.inputFields,
-        inputs: _inputs,
-      });
-      const _d = _res?.data ?? _res;
-      if (_d?.error) {
-        // Diagnostico persistente (2026-08-10): executeCapability falhava e o
-        // erro sumia no catch generico la embaixo, sem deixar rastro nenhum —
-        // impossivel saber se foi WAF, sessao expirada de verdade, timeout, etc.
+    if (_allIntents.length > 0) {
+      const _now = new Date();
+      // B3: separa intents com sessao ja expirada (nao tenta executar).
+      const _expiredIntents = _allIntents.filter((i) => i.webSessionExpiresAt && new Date(i.webSessionExpiresAt) < _now);
+      const _liveIntents = _allIntents.filter((i) => !(i.webSessionExpiresAt && new Date(i.webSessionExpiresAt) < _now));
+      // Separa por motor: extensao (assincrono, fila) vs playwright/live (sincrono, na hora).
+      const _extensionIntents = _liveIntents.filter((i) => i.webSessionSource === 'extension');
+      const _playwrightIntents = _liveIntents.filter((i) => i.webSessionSource !== 'extension');
+
+      const _shortenProductUrl = (href) => {
+        if (!href) return href;
+        const m = String(href).match(/MLB-?(\d{6,})/i);
+        if (m) return `https://produto.mercadolivre.com.br/MLB-${m[1]}`;
+        return href;
+      };
+
+      // Executa TODOS os intents Playwright/Live em PARALELO (Promise.all) —
+      // 2026-08-11: antes so existia 1 intent por vez (o primeiro match);
+      // agora uma pergunta que mencione varios sites conectados dispara
+      // todas as execucoes juntas, nao uma atras da outra.
+      const _playwrightResults = await Promise.all(_playwrightIntents.map(async (intent) => {
         try {
-          await base44.entities.InteractionEvent.create({
-            session_id: session?.id || '',
-            actor: 'system',
-            event_type: 'web_execute_capability_failed',
-            raw_text: String(userMsg || '').slice(0, 500),
-            payload: JSON.stringify({
-              error: String(_d.error).slice(0, 1000),
-              webSessionId: _webIntent.webSessionId,
-              capabilityId: _webIntent.capability?.id || null,
-              discoveredFromUrl: _webIntent.discoveredFromUrl,
-            }),
+          const _inputs = {};
+          if (intent.inputFields.length > 0) _inputs[intent.inputFields[0]] = intent.searchTerm || "";
+          const _res = await base44.functions.invoke("webConnectorConnect", {
+            operation: "executeCapability",
+            webSessionId: intent.webSessionId,
+            discoveredFromUrl: intent.discoveredFromUrl,
+            inputFields: intent.inputFields,
+            inputs: _inputs,
           });
-        } catch (e2) { /* best-effort: diagnostico nunca bloqueia a resposta */ }
-        // Fix (2026-08-10): antes, QUALQUER erro aqui (infra, timeout, bug) caia
-        // no catch generico la embaixo sem contexto nenhum — o LLM downstream,
-        // sem grounding, respondia "reconecte no Web Connector" mesmo quando
-        // reconectar nao resolveria nada (ex: navegador travado na VPS). So
-        // erros que sao GENUINAMENTE sessao expirada (redirecionou pra /login)
-        // devem pedir reconexao — qualquer outra falha deve ser reportada como
-        // problema tecnico temporario, honesto, sem culpar a sessao do usuario.
-        const _errStr = String(_d.error || '');
-        const _isRealSessionExpiry = /session_expired|redirecionou para login/i.test(_errStr);
-        if (_isRealSessionExpiry) {
+          const _d = _res?.data ?? _res;
+          if (_d?.error) {
+            try {
+              await base44.entities.InteractionEvent.create({
+                session_id: session?.id || '',
+                actor: 'system',
+                event_type: 'web_execute_capability_failed',
+                raw_text: String(userMsg || '').slice(0, 500),
+                payload: JSON.stringify({ error: String(_d.error).slice(0, 1000), webSessionId: intent.webSessionId, capabilityId: intent.capability?.id || null, discoveredFromUrl: intent.discoveredFromUrl }),
+              });
+            } catch (e2) { /* best-effort */ }
+            const _errStr = String(_d.error || '');
+            const _isRealSessionExpiry = /session_expired|redirecionou para login/i.test(_errStr);
+            return { intent, ok: false, isRealSessionExpiry: _isRealSessionExpiry, error: _errStr };
+          }
+          const _snap = String(_d?.snapshotText || "").slice(0, 6000);
+          const _links = Array.isArray(_d?.links) ? _d.links : [];
+          const _filled = Array.isArray(_d?.filled) ? _d.filled.join(", ") : "";
+          const _linksShort = _links.map((l) => ({ ...l, href: _shortenProductUrl(l.href) }));
+          return { intent, ok: true, snapshotText: _snap, links: _linksShort, filled: _filled };
+        } catch (e) {
+          return { intent, ok: false, isRealSessionExpiry: false, error: e?.message || String(e) };
+        }
+      }));
+
+      // Enfileira os intents de extensao (assincronos) num BATCH so — a
+      // extensao pega todos juntos no proximo heartbeat (~1min) e executa em
+      // paralelo la tambem (background.js), entao N sites via extensao nao
+      // custam N minutos, custam ~1 ciclo + tempo de execucao em paralelo.
+      let _queuedExtensionCount = 0;
+      if (_extensionIntents.length > 0) {
+        const _batchId = (crypto.randomUUID ? crypto.randomUUID() : ('batch_' + Date.now() + '_' + Math.random().toString(36).slice(2)));
+        for (const intent of _extensionIntents) {
+          try {
+            const _inputs = {};
+            if (intent.inputFields.length > 0) _inputs[intent.inputFields[0]] = intent.searchTerm || "";
+            await base44.entities.WebExecutionRequest.create({
+              web_session_id: intent.webSessionId,
+              batch_id: _batchId,
+              chat_session_id: session?.id || '',
+              discovered_from_url: intent.discoveredFromUrl,
+              input_fields: JSON.stringify(intent.inputFields),
+              inputs: JSON.stringify(_inputs),
+              capability_id: intent.capability?.id || '',
+              site_url: intent.siteUrl,
+              status: 'pending',
+              requested_at: new Date().toISOString(),
+            });
+            _queuedExtensionCount++;
+          } catch (e) { /* best-effort: essa fila falhou, segue sem ela */ }
+        }
+      }
+
+      // Se algum site foi enfileirado (extensao), a resposta desta rodada
+      // NAO pode incluir esses dados ainda (chegam depois, em mensagem
+      // separada). Responde na hora com o que ja temos (playwright, se
+      // houver) + aviso claro dos sites que estao sendo verificados.
+      if (_queuedExtensionCount > 0) {
+        const _okPlaywright = _playwrightResults.filter((r) => r.ok);
+        const _parts = [];
+        if (_okPlaywright.length > 0) {
+          for (const r of _okPlaywright) {
+            const _linksTxt = r.links.slice(0, 5).map((l) => `- ${l.text}${l.cardText ? ' — ' + l.cardText.slice(0, 120) : ''} [Ver anuncio](${l.href})`).join('\n');
+            _parts.push(`**${hostOf(r.intent.siteUrl)}**:\n${_linksTxt || '(sem resultados no snapshot)'}`);
+          }
+        }
+        const _siteNames = _extensionIntents.map((i) => hostOf(i.siteUrl)).join(', ');
+        _parts.push(`🔎 Também estou verificando em **${_siteNames}** (conectado via extensão) — te aviso aqui assim que tiver o resultado, em até ~1 minuto.`);
+        if (_expiredIntents.length > 0) {
+          _parts.push(`⚠️ Sessão expirada em: ${_expiredIntents.map((i) => hostOf(i.siteUrl)).join(', ')} — reconecte em **Conectores** (\`/connections\`) se precisar desses.`);
+        }
+        return {
+          response: _parts.join('\n\n'),
+          plan: { goal: "web_connector_multi_site_deferred", goalLabel: "Web Connector — multi-site (parte assíncrona via extensão)", strategy: "Guard Web Connector", skills: [], skillsCount: 0, sourcesCount: 0, contextLength: 0, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: "web", responseTimeMs: Date.now() - startTime, handledByGuard: "WEB-CONNECTOR-MULTI-SITE-DEFERRED" },
+          sources: [],
+        };
+      }
+
+      // Sem sites via extensao: se TODOS os playwright falharam com sessao
+      // realmente expirada, reporta isso direto (nao ha nada pra sintetizar).
+      const _anyOk = _playwrightResults.some((r) => r.ok);
+      if (!_anyOk && _playwrightResults.length > 0) {
+        const _allRealExpiry = _playwrightResults.every((r) => r.isRealSessionExpiry);
+        if (_allRealExpiry) {
+          const _sites = _playwrightResults.map((r) => hostOf(r.intent.siteUrl)).join(', ');
           return {
-            response: `Sua sessão de **${hostOf(_webIntent.siteUrl)}** expirou de verdade (o site redirecionou para a tela de login). Reconecte em **Conectores** (\`/connections\`) para eu poder buscar de novo.`,
+            response: `Sua sessão expirou de verdade em: **${_sites}** (o site redirecionou para a tela de login). Reconecte em **Conectores** (\`/connections\`) para eu poder buscar de novo.`,
             plan: { goal: "web_connector_expired", goalLabel: "Web Connector — sessão expirada", strategy: "Guard Web Connector", skills: [], skillsCount: 0, sourcesCount: 0, contextLength: 0, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: "web", responseTimeMs: Date.now() - startTime, handledByGuard: "WEB-CONNECTOR-EXPIRED-REAL" },
             sources: [],
           };
         }
+        const _sites = _playwrightResults.map((r) => hostOf(r.intent.siteUrl)).join(', ');
         return {
-          response: `Tive um problema técnico temporário ao buscar no ${hostOf(_webIntent.siteUrl)} — não é sua sessão (ela continua conectada), foi uma falha momentânea do sistema. Tenta de novo em alguns segundos.`,
+          response: `Tive um problema técnico temporário ao buscar em **${_sites}** — não é sua sessão (ela continua conectada), foi uma falha momentânea do sistema. Tenta de novo em alguns segundos.`,
           plan: { goal: "web_connector_technical_error", goalLabel: "Web Connector — erro técnico", strategy: "Guard Web Connector", skills: [], skillsCount: 0, sourcesCount: 0, contextLength: 0, capabilities: [], capabilitiesCount: 0, needsMoreInfo: false, service: "web", responseTimeMs: Date.now() - startTime, handledByGuard: "WEB-CONNECTOR-TECHNICAL-ERROR" },
           sources: [],
         };
       }
-      const _snap = String(_d?.snapshotText || "").slice(0, 6000);
-      const _links = Array.isArray(_d?.links) ? _d.links : [];
-      if (_snap) {
-        const _filled = Array.isArray(_d?.filled) ? _d.filled.join(", ") : "";
-        // Fix (2026-08-10): links de resultado de busca (ex: Mercado Livre)
-        // costumam vir como URL de redirecionamento/rastreamento gigante
-        // (centenas de caracteres, ex: click1.mercadolivre.com.br/mclics/...).
-        // Isso inflava MUITO o tamanho do prompt e provavelmente estourava o
-        // orcamento de tokens da resposta antes da IA terminar de listar os
-        // 10 produtos pedidos (sintoma observado: so 1 produto retornado em
-        // vez de 10). Encurta pra URL canonica do produto (so o ID) ANTES de
-        // mandar pra IA — aponta pro mesmo produto, ocupa uma fracao do espaco.
-        const _shortenProductUrl = (href) => {
-          if (!href) return href;
-          const m = String(href).match(/MLB-?(\d{6,})/i);
-          if (m) return `https://produto.mercadolivre.com.br/MLB-${m[1]}`;
-          return href; // sem ID reconhecivel: mantem o original, melhor que quebrar o link
-        };
-        const _linksShort = _links.map((l) => ({ ...l, href: _shortenProductUrl(l.href) }));
-        const _linksBlock = _linksShort.length > 0
-          ? `\n\nDADOS REAIS DOS ANUNCIOS (cada item tem titulo, cardText com preco/parcelas/frete/condicao/avaliacao, e o href real do anuncio — use o href como o link do produto):\n` + _linksShort.map((l) => `- TITULO: ${l.text}\n  CARD: ${l.cardText || "(sem card)"}\n  LINK: ${l.href}`).join("\n")
+
+      // Caso normal: 1+ sites playwright responderam com sucesso. Monta o
+      // grounding note (single-site mantem o formato de 10 itens de sempre;
+      // multi-site organiza por site) e deixa o LLM final sintetizar.
+      const _okResults = _playwrightResults.filter((r) => r.ok && r.snapshotText);
+      if (_okResults.length === 1) {
+        const r = _okResults[0];
+        const _linksBlock = r.links.length > 0
+          ? `\n\nDADOS REAIS DOS ANUNCIOS (cada item tem titulo, cardText com preco/parcelas/frete/condicao/avaliacao, e o href real do anuncio — use o href como o link do produto):\n` + r.links.map((l) => `- TITULO: ${l.text}\n  CARD: ${l.cardText || "(sem card)"}\n  LINK: ${l.href}`).join("\n")
           : "";
         _webConnectorGroundingNote =
-          `RESULTADO REAL DA BUSCA NO SITE ${hostOf(_webIntent.siteUrl)} (capability "${_webIntent.capability.id}"${_filled ? `, preenchido: ${_filled}` : ""}). ` +
+          `RESULTADO REAL DA BUSCA NO SITE ${hostOf(r.intent.siteUrl)} (capability "${r.intent.capability.id}"${r.filled ? `, preenchido: ${r.filled}` : ""}). ` +
           `VOCE ESTA CONECTADO a este site via Web Connector — a busca acima foi executada na conta autenticada do usuario. ` +
           `Use ESTE snapshot como verdade absoluta para responder. NUNCA diga que nao esta conectado, NUNCA pea para configurar em /connections, NUNCA mencione /connections. ` +
           `Nao invente produtos/valores que nao estejam no texto abaixo. ` +
@@ -621,7 +664,23 @@ ${fullText}`;
           `- Se um dado (preco, frete, desconto) nao existir no cardText, OMITA a linha — nao invente.\n` +
           `- Cada produto separado por uma linha em branco.\n` +
           `- Nao adicione intro/rodape desnecessario — so a lista de 10 produtos.\n` +
-          `Sintetize em portugues:\n\n${_snap}${_linksBlock}`;
+          `Sintetize em portugues:\n\n${r.snapshotText}${_linksBlock}`;
+      } else if (_okResults.length > 1) {
+        // Multi-site: um bloco por site, LLM organiza a resposta final por site.
+        const _blocks = _okResults.map((r) => {
+          const _linksBlock = r.links.length > 0
+            ? r.links.slice(0, 10).map((l) => `- TITULO: ${l.text}\n  CARD: ${l.cardText || "(sem card)"}\n  LINK: ${l.href}`).join("\n")
+            : "(sem itens no snapshot)";
+          return `SITE: ${hostOf(r.intent.siteUrl)} (capability "${r.intent.capability.id}")\n${_linksBlock}`;
+        }).join("\n\n---\n\n");
+        _webConnectorGroundingNote =
+          `RESULTADOS REAIS DE ${_okResults.length} SITES DIFERENTES, consultados em paralelo via Web Connector (contas autenticadas do usuario):\n\n${_blocks}\n\n` +
+          `Monte UMA resposta organizada POR SITE (um titulo/secao por site), citando os dados reais acima. ` +
+          `Para cada item use link markdown [Ver anuncio](href) — nunca mostre URL crua. Nao invente dados que nao estejam acima. ` +
+          `NUNCA diga que nao esta conectado, NUNCA mencione /connections. Sintetize em portugues.`;
+      }
+      if (_expiredIntents.length > 0 && _okResults.length > 0) {
+        _webConnectorGroundingNote += `\n\n(Nota interna, nao mostre ao usuario neste momento: sessao expirada em ${_expiredIntents.map((i) => hostOf(i.siteUrl)).join(', ')} — se relevante, sugira reconectar em /connections.)`;
       }
     }
   } catch (err) {
