@@ -285,6 +285,17 @@ export async function connect({ workspaceId = "default", scopes = WORKSPACE_SCOP
         all[workspaceId] = connection;
         _save(all);
 
+        // Fase 4: registrar WorkspaceConnector (microsoft-graph). Non-blocking.
+        try {
+          await base44.functions.invoke("connectorWorkspace", {
+            operation: "connect",
+            connectorId: "microsoft-graph",
+            displayLabel: `Microsoft 365 — ${email || ""}`,
+            configuration: JSON.stringify({ email, scopes: grantedScopes ?? scopes }),
+            providerKind: "oauth_microsoft",
+          });
+        } catch (e) { console.warn("[Fase4] connectorWorkspace.connect(microsoft) falhou:", e?.message || e); }
+
         // 8. Cleanup session state
         sessionStorage.removeItem('msauth_state');
         sessionStorage.removeItem('msauth_code_verifier');

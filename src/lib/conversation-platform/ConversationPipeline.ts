@@ -983,6 +983,37 @@ class ConversationPipeline {
             return;
           }
 
+          // ── Fase 4: Workspace Connector Authorization Gate ───────────────
+          // Antes de despachar para o ConnectorRuntime, valida server-side que
+          // o caller e membro ativo, o WorkspaceConnector existe+enabled, e a
+          // credencial DO CALLER existe. Conectores nao catalogados bypass.
+          try {
+            const { base44: _b44gate } = await import("@/api/base44Client");
+            const _uniqueConnectors = Array.from(new Set(_activePlan.steps.map((s: any) => s.connector)));
+            for (const _cid of _uniqueConnectors) {
+              const _cap = _activePlan.steps.find((s: any) => s.connector === _cid)?.capability ?? "";
+              const _authRes: any = await _b44gate.functions.invoke("connectorWorkspace", {
+                operation: "authorizeExecution", connectorId: _cid, capabilityId: _cap,
+              });
+              const _ad = _authRes?.data ?? _authRes;
+              if (_ad?.authorized === false && _ad?.reason !== "definition_not_found") {
+                const _gateMsg = `Conector "${_cid}" nao autorizado neste workspace: ${_ad?.reason || "negado"}${_ad?.detail ? " — " + _ad.detail : ""}`;
+                setStep("route", "done"); setStep("synthesize", "done"); setStep("stream", "running");
+                conversationStore.setStatus("streaming"); setPhase("responding");
+                const _gateMsgId = makeMsgId();
+                conversationStore.appendMessage({ id: _gateMsgId, session_id: session.id, role: "assistant", content: "", streamingContent: "", isStreaming: true, memory_tier: "active", sources_used: [] });
+                await conversationStreaming.streamResponse({ executionId, messageId: _gateMsgId, fullContent: _gateMsg, onChunk: () => {} });
+                setStep("stream", "done"); setStep("finalize", "running"); conversationStore.setStatus("finalizing");
+                try {
+                  const _gateSaved = await persistMessage({ sessionId: session.id, projectId: session.project_id, role: "assistant", content: _gateMsg, sources_used: [] });
+                  conversationStore.updateMessage(_gateMsgId, { id: _gateSaved.id, content: _gateMsg, streamingContent: undefined, isStreaming: false, sources_used: [] });
+                } catch { /* non-critical */ }
+                conversationStore.setStatus("idle"); conversationStore.setReasoningPhase("idle"); setStep("finalize", "done");
+                return;
+              }
+            }
+          } catch (e) { console.warn("[Fase4-Gate] authorizeExecution erro (fail-open):", e?.message || e); }
+
           let executionResult: import("@/lib/runtime-engine/RuntimeTypes").ExecutionResult;
           if (_eiOutcome && _eiOutcome.status === "success") {
             executionResult = outcomeToExecutionResult(_eiOutcome, executionId);
