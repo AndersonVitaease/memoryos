@@ -124,6 +124,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // Status (popup) — agora inclui discoveryRunning POR sessao, nao so global
   if (msg.type === 'MEMOS_GET_STATUS') {
     (async () => {
+      // Fix (2026-08-11): reconcilia com o backend ANTES de responder ao
+      // popup. Se o cache local perdeu sessoes (ex: extensao foi
+      // desinstalada/reinstalada), busca o que ainda esta ativo no servidor
+      // e reidrata o cache local — sem isso, sites genuinamente conectados
+      // (Bling, Mercado Livre) somem da lista sem motivo aparente.
+      try { await reconcileSessionsWithBackend(); } catch (e) { /* best-effort: segue com o cache local que tiver */ }
+
       const [sessions, activeId, discMap] = await Promise.all([
         getSessions(),
         getActiveId(),
