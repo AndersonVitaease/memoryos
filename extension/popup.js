@@ -124,7 +124,21 @@ connectBtn.addEventListener('click', () => {
   clearError();
   connectBtn.disabled = true;
   connectBtn.textContent = 'Conectando…';
+  // Fix (2026-08-11): rede de segurança — se o background nunca responder
+  // (service worker morto, fetch pendurado), reseta o botao em 35s em vez
+  // de deixar travado em "Conectando…" pra sempre.
+  let done = false;
+  const safety = setTimeout(() => {
+    if (done) return;
+    done = true;
+    connectBtn.disabled = false;
+    connectBtn.textContent = 'Conectar a aba atual';
+    showError('Tempo esgotado ao conectar (35s). Verifique sua internet e tente novamente.');
+  }, 35000);
   chrome.runtime.sendMessage({ type: 'MEMOS_CONNECT_SITE' }, (res) => {
+    if (done) return;
+    done = true;
+    clearTimeout(safety);
     connectBtn.disabled = false;
     connectBtn.textContent = 'Conectar a aba atual';
     if (res && res.ok) {
