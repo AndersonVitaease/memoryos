@@ -2,6 +2,12 @@ const connectBtn = document.getElementById('connect-btn');
 const disconnectBtn = document.getElementById('disconnect-btn');
 const discoverBtn = document.getElementById('discover-btn');
 const discoveryStatus = document.getElementById('discovery-status');
+const execPanel = document.getElementById('exec-panel');
+const capSelect = document.getElementById('cap-select');
+const capInput = document.getElementById('cap-input');
+const execBtn = document.getElementById('exec-btn');
+const execStatus = document.getElementById('exec-status');
+let loadedCapabilities = [];
 const authStatus = document.getElementById('auth-status');
 const sessionInfo = document.getElementById('session-info');
 const sessionSite = document.getElementById('session-site');
@@ -42,6 +48,8 @@ chrome.runtime.sendMessage({ type: 'MEMOS_GET_STATUS' }, (status) => {
     connectBtn.classList.add('hidden');
     disconnectBtn.classList.remove('hidden');
     discoverBtn.classList.remove('hidden');
+    execPanel.classList.remove('hidden');
+    loadCapabilities();
     if (status.discoveryRunning) {
       discoverBtn.disabled = true;
       discoverBtn.textContent = 'Descobrindo…';
@@ -64,6 +72,8 @@ connectBtn.addEventListener('click', () => {
       sessionInfo.classList.remove('hidden');
       connectBtn.classList.add('hidden');
       disconnectBtn.classList.remove('hidden');
+      execPanel.classList.remove('hidden');
+      loadCapabilities();
     } else {
       connectBtn.disabled = false;
       connectBtn.textContent = 'Conectar este site';
@@ -83,9 +93,85 @@ disconnectBtn.addEventListener('click', () => {
       connectBtn.classList.remove('hidden');
       connectBtn.disabled = false;
       connectBtn.textContent = 'Conectar este site';
+      execPanel.classList.add('hidden');
+      loadedCapabilities = [];
+      capSelect.innerHTML = '';
     } else {
       showError(res && res.error ? res.error : 'Falha ao desconectar.');
     }
+  });
+});
+
+function loadCapabilities() {
+  capSelect.innerHTML = '<option>Carregando…</option>';
+  execBtn.disabled = true;
+  chrome.runtime.sendMessage({ type: 'MEMOS_LIST_CAPABILITIES' }, (res) => {
+    if (!res || !res.ok) {
+      capSelect.innerHTML = '<option value="">Nenhuma (valide no MemoryOS)</option>';
+      execBtn.disabled = true;
+      if (res && res.error) showError(res.error);
+      return;
+    }
+    loadedCapabilities = res.capabilities || [];
+    if (loadedCapabilities.length === 0) {
+      capSelect.innerHTML = '<option value="">Nenhuma validada — descubra e valide no MemoryOS</option>';
+      execBtn.disabled = true;
+      return;
+    }
+    capSelect.innerHTML = loadedCapabilities.map(function (c) {
+      return '<option value="' + c.id + '">' + (c.description || c.id) + '</option>';
+    }).join('');
+    execBtn.disabled = false;
+  });
+}
+
+execBtn.addEventListener('click', () => {
+  clearError();
+  const idx = capSelect.selectedIndex;
+  const cap = loadedCapabilities[idx];
+  if (!cap) { showError('Nenhuma capability selecionada.'); return; }
+  const value = capInput.value.trim();
+  if (!value) { showError('Digite um termo de busca.'); return; }
+  let inputFields = [];
+  try {
+    if (cap.inputSchema && cap.inputSchema.properties) inputFields = Object.keys(cap.inputSchema.properties);
+  } catch (e) {}
+  if (inputFields.length === 0) inputFields = [cap.id];
+  const inputs = {};
+  inputs[inputFields[0]] = value;
+  execBtn.disabled = true;
+  execBtn.textContent = 'Executando…';
+  execStatus.textContent = 'Navegando e preenchendo o formulario na aba do site…';
+  execStatus.classList.remove('hidden');
+  chrome.runtime.sendMessage({
+    type: 'MEMOS_EXECUTE_CAPABILITY',
+    discoveredFromUrl: cap.discoveredFrom,
+    inputFields: inputFields,
+    inputs: inputs,
+  }, (res) => {
+    execBtn.disabled = false;
+    execBtn.textContent = 'Executar';
+    if (!res || !res.ok) {
+      execStatus.textContent = '';
+      execStatus.classList.add('hidden');
+      showError(res && res.error ? res.error : 'Falha ao executar.');
+      return;
+    }
+    const r = res.result || {};
+    if (r.error) {
+      const msgs = {
+        form_not_found: 'Formulario nao encontrado na pagina.',
+        write_guard: 'Guarda de escrita: o formulario tem botoes de escrita (' + (r.buttons || []).join(', ') + '). Abortado.',
+        no_field_filled: 'Nao foi possivel preencher nenhum campo.',
+        no_result: 'Sem resultado da execucao.',
+      };
+      execStatus.textContent = 'Erro: ' + (msgs[r.error] || r.error);
+      execStatus.classList.remove('hidden');
+      return;
+    }
+    const links = r.links || [];
+    execStatus.textContent = 'Executado: ' + links.length + ' resultado(s). Veja a aba do site.';
+    execStatus.classList.remove('hidden');
   });
 });
 
