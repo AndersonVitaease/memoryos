@@ -155,6 +155,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           sendResponse({ ok: false, error: 'Aba atual nao tem URL valida.' });
           return;
         }
+        // Fix (2026-08-11): o proprio dominio do app MemoryOS (onde o
+        // content-app.js captura o token) nao pode virar um "site conectado"
+        // — e onde o usuario logou na extensao, nao um sistema externo. Sem
+        // essa checagem, clicar "Conectar" com a aba do app MemoryOS aberta
+        // criava uma WebSession fantasma poluindo a lista em /connections.
+        const APP_DOMAINS = ['ever-mind-core.base44.app'];
+        const tabHost = (() => { try { return new URL(tab.url).hostname; } catch (e) { return ''; } })();
+        if (APP_DOMAINS.some((d) => tabHost === d || tabHost.endsWith('.' + d))) {
+          sendResponse({ ok: false, error: 'Esta e a aba do proprio MemoryOS — abra a aba do site que voce quer conectar (ex: Bling, Mercado Livre) e tente de novo.' });
+          return;
+        }
         const siteUrl = new URL(tab.url).origin;
         const sessions = await getSessions();
         // Ja conectado neste site? Apenas ativa.
