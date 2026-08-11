@@ -302,6 +302,16 @@ export default async function (req) {
         return Response.json({ ok: false, error: 'Bridge invalido/offline. Re-registre a extensao.' }, { status: 403 });
       }
 
+      // GATE: WorkspaceConnector(web) deve estar connected+enabled para o caller neste workspace.
+      // Se desabilitado, nao entrega nenhuma tarefa (TESTE 11).
+      const wc = await base44.asServiceRole.entities.WorkspaceConnector.filter({
+        workspace_id: activeWsId, connector_id: 'web-connector', credential_owner_id: user.id, status: 'connected',
+      });
+      const wcEnabled = wc.length > 0 && wc[0].enabled !== false;
+      if (!wcEnabled) {
+        return Response.json({ ok: true, tasks: [], bridgeId: bridge.bridge_id, reason: 'connector_disabled' });
+      }
+
       // Tarefas pendentes visiveis ao caller (RLS: created_by_id == user.id)
       const pending = await base44.entities.WebExecutionRequest.filter({ status: 'pending' });
 
@@ -313,7 +323,8 @@ export default async function (req) {
       }
       // Valida que cada web_session_id pertence a uma WebSession deste bridge
       const bridgeSessionIds = new Set();
-      const sessionsOfBridge = await base44.asServiceRole.entities.WebSession.filter({ bridge_id: bridge.bridge_id });
+      // FILTRA apenas sessoes ATIVAS — sessao revogada/expirada NAO entrega tarefa (TESTE 10).
+      const sessionsOfBridge = await base44.asServiceRole.entities.WebSession.filter({ bridge_id: bridge.bridge_id, status: 'active' });
       for (const s of sessionsOfBridge) bridgeSessionIds.add(s.id);
       const mine = candidateTasks.filter((t) => bridgeSessionIds.has(t.web_session_id));
 
