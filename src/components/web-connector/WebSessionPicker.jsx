@@ -78,8 +78,8 @@ export default function WebSessionPicker({ onRetomar, onNew, currentSessionId, s
           const isActive = s.status === 'active';
           const isExpired = s.status === 'expired' || expiry === 'expirada';
           const statusLabel = isActive ? 'conectado' : isExpired ? 'expirado' : s.status === 'revoked' ? 'desconectado' : (s.status || '?');
-          const statusColor = isActive ? 'text-emerald-400' : isExpired ? 'text-amber-400' : 'text-muted-foreground';
-          const statusBg = isActive ? 'bg-emerald-500/20 text-emerald-300' : isExpired ? 'bg-amber-500/20 text-amber-300' : 'bg-muted text-muted-foreground';
+          const statusColor = isActive ? 'text-emerald-700 dark:text-emerald-400' : isExpired ? 'text-amber-700 dark:text-amber-400' : 'text-foreground/70 dark:text-muted-foreground';
+          const statusBg = isActive ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300' : isExpired ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300' : 'bg-muted text-foreground/70 dark:text-muted-foreground';
           const subLabel = isActive ? expiry : isExpired ? 'sessão expirou — reconecte' : 'desconectado manualmente';
           return (
             <div key={s.id} className={"rounded-lg border p-2.5 flex items-center justify-between gap-2 " + (isCurrent ? "border-emerald-500/40 bg-emerald-500/5" : "border-border bg-muted/20")}>
