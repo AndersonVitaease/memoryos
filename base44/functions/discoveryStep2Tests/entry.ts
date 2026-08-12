@@ -274,6 +274,56 @@ export default async function (req) {
         passed: t10Passed,
       });
 
+      // ── Sprint 1 (2026-08-12): evolulcao READ/WRITE ──
+      // Test 11 (READ): candidate explicitamente READ -> stored READ/safe
+      const llm11 = { candidates: [{ suggested_id: 'product.search', description: 'READ search', input_fields: ['q'], element_ref: 'r1', capability_type: 'READ', risk_level: 'safe' }] };
+      const saved11 = await saveDiscoveryCandidates({ base44: base44, session: sessA, llmResult: llm11, currentUrl: siteUrlA + '/read', pageIdx: 7, sdkTimeoutMs: 10000, snapshotText: snapshotA });
+      const cand11 = await base44.entities.CapabilityCandidate.get(saved11[0].id);
+      const t11Passed = saved11.length === 1 && cand11.capability_type === 'READ' && cand11.risk_level === 'safe';
+      results.push({
+        test: 'Test 11 (READ): capability_type=READ -> stored READ/safe',
+        passed: t11Passed,
+        detail: 'capability_type=' + cand11.capability_type + ', risk_level=' + cand11.risk_level,
+      });
+
+      // Test 12 (WRITE): candidate WRITE + risk_level=irreversible -> stored WRITE/irreversible
+      const llm12 = { candidates: [{ suggested_id: 'listing.create', description: 'Criar anuncio', input_fields: ['titulo', 'preco'], element_ref: 'r2', capability_type: 'WRITE', risk_level: 'irreversible' }] };
+      const saved12 = await saveDiscoveryCandidates({ base44: base44, session: sessA, llmResult: llm12, currentUrl: siteUrlA + '/create', pageIdx: 8, sdkTimeoutMs: 10000, snapshotText: snapshotA });
+      const cand12 = await base44.entities.CapabilityCandidate.get(saved12[0].id);
+      const t12Passed = saved12.length === 1 && cand12.capability_type === 'WRITE' && cand12.risk_level === 'irreversible';
+      results.push({
+        test: 'Test 12 (WRITE): capability_type=WRITE -> stored WRITE/irreversible',
+        passed: t12Passed,
+        detail: 'capability_type=' + cand12.capability_type + ', risk_level=' + cand12.risk_level,
+      });
+
+      // Test 13 (LEGACY/DEFAULTS): candidate sem capability_type/risk_level -> defaults READ/safe
+      const llm13 = { candidates: [{ suggested_id: 'thing.lookup', description: 'No type', input_fields: ['q'], element_ref: 'r1' }] };
+      const saved13 = await saveDiscoveryCandidates({ base44: base44, session: sessA, llmResult: llm13, currentUrl: siteUrlA + '/legacy-default', pageIdx: 9, sdkTimeoutMs: 10000, snapshotText: snapshotA });
+      const cand13 = await base44.entities.CapabilityCandidate.get(saved13[0].id);
+      const t13Passed = saved13.length === 1 && cand13.capability_type === 'READ' && cand13.risk_level === 'safe';
+      results.push({
+        test: 'Test 13 (LEGACY): no capability_type/risk_level -> defaults READ/safe',
+        passed: t13Passed,
+        detail: 'capability_type=' + cand13.capability_type + ', risk_level=' + cand13.risk_level,
+      });
+
+      // Test 14 (DEDUP-WRITE): dois discoveries WRITE mesmo canonical+inputs -> consolidado (dedup nao depende de type)
+      // Usa order.cancel (distinto de listing.create do Test 12) pra evitar colisao de identity_hash.
+      const llm14a = { candidates: [{ suggested_id: 'order.cancel', description: 'Cancelar pedido A', input_fields: ['orderId'], element_ref: 'r1', capability_type: 'WRITE', risk_level: 'irreversible' }] };
+      const llm14b = { candidates: [{ suggested_id: 'order.cancel', description: 'Cancelar pedido B', input_fields: ['orderId'], element_ref: 'r2', capability_type: 'WRITE', risk_level: 'irreversible' }] };
+      const saved14a = await saveDiscoveryCandidates({ base44: base44, session: sessA, llmResult: llm14a, currentUrl: siteUrlA + '/cancel', pageIdx: 10, sdkTimeoutMs: 10000, snapshotText: snapshotA });
+      const saved14b = await saveDiscoveryCandidates({ base44: base44, session: sessA, llmResult: llm14b, currentUrl: siteUrlA + '/cancel?step2', pageIdx: 11, sdkTimeoutMs: 10000, snapshotText: snapshotA });
+      const cand14 = await base44.entities.CapabilityCandidate.get(saved14a[0].id);
+      const ev14 = JSON.parse(cand14.evidence || '[]');
+      const ev14Arr = Array.isArray(ev14) ? ev14 : [ev14];
+      const t14Passed = saved14a[0].consolidated === false && saved14b[0].consolidated === true && saved14b[0].id === saved14a[0].id && cand14.canonical_id === 'order.cancel' && cand14.capability_type === 'WRITE' && cand14.risk_level === 'irreversible' && ev14Arr.length === 2;
+      results.push({
+        test: 'Test 14 (DEDUP-WRITE): same canonical WRITE consolidates, canonical_id/type/risk preserved',
+        passed: t14Passed,
+        detail: 'consolidated=' + (saved14b[0].consolidated === true) + ', canonical_id=' + cand14.canonical_id + ', type=' + cand14.capability_type + ', risk=' + cand14.risk_level + ', evidences=' + ev14Arr.length,
+      });
+
       // === METRICS ===
       const allMyCands = await base44.entities.CapabilityCandidate.filter({ web_session_id: sessA.id });
       const consolidatedCount = allMyCands.filter(function (c) { return (c.consolidated_count || 1) > 1; }).length;
