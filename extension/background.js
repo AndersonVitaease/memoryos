@@ -57,10 +57,15 @@ async function ensureBridgeRegistered() {
     clearTimeout(timeoutId);
     const data = await res.json();
     if (res.ok && data.bridgeId) {
-      await chrome.storage.local.set({ memos_bridge_id: data.bridgeId });
+      await chrome.storage.local.set({ memos_bridge_id: data.bridgeId, memos_bridge_error: '' });
       return data.bridgeId;
     }
-  } catch (e) { /* best-effort: tenta de novo no proximo ciclo */ }
+    // Guarda o erro real pro popup exibir (antes era silenciado).
+    const errMsg = (data && data.error) ? data.error : ('HTTP ' + res.status);
+    await chrome.storage.local.set({ memos_bridge_error: errMsg });
+  } catch (e) {
+    await chrome.storage.local.set({ memos_bridge_error: (e && e.message) ? e.message : String(e) });
+  }
   return memos_bridge_id || null;
 }
 
@@ -253,9 +258,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         ...s,
         discoveryRunning: !!(discMap[s.webSessionId] && discMap[s.webSessionId].running),
       }));
+      const _tokInfo = await chrome.storage.local.get(['memos_token', 'memos_bridge_id', 'memos_bridge_error', 'memos_app_base_url']);
       sendResponse({
-        hasToken: !!(await chrome.storage.local.get(['memos_token'])).memos_token,
-        appBaseUrl: (await chrome.storage.local.get(['memos_app_base_url'])).memos_app_base_url || null,
+        hasToken: !!_tokInfo.memos_token,
+        appBaseUrl: _tokInfo.memos_app_base_url || null,
+        bridgeId: _tokInfo.memos_bridge_id || null,
+        bridgeError: _tokInfo.memos_bridge_error || '',
         sessions: sessionsWithStatus,
         activeSessionId: activeId || (sessions[0] ? sessions[0].webSessionId : null),
         // Compatibilidade com UIs antigas: true se QUALQUER site esta descobrindo.
@@ -295,14 +303,38 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           sendResponse({ ok: true, session: existing, alreadyConnected: true });
           return;
         }
-        const result = await invokeFunction('webConnectorExtension', {
-          operation: 'registerSession',
-          siteUrl,
-          siteName: new URL(siteUrl).hostname,
-          tabId: String(tab.id),
-          bridgeId: await getBridgeId() || '',
-          browserSessionId: String(tab.id),
-        });
+        let result;
+        try {
+          result = await invokeFunction('webConnectorExtension', {
+            operation: 'registerSession',
+            siteUrl,
+            siteName: new URL(siteUrl).hostname,
+            tabId: String(tab.id),
+            bridgeId: await getBridgeId() || '',
+            browserSessionId: String(tab.id),
+          });
+        } catch (e) {
+          // Se o bridge estava invalido/offline, forca re-registro e tenta uma vez mais.
+          const em = (e && e.message) ? e.message : String(e);
+          if (/Bridge invalido|offline/i.test(em)) {
+            await chrome.storage.local.remove(['memos_bridge_id']);
+            const newBridge = await ensureBridgeRegistered();
+            if (!newBridge) {
+              const be = (await chrome.storage.local.get(['memos_bridge_error'])).memos_bridge_error || em;
+              throw new Error('Falha ao registrar bridge: ' + be);
+            }
+            result = await invokeFunction('webConnectorExtension', {
+              operation: 'registerSession',
+              siteUrl,
+              siteName: new URL(siteUrl).hostname,
+              tabId: String(tab.id),
+              bridgeId: newBridge,
+              browserSessionId: String(tab.id),
+            });
+          } else {
+            throw e;
+          }
+        }
         const session = {
           webSessionId: result.webSessionId,
           tabId: tab.id,
