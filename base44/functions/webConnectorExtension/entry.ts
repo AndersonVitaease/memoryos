@@ -62,6 +62,7 @@ export default async function (req) {
     if (operation === 'registerBridge') {
       const claimedBridgeId = typeof body.bridgeId === 'string' ? body.bridgeId.trim() : '';
       const extensionVersion = typeof body.extensionVersion === 'string' ? body.extensionVersion : '';
+      const previousBridgeId = typeof body.previousBridgeId === 'string' ? body.previousBridgeId.trim() : '';
       const now = new Date().toISOString();
 
       // Tenta revalidar um bridge_id reclamado pela extensao (se existir E for deste user+workspace)
@@ -90,7 +91,41 @@ export default async function (req) {
         extension_version: extensionVersion,
         registered_at: now,
       });
-      return Response.json({ ok: true, bridgeId: bridge.bridge_id, status: 'online', workspaceId: activeWsId, revalidated: false });
+
+      // RELINK SEGURO (Sprint cirurgico 2026-08-12): quando um NOVO bridge e
+      // emitido (claimedBridgeId vazio/invalido), as WebSession ativas desta
+      // instalacao — identificadas pelo bridge ANterior (previousBridgeId) —
+      // precisam ser re-linkadas ao novo bridge. Sem isso, pollTasks filtra
+      // por bridge_id do bridge novo e nao encontra as sessoes antigas,
+      // bloqueando a execucao. O relink e escopado por
+      // bridge_id === previousBridgeId (identificador de instalacao), nunca
+      // por user+workspace+source+status isoladamente (que capturaria sessoes
+      // de OUTRA instalacao do mesmo usuario). So relinka se previousBridgeId
+      // for nao-vazio, != bridgeId, E existir um WebBridge pertencente a
+      // este user+workspace (validacao). Best-effort: falha nunca impede o
+      // registro do novo bridge. Ver webBridgeRelinkTests.
+      let relinked = false;
+      if (previousBridgeId && previousBridgeId !== bridgeId) {
+        try {
+          const prevBridges = await base44.asServiceRole.entities.WebBridge.filter({
+            bridge_id: previousBridgeId, user_id: user.id, workspace_id: activeWsId,
+          });
+          if (prevBridges.length > 0) {
+            await base44.asServiceRole.entities.WebSession.updateMany(
+              {
+                bridge_id: previousBridgeId,
+                created_by_id: user.id,
+                workspace_id: activeWsId,
+                source: 'extension',
+                status: 'active',
+              },
+              { $set: { bridge_id: bridgeId } }
+            );
+            relinked = true;
+          }
+        } catch (e) { /* best-effort: relink falhou, mas o novo bridge ja esta registrado */ }
+      }
+      return Response.json({ ok: true, bridgeId: bridge.bridge_id, status: 'online', workspaceId: activeWsId, revalidated: false, relinked });
     }
 
     // ── operation: heartbeatBridge ────────────────────────────────────
