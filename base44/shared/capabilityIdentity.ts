@@ -54,6 +54,8 @@ const TOKEN_MAP = {
   usuario: 'user', usuarios: 'user', user: 'user', users: 'user',
   conta: 'account', contas: 'account', account: 'account', accounts: 'account',
   mensagem: 'message', mensagens: 'message', message: 'message', messages: 'message',
+  // Sprint 2 (2026-08-12): purchases/purchase -> purchase (evita 'purchas' do singularize)
+  purchases: 'purchase', purchase: 'purchase',
 };
 
 function singularize(word) {
@@ -64,16 +66,47 @@ function singularize(word) {
   return word;
 }
 
+// ── Sprint 2 (2026-08-12): canonical VERB-FIRST + remocao de ruído UI/conectores ──
+// Lista FIXA e conservadora de verbos conhecidos. Apenas um destes pode ser
+// movido para a frente do canonical (verb-first). Baseada nos verbos observados
+// no sistema. Tokens fora desta lista NAO sao reordenados (fail-open/conservador).
+const KNOWN_VERBS = {
+  search: true, filter: true, download: true, add: true, remove: true,
+  edit: true, toggle: true, send: true, list: true, view: true,
+};
+
+// Tokens puramente de UI que nao carregam semantica da capability. Removidos do
+// canonical (deterministico). Nao afetam computeIdentityHash alem do canonical.
+const UI_NOISE_TOKENS = {
+  input: true, button: true, submit: true, action: true,
+};
+
+// Conectores puramente sintaticos. Removidos do canonical.
+const CONNECTOR_TOKENS = {
+  by: true, and: true, or: true, with: true,
+};
+
 /**
- * Normaliza um suggested_id para canonical_id.
+ * Normaliza um suggested_id para canonical_id (forma VERB-FIRST).
+ *
+ * Passos deterministicos:
+ *   1. split + normalizeToken (lowercase, sem acento, so [a-z0-9])
+ *   2. map via TOKEN_MAP (sinonimos PT/EN, plural->singular) || singularize
+ *   3. drop tokens de UI (input/button/submit/action) e conectores (by/and/or/with)
+ *   4. verb-first: move o PRIMEIRO verbo conhecido para a frente (se houver e nao estiver)
+ *   5. join com '.'
+ *
  * Exemplos:
- *   "product.search"     -> "product.search"
- *   "produto.search"     -> "product.search"   (PT->EN target)
- *   "products.search"    -> "product.search"    (singular)
- *   "product.pesquisar"  -> "product.search"    (verb sinonimo)
- *   "product.find"       -> "product.search"    (verb sinonimo)
- *   "reservas.search"    -> "reservation.search" (PT->EN + singular)
- *   "order.lookup"       -> "order.search"      (verb sinonimo)
+ *   "product.search"     -> "search.product"    (verb-first)
+ *   "produto.search"     -> "search.product"    (PT->EN target + verb-first)
+ *   "products.search"    -> "search.product"    (singular + verb-first)
+ *   "product.pesquisar"  -> "search.product"    (verb sinonimo + verb-first)
+ *   "reservas.search"    -> "search.reservation" (PT->EN + singular + verb-first)
+ *   "order.lookup"       -> "search.order"      (verb sinonimo + verb-first)
+ *   "search.input"       -> "search"            (UI noise removido)
+ *   "logout.action"      -> "logout"            (UI noise removido)
+ *   "filter.by.date"     -> "filter.date"       (conector removido)
+ *   "purchases.search"   -> "search.purchase"   (purchases->purchase + verb-first)
  */
 export function canonicalizeId(suggestedId) {
   const raw = String(suggestedId || '').trim().toLowerCase();
@@ -81,7 +114,18 @@ export function canonicalizeId(suggestedId) {
   const parts = raw.split(/[._\s-]/).filter(Boolean).map(normalizeToken);
   if (parts.length === 0) return '';
   const mapped = parts.map(function (p) { return TOKEN_MAP[p] || singularize(p); });
-  return mapped.join('.');
+  // 3. drop UI noise + conectores (deterministico, conservador)
+  const kept = mapped.filter(function (t) { return !UI_NOISE_TOKENS[t] && !CONNECTOR_TOKENS[t]; });
+  if (kept.length === 0) return '';
+  // 4. verb-first: move o primeiro verbo conhecido para a frente
+  let verbIdx = -1;
+  for (let i = 0; i < kept.length; i++) { if (KNOWN_VERBS[kept[i]]) { verbIdx = i; break; } }
+  if (verbIdx > 0) {
+    const verb = kept[verbIdx];
+    const rest = kept.filter(function (_, i) { return i !== verbIdx; });
+    return [verb].concat(rest).join('.');
+  }
+  return kept.join('.');
 }
 
 // FNV-1a 32-bit hash (deterministico, sem dependencias).
