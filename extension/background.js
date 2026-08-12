@@ -41,9 +41,17 @@ const ACCOUNT_AREA_KEYWORDS = /compra|pedido|venda|anuncio|publica|purchase|orde
 // emite um bridge_id estavel vinculado a user+workspace ativo, armazenado
 // em chrome.storage.local e reapresentado em TODAS as operacoes. Reinstalacao
 // (storage apagado) gera bridge novo — nunca herda identidade anterior.
-async function ensureBridgeRegistered() {
+async function ensureBridgeRegistered(opts) {
   const { memos_token, memos_bridge_id, memos_app_base_url } = await chrome.storage.local.get(['memos_token', 'memos_bridge_id', 'memos_app_base_url']);
   if (!memos_token || !memos_app_base_url) return null;
+  // Sprint cirurgico (2026-08-12): previousBridgeId preserva a identidade da
+  // instalacao anterior ANTES do wipe, para que o backend possa relinkar as
+  // WebSession ativas desta instalacao (bridge_id == previousBridgeId) ao
+  // novo bridge. Sem isso, as sessoes ficariam orfas apontando para o bridge
+  // antigo e pollTasks nao as encontraria. So relevante no fluxo de
+  // re-registro (MEMOS_CONNECT_SITE catch); demais chamadores nao passam
+  // (revalidacao ou registro fresco) — previousBridgeId vai vazio.
+  const previousBridgeId = (opts && opts.previousBridgeId) || '';
   try {
     const url = `${memos_app_base_url}/functions/webConnectorExtension`;
     const controller = new AbortController();
@@ -51,7 +59,7 @@ async function ensureBridgeRegistered() {
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${memos_token}` },
-      body: JSON.stringify({ operation: 'registerBridge', bridgeId: memos_bridge_id || '', extensionVersion: chrome.runtime.getManifest().version || '' }),
+      body: JSON.stringify({ operation: 'registerBridge', bridgeId: memos_bridge_id || '', extensionVersion: chrome.runtime.getManifest().version || '', previousBridgeId }),
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
@@ -317,8 +325,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           // Se o bridge estava invalido/offline, forca re-registro e tenta uma vez mais.
           const em = (e && e.message) ? e.message : String(e);
           if (/Bridge invalido|offline/i.test(em)) {
+            // Sprint cirurgico (2026-08-12): captura o bridge_id anterior
+            // ANTES de apaga-lo, para que ensureBridgeRegistered repasse ao
+            // backend e ele relinke as WebSession ativas desta instalacao
+            // (bridge_id == previousBridgeId) ao novo bridge. Sem isso, o
+            // backend nao saberia quais sessoes pertenciam a esta instalacao
+            // e nao poderia relinkar com seguranca (filtro generico
+            // user+workspace+source+status capturaria sessoes de OUTRA
+            // instalacao do mesmo usuario).
+            const previousBridgeId = (await chrome.storage.local.get(['memos_bridge_id'])).memos_bridge_id || '';
             await chrome.storage.local.remove(['memos_bridge_id']);
-            const newBridge = await ensureBridgeRegistered();
+            const newBridge = await ensureBridgeRegistered({ previousBridgeId });
             if (!newBridge) {
               const be = (await chrome.storage.local.get(['memos_bridge_error'])).memos_bridge_error || em;
               throw new Error('Falha ao registrar bridge: ' + be);
