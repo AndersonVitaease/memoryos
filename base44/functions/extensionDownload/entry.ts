@@ -991,12 +991,37 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'MEMOS_SNAPSHOT_RESULT') {
     (async () => {
       const tabId = sender.tab ? sender.tab.id : null;
+      // DIAG (temp): telemetria minima sob memos_last_discovery_diag para
+      // classificar P2 (snapshot nao chegou) vs P3 (submitSnapshot falhou)
+      // vs P4 (LLM/persistencia retornou 0). Nao loga snapshot/token/cookies.
+      const diagBase = {
+        webSessionId: null,
+        tabId: tabId,
+        currentUrl: msg.currentUrl || null,
+        stage: 'snapshot_received',
+        submitStartedAt: null,
+        submitFinishedAt: null,
+        submitOk: null,
+        httpStatus: null,
+        candidatesSaved: 0,
+        error: null,
+      };
+      try { await chrome.storage.local.set({ memos_last_discovery_diag: diagBase }); } catch (e) {}
       const found = tabId != null ? await findDiscoveryByTabId(tabId) : null;
       if (!found || !found.state || !found.state.running) { sendResponse({ ok: true, ignored: true }); return true; }
       const webSessionId = found.webSessionId;
+      diagBase.webSessionId = webSessionId;
       const d = found.state;
-      if (msg.error) { await discoveryStep(webSessionId); sendResponse({ ok: true }); return true; }
+      if (msg.error) {
+        diagBase.stage = 'snapshot_error_from_content';
+        diagBase.error = String(msg.error).slice(0, 300);
+        try { await chrome.storage.local.set({ memos_last_discovery_diag: diagBase }); } catch (e) {}
+        await discoveryStep(webSessionId); sendResponse({ ok: true }); return true;
+      }
       try {
+        diagBase.stage = 'submitting_snapshot';
+        diagBase.submitStartedAt = Date.now();
+        try { await chrome.storage.local.set({ memos_last_discovery_diag: diagBase }); } catch (e) {}
         const result = await invokeFunction('webConnectorExtension', {
           operation: 'submitSnapshot',
           webSessionId: d.webSessionId,
@@ -1006,7 +1031,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         });
         const saved = (result && result.candidatesSaved) ? result.candidatesSaved : 0;
         d.candidatesSoFar = (d.candidatesSoFar || 0) + saved;
-      } catch (e) { /* segue pra proxima */ }
+        diagBase.stage = 'submit_success';
+        diagBase.submitFinishedAt = Date.now();
+        diagBase.submitOk = true;
+        diagBase.candidatesSaved = saved;
+        diagBase.error = null;
+        try { await chrome.storage.local.set({ memos_last_discovery_diag: diagBase }); } catch (e) {}
+      } catch (e) {
+        diagBase.stage = 'submit_error';
+        diagBase.submitFinishedAt = Date.now();
+        diagBase.submitOk = false;
+        diagBase.candidatesSaved = 0;
+        diagBase.error = String((e && e.message) ? e.message : e).slice(0, 300);
+        try { await chrome.storage.local.set({ memos_last_discovery_diag: diagBase }); } catch (e2) {}
+        /* segue pra proxima — comportamento original preservado */
+      }
       d.pagesDone = (d.pagesDone || 0) + 1;
       const newLinks = [];
       for (const l of (msg.links || [])) {
