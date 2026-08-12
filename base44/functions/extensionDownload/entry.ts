@@ -15,7 +15,7 @@ const FILES = {
   'manifest.json': `{
   "manifest_version": 3,
   "name": "MemoryOS Browser Bridge",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Conecta sites autenticados ao MemoryOS, rodando dentro do seu Chrome real (passa por Cloudflare/anti-bot nativamente).",
   "permissions": [
     "storage",
