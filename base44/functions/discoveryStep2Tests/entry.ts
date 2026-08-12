@@ -23,22 +23,74 @@ export default async function (req) {
     // === UNIT TESTS ===
 
     // Test: canonicalizeId
+    // Sprint 2 (2026-08-12): canonical agora VERB-FIRST (product.search -> search.product)
     const canonCases = [
-      { input: 'product.search', expected: 'product.search' },
-      { input: 'produto.search', expected: 'product.search' },
-      { input: 'products.search', expected: 'product.search' },
-      { input: 'product.pesquisar', expected: 'product.search' },
-      { input: 'product.find', expected: 'product.search' },
-      { input: 'reservation.search', expected: 'reservation.search' },
-      { input: 'reservas.search', expected: 'reservation.search' },
-      { input: 'order.lookup', expected: 'order.search' },
-      { input: 'pedido.consultar', expected: 'order.search' },
+      { input: 'product.search', expected: 'search.product' },
+      { input: 'produto.search', expected: 'search.product' },
+      { input: 'products.search', expected: 'search.product' },
+      { input: 'product.pesquisar', expected: 'search.product' },
+      { input: 'product.find', expected: 'search.product' },
+      { input: 'reservation.search', expected: 'search.reservation' },
+      { input: 'reservas.search', expected: 'search.reservation' },
+      { input: 'order.lookup', expected: 'search.order' },
+      { input: 'pedido.consultar', expected: 'search.order' },
     ];
     const canonResults = canonCases.map(function (c) {
       const actual = canonicalizeId(c.input);
       return { input: c.input, expected: c.expected, actual: actual, passed: actual === c.expected };
     });
     results.push({ test: 'canonicalizeId', cases: canonResults });
+
+    // ── Sprint 2 (2026-08-12): evolucao verb-first + UI noise + conectores + purchases ──
+    const canonEvolutionCases = [
+      // TESTE 1 — ordem (verb-first deterministico)
+      { input: 'product.search', expected: 'search.product' },
+      { input: 'submit.search', expected: 'search' },
+      // TESTE 2 — tokens de UI removidos
+      { input: 'search.input', expected: 'search' },
+      { input: 'search.button', expected: 'search' },
+      { input: 'search.submit', expected: 'search' },
+      { input: 'logout.action', expected: 'logout' },
+      // TESTE 3 — conectores removidos
+      { input: 'filter.by.date', expected: 'filter.date' },
+      { input: 'filter_date', expected: 'filter.date' },
+      // TESTE 4 — purchases -> purchase
+      { input: 'purchases.search', expected: 'search.purchase' },
+      { input: 'purchase.search', expected: 'search.purchase' },
+      // TESTE 5 — READ/WRITE e alvos distintos NAO colidem
+      { input: 'sell.item', expected: 'sell.item' },
+      { input: 'add.product', expected: 'add.product' },
+      { input: 'add.sidebar.shortcut', expected: 'add.sidebar.shortcut' },
+      { input: 'remove.sidebar.shortcut', expected: 'remove.sidebar.shortcut' },
+      { input: 'download.report', expected: 'download.report' },
+      { input: 'download.invoice', expected: 'download.invoice' },
+    ];
+    const canonEvolutionResults = canonEvolutionCases.map(function (c) {
+      const actual = canonicalizeId(c.input);
+      return { input: c.input, expected: c.expected, actual: actual, passed: actual === c.expected };
+    });
+    results.push({ test: 'canonicalizeIdEvolution', cases: canonEvolutionResults });
+
+    // TESTE 7 — identidade: mesmo canonical+inputs -> mesmo hash; diferentes -> hash diferente
+    const idSame1 = computeIdentityHash('https://a.com', canonicalizeId('product.search'), ['q']);
+    const idSame2 = computeIdentityHash('https://a.com', canonicalizeId('search_products'), ['q']);
+    const idDiff1 = computeIdentityHash('https://a.com', canonicalizeId('sell.item'), []);
+    const idDiff2 = computeIdentityHash('https://a.com', canonicalizeId('add.product'), []);
+    const idDiff3 = computeIdentityHash('https://a.com', canonicalizeId('download.report'), []);
+    const idDiff4 = computeIdentityHash('https://a.com', canonicalizeId('download.invoice'), []);
+    const idRW1 = computeIdentityHash('https://a.com', canonicalizeId('add.sidebar.shortcut'), []);
+    const idRW2 = computeIdentityHash('https://a.com', canonicalizeId('remove.sidebar.shortcut'), []);
+    const idSearchVsAdd = computeIdentityHash('https://a.com', canonicalizeId('search.product'), []) !== computeIdentityHash('https://a.com', canonicalizeId('add.product'), []);
+    results.push({
+      test: 'identityHashEvolution',
+      cases: [
+        { name: 'product.search == search_products (mesmo canonical+inputs)', passed: idSame1 === idSame2 },
+        { name: 'search.product != add.product (READ vs WRITE verbo)', passed: idSearchVsAdd },
+        { name: 'sell.item != add.product', passed: idDiff1 !== idDiff2 },
+        { name: 'download.report != download.invoice', passed: idDiff3 !== idDiff4 },
+        { name: 'add.sidebar.shortcut != remove.sidebar.shortcut', passed: idRW1 !== idRW2 },
+      ],
+    });
 
     // Test: computeIdentityHash
     const h1 = computeIdentityHash('https://a.com', 'product.search', ['q']);
