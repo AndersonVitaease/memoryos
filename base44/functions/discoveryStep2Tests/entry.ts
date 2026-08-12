@@ -376,6 +376,71 @@ export default async function (req) {
         detail: 'consolidated=' + (saved14b[0].consolidated === true) + ', canonical_id=' + cand14.canonical_id + ', type=' + cand14.capability_type + ', risk=' + cand14.risk_level + ', evidences=' + ev14Arr.length,
       });
 
+      // === STABLE CAPABILITY INPUT IDENTITY (Sprint 2026-08-12) ===
+      // Garante que input_fields posicionais (refs do snapshot) sejam
+      // normalizados para identificadores estaveis do elemento ANTES do hash,
+      // tornando a identidade deterministica para o mesmo elemento fisico.
+
+      const stableIdSnapshot = [
+        'input type=search name=q id=itemCode placeholder="Codigo do item" aria-label="Codigo do item" [ref=r79]',
+        'input type=search name=tcode id=trackingCode placeholder="Rastreamento" [ref=r80]',
+      ].join('\n');
+
+      // TEST S1 — ref e id estavel do mesmo elemento devem consolidar
+      const s1A = await saveDiscoveryCandidates({ base44: base44, session: sessA, llmResult: { candidates: [{ suggested_id: 'widget.search', description: 'A por id', input_fields: ['itemCode'], element_ref: 'r79', capability_type: 'READ', risk_level: 'safe' }] }, currentUrl: siteUrlA + '/widget', pageIdx: 20, sdkTimeoutMs: 10000, snapshotText: stableIdSnapshot });
+      const s1B = await saveDiscoveryCandidates({ base44: base44, session: sessA, llmResult: { candidates: [{ suggested_id: 'widget.search', description: 'B por ref', input_fields: ['r79'], element_ref: 'r79', capability_type: 'READ', risk_level: 'safe' }] }, currentUrl: siteUrlA + '/widget2', pageIdx: 21, sdkTimeoutMs: 10000, snapshotText: stableIdSnapshot });
+      const s1Passed = s1A.length === 1 && s1B.length === 1
+        && s1A[0].identity_hash === s1B[0].identity_hash
+        && s1B[0].consolidated === true
+        && s1B[0].id === s1A[0].id
+        && s1A[0].input_fields.length === 1 && s1A[0].input_fields[0] === 'itemCode'
+        && s1B[0].input_fields.length === 1 && s1B[0].input_fields[0] === 'itemCode';
+      results.push({
+        test: 'StableInput S1: ref r79 and id itemCode consolidate (same identity)',
+        passed: s1Passed,
+        detail: 'hashA=' + (s1A[0] && s1A[0].identity_hash) + ' hashB=' + (s1B[0] && s1B[0].identity_hash) + ' consolidated=' + (s1B[0] && s1B[0].consolidated) + ' ifA=' + JSON.stringify(s1A[0] && s1A[0].input_fields) + ' ifB=' + JSON.stringify(s1B[0] && s1B[0].input_fields),
+      });
+
+      // TEST S2 — elementos diferentes NAO consolidam
+      const s2A = await saveDiscoveryCandidates({ base44: base44, session: sessA, llmResult: { candidates: [{ suggested_id: 'gadget.search', description: 'A itemCode', input_fields: ['itemCode'], element_ref: 'r79', capability_type: 'READ', risk_level: 'safe' }] }, currentUrl: siteUrlA + '/gadget', pageIdx: 22, sdkTimeoutMs: 10000, snapshotText: stableIdSnapshot });
+      const s2B = await saveDiscoveryCandidates({ base44: base44, session: sessA, llmResult: { candidates: [{ suggested_id: 'gadget.search', description: 'B trackingCode', input_fields: ['trackingCode'], element_ref: 'r80', capability_type: 'READ', risk_level: 'safe' }] }, currentUrl: siteUrlA + '/gadget2', pageIdx: 23, sdkTimeoutMs: 10000, snapshotText: stableIdSnapshot });
+      const s2Passed = s2A.length === 1 && s2B.length === 1
+        && s2A[0].identity_hash !== s2B[0].identity_hash
+        && s2A[0].id !== s2B[0].id
+        && s2B[0].consolidated === false;
+      results.push({
+        test: 'StableInput S2: different elements (itemCode vs trackingCode) do not consolidate',
+        passed: s2Passed,
+        detail: 'hashA=' + (s2A[0] && s2A[0].identity_hash) + ' hashB=' + (s2B[0] && s2B[0].identity_hash) + ' consolidatedB=' + (s2B[0] && s2B[0].consolidated),
+      });
+
+      // TEST S3 — ref inexistente nao colide com id real
+      const s3 = await saveDiscoveryCandidates({ base44: base44, session: sessA, llmResult: { candidates: [{ suggested_id: 'thing.search', description: 'ref ausente', input_fields: ['r999'], element_ref: 'r999', capability_type: 'READ', risk_level: 'safe' }] }, currentUrl: siteUrlA + '/thing', pageIdx: 24, sdkTimeoutMs: 10000, snapshotText: stableIdSnapshot });
+      const s3ExpectedItemCodeHash = computeIdentityHash(originOf(siteUrlA), canonicalizeId('thing.search'), ['itemCode']);
+      const s3Passed = s3.length === 1
+        && s3[0].identity_hash !== s3ExpectedItemCodeHash
+        && s3[0].input_fields.length === 1
+        && String(s3[0].input_fields[0]).indexOf('r999') !== -1
+        && String(s3[0].input_fields[0]).indexOf('unresolved') !== -1;
+      results.push({
+        test: 'StableInput S3: unresolved ref r999 does not collide with itemCode',
+        passed: s3Passed,
+        detail: 'hash=' + (s3[0] && s3[0].identity_hash) + ' storedField=' + JSON.stringify(s3[0] && s3[0].input_fields) + ' itemCodeHash=' + s3ExpectedItemCodeHash,
+      });
+
+      // TEST S4 — id estavel existente permanece inalterado (sem regressao)
+      const s4 = await saveDiscoveryCandidates({ base44: base44, session: sessA, llmResult: { candidates: [{ suggested_id: 'doodad.search', description: 'stable', input_fields: ['itemCode'], element_ref: 'r79', capability_type: 'READ', risk_level: 'safe' }] }, currentUrl: siteUrlA + '/doodad', pageIdx: 25, sdkTimeoutMs: 10000, snapshotText: stableIdSnapshot });
+      const s4ExpectedHash = computeIdentityHash(originOf(siteUrlA), canonicalizeId('doodad.search'), ['itemCode']);
+      const s4Passed = s4.length === 1
+        && s4[0].input_fields.length === 1 && s4[0].input_fields[0] === 'itemCode'
+        && s4[0].identity_hash === s4ExpectedHash
+        && s4[0].consolidated === false;
+      results.push({
+        test: 'StableInput S4: existing stable id preserved (no regression)',
+        passed: s4Passed,
+        detail: 'storedField=' + JSON.stringify(s4[0] && s4[0].input_fields) + ' hash=' + (s4[0] && s4[0].identity_hash) + ' expected=' + s4ExpectedHash,
+      });
+
       // === METRICS ===
       const allMyCands = await base44.entities.CapabilityCandidate.filter({ web_session_id: sessA.id });
       const consolidatedCount = allMyCands.filter(function (c) { return (c.consolidated_count || 1) > 1; }).length;

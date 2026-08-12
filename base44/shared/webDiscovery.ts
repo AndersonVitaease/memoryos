@@ -138,6 +138,61 @@ export function resolveElementFromSnapshot(snapshotText, ref) {
   return element;
 }
 
+/**
+ * normalizeInputField — resolve um input_field posicional (ref do snapshot,
+ * ex: r79, e3) para um identificador ESTAVEL do elemento que ja existe no
+ * snapshot, usando resolveElementFromSnapshot. Identificadores ja estaveis
+ * (id/name/aria-label/label/placeholder) sao preservados inalterados.
+ *
+ * Contrato do snapshot (resolveElementFromSnapshot): ref, tag, type, name,
+ * id, placeholder, aria_label, label, text, href, role, accessible_name, level.
+ * Identificadores estaveis (nao posicionais) em ordem de preferencia:
+ *   id > name > aria_label > label > placeholder
+ * (todos atributos reais do DOM, presentes no snapshot; nenhum inventado).
+ *
+ * Regra:
+ *   1. Se for ref posicional (rN / eN): resolve do snapshot.
+ *   2. Resolvido com id  -> usa element.id.
+ *   3. Resolvido sem id, com name -> usa element.name.
+ *   4. Resolvido sem id/name -> usa o proximo identificador estavel disponivel
+ *      (aria_label > label > placeholder), conforme o contrato do snapshot.
+ *   5. Ref que NAO resolve no snapshot -> fallback prefixado
+ *      '__unresolved_ref__:<ref>' que nao colide artificialmente com um
+ *      identificador real (id/name reais nao carregam esse prefixo).
+ *   6. Qualquer outro valor (id/name/etc ja estavel) -> preservado inalterado.
+ *
+ * Objetivo: tornar a identidade deterministica para o mesmo elemento fisico
+ * (ex: ["itemCode"] e ["r79"] quando r79 resolve para id=itemCode devem
+ * produzir o mesmo identity_hash). NAO altera canonicalizeId nem
+ * computeIdentityHash; atua SOMENTE antes deles.
+ */
+export function normalizeInputField(field, snapshotText) {
+  const raw = String(field || '').trim();
+  if (!raw) return '';
+  // 1. ref posicional do snapshot? (formatos: rN extensao, eN playwright)
+  if (/^[re]\d+$/.test(raw)) {
+    const el = resolveElementFromSnapshot(snapshotText, raw);
+    if (el) {
+      if (el.id) return el.id;          // 2. id estavel
+      if (el.name) return el.name;      // 3. name estavel
+      if (el.aria_label) return el.aria_label;  // 4. fallback estavel
+      if (el.label) return el.label;
+      if (el.placeholder) return el.placeholder;
+      // ref resolveu mas o elemento nao tem nenhum identificador estavel
+      return '__unresolved_ref__:' + raw;
+    }
+    // 5. ref nao resolveu no snapshot: fallback prefixado (nao colide com id real)
+    return '__unresolved_ref__:' + raw;
+  }
+  // 6. ja e estavel: preserva inalterado
+  return raw;
+}
+
+export function normalizeInputFields(inputFields, snapshotText) {
+  if (!Array.isArray(inputFields)) return [];
+  return inputFields.map(function (f) { return normalizeInputField(f, snapshotText); }).filter(Boolean);
+}
+
 function extractVerb(suggestedId) {
   const parts = String(suggestedId || '').split(/[._\s-]/).filter(Boolean);
   if (parts.length === 0) return '';
@@ -184,7 +239,19 @@ export async function saveDiscoveryCandidates(opts) {
 
     // 2. Compute identity (conservative, deterministic)
     const canonicalId = canonicalizeId(cand.suggested_id);
-    const inputFields = Array.isArray(cand.input_fields) ? cand.input_fields : [];
+    // Normaliza input_fields ANTES do hash e da persistencia: refs posicionais
+    // do snapshot (r79, e3) sao resolvidos para identificadores ESTAVEIS do
+    // elemento (id > name > aria_label > label > placeholder), que ja existem
+    // no snapshot. Assim duas descobertas do mesmo elemento fisico (ex:
+    // ["itemCode"] e ["r79"] quando r79 -> id=itemCode) produzem o MESMO
+    // identity_hash e consolidam. Refs nao resolvidos usam fallback prefixado
+    // que nao colide com identificadores reais. Identificadores ja estaveis
+    // sao preservados. O mesmo valor normalizado e usado para o hash E para o
+    // input_fields persistido.
+    const inputFields = normalizeInputFields(
+      Array.isArray(cand.input_fields) ? cand.input_fields : [],
+      snapshotText || ''
+    );
     const identityHash = computeIdentityHash(siteOrigin, canonicalId, inputFields);
 
     try {
