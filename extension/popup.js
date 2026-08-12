@@ -1,4 +1,5 @@
 const connectBtn = document.getElementById('connect-btn');
+const authBtn = document.getElementById('auth-btn');
 const discoverBtn = document.getElementById('discover-btn');
 const discoveryStatus = document.getElementById('discovery-status');
 const execPanel = document.getElementById('exec-panel');
@@ -85,15 +86,17 @@ function refreshStatus() {
   chrome.runtime.sendMessage({ type: 'MEMOS_GET_STATUS' }, (status) => {
     if (chrome.runtime.lastError || !status) { authStatus.textContent = 'Erro ao verificar estado.'; return; }
     if (!status.hasToken) {
-      authStatus.textContent = 'Extensao nao autenticada. Abra o app MemoryOS nesta janela.';
+      authStatus.textContent = 'Extensao nao autenticada. Abra o app MemoryOS numa aba e clique abaixo:';
       statusDot.className = 'dot dot-off';
       connectBtn.disabled = true;
-      sessionsListEl.innerHTML = '<div class="muted small">Abra o app MemoryOS no Chrome para autenticar.</div>';
+      authBtn.classList.remove('hidden');
+      sessionsListEl.innerHTML = '<div class="muted small">Abra o app MemoryOS no Chrome, faca login, depois clique em "Autenticar".</div>';
       return;
     }
     authStatus.textContent = 'Autenticado ao MemoryOS.';
     statusDot.className = 'dot dot-on';
     connectBtn.disabled = false;
+    authBtn.classList.add('hidden');
     renderSessions(status.sessions, status.activeSessionId);
     // Fix (2026-08-11): antes o botao "Descobrir" ficava travado se QUALQUER
     // site estivesse descobrindo (checagem global). Agora checa so o estado
@@ -119,6 +122,57 @@ function refreshStatus() {
 }
 
 refreshStatus();
+
+// Autenticacao manual via chrome.scripting — puxa o token do localStorage
+// da aba ativa. Funciona em QUALQUER dominio do MemoryOS (preview de branch,
+// producao, etc.), contornando a restricao de matches do content_scripts.
+authBtn.addEventListener('click', () => {
+  clearError();
+  authBtn.disabled = true;
+  authBtn.textContent = 'Autenticando…';
+  // Puxa o token do localStorage da aba ativa via chrome.scripting.
+  // Contorna a restricao de dominio do content_scripts — funciona em
+  // qualquer preview de branch do MemoryOS, nao so nos 2 fixos do manifest.
+  (async () => {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab || !tab.url || !/^https?:\/\//.test(tab.url)) {
+        throw new Error('Aba atual nao tem URL valida.');
+      }
+      let tabHost = '';
+      try { tabHost = new URL(tab.url).hostname; } catch (e) {}
+      if (!tabHost.endsWith('base44.app')) {
+        throw new Error('A aba ativa nao e o app MemoryOS. Abra uma aba do MemoryOS logada e tente de novo.');
+      }
+      const [result] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => {
+          const token = localStorage.getItem('base44_access_token');
+          return { token, origin: location.origin };
+        },
+      });
+      const token = result && result.result && result.result.token;
+      if (!token) {
+        throw new Error('Voce nao esta logado no MemoryOS nesta aba. Faca login no app e tente de novo.');
+      }
+      // Reusa o handler MEMOS_TOKEN_CAPTURE do background (grava token +
+      // registra bridge + inicia heartbeat), sem precisar mudar o background.
+      chrome.runtime.sendMessage({ type: 'MEMOS_TOKEN_CAPTURE', token, appBaseUrl: result.result.origin }, (res) => {
+        authBtn.disabled = false;
+        authBtn.textContent = 'Autenticar com a aba atual do MemoryOS';
+        if (res && res.ok) {
+          refreshStatus();
+        } else {
+          showError(res && res.error ? res.error : 'Falha ao autenticar.');
+        }
+      });
+    } catch (e) {
+      authBtn.disabled = false;
+      authBtn.textContent = 'Autenticar com a aba atual do MemoryOS';
+      showError((e && e.message) ? e.message : 'Falha ao autenticar.');
+    }
+  })();
+});
 
 connectBtn.addEventListener('click', () => {
   clearError();

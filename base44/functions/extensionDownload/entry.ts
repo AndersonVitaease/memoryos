@@ -14,7 +14,7 @@ const FILES = {
   'manifest.json': `{
   "manifest_version": 3,
   "name": "MemoryOS Browser Bridge",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Conecta sites autenticados ao MemoryOS, rodando dentro do seu Chrome real (passa por Cloudflare/anti-bot nativamente).",
   "permissions": [
     "storage",
@@ -59,6 +59,7 @@ const FILES = {
     <span id="status-dot" class="dot dot-off"></span>
   </div>
   <div id="auth-status" class="muted">Verificando…</div>
+  <button id="auth-btn" class="btn btn-secondary hidden">Autenticar com a aba atual do MemoryOS</button>
 
   <div class="section-title">Sites conectados</div>
   <div id="sessions-list" class="sessions-list"></div>
@@ -148,6 +149,7 @@ const FILES = {
   }
 })();`,
   'popup.js': `const connectBtn = document.getElementById('connect-btn');
+const authBtn = document.getElementById('auth-btn');
 const discoverBtn = document.getElementById('discover-btn');
 const discoveryStatus = document.getElementById('discovery-status');
 const execPanel = document.getElementById('exec-panel');
@@ -232,15 +234,17 @@ function refreshStatus() {
   chrome.runtime.sendMessage({ type: 'MEMOS_GET_STATUS' }, (status) => {
     if (chrome.runtime.lastError || !status) { authStatus.textContent = 'Erro ao verificar estado.'; return; }
     if (!status.hasToken) {
-      authStatus.textContent = 'Extensao nao autenticada. Abra o app MemoryOS nesta janela.';
+      authStatus.textContent = 'Extensao nao autenticada. Abra o app MemoryOS numa aba e clique abaixo:';
       statusDot.className = 'dot dot-off';
       connectBtn.disabled = true;
-      sessionsListEl.innerHTML = '<div class="muted small">Abra o app MemoryOS no Chrome para autenticar.</div>';
+      authBtn.classList.remove('hidden');
+      sessionsListEl.innerHTML = '<div class="muted small">Abra o app MemoryOS no Chrome, faca login, depois clique em "Autenticar".</div>';
       return;
     }
     authStatus.textContent = 'Autenticado ao MemoryOS.';
     statusDot.className = 'dot dot-on';
     connectBtn.disabled = false;
+    authBtn.classList.add('hidden');
     renderSessions(status.sessions, status.activeSessionId);
     const activeSession = (status.sessions || []).find((s) => s.webSessionId === status.activeSessionId);
     if (activeSession && activeSession.discoveryRunning) {
@@ -262,6 +266,49 @@ function refreshStatus() {
 }
 
 refreshStatus();
+
+authBtn.addEventListener('click', () => {
+  clearError();
+  authBtn.disabled = true;
+  authBtn.textContent = 'Autenticando…';
+  (async () => {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab || !tab.url || !/^https?:\\/\\//.test(tab.url)) {
+        throw new Error('Aba atual nao tem URL valida.');
+      }
+      let tabHost = '';
+      try { tabHost = new URL(tab.url).hostname; } catch (e) {}
+      if (!tabHost.endsWith('base44.app')) {
+        throw new Error('A aba ativa nao e o app MemoryOS. Abra uma aba do MemoryOS logada e tente de novo.');
+      }
+      const [result] = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => {
+          const token = localStorage.getItem('base44_access_token');
+          return { token, origin: location.origin };
+        },
+      });
+      const token = result && result.result && result.result.token;
+      if (!token) {
+        throw new Error('Voce nao esta logado no MemoryOS nesta aba. Faca login no app e tente de novo.');
+      }
+      chrome.runtime.sendMessage({ type: 'MEMOS_TOKEN_CAPTURE', token, appBaseUrl: result.result.origin }, (res) => {
+        authBtn.disabled = false;
+        authBtn.textContent = 'Autenticar com a aba atual do MemoryOS';
+        if (res && res.ok) {
+          refreshStatus();
+        } else {
+          showError(res && res.error ? res.error : 'Falha ao autenticar.');
+        }
+      });
+    } catch (e) {
+      authBtn.disabled = false;
+      authBtn.textContent = 'Autenticar com a aba atual do MemoryOS';
+      showError((e && e.message) ? e.message : 'Falha ao autenticar.');
+    }
+  })();
+});
 
 connectBtn.addEventListener('click', () => {
   clearError();
@@ -404,7 +451,7 @@ export default async function (req) {
       return Response.json({ ok: true, files: Object.keys(FILES) });
     }
     // default: retorna todos os arquivos
-    return Response.json({ ok: true, version: '0.3.0', files: FILES });
+    return Response.json({ ok: true, version: '0.3.1', files: FILES });
   } catch (e) {
     return Response.json({ error: e.message || String(e) }, { status: 500 });
   }
