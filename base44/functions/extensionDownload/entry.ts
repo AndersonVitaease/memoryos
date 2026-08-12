@@ -1496,8 +1496,11 @@ export default async function (req) {
     if (operation && operation === 'listFiles') {
       return Response.json({ ok: true, files: Object.keys(FILES) });
     }
-    // default: retorna todos os arquivos
-    return Response.json({ ok: true, version: '0.3.1', files: FILES });
+    // default: retorna todos os arquivos como ARRAY de {name, content} —
+    // formato que o PowerShell 5.1 itera de forma confiavel (objetos com
+    // chave nome-de-arquivo com pontos quebravam a enumeracao .PSObject.Properties).
+    const filesArr = Object.keys(FILES).map((name) => ({ name, content: FILES[name] }));
+    return Response.json({ ok: true, version: '0.3.1', files: filesArr });
   } catch (e) {
     return Response.json({ error: e.message || String(e) }, { status: 500 });
   }
