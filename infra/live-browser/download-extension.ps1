@@ -54,12 +54,21 @@ if (-not $response.ok) {
 
 $version = $response.version
 Write-Host "Versao no servidor: $version" -ForegroundColor Green
-Write-Host "Arquivos disponiveis: $([math]::Min($response.files.PSObject.Properties.Count, 99))" -ForegroundColor Green
+
+# Backend retorna files como ARRAY de {name, content} (formato PS 5.1-safe).
+# Fallback: se vier como objeto (chave=nome), itera via PSObject.Properties.
+$filesList = @()
+if ($response.files -is [System.Array]) {
+    $filesList = $response.files
+} else {
+    foreach ($p in $response.files.PSObject.Properties) { $filesList += [pscustomobject]@{ name = $p.Name; content = $p.Value } }
+}
+Write-Host "Arquivos disponiveis: $($filesList.Count)" -ForegroundColor Green
 
 $saved = 0
-foreach ($prop in $response.files.PSObject.Properties) {
-    $name = $prop.Name
-    $content = $prop.Value
+foreach ($entry in $filesList) {
+    $name = $entry.name
+    $content = $entry.content
     if (-not $content) { continue }
     $targetPath = Join-Path $Target $name
     # Garante subdiretorios se existirem no nome (nao esperado, mas seguro)
