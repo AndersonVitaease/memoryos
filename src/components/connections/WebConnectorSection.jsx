@@ -588,21 +588,21 @@ export default function WebConnectorSection() {
                     let fields = [];
                     try { fields = JSON.parse(c.input_fields || '[]'); } catch (e) { fields = []; }
                     return (
-                      <div key={c.id} className="rounded-lg border border-border bg-muted/20 p-2.5">
+                      <div key={c.id} className="rounded-lg border border-border bg-muted/30 p-2.5">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-xs font-mono text-violet-300">{c.suggested_id}</span>
-                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground uppercase tracking-wide">{c.status}</span>
+                          <span className="text-xs font-mono text-violet-400">{c.suggested_id}</span>
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted text-foreground/70 uppercase tracking-wide">{c.status}</span>
                         </div>
-                        {c.description && <p className="text-[11px] text-muted-foreground mt-1">{c.description}</p>}
+                        {c.description && <p className="text-[11px] text-foreground/85 mt-1">{c.description}</p>}
                         {Array.isArray(fields) && fields.length > 0 && (
                           <div className="mt-1.5 flex flex-wrap gap-1">
                             {fields.map((f) => (
-                              <span key={f} className="text-[9px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-mono">{f}</span>
+                              <span key={f} className="text-[9px] px-1.5 py-0.5 rounded bg-muted text-foreground/75 font-mono">{f}</span>
                             ))}
                           </div>
                         )}
                         {c.discovered_from_url && (
-                          <p className="text-[9px] text-muted-foreground mt-1 font-mono truncate">{c.discovered_from_url}</p>
+                          <p className="text-[9px] text-foreground/65 mt-1 font-mono truncate">{c.discovered_from_url}</p>
                         )}
                         {c.status === 'candidate' && isAdmin && (
                           <div className="mt-2 flex flex-wrap gap-2">
