@@ -20,24 +20,28 @@ export const MAX_CANDIDATES_PER_PAGE = 5;
 export function buildDiscoveryPrompt(snapshotText, siteUrl, visitedUrls) {
   return [
     'Voce e um motor de descoberta de capabilities para um sistema web autenticado em ' + siteUrl + '.',
-    'Seu objetivo: catalogar operacoes READ-ONLY que o sistema expoe (buscas, consultas, listagens, relatorios).',
+    'Seu objetivo: catalogar TODAS as capabilities observaveis na pagina — READ (consultas, listagens, filtros, visualizacoes) e WRITE (criar, editar, cancelar, enviar, excluir, publicar, alterar, acoes em geral).',
     '',
     'REGRAS INEGOCIAVEIS:',
-    '1. NUNCA sugira acoes de escrita (criar, editar, cancelar, enviar, deletar, submeter).',
-    '2. So catalogue operacoes que podem ser executadas sem alterar dados (buscas, filtros, listagens, visualizacoes).',
-    '3. Um botao so e candidato se pertence a um formulario de BUSCA/CONSULTA (tem inputs + botao de busca/filtrar).',
-    '4. Botoes decorativos ou de acao (Salvar, Excluir, Cancelar, Enviar) NAO sao candidatos -- ignore-os.',
+    '1. Catalogue toda capability que tenha um elemento real do snapshot que a fundamente (formulario, botao, link de acao).',
+    '2. Classifique cada capability com capability_type ("READ" ou "WRITE") e risk_level ("safe", "reversible" ou "irreversible").',
+    '   - READ: consultas, buscas, filtros, listagens, visualizacoes. risk_level=safe.',
+    '   - WRITE: criar, editar, cancelar, enviar, excluir, publicar, alterar. risk_level=irreversible (default) ou reversible (se houver desfazer trivial explicito).',
+    '3. NUNCA invente element_ref — use apenas refs que aparecem no snapshot abaixo. Se nao houver ref claro, use string vazia.',
+    '4. Botoes puramente decorativos ou de navegacao generica (Home, Voltar, Ajuda, Fechar) NAO sao capabilities — ignore.',
+    '5. O motor de descoberta NUNCA executa acoes — voce so observa e classifica, nunca clica/submete/preenche.',
     '',
     'Analise o snapshot de acessibilidade abaixo e retorne JSON com:',
-    '- candidates: lista de capabilities read-only encontradas nesta pagina (ate ' + MAX_CANDIDATES_PER_PAGE + ').',
-    '  Cada candidate: { suggested_id, description, input_fields, element_ref }',
+    '- candidates: lista de capabilities encontradas nesta pagina (ate ' + MAX_CANDIDATES_PER_PAGE + ').',
+    '  Cada candidate: { suggested_id, description, input_fields, element_ref, capability_type, risk_level }',
     '  element_ref: o ref EXATO do elemento do snapshot que fundamentou esta descoberta (ex: e3, r1).',
-    '  NAO invente refs -- use apenas refs que aparecem no snapshot abaixo. Se nao houver ref claro, use string vazia.',
+    '  capability_type: "READ" ou "WRITE".',
+    '  risk_level: "safe", "reversible" ou "irreversible".',
     '- navigation_links: links de navegacao para OUTRAS areas funcionais do sistema (nao links externos/logout).',
     '  Cada link: { label, ref } -- use o ref exato do snapshot.',
-    '- has_write_actions: boolean indicando se a pagina tem acoes de escrita (para fins de registro, NAO para executar).',
+    '- has_write_actions: boolean indicando se a pagina tem acoes de escrita (metadado de pagina, NAO para executar).',
     '',
-    'Se a pagina atual nao tem formulario de busca/consulta, retorne candidates=[] e so os navigation_links.',
+    'Se a pagina atual nao tem capability observavel, retorne candidates=[] e so os navigation_links.',
     '',
     'URLs ja visitadas (NAO sugira navegar para elas): ' + (visitedUrls.length ? visitedUrls.join(', ') : '(nenhuma)') + '.',
     '',
@@ -58,6 +62,8 @@ export const DISCOVERY_LLM_SCHEMA = {
           description: { type: 'string' },
           input_fields: { type: 'array', items: { type: 'string' } },
           element_ref: { type: 'string' },
+          capability_type: { type: 'string', enum: ['READ', 'WRITE'] },
+          risk_level: { type: 'string', enum: ['safe', 'reversible', 'irreversible'] },
         },
       },
     },
@@ -218,9 +224,16 @@ export async function saveDiscoveryCandidates(opts) {
           identity_hash: identityHash,
           consolidated: true,
           consolidated_count: (existingRec.consolidated_count || 1) + 1,
+          capability_type: existingRec.capability_type || 'READ',
+          risk_level: existingRec.risk_level || 'safe',
         });
       } else {
         // 5. Create new candidate
+        // Evolucao Discovery (2026-08-12): classifica capability_type (READ/WRITE)
+        // e risk_level (reusa Reversibility). Defaults READ/safe preservam
+        // compatibilidade com legados e com candidates que o LLM nao classificar.
+        const candType = (cand.capability_type === 'WRITE') ? 'WRITE' : 'READ';
+        const candRisk = (cand.risk_level === 'reversible' || cand.risk_level === 'irreversible') ? cand.risk_level : 'safe';
         const record = await withTimeout(base44.entities.CapabilityCandidate.create({
           web_session_id: session.id,
           site_url: session.site_url,
@@ -233,6 +246,8 @@ export async function saveDiscoveryCandidates(opts) {
           canonical_id: canonicalId,
           identity_hash: identityHash,
           consolidated_count: 1,
+          capability_type: candType,
+          risk_level: candRisk,
         }), sdkTimeoutMs || 10000, 'candidate_create');
 
         saved.push({
@@ -245,6 +260,8 @@ export async function saveDiscoveryCandidates(opts) {
           identity_hash: identityHash,
           consolidated: false,
           consolidated_count: 1,
+          capability_type: candType,
+          risk_level: candRisk,
         });
       }
     } catch (e) { /* best-effort: skip this candidate */ }
