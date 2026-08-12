@@ -12,7 +12,7 @@
     },
     "suggested_id": {
       "type": "string",
-      "description": "ID sugerido da capability (ex: 'reservation.search', 'passenger.search'). Original, preservado durante consolidacao."
+      "description": "ID sugerido da capability (ex: 'reservation.search', 'passenger.search', 'listing.create'). Original, preservado durante consolidacao."
     },
     "description": {
       "type": "string",
@@ -61,6 +61,25 @@
       "type": "number",
       "default": 1,
       "description": "Quantas descobertas foram consolidadas nesta candidate. 1 = descoberta unica. Incrementa a cada consolidacao."
+    },
+    "capability_type": {
+      "type": "string",
+      "enum": [
+        "READ",
+        "WRITE"
+      ],
+      "default": "READ",
+      "description": "Natureza da capability. READ = consulta/listagem/filtro/visualizacao (nao altera estado). WRITE = criar/editar/cancelar/envio/exclusao/publicacao/acao (altera estado). Default READ para compatibilidade com registros legados pre-evolucao. O LLM classifica no momento da descoberta; o determinismo do canonical_id (verbo) diferencia READ de WRITE sem colidir no identity_hash."
+    },
+    "risk_level": {
+      "type": "string",
+      "enum": [
+        "safe",
+        "reversible",
+        "irreversible"
+      ],
+      "default": "safe",
+      "description": "Nivel de risco da capability (reusa o tipo Reversibility do ConnectorTypes). safe = sem efeito colateral (tipicamente READ). reversible = altera estado mas pode ser desfeito trivialmente. irreversible = altera estado sem desfazer trivial. Default safe para compatibilidade. SafetyGate le este campo na fase de execucao (nao na descoberta)."
     }
   },
   "required": [
