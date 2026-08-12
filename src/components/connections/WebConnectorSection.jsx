@@ -513,7 +513,7 @@ export default function WebConnectorSection() {
                   <Sparkles className="w-3.5 h-3.5 text-violet-400" />
                   Sessão conectada via extensão Chrome
                 </p>
-                <p className="text-muted-foreground leading-relaxed">
+                <p className="text-foreground/80 leading-relaxed">
                   Para descobrir capabilities, abra o <strong>popup da extensão</strong> (clique no ícone do MemoryOS na barra do Chrome) com a aba do site ativa e clique em "Descobrir no site ativo". Os candidatos aparecerão aqui automaticamente para validação.
                 </p>
               </div>
@@ -529,7 +529,7 @@ export default function WebConnectorSection() {
                 </button>
               </div>
             )}
-            <p className="text-[10px] text-muted-foreground leading-relaxed">
+            <p className="text-[11px] text-foreground/75 leading-relaxed">
               Navega o sistema autenticado e cataloga operações de leitura (buscas, consultas, listagens).
               Nunca executa escrita — apenas observa. Candidatos ficam como <span className="font-mono">CapabilityCandidate</span> para validação humana.
             </p>
@@ -580,7 +580,7 @@ export default function WebConnectorSection() {
 
             {candidates.length > 0 && (
               <div className="space-y-2">
-                <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                <p className="text-xs font-semibold text-foreground flex items-center gap-1.5">
                   <Search className="w-3.5 h-3.5" /> Candidatos descobertos ({candidates.length})
                 </p>
                 <div className="space-y-2">
@@ -590,19 +590,19 @@ export default function WebConnectorSection() {
                     return (
                       <div key={c.id} className="rounded-lg border border-border bg-muted/30 p-2.5">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-xs font-mono text-violet-400">{c.suggested_id}</span>
-                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-muted text-foreground/70 uppercase tracking-wide">{c.status}</span>
+                          <span className="text-xs font-mono text-violet-700 dark:text-violet-400">{c.suggested_id}</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-700 dark:text-violet-300 uppercase tracking-wide font-medium">{c.status}</span>
                         </div>
-                        {c.description && <p className="text-[11px] text-foreground/85 mt-1">{c.description}</p>}
+                        {c.description && <p className="text-xs text-foreground mt-1 leading-relaxed">{c.description}</p>}
                         {Array.isArray(fields) && fields.length > 0 && (
                           <div className="mt-1.5 flex flex-wrap gap-1">
                             {fields.map((f) => (
-                              <span key={f} className="text-[9px] px-1.5 py-0.5 rounded bg-muted text-foreground/75 font-mono">{f}</span>
+                              <span key={f} className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-foreground/90 font-mono">{f}</span>
                             ))}
                           </div>
                         )}
                         {c.discovered_from_url && (
-                          <p className="text-[9px] text-foreground/65 mt-1 font-mono truncate">{c.discovered_from_url}</p>
+                          <p className="text-[10px] text-foreground/80 mt-1 font-mono truncate">{c.discovered_from_url}</p>
                         )}
                         {c.status === 'candidate' && isAdmin && (
                           <div className="mt-2 flex flex-wrap gap-2">
@@ -645,7 +645,7 @@ export default function WebConnectorSection() {
           </div>
 
           {sessionSource === 'extension' ? (
-            <div className="rounded-lg border border-border bg-muted/20 p-3 text-[11px] text-muted-foreground">
+            <div className="rounded-lg border border-border bg-muted/20 p-3 text-[11px] text-foreground/80">
               Execução de capabilities para sessões da extensão é feita pelo <strong>popup da extensão</strong> (seletor de capability + campo de busca).
             </div>
           ) : (
@@ -654,7 +654,7 @@ export default function WebConnectorSection() {
         </div>
       )}
 
-      <p className="text-xs text-muted-foreground leading-relaxed">
+      <p className="text-xs text-foreground/75 leading-relaxed">
         O MemoryOS nunca armazena sua senha. Ela é usada só para preencher o formulário
         de login desta única vez; a partir daí, apenas os cookies da sessão (já autenticada)
         ficam salvos para reuso. Ver <span className="font-mono">ADR-019</span> para detalhes.
