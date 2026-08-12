@@ -9,6 +9,7 @@
  * content-site.js tem regexes com backslashes e serao entregues separadamente.
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+import JSZip from 'npm:jszip@3.10.1';
 
 const FILES = {
   'manifest.json': `{
@@ -1495,6 +1496,18 @@ export default async function (req) {
     const { operation } = body;
     if (operation && operation === 'listFiles') {
       return Response.json({ ok: true, files: Object.keys(FILES) });
+    }
+    // downloadZip: retorna um ZIP unico em base64. Bulletproof pro PS 5.1 —
+    // a resposta e { zip: "<base64>" } (depth 1, uma propriedade), entao o
+    // ConvertFrom-Json nunca trunca nem perde propriedades. O usuario decodifica
+    // com [System.Convert]::FromBase64String e extrai com Expand-Archive.
+    if (operation && operation === 'downloadZip') {
+      const zip = new JSZip();
+      for (const name of Object.keys(FILES)) {
+        zip.file(name, FILES[name]);
+      }
+      const b64 = await zip.generateAsync({ type: 'base64', compression: 'DEFLATE' });
+      return Response.json({ ok: true, zip: b64, version: '0.3.1' });
     }
     // default: retorna todos os arquivos como ARRAY de {name, content} —
     // formato que o PowerShell 5.1 itera de forma confiavel (objetos com
