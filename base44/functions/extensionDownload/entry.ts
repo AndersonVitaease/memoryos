@@ -45,8 +45,7 @@ const FILES = {
     "default_popup": "popup.html",
     "default_title": "MemoryOS Browser Bridge"
   }
-}
-`,
+}`,
   'popup.html': `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -81,8 +80,7 @@ const FILES = {
   <div class="footer muted">Conecte varios sites: cada aba vira uma sessao. Abra o app MemoryOS no Chrome para autenticar.</div>
   <script src="popup.js"></script>
 </body>
-</html>
-`,
+</html>`,
   'popup.css': `body {
   width: 280px;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -200,6 +198,7 @@ function renderSessions(sessions, activeId) {
       '</div>';
     sessionsListEl.appendChild(row);
   });
+  // Mostra painel de execucao/acao se houver sessao ativa
   const active = currentSessions.find((s) => s.webSessionId === activeSessionId);
   if (active) {
     activeSiteLabel.textContent = hostOf(active.siteUrl);
@@ -212,6 +211,7 @@ function renderSessions(sessions, activeId) {
   }
 }
 
+// Delegacao de cliques na lista de sessoes
 sessionsListEl.addEventListener('click', (ev) => {
   const btn = ev.target.closest('button');
   if (!btn) return;
@@ -245,7 +245,19 @@ function refreshStatus() {
     statusDot.className = 'dot dot-on';
     connectBtn.disabled = false;
     authBtn.classList.add('hidden');
+    // Diagnostico: se o bridge nao registrou, mostra o erro real pro usuario.
+    if (!status.bridgeId) {
+      authStatus.textContent = 'Autenticado, mas bridge nao registrado.';
+      if (status.bridgeError) showError('Erro do bridge: ' + status.bridgeError);
+      else showError('Bridge nao registrado. Clique em "Autenticar" numa aba do MemoryOS e tente de novo.');
+    } else if (status.bridgeError) {
+      showError('Aviso do bridge: ' + status.bridgeError);
+    }
     renderSessions(status.sessions, status.activeSessionId);
+    // Fix (2026-08-11): antes o botao "Descobrir" ficava travado se QUALQUER
+    // site estivesse descobrindo (checagem global). Agora checa so o estado
+    // do site ATIVO — varias descobertas rodam em paralelo em sites
+    // diferentes sem travar o botao dos outros.
     const activeSession = (status.sessions || []).find((s) => s.webSessionId === status.activeSessionId);
     if (activeSession && activeSession.discoveryRunning) {
       discoverBtn.disabled = true;
@@ -267,10 +279,16 @@ function refreshStatus() {
 
 refreshStatus();
 
+// Autenticacao manual via chrome.scripting — puxa o token do localStorage
+// da aba ativa. Funciona em QUALQUER dominio do MemoryOS (preview de branch,
+// producao, etc.), contornando a restricao de matches do content_scripts.
 authBtn.addEventListener('click', () => {
   clearError();
   authBtn.disabled = true;
   authBtn.textContent = 'Autenticando…';
+  // Puxa o token do localStorage da aba ativa via chrome.scripting.
+  // Contorna a restricao de dominio do content_scripts — funciona em
+  // qualquer preview de branch do MemoryOS, nao so nos 2 fixos do manifest.
   (async () => {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -293,6 +311,8 @@ authBtn.addEventListener('click', () => {
       if (!token) {
         throw new Error('Voce nao esta logado no MemoryOS nesta aba. Faca login no app e tente de novo.');
       }
+      // Reusa o handler MEMOS_TOKEN_CAPTURE do background (grava token +
+      // registra bridge + inicia heartbeat), sem precisar mudar o background.
       chrome.runtime.sendMessage({ type: 'MEMOS_TOKEN_CAPTURE', token, appBaseUrl: result.result.origin }, (res) => {
         authBtn.disabled = false;
         authBtn.textContent = 'Autenticar com a aba atual do MemoryOS';
@@ -314,6 +334,9 @@ connectBtn.addEventListener('click', () => {
   clearError();
   connectBtn.disabled = true;
   connectBtn.textContent = 'Conectando…';
+  // Fix (2026-08-11): rede de segurança — se o background nunca responder
+  // (service worker morto, fetch pendurado), reseta o botao em 35s em vez
+  // de deixar travado em "Conectando…" pra sempre.
   let done = false;
   const safety = setTimeout(() => {
     if (done) return;
@@ -426,6 +449,10 @@ discoverBtn.addEventListener('click', () => {
 });
 
 chrome.runtime.onMessage.addListener((msg) => {
+  // Fix (2026-08-11): com descobertas paralelas, mensagens de progresso
+  // chegam de VARIOS sites ao mesmo tempo — so atualiza a UI se for do site
+  // atualmente ativo/exibido no popup, senao a barra de status vira uma
+  // mistura confusa de progresso de sites diferentes.
   if (msg && msg.type === 'MEMOS_DISCOVERY_PROGRESS') {
     if (msg.webSessionId && msg.webSessionId !== activeSessionId) return;
     discoveryStatus.textContent = 'Descobrindo: ' + msg.pagesDone + ' pagina(s), ' + msg.candidatesSoFar + ' candidato(s).';
@@ -498,10 +525,15 @@ async function ensureBridgeRegistered() {
     clearTimeout(timeoutId);
     const data = await res.json();
     if (res.ok && data.bridgeId) {
-      await chrome.storage.local.set({ memos_bridge_id: data.bridgeId });
+      await chrome.storage.local.set({ memos_bridge_id: data.bridgeId, memos_bridge_error: '' });
       return data.bridgeId;
     }
-  } catch (e) { /* best-effort: tenta de novo no proximo ciclo */ }
+    // Guarda o erro real pro popup exibir (antes era silenciado).
+    const errMsg = (data && data.error) ? data.error : ('HTTP ' + res.status);
+    await chrome.storage.local.set({ memos_bridge_error: errMsg });
+  } catch (e) {
+    await chrome.storage.local.set({ memos_bridge_error: (e && e.message) ? e.message : String(e) });
+  }
   return memos_bridge_id || null;
 }
 
@@ -694,9 +726,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         ...s,
         discoveryRunning: !!(discMap[s.webSessionId] && discMap[s.webSessionId].running),
       }));
+      const _tokInfo = await chrome.storage.local.get(['memos_token', 'memos_bridge_id', 'memos_bridge_error', 'memos_app_base_url']);
       sendResponse({
-        hasToken: !!(await chrome.storage.local.get(['memos_token'])).memos_token,
-        appBaseUrl: (await chrome.storage.local.get(['memos_app_base_url'])).memos_app_base_url || null,
+        hasToken: !!_tokInfo.memos_token,
+        appBaseUrl: _tokInfo.memos_app_base_url || null,
+        bridgeId: _tokInfo.memos_bridge_id || null,
+        bridgeError: _tokInfo.memos_bridge_error || '',
         sessions: sessionsWithStatus,
         activeSessionId: activeId || (sessions[0] ? sessions[0].webSessionId : null),
         // Compatibilidade com UIs antigas: true se QUALQUER site esta descobrindo.
@@ -736,14 +771,38 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           sendResponse({ ok: true, session: existing, alreadyConnected: true });
           return;
         }
-        const result = await invokeFunction('webConnectorExtension', {
-          operation: 'registerSession',
-          siteUrl,
-          siteName: new URL(siteUrl).hostname,
-          tabId: String(tab.id),
-          bridgeId: await getBridgeId() || '',
-          browserSessionId: String(tab.id),
-        });
+        let result;
+        try {
+          result = await invokeFunction('webConnectorExtension', {
+            operation: 'registerSession',
+            siteUrl,
+            siteName: new URL(siteUrl).hostname,
+            tabId: String(tab.id),
+            bridgeId: await getBridgeId() || '',
+            browserSessionId: String(tab.id),
+          });
+        } catch (e) {
+          // Se o bridge estava invalido/offline, forca re-registro e tenta uma vez mais.
+          const em = (e && e.message) ? e.message : String(e);
+          if (/Bridge invalido|offline/i.test(em)) {
+            await chrome.storage.local.remove(['memos_bridge_id']);
+            const newBridge = await ensureBridgeRegistered();
+            if (!newBridge) {
+              const be = (await chrome.storage.local.get(['memos_bridge_error'])).memos_bridge_error || em;
+              throw new Error('Falha ao registrar bridge: ' + be);
+            }
+            result = await invokeFunction('webConnectorExtension', {
+              operation: 'registerSession',
+              siteUrl,
+              siteName: new URL(siteUrl).hostname,
+              tabId: String(tab.id),
+              bridgeId: newBridge,
+              browserSessionId: String(tab.id),
+            });
+          } else {
+            throw e;
+          }
+        }
         const session = {
           webSessionId: result.webSessionId,
           tabId: tab.id,

@@ -97,6 +97,14 @@ function refreshStatus() {
     statusDot.className = 'dot dot-on';
     connectBtn.disabled = false;
     authBtn.classList.add('hidden');
+    // Diagnostico: se o bridge nao registrou, mostra o erro real pro usuario.
+    if (!status.bridgeId) {
+      authStatus.textContent = 'Autenticado, mas bridge nao registrado.';
+      if (status.bridgeError) showError('Erro do bridge: ' + status.bridgeError);
+      else showError('Bridge nao registrado. Clique em "Autenticar" numa aba do MemoryOS e tente de novo.');
+    } else if (status.bridgeError) {
+      showError('Aviso do bridge: ' + status.bridgeError);
+    }
     renderSessions(status.sessions, status.activeSessionId);
     // Fix (2026-08-11): antes o botao "Descobrir" ficava travado se QUALQUER
     // site estivesse descobrindo (checagem global). Agora checa so o estado
