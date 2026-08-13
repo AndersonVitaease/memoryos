@@ -126,6 +126,7 @@ export async function resolveWebIntent(message) {
         webSessionSource: matched.source || 'headless',
         discoveredFromUrl: cap.discoveredFrom || matched.site_url,
         capability: cap,
+        flow: cap.flow || null,
         inputFields,
         searchTerm,
       },
@@ -170,6 +171,7 @@ export async function resolveWebIntents(message) {
         webSessionSource: matched.source || 'headless',
         discoveredFromUrl: cap.discoveredFrom || matched.site_url,
         capability: cap,
+        flow: cap.flow || null,
         inputFields,
         searchTerm,
       });

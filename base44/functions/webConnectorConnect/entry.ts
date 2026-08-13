@@ -37,6 +37,105 @@ const MCP_CALL_TIMEOUT_MS = 20000;
 const SDK_TIMEOUT_MS = 8000;
 const DEFAULT_SESSION_TTL_MS = 30 * 60 * 1000; // 30min — revalidável, ver WebSession.expires_at
 
+// Corpo do interpretador de flow (Maxun WhereWhatPair[]) executado dentro de
+// browser_run_code_unsafe. Sem backticks/interpolação — injetado como string.
+// Actions suportadas (Fase 1): goto, click, fill, press, waitForSelector,
+// scroll, scrape, scrapeList. Não suportadas → registradas em unsupported_actions.
+const FLOW_EXEC_BODY = `
+  const resolve = (v) => { if (v && typeof v === 'object' && !Array.isArray(v) && '$param' in v) { const k = v['$param']; return inputs[k] != null ? String(inputs[k]) : ''; } return v; };
+  const WRITE_RE = /(salvar|excluir|deletar|apagar|cancelar|enviar|criar|editar|create|edit|delete|remove|update|submeter)/i;
+  const unsupported = [];
+  const extracted = {};
+  const filled = [];
+  const guardBlock = [];
+  for (const pair of flow) {
+    if (!pair) continue;
+    // Fase 1: executa pares em ordem (flows lineares). O gate where.url nao
+    // deve pular um par cujo proprio goto o satisfaria (pagina ainda em
+    // about:blank antes da navegacao). Condicionais/branching = Fase 2.
+    const what = Array.isArray(pair.what) ? pair.what : [];
+    for (let i = 0; i < what.length; i++) {
+      const a = what[i] || {};
+      const act = a.action; const args = Array.isArray(a.args) ? a.args : [];
+      try {
+        if (act === 'goto') { const u = resolve(args[0]); if (u) await page.goto(String(u), { waitUntil: 'load', timeout: 15000 }).catch(()=>{}); }
+        else if (act === 'click') {
+          const sel = String(args[0] || '');
+          if (sel) {
+            const el = await page.$(sel);
+            if (el) {
+              const txt = await el.evaluate((e) => (e.textContent || e.value || '').trim()).catch(() => '');
+              if (WRITE_RE.test(txt)) { guardBlock.push({ selector: sel, text: txt.slice(0,80) }); }
+              else { await el.click({ timeout: 5000 }).catch(() => {}); }
+            }
+          }
+        }
+        else if (act === 'fill') {
+          const sel = String(args[0] || ''); const val = resolve(args[1]);
+          if (sel) { await page.fill(sel, String(val != null ? val : '')).catch(() => {}); filled.push(sel); }
+        }
+        else if (act === 'press') {
+          const sel = String(args[0] || ''); const key = String(args[1] || 'Enter');
+          if (sel) await page.press(sel, key).catch(() => {});
+        }
+        else if (act === 'waitForSelector') {
+          const sel = String(args[0] || ''); if (sel) await page.waitForSelector(sel, { timeout: 8000 }).catch(() => {});
+        }
+        else if (act === 'scroll') {
+          const y = typeof args[0] === 'number' ? args[0] : 800;
+          await page.evaluate((yy) => window.scrollBy(0, yy), y).catch(() => {});
+        }
+        else if (act === 'scrape') {
+          const cfg = args[0] && typeof args[0] === 'object' ? args[0] : {};
+          const fields = cfg.fields || cfg.selectors || {};
+          const obj = {};
+          for (const k of Object.keys(fields)) {
+            const f = fields[k] || {};
+            const sel = f.selector || (typeof f === 'string' ? f : '');
+            const attr = f.attribute || 'innerText';
+            try {
+              const el = sel ? await page.$(sel) : null;
+              if (el) obj[k] = attr === 'href' ? await el.evaluate((e) => e.href).catch(() => '') : await el.evaluate((e, a) => (e.getAttribute(a) || e.innerText || '').trim(), attr).catch(() => '');
+              else obj[k] = '';
+            } catch (e) { obj[k] = ''; }
+          }
+          Object.assign(extracted, obj);
+        }
+        else if (act === 'scrapeList') {
+          const cfg = args[0] && typeof args[0] === 'object' ? args[0] : {};
+          const ls = cfg.listSelector || '';
+          const fields = cfg.fields || {};
+          const lim = typeof cfg.limit === 'number' ? cfg.limit : 30;
+          if (ls) {
+            const items = await page.evaluate((l, fs, lm) => {
+              const out = [];
+              const nodes = Array.from(document.querySelectorAll(l)).slice(0, lm);
+              for (const n of nodes) {
+                const o = {};
+                for (const k of Object.keys(fs)) {
+                  const f = fs[k] || {};
+                  const sel = f.selector || (typeof f === 'string' ? f : '');
+                  const attr = f.attribute || 'innerText';
+                  const el = sel ? (n.matches(sel) ? n : n.querySelector(sel)) : null;
+                  if (!el) { o[k] = ''; continue; }
+                  o[k] = attr === 'href' ? el.href : (el.getAttribute(attr) || el.innerText || '').trim();
+                }
+                out.push(o);
+              }
+              return out;
+            }, ls, fields, lim).catch(() => []);
+            extracted[a.name || 'list'] = items;
+          }
+        }
+        else { unsupported.push(act); }
+      } catch (e) { unsupported.push(act + ':' + String((e && e.message) || e).slice(0, 120)); }
+    }
+    await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+  }
+  if (guardBlock.length > 0) return JSON.stringify({ error: 'write_guard', buttons: guardBlock });
+  return JSON.stringify({ url: page.url(), filled: filled, extracted: extracted, unsupported_actions: unsupported });
+`;
+
 // Mesma heurística de extração de refs usada em bugHunterRun (regex sobre o
 // snapshot de acessibilidade), reimplementada aqui de forma isolada — não
 // importa de bugHunterRun para manter as duas funções desacopladas.
@@ -590,11 +689,14 @@ export default async function (req) {
     // Isto garante que mesmo um falso-positivo da descoberta (um formulario de
     // criacao marcado erroneamente como busca) nao cause escrita.
     if (operation === 'executeCapability') {
-      const { webSessionId, discoveredFromUrl, inputFields, inputs } = body;
+      const { webSessionId, discoveredFromUrl, inputFields, inputs, flow } = body;
       if (!webSessionId) return Response.json({ error: 'Missing required field: webSessionId' }, { status: 400 });
-      if (!discoveredFromUrl) return Response.json({ error: 'Missing required field: discoveredFromUrl' }, { status: 400 });
-      if (!Array.isArray(inputFields) || inputFields.length === 0) return Response.json({ error: 'inputFields must be a non-empty array' }, { status: 400 });
-      if (!inputs || typeof inputs !== 'object') return Response.json({ error: 'inputs must be an object' }, { status: 400 });
+      const _hasFlow = Array.isArray(flow) && flow.length > 0;
+      if (!_hasFlow) {
+        if (!discoveredFromUrl) return Response.json({ error: 'Missing required field: discoveredFromUrl' }, { status: 400 });
+        if (!Array.isArray(inputFields) || inputFields.length === 0) return Response.json({ error: 'inputFields must be a non-empty array' }, { status: 400 });
+        if (!inputs || typeof inputs !== 'object') return Response.json({ error: 'inputs must be an object' }, { status: 400 });
+      }
 
       const session = await withTimeout(base44.entities.WebSession.get(webSessionId), SDK_TIMEOUT_MS, 'session_get');
       if (!session) return Response.json({ error: 'WebSession not found' }, { status: 404 });
@@ -604,6 +706,57 @@ export default async function (req) {
       try { cookies = JSON.parse(session.cookies || '[]'); } catch (e) { /* corrupted */ }
       if (!Array.isArray(cookies) || cookies.length === 0) {
         return Response.json({ error: 'No cookies stored in this WebSession.' }, { status: 409 });
+      }
+
+      // ── flow branch (Maxun recorder) ──────────────────────────────
+      // SE capability.flow existir: executa o flow (WhereWhatPair[]) na
+      // WebSession autenticada, traduzindo actions para browser_run_code_unsafe.
+      // SENÃO: mantém exatamente o form-fill heurístico abaixo (intacto).
+      if (_hasFlow) {
+        const escapedCookies = JSON.stringify(cookies);
+        const escapedInputs = JSON.stringify(inputs && typeof inputs === 'object' ? inputs : {});
+        const escapedFlow = JSON.stringify(flow);
+        let flowResult = '';
+        try {
+          const code = 'async (page) => {' +
+            'const cookies = ' + escapedCookies + ';' +
+            'const inputs = ' + escapedInputs + ';' +
+            'const flow = ' + escapedFlow + ';' +
+            'await page.context().addCookies(cookies);' +
+            FLOW_EXEC_BODY +
+            '}';
+          const res = await callMcpWithRetry('browser_run_code_unsafe', { code });
+          flowResult = extractRunCodeText(res);
+        } catch (e) {
+          return Response.json({ error: 'Flow execute failed: ' + e.message }, { status: 502 });
+        }
+        let outcome = null;
+        try {
+          let candidate = flowResult;
+          const m = candidate.match(/```(?:json)?\n?([\s\S]*?)\n?```/) || [null, candidate];
+          candidate = (m[1] || candidate).trim();
+          outcome = JSON.parse(candidate);
+          if (typeof outcome === 'string') outcome = JSON.parse(outcome);
+        } catch (e) { /* fallback below */ }
+
+        if (outcome && outcome.error === 'write_guard') {
+          return Response.json({ ok: false, error: 'Guarda de escrita: o flow tenta clicar em botões de escrita (' + (outcome.buttons ? outcome.buttons.map((b) => b.text || b.selector).join(', ') : '') + '). Execução abortada por segurança.', outcome }, { status: 422 });
+        }
+
+        let snapshotText = '';
+        try { const snap = await callMcp('browser_snapshot', {}); snapshotText = extractSnapshotText(snap); } catch (e) { /* best-effort */ }
+        try { await callMcp('browser_close', {}); } catch (e) { /* best-effort */ }
+
+        return Response.json({
+          ok: true,
+          webSessionId: session.id,
+          finalUrl: outcome && outcome.url ? outcome.url : '',
+          filled: outcome && Array.isArray(outcome.filled) ? outcome.filled : [],
+          extracted: outcome && outcome.extracted ? outcome.extracted : {},
+          unsupported_actions: outcome && Array.isArray(outcome.unsupported_actions) ? outcome.unsupported_actions : [],
+          snapshotText: snapshotText.slice(0, 12000),
+          message: 'Flow executado (read-only) na WebSession autenticada.',
+        });
       }
 
       let targetUrl = String(discoveredFromUrl).trim();
