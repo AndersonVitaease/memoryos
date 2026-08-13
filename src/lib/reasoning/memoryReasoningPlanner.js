@@ -537,6 +537,7 @@ ${fullText}`;
             discoveredFromUrl: intent.discoveredFromUrl,
             inputFields: intent.inputFields,
             inputs: _inputs,
+            flow: intent.flow || intent.capability?.flow || null,
           });
           const _d = _res?.data ?? _res;
           if (_d?.error) {
@@ -579,6 +580,20 @@ ${fullText}`;
         const _batchId = (crypto.randomUUID ? crypto.randomUUID() : ('batch_' + Date.now() + '_' + Math.random().toString(36).slice(2)));
         for (const intent of _extensionIntents) {
           try {
+            // Flow via extensao = Fase 2 (nao suportado nesta fase). Pula
+            // enfileiramento e registra diagnostico. Nao quebra o fluxo.
+            if (intent.flow || intent.capability?.flow) {
+              try {
+                await base44.entities.InteractionEvent.create({
+                  session_id: session?.id || '',
+                  actor: 'system',
+                  event_type: 'web_flow_not_supported_on_extension',
+                  raw_text: String(userMsg || '').slice(0, 300),
+                  payload: JSON.stringify({ capabilityId: intent.capability?.id || '', siteUrl: intent.siteUrl }),
+                });
+              } catch (e) { /* best-effort */ }
+              continue;
+            }
             // Gate Fase 4/5: authorizeExecution valida workspace membership + connector
             // habilitado + WebSession ativa + bridge online. Nenhum bypass.
             const _authRes = await base44.functions.invoke('connectorWorkspace', {
