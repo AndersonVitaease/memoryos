@@ -948,10 +948,25 @@ export default async function (req) {
         const code = `async (page) => {
   await page.context().addCookies(${escapedCookies});
   await page.goto(${escapedUrl}, { waitUntil: "load", timeout: 15000 }).catch(() => {});
+  // B6: early auth-wall check. goto(waitUntil:"load") resolve APOS redirects
+  // HTTP, entao page.url() ja e a URL final. Detectar /login imediatamente
+  // evita que networkidle + warm-up consumam o timeout MCP (20s) em redirects
+  // lentos para /login, retornando session_expired rapido. O check posterior
+  // (rede) permanece para SPAs que redirecionam via JS apos o load.
+  if (/\\/login/i.test(page.url())) {
+    return JSON.stringify({ error: "session_expired", url: page.url() });
+  }
   await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});
   // Warm-up: da 3s pro SPA renovar o access token antes de interagir.
-  await page.waitForTimeout(3000);
-  await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
+  // B6: warm-up (renovacao de access token) so e necessario para autenticado.
+  // PUBLIC (sem WebSession/token) pula o waitForTimeout(3000) e o networkidle
+  // adicional de 5s, reduzindo latency e evitando timeout MCP em redirects
+  // lentos para /login. O networkidle de 8s acima permanece comum aos dois.
+  const isPublic = ${String(_public)};
+  if (!isPublic) {
+    await page.waitForTimeout(3000);
+    await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
+  }
   if (/\\/login/i.test(page.url())) return JSON.stringify({ error: "session_expired", url: page.url() });
   const fields = ${escapedFields};
   const matchField = (frm, n) => frm.evaluateHandle((el, a) => {
@@ -1017,15 +1032,28 @@ export default async function (req) {
     }
   }
   if (filled.length===0) return JSON.stringify({ error: "no_field_filled" });
-  const sBtnH = await best.evaluateHandle((frm) => {
+  // B6: submit re-localizado. O codigo legado usava evaluateHandle->asElement
+  // -> ElementHandle->click(), onde o handle aponta para o no DOM no instante
+  // da captura; SPAs que re-renderizam o botao apos o fill (ex: Wikipedia)
+  // desanexam o no e lancam "Element is not attached to the DOM". A nova versao
+  // localiza o botao E clica nativamente dentro do MESMO evaluate, consultando
+  // o DOM vivo no instante do clique - nenhum handle estatico, nenhum detach.
+  // Mesma regex e mesma prioridade (btn.find por texto || btns[0]). Fallback
+  // best.press("Enter") preservado quando nao ha botao.
+  const clicked = await best.evaluate((frm) => {
     const btns = Array.from(frm.querySelectorAll("button, input[type=submit]"));
     const re = /(buscar|pesquisar|consultar|filtrar|search|find|consult|listar|go)/i;
-    return btns.find((b)=>re.test((b.textContent||b.value||"").trim())) || btns[0] || null;
-  }).catch(()=>null);
-  const sBtn = sBtnH && sBtnH.asElement ? sBtnH.asElement() : null;
+    const btn = btns.find((b) => re.test((b.textContent||b.value||"").trim())) || btns[0];
+    if (btn) { btn.click(); return true; }
+    return false;
+  }).catch(() => false);
   await Promise.all([
     page.waitForNavigation({ waitUntil: "load", timeout: 10000 }).catch(() => {}),
-    sBtn ? sBtn.click() : best.press("Enter"),
+    (async () => {
+      if (!clicked) {
+        try { await best.press("Enter"); } catch (e) {}
+      }
+    })(),
   ]);
   await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});
   // Scroll progressivo para disparar lazy-load dos cards de produto (ML/
