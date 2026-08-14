@@ -112,7 +112,7 @@ export async function validateSpec(
   // mas este gate permanece no Validator como defesa em profundidade.
   const finalUrl = String(result.finalUrl || '').toLowerCase();
   const snapshot = String(result.snapshotText || '').toLowerCase();
-  const authWall = /\\/login(?:[/?#]|$)/i.test(finalUrl)
+  const authWall = finalUrl.includes('/login')
     || (spec.webSessionRequired && /(?:username|password|senha|login|secure area)/i.test(snapshot)
       && /(?:enter|sign in|log in|login|senha|password)/i.test(snapshot));
   if (spec.webSessionRequired && authWall) {
