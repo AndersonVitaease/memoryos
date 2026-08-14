@@ -42,6 +42,7 @@ import { RuntimeDebug }               from "@/lib/debug/RuntimeDebug";
 import { runtimeObsStore }            from "./RuntimeObservabilityStore";
 import { MockCapabilityExecutor }      from "./MockCapabilityExecutor";
 import { ExecutionDispatcher }         from "./ExecutionDispatcher";
+import { ExecutionOrchestrator }       from "./ExecutionOrchestrator";
 import { executionContextFactory }     from "./ExecutionContextFactory";
 import type { ExecutionPolicy }        from "./ExecutionPolicy";
 import { DEFAULT_EXECUTION_POLICY }   from "./ExecutionPolicy";
@@ -54,6 +55,7 @@ type RuntimeEventListener = (event: RuntimeEvent) => void;
 
 export class ConversationRuntimeEngine {
   private readonly _dispatcher:  ExecutionDispatcher;
+  private readonly _orchestrator: ExecutionOrchestrator;
   private readonly _policy:      ExecutionPolicy;
   private readonly _contexts     = new Map<string, RuntimeExecutionContext>();
   private readonly _listeners:   RuntimeEventListener[] = [];
@@ -127,8 +129,9 @@ export class ConversationRuntimeEngine {
     executor: ICapabilityExecutor = new MockCapabilityExecutor(),
     policy:   ExecutionPolicy     = DEFAULT_EXECUTION_POLICY,
   ) {
-    this._dispatcher = new ExecutionDispatcher(executor);
-    this._policy     = policy;
+    this._dispatcher  = new ExecutionDispatcher(executor);
+    this._orchestrator = new ExecutionOrchestrator();
+    this._policy      = policy;
   }
 
   // ── Public API ────────────────────────────────────────────────────────────
@@ -231,70 +234,22 @@ export class ConversationRuntimeEngine {
         return this._finalize(ctx, "completed", t_start);
       }
 
-      for (let i = 0; i < plan.steps.length; i++) {
-        if (ctx.cancelRequested) return this._finalize(ctx, "cancelled", t_start);
-        if (Date.now() > (ctx.timeoutAt ?? Infinity)) return this._finalize(ctx, "timeout", t_start);
+      const orchestration = await this._orchestrator.execute({
+        steps: plan.steps,
+        isCancelled: () => ctx.cancelRequested,
+        deadlineAt: ctx.timeoutAt ?? Infinity,
+        dispatchStep: async (step) => {
+          ctx.currentStepIndex = plan.steps.indexOf(step);
+          return this._dispatchStep(ctx, step, policy);
+        },
+      });
 
-        ctx.currentStepIndex = i;
-        const step = plan.steps[i];
+      ctx.stepResults.push(...orchestration.results);
 
-        this._emit(ctx, "execution_step_started", step.id);
-
-        // D-01: registrar início do step com correlação completa (D-03)
-        const _stepStartedAt = Date.now();
-        runtimeObsStore.record({
-          executionId:  ctx.executionId,
-          stepId:       step.id,
-          connectorId:  step.connector,
-          capability:   step.capability,
-          kind:         "step_started",
-          status:       "running",
-          startedAt:    _stepStartedAt,
-          finishedAt:   _stepStartedAt,
-          durationMs:   0,
-          error:        null,
-          planId:       ctx.planId,
-          goalId:       ctx.goalId,
-        });
-
-        // Step execution delegated to ExecutionDispatcher
-        // B-03: connectorCtx from RuntimeExecutionContext propagated intact
-        const stepResult = await this._dispatcher.dispatch({
-          executionId:   ctx.executionId,
-          step,
-          stepTimeoutMs: Math.min(
-            policy.stepTimeoutMs,
-            (ctx.timeoutAt ?? Infinity) - Date.now(),
-          ),
-          connectorCtx: ctx.connectorCtx,
-        });
-
-        ctx.stepResults.push(stepResult);
-        this._emit(ctx, "execution_step_completed", step.id);
-
-        // D-01/D-04: registrar conclusão do step — dados reais do StepResult preservados
-        const _stepKind =
-          stepResult.status === "completed" ? "step_completed" :
-          stepResult.status === "timeout"   ? "step_timeout"   :
-          "step_failed";
-        runtimeObsStore.record({
-          executionId:  ctx.executionId,
-          stepId:       stepResult.stepId,
-          connectorId:  stepResult.connector,
-          capability:   stepResult.capability,
-          kind:         _stepKind,
-          status:       stepResult.status,
-          startedAt:    stepResult.startedAt,
-          finishedAt:   stepResult.finishedAt,
-          durationMs:   stepResult.durationMs,
-          error:        stepResult.error,
-          planId:       ctx.planId,
-          goalId:       ctx.goalId,
-        });
-
-        if (stepResult.status === "failed" || stepResult.status === "timeout") {
-          return this._finalize(ctx, stepResult.status === "timeout" ? "timeout" : "failed", t_start);
-        }
+      if (ctx.cancelRequested) return this._finalize(ctx, "cancelled", t_start);
+      if (orchestration.stoppedOnFailure) {
+        const failed = orchestration.results.find((result) => result.status === "failed" || result.status === "timeout");
+        return this._finalize(ctx, failed?.status === "timeout" ? "timeout" : "failed", t_start);
       }
 
       return this._finalize(ctx, "completed", t_start);
