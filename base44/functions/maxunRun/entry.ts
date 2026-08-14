@@ -29,6 +29,11 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 
 const MAXUN_BASE_URL = 'https://app.maxun.dev';
 const EXECUTE_PATH = (robotId: string) => `/api/sdk/robots/${encodeURIComponent(robotId)}/execute`;
+const DUPLICATE_PATH = (robotId: string) => `/api/sdk/robots/${encodeURIComponent(robotId)}/duplicate`;
+// Fase 7.9 — Robot-template padrao (scrape generico, example.com). Reusado como
+// base do duplicate(targetUrl) quando uma URL arbitrária chega ao provider.
+// Overridavel via body.templateRobotId. NUNCA e o robot final da execução.
+const TEMPLATE_ROBOT_ID = '41af170a-4372-4505-8dc9-e5c983512ef3';
 const DEFAULT_TIMEOUT_MS = 300000; // 5 min — execute e sincrono e pode demorar
 const MAX_TIMEOUT_MS = 600000;       // 10 min — teto
 const MIN_TIMEOUT_MS = 5000;
@@ -46,6 +51,93 @@ const FORMAT_OUTPUT_KEYS = [
 ];
 
 const TERMINAL_SUCCESS = new Set(['success', 'completed']);
+
+// Fase 7.9 — valida targetUrl: apenas http/https, hostname com ponto, sem espacos.
+// Rejeita javascript:/data:/file:/protocolos arbitrarios. Reuso de padrao inline
+// (mesma regra do webConnectorConnect 'start'); nao ha politica SSRF central em
+// base44/shared, entao a validação minima necessaria fica aqui.
+function validateTargetUrl(raw: string): { url: string } | { err: string } {
+  const s = String(raw || '').trim();
+  if (!s) return { err: 'targetUrl must not be empty' };
+  let u: URL;
+  try { u = new URL(s); } catch { return { err: 'targetUrl must be a valid http(s) URL' }; }
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+    return { err: 'targetUrl must use http or https protocol' };
+  }
+  if (!u.hostname || !u.hostname.includes('.') || /\s/.test(u.hostname)) {
+    return { err: 'targetUrl must have a valid hostname' };
+  }
+  return { url: u.toString() };
+}
+
+// Fase 7.9 — duplicate(templateRobotId, targetUrl) -> newRobotId. Chamada unica,
+// sincrona. Mapeia erros HTTP do duplicate sem mascarar (maxunStatus distinto do
+// execute). Nao loga/expondo a API key. SDK Cloud nao expoe DELETE — nao ha
+// cleanup; apenas registramos duplicatedRobotId no retorno (diagnostico).
+async function duplicateRobot(
+  templateRobotId: string,
+  targetUrl: string,
+  apiKey: string,
+  timeoutMs: number,
+): Promise<{ ok: true; newRobotId: string } | { ok: false; error: string; maxunStatus: string; status: number }> {
+  const dupUrl = MAXUN_BASE_URL + DUPLICATE_PATH(templateRobotId);
+  const controller = new AbortController();
+  const tid = setTimeout(() => controller.abort(), timeoutMs);
+  let res: Response | null = null;
+  let raw = '';
+  try {
+    res = await fetch(dupUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'x-api-key': apiKey },
+      body: JSON.stringify({ targetUrl }),
+      signal: controller.signal,
+    });
+    raw = await res.text();
+  } catch (e: any) {
+    clearTimeout(tid);
+    if (e && e.name === 'AbortError') {
+      return { ok: false, error: 'Duplicate excedeu o limite (timeout).', maxunStatus: 'timeout', status: 504 };
+    }
+    return { ok: false, error: 'Maxun unavailable (erro de rede no duplicate).', maxunStatus: 'network_error', status: 502 };
+  }
+  clearTimeout(tid);
+  const httpStatus = res!.status;
+  safeLog('[maxunRun]', { stage: 'duplicate_done', httpStatus, bodyHead: raw.slice(0, 300) });
+
+  if (httpStatus === 400) {
+    const m = tryParseMessage(raw) || 'Bad request (duplicate).';
+    return { ok: false, error: String(m), maxunStatus: 'bad_request', status: 400 };
+  }
+  if (httpStatus === 401) {
+    return { ok: false, error: 'Maxun unauthorized (duplicate) — verifique MAXUN_API_KEY.', maxunStatus: 'unauthorized', status: 401 };
+  }
+  if (httpStatus === 402) {
+    return { ok: false, error: 'Creditos insuficientes no Maxun Cloud (duplicate).', maxunStatus: 'insufficient_credits', status: 402 };
+  }
+  if (httpStatus === 404) {
+    const m = tryParseMessage(raw) || 'Template robot not found: ' + templateRobotId;
+    return { ok: false, error: String(m), maxunStatus: 'template_not_found', status: 404 };
+  }
+  if (httpStatus === 429) {
+    return { ok: false, error: 'Rate limit exceeded no Maxun Cloud (duplicate).', maxunStatus: 'rate_limited', status: 429 };
+  }
+  if (httpStatus >= 500) {
+    const m = tryParseMessage(raw) || 'Maxun server error (duplicate).';
+    return { ok: false, error: String(m), maxunStatus: 'server_error', status: 502 };
+  }
+  if (httpStatus !== 200 && httpStatus !== 201) {
+    return { ok: false, error: 'Unexpected duplicate status: ' + httpStatus, maxunStatus: 'unexpected_' + httpStatus, status: 502 };
+  }
+  let parsed: any = null;
+  try { parsed = JSON.parse(raw); } catch {
+    return { ok: false, error: 'Resposta do duplicate nao era JSON valido.', maxunStatus: 'parse_error', status: 502 };
+  }
+  const newRobotId: string = parsed?.data?.recording_meta?.id || parsed?.recording_meta?.id || parsed?.data?.id || parsed?.id || '';
+  if (!newRobotId || typeof newRobotId !== 'string') {
+    return { ok: false, error: 'Duplicate nao retornou o novo robotId.', maxunStatus: 'no_robot_id', status: 502 };
+  }
+  return { ok: true, newRobotId };
+}
 
 function safeLog(label: string, obj: Record<string, unknown>) {
   try {
@@ -117,13 +209,7 @@ export default async function (req: Request) {
       return Response.json({ ok: false, error: 'Invalid JSON body' }, { status: 400 });
     }
 
-    const { robotId, inputs, formats, timeoutMs } = body;
-
-    // 1) Validar robotId
-    if (typeof robotId !== 'string' || !robotId.trim()) {
-      return Response.json({ ok: false, error: 'Missing required field: robotId' }, { status: 400 });
-    }
-    const cleanRobotId = robotId.trim();
+    const { robotId, inputs, formats, timeoutMs, targetUrl, templateRobotId } = body;
 
     // 2) Validar inputs (aceito p/ compat de assinatura; NAO enviado ao Maxun cloud).
     if (inputs != null && (typeof inputs !== 'object' || Array.isArray(inputs))) {
@@ -162,7 +248,35 @@ export default async function (req: Request) {
       'x-api-key': apiKey, // nunca logado
     };
 
-    // 6) POST /api/sdk/robots/{robotId}/execute (sincrono)
+    // Fase 7.9 — Resolver o robotId final:
+    //   - Modo dinamico: targetUrl presente -> duplicate(template, targetUrl)
+    //     -> novo robotId -> execute(novo). targetUrl tem prioridade.
+    //   - Modo direto (legado): so robotId -> execute(robotId) direto.
+    //   Nao quebra retrocompatibilidade: chamadas que so passam robotId
+    //   continuam identicas (cleanRobotId = robotId, duplicatedRobotId = null).
+    let cleanRobotId = typeof robotId === 'string' ? robotId.trim() : '';
+    let duplicatedRobotId: string | null = null;
+    if (typeof targetUrl === 'string' && targetUrl.trim()) {
+      const _tv = validateTargetUrl(targetUrl.trim());
+      if (_tv.err) {
+        return Response.json({ ok: false, error: _tv.err, maxunStatus: 'invalid_target_url' }, { status: 400 });
+      }
+      const _tplId = (typeof templateRobotId === 'string' && templateRobotId.trim()) ? templateRobotId.trim() : TEMPLATE_ROBOT_ID;
+      const _dup = await duplicateRobot(_tplId, _tv.url, apiKey, tMs);
+      if (!_dup.ok) {
+        return Response.json(
+          { ok: false, error: _dup.error, maxunStatus: _dup.maxunStatus, duplicatedRobotId: null },
+          { status: _dup.status },
+        );
+      }
+      cleanRobotId = _dup.newRobotId;
+      duplicatedRobotId = _dup.newRobotId;
+      safeLog('[maxunRun]', { stage: 'duplicate_ok', templateRobotId: _tplId, newRobotId: _dup.newRobotId });
+    } else if (!cleanRobotId) {
+      return Response.json({ ok: false, error: 'Missing required field: robotId or targetUrl' }, { status: 400 });
+    }
+
+    // POST /api/sdk/robots/{robotId}/execute (sincrono) — robotId final
     const postUrl = MAXUN_BASE_URL + EXECUTE_PATH(cleanRobotId);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), tMs);
@@ -269,6 +383,7 @@ export default async function (req: Request) {
       crawlData: norm.crawlData,
       searchData: norm.searchData,
       outputs: norm.outputs,
+      duplicatedRobotId: duplicatedRobotId,
       maxunStatus: norm.status,
     });
   } catch (e: any) {

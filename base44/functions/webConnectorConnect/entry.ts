@@ -174,13 +174,20 @@ export default async function (req) {
     if (operation === 'executeCapability') {
       const _provider = typeof body.provider === 'string' ? body.provider.trim().toLowerCase() : '';
       const _robotId = typeof body.robotId === 'string' ? body.robotId.trim() : '';
-      if (_provider === 'maxun' && _robotId) {
+      // Fase 7.9: targetUrl dinamico. provider=maxun + (robotId OU targetUrl).
+      //  - robotId presente (sem targetUrl): modo direto legado (executa o robot tal qual).
+      //  - targetUrl presente (sem robotId): modo dinamico — duplicate(template, targetUrl)
+      //    -> novo robot -> execute. Reusa discoveredFromUrl como transportador de targetUrl
+      //    quando o Resolver produz uma intent Maxun generica (sem robotId especifico).
+      const _explicitTargetUrl = typeof body.targetUrl === 'string' ? body.targetUrl.trim() : '';
+      const _targetUrl = _explicitTargetUrl || (!_robotId ? (typeof body.discoveredFromUrl === 'string' ? body.discoveredFromUrl.trim() : '') : '');
+      if (_provider === 'maxun' && (_robotId || _targetUrl)) {
+        const _invokePayload: { robotId?: string; targetUrl?: string; formats: string[] } = { formats: ['markdown', 'text', 'html', 'links'] };
+        if (_targetUrl) _invokePayload.targetUrl = _targetUrl;
+        else _invokePayload.robotId = _robotId;
         let _mRes = null;
         try {
-          _mRes = await base44.functions.invoke('maxunRun', {
-            robotId: _robotId,
-            formats: ['markdown', 'text', 'html', 'links'],
-          });
+          _mRes = await base44.functions.invoke('maxunRun', _invokePayload);
         } catch (e) {
           // functions.invoke lança erro genérico ("Request failed with status
           // code 502") quando maxunRun retorna != 2xx. O motivo real (ex:
@@ -242,7 +249,9 @@ export default async function (req) {
           filled: [],
           links: _links,
           snapshotText: _snapshotText,
-          message: 'Capability executada via Maxun Cloud (robot ' + _robotId + ').',
+          message: _targetUrl
+            ? 'Capability executada via Maxun Cloud (duplicate targetUrl).'
+            : 'Capability executada via Maxun Cloud (robot ' + _robotId + ').',
         });
       }
     }
