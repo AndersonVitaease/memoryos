@@ -538,6 +538,11 @@ ${fullText}`;
             inputFields: intent.inputFields,
             inputs: _inputs,
             flow: intent.flow || intent.capability?.flow || null,
+            // Passthrough opaco: o Planner não interpreta Maxun. Apenas repassa
+            // campos da capability resolvida pelo WebSiteIntentResolver para que
+            // o webConnectorConnect decida o executor (Maxun vs Playwright).
+            provider: intent.capability?.provider || null,
+            robotId: intent.capability?.robotId || null,
           });
           const _d = _res?.data ?? _res;
           if (_d?.error) {
