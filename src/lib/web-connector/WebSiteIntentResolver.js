@@ -295,6 +295,27 @@ export async function resolveWebIntents(message) {
     if (intents.length === 0) {
       const _url = extractArbitraryUrl(message);
       if (_url) {
+        // Fase 7.19 — nao cria catch-all maxun.dynamic anonimo quando a origem
+        // da URL ja possui CapabilityMap com ao menos uma capability
+        // Playwright-backed (provider !== 'maxun'). Essas capabilities exigem
+        // WebSession ativa + cookies (branch Playwright do webConnectorConnect,
+        // linhas 787/797/801); rodar Maxun anonimo nesse dominio ignora a
+        // necessidade de sessao e pega CAPTCHA/login wall (caso ML, Fase 7.17).
+        // Discriminador semantico = provider (campo existente, usado pelo
+        // executor para despachar): 'maxun' = anonimo/sem sessao; ausente =
+        // Playwright/exige WebSession. Nao bloqueia dominios cujo map so tem
+        // caps provider==='maxun' (anonimas) nem dominios sem map. Nao cria
+        // WebSession nem login — apenas impede o fallback incorreto.
+        const _urlOrigin = originOf(_url);
+        const _knownMap = (maps || []).find((m) => originOf(m.site_url) === _urlOrigin);
+        if (_knownMap) {
+          let _kcaps = [];
+          try { _kcaps = JSON.parse(_knownMap.capabilities || '[]'); } catch (e) { _kcaps = []; }
+          const _hasPlaywrightBackedCap = _kcaps.some((c) => !(c && c.provider === 'maxun'));
+          if (_hasPlaywrightBackedCap) {
+            return { intents: [], debugReason: 'known_session_required_no_active_session', debugSiteOrigin: _urlOrigin };
+          }
+        }
         intents.push({
           siteUrl: _url,
           webSessionId: null,
