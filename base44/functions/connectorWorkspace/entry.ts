@@ -28,6 +28,7 @@ import {
   listCatalogConnectors,
   googleConnectorsForScopes,
 } from "../../shared/connectorCatalog.ts";
+import { credentialMatchesWorkspace } from "../../shared/webSessionWorkspace.ts";
 
 export default async function (req: Request): Promise<Response> {
   try {
@@ -232,7 +233,8 @@ export default async function (req: Request): Promise<Response> {
         checks.push({ name: "I_browser_session_matches_bridge", passed: true, detail: "browser_session_id da WebSession validado via bridge_id" });
         checks.push({ name: "K_session_active", passed: true, detail: "status=active verificado em E" });
       } else {
-        const credOk = await _checkCredential(base44, entry.credentialEntity, user.id, activeWsId);
+        const userWsIds = Array.isArray((fullUser as any)?.workspace_ids) ? (fullUser as any).workspace_ids : [];
+        const credOk = await _checkCredential(base44, entry.credentialEntity, user.id, activeWsId, userWsIds);
         checks.push({ name: "E_credential_exists", passed: credOk.ok, detail: credOk.detail });
         if (!credOk.ok) {
           return _reject("no_credential", credOk.detail, checks);
@@ -306,23 +308,32 @@ function _reject(reason: string, detail: string, checks: any[]): Response {
  * Check E: credencial existe para (user, workspace, connector).
  * Map connector_id -> entidade de credencial via catalog.credentialEntity.
  */
-async function _checkCredential(base44: any, credEntity: string, userId: string, workspaceId: string): Promise<{ ok: boolean; detail: string }> {
+async function _checkCredential(base44: any, credEntity: string, userId: string, workspaceId: string, userWorkspaceIds: string[]): Promise<{ ok: boolean; detail: string }> {
   try {
+    // B8: compat legada. Tokens pre-workspace tem workspace_id null/'default' e
+    // continuam funcionando sem backfill. Tokens em OUTRO workspace real do
+    // usuario sao rejeitados (sem fallback global). Filtra por user_id (largo)
+    // e valida client-side com credentialMatchesWorkspace.
     if (credEntity === "google") {
-      const tokens = await base44.asServiceRole.entities.GoogleOAuthToken.filter({ user_id: userId, workspace_id: workspaceId });
-      return tokens.length > 0 ? { ok: true, detail: `${tokens.length} GoogleOAuthToken` } : { ok: false, detail: "GoogleOAuthToken nao encontrado" };
+      const tokens = await base44.asServiceRole.entities.GoogleOAuthToken.filter({ user_id: userId });
+      const valid = (tokens || []).filter((t) => credentialMatchesWorkspace(t.workspace_id, workspaceId, userWorkspaceIds).ok);
+      return valid.length > 0 ? { ok: true, detail: `${valid.length} GoogleOAuthToken (workspace ${workspaceId})` } : { ok: false, detail: "GoogleOAuthToken nao encontrado para este workspace" };
     }
     if (credEntity === "github") {
-      const tokens = await base44.asServiceRole.entities.GitHubOAuthToken.filter({ user_id: userId, workspace_id: workspaceId });
-      return tokens.length > 0 ? { ok: true, detail: `${tokens.length} GitHubOAuthToken` } : { ok: false, detail: "GitHubOAuthToken nao encontrado" };
+      const tokens = await base44.asServiceRole.entities.GitHubOAuthToken.filter({ user_id: userId });
+      const valid = (tokens || []).filter((t) => credentialMatchesWorkspace(t.workspace_id, workspaceId, userWorkspaceIds).ok);
+      return valid.length > 0 ? { ok: true, detail: `${valid.length} GitHubOAuthToken (workspace ${workspaceId})` } : { ok: false, detail: "GitHubOAuthToken nao encontrado para este workspace" };
     }
     if (credEntity === "microsoft") {
-      const tokens = await base44.asServiceRole.entities.MicrosoftOAuthToken.filter({ user_id: userId, workspace_id: workspaceId });
-      return tokens.length > 0 ? { ok: true, detail: `${tokens.length} MicrosoftOAuthToken` } : { ok: false, detail: "MicrosoftOAuthToken nao encontrado" };
+      const tokens = await base44.asServiceRole.entities.MicrosoftOAuthToken.filter({ user_id: userId });
+      const valid = (tokens || []).filter((t) => credentialMatchesWorkspace(t.workspace_id, workspaceId, userWorkspaceIds).ok);
+      return valid.length > 0 ? { ok: true, detail: `${valid.length} MicrosoftOAuthToken (workspace ${workspaceId})` } : { ok: false, detail: "MicrosoftOAuthToken nao encontrado para este workspace" };
     }
     if (credEntity === "web") {
-      const sessions = await base44.asServiceRole.entities.WebSession.filter({ created_by_id: userId, workspace_id: workspaceId, status: "active" });
-      return sessions.length > 0 ? { ok: true, detail: `${sessions.length} WebSession ativa` } : { ok: false, detail: "WebSession ativa nao encontrada" };
+      // WebSession ativa do caller: legacy (workspace_id null) OU do workspace ativo.
+      const sessions = await base44.asServiceRole.entities.WebSession.filter({ created_by_id: userId, status: "active" });
+      const valid = (sessions || []).filter((s) => !s.workspace_id || s.workspace_id === workspaceId);
+      return valid.length > 0 ? { ok: true, detail: `${valid.length} WebSession ativa (workspace ${workspaceId})` } : { ok: false, detail: "WebSession ativa nao encontrada para este workspace" };
     }
     return { ok: false, detail: `credentialEntity desconhecido: ${credEntity}` };
   } catch (e) {

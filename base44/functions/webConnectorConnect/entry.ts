@@ -31,6 +31,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { connect as mcpConnect, resolveHeaders as mcpResolveHeaders, tryRecoverResultFromError } from '../../shared/mcpClient.ts';
 import { withTimeout, extractSnapshotText, extractRunCodeText, makeCallMcp } from '../../shared/mcpHelpers.ts';
 import { warmupSession } from '../../shared/webSessionWarmup.ts';
+import { assertSessionWorkspace } from '../../shared/webSessionWorkspace.ts';
 
 const PLAYWRIGHT_SERVER_NAME = 'playwright-web-connector';
 const MCP_CALL_TIMEOUT_MS = 20000;
@@ -156,6 +157,17 @@ export default async function (req) {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+    // B8: resolve workspace ativo server-side (nunca confia no cliente).
+    // assertSessionWorkspace valida que a WebSession pertence ao workspace
+    // ativo do caller. Sessoes headless legadas (workspace_id null) passam.
+    const _fullUser = await base44.asServiceRole.entities.User.get(user.id).catch(() => null);
+    const _activeWsId = (_fullUser as any)?.active_workspace_id || null;
+    function _wsReject(session) {
+      const ck = assertSessionWorkspace(session && session.workspace_id ? session.workspace_id : null, _activeWsId);
+      if (!ck.ok) return Response.json({ error: ck.detail, reason: ck.reason }, { status: 403 });
+      return null;
+    }
 
     let body = {};
     try { body = await req.json(); } catch { return Response.json({ error: 'Invalid JSON body' }, { status: 400 }); }
@@ -379,6 +391,8 @@ export default async function (req) {
       if (session.status !== 'pending_login') {
         return Response.json({ error: 'WebSession is not pending_login (status: ' + session.status + ')' }, { status: 409 });
       }
+      // B8: WebSession nao pode pertencer a outro workspace.
+      const _loginWsRej = _wsReject(session); if (_loginWsRej) return _loginWsRej;
 
       // Garante que o browser está na URL de login da sessão. O Playwright MCP
       // pode ter reiniciado o browser entre a operação start e login (são
@@ -589,6 +603,8 @@ export default async function (req) {
 
       const session = await withTimeout(base44.entities.WebSession.get(webSessionId), SDK_TIMEOUT_MS, 'session_get');
       if (!session) return Response.json({ error: 'WebSession not found' }, { status: 404 });
+      // B8: WebSession nao pode pertencer a outro workspace.
+      const _confirmWsRej = _wsReject(session); if (_confirmWsRej) return _confirmWsRej;
 
       // Guarda: o confirm só é permitido se a operação 'login' foi chamada
       // antes (marca last_used_at) E capturou cookies. Os cookies são
@@ -649,6 +665,8 @@ export default async function (req) {
       if (session.status !== 'active') {
         return Response.json({ error: 'WebSession is not active (status: ' + session.status + '). Reautentique via start+login+confirm.' }, { status: 409 });
       }
+      // B8: WebSession nao pode pertencer a outro workspace.
+      const _useWsRej = _wsReject(session); if (_useWsRej) return _useWsRej;
 
       let cookies = [];
       try {
@@ -763,6 +781,12 @@ export default async function (req) {
       const { webSessionId } = body;
       if (!webSessionId) return Response.json({ error: 'Missing required field: webSessionId' }, { status: 400 });
 
+      // B8: carrega a sessao e valida workspace antes de revogar. Sem isso,
+      // um usuario poderia revogar a sessao de outro workspace pelo id.
+      const _revokeSession = await withTimeout(base44.entities.WebSession.get(webSessionId), SDK_TIMEOUT_MS, 'session_get');
+      if (!_revokeSession) return Response.json({ error: 'WebSession not found' }, { status: 404 });
+      const _revokeWsRej = _wsReject(_revokeSession); if (_revokeWsRej) return _revokeWsRej;
+
       try {
         await withTimeout(base44.entities.WebSession.update(webSessionId, { status: 'revoked' }), SDK_TIMEOUT_MS, 'session_revoke');
       } catch (e) {
@@ -805,6 +829,8 @@ export default async function (req) {
         session = await withTimeout(base44.entities.WebSession.get(webSessionId), SDK_TIMEOUT_MS, 'session_get');
         if (!session) return Response.json({ error: 'WebSession not found' }, { status: 404 });
         if (session.status !== 'active') return Response.json({ error: 'WebSession is not active (status: ' + session.status + ')' }, { status: 409 });
+        // B8: WebSession nao pode pertencer a outro workspace.
+        const _execWsRej = _wsReject(session); if (_execWsRej) return _execWsRej;
         try { cookies = JSON.parse(session.cookies || '[]'); } catch (e) { /* corrupted */ }
         if (!Array.isArray(cookies) || cookies.length === 0) {
           return Response.json({ error: 'No cookies stored in this WebSession.' }, { status: 409 });
