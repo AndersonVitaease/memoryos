@@ -12,7 +12,7 @@
  *
  * Strings do prompt sem acento (mesma convencao do webConnectorDiscover).
  */
-import { withTimeout } from './mcpHelpers.ts';
+import { withTimeout, extractRunCodeText } from './mcpHelpers.ts';
 import { canonicalizeId, computeIdentityHash, originOf } from './capabilityIdentity.ts';
 
 export const MAX_CANDIDATES_PER_PAGE = 5;
@@ -86,6 +86,125 @@ export function parseDiscoveryLLMResult(llmResult) {
   const navigationLinks = (llmResult && Array.isArray(llmResult.navigation_links)) ? llmResult.navigation_links : [];
   const hasWriteActions = !!(llmResult && llmResult.has_write_actions);
   return { candidates, navigationLinks, hasWriteActions };
+}
+
+/**
+ * classifyAuthenticationRequirement -- Classificacao deterministica (sem LLM)
+ * do resultado de um probe de autenticacao. Conservadora:
+ *   session_required: finalUrl em rota de login/auth (segmento final) OU
+ *                     snapshot com campo de senha + marcador de login.
+ *   public:           probe carregou sem sinais de auth-wall.
+ *   unknown:          erro, timeout, finalUrl vazia/about:blank.
+ *
+ * NAO transforma a mera presenca da palavra "login" em session_required --
+ * exige campo de senha junto a marcador, OU finalUrl claramente em rota de
+ * auth. NAO casa /login-history, /author, /authenticate.
+ */
+export function classifyAuthenticationRequirement(r: {
+  finalUrl?: string;
+  hasPassword?: boolean;
+  bodyText?: string;
+  error?: string;
+}): 'public' | 'session_required' | 'unknown' {
+  if (r && r.error) return 'unknown';
+  const finalUrl = String((r && r.finalUrl) || '').trim();
+  if (!finalUrl || finalUrl === 'about:blank') return 'unknown';
+  if (/\/(login|signin|sign-in|account\/login)(?=\/|\?|#|$)/i.test(finalUrl)) return 'session_required';
+  if (/\/auth(?=\/|\?|#|$)/i.test(finalUrl)) return 'session_required';
+  const hasPassword = !!(r && r.hasPassword);
+  const bodyText = String((r && r.bodyText) || '');
+  const hasLoginMarker = /login page|log in|sign in|sign-in|enter your password|esqueceu a senha|para acessar a area/i.test(bodyText);
+  if (hasPassword && hasLoginMarker) return 'session_required';
+  return 'public';
+}
+
+/**
+ * probeAuthenticationRequirement -- Probe deterministico (sem LLM, sem cookies,
+ * sem WebSession) sobre a necessidade de autenticacao de discoveredFromUrl.
+ *
+ * viaNewContext=true  (in-crawl): cria contexto isolado via browser.newContext()
+ *   -- nao disturba o contexto autenticado do crawl. Se browser() indisponivel
+ *   (persistent context) -> unknown (conservador).
+ * viaNewContext=false (standalone): assume que o caller ja fez browser_close
+ *   (contexto limpo, sem cookies); navega e classifica. Mais confiavel entre
+ *   configuracoes de MCP.
+ *
+ * NAO bypassa CAPTCHA/Cloudflare/anti-bot -- bloqueio -> unknown (nao public).
+ */
+export async function probeAuthenticationRequirement(opts: {
+  callMcp: (op: string, args?: Record<string, unknown>) => Promise<unknown>;
+  url: string;
+  viaNewContext?: boolean;
+}): Promise<'public' | 'session_required' | 'unknown'> {
+  const url = String(opts.url || '').trim();
+  if (!url) return 'unknown';
+  const escapedUrl = JSON.stringify(url);
+  let probeRaw: { finalUrl?: string; hasPassword?: boolean; bodyText?: string; error?: string } | null = null;
+  try {
+    let code: string;
+    if (opts.viaNewContext) {
+      code = 'async (page) => {' +
+        '  try {' +
+        '    const browser = page.context().browser();' +
+        '    if (!browser) return JSON.stringify({ error: "no_browser" });' +
+        '    const ctx = await browser.newContext();' +
+        '    const p = await ctx.newPage();' +
+        '    try {' +
+        '      await p.goto(' + escapedUrl + ', { waitUntil: "load", timeout: 15000 }).catch(() => {});' +
+        '      await p.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});' +
+        '      const finalUrl = p.url();' +
+        '      const hasPass = await p.$("input[type=password]");' +
+        '      const bodyText = await p.evaluate(() => document.body ? (document.body.innerText || "").slice(0, 4000) : "").catch(() => "");' +
+        '      return JSON.stringify({ finalUrl: finalUrl, hasPassword: !!hasPass, bodyText: String(bodyText).slice(0, 2000) });' +
+        '    } finally { await ctx.close().catch(() => {}); }' +
+        '  } catch (e) { return JSON.stringify({ error: String((e && e.message) || e).slice(0, 200) }); }' +
+        '}';
+    } else {
+      code = 'async (page) => {' +
+        '  try {' +
+        '    await page.goto(' + escapedUrl + ', { waitUntil: "load", timeout: 15000 }).catch(() => {});' +
+        '    await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});' +
+        '    const finalUrl = page.url();' +
+        '    const hasPass = await page.$("input[type=password]");' +
+        '    const bodyText = await page.evaluate(() => document.body ? (document.body.innerText || "").slice(0, 4000) : "").catch(() => "");' +
+        '    return JSON.stringify({ finalUrl: finalUrl, hasPassword: !!hasPass, bodyText: String(bodyText).slice(0, 2000) });' +
+        '  } catch (e) { return JSON.stringify({ error: String((e && e.message) || e).slice(0, 200) }); }' +
+        '}';
+    }
+    const res = await opts.callMcp('browser_run_code_unsafe', { code });
+    const text = extractRunCodeText(res);
+    const m = text.match(/```(?:json)?\n?([\s\S]*?)\n?```/) || [null, text];
+    probeRaw = JSON.parse((m[1] || text).trim());
+    if (typeof probeRaw === 'string') probeRaw = JSON.parse(probeRaw);
+  } catch (e) {
+    probeRaw = { error: String((e && (e as any).message) || e).slice(0, 200) };
+  }
+  return classifyAuthenticationRequirement(probeRaw || { error: 'no_probe_result' });
+}
+
+/**
+ * deriveAuthenticationRequirement -- Reduz o array de evidencias (JSON) de um
+ * CapabilityCandidate a um unico authentication_requirement. Conservador:
+ *   - qualquer session_required -> session_required
+ *   - senao, qualquer unknown -> unknown (nao assume publico)
+ *   - senao, se alguma com campo for public -> public
+ *   - sem campo em nenhuma evidence -> unknown (legado pre-B4)
+ */
+export function deriveAuthenticationRequirement(evidences: unknown[]): 'public' | 'session_required' | 'unknown' {
+  if (!Array.isArray(evidences) || evidences.length === 0) return 'unknown';
+  let hasSession = false, hasUnknown = false, hasPublic = false, anyField = false;
+  for (const e of evidences) {
+    if (!e || typeof e !== 'object') continue;
+    const ar = (e as Record<string, unknown>).authentication_requirement;
+    if (ar === 'session_required') { hasSession = true; anyField = true; }
+    else if (ar === 'unknown') { hasUnknown = true; anyField = true; }
+    else if (ar === 'public') { hasPublic = true; anyField = true; }
+  }
+  if (!anyField) return 'unknown';
+  if (hasSession) return 'session_required';
+  if (hasUnknown) return 'unknown';
+  if (hasPublic) return 'public';
+  return 'unknown';
 }
 
 /**
@@ -199,7 +318,7 @@ function extractVerb(suggestedId) {
   return parts[parts.length - 1].toLowerCase();
 }
 
-function buildEvidence(cand, snapshotText, currentUrl, pageIdx, hasWriteActions, session) {
+function buildEvidence(cand, snapshotText, currentUrl, pageIdx, hasWriteActions, session, authenticationRequirement) {
   const elementRef = (typeof cand.element_ref === 'string') ? cand.element_ref.trim() : '';
   const element = elementRef ? resolveElementFromSnapshot(snapshotText, elementRef) : null;
   return {
@@ -211,6 +330,9 @@ function buildEvidence(cand, snapshotText, currentUrl, pageIdx, hasWriteActions,
     action_inferred: extractVerb(cand.suggested_id),
     source: session.source || 'headless',
     has_write_actions: hasWriteActions,
+    // FASE B4: resultado do probe deterministico sobre a necessidade de
+    // autenticacao desta pagina. Distinto de web_session_id (proveniencia).
+    authentication_requirement: authenticationRequirement || 'unknown',
   };
 }
 
@@ -225,7 +347,7 @@ function buildEvidence(cand, snapshotText, currentUrl, pageIdx, hasWriteActions,
  * seguro porque o filter ja validou que o registro pertence ao caller.
  */
 export async function saveDiscoveryCandidates(opts) {
-  const { base44, session, llmResult, currentUrl, pageIdx, sdkTimeoutMs, snapshotText } = opts;
+  const { base44, session, llmResult, currentUrl, pageIdx, sdkTimeoutMs, snapshotText, authenticationRequirement } = opts;
   const { candidates, hasWriteActions } = parseDiscoveryLLMResult(llmResult);
   const pageCandidates = candidates.slice(0, MAX_CANDIDATES_PER_PAGE);
   const saved = [];
@@ -235,7 +357,7 @@ export async function saveDiscoveryCandidates(opts) {
     if (!cand.suggested_id) continue;
 
     // 1. Build structured evidence from snapshot ref (deterministic -- no LLM invention)
-    const evidence = buildEvidence(cand, snapshotText || '', currentUrl, pageIdx, hasWriteActions, session);
+    const evidence = buildEvidence(cand, snapshotText || '', currentUrl, pageIdx, hasWriteActions, session, authenticationRequirement || 'unknown');
 
     // 2. Compute identity (conservative, deterministic)
     const canonicalId = canonicalizeId(cand.suggested_id);

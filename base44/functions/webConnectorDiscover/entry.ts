@@ -24,7 +24,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { connect as mcpConnect, resolveHeaders as mcpResolveHeaders, tryRecoverResultFromError } from '../../shared/mcpClient.ts';
 import { withTimeout, extractSnapshotText, extractRunCodeText, makeCallMcp } from '../../shared/mcpHelpers.ts';
 import { warmupSession } from '../../shared/webSessionWarmup.ts';
-import { buildDiscoveryPrompt, DISCOVERY_LLM_SCHEMA, saveDiscoveryCandidates } from '../../shared/webDiscovery.ts';
+import { buildDiscoveryPrompt, DISCOVERY_LLM_SCHEMA, saveDiscoveryCandidates, probeAuthenticationRequirement } from '../../shared/webDiscovery.ts';
 
 const PLAYWRIGHT_SERVER_NAME = 'playwright-web-connector';
 const MCP_CALL_TIMEOUT_MS = 25000;
@@ -346,9 +346,17 @@ export default async function (req) {
           continue;
         }
 
+        // FASE B4: probe de autenticacao (sem cookies, contexto isolado via
+        // newContext) para a pagina atual. Determina se a capability exige
+        // sessao ou e publica. Best-effort: falha -> unknown (conservador).
+        let authenticationRequirement: 'public' | 'session_required' | 'unknown' = 'unknown';
+        try {
+          authenticationRequirement = await probeAuthenticationRequirement({ callMcp, url: currentUrl, viaNewContext: true });
+        } catch (e) { /* best-effort: unknown -> routing conservador playwright */ }
+
         // Salva candidatos como CapabilityCandidate records (logica compartilhada
         // em saveDiscoveryCandidates — mesma funcao usada pela extensao Chrome).
-        const savedCandidates = await saveDiscoveryCandidates({ base44, session, llmResult, currentUrl, pageIdx, sdkTimeoutMs: SDK_TIMEOUT_MS, snapshotText });
+        const savedCandidates = await saveDiscoveryCandidates({ base44, session, llmResult, currentUrl, pageIdx, sdkTimeoutMs: SDK_TIMEOUT_MS, snapshotText, authenticationRequirement });
         for (const sc of savedCandidates) allCandidates.push(sc);
 
         // Descoberta AUTOMATICA multi-area (fix 2026-08-10, branching): em vez
@@ -434,6 +442,30 @@ export default async function (req) {
           snapshot_preview: debugLastSnapshotPreview,
         } : undefined,
       });
+    }
+
+    // ── operation: probe ──────────────────────────────────────────────
+    // FASE B4: Probe deterministico de autenticacao (sem LLM, sem cookies, sem
+    // WebSession). Retorna public | session_required | unknown. Usado para
+    // classificar uma URL antes de compilar/executar uma capability.
+    if (operation === 'probe') {
+      const { url: probeUrlRaw } = body;
+      if (!probeUrlRaw || typeof probeUrlRaw !== 'string') return Response.json({ error: 'Missing required field: url' }, { status: 400 });
+      let _normalizedUrl = probeUrlRaw.trim();
+      if (!/^https?:\/\//i.test(_normalizedUrl)) _normalizedUrl = 'https://' + _normalizedUrl;
+      try {
+        const _u = new URL(_normalizedUrl);
+        if (!_u.hostname || !_u.hostname.includes('.') || /\s/.test(_u.hostname)) {
+          return Response.json({ error: 'URL invalida' }, { status: 400 });
+        }
+      } catch (e) {
+        return Response.json({ error: 'URL invalida' }, { status: 400 });
+      }
+      // Contexto limpo: fecha browser pendurado antes de navegar sem cookies.
+      try { await callMcp('browser_close', {}); } catch (e) { /* best-effort */ }
+      const _probeResult = await probeAuthenticationRequirement({ callMcp, url: _normalizedUrl, viaNewContext: false });
+      try { await callMcp('browser_close', {}); } catch (e) { /* best-effort: libera RAM */ }
+      return Response.json({ ok: true, url: _normalizedUrl, authentication_requirement: _probeResult });
     }
 
     return Response.json({ error: 'Unknown operation: ' + operation }, { status: 400 });
