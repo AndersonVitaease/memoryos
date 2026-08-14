@@ -105,6 +105,25 @@ export async function validateSpec(
     };
   }
 
+  // Nunca considere um snapshot da página de login como evidência de uma
+  // capability autenticada. Isso evita o falso PASS observado no Teste 2:
+  // Maxun/Playwright podem produzir texto válido da página errada após um
+  // redirect de autenticação. O executor também sinaliza session_expired,
+  // mas este gate permanece no Validator como defesa em profundidade.
+  const finalUrl = String(result.finalUrl || '').toLowerCase();
+  const snapshot = String(result.snapshotText || '').toLowerCase();
+  const authWall = /\\/login(?:[/?#]|$)/i.test(finalUrl)
+    || (spec.webSessionRequired && /(?:username|password|senha|login|secure area)/i.test(snapshot)
+      && /(?:enter|sign in|log in|login|senha|password)/i.test(snapshot));
+  if (spec.webSessionRequired && authWall) {
+    return {
+      status: 'fail', executor: sel.executor,
+      reason: 'authentication_wall_detected',
+      robotIdUsed: result.robotIdUsed || null,
+      evidence,
+    };
+  }
+
   const satisfied = checkExpectedResult(spec, result);
   if (satisfied) {
     return {
