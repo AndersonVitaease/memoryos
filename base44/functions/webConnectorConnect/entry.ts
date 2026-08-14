@@ -784,7 +784,12 @@ export default async function (req) {
     // criacao marcado erroneamente como busca) nao cause escrita.
     if (operation === 'executeCapability') {
       const { webSessionId, discoveredFromUrl, inputFields, inputs, flow } = body;
-      if (!webSessionId) return Response.json({ error: 'Missing required field: webSessionId' }, { status: 400 });
+      // B5: PUBLIC (webSessionRequired === false, explicitamente) executa sem
+      // WebSession e sem cookies. Ausente ou true => caminho autenticado atual.
+      // NUNCA tratar ausente como publico (compat retroativa: callers antigos
+      // como Planner ETAPA 0.7 e WebConnector runtime nao enviam o campo).
+      const _public = (body.webSessionRequired === false);
+      if (!_public && !webSessionId) return Response.json({ error: 'Missing required field: webSessionId' }, { status: 400 });
       const _hasFlow = Array.isArray(flow) && flow.length > 0;
       if (!_hasFlow) {
         if (!discoveredFromUrl) return Response.json({ error: 'Missing required field: discoveredFromUrl' }, { status: 400 });
@@ -793,14 +798,17 @@ export default async function (req) {
         const _hasInputs = Array.isArray(inputFields) && inputFields.length > 0;
         if (_hasInputs && (!inputs || typeof inputs !== 'object')) return Response.json({ error: 'inputs must be an object' }, { status: 400 });
       }
-      const session = await withTimeout(base44.entities.WebSession.get(webSessionId), SDK_TIMEOUT_MS, 'session_get');
-      if (!session) return Response.json({ error: 'WebSession not found' }, { status: 404 });
-      if (session.status !== 'active') return Response.json({ error: 'WebSession is not active (status: ' + session.status + ')' }, { status: 409 });
-
+      // B5: autenticado carrega WebSession + cookies; publico pula ambos (cookies=[]).
+      let session = null;
       let cookies = [];
-      try { cookies = JSON.parse(session.cookies || '[]'); } catch (e) { /* corrupted */ }
-      if (!Array.isArray(cookies) || cookies.length === 0) {
-        return Response.json({ error: 'No cookies stored in this WebSession.' }, { status: 409 });
+      if (!_public) {
+        session = await withTimeout(base44.entities.WebSession.get(webSessionId), SDK_TIMEOUT_MS, 'session_get');
+        if (!session) return Response.json({ error: 'WebSession not found' }, { status: 404 });
+        if (session.status !== 'active') return Response.json({ error: 'WebSession is not active (status: ' + session.status + ')' }, { status: 409 });
+        try { cookies = JSON.parse(session.cookies || '[]'); } catch (e) { /* corrupted */ }
+        if (!Array.isArray(cookies) || cookies.length === 0) {
+          return Response.json({ error: 'No cookies stored in this WebSession.' }, { status: 409 });
+        }
       }
 
       // ── authenticated page-read branch ────────────────────────────
@@ -862,7 +870,7 @@ export default async function (req) {
         try { await callMcp('browser_close', {}); } catch (e) { /* best-effort */ }
         return Response.json({
           ok: true,
-          webSessionId: session.id,
+          webSessionId: session ? session.id : (webSessionId || null),
           finalUrl,
           filled: [],
           links: [],
@@ -912,7 +920,7 @@ export default async function (req) {
 
         return Response.json({
           ok: true,
-          webSessionId: session.id,
+          webSessionId: session ? session.id : (webSessionId || null),
           finalUrl: outcome && outcome.url ? outcome.url : '',
           filled: outcome && Array.isArray(outcome.filled) ? outcome.filled : [],
           extracted: outcome && outcome.extracted ? outcome.extracted : {},
@@ -1125,7 +1133,7 @@ export default async function (req) {
 
       return Response.json({
         ok: true,
-        webSessionId: session.id,
+        webSessionId: session ? session.id : (webSessionId || null),
         finalUrl: outcome && outcome.url ? outcome.url : '',
         filled: outcome && outcome.filled ? outcome.filled : [],
         links: outcome && Array.isArray(outcome.links) ? outcome.links : [],

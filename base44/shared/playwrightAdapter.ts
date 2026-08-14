@@ -54,6 +54,9 @@ export const playwrightAdapter: ExecutorAdapter = {
       discoveredFromUrl: spec.entryUrl,
       inputFields: spec.inputs,
       inputs: declaredInputs,
+      // B5: sinaliza public (webSessionRequired===false) vs autenticado.
+      // webConnectorConnect so relaxa o gate de sessao/cookies quando ===false.
+      webSessionRequired: spec.webSessionRequired,
     };
     if (Array.isArray(spec.actions) && spec.actions.length > 0) payload.flow = spec.actions;
 

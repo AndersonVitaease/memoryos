@@ -24,6 +24,10 @@ export function selectExecutor(spec: AutomationSpec | null | undefined): SelectR
   if (spec.executor === 'playwright' && spec.webSessionRequired) {
     return { executor: 'playwright', reason: 'playwright_websession_required' };
   }
+  // B5: playwright PUBLICO (webSessionRequired===false) — executa sem WebSession.
+  if (spec.executor === 'playwright' && !spec.webSessionRequired) {
+    return { executor: 'playwright', reason: 'playwright_public' };
+  }
   if (spec.executor === 'maxun') {
     if (!spec.robotId && !spec.targetUrl) {
       return { executor: null, reason: 'maxun_no_robot_and_no_target' };
