@@ -302,6 +302,63 @@ export class ConversationRuntimeEngine {
 
   // ── Private ────────────────────────────────────────────────────────────────
 
+  private async _dispatchStep(
+    ctx: RuntimeExecutionContext,
+    step: import("@/lib/planning-engine-e022/ExecutionPlanTypes").ExecutionStep,
+    policy: ExecutionPolicy,
+  ): Promise<import("./RuntimeTypes").StepResult> {
+    this._emit(ctx, "execution_step_started", step.id);
+
+    const _stepStartedAt = Date.now();
+    runtimeObsStore.record({
+      executionId:  ctx.executionId,
+      stepId:       step.id,
+      connectorId:  step.connector,
+      capability:   step.capability,
+      kind:         "step_started",
+      status:       "running",
+      startedAt:    _stepStartedAt,
+      finishedAt:   _stepStartedAt,
+      durationMs:   0,
+      error:        null,
+      planId:       ctx.planId,
+      goalId:       ctx.goalId,
+    });
+
+    const stepResult = await this._dispatcher.dispatch({
+      executionId:   ctx.executionId,
+      step,
+      stepTimeoutMs: Math.min(
+        policy.stepTimeoutMs,
+        Math.max(100, (ctx.timeoutAt ?? Infinity) - Date.now()),
+      ),
+      connectorCtx: ctx.connectorCtx,
+    });
+
+    this._emit(ctx, "execution_step_completed", step.id);
+
+    const _stepKind =
+      stepResult.status === "completed" ? "step_completed" :
+      stepResult.status === "timeout"   ? "step_timeout"   :
+      "step_failed";
+    runtimeObsStore.record({
+      executionId:  ctx.executionId,
+      stepId:       stepResult.stepId,
+      connectorId:  stepResult.connector,
+      capability:   stepResult.capability,
+      kind:         _stepKind,
+      status:       stepResult.status,
+      startedAt:    stepResult.startedAt,
+      finishedAt:   stepResult.finishedAt,
+      durationMs:   stepResult.durationMs,
+      error:        stepResult.error,
+      planId:       ctx.planId,
+      goalId:       ctx.goalId,
+    });
+
+    return stepResult;
+  }
+
   private _finalize(ctx: RuntimeExecutionContext, status: ExecutionStatus, t_start: number): ExecutionWithReport {
     ctx.status     = status;
     ctx.finishedAt = Date.now();
