@@ -73,11 +73,16 @@ export class ExecutionOrchestrator {
       });
 
       if (waveResults.some((result) => result.status === "failed" || result.status === "timeout")) {
-        return { results: Object.freeze(results), stoppedOnFailure: true };
+        return { results: Object.freeze(this._orderedResults(results, steps)), stoppedOnFailure: true };
       }
     }
 
-    return { results: Object.freeze(results), stoppedOnFailure: false };
+    return { results: Object.freeze(this._orderedResults(results, steps)), stoppedOnFailure: false };
+  }
+
+  private _orderedResults(results: readonly StepResult[], steps: readonly ExecutionStep[]): StepResult[] {
+    const order = new Map(steps.map((step, index) => [step.id, index]));
+    return [...results].sort((a, b) => (order.get(a.stepId) ?? 0) - (order.get(b.stepId) ?? 0));
   }
 
   private _dependencies(step: ExecutionStep, steps: readonly ExecutionStep[]): readonly string[] {
