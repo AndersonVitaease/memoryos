@@ -409,6 +409,83 @@ export default async function (req: Request) {
       results.push({ test: 'B4-extra. deriveAuthenticationRequirement mix', passed, detail: JSON.stringify({ d1, d2, d3, d4 }) });
     }
 
+    // === FASE B7: propagacao Discovery(public/auth) -> AutomationSpec -> Selector -> Adapter ===
+    // Prova que a classificacao authentication_requirement produzida pelo Discovery
+    // viaja integralmente pelo pipeline sem ser perdida/transformada.
+
+    // B7-1. Discovery publico -> AutomationSpec.webSessionRequired === false
+    {
+      const c = makeCandidate({ site_url: 'https://en.wikipedia.org', discovered_from_url: 'https://en.wikipedia.org', input_fields: JSON.stringify(['search']), authentication_requirement: 'public' });
+      const r = compileCandidateToSpec(c);
+      const passed = r.ok && r.spec.executor === 'playwright' && r.spec.webSessionRequired === false;
+      results.push({ test: 'B7-1. Discovery public -> spec.webSessionRequired=false', passed, detail: r.ok ? JSON.stringify({ executor: r.spec.executor, wsReq: r.spec.webSessionRequired }) : JSON.stringify(r) });
+    }
+    // B7-2. Discovery autenticado -> AutomationSpec.webSessionRequired === true
+    {
+      const c = makeCandidate({ site_url: 'https://the-internet.herokuapp.com', discovered_from_url: 'https://the-internet.herokuapp.com/secure', input_fields: JSON.stringify(['q']), authentication_requirement: 'session_required' });
+      const r = compileCandidateToSpec(c);
+      const passed = r.ok && r.spec.executor === 'playwright' && r.spec.webSessionRequired === true;
+      results.push({ test: 'B7-2. Discovery auth -> spec.webSessionRequired=true', passed, detail: r.ok ? JSON.stringify({ executor: r.spec.executor, wsReq: r.spec.webSessionRequired }) : JSON.stringify(r) });
+    }
+    // B7-3. Public capability -> executor playwright
+    {
+      const c = makeCandidate({ site_url: 'https://en.wikipedia.org', discovered_from_url: 'https://en.wikipedia.org', input_fields: JSON.stringify(['search']), authentication_requirement: 'public' });
+      const r = compileCandidateToSpec(c);
+      const passed = r.ok && r.spec.executor === 'playwright';
+      results.push({ test: 'B7-3. Public -> executor playwright', passed, detail: r.ok ? JSON.stringify({ executor: r.spec.executor }) : JSON.stringify(r) });
+    }
+    // B7-4. Authenticated capability -> executor playwright
+    {
+      const c = makeCandidate({ site_url: 'https://the-internet.herokuapp.com', discovered_from_url: 'https://the-internet.herokuapp.com/secure', input_fields: JSON.stringify(['q']), authentication_requirement: 'session_required' });
+      const r = compileCandidateToSpec(c);
+      const passed = r.ok && r.spec.executor === 'playwright';
+      results.push({ test: 'B7-4. Auth -> executor playwright', passed, detail: r.ok ? JSON.stringify({ executor: r.spec.executor }) : JSON.stringify(r) });
+    }
+    // B7-5. Public classification nao exige webSessionId (selector public + adapter validate ok)
+    {
+      const spec: AutomationSpec = {
+        specVersion: 1, capabilityId: 'search.wiki', siteOrigin: 'https://en.wikipedia.org', entryUrl: 'https://en.wikipedia.org',
+        executor: 'playwright', webSessionRequired: false, inputs: ['search'], actions: null,
+        robotId: null, targetUrl: null, riskLevel: 'safe', capabilityType: 'READ',
+        expectedResult: { kind: 'links', minItems: 1 }, validation: { status: 'pending' },
+      };
+      const sel = selectExecutor(spec);
+      const v = playwrightAdapter.validate(spec);
+      const passed = sel.executor === 'playwright' && sel.reason === 'playwright_public' && v.ok === true;
+      results.push({ test: 'B7-5. Public nao exige webSessionId (validate ok)', passed, detail: JSON.stringify({ sel: sel.reason, validate: v.ok }) });
+    }
+    // B7-6. Authenticated classification continua exigindo webSessionId (execute rejeita null)
+    {
+      const spec: AutomationSpec = {
+        specVersion: 1, capabilityId: 'view.secure', siteOrigin: 'https://the-internet.herokuapp.com', entryUrl: 'https://the-internet.herokuapp.com/secure',
+        executor: 'playwright', webSessionRequired: true, inputs: ['q'], actions: null,
+        robotId: null, targetUrl: null, riskLevel: 'safe', capabilityType: 'READ',
+        expectedResult: { kind: 'links', minItems: 1 }, validation: { status: 'pending' },
+      };
+      const sel = selectExecutor(spec);
+      const res = await playwrightAdapter.execute(spec, { base44: null as any, webSessionId: null as any, inputs: {} });
+      const passed = sel.executor === 'playwright' && sel.reason === 'playwright_websession_required' && res.ok === false && /webSessionRequired/i.test(String(res.error || ''));
+      results.push({ test: 'B7-6. Auth exige webSessionId (execute rejeita null)', passed, detail: JSON.stringify({ sel: sel.reason, ok: res.ok, error: res.error }) });
+    }
+    // B7-7. Valor false nao perdido: Discovery(public) -> spec.wsReq=false -> selector playwright_public -> adapter validate ok
+    {
+      const c = makeCandidate({ site_url: 'https://en.wikipedia.org', discovered_from_url: 'https://en.wikipedia.org', input_fields: JSON.stringify(['search']), authentication_requirement: 'public' });
+      const r = compileCandidateToSpec(c);
+      const sel = r.ok ? selectExecutor(r.spec) : { executor: null, reason: 'compile_failed' };
+      const v = r.ok ? playwrightAdapter.validate(r.spec) : { ok: false, reason: 'compile_failed' };
+      const passed = r.ok && r.spec.webSessionRequired === false && sel.executor === 'playwright' && sel.reason === 'playwright_public' && v.ok === true;
+      results.push({ test: 'B7-7. false nao perdido Discovery->Spec->Selector->Adapter', passed, detail: JSON.stringify({ wsReq: r.ok ? r.spec.webSessionRequired : null, sel: sel.reason, validate: v.ok }) });
+    }
+    // B7-8. Valor true nao perdido: Discovery(auth) -> spec.wsReq=true -> selector playwright_websession_required -> adapter validate ok
+    {
+      const c = makeCandidate({ site_url: 'https://the-internet.herokuapp.com', discovered_from_url: 'https://the-internet.herokuapp.com/secure', input_fields: JSON.stringify(['q']), authentication_requirement: 'session_required' });
+      const r = compileCandidateToSpec(c);
+      const sel = r.ok ? selectExecutor(r.spec) : { executor: null, reason: 'compile_failed' };
+      const v = r.ok ? playwrightAdapter.validate(r.spec) : { ok: false, reason: 'compile_failed' };
+      const passed = r.ok && r.spec.webSessionRequired === true && sel.executor === 'playwright' && sel.reason === 'playwright_websession_required' && v.ok === true;
+      results.push({ test: 'B7-8. true nao perdido Discovery->Spec->Selector->Adapter', passed, detail: JSON.stringify({ wsReq: r.ok ? r.spec.webSessionRequired : null, sel: sel.reason, validate: v.ok }) });
+    }
+
     const allPassed = results.every((r) => r.passed);
     return Response.json({ ok: true, allPassed, results });
   } catch (e) {
