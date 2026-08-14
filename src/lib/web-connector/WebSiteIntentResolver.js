@@ -295,6 +295,23 @@ export async function resolveWebIntents(message) {
     if (intents.length === 0) {
       const _url = extractArbitraryUrl(message);
       if (_url) {
+        // Fase 7.19 — nao cria catch-all maxun.dynamic anonimo para um dominio
+        // que ja possui CapabilityMap conhecido (caps Playwright provider:null
+        // que exigem WebSession). Esses dominios foram descobertos como
+        // requerendo sessao autenticada; rodar Maxun anonimo neles pega
+        // CAPTCHA/login wall (caso ML, Fase 7.17). O catch-all so vale para
+        // dominios genuinamente desconhecidos (sem nenhuma CapabilityMap).
+        // Dominio conhecido sem sessao ativa sinaliza "precisa conectar"
+        // (debugReason known_domain_no_session) — o Planner cai no fluxo
+        // normal (LLM honesto) em vez de fallback silencioso para Maxun
+        // anonimo. Caps Maxun reais (com robotId) ja produziram intent em
+        // discoverMaxunIntentsWithoutSession acima, entao este bloqueio so
+        // afeta dominios cujas caps sao todas Playwright sem sessao ativa.
+        const _urlOrigin = originOf(_url);
+        const _knownMap = (maps || []).some((m) => originOf(m.site_url) === _urlOrigin);
+        if (_knownMap) {
+          return { intents: [], debugReason: 'known_domain_no_session', debugSiteOrigin: _urlOrigin };
+        }
         intents.push({
           siteUrl: _url,
           webSessionId: null,
