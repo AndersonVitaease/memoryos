@@ -802,6 +802,75 @@ export default async function (req) {
         return Response.json({ error: 'No cookies stored in this WebSession.' }, { status: 409 });
       }
 
+      // ── authenticated page-read branch ────────────────────────────
+      // READ sem inputs não é form-fill e não deve cair no caminho legado
+      // que exige inputFields. Quando a capability veio de uma WebSession,
+      // o Compiler a roteia para Playwright e este branch apenas reaplica os
+      // cookies, navega para a página descoberta e captura o snapshot.
+      // Maxun nunca entra aqui porque seu adapter não usa WebSession.
+      if (!_hasFlow && (!Array.isArray(inputFields) || inputFields.length === 0)) {
+        if (!discoveredFromUrl) return Response.json({ error: 'Missing required field: discoveredFromUrl' }, { status: 400 });
+        let targetUrl = String(discoveredFromUrl).trim();
+        if (!/^https?:\\/\\//i.test(targetUrl)) targetUrl = 'https://' + targetUrl;
+
+        try { await callMcp('browser_close', {}); } catch (e) { /* best-effort */ }
+
+        const escapedCookies = JSON.stringify(cookies);
+        const escapedUrl = JSON.stringify(targetUrl);
+        let pageResult = '';
+        try {
+          const code = `async (page) => {
+  await page.context().addCookies(${escapedCookies});
+  await page.goto(${escapedUrl}, { waitUntil: "load", timeout: 15000 }).catch(() => {});
+  await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});
+  await page.waitForTimeout(1000);
+  const finalUrl = page.url();
+  if (/\\/login(?:[/?#]|$)/i.test(finalUrl)) return JSON.stringify({ error: "session_expired", url: finalUrl });
+  return JSON.stringify({ url: finalUrl });
+}`;
+          const res = await callMcpWithRetry('browser_run_code_unsafe', { code });
+          pageResult = extractRunCodeText(res);
+        } catch (e) {
+          return Response.json({ error: 'Authenticated page-read failed: ' + e.message }, { status: 502 });
+        }
+
+        let outcome = null;
+        try {
+          let candidate = pageResult;
+          const m = candidate.match(/```(?:json)?\\n?([\\s\\S]*?)\\n?```/) || [null, candidate];
+          candidate = (m[1] || candidate).trim();
+          outcome = JSON.parse(candidate);
+          if (typeof outcome === 'string') outcome = JSON.parse(outcome);
+        } catch (e) { /* fallback below */ }
+
+        if (outcome && outcome.error === 'session_expired') {
+          return Response.json({ ok: false, error: 'session_expired', finalUrl: outcome.url || '' }, { status: 422 });
+        }
+
+        let snapshotText = '';
+        try {
+          const snap = await callMcp('browser_snapshot', {});
+          snapshotText = extractSnapshotText(snap);
+        } catch (e) { /* best-effort */ }
+
+        const finalUrl = outcome && outcome.url ? String(outcome.url) : '';
+        if (/\\/login(?:[/?#]|$)/i.test(finalUrl)) {
+          try { await callMcp('browser_close', {}); } catch (e) { /* best-effort */ }
+          return Response.json({ ok: false, error: 'session_expired', finalUrl, snapshotText: snapshotText.slice(0, 12000) }, { status: 422 });
+        }
+
+        try { await callMcp('browser_close', {}); } catch (e) { /* best-effort */ }
+        return Response.json({
+          ok: true,
+          webSessionId: session.id,
+          finalUrl,
+          filled: [],
+          links: [],
+          snapshotText: snapshotText.slice(0, 12000),
+          message: 'Authenticated page-read executado (read-only) na WebSession.'
+        });
+      }
+
       // ── flow branch (Maxun recorder) ──────────────────────────────
       // SE capability.flow existir: executa o flow (WhereWhatPair[]) na
       // WebSession autenticada, traduzindo actions para browser_run_code_unsafe.
