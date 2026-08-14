@@ -36,6 +36,12 @@ export interface ExecutionStep {
   readonly connector:  ConnectorId;
   readonly capability: string;
   readonly parameters: Readonly<Record<string, unknown>>;
+  /**
+   * Optional execution dependencies used by the ExecutionOrchestrator.
+   * Omitted preserves legacy sequential semantics (the step depends on the
+   * previous plan step). An explicit [] declares the step as independent.
+   */
+  readonly dependsOn?: readonly string[];
 }
 
 // ── ExecutionPlan ──────────────────────────────────────────────────────────────
