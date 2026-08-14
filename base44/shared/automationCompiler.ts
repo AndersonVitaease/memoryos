@@ -41,6 +41,10 @@ export interface CandidateInput {
   identity_hash?: string;
   capability_type?: string;
   risk_level?: string;
+  // Presença de WebSession na descoberta indica que o candidato pode depender
+  // de contexto autenticado. Não confundir com "autenticado" como fato global;
+  // aqui é apenas o sinal que impede o roteamento automático para Maxun.
+  web_session_id?: string;
 }
 
 interface AssociatedRobot {
@@ -123,14 +127,19 @@ export function compileCandidateToSpec(
   }
 
   // 8. Determinar executor + webSessionRequired + targetUrl.
-  // Ordem correta: computa creatability com o valor pretendido para Maxun
-  // (webSessionRequired=false). Se creatable -> maxun; senao -> playwright.
+  // Se a descoberta foi feita com uma WebSession, não tratamos o READ como
+  // scrape público: a rota precisa preservar a sessão e, portanto, usar
+  // Playwright. Isso também vale para page-view puro (inputs=[]).
   let executor: AutomationSpec['executor'];
   let webSessionRequired: boolean;
   let targetUrl: string | null = null;
-  if (hasRobot) {
+  const discoveredWithWebSession = Boolean(candidate.web_session_id && String(candidate.web_session_id).trim());
+  if (hasRobot && !discoveredWithWebSession) {
     executor = 'maxun';
     webSessionRequired = false; // maxun nunca exige WebSession
+  } else if (discoveredWithWebSession) {
+    executor = 'playwright';
+    webSessionRequired = true;
   } else {
     const creatable = isMaxunCreatable({ capabilityType: capType, webSessionRequired: false, inputs });
     if (creatable) {
