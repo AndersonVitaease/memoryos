@@ -38,6 +38,13 @@ const VALID_FORMATS = new Set([
   'screenshot-visible', 'screenshot-fullpage',
 ]);
 
+// Chaves de output de formato que o Maxun Cloud retorna em data.data junto a
+// textData/listData/crawlData/searchData (e.g. "markdown":"# Example Domain...").
+const FORMAT_OUTPUT_KEYS = [
+  'markdown', 'html', 'text', 'links', 'summary',
+  'screenshot-visible', 'screenshot-fullpage',
+];
+
 const TERMINAL_SUCCESS = new Set(['success', 'completed']);
 
 function safeLog(label: string, obj: Record<string, unknown>) {
@@ -66,6 +73,18 @@ function normalizeExecuteResult(body: any) {
       ? inner.data
       : null;
   const pick = (k: string) => (extracted && extracted[k] !== undefined ? extracted[k] : null);
+  // Outputs de formato (markdown/html/text/links/...) vivem no mesmo nivel que
+  // textData/listData/crawlData/searchData. Sem isso, o conteudo real da pagina
+  // capturado pelo robot era silenciosamente descartado.
+  const outputs: Record<string, unknown> = {};
+  if (extracted) {
+    for (const k of FORMAT_OUTPUT_KEYS) {
+      const v = extracted[k];
+      if (v !== undefined && v !== null && v !== '' && !(Array.isArray(v) && v.length === 0) && !(typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0)) {
+        outputs[k] = v;
+      }
+    }
+  }
   return {
     runId,
     status,
@@ -73,6 +92,7 @@ function normalizeExecuteResult(body: any) {
     listData: pick('listData'),
     crawlData: pick('crawlData'),
     searchData: pick('searchData'),
+    outputs: Object.keys(outputs).length > 0 ? outputs : null,
   };
 }
 
@@ -248,6 +268,7 @@ export default async function (req: Request) {
       listData: norm.listData,
       crawlData: norm.crawlData,
       searchData: norm.searchData,
+      outputs: norm.outputs,
       maxunStatus: norm.status,
     });
   } catch (e: any) {
