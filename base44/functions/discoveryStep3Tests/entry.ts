@@ -24,7 +24,7 @@ import { compileCandidateToSpec, isMaxunCreatable } from '../../shared/automatio
 import { selectExecutor } from '../../shared/executorSelector.ts';
 import { maxunAdapter } from '../../shared/maxunAdapter.ts';
 import { playwrightAdapter } from '../../shared/playwrightAdapter.ts';
-import { validateSpec } from '../../shared/capabilityValidator.ts';
+import { validateSpec, detectAuthWall } from '../../shared/capabilityValidator.ts';
 import type { AutomationSpec, AutomationExecutor } from '../../shared/automationSpec.ts';
 import type { ExecutorAdapter, ExecutorResult } from '../../shared/executorAdapter.ts';
 
@@ -240,6 +240,37 @@ export default async function (req: Request) {
       const t4 = isMaxunCreatable({ capabilityType: 'WRITE', webSessionRequired: false, inputs: [] });
       const passed = t1 === true && t2 === false && t3 === false && t4 === false;
       results.push({ test: 'isMaxunCreatable unit (4 cases)', passed, detail: JSON.stringify({ t1, t2, t3, t4 }) });
+    }
+
+    // B2 — detectAuthWall (anti-falso-pass). Helper real, deterministico.
+    // Cenario exato do Teste 2: requestedUrl=/secure, finalUrl=/login -> blocked.
+    {
+      const spec = { webSessionRequired: true, entryUrl: 'https://the-internet.herokuapp.com/secure' } as any;
+      const result = { finalUrl: 'https://the-internet.herokuapp.com/login', snapshotText: 'Login Page\nUsername\nPassword' } as any;
+      const v = detectAuthWall(spec, result);
+      const passed = v.blocked && v.reason === 'redirected_to_login';
+      results.push({ test: '15. detectAuthWall /secure->/login finalUrl -> blocked', passed, detail: JSON.stringify(v) });
+    }
+    {
+      const spec = { webSessionRequired: true, entryUrl: 'https://the-internet.herokuapp.com/secure' } as any;
+      const result = { finalUrl: 'https://the-internet.herokuapp.com/secure', snapshotText: 'Welcome to the Secure Area. Logout' } as any;
+      const v = detectAuthWall(spec, result);
+      const passed = !v.blocked;
+      results.push({ test: '16. detectAuthWall /secure->/secure valid -> not blocked', passed, detail: JSON.stringify(v) });
+    }
+    {
+      const spec = { webSessionRequired: false, entryUrl: 'https://x.com/secure' } as any;
+      const result = { finalUrl: 'https://x.com/login', snapshotText: 'Login Page Password' } as any;
+      const v = detectAuthWall(spec, result);
+      const passed = !v.blocked;
+      results.push({ test: '17. detectAuthWall maxun (webSessionRequired=false) -> not blocked', passed, detail: JSON.stringify(v) });
+    }
+    {
+      const spec = { webSessionRequired: true, entryUrl: 'https://x.com/secure' } as any;
+      const result = { finalUrl: '', snapshotText: 'Login Page\nUsername\nPassword\n Login' } as any;
+      const v = detectAuthWall(spec, result);
+      const passed = v.blocked && v.reason === 'auth_wall_in_snapshot';
+      results.push({ test: '18. detectAuthWall snapshot login+password -> blocked', passed, detail: JSON.stringify(v) });
     }
 
     const allPassed = results.every((r) => r.passed);

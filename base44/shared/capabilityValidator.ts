@@ -52,6 +52,39 @@ function checkExpectedResult(spec: AutomationSpec, result: ExecutorResult): bool
   return false;
 }
 
+/**
+ * detectAuthWall -- Anti-falso-pass. So aplica quando spec.webSessionRequired
+ * (capabilities autenticadas / Playwright). Capabilities publicas (Maxun,
+ * webSessionRequired=false) NAO sao filtradas aqui -- preserva o fluxo Maxun
+ * publico ja aprovado.
+ *
+ * Sinais de auth-wall (qualquer um bloqueia):
+ *   1. finalUrl em path de login/auth (redirect para auth-wall)
+ *   2. snapshot com campo de senha E marcador de login (pagina de login)
+ *
+ * Exportada para teste deterministico unitario (sem rede).
+ */
+export function detectAuthWall(
+  spec: Pick<AutomationSpec, 'webSessionRequired' | 'entryUrl'>,
+  result: Pick<ExecutorResult, 'finalUrl' | 'snapshotText'>,
+): { blocked: boolean; reason: string } {
+  if (!spec.webSessionRequired) return { blocked: false, reason: '' };
+  const finalUrl = String(result.finalUrl || '');
+  if (finalUrl && /\/(login|signin|sign-in|auth|account\/login)\b/i.test(finalUrl)) {
+    return { blocked: true, reason: 'redirected_to_login' };
+  }
+  const snap = String(result.snapshotText || '');
+  const hasLoginMarker = /login page|log in|sign in|sign-in|enter your password|esqueceu a senha|para acessar a area/i.test(snap);
+  const hasPasswordField =
+    /(?:password|senha)[^\n]{0,40}?\[ref=/i.test(snap) ||
+    /\bpassword\b/i.test(snap) ||
+    /\bsenha\b/i.test(snap);
+  if (hasLoginMarker && hasPasswordField) {
+    return { blocked: true, reason: 'auth_wall_in_snapshot' };
+  }
+  return { blocked: false, reason: '' };
+}
+
 export async function validateSpec(
   spec: AutomationSpec,
   ctx: ExecutionContext,
@@ -124,6 +157,18 @@ export async function validateSpec(
     };
   }
 
+  // B2 — anti-falso-pass: capabilities autenticadas (webSessionRequired) nao
+  // podem PASS se a execucao caiu em /login ou auth-wall. Snapshot nao-vazio
+  // deixa de ser suficiente. Gate ANTES de checkExpectedResult.
+  if (spec.webSessionRequired) {
+    const _wall = detectAuthWall(spec, result);
+    if (_wall.blocked) {
+      return {
+        status: 'fail', executor: sel.executor, reason: _wall.reason,
+        robotIdUsed: result.robotIdUsed || null, evidence,
+      };
+    }
+  }
   const satisfied = checkExpectedResult(spec, result);
   if (satisfied) {
     return {
