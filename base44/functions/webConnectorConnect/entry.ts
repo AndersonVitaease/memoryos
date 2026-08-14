@@ -811,7 +811,7 @@ export default async function (req) {
       if (!_hasFlow && (!Array.isArray(inputFields) || inputFields.length === 0)) {
         if (!discoveredFromUrl) return Response.json({ error: 'Missing required field: discoveredFromUrl' }, { status: 400 });
         let targetUrl = String(discoveredFromUrl).trim();
-        if (!/^https?:\\/\\//i.test(targetUrl)) targetUrl = 'https://' + targetUrl;
+        if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) targetUrl = 'https://' + targetUrl;
 
         try { await callMcp('browser_close', {}); } catch (e) { /* best-effort */ }
 
@@ -825,7 +825,7 @@ export default async function (req) {
   await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});
   await page.waitForTimeout(1000);
   const finalUrl = page.url();
-  if (/\\/login(?:[/?#]|$)/i.test(finalUrl)) return JSON.stringify({ error: "session_expired", url: finalUrl });
+  if (finalUrl.includes('/login')) return JSON.stringify({ error: "session_expired", url: finalUrl });
   return JSON.stringify({ url: finalUrl });
 }`;
           const res = await callMcpWithRetry('browser_run_code_unsafe', { code });
@@ -837,8 +837,7 @@ export default async function (req) {
         let outcome = null;
         try {
           let candidate = pageResult;
-          const m = candidate.match(/```(?:json)?\\n?([\\s\\S]*?)\\n?```/) || [null, candidate];
-          candidate = (m[1] || candidate).trim();
+          candidate = candidate.replace(/^```json\\s*/i, '').replace(/^```\\s*/i, '').replace(/\\s*```$/i, '').trim();
           outcome = JSON.parse(candidate);
           if (typeof outcome === 'string') outcome = JSON.parse(outcome);
         } catch (e) { /* fallback below */ }
@@ -854,7 +853,7 @@ export default async function (req) {
         } catch (e) { /* best-effort */ }
 
         const finalUrl = outcome && outcome.url ? String(outcome.url) : '';
-        if (/\\/login(?:[/?#]|$)/i.test(finalUrl)) {
+        if (finalUrl.includes('/login')) {
           try { await callMcp('browser_close', {}); } catch (e) { /* best-effort */ }
           return Response.json({ ok: false, error: 'session_expired', finalUrl, snapshotText: snapshotText.slice(0, 12000) }, { status: 422 });
         }
