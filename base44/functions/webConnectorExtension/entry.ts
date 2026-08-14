@@ -25,6 +25,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import { buildDiscoveryPrompt, DISCOVERY_LLM_SCHEMA, saveDiscoveryCandidates, parseDiscoveryLLMResult } from '../../shared/webDiscovery.ts';
 import { withTimeout } from '../../shared/mcpHelpers.ts';
 import { assertWorkspaceMember } from '../../shared/workspaceAuth.ts';
+import { serializeByBrowserSession } from '../../shared/webSessionWorkspace.ts';
 
 const DEFAULT_SESSION_TTL_MS = 30 * 60 * 1000;
 const BRIDGE_ONLINE_TIMEOUT_MS = 2 * 60 * 1000; // sem heartbeat por 2min = offline
@@ -363,11 +364,17 @@ export default async function (req) {
       for (const s of sessionsOfBridge) bridgeSessionIds.add(s.id);
       const mine = candidateTasks.filter((t) => bridgeSessionIds.has(t.web_session_id));
 
+      // B8: serializa por browser_session_id — no maximo UMA tarefa por aba
+      // por ciclo de poll. Evita que duas tarefas concorram na mesma aba e
+      // corrompam o estado do browser (cada aba roda um fluxo por vez). A
+      // extensao volta a pollar para pegar as demais.
+      const serializable = serializeByBrowserSession(mine);
+
       // Claim ATOMICO por tarefa: updateMany condicional (status=pending → in_progress).
       // Se duas chamadas concorrem, so a primeira consegue (a segunda nao acha status=pending).
       const claimed = [];
       const now = new Date().toISOString();
-      for (const t of mine) {
+      for (const t of serializable) {
         try {
           const res = await base44.asServiceRole.entities.WebExecutionRequest.updateMany(
             { id: t.id, status: 'pending' },
