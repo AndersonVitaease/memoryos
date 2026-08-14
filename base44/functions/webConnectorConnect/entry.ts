@@ -873,7 +873,7 @@ export default async function (req) {
   await page.goto(${escapedUrl}, { waitUntil: "load", timeout: 15000 }).catch(() => {});
   await page.waitForLoadState("networkidle", { timeout: 8000 }).catch(() => {});
   // Warm-up: da 3s pro SPA renovar o access token antes de interagir.
-  await new Promise((r) => setTimeout(r, 3000));
+  await page.waitForTimeout(3000);
   await page.waitForLoadState("networkidle", { timeout: 5000 }).catch(() => {});
   if (/\\/login/i.test(page.url())) return JSON.stringify({ error: "session_expired", url: page.url() });
   const fields = ${escapedFields};
