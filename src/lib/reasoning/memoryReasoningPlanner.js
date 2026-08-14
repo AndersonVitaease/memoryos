@@ -480,6 +480,8 @@ ${fullText}`;
   // Executa a capability (form-fill read-only) e injeta o snapshot como
   // grounding note pro LLM — mesmo padrao do SearchEngine (ETAPA 5.2).
   let _webConnectorGroundingNote = null;
+  // ── DIAG 7.12 (TEMPORARIO) — captura do prompt real enviado ao LLM ──
+  let _diag712Ctx = { capabilityId: null, provider: null, snapshotText: null };
   try {
     const { resolveWebIntents, hostOf } = await import("@/lib/web-connector/WebSiteIntentResolver");
     const _webIntentsResult = await resolveWebIntents(userMsg);
@@ -790,6 +792,7 @@ ${fullText}`;
 
       if (_okResults.length === 1) {
         const r = _okResults[0];
+        try { _diag712Ctx.capabilityId = r.intent?.capability?.id || null; _diag712Ctx.provider = r.intent?.capability?.provider || null; _diag712Ctx.snapshotText = String(r.snapshotText || '').slice(0, 2500); } catch {}
         if (_isGenericWebCapability(r.intent.capability)) {
           // Grounding NEUTRO — acesso generico a pagina (nao forca produto).
           _webConnectorGroundingNote =
@@ -1339,6 +1342,35 @@ Se for, extraia "target" (nome do arquivo/pasta sem verbos de comando).`,
   ensureAIProvidersRegistered();
   const _aiProvider = await aiProviderRegistry.selectProvider("text-generation");
   const _systemPrompt = buildSystemPrompt();
+  // ── DIAG 7.12 (TEMPORARIO) — persiste prompt real (NAO altera logica nem prompt) ──
+  try {
+    const _fp = String(finalPrompt || '');
+    const _sp = String(_systemPrompt || '');
+    const _markers = ['Apresente EXATAMENTE 10 produtos', 'R$ <preco>', 'Frete gratis', 'Ver anuncio', 'cardText', 'so a lista de 10 produtos', 'Use ESTE snapshot como fonte principal'];
+    const _foundInFP = _markers.filter(m => _fp.includes(m));
+    const _foundInSP = _markers.filter(m => _sp.includes(m));
+    await base44.entities.InteractionEvent.create({
+      session_id: session?.id || '',
+      actor: 'system',
+      event_type: 'diag_712_capture',
+      raw_text: String(userMsg || '').slice(0, 500),
+      payload: JSON.stringify({
+        capabilityId: _diag712Ctx.capabilityId,
+        provider: _diag712Ctx.provider,
+        snapshotText: _diag712Ctx.snapshotText,
+        groundingNote: String(_webConnectorGroundingNote || '').slice(0, 4000),
+        systemPrompt: _sp.slice(0, 6000),
+        finalPromptHead: _fp.slice(0, 7000),
+        finalPromptLen: _fp.length,
+        aiProviderId: _aiProvider?.id || null,
+        productMarkersInFinalPrompt: _foundInFP,
+        productMarkersInSystemPrompt: _foundInSP,
+        hasNeutralMarker: _fp.includes('Use ESTE snapshot como fonte principal'),
+        hasProductMarker: _fp.includes('Apresente EXATAMENTE 10 produtos'),
+      }),
+    });
+  } catch (e) { /* best-effort diagnostico, nunca bloqueia */ }
+  // ── FIM DIAG 7.12 ──
   let rawResponse;
   if (_aiProvider) {
     // Passa system + user separados para permitir prompt caching no OpenRouter
