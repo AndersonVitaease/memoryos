@@ -154,7 +154,7 @@ export default async function (req) {
       const validation = await validateSpec(spec, {
         base44,
         webSessionId: typeof webSessionId === 'string' ? webSessionId : null,
-        inputs: {},
+        inputs: (testInputs && typeof testInputs === 'object' && !Array.isArray(testInputs)) ? testInputs : {},
         executionId: 'validate-' + cand.id,
       });
 
