@@ -138,6 +138,7 @@ export default async function (req) {
         discovered_from_url: cand.discovered_from_url, status: cand.status,
         canonical_id: cand.canonical_id, identity_hash: cand.identity_hash,
         capability_type: cand.capability_type, risk_level: cand.risk_level,
+        web_session_id: cand.web_session_id,
       }, associatedRobot);
       if (!compilation.ok) {
         await base44.asServiceRole.entities.CapabilityCandidate.update(cand.id, {
