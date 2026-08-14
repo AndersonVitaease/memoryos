@@ -69,7 +69,9 @@ export default async function (req) {
     if (!operation) return Response.json({ error: 'Missing required field: operation' }, { status: 400 });
 
     if (operation === 'importWorkflow') {
-      const { workflowFile, capabilityId, description } = body;
+      const { workflowFile, capabilityId, description, robotId } = body;
+      const _hasRobotId = typeof robotId === 'string' && robotId.trim().length > 0;
+      const _cleanRobotId = _hasRobotId ? robotId.trim() : '';
       if (!workflowFile || typeof workflowFile !== 'object') {
         return Response.json({ error: 'Missing required field: workflowFile' }, { status: 400 });
       }
@@ -90,7 +92,7 @@ export default async function (req) {
       if (!siteUrl) return Response.json({ error: 'Cannot determine site_url (meta.url or a pair where.url required)' }, { status: 400 });
 
       const flow = sanitizeWorkflow(workflow);
-      if (flow.length === 0) return Response.json({ error: 'Workflow has no valid WhereWhatPair entries' }, { status: 400 });
+      if (flow.length === 0 && !_hasRobotId) return Response.json({ error: 'Workflow has no valid WhereWhatPair entries (ou forneça robotId para um Robot do Maxun Cloud)' }, { status: 400 });
 
       // Extrai params ($param) do workflow sanitizado
       const paramSet = new Set();
@@ -105,6 +107,11 @@ export default async function (req) {
         inputSchema: { type: 'object', properties },
         flow,
         discoveredFrom: siteUrl,
+        // Contrato mínimo (Fase 7.5): uma capability originada de um Robot do
+        // Maxun Cloud carrega provider="maxun" + robotId. O webConnectorConnect
+        // roteia para maxunRun quando esses campos estão presentes; senão
+        // executa via Playwright (comportamento existente, inalterado).
+        ...(_hasRobotId ? { provider: 'maxun', robotId: _cleanRobotId } : {}),
       };
 
       // Upsert em CapabilityMap (match por site_url)

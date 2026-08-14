@@ -162,6 +162,91 @@ export default async function (req) {
     const { operation } = body;
     if (!operation) return Response.json({ error: 'Missing required field: operation' }, { status: 400 });
 
+    // ── MAXUN PROVIDER (branch early — independe do Playwright MCP) ──────
+    // Capabilities marcadas como Maxun (provider="maxun" + robotId) são
+    // executadas via maxunRun (Maxun Cloud). O robot roda na nuvem do Maxun
+    // com originUrl gravado — SEM WebSession, SEM cookies, SEM Playwright.
+    // webConnectorConnect NÃO conhece MAXUN_API_KEY/HTTP/contrato Maxun;
+    // apenas invoca o adaptador backend maxunRun e normaliza o resultado
+    // para o contrato existente do Web Connector (snapshotText + links).
+    // Branch early para não exigir conexão com o Playwright MCP (que nem
+    // existiria para uma capability puramente Maxun).
+    if (operation === 'executeCapability') {
+      const _provider = typeof body.provider === 'string' ? body.provider.trim().toLowerCase() : '';
+      const _robotId = typeof body.robotId === 'string' ? body.robotId.trim() : '';
+      if (_provider === 'maxun' && _robotId) {
+        let _mRes = null;
+        try {
+          _mRes = await base44.functions.invoke('maxunRun', {
+            robotId: _robotId,
+            formats: ['markdown', 'text', 'html', 'links'],
+          });
+        } catch (e) {
+          // functions.invoke lança erro genérico ("Request failed with status
+          // code 502") quando maxunRun retorna != 2xx. O motivo real (ex:
+          // "Recording not found", maxunStatus:"not_found") está no corpo do
+          // erro. Extração defensiva cobre Node (axios: e.response.data) e
+          // Deno (body pode estar em e.data / e.body / message JSON). Nunca
+          // mascarar a falha — sempre retorna ok:false identificável como Maxun.
+          let _errBody = null;
+          try {
+            if (e && e.response && e.response.data) _errBody = e.response.data;
+            else if (e && e.data) _errBody = e.data;
+            else if (e && e.body) _errBody = e.body;
+            else if (e && typeof e.message === 'string') {
+              try { const _j = JSON.parse(e.message); if (_j && typeof _j === 'object') _errBody = _j; } catch (_) { /* message nao e JSON */ }
+            }
+          } catch (_) { /* best-effort */ }
+          const _errMsg = (_errBody && _errBody.error) ? String(_errBody.error)
+            : 'Falha na execução do Robot Maxun (' + _robotId + '): ' + ((e && e.message) ? String(e.message) : String(e));
+          const _maxunStatus = (_errBody && _errBody.maxunStatus) ? String(_errBody.maxunStatus) : 'invoke_error';
+          return Response.json({
+            ok: false, provider: 'maxun', robotId: _robotId,
+            error: _errMsg,
+            maxunStatus: _maxunStatus,
+          }, { status: 502 });
+        }
+        const _md = _mRes && _mRes.data ? _mRes.data : _mRes;
+        if (!_md || _md.ok !== true) {
+          return Response.json({
+            ok: false, provider: 'maxun',
+            error: (_md && _md.error) ? String(_md.error) : 'maxunRun falhou sem mensagem.',
+            maxunStatus: (_md && _md.maxunStatus) ? _md.maxunStatus : 'failed',
+          }, { status: 502 });
+        }
+        // Normaliza outputs do Maxun para o contrato do Web Connector.
+        const _outputs = (_md.outputs && typeof _md.outputs === 'object' && !Array.isArray(_md.outputs)) ? _md.outputs : {};
+        const _parts = [];
+        if (typeof _outputs.markdown === 'string' && _outputs.markdown) _parts.push(_outputs.markdown);
+        if (typeof _outputs.text === 'string' && _outputs.text) _parts.push(_outputs.text);
+        if (typeof _outputs.html === 'string' && _outputs.html) _parts.push(_outputs.html);
+        const _snapshotText = _parts.join('\n\n').slice(0, 12000);
+        let _links = [];
+        if (Array.isArray(_outputs.links)) {
+          _links = _outputs.links.map((l) => {
+            if (typeof l === 'string') return { text: '', href: l, cardText: '' };
+            if (l && typeof l === 'object') return {
+              text: String(l.text || l.title || ''),
+              href: String(l.href || l.url || ''),
+              cardText: String(l.cardText || ''),
+            };
+            return { text: '', href: '', cardText: '' };
+          }).filter((l) => l.href).slice(0, 30);
+        }
+        return Response.json({
+          ok: true,
+          provider: 'maxun',
+          webSessionId: typeof body.webSessionId === 'string' ? body.webSessionId : null,
+          runId: _md.runId || '',
+          finalUrl: '',
+          filled: [],
+          links: _links,
+          snapshotText: _snapshotText,
+          message: 'Capability executada via Maxun Cloud (robot ' + _robotId + ').',
+        });
+      }
+    }
+
     const servers = await base44.asServiceRole.entities.MCPServerConfig.filter({ name: PLAYWRIGHT_SERVER_NAME });
     if (servers.length === 0) return Response.json({ error: "MCPServerConfig '" + PLAYWRIGHT_SERVER_NAME + "' not found" }, { status: 404 });
     const server = servers[0];
