@@ -780,43 +780,77 @@ ${fullText}`;
       // grounding note (single-site mantem o formato de 10 itens de sempre;
       // multi-site organiza por site) e deixa o LLM final sintetizar.
       const _okResults = _playwrightResults.filter((r) => r.ok && r.snapshotText);
+      // FASE 7.10 — Classificacao do grounding pela natureza da capability.
+      // maxun.dynamic = acesso generico a pagina arbitraria (catch-all do Resolver).
+      // NUNCA e produto, mesmo se a URL pertencer a um marketplace — o Web Connector
+      // e generico e pode acessar paginas institucionais, ajuda, politicas, blogs,
+      // documentacao, anuncios isolados etc. Capabilities genuinamente comerciais
+      // (busca/listagem de produtos) mantem o template de produto existente.
+      const _isGenericWebCapability = (cap) => Boolean(cap && cap.id === 'maxun.dynamic');
+
       if (_okResults.length === 1) {
         const r = _okResults[0];
-        const _linksBlock = r.links.length > 0
-          ? `\n\nDADOS REAIS DOS ANUNCIOS (cada item tem titulo, cardText com preco/parcelas/frete/condicao/avaliacao, e o href real do anuncio — use o href como o link do produto):\n` + r.links.map((l) => `- TITULO: ${l.text}\n  CARD: ${l.cardText || "(sem card)"}\n  LINK: ${l.href}`).join("\n")
-          : "";
-        _webConnectorGroundingNote =
-          `RESULTADO REAL DA BUSCA NO SITE ${hostOf(r.intent.siteUrl)} (capability "${r.intent.capability.id}"${r.filled ? `, preenchido: ${r.filled}` : ""}). ` +
-          `VOCE ESTA CONECTADO a este site via Web Connector — a busca acima foi executada na conta autenticada do usuario. ` +
-          `Use ESTE snapshot como verdade absoluta para responder. NUNCA diga que nao esta conectado, NUNCA pea para configurar em /connections, NUNCA mencione /connections. ` +
-          `Nao invente produtos/valores que nao estejam no texto abaixo. ` +
-          `\n\nFORMATO OBRIGATORIO (siga EXATAMENTE este layout):\n` +
-          `Apresente EXATAMENTE 10 produtos (ou todos os encontrados, se menos de 10). Para CADA produto use este formato:\n\n` +
-          `1. <Titulo do Produto em negrito>\n` +
-          `R$ <preco> · <desconto se houver>\n` +
-          `<frete/entrega se houver>\n` +
-          `[Ver anuncio](<href do produto>)\n\n` +
-          `REGRAS DO FORMATO:\n` +
-          `- O link deve ser SEMPRE no formato markdown [Ver anuncio](href) — NUNCA mostre a URL crua/longa no texto. O texto visivel e "Ver anuncio", e o href vai dentro do parenteses do markdown. Isso encurta visualmente o link e deixa o layout limpo.\n` +
-          `- Extraia o preco do cardText (procure por "R$" seguido de numero). Se houver preco riscado + desconto, mostre o preco final e o desconto (ex: "R$ 159,99 . 55% OFF").\n` +
-          `- Frete: se o cardText tiver "Frete gratis" ou "Frete grat"s", mostre "Frete gratis". Se tiver "Chega amanha" ou data de entrega, mostre essa info.\n` +
-          `- Se um dado (preco, frete, desconto) nao existir no cardText, OMITA a linha — nao invente.\n` +
-          `- Cada produto separado por uma linha em branco.\n` +
-          `- Nao adicione intro/rodape desnecessario — so a lista de 10 produtos.\n` +
-          `Sintetize em portugues:\n\n${r.snapshotText}${_linksBlock}`;
-      } else if (_okResults.length > 1) {
-        // Multi-site: um bloco por site, LLM organiza a resposta final por site.
-        const _blocks = _okResults.map((r) => {
+        if (_isGenericWebCapability(r.intent.capability)) {
+          // Grounding NEUTRO — acesso generico a pagina (nao forca produto).
+          _webConnectorGroundingNote =
+            `RESULTADO REAL DA PAGINA ${hostOf(r.intent.siteUrl)} (capturado via Web Connector).\n` +
+            `VOCE ESTA CONECTADO a esta pagina via Web Connector.\n` +
+            `Use ESTE snapshot como fonte principal para responder ao usuario.\n` +
+            `Nao invente informacoes que nao estejam presentes no snapshot.\n` +
+            `Responda de forma fiel ao pedido original do usuario.\n` +
+            `Apresente e sintetize o conteudo relevante da pagina de forma clara e organizada.\n` +
+            `Se a pagina nao contiver informacao suficiente para responder ao pedido, diga isso explicitamente.\n` +
+            `Conteudo real capturado:\n\n${r.snapshotText}`;
+        } else {
+          // Grounding de PRODUTO (comportamento existente — busca/listagem de produtos).
           const _linksBlock = r.links.length > 0
-            ? r.links.slice(0, 10).map((l) => `- TITULO: ${l.text}\n  CARD: ${l.cardText || "(sem card)"}\n  LINK: ${l.href}`).join("\n")
-            : "(sem itens no snapshot)";
-          return `SITE: ${hostOf(r.intent.siteUrl)} (capability "${r.intent.capability.id}")\n${_linksBlock}`;
-        }).join("\n\n---\n\n");
-        _webConnectorGroundingNote =
-          `RESULTADOS REAIS DE ${_okResults.length} SITES DIFERENTES, consultados em paralelo via Web Connector (contas autenticadas do usuario):\n\n${_blocks}\n\n` +
-          `Monte UMA resposta organizada POR SITE (um titulo/secao por site), citando os dados reais acima. ` +
-          `Para cada item use link markdown [Ver anuncio](href) — nunca mostre URL crua. Nao invente dados que nao estejam acima. ` +
-          `NUNCA diga que nao esta conectado, NUNCA mencione /connections. Sintetize em portugues.`;
+            ? `\n\nDADOS REAIS DOS ANUNCIOS (cada item tem titulo, cardText com preco/parcelas/frete/condicao/avaliacao, e o href real do anuncio — use o href como o link do produto):\n` + r.links.map((l) => `- TITULO: ${l.text}\n  CARD: ${l.cardText || "(sem card)"}\n  LINK: ${l.href}`).join("\n")
+            : "";
+          _webConnectorGroundingNote =
+            `RESULTADO REAL DA BUSCA NO SITE ${hostOf(r.intent.siteUrl)} (capability "${r.intent.capability.id}"${r.filled ? `, preenchido: ${r.filled}` : ""}). ` +
+            `VOCE ESTA CONECTADO a este site via Web Connector — a busca acima foi executada na conta autenticada do usuario. ` +
+            `Use ESTE snapshot como verdade absoluta para responder. NUNCA diga que nao esta conectado, NUNCA pea para configurar em /connections, NUNCA mencione /connections. ` +
+            `Nao invente produtos/valores que nao estejam no texto abaixo. ` +
+            `\n\nFORMATO OBRIGATORIO (siga EXATAMENTE este layout):\n` +
+            `Apresente EXATAMENTE 10 produtos (ou todos os encontrados, se menos de 10). Para CADA produto use este formato:\n\n` +
+            `1. <Titulo do Produto em negrito>\n` +
+            `R$ <preco> · <desconto se houver>\n` +
+            `<frete/entrega se houver>\n` +
+            `[Ver anuncio](<href do produto>)\n\n` +
+            `REGRAS DO FORMATO:\n` +
+            `- O link deve ser SEMPRE no formato markdown [Ver anuncio](href) — NUNCA mostre a URL crua/longa no texto. O texto visivel e "Ver anuncio", e o href vai dentro do parenteses do markdown. Isso encurta visualmente o link e deixa o layout limpo.\n` +
+            `- Extraia o preco do cardText (procure por "R$" seguido de numero). Se houver preco riscado + desconto, mostre o preco final e o desconto (ex: "R$ 159,99 . 55% OFF").\n` +
+            `- Frete: se o cardText tiver "Frete gratis" ou "Frete grat"s", mostre "Frete gratis". Se tiver "Chega amanha" ou data de entrega, mostre essa info.\n` +
+            `- Se um dado (preco, frete, desconto) nao existir no cardText, OMITA a linha — nao invente.\n` +
+            `- Cada produto separado por uma linha em branco.\n` +
+            `- Nao adicione intro/rodape desnecessario — so a lista de 10 produtos.\n` +
+            `Sintetize em portugues:\n\n${r.snapshotText}${_linksBlock}`;
+        }
+      } else if (_okResults.length > 1) {
+        const _allGeneric = _okResults.every((r) => _isGenericWebCapability(r.intent.capability));
+        if (_allGeneric) {
+          // Multi-site generico — uma secao por pagina, conteudo fiel (sem forcar produto).
+          const _blocks = _okResults.map((r) =>
+            `PAGINA: ${hostOf(r.intent.siteUrl)} (capability "${r.intent.capability.id}")\n${r.snapshotText}`
+          ).join("\n\n---\n\n");
+          _webConnectorGroundingNote =
+            `RESULTADOS REAIS DE ${_okResults.length} PAGINAS, capturadas em paralelo via Web Connector:\n\n${_blocks}\n\n` +
+            `Monte UMA resposta organizada POR PAGINA (um titulo/secao por pagina), apresentando fielmente o conteudo real capturado de cada uma. ` +
+            `Nao invente dados que nao estejam acima. NUNCA diga que nao esta conectado, NUNCA mencione /connections. Sintetize em portugues.`;
+        } else {
+          // Multi-site de produto (comportamento existente).
+          const _blocks = _okResults.map((r) => {
+            const _linksBlock = r.links.length > 0
+              ? r.links.slice(0, 10).map((l) => `- TITULO: ${l.text}\n  CARD: ${l.cardText || "(sem card)"}\n  LINK: ${l.href}`).join("\n")
+              : "(sem itens no snapshot)";
+            return `SITE: ${hostOf(r.intent.siteUrl)} (capability "${r.intent.capability.id}")\n${_linksBlock}`;
+          }).join("\n\n---\n\n");
+          _webConnectorGroundingNote =
+            `RESULTADOS REAIS DE ${_okResults.length} SITES DIFERENTES, consultados em paralelo via Web Connector (contas autenticadas do usuario):\n\n${_blocks}\n\n` +
+            `Monte UMA resposta organizada POR SITE (um titulo/secao por site), citando os dados reais acima. ` +
+            `Para cada item use link markdown [Ver anuncio](href) — nunca mostre URL crua. Nao invente dados que nao estejam acima. ` +
+            `NUNCA diga que nao esta conectado, NUNCA mencione /connections. Sintetize em portugues.`;
+        }
       }
       if (_expiredIntents.length > 0 && _okResults.length > 0) {
         _webConnectorGroundingNote += `\n\n(Nota interna, nao mostre ao usuario neste momento: sessao expirada em ${_expiredIntents.map((i) => hostOf(i.siteUrl)).join(', ')} — se relevante, sugira reconectar em /connections.)`;
