@@ -22,6 +22,7 @@
  */
 import { canonicalizeId, computeIdentityHash, originOf } from './capabilityIdentity.ts';
 import { AutomationSpec } from './automationSpec.ts';
+import { deriveAuthenticationRequirement } from './webDiscovery.ts';
 
 export type CompilationFailed = { ok: false; reason: string; detail?: string };
 export type CompilationOk = { ok: true; spec: AutomationSpec };
@@ -41,9 +42,9 @@ export interface CandidateInput {
   identity_hash?: string;
   capability_type?: string;
   risk_level?: string;
-  // Presença de WebSession na descoberta indica que o candidato pode depender
-  // de contexto autenticado. Não confundir com "autenticado" como fato global;
-  // aqui é apenas o sinal que impede o roteamento automático para Maxun.
+  // web_session_id: proveniencia da descoberta (sessao usada durante a
+  // descoberta). NAO e prova de autenticacao obrigatoria -- o probe
+  // deterministico (authentication_requirement na evidence) decide o routing.
   web_session_id?: string;
 }
 
@@ -126,30 +127,33 @@ export function compileCandidateToSpec(
     }
   }
 
-  // 8. Determinar executor + webSessionRequired + targetUrl.
-  // Se a descoberta foi feita com uma WebSession, não tratamos o READ como
-  // scrape público: a rota precisa preservar a sessão e, portanto, usar
-  // Playwright. Isso também vale para page-view puro (inputs=[]).
+  // 8. Determinar executor + webSessionRequired + targetUrl por
+  // authentication_requirement (NUNCA por web_session_id). web_session_id e
+  // apenas proveniencia da descoberta; o probe deterministico na evidence e
+  // que decide se a capability exige sessao.
   let executor: AutomationSpec['executor'];
   let webSessionRequired: boolean;
   let targetUrl: string | null = null;
-  const discoveredWithWebSession = Boolean(candidate.web_session_id && String(candidate.web_session_id).trim());
-  if (hasRobot && !discoveredWithWebSession) {
+  const authReq = deriveAuthenticationRequirement(evidences);
+  if (hasRobot) {
+    // maxunImport: robot admin-curado, reusa robotId (set em 7). Maxun Cloud
+    // gerencia autenticacao server-side; nao depende de WebSession.
     executor = 'maxun';
-    webSessionRequired = false; // maxun nunca exige WebSession
-  } else if (discoveredWithWebSession) {
+    webSessionRequired = false;
+  } else if (authReq === 'public' && isMaxunCreatable({ capabilityType: capType, webSessionRequired: false, inputs })) {
+    // CASE 1: public + READ + inputs=[] -> maxun (duplicate+execute targetUrl).
+    executor = 'maxun';
+    targetUrl = entryUrl;
+    webSessionRequired = false;
+  } else if (authReq === 'public' && inputs.length > 0) {
+    // CASE 2: public + inputs>0 -> playwright (form-fill publico).
+    executor = 'playwright';
+    webSessionRequired = false;
+  } else {
+    // CASE 3/4: session_required OU unknown -> conservador: Playwright +
+    // WebSession. unknown NUNCA vai para Maxun (nao assume publico).
     executor = 'playwright';
     webSessionRequired = true;
-  } else {
-    const creatable = isMaxunCreatable({ capabilityType: capType, webSessionRequired: false, inputs });
-    if (creatable) {
-      executor = 'maxun';
-      targetUrl = entryUrl; // duplicate(entryUrl) -> robot de scrape puro
-      webSessionRequired = false;
-    } else {
-      executor = 'playwright';
-      webSessionRequired = true; // form-fill exige WebSession autenticada
-    }
   }
 
   // 9. expectedResult: READ -> links (prioritario) ou snapshot (fallback).

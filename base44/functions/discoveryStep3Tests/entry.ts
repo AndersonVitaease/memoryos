@@ -25,6 +25,7 @@ import { selectExecutor } from '../../shared/executorSelector.ts';
 import { maxunAdapter } from '../../shared/maxunAdapter.ts';
 import { playwrightAdapter } from '../../shared/playwrightAdapter.ts';
 import { validateSpec, detectAuthWall } from '../../shared/capabilityValidator.ts';
+import { classifyAuthenticationRequirement, deriveAuthenticationRequirement } from '../../shared/webDiscovery.ts';
 import type { AutomationSpec, AutomationExecutor } from '../../shared/automationSpec.ts';
 import type { ExecutorAdapter, ExecutorResult } from '../../shared/executorAdapter.ts';
 
@@ -32,13 +33,27 @@ function makeCandidate(opts: Partial<{
   site_url: string; suggested_id: string; discovered_from_url: string;
   evidence: string; input_fields: string; canonical_id: string;
   capability_type: string; risk_level: string;
+  authentication_requirement: 'public' | 'session_required' | 'unknown';
+  web_session_id: string;
 }>) {
+  const authReq = opts.authentication_requirement;
+  const baseEvidence: Record<string, unknown> = {
+    element_ref: 'r1',
+    element: { ref: 'r1', tag: 'input', type: 'search', id: 'q' },
+    snapshot_ref_found: true,
+    page_url: opts.discovered_from_url || 'https://example.com/search',
+    page_index: 0,
+    action_inferred: 'search',
+    source: 'extension',
+    has_write_actions: false,
+  };
+  if (authReq !== undefined) baseEvidence.authentication_requirement = authReq;
   return {
     id: 'cand-test-' + Math.random().toString(36).slice(2, 8),
     site_url: opts.site_url || 'https://example.com',
     suggested_id: opts.suggested_id || 'product.search',
     description: 'test',
-    evidence: opts.evidence || JSON.stringify([{ element_ref: 'r1', element: { ref: 'r1', tag: 'input', type: 'search', id: 'q' }, snapshot_ref_found: true, page_url: 'https://example.com/search', page_index: 0, action_inferred: 'search', source: 'extension', has_write_actions: false }]),
+    evidence: opts.evidence || JSON.stringify([baseEvidence]),
     input_fields: opts.input_fields || JSON.stringify(['q']),
     discovered_from_url: opts.discovered_from_url || 'https://example.com/search',
     status: 'candidate',
@@ -46,6 +61,7 @@ function makeCandidate(opts: Partial<{
     identity_hash: 'h-test',
     capability_type: opts.capability_type || 'READ',
     risk_level: opts.risk_level || 'safe',
+    web_session_id: opts.web_session_id,
   };
 }
 
@@ -57,56 +73,84 @@ export default async function (req: Request) {
 
     const results: Array<{ test: string; passed: boolean; detail?: string }> = [];
 
-    // 1. READ c/ evidence valida -> spec deterministica
+    // === FASE B4: Compiler routing por authentication_requirement ===
+
+    // Case 1: public + READ + inputs=[] -> maxun, wsReq=false, targetUrl=entryUrl
     {
-      const c = makeCandidate({});
+      const c = makeCandidate({ site_url: 'https://example.com', discovered_from_url: 'https://example.com', input_fields: '[]', authentication_requirement: 'public' });
       const r = compileCandidateToSpec(c);
-      const passed = r.ok && r.spec.capabilityId === 'search.product'
-        && r.spec.entryUrl === 'https://example.com/search'
-        && r.spec.capabilityType === 'READ'
-        && r.spec.inputs.length === 1 && r.spec.inputs[0] === 'q'
-        && r.spec.validation.status === 'pending';
-      results.push({ test: '1. READ c/ evidence valida -> spec', passed, detail: r.ok ? JSON.stringify({ executor: r.spec.executor, capId: r.spec.capabilityId, inputs: r.spec.inputs }) : JSON.stringify(r) });
+      const passed = r.ok && r.spec.executor === 'maxun' && r.spec.webSessionRequired === false && r.spec.targetUrl === 'https://example.com';
+      results.push({ test: 'B4-1. public READ inputs=[] -> maxun', passed, detail: r.ok ? JSON.stringify({ executor: r.spec.executor, wsReq: r.spec.webSessionRequired, targetUrl: r.spec.targetUrl }) : JSON.stringify(r) });
     }
 
-    // 2. Sem evidence suficiente (READ c/ inputs) -> COMPILATION_FAILED
+    // Case 2: web_session_id preenchido + public + READ + inputs=[] -> maxun
+    // (prova: web_session_id != authentication requirement)
     {
-      const c = makeCandidate({ evidence: JSON.stringify([{ element_ref: 'r999', element: null, snapshot_ref_found: false, page_url: 'https://example.com/search', page_index: 0 }]) });
+      const c = makeCandidate({ site_url: 'https://example.com', discovered_from_url: 'https://example.com', input_fields: '[]', authentication_requirement: 'public', web_session_id: 'ws-session-xyz' });
       const r = compileCandidateToSpec(c);
-      const passed = !r.ok && r.reason === 'no_reliable_evidence';
-      results.push({ test: '2. READ c/ inputs sem evidence -> COMPILATION_FAILED', passed, detail: JSON.stringify(r) });
+      const passed = r.ok && r.spec.executor === 'maxun' && r.spec.webSessionRequired === false;
+      results.push({ test: 'B4-2. web_session_id + public -> maxun (web_session_id != auth)', passed, detail: r.ok ? JSON.stringify({ executor: r.spec.executor, wsReq: r.spec.webSessionRequired }) : JSON.stringify(r) });
     }
 
-    // 3. WRITE -> COMPILATION_FAILED{write_blocked}
+    // Case 3: session_required + READ + inputs=[] -> playwright + wsReq=true + actions=null
     {
-      const c = makeCandidate({ capability_type: 'WRITE', risk_level: 'irreversible' });
+      const c = makeCandidate({ site_url: 'https://the-internet.herokuapp.com', discovered_from_url: 'https://the-internet.herokuapp.com/secure', input_fields: '[]', authentication_requirement: 'session_required' });
+      const r = compileCandidateToSpec(c);
+      const passed = r.ok && r.spec.executor === 'playwright' && r.spec.webSessionRequired === true && r.spec.actions === null && r.spec.inputs.length === 0;
+      results.push({ test: 'B4-3. session_required READ inputs=[] -> playwright+wsReq+actions=null', passed, detail: r.ok ? JSON.stringify({ executor: r.spec.executor, wsReq: r.spec.webSessionRequired, actions: r.spec.actions }) : JSON.stringify(r) });
+    }
+
+    // Case 5: public + inputs=['q'] -> playwright, wsReq=false
+    {
+      const c = makeCandidate({ site_url: 'https://example.com', discovered_from_url: 'https://example.com/search', input_fields: JSON.stringify(['q']), authentication_requirement: 'public' });
+      const r = compileCandidateToSpec(c);
+      const passed = r.ok && r.spec.executor === 'playwright' && r.spec.webSessionRequired === false;
+      results.push({ test: 'B4-5. public inputs>0 -> playwright wsReq=false', passed, detail: r.ok ? JSON.stringify({ executor: r.spec.executor, wsReq: r.spec.webSessionRequired }) : JSON.stringify(r) });
+    }
+
+    // Case 6: WRITE -> write_blocked
+    {
+      const c = makeCandidate({ capability_type: 'WRITE', risk_level: 'irreversible', authentication_requirement: 'public' });
       const r = compileCandidateToSpec(c);
       const passed = !r.ok && r.reason === 'write_blocked';
-      results.push({ test: '3. WRITE -> COMPILATION_FAILED{write_blocked}', passed, detail: JSON.stringify(r) });
+      results.push({ test: 'B4-6. WRITE -> write_blocked', passed, detail: JSON.stringify(r) });
     }
 
-    // 4. READ sem inputs (scrape puro) -> Maxun-creatable
+    // Case 7: unknown -> playwright + wsReq=true (conservador, NUNCA maxun)
     {
-      const c = makeCandidate({ input_fields: '[]', evidence: JSON.stringify([{ element_ref: '', element: null, snapshot_ref_found: false, page_url: 'https://example.com', page_index: 0, source: 'extension' }]) });
-      const r = compileCandidateToSpec(c);
-      const passed = r.ok && r.spec.executor === 'maxun' && r.spec.targetUrl === 'https://example.com/search' && r.spec.webSessionRequired === false;
-      results.push({ test: '4. READ scrape puro -> Maxun-creatable (executor=maxun, targetUrl)', passed, detail: r.ok ? JSON.stringify({ executor: r.spec.executor, targetUrl: r.spec.targetUrl }) : JSON.stringify(r) });
-    }
-
-    // 5. READ c/ inputs (form-fill) -> executor=playwright (NOT_CREATABLE)
-    {
-      const c = makeCandidate({});
+      const c = makeCandidate({ site_url: 'https://example.com', discovered_from_url: 'https://example.com', input_fields: '[]', authentication_requirement: 'unknown' });
       const r = compileCandidateToSpec(c);
       const passed = r.ok && r.spec.executor === 'playwright' && r.spec.webSessionRequired === true;
-      results.push({ test: '5. READ c/ inputs -> executor=playwright', passed, detail: r.ok ? JSON.stringify({ executor: r.spec.executor, webSessionRequired: r.spec.webSessionRequired }) : JSON.stringify(r) });
+      results.push({ test: 'B4-7. unknown -> playwright+wsReq (never maxun)', passed, detail: r.ok ? JSON.stringify({ executor: r.spec.executor, wsReq: r.spec.webSessionRequired }) : JSON.stringify(r) });
     }
 
-    // 6. robotId pre-existente -> executor=maxun, reusa
+    // Case 4: session_required spec sem WebSession (ctx.webSessionId=null) -> FAIL
     {
-      const c = makeCandidate({ input_fields: '[]' });
+      const spec: AutomationSpec = {
+        specVersion: 1, capabilityId: 'view.secure', siteOrigin: 'https://the-internet.herokuapp.com', entryUrl: 'https://the-internet.herokuapp.com/secure',
+        executor: 'playwright', webSessionRequired: true, inputs: [], actions: null,
+        robotId: null, targetUrl: null, riskLevel: 'safe', capabilityType: 'READ',
+        expectedResult: { kind: 'snapshot' }, validation: { status: 'pending' },
+      };
+      const res = await playwrightAdapter.execute(spec, { base44: null as any, webSessionId: null as any, inputs: {} });
+      const passed = res.ok === false && /webSessionRequired/i.test(String(res.error || ''));
+      results.push({ test: 'B4-4. session_required sem WebSession -> FAIL', passed, detail: JSON.stringify({ ok: res.ok, error: res.error }) });
+    }
+
+    // (legado) robotId pre-existente -> maxun reutiliza (maxunImport)
+    {
+      const c = makeCandidate({ site_url: 'https://example.com', discovered_from_url: 'https://example.com', input_fields: '[]', authentication_requirement: 'session_required' });
       const r = compileCandidateToSpec(c, { robotId: 'robot-existing-123', flow: undefined });
       const passed = r.ok && r.spec.executor === 'maxun' && r.spec.robotId === 'robot-existing-123';
-      results.push({ test: '6. robotId pre-existente -> maxun reutiliza', passed, detail: r.ok ? JSON.stringify({ executor: r.spec.executor, robotId: r.spec.robotId }) : JSON.stringify(r) });
+      results.push({ test: 'robotId pre-existente -> maxun reutiliza (maxunImport)', passed, detail: r.ok ? JSON.stringify({ executor: r.spec.executor, robotId: r.spec.robotId }) : JSON.stringify(r) });
+    }
+
+    // (legado) READ c/ inputs sem evidence -> COMPILATION_FAILED
+    {
+      const c = makeCandidate({ evidence: JSON.stringify([{ element_ref: 'r999', element: null, snapshot_ref_found: false, page_url: 'https://example.com/search', page_index: 0, authentication_requirement: 'public' }]) });
+      const r = compileCandidateToSpec(c);
+      const passed = !r.ok && r.reason === 'no_reliable_evidence';
+      results.push({ test: 'READ c/ inputs sem evidence -> COMPILATION_FAILED', passed, detail: JSON.stringify(r) });
     }
 
     // 7. selectExecutor: executor desconhecido
@@ -271,6 +315,53 @@ export default async function (req: Request) {
       const v = detectAuthWall(spec, result);
       const passed = v.blocked && v.reason === 'auth_wall_in_snapshot';
       results.push({ test: '18. detectAuthWall snapshot login+password -> blocked', passed, detail: JSON.stringify(v) });
+    }
+
+    // === FASE B4: classifyAuthenticationRequirement (probe, deterministico) ===
+    // Case 8: probe encontra /login (finalUrl) -> session_required
+    {
+      const v = classifyAuthenticationRequirement({ finalUrl: 'https://x.com/login', hasPassword: false, bodyText: '' });
+      const passed = v === 'session_required';
+      results.push({ test: 'B4-8. probe finalUrl /login -> session_required', passed, detail: JSON.stringify(v) });
+    }
+    // Case 9: probe encontra password field + auth markers -> session_required
+    {
+      const v = classifyAuthenticationRequirement({ finalUrl: 'https://x.com/', hasPassword: true, bodyText: 'Login Page\nUsername\nPassword\nEnter your password' });
+      const passed = v === 'session_required';
+      results.push({ test: 'B4-9. probe password+auth markers -> session_required', passed, detail: JSON.stringify(v) });
+    }
+    // Case 10: probe sem evidencia de auth -> public
+    {
+      const v = classifyAuthenticationRequirement({ finalUrl: 'https://example.com/', hasPassword: false, bodyText: 'Example Domain\nMore information...' });
+      const passed = v === 'public';
+      results.push({ test: 'B4-10. probe sem auth -> public', passed, detail: JSON.stringify(v) });
+    }
+    // Case 11: probe com erro/timeout -> unknown
+    {
+      const v = classifyAuthenticationRequirement({ finalUrl: '', hasPassword: false, bodyText: '', error: 'timeout' });
+      const passed = v === 'unknown';
+      results.push({ test: 'B4-11. probe erro/timeout -> unknown', passed, detail: JSON.stringify(v) });
+    }
+    // Extra: palavra "login" sozinha (sem password, sem rota de login) -> public
+    {
+      const v = classifyAuthenticationRequirement({ finalUrl: 'https://x.com/dashboard', hasPassword: false, bodyText: 'Welcome\nLogin History\nSettings' });
+      const passed = v === 'public';
+      results.push({ test: 'B4-extra. "login" word sem password -> public', passed, detail: JSON.stringify(v) });
+    }
+    // Extra: /login-history NAO casa (nao false session_required)
+    {
+      const v = classifyAuthenticationRequirement({ finalUrl: 'https://x.com/login-history', hasPassword: false, bodyText: 'Login History' });
+      const passed = v === 'public';
+      results.push({ test: 'B4-extra. /login-history -> public (nao casa)', passed, detail: JSON.stringify(v) });
+    }
+    // Extra: deriveAuthenticationRequirement conservador (mix + legado)
+    {
+      const d1 = deriveAuthenticationRequirement([{ authentication_requirement: 'public' }, { authentication_requirement: 'session_required' }]);
+      const d2 = deriveAuthenticationRequirement([{ authentication_requirement: 'public' }, { authentication_requirement: 'unknown' }]);
+      const d3 = deriveAuthenticationRequirement([{ authentication_requirement: 'public' }]);
+      const d4 = deriveAuthenticationRequirement([{ element_ref: 'r1' }]);
+      const passed = d1 === 'session_required' && d2 === 'unknown' && d3 === 'public' && d4 === 'unknown';
+      results.push({ test: 'B4-extra. deriveAuthenticationRequirement mix', passed, detail: JSON.stringify({ d1, d2, d3, d4 }) });
     }
 
     const allPassed = results.every((r) => r.passed);
