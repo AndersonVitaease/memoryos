@@ -56,6 +56,34 @@ import { stateViewEngine } from "@/lib/knowledge-registry/StateViewEngine";
  *   - response: resposta final sintetizada
  *   - plan: metadados do raciocínio (objetivo, especialistas, estratégia, tempo)
  */
+// FASE 7.16 — Web Context temporario (continuidade "esta pagina").
+// Helpers para reconstruir uma intent Web a partir do Web artifact
+// armazenado no RuntimeContextLayer (referencia only — nunca snapshot).
+function _webOrigin(u) {
+  try { return new URL(u).origin; } catch { return String(u || ""); }
+}
+
+async function _rebuildWebCapability(art) {
+  // maxun.dynamic (catch-all generico): sem robotId -> reexecuta via
+  // duplicate(targetUrl=url) no maxunRun. Sem CapabilityMap lookup.
+  if (art && art.provider === "maxun" && (!art.robotId || !String(art.robotId || "").trim())) {
+    return { provider: "maxun", id: (art.capabilityId || "maxun.dynamic"), robotId: null, inputSchema: { type: "object", properties: {} }, flow: null };
+  }
+  // Demais capabilities (importadas/playwright): re-deriva da CapabilityMap
+  // por origin + capabilityId (preserva flow/inputSchema/robotId reais).
+  try {
+    const _origin = _webOrigin(art && art.url);
+    const _maps = await base44.entities.CapabilityMap.filter({});
+    const _map = (_maps || []).find((m) => _webOrigin(m.site_url) === _origin);
+    if (_map) {
+      let _caps = []; try { _caps = JSON.parse(_map.capabilities || "[]"); } catch (e) { _caps = []; }
+      const _cap = _caps.find((c) => c && c.id === art.capabilityId);
+      if (_cap) return _cap;
+    }
+  } catch (e) { /* fall through */ }
+  return { provider: (art && art.provider) || null, id: (art && art.capabilityId) || null, robotId: (art && art.robotId) || null, inputSchema: { type: "object", properties: {} }, flow: null };
+}
+
 export async function runReasoningPlan({ userMsg, session, historyMessages = [], setPhase, kfmContext }) {
   const startTime = Date.now();
 
@@ -482,7 +510,39 @@ ${fullText}`;
   let _webConnectorGroundingNote = null;
   try {
     const { resolveWebIntents, hostOf } = await import("@/lib/web-connector/WebSiteIntentResolver");
-    const _webIntentsResult = await resolveWebIntents(userMsg);
+    // FASE 7.16 — continuidade Web: se a mensagem e uma continuacao ("esta
+    // pagina", "o site", ...) e existe Web artifact no RuntimeContextLayer,
+    // reconstrói a intent a partir da referencia armazenada (url/capability/
+    // provider/webSessionId) e reexecuta o Web Connector. Nunca reutiliza
+    // snapshot — sempre reexecuta (estrategia B, mesmo padrao do GitHub/Drive).
+    let _webIntentsResult = null;
+    try {
+      const { isContinuationMessage } = await import("@/lib/execution-intent/ExecutionIntent");
+      if (isContinuationMessage(userMsg)) {
+        const { runtimeContextLayer } = await import("@/lib/runtime-context/RuntimeContextLayer");
+        const _art = runtimeContextLayer.get()?.currentArtifact;
+        if (_art && _art.url && _art.capturedAt && (Date.now() - _art.capturedAt < 10 * 60 * 1000)) {
+          const _cap = await _rebuildWebCapability(_art);
+          _webIntentsResult = {
+            intents: [{
+              siteUrl: _art.url,
+              webSessionId: _art.webSessionId || null,
+              webSessionExpiresAt: _art.webSessionExpiresAt || null,
+              webSessionSource: _art.webSessionSource || null,
+              discoveredFromUrl: _art.discoveredFromUrl || _art.url,
+              capability: _cap,
+              flow: (_cap && _cap.flow) || null,
+              inputFields: _art.inputFields || [],
+              searchTerm: "",
+            }],
+            debugReason: "web_continuation",
+          };
+        }
+      }
+    } catch (e) { /* best-effort: falha aqui cai pro fluxo normal abaixo */ }
+    if (!_webIntentsResult) {
+      _webIntentsResult = await resolveWebIntents(userMsg);
+    }
     const _allIntents = _webIntentsResult?.intents || [];
     // Diagnostico persistente (2026-08-10): resolveWebIntent falhava
     // silenciosamente sem deixar rastro nenhum, tornando impossivel saber
@@ -780,6 +840,38 @@ ${fullText}`;
       // grounding note (single-site mantem o formato de 10 itens de sempre;
       // multi-site organiza por site) e deixa o LLM final sintetizar.
       const _okResults = _playwrightResults.filter((r) => r.ok && r.snapshotText);
+      // FASE 7.16 — registra o Web artifact no RuntimeContextLayer (referencia
+      // para continuidade "esta pagina" no proximo turno). SOMENTE referencia
+      // (url/capabilityId/provider/webSessionId/capturedAt) — NUNCA snapshot,
+      // HTML, markdown ou conteudo da pagina. Single-slot: sobrescreve
+      // artifacts de outros dominios (mesmo padrao do GitHub/Drive).
+      if (_okResults.length > 0) {
+        try {
+          const { runtimeContextLayer } = await import("@/lib/runtime-context/RuntimeContextLayer");
+          const _r0 = _okResults[0];
+          const _c0 = _r0.intent.capability || {};
+          runtimeContextLayer.set({
+            currentDomain: "web",
+            currentConnector: "web-connector",
+            currentCapability: (_c0 && _c0.id) || null,
+            currentGoalType: "web.execute",
+            currentExecutionId: null,
+            sessionId: session?.id || null,
+            currentArtifact: {
+              url: _r0.intent.siteUrl,
+              capabilityId: (_c0 && _c0.id) || null,
+              provider: (_c0 && _c0.provider) || null,
+              robotId: (_c0 && _c0.robotId) || null,
+              webSessionId: _r0.intent.webSessionId || null,
+              webSessionSource: _r0.intent.webSessionSource || null,
+              webSessionExpiresAt: _r0.intent.webSessionExpiresAt || null,
+              discoveredFromUrl: _r0.intent.discoveredFromUrl || _r0.intent.siteUrl,
+              inputFields: _r0.intent.inputFields || [],
+              capturedAt: Date.now(),
+            },
+          });
+        } catch (e) { /* best-effort: continuidade nunca bloqueia a resposta */ }
+      }
       // FASE 7.13 — Classificacao SEMANTICA do grounding pela natureza da capability.
       // GENERICA/NEUTRA: inputSchema.properties inexistente, nulo ou vazio
       //   (acesso/scrape de pagina, sem campo de busca de produtos).

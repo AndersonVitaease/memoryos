@@ -48,6 +48,7 @@ export type ExecutionDomain =
   | "gmail"
   | "google-calendar"
   | "base44"
+  | "web"
   | "general";
 
 export type ExecutionPurpose =
@@ -95,6 +96,27 @@ export interface CurrentArtifact {
   resultPaths?: string[];
   /** Current cursor index into resultPaths (for "next"/"previous" navigation) */
   cursorIndex?: number;
+  // ── FASE 7.16 — Web artifact (dominio "web") ──────────────────────────────
+  // Somente a REFERENCIA necessaria para reexecutar a capability web. NUNCA
+  // snapshot/HTML/markdown/conteudo da pagina (reexecucao sempre, padrao B).
+  /** URL da pagina acessada (equivalente de path/fileId para github/drive) */
+  url?: string;
+  /** ID da capability executada (ex: "maxun.dynamic", "product.search") */
+  capabilityId?: string;
+  /** Motor de execucao ("maxun" | "playwright") */
+  provider?: string;
+  /** robotId do Maxun (null para maxun.dynamic generico) */
+  robotId?: string | null;
+  /** WebSession autenticada usada (null para maxun server-side) */
+  webSessionId?: string | null;
+  webSessionSource?: string | null;
+  webSessionExpiresAt?: string | null;
+  /** URL de descoberta da capability (onde navegar) */
+  discoveredFromUrl?: string;
+  /** Campos de entrada da capability (derivados de inputSchema) */
+  inputFields?: string[];
+  /** Timestamp de captura — decisao de staleness (TTL ~10min) */
+  capturedAt?: number;
 }
 
 export interface ExecutionIntentRecord extends BaseConnectorContext {
@@ -135,6 +157,14 @@ const CONTINUATION_SIGNALS: string[] = [
   "baixe esse", "baixe este",
   "abra o arquivo", "abra o proximo", "abra o próximo", "abra o anterior",
   "volte para o anterior", "volte ao anterior", "va para o proximo", "vá para o próximo",
+  // FASE 7.16 — Web deictic continuation ("esta pagina" -> artifact web do
+  // turno anterior). Unicode escapes (\uXXXX) evitam acentos literais em
+  // string literals (dead-end conhecido do build environment).
+  "esta p\u00e1gina", "essa p\u00e1gina", "desta p\u00e1gina",
+  "deste site", "desse site", "o site", "esse site",
+  "essa fonte", "desta fonte",
+  "o conte\u00fado desta p\u00e1gina", "o conte\u00fado desse site",
+  "essa informa\u00e7\u00e3o",
   // IA-017: "esse"/"essa"/"este"/"esta" e "mostre o"/"mostre a"/"mostrar o"/
   // "mostrar a" soltos removidos — eram genéricos demais, disparando
   // continuidade em qualquer mensagem contendo essas palavras comuns
@@ -232,6 +262,15 @@ export function resolveGoalTypeFromIntent(
     }
   } catch { /* non-blocking — fall through */ }
   // ── end EF-43A ────────────────────────────────────────────────────────────────
+
+  // FASE 7.16 — Web deictic guard: referencias a "pagina"/"site"/"fonte" so
+  // fazem sentido para o dominio web. Para outros dominios (github/drive/
+  // gmail/calendar), NAO forçar resolucao — retorna null e deixa o guard Web
+  // do Planner tratar via currentArtifact (RuntimeContextLayer). Evita que
+  // "qual o conteudo desta pagina?" seja roteado para github.searchCode
+  // (fallback) quando existe um exec-intent nao-web stale.
+  const _WEB_DEICTIC_RE = /esta p\u00e1gina|essa p\u00e1gina|desta p\u00e1gina|deste site|desse site|o site|esse site|essa fonte|desta fonte|o conte\u00fado desta p\u00e1gina|o conte\u00fado desse site|essa informa\u00e7\u00e3o/i;
+  if (intent.domain !== "web" && _WEB_DEICTIC_RE.test(message)) return null;
 
   if (intent.domain === "github") {
     // Explicit "arquivo" keyword → always files.get regardless of context
