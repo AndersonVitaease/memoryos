@@ -143,16 +143,79 @@ export async function resolveWebIntent(message) {
 // perguntas do tipo "compare X no site A e no site B" ou "veja meus pedidos
 // no Bling e minhas vendas no Mercado Livre" (2026-08-11, camada de
 // inteligencia multi-site).
+// FASE 7.7 — Capability Maxun e server-side (maxunRun -> Maxun Cloud) e NAO
+// depende de WebSession, extensao ou Playwright. Se a capability do site
+// mencionado tiver provider:"maxun" + robotId, produzimos uma intent Maxun
+// MESMO SEM WebSession ativa (webSessionId=null, webSessionSource=null).
+// Para capabilities NAO-Maxun, preservamos 100% do comportamento atual
+// baseado em WebSession ativa.
+function isMaxunCapability(cap) {
+  return Boolean(cap && cap.provider === 'maxun' && typeof cap.robotId === 'string' && cap.robotId.trim().length > 0);
+}
+
+// FASE 7.7 — Acha a melhor capability de leitura de um CapabilityMap,
+// preferindo Maxun quando existir (Maxun e server-side e roda sem sessao).
+// Para maps sem Maxun, mantem a selecao original (search > filter > list).
+function pickSearchCapabilityWithMaxun(capabilities) {
+  if (!Array.isArray(capabilities) || capabilities.length === 0) return null;
+  const maxun = capabilities.find(isMaxunCapability);
+  if (maxun) return maxun;
+  return pickSearchCapability(capabilities);
+}
+
+// FASE 7.7 — Descobre intents Maxun para sites mencionados na mensagem que
+// NAO possuem WebSession ativa. Maxun roda server-side (maxunRun) e nao
+// precisa de browser session. Retorna intents com webSessionId=null,
+// webSessionSource=null. NAO substitui o sistema de descoberta baseado em
+// WebSession — apenas adiciona o caminho Maxun para sites sem sessao.
+async function discoverMaxunIntentsWithoutSession(message, maps, knownOrigins) {
+  if (!Array.isArray(maps) || maps.length === 0) return [];
+  const msgNorm = normalize(message);
+  if (!msgNorm) return [];
+  const intents = [];
+  for (const map of maps) {
+    const siteOrigin = originOf(map.site_url);
+    if (!siteOrigin) continue;
+    // Pula origens que ja tem WebSession ativa — essas sao tratadas pelo
+    // caminho normal (com sessao). Maxun sem sessao so entra quando nao ha
+    // sessao ativa para o site.
+    if (Array.isArray(knownOrigins) && knownOrigins.includes(siteOrigin)) continue;
+    // Verifica se o site e mencionado na mensagem (mesma logica de siteMentioned,
+    // mas sem depender de um objeto WebSession — usa o site_url do CapabilityMap).
+    const joined = hostJoinedToken(map.site_url);
+    const matchedSite = (joined && joined.length >= 4 && msgNorm.includes(joined)) ||
+      (map.site_name && normalize(map.site_name).length >= 4 && msgNorm.includes(normalize(map.site_name)));
+    if (!matchedSite) continue;
+    let capabilities = [];
+    try { capabilities = JSON.parse(map.capabilities || "[]"); } catch (e) { capabilities = []; }
+    const cap = pickSearchCapabilityWithMaxun(capabilities);
+    if (!cap || !isMaxunCapability(cap)) continue;
+    const inputFields = (cap.inputSchema && cap.inputSchema.properties) ? Object.keys(cap.inputSchema.properties) : [];
+    // Termo de busca: como nao ha WebSession, usa o site_url do CapabilityMap.
+    const searchTerm = extractSearchTerm(message, { site_url: map.site_url, site_name: map.site_name });
+    intents.push({
+      siteUrl: map.site_url,
+      webSessionId: null,
+      webSessionExpiresAt: null,
+      webSessionSource: null,
+      discoveredFromUrl: cap.discoveredFrom || map.site_url,
+      capability: cap,
+      flow: cap.flow || null,
+      inputFields,
+      searchTerm,
+    });
+  }
+  return intents;
+}
+
 export async function resolveWebIntents(message) {
   if (!message || !String(message).trim()) return { intents: [], debugReason: 'empty_message' };
   try {
-    const sessions = await base44.entities.WebSession.filter({ status: "active" }, "-created_date", 20);
-    if (!sessions || sessions.length === 0) return { intents: [], debugReason: 'no_active_sessions' };
-
-    const matchedSessions = sessions.filter((s) => siteMentioned(message, s));
-    if (matchedSessions.length === 0) return { intents: [], debugReason: 'no_session_site_mentioned', debugSessionSites: sessions.map((s) => s.site_url) };
-
     const maps = await base44.entities.CapabilityMap.filter({});
+    // Caminho existente (preservado): WebSession ativa -> intent com sessao.
+    const sessions = await base44.entities.WebSession.filter({ status: "active" }, "-created_date", 20);
+    const matchedSessions = (sessions || []).filter((s) => siteMentioned(message, s));
+    const knownOrigins = matchedSessions.map((s) => originOf(s.site_url));
     const intents = [];
     for (const matched of matchedSessions) {
       const siteOrigin = originOf(matched.site_url);
@@ -160,7 +223,11 @@ export async function resolveWebIntents(message) {
       if (!map) continue;
       let capabilities = [];
       try { capabilities = JSON.parse(map.capabilities || "[]"); } catch (e) { capabilities = []; }
-      const cap = pickSearchCapability(capabilities);
+      // FASE 7.7: se a melhor capability do site for Maxun, produz intent Maxun
+      // vinculada a sessao (webSessionId setado). O Planner roteara Maxun para
+      // webConnectorConnect independentemente do webSessionSource, entao mesmo
+      // uma sessao "extension" com capability Maxun nao vai para a fila da extensao.
+      const cap = pickSearchCapabilityWithMaxun(capabilities);
       if (!cap) continue;
       const inputFields = (cap.inputSchema && cap.inputSchema.properties) ? Object.keys(cap.inputSchema.properties) : [];
       const searchTerm = extractSearchTerm(message, matched);
@@ -176,7 +243,27 @@ export async function resolveWebIntents(message) {
         searchTerm,
       });
     }
-    if (intents.length === 0) return { intents: [], debugReason: 'sites_matched_but_no_capability' };
+
+    // FASE 7.7 — Caminho NOVO: sites mencionados SEM WebSession ativa cuja
+    // capability e Maxun (server-side, nao precisa de sessao). Aditivo —
+    // nao afeta capabilities nao-Maxun (preservam comportamento atual).
+    const maxunIntents = await discoverMaxunIntentsWithoutSession(message, maps || [], knownOrigins);
+    for (const mi of maxunIntents) {
+      // Evita duplicar se porventura o mesmo site ja foi coberto por sessao.
+      if (!intents.some((i) => originOf(i.siteUrl) === originOf(mi.siteUrl))) {
+        intents.push(mi);
+      }
+    }
+
+    if (intents.length === 0) {
+      // Preserva os debugReasons originais para diagnostico quando nao ha
+      // sessao ativa. Se havia sessions mas nenhuma mencionada, mantem o
+      // reason original; se nao havia sessions nenhuma e tambem nao havia
+      // Maxun, fica 'no_active_sessions' (compativel com o guard do MRP
+      // que silencia esse reason).
+      if (!sessions || sessions.length === 0) return { intents: [], debugReason: 'no_active_sessions' };
+      return { intents: [], debugReason: 'no_session_site_mentioned', debugSessionSites: sessions.map((s) => s.site_url) };
+    }
     return { intents, debugReason: null };
   } catch (e) {
     console.warn("[WebSiteIntentResolver] resolveWebIntents falhou:", e?.message);

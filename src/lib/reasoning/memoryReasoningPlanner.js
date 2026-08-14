@@ -512,9 +512,25 @@ ${fullText}`;
       // B3: separa intents com sessao ja expirada (nao tenta executar).
       const _expiredIntents = _allIntents.filter((i) => i.webSessionExpiresAt && new Date(i.webSessionExpiresAt) < _now);
       const _liveIntents = _allIntents.filter((i) => !(i.webSessionExpiresAt && new Date(i.webSessionExpiresAt) < _now));
+
+      // FASE 7.7 — Capability Maxun e server-side (maxunRun -> Maxun Cloud):
+      // nao depende de WebSession, nem de extensao, nem de Playwright. Essas
+      // intents sao roteadas DIRETAMENTE para webConnectorConnect (mesmo
+      // caminho que _playwrightIntents usa), ANTES do split por webSessionSource
+      // e fora da fila da extensao. webSessionSource pode ser null (sem sessao)
+      // ou 'extension' (sessao existente) — em ambos os casos Maxun NUNCA vai
+      // para a extensao, nunca incrementa _queuedExtensionCount e nunca sofre
+      // o early-return da extensao.
+      const _isMaxunIntent = (i) => Boolean(i && i.capability && i.capability.provider === 'maxun' && typeof i.capability.robotId === 'string' && i.capability.robotId.trim().length > 0);
+      const _maxunIntents = _liveIntents.filter(_isMaxunIntent);
+      const _nonMaxunLiveIntents = _liveIntents.filter((i) => !_isMaxunIntent(i));
+
       // Separa por motor: extensao (assincrono, fila) vs playwright/live (sincrono, na hora).
-      const _extensionIntents = _liveIntents.filter((i) => i.webSessionSource === 'extension');
-      const _playwrightIntents = _liveIntents.filter((i) => i.webSessionSource !== 'extension');
+      // FASE 7.7: o split agora so considera intents NAO-Maxun. Maxun foi
+      // removido deste split e e tratado no bloco proprio abaixo (junta-se
+      // aos _playwrightIntents para execucao sincrona via webConnectorConnect).
+      const _extensionIntents = _nonMaxunLiveIntents.filter((i) => i.webSessionSource === 'extension');
+      const _playwrightIntents = _nonMaxunLiveIntents.filter((i) => i.webSessionSource !== 'extension');
 
       const _shortenProductUrl = (href) => {
         if (!href) return href;
@@ -568,6 +584,57 @@ ${fullText}`;
           return { intent, ok: false, isRealSessionExpiry: false, error: e?.message || String(e) };
         }
       }));
+
+      // FASE 7.7 — Executa intents Maxun (server-side, sem WebSession/extensao)
+      // pelo MESMO caminho webConnectorConnect usado por _playwrightIntents.
+      // Maxun nunca passa pela fila da extensao e nunca conta para
+      // _queuedExtensionCount, evitando o early-return que descartaria o
+      // resultado. webSessionId pode ser null (sem sessao) — o branch Maxun
+      // do webConnectorConnect nao usa a sessao. Resultados sao mesclados em
+      // _playwrightResults para que toda a logica de grounding downstream
+      // (single-site / multi-site / early-return) continue identica.
+      if (_maxunIntents.length > 0) {
+        const _maxunResults = await Promise.all(_maxunIntents.map(async (intent) => {
+          try {
+            const _inputs = {};
+            if (intent.inputFields.length > 0) _inputs[intent.inputFields[0]] = intent.searchTerm || "";
+            const _res = await base44.functions.invoke("webConnectorConnect", {
+              operation: "executeCapability",
+              webSessionId: intent.webSessionId,
+              discoveredFromUrl: intent.discoveredFromUrl,
+              inputFields: intent.inputFields,
+              inputs: _inputs,
+              flow: intent.flow || intent.capability?.flow || null,
+              // Passthrough opaco preservado: o Planner nao interpreta Maxun,
+              // apenas repassa provider/robotId para o webConnectorConnect
+              // decidir o executor (branch Maxun).
+              provider: intent.capability?.provider || null,
+              robotId: intent.capability?.robotId || null,
+            });
+            const _d = _res?.data ?? _res;
+            if (_d?.error) {
+              try {
+                await base44.entities.InteractionEvent.create({
+                  session_id: session?.id || '',
+                  actor: 'system',
+                  event_type: 'web_execute_capability_failed',
+                  raw_text: String(userMsg || '').slice(0, 500),
+                  payload: JSON.stringify({ error: String(_d.error).slice(0, 1000), webSessionId: intent.webSessionId, capabilityId: intent.capability?.id || null, provider: 'maxun', robotId: intent.capability?.robotId || null, discoveredFromUrl: intent.discoveredFromUrl }),
+                });
+              } catch (e2) { /* best-effort */ }
+              return { intent, ok: false, isRealSessionExpiry: false, error: String(_d.error || '') };
+            }
+            const _snap = String(_d?.snapshotText || "").slice(0, 6000);
+            const _links = Array.isArray(_d?.links) ? _d.links : [];
+            const _filled = Array.isArray(_d?.filled) ? _d.filled.join(", ") : "";
+            const _linksShort = _links.map((l) => ({ ...l, href: _shortenProductUrl(l.href) }));
+            return { intent, ok: true, snapshotText: _snap, links: _linksShort, filled: _filled };
+          } catch (e) {
+            return { intent, ok: false, isRealSessionExpiry: false, error: e?.message || String(e) };
+          }
+        }));
+        _playwrightResults.push(..._maxunResults);
+      }
 
       // Enfileira os intents de extensao (assincronos) num BATCH so — a
       // extensao pega todos juntos no proximo heartbeat (~30s) e executa em
