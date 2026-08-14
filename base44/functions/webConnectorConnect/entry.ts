@@ -788,10 +788,11 @@ export default async function (req) {
       const _hasFlow = Array.isArray(flow) && flow.length > 0;
       if (!_hasFlow) {
         if (!discoveredFromUrl) return Response.json({ error: 'Missing required field: discoveredFromUrl' }, { status: 400 });
-        if (!Array.isArray(inputFields) || inputFields.length === 0) return Response.json({ error: 'inputFields must be a non-empty array' }, { status: 400 });
-        if (!inputs || typeof inputs !== 'object') return Response.json({ error: 'inputs must be an object' }, { status: 400 });
+        // B1: READ sem inputs e sem flow = page-read autenticado (cookies + navega).
+        // inputs[] obrigatorios apenas no caminho form-fill (preservado abaixo).
+        const _hasInputs = Array.isArray(inputFields) && inputFields.length > 0;
+        if (_hasInputs && (!inputs || typeof inputs !== 'object')) return Response.json({ error: 'inputs must be an object' }, { status: 400 });
       }
-
       const session = await withTimeout(base44.entities.WebSession.get(webSessionId), SDK_TIMEOUT_MS, 'session_get');
       if (!session) return Response.json({ error: 'WebSession not found' }, { status: 404 });
       if (session.status !== 'active') return Response.json({ error: 'WebSession is not active (status: ' + session.status + ')' }, { status: 409 });
