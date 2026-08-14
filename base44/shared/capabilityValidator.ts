@@ -1,0 +1,123 @@
+/**
+ * capabilityValidator -- Etapa explicita de validacao. Orquestra:
+ *   ExecutorSelector -> ExecutorAdapter -> resultado -> ValidationResult
+ *
+ * ValidationResult distingue:
+ *   PASS         -> execucao sem erro + expectedResult satisfeito
+ *   FAIL         -> erro explicito (session_expired, form_not_found,
+ *                   write_guard, no_field_filled, maxun falhou)
+ *   INCONCLUSIVE -> executou sem erro mas expectedResult nao satisfeito
+ *
+ * Para Maxun auto-create (estado 2), carrega robotIdUsed (robot criado) para
+ * a promocao persistir em automation.robotId.
+ *
+ * WRITE nunca e validado automaticamente (Compiler bloqueia).
+ */
+import type { AutomationSpec } from './automationSpec.ts';
+import { selectExecutor } from './executorSelector.ts';
+import { playwrightAdapter } from './playwrightAdapter.ts';
+import { maxunAdapter } from './maxunAdapter.ts';
+import type { ExecutionContext, ExecutorResult } from './executorAdapter.ts';
+
+export type ValidationStatus = 'pass' | 'fail' | 'inconclusive';
+
+export interface ValidationResult {
+  status: ValidationStatus;
+  executor: 'playwright' | 'maxun' | null;
+  reason: string;
+  // Para Maxun auto-create: robotId efetivamente usado (pre-existente ou criado).
+  robotIdUsed?: string | null;
+  evidence: {
+    snapshotTextLen: number;
+    linksCount: number;
+    filledCount: number;
+    finalUrl?: string;
+    error?: string;
+    rawPreview?: unknown;
+  };
+}
+
+function checkExpectedResult(spec: AutomationSpec, result: ExecutorResult): boolean {
+  const er = spec.expectedResult;
+  if (er.kind === 'links') {
+    const min = typeof er.minItems === 'number' ? er.minItems : 1;
+    return Array.isArray(result.links) && result.links.length >= min;
+  }
+  if (er.kind === 'snapshot') {
+    return Boolean(result.snapshotText && result.snapshotText.trim().length > 0);
+  }
+  if (er.kind === 'extracted') {
+    return Boolean(result.extracted && Object.keys(result.extracted).length > 0);
+  }
+  return false;
+}
+
+export async function validateSpec(
+  spec: AutomationSpec,
+  ctx: ExecutionContext,
+): Promise<ValidationResult> {
+  const sel = selectExecutor(spec);
+  if (!sel.executor) {
+    return {
+      status: 'fail', executor: null, reason: sel.reason,
+      robotIdUsed: null,
+      evidence: { snapshotTextLen: 0, linksCount: 0, filledCount: 0 },
+    };
+  }
+
+  const adapter = sel.executor === 'playwright' ? playwrightAdapter : maxunAdapter;
+  const pre = adapter.validate(spec);
+  if (!pre.ok) {
+    return {
+      status: 'fail', executor: sel.executor, reason: pre.reason || 'adapter_validate_failed',
+      robotIdUsed: null,
+      evidence: { snapshotTextLen: 0, linksCount: 0, filledCount: 0 },
+    };
+  }
+
+  let result: ExecutorResult;
+  try {
+    result = await adapter.execute(spec, ctx);
+  } catch (e) {
+    return {
+      status: 'fail', executor: sel.executor,
+      reason: 'adapter_threw',
+      robotIdUsed: null,
+      evidence: { snapshotTextLen: 0, linksCount: 0, filledCount: 0, error: String((e as any)?.message || e) },
+    };
+  }
+
+  const evidence: ValidationResult['evidence'] = {
+    snapshotTextLen: (result.snapshotText || '').length,
+    linksCount: Array.isArray(result.links) ? result.links.length : 0,
+    filledCount: Array.isArray(result.filled) ? result.filled.length : 0,
+    finalUrl: result.finalUrl || undefined,
+    error: result.error,
+  };
+
+  if (!result.ok) {
+    // Erro explicito do executor -> FAIL (nao INCONCLUSIVE).
+    return {
+      status: 'fail', executor: sel.executor,
+      reason: result.error || 'executor_failed',
+      robotIdUsed: result.robotIdUsed || null,
+      evidence,
+    };
+  }
+
+  const satisfied = checkExpectedResult(spec, result);
+  if (satisfied) {
+    return {
+      status: 'pass', executor: sel.executor,
+      reason: 'expected_result_satisfied',
+      robotIdUsed: result.robotIdUsed || null,
+      evidence,
+    };
+  }
+  return {
+    status: 'inconclusive', executor: sel.executor,
+    reason: 'executed_ok_but_expected_result_not_met',
+    robotIdUsed: result.robotIdUsed || null,
+    evidence,
+  };
+}
