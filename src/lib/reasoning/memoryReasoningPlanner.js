@@ -521,7 +521,10 @@ ${fullText}`;
       // ou 'extension' (sessao existente) — em ambos os casos Maxun NUNCA vai
       // para a extensao, nunca incrementa _queuedExtensionCount e nunca sofre
       // o early-return da extensao.
-      const _isMaxunIntent = (i) => Boolean(i && i.capability && i.capability.provider === 'maxun' && typeof i.capability.robotId === 'string' && i.capability.robotId.trim().length > 0);
+      // Fase 7.9: aceita intent Maxun generica (sem robotId) — o catch-all do
+      // Resolver para URLs arbitrárias usa provider='maxun' sem robotId; o
+      // webConnectorConnect roteia para maxunRun em modo duplicate(targetUrl).
+      const _isMaxunIntent = (i) => Boolean(i && i.capability && i.capability.provider === 'maxun');
       const _maxunIntents = _liveIntents.filter(_isMaxunIntent);
       const _nonMaxunLiveIntents = _liveIntents.filter((i) => !_isMaxunIntent(i));
 

@@ -34,6 +34,35 @@ export function originOf(url) {
   }
 }
 
+// Fase 7.9 — normaliza uma URL candidata extraída da mensagem. Rejeita
+// protocolos nao-http(s) (javascript:/data:/file:) e hostnames invalidos.
+function _safeArbUrl(u) {
+  const s = String(u || "").trim().replace(/[.,;:)]+$/, "");
+  if (!s) return null;
+  try {
+    const url = new URL(s.includes("://") ? s : "https://" + s);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    if (!url.hostname || !url.hostname.includes(".") || /\s/.test(url.hostname)) return null;
+    return url.toString();
+  } catch (e) { return null; }
+}
+
+// Fase 7.9 — extrai uma URL arbitrária da mensagem quando o usuario pede para
+// "mostrar/acessar/ver" um site explicito. Exige um verbo de intenção (mostre/
+// ver/veja/abra/...) para nao disparar em menções casuais a dominios. Retorna a
+// URL normalizada ou null. Usado pelo catch-all dinamico do resolveWebIntents.
+function extractArbitraryUrl(message) {
+  const s = String(message || "").trim();
+  if (!s) return null;
+  const VERB = /\b(?:mostre|mostrar|mostra|ver|veja|abra|abrir|acess[ea]r|visite|abre)\b/i;
+  if (!VERB.test(s)) return null;
+  const m1 = s.match(/\bhttps?:\/\/[^\s<>"']+/i);
+  if (m1) return _safeArbUrl(m1[0]);
+  const m2 = s.match(/\b(?:mostre|mostrar|mostra|ver|veja|abra|abrir|acess[ea]r|visite|abre)\s+([a-z0-9][a-z0-9.-]+\.[a-z]{2,}(?:[/?]\S*)?)/i);
+  if (m2) return _safeArbUrl(m2[1]);
+  return null;
+}
+
 // Normaliza para matching: lowercase + sem acento + so alfanumerico.
 // "Mercado Livre" -> "mercadolivre" (bate com o token do host).
 function normalize(s) {
@@ -252,6 +281,31 @@ export async function resolveWebIntents(message) {
       // Evita duplicar se porventura o mesmo site ja foi coberto por sessao.
       if (!intents.some((i) => originOf(i.siteUrl) === originOf(mi.siteUrl))) {
         intents.push(mi);
+      }
+    }
+
+    // Fase 7.9 — catch-all dinamico: se nenhuma intent foi produzida (nenhum
+    // site em CapabilityMap/WebSession mencionado) mas a mensagem pede para
+    // "mostrar/acessar" uma URL explicita, produz uma intent Maxun generica
+    // (provider=maxun, sem robotId). O Planner roteia para webConnectorConnect
+    // -> maxunRun (modo duplicate com targetUrl). Reusa discoveredFromUrl como
+    // transportador da URL do usuario (mesmo campo que o Playwright usa para
+    // navegar). Nao cria nova camada — apenas mais um tipo de intent no
+    // resolver existente.
+    if (intents.length === 0) {
+      const _url = extractArbitraryUrl(message);
+      if (_url) {
+        intents.push({
+          siteUrl: _url,
+          webSessionId: null,
+          webSessionExpiresAt: null,
+          webSessionSource: null,
+          discoveredFromUrl: _url,
+          capability: { provider: 'maxun', id: 'maxun.dynamic', robotId: null, inputSchema: { type: 'object', properties: {} }, flow: null },
+          flow: null,
+          inputFields: [],
+          searchTerm: '',
+        });
       }
     }
 
