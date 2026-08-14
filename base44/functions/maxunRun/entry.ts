@@ -1,41 +1,44 @@
 /**
- * maxunRun — unico ponto backend que conversa com a Run API oficial do Maxun.
+ * maxunRun — unico ponto backend que conversa com a Run API oficial do Maxun CLOUD.
  *
- * CONTRATO REAL (confirmado no fonte server/src/api/record.ts do Maxun):
- *   POST /api/robots/{robotId}/runs
+ * CONTRATO CLOUD (Fase 7.2 — confirmado via CLI oficial getmaxun/maxun-cli,
+ *   src/lib/api.ts + src/commands/run.ts + skills/maxun/scripts/maxun.sh):
+ *
+ *   POST /api/sdk/robots/{robotId}/execute
  *     - header: x-api-key: <MAXUN_API_KEY>
- *     - body: { formats?, promptInstructions? }   (requestBody required: false)
- *     - A API PUBLICA ATUAL NAO ACEITA `inputs`/`originUrl` em runtime — o
- *       robot roda com o `originUrl` gravado. `inputParameters` na listagem
- *       de robots e apenas metadata (originUrl com defaultValue fixo).
- *     - O POST e SINCRONO: o servidor chama waitForRunCompletion(runId)
- *       (poll interno 2s, max 3h) e so responde quando a run termina.
- *   GET /api/robots/{robotId}/runs/{runId}
- *     - retorna a run individual (mesmo shape).
+ *     - header: Content-Type: application/json
+ *     - body: {} ou { formats: ["markdown","html",...] }   (opcional — override
+ *       de output formats do robot para esta run)
+ *     - A API CLOUD NAO ACEITA `inputs`/`originUrl` em runtime — o robot roda
+ *       com o `originUrl` gravado. O campo `inputs` e aceito pela funcao apenas
+ *       para compatibilidade de assinatura (validado, mas NAO enviado ao Maxun).
+ *     - O POST e SINCRONO: o servidor espera a run terminar (timeout ate 30min
+ *       no CLI oficial) e so responde com o resultado final. Sem polling.
  *
- * Statuses terminais (Run.status): 'success' | 'failed' | 'aborted' | 'aborting'.
- * Nao-terminal: 'running' | 'pending' | 'queued'.
+ * Resposta (cloud):
+ *   { data: { runId, status, data: { textData, listData, crawlData, searchData } } }
+ *   (parser defensivo: tambem aceita shape flat { runId, status, data:{...} })
  *
- * DESVIO DO PLANO (reportado ao usuario): a funcao aceita `inputs` no contrato
- * para forward-compat, mas NAO os envia ao Maxun (a API atual os ignora).
- * Parametrizar a URL requer duplicar o robot (endpoint /duplicate) — fora do
- * escopo da Fase 7.1.
+ * Statuses terminais: 'success' | 'completed' | 'failed' | 'aborted' | ...
  *
  * SEGURANCA: MAXUN_API_KEY existe SOMENTE neste processo backend. Nunca e
- * logada, nunca aparece no ConnectorResult/resposta HTTP. Logs usam safeLog
- * que registra apenas stage/robotId/httpStatus/peek do CORPO da resposta
- * (sem headers/secrets).
+ * logada, nunca aparece na resposta HTTP. Logs usam safeLog que registra
+ * apenas stage/robotId/httpStatus/peek do CORPO da resposta (sem headers/secrets).
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 
 const MAXUN_BASE_URL = 'https://app.maxun.dev';
-const DEFAULT_TIMEOUT_MS = 120000;
-const MAX_TIMEOUT_MS = 600000;
+const EXECUTE_PATH = (robotId: string) => `/api/sdk/robots/${encodeURIComponent(robotId)}/execute`;
+const DEFAULT_TIMEOUT_MS = 300000; // 5 min — execute e sincrono e pode demorar
+const MAX_TIMEOUT_MS = 600000;       // 10 min — teto
 const MIN_TIMEOUT_MS = 5000;
-const POLL_INTERVAL_MS = 3000;
 
-const TERMINAL_SUCCESS = new Set(['success']);
-const TERMINAL_FAILURE = new Set(['failed', 'aborted', 'aborting', 'error']);
+const VALID_FORMATS = new Set([
+  'markdown', 'html', 'text', 'links', 'summary',
+  'screenshot-visible', 'screenshot-fullpage',
+]);
+
+const TERMINAL_SUCCESS = new Set(['success', 'completed']);
 
 function safeLog(label: string, obj: Record<string, unknown>) {
   try {
@@ -45,13 +48,40 @@ function safeLog(label: string, obj: Record<string, unknown>) {
   }
 }
 
-function normalizeRun(run: any) {
-  const status = String((run && run.status) || '').toLowerCase();
-  const runId = String((run && (run.runId || run.id)) || '');
-  const data = run && run.data;
-  const rows = Array.isArray(data) ? data : data && typeof data === 'object' ? [data] : [];
-  const extracted = !Array.isArray(data) && data && typeof data === 'object' ? data : null;
-  return { status, runId, rows, extracted };
+/**
+ * Normaliza a resposta do execute cloud. Defensivo contra:
+ * data ausente, runId ausente, status ausente, textData/listData/crawlData/
+ * searchData ausentes, e shape flat (sem envelope `data`).
+ */
+function normalizeExecuteResult(body: any) {
+  const envelope = body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+  const inner =
+    envelope.data && typeof envelope.data === 'object' && !Array.isArray(envelope.data)
+      ? envelope.data
+      : envelope;
+  const runId = String(inner.runId || envelope.runId || envelope.id || '');
+  const status = String(inner.status || envelope.status || '').toLowerCase();
+  const extracted =
+    inner.data && typeof inner.data === 'object' && !Array.isArray(inner.data)
+      ? inner.data
+      : null;
+  const pick = (k: string) => (extracted && extracted[k] !== undefined ? extracted[k] : null);
+  return {
+    runId,
+    status,
+    textData: pick('textData'),
+    listData: pick('listData'),
+    crawlData: pick('crawlData'),
+    searchData: pick('searchData'),
+  };
+}
+
+function tryParseMessage(raw: string): string | null {
+  try {
+    const j = JSON.parse(raw);
+    if (j && typeof j === 'object') return j.message || j.error || null;
+  } catch { /* nao-JSON */ }
+  return null;
 }
 
 export default async function (req: Request) {
@@ -67,7 +97,7 @@ export default async function (req: Request) {
       return Response.json({ ok: false, error: 'Invalid JSON body' }, { status: 400 });
     }
 
-    const { robotId, inputs, timeoutMs } = body;
+    const { robotId, inputs, formats, timeoutMs } = body;
 
     // 1) Validar robotId
     if (typeof robotId !== 'string' || !robotId.trim()) {
@@ -75,23 +105,35 @@ export default async function (req: Request) {
     }
     const cleanRobotId = robotId.trim();
 
-    // 2) Validar inputs (opcional; se presente deve ser objeto de strings).
-    //    NAO enviado ao Maxun (desvio do plano — ver cabecalho).
+    // 2) Validar inputs (aceito p/ compat de assinatura; NAO enviado ao Maxun cloud).
     if (inputs != null && (typeof inputs !== 'object' || Array.isArray(inputs))) {
       return Response.json({ ok: false, error: 'inputs must be an object of string values' }, { status: 400 });
     }
 
-    // 3) Timeout configuravel com clamp
+    // 3) formats opcional (override de output formats do robot para esta run).
+    //    So repassa formatos reconhecidos pelo CLI oficial.
+    const payload: Record<string, unknown> = {};
+    if (Array.isArray(formats)) {
+      const clean = formats
+        .map((f: unknown) => (typeof f === 'string' ? f.trim() : ''))
+        .filter((f: string) => f.length > 0 && VALID_FORMATS.has(f));
+      if (clean.length > 0) payload.formats = clean;
+    }
+
+    // 4) Timeout configuravel com clamp
     const tMs = Math.min(
       Math.max(typeof timeoutMs === 'number' && timeoutMs > 0 ? timeoutMs : DEFAULT_TIMEOUT_MS, MIN_TIMEOUT_MS),
       MAX_TIMEOUT_MS,
     );
 
-    // 4) Ler a chave SOMENTE do ambiente seguro
+    // 5) Ler a chave SOMENTE do ambiente seguro
     const apiKey = Deno.env.get('MAXUN_API_KEY');
     if (!apiKey) {
       safeLog('[maxunRun]', { stage: 'no_api_key' });
-      return Response.json({ ok: false, error: 'MAXUN_API_KEY not configured', maxunStatus: 'not_configured' }, { status: 503 });
+      return Response.json(
+        { ok: false, error: 'MAXUN_API_KEY not configured', maxunStatus: 'not_configured' },
+        { status: 503 },
+      );
     }
 
     const headers: Record<string, string> = {
@@ -100,8 +142,8 @@ export default async function (req: Request) {
       'x-api-key': apiKey, // nunca logado
     };
 
-    // 5) POST /api/robots/{robotId}/runs  (body vazio — API real nao aceita inputs)
-    const postUrl = `${MAXUN_BASE_URL}/api/robots/${encodeURIComponent(cleanRobotId)}/runs`;
+    // 6) POST /api/sdk/robots/{robotId}/execute (sincrono)
+    const postUrl = MAXUN_BASE_URL + EXECUTE_PATH(cleanRobotId);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), tMs);
     let postRes: Response | null = null;
@@ -111,7 +153,7 @@ export default async function (req: Request) {
       postRes = await fetch(postUrl, {
         method: 'POST',
         headers,
-        body: JSON.stringify({}),
+        body: JSON.stringify(payload),
         signal: controller.signal,
       });
       postStatus = postRes.status;
@@ -119,13 +161,13 @@ export default async function (req: Request) {
     } catch (e: any) {
       clearTimeout(timeoutId);
       if (e && e.name === 'AbortError') {
-        safeLog('[maxunRun]', { stage: 'post_timeout', robotId: cleanRobotId, timeoutMs: tMs });
+        safeLog('[maxunRun]', { stage: 'execute_timeout', robotId: cleanRobotId, timeoutMs: tMs });
         return Response.json(
           { ok: false, error: 'Execucao excedeu o limite configurado (timeout).', maxunStatus: 'timeout' },
           { status: 504 },
         );
       }
-      safeLog('[maxunRun]', { stage: 'post_network_error', msg: String((e && e.message) || e).slice(0, 200) });
+      safeLog('[maxunRun]', { stage: 'execute_network_error', msg: String((e && e.message) || e).slice(0, 200) });
       return Response.json(
         { ok: false, error: 'Maxun unavailable (erro de rede).', maxunStatus: 'network_error' },
         { status: 502 },
@@ -134,30 +176,43 @@ export default async function (req: Request) {
     clearTimeout(timeoutId);
 
     // Log so do status + peek do CORPO (sem headers/sem key)
-    safeLog('[maxunRun]', { stage: 'post_done', httpStatus: postStatus, bodyHead: postRaw.slice(0, 300) });
+    safeLog('[maxunRun]', { stage: 'execute_done', httpStatus: postStatus, bodyHead: postRaw.slice(0, 300) });
 
-    // 6) Mapear erros HTTP
+    // 7) Mapear erros HTTP do cloud
+    if (postStatus === 400) {
+      const msg = tryParseMessage(postRaw) || 'Bad request.';
+      return Response.json({ ok: false, error: String(msg), maxunStatus: 'bad_request' }, { status: 400 });
+    }
     if (postStatus === 401) {
       return Response.json(
         { ok: false, error: 'Maxun unauthorized — verifique a configuracao da credencial MAXUN_API_KEY.', maxunStatus: 'unauthorized' },
         { status: 401 },
       );
     }
-    if (postStatus === 404) {
+    if (postStatus === 402) {
       return Response.json(
-        { ok: false, error: 'Robot not found: ' + cleanRobotId, maxunStatus: 'not_found' },
-        { status: 404 },
+        { ok: false, error: 'Creditos insuficientes no Maxun Cloud. Acesse https://app.maxun.dev para recargar.', maxunStatus: 'insufficient_credits' },
+        { status: 402 },
+      );
+    }
+    if (postStatus === 404) {
+      const msg = tryParseMessage(postRaw) || 'Robot not found: ' + cleanRobotId;
+      return Response.json({ ok: false, error: String(msg), maxunStatus: 'not_found' }, { status: 404 });
+    }
+    if (postStatus === 429) {
+      return Response.json(
+        { ok: false, error: 'Rate limit exceeded no Maxun Cloud. Tente novamente em instantes.', maxunStatus: 'rate_limited' },
+        { status: 429 },
       );
     }
     if (postStatus >= 500) {
-      let msg = 'Maxun server error.';
-      try {
-        const j = JSON.parse(postRaw);
-        if (j && j.message) msg = j.message;
-      } catch {
-        /* mantem msg generica */
-      }
-      return Response.json({ ok: false, error: msg, maxunStatus: 'server_error' }, { status: 502 });
+      const msg = tryParseMessage(postRaw) || 'Maxun server error.';
+      // 500 com "Recording not found" = robot inexistente (autenticacao OK).
+      const isNotFound = /not found/i.test(String(msg));
+      return Response.json(
+        { ok: false, error: String(msg), maxunStatus: isNotFound ? 'not_found' : 'server_error' },
+        { status: 502 },
+      );
     }
     if (postStatus !== 200) {
       return Response.json(
@@ -166,7 +221,7 @@ export default async function (req: Request) {
       );
     }
 
-    // 7) Parsear 200: { statusCode, messageCode, run: {...} }
+    // 8) Parsear 200
     let parsed: any = null;
     try {
       parsed = JSON.parse(postRaw);
@@ -176,81 +231,25 @@ export default async function (req: Request) {
         { status: 502 },
       );
     }
-    const run = (parsed && parsed.run) || null;
-    if (!run) {
+    const norm = normalizeExecuteResult(parsed);
+    if (!norm.runId && !norm.status) {
       return Response.json(
-        { ok: false, error: 'Resposta do Maxun sem objeto run.', maxunStatus: 'no_run' },
+        { ok: false, error: 'Resposta do Maxun sem runId/status.', maxunStatus: 'no_run' },
         { status: 502 },
       );
     }
-    let norm = normalizeRun(run);
 
-    // 8) A API real e SINCRONA (run ja vem terminal). Defensivamente, se
-    //    vier nao-terminal e tivermos runId, long-poll via GET /runs/{runId}.
-    const deadline = Date.now() + tMs;
-    if (norm.runId && !TERMINAL_SUCCESS.has(norm.status) && !TERMINAL_FAILURE.has(norm.status)) {
-      safeLog('[maxunRun]', { stage: 'polling', runId: norm.runId, status: norm.status });
-      while (Date.now() < deadline) {
-        await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
-        const gController = new AbortController();
-        const gTimeout = setTimeout(() => gController.abort(), 15000);
-        let gRes: Response | null = null;
-        let gRaw = '';
-        try {
-          gRes = await fetch(
-            `${MAXUN_BASE_URL}/api/robots/${encodeURIComponent(cleanRobotId)}/runs/${encodeURIComponent(norm.runId)}`,
-            { headers, signal: gController.signal },
-          );
-          gRaw = await gRes.text();
-        } catch {
-          clearTimeout(gTimeout);
-          continue; // erro de rede/timeout individual: tenta no proximo ciclo
-        }
-        clearTimeout(gTimeout);
-        if (gRes && gRes.status === 200) {
-          let gParsed: any = null;
-          try {
-            gParsed = JSON.parse(gRaw);
-          } catch {
-            /* mantem norm anterior */
-          }
-          const gRun = (gParsed && gParsed.run) || null;
-          if (gRun) norm = normalizeRun(gRun);
-        }
-        if (TERMINAL_SUCCESS.has(norm.status) || TERMINAL_FAILURE.has(norm.status)) break;
-      }
-      if (!TERMINAL_SUCCESS.has(norm.status) && !TERMINAL_FAILURE.has(norm.status)) {
-        return Response.json(
-          {
-            ok: false,
-            error: 'Execucao excedeu o limite configurado (timeout no polling).',
-            runId: norm.runId,
-            maxunStatus: 'timeout',
-          },
-          { status: 504 },
-        );
-      }
-    }
-
-    // 9) Normalizar resultado terminal
-    if (TERMINAL_SUCCESS.has(norm.status)) {
-      return Response.json({
-        ok: true,
-        runId: norm.runId,
-        rows: norm.rows,
-        extracted: norm.extracted,
-        maxunStatus: norm.status,
-      });
-    }
-    return Response.json(
-      {
-        ok: false,
-        runId: norm.runId,
-        error: 'A execucao do robot falhou no Maxun (status: ' + norm.status + ').',
-        maxunStatus: norm.status,
-      },
-      { status: 502 },
-    );
+    // 9) Resultado terminal (execute e sincrono — sem polling)
+    return Response.json({
+      ok: TERMINAL_SUCCESS.has(norm.status),
+      runId: norm.runId,
+      status: norm.status,
+      textData: norm.textData,
+      listData: norm.listData,
+      crawlData: norm.crawlData,
+      searchData: norm.searchData,
+      maxunStatus: norm.status,
+    });
   } catch (e: any) {
     // NUNCA logar/expor a API key (ela nao entra neste escopo)
     safeLog('[maxunRun]', { stage: 'uncaught', msg: String((e && e.message) || e).slice(0, 300) });
