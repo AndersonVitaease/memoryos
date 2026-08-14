@@ -161,6 +161,51 @@ export default async function (req: Request) {
       results.push({ test: '7. selectExecutor: unknown -> null', passed, detail: JSON.stringify(sel) });
     }
 
+    // === FASE B5: selector + adapter para PUBLIC + FORM (sem WebSession) ===
+
+    // B5-1. selector: playwright + webSessionRequired=false -> playwright_public
+    {
+      const spec = { specVersion: 1, capabilityId: 'x', siteOrigin: 'https://a.com', entryUrl: 'https://a.com', executor: 'playwright', webSessionRequired: false, inputs: ['q'], actions: null, robotId: null, targetUrl: null, riskLevel: 'safe', capabilityType: 'READ', expectedResult: { kind: 'links', minItems: 1 }, validation: { status: 'pending' } } as AutomationSpec;
+      const sel = selectExecutor(spec);
+      const passed = sel.executor === 'playwright' && sel.reason === 'playwright_public';
+      results.push({ test: 'B5-1. selector playwright_public -> playwright_public', passed, detail: JSON.stringify(sel) });
+    }
+
+    // B5-2. selector: playwright + webSessionRequired=true -> inalterado (auth)
+    {
+      const spec = { specVersion: 1, capabilityId: 'x', siteOrigin: 'https://a.com', entryUrl: 'https://a.com', executor: 'playwright', webSessionRequired: true, inputs: ['q'], actions: null, robotId: null, targetUrl: null, riskLevel: 'safe', capabilityType: 'READ', expectedResult: { kind: 'links', minItems: 1 }, validation: { status: 'pending' } } as AutomationSpec;
+      const sel = selectExecutor(spec);
+      const passed = sel.executor === 'playwright' && sel.reason === 'playwright_websession_required';
+      results.push({ test: 'B5-2. selector playwright auth -> inalterado', passed, detail: JSON.stringify(sel) });
+    }
+
+    // B5-3. adapter: public + webSessionId=null -> permitido (valida ok)
+    {
+      const spec: AutomationSpec = {
+        specVersion: 1, capabilityId: 'search.wiki', siteOrigin: 'https://en.wikipedia.org', entryUrl: 'https://en.wikipedia.org',
+        executor: 'playwright', webSessionRequired: false, inputs: ['search'], actions: null,
+        robotId: null, targetUrl: null, riskLevel: 'safe', capabilityType: 'READ',
+        expectedResult: { kind: 'links', minItems: 1 }, validation: { status: 'pending' },
+      };
+      const v = playwrightAdapter.validate(spec);
+      // validate e ok (nao exige webSessionId; so exige entryUrl quando wsReq).
+      const passed = v.ok === true;
+      results.push({ test: 'B5-3. adapter public sem webSessionId -> permitido', passed, detail: JSON.stringify(v) });
+    }
+
+    // B5-4. adapter: session_required + webSessionId=null -> rejeitado
+    {
+      const spec: AutomationSpec = {
+        specVersion: 1, capabilityId: 'view.secure', siteOrigin: 'https://x.com', entryUrl: 'https://x.com/secure',
+        executor: 'playwright', webSessionRequired: true, inputs: ['q'], actions: null,
+        robotId: null, targetUrl: null, riskLevel: 'safe', capabilityType: 'READ',
+        expectedResult: { kind: 'snapshot' }, validation: { status: 'pending' },
+      };
+      const res = await playwrightAdapter.execute(spec, { base44: null as any, webSessionId: null as any, inputs: {} });
+      const passed = res.ok === false && /webSessionRequired/i.test(String(res.error || ''));
+      results.push({ test: 'B5-4. adapter session_required sem webSessionId -> rejeitado', passed, detail: JSON.stringify({ ok: res.ok, error: res.error }) });
+    }
+
     // 8. selectExecutor: WRITE -> null (write_blocked)
     {
       const c = makeCandidate({ capability_type: 'WRITE' });
