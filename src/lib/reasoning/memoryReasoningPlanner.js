@@ -780,13 +780,19 @@ ${fullText}`;
       // grounding note (single-site mantem o formato de 10 itens de sempre;
       // multi-site organiza por site) e deixa o LLM final sintetizar.
       const _okResults = _playwrightResults.filter((r) => r.ok && r.snapshotText);
-      // FASE 7.10 — Classificacao do grounding pela natureza da capability.
-      // maxun.dynamic = acesso generico a pagina arbitraria (catch-all do Resolver).
-      // NUNCA e produto, mesmo se a URL pertencer a um marketplace — o Web Connector
-      // e generico e pode acessar paginas institucionais, ajuda, politicas, blogs,
-      // documentacao, anuncios isolados etc. Capabilities genuinamente comerciais
-      // (busca/listagem de produtos) mantem o template de produto existente.
-      const _isGenericWebCapability = (cap) => Boolean(cap && cap.id === 'maxun.dynamic');
+      // FASE 7.13 — Classificacao SEMANTICA do grounding pela natureza da capability.
+      // GENERICA/NEUTRA: inputSchema.properties inexistente, nulo ou vazio
+      //   (acesso/scrape de pagina, sem campo de busca de produtos).
+      // PRODUTO: inputSchema.properties possui ao menos um campo
+      //   (capability de busca/listagem de produtos com query).
+      // Independente de id, hostname, provider ou robotId — generica para futuras
+      // capabilities. O template de produto (else) permanece byte-identico.
+      const _isGenericWebCapability = (cap) => {
+        if (!cap) return true;
+        const _props = cap.inputSchema && cap.inputSchema.properties;
+        const _propCount = (_props && typeof _props === 'object') ? Object.keys(_props).length : 0;
+        return _propCount === 0;
+      };
 
       if (_okResults.length === 1) {
         const r = _okResults[0];
