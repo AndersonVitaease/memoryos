@@ -10,7 +10,7 @@
  * expunha).
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Mail, Check, X, Plug, Calendar, HardDrive, User,
   RefreshCw, LogOut, Loader2, AlertTriangle, PlusCircle,
@@ -20,9 +20,7 @@ import {
   listGoogleAccounts, connectAdditionalGoogleAccount,
   disconnectGoogleAccount, reconnectGoogleAccount,
 } from "@/lib/google-auth/GoogleMultiAccount";
-import { getActiveWorkspaceId } from "@/lib/workspace/WorkspaceContext";
-
-const BASE_WORKSPACE_ID = getActiveWorkspaceId();
+import { useWorkspace } from "@/lib/workspace/WorkspaceContext";
 
 const SERVICES = [
   { icon: Mail,      label: "Gmail",        detail: "Ler e-mails" },
@@ -46,24 +44,43 @@ function stateLabel(state) {
 }
 
 export default function GoogleWorkspaceSection() {
-  const [accounts, setAccounts] = useState(() => listGoogleAccounts(BASE_WORKSPACE_ID));
+  // Reactive active workspace — replaces the frozen module-level snapshot.
+  // The Runtime (ConnectorGoalIntentExecutor / GoogleDriveConnector) resolves
+  // getActiveWorkspaceId() at execution time; the UI must persist the OAuth
+  // token under the SAME workspace the user is currently on. Reading it
+  // reactively via useWorkspace() keeps UI and Runtime aligned after workspace
+  // switches and after late WorkspaceContext init.
+  const { activeWorkspaceId, loading: wsLoading } = useWorkspace();
+  const workspaceResolved = !!activeWorkspaceId && activeWorkspaceId !== "default" && !wsLoading;
+
+  const [accounts, setAccounts] = useState(() => listGoogleAccounts(activeWorkspaceId));
   const [authState, setAuth]    = useState("NOT_CONNECTED");
   const [loading, setLoading]   = useState(false);
   const [loadingAccountId, setLoadingAccountId] = useState(null);
   const [error, setError]       = useState(null);
   const [audit, setAudit]       = useState(null);
 
-  const syncAccounts = useCallback(() => setAccounts(listGoogleAccounts(BASE_WORKSPACE_ID)), []);
+  const syncAccounts = useCallback(() => setAccounts(listGoogleAccounts(activeWorkspaceId)), [activeWorkspaceId]);
 
   const onStateChange = useCallback((s) => {
     setAuth(s);
     if (s === "CONNECTED" || s === "NOT_CONNECTED") syncAccounts();
   }, [syncAccounts]);
 
+  // Re-list accounts whenever the active workspace changes so the UI reflects
+  // only the current workspace's connections (preserves B8 isolation — never
+  // shows/copies tokens from another workspace).
+  useEffect(() => {
+    syncAccounts();
+  }, [activeWorkspaceId, syncAccounts]);
+
   const handleConnectNew = async () => {
+    // Block connect until the real active workspace is resolved — prevents
+    // persisting a token under the "default" placeholder.
+    if (!workspaceResolved) return;
     setLoading(true); setError(null); setAudit(null);
     try {
-      const result = await connectAdditionalGoogleAccount(BASE_WORKSPACE_ID, WORKSPACE_SCOPES, onStateChange);
+      const result = await connectAdditionalGoogleAccount(activeWorkspaceId, WORKSPACE_SCOPES, onStateChange);
       setAudit({ phase: "SUCCESS", result });
     } catch (e) {
       setError(e?.message ?? "Falha ao conectar. Tente novamente.");
@@ -186,7 +203,7 @@ export default function GoogleWorkspaceSection() {
       )}
 
       <div className="mt-4 flex items-center gap-2 flex-wrap">
-        <button onClick={handleConnectNew} disabled={loading}
+        <button onClick={handleConnectNew} disabled={loading || !workspaceResolved}
           className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium bg-zinc-900 text-white hover:bg-zinc-800 disabled:opacity-40 transition">
           {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : (hasAnyConnected ? <PlusCircle className="w-4 h-4" /> : <Plug className="w-4 h-4" />)}
           {hasAnyConnected ? "Adicionar outra conta Google" : "Conectar com Google"}
