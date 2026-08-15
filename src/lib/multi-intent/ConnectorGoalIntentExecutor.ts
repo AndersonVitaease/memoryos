@@ -21,6 +21,11 @@ import type { ExecutionResult } from "@/lib/runtime-engine/RuntimeTypes";
 import type { ExecutionOutcome } from "@/lib/execution-intelligence";
 import { outcomeToExecutionResult } from "@/lib/execution-intelligence/outcomeAdapter";
 
+// Heurística conservadora de capabilities irreversíveis (WRITE). Se ANY step
+// de ANY intenção casa, o batch é abortado e o fluxo per-intent legado (com
+// EI/SafetyGate/confirmation) é usado. Em dúvida, não batcha (fail-safe).
+const IRREVERSIBLE_CAP_RE = /(send|create|delete|update|rename|move|upload|invite|remove|edit|cancel|submit|complete|write)/i;
+
 interface ReasoningPlanResult {
   response: string;
   plan?: unknown;
@@ -200,6 +205,114 @@ export class ConnectorGoalIntentExecutor implements IntentExecutor {
     } catch (err) {
       console.warn(`[ConnectorGoalIntentExecutor] Falha no caminho de conector pro pedaço "${intent.text}", caindo pro conversacional:`, err);
       return this._fallbackToReasoningPlan(intent, t0);
+    }
+  }
+
+  /**
+   * Caminho de batch (MultiIntent → UM ExecutionPlan): mescla N intenções
+   * independentes num único plano cujos steps (dependsOn:[]) o
+   * ExecutionOrchestrator executa em paralelo. Restrições de segurança:
+   *   - só batcha single-step plans (1 step por intenção);
+   *   - rejeita capabilities irreversíveis (IRREVERSIBLE_CAP_RE) → fallback;
+   *   - rejeita goals inválidos/static_analysis/empty → fallback;
+   *   - qualquer erro → retorna null (caller usa per-intent legado).
+   * Não altera Orchestrator/Dispatcher/executores. O fluxo per-intent
+   * original (execute()) permanece intacto como fallback de segurança.
+   */
+  async executeBatch(intents: ClassifiedIntent[]): Promise<IntentExecutionResult[] | null> {
+    const t0 = Date.now();
+    const { session, historyMessages, executionId } = this.baseArgs;
+    try {
+      const { primaryRouter } = await import("@/lib/primary-conversation-router/PrimaryConversationRouter");
+      const { conversationGoalBridge } = await import("@/lib/conversation-goal-bridge/ConversationGoalBridge");
+      const { conversationPlanningEngine } = await import("@/lib/planning-engine-e022/ConversationPlanningEngine");
+      const { makePlanId } = await import("@/lib/planning-engine-e022/ExecutionPlanTypes");
+      const { getRealRuntimeEngine } = await import("@/lib/connector-runtime-provider/ConnectorRuntimeProvider");
+      const { synthesizeConnectorResult } = await import("@/lib/connector-runtime-provider/ConnectorResultSynthesizer");
+
+      // 1. Resolve goal + plan por intenção. Aborta (null) se algo não for batchable.
+      const groups: { intent: ClassifiedIntent; goal: any; plan: any; stepIds: string[] }[] = [];
+      for (const intent of intents) {
+        const routerResult = await primaryRouter.route(
+          intent.text, session.id, session.project_id ?? null,
+          (historyMessages as unknown[] | undefined)?.length ?? 0,
+        );
+        const goalBridgeResult = conversationGoalBridge.derive(
+          intent.text,
+          routerResult.intent?.intent ?? "general_conversation",
+          routerResult.intent?.confidence ?? 0,
+        );
+        if (!goalBridgeResult.goal.valid) return null;
+        const planResult = conversationPlanningEngine.plan(goalBridgeResult.goal, { mode: "live", context: null });
+        if (!planResult.success || planResult.plan.mode === "static_analysis" || (planResult.plan.steps?.length ?? 0) === 0) return null;
+        if (planResult.plan.steps.length !== 1) return null; // só single-step no batch
+        const step = planResult.plan.steps[0];
+        if (IRREVERSIBLE_CAP_RE.test(step.capability)) return null; // irreversível → fallback (EI/confirmation)
+        groups.push({ intent, goal: goalBridgeResult.goal, plan: planResult.plan, stepIds: [step.id] });
+      }
+      if (groups.length === 0) return null;
+
+      // 2. Mescla os steps num único ExecutionPlan. IDs já são globalmente
+      // únicos (makeStepId usa sequencial global). dependsOn de cada step
+      // vem do descriptor (default []) → todos independentes → mesma wave.
+      const mergedSteps = groups.flatMap((g) => g.plan.steps);
+      const mergedPlan = Object.freeze({
+        id: makePlanId(),
+        goalId: `multi-intent-${executionId}`,
+        goalType: "multi-intent",
+        status: "planned",
+        steps: Object.freeze([...mergedSteps]),
+        createdAt: Date.now(),
+        durationMs: 0,
+        mode: "live",
+      });
+
+      // 3. connCtx real (mesma resolução de execute()).
+      let _miUserId = "multi-intent";
+      let _miWorkspaceId = "default";
+      try {
+        const { base44 } = await import("@/api/base44Client");
+        const _me = await base44.auth.me();
+        if (_me?.id) _miUserId = _me.id;
+      } catch { /* non-blocking */ }
+      try {
+        const { getActiveWorkspaceId } = await import("@/lib/workspace/WorkspaceContext");
+        _miWorkspaceId = getActiveWorkspaceId();
+      } catch { /* non-blocking */ }
+      const connCtx = Object.freeze({
+        userId: _miUserId, workspaceId: _miWorkspaceId, sessionId: session.id,
+        goalId: mergedPlan.goalId, origin: "multi-intent-merged",
+      });
+
+      // 4. UMA execução pelo Runtime real → ExecutionOrchestrator → waves paralelas.
+      const realEngine = await getRealRuntimeEngine();
+      const { executionResult } = await realEngine.execute(mergedPlan as any, `${executionId}-merged`, connCtx);
+
+      console.log("[MultiIntent][executeBatch] plano mesclado executado", {
+        intents: groups.length, steps: mergedSteps.length, planId: mergedPlan.id,
+        runtimeStatus: executionResult.status, durationMs: executionResult.durationMs,
+      });
+
+      // 5. Split dos stepResults por intenção + síntese individual.
+      const results: IntentExecutionResult[] = [];
+      for (const g of groups) {
+        const subSteps = executionResult.steps.filter((s: any) => g.stepIds.includes(s.id));
+        const subErrors = subSteps
+          .filter((s: any) => s.status === "failed" || s.status === "timeout")
+          .map((s: any) => s.error).filter(Boolean) as string[];
+        const subResult = Object.freeze({ ...executionResult, steps: subSteps, errors: subErrors });
+        const synthesis = await synthesizeConnectorResult(subResult as any, g.intent.text, g.goal.type, null);
+        if (synthesis.handled && synthesis.response) {
+          results.push({ intent: g.intent, success: true, response: synthesis.response, error: null, durationMs: Date.now() - t0 });
+        } else {
+          // Esta intenção não produziu resposta via batch → fallback conversacional individual.
+          results.push(await this._fallbackToReasoningPlan(g.intent, t0));
+        }
+      }
+      return results;
+    } catch (err) {
+      console.warn("[ConnectorGoalIntentExecutor] executeBatch falhou, fallback per-intent:", err);
+      return null;
     }
   }
 
