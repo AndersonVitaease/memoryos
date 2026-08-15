@@ -45,4 +45,12 @@ export interface MultiIntentOutcome {
 
 export interface IntentExecutor {
   execute(intent: ClassifiedIntent): Promise<IntentExecutionResult>;
+  /**
+   * Caminho de batch (opcional): mescla múltiplas intenções em UM único
+   * ExecutionPlan para execução paralela pelo ExecutionOrchestrator.
+   * Retorna null quando o conjunto NÃO é batchable (capabilities
+   * irreversíveis, planos multi-step, goals inválidos) — o caller cai no
+   * fluxo per-intent legado (preserva EI/SafetyGate/confirmation).
+   */
+  executeBatch?(intents: ClassifiedIntent[]): Promise<IntentExecutionResult[] | null>;
 }

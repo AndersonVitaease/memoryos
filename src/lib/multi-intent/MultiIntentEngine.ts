@@ -31,6 +31,32 @@ export class MultiIntentEngine {
       console.warn(`[MultiIntentEngine] Mensagem tinha ${intents.length} pedidos — limitado aos primeiros ${MAX_INTENTS_PER_MESSAGE}.`);
     }
 
+    // Fast path: se o executor suporta batch, tenta mesclar todas as intenções
+    // em UM ExecutionPlan (steps dependsOn:[]) para execução paralela pelo
+    // ExecutionOrchestrator. Retorna null quando o conjunto não é batchable
+    // (irreversível/multi-step/goal inválido) → cai no fluxo per-intent legado,
+    // que preserva EI/SafetyGate/confirmation. Single-intent (1 fragment) não
+    // passa pelaqui — é tratado pelo pipeline principal.
+    if (typeof this.executor.executeBatch === "function" && capped.length > 1) {
+      try {
+        const batched = await this.executor.executeBatch(capped);
+        if (batched) {
+          const successCount = batched.filter((r) => r.success).length;
+          const aggregatedResponse = successCount > 0 ? this._aggregate(batched) : null;
+          console.log("[MultiIntentEngine] Batch mesclado executado", {
+            totalIntents: capped.length, successCount, durationMs: Date.now() - t0,
+          });
+          return {
+            handled: successCount > 0, totalIntents: capped.length,
+            results: batched, aggregatedResponse, durationMs: Date.now() - t0,
+          };
+        }
+      } catch (err) {
+        console.warn("[MultiIntentEngine] executeBatch falhou, fallback per-intent:", err);
+      }
+    }
+
+    // Legacy: per-intent execute (preserva EI/SafetyGate/confirmation p/ irreversíveis).
     const results = await Promise.all(
       capped.map(async (intent) => {
         const tIntent = Date.now();
