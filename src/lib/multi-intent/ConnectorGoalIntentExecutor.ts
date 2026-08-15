@@ -222,6 +222,11 @@ export class ConnectorGoalIntentExecutor implements IntentExecutor {
   async executeBatch(intents: ClassifiedIntent[]): Promise<IntentExecutionResult[] | null> {
     const t0 = Date.now();
     const { session, historyMessages, executionId } = this.baseArgs;
+    console.log("[TEMP][MultiIntent][executeBatch] ENTER", {
+      intentCount: intents.length,
+      intents: intents.map((i) => ({ id: i.id, order: i.order, text: i.text })),
+      executionId,
+    });
     try {
       const { primaryRouter } = await import("@/lib/primary-conversation-router/PrimaryConversationRouter");
       const { conversationGoalBridge } = await import("@/lib/conversation-goal-bridge/ConversationGoalBridge");
@@ -247,7 +252,17 @@ export class ConnectorGoalIntentExecutor implements IntentExecutor {
         if (!planResult.success || planResult.plan.mode === "static_analysis" || (planResult.plan.steps?.length ?? 0) === 0) return null;
         if (planResult.plan.steps.length !== 1) return null; // só single-step no batch
         const step = planResult.plan.steps[0];
-        if (IRREVERSIBLE_CAP_RE.test(step.capability)) return null; // irreversível → fallback (EI/confirmation)
+        if (IRREVERSIBLE_CAP_RE.test(step.capability)) {
+          console.log("[TEMP][MultiIntent][executeBatch] REJECT irreversible", { intentId: intent.id, capability: step.capability });
+          return null;
+        } // irreversível → fallback (EI/confirmation)
+        console.log("[TEMP][MultiIntent][executeBatch] INTENT PLAN", {
+          intentId: intent.id,
+          connector: step.connector,
+          capability: step.capability,
+          stepId: step.id,
+          dependsOn: step.dependsOn ?? [],
+        });
         groups.push({ intent, goal: goalBridgeResult.goal, plan: planResult.plan, stepIds: [step.id] });
       }
       if (groups.length === 0) return null;
@@ -256,6 +271,11 @@ export class ConnectorGoalIntentExecutor implements IntentExecutor {
       // únicos (makeStepId usa sequencial global). dependsOn de cada step
       // vem do descriptor (default []) → todos independentes → mesma wave.
       const mergedSteps = groups.flatMap((g) => g.plan.steps);
+      console.log("[TEMP][MultiIntent][executeBatch] MERGE", {
+        planCount: groups.length,
+        stepCount: mergedSteps.length,
+        steps: mergedSteps.map((s: any) => ({ id: s.id, connector: s.connector, capability: s.capability, dependsOn: s.dependsOn ?? [] })),
+      });
       const mergedPlan = Object.freeze({
         id: makePlanId(),
         goalId: `multi-intent-${executionId}`,
@@ -286,11 +306,20 @@ export class ConnectorGoalIntentExecutor implements IntentExecutor {
 
       // 4. UMA execução pelo Runtime real → ExecutionOrchestrator → waves paralelas.
       const realEngine = await getRealRuntimeEngine();
+      console.log("[TEMP][MultiIntent][executeBatch] RUNTIME_EXECUTE", {
+        planId: mergedPlan.id,
+        stepCount: mergedPlan.steps.length,
+        steps: mergedPlan.steps.map((s: any) => ({ id: s.id, dependsOn: s.dependsOn ?? [] })),
+      });
       const { executionResult } = await realEngine.execute(mergedPlan as any, `${executionId}-merged`, connCtx);
 
-      console.log("[MultiIntent][executeBatch] plano mesclado executado", {
-        intents: groups.length, steps: mergedSteps.length, planId: mergedPlan.id,
-        runtimeStatus: executionResult.status, durationMs: executionResult.durationMs,
+      console.log("[TEMP][MultiIntent][executeBatch] RESULT", {
+        intents: groups.length,
+        steps: mergedSteps.length,
+        planId: mergedPlan.id,
+        runtimeStatus: executionResult.status,
+        durationMs: executionResult.durationMs,
+        stepResults: executionResult.steps?.map((s: any) => ({ id: s.id, status: s.status, startedAt: s.startedAt, completedAt: s.completedAt, error: s.error })),
       });
 
       // 5. Split dos stepResults por intenção + síntese individual.
