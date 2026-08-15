@@ -48,6 +48,13 @@ export interface CapabilityDescriptor {
   readonly capability: string;
   /** Static default parameters — merged with goal parameters at plan time */
   readonly params:     Record<string, unknown>;
+  /**
+   * Optional explicit execution dependencies (step ids this step must run after).
+   * Omitted → independent (default: [] at plan time). The ExecutionOrchestrator
+   * reads this to schedule parallel waves; an explicit [] marks the step as an
+   * independent root eligible for the same wave as other independent steps.
+   */
+  readonly dependsOn?: readonly string[];
 }
 
 // ── CapabilityMapping ──────────────────────────────────────────────────────────
