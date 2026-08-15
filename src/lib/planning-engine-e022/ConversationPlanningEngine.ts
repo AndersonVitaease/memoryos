@@ -155,11 +155,17 @@ export class ConversationPlanningEngine {
             },
           });
         }
+        // Propaga dependências explícitas do descriptor. Default [] = independente
+        // (comprovado: mappings atuais são single-descriptor e os parâmetros vêm
+        // do goal, nunca do output de outro step → sem dependência implícita).
+        // O ExecutionOrchestrator usa dependsOn para agendar waves paralelas;
+        // [] torna o step elegível para a mesma wave que outros independentes.
         return Object.freeze({
           id:         makeStepId(idx),
           connector:  desc.connector,
           capability: desc.capability,
           parameters: Object.freeze(mergedParams),
+          dependsOn:  Object.freeze([...(desc.dependsOn ?? [])]),
         });
       });
 
