@@ -37,6 +37,8 @@ export default function SprintE025aPage() {
   const [e2eResults, setE2EResults] = useState(null);
   const [goldRunning, setGoldRunning] = useState(false);
   const [goldResult, setGoldResult]  = useState(null);
+  const [parallelRunning, setParallelRunning] = useState(false);
+  const [parallelResult, setParallelResult] = useState(null);
 
   async function runE2E() {
     setE2ERunning(true); setE2EResults(null);
@@ -47,6 +49,73 @@ export default function SprintE025aPage() {
       setE2EResults({ verdict: "FAIL", passed: 0, failed: 1, total: 1,
         results: [{ name: "Suite load error", passed: false, error: e.message, durationMs: 0 }] });
     } finally { setE2ERunning(false); }
+  }
+
+  async function runParallelRuntime() {
+    setParallelRunning(true); setParallelResult(null);
+    try {
+      const { ConversationRuntimeEngine } = await import("@/lib/runtime-engine/ConversationRuntimeEngine");
+      const { MockCapabilityExecutor } = await import("@/lib/runtime-engine/MockCapabilityExecutor");
+
+      const makeStep = (id, connector, capability, dependsOn) => ({
+        id, connector, capability, parameters: {}, ...(dependsOn !== undefined ? { dependsOn } : {}),
+      });
+      const makePlan = (steps, suffix) => ({
+        id: `parallel-test-${suffix}-${Date.now()}`,
+        goalId: `parallel-test-goal-${suffix}`,
+        goalType: "parallel_runtime_test",
+        status: "planned",
+        steps,
+        createdAt: Date.now(),
+        durationMs: 0,
+        mode: "live",
+      });
+      const ctx = { userId: "parallel-test-user", workspaceId: "parallel-test-workspace", sessionId: "parallel-test-session", origin: "test" };
+
+      const run = async (steps, suffix) => {
+        const engine = new ConversationRuntimeEngine(new MockCapabilityExecutor(300));
+        const t0 = performance.now();
+        const result = await engine.execute(makePlan(steps, suffix), undefined, ctx);
+        return { result, wallMs: Math.round(performance.now() - t0) };
+      };
+
+      // Test 1: three independent steps must share one wave.
+      const t1 = await run([
+        makeStep("parallel-a", "gmail", "readInbox", []),
+        makeStep("parallel-b", "calendar", "listToday", []),
+        makeStep("parallel-c", "drive", "searchFiles", []),
+      ], "independent");
+
+      // Test 2: explicit A→B→C dependencies must remain sequential.
+      const t2 = await run([
+        makeStep("chain-a", "gmail", "readInbox", []),
+        makeStep("chain-b", "calendar", "listToday", ["chain-a"]),
+        makeStep("chain-c", "drive", "searchFiles", ["chain-b"]),
+      ], "chain");
+
+      // Test 3: A and C parallel, B waits for A.
+      const t3 = await run([
+        makeStep("mixed-a", "gmail", "readInbox", []),
+        makeStep("mixed-b", "calendar", "listToday", ["mixed-a"]),
+        makeStep("mixed-c", "drive", "searchFiles", []),
+      ], "mixed");
+
+      const passed1 = t1.result.executionResult.status === "completed" && t1.result.executionResult.steps.length === 3 && t1.wallMs < 600;
+      const passed2 = t2.result.executionResult.status === "completed" && t2.result.executionResult.steps.length === 3 && t2.wallMs >= 850;
+      const passed3 = t3.result.executionResult.status === "completed" && t3.result.executionResult.steps.length === 3 && t3.wallMs >= 550 && t3.wallMs < 850;
+
+      setParallelResult({
+        verdict: passed1 && passed2 && passed3 ? "PASS" : "FAIL",
+        tests: [
+          { name: "3 independentes em paralelo", passed: passed1, wallMs: t1.wallMs, status: t1.result.executionResult.status },
+          { name: "Cadeia A → B → C sequencial", passed: passed2, wallMs: t2.wallMs, status: t2.result.executionResult.status },
+          { name: "Misto: A + C paralelo, B após A", passed: passed3, wallMs: t3.wallMs, status: t3.result.executionResult.status },
+        ],
+        note: "Teste executado pelo ConversationRuntimeEngine real no browser, com MockCapabilityExecutor de 300ms. Nenhum connector/API real foi chamado.",
+      });
+    } catch (e) {
+      setParallelResult({ verdict: "FAIL", error: e?.message ?? String(e) });
+    } finally { setParallelRunning(false); }
   }
 
   async function runGold() {
@@ -165,6 +234,38 @@ export default function SprintE025aPage() {
         )}
         {goldResult?.error && (
           <div className="p-3 rounded-lg bg-red-500/10 text-red-400 text-xs font-mono">{goldResult.error}</div>
+        )}
+      </section>
+
+      {/* Parallel Runtime Test */}
+      <section className="mb-8 p-4 rounded-xl border border-violet-500/30 bg-violet-500/5">
+        <div className="flex items-center gap-2 mb-2">
+          <Zap className="w-4 h-4 text-violet-400" />
+          <h2 className="text-sm font-semibold text-violet-400">Teste do Runtime — Paralelismo Real</h2>
+        </div>
+        <p className="text-xs text-muted-foreground mb-4">
+          Usa o ConversationRuntimeEngine real + MockCapabilityExecutor (300ms por step). Não cria camada nova e não chama APIs externas.
+        </p>
+        <button onClick={runParallelRuntime} disabled={parallelRunning}
+          className="flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-lg text-sm font-medium hover:bg-violet-700 disabled:opacity-50 mb-4">
+          <Zap className="w-4 h-4" />
+          {parallelRunning ? "Executando 3 testes…" : "Testar paralelismo do Runtime"}
+        </button>
+
+        {parallelResult && (
+          <div className="space-y-2">
+            <div className={`p-3 rounded-lg border ${parallelResult.verdict === "PASS" ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400" : "border-red-500/30 bg-red-500/10 text-red-400"}`}>
+              <p className="font-semibold">{parallelResult.verdict}</p>
+              {parallelResult.error && <p className="font-mono text-[10px] mt-1">{parallelResult.error}</p>}
+            </div>
+            {parallelResult.tests?.map((t) => (
+              <div key={t.name} className="flex items-center justify-between p-3 rounded-lg border border-border bg-muted/10 text-xs">
+                <span>{t.passed ? "✓" : "✗"} {t.name}</span>
+                <span className="font-mono text-muted-foreground">{t.wallMs}ms · {t.status}</span>
+              </div>
+            ))}
+            <p className="text-[10px] text-muted-foreground">{parallelResult.note}</p>
+          </div>
         )}
       </section>
 
