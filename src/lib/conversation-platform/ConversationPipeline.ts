@@ -390,7 +390,13 @@ class ConversationPipeline {
     // ── 2.5. Multi-Intent Decomposition (short-circuit) ──────────────────
     // Only attempt decomposition if message has multiple clauses (e.g. "and", "also", comma)
     if (this._cancelled) return;
-    const _mightBeMultiIntent = (/\btambém\b|\be mais\b|,.*e |\n\s*\n/.test(userMessage)) && userMessage.length > 30;
+    // Gate reusa o detector existente (MessageDecomposer) em vez de uma regex
+    // paralela: se ele separa >1 fragmento, ativa o multi-intent. Casa "X e
+    // [verbo de comando] Y" (ex: "...Drive e pesquise...PDF"), que a regex
+    // antiga perdia (sem "também"/"e mais"/vírgula/linha em branco). Não
+    // duplica a lista de verbos — delega ao MessageDecomposer.
+    const { decomposeMessage: _gateDecompose } = await import("@/lib/multi-intent/MessageDecomposer");
+    const _mightBeMultiIntent = userMessage.length > 30 && _gateDecompose(userMessage).length > 1;
     if (_mightBeMultiIntent) try {
       const { decomposeMessage } = await import("@/lib/multi-intent/MessageDecomposer");
       const fragments = decomposeMessage(userMessage);
