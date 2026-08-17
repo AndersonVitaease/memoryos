@@ -8,6 +8,11 @@
  *   4. extrai fatos SOMENTE do markdown lido, sem internet no estágio de extração;
  *   5. persiste fatos com provenance mínima e marcação verified_official.
  *
+ * Connector Documentation Mode:
+ *   - detecta intenção de instalar/integrar/conectar uma API/conector;
+ *   - procura documentação oficial por categorias técnicas relevantes;
+ *   - consolida requisitos estruturados para futura comparação com o estado do MemoryOS.
+ *
  * O provider nunca promove um fato novo a "oficial" apenas porque um LLM o
  * afirmou. Para verified_official=true é necessário ter URL válida, domínio
  * consistente e conteúdo efetivamente lido via Firecrawl.
@@ -24,8 +29,32 @@ const DOC_KEYWORDS = [
   "webhook", "webhooks", "api reference", "developer docs",
 ];
 
+const CONNECTOR_INTENT_KEYWORDS = [
+  "instalar conector", "instalar connector", "novo conector", "novo connector",
+  "criar conector", "criar connector", "integrar", "integração", "integracao",
+  "conectar ao", "conectar com", "conector para", "connector for", "connector para",
+  "api integration", "integration requirements", "requisitos da api",
+];
+
+const CONNECTOR_DOC_CATEGORIES = [
+  "getting_started",
+  "authentication",
+  "api_reference",
+  "scopes_permissions",
+  "rate_limits",
+  "errors",
+  "webhooks",
+] as const;
+
+type ConnectorDocCategory = typeof CONNECTOR_DOC_CATEGORIES[number];
+
 const MAX_DISCOVERY_URLS = 3;
+const MAX_CONNECTOR_DISCOVERY_URLS = 8;
 const MAX_MARKDOWN_PER_PAGE = 16000;
+
+function normalizeText(value: string): string {
+  return value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
 
 function firstMatch(lower: string, list: string[]): string | null {
   for (const s of list) {
@@ -34,6 +63,11 @@ function firstMatch(lower: string, list: string[]): string | null {
     if (pattern.test(lower)) return s;
   }
   return null;
+}
+
+export function isConnectorDocumentationRequest(query: string): boolean {
+  const normalized = normalizeText(query);
+  return CONNECTOR_INTENT_KEYWORDS.some((keyword) => normalized.includes(normalizeText(keyword)));
 }
 
 interface DocCacheRecord {
@@ -51,6 +85,7 @@ interface OfficialCandidate {
   url: string;
   official_domain: string;
   title?: string;
+  category?: ConnectorDocCategory;
 }
 
 interface ScrapedOfficialDoc {
@@ -58,11 +93,24 @@ interface ScrapedOfficialDoc {
   officialDomain: string;
   title: string;
   markdown: string;
+  category?: ConnectorDocCategory;
 }
 
 interface ExtractedFact {
   fact: string;
   source_url: string;
+  category?: ConnectorDocCategory;
+}
+
+interface ConnectorRequirementsPackage {
+  mode: "connector_documentation";
+  verifiedOfficial: boolean;
+  officialDomains: string[];
+  categoriesRequested: ConnectorDocCategory[];
+  categoriesCovered: ConnectorDocCategory[];
+  categoriesMissing: ConnectorDocCategory[];
+  requirements: Partial<Record<ConnectorDocCategory, Array<{ fact: string; source_url: string }>>>;
+  sourceUrls: string[];
 }
 
 function hostnameOf(value: string): string | null {
@@ -75,6 +123,10 @@ function hostnameOf(value: string): string | null {
 
 function normalizeDomain(value: string): string {
   return value.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0];
+}
+
+function isKnownCategory(value: unknown): value is ConnectorDocCategory {
+  return typeof value === "string" && (CONNECTOR_DOC_CATEGORIES as readonly string[]).includes(value);
 }
 
 export function isCandidateOnOfficialDomain(url: string, officialDomain: string): boolean {
@@ -120,9 +172,13 @@ async function writeVerifiedFacts(term: string, facts: ExtractedFact[], docs: Sc
   }
 }
 
-async function discoverOfficialCandidates(query: string): Promise<OfficialCandidate[]> {
+async function discoverOfficialCandidates(query: string, connectorMode: boolean): Promise<OfficialCandidate[]> {
+  const categoryInstruction = connectorMode
+    ? `\nEsta é uma solicitação de integração/conector. Procure, quando existirem, páginas oficiais específicas para estas categorias:\n${CONNECTOR_DOC_CATEGORIES.map((c) => `- ${c}`).join("\n")}\nPara cada candidato inclua category usando exatamente um desses valores.`
+    : "";
+
   const result = await base44.integrations.Core.InvokeLLM({
-    prompt: `Identifique APENAS páginas de documentação oficial para responder tecnicamente à consulta abaixo.\n\nConsulta: "${query}"\n\nRegras:\n- Priorize portal oficial de desenvolvedores/API do produto ou empresa mencionada.\n- Não retorne blogs, fóruns, agregadores, Reddit, Stack Overflow ou páginas de terceiros.\n- Retorne URLs específicas de documentação quando possível, não apenas homepage.\n- Para cada URL, informe o domínio oficial ao qual ela pertence.\n- Se não conseguir confirmar documentação oficial, retorne lista vazia.`,
+    prompt: `Identifique APENAS páginas de documentação oficial para responder tecnicamente à consulta abaixo.\n\nConsulta: "${query}"\n\nRegras:\n- Priorize portal oficial de desenvolvedores/API do produto ou empresa mencionada.\n- Não retorne blogs, fóruns, agregadores, Reddit, Stack Overflow ou páginas de terceiros.\n- Retorne URLs específicas de documentação quando possível, não apenas homepage.\n- Para cada URL, informe o domínio oficial ao qual ela pertence.\n- Se não conseguir confirmar documentação oficial, retorne lista vazia.${categoryInstruction}`,
     add_context_from_internet: true,
     model: "gemini_3_flash",
     response_json_schema: {
@@ -136,6 +192,7 @@ async function discoverOfficialCandidates(query: string): Promise<OfficialCandid
               url: { type: "string" },
               official_domain: { type: "string" },
               title: { type: "string" },
+              category: { type: "string" },
             },
             required: ["url", "official_domain"],
           },
@@ -146,6 +203,8 @@ async function discoverOfficialCandidates(query: string): Promise<OfficialCandid
 
   const raw = Array.isArray(result?.candidates) ? result.candidates : [];
   const deduped = new Map<string, OfficialCandidate>();
+  const limit = connectorMode ? MAX_CONNECTOR_DISCOVERY_URLS : MAX_DISCOVERY_URLS;
+
   for (const candidate of raw) {
     if (!candidate || typeof candidate.url !== "string" || typeof candidate.official_domain !== "string") continue;
     if (!/^https:\/\//i.test(candidate.url)) continue;
@@ -155,9 +214,10 @@ async function discoverOfficialCandidates(query: string): Promise<OfficialCandid
         url: candidate.url,
         official_domain: normalizeDomain(candidate.official_domain),
         title: typeof candidate.title === "string" ? candidate.title : undefined,
+        category: isKnownCategory(candidate.category) ? candidate.category : undefined,
       });
     }
-    if (deduped.size >= MAX_DISCOVERY_URLS) break;
+    if (deduped.size >= limit) break;
   }
   return [...deduped.values()];
 }
@@ -179,6 +239,7 @@ async function scrapeOfficialCandidates(candidates: OfficialCandidate[]): Promis
         officialDomain: candidate.official_domain,
         title: typeof d?.title === "string" && d.title.trim() ? d.title : candidate.title || finalUrl,
         markdown: d.markdown.slice(0, MAX_MARKDOWN_PER_PAGE),
+        category: candidate.category,
       });
     } catch (err) {
       console.warn("[OfficialDocsSearchProvider] Falha ao ler documentação oficial:", candidate.url, err);
@@ -187,14 +248,18 @@ async function scrapeOfficialCandidates(candidates: OfficialCandidate[]): Promis
   return docs;
 }
 
-async function extractFactsFromDocs(query: string, docs: ScrapedOfficialDoc[]): Promise<ExtractedFact[]> {
+async function extractFactsFromDocs(query: string, docs: ScrapedOfficialDoc[], connectorMode: boolean): Promise<ExtractedFact[]> {
   if (docs.length === 0) return [];
   const evidence = docs.map((doc, i) => (
-    `\n--- DOCUMENTO ${i + 1} ---\nURL: ${doc.url}\nTÍTULO: ${doc.title}\nCONTEÚDO:\n${doc.markdown}`
+    `\n--- DOCUMENTO ${i + 1} ---\nURL: ${doc.url}\nTÍTULO: ${doc.title}\nCATEGORIA SUGERIDA: ${doc.category ?? "não classificada"}\nCONTEÚDO:\n${doc.markdown}`
   )).join("\n");
 
+  const connectorInstruction = connectorMode
+    ? `\n- Esta consulta é para instalação/integração de conector. Classifique cada fato em uma destas categorias quando sustentado: ${CONNECTOR_DOC_CATEGORIES.join(", ")}.\n- Não force categorias ausentes. Se a documentação lida não cobre uma categoria, ela deve permanecer ausente.`
+    : "";
+
   const result = await base44.integrations.Core.InvokeLLM({
-    prompt: `Responda à consulta técnica usando EXCLUSIVAMENTE os documentos fornecidos abaixo.\n\nConsulta: "${query}"\n\nRegras obrigatórias:\n- Não use conhecimento próprio.\n- Não pesquise na internet neste estágio.\n- Não complete lacunas nem infira requisitos ausentes.\n- Extraia apenas fatos explicitamente sustentados pelo conteúdo.\n- Priorize autenticação, endpoints, scopes/permissões, rate limits, schemas/formats, erros, webhooks, versões e requisitos técnicos quando presentes.\n- Cada fato deve apontar para uma das URLs fornecidas.\n- Se a documentação não sustenta um fato, não o inclua.\n\nDOCUMENTOS:${evidence}`,
+    prompt: `Responda à consulta técnica usando EXCLUSIVAMENTE os documentos fornecidos abaixo.\n\nConsulta: "${query}"\n\nRegras obrigatórias:\n- Não use conhecimento próprio.\n- Não pesquise na internet neste estágio.\n- Não complete lacunas nem infira requisitos ausentes.\n- Extraia apenas fatos explicitamente sustentados pelo conteúdo.\n- Priorize autenticação, endpoints, scopes/permissões, rate limits, schemas/formats, erros, webhooks, versões e requisitos técnicos quando presentes.\n- Cada fato deve apontar para uma das URLs fornecidas.\n- Se a documentação não sustenta um fato, não o inclua.${connectorInstruction}\n\nDOCUMENTOS:${evidence}`,
     add_context_from_internet: false,
     model: "gemini_3_flash",
     response_json_schema: {
@@ -207,6 +272,7 @@ async function extractFactsFromDocs(query: string, docs: ScrapedOfficialDoc[]): 
             properties: {
               fact: { type: "string" },
               source_url: { type: "string" },
+              category: { type: "string" },
             },
             required: ["fact", "source_url"],
           },
@@ -219,7 +285,36 @@ async function extractFactsFromDocs(query: string, docs: ScrapedOfficialDoc[]): 
   const raw = Array.isArray(result?.facts) ? result.facts : [];
   return raw
     .filter((item: any) => item && typeof item.fact === "string" && item.fact.trim() && typeof item.source_url === "string" && allowedUrls.has(item.source_url))
-    .map((item: any) => ({ fact: item.fact.trim(), source_url: item.source_url }));
+    .map((item: any) => ({
+      fact: item.fact.trim(),
+      source_url: item.source_url,
+      category: isKnownCategory(item.category) ? item.category : docs.find((d) => d.url === item.source_url)?.category,
+    }));
+}
+
+function buildConnectorRequirementsPackage(docs: ScrapedOfficialDoc[], facts: ExtractedFact[]): ConnectorRequirementsPackage {
+  const requirements: ConnectorRequirementsPackage["requirements"] = {};
+
+  for (const fact of facts) {
+    if (!fact.category) continue;
+    const bucket = requirements[fact.category] ?? [];
+    bucket.push({ fact: fact.fact, source_url: fact.source_url });
+    requirements[fact.category] = bucket;
+  }
+
+  const categoriesCovered = CONNECTOR_DOC_CATEGORIES.filter((category) => (requirements[category]?.length ?? 0) > 0);
+  const categoriesMissing = CONNECTOR_DOC_CATEGORIES.filter((category) => !categoriesCovered.includes(category));
+
+  return {
+    mode: "connector_documentation",
+    verifiedOfficial: docs.length > 0 && facts.length > 0,
+    officialDomains: [...new Set(docs.map((d) => d.officialDomain))],
+    categoriesRequested: [...CONNECTOR_DOC_CATEGORIES],
+    categoriesCovered,
+    categoriesMissing,
+    requirements,
+    sourceUrls: [...new Set(docs.map((d) => d.url))],
+  };
 }
 
 export class OfficialDocsSearchProvider implements SearchProvider {
@@ -227,6 +322,7 @@ export class OfficialDocsSearchProvider implements SearchProvider {
   readonly name = "Documentação Oficial (evidence-first)";
 
   canHandle(query: string): number {
+    if (isConnectorDocumentationRequest(query)) return 0.95;
     const lower = query.toLowerCase();
     return firstMatch(lower, DOC_KEYWORDS) ? 0.75 : 0;
   }
@@ -234,9 +330,10 @@ export class OfficialDocsSearchProvider implements SearchProvider {
   async search(query: string, options?: SearchOptions): Promise<SearchResult> {
     const t0 = Date.now();
     const maxResults = options?.maxResults ?? 10;
+    const connectorMode = isConnectorDocumentationRequest(query);
 
     const cached = await queryIndex(query);
-    if (cached.length > 0) {
+    if (cached.length > 0 && !connectorMode) {
       const verified = cached.filter((r) => r.verified_official === true && Boolean(r.source_url));
       const selected = verified.length > 0 ? verified : cached;
       const items: SearchResultItem[] = selected.slice(0, maxResults).map((r) => ({
@@ -248,8 +345,6 @@ export class OfficialDocsSearchProvider implements SearchProvider {
       }));
       return {
         success: true,
-        // Cache legado sem provenance continua consultável, mas não pode vencer
-        // uma pesquisa técnica como se fosse documentação oficial verificada.
         confidence: verified.length > 0 ? 0.9 : 0.45,
         items,
         provider: this.id,
@@ -258,20 +353,40 @@ export class OfficialDocsSearchProvider implements SearchProvider {
     }
 
     try {
-      const candidates = await discoverOfficialCandidates(query);
+      // Connector mode intentionally refreshes official evidence instead of
+      // trusting query-shaped cache: installation requirements can change.
+      const candidates = await discoverOfficialCandidates(query, connectorMode);
       const docs = await scrapeOfficialCandidates(candidates);
       if (docs.length === 0) {
-        return { success: true, confidence: 0, items: [], provider: this.id, durationMs: Date.now() - t0 };
+        return {
+          success: true,
+          confidence: 0,
+          items: [],
+          provider: this.id,
+          durationMs: Date.now() - t0,
+          metadata: connectorMode ? {
+            connectorRequirements: buildConnectorRequirementsPackage([], []),
+          } : undefined,
+        };
       }
 
-      const facts = await extractFactsFromDocs(query, docs);
+      const facts = await extractFactsFromDocs(query, docs, connectorMode);
       if (facts.length === 0) {
-        return { success: true, confidence: 0, items: [], provider: this.id, durationMs: Date.now() - t0 };
+        return {
+          success: true,
+          confidence: 0,
+          items: [],
+          provider: this.id,
+          durationMs: Date.now() - t0,
+          metadata: connectorMode ? {
+            connectorRequirements: buildConnectorRequirementsPackage(docs, []),
+          } : undefined,
+        };
       }
 
       void writeVerifiedFacts(query, facts, docs);
 
-      const items: SearchResultItem[] = facts.slice(0, maxResults).map(({ fact, source_url }) => ({
+      const items: SearchResultItem[] = facts.slice(0, maxResults).map(({ fact, source_url, category }) => ({
         title: fact.slice(0, 80),
         snippet: fact,
         url: source_url,
@@ -279,15 +394,25 @@ export class OfficialDocsSearchProvider implements SearchProvider {
         raw: {
           verified_official: true,
           official_domain: docs.find((d) => d.url === source_url)?.officialDomain,
+          connector_mode: connectorMode,
+          requirement_category: category,
         },
       }));
 
+      const connectorRequirements = connectorMode ? buildConnectorRequirementsPackage(docs, facts) : undefined;
+      const coverageRatio = connectorRequirements
+        ? connectorRequirements.categoriesCovered.length / connectorRequirements.categoriesRequested.length
+        : 1;
+
       return {
         success: true,
-        confidence: 0.92,
+        // Connector mode only reaches high confidence with real official evidence;
+        // incomplete category coverage is surfaced in metadata instead of invented.
+        confidence: connectorMode ? Math.min(0.8 + coverageRatio * 0.15, 0.95) : 0.92,
         items,
         provider: this.id,
         durationMs: Date.now() - t0,
+        metadata: connectorRequirements ? { connectorRequirements } : undefined,
       };
     } catch (err) {
       return {
