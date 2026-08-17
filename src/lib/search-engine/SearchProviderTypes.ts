@@ -41,6 +41,8 @@ export interface SearchResult {
   provider: string;
   durationMs: number;
   error?: string;
+  /** Provider-specific structured evidence. Optional so existing consumers remain unchanged. */
+  metadata?: Record<string, unknown>;
 }
 
 export interface SearchProvider {
