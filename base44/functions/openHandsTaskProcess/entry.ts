@@ -146,6 +146,7 @@ export default async function (req: Request) {
 
     const task = typeof body.task === 'string' ? body.task.trim() : '';
     const repository = typeof body.repository === 'string' ? body.repository.trim() : '';
+    const mode: 'read' | 'write' = body.mode === 'write' ? 'write' : 'read';
     const includeRawEvents = body.includeRawEvents === true;
     const timeoutMs = clampTimeout(body.timeoutMs);
 
@@ -179,7 +180,14 @@ export default async function (req: Request) {
         headers,
         body: JSON.stringify({
           initial_message: {
-            content: [{ type: 'text', text: task }],
+            // read mode: injeta instrucao explicita de somente leitura preservando
+            // a task original do usuario (acrescenta, nao reescreve).
+            content: [{
+              type: 'text',
+              text: mode === 'read'
+                ? `${task}\n\n---\nIMPORTANT: Read-only mode. Do NOT modify, create, or delete any files. Do NOT create commits or push. Do NOT run destructive commands. Only inspect and report what is asked.`
+                : task,
+            }],
           },
           selected_repository: repository,
         }),
@@ -365,6 +373,7 @@ export default async function (req: Request) {
       ok: executionStatus === 'finished',
       app_conversation_id: conversationId,
       repository,
+      mode,
       execution_status: executionStatus,
       agent_reply_text: agentReply.text,
       agent_message_event_id: agentReply.eventId,

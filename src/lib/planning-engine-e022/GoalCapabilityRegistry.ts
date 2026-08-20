@@ -877,6 +877,16 @@ const _builtins: CapabilityMapping[] = [
     ],
   },
 
+  // ── OpenHands — Cloud agent de engenharia via backend function openHandsTaskProcess
+  // Connector id: "openhands"  (OpenHandsConnector.ts)
+  // Capability: "openhands.runTask"  (mode: "read" | "write" no payload, default "read")
+  {
+    goalType: "openhands.runTask" as GoalType,
+    descriptors: [
+      { connector: "openhands", capability: "openhands.runTask", params: {} },
+    ],
+  },
+
   // ── General / Unknown — no capability steps; Runtime handles gracefully ───
   {
     goalType: "general.conversation",
