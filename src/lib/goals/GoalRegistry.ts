@@ -68,6 +68,48 @@ function normalizeMcpServerName(value: string | null | undefined): string | null
   return cleaned || null;
 }
 
+// ── ENG-MCP natural-language routing ─────────────────────────────────────────
+// Permite que o chat use as ferramentas engineering.* sem o usuario precisar
+// escrever "MCP eng-mcp execute ...". Reutiliza integralmente mcp.callTool,
+// GoalCapabilityRegistry e MCPConnector existentes — nenhum runtime paralelo.
+// Retorna null quando a mensagem nao expressa uma operacao de engenharia
+// suficientemente especifica, deixando os demais goals seguirem normalmente.
+function inferEngMcpTool(userMessage: string): string | null {
+  const msg = userMessage.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+  const rules: readonly [RegExp, string][] = [
+    [/\b(typecheck|type check|checagem de tipos|verifique os tipos|verificar os tipos)\b/, "engineering.typecheck.run"],
+    [/\b(eslint|lint|linter)\b/, "engineering.lint.run"],
+    [/\b(dead ?code|codigo morto|codigo nao usado)\b/, "engineering.deadcode.scan"],
+    [/\b(caminho paralelo|caminhos paralelos|parallel path|parallel paths|legacy path|caminho legado)\b/, "engineering.parallelpath.scan"],
+    [/\b(verificar contrato|verifique o contrato|contract verify|validar contrato|valide o contrato)\b/, "engineering.contract.verify"],
+    [/\b(impacto da mudanca|impacto de mudanca|change impact|analise de impacto|analisar impacto)\b/, "engineering.change.impact"],
+    [/\b(referencias? (?:do|da|de|para)|onde .*\b(?:usado|usada|referenciado|referenciada)|code references?)\b/, "engineering.code.references"],
+    [/\b(buscar? (?:no|o)? ?codigo|pesquisar? (?:no|o)? ?codigo|procure? (?:no|o)? ?codigo|code search)\b/, "engineering.code.search"],
+    [/\b(estrutura (?:do|da) (?:repo|repositorio)|estrutura do projeto|repo structure|repository structure)\b/, "engineering.repo.structure"],
+    [/\b(status (?:do|da) (?:git|repo|repositorio)|git status|estado (?:do|da) repositorio)\b/, "engineering.git.status"],
+    [/\b(git diff|diff (?:do|da) (?:git|repo|repositorio)|alteracoes pendentes|mudancas pendentes)\b/, "engineering.git.diff"],
+    [/\b(branches|branchs|git branches|listar branches|liste as branches)\b/, "engineering.git.branches"],
+    [/\b(worktrees?|git worktrees?|listar worktrees?)\b/, "engineering.git.worktrees"],
+    [/\b(git log|historico de commits|historico dos commits|ultimos commits|listar commits|liste os commits)\b/, "engineering.git.log"],
+    [/\b(remote compare|comparar .*remote|compare .*remote|comparar .*remoto|compare .*remoto)\b/, "engineering.git.remote_compare"],
+    [/\b(rodar? (?:os )?testes|rode (?:os )?testes|executar? (?:os )?testes|execute (?:os )?testes|test suite|integration test)\b/, "engineering.test.run"],
+    [/\b(release status|release test|release build|candidate|deploy|smoke|rollback)\b/, "engineering.release.run"],
+    [/\b(catalogo (?:do|de) (?:eng|engineer|engineering)[ -]?mcp|engineering mcp catalog|eng-mcp catalog)\b/, "engineering.mcp.catalog"],
+    [/\b(stage|git stage|adicionar ao stage)\b/, "engineering.git.stage"],
+    [/\b(unstage|git unstage|remover do stage)\b/, "engineering.git.unstage"],
+    [/\b(git commit|faca commit|fazer commit|commitar)\b/, "engineering.git.commit"],
+    [/\b(aplicar patch|aplique patch|file patch|patch no arquivo)\b/, "engineering.file.patch"],
+    [/\b(criar arquivo|crie (?:o )?arquivo|file create)\b/, "engineering.file.create"],
+    [/\b(ler arquivo|leia (?:o )?arquivo|read file)\b.*\b(?:repo|repositorio|codigo|memoryos|src\/)/, "engineering.file.read"],
+  ];
+
+  for (const [pattern, toolName] of rules) {
+    if (pattern.test(msg)) return toolName;
+  }
+  return null;
+}
+
 // ── GoalRegistry ──────────────────────────────────────────────────────────────
 
 class GoalRegistryClass {
@@ -144,6 +186,16 @@ class GoalRegistryClass {
         const def = this._definitions.find((d) => d.type === target as GoalType);
         if (def) return def;
       }
+    }
+
+    // ── ENG-MCP first for explicit engineering operations ───────────────────
+    // Se existe uma tool engineering.* deterministica para a operacao pedida,
+    // roteia pelo MCP generico já existente. Isso implementa a prioridade
+    // ENG-MCP no chat sem adicionar connector/engine/runtime novo.
+    const engTool = inferEngMcpTool(userMessage);
+    if (engTool) {
+      const def = this._definitions.find((d) => d.type === "mcp.callTool" as GoalType);
+      if (def) return def;
     }
 
     for (const def of this._definitions) {
@@ -1542,12 +1594,18 @@ const _builtins: GoalDefinition[] = [
       "use o mcp", "usar o mcp",
     ],
     extractParams: (msg) => {
+      const inferredEngTool = inferEngMcpTool(msg);
       const toolMatch =
         msg.match(/ferramenta\s+([a-zA-Z0-9_.\-]+)\s+(?:do\s+)?mcp/i)?.[1]?.trim() ??
         msg.match(/mcp\s+[a-z0-9_.\-]+\s+para\s+(?:executar|chamar|invocar)\s+([a-zA-Z0-9_.\-]+)/i)?.[1]?.trim();
       const afterServidor = msg.match(/servidor\s+([a-z0-9_.\-]+)/i)?.[1]?.trim();
       const afterMcp = msg.match(/mcp\s+([a-z0-9_.\-]+)/i)?.[1]?.trim();
-      return { toolName: toolMatch ?? null, serverName: normalizeMcpServerName(afterServidor ?? afterMcp ?? null), rawText: msg.trim() };
+      const explicitServer = normalizeMcpServerName(afterServidor ?? afterMcp ?? null);
+      return {
+        toolName: inferredEngTool ?? toolMatch ?? null,
+        serverName: inferredEngTool ? "eng-mcp" : explicitServer,
+        rawText: msg.trim(),
+      };
     },
   },
 ];
