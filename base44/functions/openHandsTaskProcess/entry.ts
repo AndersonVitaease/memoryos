@@ -373,7 +373,7 @@ export default async function (req: Request) {
     if (task.length > 30_000) {
       return Response.json({ ok: false, error: 'task exceeds 30000 characters' }, { status: 400 });
     }
-    if (repository.length > 300 || !repository.includes('/')) {
+    if (repository && (repository.length > 300 || !repository.includes('/'))) {
       return Response.json({ ok: false, error: 'repository must be in owner/repo form' }, { status: 400 });
     }
 
