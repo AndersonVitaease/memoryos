@@ -163,7 +163,10 @@ class GoalRegistryClass {
       "in", "em", "por", "um", "uma", "se", "as", "os",
     ]);
     const MCP_ADDR_RE = /\bmcp\s+([a-z0-9][a-z0-9_.\-]{2,})/i;
-    const addrMatch = lower.match(MCP_ADDR_RE);
+    // ENG-MCP first must win over the generic MCP-address parser. Otherwise a
+    // natural phrase such as "ENG-MCP onde ..." can misread "onde" as a server.
+    const engTool = inferEngMcpTool(userMessage);
+    const addrMatch = engTool ? null : lower.match(MCP_ADDR_RE);
     if (addrMatch) {
       const serverToken = normalizeMcpServerName(addrMatch[1])?.toLowerCase() ?? "";
       if (serverToken && !MCP_STOPWORDS.has(serverToken)) {
@@ -192,7 +195,6 @@ class GoalRegistryClass {
     // Se existe uma tool engineering.* deterministica para a operacao pedida,
     // roteia pelo MCP generico já existente. Isso implementa a prioridade
     // ENG-MCP no chat sem adicionar connector/engine/runtime novo.
-    const engTool = inferEngMcpTool(userMessage);
     if (engTool) {
       const def = this._definitions.find((d) => d.type === "mcp.callTool" as GoalType);
       if (def) return def;
