@@ -206,6 +206,19 @@ class GoalRegistryClass {
       if (def) return def;
     }
 
+    // ── Precedência: endereçamento explícito de Supervised Engineering ──────
+    // Princípio: ENDEREÇAMENTO EXPLÍCITO DE PROCESSO > SIGNALS INCIDENTAIS
+    // DE CONNECTORS. Se a mensagem endereça inequivocamente "engenharia
+    // supervisionada" / "supervised engineering", ela deve vencer signals
+    // incidentais como "do repositorio" (github.getFile) que casam antes no
+    // first-match-wins. Reutiliza a GoalDefinition ja registrada — nao cria
+    // segunda definicao nem duplica extractParams.
+    const SE_ADDR_RE = /(?:^|[^\p{L}\p{N}])(?:engenharia\s+supervisionada|supervised\s+engineering)(?:[^\p{L}\p{N}]|$)/iu;
+    if (SE_ADDR_RE.test(lower)) {
+      const seDef = this._definitions.find((d) => d.type === "supervisedEngineering" as GoalType);
+      if (seDef) return seDef;
+    }
+
     for (const def of this._definitions) {
       const hit = def.signals.some((s) => {
         const escaped = s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
