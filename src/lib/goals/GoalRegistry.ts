@@ -85,7 +85,7 @@ function inferEngMcpTool(userMessage: string): string | null {
     [/\b(verificar contrato|verifique o contrato|contract verify|validar contrato|valide o contrato)\b/, "engineering.contract.verify"],
     [/\b(impacto da mudanca|impacto de mudanca|change impact|analise de impacto|analisar impacto)\b/, "engineering.change.impact"],
     [/\b(referencias? (?:do|da|de|para)|onde .*\b(?:usado|usada|referenciado|referenciada)|code references?)\b/, "engineering.code.references"],
-    [/\b(buscar? (?:no|o)? ?codigo|pesquisar? (?:no|o)? ?codigo|procure? (?:no|o)? ?codigo|code search)\b/, "engineering.code.search"],
+    [/\b((?:buscar?|pesquisar?|procure?|localizar?|localize|localiza) (?:no|o|os|as|a)? ?codigo|onde .*\b(?:gerado|gerada|definido|definida|criado|criada|declarado|declarada|implementado|implementada)\b|code search)\b/, "engineering.code.search"],
     [/\b(estrutura (?:do|da) (?:repo|repositorio)|estrutura do projeto|repo structure|repository structure)\b/, "engineering.repo.structure"],
     [/\b(status (?:do|da) (?:git|repo|repositorio)|git status|estado (?:do|da) repositorio)\b/, "engineering.git.status"],
     [/\b(git diff|diff (?:do|da) (?:git|repo|repositorio)|alteracoes pendentes|mudancas pendentes)\b/, "engineering.git.diff"],
@@ -162,7 +162,13 @@ class GoalRegistryClass {
       "que", "qual", "como", "and", "or", "is", "the", "of", "to", "with",
       "in", "em", "por", "um", "uma", "se", "as", "os",
     ]);
-    const MCP_ADDR_RE = /\bmcp\s+([a-z0-9][a-z0-9_.\-]{2,})/i;
+    // FIX (2026-08-20): negative lookbehind substitui o \b. O \b casa a
+    // fronteira hifem->letra em "eng-mcp", fazendo o sufixo "mcp" de um
+    // identificador maior ser lido como palavra-chave MCP autonoma
+    // ("ENG-MCP onde..." -> serverName="onde"). O lookbehind exige que "mcp"
+    // NAO seja precedido por caractere de identificador (letra/digito/_/./-),
+    // preservando o enderecamento legitimo "MCP eng-mcp" (precedido por espaco).
+    const MCP_ADDR_RE = /(?<![a-z0-9_.\-])mcp\s+([a-z0-9][a-z0-9_.\-]{2,})/i;
     // ENG-MCP first must win over the generic MCP-address parser. Otherwise a
     // natural phrase such as "ENG-MCP onde ..." can misread "onde" as a server.
     const engTool = inferEngMcpTool(userMessage);
@@ -1575,7 +1581,9 @@ const _builtins: GoalDefinition[] = [
     ],
     extractParams: (msg) => {
       const afterServidor = msg.match(/servidor\s+([a-z0-9_.\-]+)/i)?.[1]?.trim();
-      const afterMcp = msg.match(/mcp\s+([a-z0-9_.\-]+)/i)?.[1]?.trim();
+      // FIX (2026-08-20): mesmo lookbehind do MCP_ADDR_RE — impede que o "mcp"
+      // sufixo de "eng-mcp" seja lido como palavra-chave autonoma.
+      const afterMcp = msg.match(/(?<![a-z0-9_.\-])mcp\s+([a-z0-9_.\-]+)/i)?.[1]?.trim();
       const afterFerramenta = msg.match(/ferramenta\s+([a-z0-9][a-z0-9_.\-]{2,})/i)?.[1]?.trim();
       const afterTool = msg.match(/\btool\s+([a-z0-9][a-z0-9_.\-]{2,})/i)?.[1]?.trim();
       const toolName = afterFerramenta ?? afterTool ?? null;
@@ -1601,7 +1609,9 @@ const _builtins: GoalDefinition[] = [
         msg.match(/ferramenta\s+([a-zA-Z0-9_.\-]+)\s+(?:do\s+)?mcp/i)?.[1]?.trim() ??
         msg.match(/mcp\s+[a-z0-9_.\-]+\s+para\s+(?:executar|chamar|invocar)\s+([a-zA-Z0-9_.\-]+)/i)?.[1]?.trim();
       const afterServidor = msg.match(/servidor\s+([a-z0-9_.\-]+)/i)?.[1]?.trim();
-      const afterMcp = msg.match(/mcp\s+([a-z0-9_.\-]+)/i)?.[1]?.trim();
+      // FIX (2026-08-20): mesmo lookbehind do MCP_ADDR_RE — impede sufixo "mcp"
+      // de "eng-mcp" virar serverName ("ENG-MCP onde..." -> "onde").
+      const afterMcp = msg.match(/(?<![a-z0-9_.\-])mcp\s+([a-z0-9_.\-]+)/i)?.[1]?.trim();
       const explicitServer = normalizeMcpServerName(afterServidor ?? afterMcp ?? null);
       return {
         toolName: inferredEngTool ?? toolMatch ?? null,
