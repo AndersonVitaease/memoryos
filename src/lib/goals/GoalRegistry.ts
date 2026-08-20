@@ -56,6 +56,18 @@ const INTENT_GOAL_MAP: Readonly<Record<CognitiveIntent, GoalType>> = {
   general_conversation:     "general.conversation",
 };
 
+// ── MCP serverName terminal-punctuation normalization ─────────────────────────
+// Responsabilidade unica: remover pontuacao TERMINAL da linguagem natural
+// (.,;:!?) que foi incorporada ao identificador MCP extraido por regex
+// (o "." e caractere valido interno de server names, por isso pode vazar
+// como pontuacao de fim de frase). Pontos INTERNOS sao preservados.
+// Nao aplica a toolName (contrato distinto — ver callTool/listTools).
+function normalizeMcpServerName(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const cleaned = value.replace(/[.,;:!?]+$/g, "").trim();
+  return cleaned || null;
+}
+
 // ── GoalRegistry ──────────────────────────────────────────────────────────────
 
 class GoalRegistryClass {
@@ -111,8 +123,8 @@ class GoalRegistryClass {
     const MCP_ADDR_RE = /\bmcp\s+([a-z0-9][a-z0-9_.\-]{2,})/i;
     const addrMatch = lower.match(MCP_ADDR_RE);
     if (addrMatch) {
-      const serverToken = addrMatch[1].toLowerCase();
-      if (!MCP_STOPWORDS.has(serverToken)) {
+      const serverToken = normalizeMcpServerName(addrMatch[1])?.toLowerCase() ?? "";
+      if (serverToken && !MCP_STOPWORDS.has(serverToken)) {
         // Endereçamento MCP explícito confirmado. Dispatch dentro do domínio MCP:
         //   CASO A — execução POSITIVA de tool (verbo de execução NÃO negado
         //            seguido de nome de tool) → mcp.callTool.
@@ -1482,7 +1494,7 @@ const _builtins: GoalDefinition[] = [
       const afterFerramenta = msg.match(/ferramenta\s+([a-z0-9][a-z0-9_.\-]{2,})/i)?.[1]?.trim();
       const afterTool = msg.match(/\btool\s+([a-z0-9][a-z0-9_.\-]{2,})/i)?.[1]?.trim();
       const toolName = afterFerramenta ?? afterTool ?? null;
-      const serverName = afterServidor ?? afterMcp ?? null;
+      const serverName = normalizeMcpServerName(afterServidor ?? afterMcp ?? null);
       return { serverName, ...(toolName ? { toolName } : {}) };
     },
   },
@@ -1504,7 +1516,7 @@ const _builtins: GoalDefinition[] = [
         msg.match(/mcp\s+[a-z0-9_.\-]+\s+para\s+(?:executar|chamar|invocar)\s+([a-zA-Z0-9_.\-]+)/i)?.[1]?.trim();
       const afterServidor = msg.match(/servidor\s+([a-z0-9_.\-]+)/i)?.[1]?.trim();
       const afterMcp = msg.match(/mcp\s+([a-z0-9_.\-]+)/i)?.[1]?.trim();
-      return { toolName: toolMatch ?? null, serverName: afterServidor ?? afterMcp ?? null, rawText: msg.trim() };
+      return { toolName: toolMatch ?? null, serverName: normalizeMcpServerName(afterServidor ?? afterMcp ?? null), rawText: msg.trim() };
     },
   },
 ];
