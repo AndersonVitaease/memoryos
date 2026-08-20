@@ -39,6 +39,26 @@ export interface ResearchStep {
 
 // ── Reflection ───────────────────────────────────────────────────────────────
 
+/** Estado verificavel de um requisito de missao executavel. */
+export type CompletionRequirementStatus = "pending" | "completed" | "failed" | "unverified";
+
+/** Requisito atomico que precisa ser satisfeito antes de a missao ser concluida. */
+export interface CompletionRequirement {
+  readonly id: string;
+  readonly description: string;
+  readonly required: boolean;
+  readonly status: CompletionRequirementStatus;
+  readonly evidence?: readonly string[];
+}
+
+/** Contrato opcional de completude para Adaptive Processes orientados a missao. */
+export interface CompletionContract {
+  readonly requirements: readonly CompletionRequirement[];
+  readonly completed: number;
+  readonly total: number;
+  readonly requiredComplete: boolean;
+}
+
 /** Avaliacao dos resultados de uma rodada de invocacao. */
 export interface Reflection {
   /** Resultados por step (stepId -> outcome). */
@@ -47,6 +67,12 @@ export interface Reflection {
   readonly gaps: readonly string[];
   /** Score de suficiencia 0..1 — quando >= threshold, stop() = true. */
   readonly sufficiency: number;
+  /**
+   * Contrato opcional de completude para missoes executaveis (ex: OpenHands).
+   * Deep Research continua usando apenas sufficiency/gaps; callers existentes
+   * nao precisam preencher este campo.
+   */
+  readonly completion?: CompletionContract;
 }
 
 // ── Contexto injetado no processo ────────────────────────────────────────────
