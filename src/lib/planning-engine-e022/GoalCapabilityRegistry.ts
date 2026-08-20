@@ -877,14 +877,13 @@ const _builtins: CapabilityMapping[] = [
     ],
   },
 
-  // ── OpenHands supervisionado — Adaptive Process -> OpenHands + ENG-MCP
-  // O Goal publico permanece openhands.runTask, mas a execucao passa pelo
-  // supervisedEngineering. O processo chama openhands.runTask como sub-capability
-  // e verifica completude/evidencias via ENG-MCP antes de considerar a missao concluida.
+  // OpenHands - Cloud agent de engenharia via backend function openHandsTaskProcess
+  // Connector id: "openhands" (OpenHandsConnector.ts)
+  // Capability: "openhands.runTask" (mode: "read" | "write" no payload, default "read")
   {
     goalType: "openhands.runTask" as GoalType,
     descriptors: [
-      { connector: "adaptive-process", capability: "supervisedEngineering", params: {} },
+      { connector: "openhands", capability: "openhands.runTask", params: {} },
     ],
   },
 
