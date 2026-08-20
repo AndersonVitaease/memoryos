@@ -845,16 +845,18 @@ const _builtins: GoalDefinition[] = [
     namespace: "drive",
     description: "Summarize a document from Google Drive using LLM",
     signals: [
-      // Portuguese
-      "resumir", "resuma", "resume", "resumo",
+      // Exige referencia explicita a arquivo/documento/Drive. Verbos genericos
+      // de resumo ("resuma", "resumo", "summarize") pertencem ao fluxo
+      // cognitivo normal e podem se referir ao turno anterior, nao ao Drive.
       "resumir o arquivo", "resumir o documento",
       "resumir arquivo", "resumir documento",
-      "fazer resumo", "faça resumo",
       "resumo do arquivo", "resumo do documento",
-      "faz um resumo", "criar um resumo",
+      "resumir no drive", "resumir do drive",
+      "resuma o arquivo", "resuma o documento",
+      "faça resumo do arquivo", "faça resumo do documento",
       // English
-      "summarize", "make a summary",
       "summarize file", "summarize document",
+      "summary of file", "summary of document",
     ],
     extractParams: (msg) => {
       const quoted = msg.match(/"([^"]+)"/)?.[1];
