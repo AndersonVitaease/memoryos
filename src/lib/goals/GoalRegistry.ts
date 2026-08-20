@@ -92,6 +92,17 @@ class GoalRegistryClass {
    */
   matchBySignals(userMessage: string): GoalDefinition | null {
     const lower = userMessage.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+    // ── Precedência: endereçamento MCP explícito vence inferência semântica ──
+    // "Use o MCP <server> para executar|chamar|invocar <tool>" deve selecionar
+    // mcp.callTool ANTES do loop normal de sinais — otherwise sinais coincidentais
+    // como "do repositorio" (github.getFile, registrado antes) capturam a mensagem.
+    const EXPLICIT_MCP_RE = /\b(?:use|usar)\s+o\s+mcp\s+[a-z0-9_.\-]+\s+para\s+(?:executar|chamar|invocar)\s+[a-z0-9_.\-]+/i;
+    if (EXPLICIT_MCP_RE.test(lower)) {
+      const mcpCallToolDef = this._definitions.find((d) => d.type === "mcp.callTool" as GoalType);
+      if (mcpCallToolDef) return mcpCallToolDef;
+    }
+
     for (const def of this._definitions) {
       const hit = def.signals.some((s) => {
         const escaped = s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
