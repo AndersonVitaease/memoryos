@@ -1484,7 +1484,7 @@ Se for, extraia "target" (nome do arquivo/pasta sem verbos de comando).`,
     rawResponse = await base44.integrations.Core.InvokeLLM({ prompt: _systemPrompt + "\n\n" + finalPrompt });
   }
   const _llmDurationMs = Date.now() - _t6;
-  console.log("[DIAG][PromptMetrics][AFTER_LLM]", {
+  const _afterPromptMetrics = {
     provider: _aiProvider?.id ?? "base44-fallback",
     model: _providerModel,
     promptTokens: _providerUsage?.promptTokens,
@@ -1494,7 +1494,22 @@ Se for, extraia "target" (nome do arquivo/pasta sem verbos de comando).`,
     cacheWriteTokens: _providerUsage?.cacheWriteTokens,
     cost: _providerUsage?.cost,
     durationMs: _llmDurationMs,
-  });
+  };
+  console.log("[DIAG][PromptMetrics][AFTER_LLM]", _afterPromptMetrics);
+
+  // Amostragem persistente temporaria para auditoria de custo/cache. Usa a
+  // entidade de observabilidade ja existente, grava SOMENTE numeros/metadados
+  // (nunca prompt, memoria, resposta ou codigo) e nunca bloqueia a resposta.
+  try {
+    await base44.entities.InteractionEvent.create({
+      session_id: session?.id || "",
+      actor: "system",
+      event_type: "prompt_metrics_sample",
+      payload: JSON.stringify({ before: _promptMetrics, after: _afterPromptMetrics }),
+    });
+  } catch (e) {
+    console.warn("[PromptMetrics] Falha ao persistir amostra (best-effort):", e?.message || String(e));
+  }
   console.log(`[DIAG][ReasoningPlanner] ETAPA 6 (resposta final, provider: ${_aiProvider?.id ?? "base44-fallback"}) levou ${_llmDurationMs}ms — prompt tinha ${finalPrompt.length} caracteres`);
 
   // === ETAPA 6.5: TRAVA DETERMINÍSTICA CONTRA CONFABULAÇÃO DE DOCUMENTO (IA-032) ===
