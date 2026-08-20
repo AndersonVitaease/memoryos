@@ -72,6 +72,117 @@ async function resolveServerId(
   }
 }
 
+// ── MCP Argument Resolution (generico, schema-driven) ───────────────────────
+// Resolve arguments quando ausentes: cache -> list fallback -> InvokeLLM(inputSchema).
+// Nunca conhece nomes de campos especificos — 100% dirigido pelo inputSchema da tool.
+
+function isValidBasicType(value: unknown, expectedType: unknown): boolean {
+  switch (expectedType) {
+    case "string":  return typeof value === "string";
+    case "number":  return typeof value === "number";
+    case "integer": return typeof value === "number" && Number.isInteger(value);
+    case "boolean": return typeof value === "boolean";
+    case "array":   return Array.isArray(value);
+    case "object":  return typeof value === "object" && value !== null && !Array.isArray(value);
+    default:        return true; // tipo nao declarado/desconhecido — aceita.
+  }
+}
+
+async function resolveMcpArguments(
+  serverId: string,
+  toolName: string,
+  rawText: string,
+  logs: ConnectorLog[],
+): Promise<{ arguments: Record<string, unknown>; error: null } | { arguments: null; error: string }> {
+  // 1. Obter inputSchema da tool selecionada (cache primeiro).
+  let inputSchema: Record<string, unknown> | null = null;
+  try {
+    const server = await base44.entities.MCPServerConfig.get(serverId);
+    const cachedRaw = server?.discovered_tools;
+    if (cachedRaw) {
+      const cached = JSON.parse(cachedRaw);
+      const found = Array.isArray(cached)
+        ? cached.find((t: any) => t && t.name === toolName)
+        : null;
+      if (found && found.inputSchema && typeof found.inputSchema === "object") {
+        inputSchema = found.inputSchema as Record<string, unknown>;
+      }
+    }
+  } catch (e) {
+    logs.push(makeLog("warn", `[mcp.callTool] cache read falhou: ${(e as Error).message}`));
+  }
+
+  // Fallback: listTools fresco quando o cache nao tem o schema.
+  if (!inputSchema) {
+    try {
+      const res = await base44.functions.invoke("mcpClientCall", { serverId, action: "list" });
+      const d = (res.data ?? res) as Record<string, unknown> | null;
+      const tools = (d?.tools as any[]) ?? [];
+      const found = tools.find((t) => t && t.name === toolName);
+      if (found && found.inputSchema && typeof found.inputSchema === "object") {
+        inputSchema = found.inputSchema as Record<string, unknown>;
+      }
+    } catch (e) {
+      logs.push(makeLog("warn", `[mcp.callTool] list fallback falhou: ${(e as Error).message}`));
+    }
+  }
+
+  if (!inputSchema) {
+    return { arguments: null, error: `Nao foi possivel obter o inputSchema da tool '${toolName}'.` };
+  }
+
+  // 2. CASO B: sem required fields -> arguments vazio, zero LLM.
+  const required = Array.isArray(inputSchema.required) ? (inputSchema.required as string[]) : [];
+  if (required.length === 0) {
+    logs.push(makeLog("info", `[mcp.callTool] sem required fields em '${toolName}' -> arguments={}`));
+    return { arguments: {}, error: null };
+  }
+
+  // 3. CASO C: required fields mas sem rawText -> nao inferir, nao inventar.
+  if (!rawText) {
+    return {
+      arguments: null,
+      error: `Tool '${toolName}' exige argumentos obrigatorios (${required.join(", ")}) mas nenhum rawText foi fornecido para resolucao.`,
+    };
+  }
+
+  // 4. Argument Resolution via InvokeLLM (somente rawText + inputSchema da tool).
+  logs.push(makeLog("info", `[mcp.callTool] resolvendo ${required.length} required field(s) via InvokeLLM`));
+  const llmResult = await base44.integrations.Core.InvokeLLM({
+    prompt: rawText,
+    response_json_schema: inputSchema as object,
+  });
+
+  // 5. Validacao defensiva minima (nao e um JSON Schema validator completo).
+  if (!llmResult || typeof llmResult !== "object" || Array.isArray(llmResult)) {
+    return { arguments: null, error: `InvokeLLM nao retornou um objeto valido para '${toolName}'.` };
+  }
+  const produced = llmResult as Record<string, unknown>;
+  const properties =
+    inputSchema.properties && typeof inputSchema.properties === "object"
+      ? (inputSchema.properties as Record<string, any>)
+      : {};
+
+  for (const field of required) {
+    if (!(field in produced) || produced[field] === undefined || produced[field] === null) {
+      return { arguments: null, error: `Argumento obrigatorio '${field}' ausente no resultado da resolucao.` };
+    }
+  }
+  for (const field of required) {
+    const declared = properties[field];
+    if (!declared || typeof declared !== "object") continue;
+    const expectedType = Array.isArray(declared.type) ? declared.type[0] : declared.type;
+    if (!isValidBasicType(produced[field], expectedType)) {
+      return {
+        arguments: null,
+        error: `Argumento '${field}' com tipo invalido (esperado ${expectedType ?? "unknown"}, recebido ${Array.isArray(produced[field]) ? "array" : typeof produced[field]}).`,
+      };
+    }
+  }
+
+  return { arguments: produced, error: null };
+}
+
 export class MCPConnector implements IConnector {
   readonly id = "mcp";
 
@@ -145,10 +256,23 @@ export class MCPConnector implements IConnector {
           if (!toolName) {
             return fail("toolName e obrigatorio para mcp.callTool", start, eid, logs, operation);
           }
-          const toolArgs =
+          const rawText = typeof payload.rawText === "string" ? payload.rawText.trim() : "";
+          // CASO A: arguments explicitos nao-vazios sao usados diretamente — zero LLM.
+          let toolArgs: Record<string, unknown>;
+          const explicitArgs =
             payload.arguments && typeof payload.arguments === "object"
               ? (payload.arguments as Record<string, unknown>)
               : {};
+          if (Object.keys(explicitArgs).length > 0) {
+            toolArgs = explicitArgs;
+          } else {
+            // CASO B/C: resolver via inputSchema (cache -> list fallback -> InvokeLLM).
+            const resolution = await resolveMcpArguments(serverId, toolName, rawText, logs);
+            if (resolution.error) {
+              return fail(resolution.error, start, eid, logs, operation);
+            }
+            toolArgs = resolution.arguments;
+          }
           const bearerToken = typeof payload.bearerToken === "string" ? payload.bearerToken : undefined;
           const res = await base44.functions.invoke("mcpClientCall", {
             serverId,
