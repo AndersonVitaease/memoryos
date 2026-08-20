@@ -17,6 +17,9 @@
  *   - action: "call"  -> tools/call com { toolName, arguments }.
  *
  * Logica compartilhada (connect, resolveHeaders, etc) em base44/shared/mcpClient.ts.
+ *
+ * Runtime refresh note (2026-08-20): harmless redeploy marker so newly-added
+ * application secrets are loaded by the deployed backend function environment.
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.38';
 import {
