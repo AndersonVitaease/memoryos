@@ -166,8 +166,16 @@ export class MCPConnector implements IConnector {
         default:
           return fail(`Unknown operation: "${operation}"`, start, eid, logs, operation);
       }
-    } catch (e) {
-      return fail((e as Error).message, start, eid, logs, operation);
+    } catch (e: any) {
+      // Base44 functions.invoke usa um envelope HTTP generico em falhas (ex. 500/502).
+      // Preserve a causa devolvida pela backend function quando disponivel.
+      const realError =
+        e?.response?.data?.error ||
+        (typeof e?.response?.data === "string" ? e.response.data : null) ||
+        e?.data?.error ||
+        e?.message ||
+        String(e);
+      return fail(String(realError), start, eid, logs, operation);
     }
   }
 }
