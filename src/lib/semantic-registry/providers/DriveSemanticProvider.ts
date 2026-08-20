@@ -96,14 +96,17 @@ const INTENT_RULES: readonly IntentRule[] = Object.freeze([
     goalType:  "drive.summarizeDocument",
     baseScore: 0.55,
     signals: [
-      "resumir", "resuma", "resume", "resumo",
+      // Apenas resumo explicitamente ligado a arquivo/documento. Pedidos
+      // contextuais como "resuma essa vantagem" devem permanecer no fluxo
+      // cognitivo e usar o historico, sem acionar Google Drive.
       "resumir o arquivo", "resumir o documento",
       "resumir arquivo", "resumir documento",
-      "fazer resumo", "faça resumo",
-      "summarize", "summary", "make a summary",
       "resumo do arquivo", "resumo do documento",
+      "resumir no drive", "resumir do drive",
+      "resuma o arquivo", "resuma o documento",
+      "faça resumo do arquivo", "faça resumo do documento",
       "summarize file", "summarize document",
-      "faz um resumo", "criar um resumo",
+      "summary of file", "summary of document",
     ],
     extractEntities: (_lower, base) => ({
       ...base,
