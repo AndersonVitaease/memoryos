@@ -96,6 +96,30 @@ export const CONNECTOR_CATALOG: Record<string, CatalogEntry> = {
   },
 };
 
+/**
+ * Connectors internos confiaveis do MemoryOS que NAO exigem WorkspaceConnector.
+ *
+ * Estes connectors:
+ *   - nao possuem credencial por usuario (nao sao OAuth/web/MCP-server);
+ *   - usam secrets do app compartilhados (OPENHANDS_API_KEY, etc.) ou
+ *     sao shells compostos que apenas dispatcham sub-capabilities;
+ *   - estao registrados em OFFICIAL_FACTORIES (ConnectorBootstrap.ts).
+ *
+ * Allowlist explicita: apenas estes IDs bypassam o check B (WorkspaceConnector).
+ * Strings desconhecidas ("foo-unknown") continuam bloqueadas por check B.
+ *
+ * NAO inclui "mcp" — MCP executa servidores configurados por workspace
+ * (MCPServerConfig) e deve continuar exigindo WorkspaceConnector.
+ */
+export const INTERNAL_CONNECTORS: ReadonlySet<string> = new Set([
+  "adaptive-process",
+  "openhands",
+]);
+
+export function isInternalConnector(connectorId: string): boolean {
+  return INTERNAL_CONNECTORS.has(connectorId);
+}
+
 export function getCatalogEntry(connectorId: string): CatalogEntry | null {
   return CONNECTOR_CATALOG[connectorId] ?? null;
 }
