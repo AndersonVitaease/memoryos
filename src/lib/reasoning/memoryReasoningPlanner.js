@@ -1437,10 +1437,43 @@ Se for, extraia "target" (nome do arquivo/pasta sem verbos de comando).`,
   ensureAIProvidersRegistered();
   const _aiProvider = await aiProviderRegistry.selectProvider("text-generation");
   const _systemPrompt = buildSystemPrompt();
+
+  // Observabilidade de prompt: somente tamanhos/contagens — nunca grava conteudo.
+  // Nao altera o prompt nem aplica cortes; serve para definir budgets futuros
+  // com dados reais de producao antes da integracao ENG-MCP/OpenHands.
+  const _knownDynamicChars =
+    (memory.context || "").length +
+    (memory.sessionSummary || "").length +
+    (_stateViewContext || "").length +
+    (historyText || "").length +
+    (kfmContext || "").length +
+    (userMsg || "").length;
+  const _promptMetrics = {
+    systemPromptChars: _systemPrompt.length,
+    memoryChars: (memory.context || "").length,
+    sessionSummaryChars: (memory.sessionSummary || "").length,
+    stateViewChars: (_stateViewContext || "").length,
+    historyChars: (historyText || "").length,
+    kfmChars: (kfmContext || "").length,
+    searchGroundingChars: (_searchEngineGroundingNote || "").length,
+    webConnectorGroundingChars: (_webConnectorGroundingNote || "").length,
+    userMessageChars: (userMsg || "").length,
+    baseDynamicPromptChars: prompt.length,
+    otherDynamicChars: Math.max(0, prompt.length - _knownDynamicChars),
+    finalDynamicPromptChars: finalPrompt.length,
+    totalInputChars: _systemPrompt.length + finalPrompt.length,
+    estimatedInputTokens: Math.ceil((_systemPrompt.length + finalPrompt.length) / 4),
+  };
+  console.log("[DIAG][PromptMetrics][BEFORE_LLM]", _promptMetrics);
+
   let rawResponse;
+  let _providerUsage = null;
+  let _providerModel = null;
   if (_aiProvider) {
     // Passa system + user separados para permitir prompt caching no OpenRouter
     const _aiResult = await _aiProvider.invoke(finalPrompt, { systemPrompt: _systemPrompt });
+    _providerUsage = _aiResult.usage ?? null;
+    _providerModel = _aiResult.model ?? null;
     if (_aiResult.success) {
       rawResponse = _aiResult.text;
     } else {
@@ -1450,7 +1483,19 @@ Se for, extraia "target" (nome do arquivo/pasta sem verbos de comando).`,
   } else {
     rawResponse = await base44.integrations.Core.InvokeLLM({ prompt: _systemPrompt + "\n\n" + finalPrompt });
   }
-  console.log(`[DIAG][ReasoningPlanner] ETAPA 6 (resposta final, provider: ${_aiProvider?.id ?? "base44-fallback"}) levou ${Date.now() - _t6}ms — prompt tinha ${finalPrompt.length} caracteres`);
+  const _llmDurationMs = Date.now() - _t6;
+  console.log("[DIAG][PromptMetrics][AFTER_LLM]", {
+    provider: _aiProvider?.id ?? "base44-fallback",
+    model: _providerModel,
+    promptTokens: _providerUsage?.promptTokens,
+    completionTokens: _providerUsage?.completionTokens,
+    totalTokens: _providerUsage?.totalTokens,
+    cachedTokens: _providerUsage?.cachedTokens,
+    cacheWriteTokens: _providerUsage?.cacheWriteTokens,
+    cost: _providerUsage?.cost,
+    durationMs: _llmDurationMs,
+  });
+  console.log(`[DIAG][ReasoningPlanner] ETAPA 6 (resposta final, provider: ${_aiProvider?.id ?? "base44-fallback"}) levou ${_llmDurationMs}ms — prompt tinha ${finalPrompt.length} caracteres`);
 
   // === ETAPA 6.5: TRAVA DETERMINÍSTICA CONTRA CONFABULAÇÃO DE DOCUMENTO (IA-032) ===
   const _rawText = typeof rawResponse === "string" ? rawResponse : String(rawResponse);
