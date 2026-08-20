@@ -2,9 +2,9 @@
  * AdaptiveProcessConnector.ts — AP-03 (RFC-010 / ADR-017)
  *
  * Shell connector que expoe Adaptive Processes como capabilities comuns na
- * arquitetura publica de 4 elementos. Hoje detem diretamente a unica
- * instancia (DeepResearchProcess). YAGNI: sem AdaptiveProcessRegistry ate
- * o 2º processo existir (ADR-017 invariant #4).
+ * arquitetura publica de 4 elementos. Com o segundo processo concreto
+ * (SupervisedEngineering), usa um mapa local operation -> process getter;
+ * sem criar infraestrutura adicional fora deste shell fino.
  *
  * Metadata declara `composite: true` (AP-01) para a capability `deepResearch`.
  * O Runtime (AP-04) le esse flag para aplicar politica de execucao composta:
@@ -100,7 +100,7 @@ export class AdaptiveProcessConnector implements IConnector {
   }
 
   async initialize(_ctx: ConnectorContext): Promise<void> {
-    // Nada a inicializar — o processo e lazy (getDeepResearchProcess singleton).
+    // Nada a inicializar — os processos sao lazy singletons.
   }
 
   async shutdown(): Promise<void> {}
