@@ -228,12 +228,14 @@ export async function detectCapabilities(message, memory = {}, goal = {}, sessio
     "que enviei", "que subi", "que anexei", "que uplodei",
   ];
   const docKeywordMatch = matchKeywords(normalized, STRONG_DOC_KEYWORDS);
-  const hasDocumentSources = sources.some((s) => s.type === "Documento");
-  if (docKeywordMatch.length > 0 || hasDocumentSources) {
+  // Não ativa Documents apenas porque a recuperação de memória retornou uma
+  // fonte do tipo Documento. Isso fazia perguntas comuns herdarem contexto
+  // documental antigo, elevando o histórico para o budget de conversa complexa
+  // e disparando consultas desnecessárias. A capability só entra quando a
+  // mensagem atual contém sinal explícito de arquivo/documento.
+  if (docKeywordMatch.length > 0) {
     capabilities.documents = true;
-    matchedReasons.documents = docKeywordMatch.length > 0
-      ? `Mencionou: ${docKeywordMatch.slice(0, 3).join(", ")}`
-      : "Documentos recuperados na memória";
+    matchedReasons.documents = `Mencionou: ${docKeywordMatch.slice(0, 3).join(", ")}`;
   }
 
   // === CALCULATION: keywords de cálculo na mensagem ===
