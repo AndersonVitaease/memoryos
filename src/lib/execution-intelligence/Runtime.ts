@@ -85,10 +85,15 @@ export class ExecutionRuntime {
     // Composite = Adaptive Process: o connector detem um loop reflexivo que invoca
     // sub-capabilities via processCapability (reentrada pela cadeia completa).
     // Politica composta: auth propagada (ja via connectorCtx), parentExecutionId
-    // threading (requestId), sub-budget via MAX_ITERATIONS do processo, timeout
-    // estendido e breaker isolado sao concerns do processo/engine (futuro).
-    // Non-composite segue 100% identico ao anterior (paridade ADR-015).
+    // threading (requestId), sub-budget via MAX_ITERATIONS do processo.
+    // Sub-capabilities despachadas por um processo composite (identificaveis por
+    // request.parentExecutionId) herdam o orçamento estendido (COMPOSITE_EXECUTION_POLICY)
+    // para que sub-capabilities long-running (ex: openhands.runTask) nao morram no
+    // step timeout default de 10s. O orçamento ja e naturalmente limitado pelo deadline
+    // do parent (240s), entao nao ha risco de extrapolação. Non-composite e nao-sub
+    // segue 100% identico ao anterior (paridade ADR-015).
     const isComposite: boolean = meta.capabilityComposite?.[capability] ?? false;
+    const isSubCapability: boolean = !!request.parentExecutionId;
 
     // EI-07: Execution Intelligence itera investigators ativos (Convergence/API/LLM
     // Budget + grafo aciclivo) e enriquece enrichedParams antes do Safety Gate.
@@ -138,10 +143,12 @@ export class ExecutionRuntime {
         plan,
         request.executionId,
         connectorCtx,
-        // AP-04: composite (Adaptive Process) detem loop reflexivo num unico step.
-        // Policy estendida acomoda plan -> invoke -> reflect -> synthesize com
-        // sub-capabilities. Non-composite: undefined → engine usa policy padrao (paridade).
-        isComposite ? COMPOSITE_EXECUTION_POLICY : undefined,
+        // AP-04: composite (Adaptive Process) OU sub-capability despachada por um
+        // processo composite (parentExecutionId presente) detem loop reflexivo num
+        // unico step. Policy estendida acomoda plan -> invoke -> reflect -> synthesize
+        // com sub-capabilities long-running. Non-composite e non-sub: undefined → engine
+        // usa policy padrao (paridade ADR-015).
+        (isComposite || isSubCapability) ? COMPOSITE_EXECUTION_POLICY : undefined,
       );
       const completed = executionResult.status === "completed";
       const stepResult = executionResult.steps[0] ?? null;
