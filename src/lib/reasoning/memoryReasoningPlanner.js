@@ -1101,8 +1101,8 @@ ${fullText}`;
     !capabilityResult.capabilities?.calculation;
   // Conversas simples precisam de histórico maior — contextos conversacionais
   // (ex: "Hermes Agent") são exatamente esse tipo e se perdem com janela pequena.
-  const _MAX_HISTORY_MESSAGES = _isSimpleConversation ? 12 : 16;
-  const _MAX_HISTORY_CHARS = _isSimpleConversation ? 6000 : 10000;
+  const _MAX_HISTORY_MESSAGES = _isSimpleConversation ? 8 : 12;
+  const _MAX_HISTORY_CHARS = _isSimpleConversation ? 3500 : 7000;
   const _recentHistory = historyMessages.slice(-_MAX_HISTORY_MESSAGES);
   let historyText = _recentHistory
     .map((m) => `${m.role === "user" ? "Usuário" : "Assistente"}: ${m.content}`)
