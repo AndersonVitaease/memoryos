@@ -113,8 +113,9 @@ export function compactToolsForCache(allTools: any[]): string {
   const compact = allTools.map((t) => ({
     name: t.name,
     description: typeof t.description === 'string' ? t.description.slice(0, 200) : '',
+    inputSchema: t.inputSchema ?? null,
   }));
   let json = JSON.stringify(compact);
-  if (json.length > 4000) json = JSON.stringify(compact.slice(0, 20));
+  if (json.length > 20000) json = JSON.stringify(compact.slice(0, 20));
   return json;
 }
