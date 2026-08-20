@@ -6,13 +6,14 @@
  *   1) POST /api/v1/app-conversations                  (Cloud API)
  *   2) GET  /api/v1/app-conversations/start-tasks     (quando necessario)
  *   3) GET  /api/v1/app-conversations?ids=<id>        (polling ate terminal)
- *   4) GET  {conversation_url}/api/conversations/{id}/events/search
- *                                                        (Agent Server)
+ *   4) GET  /api/v1/conversation/{id}/events/search   (Cloud API V1, REST)
  *   5) ultimo MessageEvent source="agent" -> llm_message.content[].text
  *
  * Seguranca:
- *   - OPENHANDS_API_KEY existe somente no backend.
- *   - session_api_key e transiente: nunca e persistida nem retornada.
+ *   - OPENHANDS_API_KEY existe somente no backend e autentica todos os
+ *     requests via header X-Access-Token.
+ *   - Nao depende de conversation_url nem session_api_key.
+ *   - nenhum prompt, resposta completa ou credencial e escrito em log.
  *   - nenhum prompt, resposta completa ou credencial e escrito em log.
  *   - nenhuma entidade nova e criada por esta funcao.
  */
@@ -127,6 +128,71 @@ function extractAgentReply(eventsPayload: any): { text: string; eventId: string 
     eventId: typeof last?.id === 'string' ? last.id : null,
     timestamp: typeof last?.timestamp === 'string' ? last.timestamp : null,
   };
+}
+
+// Fallback: a MessageEvent source="agent" consolidada e eventualmente consistente
+// (pode demorar 30s+ apos "finished"). Os StreamingDeltaEvent source="agent"
+// contem o mesmo texto em fragments (campo content string) e sao imediatamente
+// disponiveis. Ordenados por timestamp, concatenam a resposta completa do agente.
+function extractAgentReplyFromStreaming(eventsPayload: any): { text: string; eventCount: number } {
+  const items = Array.isArray(eventsPayload?.items)
+    ? eventsPayload.items
+    : Array.isArray(eventsPayload)
+      ? eventsPayload
+      : [];
+
+  const deltas = items
+    .filter((e: any) => e?.kind === 'StreamingDeltaEvent' && e?.source === 'agent')
+    .sort((a: any, b: any) => {
+      const at = Date.parse(String(a?.timestamp ?? '')) || 0;
+      const bt = Date.parse(String(b?.timestamp ?? '')) || 0;
+      return at - bt;
+    });
+
+  const text = deltas
+    .map((e: any) => (typeof e?.content === 'string' ? e.content : ''))
+    .join('')
+    .trim();
+
+  return { text, eventCount: deltas.length };
+}
+
+async function fetchAllEvents(
+  baseUrl: string,
+  conversationId: string,
+  apiKey: string,
+  deadlineAt: number,
+): Promise<{ events: any[]; pages: number; httpStatus: number | null; error: string | null }> {
+  const MAX_PAGES = 20;
+  const MAX_EVENTS = 2000;
+  const events: any[] = [];
+  let nextPageId: string | null = null;
+  let pages = 0;
+
+  while (pages < MAX_PAGES && events.length < MAX_EVENTS) {
+    let url =
+      `${baseUrl}/api/v1/conversation/${encodeURIComponent(conversationId)}` +
+      `/events/search?limit=${EVENT_LIMIT}&sort_order=TIMESTAMP`;
+    if (nextPageId) url += `&page_id=${encodeURIComponent(nextPageId)}`;
+
+    const remaining = deadlineAt - Date.now();
+    if (remaining <= 0) return { events, pages, httpStatus: null, error: 'Timeout retrieving events' };
+
+    const res = await fetchJson(
+      url,
+      { method: 'GET', headers: { Accept: 'application/json', 'X-Access-Token': apiKey } },
+      Math.min(60_000, Math.max(1, remaining)),
+    );
+    if (!res.ok) return { events, pages, httpStatus: res.status, error: `OpenHands events retrieval failed (HTTP ${res.status})` };
+
+    const pageItems = Array.isArray(res.data?.items) ? res.data.items : [];
+    events.push(...pageItems);
+    const nextId = res.data?.next_page_id;
+    nextPageId = typeof nextId === 'string' && nextId.trim() ? nextId.trim() : null;
+    pages++;
+    if (!nextPageId) break;
+  }
+  return { events, pages, httpStatus: null, error: null };
 }
 
 export default async function (req: Request) {
@@ -299,64 +365,83 @@ export default async function (req: Request) {
       }
     }
 
-    const conversationUrl = String(conversation?.conversation_url ?? '').trim().replace(/\/$/, '');
-    const sessionApiKey = String(conversation?.session_api_key ?? '').trim();
-
-    if (!conversationUrl || !sessionApiKey) {
-      safeLog('agent_credentials_missing', { conversationId, executionStatus, hasConversationUrl: Boolean(conversationUrl), hasSessionApiKey: Boolean(sessionApiKey) });
+    // Estado terminal de erro: retornar imediatamente antes de recuperar eventos.
+    if (executionStatus === 'error' || executionStatus === 'stuck') {
+      safeLog('execution_failed', { conversationId, executionStatus });
       return Response.json(
         {
           ok: false,
           app_conversation_id: conversationId,
           execution_status: executionStatus,
-          error: 'OpenHands conversation metadata missing conversation_url/session_api_key',
-          openhandsStatus: 'agent_credentials_missing',
+          error: `OpenHands execution ended with status: ${executionStatus}`,
+          openhandsStatus: 'execution_failed',
         },
         { status: 502 },
       );
     }
 
-    // 4) Recuperar eventos do Agent Server via REST. session_api_key e usada
-    // somente neste request e nao sai desta funcao.
-    const eventsUrl = `${conversationUrl}/api/conversations/${encodeURIComponent(conversationId)}/events/search?limit=${EVENT_LIMIT}&sort_order=TIMESTAMP`;
-    const eventsRes = await fetchJson(
-      eventsUrl,
-      {
-        method: 'GET',
-        headers: {
-          Accept: 'application/json',
-          'X-Session-API-Key': sessionApiKey,
-        },
-      },
-      Math.min(60_000, Math.max(1, deadlineAt - Date.now())),
-    );
+    // 4) Recuperar eventos da Cloud API V1 via REST. Usa a mesma chave
+    // persistente (OPENHANDS_API_KEY / X-Access-Token). Nao depende de
+    // conversation_url nem session_api_key. A MessageEvent source="agent"
+    // consolidada e eventualmente consistente — pode aparecer alguns segundos
+    // apos o status "finished". Retry curto com limite defensivo.
+    const EVENTS_RETRY_COUNT = 15;
+    const EVENTS_RETRY_DELAY_MS = 3_000;
+    let allEvents: any[] = [];
+    let pageCount = 0;
+    let agentReply = { text: '', eventId: null as string | null, timestamp: null as string | null };
 
-    if (!eventsRes.ok) {
-      safeLog('events_failed', { httpStatus: eventsRes.status, conversationId });
-      return Response.json(
-        {
-          ok: false,
-          app_conversation_id: conversationId,
-          execution_status: executionStatus,
-          error: `OpenHands events retrieval failed (HTTP ${eventsRes.status})`,
-          openhandsStatus: 'events_failed',
-        },
-        { status: eventsRes.status === 401 ? 401 : 502 },
-      );
+    for (let attempt = 0; attempt < EVENTS_RETRY_COUNT; attempt++) {
+      const result = await fetchAllEvents(CLOUD_BASE_URL, conversationId, apiKey, deadlineAt);
+      if (result.error) {
+        safeLog('events_failed', { httpStatus: result.httpStatus, conversationId, page: result.pages });
+        return Response.json(
+          {
+            ok: false,
+            app_conversation_id: conversationId,
+            execution_status: executionStatus,
+            error: result.error,
+            openhandsStatus: 'events_failed',
+          },
+          { status: result.httpStatus === 401 ? 401 : 502 },
+        );
+      }
+      allEvents = result.events;
+      pageCount = result.pages;
+
+      agentReply = extractAgentReply({ items: allEvents });
+      if (agentReply.text) break;
+
+      safeLog('agent_reply_retry', { conversationId, attempt, eventCount: allEvents.length });
+      if (attempt < EVENTS_RETRY_COUNT - 1) {
+        const remaining = deadlineAt - Date.now();
+        if (remaining <= EVENTS_RETRY_DELAY_MS) break;
+        await sleep(EVENTS_RETRY_DELAY_MS);
+      }
     }
 
-    // 5) Ultimo MessageEvent do agente = resposta final recuperavel.
-    const agentReply = extractAgentReply(eventsRes.data);
+    // Fallback: se a MessageEvent consolidada nao apareceu apos os retries,
+    // ensamblar a resposta dos StreamingDeltaEvent source="agent" (imediata-
+    // mente disponiveis, mesmo texto em fragments via campo content).
     if (!agentReply.text) {
-      safeLog('agent_reply_missing', { conversationId, executionStatus });
+      const streamingReply = extractAgentReplyFromStreaming({ items: allEvents });
+      if (streamingReply.text) {
+        safeLog('agent_reply_from_streaming', { conversationId, eventCount: allEvents.length, streamingEventCount: streamingReply.eventCount });
+        agentReply = { text: streamingReply.text, eventId: null, timestamp: null };
+      }
+    }
+
+    if (!agentReply.text) {
+      safeLog('agent_reply_missing', { conversationId, executionStatus, eventCount: allEvents.length, retries: EVENTS_RETRY_COUNT });
       return Response.json(
         {
           ok: false,
           app_conversation_id: conversationId,
           execution_status: executionStatus,
-          error: 'No agent MessageEvent with text was found',
+          event_count: allEvents.length,
+          error: 'No agent reply (MessageEvent or StreamingDelta) with text was found after retries',
           openhandsStatus: 'agent_reply_missing',
-          raw_events: includeRawEvents ? eventsRes.data?.items ?? [] : undefined,
+          raw_events: includeRawEvents ? allEvents : undefined,
         },
         { status: 502 },
       );
@@ -366,6 +451,8 @@ export default async function (req: Request) {
       conversationId,
       executionStatus,
       replyChars: agentReply.text.length,
+      eventCount: allEvents.length,
+      pages: pageCount,
       durationMs: Date.now() - startedAt,
     });
 
@@ -375,11 +462,13 @@ export default async function (req: Request) {
       repository,
       mode,
       execution_status: executionStatus,
+      sandbox_id: conversation?.sandbox_id ?? null,
       agent_reply_text: agentReply.text,
       agent_message_event_id: agentReply.eventId,
       agent_message_timestamp: agentReply.timestamp,
+      event_count: allEvents.length,
       durationMs: Date.now() - startedAt,
-      raw_events: includeRawEvents ? eventsRes.data?.items ?? [] : undefined,
+      raw_events: includeRawEvents ? allEvents : undefined,
     });
   } catch (e: any) {
     const isAbort = e?.name === 'AbortError';
