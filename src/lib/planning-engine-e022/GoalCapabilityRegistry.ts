@@ -860,6 +860,18 @@ const _builtins: CapabilityMapping[] = [
     ],
   },
 
+  // ── Supervised Engineering (Adaptive Process composto) ────────────────────
+  // Connector id: "adaptive-process"  (AdaptiveProcessConnector.ts)
+  // Capability: supervisedEngineering  (composite: true, reversibility: reversible)
+  // Orquestra: ENG-MCP baseline -> OpenHands read -> ENG-MCP verification -> CompletionContract.
+  // Write mode bloqueado no SupervisedEngineeringProcess (shared workspace pendente).
+  {
+    goalType: "supervisedEngineering" as GoalType,
+    descriptors: [
+      { connector: "adaptive-process", capability: "supervisedEngineering", params: {} },
+    ],
+  },
+
   // ── MCP (cliente MCP generico) — chama mcpClientCall via MCPConnector
   // Connector id: "mcp"  (MCPConnector.ts)
   // Capabilities: mcp.listTools (safe), mcp.callTool (safe)

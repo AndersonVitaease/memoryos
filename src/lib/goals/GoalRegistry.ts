@@ -1535,6 +1535,38 @@ const _builtins: GoalDefinition[] = [
     },
   },
 
+  // ── Supervised Engineering (Adaptive Process composto) ────────────────────
+  // Trigger EXPLICITO e deterministico — exige "engenharia supervisionada" na
+  // frase. Nao roteia automaticamente tarefas complexas. Delega ao
+  // AdaptiveProcessConnector.supervisedEngineering, que orquestra:
+  // ENG-MCP baseline -> OpenHands read -> ENG-MCP verification -> CompletionContract.
+  // Write mode permanece bloqueado no SupervisedEngineeringProcess.
+  {
+    type: "supervisedEngineering" as GoalType,
+    namespace: "adaptive-process",
+    description: "Supervised Engineering — OpenHands execution with ENG-MCP verification (read-only)",
+    signals: [
+      "use engenharia supervisionada",
+      "usar engenharia supervisionada",
+      "execute com engenharia supervisionada",
+      "executar com engenharia supervisionada",
+      "use supervised engineering",
+      "using supervised engineering",
+      "supervised engineering",
+      "engenharia supervisionada",
+    ],
+    extractParams: (msg: string) => {
+      const norm = msg.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const repoMatch = norm.match(/\b([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}[A-Za-z0-9]?)\/[A-Za-z0-9._-]+)\b/);
+      const repository = repoMatch?.[1] ?? null;
+      return {
+        task: msg.trim(),
+        mode: "read",
+        ...(repository ? { repository } : {}),
+      };
+    },
+  },
+
   // ── OpenHands (Cloud agent de engenharia via openHandsTaskProcess) ────────
   // Reconhece pedidos naturais PT/EN que delegam uma tarefa de engenharia ao
   // OpenHands. O extractParams preserva a instrucao completa do usuario como
