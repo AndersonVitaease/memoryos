@@ -984,17 +984,44 @@ ${fullText}`;
   // === ETAPAS 1+2+3 EM PARALELO: MEMORY + SKILLS + GOAL ===
   // Skills e Goal só precisam da mensagem — não dependem da memória.
   // Paralelizar economiza ~400ms (tempo do goalDetector+skills).
+  //
+  // Adaptive Memory Retrieval (mínimo e conservador): follow-ups curtos que
+  // apontam explicitamente para o turno recente podem usar apenas o histórico
+  // local. Nesses casos, consultar memória de longo prazo adiciona custo e
+  // latência sem benefício. Qualquer sinal de memória histórica/projeto força
+  // a recuperação normal.
   setPhase?.("retrieving");
   const _t1 = Date.now();
+  const _normalizedFollowUp = String(userMsg || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim();
+  const _recentContextReference = /\b(essa|esse|isso|isto|acima|anterior|ultima resposta|resposta anterior|essa vantagem|esse ponto|essa ideia|esse assunto)\b/.test(_normalizedFollowUp);
+  const _memoryRequiredSignal = /\b(lembra|lembrar|memoria|decidimos|decisao|decisoes|ontem|anteriormente|historico|projeto|quando fizemos|por que fizemos|onde paramos|retomar|recupere|recuperar)\b/.test(_normalizedFollowUp);
+  const _canUseRecentContextOnly =
+    _normalizedFollowUp.length > 0 &&
+    _normalizedFollowUp.length <= 180 &&
+    _recentContextReference &&
+    !_memoryRequiredSignal &&
+    historyMessages.length >= 2;
+
+  const _memoryPromise = _canUseRecentContextOnly
+    ? Promise.resolve({ memories: "", sources: [], sessionSummary: null, diagnostics: { adaptiveSkip: "recent_context" } })
+    : memoryService.retrieve({
+        userMessage: userMsg,
+        sessionId:   session.id,
+        projectId:   session.project_id ?? null,
+      });
+
   const [memoryResult, skills, goal] = await Promise.all([
-    memoryService.retrieve({
-      userMessage: userMsg,
-      sessionId:   session.id,
-      projectId:   session.project_id ?? null,
-    }),
+    _memoryPromise,
     Promise.resolve(detectSkills(userMsg, {})),
     Promise.resolve(detectGoal(userMsg)),
   ]);
+  if (_canUseRecentContextOnly) {
+    console.log("[DIAG][AdaptiveMemory] long-term retrieval skipped: recent_context");
+  }
 
   const _memoryRetrievalFailed = Boolean(memoryResult?.diagnostics?.error);
   if (_memoryRetrievalFailed) {
