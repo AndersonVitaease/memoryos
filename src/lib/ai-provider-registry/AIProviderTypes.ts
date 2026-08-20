@@ -18,7 +18,14 @@ export interface AIProviderResult {
   success: boolean;
   text: string | null;
   model: string | null;
-  usage?: { promptTokens?: number; completionTokens?: number } | null;
+  usage?: {
+    promptTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
+    cachedTokens?: number;
+    cacheWriteTokens?: number;
+    cost?: number;
+  } | null;
   durationMs: number;
   error?: string;
 }
