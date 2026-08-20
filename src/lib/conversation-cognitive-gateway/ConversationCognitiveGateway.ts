@@ -346,7 +346,8 @@ export class ConversationCognitiveGateway {
 
     // ── Connector-Aware Query Routing (Phase 5.8.1) ──────────────────────────
     // GitHub-targeted questions bypass the LCP entirely and invoke the connector directly.
-    const ghRoute = this._ghRouter.route(userMessage);
+    const explicitMcpRoute = /\b(?:use|usar)\s+o\s+mcp\s+[a-z0-9_.\-]+\s+para\s+(?:executar|chamar|invocar)\s+[a-z0-9_.\-]+/i.test(userMessage);
+    const ghRoute = explicitMcpRoute ? { isGitHubQuery: false, capability: null } : this._ghRouter.route(userMessage);
     if (ghRoute.isGitHubQuery && ghRoute.capability) {
       this._cognitiveRequests++;
 
