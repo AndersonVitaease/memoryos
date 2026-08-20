@@ -24,6 +24,8 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
       { id: "verify-diff", call: { connectorId: "mcp", capability: "mcp.callTool", params: { serverName: "eng-mcp", toolName: "engineering.git.diff", arguments: {} } }, rationale: "Verify actual repository changes." },
       { id: "verify-log", call: { connectorId: "mcp", capability: "mcp.callTool", params: { serverName: "eng-mcp", toolName: "engineering.git.log", arguments: { limit: 1 } } }, rationale: "Compare HEAD after execution with the baseline." },
     ];
+    const filePath = mode !== "write" ? this.extractFilePath(ctx.query) : null;
+    if (filePath) steps.push({ id: "verify-file-read", call: { connectorId: "mcp", capability: "mcp.callTool", params: { serverName: "eng-mcp", toolName: "engineering.file.read", arguments: { path: filePath } } }, rationale: "Verify the target file content independently through ENG-MCP." });
     const q = ctx.query.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     if (/\b(typecheck|type check|typescript|checagem de tipos|verificar tipos)\b/.test(q)) steps.push({ id: "verify-typecheck", call: { connectorId: "mcp", capability: "mcp.callTool", params: { serverName: "eng-mcp", toolName: "engineering.typecheck.run", arguments: {} } }, rationale: "Verify TypeScript typecheck with ENG-MCP." });
     if (/\b(lint|eslint|linter)\b/.test(q)) steps.push({ id: "verify-lint", call: { connectorId: "mcp", capability: "mcp.callTool", params: { serverName: "eng-mcp", toolName: "engineering.lint.run", arguments: {} } }, rationale: "Verify lint with ENG-MCP." });
@@ -99,6 +101,18 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
     const output = { ...(await this.synthesize(steps, results, reflection, ctx) as Record<string, unknown>), rounds };
     const complete = reflection.completion?.requiredComplete === true;
     return Object.freeze({ status: complete ? "success" as const : "failed" as const, connectorId: ctx.request.connectorId, capability: ctx.request.capability, output, message: complete ? null : `Mission incomplete after ${rounds} round(s).`, reversibility: ctx.request.params.mode === "write" ? "reversible" as const : "safe" as const, executionId: ctx.parentExecutionId, durationMs: null });
+  }
+
+  /**
+   * Deterministic file path extraction from the mission query.
+   * Matches: package.json, src/lib/foo.ts, base44/config.jsonc, README.md
+   * Does NOT match: MemoryOS, arquitetura, v1.0 (extension must start with a letter).
+   * No LLM call — pure regex.
+   */
+  private extractFilePath(query: string): string | null {
+    const FILE_PATH_RE = /\b(?:[\w@.-]+\/)*[\w@-]+\.[a-zA-Z][a-zA-Z0-9]{0,7}\b/;
+    const match = query.match(FILE_PATH_RE);
+    return match ? match[0] : null;
   }
 
   private async deriveRequirements(task: string): Promise<readonly CompletionRequirement[]> {
