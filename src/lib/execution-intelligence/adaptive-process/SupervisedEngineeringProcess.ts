@@ -36,7 +36,7 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
     return reflection.completion?.requiredComplete === true;
   }
 
-  async synthesize(_steps: readonly ResearchStep[], results: readonly ExecutionOutcome[], reflection: Reflection): Promise<unknown> {
+  async synthesize(_steps: readonly ResearchStep[], results: readonly ExecutionOutcome[], reflection: Reflection, _ctx: AdaptiveProcessContext): Promise<unknown> {
     const first = results[0];
     const obj = first?.output && typeof first.output === "object" ? first.output as Record<string, unknown> : {};
     return { agent_reply_text: typeof obj.agent_reply_text === "string" ? obj.agent_reply_text : "", completion: reflection.completion ?? null, gaps: reflection.gaps, sufficiency: reflection.sufficiency };
