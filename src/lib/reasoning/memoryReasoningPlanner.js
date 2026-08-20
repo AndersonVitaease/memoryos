@@ -1490,6 +1490,10 @@ Se for, extraia "target" (nome do arquivo/pasta sem verbos de comando).`,
     finalDynamicPromptChars: finalPrompt.length,
     totalInputChars: _systemPrompt.length + finalPrompt.length,
     estimatedInputTokens: Math.ceil((_systemPrompt.length + finalPrompt.length) / 4),
+    adaptiveMemorySkipped: _canUseRecentContextOnly,
+    adaptiveMemoryRecentReference: _recentContextReference,
+    adaptiveMemoryRequiredSignal: _memoryRequiredSignal,
+    adaptiveMemoryHistoryCount: historyMessages.length,
   };
   console.log("[DIAG][PromptMetrics][BEFORE_LLM]", _promptMetrics);
 
