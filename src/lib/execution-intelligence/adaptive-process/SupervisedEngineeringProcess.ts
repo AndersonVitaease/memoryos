@@ -55,6 +55,18 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
   }
 
   async run(ctx: AdaptiveProcessContext): Promise<ExecutionOutcome> {
+    if (ctx.request.params.mode === "write") {
+      return Object.freeze({
+        status: "failed" as const,
+        connectorId: ctx.request.connectorId,
+        capability: ctx.request.capability,
+        output: { completion: null, gaps: ["Supervised write mode requires a shared/continuable OpenHands workspace before activation."] },
+        message: "SupervisedEngineering write mode is not activated: OpenHands Cloud and ENG-MCP currently observe different working trees, so independent verification of file changes is not yet reliable.",
+        reversibility: "reversible" as const,
+        executionId: ctx.parentExecutionId,
+        durationMs: null,
+      });
+    }
     const requirements = await this.deriveRequirements(ctx.query);
     let task = ctx.query;
     let reflection: Reflection = { byStep: new Map(), gaps: requirements.map((r) => r.description), sufficiency: 0, completion: { requirements, completed: 0, total: requirements.length, requiredComplete: false } };
