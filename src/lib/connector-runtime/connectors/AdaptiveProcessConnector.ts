@@ -33,11 +33,17 @@ import type {
 } from "../ConnectorTypes";
 import { makeLog, makeExecutionId } from "../ConnectorTypes";
 import { getDeepResearchProcess } from "@/lib/execution-intelligence/adaptive-process/DeepResearchProcess";
-import type { AdaptiveProcessContext } from "@/lib/execution-intelligence/adaptive-process/AdaptiveProcess";
+import { getSupervisedEngineeringProcess } from "@/lib/execution-intelligence/adaptive-process/SupervisedEngineeringProcess";
+import type { AdaptiveProcess, AdaptiveProcessContext } from "@/lib/execution-intelligence/adaptive-process/AdaptiveProcess";
 import type { ExecutionOutcome, ExecutionRequest } from "@/lib/execution-intelligence/ExecutionTypes";
 import type { ConnectorExecutionContext } from "@/lib/runtime-engine/RuntimeTypes";
 
-const CAPABILITIES = Object.freeze(["deepResearch"]);
+const CAPABILITIES = Object.freeze(["deepResearch", "supervisedEngineering"]);
+
+const PROCESS_GETTERS: Record<string, () => AdaptiveProcess> = {
+  deepResearch: getDeepResearchProcess,
+  supervisedEngineering: getSupervisedEngineeringProcess,
+};
 
 // ── Runtime injection (wired em AP-04) ──────────────────────────────────────
 //
@@ -75,13 +81,17 @@ export class AdaptiveProcessConnector implements IConnector {
       name: "Adaptive Process",
       version: "1.0.0",
       description:
-        "Adaptive Processes — capacidades compostas (multi-step, reflexivas). Hoje: Deep Research.",
+        "Adaptive Processes — capacidades compostas (multi-step, reflexivas): Deep Research e Supervised Engineering.",
       author: "MemoryOS",
       capabilities: [...CAPABILITIES],
-      // EI-01: deepResearch e safe (leitura + sintese, sem efeitos colaterais irreversiveis).
-      capabilityReversibility: { deepResearch: "safe" },
-      // AP-01: deepResearch e composite — Adaptive Process, nao capability atomica.
-      capabilityComposite: { deepResearch: true },
+      capabilityReversibility: {
+        deepResearch: "safe",
+        supervisedEngineering: "reversible",
+      },
+      capabilityComposite: {
+        deepResearch: true,
+        supervisedEngineering: true,
+      },
     };
   }
 
@@ -115,7 +125,8 @@ export class AdaptiveProcessConnector implements IConnector {
     const eid = context.executionId ?? makeExecutionId();
     const logs: ConnectorLog[] = [makeLog("info", `[${operation}] executionId=${eid}`)];
 
-    if (operation !== "deepResearch") {
+    const getProcess = PROCESS_GETTERS[operation];
+    if (!getProcess) {
       const err = `Unknown operation: "${operation}"`;
       logs.push(makeLog("error", err));
       return {
@@ -143,7 +154,9 @@ export class AdaptiveProcessConnector implements IConnector {
       };
     }
 
-    const query = typeof payload.query === "string" ? payload.query : "";
+    const query = operation === "supervisedEngineering"
+      ? (typeof payload.task === "string" ? payload.task : "")
+      : (typeof payload.query === "string" ? payload.query : "");
 
     // AP-04: auth context propagado as sub-capabilities. O connector recebe
     // ConnectorContext (projectId) e mapeia para ConnectorExecutionContext
@@ -182,7 +195,7 @@ export class AdaptiveProcessConnector implements IConnector {
     };
 
     try {
-      const outcome = await getDeepResearchProcess().run(processCtx);
+      const outcome = await getProcess().run(processCtx);
       logs.push(makeLog("info", `[${operation}] process completed — status=${outcome.status}`));
       return {
         status: outcome.status === "success" ? "SUCCESS" : "FAILED",
