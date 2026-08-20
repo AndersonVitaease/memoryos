@@ -13,18 +13,29 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
   async plan(ctx: AdaptiveProcessContext): Promise<readonly ResearchStep[]> {
     const repository = typeof ctx.request.params.repository === "string" ? ctx.request.params.repository : "AndersonVitaease/memoryos";
     const mode = ctx.request.params.mode === "write" ? "write" : "read";
-    return [
+    const steps: ResearchStep[] = [
+      { id: "baseline-status", call: { connectorId: "mcp", capability: "mcp.callTool", params: { serverName: "eng-mcp", toolName: "engineering.git.status", arguments: {} } }, rationale: "Capture repository state before OpenHands." },
+      { id: "baseline-log", call: { connectorId: "mcp", capability: "mcp.callTool", params: { serverName: "eng-mcp", toolName: "engineering.git.log", arguments: { limit: 1 } } }, rationale: "Capture HEAD before OpenHands so unexpected commits are detectable." },
       { id: "openhands-task", call: { connectorId: "openhands", capability: "openhands.runTask", params: { task: ctx.query, repository, mode } }, rationale: "Execute the engineering mission." },
-      { id: "verify-status", call: { connectorId: "mcp", capability: "mcp.callTool", params: { serverName: "eng-mcp", toolName: "engineering.git.status", arguments: {} } }, rationale: "Verify repository state." },
+      { id: "verify-status", call: { connectorId: "mcp", capability: "mcp.callTool", params: { serverName: "eng-mcp", toolName: "engineering.git.status", arguments: {} } }, rationale: "Verify repository state after execution." },
       { id: "verify-diff", call: { connectorId: "mcp", capability: "mcp.callTool", params: { serverName: "eng-mcp", toolName: "engineering.git.diff", arguments: {} } }, rationale: "Verify actual repository changes." },
+      { id: "verify-log", call: { connectorId: "mcp", capability: "mcp.callTool", params: { serverName: "eng-mcp", toolName: "engineering.git.log", arguments: { limit: 1 } } }, rationale: "Compare HEAD after execution with the baseline." },
     ];
+    const q = ctx.query.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    if (/\b(typecheck|type check|typescript|checagem de tipos|verificar tipos)\b/.test(q)) steps.push({ id: "verify-typecheck", call: { connectorId: "mcp", capability: "mcp.callTool", params: { serverName: "eng-mcp", toolName: "engineering.typecheck.run", arguments: {} } }, rationale: "Verify TypeScript typecheck with ENG-MCP." });
+    if (/\b(lint|eslint|linter)\b/.test(q)) steps.push({ id: "verify-lint", call: { connectorId: "mcp", capability: "mcp.callTool", params: { serverName: "eng-mcp", toolName: "engineering.lint.run", arguments: {} } }, rationale: "Verify lint with ENG-MCP." });
+    if (/\b(test|tests|teste|testes)\b/.test(q)) steps.push({ id: "verify-tests", call: { connectorId: "mcp", capability: "mcp.callTool", params: { serverName: "eng-mcp", toolName: "engineering.test.run", arguments: { mode: /\bintegration\b/.test(q) ? "integration" : "suite" } } }, rationale: "Verify requested tests with ENG-MCP." });
+    return steps;
   }
 
   async invoke(steps: readonly ResearchStep[], ctx: AdaptiveProcessContext): Promise<readonly ExecutionOutcome[]> {
     if (!steps.length) return [];
-    const first = await ctx.dispatch(steps[0].call);
-    const rest = await Promise.all(steps.slice(1).map((s) => ctx.dispatch(s.call)));
-    return [first, ...rest];
+    const openHandsIndex = steps.findIndex((s) => s.id === "openhands-task");
+    if (openHandsIndex < 0) return Promise.all(steps.map((s) => ctx.dispatch(s.call)));
+    const before = await Promise.all(steps.slice(0, openHandsIndex).map((s) => ctx.dispatch(s.call)));
+    const openHands = await ctx.dispatch(steps[openHandsIndex].call);
+    const after = await Promise.all(steps.slice(openHandsIndex + 1).map((s) => ctx.dispatch(s.call)));
+    return [...before, openHands, ...after];
   }
 
   async reflect(steps: readonly ResearchStep[], results: readonly ExecutionOutcome[], ctx: AdaptiveProcessContext): Promise<Reflection> {
@@ -36,9 +47,10 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
     return reflection.completion?.requiredComplete === true;
   }
 
-  async synthesize(_steps: readonly ResearchStep[], results: readonly ExecutionOutcome[], reflection: Reflection, _ctx: AdaptiveProcessContext): Promise<unknown> {
-    const first = results[0];
-    const obj = first?.output && typeof first.output === "object" ? first.output as Record<string, unknown> : {};
+  async synthesize(steps: readonly ResearchStep[], results: readonly ExecutionOutcome[], reflection: Reflection, _ctx: AdaptiveProcessContext): Promise<unknown> {
+    const openHandsIndex = steps.findIndex((s) => s.id === "openhands-task");
+    const openHands = openHandsIndex >= 0 ? results[openHandsIndex] : undefined;
+    const obj = openHands?.output && typeof openHands.output === "object" ? openHands.output as Record<string, unknown> : {};
     return { agent_reply_text: typeof obj.agent_reply_text === "string" ? obj.agent_reply_text : "", completion: reflection.completion ?? null, gaps: reflection.gaps, sufficiency: reflection.sufficiency };
   }
 
@@ -77,9 +89,11 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
   private async evaluate(requirements: readonly CompletionRequirement[], steps: readonly ResearchStep[], results: readonly ExecutionOutcome[]): Promise<Reflection> {
     const byStep = new Map<string, ExecutionOutcome>();
     steps.forEach((s, i) => byStep.set(s.id, results[i]));
-    const firstObj = results[0]?.output && typeof results[0].output === "object" ? results[0].output as Record<string, unknown> : {};
+    const openHandsIndex = steps.findIndex((s) => s.id === "openhands-task");
+    const openHands = openHandsIndex >= 0 ? results[openHandsIndex] : undefined;
+    const firstObj = openHands?.output && typeof openHands.output === "object" ? openHands.output as Record<string, unknown> : {};
     const agentReply = typeof firstObj.agent_reply_text === "string" ? firstObj.agent_reply_text : "";
-    const verification = steps.slice(1).map((s, i) => ({ source: String(s.call.params.toolName ?? s.id), status: results[i + 1]?.status ?? "missing", output: results[i + 1]?.output ?? null }));
+    const verification = steps.map((s, i) => ({ id: s.id, source: String(s.call.params.toolName ?? s.id), status: results[i]?.status ?? "missing", output: results[i]?.output ?? null })).filter((e) => e.id !== "openhands-task");
     const res = await base44.integrations.Core.InvokeLLM({ prompt: `Evaluate every requirement. ENG-MCP evidence overrides agent narrative. If a technical claim needs verification and evidence is insufficient, mark unverified. Never invent evidence.\nRequirements:${JSON.stringify(requirements)}\nAgent:${agentReply.slice(0, 12000)}\nVerification:${JSON.stringify(verification).slice(0, 18000)}`, response_json_schema: { type: "object", properties: { requirements: { type: "array", items: { type: "object", properties: { id: { type: "string" }, status: { type: "string", enum: ["completed", "failed", "unverified", "pending"] }, evidence: { type: "array", items: { type: "string" } } }, required: ["id", "status", "evidence"] } } }, required: ["requirements"] } });
     const judged = new Map<string, { status: "completed" | "failed" | "unverified" | "pending"; evidence: readonly string[] }>();
     for (const row of (res as { requirements?: Array<Record<string, unknown>> }).requirements ?? []) {
