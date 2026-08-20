@@ -550,7 +550,7 @@ ${fullText}`;
     // caia no fallback generico mesmo com sessao ativa e capability validada.
     // Persiste o motivo exato como InteractionEvent (best-effort, nunca
     // bloqueia a resposta) para inspecao posterior via query direta.
-    if (_allIntents.length === 0 && _webIntentsResult?.debugReason && _webIntentsResult.debugReason !== 'no_active_sessions' && _webIntentsResult.debugReason !== 'empty_message') {
+    if (_allIntents.length === 0 && _webIntentsResult?.debugReason && _webIntentsResult.debugReason !== 'no_active_sessions' && _webIntentsResult.debugReason !== 'empty_message' && _webIntentsResult.debugReason !== 'no_web_routing_signal') {
       try {
         await base44.entities.InteractionEvent.create({
           session_id: session?.id || '',
