@@ -86,7 +86,9 @@ export const SERVICE_REGISTRY = [
       // ("traduz", "resume", "transcreve") — testadas com 10 casos reais
       // (incluindo negativos, ex: "resumi" no passado nao deve disparar).
       "traduzir", "traduza", "traduz", "tradução", "translate",
-      "resumir", "resuma", "resume", "resumo", "summarize",
+      // Resumos ficam no fluxo cognitivo completo para preservar contexto/historico.
+      // O desvio direto ao OpenRouter recebe apenas a mensagem atual e perde
+      // referencias como "resuma essa vantagem" ao turno anterior.
       "gerar codigo", "gerar código", "escrever codigo", "escrever código", "generate code",
       "transcrever", "transcreva", "transcreve", "transcrição",
       "modelo de ia", "modelos de ia", "ai model",
