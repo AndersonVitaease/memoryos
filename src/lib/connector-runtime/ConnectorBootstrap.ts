@@ -104,6 +104,13 @@ const OFFICIAL_FACTORIES: ConnectorFactory[] = [
     return new MCPConnector();
   },
   async () => {
+    // OpenHands Cloud — orquestra tarefas de engenharia via backend function
+    // openHandsTaskProcess (Cloud API + Agent Server REST). Conector fino,
+    // mesma forma dos demais: credencial fica no backend.
+    const { OpenHandsConnector } = await import("./connectors/OpenHandsConnector");
+    return new OpenHandsConnector();
+  },
+  async () => {
     const { MicrosoftGraphConnector } = await import("./connectors/MicrosoftGraphConnector");
     return new MicrosoftGraphConnector();
   },

@@ -1475,6 +1475,37 @@ const _builtins: GoalDefinition[] = [
     },
   },
 
+  // ── OpenHands (Cloud agent de engenharia via openHandsTaskProcess) ────────
+  // Reconhece pedidos naturais PT/EN que delegam uma tarefa de engenharia ao
+  // OpenHands. O extractParams preserva a instrucao completa do usuario como
+  // `task`, resolve `repository` (default AndersonVitaease/memoryos) e infere
+  // `mode` ("read" | "write") por verbos de escrita; default "read".
+  {
+    type: "openhands.runTask" as GoalType,
+    namespace: "openhands",
+    description: "Delega uma tarefa de engenharia ao OpenHands Cloud (read/write)",
+    signals: [
+      "use o openhands", "use o open hands", "usar o openhands", "usar o open hands",
+      "via openhands", "via open hands", "com o openhands", "com o open hands",
+      "peca ao openhands", "peca ao open hands", "mande para o openhands",
+      "mande para o open hands", "pede ao openhands", "peca pro openhands",
+      "ask openhands", "use openhands", "using openhands",
+    ],
+    extractParams: (msg: string) => {
+      // repository: owner/repo explicito na mensagem, senao default do MemoryOS.
+      const norm = msg.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const repoMatch = norm.match(/\b([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}[A-Za-z0-9]?)\/[A-Za-z0-9._-]+)\b/);
+      const repository = repoMatch?.[1] ?? "AndersonVitaease/memoryos";
+
+      // mode: write somente para verbos de alteracao explicitos; default read.
+      const WRITE_RE = /\b(corrija|corrigir|alterar|altere|editar|edite|implementar|implemente|criar|crie|remover|remova|refatorar|refatore|aplicar patch|commitar|commit|modificar|modifique|mudar|mude|atualizar|atualize|fix|patch|refactor|implement|create|delete|remove|modify|update|change)\b/i;
+      const mode: "read" | "write" = WRITE_RE.test(msg) ? "write" : "read";
+
+      // task: instrucao completa do usuario, preservada.
+      return { task: msg.trim(), repository, mode };
+    },
+  },
+
   // ── MCP (cliente MCP generico — chama mcpClientCall via MCPConnector) ─────
   // Servidores sao registrados na entidade MCPServerConfig (name, server_url,
   // auth_type). O conector resolve serverName -> id filtrando a entidade.
