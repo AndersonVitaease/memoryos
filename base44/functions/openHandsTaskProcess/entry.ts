@@ -359,6 +359,7 @@ export default async function (req: Request) {
 
     const task = typeof body.task === 'string' ? body.task.trim() : '';
     const repository = typeof body.repository === 'string' ? body.repository.trim() : '';
+    const existingConversationId = typeof body.app_conversation_id === 'string' ? body.app_conversation_id.trim() : '';
     const mode: 'read' | 'write' = body.mode === 'write' ? 'write' : 'read';
     const includeRawEvents = body.includeRawEvents === true;
     const timeoutMs = clampTimeout(body.timeoutMs);
@@ -366,7 +367,7 @@ export default async function (req: Request) {
     if (!task) {
       return Response.json({ ok: false, error: 'Missing required field: task' }, { status: 400 });
     }
-    if (!repository) {
+    if (!existingConversationId && !repository) {
       return Response.json({ ok: false, error: 'Missing required field: repository' }, { status: 400 });
     }
     if (task.length > 30_000) {
@@ -384,6 +385,21 @@ export default async function (req: Request) {
 
     const deadlineAt = Date.now() + timeoutMs;
     const headers = cloudHeaders(apiKey);
+
+    // Continuacao: reutiliza a MESMA conversation/workspace OpenHands. O envio
+    // ocorre pelo Agent Server oficial (POST /api/conversations/{id}/events,
+    // SendMessageRequest {role, content, run:true}) autenticado com a
+    // session_api_key efemera via X-Session-API-Key. O historico/resposta final
+    // continua sendo lido pela Cloud API V1 com X-Access-Token.
+    if (existingConversationId) {
+      return continueExistingConversation({
+        conversationId: existingConversationId,
+        task,
+        mode,
+        apiKey,
+        deadlineAt,
+      });
+    }
 
     // 1) Criar task/conversation no OpenHands Cloud V1.
     const createRes = await fetchJson(
