@@ -77,9 +77,25 @@ const _g = globalThis as unknown as Record<string, unknown>;
 // Kick off bootstrap immediately at module load — no lazy trigger.
 // This means bootstrap is already running by the time the first message arrives.
 if (!_g[_PROMISE_KEY]) {
-  _g[_PROMISE_KEY] = _bootstrapEngine().then(({ engine, registry }) => {
+  _g[_PROMISE_KEY] = _bootstrapEngine().then(async ({ engine, registry }) => {
     _g[_ENG_KEY] = engine;
     _g[_REG_KEY] = registry;
+
+    // AP-04 LIVE: wired o AdaptiveProcessConnector ao MESMO engine+registry do chat.
+    // ExecutionRuntime e facade stateless (Intelligence + SafetyGate) sobre o
+    // engine real — NAO e um segundo runtime. Sub-caps reentram por
+    // processCapability -> Intelligence + Safety -> this._engine.execute().
+    // parentExecutionId threading preserva a arvore de correlacao.
+    try {
+      const [{ ExecutionRuntime }, { setAdaptiveProcessRuntime }] = await Promise.all([
+        import("@/lib/execution-intelligence/Runtime"),
+        import("@/lib/connector-runtime/connectors/AdaptiveProcessConnector"),
+      ]);
+      setAdaptiveProcessRuntime(new ExecutionRuntime(registry, engine));
+    } catch (e) {
+      console.warn("[RUNTIME] AdaptiveProcess runtime injection failed:", (e as Error)?.message);
+    }
+
     return { engine, registry };
   }).catch((e) => {
     console.error("[RUNTIME] Bootstrap FAILED:", e);
