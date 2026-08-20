@@ -239,6 +239,22 @@ async function discoverMaxunIntentsWithoutSession(message, maps, knownOrigins) {
 
 export async function resolveWebIntents(message) {
   if (!message || !String(message).trim()) return { intents: [], debugReason: 'empty_message' };
+
+  // Fast guard: evita consultar CapabilityMap + WebSession em mensagens que
+  // claramente nao pedem navegacao/consulta a um site. E deliberadamente
+  // conservador: qualquer URL/dominio explicito, verbo de navegacao/busca,
+  // mencao a site/pagina ou linguagem tipica de continuidade Web deixa o
+  // fluxo seguir normalmente. O objetivo e apenas eliminar chamadas DB de
+  // conversa geral (ex: "explique o que e o MemoryOS").
+  const _raw = String(message);
+  const _norm = _raw.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const _hasExplicitUrlOrDomain = /https?:\/\/|www\.|\b[a-z0-9][a-z0-9.-]+\.(?:com|com\.br|net|org|gov|io|ai|app|dev|br)(?:\b|\/)/i.test(_raw);
+  const _hasWebAction = /\b(?:buscar|busque|pesquisar|pesquise|procurar|procure|achar|encontrar|mostrar|mostre|listar|liste|ver|veja|abrir|abra|acessar|acesse|visitar|visite|navegar|site|pagina|link)\b/i.test(_norm);
+  const _hasContinuationCue = /\b(?:esta pagina|essa pagina|nesta pagina|nessa pagina|este site|esse site|neste site|nesse site|a pagina|o site)\b/i.test(_norm);
+  if (!_hasExplicitUrlOrDomain && !_hasWebAction && !_hasContinuationCue) {
+    return { intents: [], debugReason: 'no_web_routing_signal' };
+  }
+
   try {
     const maps = await base44.entities.CapabilityMap.filter({});
     // Caminho existente (preservado): WebSession ativa -> intent com sessao.
