@@ -94,13 +94,44 @@ class GoalRegistryClass {
     const lower = userMessage.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
     // ── Precedência: endereçamento MCP explícito vence inferência semântica ──
-    // "Use o MCP <server> para executar|chamar|invocar <tool>" deve selecionar
-    // mcp.callTool ANTES do loop normal de sinais — otherwise sinais coincidentais
-    // como "do repositorio" (github.getFile, registrado antes) capturam a mensagem.
-    const EXPLICIT_MCP_RE = /\b(?:use|usar)\s+o\s+mcp\s+[a-z0-9_.\-]+\s+para\s+(?:executar|chamar|invocar)\s+[a-z0-9_.\-]+/i;
-    if (EXPLICIT_MCP_RE.test(lower)) {
-      const mcpCallToolDef = this._definitions.find((d) => d.type === "mcp.callTool" as GoalType);
-      if (mcpCallToolDef) return mcpCallToolDef;
+    // Princípio: ENDEREÇAMENTO EXPLÍCITO > INFERÊNCIA SEMÂNTICA.
+    // Se a mensagem endereça inequivocamente "MCP <server-identificável>",
+    // ela permanece no domínio MCP ANTES de qualquer heurística semântica
+    // (ex: DriveSemanticProvider captura "liste" → drive.listRecent mesmo com
+    // domain.score=0, porque baseScore 0.40 ≥ threshold 0.20).
+    //
+    // <server-identifier> = token após "mcp" que começa com alfanumérico,
+    // permite ponto/underscore/hífen, ≥3 chars, e NÃO é stopword PT/EN.
+    // "mcp eng-mcp" → server. "mcp e API" → "e" é 1-char/stopword → não casa.
+    const MCP_STOPWORDS = new Set([
+      "e", "ou", "a", "o", "de", "da", "do", "no", "na", "para", "com",
+      "que", "qual", "como", "and", "or", "is", "the", "of", "to", "with",
+      "in", "em", "por", "um", "uma", "se", "as", "os",
+    ]);
+    const MCP_ADDR_RE = /\bmcp\s+([a-z0-9][a-z0-9_.\-]{2,})/i;
+    const addrMatch = lower.match(MCP_ADDR_RE);
+    if (addrMatch) {
+      const serverToken = addrMatch[1].toLowerCase();
+      if (!MCP_STOPWORDS.has(serverToken)) {
+        // Endereçamento MCP explícito confirmado. Dispatch dentro do domínio MCP:
+        //   CASO A — execução POSITIVA de tool (verbo de execução NÃO negado
+        //            seguido de nome de tool) → mcp.callTool.
+        //   CASO B — consulta de metadados/tools (sem execução positiva) → mcp.listTools.
+        // "Não execute a ferramenta" NÃO conta: após "execute" vem "a" (1 char),
+        // que não casa o nome de tool; e mesmo "não execute <tool>" é negado
+        // pelo prefixo "nao " antes do verbo.
+        const EXEC_RE = /(?<![a-z])(?:executar|chamar|invocar|execute|chame|invoque|run|call|invoke)\s+([a-z][a-z0-9_.\-]{2,})/gi;
+        let positiveExec = false;
+        let m: RegExpExecArray | null;
+        while ((m = EXEC_RE.exec(lower)) !== null) {
+          const prefix = lower.slice(Math.max(0, m.index - 12), m.index);
+          const negated = /(?:^|[^a-z])(?:nao|not|never|nunca)\s+$/i.test(prefix);
+          if (!negated) { positiveExec = true; break; }
+        }
+        const target = positiveExec ? "mcp.callTool" : "mcp.listTools";
+        const def = this._definitions.find((d) => d.type === target as GoalType);
+        if (def) return def;
+      }
     }
 
     for (const def of this._definitions) {
@@ -1448,7 +1479,11 @@ const _builtins: GoalDefinition[] = [
     extractParams: (msg) => {
       const afterServidor = msg.match(/servidor\s+([a-z0-9_.\-]+)/i)?.[1]?.trim();
       const afterMcp = msg.match(/mcp\s+([a-z0-9_.\-]+)/i)?.[1]?.trim();
-      return { serverName: afterServidor ?? afterMcp ?? null };
+      const afterFerramenta = msg.match(/ferramenta\s+([a-z0-9][a-z0-9_.\-]{2,})/i)?.[1]?.trim();
+      const afterTool = msg.match(/\btool\s+([a-z0-9][a-z0-9_.\-]{2,})/i)?.[1]?.trim();
+      const toolName = afterFerramenta ?? afterTool ?? null;
+      const serverName = afterServidor ?? afterMcp ?? null;
+      return { serverName, ...(toolName ? { toolName } : {}) };
     },
   },
   {
