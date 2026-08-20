@@ -27,6 +27,7 @@ import {
   getCatalogEntry,
   listCatalogConnectors,
   googleConnectorsForScopes,
+  isInternalConnector,
 } from "../../shared/connectorCatalog.ts";
 import { credentialMatchesWorkspace } from "../../shared/webSessionWorkspace.ts";
 
@@ -186,6 +187,25 @@ export default async function (req: Request): Promise<Response> {
 
       // A) caller e membro ativo do workspace ativo (ja validado por assertWorkspaceMember acima)
       checks.push({ name: "A_active_member", passed: true, detail: `role=${role}` });
+
+      // ── Internal connector bypass (Solution B — explicit allowlist) ──
+      // Connectors internos confiaveis (sem credencial por usuario) bypassam
+      // o check B (WorkspaceConnector). Apenas IDs explicitamente listados
+      // em INTERNAL_CONNECTORS passam — strings desconhecidas continuam
+      // bloqueadas por check B. MCP nao esta na allowlist (exige WorkspaceConnector).
+      // Executa DEPOIS do check A: membership do workspace permanece obrigatorio.
+      if (isInternalConnector(connectorId)) {
+        checks.push({ name: "internal_connector", passed: true, detail: `connector "${connectorId}" is internal — no per-user credential required` });
+        return Response.json({
+          ok: true,
+          authorized: true,
+          workspaceId: activeWsId,
+          connectorId,
+          capabilityId,
+          credentialOwnerId: user.id,
+          checks,
+        });
+      }
 
       // B) WorkspaceConnector existe para (workspace, connector, caller)
       const wc = await base44.asServiceRole.entities.WorkspaceConnector.filter({
