@@ -12,11 +12,14 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
 
   async plan(ctx: AdaptiveProcessContext): Promise<readonly ResearchStep[]> {
     const repository = typeof ctx.request.params.repository === "string" ? ctx.request.params.repository : "AndersonVitaease/memoryos";
+    const appConversationId = typeof ctx.request.params.app_conversation_id === "string" ? ctx.request.params.app_conversation_id : "";
     const mode = ctx.request.params.mode === "write" ? "write" : "read";
+    const openHandsParams: Record<string, unknown> = { task: ctx.query, repository, mode };
+    if (appConversationId) openHandsParams.app_conversation_id = appConversationId;
     const steps: ResearchStep[] = [
       { id: "baseline-status", call: { connectorId: "mcp", capability: "mcp.callTool", params: { serverName: "eng-mcp", toolName: "engineering.git.status", arguments: {} } }, rationale: "Capture repository state before OpenHands." },
       { id: "baseline-log", call: { connectorId: "mcp", capability: "mcp.callTool", params: { serverName: "eng-mcp", toolName: "engineering.git.log", arguments: { limit: 1 } } }, rationale: "Capture HEAD before OpenHands so unexpected commits are detectable." },
-      { id: "openhands-task", call: { connectorId: "openhands", capability: "openhands.runTask", params: { task: ctx.query, repository, mode } }, rationale: "Execute the engineering mission." },
+      { id: "openhands-task", call: { connectorId: "openhands", capability: "openhands.runTask", params: openHandsParams }, rationale: appConversationId ? "Continue the engineering mission in the same OpenHands conversation/workspace." : "Execute the engineering mission." },
       { id: "verify-status", call: { connectorId: "mcp", capability: "mcp.callTool", params: { serverName: "eng-mcp", toolName: "engineering.git.status", arguments: {} } }, rationale: "Verify repository state after execution." },
       { id: "verify-diff", call: { connectorId: "mcp", capability: "mcp.callTool", params: { serverName: "eng-mcp", toolName: "engineering.git.diff", arguments: {} } }, rationale: "Verify actual repository changes." },
       { id: "verify-log", call: { connectorId: "mcp", capability: "mcp.callTool", params: { serverName: "eng-mcp", toolName: "engineering.git.log", arguments: { limit: 1 } } }, rationale: "Compare HEAD after execution with the baseline." },
@@ -69,6 +72,7 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
     }
     const requirements = await this.deriveRequirements(ctx.query);
     let task = ctx.query;
+    let appConversationId = typeof ctx.request.params.app_conversation_id === "string" ? ctx.request.params.app_conversation_id : "";
     let reflection: Reflection = { byStep: new Map(), gaps: requirements.map((r) => r.description), sufficiency: 0, completion: { requirements, completed: 0, total: requirements.length, requiredComplete: false } };
     let results: readonly ExecutionOutcome[] = [];
     let steps: readonly ResearchStep[] = [];
@@ -76,9 +80,15 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
 
     for (let i = 0; i < MAX_ITERATIONS; i++) {
       rounds = i + 1;
-      const roundCtx: AdaptiveProcessContext = { ...ctx, query: task, request: { ...ctx.request, params: { ...ctx.request.params, task } } };
+      const roundCtx: AdaptiveProcessContext = { ...ctx, query: task, request: { ...ctx.request, params: { ...ctx.request.params, task, ...(appConversationId ? { app_conversation_id: appConversationId } : {}) } } };
       steps = await this.plan(roundCtx);
       results = await this.invoke(steps, roundCtx);
+      const openHandsIndex = steps.findIndex((s) => s.id === "openhands-task");
+      const openHandsOutput = openHandsIndex >= 0 && results[openHandsIndex]?.output && typeof results[openHandsIndex].output === "object"
+        ? results[openHandsIndex].output as Record<string, unknown>
+        : null;
+      const returnedConversationId = typeof openHandsOutput?.app_conversation_id === "string" ? openHandsOutput.app_conversation_id : "";
+      if (returnedConversationId) appConversationId = returnedConversationId;
       reflection = await this.evaluate(requirements, steps, results);
       if (this.stop(reflection)) break;
       const missing = reflection.completion?.requirements.filter((r) => r.required && r.status !== "completed").map((r) => `- ${r.description}`).join("\n") ?? "";
