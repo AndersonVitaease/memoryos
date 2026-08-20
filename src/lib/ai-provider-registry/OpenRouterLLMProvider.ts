@@ -47,7 +47,14 @@ export class OpenRouterLLMProvider implements AIProvider {
         success: true,
         text: d.reply ?? null,
         model: d.model ?? options?.model ?? DEFAULT_MODEL,
-        usage: d.usage ? { promptTokens: d.usage.prompt_tokens, completionTokens: d.usage.completion_tokens } : null,
+        usage: d.usage ? {
+          promptTokens: d.usage.prompt_tokens,
+          completionTokens: d.usage.completion_tokens,
+          totalTokens: d.usage.total_tokens,
+          cachedTokens: d.usage.cached_tokens ?? d.usage.prompt_tokens_details?.cached_tokens,
+          cacheWriteTokens: d.usage.cache_write_tokens ?? d.usage.prompt_tokens_details?.cache_write_tokens,
+          cost: d.usage.cost ?? d.usage.total_cost,
+        } : null,
         durationMs: Date.now() - t0,
       };
     } catch (err) {
