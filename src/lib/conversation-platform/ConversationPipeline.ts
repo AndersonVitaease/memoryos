@@ -32,6 +32,7 @@ import { runReasoningPlan } from "@/lib/reasoning/memoryReasoningPlanner";
 import { primaryRouter } from "@/lib/primary-conversation-router/PrimaryConversationRouter";
 import { responseTracer } from "@/lib/response-binding/ResponseBindingTracer";
 import { conversationGoalBridge } from "@/lib/conversation-goal-bridge/ConversationGoalBridge";
+import { GoalRegistry } from "@/lib/goals/GoalRegistry";
 import { conversationPlanningEngine } from "@/lib/planning-engine-e022/ConversationPlanningEngine";
 import { runtimeContextLayer } from "@/lib/runtime-context/RuntimeContextLayer";
 import { unifiedContextBuilder } from "@/lib/unified-context/UnifiedContextBuilder";
@@ -396,7 +397,18 @@ class ConversationPipeline {
     // antiga perdia (sem "também"/"e mais"/vírgula/linha em branco). Não
     // duplica a lista de verbos — delega ao MessageDecomposer.
     const { decomposeMessage: _gateDecompose } = await import("@/lib/multi-intent/MessageDecomposer");
-    const _mightBeMultiIntent = userMessage.length > 30 && _gateDecompose(userMessage).length > 1;
+    const _mightBeMultiIntent = userMessage.length > 30 && _gateDecompose(userMessage).length > 1
+      // MCP callTool preservation: uma mensagem deterministicamente reconhecida
+      // como mcp.callTool por enderecamento MCP explicito carrega os argumentos
+      // da tool em linguagem natural (ex: "...e procure no codigo por X usando
+      // busca literal. Mostre 10 resultados"). O MessageDecomposer separaria
+      // " e procure" como 2a intencao independente, fragmentando os argumentos
+      // antes que o Generic MCP Argument Resolution (resolveMcpArguments) possa
+      // inferi-los do inputSchema a partir do rawText completo. Guard restringe
+      // a mcp.callTool (nao mcp.listTools, nao mera presenca da palavra "mcp"):
+      // deixa a mensagem inteira seguir pelo pipeline principal ate o
+      // MCPConnector -> resolveMcpArguments -> mcpClientCall com rawText intacto.
+      && GoalRegistry.matchBySignals(userMessage)?.type !== "mcp.callTool";
     if (_mightBeMultiIntent) try {
       const { decomposeMessage } = await import("@/lib/multi-intent/MessageDecomposer");
       const fragments = decomposeMessage(userMessage);
