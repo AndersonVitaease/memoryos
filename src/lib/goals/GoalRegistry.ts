@@ -596,7 +596,9 @@ const _builtins: GoalDefinition[] = [
       "perguntar à ia", "pergunte à ia", "perguntar pra ia", "pergunte pra ia",
       "pergunta para a ia", "pergunta pra ia", "consultar a ia", "consulte a ia",
       "traduzir", "traduza", "tradução",
-      "resuma isso", "resumir isso", "resuma", "resumo",
+      // Resumos seguem o fluxo cognitivo completo (history + memory + provider)
+      // para que referências ao turno anterior não sejam roteadas como um
+      // connector stateless que recebe apenas a mensagem atual.
       "escrever codigo", "escreva codigo", "corrigir codigo", "corrija codigo", "codigo",
       "analisar documento", "analise este documento", "analisar este texto",
       "transcrever", "transcreva", "transcrição",
@@ -637,7 +639,7 @@ const _builtins: GoalDefinition[] = [
       "criar apresentação", "estrutura de slides",
       "organizar tarefas",
       "responder objeção", "cold call", "prospecção",
-      "follow-up", "resumir historico de conversa",
+      "follow-up",
       "criar prova", "questoes de prova", "quiz",
       "corrigir redação", "plano de aula",
       "sugerir cortes", "timestamps do video", "sugestao de thumbnail",
