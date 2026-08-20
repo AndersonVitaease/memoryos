@@ -84,9 +84,7 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
       rounds = i + 1;
       const roundCtx: AdaptiveProcessContext = { ...ctx, query: task, request: { ...ctx.request, params: { ...ctx.request.params, task, ...(appConversationId ? { app_conversation_id: appConversationId } : {}) } } };
       steps = await this.plan(roundCtx);
-      this.emitTrace(ctx, ctx.parentExecutionId, rounds, { phase: "after_plan", queryLength: task.length, mode: ctx.request.params.mode === "write" ? "write" : "read", steps: steps.map((s) => ({ id: s.id, connectorId: s.call.connectorId, capability: s.call.capability, toolName: String(s.call.params.toolName ?? null), argumentKeys: s.call.params.arguments && typeof s.call.params.arguments === "object" ? Object.keys(s.call.params.arguments as Record<string, unknown>) : [], ...(s.id === "verify-file-read" ? { filePath: String((s.call.params.arguments as Record<string, unknown>)?.path ?? null) } : {}) })) });
       results = await this.invoke(steps, roundCtx);
-      this.emitTrace(ctx, ctx.parentExecutionId, rounds, { phase: "after_invoke", steps: steps.map((s, i) => { const r = results[i]; const item: Record<string, unknown> = { id: s.id, status: r?.status ?? "missing", connectorId: s.call.connectorId, capability: s.call.capability, message: r?.message ? String(r.message).slice(0, 500) : null, outputExists: r?.output !== null && r?.output !== undefined, outputType: r?.output !== null && r?.output !== undefined ? typeof r.output : "null" }; if (s.id === "verify-file-read") { const outStr = r?.output ? JSON.stringify(r.output) : ""; item.outputKeys = r?.output && typeof r.output === "object" ? Object.keys(r.output as Record<string, unknown>) : []; item.outputLength = outStr.length; item.containsBase44App = outStr.includes("base44-app"); } return item; }) });
       const openHandsIndex = steps.findIndex((s) => s.id === "openhands-task");
       const openHandsOutput = openHandsIndex >= 0 && results[openHandsIndex]?.output && typeof results[openHandsIndex].output === "object"
         ? results[openHandsIndex].output as Record<string, unknown>
@@ -94,11 +92,9 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
       const returnedConversationId = typeof openHandsOutput?.app_conversation_id === "string" ? openHandsOutput.app_conversation_id : "";
       if (returnedConversationId) appConversationId = returnedConversationId;
       reflection = await this.evaluate(requirements, steps, results);
-      this.emitTrace(ctx, ctx.parentExecutionId, rounds, { phase: "after_evaluate", requirements: reflection.completion?.requirements.map((r) => ({ id: r.id, status: r.status, evidenceCount: r.evidence?.length ?? 0 })) ?? [], completed: reflection.completion?.completed ?? 0, total: reflection.completion?.total ?? 0, requiredComplete: reflection.completion?.requiredComplete ?? false, sufficiency: reflection.sufficiency, gaps: reflection.gaps, stopResult: this.stop(reflection) });
       if (this.stop(reflection)) break;
       const missing = reflection.completion?.requirements.filter((r) => r.required && r.status !== "completed").map((r) => `- ${r.description}`).join("\n") ?? "";
       if (!missing) break;
-      this.emitTrace(ctx, ctx.parentExecutionId, rounds, { phase: "round_2_triggered", round2Triggered: true, missingRequirementIds: reflection.completion?.requirements.filter((r) => r.required && r.status !== "completed").map((r) => r.id) ?? [] });
       task = `${ctx.query}\n\nComplete only the still-unverified required items and report concrete evidence for each:\n${missing}`;
     }
 
@@ -117,16 +113,6 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
     const FILE_PATH_RE = /\b(?:[\w@.-]+\/)*[\w@-]+\.[a-zA-Z][a-zA-Z0-9]{0,7}\b/;
     const match = query.match(FILE_PATH_RE);
     return match ? match[0] : null;
-  }
-
-  /** TEMPORARY diagnostic — fire-and-forget trace for supervised engineering runtime. Never throws, never blocks. */
-  private emitTrace(ctx: AdaptiveProcessContext, executionId: string, round: number, data: Record<string, unknown>): void {
-    try {
-      const ctxRaw = ctx.request.context as Record<string, unknown> | undefined;
-      const sessionId = ctxRaw && typeof ctxRaw.sessionId === "string" ? ctxRaw.sessionId : "unknown";
-      const payload = JSON.stringify({ ...data, round, temporaryDiagnostic: true });
-      base44.entities.InteractionEvent.create({ session_id: sessionId, correlation_id: executionId, actor: "system", event_type: "supervised_engineering_runtime_trace", payload }).catch(() => { /* diagnostic failure never interrupts mission */ });
-    } catch { /* never throw */ }
   }
 
   private async deriveRequirements(task: string): Promise<readonly CompletionRequirement[]> {
