@@ -95,12 +95,18 @@ export class OpenHandsConnector implements IConnector {
 
       const task = typeof payload.task === "string" ? payload.task.trim() : "";
       const repository = typeof payload.repository === "string" ? payload.repository.trim() : "";
+      const appConversationId = typeof payload.app_conversation_id === "string" ? payload.app_conversation_id.trim() : "";
       const mode = payload.mode === "write" ? "write" : "read";
 
       if (!task) return fail("task e obrigatorio", start, eid, logs, operation);
-      if (!repository) return fail("repository e obrigatorio (owner/repo)", start, eid, logs, operation);
+      if (!repository && !appConversationId) return fail("repository e obrigatorio para nova conversation (owner/repo)", start, eid, logs, operation);
 
-      const res = await base44.functions.invoke("openHandsTaskProcess", { task, repository, mode });
+      const res = await base44.functions.invoke("openHandsTaskProcess", {
+        task,
+        ...(repository ? { repository } : {}),
+        ...(appConversationId ? { app_conversation_id: appConversationId } : {}),
+        mode,
+      });
       const d = (res.data ?? res) as Record<string, unknown> | null;
       if (d?.error) return fail(String(d.error), start, eid, logs, operation);
 
@@ -113,7 +119,8 @@ export class OpenHandsConnector implements IConnector {
           agent_reply_text: typeof d?.agent_reply_text === "string" ? d.agent_reply_text : "",
           execution_status: typeof d?.execution_status === "string" ? d.execution_status : "",
           app_conversation_id: typeof d?.app_conversation_id === "string" ? d.app_conversation_id : null,
-          repository,
+          continued: d?.continued === true,
+          repository: typeof d?.repository === "string" ? d.repository : repository,
           mode,
         },
         start,
