@@ -1450,9 +1450,12 @@ const _builtins: GoalDefinition[] = [
       "use a ferramenta do mcp", "usar ferramenta do mcp",
       "invocar ferramenta do mcp", "invoque a ferramenta do mcp",
       "call mcp tool", "invoke mcp tool",
+      "use o mcp", "usar o mcp",
     ],
     extractParams: (msg) => {
-      const toolMatch = msg.match(/ferramenta\s+([a-zA-Z0-9_.\-]+)\s+(?:do\s+)?mcp/i)?.[1]?.trim();
+      const toolMatch =
+        msg.match(/ferramenta\s+([a-zA-Z0-9_.\-]+)\s+(?:do\s+)?mcp/i)?.[1]?.trim() ??
+        msg.match(/mcp\s+[a-z0-9_.\-]+\s+para\s+(?:executar|chamar|invocar)\s+([a-zA-Z0-9_.\-]+)/i)?.[1]?.trim();
       const afterServidor = msg.match(/servidor\s+([a-z0-9_.\-]+)/i)?.[1]?.trim();
       const afterMcp = msg.match(/mcp\s+([a-z0-9_.\-]+)/i)?.[1]?.trim();
       return { toolName: toolMatch ?? null, serverName: afterServidor ?? afterMcp ?? null };
