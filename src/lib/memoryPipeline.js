@@ -226,11 +226,30 @@ async function queryEntities(intent, sessionId, projectId) {
   }
 
   const keys = Object.keys(queries);
-  const values = await Promise.all(Object.values(queries));
+  const settled = await Promise.allSettled(Object.values(queries));
   const result = {};
+  const failedQueries = [];
+
   keys.forEach((k, i) => {
-    result[k] = values[i];
+    const item = settled[i];
+    if (item.status === "fulfilled") {
+      result[k] = item.value;
+      return;
+    }
+
+    failedQueries.push({
+      key: k,
+      error: item.reason?.message || String(item.reason || "unknown error"),
+    });
+    result[k] = [];
   });
+
+  if (failedQueries.length > 0) {
+    console.warn(
+      `[memoryPipeline] Recuperação parcial: ${failedQueries.length}/${keys.length} consulta(s) falharam`,
+      failedQueries,
+    );
+  }
 
   // IA-030: filtro de contaminação — bloqueia registros que ainda carreguem
   // a narrativa fictícia de "auditoria arquitetural MAS/MES/Biblioteca Oficial"
