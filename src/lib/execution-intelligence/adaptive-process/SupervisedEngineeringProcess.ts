@@ -32,6 +32,14 @@ const MAX_DISCOVERY_QUERIES = 4;
 const SUFFICIENCY_THRESHOLD = 0.75;
 const MAX_REQUIREMENTS = 25;
 
+// ── Adaptive Evidence Budget V1 ──────────────────────────────────────────────
+// Per-tool char budgets for evidence compaction in _reflectReadMode.
+// Replaces the blind slice(0, 2000) that discarded decisive file content.
+const MAX_FILE_EVIDENCE_CHARS = 12000;
+const MAX_SEARCH_EVIDENCE_CHARS = 5000;
+const MAX_DEFAULT_EVIDENCE_CHARS = 4000;
+const MAX_TOTAL_EVIDENCE_CHARS = 30000;
+
 // TEMP DIAG — module load marker (executes on import)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).__ADAPTIVE_READ_DIAG_VERSION__ = "supervised-engineering-diag-v1";
@@ -309,6 +317,163 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
     console.debug(`[ADAPTIVE_READ_DIAG][${phase}]`, entry);
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PRIVATE — Adaptive Evidence Builder V1
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Builds evidence text for the reflector with per-tool char budgets and a
+   * global cap. Replaces the blind slice(0, 2000) that discarded decisive file
+   * content for large source files (e.g. ConversationPlanningEngine.ts ~12KB).
+   *
+   * Per-tool budgets:
+   *   - file.read:       12000 chars (large source files must reach the LLM)
+   *   - code.search:     5000 chars (paths/lines/previews, compact envelope)
+   *   - code.references: 5000 chars (same rationale)
+   *   - default:         4000 chars
+   *
+   * Global budget: 30000 chars total across all steps in the wave.
+   * When the global budget is exhausted, later steps are marked TRUNCATED.
+   *
+   * Truncation is ALWAYS explicit — the LLM knows when it's seeing partial
+   * content and must not conclude ownership/absence from an invisible section.
+   */
+  private _buildAdaptiveEvidence(
+    steps: readonly ResearchStep[],
+    results: readonly ExecutionOutcome[],
+  ): string {
+    let totalUsed = 0;
+    const pieces: string[] = [];
+
+    for (let i = 0; i < steps.length; i++) {
+      const s = steps[i];
+      const r = results[i];
+      const toolName = typeof s.call.params?.toolName === "string" ? s.call.params.toolName : "";
+      const header = `[${s.id}] tool=${toolName} status=${r.status}\n  params: ${JSON.stringify(s.call.params).slice(0, 300)}`;
+
+      // Failed steps: small, always included.
+      if (r.status !== "success" || r.output == null) {
+        const piece = `${header}\n  output: (failed: ${r.message ?? r.status})`;
+        pieces.push(piece);
+        totalUsed += piece.length;
+        continue;
+      }
+
+      const remaining = MAX_TOTAL_EVIDENCE_CHARS - totalUsed;
+      if (remaining <= 0) {
+        pieces.push(`${header}\n  output: [TRUNCATED: global evidence budget reached]`);
+        continue;
+      }
+
+      const perToolBudget = Math.min(this._evidenceBudgetFor(toolName), remaining);
+      const { text, truncated } = this._compactOutput(r.output, toolName, perToolBudget);
+      const suffix = truncated ? "\n  [TRUNCATED: evidence budget reached]" : "";
+      let piece = `${header}\n  output: ${text}${suffix}`;
+
+      if (piece.length > remaining) {
+        piece = piece.slice(0, remaining) + "\n  [TRUNCATED: global evidence budget reached]";
+      }
+      pieces.push(piece);
+      totalUsed += piece.length;
+    }
+
+    return pieces.join("\n\n");
+  }
+
+  private _evidenceBudgetFor(toolName: string): number {
+    if (toolName === "engineering.file.read") return MAX_FILE_EVIDENCE_CHARS;
+    if (toolName === "engineering.code.search" || toolName === "engineering.code.references") return MAX_SEARCH_EVIDENCE_CHARS;
+    return MAX_DEFAULT_EVIDENCE_CHARS;
+  }
+
+  /**
+   * Compacts a single step's output to fit within the per-tool budget.
+   * Drills into { result: ... } envelope (from MCPConnector wrapping).
+   * For code.search/code.references, strips envelope and keeps only
+   * matches (path/line/preview) to avoid wasting budget on metadata.
+   * For file.read, preserves the content string directly when possible.
+   */
+  private _compactOutput(
+    output: unknown,
+    toolName: string,
+    budget: number,
+  ): { text: string; truncated: boolean } {
+    // Drill into { result: ..., transport: ... } envelope if present.
+    let content: unknown = output;
+    if (content && typeof content === "object" && !Array.isArray(content)) {
+      const obj = content as Record<string, unknown>;
+      if ("result" in obj && obj.result != null) {
+        content = obj.result;
+      }
+    }
+
+    // For code.search / code.references: extract matches compactly.
+    if (toolName === "engineering.code.search" || toolName === "engineering.code.references") {
+      const compact = this._compactSearchOutput(content);
+      if (compact !== null) {
+        const text = JSON.stringify(compact);
+        if (text.length <= budget) return { text, truncated: false };
+        return { text: text.slice(0, budget), truncated: true };
+      }
+    }
+
+    // For file.read: if content is a string, use it directly (no JSON envelope).
+    if (toolName === "engineering.file.read") {
+      if (typeof content === "string") {
+        if (content.length <= budget) return { text: content, truncated: false };
+        return { text: content.slice(0, budget), truncated: true };
+      }
+      // If it's an object with a content/text field, extract that.
+      if (content && typeof content === "object" && !Array.isArray(content)) {
+        const obj = content as Record<string, unknown>;
+        const inner = obj.content ?? obj.text ?? obj.fileContent ?? obj.source ?? null;
+        if (typeof inner === "string") {
+          if (inner.length <= budget) return { text: inner, truncated: false };
+          return { text: inner.slice(0, budget), truncated: true };
+        }
+      }
+    }
+
+    // Default: stringify with budget.
+    const text = typeof content === "string" ? content : JSON.stringify(content);
+    if (text.length <= budget) return { text, truncated: false };
+    return { text: text.slice(0, budget), truncated: true };
+  }
+
+  /**
+   * Extracts a compact representation of search results: query + matches
+   * with path/line/preview only. Strips transport metadata and other
+   * envelope fields that waste budget without aiding the investigation.
+   */
+  private _compactSearchOutput(content: unknown): { query: unknown; matches: unknown[]; total: number } | null {
+    if (!content || typeof content !== "object") return null;
+    const obj = content as Record<string, unknown>;
+
+    // Find the matches array under common field names.
+    const matchesRaw = obj.matches ?? obj.results ?? obj.files ?? (Array.isArray(content) ? content : null);
+    if (!Array.isArray(matchesRaw)) return null;
+
+    const matches = matchesRaw.slice(0, 30).map((m: unknown) => {
+      if (typeof m === "string") return { path: m };
+      if (!m || typeof m !== "object") return m;
+      const mo = m as Record<string, unknown>;
+      const path = mo.path ?? mo.file ?? mo.filePath ?? mo.filename ?? null;
+      const line = mo.line ?? mo.lineNumber ?? mo.line_number ?? mo.ln ?? null;
+      const preview = mo.preview ?? mo.snippet ?? mo.match ?? mo.text ?? mo.content ?? null;
+      const result: Record<string, unknown> = {};
+      if (path) result.path = path;
+      if (line != null) result.line = line;
+      if (preview != null) result.preview = typeof preview === "string" ? preview.slice(0, 200) : preview;
+      return Object.keys(result).length > 0 ? result : m;
+    });
+
+    return {
+      query: obj.query ?? obj.mode ?? obj.q ?? null,
+      matches,
+      total: typeof obj.total === "number" ? obj.total : matchesRaw.length,
+    };
+  }
+
   private _rejectReason(action: EngineeringNextAction): string {
     const p = action.params ?? {};
     switch (action.type) {
@@ -414,13 +579,7 @@ Rules:
     ctx: AdaptiveProcessContext,
     byStep: Map<string, ExecutionOutcome>,
   ): Promise<EngineeringReflection> {
-    const evidence = steps.map((s, i) => {
-      const r = results[i];
-      const out = r.status === "success" && r.output != null
-        ? JSON.stringify(r.output).slice(0, 2000)
-        : `(failed: ${r.message ?? r.status})`;
-      return `[${s.id}] tool=${s.call.params?.toolName} status=${r.status}\n  params: ${JSON.stringify(s.call.params).slice(0, 300)}\n  output: ${out}`;
-    }).join("\n\n");
+    const evidence = this._buildAdaptiveEvidence(steps, results);
 
     const completedPaths = new Set<string>();
     for (const s of steps) {
