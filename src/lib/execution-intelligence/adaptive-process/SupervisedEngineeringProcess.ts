@@ -274,6 +274,10 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
 
   async run(ctx: AdaptiveProcessContext): Promise<ExecutionOutcome> {
     if (ctx.request.params.mode === "write") {
+      // FASE 8 — Early return de proteção PRESERVADO.
+      // A ponte OpenHands -> ENG-MCP (change_set extraction + patch planner)
+      // está construida em OpenHandsChangeSet.ts, mas NÃO ativada nesta rodada.
+      // Nenhum patch real e despachado. Write mode permanece bloqueado.
       return Object.freeze({
         status: "failed" as const,
         connectorId: ctx.request.connectorId,
