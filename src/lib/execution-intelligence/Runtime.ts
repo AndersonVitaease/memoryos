@@ -47,7 +47,11 @@ import { makePlanId, makeStepId } from "@/lib/planning-engine-e022/ExecutionPlan
 import type { ExecutionRequest, ExecutionOutcome, PreparedExecution, SafetyDecision } from "./ExecutionTypes";
 import { ExecutionIntelligence } from "./ExecutionIntelligence";
 import { SafetyGate } from "./SafetyGate";
-import { COMPOSITE_EXECUTION_POLICY } from "@/lib/runtime-engine/ExecutionPolicy";
+import {
+  COMPOSITE_EXECUTION_POLICY,
+  DEFAULT_EXECUTION_POLICY,
+} from "@/lib/runtime-engine/ExecutionPolicy";
+import type { ExecutionPolicy, ParallelismConfig } from "@/lib/runtime-engine/ExecutionPolicy";
 
 export class ExecutionRuntime {
   private readonly _intelligence: ExecutionIntelligence;
@@ -94,6 +98,16 @@ export class ExecutionRuntime {
     // segue 100% identico ao anterior (paridade ADR-015).
     const isComposite: boolean = meta.capabilityComposite?.[capability] ?? false;
     const isSubCapability: boolean = !!request.parentExecutionId;
+
+    // CC-01: capacidade de concorrência por capability (metadata opcional).
+    // Ausência/inválido → null → policy padrão (parallelism.enabled=false,
+    // comportamento irrestrito preservado). Nunca reduz para maxConcurrent=1.
+    const concurrencyParallelism = this._deriveParallelism(meta, capability);
+    const basePolicy: ExecutionPolicy | undefined =
+      (isComposite || isSubCapability) ? COMPOSITE_EXECUTION_POLICY : undefined;
+    const policy: ExecutionPolicy | undefined = concurrencyParallelism
+      ? Object.freeze({ ...(basePolicy ?? DEFAULT_EXECUTION_POLICY), parallelism: concurrencyParallelism })
+      : basePolicy;
 
     // EI-07: Execution Intelligence itera investigators ativos (Convergence/API/LLM
     // Budget + grafo aciclivo) e enriquece enrichedParams antes do Safety Gate.
@@ -143,12 +157,10 @@ export class ExecutionRuntime {
         plan,
         request.executionId,
         connectorCtx,
-        // AP-04: composite (Adaptive Process) OU sub-capability despachada por um
-        // processo composite (parentExecutionId presente) detem loop reflexivo num
-        // unico step. Policy estendida acomoda plan -> invoke -> reflect -> synthesize
-        // com sub-capabilities long-running. Non-composite e non-sub: undefined → engine
-        // usa policy padrao (paridade ADR-015).
-        (isComposite || isSubCapability) ? COMPOSITE_EXECUTION_POLICY : undefined,
+        // AP-04 + CC-01: policy derivada do metadata de concorrência por capability
+        // (quando presente) sobre a base composite/default. Undefined → engine usa
+        // policy padrão (parallelism.enabled=false, comportamento irrestrito).
+        policy,
       );
       const completed = executionResult.status === "completed";
       const stepResult = executionResult.steps[0] ?? null;
@@ -168,6 +180,18 @@ export class ExecutionRuntime {
     } catch (e) {
       return this._buildOutcome(request, "failed", null, (e as Error).message, reversibility, null, null);
     }
+  }
+
+  /**
+   * CC-01: deriva ParallelismConfig a partir de ConnectorMetadata.capabilityConcurrency.
+   * - ausente/inválido (0, negativo, NaN, não-inteiro) → null → enabled=false preservado.
+   * - positivo inteiro → { enabled:true, maxConcurrent:N }.
+   * Nunca retorna maxConcurrent=1 como fallback: null é o único "sem metadata".
+   */
+  private _deriveParallelism(meta: ConnectorMetadata, capability: string): ParallelismConfig | null {
+    const raw = meta.capabilityConcurrency?.[capability];
+    if (typeof raw !== "number" || !Number.isFinite(raw) || !Number.isInteger(raw) || raw <= 0) return null;
+    return Object.freeze({ enabled: true, maxConcurrent: raw });
   }
 
   private _buildOutcome(
