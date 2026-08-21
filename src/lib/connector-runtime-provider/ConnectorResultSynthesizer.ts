@@ -102,21 +102,7 @@ export async function synthesizeConnectorResult(
     }
   }
 
-  // ── Runtime failed (auth, network, timeout, 401, 403) ────────────────────
-  if (result.status === "failed" || result.status === "timeout" || result.status === "cancelled") {
-    // FIX (bug pré-existente, encontrado via teste real): antes, handled=true
-    // era retornado aqui MESMO EM CASO DE FALHA — a mensagem de desculpa
-    // genérica ("não foi possível completar...") era tratada como resposta
-    // bem-sucedida e confiante (0.95 de confiança em ConversationPipeline.ts),
-    // o que travava QUALQUER fallback (LLM normal ou o novo Search Engine)
-    // de assumir a resposta. Agora handled=false — o pipeline já tem um
-    // caminho correto pra falha real (fromConnectorFailure, confiança 0),
-    // que permite o fallback funcionar como sempre deveria.
-    const response = _buildErrorResponse(result);
-    return { handled: false, response, connectorData: null };
-  }
-
-  // ── Runtime completed — extract data from step outputs ───────────────────
+  // ── Extract completed steps with real output (computed BEFORE status check) ─
   // EF-44: Also detect steps that completed but returned an error payload
   // (e.g. { error: "requires workspaceId" }) — those are NOT successful data.
   const completedSteps = result.steps.filter((s) => {
@@ -133,6 +119,19 @@ export async function synthesizeConnectorResult(
     }
     return true;
   });
+
+  // ── Runtime failed (auth, network, timeout, 401, 403) ────────────────────
+  // FIX (multi-file partial success): se a execucao overall esta failed/timeout
+  // MAS alguns steps completaram com output real, NAO descartar esses outputs
+  // indo pro caminho de erro. Sintetizar a partir dos outputs reais para que a
+  // evidencia do connector seja usada (candidato 0.95) em vez de cair no
+  // Producer C (LLM sem dados do connector, que infere responsabilidade pelo
+  // nome do arquivo). So vai pro erro quando NAO ha NENHUM output real.
+  if ((result.status === "failed" || result.status === "timeout" || result.status === "cancelled")
+      && completedSteps.length === 0) {
+    const response = _buildErrorResponse(result);
+    return { handled: false, response, connectorData: null };
+  }
 
   // [SYNTH-PROBE-01] StepResult shapes reaching ConnectorResultSynthesizer
   console.log("[SYNTH-PROBE-01]", {
