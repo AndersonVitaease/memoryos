@@ -28,6 +28,8 @@ export interface SubCapabilityCall {
   readonly connectorId: string;
   readonly capability: string;
   readonly params: Record<string, unknown>;
+  /** EI-03: When true, SafetyGate approves irreversible capabilities. Set by supervised write flow after Approval 2. */
+  readonly confirmedByUser?: boolean;
 }
 
 /** Um step do plano de pesquisa: a chamada + o porque (rastreabilidade). */

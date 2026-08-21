@@ -189,6 +189,7 @@ export class AdaptiveProcessConnector implements IConnector {
           params: sub.params,
           context: parentCtx,
           parentExecutionId: eid,
+          confirmedByUser: sub.confirmedByUser,
         });
         return outcome;
       },
