@@ -28,6 +28,7 @@ import { DynamicWaveRunner } from "./DynamicWaveRunner";
 
 const MAX_ITERATIONS = 3;
 const MAX_READS_PER_WAVE = 8;
+const MAX_DISCOVERY_QUERIES = 4;
 const SUFFICIENCY_THRESHOLD = 0.75;
 const MAX_REQUIREMENTS = 25;
 
@@ -125,11 +126,32 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
 
     const reflection = state.reflection as EngineeringReflection;
     const actions = reflection.nextActions ?? [];
+
+    // ── Query dedup per run (transient, derived from completedSteps) ──
+    // Collects every (query, mode) pair already executed across prior waves so
+    // the LLM's reformulated code.search nextActions do not silently repeat a
+    // query that already returned nothing. No new entity, no global history.
+    const executedQueryKeys = new Set<string>();
+    for (const entry of state.completedSteps) {
+      const args = entry.step.call.params?.arguments as Record<string, unknown> | undefined;
+      if (entry.step.call.params?.toolName === "engineering.code.search" && args) {
+        const q = String(args.query ?? "").trim().toLowerCase();
+        const m = String(args.mode ?? "literal").trim().toLowerCase();
+        if (q) executedQueryKeys.add(`${q}|${m}`);
+      }
+    }
+
     const steps: ResearchStep[] = [];
     let fileReadCount = 0;
 
     for (const action of actions) {
       if (action.type === "file.read" && fileReadCount >= MAX_READS_PER_WAVE) break;
+      // Dedup code.search: skip reformulated queries that repeat a prior query.
+      if (action.type === "code.search") {
+        const q = String(action.params?.query ?? "").trim().toLowerCase();
+        const m = String(action.params?.mode ?? "literal").trim().toLowerCase();
+        if (q && executedQueryKeys.has(`${q}|${m}`)) continue;
+      }
       const step = this._actionToStep(action, steps.length + 1);
       if (!step) continue;
       if (action.type === "file.read") fileReadCount++;
@@ -240,15 +262,31 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
     const prompt = `You are the discovery planner for a code investigation in a TypeScript/React repository.
 Mission: "${mission}"
 
-Generate 1-3 search queries to find relevant code. Respond ONLY JSON:
-{"queries": [{"query": "search term", "mode": "literal|filename"}]}
+Generate up to ${MAX_DISCOVERY_QUERIES} search queries to find relevant code. You MUST produce TWO distinct categories:
+
+A) LITERAL CONCEPT QUERIES
+- Terms EXACTLY present in the mission text (phrases the user wrote).
+- mode "literal" (search file contents for that exact text).
+
+B) CODE IDENTIFIER CANDIDATES
+- Translations of the mission concept into PROBABLE code identifiers / strings.
+- Example: concept "FAST PATH / ADAPTIVE PATH" could yield identifiers like "executionPath", "fast", "adaptive", "path selection".
+- Prefer camelCase / snake_case forms common in TypeScript code.
+- mode "literal" (search file contents for the identifier as a string).
+
+Respond ONLY JSON:
+{"queries": [{"query": "search term", "mode": "literal|filename", "category": "literal_concept|identifier_candidate"}]}
 
 Rules:
-- mode "literal": search file contents for a literal text/identifier (default for "how/why/where" questions)
-- mode "filename": search for files by name (when the mission references a specific file/module name)
-- Extract the most relevant TECHNICAL terms (identifiers, class names, error names, file names) from the mission
-- Do NOT search for common words (the, how, why, where, investigate, discover)
-- Prefer specific identifiers over generic terms`;
+- Maximum ${MAX_DISCOVERY_QUERIES} queries total.
+- Include at least one literal_concept query AND at least one identifier_candidate query when possible.
+- Queries MUST be distinct from each other. Do NOT emit near-duplicate variations of the same term.
+- Prefer a few high-quality queries over many similar ones.
+- mode "literal": search file contents for a literal text/identifier (DEFAULT).
+- mode "filename": ONLY when the mission explicitly references a file name or module name.
+- Do NOT search for common words (the, how, why, where, investigate, discover, system, decide, between).
+- Extract the most relevant TECHNICAL terms from the mission, not generic verbs.
+- Do NOT hardcode identifiers you happen to know from a specific codebase; derive candidates generically from the mission concept.`;
 
     const res = await base44.integrations.Core.InvokeLLM({
       prompt,
@@ -257,12 +295,13 @@ Rules:
         properties: {
           queries: {
             type: "array",
-            maxItems: 3,
+            maxItems: MAX_DISCOVERY_QUERIES,
             items: {
               type: "object",
               properties: {
                 query: { type: "string" },
                 mode: { type: "string", enum: ["literal", "filename"] },
+                category: { type: "string", enum: ["literal_concept", "identifier_candidate"] },
               },
               required: ["query", "mode"],
             },
@@ -273,16 +312,18 @@ Rules:
     });
 
     const queries = (res as { queries?: Array<Record<string, unknown>> }).queries ?? [];
-    if (queries.length === 0) {
-      const term = this._extractSearchTerm(mission);
-      return [{ query: term, mode: "filename" }];
-    }
-    return queries
+    const mapped = queries
       .map((q) => ({
         query: String(q.query ?? "").trim(),
         mode: q.mode === "filename" ? "filename" : "literal",
       }))
       .filter((q) => q.query.length > 0);
+
+    if (mapped.length === 0) {
+      const term = this._extractSearchTerm(mission);
+      return [{ query: term, mode: "literal" }];
+    }
+    return mapped;
   }
 
   /**
@@ -314,6 +355,11 @@ Mission: "${ctx.query}"
 Evidence from the current wave:
 ${evidence}
 
+TOOL CAPABILITIES (factual, apply when interpreting evidence):
+- engineering.code.search: searches RECURSIVELY across the entire repository root (including /src, /lib, /base44, all subdirectories). It does NOT require listing subdirectories first. If it returns zero/poor results, the QUERY was likely inadequate — NOT a visibility/access problem.
+- engineering.repo.structure: lists the repository tree. It is NOT a prerequisite for code.search. Use it only for structural understanding or as a fallback after multiple failed searches.
+- engineering.file.read: reads a single file. REQUIRES a concrete path previously found in evidence (e.g., from a code.search result).
+
 Analyze the evidence and respond ONLY JSON:
 {
   "observations": [{"step": "step-id from above", "finding": "factual finding directly from this step output"}],
@@ -330,13 +376,15 @@ Analyze the evidence and respond ONLY JSON:
 }
 
 Rules:
-- observations: ONLY facts directly present in the evidence output. Do NOT infer.
-- gaps: specific unknowns that prevent fully answering the mission. Empty if sufficient.
-- nextActions: capabilities that could fill the gaps. Constraints:
-  - file.read: params MUST include "path" with a concrete path found in the evidence.
+- observations: ONLY facts directly present in the evidence output. Do NOT infer. Example of VALID observation: "Search for 'executionPath' returned ConversationPlanningEngine.ts." Example of INVALID observation: "The runtime must decide this somewhere."
+- gaps: specific unanswered questions. VALID gap: "Where 'executionPath' is assigned is still unknown." INVALID gap (FORBIDDEN): "Cannot access /src", "Source files are missing", "Lack of visibility into subdirectories". code.search is recursive — do NOT claim lack of directory access.
+- ZERO / LOW SEARCH RESULTS: if a code.search returned zero or very few matches, do NOT conclude the repository is inaccessible or source files are missing. Conclude instead that the QUERY was inadequate and produce code.search nextActions with REFORMULATED queries (different terms, identifiers, or broader/narrower variants). Do NOT repeat the exact same query already executed.
+- SEARCH RETURNED PATHS: if code.search returned file paths, PRIORITIZE file.read of the most relevant paths as nextActions (up to 8). Do NOT call repo.structure when useful paths are already available.
+- nextActions constraints:
+  - file.read: params MUST include "path" with a concrete path found in the evidence (from a search result).
   - code.references: params MUST include "symbol" with a concrete identifier found in the evidence.
-  - code.search: params MUST include "query" and "mode" (either "literal" or "filename").
-  - git.* / repo.structure: only if the mission asks about changes/repository state.
+  - code.search: params MUST include "query" and "mode" (literal or filename). The query MUST be DIFFERENT from any query already executed in this run (reformulate, do not repeat).
+  - git.* / repo.structure: only when the mission asks about changes/repository state, OR as a contextual fallback after at least two rounds of failed searches that produced no paths at all.
   - Max 8 nextActions total.
   - Do NOT include actions whose required params are NOT available from evidence.
 - sufficiency: 1.0 if the mission is fully answerable from current evidence alone; 0.0 if nothing relevant found; 0.75+ if mostly answerable with minor gaps.
