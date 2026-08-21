@@ -229,7 +229,7 @@ export function tryDecomposeKnownMission(
           mcpStep(
             2,
             "engineering.file.read",
-            { path: { $ref: "step-01.output.matches[0].path" } },
+            { path: { $ref: "step-01.output.matches[0]" } },
             ["step-01"],
           ),
         ],
