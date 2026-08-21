@@ -150,10 +150,18 @@ function inferSupervisedEngineering(userMessage: string): boolean {
   // Dominio do deepResearch — nao rouba "investigue a fundo" (mais especifico).
   if (/\b(a fundo|aprofundad|profund|deep research)\b/.test(msg)) return false;
 
-  // 1. Verbo investigativo + objeto investigativo (causa/bug/falha/impacto/...).
-  const INVESTIGATE_VERB = /\b(investigue|investigar|descubra|descobrir|determine a causa|determinar a causa|identifique a causa|identificar a causa|encontre a causa|encontrar a causa|ache a causa|find the root cause|find out why|figure out why)\b/;
+  // 1. Verbo investigativo + objeto investigativo (causa/bug/falha/impacto/...)
+  //    OU verbo investigativo + contexto de engenharia (memoryos/repo/codigo/
+  //    runtime/pipeline/implementado/...). O contexto de engenharia e necessario
+  //    porque o verbo investigativo sozinho e ambiguo: "investigue a historia
+  //    do imperio romano" / "investigue a origem da palavra saudade" NAO sao
+  //    engenharia e devem cair em general.conversation (LLLM). Mas "investigue
+  //    como o MemoryOS decide..." (memoryos) ou "descubra onde X e implementado"
+  //    (implementado) SAO engenharia e devem acionar supervisedEngineering.
+  const INVESTIGATE_VERB = /\b(investigue|investigar|descubra|descobrir|entenda|entender|compreenda|compreender|determine a causa|determinar a causa|identifique a causa|identificar a causa|encontre a causa|encontrar a causa|ache a causa|find the root cause|find out why|find out how|figure out why|figure out how|understand)\b/;
   const INVESTIGATE_OBJ = /\b(causa|cause|root cause|causa raiz|por que|porque|why|falha|falhou|falhando|failing|fails|failed|erro|error|bug|problema|problem|impacto|impact|arquitetura|architecture|quebrado|broken|nao funciona|parou|stopped)\b/;
-  if (INVESTIGATE_VERB.test(msg) && INVESTIGATE_OBJ.test(msg)) return true;
+  const ENGINEERING_CONTEXT = /\b(memoryos|memory os|repositorio|repo|codigo|code|runtime|pipeline|planner|orchestrat|connector|engine|modulo|funcao|function|metodo|method|component|componente|endpoint|api|mcp|engenharia|engineering|fast path|adaptive path|implementado|implementada|definido|definida|declarado|declarada|gerado|gerada)\b/;
+  if (INVESTIGATE_VERB.test(msg) && (INVESTIGATE_OBJ.test(msg) || ENGINEERING_CONTEXT.test(msg))) return true;
 
   // 2. "por que ... esta falhando/quebrado/bug" — framing investigativo direto.
   if (/\b(por que|porque|why)\b.{0,60}\b(falhando|falha|falhou|failing|fails|failed|quebrado|broken|nao funciona|parou|stopped|erro|error|bug)\b/.test(msg)) return true;
