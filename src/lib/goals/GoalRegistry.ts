@@ -22,6 +22,7 @@ import type { CognitiveIntent } from "@/lib/conversation-cognitive-gateway/CCGTy
 import { pickModelForMessage } from "@/lib/openrouter/categoryRouter";
 import { findAccountByMessageMention } from "@/lib/google-auth/GoogleMultiAccount";
 import { getActiveWorkspaceId } from "@/lib/workspace/WorkspaceContext";
+import { detectWriteMode, hasWriteVerb } from "@/lib/execution-intelligence/adaptive-process/OpenHandsChangeSet";
 
 // ── GoalDefinition ────────────────────────────────────────────────────────────
 
@@ -174,6 +175,22 @@ function inferSupervisedEngineering(userMessage: string): boolean {
   if (FIX_RE.test(msg) && VALIDATE_RE.test(msg)) return true;
   if (IMPLEMENT_RE.test(msg) && VALIDATE_RE.test(msg)) return true;
   if (FINDBUG_RE.test(msg) && (FIX_RE.test(msg) || VALIDATE_RE.test(msg))) return true;
+
+  // 4. Write verb + file path or engineering context → supervised engineering.
+  //    "Adicione um comentário em X.ts", "Corrija o bug em Runtime.ts",
+  //    "Implemente esta alteração no MemoryOS", "Modifique o SupervisedEngineeringProcess".
+  //    Detecta a NATUREZA da missão (engenharia) — o MODO (read/write) é resolvido
+  //    por detectWriteMode no extractParams, que respeita read-only override.
+  //    NÃO rouba pedidos atômicos: "leia src/A.ts" não tem write verb → cai em
+  //    inferEngMcpTool → engineering.file.read. "aplique patch" sem file path
+  //    → cai em inferEngMcpTool → engineering.file.patch.
+  const SE_FILE_PATH_RE = /\.(?:ts|tsx|js|jsx|mjs|cjs|json|jsonc|md|py|toml|yml|yaml|sh)\b/i;
+  if (hasWriteVerb(userMessage) && (SE_FILE_PATH_RE.test(msg) || ENGINEERING_CONTEXT.test(msg))) return true;
+
+  // 5. Investigative verb + explicit read-only constraint → supervised engineering (read).
+  //    "Investigue como funciona X. Não altere nada." → supervisedEngineering, mode=read.
+  const SE_READ_ONLY_RE = /\b(nao altere|nao modifique|somente leitura|read-only|nao mude|sem alterar|sem modificar|do not modify|do not change|read only)\b/;
+  if (INVESTIGATE_VERB.test(msg) && SE_READ_ONLY_RE.test(msg)) return true;
 
   return false;
 }
@@ -1655,7 +1672,7 @@ const _builtins: GoalDefinition[] = [
       const repository = repoMatch?.[1] ?? null;
       return {
         task: msg.trim(),
-        mode: "read",
+        mode: detectWriteMode(msg),
         ...(repository ? { repository } : {}),
       };
     },
@@ -1683,11 +1700,7 @@ const _builtins: GoalDefinition[] = [
       const repoMatch = norm.match(/\b([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}[A-Za-z0-9]?)\/[A-Za-z0-9._-]+)\b/);
       const repository = repoMatch?.[1] ?? "AndersonVitaease/memoryos";
 
-      // mode: write somente para verbos de alteracao explicitos; default read.
-      const WRITE_RE = /\b(corrija|corrigir|alterar|altere|editar|edite|implementar|implemente|criar|crie|remover|remova|refatorar|refatore|aplicar patch|commitar|commit|modificar|modifique|mudar|mude|atualizar|atualize|fix|patch|refactor|implement|create|delete|remove|modify|update|change)\b/i;
-      const mode: "read" | "write" = WRITE_RE.test(msg) ? "write" : "read";
-
-      // task: instrucao completa do usuario, preservada.
+      const mode = detectWriteMode(msg);
       return { task: msg.trim(), repository, mode };
     },
   },

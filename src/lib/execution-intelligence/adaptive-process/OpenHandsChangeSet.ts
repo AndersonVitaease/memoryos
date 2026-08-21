@@ -404,6 +404,7 @@ const WRITE_VERBS: readonly string[] = [
   "modifique", "modificar", "altere", "alterar",
   "mude", "mudar", "crie", "criar", "adicione", "adicionar",
   "remova", "remover", "atualize", "atualizar", "refatore", "refatorar",
+  "aplique", "aplicar",
   "fix", "implement", "modify", "change", "create", "update", "refactor",
 ];
 
@@ -431,4 +432,18 @@ export function detectWriteMode(query: string): "read" | "write" {
   }
 
   return "read";
+}
+
+/**
+ * Verifica se a query contem um verbo de escrita, SEM aplicar a precedencia
+ * read-only. Usado para detectar que a missao e de engenharia supervisionada
+ * (write verb + contexto tecnico) mesmo quando o modo final sera "read"
+ * (ex: "modifique X mas nao altere" → supervisedEngineering + mode=read).
+ *
+ * detectWriteMode resolve o modo; hasWriteVerb resolve a natureza da missao.
+ */
+export function hasWriteVerb(query: string): boolean {
+  if (!query) return false;
+  const q = query.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return WRITE_VERBS.some((v) => q.includes(v));
 }
