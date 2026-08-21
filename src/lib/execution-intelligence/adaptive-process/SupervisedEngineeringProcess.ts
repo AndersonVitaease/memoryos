@@ -31,6 +31,7 @@ const MAX_READS_PER_WAVE = 8;
 const MAX_DISCOVERY_QUERIES = 4;
 const SUFFICIENCY_THRESHOLD = 0.75;
 const MAX_REQUIREMENTS = 25;
+const MAX_TARGETED_VERIFICATIONS_PER_GAP = 2;
 
 // ── Adaptive Evidence Budget V1 ──────────────────────────────────────────────
 // Per-tool char budgets for evidence compaction in _reflectReadMode.
@@ -657,21 +658,113 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
     return [...identifiers].sort((a, b) => b.length - a.length);
   }
 
+  // ── Gap stopwords (minimal English filler) ─────────────────────────────────
+  // Reused alongside _COMMON_WORDS during gap tokenization. Kept minimal and
+  // deterministic — no stemming, no synonyms, no LLM.
+  private static readonly _GAP_STOPWORDS: ReadonlySet<string> = new Set([
+    "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
+    "to", "of", "in", "on", "at", "by", "for", "with", "about",
+    "between", "into", "through", "during", "before", "after",
+    "from", "up", "down", "out", "off", "over", "under", "again",
+    "then", "once", "here", "there", "when", "where", "why", "how",
+    "all", "each", "every", "both", "few", "more", "most", "other",
+    "some", "such", "not", "only", "same", "so", "than", "too",
+    "very", "can", "will", "just", "should", "now",
+    "what", "which", "who", "whom", "this", "that", "these", "those",
+    "do", "does", "did", "doing", "have", "has", "had", "having",
+    "it", "its", "as", "if", "or", "and", "but", "while",
+    "remains", "unidentified", "unknown", "still", "within",
+    "location", "logic", "explicitly", "specific", "codebase",
+    "happen", "happened", "makes", "make", "made",
+  ]);
+
   /**
-   * Targeted Verification Safety Net V1.
+   * Tokenizes a code identifier into lowercase sub-tokens.
+   * Handles: camelCase, PascalCase, snake_case, SCREAMING_SNAKE_CASE, kebab-case.
+   * Filters out common words and tokens shorter than 3 chars.
    *
-   * Runs AFTER the LLM reflector produces its reflection. If a concrete gap
-   * mentions an identifier that appeared in evidence, and no verification
-   * action was proposed for that identifier, injects ONE targeted action:
+   * Examples:
+   *   executionPath          → ["execution"]
+   *   ADAPTIVE_GOAL_TYPES    → ["adaptive", "goal"]
+   *   ConversationPlanningEngine → ["conversation", "planning", "engine"]
+   *   planningGoalType       → ["planning", "goal"]
+   *   _executionPath         → ["execution"]
+   */
+  private _tokenizeIdentifier(identifier: string): string[] {
+    if (!identifier) return [];
+    // 1. Replace kebab and snake separators with spaces.
+    let s = identifier.replace(/[-_]/g, " ");
+    // 2. Split camelCase / PascalCase on case transitions.
+    s = s.replace(/([a-z0-9])([A-Z])/g, "$1 $2");
+    s = s.replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2");
+    // 3. Lowercase, split, filter.
+    const tokens = s.toLowerCase().split(/\s+/)
+      .filter((t) => t.length >= 3)
+      .filter((t) => !SupervisedEngineeringProcess._COMMON_WORDS.has(t));
+    return tokens;
+  }
+
+  /**
+   * Tokenizes a natural-language gap into a set of lowercase tokens.
+   * Removes punctuation, splits on whitespace, filters common words and
+   * gap stopwords. No stemming, no synonyms.
+   */
+  private _tokenizeGap(gap: string): Set<string> {
+    if (!gap) return new Set();
+    let s = gap.toLowerCase();
+    s = s.replace(/[^a-z0-9]+/g, " ");
+    const tokens = s.split(/\s+/)
+      .filter((t) => t.length >= 3)
+      .filter(
+        (t) =>
+          !SupervisedEngineeringProcess._COMMON_WORDS.has(t) &&
+          !SupervisedEngineeringProcess._GAP_STOPWORDS.has(t),
+      );
+    return new Set(tokens);
+  }
+
+  /**
+   * Classifies an identifier as STRONG (structured symbol) or WEAK (plain word).
+   *
+   * STRONG: camelCase with case change, PascalCase, contains underscore,
+   *         SCREAMING_SNAKE_CASE, or multi-token compound identifier.
+   * WEAK:   plain lowercase single word (e.g. "adaptive", "fast").
+   *
+   * WEAK identifiers may receive code.search but NEVER code.references
+   * (code.references requires a real symbol, not a string literal).
+   */
+  private _classifyIdentifierStrength(
+    identifier: string,
+    tokens: string[],
+  ): "STRONG" | "WEAK" {
+    const hasUnderscore = identifier.includes("_");
+    const hasCaseChange = /[a-z]/.test(identifier) && /[A-Z]/.test(identifier);
+    const hasMultipleTokens = tokens.length >= 2;
+    if (hasUnderscore || hasCaseChange || hasMultipleTokens) return "STRONG";
+    return "WEAK";
+  }
+
+  /**
+   * Targeted Verification Safety Net V2.
+   *
+   * Runs AFTER the LLM reflector produces its reflection. If a gap has
+   * token overlap with an identifier from evidence, and no verification
+   * action was proposed for that identifier, injects targeted actions:
    *
    *   1. code.search(identifier, literal) — if not yet executed
-   *   2. code.references(identifier) — if code.search was already executed
+   *   2. code.references(identifier) — ONLY for STRONG identifiers,
+   *      if code.search was already executed
    *   3. nothing — if both strategies exhausted (allows stop)
    *
-   * Also caps sufficiency below threshold when a verifiable gap exists, to
-   * prevent premature stop() before the verification wave can execute.
+   * Matching V2 replaces literal substring matching with token-overlap:
+   * identifiers are tokenized (camelCase, snake_case, etc.) and individual
+   * tokens are checked as substrings in the gap text. This bridges the
+   * vocabulary gap between code identifiers and natural-language gaps.
    *
-   * Deterministic. No LLM. No hardcoded identifiers. Evidence-derived only.
+   * Ranking: overlap count (desc) → STRONG before WEAK → length (desc).
+   * Capped at MAX_TARGETED_VERIFICATIONS_PER_GAP per gap.
+   *
+   * Deterministic. No LLM. No hardcoded identifiers. No synonyms.
    */
   private _ensureTargetedVerification(
     reflection: EngineeringReflection,
@@ -703,55 +796,106 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
       }
     }
 
-    // For each gap, find identifiers mentioned in the gap text.
+    // ── Token-overlap matching V2 ───────────────────────────────────────
+    // Replaces literal substring matching. Tokenizes identifiers into
+    // sub-tokens (camelCase, snake_case, PascalCase) and checks if any
+    // significant token appears as a substring in the gap text. Ranks by
+    // overlap count, identifier strength (STRONG > WEAK), and length.
+    // Caps at MAX_TARGETED_VERIFICATIONS_PER_GAP per gap.
+    const addedActions: EngineeringNextAction[] = [];
+
     for (const gap of reflection.gaps) {
       const gapLower = gap.toLowerCase();
-      // Match identifiers that appear in the gap text (case-insensitive).
-      const matchingIds = identifiers.filter(
-        (id) => id.length >= 3 && gapLower.includes(id.toLowerCase()),
-      );
-      if (matchingIds.length === 0) continue;
+      const gapTokens = this._tokenizeGap(gap);
 
-      for (const id of matchingIds) {
+      // Score each identifier by token overlap with the gap.
+      const scored: Array<{
+        id: string;
+        overlap: number;
+        strength: "STRONG" | "WEAK";
+        tokens: string[];
+      }> = [];
+      const seenTokenSignatures = new Set<string>();
+
+      for (const id of identifiers) {
+        const tokens = this._tokenizeIdentifier(id);
+        if (tokens.length === 0) continue;
+
+        // Count how many identifier tokens appear as substrings in the gap.
+        const overlapping = tokens.filter((t) => gapLower.includes(t));
+        if (overlapping.length === 0) continue;
+
+        // Dedup by token signature: identifiers with the same significant
+        // tokens (e.g. executionPath and _executionPath) are redundant for
+        // search purposes — keep only the highest-ranked one.
+        const sig = [...new Set(tokens)].sort().join("|");
+        if (seenTokenSignatures.has(sig)) continue;
+        seenTokenSignatures.add(sig);
+
+        scored.push({
+          id,
+          overlap: overlapping.length,
+          strength: this._classifyIdentifierStrength(id, tokens),
+          tokens,
+        });
+      }
+
+      if (scored.length === 0) continue;
+
+      // Rank: overlap count (desc) → STRONG before WEAK → length (desc).
+      scored.sort((a, b) => {
+        if (b.overlap !== a.overlap) return b.overlap - a.overlap;
+        if (a.strength !== b.strength) return a.strength === "STRONG" ? -1 : 1;
+        return b.id.length - a.id.length;
+      });
+
+      // Inject up to MAX_TARGETED_VERIFICATIONS_PER_GAP actions per gap.
+      let injected = 0;
+      for (const { id, strength } of scored) {
+        if (injected >= MAX_TARGETED_VERIFICATIONS_PER_GAP) break;
+
         const queryKey = `${id.toLowerCase()}|literal`;
+        const idLower = id.toLowerCase();
 
-        // Already in nextActions? LLM already proposed it — don't duplicate.
-        if (existingSearchQueries.has(queryKey)) break;
-        if (existingRefSymbols.has(id.toLowerCase())) break;
+        // Already proposed by LLM? Don't duplicate.
+        if (existingSearchQueries.has(queryKey)) continue;
+        if (existingRefSymbols.has(idLower)) continue;
 
         // Strategy 1: code.search not yet executed → add it.
         if (!runQueries.has(queryKey)) {
-          const action: EngineeringNextAction = {
+          addedActions.push({
             type: "code.search",
             params: { query: id, mode: "literal" },
-            rationale: `Safety net: identifier "${id}" found in evidence is mentioned in gap "${gap.slice(0, 80)}" but no verification was proposed. Targeted search to find assignment/branch/call-site.`,
-          };
-          return {
-            ...reflection,
-            nextActions: [...reflection.nextActions, action],
-            sufficiency: Math.min(reflection.sufficiency, SUFFICIENCY_THRESHOLD - 0.01),
-          };
+            rationale: `Safety net V2: identifier "${id}" (tokens: ${this._tokenizeIdentifier(id).join(", ")}) has token overlap with gap "${gap.slice(0, 80)}". Targeted search to find assignment/branch/call-site.`,
+          });
+          existingSearchQueries.add(queryKey);
+          injected++;
+          continue;
         }
 
-        // Strategy 2: code.search executed but code.references not → add it.
-        if (!runRefs.has(id.toLowerCase())) {
-          const action: EngineeringNextAction = {
+        // Strategy 2: code.references — ONLY for STRONG identifiers.
+        // WEAK literals (e.g. "adaptive") must NOT use code.references.
+        if (strength === "STRONG" && !runRefs.has(idLower)) {
+          addedActions.push({
             type: "code.references",
             params: { symbol: id },
-            rationale: `Safety net: code.search for "${id}" already executed. Trying code.references to find call sites / assignments. Gap: "${gap.slice(0, 80)}"`,
-          };
-          return {
-            ...reflection,
-            nextActions: [...reflection.nextActions, action],
-            sufficiency: Math.min(reflection.sufficiency, SUFFICIENCY_THRESHOLD - 0.01),
-          };
+            rationale: `Safety net V2: code.search for "${id}" already executed. Trying code.references (STRONG symbol) to find call sites / assignments. Gap: "${gap.slice(0, 80)}"`,
+          });
+          existingRefSymbols.add(idLower);
+          injected++;
+          continue;
         }
-        // Both strategies exhausted for this identifier — try next matching id.
+        // Both strategies exhausted for this identifier — try next.
       }
     }
 
-    // No verifiable gap + identifier pair could be extended. Return as-is.
-    return reflection;
+    if (addedActions.length === 0) return reflection;
+
+    return {
+      ...reflection,
+      nextActions: [...reflection.nextActions, ...addedActions],
+      sufficiency: Math.min(reflection.sufficiency, SUFFICIENCY_THRESHOLD - 0.01),
+    };
   }
 
   private _rejectReason(action: EngineeringNextAction): string {
