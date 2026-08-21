@@ -555,6 +555,153 @@ function extractStartTaskError(rec: any): { errorDetail: string; hasDetail: bool
   return { errorDetail: '', hasDetail: false };
 }
 
+// ── Transient Git provider auth retry (V1) ───────────────────────────────────
+// Retry ONCE for the specific intermittent OpenHands Cloud error:
+//   "Git provider authentication issue when getting remote URL"
+// Evidence: same repo/credentials succeed sometimes, fail other times.
+// A single retry with 15s delay resolves transient Git provider auth failures.
+// Only this exact error signature triggers retry — all other errors return immediately.
+const TRANSIENT_GIT_AUTH_ERROR = 'Git provider authentication issue when getting remote URL';
+const TRANSIENT_RETRY_DELAY_MS = 15_000;
+const TRANSIENT_MAX_RETRIES = 1;
+
+interface StartTaskResult {
+  conversationId: string;
+  startTaskId: string;
+  error: string | null;
+  errorResponse: Record<string, unknown> | null;
+}
+
+/**
+ * Creates a NEW OpenHands conversation and polls the start-task until
+ * conversationId is available. Returns the conversationId on success,
+ * or a structured error on failure.
+ *
+ * Each call to this function creates a fresh conversation — retries do NOT
+ * reuse the failed start-task.
+ */
+async function createAndPollStartTask(opts: {
+  task: string;
+  repository: string;
+  mode: 'read' | 'write';
+  apiKey: string;
+  deadlineAt: number;
+}): Promise<StartTaskResult> {
+  const { task, repository, mode, apiKey, deadlineAt } = opts;
+  const headers = cloudHeaders(apiKey);
+
+  // 1) Create conversation
+  const createRes = await fetchJson(
+    CLOUD_BASE_URL + START_PATH,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        initial_message: {
+          content: [{
+            type: 'text',
+            text: mode === 'read'
+              ? `${task}\n\n---\nIMPORTANT: Read-only mode. Do NOT modify, create, or delete any files. Do NOT create commits or push. Do NOT run destructive commands. Only inspect and report what is asked.`
+              : task,
+          }],
+        },
+        selected_repository: repository,
+      }),
+    },
+    Math.min(60_000, Math.max(1, deadlineAt - Date.now())),
+  );
+
+  if (!createRes.ok) {
+    safeLog('create_failed', { httpStatus: createRes.status });
+    const error = createRes.data?.detail || createRes.data?.message || `OpenHands create failed (HTTP ${createRes.status})`;
+    return {
+      conversationId: '',
+      startTaskId: '',
+      error,
+      errorResponse: { ok: false, error, openhandsStatus: 'create_failed' },
+    };
+  }
+
+  const startTask = firstRecord(createRes.data) ?? {};
+  const startTaskId = String(startTask.id ?? '').trim();
+  let conversationId = String(startTask.app_conversation_id ?? startTask.conversation_id ?? '').trim();
+
+  safeLog('create_ok', {
+    startTaskId: startTaskId || null,
+    conversationId: conversationId || null,
+    startStatus: startTask.status ?? null,
+  });
+
+  // 2) Poll start-task until conversationId is available
+  while (!conversationId) {
+    if (!startTaskId) {
+      const error = 'OpenHands create response missing start task id/conversation id';
+      return {
+        conversationId: '',
+        startTaskId: '',
+        error,
+        errorResponse: { ok: false, error, openhandsStatus: 'invalid_create_response' },
+      };
+    }
+    if (Date.now() >= deadlineAt) {
+      const error = 'Timeout waiting for OpenHands conversation creation';
+      return {
+        conversationId: '',
+        startTaskId,
+        error,
+        errorResponse: { ok: false, error, openhandsStatus: 'timeout' },
+      };
+    }
+
+    await sleep(Math.min(POLL_INTERVAL_MS, Math.max(0, deadlineAt - Date.now())));
+    const startPoll = await fetchJson(
+      `${CLOUD_BASE_URL}${START_TASK_PATH}?ids=${encodeURIComponent(startTaskId)}`,
+      { method: 'GET', headers },
+      Math.min(30_000, Math.max(1, deadlineAt - Date.now())),
+    );
+    if (!startPoll.ok) {
+      safeLog('start_task_poll_failed', { httpStatus: startPoll.status, startTaskId });
+      const error = `OpenHands start-task polling failed (HTTP ${startPoll.status})`;
+      return {
+        conversationId: '',
+        startTaskId,
+        error,
+        errorResponse: { ok: false, error, openhandsStatus: 'start_poll_failed' },
+      };
+    }
+    const rec = firstRecord(startPoll.data);
+    const status = normalizeStatus(rec?.status);
+    conversationId = String(rec?.app_conversation_id ?? rec?.conversation_id ?? '').trim();
+    if (status === 'error' || status === 'failed') {
+      const { errorDetail, hasDetail } = extractStartTaskError(rec);
+      const errorMsg = hasDetail && errorDetail
+        ? errorDetail
+        : 'OpenHands failed while creating the conversation';
+      safeLog('start_task_failed', {
+        startTaskId: startTaskId || null,
+        status,
+        errorDetail: hasDetail ? errorDetail.slice(0, 500) : '(no detail available)',
+      });
+      return {
+        conversationId: '',
+        startTaskId,
+        error: errorMsg,
+        errorResponse: {
+          ok: false,
+          error: errorMsg,
+          openhandsStatus: status,
+          openhands_status: status,
+          start_task_id: startTaskId || null,
+          ...(conversationId ? { conversation_id: conversationId } : {}),
+          stage: 'start_task_failed',
+        },
+      };
+    }
+  }
+
+  return { conversationId, startTaskId, error: null, errorResponse: null };
+}
+
 export default async function (req: Request) {
   const startedAt = Date.now();
 
@@ -614,101 +761,45 @@ export default async function (req: Request) {
       });
     }
 
-    // 1) Criar task/conversation no OpenHands Cloud V1.
-    const createRes = await fetchJson(
-      CLOUD_BASE_URL + START_PATH,
-      {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          initial_message: {
-            // read mode: injeta instrucao explicita de somente leitura preservando
-            // a task original do usuario (acrescenta, nao reescreve).
-            content: [{
-              type: 'text',
-              text: mode === 'read'
-                ? `${task}\n\n---\nIMPORTANT: Read-only mode. Do NOT modify, create, or delete any files. Do NOT create commits or push. Do NOT run destructive commands. Only inspect and report what is asked.`
-                : task,
-            }],
-          },
-          selected_repository: repository,
-        }),
-      },
-      Math.min(60_000, Math.max(1, deadlineAt - Date.now())),
-    );
+    // 1-2) Create conversation + poll start-task, with transient Git auth retry.
+    // Only the specific intermittent error "Git provider authentication issue
+    // when getting remote URL" triggers a single retry with 15s delay.
+    // Each retry creates a NEW conversation (does NOT reuse the failed start-task).
+    let conversationId = '';
+    {
+      let attempt = 0;
+      while (true) {
+        attempt++;
+        const result = await createAndPollStartTask({ task, repository, mode, apiKey, deadlineAt });
 
-    if (!createRes.ok) {
-      safeLog('create_failed', { httpStatus: createRes.status });
-      return Response.json(
-        {
-          ok: false,
-          error: createRes.data?.detail || createRes.data?.message || `OpenHands create failed (HTTP ${createRes.status})`,
-          openhandsStatus: 'create_failed',
-        },
-        { status: createRes.status === 401 ? 401 : 502 },
-      );
-    }
+        if (result.conversationId) {
+          conversationId = result.conversationId;
+          if (attempt > 1) {
+            safeLog('retry_succeeded', { attempt, conversationId });
+          }
+          break;
+        }
 
-    const startTask = firstRecord(createRes.data) ?? {};
-    const startTaskId = String(startTask.id ?? '').trim();
-    let conversationId = String(startTask.app_conversation_id ?? startTask.conversation_id ?? '').trim();
+        // Retryable: ONLY the specific transient Git provider auth error.
+        const isRetryable = result.error !== null
+          && result.error.includes(TRANSIENT_GIT_AUTH_ERROR)
+          && attempt <= TRANSIENT_MAX_RETRIES
+          && (Date.now() + TRANSIENT_RETRY_DELAY_MS) < deadlineAt;
 
-    safeLog('create_ok', {
-      startTaskId: startTaskId || null,
-      conversationId: conversationId || null,
-      startStatus: startTask.status ?? null,
-    });
+        if (!isRetryable) {
+          return Response.json(result.errorResponse, { status: 502 });
+        }
 
-    // 2) A API V1 pode retornar apenas um start-task inicialmente.
-    while (!conversationId) {
-      if (!startTaskId) {
-        return Response.json(
-          { ok: false, error: 'OpenHands create response missing start task id/conversation id', openhandsStatus: 'invalid_create_response' },
-          { status: 502 },
-        );
-      }
-      if (Date.now() >= deadlineAt) {
-        return Response.json({ ok: false, error: 'Timeout waiting for OpenHands conversation creation', openhandsStatus: 'timeout' }, { status: 504 });
-      }
-
-      await sleep(Math.min(POLL_INTERVAL_MS, Math.max(0, deadlineAt - Date.now())));
-      const startPoll = await fetchJson(
-        `${CLOUD_BASE_URL}${START_TASK_PATH}?ids=${encodeURIComponent(startTaskId)}`,
-        { method: 'GET', headers },
-        Math.min(30_000, Math.max(1, deadlineAt - Date.now())),
-      );
-      if (!startPoll.ok) {
-        safeLog('start_task_poll_failed', { httpStatus: startPoll.status, startTaskId });
-        return Response.json(
-          { ok: false, error: `OpenHands start-task polling failed (HTTP ${startPoll.status})`, openhandsStatus: 'start_poll_failed' },
-          { status: 502 },
-        );
-      }
-      const rec = firstRecord(startPoll.data);
-      const status = normalizeStatus(rec?.status);
-      conversationId = String(rec?.app_conversation_id ?? rec?.conversation_id ?? '').trim();
-      if (status === 'error' || status === 'failed') {
-        const { errorDetail, hasDetail } = extractStartTaskError(rec);
-        const errorMsg = hasDetail && errorDetail
-          ? errorDetail
-          : 'OpenHands failed while creating the conversation';
-        safeLog('start_task_failed', {
-          startTaskId: startTaskId || null,
-          status,
-          errorDetail: hasDetail ? errorDetail.slice(0, 500) : '(no detail available)',
+        safeLog('retry_scheduled', {
+          attempt,
+          retry_delay_ms: TRANSIENT_RETRY_DELAY_MS,
+          failed_start_task_id: result.startTaskId || null,
+          error: sanitizeErrorDetail(result.error).slice(0, 300),
         });
-        return Response.json(
-          {
-            ok: false,
-            error: errorMsg,
-            openhandsStatus: status,
-            openhands_status: status,
-            start_task_id: startTaskId || null,
-            ...(conversationId ? { conversation_id: conversationId } : {}),
-            stage: 'start_task_failed',
-          },
-          { status: 502 },
-        );
+
+        await sleep(TRANSIENT_RETRY_DELAY_MS);
+
+        safeLog('retry_attempt', { attempt: attempt + 1 });
       }
     }
 
