@@ -24,7 +24,7 @@
  * na Sprint E-02.4 sem alterar este arquivo.
  */
 
-import type { ExecutionPlan }           from "@/lib/planning-engine-e022/ExecutionPlanTypes";
+import type { ExecutionPlan, ExecutionStep } from "@/lib/planning-engine-e022/ExecutionPlanTypes";
 import type {
   ExecutionStatus,
   ExecutionResult,
@@ -44,8 +44,9 @@ import { MockCapabilityExecutor }      from "./MockCapabilityExecutor";
 import { ExecutionDispatcher }         from "./ExecutionDispatcher";
 import { ExecutionOrchestrator }       from "./ExecutionOrchestrator";
 import { executionContextFactory }     from "./ExecutionContextFactory";
-import type { ExecutionPolicy }        from "./ExecutionPolicy";
+import type { ExecutionPolicy, ParallelismConfig } from "./ExecutionPolicy";
 import { DEFAULT_EXECUTION_POLICY }   from "./ExecutionPolicy";
+import { base44 } from "@/api/base44Client";
 
 // ── Event listener ────────────────────────────────────────────────────────────
 
@@ -234,8 +235,17 @@ export class ConversationRuntimeEngine {
         return this._finalize(ctx, "completed", t_start);
       }
 
+      // CC-02: MCP tool policy persistente por server+tool. Resolve maxConcurrent
+      // de MCPServerConfig.tool_policy[toolName] SOMENTE em waves homogeneas MCP
+      // (mesmo server + mesma toolName). Heterogenea/não-MCP → null → usa
+      // policy.parallelism (CC-01 capabilityConcurrency ou default enabled=false).
+      // Ausente/invalido → null → irrestrito preservado (nunca fallback para 1).
+      const mcpParallelism = await this._resolveMcpToolParallelism(plan.steps);
+      const resolvedParallelism: ParallelismConfig | undefined = mcpParallelism ?? policy.parallelism;
+
       const orchestration = await this._orchestrator.execute({
         steps: plan.steps,
+        parallelism: resolvedParallelism,
         isCancelled: () => ctx.cancelRequested,
         deadlineAt: ctx.timeoutAt ?? Infinity,
         dispatchStep: async (step) => {
@@ -423,6 +433,66 @@ export class ConversationRuntimeEngine {
     const executionReport = this._buildReport(ctx, executionResult, t_start);
 
     return { executionResult, executionReport };
+  }
+
+  /**
+   * CC-02: resolve ParallelismConfig a partir de MCPServerConfig.tool_policy
+   * para waves MCP homogeneas (mesmo server + mesma toolName).
+   *
+   * - Sem steps MCP mcp.callTool → null (não-MCP usa policy.parallelism).
+   * - Wave heterogenea (servers ou toolNames diferentes) → null (preserva
+   *   irrestrito; granularidade multi-recurso é etapa posterior).
+   * - tool_policy ausente/invalido/maxConcurrent invalido → null.
+   * - Homogenea com maxConcurrent inteiro positivo → {enabled:true, maxConcurrent}.
+   *
+   * Reutiliza MCPServerConfig (lookup por serverId via get, ou serverName via
+   * filter — mesmo padrão do MCPConnector). Nunca faz hardcode de toolName.
+   */
+  private async _resolveMcpToolParallelism(
+    steps: readonly ExecutionStep[],
+  ): Promise<ParallelismConfig | null> {
+    const mcpSteps = steps.filter((s) => s.connector === "mcp" && s.capability === "mcp.callTool");
+    if (mcpSteps.length === 0) return null;
+
+    let serverKey: string | null = null;
+    let resolveById = false;
+    let toolKey: string | null = null;
+
+    for (const s of mcpSteps) {
+      const p = s.parameters as Record<string, unknown>;
+      const id = typeof p.serverId === "string" ? p.serverId.trim() : "";
+      const name = typeof p.serverName === "string" ? p.serverName.trim() : "";
+      const srv = id || name;
+      const tool = typeof p.toolName === "string" ? p.toolName.trim() : "";
+      if (!srv || !tool) return null;
+      if (serverKey === null) {
+        serverKey = srv;
+        resolveById = !!id;
+        toolKey = tool;
+      } else if (srv !== serverKey || tool !== toolKey) {
+        return null; // heterogenea → sem bound
+      }
+    }
+
+    try {
+      let record: { tool_policy?: unknown } | null = null;
+      if (resolveById && serverKey) {
+        record = (await base44.entities.MCPServerConfig.get(serverKey)) as { tool_policy?: unknown } | null;
+      } else if (serverKey) {
+        const matches = (await base44.entities.MCPServerConfig.filter({ name: serverKey })) as Array<{ tool_policy?: unknown }>;
+        record = matches[0] ?? null;
+      }
+      const raw = record?.tool_policy;
+      if (!raw) return null;
+      const policy = typeof raw === "string" ? (() => { try { return JSON.parse(raw); } catch { return null; } })() : raw;
+      if (!policy || typeof policy !== "object") return null;
+      const entry = (policy as Record<string, unknown>)[toolKey!];
+      const mc = (entry as { maxConcurrent?: unknown })?.maxConcurrent;
+      if (typeof mc !== "number" || !Number.isFinite(mc) || !Number.isInteger(mc) || mc <= 0) return null;
+      return Object.freeze({ enabled: true, maxConcurrent: mc });
+    } catch {
+      return null; // lookup failure → preserva irrestrito
+    }
   }
 
   private _emit(
