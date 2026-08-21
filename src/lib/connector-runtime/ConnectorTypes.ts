@@ -74,6 +74,13 @@ export interface ConnectorMetadata {
   // Capabilities nao listadas assumem nao-composite (atomic). Nada le ainda.
   // Adaptive Process (Deep Research e futuros) declaram true aqui.
   capabilityComposite?: Record<string, boolean>;
+  // CC-01: mapa opcional capability-id -> maxConcurrent (bounded concurrency).
+  // Mesmo padrao de capabilityReversibility/capabilityComposite. O Runtime le
+  // este mapa (ExecutionRuntime._deriveParallelism) e converte em
+  // ExecutionPolicy.parallelism para o ExecutionOrchestrator. Ausente/invalido
+  // → parallelism.enabled=false (comportamento irrestrito preservado). NUNCA
+  // reduz para maxConcurrent=1 como fallback efetivo.
+  capabilityConcurrency?: Record<string, number>;
 }
 
 // ── Health ────────────────────────────────────────────────────────────────────
