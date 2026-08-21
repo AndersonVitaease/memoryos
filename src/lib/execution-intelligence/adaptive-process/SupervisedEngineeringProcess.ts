@@ -1029,29 +1029,67 @@ Rules:
     const prompt = `Synthesize an engineering investigation report in markdown.
 Mission: "${ctx.query}"
 Sufficiency reached: ${reflection.sufficiency}
-Hypothesis: ${engReflection.hypothesis ?? "(none)"}
+Hypothesis (UNVERIFIED — may be wrong; discard if contradicted by evidence below):
+${engReflection.hypothesis ?? "(none)"}
 Gaps remaining: ${JSON.stringify(reflection.gaps)}
 Observations: ${JSON.stringify(engReflection.observations ?? [])}
 
-Evidence (verbatim, truncated):
+Evidence (verbatim, truncated — THIS IS THE SOURCE OF TRUTH):
 ${JSON.stringify(evidence, null, 2)}
 
 Produce a markdown report with EXACTLY these sections:
 ## CONFIRMED
-Facts directly supported by verbatim evidence. Each fact MUST cite the [step-id] it came from. Do NOT include anything not literally in the evidence.
+Facts DIRECTLY demonstrated by verbatim evidence. Each fact MUST cite the [step-id] it came from. A fact is CONFIRMED only if the evidence literally contains the assignment, conditional branch, return value, or text that proves it.
+## CONDITIONAL
+Claims that are true ONLY under an explicit condition (e.g. "X causes Y WHEN Z"). State the condition verbatim from evidence. Never omit the condition. If the condition is absent from evidence, the claim is UNRESOLVED, not CONDITIONAL.
 ## INFERRED
-Conclusions derived by combining multiple pieces of evidence. Cite the [step-id]s used for each inference. Clearly mark these as derived, not direct.
+Conclusions DERIVED by combining multiple CONFIRMED facts. Cite the [step-id]s used. Mark clearly as derived, not direct.
 ## UNRESOLVED
 What could not be determined from the evidence collected. Reference the gaps.
 ## Summary
 A brief (3-5 sentence) answer to the mission question, noting confidence level.
 
-Rules:
-- CONFIRMED: base ONLY on verbatim content from the evidence. Cite step-id.
-- Do NOT invent facts, file names, or code that does not appear in the evidence.
+SYNTHESIS FIDELITY RULES (MANDATORY — violations corrupt the investigation):
+
+RULE 1 — DO NOT GENERALIZE CONDITIONS.
+If evidence proves "A AND B -> C", you MUST NOT synthesize "A -> C".
+A conjunction is not a single cause. Every observed condition must appear in the claim.
+
+RULE 2 — FALLTHROUGH IS NOT A DECISION.
+Distinguish three behaviors:
+  (a) A component DECIDES a value (assigns, returns, branches on it).
+  (b) A component DOES NOT HANDLE a case (returns null / skips) — this is FALLTHROUGH, not a decision.
+  (c) A SEPARATE mechanism then decides the value downstream.
+When component X returns null/skips, state "X does not handle this case (fallthrough)" — NEVER "X decides Y". The decision belongs to whichever component assigns the value.
+
+RULE 3 — PRESERVE NEGATIVE COUNTEREXAMPLES.
+If the evidence shows a case producing a result DIFFERENT from your generalization, you MUST preserve that case. Do NOT declare a universal rule that contradicts an observed outcome.
+If you observe outcomes O1, O2, O3 for different inputs, your synthesis must acknowledge ALL three. Do NOT collapse to two states.
+
+RULE 4 — DIFFERENT STRUCTURES ARE NOT ALIASES.
+If evidence shows two structures (sets, maps, registries) with different members or different roles, treat them as DISTINCT. Never describe them as "the same", "equivalent", or "aliases". Describe each structure's responsibility separately, even if they share some members.
+
+RULE 5 — CLAIM CLASSIFICATION (internal discipline).
+Before writing each claim, classify it:
+  - CONFIRMED: directly demonstrated by verbatim evidence.
+  - CONDITIONAL: true only under an explicit condition present in evidence.
+  - INFERRED: reasonable derivation, not directly proven.
+  - UNRESOLVED: insufficient evidence.
+Place each claim in the section matching its classification. A claim that needs a condition you cannot cite is UNRESOLVED.
+
+RULE 6 — SOURCE OF DECISION.
+When the mission asks "who/what decides X?", the answer is the location where X is ASSIGNED or the BRANCH that selects X — not merely the components that ran before. Trace to the assignment/conditional. A component that only runs before the assignment is upstream context, not the decider.
+
+RULE 7 — DO NOT INVENT SIMPLIFICATION.
+Do NOT collapse observed states to fewer than actually exist. If evidence shows N distinct possible outcomes, preserve all N. Removing intermediate states to produce a cleaner narrative is FORBIDDEN.
+
+GENERAL RULES:
+- CONFIRMED/CONDITIONAL: base ONLY on verbatim content from the evidence. Cite step-id.
+- Do NOT invent facts, file names, code, or structures that do not appear in the evidence.
 - If a file was read successfully, its content is fact.
 - If a search returned results, the file paths found are fact.
-- INFERRED items must be clearly derived from CONFIRMED evidence.`;
+- INFERRED items must be clearly derived from CONFIRMED evidence.
+- The hypothesis above is UNVERIFIED. If ANY evidence contradicts it, DISCARD the hypothesis and state the contradiction explicitly. Evidence ALWAYS overrides hypothesis.`;
 
     const report = (await base44.integrations.Core.InvokeLLM({ prompt })) as string;
     return report;
