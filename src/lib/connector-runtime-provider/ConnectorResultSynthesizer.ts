@@ -17,6 +17,7 @@
  */
 
 import type { ExecutionResult }        from "@/lib/runtime-engine/RuntimeTypes";
+import type { ExecutionPlan }          from "@/lib/planning-engine-e022/ExecutionPlanTypes";
 import type { UnifiedKnowledgeModel }  from "@/lib/knowledge-fusion-engine/KFETypes";
 import { base44 }            from "@/api/base44Client";
 import { SearchRanker }      from "@/lib/github-deep-analysis/SearchRanker";
@@ -48,6 +49,7 @@ export async function synthesizeConnectorResult(
   userMsg:  string,
   goalType: string,
   kfmModel?: UnifiedKnowledgeModel | null,
+  plan?:    ExecutionPlan | null,
 ): Promise<SynthesisResult> {
 
   // [AUDIT-PROBE][SYN-01] Synthesizer called — what did the Runtime return?
@@ -83,6 +85,21 @@ export async function synthesizeConnectorResult(
       }
     } catch { /* non-blocking */ }
     return { handled: false, response: null, connectorData: null };
+  }
+
+  // ── Multi-file read labeling ──────────────────────────────────────────────
+  // Map each step to the file path it was asked to read (from plan step
+  // parameters.arguments.path) so every output is labeled with its path. This
+  // lets the LLM attribute content per file and NEVER infer by filename. The
+  // StepResult itself carries no parameters, so the path is resolved from the
+  // plan and keyed by stepId.
+  const pathByStepId = new Map<string, string>();
+  if (plan) {
+    for (const s of plan.steps) {
+      const args = (s.parameters as Record<string, unknown> | null)?.arguments as Record<string, unknown> | null;
+      const p = args?.path;
+      if (typeof p === "string" && p.trim()) pathByStepId.set(s.id, p.trim());
+    }
   }
 
   // ── Runtime failed (auth, network, timeout, 401, 403) ────────────────────
@@ -183,6 +200,7 @@ export async function synthesizeConnectorResult(
   const _ranker = new SearchRanker();
 
   const connectorData = completedSteps.map((s) => {
+    const _path = pathByStepId.get(s.stepId);
     const isGitHubSearch =
       s.connector === "github" &&
       typeof s.capability === "string" &&
@@ -196,6 +214,7 @@ export async function synthesizeConnectorResult(
           connector:  s.connector,
           capability: s.capability,
           output:     { ...out, items: _ranker.rank(items, userMsg), _ranked: true },
+          ...(_path ? { path: _path } : {}),
         };
       }
     }
@@ -203,6 +222,7 @@ export async function synthesizeConnectorResult(
       connector:  s.connector,
       capability: s.capability,
       output:     s.output,
+      ...(_path ? { path: _path } : {}),
     };
   });
 
@@ -361,7 +381,7 @@ function _buildErrorResponse(result: ExecutionResult): string {
 function _buildSynthesisPrompt(
   userMsg:       string,
   goalType:      string,
-  connectorData: { connector: string; capability: string; output: unknown }[],
+  connectorData: { connector: string; capability: string; output: unknown; path?: string }[],
   kfmModel?:     UnifiedKnowledgeModel | null,
 ): string {
   // ── EF-44: Strip binary content before sending to LLM ────────────────────
@@ -433,12 +453,14 @@ REGRAS OBRIGATORIAS (EF-44 — Verified Execution Layer):
 - Se forem emails: mostrar remetente, assunto e trecho de cada um.
 - Se os dados incluirem "webContentLink" para um arquivo, apresente esse link como "Baixar diretamente: [link]" — é um link de download direto, diferente do link de visualização (webViewLink).
 - NAO mencionar detalhes tecnicos como "connector", "capability", "ExecutionResult", "output" etc.
+- Quando houver multiplos arquivos lidos (cada entrada com seu campo "path"), apresente o resultado de CADA arquivo separadamente, baseando-se SOMENTE no conteudo do output daquele path.
+- Se o output de um arquivo estiver ausente, vazio ou nulo, diga explicitamente que aquele arquivo nao pôde ser lido. NUNCA descrever conteudo, responsabilidade ou finalidade de um arquivo a partir do seu nome ou caminho — apenas a partir do conteudo real fornecido no output.
 - Resposta direta, sem introducao longa.`;
 }
 
 function _formatRawData(
   goalType:      string,
-  connectorData: { connector: string; capability: string; output: unknown }[],
+  connectorData: { connector: string; capability: string; output: unknown; path?: string }[],
 ): string {
   const lines: string[] = [`**Resultado de ${goalType}:**\n`];
   let addedContent = false;

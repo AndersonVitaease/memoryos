@@ -1137,6 +1137,7 @@ class ConversationPipeline {
             userMessage,
             goalBridgeResult.goal.type,
             kfmModel,
+            planResult.plan,
           );
 
           try {
