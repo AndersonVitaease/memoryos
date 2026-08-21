@@ -81,6 +81,13 @@ export interface ConnectorMetadata {
   // → parallelism.enabled=false (comportamento irrestrito preservado). NUNCA
   // reduz para maxConcurrent=1 como fallback efetivo.
   capabilityConcurrency?: Record<string, number>;
+  // CT-01: mapa opcional capability-id -> stepTimeoutMs override.
+  // Permite que capabilities long-running (ex: openhands.runTask, que pode
+  // executar ate o limite da plataforma ~300s) tenham um stepTimeout maior
+  // que o padrao do COMPOSITE_EXECUTION_POLICY (240s) sem aumentar globalmente.
+  // O Runtime le este mapa (ExecutionRuntime._deriveStepTimeout) e sobrescreve
+  // stepTimeoutMs + timeoutMs na policy derivada. Ausente/invalido → sem override.
+  capabilityTimeout?: Record<string, number>;
 }
 
 // ── Health ────────────────────────────────────────────────────────────────────

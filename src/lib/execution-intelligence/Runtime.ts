@@ -103,11 +103,22 @@ export class ExecutionRuntime {
     // Ausência/inválido → null → policy padrão (parallelism.enabled=false,
     // comportamento irrestrito preservado). Nunca reduz para maxConcurrent=1.
     const concurrencyParallelism = this._deriveParallelism(meta, capability);
+    // CT-01: step timeout override por capability (metadata opcional).
+    // Permite que capabilities long-running (ex: openhands.runTask = 300s)
+    // tenham stepTimeout maior que o padrão sem aumentar globalmente.
+    const stepTimeoutOverride = this._deriveStepTimeout(meta, capability);
     const basePolicy: ExecutionPolicy | undefined =
       (isComposite || isSubCapability) ? COMPOSITE_EXECUTION_POLICY : undefined;
-    const policy: ExecutionPolicy | undefined = concurrencyParallelism
-      ? Object.freeze({ ...(basePolicy ?? DEFAULT_EXECUTION_POLICY), parallelism: concurrencyParallelism })
+    const policyWithTimeout: ExecutionPolicy | undefined = stepTimeoutOverride
+      ? Object.freeze({
+          ...(basePolicy ?? DEFAULT_EXECUTION_POLICY),
+          stepTimeoutMs: stepTimeoutOverride,
+          timeoutMs: Math.max(basePolicy?.timeoutMs ?? DEFAULT_EXECUTION_POLICY.timeoutMs, stepTimeoutOverride),
+        })
       : basePolicy;
+    const policy: ExecutionPolicy | undefined = concurrencyParallelism
+      ? Object.freeze({ ...(policyWithTimeout ?? DEFAULT_EXECUTION_POLICY), parallelism: concurrencyParallelism })
+      : policyWithTimeout;
 
     // EI-07: Execution Intelligence itera investigators ativos (Convergence/API/LLM
     // Budget + grafo aciclivo) e enriquece enrichedParams antes do Safety Gate.
@@ -180,6 +191,18 @@ export class ExecutionRuntime {
     } catch (e) {
       return this._buildOutcome(request, "failed", null, (e as Error).message, reversibility, null, null);
     }
+  }
+
+  /**
+   * CT-01: deriva stepTimeoutMs override a partir de ConnectorMetadata.capabilityTimeout.
+   * - ausente/inválido (0, negativo, NaN, não-inteiro) → null → sem override.
+   * - positivo inteiro → retorna o valor (ms).
+   * Nunca reduz o timeout abaixo do padrão — apenas aumenta.
+   */
+  private _deriveStepTimeout(meta: ConnectorMetadata, capability: string): number | null {
+    const raw = meta.capabilityTimeout?.[capability];
+    if (typeof raw !== "number" || !Number.isFinite(raw) || !Number.isInteger(raw) || raw <= 0) return null;
+    return raw;
   }
 
   /**
