@@ -47,6 +47,7 @@ import { executionContextFactory }     from "./ExecutionContextFactory";
 import type { ExecutionPolicy, ParallelismConfig } from "./ExecutionPolicy";
 import { DEFAULT_EXECUTION_POLICY }   from "./ExecutionPolicy";
 import { base44 } from "@/api/base44Client";
+import { resolveResourcePolicies } from "./ResourcePolicyResolver";
 
 // ── Event listener ────────────────────────────────────────────────────────────
 
@@ -441,96 +442,14 @@ export class ConversationRuntimeEngine {
 
   /**
    * V1 RESOURCE-AWARE: resolve Map<resourceKey, maxConcurrent> para TODOS os
-   * steps da execução.
-   *
-   * - MCP (connector=mcp, capability=mcp.callTool): resourceKey =
-   *   `mcp:<serverName|serverId>:<toolName>` (serverName preferido — mesma
-   *   regra do ExecutionOrchestrator.resolveResourceKey). maxConcurrent lido de
-   *   MCPServerConfig.tool_policy[toolName]. Lookup batched por server.
-   * - Não-MCP: resourceKey = `<connector>:<capability>`. maxConcurrent lido de
-   *   ConnectorMetadata.capabilityConcurrency[capability] via registry global
-   *   (best-effort; ausente → irrestrito).
-   *
-   * Policy inválida (0, negativo, NaN, float) → ignorada (nunca fallback=1).
-   * Lookup failure → recurso fica irrestrito (nunca lança).
-   *
-   * Retorna mapa vazio quando nenhum recurso possui policy válida → o
-   * Orchestrator cai no caminho backward-compat (policy.parallelism).
+   * steps da execução. Delega ao ResourcePolicyResolver compartilhado (mesma
+   * implementação usada pelo DynamicWaveRunner — FAST e ADAPTIVE paths
+   * produzem políticas idênticas).
    */
   private async _resolveResourcePolicies(
     steps: readonly ExecutionStep[],
   ): Promise<Map<string, number>> {
-    const policies = new Map<string, number>();
-    const mcpPairs = new Map<string, { resolveById: boolean; serverKey: string; tool: string }>();
-    const serverCache = new Map<string, { tool_policy?: unknown } | null>();
-
-    for (const s of steps) {
-      if (s.connector === "mcp" && s.capability === "mcp.callTool") {
-        const p = s.parameters as Record<string, unknown>;
-        const name = typeof p.serverName === "string" ? p.serverName.trim() : "";
-        const id = typeof p.serverId === "string" ? p.serverId.trim() : "";
-        const server = name || id; // serverName preferido — consistência com resolveResourceKey
-        const tool = typeof p.toolName === "string" ? p.toolName.trim() : "";
-        if (!server || !tool) continue;
-        const key = `mcp:${server}:${tool}`;
-        if (!policies.has(key) && !mcpPairs.has(key)) {
-          mcpPairs.set(key, { resolveById: !name && !!id, serverKey: server, tool });
-        }
-      } else {
-        const key = `${s.connector}:${s.capability}`;
-        if (!policies.has(key)) {
-          const mc = this._lookupCapabilityConcurrency(s.connector, s.capability);
-          if (mc !== undefined) policies.set(key, mc);
-        }
-      }
-    }
-
-    for (const [key, { resolveById, serverKey, tool }] of mcpPairs) {
-      let record = serverCache.get(serverKey);
-      if (record === undefined) {
-        try {
-          if (resolveById) {
-            record = (await base44.entities.MCPServerConfig.get(serverKey)) as { tool_policy?: unknown } | null;
-          } else {
-            const matches = (await base44.entities.MCPServerConfig.filter({ name: serverKey })) as Array<{ tool_policy?: unknown }>;
-            record = matches[0] ?? null;
-          }
-        } catch {
-          record = null;
-        }
-        serverCache.set(serverKey, record);
-      }
-      const raw = record?.tool_policy;
-      if (!raw) continue;
-      const policyObj = typeof raw === "string" ? (() => { try { return JSON.parse(raw); } catch { return null; } })() : raw;
-      if (!policyObj || typeof policyObj !== "object") continue;
-      const entry = (policyObj as Record<string, unknown>)[tool];
-      const mc = (entry as { maxConcurrent?: unknown })?.maxConcurrent;
-      if (typeof mc === "number" && Number.isFinite(mc) && Number.isInteger(mc) && mc > 0) {
-        policies.set(key, mc);
-      }
-    }
-
-    return policies;
-  }
-
-  /**
-   * Best-effort lookup de capabilityConcurrency para connectors não-MCP.
-   * Lê do ConnectorRegistry global (wired pelo ConnectorRuntimeProvider).
-   * Ausente/inválido → undefined (recurso fica irrestrito). Nunca lança.
-   */
-  private _lookupCapabilityConcurrency(connectorId: string, capability: string): number | undefined {
-    try {
-      const reg = (globalThis as unknown as Record<string, unknown>).__REAL_RUNTIME_REGISTRY__;
-      if (!reg || typeof (reg as { get?: unknown }).get !== "function") return undefined;
-      const conn = (reg as { get: (id: string) => { metadata?: () => { capabilityConcurrency?: Record<string, number> } } | undefined }).get(connectorId);
-      const cc = conn?.metadata?.()?.capabilityConcurrency;
-      const mc = cc?.[capability];
-      if (typeof mc === "number" && Number.isFinite(mc) && Number.isInteger(mc) && mc > 0) return mc;
-      return undefined;
-    } catch {
-      return undefined;
-    }
+    return resolveResourcePolicies(steps);
   }
 
   private _emit(
