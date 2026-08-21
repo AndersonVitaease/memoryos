@@ -1125,6 +1125,20 @@ When the mission asks "who/what decides X?", the answer is the location where X 
 RULE 7 — DO NOT INVENT SIMPLIFICATION.
 Do NOT collapse observed states to fewer than actually exist. If evidence shows N distinct possible outcomes, preserve all N. Removing intermediate states to produce a cleaner narrative is FORBIDDEN.
 
+RULE 8 — UNDEFINED IS NOT AN ALIAS FOR A LABELED VALUE.
+When evidence shows that a field/variable receives an explicit string value (e.g. "fast", "adaptive") in one code path AND receives undefined (no assignment, no return, no label) in a different code path, you MUST treat these as THREE DISTINCT outcomes:
+  (a) Explicit value A — assigned by one mechanism.
+  (b) Explicit value B — assigned by a different mechanism.
+  (c) undefined / no label — the code path does NOT assign any label.
+undefined is NOT equivalent to any explicit value. It does NOT "enable", "trigger", "activate", "fall back to", or "act as" value A or B. undefined means ONLY: no label was assigned on that path.
+FORBIDDEN inferences:
+  - "undefined enables FAST PATH"
+  - "undefined acts as fast"
+  - "undefined is equivalent to fast"
+  - "when no label is set, fast is the default"
+These are all unsupported. An explicit label requires an explicit assignment or conditional branch producing that label. If the evidence does NOT show an assignment of "fast" on the undefined path, you MUST state that the value is undefined (no label) — NOT that it equals "fast".
+PRESERVE all three states distinctly in the report.
+
 GENERAL RULES:
 - CONFIRMED/CONDITIONAL: base ONLY on verbatim content from the evidence. Cite step-id.
 - Do NOT invent facts, file names, code, or structures that do not appear in the evidence.
