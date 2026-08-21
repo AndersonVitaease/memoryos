@@ -6,21 +6,21 @@
       "type": "string",
       "description": "ID da execucao (correlacao com SystemEvent / pipelineExecutionId)"
     },
-    "session_id": {
-      "type": "string",
-      "description": "Sessao de chat de origem (isolamento por usuario/sessao)"
-    },
     "step_id": {
       "type": "string",
       "description": "ID do step no ExecutionPlan que originou esta observacao"
     },
+    "session_id": {
+      "type": "string",
+      "description": "Sessao de chat de origem (isolamento por usuario/sessao)"
+    },
     "connector": {
       "type": "string",
-      "description": "Connector executado (ex: gmail, google-drive, github, microsoft-graph)"
+      "description": "Connector executado (ex: gmail, google-drive, github, microsoft-graph, mcp)"
     },
     "capability": {
       "type": "string",
-      "description": "Capability executada (ex: sendEmail, downloadFile, listFiles)"
+      "description": "Capability executada (ex: sendEmail, downloadFile, listFiles, mcp.callTool)"
     },
     "goal_type": {
       "type": "string",
@@ -71,6 +71,18 @@
     "payload": {
       "type": "string",
       "description": "JSON serializado de contexto adicional. Opcional."
+    },
+    "server": {
+      "type": "string",
+      "description": "Servidor MCP alvo (serverName preferido, fallback serverId) para steps connector=mcp/capability=mcp.callTool. Null para connectors nao-MCP ou quando ausente. Permite granularidade server+tool na telemetria de concorrencia."
+    },
+    "tool_name": {
+      "type": "string",
+      "description": "Tool MCP real executada (ex: engineering.file.read) para steps connector=mcp. Null para connectors nao-MCP. Lido de step.parameters.toolName, nunca hardcoded."
+    },
+    "semaphore_wait_ms": {
+      "type": "number",
+      "description": "Tempo (ms) que o step aguardou para adquirir vaga no semaphore do ExecutionOrchestrator, quando bounded concurrency (parallelism.enabled=true) esta ativo. 0 quando adquiriu imediatamente ou quando nao ha semaphore (parallelism.enabled=false). Permite medir backpressure real por wave."
     }
   },
   "required": [

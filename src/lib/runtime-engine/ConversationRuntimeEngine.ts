@@ -248,9 +248,9 @@ export class ConversationRuntimeEngine {
         parallelism: resolvedParallelism,
         isCancelled: () => ctx.cancelRequested,
         deadlineAt: ctx.timeoutAt ?? Infinity,
-        dispatchStep: async (step) => {
+        dispatchStep: async (step, semaphoreWaitMs = 0) => {
           ctx.currentStepIndex = plan.steps.indexOf(step);
-          return this._dispatchStep(ctx, step, policy);
+          return this._dispatchStep(ctx, step, policy, semaphoreWaitMs);
         },
       });
 
@@ -316,6 +316,7 @@ export class ConversationRuntimeEngine {
     ctx: RuntimeExecutionContext,
     step: import("@/lib/planning-engine-e022/ExecutionPlanTypes").ExecutionStep,
     policy: ExecutionPolicy,
+    semaphoreWaitMs = 0,
   ): Promise<import("./RuntimeTypes").StepResult> {
     this._emit(ctx, "execution_step_started", step.id);
 
@@ -343,6 +344,7 @@ export class ConversationRuntimeEngine {
         Math.max(100, (ctx.timeoutAt ?? Infinity) - Date.now()),
       ),
       connectorCtx: ctx.connectorCtx,
+      semaphoreWaitMs,
     });
 
     this._emit(ctx, "execution_step_completed", step.id);
