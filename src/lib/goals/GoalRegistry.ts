@@ -77,6 +77,18 @@ function normalizeMcpServerName(value: string | null | undefined): string | null
 function inferEngMcpTool(userMessage: string): string | null {
   const msg = userMessage.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
+  // ── Engineering file inspection: verbo de engenharia + path de arquivo ──
+  // Garante precedencia do ENG-MCP sobre o GitHub quando o usuario pede uma
+  // operacao de engenharia sobre arquivos/codigo do repositorio (local),
+  // inclusive com varios arquivos em linhas separadas. "repositorio" sozinho
+  // NAO basta — exige verbo de engenharia + path com extensao de codigo, o que
+  // preserva o GitHub para pedidos explicitos sobre o SERVICO GitHub
+  // (listar repos, PRs, issues, Actions). Nao rouba "liste meus repositorios
+  // no github" (sem path com extensao) nem "mostre os pull requests no github".
+  const ENG_FILE_VERB_RE = /\b(?:inspecione|inspect|examine|examinar|revise|revisar|analise|analyze|verifique|verificar|leia|ler|read|mostre|mostrar|show|liste|listar|abrir|abra)\b/;
+  const FILE_PATH_RE = /(?:[A-Za-z0-9_@.\-]+\/)*[A-Za-z0-9_@.\-]+\.(?:json|jsonc|ts|tsx|js|jsx|mjs|cjs|md|py|toml|yml|yaml|sh)\b/;
+  if (ENG_FILE_VERB_RE.test(msg) && FILE_PATH_RE.test(msg)) return "engineering.file.read";
+
   const rules: readonly [RegExp, string][] = [
     [/\b(typecheck|type check|checagem de tipos|verifique os tipos|verificar os tipos)\b/, "engineering.typecheck.run"],
     [/\b(eslint|lint|linter)\b/, "engineering.lint.run"],
@@ -85,6 +97,7 @@ function inferEngMcpTool(userMessage: string): string | null {
     [/\b(verificar contrato|verifique o contrato|contract verify|validar contrato|valide o contrato)\b/, "engineering.contract.verify"],
     [/\b(impacto da mudanca|impacto de mudanca|change impact|analise de impacto|analisar impacto)\b/, "engineering.change.impact"],
     [/\b(referencias? (?:do|da|de|para)|onde .*\b(?:usado|usada|referenciado|referenciada)|code references?)\b/, "engineering.code.references"],
+    [/\b(?:localize|localiza|procure|procurar|buscar|busque|pesquise|pesquisar|encontrar|encontre|find|locate|search for)\b.{0,80}\b(?:codigo|code)\b/, "engineering.code.search"],
     [/\b((?:buscar?|pesquisar?|procure?|localizar?|localize|localiza) (?:no|o|os|as|a)? ?codigo|onde .*\b(?:gerado|gerada|definido|definida|criado|criada|declarado|declarada|implementado|implementada)\b|code search)\b/, "engineering.code.search"],
     [/\b(estrutura (?:do|da) (?:repo|repositorio)|estrutura do projeto|repo structure|repository structure)\b/, "engineering.repo.structure"],
     [/\bstatus\b[^.\n]{0,30}\b(?:do|da)\b[^.\n]{0,20}\b(?:repositorio|repo)\b/, "engineering.git.status"],
