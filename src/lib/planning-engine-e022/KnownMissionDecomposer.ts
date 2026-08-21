@@ -103,12 +103,15 @@ const STATUS_VERB_RE =
 const FILE_EXT =
   "(?:ts|tsx|js|jsx|mjs|cjs|json|jsonc|md|py|toml|yml|yaml|sh|css|html|txt|env|lock)";
 
+// Negative lookahead prevents partial-extension matches (e.g. "package.js"
+// inside "package.json"). The extension must be followed by a non-alphanumeric
+// boundary to be considered complete.
 const FILE_PATH_RE = new RegExp(
-  `(?:[A-Za-z0-9_@.\\-]+\\/)*[A-Za-z0-9_@\\-]+\\.${FILE_EXT}`,
+  `(?:[A-Za-z0-9_@.\\-]+\\/)*[A-Za-z0-9_@\\-]+\\.${FILE_EXT}(?![A-Za-z0-9])`,
   "g",
 );
 
-const BARE_FILE_RE = new RegExp(`\\b[A-Za-z0-9_@\\-]+\\.${FILE_EXT}\\b`, "g");
+const BARE_FILE_RE = new RegExp(`\\b[A-Za-z0-9_@\\-]+\\.${FILE_EXT}(?![A-Za-z0-9])`, "g");
 
 function extractFileMentions(text: string): string[] {
   const candidates: { path: string; index: number }[] = [];

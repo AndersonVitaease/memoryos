@@ -54,6 +54,12 @@ import { tryDecomposeKnownMission } from "./KnownMissionDecomposer";
 
 type PlanningEventListener = (event: PlanningEvent) => void;
 
+// ── ADAPTIVE goal types — routed to AdaptiveProcess/SupervisedEngineering/OpenHands ─
+const ADAPTIVE_GOAL_TYPES: ReadonlySet<string> = new Set([
+  "supervisedEngineering",
+  "openhands.runTask",
+]);
+
 // ── ConversationPlanningEngine ────────────────────────────────────────────────
 
 export class ConversationPlanningEngine {
@@ -131,11 +137,12 @@ export class ConversationPlanningEngine {
         const missionSteps = [...mission.steps];
         this._assertAcyclic(missionSteps);
         this._assertReferences(missionSteps);
-        const plan = this._makePlan(planId, goal, missionSteps, "planned", t0, _mode);
+        const plan = this._makePlan(planId, goal, missionSteps, "planned", t0, _mode, "fast");
         this._track(plan);
         this._totalPlanned++;
         this._emit({ type: "planning_completed", goalId: goal.id, planId, planningTime: Date.now() - t0, stepCount: missionSteps.length, timestamp: Date.now() });
-        return { plan, success: true, error: null, durationMs: Date.now() - t0 };
+        RuntimeDebug.emit({ executionId: planId, connector: "planner", source: "Planner", event: "execution_path", payload: { execution_path: "fast", goalType: planningGoalType, stepCount: missionSteps.length } });
+        return { plan, success: true, error: null, durationMs: Date.now() - t0, executionPath: "fast" };
       }
 
       const descriptors = GoalCapabilityRegistry.resolve(planningGoalType as GoalType);
@@ -230,11 +237,15 @@ export class ConversationPlanningEngine {
       // engineering.file.read (read-only; never write tools / GitHub).
       const steps = this._expandMultiFileRead(builtSteps, planningParameters);
 
-      const plan = this._makePlan(planId, goal, steps, "planned", t0, _mode);
+      const _executionPath = ADAPTIVE_GOAL_TYPES.has(planningGoalType) ? "adaptive" : undefined;
+      const plan = this._makePlan(planId, goal, steps, "planned", t0, _mode, _executionPath);
       this._track(plan);
       this._totalPlanned++;
       this._emit({ type: "planning_completed", goalId: goal.id, planId, planningTime: Date.now() - t0, stepCount: steps.length, timestamp: Date.now() });
-      return { plan, success: true, error: null, durationMs: Date.now() - t0 };
+      if (_executionPath === "adaptive") {
+        RuntimeDebug.emit({ executionId: planId, connector: "planner", source: "Planner", event: "execution_path", payload: { execution_path: "adaptive", goalType: planningGoalType, stepCount: steps.length } });
+      }
+      return { plan, success: true, error: null, durationMs: Date.now() - t0, executionPath: _executionPath };
 
     } catch (err) {
       return this._fail(planId, goal, err instanceof Error ? err.message : "Unknown error", t0);
@@ -400,6 +411,7 @@ export class ConversationPlanningEngine {
     planId: string, goal: ConversationGoal,
     steps: ExecutionStep[], status: PlanStatus, t0: number,
     mode: ExecutionMode = "live",
+    executionPath?: "fast" | "adaptive",
   ): ExecutionPlan {
     return Object.freeze({
       id:         planId,
@@ -410,14 +422,15 @@ export class ConversationPlanningEngine {
       createdAt:  Date.now(),
       durationMs: Date.now() - t0,
       mode,
+      executionPath,
     });
   }
 
   private _fail(planId: string, goal: ConversationGoal, error: string, t0: number): PlanningResult {
-    const plan = this._makePlan(planId, goal, [], "invalid_goal", t0, "live");
+    const plan = this._makePlan(planId, goal, [], "invalid_goal", t0, "live", undefined);
     this._totalFailed++;
     this._emit({ type: "planning_failed", goalId: goal.id, planId, planningTime: Date.now() - t0, stepCount: 0, timestamp: Date.now() });
-    return { plan, success: false, error, durationMs: Date.now() - t0 };
+    return { plan, success: false, error, durationMs: Date.now() - t0, executionPath: undefined };
   }
 
   private _track(plan: ExecutionPlan): void {

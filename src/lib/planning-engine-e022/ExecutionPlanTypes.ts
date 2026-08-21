@@ -58,6 +58,11 @@ export interface ExecutionPlan {
   readonly durationMs: number;
   /** Sprint M1.12: execution mode. Defaults to "live" when absent. */
   readonly mode?:      ExecutionMode;
+  /** FAST/ADAPTIVE V1: "fast" = KnownMissionDecomposer produced a complete
+   *  deterministic plan; "adaptive" = open-ended mission routed to
+   *  AdaptiveProcess/SupervisedEngineering/OpenHands. Undefined = normal
+   *  connector/conversation flow (no engineering path designation). */
+  readonly executionPath?: "fast" | "adaptive";
 }
 
 // ── PlanningResult ─────────────────────────────────────────────────────────────
@@ -67,6 +72,8 @@ export interface PlanningResult {
   readonly success:    boolean;
   readonly error:      string | null;
   readonly durationMs: number;
+  /** FAST/ADAPTIVE V1 — mirrors plan.executionPath for convenience. */
+  readonly executionPath?: "fast" | "adaptive";
 }
 
 // ── Observability events (in-process only, no external telemetry) ─────────────
