@@ -488,6 +488,73 @@ async function continueExistingConversation(opts: {
   return Response.json({ ok: false, app_conversation_id: conversationId, execution_status: executionStatus || 'unknown', event_count: latestEvents.length, error: 'Timeout waiting for OpenHands continuation reply', openhandsStatus: 'continuation_timeout' }, { status: 504 });
 }
 
+// ── Start-task error extraction (diagnostic V1) ──────────────────────────────
+// Extracts the real error detail from the start-task record returned by
+// GET /api/v1/app-conversations/start-tasks?ids=<id> when status is
+// 'error' or 'failed'. Preserves the actual error reason instead of
+// returning a generic "failed while creating" message.
+//
+// Priority:
+//   1. rec.error as string (explicit error string)
+//   2. rec.message / rec.detail / rec.failure_reason / rec.failureReason / rec.reason
+//   3. rec.error.message / rec.error.detail (nested error object)
+//   4. fallback: empty (caller uses generic message)
+//
+// Sanitization: redacts common secret patterns from the extracted string.
+// Never logs or returns the entire record (which may contain session_api_key
+// or other credentials).
+
+const _SECRET_PATTERNS: readonly RegExp[] = [
+  /X-Access-Token[^\s]*/gi,
+  /X-Session-API-Key[^\s]*/gi,
+  /Bearer\s+[A-Za-z0-9_\-.]+/gi,
+  /session_api_key[^\s]*/gi,
+  /access_token[^\s]*/gi,
+  /refresh_token[^\s]*/gi,
+  /api[_-]?key[=:][^\s]*/gi,
+];
+
+function sanitizeErrorDetail(text: string): string {
+  let s = text;
+  for (const pattern of _SECRET_PATTERNS) {
+    s = s.replace(pattern, '[REDACTED]');
+  }
+  return s.trim().slice(0, 1000);
+}
+
+function extractStartTaskError(rec: any): { errorDetail: string; hasDetail: boolean } {
+  if (!rec || typeof rec !== 'object') return { errorDetail: '', hasDetail: false };
+
+  // 1. Explicit string error
+  if (typeof rec.error === 'string' && rec.error.trim()) {
+    return { errorDetail: sanitizeErrorDetail(rec.error), hasDetail: true };
+  }
+
+  // 2. message / detail / failure_reason / failureReason / reason
+  const candidates: unknown[] = [
+    rec.message, rec.detail, rec.failure_reason, rec.failureReason, rec.reason,
+  ];
+  for (const c of candidates) {
+    if (typeof c === 'string' && c.trim()) {
+      return { errorDetail: sanitizeErrorDetail(c), hasDetail: true };
+    }
+  }
+
+  // 3. Nested error.message / error.detail (when rec.error is an object)
+  if (rec.error && typeof rec.error === 'object' && !Array.isArray(rec.error)) {
+    const nested = rec.error as Record<string, unknown>;
+    if (typeof nested.message === 'string' && nested.message.trim()) {
+      return { errorDetail: sanitizeErrorDetail(nested.message), hasDetail: true };
+    }
+    if (typeof nested.detail === 'string' && nested.detail.trim()) {
+      return { errorDetail: sanitizeErrorDetail(nested.detail), hasDetail: true };
+    }
+  }
+
+  // 4. Fallback (no detail available)
+  return { errorDetail: '', hasDetail: false };
+}
+
 export default async function (req: Request) {
   const startedAt = Date.now();
 
@@ -621,8 +688,25 @@ export default async function (req: Request) {
       const status = normalizeStatus(rec?.status);
       conversationId = String(rec?.app_conversation_id ?? rec?.conversation_id ?? '').trim();
       if (status === 'error' || status === 'failed') {
+        const { errorDetail, hasDetail } = extractStartTaskError(rec);
+        const errorMsg = hasDetail && errorDetail
+          ? errorDetail
+          : 'OpenHands failed while creating the conversation';
+        safeLog('start_task_failed', {
+          startTaskId: startTaskId || null,
+          status,
+          errorDetail: hasDetail ? errorDetail.slice(0, 500) : '(no detail available)',
+        });
         return Response.json(
-          { ok: false, error: 'OpenHands failed while creating the conversation', openhandsStatus: status },
+          {
+            ok: false,
+            error: errorMsg,
+            openhandsStatus: status,
+            openhands_status: status,
+            start_task_id: startTaskId || null,
+            ...(conversationId ? { conversation_id: conversationId } : {}),
+            stage: 'start_task_failed',
+          },
           { status: 502 },
         );
       }
