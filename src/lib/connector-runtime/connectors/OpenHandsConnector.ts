@@ -116,7 +116,14 @@ export class OpenHandsConnector implements IConnector {
         mode,
       });
       const d = (res.data ?? res) as Record<string, unknown> | null;
-      if (d?.error) return fail(String(d.error), start, eid, logs, operation);
+      if (d?.error) {
+        const result = fail(String(d.error), start, eid, logs, operation);
+        // Pass-through structured error fields from backend (no reinterpretation, no LLM)
+        if (d && typeof d.openhands_status === "string") (result as Record<string, unknown>).openhands_status = d.openhands_status;
+        if (d && typeof d.start_task_id === "string") (result as Record<string, unknown>).start_task_id = d.start_task_id;
+        if (d && typeof d.stage === "string") (result as Record<string, unknown>).stage = d.stage;
+        return result;
+      }
 
       logs.push(
         makeLog("info", `[${operation}] mode=${mode} status=${d?.execution_status} replyChars=${String(d?.agent_reply_text ?? "").length}`),
