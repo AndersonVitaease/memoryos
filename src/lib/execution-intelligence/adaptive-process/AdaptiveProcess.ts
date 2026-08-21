@@ -139,8 +139,15 @@ export interface AdaptiveProcess {
    */
   planNextWave?(state: AdaptiveRunState, ctx: AdaptiveProcessContext): Promise<readonly ResearchStep[]>;
 
-  /** Executa os steps do plano, retornando os outcomes na ordem. */
-  invoke(
+  /**
+   * Executa os steps do plano, retornando os outcomes na ordem.
+   * Opcional: processos executados via DynamicWaveRunner NAO precisam
+   * implementar invoke() — o runner despacha cada step via ctx.dispatch
+   * (runtime.processCapability), nunca por este metodo. Processos que
+   * mantem run() proprio (ex: SupervisedCapacityProcess) usam invoke()
+   * internamente com seu proprio dispatchStep.
+   */
+  invoke?(
     steps: readonly ResearchStep[],
     ctx: AdaptiveProcessContext,
   ): Promise<readonly ExecutionOutcome[]>;

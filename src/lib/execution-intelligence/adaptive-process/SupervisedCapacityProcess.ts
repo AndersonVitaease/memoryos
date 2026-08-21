@@ -26,7 +26,6 @@ import type { ExecutionStep } from "@/lib/planning-engine-e022/ExecutionPlanType
 import type { StepResult } from "@/lib/runtime-engine/RuntimeTypes";
 import type { ParallelismConfig } from "@/lib/runtime-engine/ExecutionPolicy";
 import { ExecutionOrchestrator } from "@/lib/runtime-engine/ExecutionOrchestrator";
-import { MCPConnector } from "@/lib/connector-runtime/connectors/MCPConnector";
 import { CapacityReportAnalyzer } from "@/lib/operational-intelligence/CapacityReportAnalyzer";
 import type { CapacityReport } from "@/lib/operational-intelligence/CapacityReportAnalyzer";
 import { base44 } from "@/api/base44Client";
@@ -190,7 +189,6 @@ export class SupervisedCapacityProcess implements AdaptiveProcess {
   readonly description = "Supervised Capacity — experimental MCP tool capacity certification producing a recommendation (never applies).";
 
   private readonly _orchestrator = new ExecutionOrchestrator();
-  private readonly _connector = new MCPConnector();
   private _executionIds: string[] = [];
   private _levelByExecId = new Map<string, number>();
 
@@ -252,6 +250,19 @@ export class SupervisedCapacityProcess implements AdaptiveProcess {
     const params = this._extractParams(ctx);
     const outcomes: ExecutionOutcome[] = [];
 
+    // Resolve MCPConnector from ConnectorRegistry (normal path) instead of
+    // direct instantiation. The registry provides the initialized connector
+    // with proper context/health-check. Benchmark cannot use ctx.dispatch
+    // (runtime path) because processCapability applies ExecutionPolicy.retryConfig
+    // (retries) and ExecutionIntelligence.prepare (investigator overhead),
+    // corrupting latency/concurrency measurements.
+    let mcpConnector: { execute: (op: string, params: Record<string, unknown>, ctx: Record<string, unknown>) => Promise<{ status: string; data?: unknown; error?: string }> } | null = null;
+    try {
+      const { getRealConnectorRegistry } = await import("@/lib/connector-runtime-provider/ConnectorRuntimeProvider");
+      const registry = await getRealConnectorRegistry();
+      mcpConnector = (registry?.get("mcp") as typeof mcpConnector) ?? null;
+    } catch { mcpConnector = null; }
+
     for (const step of steps) {
       const level = Number(step.call.params.level);
       const rep = Number(step.call.params.rep);
@@ -280,7 +291,8 @@ export class SupervisedCapacityProcess implements AdaptiveProcess {
           let error: string | null = null;
           let output: unknown = null;
           try {
-            const cr = await this._connector.execute("mcp.callTool", s.parameters, {
+            if (!mcpConnector) throw new Error("mcp connector not registered in ConnectorRegistry");
+            const cr = await mcpConnector.execute("mcp.callTool", s.parameters, {
               executionId: execId,
               userId: "capacity-bench",
               projectId: "capacity-bench",
