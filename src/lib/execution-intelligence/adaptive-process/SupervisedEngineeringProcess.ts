@@ -32,6 +32,12 @@ const MAX_DISCOVERY_QUERIES = 4;
 const SUFFICIENCY_THRESHOLD = 0.75;
 const MAX_REQUIREMENTS = 25;
 
+// TEMP DIAG — module load marker (executes on import)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(globalThis as any).__ADAPTIVE_READ_DIAG_VERSION__ = "supervised-engineering-diag-v1";
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+(globalThis as any).__ADAPTIVE_READ_DIAG__ ??= [];
+
 // ── Evidence-based reflection extensions (read mode) ────────────────────────
 
 interface EngineeringObservation {
