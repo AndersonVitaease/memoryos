@@ -10,12 +10,18 @@
 
 import type { ExecutionStep } from "@/lib/planning-engine-e022/ExecutionPlanTypes";
 import type { StepResult } from "./RuntimeTypes";
+import type { ParallelismConfig } from "./ExecutionPolicy";
 
 export interface ExecutionOrchestratorInput {
   readonly steps: readonly ExecutionStep[];
   readonly dispatchStep: (step: ExecutionStep) => Promise<StepResult>;
   readonly isCancelled: () => boolean;
   readonly deadlineAt: number;
+  /** Bounded concurrency / backpressure for ready steps within a wave.
+   *  enabled=false (default) preserves the original Promise.all behavior:
+   *  all ready steps dispatch simultaneously. enabled=true caps in-flight
+   *  ready steps at maxConcurrent, with real awaiting (no polling/errors). */
+  readonly parallelism?: ParallelismConfig;
 }
 
 export interface ExecutionOrchestratorResult {
@@ -33,6 +39,7 @@ export class ExecutionOrchestrator {
    */
   async execute(input: ExecutionOrchestratorInput): Promise<ExecutionOrchestratorResult> {
     const { steps, dispatchStep, isCancelled, deadlineAt } = input;
+    const parallelism: ParallelismConfig = input.parallelism ?? { enabled: false, maxConcurrent: 1 };
     const byId = new Map(steps.map((step) => [step.id, step]));
     const remaining = new Set(steps.map((_, index) => index));
     const completed = new Set<string>();
@@ -63,7 +70,9 @@ export class ExecutionOrchestrator {
         throw new Error("ExecutionOrchestrator: cyclic or unresolved execution dependencies");
       }
 
-      const waveResults = await Promise.all(ready.map((index) => dispatchStep(steps[index])));
+      const waveResults = parallelism.enabled && parallelism.maxConcurrent > 0
+        ? await this._runBounded(ready, parallelism.maxConcurrent, (index) => dispatchStep(steps[index]))
+        : await Promise.all(ready.map((index) => dispatchStep(steps[index])));
 
       ready.forEach((index, position) => {
         remaining.delete(index);
@@ -89,5 +98,41 @@ export class ExecutionOrchestrator {
     if (step.dependsOn !== undefined) return step.dependsOn;
     const index = steps.findIndex((candidate) => candidate.id === step.id);
     return index > 0 ? [steps[index - 1].id] : [];
+  }
+
+  /**
+   * Bounded concurrency dispatcher (real backpressure via promise chaining).
+   * At most `maxConcurrent` ready steps are in flight at once; the rest
+   * await an acquired slot. No polling, no capacity-error, no retry-as-queue.
+   * Results are returned in input order (Promise.all semantics), so the
+   * existing waveResults[position] <-> ready[position] mapping is preserved.
+   */
+  private async _runBounded<T>(
+    items: readonly number[],
+    maxConcurrent: number,
+    fn: (index: number) => Promise<T>,
+  ): Promise<T[]> {
+    const limit = Math.max(1, Math.floor(maxConcurrent) || 1);
+    let available = limit;
+    const waiters: Array<() => void> = [];
+    const acquire = (): Promise<void> => {
+      if (available > 0) { available--; return Promise.resolve(); }
+      return new Promise<void>((resolve) => waiters.push(resolve));
+    };
+    const release = (): void => {
+      const next = waiters.shift();
+      if (next) next();
+      else available++;
+    };
+    return Promise.all(
+      items.map(async (index) => {
+        await acquire();
+        try {
+          return await fn(index);
+        } finally {
+          release();
+        }
+      }),
+    );
   }
 }
