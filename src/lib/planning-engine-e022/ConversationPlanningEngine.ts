@@ -127,7 +127,7 @@ export class ConversationPlanningEngine {
       }
 
       let idx = 0;
-      const steps: ExecutionStep[] = descriptors.map((desc) => {
+      const builtSteps: ExecutionStep[] = descriptors.map((desc) => {
         idx++;
         const mergedParams = { ...desc.params, ...planningParameters };
         // Observabilidade: emite evento no RuntimeDebug para conectores Drive.
@@ -169,6 +169,16 @@ export class ConversationPlanningEngine {
         });
       });
 
+      // Generic multi-file read expansion: a single mcp.callTool step targeting
+      // engineering.file.read whose rawText references multiple file paths
+      // expands into one INDEPENDENT step per path (dependsOn: [] => same
+      // ExecutionOrchestrator wave => parallel). Each step carries explicit
+      // arguments={path} so MCPConnector reads the actual file with zero LLM
+      // inference and zero name-based guessing. Reuses existing plan/runtime
+      // infra — no new engine/router/scheduler. Restricted to
+      // engineering.file.read (read-only; never write tools / GitHub).
+      const steps = this._expandMultiFileRead(builtSteps, planningParameters);
+
       const plan = this._makePlan(planId, goal, steps, "planned", t0, _mode);
       this._track(plan);
       this._totalPlanned++;
@@ -198,6 +208,73 @@ export class ConversationPlanningEngine {
   }
 
   // ── Private ────────────────────────────────────────────────────────────────
+
+  // ── Multi-file engineering read expansion (generic) ─────────────────────────
+  // Reuses existing ExecutionPlan + ExecutionOrchestrator parallel waves.
+  // No new engine/router/scheduler. Restricted to engineering.file.read.
+
+  private _extractFilePaths(rawText: string): string[] {
+    if (!rawText) return [];
+    // Path with a directory separator + extension (any ext 1-6 alnum chars).
+    const DIR_RE = /(?:[A-Za-z0-9_@.\-]+\/)+[A-Za-z0-9_@\-]+\.[A-Za-z0-9]{1,6}/g;
+    // Bare filename with a known code/config extension.
+    const BARE_RE = /\b[A-Za-z0-9_@\-]+\.(?:json|jsonc|ts|tsx|js|jsx|mjs|cjs|md|py|toml|yml|yaml|sh|css|html|txt|env|lock)\b/g;
+    // Collect matches with positions to preserve document order and dedupe.
+    const candidates: { path: string; index: number }[] = [];
+    let m: RegExpExecArray | null;
+    DIR_RE.lastIndex = 0;
+    while ((m = DIR_RE.exec(rawText)) !== null) candidates.push({ path: m[0], index: m.index });
+    // Skip a bare filename that is the terminal of an already-captured dir path
+    // (e.g. "GoalRegistry.ts" inside "src/lib/goals/GoalRegistry.ts") to avoid
+    // duplicate reads of the same file.
+    const dirTerminals = new Set(candidates.map((c) => c.path.slice(c.path.lastIndexOf("/") + 1)));
+    BARE_RE.lastIndex = 0;
+    while ((m = BARE_RE.exec(rawText)) !== null) {
+      if (dirTerminals.has(m[0])) continue;
+      candidates.push({ path: m[0], index: m.index });
+    }
+    candidates.sort((a, b) => a.index - b.index);
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const c of candidates) {
+      if (!seen.has(c.path)) { seen.add(c.path); out.push(c.path); }
+    }
+    return out;
+  }
+
+  private _expandMultiFileRead(
+    builtSteps: ExecutionStep[],
+    planningParameters: Record<string, unknown>,
+  ): ExecutionStep[] {
+    // Only expand a single mcp.callTool / engineering.file.read step.
+    if (builtSteps.length !== 1) return builtSteps;
+    const only = builtSteps[0];
+    if (only.connector !== "mcp" || only.capability !== "mcp.callTool") return builtSteps;
+
+    const pp = planningParameters;
+    const op = only.parameters as Record<string, unknown>;
+    const toolName = typeof pp.toolName === "string" ? pp.toolName : (typeof op.toolName === "string" ? op.toolName : "");
+    if (toolName !== "engineering.file.read") return builtSteps;
+
+    const rawText = typeof pp.rawText === "string" ? pp.rawText : (typeof op.rawText === "string" ? op.rawText : "");
+    if (!rawText) return builtSteps;
+
+    const paths = this._extractFilePaths(rawText);
+    // Single path: leave the existing single-step flow untouched (LLM resolution).
+    if (paths.length <= 1) return builtSteps;
+
+    const serverName = typeof pp.serverName === "string" ? pp.serverName : (typeof op.serverName === "string" ? op.serverName : "eng-mcp");
+    const baseParams: Record<string, unknown> = { toolName, serverName, rawText };
+    if (typeof op.bearerToken === "string") baseParams.bearerToken = op.bearerToken;
+
+    return paths.map((p, i) => Object.freeze({
+      id:         makeStepId(i + 1),
+      connector:  "mcp",
+      capability: "mcp.callTool",
+      parameters: Object.freeze({ ...baseParams, arguments: Object.freeze({ path: p }) }),
+      dependsOn:  Object.freeze([] as string[]),
+    }));
+  }
 
   private _makePlan(
     planId: string, goal: ConversationGoal,
