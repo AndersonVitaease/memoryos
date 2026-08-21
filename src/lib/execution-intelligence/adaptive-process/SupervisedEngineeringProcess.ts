@@ -751,6 +751,48 @@ RULE 8 — UNKNOWN OWNER:
   4. Only then broader conceptual terms.
 - Avoid speculative searches for vague concepts when identifiers are available.
 
+RULE 9 — TARGETED EVIDENCE VERIFICATION:
+- When a gap can be converted into a CONCRETE question about code
+  (where is identifier X assigned? where is symbol Y called? where does
+  field Z receive its value? where is branch B decided? where is function
+  F invoked?), PRIORITIZE a targeted code.search using that EXACT identifier
+  as the query — NOT a conceptual re-search and NOT a full file re-read.
+- The identifier MUST come from real evidence output (a class name, function
+  name, field name, constant name, literal value that appeared in prior step
+  outputs). NEVER invent an identifier that did not appear in evidence.
+- Targeted search is preferred over re-reading a large file when the file
+  was already read and only a specific line/assignment needs confirmation.
+- Rationale for the action MUST cite which evidence item the identifier came
+  from and what claim it will confirm or refute.
+
+RULE 10 — CLAIM VERIFICATION (CONFIRM OR REFUTE):
+- When the hypothesis or an observation makes a claim (e.g. "X is explicitly
+  assigned", "component Y decides Z"), your nextActions MUST include a
+  targeted verification of that claim: search the identifier that carries
+  the relevant state/decision.
+- If the targeted search finds the assignment/branch/call-site → claim is
+  CONFIRMED. Record this as an observation with classification DECISION_POINT
+  or IMPLEMENTATION.
+- If the targeted search does NOT find the assignment, or finds only a
+  MENTION (comment/string) without implementation → claim is REFUTED or
+  UNRESOLVED. Record the contradiction explicitly. Evidence ALWAYS overrides
+  the hypothesis.
+- Never leave a claim as "unresolved" when a concrete identifier exists in
+  evidence and a targeted search has not yet been performed for it.
+
+RULE 11 — PRESERVE THIRD STATE (TERNARY / CONDITIONAL FALLBACK):
+- When evidence shows a conditional expression of the form
+  "condition ? value_A : value_B" (including "condition ? value_A : undefined"),
+  you MUST preserve BOTH outcomes in observations and hypothesis.
+- Do NOT collapse "condition ? 'adaptive' : undefined" into only
+  "'adaptive' when condition is true" if the mission also requires knowing
+  the fallback. State: "condition true -> value_A; condition false -> value_B".
+- If value_B is undefined/null, state: "condition false -> undefined/null (no
+  value assigned)". This is a valid, distinct outcome — not an absence of
+  evidence.
+- Never declare a gap "unresolved" for a ternary whose both branches are
+  visible in evidence; classify both outcomes as CONFIRMED.
+
 ═══════════════════════════════════════════════════════════════════════════
 Analyze the evidence and respond ONLY JSON:
 ═══════════════════════════════════════════════════════════════════════════
