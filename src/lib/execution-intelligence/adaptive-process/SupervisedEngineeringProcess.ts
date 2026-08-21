@@ -25,6 +25,8 @@ import { base44 } from "@/api/base44Client";
 import type { ExecutionOutcome } from "../ExecutionTypes";
 import type { AdaptiveProcess, AdaptiveProcessContext, AdaptiveRunState, CompletionContract, CompletionRequirement, Reflection, ResearchStep } from "./AdaptiveProcess";
 import { DynamicWaveRunner } from "./DynamicWaveRunner";
+import { detectWriteMode } from "./OpenHandsChangeSet";
+import { runSupervisedWriteFlow } from "./SupervisedWriteFlow";
 
 const READ_MAX_ITERATIONS = 5;
 const MAX_READS_PER_WAVE = 8;
@@ -273,20 +275,14 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
   // ═══════════════════════════════════════════════════════════════════════════
 
   async run(ctx: AdaptiveProcessContext): Promise<ExecutionOutcome> {
-    if (ctx.request.params.mode === "write") {
-      // FASE 8 — Early return de proteção PRESERVADO.
-      // A ponte OpenHands -> ENG-MCP (change_set extraction + patch planner)
-      // está construida em OpenHandsChangeSet.ts, mas NÃO ativada nesta rodada.
-      // Nenhum patch real e despachado. Write mode permanece bloqueado.
-      return Object.freeze({
-        status: "failed" as const,
-        connectorId: ctx.request.connectorId,
-        capability: ctx.request.capability,
-        output: { completion: null, gaps: ["Supervised write mode requires a shared/continuable OpenHands workspace before activation."] },
-        message: "SupervisedEngineering write mode is not activated: OpenHands Cloud and ENG-MCP currently observe different working trees, so independent verification of file changes is not yet reliable.",
-        reversibility: "reversible" as const,
-        executionId: ctx.parentExecutionId,
-        durationMs: null,
+    const mode = this._resolveMode(ctx);
+    if (mode === "write") {
+      return runSupervisedWriteFlow(ctx, {
+        plan: (c) => this.plan(c),
+        deriveRequirements: (t) => this.deriveRequirements(t),
+        evaluate: (r, s, res) => this.evaluate(r, s, res),
+        synthesize: (s, res, ref, c) => this.synthesize(s, res, ref, c),
+        parseFileReadResult: (o) => this._parseFileReadResult(o),
       });
     }
     // ── Read mode: evidence-based adaptive loop via DynamicWaveRunner ───
@@ -1474,6 +1470,53 @@ GENERAL RULES:
 
     const report = (await base44.integrations.Core.InvokeLLM({ prompt })) as string;
     return report;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PRIVATE — Mode resolution (write routing)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  private _resolveMode(ctx: AdaptiveProcessContext): "read" | "write" {
+    if (ctx.request.params.mode === "write") return "write";
+    if (ctx.request.params.mode === "read") return "read";
+    return detectWriteMode(ctx.query);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PRIVATE — File read result parsing (for write mode apply)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  private _parseFileReadResult(outcome: ExecutionOutcome): { baseHash: string; content: string } | null {
+    if (outcome.status !== "success" || outcome.output == null) return null;
+    let data: unknown = outcome.output;
+    if (data && typeof data === "object" && !Array.isArray(data)) {
+      const obj = data as Record<string, unknown>;
+      if ("result" in obj && obj.result != null) data = obj.result;
+    }
+    if (Array.isArray(data) && data.length > 0) {
+      const first = data[0];
+      if (first && typeof first === "object" && !Array.isArray(first)) {
+        const item = first as Record<string, unknown>;
+        if (item.type === "text" && typeof item.text === "string") {
+          const parsed = this._tryParseJson(item.text);
+          if (parsed) data = parsed;
+        }
+      }
+    }
+    if (typeof data === "string") return { baseHash: "", content: data };
+    if (data && typeof data === "object" && !Array.isArray(data)) {
+      const obj = data as Record<string, unknown>;
+      const content = typeof obj.content === "string" ? obj.content :
+        typeof obj.text === "string" ? obj.text :
+        typeof obj.fileContent === "string" ? obj.fileContent :
+        typeof obj.source === "string" ? obj.source : "";
+      const baseHash = typeof obj.hash === "string" ? obj.hash :
+        typeof obj.baseHash === "string" ? obj.baseHash :
+        typeof obj.sha === "string" ? obj.sha :
+        typeof obj.checksum === "string" ? obj.checksum : "";
+      return { baseHash, content };
+    }
+    return null;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

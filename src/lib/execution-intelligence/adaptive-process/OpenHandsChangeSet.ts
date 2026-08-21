@@ -386,3 +386,49 @@ export function parseChangeSet(raw: unknown): OpenHandsChangeSet | null {
     files,
   };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// WRITE ROUTING — detect write intent from query (FASE 1)
+// ═══════════════════════════════════════════════════════════════════════════
+
+const READ_ONLY_OVERRIDE_PHRASES: readonly string[] = [
+  "nao altere", "nao modifique", "somente leitura", "read-only",
+  "nao mude", "mas nao altere", "mentalmente", "nao altere nada",
+  "nao modificar", "nao mudar", "sem alterar", "sem modificar",
+  "do not modify", "do not change", "do not alter", "don't modify",
+  "read only", "investigate only", "inspect only",
+];
+
+const WRITE_VERBS: readonly string[] = [
+  "corrija", "corrigir", "correcao", "implemente", "implementar",
+  "modifique", "modificar", "altere", "alterar",
+  "mude", "mudar", "crie", "criar", "adicione", "adicionar",
+  "remova", "remover", "atualize", "atualizar", "refatore", "refatorar",
+  "fix", "implement", "modify", "change", "create", "update", "refactor",
+];
+
+/**
+ * Detecta write mode a partir da query do usuario.
+ *
+ * Read-only precedence: se o usuario diz explicitamente "nao altere",
+ * "somente leitura", etc. -> mode="read" mesmo que contenha verbos de escrita.
+ *
+ * Caso contrario, se a query contem verbos de escrita (corrija, implemente,
+ * modifique, altere, etc.) -> mode="write".
+ *
+ * Default: "read" (preserva comportamento certificado).
+ */
+export function detectWriteMode(query: string): "read" | "write" {
+  if (!query) return "read";
+  const q = query.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+  for (const phrase of READ_ONLY_OVERRIDE_PHRASES) {
+    if (q.includes(phrase)) return "read";
+  }
+
+  for (const verb of WRITE_VERBS) {
+    if (q.includes(verb)) return "write";
+  }
+
+  return "read";
+}
