@@ -39,6 +39,12 @@ export interface ObservationInput {
   readonly sessionId?: string;
   readonly goalType?: string;
   readonly sprintTag?: string;
+  /** MCP server (serverName preferido, fallback serverId). Null para nao-MCP. */
+  readonly server?: string | null;
+  /** Tool MCP real (ex: engineering.file.read). Null para nao-MCP. */
+  readonly toolName?: string | null;
+  /** ms aguardando vaga no semaphore do ExecutionOrchestrator (0 se sem semaphore). */
+  readonly semaphoreWaitMs?: number;
 }
 
 // ── Estado interno ───────────────────────────────────────────────────────────
@@ -98,6 +104,9 @@ export const RuntimeObserver = {
         sprint_tag: input.sprintTag ?? DEFAULT_SPRINT_TAG,
         session_id: input.sessionId ?? null,
         payload: null,
+        server: input.server ?? null,
+        tool_name: input.toolName ?? null,
+        semaphore_wait_ms: input.semaphoreWaitMs ?? 0,
       });
     } catch {
       // Shadow mode: nunca propagar erro de instrumentacao para o fluxo real.

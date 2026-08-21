@@ -70,9 +70,11 @@ export class ExecutionOrchestrator {
         throw new Error("ExecutionOrchestrator: cyclic or unresolved execution dependencies");
       }
 
+      // O Orchestrator mede semaphore_wait_ms em _runBounded (bounded concurrency).
+      // Sem semaphore (parallelism.enabled=false) → 0 (sem espera).
       const waveResults = parallelism.enabled && parallelism.maxConcurrent > 0
-        ? await this._runBounded(ready, parallelism.maxConcurrent, (index) => dispatchStep(steps[index]))
-        : await Promise.all(ready.map((index) => dispatchStep(steps[index])));
+        ? await this._runBounded(ready, parallelism.maxConcurrent, (index, waitMs) => dispatchStep(steps[index], waitMs))
+        : await Promise.all(ready.map((index) => dispatchStep(steps[index], 0)));
 
       ready.forEach((index, position) => {
         remaining.delete(index);
@@ -110,11 +112,15 @@ export class ExecutionOrchestrator {
   private async _runBounded<T>(
     items: readonly number[],
     maxConcurrent: number,
-    fn: (index: number) => Promise<T>,
+    fn: (index: number, semaphoreWaitMs: number) => Promise<T>,
   ): Promise<T[]> {
     const limit = Math.max(1, Math.floor(maxConcurrent) || 1);
     let available = limit;
     const waiters: Array<() => void> = [];
+    // Todos os itens desta wave ficaram READY neste instante (o ready set da
+    // wave acabou de ser computado). semaphore_wait_ms = acquiredAt - readyAt:
+    // tempo entre o step estar pronto e adquirir vaga no semaphore.
+    const readyAt = Date.now();
     const acquire = (): Promise<void> => {
       if (available > 0) { available--; return Promise.resolve(); }
       return new Promise<void>((resolve) => waiters.push(resolve));
@@ -127,8 +133,9 @@ export class ExecutionOrchestrator {
     return Promise.all(
       items.map(async (index) => {
         await acquire();
+        const semaphoreWaitMs = Date.now() - readyAt;
         try {
-          return await fn(index);
+          return await fn(index, semaphoreWaitMs);
         } finally {
           release();
         }

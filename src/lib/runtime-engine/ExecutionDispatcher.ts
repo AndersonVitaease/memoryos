@@ -40,6 +40,8 @@ export interface DispatchInput {
   readonly stepTimeoutMs: number;
   /** B-03: real connector context forwarded from RuntimeExecutionContext.connectorCtx */
   readonly connectorCtx:  ConnectorExecutionContext;
+  /** ms que o step aguardou no semaphore do ExecutionOrchestrator (0 se sem semaphore). */
+  readonly semaphoreWaitMs?: number;
 }
 
 // ── ExecutionDispatcher ───────────────────────────────────────────────────────
@@ -53,11 +55,20 @@ export class ExecutionDispatcher {
    * Never throws — always returns a StepResult.
    */
   async dispatch(input: DispatchInput): Promise<StepResult> {
-    const { executionId, step, stepTimeoutMs, connectorCtx } = input;
+    const { executionId, step, stepTimeoutMs, connectorCtx, semaphoreWaitMs = 0 } = input;
     console.group("[TRACE-DISPATCH-03]");
     console.log({ connector: step.connector, capability: step.capability, executionId });
     console.groupEnd();
     const startedAt  = Date.now();
+
+    // MCP server + toolName para telemetria de concorrencia granular (server+tool).
+    // Lido de step.parameters (Planner), nunca hardcoded. Null para connectors nao-MCP.
+    const mcpParams = step.connector === "mcp" ? step.parameters : null;
+    const server = mcpParams
+      ? (typeof mcpParams.serverName === "string" ? mcpParams.serverName
+         : typeof mcpParams.serverId === "string" ? mcpParams.serverId : null)
+      : null;
+    const toolName = mcpParams && typeof mcpParams.toolName === "string" ? mcpParams.toolName : null;
     const retryCtx: RetryContext = { attempt: 1, maxAttempts: 1, lastError: null };
     // [RUNTIME-PROBE][EXD-01] ExecutionDispatcher.dispatch() entered
     console.log("[RUNTIME-PROBE][EXD-01]", {
@@ -110,6 +121,9 @@ export class ExecutionDispatcher {
         sessionId: connectorCtx.sessionId,
         goalType: step.goalType,
         sprintTag: "S1-OIE",
+        server,
+        toolName,
+        semaphoreWaitMs,
       }).catch(() => { /* shadow mode: swallow */ });
 
       return Object.freeze({
@@ -153,6 +167,9 @@ export class ExecutionDispatcher {
         sessionId: connectorCtx.sessionId,
         goalType: step.goalType,
         sprintTag: "S1-OIE",
+        server,
+        toolName,
+        semaphoreWaitMs,
       }).catch(() => { /* shadow mode: swallow */ });
 
       return Object.freeze({
