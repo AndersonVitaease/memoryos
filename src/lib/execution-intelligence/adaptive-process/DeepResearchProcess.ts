@@ -21,9 +21,11 @@ import type { ExecutionOutcome } from "../ExecutionTypes";
 import type {
   AdaptiveProcess,
   AdaptiveProcessContext,
+  AdaptiveRunState,
   Reflection,
   ResearchStep,
 } from "./AdaptiveProcess";
+import { DynamicWaveRunner } from "./DynamicWaveRunner";
 
 // OPT: 5 iteracoes x (1 plan + N invoke + 1 reflect) + 3 sinteses = ~38
 // chamadas LLM, estourando o timeout COMPOSITE de 4min. Reduzido para 2 — a
@@ -485,35 +487,77 @@ REGRAS CRITICAS (Aterramento estrito + AUTO-VERIFICACAO):
     return report;
   }
 
-  async run(ctx: AdaptiveProcessContext): Promise<ExecutionOutcome> {
-    const allResults: ExecutionOutcome[] = [];
-    const allSteps: ResearchStep[] = [];
-    let reflection: Reflection = { byStep: new Map(), gaps: [], sufficiency: 0 };
+  /**
+   * Dynamic Re-planning V1: generate next wave based on accumulated state.
+   * Uses LLM to interpret gaps and decide what to search/read next.
+   */
+  async planNextWave(state: AdaptiveRunState, ctx: AdaptiveProcessContext): Promise<readonly ResearchStep[]> {
+    if (state.gaps.length === 0) return [];
 
-    for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
-      const steps = await this.plan(ctx);
-      if (steps.length === 0) break;
+    const evidenceSnippet = state.completedSteps
+      .map(({ step, result }) => {
+        const out = result.status === "success" && result.output != null
+          ? JSON.stringify(result.output).slice(0, 600)
+          : `(failed: ${result.message ?? result.status})`;
+        return `[${step.id}] ${step.call.connectorId}.${step.call.capability} -> ${out}`;
+      })
+      .join("\n");
 
-      const results = await this.invoke(steps, ctx);
-      allSteps.push(...steps);
-      allResults.push(...results);
+    const prompt = `You are the re-planner for a deep research mission. The previous wave left gaps.
+Generate 1-3 NEW sub-research steps to fill the gaps. Do NOT repeat steps already executed.
 
-      reflection = await this.reflect(steps, results, ctx);
-      if (this.stop(reflection)) break;
-    }
+Original query: "${ctx.query}"
+Gaps found: ${JSON.stringify(state.gaps)}
 
-    const report = await this.synthesize(allSteps, allResults, reflection, ctx);
+Completed steps (do NOT repeat):
+${evidenceSnippet}
 
-    return Object.freeze({
-      status: "success" as const,
-      connectorId: ctx.request.connectorId,
-      capability: ctx.request.capability,
-      output: report,
-      message: null,
-      reversibility: "safe" as const,
-      executionId: ctx.parentExecutionId,
-      durationMs: null,
+Available capabilities:
+- base44 (web): {capability: "ai.invokeLLM", params: {prompt: "...", add_context_from_internet: true}}
+- github (code): {capability: "files.get", params: {owner, repo, path}}
+- github (search): {capability: "search.symbol", params: {query}}
+- google-drive (docs): {capability: "drive.files.search", params: {query}}
+
+Respond ONLY JSON: {steps: [{connectorId, capability, params, rationale}]}`;
+
+    const res = await base44.integrations.Core.InvokeLLM({
+      prompt,
+      response_json_schema: {
+        type: "object",
+        properties: {
+          steps: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                connectorId: { type: "string" },
+                capability: { type: "string" },
+                params: { type: "object" },
+                rationale: { type: "string" },
+              },
+              required: ["connectorId", "capability", "params", "rationale"],
+            },
+          },
+        },
+        required: ["steps"],
+      },
     });
+
+    const data = (res as { steps?: Array<Record<string, unknown>> }).steps ?? [];
+    return data.map((s, i) => ({
+      id: `step-nextwave-${i + 1}`,
+      call: {
+        connectorId: String(s.connectorId ?? ""),
+        capability: String(s.capability ?? ""),
+        params: (s.params as Record<string, unknown>) ?? {},
+      },
+      rationale: String(s.rationale ?? ""),
+    }));
+  }
+
+  async run(ctx: AdaptiveProcessContext): Promise<ExecutionOutcome> {
+    const runner = new DynamicWaveRunner();
+    return runner.run(this, ctx, { maxIterations: MAX_ITERATIONS });
   }
 }
 
