@@ -36,7 +36,7 @@ import type {
   ResearchStep,
 } from "./AdaptiveProcess";
 import type { ExecutionOutcome } from "../ExecutionTypes";
-import { base44 } from "@/api/base44Client";
+import { resolveResourcePolicies } from "@/lib/runtime-engine/ResourcePolicyResolver";
 
 const DEFAULT_MAX_ITERATIONS = 5;
 const DEFAULT_DEADLINE_MS = 120000;
@@ -97,64 +97,6 @@ function toOutcome(
     executionId: ctx.parentExecutionId,
     durationMs: result.durationMs,
   });
-}
-
-// ── Resource policy resolution (same pattern as ConversationRuntimeEngine) ──
-
-async function resolveResourcePolicies(
-  steps: readonly ExecutionStep[],
-): Promise<Map<string, number>> {
-  const policies = new Map<string, number>();
-  const mcpPairs = new Map<string, { serverKey: string; tool: string }>();
-  const serverCache = new Map<string, { tool_policy?: unknown } | null>();
-
-  for (const s of steps) {
-    if (s.connector === "mcp" && s.capability === "mcp.callTool") {
-      const p = s.parameters as Record<string, unknown>;
-      const name = typeof p.serverName === "string" ? p.serverName.trim() : "";
-      const id = typeof p.serverId === "string" ? p.serverId.trim() : "";
-      const server = name || id;
-      const tool = typeof p.toolName === "string" ? p.toolName.trim() : "";
-      if (!server || !tool) continue;
-      const key = `mcp:${server}:${tool}`;
-      if (!policies.has(key) && !mcpPairs.has(key)) {
-        mcpPairs.set(key, { serverKey: server, tool });
-      }
-    }
-  }
-
-  for (const [, { serverKey, tool }] of mcpPairs) {
-    let record = serverCache.get(serverKey);
-    if (record === undefined) {
-      try {
-        const matches = await base44.entities.MCPServerConfig.filter({ name: serverKey });
-        record = (matches[0] as { tool_policy?: unknown } | undefined) ?? null;
-      } catch {
-        record = null;
-      }
-      serverCache.set(serverKey, record);
-    }
-    const raw = record?.tool_policy;
-    if (!raw) continue;
-    const policyObj =
-      typeof raw === "string"
-        ? (() => {
-            try {
-              return JSON.parse(raw);
-            } catch {
-              return null;
-            }
-          })()
-        : raw;
-    if (!policyObj || typeof policyObj !== "object") continue;
-    const entry = (policyObj as Record<string, unknown>)[tool];
-    const mc = (entry as { maxConcurrent?: unknown })?.maxConcurrent;
-    if (typeof mc === "number" && Number.isFinite(mc) && Number.isInteger(mc) && mc > 0) {
-      policies.set(`mcp:${serverKey}:${tool}`, mc);
-    }
-  }
-
-  return policies;
 }
 
 // ── DynamicWaveRunner ────────────────────────────────────────────────────────
