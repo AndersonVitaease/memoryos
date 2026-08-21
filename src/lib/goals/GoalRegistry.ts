@@ -87,6 +87,7 @@ function inferEngMcpTool(userMessage: string): string | null {
     [/\b(referencias? (?:do|da|de|para)|onde .*\b(?:usado|usada|referenciado|referenciada)|code references?)\b/, "engineering.code.references"],
     [/\b((?:buscar?|pesquisar?|procure?|localizar?|localize|localiza) (?:no|o|os|as|a)? ?codigo|onde .*\b(?:gerado|gerada|definido|definida|criado|criada|declarado|declarada|implementado|implementada)\b|code search)\b/, "engineering.code.search"],
     [/\b(estrutura (?:do|da) (?:repo|repositorio)|estrutura do projeto|repo structure|repository structure)\b/, "engineering.repo.structure"],
+    [/\bstatus\b[^.\n]{0,30}\b(?:do|da)\b[^.\n]{0,20}\b(?:repositorio|repo)\b/, "engineering.git.status"],
     [/\b(status (?:do|da) (?:git|repo|repositorio)|git status|estado (?:do|da) repositorio)\b/, "engineering.git.status"],
     [/\b(git diff|diff (?:do|da) (?:git|repo|repositorio)|alteracoes pendentes|mudancas pendentes)\b/, "engineering.git.diff"],
     [/\b(branches|branchs|git branches|listar branches|liste as branches)\b/, "engineering.git.branches"],
@@ -102,12 +103,58 @@ function inferEngMcpTool(userMessage: string): string | null {
     [/\b(aplicar patch|aplique patch|file patch|patch no arquivo)\b/, "engineering.file.patch"],
     [/\b(criar arquivo|crie (?:o )?arquivo|file create)\b/, "engineering.file.create"],
     [/\b(ler arquivo|leia (?:o )?arquivo|read file)\b.*\b(?:repo|repositorio|codigo|memoryos|src\/)/, "engineering.file.read"],
+    [/\b(?:leia|ler|read)\s+([A-Za-z0-9_@.\-]+\/[A-Za-z0-9_@.\-\/.]+|[A-Za-z0-9_@.\-]+\.(?:json|jsonc|ts|tsx|js|jsx|mjs|cjs|md|py|toml|yml|yaml|sh))\b/, "engineering.file.read"],
   ];
 
   for (const [pattern, toolName] of rules) {
     if (pattern.test(msg)) return toolName;
   }
   return null;
+}
+
+// ── Supervised Engineering auto-routing (complex/investigative missions) ────
+// Detecta missoes compostas/investigativas e roteia automaticamente para
+// supervisedEngineering (mode=read), sem exigir "engenharia supervisionada" na
+// frase. Reutiliza a GoalDefinition ja registrada — nao cria nova definicao,
+// connector ou engine.
+//
+// Precedencia (em matchBySignals):
+//   1. Enderecamento MCP explicito (preservado).
+//   2. MISSAO COMPOSTA/investigativa -> supervisedEngineering (este detector).
+//   3. Operacao engineering.* atomica -> ENG-MCP direto (inferEngMcpTool).
+//   4. Sinais genericos dos connectors.
+//
+// Principio: COMBINACAO de acoes dependentes ou framing investigativo >
+// operacao atomica unica. "procure X" continua ENG-MCP direto; "investigue
+// por que X falha e encontre a causa" vira supervisedEngineering. Nao promove
+// por palavra isolada.
+//
+// ASCII puro nos patterns: a normalizacao NFD remove acentos do input, entao
+// os sinais literais em ASCII casam com input acentuado normalizado.
+function inferSupervisedEngineering(userMessage: string): boolean {
+  const msg = userMessage.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+  // Dominio do deepResearch — nao rouba "investigue a fundo" (mais especifico).
+  if (/\b(a fundo|aprofundad|profund|deep research)\b/.test(msg)) return false;
+
+  // 1. Verbo investigativo + objeto investigativo (causa/bug/falha/impacto/...).
+  const INVESTIGATE_VERB = /\b(investigue|investigar|descubra|descobrir|determine a causa|determinar a causa|identifique a causa|identificar a causa|encontre a causa|encontrar a causa|ache a causa|find the root cause|find out why|figure out why)\b/;
+  const INVESTIGATE_OBJ = /\b(causa|cause|root cause|causa raiz|por que|porque|why|falha|falhou|falhando|failing|fails|failed|erro|error|bug|problema|problem|impacto|impact|arquitetura|architecture|quebrado|broken|nao funciona|parou|stopped)\b/;
+  if (INVESTIGATE_VERB.test(msg) && INVESTIGATE_OBJ.test(msg)) return true;
+
+  // 2. "por que ... esta falhando/quebrado/bug" — framing investigativo direto.
+  if (/\b(por que|porque|why)\b.{0,60}\b(falhando|falha|falhou|failing|fails|failed|quebrado|broken|nao funciona|parou|stopped|erro|error|bug)\b/.test(msg)) return true;
+
+  // 3. Combinacoes de acoes dependentes (fix+validate, implement+test, findbug+fix).
+  const FIX_RE = /\b(corrija|corrigir|corrige|correcao|fix|conserte|consertar|resolver|resolva)\b/;
+  const VALIDATE_RE = /\b(valide\w*|validar\w*|validacao|validate\w*|verifique\w*|verificar\w*|verificacao|verify|testes?\b|testar\b|test suite|run (?:the )?tests?\b|rode (?:os )?testes?\b)\b/;
+  const IMPLEMENT_RE = /\b(implemente|implementar|implementacao|implement|crie a feature|criar a feature|build the feature|desenvolva|desenvolver)\b/;
+  const FINDBUG_RE = /\b(encontre o bug|encontrar o bug|find the bug|find a bug|ache o bug|localize o bug|identifique o bug)\b/;
+  if (FIX_RE.test(msg) && VALIDATE_RE.test(msg)) return true;
+  if (IMPLEMENT_RE.test(msg) && VALIDATE_RE.test(msg)) return true;
+  if (FINDBUG_RE.test(msg) && (FIX_RE.test(msg) || VALIDATE_RE.test(msg))) return true;
+
+  return false;
 }
 
 // ── GoalRegistry ──────────────────────────────────────────────────────────────
@@ -195,6 +242,19 @@ class GoalRegistryClass {
         const def = this._definitions.find((d) => d.type === target as GoalType);
         if (def) return def;
       }
+    }
+
+    // ── Auto: missoes complexas/investigativas -> supervisedEngineering ─────
+    // Principio: MISSAO COMPOSTA > OPERACAO ATOMICA INCIDENTAL. Se a frase
+    // expressa uma missao investigativa (investigue + causa/bug/falha) ou uma
+    // combinacao de acoes dependentes (corrija+valide, implemente+teste,
+    // encontre o bug+corrija), roteia para supervisedEngineering (mode=read),
+    // que orquestra OpenHands + ENG-MCP com CompletionContract. Nao promove
+    // tarefas de unica operacao atomica ("procure X", "rode o typecheck"):
+    // essas continuam no ENG-MCP direto abaixo.
+    if (inferSupervisedEngineering(userMessage)) {
+      const seDef = this._definitions.find((d) => d.type === "supervisedEngineering" as GoalType);
+      if (seDef) return seDef;
     }
 
     // ── ENG-MCP first for explicit engineering operations ───────────────────
