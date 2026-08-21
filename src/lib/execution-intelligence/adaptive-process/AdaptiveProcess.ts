@@ -94,6 +94,27 @@ export interface AdaptiveProcessContext {
   readonly query: string;
 }
 
+// ── Adaptive Run State (Dynamic Re-planning V1) ──────────────────────────────
+
+/**
+ * Estado acumulado durante uma run do DynamicWaveRunner. Passado para
+ * planNextWave() para que o processo possa gerar a proxima wave com base
+ * nos resultados reais da execucao anterior — steps que ainda NAO existiam
+ * no plano inicial.
+ *
+ * NAO e entidade persistente — e transitório, vive apenas durante a run.
+ */
+export interface AdaptiveRunState {
+  /** Iteracao atual (0-based: 0 = apos primeira wave, 1 = apos segunda, etc). */
+  readonly iteration: number;
+  /** Todos os steps concluidos ate agora com seus outcomes. */
+  readonly completedSteps: readonly { readonly step: ResearchStep; readonly result: ExecutionOutcome }[];
+  /** Gaps detectados na ultima reflection. */
+  readonly gaps: readonly string[];
+  /** Reflection completa da ultima iteracao (null na primeira chamada). */
+  readonly reflection: Reflection | null;
+}
+
 // ── Interface base ───────────────────────────────────────────────────────────
 
 /**
@@ -108,8 +129,15 @@ export interface AdaptiveProcess {
   readonly id: string;
   readonly description: string;
 
-  /** Monta plano dinamico de sub-capabilities para a query. */
+  /** Monta plano dinamico de sub-capabilities para a query (primeira wave). */
   plan(ctx: AdaptiveProcessContext): Promise<readonly ResearchStep[]>;
+
+  /**
+   * Dynamic Re-planning V1: gera a proxima wave com base no estado acumulado.
+   * Recebe os outcomes reais da iteracao anterior e decide quais NOVOS steps
+   * executar. Se ausente, o DynamicWaveRunner re-chama plan() (backward-compat).
+   */
+  planNextWave?(state: AdaptiveRunState, ctx: AdaptiveProcessContext): Promise<readonly ResearchStep[]>;
 
   /** Executa os steps do plano, retornando os outcomes na ordem. */
   invoke(

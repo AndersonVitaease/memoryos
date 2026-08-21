@@ -1,7 +1,8 @@
 /** Supervised engineering: OpenHands executes; MemoryOS verifies completion. */
 import { base44 } from "@/api/base44Client";
 import type { ExecutionOutcome } from "../ExecutionTypes";
-import type { AdaptiveProcess, AdaptiveProcessContext, CompletionContract, CompletionRequirement, Reflection, ResearchStep } from "./AdaptiveProcess";
+import type { AdaptiveProcess, AdaptiveProcessContext, AdaptiveRunState, CompletionContract, CompletionRequirement, Reflection, ResearchStep } from "./AdaptiveProcess";
+import { DynamicWaveRunner } from "./DynamicWaveRunner";
 
 const MAX_ITERATIONS = 2;
 const MAX_REQUIREMENTS = 25;
@@ -11,9 +12,25 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
   readonly description = "Supervised Engineering — OpenHands execution with completion verification";
 
   async plan(ctx: AdaptiveProcessContext): Promise<readonly ResearchStep[]> {
+    const mode = ctx.request.params.mode === "write" ? "write" : "read";
+
+    // ── Read mode: discovery wave only (NO OpenHands) ────────────────────
+    // Dynamic Re-planning V1: wave 1 is just discovery (search). Subsequent
+    // waves (file.read) are born from real search output via planNextWave().
+    if (mode !== "write") {
+      const searchTerm = this._extractSearchTerm(ctx.query);
+      return [
+        {
+          id: "discovery-search",
+          call: { connectorId: "mcp", capability: "mcp.callTool", params: { serverName: "eng-mcp", toolName: "engineering.code.search", arguments: { query: searchTerm, mode: "filename" } } },
+          rationale: `Search for "${searchTerm}" to locate relevant files.`,
+        },
+      ];
+    }
+
+    // ── Write mode: existing plan (OpenHands + verification) ────────────
     const repository = typeof ctx.request.params.repository === "string" ? ctx.request.params.repository : "AndersonVitaease/memoryos";
     const appConversationId = typeof ctx.request.params.app_conversation_id === "string" ? ctx.request.params.app_conversation_id : "";
-    const mode = ctx.request.params.mode === "write" ? "write" : "read";
     const openHandsParams: Record<string, unknown> = { task: ctx.query, repository, mode };
     if (appConversationId) openHandsParams.app_conversation_id = appConversationId;
     const steps: ResearchStep[] = [
@@ -24,12 +41,41 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
       { id: "verify-diff", call: { connectorId: "mcp", capability: "mcp.callTool", params: { serverName: "eng-mcp", toolName: "engineering.git.diff", arguments: {} } }, rationale: "Verify actual repository changes." },
       { id: "verify-log", call: { connectorId: "mcp", capability: "mcp.callTool", params: { serverName: "eng-mcp", toolName: "engineering.git.log", arguments: { limit: 1 } } }, rationale: "Compare HEAD after execution with the baseline." },
     ];
-    const filePath = mode !== "write" ? this.extractFilePath(ctx.query) : null;
+    const filePath = this.extractFilePath(ctx.query);
     if (filePath) steps.push({ id: "verify-file-read", call: { connectorId: "mcp", capability: "mcp.callTool", params: { serverName: "eng-mcp", toolName: "engineering.file.read", arguments: { path: filePath } } }, rationale: "Verify the target file content independently through ENG-MCP." });
     const q = ctx.query.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     if (/\b(typecheck|type check|typescript|checagem de tipos|verificar tipos)\b/.test(q)) steps.push({ id: "verify-typecheck", call: { connectorId: "mcp", capability: "mcp.callTool", params: { serverName: "eng-mcp", toolName: "engineering.typecheck.run", arguments: {} } }, rationale: "Verify TypeScript typecheck with ENG-MCP." });
     if (/\b(lint|eslint|linter)\b/.test(q)) steps.push({ id: "verify-lint", call: { connectorId: "mcp", capability: "mcp.callTool", params: { serverName: "eng-mcp", toolName: "engineering.lint.run", arguments: {} } }, rationale: "Verify lint with ENG-MCP." });
     if (/\b(test|tests|teste|testes)\b/.test(q)) steps.push({ id: "verify-tests", call: { connectorId: "mcp", capability: "mcp.callTool", params: { serverName: "eng-mcp", toolName: "engineering.test.run", arguments: { mode: /\bintegration\b/.test(q) ? "integration" : "suite" } } }, rationale: "Verify requested tests with ENG-MCP." });
+    return steps;
+  }
+
+  /**
+   * Dynamic Re-planning V1: generate next wave from real search output.
+   * Looks at completed code.search results, extracts file paths, and
+   * generates engineering.file.read steps for each found file.
+   * These steps did NOT exist in the initial plan — they are born from
+   * the actual execution output of the previous wave.
+   */
+  async planNextWave(state: AdaptiveRunState, _ctx: AdaptiveProcessContext): Promise<readonly ResearchStep[]> {
+    const steps: ResearchStep[] = [];
+
+    for (const { step, result } of state.completedSteps) {
+      if (result.status !== "success" || result.output == null) continue;
+
+      const toolName = step.call.params?.toolName;
+      if (toolName !== "engineering.code.search") continue;
+
+      const paths = this._extractPathsFromOutput(result.output);
+      for (const path of paths.slice(0, 10)) {
+        steps.push({
+          id: `read-${steps.length + 1}`,
+          call: { connectorId: "mcp", capability: "mcp.callTool", params: { serverName: "eng-mcp", toolName: "engineering.file.read", arguments: { path } } },
+          rationale: `Read ${path} found in search results.`,
+        });
+      }
+    }
+
     return steps;
   }
 
@@ -44,6 +90,27 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
   }
 
   async reflect(steps: readonly ResearchStep[], results: readonly ExecutionOutcome[], ctx: AdaptiveProcessContext): Promise<Reflection> {
+    const byStep = new Map<string, ExecutionOutcome>();
+    steps.forEach((s, i) => byStep.set(s.id, results[i]));
+
+    // ── Read mode: deterministic reflection (no LLM) ─────────────────────
+    if (ctx.request.params.mode !== "write") {
+      const hasSearch = steps.some((s) => s.call.params?.toolName === "engineering.code.search");
+      const hasReads = steps.some((s) => s.call.params?.toolName === "engineering.file.read");
+      const successfulReads = steps.filter((s, i) =>
+        s.call.params?.toolName === "engineering.file.read" && results[i]?.status === "success",
+      ).length;
+
+      if (hasSearch && !hasReads) {
+        return { byStep, gaps: ["Read files found in search results"], sufficiency: 0.3 };
+      }
+      if (successfulReads > 0) {
+        return { byStep, gaps: [], sufficiency: 0.9 };
+      }
+      return { byStep, gaps: [], sufficiency: 0.5 };
+    }
+
+    // ── Write mode: existing LLM-based reflection ────────────────────────
     const requirements = await this.deriveRequirements(ctx.query);
     return this.evaluate(requirements, steps, results);
   }
@@ -52,7 +119,20 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
     return reflection.completion?.requiredComplete === true;
   }
 
-  async synthesize(steps: readonly ResearchStep[], results: readonly ExecutionOutcome[], reflection: Reflection, _ctx: AdaptiveProcessContext): Promise<unknown> {
+  async synthesize(steps: readonly ResearchStep[], results: readonly ExecutionOutcome[], reflection: Reflection, ctx: AdaptiveProcessContext): Promise<unknown> {
+    // ── Read mode: summarize evidence from file reads ───────────────────
+    if (ctx.request.params.mode !== "write") {
+      const evidence = steps.map((s, i) => {
+        const r = results[i];
+        const text = r.status === "success" && r.output != null
+          ? (typeof r.output === "string" ? r.output : JSON.stringify(r.output)).slice(0, 2000)
+          : null;
+        return { step: s.id, tool: s.call.params?.toolName ?? s.id, params: s.call.params, status: r.status, content: text };
+      });
+      return { evidence, gaps: reflection.gaps, sufficiency: reflection.sufficiency };
+    }
+
+    // ── Write mode: existing synthesis ───────────────────────────────────
     const openHandsIndex = steps.findIndex((s) => s.id === "openhands-task");
     const openHands = openHandsIndex >= 0 ? results[openHandsIndex] : undefined;
     const obj = openHands?.output && typeof openHands.output === "object" ? openHands.output as Record<string, unknown> : {};
@@ -72,35 +152,67 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
         durationMs: null,
       });
     }
-    const requirements = await this.deriveRequirements(ctx.query);
-    let task = ctx.query;
-    let appConversationId = typeof ctx.request.params.app_conversation_id === "string" ? ctx.request.params.app_conversation_id : "";
-    let reflection: Reflection = { byStep: new Map(), gaps: requirements.map((r) => r.description), sufficiency: 0, completion: { requirements, completed: 0, total: requirements.length, requiredComplete: false } };
-    let results: readonly ExecutionOutcome[] = [];
-    let steps: readonly ResearchStep[] = [];
-    let rounds = 0;
+    // ── Read mode: Dynamic Re-planning via DynamicWaveRunner ─────────────
+    // Waves are executed by ExecutionOrchestrator (resource-aware concurrency
+    // preserved). Wave 2+ steps are born from real search output — they did
+    // NOT exist in the initial plan. No OpenHands required for read-only.
+    const runner = new DynamicWaveRunner();
+    return runner.run(this, ctx, { maxIterations: MAX_ITERATIONS });
+  }
 
-    for (let i = 0; i < MAX_ITERATIONS; i++) {
-      rounds = i + 1;
-      const roundCtx: AdaptiveProcessContext = { ...ctx, query: task, request: { ...ctx.request, params: { ...ctx.request.params, task, ...(appConversationId ? { app_conversation_id: appConversationId } : {}) } } };
-      steps = await this.plan(roundCtx);
-      results = await this.invoke(steps, roundCtx);
-      const openHandsIndex = steps.findIndex((s) => s.id === "openhands-task");
-      const openHandsOutput = openHandsIndex >= 0 && results[openHandsIndex]?.output && typeof results[openHandsIndex].output === "object"
-        ? results[openHandsIndex].output as Record<string, unknown>
-        : null;
-      const returnedConversationId = typeof openHandsOutput?.app_conversation_id === "string" ? openHandsOutput.app_conversation_id : "";
-      if (returnedConversationId) appConversationId = returnedConversationId;
-      reflection = await this.evaluate(requirements, steps, results);
-      if (this.stop(reflection)) break;
-      const missing = reflection.completion?.requirements.filter((r) => r.required && r.status !== "completed").map((r) => `- ${r.description}`).join("\n") ?? "";
-      if (!missing) break;
-      task = `${ctx.query}\n\nComplete only the still-unverified required items and report concrete evidence for each:\n${missing}`;
+  /**
+   * Extracts a search term from the mission query for the discovery wave.
+   * Tries file path first, then capitalized identifiers (class/module names).
+   * No LLM — pure regex.
+   */
+  private _extractSearchTerm(query: string): string {
+    const filePath = this.extractFilePath(query);
+    if (filePath) return filePath;
+
+    const classMatches = query.match(/\b([A-Z][a-zA-Z0-9]+)\b/g);
+    if (classMatches && classMatches.length > 0) {
+      const term = classMatches.sort((a, b) => b.length - a.length)[0];
+      return term + ".ts";
     }
 
-    const output = { ...(await this.synthesize(steps, results, reflection, ctx) as Record<string, unknown>), rounds };
-    const complete = reflection.completion?.requiredComplete === true;
-    return Object.freeze({ status: complete ? "success" as const : "failed" as const, connectorId: ctx.request.connectorId, capability: ctx.request.capability, output, message: complete ? null : `Mission incomplete after ${rounds} round(s).`, reversibility: ctx.request.params.mode === "write" ? "reversible" as const : "safe" as const, executionId: ctx.parentExecutionId, durationMs: null });
+    return query.split(/\s+/).slice(0, 5).join(" ");
+  }
+
+  /**
+   * Extracts file paths from a code.search output. Handles multiple output
+   * formats (MCP response with text, direct matches array, raw JSON string).
+   * No LLM — deterministic parsing.
+   */
+  private _extractPathsFromOutput(output: unknown): string[] {
+    let text = "";
+    if (typeof output === "string") {
+      text = output;
+    } else if (output && typeof output === "object") {
+      const obj = output as Record<string, unknown>;
+      if (Array.isArray(obj.matches)) {
+        return obj.matches.filter((m) => typeof m === "string") as string[];
+      }
+      if (Array.isArray(obj.result)) {
+        const first = obj.result[0];
+        if (first && typeof first === "object") {
+          text = String((first as Record<string, unknown>).text ?? "");
+        }
+      }
+      if (!text) {
+        try { text = JSON.stringify(obj); } catch { return []; }
+      }
+    }
+
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && Array.isArray(parsed.matches)) {
+        return parsed.matches.filter((m: unknown) => typeof m === "string") as string[];
+      }
+    } catch { /* not JSON */ }
+
+    const RE = /(?:[A-Za-z0-9_@.\-]+\/)*[A-Za-z0-9_@\-]+\.(?:ts|tsx|js|jsx|json|jsonc|md|py|toml|yml|yaml|sh|css|html|txt|env|lock)(?![A-Za-z0-9])/g;
+    const matches = text.match(RE);
+    return matches ? [...new Set(matches)] : [];
   }
 
   /**
