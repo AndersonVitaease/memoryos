@@ -203,6 +203,136 @@ async function fetchAllEvents(
   return { events, pages, httpStatus: null, error: null };
 }
 
+// ── Change extraction (write mode only, read-only Cloud API) ─────────────────
+//
+// Após execution_status=finished em modo write, consulta tres endpoints
+// read-only do OpenHands Cloud API para recuperar as alteracoes produzidas
+// no sandbox:
+//   GET /api/v1/app-conversations/{id}/git/changes  — arquivos alterados
+//   GET /api/v1/app-conversations/{id}/git/diff      — diff completo
+//   GET /api/v1/app-conversations/{id}/file?path=<p> — conteudo novo
+//
+// Nenhum write e despachado. O change_set sera validado e convertido em
+// patch proposals pelo frontend (OpenHandsChangeSet module).
+
+function normalizeGitChanges(data: any): any[] {
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray(data.items)) return data.items;
+  if (data && Array.isArray(data.changes)) return data.changes;
+  if (data && Array.isArray(data.files)) return data.files;
+  return [];
+}
+
+function normalizeGitDiff(data: any): string {
+  if (typeof data === 'string') return data;
+  if (data && typeof data.diff === 'string') return data.diff;
+  if (data && typeof data.content === 'string') return data.content;
+  if (data && typeof data.text === 'string') return data.text;
+  return '';
+}
+
+function normalizeFileContent(data: any): string | null {
+  if (typeof data === 'string') return data;
+  if (data && typeof data.content === 'string') return data.content;
+  if (data && typeof data.text === 'string') return data.text;
+  if (data && typeof data.fileContent === 'string') return data.fileContent;
+  return null;
+}
+
+function normalizeChangeType(raw: unknown): string {
+  const s = String(raw ?? '').trim().toLowerCase();
+  if (s === 'modified' || s === 'm' || s === 'changed') return 'modified';
+  if (s === 'added' || s === 'a' || s === 'created' || s === 'new' || s === 'untracked') return 'created';
+  if (s === 'deleted' || s === 'd' || s === 'removed') return 'deleted';
+  if (s === 'renamed' || s === 'r') return 'renamed';
+  return 'unknown';
+}
+
+async function extractChangeSet(
+  conversationId: string,
+  sandboxId: string | null,
+  repository: string,
+  apiKey: string,
+  deadlineAt: number,
+): Promise<any> {
+  const headers = cloudHeaders(apiKey);
+  const base = `${CLOUD_BASE_URL}/api/v1/app-conversations/${encodeURIComponent(conversationId)}`;
+  const MAX_FILES_TO_FETCH = 50;
+
+  // 1) git/changes — lista de arquivos alterados no sandbox
+  let changedFiles: any[] = [];
+  try {
+    const changesRes = await fetchJson(
+      `${base}/git/changes`,
+      { method: 'GET', headers },
+      Math.min(30_000, Math.max(1, deadlineAt - Date.now())),
+    );
+    if (changesRes.ok) {
+      changedFiles = normalizeGitChanges(changesRes.data);
+    } else {
+      safeLog('git_changes_failed', { httpStatus: changesRes.status, conversationId });
+    }
+  } catch {
+    safeLog('git_changes_error', { conversationId });
+  }
+
+  // 2) git/diff — diff completo do working tree do sandbox
+  let gitDiff = '';
+  try {
+    const diffRes = await fetchJson(
+      `${base}/git/diff`,
+      { method: 'GET', headers },
+      Math.min(30_000, Math.max(1, deadlineAt - Date.now())),
+    );
+    if (diffRes.ok) {
+      gitDiff = normalizeGitDiff(diffRes.data);
+    } else {
+      safeLog('git_diff_failed', { httpStatus: diffRes.status, conversationId });
+    }
+  } catch {
+    safeLog('git_diff_error', { conversationId });
+  }
+
+  // 3) file?path= — conteudo novo de cada arquivo modified/created (paralelo)
+  const fileResults = await Promise.all(
+    changedFiles.slice(0, MAX_FILES_TO_FETCH).map(async (cf: any) => {
+      const path = String(cf.path ?? cf.file ?? cf.filePath ?? cf.filename ?? '').trim();
+      if (!path) return null;
+      const changeType = normalizeChangeType(cf.status ?? cf.changeType ?? cf.kind ?? cf.change_type);
+      let newContent: string | null = null;
+
+      if (changeType === 'modified' || changeType === 'created') {
+        try {
+          const fileRes = await fetchJson(
+            `${base}/file?path=${encodeURIComponent(path)}`,
+            { method: 'GET', headers },
+            Math.min(30_000, Math.max(1, deadlineAt - Date.now())),
+          );
+          if (fileRes.ok) {
+            newContent = normalizeFileContent(fileRes.data);
+          }
+        } catch {
+          // best-effort — newContent fica null
+        }
+      }
+
+      return { path, changeType, newContent };
+    }),
+  );
+
+  const files = fileResults.filter(
+    (f): f is { path: string; changeType: string; newContent: string | null } => f !== null,
+  );
+
+  return {
+    conversation_id: conversationId,
+    sandbox_id: sandboxId,
+    repository,
+    git_diff: gitDiff,
+    files,
+  };
+}
+
 async function continueExistingConversation(opts: {
   conversationId: string;
   task: string;
@@ -321,6 +451,21 @@ async function continueExistingConversation(opts: {
       latestReply = extractAgentReply({ items: latestEvents });
       const hasNewReply = Boolean(latestReply.text) && latestReply.eventId !== baselineReply.eventId;
       if (hasNewReply && TERMINAL_EXECUTION_STATUSES.has(executionStatus)) {
+        // Change extraction for write mode continuations (same as main flow).
+        let continuationChangeSet: any = null;
+        if (mode === 'write' && executionStatus === 'finished') {
+          continuationChangeSet = await extractChangeSet(
+            conversationId,
+            conversation?.sandbox_id ?? null,
+            String(conversation?.selected_repository ?? ''),
+            apiKey,
+            deadlineAt,
+          );
+          safeLog('continuation_change_set', {
+            conversationId,
+            fileCount: continuationChangeSet?.files?.length ?? 0,
+          });
+        }
         safeLog('continuation_complete', { conversationId, executionStatus, eventCount: latestEvents.length });
         return Response.json({
           ok: executionStatus === 'finished',
@@ -334,6 +479,7 @@ async function continueExistingConversation(opts: {
           agent_message_event_id: latestReply.eventId,
           agent_message_timestamp: latestReply.timestamp,
           event_count: latestEvents.length,
+          change_set: continuationChangeSet,
         });
       }
     }
@@ -610,6 +756,29 @@ export default async function (req: Request) {
       );
     }
 
+    // 5) Change extraction — write mode only, after execution finished.
+    //    Read-only endpoints on the OpenHands Cloud API:
+    //      GET /api/v1/app-conversations/{id}/git/changes
+    //      GET /api/v1/app-conversations/{id}/git/diff
+    //      GET /api/v1/app-conversations/{id}/file?path=<path>
+    //    Nenhum write e despachado. O change_set sera validado e convertido
+    //    em patch proposals pelo frontend (OpenHandsChangeSet module).
+    let changeSet: any = null;
+    if (mode === 'write' && executionStatus === 'finished') {
+      changeSet = await extractChangeSet(
+        conversationId,
+        conversation?.sandbox_id ?? null,
+        repository,
+        apiKey,
+        deadlineAt,
+      );
+      safeLog('change_set_extracted', {
+        conversationId,
+        fileCount: changeSet?.files?.length ?? 0,
+        hasGitDiff: Boolean(changeSet?.git_diff),
+      });
+    }
+
     safeLog('complete', {
       conversationId,
       executionStatus,
@@ -617,6 +786,7 @@ export default async function (req: Request) {
       eventCount: allEvents.length,
       pages: pageCount,
       durationMs: Date.now() - startedAt,
+      hasChangeSet: changeSet !== null,
     });
 
     return Response.json({
@@ -632,6 +802,7 @@ export default async function (req: Request) {
       event_count: allEvents.length,
       durationMs: Date.now() - startedAt,
       raw_events: includeRawEvents ? allEvents : undefined,
+      change_set: changeSet,
     });
   } catch (e: any) {
     const isAbort = e?.name === 'AbortError';
