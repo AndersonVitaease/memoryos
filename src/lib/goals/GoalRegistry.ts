@@ -78,6 +78,21 @@ function normalizeMcpServerName(value: string | null | undefined): string | null
 function inferEngMcpTool(userMessage: string): string | null {
   const msg = userMessage.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
+  // ── Negation safety ──────────────────────────────────────────────────────
+  // Reutiliza a primitive read-only precedence de OpenHandsChangeSet:
+  // "nao altere", "nao modifique", "sem alterar", etc. impedem write mode.
+  // Aqui aplicamos o MESMO principio a ENG-MCP write tools: se a instrucao
+  // e negativa ("nao faca commit", "nao modifique", "sem push"), NÃO inferir
+  // a tool de escrita correspondente. A negaçao tem precedencia sobre o match
+  // positivo do verbo/comando.
+  //
+  // Cobre: "nao faca commit", "nao commite", "sem commit", "nao aplique patch",
+  // "nao crie arquivo", "nao modifique", "nao altere", "nao faça push",
+  // "sem push", etc. — qualquer frase com "nao" + verbo de escrita, ou
+  // "sem" + substantivo de escrita.
+  const NEGATION_WRITE_RE = /\b(?:nao\s+(?:faca|fazer|commit[ae]r?|altere|alterar|modifique|modificar|mude|mudar|crie|criar|adicione|adicionar|aplique|aplicar|remova|remover|atualize|atualizar|refatore|refatorar|delet[ae]|deletar|exclu[ai]|excluir|push[ae]?r?|stage|stagear|unstage|envie|enviar)\b|sem\s+(?:commit|push|alteracao|alteracoes|modificacao|modificacoes|escrita|write|stage))\b/;
+  const _isNegativeWrite = NEGATION_WRITE_RE.test(msg);
+
   // ── Engineering file inspection: verbo de engenharia + path de arquivo ──
   // Garante precedencia do ENG-MCP sobre o GitHub quando o usuario pede uma
   // operacao de engenharia sobre arquivos/codigo do repositorio (local),
@@ -121,10 +136,27 @@ function inferEngMcpTool(userMessage: string): string | null {
   ];
 
   for (const [pattern, toolName] of rules) {
-    if (pattern.test(msg)) return toolName;
+    if (pattern.test(msg)) {
+      // Negation safety: write tools nunca inferidos a partir de instruções
+      // negativas. "nao faca commit" → NÃO retorna engineering.git.commit.
+      // Read tools (typecheck, lint, deadcode, parallelpath, contract, change,
+      // references, search, structure, status, diff, branches, worktrees, log,
+      // catalog) continuam — são read-only e a negação é semântica de write.
+      if (_isNegativeWrite && _ENG_WRITE_TOOLS.has(toolName)) continue;
+      return toolName;
+    }
   }
   return null;
 }
+
+// ENG-MCP write tools que jamais são inferidos a partir de instruções negativas.
+const _ENG_WRITE_TOOLS: ReadonlySet<string> = new Set([
+  "engineering.git.commit",
+  "engineering.git.stage",
+  "engineering.git.unstage",
+  "engineering.file.patch",
+  "engineering.file.create",
+]);
 
 // ── Supervised Engineering auto-routing (complex/investigative missions) ────
 // Detecta missoes compostas/investigativas e roteia automaticamente para

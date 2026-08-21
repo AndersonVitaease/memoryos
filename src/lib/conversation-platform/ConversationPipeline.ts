@@ -427,6 +427,18 @@ class ConversationPipeline {
     // antiga perdia (sem "também"/"e mais"/vírgula/linha em branco). Não
     // duplica a lista de verbos — delega ao MessageDecomposer.
     const { decomposeMessage: _gateDecompose } = await import("@/lib/multi-intent/MessageDecomposer");
+    const _holisticGoal = GoalRegistry.matchBySignals(userMessage);
+    const _holisticGoalType = _holisticGoal?.type ?? null;
+    // Adaptive/composite goals (supervisedEngineering, openhands.runTask) exigem
+    // contexto holístico: seus sinais (write verb + file path + engineering
+    // context, ou verbos de correção + validação) ficam distribuídos pela
+    // mensagem inteira. Se o MessageDecomposer partir a mensagem em fragments
+    // independentes, nenhum fragment individual satisfaz os critérios de
+    // inferSupervisedEngineering / openhands.runTask, e a missão cai no LLM
+    // fallback narrando tool calls falsas. Preservar o goal holistic roteia
+    // pelo pipeline normal → ConversationPlanningEngine → adaptive path.
+    const _isHolisticAdaptive = _holisticGoalType === "supervisedEngineering"
+      || _holisticGoalType === "openhands.runTask";
     const _mightBeMultiIntent = userMessage.length > 30 && _gateDecompose(userMessage).length > 1
       // MCP callTool preservation: uma mensagem deterministicamente reconhecida
       // como mcp.callTool por enderecamento MCP explicito carrega os argumentos
@@ -438,7 +450,12 @@ class ConversationPipeline {
       // a mcp.callTool (nao mcp.listTools, nao mera presenca da palavra "mcp"):
       // deixa a mensagem inteira seguir pelo pipeline principal ate o
       // MCPConnector -> resolveMcpArguments -> mcpClientCall com rawText intacto.
-      && GoalRegistry.matchBySignals(userMessage)?.type !== "mcp.callTool";
+      && _holisticGoalType !== "mcp.callTool"
+      // Adaptive goal preservation: supervisedEngineering / openhands.runTask
+      // são missões holísticas — NÃO decompor em fragments independentes.
+      // Mensagens realmente compostas com intents independentes ("Leia meu
+      // Gmail e veja meu calendário") continuam sendo decompostas.
+      && !_isHolisticAdaptive;
     if (_mightBeMultiIntent) try {
       const { decomposeMessage } = await import("@/lib/multi-intent/MessageDecomposer");
       const fragments = decomposeMessage(userMessage);
