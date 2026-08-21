@@ -1074,7 +1074,7 @@ class ConversationPipeline {
             _eiOutcome &&
             _eiOutcome.status === "success" &&
             _singleStep?.connector === "adaptive-process" &&
-            _singleStep?.capability === "deepResearch" &&
+            (_singleStep?.capability === "deepResearch" || _singleStep?.capability === "supervisedEngineering") &&
             typeof _eiOutcome.output === "string"
           ) {
             const _report = _eiOutcome.output;
