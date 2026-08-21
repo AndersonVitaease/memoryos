@@ -41,12 +41,6 @@ const MAX_SEARCH_EVIDENCE_CHARS = 5000;
 const MAX_DEFAULT_EVIDENCE_CHARS = 4000;
 const MAX_TOTAL_EVIDENCE_CHARS = 30000;
 
-// TEMP DIAG — module load marker (executes on import)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-(globalThis as any).__ADAPTIVE_READ_DIAG_VERSION__ = "supervised-engineering-diag-v1";
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-(globalThis as any).__ADAPTIVE_READ_DIAG__ ??= [];
-
 // ── Evidence-based reflection extensions (read mode) ────────────────────────
 
 interface EngineeringObservation {
@@ -209,17 +203,6 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
       steps.push(step);
     }
 
-    // TEMP DIAG — emit planNextWave conversion trace
-    this._emitDiag(ctx, "plan_next_wave", {
-      iteration: state.iteration,
-      inputNextActionsCount: actions.length,
-      inputNextActions: actions.map((a) => ({ type: a.type, params: a.params, rationale: a.rationale })),
-      acceptedStepsCount: steps.length,
-      acceptedSteps: steps.map((s) => ({ id: s.id, tool: s.call.params?.toolName, args: s.call.params?.arguments })),
-      rejectedActionsCount: rejects.length,
-      rejectedActions: rejects,
-    });
-
     return steps;
   }
 
@@ -319,36 +302,6 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
   // ═══════════════════════════════════════════════════════════════════════════
   // PRIVATE — Read mode helpers (Adaptive Mission Decomposition V1)
   // ═══════════════════════════════════════════════════════════════════════════
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // TEMP DIAG — Adaptive Read-Mode Instrumentation (REMOVE AFTER DIAGNOSIS)
-  // Captures real reflect output + planNextWave conversion to find why
-  // gap→nextActions→0 steps→no_steps. Uses RuntimeDebug (in-memory) + console.
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  private _diagBuffer(): Array<Record<string, unknown>> {
-    const g = globalThis as unknown as Record<string, unknown>;
-    if (!g.__ADAPTIVE_READ_DIAG__) (g as Record<string, unknown>).__ADAPTIVE_READ_DIAG__ = [];
-    return g.__ADAPTIVE_READ_DIAG__ as Array<Record<string, unknown>>;
-  }
-
-  private _emitDiag(ctx: AdaptiveProcessContext, phase: string, data: Record<string, unknown>): void {
-    const entry: Record<string, unknown> = {
-      ts: Date.now(),
-      executionId: ctx.parentExecutionId,
-      phase,
-      ...data,
-    };
-    try { this._diagBuffer().push(entry); } catch { /* noop */ }
-    try {
-      const g = globalThis as unknown as Record<string, unknown>;
-      const rd = g.__MEMORY_OS_RUNTIME_DEBUG__;
-      if (rd && typeof (rd as { emit?: unknown }).emit === "function") {
-        // best-effort RuntimeDebug fan-out if an execution is registered
-      }
-    } catch { /* noop */ }
-    console.debug(`[ADAPTIVE_READ_DIAG][${phase}]`, entry);
-  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // PRIVATE — Adaptive Evidence Builder V1
@@ -1348,17 +1301,6 @@ Rules:
     const ensured = this._ensureTargetedVerification(
       reflection, steps, results, ctx, runQueries, runRefs,
     );
-
-    // TEMP DIAG — emit reflect output (gaps + nextActions + sufficiency)
-    this._emitDiag(ctx, "reflect", {
-      sufficiency: ensured.sufficiency,
-      gaps: ensured.gaps,
-      hypothesis: ensured.hypothesis,
-      nextActionsCount: ensured.nextActions.length,
-      nextActions: ensured.nextActions.map((a) => ({ type: a.type, params: a.params, rationale: a.rationale })),
-      observations: ensured.observations.map((o) => ({ step: o.step, finding: o.finding })),
-      safetyNetAddedAction: ensured !== reflection ? ensured.nextActions[ensured.nextActions.length - 1] : null,
-    });
 
     return ensured;
   }
