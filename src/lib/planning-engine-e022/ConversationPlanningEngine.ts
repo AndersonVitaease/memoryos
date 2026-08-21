@@ -260,8 +260,18 @@ export class ConversationPlanningEngine {
     if (!rawText) return builtSteps;
 
     const paths = this._extractFilePaths(rawText);
-    // Single path: leave the existing single-step flow untouched (LLM resolution).
-    if (paths.length <= 1) return builtSteps;
+    // Zero paths: preserve existing flow (no path detected → LLM resolution).
+    if (paths.length === 0) return builtSteps;
+    // Single path: inject explicit arguments.path verbatim so MCPConnector uses
+    // CASO A (explicit args, zero InvokeLLM) — the same deterministic mechanism
+    // as multi-file reads. Deep paths are no longer reconstructed by the LLM,
+    // eliminating PATH_NOT_FOUND from InvokeLLM mangling long/nested paths.
+    if (paths.length === 1) {
+      const step = builtSteps[0];
+      const stepParams = step.parameters as Record<string, unknown>;
+      const mergedParams = Object.freeze({ ...stepParams, arguments: Object.freeze({ path: paths[0] }) });
+      return [Object.freeze({ ...step, parameters: mergedParams })];
+    }
 
     const serverName = typeof pp.serverName === "string" ? pp.serverName : (typeof op.serverName === "string" ? op.serverName : "eng-mcp");
     const baseParams: Record<string, unknown> = { toolName, serverName, rawText };
