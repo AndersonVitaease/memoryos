@@ -494,13 +494,89 @@ Rules:
             type: "array",
             maxItems: 8,
             items: {
-              type: "object",
-              properties: {
-                type: { type: "string", enum: ["file.read", "code.references", "code.search", "git.log", "git.diff", "git.status", "repo.structure"] },
-                params: { type: "object" },
-                rationale: { type: "string" },
-              },
-              required: ["type", "params", "rationale"],
+              oneOf: [
+                {
+                  type: "object",
+                  properties: {
+                    type: { type: "string", const: "file.read" },
+                    params: {
+                      type: "object",
+                      properties: { path: { type: "string" } },
+                      required: ["path"],
+                    },
+                    rationale: { type: "string" },
+                  },
+                  required: ["type", "params", "rationale"],
+                },
+                {
+                  type: "object",
+                  properties: {
+                    type: { type: "string", const: "code.search" },
+                    params: {
+                      type: "object",
+                      properties: {
+                        query: { type: "string" },
+                        mode: { type: "string", enum: ["literal", "filename"] },
+                      },
+                      required: ["query", "mode"],
+                    },
+                    rationale: { type: "string" },
+                  },
+                  required: ["type", "params", "rationale"],
+                },
+                {
+                  type: "object",
+                  properties: {
+                    type: { type: "string", const: "code.references" },
+                    params: {
+                      type: "object",
+                      properties: { symbol: { type: "string" } },
+                      required: ["symbol"],
+                    },
+                    rationale: { type: "string" },
+                  },
+                  required: ["type", "params", "rationale"],
+                },
+                {
+                  type: "object",
+                  properties: {
+                    type: { type: "string", const: "git.log" },
+                    params: {
+                      type: "object",
+                      properties: { limit: { type: "number" } },
+                    },
+                    rationale: { type: "string" },
+                  },
+                  required: ["type", "params", "rationale"],
+                },
+                {
+                  type: "object",
+                  properties: {
+                    type: { type: "string", const: "git.diff" },
+                    params: { type: "object" },
+                    rationale: { type: "string" },
+                  },
+                  required: ["type", "params", "rationale"],
+                },
+                {
+                  type: "object",
+                  properties: {
+                    type: { type: "string", const: "git.status" },
+                    params: { type: "object" },
+                    rationale: { type: "string" },
+                  },
+                  required: ["type", "params", "rationale"],
+                },
+                {
+                  type: "object",
+                  properties: {
+                    type: { type: "string", const: "repo.structure" },
+                    params: { type: "object" },
+                    rationale: { type: "string" },
+                  },
+                  required: ["type", "params", "rationale"],
+                },
+              ],
             },
           },
           sufficiency: { type: "number" },
