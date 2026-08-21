@@ -142,21 +142,42 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
     }
 
     const steps: ResearchStep[] = [];
+    const rejects: Array<{ type: string; params: Record<string, unknown>; reason: string }> = [];
     let fileReadCount = 0;
 
     for (const action of actions) {
-      if (action.type === "file.read" && fileReadCount >= MAX_READS_PER_WAVE) break;
+      if (action.type === "file.read" && fileReadCount >= MAX_READS_PER_WAVE) {
+        rejects.push({ type: action.type, params: action.params, reason: "max_reads_per_wave_exceeded" });
+        break;
+      }
       // Dedup code.search: skip reformulated queries that repeat a prior query.
       if (action.type === "code.search") {
         const q = String(action.params?.query ?? "").trim().toLowerCase();
         const m = String(action.params?.mode ?? "literal").trim().toLowerCase();
-        if (q && executedQueryKeys.has(`${q}|${m}`)) continue;
+        if (q && executedQueryKeys.has(`${q}|${m}`)) {
+          rejects.push({ type: action.type, params: action.params, reason: "duplicate_search" });
+          continue;
+        }
       }
       const step = this._actionToStep(action, steps.length + 1);
-      if (!step) continue;
+      if (!step) {
+        rejects.push({ type: action.type, params: action.params, reason: this._rejectReason(action) });
+        continue;
+      }
       if (action.type === "file.read") fileReadCount++;
       steps.push(step);
     }
+
+    // TEMP DIAG — emit planNextWave conversion trace
+    this._emitDiag(ctx, "plan_next_wave", {
+      iteration: state.iteration,
+      inputNextActionsCount: actions.length,
+      inputNextActions: actions.map((a) => ({ type: a.type, params: a.params, rationale: a.rationale })),
+      acceptedStepsCount: steps.length,
+      acceptedSteps: steps.map((s) => ({ id: s.id, tool: s.call.params?.toolName, args: s.call.params?.arguments })),
+      rejectedActionsCount: rejects.length,
+      rejectedActions: rejects,
+    });
 
     return steps;
   }
@@ -251,6 +272,52 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
   // ═══════════════════════════════════════════════════════════════════════════
   // PRIVATE — Read mode helpers (Adaptive Mission Decomposition V1)
   // ═══════════════════════════════════════════════════════════════════════════
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // TEMP DIAG — Adaptive Read-Mode Instrumentation (REMOVE AFTER DIAGNOSIS)
+  // Captures real reflect output + planNextWave conversion to find why
+  // gap→nextActions→0 steps→no_steps. Uses RuntimeDebug (in-memory) + console.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  private _diagBuffer(): Array<Record<string, unknown>> {
+    const g = globalThis as unknown as Record<string, unknown>;
+    if (!g.__ADAPTIVE_READ_DIAG__) (g as Record<string, unknown>).__ADAPTIVE_READ_DIAG__ = [];
+    return g.__ADAPTIVE_READ_DIAG__ as Array<Record<string, unknown>>;
+  }
+
+  private _emitDiag(ctx: AdaptiveProcessContext, phase: string, data: Record<string, unknown>): void {
+    const entry: Record<string, unknown> = {
+      ts: Date.now(),
+      executionId: ctx.parentExecutionId,
+      phase,
+      ...data,
+    };
+    try { this._diagBuffer().push(entry); } catch { /* noop */ }
+    try {
+      const g = globalThis as unknown as Record<string, unknown>;
+      const rd = g.__MEMORY_OS_RUNTIME_DEBUG__;
+      if (rd && typeof (rd as { emit?: unknown }).emit === "function") {
+        // best-effort RuntimeDebug fan-out if an execution is registered
+      }
+    } catch { /* noop */ }
+    console.debug(`[ADAPTIVE_READ_DIAG][${phase}]`, entry);
+  }
+
+  private _rejectReason(action: EngineeringNextAction): string {
+    const p = action.params ?? {};
+    switch (action.type) {
+      case "file.read":
+        return typeof p.path === "string" && p.path.trim() ? "unknown" : "missing_path";
+      case "code.references":
+        return typeof p.symbol === "string" && p.symbol.trim() ? "unknown" : "missing_symbol";
+      case "code.search":
+        return typeof p.query === "string" && p.query.trim() ? "unknown" : "missing_query";
+      case "git.log": case "git.diff": case "git.status": case "repo.structure":
+        return "unknown";
+      default:
+        return "unknown_type";
+    }
+  }
 
   /**
    * Generates 1-3 discovery search queries from the mission question.
@@ -444,7 +511,7 @@ Rules:
       sufficiency?: number;
     };
 
-    return {
+    const reflection: EngineeringReflection = {
       byStep,
       observations: (data.observations ?? []).map((o) => ({
         step: String(o.step ?? ""),
@@ -459,6 +526,18 @@ Rules:
       })),
       sufficiency: typeof data.sufficiency === "number" ? data.sufficiency : 0,
     };
+
+    // TEMP DIAG — emit reflect output (gaps + nextActions + sufficiency)
+    this._emitDiag(ctx, "reflect", {
+      sufficiency: reflection.sufficiency,
+      gaps: reflection.gaps,
+      hypothesis: reflection.hypothesis,
+      nextActionsCount: reflection.nextActions.length,
+      nextActions: reflection.nextActions.map((a) => ({ type: a.type, params: a.params, rationale: a.rationale })),
+      observations: reflection.observations.map((o) => ({ step: o.step, finding: o.finding })),
+    });
+
+    return reflection;
   }
 
   /**
