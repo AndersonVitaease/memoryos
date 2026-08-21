@@ -74,6 +74,11 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
   // Per-run accumulated file.read paths (keyed by parentExecutionId).
   // In-memory only — cleared when run() completes. Not persistent, not global.
   private readonly _runReadPaths = new Map<string, Set<string>>();
+  // Targeted Verification Safety Net V1 — tracks executed code.search queries
+  // and code.references symbols across ALL waves in a run, enabling deterministic
+  // dedup when the safety net injects a verification action.
+  private readonly _runSearchQueries = new Map<string, Set<string>>();
+  private readonly _runReferences = new Map<string, Set<string>>();
 
   // ═══════════════════════════════════════════════════════════════════════════
   // PLAN — first wave (discovery)
@@ -305,6 +310,8 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
       return await runner.run(this, ctx, { maxIterations: READ_MAX_ITERATIONS });
     } finally {
       this._runReadPaths.delete(ctx.parentExecutionId);
+      this._runSearchQueries.delete(ctx.parentExecutionId);
+      this._runReferences.delete(ctx.parentExecutionId);
     }
   }
 
@@ -353,6 +360,24 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
       this._runReadPaths.set(executionId, paths);
     }
     return paths;
+  }
+
+  private _getRunQueries(executionId: string): Set<string> {
+    let queries = this._runSearchQueries.get(executionId);
+    if (!queries) {
+      queries = new Set<string>();
+      this._runSearchQueries.set(executionId, queries);
+    }
+    return queries;
+  }
+
+  private _getRunReferences(executionId: string): Set<string> {
+    let refs = this._runReferences.get(executionId);
+    if (!refs) {
+      refs = new Set<string>();
+      this._runReferences.set(executionId, refs);
+    }
+    return refs;
   }
 
   /**
@@ -542,6 +567,193 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PRIVATE — Targeted Verification Safety Net V1
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Common words filtered out during identifier extraction. These are NOT
+   * code identifiers — they are generic English/programming words that
+   * would produce noise if matched against gap text.
+   */
+  private static readonly _COMMON_WORDS: ReadonlySet<string> = new Set([
+    "string", "number", "boolean", "object", "array", "function",
+    "return", "const", "class", "interface", "type", "import", "export",
+    "default", "async", "await", "void", "from", "self", "this",
+    "true", "false", "null", "undefined", "step", "wave", "output",
+    "result", "status", "error", "params", "arguments", "connector",
+    "capability", "toolname", "servername", "evidence", "observation",
+    "hypothesis", "mission", "query", "mode", "literal", "filename",
+    "search", "references", "structure", "engineering", "mcp", "file",
+    "read", "path", "symbol", "limit", "line", "preview", "match",
+    "matches", "total", "truncated", "content", "text", "json",
+    "success", "failed", "pending", "completed", "missing",
+  ]);
+
+  /**
+   * Extracts concrete code identifiers from evidence outputs. Identifiers
+   * come ONLY from actual step results — search match previews, file.read
+   * content, and observation findings. NEVER invented, NEVER hardcoded.
+   *
+   * Filters common words and short tokens (≤2 chars) to reduce noise.
+   * Only identifiers that appear in gap text are used by the safety net.
+   */
+  private _extractEvidenceIdentifiers(
+    steps: readonly ResearchStep[],
+    results: readonly ExecutionOutcome[],
+  ): string[] {
+    const identifiers = new Set<string>();
+    const IDENTIFIER_RE = /\b([a-zA-Z_][a-zA-Z0-9_]{2,})\b/g;
+
+    for (let i = 0; i < steps.length; i++) {
+      const r = results[i];
+      if (r.status !== "success" || r.output == null) continue;
+
+      // Drill into { result: ... } envelope if present.
+      let content: unknown = r.output;
+      if (content && typeof content === "object" && !Array.isArray(content)) {
+        const obj = content as Record<string, unknown>;
+        if ("result" in obj && obj.result != null) content = obj.result;
+      }
+
+      // For MCP text content items, parse inner JSON to extract real identifiers
+      // from search match previews.
+      if (Array.isArray(content)) {
+        const first = content[0];
+        if (first && typeof first === "object" && !Array.isArray(first)) {
+          const item = first as Record<string, unknown>;
+          if (item.type === "text" && typeof item.text === "string") {
+            const parsed = this._tryParseJson(item.text);
+            if (parsed) content = parsed;
+          }
+        }
+      }
+
+      // Also extract from observations
+      const toolName = steps[i].call.params?.toolName;
+      const args = steps[i].call.params?.arguments as Record<string, unknown> | undefined;
+      if (toolName === "engineering.code.search" && args) {
+        const q = String(args.query ?? "");
+        if (q.length >= 3 && !SupervisedEngineeringProcess._COMMON_WORDS.has(q.toLowerCase())) {
+          identifiers.add(q);
+        }
+      }
+
+      const text = typeof content === "string"
+        ? content
+        : JSON.stringify(content);
+
+      let m: RegExpExecArray | null;
+      IDENTIFIER_RE.lastIndex = 0;
+      while ((m = IDENTIFIER_RE.exec(text)) !== null) {
+        const id = m[1];
+        if (!SupervisedEngineeringProcess._COMMON_WORDS.has(id.toLowerCase())) {
+          identifiers.add(id);
+        }
+      }
+    }
+
+    // Sort by length descending — prefer longer, more specific identifiers.
+    return [...identifiers].sort((a, b) => b.length - a.length);
+  }
+
+  /**
+   * Targeted Verification Safety Net V1.
+   *
+   * Runs AFTER the LLM reflector produces its reflection. If a concrete gap
+   * mentions an identifier that appeared in evidence, and no verification
+   * action was proposed for that identifier, injects ONE targeted action:
+   *
+   *   1. code.search(identifier, literal) — if not yet executed
+   *   2. code.references(identifier) — if code.search was already executed
+   *   3. nothing — if both strategies exhausted (allows stop)
+   *
+   * Also caps sufficiency below threshold when a verifiable gap exists, to
+   * prevent premature stop() before the verification wave can execute.
+   *
+   * Deterministic. No LLM. No hardcoded identifiers. Evidence-derived only.
+   */
+  private _ensureTargetedVerification(
+    reflection: EngineeringReflection,
+    steps: readonly ResearchStep[],
+    results: readonly ExecutionOutcome[],
+    ctx: AdaptiveProcessContext,
+    runQueries: Set<string>,
+    runRefs: Set<string>,
+  ): EngineeringReflection {
+    // No safety net needed if sufficient or no gaps.
+    if (reflection.sufficiency >= SUFFICIENCY_THRESHOLD) return reflection;
+    if (reflection.gaps.length === 0) return reflection;
+
+    const identifiers = this._extractEvidenceIdentifiers(steps, results);
+    if (identifiers.length === 0) return reflection;
+
+    // Collect existing verification actions from nextActions.
+    const existingSearchQueries = new Set<string>();
+    const existingRefSymbols = new Set<string>();
+    for (const a of reflection.nextActions) {
+      if (a.type === "code.search") {
+        const q = String(a.params?.query ?? "").trim().toLowerCase();
+        const m = String(a.params?.mode ?? "literal").trim().toLowerCase();
+        if (q) existingSearchQueries.add(`${q}|${m}`);
+      }
+      if (a.type === "code.references") {
+        const sym = String(a.params?.symbol ?? "").trim().toLowerCase();
+        if (sym) existingRefSymbols.add(sym);
+      }
+    }
+
+    // For each gap, find identifiers mentioned in the gap text.
+    for (const gap of reflection.gaps) {
+      const gapLower = gap.toLowerCase();
+      // Match identifiers that appear in the gap text (case-insensitive).
+      const matchingIds = identifiers.filter(
+        (id) => id.length >= 3 && gapLower.includes(id.toLowerCase()),
+      );
+      if (matchingIds.length === 0) continue;
+
+      for (const id of matchingIds) {
+        const queryKey = `${id.toLowerCase()}|literal`;
+
+        // Already in nextActions? LLM already proposed it — don't duplicate.
+        if (existingSearchQueries.has(queryKey)) break;
+        if (existingRefSymbols.has(id.toLowerCase())) break;
+
+        // Strategy 1: code.search not yet executed → add it.
+        if (!runQueries.has(queryKey)) {
+          const action: EngineeringNextAction = {
+            type: "code.search",
+            params: { query: id, mode: "literal" },
+            rationale: `Safety net: identifier "${id}" found in evidence is mentioned in gap "${gap.slice(0, 80)}" but no verification was proposed. Targeted search to find assignment/branch/call-site.`,
+          };
+          return {
+            ...reflection,
+            nextActions: [...reflection.nextActions, action],
+            sufficiency: Math.min(reflection.sufficiency, SUFFICIENCY_THRESHOLD - 0.01),
+          };
+        }
+
+        // Strategy 2: code.search executed but code.references not → add it.
+        if (!runRefs.has(id.toLowerCase())) {
+          const action: EngineeringNextAction = {
+            type: "code.references",
+            params: { symbol: id },
+            rationale: `Safety net: code.search for "${id}" already executed. Trying code.references to find call sites / assignments. Gap: "${gap.slice(0, 80)}"`,
+          };
+          return {
+            ...reflection,
+            nextActions: [...reflection.nextActions, action],
+            sufficiency: Math.min(reflection.sufficiency, SUFFICIENCY_THRESHOLD - 0.01),
+          };
+        }
+        // Both strategies exhausted for this identifier — try next matching id.
+      }
+    }
+
+    // No verifiable gap + identifier pair could be extended. Return as-is.
+    return reflection;
+  }
+
   private _rejectReason(action: EngineeringNextAction): string {
     const p = action.params ?? {};
     switch (action.type) {
@@ -653,10 +865,22 @@ Rules:
     // the current wave). Prevents the LLM from re-proposing files already
     // read in prior waves.
     const runPaths = this._getRunPaths(ctx.parentExecutionId);
+    const runQueries = this._getRunQueries(ctx.parentExecutionId);
+    const runRefs = this._getRunReferences(ctx.parentExecutionId);
     for (const s of steps) {
       const args = s.call.params?.arguments as Record<string, unknown> | undefined;
+      const toolName = s.call.params?.toolName;
       const p = typeof args?.path === "string" ? (args.path as string).trim() : "";
       if (p) runPaths.add(p);
+      if (toolName === "engineering.code.search" && args) {
+        const q = String(args.query ?? "").trim().toLowerCase();
+        const m = String(args.mode ?? "literal").trim().toLowerCase();
+        if (q) runQueries.add(`${q}|${m}`);
+      }
+      if (toolName === "engineering.code.references" && args) {
+        const sym = String(args.symbol ?? "").trim().toLowerCase();
+        if (sym) runRefs.add(sym);
+      }
     }
     const completedPaths = new Set(runPaths);
 
@@ -971,17 +1195,28 @@ Rules:
       sufficiency: typeof data.sufficiency === "number" ? data.sufficiency : 0,
     };
 
+    // ── Targeted Verification Safety Net V1 ─────────────────────────────
+    // Deterministic post-reflect safety net. If the LLM left a concrete gap
+    // about an identifier that appeared in evidence, and no verification
+    // action was proposed, inject ONE targeted code.search (or code.references
+    // as fallback) for that identifier. Prevents the investigation from
+    // closing as UNRESOLVED when a verifiable identifier exists in evidence.
+    const ensured = this._ensureTargetedVerification(
+      reflection, steps, results, ctx, runQueries, runRefs,
+    );
+
     // TEMP DIAG — emit reflect output (gaps + nextActions + sufficiency)
     this._emitDiag(ctx, "reflect", {
-      sufficiency: reflection.sufficiency,
-      gaps: reflection.gaps,
-      hypothesis: reflection.hypothesis,
-      nextActionsCount: reflection.nextActions.length,
-      nextActions: reflection.nextActions.map((a) => ({ type: a.type, params: a.params, rationale: a.rationale })),
-      observations: reflection.observations.map((o) => ({ step: o.step, finding: o.finding })),
+      sufficiency: ensured.sufficiency,
+      gaps: ensured.gaps,
+      hypothesis: ensured.hypothesis,
+      nextActionsCount: ensured.nextActions.length,
+      nextActions: ensured.nextActions.map((a) => ({ type: a.type, params: a.params, rationale: a.rationale })),
+      observations: ensured.observations.map((o) => ({ step: o.step, finding: o.finding })),
+      safetyNetAddedAction: ensured !== reflection ? ensured.nextActions[ensured.nextActions.length - 1] : null,
     });
 
-    return reflection;
+    return ensured;
   }
 
   /**
