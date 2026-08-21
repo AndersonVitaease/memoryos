@@ -40,7 +40,7 @@
     },
     "discovered_tools": {
       "type": "string",
-      "description": "Cache JSON do ultimo resultado de tools/list deste servidor (nome, descricao, inputSchema por tool)"
+      "description": "Cache JSON do ultimo resultado de tools/list deste servidor (nome, descricao, inputSchema por tool). Cache efemero \u2014 sobrescrito por mcpDiscoverAll/mcpClientCall a cada tools/list. NAO armazenar policy operacional aqui."
     },
     "last_discovered_at": {
       "type": "string",
@@ -53,6 +53,10 @@
     "notes": {
       "type": "string",
       "description": "Notas livres sobre este servidor (limites, particularidades, contato)"
+    },
+    "tool_policy": {
+      "type": "string",
+      "description": "JSON string com policy operacional por tool MCP (NAO e cache de discovery \u2014 sobrevive a tools/list e redeploy). Formato: {\"engineering.file.read\":{\"maxConcurrent\":12},\"engineering.code.search\":{\"maxConcurrent\":6}}. O Runtime resolve tool_policy[toolName].maxConcurrent para ExecutionPolicy.parallelism em waves homogeneas (mesmo server + mesma toolName). Ausente/invalido \u2192 parallelism.enabled=false (comportamento irrestrito preservado, nunca fallback para 1). NUNCA sobrescrito por mcpDiscoverAll/mcpClientCall \u2014 esses atualizam SOMENTE discovered_tools/last_discovered_at."
     }
   },
   "required": [
