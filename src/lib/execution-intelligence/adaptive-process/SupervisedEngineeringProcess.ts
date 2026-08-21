@@ -375,18 +375,27 @@ Analyze the evidence and respond ONLY JSON:
   "sufficiency": 0.0
 }
 
+MANDATORY CONVERSION RULE — GAP WITH CONCRETE UNREAD PATH → file.read:
+- If a gap refers to a concrete file path or concrete source file that appeared in the evidence/search results AND that file has NOT yet been read in this run, you MUST emit a file.read nextAction for that exact full path.
+- Returning empty nextActions while unresolved gaps refer to concrete unread files is FORBIDDEN.
+- "Concrete full path" means a path like "src/lib/execution-intelligence/adaptive-process/DynamicWaveRunner.ts" that was literally returned by a code.search result in the evidence. A bare filename like "DynamicWaveRunner.ts" WITHOUT a full path in evidence is NOT sufficient to emit file.read.
+- PATH INVENTION IS FORBIDDEN: never fabricate a path that does not appear verbatim in the evidence. If a gap mentions a filename/symbol but the full path is not yet known, emit a code.search nextAction (mode "filename" or "literal") to LOCATE the full path first — do NOT guess the path.
+- MULTIPLE GAPS WITH DIFFERENT CONCRETE PATHS: emit multiple file.read nextActions (one per concrete unread path). All such file.read actions enter the SAME next wave (they are independent). Up to 8 file.read per wave.
+- PRIORITY: when a concrete unread path exists, file.read has ABSOLUTE priority. Do NOT substitute it with repo.structure, generic search, or a repeated code.search that already ran. Do NOT re-run a code.search whose query already executed just to avoid emitting file.read.
+
 Rules:
 - observations: ONLY facts directly present in the evidence output. Do NOT infer. Example of VALID observation: "Search for 'executionPath' returned ConversationPlanningEngine.ts." Example of INVALID observation: "The runtime must decide this somewhere."
 - gaps: specific unanswered questions. VALID gap: "Where 'executionPath' is assigned is still unknown." INVALID gap (FORBIDDEN): "Cannot access /src", "Source files are missing", "Lack of visibility into subdirectories". code.search is recursive — do NOT claim lack of directory access.
 - ZERO / LOW SEARCH RESULTS: if a code.search returned zero or very few matches, do NOT conclude the repository is inaccessible or source files are missing. Conclude instead that the QUERY was inadequate and produce code.search nextActions with REFORMULATED queries (different terms, identifiers, or broader/narrower variants). Do NOT repeat the exact same query already executed.
 - SEARCH RETURNED PATHS: if code.search returned file paths, PRIORITIZE file.read of the most relevant paths as nextActions (up to 8). Do NOT call repo.structure when useful paths are already available.
 - nextActions constraints:
-  - file.read: params MUST include "path" with a concrete path found in the evidence (from a search result).
+  - file.read: params MUST include "path" with a concrete FULL path found verbatim in the evidence (from a search result). Never invent or guess a path.
   - code.references: params MUST include "symbol" with a concrete identifier found in the evidence.
   - code.search: params MUST include "query" and "mode" (literal or filename). The query MUST be DIFFERENT from any query already executed in this run (reformulate, do not repeat).
   - git.* / repo.structure: only when the mission asks about changes/repository state, OR as a contextual fallback after at least two rounds of failed searches that produced no paths at all.
   - Max 8 nextActions total.
   - Do NOT include actions whose required params are NOT available from evidence.
+- EMPTY NEXTACTIONS: allowed ONLY when sufficiency >= 0.75, OR gaps is empty, OR no actionable capability can advance the mission. Empty nextActions while resolvable gaps reference concrete unread files is FORBIDDEN.
 - sufficiency: 1.0 if the mission is fully answerable from current evidence alone; 0.0 if nothing relevant found; 0.75+ if mostly answerable with minor gaps.
 - If sufficiency >= 0.75, nextActions should be empty or minimal (we have enough).`;
 
