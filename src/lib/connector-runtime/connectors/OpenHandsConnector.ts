@@ -57,6 +57,14 @@ export class OpenHandsConnector implements IConnector {
       capabilityReversibility: {
         "openhands.runTask": "safe",
       },
+      // CT-01: step timeout específico para openhands.runTask.
+      // O backend function (openHandsTaskProcess) pode executar até o limite
+      // da plataforma (~300s). O COMPOSITE_EXECUTION_POLICY.stepTimeoutMs
+      // padrão (240s) mataria o step prematuramente. 300s alinha com o limite
+      // da plataforma sem excedê-lo.
+      capabilityTimeout: {
+        "openhands.runTask": 300_000,
+      },
     };
   }
 
@@ -122,6 +130,11 @@ export class OpenHandsConnector implements IConnector {
           continued: d?.continued === true,
           repository: typeof d?.repository === "string" ? d.repository : repository,
           mode,
+          // Pass-through estruturado: change_set e sandbox_id do backend response.
+          // NÃO reinterpretar. NÃO sintetizar. NÃO usar LLM. Apenas repassa para
+          // SupervisedWriteFlow.parseChangeSet() consumir.
+          change_set: d?.change_set ?? null,
+          sandbox_id: typeof d?.sandbox_id === "string" ? d.sandbox_id : null,
         },
         start,
         eid,

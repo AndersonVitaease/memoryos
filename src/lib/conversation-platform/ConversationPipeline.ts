@@ -49,6 +49,7 @@ import { IntentRecorder } from "@/lib/operational-intelligence/IntentRecorder";
 import { OIEOrchestrator } from "@/lib/operational-intelligence/OIEOrchestrator";
 import { isCanonicalResourceRequestEnabled, isCanonicalResourceReadEnabled } from "@/lib/resource-intent-canonicalization";
 import { synthesizeConnectorResult } from "@/lib/connector-runtime-provider/ConnectorResultSynthesizer";
+import { isSupervisedWriteMission, SUPERVISED_WRITE_PIPELINE_TIMEOUT_MS } from "@/lib/execution-intelligence/adaptive-process/SupervisedWriteTimeout";
 
 // Identity/greeting bypass regex — evaluated once at module load
 const _IDENTITY_RE = /^(qual|quem|oi|olá|ola|bom dia|boa tarde|boa noite)\b.{0,15}(nome|você|voce|propósito|objetivo|funcao|função)\b/i;
@@ -182,7 +183,12 @@ class ConversationPipeline {
           // Subido pra 90s pra dar folga ao calculo + streaming. O fallback
           // so roda se nao ha stream ativo (check abaixo), entao um stream em
           // andamento nunca e cortado.
-          timeoutMs: 90_000,
+          //
+          // SUPERVISED WRITE: timeout estendido (15 min) para fluxos interativos
+          // que incluem Approval 1 + OpenHands + Approval 2 + apply/verify.
+          // O timeout normal de 90s matava o fluxo durante o await do OpenHands.
+          // Apenas supervisedEngineering mode=write recebe o timeout estendido.
+          timeoutMs: isSupervisedWriteMission(userMessage) ? SUPERVISED_WRITE_PIPELINE_TIMEOUT_MS : 90_000,
           onRetry: () => conversationMetrics.recordRecoveryAttempt(executionId),
         }
       );
@@ -213,6 +219,30 @@ class ConversationPipeline {
         // (o calculo travou antes de qualquer resposta comecar).
         if (conversationStreaming.isStreaming(executionId)) {
           console.log("[ConversationPipeline] Timeout durante stream ativo — orfao vai terminar a resposta.");
+        } else if (isSupervisedWriteMission(userMessage)) {
+        // SUPERVISED WRITE TIMEOUT: NÃO disparar fallback LLM narrando comandos
+        // ficticios. O write flow permanece dono da execucao ate success/failed/
+        // cancelled/approval-timeout/supervised-write-timeout. Apenas sinaliza
+        // timeout explicito — o orfao pode ainda completar em background.
+        this._cancelled = true;
+        try {
+          const _swSession = conversationStore.session;
+          if (_swSession) {
+            const _swTimeoutText = "A missão de engenharia supervisionada excedeu o tempo limite. A execução pode ainda estar em andamento em segundo plano. Se necessário, tente novamente.";
+            const _swTimeoutMsgId = `msg-${Date.now()}-swto`;
+            conversationStore.appendMessage({
+              id: _swTimeoutMsgId, session_id: _swSession.id, role: "assistant",
+              content: _swTimeoutText, memory_tier: "active", sources_used: [],
+            });
+            try {
+              const _swSaved = await persistMessage({
+                sessionId: _swSession.id, projectId: _swSession.project_id,
+                role: "assistant", content: _swTimeoutText, sources_used: [],
+              });
+              conversationStore.updateMessage(_swTimeoutMsgId, { id: _swSaved.id });
+            } catch { /* non-critical */ }
+          }
+        } catch { /* never propagate */ }
         } else {
         this._cancelled = true;
         // FIX: antes o timeout so setava _cancelled e o usuario via apenas uma
