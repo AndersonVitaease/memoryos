@@ -126,9 +126,31 @@ export class ConversationPlanningEngine {
         return { plan, success: true, error: null, durationMs: Date.now() - t0 };
       }
 
-      let idx = 0;
-      const builtSteps: ExecutionStep[] = descriptors.map((desc) => {
-        idx++;
+      // DAG V1: deterministic step ids + descriptor-id→step-id map for dependsOn.
+      const stepIds: string[] = [];
+      const descIdToStepId = new Map<string, string>();
+      descriptors.forEach((desc, i) => {
+        const sid = `step-${String(i + 1).padStart(2, "0")}`;
+        stepIds.push(sid);
+        if (desc.id) {
+          if (descIdToStepId.has(desc.id)) {
+            throw new Error(`Duplicate CapabilityDescriptor id '${desc.id}' for goalType ${planningGoalType}`);
+          }
+          descIdToStepId.set(desc.id, sid);
+        }
+      });
+
+      const builtSteps: ExecutionStep[] = descriptors.map((desc, i) => {
+        const stepId = stepIds[i];
+        // Remap descriptor-id dependsOn → step-id dependsOn. Unknown ref → fail.
+        const resolvedDeps: string[] = [];
+        for (const depRef of desc.dependsOn ?? []) {
+          const target = descIdToStepId.get(depRef);
+          if (!target) {
+            throw new Error(`dependsOn '${depRef}' references unknown descriptor for goalType ${planningGoalType}`);
+          }
+          resolvedDeps.push(target);
+        }
         const mergedParams = { ...desc.params, ...planningParameters };
         // Observabilidade: emite evento no RuntimeDebug para conectores Drive.
         // _debugExecutionId is injected by ConversationPipeline from the Runtime's executionId.
@@ -161,13 +183,16 @@ export class ConversationPlanningEngine {
         // O ExecutionOrchestrator usa dependsOn para agendar waves paralelas;
         // [] torna o step elegível para a mesma wave que outros independentes.
         return Object.freeze({
-          id:         makeStepId(idx),
+          id:         stepId,
           connector:  desc.connector,
           capability: desc.capability,
           parameters: Object.freeze(mergedParams),
-          dependsOn:  Object.freeze([...(desc.dependsOn ?? [])]),
+          dependsOn:  Object.freeze(resolvedDeps),
         });
       });
+
+      // DAG V1: cycle detection — fail fast before the Orchestrator deadlocks.
+      this._assertAcyclic(builtSteps);
 
       // Generic multi-file read expansion: a single mcp.callTool step targeting
       // engineering.file.read whose rawText references multiple file paths
@@ -284,6 +309,35 @@ export class ConversationPlanningEngine {
       parameters: Object.freeze({ ...baseParams, arguments: Object.freeze({ path: p }) }),
       dependsOn:  Object.freeze([] as string[]),
     }));
+  }
+
+  /**
+   * DAG V1: validates that step dependsOn edges form an acyclic graph.
+   * Throws on cycle (planning failure) so the Orchestrator never deadlocks
+   * waiting for impossible steps. DFS with WHITE/GRAY/BLACK coloring.
+   */
+  private _assertAcyclic(steps: readonly ExecutionStep[]): void {
+    const byId = new Map(steps.map((s) => [s.id, s]));
+    const WHITE = 0, GRAY = 1, BLACK = 2;
+    const color = new Map<string, number>(steps.map((s) => [s.id, WHITE]));
+
+    const visit = (id: string, path: readonly string[]): void => {
+      const c = color.get(id) ?? WHITE;
+      if (c === BLACK) return;
+      if (c === GRAY) {
+        throw new Error(`Cycle detected in ExecutionPlan dependencies: ${[...path, id].join(" -> ")}`);
+      }
+      color.set(id, GRAY);
+      const step = byId.get(id);
+      if (step && step.dependsOn) {
+        for (const dep of step.dependsOn) {
+          if (byId.has(dep)) visit(dep, [...path, id]);
+        }
+      }
+      color.set(id, BLACK);
+    };
+
+    for (const s of steps) visit(s.id, []);
   }
 
   private _makePlan(

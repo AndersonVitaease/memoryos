@@ -49,10 +49,18 @@ export interface CapabilityDescriptor {
   /** Static default parameters — merged with goal parameters at plan time */
   readonly params:     Record<string, unknown>;
   /**
-   * Optional explicit execution dependencies (step ids this step must run after).
-   * Omitted → independent (default: [] at plan time). The ExecutionOrchestrator
-   * reads this to schedule parallel waves; an explicit [] marks the step as an
-   * independent root eligible for the same wave as other independent steps.
+   * DAG V1: optional stable id for cross-referencing in dependsOn. When
+   * present, other descriptors reference this id in their dependsOn; the
+   * Planner remaps it to the generated step id so the ExecutionOrchestrator
+   * sees real dependsOn edges. Absent → the descriptor cannot be referenced
+   * by dependsOn (dependsOn must be empty/absent).
+   */
+  readonly id?:        string;
+  /**
+   * Optional explicit execution dependencies (DESCRIPTOR ids this step must
+   * run after). The Planner remaps descriptor ids → step ids at plan time.
+   * Omitted/[] → independent root eligible for the same wave as other
+   * independent steps.
    */
   readonly dependsOn?: readonly string[];
 }
@@ -886,6 +894,38 @@ const _builtins: CapabilityMapping[] = [
     goalType: "mcp.callTool" as GoalType,
     descriptors: [
       { connector: "mcp", capability: "mcp.callTool", params: {} },
+    ],
+  },
+
+  // ── DAG V1 TEST GOALTYPE — static multi-descriptor DAG (read-only) ─────────
+  // Certifica ponta a ponto: GoalCapabilityRegistry multi-descriptor → Planner
+  // multi-step + dependsOn real → ExecutionOrchestrator waves. NÃO tem sinais
+  // no GoalRegistry (não roteia por chat) — usado por testes determinísticos e
+  // missão real read-only. Wave 1 = git.status + file.read(package.json) em
+  // paralelo; Wave 2 = git.log depende da conclusão dos dois (não consome
+  // output — static DAG only, output references ficam para V2).
+  {
+    goalType: "engineering.repoHealthCheck" as GoalType,
+    descriptors: [
+      {
+        id: "git-status",
+        connector: "mcp",
+        capability: "mcp.callTool",
+        params: { serverName: "eng-mcp", toolName: "engineering.git.status", arguments: {} },
+      },
+      {
+        id: "read-pkg",
+        connector: "mcp",
+        capability: "mcp.callTool",
+        params: { serverName: "eng-mcp", toolName: "engineering.file.read", arguments: { path: "package.json" } },
+      },
+      {
+        id: "git-log",
+        connector: "mcp",
+        capability: "mcp.callTool",
+        params: { serverName: "eng-mcp", toolName: "engineering.git.log", arguments: { limit: 1 } },
+        dependsOn: ["git-status", "read-pkg"],
+      },
     ],
   },
 
