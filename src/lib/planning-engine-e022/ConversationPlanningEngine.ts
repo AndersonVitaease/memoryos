@@ -48,6 +48,7 @@ import { planningContextAuditStore } from "./PlanningContextAuditStore";
 import { resolvePlanningDualRead } from "./PlanningDualReadResolver";
 import { isCanonicalResourceReadEnabled } from "@/lib/resource-intent-canonicalization";
 import { extractReferencedStepIds } from "./OutputReference";
+import { tryDecomposeKnownMission } from "./KnownMissionDecomposer";
 
 // ── Event listener type ───────────────────────────────────────────────────────
 
@@ -114,6 +115,27 @@ export class ConversationPlanningEngine {
     try {
       if (!goal.valid) {
         return this._fail(planId, goal, "Goal is invalid", t0);
+      }
+
+      // ── Known Mission Decomposition V1 ────────────────────────────────────
+      // Deterministic pattern recognition on rawText. Runs BEFORE the generic
+      // single-tool fallback when the full pattern is clearly present. Explicit
+      // MCP tool calls (user mentions tool name) and protected goal types
+      // (supervisedEngineering, openhands, GitHub, writes) bypass the
+      // decomposer. Zero LLM. Zero network.
+      const mission = tryDecomposeKnownMission({
+        rawText: dualRead.rawText,
+        goalType: planningGoalType,
+      });
+      if (mission) {
+        const missionSteps = [...mission.steps];
+        this._assertAcyclic(missionSteps);
+        this._assertReferences(missionSteps);
+        const plan = this._makePlan(planId, goal, missionSteps, "planned", t0, _mode);
+        this._track(plan);
+        this._totalPlanned++;
+        this._emit({ type: "planning_completed", goalId: goal.id, planId, planningTime: Date.now() - t0, stepCount: missionSteps.length, timestamp: Date.now() });
+        return { plan, success: true, error: null, durationMs: Date.now() - t0 };
       }
 
       const descriptors = GoalCapabilityRegistry.resolve(planningGoalType as GoalType);
