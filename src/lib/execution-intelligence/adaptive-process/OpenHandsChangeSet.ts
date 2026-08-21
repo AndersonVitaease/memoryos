@@ -391,14 +391,6 @@ export function parseChangeSet(raw: unknown): OpenHandsChangeSet | null {
 // WRITE ROUTING — detect write intent from query (FASE 1)
 // ═══════════════════════════════════════════════════════════════════════════
 
-const READ_ONLY_OVERRIDE_PHRASES: readonly string[] = [
-  "nao altere", "nao modifique", "somente leitura", "read-only",
-  "nao mude", "mas nao altere", "mentalmente", "nao altere nada",
-  "nao modificar", "nao mudar", "sem alterar", "sem modificar",
-  "do not modify", "do not change", "do not alter", "don't modify",
-  "read only", "investigate only", "inspect only",
-];
-
 const WRITE_VERBS: readonly string[] = [
   "corrija", "corrigir", "correcao", "implemente", "implementar",
   "modifique", "modificar", "altere", "alterar",
@@ -409,28 +401,124 @@ const WRITE_VERBS: readonly string[] = [
 ];
 
 /**
+ * GLOBAL_READ_ONLY_PHRASES — frases que proibem TODA escrita.
+ *
+ * Apenas frases que sao INEQUIVOCAS como proibicao global de escrita
+ * qualificam como override read-only. Bare "nao altere" / "nao modifique"
+ * / "sem alterar" NAO estao aqui porque casam indevidamente com constraints
+ * locais scoped ("nao altere logica", "nao modifique nenhum outro arquivo")
+ * que proibem apenas aspectos especificos, nao a missao inteira.
+ *
+ * Causa raiz do bug exec-1787345585455-h0ifyh: "nao altere" (substring generica)
+ * casava com "nao altere logica" (constraint local) e convertia mode para read
+ * antes de verificar "adicione" (write verb positivo).
+ */
+const GLOBAL_READ_ONLY_PHRASES: readonly string[] = [
+  // Proibicoes globais explicitas ("nada")
+  "nao altere nada",
+  "nao modifique nada",
+  "nao mude nada",
+  "nao faca nenhuma alteracao",
+  "nao faca alteracao nenhuma",
+  "sem alterar nada",
+  "sem modificar nada",
+  "sem mudar nada",
+  // Declaracoes explicitas de modo leitura
+  "somente leitura",
+  "apenas leitura",
+  "read-only",
+  "read only",
+  "investigate only",
+  "inspect only",
+  "modo leitura",
+  // Proibicoes de escrita no repositorio inteiro
+  "nao escreva no repositorio",
+  "nao escreva no codigo",
+  "nao escreva no repo",
+  // Proibicao de TODOS os arquivos (NAO confunde com "outro arquivo" que e scoped)
+  // "nao modifique nenhum arquivo" NAO casa com "nao modifique nenhum OUTRO arquivo"
+  // porque "outro" fica entre "nenhum" e "arquivo".
+  "nao modifique nenhum arquivo",
+  "nao altere nenhum arquivo",
+  "nao mude nenhum arquivo",
+];
+
+/**
+ * Palavras de negacao em portugues. Um write verb precedido por uma
+ * destas dentro de uma janela curta e considerado NEGATED (nao conta
+ * como intenc positiva de escrita).
+ *
+ * Ex: "nao altere logica" → "altere" e negado por "nao".
+ *     "sem modificar a API" → "modificar" e negado por "sem".
+ *     "adicione um comentario" → "adicione" NAO e negado → positivo.
+ */
+const NEGATION_WORDS_RE = /\b(?:nao|sem|nunca|jamais|nem)\b/;
+
+/**
+ * Verifica se uma ocorrencia de write verb no indice dado esta negada
+ * (precedida por uma palavra de negacao dentro de ~20 chars).
+ */
+function isVerbOccurrenceNegated(q: string, verbIdx: number): boolean {
+  const prefix = q.slice(Math.max(0, verbIdx - 20), verbIdx);
+  return NEGATION_WORDS_RE.test(prefix);
+}
+
+/**
+ * Retorna true se a query contem pelo menos UM write verb nao negado.
+ *
+ * Verbos negados ("nao altere", "sem modificar", "nao mude") NAO contam
+ * como intenc positiva de escrita — eles sao constraints locais ou
+ * proibicoes scoped, nao cancelamento da missao de escrita.
+ *
+ * Percorre todas as ocorrencias de cada verb (uma mensagem pode ter
+ * "modifique X mas nao modifique Y" — a primeira e positiva, a segunda
+ * e negada; basta uma positiva).
+ */
+function hasPositiveWriteVerb(q: string): boolean {
+  for (const verb of WRITE_VERBS) {
+    let from = 0;
+    let idx = q.indexOf(verb, from);
+    while (idx !== -1) {
+      if (!isVerbOccurrenceNegated(q, idx)) return true;
+      from = idx + verb.length;
+      idx = q.indexOf(verb, from);
+    }
+  }
+  return false;
+}
+
+/**
  * Detecta write mode a partir da query do usuario.
  *
- * Read-only precedence: se o usuario diz explicitamente "nao altere",
- * "somente leitura", etc. -> mode="read" mesmo que contenha verbos de escrita.
+ * ORDEM DE DECISAO:
+ *   A. GLOBAL_READ_ONLY: se uma frase de proibicao global inequivoca
+ *      ("nao altere nada", "somente leitura", "nao modifique nenhum
+ *      arquivo") esta presente → mode="read" (override absoluto).
  *
- * Caso contrario, se a query contem verbos de escrita (corrija, implemente,
- * modifique, altere, etc.) -> mode="write".
+ *   B. WRITE_VERB POSITIVO: se existe um write verb nao negado
+ *      ("adicione", "corrija", "modifique" sem "nao"/"sem" antes)
+ *      → mode="write". Constraints locais ("nao altere logica",
+ *      "sem alterar tipos") NAO convertem write → read.
  *
- * Default: "read" (preserva comportamento certificado).
+ *   C. sem write verb positivo → mode="read" (default certificado).
+ *
+ * PRINCIPIO: "nao altere logica" e uma CONSTRAINT LOCAL (nao mude a
+ * logica, MAS adicione o comentario), nao uma proibicao global. A
+ * substring generica "nao altere" nao e usada como override global.
  */
 export function detectWriteMode(query: string): "read" | "write" {
   if (!query) return "read";
   const q = query.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
-  for (const phrase of READ_ONLY_OVERRIDE_PHRASES) {
+  // A. Global read-only — override absoluto, mesmo com write verb positivo.
+  for (const phrase of GLOBAL_READ_ONLY_PHRASES) {
     if (q.includes(phrase)) return "read";
   }
 
-  for (const verb of WRITE_VERBS) {
-    if (q.includes(verb)) return "write";
-  }
+  // B. Write verb positivo (nao negado) → write. Constraints locais nao cancelam.
+  if (hasPositiveWriteVerb(q)) return "write";
 
+  // C. Default: read (preserva comportamento certificado).
   return "read";
 }
 
