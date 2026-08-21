@@ -606,6 +606,8 @@ async function createAndPollStartTask(opts: {
           }],
         },
         selected_repository: repository,
+        selected_branch: 'main',
+        git_provider: 'github',
       }),
     },
     Math.min(60_000, Math.max(1, deadlineAt - Date.now())),
