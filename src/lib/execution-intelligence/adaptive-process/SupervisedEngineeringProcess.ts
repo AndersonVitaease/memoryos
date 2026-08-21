@@ -71,6 +71,10 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
   readonly id = "supervisedEngineering";
   readonly description = "Supervised Engineering — evidence-based read-only investigation (V1) + OpenHands write verification";
 
+  // Per-run accumulated file.read paths (keyed by parentExecutionId).
+  // In-memory only — cleared when run() completes. Not persistent, not global.
+  private readonly _runReadPaths = new Map<string, Set<string>>();
+
   // ═══════════════════════════════════════════════════════════════════════════
   // PLAN — first wave (discovery)
   // ═══════════════════════════════════════════════════════════════════════════
@@ -141,17 +145,24 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
     const reflection = state.reflection as EngineeringReflection;
     const actions = reflection.nextActions ?? [];
 
-    // ── Query dedup per run (transient, derived from completedSteps) ──
-    // Collects every (query, mode) pair already executed across prior waves so
-    // the LLM's reformulated code.search nextActions do not silently repeat a
-    // query that already returned nothing. No new entity, no global history.
+    // ── Query + file.read dedup per run (transient, derived from completedSteps) ──
+    // Collects every (query, mode) pair and every file path already executed
+    // across prior waves so the LLM's nextActions do not silently repeat
+    // a query that already returned nothing or re-read a file already read.
+    // No new entity, no global history. DynamicWaveRunner's signature-based
+    // dedup remains the physical safety net.
     const executedQueryKeys = new Set<string>();
+    const executedFilePaths = new Set<string>();
     for (const entry of state.completedSteps) {
       const args = entry.step.call.params?.arguments as Record<string, unknown> | undefined;
       if (entry.step.call.params?.toolName === "engineering.code.search" && args) {
         const q = String(args.query ?? "").trim().toLowerCase();
         const m = String(args.mode ?? "literal").trim().toLowerCase();
         if (q) executedQueryKeys.add(`${q}|${m}`);
+      }
+      if (entry.step.call.params?.toolName === "engineering.file.read" && args) {
+        const p = typeof args.path === "string" ? (args.path as string).trim() : "";
+        if (p) executedFilePaths.add(p);
       }
     }
 
@@ -170,6 +181,16 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
         const m = String(action.params?.mode ?? "literal").trim().toLowerCase();
         if (q && executedQueryKeys.has(`${q}|${m}`)) {
           rejects.push({ type: action.type, params: action.params, reason: "duplicate_search" });
+          continue;
+        }
+      }
+      // Dedup file.read: skip re-reads of files already read in prior waves
+      // (unless _retry=true). DynamicWaveRunner's signature dedup is the
+      // physical safety net; this prevents the LLM from wasting nextActions.
+      if (action.type === "file.read" && action.params?._retry !== true) {
+        const fp = typeof action.params?.path === "string" ? (action.params.path as string).trim() : "";
+        if (fp && executedFilePaths.has(fp)) {
+          rejects.push({ type: action.type, params: action.params, reason: "duplicate_file_read" });
           continue;
         }
       }
@@ -280,7 +301,11 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
     // preserved). Wave 2+ steps are born from real evidence — they did NOT
     // exist in the initial plan. No OpenHands required for read-only.
     const runner = new DynamicWaveRunner();
-    return runner.run(this, ctx, { maxIterations: READ_MAX_ITERATIONS });
+    try {
+      return await runner.run(this, ctx, { maxIterations: READ_MAX_ITERATIONS });
+    } finally {
+      this._runReadPaths.delete(ctx.parentExecutionId);
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -320,6 +345,15 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
   // ═══════════════════════════════════════════════════════════════════════════
   // PRIVATE — Adaptive Evidence Builder V1
   // ═══════════════════════════════════════════════════════════════════════════
+
+  private _getRunPaths(executionId: string): Set<string> {
+    let paths = this._runReadPaths.get(executionId);
+    if (!paths) {
+      paths = new Set<string>();
+      this._runReadPaths.set(executionId, paths);
+    }
+    return paths;
+  }
 
   /**
    * Builds evidence text for the reflector with per-tool char budgets and a
@@ -445,8 +479,28 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
    * with path/line/preview only. Strips transport metadata and other
    * envelope fields that waste budget without aiding the investigation.
    */
-  private _compactSearchOutput(content: unknown): { query: unknown; matches: unknown[]; total: number } | null {
+  private _compactSearchOutput(content: unknown): { query: unknown; mode: unknown; truncated: unknown; matches: unknown[]; total: number } | null {
     if (!content || typeof content !== "object") return null;
+
+    // ── MCP text content normalization ──────────────────────────────────
+    // ENG-MCP returns code.search/code.references results as MCP content
+    // items: [{ type: "text", text: '{"matches":[...],"mode":"literal"}' }]
+    // The actual structured data is JSON-serialized inside .text. Parse it
+    // before falling through to the field-name extraction below.
+    // If parse fails, preserve the current fallback behavior.
+    if (Array.isArray(content) && content.length > 0) {
+      const first = content[0];
+      if (first && typeof first === "object" && !Array.isArray(first)) {
+        const item = first as Record<string, unknown>;
+        if (item.type === "text" && typeof item.text === "string") {
+          const parsed = this._tryParseJson(item.text);
+          if (parsed !== null) {
+            content = parsed;
+          }
+        }
+      }
+    }
+
     const obj = content as Record<string, unknown>;
 
     // Find the matches array under common field names.
@@ -468,10 +522,24 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
     });
 
     return {
-      query: obj.query ?? obj.mode ?? obj.q ?? null,
+      query: obj.query ?? obj.q ?? null,
+      mode: obj.mode ?? null,
+      truncated: obj.truncated ?? null,
       matches,
       total: typeof obj.total === "number" ? obj.total : matchesRaw.length,
     };
+  }
+
+  private _tryParseJson(text: string): Record<string, unknown> | null {
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+      return null;
+    } catch {
+      return null;
+    }
   }
 
   private _rejectReason(action: EngineeringNextAction): string {
@@ -581,12 +649,16 @@ Rules:
   ): Promise<EngineeringReflection> {
     const evidence = this._buildAdaptiveEvidence(steps, results);
 
-    const completedPaths = new Set<string>();
+    // Accumulated file.read paths across ALL waves in this run (not just
+    // the current wave). Prevents the LLM from re-proposing files already
+    // read in prior waves.
+    const runPaths = this._getRunPaths(ctx.parentExecutionId);
     for (const s of steps) {
       const args = s.call.params?.arguments as Record<string, unknown> | undefined;
       const p = typeof args?.path === "string" ? (args.path as string).trim() : "";
-      if (p) completedPaths.add(p);
+      if (p) runPaths.add(p);
     }
+    const completedPaths = new Set(runPaths);
 
     const prompt = `You are the reflector of an engineering investigation in a TypeScript/React repository.
 Mission: "${ctx.query}"
