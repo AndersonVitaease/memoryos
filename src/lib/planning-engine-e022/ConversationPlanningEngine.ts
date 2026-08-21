@@ -47,6 +47,7 @@ import { comparePlanningContext } from "./PlanningContextEquivalence";
 import { planningContextAuditStore } from "./PlanningContextAuditStore";
 import { resolvePlanningDualRead } from "./PlanningDualReadResolver";
 import { isCanonicalResourceReadEnabled } from "@/lib/resource-intent-canonicalization";
+import { extractReferencedStepIds } from "./OutputReference";
 
 // ── Event listener type ───────────────────────────────────────────────────────
 
@@ -194,6 +195,9 @@ export class ConversationPlanningEngine {
       // DAG V1: cycle detection — fail fast before the Orchestrator deadlocks.
       this._assertAcyclic(builtSteps);
 
+      // V2 OUTPUT REFERENCES: validate $ref targets exist and are predecessors.
+      this._assertReferences(builtSteps);
+
       // Generic multi-file read expansion: a single mcp.callTool step targeting
       // engineering.file.read whose rawText references multiple file paths
       // expands into one INDEPENDENT step per path (dependsOn: [] => same
@@ -338,6 +342,36 @@ export class ConversationPlanningEngine {
     };
 
     for (const s of steps) visit(s.id, []);
+  }
+
+  /**
+   * V2 OUTPUT REFERENCES: validates that every $ref in step.parameters points
+   * to a step that exists in the plan AND is in the step's transitive dependsOn.
+   * Data dependency without execution dependency → planning failure.
+   */
+  private _assertReferences(steps: readonly ExecutionStep[]): void {
+    const byId = new Map(steps.map((s) => [s.id, s]));
+    const transitivePreds = (id: string, seen = new Set<string>()): Set<string> => {
+      const step = byId.get(id);
+      if (!step) return seen;
+      for (const dep of step.dependsOn ?? []) {
+        if (!seen.has(dep)) { seen.add(dep); transitivePreds(dep, seen); }
+      }
+      return seen;
+    };
+    for (const step of steps) {
+      const refIds = extractReferencedStepIds(step.parameters);
+      if (refIds.length === 0) continue;
+      const preds = transitivePreds(step.id);
+      for (const refId of refIds) {
+        if (!byId.has(refId)) {
+          throw new Error(`OutputReference: step '${step.id}' references unknown step '${refId}'`);
+        }
+        if (!preds.has(refId)) {
+          throw new Error(`OutputReference: step '${step.id}' references output of '${refId}' without dependsOn (add '${refId}' to dependsOn)`);
+        }
+      }
+    }
   }
 
   private _makePlan(

@@ -27,6 +27,7 @@
 import type { ExecutionStep } from "@/lib/planning-engine-e022/ExecutionPlanTypes";
 import type { StepResult } from "./RuntimeTypes";
 import type { ParallelismConfig } from "./ExecutionPolicy";
+import { hasReferences, resolveReferences, extractReferencedStepIds } from "@/lib/planning-engine-e022/OutputReference";
 
 // ── Resource key ──────────────────────────────────────────────────────────────
 // Deterministic key derived BEFORE dispatch from data already on the step.
@@ -143,11 +144,52 @@ export class ExecutionOrchestrator {
         throw new Error("ExecutionOrchestrator: cyclic or unresolved execution dependencies");
       }
 
+      // V2 OUTPUT REFERENCES: resolve $ref markers in step.parameters using
+      // completed predecessor outputs, right before dispatch. Produces a new
+      // resolved step (original plan untouched). Fails the step deterministically
+      // with OUTPUT_REFERENCE_NOT_FOUND / DEPENDENCY_FAILED — no dispatch.
+      const resolveAndDispatch = async (index: number, waitMs: number): Promise<StepResult> => {
+        const step = steps[index];
+        if (!hasReferences(step.parameters)) {
+          return dispatchStep(step, waitMs);
+        }
+        // Build outputs map from completed results (previous waves).
+        const outputs = new Map<string, unknown>();
+        for (const r of results) {
+          if (r.status === "completed" && r.output !== undefined && r.output !== null) {
+            outputs.set(r.stepId, r.output);
+          }
+        }
+        // Verify referenced predecessors completed successfully.
+        const refIds = extractReferencedStepIds(step.parameters);
+        for (const refId of refIds) {
+          const pred = results.find((r) => r.stepId === refId);
+          if (!pred || pred.status !== "completed") {
+            return {
+              stepId: step.id, connector: step.connector, capability: step.capability,
+              status: "failed", output: null, attempt: 0,
+              error: `DEPENDENCY_FAILED: predecessor '${refId}' did not complete successfully`,
+              startedAt: Date.now(), finishedAt: Date.now(), durationMs: 0,
+            };
+          }
+        }
+        const resolved = resolveReferences(step.parameters, outputs);
+        if (!resolved.ok) {
+          return {
+            stepId: step.id, connector: step.connector, capability: step.capability,
+            status: "failed", output: null, attempt: 0, error: resolved.error,
+            startedAt: Date.now(), finishedAt: Date.now(), durationMs: 0,
+          };
+        }
+        const resolvedStep = Object.freeze({ ...step, parameters: Object.freeze(resolved.resolved) });
+        return dispatchStep(resolvedStep, waitMs);
+      };
+
       const waveResults = hasResourcePolicies
-        ? await this._runResourceAware(ready, steps, resourcePolicies!, semaphores, (index, waitMs) => dispatchStep(steps[index], waitMs))
+        ? await this._runResourceAware(ready, steps, resourcePolicies!, semaphores, (index, waitMs) => resolveAndDispatch(index, waitMs))
         : parallelism.enabled && parallelism.maxConcurrent > 0
-          ? await this._runBounded(ready, parallelism.maxConcurrent, (index, waitMs) => dispatchStep(steps[index], waitMs))
-          : await Promise.all(ready.map((index) => dispatchStep(steps[index], 0)));
+          ? await this._runBounded(ready, parallelism.maxConcurrent, (index, waitMs) => resolveAndDispatch(index, waitMs))
+          : await Promise.all(ready.map((index) => resolveAndDispatch(index, 0)));
 
       ready.forEach((index, position) => {
         remaining.delete(index);
