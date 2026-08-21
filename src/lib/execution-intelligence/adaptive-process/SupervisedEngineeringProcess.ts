@@ -26,7 +26,7 @@ import type { ExecutionOutcome } from "../ExecutionTypes";
 import type { AdaptiveProcess, AdaptiveProcessContext, AdaptiveRunState, CompletionContract, CompletionRequirement, Reflection, ResearchStep } from "./AdaptiveProcess";
 import { DynamicWaveRunner } from "./DynamicWaveRunner";
 
-const MAX_ITERATIONS = 3;
+const READ_MAX_ITERATIONS = 5;
 const MAX_READS_PER_WAVE = 8;
 const MAX_DISCOVERY_QUERIES = 4;
 const SUFFICIENCY_THRESHOLD = 0.75;
@@ -272,7 +272,7 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
     // preserved). Wave 2+ steps are born from real evidence — they did NOT
     // exist in the initial plan. No OpenHands required for read-only.
     const runner = new DynamicWaveRunner();
-    return runner.run(this, ctx, { maxIterations: MAX_ITERATIONS });
+    return runner.run(this, ctx, { maxIterations: READ_MAX_ITERATIONS });
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
