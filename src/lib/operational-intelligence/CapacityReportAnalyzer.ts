@@ -43,6 +43,10 @@ export interface CapacityReportInput {
   readonly toolName: string;
   /** Limite de registros a puxar (default 1000). */
   readonly limit?: number;
+  /** Filtro opcional por executionIds. Quando ausente/vazio, comporta-se como
+   *  antes (todos os registros do server+tool). Usado pelo SupervisedCapacityProcess
+   *  para limitar a analise aos executionIds de uma certificacao especifica. */
+  readonly executionIds?: readonly string[];
 }
 
 export interface ExecutionConcurrencyEntry {
@@ -163,11 +167,17 @@ export const CapacityReportAnalyzer = {
     const { server, toolName } = input;
     const limit = input.limit ?? 1000;
 
-    const records = await base44.entities.ExecutionObservation.filter(
+    let records = await base44.entities.ExecutionObservation.filter(
       { server, tool_name: toolName },
       "-started_at",
       limit,
     );
+    // Filtro opcional por executionIds: limita a analise a uma certificacao
+    // especifica sem misturar historico antigo. Ausente/vazio = sem filtro.
+    if (input.executionIds && input.executionIds.length > 0) {
+      const idSet = new Set(input.executionIds);
+      records = records.filter((r) => idSet.has(r.execution_id));
+    }
 
     const totalSteps = records.length;
     const durations = records.map((r) => r.duration_ms ?? 0).sort((a, b) => a - b);
