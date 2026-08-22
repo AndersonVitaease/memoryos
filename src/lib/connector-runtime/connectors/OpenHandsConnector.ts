@@ -27,6 +27,7 @@ import type {
 } from "../ConnectorTypes";
 import { makeLog, makeExecutionId } from "../ConnectorTypes";
 import { base44 } from "@/api/base44Client";
+import { RuntimeObserver } from "@/lib/operational-intelligence/RuntimeObserver";
 
 const CAPABILITIES = Object.freeze(["openhands.runTask"]);
 
@@ -117,16 +118,56 @@ export class OpenHandsConnector implements IConnector {
       const SHORT_INVOKE_TIMEOUT_MS = 75_000;
       const overallDeadline = Date.now() + OVERALL_TIMEOUT_MS;
       const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+      let phaseSequence = 0;
 
       const invokeShort = async (payload: Record<string, unknown>): Promise<Record<string, unknown>> => {
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error(`OpenHands short backend call timed out after ${SHORT_INVOKE_TIMEOUT_MS / 1000}s`)), SHORT_INVOKE_TIMEOUT_MS);
-        });
-        const response = await Promise.race([
-          base44.functions.invoke("openHandsTaskProcess", payload),
-          timeoutPromise,
-        ]);
-        return ((response as any)?.data ?? response ?? {}) as Record<string, unknown>;
+        const phase = typeof payload.action === "string" ? payload.action : "legacy_invoke";
+        const phaseStartedAt = Date.now();
+        const stepId = `openhands-phase-${++phaseSequence}-${phase}`;
+        logs.push(makeLog("info", `[${operation}] phase=${phase} started`));
+
+        try {
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            setTimeout(() => reject(new Error(`OpenHands short backend call timed out after ${SHORT_INVOKE_TIMEOUT_MS / 1000}s`)), SHORT_INVOKE_TIMEOUT_MS);
+          });
+          const response = await Promise.race([
+            base44.functions.invoke("openHandsTaskProcess", payload),
+            timeoutPromise,
+          ]);
+          const data = ((response as any)?.data ?? response ?? {}) as Record<string, unknown>;
+          const phaseFinishedAt = Date.now();
+          logs.push(makeLog("info", `[${operation}] phase=${phase} completed in ${phaseFinishedAt - phaseStartedAt}ms resultPhase=${String(data.phase ?? "n/a")}`));
+          void RuntimeObserver.observe({
+            executionId: eid,
+            stepId,
+            connector: "openhands-phase",
+            capability: phase,
+            status: data?.error ? "failed" : "completed",
+            error: data?.error ? String(data.error) : null,
+            durationMs: phaseFinishedAt - phaseStartedAt,
+            startedAt: phaseStartedAt,
+            finishedAt: phaseFinishedAt,
+            goalType: "supervisedEngineering",
+          });
+          return data;
+        } catch (err) {
+          const phaseFinishedAt = Date.now();
+          const message = err instanceof Error ? err.message : String(err);
+          logs.push(makeLog("error", `[${operation}] phase=${phase} failed in ${phaseFinishedAt - phaseStartedAt}ms error=${message}`));
+          void RuntimeObserver.observe({
+            executionId: eid,
+            stepId,
+            connector: "openhands-phase",
+            capability: phase,
+            status: "failed",
+            error: message,
+            durationMs: phaseFinishedAt - phaseStartedAt,
+            startedAt: phaseStartedAt,
+            finishedAt: phaseFinishedAt,
+            goalType: "supervisedEngineering",
+          });
+          throw err;
+        }
       };
 
       let d: Record<string, unknown> | null = null;
