@@ -653,8 +653,8 @@ const BOOTSTRAP_MESSAGE = 'Initialize the repository workspace and confirm the r
 // After write completion, /git/changes and /git/diff may return 200 with empty
 // content due to consistency lag. Poll a limited number of times before
 // declaring change_set unavailable. Never fabricate a change_set from agent text.
-const CHANGESET_POLL_MAX_ATTEMPTS = 4;
-const CHANGESET_POLL_DELAY_MS = 5_000;
+const CHANGESET_POLL_MAX_ATTEMPTS = 8;
+const CHANGESET_POLL_DELAY_MS = 8_000;
 
 // ── Transient Git provider auth retry (V1) ───────────────────────────────────
 // Retry ONCE for the specific intermittent OpenHands Cloud error:
