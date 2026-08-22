@@ -18,6 +18,7 @@ const CAPABILITIES = Object.freeze([
   "engineering.runtime.compare",
   "engineering.runtime.bottlenecks",
   "engineering.runtime.watch",
+  "engineering.runtime.timeline",
 ]);
 
 function ok<T>(data: T, start: number, eid: string, logs: ConnectorLog[], op: string): ConnectorResult<T> {
@@ -247,6 +248,68 @@ export class RuntimeObservabilityConnector implements IConnector {
           };
         }).sort((a, b) => (b.failureRate - a.failureRate) || (b.p95DurationMs - a.p95DurationMs));
         return ok({ sampleSize: rows.length, bottlenecks }, start, eid, logs, operation);
+      }
+
+      if (operation === "engineering.runtime.timeline") {
+        const recent = await base44.entities.ExecutionObservation.filter({}, "-created_date", Math.max(limit, 1500));
+        const targetId = targetExecutionId;
+        if (!targetId) return fail("executionId is required", start, eid, logs, operation);
+        const anchor = recent.find((o: any) => o.execution_id === targetId);
+        if (!anchor) return fail("Target execution not found", start, eid, logs, operation);
+        const center = toMs(anchor.started_at || anchor.created_date);
+        const windowMs = n(payload.windowMs ?? payload.window_ms, 600_000, 30_000, 3_600_000);
+        const related = recent.filter((o: any) => {
+          const ts = toMs(o.started_at || o.created_date);
+          return ts > 0 && Math.abs(ts - center) <= windowMs && (
+            o.execution_id === targetId ||
+            ["adaptive-process", "mcp", "openhands", "openhands-phase", "supervised-write-phase", "runtime-observability"].includes(o.connector) ||
+            o.goal_type === "supervisedEngineering"
+          );
+        });
+        const events = await base44.entities.SystemEvent.filter({}, "-created_date", Math.max(limit, 1500));
+        const system = events.filter((e: any) => {
+          const ts = toMs(e.created_date);
+          return ts > 0 && Math.abs(ts - center) <= windowMs && (
+            e.correlationId === targetId ||
+            ["RuntimeEventBus", "CognitiveEventBus"].includes(e.source)
+          );
+        });
+        const items = [
+          ...related.map((o: any) => ({
+            timestampMs: toMs(o.started_at || o.created_date),
+            source: "ExecutionObservation",
+            executionId: o.execution_id,
+            connector: o.connector,
+            capability: o.capability,
+            phase: phaseName(o),
+            status: o.status,
+            durationMs: o.duration_ms ?? null,
+            error: o.error_message ?? null,
+            stepId: o.step_id ?? null,
+          })),
+          ...system.map((e: any) => ({
+            timestampMs: toMs(e.created_date),
+            source: "SystemEvent",
+            executionId: e.correlationId ?? null,
+            connector: e.metadata?.connectorId ?? e.source ?? null,
+            capability: e.type ?? null,
+            phase: null,
+            status: e.status ?? null,
+            durationMs: e.metadata?.durationMs ?? null,
+            error: e.payload?.error ?? e.metadata?.error ?? null,
+            stepId: null,
+          })),
+        ].sort((a: any, b: any) => a.timestampMs - b.timestampMs);
+        return ok({
+          executionId: targetId,
+          windowMs,
+          count: items.length,
+          timeline: items.map((x: any, index: number) => ({
+            index: index + 1,
+            timestamp: x.timestampMs ? new Date(x.timestampMs).toISOString() : null,
+            ...x,
+          })),
+        }, start, eid, logs, operation);
       }
 
       if (operation === "engineering.runtime.watch") {
