@@ -17,6 +17,11 @@ const ALLOWED = new Set([
   'bottlenecks',
   'watch',
   'timeline',
+  'executions',
+  'health',
+  'saturation',
+  'releaseContext',
+  'query',
 ]);
 
 function str(v: unknown): string { return typeof v === 'string' ? v.trim() : ''; }
@@ -52,6 +57,7 @@ function summarizeObservation(o: any) {
     startedAt: o.started_at ?? null,
     finishedAt: o.finished_at ?? null,
     goalType: o.goal_type ?? null,
+    sprintTag: o.sprint_tag ?? null,
     payload: parsePayload(o.payload),
     semaphoreWaitMs: o.semaphore_wait_ms ?? 0,
   };
@@ -144,6 +150,81 @@ export default async function(req: Request) {
         connectors: [...groups.entries()].map(([key, g]) => ({ key, ...g, failureRate: g.count ? g.failures / g.count : 0 }))
           .sort((a, b) => b.failureRate - a.failureRate),
       }});
+    }
+
+    if (operation === 'executions') {
+      const rows = await obs.filter({}, '-created_date', limit);
+      const status = str(body.status); const connector = str(body.connector); const capability = str(body.capability);
+      const goalType = str(body.goalType ?? body.goal_type); const sprintTag = str(body.sprintTag ?? body.sprint_tag);
+      const filtered = rows.filter((o: any) => (!status || o.status === status) && (!connector || o.connector === connector) &&
+        (!capability || o.capability === capability) && (!goalType || o.goal_type === goalType) && (!sprintTag || o.sprint_tag === sprintTag));
+      const grouped = new Map<string, any[]>();
+      for (const row of filtered) { const id = row.execution_id ?? '_unknown_'; const arr = grouped.get(id) ?? []; arr.push(row); grouped.set(id, arr); }
+      const executions = [...grouped.entries()].map(([id, items]) => {
+        const ordered = [...items].sort((a: any,b: any)=>toMs(a.started_at||a.created_date)-toMs(b.started_at||b.created_date));
+        const statuses = Object.fromEntries([...new Set(items.map((x:any)=>x.status))].map((s:any)=>[s,items.filter((x:any)=>x.status===s).length]));
+        return { executionId:id, steps:items.length, firstAt:ordered[0]?.started_at??ordered[0]?.created_date??null,
+          lastAt:ordered.at(-1)?.finished_at??ordered.at(-1)?.started_at??ordered.at(-1)?.created_date??null,
+          connectors:[...new Set(items.map((x:any)=>x.connector).filter(Boolean))], capabilities:[...new Set(items.map((x:any)=>x.capability).filter(Boolean))],
+          goalTypes:[...new Set(items.map((x:any)=>x.goal_type).filter(Boolean))], sprintTags:[...new Set(items.map((x:any)=>x.sprint_tag).filter(Boolean))], statuses };
+      }).sort((a,b)=>toMs(b.lastAt)-toMs(a.lastAt));
+      return Response.json({ ok:true, operation, data:{ count:executions.length, executions } });
+    }
+
+    if (operation === 'health') {
+      const rows = await obs.filter({}, '-created_date', limit);
+      const fail = new Set(['failed','timeout','blocked']); const success = new Set(['success','completed']);
+      const errors = new Map<string,number>(); const behaviors = new Map<string,number>(); const connectors = new Map<string,{total:number;failures:number}>();
+      for (const o of rows) {
+        if (o.error_signature) errors.set(o.error_signature,(errors.get(o.error_signature)??0)+1);
+        if (o.behavior_signature) behaviors.set(o.behavior_signature,(behaviors.get(o.behavior_signature)??0)+1);
+        const c = connectors.get(o.connector??'unknown') ?? {total:0,failures:0}; c.total++; if (fail.has(o.status)) c.failures++; connectors.set(o.connector??'unknown',c);
+      }
+      const durations = rows.map((o:any)=>Number(o.duration_ms)||0).filter((x:number)=>x>=0);
+      return Response.json({ ok:true, operation, data:{ total:rows.length, successRate:rows.length?rows.filter((o:any)=>success.has(o.status)).length/rows.length:0,
+        failures:rows.filter((o:any)=>fail.has(o.status)).length,
+        avgDurationMs:durations.length?durations.reduce((a:number,b:number)=>a+b,0)/durations.length:0, p95DurationMs:percentile(durations,0.95),
+        topErrorSignatures:[...errors.entries()].map(([signature,count])=>({signature,count})).sort((a,b)=>b.count-a.count).slice(0,10),
+        topBehaviorSignatures:[...behaviors.entries()].map(([signature,count])=>({signature,count})).sort((a,b)=>b.count-a.count).slice(0,10),
+        worstConnectors:[...connectors.entries()].map(([connector,v])=>({connector,...v,failureRate:v.total?v.failures/v.total:0})).filter(x=>x.failureRate>0).sort((a,b)=>b.failureRate-a.failureRate).slice(0,10),
+        analyzedAt:new Date().toISOString() } });
+    }
+
+    if (operation === 'saturation') {
+      const rows = await obs.filter({}, '-created_date', limit);
+      const connector = str(body.connector); const capability = str(body.capability); const server = str(body.server); const toolName = str(body.toolName ?? body.tool_name);
+      const filtered = rows.filter((o:any)=>(!executionId||o.execution_id===executionId)&&(!connector||o.connector===connector)&&(!capability||o.capability===capability)&&(!server||o.server===server)&&(!toolName||o.tool_name===toolName));
+      const waits = filtered.map((o:any)=>Number(o.semaphore_wait_ms)||0); const waiting = filtered.filter((o:any)=>(Number(o.semaphore_wait_ms)||0)>0);
+      const groups = new Map<string,any[]>(); for (const o of filtered) { const key=`${o.connector??'unknown'}::${o.capability??'unknown'}`; const a=groups.get(key)??[]; a.push(o); groups.set(key,a); }
+      const byPath = [...groups.entries()].map(([key,items])=>{ const w=items.map((x:any)=>Number(x.semaphore_wait_ms)||0); const waitingSteps=w.filter((x:number)=>x>0).length;
+        return { key, count:items.length, waitingSteps, waitingRate:items.length?waitingSteps/items.length:0, avgWaitMs:w.length?w.reduce((a:number,b:number)=>a+b,0)/w.length:0, p95WaitMs:percentile(w,0.95), maxWaitMs:w.length?Math.max(...w):0 };
+      }).sort((a,b)=>(b.waitingRate-a.waitingRate)||(b.p95WaitMs-a.p95WaitMs));
+      return Response.json({ ok:true, operation, data:{ sampleSize:filtered.length, waitingSteps:waiting.length, waitingRate:filtered.length?waiting.length/filtered.length:0,
+        avgWaitMs:waits.length?waits.reduce((a:number,b:number)=>a+b,0)/waits.length:0, p95WaitMs:percentile(waits,0.95), maxWaitMs:waits.length?Math.max(...waits):0, byPath } });
+    }
+
+    if (operation === 'releaseContext') {
+      if (!executionId) return Response.json({ error:'executionId is required' }, { status:400 });
+      const rows = await obs.filter({ execution_id: executionId }, 'created_date', limit);
+      if (!rows.length) return Response.json({ error:'Target execution not found' }, { status:404 });
+      const sprintTags = [...new Set(rows.map((o:any)=>o.sprint_tag).filter(Boolean))];
+      return Response.json({ ok:true, operation, data:{ executionId, sprintTags,
+        connectors:[...new Set(rows.map((o:any)=>o.connector).filter(Boolean))], capabilities:[...new Set(rows.map((o:any)=>o.capability).filter(Boolean))],
+        servers:[...new Set(rows.map((o:any)=>o.server).filter(Boolean))], toolNames:[...new Set(rows.map((o:any)=>o.tool_name).filter(Boolean))],
+        firstAt:rows[0]?.started_at??rows[0]?.created_date??null, lastAt:rows.at(-1)?.finished_at??rows.at(-1)?.started_at??rows.at(-1)?.created_date??null,
+        deploymentIdentity:null, commitSha:null, evidenceLevel:sprintTags.length?'sprint_tag_only':'none',
+        note:'ExecutionObservation currently persists sprint_tag but not a canonical deployment/release id or commit SHA.' } });
+    }
+
+    if (operation === 'query') {
+      const rows = await obs.filter({}, '-created_date', limit);
+      const sessionId=str(body.sessionId??body.session_id), connector=str(body.connector), capability=str(body.capability), status=str(body.status), goalType=str(body.goalType??body.goal_type),
+        server=str(body.server), toolName=str(body.toolName??body.tool_name), sprintTag=str(body.sprintTag??body.sprint_tag);
+      const since=toMs(body.since), until=toMs(body.until);
+      const filtered=rows.filter((o:any)=>{ const ts=toMs(o.started_at||o.created_date); return (!executionId||o.execution_id===executionId)&&(!sessionId||o.session_id===sessionId)&&
+        (!connector||o.connector===connector)&&(!capability||o.capability===capability)&&(!status||o.status===status)&&(!goalType||o.goal_type===goalType)&&
+        (!server||o.server===server)&&(!toolName||o.tool_name===toolName)&&(!sprintTag||o.sprint_tag===sprintTag)&&(!since||ts>=since)&&(!until||ts<=until); });
+      return Response.json({ ok:true, operation, data:{ count:filtered.length, observations:filtered.map(summarizeObservation) } });
     }
 
     if (operation === 'bottlenecks') {
