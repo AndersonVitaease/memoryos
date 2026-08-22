@@ -939,6 +939,32 @@ const _builtins: CapabilityMapping[] = [
     ],
   },
 
+  // ── Engineering runtime observability (read-only) ────────────────────────
+  {
+    goalType: "engineering.runtime.trace",
+    descriptors: [
+      { connector: "runtime-observability", capability: "engineering.runtime.trace", params: {} },
+    ],
+  },
+  {
+    goalType: "engineering.runtime.logs",
+    descriptors: [
+      { connector: "runtime-observability", capability: "engineering.runtime.logs", params: {} },
+    ],
+  },
+  {
+    goalType: "engineering.runtime.errors",
+    descriptors: [
+      { connector: "runtime-observability", capability: "engineering.runtime.errors", params: {} },
+    ],
+  },
+  {
+    goalType: "engineering.runtime.metrics",
+    descriptors: [
+      { connector: "runtime-observability", capability: "engineering.runtime.metrics", params: {} },
+    ],
+  },
+
   // ── General / Unknown — no capability steps; Runtime handles gracefully ───
   {
     goalType: "general.conversation",
