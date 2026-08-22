@@ -1295,6 +1295,7 @@ async function handleShortWriteAction(opts: {
         String(conversation?.selected_repository ?? repository),
         apiKey,
         shortDeadlineAt,
+        base44,
       );
       changeSetAvailable = (changeSet?.files?.length ?? 0) > 0 || Boolean(changeSet?.git_diff);
     }
