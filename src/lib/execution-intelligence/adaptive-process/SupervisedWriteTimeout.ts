@@ -24,15 +24,14 @@ import { hasWriteVerb } from "./OpenHandsChangeSet";
 export const SUPERVISED_WRITE_PIPELINE_TIMEOUT_MS = 900_000;
 
 /**
- * Step timeout específico para openhands.runTask: 5 minutos (300s).
+ * Step timeout específico para openhands.runTask: 10 minutos (600s).
  *
- * O COMPOSITE_EXECUTION_POLICY.stepTimeoutMs padrão é 240s — mata o step
- * do OpenHands antes do limite da plataforma (300s). Este valor é declarado
- * no metadata do OpenHandsConnector (capabilityTimeout) e aplicado seletivamente
- * pelo ExecutionRuntime.processCapability, preservando o stepTimeoutMs padrão
- * para todos os outros connectors/capabilities.
+ * O write two-phase inclui bootstrap + continuation + polling e já demonstrou
+ * poder ultrapassar 300s. Este valor continua seletivo para openhands.runTask
+ * via ConnectorMetadata.capabilityTimeout; o timeout global dos demais steps
+ * permanece inalterado.
  */
-export const OPENHANDS_STEP_TIMEOUT_MS = 300_000;
+export const OPENHANDS_STEP_TIMEOUT_MS = 600_000;
 
 const SE_FILE_PATH_RE = /\.(?:ts|tsx|js|jsx|mjs|cjs|json|jsonc|md|py|toml|yml|yaml|sh)\b/i;
 // SEM \b — permite match dentro de palavras compostas (ex: "SupervisedEngineeringProcess"
