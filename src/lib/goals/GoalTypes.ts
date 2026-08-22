@@ -54,6 +54,11 @@ export type GoalType =
   | "engineering.runtime.bottlenecks"
   | "engineering.runtime.watch"
   | "engineering.runtime.timeline"
+  | "engineering.runtime.executions"
+  | "engineering.runtime.health"
+  | "engineering.runtime.saturation"
+  | "engineering.runtime.releaseContext"
+  | "engineering.runtime.query"
   // General
   | "general.conversation"
   | "general.webSearch"    // <--- ADICIONADO! Permite pesquisar na web
