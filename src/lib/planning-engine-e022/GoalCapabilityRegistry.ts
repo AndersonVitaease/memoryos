@@ -982,6 +982,12 @@ const _builtins: CapabilityMapping[] = [
       { connector: "runtime-observability", capability: "engineering.runtime.bottlenecks", params: {} },
     ],
   },
+  {
+    goalType: "engineering.runtime.watch",
+    descriptors: [
+      { connector: "runtime-observability", capability: "engineering.runtime.watch", params: {} },
+    ],
+  },
 
   // ── General / Unknown — no capability steps; Runtime handles gracefully ───
   {
