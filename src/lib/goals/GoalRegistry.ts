@@ -1678,6 +1678,45 @@ const _builtins: GoalDefinition[] = [
     },
   },
 
+  // ── Engineering Runtime Observability (read-only) ────────────────────────
+  {
+    type: "engineering.runtime.trace",
+    namespace: "runtime-observability",
+    description: "Reconstrói o trace de uma execução por executionId usando telemetria durável",
+    signals: ["engineering.runtime.trace", "trace da execucao", "trace de execucao", "rastreie a execucao", "rastrear execucao", "execution trace"],
+    extractParams: (msg: string) => ({
+      executionId: msg.match(/\bexec(?:-rt)?-[A-Za-z0-9-]+\b/i)?.[0] ?? null,
+      limit: 500,
+    }),
+  },
+  {
+    type: "engineering.runtime.logs",
+    namespace: "runtime-observability",
+    description: "Consulta logs/eventos duráveis do runtime",
+    signals: ["engineering.runtime.logs", "logs do runtime", "logs da execucao", "eventos da execucao", "runtime logs"],
+    extractParams: (msg: string) => ({
+      executionId: msg.match(/\bexec(?:-rt)?-[A-Za-z0-9-]+\b/i)?.[0] ?? null,
+      limit: 500,
+    }),
+  },
+  {
+    type: "engineering.runtime.errors",
+    namespace: "runtime-observability",
+    description: "Consulta falhas, timeouts e bloqueios do runtime",
+    signals: ["engineering.runtime.errors", "erros do runtime", "erros da execucao", "falhas da execucao", "runtime errors"],
+    extractParams: (msg: string) => ({
+      executionId: msg.match(/\bexec(?:-rt)?-[A-Za-z0-9-]+\b/i)?.[0] ?? null,
+      limit: 500,
+    }),
+  },
+  {
+    type: "engineering.runtime.metrics",
+    namespace: "runtime-observability",
+    description: "Métricas de saúde, latência e falhas do runtime",
+    signals: ["engineering.runtime.metrics", "metricas do runtime", "saude do runtime", "runtime metrics", "runtime health"],
+    extractParams: (_msg: string) => ({ limit: 1000 }),
+  },
+
   // ── Supervised Engineering (Adaptive Process composto) ────────────────────
   // Trigger EXPLICITO e deterministico — exige "engenharia supervisionada" na
   // frase. Nao roteia automaticamente tarefas complexas. Delega ao
