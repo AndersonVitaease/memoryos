@@ -1475,6 +1475,19 @@ async function handleShortWriteAction(opts: {
       );
       changeSetAvailable = (changeSet?.files?.length ?? 0) > 0 || Boolean(changeSet?.git_diff);
     }
+    // Fix (2026-08-22): a OpenHands Cloud nao tem endpoint documentado pra
+    // "parar"/liberar uma conversa (issue oficial confirmada: so existe
+    // Delete pela UI). Sem limpeza, cada tentativa de teste acumula uma
+    // conversa "zumbi" ativa pra sempre — confirmado hoje: 10+ conversas de
+    // teste acumuladas, provavelmente estourando o limite de concorrencia da
+    // conta e travando novas tentativas em bootstrap_pending indefinidamente.
+    // Tenta DELETE (best-effort, nao documentado mas convencao REST comum)
+    // assim que a tarefa realmente termina com change_set disponivel.
+    if (changeSetAvailable) {
+      try {
+        await fetchJson(`${base}`, { method: 'DELETE', headers }, 10_000);
+      } catch (e) { /* best-effort: se o endpoint nao existir/nao suportar, so nao limpa */ }
+    }
     return Response.json({
       ok: executionStatus === 'finished',
       phase: changeSetAvailable ? 'write_complete' : 'write_finished_waiting_changes',
