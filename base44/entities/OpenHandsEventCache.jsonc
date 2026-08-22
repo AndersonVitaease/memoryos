@@ -1,0 +1,25 @@
+{
+  "name": "OpenHandsEventCache",
+  "properties": {
+    "conversation_id": {
+      "description": "ID da conversa OpenHands \u2014 chave de busca (1 registro por conversa ativa)",
+      "type": "string"
+    },
+    "event_count_seen": {
+      "description": "Quantidade total de eventos ja vistos nesta conversa (so para diagnostico/monitoramento do crescimento)",
+      "type": "integer"
+    },
+    "last_event_id": {
+      "description": "ID do ultimo evento ja processado nesta conversa \u2014 usado para saber a partir de onde buscar so o que e NOVO na proxima consulta",
+      "type": "string"
+    },
+    "tail_events_json": {
+      "description": "JSON com os ultimos eventos relevantes (cauda recente, nao o historico completo) \u2014 suficiente para extrair a resposta mais recente do agente sem reler tudo",
+      "type": "string"
+    }
+  },
+  "required": [
+    "conversation_id"
+  ],
+  "type": "object"
+}
