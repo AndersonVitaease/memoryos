@@ -92,6 +92,15 @@ export class AdaptiveProcessConnector implements IConnector {
         deepResearch: true,
         supervisedEngineering: true,
       },
+      // CT-01: step timeout estendido para supervisedEngineering.
+      // O fluxo de write supervisionado inclui: Approval 1 (usuario) +
+      // two-phase bootstrap (~60s) + continuation (~120s) + change_set
+      // polling (ate 64s) + parse/validate. O COMPOSITE_EXECUTION_POLICY
+      // padrao (240s) mata o step antes do polling completar.
+      // 600s (10 min) acomoda o fluxo completo + interacao do usuario.
+      capabilityTimeout: {
+        supervisedEngineering: 600_000,
+      },
     };
   }
 
