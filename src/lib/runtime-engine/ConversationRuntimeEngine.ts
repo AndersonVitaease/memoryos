@@ -412,6 +412,10 @@ export class ConversationRuntimeEngine {
       status === "cancelled" ? "execution_cancelled" :
       status === "timeout"   ? "execution_timeout"   :
       "execution_failed";
+    // Observability V2: ler a policy ativa do ctx.metadata (armazenada pela factory).
+    // Permite diagnosticar quando o default 240s do COMPOSITE_EXECUTION_POLICY
+    // e usado sem override de capabilityTimeout.
+    const _finalPolicy = ctx.metadata["policy"] as ExecutionPolicy | undefined;
     runtimeObsStore.record({
       executionId:  ctx.executionId,
       stepId:       null,
@@ -425,8 +429,8 @@ export class ConversationRuntimeEngine {
       error:        ctx.metadata["fatalError"] as string ?? null,
       planId:       ctx.planId,
       goalId:       ctx.goalId,
-      timeoutMs:          policy?.timeoutMs ?? null,
-      stepTimeoutMs:      policy?.stepTimeoutMs ?? null,
+      timeoutMs:          _finalPolicy?.timeoutMs ?? null,
+      stepTimeoutMs:      _finalPolicy?.stepTimeoutMs ?? null,
       parentExecutionId:   ctx.connectorCtx?.requestId ?? null,
     });
     // D-05: produzir summary consolidado — tempo total, por connector, por etapa
