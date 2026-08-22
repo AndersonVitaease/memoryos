@@ -1766,6 +1766,50 @@ const _builtins: GoalDefinition[] = [
       limit: 1500,
     }),
   },
+  {
+    type: "engineering.runtime.executions",
+    namespace: "runtime-observability",
+    description: "Lista e resume execucoes recentes, com filtros de status, connector, capability e sprint",
+    signals: ["engineering.runtime.executions", "ultimas execucoes", "execucoes recentes", "liste as execucoes", "runtime executions"],
+    extractParams: (_msg: string) => ({ limit: 1000 }),
+  },
+  {
+    type: "engineering.runtime.health",
+    namespace: "runtime-observability",
+    description: "Snapshot deterministico de saude do runtime com falhas, assinaturas, conectores e latencia",
+    signals: ["engineering.runtime.health", "saude detalhada do runtime", "health do runtime", "runtime health detalhado"],
+    extractParams: (_msg: string) => ({ limit: 1000 }),
+  },
+  {
+    type: "engineering.runtime.saturation",
+    namespace: "runtime-observability",
+    description: "Analisa backpressure e espera em semaphore por execution, connector, capability ou MCP tool",
+    signals: ["engineering.runtime.saturation", "saturacao do runtime", "backpressure do runtime", "fila do runtime", "semaphore wait", "runtime saturation"],
+    extractParams: (msg: string) => ({
+      executionId: msg.match(/\bexec(?:-rt)?-[A-Za-z0-9-]+\b/i)?.[0] ?? null,
+      limit: 1000,
+    }),
+  },
+  {
+    type: "engineering.runtime.releaseContext",
+    namespace: "runtime-observability",
+    description: "Mostra o contexto de versao realmente persistido para uma execucao, sem inventar commit ou deployment ausentes",
+    signals: ["engineering.runtime.releaseContext", "contexto de release da execucao", "versao da execucao", "sprint da execucao", "release context"],
+    extractParams: (msg: string) => ({
+      executionId: msg.match(/\bexec(?:-rt)?-[A-Za-z0-9-]+\b/i)?.[0] ?? null,
+      limit: 1000,
+    }),
+  },
+  {
+    type: "engineering.runtime.query",
+    namespace: "runtime-observability",
+    description: "Consulta read-only parametrica e allowlisted sobre ExecutionObservation",
+    signals: ["engineering.runtime.query", "consulte a telemetria", "filtre observacoes do runtime", "runtime query"],
+    extractParams: (msg: string) => ({
+      executionId: msg.match(/\bexec(?:-rt)?-[A-Za-z0-9-]+\b/i)?.[0] ?? null,
+      limit: 1000,
+    }),
+  },
 
   // ── Supervised Engineering (Adaptive Process composto) ────────────────────
   // Trigger EXPLICITO e deterministico — exige "engenharia supervisionada" na
