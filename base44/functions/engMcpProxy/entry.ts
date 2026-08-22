@@ -22,8 +22,6 @@
  *   ENG_MCP_BEARER_TOKEN  — token valido contra o ENG-MCP (ja existe).
  *   ENG_MCP_PROXY_SECRET — chave de autorizacao do proxy (nova).
  */
-import { secrets } from "base44:runtime";
-
 const ENG_MCP_URL = "https://memoryos-engmcp.2-25-96-245.nip.io/mcp";
 
 // Headers hop-by-hop (RFC 7230) — nunca repassar em nenhuma direcao.
@@ -74,7 +72,7 @@ function filterResponseHeaders(src: Headers): Record<string, string> {
 export default async function(req: Request): Promise<Response> {
   try {
     // ── 1. Validar X-Proxy-Secret ──────────────────────────────────────────
-    const proxySecret = secrets.get("ENG_MCP_PROXY_SECRET");
+    const proxySecret = Deno.env.get("ENG_MCP_PROXY_SECRET");
     if (!proxySecret) {
       console.error("[engMcpProxy] ENG_MCP_PROXY_SECRET nao configurado");
       return Response.json(
@@ -91,7 +89,7 @@ export default async function(req: Request): Promise<Response> {
     }
 
     // ── 2. Ler o token ENG-MCP (write-only, nunca retornado/logado) ────────
-    const engMcpToken = secrets.get("ENG_MCP_BEARER_TOKEN");
+    const engMcpToken = Deno.env.get("ENG_MCP_BEARER_TOKEN");
     if (!engMcpToken) {
       console.error("[engMcpProxy] ENG_MCP_BEARER_TOKEN nao configurado");
       return Response.json(
