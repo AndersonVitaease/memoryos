@@ -1744,6 +1744,17 @@ const _builtins: GoalDefinition[] = [
     signals: ["engineering.runtime.bottlenecks", "gargalos do runtime", "onde esta lento", "bottlenecks do runtime", "maiores gargalos"],
     extractParams: (_msg: string) => ({ limit: 1000 }),
   },
+  {
+    type: "engineering.runtime.watch",
+    namespace: "runtime-observability",
+    description: "Mostra em tempo quase real a ultima fase observada e detecta silencio anormal antes do timeout final",
+    signals: ["engineering.runtime.watch", "acompanhe a execucao", "monitore a execucao", "veja onde esta agora", "watch runtime", "ultima fase da execucao"],
+    extractParams: (msg: string) => ({
+      executionId: msg.match(/\bexec(?:-rt)?-[A-Za-z0-9-]+\b/i)?.[0] ?? null,
+      silenceThresholdMs: 30000,
+      limit: 1000,
+    }),
+  },
 
   // ── Supervised Engineering (Adaptive Process composto) ────────────────────
   // Trigger EXPLICITO e deterministico — exige "engenharia supervisionada" na
