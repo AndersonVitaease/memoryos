@@ -49,6 +49,9 @@ export type GoalType =
   | "engineering.runtime.logs"
   | "engineering.runtime.errors"
   | "engineering.runtime.metrics"
+  | "engineering.runtime.investigate"
+  | "engineering.runtime.compare"
+  | "engineering.runtime.bottlenecks"
   // General
   | "general.conversation"
   | "general.webSearch"    // <--- ADICIONADO! Permite pesquisar na web
