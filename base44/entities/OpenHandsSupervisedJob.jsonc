@@ -1,0 +1,113 @@
+{
+  "type": "object",
+  "properties": {
+    "execution_id": {
+      "type": "string"
+    },
+    "session_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "user_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "repository": {
+      "type": "string"
+    },
+    "task": {
+      "type": "string"
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "write"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "starting",
+        "running",
+        "awaiting_approval2",
+        "applying",
+        "completed",
+        "failed",
+        "cancelled"
+      ]
+    },
+    "app_conversation_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "sandbox_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "change_set": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": true
+    },
+    "error": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "approval2_requested": {
+      "type": "boolean"
+    },
+    "created_at_ms": {
+      "type": "number"
+    },
+    "updated_at_ms": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "execution_id",
+    "repository",
+    "task",
+    "mode",
+    "status",
+    "approval2_requested",
+    "created_at_ms",
+    "updated_at_ms"
+  ],
+  "rls": {
+    "read": {
+      "created_by_id": "{{user.id}}"
+    },
+    "create": {},
+    "update": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  },
+  "name": "OpenHandsSupervisedJob"
+}
