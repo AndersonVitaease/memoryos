@@ -1096,31 +1096,67 @@ async function handleShortWriteAction(opts: {
   const shortDeadlineAt = Date.now() + 90_000;
 
   if (action === 'write_start') {
-    let attempt = 0;
-    while (true) {
-      attempt++;
-      const result = await createAndPollStartTask({
-        task: '', repository, mode: 'write', apiKey,
-        deadlineAt: shortDeadlineAt, useBootstrap: true,
-      });
-      if (result.conversationId) {
-        return Response.json({
-          ok: true,
-          phase: 'bootstrap_started',
-          app_conversation_id: result.conversationId,
-          start_task_id: result.startTaskId || null,
-          attempt,
-          repository,
-        });
-      }
-      const retryable = result.error !== null
-        && result.error.includes(TRANSIENT_GIT_AUTH_ERROR)
-        && attempt <= TRANSIENT_MAX_RETRIES
-        && (Date.now() + TRANSIENT_RETRY_DELAY_MS) < shortDeadlineAt;
-      if (!retryable) return Response.json(result.errorResponse, { status: 502 });
-      safeLog('short_write_start_retry', { attempt, delay_ms: TRANSIENT_RETRY_DELAY_MS });
-      await sleep(TRANSIENT_RETRY_DELAY_MS);
+    if (!repository) return Response.json({ ok: false, error: 'Missing repository' }, { status: 400 });
+    const createRes = await fetchJson(
+      CLOUD_BASE_URL + START_PATH,
+      {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          initial_message: { content: [{ type: 'text', text: BOOTSTRAP_MESSAGE }] },
+          selected_repository: repository,
+          selected_branch: 'main',
+          git_provider: 'github',
+        }),
+      },
+      60_000,
+    );
+    if (!createRes.ok) {
+      const error = createRes.data?.detail || createRes.data?.message || `OpenHands create failed (HTTP ${createRes.status})`;
+      return Response.json({ ok: false, error, openhandsStatus: 'create_failed' }, { status: 502 });
     }
+    const startTask = firstRecord(createRes.data) ?? {};
+    const startTaskId = String(startTask.id ?? '').trim();
+    const immediateConversationId = String(startTask.app_conversation_id ?? startTask.conversation_id ?? '').trim();
+    if (!startTaskId && !immediateConversationId) {
+      return Response.json({ ok: false, error: 'OpenHands create response missing start task id/conversation id', openhandsStatus: 'invalid_create_response' }, { status: 502 });
+    }
+    safeLog('short_write_start_created', { startTaskId: startTaskId || null, conversationId: immediateConversationId || null });
+    return Response.json({
+      ok: true,
+      phase: immediateConversationId ? 'bootstrap_started' : 'start_task_pending',
+      app_conversation_id: immediateConversationId || null,
+      start_task_id: startTaskId || null,
+      repository,
+    });
+  }
+
+  if (action === 'write_start_poll') {
+    const startTaskId = typeof body.start_task_id === 'string' ? body.start_task_id.trim() : '';
+    if (!startTaskId) return Response.json({ ok: false, error: 'Missing start_task_id' }, { status: 400 });
+    const startPoll = await fetchJson(
+      `${CLOUD_BASE_URL}${START_TASK_PATH}?ids=${encodeURIComponent(startTaskId)}`,
+      { method: 'GET', headers },
+      30_000,
+    );
+    if (!startPoll.ok) {
+      return Response.json({ ok: false, error: `OpenHands start-task polling failed (HTTP ${startPoll.status})`, openhandsStatus: 'start_poll_failed', start_task_id: startTaskId }, { status: 502 });
+    }
+    const rec = firstRecord(startPoll.data);
+    const status = normalizeStatus(rec?.status);
+    const conversationIdFromPoll = String(rec?.app_conversation_id ?? rec?.conversation_id ?? '').trim();
+    if (status === 'error' || status === 'failed') {
+      const { errorDetail, hasDetail } = extractStartTaskError(rec);
+      const error = hasDetail && errorDetail ? errorDetail : 'OpenHands failed while creating the conversation';
+      return Response.json({ ok: false, error, openhandsStatus: status, stage: 'start_task_failed', start_task_id: startTaskId }, { status: 502 });
+    }
+    return Response.json({
+      ok: true,
+      phase: conversationIdFromPoll ? 'bootstrap_started' : 'start_task_pending',
+      app_conversation_id: conversationIdFromPoll || null,
+      start_task_id: startTaskId,
+      start_task_status: status || null,
+    });
   }
 
   if (action === 'bootstrap_poll') {
