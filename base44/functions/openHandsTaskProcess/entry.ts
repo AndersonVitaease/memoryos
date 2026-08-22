@@ -555,6 +555,23 @@ function extractStartTaskError(rec: any): { errorDetail: string; hasDetail: bool
   return { errorDetail: '', hasDetail: false };
 }
 
+// ── Two-phase bootstrap V1 (write mode) ──────────────────────────────────────
+// Write-mode conversations created WITH the write mission as initial_message
+// intermittently fail with "Git provider authentication issue when getting
+// remote URL". Proven fix (controlled test 2026-08-22): create the conversation
+// with a NEUTRAL bootstrap message (no write intent), wait for sandbox ready,
+// then send the real write task as a continuation on the SAME conversation.
+// The sandbox/git clone happens during the neutral bootstrap, avoiding the
+// write-intent validation path that triggers the Git auth error.
+const BOOTSTRAP_MESSAGE = 'Initialize the repository workspace and confirm the repository and branch.\nDo not modify, create, or delete any files yet.\nDo not commit.\nDo not push.';
+
+// ── ChangeSet consistency polling V1 ─────────────────────────────────────────
+// After write completion, /git/changes and /git/diff may return 200 with empty
+// content due to consistency lag. Poll a limited number of times before
+// declaring change_set unavailable. Never fabricate a change_set from agent text.
+const CHANGESET_POLL_MAX_ATTEMPTS = 4;
+const CHANGESET_POLL_DELAY_MS = 5_000;
+
 // ── Transient Git provider auth retry (V1) ───────────────────────────────────
 // Retry ONCE for the specific intermittent OpenHands Cloud error:
 //   "Git provider authentication issue when getting remote URL"
@@ -586,9 +603,21 @@ async function createAndPollStartTask(opts: {
   mode: 'read' | 'write';
   apiKey: string;
   deadlineAt: number;
+  useBootstrap?: boolean;
 }): Promise<StartTaskResult> {
   const { task, repository, mode, apiKey, deadlineAt } = opts;
+  const useBootstrap = opts.useBootstrap === true;
   const headers = cloudHeaders(apiKey);
+
+  // Write mode with bootstrap: send a NEUTRAL initial message (no write intent).
+  // The real write task is sent later as a continuation on the same conversation.
+  // This avoids the Git provider auth validation that triggers on write-intent
+  // initial messages.
+  const initialText = useBootstrap
+    ? BOOTSTRAP_MESSAGE
+    : mode === 'read'
+      ? `${task}\n\n---\nIMPORTANT: Read-only mode. Do NOT modify, create, or delete any files. Do NOT create commits or push. Do NOT run destructive commands. Only inspect and report what is asked.`
+      : task;
 
   // 1) Create conversation
   const createRes = await fetchJson(
@@ -600,9 +629,7 @@ async function createAndPollStartTask(opts: {
         initial_message: {
           content: [{
             type: 'text',
-            text: mode === 'read'
-              ? `${task}\n\n---\nIMPORTANT: Read-only mode. Do NOT modify, create, or delete any files. Do NOT create commits or push. Do NOT run destructive commands. Only inspect and report what is asked.`
-              : task,
+            text: initialText,
           }],
         },
         selected_repository: repository,
@@ -632,6 +659,7 @@ async function createAndPollStartTask(opts: {
     startTaskId: startTaskId || null,
     conversationId: conversationId || null,
     startStatus: startTask.status ?? null,
+    bootstrap: useBootstrap,
   });
 
   // 2) Poll start-task until conversationId is available
@@ -704,6 +732,222 @@ async function createAndPollStartTask(opts: {
   return { conversationId, startTaskId, error: null, errorResponse: null };
 }
 
+// ── ChangeSet polling V1 (consistency lag recovery) ───────────────────────────
+// After write completion, git/changes and git/diff may return 200 with empty
+// content due to consistency lag in the OpenHands Cloud API. Polls a limited
+// number of times. NEVER fabricates a change_set from agent text — if the
+// endpoints remain empty after all attempts, returns null (unavailable).
+async function extractChangeSetWithPolling(
+  conversationId: string,
+  sandboxId: string | null,
+  repository: string,
+  apiKey: string,
+  deadlineAt: number,
+): Promise<{ changeSet: any; attempts: number; available: boolean }> {
+  let attempts = 0;
+  let changeSet: any = null;
+
+  while (attempts < CHANGESET_POLL_MAX_ATTEMPTS) {
+    attempts++;
+    changeSet = await extractChangeSet(conversationId, sandboxId, repository, apiKey, deadlineAt);
+
+    const fileCount = changeSet?.files?.length ?? 0;
+    const hasGitDiff = Boolean(changeSet?.git_diff);
+
+    safeLog('change_set_poll_attempt', {
+      conversationId,
+      attempt: attempts,
+      fileCount,
+      gitDiffLength: changeSet?.git_diff?.length ?? 0,
+      available: fileCount > 0 || hasGitDiff,
+    });
+
+    if (fileCount > 0 || hasGitDiff) {
+      return { changeSet, attempts, available: true };
+    }
+
+    // Still empty — wait and retry if we have time and attempts remaining.
+    if (attempts < CHANGESET_POLL_MAX_ATTEMPTS) {
+      const remaining = deadlineAt - Date.now();
+      if (remaining <= CHANGESET_POLL_DELAY_MS) break;
+      await sleep(CHANGESET_POLL_DELAY_MS);
+    }
+  }
+
+  // Endpoints remained empty after all attempts — change_set UNAVAILABLE.
+  // Do NOT fabricate from agent text. Approval 2 must be blocked.
+  return { changeSet: null, attempts, available: false };
+}
+
+// ── Two-phase write bootstrap V1 ──────────────────────────────────────────────
+// Orchestrates: (1) neutral bootstrap conversation creation + sandbox ready,
+// (2) write task sent as continuation on the SAME conversation.
+// Returns the same response shape as the standard write path.
+async function executeTwoPhaseWrite(opts: {
+  task: string;
+  repository: string;
+  apiKey: string;
+  deadlineAt: number;
+  startedAt: number;
+  includeRawEvents: boolean;
+}): Promise<Response> {
+  const { task, repository, apiKey, deadlineAt, startedAt, includeRawEvents } = opts;
+  const headers = cloudHeaders(apiKey);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE 1 — BOOTSTRAP (neutral initial_message)
+  // ═══════════════════════════════════════════════════════════════════════════
+  safeLog('write_phase_bootstrap_start', { repository });
+  const bootstrapResult = await createAndPollStartTask({
+    task: '',
+    repository,
+    mode: 'write',
+    apiKey,
+    deadlineAt,
+    useBootstrap: true,
+  });
+
+  if (!bootstrapResult.conversationId) {
+    safeLog('write_phase_bootstrap_failed', { stage: 'create_start_task' });
+    return Response.json(bootstrapResult.errorResponse, { status: 502 });
+  }
+
+  const conversationId = bootstrapResult.conversationId;
+  safeLog('write_phase_bootstrap_conversation_created', { conversationId });
+
+  // Poll conversation until sandbox is ready (running/ready) or terminal.
+  let conversation: any = null;
+  let sandboxReady = false;
+  while (!sandboxReady) {
+    if (Date.now() >= deadlineAt) {
+      return Response.json(
+        { ok: false, app_conversation_id: conversationId, error: 'Timeout waiting for OpenHands bootstrap sandbox', openhandsStatus: 'bootstrap_timeout', write_phase: 'bootstrap' },
+        { status: 504 },
+      );
+    }
+
+    const convRes = await fetchJson(
+      `${CLOUD_BASE_URL}${CONVERSATION_PATH}?ids=${encodeURIComponent(conversationId)}`,
+      { method: 'GET', headers },
+      Math.min(30_000, Math.max(1, deadlineAt - Date.now())),
+    );
+    if (!convRes.ok) {
+      safeLog('bootstrap_poll_failed', { httpStatus: convRes.status, conversationId });
+      return Response.json(
+        { ok: false, app_conversation_id: conversationId, error: `OpenHands bootstrap polling failed (HTTP ${convRes.status})`, openhandsStatus: 'bootstrap_poll_failed', write_phase: 'bootstrap' },
+        { status: 502 },
+      );
+    }
+
+    conversation = firstRecord(convRes.data);
+    if (!conversation) {
+      await sleep(Math.min(POLL_INTERVAL_MS, Math.max(0, deadlineAt - Date.now())));
+      continue;
+    }
+
+    const sandboxStatus = normalizeStatus(conversation.sandbox_status);
+    const execStatus = normalizeStatus(conversation.execution_status);
+
+    if (sandboxStatus === 'error' || sandboxStatus === 'missing') {
+      return Response.json(
+        { ok: false, app_conversation_id: conversationId, error: `OpenHands bootstrap sandbox status: ${sandboxStatus}`, openhandsStatus: 'bootstrap_sandbox_failed', write_phase: 'bootstrap' },
+        { status: 502 },
+      );
+    }
+    if (execStatus === 'error' || execStatus === 'stuck') {
+      return Response.json(
+        { ok: false, app_conversation_id: conversationId, execution_status: execStatus, error: `OpenHands bootstrap execution failed: ${execStatus}`, openhandsStatus: 'bootstrap_execution_failed', write_phase: 'bootstrap' },
+        { status: 502 },
+      );
+    }
+
+    // Sandbox ready: running, ready, or already finished executing the bootstrap.
+    if (sandboxStatus === 'running' || sandboxStatus === 'ready' || TERMINAL_EXECUTION_STATUSES.has(execStatus)) {
+      sandboxReady = true;
+      break;
+    }
+
+    await sleep(Math.min(POLL_INTERVAL_MS, Math.max(0, deadlineAt - Date.now())));
+  }
+
+  safeLog('write_phase_bootstrap_ready', {
+    conversationId,
+    sandboxId: conversation?.sandbox_id ?? null,
+    sandboxStatus: normalizeStatus(conversation?.sandbox_status),
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE 2 — WRITE CONTINUATION (same conversation, real task)
+  // ═══════════════════════════════════════════════════════════════════════════
+  safeLog('write_phase_continuation_start', { conversationId });
+  const continuation = await continueExistingConversation({
+    conversationId,
+    task,
+    mode: 'write',
+    apiKey,
+    deadlineAt,
+  });
+
+  // continueExistingConversation returns a Response.json — parse it to extract
+  // the continuation result and add write_phase telemetry + change_set polling.
+  const contBody = await continuation.json();
+
+  // If continuation itself failed, pass through the error.
+  if (contBody.ok !== true) {
+    safeLog('write_phase_continuation_failed', {
+      conversationId,
+      openhandsStatus: contBody.openhandsStatus ?? null,
+    });
+    return Response.json(
+      { ...contBody, write_phase: 'continuation' },
+      { status: 502 },
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE 3 — CHANGESET EXTRACTION WITH POLLING
+  // ═══════════════════════════════════════════════════════════════════════════
+  const continuationExecutionStatus = normalizeStatus(contBody.execution_status);
+  let finalChangeSet: any = contBody.change_set ?? null;
+  let changeSetAttempts = 0;
+  let changeSetAvailable = finalChangeSet !== null && ((finalChangeSet?.files?.length ?? 0) > 0 || Boolean(finalChangeSet?.git_diff));
+
+  if (continuationExecutionStatus === 'finished' && !changeSetAvailable) {
+    const pollResult = await extractChangeSetWithPolling(
+      conversationId,
+      contBody.sandbox_id ?? conversation?.sandbox_id ?? null,
+      repository,
+      apiKey,
+      deadlineAt,
+    );
+    finalChangeSet = pollResult.changeSet;
+    changeSetAttempts = pollResult.attempts;
+    changeSetAvailable = pollResult.available;
+  }
+
+  safeLog('write_phase_complete', {
+    conversationId,
+    continuationStatus: continuationExecutionStatus,
+    changeSetAvailable,
+    changeSetAttempts,
+    fileCount: finalChangeSet?.files?.length ?? 0,
+    gitDiffLength: finalChangeSet?.git_diff?.length ?? 0,
+    durationMs: Date.now() - startedAt,
+  });
+
+  return Response.json({
+    ...contBody,
+    write_phase: 'two_phase_complete',
+    bootstrap_conversation_id: conversationId,
+    continued: true,
+    change_set: finalChangeSet,
+    change_set_available: changeSetAvailable,
+    change_set_attempts: changeSetAttempts,
+    change_set_unavailable: !changeSetAvailable,
+    durationMs: Date.now() - startedAt,
+  });
+}
+
 export default async function (req: Request) {
   const startedAt = Date.now();
 
@@ -760,6 +1004,21 @@ export default async function (req: Request) {
         mode,
         apiKey,
         deadlineAt,
+      });
+    }
+
+    // ── Two-phase bootstrap V1 (write mode only) ─────────────────────────
+    // Write mode WITHOUT existing conversation: use neutral bootstrap + write
+    // continuation to avoid the Git provider auth validation that triggers on
+    // write-intent initial messages. Read mode preserves the standard path.
+    if (mode === 'write') {
+      return executeTwoPhaseWrite({
+        task,
+        repository,
+        apiKey,
+        deadlineAt,
+        startedAt,
+        includeRawEvents,
       });
     }
 
