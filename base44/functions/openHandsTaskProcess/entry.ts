@@ -1339,7 +1339,7 @@ export default async function (req: Request) {
     }
 
     const shortActionResponse = action
-      ? await handleShortWriteAction({ action, body, apiKey })
+      ? await handleShortWriteAction({ action, body, apiKey, base44 })
       : null;
     if (shortActionResponse) return shortActionResponse;
     if (action) {
