@@ -1086,8 +1086,9 @@ async function handleShortWriteAction(opts: {
   action: string;
   body: any;
   apiKey: string;
+  base44: any;
 }): Promise<Response | null> {
-  const { action, body, apiKey } = opts;
+  const { action, body, apiKey, base44 } = opts;
   const headers = cloudHeaders(apiKey);
   const repository = typeof body.repository === 'string' ? body.repository.trim() : '';
   const task = typeof body.task === 'string' ? body.task.trim() : '';
@@ -1097,6 +1098,22 @@ async function handleShortWriteAction(opts: {
 
   if (action === 'write_start') {
     if (!repository) return Response.json({ ok: false, error: 'Missing repository' }, { status: 400 });
+    const executionId = typeof body.execution_id === 'string' && body.execution_id.trim()
+      ? body.execution_id.trim()
+      : `openhands-short-${Date.now()}`;
+    const postStartedAt = Date.now();
+    try {
+      await base44.entities.OpenHandsPhaseDiagnostic.create({
+        execution_id: executionId,
+        phase: 'write_start',
+        marker: 'before_openhands_post',
+        timestamp_ms: postStartedAt,
+        duration_ms: null,
+        http_status: null,
+        ok: null,
+        error: null,
+      });
+    } catch { /* diagnostics must not affect execution */ }
     const createRes = await fetchJson(
       CLOUD_BASE_URL + START_PATH,
       {
@@ -1111,6 +1128,19 @@ async function handleShortWriteAction(opts: {
       },
       60_000,
     );
+    const postFinishedAt = Date.now();
+    try {
+      await base44.entities.OpenHandsPhaseDiagnostic.create({
+        execution_id: executionId,
+        phase: 'write_start',
+        marker: 'after_openhands_post',
+        timestamp_ms: postFinishedAt,
+        duration_ms: postFinishedAt - postStartedAt,
+        http_status: createRes.status,
+        ok: createRes.ok,
+        error: createRes.ok ? null : (createRes.data?.detail || createRes.data?.message || `HTTP ${createRes.status}`),
+      });
+    } catch { /* diagnostics must not affect execution */ }
     if (!createRes.ok) {
       const error = createRes.data?.detail || createRes.data?.message || `OpenHands create failed (HTTP ${createRes.status})`;
       return Response.json({ ok: false, error, openhandsStatus: 'create_failed' }, { status: 502 });

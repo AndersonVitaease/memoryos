@@ -1,0 +1,72 @@
+{
+  "type": "object",
+  "properties": {
+    "execution_id": {
+      "type": "string"
+    },
+    "phase": {
+      "type": "string"
+    },
+    "marker": {
+      "type": "string"
+    },
+    "timestamp_ms": {
+      "type": "number"
+    },
+    "duration_ms": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "http_status": {
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "ok": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "error": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "execution_id",
+    "phase",
+    "marker",
+    "timestamp_ms"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "created_by_id": "{{user.id}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  },
+  "name": "OpenHandsPhaseDiagnostic"
+}
