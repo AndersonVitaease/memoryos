@@ -17,6 +17,7 @@ const CAPABILITIES = Object.freeze([
   "engineering.runtime.investigate",
   "engineering.runtime.compare",
   "engineering.runtime.bottlenecks",
+  "engineering.runtime.watch",
 ]);
 
 function ok<T>(data: T, start: number, eid: string, logs: ConnectorLog[], op: string): ConnectorResult<T> {
@@ -246,6 +247,74 @@ export class RuntimeObservabilityConnector implements IConnector {
           };
         }).sort((a, b) => (b.failureRate - a.failureRate) || (b.p95DurationMs - a.p95DurationMs));
         return ok({ sampleSize: rows.length, bottlenecks }, start, eid, logs, operation);
+      }
+
+      if (operation === "engineering.runtime.watch") {
+        const silenceThresholdMs = n(payload.silenceThresholdMs ?? payload.silence_threshold_ms, 30_000, 5_000, 600_000);
+        const recent = await base44.entities.ExecutionObservation.filter({}, "-created_date", Math.max(limit, 1000));
+        const now = Date.now();
+        const targetId = targetExecutionId;
+        let targetRows: any[] = [];
+
+        if (targetId) {
+          const anchor = recent.find((o: any) => o.execution_id === targetId);
+          if (!anchor) return fail("Target execution not found", start, eid, logs, operation);
+          const center = toMs(anchor.started_at || anchor.created_date);
+          targetRows = recent.filter((o: any) => {
+            const ts = toMs(o.started_at || o.created_date);
+            return o.execution_id === targetId ||
+              (Math.abs(ts - center) <= 600_000 && ["supervised-write-phase", "openhands-phase", "openhands", "adaptive-process", "mcp"].includes(o.connector));
+          });
+        } else {
+          const phaseRows = recent.filter((o: any) => ["supervised-write-phase", "openhands-phase"].includes(o.connector));
+          if (!phaseRows.length) return ok({ active: false, reason: "no_phase_observations", watchedAt: new Date(now).toISOString() }, start, eid, logs, operation);
+          const latest = phaseRows.reduce((a: any, b: any) => toMs(a.finished_at || a.created_date) > toMs(b.finished_at || b.created_date) ? a : b);
+          const center = toMs(latest.started_at || latest.created_date);
+          targetRows = recent.filter((o: any) => {
+            const ts = toMs(o.started_at || o.created_date);
+            return Math.abs(ts - center) <= 600_000 && ["supervised-write-phase", "openhands-phase", "openhands", "adaptive-process", "mcp"].includes(o.connector);
+          });
+        }
+
+        const phases = targetRows
+          .filter((o: any) => phaseName(o))
+          .sort((a: any, b: any) => toMs(a.started_at || a.created_date) - toMs(b.started_at || b.created_date));
+        const last = phases.length ? phases[phases.length - 1] : null;
+        const lastAt = last ? toMs(last.finished_at || last.started_at || last.created_date) : 0;
+        const silenceMs = lastAt ? Math.max(0, now - lastAt) : null;
+        const lastPhase = last ? phaseName(last) : null;
+        const terminal = targetRows.some((o: any) =>
+          ["adaptive-process", "openhands"].includes(o.connector) && ["completed", "failed", "timeout", "blocked"].includes(o.status)
+        );
+        const stalled = !terminal && silenceMs !== null && silenceMs >= silenceThresholdMs;
+        const nextExpected: Record<string, string | null> = {
+          approval1: "write_plan",
+          write_plan: "baseline_dispatch",
+          baseline_dispatch: "before_openhands_dispatch",
+          before_openhands_dispatch: "write_start",
+          write_start: "write_start_poll",
+          write_start_poll: "bootstrap_poll",
+          bootstrap_poll: "write_continue",
+          write_continue: "write_poll",
+          write_poll: null,
+        };
+        let diagnosis = "progressing_or_insufficient_evidence";
+        if (terminal) diagnosis = "terminal_execution_observed";
+        else if (stalled && lastPhase) diagnosis = `stalled_after_${lastPhase}`;
+        else if (lastPhase) diagnosis = `last_phase_${lastPhase}`;
+
+        return ok({
+          active: !terminal,
+          stalled,
+          diagnosis,
+          silenceThresholdMs,
+          silenceMs,
+          lastPhase,
+          nextExpectedPhase: lastPhase ? (nextExpected[lastPhase] ?? null) : null,
+          lastObservation: last ? summarizeObservation(last) : null,
+          phases: phases.map((o: any) => ({ phase: phaseName(o), ...summarizeObservation(o) })),
+          watchedAt: new Date(now).toISOString(),
+        }, start, eid, logs, operation);
       }
 
       const snapshot = await HealthMonitor.snapshot(limit);
