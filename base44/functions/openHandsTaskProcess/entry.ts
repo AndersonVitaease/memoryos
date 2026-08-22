@@ -293,7 +293,24 @@ async function fetchEventsIncremental(
         event_count_seen: newItems.length,
       });
     }
-  } catch (e) { /* cache e so uma otimizacao; se falhar em salvar, so perde o ganho na proxima chamada */ }
+  } catch (e) {
+    // Diagnostico (2026-08-22): o cache ficava sempre vazio sem NENHUM erro
+    // visivel — esse catch engolia tudo. Grava o erro real via a entidade
+    // de diagnostico ja confirmada funcional, pra saber POR QUE a gravacao
+    // do cache falha (schema? RLS? campo invalido?).
+    try {
+      await base44Client.entities.OpenHandsPhaseDiagnostic.create({
+        execution_id: conversationId,
+        phase: 'event_cache_write',
+        marker: cachedRecord ? 'update_failed' : 'create_failed',
+        timestamp_ms: Date.now(),
+        duration_ms: null,
+        http_status: null,
+        ok: false,
+        error: String((e as any)?.message || e).slice(0, 500),
+      });
+    } catch (e2) { /* se ate esse diagnostico falhar, nao ha mais o que fazer aqui */ }
+  }
 
   return { events: merged, error: null };
 }
