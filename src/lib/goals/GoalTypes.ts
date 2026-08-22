@@ -44,6 +44,11 @@ export type GoalType =
   | "memory.summarize"
   // Adaptive Process (AP-05 / RFC-010)
   | "deepResearch"
+  // Engineering runtime observability (read-only)
+  | "engineering.runtime.trace"
+  | "engineering.runtime.logs"
+  | "engineering.runtime.errors"
+  | "engineering.runtime.metrics"
   // General
   | "general.conversation"
   | "general.webSearch"    // <--- ADICIONADO! Permite pesquisar na web
