@@ -21,6 +21,7 @@ import type {
   AdaptiveProcessContext, ResearchStep, SubCapabilityCall,
   Reflection, CompletionRequirement,
 } from "./AdaptiveProcess";
+import { RuntimeObserver } from "@/lib/operational-intelligence/RuntimeObserver";
 
 export interface WriteFlowDeps {
   readonly plan: (ctx: AdaptiveProcessContext) => Promise<readonly ResearchStep[]>;
@@ -65,8 +66,25 @@ export async function runSupervisedWriteFlow(
     ? ctx.request.params.repository : "AndersonVitaease/memoryos";
   const mission = ctx.query;
   const APPROVAL_TIMEOUT = 300_000;
+  let phaseSequence = 0;
+  const observePhase = (phase: string, startedAt: number, status: "completed" | "failed", error?: string | null) => {
+    const finishedAt = Date.now();
+    void RuntimeObserver.observe({
+      executionId: ctx.parentExecutionId,
+      stepId: `supervised-write-phase-${++phaseSequence}-${phase}`,
+      connector: "supervised-write-phase",
+      capability: phase,
+      status,
+      error: error ?? null,
+      durationMs: finishedAt - startedAt,
+      startedAt,
+      finishedAt,
+      goalType: "supervisedEngineering",
+    });
+  };
 
   // ── APPROVAL 1: before OpenHands ──
+  const approval1StartedAt = Date.now();
   const approval1 = await requestConfirmation({
     capability: "supervisedEngineering.write",
     title: "Aprovar execucao no OpenHands Cloud",
@@ -80,6 +98,7 @@ export async function runSupervisedWriteFlow(
     ].join("\n"),
     timeoutMs: APPROVAL_TIMEOUT,
   });
+  observePhase("approval1", approval1StartedAt, "completed", approval1.confirmed ? null : (approval1.expired ? "expired" : "rejected"));
   if (!approval1.confirmed) {
     return makeOutcome(ctx, "cancelled",
       { approval: "rejected_phase1", applied: [], change_set: null },
@@ -90,7 +109,9 @@ export async function runSupervisedWriteFlow(
   }
 
   // ── OpenHands execution (baseline + openhands-task) ──
+  const planStartedAt = Date.now();
   const writeSteps = await deps.plan(ctx);
+  observePhase("write_plan", planStartedAt, "completed");
   const openHandsIndex = writeSteps.findIndex((s) => s.id === "openhands-task");
   if (openHandsIndex < 0) {
     return makeOutcome(ctx, "failed", null, "Write plan missing openhands-task step.");
@@ -101,10 +122,20 @@ export async function runSupervisedWriteFlow(
   const verifySteps = writeSteps.slice(openHandsIndex + 1);
 
   // Dispatch baseline steps (git.status, git.log before OpenHands)
+  const baselineStartedAt = Date.now();
   const beforeResults = await Promise.all(beforeSteps.map((s) => ctx.dispatch(s.call)));
+  observePhase("baseline_dispatch", baselineStartedAt, "completed");
 
   // Dispatch OpenHands task
+  const openHandsDispatchStartedAt = Date.now();
+  observePhase("before_openhands_dispatch", openHandsDispatchStartedAt, "completed");
   const openHandsResult = await ctx.dispatch(openHandsStep.call);
+  observePhase(
+    "openhands_dispatch",
+    openHandsDispatchStartedAt,
+    openHandsResult.status === "success" ? "completed" : "failed",
+    openHandsResult.message ?? null,
+  );
   if (openHandsResult.status !== "success") {
     return makeOutcome(ctx, "failed",
       { openhands_result: openHandsResult, applied: [] },
