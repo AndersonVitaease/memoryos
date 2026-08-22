@@ -1700,7 +1700,11 @@ const _builtins: GoalDefinition[] = [
     ],
     extractParams: (msg: string) => {
       const norm = msg.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      const repoMatch = norm.match(/\b([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}[A-Za-z0-9]?)\/[A-Za-z0-9._-]+)\b/);
+      // FIX: only extract owner/repo when preceded by "repositorio" or "repo".
+      // A bare word/word regex matches file path segments ("src/lib") and
+      // natural language ("read/write"), causing OpenHands to receive an
+      // invalid repository and fail with "Git provider authentication issue".
+      const repoMatch = norm.match(/\b(?:repositorio|repo)\s+([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}[A-Za-z0-9]?)\/[A-Za-z0-9._-]+)\b/i);
       const repository = repoMatch?.[1] ?? null;
       return {
         task: msg.trim(),
@@ -1729,7 +1733,11 @@ const _builtins: GoalDefinition[] = [
     extractParams: (msg: string) => {
       // repository: owner/repo explicito na mensagem, senao default do MemoryOS.
       const norm = msg.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      const repoMatch = norm.match(/\b([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}[A-Za-z0-9]?)\/[A-Za-z0-9._-]+)\b/);
+      // FIX: only extract owner/repo when preceded by "repositorio" or "repo".
+      // A bare word/word regex matches file path segments ("src/lib") and
+      // natural language ("read/write"), causing OpenHands to receive an
+      // invalid repository and fail with "Git provider authentication issue".
+      const repoMatch = norm.match(/\b(?:repositorio|repo)\s+([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}[A-Za-z0-9]?)\/[A-Za-z0-9._-]+)\b/i);
       const repository = repoMatch?.[1] ?? "AndersonVitaease/memoryos";
 
       const mode = detectWriteMode(msg);
