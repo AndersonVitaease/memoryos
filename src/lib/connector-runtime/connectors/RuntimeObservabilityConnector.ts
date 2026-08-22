@@ -19,6 +19,11 @@ const CAPABILITIES = Object.freeze([
   "engineering.runtime.bottlenecks",
   "engineering.runtime.watch",
   "engineering.runtime.timeline",
+  "engineering.runtime.executions",
+  "engineering.runtime.health",
+  "engineering.runtime.saturation",
+  "engineering.runtime.releaseContext",
+  "engineering.runtime.query",
 ]);
 
 function ok<T>(data: T, start: number, eid: string, logs: ConnectorLog[], op: string): ConnectorResult<T> {
@@ -58,6 +63,7 @@ function summarizeObservation(o: any) {
     startedAt: o.started_at ?? null,
     finishedAt: o.finished_at ?? null,
     goalType: o.goal_type ?? null,
+    sprintTag: o.sprint_tag ?? null,
   };
 }
 function phaseName(o: any): string | null {
@@ -219,6 +225,55 @@ export class RuntimeObservabilityConnector implements IConnector {
           onlyInB: bNames.filter((p: string) => !aNames.includes(p)),
           samePhaseSequence: JSON.stringify(aNames) === JSON.stringify(bNames),
         }, start, eid, logs, operation);
+      }
+
+      if (operation === "engineering.runtime.executions") {
+        const rows = await base44.entities.ExecutionObservation.filter({}, "-created_date", limit);
+        const status = str(payload.status), connector = str(payload.connector), capability = str(payload.capability), goalType = str(payload.goalType ?? payload.goal_type), sprintTag = str(payload.sprintTag ?? payload.sprint_tag);
+        const filtered = rows.filter((o: any) => (!status || o.status === status) && (!connector || o.connector === connector) && (!capability || o.capability === capability) && (!goalType || o.goal_type === goalType) && (!sprintTag || o.sprint_tag === sprintTag));
+        const grouped = new Map<string, any[]>();
+        for (const row of filtered) { const id = row.execution_id ?? "_unknown_"; const arr = grouped.get(id) ?? []; arr.push(row); grouped.set(id, arr); }
+        const executions = [...grouped.entries()].map(([id, items]) => {
+          const ordered = [...items].sort((a: any,b: any)=>toMs(a.started_at||a.created_date)-toMs(b.started_at||b.created_date));
+          const statuses = Object.fromEntries([...new Set(items.map((x:any)=>x.status))].map((s:any)=>[s,items.filter((x:any)=>x.status===s).length]));
+          return { executionId:id, steps:items.length, firstAt:ordered[0]?.started_at??ordered[0]?.created_date??null, lastAt:ordered.at(-1)?.finished_at??ordered.at(-1)?.started_at??ordered.at(-1)?.created_date??null,
+            connectors:[...new Set(items.map((x:any)=>x.connector).filter(Boolean))], capabilities:[...new Set(items.map((x:any)=>x.capability).filter(Boolean))], goalTypes:[...new Set(items.map((x:any)=>x.goal_type).filter(Boolean))], sprintTags:[...new Set(items.map((x:any)=>x.sprint_tag).filter(Boolean))], statuses };
+        }).sort((a,b)=>toMs(b.lastAt)-toMs(a.lastAt));
+        return ok({ count:executions.length, executions }, start, eid, logs, operation);
+      }
+
+      if (operation === "engineering.runtime.health") {
+        const snapshot = await HealthMonitor.snapshot(limit);
+        const rows = await base44.entities.ExecutionObservation.filter({}, "-created_date", limit);
+        const durations = rows.map((o:any)=>Number(o.duration_ms)||0).filter((x:number)=>x>=0);
+        const failures = rows.filter((o:any)=>["failed","timeout","blocked"].includes(o.status)).length;
+        return ok({ ...snapshot, failures, avgDurationMs:durations.length?durations.reduce((a:number,b:number)=>a+b,0)/durations.length:0, p95DurationMs:percentile(durations,0.95), sampleSize:rows.length }, start, eid, logs, operation);
+      }
+
+      if (operation === "engineering.runtime.saturation") {
+        const rows = await base44.entities.ExecutionObservation.filter({}, "-created_date", limit);
+        const connector=str(payload.connector), capability=str(payload.capability), server=str(payload.server), toolName=str(payload.toolName??payload.tool_name);
+        const filtered=rows.filter((o:any)=>(!targetExecutionId||o.execution_id===targetExecutionId)&&(!connector||o.connector===connector)&&(!capability||o.capability===capability)&&(!server||o.server===server)&&(!toolName||o.tool_name===toolName));
+        const waits=filtered.map((o:any)=>Number(o.semaphore_wait_ms)||0), waiting=filtered.filter((o:any)=>(Number(o.semaphore_wait_ms)||0)>0);
+        const groups=new Map<string,any[]>(); for (const o of filtered) { const key=`${o.connector??"unknown"}::${o.capability??"unknown"}`; const arr=groups.get(key)??[]; arr.push(o); groups.set(key,arr); }
+        const byPath=[...groups.entries()].map(([key,items])=>{ const w=items.map((x:any)=>Number(x.semaphore_wait_ms)||0); const waitingSteps=w.filter((x:number)=>x>0).length; return { key, count:items.length, waitingSteps, waitingRate:items.length?waitingSteps/items.length:0, avgWaitMs:w.length?w.reduce((a:number,b:number)=>a+b,0)/w.length:0, p95WaitMs:percentile(w,0.95), maxWaitMs:w.length?Math.max(...w):0 }; }).sort((a,b)=>(b.waitingRate-a.waitingRate)||(b.p95WaitMs-a.p95WaitMs));
+        return ok({ sampleSize:filtered.length, waitingSteps:waiting.length, waitingRate:filtered.length?waiting.length/filtered.length:0, avgWaitMs:waits.length?waits.reduce((a:number,b:number)=>a+b,0)/waits.length:0, p95WaitMs:percentile(waits,0.95), maxWaitMs:waits.length?Math.max(...waits):0, byPath }, start, eid, logs, operation);
+      }
+
+      if (operation === "engineering.runtime.releaseContext") {
+        if (!targetExecutionId) return fail("executionId is required", start, eid, logs, operation);
+        const rows = await base44.entities.ExecutionObservation.filter({ execution_id: targetExecutionId }, "created_date", limit);
+        if (!rows.length) return fail("Target execution not found", start, eid, logs, operation);
+        const sprintTags=[...new Set(rows.map((o:any)=>o.sprint_tag).filter(Boolean))];
+        return ok({ executionId:targetExecutionId, sprintTags, connectors:[...new Set(rows.map((o:any)=>o.connector).filter(Boolean))], capabilities:[...new Set(rows.map((o:any)=>o.capability).filter(Boolean))], servers:[...new Set(rows.map((o:any)=>o.server).filter(Boolean))], toolNames:[...new Set(rows.map((o:any)=>o.tool_name).filter(Boolean))], firstAt:rows[0]?.started_at??rows[0]?.created_date??null, lastAt:rows.at(-1)?.finished_at??rows.at(-1)?.started_at??rows.at(-1)?.created_date??null, deploymentIdentity:null, commitSha:null, evidenceLevel:sprintTags.length?"sprint_tag_only":"none", note:"ExecutionObservation currently persists sprint_tag but not a canonical deployment/release id or commit SHA." }, start, eid, logs, operation);
+      }
+
+      if (operation === "engineering.runtime.query") {
+        const rows = await base44.entities.ExecutionObservation.filter({}, "-created_date", limit);
+        const sessionId=str(payload.sessionId??payload.session_id), connector=str(payload.connector), capability=str(payload.capability), status=str(payload.status), goalType=str(payload.goalType??payload.goal_type), server=str(payload.server), toolName=str(payload.toolName??payload.tool_name), sprintTag=str(payload.sprintTag??payload.sprint_tag);
+        const since=toMs(payload.since), until=toMs(payload.until);
+        const filtered=rows.filter((o:any)=>{ const ts=toMs(o.started_at||o.created_date); return (!targetExecutionId||o.execution_id===targetExecutionId)&&(!sessionId||o.session_id===sessionId)&&(!connector||o.connector===connector)&&(!capability||o.capability===capability)&&(!status||o.status===status)&&(!goalType||o.goal_type===goalType)&&(!server||o.server===server)&&(!toolName||o.tool_name===toolName)&&(!sprintTag||o.sprint_tag===sprintTag)&&(!since||ts>=since)&&(!until||ts<=until); });
+        return ok({ count:filtered.length, observations:filtered.map(summarizeObservation) }, start, eid, logs, operation);
       }
 
       if (operation === "engineering.runtime.bottlenecks") {
