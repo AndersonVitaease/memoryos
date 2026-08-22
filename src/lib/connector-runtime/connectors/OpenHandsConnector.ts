@@ -180,7 +180,7 @@ export class OpenHandsConnector implements IConnector {
         let bootstrapCreateAttempt = 0;
         while (!conversationId && Date.now() < overallDeadline) {
           bootstrapCreateAttempt++;
-          const started = await invokeShort({ action: "write_start", task, repository, mode });
+          const started = await invokeShort({ action: "write_start", task, repository, mode, execution_id: eid });
           if (started?.error) return fail(String(started.error), start, eid, logs, operation);
           conversationId = typeof started?.app_conversation_id === "string" ? started.app_conversation_id : "";
           const startTaskId = typeof started?.start_task_id === "string" ? started.start_task_id : "";
