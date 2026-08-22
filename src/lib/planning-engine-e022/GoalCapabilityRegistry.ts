@@ -964,6 +964,24 @@ const _builtins: CapabilityMapping[] = [
       { connector: "runtime-observability", capability: "engineering.runtime.metrics", params: {} },
     ],
   },
+  {
+    goalType: "engineering.runtime.investigate",
+    descriptors: [
+      { connector: "runtime-observability", capability: "engineering.runtime.investigate", params: {} },
+    ],
+  },
+  {
+    goalType: "engineering.runtime.compare",
+    descriptors: [
+      { connector: "runtime-observability", capability: "engineering.runtime.compare", params: {} },
+    ],
+  },
+  {
+    goalType: "engineering.runtime.bottlenecks",
+    descriptors: [
+      { connector: "runtime-observability", capability: "engineering.runtime.bottlenecks", params: {} },
+    ],
+  },
 
   // ── General / Unknown — no capability steps; Runtime handles gracefully ───
   {
