@@ -199,6 +199,15 @@ export class MCPConnector implements IConnector {
         "mcp.listTools": "safe",
         "mcp.callTool": "safe",
       },
+      // CT-01: step timeout especifico para mcp.callTool.
+      // O COMPOSITE_EXECUTION_POLICY.stepTimeoutMs padrao (240s) e longo demais
+      // para baseline steps (git.status, git.log) — se ENG-MCP estiver lento,
+      // o fluxo supervisionado trava por 240s antes do timeout. 30s e suficiente
+      // para operacoes rapidas; verificacoes longas (typecheck, testes) rodam
+      // apos Approval 2 e nao afetam o caminho critico pre-Approval-2.
+      capabilityTimeout: {
+        "mcp.callTool": 30_000,
+      },
     };
   }
 

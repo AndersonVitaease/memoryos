@@ -109,12 +109,22 @@ export class OpenHandsConnector implements IConnector {
       if (!task) return fail("task e obrigatorio", start, eid, logs, operation);
       if (!repository && !appConversationId) return fail("repository e obrigatorio para nova conversation (owner/repo)", start, eid, logs, operation);
 
-      const res = await base44.functions.invoke("openHandsTaskProcess", {
-        task,
-        ...(repository ? { repository } : {}),
-        ...(appConversationId ? { app_conversation_id: appConversationId } : {}),
-        mode,
+      // Client-side hardcap: 285s (within the 300s step timeout).
+      // Prevents infinite hang if the platform HTTP gateway doesn't respond.
+      // The backend function typically completes in 50-180s.
+      const INVOKE_TIMEOUT_MS = 285_000;
+      const _timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error(`OpenHands backend function timed out after ${INVOKE_TIMEOUT_MS / 1000}s`)), INVOKE_TIMEOUT_MS);
       });
+      const res = await Promise.race([
+        base44.functions.invoke("openHandsTaskProcess", {
+          task,
+          ...(repository ? { repository } : {}),
+          ...(appConversationId ? { app_conversation_id: appConversationId } : {}),
+          mode,
+        }),
+        _timeoutPromise,
+      ]);
       const d = (res.data ?? res) as Record<string, unknown> | null;
       if (d?.error) {
         const result = fail(String(d.error), start, eid, logs, operation);
