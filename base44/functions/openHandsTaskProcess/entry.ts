@@ -880,23 +880,66 @@ async function executeTwoPhaseWrite(opts: {
 
   // ═══════════════════════════════════════════════════════════════════════════
   // PHASE 1 — BOOTSTRAP (neutral initial_message)
+  // Reuses the same TRANSIENT_GIT_AUTH_ERROR retry policy as the standard
+  // read path. Each retry creates a NEW app-conversation (does NOT reuse
+  // the failed start-task). Only the exact error signature triggers retry.
   // ═══════════════════════════════════════════════════════════════════════════
   safeLog('write_phase_bootstrap_start', { repository });
-  const bootstrapResult = await createAndPollStartTask({
-    task: '',
-    repository,
-    mode: 'write',
-    apiKey,
-    deadlineAt,
-    useBootstrap: true,
-  });
 
-  if (!bootstrapResult.conversationId) {
-    safeLog('write_phase_bootstrap_failed', { stage: 'create_start_task' });
-    return Response.json(bootstrapResult.errorResponse, { status: 502 });
+  let conversationId = '';
+  {
+    let attempt = 0;
+    while (true) {
+      attempt++;
+      safeLog('write_phase_bootstrap_attempt', { attempt });
+
+      const bootstrapResult = await createAndPollStartTask({
+        task: '',
+        repository,
+        mode: 'write',
+        apiKey,
+        deadlineAt,
+        useBootstrap: true,
+      });
+
+      if (bootstrapResult.conversationId) {
+        conversationId = bootstrapResult.conversationId;
+        if (attempt > 1) {
+          safeLog('bootstrap_retry_succeeded', { attempt, conversationId });
+        }
+        break;
+      }
+
+      // Retry ONLY for the exact transient Git auth error signature.
+      // Same constants as the standard read path (TRANSIENT_GIT_AUTH_ERROR,
+      // TRANSIENT_MAX_RETRIES=1, TRANSIENT_RETRY_DELAY_MS=15000).
+      const isRetryable = bootstrapResult.error !== null
+        && bootstrapResult.error.includes(TRANSIENT_GIT_AUTH_ERROR)
+        && attempt <= TRANSIENT_MAX_RETRIES
+        && (Date.now() + TRANSIENT_RETRY_DELAY_MS) < deadlineAt;
+
+      if (!isRetryable) {
+        safeLog('write_phase_bootstrap_failed', {
+          stage: 'create_start_task',
+          attempt,
+          startTaskId: bootstrapResult.startTaskId || null,
+        });
+        return Response.json(bootstrapResult.errorResponse, { status: 502 });
+      }
+
+      safeLog('bootstrap_retry_scheduled', {
+        attempt,
+        delay_ms: TRANSIENT_RETRY_DELAY_MS,
+        failed_start_task_id: bootstrapResult.startTaskId || null,
+        error: sanitizeErrorDetail(bootstrapResult.error).slice(0, 300),
+      });
+
+      await sleep(TRANSIENT_RETRY_DELAY_MS);
+
+      safeLog('bootstrap_retry_attempt', { attempt: attempt + 1 });
+    }
   }
 
-  const conversationId = bootstrapResult.conversationId;
   safeLog('write_phase_bootstrap_conversation_created', { conversationId });
 
   // Poll conversation until sandbox is ready (running/ready) or terminal.
