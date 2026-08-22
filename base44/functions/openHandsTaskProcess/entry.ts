@@ -534,19 +534,26 @@ async function continueExistingConversation(opts: {
         && latestReply.eventId !== null
         && latestReply.eventId !== baselineReply.eventId;
       if (hasNewReply && TERMINAL_EXECUTION_STATUSES.has(executionStatus)) {
-        // Change extraction for write mode continuations (same as main flow).
+        // Change extraction for write mode continuations — uses polling to
+        // recover from OpenHands Cloud API consistency lag (git/changes may
+        // return 200 with empty content for 30-60s after the agent finishes).
         let continuationChangeSet: any = null;
+        let changeSetAttempts = 0;
         if (mode === 'write' && executionStatus === 'finished') {
-          continuationChangeSet = await extractChangeSet(
+          const pollResult = await extractChangeSetWithPolling(
             conversationId,
             conversation?.sandbox_id ?? null,
             String(conversation?.selected_repository ?? ''),
             apiKey,
             deadlineAt,
           );
+          continuationChangeSet = pollResult.changeSet;
+          changeSetAttempts = pollResult.attempts;
           safeLog('continuation_change_set', {
             conversationId,
             fileCount: continuationChangeSet?.files?.length ?? 0,
+            attempts: changeSetAttempts,
+            available: pollResult.available,
           });
         }
         safeLog('phase_write_reply_consolidated', { conversationId, writeEventId: latestReply.eventId, baselineEventId: baselineReply.eventId });
