@@ -1755,6 +1755,17 @@ const _builtins: GoalDefinition[] = [
       limit: 1000,
     }),
   },
+  {
+    type: "engineering.runtime.timeline",
+    namespace: "runtime-observability",
+    description: "Monta uma linha do tempo unica da execucao combinando observacoes do Runtime e SystemEvents",
+    signals: ["engineering.runtime.timeline", "timeline da execucao", "linha do tempo da execucao", "historico da execucao", "execution timeline"],
+    extractParams: (msg: string) => ({
+      executionId: msg.match(/\bexec(?:-rt)?-[A-Za-z0-9-]+\b/i)?.[0] ?? null,
+      windowMs: 600000,
+      limit: 1500,
+    }),
+  },
 
   // ── Supervised Engineering (Adaptive Process composto) ────────────────────
   // Trigger EXPLICITO e deterministico — exige "engenharia supervisionada" na
