@@ -295,6 +295,23 @@ async function extractChangeSet(
       { method: 'GET', headers },
       Math.min(30_000, Math.max(1, deadlineAt - Date.now())),
     );
+    // Diagnostico (2026-08-22, sessao 2): a mesma falha "change_set
+    // unavailable" ja foi investigada hoje uma vez (ver comentario BUG 1
+    // FIX acima), mas voltou a acontecer numa tarefa trivial (1 comentario).
+    // Grava a resposta CRUA do /git/changes pra saber se o fix anterior
+    // realmente resolveu ou se e uma falha nova/diferente.
+    try {
+      await createClientFromRequest2().entities.OpenHandsPhaseDiagnostic.create({
+        execution_id: conversationId,
+        phase: 'extract_change_set',
+        marker: 'git_changes_response',
+        timestamp_ms: Date.now(),
+        duration_ms: null,
+        http_status: changesRes.status,
+        ok: changesRes.ok,
+        error: changesRes.ok ? null : JSON.stringify(changesRes.data ?? changesRes.raw ?? '').slice(0, 500),
+      });
+    } catch (e) { /* diagnostics must not affect execution */ }
     if (changesRes.ok) {
       changedFiles = normalizeGitChanges(changesRes.data);
     } else {
