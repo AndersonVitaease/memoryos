@@ -111,6 +111,11 @@ const OFFICIAL_FACTORIES: ConnectorFactory[] = [
     return new OpenHandsConnector();
   },
   async () => {
+    // Read-only observability over existing durable telemetry.
+    const { RuntimeObservabilityConnector } = await import("./connectors/RuntimeObservabilityConnector");
+    return new RuntimeObservabilityConnector();
+  },
+  async () => {
     const { MicrosoftGraphConnector } = await import("./connectors/MicrosoftGraphConnector");
     return new MicrosoftGraphConnector();
   },
