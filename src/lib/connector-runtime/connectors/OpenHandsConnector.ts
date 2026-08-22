@@ -58,12 +58,12 @@ export class OpenHandsConnector implements IConnector {
         "openhands.runTask": "safe",
       },
       // CT-01: step timeout específico para openhands.runTask.
-      // O backend function (openHandsTaskProcess) pode executar até o limite
-      // da plataforma (~300s). O COMPOSITE_EXECUTION_POLICY.stepTimeoutMs
-      // padrão (240s) mataria o step prematuramente. 300s alinha com o limite
-      // da plataforma sem excedê-lo.
+      // O write two-phase pode exceder 300s (bootstrap + continuation + polling).
+      // Mantemos o aumento estritamente nesta capability, sem alterar o timeout
+      // global do Runtime. O backend recebe um budget menor (540s) e o client
+      // hardcap (570s) ainda termina antes deste step timeout (600s).
       capabilityTimeout: {
-        "openhands.runTask": 300_000,
+        "openhands.runTask": 600_000,
       },
     };
   }
@@ -109,10 +109,10 @@ export class OpenHandsConnector implements IConnector {
       if (!task) return fail("task e obrigatorio", start, eid, logs, operation);
       if (!repository && !appConversationId) return fail("repository e obrigatorio para nova conversation (owner/repo)", start, eid, logs, operation);
 
-      // Client-side hardcap: 285s (within the 300s step timeout).
-      // Prevents infinite hang if the platform HTTP gateway doesn't respond.
-      // The backend function typically completes in 50-180s.
-      const INVOKE_TIMEOUT_MS = 285_000;
+      // Client-side hardcap: 570s, below the capability step timeout (600s).
+      // The backend receives 540s, so it should return a structured timeout
+      // before this client hardcap rather than being cut off by the Runtime.
+      const INVOKE_TIMEOUT_MS = 570_000;
       const _timeoutPromise = new Promise<never>((_, reject) => {
         setTimeout(() => reject(new Error(`OpenHands backend function timed out after ${INVOKE_TIMEOUT_MS / 1000}s`)), INVOKE_TIMEOUT_MS);
       });
@@ -122,6 +122,9 @@ export class OpenHandsConnector implements IConnector {
           ...(repository ? { repository } : {}),
           ...(appConversationId ? { app_conversation_id: appConversationId } : {}),
           mode,
+          // Budget explícito do backend two-phase. Mantém uma margem de 30s
+          // para a resposta voltar antes do client hardcap de 570s.
+          timeoutMs: 540_000,
         }),
         _timeoutPromise,
       ]);
