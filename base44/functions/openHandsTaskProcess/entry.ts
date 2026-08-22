@@ -224,7 +224,20 @@ async function fetchEventsIncremental(
   try {
     const cached = await base44Client.entities.OpenHandsEventCache.filter({ conversation_id: conversationId });
     cachedRecord = cached && cached.length > 0 ? cached[0] : null;
-  } catch (e) { /* sem cache: segue como se fosse a primeira vez */ }
+  } catch (e) {
+    try {
+      await base44Client.entities.OpenHandsPhaseDiagnostic.create({
+        execution_id: conversationId,
+        phase: 'event_cache_write',
+        marker: 'read_failed',
+        timestamp_ms: Date.now(),
+        duration_ms: null,
+        http_status: null,
+        ok: false,
+        error: String((e as any)?.message || e).slice(0, 500),
+      });
+    } catch (e2) { /* se ate esse diagnostico falhar, nao ha mais o que fazer aqui */ }
+  }
 
   let priorTail: any[] = [];
   let resumePageId: string | null = null;
