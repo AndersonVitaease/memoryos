@@ -276,6 +276,7 @@ async function extractChangeSet(
   repository: string,
   apiKey: string,
   deadlineAt: number,
+  base44Client?: any,
 ): Promise<any> {
   const headers = cloudHeaders(apiKey);
   const base = `${CLOUD_BASE_URL}/api/v1/app-conversations/${encodeURIComponent(conversationId)}`;
@@ -301,16 +302,18 @@ async function extractChangeSet(
     // Grava a resposta CRUA do /git/changes pra saber se o fix anterior
     // realmente resolveu ou se e uma falha nova/diferente.
     try {
-      await createClientFromRequest2().entities.OpenHandsPhaseDiagnostic.create({
-        execution_id: conversationId,
-        phase: 'extract_change_set',
-        marker: 'git_changes_response',
-        timestamp_ms: Date.now(),
-        duration_ms: null,
-        http_status: changesRes.status,
-        ok: changesRes.ok,
-        error: changesRes.ok ? null : JSON.stringify(changesRes.data ?? changesRes.raw ?? '').slice(0, 500),
-      });
+      if (base44Client) {
+        await base44Client.entities.OpenHandsPhaseDiagnostic.create({
+          execution_id: conversationId,
+          phase: 'extract_change_set',
+          marker: 'git_changes_response',
+          timestamp_ms: Date.now(),
+          duration_ms: null,
+          http_status: changesRes.status,
+          ok: changesRes.ok,
+          error: changesRes.ok ? JSON.stringify(changesRes.data ?? '').slice(0, 500) : JSON.stringify(changesRes.data ?? changesRes.raw ?? '').slice(0, 500),
+        });
+      }
     } catch (e) { /* diagnostics must not affect execution */ }
     if (changesRes.ok) {
       changedFiles = normalizeGitChanges(changesRes.data);
