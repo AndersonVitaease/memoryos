@@ -49,6 +49,10 @@ export interface RuntimeObsEvent {
   readonly planId:       string | null;
   readonly goalId:       string | null;
   readonly seq:          number;        // sequência global — garante ordenação
+  // Observability V2: policy aplicada + correlação parent/child
+  readonly timeoutMs:          number | null;  // policy.timeoutMs aplicada a esta execução
+  readonly stepTimeoutMs:      number | null;  // policy.stepTimeoutMs aplicada ao step
+  readonly parentExecutionId:   string | null;  // parentExecutionId para correlação de sub-caps
 }
 
 // ── D-05: Métricas consolidadas por execução ──────────────────────────────────
@@ -62,6 +66,7 @@ export interface StepMetric {
   readonly finishedAt:  number;
   readonly durationMs:  number;
   readonly error:       string | null;
+  readonly stepTimeoutMs: number | null;
 }
 
 export interface ExecutionSummary {
@@ -78,6 +83,9 @@ export interface ExecutionSummary {
   readonly durationByConnector: Readonly<Record<string, number>>;
   readonly errors:              readonly string[];
   readonly eventCount:          number;
+  // Observability V2: policy aplicada + parent correlation
+  readonly timeoutMs:           number | null;
+  readonly parentExecutionId:    string | null;
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────
@@ -148,6 +156,7 @@ export class RuntimeObservabilityStore {
       finishedAt:  e.finishedAt,
       durationMs:  e.durationMs,
       error:       e.error,
+      stepTimeoutMs: e.stepTimeoutMs,
     }));
 
     // D-05: tempo por connector
@@ -174,6 +183,8 @@ export class RuntimeObservabilityStore {
       durationByConnector: Object.freeze(durationByConnector),
       errors:              Object.freeze(errors),
       eventCount:          events.length,
+      timeoutMs:           startEvent?.timeoutMs ?? null,
+      parentExecutionId:    startEvent?.parentExecutionId ?? null,
     });
 
     this._summaries.set(executionId, summary);
