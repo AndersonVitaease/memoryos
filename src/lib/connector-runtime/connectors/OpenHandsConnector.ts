@@ -109,26 +109,105 @@ export class OpenHandsConnector implements IConnector {
       if (!task) return fail("task e obrigatorio", start, eid, logs, operation);
       if (!repository && !appConversationId) return fail("repository e obrigatorio para nova conversation (owner/repo)", start, eid, logs, operation);
 
-      // Client-side hardcap: 570s, below the capability step timeout (600s).
-      // The backend receives 540s, so it should return a structured timeout
-      // before this client hardcap rather than being cut off by the Runtime.
-      const INVOKE_TIMEOUT_MS = 570_000;
-      const _timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error(`OpenHands backend function timed out after ${INVOKE_TIMEOUT_MS / 1000}s`)), INVOKE_TIMEOUT_MS);
-      });
-      const res = await Promise.race([
-        base44.functions.invoke("openHandsTaskProcess", {
+      // Long-running write flow is orchestrated through SHORT backend calls.
+      // This avoids the Base44 backend-function ~300s request ceiling: no single
+      // invoke remains open while OpenHands works. The connector owns the poll
+      // loop inside the already-scoped 600s capability budget.
+      const OVERALL_TIMEOUT_MS = 570_000;
+      const SHORT_INVOKE_TIMEOUT_MS = 75_000;
+      const overallDeadline = Date.now() + OVERALL_TIMEOUT_MS;
+      const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+      const invokeShort = async (payload: Record<string, unknown>): Promise<Record<string, unknown>> => {
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error(`OpenHands short backend call timed out after ${SHORT_INVOKE_TIMEOUT_MS / 1000}s`)), SHORT_INVOKE_TIMEOUT_MS);
+        });
+        const response = await Promise.race([
+          base44.functions.invoke("openHandsTaskProcess", payload),
+          timeoutPromise,
+        ]);
+        return ((response as any)?.data ?? response ?? {}) as Record<string, unknown>;
+      };
+
+      let d: Record<string, unknown> | null = null;
+
+      if (mode === "write" && !appConversationId) {
+        // 1) START — neutral bootstrap. Returns conversation id quickly.
+        const started = await invokeShort({ action: "write_start", task, repository, mode });
+        if (started?.error) return fail(String(started.error), start, eid, logs, operation);
+        const conversationId = typeof started?.app_conversation_id === "string" ? started.app_conversation_id : "";
+        if (!conversationId) return fail("OpenHands write_start returned no conversation id", start, eid, logs, operation);
+        logs.push(makeLog("info", `[${operation}] phase=bootstrap_started conversation=${conversationId}`));
+
+        // 2) POLL bootstrap until the bootstrap agent MessageEvent is consolidated.
+        let baselineEventId = "";
+        while (Date.now() < overallDeadline) {
+          const poll = await invokeShort({ action: "bootstrap_poll", app_conversation_id: conversationId, repository, mode });
+          if (poll?.error) return fail(String(poll.error), start, eid, logs, operation);
+          if (poll?.phase === "bootstrap_ready" && typeof poll?.baseline_event_id === "string" && poll.baseline_event_id) {
+            baselineEventId = poll.baseline_event_id;
+            break;
+          }
+          await sleep(3_000);
+        }
+        if (!baselineEventId) return fail("Timeout waiting for OpenHands bootstrap readiness", start, eid, logs, operation);
+
+        // 3) CONTINUE — send the real write task on the SAME conversation/sandbox.
+        const continued = await invokeShort({
+          action: "write_continue",
+          app_conversation_id: conversationId,
+          baseline_event_id: baselineEventId,
           task,
-          ...(repository ? { repository } : {}),
-          ...(appConversationId ? { app_conversation_id: appConversationId } : {}),
+          repository,
           mode,
-          // Budget explícito do backend two-phase. Mantém uma margem de 30s
-          // para a resposta voltar antes do client hardcap de 570s.
-          timeoutMs: 540_000,
-        }),
-        _timeoutPromise,
-      ]);
-      const d = (res.data ?? res) as Record<string, unknown> | null;
+        });
+        if (continued?.error) return fail(String(continued.error), start, eid, logs, operation);
+        logs.push(makeLog("info", `[${operation}] phase=write_started conversation=${conversationId}`));
+
+        // 4) POLL write completion. Once finished, keep polling briefly for the
+        // real change_set to become visible; never fabricate it from agent text.
+        let finishedWithoutChangesPolls = 0;
+        while (Date.now() < overallDeadline) {
+          const poll = await invokeShort({
+            action: "write_poll",
+            app_conversation_id: conversationId,
+            baseline_event_id: baselineEventId,
+            repository,
+            mode,
+          });
+          if (poll?.error) return fail(String(poll.error), start, eid, logs, operation);
+          if (poll?.phase === "write_complete" && poll?.change_set) {
+            d = poll;
+            break;
+          }
+          if (poll?.phase === "write_finished_waiting_changes") {
+            finishedWithoutChangesPolls++;
+            if (finishedWithoutChangesPolls >= 8) {
+              return fail("change_set unavailable after OpenHands write completion", start, eid, logs, operation);
+            }
+            await sleep(5_000);
+          } else {
+            await sleep(3_000);
+          }
+        }
+        if (!d) return fail("Timeout waiting for OpenHands write completion", start, eid, logs, operation);
+      } else {
+        // Read mode / explicit continuation keep the existing single-call path.
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error(`OpenHands backend function timed out after ${OVERALL_TIMEOUT_MS / 1000}s`)), OVERALL_TIMEOUT_MS);
+        });
+        const res = await Promise.race([
+          base44.functions.invoke("openHandsTaskProcess", {
+            task,
+            ...(repository ? { repository } : {}),
+            ...(appConversationId ? { app_conversation_id: appConversationId } : {}),
+            mode,
+            timeoutMs: 540_000,
+          }),
+          timeoutPromise,
+        ]);
+        d = ((res as any)?.data ?? res) as Record<string, unknown> | null;
+      }
       if (d?.error) {
         const result = fail(String(d.error), start, eid, logs, operation);
         // Pass-through structured error fields from backend (no reinterpretation, no LLM)
