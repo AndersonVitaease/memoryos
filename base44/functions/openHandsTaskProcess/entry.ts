@@ -1378,6 +1378,27 @@ async function handleShortWriteAction(opts: {
     if (sandboxStatus === 'error' || sandboxStatus === 'missing' || executionStatus === 'error' || executionStatus === 'stuck') {
       return Response.json({ ok: false, app_conversation_id: conversationId, error: `OpenHands bootstrap failed (sandbox=${sandboxStatus}, execution=${executionStatus})`, openhandsStatus: 'bootstrap_failed' }, { status: 502 });
     }
+    // Diagnostico (2026-08-22): documentacao oficial da OpenHands Cloud lista
+    // sandbox_status='PAUSED' como estado real ("pausado por rate limit de
+    // conversas simultaneas, retoma sozinho quando ha recurso"). O codigo
+    // nunca detectava/reportava isso — um sandbox pausado por limite de
+    // concorrencia (bem provavel apos dezenas de tentativas de teste hoje)
+    // fica preso em bootstrap_pending indefinidamente, indistinguivel de uma
+    // demora normal. Agora reporta explicitamente pra nao ficar invisivel.
+    if (sandboxStatus === 'paused') {
+      try {
+        await base44.entities.OpenHandsPhaseDiagnostic.create({
+          execution_id: conversationId,
+          phase: 'bootstrap_poll',
+          marker: 'sandbox_paused',
+          timestamp_ms: Date.now(),
+          duration_ms: null,
+          http_status: null,
+          ok: null,
+          error: 'sandbox_status=PAUSED — provavelmente limite de conversas simultaneas no OpenHands Cloud; deve retomar sozinho quando houver recurso disponivel',
+        });
+      } catch (e) { /* diagnostics must not affect execution */ }
+    }
     const eventRes = await fetchAllEvents(CLOUD_BASE_URL, conversationId, apiKey, shortDeadlineAt);
     if (eventRes.error) return Response.json({ ok: false, app_conversation_id: conversationId, error: eventRes.error, openhandsStatus: 'bootstrap_events_failed' }, { status: 502 });
     const reply = extractAgentReply({ items: eventRes.events });
