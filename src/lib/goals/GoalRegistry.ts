@@ -1716,6 +1716,34 @@ const _builtins: GoalDefinition[] = [
     signals: ["engineering.runtime.metrics", "metricas do runtime", "saude do runtime", "runtime metrics", "runtime health"],
     extractParams: (_msg: string) => ({ limit: 1000 }),
   },
+  {
+    type: "engineering.runtime.investigate",
+    namespace: "runtime-observability",
+    description: "Diagnóstico automático de uma execução: fase atual, gargalo e evidências correlacionadas",
+    signals: ["engineering.runtime.investigate", "investigue a execucao", "diagnostique a execucao", "descubra onde travou", "onde a execucao travou", "investigar runtime"],
+    extractParams: (msg: string) => ({
+      executionId: msg.match(/\bexec(?:-rt)?-[A-Za-z0-9-]+\b/i)?.[0] ?? null,
+      limit: 1000,
+      windowMs: 600000,
+    }),
+  },
+  {
+    type: "engineering.runtime.compare",
+    namespace: "runtime-observability",
+    description: "Compara duas execuções e mostra divergências de fase e comportamento",
+    signals: ["engineering.runtime.compare", "compare as execucoes", "comparar execucoes", "compare execution", "pass vs fail"],
+    extractParams: (msg: string) => {
+      const ids = msg.match(/\bexec(?:-rt)?-[A-Za-z0-9-]+\b/gi) ?? [];
+      return { executionIdA: ids[0] ?? null, executionIdB: ids[1] ?? null, limit: 1000 };
+    },
+  },
+  {
+    type: "engineering.runtime.bottlenecks",
+    namespace: "runtime-observability",
+    description: "Agrega gargalos por connector/capability com falhas, timeouts e p95",
+    signals: ["engineering.runtime.bottlenecks", "gargalos do runtime", "onde esta lento", "bottlenecks do runtime", "maiores gargalos"],
+    extractParams: (_msg: string) => ({ limit: 1000 }),
+  },
 
   // ── Supervised Engineering (Adaptive Process composto) ────────────────────
   // Trigger EXPLICITO e deterministico — exige "engenharia supervisionada" na
