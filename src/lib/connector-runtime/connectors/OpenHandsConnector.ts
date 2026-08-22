@@ -132,11 +132,43 @@ export class OpenHandsConnector implements IConnector {
       let d: Record<string, unknown> | null = null;
 
       if (mode === "write" && !appConversationId) {
-        // 1) START — neutral bootstrap. Returns conversation id quickly.
-        const started = await invokeShort({ action: "write_start", task, repository, mode });
-        if (started?.error) return fail(String(started.error), start, eid, logs, operation);
-        const conversationId = typeof started?.app_conversation_id === "string" ? started.app_conversation_id : "";
-        if (!conversationId) return fail("OpenHands write_start returned no conversation id", start, eid, logs, operation);
+        // 1) START + START-TASK POLL — each backend call is short.
+        // write_start performs only POST /app-conversations and returns start_task_id.
+        // The connector polls start-task with separate calls until conversationId exists.
+        let conversationId = "";
+        let bootstrapCreateAttempt = 0;
+        while (!conversationId && Date.now() < overallDeadline) {
+          bootstrapCreateAttempt++;
+          const started = await invokeShort({ action: "write_start", task, repository, mode });
+          if (started?.error) return fail(String(started.error), start, eid, logs, operation);
+          conversationId = typeof started?.app_conversation_id === "string" ? started.app_conversation_id : "";
+          const startTaskId = typeof started?.start_task_id === "string" ? started.start_task_id : "";
+
+          if (!conversationId && !startTaskId) {
+            return fail("OpenHands write_start returned no start task id/conversation id", start, eid, logs, operation);
+          }
+
+          while (!conversationId && Date.now() < overallDeadline) {
+            const startPoll = await invokeShort({
+              action: "write_start_poll",
+              start_task_id: startTaskId,
+              repository,
+              mode,
+            });
+            if (startPoll?.error) {
+              const err = String(startPoll.error);
+              const retryableGitAuth = err.includes("Git provider authentication issue when getting remote URL")
+                && bootstrapCreateAttempt <= 1;
+              if (!retryableGitAuth) return fail(err, start, eid, logs, operation);
+              logs.push(makeLog("warn", `[${operation}] phase=start_task_git_auth_retry attempt=${bootstrapCreateAttempt}`));
+              await sleep(15_000);
+              break; // create a fresh app-conversation on the outer loop
+            }
+            conversationId = typeof startPoll?.app_conversation_id === "string" ? startPoll.app_conversation_id : "";
+            if (!conversationId) await sleep(3_000);
+          }
+        }
+        if (!conversationId) return fail("Timeout waiting for OpenHands conversation creation", start, eid, logs, operation);
         logs.push(makeLog("info", `[${operation}] phase=bootstrap_started conversation=${conversationId}`));
 
         // 2) POLL bootstrap until the bootstrap agent MessageEvent is consolidated.
