@@ -120,6 +120,24 @@ export class ExecutionRuntime {
       ? Object.freeze({ ...(policyWithTimeout ?? DEFAULT_EXECUTION_POLICY), parallelism: concurrencyParallelism })
       : policyWithTimeout;
 
+    // Observability V2: diagnostic log of the derived policy.
+    // Makes it visible in the console when the 240s COMPOSITE default is used
+    // without a capabilityTimeout override — the root cause of the
+    // "supervised engineering pipeline timing out at 240s" bug.
+    const _derivedTimeoutMs = policy?.timeoutMs ?? this._policy.timeoutMs;
+    const _derivedStepMs = policy?.stepTimeoutMs ?? this._policy.stepTimeoutMs;
+    if (_derivedTimeoutMs === 240_000) {
+      console.warn(
+        `[EI-POLICY] ${connectorId}.${capability} using COMPOSITE_EXECUTION_POLICY default (240s) — ` +
+        `isComposite=${isComposite} isSub=${isSubCapability} stepOverride=${stepTimeoutOverride}ms`,
+      );
+    } else {
+      console.log(
+        `[EI-POLICY] ${connectorId}.${capability} timeoutMs=${_derivedTimeoutMs}ms stepTimeoutMs=${_derivedStepMs}ms ` +
+        `(isComposite=${isComposite} isSub=${isSubCapability} stepOverride=${stepTimeoutOverride}ms parent=${request.parentExecutionId ?? "none"})`,
+      );
+    }
+
     // EI-07: Execution Intelligence itera investigators ativos (Convergence/API/LLM
     // Budget + grafo aciclivo) e enriquece enrichedParams antes do Safety Gate.
     const prepared: PreparedExecution = await this._intelligence.prepare(request);

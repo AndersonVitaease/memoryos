@@ -214,6 +214,8 @@ export class ConversationRuntimeEngine {
     );
 
     // D-01/D-02: evento padronizado de início de execução
+    // Observability V2: registra a policy aplicada (timeoutMs, stepTimeoutMs)
+    // e parentExecutionId para correlação de sub-capabilities.
     runtimeObsStore.record({
       executionId:  ctx.executionId,
       stepId:       null,
@@ -227,6 +229,9 @@ export class ConversationRuntimeEngine {
       error:        null,
       planId:       ctx.planId,
       goalId:       ctx.goalId,
+      timeoutMs:          policy.timeoutMs,
+      stepTimeoutMs:      policy.stepTimeoutMs,
+      parentExecutionId:   connectorCtx?.requestId ?? null,
     });
 
     this._emit(ctx, "execution_started", null);
@@ -324,6 +329,10 @@ export class ConversationRuntimeEngine {
     this._emit(ctx, "execution_step_started", step.id);
 
     const _stepStartedAt = Date.now();
+    const _stepTimeoutMs = Math.min(
+      policy.stepTimeoutMs,
+      Math.max(100, (ctx.timeoutAt ?? Infinity) - Date.now()),
+    );
     runtimeObsStore.record({
       executionId:  ctx.executionId,
       stepId:       step.id,
@@ -337,6 +346,9 @@ export class ConversationRuntimeEngine {
       error:        null,
       planId:       ctx.planId,
       goalId:       ctx.goalId,
+      timeoutMs:          policy.timeoutMs,
+      stepTimeoutMs:      _stepTimeoutMs,
+      parentExecutionId:   ctx.connectorCtx?.requestId ?? null,
     });
 
     const stepResult = await this._dispatcher.dispatch({
@@ -369,6 +381,9 @@ export class ConversationRuntimeEngine {
       error:        stepResult.error,
       planId:       ctx.planId,
       goalId:       ctx.goalId,
+      timeoutMs:          policy.timeoutMs,
+      stepTimeoutMs:      _stepTimeoutMs,
+      parentExecutionId:   ctx.connectorCtx?.requestId ?? null,
     });
 
     return stepResult;
@@ -410,6 +425,9 @@ export class ConversationRuntimeEngine {
       error:        ctx.metadata["fatalError"] as string ?? null,
       planId:       ctx.planId,
       goalId:       ctx.goalId,
+      timeoutMs:          policy?.timeoutMs ?? null,
+      stepTimeoutMs:      policy?.stepTimeoutMs ?? null,
+      parentExecutionId:   ctx.connectorCtx?.requestId ?? null,
     });
     // D-05: produzir summary consolidado — tempo total, por connector, por etapa
     runtimeObsStore.closeExecution(ctx.executionId, status);

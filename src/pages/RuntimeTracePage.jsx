@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { runtimeTraceStore } from "@/lib/runtime-trace/RuntimeTraceStore";
-import { CheckCircle, XCircle, Clock, ChevronDown, ChevronRight, RefreshCw, AlertCircle } from "lucide-react";
+import { runtimeObsStore } from "@/lib/runtime-engine/RuntimeObservabilityStore";
+import { CheckCircle, XCircle, Clock, ChevronDown, ChevronRight, RefreshCw, AlertCircle, Activity, Timer, GitBranch } from "lucide-react";
 
 // ── JSON Viewer ────────────────────────────────────────────────────────────────
 
@@ -141,16 +142,122 @@ function StepCard({ step }) {
   );
 }
 
+// ── Observability Summary Card ────────────────────────────────────────────────
+
+function fmtMs(ms) {
+  if (ms == null) return "—";
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function ObsSummaryCard({ summary }) {
+  const [open, setOpen] = useState(false);
+  const isTimeout = summary.finalStatus === "timeout";
+  const isFailed = summary.finalStatus === "failed";
+  const isCompleted = summary.finalStatus === "completed";
+
+  const statusColor = isCompleted ? "text-emerald-400" : isTimeout ? "text-rose-400" : "text-amber-400";
+  const borderBg = isCompleted ? "border-emerald-800/60 bg-emerald-950/20" : isTimeout ? "border-rose-800/60 bg-rose-950/20" : "border-amber-800/60 bg-amber-950/20";
+
+  return (
+    <div className={`rounded-xl border ${borderBg} overflow-hidden`}>
+      <button onClick={() => setOpen((o) => !o)} className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-white/5 transition">
+        <Activity className={`w-4 h-4 ${statusColor} shrink-0`} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={`text-sm font-semibold ${statusColor}`}>{summary.finalStatus}</span>
+            <span className="text-xs text-zinc-500 font-mono truncate">{summary.executionId.slice(0, 16)}</span>
+            {summary.parentExecutionId && (
+              <span className="inline-flex items-center gap-1 text-xs text-violet-400 font-mono">
+                <GitBranch className="w-3 h-3" />
+                child of {summary.parentExecutionId.slice(0, 12)}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-3 mt-0.5 text-xs text-zinc-500">
+            <span className="inline-flex items-center gap-1">
+              <Clock className="w-3 h-3" />
+              {fmtMs(summary.totalDurationMs)}
+            </span>
+            <span className="inline-flex items-center gap-1">
+              <Timer className="w-3 h-3" />
+              timeout={fmtMs(summary.timeoutMs)}
+            </span>
+            <span>{summary.stepCount} steps</span>
+            {summary.errors.length > 0 && <span className="text-rose-400">{summary.errors.length} errors</span>}
+          </div>
+        </div>
+        {open ? <ChevronDown className="w-4 h-4 text-zinc-500" /> : <ChevronRight className="w-4 h-4 text-zinc-500" />}
+      </button>
+
+      {open && (
+        <div className="px-4 pb-4 border-t border-zinc-800/60 space-y-2">
+          {/* Policy highlight */}
+          <div className="mt-3 flex gap-4 flex-wrap text-xs">
+            <div className="rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2">
+              <span className="text-zinc-500">timeoutMs: </span>
+              <span className={`font-mono font-bold ${summary.timeoutMs === 240_000 ? "text-rose-400" : "text-emerald-400"}`}>
+                {fmtMs(summary.timeoutMs)}
+              </span>
+              {summary.timeoutMs === 240_000 && (
+                <span className="ml-2 text-rose-500">(COMPOSITE default — sem override!)</span>
+              )}
+            </div>
+            <div className="rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2">
+              <span className="text-zinc-500">parent: </span>
+              <span className="font-mono text-violet-300">{summary.parentExecutionId ? summary.parentExecutionId.slice(0, 16) : "none (root)"}</span>
+            </div>
+          </div>
+
+          {/* Step metrics */}
+          {summary.steps.length > 0 && (
+            <div className="mt-2 space-y-1">
+              {summary.steps.map((s, i) => (
+                <div key={i} className="flex items-center gap-2 text-xs bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2">
+                  <span className={`font-mono ${s.status === "completed" ? "text-emerald-400" : s.status === "timeout" ? "text-rose-400" : "text-amber-400"}`}>
+                    {s.status}
+                  </span>
+                  <span className="text-zinc-300 font-mono">{s.connectorId}.{s.capability}</span>
+                  <span className="text-zinc-500 ml-auto">{fmtMs(s.durationMs)}</span>
+                  {s.stepTimeoutMs != null && (
+                    <span className="text-zinc-600 font-mono">stepTO={fmtMs(s.stepTimeoutMs)}</span>
+                  )}
+                  {s.error && <span className="text-rose-400 truncate max-w-xs">— {s.error}</span>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Duration by connector */}
+          {Object.keys(summary.durationByConnector).length > 0 && (
+            <div className="mt-2 flex gap-3 flex-wrap text-xs">
+              {Object.entries(summary.durationByConnector).map(([conn, dur]) => (
+                <span key={conn} className="text-zinc-500 font-mono">{conn}: {fmtMs(dur)}</span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function RuntimeTracePage() {
   const [trace, setTrace] = useState(() => runtimeTraceStore.trace);
+  const [obsSummaries, setObsSummaries] = useState(() => runtimeObsStore.getRecentSummaries(10));
 
   useEffect(() => {
     const unsub = runtimeTraceStore.subscribe(() => {
       setTrace(runtimeTraceStore.trace);
+      setObsSummaries(runtimeObsStore.getRecentSummaries(10));
     });
-    return unsub;
+    // Poll obs store every 2s — it doesn't have a subscribe() method
+    const interval = setInterval(() => {
+      setObsSummaries(runtimeObsStore.getRecentSummaries(10));
+    }, 2000);
+    return () => { unsub(); clearInterval(interval); };
   }, []);
 
   const executed  = trace?.steps.filter((s) => s.status === "executed").length ?? 0;
@@ -265,6 +372,42 @@ export default function RuntimeTracePage() {
             </div>
           </>
         )}
+
+        {/* ── Runtime Observability (runtimeObsStore) ─────────────────────── */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Activity className="w-5 h-5 text-violet-400" />
+            <h2 className="text-lg font-bold text-white">Runtime Observability</h2>
+            <span className="text-xs text-zinc-500">({obsSummaries.length} execuções recentes)</span>
+          </div>
+
+          {obsSummaries.length === 0 && (
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-8 text-center">
+              <p className="text-zinc-400 text-sm">Nenhuma execução runtime registrada ainda.</p>
+              <p className="text-zinc-600 text-xs mt-1">Execute uma capability para ver o trace de policy/timeout aqui.</p>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            {obsSummaries.map((s) => (
+              <ObsSummaryCard key={s.executionId} summary={s} />
+            ))}
+          </div>
+
+          {obsSummaries.some((s) => s.timeoutMs === 240_000) && (
+            <div className="rounded-xl border border-rose-800/60 bg-rose-950/20 px-4 py-3 flex gap-3 items-start">
+              <AlertCircle className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
+              <div>
+                <div className="text-sm font-semibold text-rose-300">Timeout de 240s detectado</div>
+                <div className="text-xs text-rose-500 mt-0.5">
+                  Uma ou mais execuções estão usando o COMPOSITE_EXECUTION_POLICY default (240s) sem override.
+                  Verifique o console do browser para os logs <span className="font-mono text-rose-300">[EI-POLICY]</span> que mostram
+                  exatamente qual capability está sem <span className="font-mono">capabilityTimeout</span>.
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
