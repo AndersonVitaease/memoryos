@@ -1248,14 +1248,15 @@ export default async function (req: Request) {
     const task = typeof body.task === 'string' ? body.task.trim() : '';
     const repository = typeof body.repository === 'string' ? body.repository.trim() : '';
     const existingConversationId = typeof body.app_conversation_id === 'string' ? body.app_conversation_id.trim() : '';
+    const action = typeof body.action === 'string' ? body.action.trim() : '';
     const mode: 'read' | 'write' = body.mode === 'write' ? 'write' : 'read';
     const includeRawEvents = body.includeRawEvents === true;
     const timeoutMs = clampTimeout(body.timeoutMs);
 
-    if (!task) {
+    if (!action && !task) {
       return Response.json({ ok: false, error: 'Missing required field: task' }, { status: 400 });
     }
-    if (!existingConversationId && !repository) {
+    if (!action && !existingConversationId && !repository) {
       return Response.json({ ok: false, error: 'Missing required field: repository' }, { status: 400 });
     }
     if (task.length > 30_000) {
@@ -1269,6 +1270,14 @@ export default async function (req: Request) {
     if (!apiKey) {
       safeLog('not_configured');
       return Response.json({ ok: false, error: 'OPENHANDS_API_KEY not configured' }, { status: 503 });
+    }
+
+    const shortActionResponse = action
+      ? await handleShortWriteAction({ action, body, apiKey })
+      : null;
+    if (shortActionResponse) return shortActionResponse;
+    if (action) {
+      return Response.json({ ok: false, error: `Unknown action: ${action}` }, { status: 400 });
     }
 
     const deadlineAt = Date.now() + timeoutMs;
