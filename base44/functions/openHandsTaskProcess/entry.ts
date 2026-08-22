@@ -1082,6 +1082,154 @@ async function executeTwoPhaseWrite(opts: {
   });
 }
 
+async function handleShortWriteAction(opts: {
+  action: string;
+  body: any;
+  apiKey: string;
+}): Promise<Response | null> {
+  const { action, body, apiKey } = opts;
+  const headers = cloudHeaders(apiKey);
+  const repository = typeof body.repository === 'string' ? body.repository.trim() : '';
+  const task = typeof body.task === 'string' ? body.task.trim() : '';
+  const conversationId = typeof body.app_conversation_id === 'string' ? body.app_conversation_id.trim() : '';
+  const baselineEventId = typeof body.baseline_event_id === 'string' ? body.baseline_event_id.trim() : '';
+  const shortDeadlineAt = Date.now() + 90_000;
+
+  if (action === 'write_start') {
+    let attempt = 0;
+    while (true) {
+      attempt++;
+      const result = await createAndPollStartTask({
+        task: '', repository, mode: 'write', apiKey,
+        deadlineAt: shortDeadlineAt, useBootstrap: true,
+      });
+      if (result.conversationId) {
+        return Response.json({
+          ok: true,
+          phase: 'bootstrap_started',
+          app_conversation_id: result.conversationId,
+          start_task_id: result.startTaskId || null,
+          attempt,
+          repository,
+        });
+      }
+      const retryable = result.error !== null
+        && result.error.includes(TRANSIENT_GIT_AUTH_ERROR)
+        && attempt <= TRANSIENT_MAX_RETRIES
+        && (Date.now() + TRANSIENT_RETRY_DELAY_MS) < shortDeadlineAt;
+      if (!retryable) return Response.json(result.errorResponse, { status: 502 });
+      safeLog('short_write_start_retry', { attempt, delay_ms: TRANSIENT_RETRY_DELAY_MS });
+      await sleep(TRANSIENT_RETRY_DELAY_MS);
+    }
+  }
+
+  if (action === 'bootstrap_poll') {
+    if (!conversationId) return Response.json({ ok: false, error: 'Missing app_conversation_id' }, { status: 400 });
+    const convRes = await fetchJson(
+      `${CLOUD_BASE_URL}${CONVERSATION_PATH}?ids=${encodeURIComponent(conversationId)}`,
+      { method: 'GET', headers }, 30_000,
+    );
+    if (!convRes.ok) return Response.json({ ok: false, error: `OpenHands conversation lookup failed (HTTP ${convRes.status})`, openhandsStatus: 'bootstrap_poll_failed' }, { status: 502 });
+    const conversation = firstRecord(convRes.data);
+    if (!conversation) return Response.json({ ok: true, phase: 'bootstrap_pending', app_conversation_id: conversationId });
+    const sandboxStatus = normalizeStatus(conversation?.sandbox_status);
+    const executionStatus = normalizeStatus(conversation?.execution_status);
+    if (sandboxStatus === 'error' || sandboxStatus === 'missing' || executionStatus === 'error' || executionStatus === 'stuck') {
+      return Response.json({ ok: false, app_conversation_id: conversationId, error: `OpenHands bootstrap failed (sandbox=${sandboxStatus}, execution=${executionStatus})`, openhandsStatus: 'bootstrap_failed' }, { status: 502 });
+    }
+    const eventRes = await fetchAllEvents(CLOUD_BASE_URL, conversationId, apiKey, shortDeadlineAt);
+    if (eventRes.error) return Response.json({ ok: false, app_conversation_id: conversationId, error: eventRes.error, openhandsStatus: 'bootstrap_events_failed' }, { status: 502 });
+    const reply = extractAgentReply({ items: eventRes.events });
+    const ready = TERMINAL_EXECUTION_STATUSES.has(executionStatus) && !!reply.eventId;
+    return Response.json({
+      ok: true,
+      phase: ready ? 'bootstrap_ready' : 'bootstrap_pending',
+      app_conversation_id: conversationId,
+      sandbox_id: conversation?.sandbox_id ?? null,
+      sandbox_status: sandboxStatus,
+      execution_status: executionStatus,
+      baseline_event_id: reply.eventId,
+      ready,
+    });
+  }
+
+  if (action === 'write_continue') {
+    if (!conversationId || !baselineEventId) return Response.json({ ok: false, error: 'Missing app_conversation_id or baseline_event_id' }, { status: 400 });
+    const convRes = await fetchJson(
+      `${CLOUD_BASE_URL}${CONVERSATION_PATH}?ids=${encodeURIComponent(conversationId)}`,
+      { method: 'GET', headers }, 30_000,
+    );
+    if (!convRes.ok) return Response.json({ ok: false, error: `OpenHands conversation lookup failed (HTTP ${convRes.status})` }, { status: 502 });
+    const conversation = firstRecord(convRes.data);
+    if (!conversation) return Response.json({ ok: false, error: 'OpenHands conversation not found' }, { status: 404 });
+    const conversationUrl = String(conversation?.conversation_url ?? '').trim();
+    const sessionApiKey = String(conversation?.session_api_key ?? '').trim();
+    if (!conversationUrl || !sessionApiKey) return Response.json({ ok: false, error: 'OpenHands continuation metadata missing conversation_url/session_api_key' }, { status: 502 });
+    const sendRes = await fetchJson(
+      buildAgentEventsUrl(conversationUrl, conversationId),
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Session-API-Key': sessionApiKey },
+        body: JSON.stringify({ role: 'user', content: [{ type: 'text', text: task }], run: true }),
+      },
+      60_000,
+    );
+    if (!sendRes.ok) return Response.json({ ok: false, error: `OpenHands continuation message failed (HTTP ${sendRes.status})`, openhandsStatus: 'continuation_send_failed' }, { status: 502 });
+    safeLog('short_write_continuation_sent', { conversationId, baselineEventId });
+    return Response.json({ ok: true, phase: 'write_started', app_conversation_id: conversationId, baseline_event_id: baselineEventId });
+  }
+
+  if (action === 'write_poll') {
+    if (!conversationId || !baselineEventId) return Response.json({ ok: false, error: 'Missing app_conversation_id or baseline_event_id' }, { status: 400 });
+    const convRes = await fetchJson(
+      `${CLOUD_BASE_URL}${CONVERSATION_PATH}?ids=${encodeURIComponent(conversationId)}`,
+      { method: 'GET', headers }, 30_000,
+    );
+    if (!convRes.ok) return Response.json({ ok: false, error: `OpenHands conversation lookup failed (HTTP ${convRes.status})` }, { status: 502 });
+    const conversation = firstRecord(convRes.data);
+    if (!conversation) return Response.json({ ok: true, phase: 'write_pending', app_conversation_id: conversationId });
+    const executionStatus = normalizeStatus(conversation?.execution_status);
+    if (executionStatus === 'error' || executionStatus === 'stuck') {
+      return Response.json({ ok: false, app_conversation_id: conversationId, execution_status: executionStatus, error: `OpenHands continuation ended with status: ${executionStatus}`, openhandsStatus: 'continuation_execution_failed' }, { status: 502 });
+    }
+    const eventRes = await fetchAllEvents(CLOUD_BASE_URL, conversationId, apiKey, shortDeadlineAt);
+    if (eventRes.error) return Response.json({ ok: false, app_conversation_id: conversationId, error: eventRes.error, openhandsStatus: 'continuation_events_failed' }, { status: 502 });
+    const latestReply = extractAgentReply({ items: eventRes.events });
+    const hasNewReply = !!latestReply.eventId && latestReply.eventId !== baselineEventId && !!latestReply.text;
+    const terminal = TERMINAL_EXECUTION_STATUSES.has(executionStatus);
+    if (!hasNewReply || !terminal) {
+      return Response.json({ ok: true, phase: 'write_pending', app_conversation_id: conversationId, execution_status: executionStatus, has_new_reply: hasNewReply });
+    }
+    let changeSet: any = null;
+    let changeSetAvailable = false;
+    if (executionStatus === 'finished') {
+      changeSet = await extractChangeSet(
+        conversationId,
+        conversation?.sandbox_id ?? null,
+        String(conversation?.selected_repository ?? repository),
+        apiKey,
+        shortDeadlineAt,
+      );
+      changeSetAvailable = (changeSet?.files?.length ?? 0) > 0 || Boolean(changeSet?.git_diff);
+    }
+    return Response.json({
+      ok: executionStatus === 'finished',
+      phase: changeSetAvailable ? 'write_complete' : 'write_finished_waiting_changes',
+      continued: true,
+      app_conversation_id: conversationId,
+      repository: conversation?.selected_repository ?? repository,
+      execution_status: executionStatus,
+      sandbox_id: conversation?.sandbox_id ?? null,
+      agent_reply_text: latestReply.text,
+      agent_message_event_id: latestReply.eventId,
+      change_set: changeSetAvailable ? changeSet : null,
+      change_set_available: changeSetAvailable,
+    });
+  }
+
+  return null;
+}
+
 export default async function (req: Request) {
   const startedAt = Date.now();
 
