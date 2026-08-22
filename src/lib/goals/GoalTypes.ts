@@ -52,6 +52,7 @@ export type GoalType =
   | "engineering.runtime.investigate"
   | "engineering.runtime.compare"
   | "engineering.runtime.bottlenecks"
+  | "engineering.runtime.watch"
   // General
   | "general.conversation"
   | "general.webSearch"    // <--- ADICIONADO! Permite pesquisar na web
