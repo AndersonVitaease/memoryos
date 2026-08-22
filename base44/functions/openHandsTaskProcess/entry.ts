@@ -228,6 +228,8 @@ function normalizeGitDiff(data: any): string {
   if (data && typeof data.diff === 'string') return data.diff;
   if (data && typeof data.content === 'string') return data.content;
   if (data && typeof data.text === 'string') return data.text;
+  // Per-file diff response format: {"modified":"<diff>","original":"<original>"}
+  if (data && typeof data.modified === 'string') return data.modified;
   return '';
 }
 
@@ -241,11 +243,31 @@ function normalizeFileContent(data: any): string | null {
 
 function normalizeChangeType(raw: unknown): string {
   const s = String(raw ?? '').trim().toLowerCase();
-  if (s === 'modified' || s === 'm' || s === 'changed') return 'modified';
+  if (s === 'modified' || s === 'm' || s === 'changed' || s === 'updated') return 'modified';
   if (s === 'added' || s === 'a' || s === 'created' || s === 'new' || s === 'untracked') return 'created';
   if (s === 'deleted' || s === 'd' || s === 'removed') return 'deleted';
   if (s === 'renamed' || s === 'r') return 'renamed';
   return 'unknown';
+}
+
+/**
+ * Derives the sandbox repository root path from the selected_repository.
+ *
+ * Contract confirmed by sandbox diagnostics (2026-08-22): the git repo is
+ * cloned to /workspace/project/{repo_name} where repo_name is the last
+ * segment of selected_repository (e.g. "AndersonVitaease/memoryos" ->
+ * "/workspace/project/memoryos"). Confirmed by the agent's own
+ * `git rev-parse --show-toplevel` output.
+ *
+ * No LLM inference. No hardcoding of specific repos. If the repository
+ * string is malformed, falls back to a safe generic path (endpoints will
+ * simply return empty/error — change_set stays unavailable, Approval 2
+ * stays blocked).
+ */
+function deriveRepoRoot(repository: string): string {
+  const repoName = repository.split('/').pop()?.trim();
+  if (!repoName) return '/workspace/project';
+  return `/workspace/project/${repoName}`;
 }
 
 async function extractChangeSet(
@@ -259,48 +281,66 @@ async function extractChangeSet(
   const base = `${CLOUD_BASE_URL}/api/v1/app-conversations/${encodeURIComponent(conversationId)}`;
   const MAX_FILES_TO_FETCH = 50;
 
-  // 1) git/changes — lista de arquivos alterados no sandbox
+  // BUG 1 FIX: /git/changes requires path = repository root (NOT a file path,
+  // NOT optional). Without it, the endpoint returns 422 "Field required:
+  // query.path" and the change_set is always empty — even when the agent
+  // genuinely modified files.
+  const repoRoot = deriveRepoRoot(repository);
+
+  // 1) git/changes?path=<repoRoot> — lista de arquivos alterados no sandbox
   let changedFiles: any[] = [];
   try {
     const changesRes = await fetchJson(
-      `${base}/git/changes`,
+      `${base}/git/changes?path=${encodeURIComponent(repoRoot)}`,
       { method: 'GET', headers },
       Math.min(30_000, Math.max(1, deadlineAt - Date.now())),
     );
     if (changesRes.ok) {
       changedFiles = normalizeGitChanges(changesRes.data);
     } else {
-      safeLog('git_changes_failed', { httpStatus: changesRes.status, conversationId });
+      safeLog('git_changes_failed', { httpStatus: changesRes.status, conversationId, repoRoot });
     }
   } catch {
-    safeLog('git_changes_error', { conversationId });
+    safeLog('git_changes_error', { conversationId, repoRoot });
   }
 
-  // 2) git/diff — diff completo do working tree do sandbox
-  let gitDiff = '';
-  try {
-    const diffRes = await fetchJson(
-      `${base}/git/diff`,
-      { method: 'GET', headers },
-      Math.min(30_000, Math.max(1, deadlineAt - Date.now())),
-    );
-    if (diffRes.ok) {
-      gitDiff = normalizeGitDiff(diffRes.data);
-    } else {
-      safeLog('git_diff_failed', { httpStatus: diffRes.status, conversationId });
-    }
-  } catch {
-    safeLog('git_diff_error', { conversationId });
-  }
-
-  // 3) file?path= — conteudo novo de cada arquivo modified/created (paralelo)
+  // 2) For each changed file: git/diff?path=<filePath> + file?path=<filePath>
+  //    /git/diff is PER-FILE (path = file path, NOT repo root). Calling it
+  //    with repo root returns {"modified":"","original":""} (empty). Must
+  //    first get changed paths via git/changes, then diff each individually.
+  //    Aggregate diffs deterministically into a single git_diff string.
   const fileResults = await Promise.all(
     changedFiles.slice(0, MAX_FILES_TO_FETCH).map(async (cf: any) => {
       const path = String(cf.path ?? cf.file ?? cf.filePath ?? cf.filename ?? '').trim();
       if (!path) return null;
       const changeType = normalizeChangeType(cf.status ?? cf.changeType ?? cf.kind ?? cf.change_type);
       let newContent: string | null = null;
+      let fileDiff = '';
 
+      // git/diff?path=<absFilePath> — per-file diff.
+      // /git/diff requires an ABSOLUTE file path (e.g.
+      // /workspace/project/memoryos/src/...). Relative paths return 502.
+      // Response format: {"modified":"<full new content>","original":"<original>"}
+      // The "modified" field contains the full new file content — use as
+      // newContent since /file endpoint is broken/empty for all files.
+      const absPath = path.startsWith('/') ? path : `${repoRoot}/${path}`;
+      try {
+        const diffRes = await fetchJson(
+          `${base}/git/diff?path=${encodeURIComponent(absPath)}`,
+          { method: 'GET', headers },
+          Math.min(30_000, Math.max(1, deadlineAt - Date.now())),
+        );
+        if (diffRes.ok) {
+          fileDiff = normalizeGitDiff(diffRes.data);
+          if (fileDiff && !newContent) {
+            newContent = fileDiff;
+          }
+        }
+      } catch {
+        // best-effort — fileDiff stays empty
+      }
+
+      // file?path=<filePath> — new content (best-effort, endpoint may return empty)
       if (changeType === 'modified' || changeType === 'created') {
         try {
           const fileRes = await fetchJson(
@@ -316,18 +356,25 @@ async function extractChangeSet(
         }
       }
 
-      return { path, changeType, newContent };
+      return { path, changeType, newContent, fileDiff };
     }),
   );
 
   const files = fileResults.filter(
-    (f): f is { path: string; changeType: string; newContent: string | null } => f !== null,
+    (f): f is { path: string; changeType: string; newContent: string | null; fileDiff: string } => f !== null,
   );
+
+  // Aggregate per-file diffs into a single git_diff string
+  const gitDiff = files
+    .filter((f) => f.fileDiff.length > 0)
+    .map((f) => `--- a/${f.path}\n+++ b/${f.path}\n${f.fileDiff}`)
+    .join('\n');
 
   return {
     conversation_id: conversationId,
     sandbox_id: sandboxId,
     repository,
+    repo_root: repoRoot,
     git_diff: gitDiff,
     files,
   };
@@ -347,7 +394,37 @@ async function continueExistingConversation(opts: {
   if (baseline.error) {
     return Response.json({ ok: false, app_conversation_id: conversationId, error: baseline.error, openhandsStatus: 'continuation_baseline_failed' }, { status: baseline.httpStatus === 401 ? 401 : 502 });
   }
-  const baselineReply = extractAgentReply({ items: baseline.events });
+  let baselineReply = extractAgentReply({ items: baseline.events });
+
+  // BUG 2 FIX: Bootstrap agent reply MUST be consolidated before sending the
+  // write continuation. If baselineReply.eventId is null, the bootstrap
+  // MessageEvent hasn't appeared yet. Sending the continuation now would cause
+  // the bootstrap reply (when it consolidates) to be mistaken for the write
+  // continuation reply — because `non-null !== null` is always true.
+  //
+  // Poll until baselineReply.eventId is non-null (bootstrap reply consolidated),
+  // then proceed. Only AFTER consolidation is the baseline safe to compare against.
+  const BOOTSTRAP_CONSOLIDATION_POLL_MS = 3_000;
+  while (!baselineReply.eventId && Date.now() < deadlineAt) {
+    await sleep(Math.min(BOOTSTRAP_CONSOLIDATION_POLL_MS, Math.max(0, deadlineAt - Date.now())));
+    const pollEvents = await fetchAllEvents(CLOUD_BASE_URL, conversationId, apiKey, deadlineAt);
+    if (!pollEvents.error) {
+      baselineReply = extractAgentReply({ items: pollEvents.events });
+      if (baselineReply.eventId) {
+        safeLog('phase_bootstrap_reply_consolidated', { conversationId, eventId: baselineReply.eventId });
+        break;
+      }
+    }
+  }
+  if (!baselineReply.eventId) {
+    return Response.json({
+      ok: false,
+      app_conversation_id: conversationId,
+      error: 'Bootstrap reply not consolidated before continuation — cannot establish baseline eventId',
+      openhandsStatus: 'bootstrap_not_consolidated',
+      write_phase: 'bootstrap',
+    }, { status: 502 });
+  }
 
   const convRes = await fetchJson(
     `${CLOUD_BASE_URL}${CONVERSATION_PATH}?ids=${encodeURIComponent(conversationId)}`,
@@ -449,7 +526,13 @@ async function continueExistingConversation(opts: {
     if (!eventRes.error) {
       latestEvents = eventRes.events;
       latestReply = extractAgentReply({ items: latestEvents });
-      const hasNewReply = Boolean(latestReply.text) && latestReply.eventId !== baselineReply.eventId;
+      // BUG 2 FIX: New reply requires a DIFFERENT eventId that is also non-null.
+      // StreamingDelta alone is NOT sufficient — only a consolidated agent
+      // MessageEvent with a different eventId counts as a real continuation reply.
+      // This prevents the bootstrap reply from being mistaken for the write reply.
+      const hasNewReply = Boolean(latestReply.text)
+        && latestReply.eventId !== null
+        && latestReply.eventId !== baselineReply.eventId;
       if (hasNewReply && TERMINAL_EXECUTION_STATUSES.has(executionStatus)) {
         // Change extraction for write mode continuations (same as main flow).
         let continuationChangeSet: any = null;
@@ -466,6 +549,7 @@ async function continueExistingConversation(opts: {
             fileCount: continuationChangeSet?.files?.length ?? 0,
           });
         }
+        safeLog('phase_write_reply_consolidated', { conversationId, writeEventId: latestReply.eventId, baselineEventId: baselineReply.eventId });
         safeLog('continuation_complete', { conversationId, executionStatus, eventCount: latestEvents.length });
         return Response.json({
           ok: executionStatus === 'finished',
