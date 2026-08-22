@@ -1403,14 +1403,8 @@ async function handleShortWriteAction(opts: {
     if (executionStatus === 'error' || executionStatus === 'stuck') {
       return Response.json({ ok: false, app_conversation_id: conversationId, execution_status: executionStatus, error: `OpenHands continuation ended with status: ${executionStatus}`, openhandsStatus: 'continuation_execution_failed' }, { status: 502 });
     }
-    const eventRes = await fetchAllEvents(CLOUD_BASE_URL, conversationId, apiKey, shortDeadlineAt);
+    const eventRes = await fetchEventsIncremental(CLOUD_BASE_URL, conversationId, apiKey, shortDeadlineAt, base44);
     if (eventRes.error) return Response.json({ ok: false, app_conversation_id: conversationId, error: eventRes.error, openhandsStatus: 'continuation_events_failed' }, { status: 502 });
-    const latestReply = extractAgentReply({ items: eventRes.events });
-    const hasNewReply = !!latestReply.eventId && latestReply.eventId !== baselineEventId && !!latestReply.text;
-    const terminal = TERMINAL_EXECUTION_STATUSES.has(executionStatus);
-    if (!hasNewReply || !terminal) {
-      return Response.json({ ok: true, phase: 'write_pending', app_conversation_id: conversationId, execution_status: executionStatus, has_new_reply: hasNewReply });
-    }
     let changeSet: any = null;
     let changeSetAvailable = false;
     if (executionStatus === 'finished') {
