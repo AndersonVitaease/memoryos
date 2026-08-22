@@ -1298,10 +1298,41 @@ async function handleShortWriteAction(opts: {
 
 export default async function (req: Request) {
   const startedAt = Date.now();
+  // Diagnostico (2026-08-22): investigando falha de 100% em write_start
+  // travando sem gerar NENHUM registro em OpenHandsPhaseDiagnostic — nem o
+  // marcador 'before_openhands_post', que fica DEPOIS da autenticacao e do
+  // parse do body. Este marcador roda ANTES de tudo, incluindo
+  // base44.auth.me(), pra isolar se a funcao esta sendo invocada de verdade
+  // e se a autenticacao e o ponto que trava.
+  try {
+    await createClientFromRequest(req).entities.OpenHandsPhaseDiagnostic.create({
+      execution_id: `entry-${startedAt}`,
+      phase: 'function_entry',
+      marker: 'invoked',
+      timestamp_ms: startedAt,
+      duration_ms: null,
+      http_status: null,
+      ok: null,
+      error: null,
+    });
+  } catch (e) { /* diagnostics must not affect execution */ }
 
   try {
     const base44 = createClientFromRequest(req);
+    const authStartedAt = Date.now();
     const user = await base44.auth.me();
+    try {
+      await base44.entities.OpenHandsPhaseDiagnostic.create({
+        execution_id: `entry-${startedAt}`,
+        phase: 'function_entry',
+        marker: 'auth_me_resolved',
+        timestamp_ms: Date.now(),
+        duration_ms: Date.now() - authStartedAt,
+        http_status: null,
+        ok: !!user,
+        error: user ? null : 'no_user',
+      });
+    } catch (e) { /* diagnostics must not affect execution */ }
     if (!user) return Response.json({ ok: false, error: 'Unauthorized' }, { status: 401 });
 
     let body: any = {};
