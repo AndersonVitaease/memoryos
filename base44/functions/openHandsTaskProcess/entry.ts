@@ -203,6 +203,131 @@ async function fetchAllEvents(
   return { events, pages, httpStatus: null, error: null };
 }
 
+// Fix (2026-08-22): fetchAllEvents releia TODO o historico da conversa a
+// cada poll — conforme a tarefa demora e o OpenHands gera mais eventos, cada
+// poll fica mais lento que o anterior (observado: 1.4s -> 2.6s -> 8.5s ->
+// 75s+timeout). fetchEventsIncremental retoma da ULTIMA pagina conhecida
+// (cursor cacheado) em vez de recomecar do zero, entao o custo de cada poll
+// fica proporcional so ao que e NOVO desde a ultima consulta, nao ao
+// historico inteiro acumulado. Usado apenas no write_poll (onde o problema
+// foi observado); os outros usos de fetchAllEvents ficam inalterados.
+const EVENT_CACHE_TAIL_LIMIT = 300;
+
+async function fetchEventsIncremental(
+  baseUrl: string,
+  conversationId: string,
+  apiKey: string,
+  deadlineAt: number,
+  base44Client: any,
+): Promise<{ events: any[]; error: string | null }> {
+  let cachedRecord: any = null;
+  try {
+    const cached = await base44Client.entities.OpenHandsEventCache.filter({ conversation_id: conversationId });
+    cachedRecord = cached && cached.length > 0 ? cached[0] : null;
+  } catch (e) { /* sem cache: segue como se fosse a primeira vez */ }
+
+  let priorTail: any[] = [];
+  let resumePageId: string | null = null;
+  if (cachedRecord) {
+    try { priorTail = JSON.parse(cachedRecord.tail_events_json || '[]'); } catch (e) { priorTail = []; }
+    resumePageId = cachedRecord.last_page_id || null;
+  }
+
+  const MAX_PAGES = 20;
+  const newItems: any[] = [];
+  let nextPageId: string | null = resumePageId;
+  let pages = 0;
+  let lastSuccessfulPageId: string | null = resumePageId;
+
+  while (pages < MAX_PAGES) {
+    let url =
+      `${baseUrl}/api/v1/conversation/${encodeURIComponent(conversationId)}` +
+      `/events/search?limit=${EVENT_LIMIT}&sort_order=TIMESTAMP`;
+    if (nextPageId) url += `&page_id=${encodeURIComponent(nextPageId)}`;
+
+    const remaining = deadlineAt - Date.now();
+    if (remaining <= 0) break;
+
+    const res = await fetchJson(
+      url,
+      { method: 'GET', headers: { Accept: 'application/json', 'X-Access-Token': apiKey } },
+      Math.min(60_000, Math.max(1, remaining)),
+    );
+    if (!res.ok) {
+      // Cursor pode ter expirado/ficado invalido (conversa mudou muito) — se
+      // isso acontecer NA RETOMADA (nextPageId=resumePageId, pages=0), cai
+      // pro fetch completo do zero como fallback seguro.
+      if (pages === 0 && resumePageId) {
+        return fallbackFullFetch(baseUrl, conversationId, apiKey, deadlineAt, base44Client);
+      }
+      return { events: [...priorTail, ...newItems], error: `OpenHands events retrieval failed (HTTP ${res.status})` };
+    }
+
+    const pageItems = Array.isArray(res.data?.items) ? res.data.items : [];
+    newItems.push(...pageItems);
+    const nextId = res.data?.next_page_id;
+    nextPageId = typeof nextId === 'string' && nextId.trim() ? nextId.trim() : null;
+    lastSuccessfulPageId = nextPageId ?? lastSuccessfulPageId;
+    pages++;
+    if (!nextPageId) break;
+  }
+
+  // Merge: remove do priorTail qualquer item que reapareceu em newItems
+  // (pode acontecer se a pagina de retomada ainda contem itens ja vistos).
+  const newIds = new Set(newItems.map((it) => it?.id ?? it?.event_id ?? JSON.stringify(it).slice(0, 50)));
+  const dedupedPrior = priorTail.filter((it) => !newIds.has(it?.id ?? it?.event_id ?? JSON.stringify(it).slice(0, 50)));
+  const merged = [...dedupedPrior, ...newItems].slice(-EVENT_CACHE_TAIL_LIMIT);
+
+  try {
+    if (cachedRecord) {
+      await base44Client.entities.OpenHandsEventCache.update(cachedRecord.id, {
+        last_page_id: lastSuccessfulPageId || '',
+        tail_events_json: JSON.stringify(merged),
+        event_count_seen: (cachedRecord.event_count_seen || 0) + newItems.length,
+      });
+    } else {
+      await base44Client.entities.OpenHandsEventCache.create({
+        conversation_id: conversationId,
+        last_page_id: lastSuccessfulPageId || '',
+        tail_events_json: JSON.stringify(merged),
+        event_count_seen: newItems.length,
+      });
+    }
+  } catch (e) { /* cache e so uma otimizacao; se falhar em salvar, so perde o ganho na proxima chamada */ }
+
+  return { events: merged, error: null };
+}
+
+async function fallbackFullFetch(
+  baseUrl: string,
+  conversationId: string,
+  apiKey: string,
+  deadlineAt: number,
+  base44Client: any,
+): Promise<{ events: any[]; error: string | null }> {
+  const full = await fetchAllEvents(baseUrl, conversationId, apiKey, deadlineAt);
+  if (full.error) return { events: full.events, error: full.error };
+  const tail = full.events.slice(-EVENT_CACHE_TAIL_LIMIT);
+  try {
+    const existing = await base44Client.entities.OpenHandsEventCache.filter({ conversation_id: conversationId });
+    if (existing && existing.length > 0) {
+      await base44Client.entities.OpenHandsEventCache.update(existing[0].id, {
+        last_page_id: '',
+        tail_events_json: JSON.stringify(tail),
+        event_count_seen: full.events.length,
+      });
+    } else {
+      await base44Client.entities.OpenHandsEventCache.create({
+        conversation_id: conversationId,
+        last_page_id: '',
+        tail_events_json: JSON.stringify(tail),
+        event_count_seen: full.events.length,
+      });
+    }
+  } catch (e) { /* best-effort */ }
+  return { events: full.events, error: null };
+}
+
 // ── Change extraction (write mode only, read-only Cloud API) ─────────────────
 //
 // Após execution_status=finished em modo write, consulta tres endpoints
