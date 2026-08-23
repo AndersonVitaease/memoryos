@@ -182,10 +182,12 @@ export class RepositoryAdapter {
     });
   }
 
-  async references(subject: string, symbol: string, maxResults = 100) {
-    if (!symbol || symbol.length > 256) throw new EngineeringError("INPUT_INVALID");
-    const result = await this.search(subject, { query: symbol, mode: "literal", maxResults });
-    return { ...result, heuristic: true, semanticCompleteness: "not_guaranteed" as const };
+async references(subject: string, symbol: string, maxResults = 100) {
+    return this.heavy.run(subject, async () => {
+      if (!symbol || symbol.length > 256) throw new EngineeringError("INPUT_INVALID");
+      const result = await this.searchInternal({ query: symbol, mode: "literal", maxResults });
+      return { ...result, heuristic: true, semanticCompleteness: "not_guaranteed" as const };
+    });
   }
 
   async deadCodeScan(subject: string, input: { path?: string; maxCandidates?: number }) {
