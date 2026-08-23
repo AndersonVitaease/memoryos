@@ -3,6 +3,7 @@ import { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
 import { EngineeringError, type AuthenticatedSubject } from "./policy.js";
 import type { RepositoryAdapter } from "./repository.js";
+import { ObservabilityClient } from "./observability.ts";
 
 export const ENGINEERING_SERVER_INFO = { name: "memoryos-eng-mcp", version: "0.1.0" } as const;
 export type ToolCatalogEntry = { name: string; access: "read" | "write" };
@@ -32,6 +33,10 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   const requireWrite = () => { if (!subject.scopes.includes("engineering:write")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
   const requireVerify = () => { if (!subject.scopes.includes("engineering:verify")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
   const requireGit = () => { if (!subject.scopes.includes("engineering:git")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
+  const requireRelease = () => { if (!subject.scopes.includes("engineering:release")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
+  
+  const observability = new ObservabilityClient();
+
   register("engineering.repo.structure", "read", (name) => server.registerTool(name, { description: "Read the authorized repository structure.", inputSchema: z.object({ path: z.string().optional(), maxDepth: z.number().int().optional(), includeFiles: z.boolean().optional(), maxEntries: z.number().int().optional() }) }, async (input) => { requireRead(); return response(await repository.structure(input)); }));
   register("engineering.file.read", "read", (name) => server.registerTool(name, { description: "Read an allowed UTF-8 source file.", inputSchema: z.object({ path: z.string(), startLine: z.number().int().optional(), maxLines: z.number().int().optional(), maxBytes: z.number().int().optional() }) }, async (input) => { requireRead(); return response(await repository.fileRead(input)); }));
   register("engineering.code.search", "read", (name) => server.registerTool(name, { description: "Search allowed repository source with ripgrep.", inputSchema: z.object({ query: z.string(), mode: z.enum(["literal", "regex", "filename"]).optional(), maxResults: z.number().int().optional() }) }, async (input) => { requireRead(); return response(await repository.search(subject.subject, input)); }));
@@ -57,4 +62,159 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   register("engineering.release.run", "write", (name) => server.registerTool(name, { description: "Run an allowlisted Release Pipeline V1 operation through the durable local runner.", inputSchema: z.object({ jobId: z.string().optional(), operation: z.enum(["deploy", "verify", "clean"]) }).strict() }, async (input) => { requireRead(); requireWrite(); return response(await repository.releaseRun(subject.subject, input)); }));
   register("engineering.orchestrate.batch", "read", (name) => server.registerTool(name, { description: "Execute multiple independent read operations concurrently to reduce Kilo latency.", inputSchema: z.object({ operations: z.array(z.object({ tool: z.string(), arguments: z.record(z.string(), z.any()).optional() })).min(1).max(10) }).strict() }, async (input) => { requireRead(); return response(await repository.batchOrchestrate(subject.subject, input.operations)); }));
   register("engineering.typecheck.run", "read", (name) => server.registerTool(name, { description: "Run the project official TypeScript type check in no-emit mode without accepting arbitrary commands.", inputSchema: z.object({ timeoutMs: z.number().int().min(1).max(120_000).optional() }).strict() }, async (input) => { requireVerify(); return response(await repository.typeCheckRun(subject.subject, input)); }));
+
+  // Runtime observability tools
+  register("engineering.runtime.trace", "read", (name) => server.registerTool(name, {
+    description: "Read the durable runtime trace for one MemoryOS execution.",
+    inputSchema: z.object({
+      executionId: z.string().min(1),
+      limit: z.number().int().min(1).max(2000).optional()
+    }).strict()
+  }, async (input) => {
+    requireRead();
+    return response(await observability.query("trace", input));
+  }));
+
+  register("engineering.runtime.logs", "read", (name) => server.registerTool(name, {
+    description: "Read bounded MemoryOS runtime system events with optional execution, session, source and status filters.",
+    inputSchema: z.object({
+      executionId: z.string().min(1).optional(),
+      sessionId: z.string().min(1).optional(),
+      source: z.string().min(1).optional(),
+      status: z.string().min(1).optional(),
+      limit: z.number().int().min(1).max(2000).optional()
+    }).strict()
+  }, async (input) => {
+    requireRead();
+    return response(await observability.query("logs", input));
+  }));
+
+  register("engineering.runtime.errors", "read", (name) => server.registerTool(name, {
+    description: "Read failed, timed-out or blocked MemoryOS runtime observations.",
+    inputSchema: z.object({
+      executionId: z.string().min(1).optional(),
+      limit: z.number().int().min(1).max(2000).optional()
+    }).strict()
+  }, async (input) => {
+    requireRead();
+    return response(await observability.query("errors", input));
+  }));
+
+  register("engineering.runtime.metrics", "read", (name) => server.registerTool(name, {
+    description: "Read aggregate MemoryOS runtime reliability and latency metrics.",
+    inputSchema: z.object({
+      limit: z.number().int().min(1).max(2000).optional()
+    }).strict()
+  }, async (input) => {
+    requireRead();
+    return response(await observability.query("metrics", input));
+  }));
+
+  register("engineering.runtime.investigate", "read", (name) => server.registerTool(name, {
+    description: "Investigate one execution, or the most recent failing execution, using nearby runtime phase evidence.",
+    inputSchema: z.object({
+      executionId: z.string().min(1).optional(),
+      limit: z.number().int().min(1).max(2000).optional(),
+      windowMs: z.number().int().min(30000).max(3600000).optional()
+    }).strict()
+  }, async (input) => {
+    requireRead();
+    return response(await observability.query("investigate", input));
+  }));
+
+  register("engineering.runtime.compare", "read", (name) => server.registerTool(name, {
+    description: "Compare the supervised runtime phase sequence of two MemoryOS executions.",
+    inputSchema: z.object({
+      executionIdA: z.string().min(1),
+      executionIdB: z.string().min(1),
+      limit: z.number().int().min(1).max(2000).optional()
+    }).strict()
+  }, async (input) => {
+    requireRead();
+    return response(await observability.query("compare", input));
+  }));
+
+  register("engineering.runtime.bottlenecks", "read", (name) => server.registerTool(name, {
+    description: "Rank MemoryOS connector and capability bottlenecks using latency, failures and timeouts.",
+    inputSchema: z.object({
+      limit: z.number().int().min(1).max(2000).optional()
+    }).strict()
+  }, async (input) => {
+    requireRead();
+    return response(await observability.query("bottlenecks", input));
+  }));
+
+  register("engineering.runtime.watch", "read", (name) => server.registerTool(name, {
+    description: "Inspect whether a supervised MemoryOS execution is progressing, terminal or stalled.",
+    inputSchema: z.object({
+      executionId: z.string().min(1).optional(),
+      limit: z.number().int().min(1).max(2000).optional(),
+      silenceThresholdMs: z.number().int().min(5000).max(600000).optional()
+    }).strict()
+  }, async (input) => {
+    requireRead();
+    return response(await observability.query("watch", input));
+  }));
+
+  register("engineering.runtime.timeline", "read", (name) => server.registerTool(name, {
+    description: "Build a chronological timeline of runtime observations and system events around one execution.",
+    inputSchema: z.object({
+      executionId: z.string().min(1),
+      limit: z.number().int().min(1).max(2000).optional(),
+      windowMs: z.number().int().min(30000).max(3600000).optional()
+    }).strict()
+  }, async (input) => {
+    requireRead();
+    return response(await observability.query("timeline", input));
+  }));
+
+  register("engineering.runtime.executions", "read", (name) => server.registerTool(name, {
+    description: "List and summarize recent MemoryOS runtime executions so an engineering agent can discover relevant execution IDs.",
+    inputSchema: z.object({
+      limit: z.number().int().min(1).max(2000).optional()
+    }).strict()
+  }, async (input) => {
+    requireRead();
+    return response(await observability.query("executions", input));
+  }));
+
+  register("engineering.runtime.health", "read", (name) => server.registerTool(name, {
+    description: "Inspect MemoryOS runtime health using recent execution observations, failures and connector behavior.",
+    inputSchema: z.object({
+      limit: z.number().int().min(1).max(2000).optional()
+    }).strict()
+  }, async (input) => {
+    requireRead();
+    return response(await observability.query("health", input));
+  }));
+
+  register("engineering.runtime.saturation", "read", (name) => server.registerTool(name, {
+    description: "Inspect MemoryOS runtime saturation, backpressure and semaphore wait behavior.",
+    inputSchema: z.object({
+      limit: z.number().int().min(1).max(2000).optional()
+    }).strict()
+  }, async (input) => {
+    requireRead();
+    return response(await observability.query("saturation", input));
+  }));
+
+  register("engineering.runtime.releaseContext", "read", (name) => server.registerTool(name, {
+    description: "Return the release and sprint context actually evidenced for one MemoryOS runtime execution.",
+    inputSchema: z.object({
+      executionId: z.string().min(1)
+    }).strict()
+  }, async (input) => {
+    requireRead();
+    return response(await observability.query("releaseContext", input));
+  }));
+
+  register("engineering.runtime.query", "read", (name) => server.registerTool(name, {
+    description: "Perform a bounded read-only query over recent MemoryOS runtime telemetry.",
+    inputSchema: z.object({
+      limit: z.number().int().min(1).max(2000).optional()
+    }).strict()
+  }, async (input) => {
+    requireRead();
+    return response(await observability.query("query", input));
+  }));
 }
