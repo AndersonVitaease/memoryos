@@ -17,6 +17,27 @@ import type { CognitiveEvent } from "@/lib/cognitive-event-bus/CognitiveEventBus
 import { runtimeEventBus } from "@/runtime/connectors/RuntimeEventBus";
 import type { RuntimeEvent, RuntimeEventType } from "@/runtime/connectors/RuntimeEventBus";
 import { base44 } from "@/api/base44Client";
+import { RuntimeDebug } from "@/lib/debug/RuntimeDebug";
+import { runtimeDiagnosticsAdapter } from "@/lib/debug/RuntimeDiagnosticsAdapter";
+import { resolveRuntimeCorrelationId } from "@/lib/debug/RuntimeDiagnostics";
+import {
+  RuntimeSnapshotPublisher,
+  type SystemEventEntity,
+} from "./RuntimeSnapshotPersistence";
+
+async function resolveAuthenticatedScope(): Promise<{ userId: string; workspaceId: string } | null> {
+  const user = await base44.auth.me() as {
+    id?: unknown;
+    active_workspace_id?: unknown;
+    workspace_ids?: unknown;
+  } | null;
+  if (!user || typeof user.id !== "string") return null;
+  if (typeof user.active_workspace_id !== "string") return null;
+  if (!Array.isArray(user.workspace_ids) || !user.workspace_ids.includes(user.active_workspace_id)) {
+    return null;
+  }
+  return { userId: user.id, workspaceId: user.active_workspace_id };
+}
 
 // ── Mapeamento de tipo de evento de conector → status SystemEvent ────────────
 const RUNTIME_STATUS_MAP: Partial<Record<RuntimeEventType, string>> = {
@@ -41,6 +62,15 @@ class EventPersistenceBridgeClass {
   private _active = false;
   private _persisted = 0;
   private _failed = 0;
+  private readonly _snapshotPublisher = new RuntimeSnapshotPublisher({
+    runtimeDebug: RuntimeDebug,
+    diagnosticsAdapter: runtimeDiagnosticsAdapter,
+    systemEvents: base44.entities.SystemEvent as unknown as SystemEventEntity,
+    resolveScope: resolveAuthenticatedScope,
+    warn: (message) => console.warn(
+      "[EventPersistenceBridge] falha ao persistir runtime snapshot:", message,
+    ),
+  });
 
   /**
    * Inicia a escuta no CognitiveEventBus. Idempotente — chamar mais de uma
@@ -57,7 +87,22 @@ class EventPersistenceBridgeClass {
     runtimeEventBus.onAny((event) => {
       void this._persistRuntime(event);
     });
-    console.log("[EventPersistenceBridge] ativo — escutando CognitiveEventBus + RuntimeEventBus");
+    // Fonte 3: RuntimeDebug. A assinatura apenas sinaliza mudanca; a projecao
+    // consulta o adapter certificado e so publica execucoes com terminal oficial.
+    RuntimeDebug.subscribe(() => {
+      void this.flushTerminalSnapshots();
+    });
+    console.log("[EventPersistenceBridge] ativo — escutando CognitiveEventBus + RuntimeEventBus + RuntimeDiagnostics");
+  }
+
+  /**
+   * Publica no maximo um snapshot final por execucao nesta sessao. A consulta
+   * previa ao SystemEvent torna a operacao idempotente tambem apos reload.
+   */
+  async flushTerminalSnapshots(): Promise<void> {
+    const result = await this._snapshotPublisher.flush();
+    this._persisted += result.persisted;
+    this._failed += result.failed;
   }
 
   /**
@@ -69,7 +114,9 @@ class EventPersistenceBridgeClass {
       const status = RUNTIME_STATUS_MAP[event.type] ?? "success";
       await base44.entities.SystemEvent.create({
         conversationId: (event.payload?.sessionId as string) || "",
-        correlationId:  event.id,
+        // Preserve event.id in metadata, but correlate execution events by the
+        // canonical upstream executionId when it is present.
+        correlationId:  resolveRuntimeCorrelationId(event.id, event.payload),
         type:           event.type,
         source:         "RuntimeEventBus",
         actor:          "system",

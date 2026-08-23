@@ -56,8 +56,8 @@ test("authenticated MCP endpoint exposes exactly the approved tools", async () =
     assert.equal(catalog.serverName, "memoryos-eng-mcp");
     assert.equal(catalog.serverVersion, "0.1.0");
     assert.equal(catalog.repositoryId, "memoryos");
-    assert.equal(catalog.actualToolCount, 24);
-    assert.equal(catalog.catalogVersion, "eng-mcp-tools-v24");
+    assert.equal(catalog.actualToolCount, 39);
+    assert.equal(catalog.catalogVersion, "eng-mcp-tools-v39");
     assert.match(catalog.catalogHash, /^[a-f0-9]{64}$/);
     assert.equal(secondCatalog.catalogHash, catalog.catalogHash);
     const catalogNames = catalog.tools.map((tool: ToolCatalogEntry) => tool.name);

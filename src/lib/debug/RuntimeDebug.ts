@@ -17,8 +17,17 @@
  *   RuntimeDebug.closeExecution(executionId)
  *   RuntimeDebug.subscribe(fn) → unsubscribe
  *   RuntimeDebug.getExecutions(connector?) → DebugExecution[]
+ *   RuntimeDebug.getDiagnosticSnapshot(executionId) → RuntimeDiagnosticSnapshot | null
  *   RuntimeDebug.clear(connector?)
  */
+
+import {
+  sanitizeDiagnosticEvent,
+  type RuntimeDiagnosticEvent,
+  type RuntimeDiagnosticEventInput,
+  type RuntimeDiagnosticSnapshot,
+  type TraceCompleteness,
+} from "./RuntimeDiagnostics";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -62,6 +71,8 @@ export interface DebugExecution {
   endedAt?:    number;
   /** Ordered list of events */
   events:      DebugEvent[];
+  /** Payload-free structural diagnostics. */
+  diagnosticEvents: RuntimeDiagnosticEvent[];
 }
 
 export interface EmitOptions {
@@ -109,6 +120,7 @@ class RuntimeDebugBus {
       label: label || `${connector} — ${new Date().toLocaleTimeString("pt-BR")}`,
       startedAt: Date.now(),
       events:    [],
+      diagnosticEvents: [],
     });
     if (this._executions.length > MAX_EXECUTIONS) this._executions.pop();
     this._flush();
@@ -135,6 +147,7 @@ class RuntimeDebugBus {
       label: label || `${connector} — ${new Date().toLocaleTimeString("pt-BR")}`,
       startedAt: Date.now(),
       events:    [],
+      diagnosticEvents: [],
     });
     if (this._executions.length > MAX_EXECUTIONS) this._executions.pop();
     this._flush();
@@ -202,6 +215,25 @@ class RuntimeDebugBus {
     this._flush();
   }
 
+  /**
+   * Append one payload-free diagnostic event. This is deliberately separate
+   * from emit(): legacy debug payloads keep their existing behavior while the
+   * diagnostic surface remains structural and sanitized.
+   */
+  recordDiagnostic(input: RuntimeDiagnosticEventInput): void {
+    try {
+      const ex = this._find(input.executionId);
+      if (!ex) return;
+      // Backward-compatible with executions created before this additive field
+      // existed (for example during a hot-module replacement).
+      if (!Array.isArray(ex.diagnosticEvents)) ex.diagnosticEvents = [];
+      ex.diagnosticEvents.push(sanitizeDiagnosticEvent(input, ex.diagnosticEvents.length + 1));
+      this._flush();
+    } catch {
+      // Observability must never affect runtime behavior.
+    }
+  }
+
   // ── Query ─────────────────────────────────────────────────────────────────
 
   /** Get all executions, optionally filtered by connector. */
@@ -212,6 +244,70 @@ class RuntimeDebugBus {
 
   getExecution(executionId: string): DebugExecution | undefined {
     return this._find(executionId);
+  }
+
+  /**
+   * Exact-ID, read-only diagnostic lookup. Payloads are never included.
+   */
+  getDiagnosticSnapshot(executionId: string, limit = 500): RuntimeDiagnosticSnapshot | null {
+    const ex = this._find(executionId);
+    if (!ex) return null;
+
+    const safeLimit = Math.max(1, Math.min(limit, 500));
+    const allEvents = Array.isArray(ex.diagnosticEvents) ? ex.diagnosticEvents : [];
+    const events = allEvents.slice(0, safeLimit);
+    const terminal = [...allEvents].reverse().find((event) =>
+      event.event === "pipeline_completed"
+      || event.event === "pipeline_failed"
+      || event.event === "pipeline_cancelled"
+      || event.event === "runtime_completed"
+      || event.event === "runtime_failed"
+      || event.event === "runtime_timeout"
+      || event.event === "runtime_cancelled"
+    );
+    const hasPlanning = allEvents.some((event) => event.component === "ConversationPlanningEngine");
+    const hasDispatcher = allEvents.some((event) => event.component === "ExecutionDispatcher");
+    const hasRouter = allEvents.some((event) => event.component === "UniversalConnectorRouter");
+    const hasPipelineTerminal = allEvents.some((event) =>
+      event.event === "pipeline_completed"
+      || event.event === "pipeline_failed"
+      || event.event === "pipeline_cancelled"
+    );
+    const gaps: string[] = [];
+    if (!hasPlanning) gaps.push("planning_not_observed");
+    if (hasDispatcher && !hasRouter) gaps.push("router_not_observed");
+    if (!terminal) gaps.push("terminal_event_not_observed");
+    if (!hasPipelineTerminal) gaps.push("pipeline_terminal_not_observed");
+    if (events.length < allEvents.length) gaps.push("event_limit_reached");
+
+    const traceCompleteness: TraceCompleteness = gaps.length === 0
+      ? "COMPLETE"
+      : events.length === 0 || !terminal ? "INCOMPLETE" : "PARTIAL";
+    const unique = (values: Array<string | undefined>): readonly string[] =>
+      Object.freeze([...new Set(values.filter((value): value is string => !!value))]);
+    const errors = events
+      .filter((event) => event.hasError)
+      .slice(0, 200)
+      .map(({ sequence, timestamp, component, event, errorCode, errorType }) =>
+        Object.freeze({ sequence, timestamp, component, event, errorCode, errorType })
+      );
+
+    return Object.freeze({
+      executionId: ex.executionId,
+      status: terminal?.status,
+      startedAt: ex.startedAt,
+      finishedAt: terminal?.finishedAt ?? ex.endedAt,
+      durationMs: terminal?.durationMs ?? (ex.endedAt ? ex.endedAt - ex.startedAt : undefined),
+      components: unique(events.map((event) => event.component)),
+      steps: unique(events.map((event) => event.stepId)).slice(0, 100),
+      connectors: unique(events.map((event) => event.connectorId)),
+      capabilities: unique(events.map((event) => event.capability)),
+      errors: Object.freeze(errors),
+      events: Object.freeze([...events]),
+      gaps: Object.freeze(gaps),
+      traceCompleteness,
+      truncated: events.length < allEvents.length,
+    });
   }
 
   /** True when an execution with this ID exists and has no endedAt. */

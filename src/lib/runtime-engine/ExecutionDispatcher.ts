@@ -29,6 +29,7 @@ import { connectorMetrics }           from "@/lib/connector-runtime/ConnectorMet
 // rejeita, nunca bloqueia, nunca altera o StepResult. Erro de
 // instrumentacao nao pode quebrar a execucao real.
 import { RuntimeObserver }            from "@/lib/operational-intelligence/RuntimeObserver";
+import { RuntimeDebug }               from "@/lib/debug/RuntimeDebug";
 
 // ── DispatchInput ─────────────────────────────────────────────────────────────
 
@@ -70,6 +71,17 @@ export class ExecutionDispatcher {
       : null;
     const toolName = mcpParams && typeof mcpParams.toolName === "string" ? mcpParams.toolName : null;
     const retryCtx: RetryContext = { attempt: 1, maxAttempts: 1, lastError: null };
+    RuntimeDebug.recordDiagnostic({
+      executionId,
+      component: "ExecutionDispatcher",
+      source: "runtime",
+      event: "dispatch_started",
+      status: "running",
+      stepId: step.id,
+      connectorId: step.connector,
+      capability: step.capability,
+      startedAt,
+    });
     // [RUNTIME-PROBE][EXD-01] ExecutionDispatcher.dispatch() entered
     console.log("[RUNTIME-PROBE][EXD-01]", {
       probe:      "dispatcher:dispatch:entry",
@@ -126,6 +138,22 @@ export class ExecutionDispatcher {
         semaphoreWaitMs,
       }).catch(() => { /* shadow mode: swallow */ });
 
+      RuntimeDebug.recordDiagnostic({
+        executionId,
+        component: "ExecutionDispatcher",
+        source: "runtime",
+        event: success ? "dispatch_completed" : output.status === "timeout" ? "dispatch_timeout" : "dispatch_failed",
+        status: output.status,
+        stepId: step.id,
+        connectorId: step.connector,
+        capability: step.capability,
+        startedAt,
+        finishedAt,
+        durationMs,
+        hasError: !success,
+        errorType: output.status === "timeout" ? "timeout" : !success ? "connector" : undefined,
+      });
+
       return Object.freeze({
         stepId:     step.id,
         connector:  step.connector,
@@ -171,6 +199,22 @@ export class ExecutionDispatcher {
         toolName,
         semaphoreWaitMs,
       }).catch(() => { /* shadow mode: swallow */ });
+
+      RuntimeDebug.recordDiagnostic({
+        executionId,
+        component: "ExecutionDispatcher",
+        source: "runtime",
+        event: isTimeout ? "dispatch_timeout" : "dispatch_failed",
+        status: isTimeout ? "timeout" : "failed",
+        stepId: step.id,
+        connectorId: step.connector,
+        capability: step.capability,
+        startedAt,
+        finishedAt,
+        durationMs,
+        hasError: true,
+        errorType: isTimeout ? "timeout" : "runtime",
+      });
 
       return Object.freeze({
         stepId:     step.id,

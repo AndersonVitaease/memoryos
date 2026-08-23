@@ -10,6 +10,14 @@
       "type": "string",
       "description": "ID da transacao/execucao que originou este evento"
     },
+    "executionId": {
+      "type": "string",
+      "description": "ID canonico da execucao para consultas exatas de runtime diagnostics"
+    },
+    "workspaceId": {
+      "type": "string",
+      "description": "Workspace autenticado ao qual o evento pertence"
+    },
     "parentId": {
       "type": "string",
       "description": "ID do evento que causou este (para visualizacao em arvore)"
