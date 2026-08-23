@@ -12,7 +12,12 @@ export type RuntimeObservabilityOperation =
   | "compare"
   | "bottlenecks"
   | "watch"
-  | "timeline";
+  | "timeline"
+  | "executions"
+  | "health"
+  | "saturation"
+  | "releaseContext"
+  | "query";
 
 export type RuntimeObservabilityPayload = {
   executionId?: string;
