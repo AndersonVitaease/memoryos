@@ -21,6 +21,7 @@ import type { ExecutionStep }              from "@/lib/planning-engine-e022/Exec
 import type { RouterResult, ConnectorInput } from "./UCRTypes";
 import type { ConnectorExecutionContext }   from "@/lib/runtime-engine/RuntimeTypes";
 import { ConnectorRegistry }               from "./ConnectorRegistry";
+import { RuntimeDebug }                    from "@/lib/debug/RuntimeDebug";
 
 // ── UniversalConnectorRouter ──────────────────────────────────────────────────
 
@@ -33,6 +34,18 @@ export class UniversalConnectorRouter {
    */
   // B-04: connectorCtx added — carries real userId/workspaceId/sessionId to UCRBridge
   async route(executionId: string, step: ExecutionStep, connectorCtx?: ConnectorExecutionContext): Promise<RouterResult> {
+    const routerStartedAt = Date.now();
+    RuntimeDebug.recordDiagnostic({
+      executionId,
+      component: "UniversalConnectorRouter",
+      source: "router",
+      event: "router_received",
+      status: "running",
+      stepId: step.id,
+      connectorId: step.connector,
+      capability: step.capability,
+      startedAt: routerStartedAt,
+    });
     console.group("[TRACE-ROUTER-04]");
     const connector = this._registry.lookup(step.connector);
     console.log({ connector: step.connector, capability: step.capability, found: !!connector, regSize: this._registry.size() });
@@ -54,6 +67,22 @@ export class UniversalConnectorRouter {
     });
 
     if (!connector) {
+      RuntimeDebug.recordDiagnostic({
+        executionId,
+        component: "UniversalConnectorRouter",
+        source: "router",
+        event: "router_failed",
+        status: "failed",
+        stepId: step.id,
+        connectorId: step.connector,
+        capability: step.capability,
+        startedAt: routerStartedAt,
+        finishedAt: Date.now(),
+        durationMs: Date.now() - routerStartedAt,
+        hasError: true,
+        errorCode: "connector_not_registered",
+        errorType: "not_found",
+      });
       return Object.freeze({
         found:             false,
         connectorId:       step.connector,
@@ -65,12 +94,39 @@ export class UniversalConnectorRouter {
       });
     }
 
+    RuntimeDebug.recordDiagnostic({
+      executionId,
+      component: "UniversalConnectorRouter",
+      source: "router",
+      event: "connector_resolved",
+      status: "resolved",
+      stepId: step.id,
+      connectorId: step.connector,
+      capability: step.capability,
+    });
+
     // Verify the connector advertises this capability
     const hasCapability = connector
       .capabilities()
       .some((c) => c.id === step.capability);
 
     if (!hasCapability) {
+      RuntimeDebug.recordDiagnostic({
+        executionId,
+        component: "UniversalConnectorRouter",
+        source: "router",
+        event: "router_failed",
+        status: "failed",
+        stepId: step.id,
+        connectorId: step.connector,
+        capability: step.capability,
+        startedAt: routerStartedAt,
+        finishedAt: Date.now(),
+        durationMs: Date.now() - routerStartedAt,
+        hasError: true,
+        errorCode: "capability_not_declared",
+        errorType: "not_found",
+      });
       return Object.freeze({
         found:          false,
         connectorId:    step.connector,
@@ -82,6 +138,17 @@ export class UniversalConnectorRouter {
       });
     }
 
+    RuntimeDebug.recordDiagnostic({
+      executionId,
+      component: "UniversalConnectorRouter",
+      source: "router",
+      event: "capability_resolved",
+      status: "resolved",
+      stepId: step.id,
+      connectorId: step.connector,
+      capability: step.capability,
+    });
+
     // B-04: pass connectorCtx into ConnectorInput so UCRBridge can forward it
     const connectorInput: ConnectorInput = Object.freeze({
       executionId,
@@ -91,7 +158,44 @@ export class UniversalConnectorRouter {
       connectorCtx: connectorCtx,
     });
 
-    const result = await connector.execute(connectorInput);
+    let result: Awaited<ReturnType<typeof connector.execute>>;
+    try {
+      result = await connector.execute(connectorInput);
+    } catch (error) {
+      const routerFinishedAt = Date.now();
+      RuntimeDebug.recordDiagnostic({
+        executionId,
+        component: "UniversalConnectorRouter",
+        source: "router",
+        event: "router_failed",
+        status: "failed",
+        stepId: step.id,
+        connectorId: step.connector,
+        capability: step.capability,
+        startedAt: routerStartedAt,
+        finishedAt: routerFinishedAt,
+        durationMs: routerFinishedAt - routerStartedAt,
+        hasError: true,
+        errorType: error instanceof Error && /timeout/i.test(error.message) ? "timeout" : "runtime",
+      });
+      throw error;
+    }
+    const routerFinishedAt = Date.now();
+    RuntimeDebug.recordDiagnostic({
+      executionId,
+      component: "UniversalConnectorRouter",
+      source: "router",
+      event: result.status === "success" ? "router_completed" : "router_failed",
+      status: result.status,
+      stepId: step.id,
+      connectorId: step.connector,
+      capability: step.capability,
+      startedAt: routerStartedAt,
+      finishedAt: routerFinishedAt,
+      durationMs: routerFinishedAt - routerStartedAt,
+      hasError: result.status !== "success",
+      errorType: result.status === "timeout" ? "timeout" : result.status !== "success" ? "connector" : undefined,
+    });
 
     // [UCR-PROBE-02] Result returned by connector.execute() (UCRTypes.ConnectorResult)
     console.log("[UCR-PROBE-02]", {

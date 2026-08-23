@@ -679,4 +679,86 @@ export class RepositoryAdapter {
     }
     return diagnostics;
   }
+  async batchOrchestrate(subject: string, operations: Array<{ tool: string; arguments?: Record<string, unknown> }>) {
+    const ALLOWED_TOOLS = new Set([
+      "engineering.repo.structure",
+      "engineering.file.read",
+      "engineering.code.search",
+      "engineering.code.references",
+      "engineering.git.status",
+      "engineering.git.diff"
+    ]);
+
+    const orderedResults: Array<{ tool: string; index: number; success: boolean; result?: unknown; error?: string }> = [];
+    const lightOperations: Array<{ index: number; tool: string; args?: Record<string, unknown> }> = [];
+    const heavyOperations: Array<{ index: number; tool: string; args?: Record<string, unknown> }> = [];
+
+    operations.forEach((op, index) => {
+      if (!ALLOWED_TOOLS.has(op.tool)) {
+        throw new EngineeringError("TOOL_NOT_ALLOWED");
+      }
+      if (op.tool === "engineering.code.search" || op.tool === "engineering.code.references") {
+        heavyOperations.push({ index, tool: op.tool, args: op.arguments });
+      } else {
+        lightOperations.push({ index, tool: op.tool, args: op.arguments });
+      }
+    });
+
+    const executeOperation = async (index: number, tool: string, args?: Record<string, unknown>) => {
+      switch (tool) {
+        case "engineering.repo.structure":
+          return await this.structure(args ?? {});
+        case "engineering.file.read":
+          return await this.fileRead(args as any ?? {});
+        case "engineering.code.search":
+          return await this.heavy.schedule(subject, () => this.search(subject, args as any ?? {}));
+        case "engineering.code.references":
+          return await this.heavy.schedule(subject, () => this.references(subject, args?.symbol as string ?? "", args?.maxResults as number ?? 100));
+        case "engineering.git.status":
+          return await this.gitStatus();
+        case "engineering.git.diff":
+          return await this.gitDiff(args as any ?? {});
+        default:
+          throw new EngineeringError("TOOL_NOT_ALLOWED");
+      }
+    };
+
+    const lightPromises = lightOperations.map(async ({ index, tool, args }) => {
+      try {
+        const result = await executeOperation(index, tool, args);
+        orderedResults[index] = { tool, index, success: true, result };
+      } catch (error) {
+        orderedResults[index] = {
+          tool,
+          index,
+          success: false,
+          error: error instanceof Error ? error.message : String(error)
+        };
+      }
+    });
+
+    const heavyPromises = heavyOperations.map(async ({ index, tool, args }) => {
+      try {
+        const result = await executeOperation(index, tool, args);
+        orderedResults[index] = { tool, index, success: true, result };
+      } catch (error) {
+        orderedResults[index] = {
+          tool,
+          index,
+          success: false,
+          error: error instanceof Error ? error.message : String(error)
+        };
+      }
+    });
+
+    await Promise.allSettled([...lightPromises, ...heavyPromises]);
+
+    const results = orderedResults.filter((_, i) => i in orderedResults);
+    const success = results.every(r => r.success);
+
+    return {
+      results,
+      success
+    };
+  }
 }

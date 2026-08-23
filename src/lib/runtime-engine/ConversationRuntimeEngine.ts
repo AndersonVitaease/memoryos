@@ -212,6 +212,16 @@ export class ConversationRuntimeEngine {
       "system",
       `runtime — ${ctx.executionId}`,
     );
+    RuntimeDebug.recordDiagnostic({
+      executionId: ctx.executionId,
+      component: "ConversationRuntimeEngine",
+      source: "runtime",
+      event: "runtime_started",
+      status: "running",
+      planId: ctx.planId,
+      goalId: ctx.goalId,
+      startedAt: ctx.startedAt ?? t_start,
+    });
 
     // D-01/D-02: evento padronizado de início de execução
     // Observability V2: registra a policy aplicada (timeoutMs, stepTimeoutMs)
@@ -392,6 +402,25 @@ export class ConversationRuntimeEngine {
   private _finalize(ctx: RuntimeExecutionContext, status: ExecutionStatus, t_start: number): ExecutionWithReport {
     ctx.status     = status;
     ctx.finishedAt = Date.now();
+
+    RuntimeDebug.recordDiagnostic({
+      executionId: ctx.executionId,
+      component: "ConversationRuntimeEngine",
+      source: "runtime",
+      event:
+        status === "completed" ? "runtime_completed"
+        : status === "timeout" ? "runtime_timeout"
+        : status === "cancelled" ? "runtime_cancelled"
+        : "runtime_failed",
+      status,
+      planId: ctx.planId,
+      goalId: ctx.goalId,
+      startedAt: ctx.startedAt ?? ctx.createdAt,
+      finishedAt: ctx.finishedAt,
+      durationMs: ctx.finishedAt - (ctx.startedAt ?? ctx.createdAt),
+      hasError: status === "failed" || status === "timeout",
+      errorType: status === "timeout" ? "timeout" : status === "failed" ? "runtime" : undefined,
+    });
 
     // Close the RuntimeDebug execution when the Runtime finishes
     RuntimeDebug.closeExecution(ctx.executionId);

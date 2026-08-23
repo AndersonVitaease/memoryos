@@ -32,7 +32,6 @@ import { runReasoningPlan } from "@/lib/reasoning/memoryReasoningPlanner";
 import { primaryRouter } from "@/lib/primary-conversation-router/PrimaryConversationRouter";
 import { responseTracer } from "@/lib/response-binding/ResponseBindingTracer";
 import { conversationGoalBridge } from "@/lib/conversation-goal-bridge/ConversationGoalBridge";
-import { GoalRegistry } from "@/lib/goals/GoalRegistry";
 import { conversationPlanningEngine } from "@/lib/planning-engine-e022/ConversationPlanningEngine";
 import { runtimeContextLayer } from "@/lib/runtime-context/RuntimeContextLayer";
 import { unifiedContextBuilder } from "@/lib/unified-context/UnifiedContextBuilder";
@@ -49,7 +48,8 @@ import { IntentRecorder } from "@/lib/operational-intelligence/IntentRecorder";
 import { OIEOrchestrator } from "@/lib/operational-intelligence/OIEOrchestrator";
 import { isCanonicalResourceRequestEnabled, isCanonicalResourceReadEnabled } from "@/lib/resource-intent-canonicalization";
 import { synthesizeConnectorResult } from "@/lib/connector-runtime-provider/ConnectorResultSynthesizer";
-import { isSupervisedWriteMission, SUPERVISED_WRITE_PIPELINE_TIMEOUT_MS } from "@/lib/execution-intelligence/adaptive-process/SupervisedWriteTimeout";
+import { RuntimeDebug } from "@/lib/debug/RuntimeDebug";
+import { resolveMissingPipelineTerminal } from "@/lib/debug/RuntimeDiagnostics";
 
 // Identity/greeting bypass regex — evaluated once at module load
 const _IDENTITY_RE = /^(qual|quem|oi|olá|ola|bom dia|boa tarde|boa noite)\b.{0,15}(nome|você|voce|propósito|objetivo|funcao|função)\b/i;
@@ -96,7 +96,17 @@ class ConversationPipeline {
     if (!session) throw new Error("No active session");
 
     const executionId = makeId();
+    const pipelineStartedAt = Date.now();
     this._currentExecutionId = executionId;
+    RuntimeDebug.registerExecution(executionId, "system", `pipeline — ${executionId}`);
+    RuntimeDebug.recordDiagnostic({
+      executionId,
+      component: "ConversationPipeline",
+      source: "pipeline",
+      event: "pipeline_started",
+      status: "running",
+      startedAt: pipelineStartedAt,
+    });
 
     // OIE Fase 1.5: registra a intencao do usuario em shadow mode, ANTES
     // de qualquer interpretacao (Prepare/Reason/Route). correlation_id =
@@ -172,6 +182,8 @@ class ConversationPipeline {
       timestamp: Date.now(),
     });
 
+    let pipelineTimedOut = false;
+    let deferTerminalToActiveStream = false;
     try {
       const _guardedResult = await conversationRecovery.guardedExecution(
         executionId,
@@ -183,12 +195,7 @@ class ConversationPipeline {
           // Subido pra 90s pra dar folga ao calculo + streaming. O fallback
           // so roda se nao ha stream ativo (check abaixo), entao um stream em
           // andamento nunca e cortado.
-          //
-          // SUPERVISED WRITE: timeout estendido (15 min) para fluxos interativos
-          // que incluem Approval 1 + OpenHands + Approval 2 + apply/verify.
-          // O timeout normal de 90s matava o fluxo durante o await do OpenHands.
-          // Apenas supervisedEngineering mode=write recebe o timeout estendido.
-          timeoutMs: isSupervisedWriteMission(userMessage) ? SUPERVISED_WRITE_PIPELINE_TIMEOUT_MS : 90_000,
+          timeoutMs: 90_000,
           onRetry: () => conversationMetrics.recordRecoveryAttempt(executionId),
         }
       );
@@ -218,33 +225,11 @@ class ConversationPipeline {
         // embaralhando a saida. So roda o fallback se nao ha stream ativo
         // (o calculo travou antes de qualquer resposta comecar).
         if (conversationStreaming.isStreaming(executionId)) {
+          deferTerminalToActiveStream = true;
           console.log("[ConversationPipeline] Timeout durante stream ativo — orfao vai terminar a resposta.");
-        } else if (isSupervisedWriteMission(userMessage)) {
-        // SUPERVISED WRITE TIMEOUT: NÃO disparar fallback LLM narrando comandos
-        // ficticios. O write flow permanece dono da execucao ate success/failed/
-        // cancelled/approval-timeout/supervised-write-timeout. Apenas sinaliza
-        // timeout explicito — o orfao pode ainda completar em background.
-        this._cancelled = true;
-        try {
-          const _swSession = conversationStore.session;
-          if (_swSession) {
-            const _swTimeoutText = "A missão de engenharia supervisionada excedeu o tempo limite. A execução pode ainda estar em andamento em segundo plano. Se necessário, tente novamente.";
-            const _swTimeoutMsgId = `msg-${Date.now()}-swto`;
-            conversationStore.appendMessage({
-              id: _swTimeoutMsgId, session_id: _swSession.id, role: "assistant",
-              content: _swTimeoutText, memory_tier: "active", sources_used: [],
-            });
-            try {
-              const _swSaved = await persistMessage({
-                sessionId: _swSession.id, projectId: _swSession.project_id,
-                role: "assistant", content: _swTimeoutText, sources_used: [],
-              });
-              conversationStore.updateMessage(_swTimeoutMsgId, { id: _swSaved.id });
-            } catch { /* non-critical */ }
-          }
-        } catch { /* never propagate */ }
         } else {
-        this._cancelled = true;
+          pipelineTimedOut = true;
+          this._cancelled = true;
         // FIX: antes o timeout so setava _cancelled e o usuario via apenas uma
         // barra de erro discreta (ou nada) — "a resposta nunca aparece". Agora
         // garante uma resposta de fallback visivel no chat, finalizando qualquer
@@ -305,6 +290,19 @@ class ConversationPipeline {
         }
       }
     } finally {
+      if (!deferTerminalToActiveStream) {
+        const finishedAt = Date.now();
+        const terminal = resolveMissingPipelineTerminal({
+          executionId,
+          startedAt: pipelineStartedAt,
+          finishedAt,
+          events: RuntimeDebug.getExecution(executionId)?.diagnosticEvents ?? [],
+          cancelled: this._cancelled,
+          timedOut: pipelineTimedOut,
+        });
+        if (terminal) RuntimeDebug.recordDiagnostic(terminal);
+        RuntimeDebug.closeExecution(executionId);
+      }
       conversationRecovery.safeReset(executionId);
       this._currentExecutionId = null;
       const metrics = conversationMetrics.finalize(
@@ -427,35 +425,7 @@ class ConversationPipeline {
     // antiga perdia (sem "também"/"e mais"/vírgula/linha em branco). Não
     // duplica a lista de verbos — delega ao MessageDecomposer.
     const { decomposeMessage: _gateDecompose } = await import("@/lib/multi-intent/MessageDecomposer");
-    const _holisticGoal = GoalRegistry.matchBySignals(userMessage);
-    const _holisticGoalType = _holisticGoal?.type ?? null;
-    // Adaptive/composite goals (supervisedEngineering, openhands.runTask) exigem
-    // contexto holístico: seus sinais (write verb + file path + engineering
-    // context, ou verbos de correção + validação) ficam distribuídos pela
-    // mensagem inteira. Se o MessageDecomposer partir a mensagem em fragments
-    // independentes, nenhum fragment individual satisfaz os critérios de
-    // inferSupervisedEngineering / openhands.runTask, e a missão cai no LLM
-    // fallback narrando tool calls falsas. Preservar o goal holistic roteia
-    // pelo pipeline normal → ConversationPlanningEngine → adaptive path.
-    const _isHolisticAdaptive = _holisticGoalType === "supervisedEngineering"
-      || _holisticGoalType === "openhands.runTask";
-    const _mightBeMultiIntent = userMessage.length > 30 && _gateDecompose(userMessage).length > 1
-      // MCP callTool preservation: uma mensagem deterministicamente reconhecida
-      // como mcp.callTool por enderecamento MCP explicito carrega os argumentos
-      // da tool em linguagem natural (ex: "...e procure no codigo por X usando
-      // busca literal. Mostre 10 resultados"). O MessageDecomposer separaria
-      // " e procure" como 2a intencao independente, fragmentando os argumentos
-      // antes que o Generic MCP Argument Resolution (resolveMcpArguments) possa
-      // inferi-los do inputSchema a partir do rawText completo. Guard restringe
-      // a mcp.callTool (nao mcp.listTools, nao mera presenca da palavra "mcp"):
-      // deixa a mensagem inteira seguir pelo pipeline principal ate o
-      // MCPConnector -> resolveMcpArguments -> mcpClientCall com rawText intacto.
-      && _holisticGoalType !== "mcp.callTool"
-      // Adaptive goal preservation: supervisedEngineering / openhands.runTask
-      // são missões holísticas — NÃO decompor em fragments independentes.
-      // Mensagens realmente compostas com intents independentes ("Leia meu
-      // Gmail e veja meu calendário") continuam sendo decompostas.
-      && !_isHolisticAdaptive;
+    const _mightBeMultiIntent = userMessage.length > 30 && _gateDecompose(userMessage).length > 1;
     if (_mightBeMultiIntent) try {
       const { decomposeMessage } = await import("@/lib/multi-intent/MessageDecomposer");
       const fragments = decomposeMessage(userMessage);
@@ -872,9 +842,34 @@ class ConversationPipeline {
 
         // [EF-49.2 probe] PlanningEngine
         try { const { ef492Store: _s } = await import("@/lib/ef492/RuntimePipelineInstrument"); _s.record(executionId, { layer: "ConversationPlanningEngine", source: "production_runtime", timestamp: Date.now(), durationMs: null, input: `goalType="${goalBridgeResult.goal.type}"`, output: "ExecutionPlan", caller: "ConversationPipeline", next: "ConversationRuntimeEngine", status: "executed" }); } catch { /* non-blocking */ }
+        const planningStartedAt = Date.now();
+        RuntimeDebug.recordDiagnostic({
+          executionId,
+          component: "ConversationPlanningEngine",
+          source: "planning",
+          event: "planning_started",
+          status: "running",
+          goalId: goalBridgeResult.goal.id,
+          startedAt: planningStartedAt,
+        });
         const planResult = conversationPlanningEngine.plan(goalBridgeResult.goal, {
           mode: "live",
           context: planningContext,
+        });
+        const planningFinishedAt = Date.now();
+        RuntimeDebug.recordDiagnostic({
+          executionId,
+          component: "ConversationPlanningEngine",
+          source: "planning",
+          event: planResult.success ? "planning_completed" : "planning_failed",
+          status: planResult.success ? "completed" : "failed",
+          planId: planResult.plan.id,
+          goalId: goalBridgeResult.goal.id,
+          startedAt: planningStartedAt,
+          finishedAt: planningFinishedAt,
+          durationMs: planningFinishedAt - planningStartedAt,
+          hasError: !planResult.success,
+          errorType: planResult.success ? undefined : "planning",
         });
 
         try {
@@ -1121,7 +1116,7 @@ class ConversationPipeline {
             _eiOutcome &&
             _eiOutcome.status === "success" &&
             _singleStep?.connector === "adaptive-process" &&
-            (_singleStep?.capability === "deepResearch" || _singleStep?.capability === "supervisedEngineering") &&
+            _singleStep?.capability === "deepResearch" &&
             typeof _eiOutcome.output === "string"
           ) {
             const _report = _eiOutcome.output;
@@ -1184,7 +1179,6 @@ class ConversationPipeline {
             userMessage,
             goalBridgeResult.goal.type,
             kfmModel,
-            planResult.plan,
           );
 
           try {
@@ -1515,6 +1509,16 @@ class ConversationPipeline {
     conversationStore.setStatus("idle");
     conversationStore.setReasoningPhase("idle");
     setStep("finalize", "done");
+    RuntimeDebug.recordDiagnostic({
+      executionId,
+      component: "ConversationPipeline",
+      source: "pipeline",
+      event: "pipeline_completed",
+      status: "completed",
+      finishedAt: Date.now(),
+      durationMs: Date.now() - t0synth,
+    });
+    RuntimeDebug.closeExecution(executionId);
 
     // ── 7. Background batch processing ──────────────────────────────────
     this._backgroundProcessing(session, [...messages, savedUser], {
@@ -1530,6 +1534,18 @@ class ConversationPipeline {
 
     } catch (err) {
       console.error('[IA-044][PIPELINE-CATCH]', { message: err?.message, stack: err?.stack, name: err?.name });
+      RuntimeDebug.recordDiagnostic({
+        executionId,
+        component: "ConversationPipeline",
+        source: "pipeline",
+        event: "pipeline_failed",
+        status: "failed",
+        finishedAt: Date.now(),
+        durationMs: Date.now() - t0synth,
+        hasError: true,
+        errorType: err instanceof Error ? err.name : "runtime",
+      });
+      RuntimeDebug.closeExecution(executionId);
       // ── Fallback: arbitrate with whatever candidates we have ──────────────
       // Even on error, we attempt to deliver the best available candidate.
       let finalResponse = "Nao consegui processar sua mensagem. Por favor, tente novamente.";
@@ -1586,6 +1602,15 @@ class ConversationPipeline {
     if (this._currentExecutionId) {
       conversationStreaming.cancel(this._currentExecutionId);
       conversationMetrics.recordCancellation(this._currentExecutionId);
+      RuntimeDebug.recordDiagnostic({
+        executionId: this._currentExecutionId,
+        component: "ConversationPipeline",
+        source: "pipeline",
+        event: "pipeline_cancelled",
+        status: "cancelled",
+        finishedAt: Date.now(),
+      });
+      RuntimeDebug.closeExecution(this._currentExecutionId);
     }
     conversationRecovery.safeReset(this._currentExecutionId ?? "");
     this._currentExecutionId = null;
