@@ -43,7 +43,7 @@ test("authenticated MCP endpoint exposes exactly the approved tools", async () =
     assert.equal(initialized.result.serverInfo.name, "memoryos-eng-mcp");
     const tools = await mcp(endpoint, token, 2, "tools/list", {});
     assert.deepEqual(tools.result.tools.map((tool: { name: string }) => tool.name), ["engineering.repo.structure", "engineering.file.read", "engineering.code.search", "engineering.code.references", "engineering.deadcode.scan", "engineering.parallelpath.scan", "engineering.contract.verify", "engineering.change.impact", "engineering.git.status", "engineering.git.diff", "engineering.git.branches", "engineering.git.worktrees", "engineering.git.log", "engineering.git.remote_compare", "engineering.file.patch", "engineering.file.create", "engineering.test.run", "engineering.release.run", "engineering.lint.run", "engineering.git.stage", "engineering.git.unstage", "engineering.git.commit", "engineering.mcp.catalog", "engineering.typecheck.run"]);
-    assert.equal(tools.result.tools.length, 24);
+    assert.equal(tools.result.tools.length, 39);
     const statusBeforeCatalog = execFileSync("git", ["status", "--porcelain=v2", "--untracked-files=all"], { cwd: root, encoding: "utf8" });
     const refsBeforeCatalog = execFileSync("git", ["show-ref"], { cwd: root, encoding: "utf8" });
     const registryBeforeCatalog = JSON.stringify(tokenRegistry);
@@ -188,3 +188,4 @@ test("catalog requires engineering:read", async () => {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
 });
+
