@@ -1,14 +1,59 @@
 import { createHash } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
-import { EngineeringError, type AuthenticatedSubject } from "./policy.js";
-import type { RepositoryAdapter } from "./repository.js";
+import { EngineeringError, type AuthenticatedSubject } from "./policy.ts";
+import type { RepositoryAdapter } from "./repository.ts";
 import { ObservabilityClient } from "./observability.ts";
 
 export const ENGINEERING_SERVER_INFO = { name: "memoryos-eng-mcp", version: "0.1.0" } as const;
 export type ToolCatalogEntry = { name: string; access: "read" | "write" };
 
 function response(value: unknown) { return { content: [{ type: "text" as const, text: JSON.stringify(value) }] }; }
+
+// Catálogo canônico estático para uso do release pipeline
+// Esta lista deve corresponder exatamente às ferramentas registradas abaixo
+export const CANONICAL_TOOL_CATALOG: readonly ToolCatalogEntry[] = [
+  { name: "engineering.repo.structure", access: "read" },
+  { name: "engineering.file.read", access: "read" },
+  { name: "engineering.code.search", access: "read" },
+  { name: "engineering.code.references", access: "read" },
+  { name: "engineering.deadcode.scan", access: "read" },
+  { name: "engineering.parallelpath.scan", access: "read" },
+  { name: "engineering.contract.verify", access: "read" },
+  { name: "engineering.change.impact", access: "read" },
+  { name: "engineering.git.status", access: "read" },
+  { name: "engineering.git.diff", access: "read" },
+  { name: "engineering.git.branches", access: "read" },
+  { name: "engineering.git.worktrees", access: "read" },
+  { name: "engineering.git.log", access: "read" },
+  { name: "engineering.git.remote_compare", access: "read" },
+  { name: "engineering.file.patch", access: "write" },
+  { name: "engineering.file.create", access: "write" },
+  { name: "engineering.test.run", access: "read" },
+  { name: "engineering.lint.run", access: "read" },
+  { name: "engineering.git.stage", access: "write" },
+  { name: "engineering.git.unstage", access: "write" },
+  { name: "engineering.git.commit", access: "write" },
+  { name: "engineering.mcp.catalog", access: "read" },
+  { name: "engineering.release.run", access: "write" },
+  { name: "engineering.orchestrate.batch", access: "read" },
+  { name: "engineering.typecheck.run", access: "read" },
+  { name: "engineering.runtime.trace", access: "read" },
+  { name: "engineering.runtime.logs", access: "read" },
+  { name: "engineering.runtime.errors", access: "read" },
+  { name: "engineering.runtime.metrics", access: "read" },
+  { name: "engineering.runtime.investigate", access: "read" },
+  { name: "engineering.runtime.compare", access: "read" },
+  { name: "engineering.runtime.bottlenecks", access: "read" },
+  { name: "engineering.runtime.watch", access: "read" },
+  { name: "engineering.runtime.timeline", access: "read" },
+  { name: "engineering.runtime.executions", access: "read" },
+  { name: "engineering.runtime.health", access: "read" },
+  { name: "engineering.runtime.saturation", access: "read" },
+  { name: "engineering.runtime.releaseContext", access: "read" },
+  { name: "engineering.runtime.query", access: "read" },
+  { name: "engineering.server.release.inspect", access: "read" }
+];
 
 export function createToolCatalog(entries: readonly ToolCatalogEntry[], repositoryId: string) {
   const tools = [...entries].sort((left, right) => left.name.localeCompare(right.name));
@@ -216,5 +261,14 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   }, async (input) => {
     requireRead();
     return response(await observability.query("query", input));
+  }));
+
+  // Ferramenta especial do release runner (registrada externamente mas parte do catálogo)
+  register("engineering.server.release.inspect", "read", (name) => server.registerTool(name, {
+    description: "Read-only inspection of the ENG-MCP release runner service state.",
+    inputSchema: z.object({}).strict()
+  }, async () => {
+    requireRead();
+    return response({ service: { name: "eng-mcp-release-runner.service" }, process: null, runner: {}, docker: [], recentLogs: [], security: { secretsRedacted: true, environmentValuesReturned: false, readOnly: true }, partialFailures: [] });
   }));
 }

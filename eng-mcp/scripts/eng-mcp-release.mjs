@@ -1,5 +1,4 @@
-﻿#!/usr/bin/env node
-import { spawn } from "node:child_process";
+﻿import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { access, mkdir, readFile, readdir, rm, stat, writeFile, rename } from "node:fs/promises";
 import net from "node:net";
@@ -12,6 +11,39 @@ export const ACTIONS = Object.freeze(["test", "build", "candidate", "deploy", "s
 const OUTPUT_LIMIT = 256 * 1024;
 const COMMAND_TIMEOUT = 180_000;
 const WORKTREE_ROOT = "/opt/eng-mcp-release-data/worktrees";
+
+// Determina o repository root de forma determinística
+async function resolveRepositoryRoot(config) {
+  const canonicalSource = path.resolve(config.canonicalSource);
+  
+  // Verifica se o diretório existe
+  await access(canonicalSource);
+  
+  // Garante que canonicalSource está dentro do repositório ENG-MCP
+  const gitRootResult = await runProcess("git", ["-C", canonicalSource, "rev-parse", "--show-toplevel"], { cwd: canonicalSource }).catch(() => ({ exitCode: 1, stdout: "", stderr: "" }));
+  if (gitRootResult.exitCode !== 0) {
+    throw new Error(`REPOSITORY_ROOT_INVALID: ${canonicalSource} não é um repositório Git`);
+  }
+  
+  const gitRoot = path.resolve(gitRootResult.stdout.trim());
+  
+  // Garante que não estamos escapando do repositório
+  if (!canonicalSource.startsWith(gitRoot + path.sep) && canonicalSource !== gitRoot) {
+    throw new Error(`REPOSITORY_ROOT_ESCAPE: ${canonicalSource} fora do repositório Git ${gitRoot}`);
+  }
+  
+  return gitRoot;
+}
+
+// Enumerar arquivos usando git ls-files para garantir limites do repositório
+async function gitTrackedFiles(repositoryRoot) {
+  const result = await mustRun("git", ["-C", repositoryRoot, "ls-files", "--cached", "--others", "--exclude-standard"], { cwd: repositoryRoot });
+  const files = result.stdout.trim().split(/\r?\n/).filter(line => line.length > 0);
+  return files.map(relative => ({
+    relative: relative.replaceAll(path.sep, "/"),
+    absolute: path.join(repositoryRoot, relative)
+  }));
+}
 
 export function parseCliWithOptions(argv) {
   const args = argv.slice(2);
@@ -48,15 +80,28 @@ export function assertCandidateIsolation(config) {
 }
 
 export async function deriveExpectedCatalog(source) {
-  // Extrai todas as tool names das chamadas register("engineering.xxx", ...)
-  const registerMatches = [...source.matchAll(/register\("([^"]+)"/g)];
-  let tools = [...new Set(registerMatches.map(m => m[1]))];
-  // Adiciona tools especiais não registradas no source mas presentes no catálogo
-  const specialTools = ["engineering.server.release.inspect"];
-  for (const special of specialTools) {
-    if (!tools.includes(special)) tools.push(special);
+  // Procura pela definição de CANONICAL_TOOL_CATALOG
+  const catalogMatch = source.match(/export const CANONICAL_TOOL_CATALOG: readonly ToolCatalogEntry\[\] = (\[[\s\S]*?\])/);
+  if (!catalogMatch) {
+    // Fallback para regex de register (mantido para compatibilidade)
+    const registerMatches = [...source.matchAll(/register\("([^"]+)"/g)];
+    let tools = [...new Set(registerMatches.map(m => m[1]))];
+    tools.sort();
+    const count = tools.length;
+    if (count === 0) throw new Error("EXPECTED_TOOL_CATALOG_NOT_FOUND");
+    return { count, tools };
   }
-  tools.sort();
+  
+  // Tenta parsear o array JSON-like
+  let catalogArray;
+  try {
+    const arrayText = catalogMatch[1].replace(/(['"])?([a-zA-Z0-9_]+)(['"])?:/g, '"$2":');
+    catalogArray = JSON.parse(arrayText);
+  } catch {
+    throw new Error("EXPECTED_TOOL_CATALOG_INVALID");
+  }
+  
+  const tools = catalogArray.map(entry => entry.name).sort();
   const count = tools.length;
   if (count === 0) throw new Error("EXPECTED_TOOL_CATALOG_NOT_FOUND");
   return { count, tools };
@@ -168,15 +213,16 @@ async function saveState(config, state) {
 }
 
 async function sourceFiles(root, directory = root) {
-  const entries = await readdir(directory, { withFileTypes: true });
-  const files = [];
-  for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-    if (["node_modules", ".git"].includes(entry.name) || entry.name.endsWith(".zip")) continue;
-    const absolute = path.join(directory, entry.name);
-    if (entry.isDirectory()) files.push(...await sourceFiles(root, absolute));
-    else if (entry.isFile()) files.push({ absolute, relative: path.relative(root, absolute).replaceAll(path.sep, "/") });
+  // Usar git ls-files para enumerar arquivos trackeados (mais seguro)
+  const tracked = await gitTrackedFiles(root);
+  
+  // Filtrar para manter apenas arquivos no diretório especificado (se directory !== root)
+  if (directory !== root) {
+    const prefix = path.relative(root, directory).replaceAll(path.sep, "/") + "/";
+    return tracked.filter(file => file.relative.startsWith(prefix));
   }
-  return files;
+  
+  return tracked;
 }
 
 async function calculateSourceHash(root) {
@@ -201,7 +247,13 @@ async function whitespaceCheck(root) {
 }
 
 async function expectedCatalog(config) {
-  const toolsSource = await readFile(path.join(config.canonicalSource, "src/tools.ts"), "utf8");
+  // Resolve o repository root determinístico
+  const repositoryRoot = await resolveRepositoryRoot(config);
+  
+  // Garante que estamos lendo o arquivo tools.ts dentro do repository root
+  const toolsPath = path.join(repositoryRoot, "src/tools.ts");
+  const toolsSource = await readFile(toolsPath, "utf8");
+  
   const catalog = await deriveExpectedCatalog(toolsSource);
   for (const required of config.requiredTools) if (!catalog.tools.includes(required)) throw new Error(`REQUIRED_TOOL_MISSING:${required}`);
   return catalog;
@@ -293,17 +345,23 @@ async function testCommitAction(config, commit, jobId) {
   }
 }
 
+async function getRepositoryRoot(config) {
+  return resolveRepositoryRoot(config);
+}
+
+// Modificar testAction para usar repository root
 async function testAction(config) {
-  await access(config.canonicalSource);
-  const sourceHash = await calculateSourceHash(config.canonicalSource);
+  const repositoryRoot = await getRepositoryRoot(config);
+  await access(repositoryRoot);
+  const sourceHash = await calculateSourceHash(repositoryRoot);
   const catalog = await expectedCatalog(config);
-  const diff = await runProcess("git", ["-C", config.canonicalSource, "diff", "--check"]);
+  const diff = await runProcess("git", ["-C", repositoryRoot, "diff", "--check"]);
   if (diff.exitCode !== 0) throw new Error(`DIFF_CHECK_FAILED:${diff.stderr || diff.stdout}`);
-  await whitespaceCheck(config.canonicalSource);
-  const built = await mustRun("docker", ["build", "-q", config.canonicalSource], { timeoutMs: 600_000 });
+  await whitespaceCheck(repositoryRoot);
+  const built = await mustRun("docker", ["build", "-q", repositoryRoot], { timeoutMs: 600_000 });
   const testImageId = built.stdout.trim().split(/\s+/).at(-1);
   if (!/^sha256:[a-f0-9]{64}$/.test(testImageId)) throw new Error("TEST_IMAGE_ID_INVALID");
-  const suite = await runProcess("docker", ["run", "--rm", "-v", `${path.join(config.canonicalSource, "scripts")}:/app/scripts:ro`, testImageId, "node", "--test", "--test-force-exit", "test/*.test.ts"], { timeoutMs: 300_000 });
+  const suite = await runProcess("docker", ["run", "--rm", "-v", `${path.join(repositoryRoot, "scripts")}:/app/scripts:ro`, testImageId, "npm", "test"], { timeoutMs: 300_000 });
   const tests = Number(/(?:^|\n)â„¹ tests (\d+)/.exec(suite.stdout)?.[1] ?? 0);
   const passed = Number(/(?:^|\n)â„¹ pass (\d+)/.exec(suite.stdout)?.[1] ?? 0);
   const failed = Number(/(?:^|\n)â„¹ fail (\d+)/.exec(suite.stdout)?.[1] ?? -1);
