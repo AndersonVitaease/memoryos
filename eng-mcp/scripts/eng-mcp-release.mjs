@@ -37,10 +37,26 @@ async function resolveRepositoryRoot(config) {
 
 // Enumerar arquivos usando git ls-files para garantir limites do repositório
 async function gitTrackedFiles(repositoryRoot) {
-  const result = await mustRun("git", ["-C", repositoryRoot, "ls-files", "--cached", "--others", "--exclude-standard"], { cwd: repositoryRoot });
+  const result = await mustRun("git", ["-
+
+C", repositoryRoot, "ls-files", "--cached", "--others", "--exclude-standard"], { cwd: repositoryRoot });
   const files = result.stdout.trim().split(/\r?\n/).filter(line => line.length > 0);
-  // Filtrar diretórios (paths terminando com /) e garantir que são arquivos
-  const validFiles = files.filter(relative => !relative.endsWith("/"));
+  // Filtrar diretórios (paths terminando com /) e garantir que são arquivos existentes
+  const validFiles = [];
+  for (const relative of files) {
+    // Pular diretórios (terminam com /)
+    if (relative.endsWith("/")) continue;
+    const absolute = path.join(repositoryRoot, relative);
+    // Verificar se arquivo existe e não é diretório
+    try {
+      const stats = await stat(absolute);
+      if (stats.isDirectory()) continue;
+      validFiles.push(relative);
+    } catch (error) {
+      // Se não puder stat (ENOENT), pular - arquivo não existe mais
+      continue;
+    }
+  }
   return validFiles.map(relative => ({
     relative: relative.replaceAll(path.sep, "/"),
     absolute: path.join(repositoryRoot, relative)
