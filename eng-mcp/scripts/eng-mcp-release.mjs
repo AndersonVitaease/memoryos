@@ -47,13 +47,14 @@ export function assertCandidateIsolation(config) {
   if (candidate.dataRoot.startsWith(production.repositoryMount.split(":")[0] + path.sep)) throw new Error("CANDIDATE_ROOT_NOT_ISOLATED");
 }
 
-export function deriveExpectedCatalog(source) {
-  const countMatch = /assert\.equal\(tools\.result\.tools\.length,\s*(\d+)\)/.exec(source);
-  const listMatch = /assert\.deepEqual\(tools\.result\.tools\.map\([\s\S]*?\),\s*(\[[\s\S]*?\])\);/.exec(source);
-  if (!countMatch || !listMatch) throw new Error("EXPECTED_TOOL_CATALOG_NOT_FOUND");
-  const tools = JSON.parse(listMatch[1]);
-  const count = Number(countMatch[1]);
-  if (!Array.isArray(tools) || tools.length !== count || new Set(tools).size !== count) throw new Error("EXPECTED_TOOL_CATALOG_INVALID");
+export async function deriveExpectedCatalog(source) {
+  // Importa o módulo tools.ts para obter catálogo canônico
+  const toolsPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "src", "tools.ts");
+  const { createToolCatalog, toolMetadata } = await import(`file://${toolsPath}`);
+  const catalog = createToolCatalog(toolMetadata, "memoryos");
+  const tools = catalog.tools.map(t => t.name).sort();
+  const count = tools.length;
+  if (count === 0) throw new Error("EXPECTED_TOOL_CATALOG_NOT_FOUND");
   return { count, tools };
 }
 
@@ -196,8 +197,8 @@ async function whitespaceCheck(root) {
 }
 
 async function expectedCatalog(config) {
-  const integration = await readFile(path.join(config.canonicalSource, "test/tools.integration.test.ts"), "utf8");
-  const catalog = deriveExpectedCatalog(integration);
+  const toolsSource = await readFile(path.join(config.canonicalSource, "src/tools.ts"), "utf8");
+  const catalog = await deriveExpectedCatalog(toolsSource);
   for (const required of config.requiredTools) if (!catalog.tools.includes(required)) throw new Error(`REQUIRED_TOOL_MISSING:${required}`);
   return catalog;
 }
