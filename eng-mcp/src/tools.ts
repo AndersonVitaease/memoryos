@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { McpServer } from "@modelcontextprotocol/server";
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import * as z from "zod/v4";
 import { EngineeringError, type AuthenticatedSubject } from "./policy.ts";
 import type { RepositoryAdapter } from "./repository.ts";
@@ -71,7 +71,7 @@ export function createToolCatalog(entries: readonly ToolCatalogEntry[], reposito
   };
 }
 
-export function registerEngineeringTools(server: McpServer, repository: RepositoryAdapter, subject: AuthenticatedSubject, repositoryId: string): void {
+export function registerEngineeringTools(server: Server, repository: RepositoryAdapter, subject: AuthenticatedSubject, repositoryId: string): void {
   const toolMetadata: ToolCatalogEntry[] = [];
   const register = (name: string, access: ToolCatalogEntry["access"], configure: (registeredName: string) => void) => { toolMetadata.push({ name, access }); configure(name); };
   const requireRead = () => { if (!subject.scopes.includes("engineering:read")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };

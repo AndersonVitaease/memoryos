@@ -366,19 +366,19 @@ async function getRepositoryRoot(config) {
   return resolveRepositoryRoot(config);
 }
 
-// Modificar testAction para usar repository root
+// Modificar testAction para usar canonicalSource como build context
 async function testAction(config) {
-  const repositoryRoot = await getRepositoryRoot(config);
-  await access(repositoryRoot);
-  const sourceHash = await calculateSourceHash(repositoryRoot);
+  const canonicalSource = path.resolve(config.canonicalSource);
+  await access(canonicalSource);
+  const sourceHash = await calculateSourceHash(canonicalSource);
   const catalog = await expectedCatalog(config);
-  const diff = await runProcess("git", ["-C", repositoryRoot, "diff", "--check"]);
+  const diff = await runProcess("git", ["-C", canonicalSource, "diff", "--check"]);
   if (diff.exitCode !== 0) throw new Error(`DIFF_CHECK_FAILED:${diff.stderr || diff.stdout}`);
-  await whitespaceCheck(repositoryRoot);
-  const built = await mustRun("docker", ["build", "-q", repositoryRoot], { timeoutMs: 600_000 });
+  await whitespaceCheck(canonicalSource);
+  const built = await mustRun("docker", ["build", "-q", canonicalSource], { timeoutMs: 600_000 });
   const testImageId = built.stdout.trim().split(/\s+/).at(-1);
   if (!/^sha256:[a-f0-9]{64}$/.test(testImageId)) throw new Error("TEST_IMAGE_ID_INVALID");
-  const suite = await runProcess("docker", ["run", "--rm", "-v", `${path.join(repositoryRoot, "scripts")}:/app/scripts:ro`, testImageId, "npm", "test"], { timeoutMs: 300_000 });
+  const suite = await runProcess("docker", ["run", "--rm", "-v", `${path.join(canonicalSource, "scripts")}:/app/scripts:ro`, testImageId, "npm", "test"], { timeoutMs: 300_000 });
   const tests = Number(/(?:^|\n)â„¹ tests (\d+)/.exec(suite.stdout)?.[1] ?? 0);
   const passed = Number(/(?:^|\n)â„¹ pass (\d+)/.exec(suite.stdout)?.[1] ?? 0);
   const failed = Number(/(?:^|\n)â„¹ fail (\d+)/.exec(suite.stdout)?.[1] ?? -1);
