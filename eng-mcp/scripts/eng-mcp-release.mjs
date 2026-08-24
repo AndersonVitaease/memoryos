@@ -37,9 +37,7 @@ async function resolveRepositoryRoot(config) {
 
 // Enumerar arquivos usando git ls-files para garantir limites do repositório
 async function gitTrackedFiles(repositoryRoot) {
-  const result = await mustRun("git", ["-
-
-C", repositoryRoot, "ls-files", "--cached", "--others", "--exclude-standard"], { cwd: repositoryRoot });
+  const result = await mustRun("git", ["-C", repositoryRoot, "ls-files", "--cached", "--others", "--exclude-standard"], { cwd: repositoryRoot });
   const files = result.stdout.trim().split(/\r?\n/).filter(line => line.length > 0);
   // Filtrar diretórios (paths terminando com /) e garantir que são arquivos existentes
   const validFiles = [];
