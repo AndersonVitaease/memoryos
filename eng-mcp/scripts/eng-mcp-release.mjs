@@ -263,11 +263,10 @@ async function whitespaceCheck(root) {
 }
 
 async function expectedCatalog(config) {
-  // Resolve o repository root determinístico
-  const repositoryRoot = await resolveRepositoryRoot(config);
-  
-  // Garante que estamos lendo o arquivo tools.ts dentro do repository root
-  const toolsPath = path.join(repositoryRoot, "src/tools.ts");
+  // Usar canonicalSource diretamente para localizar tools.ts
+  // repositoryRoot pode ser pai de canonicalSource (ex: /opt/memoryos vs /opt/memoryos/eng-mcp)
+  const canonicalSource = path.resolve(config.canonicalSource);
+  const toolsPath = path.join(canonicalSource, "src/tools.ts");
   const toolsSource = await readFile(toolsPath, "utf8");
   
   const catalog = await deriveExpectedCatalog(toolsSource);
