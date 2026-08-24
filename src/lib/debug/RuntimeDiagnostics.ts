@@ -80,6 +80,29 @@ export interface RuntimeDiagnosticSnapshot {
 }
 
 /**
+ * Resolve the canonical correlation ID for a runtime event.
+ * Prefers an explicit executionId from the payload, falling back to the
+ * event's own ID so that every event always has a non-empty correlation.
+ */
+export function resolveRuntimeCorrelationId(
+  eventId: string,
+  payload?: Record<string, unknown>,
+): string {
+  if (payload) {
+    const candidates = [
+      payload.executionId,
+      payload.execution_id,
+      payload.correlationId,
+      payload.correlation_id,
+    ];
+    for (const candidate of candidates) {
+      if (typeof candidate === "string" && candidate) return candidate;
+    }
+  }
+  return eventId;
+}
+
+/**
  * Sanitize a raw diagnostic input into a frozen, payload-free event with
  * an assigned sequence number and timestamp. Never throws.
  */
