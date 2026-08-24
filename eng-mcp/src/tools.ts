@@ -34,7 +34,7 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   const requireVerify = () => { if (!subject.scopes.includes("engineering:verify")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
   const requireGit = () => { if (!subject.scopes.includes("engineering:git")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
   const requireRelease = () => { if (!subject.scopes.includes("engineering:release")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
-  
+
   const observability = new ObservabilityClient();
 
   register("engineering.repo.structure", "read", (name) => server.registerTool(name, { description: "Read the authorized repository structure.", inputSchema: z.object({ path: z.string().optional(), maxDepth: z.number().int().optional(), includeFiles: z.boolean().optional(), maxEntries: z.number().int().optional() }) }, async (input) => { requireRead(); return response(await repository.structure(input)); }));

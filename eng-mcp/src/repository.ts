@@ -552,7 +552,7 @@ async references(subject: string, symbol: string, maxResults = 100) {
       for (const entry of await readdir(absolute, { withFileTypes: true })) {
         const next = relative ? `${relative}/${entry.name}` : entry.name;
         if (entry.isSymbolicLink()) continue;
-        
+
         // CONSERVATIVE EXCLUSION: Skip known artifact directories before ANY expensive operations
         // Only exclude if it's a directory AND matches our exclusion list
         if (entry.isDirectory()) {
@@ -561,7 +561,7 @@ async references(subject: string, symbol: string, maxResults = 100) {
             continue;
           }
         }
-        
+
         try { const resolved = await this.policy.resolve(next); if (entry.isDirectory()) await visit(resolved.absolutePath, resolved.relativePath); else if (entry.isFile()) { this.policy.assertReadableExtension(resolved.relativePath); const data = await readFile(resolved.absolutePath); files += 1; bytes += data.length; if (files > 2_000 || bytes > 16 * 1024 * 1024) throw new EngineeringError("BASELINE_LIMIT_EXCEEDED"); manifest.set(resolved.relativePath, this.hash(data)); } } catch (error) { if (error instanceof EngineeringError && error.code === "BASELINE_LIMIT_EXCEEDED") throw error; }
       }
     };
@@ -633,15 +633,15 @@ async references(subject: string, symbol: string, maxResults = 100) {
       try {
         // Placeholder implementation - delegates to test infrastructure
         const result = await runVerificationCommand("node", ["--version"], engineeringProjectRoot, Math.min(Math.max(input.timeoutMs ?? 30_000, 1), 300_000), 131_072, sanitizedLintEnvironment());
-        return { 
-          success: result.exitCode === 0, 
-          exitCode: result.exitCode, 
-          durationMs: result.durationMs, 
-          profile: input.mode, 
+        return {
+          success: result.exitCode === 0,
+          exitCode: result.exitCode,
+          durationMs: result.durationMs,
+          profile: input.mode,
           path: input.path,
-          stdout: result.stdout, 
-          stderr: result.stderr, 
-          truncated: result.truncated 
+          stdout: result.stdout,
+          stderr: result.stderr,
+          truncated: result.truncated
         };
       } finally {
         const baselineAfter = await this.baseline();
@@ -656,7 +656,7 @@ async references(subject: string, symbol: string, maxResults = 100) {
       try {
         // Placeholder implementation for release pipeline operations
         const result = await runVerificationCommand("echo", [input.operation, input.jobId || "default"].filter(Boolean), engineeringProjectRoot, 60_000, 131_072, sanitizedLintEnvironment());
-        return { 
+        return {
           success: result.exitCode === 0,
           operation: input.operation,
           jobId: input.jobId || null,
