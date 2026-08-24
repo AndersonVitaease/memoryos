@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+﻿#!/usr/bin/env node
 import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { access, mkdir, readFile, readdir, rm, stat, writeFile, rename } from "node:fs/promises";
@@ -51,7 +51,7 @@ export async function deriveExpectedCatalog(source) {
   // Extrai todas as tool names das chamadas register("engineering.xxx", ...)
   const registerMatches = [...source.matchAll(/register\("([^"]+)"/g)];
   let tools = [...new Set(registerMatches.map(m => m[1]))];
-  // Adiciona tools especiais n�o registradas no source mas presentes no cat�logo
+  // Adiciona tools especiais não registradas no source mas presentes no catálogo
   const specialTools = ["engineering.server.release.inspect"];
   for (const special of specialTools) {
     if (!tools.includes(special)) tools.push(special);
@@ -228,20 +228,20 @@ async function resolveCommit(repositoryPath, commit) {
   const revParseResult = await mustRun("git", ["-C", repositoryPath, "rev-parse", `${commit}^{commit}`]);
   const resolvedCommit = revParseResult.stdout.trim();
   if (resolvedCommit !== commit) throw new Error("COMMIT_RESOLUTION_MISMATCH");
-  
+
   return resolvedCommit;
 }
 
 async function createWorktree(repositoryPath, resolvedCommit, jobId) {
   const worktreePath = path.join(WORKTREE_ROOT, jobId);
   await mkdir(path.dirname(worktreePath), { recursive: true, mode: 0o700 });
-  
+
   await mustRun("git", ["-C", repositoryPath, "worktree", "add", "--detach", worktreePath, resolvedCommit]);
-  
+
   const verifyResult = await mustRun("git", ["-C", worktreePath, "rev-parse", "HEAD"]);
   const worktreeCommit = verifyResult.stdout.trim();
   if (worktreeCommit !== resolvedCommit) throw new Error("WORKTREE_COMMIT_MISMATCH");
-  
+
   return worktreePath;
 }
 
@@ -257,7 +257,7 @@ async function cleanupWorktree(repositoryPath, worktreePath) {
 async function testCommitAction(config, commit, jobId) {
   await validateCommit(commit);
   const resolvedCommit = await resolveCommit(config.canonicalSource, commit);
-  
+
   let worktreePath;
   try {
     worktreePath = await createWorktree(config.canonicalSource, resolvedCommit, jobId);
@@ -270,9 +270,9 @@ async function testCommitAction(config, commit, jobId) {
     const testImageId = built.stdout.trim().split(/\s+/).at(-1);
     if (!/^sha256:[a-f0-9]{64}$/.test(testImageId)) throw new Error("TEST_IMAGE_ID_INVALID");
     const suite = await runProcess("docker", ["run", "--rm", "-v", `${path.join(worktreePath, "scripts")}:/app/scripts:ro`, testImageId, "node", "--test", "--test-force-exit", "test/*.test.ts"], { timeoutMs: 300_000 });
-    const tests = Number(/(?:^|\n)ℹ tests (\d+)/.exec(suite.stdout)?.[1] ?? 0);
-    const passed = Number(/(?:^|\n)ℹ pass (\d+)/.exec(suite.stdout)?.[1] ?? 0);
-    const failed = Number(/(?:^|\n)ℹ fail (\d+)/.exec(suite.stdout)?.[1] ?? -1);
+    const tests = Number(/(?:^|\n)â„¹ tests (\d+)/.exec(suite.stdout)?.[1] ?? 0);
+    const passed = Number(/(?:^|\n)â„¹ pass (\d+)/.exec(suite.stdout)?.[1] ?? 0);
+    const failed = Number(/(?:^|\n)â„¹ fail (\d+)/.exec(suite.stdout)?.[1] ?? -1);
     const result = {
       requestedCommit: commit,
       resolvedCommit,
@@ -304,9 +304,9 @@ async function testAction(config) {
   const testImageId = built.stdout.trim().split(/\s+/).at(-1);
   if (!/^sha256:[a-f0-9]{64}$/.test(testImageId)) throw new Error("TEST_IMAGE_ID_INVALID");
   const suite = await runProcess("docker", ["run", "--rm", "-v", `${path.join(config.canonicalSource, "scripts")}:/app/scripts:ro`, testImageId, "node", "--test", "--test-force-exit", "test/*.test.ts"], { timeoutMs: 300_000 });
-  const tests = Number(/(?:^|\n)ℹ tests (\d+)/.exec(suite.stdout)?.[1] ?? 0);
-  const passed = Number(/(?:^|\n)ℹ pass (\d+)/.exec(suite.stdout)?.[1] ?? 0);
-  const failed = Number(/(?:^|\n)ℹ fail (\d+)/.exec(suite.stdout)?.[1] ?? -1);
+  const tests = Number(/(?:^|\n)â„¹ tests (\d+)/.exec(suite.stdout)?.[1] ?? 0);
+  const passed = Number(/(?:^|\n)â„¹ pass (\d+)/.exec(suite.stdout)?.[1] ?? 0);
+  const failed = Number(/(?:^|\n)â„¹ fail (\d+)/.exec(suite.stdout)?.[1] ?? -1);
   const state = { ...invalidateDownstreamState(await loadState(config)), testStatus: suite.exitCode === 0 && failed === 0 ? "PASS" : "FAIL", testSourceHash: sourceHash, testImageId, tests, passed, failed, expectedToolCount: catalog.count, expectedTools: catalog.tools, testedAt: new Date().toISOString() };
   await saveState(config, state);
   if (state.testStatus !== "PASS") throw new Error(`TESTS_FAILED:${suite.stderr || suite.stdout}`);
@@ -449,45 +449,45 @@ export function validateReleaseInspectResult(inspectResult) {
 async function smokeAction(config) {
   const state = await loadState(config); const production = await productionInspect(config);
   if (!production.running) throw new Error("PRODUCTION_NOT_RUNNING");
-  
+
   // 1. Validate runner mount presence
   validateRunnerMount(production.mounts, config.production.runnerMount);
-  
+
   const unauth = await fetch(config.production.endpoint, { method: "POST" }); if (unauth.status !== 401) throw new Error("SMOKE_UNAUTH_INVALID");
   const bearer = process.env.ENG_MCP_RELEASE_BEARER;
   if (!bearer) throw new Error("SMOKE_BEARER_REQUIRED");
   await mcp(config.production.endpoint, bearer, 1, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "release-smoke", version: "1" } });
-  
+
   // 2. Validate tool catalog convergence (already includes catalog version, tool count, required tools)
   const listed = await mcp(config.production.endpoint, bearer, 2, "tools/list", {}); const names = listed.result.tools.map((tool) => tool.name);
   validateToolCatalog(names, state.expectedTools, config.requiredTools);
-  
+
   // 3. Validate catalog operational integrity
   const catalogCall = await mcp(config.production.endpoint, bearer, 20, "tools/call", { name: "engineering.mcp.catalog", arguments: {} }); if (catalogCall.result.isError) throw new Error("SMOKE_CATALOG_CALL_FAILED");
   const repeatedCatalogCall = await mcp(config.production.endpoint, bearer, 21, "tools/call", { name: "engineering.mcp.catalog", arguments: {} }); if (repeatedCatalogCall.result.isError) throw new Error("SMOKE_CATALOG_CALL_FAILED");
   const operationalCatalog = JSON.parse(catalogCall.result.content[0].text); const repeatedCatalog = JSON.parse(repeatedCatalogCall.result.content[0].text);
   const productionCatalogHash = validateOperationalCatalog(operationalCatalog, names); if (repeatedCatalog.catalogHash !== productionCatalogHash) throw new Error("SMOKE_CATALOG_NONDETERMINISTIC");
-  
+
   // 4. Validate release runner via engineering.server.release.inspect
   const inspectCall = await mcp(config.production.endpoint, bearer, 23, "tools/call", { name: "engineering.server.release.inspect", arguments: {} });
   if (inspectCall.result.isError) throw new Error("SMOKE_RELEASE_INSPECT_CALL_FAILED");
 const inspectResult = JSON.parse(inspectCall.result.content[0].text);
     validateReleaseInspectResult(inspectResult);
-  
+
   // 5. Validate operational tests
   const testCall = await mcp(config.production.endpoint, bearer, 22, "tools/call", { name: "engineering.test.run", arguments: { mode: "file", path: "eng-mcp/test/editing.test.ts" } }); if (testCall.result.isError) throw new Error("SMOKE_TEST_RUN_CALL_FAILED");
   const testOutcome = JSON.parse(testCall.result.content[0].text); if (!testOutcome.success || testOutcome.exitCode !== 0 || testOutcome.filesChanged?.length) throw new Error("SMOKE_TEST_RUN_FAILED");
-  
+
   // 6. Validate basic read capability
   const read = await mcp(config.production.endpoint, bearer, 3, "tools/call", { name: "engineering.repo.structure", arguments: { path: "eng-mcp", maxDepth: 1, maxEntries: 20 } }); if (read.result.isError) throw new Error("SMOKE_READ_FAILED");
-  
+
   // 7. Return convergence evidence
-  const next = { 
-    ...state, 
-    smokeStatus: "PASS", 
-    productionCatalogHash, 
-    productionImage: production.image, 
-    productionImageId: production.imageId, 
+  const next = {
+    ...state,
+    smokeStatus: "PASS",
+    productionCatalogHash,
+    productionImage: production.image,
+    productionImageId: production.imageId,
     deployedAt: state.deployedAt ?? null,
     converged: true,
     catalogVersion: operationalCatalog.catalogVersion,
@@ -538,7 +538,7 @@ async function deployAction(config) {
 function sanitizeSecrets(value) {
   // Sempre retornar string ou null, nunca objeto ou array
   if (value === null || value === undefined) return null;
-  
+
   // Converter para string seguramente
   let text;
   if (typeof value === "string") {
@@ -551,22 +551,22 @@ function sanitizeSecrets(value) {
       text = String(value);
     }
   } else {
-    // N�meros, booleanos, etc
+    // Números, booleanos, etc
     text = String(value);
   }
-  
+
   const secretPatterns = [
     /(Bearer|Authorization|api_key|apikey|private_key|password|token|secret|credential|key)[:=]\s*["']?([^"'\s,;]{10,})["']?/gi,
     /(-----BEGIN (RSA|EC|DSA|OPENSSH) PRIVATE KEY-----[\\s\\S]*?-----END (RSA|EC|DSA|OPENSSH) PRIVATE KEY-----)/gi,
     /ssh-[a-zA-Z0-9]+ [A-Za-z0-9+/]+={0,3}/g,
     /[A-Fa-f0-9]{64}/g,
   ];
-  
+
   let sanitized = text;
   for (const pattern of secretPatterns) {
     sanitized = sanitized.replace(pattern, "[REDACTED_SECRET]");
   }
-  
+
   return sanitized;
 }
 
@@ -603,26 +603,26 @@ async function inspectAction(config) {
     function extractRunnerPath(execStartValue) {
       try {
         if (!execStartValue) return null;
-        
+
         // Normalizar para string - com tratamento para todos os tipos
         const execStart = String(execStartValue);
-        
+
         // Tentar extrair caminho do sistema systemd
         // Formato: { path=/usr/bin/node ; argv[]=/usr/bin/node /path/to/runner.mjs ; ... }
         const argvMatch = execStart.match(/argv\[\]=[^;]+node\s+([^;\s]+)/);
         if (argvMatch && argvMatch[1]) {
           return argvMatch[1];
         }
-        
-        // Fallback: padr�o simples node <script>
+
+        // Fallback: padrão simples node <script>
         const simpleMatch = execStart.match(/node\s+(\S+)/);
         if (simpleMatch && simpleMatch[1]) {
           return simpleMatch[1];
         }
-        
+
         return null;
       } catch (error) {
-        // N�o falhar a a��o inteira por parsing de path
+        // Não falhar a ação inteira por parsing de path
         return null;
       }
     }
@@ -631,8 +631,8 @@ async function inspectAction(config) {
     const execStartSanitized = execStartValue ? sanitizeSecrets(execStartValue) : null;
     const runnerScriptPath = extractRunnerPath(execStartValue);
     const pipelinePath = runnerScriptPath ? runnerScriptPath.replace(/release-runner\.mjs$/, "eng-mcp-release.mjs") : null;
-    
-    // Registrar partial failure se n�o conseguiu extrair path mas execStart existe
+
+    // Registrar partial failure se não conseguiu extrair path mas execStart existe
     if (execStartValue && !runnerScriptPath) {
       response.partialFailures.push({ section: "runner_path_parse", error: "Could not extract runner script path from ExecStart" });
     }
@@ -654,28 +654,28 @@ async function inspectAction(config) {
     if (response.service.mainPid && response.service.mainPid > 0) {
       try {
         const pid = response.service.mainPid.toString();
-        
+
         // Obter comando completo de /proc/<pid>/cmdline (NUL-separated)
         const cmdlineResult = await runProcess("cat", [`/proc/${pid}/cmdline`]);
         let command = null;
         if (cmdlineResult.exitCode === 0 && cmdlineResult.stdout) {
-          // Converter NUL separators para espa�os
+          // Converter NUL separators para espaços
           command = cmdlineResult.stdout.replace(/\0/g, ' ').trim();
         }
-        
+
         // Obter CWD de /proc/<pid>/cwd
         const cwdResult = await runProcess("readlink", [`-f`, `/proc/${pid}/cwd`]);
         let cwd = null;
         if (cwdResult.exitCode === 0 && cwdResult.stdout) {
           cwd = cwdResult.stdout.trim();
         }
-        
+
         response.process = {
           pid: response.service.mainPid,
           command,
           cwd
         };
-        
+
       } catch (error) {
         response.partialFailures.push({ section: "process", error: error.message });
       }
