@@ -5,7 +5,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { createEngineeringHttpServer } from "../src/server.js";
+import { createEngineeringHttpServer } from "../src/server.ts";
 import { createToolCatalog, type ToolCatalogEntry } from "../src/tools.js";
 
 async function fixture() {

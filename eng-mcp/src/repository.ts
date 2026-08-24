@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { lstat, readdir, readFile, writeFile, open, rename, unlink, link, realpath, stat } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
-import { EngineeringError, RepositoryPolicy, assertNoSensitiveContent } from "./policy.js";
+import { EngineeringError, RepositoryPolicy, assertNoSensitiveContent } from "./policy.ts";
 
 export type CommandResult = { stdout: string; stderr: string; truncated: boolean };
 export type CommandRunner = (executable: string, args: string[], cwd: string, timeoutMs: number, maxBytes: number, environment?: NodeJS.ProcessEnv) => Promise<CommandResult>;
@@ -648,18 +648,29 @@ async references(subject: string, symbol: string, maxResults = 100) {
     });
   }
 
-  async releaseRun(subject: string, input: { jobId?: string; operation: "deploy" | "verify" | "clean" }) {
+  async releaseRun(subject: string, input: { jobId?: string; operation: "test" | "build" | "candidate" | "deploy" | "smoke" | "rollback" | "inspect" | "status"; targetCommit?: string }) {
     return this.heavy.run(subject, async () => {
       const baselineBefore = await this.baseline();
       try {
-        // Placeholder implementation for release pipeline operations
-        const result = await runVerificationCommand("echo", [input.operation, input.jobId || "default"].filter(Boolean), engineeringProjectRoot, 60_000, 131_072, sanitizedLintEnvironment());
+        const scriptPath = path.join(engineeringProjectRoot, "scripts", "eng-mcp-release.mjs");
+        const args = [scriptPath, input.operation];
+        if (input.targetCommit) {
+          args.push("--targetCommit", input.targetCommit);
+        }
+        const result = await runVerificationCommand("node", args, engineeringProjectRoot, 120_000, 131_072, sanitizedLintEnvironment());
+        const output = result.stdout.toString("utf8");
+        let parsed;
+        try {
+          parsed = JSON.parse(output);
+        } catch {
+          throw new Error("RELEASE_RUNNER_OUTPUT_INVALID");
+        }
         return { 
           success: result.exitCode === 0,
           operation: input.operation,
           jobId: input.jobId || null,
-          stdout: result.stdout,
-          stderr: result.stderr,
+          stdout: output,
+          stderr: result.stderr.toString("utf8"),
           truncated: result.truncated
         };
       } finally {
