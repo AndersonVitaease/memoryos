@@ -39,7 +39,9 @@ async function resolveRepositoryRoot(config) {
 async function gitTrackedFiles(repositoryRoot) {
   const result = await mustRun("git", ["-C", repositoryRoot, "ls-files", "--cached", "--others", "--exclude-standard"], { cwd: repositoryRoot });
   const files = result.stdout.trim().split(/\r?\n/).filter(line => line.length > 0);
-  return files.map(relative => ({
+  // Filtrar diretórios (paths terminando com /) e garantir que são arquivos
+  const validFiles = files.filter(relative => !relative.endsWith("/"));
+  return validFiles.map(relative => ({
     relative: relative.replaceAll(path.sep, "/"),
     absolute: path.join(repositoryRoot, relative)
   }));
