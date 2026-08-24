@@ -39,11 +39,13 @@ async function resolveRepositoryRoot(config) {
 async function gitTrackedFiles(repositoryRoot) {
   const result = await mustRun("git", ["-C", repositoryRoot, "ls-files", "--cached", "--others", "--exclude-standard"], { cwd: repositoryRoot });
   const files = result.stdout.trim().split(/\r?\n/).filter(line => line.length > 0);
-  // Filtrar diretórios (paths terminando com /) e garantir que são arquivos existentes
+  // Filtrar diretórios (paths terminando com /), arquivos não existentes, e focar em eng-mcp/
   const validFiles = [];
   for (const relative of files) {
     // Pular diretórios (terminam com /)
     if (relative.endsWith("/")) continue;
+    // Focar apenas em arquivos dentro de eng-mcp/ (projeto específico)
+    if (!relative.startsWith("eng-mcp/")) continue;
     const absolute = path.join(repositoryRoot, relative);
     // Verificar se arquivo existe e não é diretório
     try {
