@@ -103,6 +103,59 @@ export function resolveRuntimeCorrelationId(
 }
 
 /**
+ * If no terminal event exists in the provided events, synthesize a
+ * pipeline-level terminal diagnostic so that the trace always has a
+ * clean ending. Returns null when a terminal event already exists.
+ */
+export function resolveMissingPipelineTerminal(input: {
+  executionId: string;
+  startedAt: number;
+  finishedAt: number;
+  events: RuntimeDiagnosticEvent[];
+  cancelled: boolean;
+  timedOut: boolean;
+}): RuntimeDiagnosticEventInput | null {
+  const hasTerminal = input.events.some((event) =>
+    event.event === "pipeline_completed"
+    || event.event === "pipeline_failed"
+    || event.event === "pipeline_cancelled"
+    || event.event === "runtime_completed"
+    || event.event === "runtime_failed"
+    || event.event === "runtime_timeout"
+    || event.event === "runtime_cancelled"
+  );
+  if (hasTerminal) return null;
+
+  const durationMs = input.finishedAt - input.startedAt;
+  let event: string;
+  let status: string;
+  let hasError = false;
+
+  if (input.cancelled) {
+    event = "pipeline_cancelled";
+    status = "cancelled";
+  } else if (input.timedOut) {
+    event = "pipeline_failed";
+    status = "timeout";
+    hasError = true;
+  } else {
+    event = "pipeline_completed";
+    status = "success";
+  }
+
+  return {
+    executionId: input.executionId,
+    component: "ConversationPipeline",
+    event,
+    status,
+    startedAt: input.startedAt,
+    finishedAt: input.finishedAt,
+    durationMs,
+    hasError,
+  };
+}
+
+/**
  * Sanitize a raw diagnostic input into a frozen, payload-free event with
  * an assigned sequence number and timestamp. Never throws.
  */
