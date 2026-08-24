@@ -35,6 +35,11 @@ export function parseCliWithOptions(argv) {
   return { action, options };
 }
 
+export function parseCli(argv) {
+  if (argv.length !== 3 || !ACTIONS.includes(argv[2])) throw new Error("RELEASE_ACTION_INVALID");
+  return argv[2];
+}
+
 export function assertCandidateIsolation(config) {
   const { candidate, production } = config;
   if (candidate.port === production.port) throw new Error("CANDIDATE_PORT_NOT_ISOLATED");
