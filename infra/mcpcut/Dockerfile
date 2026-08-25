@@ -33,7 +33,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends git \
 # Copy only necessary files
 RUN mkdir -p /opt/mcpcut \
     && cp -r app/ /opt/mcpcut/ \
-    && cp pyproject.toml constraints.txt server.json /opt/mcpcut/ \
+    && cp pyproject.toml constraints.txt server.json alembic.ini /opt/mcpcut/ \
     && cp -r migrations/ /opt/mcpcut/
 
 # Stage 3: Final image

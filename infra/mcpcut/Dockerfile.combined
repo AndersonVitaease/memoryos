@@ -22,7 +22,7 @@ RUN git clone https://github.com/musyta-labs/mcpCut.git . \
 # Copy built application to staging area
 RUN mkdir -p /opt/mcpcut \
     && cp -r app/ /opt/mcpcut/ \
-    && cp pyproject.toml constraints.txt server.json /opt/mcpcut/ \
+    && cp pyproject.toml constraints.txt server.json alembic.ini /opt/mcpcut/ \
     && cp -r migrations/ /opt/mcpcut/
 
 # Stage 2: Build Node.js proxy
