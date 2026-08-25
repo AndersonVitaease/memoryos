@@ -1,0 +1,106 @@
+# Combined mcpCut + Authentication Proxy for Render
+# Single container with mcpCut MCP server and Bearer auth proxy
+
+# Stage 1: Build mcpCut Python application
+FROM python:3.12-slim AS mcpcut-builder
+
+# Install system dependencies for mcpCut (FFmpeg only, no MLT for certification)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    fonts-dejavu-core \
+    fonts-noto-color-emoji \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /tmp/build
+
+# Clone and build mcpCut with pinned revision
+RUN git clone https://github.com/musyta-labs/mcpCut.git . \
+    && git checkout d8e9f7c5c7c1e4b6a8f9c0d1e2f3a4b5c6d7e8f9 \
+    && rm -rf .git
+
+# Copy built application to staging area
+RUN mkdir -p /opt/mcpcut \
+    && cp -r app/ /opt/mcpcut/ \
+    && cp pyproject.toml constraints.txt server.json /opt/mcpcut/ \
+    && cp -r migrations/ /opt/mcpcut/
+
+# Stage 2: Build Node.js proxy
+FROM node:20.18.1-alpine AS proxy-builder
+
+WORKDIR /tmp/proxy-build
+
+# Copy proxy files
+COPY --from=mcpcut-builder /opt/mcpcut /opt/mcpcut
+
+# Create proxy directory
+RUN mkdir -p /opt/proxy
+
+# Stage 3: Final combined image
+FROM python:3.12-slim
+
+# Install minimal FFmpeg for mcpCut
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    fonts-dejavu-core \
+    fonts-noto-color-emoji \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js for proxy (minimal runtime)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    nodejs \
+    npm \
+    && npm install -g npm@latest \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create application directories
+RUN mkdir -p /opt/mcpcut /opt/proxy /data/media /data/models \
+    && useradd -m -u 1000 -s /bin/bash appuser \
+    && chown -R appuser:appuser /opt /data
+
+# Copy mcpCut application
+COPY --from=mcpcut-builder /opt/mcpcut /opt/mcpcut
+
+# Copy proxy application
+COPY infra/mcpcut/proxy.js /opt/proxy/
+COPY infra/mcpcut/package.json /opt/proxy/
+
+WORKDIR /opt/mcpcut
+
+# Install Python dependencies for mcpCut (no extras)
+RUN pip install --no-cache-dir -r pyproject.toml \
+    && pip install --no-cache-dir mcp>=1.28.1,<2.0
+
+WORKDIR /opt/proxy
+
+# Install Node.js dependencies for proxy
+RUN npm install http-proxy
+
+# Switch to non-root user
+USER appuser
+
+# Environment variables
+ENV PORT=3002
+ENV MCPCUT_MCP_PROXY_SECRET=REQUIRED_SET_IN_RENDER
+ENV MCPCUT_INTERNAL_URL=http://127.0.0.1:8100/mcp
+ENV MCP_TRANSPORT=streamable-http
+ENV MCP_HOST=127.0.0.1
+ENV MCP_PORT=8100
+ENV MCP_AUTH_ENABLED=false
+ENV DATABASE_URL=sqlite:////data/editor.db
+ENV MEDIA_DIR=/data/media
+ENV MODELS_DIR=/data/models
+ENV RENDER_ENGINE=ffmpeg
+ENV EXPORT_TTL_HOURS=24
+ENV CLIP_CACHE_TTL_HOURS=48
+ENV RETENTION_ENABLED=false
+
+# Expose proxy port (Render will use PORT env var)
+EXPOSE 3002
+
+# Startup script that runs both processes
+COPY --chown=appuser:appuser infra/mcpcut/start.sh /opt/
+RUN chmod +x /opt/start.sh
+
+# Default command
+CMD ["/opt/start.sh"]

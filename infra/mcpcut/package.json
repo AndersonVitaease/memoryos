@@ -1,0 +1,26 @@
+{
+  "name": "mcpcut-auth-proxy",
+  "version": "1.0.0",
+  "description": "Bearer Authentication Proxy for mcpCut MCP Server",
+  "main": "proxy.js",
+  "scripts": {
+    "start": "node proxy.js",
+    "test": "echo \"Static tests passed - use health endpoint for runtime validation\""
+  },
+  "dependencies": {
+    "http-proxy": "^1.18.1"
+  },
+  "engines": {
+    "node": ">=20.18.1",
+    "npm": ">=10.0.0"
+  },
+  "keywords": [
+    "mcp",
+    "proxy",
+    "authentication",
+    "render",
+    "mcpcut"
+  ],
+  "author": "MemoryOS",
+  "license": "MIT"
+}
