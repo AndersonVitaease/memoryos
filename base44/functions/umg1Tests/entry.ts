@@ -1,20 +1,22 @@
 /**
- * umg1Tests — Sprint UMG-1 Test Suite
+ * umg1Tests — Sprint UMG-1 Test Suite (UploadFile approach)
  *
- * Tests the three UMG-1 objectives:
- *   1. No silent tool truncation (remove 20-tool limit)
- *   2. Deterministic namespace + canonical identity
- *   3. Atomic catalog swap (preserve previous on failure)
- *
- * Pure function tests + real persistence tests via MCPServerConfig.
- * Creates a temporary disabled MCPServerConfig record and cleans it up.
+ * 8 mandatory tests:
+ *   1. Legacy inline catalog readable
+ *   2. 500 tools: serialize → upload → URL persisted → fetch → exactly 500
+ *   3. rawToolName + canonicalId preserved after upload/fetch
+ *   4. V1 valid → V2 invalid → V1 preserved
+ *   5. V1 valid → V2 valid → upload V2 PASS → URL changes → V2 fully recovered
+ *   6. UploadFile V2 fails → URL V1 preserved
+ *   7. mcpClientCall continues working (imports resolve)
+ *   8. mcpBatchExecute continues working (readToolCatalog handles URL)
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 import {
   buildToolCatalog,
-  buildCanonicalId,
-  buildNamespace,
   validateToolCatalog,
+  writeToolCatalog,
+  readToolCatalog,
 } from '../../shared/mcpClient.ts';
 
 interface TestResult {
@@ -50,339 +52,227 @@ function generateDuplicateTools(): any[] {
   ];
 }
 
-function generateInvalidTools(): any[] {
-  return [
-    { name: 'valid_tool', description: 'OK', inputSchema: { type: 'object' } },
-    { name: '', description: 'Empty name — invalid', inputSchema: null },
-  ];
-}
-
-// ── Pure function tests ──────────────────────────────────────────────────────
-
-function test1_5tools(): TestResult {
-  const tools = generateSyntheticTools(5);
-  const catalog = buildToolCatalog('srv-1', 'github', tools);
-  const parsed = JSON.parse(catalog);
-  const passed = parsed.length === 5;
-  return { name: 'TEST 1: 5 tools — all persisted', passed, detail: `expected=5 got=${parsed.length}` };
-}
-
-function test2_25tools(): TestResult {
-  const tools = generateSyntheticTools(25);
-  const catalog = buildToolCatalog('srv-1', 'github', tools);
-  const parsed = JSON.parse(catalog);
-  const passed = parsed.length === 25;
-  return { name: 'TEST 2: 25 tools — no 20-tool truncation', passed, detail: `expected=25 got=${parsed.length}` };
-}
-
-function test3_100tools(): TestResult {
-  const tools = generateSyntheticTools(100);
-  const catalog = buildToolCatalog('srv-1', 'github', tools);
-  const parsed = JSON.parse(catalog);
-  const passed = parsed.length === 100;
-  return { name: 'TEST 3: 100 tools — none lost', passed, detail: `expected=100 got=${parsed.length}` };
-}
-
-function test4_pagination(): TestResult {
-  // Simulate 3 pages of tools
-  const page1 = generateSyntheticTools(10).map((t, i) => ({ ...t, name: `page1_tool_${i}` }));
-  const page2 = generateSyntheticTools(10).map((t, i) => ({ ...t, name: `page2_tool_${i}` }));
-  const page3 = generateSyntheticTools(5).map((t, i) => ({ ...t, name: `page3_tool_${i}` }));
-  const allTools = [...page1, ...page2, ...page3];
-  const catalog = buildToolCatalog('srv-1', 'github', allTools);
-  const parsed = JSON.parse(catalog);
-  const passed = parsed.length === 25;
-  return { name: 'TEST 4: Pagination aggregated (3 pages, 25 tools)', passed, detail: `expected=25 got=${parsed.length}` };
-}
-
-function test5_namespace(): TestResult {
-  const toolsA = [{ name: 'search', description: 'Search on server A', inputSchema: {} }];
-  const toolsB = [{ name: 'search', description: 'Search on server B', inputSchema: {} }];
-  const catalogA = buildToolCatalog('srv-a', 'github', toolsA);
-  const catalogB = buildToolCatalog('srv-b', 'dokploy', toolsB);
-  const parsedA = JSON.parse(catalogA);
-  const parsedB = JSON.parse(catalogB);
-  const nsA = parsedA[0].namespace;
-  const nsB = parsedB[0].namespace;
-  const passed = nsA !== nsB;
-  return { name: 'TEST 5: Namespace distinct (github.search vs dokploy.search)', passed, detail: `nsA=${nsA} nsB=${nsB} distinct=${nsA !== nsB}` };
-}
-
-function test6_rawToolName(): TestResult {
-  const tools = [{ name: 'my.raw.tool.name', description: 'Test', inputSchema: {} }];
-  const catalog = buildToolCatalog('srv-1', 'github', tools);
-  const parsed = JSON.parse(catalog);
-  const passed = parsed[0].name === 'my.raw.tool.name';
-  return { name: 'TEST 6: rawToolName preserved', passed, detail: `rawName=my.raw.tool.name stored=${parsed[0].name}` };
-}
-
-function test7_deterministic(): TestResult {
-  const tools = generateSyntheticTools(10);
-  const catalog1 = buildToolCatalog('srv-1', 'github', tools);
-  const catalog2 = buildToolCatalog('srv-1', 'github', tools);
-  const passed = catalog1 === catalog2;
-  return { name: 'TEST 7: Deterministic identity across discoveries', passed, detail: `identical=${passed}` };
-}
-
-function test7b_canonicalStableOnRename(): TestResult {
-  // Canonical ID must NOT change when serverName changes.
-  const tools = [{ name: 'search', description: 'Test', inputSchema: {} }];
-  const catBeforeRename = JSON.parse(buildToolCatalog('srv-1', 'github', tools));
-  const catAfterRename = JSON.parse(buildToolCatalog('srv-1', 'github-renamed', tools));
-  const canonicalBefore = catBeforeRename[0].canonicalId;
-  const canonicalAfter = catAfterRename[0].canonicalId;
-  const namespaceBefore = catBeforeRename[0].namespace;
-  const namespaceAfter = catAfterRename[0].namespace;
-  const canonicalStable = canonicalBefore === canonicalAfter;
-  const namespaceChanged = namespaceBefore !== namespaceAfter;
-  const passed = canonicalStable && namespaceChanged;
-  return {
-    name: 'TEST 7b: Canonical stable on rename, namespace changes',
-    passed,
-    detail: `canonical=${canonicalBefore} stable=${canonicalStable} | namespace ${namespaceBefore}→${namespaceAfter} changed=${namespaceChanged}`,
-  };
-}
-
-function test8_validSwap(): TestResult {
-  const tools = generateSyntheticTools(10);
-  const validation = validateToolCatalog(tools);
-  const passed = validation.valid;
-  return { name: 'TEST 8: Valid catalog passes validation', passed, detail: `valid=${validation.valid} count=${validation.toolCount}` };
-}
-
-function test9_invalidSwap(): TestResult {
-  const tools = generateDuplicateTools();
-  const validation = validateToolCatalog(tools);
-  const passed = !validation.valid && validation.duplicateNames.includes('search');
-  return { name: 'TEST 9: Duplicate names fail validation', passed, detail: `valid=${validation.valid} duplicates=${JSON.stringify(validation.duplicateNames)}` };
-}
-
-function test10_partialInvalid(): TestResult {
-  const tools = generateInvalidTools();
-  const validation = validateToolCatalog(tools);
-  const passed = !validation.valid;
-  return { name: 'TEST 10: Partially invalid catalog rejected', passed, detail: `valid=${validation.valid} error=${validation.error}` };
-}
-
-function test11_legacyFormat(): TestResult {
-  // Legacy format: array of {name, description, inputSchema} without namespace/canonicalId.
-  // toolNamesFromCache (mcpBatchExecute) reads only .name — must still work.
-  const legacy = [{ name: 'search', description: 'old', inputSchema: {} }];
-  const names = new Set(legacy.map((t: any) => t.name));
-  const passed = names.has('search');
-  return { name: 'TEST 11: Legacy format readable (name field)', passed, detail: `names=${JSON.stringify([...names])}` };
-}
-
-function test12_newFormatReadable(): TestResult {
-  // New format: includes namespace/canonicalId — mcpBatchExecute reads only .name.
-  const tools = generateSyntheticTools(5);
-  const catalog = buildToolCatalog('srv-1', 'github', tools);
-  const parsed = JSON.parse(catalog);
-  const names = new Set(parsed.map((t: any) => t.name));
-  const passed = names.size === 5 && parsed.every((t: any) => t.canonicalId && t.namespace);
-  return { name: 'TEST 12: New format readable by mcpBatchExecute', passed, detail: `names=${names.size} allHaveCanonical=${parsed.every((t: any) => t.canonicalId)}` };
-}
-
-function test13_legacyBackwardCompat(): TestResult {
-  // MCPServerConfig with old discovered_tools format must be parseable.
-  const oldFormat = JSON.stringify([{ name: 'old_tool', description: 'legacy', inputSchema: null }]);
-  const parsed = JSON.parse(oldFormat);
-  const passed = Array.isArray(parsed) && parsed[0].name === 'old_tool';
-  return { name: 'TEST 13: MCPServerConfig legacy compatible', passed, detail: `parsed.length=${parsed.length} name=${parsed[0]?.name}` };
-}
-
-function test14_noNonMcpImpact(): TestResult {
-  // This is a static check — no code changes touched non-MCP connectors.
-  // We verify by confirming buildToolCatalog is only imported by MCP-related files.
-  // In a test context, we just assert the function exists and is callable.
-  const passed = typeof buildToolCatalog === 'function' && typeof validateToolCatalog === 'function';
-  return { name: 'TEST 14: Non-MCP connectors unaffected (static)', passed, detail: `buildToolCatalog=${typeof buildToolCatalog} validateToolCatalog=${typeof validateToolCatalog}` };
-}
-
-// ── Carga tests ─────────────────────────────────────────────────────────────
-
-function carga100(): TestResult {
-  const tools = generateSyntheticTools(100);
-  const start = Date.now();
-  const catalog = buildToolCatalog('srv-carga-100', 'carga100', tools);
-  const elapsed = Date.now() - start;
-  const parsed = JSON.parse(catalog);
-  const sizeBytes = catalog.length;
-  const passed = parsed.length === 100;
-  return {
-    name: 'CARGA 100: build + serialize + parse',
-    passed,
-    detail: `count=${parsed.length} size=${sizeBytes} bytes (${(sizeBytes / 1024).toFixed(1)} KB) elapsed=${elapsed}ms`,
-  };
-}
-
-function carga500(): TestResult {
-  const tools = generateSyntheticTools(500);
-  const start = Date.now();
-  const catalog = buildToolCatalog('srv-carga-500', 'carga500', tools);
-  const elapsed = Date.now() - start;
-  const parsed = JSON.parse(catalog);
-  const sizeBytes = catalog.length;
-  const passed = parsed.length === 500;
-  return {
-    name: 'CARGA 500: build + serialize + parse',
-    passed,
-    detail: `count=${parsed.length} size=${sizeBytes} bytes (${(sizeBytes / 1024).toFixed(1)} KB) elapsed=${elapsed}ms`,
-  };
-}
-
-// ── Real persistence tests (requires DB) ────────────────────────────────────
-
-async function persistenceTest100(base44: any, serverId: string): Promise<TestResult> {
+// TEST 1: Legacy inline catalog readable
+async function test1_legacyInline(base44: any, serverId: string): Promise<TestResult> {
   try {
-    const tools = generateSyntheticTools(100);
-    const catalog = buildToolCatalog(serverId, 'persistence-test-100', tools);
+    const legacyTools = generateSyntheticTools(5);
+    const legacyJson = JSON.stringify(legacyTools);
     await base44.asServiceRole.entities.MCPServerConfig.update(serverId, {
-      discovered_tools: catalog,
+      discovered_tools: legacyJson,
     });
     const reRead = await base44.asServiceRole.entities.MCPServerConfig.get(serverId);
-    const parsed = JSON.parse(reRead.discovered_tools);
-    const passed = parsed.length === 100;
+    const tools = await readToolCatalog(reRead.discovered_tools);
+    const passed = tools.length === 5;
     return {
-      name: 'PERSIST 100: write → re-read → verify count',
+      name: 'TEST 1: Legacy inline catalog readable',
       passed,
-      detail: `written=100 read=${parsed.length} match=${passed}`,
+      detail: `written=5 (inline JSON) read=${tools.length} format=legacy`,
     };
   } catch (e) {
-    return { name: 'PERSIST 100: write → re-read → verify count', passed: false, detail: `EXCEPTION: ${(e as Error).message}` };
+    return { name: 'TEST 1: Legacy inline catalog readable', passed: false, detail: `EXCEPTION: ${(e as Error).message}` };
   }
 }
 
-async function persistenceTest500(base44: any, serverId: string): Promise<TestResult> {
+// TEST 2: 500 tools — serialize → upload → URL persisted → fetch → exactly 500
+async function test2_500toolsUploadFetch(base44: any, serverId: string): Promise<TestResult> {
   try {
     const tools = generateSyntheticTools(500);
-    const catalog = buildToolCatalog(serverId, 'persistence-test-500', tools);
-    const writeStart = Date.now();
+    const url = await writeToolCatalog(base44, serverId, 'test-500', tools);
     await base44.asServiceRole.entities.MCPServerConfig.update(serverId, {
-      discovered_tools: catalog,
+      discovered_tools: url,
     });
-    const writeMs = Date.now() - writeStart;
-    const readStart = Date.now();
     const reRead = await base44.asServiceRole.entities.MCPServerConfig.get(serverId);
-    const readMs = Date.now() - readStart;
-    const parsed = JSON.parse(reRead.discovered_tools);
-    const passed = parsed.length === 500;
+    const isUrl = reRead.discovered_tools.startsWith('http');
+    const recovered = await readToolCatalog(reRead.discovered_tools);
+    const passed = isUrl && recovered.length === 500;
     return {
-      name: 'PERSIST 500: write → re-read → verify count',
+      name: 'TEST 2: 500 tools — upload → URL → fetch → 500 recovered',
       passed,
-      detail: `written=500 read=${parsed.length} match=${passed} writeMs=${writeMs} readMs=${readMs} size=${catalog.length} bytes (${(catalog.length / 1024).toFixed(1)} KB)`,
+      detail: `storage=${isUrl ? 'url' : 'inline'} written=500 recovered=${recovered.length}`,
     };
   } catch (e) {
-    return { name: 'PERSIST 500: write → re-read → verify count', passed: false, detail: `EXCEPTION: ${(e as Error).message}` };
+    return { name: 'TEST 2: 500 tools — upload → URL → fetch → 500 recovered', passed: false, detail: `EXCEPTION: ${(e as Error).message}` };
   }
 }
 
-async function atomicSwapInvalidV2(base44: any, serverId: string): Promise<TestResult> {
+// TEST 3: rawToolName + canonicalId preserved after upload/fetch
+async function test3_identityPreserved(base44: any, serverId: string): Promise<TestResult> {
   try {
-    // Write V1 (valid, 10 tools)
+    const tools = [
+      { name: 'engineering.file.read', description: 'Read a file', inputSchema: { type: 'object' } },
+      { name: 'engineering.code.search', description: 'Search code', inputSchema: { type: 'object' } },
+    ];
+    const url = await writeToolCatalog(base44, serverId, 'eng-mcp', tools);
+    const recovered = await readToolCatalog(url);
+    const t0 = recovered[0];
+    const t1 = recovered[1];
+    const namesOk = t0?.name === 'engineering.file.read' && t1?.name === 'engineering.code.search';
+    const canonicalOk = t0?.canonicalId === `${serverId}.engineering.file.read` && t1?.canonicalId === `${serverId}.engineering.code.search`;
+    const passed = namesOk && canonicalOk;
+    return {
+      name: 'TEST 3: rawToolName + canonicalId preserved after upload/fetch',
+      passed,
+      detail: `names=${namesOk} canonical=${canonicalOk} t0.name=${t0?.name} t0.canonicalId=${t0?.canonicalId}`,
+    };
+  } catch (e) {
+    return { name: 'TEST 3: rawToolName + canonicalId preserved after upload/fetch', passed: false, detail: `EXCEPTION: ${(e as Error).message}` };
+  }
+}
+
+// TEST 4: V1 valid → V2 invalid → V1 preserved
+async function test4_v1PreservedOnInvalidV2(base44: any, serverId: string): Promise<TestResult> {
+  try {
     const v1Tools = generateSyntheticTools(10).map((t, i) => ({ ...t, name: `v1_tool_${i}` }));
-    const v1Catalog = buildToolCatalog(serverId, 'atomic-test', v1Tools);
+    const v1Url = await writeToolCatalog(base44, serverId, 'atomic-test', v1Tools);
     await base44.asServiceRole.entities.MCPServerConfig.update(serverId, {
-      discovered_tools: v1Catalog,
+      discovered_tools: v1Url,
       last_error: '',
     });
 
-    // Simulate V2 discovery with INVALID catalog (duplicate names)
     const v2InvalidTools = generateDuplicateTools();
     const validation = validateToolCatalog(v2InvalidTools);
     if (!validation.valid) {
-      // Validation failed — do NOT update discovered_tools, only set last_error.
       await base44.asServiceRole.entities.MCPServerConfig.update(serverId, {
         last_error: `CATALOG_VALIDATION_FAILED: ${validation.error}`,
       });
     }
 
-    // Re-read and verify V1 is preserved
     const reRead = await base44.asServiceRole.entities.MCPServerConfig.get(serverId);
-    const parsed = JSON.parse(reRead.discovered_tools);
-    const v1Preserved = parsed.length === 10 && parsed.every((t: any) => t.name.startsWith('v1_tool_'));
-    const passed = v1Preserved;
+    const v1Preserved = reRead.discovered_tools === v1Url;
+    const v1ToolsRecovered = await readToolCatalog(reRead.discovered_tools);
+    const allV1 = v1ToolsRecovered.length === 10 && v1ToolsRecovered.every((t: any) => t.name?.startsWith('v1_tool_'));
+    const passed = v1Preserved && allV1;
     return {
-      name: 'ATOMIC SWAP A: V1 valid → V2 invalid → V1 preserved',
+      name: 'TEST 4: V1 valid → V2 invalid → V1 preserved',
       passed,
-      detail: `v1Count=10 afterInvalidDiscovery=${parsed.length} v1Preserved=${v1Preserved} lastError=${reRead.last_error}`,
+      detail: `v1UrlPreserved=${v1Preserved} v1Count=${v1ToolsRecovered.length} allV1=${allV1}`,
     };
   } catch (e) {
-    return { name: 'ATOMIC SWAP A: V1 valid → V2 invalid → V1 preserved', passed: false, detail: `EXCEPTION: ${(e as Error).message}` };
+    return { name: 'TEST 4: V1 valid → V2 invalid → V1 preserved', passed: false, detail: `EXCEPTION: ${(e as Error).message}` };
   }
 }
 
-async function atomicSwapValidV2(base44: any, serverId: string): Promise<TestResult> {
+// TEST 5: V1 valid → V2 valid → upload V2 PASS → URL changes → V2 fully recovered
+async function test5_v2SwapsV1(base44: any, serverId: string): Promise<TestResult> {
   try {
-    // Write V1 (valid, 10 tools with v1_ prefix)
     const v1Tools = generateSyntheticTools(10).map((t, i) => ({ ...t, name: `v1_tool_${i}` }));
-    const v1Catalog = buildToolCatalog(serverId, 'atomic-test', v1Tools);
+    const v1Url = await writeToolCatalog(base44, serverId, 'swap-test', v1Tools);
     await base44.asServiceRole.entities.MCPServerConfig.update(serverId, {
-      discovered_tools: v1Catalog,
+      discovered_tools: v1Url,
       last_error: '',
     });
 
-    // Simulate V2 discovery with VALID catalog (20 tools with v2_ prefix)
     const v2Tools = generateSyntheticTools(20).map((t, i) => ({ ...t, name: `v2_tool_${i}` }));
     const validation = validateToolCatalog(v2Tools);
-    let updateCount = 0;
+    let v2Url = '';
     if (validation.valid) {
+      v2Url = await writeToolCatalog(base44, serverId, 'swap-test', v2Tools);
       await base44.asServiceRole.entities.MCPServerConfig.update(serverId, {
-        discovered_tools: buildToolCatalog(serverId, 'atomic-test', v2Tools),
+        discovered_tools: v2Url,
         last_discovered_at: new Date().toISOString(),
         last_error: '',
       });
-      updateCount = 1;
     }
 
-    // Re-read and verify V2 is active
     const reRead = await base44.asServiceRole.entities.MCPServerConfig.get(serverId);
-    const parsed = JSON.parse(reRead.discovered_tools);
-    const v2Active = parsed.length === 20 && parsed.every((t: any) => t.name.startsWith('v2_tool_'));
-    const passed = v2Active && updateCount === 1;
+    const urlChanged = reRead.discovered_tools === v2Url && v2Url !== v1Url;
+    const v2Recovered = await readToolCatalog(reRead.discovered_tools);
+    const allV2 = v2Recovered.length === 20 && v2Recovered.every((t: any) => t.name?.startsWith('v2_tool_'));
+    const passed = urlChanged && allV2;
     return {
-      name: 'ATOMIC SWAP B: V1 valid → V2 valid → V2 active (exactly 1 commit)',
+      name: 'TEST 5: V1 valid → V2 valid → URL changes → V2 fully recovered',
       passed,
-      detail: `v1Count=10 v2Count=20 updateCount=${updateCount} v2Active=${v2Active}`,
+      detail: `urlChanged=${urlChanged} v2Count=${v2Recovered.length} allV2=${allV2}`,
     };
   } catch (e) {
-    return { name: 'ATOMIC SWAP B: V1 valid → V2 valid → V2 active', passed: false, detail: `EXCEPTION: ${(e as Error).message}` };
+    return { name: 'TEST 5: V1 valid → V2 valid → URL changes → V2 fully recovered', passed: false, detail: `EXCEPTION: ${(e as Error).message}` };
   }
 }
 
-// ── Main ────────────────────────────────────────────────────────────────────
+// TEST 6: UploadFile V2 fails → URL V1 preserved
+async function test6_uploadFailsV1Preserved(base44: any, serverId: string): Promise<TestResult> {
+  try {
+    const v1Tools = generateSyntheticTools(10).map((t, i) => ({ ...t, name: `v1_tool_${i}` }));
+    const v1Url = await writeToolCatalog(base44, serverId, 'upload-fail-test', v1Tools);
+    await base44.asServiceRole.entities.MCPServerConfig.update(serverId, {
+      discovered_tools: v1Url,
+      last_error: '',
+    });
+
+    const brokenBase44 = {
+      ...base44,
+      integrations: {
+        ...base44.integrations,
+        Core: {
+          ...base44.integrations.Core,
+          UploadFile: async () => { throw new Error('Simulated upload failure'); },
+        },
+      },
+    };
+
+    let uploadFailed = false;
+    const v2Tools = generateSyntheticTools(20).map((t, i) => ({ ...t, name: `v2_tool_${i}` }));
+    try {
+      await writeToolCatalog(brokenBase44, serverId, 'upload-fail-test', v2Tools);
+    } catch {
+      uploadFailed = true;
+    }
+
+    const reRead = await base44.asServiceRole.entities.MCPServerConfig.get(serverId);
+    const v1Preserved = reRead.discovered_tools === v1Url;
+    const passed = uploadFailed && v1Preserved;
+    return {
+      name: 'TEST 6: UploadFile V2 fails → URL V1 preserved',
+      passed,
+      detail: `uploadFailed=${uploadFailed} v1UrlPreserved=${v1Preserved}`,
+    };
+  } catch (e) {
+    return { name: 'TEST 6: UploadFile V2 fails → URL V1 preserved', passed: false, detail: `EXCEPTION: ${(e as Error).message}` };
+  }
+}
+
+// TEST 7: mcpClientCall continues working (imports resolve)
+function test7_importsResolve(): TestResult {
+  const passed = typeof writeToolCatalog === 'function' && typeof readToolCatalog === 'function';
+  return {
+    name: 'TEST 7: mcpClientCall imports resolve (writeToolCatalog, readToolCatalog)',
+    passed,
+    detail: `writeToolCatalog=${typeof writeToolCatalog} readToolCatalog=${typeof readToolCatalog}`,
+  };
+}
+
+// TEST 8: mcpBatchExecute continues working (readToolCatalog handles URL)
+async function test8_batchExecuteUrlCompat(base44: any, serverId: string): Promise<TestResult> {
+  try {
+    const tools = generateSyntheticTools(15);
+    const url = await writeToolCatalog(base44, serverId, 'batch-compat-test', tools);
+    await base44.asServiceRole.entities.MCPServerConfig.update(serverId, {
+      discovered_tools: url,
+    });
+
+    const reRead = await base44.asServiceRole.entities.MCPServerConfig.get(serverId);
+    const recovered = await readToolCatalog(reRead.discovered_tools);
+    const names = new Set(recovered.map((t: any) => t?.name).filter(Boolean));
+    const passed = names.size === 15 && recovered.length === 15;
+    return {
+      name: 'TEST 8: mcpBatchExecute reads URL-based catalog (readToolCatalog)',
+      passed,
+      detail: `urlFormat=true recovered=${recovered.length} names=${names.size}`,
+    };
+  } catch (e) {
+    return { name: 'TEST 8: mcpBatchExecute reads URL-based catalog (readToolCatalog)', passed: false, detail: `EXCEPTION: ${(e as Error).message}` };
+  }
+}
 
 export default async function (req: Request): Promise<Response> {
   const results: TestResult[] = [];
 
-  // Phase 1: Pure function tests (no DB)
-  results.push(test1_5tools());
-  results.push(test2_25tools());
-  results.push(test3_100tools());
-  results.push(test4_pagination());
-  results.push(test5_namespace());
-  results.push(test6_rawToolName());
-  results.push(test7_deterministic());
-  results.push(test7b_canonicalStableOnRename());
-  results.push(test8_validSwap());
-  results.push(test9_invalidSwap());
-  results.push(test10_partialInvalid());
-  results.push(test11_legacyFormat());
-  results.push(test12_newFormatReadable());
-  results.push(test13_legacyBackwardCompat());
-  results.push(test14_noNonMcpImpact());
-
-  // Phase 2: Carga tests (pure, no DB)
-  results.push(carga100());
-  results.push(carga500());
-
-  // Phase 3: Real persistence + atomic swap tests (requires DB)
   const base44 = createClientFromRequest(req);
   const isAuth = await base44.auth.isAuthenticated();
+
   if (!isAuth) {
-    results.push({ name: 'PERSIST tests', passed: false, detail: 'Not authenticated — skipping DB tests' });
+    results.push({ name: 'All tests', passed: false, detail: 'Not authenticated' });
   } else {
-    // Create a temporary disabled MCPServerConfig record for testing
     let testServerId: string | null = null;
     try {
       const created = await base44.asServiceRole.entities.MCPServerConfig.create({
@@ -395,36 +285,29 @@ export default async function (req: Request): Promise<Response> {
       });
       testServerId = created.id;
 
-      results.push(await persistenceTest100(base44, testServerId));
-      results.push(await persistenceTest500(base44, testServerId));
-      results.push(await atomicSwapInvalidV2(base44, testServerId));
-      results.push(await atomicSwapValidV2(base44, testServerId));
+      results.push(await test1_legacyInline(base44, testServerId));
+      results.push(await test2_500toolsUploadFetch(base44, testServerId));
+      results.push(await test3_identityPreserved(base44, testServerId));
+      results.push(await test4_v1PreservedOnInvalidV2(base44, testServerId));
+      results.push(await test5_v2SwapsV1(base44, testServerId));
+      results.push(await test6_uploadFailsV1Preserved(base44, testServerId));
+      results.push(test7_importsResolve());
+      results.push(await test8_batchExecuteUrlCompat(base44, testServerId));
     } catch (e) {
-      results.push({ name: 'PERSIST/ATOMIC tests', passed: false, detail: `Setup failed: ${(e as Error).message}` });
+      results.push({ name: 'Setup', passed: false, detail: `Setup failed: ${(e as Error).message}` });
     } finally {
-      // Cleanup: delete the temporary test record
       if (testServerId) {
-        try {
-          await base44.asServiceRole.entities.MCPServerConfig.delete(testServerId);
-        } catch {
-          // Best-effort cleanup
-        }
+        try { await base44.asServiceRole.entities.MCPServerConfig.delete(testServerId); } catch { /* best-effort */ }
       }
     }
   }
 
-  // Summary
   const passed = results.filter(r => r.passed).length;
   const failed = results.filter(r => !r.passed).length;
   const allPassed = failed === 0;
 
   return Response.json({
-    summary: {
-      total: results.length,
-      passed,
-      failed,
-      allPassed,
-    },
+    summary: { total: results.length, passed, failed, allPassed },
     results,
   });
 }

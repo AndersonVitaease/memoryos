@@ -100,7 +100,15 @@ async function resolveMcpArguments(
     const server = await base44.entities.MCPServerConfig.get(serverId);
     const cachedRaw = server?.discovered_tools;
     if (cachedRaw) {
-      const cached = JSON.parse(cachedRaw);
+      const trimmed = cachedRaw.trim();
+      let cached: any[] = [];
+      if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+        const res = await fetch(trimmed);
+        const fetched = await res.json();
+        cached = Array.isArray(fetched) ? fetched : [];
+      } else if (trimmed.startsWith("[")) {
+        cached = JSON.parse(trimmed);
+      }
       const found = Array.isArray(cached)
         ? cached.find((t: any) => t && t.name === toolName)
         : null;

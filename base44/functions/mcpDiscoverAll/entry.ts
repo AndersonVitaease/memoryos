@@ -22,6 +22,7 @@ import {
   tryRecoverResultFromError,
   buildToolCatalog,
   validateToolCatalog,
+  writeToolCatalog,
   type MCPServerConfigRecord,
 } from '../../shared/mcpClient.ts';
 
@@ -73,13 +74,23 @@ async function discoverOne(base44: any, server: MCPServerConfigRecord): Promise<
       return { ok: false, toolCount: allTools.length, error: `Catalog validation failed: ${validation.error}` };
     }
 
-    // UMG-1.1 + UMG-1.2: Build catalog with canonicalId + namespace, no truncation.
+    // UMG-1.4: Upload catalog to file storage, store only URL in discovered_tools.
+    // Atomic swap: only update discovered_tools after successful upload.
+    let catalogUrl: string;
+    try {
+      catalogUrl = await writeToolCatalog(base44, server.id, server.name, allTools as any[]);
+    } catch (uploadErr) {
+      const errMsg = `Catalog upload failed: ${(uploadErr as Error).message}`;
+      await base44.asServiceRole.entities.MCPServerConfig.update(server.id, { last_error: truncateError(errMsg) });
+      console.log(`[mcpDiscoverAll] server=${server.name} upload_failed swap=preserved`);
+      return { ok: false, toolCount: allTools.length, error: errMsg };
+    }
     await base44.asServiceRole.entities.MCPServerConfig.update(server.id, {
-      discovered_tools: buildToolCatalog(server.id, server.name, allTools as any[]),
+      discovered_tools: catalogUrl,
       last_discovered_at: new Date().toISOString(),
       last_error: '',
     });
-    console.log(`[mcpDiscoverAll] server=${server.name} validation=pass swap=success tool_count=${allTools.length}`);
+    console.log(`[mcpDiscoverAll] server=${server.name} validation=pass swap=success tool_count=${allTools.length} storage=url`);
     return { ok: true, toolCount: allTools.length };
   } catch (e) {
     // UMG-1.3: Preserve previous catalog on unexpected error — do NOT update discovered_tools.
