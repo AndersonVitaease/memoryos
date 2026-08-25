@@ -23,6 +23,7 @@ export interface MCPServerConfigRecord {
   auth_token_prefix?: string;
   extra_headers?: string; // JSON string
   enabled?: boolean;
+  tool_policy?: string; // UMG-3: JSON string with per-tool governance { "toolName": { "reversibility": "safe" } }
 }
 
 /** Trunca mensagens de erro antes de salvar (limite de tamanho dos campos). */
@@ -294,4 +295,69 @@ export async function resolveMCPTool(
     description: entry.description ?? '',
     inputSchema: entry.inputSchema ?? null,
   };
+}
+
+// ── UMG-3: Tool Governance ───────────────────────────────────────────────────
+
+export type ToolReversibility = "safe" | "reversible" | "irreversible";
+
+export interface ToolConfirmation {
+  toolName: string;
+}
+
+export interface ToolGovernanceDecision {
+  toolName: string;
+  reversibility: ToolReversibility;
+  allowed: boolean;
+  reason: string;
+}
+
+/**
+ * UMG-3: Resolves tool governance from MCPServerConfig.tool_policy.
+ *
+ * tool_policy format (JSON string): { "toolName": { "reversibility": "safe" } }
+ * Reuses the existing Reversibility taxonomy (safe | reversible | irreversible).
+ *
+ * Rules:
+ *   - Tool with explicit policy → use declared reversibility
+ *   - Tool without policy → "irreversible" (UNKNOWN ≠ SAFE)
+ *   - safe/reversible → ALLOW
+ *   - irreversible:
+ *     - No confirmation → DENY
+ *     - Confirmation for different tool → DENY
+ *     - Confirmation with matching toolName → ALLOW
+ *
+ * Pure function. Read-only. Does not execute.
+ */
+export function resolveToolGovernance(
+  server: MCPServerConfigRecord,
+  toolName: string,
+  confirmation?: ToolConfirmation,
+): ToolGovernanceDecision {
+  let policy: Record<string, { reversibility?: ToolReversibility }> = {};
+  if (server.tool_policy) {
+    try {
+      policy = JSON.parse(server.tool_policy);
+    } catch {
+      // Invalid JSON → treat as empty (conservative: all tools default to irreversible)
+    }
+  }
+
+  const toolPolicy = policy[toolName];
+  const reversibility: ToolReversibility = toolPolicy?.reversibility ?? "irreversible";
+
+  if (reversibility === "safe" || reversibility === "reversible") {
+    return { toolName, reversibility, allowed: true, reason: `Tool '${toolName}' classified as ${reversibility}` };
+  }
+
+  // irreversible: requires tool-scoped confirmation
+  if (!confirmation) {
+    return { toolName, reversibility, allowed: false, reason: `Tool '${toolName}' is irreversible and requires confirmation` };
+  }
+
+  if (confirmation.toolName !== toolName) {
+    return { toolName, reversibility, allowed: false, reason: `Confirmation for '${confirmation.toolName}' does not match tool '${toolName}'` };
+  }
+
+  return { toolName, reversibility, allowed: true, reason: `Tool '${toolName}' confirmed by user` };
 }

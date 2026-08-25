@@ -30,6 +30,7 @@ import {
   buildToolCatalog,
   validateToolCatalog,
   writeToolCatalog,
+  resolveToolGovernance,
   type MCPServerConfigRecord,
 } from '../../shared/mcpClient.ts';
 
@@ -49,12 +50,13 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Invalid JSON body' }, { status: 400 });
     }
 
-    const { serverId, action, toolName, arguments: toolArgs, bearerToken } = body as {
+    const { serverId, action, toolName, arguments: toolArgs, bearerToken, confirmation } = body as {
       serverId?: string;
       action?: 'list' | 'call';
       toolName?: string;
       arguments?: Record<string, unknown>;
       bearerToken?: string;
+      confirmation?: { toolName: string };
     };
 
     if (!serverId) return Response.json({ error: 'Missing required field: serverId' }, { status: 400 });
@@ -71,6 +73,24 @@ Deno.serve(async (req) => {
     if (!server) return Response.json({ error: `MCPServerConfig '${serverId}' nao encontrado` }, { status: 404 });
     if (server.enabled === false) {
       return Response.json({ error: `Servidor '${server.name}' esta desabilitado (enabled=false)` }, { status: 409 });
+    }
+
+    // UMG-3: Tool governance gate — before connection (DENY never wastes a connection).
+    // UNKNOWN ≠ SAFE: tools without explicit policy default to "irreversible".
+    // Tool-scoped confirmation: confirmation.toolName must match the requested toolName.
+    if (action === 'call') {
+      const governance = resolveToolGovernance(server, toolName as string, confirmation);
+      if (!governance.allowed) {
+        await base44.asServiceRole.entities.MCPServerConfig.update(serverId, {
+          last_error: truncateError(`GOVERNANCE_DENIED: ${governance.reason}`),
+        });
+        return Response.json({
+          error: 'GOVERNANCE_DENIED',
+          reason: governance.reason,
+          toolName: governance.toolName,
+          reversibility: governance.reversibility,
+        }, { status: 403 });
+      }
     }
 
     const { headers, error: headerError } = resolveHeaders(server, bearerToken);
