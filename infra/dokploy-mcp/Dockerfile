@@ -8,13 +8,13 @@ RUN mkdir -p /opt/dokploy \
     && npm install --prefix /opt/dokploy --omit=dev @dokploy/mcp@0.30.2
 
 # Add dokploy-mcp to PATH
-ENV PATH="/opt/dokploy/node_modules/.bin:"
+ENV PATH="/opt/dokploy/node_modules/.bin:${PATH}"
 
 # Copy only proxy.js
 COPY proxy.js .
 
-# Expose 
-EXPOSE 
+# Expose $PORT
+EXPOSE $PORT
 
 # Start command
 CMD ["node", "proxy.js"]
