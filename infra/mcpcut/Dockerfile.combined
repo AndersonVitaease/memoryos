@@ -50,7 +50,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     nodejs \
     npm \
-    && npm install -g npm@latest \
     && rm -rf /var/lib/apt/lists/*
 
 # Create application directories
