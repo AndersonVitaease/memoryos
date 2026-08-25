@@ -44,7 +44,7 @@ WORKDIR /opt/mcpcut
 COPY --from=builder /opt/mcpcut/ .
 
 # Install Python dependencies (no extras)
-RUN pip install --no-cache-dir -r pyproject.toml \
+RUN pip install --no-cache-dir . \
     && pip install --no-cache-dir mcp>=1.28.1,<2.0
 
 # Create data directory (ephemeral for certification)

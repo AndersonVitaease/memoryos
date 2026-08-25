@@ -75,7 +75,7 @@ After deployment, register in MemoryOS via:
 - Ephemeral storage for certification
 
 ### Revision Control
-- mcpCut pinned to commit: `d8e9f7c5c7c1e4b6a8f9c0d1e2f3a4b5c6d7e8f9`
+- mcpCut pinned to commit: `573e443ff724caf20fd976bddd2ae7179bf01f15`
 - Python 3.12-slim base image
 - Node.js 20.18.1 for proxy
 - Deterministic builds

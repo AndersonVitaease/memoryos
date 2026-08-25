@@ -143,7 +143,7 @@ const shutdown = () => {
     setTimeout(() => {
         console.error('Forced shutdown after timeout');
         process.exit(1);
-    }, intervale);
+    }, 5000);
 };
 
 process.on('SIGTERM', shutdown);

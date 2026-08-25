@@ -30,24 +30,17 @@ FROM node:20.18.1-alpine AS proxy-builder
 
 WORKDIR /tmp/proxy-build
 
-# Copy proxy files
-COPY --from=mcpcut-builder /opt/mcpcut /opt/mcpcut
-
 # Create proxy directory
 RUN mkdir -p /opt/proxy
 
 # Stage 3: Final combined image
 FROM python:3.12-slim
 
-# Install minimal FFmpeg for mcpCut
+# Install minimal FFmpeg for mcpCut and Node.js for proxy
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     fonts-dejavu-core \
     fonts-noto-color-emoji \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Node.js for proxy (minimal runtime)
-RUN apt-get update && apt-get install -y --no-install-recommends \
     nodejs \
     npm \
     && rm -rf /var/lib/apt/lists/*
@@ -67,13 +60,13 @@ COPY infra/mcpcut/package.json /opt/proxy/
 WORKDIR /opt/mcpcut
 
 # Install Python dependencies for mcpCut (no extras)
-RUN pip install --no-cache-dir -r pyproject.toml \
+RUN pip install --no-cache-dir . \
     && pip install --no-cache-dir mcp>=1.28.1,<2.0
 
 WORKDIR /opt/proxy
 
 # Install Node.js dependencies for proxy
-RUN npm install http-proxy
+RUN npm install
 
 # Switch to non-root user
 USER appuser
