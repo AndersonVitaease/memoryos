@@ -1,16 +1,14 @@
-FROM node:20-slim AS builder
-
-# Install @dokploy/mcp during build
-RUN npm install -g @dokploy/mcp
-
 FROM node:20-slim
 
-# Set working directory
+# Set working directory for proxy
 WORKDIR /app
 
-# Copy dokploy-mcp binary and dependencies from builder
-COPY --from=builder /usr/local/lib/node_modules /usr/local/lib/node_modules
-COPY --from=builder /usr/local/bin/dokploy-mcp /usr/local/bin/dokploy-mcp
+# Install dokploy-mcp locally with all dependencies
+RUN mkdir -p /opt/dokploy \
+    && npm install --prefix /opt/dokploy --omit=dev @dokploy/mcp@0.30.2
+
+# Add dokploy-mcp to PATH
+ENV PATH="/opt/dokploy/node_modules/.bin:${PATH}"
 
 # Copy only proxy.js
 COPY proxy.js .
