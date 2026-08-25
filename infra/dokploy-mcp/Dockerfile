@@ -8,8 +8,8 @@ FROM node:20-slim
 # Set working directory
 WORKDIR /app
 
-# Copy dokploy-mcp binary from builder
-COPY --from=builder /usr/local/lib/node_modules/@dokploy/mcp /usr/local/lib/node_modules/@dokploy/mcp
+# Copy dokploy-mcp binary and dependencies from builder
+COPY --from=builder /usr/local/lib/node_modules /usr/local/lib/node_modules
 COPY --from=builder /usr/local/bin/dokploy-mcp /usr/local/bin/dokploy-mcp
 
 # Copy only proxy.js
