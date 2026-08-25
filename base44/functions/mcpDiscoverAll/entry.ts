@@ -20,7 +20,8 @@ import {
   resolveHeaders,
   truncateError,
   tryRecoverResultFromError,
-  compactToolsForCache,
+  buildToolCatalog,
+  validateToolCatalog,
   type MCPServerConfigRecord,
 } from '../../shared/mcpClient.ts';
 
@@ -40,6 +41,8 @@ async function discoverOne(base44: any, server: MCPServerConfigRecord): Promise<
     return { ok: false, toolCount: 0, error: errMsg };
   }
 
+  console.log(`[mcpDiscoverAll] server=${server.name} discovery_started`);
+  let pagesFetched = 0;
   try {
     const allTools: unknown[] = [];
     let cursor: string | undefined;
@@ -54,17 +57,35 @@ async function discoverOne(base44: any, server: MCPServerConfigRecord): Promise<
       }
       allTools.push(...(res.tools ?? []));
       cursor = res.nextCursor;
+      pagesFetched++;
     } while (cursor);
 
+    console.log(`[mcpDiscoverAll] server=${server.name} pages_fetched=${pagesFetched} tool_count=${allTools.length}`);
+
+    // UMG-1.3: Atomic catalog swap — validate BEFORE commit.
+    // On validation failure: preserve previous catalog (do NOT update discovered_tools).
+    const validation = validateToolCatalog(allTools);
+    if (!validation.valid) {
+      await base44.asServiceRole.entities.MCPServerConfig.update(server.id, {
+        last_error: truncateError(`CATALOG_VALIDATION_FAILED: ${validation.error}`),
+      });
+      console.log(`[mcpDiscoverAll] server=${server.name} validation=fail swap=preserved error='${validation.error}'`);
+      return { ok: false, toolCount: allTools.length, error: `Catalog validation failed: ${validation.error}` };
+    }
+
+    // UMG-1.1 + UMG-1.2: Build catalog with canonicalId + namespace, no truncation.
     await base44.asServiceRole.entities.MCPServerConfig.update(server.id, {
-      discovered_tools: compactToolsForCache(allTools as any[]),
+      discovered_tools: buildToolCatalog(server.id, server.name, allTools as any[]),
       last_discovered_at: new Date().toISOString(),
       last_error: '',
     });
+    console.log(`[mcpDiscoverAll] server=${server.name} validation=pass swap=success tool_count=${allTools.length}`);
     return { ok: true, toolCount: allTools.length };
   } catch (e) {
+    // UMG-1.3: Preserve previous catalog on unexpected error — do NOT update discovered_tools.
     const errMsg = `tools/list falhou: ${(e as Error).message}`;
     await base44.asServiceRole.entities.MCPServerConfig.update(server.id, { last_error: truncateError(errMsg) });
+    console.log(`[mcpDiscoverAll] server=${server.name} discovery_failed reason=exception swap=preserved`);
     return { ok: false, toolCount: 0, error: errMsg };
   } finally {
     try {

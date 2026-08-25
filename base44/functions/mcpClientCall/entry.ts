@@ -27,7 +27,8 @@ import {
   resolveHeaders,
   truncateError,
   tryRecoverResultFromError,
-  compactToolsForCache,
+  buildToolCatalog,
+  validateToolCatalog,
   type MCPServerConfigRecord,
 } from '../../shared/mcpClient.ts';
 
@@ -106,8 +107,22 @@ Deno.serve(async (req) => {
           cursor = res.nextCursor;
         } while (cursor);
 
+        // UMG-1.3: Validate before committing cache. On failure: preserve previous catalog.
+        const validation = validateToolCatalog(allTools);
+        if (!validation.valid) {
+          await base44.asServiceRole.entities.MCPServerConfig.update(serverId, {
+            last_error: truncateError(`CATALOG_VALIDATION_FAILED: ${validation.error}`),
+          });
+          return Response.json({
+            error: `Catalog validation failed: ${validation.error}`,
+            toolCount: validation.toolCount,
+            transport: session.transportUsed,
+          }, { status: 502 });
+        }
+
+        // UMG-1.1 + UMG-1.2: Build catalog with canonicalId + namespace, no truncation.
         await base44.asServiceRole.entities.MCPServerConfig.update(serverId, {
-          discovered_tools: compactToolsForCache(allTools as any[]),
+          discovered_tools: buildToolCatalog(server.id, server.name, allTools as any[]),
           last_discovered_at: new Date().toISOString(),
           last_error: '',
         });

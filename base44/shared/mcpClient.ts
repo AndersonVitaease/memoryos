@@ -108,14 +108,103 @@ export async function connect(serverUrl: string, headers: Record<string, string>
   }
 }
 
-/** Compacta tools para cache (nome + descricao curta) respeitando o limite de campo. */
-export function compactToolsForCache(allTools: any[]): string {
-  const compact = allTools.map((t) => ({
-    name: t.name,
-    description: typeof t.description === 'string' ? t.description.slice(0, 200) : '',
-    inputSchema: t.inputSchema ?? null,
-  }));
-  let json = JSON.stringify(compact);
-  if (json.length > 20000) json = JSON.stringify(compact.slice(0, 20));
-  return json;
+// ── UMG-1: Tool Catalog Foundation ─────────────────────────────────────────
+// No truncation. Each tool entry carries both a stable canonical identity
+// (serverId + rawToolName) and a friendly display namespace (serverName + rawToolName).
+
+/** Sanitizes a string for use as a namespace/display prefix. */
+function sanitizeNamespacePart(s: string): string {
+  const cleaned = String(s ?? '').trim().replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase();
+  return cleaned || 'server';
+}
+
+/**
+ * UMG-1.2: Canonical stable identity for a tool.
+ * Based on serverId (globally unique, never changes on rename) + rawToolName.
+ * No hashing — serverId already guarantees uniqueness.
+ */
+export function buildCanonicalId(serverId: string, rawToolName: string): string {
+  return `${serverId}.${rawToolName}`;
+}
+
+/**
+ * UMG-1.2: Friendly/display qualified name for a tool.
+ * Based on serverName (human-readable, may change on rename) + rawToolName.
+ */
+export function buildNamespace(serverName: string, rawToolName: string): string {
+  return `${sanitizeNamespacePart(serverName)}.${rawToolName}`;
+}
+
+export interface ToolCatalogEntry {
+  name: string;
+  canonicalId: string;
+  namespace: string;
+  serverId: string;
+  serverName: string;
+  description: string;
+  inputSchema: unknown;
+}
+
+export interface CatalogValidationResult {
+  valid: boolean;
+  error?: string;
+  toolCount: number;
+  duplicateNames: string[];
+}
+
+/**
+ * UMG-1.3: Validates a raw tools/list result before committing to cache.
+ * Pure function — no side effects. Returns valid=false on any structural issue.
+ */
+export function validateToolCatalog(allTools: unknown[]): CatalogValidationResult {
+  if (!Array.isArray(allTools)) {
+    return { valid: false, error: 'tools/list result is not an array', toolCount: 0, duplicateNames: [] };
+  }
+  const seen = new Set<string>();
+  const duplicates: string[] = [];
+  for (let i = 0; i < allTools.length; i++) {
+    const tool = allTools[i] as Record<string, unknown>;
+    if (!tool || typeof tool !== 'object') {
+      return { valid: false, error: `tool at index ${i} is not an object`, toolCount: i, duplicateNames: duplicates };
+    }
+    const name = tool.name;
+    if (typeof name !== 'string' || !name.trim()) {
+      return { valid: false, error: `tool at index ${i} has empty or non-string name`, toolCount: i, duplicateNames: duplicates };
+    }
+    if (seen.has(name)) {
+      duplicates.push(name);
+    } else {
+      seen.add(name);
+    }
+    const schema = tool.inputSchema;
+    if (schema !== undefined && schema !== null && (typeof schema !== 'object' || Array.isArray(schema))) {
+      return { valid: false, error: `tool '${name}' has invalid inputSchema (must be object or null)`, toolCount: i, duplicateNames: duplicates };
+    }
+  }
+  if (duplicates.length > 0) {
+    return { valid: false, error: `duplicate tool names: ${duplicates.join(', ')}`, toolCount: allTools.length, duplicateNames: duplicates };
+  }
+  return { valid: true, toolCount: allTools.length, duplicateNames: [] };
+}
+
+/**
+ * UMG-1.1: Builds the tool catalog JSON string for persistence in
+ * MCPServerConfig.discovered_tools. No truncation — all tools are preserved.
+ * Description is capped at 200 chars for cache efficiency (inputSchema passes full).
+ * UMG-1.2: Each entry includes canonicalId (stable) and namespace (display).
+ */
+export function buildToolCatalog(serverId: string, serverName: string, allTools: any[]): string {
+  const catalog: ToolCatalogEntry[] = allTools.map((t) => {
+    const rawName = typeof t?.name === 'string' ? t.name : String(t?.name ?? '');
+    return {
+      name: rawName,
+      canonicalId: buildCanonicalId(serverId, rawName),
+      namespace: buildNamespace(serverName, rawName),
+      serverId,
+      serverName,
+      description: typeof t?.description === 'string' ? t.description.slice(0, 200) : '',
+      inputSchema: t?.inputSchema ?? null,
+    };
+  });
+  return JSON.stringify(catalog);
 }
