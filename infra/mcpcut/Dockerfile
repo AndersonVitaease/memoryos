@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     fonts-dejavu-core \
     fonts-noto-color-emoji \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
