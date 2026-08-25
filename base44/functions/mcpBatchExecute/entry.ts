@@ -27,6 +27,7 @@ import {
   resolveHeaders,
   truncateError,
   tryRecoverResultFromError,
+  readToolCatalog,
   type MCPServerConfigRecord,
 } from '../../shared/mcpClient.ts';
 
@@ -61,10 +62,14 @@ function parseJson(v: unknown): any {
   try { return JSON.parse(v); } catch { return null; }
 }
 
-function toolNamesFromCache(v: unknown): Set<string> {
-  const parsed = parseJson(v);
-  if (!Array.isArray(parsed)) return new Set();
-  return new Set(parsed.map((t: any) => str(t?.name)).filter(Boolean));
+async function toolNamesFromCache(v: unknown): Promise<Set<string>> {
+  if (typeof v !== 'string' || !v) return new Set();
+  try {
+    const tools = await readToolCatalog(v);
+    return new Set(tools.map((t: any) => str(t?.name)).filter(Boolean));
+  } catch {
+    return new Set();
+  }
 }
 
 function toolAccessFromCatalog(v: unknown): Map<string, string> {
@@ -177,7 +182,7 @@ Deno.serve(async (req) => {
     return Response.json({ error: `Servidor '${server.name}' esta desabilitado (enabled=false)` }, { status: 409 });
   }
 
-  const cachedTools = toolNamesFromCache(server.discovered_tools);
+  const cachedTools = await toolNamesFromCache(server.discovered_tools);
   if (cachedTools.size) {
     const unknown = operations.map((op) => op.toolName).filter((name) => !cachedTools.has(name));
     if (unknown.length) {

@@ -208,3 +208,49 @@ export function buildToolCatalog(serverId: string, serverName: string, allTools:
   });
   return JSON.stringify(catalog);
 }
+
+// ── UMG-1.4: UploadFile-based catalog storage ────────────────────────────────
+// Platform string fields are limited to ~20KB. Catalogs with >50 tools exceed
+// this limit. Solution: upload the catalog JSON as a file and store only the URL
+// in discovered_tools. readToolCatalog handles both URL and inline JSON formats.
+
+export async function writeToolCatalog(
+  base44: any,
+  serverId: string,
+  serverName: string,
+  tools: any[],
+): Promise<string> {
+  const catalog = buildToolCatalog(serverId, serverName, tools);
+  const blob = new Blob([catalog], { type: 'application/json' });
+  const file = new File([blob], `mcp-catalog-${serverId}.json`, { type: 'application/json' });
+  const result = await base44.integrations.Core.UploadFile({ file });
+  if (!result?.file_url) {
+    throw new Error('UploadFile did not return a file_url');
+  }
+  return result.file_url as string;
+}
+
+export async function readToolCatalog(
+  catalogFieldValue: string | null | undefined,
+): Promise<any[]> {
+  if (!catalogFieldValue) return [];
+  const trimmed = catalogFieldValue.trim();
+  if (!trimmed) return [];
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+    const res = await fetch(trimmed);
+    if (!res.ok) {
+      throw new Error(`Failed to fetch catalog from ${trimmed}: ${res.status} ${res.statusText}`);
+    }
+    const parsed = await res.json();
+    return Array.isArray(parsed) ? parsed : (Array.isArray(parsed?.tools) ? parsed.tools : []);
+  }
+  if (trimmed.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}

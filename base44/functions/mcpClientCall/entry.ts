@@ -29,6 +29,7 @@ import {
   tryRecoverResultFromError,
   buildToolCatalog,
   validateToolCatalog,
+  writeToolCatalog,
   type MCPServerConfigRecord,
 } from '../../shared/mcpClient.ts';
 
@@ -120,9 +121,10 @@ Deno.serve(async (req) => {
           }, { status: 502 });
         }
 
-        // UMG-1.1 + UMG-1.2: Build catalog with canonicalId + namespace, no truncation.
+        // UMG-1.4: Upload catalog to file storage, store only URL in discovered_tools.
+        const catalogUrl = await writeToolCatalog(base44, server.id, server.name, allTools as any[]);
         await base44.asServiceRole.entities.MCPServerConfig.update(serverId, {
-          discovered_tools: buildToolCatalog(server.id, server.name, allTools as any[]),
+          discovered_tools: catalogUrl,
           last_discovered_at: new Date().toISOString(),
           last_error: '',
         });
