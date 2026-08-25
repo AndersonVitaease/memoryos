@@ -254,3 +254,44 @@ export async function readToolCatalog(
   }
   return [];
 }
+
+// ── UMG-2: Dynamic MCP Tool Resolution ──────────────────────────────────────
+
+export interface ResolvedMCPTool {
+  serverId: string;
+  rawToolName: string;
+  description: string;
+  inputSchema: unknown;
+}
+
+/**
+ * UMG-2: Resolves a canonicalId to { serverId, rawToolName, metadata }.
+ *
+ * canonicalId format: `${serverId}.${rawToolName}` (serverId is hex, no dots).
+ * The rawToolName is read FROM THE CATALOG ENTRY (field `name`), never parsed
+ * from the canonicalId — safe even when rawToolName contains dots.
+ *
+ * Returns null if the server or tool is not found. Read-only: does not execute.
+ */
+export async function resolveMCPTool(
+  base44: any,
+  canonicalId: string,
+): Promise<ResolvedMCPTool | null> {
+  const dotIndex = canonicalId.indexOf('.');
+  if (dotIndex === -1) return null;
+  const serverId = canonicalId.slice(0, dotIndex);
+
+  const server = await base44.asServiceRole.entities.MCPServerConfig.get(serverId);
+  if (!server) return null;
+
+  const tools = await readToolCatalog(server.discovered_tools);
+  const entry = tools.find((t: any) => t.canonicalId === canonicalId);
+  if (!entry) return null;
+
+  return {
+    serverId: entry.serverId ?? serverId,
+    rawToolName: entry.name,
+    description: entry.description ?? '',
+    inputSchema: entry.inputSchema ?? null,
+  };
+}
