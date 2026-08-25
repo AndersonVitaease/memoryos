@@ -9,7 +9,7 @@ const httpProxy = require('http-proxy');
 
 const PORT = process.env.PORT || 3002;
 const MCPCUT_MCP_PROXY_SECRET = process.env.MCPCUT_MCP_PROXY_SECRET;
-const MCPCUT_INTERNAL_URL = process.env.MCPCUT_INTERNAL_URL || 'http://127.0.0.1:8100/mcp';
+const MCPCUT_INTERNAL_URL = process.env.MCPCUT_INTERNAL_URL || 'http://127.0.0.1:8100';
 
 // Validate required environment variables
 if (!MCPCUT_MCP_PROXY_SECRET) {
