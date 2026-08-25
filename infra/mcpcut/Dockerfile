@@ -21,10 +21,10 @@ FROM base AS builder
 WORKDIR /tmp/build
 
 # Clone mcpCut with specific commit (pin for deterministic builds)
-# Using commit from Sep 29, 2025 - main release
+# Using commit 573e443ff724caf20fd976bddd2ae7179bf01f15 (Aug 3, 2026)
 RUN apt-get update && apt-get install -y --no-install-recommends git \
     && git clone https://github.com/musyta-labs/mcpCut.git . \
-    && git checkout d8e9f7c5c7c1e4b6a8f9c0d1e2f3a4b5c6d7e8f9 \
+    && git checkout 573e443ff724caf20fd976bddd2ae7179bf01f15 \
     && rm -rf .git \
     && rm -f .gitignore \
     && apt-get purge -y git && apt-get autoremove -y
