@@ -45,7 +45,7 @@ COPY --from=builder /opt/mcpcut/ .
 
 # Install Python dependencies (no extras)
 RUN pip install --no-cache-dir . \
-    && pip install --no-cache-dir mcp>=1.28.1,<2.0
+    && pip install --no-cache-dir "mcp>=1.28.1,<2.0"
 
 # Create data directory (ephemeral for certification)
 RUN mkdir -p /data/media /data/models \

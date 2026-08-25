@@ -61,7 +61,7 @@ WORKDIR /opt/mcpcut
 
 # Install Python dependencies for mcpCut (no extras)
 RUN pip install --no-cache-dir . \
-    && pip install --no-cache-dir mcp>=1.28.1,<2.0
+    && pip install --no-cache-dir "mcp>=1.28.1,<2.0"
 
 WORKDIR /opt/proxy
 
