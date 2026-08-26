@@ -35,6 +35,8 @@ export class UCMEMemoryService implements MemoryService {
         maxResults: request.options?.maxResults ?? 10,
         timeoutMs:  request.options?.timeoutMs ?? 5000,
         traceId:    request.options?.traceId,
+        projectId:  request.projectId ?? null,
+        sessionId:  request.sessionId,
       });
 
       memories = result.prompt ?? "";
