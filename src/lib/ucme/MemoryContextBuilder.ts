@@ -25,6 +25,8 @@ export const MemoryContextBuilder = {
       maxResults?: number;
       timeoutMs?:  number;
       traceId?:    string;
+      projectId?:  string | null;
+      sessionId?:  string | null;
     } = {},
   ): Promise<MemoryContext> {
     const query: MemoryQuery = {
@@ -34,6 +36,8 @@ export const MemoryContextBuilder = {
       maxPerProvider:   opts.maxResults ?? 10,
       timeoutMs:        opts.timeoutMs ?? 5000,
       traceId:          opts.traceId,
+      projectId:        opts.projectId ?? null,
+      sessionId:        opts.sessionId ?? null,
     };
     return UnifiedMemoryEngine.buildContext(query);
   },
