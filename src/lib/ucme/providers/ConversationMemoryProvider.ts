@@ -27,8 +27,12 @@ const ConversationMemoryProvider: MemoryProvider = {
 
   async search(query: MemoryQuery): Promise<MemoryEvidence[]> {
     try {
-      // Fetch recent messages from the DB
-      const messages = await base44.entities.Message.list("-created_date", 100);
+      // Fetch recent messages from the narrowest available scope.
+      const messages = query.projectId
+        ? await base44.entities.Message.filter({ project_id: query.projectId }, "-created_date", 100)
+        : query.sessionId
+          ? await base44.entities.Message.filter({ session_id: query.sessionId }, "-created_date", 100)
+          : await base44.entities.Message.list("-created_date", 100);
       const relevant = (messages as any[])
         .filter((m: any) => m.role === "assistant" && m.content?.length > 20)
         .slice(0, 50);
@@ -63,9 +67,13 @@ const ConversationMemoryProvider: MemoryProvider = {
   async remember(content: string, metadata?: Record<string, unknown>): Promise<string> {
     const msg = await base44.entities.Message.create({
       session_id:  metadata?.session_id ?? "ucme",
-      role:        "assistant",
+      project_id:  metadata?.project_id ?? undefined,
+      workspace_id: metadata?.workspace_id ?? undefined,
+      scope:        metadata?.scope ?? "personal",
+      role:         "assistant",
       content,
-      memory_tier: "active",
+      memory_tier:  "active",
+      sources_used: Array.isArray(metadata?.sources_used) ? metadata?.sources_used : undefined,
     });
     return (msg as any).id ?? uid();
   },
