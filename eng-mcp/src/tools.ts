@@ -4,6 +4,7 @@ import * as z from "zod/v4";
 import { EngineeringError, type AuthenticatedSubject } from "./policy.js";
 import type { RepositoryAdapter } from "./repository.js";
 import { ObservabilityClient } from "./observability.ts";
+import { AgentMemoryClient } from "./memory.ts";
 
 export const ENGINEERING_SERVER_INFO = { name: "memoryos-eng-mcp", version: "0.1.0" } as const;
 export type ToolCatalogEntry = { name: string; access: "read" | "write" };
@@ -36,6 +37,7 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   const requireRelease = () => { if (!subject.scopes.includes("engineering:release")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
 
   const observability = new ObservabilityClient();
+  const agentMemory = new AgentMemoryClient();
 
   register("engineering.repo.structure", "read", (name) => server.registerTool(name, { description: "Read the authorized repository structure.", inputSchema: z.object({ path: z.string().optional(), maxDepth: z.number().int().optional(), includeFiles: z.boolean().optional(), maxEntries: z.number().int().optional() }) }, async (input) => { requireRead(); return response(await repository.structure(input)); }));
   register("engineering.file.read", "read", (name) => server.registerTool(name, { description: "Read an allowed UTF-8 source file.", inputSchema: z.object({ path: z.string(), startLine: z.number().int().optional(), maxLines: z.number().int().optional(), maxBytes: z.number().int().optional() }) }, async (input) => { requireRead(); return response(await repository.fileRead(input)); }));
@@ -61,6 +63,47 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   register("engineering.mcp.catalog", "read", (name) => server.registerTool(name, { description: "Return the deterministic catalog of tools exposed by this ENG-MCP server.", inputSchema: z.object({}).strict() }, async () => { requireRead(); return response(createToolCatalog(toolMetadata, repositoryId)); }));
   register("engineering.release.run", "write", (name) => server.registerTool(name, { description: "Run an allowlisted Release Pipeline V1 operation through the durable local runner.", inputSchema: z.object({ jobId: z.string().optional(), operation: z.enum(["deploy", "verify", "clean"]) }).strict() }, async (input) => { requireRead(); requireWrite(); return response(await repository.releaseRun(subject.subject, input)); }));
   register("engineering.orchestrate.batch", "read", (name) => server.registerTool(name, { description: "Execute multiple independent read operations concurrently to reduce Kilo latency.", inputSchema: z.object({ operations: z.array(z.object({ tool: z.string(), arguments: z.record(z.string(), z.any()).optional() })).min(1).max(10) }).strict() }, async (input) => { requireRead(); return response(await repository.batchOrchestrate(subject.subject, input.operations)); }));
+
+  register("engineering.memory.context", "read", (name) => server.registerTool(name, {
+    description: "Load the durable MemoryOS project context for an external engineering agent. Call this at the start of every meaningful engineering mission before investigating or changing code.",
+    inputSchema: z.object({ projectId: z.string().max(200).optional(), limit: z.number().int().min(1).max(100).optional() }).strict()
+  }, async (input) => {
+    requireRead();
+    return response(await agentMemory.call("context", { projectId: input.projectId ?? repositoryId, limit: input.limit }));
+  }));
+
+  register("engineering.memory.search", "read", (name) => server.registerTool(name, {
+    description: "Search durable MemoryOS project memory when the user asks about previous work, decisions, bugs, solutions, or historical context.",
+    inputSchema: z.object({ query: z.string().min(1).max(2000), projectId: z.string().max(200).optional(), limit: z.number().int().min(1).max(50).optional() }).strict()
+  }, async (input) => {
+    requireRead();
+    return response(await agentMemory.call("search", { query: input.query, projectId: input.projectId ?? repositoryId, limit: input.limit }));
+  }));
+
+  register("engineering.memory.capture", "write", (name) => server.registerTool(name, {
+    description: "Persist a durable MemoryOS mission summary after every completed meaningful engineering mission. Capture decisions, root causes, fixes, validation and next steps; do not call for acknowledgements, small talk, or trivial 'continue' turns.",
+    inputSchema: z.object({
+      summary: z.string().min(1).max(3000),
+      projectId: z.string().max(200).optional(),
+      agent: z.string().max(80).optional(),
+      userPrompt: z.string().max(2000).optional(),
+      outcome: z.string().max(3000).optional(),
+      decisions: z.array(z.string().max(1000)).max(30).optional(),
+      problems: z.array(z.string().max(1000)).max(30).optional(),
+      solutions: z.array(z.string().max(1000)).max(30).optional(),
+      tests: z.array(z.string().max(1000)).max(30).optional(),
+      files: z.array(z.string().max(1000)).max(30).optional(),
+      nextSteps: z.array(z.string().max(1000)).max(30).optional()
+    }).strict()
+  }, async (input) => {
+    requireWrite();
+    return response(await agentMemory.call("capture", {
+      ...input,
+      projectId: input.projectId ?? repositoryId,
+      agent: input.agent ?? subject.subject
+    }));
+  }));
+
   register("engineering.typecheck.run", "read", (name) => server.registerTool(name, { description: "Run the project official TypeScript type check in no-emit mode without accepting arbitrary commands.", inputSchema: z.object({ timeoutMs: z.number().int().min(1).max(120_000).optional() }).strict() }, async (input) => { requireVerify(); return response(await repository.typeCheckRun(subject.subject, input)); }));
 
   // Runtime observability tools
