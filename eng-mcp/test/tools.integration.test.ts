@@ -195,3 +195,90 @@ test("catalog requires engineering:read", async () => {
   }
 });
 
+async function setupBatchHarness() {
+  const root = await fixture();
+  const token = "batch-token";
+  const tokenRegistry = [{ tokenHash: createHash("sha256").update(token).digest("hex"), subject: "tester", scopes: ["engineering:read", "engineering:write", "engineering:verify", "engineering:git", "engineering:release"], allowedRepositoryIds: ["memoryos"], expiresAt: "2099-01-01T00:00:00.000Z" }];
+  const server = await createEngineeringHttpServer({ repositoryId: "memoryos", configuredRoot: root, tokenRegistry });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const endpoint = `http://127.0.0.1:${address.port}/mcp`;
+  await mcp(endpoint, token, 1, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } });
+  return { endpoint, token, root, close: () => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())) };
+}
+
+test("engineering.code.search direct returns matches without nested heavy gate", async () => {
+  const ctx = await setupBatchHarness();
+  try {
+    const called = await mcp(ctx.endpoint, ctx.token, 10, "tools/call", { name: "engineering.code.search", arguments: { query: "hello", mode: "literal" } });
+    assert.equal(called.result.isError, undefined);
+    const value = JSON.parse(called.result.content[0].text);
+    assert.ok(Array.isArray(value.matches));
+    assert.ok(value.matches.length >= 1);
+    assert.equal(value.mode, "literal");
+  } finally { await ctx.close(); }
+});
+
+test("engineering.code.references direct returns heuristic references without nested heavy gate", async () => {
+  const ctx = await setupBatchHarness();
+  try {
+    const called = await mcp(ctx.endpoint, ctx.token, 11, "tools/call", { name: "engineering.code.references", arguments: { symbol: "hello", maxResults: 50 } });
+    assert.equal(called.result.isError, undefined);
+    const value = JSON.parse(called.result.content[0].text);
+    assert.equal(value.heuristic, true);
+    assert.equal(value.semanticCompleteness, "not_guaranteed");
+  } finally { await ctx.close(); }
+});
+
+test("engineering.code.search via orchestrate.batch succeeds after redundant gate removal", async () => {
+  const ctx = await setupBatchHarness();
+  try {
+    const batched = await mcp(ctx.endpoint, ctx.token, 12, "tools/call", { name: "engineering.orchestrate.batch", arguments: { operations: [{ tool: "engineering.code.search", arguments: { query: "hello", mode: "literal" } }] } });
+    assert.equal(batched.result.isError, undefined);
+    const value = JSON.parse(batched.result.content[0].text);
+    assert.equal(value.success, true);
+    assert.equal(value.results.length, 1);
+    assert.equal(value.results[0].success, true);
+    assert.equal(value.results[0].tool, "engineering.code.search");
+    const inner = value.results[0].result;
+    assert.ok(Array.isArray(inner.matches));
+    assert.ok(inner.matches.length >= 1);
+  } finally { await ctx.close(); }
+});
+
+test("engineering.code.references via orchestrate.batch succeeds after redundant gate removal", async () => {
+  const ctx = await setupBatchHarness();
+  try {
+    const batched = await mcp(ctx.endpoint, ctx.token, 13, "tools/call", { name: "engineering.orchestrate.batch", arguments: { operations: [{ tool: "engineering.code.references", arguments: { symbol: "hello", maxResults: 50 } }] } });
+    assert.equal(batched.result.isError, undefined);
+    const value = JSON.parse(batched.result.content[0].text);
+    assert.equal(value.success, true);
+    assert.equal(value.results.length, 1);
+    assert.equal(value.results[0].success, true);
+    assert.equal(value.results[0].tool, "engineering.code.references");
+    assert.equal(value.results[0].result.heuristic, true);
+  } finally { await ctx.close(); }
+});
+
+test("orchestrate.batch mixed light and heavy operations completes successfully", async () => {
+  const ctx = await setupBatchHarness();
+  try {
+    const batched = await mcp(ctx.endpoint, ctx.token, 14, "tools/call", { name: "engineering.orchestrate.batch", arguments: { operations: [
+      { tool: "engineering.repo.structure", arguments: { includeFiles: true } },
+      { tool: "engineering.git.status", arguments: {} },
+      { tool: "engineering.code.search", arguments: { query: "hello", mode: "literal" } },
+      { tool: "engineering.code.references", arguments: { symbol: "hello", maxResults: 50 } }
+    ] } });
+    assert.equal(batched.result.isError, undefined);
+    const value = JSON.parse(batched.result.content[0].text);
+    assert.equal(value.success, true);
+    assert.equal(value.results.length, 4);
+    for (const result of value.results) assert.equal(result.success, true);
+    const tools = value.results.map((r: { tool: string }) => r.tool);
+    assert.ok(tools.includes("engineering.repo.structure"));
+    assert.ok(tools.includes("engineering.git.status"));
+    assert.ok(tools.includes("engineering.code.search"));
+    assert.ok(tools.includes("engineering.code.references"));
+  } finally { await ctx.close(); }
+});
