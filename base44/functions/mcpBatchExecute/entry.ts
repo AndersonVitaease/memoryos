@@ -11,8 +11,9 @@
  *   - Requires MCP_BATCH_EXECUTE_SECRET via x-batch-token.
  *   - Reads the target MCPServerConfig using service role.
  *   - Rejects disabled/unknown servers.
- *   - Validates requested tools against discovered_tools when available.
- *   - Writes require allowWrites=true and the catalog must mark the tool write.
+ *   - Resolves catalog-backed tools through canonical identity when available.
+ *   - Applies the same resolveToolGovernance gate used by mcpClientCall before connection.
+ *   - UNKNOWN is never SAFE; irreversible tools require tool-scoped confirmation.
  *
  * Concurrency:
  *   - Uses MCPServerConfig.tool_policy[toolName].maxConcurrent when present.
@@ -28,6 +29,9 @@ import {
   truncateError,
   tryRecoverResultFromError,
   readToolCatalog,
+  buildCanonicalId,
+  resolveMCPTool,
+  resolveToolGovernance,
   type MCPServerConfigRecord,
 } from '../../shared/mcpClient.ts';
 
@@ -39,12 +43,22 @@ const DEFAULT_OVERALL_TIMEOUT_MS = 120_000;
 const MAX_OVERALL_TIMEOUT_MS = 300_000;
 
 interface BatchOperation {
-  toolName: string;
+  toolName?: string;
+  canonicalId?: string;
   arguments?: Record<string, unknown>;
+  confirmation?: { toolName: string };
+}
+
+interface ResolvedBatchOperation {
+  toolName: string;
+  canonicalId?: string;
+  arguments?: Record<string, unknown>;
+  confirmation?: { toolName: string };
 }
 
 interface ToolPolicy {
   maxConcurrent?: number;
+  reversibility?: 'safe' | 'reversible' | 'irreversible';
 }
 
 function str(v: unknown): string {
@@ -70,24 +84,6 @@ async function toolNamesFromCache(v: unknown): Promise<Set<string>> {
   } catch {
     return new Set();
   }
-}
-
-function toolAccessFromCatalog(v: unknown): Map<string, string> {
-  const parsed = parseJson(v);
-  const map = new Map<string, string>();
-  if (Array.isArray(parsed)) {
-    for (const item of parsed) {
-      const name = str(item?.name ?? item?.toolName);
-      const access = str(item?.access).toLowerCase();
-      if (name && access) map.set(name, access);
-    }
-  } else if (parsed && typeof parsed === 'object') {
-    for (const [name, value] of Object.entries(parsed)) {
-      const access = str((value as any)?.access ?? value).toLowerCase();
-      if (name && access) map.set(name, access);
-    }
-  }
-  return map;
 }
 
 class Semaphore {
@@ -159,7 +155,7 @@ Deno.serve(async (req) => {
 
   const serverId = str(body.serverId ?? body.server_id);
   const operations = Array.isArray(body.operations) ? body.operations as BatchOperation[] : [];
-  const allowWrites = body.allowWrites === true;
+  const allowWrites = body.allowWrites === true; // Legacy input retained for backward compatibility; governance is authoritative.
   const operationTimeoutMs = boundedInt(body.operationTimeoutMs, DEFAULT_OPERATION_TIMEOUT_MS, 1_000, MAX_OPERATION_TIMEOUT_MS);
   const overallTimeoutMs = boundedInt(body.overallTimeoutMs, DEFAULT_OVERALL_TIMEOUT_MS, 1_000, MAX_OVERALL_TIMEOUT_MS);
 
@@ -169,11 +165,10 @@ Deno.serve(async (req) => {
     return Response.json({ error: `Batch exceeds maximum size of ${MAX_BATCH_SIZE}` }, { status: 413 });
   }
 
-  const invalid = operations.find((op) => !op || !str(op.toolName));
-  if (invalid) return Response.json({ error: 'Every operation requires a toolName' }, { status: 400 });
+  const invalid = operations.find((op) => !op || (!str(op.toolName) && !str(op.canonicalId)));
+  if (invalid) return Response.json({ error: 'Every operation requires toolName or canonicalId' }, { status: 400 });
 
   const server = await base44.asServiceRole.entities.MCPServerConfig.get(serverId) as MCPServerConfigRecord & {
-    tool_policy?: string | Record<string, ToolPolicy>;
     discovered_tools?: string;
   } | null;
 
@@ -183,20 +178,56 @@ Deno.serve(async (req) => {
   }
 
   const cachedTools = await toolNamesFromCache(server.discovered_tools);
-  if (cachedTools.size) {
-    const unknown = operations.map((op) => op.toolName).filter((name) => !cachedTools.has(name));
-    if (unknown.length) {
-      return Response.json({ error: 'TOOL_NOT_REGISTERED', tools: unknown }, { status: 400 });
+  const resolvedOperations: ResolvedBatchOperation[] = [];
+
+  for (const operation of operations) {
+    const requestedCanonicalId = str(operation.canonicalId);
+    const requestedToolName = str(operation.toolName);
+    let toolName = requestedToolName;
+    let canonicalId = requestedCanonicalId || undefined;
+
+    if (requestedCanonicalId) {
+      const resolved = await resolveMCPTool(base44, requestedCanonicalId);
+      if (!resolved || resolved.serverId !== serverId) {
+        return Response.json({ error: 'TOOL_NOT_REGISTERED', canonicalId: requestedCanonicalId }, { status: 400 });
+      }
+      if (requestedToolName && requestedToolName !== resolved.rawToolName) {
+        return Response.json({ error: 'TOOL_IDENTITY_MISMATCH', canonicalId: requestedCanonicalId, toolName: requestedToolName }, { status: 400 });
+      }
+      toolName = resolved.rawToolName;
+    } else if (cachedTools.size) {
+      if (!cachedTools.has(requestedToolName)) {
+        return Response.json({ error: 'TOOL_NOT_REGISTERED', tools: [requestedToolName] }, { status: 400 });
+      }
+      canonicalId = buildCanonicalId(serverId, requestedToolName);
+      const resolved = await resolveMCPTool(base44, canonicalId);
+      if (!resolved || resolved.serverId !== serverId || resolved.rawToolName !== requestedToolName) {
+        return Response.json({ error: 'TOOL_NOT_REGISTERED', canonicalId, toolName: requestedToolName }, { status: 400 });
+      }
+      toolName = resolved.rawToolName;
     }
+
+    const governance = resolveToolGovernance(server, toolName, operation.confirmation);
+    if (!governance.allowed) {
+      return Response.json({
+        error: 'GOVERNANCE_DENIED',
+        reason: governance.reason,
+        toolName: governance.toolName,
+        canonicalId,
+        reversibility: governance.reversibility,
+      }, { status: 403 });
+    }
+
+    resolvedOperations.push({
+      toolName,
+      canonicalId,
+      arguments: operation.arguments,
+      confirmation: operation.confirmation,
+    });
   }
 
-  const catalog = toolAccessFromCatalog((server as any).tool_catalog);
-  if (!allowWrites) {
-    const writes = operations.map((op) => op.toolName).filter((name) => catalog.get(name) === 'write');
-    if (writes.length) {
-      return Response.json({ error: 'WRITE_TOOLS_REQUIRE_ALLOW_WRITES', tools: writes }, { status: 403 });
-    }
-  }
+  // Kept only so existing callers may continue sending allowWrites without contract breakage.
+  void allowWrites;
 
   const { headers, error: headerError } = resolveHeaders(server);
   if (headerError) return Response.json({ error: headerError }, { status: 500 });
@@ -231,7 +262,7 @@ Deno.serve(async (req) => {
 
   try {
     const results = await withTimeout(
-      Promise.all(operations.map(async (operation, index) => {
+      Promise.all(resolvedOperations.map(async (operation, index) => {
         const operationStarted = Date.now();
         const semaphore = semaphoreFor(operation.toolName);
         let semaphoreWaitMs = 0;
