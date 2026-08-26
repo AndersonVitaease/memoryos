@@ -19,7 +19,10 @@ function relevanceScore(content: string, query: string): number {
 
 async function searchEntity(entityName: string, query: MemoryQuery, fields: string[]): Promise<MemoryEvidence[]> {
   try {
-    const records = await (base44.entities as any)[entityName].list("-created_date", 50);
+    const entity = (base44.entities as any)[entityName];
+    const records = query.projectId
+      ? await entity.filter({ project_id: query.projectId }, "-created_date", 50)
+      : await entity.list("-created_date", 50);
     return (records as any[])
       .map((r: any) => {
         const text = fields.map(f => r[f] ?? "").join(" ");
