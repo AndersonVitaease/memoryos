@@ -104,14 +104,21 @@ export class ExecutionDispatcher {
       // Falha no enrichment -> cai no catch -> StepResult failed (mecanismo existente).
       // NAO muta o step original: effectiveStep preserva id/connector/capability/dependsOn.
       // multi-step safety remains an existing gap; this sprint only unifies EI enrichment.
-      const effectiveStep = await this._enrichStepOnce(step, connectorCtx, executionId);
-      // B-03: connectorCtx forwarded intact — never re-created here
-      const outputPromise = this._executor.execute({ executionId, step: effectiveStep, retryCtx, connectorCtx });
+      //
+      // ENRICHMENT_COUNTS_TOWARD_STEP_TIMEOUT: enrichment + executor.execute sao
+      // disparados como UMA unica Promise e raceadas contra stepTimeoutMs — o tempo
+      // de enriquecimento conta contra o deadline da step (mesmo budget do executor).
+      const stepTimeoutEffective = Math.max(stepTimeoutMs, 100);
+      const workPromise = (async () => {
+        const effectiveStep = await this._enrichStepOnce(step, connectorCtx, executionId);
+        // B-03: connectorCtx forwarded intact — never re-created here
+        return this._executor.execute({ executionId, step: effectiveStep, retryCtx, connectorCtx });
+      })();
       const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("Step timeout")), Math.max(stepTimeoutMs, 100)),
+        setTimeout(() => reject(new Error("Step timeout")), stepTimeoutEffective),
       );
 
-      const output     = await Promise.race([outputPromise, timeoutPromise]);
+      const output     = await Promise.race([workPromise, timeoutPromise]);
       const finishedAt = Date.now();
       const success    = output.status === "completed" || output.status === "success";
 
