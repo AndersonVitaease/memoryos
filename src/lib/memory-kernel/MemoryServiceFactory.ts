@@ -29,7 +29,7 @@ type KernelMode = "LEGACY" | "UCME" | "SHADOW";
 const MEMORY_KERNEL_MODE: KernelMode =
   (typeof window !== "undefined"
     ? (window as unknown as Record<string, string>).__MEMORY_KERNEL_MODE__ as KernelMode
-    : undefined) ?? "LEGACY";
+    : undefined) ?? "UCME";
 
 // ── Singleton instances ───────────────────────────────────────────────────────
 const _legacy = new LegacyMemoryService();

@@ -7,6 +7,7 @@
 
 import type { MemoryProvider, MemoryQuery, MemoryEvidence } from "../UCMETypes";
 import { MemoryProviderRegistry } from "../MemoryProviderRegistry";
+import { recencyScore } from "../MemoryFusionEngine";
 import { base44 } from "@/api/base44Client";
 
 function relevanceScore(content: string, query: string): number {
@@ -17,18 +18,20 @@ function relevanceScore(content: string, query: string): number {
   return Math.min(1, 0.2 + (hits / words.length) * 0.8);
 }
 
-async function searchEntity(entityName: string, query: MemoryQuery, fields: string[]): Promise<MemoryEvidence[]> {
+async function searchEntity(entityName: string, query: MemoryQuery, fields: string[], projectId?: string): Promise<MemoryEvidence[]> {
   try {
     const entity = (base44.entities as any)[entityName];
-    const records = query.projectId
-      ? await entity.filter({ project_id: query.projectId }, "-created_date", 50)
+    if (!entity) return [];
+    
+    const records = projectId && entityName !== "Project" && entity.filter
+      ? await entity.filter({ project_id: projectId }, "-created_date", 50)
       : await entity.list("-created_date", 50);
     return (records as any[])
       .map((r: any) => {
         const text = fields.map(f => r[f] ?? "").join(" ");
         const rel  = relevanceScore(text, query.text);
         if (rel < 0.2) return null;
-        return {
+return {
           memoryId:      r.id,
           providerId:    "knowledge-graph",
           providerName:  "Knowledge Graph",
@@ -36,7 +39,7 @@ async function searchEntity(entityName: string, query: MemoryQuery, fields: stri
           summary:       (r.title ?? r.name ?? r.value ?? entityName) + "",
           confidence:    0.8,
           relevance:     rel,
-          recency:       0.5,
+          recency:       recencyScore(r.created_date ?? r.updated_date ?? new Date().toISOString()),
           weight:        0,
           lastUpdated:   r.created_date ?? r.updated_date ?? new Date().toISOString(),
           justification: `${entityName} record matched query`,
@@ -53,14 +56,20 @@ const KnowledgeGraphMemoryProvider: MemoryProvider = {
   name: "Knowledge Graph",
 
   async search(query: MemoryQuery): Promise<MemoryEvidence[]> {
-    const [entities, decisions, tasks, topics, documents] = await Promise.all([
-      searchEntity("KnowledgeEntity", query, ["type", "value", "context"]),
-      searchEntity("Decision",        query, ["title", "description", "rationale"]),
-      searchEntity("Task",            query, ["title", "description"]),
-      searchEntity("Topic",           query, ["name", "description"]),
-      searchEntity("Document",        query, ["name", "extracted_text", "summary"]),
+    // Extract projectId from query
+    const projectId = query.projectId;
+    
+    const [entities, decisions, tasks, topics, documents, projects, chatSessions, keywords] = await Promise.all([
+      searchEntity("KnowledgeEntity", query, ["type", "value", "context"], projectId),
+      searchEntity("Decision",        query, ["title", "description", "rationale"], projectId),
+      searchEntity("Task",            query, ["title", "description"], projectId),
+      searchEntity("Topic",           query, ["name", "description"], projectId),
+      searchEntity("Document",        query, ["name", "extracted_text", "summary"], projectId),
+      searchEntity("Project",         query, ["name", "description", "type"]),
+      searchEntity("ChatSession",     query, ["title", "summary"], projectId),
+      searchEntity("Keyword",         query, ["keyword", "source_type"], projectId),
     ]);
-    const all = [...entities, ...decisions, ...tasks, ...topics, ...documents]
+    const all = [...entities, ...decisions, ...tasks, ...topics, ...documents, ...projects, ...chatSessions, ...keywords]
       .sort((a, b) => b.relevance - a.relevance)
       .slice(0, query.maxPerProvider ?? 10);
     return all;
@@ -87,7 +96,7 @@ const KnowledgeGraphMemoryProvider: MemoryProvider = {
   },
 
   explain(): string {
-    return "Searches the MemoryOS knowledge graph: entities, decisions, tasks, topics, and documents extracted from conversations.";
+    return "Searches the MemoryOS knowledge graph: entities, decisions, tasks, topics, documents, projects, chat sessions, and keywords extracted from conversations.";
   },
 
   async health(): Promise<{ healthy: boolean; detail: string }> {

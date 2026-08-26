@@ -8,6 +8,7 @@
 
 import type { MemoryProvider, MemoryQuery, MemoryEvidence } from "../UCMETypes";
 import { MemoryProviderRegistry } from "../MemoryProviderRegistry";
+import { recencyScore } from "../MemoryFusionEngine";
 import { base44 } from "@/api/base44Client";
 
 let _seq = 1;
@@ -49,7 +50,7 @@ const ConversationMemoryProvider: MemoryProvider = {
             summary:       m.content.slice(0, 120) + (m.content.length > 120 ? "..." : ""),
             confidence:    0.75,
             relevance:     rel,
-            recency:       0.5,
+            recency:       recencyScore(m.created_date ?? new Date().toISOString()),
             weight:        0,
             lastUpdated:   m.created_date ?? new Date().toISOString(),
             justification: `Conversation message matched ${Math.round(rel * 100)}% of query keywords`,

@@ -26,7 +26,7 @@ function authorityPriority(ev: MemoryEvidence): number {
 
 // ── Recency scoring ───────────────────────────────────────────────────────────
 
-function recencyScore(lastUpdatedISO: string): number {
+export function recencyScore(lastUpdatedISO: string): number {
   try {
     const ageMs    = Date.now() - new Date(lastUpdatedISO).getTime();
     const ageHours = ageMs / (1000 * 60 * 60);

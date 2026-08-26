@@ -9,6 +9,7 @@
 
 import type { MemoryProvider, MemoryQuery, MemoryEvidence } from "../UCMETypes";
 import { MemoryProviderRegistry } from "../MemoryProviderRegistry";
+import { recencyScore } from "../MemoryFusionEngine";
 import { isConnected, getAccessToken, ensureValidToken } from "@/lib/google-auth/GoogleAuthSession";
 
 // ── Email knowledge record ────────────────────────────────────────────────────
@@ -74,7 +75,7 @@ const GmailMemoryProvider: MemoryProvider = {
           summary:       `${item.subject} — ${item.sender}`,
           confidence:    0.65,
           relevance:     rel,
-          recency:       0.5,
+          recency:       recencyScore(item.date),
           weight:        0,
           lastUpdated:   item.date,
           justification: `Email "${item.subject}" matched query keywords`,
@@ -89,12 +90,13 @@ const GmailMemoryProvider: MemoryProvider = {
 
   async remember(content: string, metadata?: Record<string, unknown>): Promise<string> {
     // Store a manual knowledge note in the gmail index
+    const date = new Date().toISOString();
     const item: EmailKnowledge = {
       messageId: `manual-${Date.now()}`,
       subject:   (metadata?.subject as string) ?? "Nota manual",
       sender:    (metadata?.sender as string) ?? "ucme",
       labels:    ["manual"],
-      date:      new Date().toISOString(),
+      date:      date,
       summary:   content.slice(0, 200),
     };
     const index = loadIndex();

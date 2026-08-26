@@ -19,15 +19,14 @@ export const MemoryContextBuilder = {
    */
   async build(
     question: string,
-    opts: {
-      intent?:     string;
-      providers?:  string[];
-      maxResults?: number;
-      timeoutMs?:  number;
-      traceId?:    string;
-      projectId?:  string | null;
-      sessionId?:  string | null;
-    } = {},
+opts: {
+       intent?:     string;
+       providers?:  string[];
+       maxResults?: number;
+       timeoutMs?:  number;
+       traceId?:    string;
+       projectId?:  string;
+     } = {},
   ): Promise<MemoryContext> {
     const query: MemoryQuery = {
       text:             question,
@@ -36,8 +35,7 @@ export const MemoryContextBuilder = {
       maxPerProvider:   opts.maxResults ?? 10,
       timeoutMs:        opts.timeoutMs ?? 5000,
       traceId:          opts.traceId,
-      projectId:        opts.projectId ?? null,
-      sessionId:        opts.sessionId ?? null,
+      projectId:        opts.projectId,
     };
     return UnifiedMemoryEngine.buildContext(query);
   },

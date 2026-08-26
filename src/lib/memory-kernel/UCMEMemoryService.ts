@@ -35,8 +35,7 @@ export class UCMEMemoryService implements MemoryService {
         maxResults: request.options?.maxResults ?? 10,
         timeoutMs:  request.options?.timeoutMs ?? 5000,
         traceId:    request.options?.traceId,
-        projectId:  request.projectId ?? null,
-        sessionId:  request.sessionId,
+        projectId:  request.projectId ?? undefined,
       });
 
       memories = result.prompt ?? "";
@@ -60,6 +59,26 @@ export class UCMEMemoryService implements MemoryService {
         confidenceScore = Math.round(avgConf * 100) / 100;
         authorityScore  = Math.round(avgAuth * 100) / 100;
         coverage        = Math.min(1, memoryCount / 10);
+      }
+
+      // Gap 1: Buscar ChatSession.summary quando sessionId existir
+      if (request.sessionId) {
+        try {
+          const { base44 } = await import("@/api/base44Client");
+          // Usar o mesmo padrão do Legacy: filter com sort e limit
+          const sessions = await (base44 as any).entities.ChatSession.filter(
+            { id: request.sessionId },
+            "-updated_date",
+            1
+          );
+          if (sessions && sessions.length > 0) {
+            sessionSummary = sessions[0].summary || "";
+          }
+        } catch (sessionError) {
+          // Silenciosamente ignora erros na busca de ChatSession
+          // para preservar funcionamento quando sessionId não existir
+          console.debug(`ChatSession query failed for sessionId ${request.sessionId}:`, sessionError);
+        }
       }
     } catch (e) {
       error = (e as Error).message;
@@ -86,7 +105,11 @@ export class UCMEMemoryService implements MemoryService {
     return {
       memories,
       sessionSummary,
-      sources:        providerSources.map((s) => ({ type: s })),
+      sources:        providerSources.map((s) => ({ 
+        type: s, 
+        id: '', 
+        name: s 
+      })),
       entities:       "",
       projects:       "",
       conversations:  "",

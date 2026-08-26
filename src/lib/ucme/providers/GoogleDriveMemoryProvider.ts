@@ -12,6 +12,7 @@
 
 import type { MemoryProvider, MemoryQuery, MemoryEvidence } from "../UCMETypes";
 import { MemoryProviderRegistry } from "../MemoryProviderRegistry";
+import { recencyScore } from "../MemoryFusionEngine";
 import { isConnected, getAccessToken, ensureValidToken } from "@/lib/google-auth/GoogleAuthSession";
 
 // ── Cognitive index ───────────────────────────────────────────────────────────
@@ -78,7 +79,7 @@ const GoogleDriveMemoryProvider: MemoryProvider = {
           summary:       item.name,
           confidence:    0.7,
           relevance:     rel,
-          recency:       0.5,
+          recency:       recencyScore(item.modifiedTime),
           weight:        0,
           lastUpdated:   item.modifiedTime,
           justification: `Drive file "${item.name}" matched query keywords`,

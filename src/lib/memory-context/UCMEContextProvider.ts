@@ -38,6 +38,7 @@ export const UCMEContextProvider = {
         intent:     input.intent,
         maxResults: 15,
         timeoutMs:  4000,
+        projectId:  input.projectId ?? undefined,
       });
 
       contextText   = result.prompt ?? "";
