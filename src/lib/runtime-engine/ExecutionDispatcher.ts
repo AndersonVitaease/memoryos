@@ -30,6 +30,8 @@ import { connectorMetrics }           from "@/lib/connector-runtime/ConnectorMet
 // instrumentacao nao pode quebrar a execucao real.
 import { RuntimeObserver }            from "@/lib/operational-intelligence/RuntimeObserver";
 import { RuntimeDebug }               from "@/lib/debug/RuntimeDebug";
+import { enrichExecutionRequest }     from "@/lib/execution-intelligence/ExecutionIntelligence";
+import type { ExecutionRequest }       from "@/lib/execution-intelligence/ExecutionTypes";
 
 // ── DispatchInput ─────────────────────────────────────────────────────────────
 
@@ -95,8 +97,16 @@ export class ExecutionDispatcher {
     });
 
     try {
+      // EF — Unified Step Intelligence: enriquece params EXATAMENTE UMA vez por step.
+      // Single-step vindo de ExecutionRuntime.processCapability() JA foi enriquecido
+      // (connectorCtx.origin comeca com "execution-intelligence") — bypass (evita double).
+      // Multi-step (origin "pipeline"/outro) enriquece aqui, antes do executor, UMA vez.
+      // Falha no enrichment -> cai no catch -> StepResult failed (mecanismo existente).
+      // NAO muta o step original: effectiveStep preserva id/connector/capability/dependsOn.
+      // multi-step safety remains an existing gap; this sprint only unifies EI enrichment.
+      const effectiveStep = await this._enrichStepOnce(step, connectorCtx, executionId);
       // B-03: connectorCtx forwarded intact — never re-created here
-      const outputPromise = this._executor.execute({ executionId, step, retryCtx, connectorCtx });
+      const outputPromise = this._executor.execute({ executionId, step: effectiveStep, retryCtx, connectorCtx });
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("Step timeout")), Math.max(stepTimeoutMs, 100)),
       );
@@ -230,5 +240,33 @@ export class ExecutionDispatcher {
         // C-04/C-05/C-06: not available on exception path — omitted (optional fields)
       });
     }
+  }
+
+  /**
+   * EF — Unified Step Intelligence (per-step enrichment).
+   * Aplica enrichExecutionRequest UMA vez sobre step.parameters quando o step NAO
+   * veio de ExecutionRuntime.processCapability() (origin !== "execution-intelligence*").
+   * Retorna uma NOVA ExecutionStep com parameters enriquecidos — nunca muta o original
+   * (preserva id, connector, capability, dependsOn e campos extras como goalType).
+   * Single-step (origin "execution-intelligence*") retorna o MESMO step (bypass).
+   */
+  private async _enrichStepOnce(
+    step: ExecutionStep,
+    connectorCtx: ConnectorExecutionContext,
+    executionId: string,
+  ): Promise<ExecutionStep> {
+    const origin = connectorCtx?.origin;
+    if (typeof origin === "string" && origin.startsWith("execution-intelligence")) {
+      return step;
+    }
+    const request: ExecutionRequest = {
+      connectorId: step.connector,
+      capability:  step.capability,
+      params:      step.parameters as Record<string, unknown>,
+      context:     connectorCtx,
+      executionId,
+    };
+    const { enrichedParams } = await enrichExecutionRequest(request);
+    return { ...step, parameters: enrichedParams };
   }
 }
