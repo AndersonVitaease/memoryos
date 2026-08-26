@@ -22,6 +22,10 @@ export interface MemoryQuery {
   readonly timeoutMs?:  number;
   /** Caller trace id */
   readonly traceId?:    string;
+  /** Optional project scope. Providers that support project scoping must honor it. */
+  readonly projectId?:  string | null;
+  /** Optional session scope. Used when a narrower conversation scope is required. */
+  readonly sessionId?:  string | null;
 }
 
 // ── Memory Evidence ───────────────────────────────────────────────────────────
