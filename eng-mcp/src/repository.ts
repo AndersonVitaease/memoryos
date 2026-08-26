@@ -713,9 +713,9 @@ async references(subject: string, symbol: string, maxResults = 100) {
         case "engineering.file.read":
           return await this.fileRead(args as any ?? {});
         case "engineering.code.search":
-          return await this.heavy.schedule(subject, () => this.search(subject, args as any ?? {}));
+          return await this.heavy.run(subject, () => this.search(subject, args as any ?? {}));
         case "engineering.code.references":
-          return await this.heavy.schedule(subject, () => this.references(subject, args?.symbol as string ?? "", args?.maxResults as number ?? 100));
+          return await this.heavy.run(subject, () => this.references(subject, args?.symbol as string ?? "", args?.maxResults as number ?? 100));
         case "engineering.git.status":
           return await this.gitStatus();
         case "engineering.git.diff":

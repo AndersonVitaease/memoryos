@@ -94,6 +94,29 @@ test("authenticated MCP endpoint exposes exactly the approved tools", async () =
     assert.equal(execFileSync("git", ["status", "--porcelain=v2", "--untracked-files=all"], { cwd: root, encoding: "utf8" }), statusBeforeCatalog);
     assert.equal(execFileSync("git", ["show-ref"], { cwd: root, encoding: "utf8" }), refsBeforeCatalog);
     assert.equal(JSON.stringify(tokenRegistry), registryBeforeCatalog);
+    
+    // Test engineering.orchestrate.batch schema and canonical values
+    const batchWithCanonical = await mcp(endpoint, token, duplicate = 99, "tools/call", { name: "engineering.orchestrate.batch", arguments: { operations: [
+      { tool: "engineering.git.status", arguments: {} },
+      { tool: "engineering.repo.structure", arguments: { path: root } }
+    ] } });
+    assert.equal(batchWithCanonical.result.isError, undefined);
+    const batchResults = JSON.parse(batchWithCanonical.result.content[0].text);
+    assert.ok(batchResults.results);
+    assert.equal(batchResults.results.length, 2);
+    assert.equal(batchResults.results[0].tool, "engineering.git.status");
+    assert.equal(batchResults.results[1].tool, "engineering.repo.structure");
+    
+    const batchWithInvalid = await mcp(endpoint, token, duplicate = 100, "tools/call", { name: "engineering.orchestrate.batch", arguments: { operations: [
+      { tool: "memoryos-eng-mcp_engineering_git_status", arguments: {} }
+    ] } });
+    assert.equal(batchWithInvalid.result.isError, true);
+    
+    const batchWithUnknown = await mcp(endpoint, token, duplicate = 101, "tools/call", { name: "engineering.orchestrate.batch", arguments: { operations: [
+      { tool: "engineering.file.create", arguments: {} }
+    ] } });
+    assert.equal(batchWithUnknown.result.isError, true);
+    
     const invalidLint = await mcp(endpoint, token, 3, "tools/call", { name: "engineering.lint.run", arguments: { command: "eslint --fix" } });
     assert.equal(invalidLint.result.isError, true);
     for (const [name, argumentsValue] of [
@@ -156,6 +179,32 @@ test("typecheck.run rejects arbitrary command arguments", async () => {
     await mcp(endpoint, token, 1, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } });
     const invalid = await mcp(endpoint, token, 2, "tools/call", { name: "engineering.typecheck.run", arguments: { command: "tsc --project tsconfig.json --emit" } });
     assert.equal(invalid.result.isError, true);
+    
+    // Test engineering.code.search functionality
+    const searchLiteral = await mcp(endpoint, token, 104, "tools/call", { name: "engineering.code.search", arguments: { query: "export", maxResults: 2 } });
+    assert.equal(searchLiteral.result.isError, undefined);
+    const searchResult = JSON.parse(searchLiteral.result.content[0].text);
+    assert.ok(searchResult.matches.length > 0);
+    assert.equal(searchResult.mode, "literal");
+    
+    // Test engineering.code.search via orchestrate.batch
+    const batchWithSearch = await mcp(endpoint, token, 105, "tools/call", { name: "engineering.orchestrate.batch", arguments: { operations: [
+      { tool: "engineering.code.search", arguments: { query: "export", maxResults: mass = 2 } },
+      { tool: "engineering.git.status", arguments: {} }
+    ] } });
+    assert.equal(batchWithSearch.result.isError, undefined);
+    const batchSearchResult = JSON.parse(batchWithSearch.result.content[0].text);
+    assert.equal(batchSearchResult.success, true);
+    assert.equal(batchSearchResult.results[0].tool, "engineering.code.search");
+    assert.equal(batchSearchResult.results[0].success, true);
+    assert.equal(batchSearchResult.results[1].tool, "engineering.git.status");
+    assert.equal(batchSearchResult.results[1].success, true);
+    
+    // Test engineering.repo.structure with "." path
+    const structureDot = await mcp(endpoint, token, 106, "tools/call", { name: "engineering.repo.structure", arguments: { path: ".", maxDepth: 1 } });
+    assert.equal(structureDot.result.isError, undefined);
+    const structureResult = JSON.parse(structureDot.result.content[0].text);
+    assert.ok(structureResult.entries.length > 0);
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
