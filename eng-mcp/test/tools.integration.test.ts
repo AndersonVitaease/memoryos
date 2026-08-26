@@ -129,11 +129,18 @@ test("authenticated MCP endpoint exposes exactly the approved tools", async () =
       ["engineering.git.diff", {}],
       ["engineering.git.branches", {}],
       ["engineering.git.worktrees", {}],
-      ["engineering.git.log", { limit: 1 }],
-      ["engineering.git.remote_compare", { localRef: "HEAD", remoteRef: "HEAD" }]
+      ["engineering.git.log", { limit: 1 }]
     ]) {
       const called = await mcp(endpoint, token, 3, "tools/call", { name, arguments: argumentsValue });
       assert.equal(called.result.isError, undefined);
+    }
+    // Specific test for engineering.git.remote_compare with fixture lacking remote
+    const remoteCompareNoRemote = await mcp(endpoint, token, 200, "tools/call", { name: "engineering.git.remote_compare", arguments: { localRef: "HEAD", remoteRef: "HEAD" } });
+    assert.equal(remoteCompareNoRemote.result.isError, true);
+    // Verify error code if content is available
+    if (remoteCompareNoRemote.result.content && remoteCompareNoRemote.result.content[0]) {
+      const errorContent = JSON.parse(remoteCompareNoRemote.result.content[0].text);
+      assert.equal(errorContent.code, "REMOTE_REF_NOT_AVAILABLE");
     }
     const read = await mcp(endpoint, token, 4, "tools/call", { name: "engineering.file.read", arguments: { path: "app.js" } });
     const readValue = JSON.parse(read.result.content[0].text);
