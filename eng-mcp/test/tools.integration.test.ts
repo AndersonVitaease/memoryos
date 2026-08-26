@@ -96,7 +96,7 @@ test("authenticated MCP endpoint exposes exactly the approved tools", async () =
     assert.equal(JSON.stringify(tokenRegistry), registryBeforeCatalog);
 
     // Test engineering.orchestrate.batch schema and canonical values
-    const batchWithCanonical = await mcp(endpoint, token, duplicate = 99, "tools/call", { name: "engineering.orchestrate.batch", arguments: { operations: [
+    const batchWithCanonical = await mcp(endpoint, token, 99, "tools/call", { name: "engineering.orchestrate.batch", arguments: { operations: [
       { tool: "engineering.git.status", arguments: {} },
       { tool: "engineering.repo.structure", arguments: { path: root } }
     ] } });
@@ -107,12 +107,12 @@ test("authenticated MCP endpoint exposes exactly the approved tools", async () =
     assert.equal(batchResults.results[0].tool, "engineering.git.status");
     assert.equal(batchResults.results[1].tool, "engineering.repo.structure");
 
-    const batchWithInvalid = await mcp(endpoint, token, duplicate = 100, "tools/call", { name: "engineering.orchestrate.batch", arguments: { operations: [
+    const batchWithInvalid = await mcp(endpoint, token, 100, "tools/call", { name: "engineering.orchestrate.batch", arguments: { operations: [
       { tool: "memoryos-eng-mcp_engineering_git_status", arguments: {} }
     ] } });
     assert.equal(batchWithInvalid.result.isError, true);
 
-    const batchWithUnknown = await mcp(endpoint, token, duplicate = 101, "tools/call", { name: "engineering.orchestrate.batch", arguments: { operations: [
+    const batchWithUnknown = await mcp(endpoint, token, 101, "tools/call", { name: "engineering.orchestrate.batch", arguments: { operations: [
       { tool: "engineering.file.create", arguments: {} }
     ] } });
     assert.equal(batchWithUnknown.result.isError, true);
