@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -42,8 +42,8 @@ test("authenticated MCP endpoint exposes exactly the approved tools", async () =
     const initialized = await mcp(endpoint, token, 1, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } });
     assert.equal(initialized.result.serverInfo.name, "memoryos-eng-mcp");
     const tools = await mcp(endpoint, token, 2, "tools/list", {});
-    assert.deepEqual(tools.result.tools.map((tool: { name: string }) => tool.name), ["engineering.change.impact", "engineering.code.references", "engineering.code.search", "engineering.contract.verify", "engineering.deadcode.scan", "engineering.file.create", "engineering.file.patch", "engineering.file.read", "engineering.git.branches", "engineering.git.commit", "engineering.git.diff", "engineering.git.log", "engineering.git.remote_compare", "engineering.git.stage", "engineering.git.status", "engineering.git.unstage", "engineering.git.worktrees", "engineering.lint.run", "engineering.mcp.catalog", "engineering.memory.capture", "engineering.memory.context", "engineering.memory.search", "engineering.orchestrate.batch", "engineering.parallelpath.scan", "engineering.release.run", "engineering.repo.structure", "engineering.runtime.bottlenecks", "engineering.runtime.compare", "engineering.runtime.errors", "engineering.runtime.executions", "engineering.runtime.health", "engineering.runtime.investigate", "engineering.runtime.logs", "engineering.runtime.metrics", "engineering.runtime.query", "engineering.runtime.releaseContext", "engineering.runtime.saturation", "engineering.runtime.timeline", "engineering.runtime.trace", "engineering.runtime.watch", "engineering.test.run", "engineering.typecheck.run"]);
-    assert.equal(tools.result.tools.length, 42);
+    assert.deepEqual(tools.result.tools.map((tool: { name: string }) => tool.name), ["engineering.change.impact", "engineering.code.references", "engineering.code.search", "engineering.contract.verify", "engineering.deadcode.scan", "engineering.file.create", "engineering.file.patch", "engineering.file.read", "engineering.git.branches", "engineering.git.commit", "engineering.git.diff", "engineering.git.log", "engineering.git.remote_compare", "engineering.git.stage", "engineering.git.status", "engineering.git.unstage", "engineering.git.worktrees", "engineering.lint.run", "engineering.mcp.catalog", "engineering.memory.capture", "engineering.memory.context", "engineering.memory.search", "engineering.memoryos.sync_files", "engineering.orchestrate.batch", "engineering.parallelpath.scan", "engineering.release.run", "engineering.repo.structure", "engineering.runtime.bottlenecks", "engineering.runtime.compare", "engineering.runtime.errors", "engineering.runtime.executions", "engineering.runtime.health", "engineering.runtime.investigate", "engineering.runtime.logs", "engineering.runtime.metrics", "engineering.runtime.query", "engineering.runtime.releaseContext", "engineering.runtime.saturation", "engineering.runtime.timeline", "engineering.runtime.trace", "engineering.runtime.watch", "engineering.test.run", "engineering.typecheck.run"]);
+    assert.equal(tools.result.tools.length, 43);
     const statusBeforeCatalog = execFileSync("git", ["status", "--porcelain=v2", "--untracked-files=all"], { cwd: root, encoding: "utf8" });
     const refsBeforeCatalog = execFileSync("git", ["show-ref"], { cwd: root, encoding: "utf8" });
     const registryBeforeCatalog = JSON.stringify(tokenRegistry);
@@ -56,8 +56,8 @@ test("authenticated MCP endpoint exposes exactly the approved tools", async () =
     assert.equal(catalog.serverName, "memoryos-eng-mcp");
     assert.equal(catalog.serverVersion, "0.1.0");
     assert.equal(catalog.repositoryId, "memoryos");
-    assert.equal(catalog.actualToolCount, 42);
-    assert.equal(catalog.catalogVersion, "eng-mcp-tools-v42");
+    assert.equal(catalog.actualToolCount, 43);
+    assert.equal(catalog.catalogVersion, "eng-mcp-tools-v43");
     assert.match(catalog.catalogHash, /^[a-f0-9]{64}$/);
     assert.equal(secondCatalog.catalogHash, catalog.catalogHash);
     const catalogNames = catalog.tools.map((tool: ToolCatalogEntry) => tool.name);
@@ -75,6 +75,7 @@ test("authenticated MCP endpoint exposes exactly the approved tools", async () =
     assert.equal(access.get("engineering.memory.capture"), "write");
     assert.equal(access.get("engineering.test.run"), "read");
     assert.equal(access.get("engineering.release.run"), "write");
+    assert.equal(access.get("engineering.memoryos.sync_files"), "write");
     assert.equal(access.get("engineering.typecheck.run"), "read");
     assert.ok(catalogNames.includes("engineering.git.log"));
     assert.ok(catalogNames.includes("engineering.git.remote_compare"));
@@ -281,4 +282,133 @@ test("orchestrate.batch mixed light and heavy operations completes successfully"
     assert.ok(tools.includes("engineering.code.search"));
     assert.ok(tools.includes("engineering.code.references"));
   } finally { await ctx.close(); }
+});
+
+async function setupSyncHarness() {
+  const repo = await fixture();
+  const syncRoot = path.join(tmpdir(), `eng-mcp-sync-${Date.now()}-${Math.random()}`);
+  await mkdir(path.join(syncRoot, "src/lib"), { recursive: true });
+  await writeFile(path.join(syncRoot, "src/lib/existing.ts"), "export const value = 1;\n");
+  const previous = process.env.ENG_MCP_MEMORYOS_SYNC_ROOT;
+  process.env.ENG_MCP_MEMORYOS_SYNC_ROOT = syncRoot;
+  const token = "sync-token";
+  const tokenRegistry = [{ tokenHash: createHash("sha256").update(token).digest("hex"), subject: "tester", scopes: ["engineering:read", "engineering:write", "engineering:verify", "engineering:git", "engineering:release"], allowedRepositoryIds: ["memoryos"], expiresAt: "2099-01-01T00:00:00.000Z" }];
+  const server = await createEngineeringHttpServer({ repositoryId: "memoryos", configuredRoot: repo, tokenRegistry });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const endpoint = `http://127.0.0.1:${address.port}/mcp`;
+  await mcp(endpoint, token, 1, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } });
+  return { endpoint, token, repo, syncRoot, restore: () => { if (previous === undefined) delete process.env.ENG_MCP_MEMORYOS_SYNC_ROOT; else process.env.ENG_MCP_MEMORYOS_SYNC_ROOT = previous; }, close: () => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve())) };
+}
+
+function sha(value: string) { return createHash("sha256").update(value, "utf8").digest("hex"); }
+
+test("sync_files A: existing allowed file -> backup created, content replaced, hash validated", async () => {
+  const ctx = await setupSyncHarness();
+  try {
+    const next = "export const value = 2;\n";
+    const called = await mcp(ctx.endpoint, ctx.token, 30, "tools/call", { name: "engineering.memoryos.sync_files", arguments: { files: [{ path: "src/lib/existing.ts", content: next }], acknowledgeSync: true } });
+    assert.equal(called.result.isError, undefined);
+    const value = JSON.parse(called.result.content[0].text);
+    assert.equal(value.success, true);
+    assert.equal(value.filesSucceeded, 1);
+    assert.equal(value.files[0].status, "synced");
+    assert.equal(value.files[0].backupCreated, true);
+    assert.notEqual(value.files[0].previousHash, value.files[0].newHash);
+    assert.equal(value.files[0].newHash, sha(next));
+    assert.equal(await readFile(path.join(ctx.syncRoot, "src/lib/existing.ts"), "utf8"), next);
+    const backups = (await readdir(path.join(ctx.syncRoot, "src/lib"))).filter((name) => name.startsWith("existing.ts.eng-mcp-bak-"));
+    assert.ok(backups.length >= 1);
+  } finally { ctx.restore(); await ctx.close(); }
+});
+
+test("sync_files B: new allowed file -> created, hash validated", async () => {
+  const ctx = await setupSyncHarness();
+  try {
+    const content = "export const created = true;\n";
+    const called = await mcp(ctx.endpoint, ctx.token, 31, "tools/call", { name: "engineering.memoryos.sync_files", arguments: { files: [{ path: "src/lib/new-file.ts", content }], acknowledgeSync: true } });
+    assert.equal(called.result.isError, undefined);
+    const value = JSON.parse(called.result.content[0].text);
+    assert.equal(value.success, true);
+    assert.equal(value.files[0].status, "synced");
+    assert.equal(value.files[0].backupCreated, false);
+    assert.equal(value.files[0].previousHash, null);
+    assert.equal(value.files[0].newHash, sha(content));
+    assert.equal(await readFile(path.join(ctx.syncRoot, "src/lib/new-file.ts"), "utf8"), content);
+  } finally { ctx.restore(); await ctx.close(); }
+});
+
+test("sync_files C: ../ traversal -> DENIED", async () => {
+  const ctx = await setupSyncHarness();
+  try {
+    const called = await mcp(ctx.endpoint, ctx.token, 32, "tools/call", { name: "engineering.memoryos.sync_files", arguments: { files: [{ path: "src/lib/../../etc/passwd", content: "x" }], acknowledgeSync: true } });
+    assert.equal(called.result.isError, undefined);
+    const value = JSON.parse(called.result.content[0].text);
+    assert.equal(value.success, false);
+    assert.equal(value.files[0].status, "failed");
+    assert.equal(value.files[0].error, "PATH_TRAVERSAL_DENIED");
+  } finally { ctx.restore(); await ctx.close(); }
+});
+
+test("sync_files D: absolute path -> DENIED", async () => {
+  const ctx = await setupSyncHarness();
+  try {
+    const called = await mcp(ctx.endpoint, ctx.token, 33, "tools/call", { name: "engineering.memoryos.sync_files", arguments: { files: [{ path: "/etc/passwd", content: "x" }], acknowledgeSync: true } });
+    assert.equal(called.result.isError, undefined);
+    const value = JSON.parse(called.result.content[0].text);
+    assert.equal(value.success, false);
+    assert.equal(value.files[0].status, "failed");
+    assert.equal(value.files[0].error, "ABSOLUTE_PATH_DENIED");
+  } finally { ctx.restore(); await ctx.close(); }
+});
+
+test("sync_files E: path outside src/lib/** -> DENIED", async () => {
+  const ctx = await setupSyncHarness();
+  try {
+    const called = await mcp(ctx.endpoint, ctx.token, 34, "tools/call", { name: "engineering.memoryos.sync_files", arguments: { files: [{ path: "src/foo.ts", content: "x" }], acknowledgeSync: true } });
+    assert.equal(called.result.isError, undefined);
+    const value = JSON.parse(called.result.content[0].text);
+    assert.equal(value.success, false);
+    assert.equal(value.files[0].status, "failed");
+    assert.equal(value.files[0].error, "PATH_NOT_ALLOWED");
+  } finally { ctx.restore(); await ctx.close(); }
+});
+
+test("sync_files F: eng-mcp/** path -> DENIED", async () => {
+  const ctx = await setupSyncHarness();
+  try {
+    const called = await mcp(ctx.endpoint, ctx.token, 35, "tools/call", { name: "engineering.memoryos.sync_files", arguments: { files: [{ path: "src/lib/eng-mcp/foo.ts", content: "x" }], acknowledgeSync: true } });
+    assert.equal(called.result.isError, undefined);
+    const value = JSON.parse(called.result.content[0].text);
+    assert.equal(value.success, false);
+    assert.equal(value.files[0].status, "failed");
+    assert.equal(value.files[0].error, "PATH_NOT_ALLOWED");
+  } finally { ctx.restore(); await ctx.close(); }
+});
+
+test("sync_files G: more than 10 files -> DENIED", async () => {
+  const ctx = await setupSyncHarness();
+  try {
+    const files = Array.from({ length: 11 }, (_value, index) => ({ path: `src/lib/g${index}.ts`, content: "x" }));
+    const called = await mcp(ctx.endpoint, ctx.token, 36, "tools/call", { name: "engineering.memoryos.sync_files", arguments: { files, acknowledgeSync: true } });
+    assert.equal(called.result.isError, true);
+  } finally { ctx.restore(); await ctx.close(); }
+});
+
+test("sync_files H: partial failure -> structured result, not hidden", async () => {
+  const ctx = await setupSyncHarness();
+  try {
+    const good = "export const value = 9;\n";
+    const called = await mcp(ctx.endpoint, ctx.token, 37, "tools/call", { name: "engineering.memoryos.sync_files", arguments: { files: [{ path: "src/lib/existing.ts", content: good }, { path: "src/lib/../../etc/passwd", content: "x" }], acknowledgeSync: true } });
+    assert.equal(called.result.isError, undefined);
+    const value = JSON.parse(called.result.content[0].text);
+    assert.equal(value.success, false);
+    assert.equal(value.filesProcessed, 2);
+    assert.equal(value.filesSucceeded, 1);
+    assert.equal(value.filesFailed, 1);
+    assert.equal(value.files[0].status, "synced");
+    assert.equal(value.files[1].status, "failed");
+    assert.equal(await readFile(path.join(ctx.syncRoot, "src/lib/existing.ts"), "utf8"), good);
+  } finally { ctx.restore(); await ctx.close(); }
 });

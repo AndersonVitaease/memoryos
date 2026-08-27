@@ -104,6 +104,17 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
     }));
   }));
 
+  register("engineering.memoryos.sync_files", "write", (name) => server.registerTool(name, {
+    description: "Synchronize a small explicit set of MemoryOS source files into a fixed /opt/memoryos/src/lib/** allowlist with backup-before-replace and post-write hash verification. Narrow channel only; not a generic file write.",
+    inputSchema: z.object({
+      files: z.array(z.object({ path: z.string().min(1).max(512), content: z.string().max(131_072) })).min(1).max(10),
+      acknowledgeSync: z.literal(true)
+    }).strict()
+  }, async (input) => {
+    requireWrite();
+    return response(await repository.syncFiles(input));
+  }));
+
   register("engineering.typecheck.run", "read", (name) => server.registerTool(name, { description: "Run the project official TypeScript type check in no-emit mode without accepting arbitrary commands.", inputSchema: z.object({ timeoutMs: z.number().int().min(1).max(120_000).optional() }).strict() }, async (input) => { requireVerify(); return response(await repository.typeCheckRun(subject.subject, input)); }));
 
   // Runtime observability tools
