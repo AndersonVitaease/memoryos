@@ -114,9 +114,11 @@ export class RepositoryAdapter {
   private readonly lintRuntime: Required<LintRuntime>;
   private readonly writeLocks = new Map<string, Promise<void>>();
   private gitLock?: Promise<void>;
+  private readonly memoryOsSyncRoot: string;
   constructor(policy: RepositoryPolicy, execute: CommandRunner = command, fileOps: Partial<FileOps> = {}, lintRuntime: LintRuntime = {}) {
     this.policy = policy; this.execute = execute; this.fs = { ...defaultFileOps, ...fileOps };
     this.lintRuntime = { resolveExecutable: lintRuntime.resolveExecutable ?? resolveLocalEslint, run: lintRuntime.run ?? runVerificationCommand };
+    this.memoryOsSyncRoot = process.env.ENG_MCP_MEMORYOS_SYNC_ROOT ?? "/opt/memoryos";
   }
   async verifyDependencies(): Promise<void> { await this.execute("rg", ["--version"], this.policy.authorizedRoot, 3_000, 8_192); }
 
@@ -762,5 +764,82 @@ async references(subject: string, symbol: string, maxResults = 100) {
       results,
       success
     };
+  }
+
+  async syncFiles(input: { files: Array<{ path: string; content: string }>; acknowledgeSync: boolean }) {
+    if (!input.acknowledgeSync) throw new EngineeringError("SYNC_ACKNOWLEDGEMENT_REQUIRED");
+    if (!Array.isArray(input.files) || input.files.length < 1 || input.files.length > 10) throw new EngineeringError("INPUT_INVALID");
+    const seen = new Set<string>();
+    const files: Array<{ path: string; status: "synced" | "failed"; previousHash: string | null; newHash: string | null; backupCreated: boolean; error?: string }> = [];
+    let succeeded = 0;
+    for (const entry of input.files) {
+      const requestedPath = entry.path;
+      let previousHash: string | null = null;
+      let backupCreated = false;
+      try {
+        const target = this.resolveMemoryOsSyncPath(requestedPath);
+        if (seen.has(target.canonical)) throw new EngineeringError("INPUT_INVALID");
+        seen.add(target.canonical);
+        const bytes = Buffer.from(entry.content ?? "", "utf8");
+        if (bytes.length > 131_072) throw new EngineeringError("FILE_LIMIT_EXCEEDED");
+        assertNoSensitiveContent(bytes);
+        let newHash: string | null = null;
+        await this.withWriteLock(target.absolutePath, async () => {
+          const existed = await stat(target.absolutePath).then(() => true).catch(() => false);
+          if (existed) {
+            const realFile = await realpath(target.absolutePath);
+            this.assertWithinSyncRoot(realFile);
+            const before = await readFile(target.absolutePath);
+            previousHash = this.hash(before);
+            await this.backupMemoryOsFile(target.absolutePath, before);
+            backupCreated = true;
+            await this.atomicReplace(target.absolutePath, target.parentPath, bytes, async () => {
+              const latest = await readFile(target.absolutePath);
+              if (this.hash(latest) !== previousHash) throw new EngineeringError("FILE_VERSION_CONFLICT");
+            });
+          } else {
+            const realParent = await realpath(target.parentPath);
+            this.assertWithinSyncRoot(realParent);
+            if (await stat(target.absolutePath).then(() => true).catch(() => false)) throw new EngineeringError("FILE_ALREADY_EXISTS");
+            await this.atomicCreate(target.absolutePath, target.parentPath, bytes);
+          }
+          const after = await readFile(target.absolutePath);
+          newHash = this.hash(after);
+          if (newHash !== this.hash(bytes)) throw new EngineeringError("WRITE_VERIFY_FAILED");
+        });
+        files.push({ path: target.canonical, status: "synced", previousHash, newHash, backupCreated });
+        succeeded += 1;
+      } catch (error) {
+        files.push({ path: requestedPath, status: "failed", previousHash, newHash: null, backupCreated, error: error instanceof EngineeringError ? error.code : (error instanceof Error ? error.message : String(error)) });
+      }
+    }
+    return { success: succeeded === input.files.length, filesProcessed: input.files.length, filesSucceeded: succeeded, filesFailed: input.files.length - succeeded, files };
+  }
+
+  private resolveMemoryOsSyncPath(rawPath: string): { absolutePath: string; parentPath: string; canonical: string } {
+    if (typeof rawPath !== "string" || !rawPath.trim()) throw new EngineeringError("INPUT_INVALID");
+    if (rawPath.startsWith("/") || /^[A-Za-z]:[\\/]/.test(rawPath)) throw new EngineeringError("ABSOLUTE_PATH_DENIED");
+    const forward = rawPath.replaceAll("\\", "/");
+    if (forward.includes("\0")) throw new EngineeringError("INPUT_INVALID");
+    const normalized = path.posix.normalize(forward);
+    if (normalized.startsWith("/") || normalized.includes("..")) throw new EngineeringError("PATH_TRAVERSAL_DENIED");
+    if (!/^src\/lib\//.test(normalized)) throw new EngineeringError("PATH_NOT_ALLOWED");
+    if (/(^|\/)(\.env|\.git|node_modules|credentials|secrets?|\.ssh|\.aws|\.gnupg)(\/|$)/i.test(normalized)) throw new EngineeringError("PATH_NOT_ALLOWED");
+    if (/^src\/lib\/eng-mcp\//i.test(normalized)) throw new EngineeringError("PATH_NOT_ALLOWED");
+    const absolutePath = path.resolve(this.memoryOsSyncRoot, normalized);
+    const canonical = path.relative(this.memoryOsSyncRoot, absolutePath).replaceAll("\\", "/");
+    if (!canonical.startsWith("src/lib/") || canonical.includes("..")) throw new EngineeringError("PATH_NOT_ALLOWED");
+    return { absolutePath, parentPath: path.dirname(absolutePath), canonical };
+  }
+
+  private assertWithinSyncRoot(realPath: string): void {
+    const root = this.memoryOsSyncRoot.endsWith("/") ? this.memoryOsSyncRoot.slice(0, -1) : this.memoryOsSyncRoot;
+    if (realPath !== root && !realPath.startsWith(root + "/")) throw new EngineeringError("PATH_NOT_ALLOWED");
+  }
+
+  private async backupMemoryOsFile(absolutePath: string, bytes: Buffer): Promise<void> {
+    const backup = `${absolutePath}.eng-mcp-bak-${Date.now()}-${randomUUID()}`;
+    const handle = await this.fs.open(backup, "wx");
+    try { await handle.writeFile(bytes); await handle.sync(); } finally { await handle.close(); }
   }
 }
