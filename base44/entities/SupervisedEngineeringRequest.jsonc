@@ -1,0 +1,74 @@
+{
+  "name": "SupervisedEngineeringRequest",
+  "type": "object",
+  "properties": {
+    "prompt": {
+      "type": "string",
+      "description": "Original engineering mission forwarded by ENG-MCP."
+    },
+    "session_id": {
+      "type": "string",
+      "description": "Caller session identifier."
+    },
+    "project_id": {
+      "type": "string",
+      "description": "Optional project identifier."
+    },
+    "execution_id": {
+      "type": "string",
+      "description": "Optional caller execution identifier."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "in_progress",
+        "completed",
+        "failed"
+      ],
+      "default": "pending"
+    },
+    "result": {
+      "type": "string",
+      "description": "JSON-serialized ConnectorResult/ExecutionOutcome returned by the real MemoryOS runtime."
+    },
+    "error": {
+      "type": "string",
+      "description": "Execution error when failed."
+    },
+    "requested_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "claimed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "prompt",
+    "session_id",
+    "status"
+  ],
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}
