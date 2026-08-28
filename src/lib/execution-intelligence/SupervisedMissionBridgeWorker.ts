@@ -1,4 +1,5 @@
 import { base44 } from '@/api/base44Client';
+import { detectWriteMode } from '@/lib/execution-intelligence/adaptive-process/OpenHandsChangeSet';
 
 const POLL_MS = 2_000;
 const KEY = '__SUPERVISED_MISSION_BRIDGE_WORKER__';
@@ -23,7 +24,7 @@ async function tick(state: WorkerState): Promise<void> {
       const outcome = await runtime.processCapability({
         connectorId: 'adaptive-process',
         capability: 'supervisedEngineering',
-        params: { task: task.prompt, mode: 'read' },
+        params: { task: task.prompt, mode: detectWriteMode(task.prompt) },
         context: {
           userId: 'supervised-bridge-worker',
           workspaceId: task.projectId || 'memoryos',
