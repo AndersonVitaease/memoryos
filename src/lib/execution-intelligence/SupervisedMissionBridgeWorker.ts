@@ -8,6 +8,7 @@ type WorkerState = { timer?: ReturnType<typeof setInterval>; busy: boolean };
 async function tick(state: WorkerState): Promise<void> {
   if (state.busy || typeof document === 'undefined') return;
   state.busy = true;
+  console.info('[SUPERVISED-BRIDGE] poll');
   try {
     const pollRes: any = await base44.functions.invoke('supervisedEngineeringMission', { operation: 'poll' });
     const task = (pollRes?.data ?? pollRes)?.task;
@@ -56,6 +57,7 @@ export function startSupervisedMissionBridgeWorker(): void {
   if (typeof window === 'undefined') return;
   const g = globalThis as unknown as Record<string, unknown>;
   if (g[KEY]) return;
+  console.info('[SUPERVISED-BRIDGE] started');
   const state: WorkerState = { busy: false };
   g[KEY] = state;
   void tick(state);
