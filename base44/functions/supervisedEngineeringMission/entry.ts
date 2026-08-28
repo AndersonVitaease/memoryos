@@ -10,9 +10,13 @@ function str(v: unknown, max = 20_000): string {
 function sleep(ms: number) { return new Promise((resolve) => setTimeout(resolve, ms)); }
 
 async function externalAuthorized(req: Request): Promise<boolean> {
-  const configured = secrets.get('ENG_MCP_PROXY_SECRET');
+  const proxySecret = secrets.get('ENG_MCP_PROXY_SECRET');
+  const batchSecret = secrets.get('MCP_BATCH_EXECUTE_SECRET');
   const provided = req.headers.get('x-proxy-secret') ?? req.headers.get('x-supervised-mission-token') ?? '';
-  return Boolean(configured && provided && provided === configured);
+  return Boolean(provided && (
+    (proxySecret && provided === proxySecret) ||
+    (batchSecret && provided === batchSecret)
+  ));
 }
 
 export default async function(req: Request) {
