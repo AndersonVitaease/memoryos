@@ -12,10 +12,13 @@ async function tick(state: WorkerState): Promise<void> {
     const pollRes: any = await base44.functions.invoke('supervisedEngineeringMission', { operation: 'poll' });
     const task = (pollRes?.data ?? pollRes)?.task;
     if (!task?.id || !task?.prompt || !task?.sessionId) return;
+    console.info('[SUPERVISED-BRIDGE] claimed', { requestId: task.id, sessionId: task.sessionId });
 
     try {
       const { getExecutionRuntime } = await import('@/lib/execution-intelligence');
+      console.info('[SUPERVISED-BRIDGE] module-loaded', { requestId: task.id });
       const runtime = await getExecutionRuntime();
+      console.info('[SUPERVISED-BRIDGE] runtime-ready', { requestId: task.id });
       const outcome = await runtime.processCapability({
         connectorId: 'adaptive-process',
         capability: 'supervisedEngineering',
@@ -33,6 +36,10 @@ async function tick(state: WorkerState): Promise<void> {
         operation: 'complete', requestId: task.id, result: outcome,
       });
     } catch (error) {
+      console.error('[SUPERVISED-BRIDGE] execution-error', {
+        requestId: task.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
       await base44.functions.invoke('supervisedEngineeringMission', {
         operation: 'complete', requestId: task.id,
         error: error instanceof Error ? error.message : String(error),
