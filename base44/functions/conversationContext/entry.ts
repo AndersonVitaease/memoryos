@@ -293,23 +293,33 @@ function scopeFor(type: string): string {
 export default async function (req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me().catch(() => null);
 
     const body = await req.json().catch(() => ({}));
-    const op = body.operation;
+    const op = body.operation ?? body.op;
 
     // processMemoryBatch e acionado server-to-server pelo agentMemoryBridge
     // (x-agent-memory-token / memoryBatchToken - o MESMO secret
     // AGENT_MEMORY_MCP_SECRET do bridge, sem novo credential). Sem usuario
     // autenticado, apenas esta operacao e aceita mediante token valido; todas
     // as demais operacoes continuam exigindo usuario autenticado.
-    if (!user) {
-      if (op !== 'processMemoryBatch') return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    //
+    // Gate token-only movido PARA ANTES de qualquer autenticacao de usuario:
+    // sem JWT de usuario, auth.me() lanca de forma sincrona e o erro
+    // ("Authentication required to view users") escapa do .catch e chega ao
+    // catch externo como 500 antes de qualquer validacao. Com token valido,
+    // o fluxo token-only segue SEM chamar auth.me(); para qualquer outro op,
+    // auth.me() e a exigencia de usuario sao preservadas exatamente como antes.
+    let user: any = null;
+    if (op === 'processMemoryBatch') {
       const expected = secrets.get('AGENT_MEMORY_MCP_SECRET');
       const provided = req.headers.get('x-agent-memory-token') || String(body.memoryBatchToken ?? '');
       if (!expected || !provided || provided !== expected) {
         return Response.json({ error: 'Unauthorized' }, { status: 401 });
       }
+      // token valido: caminho interno segue com user = null, sem auth.me()
+    } else {
+      user = await base44.auth.me().catch(() => null);
+      if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const userId = user?.id;
