@@ -142,15 +142,27 @@ async function processMemoryBatch(base44: any, sessionId: string, projectId: str
     .map((m: any) => `${m.role === 'user' ? 'Usuário' : 'Assistente'}: ${m.content}`)
     .join('\n\n');
 
-  // Mecanismo interno entre Base44 functions (mesmo cliente request-scoped do
-  // padrao do sistema, ex: webConnectorExtension -> conversationContext).
+  // Mecanismo interno entre Base44 functions. invoke() do SDK nao tem canal de
+  // headers (invoke(fn, data)); functions.fetch() (mesmo modulo, API
+  // documentada) aceita RequestInit e faz merge dos headers custom com os de
+  // auth. No fluxo token-only do bridge nao ha usuario autenticado, entao o
+  // MESMO secret do gate e encaminhado explicitamente a openrouterChat.
   // Modelo default = DEFAULT_MODEL do OpenRouterLLMProvider (openrouterChat
   // exige model explicito). Sem acesso direto ao OpenRouter e sem InvokeLLM.
-  const chatRes: any = await base44.functions.invoke('openrouterChat', {
-    model: 'google/gemini-2.5-flash',
-    messages: [{ role: 'user', content: buildExtractionPrompt(session.summary ?? null, conversationText) }],
-    maxTokens: 2048,
-  });
+  const chatRes: any = await (
+    await base44.functions.fetch('/openrouterChat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-agent-memory-token': String(secrets.get('AGENT_MEMORY_MCP_SECRET') ?? ''),
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [{ role: 'user', content: buildExtractionPrompt(session.summary ?? null, conversationText) }],
+        maxTokens: 2048,
+      }),
+    })
+  ).json();
   const chatData = chatRes?.data ?? chatRes;
   if (!chatData || chatData.error) {
     throw new Error(`OPENROUTER_CHAT_FAILED:${chatData?.error ?? 'sem resposta'}`);
