@@ -292,14 +292,7 @@ function scopeFor(type: string): string {
 
 export default async function (req: Request): Promise<Response> {
   try {
-    let base44: any;
-    try {
-      // Diagnostico temporario: isola a criacao do client pre-gate. Se
-      // createClientFromRequest lancar, a falha e anterior ao gate token-only.
-      base44 = createClientFromRequest(req);
-    } catch (e) {
-      return Response.json({ error: 'PRE_GATE_CREATE_CLIENT_FAILED' }, { status: 500 });
-    }
+    const base44 = createClientFromRequest(req);
 
     const body = await req.json().catch(() => ({}));
     const op = body.operation ?? body.op;
@@ -333,7 +326,9 @@ export default async function (req: Request): Promise<Response> {
     // auth.me() nao hidrata os campos custom do User (active_workspace_id,
     // workspace_ids). Busca o registro completo via asServiceRole para obter
     // o seletor de workspace ativo validado.
-    const fullUser = await base44.asServiceRole.entities.User.get(userId).catch(() => null);
+    const fullUser = userId
+      ? await base44.asServiceRole.entities.User.get(userId).catch(() => null)
+      : null;
     const activeWs = (fullUser as any)?.active_workspace_id || (user as any)?.data?.active_workspace_id || null;
 
     // ── createSession ──────────────────────────────────────────────────
