@@ -12,7 +12,13 @@ Deno.serve(async (req) => {
   const START_MS = Date.now();
 
   try {
-    const base44 = createClientFromRequest(req);
+    let base44: any;
+    try {
+      // Diagnostico temporario: isola a criacao do client no openrouterChat.
+      base44 = createClientFromRequest(req);
+    } catch (e) {
+      return Response.json({ error: 'OPENROUTER_PRE_GATE_CLIENT_FAILED' }, { status: 500 });
+    }
 
     // Gate server-to-server (UCME): o conversationContext chama esta funcao
     // internamente com o header x-agent-memory-token = AGENT_MEMORY_MCP_SECRET,
