@@ -5,6 +5,7 @@ import { EngineeringError, type AuthenticatedSubject } from "./policy.js";
 import type { RepositoryAdapter } from "./repository.js";
 import { ObservabilityClient } from "./observability.ts";
 import { AgentMemoryClient } from "./memory.ts";
+import { runHttpProbe } from "./probe.ts";
 
 export const ENGINEERING_SERVER_INFO = { name: "memoryos-eng-mcp", version: "0.1.0" } as const;
 export type ToolCatalogEntry = { name: string; access: "read" | "write" };
@@ -270,5 +271,24 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   }, async (input) => {
     requireRead();
     return response(await observability.query("query", input));
+  }));
+
+  // Controlled HTTP diagnostic probe: allowlisted target only, GET/POST only,
+  // bounded response, credentialRef resolved server-side, secrets never returned.
+  register("engineering.runtime.http_probe", "write", (name) => server.registerTool(name, {
+    description: "Run a bounded HTTP diagnostic probe against the allowlisted Base44 target (target 'base44'). Credential is resolved server-side via credentialRef (AGENT_MEMORY_MCP_SECRET) and never returned. GET/POST only, timeout capped at 30s, response size-capped and secret-redacted; redirects are never followed.",
+    inputSchema: z.object({
+      target: z.string().min(1).max(64),
+      method: z.enum(["GET", "POST"]),
+      path: z.string().min(1).max(256),
+      body: z.record(z.string(), z.any()).optional(),
+      credentialRef: z.string().min(1).max(64).optional(),
+      credentialHeader: z.string().min(1).max(64).optional(),
+      timeoutMs: z.number().int().min(1).max(30_000).optional()
+    }).strict()
+  }, async (input) => {
+    requireRead();
+    requireWrite();
+    return response(await runHttpProbe(subject.subject, input));
   }));
 }
