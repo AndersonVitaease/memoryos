@@ -122,8 +122,10 @@ SAIDA (structured output): responda APENAS com UM unico objeto JSON valido, sem 
 // Reutiliza openrouterChat via chamada function→function autenticada com o
 // secret AGENT_MEMORY_MCP_SECRET (mesmo padrão do eng-mcp/src/memory.ts).
 async function processMemoryBatch(base44: any, sessionId: string, projectId: string, userId?: string): Promise<any> {
+  diagnosticStage = 'STAGE_4_PROCESS_MEMORY_BATCH_ENTERED';
   const session = await base44.asServiceRole.entities.ChatSession.get(sessionId).catch(() => null);
   if (!session) throw new Error('SESSION_NOT_FOUND');
+  diagnosticStage = 'STAGE_5_SESSION_LOADED';
 
   // Caminho com usuario: valida membership do workspace da sessao (mesma
   // regra do persistMessage). Caminho server-to-server (token) ja passou
@@ -137,6 +139,7 @@ async function processMemoryBatch(base44: any, sessionId: string, projectId: str
     .catch(() => []);
   if (!messages || messages.length === 0) return { skipped: 'NO_MESSAGES' };
 
+  diagnosticStage = 'STAGE_6_MESSAGES_LOADED';
   const recent = messages.slice(0, 5).reverse();
   const conversationText = recent
     .map((m: any) => `${m.role === 'user' ? 'Usuário' : 'Assistente'}: ${m.content}`)
@@ -150,6 +153,7 @@ async function processMemoryBatch(base44: any, sessionId: string, projectId: str
   // Modelo default = DEFAULT_MODEL do OpenRouterLLMProvider (openrouterChat
   // exige model explicito). Sem acesso direto ao OpenRouter e sem InvokeLLM.
   const chatRes: any = await (
+  diagnosticStage = 'STAGE_7_OPENROUTER_CALL_START';
     await base44.functions.fetch('/openrouterChat', {
       method: 'POST',
       headers: {
@@ -290,6 +294,8 @@ function scopeFor(type: string): string {
   return type === 'pessoal' ? 'personal' : 'workspace';
 }
 
+let diagnosticStage = 'STAGE_0_START';
+
 export default async function (req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
@@ -322,6 +328,7 @@ export default async function (req: Request): Promise<Response> {
       if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+  diagnosticStage = 'STAGE_1_TOKEN_GATE_PASSED';
     const userId = user?.id;
     // auth.me() nao hidrata os campos custom do User (active_workspace_id,
     // workspace_ids). Busca o registro completo via asServiceRole para obter
@@ -329,6 +336,7 @@ export default async function (req: Request): Promise<Response> {
     const fullUser = userId
       ? await base44.asServiceRole.entities.User.get(userId).catch(() => null)
       : null;
+  diagnosticStage = 'STAGE_2_USER_LOOKUP_SKIPPED';
     const activeWs = (fullUser as any)?.active_workspace_id || (user as any)?.data?.active_workspace_id || null;
 
     // ── createSession ──────────────────────────────────────────────────
@@ -401,11 +409,12 @@ export default async function (req: Request): Promise<Response> {
       if (!body.projectId) return Response.json({ error: 'projectId ausente' }, { status: 400 });
 
       try {
+    diagnosticStage = 'STAGE_3_DISPATCH_ENTERED';
         const result = await processMemoryBatch(base44, sessionId, body.projectId, userId);
         return Response.json({ ok: true, data: result });
       } catch (e: any) {
         console.error('[conversationContext] processMemoryBatch error:', e?.message || String(e));
-        return Response.json({ error: e?.message || 'INTERNAL_ERROR' }, { status: 500 });
+        return Response.json({ error: e?.message || 'INTERNAL_ERROR', diagnosticStage }, { status: 500 });
       }
     }
 
