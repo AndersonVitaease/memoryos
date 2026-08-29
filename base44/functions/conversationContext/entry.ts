@@ -292,7 +292,14 @@ function scopeFor(type: string): string {
 
 export default async function (req: Request): Promise<Response> {
   try {
-    const base44 = createClientFromRequest(req);
+    let base44: any;
+    try {
+      // Diagnostico temporario: isola a criacao do client pre-gate. Se
+      // createClientFromRequest lancar, a falha e anterior ao gate token-only.
+      base44 = createClientFromRequest(req);
+    } catch (e) {
+      return Response.json({ error: 'PRE_GATE_CREATE_CLIENT_FAILED' }, { status: 500 });
+    }
 
     const body = await req.json().catch(() => ({}));
     const op = body.operation ?? body.op;
