@@ -6,15 +6,27 @@
  * exposta ao navegador).
  */
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.38';
+import { secrets } from 'base44:runtime';
 
 Deno.serve(async (req) => {
   const START_MS = Date.now();
 
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (!user) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+    // Gate server-to-server (UCME): o conversationContext chama esta funcao
+    // internamente com o header x-agent-memory-token = AGENT_MEMORY_MCP_SECRET,
+    // sem JWT de usuario. auth.me() lanca sem usuario, entao o token interno e
+    // validado ANTES; sem token valido, o fluxo de usuario (auth.me()) segue
+    // exatamente como antes. O valor do secret nunca e retornado ou logado.
+    const internalToken = req.headers.get('x-agent-memory-token');
+    const expectedInternalToken = secrets.get('AGENT_MEMORY_MCP_SECRET');
+    const internalAuthOk = Boolean(expectedInternalToken) && internalToken === expectedInternalToken;
+    if (!internalAuthOk) {
+      const user = await base44.auth.me();
+      if (!user) {
+        return Response.json({ error: 'Unauthorized' }, { status: 401 });
+      }
     }
 
     let body: Record<string, unknown> = {};
