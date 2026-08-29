@@ -182,7 +182,29 @@ export default async function(req: Request) {
         last_message_at: new Date().toISOString(),
       }).catch(() => {});
 
-      return Response.json({ ok: true, operation, data: { projectId, agent, sessionId: session.id, memoryId: message.id, stored: true } });
+      // Gatilho assincrono da extracao de memoria (Codex/Goose → UCME):
+      // conversationContext.processMemoryBatch → openrouterChat → entidades UCME.
+      // NAO-BLOQUEANTE: o capture NAO espera a extracao; falha de extracao nao
+      // falha o capture — apenas log (sem secret/token no log).
+      try {
+        Promise.resolve(base44.functions.invoke('conversationContext', {
+          operation: 'processMemoryBatch',
+          sessionId: session.id,
+          projectId,
+          // Token interno server-to-server (mesmo secret do bridge); garante o
+          // gate em conversationContext sem depender de repasse de headers.
+          memoryBatchToken: secrets.get('AGENT_MEMORY_MCP_SECRET') || '',
+        })).then((r: any) => {
+          const d = r?.data ?? r;
+          if (d?.error) console.warn('[agentMemoryBridge] processMemoryBatch falhou:', d.error);
+        }).catch((e: any) => {
+          console.warn('[agentMemoryBridge] processMemoryBatch erro (async):', e?.message || String(e));
+        });
+      } catch (e: any) {
+        console.warn('[agentMemoryBridge] processMemoryBatch disparo falhou:', e?.message || String(e));
+      }
+
+      return Response.json({ ok: true, operation, data: { projectId, agent, sessionId: session.id, memoryId: message.id, stored: true, memoryBatch: 'async-triggered' } });
     }
 
     return Response.json({ error: 'OPERATION_NOT_ALLOWED' }, { status: 400 });
