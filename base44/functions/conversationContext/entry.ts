@@ -163,7 +163,7 @@ async function processMemoryBatch(base44: any, sessionId: string, projectId: str
       body: JSON.stringify({
         model: 'google/gemini-2.5-flash',
         messages: [{ role: 'user', content: buildExtractionPrompt(session.summary ?? null, conversationText) }],
-        maxTokens: 2048,
+        maxTokens: 4096,
       }),
     })
   ).json();
