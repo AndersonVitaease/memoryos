@@ -91,6 +91,7 @@ export type GuardianVpsAdapterDeps = {
   readDeployments: () => Promise<{ ok: boolean; status: number; error?: string; deployments: Record<string, unknown>[] }>;
   findInFlightConflict: (deployments: Record<string, unknown>[]) => Record<string, unknown> | null;
   dispatchRecord: GuardianVpsDispatchRecord;
+  registerMutationPrimitive: (primitive: string) => void;
 };
 
 export function createGuardianVpsRedeployAdapter(deps: GuardianVpsAdapterDeps): DomainAdapter<GuardianVpsIntent, GuardianVpsProposal> {
@@ -145,6 +146,7 @@ export function createGuardianVpsRedeployAdapter(deps: GuardianVpsAdapterDeps): 
         };
       }
       // THE single mutating boundary: the existing application-redeploy dispatch.
+      deps.registerMutationPrimitive(deps.primitive);
       deps.dispatchRecord.startedAt = deps.now();
       let response: { ok: boolean; status: number; result?: unknown; error?: string; durationMs: number };
       try {

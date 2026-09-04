@@ -664,6 +664,7 @@ export async function runVpsChangeSafe(subject: string, input: unknown, deps: Vp
     },
     findInFlightConflict: (deployments) => findInFlightConflict(deployments, now()),
     dispatchRecord: guardianDispatch,
+    registerMutationPrimitive: (primitive) => primitivesInvoked.push(primitive),
   });
   if (!gateSatisfied) {
     let guardian: Record<string, unknown>;
