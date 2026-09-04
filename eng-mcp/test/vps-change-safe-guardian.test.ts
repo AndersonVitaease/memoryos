@@ -148,6 +148,7 @@ test("DG01R ADAPTER bind: data-only intent fail-closed eligibility — refusal w
     readDeployments: async () => ({ ok: true, status: 200, deployments: [deployment()] }),
     findInFlightConflict: (deployments) => findInFlightConflict(deployments, now()),
     dispatchRecord,
+    registerMutationPrimitive: () => {},
   });
   const refused = (await adapter.bind({ action: "redeploy_application", applicationId: "app-1", approved: false, observedAt: BASE, observedConflictDetected: false })) as Extract<GuardianResult, { outcome: "NOT_EXECUTED" }>;
   assert.equal(refused.outcome, "NOT_EXECUTED");
@@ -177,6 +178,7 @@ test("DG01R ADAPTER apply: stale observation -> NOT_EXECUTED(COMPATIBILITY), zer
     }),
     findInFlightConflict: (deployments) => findInFlightConflict(deployments, now()),
     dispatchRecord,
+    registerMutationPrimitive: () => {},
   });
   const result = await adapter.apply({ primitive: "application-redeploy", applicationId: "app-1", observedAt: BASE });
   assert.equal(result.outcome, "NOT_EXECUTED");
@@ -200,6 +202,7 @@ test("DG01R ADAPTER apply: re-proof read failure -> INDETERMINATE before the bou
     readDeployments: async () => ({ ok: false, status: 502, error: "FAKE_READ_FAILURE", deployments: [] }),
     findInFlightConflict: (deployments) => findInFlightConflict(deployments, now()),
     dispatchRecord,
+    registerMutationPrimitive: () => {},
   });
   const result = await adapter.apply({ primitive: "application-redeploy", applicationId: "app-1", observedAt: BASE });
   assert.equal(result.outcome, "INDETERMINATE");
@@ -222,6 +225,7 @@ test("DG01R ADAPTER apply: boundary reached -> exactly one dispatch with the fro
     readDeployments: async () => ({ ok: true, status: 200, deployments: [deployment()] }),
     findInFlightConflict: (deployments) => findInFlightConflict(deployments, now()),
     dispatchRecord,
+    registerMutationPrimitive: () => {},
   });
   const result = await adapter.apply({ primitive: "application-redeploy", applicationId: "app-1", observedAt: BASE });
   assert.equal(result.outcome, "INDETERMINATE");
