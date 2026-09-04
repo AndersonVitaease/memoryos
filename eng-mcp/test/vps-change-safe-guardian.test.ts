@@ -377,8 +377,9 @@ test("DG01R E DISPATCH RE-PROOF fail-closed: revalidation read failure -> bounda
   handlers["deployment-all"] = () => {
     deploymentReads += 1;
     if (deploymentReads === 1) return [deployment()];
-    delete handlers["deployment-all"]; // later reads fail (no handler -> upstream failure)
-    return [deployment()];
+    // dispatch-time re-validation read fails; the throw is caught by the
+    // adapter's fail-closed re-proof (zero mutation)
+    throw new Error("FAKE_REPROOF_READ_FAILURE");
   };
   const result = await run(fakeTransport({ handlers, log }), { action: "redeploy_application", target: { applicationId: "app-1" }, execute: true, approval: { approved: true } });
   assert.equal(result.outcome, "UPSTREAM_ERROR");
