@@ -42,8 +42,8 @@ test("authenticated MCP endpoint exposes exactly the approved tools", async () =
     const initialized = await mcp(endpoint, token, 1, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } });
     assert.equal(initialized.result.serverInfo.name, "memoryos-eng-mcp");
     const tools = await mcp(endpoint, token, 2, "tools/list", {});
-    assert.deepEqual(tools.result.tools.map((tool: { name: string }) => tool.name).sort(), ["engineering.change.impact", "engineering.code.references", "engineering.code.search", "engineering.contract.verify", "engineering.deadcode.scan", "engineering.file.create", "engineering.file.patch", "engineering.file.read", "engineering.git.branches", "engineering.git.commit", "engineering.git.diff", "engineering.git.log", "engineering.git.remote_compare", "engineering.git.stage", "engineering.git.status", "engineering.git.unstage", "engineering.git.worktrees", "engineering.lint.run", "engineering.mcp.catalog", "engineering.memory.capture", "engineering.memory.context", "engineering.memory.search", "engineering.memoryos.sync_files", "engineering.orchestrate.batch", "engineering.parallelpath.scan", "engineering.release.run", "engineering.repo.structure", "engineering.runtime.bottlenecks", "engineering.runtime.compare", "engineering.runtime.errors", "engineering.runtime.executions", "engineering.runtime.health", "engineering.runtime.investigate", "engineering.runtime.logs", "engineering.runtime.metrics", "engineering.runtime.query", "engineering.runtime.releaseContext", "engineering.runtime.saturation", "engineering.runtime.timeline", "engineering.runtime.trace", "engineering.runtime.watch", "engineering.test.run", "engineering.typecheck.run"].sort());
-    assert.equal(tools.result.tools.length, 43);
+    assert.deepEqual(tools.result.tools.map((tool: { name: string }) => tool.name).sort(), ["engineering.app.health", "engineering.sandbox.batchWrite", "engineering.sandbox.cancel", "engineering.sandbox.create", "engineering.sandbox.destroy", "engineering.sandbox.exec", "engineering.sandbox.inspect", "engineering.image.adapt", "engineering.bug.trace", "engineering.docker.health", "engineering.deploy.ready", "engineering.logs.explain", "engineering.release.test", "engineering.release.pipeline", "engineering.supervised_mission", "engineering.vps.capacity", "engineering.vps.change.safe", "engineering.vps.doctor", "engineering.vps.guardian", "engineering.vps.health", "engineering.vps.incident.summary", "engineering.vps.why_down", "engineering.deploy.status", "engineering.vps.reconcile", "engineering.vps.recover", "engineering.vps.what_changed", "engineering.change.impact", "engineering.code.impact", "engineering.code.references", "engineering.code.search", "engineering.code.understand", "engineering.compliance.assess", "engineering.contract.verify", "engineering.deadcode.scan", "engineering.distribution.campaign", "engineering.distribution.prepare", "engineering.distribution.publish", "engineering.file.create", "engineering.file.patch", "engineering.file.read", "engineering.git.branches", "engineering.git.commit", "engineering.git.diff", "engineering.git.log", "engineering.git.remote_compare", "engineering.git.stage", "engineering.git.status", "engineering.git.unstage", "engineering.git.worktrees", "engineering.guardian.app.deploy", "engineering.image.create", "engineering.image.edit", "engineering.lint.run", "engineering.mcp.catalog", "engineering.memory.capture", "engineering.memory.context", "engineering.memory.search", "engineering.memoryos.sync_files", "engineering.orchestrate.batch", "engineering.parallelpath.scan", "engineering.release.run", "engineering.repo.structure", "engineering.runtime.bottlenecks", "engineering.runtime.compare", "engineering.runtime.errors", "engineering.runtime.executions", "engineering.runtime.health", "engineering.runtime.http_probe", "engineering.runtime.investigate", "engineering.runtime.logs", "engineering.runtime.metrics", "engineering.runtime.query", "engineering.runtime.releaseContext", "engineering.runtime.saturation", "engineering.runtime.timeline", "engineering.runtime.trace", "engineering.runtime.watch", "engineering.test.run", "engineering.typecheck.run", "engineering.vision.inspect", "engineering.web.connector"].sort());
+    assert.equal(tools.result.tools.length, 81);
     const statusBeforeCatalog = execFileSync("git", ["status", "--porcelain=v2", "--untracked-files=all"], { cwd: root, encoding: "utf8" });
     const refsBeforeCatalog = execFileSync("git", ["show-ref"], { cwd: root, encoding: "utf8" });
     const registryBeforeCatalog = JSON.stringify(tokenRegistry);
@@ -56,8 +56,8 @@ test("authenticated MCP endpoint exposes exactly the approved tools", async () =
     assert.equal(catalog.serverName, "memoryos-eng-mcp");
     assert.equal(catalog.serverVersion, "0.1.0");
     assert.equal(catalog.repositoryId, "memoryos");
-    assert.equal(catalog.actualToolCount, 43);
-    assert.equal(catalog.catalogVersion, "eng-mcp-tools-v43");
+    assert.equal(catalog.actualToolCount, 81);
+    assert.equal(catalog.catalogVersion, "eng-mcp-tools-v81");
     assert.match(catalog.catalogHash, /^[a-f0-9]{64}$/);
     assert.equal(secondCatalog.catalogHash, catalog.catalogHash);
     const catalogNames = catalog.tools.map((tool: ToolCatalogEntry) => tool.name);
@@ -65,6 +65,11 @@ test("authenticated MCP endpoint exposes exactly the approved tools", async () =
     assert.equal(new Set(catalogNames).size, catalogNames.length);
     assert.deepEqual([...catalogNames].sort(), tools.result.tools.map((tool: { name: string }) => tool.name).sort());
     const access = new Map(catalog.tools.map((tool: ToolCatalogEntry) => [tool.name, tool.access]));
+    assert.equal(access.get("engineering.distribution.campaign"), "write");
+    assert.equal(access.get("engineering.image.edit"), "write");
+    assert.equal(access.get("engineering.image.create"), "write");
+    assert.equal(access.get("engineering.image.adapt"), "write");
+    assert.equal(access.get("engineering.vision.inspect"), "write");
     assert.equal(access.get("engineering.file.read"), "read");
     assert.equal(access.get("engineering.git.log"), "read");
     assert.equal(access.get("engineering.file.patch"), "write");
@@ -77,6 +82,17 @@ test("authenticated MCP endpoint exposes exactly the approved tools", async () =
     assert.equal(access.get("engineering.release.run"), "write");
     assert.equal(access.get("engineering.typecheck.run"), "read");
     assert.equal(access.get("engineering.memoryos.sync_files"), "write");
+    assert.equal(access.get("engineering.runtime.http_probe"), "write");
+    assert.equal(access.get("engineering.vps.change.safe"), "write");
+    assert.equal(access.get("engineering.vps.doctor"), "read");
+    assert.equal(access.get("engineering.vps.guardian"), "write");
+    assert.equal(access.get("engineering.vps.reconcile"), "read");
+    assert.equal(access.get("engineering.vps.recover"), "write");
+    assert.equal(access.get("engineering.release.test"), "write");
+    assert.equal(access.get("engineering.sandbox.exec"), "write");
+    assert.equal(access.get("engineering.sandbox.inspect"), "read");
+    assert.equal(access.get("engineering.sandbox.cancel"), "write");
+    assert.equal(access.get("engineering.sandbox.batchWrite"), "write");
     assert.ok(catalogNames.includes("engineering.git.log"));
     assert.ok(catalogNames.includes("engineering.git.remote_compare"));
     assert.ok(catalogNames.includes("engineering.mcp.catalog"));
@@ -389,3 +405,22 @@ test("sync_files H: partial failure -> structured result, not hidden", async () 
   } finally { ctx.restore(); await ctx.close(); }
 });
 
+test("engineering.distribution.publish requires the operator-issued engineering:distribution:publish scope", async () => {
+  const root = await fixture();
+  const token = "scope-test-token";
+  const tokenRegistry = [{ tokenHash: createHash("sha256").update(token).digest("hex"), subject: "tester", scopes: ["engineering:read", "engineering:write", "engineering:verify", "engineering:git", "engineering:release"], allowedRepositoryIds: ["memoryos"], expiresAt: "2099-01-01T00:00:00.000Z" }];
+  const server = await createEngineeringHttpServer({ repositoryId: "memoryos", configuredRoot: root, tokenRegistry });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const endpoint = `http://127.0.0.1:${address.port}/mcp`;
+  try {
+    await mcp(endpoint, token, 1, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } });
+    await mcp(endpoint, token, 2, "notifications/initialized", {});
+    const call = await mcp(endpoint, token, 3, "tools/call", { name: "engineering.distribution.publish", arguments: { approval: { version: 1, action: "publish_draft", channel: "dev", draftUrl: "https://dev.to/x/y", account: "x", title: "t", bodyProbe: "b", tags: [], mediaRefs: [], fingerprint: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", approvedBy: "op", observedAt: 1 } } });
+    const text = JSON.stringify(call.result);
+    assert.ok(text.includes("AUTHORIZATION_SCOPE_REQUIRED"), `expected scope refusal, got ${text.slice(0, 300)}`);
+  } finally {
+    server.close();
+  }
+});

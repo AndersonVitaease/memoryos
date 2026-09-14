@@ -7,9 +7,33 @@
  */
 import { Evidence } from './missionTypes.js';
 import { HARD_ERROR_PATTERNS, TRANSIENT_ERROR_PATTERNS } from './guards.js';
+import { isWorkerSpecialization, WorkerSpecialization } from './workerSpecialization.js';
 import { ActionExecutionContext, PlanAction, WorkerOutput, WorkerResult } from './multiAgentTypes.js';
 
 export type WorkerActionStatus = 'ok' | 'fail' | 'transient' | 'hard';
+
+/**
+ * SP-01 — deterministic transport gate for specialization provenance: a valid
+ * taxonomy member travels; anything else is treated as ABSENT (never throws,
+ * never infers, never routes). Metadata only — no model, no prompt, no tool,
+ * no scheduling input.
+ */
+function specializationOf(action: PlanAction): WorkerSpecialization | undefined {
+  const raw = action.specialization;
+  return isWorkerSpecialization(raw) ? raw : undefined;
+}
+
+/**
+ * SP-01 — provenance annotation: every Evidence produced by this action
+ * carries the action's specialization (shallow copies — the worker's own
+ * output objects are never mutated). Evidence of actions without a valid
+ * specialization passes through UNCHANGED (legacy-identical).
+ */
+function annotateSpecialization(evidence: Evidence[], action: PlanAction): Evidence[] {
+  const specialization = specializationOf(action);
+  if (!specialization) return evidence;
+  return evidence.map((item) => ({ ...item, specialization }));
+}
 
 /** Deterministic status from the action's own evidence (GH-04A markers). */
 export function classifyWorkerStatus(evidence: Evidence[]): WorkerActionStatus {
@@ -64,24 +88,26 @@ export class WorkerAgent {
       ...(action.mode ? { mode: action.mode } : {}),
       ...(missionContext?.allowedActions ? { allowedActions: Object.freeze([...missionContext.allowedActions]) } : {}),
       ...(missionContext?.forbiddenActions ? { forbiddenActions: Object.freeze([...missionContext.forbiddenActions]) } : {}),
+      // SP-01 — provenance metadata transport (valid member only; absent otherwise).
+      ...(specializationOf(action) ? { specialization: specializationOf(action) } : {}),
     };
     try {
       const output: WorkerOutput = await action.run(ctx);
-      const evidence = output.evidence ?? [];
+      const rawEvidence = output.evidence ?? [];
       const endMs = now();
       return {
         actionId: action.id,
-        status: classifyWorkerStatus(evidence),
+        status: classifyWorkerStatus(rawEvidence),
         started: true,
         startMs,
         endMs,
-        evidence,
+        evidence: annotateSpecialization(rawEvidence, action),
         costUsd: output.costUsd ?? 0,
       };
     } catch (error) {
       const message = (error instanceof Error ? error.message : String(error)).slice(0, 160);
       const endMs = now();
-      const evidence: Evidence[] = [
+      const syntheticEvidence: Evidence[] = [
         {
           type: 'command_result',
           key: `worker:error:${action.id}`,
@@ -93,11 +119,11 @@ export class WorkerAgent {
       ];
       return {
         actionId: action.id,
-        status: classifyWorkerStatus(evidence),
+        status: classifyWorkerStatus(syntheticEvidence),
         started: true,
         startMs,
         endMs,
-        evidence,
+        evidence: annotateSpecialization(syntheticEvidence, action),
         costUsd: 0,
         error: message,
       };

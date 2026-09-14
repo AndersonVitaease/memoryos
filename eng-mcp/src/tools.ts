@@ -1,15 +1,223 @@
 import { createHash } from "node:crypto";
+import { request as httpRequest } from "node:http";
 import { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
-import { EngineeringError, type AuthenticatedSubject } from "./policy.js";
+import { EngineeringError, type AuthenticatedSubject, assertNoSensitiveContent } from "./policy.js";
 import type { RepositoryAdapter } from "./repository.js";
 import { ObservabilityClient } from "./observability.ts";
 import { AgentMemoryClient } from "./memory.ts";
+import { SupervisedMissionClient } from "./supervised.ts";
+
+import { runHttpProbe } from "./probe.ts";
+import { runVpsChangeSafe, createMcpClientCallTransport, DOKPLOY_SERVER_ID_DEFAULT, DEFAULT_MEMORY_ENDPOINT } from "./vpsChangeSafe.ts";
+import { runVpsDoctor } from "./vpsDoctor.ts";
+import { runVpsReconcile } from "./vpsReconcile.ts";
+import { runVpsRecover, vpsRecoverInputSchema } from "./vpsRecover.ts";
+import { guardianInputSchema, runVpsGuardian } from "./vpsGuardian.ts";
+import { runGuardianAppDeploy } from "./guardianAppDeploy.ts";
+import { runVpsHealth, runVpsWhyDown, runDeployStatus, runVpsCapacity, runVpsWhatChanged, runAppHealth, runVpsIncidentSummary, runDeployReady, runDockerHealth, runLogsExplain } from "./simpleTools.ts";
+import { codeImpactInputSchema, runCodeImpact } from "./codeImpact.ts";
+import { codeUnderstandInputSchema, runCodeUnderstand } from "./codeUnderstand.ts";
+import { bugTraceInputSchema, runBugTrace } from "./bugTrace.ts";
+import { webConnectorInputSchema, runWebConnector } from "./webConnector.ts";
+import { distributionPrepareInputSchema, runDistributionPrepare } from "./distributionPrepare.ts";
+import { distributionPublishInputSchema, runDistributionPublish } from "./distributionPublish.ts";
+import { distributionCampaignInputSchema, runDistributionCampaign } from "./distributionCampaign.ts";
+import { imageEditInputSchema, runImageEdit } from "./imageEdit.ts";
+import { imageCreateInputSchema, runImageCreate } from "./imageCreate.ts";
+import { imageAdaptInputSchema, runImageAdapt } from "./imageAdapt.ts";
+import { visionInspectInputSchema, runVisionInspect } from "./visionInspect.ts";
+import { complianceAssessInputSchema, runComplianceAssess } from "./complianceAssess.ts";
+import { sandboxCreateInputSchema, runSandboxCreate, sandboxDestroyInputSchema, runSandboxDestroy, sandboxExecInputSchema, runSandboxExec, sandboxInspectInputSchema, runSandboxInspect, sandboxCancelInputSchema, runSandboxCancel } from "./sandbox.ts";
+import { sandboxBatchWriteInputSchema, runSandboxBatchWrite } from "./sandboxBatchWrite.ts";
 
 export const ENGINEERING_SERVER_INFO = { name: "memoryos-eng-mcp", version: "0.1.0" } as const;
 export type ToolCatalogEntry = { name: string; access: "read" | "write" };
 
-function response(value: unknown) { return { content: [{ type: "text" as const, text: JSON.stringify(value) }] }; }
+// GH-03 TOOL-ALIAS-COMPAT: MCP clients that sanitize tool names (dots -> underscores,
+// e.g. Kilo/Goose surface "eng-mcp__engineering_git_status" and call the server with
+// "engineering_git_status") used to receive -32602 "Tool not found" for every canonical
+// dotted tool name, and the registry appeared to vanish mid-session whenever the
+// deployed build's catalog spelling changed. The map below resolves the sanitized
+// alias to the canonical name ONLY inside the tools/call wrapper
+// (installToolAliasCompatibility). tools/list output is untouched: the canonical
+// catalog is never duplicated or renamed, so both spellings reach the same
+// registered tool and the registry stays stable within and across sessions.
+const SANITIZED_TOOL_ALIASES = new Map<string, string>();
+export function resolveToolAlias(name: string): string | null {
+  return SANITIZED_TOOL_ALIASES.get(name) ?? null;
+}
+
+type ToolsCallRequestLike = { params?: { name?: unknown } & Record<string, unknown> } & Record<string, unknown>;
+type ToolsCallHandlerLike = (request: ToolsCallRequestLike, ctx: unknown) => Promise<unknown>;
+export function installToolAliasCompatibility(mcpServer: unknown): void {
+  const server = mcpServer as { setRequestHandler(method: string, handler: ToolsCallHandlerLike): unknown; _getRequestHandler?(method: string): ToolsCallHandlerLike | undefined };
+  const original = server._getRequestHandler?.("tools/call");
+  if (typeof original !== "function") return;
+  server.setRequestHandler("tools/call", async (request, ctx) => {
+    const name = request?.params?.name;
+    if (typeof name === "string" && name.includes("_")) {
+      const canonical = SANITIZED_TOOL_ALIASES.get(name);
+      if (canonical) {
+        const next: ToolsCallRequestLike = { ...request, params: { ...(request.params ?? {}), name: canonical } };
+        return original(next, ctx);
+      }
+    }
+    return original(request, ctx);
+  });
+}
+
+function response(value: unknown) { return { content: [{ type: "text" as const, text: JSON.stringify(value) ?? "null" }] }; }
+
+type ReleaseOperation = "test" | "build" | "candidate" | "deploy" | "status" | "smoke" | "rollback";
+const releaseTimeouts = { test: 910_000, build: 130_000, candidate: 610_000, deploy: 30_000, status: 30_000, smoke: 310_000, rollback: 130_000 };
+let releasePipelineBusy = false;
+
+// Only the official Unix socket API is reachable; no caller-supplied URL or command.
+export function callReleaseRunner(operation: ReleaseOperation, jobId?: string): Promise<{ httpStatus: number; body: any }> {
+  return new Promise((resolve, reject) => {
+    const request = httpRequest({
+      socketPath: process.env.ENG_MCP_RELEASE_SOCKET ?? "/opt/eng-mcp-release-data/run/release-runner.sock",
+      method: "POST", path: "/v1/release", headers: { "content-type": "application/json" }
+    }, (incoming) => {
+      const chunks: Buffer[] = []; let bytes = 0;
+      incoming.on("data", (chunk: Buffer) => {
+        bytes += chunk.length;
+        if (bytes > 262_144) { request.destroy(new Error("RELEASE_RESPONSE_TOO_LARGE")); return; }
+        chunks.push(chunk);
+      });
+      incoming.on("error", reject);
+      incoming.on("end", () => {
+        try { resolve({ httpStatus: incoming.statusCode ?? 0, body: JSON.parse(Buffer.concat(chunks).toString("utf8")) }); }
+        catch { reject(new Error("RELEASE_RESPONSE_INVALID")); }
+      });
+    });
+    const timer = setTimeout(() => request.destroy(new Error("RELEASE_REQUEST_TIMEOUT")), releaseTimeouts[operation]);
+    request.on("close", () => clearTimeout(timer));
+    request.on("error", reject);
+    request.end(JSON.stringify({ operation, ...(jobId ? { jobId } : {}) }));
+  });
+}
+
+// engineering.release.test - TEST-ONLY official runner operation. Reuses the exact
+// channel of engineering.release.pipeline (callReleaseRunner) and hardcodes the
+// operation to "test" (the runner's synchronous, deploy-free operation). No
+// caller-supplied operation/URL/socket/command is accepted; build/candidate/deploy/
+// rollback/status/smoke can never be sent from here. The runner's official testAction
+// may build the ephemeral test image (official test mechanism, NOT a production
+// deploy). No production mutation; never a release.
+// RELEASE-TEST-DIAGNOSTICS-01: on suite failure the runner answers non-2xx with the
+// SAME operation:"test" body and embeds the official TAP in TESTS_FAILED:<stderr||stdout>
+// (testAction). That evidence is preserved as a bounded, sanitized FAIL report built
+// ONLY from what the TAP contains (names/files/messages are never invented); every
+// propagated string passes through the official assertNoSensitiveContent gate and
+// oversized output is truncated (failureOutput carries the bounded evidence when the
+// TAP cannot be structured). No host logs are dumped and nothing is persisted.
+export type ReleaseTestFailure = { test: string; file?: string; message?: string };
+
+const RELEASE_TEST_FAILURES_LIMIT = 20;
+const RELEASE_TEST_FAILURE_OUTPUT_LIMIT = 8_000;
+
+function releaseTestTapCount(source: string, label: string): number | null {
+  const match = new RegExp(`\\b${label} (\\d+)\\s*$`, "m").exec(source);
+  return match === null ? null : Number(match[1]);
+}
+
+function releaseTestSafeField(value: string): string | undefined {
+  try {
+    assertNoSensitiveContent(value);
+    return value;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function runReleaseTestOnly() {
+  const result = await callReleaseRunner("test");
+  if (result.httpStatus >= 200 && result.httpStatus < 300 && result.body?.operation === "test")
+    return result.body;
+  if (result.body?.operation !== "test")
+    throw new Error("RELEASE_RUNNER_REJECTED");
+  const rawEvidence = typeof result.body.stderr === "string" && result.body.stderr.length > 0
+    ? result.body.stderr
+    : typeof result.body.stdout === "string" && result.body.stdout.length > 0
+      ? result.body.stdout
+      : JSON.stringify(result.body);
+  // The runner embeds the suite output after the literal TESTS_FAILED: prefix (see
+  // testAction); the first TAP line may be glued to that prefix, so strip the marker
+  // before parsing instead of requiring "not ok" at a line start.
+  const marker = "TESTS_FAILED:";
+  const evidence = rawEvidence.includes(marker) ? rawEvidence.slice(rawEvidence.indexOf(marker) + marker.length) : rawEvidence;
+  const tests = releaseTestTapCount(evidence, "tests");
+  const passed = releaseTestTapCount(evidence, "pass");
+  const failures = evidence.split(/^not ok \d+ - /m).slice(1).slice(0, RELEASE_TEST_FAILURES_LIMIT).map((block) => {
+    const failure: ReleaseTestFailure = { test: releaseTestSafeField(block.split("\n")[0].trim()) ?? "[REDACTED]" };
+    const file = /(?:file|location):\s*'([^']+)'/m.exec(block) ?? /([A-Za-z0-9_./-]+\.test\.ts)/.exec(block);
+    const safeFile = file === null ? undefined : releaseTestSafeField(file[1].replace(/:\d+(?::\d+)?$/, ""));
+    if (safeFile !== undefined) failure.file = safeFile;
+    const message = /error:\s*'([^'\n]+)/.exec(block);
+    const safeMessage = message === null ? undefined : releaseTestSafeField(message[1].trim().slice(0, 300));
+    if (safeMessage !== undefined) failure.message = safeMessage;
+    return failure;
+  });
+  const bounded = (evidence.length > RELEASE_TEST_FAILURE_OUTPUT_LIMIT ? evidence.slice(-RELEASE_TEST_FAILURE_OUTPUT_LIMIT) : evidence).trim();
+  return {
+    status: "FAIL" as const,
+    tests,
+    passed,
+    failed: releaseTestTapCount(evidence, "fail") ?? (tests !== null && passed !== null ? tests - passed : null),
+    failures,
+    failureOutput: bounded.length > 0 ? releaseTestSafeField(bounded) ?? "[REDACTED]" : ""
+  };
+}
+
+export async function runOfficialReleasePipeline(deployJobId?: string) {
+  const evidence: Array<{ operation: ReleaseOperation; httpStatus: number; body: any }> = [];
+  if (releasePipelineBusy) return { success: false, error: "RELEASE_PIPELINE_BUSY", evidence };
+  releasePipelineBusy = true;
+  let operation: ReleaseOperation = deployJobId ? "status" : "test";
+  const call = async (next: ReleaseOperation, jobId?: string) => {
+    operation = next;
+    const result = await callReleaseRunner(next, jobId);
+    evidence.push({ operation: next, ...result });
+    if (result.httpStatus < 200 || result.httpStatus >= 300 || result.body?.operation !== next)
+      throw new Error("RELEASE_RUNNER_REJECTED");
+    return result.body;
+  };
+  const completed = (body: any, expected: ReleaseOperation) => {
+    if (body.success !== true || body.exitCode !== 0 || body.job?.operation !== expected || body.job?.status !== "success")
+      throw new Error("RELEASE_STAGE_FAILED");
+  };
+  try {
+    if (!deployJobId) {
+      for (const stage of ["test", "build", "candidate"] as const) completed(await call(stage), stage);
+      const accepted = await call("deploy");
+      if (accepted.accepted !== true || accepted.status !== "queued" || !/^[a-f0-9-]{16,64}$/i.test(accepted.jobId ?? ""))
+        throw new Error("RELEASE_DEPLOY_NOT_ACCEPTED");
+      // Deploy stops this container. Return the durable runner ID before replacement.
+      // Resume this same tool with deployJobId; queued is never reported as success.
+      return { success: false, pending: true, deployJobId: accepted.jobId, nextAction: "Call engineering.release.pipeline with this deployJobId after reconnecting.", evidence };
+    }
+    if (!/^[a-f0-9-]{16,64}$/i.test(deployJobId)) throw new Error("RELEASE_JOB_ID_INVALID");
+    const deadline = Date.now() + 240_000;
+    for (let attempt = 0; attempt < 48 && Date.now() < deadline; attempt++) {
+      const status = await call("status", deployJobId);
+      const job = status.job;
+      if (status.success !== true || job?.jobId !== deployJobId || job.operation !== "deploy")
+        throw new Error("RELEASE_DEPLOY_JOB_INVALID");
+      if (job.status === "success") {
+        if (job.exitCode !== 0) throw new Error("RELEASE_DEPLOY_FAILED");
+        completed(await call("smoke"), "smoke");
+        return { success: true, deployJobId, evidence };
+      }
+      if (job.status !== "queued" && job.status !== "running") throw new Error("RELEASE_DEPLOY_FAILED");
+      await new Promise((resolve) => setTimeout(resolve, 5_000));
+    }
+    throw new Error("RELEASE_DEPLOY_TIMEOUT");
+  } catch (error) {
+    return { success: false, failedOperation: operation, deployJobId, error: error instanceof Error ? error.message : "RELEASE_FAILED", evidence };
+  } finally { releasePipelineBusy = false; }
+}
 
 export function createToolCatalog(entries: readonly ToolCatalogEntry[], repositoryId: string) {
   const tools = [...entries].sort((left, right) => left.name.localeCompare(right.name));
@@ -29,26 +237,112 @@ export function createToolCatalog(entries: readonly ToolCatalogEntry[], reposito
 
 export function registerEngineeringTools(server: McpServer, repository: RepositoryAdapter, subject: AuthenticatedSubject, repositoryId: string): void {
   const toolMetadata: ToolCatalogEntry[] = [];
-  const register = (name: string, access: ToolCatalogEntry["access"], configure: (registeredName: string) => void) => { toolMetadata.push({ name, access }); configure(name); };
+  const register = (name: string, access: ToolCatalogEntry["access"], configure: (registeredName: string) => void) => { toolMetadata.push({ name, access }); configure(name); const alias = name.replaceAll(".", "_"); if (alias !== name && !SANITIZED_TOOL_ALIASES.has(alias)) SANITIZED_TOOL_ALIASES.set(alias, name); };
   const requireRead = () => { if (!subject.scopes.includes("engineering:read")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
   const requireWrite = () => { if (!subject.scopes.includes("engineering:write")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
   const requireVerify = () => { if (!subject.scopes.includes("engineering:verify")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
   const requireGit = () => { if (!subject.scopes.includes("engineering:git")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
   const requireRelease = () => { if (!subject.scopes.includes("engineering:release")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
+  // Trusted operator approval boundary for distribution publish: only operator-issued
+  // bearer tokens carry this scope (src/token-create.ts, ENG_MCP_TOKEN_SCOPES). The agent
+  // cannot add scopes to its own token; the registry is operator-managed and hashed server-side.
+  const requireDistributionPublish = () => { if (!subject.scopes.includes("engineering:distribution:publish")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
 
   const observability = new ObservabilityClient();
   const agentMemory = new AgentMemoryClient();
+  const supervisedMission = new SupervisedMissionClient();
+
+  register("engineering.supervised_mission", "write", (name) => server.registerTool(name, {
+    description: "Forward a supervised engineering mission to the backend and return its real result.",
+    inputSchema: z.object({ prompt: z.string(), sessionId: z.string(), projectId: z.string().optional(), executionId: z.string().optional() }).strict()
+  }, async (input) => {
+    requireWrite();
+    const payload = { prompt: input.prompt, sessionId: input.sessionId, projectId: input.projectId, executionId: input.executionId };
+    return response(await supervisedMission.call(payload));
+  }));
 
   register("engineering.repo.structure", "read", (name) => server.registerTool(name, { description: "Read the authorized repository structure.", inputSchema: z.object({ path: z.string().optional(), maxDepth: z.number().int().optional(), includeFiles: z.boolean().optional(), maxEntries: z.number().int().optional() }) }, async (input) => { requireRead(); return response(await repository.structure(input)); }));
-  register("engineering.file.read", "read", (name) => server.registerTool(name, { description: "Read an allowed UTF-8 source file.", inputSchema: z.object({ path: z.string(), startLine: z.number().int().optional(), maxLines: z.number().int().optional(), maxBytes: z.number().int().optional() }) }, async (input) => { requireRead(); return response(await repository.fileRead(input)); }));
-  register("engineering.code.search", "read", (name) => server.registerTool(name, { description: "Search allowed repository source with ripgrep.", inputSchema: z.object({ query: z.string(), mode: z.enum(["literal", "regex", "filename"]).optional(), maxResults: z.number().int().optional() }) }, async (input) => { requireRead(); return response(await repository.search(subject.subject, input)); }));
+  register("engineering.file.read", "read", (name) => server.registerTool(name, { description: "Read an allowed UTF-8 source file.", inputSchema: z.object({ path: z.string(), startLine: z.number().int().optional(), maxLines: z.number().int().optional(), maxBytes: z.number().int().optional(), repository: z.enum(["eng-mcp", "memoryos"]).optional() }) }, async (input) => { requireRead(); return response(await repository.fileRead(input, input.repository)); }));
+  register("engineering.code.search", "read", (name) => server.registerTool(name, { description: "Search allowed repository source with ripgrep.", inputSchema: z.object({ query: z.string(), mode: z.enum(["literal", "regex", "filename"]).optional(), maxResults: z.number().int().optional(), repository: z.enum(["eng-mcp", "memoryos"]).optional() }) }, async (input) => { requireRead(); return response(await repository.search(subject.subject, input, input.repository)); }));
   register("engineering.code.references", "read", (name) => server.registerTool(name, { description: "Find heuristic textual references in the authorized repository.", inputSchema: z.object({ symbol: z.string(), maxResults: z.number().int().optional() }) }, async (input) => { requireRead(); return response(await repository.references(subject.subject, input.symbol, input.maxResults)); }));
   register("engineering.deadcode.scan", "read", (name) => server.registerTool(name, { description: "Read-only heuristic scan for dead-code candidates; never deletes code.", inputSchema: z.object({ path: z.string().optional(), maxCandidates: z.number().int().optional() }).strict() }, async (input) => { requireRead(); return response(await repository.deadCodeScan(subject.subject, input)); }));
   register("engineering.parallelpath.scan", "read", (name) => server.registerTool(name, { description: "Read-only scan for potentially parallel or legacy responsibility paths.", inputSchema: z.object({ responsibility: z.string(), maxPaths: z.number().int().optional() }).strict() }, async (input) => { requireRead(); return response(await repository.parallelPathScan(subject.subject, input)); }));
   register("engineering.contract.verify", "read", (name) => server.registerTool(name, { description: "Read-only heuristic comparison of a declared contract and one implementation.", inputSchema: z.object({ contractPath: z.string(), implementationPath: z.string(), contractSymbol: z.string().optional(), implementationSymbol: z.string().optional() }).strict() }, async (input) => { requireRead(); return response(await repository.contractVerify(input)); }));
   register("engineering.change.impact", "read", (name) => server.registerTool(name, { description: "Read-only direct and one-hop impact analysis for a file or symbol.", inputSchema: z.object({ path: z.string().optional(), symbol: z.string().optional(), description: z.string().max(1_000).optional(), maxResults: z.number().int().optional() }).strict() }, async (input) => { requireRead(); return response(await repository.changeImpact(subject.subject, input)); }));
-  register("engineering.git.status", "read", (name) => server.registerTool(name, { description: "Read Git working-tree status.", inputSchema: z.object({}) }, async () => { requireRead(); return response(await repository.gitStatus()); }));
-  register("engineering.git.diff", "read", (name) => server.registerTool(name, { description: "Read a safe Git working-tree or staged diff.", inputSchema: z.object({ paths: z.array(z.string()).optional(), staged: z.boolean().optional() }) }, async (input) => { requireRead(); return response(await repository.gitDiff(input)); }));
+  register("engineering.code.impact", "read", (name) => server.registerTool(name, {
+    description: "Composed read-only pre-change impact (GitNexus-backed): GitNexus context resolves the target (ambiguity stops the flow, no auto-selection), GitNexus impact computes blast radius/risk/epistemic/depths/processes, at most one conditional trace explains a relevant path, and at most 2 ENG-MCP file.read anchors validate critical points against the authorized source. Preserves UNKNOWN/PARTIAL honestly; absence of relations is never a safety claim; zero mutation.",
+    inputSchema: codeImpactInputSchema
+  }, async (input) => { requireRead(); return response(await runCodeImpact(name, input, { fileRead: (args) => repository.fileRead(args, undefined) })); }));
+  register("engineering.code.understand", "read", (name) => server.registerTool(name, {
+    description: "Composed read-only structural understanding (GitNexus-backed): GitNexus context resolves the symbol and its categorized callers/dependencies (ambiguity stops the flow, no auto-selection), at most one conditional trace explains how the top caller reaches the symbol, and at most 2 ENG-MCP file.read anchors ground the definition and top caller in the authorized source. Purpose is reported only when the graph or the source window supports it; absence of graph relations never implies absence of dependencies; zero mutation.",
+    inputSchema: codeUnderstandInputSchema
+  }, async (input) => { requireRead(); return response(await runCodeUnderstand(name, input, { fileRead: (args) => repository.fileRead(args, undefined) })); }));
+  register("engineering.bug.trace", "read", (name) => server.registerTool(name, {
+    description: "Composed read-only bug investigation (GitNexus-backed): exactly one engineering.code.search pass localizes the symptom text, GitNexus context resolves an explicit suspect target (never auto-picked from search hits), at most one conditional trace explains the path into the suspect symbol, and at most 2 ENG-MCP file.read anchors validate critical points against real source. Honest evidence levels (PROVEN never auto-claimed, SUPPORTED, PLAUSIBLE, UNKNOWN); never claims root cause without proof; no retry, no patch, zero mutation.",
+    inputSchema: bugTraceInputSchema
+  }, async (input) => { requireRead(); return response(await runBugTrace(name, input, { fileRead: (args) => repository.fileRead(args, undefined), codeSearch: (args) => repository.search(subject.subject, args, undefined) })); }));
+  register("engineering.web.connector", "write", (name) => server.registerTool(name, {
+    description: "Deterministic bridge to the EXISTING Playwright MCP servers (playwright-web-connector / playwright-bug-hunter) via the Base44 mcp_execute gateway: sequential validated steps (navigate/snapshot/find/click/type/fill_form/press_key/select_option/tabs/wait_for/screenshot/console/network/resize/dialog/drop) plus a bounded binary upload action that stages files into the shared playwright-staging host bind and calls browser_file_upload with supertool-generated paths only. Goose never supplies toolName/serverId/server_url/raw args; browser_run_code_unsafe and browser_evaluate are impossible; staged files are deleted in finally. Optional authSessionRef (32-hex opaque, from the POST /auth-session ingest route) applies a domain-bound short-TTL temporary session to the Playwright context BEFORE navigation: fail-closed on unknown/expired refs, missing navigation and domain mismatch; secrets are never exposed; absent ref keeps behavior identical.",
+    inputSchema: webConnectorInputSchema
+  }, async (input) => { requireRead(); requireWrite(); return response(await runWebConnector(name, input, {})); }));
+  register("engineering.distribution.prepare", "write", (name) => server.registerTool(name, {
+    description: "High-level distribution supertool (v1, channel \"dev\" only): ONE intention that composes engineering.web.connector capabilities (navigate/snapshot/fill_form/type/click/wait_for/upload) into a deterministic plan - open the authenticated DEV editor, verify the session, fill title/body, optionally add up to 4 tags and attach media through the proven connector staging pipeline, snapshot-verify the content, save as DRAFT and confirm the Unpublished state. Goose never supplies refs/selectors/toolName/raw args; browser_run_code_unsafe and browser_evaluate are unreachable; media inherits the connector invariants (2 MiB/file, 4 files/step, random names, traversal denial, cleanup, orphan sweep). There is NO publish capability or parameter: every result reports published:false, the only persistence action is the Save Draft button, and any gate/step/verification failure is fail-closed (never publishes, never retries mutable actions).",
+    inputSchema: distributionPrepareInputSchema
+  }, async (input) => { requireRead(); requireWrite(); return response(await runDistributionPrepare(name, input, {})); }));
+  register("engineering.distribution.publish", "write", (name) => server.registerTool(name, {
+    description: "Guardian-gated publish boundary (v1, channel \"dev\" only): publishes EXACTLY ONE previously-approved DEV draft. Input is ONLY a data-only state-bound approval artifact {version, action:\"publish_draft\", channel:\"dev\", draftUrl, account, title, bodyProbe, tags, mediaRefs, fingerprint(sha256 over full content), approvedBy(provenance), observedAt}. Governed by frozen Guardian Core v0.1.0 via a thin Distribution Adapter: bind (read-only eligibility), apply (in-session live revalidation: draft exists, still UNPUBLISHED, same account, title/bodyProbe/tags match, fingerprint shape; ANY mismatch -> NOT_EXECUTED zero mutation), then EXACTLY ONE click on the internally-resolved Publish control, then read-only postvalidation. No approved/execute/publish booleans, no content fields, no refs/selectors/toolName/steps/URLs from the caller. No automatic mutation retry (maxPublishClicks=1); occurrence reported honestly as SUCCESS_PROVEN / NOT_EXECUTED / NONE_PROVEN / INDETERMINATE; no atomicity claim (residual race window declared). Requires bearer scope engineering:distribution:publish (operator-issued; the agent cannot self-authorize).",
+    inputSchema: distributionPublishInputSchema
+  }, async (input) => { requireRead(); requireWrite(); requireDistributionPublish(); return response(await runDistributionPublish(name, input, {})); }));
+  register("engineering.distribution.campaign", "write", (name) => server.registerTool(name, {
+    description: "REAL multichannel distribution supertool (v1, PREPARE-ONLY, channels dev+reddit): ONE high-level call coordinates preparation of the SAME canonical content ({campaign:{title,body,media?}}) across the explicitly requested channels — dev reuses engineering.distribution.prepare verbatim (authenticated editor, tags/media, Save Draft, Unpublished proof) and reddit composes engineering.web.connector read-only gates (auth fail-closed: block/login markers -> that channel FAILED, no login flow, no CAPTCHA/2FA bypass) then mounts title+body in the composer with ZERO click steps (target pre-selected via the /r/{target}/submit URL) and reports PREPARED_NOT_PERSISTED with persisted:false (no persistent Reddit web draft is claimed). Strict schema at every level: mode must be the literal \"prepare\"; publish flags, raw refs/selectors/toolNames/steps/code, approval artifacts and tokens are structurally impossible. Channels run sequentially in caller order; a channel failure never rolls back another channel's result and never publishes as a fallback (global SUCCESS/PARTIAL/FAIL). published:false is structural on every result; Guardian is NOT integrated (publication stays Guardian-gated in engineering.distribution.publish); no campaign.publish exists.",
+    inputSchema: distributionCampaignInputSchema
+  }, async (input) => { requireRead(); requireWrite(); return response(await runDistributionCampaign(name, input, {})); }));
+  register("engineering.image.edit", "write", (name) => server.registerTool(name, {
+    description: "Professional image editing supertool over the user's LOCAL Photopea executor via the authenticated outbound-only relay: ONE tool with 14 high-level actions (inspect/document/layers/transform/style/text/compose/adjust/filter/selection/place/export/undo/redo) and deterministically sequential composed operations per call. Strict structured schema only - callers can NEVER supply raw toolName/JSON-RPC/Photopea script/shell (schema-level rejection); internal run_script fallbacks are fixed templates owned by the local executor. Same persistent Photopea document across calls (state = open Photopea). Fail-closed: LOCAL_EDITOR_OFFLINE / RELAY_TIMEOUT / RELAY_INVALID_RESPONSE / RELAY_DISCONNECTED never invent success; export refuses overwrite without explicit output.overwrite and never touches the master PSD.",
+    inputSchema: imageEditInputSchema
+  }, async (input) => { requireRead(); requireWrite(); return response(await runImageEdit(input)); }));
+  register("engineering.image.create", "write", (name) => server.registerTool(name, {
+    description: "NEW visual creation supertool (v1): creates pixels/compositions that do not exist yet. generate/background/scene/variation create new images via the proven Cloudflare Workers AI REST path (flux-1-schnell; provider/model is never a caller requirement - optional pin only); product/campaign/compose mount generated + real user assets (product, logo, text, shape) into an editable Photopea document by delegating ALL editing work to the existing engineering.image.edit executor path (same relay, same structured actions, no second editor). Generated bytes are delivered to the local executor over this server's HTTPS origin at /image-asset/<random id> (short TTL) because the existing executor resolves sources as URLs/local paths. variation = concept-level variations (count 2-4, optional styleHints), never resizes. referenceImages fail closed (UNSUPPORTED_REFERENCE_MODE); generation dimensions are provider-validated (INVALID_DIMENSIONS); missing credential fails closed (GENERATION_PROVIDER_UNAVAILABLE). Strict schema: no raw shell/JS/JSON-RPC/toolName/script/URL execution anywhere; credentials never returned or logged; partial variation results are reported honestly (status partial).",
+    inputSchema: imageCreateInputSchema
+  }, async (input) => { requireRead(); requireWrite(); return response(await runImageCreate(name, input, {})); }));
+  register("engineering.image.adapt", "write", (name) => server.registerTool(name, {
+    description: "Adaptation supertool (v1): adapts an EXISTING piece/document into versions for other formats, proportions and destinations. Exactly 7 high-level actions: resize (fit|fill|stretch - stretch explicit only), reflow (reorganize existing layers for a new ratio via deterministic V1 layout rules), format (ONE destination: explicit target dimensions are the final source of truth; optional semantic square|portrait|story|landscape - no social network catalog), batch (deterministic sequential per-target results; PARTIAL when some fail; never SUCCESS if any failed), crop (recompose for the target ratio; never auto-cuts product/logo/text when structured layers allow recomposition; honest center-crop warning for flattened sources), extend (enlarge canvas structurally first; new background pixels only via the EXISTING engineering.image.create generation path, INSUFFICIENT_BACKGROUND when that is not possible) and variant (layout variant of the same piece - same identity/assets/content, adapted layout; distinct from image.create variation which is a new concept). ALL layer/document/export work is delegated to the EXISTING engineering.image.edit executor path (zero second editor); background generation delegates to the EXISTING engineering.image.create path (zero second generator); no new bridge/relay. Editable documents keep their layers (never flattened prematurely). Layout V1 is deterministic only: bounds, relative positions/scale, margins, alignment and layer-name roles - no computer vision, no ML layout model. Master protection: the source/master is NEVER overwritten - every target exports to a NEW output path (overwriting an existing output file only with explicit output.overwrite). Strict structured schema only - callers can NEVER supply raw JS/shell/JSON-RPC/toolName/Photopea script/commands; no social APIs, no publication, no scheduler.",
+    inputSchema: imageAdaptInputSchema
+  }, async (input) => { requireRead(); requireWrite(); return response(await runImageAdapt(name, input, {})); }));
+  register("engineering.compliance.assess", "read", (name) => server.registerTool(name, {
+    description: "GLGPD-01 first Guardian LGPD scanner (READ_ONLY): composes three proven read-only engines (LGPD MCP knowledge layer, GDPR Shift-Left AST privacy engineering, SAST read-only subset with separate venvs for the proven mcp<2 / mcp>=2 conflict) over one repository target and aggregates deterministic findings with preserved evidence, source, UNKNOWN and HUMAN_INPUT_REQUIRED statuses. Scanner absence is reported as UNAVAILABLE, never as no-vulnerability. Produces readiness assessment only - NEVER LGPD_COMPLIANT/CERTIFIED conclusions. Zero mutation: no patch, no commit, no deploy, no fix, no external integrations; Guardian Core untouched.",
+    inputSchema: complianceAssessInputSchema
+  }, async (input) => { requireRead(); return response(await runComplianceAssess(input)); }));
+  register("engineering.vision.inspect", "write", (name) => server.registerTool(name, {
+    description: "Horizontal vision supertool (v1): REAL multimodal perception - REAL image(s) -> multimodal model -> visual response. VISION perceives, it never acts: zero mutation, no browser, no editor, no publication, no scheduler. Exactly 7 high-level actions: inspect (describe what is visible), analyze (composition/colors/layout/quality), verify (claims TRUE/FALSE/UNCLEAR with reasons), compare (per-image factual description for comparison), locate (find a target with relative spatial position; NOT_FOUND when absent), extract (visible text and structured elements in reading order), diagnose (visual defects with low/medium/high severity). Images: 1..4 inline base64 (png/jpeg/webp/gif); the multimodal provider contract is single-image per call, so multi-image input runs as deterministic sequential per-image calls with honest per-image results (partial never pretends success). Spatial evidence is model-reported relative positioning (top/bottom/left/right/center) when spatial=true - no OCR or CV engine is implemented here. Provider: the PROVEN Cloudflare Workers AI REST path reused from engineering.image.create with the same credential resolution (env or operator-provisioned credential file; token never returned, logged or echoed; base64 payloads never echoed back). Fail-closed: VISION_PROVIDER_UNAVAILABLE / VISION_PROVIDER_ERROR / IMAGE_DECODE_FAILED / INPUT_INVALID / VISION_FAILED. Strict schema: no raw shell/JS/JSON-RPC/toolName/script/URL execution anywhere.",
+    inputSchema: visionInspectInputSchema
+  }, async (input) => { requireRead(); requireWrite(); return response(await runVisionInspect(name, input, {})); }));
+  register("engineering.sandbox.create", "write", (name) => server.registerTool(name, {
+    description: "SB-01 sandbox foundation: create ONE real sandbox on E2B Managed (the only provider) for a mission. The sandbox is created through the official E2B SDK with the native provider TTL applied at creation (ttlMs, default 5 minutes) and the missionId attached as sandbox metadata, then a MissionRecord (missionId, sandboxId, provider, status, createdAt, expiresAt) is persisted so ownership survives the process. The E2B credential is read only from the server env and is never written, logged, stored or echoed. Fail-closed typed errors: SANDBOX_CREDENTIAL_MISSING, SANDBOX_PROVIDER_UNAVAILABLE, SANDBOX_CREATE_FAILED, MISSION_ALREADY_ACTIVE, MISSION_RECORD_PERSIST_FAILED (the freshly created sandbox is rolled back). A mission owns at most one active sandbox. SB-02 scope (exec, inspect, lifecycle, timeout/cancel) is not part of this tool.",
+    inputSchema: sandboxCreateInputSchema
+  }, async (input) => { requireRead(); requireWrite(); return response(await runSandboxCreate(input)); }));
+  register("engineering.sandbox.destroy", "write", (name) => server.registerTool(name, {
+    description: "SB-01 sandbox foundation: destroy ONE sandbox, PROVEN. Ownership rule: a sandboxId alone grants no authority - destroy only runs when the missionId is registered AND the sandboxId is the one registered for that same mission; any mismatch fails with zero mutation (MISSION_NOT_REGISTERED, MISSION_SANDBOX_MISMATCH, MISSION_NOT_ACTIVE). After killing the sandbox through the official E2B SDK the provider lists the account again and the destruction must be proven - a sandbox still listed after kill is reported as SANDBOX_DESTROY_UNVERIFIED, never as success. The MissionRecord is marked destroyed only after the proof. The E2B credential is read only from the server env and is never written, logged, stored or echoed.",
+    inputSchema: sandboxDestroyInputSchema
+  }, async (input) => { requireRead(); requireWrite(); return response(await runSandboxDestroy(input)); }));
+  register("engineering.sandbox.exec", "write", (name) => server.registerTool(name, {
+    description: "SB-02 minimal exec: run ONE controlled command inside the mission's REAL E2B sandbox (never on this host) and return {executionId, exitCode, stdout, stderr, timedOut, cancelled}. One execution = one controlled operation: no persistent shell, no scheduler, executions are serial per sandbox (SANDBOX_EXEC_BUSY if one is still in flight). Ownership gates deny with zero mutation (MISSION_NOT_REGISTERED / MISSION_SANDBOX_MISMATCH / MISSION_NOT_ACTIVE); a destroyed/expired/gone sandbox fails closed (MISSION_NOT_ACTIVE / SANDBOX_EXPIRED / SANDBOX_GONE). timeoutMs (default 60s, max 10min) actively kills the process through the provider (the SDK request deadline is never the timeout mechanism) and reports timedOut=true; termination is never inferred from the timeout alone. stdout/stderr are capped with truncated flags. Cancel via engineering.sandbox.cancel; cancelling never destroys the sandbox.",
+    inputSchema: sandboxExecInputSchema
+  }, async (input) => { requireRead(); requireWrite(); return response(await runSandboxExec(input)); }));
+  register("engineering.sandbox.inspect", "read", (name) => server.registerTool(name, {
+    description: "SB-02 minimal inspect: READ-ONLY lifecycle view of the mission's sandbox, assembled from the real provider listing (no connection, no mutation, no secrets): missionId binding, sandboxId, provider, recordStatus (active/destroyed), computed lifecycle (running/paused/expired/failed/destroyed), exists, state, startedAt, endAt, createdAt, expiresAt. Ownership is required but an ACTIVE mission is not - inspect reports destroyed/expired missions honestly and never becomes an authority (MISSION_NOT_REGISTERED / MISSION_SANDBOX_MISMATCH deny with zero mutation).",
+    inputSchema: sandboxInspectInputSchema
+  }, async (input) => { requireRead(); return response(await runSandboxInspect(input)); }));
+  register("engineering.sandbox.cancel", "write", (name) => server.registerTool(name, {
+    description: "SB-02 minimal cancel: kill ONE in-flight execution of THIS mission's sandbox (the pair missionId+sandboxId is validated against the registered MissionRecord and the in-flight execution BEFORE any kill; cross-mission cancel is denied with zero mutation). The process is SIGKILLed through the provider and termination can be proven independently (e.g. pgrep via engineering.sandbox.exec); cancelling an execution NEVER destroys the sandbox (post-cancel exec keeps working). Fail-closed typed errors: MISSION_NOT_REGISTERED, MISSION_SANDBOX_MISMATCH, MISSION_NOT_ACTIVE, EXECUTION_NOT_FOUND (nothing in flight), EXECUTION_NOT_STARTED, EXECUTION_CANCEL_FAILED (process already gone).",
+    inputSchema: sandboxCancelInputSchema
+  }, async (input) => { requireRead(); requireWrite(); return response(await runSandboxCancel(input)); }));
+  register("engineering.sandbox.batchWrite", "write", (name) => server.registerTool(name, {
+    description: "SBW-01 batched writes MVP (ceiling 10 since SBW-02): ONE governed flow for batched source-file writes, composed from the certified pieces untouched (SB-01 SandboxService, certified SB-02 exec transport, repository.patch per-file integrity). Exactly 4 actions: materialize (create the mission's sandbox, copy 1-10 repository files byte-exactly through the certified exec transport, record each file's base sha256 AT COPY TIME; any integrity mismatch destroys the sandbox), write (apply up to 10 {path, content} ops INSIDE the disposable sandbox - no per-file baseHash there, sha equality is the proof; duplicate paths in one call rejected before any exec; every path must have been materialized), validate (run tsc --noEmit in-sandbox over the materialized+written set with deps installed in the sandbox; a FAILED check DESTROYS the sandbox so nothing reaches the real code), sync (ONE approval for the whole set: bind re-reads every target and refuses with SBW_DRIFT_DETECTED on ANY divergence since materialization - zero mutation, no merge; apply sends ONE full-replace hunk per file through the existing repository.patch, which revalidates each baseHash again, and reports the real newHash per file; per-file results honestly report a partial apply). MVP scope: replacement of materialized files only (no file creation, no new directories, no ceilings above 10 ops, no BOM-bearing base files - repository.patch fails closed on those). Fail-closed typed errors: SBW_BATCH_NOT_FOUND (in-memory batch state; lost on server restart), SBW_DUPLICATE_PATH, SBW_TARGET_NOT_MATERIALIZED, SBW_INVALID_CONTENT, SBW_INTEGRITY_MISMATCH, SBW_NOTHING_TO_VALIDATE, SBW_VALIDATION_REQUIRED, SBW_VALIDATION_FAILED, SBW_DRIFT_DETECTED, SBW_ALREADY_SYNCED. No secrets in outputs: hashes, exit codes and capped diagnostics only.",
+    inputSchema: sandboxBatchWriteInputSchema
+  }, async (input) => { requireRead(); requireWrite(); return response(await runSandboxBatchWrite(input, { repository })); }));
+  register("engineering.git.status", "read", (name) => server.registerTool(name, { description: "Read Git working-tree status.", inputSchema: z.object({ repository: z.enum(["eng-mcp", "memoryos"]).optional() }) }, async (input) => { requireRead(); return response(await repository.gitStatus(input.repository)); }));
+  register("engineering.git.diff", "read", (name) => server.registerTool(name, { description: "Read a safe Git working-tree or staged diff.", inputSchema: z.object({ paths: z.array(z.string()).optional(), staged: z.boolean().optional(), repository: z.enum(["eng-mcp", "memoryos"]).optional() }) }, async (input) => { requireRead(); return response(await repository.gitDiff(input, input.repository)); }));
   register("engineering.git.branches", "read", (name) => server.registerTool(name, { description: "List locally known local and remote branches without fetching.", inputSchema: z.object({ filter: z.string().max(128).optional(), includeRemote: z.boolean().optional() }).strict() }, async (input) => { requireRead(); return response(await repository.gitBranches(input)); }));
   register("engineering.git.worktrees", "read", (name) => server.registerTool(name, { description: "List repository worktrees without changing them.", inputSchema: z.object({}).strict() }, async () => { requireRead(); return response(await repository.gitWorktrees()); }));
   register("engineering.git.log", "read", (name) => server.registerTool(name, { description: "Read bounded Git commit history without diffs.", inputSchema: z.object({ limit: z.number().int().min(1).max(200).optional(), path: z.string().optional(), since: z.string().max(128).optional(), until: z.string().max(128).optional(), ref: z.string().max(256).optional() }).strict() }, async (input) => { requireRead(); return response(await repository.gitLog(input)); }));
@@ -62,7 +356,33 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   register("engineering.git.commit", "write", (name) => server.registerTool(name, { description: "Commit exactly the previously validated staged index.", inputSchema: z.object({ message: z.string(), expectedIndexHash: z.string(), acknowledgeCommit: z.literal(true) }).strict() }, async (input) => { requireGit(); return response(await repository.gitCommit(input)); }));
   register("engineering.mcp.catalog", "read", (name) => server.registerTool(name, { description: "Return the deterministic catalog of tools exposed by this ENG-MCP server.", inputSchema: z.object({}).strict() }, async () => { requireRead(); return response(createToolCatalog(toolMetadata, repositoryId)); }));
   register("engineering.release.run", "write", (name) => server.registerTool(name, { description: "Run an allowlisted Release Pipeline V1 operation through the durable local runner.", inputSchema: z.object({ jobId: z.string().optional(), operation: z.enum(["deploy", "verify", "clean"]) }).strict() }, async (input) => { requireRead(); requireWrite(); return response(await repository.releaseRun(subject.subject, input)); }));
-  register("engineering.orchestrate.batch", "read", (name) => server.registerTool(name, { description: "Execute multiple independent read operations concurrently to reduce Kilo latency. operations[].tool must use canonical engineering.* names: engineering.repo.structure, engineering.file.read, engineering.code.search, engineering.code.references, engineering.git.status, engineering.git.diff. Do not use client-specific prefixes or external names.", inputSchema: z.object({ operations: z.array(z.object({ tool: z.enum(["engineering.repo.structure", "engineering.file.read", "engineering.code.search", "engineering.code.references", "engineering.git.status", "engineering.git.diff"]), arguments: z.record(z.string(), z.any()).optional() })).min(1).max(10) }).strict() }, async (input) => { requireRead(); return response(await repository.batchOrchestrate(subject.subject, input.operations)); }));
+  register("engineering.release.pipeline", "write", (name) => server.registerTool(name, {
+    description: "Run official test, build, candidate, deploy. Reconnect and resume with the returned deployJobId for bounded status polling and smoke. Never treats queued deployment as success.",
+    inputSchema: z.object({ acknowledgeRelease: z.literal(true), deployJobId: z.string().regex(/^[a-f0-9-]{16,64}$/i).optional() }).strict()
+  }, async (input) => {
+    requireRead(); requireWrite(); requireRelease();
+    const result = await runOfficialReleasePipeline(input.deployJobId);
+    return { ...response(result), ...(!result.success && !("pending" in result) ? { isError: true } : {}) };
+  }));
+
+  // engineering.release.test - TEST-ONLY official runner operation (deploy-free MVP).
+  // Hardcodes {"operation":"test"} through the same callReleaseRunner channel as
+  // engineering.release.pipeline. Input is {} (strict): no operation, URL, socket
+  // path, command, headers or tokens are accepted; build/candidate/deploy/rollback/
+  // status/smoke can never be sent. The runner's official testAction may build the
+  // ephemeral test image (official test mechanism, NOT a production deploy).
+  // Guard set matches engineering.release.run (read+write); NO deploy capability
+  // exists here (deploy remains exclusive to engineering.release.pipeline with
+  // the engineering:release scope). No production mutation; never a release.
+  register("engineering.release.test", "write", (name) => server.registerTool(name, {
+    description: "Run ONLY the official test-only operation of the release runner (POST /v1/release {operation:'test'} over the official Unix socket, reusing the engineering.release.pipeline channel). Synchronous and deploy-free: the operation is hardcoded to 'test'; build/candidate/deploy/rollback/status/smoke can never be sent; no caller-supplied operation, URL, socket path, command or headers are accepted. The runner's official testAction may build the ephemeral test image (official test mechanism, not a production deploy). No production mutation; never triggers a release.",
+    inputSchema: z.object({}).strict()
+  }, async () => {
+    requireRead();
+    requireWrite();
+    return response(await runReleaseTestOnly());
+  }));
+  register("engineering.orchestrate.batch", "read", (name) => server.registerTool(name, { description: "Execute multiple independent read operations concurrently to reduce Kilo latency. operations[].tool must use canonical engineering.* names: engineering.repo.structure, engineering.file.read, engineering.code.search, engineering.code.references, engineering.git.status, engineering.git.diff, engineering.deadcode.scan, engineering.parallelpath.scan, engineering.contract.verify, engineering.change.impact, engineering.git.branches, engineering.git.worktrees, engineering.git.log, engineering.git.remote_compare, engineering.mcp.catalog. Do not use client-specific prefixes or external names.", inputSchema: z.object({ operations: z.array(z.object({ tool: z.enum(["engineering.repo.structure", "engineering.file.read", "engineering.code.search", "engineering.code.references", "engineering.git.status", "engineering.git.diff", "engineering.deadcode.scan", "engineering.parallelpath.scan", "engineering.contract.verify", "engineering.change.impact", "engineering.git.branches", "engineering.git.worktrees", "engineering.git.log", "engineering.git.remote_compare", "engineering.mcp.catalog"]), arguments: z.record(z.string(), z.any()).optional() })).min(1).max(30) }).strict() }, async (input) => { requireRead(); return response(await repository.batchOrchestrate(subject.subject, input.operations, () => createToolCatalog(toolMetadata, repositoryId))); }));
 
   register("engineering.memory.context", "read", (name) => server.registerTool(name, {
     description: "Load the durable MemoryOS project context for an external engineering agent. Call this at the start of every meaningful engineering mission before investigating or changing code.",
@@ -271,4 +591,276 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
     requireRead();
     return response(await observability.query("query", input));
   }));
+
+  // Controlled HTTP diagnostic probe: allowlisted target only, GET/POST only,
+  // bounded response, credentialRef resolved server-side, secrets never returned.
+  register("engineering.runtime.http_probe", "write", (name) => server.registerTool(name, {
+    description: "Run a bounded HTTP diagnostic probe against the allowlisted Base44 target (target 'base44'). Credential is resolved server-side via credentialRef (AGENT_MEMORY_MCP_SECRET) and never returned. GET/POST only, timeout capped at 30s, response size-capped and secret-redacted; redirects are never followed.",
+    inputSchema: z.object({
+      target: z.string().min(1).max(64),
+      method: z.enum(["GET", "POST"]),
+      path: z.string().min(1).max(256),
+      body: z.record(z.string(), z.any()).optional(),
+      credentialRef: z.string().min(1).max(64).optional(),
+      credentialHeader: z.string().min(1).max(64).optional(),
+      timeoutMs: z.number().int().min(1).max(30_000).optional()
+    }).strict()
+  }, async (input) => {
+    requireRead();
+    requireWrite();
+    return response(await runHttpProbe(subject.subject, input));
+  }));
+  // engineering.vps.change.safe — controlled VPS change supertool (MVP):
+  // allowlisted action 'redeploy_application' ONLY (single mutating primitive:
+  // application-redeploy); deterministic PLAN -> PRE-CHECK -> RISK -> APPROVAL
+  // GATE -> CHANGE -> VALIDATION -> RESULT flow; execute defaults to false
+  // (plan-only); mutation requires execute=true AND approval.approved=true;
+  // read-only pre/post checks; rollback unavailable (not proven); zero LLM;
+  // no SSH/shell; no secrets or env values in results.
+  register("engineering.vps.change.safe", "write", (name) => server.registerTool(name, {
+    description: "Controlled VPS change supertool (MVP): allowlisted action 'redeploy_application' only, executed via the single mutating primitive application-redeploy. Deterministic PLAN -> PRE-CHECK -> RISK -> APPROVAL GATE -> CHANGE -> VALIDATION -> RESULT flow. execute defaults to false (plan-only); mutation requires execute=true AND approval.approved=true. Read-only pre/post checks; rollback unavailable (not proven); zero LLM; no SSH/shell; no secrets or env values in results.",
+    inputSchema: z.object({
+      action: z.literal("redeploy_application"),
+      target: z.object({ applicationId: z.string().min(1).optional(), applicationName: z.string().min(1).optional() }).strict(),
+      execute: z.boolean().optional(),
+      approval: z.object({ approved: z.boolean() }).strict().optional(),
+      validation: z.object({ externalHealth: z.boolean().optional() }).strict().optional()
+    }).strict()
+  }, async (input) => {
+    requireRead();
+    requireWrite();
+    return response(await runVpsChangeSafe(subject.subject, input));
+  }));
+  // engineering.vps.doctor — READ-ONLY diagnostic supertool (MVP): deterministic
+  // server + Swarm/node + application + deployment/queue + monitoring/logs
+  // diagnostics using ONLY confirmed Dokploy READ primitives (server-all,
+  // cluster-getNodes, application-*, deployment-*); zero mutation (no
+  // execute/approval input exists); essential upstream failures -> UNKNOWN,
+  // never invented health; no LLM, no SSH/shell; no secrets in results.
+  register("engineering.vps.doctor", "read", (name) => server.registerTool(name, {
+    description: "READ-ONLY diagnostic supertool for Dokploy-managed VPS/apps: deterministic server + Swarm/node + application + deployment/queue + monitoring/logs diagnostics over the confirmed READ primitives (server-all, cluster-getNodes, application-search/one/readLogs/readAppMonitoring, deployment-all/allCentralized/queueList). Zero mutation (no execute/approval input exists); essential upstream failures surface as UNKNOWN, never invented health; no LLM, no SSH/shell; no secrets in results.",
+    inputSchema: z.object({
+      serverId: z.string().min(1).max(200).optional(),
+      applicationId: z.string().min(1).max(200).optional(),
+      applicationName: z.string().min(1).max(200).optional()
+    }).strict()
+  }, async (input) => {
+    requireRead();
+    return response(await runVpsDoctor(subject.subject, input));
+  }));
+  // engineering.vps.reconcile — READ-ONLY drift detection supertool (MVP):
+  // EXPECTED = release-state.json written by the release runner only; ACTUAL =
+  // internal tool catalog (computed here via createToolCatalog over the
+  // registered tools) and optional container inspection (not injected in this
+  // MVP, so it stays unavailable). Absence of evidence is NEVER drift:
+  // undeterminable comparisons stay UNKNOWN and never produce a mismatch
+  // finding. Zero mutation (no execute/approval input exists); no LLM; no
+  // SSH/shell; no Dokploy changes; never writes release-state.json.
+  register("engineering.vps.reconcile", "read", (name) => server.registerTool(name, {
+    description: "READ-ONLY drift detection supertool (MVP): compares the release runner's release-state.json (expected) against actually evidenced state (actual: internal tool catalog hash/version/toolCount; container inspection when injected by the host, else unavailable). Absence of evidence is NEVER drift - undeterminable comparisons return UNKNOWN, never a mismatch finding. Zero mutation (no execute/approval input exists); no LLM; no SSH/shell; no Dokploy changes; never writes release-state.json.",
+    inputSchema: z.object({}).strict()
+  }, async () => {
+    requireRead();
+    const actualCatalog = createToolCatalog(toolMetadata, repositoryId);
+    return response(await runVpsReconcile({
+      readCatalog: async () => ({ catalogHash: actualCatalog.catalogHash, catalogVersion: actualCatalog.catalogVersion, toolCount: actualCatalog.actualToolCount })
+    }));
+  }));
+  // engineering.vps.recover — controlled official-rollback recovery supertool (MVP):
+  // PLAN mode (execute defaults to false) is fully read-only and deterministically
+  // reuses engineering.vps.reconcile + the release-state last-known-good evidence.
+  // The ONLY mutable operation is the official release runner rollback, hardcoded
+  // over the official Unix socket channel (callReleaseRunner); the caller can never
+  // choose operation/target/applicationId/toolName/command/shell/URL/socket/headers/
+  // token/image/container (strict { execute?, approval? } input). Mutation requires
+  // execute=true AND approval.approved=true, reconcile=DRIFTED, last-known-good
+  // present and no incompatible job in progress. 202/queued is NEVER RECOVERED:
+  // bounded official job status polling returns UNKNOWN/pending with the jobId.
+  // Post-validation: official smoke (which re-syncs the release-state production
+  // fields left stale by rollbackAction), live catalog and a fresh reconcile —
+  // RECOVERED only with full evidence, NOT_RECOVERED on failed validation, UNKNOWN
+  // on insufficient evidence. No LLM; no SSH/shell; no new executor/gateway.
+  register("engineering.vps.recover", "write", (name) => server.registerTool(name, {
+    description: "Controlled official-rollback recovery supertool for ENG-MCP (MVP): PLAN mode (execute defaults to false) is read-only and deterministically reuses engineering.vps.reconcile plus the release-state last-known-good evidence; the only mutable operation is the official release runner rollback, hardcoded over the official Unix socket channel (the caller can never choose operation, target, applicationId, toolName, command, shell, URL, socket, headers, token, image or container). Mutation requires execute=true AND approval.approved=true, reconcile=DRIFTED, last-known-good present and no incompatible job in progress. 202/queued is NEVER RECOVERED: bounded official job status polling returns UNKNOWN/pending with the durable jobId. Post-validation runs the official smoke (which re-syncs the release-state production fields left stale by rollbackAction), reads the live catalog and re-runs reconcile: RECOVERED only with full evidence, NOT_RECOVERED on failed validation, UNKNOWN on insufficient evidence. No LLM; no SSH/shell; no new executor/gateway.",
+    inputSchema: vpsRecoverInputSchema
+  }, async (input) => {
+    requireRead();
+    requireWrite();
+    requireRelease();
+    return response(await runVpsRecover(input, {
+      runRunner: callReleaseRunner,
+      readCatalog: async () => {
+        const catalog = createToolCatalog(toolMetadata, repositoryId);
+        return { catalogHash: catalog.catalogHash, catalogVersion: catalog.catalogVersion, toolCount: catalog.actualToolCount };
+      }
+    }));
+  }));
+  // engineering.vps.guardian v2 — coordinator/classifier supertool with CONTROLLED
+  // write mode: default ({}) stays fully read-only (classification only, exactly
+  // like v1). Mutation requires execute=true AND approval.approved=true and even
+  // then Guardian executes ONLY the action the deterministic classification
+  // recommended: RECOVER via runVpsRecover({execute:true, approval:{approved:true}})
+  // (official rollback; Recover keeps its own gates) or CHANGE_SAFE via
+  // runVpsChangeSafe with the action hardcoded 'redeploy_application' and the
+  // applicationId resolved ONLY from Doctor's own evidence — never caller-supplied,
+  // never invented; unresolved applicationId -> BLOCKED. NONE/INVESTIGATE/BLOCKED/
+  // UNKNOWN never mutate. Post-validation re-runs doctor + reconcile after any
+  // mutation attempt; "action accepted" is never counted as final success. Access
+  // is 'write' because Guardian CAN mutate when authorized (gates mirror recover).
+  register("engineering.vps.guardian", "write", (name) => server.registerTool(name, {
+    description: "Coordinator/classifier supertool with CONTROLLED write mode (v2): default {} stays fully read-only — deterministically composes engineering.vps.doctor (always) and engineering.vps.reconcile (always), plus engineering.vps.recover STRICTLY in PLAN mode (input exactly {}, only when reconcile=DRIFTED) into one conservative answer: status HEALTHY|DEGRADED|CRITICAL|DRIFTED|UNKNOWN (precedence UNKNOWN > CRITICAL > DRIFTED > DEGRADED > HEALTHY) with recommendedAction NONE|INVESTIGATE|RECOVER|CHANGE_SAFE|BLOCKED. Mutation ONLY with execute=true AND approval.approved=true, and ONLY the recommended action: RECOVER via runVpsRecover (official rollback, Recover keeps its own gates) or CHANGE_SAFE via runVpsChangeSafe (action hardcoded redeploy_application; applicationId resolved ONLY from Doctor's own evidence, never caller-supplied — unresolved applicationId blocks). NONE/INVESTIGATE/BLOCKED/UNKNOWN never mutate. Post-validation re-runs doctor + reconcile after any mutation attempt; accepted/pending is never counted as final success. No LLM, no memory, no scheduler, no watch loop, no new framework.",
+    inputSchema: guardianInputSchema
+  }, async (input) => {
+    requireRead();
+    requireWrite();
+    requireRelease();
+    return response(await runVpsGuardian(input, {
+      runDoctor: () => runVpsDoctor(subject.subject, {}),
+      runReconcile: () => {
+        const actualCatalog = createToolCatalog(toolMetadata, repositoryId);
+        return runVpsReconcile({ readCatalog: async () => ({ catalogHash: actualCatalog.catalogHash, catalogVersion: actualCatalog.catalogVersion, toolCount: actualCatalog.actualToolCount }) });
+      },
+      runRecover: (recoverInput: unknown) => {
+        const recoverCatalog = createToolCatalog(toolMetadata, repositoryId);
+        return runVpsRecover(recoverInput, { runRunner: callReleaseRunner, readCatalog: async () => ({ catalogHash: recoverCatalog.catalogHash, catalogVersion: recoverCatalog.catalogVersion, toolCount: recoverCatalog.actualToolCount }) });
+      },
+      runChangeSafe: (changeInput: unknown) => runVpsChangeSafe(subject.subject, changeInput)
+    }));
+  }));
+  // engineering.guardian.app.deploy — GCLOUD-01D SuperTool: governed composition
+  // project snapshot -> detectNodeApp -> PLAN -> Guardian approval -> application-create
+  // (single mutating boundary inside Guardian apply) -> application-deploy ->
+  // application-one health -> application-domain -> LIVE + evidenced URL.
+  // Reuses ONLY existing capabilities; no new deployment engine; env VALUES never
+  // echoed (names + [REDACTED] only). LIVE requires create accepted + deploy ok +
+  // health running + domain READY with https URL; otherwise honest intermediate
+  // states (DEPLOYED_AWAITING_DOMAIN / DEPLOYING / FAILED / UNKNOWN).
+  register("engineering.guardian.app.deploy", "write", (name) => server.registerTool(name, {
+    description: "Governed Node application deploy SuperTool (GCLOUD-01D/01F): PLAN mode (execute defaults to false) runs the evidence-only Node detector over the caller-provided project snapshot and returns PLANNED/NEEDS_INPUT with ZERO transport calls. Execution (execute=true) is Guardian-gated: bind(action='create_application', approved===true) then the governed provisioning sequence INSIDE the Guardian mutating boundary — project/environment reuse-or-create (GCLOUD-01F: project-all/project-create + environment-byProjectId/environment-create; skipped when environmentId is provided), application-create, then git/build/env configuration (application-saveGitProvider/saveBuildType/saveEnvironment); OUTSIDE the boundary: ONE allowlisted application-deploy, read-only health (application-one) and domain evidence (application-domain). A documented multi-mutation sequence with partial-result points — never presented as one atomic mutation. LIVE only with full evidence (create accepted + config applied + deploy ok + applicationStatus running + domain READY https URL); pending domain -> DEPLOYED_AWAITING_DOMAIN with url:null (never invented). Env VALUES never appear in plan or output (names only). No new deployment engine; Guardian Core untouched.",
+    inputSchema: z.object({
+      name: z.string().min(1),
+      source: z.string().min(1),
+      environmentId: z.string().min(1).optional(),
+      projectName: z.string().min(1).optional(),
+      environmentName: z.string().min(1).optional(),
+      branch: z.string().min(1).optional(),
+      buildType: z.enum(["dockerfile", "heroku_buildpacks", "paketo_buildpacks", "nixpacks", "static", "railpack"]).optional(),
+      serverId: z.string().min(1).optional(),
+      projectSnapshot: z.object({
+        packageJsonText: z.string().nullable().optional(),
+        files: z.record(z.string(), z.string()).optional()
+      }).optional(),
+      env: z.record(z.string(), z.string()).optional(),
+      approved: z.boolean().optional(),
+      execute: z.boolean().optional()
+    }).strict()
+  }, async (input) => {
+    requireRead();
+    requireWrite();
+    return response(await runGuardianAppDeploy(input, {
+      // Host-provided transport: Guardian Cloud never self-wires operational values.
+      transport: createMcpClientCallTransport({ dokployServerId: process.env.ENG_MCP_VPS_DOKPLOY_SERVER_ID ?? DOKPLOY_SERVER_ID_DEFAULT, endpoint: process.env.ENG_MCP_AGENT_MEMORY_ENDPOINT ?? DEFAULT_MEMORY_ENDPOINT }),
+    }));
+  }));
+  // Engineering Simple Tools — first batch (SPRINT SIMPLE-TOOLS-01): three small,
+  // specific, deterministic, 100% read-only tools that each answer ONE question by
+  // thin composition over the certified read-only Doctor mechanism (one single
+  // runVpsDoctor(subject, {}) pass). NOT supertools: no coordination, no rollback,
+  // no change flow, no automatic action. Input is EXACTLY {} (strict) — any caller
+  // key (execute, approval, target, applicationId, serverId, toolName, action,
+  // command, shell, url, headers, token) is rejected before evidence collection.
+  // Zero mutation, zero LLM, zero SSH/shell.
+  register("engineering.vps.health", "read", (name) => server.registerTool(name, {
+    description: "Simple read-only tool: answers 'Is my VPS healthy?' by running ONE deterministic read-only Doctor pass and projecting the certified classification (HEALTHY -> healthy=true, DEGRADED/CRITICAL -> healthy=false, UNKNOWN -> healthy=null). Input is exactly {} (strict); zero mutation, no LLM, no SSH/shell; never invents health; zero managed applications is informative, not a failure.",
+    inputSchema: z.object({}).strict()
+  }, async (input) => {
+    requireRead();
+    return response(await runVpsHealth(subject.subject, input));
+  }));
+  register("engineering.vps.why_down", "read", (name) => server.registerTool(name, {
+    description: "Simple read-only tool: answers 'Why is my VPS or application having a problem?' by projecting the deterministic Doctor findings into one observable cause (first critical, else first warning) with the supporting read-only evidence; never invents a cause (cause=null when evidence is insufficient or status=UNKNOWN). Input is exactly {} (strict); zero mutation, no LLM, no SSH/shell; never triggers recovery, change or coordination flows.",
+    inputSchema: z.object({}).strict()
+  }, async (input) => {
+    requireRead();
+    return response(await runVpsWhyDown(subject.subject, input));
+  }));
+  register("engineering.deploy.status", "read", (name) => server.registerTool(name, {
+    description: "Simple read-only tool: answers 'Is my deployment working?' by projecting the read-only Doctor deployment evidence (last deployment classification, in-flight count, queue depth) as OK/IN_FLIGHT/PENDING/FAILED/UNKNOWN; zero managed applications is reported informatively as NO_APPLICATIONS_MANAGED and is never treated as a VPS failure. Input is exactly {} (strict); zero mutation, never deploys/redeploys/recovers, no LLM, no SSH/shell.",
+    inputSchema: z.object({}).strict()
+  }, async (input) => {
+    requireRead();
+    return response(await runDeployStatus(subject.subject, input));
+  }));
+  // Engineering Simple Tools — second batch (SPRINT SIMPLE-TOOLS-02): same contract
+  // as the first batch — small, deterministic, 100% read-only compositions over
+  // EXISTING certified mechanisms (runVpsDoctor; release-state.json via the same
+  // reader used by engineering.vps.reconcile). Input is EXACTLY {} (strict); zero
+  // mutation, zero LLM, zero SSH/shell; nothing invented; no arbitrary target.
+  register("engineering.vps.capacity", "read", (name) => server.registerTool(name, {
+    description: "Simple read-only tool: answers 'Is my VPS close to its limits?' by projecting ONLY existing read-only capacity evidence from the certified Doctor pass (capacity-related findings: disk/memory/cpu/storage/pressure; monitoring availability) into OK/PRESSURE/CRITICAL/UNKNOWN. Missing evidence -> UNKNOWN; no metrics are invented, no agent is installed, no new monitoring is created. Input is exactly {} (strict); zero mutation, no LLM, no SSH/shell.",
+    inputSchema: z.object({}).strict()
+  }, async (input) => {
+    requireRead();
+    return response(await runVpsCapacity(subject.subject, input));
+  }));
+  register("engineering.vps.what_changed", "read", (name) => server.registerTool(name, {
+    description: "Simple read-only tool: answers 'What changed recently?' using ONLY the existing authorized release-state.json source (the same file the certified reconcile reads): compares the current release against the recorded previous release into CHANGED/NO_CHANGE/UNKNOWN with short evidence. No git substitution, no new timeline, no new storage; insufficient state -> UNKNOWN and nothing is invented. Input is exactly {} (strict); zero mutation, no LLM, no SSH/shell.",
+    inputSchema: z.object({}).strict()
+  }, async (input) => {
+    requireRead();
+    return response(await runVpsWhatChanged(subject.subject, input));
+  }));
+  register("engineering.app.health", "read", (name) => server.registerTool(name, {
+    description: "Simple read-only tool: answers 'Is my application working?' by projecting the certified Doctor application evidence (deterministic single-application selection; no arbitrary target) into HEALTHY/DEGRADED/CRITICAL/UNKNOWN, with informative NO_APPLICATION when zero managed applications exist. Never restarts, redeploys or repairs. Input is exactly {} (strict); zero mutation, no LLM, no SSH/shell.",
+    inputSchema: z.object({}).strict()
+  }, async (input) => {
+    requireRead();
+    return response(await runAppHealth(subject.subject, input));
+  }));
+
+  // Engineering Simple Tools — third batch (SPRINT SIMPLE-TOOLS-03): closes the
+  // initial catalog at 10 Simple Tools. Same contract as the first two batches:
+  // deterministic read-only compositions over existing certified mechanisms (Doctor;
+  // Reconcile wired with the live tool catalog exactly like engineering.vps.recover
+  // composes it; release-state.json via the same reader used by reconcile).
+  // incident.summary and logs.explain are LLM-free: every summary and explanation is
+  // a fixed template over structured findings. Input is EXACTLY {} (strict); zero
+  // mutation, zero approval/execute, zero SSH/shell; nothing invented; deploy.ready
+  // is strictly advisory (never deploys, never calls change.safe, never calls the
+  // Guardian write mode, approves nothing).
+  register("engineering.vps.incident.summary", "read", (name) => server.registerTool(name, {
+    description: "Simple read-only tool: answers 'What is happening with my VPS right now?' by composing ONLY existing read-only evidence (one certified Doctor pass; the certified reconcile pass wired with the live tool catalog; release-state deploy/smoke status) into a short deterministic summary classified NO_INCIDENT/INCIDENT/UNKNOWN. No LLM: the summary is a fixed template over structured findings; no correction is ever attempted. Input is exactly {} (strict); zero mutation, no approval/execute, no LLM, no SSH/shell.",
+    inputSchema: z.object({}).strict()
+  }, async (input) => {
+    requireRead();
+    const incidentCatalog = createToolCatalog(toolMetadata, repositoryId);
+    return response(await runVpsIncidentSummary(subject.subject, input, {
+      runReconcile: () => runVpsReconcile({ readCatalog: async () => ({ catalogHash: incidentCatalog.catalogHash, catalogVersion: incidentCatalog.catalogVersion, toolCount: incidentCatalog.actualToolCount }) })
+    }));
+  }));
+  register("engineering.deploy.ready", "read", (name) => server.registerTool(name, {
+    description: "Simple read-only tool: answers 'Is it safe to deploy now?' from observed read-only state only (Doctor findings and deployment activity; reconcile DEPLOY_IN_PROGRESS/DEPLOY_FAILED wired with the live tool catalog; release-state deployStatus/smokeStatus) classified READY/NOT_READY/UNKNOWN. Strictly advisory: it NEVER deploys, NEVER calls engineering.vps.change.safe, NEVER calls the Guardian write mode and NEVER approves anything. Input is exactly {} (strict); zero mutation, no LLM, no SSH/shell.",
+    inputSchema: z.object({}).strict()
+  }, async (input) => {
+    requireRead();
+    const readyCatalog = createToolCatalog(toolMetadata, repositoryId);
+    return response(await runDeployReady(subject.subject, input, {
+      runReconcile: () => runVpsReconcile({ readCatalog: async () => ({ catalogHash: readyCatalog.catalogHash, catalogVersion: readyCatalog.catalogVersion, toolCount: readyCatalog.actualToolCount }) })
+    }));
+  }));
+  register("engineering.docker.health", "read", (name) => server.registerTool(name, {
+    description: "Simple read-only tool: answers 'Are my containers healthy?' using ONLY Docker/cluster evidence already available from the certified Doctor pass (Swarm node state, manager reachability, server status) classified HEALTHY/DEGRADED/CRITICAL/UNKNOWN, with NO_CONTAINERS when zero managed applications exist. No docker CLI, no SSH, no agent, no new privileged path; per-container inspection does not exist in the certified mechanisms (containerLevelEvidence=false) and missing evidence -> UNKNOWN, never invented. Input is exactly {} (strict); zero mutation, no LLM, no SSH/shell.",
+    inputSchema: z.object({}).strict()
+  }, async (input) => {
+    requireRead();
+    return response(await runDockerHealth(subject.subject, input));
+  }));
+  register("engineering.logs.explain", "read", (name) => server.registerTool(name, {
+    description: "Simple read-only tool (NO LLM): answers 'What do these errors/logs mean?' by deterministically explaining ONLY the structured findings already observable through the certified Doctor pass (fixed table of known finding codes), classified NO_ERRORS/EXPLAINED/UNKNOWN. Accepts NO log text, NO file path, NO URL (input is exactly {} strict) and never fetches logs via shell/SSH; unknown codes are listed unexplained, never invented.",
+    inputSchema: z.object({}).strict()
+  }, async (input) => {
+    requireRead();
+    return response(await runLogsExplain(subject.subject, input));
+  }));
+
 }

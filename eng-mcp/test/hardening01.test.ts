@@ -114,18 +114,19 @@ async function waitUntil(condition: () => boolean, timeoutMs: number): Promise<v
 
 // ===== HARDENING-01 — tool enforcement =====
 
-test('H1: MCP-only contract unlocks nothing natively — full built-in complement + verbatim allowedTools', async () => {
+test('H1: MCP-only contract unlocks nothing natively — full built-in complement + verbatim allowedTools (+BATCH-30)', async () => {
   const { query, calls } = enforcingFakeQuery([() => [systemInit('sess-h1'), resultMessage('sess-h1', 'success', 0, false)]]);
   const runtime = new ClaudeAgentRuntime({ queryFactory: query, env: {} });
   const contract = mcpContract('hard-h1', ['engineering_file_read'], ['claude-agent-sdk:result:success']);
   const result = await runtime.runMission(contract, createInitialState(contract, 1000));
   assert.strictEqual(calls.length, 1);
   const options = calls[0].options;
-  assert.deepStrictEqual(options?.allowedTools, ['engineering_file_read']); // verbatim
+  // BATCH-30 + SBW-02 — as únicas adições runtime-layer; todo o resto verbatim
+  assert.deepStrictEqual(options?.allowedTools, ['engineering_file_read', 'engineering_orchestrate_batch', 'engineering_sandbox_batchWrite']);
   assert.ok(options?.disallowedTools); // complement present
   assert.deepStrictEqual(
     [...(options?.disallowedTools ?? [])],
-    [...disallowedBuiltinComplement(['engineering_file_read'])],
+    [...disallowedBuiltinComplement(['engineering_file_read', 'engineering_orchestrate_batch', 'engineering_sandbox_batchWrite'])],
   );
   for (const forbiddenBuiltin of ['Bash', 'Glob', 'Grep']) {
     assert.ok(options?.disallowedTools?.includes(forbiddenBuiltin), `CERT-01 finding: ${forbiddenBuiltin} must be definition-removed`);

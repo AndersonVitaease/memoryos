@@ -55,18 +55,56 @@ export function frozenStateView(state: MissionState, contract?: MissionContract)
 
 /**
  * PRÉ-GH-07 — wide waves: planning guidance the Guardian hands to LLM
- * advisors. Dependencies are for REAL result/resource/transactional/budget/
- * safety reasons only — NEVER artificial staging. Ten genuinely independent
- * actions belong to ONE wave with ten READY actions, not three waves of
- * three. The Guardian/config owns this guidance; an advisor can never opt
- * out of DAG safety, and no code path requires artificial dependencies.
+ * advisors. GUARDIAN-WORKER-GPTOSS-STRUCTURAL-01 2026-09-13 (ETAPA 2):
+ * independence is decided by REAL dependency only, never by action type —
+ * sequential ONLY when (a) an action needs another action's RESULT to decide
+ * what to do, or (b) both actions touch the SAME resource. Writes, tests and
+ * other stateful operations are a SEPARATE action of their own (one action
+ * per independent item) so the c20 executor can run them simultaneously.
+ * Independent READS are the exception (BATCH-30, inverted from
+ * GUARDIAN-WORKER-PARALLEL-READS-01/02 after AUDIT-ORCHESTRATE proved a
+ * single read costs 12-35s wall, ~82% LLM inference): they are AGGREGATED
+ * into one worker action calling engineering_orchestrate_batch (up to 30
+ * operations, concurrent server-side) instead of one action per read.
+ * Independent WRITES to different files are the second exception (SBW-02,
+ * 2026-09-14): several independent file writes are ONE worker action running
+ * the engineering_sandbox_batchWrite governed cycle (materialize, write up
+ * to 10 operations, validate, sync — one approval, mandatory in-sandbox tsc
+ * validation, per-file drift check) instead of one file.patch action per
+ * file; writes that depend on another write's result, or touch the SAME
+ * file, remain one action per item.
+ * Dependencies are for REAL result/resource/transactional/budget/safety
+ * reasons only — NEVER artificial staging. The Guardian/config owns this
+ * guidance; an advisor can never opt out of DAG safety, and no code path
+ * requires artificial dependencies.
  */
 export const WIDE_WAVE_GUIDANCE =
-  'Plan dependencies only for REAL dependencies (result, resource, ' +
-  'transactional order, budget or safety) — never artificial staging. ' +
-  'Prefer the widest wave: genuinely independent actions are proposed ' +
+  'Plan dependencies only for REAL dependencies: an action stays sequential ' +
+  'ONLY when another action needs its RESULT to decide what to do, or both ' +
+  'actions touch the SAME resource. Writes, tests and stateful operations ' +
+  'become a SEPARATE action of their own: one action per independent item. ' +
+  'Independent READS are different — aggregate them: a single worker action ' +
+  // SBW-02 elicitation fix: the CALL spelling is the FULL SDK-registered name
+  // mcp__eng-mcp__engineering_orchestrate_batch (server key 'eng-mcp' + dots
+  // to underscores — same derivation as ORCHESTRATE_BATCH_TOOL_FULL in
+  // ClaudeAgentRuntime; hardcoded here because advisor cannot import back).
+  `calling mcp__eng-mcp__engineering_orchestrate_batch replaces up to 30 per-read actions ` +
+  '(it accepts up to 30 operations of engineering.repo.structure, ' +
+  'engineering.file.read, engineering.code.search, ' +
+  'engineering.code.references, engineering.git.status and ' +
+  'engineering.git.diff, executed concurrently server-side), so propose ONE ' +
+  'batch action covering the independent reads instead of one action per ' +
+  'read. Independent WRITES to DIFFERENT files aggregate the same way: a ' +
+  'single worker action running the mcp__eng-mcp__engineering_sandbox_batchWrite governed ' +
+  'cycle (materialize, write up to 10 {path, content} operations, validate, ' +
+  'sync — one approval, mandatory in-sandbox tsc validation, per-file drift ' +
+  'check) replaces one file.patch action per file; a write that depends on ' +
+  'the result of another write, or a second write to the SAME file, remains ' +
+  'one action per item. Prefer the widest wave: genuinely independent ' +
+  'actions are proposed ' +
   'together as READY in a single wave (bounded by maxParallelActions), not ' +
-  'chopped into serial waves of a few actions without a real reason.';
+  'chopped into serial waves of a few actions without a real reason — and ' +
+  'never artificial staging.';
 
 export interface AdvisorAgent {
   proposePlan(objective: string, state: MissionStateView): Promise<PlanProposal> | PlanProposal;

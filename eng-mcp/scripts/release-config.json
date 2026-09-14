@@ -1,0 +1,37 @@
+{
+  "canonicalSource": "/opt/memoryos/eng-mcp",
+  "stateFile": "/opt/memoryos/eng-mcp/release-state.json",
+  "candidate": {
+    "port": 3001,
+    "dataRoot": "/opt/eng-mcp-release-data/candidate",
+    "image": "eng-mcp-candidate",
+    "containerName": "eng-mcp-candidate"
+  },
+  "production": {
+    "endpoint": "http://127.0.0.1:8787/mcp",
+    "containerName": "memoryos-eng-mcp",
+    "image": "memoryos-eng-mcp",
+    "runnerMount": "/opt/eng-mcp-release-data/run:/opt/eng-mcp-release-data/run",
+    "repositoryMount": "/opt/memoryos:/opt/memoryos",
+    "dataMount": "/opt/eng-mcp-release-data/production:/data",
+    "port": 8787,
+    "host": "127.0.0.1",
+    "network": "host",
+    "restart": "unless-stopped",
+    "repositoryRoot": "/opt/memoryos/eng-mcp",
+    "repositoryId": "memoryos",
+    "tokenRegistryFile": "/data/tokens.json",
+    "deployEnvironmentId": "Fh6ebljpJ2Mq65-_OxnTH",
+    "deployServerId": "LXzm3ZifF7EPwLaBUXt4H"
+  },
+  "requiredTools": [
+    "engineering.mcp.catalog",
+    "engineering.code.search",
+    "engineering.file.read",
+    "engineering.git.status",
+    "engineering.release.run",
+    "engineering.test.run",
+    "engineering.typecheck.run"
+  ],
+  "imageRepository": "eng-mcp-candidate"
+}

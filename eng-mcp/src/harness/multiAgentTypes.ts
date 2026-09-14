@@ -5,6 +5,7 @@
  * infrastructure: everything is a local, in-process scheduler/lock/budget.
  */
 import { Evidence, MissionState } from './missionTypes.js';
+import { WorkerSpecialization } from './workerSpecialization.js';
 
 /** How an action touches each of its resourceKeys (default 'read'). */
 export type ResourceMode = 'read' | 'write';
@@ -38,6 +39,13 @@ export interface ActionExecutionContext {
    * workaround in the objective).
    */
   actionInput?: unknown;
+  /**
+   * SP-01 — provenance metadata transported from the plan's action (present
+   * only when the action declares a valid taxonomy member; an invalid value
+   * is treated as absent). Pure metadata in SP-01: it changes no model, no
+   * prompt, no toolset, no permission and no execution semantics here.
+   */
+  specialization?: WorkerSpecialization;
   /** Contract authorization, VERBATIM (never expanded by any role). */
   allowedActions?: readonly string[];
   forbiddenActions?: readonly string[];
@@ -71,6 +79,14 @@ export interface PlanAction {
    * into the objective. Must be JSON-serializable (validatePlan enforces).
    */
   input?: unknown;
+  /**
+   * SP-01 — optional specialization domain of this action (CODE, TEST, INFRA,
+   * DATA, RESEARCH). Pure transport metadata: BACKWARD COMPATIBLE (absent on
+   * every pre-SP-01 plan), never inferred by the Advisor in SP-01, never a
+   * dependency, never a scheduling/permission/budget input and never bound to
+   * a model. SPECIALIZATION != MODEL.
+   */
+  specialization?: WorkerSpecialization;
   /** The bounded execution body. Workers never receive anything else. */
   run: ActionRunner;
 }

@@ -44,12 +44,13 @@ import { WorkerAgent } from './worker.js';
 import { computeActionWaves } from './advisor.js';
 
 /**
- * PRÉ-GH-07 — default max parallelism: 10 wide-wave workers (still
- * configurable: contract.maxParallelActions wins, then the runtime config).
- * Effective concurrency is always capped by min(maxParallelActions, ready
- * and independent actions, available budget, conflict-free resources).
+ * GUARDIAN-WORKER-CONCURRENCY-20-01 2026-09-12 — default max parallelism
+ * raised 10 -> 20 (operator decision; 20 is a CEILING, never a requirement —
+ * effective concurrency is min(ceiling, ready actions, budget, resources)).
+ * Previously PRÉ-GH-07: 10 wide-wave workers (still configurable:
+ * contract.maxParallelActions wins, then the runtime config).
  */
-export const DEFAULT_MAX_PARALLEL_ACTIONS = 10;
+export const DEFAULT_MAX_PARALLEL_ACTIONS = 20;
 
 /**
  * PRÉ-GH-07 — scheduler properties, declared for auditability and PROVEN by
