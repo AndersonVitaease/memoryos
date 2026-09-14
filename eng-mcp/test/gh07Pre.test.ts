@@ -7,7 +7,7 @@
  * - P3  refill never violates DAG dependencies.
  * - P4  refill never violates resource locks.
  * - P5  refill never bypasses the GLOBAL budget.
- * - P6  default=10 + configurable (contract wins) + scheduler flags.
+ * - P6  default=20 + configurable (contract wins) + scheduler flags.
  * - P7  role models: Guardian-config authority, real ids, no costly fallback.
  * - P8  role context budget: advisor strategic view, worker minimum
  *       sufficient context, supervisor review input (never a transcript).
@@ -107,13 +107,13 @@ function endOf(recs: Map<string, Rec>, id: string): number {
   return rec.endMs;
 }
 
-// ===== P1 — 10 workers REAIS simultâneos (default=10), overlap comum provado =====
+// ===== P1 — 10 workers REAIS simultâneos (teto default=20 > 10 ações), overlap comum provado =====
 
 test('GH-07/P1 — 10 ações independentes 200ms: MAX_OBSERVED_CONCURRENCY=10, overlap comum, waveCount=1', async () => {
   const ids = ['W1', 'W2', 'W3', 'W4', 'W5', 'W6', 'W7', 'W8', 'W9', 'W10'];
   const runtime = new MultiAgentRuntime({
     advisor: new FakeAdvisor([makePlan('p10', ids.map((id) => fakeAction(id, { okKey: `${id}_done`, delayMs: 200 })))]),
-    // sem maxParallelActions: o DEFAULT (10) governa
+    // sem maxParallelActions: o DEFAULT (20) governa; 10 ações elegíveis -> peak=10
   });
   const harness = new GuardianHarness(
     makeContract({ completionCriteria: ids.map((id) => `${id}_done`), maxCycles: 2 }),
@@ -146,6 +146,8 @@ test('GH-07/P2 — 15 ações cap 10: X1 inicia após 1 settlement com 9 iniciai
   for (const id of extras) actions.push(fakeAction(id, { okKey: `${id}_done`, delayMs: 20 }));
   const runtime = new MultiAgentRuntime({
     advisor: new FakeAdvisor([makePlan('p15', actions)]),
+    // CONCURRENCY-20: o default agora é 20 — o P2 isola o refill com cap 10 EXPLÍCITO
+    maxParallelActions: 10,
   });
   const harness = new GuardianHarness(
     makeContract({ completionCriteria: [...initial, ...extras].map((id) => `${id}_done`), maxCycles: 2 }),
@@ -255,10 +257,10 @@ test('GH-07/P5 — cap 0.10, 15 ações x 0.01: só 10 reservam; extras budget_b
   assert.equal(report.maxObservedConcurrency, 10);
 });
 
-// ===== P6 — default=10, configurável, contract vence =====
+// ===== P6 — default=20, configurável, contract vence =====
 
-test('GH-07/P6 — DEFAULT_MAX_PARALLEL_ACTIONS=10; contract.maxParallelActions vence a config', async () => {
-  assert.equal(DEFAULT_MAX_PARALLEL_ACTIONS, 10);
+test('GH-07/P6 — DEFAULT_MAX_PARALLEL_ACTIONS=20; contract.maxParallelActions vence a config', async () => {
+  assert.equal(DEFAULT_MAX_PARALLEL_ACTIONS, 20);
   assert.equal(DYNAMIC_SLOT_REFILL, true);
   assert.equal(WORK_CONSERVING_SCHEDULER, true);
   assert.equal(WAIT_FOR_FULL_WAVE_COMPLETION, false);
@@ -282,9 +284,9 @@ test('GH-07/P6 — DEFAULT_MAX_PARALLEL_ACTIONS=10; contract.maxParallelActions 
 test('GH-07/P7a — resolveRoleModels: defaults reais, override por role, blank nunca troca (sem fallback caro)', () => {
   const defaults = resolveRoleModels({});
   assert.deepEqual(defaults, {
-    advisor: 'z-ai/glm-5.3-flash',
-    supervisor: 'z-ai/glm-5.3-flash',
-    worker: 'nvidia/nemotron-3-super-120b-a12b',
+    advisor: 'openai/gpt-oss-120b',
+    supervisor: 'nex-agi/nex-n2.5-pro:free',
+    worker: 'openai/gpt-oss-120b',
   });
   assert.deepEqual(DEFAULT_ROLE_MODELS, defaults);
   // override por role a partir do ambiente do operador
@@ -298,14 +300,14 @@ test('GH-07/P7a — resolveRoleModels: defaults reais, override por role, blank 
   assert.equal(overridden.worker, 'nvidia/nemotron-3-nano-30b-a3b');
   // blank/whitespace NUNCA troca modelo e NUNCA pede emprestado outro role
   const blank = resolveRoleModels({ GUARDIAN_ADVISOR_MODEL: '   ', GUARDIAN_WORKER_MODEL: '' });
-  assert.equal(blank.advisor, 'z-ai/glm-5.3-flash');
-  assert.equal(blank.worker, 'nvidia/nemotron-3-super-120b-a12b');
-  assert.equal(blank.supervisor, 'z-ai/glm-5.3-flash');
+  assert.equal(blank.advisor, 'openai/gpt-oss-120b');
+  assert.equal(blank.worker, 'openai/gpt-oss-120b');
+  assert.equal(blank.supervisor, 'nex-agi/nex-n2.5-pro:free');
   // override parcial: só o role declarado muda
   const partial = resolveRoleModels({ GUARDIAN_WORKER_MODEL: 'nvidia/nemotron-3-nano-30b-a3b' });
   assert.equal(partial.worker, 'nvidia/nemotron-3-nano-30b-a3b');
-  assert.equal(partial.advisor, 'z-ai/glm-5.3-flash');
-  assert.equal(partial.supervisor, 'z-ai/glm-5.3-flash');
+  assert.equal(partial.advisor, 'openai/gpt-oss-120b');
+  assert.equal(partial.supervisor, 'nex-agi/nex-n2.5-pro:free');
 });
 
 test('GH-07/P7b — ClaudeAgentRuntime: model por role flui da config ao SDK (one-way), sem config = comportamento certificado', async () => {

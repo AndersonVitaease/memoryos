@@ -35,6 +35,21 @@ import type {
   MissionState,
 } from './missionTypes.js';
 import type { AgentRole, RoleModels } from './roleModels.js';
+import type { WorkerSpecialization } from './workerSpecialization.js';
+import type { WorkerSpecializationProfile } from './workerProfiles.js';
+import {
+  resolveWorkerSpecializationProfile,
+  workerSpecializationPromptBlock,
+} from './workerProfiles.js';
+import {
+  accumulateProviderUsage,
+  emptyProviderUsage,
+  estimateModelUsageCostUsd,
+  estimateProviderCostUsd,
+  readAssistantUsage,
+  readResultModelUsage,
+  type ProviderModelUsage,
+} from './providerUsage.js';
 
 /** Structural minimum of the official Claude Agent SDK MCP-over-HTTP server config. */
 export interface ClaudeMcpServerConfig {
@@ -115,11 +130,32 @@ export interface ClaudeAgentRuntimeConfig {
   roleModels?: RoleModels;
   /** Which role this runtime instance plays (advisor | supervisor | worker). */
   runtimeRole?: AgentRole;
+  /**
+   * SP-02 — optional worker specialization profile selector: selects the
+   * delimited execution-guidance complement appended to the worker prompt.
+   * Guidance only (SPECIALIZATION MAY RESTRICT OR GUIDE; SPECIALIZATION MUST
+   * NEVER EXPAND AUTHORITY): it changes NO model, NO SDK option, NO tool
+   * authority, NO channel, NO budget and NO contract semantics. An invalid
+   * value is treated as ABSENT — the prompt stays byte-identical to legacy.
+   */
+  workerSpecialization?: WorkerSpecialization;
 }
 
 export const DEFAULT_AUTHORIZED_EXECUTION_CHANNELS: readonly string[] = ['eng-mcp'];
 export const DEFAULT_ENG_MCP_SERVER_URL = 'https://memoryos-engmcp.2-25-96-245.nip.io/mcp';
 export const DEFAULT_ENG_MCP_TOKEN_ENV_VAR = 'ENG_MCP_RUNTIME_TOKEN';
+
+/**
+ * BATCH-30/SBW-02 — the SDK server key used at options.mcpServers (see
+ * buildQueryOptions). The SDK registers every tool of this server under
+ * mcp__<server>__<tool>, so the CALL-facing surfaces (guidance, prompt line)
+ * must use the FULL registered spelling; the ALLOWED/enforcement surfaces
+ * keep the short underscore form (CERT-02 duality: isToolAllowed matches the
+ * mcp__-prefixed call only through the underscore entry — a dotted entry
+ * never matches). Derived everywhere, never retyped, so guidance cannot
+ * drift from the registry key.
+ */
+export const ENG_MCP_SERVER_NAME = 'eng-mcp';
 
 export class ClaudeAgentRuntimeError extends Error {
   readonly code: string;
@@ -134,6 +170,108 @@ const GUARDIAN_SYSTEM_PROMPT =
   'AGENTS EXECUTE. GUARDIAN VERIFIES. You execute the mission contract and ' +
   'produce evidence. The Guardian Harness alone decides completion, budgets ' +
   'and blocking. Never claim completion yourself; never redefine the criteria.';
+
+/**
+ * BATCH-30 — read-only aggregation tool, runtime-authorized for every
+ * worker (operator decision 2026-09-14). Its server-side schema whitelists
+ * exactly the six read tools, so it can only fan out reads the worker could
+ * already issue individually; it grants no write path. TWO spellings, both
+ * proven: ALLOWED/enforcement uses the SDK-facing short underscore form
+ * (isToolAllowed matches the mcp__-prefixed call only through the underscore
+ * entry — a dotted entry never matches; T4 E2E probe rejects the dotted form
+ * with "No such tool available"), while CALL-facing surfaces (guidance,
+ * prompt line) use the FULL registered spelling
+ * mcp__eng-mcp__engineering_orchestrate_batch — SBW-02 elicitation proved a
+ * worker taught only the short name burns turns discovering the real one.
+ */
+const ORCHESTRATE_BATCH_TOOL = 'engineering_orchestrate_batch';
+
+/**
+ * BATCH-30/SBW-02 — the exact spelling the SDK registers and workers must
+ * CALL, derived from the server key so it cannot drift from the registry.
+ * Enforcement stays on the SHORT form above (CERT-02 duality).
+ */
+const ORCHESTRATE_BATCH_TOOL_FULL = `mcp__${ENG_MCP_SERVER_NAME}__${ORCHESTRATE_BATCH_TOOL}`;
+
+/**
+ * SBW-02 — batched-write tool, runtime-authorized for every worker (operator
+ * decision 2026-09-14). NOT a raw write grant: the server-side flow is the
+ * SBW-01-certified governed cycle (materialize → write → validate → sync) —
+ * validate runs tsc inside a disposable sandbox whose failure destroys it,
+ * and sync is ONE acknowledgeWrite approval guarded by a per-file drift
+ * check plus baseHash revalidation through repository.patch. Every file it
+ * can write is a file the worker could already patch individually, under
+ * STRONGER integrity guarantees, so this widens convenience, not authority.
+ * Two spellings (same CERT-02/LGPD-05 duality as ORCHESTRATE_BATCH_TOOL):
+ * enforcement keeps the short underscore form; CALL-facing surfaces use the
+ * FULL registered spelling mcp__eng-mcp__engineering_sandbox_batchWrite.
+ */
+const SBW_BATCH_TOOL = 'engineering_sandbox_batchWrite';
+
+/** BATCH-30/SBW-02 — full SDK-registered CALL spelling (see above). */
+const SBW_BATCH_TOOL_FULL = `mcp__${ENG_MCP_SERVER_NAME}__${SBW_BATCH_TOOL}`;
+
+/**
+ * BATCH-30 — independent reads go through the aggregation MCP tool the
+ * eng-mcp server registers as engineering.orchestrate.batch. The SDK normalizes
+ * MCP names to the short underscore spelling (CERT-02/LGPD-05-proven duality:
+ * engineering_compliance_assess), so ALLOWED/enforcement surfaces here use the
+ * short name engineering_orchestrate_batch while CALL-facing surfaces —
+ * guidance and prompt line — use the FULL registered spelling
+ * ORCHESTRATE_BATCH_TOOL_FULL (SBW-02 elicitation: a worker taught only the
+ * short name burned 2 turns discovering
+ * mcp__eng-mcp__engineering_orchestrate_batch); the server-side dotted name
+ * appears only inside operations[].tool values, where the server schema
+ * expects it.
+ * PERF-00/AUDIT-ORCHESTRATE evidence: workers average ~9 sequential tool
+ * calls per mission (64.4% independent reads) and a single-read mission
+ * costs 12-35s wall — so the structural fix is
+ * FEWER inference turns, not faster turns: one orchestrate.batch call
+ * aggregates up to 30 independent reads into a single turn (executed
+ * concurrently server-side). The tool itself is authorized at the runtime
+ * layer for every worker (see buildQueryOptions); this guidance changes no
+ * other permission surface. Dependent reads stay sequential — the
+ * instruction says so explicitly.
+ */
+const PARALLEL_READS_GUIDANCE =
+  'BATCHED READS (IMPORTANT): independent reads are NEVER issued one per ' +
+  'turn. When several independent reads remain — engineering.file.read, ' +
+  'engineering.repo.structure, engineering.code.search, ' +
+  'engineering.code.references, engineering.git.status, ' +
+  `engineering.git.diff — aggregate them into ONE call of ` +
+  `${ORCHESTRATE_BATCH_TOOL_FULL} (operations[], up to 30 operations, ` +
+  'executed concurrently server-side) instead of one tool call per read: ' +
+  '30 independent file reads = one orchestrate.batch with 30 operations, ' +
+  'never 30 turns. Use EXACTLY that full registered name — the SDK exposes ' +
+  'no shorter alias. A read that depends on an earlier result (a path only ' +
+  'a previous read revealed, an ordered write-then-read) stays sequential ' +
+  'until that dependency resolves.';
+
+/**
+ * SBW-02 — batched writes guidance (worker-facing, mirrors BATCHED READS):
+ * several independent writes to DIFFERENT files are ONE governed cycle of
+ * SBW_BATCH_TOOL_FULL — the full SDK-registered spelling
+ * mcp__eng-mcp__engineering_sandbox_batchWrite (materialize → write →
+ * validate → sync, up
+ * to 10 operations, one acknowledgeWrite approval, mandatory in-sandbox tsc
+ * validation, per-file drift check) instead of one file.patch per file.
+ * Dependent writes (a write that needs another write's result) and a second
+ * write to the SAME file stay sequential, one per item. Guidance only —
+ * authorization is built by buildQueryOptions (AUTHORIZATION = source of
+ * truth).
+ */
+const BATCHED_WRITES_GUIDANCE =
+  'BATCHED WRITES (IMPORTANT): when several independent file writes remain ' +
+  '(different files, no shared resource), do NOT issue one file.patch per ' +
+  `file. Run ONE governed cycle of ${SBW_BATCH_TOOL_FULL}: ` +
+  'materialize the target files, write up to 10 {path, content} operations, ' +
+  'validate (mandatory in-sandbox tsc check — a failed check destroys the ' +
+  'sandbox before anything reaches the repository) and sync with the single ' +
+  'acknowledgeWrite approval. 8 independent file edits = one batchWrite ' +
+  'cycle with 8 operations, never 8 separate patch approvals. Use EXACTLY ' +
+  'that full registered name — the SDK exposes no shorter alias. A write ' +
+  "that depends on another write's result, or a second write to the SAME " +
+  'file, stays sequential and outside the batch.';
 
 const CHANNEL_PREFIX = 'channel:';
 const RUNTIME_SOURCE = 'claude-agent-sdk';
@@ -202,6 +340,7 @@ export class ClaudeAgentRuntime implements AgentRuntime {
   private readonly now: () => number;
   private readonly roleModels?: RoleModels;
   private readonly runtimeRole?: AgentRole;
+  private readonly workerSpecializationProfile?: WorkerSpecializationProfile;
   private readonly sessionByMission = new Map<string, string>();
   private readonly activeQueryByMission = new Map<string, AsyncIterable<unknown> & { interrupt(): Promise<unknown> }>();
   private readonly activeAbortByMission = new Map<string, AbortController>();
@@ -215,6 +354,9 @@ export class ClaudeAgentRuntime implements AgentRuntime {
     this.now = config.now ?? (() => Date.now());
     this.roleModels = config.roleModels;
     this.runtimeRole = config.runtimeRole;
+    // SP-02 — deterministic profile resolution at construction time: an
+    // invalid/absent specialization resolves to undefined (legacy behavior).
+    this.workerSpecializationProfile = resolveWorkerSpecializationProfile(config.workerSpecialization);
   }
 
   async runMission(contract: MissionContract, state: MissionState): Promise<AgentCycleResult> {
@@ -304,13 +446,33 @@ export class ClaudeAgentRuntime implements AgentRuntime {
       // object for the duration of the call. It is never persisted, logged or
       // returned by any method of this runtime.
       if (token) server.headers = { Authorization: `Bearer ${token}` };
-      options.mcpServers = { 'eng-mcp': server };
+      options.mcpServers = { [ENG_MCP_SERVER_NAME]: server };
     }
     if (contract.allowedTools && contract.allowedTools.length > 0) {
-      // Contract-declared authorization passes through verbatim: no runtime
-      // hardcode and no test-specific list. Tools absent from the contract
-      // keep the SDK denial path, so unauthorized tools stay denied.
+      // Contract-declared authorization passes through verbatim: tools absent
+      // from the contract keep the SDK denial path, so unauthorized tools stay
+      // denied — with ONE deliberate runtime-layer exception below.
       const allowed = [...contract.allowedTools];
+      // BATCH-30 (operator decision 2026-09-14): engineering.orchestrate.batch
+      // is authorized at the runtime layer for EVERY worker, contract or no
+      // contract mention. It is a read-only aggregation tool whose server-side
+      // schema whitelists exactly the six read tools (repo.structure,
+      // file.read, code.search, code.references, git.status, git.diff), so it
+      // can only fan out reads the worker could already issue individually;
+      // it grants no write path. canUseTool below judges the SAME list, so
+      // this remains enforcement, not prompt obedience.
+      if (!allowed.includes(ORCHESTRATE_BATCH_TOOL)) allowed.push(ORCHESTRATE_BATCH_TOOL);
+      // SBW-02 (operator decision 2026-09-14): engineering.sandbox.batchWrite
+      // is runtime-authorized for EVERY worker, contract or no contract
+      // mention. It is the SBW-01-certified governed write batch (materialize
+      // → write → validate → sync): the mandatory in-sandbox tsc validation
+      // destroys the sandbox on failure, and the single sync approval is
+      // guarded by a per-file drift check + baseHash revalidation through
+      // repository.patch, so it can only write files the worker could already
+      // patch individually — with stronger integrity guarantees, not weaker.
+      // canUseTool below judges the SAME list, so this remains enforcement,
+      // not prompt obedience.
+      if (!allowed.includes(SBW_BATCH_TOOL)) allowed.push(SBW_BATCH_TOOL);
       options.allowedTools = allowed;
       // HARDENING-01 — runtime enforcement, NOT prompt obedience. Layer 1:
       // the deterministic built-in complement removes the tool DEFINITIONS
@@ -399,6 +561,19 @@ export class ClaudeAgentRuntime implements AgentRuntime {
     if (contract.allowedTools && contract.allowedTools.length > 0) {
       lines.push('ALLOWED TOOLS:');
       for (const tool of contract.allowedTools) lines.push(`- ${tool}`);
+      // BATCH-30 — surface the runtime-authorized aggregation tool so the
+      // worker knows it exists even when the contract omits it. The prompt
+      // line teaches the FULL registered CALL spelling (SBW-02 elicitation);
+      // the membership check stays on the SHORT form the contract lists.
+      if (!contract.allowedTools.includes(ORCHESTRATE_BATCH_TOOL)) {
+        lines.push(`- ${ORCHESTRATE_BATCH_TOOL_FULL} (runtime-authorized: aggregate independent reads, up to 30 ops)`);
+      }
+      // SBW-02 — surface the runtime-authorized batched-write tool so the
+      // worker knows it exists even when the contract omits it (full CALL
+      // spelling; membership check stays on the SHORT form).
+      if (!contract.allowedTools.includes(SBW_BATCH_TOOL)) {
+        lines.push(`- ${SBW_BATCH_TOOL_FULL} (runtime-authorized: batch independent file writes, up to 10 ops, one governed cycle)`);
+      }
     }
     if (contract.forbiddenActions && contract.forbiddenActions.length > 0) {
       lines.push('FORBIDDEN ACTIONS:');
@@ -428,6 +603,24 @@ export class ClaudeAgentRuntime implements AgentRuntime {
         : 'MODE: start - execute the mission contract and report evidence.',
     );
     lines.push('Do not claim completion. The Guardian verifies evidence and budgets.');
+    // PERF-00 — turn-level parallel reads guidance, AFTER the authority line
+    // and BEFORE any specialization complement: the worker batches genuinely
+    // independent reads into one turn instead of serializing them one per
+    // turn. Prompt-only — it changes no authorization surface.
+    lines.push(PARALLEL_READS_GUIDANCE);
+    // SBW-02 — batched writes guidance, immediately after the reads guidance
+    // and still BEFORE any specialization complement. Prompt-only — it
+    // changes no authorization surface.
+    lines.push(BATCHED_WRITES_GUIDANCE);
+    // SP-02 — delimited specialization complement, appended AFTER the base
+    // prompt: with no profile selected the block is empty and the prompt is
+    // BYTE-IDENTICAL to legacy. The complement is guidance only — it grants
+    // no permission, channel, budget or tool and never touches the SDK
+    // options built by buildQueryOptions (AUTHORIZATION = source of truth).
+    const specializationBlock = workerSpecializationPromptBlock(this.workerSpecializationProfile);
+    if (specializationBlock.length > 0) {
+      lines.push(specializationBlock);
+    }
     return lines.join('\n');
   }
 
@@ -440,6 +633,12 @@ export class ClaudeAgentRuntime implements AgentRuntime {
     const evidence: Evidence[] = [];
     const toolUses = new Map<string, ToolUseRecord>();
     let costUsd: number | undefined;
+    // GUARDIAN-COST-ROUTE-01 — provider-side usage, accumulated from the
+    // Anthropic-compatible usage block each SDK assistant message carries.
+    // Purely observational: never consulted by any decision path.
+    const providerUsage = emptyProviderUsage();
+    let providerModel: string | undefined;
+    let providerModelUsage: ProviderModelUsage | undefined;
     // HARDENING-01 — audit evidence produced by the canUseTool hook while the
     // SDK stream runs; drained into the cycle evidence in finally so a denial
     // is recorded even when the stream then errors out.
@@ -460,10 +659,20 @@ export class ClaudeAgentRuntime implements AgentRuntime {
         if (sessionId) this.sessionByMission.set(contract.missionId, sessionId);
         if (message.type === 'assistant') {
           this.ingestAssistant(message, steps, toolUses);
+          const read = readAssistantUsage(message);
+          if (read.usage) {
+            accumulateProviderUsage(providerUsage, read.usage);
+            if (read.model) providerModel = read.model;
+          }
         } else if (message.type === 'user') {
           this.ingestUser(message, toolUses, evidence);
         } else if (message.type === 'result') {
           this.ingestResult(message, steps, evidence);
+          // Provider-returned per-model totals live on the result message —
+          // on OpenRouter routes the per-assistant usage blocks arrive zeroed
+          // (observed live), so this is the reliable real-usage capture.
+          const modelUsage = readResultModelUsage(message);
+          if (modelUsage) providerModelUsage = modelUsage;
         }
         const messageCost = typeof message.total_cost_usd === 'number' ? message.total_cost_usd : undefined;
         if (messageCost !== undefined) costUsd = messageCost;
@@ -494,8 +703,70 @@ export class ClaudeAgentRuntime implements AgentRuntime {
       evidence.push(...enforcementAudit.splice(0));
     }
 
+    // GUARDIAN-COST-ROUTE-01 — provider accounting, kept SEPARATE from
+    // costUsd: the tokens are what the PROVIDER returned (per-message usage
+    // blocks + the result's per-model modelUsage totals), and providerCostUsd
+    // is priced from the OpenRouter catalog of the ACTUAL model keys
+    // (costUsd is priced from Anthropic's table by the SDK and is known to
+    // overstate real provider cost by orders of magnitude). The estimate
+    // excludes cache-read tokens (the catalog exposes no cache-read price) —
+    // it can only understate, never inflate. Data only: no decision reads it.
+    const configuredRoleModel =
+      this.roleModels && this.runtimeRole ? this.roleModels[this.runtimeRole] : undefined;
+    const providerRoute = providerModel ?? configuredRoleModel;
+    const hasModelUsage = providerModelUsage !== undefined && Object.keys(providerModelUsage).length > 0;
+    let providerCostUsd: number | undefined;
+    let providerCostSource: string;
+    if (hasModelUsage && providerModelUsage) {
+      providerCostUsd = estimateModelUsageCostUsd(providerModelUsage);
+      providerCostSource = providerCostUsd === undefined ? 'catalog_miss' : 'catalog_estimate';
+    } else if (providerRoute) {
+      providerCostUsd = estimateProviderCostUsd(providerRoute, providerUsage);
+      providerCostSource = providerCostUsd === undefined ? 'catalog_miss' : 'catalog_estimate';
+    } else {
+      providerCostSource = 'route_unknown';
+    }
+    evidence.push({
+      type: 'command_result',
+      key: `${RUNTIME_SOURCE}:provider_usage`,
+      // 'unknown', never 'ok': this is accounting telemetry, not proof of work.
+      // status 'ok' would be counted by the Guardian's classification (okCount
+      // at guards.ts), the no-progress fingerprint (filters status==='ok' — an
+      // 'ok' entry here would flip transient failures into
+      // expectation_mismatch) and CompletionGuard semantics. 'unknown' keeps
+      // it visible in evidence yet behavior-inert, so cost capture changes NO
+      // Guardian decision path.
+      status: 'unknown',
+      value: JSON.stringify({
+        model: providerRoute ?? null,
+        modelObserved: providerModel ?? null,
+        requests: providerUsage.requests,
+        perMessageUsage: {
+          inputTokens: providerUsage.inputTokens,
+          outputTokens: providerUsage.outputTokens,
+          cacheReadInputTokens: providerUsage.cacheReadInputTokens,
+          cacheCreationInputTokens: providerUsage.cacheCreationInputTokens,
+        },
+        providerModelUsage: providerModelUsage ?? null,
+        providerCostUsd: providerCostUsd ?? null,
+        providerCostSource,
+        sdkCostUsd: costUsd ?? null,
+        sdkCostSource: 'sdk_anthropic_pricing',
+      }),
+      timestamp: this.now(),
+      source: RUNTIME_SOURCE,
+    });
+
     // The runtime NEVER sets claimsComplete - completion is Guardian-owned.
-    return { strategy: RUNTIME_SOURCE, steps: [...steps], evidence, costUsd };
+    return {
+      strategy: RUNTIME_SOURCE,
+      steps: [...steps],
+      evidence,
+      costUsd,
+      providerUsage,
+      providerModelUsage,
+      providerCostUsd,
+    };
   }
 
   private ingestAssistant(

@@ -120,6 +120,15 @@ export class RepositoryAdapter {
     this.lintRuntime = { resolveExecutable: lintRuntime.resolveExecutable ?? resolveLocalEslint, run: lintRuntime.run ?? runVerificationCommand };
     this.memoryOsSyncRoot = process.env.ENG_MCP_MEMORYOS_SYNC_ROOT ?? "/opt/memoryos";
   }
+  private resolveRepositoryRoot(repository?: "eng-mcp" | "memoryos"): string {
+    if (repository === "memoryos") {
+      // Hard-coded root for MemoryOS main repository
+      return "/opt/memoryos";
+    }
+    // Default: authorized root for eng-mcp subrepo
+    return this.policy.authorizedRoot;
+  }
+
   async verifyDependencies(): Promise<void> { await this.execute("rg", ["--version"], this.policy.authorizedRoot, 3_000, 8_192); }
 
   async structure(input: { path?: string; maxDepth?: number; includeFiles?: boolean; maxEntries?: number }) {
@@ -142,26 +151,30 @@ export class RepositoryAdapter {
     return { entries, truncated: entries.length >= maxEntries };
   }
 
-  async fileRead(input: { path: string; startLine?: number; maxLines?: number; maxBytes?: number }) {
+  async fileRead(input: { path: string; startLine?: number; maxLines?: number; maxBytes?: number }, repository?: "eng-mcp" | "memoryos") {
     const maxLines = Math.min(input.maxLines ?? 200, 500); const maxBytes = Math.min(input.maxBytes ?? 131_072, 131_072);
     if (maxLines < 1 || maxBytes < 1) throw new EngineeringError("INPUT_INVALID");
-    const read = await this.policy.readUtf8(input.path, maxBytes); const start = Math.max(1, input.startLine ?? 1);
+    const root = this.resolveRepositoryRoot(repository);
+    const policy = await RepositoryPolicy.create(root);
+    const read = await policy.readUtf8(input.path, maxBytes); const start = Math.max(1, input.startLine ?? 1);
     const lines = read.text.split(/\r?\n/); const selected = lines.slice(start - 1, start - 1 + maxLines);
     return { path: read.relativePath, hash: this.hash(Buffer.from(read.text, "utf8")), startLine: start, lines: selected, truncated: start - 1 + maxLines < lines.length };
   }
 
-  async search(subject: string, input: { query: string; mode?: "literal" | "regex" | "filename"; maxResults?: number }) {
+  async search(subject: string, input: { query: string; mode?: "literal" | "regex" | "filename"; maxResults?: number }, repository?: "eng-mcp" | "memoryos") {
     if (!input.query || input.query.length > 256) throw new EngineeringError("INPUT_INVALID");
     const maxResults = Math.min(input.maxResults ?? 50, 100); const mode = input.mode ?? "literal";
     return this.heavy.run(subject, async () => {
       const args = mode === "filename"
         ? ["--files", "--glob", input.query]
         : ["--json", "--line-number", "--column", "--color", "never", "--max-count", String(maxResults), ...(mode === "literal" ? ["--fixed-strings"] : []), "--", input.query, "."];
-      const result = await this.execute("rg", args, this.policy.authorizedRoot, 8_000, 131_072);
+      const root = this.resolveRepositoryRoot(repository);
+      const policy = await RepositoryPolicy.create(root);
+      const result = await this.execute("rg", args, policy.authorizedRoot, 8_000, 131_072);
       const matches: unknown[] = [];
       if (mode === "filename") {
         for (const candidate of result.stdout.split(/\r?\n/).filter(Boolean)) {
-          try { matches.push((await this.policy.resolve(candidate.replaceAll("\\", "/").replace(/^\.\//, ""))).relativePath); } catch { /* denied paths are never exposed */ }
+          try { matches.push((await policy.resolve(candidate.replaceAll("\\", "/").replace(/^\.\//, ""))).relativePath); } catch { /* denied paths are never exposed */ }
           if (matches.length >= maxResults) break;
         }
       } else {
@@ -169,7 +182,7 @@ export class RepositoryAdapter {
           const event = JSON.parse(line) as { type?: string; data?: { path?: { text?: string }; lines?: { text?: string }; line_number?: number; absolute_offset?: number } };
           if (event.type !== "match" || !event.data?.path?.text) continue;
           try {
-            const safePath = (await this.policy.resolve(event.data.path.text.replaceAll("\\", "/").replace(/^\.\//, ""))).relativePath;
+            const safePath = (await policy.resolve(event.data.path.text.replaceAll("\\", "/").replace(/^\.\//, ""))).relativePath;
             const preview = event.data.lines?.text ?? "";
             assertNoSensitiveContent(preview);
             matches.push({ path: safePath, line: event.data.line_number, column: event.data.absolute_offset, preview });
@@ -255,16 +268,20 @@ async references(subject: string, symbol: string, maxResults = 100) {
     });
   }
 
-  async gitStatus() {
-    const result = await this.execute("git", ["status", "--porcelain=v2", "--branch"], this.policy.authorizedRoot, 5_000, 131_072, { GIT_OPTIONAL_LOCKS: "0" });
+  async gitStatus(repository?: "eng-mcp" | "memoryos") {
+    const root = this.resolveRepositoryRoot(repository);
+    const policy = await RepositoryPolicy.create(root);
+    const result = await this.execute("git", ["status", "--porcelain=v2", "--branch"], policy.authorizedRoot, 5_000, 131_072, { GIT_OPTIONAL_LOCKS: "0" });
     return { status: result.stdout, truncated: result.truncated };
   }
 
-  async gitDiff(input: { paths?: string[]; staged?: boolean }) {
+  async gitDiff(input: { paths?: string[]; staged?: boolean }, repository?: "eng-mcp" | "memoryos") {
     const paths = input.paths ?? []; if (paths.length > 50) throw new EngineeringError("INPUT_INVALID");
+    const root = this.resolveRepositoryRoot(repository);
+    const policy = await RepositoryPolicy.create(root);
     const safePaths: string[] = [];
-    for (const requested of paths) safePaths.push((await this.policy.resolve(requested)).relativePath);
-    const result = await this.execute("git", ["--no-pager", "diff", "--no-ext-diff", "--no-textconv", ...(input.staged ? ["--cached"] : []), "--", ...safePaths], this.policy.authorizedRoot, 5_000, 131_072, { GIT_OPTIONAL_LOCKS: "0" });
+    for (const requested of paths) safePaths.push((await policy.resolve(requested)).relativePath);
+    const result = await this.execute("git", ["--no-pager", "diff", "--no-ext-diff", "--no-textconv", ...(input.staged ? ["--cached"] : []), "--", ...safePaths], policy.authorizedRoot, 5_000, 131_072, { GIT_OPTIONAL_LOCKS: "0" });
     assertNoSensitiveContent(result.stdout);
     return { diff: result.stdout, truncated: result.truncated, staged: Boolean(input.staged) };
   }
@@ -601,10 +618,37 @@ async references(subject: string, symbol: string, maxResults = 100) {
     for (const hunk of [...hunks].reverse()) lines.splice(hunk.startLine - 1, hunk.deleteLines.length, ...hunk.insertLines);
     return `${bom ? "\ufeff" : ""}${lines.join(eol)}${finalNewline ? eol : ""}`;
   }
+  private async isTrackedPath(relativePath: string) {
+    // ENG-MCP-UNTRACKED-PATCH-01: detecção tracked/untracked via git ls-files (somente leitura)
+    const result = await this.execute("git", ["ls-files", "-z", "--", relativePath], this.policy.authorizedRoot, 5_000, 1_048_576, { GIT_OPTIONAL_LOCKS: "0" }).catch(() => null);
+    return result !== null && typeof result.stdout === "string" && result.stdout.length > 0;
+  }
   async patch(input: { path: string; baseHash: string; hunks: Array<{ startLine: number; deleteLines: string[]; insertLines: string[] }>; expectedChangeCount?: number; acknowledgeWrite: boolean }) {
     if (!input.acknowledgeWrite) throw new EngineeringError("WRITE_ACKNOWLEDGEMENT_REQUIRED");
     const target = await this.policy.resolveWritable(input.path); const canonical = await realpath(target.absolutePath).catch(() => { throw new EngineeringError("PATH_NOT_FOUND"); });
-    return this.withWriteLock(canonical, async () => { const baselineBefore = await this.baseline(); const before = await readFile(canonical); const oldHash = this.hash(before); if (oldHash !== input.baseHash) throw new EngineeringError("FILE_VERSION_CONFLICT"); let text: string; try { text = `${before.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf])) ? "\ufeff" : ""}${new TextDecoder("utf-8", { fatal: true }).decode(before)}`; } catch { throw new EngineeringError("BINARY_FILE_DENIED"); } const nextText = this.patchLines(text, input.hunks, input.expectedChangeCount); const next = Buffer.from(nextText, "utf8"); if (next.length > 131_072) throw new EngineeringError("FILE_LIMIT_EXCEEDED"); assertNoSensitiveContent(next); await this.atomicReplace(canonical, target.parentPath, next, async () => { const latest = await readFile(canonical); if (this.hash(latest) !== input.baseHash) throw new EngineeringError("FILE_VERSION_CONFLICT"); }); const baselineAfter = await this.baseline(); this.assertBaseline(baselineBefore, baselineAfter, target.relativePath); const diff = await this.gitDiff({ paths: [target.relativePath] }); return { filesChanged: [target.relativePath], oldHash, newHash: this.hash(next), diff: diff.diff, truncated: diff.truncated, warnings: [] }; });
+    return this.withWriteLock(canonical, async () => {
+      const baselineBefore = await this.baseline();
+      const before = await readFile(canonical);
+      const tracked = await this.isTrackedPath(target.relativePath);
+      // ENG-MCP-UNTRACKED-PATCH-01: tracked mantém o gate atual inalterado; untracked
+      // exige acknowledgeWrite + baseHash SHA-256 válido (optimistic concurrency por
+      // content-hash) + revalidação anti-race no atomicReplace. Sem baseHash válido:
+      // FILE_VERSION_CONFLICT. Sem wildcard e sem bypass da path allowlist.
+      if (!tracked && (typeof input.baseHash !== "string" || !/^[a-f0-9]{64}$/.test(input.baseHash))) throw new EngineeringError("FILE_VERSION_CONFLICT");
+      const oldHash = this.hash(before);
+      if (oldHash !== input.baseHash) throw new EngineeringError("FILE_VERSION_CONFLICT");
+      let text: string;
+      try { text = `${before.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf])) ? "\ufeff" : ""}${new TextDecoder("utf-8", { fatal: true }).decode(before)}`; } catch { throw new EngineeringError("BINARY_FILE_DENIED"); }
+      const nextText = this.patchLines(text, input.hunks, input.expectedChangeCount);
+      const next = Buffer.from(nextText, "utf8");
+      if (next.length > 131_072) throw new EngineeringError("FILE_LIMIT_EXCEEDED");
+      assertNoSensitiveContent(next);
+      await this.atomicReplace(canonical, target.parentPath, next, async () => { const latest = await readFile(canonical); if (this.hash(latest) !== input.baseHash) throw new EngineeringError("FILE_VERSION_CONFLICT"); });
+      const baselineAfter = await this.baseline();
+      this.assertBaseline(baselineBefore, baselineAfter, target.relativePath);
+      const diff = await this.gitDiff({ paths: [target.relativePath] });
+      return { filesChanged: [target.relativePath], oldHash, newHash: this.hash(next), diff: diff.diff, truncated: diff.truncated, warnings: [] };
+    });
   }
   async create(input: { path: string; content: string; acknowledgeWrite: boolean }) {
     if (!input.acknowledgeWrite) throw new EngineeringError("WRITE_ACKNOWLEDGEMENT_REQUIRED"); const target = await this.policy.resolveWritable(input.path); const key = `${target.parentPath}/${path.basename(target.absolutePath)}`;
@@ -673,7 +717,7 @@ async references(subject: string, symbol: string, maxResults = 100) {
 
   private parseTypeScriptDiagnostics(stdout: string, stderr: string): Array<{ file: string; line: number; column: number; code: string; message: string }> {
     const diagnostics: Array<{ file: string; line: number; column: number; code: string; message: string }> = [];
-    const regex = /^(.+?):(\d+):(\d+):\s+(error|warning)\s+(TS\d+):\s+(.+)$/gm;
+    const regex = /^(.+?)\((\d+),(\d+)\):\s+(error|warning)\s+(TS\d+):\s+(.+)$/gm;
     const text = `${stdout}\n${stderr}`;
     let match: RegExpExecArray | null;
     while ((match = regex.exec(text)) !== null) {
@@ -681,14 +725,23 @@ async references(subject: string, symbol: string, maxResults = 100) {
     }
     return diagnostics;
   }
-  async batchOrchestrate(subject: string, operations: Array<{ tool: string; arguments?: Record<string, unknown> }>) {
+  async batchOrchestrate(subject: string, operations: Array<{ tool: string; arguments?: Record<string, unknown> }>, catalogProvider?: () => unknown) {
     const ALLOWED_TOOLS = new Set([
       "engineering.repo.structure",
       "engineering.file.read",
       "engineering.code.search",
       "engineering.code.references",
       "engineering.git.status",
-      "engineering.git.diff"
+      "engineering.git.diff",
+      "engineering.deadcode.scan",
+      "engineering.parallelpath.scan",
+      "engineering.contract.verify",
+      "engineering.change.impact",
+      "engineering.git.branches",
+      "engineering.git.worktrees",
+      "engineering.git.log",
+      "engineering.git.remote_compare",
+      "engineering.mcp.catalog"
     ]);
 
     const orderedResults: Array<{ tool: string; index: number; success: boolean; result?: unknown; error?: string }> = [];
@@ -720,6 +773,25 @@ async references(subject: string, symbol: string, maxResults = 100) {
           return await this.gitStatus();
         case "engineering.git.diff":
           return await this.gitDiff(args as any ?? {});
+        case "engineering.deadcode.scan":
+          return await this.deadCodeScan(subject, args as any ?? {});
+        case "engineering.parallelpath.scan":
+          return await this.parallelPathScan(subject, args as any ?? {});
+        case "engineering.contract.verify":
+          return await this.contractVerify(args as any ?? {});
+        case "engineering.change.impact":
+          return await this.changeImpact(subject, args as any ?? {});
+        case "engineering.git.branches":
+          return await this.gitBranches(args as any ?? {});
+        case "engineering.git.worktrees":
+          return await this.gitWorktrees();
+        case "engineering.git.log":
+          return await this.gitLog(args as any ?? {});
+        case "engineering.git.remote_compare":
+          return await this.gitRemoteCompare(args as any ?? {});
+        case "engineering.mcp.catalog":
+          if (!catalogProvider) throw new EngineeringError("TOOL_NOT_ALLOWED");
+          return catalogProvider();
         default:
           throw new EngineeringError("TOOL_NOT_ALLOWED");
       }

@@ -398,7 +398,7 @@ test('T14: GH-01 invariants hold through the SDK runtime seam (resume + Guardian
 
 // ===== GH-03A.4 — closure: allowedTools on the normal query() path =====
 
-test('GH-03A.4/T15: contract allowedTools reach the query() boundary (no runner injection)', async () => {
+test('GH-03A.4/T15: contract allowedTools reach the query() boundary (no runner injection; BATCH-30 appended once)', async () => {
   const { query, calls } = fakeQueryFromScripts([[systemInit('sess-15'), resultMessage('sess-15', 'success', 0, false)]]);
   const runtime = new ClaudeAgentRuntime({ queryFactory: query, env: {} });
   const contract: MissionContract = {
@@ -407,12 +407,19 @@ test('GH-03A.4/T15: contract allowedTools reach the query() boundary (no runner 
   };
   await runtime.runMission(contract, createInitialState(contract, 1000));
   assert.strictEqual(calls.length, 1);
+  // BATCH-30 + SBW-02 — as únicas exceções verbatim: orchestrate.batch e
+  // sandbox.batchWrite anexados 1× (a lista do contrato passa verbatim;
+  // nada além dos batches é acrescentado).
   assert.deepStrictEqual(
     calls[0].options?.allowedTools,
-    ['mcp__eng-mcp__engineering_vps_doctor', 'mcp__eng-mcp__engineering_file_read'],
+    ['mcp__eng-mcp__engineering_vps_doctor', 'mcp__eng-mcp__engineering_file_read', 'engineering_orchestrate_batch', 'engineering_sandbox_batchWrite'],
   );
   assert.ok(calls[0].prompt.includes('ALLOWED TOOLS:'));
   assert.ok(calls[0].prompt.includes('- mcp__eng-mcp__engineering_vps_doctor'));
+  // SBW-02 elicitation fix — surfacing ensina a GRAFIA COMPLETA do SDK
+  // (mcp__eng-mcp__<tool>); allowedTools continua no nome curto (duality).
+  assert.ok(calls[0].prompt.includes('- mcp__eng-mcp__engineering_orchestrate_batch (runtime-authorized'));
+  assert.ok(calls[0].prompt.includes('- mcp__eng-mcp__engineering_sandbox_batchWrite (runtime-authorized'));
   // authorizedExecutionChannels preserved untouched:
   assert.strictEqual(calls[0].options?.mcpServers?.['eng-mcp']?.type, 'http');
 });

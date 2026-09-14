@@ -4,6 +4,8 @@
  * States: PENDING | RUNNING | BLOCKED | PASS | FAIL
  * No provider knowledge (Claude/Goose/OpenRouter) lives here.
  */
+import { WorkerSpecialization } from './workerSpecialization.js';
+import type { ProviderModelUsage, ProviderUsageSnapshot } from './providerUsage.js';
 
 export type MissionStatus = 'PENDING' | 'RUNNING' | 'BLOCKED' | 'PASS' | 'FAIL';
 
@@ -25,6 +27,15 @@ export interface Evidence {
   value?: string;
   timestamp: number;
   source: string;
+  /**
+   * SP-01 — provenance metadata: the specialization of the originating
+   * action, transported verbatim by the harness. OPTIONAL: evidence without
+   * it (all pre-SP-01 evidence) stays valid and loads unchanged.
+   * SPECIALIZATION IS METADATA, NOT EVIDENCE OF COMPLETION: satisfaction is
+   * decided ONLY by status 'ok' + criterion key (CompletionGuard semantics
+   * unchanged) — a specialization value never proves any work happened.
+   */
+  specialization?: WorkerSpecialization;
 }
 
 export interface MissionContract {
@@ -120,6 +131,28 @@ export interface AgentCycleResult {
   /** Agent may claim completion — the Guardian never trusts this alone. */
   claimsComplete?: boolean;
   costUsd?: number;
+
+  /**
+   * GUARDIAN-COST-ROUTE-01 — usage the PROVIDER returned per request
+   * (Anthropic-compatible usage blocks), accumulated over the cycle. Data
+   * only: no decision path reads it. Optional: old results load unchanged.
+   */
+  providerUsage?: ProviderUsageSnapshot;
+  /**
+   * GUARDIAN-COST-ROUTE-01 — per-model provider-returned usage totals
+   * (result.modelUsage, verbatim subset). On OpenRouter routes the
+   * per-assistant usage blocks arrive zeroed, so this is the reliable
+   * real-usage capture. Optional: old results load unchanged.
+   */
+  providerModelUsage?: ProviderModelUsage;
+  /**
+   * GUARDIAN-COST-ROUTE-01 — catalog-priced cost of the provider-returned
+   * usage for the ACTUAL model keys (OpenRouter catalog), deliberately
+   * SEPARATE from costUsd (which the SDK prices from Anthropic's table).
+   * Undefined when any observed model has no catalog entry — a price is
+   * never invented.
+   */
+  providerCostUsd?: number;
 
   /**
    * GH-06A — actions the runtime could NOT execute through its primary

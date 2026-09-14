@@ -7,24 +7,34 @@
  * defaults.
  *
  * Default identifiers (REAL, integration-supported — never invented):
- * - advisor:    z-ai/glm-5.3-flash (OpenRouter; certified in GH-03A.3 as
- *               ANTHROPIC_DEFAULT_SONNET_MODEL; cheap/fast planning role).
- * - supervisor: z-ai/glm-5.3-flash (OpenRouter; certified in GH-03A.3 as
- *               ANTHROPIC_DEFAULT_OPUS_MODEL). SANDBOX-RESUME-01 2026-09-12:
- *               tried in the 5-case EVIDENCE-template audit — gaps detected
- *               correctly (FALSE_GAPS=0, MISSED_GAPS=0) with one known
- *               deviation (case C recommended CONTINUE instead of RECOVER;
- *               RECOMMENDATION_MATCHES=4/5). SUPERVISOR-FLASH-SWITCH-01
- *               2026-09-12: operator decision — switch ACCEPTED WITH THAT
- *               KNOWN DEVIATION (SUPERVISOR_FLASH_ACCEPTED_WITH_KNOWN_DEVIATION=YES),
- *               no prompt/governance tuning, no re-audit. Supervisor stays
- *               ADVISORY; CompletionGuard stays the final deterministic
- *               authority.
- * - worker:     nvidia/nemotron-3-super-120b-a12b (verified against the
- *               OpenRouter catalog on 2026-09-11; low-cost bounded execution
- *               role). No Nemotron id existed anywhere in the repository or
- *               operator config before this adjustment — this is the declared
- *               initial configuration, overridable per role.
+ * - advisor:    openai/gpt-oss-120b (OpenRouter; certified in
+ *               GUARDIAN-ADVISOR-LOW-COST-CANDIDATE-DISCOVERY-01 2026-09-12 —
+ *               audit 5/5, all counters 0, DIRECT_JSON; promoted by
+ *               GUARDIAN-ADVISOR-GPT-OSS-120B-PROMOTION-01 2026-09-12 from
+ *               z-ai/glm-5.3-flash, the previous cheap/fast planning role
+ *               certified in GH-03A.3).
+ * - supervisor: nex-agi/nex-n2.5-pro:free (OpenRouter free route; certified in
+ *               GUARDIAN-SUPERVISOR-FREE-SHOOTOUT-01 2026-09-12 — 5-case
+ *               EVIDENCE-template audit: RECOMMENDATION_MATCH=5/5,
+ *               FALSE_GAPS=0, MISSED_GAPS=0, FALSE_COMPLETE=0, CALL_ERRORS=0,
+ *               TIMEOUTS=0; contract-compatible, PAID_FALLBACK_USED=NO).
+ *               Promoted by GUARDIAN-SUPERVISOR-NEX-PROMOTION-01 2026-09-12
+ *               from z-ai/glm-5.3-flash (flash history: 4/5 with case C
+ *               deviation, SUPERVISOR_FLASH_ACCEPTED_WITH_KNOWN_DEVIATION=YES).
+ *               Supervisor stays ADVISORY; CompletionGuard stays the final
+ *               deterministic authority.
+ * - worker:     openai/gpt-oss-120b (OpenRouter paid route; catalog pricing
+ *               $0.037/M input, $0.17/M output). Promoted by
+ *               GUARDIAN-WORKER-GPTOSS-STRUCTURAL-01 2026-09-13 (ETAPA 1)
+ *               from nvidia/nemotron-3-super-120b-a12b:free, based on the
+ *               GUARDIAN-WORKER-PARALLEL-READS-01/02 measurements: the :free
+ *               route failed 10/15 runs on upstream errors (67%) while
+ *               gpt-oss-120b completed 6/6 with 0 upstream failures, 18%
+ *               fewer turns and ~$0.006 real provider cost per mission.
+ *               Overridable per role; NO COSTLY FALLBACK unchanged — if the
+ *               route rejects the workload (rate limit, error, timeout) the
+ *               exact error surfaces as evidence; the runtime never silently
+ *               moves to another model.
  *
  * NO COSTLY FALLBACK: a missing/blank override keeps the declared default for
  * that role; a role's override never borrows another role's model; nothing
@@ -39,9 +49,9 @@ export interface RoleModels {
 export type AgentRole = keyof RoleModels;
 
 export const DEFAULT_ROLE_MODELS: RoleModels = {
-  advisor: 'z-ai/glm-5.3-flash',
-  supervisor: 'z-ai/glm-5.3-flash',
-  worker: 'nvidia/nemotron-3-super-120b-a12b',
+  advisor: 'openai/gpt-oss-120b',
+  supervisor: 'nex-agi/nex-n2.5-pro:free',
+  worker: 'openai/gpt-oss-120b',
 };
 
 /** Environment variables the operator/Guardian config uses per role. */
