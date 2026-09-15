@@ -159,7 +159,7 @@ async function processMemoryBatch(base44: any, sessionId: string, projectId: str
       body: JSON.stringify({
         model: 'google/gemini-2.5-flash',
         messages: [{ role: 'user', content: buildExtractionPrompt(session.summary ?? null, conversationText) }],
-        maxTokens: 2048,
+        maxTokens: 4096,
       }),
     })
   ).json();
@@ -290,33 +290,46 @@ function scopeFor(type: string): string {
   return type === 'pessoal' ? 'personal' : 'workspace';
 }
 
+
 export default async function (req: Request): Promise<Response> {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me().catch(() => null);
 
     const body = await req.json().catch(() => ({}));
-    const op = body.operation;
+    const op = body.operation ?? body.op;
 
     // processMemoryBatch e acionado server-to-server pelo agentMemoryBridge
     // (x-agent-memory-token / memoryBatchToken - o MESMO secret
     // AGENT_MEMORY_MCP_SECRET do bridge, sem novo credential). Sem usuario
     // autenticado, apenas esta operacao e aceita mediante token valido; todas
     // as demais operacoes continuam exigindo usuario autenticado.
-    if (!user) {
-      if (op !== 'processMemoryBatch') return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    //
+    // Gate token-only movido PARA ANTES de qualquer autenticacao de usuario:
+    // sem JWT de usuario, auth.me() lanca de forma sincrona e o erro
+    // ("Authentication required to view users") escapa do .catch e chega ao
+    // catch externo como 500 antes de qualquer validacao. Com token valido,
+    // o fluxo token-only segue SEM chamar auth.me(); para qualquer outro op,
+    // auth.me() e a exigencia de usuario sao preservadas exatamente como antes.
+    let user: any = null;
+    if (op === 'processMemoryBatch') {
       const expected = secrets.get('AGENT_MEMORY_MCP_SECRET');
       const provided = req.headers.get('x-agent-memory-token') || String(body.memoryBatchToken ?? '');
       if (!expected || !provided || provided !== expected) {
         return Response.json({ error: 'Unauthorized' }, { status: 401 });
       }
+      // token valido: caminho interno segue com user = null, sem auth.me()
+    } else {
+      user = await base44.auth.me().catch(() => null);
+      if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const userId = user?.id;
     // auth.me() nao hidrata os campos custom do User (active_workspace_id,
     // workspace_ids). Busca o registro completo via asServiceRole para obter
     // o seletor de workspace ativo validado.
-    const fullUser = await base44.asServiceRole.entities.User.get(userId).catch(() => null);
+    const fullUser = userId
+      ? await base44.asServiceRole.entities.User.get(userId).catch(() => null)
+      : null;
     const activeWs = (fullUser as any)?.active_workspace_id || (user as any)?.data?.active_workspace_id || null;
 
     // ── createSession ──────────────────────────────────────────────────
