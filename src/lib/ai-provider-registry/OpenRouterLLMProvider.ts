@@ -34,11 +34,15 @@ export class OpenRouterLLMProvider implements AIProvider {
       const messages = options?.systemPrompt
         ? [{ role: "system", content: options.systemPrompt }, { role: "user", content: prompt }]
         : [{ role: "user", content: prompt }];
-      const res = await base44.functions.invoke("openrouterChat", {
+      const payload: Record<string, unknown> = {
         model: options?.model ?? DEFAULT_MODEL,
         messages,
         maxTokens: options?.maxTokens ?? 1024,
-      });
+      };
+      if (options?.responseJsonSchema) {
+        payload.response_json_schema = options.responseJsonSchema;
+      }
+      const res = await base44.functions.invoke("openrouterChat", payload);
       const d = (res as any)?.data ?? res;
       if (d?.error) {
         return { success: false, text: null, model: options?.model ?? DEFAULT_MODEL, durationMs: Date.now() - t0, error: d.error };

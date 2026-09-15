@@ -30,6 +30,7 @@ import { visionInspectInputSchema, runVisionInspect } from "./visionInspect.ts";
 import { complianceAssessInputSchema, runComplianceAssess } from "./complianceAssess.ts";
 import { sandboxCreateInputSchema, runSandboxCreate, sandboxDestroyInputSchema, runSandboxDestroy, sandboxExecInputSchema, runSandboxExec, sandboxInspectInputSchema, runSandboxInspect, sandboxCancelInputSchema, runSandboxCancel } from "./sandbox.ts";
 import { sandboxBatchWriteInputSchema, runSandboxBatchWrite } from "./sandboxBatchWrite.ts";
+import { manifestEditInputSchema, runManifestEdit } from "./manifestEdit.ts";
 
 export const ENGINEERING_SERVER_INFO = { name: "memoryos-eng-mcp", version: "0.1.0" } as const;
 export type ToolCatalogEntry = { name: string; access: "read" | "write" };
@@ -354,6 +355,11 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   register("engineering.git.stage", "write", (name) => server.registerTool(name, { description: "Stage explicitly validated non-sensitive files.", inputSchema: z.object({ paths: z.array(z.string()).min(1).max(50), expectedHashes: z.record(z.string(), z.string()), acknowledgeStage: z.literal(true) }).strict() }, async (input) => { requireGit(); return response(await repository.gitStage(input)); }));
   register("engineering.git.unstage", "write", (name) => server.registerTool(name, { description: "Remove explicit paths from the Git index only.", inputSchema: z.object({ paths: z.array(z.string()).min(1).max(50), expectedIndexHash: z.string(), acknowledgeUnstage: z.literal(true) }).strict() }, async (input) => { requireGit(); return response(await repository.gitUnstage(input)); }));
   register("engineering.git.commit", "write", (name) => server.registerTool(name, { description: "Commit exactly the previously validated staged index.", inputSchema: z.object({ message: z.string(), expectedIndexHash: z.string(), acknowledgeCommit: z.literal(true) }).strict() }, async (input) => { requireGit(); return response(await repository.gitCommit(input)); }));
+  // MANIFEST-GOVERNED-EDIT-01: caminho governado bind/apply para os três manifests de
+  // raiz (package.json, package-lock.json, Dockerfile). propose/refuse são não-mutantes;
+  // apply exige approval artifact + fingerprint + escopo do kind armazenado. Os demais
+  // caminhos HIGH_IMPACT mantêm o bloqueio total em policy.resolveWritable.
+  register("engineering.manifest.edit", "write", (name) => server.registerTool(name, { description: "Governed bind/apply path for the three root manifests (package.json, package-lock.json, Dockerfile): propose returns the exact proposed diff with zero mutation, refuse permanently blocks the proposal, apply executes only after an explicit operator approval artifact with matching fingerprint and hash revalidated at mutation time.", inputSchema: manifestEditInputSchema }, async (input) => { requireRead(); return response(await runManifestEdit(input, { repository, repositoryId, scopes: { write: subject.scopes.includes("engineering:write"), git: subject.scopes.includes("engineering:git") } })); }));
   register("engineering.mcp.catalog", "read", (name) => server.registerTool(name, { description: "Return the deterministic catalog of tools exposed by this ENG-MCP server.", inputSchema: z.object({}).strict() }, async () => { requireRead(); return response(createToolCatalog(toolMetadata, repositoryId)); }));
   register("engineering.release.run", "write", (name) => server.registerTool(name, { description: "Run an allowlisted Release Pipeline V1 operation through the durable local runner.", inputSchema: z.object({ jobId: z.string().optional(), operation: z.enum(["deploy", "verify", "clean"]) }).strict() }, async (input) => { requireRead(); requireWrite(); return response(await repository.releaseRun(subject.subject, input)); }));
   register("engineering.release.pipeline", "write", (name) => server.registerTool(name, {

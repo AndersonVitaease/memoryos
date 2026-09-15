@@ -90,12 +90,13 @@ export function provisionSandboxSdk(env: NodeJS.ProcessEnv = process.env): void 
   })();
 }
 
-// TYPECHECK minimal provisioning: make TypeScript ^5.9.3 available to the
+// TYPECHECK minimal provisioning: make TypeScript ^5.9.3 and @types/node@^20
+// (node globals for the compiler) available to the
 // engineering.typecheck.run "typescript-noemit" profile, which resolves
 // <authorizedRoot>/node_modules/typescript/bin/tsc on the repository bind
-// mount. Declaring typescript in package.json is not possible from here
+// mount. typescript is now declared in package.json, but @types/node is not
 // (HIGH_IMPACT manifest, no authorized write channel) and undeclared
-// node_modules content is pruned by any npm reconciliation, so the compiler
+// node_modules content is pruned by any npm reconciliation, so the node types
 // must be re-asserted at boot. One-shot at boot, fail-closed: a provisioning
 // gap leaves engineering.typecheck.run reporting the missing compiler,
 // never a fake pass. The typecheck profile reads the compiler from the
@@ -108,10 +109,11 @@ export function provisionTypeScript(env: NodeJS.ProcessEnv = process.env): void 
   const provisionRoot = existsSync(path.join(base, "package.json")) ? base : path.join(base, "eng-mcp");
   if (!existsSync(path.join(provisionRoot, "package.json"))) return;
   const compiler = path.join(provisionRoot, "node_modules", "typescript");
+  const nodeTypes = path.join(provisionRoot, "node_modules", "@types", "node");
   const log = (message: string) => { try { appendFileSync(path.join(provisionRoot, "tmp", "typescript-provision.log"), `${new Date().toISOString()} ${message}\n`); } catch { /* observability only */ } };
   try { mkdirSync(path.join(provisionRoot, "tmp"), { recursive: true }); } catch { /* observability only */ }
   log(`provision-start provisionRoot=${provisionRoot} compilerExists=${existsSync(compiler)}`);
-  if (existsSync(compiler)) { log("compiler-already-present"); return; }
+  if (existsSync(compiler) && existsSync(nodeTypes)) { log("compiler-and-node-types-already-present"); return; }
   const run = (command: string, args: string[]) => new Promise<void>((resolve) => {
     execFile(command, args, { cwd: provisionRoot, stdio: "ignore", timeout: 300_000 }, (error) => {
       if (error) { console.error(`ENG_MCP_TYPESCRIPT_STEP_FAILED: ${command} ${args.join(" ")}: ${error.message}`); log(`step-failed command=${command} args=${args.join(" ")} error=${error.message}`); }
@@ -122,10 +124,10 @@ export function provisionTypeScript(env: NodeJS.ProcessEnv = process.env): void 
   void (async () => {
     // Background provisioning: the server becomes healthy first; the typecheck
     // profile fails visibly (MODULE_NOT_FOUND) until the compiler is present.
-    await run("npm", ["install", "--no-save", "--no-audit", "--no-fund", "typescript@^5.9.3"]);
-    if (!existsSync(compiler)) { console.error("ENG_MCP_TYPESCRIPT_UNAVAILABLE: typescript@^5.9.3 not provisioned; engineering.typecheck.run stays fail-visible"); log("unavailable: compiler still absent after npm install step"); return; }
-    console.log("ENG-MCP TypeScript provisioned package=typescript@^5.9.3");
-    log("provision-complete compiler=ready");
+    await run("npm", ["install", "--no-save", "--no-audit", "--no-fund", "typescript@^5.9.3", "@types/node@^20"]);
+    if (!existsSync(compiler) || !existsSync(nodeTypes)) { console.error("ENG_MCP_TYPESCRIPT_UNAVAILABLE: typescript@^5.9.3 or @types/node@^20 not provisioned; engineering.typecheck.run stays fail-visible"); log("unavailable: compiler or node types still absent after npm install step"); return; }
+    console.log("ENG-MCP TypeScript provisioned package=typescript@^5.9.3 node-types=@types/node@^20");
+    log("provision-complete compiler=ready node-types=ready");
   })();
 }
 

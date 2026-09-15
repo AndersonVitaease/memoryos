@@ -1,23 +1,5 @@
-/**
- * AdaptiveProcess.ts — AP-02 (RFC-010 / ADR-017)
- *
- * Categoria arquitetural interna: Adaptive Process.
- *
- * Um Adaptive Process possui 3 propriedades estruturais que o diferenciam de
- * uma capability comum:
- *   1. Auto-orquestracao dinamica de capabilities (decide quais chamar).
- *   2. Loop reflexivo com criterio de parada nao-trivial (gap-detection -> re-plan).
- *   3. Estrategia de parada propria (suficiencia de evidencia, nao contador fixo).
- *
- * Externo: continua sendo apenas uma capability (deepResearch, etc.) na
- * arquitetura publica de 4 elementos. Internamente e implementado por um
- * Adaptive Process. O metadata `composite` (AP-01) declara a bifurcacao
- * atomica-vs-composta ao Runtime.
- *
- * Nenhum caller importa este modulo ainda (AP-02 = scaffold puro, zero risco).
- * AP-03 conecta o AdaptiveProcessConnector; AP-04 wired o dispatch com
- * parentExecutionId; AP-05 expoe sinais no GoalRegistry.
- */
+// AdapteProcess.ts - AP-02 (RFC-010 / ADR-017)
+// Categoria arquitetural interna: Adaptive Process.
 
 import type { ExecutionRequest, ExecutionOutcome } from "../ExecutionTypes";
 
@@ -48,33 +30,31 @@ export type CompletionRequirementStatus = "pending" | "completed" | "failed" | "
 export interface CompletionRequirement {
   readonly id: string;
   readonly description: string;
-  readonly required: boolean;
-  readonly status: CompletionRequirementStatus;
-  readonly evidence?: readonly string[];
+  readonly required?: boolean;
 }
 
-/** Contrato opcional de completude para Adaptive Processes orientados a missao. */
-export interface CompletionContract {
-  readonly requirements: readonly CompletionRequirement[];
-  readonly completed: number;
-  readonly total: number;
-  readonly requiredComplete: boolean;
-}
-
-/** Avaliacao dos resultados de uma rodada de invocacao. */
+/** Reflection sobre uma wave executada. */
 export interface Reflection {
-  /** Resultados por step (stepId -> outcome). */
-  readonly byStep: ReadonlyMap<string, ExecutionOutcome>;
-  /** Lacunas de evidencia detectadas (o que ainda falta para responder). */
+  /** Outcomes por step. */
+  readonly byStep?: Map<string, unknown>;
+  /** Gaps identificados. */
   readonly gaps: readonly string[];
-  /** Score de suficiencia 0..1 — quando >= threshold, stop() = true. */
+  /** Suficiencia medida (0–1). */
   readonly sufficiency: number;
-  /**
-   * Contrato opcional de completude para missoes executaveis (ex: OpenHands).
-   * Deep Research continua usando apenas sufficiency/gaps; callers existentes
-   * nao precisam preencher este campo.
-   */
+  /** Completion contract with evaluated requirements. */
   readonly completion?: CompletionContract;
+}
+
+/** Completion contract for mission requirements. */
+export interface CompletionContract {
+  /** All evaluated requirements. */
+  readonly requirements: readonly CompletionRequirement[];
+  /** Number of completed requirements. */
+  readonly completed: number;
+  /** Total number of requirements. */
+  readonly total: number;
+  /** True if all required requirements are completed. */
+  readonly requiredComplete: boolean;
 }
 
 // ── Contexto injetado no processo ────────────────────────────────────────────
@@ -94,6 +74,15 @@ export interface AdaptiveProcessContext {
   readonly dispatch: (sub: SubCapabilityCall) => Promise<ExecutionOutcome>;
   /** Query/pergunta original do usuario (extraida de request.params). */
   readonly query: string;
+
+  /** Target repository identifier (e.g., "memoryos", "eng-mcp") - SUP-03 context lock */
+  readonly targetRepository?: string;
+
+  /** Specific files the mission must address - SUP-03 context lock */
+  readonly targetFiles?: readonly string[];
+
+  /** Pass criteria that must be satisfied for mission completion - SUP-03 context lock */
+  readonly passCriteria?: readonly string[];
 }
 
 // ── Adaptive Run State (Dynamic Re-planning V1) ──────────────────────────────
@@ -106,27 +95,53 @@ export interface AdaptiveProcessContext {
  *
  * NAO e entidade persistente — e transitório, vive apenas durante a run.
  */
-export interface AdaptiveRunState {
-  /** Iteracao atual (0-based: 0 = apos primeira wave, 1 = apos segunda, etc). */
-  readonly iteration: number;
-  /** Todos os steps concluidos ate agora com seus outcomes. */
-  readonly completedSteps: readonly { readonly step: ResearchStep; readonly result: ExecutionOutcome }[];
-  /** Gaps detectados na ultima reflection. */
-  readonly gaps: readonly string[];
-  /** Reflection completa da ultima iteracao (null na primeira chamada). */
-  readonly reflection: Reflection | null;
+export interface MissionContextLock {
+  /** Original objective captured at mission start - SUP-03 context lock */
+  readonly originalObjective: string;
+  /** Target repository captured at mission start - SUP-03 context lock */
+  readonly targetRepository?: string;
+  /** Target files captured at mission start - SUP-03 context lock */
+  readonly targetFiles?: readonly string[];
+  /** Pass criteria captured at mission start - SUP-03 context lock */
+  readonly passCriteria?: readonly string[];
 }
 
-// ── Interface base ───────────────────────────────────────────────────────────
+/** Initial Mission Plan — ADV-01 Minimal Advisor: formalizes the initial strategy produced by plan() */
+export interface InitialMissionPlan {
+  readonly objective: string;
+  readonly targetRepository?: string;
+  readonly targetFiles?: readonly string[];
+  readonly passCriteria?: readonly string[];
+  /** Capabilities selected in the initial plan. */
+  readonly selectedCapabilities: readonly string[];
+  /** Read or write mode. */
+  readonly mode: "read" | "write";
+  /** Discovery queries for read mode. */
+  readonly discoveryQueries?: readonly string[];
+  /** Initial rationale for the plan (optional). */
+  readonly rationale?: string;
+  /** Timestamp of plan capture. */
+  readonly timestamp: number;
+}
 
 /**
- * Contrato de um Adaptive Process. Cada futuro processo (Deep Planning,
- * Root Cause Analysis, etc.) implementa esta interface.
- *
- * YAGNI: nao ha AdaptiveProcessRegistry enquanto houver 1 processo. O
- * AdaptiveProcessConnector (AP-03) detem diretamente a instancia. O
- * registry surge naturalmente com o 2º processo.
+ * Estado acumulado durante uma run do DynamicWaveRunner.
  */
+export interface AdaptiveRunState {
+  /** Current iteration (0‑based). */
+  readonly iteration: number;
+  /** Steps completed so far (cumulative across waves). */
+  readonly completedSteps: readonly { step: ResearchStep; result: ExecutionOutcome }[];
+  /** Gaps identified during reflection. */
+  readonly gaps: readonly string[];
+  /** Reflection from previous wave, if any. */
+  readonly reflection: Reflection | null;
+  /** Initial mission plan captured once per run (ADV-01). */
+  readonly initialMissionPlan?: InitialMissionPlan;
+}
+
+// ── Adaptive Process Interface ────────────────────────────────────────────────
+
 export interface AdaptiveProcess {
   readonly id: string;
   readonly description: string;
@@ -140,6 +155,16 @@ export interface AdaptiveProcess {
    * executar. Se ausente, o DynamicWaveRunner re-chama plan() (backward-compat).
    */
   planNextWave?(state: AdaptiveRunState, ctx: AdaptiveProcessContext): Promise<readonly ResearchStep[]>;
+
+  /**
+   * ADV-01 Minimal Advisor: builds initial mission plan from plan() output.
+   * Pure transformation of already-available data — no state, no LLM calls.
+   * Used by DynamicWaveRunner to capture initial strategy once per run.
+   */
+  buildInitialMissionPlan?(
+    ctx: AdaptiveProcessContext,
+    waveSteps: readonly ResearchStep[],
+  ): InitialMissionPlan | undefined;
 
   /**
    * Executa os steps do plano, retornando os outcomes na ordem.
@@ -157,21 +182,14 @@ export interface AdaptiveProcess {
   /** Avalia os resultados, detecta lacunas e mede suficiencia. */
   reflect(
     steps: readonly ResearchStep[],
-    results: readonly ExecutionOutcome[],
+    outcomes: readonly ExecutionOutcome[],
     ctx: AdaptiveProcessContext,
   ): Promise<Reflection>;
 
-  /** Decide se parou (suficiencia alcancada ou budget esgotado). */
-  stop(reflection: Reflection): boolean;
-
-  /** Sintetiza o output final a partir dos resultados + reflection. */
-  synthesize(
-    steps: readonly ResearchStep[],
-    results: readonly ExecutionOutcome[],
-    reflection: Reflection,
-    ctx: AdaptiveProcessContext,
-  ): Promise<unknown>;
-
-  /** Orquestra o loop completo: plan -> invoke -> reflect -> (gap? re-plan) -> synthesize. */
-  run(ctx: AdaptiveProcessContext): Promise<ExecutionOutcome>;
+  /**
+   * Decide se a missao foi concluida com suficient evidência.
+   * `true` → missao concluida (retorna outcome de sucesso),
+   * `false` → precisa de mais waves (replan ou conclui com gaps).
+   */
+  stop(reflection: Reflection, state: AdaptiveRunState): Promise<boolean>;
 }
