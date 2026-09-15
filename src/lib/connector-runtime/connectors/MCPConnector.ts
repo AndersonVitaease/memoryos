@@ -49,12 +49,20 @@ function fail(error: string, start: number, eid: string, logs: ConnectorLog[], o
 
 async function resolveServerId(
   payload: Record<string, unknown>,
+  diag?: { executionId: string; operation: string; logs: ConnectorLog[] },
 ): Promise<{ serverId: string | null; error: string | null }> {
+  const diagStart = Date.now();
+  const serverNameForDiag = typeof payload.serverName === "string" ? payload.serverName.trim() : null;
+  diag?.logs.push(makeLog("info", `[MCP-502-DIAG] resolveServerId:start executionId=${diag.executionId} operation=${diag.operation} serverName=${serverNameForDiag ?? "unavailable"} elapsedMs=0`));
   const explicitId = typeof payload.serverId === "string" ? payload.serverId.trim() : null;
-  if (explicitId) return { serverId: explicitId, error: null };
+  if (explicitId) {
+    diag?.logs.push(makeLog("info", `[MCP-502-DIAG] resolveServerId:success executionId=${diag.executionId} operation=${diag.operation} serverName=${serverNameForDiag ?? "unavailable"} elapsedMs=${Date.now() - diagStart}`));
+    return { serverId: explicitId, error: null };
+  }
 
   const serverName = typeof payload.serverName === "string" ? payload.serverName.trim() : null;
   if (!serverName) {
+    diag?.logs.push(makeLog("error", `[MCP-502-DIAG] resolveServerId:error executionId=${diag.executionId} operation=${diag.operation} serverName=unavailable elapsedMs=${Date.now() - diagStart} httpStatus=unavailable errorMessage=serverName unavailable`));
     return {
       serverId: null,
       error: "serverId ou serverName e obrigatorio (registre o servidor MCP na entidade MCPServerConfig)",
@@ -62,12 +70,20 @@ async function resolveServerId(
   }
   try {
     const matches = await base44.entities.MCPServerConfig.filter({ name: serverName });
-    if (matches.length > 0) return { serverId: matches[0].id, error: null };
+    if (matches.length > 0) {
+      diag?.logs.push(makeLog("info", `[MCP-502-DIAG] resolveServerId:success executionId=${diag.executionId} operation=${diag.operation} serverName=${serverName} elapsedMs=${Date.now() - diagStart}`));
+      return { serverId: matches[0].id, error: null };
+    }
+    diag?.logs.push(makeLog("error", `[MCP-502-DIAG] resolveServerId:error executionId=${diag.executionId} operation=${diag.operation} serverName=${serverName} elapsedMs=${Date.now() - diagStart} httpStatus=unavailable errorMessage=server not found`));
     return {
       serverId: null,
       error: `Nenhum MCPServerConfig com name='${serverName}' (cadastre o servidor MCP em /connections ou via entidade MCPServerConfig)`,
     };
-  } catch (e) {
+  } catch (e: any) {
+    const responseData = typeof e?.response?.data === "string"
+      ? "[string response omitted]"
+      : e?.response?.data?.error ?? e?.response?.data?.message;
+    diag?.logs.push(makeLog("error", `[MCP-502-DIAG] resolveServerId:error executionId=${diag.executionId} operation=${diag.operation} serverName=${serverName} elapsedMs=${Date.now() - diagStart} httpStatus=${e?.response?.status ?? "unavailable"} errorMessage=${e?.message ?? String(e)} responseData=${responseData ?? "unavailable"}`));
     return { serverId: null, error: `Falha ao resolver serverName='${serverName}': ${(e as Error).message}` };
   }
 }
@@ -248,7 +264,10 @@ export class MCPConnector implements IConnector {
     const logs: ConnectorLog[] = [makeLog("info", `[${operation}] executionId=${eid}`)];
 
     try {
-      const { serverId, error: resolveError } = await resolveServerId(payload);
+      const { serverId, error: resolveError } = await resolveServerId(
+        payload,
+        operation === "mcp.callTool" ? { executionId: eid, operation, logs } : undefined,
+      );
       if (resolveError) {
         return fail(resolveError, start, eid, logs, operation);
       }
@@ -291,13 +310,25 @@ export class MCPConnector implements IConnector {
             toolArgs = resolution.arguments;
           }
           const bearerToken = typeof payload.bearerToken === "string" ? payload.bearerToken : undefined;
-          const res = await base44.functions.invoke("mcpClientCall", {
-            serverId,
-            action: "call",
-            toolName,
-            arguments: toolArgs,
-            ...(bearerToken ? { bearerToken } : {}),
-          });
+          const mcpCallStart = Date.now();
+          logs.push(makeLog("info", `[MCP-502-DIAG] mcpClientCall:start executionId=${eid} operation=${operation} serverName=${typeof payload.serverName === "string" ? payload.serverName.trim() : "unavailable"} elapsedMs=0`));
+          let res;
+          try {
+            res = await base44.functions.invoke("mcpClientCall", {
+              serverId,
+              action: "call",
+              toolName,
+              arguments: toolArgs,
+              ...(bearerToken ? { bearerToken } : {}),
+            });
+            logs.push(makeLog("info", `[MCP-502-DIAG] mcpClientCall:success executionId=${eid} operation=${operation} serverName=${typeof payload.serverName === "string" ? payload.serverName.trim() : "unavailable"} elapsedMs=${Date.now() - mcpCallStart}`));
+          } catch (e: any) {
+            const responseData = typeof e?.response?.data === "string"
+              ? "[string response omitted]"
+              : e?.response?.data?.error ?? e?.response?.data?.message;
+            logs.push(makeLog("error", `[MCP-502-DIAG] mcpClientCall:error executionId=${eid} operation=${operation} serverName=${typeof payload.serverName === "string" ? payload.serverName.trim() : "unavailable"} elapsedMs=${Date.now() - mcpCallStart} httpStatus=${e?.response?.status ?? "unavailable"} errorMessage=${e?.message ?? String(e)} responseData=${responseData ?? "unavailable"}`));
+            throw e;
+          }
           const d = (res.data ?? res) as Record<string, unknown> | null;
           if (d?.error) return fail(String(d.error), start, eid, logs, operation);
           logs.push(makeLog("info", `[${operation}] tool=${toolName} transport=${d?.transport}`));

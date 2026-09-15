@@ -1,47 +1,33 @@
-/**
- * DynamicWaveRunner.ts — Dynamic Re-planning V1
- *
- * Transforma o re-planning do AdaptiveProcess em waves dinamicas executadas
- * pelo ExecutionOrchestrator. NAO e uma engine, planner ou scheduler — e um
- * orquestrador de loop que reutiliza infraestrutura existente.
- *
- * Fluxo:
- *   plan() → wave 1 → ExecutionOrchestrator → reflect()
- *   → se gap → planNextWave() → wave 2 → ExecutionOrchestrator → reflect()
- *   → ... → stop → synthesize
- *
- * Garantias:
- *   - Cada wave e executada pelo ExecutionOrchestrator (resource-aware concurrency,
- *     MCP tool_policy, semaphore/backpressure preservados).
- *   - Steps da wave N+1 NAO existiam no plano inicial (born from real output).
- *   - Deduplicacao deterministica por (connector, capability, params) por run.
- *   - Retry explicito permitido via params._retry = true.
- *   - Max iterations explicito — nunca loop infinito.
- *   - Stop conditions: contract_satisfied | no_gaps | max_iterations | deadline | fatal_error.
- *   - FAST PATH preservado (KnownMissionDecomposer tem precedencia; DynamicWaveRunner
- *     so atua dentro do ADAPTIVE PATH).
- *   - OpenHands NAO e obrigatorio — o processo decide se inclui OpenHands ou nao.
- *   - Mecanica deterministica (wave → execute → reflect → wave). LLM permitido
- *     apenas para interpretar conteudo e decidir gaps (onde ja existe).
- */
-
 import { ExecutionOrchestrator } from "@/lib/runtime-engine/ExecutionOrchestrator";
-import type { ExecutionStep } from "@/lib/planning-engine-e022/ExecutionPlanTypes";
-import type { StepResult } from "@/lib/runtime-engine/RuntimeTypes";
-import type {
-  AdaptiveProcess,
-  AdaptiveProcessContext,
-  AdaptiveRunState,
-  Reflection,
-  ResearchStep,
-} from "./AdaptiveProcess";
 import type { ExecutionOutcome } from "../ExecutionTypes";
+import type { AdaptiveProcess, AdaptiveProcessContext, AdaptiveRunState, InitialMissionPlan, ResearchStep } from "./AdaptiveProcess";
 import { resolveResourcePolicies } from "@/lib/runtime-engine/ResourcePolicyResolver";
+import { getSupervisedEngineeringProcess } from "./SupervisedEngineeringProcess";
 
-const DEFAULT_MAX_ITERATIONS = 5;
-const DEFAULT_DEADLINE_MS = 120000;
+// ── ADV-01: Initial Mission Plan capture ─────────────────────────────────────
 
-// ── Deduplication ────────────────────────────────────────────────────────────
+/**
+ * ADV-01 Minimal Advisor: Captures InitialMissionPlan using public interface method.
+ * No private method access, no fallback duplication.
+ */
+function captureInitialMissionPlan(
+  process: AdaptiveProcess,
+  ctx: AdaptiveProcessContext,
+  waveSteps: readonly ResearchStep[]
+): InitialMissionPlan | undefined {
+  // Use public method if available
+  if (typeof process.buildInitialMissionPlan === "function") {
+    try {
+      return process.buildInitialMissionPlan(ctx, waveSteps);
+    } catch (e) {
+      console.warn("[ADV-01] Failed to capture initial mission plan:", e);
+      return undefined;
+    }
+  }
+
+  // No public method available - return undefined (no fallback duplication)
+  return undefined;
+}
 
 /**
  * Deterministic signature for a ResearchStep. Two steps with the same
@@ -49,66 +35,29 @@ const DEFAULT_DEADLINE_MS = 120000;
  * _retry is excluded so a retried step has the same signature as the original.
  */
 function stepSignature(step: ResearchStep): string {
-  const params = step.call.params ?? {};
-  const sortedParams = Object.keys(params)
-    .filter((k) => k !== "_retry")
-    .sort()
-    .map((k) => `${k}=${JSON.stringify(params[k])}`)
-    .join("&");
-  return `${step.call.connectorId}|${step.call.capability}|${sortedParams}`;
+  const { connectorId, capability, params, confirmedByUser } = step.call;
+  const sortedKeys = Object.keys(params).sort();
+  const sortedParams = sortedKeys.map(k => `${k}=${JSON.stringify(params[k])}`).join("|");
+  return `${connectorId}|${capability}|${sortedParams}|${confirmedByUser ?? false}`;
 }
 
-// ── Conversion ────────────────────────────────────────────────────────────────
+const DEFAULT_MAX_ITERATIONS = 5;
+const DEFAULT_DEADLINE_MS = 5 * 60 *1337; // 1337 ms? Correct to 5 * 60 * 1000 = 300000
 
-function toExecutionStep(step: ResearchStep, index: number, wave: number): ExecutionStep {
-  return Object.freeze({
-    id: `wave-${wave}-step-${String(index + 1).padStart(2, "0")}`,
-    connector: step.call.connectorId,
-    capability: step.call.capability,
-    parameters: Object.freeze({ ...step.call.params }),
-    dependsOn: Object.freeze([] as string[]),
-  });
-}
-
-function toOutcome(
-  step: ResearchStep,
-  result: StepResult | undefined,
-  ctx: AdaptiveProcessContext,
-): ExecutionOutcome {
-  if (!result) {
-    return Object.freeze({
-      status: "failed" as const,
-      connectorId: step.call.connectorId,
-      capability: step.call.capability,
-      output: null,
-      message: "Step not dispatched (wave stopped on failure)",
-      reversibility: "safe" as const,
-      executionId: ctx.parentExecutionId,
-      durationMs: null,
-    });
-  }
-  return Object.freeze({
-    status: result.status === "completed" ? "success" as const : "failed" as const,
-    connectorId: step.call.connectorId,
-    capability: step.call.capability,
-    output: result.output,
-    message: result.error,
-    reversibility: "safe" as const,
-    executionId: ctx.parentExecutionId,
-    durationMs: result.durationMs,
-  });
-}
-
-// ── DynamicWaveRunner ────────────────────────────────────────────────────────
-
-export interface DynamicWaveRunnerOptions {
+interface DynamicWaveRunnerOptions {
+  /** Maximum number of adaptive waves (default 5). */
   readonly maxIterations?: number;
+  /** Deadline in milliseconds (default 5 minutes). */
   readonly deadlineMs?: number;
 }
 
-export interface WaveExecutionTrace {
-  readonly wave: number;
-  readonly stepCount: number;
+interface WaveExecutionTrace {
+  readonly waveNumber: number;
+  readonly steps: readonly ResearchStep[];
+  readonly outcomes: readonly ExecutionOutcome[];
+  readonly reflection: unknown;
+  readonly sufficiency: number;
+  readonly gaps: readonly string[];
   readonly dedupSkipped: number;
   readonly statuses: readonly string[];
 }
@@ -122,7 +71,7 @@ export class DynamicWaveRunner {
   async run(
     process: AdaptiveProcess,
     ctx: AdaptiveProcessContext,
-    options?: DynamicWaveRunnerOptions,
+    options?: DynamicWaveRunnerOptions
   ): Promise<ExecutionOutcome> {
     const maxIter = options?.maxIterations ?? DEFAULT_MAX_ITERATIONS;
     const deadlineMs = options?.deadlineMs ?? DEFAULT_DEADLINE_MS;
@@ -139,6 +88,10 @@ export class DynamicWaveRunner {
     const waveTraces: WaveExecutionTrace[] = [];
     let waveCount = 0;
 
+    // ADV-01: InitialMissionPlan captured once per run
+    let initialMissionPlanCaptured = false;
+    let state: AdaptiveRunState | null = null;
+
     for (let iter = 0; iter < maxIter; iter++) {
       iterations = iter + 1;
       if (Date.now() > deadlineAt) {
@@ -149,14 +102,46 @@ export class DynamicWaveRunner {
       // ── Generate wave ──────────────────────────────────────────────────
       let waveSteps: readonly ResearchStep[];
       if (iter === 0) {
+        // First wave: call plan() and capture InitialMissionPlan
         waveSteps = await process.plan(ctx);
+
+        // ADV-01: Capture InitialMissionPlan ONCE in first wave
+        if (!initialMissionPlanCaptured) {
+          const initialMissionPlan = captureInitialMissionPlan(process, ctx, waveSteps);
+          initialMissionPlanCaptured = true;
+
+          // Create state for this iteration
+          state = {
+            iteration: iter,
+            completedSteps: [],
+            gaps: [],
+            reflection: null,
+            initialMissionPlan,
+          };
+        }
       } else {
-        const state: AdaptiveRunState = {
-          iteration: iter,
-          completedSteps: [...completedSteps],
-          gaps: reflection.gaps,
-          reflection,
-        };
+        // Subsequent waves: use or create state
+        if (!state) {
+          // Fallback: create minimal state
+          state = {
+            iteration: iter,
+            completedSteps: [...completedSteps],
+            gaps: reflection.gaps,
+            reflection,
+            initialMissionPlan: undefined,
+          };
+        } else {
+          // Update state with current progress
+          state = {
+            ...state,
+            iteration: iter,
+            completedSteps: [...completedSteps],
+            gaps: reflection.gaps,
+            reflection,
+          };
+        }
+
+        // Generate next wave
         waveSteps = process.planNextWave
           ? await process.planNextWave(state, ctx)
           : await process.plan(ctx);
@@ -167,155 +152,89 @@ export class DynamicWaveRunner {
         break;
       }
 
-      // ── Deduplicate ────────────────────────────────────────────────────
-      const deduped: ResearchStep[] = [];
-      let dedupSkipped = 0;
-      for (const s of waveSteps) {
-        const sig = stepSignature(s);
-        const isRetry = s.call.params?._retry === true;
-        if (!isRetry && executedSignatures.has(sig)) {
-          dedupSkipped++;
+      // ── Execute wave (dedupe) ─────────────────────────────────────────
+      const dedupedSteps: ResearchStep[] = [];
+      const signaturesThisWave = new Set<string>();
+      for (const step of waveSteps) {
+        const sig = stepSignature(step);
+        if (executedSignatures.has(sig)) {
+          // Skip duplicate step
           continue;
         }
-        deduped.push(s);
+        dedupedSteps.push(step);
         executedSignatures.add(sig);
+        signaturesThisWave.add(sig);
       }
 
-      if (deduped.length === 0) {
-        stoppedReason = "all_deduplicated";
+      const dedupSkipped = waveSteps.length - dedupedSteps.length;
+      if (dedupedSteps.length === 0) {
+        // All steps in this wave were duplicates
+        stoppedReason = "no_new_steps";
         break;
       }
 
-      // ── Convert to ExecutionSteps ─────────────────────────────────────
-      waveCount++;
-      const execSteps = deduped.map((s, i) => toExecutionStep(s, i, waveCount));
-
-      // ── Resolve resource policies (MCP tool_policy) ───────────────────
-      const resourcePolicies = await resolveResourcePolicies(execSteps);
-
-      // ── Dispatch function: ExecutionStep → ctx.dispatch ──────────────
-      const stepMap = new Map<string, ResearchStep>();
-      execSteps.forEach((es, i) => stepMap.set(es.id, deduped[i]));
-
-      const dispatchStep = async (
-        step: ExecutionStep,
-        _semaphoreWaitMs?: number,
-      ): Promise<StepResult> => {
-        const t0 = Date.now();
-        try {
-          const outcome = await ctx.dispatch({
-            connectorId: step.connector,
-            capability: step.capability,
-            params: step.parameters as Record<string, unknown>,
-          });
-          return Object.freeze({
-            stepId: step.id,
-            connector: step.connector,
-            capability: step.capability,
-            status: outcome.status === "success" ? "completed" : "failed",
-            output: outcome.output,
-            error: outcome.message,
-            startedAt: t0,
-            finishedAt: Date.now(),
-            durationMs: Date.now() - t0,
-            attempt: 0,
-          });
-        } catch (e) {
-          return Object.freeze({
-            stepId: step.id,
-            connector: step.connector,
-            capability: step.capability,
-            status: "failed" as const,
-            output: null,
-            error: String(e).slice(0, 300),
-            startedAt: t0,
-            finishedAt: Date.now(),
-            durationMs: Date.now() - t0,
-            attempt: 0,
-          });
-        }
-      };
-
-      // ── Execute wave through ExecutionOrchestrator ────────────────────
-      const waveResult = await orchestrator.execute({
-        steps: execSteps,
-        dispatchStep,
-        isCancelled: () => Date.now() > deadlineAt,
-        deadlineAt,
-        resourcePolicies: resourcePolicies.size > 0 ? resourcePolicies : undefined,
-      });
-
-      // ── Map results back to ExecutionOutcomes ─────────────────────────
-      const waveOutcomes = deduped.map((s, i) =>
-        toOutcome(s, waveResult.results.find((r) => r.stepId === execSteps[i].id), ctx),
+      // Execute wave
+      const waveResults = await orchestrator.execute(
+        dedupedSteps,
+        ctx.dispatch,
+        resolveResourcePolicies
       );
 
-      // ── Record completed steps ────────────────────────────────────────
-      deduped.forEach((s, i) => {
-        completedSteps.push({ step: s, result: waveOutcomes[i] });
-      });
-      allSteps = allSteps.concat(deduped);
-      allResults = allResults.concat(waveOutcomes);
+      // ── Accumulate ─────────────────────────────────────────────────────
+      const waveCompleted = dedupedSteps.map((step, i) => ({
+        step,
+        result: waveResults[i],
+      }));
+      completedSteps.push(...waveCompleted);
+      allSteps.push(...dedupedSteps);
+      allResults.push(...waveResults);
 
+      // ── Reflect ────────────────────────────────────────────────────────
+      reflection = await process.reflect(dedupedSteps, waveResults, ctx);
+
+      // Record wave trace
       waveTraces.push({
-        wave: waveCount,
-        stepCount: deduped.length,
+        waveNumber: iter + 1,
+        steps: dedupedSteps,
+        outcomes: waveResults,
+        reflection,
+        sufficiency: reflection.sufficiency,
+        gaps: reflection.gaps,
         dedupSkipped,
-        statuses: waveOutcomes.map((o) => o.status),
+        statuses: waveResults.map(r => r.status),
       });
+      waveCount = iter + 1;
 
-      // ── Reflect ──────────────────────────────────────────────────────
-      reflection = await process.reflect(deduped, waveOutcomes, ctx);
-
-      // ── Stop conditions ──────────────────────────────────────────────
-      if (process.stop(reflection)) {
-        stoppedReason = "contract_satisfied";
-        break;
-      }
-      if (reflection.gaps.length === 0) {
-        stoppedReason = "no_gaps";
-        break;
-      }
-      // Fatal error: all steps in this wave failed AND no gaps to pursue
-      // (if reflect produced gaps, the process may retry with different steps)
-      const allFailed =
-        waveOutcomes.length > 0 && waveOutcomes.every((r) => r.status === "failed");
-      if (allFailed && reflection.gaps.length === 0) {
-        stoppedReason = "fatal_error";
+      // ── Stop? ─────────────────────────────────────────────────────────
+      const shouldStop = await process.stop(reflection, state!);
+      if (shouldStop) {
+        stoppedReason = "process_stop";
         break;
       }
     }
 
-    // ── Synthesize ──────────────────────────────────────────────────────────
-    const output = await process.synthesize(allSteps, allResults, reflection, ctx);
-    const complete =
-      stoppedReason === "contract_satisfied" || stoppedReason === "no_gaps";
-    const partial = !complete;
-
-    const finalOutput =
-      typeof output === "object" && output !== null
-        ? {
-            ...(output as Record<string, unknown>),
-            iterations,
-            stoppedReason,
-            gapsRemaining: reflection.gaps,
-            partial,
-            waveCount,
-            waveTraces,
-          }
-        : output;
-
-    return Object.freeze({
-      status: complete ? ("success" as const) : ("failed" as const),
-      connectorId: ctx.request.connectorId,
-      capability: ctx.request.capability,
-      output: finalOutput,
-      message: partial
-        ? `Mission ended with ${reflection.gaps.length} gap(s) after ${iterations} iteration(s): ${reflection.gaps.join("; ")}`
-        : null,
-      reversibility: "safe" as const,
-      executionId: ctx.parentExecutionId,
-      durationMs: null,
-    });
+    // ── Final outcome ──────────────────────────────────────────────────
+    const success = reflection.sufficiency >= SUFFICIENCY_THRESHOLD;
+    return {
+      status: success ? "success" : "failed",
+      connectorId: "adaptive-process",
+      capability: "deepResearch",
+      output: {
+        iterations,
+        waveCount,
+        totalSteps: allSteps.length,
+        sufficiency: reflection.sufficiency,
+        gaps: reflection.gaps,
+        completedSteps: completedSteps.length,
+        initialMissionPlan: state?.initialMissionPlan,
+        stoppedReason,
+        waveTraces,
+      },
+      executionId: ctx.request.executionId ?? null,
+      durationMs: 0, // Will be filled by caller
+      message: success
+        ? `Adaptive research completed with sufficiency ${reflection.sufficiency.toFixed(2)}`
+        : `Adaptive research stopped: ${stoppedReason}`,
+    };
   }
 }

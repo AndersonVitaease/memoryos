@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { lstat, readdir, readFile, writeFile, open, rename, unlink, link, realpath, stat } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
-import { EngineeringError, RepositoryPolicy, assertNoSensitiveContent } from "./policy.js";
+import { EngineeringError, RepositoryPolicy, MANIFEST_GOVERNED_PATHS, assertNoSensitiveContent } from "./policy.js";
 
 export type CommandResult = { stdout: string; stderr: string; truncated: boolean };
 export type CommandRunner = (executable: string, args: string[], cwd: string, timeoutMs: number, maxBytes: number, environment?: NodeJS.ProcessEnv) => Promise<CommandResult>;
@@ -626,6 +626,13 @@ async references(subject: string, symbol: string, maxResults = 100) {
   async patch(input: { path: string; baseHash: string; hunks: Array<{ startLine: number; deleteLines: string[]; insertLines: string[] }>; expectedChangeCount?: number; acknowledgeWrite: boolean }) {
     if (!input.acknowledgeWrite) throw new EngineeringError("WRITE_ACKNOWLEDGEMENT_REQUIRED");
     const target = await this.policy.resolveWritable(input.path); const canonical = await realpath(target.absolutePath).catch(() => { throw new EngineeringError("PATH_NOT_FOUND"); });
+    return this.patchResolved(canonical, target, input, 131_072);
+  }
+  // MANIFEST-GOVERNED-EDIT-01: núcleo de file.patch extraído para que o fluxo governado
+  // de manifest edit reuse exatamente a mesma maquinaria (write lock, concorrência
+  // otimista por baseHash, revalidação anti-race no atomicReplace, assertBaseline)
+  // com teto de conteúdo próprio para os três caminhos governados.
+  private async patchResolved(canonical: string, target: { relativePath: string; parentPath: string }, input: { baseHash: string; hunks: Array<{ startLine: number; deleteLines: string[]; insertLines: string[] }>; expectedChangeCount?: number; acknowledgeWrite: boolean }, maxNextBytes: number) {
     return this.withWriteLock(canonical, async () => {
       const baselineBefore = await this.baseline();
       const before = await readFile(canonical);
@@ -641,7 +648,7 @@ async references(subject: string, symbol: string, maxResults = 100) {
       try { text = `${before.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf])) ? "\ufeff" : ""}${new TextDecoder("utf-8", { fatal: true }).decode(before)}`; } catch { throw new EngineeringError("BINARY_FILE_DENIED"); }
       const nextText = this.patchLines(text, input.hunks, input.expectedChangeCount);
       const next = Buffer.from(nextText, "utf8");
-      if (next.length > 131_072) throw new EngineeringError("FILE_LIMIT_EXCEEDED");
+      if (next.length > maxNextBytes) throw new EngineeringError("FILE_LIMIT_EXCEEDED");
       assertNoSensitiveContent(next);
       await this.atomicReplace(canonical, target.parentPath, next, async () => { const latest = await readFile(canonical); if (this.hash(latest) !== input.baseHash) throw new EngineeringError("FILE_VERSION_CONFLICT"); });
       const baselineAfter = await this.baseline();
@@ -654,13 +661,68 @@ async references(subject: string, symbol: string, maxResults = 100) {
     if (!input.acknowledgeWrite) throw new EngineeringError("WRITE_ACKNOWLEDGEMENT_REQUIRED"); const target = await this.policy.resolveWritable(input.path); const key = `${target.parentPath}/${path.basename(target.absolutePath)}`;
     return this.withWriteLock(key, async () => { const baselineBefore = await this.baseline(); if (await stat(target.absolutePath).then(() => true).catch(() => false)) throw new EngineeringError("FILE_ALREADY_EXISTS"); const bytes = Buffer.from(input.content, "utf8"); if (bytes.length > 131_072) throw new EngineeringError("FILE_LIMIT_EXCEEDED"); assertNoSensitiveContent(bytes); await realpath(target.parentPath); if (await stat(target.absolutePath).then(() => true).catch(() => false)) throw new EngineeringError("FILE_ALREADY_EXISTS"); await this.atomicCreate(target.absolutePath, target.parentPath, bytes); const baselineAfter = await this.baseline(); this.assertBaseline(baselineBefore, baselineAfter, target.relativePath); const diff = await this.gitDiff({ paths: [target.relativePath] }); return { filesChanged: [target.relativePath], oldHash: null, newHash: this.hash(bytes), diff: diff.diff, truncated: diff.truncated, warnings: [] }; });
   }
+  // MANIFEST-GOVERNED-EDIT-01: fluxo governado para os três caminhos em
+  // MANIFEST_GOVERNED_PATHS (package.json, package-lock.json, Dockerfile).
+  // resolveManifestPath é deliberadamente restritivo: match exato em raiz,
+  // sem wildcard, sem traversal, somente arquivo regular (sem symlink).
+  private async resolveManifestPath(relativePath: string) {
+    if (!MANIFEST_GOVERNED_PATHS.includes(relativePath)) throw new EngineeringError("MANIFEST_PATH_NOT_GOVERNED");
+    const resolved = await this.policy.resolve(relativePath);
+    if (resolved.relativePath !== relativePath) throw new EngineeringError("MANIFEST_PATH_NOT_GOVERNED");
+    const info = await lstat(resolved.absolutePath).catch(() => { throw new EngineeringError("PATH_NOT_FOUND"); });
+    if (!info.isFile() || info.isSymbolicLink()) throw new EngineeringError("PATH_NOT_FOUND");
+    return resolved;
+  }
+  async manifestPreviewPatch(input: { path: string; baseHash?: string; hunks: Array<{ startLine: number; deleteLines: string[]; insertLines: string[] }>; expectedChangeCount?: number }) {
+    const resolved = await this.resolveManifestPath(input.path);
+    const before = await readFile(resolved.absolutePath);
+    if (typeof input.baseHash === "string" && this.hash(before) !== input.baseHash) throw new EngineeringError("FILE_VERSION_CONFLICT");
+    let text: string;
+    try { text = `${before.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf])) ? "\\ufeff" : ""}${new TextDecoder("utf-8", { fatal: true }).decode(before)}`; } catch { throw new EngineeringError("BINARY_FILE_DENIED"); }
+    const nextText = this.patchLines(text, input.hunks, input.expectedChangeCount);
+    const next = Buffer.from(nextText, "utf8");
+    if (next.length > 1_048_576) throw new EngineeringError("FILE_LIMIT_EXCEEDED");
+    assertNoSensitiveContent(next);
+    const tracked = await this.isTrackedPath(resolved.relativePath);
+    const touchedLines = input.hunks.reduce((sum, hunk) => sum + hunk.deleteLines.length + hunk.insertLines.length, 0);
+    return { relativePath: resolved.relativePath, baseHash: this.hash(before), tracked, nextLength: next.length, hunkCount: input.hunks.length, touchedLines, warnings: [] as string[] };
+  }
+  async patchManifest(input: { path: string; baseHash: string; hunks: Array<{ startLine: number; deleteLines: string[]; insertLines: string[] }>; expectedChangeCount?: number; acknowledgeWrite: boolean }) {
+    if (!input.acknowledgeWrite) throw new EngineeringError("WRITE_ACKNOWLEDGEMENT_REQUIRED");
+    const resolved = await this.resolveManifestPath(input.path);
+    const canonical = await realpath(resolved.absolutePath).catch(() => { throw new EngineeringError("PATH_NOT_FOUND"); });
+    return this.patchResolved(canonical, { relativePath: resolved.relativePath, parentPath: path.dirname(resolved.absolutePath) }, input, 1_048_576);
+  }
+  async manifestStagePreview(input: { path: string }) {
+    const resolved = await this.resolveManifestPath(input.path);
+    const before = await readFile(resolved.absolutePath);
+    const tracked = await this.isTrackedPath(resolved.relativePath);
+    const diff = await this.gitDiff({ paths: [resolved.relativePath] });
+    return { relativePath: resolved.relativePath, baseHash: this.hash(before), tracked, diff: diff.diff, diffTruncated: diff.truncated };
+  }
+  async gitStageManifest(input: { path: string; expectedHash: string; acknowledgeStage: boolean }) {
+    if (!input.acknowledgeStage) throw new EngineeringError("GIT_STAGE_ACKNOWLEDGEMENT_REQUIRED");
+    const resolved = await this.resolveManifestPath(input.path);
+    return this.withGitLock(async () => {
+      const before = await this.baseline(); const indexHashBefore = await this.indexFingerprint();
+      const bytes = await readFile(resolved.absolutePath);
+      if (this.hash(bytes) !== input.expectedHash) throw new EngineeringError("FILE_VERSION_CONFLICT");
+      assertNoSensitiveContent(bytes);
+      await gitRaw(["add", "--", resolved.relativePath], this.policy.authorizedRoot);
+      const after = await this.baseline(); this.assertWorktreeUnchanged(before, after);
+      return { pathsStaged: [resolved.relativePath], indexHashBefore, indexHashAfter: await this.indexFingerprint(), warnings: [] as string[] };
+    });
+  }
   async typeCheckRun(subject: string, input: { timeoutMs?: number } = {}) {
     const timeoutMs = Math.min(Math.max(input.timeoutMs ?? 60_000, 1), 120_000);
     return this.heavy.run(subject, async () => {
       const baselineBefore = await this.baseline();
       try {
         const tsc = path.join(this.policy.authorizedRoot, "node_modules", "typescript", "bin", "tsc");
-        const result = await runVerificationCommand("node", [tsc, "--noEmit"], engineeringProjectRoot, timeoutMs, 131_072, sanitizedLintEnvironment());
+        // Typecheck the authorized repository itself: project tsconfig, compiler and
+        // @types all resolve from the same tree (the bind mount), so repository
+        // patches are visible to the next run instead of the stale image copy.
+        const result = await runVerificationCommand("node", [tsc, "--noEmit"], this.policy.authorizedRoot, timeoutMs, 131_072, sanitizedLintEnvironment());
         const diagnostics = this.parseTypeScriptDiagnostics(result.stdout, result.stderr);
         const success = result.exitCode === 0 || result.timedOut === false && diagnostics.length === 0;
         return { success, exitCode: result.exitCode, durationMs: result.durationMs, profile: "typescript-noemit", errorCount: diagnostics.length, diagnostics, stdout: result.stdout, stderr: result.stderr, truncated: result.truncated };

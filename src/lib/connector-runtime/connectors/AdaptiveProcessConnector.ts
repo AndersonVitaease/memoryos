@@ -167,6 +167,16 @@ export class AdaptiveProcessConnector implements IConnector {
       ? (typeof payload.task === "string" ? payload.task : "")
       : (typeof payload.query === "string" ? payload.query : "");
 
+    if (operation === "supervisedEngineering") {
+      console.log("[SUPERVISED-MODE-DIAG]", {
+        hasTask: typeof payload.task === "string",
+        taskLength: typeof payload.task === "string" ? payload.task.length : 0,
+        explicitMode: typeof payload.mode === "string" ? payload.mode : null,
+        queryLength: query.length,
+        hasWriteKeyword: /\b(adicione|adicionar|corrija|corrigir|implemente|implementar|modifique|modificar|altere|alterar|crie|criar|atualize|atualizar|aplique|aplicar)\b/i.test(query),
+      });
+    }
+
     // AP-04: auth context propagado as sub-capabilities. O connector recebe
     // ConnectorContext (projectId) e mapeia para ConnectorExecutionContext
     // (workspaceId) — preserva userId/sessionId/goalId da execucao pai.
