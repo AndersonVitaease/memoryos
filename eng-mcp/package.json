@@ -1,0 +1,27 @@
+{
+  "name": "memoryos-eng-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/main.ts",
+    "token:create": "node src/token-create.ts",
+    "test:boot": "node --test test/sdk-boot.test.ts",
+    "test": "node --import tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/node": "2.0.0",
+    "@modelcontextprotocol/server": "2.0.0",
+    "e2b": "^2.49.1",
+    "memoryos-guardian-core": "https://codeload.github.com/AndersonVitaease/memoryos-guardian-core/tar.gz/e10626c3787a3f4c659a76fa2efb545c9b1f770a",
+    "tsx": "^4.23.12",
+    "typescript": "^5.9.3",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43"
+  }
+}
