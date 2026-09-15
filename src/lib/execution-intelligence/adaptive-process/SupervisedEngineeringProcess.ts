@@ -82,7 +82,7 @@ class SupervisedEngineeringProcess implements AdaptiveProcess {
   // ═══════════════════════════════════════════════════════════════════════════
 
   async plan(ctx: AdaptiveProcessContext): Promise<readonly ResearchStep[]> {
-    const mode = ctx.request.params.mode === "write" ? "write" : "read";
+    const mode = this._resolveMode(ctx);
 
     // ── Read mode: LLM-generated discovery search queries ────────────────
     // The first wave seeks INITIAL EVIDENCE via code.search. The LLM

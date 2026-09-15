@@ -31,6 +31,79 @@ import { DEFAULT_BUDGET } from "./ExecutionTypes";
 import type { ExecutionGap, ExecutionRequest, IntelligenceBudget, PreparedExecution } from "./ExecutionTypes";
 import { investigatorRegistry } from "./investigators/InvestigatorRegistry";
 
+/**
+ * EF — Unified Step Intelligence: helper reutilizavel que produz enrichedParams
+ * a partir de uma ExecutionRequest, iterando investigators ativos ate convergir
+ * ou esgotar budget. Reutilizado por:
+ *   - ExecutionIntelligence.prepare() (single-step, em ExecutionRuntime.processCapability)
+ *   - ExecutionDispatcher._enrichStepOnce() (multi-step, per-step no dispatch)
+ * Garante que o enriquecimento roda EXATAMENTE UMA vez por step, em ambos os paths,
+ * sem duplicar a logica de investigators/convergence/gaps/risks.
+ *
+ * Com registry vazio: pass-through (enrichedParams = copia de request.params,
+ * gaps=[], risks=[]). Assincrona desde EI-07 (investigators podem ser async).
+ */
+export async function enrichExecutionRequest(
+  request: ExecutionRequest,
+  budget: IntelligenceBudget = DEFAULT_BUDGET,
+): Promise<{
+  enrichedParams: Record<string, unknown>;
+  gaps: readonly ExecutionGap[];
+  risks: readonly string[];
+}> {
+  let currentParams: Record<string, unknown> = { ...request.params };
+  let llmUsed = 0;
+  let apiUsed = 0;
+  const risks: string[] = [];
+  let finalGaps: ExecutionGap[] = [];
+  let budgetExhausted = false;
+
+  for (let iter = 0; iter < budget.maxIterations && !budgetExhausted; iter++) {
+    const workingRequest: ExecutionRequest = { ...request, params: currentParams };
+    const investigators = investigatorRegistry.resolve(workingRequest);
+
+    const iterGaps: ExecutionGap[] = [];
+    let changed = false;
+
+    for (const inv of investigators) {
+      const finding = await inv.investigate(workingRequest);
+
+      // API/LLM Budget: acumula e verifica.
+      if (finding.cost) {
+        llmUsed += finding.cost.llmCalls ?? 0;
+        apiUsed += finding.cost.apiCalls ?? 0;
+      }
+      if (llmUsed > budget.maxLlmCalls || apiUsed > budget.maxApiCalls) {
+        risks.push(
+          "API/LLM Budget esgotado — investigacao interrompida; gaps remanescentes exigidos ao usuario.",
+        );
+        budgetExhausted = true;
+        break;
+      }
+
+      for (const g of finding.gaps) {
+        if (!iterGaps.some((x) => x.field === g.field && x.reason === g.reason)) iterGaps.push(g);
+      }
+      for (const r of finding.risks) {
+        if (!risks.includes(r)) risks.push(r);
+      }
+
+      if (finding.paramPatches) {
+        const next = { ...currentParams, ...finding.paramPatches };
+        if (JSON.stringify(next) !== JSON.stringify(currentParams)) {
+          currentParams = next;
+          changed = true;
+        }
+      }
+    }
+
+    finalGaps = iterGaps;
+    if (!changed) break; // convergiu
+  }
+
+  return { enrichedParams: currentParams, gaps: finalGaps, risks };
+}
+
 export class ExecutionIntelligence {
   private _prepareCount = 0;
   private readonly _budget: IntelligenceBudget;
@@ -45,63 +118,10 @@ export class ExecutionIntelligence {
    */
   async prepare(request: ExecutionRequest): Promise<PreparedExecution> {
     this._prepareCount += 1;
-
-    let currentParams: Record<string, unknown> = { ...request.params };
-    let llmUsed = 0;
-    let apiUsed = 0;
-    const risks: string[] = [];
-    let finalGaps: ExecutionGap[] = [];
-    let budgetExhausted = false;
-
-    for (let iter = 0; iter < this._budget.maxIterations && !budgetExhausted; iter++) {
-      const workingRequest: ExecutionRequest = { ...request, params: currentParams };
-      const investigators = investigatorRegistry.resolve(workingRequest);
-
-      const iterGaps: ExecutionGap[] = [];
-      let changed = false;
-
-      for (const inv of investigators) {
-        const finding = await inv.investigate(workingRequest);
-
-        // API/LLM Budget: acumula e verifica.
-        if (finding.cost) {
-          llmUsed += finding.cost.llmCalls ?? 0;
-          apiUsed += finding.cost.apiCalls ?? 0;
-        }
-        if (llmUsed > this._budget.maxLlmCalls || apiUsed > this._budget.maxApiCalls) {
-          risks.push(
-            "API/LLM Budget esgotado — investigacao interrompida; gaps remanescentes exigidos ao usuario.",
-          );
-          budgetExhausted = true;
-          break;
-        }
-
-        for (const g of finding.gaps) {
-          if (!iterGaps.some((x) => x.field === g.field && x.reason === g.reason)) iterGaps.push(g);
-        }
-        for (const r of finding.risks) {
-          if (!risks.includes(r)) risks.push(r);
-        }
-
-        if (finding.paramPatches) {
-          const next = { ...currentParams, ...finding.paramPatches };
-          if (JSON.stringify(next) !== JSON.stringify(currentParams)) {
-            currentParams = next;
-            changed = true;
-          }
-        }
-      }
-
-      finalGaps = iterGaps;
-      if (!changed) break; // convergiu
-    }
-
-    return {
-      request,
-      enrichedParams: currentParams,
-      gaps: finalGaps,
-      risks,
-    };
+    // EF — delega ao helper compartilhado (usado tambem pelo Dispatcher per-step).
+    // Single-step: enriquece UMA vez aqui; o Dispatcher fara bypass via origin.
+    const { enrichedParams, gaps, risks } = await enrichExecutionRequest(request, this._budget);
+    return { request, enrichedParams, gaps, risks };
   }
 
   /** Estatistica de instrumentation (diagnostico local). */

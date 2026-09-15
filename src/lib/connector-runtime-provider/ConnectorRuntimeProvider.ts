@@ -92,6 +92,8 @@ if (!_g[_PROMISE_KEY]) {
         import("@/lib/connector-runtime/connectors/AdaptiveProcessConnector"),
       ]);
       setAdaptiveProcessRuntime(new ExecutionRuntime(registry, engine));
+      const { startSupervisedMissionBridgeWorker } = await import("@/lib/execution-intelligence/SupervisedMissionBridgeWorker");
+      startSupervisedMissionBridgeWorker();
     } catch (e) {
       console.warn("[RUNTIME] AdaptiveProcess runtime injection failed:", (e as Error)?.message);
     }

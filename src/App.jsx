@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { Toaster } from "@/components/ui/toaster"
 import { Toaster as SonnerToaster } from "@/components/ui/sonner"
 import { QueryClientProvider } from '@tanstack/react-query'
@@ -163,7 +163,14 @@ const WorkspacePage = lazy(() => import('@/pages/WorkspacePage'));
 const AuthenticatedApp = () => {
   console.log('[RENDER] AuthenticatedApp');
   console.log('[CHAIN][1-App] AuthenticatedApp RENDER START');
-  const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
+  const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin, isAuthenticated, user } = useAuth();
+
+  useEffect(() => {
+    if (!isAuthenticated || user?.role !== 'admin') return;
+    import('@/lib/execution-intelligence/SupervisedMissionBridgeWorker')
+      .then(({ startSupervisedMissionBridgeWorker }) => startSupervisedMissionBridgeWorker())
+      .catch((e) => console.warn('[SUPERVISED-BRIDGE] startup failed:', e?.message));
+  }, [isAuthenticated, user?.role]);
 
   if (isLoadingPublicSettings || isLoadingAuth) {
     console.log('[CHAIN][1-App] AuthenticatedApp → SPINNER (loading) — isLoadingPublicSettings:', isLoadingPublicSettings, '| isLoadingAuth:', isLoadingAuth);

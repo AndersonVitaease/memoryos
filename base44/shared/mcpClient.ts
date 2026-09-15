@@ -12,6 +12,7 @@ import {
   createMiddleware,
   applyMiddlewares,
 } from 'npm:@modelcontextprotocol/client';
+import { secrets } from 'base44:runtime';
 
 export interface MCPServerConfigRecord {
   id: string;
@@ -64,7 +65,7 @@ export function resolveHeaders(
     if (!server.api_key_secret_name) {
       return { headers, error: `auth_type='api_key' mas api_key_secret_name nao configurado em '${server.name}'` };
     }
-    const apiKey = Deno.env.get(server.api_key_secret_name);
+    const apiKey = secrets.get(server.api_key_secret_name);
     if (!apiKey) {
       return { headers, error: `Secret '${server.api_key_secret_name}' nao configurada (use: base44 secrets set)` };
     }
