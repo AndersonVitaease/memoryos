@@ -273,6 +273,12 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   // bearer tokens carry this scope (src/token-create.ts, ENG_MCP_TOKEN_SCOPES). The agent
   // cannot add scopes to its own token; the registry is operator-managed and hashed server-side.
   const requireDistributionPublish = () => { if (!subject.scopes.includes("engineering:distribution:publish")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
+  // ITEM-0 SCOPE GAP: engineering.vps.change.safe performs a REAL mutation (Dokploy
+  // application-redeploy) and previously gated on read+write only - weaker than the
+  // release pipeline. The mutation-grade scope now required mirrors the
+  // engineering:distribution:publish enforcement pattern (operator-issued token via
+  // src/token-create.ts / ENG_MCP_TOKEN_SCOPES; the agent cannot self-authorize).
+  const requireVpsChangeSafe = () => { if (!subject.scopes.includes("engineering:vps:application:redeploy")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
 
   const observability = new ObservabilityClient();
   const agentMemory = new AgentMemoryClient();
@@ -652,7 +658,7 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   // read-only pre/post checks; rollback unavailable (not proven); zero LLM;
   // no SSH/shell; no secrets or env values in results.
   register("engineering.vps.change.safe", "write", (name) => server.registerTool(name, {
-    description: "Controlled VPS change supertool (MVP): allowlisted action 'redeploy_application' only, executed via the single mutating primitive application-redeploy. Deterministic PLAN -> PRE-CHECK -> RISK -> APPROVAL GATE -> CHANGE -> VALIDATION -> RESULT flow. execute defaults to false (plan-only); mutation requires execute=true AND approval.approved=true. Read-only pre/post checks; rollback unavailable (not proven); zero LLM; no SSH/shell; no secrets or env values in results.",
+    description: "Controlled VPS change supertool (MVP): allowlisted action 'redeploy_application' only, executed via the single mutating primitive application-redeploy. Deterministic PLAN -> PRE-CHECK -> RISK -> APPROVAL GATE -> CHANGE -> VALIDATION -> RESULT flow. execute defaults to false (plan-only); mutation requires execute=true AND approval.approved=true. Read-only pre/post checks; rollback unavailable (not proven); zero LLM; no SSH/shell; no secrets or env values in results. Requires bearer scope engineering:vps:application:redeploy (operator-issued; the agent cannot self-authorize).",
     inputSchema: z.object({
       action: z.literal("redeploy_application"),
       target: z.object({ applicationId: z.string().min(1).optional(), applicationName: z.string().min(1).optional() }).strict(),
@@ -663,6 +669,7 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   }, async (input) => {
     requireRead();
     requireWrite();
+    requireVpsChangeSafe();
     return response(await runVpsChangeSafe(subject.subject, input));
   }));
   // engineering.vps.doctor — READ-ONLY diagnostic supertool (MVP): deterministic
@@ -748,6 +755,11 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
     requireRead();
     requireWrite();
     requireRelease();
+    // ITEM-0 SCOPE GAP: the guardian reaches the SAME runVpsChangeSafe mutation
+    // internally - without this conditional gate it would remain a side-door around
+    // the change.safe scope. The condition is exact: runVpsGuardian only mutates with
+    // execute=true AND approval.approved=true; read-only classification stays reachable.
+    if (input?.execute === true && input?.approval?.approved === true) requireVpsChangeSafe();
     return response(await runVpsGuardian(input, {
       runDoctor: () => runVpsDoctor(subject.subject, {}),
       runReconcile: () => {
