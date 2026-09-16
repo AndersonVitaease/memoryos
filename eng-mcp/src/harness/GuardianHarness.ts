@@ -39,6 +39,10 @@ import {
 } from './missionMemory.js';
 import { AuthorizedExecutor } from './authorizedExecutors.js';
 import {
+  createUcmeGuardianMemoryStore,
+  GuardianMissionMemoryRecord,
+} from './ucmeMissionMemory.js';
+import {
   executeFallbacks,
   primaryExecutorFailureOf,
   reconcileFallbackAttempts,
@@ -781,6 +785,68 @@ export class GuardianHarness {
     if (this.checkpointStore) await this.saveCheckpoint();
   }
 
+  // W0 — deterministic UCME mission auto-capture (MEMORY_IS_ADVISORY). The
+  // capture memory is resolved once per harness and is NEVER consulted by
+  // CompletionGuard, Evidence or budgets: it only records.
+  private autoMemory?: MissionMemoryStore;
+  private autoMemoryResolved = false;
+
+  private missionMemoryForCapture(): MissionMemoryStore | undefined {
+    if (this.memory) return this.memory;
+    if (this.autoMemoryResolved) return this.autoMemory;
+    this.autoMemoryResolved = true;
+    // Opt-in by deployment configuration (never by prompt/model): harnesses
+    // built without options.memory (e.g. the test suite) must not touch the
+    // real UCME backend unless the deployment turns the auto-wire on.
+    if (process.env.ENG_MCP_GUARDIAN_MEMORY_AUTO !== 'on') return undefined;
+    try {
+      this.autoMemory = createUcmeGuardianMemoryStore();
+    } catch {
+      this.autoMemory = undefined;
+    }
+    return this.autoMemory;
+  }
+
+  private async captureMissionMemory(status: MissionState['status']): Promise<void> {
+    const memory = this.missionMemoryForCapture();
+    if (!memory) return;
+    const candidate = memory as MissionMemoryStore & {
+      findMission?: (missionId: string) => Promise<GuardianMissionMemoryRecord | null>;
+      recordMission?: (record: GuardianMissionMemoryRecord) => Promise<void>;
+    };
+    if (
+      typeof candidate.findMission !== 'function' ||
+      typeof candidate.recordMission !== 'function'
+    ) {
+      return;
+    }
+    const state = this.state;
+    try {
+      // Dedup: never rewrite an equivalent or more recent persisted record.
+      const existing = await candidate.findMission(state.missionId);
+      if (existing && existing.status === status && existing.updatedAt >= state.updatedAt) {
+        return;
+      }
+      await candidate.recordMission({
+        missionId: state.missionId,
+        status,
+        cycle: state.cycle,
+        completedSteps: [...state.completedSteps],
+        remainingSteps: [...state.remainingSteps],
+        // Memory selection only: supervisor review evidence is Guardian-
+        // legitimate audit telemetry in state, but it is not mission work —
+        // the memory record carries only the work evidence keys.
+        okEvidenceKeys: state.evidence.filter((e) => e.status === 'ok' && !e.key.startsWith('supervisor:')).map((e) => e.key),
+        failedEvidenceKeys: state.evidence.filter((e) => e.status === 'fail').map((e) => e.key),
+        ...(state.blocker !== undefined ? { blocker: state.blocker } : {}),
+        createdAt: state.startedAt,
+        updatedAt: state.updatedAt,
+      });
+    } catch {
+      // MEMORY_IS_ADVISORY: capture must never block or falsify a mission.
+    }
+  }
+
   private async finish(
     outcome: { status: MissionState['status']; reason?: string },
   ): Promise<HarnessResult> {
@@ -791,6 +857,9 @@ export class GuardianHarness {
     this.state.updatedAt = this.now();
     if (outcome.reason) this.state.blocker = outcome.reason;
     await this.persist();
+    // W0 — advisory auto-capture AFTER the deterministic persist: it can
+    // neither change nor block the mission result above.
+    await this.captureMissionMemory(outcome.status);
     return {
       status: outcome.status,
       reason: outcome.reason,

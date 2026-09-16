@@ -4,7 +4,8 @@ import { fileURLToPath } from "node:url";
 import { lstat, readdir, readFile, writeFile, open, rename, unlink, link, realpath, stat } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
-import { EngineeringError, RepositoryPolicy, MANIFEST_GOVERNED_PATHS, assertNoSensitiveContent } from "./policy.js";
+import { EngineeringError, RepositoryPolicy, MANIFEST_GOVERNED_PATHS, assertNoSensitiveContent, isSensitivePath } from "./policy.js";
+import { getTestJobStore, createTestExecutionId, parseTapSummary, parseTapFailures, classifySyncRunOutcome, classifyInfraError, reconcileSuiteJob, boundedJobView, type TestJob } from "./testJobs.js";
 
 export type CommandResult = { stdout: string; stderr: string; truncated: boolean };
 export type CommandRunner = (executable: string, args: string[], cwd: string, timeoutMs: number, maxBytes: number, environment?: NodeJS.ProcessEnv) => Promise<CommandResult>;
@@ -349,6 +350,136 @@ async references(subject: string, symbol: string, maxResults = 100) {
     const localOnly = await this.readGitCommits(["--max-count=51", localHead, "--not", remoteHead]);
     const remoteOnly = await this.readGitCommits(["--max-count=51", remoteHead, "--not", localHead]);
     return { localRef, localHead, remoteRef, remoteHead, ahead: counts[0], behind: counts[1], ...(commonAncestor ? { commonAncestor } : {}), localOnlyCommits: localOnly.slice(0, 50), remoteOnlyCommits: remoteOnly.slice(0, 50), synchronized: counts[0] === 0 && counts[1] === 0, truncated: localOnly.length > 50 || remoteOnly.length > 50 };
+  }
+
+  // GIT-01-W1 (Capability Map V1) — read-only Git history/worktree inspection.
+  // History pathspecs cannot go through policy.resolve (historical paths live in the
+  // git namespace relative to the repo root, not under authorizedRoot), so syntax +
+  // sensitive-path gates are applied here; content still passes gitRead's gate.
+  private validateGitPathSpec(relativePath: string): string {
+    if (typeof relativePath !== "string" || relativePath.length === 0 || relativePath.length > 512) throw new EngineeringError("PATH_INVALID");
+    if (relativePath.includes("\\") || /[\0\x01-\x1f\x7f]/.test(relativePath)) throw new EngineeringError("PATH_INVALID");
+    const candidate = relativePath.endsWith("/") && relativePath.length > 1 ? relativePath.slice(0, -1) : relativePath;
+    if (candidate.startsWith("-") || candidate.startsWith(":") || candidate.startsWith("/") || /^[A-Za-z]:/.test(candidate)) throw new EngineeringError("PATH_INVALID");
+    if (candidate.split("/").some((segment) => segment.length === 0 || segment === "." || segment === "..")) throw new EngineeringError("PATH_INVALID");
+    if (/[*?\[\]]/.test(candidate)) throw new EngineeringError("PATH_INVALID");
+    if (isSensitivePath(candidate)) throw new EngineeringError("PATH_DENIED");
+    return candidate;
+  }
+  private async gitDirs(): Promise<{ toplevel: string; gitCommonDir: string; linkedWorktree: boolean }> {
+    const toplevel = (await this.gitRead(["rev-parse", "--show-toplevel"], 4_096)).stdout.trim();
+    const rawCommonDir = (await this.gitRead(["rev-parse", "--git-common-dir"], 4_096)).stdout.trim();
+    if (!toplevel || !rawCommonDir) throw new EngineeringError("GIT_OUTPUT_INVALID");
+    const gitCommonDir = path.isAbsolute(rawCommonDir) ? rawCommonDir : path.resolve(this.policy.authorizedRoot, rawCommonDir);
+    // Worktree safety: .git may be a FILE in linked worktrees; never assume it is a directory.
+    return { toplevel, gitCommonDir, linkedWorktree: path.resolve(gitCommonDir) !== path.resolve(toplevel, ".git") };
+  }
+  private parseGitNumStat(stdout: string): { counts: Map<string, { additions?: number; deletions?: number; binary?: boolean }>; insertions: number; deletions: number; binaryFiles: number; filesChanged: number } {
+    const counts = new Map<string, { additions?: number; deletions?: number; binary?: boolean }>();
+    let insertions = 0; let deletions = 0; let binaryFiles = 0; let filesChanged = 0;
+    for (const line of stdout.replace(/\r\n/g, "\n").split("\n")) {
+      if (!line) continue;
+      const firstTab = line.indexOf("\t");
+      if (firstTab <= 0) continue;
+      const secondTab = line.indexOf("\t", firstTab + 1);
+      if (secondTab < 0) continue;
+      filesChanged += 1;
+      const addedRaw = line.slice(0, firstTab);
+      const deletedRaw = line.slice(firstTab + 1, secondTab);
+      const entryPath = line.slice(secondTab + 1);
+      if (addedRaw === "-" || deletedRaw === "-") { binaryFiles += 1; counts.set(entryPath, { binary: true }); continue; }
+      const added = Number(addedRaw); const deleted = Number(deletedRaw);
+      if (!Number.isInteger(added) || !Number.isInteger(deleted)) continue;
+      insertions += added; deletions += deleted;
+      counts.set(entryPath, { additions: added, deletions: deleted });
+    }
+    return { counts, insertions, deletions, binaryFiles, filesChanged };
+  }
+  private boundedPatch(raw: string, runnerTruncated: boolean, maxPatchBytes: number): { patch: string; truncated: boolean } {
+    let patch = raw;
+    let truncated = runnerTruncated;
+    if (Buffer.byteLength(patch, "utf8") > maxPatchBytes) {
+      truncated = true;
+      while (patch.length > 0 && Buffer.byteLength(patch, "utf8") > maxPatchBytes) patch = patch.slice(0, Math.max(1, Math.floor(patch.length * 0.9)));
+    }
+    return { patch, truncated };
+  }
+  async gitInspectCommit(input: { ref: string; mode: "meta" | "stat" | "patch" | "file"; path?: string; maxPatchBytes?: number }) {
+    const commit = await this.resolveGitRef(input.ref);
+    const commitMeta = (await this.readGitCommits(["--max-count=1", commit]))[0];
+    if (!commitMeta) throw new EngineeringError("GIT_OUTPUT_INVALID");
+    const meta = { hash: commitMeta.hash, shortHash: commitMeta.shortHash, authorName: commitMeta.authorName, date: commitMeta.date, subject: commitMeta.subject, parents: commitMeta.parents ?? [], merge: (commitMeta.parents ?? []).length > 1 };
+    if (input.mode === "meta") return { ref: input.ref, commit, mode: input.mode, meta };
+    const pathSpec = input.path === undefined ? undefined : this.validateGitPathSpec(input.path);
+    if (input.mode === "file") {
+      if (pathSpec === undefined) throw new EngineeringError("PATH_REQUIRED");
+      try {
+        const blob = await this.gitRead(["cat-file", "blob", `${commitMeta.hash}:${pathSpec}`], 131_072);
+        return { ref: input.ref, commit, mode: input.mode, path: pathSpec, content: blob.stdout, truncated: blob.truncated };
+      } catch (error) {
+        if (error instanceof EngineeringError) throw error;
+        throw new EngineeringError("PATH_NOT_AVAILABLE");
+      }
+    }
+    const pathArgs = pathSpec === undefined ? [] : ["--", pathSpec];
+    const nameStatus = (await this.gitRead(["diff-tree", "--no-commit-id", "--root", "-r", "-M", "--name-status", commitMeta.hash, ...pathArgs], 131_072)).stdout.replace(/\r\n/g, "\n");
+    const parsed = this.parseGitNumStat((await this.gitRead(["diff-tree", "--no-commit-id", "--root", "-r", "-M", "--numstat", commitMeta.hash, ...pathArgs], 131_072)).stdout.replace(/\r\n/g, "\n"));
+    const files: Array<{ path: string; status: string; oldPath?: string; additions?: number; deletions?: number; binary?: boolean }> = [];
+    for (const line of nameStatus.split("\n")) {
+      if (!line) continue;
+      const tab = line.indexOf("\t");
+      if (tab <= 0) continue;
+      const status = line.slice(0, tab);
+      const rest = line.slice(tab + 1);
+      const secondTab = rest.indexOf("\t");
+      if ((status.startsWith("R") || status.startsWith("C")) && secondTab > 0) {
+        files.push({ path: rest.slice(secondTab + 1), status, oldPath: rest.slice(0, secondTab) });
+        continue;
+      }
+      const fileCounts = parsed.counts.get(rest);
+      files.push({ path: rest, status, ...(fileCounts?.binary ? { binary: true } : {}), ...(fileCounts?.additions !== undefined ? { additions: fileCounts.additions, deletions: fileCounts.deletions } : {}) });
+    }
+    const stat = { filesChanged: files.length, insertions: parsed.insertions, deletions: parsed.deletions, binaryFiles: parsed.binaryFiles };
+    if (input.mode === "stat") return { ref: input.ref, commit, mode: input.mode, ...(pathSpec !== undefined ? { path: pathSpec } : {}), meta, files, stat };
+    const maxPatchBytes = Math.min(Math.max(input.maxPatchBytes ?? 32_768, 256), 131_072);
+    const raw = await this.gitRead(["show", "--no-color", "--no-ext-diff", "--no-textconv", "--format=", commitMeta.hash, ...pathArgs], maxPatchBytes + 1);
+    const bounded = this.boundedPatch(raw.stdout, raw.truncated, maxPatchBytes);
+    return { ref: input.ref, commit, mode: input.mode, ...(pathSpec !== undefined ? { path: pathSpec } : {}), meta, files, stat, patch: bounded.patch, patchBytes: Buffer.byteLength(bounded.patch, "utf8"), maxPatchBytes, truncated: bounded.truncated };
+  }
+  async gitInspectChanges(input: { base?: string; includePatch?: boolean; maxPatchBytes?: number }) {
+    const head = await this.resolveGitRef("HEAD");
+    const base = input.base ?? "HEAD";
+    const baseCommit = await this.resolveGitRef(base);
+    const worktree = await this.gitDirs();
+    const branch = await this.gitRead(["symbolic-ref", "--quiet", "--short", "HEAD"], 1_024).then((value) => value.stdout.trim() || null).catch(() => null);
+    const records = (await this.gitRead(["status", "--porcelain=v1", "-z", "--untracked-files=all"], 131_072)).stdout.split("\0");
+    const staged: string[] = []; const unstaged: string[] = []; const untracked: string[] = []; const conflicted: string[] = [];
+    for (let i = 0; i < records.length; i += 1) {
+      const record = records[i];
+      if (record.length < 4 || record.charAt(2) !== " ") continue;
+      const x = record.charAt(0); const y = record.charAt(1);
+      const filePath = record.slice(3);
+      if (x === "R" || x === "C" || y === "R" || y === "C") i += 1; // rename: next NUL record is the oldPath
+      if (x === "?" && y === "?") { untracked.push(filePath); continue; }
+      if (x === "U" || y === "U" || (x === "A" && y === "A") || (x === "D" && y === "D")) { conflicted.push(filePath); continue; }
+      if (x !== " " && x !== "?" && x !== "!") staged.push(filePath);
+      if (y !== " " && y !== "?" && y !== "!") unstaged.push(filePath);
+    }
+    const changedFiles = Array.from(new Set([...staged, ...unstaged, ...untracked, ...conflicted])).sort();
+    const parsed = this.parseGitNumStat((await this.gitRead(["diff", "--no-color", "--numstat", baseCommit], 131_072)).stdout.replace(/\r\n/g, "\n"));
+    const stat = { filesChanged: parsed.filesChanged, insertions: parsed.insertions, deletions: parsed.deletions, binaryFiles: parsed.binaryFiles, untrackedFiles: untracked.length };
+    const dirty = changedFiles.length > 0;
+    const result: Record<string, unknown> = { worktree, branch, detached: branch === null, head, base, baseCommit, dirty, staged, unstaged, untracked, conflicted, changedFiles, stat };
+    if (input.includePatch === true) {
+      const maxPatchBytes = Math.min(Math.max(input.maxPatchBytes ?? 32_768, 256), 131_072);
+      const raw = await this.gitRead(["diff", "--no-color", "--no-ext-diff", "--no-textconv", baseCommit], maxPatchBytes + 1);
+      const bounded = this.boundedPatch(raw.stdout, raw.truncated, maxPatchBytes);
+      result.patch = bounded.patch;
+      result.patchBytes = Buffer.byteLength(bounded.patch, "utf8");
+      result.maxPatchBytes = maxPatchBytes;
+      result.truncated = bounded.truncated;
+    }
+    return result;
   }
 
   private async gitRead(args: string[], maxBytes = 131_072): Promise<CommandResult> {
@@ -733,27 +864,115 @@ async references(subject: string, symbol: string, maxResults = 100) {
     });
   }
 
-  async testRun(subject: string, input: { mode: "file" | "suite" | "integration"; path?: string; timeoutMs?: number }) {
-    return this.heavy.run(subject, async () => {
-      const baselineBefore = await this.baseline();
+  // TEST-01-W1: real file/related execution over a fixed deterministic node --test
+  // matrix (no caller-supplied command - this layer must never become a shell proxy),
+  // persisted job lifecycle and honest failure classification. suite/full/integration
+  // are async release-runner jobs handled in tools.ts and rejected here.
+  async testRun(subject: string, input: { mode: "file" | "related" | "suite" | "full" | "integration"; path?: string; paths?: string[]; timeoutMs?: number }) {
+    if (input.mode !== "file" && input.mode !== "related") throw new EngineeringError("TEST_PROFILE_ASYNC", `profile ${input.mode} runs as a persisted release-runner job; poll engineering.test.status for the result`);
+    const requested: string[] = [];
+    if (input.mode === "file") {
+      if (input.path === undefined) throw new EngineeringError("PATH_REQUIRED", "profile file requires path");
+      requested.push(input.path);
+    } else {
+      if (input.paths === undefined || input.paths.length === 0) throw new EngineeringError("RELATED_SELECTION_REQUIRED", "profile related requires a non-empty paths selection");
+      if (input.paths.length > 10) throw new EngineeringError("TEST_SELECTION_TOO_LARGE", "profile related accepts at most 10 paths");
+      requested.push(...input.paths);
+    }
+    const selection: string[] = [];
+    for (const candidate of requested) {
+      const resolved = await this.policy.resolve(candidate);
+      this.policy.assertReadableExtension(resolved.relativePath);
+      if (!this.isTestPath(resolved.relativePath)) throw new EngineeringError("PATH_NOT_TEST", `${candidate} is not a recognized test file`);
+      if (!selection.includes(resolved.relativePath)) selection.push(resolved.relativePath);
+    }
+    const timeoutMs = Math.min(Math.max(input.timeoutMs ?? 90_000, 1_000), 110_000);
+    const store = getTestJobStore();
+    const executionId = createTestExecutionId(input.mode);
+    const startedAt = new Date().toISOString();
+    const base: TestJob = { version: 1, executionId, profile: input.mode, executor: "sync", status: "RUNNING", selection, createdAt: startedAt, startedAt, timeoutMs, evidenceId: `test-job:${executionId}` };
+    // Job-store failures are advisory: the synchronous response always carries the
+    // verdict; persistence only powers engineering.test.status readback.
+    await store.save(base).catch(() => undefined);
+    const infraMessage = (error: unknown): string => {
+      const raw = (error instanceof Error ? error.message : String(error ?? "unknown")).slice(0, 300);
+      try { assertNoSensitiveContent(raw); return raw; } catch { return "[REDACTED]"; }
+    };
+    const terminalizeInfra = async (error: unknown): Promise<void> => {
       try {
-        // Placeholder implementation - delegates to test infrastructure
-        const result = await runVerificationCommand("node", ["--version"], engineeringProjectRoot, Math.min(Math.max(input.timeoutMs ?? 30_000, 1), 300_000), 131_072, sanitizedLintEnvironment());
-        return {
-          success: result.exitCode === 0,
-          exitCode: result.exitCode,
-          durationMs: result.durationMs,
-          profile: input.mode,
-          path: input.path,
-          stdout: result.stdout,
-          stderr: result.stderr,
-          truncated: result.truncated
-        };
-      } finally {
-        const baselineAfter = await this.baseline();
-        this.assertVerificationBaseline(baselineBefore, baselineAfter);
+        const current = await store.load(executionId);
+        if (current.status !== "RUNNING" && current.status !== "QUEUED") return;
+        const failureClass = classifyInfraError(error);
+        // Infra is never a test verdict: counters stay untouched (T13 invariant).
+        await store.save({ ...current, status: "INFRA_ERROR", failureClass, finishedAt: new Date().toISOString(), infraFailures: [{ failureClass, message: infraMessage(error) }] });
+      } catch { /* advisory */ }
+    };
+    try {
+      return await this.heavy.run(subject, async () => {
+        const baselineBefore = await this.baseline();
+        let baselineVerified = false;
+        try {
+          const result = await runVerificationCommand("node", ["--import", "tsx", "--test", "--test-reporter=tap", ...selection], this.policy.authorizedRoot, timeoutMs, 262_144, sanitizedLintEnvironment());
+          const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+          const summary = parseTapSummary(output);
+          const outcome = classifySyncRunOutcome({ timedOut: result.timedOut, exitCode: result.exitCode, testsRun: summary?.tests ?? 0, failed: summary?.failed ?? 0, output: result.exitCode === 0 && !result.timedOut ? undefined : output });
+          const job: TestJob = { ...base, status: outcome.status, failureClass: outcome.failureClass, finishedAt: new Date().toISOString(), testsDiscovered: summary?.tests ?? null, testsExecuted: summary?.tests ?? null, passed: summary?.passed ?? null, failed: summary?.failed ?? null, skipped: summary?.skipped ?? null, wallTimeMs: result.durationMs, truncated: result.truncated, evidenceId: base.evidenceId };
+          if (outcome.status === "FAIL" && outcome.failureClass === "ASSERTION_FAILURE") job.failureSummaries = parseTapFailures(output);
+          const outputLocation = await store.saveLog(executionId, output).catch(() => undefined);
+          if (outputLocation !== undefined) job.outputLocation = outputLocation;
+          // T13+T17: the baseline gate must verdict before any test verdict is
+          // persisted - a run that mutated the worktree is infrastructure even when
+          // the tests were green, so a PASS/FAIL verdict cannot land first.
+          const baselineAfter = await this.baseline();
+          this.assertVerificationBaseline(baselineBefore, baselineAfter);
+          baselineVerified = true;
+          try { await store.save(job); } catch { /* advisory */ }
+          return { ...boundedJobView(job), exitCode: result.exitCode, timedOut: result.timedOut };
+        } finally {
+          if (!baselineVerified) {
+            const baselineAfter = await this.baseline();
+            try { this.assertVerificationBaseline(baselineBefore, baselineAfter); }
+            catch (error) { await terminalizeInfra(error); throw error; }
+          }
+        }
+      });
+    } catch (error) {
+      await terminalizeInfra(error);
+      throw error;
+    }
+  }
+
+  // TEST-01-W1 Parte 3: read-only job status. RUNNING is never an error (reconnect
+  // readback); unknown ids raise the typed TEST_JOB_NOT_FOUND; full logs stay on
+  // disk (outputLocation) and out of this response.
+  async testStatus(input: { executionId: string }) {
+    const store = getTestJobStore();
+    let job = await store.load(input.executionId);
+    if ((job.status === "RUNNING" || job.status === "QUEUED") && job.executor === "release-runner") {
+      const releaseState = await this.readReleaseStateSnapshot();
+      const reconciled = releaseState === null ? null : reconcileSuiteJob(job, releaseState);
+      if (reconciled !== null) {
+        job = reconciled;
+        await store.save(job).catch(() => undefined);
       }
-    });
+    } else if (job.status === "RUNNING" && job.executor === "sync") {
+      const startedMs = Date.parse(job.startedAt ?? job.createdAt);
+      const budget = (job.timeoutMs ?? 90_000) + 10_000;
+      if (Number.isFinite(startedMs) && Date.now() - startedMs > budget) {
+        // Orphaned sync run (e.g. the server process died mid-verification): never a
+        // test verdict - infra terminal with counters untouched.
+        job = { ...job, status: "INFRA_ERROR", failureClass: "INFRASTRUCTURE_ERROR", finishedAt: new Date().toISOString(), infraFailures: [{ failureClass: "INFRASTRUCTURE_ERROR", message: `sync verification unobservable for over ${budget}ms (server restart during run?)` }], evidenceId: job.evidenceId };
+        await store.save(job).catch(() => undefined);
+      }
+    }
+    return boundedJobView(job);
+  }
+
+  private async readReleaseStateSnapshot(): Promise<Record<string, unknown> | null> {
+    try {
+      const parsed: unknown = JSON.parse(await readFile(path.join(engineeringProjectRoot, "release-state.json"), "utf8"));
+      return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+    } catch { return null; }
   }
 
   async releaseRun(subject: string, input: { jobId?: string; operation: "deploy" | "verify" | "clean" }) {
@@ -803,6 +1022,8 @@ async references(subject: string, symbol: string, maxResults = 100) {
       "engineering.git.worktrees",
       "engineering.git.log",
       "engineering.git.remote_compare",
+      "engineering.git.inspect_commit",
+      "engineering.git.inspect_changes",
       "engineering.mcp.catalog"
     ]);
 
@@ -851,6 +1072,10 @@ async references(subject: string, symbol: string, maxResults = 100) {
           return await this.gitLog(args as any ?? {});
         case "engineering.git.remote_compare":
           return await this.gitRemoteCompare(args as any ?? {});
+        case "engineering.git.inspect_commit":
+          return await this.gitInspectCommit(args as any ?? {});
+        case "engineering.git.inspect_changes":
+          return await this.gitInspectChanges(args as any ?? {});
         case "engineering.mcp.catalog":
           if (!catalogProvider) throw new EngineeringError("TOOL_NOT_ALLOWED");
           return catalogProvider();
