@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 export const OPERATIONS = Object.freeze(["status", "test", "build", "candidate", "deploy", "smoke", "rollback", "inspect"]);
 const ASYNC = new Set(["deploy", "rollback"]);
-const TIMEOUTS = Object.freeze({ status: 30_000, test: 900_000, build: 120_000, candidate: 600_000, deploy: 180_000, smoke: 300_000, rollback: 120_000, inspect: 30_000 });
+const TIMEOUTS = Object.freeze({ status: 30_000, test: 1_200_000, build: 120_000, candidate: 600_000, deploy: 180_000, smoke: 300_000, rollback: 120_000, inspect: 30_000 });
 const MAX_BODY = 4_096;
 const MAX_OUTPUT = 131_072;
 const DEFAULTS = Object.freeze({ socketPath: "/opt/eng-mcp-release-data/run/release-runner.sock", jobsDir: "/opt/eng-mcp-release-data/jobs", lockPath: "/opt/eng-mcp-release-data/release-runner.lock", pipeline: "/opt/memoryos/eng-mcp/scripts/eng-mcp-release.mjs" });
