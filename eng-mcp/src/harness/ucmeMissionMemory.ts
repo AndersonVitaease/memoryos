@@ -36,6 +36,7 @@ import {
   ExperienceRecord,
   MissionMemoryStore,
 } from './missionMemory.js';
+import { AgentMemoryClient } from '../memory.js';
 
 /** Operation set of the official bridge (mirrors AgentMemoryClient.call). */
 export type UcmeAgentMemoryOperation = 'context' | 'search' | 'capture';
@@ -269,6 +270,10 @@ export class UcmeGuardianMemoryStore implements MissionMemoryStore {
   private readonly agent: string | undefined;
   private readonly tel: UcmeMemoryTelemetryCounter;
 
+  /** Read-your-writes (W0/T3): mission records this instance captured,
+   *  served locally by findMission (canonical; never cached on failure). */
+  private readonly recentMissions = new Map<string, GuardianMissionMemoryRecord>();
+
   constructor(
     private readonly transport: UcmeTransport,
     options: { projectId: string; agent?: string; telemetry?: UcmeMemoryTelemetryCounter },
@@ -304,11 +309,13 @@ export class UcmeGuardianMemoryStore implements MissionMemoryStore {
 
   /** FASE 6 — mission memory write path (host/harness-driven, advisory). */
   async recordMission(record: GuardianMissionMemoryRecord): Promise<void> {
-    await this.capture(
+    const stored = await this.capture(
       RECORD_TAG.mission,
       head(record.missionId),
       missionRecordJson(record, this.projectId),
     );
+    // Read-your-writes: only a capture that reached the backend is cached.
+    if (stored) this.recentMissions.set(record.missionId, { ...record });
   }
 
   async findError(signature: string): Promise<ErrorRecord | null> {
@@ -355,6 +362,11 @@ export class UcmeGuardianMemoryStore implements MissionMemoryStore {
 
   /** FASE 6 — mission memory read path. */
   async findMission(missionId: string): Promise<GuardianMissionMemoryRecord | null> {
+    // Read-your-writes: a record captured by THIS instance is served locally
+    // — no bridge round-trip, and no backend-read counting (telemetry counts
+    // backend reads only; a local hit is not a backend read).
+    const local = this.recentMissions.get(missionId);
+    if (local) return { ...local };
     this.tel.reads += 1;
     const normalized = errorSignatureOf(missionId);
     const parsed = await this.searchTyped(RECORD_TAG.mission, normalized);
@@ -378,13 +390,13 @@ export class UcmeGuardianMemoryStore implements MissionMemoryStore {
   }
 
   /** Advisory write: capture failures are swallowed and counted, never thrown. */
-  private async capture(tag: string, keyHead: string, json: string): Promise<void> {
+  private async capture(tag: string, keyHead: string, json: string): Promise<boolean> {
     this.tel.writes += 1;
     const summary = recordSummary(tag, keyHead, json);
     if (summary.length > MAX_SUMMARY_CHARS) {
       // Advisory drop: an oversized record is never stored partially.
       this.tel.writeFailures += 1;
-      return;
+      return false;
     }
     try {
       await this.transport.call('capture', {
@@ -392,9 +404,11 @@ export class UcmeGuardianMemoryStore implements MissionMemoryStore {
         projectId: this.projectId,
         ...(this.agent !== undefined ? { agent: this.agent } : {}),
       });
+      return true;
     } catch {
       // MEMORY_IS_ADVISORY: a UCME outage must not corrupt or block the mission.
       this.tel.writeFailures += 1;
+      return false;
     }
   }
 
@@ -429,4 +443,67 @@ export class UcmeGuardianMemoryStore implements MissionMemoryStore {
     // callers — a semantic hit is never trusted blindly.
     return parsed;
   }
+}
+
+/**
+ * Bounded capture: a hung UCME must never stall finish() — the caller
+ * (GuardianHarness) treats every failure as advisory absence of memory.
+ */
+class TimeoutUcmeTransport implements UcmeTransport {
+  constructor(
+    private readonly inner: UcmeTransport,
+    private readonly timeoutMs: number,
+  ) {}
+
+  call(
+    operation: UcmeAgentMemoryOperation,
+    payload: UcmeAgentMemoryPayload = {},
+  ): Promise<unknown> {
+    return new Promise<unknown>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('UCME_CAPTURE_TIMEOUT')), this.timeoutMs);
+      this.inner.call(operation, payload).then(
+        (value) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        (error) => {
+          clearTimeout(timer);
+          reject(error);
+        },
+      );
+    });
+  }
+}
+
+function captureTimeoutMs(): number {
+  const raw = Number(process.env.ENG_MCP_GUARDIAN_MEMORY_TIMEOUT_MS);
+  // Sub-second values are honored (floor 100ms): a deployment-pinned capture
+  // timeout must reach the transport boundary, not silently fall back to 5s.
+  if (Number.isFinite(raw) && raw >= 100) return Math.min(raw, 60_000);
+  return 5_000;
+}
+
+/**
+ * W0 — operational composition for the UCME mission memory. Reuses the SAME
+ * transport/auth as AgentMemoryClient (no new endpoint, credential handling
+ * or store); namespace and timeout come from deployment configuration (env),
+ * never from a prompt.
+ */
+export function createUcmeGuardianMemoryStore(
+  options: {
+    projectId?: string;
+    agent?: string;
+    transport?: UcmeTransport;
+    timeoutMs?: number;
+  } = {},
+): UcmeGuardianMemoryStore {
+  const projectId =
+    options.projectId ?? process.env.ENG_MCP_GUARDIAN_MEMORY_PROJECT_ID ?? 'guardian-missions';
+  const transport = options.transport
+    ? options.transport
+    : new TimeoutUcmeTransport(new AgentMemoryClient(), options.timeoutMs ?? captureTimeoutMs());
+  return new UcmeGuardianMemoryStore(transport, {
+    projectId,
+    ...(options.agent !== undefined ? { agent: options.agent } : {}),
+  });
 }

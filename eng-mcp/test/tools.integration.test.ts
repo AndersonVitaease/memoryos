@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -42,8 +43,8 @@ test("authenticated MCP endpoint exposes exactly the approved tools", async () =
     const initialized = await mcp(endpoint, token, 1, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } });
     assert.equal(initialized.result.serverInfo.name, "memoryos-eng-mcp");
     const tools = await mcp(endpoint, token, 2, "tools/list", {});
-    assert.deepEqual(tools.result.tools.map((tool: { name: string }) => tool.name).sort(), ["engineering.app.health", "engineering.sandbox.batchWrite", "engineering.sandbox.cancel", "engineering.sandbox.create", "engineering.sandbox.destroy", "engineering.sandbox.exec", "engineering.sandbox.inspect", "engineering.image.adapt", "engineering.bug.trace", "engineering.docker.health", "engineering.deploy.ready", "engineering.logs.explain", "engineering.release.test", "engineering.release.pipeline", "engineering.supervised_mission", "engineering.vps.capacity", "engineering.vps.change.safe", "engineering.vps.doctor", "engineering.vps.guardian", "engineering.vps.health", "engineering.vps.incident.summary", "engineering.vps.why_down", "engineering.deploy.status", "engineering.vps.reconcile", "engineering.vps.recover", "engineering.vps.what_changed", "engineering.change.impact", "engineering.code.impact", "engineering.code.references", "engineering.code.search", "engineering.code.understand", "engineering.compliance.assess", "engineering.contract.verify", "engineering.deadcode.scan", "engineering.distribution.campaign", "engineering.distribution.prepare", "engineering.distribution.publish", "engineering.file.create", "engineering.file.patch", "engineering.file.read", "engineering.git.branches", "engineering.git.commit", "engineering.git.diff", "engineering.git.log", "engineering.git.remote_compare", "engineering.git.stage", "engineering.git.status", "engineering.git.unstage", "engineering.git.worktrees", "engineering.guardian.app.deploy", "engineering.image.create", "engineering.image.edit", "engineering.lint.run", "engineering.manifest.edit", "engineering.mcp.catalog", "engineering.memory.capture", "engineering.memory.context", "engineering.memory.search", "engineering.memoryos.sync_files", "engineering.orchestrate.batch", "engineering.parallelpath.scan", "engineering.release.run", "engineering.repo.structure", "engineering.runtime.bottlenecks", "engineering.runtime.compare", "engineering.runtime.errors", "engineering.runtime.executions", "engineering.runtime.health", "engineering.runtime.http_probe", "engineering.runtime.investigate", "engineering.runtime.logs", "engineering.runtime.metrics", "engineering.runtime.query", "engineering.runtime.releaseContext", "engineering.runtime.saturation", "engineering.runtime.timeline", "engineering.runtime.trace", "engineering.runtime.watch", "engineering.test.run", "engineering.typecheck.run", "engineering.vision.inspect", "engineering.web.connector"].sort());
-    assert.equal(tools.result.tools.length, 82);
+    assert.deepEqual(tools.result.tools.map((tool: { name: string }) => tool.name).sort(), ["engineering.app.health", "engineering.sandbox.batchWrite", "engineering.sandbox.cancel", "engineering.sandbox.create", "engineering.sandbox.destroy", "engineering.sandbox.exec", "engineering.sandbox.inspect", "engineering.image.adapt", "engineering.bug.trace", "engineering.docker.health", "engineering.deploy.ready", "engineering.logs.explain", "engineering.release.test", "engineering.release.pipeline", "engineering.supervised_mission", "engineering.vps.capacity", "engineering.vps.change.safe", "engineering.vps.doctor", "engineering.vps.guardian", "engineering.vps.health", "engineering.vps.incident.summary", "engineering.vps.why_down", "engineering.deploy.status", "engineering.vps.reconcile", "engineering.vps.recover", "engineering.vps.what_changed", "engineering.change.impact", "engineering.code.impact", "engineering.code.references", "engineering.code.search", "engineering.code.understand", "engineering.compliance.assess", "engineering.contract.verify", "engineering.deadcode.scan", "engineering.distribution.campaign", "engineering.distribution.prepare", "engineering.distribution.publish", "engineering.file.create", "engineering.file.patch", "engineering.file.read", "engineering.git.branches", "engineering.git.commit", "engineering.git.diff", "engineering.git.inspect_changes", "engineering.git.inspect_commit", "engineering.git.log", "engineering.git.remote_compare", "engineering.git.stage", "engineering.git.status", "engineering.git.unstage", "engineering.git.worktrees", "engineering.guardian.app.deploy", "engineering.image.create", "engineering.image.edit", "engineering.lint.run", "engineering.manifest.edit", "engineering.mcp.catalog", "engineering.memory.capture", "engineering.memory.context", "engineering.memory.search", "engineering.memoryos.sync_files", "engineering.orchestrate.batch", "engineering.parallelpath.scan", "engineering.release.run", "engineering.repo.structure", "engineering.runtime.bottlenecks", "engineering.runtime.compare", "engineering.runtime.errors", "engineering.runtime.executions", "engineering.runtime.health", "engineering.runtime.http_probe", "engineering.runtime.investigate", "engineering.runtime.logs", "engineering.runtime.metrics", "engineering.runtime.query", "engineering.runtime.releaseContext", "engineering.runtime.saturation", "engineering.runtime.timeline", "engineering.runtime.trace", "engineering.runtime.watch", "engineering.test.run", "engineering.test.status", "engineering.typecheck.run", "engineering.vision.inspect", "engineering.web.connector"].sort());
+    assert.equal(tools.result.tools.length, 85);
     const statusBeforeCatalog = execFileSync("git", ["status", "--porcelain=v2", "--untracked-files=all"], { cwd: root, encoding: "utf8" });
     const refsBeforeCatalog = execFileSync("git", ["show-ref"], { cwd: root, encoding: "utf8" });
     const registryBeforeCatalog = JSON.stringify(tokenRegistry);
@@ -56,8 +57,8 @@ test("authenticated MCP endpoint exposes exactly the approved tools", async () =
     assert.equal(catalog.serverName, "memoryos-eng-mcp");
     assert.equal(catalog.serverVersion, "0.1.0");
     assert.equal(catalog.repositoryId, "memoryos");
-    assert.equal(catalog.actualToolCount, 82);
-    assert.equal(catalog.catalogVersion, "eng-mcp-tools-v82");
+    assert.equal(catalog.actualToolCount, 85);
+    assert.equal(catalog.catalogVersion, "eng-mcp-tools-v85");
     assert.match(catalog.catalogHash, /^[a-f0-9]{64}$/);
     assert.equal(secondCatalog.catalogHash, catalog.catalogHash);
     const catalogNames = catalog.tools.map((tool: ToolCatalogEntry) => tool.name);
@@ -67,6 +68,8 @@ test("authenticated MCP endpoint exposes exactly the approved tools", async () =
     const access = new Map(catalog.tools.map((tool: ToolCatalogEntry) => [tool.name, tool.access]));
     assert.equal(access.get("engineering.distribution.campaign"), "write");
     assert.equal(access.get("engineering.image.edit"), "write");
+    assert.equal(access.get("engineering.git.inspect_commit"), "read");
+    assert.equal(access.get("engineering.git.inspect_changes"), "read");
     assert.equal(access.get("engineering.image.create"), "write");
     assert.equal(access.get("engineering.image.adapt"), "write");
     assert.equal(access.get("engineering.vision.inspect"), "write");
@@ -79,6 +82,7 @@ test("authenticated MCP endpoint exposes exactly the approved tools", async () =
     assert.equal(access.get("engineering.memory.search"), "read");
     assert.equal(access.get("engineering.memory.capture"), "write");
     assert.equal(access.get("engineering.test.run"), "read");
+    assert.equal(access.get("engineering.test.status"), "read");
     assert.equal(access.get("engineering.release.run"), "write");
     assert.equal(access.get("engineering.typecheck.run"), "read");
     assert.equal(access.get("engineering.memoryos.sync_files"), "write");
@@ -135,6 +139,16 @@ test("authenticated MCP endpoint exposes exactly the approved tools", async () =
     ] } });
     assert.equal(batchWithUnknown.result.isError, true);
 
+    const batchWithInspect = await mcp(endpoint, token, 102, "tools/call", { name: "engineering.orchestrate.batch", arguments: { operations: [
+      { tool: "engineering.git.inspect_changes", arguments: {} },
+      { tool: "engineering.git.inspect_commit", arguments: { ref: "HEAD", mode: "meta" } }
+    ] } });
+    assert.equal(batchWithInspect.result.isError, undefined);
+    const inspectResults = JSON.parse(batchWithInspect.result.content[0].text);
+    assert.equal(inspectResults.results.length, 2);
+    assert.equal(inspectResults.results[0].success, true);
+    assert.equal(inspectResults.results[1].success, true);
+
     const invalidLint = await mcp(endpoint, token, 3, "tools/call", { name: "engineering.lint.run", arguments: { command: "eslint --fix" } });
     assert.equal(invalidLint.result.isError, true);
     for (const [name, argumentsValue] of [
@@ -173,6 +187,43 @@ test("authenticated MCP endpoint exposes exactly the approved tools", async () =
     const before = execFileSync("git", ["status", "--porcelain=v2"], { cwd: root, encoding: "utf8" });
     const after = execFileSync("git", ["status", "--porcelain=v2"], { cwd: root, encoding: "utf8" });
     assert.equal(after, before);
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
+
+test("engineering.test.run suite profile starts a persisted job without waiting (skips where the release runner socket exists)", async () => {
+  const socketPath = process.env.ENG_MCP_RELEASE_SOCKET ?? "/opt/eng-mcp-release-data/run/release-runner.sock";
+  if (existsSync(socketPath)) return; // honest skip: a test must never touch the real release runner
+  const root = await fixture();
+  const token = "integration-token";
+  const tokenRegistry = [{ tokenHash: createHash("sha256").update(token).digest("hex"), subject: "tester", scopes: ["engineering:read", "engineering:write", "engineering:verify", "engineering:git", "engineering:release"], allowedRepositoryIds: ["memoryos"], expiresAt: "2099-01-01T00:00:00.000Z" }];
+  const server = await createEngineeringHttpServer({ repositoryId: "memoryos", configuredRoot: root, tokenRegistry });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const endpoint = `http://127.0.0.1:${address.port}/mcp`;
+  try {
+    await mcp(endpoint, token, 1, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } });
+    const started = await mcp(endpoint, token, 2, "tools/call", { name: "engineering.test.run", arguments: { mode: "suite" } });
+    assert.equal(started.result.isError, undefined);
+    const job = JSON.parse(started.result.content[0].text);
+    assert.equal(job.status, "RUNNING");
+    assert.equal(job.executor, "release-runner");
+    assert.match(job.executionId, /^suite-[a-z0-9]+-[a-f0-9]{8}$/);
+    const deadline = Date.now() + 15_000;
+    let terminal: Record<string, unknown> | null = null;
+    while (Date.now() < deadline) {
+      const status = await mcp(endpoint, token, 3, "tools/call", { name: "engineering.test.status", arguments: { executionId: job.executionId } });
+      assert.equal(status.result.isError, undefined);
+      const view = JSON.parse(status.result.content[0].text);
+      if (view.status === "INFRA_ERROR" || view.status === "PASS" || view.status === "FAIL") { terminal = view; break; }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    assert.ok(terminal, "suite job must reach a terminal state without the release runner");
+    assert.equal(terminal.status, "INFRA_ERROR");
+    assert.ok(Array.isArray(terminal.infraFailures) && terminal.infraFailures.length >= 1);
+    assert.equal(terminal.failed, null); // INFRA never increments failed counters
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
   }
