@@ -475,3 +475,90 @@ test("engineering.distribution.publish requires the operator-issued engineering:
     server.close();
   }
 });
+
+// ITEM-0 SCOPE GAP — engineering.vps.change.safe (and the guardian approved-mutation
+// path) now require the operator-issued engineering:vps:application:redeploy scope,
+// mirroring the engineering:distribution:publish enforcement pattern above. Read-only
+// guardian classification must stay reachable WITHOUT the mutation scope (no side-door,
+// no usability regression). All four probes are offline: the scope refusal fires at the
+// tool boundary before any transport exists; the positive control runs plan-only and
+// fails closed at transport validation, never on scope.
+test("engineering.vps.change.safe requires the operator-issued engineering:vps:application:redeploy scope", async () => {
+  const root = await fixture();
+  const token = "vps-change-scope-refusal-token";
+  const tokenRegistry = [{ tokenHash: createHash("sha256").update(token).digest("hex"), subject: "tester", scopes: ["engineering:read", "engineering:write", "engineering:verify", "engineering:git", "engineering:release"], allowedRepositoryIds: ["memoryos"], expiresAt: "2099-01-01T00:00:00.000Z" }];
+  const server = await createEngineeringHttpServer({ repositoryId: "memoryos", configuredRoot: root, tokenRegistry });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const endpoint = `http://127.0.0.1:${address.port}/mcp`;
+  try {
+    await mcp(endpoint, token, 1, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } });
+    await mcp(endpoint, token, 2, "notifications/initialized", {});
+    const call = await mcp(endpoint, token, 3, "tools/call", { name: "engineering.vps.change.safe", arguments: { action: "redeploy_application", target: { applicationId: "app-test" }, execute: true, approval: { approved: true } } });
+    const text = JSON.stringify(call.result);
+    assert.ok(text.includes("AUTHORIZATION_SCOPE_REQUIRED"), `expected scope refusal, got ${text.slice(0, 300)}`);
+  } finally {
+    server.close();
+  }
+});
+
+test("engineering.vps.change.safe accepts a token holding engineering:vps:application:redeploy (plan-only; fails closed downstream, never on scope)", async () => {
+  const root = await fixture();
+  const token = "vps-change-scope-granted-token";
+  const tokenRegistry = [{ tokenHash: createHash("sha256").update(token).digest("hex"), subject: "tester", scopes: ["engineering:read", "engineering:write", "engineering:verify", "engineering:git", "engineering:release", "engineering:vps:application:redeploy"], allowedRepositoryIds: ["memoryos"], expiresAt: "2099-01-01T00:00:00.000Z" }];
+  const server = await createEngineeringHttpServer({ repositoryId: "memoryos", configuredRoot: root, tokenRegistry });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const endpoint = `http://127.0.0.1:${address.port}/mcp`;
+  try {
+    await mcp(endpoint, token, 1, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } });
+    await mcp(endpoint, token, 2, "notifications/initialized", {});
+    const call = await mcp(endpoint, token, 3, "tools/call", { name: "engineering.vps.change.safe", arguments: { action: "redeploy_application", target: { applicationId: "app-test" } } });
+    const text = JSON.stringify(call.result);
+    assert.ok(!text.includes("AUTHORIZATION_SCOPE_REQUIRED"), `scope gate must open for the granted scope, got ${text.slice(0, 300)}`);
+  } finally {
+    server.close();
+  }
+});
+
+test("engineering.vps.guardian requires engineering:vps:application:redeploy only for approved mutation requests", async () => {
+  const root = await fixture();
+  const token = "vps-guardian-mutation-scope-token";
+  const tokenRegistry = [{ tokenHash: createHash("sha256").update(token).digest("hex"), subject: "tester", scopes: ["engineering:read", "engineering:write", "engineering:verify", "engineering:git", "engineering:release"], allowedRepositoryIds: ["memoryos"], expiresAt: "2099-01-01T00:00:00.000Z" }];
+  const server = await createEngineeringHttpServer({ repositoryId: "memoryos", configuredRoot: root, tokenRegistry });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const endpoint = `http://127.0.0.1:${address.port}/mcp`;
+  try {
+    await mcp(endpoint, token, 1, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } });
+    await mcp(endpoint, token, 2, "notifications/initialized", {});
+    const call = await mcp(endpoint, token, 3, "tools/call", { name: "engineering.vps.guardian", arguments: { execute: true, approval: { approved: true } } });
+    const text = JSON.stringify(call.result);
+    assert.ok(text.includes("AUTHORIZATION_SCOPE_REQUIRED"), `expected scope refusal for approved mutation, got ${text.slice(0, 300)}`);
+  } finally {
+    server.close();
+  }
+});
+
+test("engineering.vps.guardian read-only classification stays reachable without the mutation scope", async () => {
+  const root = await fixture();
+  const token = "vps-guardian-readonly-token";
+  const tokenRegistry = [{ tokenHash: createHash("sha256").update(token).digest("hex"), subject: "tester", scopes: ["engineering:read", "engineering:write", "engineering:verify", "engineering:git", "engineering:release"], allowedRepositoryIds: ["memoryos"], expiresAt: "2099-01-01T00:00:00.000Z" }];
+  const server = await createEngineeringHttpServer({ repositoryId: "memoryos", configuredRoot: root, tokenRegistry });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const endpoint = `http://127.0.0.1:${address.port}/mcp`;
+  try {
+    await mcp(endpoint, token, 1, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } });
+    await mcp(endpoint, token, 2, "notifications/initialized", {});
+    const call = await mcp(endpoint, token, 3, "tools/call", { name: "engineering.vps.guardian", arguments: {} });
+    const text = JSON.stringify(call.result);
+    assert.ok(!text.includes("AUTHORIZATION_SCOPE_REQUIRED"), `read-only guardian must not demand the mutation scope, got ${text.slice(0, 300)}`);
+  } finally {
+    server.close();
+  }
+});
