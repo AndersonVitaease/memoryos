@@ -436,11 +436,11 @@ async function testAction(config) {
   const sourceHash = await calculateSourceHash(canonicalSource);
   // SUITE-SKIP-01: a suíte completa custa ~4min — skipa quando o MESMO conjunto
   // de insumos (tracked + untracked + manifests) já tem PASS registrado e a
-  // árvore dos insumos está limpa no git. O state permanece intocado (o
-  // testedAt anterior é mantido de propósito: não houve re-execução).
+  // árvore TRACKED dos insumos está limpa (--untracked-files=no — os untracked permanentes
+  // de backup/credencial já entram no suiteInputsHash). State intocado (testedAt original mantido).
   const suiteInputsHash = await calculateSuiteInputsHash(canonicalSource);
   const previous = await loadState(config);
-  const dirtyInputs = (await runProcess("git", ["-C", canonicalSource, "status", "--porcelain", "--", "test", "src", "scripts"])).stdout.trim();
+  const dirtyInputs = (await runProcess("git", ["-C", canonicalSource, "status", "--porcelain", "--untracked-files=no", "--", "test", "src", "scripts"])).stdout.trim();
   if (previous.testStatus === "PASS" && previous.testSourceHash === sourceHash && previous.testSuiteInputsHash === suiteInputsHash && dirtyInputs === "") {
     console.error("[release] TEST SKIPPED: PASS already recorded for identical suite inputs (sourceHash=%s suiteInputsHash=%s)", sourceHash.slice(0, 12), suiteInputsHash.slice(0, 12));
     return previous;
