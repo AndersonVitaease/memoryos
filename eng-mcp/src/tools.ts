@@ -72,7 +72,7 @@ export function installToolAliasCompatibility(mcpServer: unknown): void {
 function response(value: unknown) { return { content: [{ type: "text" as const, text: JSON.stringify(value) ?? "null" }] }; }
 
 type ReleaseOperation = "test" | "build" | "candidate" | "deploy" | "status" | "smoke" | "rollback";
-const releaseTimeouts = { test: 910_000, build: 130_000, candidate: 610_000, deploy: 30_000, status: 30_000, smoke: 310_000, rollback: 130_000 };
+const releaseTimeouts = { test: 1_210_000, build: 130_000, candidate: 610_000, deploy: 30_000, status: 30_000, smoke: 310_000, rollback: 130_000 };
 let releasePipelineBusy = false;
 
 // Only the official Unix socket API is reachable; no caller-supplied URL or command.

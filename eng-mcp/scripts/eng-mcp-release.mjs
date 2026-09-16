@@ -15,23 +15,23 @@ const WORKTREE_ROOT = "/opt/eng-mcp-release-data/worktrees";
 // Determina o repository root de forma determinística
 async function resolveRepositoryRoot(config) {
   const canonicalSource = path.resolve(config.canonicalSource);
-  
+
   // Verifica se o diretório existe
   await access(canonicalSource);
-  
+
   // Garante que canonicalSource está dentro do repositório ENG-MCP
   const gitRootResult = await runProcess("git", ["-C", canonicalSource, "rev-parse", "--show-toplevel"], { cwd: canonicalSource }).catch(() => ({ exitCode: 1, stdout: "", stderr: "" }));
   if (gitRootResult.exitCode !== 0) {
     throw new Error(`REPOSITORY_ROOT_INVALID: ${canonicalSource} não é um repositório Git`);
   }
-  
+
   const gitRoot = path.resolve(gitRootResult.stdout.trim());
-  
+
   // Garante que não estamos escapando do repositório
   if (!canonicalSource.startsWith(gitRoot + path.sep) && canonicalSource !== gitRoot) {
     throw new Error(`REPOSITORY_ROOT_ESCAPE: ${canonicalSource} fora do repositório Git ${gitRoot}`);
   }
-  
+
   return gitRoot;
 }
 
@@ -116,7 +116,7 @@ export async function deriveExpectedCatalog(source) {
     if (count === 0) throw new Error("EXPECTED_TOOL_CATALOG_NOT_FOUND");
     return { count, tools };
   }
-  
+
   // Tenta parsear o array JSON-like
   let catalogArray;
   try {
@@ -125,7 +125,7 @@ export async function deriveExpectedCatalog(source) {
   } catch {
     throw new Error("EXPECTED_TOOL_CATALOG_INVALID");
   }
-  
+
   const tools = catalogArray.map(entry => entry.name).sort();
   const count = tools.length;
   if (count === 0) throw new Error("EXPECTED_TOOL_CATALOG_NOT_FOUND");
@@ -240,13 +240,13 @@ async function saveState(config, state) {
 async function sourceFiles(root, directory = root) {
   // Usar git ls-files para enumerar arquivos trackeados (mais seguro)
   const tracked = await gitTrackedFiles(root);
-  
+
   // Filtrar para manter apenas arquivos no diretório especificado (se directory !== root)
   if (directory !== root) {
     const prefix = path.relative(root, directory).replaceAll(path.sep, "/") + "/";
     return tracked.filter(file => file.relative.startsWith(prefix));
   }
-  
+
   return tracked;
 }
 
@@ -254,6 +254,37 @@ async function calculateSourceHash(root) {
   const hash = createHash("sha256");
   for (const file of await sourceFiles(root)) { hash.update(file.relative).update("\0").update(await readFile(file.absolute)).update("\0"); }
   return hash.digest("hex");
+}
+
+// SUITE-SKIP-01: timeout do stage test configurável via env, clampado a [300s, 900s]; default 600s (baseline da suíte ≈ 239s).
+function testTimeoutMs() {
+  const requested = Number(process.env.ENG_MCP_RELEASE_TEST_TIMEOUT_MS);
+  if (!Number.isFinite(requested) || requested <= 0) return 600_000;
+  return Math.min(900_000, Math.max(300_000, Math.trunc(requested)));
+}
+
+// SUITE-SKIP-01: hash dos insumos reais da suíte direto do FS — cobre untracked
+// (calculateSourceHash é tracked-only, via git ls-files). Qualquer mudança em
+// test/, src/, scripts/ ou nos manifests raiz invalida o skip da suíte.
+async function calculateSuiteInputsHash(root) {
+  const hash = createHash("sha256");
+  for (const directory of ["scripts", "src", "test"]) await hashTree(root, directory, hash);
+  hash.update(await readFile(path.join(root, "package.json")));
+  hash.update(await readFile(path.join(root, "package-lock.json")));
+  return hash.digest("hex");
+}
+
+async function hashTree(root, directory, hash) {
+  const entries = await readdir(path.join(root, directory), { withFileTypes: true });
+  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+    if (entry.name === "node_modules") continue;
+    if (entry.isDirectory()) {
+      await hashTree(root, `${directory}/${entry.name}`, hash);
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    hash.update(`${directory}/${entry.name}`).update("\0").update(await readFile(path.join(root, directory, entry.name))).update("\0");
+  }
 }
 
 async function calculateCommitHash(repositoryPath, commit) {
@@ -277,7 +308,7 @@ async function expectedCatalog(config) {
   const canonicalSource = path.resolve(config.canonicalSource);
   const toolsPath = path.join(canonicalSource, "src/tools.ts");
   const toolsSource = await readFile(toolsPath, "utf8");
-  
+
   const catalog = await deriveExpectedCatalog(toolsSource);
   for (const required of config.requiredTools) if (!catalog.tools.includes(required)) throw new Error(`REQUIRED_TOOL_MISSING:${required}`);
   return catalog;
@@ -345,7 +376,7 @@ async function testCommitAction(config, commit, jobId) {
     const built = await mustRun("docker", ["build", "-q", worktreePath], { timeoutMs: 600_000 });
     const testImageId = built.stdout.trim().split(/\s+/).at(-1);
     if (!/^sha256:[a-f0-9]{64}$/.test(testImageId)) throw new Error("TEST_IMAGE_ID_INVALID");
-    const suite = await runProcess("docker", ["run", "--rm", "-v", `${path.join(worktreePath, "scripts")}:/app/scripts:ro`, testImageId, "node", "--test", "--test-force-exit", "test/*.test.ts"], { timeoutMs: 300_000 });
+    const suite = await runProcess("docker", ["run", "--rm", "-v", `${path.join(worktreePath, "scripts")}:/app/scripts:ro`, testImageId, "node", "--test", "--test-force-exit", "test/*.test.ts"], { timeoutMs: testTimeoutMs() });
     const tests = Number(/(?:^|\n)â„¹ tests (\d+)/.exec(suite.stdout)?.[1] ?? 0);
     const passed = Number(/(?:^|\n)â„¹ pass (\d+)/.exec(suite.stdout)?.[1] ?? 0);
     const failed = Number(/(?:^|\n)â„¹ fail (\d+)/.exec(suite.stdout)?.[1] ?? -1);
@@ -403,6 +434,17 @@ async function testAction(config) {
   const canonicalSource = path.resolve(config.canonicalSource);
   await access(canonicalSource);
   const sourceHash = await calculateSourceHash(canonicalSource);
+  // SUITE-SKIP-01: a suíte completa custa ~4min — skipa quando o MESMO conjunto
+  // de insumos (tracked + untracked + manifests) já tem PASS registrado e a
+  // árvore dos insumos está limpa no git. O state permanece intocado (o
+  // testedAt anterior é mantido de propósito: não houve re-execução).
+  const suiteInputsHash = await calculateSuiteInputsHash(canonicalSource);
+  const previous = await loadState(config);
+  const dirtyInputs = (await runProcess("git", ["-C", canonicalSource, "status", "--porcelain", "--", "test", "src", "scripts"])).stdout.trim();
+  if (previous.testStatus === "PASS" && previous.testSourceHash === sourceHash && previous.testSuiteInputsHash === suiteInputsHash && dirtyInputs === "") {
+    console.error("[release] TEST SKIPPED: PASS already recorded for identical suite inputs (sourceHash=%s suiteInputsHash=%s)", sourceHash.slice(0, 12), suiteInputsHash.slice(0, 12));
+    return previous;
+  }
   const catalog = await expectedCatalog(config);
   const diff = await runProcess("git", ["-C", canonicalSource, "diff", "--check"]);
   if (diff.exitCode !== 0) throw new Error(`DIFF_CHECK_FAILED:${diff.stderr || diff.stdout}`);
@@ -410,11 +452,11 @@ async function testAction(config) {
   const built = await mustRun("docker", ["build", "-q", canonicalSource], { timeoutMs: 600_000 });
   const testImageId = built.stdout.trim().split(/\s+/).at(-1);
   if (!/^sha256:[a-f0-9]{64}$/.test(testImageId)) throw new Error("TEST_IMAGE_ID_INVALID");
-  const suite = await runProcess("docker", ["run", "--rm", "-v", `${path.join(canonicalSource, "scripts")}:/app/scripts:ro`, testImageId, "npm", "test"], { timeoutMs: 300_000 });
+  const suite = await runProcess("docker", ["run", "--rm", "-v", `${path.join(canonicalSource, "scripts")}:/app/scripts:ro`, testImageId, "npm", "test"], { timeoutMs: testTimeoutMs() });
   const tests = Number(/^.*\btests (\d+)\s*$/m.exec(suite.stdout)?.[1] ?? 0);
   const passed = Number(/^.*\bpass (\d+)\s*$/m.exec(suite.stdout)?.[1] ?? 0);
   const failed = Number(/^.*\bfail (\d+)\s*$/m.exec(suite.stdout)?.[1] ?? -1);
-  const state = { ...invalidateDownstreamState(await loadState(config)), testStatus: suite.exitCode === 0 && failed === 0 ? "PASS" : "FAIL", testSourceHash: sourceHash, testImageId, tests, passed, failed, expectedToolCount: catalog.count, expectedTools: catalog.tools, testedAt: new Date().toISOString() };
+  const state = { ...invalidateDownstreamState(await loadState(config)), testStatus: suite.exitCode === 0 && failed === 0 ? "PASS" : "FAIL", testSourceHash: sourceHash, testSuiteInputsHash: suiteInputsHash, testImageId, tests, passed, failed, expectedToolCount: catalog.count, expectedTools: catalog.tools, testedAt: new Date().toISOString() };
   await saveState(config, state);
   if (state.testStatus !== "PASS") {
     // RELEASE-TEST-DIAGNOSTICS-04: extrai os failures reais do TAP, aplica a
