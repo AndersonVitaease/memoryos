@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
+import { createServer } from "node:http";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -43,8 +44,8 @@ test("authenticated MCP endpoint exposes exactly the approved tools", async () =
     const initialized = await mcp(endpoint, token, 1, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } });
     assert.equal(initialized.result.serverInfo.name, "memoryos-eng-mcp");
     const tools = await mcp(endpoint, token, 2, "tools/list", {});
-    assert.deepEqual(tools.result.tools.map((tool: { name: string }) => tool.name).sort(), ["engineering.app.health", "engineering.sandbox.batchWrite", "engineering.sandbox.cancel", "engineering.sandbox.create", "engineering.sandbox.destroy", "engineering.sandbox.exec", "engineering.sandbox.inspect", "engineering.image.adapt", "engineering.bug.trace", "engineering.docker.health", "engineering.deploy.ready", "engineering.logs.explain", "engineering.release.test", "engineering.release.pipeline", "engineering.supervised_mission", "engineering.vps.capacity", "engineering.vps.change.safe", "engineering.vps.doctor", "engineering.vps.guardian", "engineering.vps.health", "engineering.vps.incident.summary", "engineering.vps.why_down", "engineering.deploy.status", "engineering.vps.reconcile", "engineering.vps.recover", "engineering.vps.what_changed", "engineering.change.impact", "engineering.code.impact", "engineering.code.references", "engineering.code.search", "engineering.code.understand", "engineering.compliance.assess", "engineering.contract.verify", "engineering.deadcode.scan", "engineering.distribution.campaign", "engineering.distribution.prepare", "engineering.distribution.publish", "engineering.file.create", "engineering.file.patch", "engineering.file.read", "engineering.git.branches", "engineering.git.commit", "engineering.git.diff", "engineering.git.inspect_changes", "engineering.git.inspect_commit", "engineering.git.log", "engineering.git.remote_compare", "engineering.git.stage", "engineering.git.status", "engineering.git.unstage", "engineering.git.worktrees", "engineering.guardian.app.deploy", "engineering.image.create", "engineering.image.edit", "engineering.lint.run", "engineering.manifest.edit", "engineering.mcp.catalog", "engineering.memory.capture", "engineering.memory.context", "engineering.memory.search", "engineering.memoryos.sync_files", "engineering.orchestrate.batch", "engineering.parallelpath.scan", "engineering.release.run", "engineering.repo.structure", "engineering.runtime.bottlenecks", "engineering.runtime.compare", "engineering.runtime.errors", "engineering.runtime.executions", "engineering.runtime.health", "engineering.runtime.http_probe", "engineering.runtime.investigate", "engineering.runtime.logs", "engineering.runtime.metrics", "engineering.runtime.query", "engineering.runtime.releaseContext", "engineering.runtime.saturation", "engineering.runtime.timeline", "engineering.runtime.trace", "engineering.runtime.watch", "engineering.test.run", "engineering.test.status", "engineering.typecheck.run", "engineering.vision.inspect", "engineering.web.connector"].sort());
-    assert.equal(tools.result.tools.length, 85);
+    assert.deepEqual(tools.result.tools.map((tool: { name: string }) => tool.name).sort(), ["engineering.app.health", "engineering.sandbox.batchWrite", "engineering.sandbox.cancel", "engineering.sandbox.create", "engineering.sandbox.destroy", "engineering.sandbox.exec", "engineering.sandbox.inspect", "engineering.image.adapt", "engineering.bug.trace", "engineering.docker.health", "engineering.deploy.ready", "engineering.logs.explain", "engineering.release.test", "engineering.release.pipeline", "engineering.supervised_mission", "engineering.vps.capacity", "engineering.vps.change.safe", "engineering.vps.doctor", "engineering.vps.guardian", "engineering.vps.health", "engineering.vps.incident.summary", "engineering.vps.why_down", "engineering.deploy.status", "engineering.vps.reconcile", "engineering.vps.recover", "engineering.vps.runner.restart", "engineering.vps.what_changed", "engineering.change.impact", "engineering.code.impact", "engineering.code.references", "engineering.code.search", "engineering.code.understand", "engineering.compliance.assess", "engineering.contract.verify", "engineering.deadcode.scan", "engineering.distribution.campaign", "engineering.distribution.prepare", "engineering.distribution.publish", "engineering.file.create", "engineering.file.patch", "engineering.file.read", "engineering.git.branches", "engineering.git.commit", "engineering.git.diff", "engineering.git.inspect_changes", "engineering.git.inspect_commit", "engineering.git.log", "engineering.git.remote_compare", "engineering.git.stage", "engineering.git.status", "engineering.git.unstage", "engineering.git.worktrees", "engineering.guardian.app.deploy", "engineering.image.create", "engineering.image.edit", "engineering.lint.run", "engineering.manifest.edit", "engineering.mcp.catalog", "engineering.memory.capture", "engineering.memory.context", "engineering.memory.search", "engineering.memoryos.sync_files", "engineering.orchestrate.batch", "engineering.parallelpath.scan", "engineering.release.run", "engineering.repo.structure", "engineering.runtime.bottlenecks", "engineering.runtime.compare", "engineering.runtime.errors", "engineering.runtime.executions", "engineering.runtime.health", "engineering.runtime.http_probe", "engineering.runtime.investigate", "engineering.runtime.logs", "engineering.runtime.metrics", "engineering.runtime.query", "engineering.runtime.releaseContext", "engineering.runtime.saturation", "engineering.runtime.timeline", "engineering.runtime.trace", "engineering.runtime.watch", "engineering.test.run", "engineering.test.status", "engineering.typecheck.run", "engineering.vision.inspect", "engineering.web.connector"].sort());
+    assert.equal(tools.result.tools.length, 86);
     const statusBeforeCatalog = execFileSync("git", ["status", "--porcelain=v2", "--untracked-files=all"], { cwd: root, encoding: "utf8" });
     const refsBeforeCatalog = execFileSync("git", ["show-ref"], { cwd: root, encoding: "utf8" });
     const registryBeforeCatalog = JSON.stringify(tokenRegistry);
@@ -57,8 +58,8 @@ test("authenticated MCP endpoint exposes exactly the approved tools", async () =
     assert.equal(catalog.serverName, "memoryos-eng-mcp");
     assert.equal(catalog.serverVersion, "0.1.0");
     assert.equal(catalog.repositoryId, "memoryos");
-    assert.equal(catalog.actualToolCount, 85);
-    assert.equal(catalog.catalogVersion, "eng-mcp-tools-v85");
+    assert.equal(catalog.actualToolCount, 86);
+    assert.equal(catalog.catalogVersion, "eng-mcp-tools-v86");
     assert.match(catalog.catalogHash, /^[a-f0-9]{64}$/);
     assert.equal(secondCatalog.catalogHash, catalog.catalogHash);
     const catalogNames = catalog.tools.map((tool: ToolCatalogEntry) => tool.name);
@@ -559,6 +560,115 @@ test("engineering.vps.guardian read-only classification stays reachable without 
     const text = JSON.stringify(call.result);
     assert.ok(!text.includes("AUTHORIZATION_SCOPE_REQUIRED"), `read-only guardian must not demand the mutation scope, got ${text.slice(0, 300)}`);
   } finally {
+    server.close();
+  }
+});
+
+// ITEM-1: stub of the official release runner unix socket (same pattern as the
+// release-test integration scaffold): canned answers per operation, private
+// socket path inside a tempdir, ENG_MCP_RELEASE_SOCKET swapped for the call and
+// restored on close.
+async function stubReleaseRunner(responder: (operation: string) => { httpStatus: number; body: unknown }) {
+  const dir = await mkdtemp(path.join(tmpdir(), "eng-mcp-runner-restart-"));
+  const socketPath = path.join(dir, "runner.sock");
+  const stub = createServer((request, response) => {
+    const chunks: Buffer[] = [];
+    request.on("data", (chunk: Buffer) => chunks.push(chunk));
+    request.on("end", () => {
+      let operation = "";
+      try { operation = String((JSON.parse(Buffer.concat(chunks).toString("utf8")) as { operation?: string }).operation ?? ""); } catch { operation = ""; }
+      const result = responder(operation);
+      response.writeHead(result.httpStatus, { "content-type": "application/json" });
+      response.end(JSON.stringify(result.body));
+    });
+  });
+  await new Promise<void>((resolve, reject) => { stub.once("error", reject); stub.listen(socketPath, resolve); });
+  const previousSocket = process.env.ENG_MCP_RELEASE_SOCKET;
+  process.env.ENG_MCP_RELEASE_SOCKET = socketPath;
+  return {
+    close: async () => {
+      process.env.ENG_MCP_RELEASE_SOCKET = previousSocket;
+      await new Promise<void>((resolve) => stub.close(() => resolve()));
+      await rm(dir, { recursive: true, force: true });
+    }
+  };
+}
+
+const RUNNER_RESTART_META = { pid: 111, uptime: 12, startedAt: "2026-09-16T00:00:00.000Z", draining: false, lastRestartId: null, lastRestartOutcome: null, lastRecoveryMarked: 0, unit: { restart: "on-failure", successExitStatus: ["42"], restartForceExitStatus: ["42"] } };
+
+test("engineering.vps.runner.restart requires the operator-issued engineering:vps:runner:restart scope", async () => {
+  const root = await fixture();
+  const token = "vps-runner-restart-refusal-token";
+  const tokenRegistry = [{ tokenHash: createHash("sha256").update(token).digest("hex"), subject: "tester", scopes: ["engineering:read", "engineering:write", "engineering:verify", "engineering:git", "engineering:release"], allowedRepositoryIds: ["memoryos"], expiresAt: "2099-01-01T00:00:00.000Z" }];
+  const server = await createEngineeringHttpServer({ repositoryId: "memoryos", configuredRoot: root, tokenRegistry });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const endpoint = `http://127.0.0.1:${address.port}/mcp`;
+  try {
+    await mcp(endpoint, token, 1, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } });
+    await mcp(endpoint, token, 2, "notifications/initialized", {});
+    const call = await mcp(endpoint, token, 3, "tools/call", { name: "engineering.vps.runner.restart", arguments: { execute: true, approval: { approved: true } } });
+    const text = JSON.stringify(call.result);
+    assert.ok(text.includes("AUTHORIZATION_SCOPE_REQUIRED"), `expected scope refusal, got ${text.slice(0, 300)}`);
+  } finally {
+    server.close();
+  }
+});
+
+test("engineering.vps.runner.restart plan-only is reachable with the granted scope and never mutates", async () => {
+  const root = await fixture();
+  const token = "vps-runner-restart-plan-token";
+  const tokenRegistry = [{ tokenHash: createHash("sha256").update(token).digest("hex"), subject: "tester", scopes: ["engineering:read", "engineering:write", "engineering:verify", "engineering:git", "engineering:release", "engineering:vps:runner:restart"], allowedRepositoryIds: ["memoryos"], expiresAt: "2099-01-01T00:00:00.000Z" }];
+  const server = await createEngineeringHttpServer({ repositoryId: "memoryos", configuredRoot: root, tokenRegistry });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const endpoint = `http://127.0.0.1:${address.port}/mcp`;
+  const stub = await stubReleaseRunner((operation) => operation === "status" ? { httpStatus: 200, body: { operation: "status", success: true, runnerMeta: RUNNER_RESTART_META } } : { httpStatus: 400, body: { error: "UNEXPECTED_CALL" } });
+  try {
+    await mcp(endpoint, token, 1, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } });
+    await mcp(endpoint, token, 2, "notifications/initialized", {});
+    const call = await mcp(endpoint, token, 3, "tools/call", { name: "engineering.vps.runner.restart", arguments: {} });
+    const text = JSON.stringify(call.result);
+    assert.ok(!text.includes("AUTHORIZATION_SCOPE_REQUIRED"), `plan-only must not demand the mutation scope, got ${text.slice(0, 300)}`);
+    const payload = JSON.parse(call.result.content[0].text);
+    assert.equal(payload.status, "PLAN");
+    assert.equal(payload.mutationPerformed, false);
+    assert.equal(payload.precheck.runnerReachable, true);
+    assert.equal(payload.plan.possible, true);
+  } finally {
+    await stub.close();
+    server.close();
+  }
+});
+
+test("engineering.vps.runner.restart mutation with the granted scope stays fail-closed when the runner itself refuses (jobs in flight)", async () => {
+  const root = await fixture();
+  const token = "vps-runner-restart-mutation-token";
+  const tokenRegistry = [{ tokenHash: createHash("sha256").update(token).digest("hex"), subject: "tester", scopes: ["engineering:read", "engineering:write", "engineering:verify", "engineering:git", "engineering:release", "engineering:vps:runner:restart"], allowedRepositoryIds: ["memoryos"], expiresAt: "2099-01-01T00:00:00.000Z" }];
+  const server = await createEngineeringHttpServer({ repositoryId: "memoryos", configuredRoot: root, tokenRegistry });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const endpoint = `http://127.0.0.1:${address.port}/mcp`;
+  const stub = await stubReleaseRunner((operation) => {
+    if (operation === "status") return { httpStatus: 200, body: { operation: "status", success: true, runnerMeta: RUNNER_RESTART_META } };
+    if (operation === "restart") return { httpStatus: 409, body: { operation: "restart", accepted: false, refused: true, blockers: ["JOBS_IN_FLIGHT:job-1:deploy"], error: "RUNNER_RESTART_REFUSED:JOBS_IN_FLIGHT:job-1:deploy" } };
+    return { httpStatus: 400, body: { error: "UNEXPECTED_CALL" } };
+  });
+  try {
+    await mcp(endpoint, token, 1, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } });
+    await mcp(endpoint, token, 2, "notifications/initialized", {});
+    const call = await mcp(endpoint, token, 3, "tools/call", { name: "engineering.vps.runner.restart", arguments: { execute: true, approval: { approved: true } } });
+    const text = JSON.stringify(call.result);
+    assert.ok(!text.includes("AUTHORIZATION_SCOPE_REQUIRED"), `scope gate must open for the granted scope, got ${text.slice(0, 300)}`);
+    const payload = JSON.parse(call.result.content[0].text);
+    assert.equal(payload.status, "NOT_RESTARTED");
+    assert.equal(payload.mutationPerformed, false);
+    assert.ok(text.includes("JOBS_IN_FLIGHT:job-1:deploy"), `runner blockers must surface, got ${text.slice(0, 400)}`);
+  } finally {
+    await stub.close();
     server.close();
   }
 });

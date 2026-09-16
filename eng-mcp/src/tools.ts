@@ -13,6 +13,7 @@ import { runVpsChangeSafe, createMcpClientCallTransport, DOKPLOY_SERVER_ID_DEFAU
 import { runVpsDoctor } from "./vpsDoctor.ts";
 import { runVpsReconcile } from "./vpsReconcile.ts";
 import { runVpsRecover, vpsRecoverInputSchema } from "./vpsRecover.ts";
+import { runVpsRunnerRestart, vpsRunnerRestartInputSchema } from "./vpsRunnerRestart.ts";
 import { guardianInputSchema, runVpsGuardian } from "./vpsGuardian.ts";
 import { runGuardianAppDeploy } from "./guardianAppDeploy.ts";
 import { runVpsHealth, runVpsWhyDown, runDeployStatus, runVpsCapacity, runVpsWhatChanged, runAppHealth, runVpsIncidentSummary, runDeployReady, runDockerHealth, runLogsExplain } from "./simpleTools.ts";
@@ -71,8 +72,8 @@ export function installToolAliasCompatibility(mcpServer: unknown): void {
 
 function response(value: unknown) { return { content: [{ type: "text" as const, text: JSON.stringify(value) ?? "null" }] }; }
 
-type ReleaseOperation = "test" | "build" | "candidate" | "deploy" | "status" | "smoke" | "rollback";
-const releaseTimeouts = { test: 1_210_000, build: 130_000, candidate: 610_000, deploy: 30_000, status: 30_000, smoke: 310_000, rollback: 130_000 };
+type ReleaseOperation = "test" | "build" | "candidate" | "deploy" | "status" | "smoke" | "rollback" | "restart";
+const releaseTimeouts = { test: 1_210_000, build: 130_000, candidate: 610_000, deploy: 30_000, status: 30_000, smoke: 310_000, rollback: 130_000, restart: 30_000 };
 let releasePipelineBusy = false;
 
 // Only the official Unix socket API is reachable; no caller-supplied URL or command.
@@ -279,6 +280,9 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   // engineering:distribution:publish enforcement pattern (operator-issued token via
   // src/token-create.ts / ENG_MCP_TOKEN_SCOPES; the agent cannot self-authorize).
   const requireVpsChangeSafe = () => { if (!subject.scopes.includes("engineering:vps:application:redeploy")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
+  // ITEM-1: restart of the official release runner service is a governed mutation of
+  // a long-lived service — its own scope, mirroring the <resource>:<action> convention.
+  const requireVpsRunnerRestart = () => { if (!subject.scopes.includes("engineering:vps:runner:restart")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
 
   const observability = new ObservabilityClient();
   const agentMemory = new AgentMemoryClient();
@@ -671,6 +675,34 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
     requireWrite();
     requireVpsChangeSafe();
     return response(await runVpsChangeSafe(subject.subject, input));
+  }));
+  // engineering.vps.runner.restart — controlled restart supertool for the official
+  // release runner service (eng-mcp-release-runner.service), the ONLY long-lived
+  // service this server may recycle. Zero raw shell/SSH/systemctl: the mutation is
+  // the runner's OWN governed "restart" operation over the official Unix socket
+  // channel (the runner drains, persists a restart-intent snapshot and self-exits
+  // with protocol code 42; the systemd supervisor recycles it and the next boot's
+  // recover() completes the intent). PLAN mode (execute defaults to false) is
+  // read-only. Mutation requires execute=true AND approval.approved=true;
+  // 202/accepted is NEVER RESTARTED: bounded status polling requires ALL five
+  // criteria (runner reachable, pid changed, lastRestartId match, lastRestartOutcome
+  // completed, zero orphaned jobs); exhaustion -> UNKNOWN/pending with the durable
+  // restartId; non-202 -> NOT_RESTARTED with the runner's own blockers. No LLM;
+  // no SSH/shell; nothing caller-controlled reaches the request body.
+  register("engineering.vps.runner.restart", "write", (name) => server.registerTool(name, {
+    description: "Controlled restart supertool for the official release runner service (eng-mcp-release-runner.service): zero raw shell/SSH/systemctl — the mutation is the runner's OWN governed restart operation over the official Unix socket channel (the runner drains, persists a restart-intent snapshot and self-exits with protocol code 42; the systemd supervisor recycles it and the next boot completes the intent). PLAN mode (execute defaults to false) is read-only. Mutation requires execute=true AND approval.approved=true. 202/accepted is NEVER RESTARTED: bounded status polling requires ALL five postcheck criteria (runner reachable, pid changed, lastRestartId match, lastRestartOutcome completed, zero orphaned jobs); exhaustion -> UNKNOWN/pending with the durable restartId; non-202 -> NOT_RESTARTED with the runner's own blockers. No LLM; no SSH/shell; nothing caller-controlled reaches the request body. Requires bearer scope engineering:vps:runner:restart (operator-issued; the agent cannot self-authorize).",
+    inputSchema: vpsRunnerRestartInputSchema
+  }, async (input) => {
+    requireRead();
+    requireWrite();
+    requireVpsRunnerRestart();
+    return response(await runVpsRunnerRestart(input, {
+      runRunner: callReleaseRunner,
+      readCatalog: async () => {
+        const catalog = createToolCatalog(toolMetadata, repositoryId);
+        return { catalogHash: catalog.catalogHash, catalogVersion: catalog.catalogVersion, toolCount: catalog.actualToolCount };
+      }
+    }));
   }));
   // engineering.vps.doctor — READ-ONLY diagnostic supertool (MVP): deterministic
   // server + Swarm/node + application + deployment/queue + monitoring/logs
