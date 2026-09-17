@@ -1184,15 +1184,12 @@ async function containerProbeAction(config) {
   const started = Date.now();
   // LOCAL-ONLY pre-flight: the image must already exist on the host. The docker
   // run below can never pull — a missing image is PROBE_TARGET_NOT_LOCAL, not a
-  // download. The evidence (imageId + repo digests) is sanitized before returning.
+  // download. Only {{.Id}} is requested — {{join .RepoDigests ","}} breaks on docker
+  // versions that type RepoDigests as []interface{} (template execution error).
   let imageEvidence = null;
   try {
-    const inspected = await mustRun("docker", ["image", "inspect", "--format", "{{.Id}}|{{join .RepoDigests \",\"}}", params.image], { timeoutMs: PROBE_SUBCOMMAND_TIMEOUT_MS });
-    const line = (inspected.stdout ?? "").trim().split("\n")[0] ?? "";
-    const separator = line.indexOf("|");
-    imageEvidence = separator === -1
-      ? { imageId: sanitizeSecrets(line), repoDigests: "" }
-      : { imageId: sanitizeSecrets(line.slice(0, separator)), repoDigests: sanitizeSecrets(line.slice(separator + 1)) };
+    const inspected = await mustRun("docker", ["image", "inspect", "--format", "{{.Id}}", params.image], { timeoutMs: PROBE_SUBCOMMAND_TIMEOUT_MS });
+    imageEvidence = { imageId: sanitizeSecrets((inspected.stdout ?? "").trim().split("\n")[0] ?? ""), repoDigests: "" };
   } catch (error) {
     if (String(error.message).startsWith("RELEASE_COMMAND_FAILED:")) throw new Error(`PROBE_TARGET_NOT_LOCAL:${sanitizeSecrets(params.image)}:${sanitizeSecrets(String(error.message).replace(/^RELEASE_COMMAND_FAILED:docker:/, "").trim().slice(0, 200)) || "(docker stderr vazio)"}`);
     throw error;
