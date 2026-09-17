@@ -15,6 +15,7 @@ import { runVpsReconcile } from "./vpsReconcile.ts";
 import { runVpsRecover, vpsRecoverInputSchema } from "./vpsRecover.ts";
 import { runVpsRunnerRestart, vpsRunnerRestartInputSchema } from "./vpsRunnerRestart.ts";
 import { runVpsDiagnostics, vpsDiagnosticsInputSchema } from "./vpsDiagnostics.ts";
+import { runVpsContainerProbe, vpsContainerProbeInputSchema } from "./vpsContainerProbe.ts";
 import { guardianInputSchema, runVpsGuardian } from "./vpsGuardian.ts";
 import { runGuardianAppDeploy } from "./guardianAppDeploy.ts";
 import { runVpsHealth, runVpsWhyDown, runDeployStatus, runVpsCapacity, runVpsWhatChanged, runAppHealth, runVpsIncidentSummary, runDeployReady, runDockerHealth, runLogsExplain } from "./simpleTools.ts";
@@ -73,12 +74,12 @@ export function installToolAliasCompatibility(mcpServer: unknown): void {
 
 function response(value: unknown) { return { content: [{ type: "text" as const, text: JSON.stringify(value) ?? "null" }] }; }
 
-type ReleaseOperation = "test" | "build" | "candidate" | "deploy" | "status" | "smoke" | "rollback" | "restart" | "inspect";
-const releaseTimeouts = { test: 1_210_000, build: 130_000, candidate: 610_000, deploy: 30_000, status: 30_000, smoke: 310_000, rollback: 130_000, restart: 30_000, inspect: 40_000 };
+type ReleaseOperation = "test" | "build" | "candidate" | "deploy" | "status" | "smoke" | "rollback" | "restart" | "inspect" | "container_probe";
+const releaseTimeouts = { test: 1_210_000, build: 130_000, candidate: 610_000, deploy: 30_000, status: 30_000, smoke: 310_000, rollback: 130_000, restart: 30_000, inspect: 40_000, container_probe: 110_000 };
 let releasePipelineBusy = false;
 
 // Only the official Unix socket API is reachable; no caller-supplied URL or command.
-export function callReleaseRunner(operation: ReleaseOperation, jobId?: string): Promise<{ httpStatus: number; body: any }> {
+export function callReleaseRunner(operation: ReleaseOperation, jobId?: string, params?: Record<string, unknown>): Promise<{ httpStatus: number; body: any }> {
   return new Promise((resolve, reject) => {
     const request = httpRequest({
       socketPath: process.env.ENG_MCP_RELEASE_SOCKET ?? "/opt/eng-mcp-release-data/run/release-runner.sock",
@@ -99,7 +100,7 @@ export function callReleaseRunner(operation: ReleaseOperation, jobId?: string): 
     const timer = setTimeout(() => request.destroy(new Error("RELEASE_REQUEST_TIMEOUT")), releaseTimeouts[operation]);
     request.on("close", () => clearTimeout(timer));
     request.on("error", reject);
-    request.end(JSON.stringify({ operation, ...(jobId ? { jobId } : {}) }));
+    request.end(JSON.stringify({ operation, ...(jobId ? { jobId } : {}), ...(params ? { params } : {}) }));
   });
 }
 
@@ -289,6 +290,11 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   // state — outside the repository boundary, so the read-only scope is
   // UNCONDITIONAL (scope is the primary control; redaction is defense in depth).
   const requireVpsDiagnosticsRead = () => { if (!subject.scopes.includes("engineering:vps:diagnostics:read")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
+
+  // ITEM-2: one-off container probes spawn a disposable, network-less, read-only
+  // container from a LOCAL allowlisted image — still outside the repository
+  // boundary, so the scope is UNCONDITIONAL (same convention as diagnostics).
+  const requireVpsContainerProbe = () => { if (!subject.scopes.includes("engineering:vps:container:probe")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
 
   const observability = new ObservabilityClient();
   const agentMemory = new AgentMemoryClient();
@@ -730,6 +736,25 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
     requireRead();
     requireVpsDiagnosticsRead();
     return response(await runVpsDiagnostics(input, { runRunner: callReleaseRunner }));
+  }));
+  // ITEM-2: engineering.vps.container.probe — one-off READ-ONLY inspection of a
+  // candidate container's filesystem, spawned fresh by the release runner from a
+  // LOCAL allowlisted image (prefix eng-mcp-candidate:, no pull ever happens).
+  // Exactly 3 probes (file_stat/read_text/list_dir); the docker argv is fully
+  // determined by the frozen PROBE_SPECS table + PROBE_ISOLATION flags
+  // (--network none, --read-only, uid 65534, --cap-drop ALL, memory/pids caps)
+  // and spawned with shell:false — no caller field ever reaches docker beyond
+  // {image, probe, path, maxBytes}. Dual redaction (pipeline sanitizeSecrets +
+  // key-based redactSensitive); append-only probes.jsonl audit (last 50).
+  // Requires bearer scope engineering:vps:container:probe (operator-issued; the
+  // agent cannot self-authorize).
+  register("engineering.vps.container.probe", "read", (name) => server.registerTool(name, {
+    description: "One-off read-only filesystem probe inside a LOCAL allowlisted candidate container image (prefix eng-mcp-candidate:; the image is never pulled — a missing local image fails closed). Exactly 3 probes: file_stat (ls -ld), read_text (head -c maxBytes, binary content is refused with stdout withheld), list_dir (ls -la). The docker argv is fully determined by the frozen PROBE_SPECS table + PROBE_ISOLATION flags (--network none, --read-only, uid 65534, --cap-drop ALL, memory/pids caps) and spawned with shell:false; no caller field reaches docker beyond {image, probe, path, maxBytes}. Path grammar + sensitive-path denylist on both mirrors; 30s hard timeout with proven container cleanup; dual redaction (pipeline sanitizeSecrets + key-based redactSensitive); append-only probes.jsonl audit keeps the last 50 probes. Requires bearer scope engineering:vps:container:probe (operator-issued; the agent cannot self-authorize).",
+    inputSchema: vpsContainerProbeInputSchema
+  }, async (input) => {
+    requireRead();
+    requireVpsContainerProbe();
+    return response(await runVpsContainerProbe(input, { runRunner: callReleaseRunner }));
   }));
   // engineering.vps.doctor — READ-ONLY diagnostic supertool (MVP): deterministic
   // server + Swarm/node + application + deployment/queue + monitoring/logs
