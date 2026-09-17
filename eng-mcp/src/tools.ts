@@ -14,6 +14,7 @@ import { runVpsDoctor } from "./vpsDoctor.ts";
 import { runVpsReconcile } from "./vpsReconcile.ts";
 import { runVpsRecover, vpsRecoverInputSchema } from "./vpsRecover.ts";
 import { runVpsRunnerRestart, vpsRunnerRestartInputSchema } from "./vpsRunnerRestart.ts";
+import { runVpsDiagnostics, vpsDiagnosticsInputSchema } from "./vpsDiagnostics.ts";
 import { guardianInputSchema, runVpsGuardian } from "./vpsGuardian.ts";
 import { runGuardianAppDeploy } from "./guardianAppDeploy.ts";
 import { runVpsHealth, runVpsWhyDown, runDeployStatus, runVpsCapacity, runVpsWhatChanged, runAppHealth, runVpsIncidentSummary, runDeployReady, runDockerHealth, runLogsExplain } from "./simpleTools.ts";
@@ -72,8 +73,8 @@ export function installToolAliasCompatibility(mcpServer: unknown): void {
 
 function response(value: unknown) { return { content: [{ type: "text" as const, text: JSON.stringify(value) ?? "null" }] }; }
 
-type ReleaseOperation = "test" | "build" | "candidate" | "deploy" | "status" | "smoke" | "rollback" | "restart";
-const releaseTimeouts = { test: 1_210_000, build: 130_000, candidate: 610_000, deploy: 30_000, status: 30_000, smoke: 310_000, rollback: 130_000, restart: 30_000 };
+type ReleaseOperation = "test" | "build" | "candidate" | "deploy" | "status" | "smoke" | "rollback" | "restart" | "inspect";
+const releaseTimeouts = { test: 1_210_000, build: 130_000, candidate: 610_000, deploy: 30_000, status: 30_000, smoke: 310_000, rollback: 130_000, restart: 30_000, inspect: 40_000 };
 let releasePipelineBusy = false;
 
 // Only the official Unix socket API is reachable; no caller-supplied URL or command.
@@ -283,6 +284,11 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   // ITEM-1: restart of the official release runner service is a governed mutation of
   // a long-lived service — its own scope, mirroring the <resource>:<action> convention.
   const requireVpsRunnerRestart = () => { if (!subject.scopes.includes("engineering:vps:runner:restart")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
+
+  // ITEM-3: host diagnostics read the runner service's systemd/journal/docker
+  // state — outside the repository boundary, so the read-only scope is
+  // UNCONDITIONAL (scope is the primary control; redaction is defense in depth).
+  const requireVpsDiagnosticsRead = () => { if (!subject.scopes.includes("engineering:vps:diagnostics:read")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
 
   const observability = new ObservabilityClient();
   const agentMemory = new AgentMemoryClient();
@@ -703,6 +709,27 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
         return { catalogHash: catalog.catalogHash, catalogVersion: catalog.catalogVersion, toolCount: catalog.actualToolCount };
       }
     }));
+  }));
+
+  // ITEM-3: engineering.vps.diagnostics — read-only host diagnostics for the
+  // official release runner service (the frozen allowlist's only entry).
+  // view=unit returns effective systemd directives (Restart, SuccessExitStatus,
+  // RestartForceExitStatus, NoNewPrivileges, ProtectSystem — systemctl show
+  // merges the operator drop-in) plus service/process/runner evidence and a
+  // cross-check against the runner's self-reported parsed unit; view=journal
+  // returns sanitized journal lines; view=docker returns a fixed-column
+  // docker ps -a inventory. Zero mutation, frozen allowlist, dual-layer
+  // redaction (pipeline sanitizeSecrets + redactSensitive);
+  // environmentValuesReturned stays false by construction. Requires bearer
+  // scope engineering:vps:diagnostics:read (operator-issued; the agent cannot
+  // self-authorize).
+  register("engineering.vps.diagnostics", "read", (name) => server.registerTool(name, {
+    description: "Read-only host diagnostics for the official release runner service (eng-mcp-release-runner.service, the frozen allowlist's only entry). view=unit: effective systemd directives (Restart, SuccessExitStatus, RestartForceExitStatus, NoNewPrivileges, ProtectSystem) + service/process/runner evidence + cross-check vs the runner's self-reported unit; view=journal: sanitized journal lines; view=docker: fixed-column docker ps -a inventory. Zero mutation; dual-layer redaction (pipeline sanitizeSecrets + key-based redactSensitive); environmentValuesReturned always false. Requires bearer scope engineering:vps:diagnostics:read (operator-issued; the agent cannot self-authorize).",
+    inputSchema: vpsDiagnosticsInputSchema
+  }, async (input) => {
+    requireRead();
+    requireVpsDiagnosticsRead();
+    return response(await runVpsDiagnostics(input, { runRunner: callReleaseRunner }));
   }));
   // engineering.vps.doctor — READ-ONLY diagnostic supertool (MVP): deterministic
   // server + Swarm/node + application + deployment/queue + monitoring/logs

@@ -1,4 +1,4 @@
-﻿import { spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { access, mkdir, readFile, readdir, rm, stat, symlink, writeFile, rename } from "node:fs/promises";
 import net from "node:net";
@@ -869,7 +869,7 @@ async function deployAction(config) {
   }
 }
 
-function sanitizeSecrets(value) {
+export function sanitizeSecrets(value) {
   // Sempre retornar string ou null, nunca objeto ou array
   if (value === null || value === undefined) return null;
 
@@ -903,12 +903,28 @@ function sanitizeSecrets(value) {
 
   return sanitized;
 }
+export function parseSystemctlShow(stdout) {
+  // Pure parser for `systemctl show --property=...` output: "Key=Value" lines,
+  // the first "=" separates key from value (later "="s belong to the value);
+  // lines without "=" or with an empty key are skipped; a repeated key keeps
+  // its LAST value. Returns {} for empty/absent input instead of throwing.
+  return String(stdout ?? "").trim().split("\n").reduce((obj, line) => {
+    const eq = line.indexOf("=");
+    if (eq > 0) {
+      const key = line.slice(0, eq);
+      const value = line.slice(eq + 1);
+      obj[key] = value;
+    }
+    return obj;
+  }, {});
+}
 
 async function inspectAction(config) {
   const SERVICE_NAME = "eng-mcp-release-runner.service";
   const response = {
     service: { name: SERVICE_NAME },
     process: null,
+    directives: null,
     runner: {},
     docker: [],
     recentLogs: [],
@@ -920,18 +936,10 @@ async function inspectAction(config) {
     const serviceResult = await mustRun("systemctl", [
       "show", SERVICE_NAME,
       "--no-pager",
-      "--property=ActiveState,SubState,MainPID,ExecStart,WorkingDirectory,User,Group,FragmentPath,EnvironmentFiles,LoadCredential"
+      "--property=ActiveState,SubState,MainPID,ExecStart,WorkingDirectory,User,Group,FragmentPath,EnvironmentFiles,LoadCredential,Restart,SuccessExitStatus,RestartForceExitStatus,NoNewPrivileges,ProtectSystem"
     ]);
 
-    const serviceProps = serviceResult.stdout.trim().split("\n").reduce((obj, line) => {
-      const eq = line.indexOf("=");
-      if (eq > 0) {
-        const key = line.slice(0, eq);
-        const value = line.slice(eq + 1);
-        obj[key] = value;
-      }
-      return obj;
-    }, {});
+    const serviceProps = parseSystemctlShow(serviceResult.stdout);
 
     // Helper para extrair caminho do runner de ExecStart de forma robusta
     function extractRunnerPath(execStartValue) {
@@ -985,6 +993,16 @@ async function inspectAction(config) {
       credentialNames: serviceProps.LoadCredential ? serviceProps.LoadCredential.split(";") : []
     };
 
+    // ITEM-3: effective unit directives (systemctl show merges the operator
+    // drop-in; this is the ground truth the restart prechecks rely on).
+    response.directives = {
+      restart: serviceProps.Restart || null,
+      successExitStatus: String(serviceProps.SuccessExitStatus ?? "").split(/\s+/).filter(Boolean),
+      restartForceExitStatus: String(serviceProps.RestartForceExitStatus ?? "").split(/\s+/).filter(Boolean),
+      noNewPrivileges: serviceProps.NoNewPrivileges || null,
+      protectSystem: serviceProps.ProtectSystem || null
+    };
+
     if (response.service.mainPid && response.service.mainPid > 0) {
       try {
         const pid = response.service.mainPid.toString();
@@ -1015,13 +1033,25 @@ async function inspectAction(config) {
       }
     }
 
-    // Docker inspection - check only for eng-mcp labeled containers if evidence exists
+    // ITEM-3: real docker inventory (docker ps -a, fixed columns). Every field
+    // passes sanitizeSecrets before it leaves the host; docker being absent or
+    // failing is a partial failure, never a fake empty inventory.
     try {
-      // First check if there's evidence of eng-mcp label usage
-      response.docker = []; // Empty array - label filter not proven
-      response.dockerInspection = "not_configured";
+      const dockerResult = await mustRun("docker", ["ps", "-a", "--format", "{{.Names}}|{{.Image}}|{{.Status}}|{{.Ports}}"]);
+      response.docker = String(dockerResult.stdout ?? "").trim().split("\n").filter(Boolean).map((line) => {
+        const parts = line.split("|");
+        return {
+          names: sanitizeSecrets(parts[0]),
+          image: sanitizeSecrets(parts[1]),
+          status: sanitizeSecrets(parts[2]),
+          ports: sanitizeSecrets(parts.slice(3).join("|"))
+        };
+      });
+      response.dockerInspection = "inventory";
     } catch (error) {
-      response.partialFailures.push({ section: "docker", error: error.message });
+      response.docker = [];
+      response.dockerInspection = "unavailable";
+      response.partialFailures.push({ section: "docker", error: sanitizeSecrets(error.message) });
     }
 
     // Recent logs
@@ -1030,9 +1060,9 @@ async function inspectAction(config) {
         "-u", SERVICE_NAME,
         "--no-pager",
         "--since", "1 day ago",
-        "-n", "50"
+        "-n", "200"
       ]);
-      response.recentLogs = logsResult.stdout.split("\n").slice(0, 50).map(line => sanitizeSecrets(line));
+      response.recentLogs = logsResult.stdout.split("\n").slice(0, 200).map(line => sanitizeSecrets(line));
     } catch (error) {
       response.partialFailures.push({ section: "logs", error: error.message });
     }
