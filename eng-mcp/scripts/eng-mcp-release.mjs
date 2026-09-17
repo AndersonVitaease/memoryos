@@ -1194,7 +1194,7 @@ async function containerProbeAction(config) {
       ? { imageId: sanitizeSecrets(line), repoDigests: "" }
       : { imageId: sanitizeSecrets(line.slice(0, separator)), repoDigests: sanitizeSecrets(line.slice(separator + 1)) };
   } catch (error) {
-    if (String(error.message).startsWith("RELEASE_COMMAND_FAILED:")) throw new Error(`PROBE_TARGET_NOT_LOCAL:${sanitizeSecrets(params.image)}`);
+    if (String(error.message).startsWith("RELEASE_COMMAND_FAILED:")) throw new Error(`PROBE_TARGET_NOT_LOCAL:${sanitizeSecrets(params.image)}:${sanitizeSecrets(String(error.message).replace(/^RELEASE_COMMAND_FAILED:docker:/, "").trim().slice(0, 200)) || "(docker stderr vazio)"}`);
     throw error;
   }
   const spec = PROBE_SPECS[params.probe];
