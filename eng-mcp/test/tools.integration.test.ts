@@ -44,8 +44,8 @@ test("authenticated MCP endpoint exposes exactly the approved tools", async () =
     const initialized = await mcp(endpoint, token, 1, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } });
     assert.equal(initialized.result.serverInfo.name, "memoryos-eng-mcp");
     const tools = await mcp(endpoint, token, 2, "tools/list", {});
-    assert.deepEqual(tools.result.tools.map((tool: { name: string }) => tool.name).sort(), ["engineering.app.health", "engineering.sandbox.batchWrite", "engineering.sandbox.cancel", "engineering.sandbox.create", "engineering.sandbox.destroy", "engineering.sandbox.exec", "engineering.sandbox.inspect", "engineering.image.adapt", "engineering.bug.trace", "engineering.docker.health", "engineering.deploy.ready", "engineering.logs.explain", "engineering.release.test", "engineering.release.pipeline", "engineering.supervised_mission", "engineering.vps.capacity", "engineering.vps.change.safe", "engineering.vps.doctor", "engineering.vps.guardian", "engineering.vps.health", "engineering.vps.incident.summary", "engineering.vps.why_down", "engineering.deploy.status", "engineering.vps.reconcile", "engineering.vps.recover", "engineering.vps.runner.restart", "engineering.vps.what_changed", "engineering.change.impact", "engineering.code.impact", "engineering.code.references", "engineering.code.search", "engineering.code.understand", "engineering.compliance.assess", "engineering.contract.verify", "engineering.deadcode.scan", "engineering.distribution.campaign", "engineering.distribution.prepare", "engineering.distribution.publish", "engineering.file.create", "engineering.file.patch", "engineering.file.read", "engineering.git.branches", "engineering.git.commit", "engineering.git.diff", "engineering.git.inspect_changes", "engineering.git.inspect_commit", "engineering.git.log", "engineering.git.remote_compare", "engineering.git.stage", "engineering.git.status", "engineering.git.unstage", "engineering.git.worktrees", "engineering.guardian.app.deploy", "engineering.image.create", "engineering.image.edit", "engineering.lint.run", "engineering.manifest.edit", "engineering.mcp.catalog", "engineering.memory.capture", "engineering.memory.context", "engineering.memory.search", "engineering.memoryos.sync_files", "engineering.orchestrate.batch", "engineering.parallelpath.scan", "engineering.release.run", "engineering.repo.structure", "engineering.runtime.bottlenecks", "engineering.runtime.compare", "engineering.runtime.errors", "engineering.runtime.executions", "engineering.runtime.health", "engineering.runtime.http_probe", "engineering.runtime.investigate", "engineering.runtime.logs", "engineering.runtime.metrics", "engineering.runtime.query", "engineering.runtime.releaseContext", "engineering.runtime.saturation", "engineering.runtime.timeline", "engineering.runtime.trace", "engineering.runtime.watch", "engineering.test.run", "engineering.test.status", "engineering.typecheck.run", "engineering.vision.inspect", "engineering.web.connector"].sort());
-    assert.equal(tools.result.tools.length, 86);
+    assert.deepEqual(tools.result.tools.map((tool: { name: string }) => tool.name).sort(), ["engineering.app.health", "engineering.sandbox.batchWrite", "engineering.sandbox.cancel", "engineering.sandbox.create", "engineering.sandbox.destroy", "engineering.sandbox.exec", "engineering.sandbox.inspect", "engineering.image.adapt", "engineering.bug.trace", "engineering.docker.health", "engineering.deploy.ready", "engineering.logs.explain", "engineering.release.test", "engineering.release.pipeline", "engineering.supervised_mission", "engineering.vps.capacity", "engineering.vps.change.safe", "engineering.vps.diagnostics", "engineering.vps.doctor", "engineering.vps.guardian", "engineering.vps.health", "engineering.vps.incident.summary", "engineering.vps.why_down", "engineering.deploy.status", "engineering.vps.reconcile", "engineering.vps.recover", "engineering.vps.runner.restart", "engineering.vps.what_changed", "engineering.change.impact", "engineering.code.impact", "engineering.code.references", "engineering.code.search", "engineering.code.understand", "engineering.compliance.assess", "engineering.contract.verify", "engineering.deadcode.scan", "engineering.distribution.campaign", "engineering.distribution.prepare", "engineering.distribution.publish", "engineering.file.create", "engineering.file.patch", "engineering.file.read", "engineering.git.branches", "engineering.git.commit", "engineering.git.diff", "engineering.git.inspect_changes", "engineering.git.inspect_commit", "engineering.git.log", "engineering.git.remote_compare", "engineering.git.stage", "engineering.git.status", "engineering.git.unstage", "engineering.git.worktrees", "engineering.guardian.app.deploy", "engineering.image.create", "engineering.image.edit", "engineering.lint.run", "engineering.manifest.edit", "engineering.mcp.catalog", "engineering.memory.capture", "engineering.memory.context", "engineering.memory.search", "engineering.memoryos.sync_files", "engineering.orchestrate.batch", "engineering.parallelpath.scan", "engineering.release.run", "engineering.repo.structure", "engineering.runtime.bottlenecks", "engineering.runtime.compare", "engineering.runtime.errors", "engineering.runtime.executions", "engineering.runtime.health", "engineering.runtime.http_probe", "engineering.runtime.investigate", "engineering.runtime.logs", "engineering.runtime.metrics", "engineering.runtime.query", "engineering.runtime.releaseContext", "engineering.runtime.saturation", "engineering.runtime.timeline", "engineering.runtime.trace", "engineering.runtime.watch", "engineering.test.run", "engineering.test.status", "engineering.typecheck.run", "engineering.vision.inspect", "engineering.web.connector"].sort());
+    assert.equal(tools.result.tools.length, 87);
     const statusBeforeCatalog = execFileSync("git", ["status", "--porcelain=v2", "--untracked-files=all"], { cwd: root, encoding: "utf8" });
     const refsBeforeCatalog = execFileSync("git", ["show-ref"], { cwd: root, encoding: "utf8" });
     const registryBeforeCatalog = JSON.stringify(tokenRegistry);
@@ -58,8 +58,8 @@ test("authenticated MCP endpoint exposes exactly the approved tools", async () =
     assert.equal(catalog.serverName, "memoryos-eng-mcp");
     assert.equal(catalog.serverVersion, "0.1.0");
     assert.equal(catalog.repositoryId, "memoryos");
-    assert.equal(catalog.actualToolCount, 86);
-    assert.equal(catalog.catalogVersion, "eng-mcp-tools-v86");
+    assert.equal(catalog.actualToolCount, 87);
+    assert.equal(catalog.catalogVersion, "eng-mcp-tools-v87");
     assert.match(catalog.catalogHash, /^[a-f0-9]{64}$/);
     assert.equal(secondCatalog.catalogHash, catalog.catalogHash);
     const catalogNames = catalog.tools.map((tool: ToolCatalogEntry) => tool.name);
@@ -667,6 +667,103 @@ test("engineering.vps.runner.restart mutation with the granted scope stays fail-
     assert.equal(payload.status, "NOT_RESTARTED");
     assert.equal(payload.mutationPerformed, false);
     assert.ok(text.includes("JOBS_IN_FLIGHT:job-1:deploy"), `runner blockers must surface, got ${text.slice(0, 400)}`);
+  } finally {
+    await stub.close();
+    server.close();
+  }
+});
+
+test("engineering.vps.diagnostics requires the operator-issued engineering:vps:diagnostics:read scope", async () => {
+  const root = await fixture();
+  const token = "vps-diagnostics-refusal-token";
+  const tokenRegistry = [{ tokenHash: createHash("sha256").update(token).digest("hex"), subject: "tester", scopes: ["engineering:read", "engineering:write", "engineering:verify", "engineering:git", "engineering:release"], allowedRepositoryIds: ["memoryos"], expiresAt: "2099-01-01T00:00:00.000Z" }];
+  const server = await createEngineeringHttpServer({ repositoryId: "memoryos", configuredRoot: root, tokenRegistry });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const endpoint = `http://127.0.0.1:${address.port}/mcp`;
+  try {
+    await mcp(endpoint, token, 1, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } });
+    await mcp(endpoint, token, 2, "notifications/initialized", {});
+    const call = await mcp(endpoint, token, 3, "tools/call", { name: "engineering.vps.diagnostics", arguments: {} });
+    const text = JSON.stringify(call.result);
+    assert.ok(text.includes("AUTHORIZATION_SCOPE_REQUIRED"), `expected scope refusal, got ${text.slice(0, 300)}`);
+  } finally {
+    server.close();
+  }
+});
+
+test("engineering.vps.diagnostics unit view: inspect+status projection with crossCheck and security block", async () => {
+  const root = await fixture();
+  const token = "vps-diagnostics-unit-token";
+  const tokenRegistry = [{ tokenHash: createHash("sha256").update(token).digest("hex"), subject: "tester", scopes: ["engineering:read", "engineering:write", "engineering:verify", "engineering:git", "engineering:release", "engineering:vps:diagnostics:read"], allowedRepositoryIds: ["memoryos"], expiresAt: "2099-01-01T00:00:00.000Z" }];
+  const server = await createEngineeringHttpServer({ repositoryId: "memoryos", configuredRoot: root, tokenRegistry });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const endpoint = `http://127.0.0.1:${address.port}/mcp`;
+  const stub = await stubReleaseRunner((operation) => {
+    if (operation === "inspect") return { httpStatus: 200, body: { operation: "inspect", success: true, service: { name: "eng-mcp-release-runner.service", activeState: "active", mainPid: 779490 }, process: { pid: 779490, command: "node scripts/eng-mcp-release-runner.mjs" }, runner: { socketPath: "/opt/eng-mcp-release-data/run/release-runner.sock" }, directives: { restart: "on-failure", successExitStatus: ["42"], restartForceExitStatus: ["42"], noNewPrivileges: "yes", protectSystem: "full" }, docker: [], recentLogs: [], partialFailures: [] } };
+    if (operation === "status") return { httpStatus: 200, body: { operation: "status", success: true, runnerMeta: RUNNER_RESTART_META } };
+    return { httpStatus: 400, body: { error: "UNEXPECTED_CALL" } };
+  });
+  try {
+    await mcp(endpoint, token, 1, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } });
+    await mcp(endpoint, token, 2, "notifications/initialized", {});
+    const call = await mcp(endpoint, token, 3, "tools/call", { name: "engineering.vps.diagnostics", arguments: {} });
+    const text = JSON.stringify(call.result);
+    assert.ok(!text.includes("AUTHORIZATION_SCOPE_REQUIRED"), `scope gate must open for the granted scope, got ${text.slice(0, 300)}`);
+    const payload = JSON.parse(call.result.content[0].text);
+    assert.equal(payload.view, "unit");
+    assert.equal(payload.status, "OK");
+    assert.equal(payload.mutationPerformed, false);
+    assert.equal(payload.directives.restart, "on-failure");
+    assert.deepEqual(payload.directives.successExitStatus, ["42"]);
+    assert.equal(payload.crossCheck.restartMatch, true);
+    assert.equal(payload.crossCheck.successExitStatusMatch, true);
+    assert.equal(payload.crossCheck.restartForceExitStatusMatch, true);
+    assert.equal(payload.runnerMeta.unit.restart, "on-failure");
+    assert.equal(payload.security.environmentValuesReturned, false);
+    assert.equal(payload.security.secretsRedacted, true);
+    assert.equal(payload.security.readOnly, true);
+  } finally {
+    await stub.close();
+    server.close();
+  }
+});
+
+test("engineering.vps.diagnostics: runner-token canary is redacted, journal and docker views surface their sections", async () => {
+  const root = await fixture();
+  const token = "vps-diagnostics-redaction-token";
+  const tokenRegistry = [{ tokenHash: createHash("sha256").update(token).digest("hex"), subject: "tester", scopes: ["engineering:read", "engineering:write", "engineering:verify", "engineering:git", "engineering:release", "engineering:vps:diagnostics:read"], allowedRepositoryIds: ["memoryos"], expiresAt: "2099-01-01T00:00:00.000Z" }];
+  const server = await createEngineeringHttpServer({ repositoryId: "memoryos", configuredRoot: root, tokenRegistry });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const endpoint = `http://127.0.0.1:${address.port}/mcp`;
+  const CANARY = "canary-token-abcdef0123456789";
+  const stub = await stubReleaseRunner((operation) => {
+    if (operation === "inspect") return { httpStatus: 200, body: { operation: "inspect", success: true, service: { name: "eng-mcp-release-runner.service" }, process: null, runner: { token: CANARY, socketPath: "/runner.sock" }, directives: null, docker: [{ names: "memoryos-eng-mcp", image: "eng-mcp-candidate:candidate-x", status: "Up 2 hours", ports: "127.0.0.1:8787->8787/tcp" }], dockerInspection: "inventory", recentLogs: ["Sep 17 03:00:00 host runner[111]: deployment PASSED", "Sep 17 03:00:01 host runner[111]: smoke PASS"], partialFailures: [] } };
+    return { httpStatus: 200, body: { operation: "status", success: true, runnerMeta: RUNNER_RESTART_META } };
+  });
+  try {
+    await mcp(endpoint, token, 1, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } });
+    await mcp(endpoint, token, 2, "notifications/initialized", {});
+    const unitCall = await mcp(endpoint, token, 3, "tools/call", { name: "engineering.vps.diagnostics", arguments: { view: "unit" } });
+    const unitPayload = JSON.parse(unitCall.result.content[0].text);
+    const unitText = JSON.stringify(unitCall.result);
+    assert.equal(unitPayload.runner.token, "[REDACTED]");
+    assert.ok(!unitText.includes(CANARY), `key-based redaction must scrub the runner token canary, got ${unitText.slice(0, 400)}`);
+    const journalCall = await mcp(endpoint, token, 4, "tools/call", { name: "engineering.vps.diagnostics", arguments: { view: "journal" } });
+    const journalPayload = JSON.parse(journalCall.result.content[0].text);
+    assert.equal(journalPayload.view, "journal");
+    assert.deepEqual(journalPayload.recentLogs, ["Sep 17 03:00:00 host runner[111]: deployment PASSED", "Sep 17 03:00:01 host runner[111]: smoke PASS"]);
+    assert.equal(journalPayload.service, undefined);
+    const dockerCall = await mcp(endpoint, token, 5, "tools/call", { name: "engineering.vps.diagnostics", arguments: { view: "docker" } });
+    const dockerPayload = JSON.parse(dockerCall.result.content[0].text);
+    assert.equal(dockerPayload.view, "docker");
+    assert.equal(dockerPayload.dockerInspection, "inventory");
+    assert.deepEqual(dockerPayload.docker, [{ names: "memoryos-eng-mcp", image: "eng-mcp-candidate:candidate-x", status: "Up 2 hours", ports: "127.0.0.1:8787->8787/tcp" }]);
   } finally {
     await stub.close();
     server.close();
