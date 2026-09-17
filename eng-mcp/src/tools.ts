@@ -100,7 +100,9 @@ export function callReleaseRunner(operation: ReleaseOperation, jobId?: string, p
     const timer = setTimeout(() => request.destroy(new Error("RELEASE_REQUEST_TIMEOUT")), releaseTimeouts[operation]);
     request.on("close", () => clearTimeout(timer));
     request.on("error", reject);
-    request.end(JSON.stringify({ operation, ...(jobId ? { jobId } : {}), ...(params ? { params } : {}) }));
+    // Runner HTTP body contract: FLAT bounded primitives only (operation/jobId/commit,
+    // plus image/probe/path/maxBytes for container_probe) — a nested {params} key is refused 400 INPUT_INVALID.
+    request.end(JSON.stringify({ operation, ...(jobId ? { jobId } : {}), ...(params ? params : {}) }));
   });
 }
 
