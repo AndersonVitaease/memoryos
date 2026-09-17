@@ -5,6 +5,7 @@ import { lstat, readdir, readFile, writeFile, open, rename, unlink, link, realpa
 import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import { EngineeringError, RepositoryPolicy, MANIFEST_GOVERNED_PATHS, assertNoSensitiveContent, isSensitivePath } from "./policy.js";
+import { runGithubRead } from "./githubRead.ts";
 import { getTestJobStore, createTestExecutionId, parseTapSummary, parseTapFailures, classifySyncRunOutcome, classifyInfraError, reconcileSuiteJob, boundedJobView, type TestJob } from "./testJobs.js";
 
 export type CommandResult = { stdout: string; stderr: string; truncated: boolean };
@@ -339,6 +340,11 @@ async references(subject: string, symbol: string, maxResults = 100) {
     return { commits: commits.slice(0, limit), truncated: commits.length > limit };
   }
 
+  // FASE 2: this method reads LOCAL refs/remotes/origin/* — it never touches the
+  // network, so its answer is only as fresh as the last `git fetch` performed in
+  // this worktree by any process. That staleness is now DECLARED (freshness field)
+  // instead of silent; for the live remote state use engineering.github.read
+  // (operation compare), which asks GitHub directly.
   async gitRemoteCompare(input: { localRef?: string; remoteRef?: string }) {
     const localRef = input.localRef ?? "HEAD";
     const remoteRef = input.remoteRef ?? await this.currentUpstream();
@@ -349,7 +355,7 @@ async references(subject: string, symbol: string, maxResults = 100) {
     const commonAncestor = await this.gitRead(["merge-base", localHead, remoteHead], 4_096).then((value) => value.stdout.trim() || undefined).catch(() => undefined);
     const localOnly = await this.readGitCommits(["--max-count=51", localHead, "--not", remoteHead]);
     const remoteOnly = await this.readGitCommits(["--max-count=51", remoteHead, "--not", localHead]);
-    return { localRef, localHead, remoteRef, remoteHead, ahead: counts[0], behind: counts[1], ...(commonAncestor ? { commonAncestor } : {}), localOnlyCommits: localOnly.slice(0, 50), remoteOnlyCommits: remoteOnly.slice(0, 50), synchronized: counts[0] === 0 && counts[1] === 0, truncated: localOnly.length > 50 || remoteOnly.length > 50 };
+    return { localRef, localHead, remoteRef, remoteHead, ahead: counts[0], behind: counts[1], ...(commonAncestor ? { commonAncestor } : {}), localOnlyCommits: localOnly.slice(0, 50), remoteOnlyCommits: remoteOnly.slice(0, 50), synchronized: counts[0] === 0 && counts[1] === 0, truncated: localOnly.length > 50 || remoteOnly.length > 50, freshness: "local-refs-stale-since-last-fetch" };
   }
 
   // GIT-01-W1 (Capability Map V1) — read-only Git history/worktree inspection.
@@ -1024,6 +1030,7 @@ async references(subject: string, symbol: string, maxResults = 100) {
       "engineering.git.remote_compare",
       "engineering.git.inspect_commit",
       "engineering.git.inspect_changes",
+      "engineering.github.read",
       "engineering.mcp.catalog"
     ]);
 
@@ -1076,6 +1083,8 @@ async references(subject: string, symbol: string, maxResults = 100) {
           return await this.gitInspectCommit(args as any ?? {});
         case "engineering.git.inspect_changes":
           return await this.gitInspectChanges(args as any ?? {});
+        case "engineering.github.read":
+          return await runGithubRead(args ?? {});
         case "engineering.mcp.catalog":
           if (!catalogProvider) throw new EngineeringError("TOOL_NOT_ALLOWED");
           return catalogProvider();

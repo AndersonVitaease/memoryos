@@ -44,8 +44,8 @@ test("authenticated MCP endpoint exposes exactly the approved tools", async () =
     const initialized = await mcp(endpoint, token, 1, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } });
     assert.equal(initialized.result.serverInfo.name, "memoryos-eng-mcp");
     const tools = await mcp(endpoint, token, 2, "tools/list", {});
-    assert.deepEqual(tools.result.tools.map((tool: { name: string }) => tool.name).sort(), ["engineering.app.health", "engineering.sandbox.batchWrite", "engineering.sandbox.cancel", "engineering.sandbox.create", "engineering.sandbox.destroy", "engineering.sandbox.exec", "engineering.sandbox.inspect", "engineering.image.adapt", "engineering.bug.trace", "engineering.docker.health", "engineering.deploy.ready", "engineering.logs.explain", "engineering.release.test", "engineering.release.pipeline", "engineering.supervised_mission", "engineering.vps.capacity", "engineering.vps.change.safe", "engineering.vps.container.probe", "engineering.vps.diagnostics", "engineering.vps.doctor", "engineering.vps.guardian", "engineering.vps.health", "engineering.vps.incident.summary", "engineering.vps.why_down", "engineering.deploy.status", "engineering.vps.reconcile", "engineering.vps.recover", "engineering.vps.runner.restart", "engineering.vps.what_changed", "engineering.change.impact", "engineering.code.impact", "engineering.code.references", "engineering.code.search", "engineering.code.understand", "engineering.compliance.assess", "engineering.contract.verify", "engineering.deadcode.scan", "engineering.distribution.campaign", "engineering.distribution.prepare", "engineering.distribution.publish", "engineering.file.create", "engineering.file.patch", "engineering.file.read", "engineering.git.branches", "engineering.git.commit", "engineering.git.diff", "engineering.git.inspect_changes", "engineering.git.inspect_commit", "engineering.git.log", "engineering.git.remote_compare", "engineering.git.stage", "engineering.git.status", "engineering.git.unstage", "engineering.git.worktrees", "engineering.guardian.app.deploy", "engineering.image.create", "engineering.image.edit", "engineering.lint.run", "engineering.manifest.edit", "engineering.mcp.catalog", "engineering.memory.capture", "engineering.memory.context", "engineering.memory.search", "engineering.memoryos.sync_files", "engineering.orchestrate.batch", "engineering.parallelpath.scan", "engineering.release.run", "engineering.repo.structure", "engineering.runtime.bottlenecks", "engineering.runtime.compare", "engineering.runtime.errors", "engineering.runtime.executions", "engineering.runtime.health", "engineering.runtime.http_probe", "engineering.runtime.investigate", "engineering.runtime.logs", "engineering.runtime.metrics", "engineering.runtime.query", "engineering.runtime.releaseContext", "engineering.runtime.saturation", "engineering.runtime.timeline", "engineering.runtime.trace", "engineering.runtime.watch", "engineering.test.run", "engineering.test.status", "engineering.typecheck.run", "engineering.vision.inspect", "engineering.web.connector"].sort());
-    assert.equal(tools.result.tools.length, 88);
+    assert.deepEqual(tools.result.tools.map((tool: { name: string }) => tool.name).sort(), ["engineering.app.health", "engineering.sandbox.batchWrite", "engineering.sandbox.cancel", "engineering.sandbox.create", "engineering.sandbox.destroy", "engineering.sandbox.exec", "engineering.sandbox.inspect", "engineering.image.adapt", "engineering.bug.trace", "engineering.docker.health", "engineering.deploy.ready", "engineering.logs.explain", "engineering.release.test", "engineering.release.pipeline", "engineering.supervised_mission", "engineering.vps.capacity", "engineering.vps.change.safe", "engineering.vps.container.probe", "engineering.vps.diagnostics", "engineering.vps.doctor", "engineering.vps.guardian", "engineering.vps.health", "engineering.vps.incident.summary", "engineering.vps.why_down", "engineering.deploy.status", "engineering.vps.reconcile", "engineering.vps.recover", "engineering.vps.runner.restart", "engineering.vps.what_changed", "engineering.change.impact", "engineering.code.impact", "engineering.code.references", "engineering.code.search", "engineering.code.understand", "engineering.compliance.assess", "engineering.contract.verify", "engineering.deadcode.scan", "engineering.distribution.campaign", "engineering.distribution.prepare", "engineering.distribution.publish", "engineering.file.create", "engineering.file.patch", "engineering.file.read", "engineering.git.branches", "engineering.git.commit", "engineering.git.diff", "engineering.git.inspect_changes", "engineering.git.inspect_commit", "engineering.git.log", "engineering.git.remote_compare", "engineering.git.stage", "engineering.git.status", "engineering.git.unstage", "engineering.git.worktrees", "engineering.github.read", "engineering.guardian.app.deploy", "engineering.image.create", "engineering.image.edit", "engineering.lint.run", "engineering.manifest.edit", "engineering.mcp.catalog", "engineering.memory.capture", "engineering.memory.context", "engineering.memory.search", "engineering.memoryos.sync_files", "engineering.orchestrate.batch", "engineering.parallelpath.scan", "engineering.release.run", "engineering.repo.structure", "engineering.runtime.bottlenecks", "engineering.runtime.compare", "engineering.runtime.errors", "engineering.runtime.executions", "engineering.runtime.health", "engineering.runtime.http_probe", "engineering.runtime.investigate", "engineering.runtime.logs", "engineering.runtime.metrics", "engineering.runtime.query", "engineering.runtime.releaseContext", "engineering.runtime.saturation", "engineering.runtime.timeline", "engineering.runtime.trace", "engineering.runtime.watch", "engineering.test.run", "engineering.test.status", "engineering.typecheck.run", "engineering.vision.inspect", "engineering.web.connector"].sort());
+    assert.equal(tools.result.tools.length, 89);
     const statusBeforeCatalog = execFileSync("git", ["status", "--porcelain=v2", "--untracked-files=all"], { cwd: root, encoding: "utf8" });
     const refsBeforeCatalog = execFileSync("git", ["show-ref"], { cwd: root, encoding: "utf8" });
     const registryBeforeCatalog = JSON.stringify(tokenRegistry);
@@ -58,8 +58,8 @@ test("authenticated MCP endpoint exposes exactly the approved tools", async () =
     assert.equal(catalog.serverName, "memoryos-eng-mcp");
     assert.equal(catalog.serverVersion, "0.1.0");
     assert.equal(catalog.repositoryId, "memoryos");
-    assert.equal(catalog.actualToolCount, 88);
-    assert.equal(catalog.catalogVersion, "eng-mcp-tools-v88");
+    assert.equal(catalog.actualToolCount, 89);
+    assert.equal(catalog.catalogVersion, "eng-mcp-tools-v89");
     assert.match(catalog.catalogHash, /^[a-f0-9]{64}$/);
     assert.equal(secondCatalog.catalogHash, catalog.catalogHash);
     const catalogNames = catalog.tools.map((tool: ToolCatalogEntry) => tool.name);
@@ -751,6 +751,100 @@ test("engineering.vps.container.probe file_stat OK: forwards bounded params to t
     assert.equal(payload.security.freeCommandImpossible, true);
   } finally {
     await stub.close();
+    server.close();
+  }
+});
+
+// FASE 2: engineering.github.read — three offline probes at the HTTP boundary:
+// (1) the operator-issued engineering:github:read scope gates the tool (args are
+// schema-valid, so ONLY the scope can refuse); (2) without the outbound PAT the
+// tool fails closed with GITHUB_CREDENTIAL_MISSING (scope granted, credential
+// absent — order proven: scope first, credential second); (3) happy path with a
+// stubbed globalThis.fetch: URL/auth correct, payload mapped, quota block
+// present, PAT never echoed.
+test("engineering.github.read requires the operator-issued engineering:github:read scope", async () => {
+  const root = await fixture();
+  const token = "github-read-scope-refusal-token";
+  const tokenRegistry = [{ tokenHash: createHash("sha256").update(token).digest("hex"), subject: "tester", scopes: ["engineering:read", "engineering:write", "engineering:verify", "engineering:git", "engineering:release"], allowedRepositoryIds: ["memoryos"], expiresAt: "2099-01-01T00:00:00.000Z" }];
+  const server = await createEngineeringHttpServer({ repositoryId: "memoryos", configuredRoot: root, tokenRegistry });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const endpoint = `http://127.0.0.1:${address.port}/mcp`;
+  try {
+    await mcp(endpoint, token, 1, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } });
+    await mcp(endpoint, token, 2, "notifications/initialized", {});
+    const call = await mcp(endpoint, token, 3, "tools/call", { name: "engineering.github.read", arguments: { operation: "get_rate_limit" } });
+    const text = JSON.stringify(call.result);
+    assert.ok(text.includes("AUTHORIZATION_SCOPE_REQUIRED"), `expected scope refusal, got ${text.slice(0, 300)}`);
+  } finally {
+    server.close();
+  }
+});
+
+test("engineering.github.read fails closed with GITHUB_CREDENTIAL_MISSING when no PAT is provisioned", async () => {
+  const root = await fixture();
+  const token = "github-read-credential-token";
+  const tokenRegistry = [{ tokenHash: createHash("sha256").update(token).digest("hex"), subject: "tester", scopes: ["engineering:read", "engineering:write", "engineering:verify", "engineering:git", "engineering:release", "engineering:github:read"], allowedRepositoryIds: ["memoryos"], expiresAt: "2099-01-01T00:00:00.000Z" }];
+  const server = await createEngineeringHttpServer({ repositoryId: "memoryos", configuredRoot: root, tokenRegistry });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const endpoint = `http://127.0.0.1:${address.port}/mcp`;
+  const previousToken = process.env.GITHUB_TOKEN;
+  const previousTokenFile = process.env.GITHUB_TOKEN_FILE;
+  delete process.env.GITHUB_TOKEN;
+  delete process.env.GITHUB_TOKEN_FILE;
+  try {
+    await mcp(endpoint, token, 1, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } });
+    await mcp(endpoint, token, 2, "notifications/initialized", {});
+    const call = await mcp(endpoint, token, 3, "tools/call", { name: "engineering.github.read", arguments: { operation: "get_rate_limit" } });
+    const text = JSON.stringify(call.result);
+    assert.ok(!text.includes("AUTHORIZATION_SCOPE_REQUIRED"), `scope gate must open for the granted scope, got ${text.slice(0, 300)}`);
+    assert.ok(text.includes("GITHUB_CREDENTIAL_MISSING"), `expected credential refusal, got ${text.slice(0, 300)}`);
+  } finally {
+    if (previousToken !== undefined) process.env.GITHUB_TOKEN = previousToken; else delete process.env.GITHUB_TOKEN;
+    if (previousTokenFile !== undefined) process.env.GITHUB_TOKEN_FILE = previousTokenFile; else delete process.env.GITHUB_TOKEN_FILE;
+    server.close();
+  }
+});
+
+test("engineering.github.read get_repo happy path: live URL, Bearer auth, quota block, PAT never echoed", async () => {
+  const root = await fixture();
+  const token = "github-read-happy-token";
+  const pat = "ghp_integration-stub-token-000000000000";
+  const tokenRegistry = [{ tokenHash: createHash("sha256").update(token).digest("hex"), subject: "tester", scopes: ["engineering:read", "engineering:write", "engineering:verify", "engineering:git", "engineering:release", "engineering:github:read"], allowedRepositoryIds: ["memoryos"], expiresAt: "2099-01-01T00:00:00.000Z" }];
+  const server = await createEngineeringHttpServer({ repositoryId: "memoryos", configuredRoot: root, tokenRegistry });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  const endpoint = `http://127.0.0.1:${address.port}/mcp`;
+  const previousFetch = globalThis.fetch;
+  const previousToken = process.env.GITHUB_TOKEN;
+  const previousTokenFile = process.env.GITHUB_TOKEN_FILE;
+  const upstreamCalls: string[] = [];
+  globalThis.fetch = (async (url: unknown, init?: RequestInit) => {
+    const target = String(url);
+    if (!target.startsWith("https://api.github.com/")) return previousFetch(url as Parameters<typeof fetch>[0], init);
+    upstreamCalls.push(target);
+    return new Response(JSON.stringify({ full_name: "AndersonVitaease/memoryos", private: false, visibility: "public", default_branch: "main", pushed_at: "2026-09-17T15:47:46Z", html_url: "https://github.com/AndersonVitaease/memoryos" }), { status: 200, headers: { "x-ratelimit-limit": "5000", "x-ratelimit-remaining": "4999", "x-ratelimit-reset": String(Math.floor(Date.now() / 1000) + 3500) } });
+  }) as typeof fetch;
+  process.env.GITHUB_TOKEN = pat;
+  delete process.env.GITHUB_TOKEN_FILE;
+  try {
+    await mcp(endpoint, token, 1, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } });
+    await mcp(endpoint, token, 2, "notifications/initialized", {});
+    const call = await mcp(endpoint, token, 3, "tools/call", { name: "engineering.github.read", arguments: { operation: "get_repo" } });
+    const text = JSON.stringify(call.result);
+    assert.ok(!call.result.isError, `get_repo must not error, got: ${text.slice(0, 300)}`);
+    assert.ok(text.includes("AndersonVitaease/memoryos"), `repo payload missing, got: ${text.slice(0, 400)}`);
+    assert.ok(text.includes("4999"), `quota block missing, got: ${text.slice(0, 400)}`);
+    assert.deepEqual(upstreamCalls, ["https://api.github.com/repos/AndersonVitaease/memoryos"]);
+    assert.ok(!text.includes(pat), "the PAT must never appear in the MCP response");
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousToken !== undefined) process.env.GITHUB_TOKEN = previousToken; else delete process.env.GITHUB_TOKEN;
+    if (previousTokenFile !== undefined) process.env.GITHUB_TOKEN_FILE = previousTokenFile; else delete process.env.GITHUB_TOKEN_FILE;
     server.close();
   }
 });
