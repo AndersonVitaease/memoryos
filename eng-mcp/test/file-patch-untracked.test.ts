@@ -122,3 +122,38 @@ test("08 hunks nao aplicam limpo sobre o conteudo do hash: rejeitado (protecao d
     );
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+
+// PATCH-NO-EFFECT-01 — no-op silencioso fechado: hunk com deleteLines byte-idêntico
+// ao insertLines antes aplicava "com sucesso" sem mudar nada (newHash == oldHash,
+// diff vazio). Agora: resultado zero-efeito é PATCH_NO_EFFECT (zero mutação) e
+// hunks sem efeito em patch parcial são reportados em warnings.
+
+test("09 hunk deleteLines == insertLines (efeito zero): PATCH_NO_EFFECT, arquivo intacto", async () => {
+  const { adapter, root } = await makeAdapter();
+  try {
+    const before = sha256("export const tracked = 'v1';\n");
+    await assert.rejects(
+      adapter.patch({ path: "tracked.ts", baseHash: before, hunks: edit("export const tracked = 'v1';", "export const tracked = 'v1';"), acknowledgeWrite: true }),
+      (error: unknown) => error instanceof EngineeringError && `${(error as { code?: string }).code}${(error as Error).message}`.includes("PATCH_NO_EFFECT")
+    );
+    const { readFile } = await import("node:fs/promises");
+    assert.equal(sha256(await readFile(path.join(root, "tracked.ts"), "utf8")), before, "refusal must be zero-mutation");
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("10 hunk sem efeito + hunk efetivo (parcial): aplica, warnings apontam o hunk", async () => {
+  const { adapter, root } = await makeAdapter();
+  try {
+    const result = await adapter.patch({
+      path: "untracked.ts",
+      baseHash: sha256("export const untracked = 'v1';\n"),
+      hunks: [
+        { startLine: 1, deleteLines: ["export const untracked = 'v1';"], insertLines: ["export const untracked = 'v1';"] },
+        { startLine: 2, deleteLines: [], insertLines: ["export const added = 'yes';"] }
+      ],
+      acknowledgeWrite: true
+    });
+    assert.notEqual(result.newHash, sha256("export const untracked = 'v1';\n"));
+    assert.deepEqual(result.warnings, ["PATCH_NO_EFFECT_HUNK: hunk #1 replaces identical content (no change from this hunk)"]);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});

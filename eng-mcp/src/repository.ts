@@ -755,6 +755,13 @@ async references(subject: string, symbol: string, maxResults = 100) {
     for (const hunk of [...hunks].reverse()) lines.splice(hunk.startLine - 1, hunk.deleteLines.length, ...hunk.insertLines);
     return `${bom ? "\ufeff" : ""}${lines.join(eol)}${finalNewline ? eol : ""}`;
   }
+  private noEffectHunkPositions(hunks: Array<{ startLine: number; deleteLines: string[]; insertLines: string[] }>) {
+    // PATCH-NO-EFFECT-01: posições (1-based) dos hunks cujo deleteLines é byte-idêntico ao insertLines —
+    // o no-op silencioso que já escondeu corrupção real. O resultado final zero-efeito é erro no chamador;
+    // hunks sem efeito em patch parcial são reportados em warnings.
+    return hunks.map((hunk, position) => [position + 1, hunk] as const).filter(([, hunk]) => hunk.deleteLines.length === hunk.insertLines.length && hunk.deleteLines.every((line, offset) => hunk.insertLines[offset] === line)).map(([position]) => position);
+  }
+
   private async isTrackedPath(relativePath: string) {
     // ENG-MCP-UNTRACKED-PATCH-01: detecção tracked/untracked via git ls-files (somente leitura)
     const result = await this.execute("git", ["ls-files", "-z", "--", relativePath], this.policy.authorizedRoot, 5_000, 1_048_576, { GIT_OPTIONAL_LOCKS: "0" }).catch(() => null);
@@ -784,14 +791,16 @@ async references(subject: string, symbol: string, maxResults = 100) {
       let text: string;
       try { text = `${before.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf])) ? "\ufeff" : ""}${new TextDecoder("utf-8", { fatal: true }).decode(before)}`; } catch { throw new EngineeringError("BINARY_FILE_DENIED"); }
       const nextText = this.patchLines(text, input.hunks, input.expectedChangeCount);
+      const noEffectHunks = this.noEffectHunkPositions(input.hunks);
       const next = Buffer.from(nextText, "utf8");
       if (next.length > maxNextBytes) throw new EngineeringError("FILE_LIMIT_EXCEEDED");
+      if (this.hash(next) === oldHash) throw new EngineeringError("PATCH_NO_EFFECT", "patch result is byte-identical to current content (hunks with deleteLines equal to insertLines change nothing) — re-check the target lines and baseHash");
       assertNoSensitiveContent(next);
       await this.atomicReplace(canonical, target.parentPath, next, async () => { const latest = await readFile(canonical); if (this.hash(latest) !== input.baseHash) throw new EngineeringError("FILE_VERSION_CONFLICT"); });
       const baselineAfter = await this.baseline();
       this.assertBaseline(baselineBefore, baselineAfter, target.relativePath);
       const diff = await this.gitDiff({ paths: [target.relativePath] });
-      return { filesChanged: [target.relativePath], oldHash, newHash: this.hash(next), diff: diff.diff, truncated: diff.truncated, warnings: [] };
+      return { filesChanged: [target.relativePath], oldHash, newHash: this.hash(next), diff: diff.diff, truncated: diff.truncated, warnings: noEffectHunks.map((position) => `PATCH_NO_EFFECT_HUNK: hunk #${position} replaces identical content (no change from this hunk)`) };
     });
   }
   async create(input: { path: string; content: string; acknowledgeWrite: boolean }) {
@@ -817,12 +826,13 @@ async references(subject: string, symbol: string, maxResults = 100) {
     let text: string;
     try { text = `${before.subarray(0, 3).equals(Buffer.from([0xef, 0xbb, 0xbf])) ? "\\ufeff" : ""}${new TextDecoder("utf-8", { fatal: true }).decode(before)}`; } catch { throw new EngineeringError("BINARY_FILE_DENIED"); }
     const nextText = this.patchLines(text, input.hunks, input.expectedChangeCount);
+    const noEffectHunks = this.noEffectHunkPositions(input.hunks);
     const next = Buffer.from(nextText, "utf8");
     if (next.length > 1_048_576) throw new EngineeringError("FILE_LIMIT_EXCEEDED");
     assertNoSensitiveContent(next);
     const tracked = await this.isTrackedPath(resolved.relativePath);
     const touchedLines = input.hunks.reduce((sum, hunk) => sum + hunk.deleteLines.length + hunk.insertLines.length, 0);
-    return { relativePath: resolved.relativePath, baseHash: this.hash(before), tracked, nextLength: next.length, hunkCount: input.hunks.length, touchedLines, warnings: [] as string[] };
+    return { relativePath: resolved.relativePath, baseHash: this.hash(before), tracked, nextLength: next.length, hunkCount: input.hunks.length, touchedLines, warnings: noEffectHunks.map((position) => `PATCH_NO_EFFECT_HUNK: hunk #${position} replaces identical content (no change from this hunk)`) };
   }
   async patchManifest(input: { path: string; baseHash: string; hunks: Array<{ startLine: number; deleteLines: string[]; insertLines: string[] }>; expectedChangeCount?: number; acknowledgeWrite: boolean }) {
     if (!input.acknowledgeWrite) throw new EngineeringError("WRITE_ACKNOWLEDGEMENT_REQUIRED");
