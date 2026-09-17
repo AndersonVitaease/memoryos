@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_CONFIG = path.join(SCRIPT_DIR, "release-config.json");
-export const ACTIONS = Object.freeze(["test", "build", "candidate", "deploy", "smoke", "rollback", "status", "inspect"]);
+export const ACTIONS = Object.freeze(["test", "build", "candidate", "deploy", "smoke", "rollback", "status", "inspect", "container_probe"]);
 const OUTPUT_LIMIT = 256 * 1024;
 const COMMAND_TIMEOUT = 180_000;
 const WORKTREE_ROOT = "/opt/eng-mcp-release-data/worktrees";
@@ -1087,6 +1087,163 @@ async function statusAction(config) {
   return { state, production };
 }
 
+// ---------------------------------------------------------------------------
+// ITEM-2: one-off container probe (eng-mcp-candidate images, LOCAL ONLY).
+//
+// Structural command allowlist — the "command that cannot be expressed" principle:
+// no caller ever supplies a command, entrypoint, argv or shell string. The caller
+// supplies ONLY {image, probe, path, maxBytes}; the docker argv below is fully
+// determined by the frozen PROBE_SPECS table plus the structural PROBE_ISOLATION
+// flags. The image must be a LOCAL eng-mcp-candidate:* tag (docker image inspect
+// pre-flight; docker run never pulls). The path is a restricted absolute-path
+// grammar with a sensitive-path denylist. Every output field passes
+// sanitizeSecrets; the audit trail (probes.jsonl, last 50 entries) lives next to
+// the release state file. Zero mutation outside the disposable container.
+// ---------------------------------------------------------------------------
+
+export const PROBE_IMAGE_PREFIXES = Object.freeze(["eng-mcp-candidate:"]);
+const PROBE_IMAGE_REST = /^[A-Za-z0-9._:-]{1,200}$/;
+const PROBE_PATH_GRAMMAR = /^\/[A-Za-z0-9._/@+-]{1,256}$/;
+const PROBE_PATH_DENYLIST_SEGMENTS = Object.freeze([".env", ".npmrc", ".ssh", ".aws", ".gnupg", ".netrc", ".git-credentials", "id_rsa", "id_ed25519", "id_ecdsa", "credentials"]);
+const PROBE_PATH_DENYLIST_SUBSTRING = /token|secret|password|credential/i;
+const PROBE_TIMEOUT_MS = 30_000;
+const PROBE_SUBCOMMAND_TIMEOUT_MS = 10_000;
+const PROBES_LOG_KEEP = 50;
+// Structural isolation (fixed order, never caller-supplied): auto-remove, no
+// network, read-only rootfs, non-root nobody, no capabilities, no privilege
+// escalation, hard memory/pids ceilings.
+export const PROBE_ISOLATION = Object.freeze([
+  "--rm", "--network", "none", "--read-only", "--user", "65534:65534",
+  "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
+  "--memory", "256m", "--pids-limit", "64"
+]);
+// probe -> { entrypoint, argsFor }. Full argv = ["run", ...PROBE_ISOLATION,
+// "--name", mcp-probe-<8hex>, "--entrypoint", entrypoint, image, ...argsFor] —
+// nothing caller-controlled reaches docker beyond the validated image/path/maxBytes.
+export const PROBE_SPECS = Object.freeze({
+  file_stat: { entrypoint: "ls", argsFor: (target) => ["-ld", "--", target.path] },
+  read_text: { entrypoint: "head", argsFor: (target) => ["-c", String(target.maxBytes), "--", target.path] },
+  list_dir: { entrypoint: "ls", argsFor: (target) => ["-la", "--", target.path] }
+});
+
+export function validateContainerProbeParams(requested) {
+  const probe = requested?.probe;
+  if (typeof probe !== "string" || !Object.hasOwn(PROBE_SPECS, probe)) throw new Error(`PROBE_NOT_ALLOWLISTED:${String(probe ?? "").slice(0, 40)}`);
+  const image = requested?.image;
+  if (typeof image !== "string" || image.length === 0 || image.length > 220) throw new Error("PROBE_PARAM_INVALID:image");
+  const prefix = PROBE_IMAGE_PREFIXES.find((candidate) => image.startsWith(candidate));
+  if (prefix === undefined) throw new Error(`PROBE_TARGET_NOT_ALLOWLISTED:${sanitizeSecrets(image.slice(0, 80))}`);
+  if (!PROBE_IMAGE_REST.test(image.slice(prefix.length))) throw new Error("PROBE_PARAM_INVALID:image");
+  const targetPath = requested?.path;
+  if (typeof targetPath !== "string" || !PROBE_PATH_GRAMMAR.test(targetPath) || targetPath.includes("..")) throw new Error("PROBE_PARAM_INVALID:path");
+  if (targetPath.split("/").some((segment) => PROBE_PATH_DENYLIST_SEGMENTS.includes(segment)) || PROBE_PATH_DENYLIST_SUBSTRING.test(targetPath)) throw new Error(`PROBE_SENSITIVE_PATH_DENIED:${targetPath.slice(0, 80)}`);
+  let maxBytes;
+  if (probe === "read_text") {
+    maxBytes = requested?.maxBytes === undefined ? 4_096 : Number(requested?.maxBytes);
+    if (!Number.isInteger(maxBytes) || maxBytes < 1 || maxBytes > 4_096) throw new Error("PROBE_PARAM_INVALID:maxBytes");
+  } else if (requested?.maxBytes !== undefined) {
+    throw new Error("PROBE_PARAM_INVALID:maxBytes");
+  }
+  return { image, probe, path: targetPath, maxBytes };
+}
+
+async function probeContainerRemoved(name) {
+  try {
+    const listing = await runProcess("docker", ["ps", "-a", "--filter", `name=^${name}$`, "--format", "{{.Names}}"], { timeoutMs: PROBE_SUBCOMMAND_TIMEOUT_MS });
+    return !listing.timedOut && listing.stdout.trim().length === 0;
+  } catch { return false; }
+}
+
+async function cleanupProbeContainer(name) {
+  try { await mustRun("docker", ["rm", "-f", name], { timeoutMs: PROBE_SUBCOMMAND_TIMEOUT_MS }); } catch { /* fall through to the independent ps verification */ }
+  return probeContainerRemoved(name);
+}
+
+async function appendProbeLog(config, record) {
+  try {
+    const logPath = path.join(path.dirname(config.stateFile), "probes.jsonl");
+    let lines = [];
+    try { lines = (await readFile(logPath, "utf8")).split("\n").filter(Boolean); } catch { /* fresh log */ }
+    lines.push(JSON.stringify(record));
+    const kept = lines.slice(-PROBES_LOG_KEEP);
+    const temporary = `${logPath}.${process.pid}.tmp`;
+    await writeFile(temporary, kept.length > 0 ? `${kept.join("\n")}\n` : "", { mode: 0o600 });
+    await rename(temporary, logPath);
+    return { file: "probes.jsonl", retained: kept.length };
+  } catch { return { file: "probes.jsonl", retained: null }; }
+}
+
+async function containerProbeAction(config) {
+  const requested = {
+    image: process.env.ENG_MCP_PROBE_IMAGE,
+    probe: process.env.ENG_MCP_PROBE_PROBE,
+    path: process.env.ENG_MCP_PROBE_PATH,
+    maxBytes: process.env.ENG_MCP_PROBE_MAXBYTES === undefined ? undefined : Number(process.env.ENG_MCP_PROBE_MAXBYTES)
+  };
+  const params = validateContainerProbeParams(requested);
+  const started = Date.now();
+  // LOCAL-ONLY pre-flight: the image must already exist on the host. The docker
+  // run below can never pull — a missing image is PROBE_TARGET_NOT_LOCAL, not a
+  // download. The evidence (imageId + repo digests) is sanitized before returning.
+  let imageEvidence = null;
+  try {
+    const inspected = await mustRun("docker", ["image", "inspect", "--format", "{{.Id}}|{{join .RepoDigests \",\"}}", params.image], { timeoutMs: PROBE_SUBCOMMAND_TIMEOUT_MS });
+    const line = (inspected.stdout ?? "").trim().split("\n")[0] ?? "";
+    const separator = line.indexOf("|");
+    imageEvidence = separator === -1
+      ? { imageId: sanitizeSecrets(line), repoDigests: "" }
+      : { imageId: sanitizeSecrets(line.slice(0, separator)), repoDigests: sanitizeSecrets(line.slice(separator + 1)) };
+  } catch (error) {
+    if (String(error.message).startsWith("RELEASE_COMMAND_FAILED:")) throw new Error(`PROBE_TARGET_NOT_LOCAL:${sanitizeSecrets(params.image)}`);
+    throw error;
+  }
+  const spec = PROBE_SPECS[params.probe];
+  const containerName = `mcp-probe-${randomBytes(4).toString("hex")}`;
+  const argv = ["run", ...PROBE_ISOLATION, "--name", containerName, "--entrypoint", spec.entrypoint, params.image, ...spec.argsFor(params)];
+  const outcome = await runProcess("docker", argv, { timeoutMs: PROBE_TIMEOUT_MS });
+  let cleanupVerified = true;
+  if (outcome.timedOut) cleanupVerified = await cleanupProbeContainer(containerName);
+  const stdout = sanitizeSecrets(outcome.stdout ?? "");
+  const stderr = sanitizeSecrets(outcome.stderr ?? "");
+  // Binary content is refused, not surfaced: U+FFFD in the decoded stdout means
+  // the target is not decodable text (read_text only). The run's other evidence
+  // (exit code, cleanup, timing) is still reported honestly.
+  const binaryRefused = params.probe === "read_text" && stdout.includes("�");
+  const exists = outcome.timedOut ? null : outcome.exitCode === 0;
+  const probesLog = await appendProbeLog(config, {
+    at: new Date().toISOString(),
+    probe: params.probe,
+    image: params.image,
+    path: params.path,
+    maxBytes: params.maxBytes,
+    exitCode: outcome.timedOut ? null : outcome.exitCode,
+    timedOut: outcome.timedOut,
+    truncated: outcome.truncated,
+    cleanupVerified,
+    binaryRefused
+  });
+  return {
+    probe: params.probe,
+    image: params.image,
+    path: params.path,
+    ...(params.probe === "read_text" ? { maxBytes: params.maxBytes } : {}),
+    imageId: imageEvidence.imageId,
+    repoDigests: imageEvidence.repoDigests,
+    containerName,
+    exitCode: outcome.timedOut ? null : outcome.exitCode,
+    ...(params.probe === "file_stat" ? { exists: exists === true } : {}),
+    timedOut: outcome.timedOut,
+    truncated: outcome.truncated,
+    cleanupVerified,
+    binaryRefused,
+    redacted: true,
+    ...(binaryRefused ? {} : { stdout: stdout.length > 0 ? stdout : null }),
+    stderr: stderr.length > 0 ? stderr : null,
+    durationMs: Date.now() - started,
+    probesLog
+  };
+}
+
 export async function execute(action, configFile = DEFAULT_CONFIG, options = {}) {
   const config = await loadConfig(configFile);
   const targetCommit = options.targetCommit;
@@ -1107,6 +1264,7 @@ export async function execute(action, configFile = DEFAULT_CONFIG, options = {})
   if (action === "rollback") return rollbackAction(config);
   if (action === "status") return statusAction(config);
   if (action === "inspect") return inspectAction(config);
+  if (action === "container_probe") return containerProbeAction(config);
   throw new Error("RELEASE_ACTION_INVALID");
 }
 
