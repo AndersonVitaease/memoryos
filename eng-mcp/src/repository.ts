@@ -6,6 +6,7 @@ import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import { EngineeringError, RepositoryPolicy, MANIFEST_GOVERNED_PATHS, assertNoSensitiveContent, isSensitivePath } from "./policy.js";
 import { runGithubRead } from "./githubRead.ts";
+import { runGitPush, type GitPushInput } from "./gitPush.ts";
 import { getTestJobStore, createTestExecutionId, parseTapSummary, parseTapFailures, classifySyncRunOutcome, classifyInfraError, reconcileSuiteJob, boundedJobView, type TestJob } from "./testJobs.js";
 
 export type CommandResult = { stdout: string; stderr: string; truncated: boolean };
@@ -600,6 +601,13 @@ async references(subject: string, symbol: string, maxResults = 100) {
       const after = await this.baseline(); this.assertWorktreeUnchanged(before, after); const commitHash = (await gitRaw(["rev-parse", "HEAD"], this.policy.authorizedRoot)).toString("utf8").trim();
       return { commitHash, indexHashBefore, indexHashAfter: await this.indexFingerprint(), message: input.message, status: "committed" as const };
     });
+  }
+
+  // GIT-PUSH-01: governed outbound push — delegates to the standalone core with
+  // the authorized root as cwd (git discovers the real repo root upward) and the
+  // shared git lock so pushes serialize with every other git mutation.
+  async gitPush(input: GitPushInput, subject?: string | null) {
+    return runGitPush(input, { repoRoot: this.policy.authorizedRoot, withLock: (work) => this.withGitLock(work), subject: subject ?? null });
   }
 
   private async analysisFiles(requestedPath?: string): Promise<{ items: Array<{ path: string; text: string }>; partial: boolean }> {

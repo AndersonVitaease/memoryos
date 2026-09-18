@@ -31,7 +31,7 @@ const GITHUB_TOKEN_PATTERNS: RegExp[] = [
   /\bBearer\s+\S+/g
 ];
 
-function redactGitHubSecrets(text: string): string {
+export function redactGitHubSecrets(text: string): string {
   let out = text;
   for (const pattern of GITHUB_TOKEN_PATTERNS) out = out.replace(pattern, "[REDACTED_SECRET]");
   return out.slice(0, 500);
@@ -235,6 +235,18 @@ async function opGetBranchHead(args: GithubGetBranchHeadArgs): Promise<Record<st
   const commit = isRecord(body.commit.commit) ? body.commit.commit : {};
   const committer = isRecord(commit.committer) ? commit.committer : {};
   return { operation: "get_branch_head", repo, branch, sha: body.commit.sha ?? null, commitDate: committer.date ?? null, rateLimit };
+}
+
+// GIT-PUSH-01: cache-bypassing branch head for the governed push precheck and
+// postcheck — the get_branch_head TTL cache would happily serve a pre-push sha
+// to a postcheck seconds later; the push must always read the live head.
+export async function fetchBranchHeadFresh(branch: string): Promise<{ repo: string; branch: string; sha: string | null; commitDate: string | null }> {
+  const repo = defaultRepo();
+  const { body } = await githubFetchJson(`/repos/${repo}/branches/${encodeURIComponent(branch)}`);
+  if (!isRecord(body) || !isRecord(body.commit)) throw new GitHubReadError("GITHUB_OUTPUT_INVALID", "branch payload missing commit");
+  const commit = isRecord(body.commit.commit) ? body.commit.commit : {};
+  const committer = isRecord(commit.committer) ? commit.committer : {};
+  return { repo, branch, sha: typeof body.commit.sha === "string" ? body.commit.sha : null, commitDate: typeof committer.date === "string" ? committer.date : null };
 }
 
 async function opGetRepo(args: GithubGetRepoArgs): Promise<Record<string, unknown>> {
