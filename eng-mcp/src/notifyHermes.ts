@@ -25,6 +25,7 @@ export type NotifyHermesResult = {
   status_code?: number;
   latency_ms?: number;
   hermes_run_id?: string;
+  session_id?: string;
   notified_at: string;
   error?: string;
   detail?: string;
@@ -85,6 +86,22 @@ function resolveHermesApiKey(): string | null {
   return null;
 }
 
+// Session continuity: all notifications land in ONE persistent Hermes session
+// (the operator's dedicated GH conversation) instead of splintering into a new
+// session per call. The session id is SERVER-SIDE configuration only - the
+// default is fixed here and the env override is read in the container; the
+// caller can never choose it (input schema stays {summary, status?}).
+const HERMES_SESSION_ID_DEFAULT = "gh-notifications";
+
+function resolveHermesSessionId(): string {
+  const raw = (process.env.ENG_MCP_HERMES_SESSION_ID ?? "").trim();
+  return raw || HERMES_SESSION_ID_DEFAULT;
+}
+
+function isSessionIdValid(id: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9._-]{0,255}$/.test(id) && !id.includes("..");
+}
+
 function dedupeKey(input: NotifyHermesInput): string {
   return createHash("sha256").update(`${input.status ?? "complete"}\n${input.summary}`).digest("hex");
 }
@@ -123,6 +140,10 @@ export async function runNotifyHermes(input: NotifyHermesInput): Promise<NotifyH
     // 5. Credential (server-side only; never accepted from the caller).
     const apiKey = resolveHermesApiKey();
     if (!apiKey) return failure(notifiedAt, "HERMES_CREDENTIAL_MISSING", "configure HERMES_API_KEY or ENG_MCP_HERMES_NOTIFY_CREDENTIAL_FILE");
+    // 5b. Session continuity (server-side config only, never a caller input):
+    // every notification lands in the same persistent Hermes session.
+    const sessionId = resolveHermesSessionId();
+    if (!isSessionIdValid(sessionId)) return failure(notifiedAt, "HERMES_SESSION_ID_INVALID", "ENG_MCP_HERMES_SESSION_ID must be path-safe (letters/digits/._-, no '..', max 256)");
     // 6. Attempt point: the budget and the cooldown are consumed from here on,
     // regardless of the outcome (anti-saturation even when the gateway is down).
     state.attemptTimestamps.push(nowMs);
@@ -137,7 +158,7 @@ export async function runNotifyHermes(input: NotifyHermesInput): Promise<NotifyH
     try {
       response = await fetch(`${base}/v1/chat/completions`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}`, "X-Hermes-Session-Id": sessionId },
         body: JSON.stringify({ model: HERMES_MODEL, stream: false, messages: [{ role: "user", content }] }),
         signal: controller.signal
       });
@@ -168,6 +189,7 @@ export async function runNotifyHermes(input: NotifyHermesInput): Promise<NotifyH
       status_code: 200,
       latency_ms: Date.now() - nowMs,
       ...(rawId ? { hermes_run_id: rawId.slice(0, RUN_ID_MAX) } : {}),
+      session_id: sessionId,
       notified_at: notifiedAt
     };
   } catch (error) {

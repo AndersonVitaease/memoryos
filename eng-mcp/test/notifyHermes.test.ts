@@ -13,13 +13,13 @@ import { notifyHermesInputSchema, runNotifyHermes, __resetNotifyHermesStateForTe
 
 type Fixture = { status: number; body?: unknown };
 
-function stubFetch(respond: (url: string, body: unknown) => Fixture): { calls: Array<{ url: string; authorization?: string; body?: unknown }>; restore: () => void } {
-  const calls: Array<{ url: string; authorization?: string; body?: unknown }> = [];
+function stubFetch(respond: (url: string, body: unknown) => Fixture): { calls: Array<{ url: string; authorization?: string; sessionId?: string; body?: unknown }>; restore: () => void } {
+  const calls: Array<{ url: string; authorization?: string; sessionId?: string; body?: unknown }> = [];
   const previous = globalThis.fetch;
   globalThis.fetch = (async (url: unknown, init?: { headers?: Record<string, string>; body?: string }) => {
     const headers = (init?.headers ?? {}) as Record<string, string>;
     const parsedBody = init?.body ? JSON.parse(init.body) : undefined;
-    calls.push({ url: String(url), authorization: headers.authorization ?? headers.Authorization, body: parsedBody });
+    calls.push({ url: String(url), authorization: headers.authorization ?? headers.Authorization, sessionId: headers["X-Hermes-Session-Id"], body: parsedBody });
     const fixture = respond(String(url), parsedBody);
     return new Response(JSON.stringify(fixture.body ?? {}), { status: fixture.status });
   }) as typeof fetch;
@@ -27,7 +27,7 @@ function stubFetch(respond: (url: string, body: unknown) => Fixture): { calls: A
 }
 
 function withEnv(overrides: Record<string, string | undefined>): () => void {
-  const keys = ["HERMES_API_KEY", "ENG_MCP_HERMES_NOTIFY_CREDENTIAL_FILE", "ENG_MCP_HERMES_API_BASE", "ENG_MCP_HERMES_TIMEOUT_MS", "ENG_MCP_HERMES_COOLDOWN_MS", "ENG_MCP_HERMES_HOURLY_LIMIT"];
+  const keys = ["HERMES_API_KEY", "ENG_MCP_HERMES_NOTIFY_CREDENTIAL_FILE", "ENG_MCP_HERMES_API_BASE", "ENG_MCP_HERMES_SESSION_ID", "ENG_MCP_HERMES_TIMEOUT_MS", "ENG_MCP_HERMES_COOLDOWN_MS", "ENG_MCP_HERMES_HOURLY_LIMIT"];
   const previous = new Map(keys.map((key) => [key, process.env[key]]));
   for (const key of keys) delete process.env[key];
   for (const [key, value] of Object.entries(overrides)) if (value !== undefined) process.env[key] = value;
@@ -63,6 +63,8 @@ test("happy path: PT-BR one-way message to the fixed endpoint, delivered with bo
     assert.equal(calls.length, 1);
     assert.equal(calls[0].url, "http://127.0.0.1:8642/v1/chat/completions");
     assert.equal(calls[0].authorization, "Bearer fixture-hermes-key");
+    assert.equal(calls[0].sessionId, "gh-notifications");
+    assert.equal(result.session_id, "gh-notifications");
     const body = calls[0].body as { model: string; stream: boolean; messages: Array<{ role: string; content: string }> };
     assert.equal(body.model, "hermes-agent");
     assert.equal(body.stream, false);
@@ -204,6 +206,47 @@ test("sensitive content: SENSITIVE_CONTENT_BLOCKED before any rate state or netw
     const result = await runNotifyHermes({ summary: `token vazado: ${GH_TRIGGER}` });
     assert.equal(result.delivered, false);
     assert.equal(result.error, "SENSITIVE_CONTENT_BLOCKED");
+    assert.equal(calls.length, 0);
+  } finally { restore(); restoreEnv(); }
+});
+
+test("session continuity: default header gh-notifications lands every call in ONE persistent session", async () => {
+  __resetNotifyHermesStateForTests();
+  const restoreEnv = withEnv({ HERMES_API_KEY: "fixture-hermes-key", ENG_MCP_HERMES_COOLDOWN_MS: "0" });
+  const { calls, restore } = stubFetch(() => ({ status: 200, body: { id: "chatcmpl-5" } }));
+  try {
+    const first = await runNotifyHermes({ summary: "primeira na sessão dedicada" });
+    const second = await runNotifyHermes({ summary: "segunda na sessão dedicada" });
+    assert.equal(first.delivered, true);
+    assert.equal(second.delivered, true);
+    assert.equal(first.session_id, "gh-notifications");
+    assert.equal(second.session_id, "gh-notifications");
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].sessionId, "gh-notifications");
+    assert.equal(calls[1].sessionId, "gh-notifications");
+  } finally { restore(); restoreEnv(); }
+});
+
+test("session continuity: env ENG_MCP_HERMES_SESSION_ID overrides the default (server-side only, never caller input)", async () => {
+  __resetNotifyHermesStateForTests();
+  const restoreEnv = withEnv({ HERMES_API_KEY: "fixture-hermes-key", ENG_MCP_HERMES_SESSION_ID: "operator-main" });
+  const { calls, restore } = stubFetch(() => ({ status: 200, body: {} }));
+  try {
+    const result = await runNotifyHermes({ summary: "resumo na sessão do operador" });
+    assert.equal(result.delivered, true);
+    assert.equal(result.session_id, "operator-main");
+    assert.equal(calls[0].sessionId, "operator-main");
+  } finally { restore(); restoreEnv(); }
+});
+
+test("session continuity: invalid server-side session id is fail-closed HERMES_SESSION_ID_INVALID with zero network", async () => {
+  __resetNotifyHermesStateForTests();
+  const restoreEnv = withEnv({ HERMES_API_KEY: "fixture-hermes-key", ENG_MCP_HERMES_SESSION_ID: "bad/../id" });
+  const { calls, restore } = stubFetch(() => { throw new Error("network must not be reached"); });
+  try {
+    const result = await runNotifyHermes({ summary: "resumo com sessão inválida" });
+    assert.equal(result.delivered, false);
+    assert.equal(result.error, "HERMES_SESSION_ID_INVALID");
     assert.equal(calls.length, 0);
   } finally { restore(); restoreEnv(); }
 });
