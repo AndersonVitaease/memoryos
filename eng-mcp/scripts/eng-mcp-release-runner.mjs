@@ -43,6 +43,7 @@ export function runPipeline(job, options = {}) {
     const runtimeTokenCredential = process.env.CREDENTIALS_DIRECTORY ? path.join(process.env.CREDENTIALS_DIRECTORY, "claude-agent-runtime-token") : null;
     const e2bApiKeyCredential = process.env.CREDENTIALS_DIRECTORY ? path.join(process.env.CREDENTIALS_DIRECTORY, "e2b-api-key") : null;
     const githubPatCredential = process.env.CREDENTIALS_DIRECTORY ? path.join(process.env.CREDENTIALS_DIRECTORY, "github-pat") : null;
+    const gitCredentialsCredential = process.env.CREDENTIALS_DIRECTORY ? path.join(process.env.CREDENTIALS_DIRECTORY, "git-credentials") : null;
     const start = async () => {
       const environment = { PATH: process.env.PATH, HOME: process.env.HOME, LANG: process.env.LANG };
       if (credential) { try { environment.ENG_MCP_RELEASE_BEARER = (await readFile(credential, "utf8")).trim(); } catch { /* status/test/build/candidate do not require it */ } }
@@ -52,6 +53,7 @@ export function runPipeline(job, options = {}) {
       if (runtimeTokenCredential) { environment.ENG_MCP_RUNTIME_TOKEN_CREDENTIAL_FILE = runtimeTokenCredential; }
       if (e2bApiKeyCredential) { environment.E2B_API_KEY_FILE = e2bApiKeyCredential; }
       if (githubPatCredential) { environment.GITHUB_TOKEN_FILE = githubPatCredential; }
+      if (gitCredentialsCredential) { environment.GIT_CREDENTIALS_FILE = gitCredentialsCredential; }
       // Pass commit as environment variable if present
       if (job.commit) environment.ENG_MCP_COMMIT = job.commit;
       // ITEM-2: thread probe params as flat ENG_MCP_PROBE_* environment variables
