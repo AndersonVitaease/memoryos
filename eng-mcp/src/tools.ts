@@ -37,6 +37,7 @@ import { complianceAssessInputSchema, runComplianceAssess } from "./complianceAs
 import { sandboxCreateInputSchema, runSandboxCreate, sandboxDestroyInputSchema, runSandboxDestroy, sandboxExecInputSchema, runSandboxExec, sandboxInspectInputSchema, runSandboxInspect, sandboxCancelInputSchema, runSandboxCancel } from "./sandbox.ts";
 import { sandboxBatchWriteInputSchema, runSandboxBatchWrite } from "./sandboxBatchWrite.ts";
 import { manifestEditInputSchema, runManifestEdit } from "./manifestEdit.ts";
+import { notifyHermesInputSchema, runNotifyHermes } from "./notifyHermes.ts";
 import { getTestJobStore, createSuiteJob, finishSuiteJobFromRunner, finishSuiteJobInfra } from "./testJobs.js";
 
 export const ENGINEERING_SERVER_INFO = { name: "memoryos-eng-mcp", version: "0.1.0" } as const;
@@ -1018,6 +1019,16 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   }, async (input) => {
     requireRead();
     return response(await runLogsExplain(subject.subject, input));
+  }));
+
+  const requireNotifyHermes = () => { if (!subject.scopes.includes("engineering:notify:hermes")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
+  register("engineering.notify.hermes", "write", (name) => server.registerTool(name, {
+    description: "One-way best-effort mission notification to the local Hermes Agent gateway (OpenAI-compatible API server). The endpoint (loopback 127.0.0.1:8642) and the Bearer are ALWAYS server-side configuration (env / LoadCredential chain unit -> runner -> container); caller-supplied URLs, endpoints or credentials are structurally impossible by schema ({summary, status?} only). Sends a PT-BR one-way message; 10min dedupe, 60s cooldown and an hourly rolling budget protect the gateway; every failure is honest best-effort (delivered:false + typed error, never thrown) and never blocks the calling mission. Requires bearer scope engineering:notify:hermes (operator-issued; the agent cannot self-authorize).",
+    inputSchema: notifyHermesInputSchema
+  }, async (input) => {
+    requireRead();
+    requireNotifyHermes();
+    return response(await runNotifyHermes(input));
   }));
 
 }
