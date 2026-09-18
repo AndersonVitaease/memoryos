@@ -304,6 +304,10 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   // the internal read scope proves repository access; this one proves the PAT may be spent.
   const requireGithubRead = () => { if (!subject.scopes.includes("engineering:github:read")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
 
+  // GIT-PUSH-01: outbound pushes mutate the REMOTE — their own operator-issued
+  // scope per the <resource>:<action> convention (ITEM-1); the generic git scope never implies remote write.
+  const requireGitPush = () => { if (!subject.scopes.includes("engineering:git:push")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
+
   const observability = new ObservabilityClient();
   const agentMemory = new AgentMemoryClient();
   const supervisedMission = new SupervisedMissionClient();
@@ -421,6 +425,13 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   register("engineering.git.stage", "write", (name) => server.registerTool(name, { description: "Stage explicitly validated non-sensitive files.", inputSchema: z.object({ paths: z.array(z.string()).min(1).max(50), expectedHashes: z.record(z.string(), z.string()), acknowledgeStage: z.literal(true) }).strict() }, async (input) => { requireGit(); return response(await repository.gitStage(input)); }));
   register("engineering.git.unstage", "write", (name) => server.registerTool(name, { description: "Remove explicit paths from the Git index only.", inputSchema: z.object({ paths: z.array(z.string()).min(1).max(50), expectedIndexHash: z.string(), acknowledgeUnstage: z.literal(true) }).strict() }, async (input) => { requireGit(); return response(await repository.gitUnstage(input)); }));
   register("engineering.git.commit", "write", (name) => server.registerTool(name, { description: "Commit exactly the previously validated staged index.", inputSchema: z.object({ message: z.string(), expectedIndexHash: z.string(), acknowledgeCommit: z.literal(true) }).strict() }, async (input) => { requireGit(); return response(await repository.gitCommit(input)); }));
+  // GIT-PUSH-01: governed push — default call is a read-only PLAN; a real push
+  // requires approval.approved=true + acknowledgePush=true and re-runs the precheck fresh.
+  register("engineering.git.push", "write", (name) => server.registerTool(name, {
+    description: "Governed push of the authorized git repository to origin (GIT-PUSH-01). Default call is a read-only PLAN: branch (main only, MVP), local HEAD, LIVE remote head via github.read get_branch_head (never the stale refs/remotes/*), ahead/behind classification, pending commits, uncommitted counts, credential-store state (existence only - the credential content is never read) and blockers; zero mutation. execute=true requires approval.approved=true AND acknowledgePush=true, re-runs the full precheck fresh (TOCTOU) and pushes EXACTLY refs/heads/main:refs/heads/main - no --force, no --tags, no deletes, no refspec redirection; hooks always run (never --no-verify). Divergence (remote head absent locally) and non-fast-forward are BLOCKED with typed errors - reconciliation (fetch/rebase/merge) is operator work and is never attempted. The credential is the operator's git credential-store FILE mounted read-only (GIT_CREDENTIALS_FILE, default /run/secrets/git-credentials); no token/URL/remote/credential/refspec can ever be passed as input (strict schema; remote is always the repository's own origin; no token in argv - credential.helper is explicitly reset then pointed at the mounted store). Postcheck re-reads the branch head FRESH (cache-bypassing) and must equal the pushed sha (bounded retries); success is never taken from git stdout. Typed errors: PUSH_STATE_DIVERGED, PUSH_NON_FAST_FORWARD_BLOCKED, PUSH_NOTHING_TO_PUSH, PUSH_HEAD_MISMATCH, PUSH_CREDENTIAL_MISSING, PUSH_AUTH_REJECTED, PUSH_FORBIDDEN, PUSH_BRANCH_NOT_FOUND, PUSH_REMOTE_MISSING, PUSH_PRECHECK_UNAVAILABLE, PUSH_TIMEOUT, PUSH_EXECUTION_FAILED, PUSH_POSTCHECK_FAILED, PUSH_IN_FLIGHT, PUSH_APPROVAL_REQUIRED, PUSH_INPUT_FORBIDDEN. Requires bearer scope engineering:git:push (operator-issued; the agent cannot self-authorize).",
+    inputSchema: z.object({ execute: z.boolean().optional(), approval: z.object({ approved: z.boolean() }).optional(), expectedHead: z.string().regex(/^[0-9a-f]{40}$/).optional(), acknowledgePush: z.literal(true).optional() }).strict()
+  }, async (input) => { requireGitPush(); return response(await repository.gitPush(input, subject.subject)); }));
+
   // MANIFEST-GOVERNED-EDIT-01: caminho governado bind/apply para os três manifests de
   // raiz (package.json, package-lock.json, Dockerfile). propose/refuse são não-mutantes;
   // apply exige approval artifact + fingerprint + escopo do kind armazenado. Os demais
