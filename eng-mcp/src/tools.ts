@@ -16,6 +16,7 @@ import { runVpsRecover, vpsRecoverInputSchema } from "./vpsRecover.ts";
 import { runVpsRunnerRestart, vpsRunnerRestartInputSchema } from "./vpsRunnerRestart.ts";
 import { runVpsDiagnostics, vpsDiagnosticsInputSchema } from "./vpsDiagnostics.ts";
 import { runVpsContainerProbe, vpsContainerProbeInputSchema } from "./vpsContainerProbe.ts";
+import { runVpsSecretWrite, vpsSecretWriteInputSchema } from "./vpsSecretWrite.ts";
 // FASE 2: GitHub READ-ONLY super tool (10 operations, GET-only by construction;
 // credential + rate protection live inside the module, never in the registry layer).
 import { runGithubRead, githubReadInputSchema } from "./githubRead.ts";
@@ -301,6 +302,12 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   // container from a LOCAL allowlisted image — still outside the repository
   // boundary, so the scope is UNCONDITIONAL (same convention as diagnostics).
   const requireVpsContainerProbe = () => { if (!subject.scopes.includes("engineering:vps:container:probe")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
+
+  // VPS-SECRET-WRITE-01: writing credential FILES on the VPS filesystem mutates
+  // secrets storage — its own operator-issued scope per the <resource>:<action>
+  // convention; the agent can never self-authorize and secret values never cross
+  // the tool boundary (paths and 16-hex sha256 prefixes only).
+  const requireVpsSecretWrite = () => { if (!subject.scopes.includes("engineering:vps:secret:write")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
   // FASE 2: outbound GitHub reads are gated by their own operator-issued scope —
   // the internal read scope proves repository access; this one proves the PAT may be spent.
   const requireGithubRead = () => { if (!subject.scopes.includes("engineering:github:read")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
@@ -783,6 +790,28 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
     requireRead();
     requireVpsContainerProbe();
     return response(await runVpsContainerProbe(input, { runRunner: callReleaseRunner }));
+  }));
+
+  // VPS-SECRET-WRITE-01: engineering.vps.secret.write — governed credential-file
+  // writer for the VPS filesystem. The secret value is NEVER an input field: it is
+  // read server-side from an operator-staged owner-only file under the staging
+  // prefix (/data/.staging-secret-*) or from a named env var — channels `ps aux`
+  // cannot observe (`docker run -e K=V` argv IS ps-visible and stays banned for
+  // secrets). Atomic same-directory temp+fsync+rename, mode forced 0o600, owner
+  // forced to the target directory's uid/gid, symlinks refused anywhere in the
+  // target chain, allowlist = /data/credentials/* + /data/tokens.json, empty
+  // values refused. Byte-identical rewrite = NO_OP with zero mutation (full sha256
+  // compare; only the 16-hex prefix is reported). PLAN mode is read-only; mutation
+  // requires execute=true AND approval.approved=true AND acknowledgeWrite=true.
+  // Requires bearer scope engineering:vps:secret:write (operator-issued).
+  register("engineering.vps.secret.write", "write", (name) => server.registerTool(name, {
+    description: "Governed VPS credential-file writer: creates/updates a credential FILE atomically (same-directory temp + fsync + rename), forcing mode 0600 and the target directory's owner, refusing symlinks anywhere in the target chain, non-regular targets, paths outside the credential allowlist (/data/credentials/* or /data/tokens.json), and empty values. The secret value is NEVER an input field — it is read server-side from an operator-staged 0600 file under /data/.staging-secret-* or from a named env var; values never appear in payloads, errors, logs or process arguments. Byte-identical rewrite is a reported NO_OP with zero mutation (full sha256 compare; only the 16-hex prefix is reported). PLAN mode (execute defaults to false) is read-only; mutation requires execute=true AND approval.approved=true AND acknowledgeWrite=true. No LLM; no SSH/shell. Requires bearer scope engineering:vps:secret:write (operator-issued; the agent cannot self-authorize).",
+    inputSchema: vpsSecretWriteInputSchema
+  }, async (input) => {
+    requireRead();
+    requireWrite();
+    requireVpsSecretWrite();
+    return response(await runVpsSecretWrite(input));
   }));
   // engineering.vps.doctor — READ-ONLY diagnostic supertool (MVP): deterministic
   // server + Swarm/node + application + deployment/queue + monitoring/logs
