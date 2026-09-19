@@ -4,10 +4,11 @@ import { access, mkdir, readFile, readdir, rm, stat, symlink, writeFile, rename 
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { runUnitCredential } from "./eng-mcp-unit-credential.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_CONFIG = path.join(SCRIPT_DIR, "release-config.json");
-export const ACTIONS = Object.freeze(["test", "build", "candidate", "deploy", "smoke", "rollback", "status", "inspect", "container_probe"]);
+export const ACTIONS = Object.freeze(["test", "build", "candidate", "deploy", "smoke", "rollback", "status", "inspect", "container_probe", "unit_credential"]);
 const OUTPUT_LIMIT = 256 * 1024;
 const COMMAND_TIMEOUT = 180_000;
 const WORKTREE_ROOT = "/opt/eng-mcp-release-data/worktrees";
@@ -1241,6 +1242,16 @@ async function containerProbeAction(config) {
   };
 }
 
+// UNIT-CREDENTIAL-01: host-side systemd LoadCredential drop-in registrar. Reads
+// ENG_MCP_UC_* env vars threaded by the runner, never restarts a service and
+// never returns credential values; a FAILED status exits nonzero so the runner
+// answers 502 while still parsing this honest envelope from stdout.
+async function unitCredentialAction() {
+  const result = await runUnitCredential(process.env);
+  if (result.status === "FAILED") process.exitCode = 1;
+  return result;
+}
+
 export async function execute(action, configFile = DEFAULT_CONFIG, options = {}) {
   const config = await loadConfig(configFile);
   const targetCommit = options.targetCommit;
@@ -1262,6 +1273,7 @@ export async function execute(action, configFile = DEFAULT_CONFIG, options = {})
   if (action === "status") return statusAction(config);
   if (action === "inspect") return inspectAction(config);
   if (action === "container_probe") return containerProbeAction(config);
+  if (action === "unit_credential") return unitCredentialAction();
   throw new Error("RELEASE_ACTION_INVALID");
 }
 

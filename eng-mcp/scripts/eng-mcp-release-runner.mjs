@@ -5,9 +5,9 @@ import { mkdir, open, readFile, readdir, rename, rm, writeFile, chmod } from "no
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const OPERATIONS = Object.freeze(["status", "test", "build", "candidate", "deploy", "smoke", "rollback", "inspect", "restart", "container_probe"]);
+export const OPERATIONS = Object.freeze(["status", "test", "build", "candidate", "deploy", "smoke", "rollback", "inspect", "restart", "container_probe", "unit_credential"]);
 const ASYNC = new Set(["deploy", "rollback"]);
-const TIMEOUTS = Object.freeze({ status: 30_000, test: 1_200_000, build: 120_000, candidate: 600_000, deploy: 180_000, smoke: 300_000, rollback: 120_000, inspect: 30_000, restart: 30_000, container_probe: 90_000 });
+const TIMEOUTS = Object.freeze({ status: 30_000, test: 1_200_000, build: 120_000, candidate: 600_000, deploy: 180_000, smoke: 300_000, rollback: 120_000, inspect: 30_000, restart: 30_000, container_probe: 90_000, unit_credential: 90_000 });
 const MAX_BODY = 4_096;
 const MAX_OUTPUT = 131_072;
 const DEFAULTS = Object.freeze({ socketPath: "/opt/eng-mcp-release-data/run/release-runner.sock", jobsDir: "/opt/eng-mcp-release-data/jobs", lockPath: "/opt/eng-mcp-release-data/release-runner.lock", pipeline: "/opt/memoryos/eng-mcp/scripts/eng-mcp-release.mjs" });
@@ -69,6 +69,17 @@ export function runPipeline(job, options = {}) {
           environment[`ENG_MCP_PROBE_${String(key).toUpperCase()}`] = String(value);
         }
       }
+      // UNIT-CREDENTIAL-01: thread unit_credential params as flat ENG_MCP_UC_*
+      // environment variables. Explicit mapping (not key.toUpperCase()) so the
+      // child env names keep their underscores: credentialId -> CREDENTIAL_ID,
+      // unitPath -> UNIT_PATH. The execute boolean here is the runner-side
+      // approval gate, re-validated authoritatively by the child.
+      if (job.operation === "unit_credential" && job.params && typeof job.params === "object") {
+        if (typeof job.params.unit === "string") environment.ENG_MCP_UC_UNIT = job.params.unit;
+        if (typeof job.params.credentialId === "string") environment.ENG_MCP_UC_CREDENTIAL_ID = job.params.credentialId;
+        if (typeof job.params.unitPath === "string") environment.ENG_MCP_UC_UNIT_PATH = job.params.unitPath;
+        environment.ENG_MCP_UC_EXECUTE = String(job.params.execute === true);
+      }
       const child = spawn(process.execPath, [pipeline, job.operation], { cwd: path.dirname(pipeline), shell: false, stdio: ["ignore", "pipe", "pipe"], env: environment });
       const append = (current, chunk) => { const remaining = MAX_OUTPUT - stdout.length - stderr.length; if (remaining <= 0) { truncated = true; return current; } if (chunk.length > remaining) truncated = true; return Buffer.concat([current, chunk.subarray(0, remaining)]); };
       child.stdout.on("data", (chunk) => { stdout = append(stdout, chunk); }); child.stderr.on("data", (chunk) => { stderr = append(stderr, chunk); });
@@ -125,7 +136,7 @@ export function evaluateRestartPrecheck({ active, lockExists, inFlightJobs, dire
 }
 
 export function createReleaseRunner(options = {}) {
-  const config = { ...DEFAULTS, ...options }; const execute = options.execute ?? ((job) => runPipeline(job, config)); let active = false; let draining = false; let probeInFlight = false; let recoveryMarked = 0; let lastRestartId = null; let lastRestartOutcome = null; const startedAt = new Date().toISOString();
+  const config = { ...DEFAULTS, ...options }; const execute = options.execute ?? ((job) => runPipeline(job, config)); let active = false; let draining = false; let probeInFlight = false; let unitCredentialInFlight = false; let recoveryMarked = 0; let lastRestartId = null; let lastRestartOutcome = null; const startedAt = new Date().toISOString();
   const exitNow = options.exitNow ?? ((code) => process.exit(code)); const scheduleExit = options.scheduleExit ?? ((fn) => setTimeout(fn, 500)); const unitReader = options.unitReader ?? readUnitDirectives; const restartClock = options.restartClock ?? (() => Date.now());
   const persist = async (job) => { await mkdir(config.jobsDir, { recursive: true, mode: 0o750 }); const target = path.join(config.jobsDir, `${job.jobId}.json`); const temporary = `${target}.${process.pid}.${randomUUID()}.tmp`; await writeFile(temporary, `${JSON.stringify(publicJob(job), null, 2)}\n`, { mode: 0o600 }); await rename(temporary, target); };
   const load = async (jobId) => { if (!/^[a-f0-9-]{16,64}$/i.test(jobId)) throw new Error("RELEASE_JOB_ID_INVALID"); return JSON.parse(await readFile(path.join(config.jobsDir, `${jobId}.json`), "utf8")); };
@@ -188,7 +199,7 @@ export function createReleaseRunner(options = {}) {
       if (overflow) throw new Error("REQUEST_TOO_LARGE"); let input; try { input = JSON.parse(body.toString("utf8")); } catch { throw new Error("INPUT_INVALID"); }
       if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("INPUT_INVALID"); const keys = Object.keys(input);
       // ITEM-2: container_probe carries flat, bounded primitives instead of jobId/commit.
-      const allowedKeys = input.operation === "container_probe" ? ["operation", "image", "probe", "path", "maxBytes"] : ["operation", "jobId", "commit"];
+      const allowedKeys = input.operation === "container_probe" ? ["operation", "image", "probe", "path", "maxBytes"] : input.operation === "unit_credential" ? ["operation", "unit", "credentialId", "unitPath", "execute", "approval"] : ["operation", "jobId", "commit"];
       if (keys.some((key) => !allowedKeys.includes(key))) throw new Error("INPUT_INVALID");
       if (!OPERATIONS.includes(input.operation)) throw new Error("RELEASE_ACTION_INVALID"); if (input.jobId !== undefined && input.operation !== "status") throw new Error("RELEASE_JOB_ID_NOT_ALLOWED");
       // Validate commit parameter
@@ -208,6 +219,16 @@ export function createReleaseRunner(options = {}) {
         if (typeof input.path !== "string" || input.path.length === 0 || input.path.length > 256) throw new Error("INPUT_INVALID");
         if (input.maxBytes !== undefined && (!Number.isInteger(input.maxBytes) || input.maxBytes < 1 || input.maxBytes > 4_096)) throw new Error("INPUT_INVALID");
       }
+      // UNIT-CREDENTIAL-01: unit_credential params are bounded primitives; the
+      // execute boolean is the runner-side approval gate (the child re-derives it
+      // from its own env and re-validates authoritatively).
+      if (input.operation === "unit_credential") {
+        if (typeof input.unit !== "string" || input.unit.length === 0 || input.unit.length > 128) throw new Error("INPUT_INVALID");
+        if (typeof input.credentialId !== "string" || input.credentialId.length === 0 || input.credentialId.length > 64) throw new Error("INPUT_INVALID");
+        if (input.unitPath !== undefined && (typeof input.unitPath !== "string" || input.unitPath.length === 0 || input.unitPath.length > 64)) throw new Error("INPUT_INVALID");
+        if (input.execute !== undefined && typeof input.execute !== "boolean") throw new Error("INPUT_INVALID");
+        if (input.approval !== undefined && (typeof input.approval !== "object" || Array.isArray(input.approval) || input.approval === null || typeof input.approval.approved !== "boolean")) throw new Error("INPUT_INVALID");
+      }
       if (draining && input.operation !== "status" && input.operation !== "restart") throw new Error("RELEASE_DRAINING");
       if (input.operation === "status" && input.jobId) return respond(response, 200, { operation: "status", success: true, job: await load(input.jobId) });
       if (input.operation === "status") { const result = await execute({ operation: "status" }); let unitMeta = null; try { unitMeta = await unitReader(); } catch { unitMeta = null; } return respond(response, result.success ? 200 : 502, { operation: "status", ...result, runnerMeta: { pid: process.pid, uptime: process.uptime(), startedAt, draining, lastRestartId, lastRestartOutcome, lastRecoveryMarked: recoveryMarked, unit: unitMeta } }); }
@@ -226,6 +247,21 @@ export function createReleaseRunner(options = {}) {
         } catch (error) {
           return respond(response, 502, { operation: "container_probe", success: false, error: safeError(error) });
         } finally { probeInFlight = false; }
+      }
+      // UNIT-CREDENTIAL-01: one-off systemd LoadCredential drop-in write —
+      // synchronous, lock-free (never contends with the release pipeline's global
+      // acquire()), never persisted as a job record. Single-flight via
+      // unitCredentialInFlight; a concurrent request is refused with 409.
+      if (input.operation === "unit_credential") {
+        if (unitCredentialInFlight) return respond(response, 409, { operation: "unit_credential", success: false, error: "UNIT_CREDENTIAL_BUSY" });
+        unitCredentialInFlight = true;
+        try {
+          const params = { unit: input.unit, credentialId: input.credentialId, ...(input.unitPath !== undefined ? { unitPath: input.unitPath } : {}), execute: input.execute === true && input.approval !== undefined && input.approval.approved === true };
+          const result = await execute({ operation: "unit_credential", params });
+          return respond(response, result.success ? 200 : 502, { operation: "unit_credential", ...result });
+        } catch (error) {
+          return respond(response, 502, { operation: "unit_credential", success: false, error: safeError(error) });
+        } finally { unitCredentialInFlight = false; }
       }
       if (input.operation === "restart") { const outcome = await handleRestart(); return respond(response, outcome.accepted ? 202 : 409, { operation: "restart", ...outcome }); }
       const job = await createJob(input.operation, input.commit);
