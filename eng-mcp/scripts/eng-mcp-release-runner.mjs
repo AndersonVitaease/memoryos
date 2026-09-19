@@ -26,7 +26,33 @@ const BOOT_ID_PATH = "/proc/sys/kernel/random/boot_id";
 const intentPathFor = (config) => path.join(path.dirname(config.jobsDir), "restart-intent.json");
 
 function redact(value) {
-  return String(value).replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?-----END [^-]*PRIVATE KEY-----/gi, "[REDACTED]").replace(/\b(?:gh[pousr]_|github_pat_|sk_(?:live|test)_|pk_(?:live|test)_)[A-Za-z0-9_]{16,}\b/g, "[REDACTED]").replace(/\b(authorization|bearer|client_secret|access_token|refresh_token|password|private_key)\s*[:=]\s*[^\s]+/gi, "$1=[REDACTED]");
+  // (?!\/) — values that start with a slash are PATHS, not secret values (e.g. the
+  // systemd directive LoadCredential=<id>:/opt/... reported by unit_credential);
+  // real secrets never begin with "/", so the key=value scrub skips them instead of
+  // mangling structural JSON around them (see redactChildStdout).
+  return String(value).replace(/-----BEGIN [^-]*PRIVATE KEY-----[\s\S]*?-----END [^-]*PRIVATE KEY-----/gi, "[REDACTED]").replace(/\b(?:gh[pousr]_|github_pat_|sk_(?:live|test)_|pk_(?:live|test)_)[A-Za-z0-9_]{16,}\b/g, "[REDACTED]").replace(/\b(authorization|bearer|client_secret|access_token|refresh_token|password|private_key)\s*[:=]\s*(?!\/)[^\s]+/gi, "$1=[REDACTED]");
+}
+
+// UNIT-CREDENTIAL-01 regression guard: a child's structured stdout is serialized JSON,
+// and a text-level scrub over it can eat structural quotes/commas when a match (e.g.
+// \bbearer:) consumes until whitespace across a string terminator — leaving a raw
+// newline inside an unterminated string (invalid JSON -> UC_RESULT_UNPARSEABLE).
+// Structured stdout is therefore scrubbed at OBJECT level, per string value, which is
+// structure-preserving by construction, and re-serialized. Anything that is not valid
+// JSON falls back to the plain text scrub.
+function redactStrings(value) {
+  if (typeof value === "string") return redact(value);
+  if (Array.isArray(value)) return value.map(redactStrings);
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const [key, item] of Object.entries(value)) out[key] = redactStrings(item);
+    return out;
+  }
+  return value;
+}
+
+export function redactChildStdout(text) {
+  try { return JSON.stringify(redactStrings(JSON.parse(text))); } catch { return redact(text); }
 }
 
 function safeError(error) { return redact(error instanceof Error ? error.message : "RELEASE_RUNNER_FAILED").slice(0, 2_048); }
@@ -85,7 +111,7 @@ export function runPipeline(job, options = {}) {
       child.stdout.on("data", (chunk) => { stdout = append(stdout, chunk); }); child.stderr.on("data", (chunk) => { stderr = append(stderr, chunk); });
       const timer = setTimeout(() => { timedOut = true; child.kill("SIGKILL"); }, timeoutMs);
       child.once("error", (error) => { clearTimeout(timer); resolve({ success: false, exitCode: null, durationMs: Date.now() - started, stdout: "", stderr: safeError(error), truncated, timedOut }); });
-      child.once("close", (code) => { clearTimeout(timer); resolve({ success: !timedOut && code === 0, exitCode: timedOut ? null : code, durationMs: Date.now() - started, stdout: redact(stdout.toString("utf8")), stderr: redact(stderr.toString("utf8")), truncated, timedOut }); });
+      child.once("close", (code) => { clearTimeout(timer); resolve({ success: !timedOut && code === 0, exitCode: timedOut ? null : code, durationMs: Date.now() - started, stdout: redactChildStdout(stdout.toString("utf8")), stderr: redact(stderr.toString("utf8")), truncated, timedOut }); });
     }; void start();
   });
 }

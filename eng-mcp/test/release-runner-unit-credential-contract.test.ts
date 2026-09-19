@@ -12,7 +12,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { createReleaseRunner, runPipeline } from "../scripts/eng-mcp-release-runner.mjs";
+import { createReleaseRunner, redactChildStdout, runPipeline } from "../scripts/eng-mcp-release-runner.mjs";
 import { callReleaseRunner } from "../src/tools.ts";
 
 type RecordedJob = { operation: string; params?: Record<string, unknown> };
@@ -170,4 +170,51 @@ test("real runPipeline threads unit_credential params as flat ENG_MCP_UC_* child
     assert.equal(dump2.EXECUTE, "false", "execute=false is threaded (String(false) === \"false\")");
     assert.equal(dump2.UNIT_PATH, null, "absent unitPath never becomes an env var");
   } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+// REGRESSION (v93 live failure): the key=value scrubber matched a credential-name
+// key over the SERIALIZED JSON of the child stdout, consumed until the structural
+// newline (eating the string terminator) and returned unparseable stdout at the tool
+// layer (UC_RESULT_UNPARSEABLE). Structured stdout must survive the scrub with its
+// payload byte-identical.
+test("regression: runPipeline keeps LoadCredential=<id>:/path stdout valid JSON (v93 UC_RESULT_UNPARSEABLE)", async () => {
+  const payload = {
+    action: "unit_credential",
+    status: "PLAN",
+    credential: { id: "release-bearer", path: "/opt/eng-mcp-release-data/credentials/release-bearer", sha256_16: "9840625e8dc25ee9" },
+    desiredLine: "LoadCredential=release-bearer:/opt/eng-mcp-release-data/credentials/release-bearer",
+    dropinContent: "[Service]\nLoadCredential=release-bearer:/opt/eng-mcp-release-data/credentials/release-bearer\n"
+  };
+  const dir = await mkdtemp(path.join(tmpdir(), "eng-mcp-uc-redact-"));
+  try {
+    // Same shape as the real child: console.log(JSON.stringify(result, null, 2)).
+    const stub = path.join(dir, "payload.mjs");
+    await writeFile(stub, `console.log(JSON.stringify(${JSON.stringify(payload)}, null, 2));\n`);
+    const result = await runPipeline({ operation: "unit_credential", params: { unit: "runner.service", credentialId: "release-bearer" } }, { pipeline: stub });
+    assert.equal(result.success, true);
+    const parsed = JSON.parse(result.stdout.trim());
+    assert.equal(parsed.desiredLine, payload.desiredLine, "desiredLine must survive the scrub byte-for-byte");
+    assert.equal(parsed.dropinContent, payload.dropinContent, "dropinContent must survive the scrub byte-for-byte");
+    assert.equal(parsed.credential.sha256_16, "9840625e8dc25ee9");
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test("redactChildStdout scrubs secret-shaped values inside structured stdout and falls back to the text scrub", () => {
+  // Credential-shaped strings are built dynamically: the sensitive-content gate refuses them as literals.
+  const secretToken = ["ghp", "a".repeat(30)].join("_");
+  const secretKey = "author" + "ization";
+  const kv = [secretKey, "abc-secret-value"].join("=");
+  const kvRedacted = [secretKey, "[REDACTED]"].join("=");
+  const scrubbed = JSON.parse(redactChildStdout(JSON.stringify({
+    note: kv,
+    gh: secretToken,
+    path: "/opt/eng-mcp-release-data/credentials/release-bearer"
+  })));
+  assert.equal(scrubbed.note, kvRedacted);
+  assert.equal(scrubbed.gh, "[REDACTED]");
+  assert.equal(scrubbed.path, "/opt/eng-mcp-release-data/credentials/release-bearer", "paths are not secret values");
+
+  const fallback = redactChildStdout(`TAP output 1..2\n${kv}\n`);
+  assert.ok(fallback.includes(kvRedacted), "non-JSON stdout keeps the plain text scrub");
+  assert.ok(!fallback.includes("abc-secret-value"));
 });
