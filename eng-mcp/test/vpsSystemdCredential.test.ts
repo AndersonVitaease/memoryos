@@ -100,10 +100,12 @@ test("execute=true without approval collapses to execute=false at the MCP layer"
   const { calls, deps } = makeDeps(childEnvelope());
   const result = await runVpsSystemdCredential({ unit: "test-unit.service", credentialId: "test-cred", execute: true }, deps);
   assert.equal(result.executeRequested, false);
-  assert.equal(calls[0].params?.execute, false);
+  // deepEqual pins the FULL forward: on the collapse path the approval key must be
+  // absent entirely (the runner-side gate reads approval, not just execute).
+  assert.deepEqual(calls[0].params, { unit: "test-unit.service", credentialId: "test-cred", execute: false });
 });
 
-test("execute=true + approval.approved=true forwards the flat execute boolean and maps WRITE", async () => {
+test("execute=true + approval.approved=true relays the approval to the runner and maps WRITE", async () => {
   const write = childEnvelope({ status: "WRITE", execute: true, mutationPerformed: true, wrote: true, daemonReloaded: true, isActiveBefore: "active", isActiveAfter: "active" });
   const { calls, deps } = makeDeps(write);
   const result = await runVpsSystemdCredential({ unit: "test-unit.service", credentialId: "test-cred", execute: true, approval: { approved: true } }, deps);
@@ -113,7 +115,10 @@ test("execute=true + approval.approved=true forwards the flat execute boolean an
   assert.equal(result.isActiveBefore, "active");
   assert.equal(result.isActiveAfter, "active");
   assert.equal(calls[0].params?.execute, true);
-  assert.deepEqual(calls[0].params, { unit: "test-unit.service", credentialId: "test-cred", execute: true });
+  // v94 live E2E regression: the runner-side gate collapses execute=true back to false
+  // when approval is ABSENT from the forwarded params, so the tool must relay the
+  // user's approval across the MCP->runner seam (otherwise EXECUTE degrades to PLAN).
+  assert.deepEqual(calls[0].params, { unit: "test-unit.service", credentialId: "test-cred", execute: true, approval: { approved: true } });
 });
 
 test("NO_OP and BLOCKED child statuses pass through with their evidence", async () => {
