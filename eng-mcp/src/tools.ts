@@ -17,6 +17,7 @@ import { runVpsRunnerRestart, vpsRunnerRestartInputSchema } from "./vpsRunnerRes
 import { runVpsDiagnostics, vpsDiagnosticsInputSchema } from "./vpsDiagnostics.ts";
 import { runVpsContainerProbe, vpsContainerProbeInputSchema } from "./vpsContainerProbe.ts";
 import { runVpsSecretWrite, vpsSecretWriteInputSchema } from "./vpsSecretWrite.ts";
+import { runVpsSystemdCredential, vpsSystemdCredentialInputSchema } from "./vpsSystemdCredential.ts";
 // FASE 2: GitHub READ-ONLY super tool (10 operations, GET-only by construction;
 // credential + rate protection live inside the module, never in the registry layer).
 import { runGithubRead, githubReadInputSchema } from "./githubRead.ts";
@@ -79,8 +80,8 @@ export function installToolAliasCompatibility(mcpServer: unknown): void {
 
 function response(value: unknown) { return { content: [{ type: "text" as const, text: JSON.stringify(value) ?? "null" }] }; }
 
-type ReleaseOperation = "test" | "build" | "candidate" | "deploy" | "status" | "smoke" | "rollback" | "restart" | "inspect" | "container_probe";
-const releaseTimeouts = { test: 1_210_000, build: 130_000, candidate: 610_000, deploy: 30_000, status: 30_000, smoke: 310_000, rollback: 130_000, restart: 30_000, inspect: 40_000, container_probe: 110_000 };
+type ReleaseOperation = "test" | "build" | "candidate" | "deploy" | "status" | "smoke" | "rollback" | "restart" | "inspect" | "container_probe" | "unit_credential";
+const releaseTimeouts = { test: 1_210_000, build: 130_000, candidate: 610_000, deploy: 30_000, status: 30_000, smoke: 310_000, rollback: 130_000, restart: 30_000, inspect: 40_000, container_probe: 110_000, unit_credential: 110_000 };
 let releasePipelineBusy = false;
 
 // Only the official Unix socket API is reachable; no caller-supplied URL or command.
@@ -308,6 +309,7 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   // convention; the agent can never self-authorize and secret values never cross
   // the tool boundary (paths and 16-hex sha256 prefixes only).
   const requireVpsSecretWrite = () => { if (!subject.scopes.includes("engineering:vps:secret:write")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
+  const requireVpsSystemdCredential = () => { if (!subject.scopes.includes("engineering:vps:systemd:credential")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
   // FASE 2: outbound GitHub reads are gated by their own operator-issued scope —
   // the internal read scope proves repository access; this one proves the PAT may be spent.
   const requireGithubRead = () => { if (!subject.scopes.includes("engineering:github:read")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
@@ -812,6 +814,21 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
     requireWrite();
     requireVpsSecretWrite();
     return response(await runVpsSecretWrite(input));
+  }));
+  // engineering.vps.systemd.credential — UNIT-CREDENTIAL-01: governed systemd
+  // LoadCredential= drop-in registrar over the official runner socket. Writes
+  // /etc/systemd/system/<unit>.d/credentials.conf (0644) — never edits the base
+  // unit, never uses Environment= and never restarts a service; critical units
+  // get a restart-required note pointing at engineering.vps.runner.restart.
+  // Credential values never cross the boundary (path/perms/size/sha256-16 only).
+  register("engineering.vps.systemd.credential", "write", (name) => server.registerTool(name, {
+    description: "Governed systemd LoadCredential drop-in registrar (UNIT-CREDENTIAL-01): writes /etc/systemd/system/<unit>.d/credentials.conf (0644, atomic temp+fsync+rename) with LoadCredential=<unitPath>:<credential file> — never edits the base unit, never uses Environment= and NEVER restarts a service. PLAN mode (execute defaults to false) is zero-write and reports the unit, credential evidence (path/perms/size/sha256-16 only — the value is never returned), the drop-in path, the desired line and the resulting diff; systemd-analyze verify runs against the unit before any write and again after, with fail-closed rollback BEFORE daemon-reload on any failure. Mutation requires execute=true AND approval.approved=true, then runs systemctl daemon-reload. Byte-identical re-execute is a reported NO_OP with zero mutation (mtime preserved, no daemon-reload). Critical units (eng-mcp-release-runner.service) get a restart-required note — restart is engineering.vps.runner.restart's job. No LLM; no SSH/shell. Requires bearer scope engineering:vps:systemd:credential (operator-issued; the agent cannot self-authorize).",
+    inputSchema: vpsSystemdCredentialInputSchema
+  }, async (input) => {
+    requireRead();
+    requireWrite();
+    requireVpsSystemdCredential();
+    return response(await runVpsSystemdCredential(input, { runRunner: callReleaseRunner }));
   }));
   // engineering.vps.doctor — READ-ONLY diagnostic supertool (MVP): deterministic
   // server + Swarm/node + application + deployment/queue + monitoring/logs
