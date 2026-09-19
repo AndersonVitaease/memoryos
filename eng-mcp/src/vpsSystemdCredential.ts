@@ -106,7 +106,12 @@ export async function runVpsSystemdCredential(rawInput: unknown, deps: VpsSystem
     unit: input.unit,
     credentialId: input.credentialId,
     ...(input.unitPath !== undefined ? { unitPath: input.unitPath } : {}),
-    execute: mutationApproved
+    execute: mutationApproved,
+    // The runner-side gate collapses execute=true back to false when approval is
+    // absent from the forwarded params; relay the user's approval so an approved
+    // mutation actually reaches the operation layer (v94 live E2E: EXECUTE degraded
+    // to PLAN because the approval never crossed the seam).
+    ...(mutationApproved ? { approval: { approved: true } } : {})
   };
   const result: Record<string, unknown> = {
     unit: input.unit,
