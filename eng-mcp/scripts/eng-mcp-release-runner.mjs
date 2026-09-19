@@ -56,6 +56,9 @@ export function runPipeline(job, options = {}) {
       if (githubPatCredential) { environment.GITHUB_TOKEN_FILE = githubPatCredential; }
       if (gitCredentialsCredential) { environment.GIT_CREDENTIALS_FILE = gitCredentialsCredential; }
       if (hermesNotifyCredential) { environment.ENG_MCP_HERMES_NOTIFY_CREDENTIAL_FILE = hermesNotifyCredential; }
+      // Experimento A (main-session notifications): forward the fixed session id from
+      // the runner env (systemd drop-in) into the sanitized child env; absent = no-op.
+      if (process.env.ENG_MCP_HERMES_SESSION_ID) environment.ENG_MCP_HERMES_SESSION_ID = process.env.ENG_MCP_HERMES_SESSION_ID;
       // Pass commit as environment variable if present
       if (job.commit) environment.ENG_MCP_COMMIT = job.commit;
       // ITEM-2: thread probe params as flat ENG_MCP_PROBE_* environment variables
