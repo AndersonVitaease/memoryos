@@ -35,6 +35,10 @@
 //    path, result). No token VALUE can ever appear: the tool only ever sees hashes —
 //    the caller's sha16 arrives through the authenticated subject, and registry
 //    entries hold tokenHash digests, never bearers.
+// 9. Operator-pair guard: a grant targeting an operator-* entry requires an
+//    operator-* authorizer (OPERATOR_ENTRY_OPERATOR_AUTHORIZER_REQUIRED) — service
+//    bearers can never mutate operator entries; the operator pair governs each
+//    other's entries.
 //
 // NOTE (activation): the :8787 server reads the registry ONCE at boot — a grant takes
 // effect on the NEXT container boot only. The reload is one engineering.release.pipeline
@@ -62,6 +66,14 @@ export const KNOWN_REGISTRY_SCOPES: readonly string[] = [
 
 const REGISTRY_BYTES_LIMIT = 2 * 1024 * 1024;
 const TARGET_SCOPES_LIMIT = 32;
+
+// OPERATOR-PAIR-01: the operator entries form a closed pair-class identified by
+// subject prefix — the same naming the registry already uses (operator-2026-09-17,
+// operator-2026-09-17b, operator-systemd-uc-2026-09-19, ...). Grants targeting an
+// operator-* entry must be authorized by an operator-* subject (the pair governs each
+// other's entries); service bearers can never mutate an operator entry.
+export const OPERATOR_SUBJECT_PREFIX = "operator-";
+export const isOperatorSubject = (subject: string): boolean => subject.startsWith(OPERATOR_SUBJECT_PREFIX);
 
 export const registryScopeGrantInputSchema = z.object({
   subject: z.string().min(1).max(200),
@@ -196,6 +208,15 @@ export async function runRegistryScopeGrant(rawInput: unknown, deps: RegistrySco
   if (deps.callerSubject != null && deps.callerSubject === input.subject) {
     const audit = writeAudit(deps, { result: "refused-self", targetSubject: input.subject, scopes: input.scopes, authorizerSubject: deps.callerSubject ?? null, authorizerHash16: deps.authorizerHash16 ?? null, code: "REGISTRY_SELF_GRANT_REFUSED" });
     return blocked("REGISTRY_SELF_GRANT_REFUSED", "granting to the calling identity itself is refused — the operator grants scopes to the operator channel outside this tool", { audit });
+  }
+  // OPERATOR-PAIR-01: a grant targeting an operator-* entry must be authorized by an
+  // operator-* subject — the operator pair governs each other's entries, and no
+  // service bearer (runner, claude-code, ...) can ever mutate an operator entry.
+  // This closes the one-time GIT-MERGE-01 bootstrap door (a release-runner bearer
+  // authorizing an operator grant) for good, alongside the operator pair itself.
+  if (deps.callerSubject != null && isOperatorSubject(input.subject) && !isOperatorSubject(deps.callerSubject)) {
+    const audit = writeAudit(deps, { result: "refused-operator-authorizer", targetSubject: input.subject, scopes: input.scopes, authorizerSubject: deps.callerSubject, authorizerHash16: deps.authorizerHash16 ?? null, code: "OPERATOR_ENTRY_OPERATOR_AUTHORIZER_REQUIRED" });
+    return blocked("OPERATOR_ENTRY_OPERATOR_AUTHORIZER_REQUIRED", `grants to operator-* entries require an operator-* authorizer (target "${input.subject}", authorizer "${deps.callerSubject}")`, { audit });
   }
   if (unknownScopes.length > 0) {
     const audit = writeAudit(deps, { result: "refused-scope", targetSubject: input.subject, scopes: input.scopes, authorizerSubject: deps.callerSubject ?? null, authorizerHash16: deps.authorizerHash16 ?? null, code: "REGISTRY_SCOPE_UNKNOWN" });
