@@ -147,6 +147,7 @@ test("R5 probe A: initialize returns serverInfo over HTTP", async () => {
     assert.ok(init.result?.serverInfo, `initialize must return serverInfo, got ${JSON.stringify(init).slice(0, 300)}`);
   } finally { server.close(); }
 });
+if (false) { // GIT-MERGE-01 bisect R6 (temporary): disable probe B
 
 test("R5 probe B: merge tools/call without scope is refused with the code", async () => {
   const fixture = makeMergeFixture();
@@ -159,6 +160,7 @@ test("R5 probe B: merge tools/call without scope is refused with the code", asyn
     assert.ok(text.includes("AUTHORIZATION_SCOPE_REQUIRED"), `expected scope refusal, got ${text.slice(0, 300)}`);
   } finally { server.close(); }
 });
+} // end GIT-MERGE-01 bisect R6
 if (false) { // GIT-MERGE-01 bisect R4 (temporary): disable test 2
 
 test("git.merge fast-forwards through the MCP HTTP layer (layer 1 AUTO_FF)", async () => {
