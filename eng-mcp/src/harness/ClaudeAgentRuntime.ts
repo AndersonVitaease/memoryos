@@ -27,6 +27,7 @@
  */
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { buildJudgeGate, type JudgeHookCallbackMatcher } from './judgeGate.js';
 import type {
   AgentCycleResult,
   AgentRuntime,
@@ -100,6 +101,13 @@ export interface ClaudeQueryOptions {
    * when no role config is provided (certified env-driven behavior unchanged).
    */
   model?: string;
+  /**
+   * JUDGE-HOOKS-01 — official SDK hooks (structural minimum). Wired by
+   * buildJudgeGate when a judge bearer is resolvable; absent otherwise
+   * (byte-identical legacy wiring). The gate triages and explains — the
+   * judge NEVER approves a consequence (band 3 always reaches the operator).
+   */
+  hooks?: Partial<Record<string, JudgeHookCallbackMatcher[]>>;
 }
 
 /** Structural minimum of the official query() entry point. */
@@ -522,6 +530,29 @@ export class ClaudeAgentRuntime implements AgentRuntime {
       const sessionId = this.sessionByMission.get(contract.missionId);
       if (sessionId) options.resume = sessionId; // official SDK: continue that session
     }
+    // JUDGE-HOOKS-01 — judge gate hooks (3-band approval policy + judge-backed
+    // arbitration). Wired ONLY when a judge bearer is resolvable: a null gate
+    // leaves options without hooks (byte-identical legacy wiring — the wiring
+    // itself is fail-open). The gate triages and explains; the judge NEVER
+    // approves a consequence (band 3 always reaches the operator).
+    const judgeGate = buildJudgeGate({
+      serverUrl: this.engMcpServerUrl,
+      unattended: true,
+      env: this.env,
+      stopEvidence: () => {
+        try {
+          const snapshot = JSON.stringify({
+            missionId: contract.missionId,
+            criteria: contract.completionCriteria ?? null,
+            evidence: (auditSink ?? []).slice(-20),
+          });
+          return snapshot.length > 20000 ? snapshot.slice(0, 20000) : snapshot;
+        } catch {
+          return '';
+        }
+      },
+    });
+    if (judgeGate) options.hooks = judgeGate.hooks;
     return options;
   }
 
