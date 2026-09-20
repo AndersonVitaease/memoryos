@@ -139,7 +139,16 @@ function payload(call: { result?: { content?: Array<{ type: string; text?: strin
   try { return JSON.parse(text) as Record<string, unknown>; } catch { return {}; }
 }
 
-test("git.merge refuses callers without the engineering:git:merge scope", async () => {
+test("R5 probe A: initialize returns serverInfo over HTTP", async () => {
+  const fixture = makeMergeFixture();
+  const { server, endpoint, token } = await startServer(fixture, ["engineering:read", "engineering:write", "engineering:git"]);
+  try {
+    const init = await mcp(endpoint, token, 1, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } });
+    assert.ok(init.result?.serverInfo, `initialize must return serverInfo, got ${JSON.stringify(init).slice(0, 300)}`);
+  } finally { server.close(); }
+});
+
+test("R5 probe B: merge tools/call without scope is refused with the code", async () => {
   const fixture = makeMergeFixture();
   const { server, endpoint, token } = await startServer(fixture, ["engineering:read", "engineering:write", "engineering:git"]);
   try {
