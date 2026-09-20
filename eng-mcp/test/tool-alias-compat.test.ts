@@ -42,7 +42,7 @@ const PROBE_CTX = { mcpReq: { requestState: () => undefined } };
 test("GH-03 alias map: every canonical tool resolves its sanitized alias, aliases are unique and never listed", async () => {
   const { list } = buildServer();
   const names = await listNames(list);
-  assert.equal(names.length, 95);
+  assert.equal(names.length, 96);
   const aliases = names.map((name) => name.replaceAll(".", "_"));
   assert.equal(new Set(aliases).size, aliases.length, "sanitized aliases must be collision-free");
   for (let i = 0; i < names.length; i++) assert.equal(resolveToolAlias(aliases[i]), names[i]);
