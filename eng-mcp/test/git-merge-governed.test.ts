@@ -139,14 +139,41 @@ function payload(call: { result?: { content?: Array<{ type: string; text?: strin
   try { return JSON.parse(text) as Record<string, unknown>; } catch { return {}; }
 }
 
-test("R5 probe A: initialize returns serverInfo over HTTP", async () => {
+// GIT-MERGE-01 bisect R7 (temporary): step-encoder probe — chain at module load, failing step encoded via extra failing tests
+let r7server: { close: () => void } | null = null;
+let r7code = 0;
+try {
+  r7code = 1;
   const fixture = makeMergeFixture();
-  const { server, endpoint, token } = await startServer(fixture, ["engineering:read", "engineering:write", "engineering:git"]);
-  try {
-    const init = await mcp(endpoint, token, 1, "initialize", { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } });
-    assert.ok(init.result?.serverInfo, `initialize must return serverInfo, got ${JSON.stringify(init).slice(0, 300)}`);
-  } finally { server.close(); }
+  r7code = 2;
+  const started = await startServer(fixture, ["engineering:read", "engineering:write", "engineering:git"]);
+  r7server = started.server;
+  r7code = 3;
+  const response = await fetch(started.endpoint, { method: "POST", headers: { authorization: `Bearer ${started.token}`, "content-type": "application/json", accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } } }), signal: AbortSignal.timeout(10_000) });
+  r7code = 4;
+  assert.equal(response.status, 200, `R7 status ${response.status}`);
+  r7code = 5;
+  const body = await response.text();
+  r7code = 6;
+  const data = body.split(/\r?\n/).find((line) => line.startsWith("data: "));
+  r7code = 7;
+  assert.ok(data, `R7 no data line in ${body.slice(0, 200)}`);
+  r7code = 8;
+  const init = JSON.parse(data ? data.slice(6) : "{}") as { result?: { serverInfo?: unknown } };
+  r7code = 9;
+  assert.ok(init.result?.serverInfo, `R7 no serverInfo in ${JSON.stringify(init).slice(0, 200)}`);
+  r7code = 0;
+} catch {
+  // failing step stays encoded in r7code; encoders below make it observable
+} finally {
+  r7server?.close();
+}
+test("R7 probe: initialize chain completes", () => {
+  assert.equal(r7code, 0, `R7 failed at step ${r7code}`);
 });
+for (let i = 0; i < r7code; i++) {
+  test(`R7 encoder ${i + 1} (step ${r7code})`, () => { throw new Error(`R7 step ${r7code}`); });
+}
 if (false) { // GIT-MERGE-01 bisect R6 (temporary): disable probe B
 
 test("R5 probe B: merge tools/call without scope is refused with the code", async () => {
