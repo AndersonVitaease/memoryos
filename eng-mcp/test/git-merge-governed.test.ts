@@ -12,7 +12,30 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import test from "node:test";
+import testRunner from "node:test";
+
+// GIT-MERGE-01 TEMPORARY DEBUG SHIM (remove after diagnosis): this file passes
+// 14/14 in file and related modes but fails exactly once inside the 10-worker
+// suite run (two runs, 1F each). Shadow the test registrar to record every test
+// outcome of this file to a sibling JSONL dump so the failing test's identity
+// and error survive the run. The dump write is best-effort and silent.
+function test(name: string, fn: () => void | Promise<void>) {
+  return testRunner(name, async () => {
+    try {
+      await fn();
+      writeShimDump(name, false, null);
+    } catch (error) {
+      writeShimDump(name, true, String((error as { message?: string })?.message ?? error));
+      throw error;
+    }
+  });
+}
+
+function writeShimDump(name: string, failed: boolean, error: string | null): void {
+  try {
+    writeFileSync(new URL("./.rg-merge-shim.json", import.meta.url), `${JSON.stringify({ name, failed, error })}\n`, { flag: "a" });
+  } catch { /* debug dump is best-effort */ }
+}
 import { createEngineeringHttpServer } from "../src/server.js";
 import { runGitFetch } from "../src/gitFetch.js";
 import { GitMergeError, runGitMerge, type GitMergeDeps, type GitMergeInput, type GitMergeReport } from "../src/gitMerge.js";
