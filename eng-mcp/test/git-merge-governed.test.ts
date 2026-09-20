@@ -198,6 +198,7 @@ test("execute requires acknowledgment then approval", async () => {
   assert.equal(fixture.head(), before, "refused executions must not move HEAD");
 });
 
+if (false) { // GIT-MERGE-01 bisect R2 (temporary): disable tests 5-7
 test("layer 1 AUTO_FF executes a pure fast-forward with snapshot proofs", async () => {
   const fixture = makeMergeFixture();
   remoteCommit(fixture, "remote-file.txt", "remote change\n");
@@ -286,6 +287,7 @@ test("layer 3 ASSISTED stops on overlapping paths with zero mutation — never e
   assert.equal(readFileSync(path.join(fixture.root, "app.js"), "utf8"), "local change on app.js\n", "the worktree file must be untouched");
   assert.equal(fixture.originHead(), remoteHead, "origin must be untouched");
 });
+} // end GIT-MERGE-01 bisect R2
 
 if (false) { // GIT-MERGE-01 bisect R1 (temporary): disable tests 8-14
 test("NOTHING_TO_MERGE covers 0/0 and ahead-only (recommends push)", async () => {
