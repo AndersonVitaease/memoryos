@@ -8,6 +8,7 @@ import { EngineeringError, RepositoryPolicy, MANIFEST_GOVERNED_PATHS, assertNoSe
 import { runGithubRead } from "./githubRead.ts";
 import { runGitPush, type GitPushInput } from "./gitPush.ts";
 import { runGitFetch } from "./gitFetch.ts";
+import { runGitMerge, type GitMergeInput } from "./gitMerge.ts";
 import { getTestJobStore, createTestExecutionId, parseTapSummary, parseTapFailures, classifySyncRunOutcome, classifyInfraError, reconcileSuiteJob, boundedJobView, type TestJob } from "./testJobs.js";
 
 export type CommandResult = { stdout: string; stderr: string; truncated: boolean };
@@ -616,6 +617,13 @@ async references(subject: string, symbol: string, maxResults = 100) {
   // is remote-tracking refs (proven by before/after snapshots inside the core).
   async gitFetch(subject?: string | null) {
     return runGitFetch({}, { repoRoot: this.policy.authorizedRoot, withLock: (work) => this.withGitLock(work), subject: subject ?? null });
+  }
+
+  // GIT-MERGE-01: governed layered merge — delegates to the standalone core with
+  // the authorized root and the shared git lock; input is only {branch?, execute?,
+  // approval?, acknowledgeMerge?} and the core decides the layer from real state.
+  async gitMerge(input: GitMergeInput, subject?: string | null) {
+    return runGitMerge(input, { repoRoot: this.policy.authorizedRoot, withLock: (work) => this.withGitLock(work), subject: subject ?? null });
   }
 
   private async analysisFiles(requestedPath?: string): Promise<{ items: Array<{ path: string; text: string }>; partial: boolean }> {

@@ -323,6 +323,11 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   // refs. Still its own operator-issued scope: network egress + credential use are
   // authorized independently of local repo write (mirrors git:push vs git).
   const requireGitFetch = () => { if (!subject.scopes.includes("engineering:git:fetch")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
+
+  // GIT-MERGE-01: merge rewrites LOCAL history (branch head, merge commits) and
+  // closes the fetch → merge → push cycle — its own operator-issued scope, never
+  // implied by engineering:git or by the fetch/push scopes.
+  const requireGitMerge = () => { if (!subject.scopes.includes("engineering:git:merge")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
   const requireRegistryScopeGrant = () => { if (!subject.scopes.includes("engineering:registry:scope:grant")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
 
   const observability = new ObservabilityClient();
@@ -456,6 +461,34 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
     description: "Governed READ-ONLY fetch of the authorized git repository (GIT-FETCH-01): runs EXACTLY ONE `git fetch --no-tags origin` - never merge/pull/checkout/rebase, no --prune, no refspec, zero caller input (strict empty schema; the remote is always the repository's own origin). Mutation boundary: remote-tracking refs (refs/remotes/origin/*) ONLY - the working tree, HEAD, local branches and tags are snapshot-compared before/after and ANY change fails closed (FETCH_LOCAL_STATE_MUTATED). Structured output: for every local branch with an origin counterpart (main always first, capped at 10) reports ahead, behind and divergent commit lists (short sha + subject, max 20 per side) plus remoteCommitDate, the remote-tracking ref diff {updated, added, removed} and zeroMutationProof {worktreeStatusIdentical, headUnchanged, localBranchAndTagRefsUnchanged}; the origin URL is NEVER returned (it may embed credentials - only the fixed remote name is). The credential is the operator's git credential-store FILE (GIT_CREDENTIALS_FILE, default /run/secrets/git-credentials) mounted read-only via the LoadCredential 3-link pattern; its content is never read by this tool (stat only) and the helper is explicitly reset in argv - no token ever reaches argv/env/logs. Immediate purpose: quantify main vs origin/main divergence as the prerequisite for a governed git.push. Typed errors: FETCH_INPUT_FORBIDDEN, FETCH_CREDENTIAL_MISSING, FETCH_REMOTE_MISSING, FETCH_AUTH_REJECTED, FETCH_FORBIDDEN, FETCH_NETWORK_UNREACHABLE, FETCH_TIMEOUT, FETCH_EXECUTION_FAILED, FETCH_BRANCH_NOT_FOUND, FETCH_LOCAL_STATE_MUTATED. Requires bearer scope engineering:git:fetch (operator-issued; the agent cannot self-authorize). Audit line in /data/audit/git-fetch.jsonl.",
     inputSchema: z.object({}).strict()
   }, async () => { requireRead(); requireGitFetch(); return response(await repository.gitFetch(subject.subject)); }));
+
+  // GIT-MERGE-01: governed layered merge — the third leg of fetch → merge → push.
+  // The layer is decided by the REAL repo state and never escalated beyond it:
+  // AUTO_FF (strictly behind → git merge --ff-only, no merge commit), NATIVE
+  // (divergent with DISJOINT changed paths → one automatic merge commit with a
+  // deterministic message, post-validated by parents/tree sha/predicted-vs-actual
+  // paths, restored via reset --hard on ANY postcheck failure), ASSISTED (any
+  // overlapping path → NEVER executes, not even with approval — structured
+  // conflict list + recommendation, zero mutation; a conflicting merge is an
+  // operator decision). PLAN is the default and read-only; execution requires
+  // execute=true + approval.approved=true + acknowledgeMerge=true; a non-main
+  // branch requires passing `branch` explicitly and being checked out. Blockers
+  // (uncommitted changes, detached HEAD, branch not checked out, missing
+  // origin/<branch>) report BLOCKED and are never bypassed; NOTHING_TO_MERGE
+  // covers 0/0 and ahead-only (recommending engineering.git.push). Zero mutation
+  // outside the target is snapshot-proven (porcelain byte-identical, tags and all
+  // other refs unchanged; HEAD moves only for a performed merge). Purely local:
+  // no credential, no network, no origin URL in any output. Audit line in
+  // /data/audit/git-merge.jsonl.
+  register("engineering.git.merge", "write", (name) => server.registerTool(name, {
+    description: "Governed layered merge of origin/<branch> into the checked-out branch (GIT-MERGE-01): the layer is decided by the real repo state and never escalated beyond it. LAYER 1 AUTO_FF: branch strictly behind origin → one `git merge --ff-only` fast-forward, no merge commit. LAYER 2 NATIVE: divergent (ahead>0 AND behind>0) with DISJOINT changed-path sets relative to the merge base → one automatic merge commit with a deterministic single-line message, post-validated by parents, tree sha, predicted-vs-actual changed paths and a clean porcelain; ANY postcheck failure restores the pre-merge head (git reset --hard) and reports RESTORED. LAYER 3 ASSISTED: any overlapping changed path (or unrelated histories) → the merge is NEVER executed, not even with approval - a structured conflict list (path + local/remote change kind + nature + recommendation) is returned and the call stops with zero mutation. Default call is a read-only PLAN. Execution requires execute=true AND approval.approved=true AND acknowledgeMerge=true; merging a branch other than main requires passing `branch` explicitly (the declaration itself) and that branch being checked out. Blockers (UNCOMMITTED_CHANGES, MERGE_DETACHED_HEAD, BRANCH_NOT_CHECKED_OUT, MERGE_REMOTE_REF_MISSING, MERGE_REPOSITORY_UNAVAILABLE) report status BLOCKED and are never bypassed; NOTHING_TO_MERGE covers both 0/0 and ahead-only (the latter recommends engineering.git.push). Zero mutation outside the target is snapshot-proven (zeroMutationProof: worktreeStatusIdentical, tagsUnchanged, otherRefsUnchanged, headUnchanged for non-mutating outcomes). Purely local: no credential, no network, no origin URL anywhere in the output. Typed errors: MERGE_INPUT_FORBIDDEN, MERGE_BLOCKED, MERGE_ACKNOWLEDGMENT_REQUIRED, MERGE_APPROVAL_REQUIRED, MERGE_EXECUTION_FAILED, MERGE_POSTCHECK_FAILED, MERGE_RESTORE_FAILED, MERGE_TIMEOUT. Requires bearer scope engineering:git:merge (operator-issued; the agent cannot self-authorize). Audit line in /data/audit/git-merge.jsonl.",
+    inputSchema: z.object({
+      branch: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._/-]{0,63}$/).optional(),
+      execute: z.boolean().optional(),
+      approval: z.object({ approved: z.boolean() }).optional(),
+      acknowledgeMerge: z.literal(true).optional()
+    }).strict()
+  }, async (input) => { requireRead(); requireGitMerge(); return response(await repository.gitMerge(input, subject.subject)); }));
 
   // REGISTRY-GRANT-01: governed, grant-only scope edit of the token registry (the
   // anchor of trust). PLAN = exact entry diff, zero mutation; mutation requires
