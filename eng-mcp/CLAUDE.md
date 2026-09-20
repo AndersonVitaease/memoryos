@@ -52,3 +52,13 @@ This project is indexed by GitNexus as **memoryos** (2374 symbols, 6229 relation
 - Git é a fonte da verdade: `main` compila o que produção roda; produção rastreável a um SHA de commit.
 - Nunca commitar: `release-state.json`, `*.token.json` (segredos — ver .gitignore).
 
+# Convenção judge — arbitragem e autoverificação (JUDGE-HOOKS-01, 2026-09-20)
+
+**Decision points** (decisões fechadas: retry vs change approach, erro fatal?, done?, qual tool usar): consultar `engineering.judge.evaluate` ANTES de gastar turno frontier. `>0.9` → segue o veredito; `0.6–0.9` → segue e marca no relatório; `<0.6` → delibera normalmente ou escalata ao operador.
+
+**Autoverificação**: antes de entregar qualquer relatório de missão, rodar `engineering.judge.verify` (claims do rascunho × artefatos reais). Claim não sustentada → corrigir e re-verificar antes de entregar.
+
+**Fail-open**: juiz indisponível NUNCA trava missão.
+
+**REGRA INVIOLÁVEL**: o juiz NÃO aprova — tria, explica e acelera; humano permanece no gatilho de consequência. Implementação: `src/harness/judgeGate.ts` (gate) + `src/harness/judgeGateCli.ts` (hooks CLI; wiring em `.claude/settings.json`). Faixa 1 trivial (allowlist determinística em código, sem juiz) → auto; faixa 2 cinzenta → `judge.evaluate` com 4 perguntas de risco ({destructive?, outward-facing?, touches-credentials?, large-blast-radius?}): >0.9 auto com audit, 0.6–0.9 operador com score/reasons anexados, <0.6 operador; faixa 3 consequência (denylist, credenciais, push/deploy/merge/restart) → SEMPRE operador, mesmo com score 0.99 — contexto do juiz é explicativo, nunca decisório (NOT A SECURITY BOUNDARY). Fail-open com timeout 2s em todos os hooks (JUDGE_HOOKS_ENABLED=0 = escape hatch). Audit das chamadas: `/data/audit/judge.jsonl`.
+
