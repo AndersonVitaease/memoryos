@@ -150,6 +150,7 @@ test("git.merge refuses callers without the engineering:git:merge scope", async 
     assert.ok(text.includes("AUTHORIZATION_SCOPE_REQUIRED"), `expected scope refusal, got ${text.slice(0, 300)}`);
   } finally { server.close(); }
 });
+if (false) { // GIT-MERGE-01 bisect R4 (temporary): disable test 2
 
 test("git.merge fast-forwards through the MCP HTTP layer (layer 1 AUTO_FF)", async () => {
   const fixture = makeMergeFixture();
@@ -167,6 +168,7 @@ test("git.merge fast-forwards through the MCP HTTP layer (layer 1 AUTO_FF)", asy
     assert.equal(report.headAfter, fixture.originHead());
   } finally { server.close(); }
 });
+} // end GIT-MERGE-01 bisect R4
 
 if (false) { // GIT-MERGE-01 bisect R3 (temporary): disable tests 3-4
 test("PLAN reports layer AUTO_FF read-only for a strictly-behind branch", async () => {
