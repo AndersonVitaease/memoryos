@@ -20,7 +20,10 @@ export type TokenRecord = {
   revokedAt?: string | null;
 };
 
-export type AuthenticatedSubject = Pick<TokenRecord, "subject" | "scopes">;
+// tokenHash16 = sha256(presented bearer) prefix — provenance for governed tools that
+// audit the authorizing identity (e.g. engineering.registry.scope.grant) without ever
+// seeing the raw bearer.
+export type AuthenticatedSubject = Pick<TokenRecord, "subject" | "scopes"> & { tokenHash16: string };
 
 const sensitiveNames = new Set([
   ".npmrc", ".pypirc", ".netrc", "id_rsa", "id_ed25519", "credentials.json",
@@ -92,7 +95,7 @@ export function authenticateBearer(
   if (Date.parse(record.expiresAt) <= now.getTime()) throw new EngineeringError("AUTHENTICATION_EXPIRED");
   if (requiredScope && !record.scopes.includes(requiredScope)) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED");
   if (!record.allowedRepositoryIds.includes(repositoryId)) throw new EngineeringError("AUTHORIZATION_REPOSITORY_DENIED");
-  return { subject: record.subject, scopes: record.scopes };
+  return { subject: record.subject, scopes: record.scopes, tokenHash16: tokenHash.slice(0, 16) };
 }
 
 export class RepositoryPolicy {

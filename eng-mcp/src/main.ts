@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { createEngineeringHttpServer } from "./server.ts";
 import { provisionComplianceEngines } from "./complianceAssess.ts";
 import type { TokenRecord } from "./policy.ts";
+import { validateTokenRegistry } from "./registryScopeGrant.ts";
 
 export type OperationalConfig = { host: "127.0.0.1"; port: number; repositoryId: string; repositoryRoot: string; tokenRegistryFile: string; tokens: TokenRecord[] };
 const defaultRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -17,8 +18,10 @@ export async function loadOperationalConfig(env: NodeJS.ProcessEnv = process.env
   const repositoryRoot = await realpath(env.ENG_MCP_REPOSITORY_ROOT ?? defaultRoot).catch(() => { throw new Error("ENG_MCP_REPOSITORY_ROOT_INVALID"); });
   const tokenRegistryFile = env.ENG_MCP_TOKEN_REGISTRY_FILE; if (!tokenRegistryFile) throw new Error("ENG_MCP_TOKEN_REGISTRY_FILE_REQUIRED");
   let parsed: { tokens?: unknown }; try { parsed = JSON.parse(await readFile(tokenRegistryFile, "utf8")); } catch { throw new Error("ENG_MCP_TOKEN_REGISTRY_INVALID"); }
-  if (!Array.isArray(parsed.tokens) || !parsed.tokens.length) throw new Error("ENG_MCP_TOKEN_REGISTRY_INVALID");
-  for (const candidate of parsed.tokens) { const token = candidate as Partial<TokenRecord>; if (typeof token.tokenHash !== "string" || !/^[a-f0-9]{64}$/i.test(token.tokenHash) || typeof token.subject !== "string" || !Array.isArray(token.scopes) || !Array.isArray(token.allowedRepositoryIds) || !Number.isFinite(Date.parse(token.expiresAt ?? ""))) throw new Error("ENG_MCP_TOKEN_REGISTRY_INVALID"); }
+  // REGISTRY-GRANT-01: boot validation and the grant tool share ONE validator
+  // (validateTokenRegistry) — anything engineering.registry.scope.grant writes is
+  // guaranteed to boot. Same historical failure signature.
+  validateTokenRegistry(parsed.tokens);
   try { execFileSync("git", ["--version"], { stdio: "ignore" }); } catch { throw new Error("ENG_MCP_GIT_UNAVAILABLE"); }
   return { host, port, repositoryId, repositoryRoot, tokenRegistryFile, tokens: parsed.tokens as TokenRecord[] };
 }

@@ -4,6 +4,7 @@ import { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
 import { EngineeringError, type AuthenticatedSubject, assertNoSensitiveContent } from "./policy.js";
 import type { RepositoryAdapter } from "./repository.js";
+import { runRegistryScopeGrant, registryScopeGrantInputSchema } from "./registryScopeGrant.ts";
 import { ObservabilityClient } from "./observability.ts";
 import { AgentMemoryClient } from "./memory.ts";
 import { SupervisedMissionClient } from "./supervised.ts";
@@ -322,6 +323,7 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   // refs. Still its own operator-issued scope: network egress + credential use are
   // authorized independently of local repo write (mirrors git:push vs git).
   const requireGitFetch = () => { if (!subject.scopes.includes("engineering:git:fetch")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
+  const requireRegistryScopeGrant = () => { if (!subject.scopes.includes("engineering:registry:scope:grant")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
 
   const observability = new ObservabilityClient();
   const agentMemory = new AgentMemoryClient();
@@ -454,6 +456,17 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
     description: "Governed READ-ONLY fetch of the authorized git repository (GIT-FETCH-01): runs EXACTLY ONE `git fetch --no-tags origin` - never merge/pull/checkout/rebase, no --prune, no refspec, zero caller input (strict empty schema; the remote is always the repository's own origin). Mutation boundary: remote-tracking refs (refs/remotes/origin/*) ONLY - the working tree, HEAD, local branches and tags are snapshot-compared before/after and ANY change fails closed (FETCH_LOCAL_STATE_MUTATED). Structured output: for every local branch with an origin counterpart (main always first, capped at 10) reports ahead, behind and divergent commit lists (short sha + subject, max 20 per side) plus remoteCommitDate, the remote-tracking ref diff {updated, added, removed} and zeroMutationProof {worktreeStatusIdentical, headUnchanged, localBranchAndTagRefsUnchanged}; the origin URL is NEVER returned (it may embed credentials - only the fixed remote name is). The credential is the operator's git credential-store FILE (GIT_CREDENTIALS_FILE, default /run/secrets/git-credentials) mounted read-only via the LoadCredential 3-link pattern; its content is never read by this tool (stat only) and the helper is explicitly reset in argv - no token ever reaches argv/env/logs. Immediate purpose: quantify main vs origin/main divergence as the prerequisite for a governed git.push. Typed errors: FETCH_INPUT_FORBIDDEN, FETCH_CREDENTIAL_MISSING, FETCH_REMOTE_MISSING, FETCH_AUTH_REJECTED, FETCH_FORBIDDEN, FETCH_NETWORK_UNREACHABLE, FETCH_TIMEOUT, FETCH_EXECUTION_FAILED, FETCH_BRANCH_NOT_FOUND, FETCH_LOCAL_STATE_MUTATED. Requires bearer scope engineering:git:fetch (operator-issued; the agent cannot self-authorize). Audit line in /data/audit/git-fetch.jsonl.",
     inputSchema: z.object({}).strict()
   }, async () => { requireRead(); requireGitFetch(); return response(await repository.gitFetch(subject.subject)); }));
+
+  // REGISTRY-GRANT-01: governed, grant-only scope edit of the token registry (the
+  // anchor of trust). PLAN = exact entry diff, zero mutation; mutation requires
+  // execute+approval and is atomic (automatic backup, tmp+fsync+rename, TOCTOU drift
+  // check, post-validation with restore-on-failure). Self-grants refused; scopes
+  // validated against the catalog; idempotent (NO_OP). Registry reloads only at boot:
+  // the reload is one release.pipeline deploy, a declared separate step.
+  register("engineering.registry.scope.grant", "write", (name) => server.registerTool(name, {
+    description: "Governed grant-only scope edit of the token registry (REGISTRY-GRANT-01): PLAN returns the exact diff of the affected entry (entry index, scopesBefore -> scopesAfter, registry sha16 before/after, planned backup path) with zero mutation; mutation requires execute=true AND approval.approved=true (and acknowledgeGrant=true at schema level). Grant-only by construction: scopes are appended, never removed; tokenHash/expiresAt/revokedAt and every other entry are structurally unreachable; one entry per call; the subject must exist and be unambiguous; self-grant is refused both by subject and by the caller's own tokenHash16; target scopes are validated against the scope catalog (KNOWN_REGISTRY_SCOPES); idempotent (already-present scopes = NO_OP with zero writes). Execution is atomic: planned bytes validated with the SAME rules the boot loader enforces before anything touches the disk, automatic backup tokens.json.bak-registry-grant-<timestamp> (0600), same-directory temp + fsync + rename with source mode/owner preserved, TOCTOU drift re-check immediately before the rename, and ANY post-rename failure restores the backup bytes and reports RESTORED. Audit line in /data/audit/registry-grant.jsonl (target subject, scopes, authorizer subject + sha16, registry sha16s - the tool never sees raw bearer values). NOTE: the :8787 server reads the registry ONCE at boot - a grant takes effect on the next container boot only; the reload is one engineering.release.pipeline deploy, a declared separate step. Requires bearer scope engineering:registry:scope:grant (operator-issued; the agent cannot self-authorize).",
+    inputSchema: registryScopeGrantInputSchema
+  }, async (input) => { requireRead(); requireWrite(); requireRegistryScopeGrant(); return response(await runRegistryScopeGrant(input, { callerSubject: subject.subject, authorizerHash16: subject.tokenHash16 })); }));
 
   // MANIFEST-GOVERNED-EDIT-01: caminho governado bind/apply para os três manifests de
   // raiz (package.json, package-lock.json, Dockerfile). propose/refuse são não-mutantes;
