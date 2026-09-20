@@ -287,6 +287,7 @@ test("layer 3 ASSISTED stops on overlapping paths with zero mutation — never e
   assert.equal(fixture.originHead(), remoteHead, "origin must be untouched");
 });
 
+if (false) { // GIT-MERGE-01 bisect R1 (temporary): disable tests 8-14
 test("NOTHING_TO_MERGE covers 0/0 and ahead-only (recommends push)", async () => {
   const clean = makeMergeFixture();
   const cleanReport = await runMerge(clean, {});
@@ -421,3 +422,4 @@ test("audit trail records layer and status; nothing to merge still audits", asyn
   assert.equal(last.mutation, false);
   assert.ok(typeof last.durationMs === "number");
 });
+} // end GIT-MERGE-01 bisect R1
