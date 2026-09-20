@@ -12,30 +12,7 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import testRunner from "node:test";
-
-// GIT-MERGE-01 TEMPORARY DEBUG SHIM (remove after diagnosis): this file passes
-// 14/14 in file and related modes but fails exactly once inside the 10-worker
-// suite run (two runs, 1F each). Shadow the test registrar to record every test
-// outcome of this file to a sibling JSONL dump so the failing test's identity
-// and error survive the run. The dump write is best-effort and silent.
-function test(name: string, fn: () => void | Promise<void>) {
-  return testRunner(name, async () => {
-    try {
-      await fn();
-      writeShimDump(name, false, null);
-    } catch (error) {
-      writeShimDump(name, true, String((error as { message?: string })?.message ?? error));
-      throw error;
-    }
-  });
-}
-
-function writeShimDump(name: string, failed: boolean, error: string | null): void {
-  try {
-    writeFileSync(new URL("./.rg-merge-shim.json", import.meta.url), `${JSON.stringify({ name, failed, error })}\n`, { flag: "a" });
-  } catch { /* debug dump is best-effort */ }
-}
+import test from "node:test";
 import { createEngineeringHttpServer } from "../src/server.js";
 import { runGitFetch } from "../src/gitFetch.js";
 import { GitMergeError, runGitMerge, type GitMergeDeps, type GitMergeInput, type GitMergeReport } from "../src/gitMerge.js";
@@ -139,44 +116,7 @@ function payload(call: { result?: { content?: Array<{ type: string; text?: strin
   try { return JSON.parse(text) as Record<string, unknown>; } catch { return {}; }
 }
 
-// GIT-MERGE-01 bisect R7 (temporary): step-encoder probe — chain at module load, failing step encoded via extra failing tests
-let r7server: { close: () => void } | null = null;
-let r7code = 0;
-try {
-  r7code = 1;
-  const fixture = makeMergeFixture();
-  r7code = 2;
-  const started = await startServer(fixture, ["engineering:read", "engineering:write", "engineering:git"]);
-  r7server = started.server;
-  r7code = 3;
-  const response = await fetch(started.endpoint, { method: "POST", headers: { authorization: `Bearer ${started.token}`, "content-type": "application/json", accept: "application/json, text/event-stream" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "test", version: "1" } } }), signal: AbortSignal.timeout(10_000) });
-  r7code = 4;
-  assert.equal(response.status, 200, `R7 status ${response.status}`);
-  r7code = 5;
-  const body = await response.text();
-  r7code = 6;
-  const data = body.split(/\r?\n/).find((line) => line.startsWith("data: "));
-  r7code = 7;
-  assert.ok(data, `R7 no data line in ${body.slice(0, 200)}`);
-  r7code = 8;
-  const init = JSON.parse(data ? data.slice(6) : "{}") as { result?: { serverInfo?: unknown } };
-  r7code = 9;
-  assert.ok(init.result?.serverInfo, `R7 no serverInfo in ${JSON.stringify(init).slice(0, 200)}`);
-  r7code = 0;
-} catch {
-  // failing step stays encoded in r7code; encoders below make it observable
-} finally {
-  r7server?.close();
-}
-test("R7 probe: initialize chain completes", () => {
-  assert.equal(r7code, 0, `R7 failed at step ${r7code}`);
-});
-for (let i = 0; i < r7code; i++) {
-  test(`R7 encoder ${i + 1} (step ${r7code})`, () => { throw new Error(`R7 step ${r7code}`); });
-}
-if (false) { // GIT-MERGE-01 bisect R6 (temporary): disable probe B
-
-test("R5 probe B: merge tools/call without scope is refused with the code", async () => {
+test("git.merge refuses callers without the engineering:git:merge scope", async () => {
   const fixture = makeMergeFixture();
   const { server, endpoint, token } = await startServer(fixture, ["engineering:read", "engineering:write", "engineering:git"]);
   try {
@@ -187,8 +127,6 @@ test("R5 probe B: merge tools/call without scope is refused with the code", asyn
     assert.ok(text.includes("AUTHORIZATION_SCOPE_REQUIRED"), `expected scope refusal, got ${text.slice(0, 300)}`);
   } finally { server.close(); }
 });
-} // end GIT-MERGE-01 bisect R6
-if (false) { // GIT-MERGE-01 bisect R4 (temporary): disable test 2
 
 test("git.merge fast-forwards through the MCP HTTP layer (layer 1 AUTO_FF)", async () => {
   const fixture = makeMergeFixture();
@@ -206,9 +144,7 @@ test("git.merge fast-forwards through the MCP HTTP layer (layer 1 AUTO_FF)", asy
     assert.equal(report.headAfter, fixture.originHead());
   } finally { server.close(); }
 });
-} // end GIT-MERGE-01 bisect R4
 
-if (false) { // GIT-MERGE-01 bisect R3 (temporary): disable tests 3-4
 test("PLAN reports layer AUTO_FF read-only for a strictly-behind branch", async () => {
   const fixture = makeMergeFixture();
   remoteCommit(fixture, "remote-file.txt", "remote change\n");
@@ -238,9 +174,7 @@ test("execute requires acknowledgment then approval", async () => {
   await assert.rejects(runMerge(fixture, { execute: true, approval: { approved: true } }), hasCode("MERGE_ACKNOWLEDGMENT_REQUIRED"));
   assert.equal(fixture.head(), before, "refused executions must not move HEAD");
 });
-} // end GIT-MERGE-01 bisect R3
 
-if (false) { // GIT-MERGE-01 bisect R2 (temporary): disable tests 5-7
 test("layer 1 AUTO_FF executes a pure fast-forward with snapshot proofs", async () => {
   const fixture = makeMergeFixture();
   remoteCommit(fixture, "remote-file.txt", "remote change\n");
@@ -329,9 +263,7 @@ test("layer 3 ASSISTED stops on overlapping paths with zero mutation — never e
   assert.equal(readFileSync(path.join(fixture.root, "app.js"), "utf8"), "local change on app.js\n", "the worktree file must be untouched");
   assert.equal(fixture.originHead(), remoteHead, "origin must be untouched");
 });
-} // end GIT-MERGE-01 bisect R2
 
-if (false) { // GIT-MERGE-01 bisect R1 (temporary): disable tests 8-14
 test("NOTHING_TO_MERGE covers 0/0 and ahead-only (recommends push)", async () => {
   const clean = makeMergeFixture();
   const cleanReport = await runMerge(clean, {});
@@ -466,4 +398,3 @@ test("audit trail records layer and status; nothing to merge still audits", asyn
   assert.equal(last.mutation, false);
   assert.ok(typeof last.durationMs === "number");
 });
-} // end GIT-MERGE-01 bisect R1
