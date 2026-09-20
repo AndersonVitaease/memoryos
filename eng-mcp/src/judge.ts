@@ -12,7 +12,8 @@
 // BEFORE the provider call (evidence may leave, credentials never). Provider
 // failures are structured and retried never; a judgment is never fabricated.
 // Every response carries the ADVISORY line.
-import { readFileSync, statSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import { dirname } from "node:path";
 import { createHash } from "node:crypto";
 import * as z from "zod/v4";
 
@@ -117,6 +118,8 @@ export type JudgeDeps = {
   ) => Promise<JudgeHttpResponse>;
   readCredential: (path: string) => string;
   timeoutMs?: number;
+  authorizerHash16?: string | null;
+  auditFile?: string | null;
 };
 
 export function defaultJudgeDeps(): JudgeDeps {
@@ -355,7 +358,58 @@ export const judgeEvaluateInputSchema = z
 export type JudgeVerifyInput = z.infer<typeof judgeVerifyInputSchema>;
 export type JudgeEvaluateInput = z.infer<typeof judgeEvaluateInputSchema>;
 
+const AUDIT_FILE_DEFAULT = "/data/audit/judge.jsonl";
+
+// Every terminal call outcome lands as one JSONL line in /data/audit/judge.jsonl:
+// metadata + hashes only. state/evidence content never enters the audit file —
+// contentHash16 links the line to the response envelope that carries the full
+// provenance. A write failure degrades to a marker and never fails the judgment.
+export type JudgeAuditEntry = {
+  ts: string;
+  tool: "engineering.judge.verify" | "engineering.judge.evaluate";
+  n_claims: number;
+  verdict: string;
+  model: string | null;
+  usage: { cost: number | null; inputTokens: number | null; outputTokens: number | null } | null;
+  latency_ms: number;
+  authorizerHash16: string | null;
+  contentHash16: string;
+};
+
+function writeJudgeAudit(deps: JudgeDeps, entry: JudgeAuditEntry): string {
+  const file = deps.auditFile ?? process.env.ENG_MCP_JUDGE_AUDIT_FILE ?? AUDIT_FILE_DEFAULT;
+  try {
+    mkdirSync(dirname(file), { recursive: true });
+    appendFileSync(file, `${JSON.stringify(entry)}\n`, { encoding: "utf8" });
+    return "written";
+  } catch (error) {
+    return `failed:${error instanceof Error ? error.message : String(error)}`;
+  }
+}
+
 export async function runJudgeVerify(input: JudgeVerifyInput, deps: JudgeDeps = defaultJudgeDeps()) {
+  const startedAt = Date.now();
+  const contentHash16 = sha16Of(JSON.stringify({ claims: input.claims, evidence: input.evidence ?? null }));
+  const nClaims = input.claims.length;
+  try {
+    return await runJudgeVerifyInner(input, deps, contentHash16, nClaims);
+  } catch (error) {
+    writeJudgeAudit(deps, {
+      ts: new Date().toISOString(),
+      tool: "engineering.judge.verify",
+      n_claims: nClaims,
+      verdict: `ERROR:${error instanceof JudgeError ? error.code : "JUDGE_UNEXPECTED"}`,
+      model: JUDGE_MODEL,
+      usage: null,
+      latency_ms: Date.now() - startedAt,
+      authorizerHash16: deps.authorizerHash16 ?? null,
+      contentHash16
+    });
+    throw error;
+  }
+}
+
+async function runJudgeVerifyInner(input: JudgeVerifyInput, deps: JudgeDeps, contentHash16: string, nClaims: number) {
   const seenIds = new Set<string>();
   for (const claim of input.claims) {
     if (seenIds.has(claim.id)) throw new JudgeError("JUDGE_INPUT_INVALID", `duplicate claim id ${claim.id}`);
@@ -401,7 +455,7 @@ export async function runJudgeVerify(input: JudgeVerifyInput, deps: JudgeDeps = 
         : counts.supported > 0
           ? "MIXED"
           : "UNCERTAIN";
-  return {
+  const envelope = {
     tool: "engineering.judge.verify",
     status: "JUDGED",
     provider: providerMeta(raw, latencyMs),
@@ -416,9 +470,43 @@ export async function runJudgeVerify(input: JudgeVerifyInput, deps: JudgeDeps = 
     counts,
     advisory: ADVISORY
   };
+  const audit = writeJudgeAudit(deps, {
+    ts: new Date().toISOString(),
+    tool: "engineering.judge.verify",
+    n_claims: nClaims,
+    verdict: aggregate,
+    model: envelope.provider.model,
+    usage: { cost: envelope.provider.cost, inputTokens: envelope.provider.inputTokens, outputTokens: envelope.provider.outputTokens },
+    latency_ms: envelope.provider.latencyMs,
+    authorizerHash16: deps.authorizerHash16 ?? null,
+    contentHash16
+  });
+  return { ...envelope, audit };
 }
 
 export async function runJudgeEvaluate(input: JudgeEvaluateInput, deps: JudgeDeps = defaultJudgeDeps()) {
+  const startedAt = Date.now();
+  const contentHash16 = sha16Of(JSON.stringify({ state: input.state, questions: input.questions }));
+  const nClaims = input.questions.length;
+  try {
+    return await runJudgeEvaluateInner(input, deps, contentHash16, nClaims);
+  } catch (error) {
+    writeJudgeAudit(deps, {
+      ts: new Date().toISOString(),
+      tool: "engineering.judge.evaluate",
+      n_claims: nClaims,
+      verdict: `ERROR:${error instanceof JudgeError ? error.code : "JUDGE_UNEXPECTED"}`,
+      model: JUDGE_MODEL,
+      usage: null,
+      latency_ms: Date.now() - startedAt,
+      authorizerHash16: deps.authorizerHash16 ?? null,
+      contentHash16
+    });
+    throw error;
+  }
+}
+
+async function runJudgeEvaluateInner(input: JudgeEvaluateInput, deps: JudgeDeps, contentHash16: string, nClaims: number) {
   const seenIds = new Set<string>();
   const questions: Record<string, JudgeQuestion> = {};
   for (const question of input.questions) {
@@ -486,7 +574,7 @@ export async function runJudgeEvaluate(input: JudgeEvaluateInput, deps: JudgeDep
       confidence: typeof answer.confidence === "number" ? answer.confidence : null
     };
   });
-  return {
+  const envelope = {
     tool: "engineering.judge.evaluate",
     status: "JUDGED",
     provider: providerMeta(raw, latencyMs),
@@ -494,4 +582,19 @@ export async function runJudgeEvaluate(input: JudgeEvaluateInput, deps: JudgeDep
     answers: results,
     advisory: ADVISORY
   };
+  const summary = results
+    .map((r) => (r.type === "noul" ? `${r.id}:${(r.probability as number).toFixed(4)}` : r.type === "choice" ? `${r.id}:${r.choice}` : `${r.id}:${(r.normalizedScore as number).toFixed(4)}`))
+    .join("|");
+  const audit = writeJudgeAudit(deps, {
+    ts: new Date().toISOString(),
+    tool: "engineering.judge.evaluate",
+    n_claims: nClaims,
+    verdict: summary.length > 512 ? `${summary.slice(0, 512)}…` : summary,
+    model: envelope.provider.model,
+    usage: { cost: envelope.provider.cost, inputTokens: envelope.provider.inputTokens, outputTokens: envelope.provider.outputTokens },
+    latency_ms: envelope.provider.latencyMs,
+    authorizerHash16: deps.authorizerHash16 ?? null,
+    contentHash16
+  });
+  return { ...envelope, audit };
 }

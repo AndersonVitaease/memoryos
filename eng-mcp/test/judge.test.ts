@@ -5,6 +5,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   ADVISORY,
   JUDGE_DECISION_THRESHOLD,
@@ -20,6 +23,10 @@ import {
   type JudgeDeps,
   type JudgeHttpResponse
 } from "../src/judge.ts";
+
+// JUDGE-02: audit tests route every audit write to a temp file via the env
+// override — the real /data/audit/judge.jsonl is never touched from tests.
+process.env.ENG_MCP_JUDGE_AUDIT_FILE = join(tmpdir(), "judge-audit-test-" + process.pid + ".jsonl");
 
 // Runtime-built synthetic key: the production credential file carries a stray
 // leading artifact before the quoted key, and the extractor must skip past it.
@@ -54,6 +61,8 @@ function makeDeps(options: {
   response?: () => JudgeHttpResponse | Promise<JudgeHttpResponse>;
   credential?: string;
   timeoutMs?: number;
+  authorizerHash16?: string;
+  auditFile?: string;
 }): { deps: JudgeDeps; calls: CapturedCall[] } {
   const calls: CapturedCall[] = [];
   const fetchImpl = async (url: string, init: CapturedInit): Promise<JudgeHttpResponse> => {
@@ -66,6 +75,8 @@ function makeDeps(options: {
   };
   const deps: JudgeDeps = { fetchImpl, readCredential };
   if (options.timeoutMs !== undefined) deps.timeoutMs = options.timeoutMs;
+  if (options.authorizerHash16 !== undefined) deps.authorizerHash16 = options.authorizerHash16;
+  if (options.auditFile !== undefined) deps.auditFile = options.auditFile;
   return { deps, calls };
 }
 
@@ -319,4 +330,80 @@ test("sanitize: value patterns, secret keys and the depth cap", () => {
   assert.equal(keyed.value.token, "[REDACTED_SECRET]");
   assert.equal(keyed.value.password, "[REDACTED_SECRET]");
   assert.equal(keyed.value.fine, "kept");
+});
+
+// JUDGE-02: the audit trail — one JSONL line per terminal outcome, metadata + hashes only.
+test("verify writes an audit line with metadata and hashes only (success path)", async () => {
+  const auditFile = join(tmpdir(), "judge-audit-success-" + process.pid + ".jsonl");
+  const { deps } = makeDeps({ credential: VALID_CREDENTIAL, response: () => judgeResponse(verifyResponse(choiceAnswer("supported", VERDICT_PROBABILITIES), choiceAnswer("supported", { supported: 0.72, contradicted: 0.2, not_addressed: 0.08 }))), authorizerHash16: "0123456789abcdef", auditFile });
+  rmSync(auditFile, { force: true });
+  try {
+    const result = await runJudgeVerify(VERIFY_INPUT, deps);
+    assert.equal(result.audit, "written");
+    const lines = readFileSync(auditFile, "utf8").trim().split("\n").filter(Boolean);
+    assert.equal(lines.length, 1);
+    const entry = JSON.parse(lines[0]) as Record<string, unknown>;
+    assert.deepEqual(Object.keys(entry), ["ts", "tool", "n_claims", "verdict", "model", "usage", "latency_ms", "authorizerHash16", "contentHash16"]);
+    assert.match(entry.ts as string, /^\d{4}-\d{2}-\d{2}T/);
+    assert.equal(entry.tool, "engineering.judge.verify");
+    assert.equal(entry.n_claims, 2);
+    assert.equal(entry.verdict, "ALL_SUPPORTED");
+    assert.equal(entry.model, JUDGE_MODEL + "-20260917");
+    assert.deepEqual(entry.usage, { cost: 0.00002, inputTokens: 500, outputTokens: 100 });
+    assert.equal(typeof entry.latency_ms, "number");
+    assert.equal(entry.authorizerHash16, "0123456789abcdef");
+    assert.equal(entry.contentHash16, createHash("sha256").update(JSON.stringify({ claims: VERIFY_INPUT.claims, evidence: VERIFY_INPUT.evidence })).digest("hex").slice(0, 16));
+    assert.ok(!lines[0].includes("ba4a0b69"), "audit carries hashes, never evidence content");
+  } finally {
+    rmSync(auditFile, { force: true });
+  }
+});
+
+test("verify provider failure writes an ERROR audit line (429 → JUDGE_RATE_LIMIT)", async () => {
+  const auditFile = join(tmpdir(), "judge-audit-error-" + process.pid + ".jsonl");
+  const { deps } = makeDeps({ credential: VALID_CREDENTIAL, response: () => judgeResponse({ error: "rate limited" }, 429), auditFile });
+  rmSync(auditFile, { force: true });
+  try {
+    await assert.rejects(() => runJudgeVerify(VERIFY_INPUT, deps), (error: unknown) => (error as JudgeError).code === "JUDGE_RATE_LIMIT");
+    const lines = readFileSync(auditFile, "utf8").trim().split("\n").filter(Boolean);
+    assert.equal(lines.length, 1);
+    const entry = JSON.parse(lines[0]) as Record<string, unknown>;
+    assert.deepEqual(Object.keys(entry), ["ts", "tool", "n_claims", "verdict", "model", "usage", "latency_ms", "authorizerHash16", "contentHash16"]);
+    assert.equal(entry.verdict, "ERROR:JUDGE_RATE_LIMIT");
+    assert.equal(entry.model, JUDGE_MODEL);
+    assert.equal(entry.usage, null);
+    assert.equal(entry.n_claims, 2);
+  } finally {
+    rmSync(auditFile, { force: true });
+  }
+});
+
+test("evaluate writes an audit line with a per-answer summary verdict", async () => {
+  const auditFile = join(tmpdir(), "judge-audit-evaluate-" + process.pid + ".jsonl");
+  const { deps } = makeDeps({
+    credential: VALID_CREDENTIAL,
+    response: () => judgeResponse(providerPayload({
+      q_noul: { type: "noul", noul: 0.91 },
+      q_choice: choiceAnswer("promote", { promote: 0.8, hold: 0.2 }),
+      q_score: { type: "score", score: 3.66, legend: { "0": "none", "1": "low", "2": "medium", "3": "high", "4": "certain", "5": "absolute" }, probabilities: { "0": 0.01, "1": 0.04, "2": 0.15, "3": 0.3, "4": 0.3, "5": 0.2 }, confidence: 0.7 }
+    })),
+    auditFile
+  });
+  rmSync(auditFile, { force: true });
+  try {
+    const result = await runJudgeEvaluate(EVALUATE_INPUT, deps);
+    assert.equal(result.audit, "written");
+    const lines = readFileSync(auditFile, "utf8").trim().split("\n").filter(Boolean);
+    assert.equal(lines.length, 1);
+    const entry = JSON.parse(lines[0]) as Record<string, unknown>;
+    assert.deepEqual(Object.keys(entry), ["ts", "tool", "n_claims", "verdict", "model", "usage", "latency_ms", "authorizerHash16", "contentHash16"]);
+    assert.equal(entry.tool, "engineering.judge.evaluate");
+    assert.equal(entry.n_claims, 3);
+    assert.equal(entry.verdict, "q_noul:0.9100|q_choice:promote|q_score:0.7320");
+    assert.equal(entry.model, JUDGE_MODEL + "-20260917");
+    assert.deepEqual(entry.usage, { cost: 0.00002, inputTokens: 500, outputTokens: 100 });
+    assert.equal(entry.authorizerHash16, null);
+  } finally {
+    rmSync(auditFile, { force: true });
+  }
 });
