@@ -7,6 +7,7 @@ import path from "node:path";
 import { EngineeringError, RepositoryPolicy, MANIFEST_GOVERNED_PATHS, assertNoSensitiveContent, isSensitivePath } from "./policy.js";
 import { runGithubRead } from "./githubRead.ts";
 import { runGitPush, type GitPushInput } from "./gitPush.ts";
+import { runGitFetch } from "./gitFetch.ts";
 import { getTestJobStore, createTestExecutionId, parseTapSummary, parseTapFailures, classifySyncRunOutcome, classifyInfraError, reconcileSuiteJob, boundedJobView, type TestJob } from "./testJobs.js";
 
 export type CommandResult = { stdout: string; stderr: string; truncated: boolean };
@@ -608,6 +609,13 @@ async references(subject: string, symbol: string, maxResults = 100) {
   // shared git lock so pushes serialize with every other git mutation.
   async gitPush(input: GitPushInput, subject?: string | null) {
     return runGitPush(input, { repoRoot: this.policy.authorizedRoot, withLock: (work) => this.withGitLock(work), subject: subject ?? null });
+  }
+
+  // GIT-FETCH-01: governed read-only fetch — same delegation shape as gitPush but
+  // with NO caller input: the remote is always origin and the only allowed mutation
+  // is remote-tracking refs (proven by before/after snapshots inside the core).
+  async gitFetch(subject?: string | null) {
+    return runGitFetch({}, { repoRoot: this.policy.authorizedRoot, withLock: (work) => this.withGitLock(work), subject: subject ?? null });
   }
 
   private async analysisFiles(requestedPath?: string): Promise<{ items: Array<{ path: string; text: string }>; partial: boolean }> {
