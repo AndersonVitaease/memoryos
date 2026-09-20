@@ -13,7 +13,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSy
 import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
-import { runRegistryScopeGrant, validateTokenRegistry, KNOWN_REGISTRY_SCOPES, registryScopeGrantInputSchema } from "../src/registryScopeGrant.ts";
+import { runRegistryScopeGrant, validateTokenRegistry, KNOWN_REGISTRY_SCOPES, registryScopeGrantInputSchema, isOperatorSubject } from "../src/registryScopeGrant.ts";
 import type { RegistryScopeGrantDeps, RegistryScopeGrantResult } from "../src/registryScopeGrant.ts";
 import { EngineeringError, type TokenRecord } from "../src/policy.ts";
 
@@ -301,4 +301,93 @@ test("scope catalog drift guard: every scope string in the source gates is in KN
   assert.ok(found.length >= 16, `expected the full gate catalog, found ${found.length}`);
   const missing = found.filter((scope) => !KNOWN_REGISTRY_SCOPES.includes(scope));
   assert.deepEqual(missing, [], "source scope strings missing from KNOWN_REGISTRY_SCOPES — extend the catalog");
+});
+
+// OPERATOR-PAIR-01 — the operator-pair guard: operator-* entries are a closed class;
+// only an operator-* authorizer may ever mutate one. Service bearers (runner,
+// claude-code, ...) are refused even while holding engineering:registry:scope:grant.
+
+const OPERATOR_PAIR: TokenRecord[] = [
+  { tokenHash: "1".repeat(64), subject: "operator-2026-09-20", scopes: ["engineering:read", "engineering:registry:scope:grant"], allowedRepositoryIds: ["memoryos"], expiresAt: "2099-01-01T00:00:00.000Z", revokedAt: null },
+  { tokenHash: "2".repeat(64), subject: "operator-2026-09-17b", scopes: ["engineering:read", "engineering:registry:scope:grant"], allowedRepositoryIds: ["memoryos"], expiresAt: "2099-01-01T00:00:00.000Z", revokedAt: null },
+  { tokenHash: "3".repeat(64), subject: "release-runner-2026-09-19", scopes: ["engineering:registry:scope:grant"], allowedRepositoryIds: ["memoryos"], expiresAt: "2099-01-01T00:00:00.000Z", revokedAt: null }
+];
+
+function operatorHarness(callerSubject: string, authorizerHash16: string): Harness {
+  const dir = mkdtempSync(join(tmpdir(), "registry-grant-operator-test-"));
+  const registryFile = join(dir, "tokens.json");
+  const auditFile = join(dir, "audit", "registry-grant.jsonl");
+  const originalBytes = serialize(OPERATOR_PAIR);
+  writeFileSync(registryFile, originalBytes, { mode: 0o600 });
+  const deps: RegistryScopeGrantDeps = { registryFile, auditFile, callerSubject, authorizerHash16, now: () => new Date("2026-09-20T12:00:00.000Z") };
+  return { dir, registryFile, auditFile, originalBytes, deps };
+}
+
+test("OPERATOR-PAIR-01: an operator authorizer grants to the paired operator entry, both directions", async () => {
+  const h = operatorHarness("operator-2026-09-20", "1".repeat(16));
+  try {
+    const ab = await runRegistryScopeGrant(grants("operator-2026-09-17b", ["engineering:git:merge"], true), h.deps);
+    assert.equal(ab.status, "GRANTED");
+    assert.equal(ab.entryIndex, 1);
+    assert.deepEqual(ab.scopesAfter, ["engineering:read", "engineering:registry:scope:grant", "engineering:git:merge"]);
+    const reverse = operatorHarness("operator-2026-09-17b", "2".repeat(16));
+    try {
+      const ba = await runRegistryScopeGrant(grants("operator-2026-09-20", ["engineering:git:merge"], true), reverse.deps);
+      assert.equal(ba.status, "GRANTED");
+      assert.equal(ba.entryIndex, 0);
+    } finally { cleanup(reverse.dir); }
+  } finally { cleanup(h.dir); }
+});
+
+test("OPERATOR-PAIR-01: a service authorizer is refused for an operator target, in PLAN and execute, zero mutation", async () => {
+  const h = operatorHarness("release-runner-2026-09-19", "3".repeat(16));
+  try {
+    const plan = await runRegistryScopeGrant(grants("operator-2026-09-17b", ["engineering:git:merge"]), h.deps);
+    assert.equal(plan.status, "BLOCKED");
+    assert.equal(plan.code, "OPERATOR_ENTRY_OPERATOR_AUTHORIZER_REQUIRED");
+    assert.deepEqual(readFileSync(h.registryFile), h.originalBytes, "PLAN refusal leaves the registry untouched");
+    const executed = await runRegistryScopeGrant(grants("operator-2026-09-17b", ["engineering:git:merge"], true), h.deps);
+    assert.equal(executed.status, "BLOCKED");
+    assert.equal(executed.code, "OPERATOR_ENTRY_OPERATOR_AUTHORIZER_REQUIRED");
+    assert.equal(executed.mutationPerformed, false);
+    assert.deepEqual(readFileSync(h.registryFile), h.originalBytes, "execute refusal leaves the registry untouched");
+    assert.equal(backups(h.dir).length, 0, "no backup is created for a refused grant");
+    const auditLines = readFileSync(h.auditFile, "utf8").trim().split("\n").map((line) => JSON.parse(line) as Record<string, unknown>);
+    assert.equal(auditLines.length, 2, "both refusals are audited");
+    assert.equal(auditLines[0]!.result, "refused-operator-authorizer");
+    assert.equal(auditLines[1]!.code, "OPERATOR_ENTRY_OPERATOR_AUTHORIZER_REQUIRED");
+    const serialized = JSON.stringify([plan, executed]);
+    assert.equal(/[a-f0-9]{64}/.test(serialized), false, "no token hash may leak into the result");
+  } finally { cleanup(h.dir); }
+});
+
+test("OPERATOR-PAIR-01: an operator authorizer may still grant to a service entry (one-way guard)", async () => {
+  const h = operatorHarness("operator-2026-09-20", "1".repeat(16));
+  try {
+    const result = await runRegistryScopeGrant(grants("release-runner-2026-09-19", ["engineering:git:merge"], true), h.deps);
+    assert.equal(result.status, "GRANTED");
+    assert.equal(result.entryIndex, 2);
+    const after = JSON.parse(readFileSync(h.registryFile, "utf8")) as { tokens: TokenRecord[] };
+    assert.deepEqual(after.tokens[2]!.scopes, ["engineering:registry:scope:grant", "engineering:git:merge"]);
+    assert.deepEqual(after.tokens.slice(0, 2), OPERATOR_PAIR.slice(0, 2), "operator entries untouched");
+  } finally { cleanup(h.dir); }
+});
+
+test("OPERATOR-PAIR-01: the self-grant guard still binds an operator to its own entry", async () => {
+  const h = operatorHarness("operator-2026-09-20", "1".repeat(16));
+  try {
+    const result = await runRegistryScopeGrant(grants("operator-2026-09-20", ["engineering:git:merge"], true), h.deps);
+    assert.equal(result.status, "BLOCKED");
+    assert.equal(result.code, "REGISTRY_SELF_GRANT_REFUSED", "self-guard takes precedence over the operator-pair guard");
+    assert.deepEqual(readFileSync(h.registryFile), h.originalBytes);
+  } finally { cleanup(h.dir); }
+});
+
+test("OPERATOR-PAIR-01: isOperatorSubject classifies exactly the operator- prefix", () => {
+  assert.equal(isOperatorSubject("operator-2026-09-20"), true);
+  assert.equal(isOperatorSubject("operator-2026-09-17b"), true);
+  assert.equal(isOperatorSubject("release-runner-2026-09-19"), false);
+  assert.equal(isOperatorSubject("claude-code"), false);
+  assert.equal(isOperatorSubject("operatorx"), false);
+  assert.equal(isOperatorSubject(""), false);
 });
