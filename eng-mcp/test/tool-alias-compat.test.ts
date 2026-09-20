@@ -53,7 +53,7 @@ test("GH-03 alias map: every canonical tool resolves its sanitized alias, aliase
 test("GH-03 same-session stability: 24 alternating sanitized calls, zero Tool not found, catalog unchanged", async () => {
   const { call, list } = buildServer();
   const namesBefore = await listNames(list);
-  assert.equal(namesBefore.length, 95);
+  assert.equal(namesBefore.length, 96);
   const targets = ["engineering.git.status", "engineering.file.read", "engineering.code.search"];
   const sanitized = targets.map((name) => name.replaceAll(".", "_"));
   const validArgs: Record<string, Record<string, unknown>> = { "engineering.git.status": {}, "engineering.file.read": { path: "src/tools.ts" }, "engineering.code.search": { query: "AgentRuntime" } };
@@ -64,7 +64,7 @@ test("GH-03 same-session stability: 24 alternating sanitized calls, zero Tool no
     assert.ok(resultText(result).length > 0, `call ${i} must return content`);
   }
   const namesAfter = await listNames(list);
-  assert.equal(namesAfter.length, 95, "catalog size must stay stable within the same session");
+  assert.equal(namesAfter.length, 96, "catalog size must stay stable within the same session");
   assert.deepEqual([...namesAfter].sort(), [...namesBefore].sort());
 });
 
