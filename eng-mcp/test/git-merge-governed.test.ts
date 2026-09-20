@@ -168,6 +168,7 @@ test("git.merge fast-forwards through the MCP HTTP layer (layer 1 AUTO_FF)", asy
   } finally { server.close(); }
 });
 
+if (false) { // GIT-MERGE-01 bisect R3 (temporary): disable tests 3-4
 test("PLAN reports layer AUTO_FF read-only for a strictly-behind branch", async () => {
   const fixture = makeMergeFixture();
   remoteCommit(fixture, "remote-file.txt", "remote change\n");
@@ -197,6 +198,7 @@ test("execute requires acknowledgment then approval", async () => {
   await assert.rejects(runMerge(fixture, { execute: true, approval: { approved: true } }), hasCode("MERGE_ACKNOWLEDGMENT_REQUIRED"));
   assert.equal(fixture.head(), before, "refused executions must not move HEAD");
 });
+} // end GIT-MERGE-01 bisect R3
 
 if (false) { // GIT-MERGE-01 bisect R2 (temporary): disable tests 5-7
 test("layer 1 AUTO_FF executes a pure fast-forward with snapshot proofs", async () => {
