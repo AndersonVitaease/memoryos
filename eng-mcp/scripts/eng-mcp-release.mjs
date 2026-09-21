@@ -5,6 +5,10 @@ import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { runUnitCredential } from "./eng-mcp-unit-credential.mjs";
+// CONTRACT-01: smoke-side judge envelope contract validator + the stable live
+// judge.verify arguments used by smokeAction step 7. Pinned to the zod contract
+// (src/judgeContracts.ts) by test/contract-judge-envelope.test.ts.
+import { validateJudgeVerifyEnvelope, SMOKE_JUDGE_ARGS } from "./eng-mcp-smoke-judge-contract.mjs";
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_CONFIG = path.join(SCRIPT_DIR, "release-config.json");
@@ -672,6 +676,9 @@ export const SMOKE_FAILURE_STEP_BY_CODE = Object.freeze([
   [/^SMOKE_CATALOG_/, "catalog-validation"],
   [/^SMOKE_TEST_RUN_/, "test-run"],
   [/^SMOKE_READ_FAILED/, "read"],
+  // CONTRACT-01: the live judge contract probe (smokeAction step 7) fails with
+  // SMOKE_JUDGE_* codes; forensics must name the step, like every other smoke gate.
+  [/^SMOKE_JUDGE_/, "judge-contract"],
 ]);
 
 export function sanitizeSmokeFailureMessage(value) {
@@ -799,7 +806,23 @@ async function smokeAction(config) {
   // 6. Validate basic read capability
   const read = await smokeTransientRetry("read-call", () => mcp(config.production.endpoint, bearer, 3, "tools/call", { name: "engineering.repo.structure", arguments: { path: ".", maxDepth: 1, maxEntries: 20 } })); if (read.result.isError) throw new Error("SMOKE_READ_FAILED");
 
-  // 7. Return convergence evidence
+  // 7. CONTRACT-01 judge contract probe: one READ-ONLY live judge.verify call
+  // against the REAL provider. The contract suite (test/contract-*.test.ts) runs
+  // pre-deploy against golden envelopes recorded live (2026-09-21); this step
+  // proves the DEPLOYED server still emits that exact shape — divergence fails
+  // the deploy instead of surfacing as a runtime surprise. Functional failures
+  // (isError, envelope violations) are never retried as transient; only the
+  // transport grace window applies.
+  const judgeCall = await smokeTransientRetry("judge-contract", () => mcp(config.production.endpoint, bearer, 7, "tools/call", { name: "engineering.judge.verify", arguments: SMOKE_JUDGE_ARGS }));
+  if (judgeCall.result.isError) {
+    const judgeErrorText = judgeCall.result.content[0]?.text || "NO_ERROR_CONTENT";
+    throw new Error(`SMOKE_JUDGE_CALL_FAILED: ${sanitizeSmokeFailureMessage(judgeErrorText) ?? "REDACTED"}`);
+  }
+  const judgeEnvelope = JSON.parse(judgeCall.result.content[0].text);
+  const judgeContract = validateJudgeVerifyEnvelope(judgeEnvelope);
+  if (!judgeContract.ok) throw new Error(`SMOKE_JUDGE_ENVELOPE_INVALID: ${judgeContract.violations.join("; ").slice(0, 300)}`);
+
+  // 8. Return convergence evidence
   const next = {
     ...state,
     smokeStatus: "PASS",
@@ -815,7 +838,11 @@ async function smokeAction(config) {
     mountValidated: true,
     releaseRunnerActive: true,
     releaseRunnerReadOnly: true,
-    releaseRunnerPartialFailures: 0
+    releaseRunnerPartialFailures: 0,
+    smokeJudgeStatus: judgeEnvelope.status,
+    smokeJudgeModel: judgeEnvelope.provider.model,
+    smokeJudgeLatencyMs: judgeEnvelope.provider.latencyMs,
+    smokeJudgeCostUsd: judgeEnvelope.provider.cost
   };
   await saveState(config, next); return next;
 }
