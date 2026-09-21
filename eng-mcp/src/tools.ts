@@ -43,6 +43,8 @@ import { sandboxBatchWriteInputSchema, runSandboxBatchWrite } from "./sandboxBat
 import { manifestEditInputSchema, runManifestEdit } from "./manifestEdit.ts";
 import { notifyHermesInputSchema, runNotifyHermes } from "./notifyHermes.ts";
 import { getTestJobStore, createSuiteJob, finishSuiteJobFromRunner, finishSuiteJobInfra } from "./testJobs.js";
+// ERROR-01: canonical structured-error envelope for every tools/call failure.
+import { buildErrorEnvelope, isCanonicalEnvelope, writeErrorAudit, type ErrorEnvelope } from "./errorEnvelope.ts";
 
 export const ENGINEERING_SERVER_INFO = { name: "memoryos-eng-mcp", version: "0.1.0" } as const;
 export type ToolCatalogEntry = { name: string; access: "read" | "write" };
@@ -79,6 +81,55 @@ export function installToolAliasCompatibility(mcpServer: unknown): void {
     return original(request, ctx);
   });
 }
+
+// ERROR-01 ERROR-ENVELOPE-COMPAT: post-process EVERY tools/call failure into the
+// canonical structured-error envelope — ONE choke point covers all registered tools
+// without touching their registration sites (same idiom as the alias wrapper above).
+// Semantics frozen by design:
+//  - SUCCESS results pass through byte-identical (zero behavior change, design point 5);
+//  - an already-canonical envelope passes through byte-identical (no double wrap, no double audit);
+//  - unknown tool names still REJECT with the original /not found/ error (rejections
+//    are never caught — only resolved isError results are post-processed);
+//  - every mounted envelope is REDACTED before mount (token fragments, credential
+//    paths, raw secrets never reach the caller) and audited in full
+//    (/data/audit/tool-errors.jsonl, never-fail — audit failure degrades to a marker).
+export function mountErrorEnvelope(request: ToolsCallRequestLike, result: unknown): unknown {
+  const tool = typeof request?.params?.name === "string" ? request.params.name : "unknown";
+  // Design point 5 — only actual error results are post-processed: SUCCESS
+  // results (isError not exactly true) pass through byte-identical.
+  if ((result as { isError?: unknown } | null)?.isError !== true) return result;
+  let text: string | null = null;
+  if (result && typeof result === "object" && Array.isArray((result as { content?: unknown[] }).content)) {
+    const part = ((result as { content: Array<{ type?: unknown; text?: unknown }> }).content).find((item) => item && typeof item === "object" && item.type === "text" && typeof item.text === "string") as { text: string } | undefined;
+    if (part) text = part.text;
+  }
+  const parsed = text !== null ? safeJsonParseEnvelope(text) : undefined;
+  if (parsed !== undefined && isCanonicalEnvelope(parsed)) {
+    // Already canonical — passthrough byte-identical, no audit line (no double wrap).
+    return result; // byte-identical passthrough of the ORIGINAL result object
+  }
+  const envelope = buildErrorEnvelope({ message: text ?? "", tool });
+  writeErrorAudit({ ts: new Date().toISOString(), tool, envelope });
+  return { content: [{ type: "text", text: JSON.stringify(envelope) ?? "null" }], isError: true };
+}
+
+function safeJsonParseEnvelope(text: string): unknown {
+  try { return JSON.parse(text); } catch { return undefined; }
+}
+
+// ERROR-01: wraps the alias-normalizing handler — chain becomes envelope(alias(real)),
+// so the envelope shim always sees the CANONICAL tool name in request.params.name.
+export function installErrorEnvelopeCompatibility(mcpServer: unknown): void {
+  const server = mcpServer as { setRequestHandler(method: string, handler: ToolsCallHandlerLike): unknown; _getRequestHandler?(method: string): ToolsCallHandlerLike | undefined };
+  const original = server._getRequestHandler?.("tools/call");
+  if (typeof original !== "function") return;
+  server.setRequestHandler("tools/call", async (request, ctx) => {
+    // Rejections propagate untouched (unknown tool /not found/); only resolved
+    // results are post-processed into the canonical envelope when needed.
+    return mountErrorEnvelope(request, await original(request, ctx));
+  });
+}
+
 
 function response(value: unknown) { return { content: [{ type: "text" as const, text: JSON.stringify(value) ?? "null" }] }; }
 

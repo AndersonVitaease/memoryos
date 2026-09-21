@@ -293,6 +293,44 @@ describe('JUDGE-HOOKS-01 gate: PostToolUse error classification and Stop verify'
     assert.equal(calls.length, 0);
   });
 
+  it('PostToolUse: structured error envelope feeds the judge state (ERROR-01 point 6)', async () => {
+    const { client, calls } = mockJudge({ evaluate: choiceResult('retryable', 0.8) });
+    const gate = buildJudgeGate(gateConfig({ judgeClient: client }));
+    assert.ok(gate);
+    const envelope = { code: 'FILE_VERSION_CONFLICT', category: 'state', retryable: true, remediation: 're-read and re-apply the patch', message: 'FILE_VERSION_CONFLICT', evidenceRefs: [] };
+    const out = await gate.handlers.postToolUse({
+      hook_event_name: 'PostToolUse',
+      tool_name: 'engineering.file.patch',
+      tool_response: { isError: true, content: [{ type: 'text', text: JSON.stringify(envelope) }] },
+    }, 'tu-env-1');
+    const context = out.hookSpecificOutput?.additionalContext ?? '';
+    assert.match(context, /JUDGE_POSTTOOLUSE_ERROR/);
+    assert.match(context, /not a command/);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].tool, 'engineering.judge.evaluate');
+    const state = calls[0].args.state as Record<string, unknown>;
+    assert.deepEqual(state.errorEnvelope, { code: 'FILE_VERSION_CONFLICT', category: 'state', retryable: true });
+    const instructions = (calls[0].args.questions as Array<{ instructions: string }>)[0].instructions;
+    assert.match(instructions, /errorEnvelope/);
+    assert.match(instructions, /FILE_VERSION_CONFLICT/);
+  });
+
+  it('PostToolUse: non-envelope error responses carry no errorEnvelope and keep legacy instructions', async () => {
+    const { client, calls } = mockJudge({ evaluate: choiceResult('change_approach', 0.7) });
+    const gate = buildJudgeGate(gateConfig({ judgeClient: client }));
+    assert.ok(gate);
+    await gate.handlers.postToolUse({
+      hook_event_name: 'PostToolUse',
+      tool_name: 'Bash',
+      tool_response: { isError: true, stdout: '', stderr: 'command not found' },
+    }, 'tu-env-2');
+    assert.equal(calls.length, 1);
+    const state = calls[0].args.state as Record<string, unknown>;
+    assert.equal('errorEnvelope' in state, false);
+    const instructions = (calls[0].args.questions as Array<{ instructions: string }>)[0].instructions;
+    assert.doesNotMatch(instructions, /errorEnvelope/);
+  });
+
   it('Stop: premature completion with unsupported claims is BLOCKED with reasons', async () => {
     const { client, calls } = mockJudge({
       verify: () => ({
