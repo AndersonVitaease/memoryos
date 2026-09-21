@@ -312,9 +312,16 @@ function normalizeText(value: string): string {
   return String(value ?? "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim();
 }
 
-// memory.context rows embed the summary verbatim (UCME "[AGENT MEMORY]\n...Summary:" format)
-function recentSummariesFromContext(rows: unknown): string[] {
-  if (!Array.isArray(rows)) return [];
+// memory.context rows embed the summary verbatim (UCME "[AGENT MEMORY]\n...Summary:" format);
+// the REAL bridge returns {memories:[{content}]} — also tolerate a bare array of rows
+function recentSummariesFromContext(payload: unknown): string[] {
+  const rec = payload !== null && typeof payload === "object" ? (payload as Record<string, unknown>) : null;
+  const rows: unknown[] = Array.isArray(payload)
+    ? payload
+    : Array.isArray(rec?.memories)
+      ? (rec.memories as unknown[])
+      : [];
+  if (rows.length === 0) return [];
   const out: string[] = [];
   for (const row of rows) {
     const content = typeof row === "string"
@@ -324,7 +331,11 @@ function recentSummariesFromContext(rows: unknown): string[] {
         : null);
     if (!content) continue;
     const idx = content.indexOf("Summary:");
-    out.push(idx >= 0 ? content.slice(idx + "Summary:".length) : content);
+    let text = idx >= 0 ? content.slice(idx + "Summary:".length) : content;
+    // summaries stored after MEMORY-GATE-01 carry the [MEMORYGATE:...] score tag at the
+    // front — strip it so dedupe compares raw content against tagged history
+    text = text.replace(/^\s*\[MEMORYGATE:[^\]]*\]\s*/, "");
+    out.push(text);
   }
   return out;
 }
