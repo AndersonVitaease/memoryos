@@ -1,0 +1,56 @@
+{
+  "_provenance": "GOLDEN FIXTURE — real engineering.judge.verify tool envelope recorded LIVE from production on 2026-09-21 (CONTRACT-01), 2 claims against real repo evidence. Claim c1 was judged contradicted because its author's wording ('only probes...') omitted validateRunnerMount/systemctl — wording imprecision, not a shape bug; the envelope STRUCTURE is the contract. Do NOT edit values to make tests pass.",
+  "envelope": {
+    "tool": "engineering.judge.verify",
+    "status": "JUDGED",
+    "provider": {
+      "model": "typesafe/jev-1.13-20260917",
+      "id": "gen-dec-1790007057-IvpsNB5OH65dNypXZCzk",
+      "latencyMs": 308,
+      "cost": 0.000037044,
+      "inputTokens": 882,
+      "outputTokens": 88
+    },
+    "provenance": {
+      "credentialSha16": "9bffc8c38bc60289",
+      "stateHash16": "763d2e6e9adeb177",
+      "evidenceHash16": "763d2e6e9adeb177",
+      "redactions": 0
+    },
+    "claims": [
+      {
+        "id": "c1",
+        "text": "the release smoke has no judge step today: smokeAction only probes unauth/401, initialize, tools-list, catalog, runner service and repo.structure",
+        "verdict": "contradicted",
+        "probability": 0.84,
+        "probabilities": {
+          "supported": 0.1,
+          "contradicted": 0.84,
+          "not_addressed": 0.06
+        },
+        "confidence": 0.76
+      },
+      {
+        "id": "c2",
+        "text": "engineering.judge.evaluate returns its per-question outcomes under a field named results",
+        "verdict": "supported",
+        "probability": 0.65,
+        "probabilities": {
+          "supported": 0.65,
+          "contradicted": 0.23,
+          "not_addressed": 0.12
+        },
+        "confidence": 0.48
+      }
+    ],
+    "aggregate": "HAS_CONTRADICTIONS",
+    "counts": {
+      "supported": 1,
+      "contradicted": 1,
+      "not_addressed": 0,
+      "uncertain": 0
+    },
+    "advisory": "ADVISORY — calibrated judgment is not a security boundary; operator approval decides.",
+    "audit": "written"
+  }
+}
