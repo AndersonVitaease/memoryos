@@ -316,25 +316,21 @@ const BAND2_QUESTIONS = [
     id: 'q_destructive',
     type: 'noul',
     instructions: 'Does this shell command destroy, overwrite or delete data, files or state outside its own obvious scope? noul means the destructive risk applies.',
-    criteria: { destructive: 'the command deletes, overwrites, truncates or irreversibly changes data or state' },
   },
   {
     id: 'q_outward_facing',
     type: 'noul',
     instructions: 'Does this shell command send data or requests to systems outside this machine? noul means it reaches the outside.',
-    criteria: { outward_facing: 'the command transmits data or requests beyond this machine' },
   },
   {
     id: 'q_touches_credentials',
     type: 'noul',
     instructions: 'Does this shell command read, copy, move or expose credentials, tokens, keys or secret files? noul means it touches credentials.',
-    criteria: { touches_credentials: 'the command accesses or exposes credentials, tokens, keys or secrets' },
   },
   {
     id: 'q_large_blast_radius',
     type: 'noul',
     instructions: 'If this shell command misbehaves, would the impact extend beyond this working session (shared services, remote state, other users)? noul means yes.',
-    criteria: { large_blast_radius: 'failure would affect systems or state beyond this session' },
   },
 ];
 
