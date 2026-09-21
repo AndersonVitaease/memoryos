@@ -794,7 +794,12 @@ async references(subject: string, symbol: string, maxResults = 100) {
   async patch(input: { path: string; baseHash: string; hunks: Array<{ startLine: number; deleteLines: string[]; insertLines: string[] }>; expectedChangeCount?: number; acknowledgeWrite: boolean }) {
     if (!input.acknowledgeWrite) throw new EngineeringError("WRITE_ACKNOWLEDGEMENT_REQUIRED");
     const target = await this.policy.resolveWritable(input.path); const canonical = await realpath(target.absolutePath).catch(() => { throw new EngineeringError("PATH_NOT_FOUND"); });
-    return this.patchResolved(canonical, target, input, 131_072);
+  // MEMORY-GATE-01 enabler: legitimate source files grew past the 128KiB next-size
+  // ceiling (tools.ts crossed it) and file.patch became unusable for them. Align the
+  // generic patch cap with the manifest-governed cap (1_048_576, same patchResolved
+  // machinery) — write lock, baseHash optimistic concurrency, anti-race revalidation
+  // and assertNoSensitiveContent unchanged; only the size ceiling moves.
+    return this.patchResolved(canonical, target, input, 1_048_576);
   }
   // MANIFEST-GOVERNED-EDIT-01: núcleo de file.patch extraído para que o fluxo governado
   // de manifest edit reuse exatamente a mesma maquinaria (write lock, concorrência
