@@ -4,7 +4,7 @@ import { toNodeHandler } from "@modelcontextprotocol/node";
 import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
 import { authenticateBearer, EngineeringError, RepositoryPolicy, type TokenRecord } from "./policy.ts";
 import { RepositoryAdapter } from "./repository.ts";
-import { ENGINEERING_SERVER_INFO, installToolAliasCompatibility, registerEngineeringTools } from "./tools.ts";
+import { ENGINEERING_SERVER_INFO, installErrorEnvelopeCompatibility, installToolAliasCompatibility, registerEngineeringTools } from "./tools.ts";
 import { attachImageRelay } from "./imageEdit.ts";
 import { handleImageAssetRequest } from "./imageCreate.ts";
 import { handleAuthSessionRequest } from "./authSession.ts";
@@ -58,6 +58,8 @@ export async function createEngineeringHttpServer(options: EngineeringServerOpti
         const mcp = new McpServer(ENGINEERING_SERVER_INFO);
         registerEngineeringTools(mcp, repository, subject, options.repositoryId);
         installToolAliasCompatibility(mcp.server);
+        // ERROR-01: envelope canônico de erro em TODAS as tools (choke point tools/call).
+        installErrorEnvelopeCompatibility(mcp.server);
         return mcp;
       }, { legacy: "stateless" });
       response.once("finish", () => { void handler.close(); });

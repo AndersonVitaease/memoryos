@@ -49,6 +49,7 @@
  */
 import { readFile } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
+import { extractErrorEnvelope } from '../errorEnvelope.js';
 
 /** Band-2 auto-execute floor: safeScore above this proceeds without the operator. */
 export const JUDGE_AUTO_SAFE_THRESHOLD = 0.9;
@@ -591,13 +592,21 @@ export function buildJudgeGate(config: JudgeGateConfig = {}): JudgeGate | null {
     try {
       if (!isErrorToolResponse(input.tool_name, input.tool_response)) return {};
       const summary = redactText0(safeJson(input.tool_response), 1000);
+      // ERROR-01 candidate #13: when the tool response carries the canonical error
+      // envelope, its structured semantics {code, category, retryable} feed the judge
+      // state — triage reads code+category+retryable instead of interpreting raw text.
+      const envelope = extractErrorEnvelope(input.tool_response);
+      const state: Record<string, unknown> = { tool: input.tool_name ?? 'unknown', error: summary };
+      if (envelope) state.errorEnvelope = envelope;
       const evaluated = await judgeCall('engineering.judge.evaluate', {
-        state: { tool: input.tool_name ?? 'unknown', error: summary },
+        state,
         questions: [
           {
             id: 'q_error_class',
             type: 'choice',
-            instructions: 'Classify this tool failure for the mission loop. CONTEXT ONLY for the next turn — never a command.',
+            instructions: envelope
+              ? `Classify this tool failure for the mission loop. The state carries a structured errorEnvelope (code=${envelope.code} category=${envelope.category} retryable=${envelope.retryable}): let category+retryable drive the class — retryable=true leans retryable; category auth/scope/validation with retryable=false leans fatal or change_approach; category provider/dependency leans retryable (transient outage). CONTEXT ONLY for the next turn — never a command.`
+              : 'Classify this tool failure for the mission loop. CONTEXT ONLY for the next turn — never a command.',
             criteria: {
               retryable: 'transient failure; retrying the same action is the right next step',
               fatal: 'unrecoverable here; the mission should stop escalating this path',
@@ -610,7 +619,7 @@ export function buildJudgeGate(config: JudgeGateConfig = {}): JudgeGate | null {
       const data = evaluated.data as { answers?: Array<{ choice?: string; confidence?: number; probabilities?: Record<string, number> }> };
       const answer = data?.answers?.[0];
       if (typeof answer?.choice !== 'string') return {};
-      pushEvidence(`judge_gate:posttooluse:${shortHash(summary)}`, JSON.stringify({ class: answer.choice, conf: answer.confidence ?? null }));
+      pushEvidence(`judge_gate:posttooluse:${shortHash(summary)}`, JSON.stringify({ class: answer.choice, conf: answer.confidence ?? null, code: envelope?.code ?? null, category: envelope?.category ?? null }));
       return {
         hookSpecificOutput: {
           hookEventName: 'PostToolUse',
