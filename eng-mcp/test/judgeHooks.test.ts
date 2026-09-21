@@ -58,12 +58,13 @@ function mockJudge(handlers: {
   return { client, calls };
 }
 
+// Mirrors the REAL envelope of engineering.judge.evaluate (src/judge.ts): { answers: [...] }.
 const noulResult = (p: number) => ({
-  results: BAND2_IDS.map((id) => ({ id, type: 'noul', probability: p, complementProbability: 1 - p })),
+  answers: BAND2_IDS.map((id) => ({ id, type: 'noul', probability: p, complementProbability: 1 - p })),
 });
 
 const choiceResult = (choice: string, confidence: number) => ({
-  results: [{ id: 'q_any', type: 'choice', choice, probabilities: {}, confidence }],
+  answers: [{ id: 'q_any', type: 'choice', choice, probabilities: {}, confidence }],
 });
 
 /** Evaluate dispatcher: band-3 context calls (state.band3) vs band-2 risk calls. */
@@ -194,9 +195,9 @@ describe('JUDGE-HOOKS-01 gate: band classification', () => {
   });
 
   it('band 2 fail-closed scoring: missing question probabilities count as max risk', () => {
-    assert.equal(judgeSafeScore({ results: [] }).safeScore, 0);
+    assert.equal(judgeSafeScore({ answers: [] }).safeScore, 0);
     assert.equal(judgeSafeScore({}).safeScore, 0);
-    const partial = judgeSafeScore({ results: [{ id: 'q_destructive', probability: 0.2 }] });
+    const partial = judgeSafeScore({ answers: [{ id: 'q_destructive', probability: 0.2 }] });
     assert.equal(partial.safeScore, 0); // 3 missing questions => worst = 1
     assert.equal(partial.probabilities.q_destructive, 0.2);
   });

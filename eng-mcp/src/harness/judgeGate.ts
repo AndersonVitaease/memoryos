@@ -335,7 +335,8 @@ const BAND2_QUESTIONS = [
 ];
 
 export function judgeSafeScore(evaluateData: unknown): { safeScore: number; probabilities: Record<string, number> } {
-  const results = (evaluateData as { results?: Array<{ id?: string; probability?: number }> })?.results;
+  // REAL envelope shape (src/judge.ts runJudgeEvaluate): { answers: [...] } — 'results' was the mocked-test shape and made every lookup miss (p=1 fail-closed).
+  const results = (evaluateData as { answers?: Array<{ id?: string; probability?: number }> })?.answers;
   const probabilities: Record<string, number> = {};
   let worst = 0;
   for (const q of BAND2_QUESTIONS) {
@@ -579,8 +580,8 @@ export function buildJudgeGate(config: JudgeGateConfig = {}): JudgeGate | null {
       ],
     });
     if (!result.ok) return { ok: false };
-    const data = result.data as { results?: Array<{ choice?: string; confidence?: number }> };
-    const answer = data?.results?.[0];
+    const data = result.data as { answers?: Array<{ choice?: string; confidence?: number }> };
+    const answer = data?.answers?.[0];
     if (typeof answer?.choice !== 'string') return { ok: false };
     return { ok: true, text: `${answer.choice} (conf ${typeof answer.confidence === 'number' ? answer.confidence.toFixed(2) : 'n/a'})` };
   };
@@ -606,8 +607,8 @@ export function buildJudgeGate(config: JudgeGateConfig = {}): JudgeGate | null {
         ],
       });
       if (!evaluated.ok) return {};
-      const data = evaluated.data as { results?: Array<{ choice?: string; confidence?: number; probabilities?: Record<string, number> }> };
-      const answer = data?.results?.[0];
+      const data = evaluated.data as { answers?: Array<{ choice?: string; confidence?: number; probabilities?: Record<string, number> }> };
+      const answer = data?.answers?.[0];
       if (typeof answer?.choice !== 'string') return {};
       pushEvidence(`judge_gate:posttooluse:${shortHash(summary)}`, JSON.stringify({ class: answer.choice, conf: answer.confidence ?? null }));
       return {
