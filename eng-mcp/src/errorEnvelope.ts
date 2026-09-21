@@ -98,6 +98,7 @@ export const ERROR_TAXONOMY: Readonly<Record<string, Taxonomy>> = {
   BINARY_FILE_DENIED: { category: "validation", retryable: false, remediation: "Only UTF-8 text sources are readable; pick a text file." },
   FILE_LIMIT_EXCEEDED: { category: "validation", retryable: false, remediation: "Size cap reached; read fewer lines or operate on a smaller file." },
   SENSITIVE_CONTENT_BLOCKED: { category: "validation", retryable: false, remediation: "The content matches secret patterns and is blocked; remove the secrets and retry." },
+  MEMORY_GATE_REFUSED: { category: "validation", retryable: false, remediation: "Capture refused by the memory admission gate (MEMORY-GATE-01): rewrite it with durable, artifact-backed content and re-send - the judge never edits or deletes text. Operator override: pass force=true (audit-marked as band=forced)." },
   SENSITIVE_OUTPUT_BLOCKED: { category: "validation", retryable: false, remediation: "The inspected content matches secret patterns and is withheld; ask the operator." },
   HIGH_IMPACT_WRITE_BLOCKED: { category: "validation", retryable: false, remediation: "Use engineering.manifest.edit for package.json/package-lock.json/Dockerfile; other high-impact paths are hard-blocked." },
   HIGH_IMPACT_GIT_BLOCKED: { category: "validation", retryable: false, remediation: "Manifests/high-impact paths never stage through plain git; use engineering.manifest.edit." },
