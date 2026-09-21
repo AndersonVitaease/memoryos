@@ -140,6 +140,19 @@ test("duplicate capture is refused BEFORE the judge is called", async () => {
   assert.equal(calls.length, 0);
 });
 
+test("dedupe unwraps the REAL bridge shape {memories:[{content}]} and strips gate tags", async () => {
+  const calls: CapturedBody[] = [];
+  const summary = "Unwrap real bridge context shape so dedupe sees raw content";
+  const stored = "[AGENT MEMORY]\nAgent: eng\nSummary: [MEMORYGATE:band=admit score=0.89] " + summary;
+  const d = await gateCapture({ summary }, deps({
+    judgeDeps: judgeDepsFor(GOOD_ANSWERS, calls),
+    recentContext: async () => ({ projectId: "memoryos", memories: [{ id: "m1", content: stored, createdAt: "t" }], counts: { memories: 1 } })
+  }));
+  assert.equal(d.ok, false);
+  assert.ok(d.reasons.includes("duplicate_of_recent_capture"));
+  assert.equal(calls.length, 0);
+});
+
 test("dedupe context read failure degrades to a note, never blocks", async () => {
   const d = await gateCapture(GOOD_INPUT, deps({
     judgeDeps: judgeDepsFor(GOOD_ANSWERS),

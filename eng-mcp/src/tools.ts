@@ -8,6 +8,9 @@ import { runRegistryScopeGrant, registryScopeGrantInputSchema } from "./registry
 import { ObservabilityClient } from "./observability.ts";
 import { AgentMemoryClient } from "./memory.ts";
 import { SupervisedMissionClient } from "./supervised.ts";
+// MEMORY-GATE-01: admission gate for memory.capture — triage (dedupe + calibrated Jev screen)
+// before the Base44 KB bridge; refusal throws MEMORY_GATE_REFUSED (curated taxonomy entry).
+import { emitGateAudit, gateCapture } from "./memoryGate.ts";
 
 import { runHttpProbe } from "./probe.ts";
 import { runVpsChangeSafe, createMcpClientCallTransport, DOKPLOY_SERVER_ID_DEFAULT, DEFAULT_MEMORY_ENDPOINT } from "./vpsChangeSafe.ts";
@@ -618,7 +621,7 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   }));
 
   register("engineering.memory.capture", "write", (name) => server.registerTool(name, {
-    description: "Persist a durable MemoryOS mission summary after every completed meaningful engineering mission. Capture decisions, root causes, fixes, validation and next steps; do not call for acknowledgements, small talk, or trivial 'continue' turns.",
+    description: "Persist a durable MemoryOS mission summary after every completed meaningful engineering mission. Capture decisions, root causes, fixes, validation and next steps; do not call for acknowledgements, small talk, or trivial 'continue' turns. MEMORY-GATE-01: every capture passes an admission gate BEFORE the KB bridge — cheap dedupe + calibrated Jev screen; admission embeds a [MEMORYGATE:...] score tag in the stored summary; refusals return a didactic reason (rewrite and re-send); operator override via force=true (audit-marked); judge unavailable fails open (verdict unavailable).",
     inputSchema: z.object({
       summary: z.string().min(1).max(3000),
       projectId: z.string().max(200).optional(),
@@ -630,15 +633,44 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
       solutions: z.array(z.string().max(1000)).max(30).optional(),
       tests: z.array(z.string().max(1000)).max(30).optional(),
       files: z.array(z.string().max(1000)).max(30).optional(),
-      nextSteps: z.array(z.string().max(1000)).max(30).optional()
+      nextSteps: z.array(z.string().max(1000)).max(30).optional(),
+      force: z.boolean().optional()
     }).strict()
   }, async (input) => {
     requireWrite();
-    return response(await agentMemory.call("capture", {
-      ...input,
-      projectId: input.projectId ?? repositoryId,
-      agent: input.agent ?? subject.subject
-    }));
+    const pid = input.projectId ?? repositoryId;
+    const agentName = input.agent ?? subject.subject;
+    // MEMORY-GATE-01: triage BEFORE the bridge — dedupe + calibrated Jev screen;
+    // refusal returns to the caller (who captures rewrites and re-sends); the judge
+    // never edits or deletes anything. recentContext feeds the cheap dedupe.
+    const gate = await gateCapture(input, {
+      projectId: pid,
+      agent: agentName,
+      authorizerHash16: subject.tokenHash16,
+      recentContext: () => agentMemory.call("context", { projectId: pid, limit: 20 })
+    });
+    if (!gate.ok) {
+      emitGateAudit(gate, null, { projectId: pid });
+      throw new Error(gate.refusalMessage ?? "MEMORY_GATE_REFUSED");
+    }
+    const captured = await agentMemory.call("capture", {
+      summary: gate.taggedSummary,
+      projectId: pid,
+      agent: agentName,
+      userPrompt: input.userPrompt,
+      outcome: input.outcome,
+      decisions: input.decisions,
+      problems: input.problems,
+      solutions: input.solutions,
+      tests: input.tests,
+      files: input.files,
+      nextSteps: input.nextSteps
+    }) as { stored?: boolean; memoryId?: string } & Record<string, unknown>;
+    emitGateAudit(gate, typeof captured.memoryId === "string" ? captured.memoryId : null, { projectId: pid });
+    return response({
+      ...captured,
+      gate: { score: gate.score, band: gate.band, verdict: gate.verdict, reasons: gate.reasons, tag: gate.tag }
+    });
   }));
 
   register("engineering.memoryos.sync_files", "write", (name) => server.registerTool(name, {
