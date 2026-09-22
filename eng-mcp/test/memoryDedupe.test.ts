@@ -242,6 +242,26 @@ test("reranker flips a recency distractor: relevant row wins, payload shape is p
   assert.ok(Object.values(calls[0].questions).every((q) => q.type === "score" && q.instructions.includes("memory dedupe scan")));
 });
 
+test("reranker understands the REAL search row shape (text field) — MEMORY-DEDUPE-01 live regression", async () => {
+  const calls: CapturedBody[] = [];
+  const realSearch = {
+    projectId: "memoryos",
+    query: QUERY,
+    count: 2,
+    results: [
+      { type: "message", id: "newer", text: ROW_DISTRACTOR, createdAt: "2026-09-21T23:49:26.195000", score: 1, metadata: { sessionId: "s" } },
+      { type: "message", id: "older", text: ROW_RELEVANT, createdAt: "2026-09-21T23:43:45.511000", score: 1, metadata: { sessionId: "s" } }
+    ]
+  };
+  const out = await rerankSearchPayload(QUERY, realSearch, { authorizerHash16: null, judgeDeps: judgeDepsFor(RERANK_FLIP, calls) });
+  assert.equal(out.rerank.applied, true);
+  assert.equal(out.rerank.verdict, "reranked");
+  const rows = (out.payload as { results: Array<{ id: string }> }).results;
+  assert.equal(rows[0].id, "older"); // relevant wins despite being older
+  assert.equal(rows[1].id, "newer");
+  assert.equal(calls.length, 1);
+});
+
 test("reranker fail-open: judge down returns the payload untouched with verdict unavailable", async () => {
   const out = await rerankSearchPayload(QUERY, rerankPayload, { authorizerHash16: null, judgeDeps: judgeDepsFor({}, [], true) });
   assert.equal(out.rerank.applied, false);

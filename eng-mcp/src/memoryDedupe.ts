@@ -58,6 +58,7 @@ function rowText(row: unknown): string {
   else if (isRecord(row)) {
     if (typeof row.content === "string") content0 = row.content as string;
     else if (typeof row.summary === "string") content0 = row.summary as string;
+    else if (typeof row.text === "string") content0 = row.text as string;
   }
   if (!content0) return "";
   const idx = content0.indexOf("Summary:");

@@ -623,7 +623,7 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
     const searchResult = await agentMemory.call("search", { query: input.query, projectId: input.projectId ?? repositoryId, limit: input.limit });
     if (!input.rerank) return response(searchResult);
     const reranked = await rerankSearchPayload(input.query, searchResult, { authorizerHash16: subject.tokenHash16 });
-    return response(reranked.payload);
+    return response({ ...(reranked.payload as Record<string, unknown>), rerank: reranked.rerank });
   }));
 
   register("engineering.memory.capture", "write", (name) => server.registerTool(name, {
