@@ -62,7 +62,7 @@ export const KNOWN_REGISTRY_SCOPES: readonly string[] = [
   "engineering:judge:read",
   "engineering:vps:application:redeploy", "engineering:vps:runner:restart", "engineering:vps:diagnostics:read",
   "engineering:vps:container:probe", "engineering:vps:secret:write", "engineering:vps:systemd:credential",
-  "engineering:registry:scope:grant"
+  "engineering:registry:scope:grant", "base44:secret:write", "base44:function:deploy"
 ];
 
 const REGISTRY_BYTES_LIMIT = 2 * 1024 * 1024;
