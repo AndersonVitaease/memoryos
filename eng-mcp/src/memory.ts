@@ -3,13 +3,15 @@ import { readFile } from "node:fs/promises";
 const DEFAULT_ENDPOINT =
   "https://ever-mind-core.base44.app/functions/agentMemoryBridge";
 
-export type AgentMemoryOperation = "context" | "search" | "capture";
+export type AgentMemoryOperation = "context" | "search" | "capture" | "update";
 
 export type AgentMemoryPayload = {
   projectId?: string;
   agent?: string;
   limit?: number;
   query?: string;
+  id?: string;
+  fields?: Record<string, unknown>;
   summary?: string;
   userPrompt?: string;
   outcome?: string;

@@ -14,6 +14,7 @@ import { emitGateAudit, gateCapture } from "./memoryGate.ts";
 // MEMORY-DEDUPE-01: interior KB hygiene — read-only semantic dedupe scan over
 // memory pairs + calibrated re-ranking of memory.search; fail-open, advisory only.
 import { dedupeScan, rerankSearchPayload } from "./memoryDedupe.ts";
+import { memoryMerge, stripTombstoned } from "./memoryMerge.ts";
 
 import { runHttpProbe } from "./probe.ts";
 import { runVpsChangeSafe, createMcpClientCallTransport, DOKPLOY_SERVER_ID_DEFAULT, DEFAULT_MEMORY_ENDPOINT } from "./vpsChangeSafe.ts";
@@ -612,7 +613,7 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
     inputSchema: z.object({ projectId: z.string().max(200).optional(), limit: z.number().int().min(1).max(100).optional() }).strict()
   }, async (input) => {
     requireRead();
-    return response(await agentMemory.call("context", { projectId: input.projectId ?? repositoryId, limit: input.limit }));
+    return response(stripTombstoned(await agentMemory.call("context", { projectId: input.projectId ?? repositoryId, limit: input.limit })));
   }));
 
   register("engineering.memory.search", "read", (name) => server.registerTool(name, {
@@ -620,7 +621,8 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
     inputSchema: z.object({ query: z.string().min(1).max(2000), projectId: z.string().max(200).optional(), limit: z.number().int().min(1).max(50).optional(), rerank: z.boolean().optional() }).strict()
   }, async (input) => {
     requireRead();
-    const searchResult = await agentMemory.call("search", { query: input.query, projectId: input.projectId ?? repositoryId, limit: input.limit });
+    const searchResultRaw = await agentMemory.call("search", { query: input.query, projectId: input.projectId ?? repositoryId, limit: input.limit });
+    const searchResult = stripTombstoned(searchResultRaw);
     if (!input.rerank) return response(searchResult);
     const reranked = await rerankSearchPayload(input.query, searchResult, { authorizerHash16: subject.tokenHash16 });
     return response({ ...(reranked.payload as Record<string, unknown>), rerank: reranked.rerank });
@@ -681,6 +683,37 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
 
   // MEMORY-DEDUPE-01: read-only interior scan — pairs are judged, never deleted or edited;
   // the report is the operator's approval list; periodic mode is rate-limited (1/day/project).
+  // MEMORY-MERGE-01: governed applicator for the dedupe approval list — tombstone merge
+  // (update, never physical delete), stale/period-tag annotations; the tool never decides,
+  // the judge only re-confirms anti-stale state and execute is fail-closed.
+  register("engineering.memory.merge", "write", (name) => server.registerTool(name, {
+    description: "Apply explicit operator decisions from the dedupe report: duplicate pairs become a tombstone merge (survivor gains merged_from provenance, duplicate gains deleted/merged_into markers — restoration is an update revert, no physical delete), conflicts resolve as keep_first/keep_second/keep_both_period_tag/mark_stale; MARK_STALE and PERIOD_TAG annotate any pair member. The tool NEVER decides — every pair needs an explicit decision and a fresh internal scan must still flag the pair with the same verdict (fail-closed in execute); idempotent re-runs are NO_OP byte-identical; mid-batch failure reverts applied updates in reverse order. Audit: /data/audit/memory-merge.jsonl (hashes + counters only, never memory content).",
+    inputSchema: z.object({
+      projectId: z.string().max(200).optional(),
+      mode: z.enum(["plan", "execute"]).optional(),
+      decisions: z.array(z.object({
+        memoryIdA: z.string().min(1),
+        memoryIdB: z.string().min(1),
+        verdict: z.enum(["duplicate", "conflict"]),
+        action: z.enum(["DUPLICATE_DELETE", "CONFLICT_RESOLVE", "MARK_STALE", "PERIOD_TAG"]),
+        survivorId: z.string().min(1).optional(),
+        resolution: z.enum(["keep_first", "keep_second", "keep_both_period_tag", "mark_stale"]).optional(),
+        targetId: z.string().min(1).optional(),
+        reason: z.string().max(1000).optional(),
+        periodTag: z.string().max(200).optional()
+      })).min(1).max(20)
+    }).strict()
+  }, async (input) => {
+    requireWrite();
+    const pid = input.projectId ?? repositoryId;
+    return response(await memoryMerge(input, {
+      projectId: pid,
+      authorizerHash16: subject.tokenHash16,
+      recentContext: () => agentMemory.call("context", { projectId: pid, limit: 50 }),
+      updateMemory: (id, fields) => agentMemory.call("update", { projectId: pid, id, fields })
+    }));
+  }));
+
   register("engineering.memory.dedupe.scan", "read", (name) => server.registerTool(name, {
     description: "MEMORY-DEDUPE-01: read-only semantic dedupe scan over the MemoryOS KB - cheaply pairs candidate records (same normalized hash/prefix or shared mission slug) and judges each pair with the calibrated judge (duplicate? conflict? obsolete? which record is more complete?). NEVER deletes or edits anything: the report is the operator's approval list and flagged pairs carry advisory [DEDUPE-CANDIDATE]/[CONFLICT] tags. mode 'periodic' is rate-limited to one scan per 24h per project (MEMORY_DEDUPE_RATE_LIMIT); 'ondemand' is unlimited; dryRun lists candidates without judging. Fail-open: judge unavailable -> report with verdict unavailable, zero crash. Audit: /data/audit/memory-dedupe.jsonl (metadata + hashes only, never memory content).",
     inputSchema: z.object({
@@ -695,7 +728,7 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
     return response(await dedupeScan(input, {
       projectId: pid,
       authorizerHash16: subject.tokenHash16,
-      recentContext: () => agentMemory.call("context", { projectId: pid, limit: 50 })
+      recentContext: async () => stripTombstoned(await agentMemory.call("context", { projectId: pid, limit: 50 }))
     }));
   }));
 
