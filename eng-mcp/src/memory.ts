@@ -12,6 +12,7 @@ export type AgentMemoryPayload = {
   query?: string;
   id?: string;
   fields?: Record<string, unknown>;
+  includeTombstoned?: boolean;
   summary?: string;
   userPrompt?: string;
   outcome?: string;

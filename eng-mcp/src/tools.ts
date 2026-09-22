@@ -33,6 +33,8 @@ import { defaultJudgeDeps, runJudgeEvaluate, runJudgeVerify, judgeEvaluateInputS
 import { runSecurityIds, securityIdsInputSchema } from "./securityIds.ts";
 import { guardianInputSchema, runVpsGuardian } from "./vpsGuardian.ts";
 import { runGuardianAppDeploy } from "./guardianAppDeploy.ts";
+import { base44SecretWriteInputSchema, runBase44SecretWrite } from "./base44SecretWrite.ts";
+import { base44FunctionDeployInputSchema, runBase44FunctionDeploy } from "./base44FunctionDeploy.ts";
 import { runVpsHealth, runVpsWhyDown, runDeployStatus, runVpsCapacity, runVpsWhatChanged, runAppHealth, runVpsIncidentSummary, runDeployReady, runDockerHealth, runLogsExplain } from "./simpleTools.ts";
 import { codeImpactInputSchema, runCodeImpact } from "./codeImpact.ts";
 import { codeUnderstandInputSchema, runCodeUnderstand } from "./codeUnderstand.ts";
@@ -390,6 +392,11 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   // implied by engineering:git or by the fetch/push scopes.
   const requireGitMerge = () => { if (!subject.scopes.includes("engineering:git:merge")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
   const requireRegistryScopeGrant = () => { if (!subject.scopes.includes("engineering:registry:scope:grant")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
+  // BASE44-CLI-01: the Base44 SaaS boundary has its own operator-issued scopes —
+  // secret writes and function deploys are never implied by engineering:write,
+  // and each is gated separately.
+  const requireBase44SecretWrite = () => { if (!subject.scopes.includes("base44:secret:write")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
+  const requireBase44FunctionDeploy = () => { if (!subject.scopes.includes("base44:function:deploy")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
 
   const observability = new ObservabilityClient();
   const agentMemory = new AgentMemoryClient();
@@ -709,7 +716,7 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
     return response(await memoryMerge(input, {
       projectId: pid,
       authorizerHash16: subject.tokenHash16,
-      recentContext: () => agentMemory.call("context", { projectId: pid, limit: 50 }),
+      recentContext: () => agentMemory.call("context", { projectId: pid, limit: 50, includeTombstoned: true }),
       updateMemory: (id, fields) => agentMemory.call("update", { projectId: pid, id, fields })
     }));
   }));
@@ -1222,6 +1229,44 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
     requireRead();
     return response(await runVpsCapacity(subject.subject, input));
   }));
+
+  // BASE44-CLI-01: governed Base44 boundary (tools 102/103) — secret writes and
+  // function deploys go through the governed CLI spawn layer (src/base44Cli.ts);
+  // each requires its own operator-issued scope (gates above).
+  register("engineering.base44.secret.write", "write", (name) => server.registerTool(name, {
+    description: "Governed Base44 project-secret writer (PLAN/execute): PLAN validates the source and lists masked secret names via 'base44 secrets list' (names only — the CLI never returns values) as the credential+app-id probe; execute writes 'base44 secrets set --env-file' through a 0600 env file inside a throwaway 0700 temp dir destroyed after use. The value is NEVER an input field (env var or operator-staged 0600 staging file, resolved server-side only) and never travels in argv (child env only). Honest idempotency: every confirmed write is WRITE with redeployWarning (Base44 redeploys backend functions after a secret set); no NO_OP is claimed by design. Allowlist-guarded secret names. Audit /data/audit/base44-secret.jsonl records {secret_name, value_sha16, action, redeploy_warning} — ZERO value material. Requires scope base44:secret:write (operator-issued).",
+    inputSchema: base44SecretWriteInputSchema
+  }, async (input) => {
+    requireRead();
+    requireWrite();
+    requireBase44SecretWrite();
+    return response(await runBase44SecretWrite(input, { authorizerHash16: subject.tokenHash16, env: process.env, apiKeyFile: process.env.ENG_MCP_BASE44_API_KEY_FILE, appId: process.env.ENG_MCP_BASE44_APP_ID }));
+  }));
+
+  register("engineering.base44.function.deploy", "write", (name) => server.registerTool(name, {
+    description: "Governed Base44 single-function deployer (PLAN/execute) for repo backend functions (/opt/memoryos/base44/functions/<name>): PLAN pulls the LIVE source into a throwaway temp dir and diffs it against the repo copy (exact per-file diff + previous live sha16, no deploy); execute applies the optional structured patch (same baseHash optimistic-concurrency semantics as file.patch, one allowlisted file) and deploys EXACTLY ONE allowlisted named function via 'base44 functions deploy <name>' — deploy-all and --force are structurally unreachable. App id comes from deps or explicit input — never implicit. NO_OP refuses execution on identical sources. External SaaS: no transactional rollback — PLAN records previous live source hashes; reversal is a re-deploy of the previous source (functions pull). Post-deploy probe (wired for agentMemoryBridge): failure is reported as DEPLOYED_PROBE_FAILED, never silenced, never auto-retried. Audit /data/audit/base44-function.jsonl records {function, app_id, diff_sha16, result} — ZERO source content. Requires scope base44:function:deploy (operator-issued).",
+    inputSchema: base44FunctionDeployInputSchema
+  }, async (input) => {
+    requireRead();
+    requireWrite();
+    requireBase44FunctionDeploy();
+    return response(await runBase44FunctionDeploy(input, {
+      authorizerHash16: subject.tokenHash16,
+      env: process.env,
+      apiKeyFile: process.env.ENG_MCP_BASE44_API_KEY_FILE,
+      appId: process.env.ENG_MCP_BASE44_APP_ID,
+      probe: async () => {
+        try {
+          const answer = await agentMemory.call("context", { projectId: repositoryId, limit: 1 }) as unknown as { error?: string } | undefined;
+          if (answer && answer.error) return { ok: false, detail: `bridge answered error: ${String(answer.error).slice(0, 160)}` };
+          return { ok: true, detail: "agentMemoryBridge context probe answered" };
+        } catch (error) {
+          return { ok: false, detail: error instanceof Error ? error.message.slice(0, 200) : String(error).slice(0, 200) };
+        }
+      }
+    }));
+  }));
+
   register("engineering.vps.what_changed", "read", (name) => server.registerTool(name, {
     description: "Simple read-only tool: answers 'What changed recently?' using ONLY the existing authorized release-state.json source (the same file the certified reconcile reads): compares the current release against the recorded previous release into CHANGED/NO_CHANGE/UNKNOWN with short evidence. No git substitution, no new timeline, no new storage; insufficient state -> UNKNOWN and nothing is invented. Input is exactly {} (strict); zero mutation, no LLM, no SSH/shell.",
     inputSchema: z.object({}).strict()
