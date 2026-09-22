@@ -11,6 +11,9 @@ import { SupervisedMissionClient } from "./supervised.ts";
 // MEMORY-GATE-01: admission gate for memory.capture — triage (dedupe + calibrated Jev screen)
 // before the Base44 KB bridge; refusal throws MEMORY_GATE_REFUSED (curated taxonomy entry).
 import { emitGateAudit, gateCapture } from "./memoryGate.ts";
+// MEMORY-DEDUPE-01: interior KB hygiene — read-only semantic dedupe scan over
+// memory pairs + calibrated re-ranking of memory.search; fail-open, advisory only.
+import { dedupeScan, rerankSearchPayload } from "./memoryDedupe.ts";
 
 import { runHttpProbe } from "./probe.ts";
 import { runVpsChangeSafe, createMcpClientCallTransport, DOKPLOY_SERVER_ID_DEFAULT, DEFAULT_MEMORY_ENDPOINT } from "./vpsChangeSafe.ts";
@@ -613,11 +616,14 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   }));
 
   register("engineering.memory.search", "read", (name) => server.registerTool(name, {
-    description: "Search durable MemoryOS project memory when the user asks about previous work, decisions, bugs, solutions, or historical context.",
-    inputSchema: z.object({ query: z.string().min(1).max(2000), projectId: z.string().max(200).optional(), limit: z.number().int().min(1).max(50).optional() }).strict()
+    description: "Search durable MemoryOS project memory when the user asks about previous work, decisions, bugs, solutions, or historical context. MEMORY-DEDUPE-01: rerank=true optionally reorders the top 10 rows by judge-scored relevance (fail-open: judge unavailable returns the original order).",
+    inputSchema: z.object({ query: z.string().min(1).max(2000), projectId: z.string().max(200).optional(), limit: z.number().int().min(1).max(50).optional(), rerank: z.boolean().optional() }).strict()
   }, async (input) => {
     requireRead();
-    return response(await agentMemory.call("search", { query: input.query, projectId: input.projectId ?? repositoryId, limit: input.limit }));
+    const searchResult = await agentMemory.call("search", { query: input.query, projectId: input.projectId ?? repositoryId, limit: input.limit });
+    if (!input.rerank) return response(searchResult);
+    const reranked = await rerankSearchPayload(input.query, searchResult, { authorizerHash16: subject.tokenHash16 });
+    return response(reranked.payload);
   }));
 
   register("engineering.memory.capture", "write", (name) => server.registerTool(name, {
@@ -671,6 +677,26 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
       ...captured,
       gate: { score: gate.score, band: gate.band, verdict: gate.verdict, reasons: gate.reasons, tag: gate.tag }
     });
+  }));
+
+  // MEMORY-DEDUPE-01: read-only interior scan — pairs are judged, never deleted or edited;
+  // the report is the operator's approval list; periodic mode is rate-limited (1/day/project).
+  register("engineering.memory.dedupe.scan", "read", (name) => server.registerTool(name, {
+    description: "MEMORY-DEDUPE-01: read-only semantic dedupe scan over the MemoryOS KB - cheaply pairs candidate records (same normalized hash/prefix or shared mission slug) and judges each pair with the calibrated judge (duplicate? conflict? obsolete? which record is more complete?). NEVER deletes or edits anything: the report is the operator's approval list and flagged pairs carry advisory [DEDUPE-CANDIDATE]/[CONFLICT] tags. mode 'periodic' is rate-limited to one scan per 24h per project (MEMORY_DEDUPE_RATE_LIMIT); 'ondemand' is unlimited; dryRun lists candidates without judging. Fail-open: judge unavailable -> report with verdict unavailable, zero crash. Audit: /data/audit/memory-dedupe.jsonl (metadata + hashes only, never memory content).",
+    inputSchema: z.object({
+      projectId: z.string().max(200).optional(),
+      mode: z.enum(["ondemand", "periodic"]).optional(),
+      maxPairs: z.number().int().min(1).max(50).optional(),
+      dryRun: z.boolean().optional()
+    }).strict()
+  }, async (input) => {
+    requireRead();
+    const pid = input.projectId ?? repositoryId;
+    return response(await dedupeScan(input, {
+      projectId: pid,
+      authorizerHash16: subject.tokenHash16,
+      recentContext: () => agentMemory.call("context", { projectId: pid, limit: 50 })
+    }));
   }));
 
   register("engineering.memoryos.sync_files", "write", (name) => server.registerTool(name, {
