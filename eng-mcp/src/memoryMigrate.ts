@@ -257,7 +257,24 @@ function runVerify(local: LocalSqliteStore, payload: ExportPayload, projectId: s
   for (const row of union) {
     const kind = row.type === "message" ? "memory" : row.type;
     if (expected.has(row.id)) continue; // structured form is authoritative
-    expected.set(row.id, { kind, hash: hashExportRow(kind === "memory" ? "memory" : kind === "entity" || row.type === "entity" ? "entity" : kind, { id: row.id, text: row.text, createdAt: row.createdAt }) });
+    // Union rows carry the bridge projection TEXT only. The expected hash must
+    // mirror EXACTLY what hashLocalRaw sees for the row buildImportRows stored
+    // (structured fields null/absent, text as content, sessionless) — hashing the
+    // raw union row instead produced 59 false mismatches in the real migration
+    // (expectation wrong, never the data).
+    // hashLocalRaw field layout per kind — buildImportRows stores structured
+    // fields EMPTY for search-only rows, and the task/topic hashes EXCLUDE
+    // createdAt: memory [content, createdAt, sessionId=""] · decision [title="",
+    // desc="", rationale="", createdAt] · task [title="", desc="", status=""] ·
+    // topic [name="", desc=""] · entity [content=text, createdAt].
+    const fieldSets: Record<string, Array<string | null>> = {
+      memory:   [row.text ?? "", row.createdAt ?? null, ""],
+      decision: ["", "", "", row.createdAt ?? null],
+      task:     ["", "", ""],
+      topic:    ["", ""],
+      entity:   [row.text ?? "", row.createdAt ?? null],
+    };
+    expected.set(row.id, { kind, hash: recordHash(kind, String(row.id), fieldSets[kind] ?? []) });
   }
   const ids = [...expected.keys()];
   const localRaw = local.rawById(projectId, ids);
