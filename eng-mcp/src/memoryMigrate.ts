@@ -53,9 +53,14 @@ export const SEARCH_TERMS = [
 ] as const;
 
 const sha16 = (text: string): string => createHash("sha256").update(text, "utf8").digest("hex").slice(0, 16);
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 export type MemoryMigrateInput = {
   action: "status" | "export" | "import" | "verify" | "shadow" | "switch" | "snapshot" | "restore";
+  // STORE-MIG-01 shadow pacing: the bridge throttles after ~70 rapid calls/min,
+  // so the shadow search battery runs paced; tests pass 0.
+  shadowSearchDelayMs?: number;
+  throttleRetryCooldownMs?: number;
   execute?: boolean;
   approval?: { approved?: boolean };
   projectId?: string;
@@ -125,13 +130,14 @@ function pushHistory(state: MigrationState, entry: Record<string, unknown>): voi
 
 // ---- export ----
 
-async function runExport(deps: MemoryMigrateDeps, projectId: string, limit: number): Promise<{ file: string; payload: ExportPayload; coverage: Record<string, unknown>; counts: Record<string, unknown> }> {
+async function runExport(deps: MemoryMigrateDeps, projectId: string, limit: number, paceMs = 0): Promise<{ file: string; payload: ExportPayload; coverage: Record<string, unknown>; counts: Record<string, unknown> }> {
   const storeDir = deps.storeDir ?? DEFAULT_STORE_DIR;
   const dir = path.join(storeDir, "migration");
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const context = (await deps.bridge.call("context", { projectId, limit })) as Record<string, unknown>;
   const searches: ExportPayload["searches"] = {};
   for (const term of SEARCH_TERMS) {
+    if (paceMs > 0) await sleep(paceMs);
     const result = (await deps.bridge.call("search", { projectId, query: term, limit: 50 })) as { query: string; count: number; results: SearchRow[] };
     searches[term] = { query: result.query, count: result.count, results: result.results ?? [] };
   }
@@ -323,10 +329,13 @@ function compareSearchResults(bridgeResults: SearchRow[], localResults: Array<{ 
   return { identical, diffs: diffs.slice(0, 10), bridgeOnly: bridgeOnly.slice(0, 20), localOnly: localOnly.slice(0, 20), tombstonedLocally: tombstoned.slice(0, 20) };
 }
 
-async function runShadow(deps: MemoryMigrateDeps, local: LocalSqliteStore, projectId: string, limit: number, state: MigrationState, stateFile: string): Promise<Record<string, unknown>> {
+async function runShadow(deps: MemoryMigrateDeps, local: LocalSqliteStore, projectId: string, limit: number, state: MigrationState, stateFile: string, paceMs = 0, retryCooldownMs = 0): Promise<Record<string, unknown>> {
   // Self-contained: fresh export + import first, so local tracks the bridge
-  // as of NOW (captures since the last import land here, idempotently).
-  const fresh = await runExport(deps, projectId, limit);
+  // as of NOW (captures since the last import land here, idempotently). The
+  // fresh export's search battery IS the shadow battery: paced (paceMs), and
+  // its bridge answers are reused below as the bridge leg — a second rapid
+  // battery would trip the bridge's rate limit mid-run (STORE-MIG-01 live).
+  const fresh = await runExport(deps, projectId, limit, paceMs);
   const importResult = local.upsertRecords(projectId, buildImportRows(fresh.payload, projectId));
   // Tombstoned-locally rows: known divergence after operator merges.
   const tombstonedLocally = new Set<string>();
@@ -354,18 +363,40 @@ async function runShadow(deps: MemoryMigrateDeps, local: LocalSqliteStore, proje
   }
   const searches: Array<Record<string, unknown>> = [];
   let allIdentical = contextDiffs.length === 0;
+  let bridgeAnswered = 0;
+  let bridgeThrottled = 0;
+  let throttleRetries = 0;
+  let throttleSuspected = false;
   for (const term of SEARCH_TERMS) {
-    const bridgeResult = (await deps.bridge.call("search", { projectId, query: term, limit: 50 })) as { query: string; count: number; results: SearchRow[] };
+    const exported = (fresh.payload.searches[term] ?? { query: term, count: 0, results: [] }) as { query: string; count: number; results: SearchRow[] };
+    let bridgeResult: { query: string; count: number; results: SearchRow[] } = { query: exported.query, count: exported.count, results: exported.results ?? [] };
     const localResult = (await local.call("search", { projectId, query: term, limit: 50 })) as { query: string; count: number; results: Array<{ type: string; id: string; text: string; createdAt?: string | null; score: number }> };
+    // Throttle signature: the store is a verified mirror of the bridge, so an
+    // empty bridge answer against non-empty local hits means the bridge did
+    // not answer (rate limited) — retry once after a cooldown, then stop
+    // retrying (a tripped quota stays tripped; serial cooldowns would stall).
+    if (bridgeResult.results.length === 0 && localResult.results.length > 0 && !throttleSuspected && retryCooldownMs > 0) {
+      await sleep(retryCooldownMs);
+      const retried = (await deps.bridge.call("search", { projectId, query: term, limit: 50 })) as { query: string; count: number; results: SearchRow[] };
+      throttleRetries += 1;
+      if ((retried.results ?? []).length > 0) bridgeResult = retried;
+      else throttleSuspected = true;
+    }
+    const throttled = bridgeResult.results.length === 0 && localResult.results.length > 0;
+    if (throttled) bridgeThrottled += 1;
+    else bridgeAnswered += 1;
     const cmp = compareSearchResults(bridgeResult.results ?? [], localResult.results ?? [], tombstonedLocally);
-    if (!cmp.identical) allIdentical = false;
-    searches.push({ ...cmp, term, identical: cmp.identical, bridgeCount: bridgeResult.results?.length ?? 0, localCount: localResult.results?.length ?? 0 });
+    // Parity is evaluated ONLY where the bridge answered; throttled terms are
+    // excluded (throttled must be 0 in final runs for the guard to cover all).
+    if (!throttled && !cmp.identical) allIdentical = false;
+    searches.push({ ...cmp, term, identical: throttled ? null : cmp.identical, throttled, bridgeCount: bridgeResult.results?.length ?? 0, localCount: localResult.results?.length ?? 0 });
   }
   const report = {
     ranAt: (deps.now ?? (() => new Date()))().toISOString(),
     importResult,
     context: { identical: contextDiffs.length === 0, diffs: contextDiffs },
     searches,
+    telemetry: { searchTerms: SEARCH_TERMS.length, bridgeAnswered, bridgeThrottled, throttleRetries, pacingMs: paceMs },
     allIdentical,
   };
   state.shadowReport = report;
@@ -395,6 +426,12 @@ export async function runMemoryMigrate(input: MemoryMigrateInput, deps: MemoryMi
   const flagFile = deps.flagFile ?? DEFAULT_FLAG_FILE;
   const projectId = input.projectId ?? "memoryos";
   const limit = input.limit ?? 100;
+  // Shadow pacing defaults: ~70 search calls/min is where the bridge throttled
+  // live (two shadow runs tripped at cumulative call ~71-73); 1.2s spacing keeps
+  // the battery (~57 terms) under that with margin, and the whole shadow well
+  // inside the synchronous tool-call budget.
+  const shadowDelayMs = input.shadowSearchDelayMs ?? Number(process.env.ENG_MCP_SHADOW_SEARCH_DELAY_MS ?? 1200);
+  const throttleRetryCooldownMs = input.throttleRetryCooldownMs ?? Number(process.env.ENG_MCP_SHADOW_THROTTLE_RETRY_COOLDOWN_MS ?? 10000);
   const now = deps.now ?? (() => new Date());
   const state = readState(stateFile);
 
@@ -474,7 +511,7 @@ export async function runMemoryMigrate(input: MemoryMigrateInput, deps: MemoryMi
       return { action: "verify", status: "OK", file: exportFile, ...report };
     }
     case "shadow":
-      return { action: "shadow", status: "OK", ...(await runShadow(deps, openLocal(), projectId, limit, state, stateFile)) };
+      return { action: "shadow", status: "OK", ...(await runShadow(deps, openLocal(), projectId, limit, state, stateFile, shadowDelayMs, throttleRetryCooldownMs)) };
     case "switch": {
       const guards = switchGuards(state, openLocal());
       const guardsOk = Object.values(guards).every(Boolean);

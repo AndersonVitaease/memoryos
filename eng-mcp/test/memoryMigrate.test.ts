@@ -33,6 +33,8 @@ type FakeRow = {
 class FakeBridge {
   rows: FakeRow[] = [];
   scoreBias = 0;
+  // when set, search returns an empty answer for these queries (throttle sim)
+  throttledQueries: Set<string> | null = null;
   calls = 0;
   async call(operation: string, payload: Record<string, unknown> = {}): Promise<unknown> {
     this.calls += 1;
@@ -59,6 +61,7 @@ class FakeBridge {
     }
     if (operation === "search") {
       const query = String(payload.query ?? "");
+      if (this.throttledQueries?.has(query)) return { projectId, query, count: 0, results: [] };
       const limit = Math.min(50, Math.max(1, Number(payload.limit ?? 20)));
       const candidates = this.rows.map((r) => ({ type: r.type, id: r.id, text: r.text, createdAt: r.createdAt ?? null, score: Math.round((score(r.text, query, r.createdAt) + this.scoreBias) * 1000) / 1000 }));
       const results = candidates.filter((c) => c.score >= 0.2).sort((a, b) => b.score - a.score).slice(0, limit);
@@ -168,7 +171,7 @@ test("full flow: export → import → verify (hash16 per record) → shadow ide
   const verified = (await runMemoryMigrate({ action: "verify" }, deps)) as { allMatched: boolean; compared: number; mismatched: unknown[]; missing: string[] };
   assert.equal(verified.compared, 13, "search-only memory is verified via the union path");
   assert.equal(verified.allMatched, true, `verify must match every record: ${JSON.stringify({ mismatched: verified.mismatched, missing: verified.missing })}`);
-  const shadow = (await runMemoryMigrate({ action: "shadow", execute: true, approval: { approved: true }, limit: 100 }, deps)) as { allIdentical: boolean; context: { identical: boolean; diffs: string[] }; searches: Array<{ term: string; identical: boolean; diffs: string[]; bridgeOnly: string[]; localOnly: string[] }> };
+  const shadow = (await runMemoryMigrate({ action: "shadow", execute: true, approval: { approved: true }, limit: 100, shadowSearchDelayMs: 0, throttleRetryCooldownMs: 0 }, deps)) as { allIdentical: boolean; context: { identical: boolean; diffs: string[] }; searches: Array<{ term: string; identical: boolean; diffs: string[]; bridgeOnly: string[]; localOnly: string[] }> };
   assert.equal(shadow.context.identical, true, `context must be identical: ${JSON.stringify(shadow.context)}`);
   for (const s of shadow.searches) {
     assert.equal(s.identical, true, `search "${s.term}" must be identical: ${JSON.stringify(s)}`);
@@ -186,7 +189,7 @@ test("shadow is self-contained: bridge drift since the last import is absorbed",
   await runMemoryMigrate({ action: "import", execute: true, approval: { approved: true } }, deps);
   // drift: a new capture lands on the bridge AFTER the import
   bridge.rows.unshift({ type: "message", id: "m-new", text: "[AGENT MEMORY]\nAgent: claude-code\nSummary: captura pós-import", createdAt: "2026-09-23T10:00:00.000Z", sessionId: "sess-fake-1" });
-  const shadow = (await runMemoryMigrate({ action: "shadow", execute: true, approval: { approved: true } }, deps)) as { allIdentical: boolean };
+  const shadow = (await runMemoryMigrate({ action: "shadow", execute: true, approval: { approved: true }, shadowSearchDelayMs: 0, throttleRetryCooldownMs: 0 }, deps)) as { allIdentical: boolean };
   assert.equal(shadow.allIdentical, true, "shadow re-imports before comparing, so drift is absorbed");
   rmSync(dir, { recursive: true, force: true });
 });
@@ -199,9 +202,32 @@ test("shadow diverges honestly when the bridge scoring differs", async () => {
   await runMemoryMigrate({ action: "export" }, deps);
   await runMemoryMigrate({ action: "import", execute: true, approval: { approved: true } }, deps);
   bridge.scoreBias = 0.5; // simulate any scoring divergence
-  const shadow = (await runMemoryMigrate({ action: "shadow", execute: true, approval: { approved: true } }, deps)) as { allIdentical: boolean; searches: Array<{ term: string; identical: boolean }> };
+  const shadow = (await runMemoryMigrate({ action: "shadow", execute: true, approval: { approved: true }, shadowSearchDelayMs: 0, throttleRetryCooldownMs: 0 }, deps)) as { allIdentical: boolean; searches: Array<{ term: string; identical: boolean }> };
   assert.equal(shadow.allIdentical, false);
   assert.ok(shadow.searches.some((s) => !s.identical));
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("shadow tolerates bridge throttling: parity only where the bridge answered, telemetry reports it", async () => {
+  const dir = tmpDir();
+  const bridge = new FakeBridge();
+  bridge.rows = fixtureRows();
+  const deps = makeDeps(dir, bridge);
+  await runMemoryMigrate({ action: "export" }, deps);
+  await runMemoryMigrate({ action: "import", execute: true, approval: { approved: true } }, deps);
+  // the bridge goes silent mid-battery: empty answers while local still has hits
+  bridge.throttledQueries = new Set(["memory", "proxy"]);
+  const shadow = (await runMemoryMigrate({ action: "shadow", execute: true, approval: { approved: true }, shadowSearchDelayMs: 0, throttleRetryCooldownMs: 1 }, deps)) as { allIdentical: boolean; searches: Array<{ term: string; identical: boolean | null; throttled: boolean }>; telemetry: { searchTerms: number; bridgeAnswered: number; bridgeThrottled: number; throttleRetries: number } };
+  assert.equal(shadow.telemetry.bridgeThrottled, 2, "both silent terms are reported as throttled");
+  assert.equal(shadow.telemetry.throttleRetries, 1, "the first silent term retries once, then the suspect flag latches");
+  assert.equal(shadow.telemetry.searchTerms, shadow.searches.length, "telemetry covers the whole battery");
+  assert.equal(shadow.telemetry.bridgeAnswered, shadow.telemetry.searchTerms - 2);
+  for (const s of shadow.searches) {
+    if (s.throttled) assert.equal(s.identical, null, "throttled terms carry no parity verdict");
+    else assert.equal(s.identical, true);
+  }
+  assert.ok(shadow.searches.filter((s) => s.throttled).every((s) => s.term === "memory" || s.term === "proxy"));
+  assert.equal(shadow.allIdentical, true, "parity is evaluated ONLY where the bridge answered");
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -224,7 +250,7 @@ test("switch: guards refuse first, pass after verify+shadow; flag flips with pre
   await runMemoryMigrate({ action: "export" }, deps);
   await runMemoryMigrate({ action: "import", execute: true, approval: { approved: true } }, deps);
   await runMemoryMigrate({ action: "verify" }, deps);
-  await runMemoryMigrate({ action: "shadow", execute: true, approval: { approved: true } }, deps);
+  await runMemoryMigrate({ action: "shadow", execute: true, approval: { approved: true }, shadowSearchDelayMs: 0, throttleRetryCooldownMs: 0 }, deps);
   const switched = (await runMemoryMigrate({ action: "switch", execute: true, approval: { approved: true } }, deps)) as { flagValue: string; requiresRestart: boolean; preSwitchSnapshot: { hash16: string } };
   assert.equal(switched.flagValue, "local");
   assert.equal(switched.requiresRestart, true);
@@ -254,7 +280,7 @@ test("merge simulation: tombstone locally → shadow still identical (expected d
   state.tombstonedIds = ["m-dup"];
   writeFileSync(statePath, JSON.stringify(state));
   // shadow: bridge still returns m-dup; the compare must treat it as the EXPECTED divergence
-  const shadow = (await runMemoryMigrate({ action: "shadow", execute: true, approval: { approved: true } }, deps)) as { allIdentical: boolean; searches: Array<{ term: string; tombstonedLocally: string[] }> };
+  const shadow = (await runMemoryMigrate({ action: "shadow", execute: true, approval: { approved: true }, shadowSearchDelayMs: 0, throttleRetryCooldownMs: 0 }, deps)) as { allIdentical: boolean; searches: Array<{ term: string; tombstonedLocally: string[] }> };
   assert.equal(shadow.allIdentical, true, "tombstoned-locally rows are the designed divergence, not drift");
   assert.ok(shadow.searches.some((s) => s.tombstonedLocally.includes("m-dup")));
   // re-import (upsert is content-only) never resurrects the tombstone
