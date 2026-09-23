@@ -14,6 +14,11 @@ const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_CONFIG = path.join(SCRIPT_DIR, "release-config.json");
 export const ACTIONS = Object.freeze(["test", "build", "candidate", "deploy", "smoke", "rollback", "status", "inspect", "container_probe", "unit_credential"]);
 const OUTPUT_LIMIT = 256 * 1024;
+// STORE-MIG-01: o TAP completo da suíte (~1500 testes + diagnósticos) passa de 256 KB e o
+// sumário mora no FIM — cap fixo descartava exatamente as linhas que o parse precisa.
+const TEST_OUTPUT_LIMIT = 8 * OUTPUT_LIMIT;
+// Rabo do TAP embutido no TESTS_FAILED (o runner relay só 128 KB de stdout+stderr).
+const RELEASE_TEST_EVIDENCE_TAIL = 100_000;
 const COMMAND_TIMEOUT = 180_000;
 const WORKTREE_ROOT = "/opt/eng-mcp-release-data/worktrees";
 
@@ -194,9 +199,9 @@ export function invalidateDownstreamState(state) {
   return next;
 }
 
-function boundedAppend(current, chunk) {
+function boundedAppend(current, chunk, limit = OUTPUT_LIMIT) {
   const next = current + chunk.toString("utf8");
-  return next.length > OUTPUT_LIMIT ? next.slice(0, OUTPUT_LIMIT) : next;
+  return next.length > limit ? next.slice(0, limit) : next;
 }
 
 function runProcess(command, args, options = {}) {
@@ -207,9 +212,10 @@ function runProcess(command, args, options = {}) {
       shell: false,
       stdio: ["ignore", "pipe", "pipe"]
     });
+    const outputLimit = options.outputLimit ?? OUTPUT_LIMIT;
     let stdout = ""; let stderr = ""; let truncated = false; let timedOut = false;
-    child.stdout.on("data", (chunk) => { const before = stdout.length; stdout = boundedAppend(stdout, chunk); truncated ||= stdout.length === OUTPUT_LIMIT && before < OUTPUT_LIMIT; });
-    child.stderr.on("data", (chunk) => { const before = stderr.length; stderr = boundedAppend(stderr, chunk); truncated ||= stderr.length === OUTPUT_LIMIT && before < OUTPUT_LIMIT; });
+    child.stdout.on("data", (chunk) => { const before = stdout.length; stdout = boundedAppend(stdout, chunk, outputLimit); truncated ||= stdout.length === outputLimit && before < outputLimit; });
+    child.stderr.on("data", (chunk) => { const before = stderr.length; stderr = boundedAppend(stderr, chunk, outputLimit); truncated ||= stderr.length === outputLimit && before < outputLimit; });
     const timer = setTimeout(() => { timedOut = true; child.kill("SIGTERM"); setTimeout(() => child.kill("SIGKILL"), 2_000).unref(); }, options.timeoutMs ?? COMMAND_TIMEOUT);
     child.once("error", (error) => { clearTimeout(timer); reject(error); });
     child.once("close", (exitCode) => { clearTimeout(timer); resolve({ exitCode: exitCode ?? -1, stdout, stderr, truncated, timedOut }); });
@@ -457,7 +463,9 @@ async function testAction(config) {
   const built = await mustRun("docker", ["build", "-q", canonicalSource], { timeoutMs: 600_000 });
   const testImageId = built.stdout.trim().split(/\s+/).at(-1);
   if (!/^sha256:[a-f0-9]{64}$/.test(testImageId)) throw new Error("TEST_IMAGE_ID_INVALID");
-  const suite = await runProcess("docker", ["run", "--rm", "-v", `${path.join(canonicalSource, "scripts")}:/app/scripts:ro`, testImageId, "npm", "test"], { timeoutMs: testTimeoutMs() });
+  // STORE-MIG-01: capture o TAP INTEIRO (cap antigo de 256 KB truncava o fim, onde
+  // moram o sumário e as falhas tardias — o gate ficava FAIL com counters 0/0/-1).
+  const suite = await runProcess("docker", ["run", "--rm", "-v", `${path.join(canonicalSource, "scripts")}:/app/scripts:ro`, testImageId, "npm", "test"], { timeoutMs: testTimeoutMs(), outputLimit: TEST_OUTPUT_LIMIT });
   const tests = Number(/^.*\btests (\d+)\s*$/m.exec(suite.stdout)?.[1] ?? 0);
   const passed = Number(/^.*\bpass (\d+)\s*$/m.exec(suite.stdout)?.[1] ?? 0);
   const failed = Number(/^.*\bfail (\d+)\s*$/m.exec(suite.stdout)?.[1] ?? -1);
@@ -474,7 +482,10 @@ async function testAction(config) {
     const evidence = rawEvidence.includes(marker) ? rawEvidence.slice(rawEvidence.indexOf(marker) + marker.length) : rawEvidence;
     const failures = extractReleaseTestFailures(evidence);
     await saveState(config, { ...state, failures });
-    throw new Error(`TESTS_FAILED:${suite.stderr || suite.stdout}`);
+    // STORE-MIG-01: embuta o RABO do TAP (sumário + falhas tardias) — stderr-first
+    // escondia o stdout inteiro e o cap de 128 KB do runner só consegue relayar o rabo.
+    const tailEvidence = evidence.length > RELEASE_TEST_EVIDENCE_TAIL ? evidence.slice(-RELEASE_TEST_EVIDENCE_TAIL) : evidence;
+    throw new Error(`TESTS_FAILED:${tailEvidence}`);
   }
   return state;
 }

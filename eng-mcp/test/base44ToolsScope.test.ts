@@ -1,6 +1,6 @@
 // BASE44-CLI-01 — scope-gate integration tests for the two new base44 tools
 // through the full MCP server stack (registerEngineeringTools + envelope).
-// Coverage: the tools appear in tools/list (catalog 103 -> 105), both are
+// Coverage: the tools appear in tools/list (catalog 103 -> 106), both are
 // refused with AUTHORIZATION_SCOPE_REQUIRED without their base44:* scopes, and
 // with the scopes they fail closed into canonical, side-effect-free paths
 // (unset env source -> BLOCKED; unknown function -> allowlist refusal) without
@@ -40,10 +40,10 @@ function resultText(result: unknown): string {
 
 const PROBE_CTX = { mcpReq: { requestState: () => undefined } };
 
-test("tools/list carries both base44 tools (catalog 105)", async () => {
+test("tools/list carries both base44 tools (catalog 106)", async () => {
   const { list } = buildServer(SUBJECT_WITH);
   const names = await listNames(list);
-  assert.equal(names.length, 105);
+  assert.equal(names.length, 106);
   assert.ok(names.includes("engineering.base44.secret.write"));
   assert.ok(names.includes("engineering.base44.function.deploy"));
 });

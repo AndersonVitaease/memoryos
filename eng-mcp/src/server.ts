@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { readFile } from "node:fs/promises";
 import { toNodeHandler } from "@modelcontextprotocol/node";
 import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
-import { authenticateBearer, EngineeringError, RepositoryPolicy, type TokenRecord } from "./policy.ts";
+import { authenticateBearer, EngineeringError, RepositoryPolicy, type AuthenticatedSubject, type TokenRecord } from "./policy.ts";
 import { RepositoryAdapter } from "./repository.ts";
 import { ENGINEERING_SERVER_INFO, installErrorEnvelopeCompatibility, installToolAliasCompatibility, registerEngineeringTools } from "./tools.ts";
 import { attachImageRelay } from "./imageEdit.ts";
@@ -10,6 +10,7 @@ import { handleImageAssetRequest } from "./imageCreate.ts";
 import { handleAuthSessionRequest } from "./authSession.ts";
 import { handleDeployRequest } from "./deployEntry.ts";
 import { createMcpClientCallTransport, DOKPLOY_SERVER_ID_DEFAULT, DEFAULT_MEMORY_ENDPOINT } from "./vpsChangeSafe.ts";
+import { ensureProxySecret, handleMcpProxyRequest } from "./memoryProxy.ts";
 
 export type EngineeringServerOptions = { repositoryId: string; configuredRoot: string; tokenRegistry: TokenRecord[] };
 
@@ -40,6 +41,26 @@ export async function createEngineeringHttpServer(options: EngineeringServerOpti
   const policy = await RepositoryPolicy.create(options.configuredRoot);
   const repository = new RepositoryAdapter(policy);
   await repository.verifyDependencies();
+  // STORE-MIG-01 PARTE B: shared stateless MCP handler factory — /mcp e a rota
+  // /mcp-proxy registram o MESMO conjunto de tools para um subject.
+  const buildMcpHandler = (subject: AuthenticatedSubject) =>
+    createMcpHandler(() => {
+      const mcp = new McpServer(ENGINEERING_SERVER_INFO);
+      registerEngineeringTools(mcp, repository, subject, options.repositoryId);
+      installToolAliasCompatibility(mcp.server);
+      // ERROR-01: envelope canônico de erro em TODAS as tools (choke point tools/call).
+      installErrorEnvelopeCompatibility(mcp.server);
+      return mcp;
+    }, { legacy: "stateless" });
+  // STORE-MIG-01 PARTE B: secret do canal do proxy — NOVO, gerado na VPS no
+  // primeiro boot (arquivo 0600, log apenas hash16). Fail-soft: o boot nunca
+  // morre por causa disso; requisições ao proxy falham fechado depois (503).
+  try {
+    const proxySecret = ensureProxySecret();
+    console.log(`[ENG-MCP-PROXY] secret ready file=${proxySecret.file} hash16=${proxySecret.hash16} created=${proxySecret.created}`);
+  } catch (error) {
+    console.log(`[ENG-MCP-PROXY] secret unavailable (${String(error instanceof Error ? error.message : error).slice(0, 120)}); /mcp-proxy fails closed until it exists`);
+  }
   const serve = async (request: IncomingMessage, response: ServerResponse) => {
     if (handleImageAssetRequest(request, response)) return;
     if (handleAuthSessionRequest(request, response)) return;
@@ -50,18 +71,21 @@ export async function createEngineeringHttpServer(options: EngineeringServerOpti
       // Host-provided transport for the Guardian Cloud deploy path (env ?? operator defaults).
       transport: createMcpClientCallTransport({ dokployServerId: process.env.ENG_MCP_VPS_DOKPLOY_SERVER_ID ?? DOKPLOY_SERVER_ID_DEFAULT, endpoint: process.env.ENG_MCP_AGENT_MEMORY_ENDPOINT ?? DEFAULT_MEMORY_ENDPOINT }),
     })) return;
+    // STORE-MIG-01 PARTE B: proxy MCP local — o canal Hermes sai do Base44 sem
+    // tocar no painel. Identidade fixa read-only do arquivo de credencial; o
+    // Authorization do cliente nunca é lido (ver memoryProxy.ts).
+    if (request.method === "POST" && request.url?.split("?")[0] === "/mcp-proxy") {
+      await handleMcpProxyRequest(request, response, {
+        authenticateBearer: (token: string) => authenticateBearer(token, options.tokenRegistry, options.repositoryId, new Date(), null),
+        buildMcpHandler: (subject) => buildMcpHandler(subject as AuthenticatedSubject),
+      });
+      return;
+    }
     installDiagnostic(request, response);
     if (request.method !== "POST" || request.url !== "/mcp") { response.writeHead(404).end(); return; }
     try {
       const subject = authenticateBearer(request.headers.authorization, options.tokenRegistry, options.repositoryId, new Date(), null);
-      const handler = createMcpHandler(() => {
-        const mcp = new McpServer(ENGINEERING_SERVER_INFO);
-        registerEngineeringTools(mcp, repository, subject, options.repositoryId);
-        installToolAliasCompatibility(mcp.server);
-        // ERROR-01: envelope canônico de erro em TODAS as tools (choke point tools/call).
-        installErrorEnvelopeCompatibility(mcp.server);
-        return mcp;
-      }, { legacy: "stateless" });
+      const handler = buildMcpHandler(subject);
       response.once("finish", () => { void handler.close(); });
       await toNodeHandler(handler)(request, response);
     } catch (error) {
