@@ -36,8 +36,17 @@ export const DEFAULT_FLAG_FILE = "/data/credentials/memory-store-mode";
 
 // Deterministic query battery. "zz" = recency-ordered dump (see header);
 // the term list is fixed so every run is reproducible and verify/shadow are
-// comparable across runs.
-export const SEARCH_TERMS = ["zz", "release", "pipeline", "memory", "git", "test", "mission", "engmcp", "merge", "judge", "vps", "deploy"] as const;
+// comparable across runs. STORE-MIG-01 live export showed the projection caps
+// (pendingTasks/activeTopics 12) plus entity-only-in-search left most of the
+// tasks/topics/entities unfished (12/18, 12/25, 1/98) — the bridge is the ONLY
+// source and dies without renewal, so the battery now also sweeps the entity/
+// topic vocabulary the KB actually contains (mission nouns + agent names).
+export const SEARCH_TERMS = [
+  "zz", "release", "pipeline", "memory", "git", "test", "mission", "engmcp", "merge", "judge", "vps", "deploy",
+  "person", "tool", "hermes", "engineering", "claude", "agent", "memoryos", "eng-mcp", "store", "proxy",
+  "registry", "token", "scope", "audit", "suite", "session", "operador", "painel", "base44", "gateway",
+  "dedupe", "gate", "router", "shadow", "sandbox", "guardian", "ids", "hook", "glgpd", "caddy",
+] as const;
 
 const sha16 = (text: string): string => createHash("sha256").update(text, "utf8").digest("hex").slice(0, 16);
 
