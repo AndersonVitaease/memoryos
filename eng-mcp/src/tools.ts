@@ -6,6 +6,7 @@ import { EngineeringError, type AuthenticatedSubject, assertNoSensitiveContent }
 import type { RepositoryAdapter } from "./repository.js";
 import { runRegistryScopeGrant, registryScopeGrantInputSchema } from "./registryScopeGrant.ts";
 import { runRegistryEntryCreate, runRegistryEntryRevoke, registryEntryCreateInputSchema, registryEntryRevokeInputSchema } from "./registryEntryLifecycle.ts";
+import { runSecurityScan, securityScanInputSchema } from "./securityScan.ts";
 import { ObservabilityClient } from "./observability.ts";
 import { AgentMemoryClient } from "./memory.ts";
 // STORE-MIG-01: local SQLite memory store (same bridge interface) + migration orchestrator.
@@ -147,8 +148,8 @@ export function installErrorEnvelopeCompatibility(mcpServer: unknown): void {
 
 function response(value: unknown) { return { content: [{ type: "text" as const, text: JSON.stringify(value) ?? "null" }] }; }
 
-type ReleaseOperation = "test" | "build" | "candidate" | "deploy" | "status" | "smoke" | "rollback" | "restart" | "inspect" | "container_probe" | "unit_credential";
-const releaseTimeouts = { test: 1_210_000, build: 130_000, candidate: 610_000, deploy: 30_000, status: 30_000, smoke: 310_000, rollback: 130_000, restart: 30_000, inspect: 40_000, container_probe: 110_000, unit_credential: 110_000 };
+type ReleaseOperation = "test" | "build" | "candidate" | "deploy" | "status" | "smoke" | "rollback" | "restart" | "inspect" | "container_probe" | "unit_credential" | "security_probe";
+const releaseTimeouts = { test: 1_210_000, build: 130_000, candidate: 610_000, deploy: 30_000, status: 30_000, smoke: 310_000, rollback: 130_000, restart: 30_000, inspect: 40_000, container_probe: 110_000, unit_credential: 110_000, security_probe: 110_000 };
 let releasePipelineBusy = false;
 
 // Only the official Unix socket API is reachable; no caller-supplied URL or command.
@@ -518,6 +519,22 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   register("engineering.judge.verify", "read", (name) => server.registerTool(name, { description: "Verify mission-report claims against evidence with calibrated probabilities (Jev via OpenRouter) under a closed-world rubric. Per claim: supported/contradicted/not_addressed/uncertain with probability and full distribution; aggregate ALL_SUPPORTED/HAS_CONTRADICTIONS/MIXED/UNCERTAIN at threshold 0.6. Evidence is sanitized before the provider call (evidence may leave, credentials never); provider failures are structured and retried never; a judgment is never fabricated. Audit line in /data/audit/judge.jsonl (ts, tool, n_claims, verdict, model, usage, latency_ms, authorizerHash16, contentHash16 — metadata and hashes only, never state/evidence content). ADVISORY — calibrated judgment is not a security boundary; operator approval decides.", inputSchema: judgeVerifyInputSchema }, async (input) => { requireRead(); requireJudgeRead(); return response(await runJudgeVerify(input, { ...defaultJudgeDeps(), authorizerHash16: subject.tokenHash16 })); }));
   register("engineering.judge.evaluate", "read", (name) => server.registerTool(name, { description: "Typed decision triage with calibrated probabilities (Jev via OpenRouter). questions typed noul/choice/score, each with instructions and criteria; returns the full calibrated distribution per question (noul probability plus complement; choice argmax with probabilities and confidence; score expected index with normalizedScore and legend). State is sanitized before the provider call; provider failures are structured and retried never; a judgment is never fabricated. Audit line in /data/audit/judge.jsonl (ts, tool, n_claims, verdict, model, usage, latency_ms, authorizerHash16, contentHash16 — metadata and hashes only, never state/evidence content). ADVISORY — calibrated judgment is not a security boundary; operator approval decides.", inputSchema: judgeEvaluateInputSchema }, async (input) => { requireRead(); requireJudgeRead(); return response(await runJudgeEvaluate(input, { ...defaultJudgeDeps(), authorizerHash16: subject.tokenHash16 })); }));
   // IDS-01: advisory-only IDS; fail-safe triggers DESIGN-ONLY FASE 2.
+  // SECURITY-SCAN-01: unified security supertool (secrets + exposure + hygiene +
+  // registry + drift). Read-only by construction: the host probe hashes every
+  // secret value sha256-16 in-process and the verdict layer is advisory.
+  register("engineering.security.scan", "read", (name) => server.registerTool(name, {
+    description: "Unified security supertool over one target (eng-mcp | vps | explicit repo path): M1 secrets (11 token formats + PEM + high-entropy, filesystem/Caddyfile//data/systemd env/ps/transcripts/git history; every value hashed sha256-16 in-process, the raw value NEVER appears in output, audit or log; gitignored token files reachable via the raw-read primitive), M2 exposure (open listeners vs used ports, UFW state, Caddyfile route auth stats + TLS/HSTS), M3 hygiene (legacy files, credential modes 0600/0700, unit hardening NoNewPrivileges/ProtectSystem), M4 registry (expired-active tokens, scope inventory, security.ids cross-check) + drift per findingId and judge triage of probable false positives (advisory, fail-open). NEVER remediates: remediation is structured text only. Audit /data/audit/security-scan.jsonl carries hash16 only.",
+    inputSchema: securityScanInputSchema
+  }, async (input) => {
+    requireRead();
+    const result = await runSecurityScan(input, {
+      authorizerHash16: subject.tokenHash16,
+      callerSubject: subject.subject,
+      runRunner: (operation, jobId) => callReleaseRunner(operation, jobId) as Promise<{ httpStatus: number; body: unknown }>
+    });
+    if (result instanceof EngineeringError) throw result;
+    return response(result);
+  }));
   register("engineering.security.ids", "read", (name) => server.registerTool(name, {
     description: "IDS over the governance audit trails (git-fetch/merge/push, registry-grant, judge, tool-errors .jsonl): sliding window -> structured events; deterministic privilege-creep features per subject (grants+growth, first-time use, off-hours, mutual grants, 97e485f7 legacy detector via registry hash16 join);" +
     "one judge.evaluate per flagged subject; deterministic bands in code info<0.6<=warn<0.9<=critical. Advisory-only (it reports; it never pauses or revokes anything);" +
