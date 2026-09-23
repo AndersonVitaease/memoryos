@@ -43,7 +43,11 @@ async function startHarness(dir: string, authBehavior: "ok" | "refuse" = "ok"): 
       bearerFile,
       auditFile,
       authenticateBearer: (token) => {
+        // Mirrors the REAL policy contract (src/policy.ts parseBearerAuthorization):
+        // the value presented is the full "Authorization: Bearer <token>" header
+        // value — a raw token is a wiring bug, not a valid credential.
         calls.authenticate.push(token);
+        if (!/^Bearer [^\s]+$/.test(token)) throw new Error("AUTHENTICATION_REQUIRED");
         if (authBehavior === "refuse") throw new Error("AUTHORIZATION_TOKEN_REVOKED");
         return { subject: "hermes-2026-09", scopes: ["memory:read", "verify:read"] };
       },
@@ -140,7 +144,11 @@ test("proxy: fixed read-only identity — client Authorization is STRIPPED, the 
   assert.equal(res.status, 200);
   const body = (await res.json()) as { result: { subject: string } };
   assert.equal(body.result.subject, "hermes-2026-09");
-  assert.deepEqual(harness.calls.authenticate, [fileToken], "authenticateBearer sees ONLY the file token");
+  assert.deepEqual(
+    harness.calls.authenticate,
+    [`Bearer ${fileToken}`],
+    "authenticateBearer sees the file token in the Authorization wire form — and nothing else",
+  );
   assert.deepEqual(harness.calls.handlers.map((s) => s.subject), ["hermes-2026-09"]);
   // audit: metadata only — no secret, no bearer values
   await closeServer(harness);

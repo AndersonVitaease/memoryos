@@ -98,7 +98,9 @@ export async function handleMcpProxyRequest(request: IncomingMessage, response: 
       return;
     }
     // Gate 2: fixed read-only identity from the credential file. The client's
-    // Authorization header is intentionally never read (stripped by design).
+    // Authorization header is intentionally never read (stripped by design) —
+    // the file token is presented to the pipeline in the SAME wire form the
+    // Base44 proxy injected: an "Authorization: Bearer <token>" header value.
     const bearerFile = deps.bearerFile ?? process.env.ENG_MCP_PROXY_BEARER_FILE ?? DEFAULT_PROXY_BEARER_FILE;
     let token: string;
     try {
@@ -111,7 +113,7 @@ export async function handleMcpProxyRequest(request: IncomingMessage, response: 
     }
     let subject: { subject?: string } & Record<string, unknown>;
     try {
-      subject = deps.authenticateBearer(token);
+      subject = deps.authenticateBearer(`Bearer ${token}`);
     } catch (error) {
       const code = error instanceof Error ? error.message : "ENGINEERING_PROXY_AUTH_FAILED";
       audit({ event: "refused", reason: "bearer-auth", bearerFile, code });
