@@ -8,6 +8,9 @@ import { runRegistryScopeGrant, registryScopeGrantInputSchema } from "./registry
 import { runRegistryEntryCreate, runRegistryEntryRevoke, registryEntryCreateInputSchema, registryEntryRevokeInputSchema } from "./registryEntryLifecycle.ts";
 import { ObservabilityClient } from "./observability.ts";
 import { AgentMemoryClient } from "./memory.ts";
+// STORE-MIG-01: local SQLite memory store (same bridge interface) + migration orchestrator.
+import { createMemoryStore } from "./memoryStore.ts";
+import { runMemoryMigrate } from "./memoryMigrate.ts";
 import { SupervisedMissionClient } from "./supervised.ts";
 // MEMORY-GATE-01: admission gate for memory.capture — triage (dedupe + calibrated Jev screen)
 // before the Base44 KB bridge; refusal throws MEMORY_GATE_REFUSED (curated taxonomy entry).
@@ -400,7 +403,10 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   const requireBase44FunctionDeploy = () => { if (!subject.scopes.includes("base44:function:deploy")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
 
   const observability = new ObservabilityClient();
-  const agentMemory = new AgentMemoryClient();
+  // STORE-MIG-01 PARTE A: memory tools read/write through the swappable store
+  // (local SQLite behind the same interface, or the Base44 bridge while the
+  // MEMORY_STORE flag says bridge — default until the governed switch).
+  const agentMemory = createMemoryStore();
   const supervisedMission = new SupervisedMissionClient();
 
   register("engineering.supervised_mission", "write", (name) => server.registerTool(name, {
@@ -746,6 +752,25 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
       authorizerHash16: subject.tokenHash16,
       recentContext: async () => stripTombstoned(await agentMemory.call("context", { projectId: pid, limit: 50 }))
     }));
+  }));
+
+  register("engineering.memory.migrate", "write", (name) => server.registerTool(name, {
+    description: "STORE-MIG-01: governed migration of the MemoryOS KB from the Base44 agentMemoryBridge to the local SQLite store (src/memoryStore.ts). Actions: status/export/verify/snapshot are read-only; import/shadow/switch/restore require execute=true AND approval.approved=true (PLAN by default). export fishes the bridge (context + fixed term battery) into a 0600 export file under the store dir with per-kind coverage vs bridge counts; import upserts preserving original ids (content-only upsert, tombstones never resurrected); verify recomputes per-record hash16 bridge vs local; shadow re-runs export+import then compares context projections and the search-term battery (score tolerance 0.002, bridge-only ids split into tombstonedLocally vs notImported); switch flips the MEMORY_STORE flag file only after guards (verifyPassed + shadowIdentical + localStoreReady) and takes the mandatory pre-switch snapshot — activation on the next governed restart, rollback = flag back to bridge + restart; snapshot/restore are guarded to the store backups dir. State: /data/memoryos/migration-state.json. Zero credential material in results; audit carries hashes and counters only.",
+    inputSchema: z.object({
+      action: z.enum(["status", "export", "import", "verify", "shadow", "switch", "snapshot", "restore"]),
+      execute: z.boolean().optional(),
+      approval: z.object({ approved: z.boolean() }).optional(),
+      projectId: z.string().max(200).optional(),
+      limit: z.number().int().min(1).max(100).optional(),
+      exportFile: z.string().max(500).optional(),
+      restorePath: z.string().max(500).optional()
+    }).strict()
+  }, async (input) => {
+    requireWrite();
+    // The migrate tool ALWAYS talks to the real bridge (a fresh AgentMemoryClient),
+    // never to the store swap below — the local store is only ever written by the
+    // governed import path inside runMemoryMigrate.
+    return response(await runMemoryMigrate(input, { bridge: new AgentMemoryClient() }));
   }));
 
   register("engineering.memoryos.sync_files", "write", (name) => server.registerTool(name, {
