@@ -82,6 +82,10 @@ function fixtureRows(): FakeRow[] {
     { type: "topic", id: "tp2", text: "Saída gradual do Base44 — Sem mexer no painel", name: "Saída gradual do Base44", description: "Sem mexer no painel", createdAt: "2026-09-15T09:00:00.000Z" },
     { type: "entity", id: "e1", text: "person — Hermes — agente no VPS", createdAt: "2026-09-19T08:00:00.000Z" },
     { type: "entity", id: "e2", text: "tool — engineering.memory.merge — aplicador governado", createdAt: "2026-09-18T08:00:00.000Z" },
+    // SEARCH-ONLY memory: never in the context slice (only 3 memories fit), so
+    // verify's union path hashes it — the exact path that false-mismatched 59
+    // real memories because the expectation hashed the raw union row.
+    { type: "message", id: "m-search-only", text: "[AGENT MEMORY]\nAgent: claude-code\nSummary: captura antiga fora do slice de contexto", createdAt: "2026-09-01T10:00:00.000Z", sessionId: "sess-fake-1" },
   ];
 }
 
@@ -155,14 +159,14 @@ test("full flow: export → import → verify (hash16 per record) → shadow ide
   assert.equal(exported.coverage.memories.complete, true);
   assert.equal(exported.coverage.entities.complete, true, "fixture entities are fully fished by the battery");
   const imported = (await runMemoryMigrate({ action: "import", execute: true, approval: { approved: true } }, deps)) as { upserted: number; counts: Record<string, number> };
-  assert.equal(imported.upserted, 12);
-  assert.equal(imported.counts.memories, 3);
+  assert.equal(imported.upserted, 13);
+  assert.equal(imported.counts.memories, 4, "3 context + 1 search-only memory");
   assert.equal(imported.counts.decisions, 2);
   assert.equal(imported.counts.tasks, 3);
   assert.equal(imported.counts.topics, 2);
   assert.equal(imported.counts.entities, 2);
   const verified = (await runMemoryMigrate({ action: "verify" }, deps)) as { allMatched: boolean; compared: number; mismatched: unknown[]; missing: string[] };
-  assert.equal(verified.compared, 12);
+  assert.equal(verified.compared, 13, "search-only memory is verified via the union path");
   assert.equal(verified.allMatched, true, `verify must match every record: ${JSON.stringify({ mismatched: verified.mismatched, missing: verified.missing })}`);
   const shadow = (await runMemoryMigrate({ action: "shadow", execute: true, approval: { approved: true }, limit: 100 }, deps)) as { allIdentical: boolean; context: { identical: boolean; diffs: string[] }; searches: Array<{ term: string; identical: boolean; diffs: string[]; bridgeOnly: string[]; localOnly: string[] }> };
   assert.equal(shadow.context.identical, true, `context must be identical: ${JSON.stringify(shadow.context)}`);
@@ -243,7 +247,7 @@ test("merge simulation: tombstone locally → shadow still identical (expected d
     projectId: "memoryos", id: "m-dup",
     fields: { deleted: true, merged_into: "m1", merged_from: "m1", deleted_reason: "duplicate of m1 (re-execute das 4 decisões do operador)" },
   });
-  assert.equal(store.counts("memoryos").memories, 2, "duplicate is gone from the projections");
+  assert.equal(store.counts("memoryos").memories, 3, "duplicate is gone (4 - 1); the search-only memory stays");
   // record the tombstone in the migration state (as the merge step would)
   const statePath = deps.stateFile as string;
   const state = JSON.parse(readFileSync(statePath, "utf8")) as Record<string, unknown>;
@@ -255,14 +259,14 @@ test("merge simulation: tombstone locally → shadow still identical (expected d
   assert.ok(shadow.searches.some((s) => s.tombstonedLocally.includes("m-dup")));
   // re-import (upsert is content-only) never resurrects the tombstone
   await runMemoryMigrate({ action: "import", execute: true, approval: { approved: true } }, deps);
-  assert.equal(store.counts("memoryos").memories, 2);
+  assert.equal(store.counts("memoryos").memories, 3, "re-import never resurrects the tombstone");
   assert.equal(store.rawById("memoryos", ["m-dup"])[0].deleted, true);
   // restore: byte-identical state view back
   const snap = store.snapshot("manual");
   await store.call("update", { projectId: "memoryos", id: "m1", fields: { deleted: true, deleted_reason: "accidental" } });
-  assert.equal(store.counts("memoryos").memories, 1);
-  store.restore(snap.path);
   assert.equal(store.counts("memoryos").memories, 2);
+  store.restore(snap.path);
+  assert.equal(store.counts("memoryos").memories, 3);
   const raw = store.rawById("memoryos", ["m-dup"]);
   assert.equal(raw[0].deleted, true);
   assert.equal(raw[0].merged_into, "m1");
@@ -284,7 +288,7 @@ test("status reports store mode, local counts and migration state", async () => 
   await runMemoryMigrate({ action: "import", execute: true, approval: { approved: true } }, deps);
   const status = (await runMemoryMigrate({ action: "status" }, deps)) as { localStore: { exists: boolean; counts: Record<string, number> }; migrationState: { phase: string } };
   assert.equal(status.localStore.exists, true);
-  assert.equal(status.localStore.counts.total, 12);
+  assert.equal(status.localStore.counts.total, 13);
   assert.ok(["imported", "exported"].includes(status.migrationState.phase));
   rmSync(dir, { recursive: true, force: true });
 });
