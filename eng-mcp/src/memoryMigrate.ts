@@ -46,6 +46,10 @@ export const SEARCH_TERMS = [
   "person", "tool", "hermes", "engineering", "claude", "agent", "memoryos", "eng-mcp", "store", "proxy",
   "registry", "token", "scope", "audit", "suite", "session", "operador", "painel", "base44", "gateway",
   "dedupe", "gate", "router", "shadow", "sandbox", "guardian", "ids", "hook", "glgpd", "caddy",
+  // PT-BR stopwords (the KB's language): near-universal lexical hits fish rows
+  // whose own vocabulary no mission noun reaches — the bridge exposes NO list-all
+  // projection for tasks/topics/entities, so the search battery is the only net.
+  "que", "para", "com", "dos", "das", "uma", "nao", "por", "como", "mais", "sobre", "entre", "depois", "antes", "2026",
 ] as const;
 
 const sha16 = (text: string): string => createHash("sha256").update(text, "utf8").digest("hex").slice(0, 16);
