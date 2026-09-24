@@ -18,10 +18,11 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { buildJudgeGate, type JudgeClient, type JudgeGateEvidenceEntry, type JudgeHookInput } from '../src/harness/judgeGate.js';
-import { loadActiveManifests, manifestHash16, matchManifests, validateManifest, type MissionManifest } from '../src/missionManifest.js';
+import { loadActiveManifests, manifestHash16, matchManifests, sha16, validateManifest, type MissionManifest } from '../src/missionManifest.js';
 import { runMissionPreauth } from '../src/missionPreauth.js';
 
 const WORK = '/tmp/autorun-01a-work';
+const OPERATOR = { subject: 'operator-test-a', scopes: ['engineering:write', 'engineering:mission:preauth'] };
 const BENIGN = [
   { id: 'syntax-check', pattern: 'node --check *', fileScope: [`${WORK}/**`] },
   { id: 'eval-probe', pattern: 'node -e "console.log(1)"' },
@@ -34,7 +35,7 @@ function sandbox() {
 }
 
 function create(sb: ReturnType<typeof sandbox>, ops = BENIGN, extra: Record<string, unknown> = {}, now = Date.now()) {
-  return runMissionPreauth({ mission: 'AUTO-RUN-01A-TEST', windowMinutes: 30, operations: ops, execute: true, approval: { approved: true }, approvedBy: 'operator-test', ...extra }, { manifestDir: sb.dir, auditFile: sb.auditFile, now: () => now });
+  return runMissionPreauth({ mission: 'AUTO-RUN-01A-TEST', windowMinutes: 30, operations: ops, execute: true, approval: { approved: true }, approvedBy: 'operator-test', ...extra }, { caller: OPERATOR, manifestDir: sb.dir, auditFile: sb.auditFile, now: () => now });
 }
 
 function gateWith(sb: ReturnType<typeof sandbox>, judgeAnswer: 'benign' | 'medium' = 'benign', now: () => number = Date.now) {
@@ -61,7 +62,7 @@ const pre = (command: string): JudgeHookInput => ({ hook_event_name: 'PreToolUse
 describe('AUTO-RUN-01A admission (engineering.mission.preauth)', () => {
   it('PLAN is the default and performs ZERO mutation; benign ops classify as band 2', () => {
     const sb = sandbox();
-    const r = runMissionPreauth({ mission: 'AUTO-RUN-01A-TEST', windowMinutes: 30, operations: BENIGN }, { manifestDir: sb.dir, auditFile: sb.auditFile });
+    const r = runMissionPreauth({ mission: 'AUTO-RUN-01A-TEST', windowMinutes: 30, operations: BENIGN }, { caller: OPERATOR, manifestDir: sb.dir, auditFile: sb.auditFile });
     assert.equal(r.status, 'PLAN');
     assert.equal(r.mutationPerformed, false);
     assert.deepEqual((r as { classifications: Array<{ band: number }> }).classifications.map((c) => c.band), [2, 2, 2]);
@@ -90,7 +91,7 @@ describe('AUTO-RUN-01A admission (engineering.mission.preauth)', () => {
 
   it('execute needs approval; CREATED writes 0600 with a valid hash16; a second create is MANIFEST_ACTIVE', () => {
     const sb = sandbox();
-    const noApproval = runMissionPreauth({ mission: 'AUTO-RUN-01A-TEST', operations: BENIGN, execute: true }, { manifestDir: sb.dir, auditFile: sb.auditFile });
+    const noApproval = runMissionPreauth({ mission: 'AUTO-RUN-01A-TEST', operations: BENIGN, execute: true }, { caller: OPERATOR, manifestDir: sb.dir, auditFile: sb.auditFile });
     assert.equal(noApproval.status, 'APPROVAL_REQUIRED');
     const r = create(sb);
     assert.equal(r.status, 'CREATED');
@@ -155,7 +156,7 @@ describe('AUTO-RUN-01A apply-time check (gate manifestCheck seam)', () => {
     // revoked
     const revoked = sandbox();
     create(revoked);
-    const rv = runMissionPreauth({ action: 'revoke', mission: 'AUTO-RUN-01A-TEST', execute: true, approval: { approved: true } }, { manifestDir: revoked.dir, auditFile: revoked.auditFile });
+    const rv = runMissionPreauth({ action: 'revoke', mission: 'AUTO-RUN-01A-TEST', execute: true, approval: { approved: true } }, { caller: OPERATOR, manifestDir: revoked.dir, auditFile: revoked.auditFile });
     assert.equal(rv.status, 'REVOKED');
     assert.equal(loadActiveManifests(revoked.dir).rejected[0]?.reason, 'REVOKED');
     for (const sb of [tampered, insecure, revoked]) {
@@ -228,5 +229,59 @@ describe('AUTO-RUN-01A through the portable hook (child process)', () => {
     assert.equal(parsed.hookSpecificOutput?.permissionDecision, 'allow');
     assert.match(parsed.hookSpecificOutput?.permissionDecisionReason ?? '', /MANIFEST_PREAUTH: manifest=AUTO-RUN-01A-TEST pattern=syntax-check/);
     assert.match(readFileSync(sb.auditFile, 'utf8'), /"event":"match","manifest":"AUTO-RUN-01A-TEST","patternId":"syntax-check"/);
+  });
+});
+
+describe('PREAUTH-SCOPE-01 dedicated operator scope (engineering:mission:preauth)', () => {
+  const WRITE_ONLY = { subject: 'claude-code-2', scopes: ['engineering:write'] };
+  const ops = BENIGN;
+  const deps = (sb: ReturnType<typeof sandbox>, caller?: { subject: string; scopes: string[] }) => ({ caller, manifestDir: sb.dir, auditFile: sb.auditFile });
+
+  it('(a) engineering:write WITHOUT the scope: create PLAN and execute are REFUSED AUTHORIZATION_SCOPE_REQUIRED, nothing written', () => {
+    const sb = sandbox();
+    for (const input of [{ mission: 'SCOPE-TEST', operations: ops }, { mission: 'SCOPE-TEST', operations: ops, execute: true, approval: { approved: true } }]) {
+      assert.throws(() => runMissionPreauth(input, deps(sb, WRITE_ONLY)), (e: Error & { code?: string }) => e.code === 'AUTHORIZATION_SCOPE_REQUIRED');
+      assert.throws(() => runMissionPreauth(input, deps(sb)), (e: Error & { code?: string }) => e.code === 'AUTHORIZATION_SCOPE_REQUIRED', 'no caller = fail-closed');
+    }
+    assert.equal(existsSync(join(sb.dir, 'SCOPE-TEST.json')), false);
+    const line = JSON.parse(readFileSync(sb.auditFile, 'utf8').trim().split('\n')[0]) as Record<string, unknown>;
+    assert.equal(line.event, 'create_refused');
+    assert.match(String(line.subjectHash16), /^[0-9a-f]{16}$/);
+  });
+
+  it('(b) operator with the scope: PLAN + execute work; status needs no scope; audit carries subjectHash16 + approvedByHash16', () => {
+    const sb = sandbox();
+    assert.equal(runMissionPreauth({ mission: 'SCOPE-TEST', operations: ops }, deps(sb, OPERATOR)).status, 'PLAN');
+    const r = runMissionPreauth({ mission: 'SCOPE-TEST', operations: ops, execute: true, approval: { approved: true }, approvedBy: 'operator-test-a' }, deps(sb, OPERATOR));
+    assert.equal(r.status, 'CREATED');
+    const m = JSON.parse(readFileSync(join(sb.dir, 'SCOPE-TEST.json'), 'utf8')) as MissionManifest;
+    assert.equal(m.createdBySubjectHash16, sha16('operator-test-a'));
+    assert.equal(validateManifest(m, Date.now()), null, 'creator hash is inside the hashed body');
+    const tampered = { ...m, createdBySubjectHash16: sha16('someone-else') };
+    assert.equal(validateManifest(tampered, Date.now()), 'HASH_MISMATCH', 'creator field is tamper-evident');
+    assert.equal(runMissionPreauth({ action: 'status' }, deps(sb, WRITE_ONLY)).status, 'STATUS');
+    const create = readFileSync(sb.auditFile, 'utf8').trim().split('\n').map((l) => JSON.parse(l) as Record<string, unknown>).find((l) => l.event === 'create')!;
+    assert.equal(create.subjectHash16, sha16('operator-test-a'));
+    assert.equal(create.approvedByHash16, sha16('operator-test-a'));
+  });
+
+  it('revoke: creator OR operator-* allowed; a foreign non-operator is refused', () => {
+    const sb = sandbox();
+    const creator = { subject: 'goose-eng-mcp-2', scopes: ['engineering:write', 'engineering:mission:preauth'] };
+    runMissionPreauth({ mission: 'SCOPE-TEST', operations: ops, execute: true, approval: { approved: true } }, deps(sb, creator));
+    const revoke = { action: 'revoke' as const, mission: 'SCOPE-TEST', execute: true, approval: { approved: true } };
+    assert.throws(() => runMissionPreauth(revoke, deps(sb, WRITE_ONLY)), (e: Error & { code?: string }) => e.code === 'AUTHORIZATION_SCOPE_REQUIRED');
+    assert.equal(runMissionPreauth(revoke, deps(sb, creator)).status, 'REVOKED', 'creator revokes without the operator prefix');
+    const sb2 = sandbox();
+    runMissionPreauth({ mission: 'SCOPE-TEST', operations: ops, execute: true, approval: { approved: true } }, deps(sb2, creator));
+    assert.equal(runMissionPreauth(revoke, deps(sb2, { subject: 'operator-2026-09-17b', scopes: ['engineering:write'] })).status, 'REVOKED', 'any operator revokes, even without the preauth scope');
+  });
+
+  it('pre-v109 manifests (no createdBySubjectHash16) keep validating and matching', () => {
+    const now = Date.now();
+    const body = { version: 1, mission: 'LEGACY-01A', holder: 'LEGACY-01A', createdAt: new Date(now).toISOString(), expiresAt: new Date(now + 60_000).toISOString(), operations: [{ id: 'p', pattern: 'node -e 1' }], approvedBy: 'op' };
+    const legacy = { ...body, hash16: manifestHash16(body) } as MissionManifest;
+    assert.equal(validateManifest(legacy, now), null);
+    assert.ok(matchManifests('node -e 1', WORK, [legacy]));
   });
 });

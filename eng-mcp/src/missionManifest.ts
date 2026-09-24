@@ -62,6 +62,8 @@ export interface MissionManifest {
   operations: ManifestOperation[];
   approvedBy: string;
   hash16: string;
+  /** PREAUTH-SCOPE-01: sha16 of the creating subject — inside the hashed body (absent on pre-v109 manifests). */
+  createdBySubjectHash16?: string;
   revokedAt?: string | null;
 }
 
@@ -120,8 +122,10 @@ function canonical(value: unknown): string {
   return JSON.stringify(value);
 }
 
-export function manifestHash16(m: Pick<MissionManifest, 'version' | 'mission' | 'holder' | 'createdAt' | 'expiresAt' | 'operations' | 'approvedBy'>): string {
-  const body = { version: m.version, mission: m.mission, holder: m.holder, createdAt: m.createdAt, expiresAt: m.expiresAt, operations: m.operations, approvedBy: m.approvedBy };
+export function manifestHash16(m: Pick<MissionManifest, 'version' | 'mission' | 'holder' | 'createdAt' | 'expiresAt' | 'operations' | 'approvedBy' | 'createdBySubjectHash16'>): string {
+  // createdBySubjectHash16 is undefined on pre-v109 manifests; canonical() drops
+  // undefined keys, so their hash is byte-identical and they stay valid.
+  const body = { version: m.version, mission: m.mission, holder: m.holder, createdAt: m.createdAt, expiresAt: m.expiresAt, operations: m.operations, approvedBy: m.approvedBy, createdBySubjectHash16: m.createdBySubjectHash16 };
   return createHash('sha256').update(canonical(body)).digest('hex').slice(0, 16);
 }
 
