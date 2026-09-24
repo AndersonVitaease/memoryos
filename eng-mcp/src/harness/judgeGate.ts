@@ -266,7 +266,7 @@ function extractToolResult(response: unknown): unknown {
   return response;
 }
 
-async function defaultJudgeClient(
+export async function defaultJudgeClient(
   state: { serverUrl: string; token: string | null },
   tool: JudgeToolName,
   args: Record<string, unknown>,
@@ -376,7 +376,7 @@ function redactText0(text: string, cap: number): string {
 /* Gate assembly                                                       */
 /* ------------------------------------------------------------------ */
 
-function resolveCredential(
+export function resolveCredential(
   config: JudgeGateConfig,
   env: NodeJS.ProcessEnv,
 ): string | null {
