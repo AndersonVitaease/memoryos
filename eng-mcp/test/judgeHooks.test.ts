@@ -10,6 +10,10 @@
  * ZERO judge calls by construction.
  */
 import assert from 'node:assert/strict';
+// Legacy-semantics suite: the operator's 24/09 policy (JUDGE_CONSEQUENCE_POLICY
+// unset = auto-allow) is covered by its OWN test at the bottom. Everything here
+// tests the operator-route machinery, so pin the flag explicitly.
+process.env.JUDGE_CONSEQUENCE_POLICY = 'operator';
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -165,7 +169,7 @@ describe('JUDGE-HOOKS-01 gate: band classification', () => {
     const sink: JudgeGateEvidenceEntry[] = [];
     const gate = buildJudgeGate(gateConfig({ judgeClient: client, evidenceSink: (e) => sink.push(e) }));
     assert.ok(gate);
-    const out = await gate.handlers.preToolUse(bashInput('mkdir -p /tmp/judge-hooks-e2e'), 'tu-5');
+    const out = await gate.handlers.preToolUse(bashInput('run-migrations --now'), 'tu-5');
     assert.equal(decisionOf(out), 'allow');
     assert.match(reasonOf(out) ?? '', /BAND2_GRAY_AUTO/);
     assert.match(reasonOf(out) ?? '', /0\.950/);
@@ -208,7 +212,7 @@ describe('JUDGE-HOOKS-01 gate: band classification', () => {
     const sink: JudgeGateEvidenceEntry[] = [];
     const gate = buildJudgeGate(gateConfig({ judgeClient: client, evidenceSink: (e) => sink.push(e) }));
     assert.ok(gate);
-    await gate.handlers.preToolUse(bashInput(`echo ${secret}`), 'tu-8');
+    await gate.handlers.preToolUse(bashInput(`upload-helper --token ${secret}`), 'tu-8');
     assert.equal(calls.length, 1);
     assert.equal(JSON.stringify(calls[0].args).includes(secret), false); // never leaves to the judge
     assert.equal(JSON.stringify(sink).includes(secret), false); // never lands in evidence
@@ -225,7 +229,7 @@ describe('JUDGE-HOOKS-01 gate: fail-open', () => {
     const { client, calls } = mockJudge({});
     const gate = buildJudgeGate(gateConfig({ judgeClient: client }));
     assert.ok(gate);
-    const out = await gate.handlers.preToolUse(bashInput('mkdir -p /tmp/x'), 'tu-9');
+    const out = await gate.handlers.preToolUse(bashInput('run-migrations --now'), 'tu-9');
     assert.equal(decisionOf(out), 'allow');
     assert.match(reasonOf(out) ?? '', /JUDGE_FAIL_OPEN/);
     assert.equal(calls.length, 1);
@@ -235,7 +239,7 @@ describe('JUDGE-HOOKS-01 gate: fail-open', () => {
     const { client } = mockJudge({});
     const gate = buildJudgeGate(gateConfig({ judgeClient: client, unattended: false }));
     assert.ok(gate);
-    const out = await gate.handlers.preToolUse(bashInput('mkdir -p /tmp/x'), 'tu-10');
+    const out = await gate.handlers.preToolUse(bashInput('run-migrations --now'), 'tu-10');
     assert.deepEqual(out, {});
     assert.equal(decisionOf(out), undefined);
   });
@@ -247,7 +251,7 @@ describe('JUDGE-HOOKS-01 gate: fail-open', () => {
       });
     const gate = buildJudgeGate(gateConfig({ judgeClient: hanging, timeoutMs: 30 }));
     assert.ok(gate);
-    const out = await gate.handlers.preToolUse(bashInput('mkdir -p /tmp/x'), 'tu-11');
+    const out = await gate.handlers.preToolUse(bashInput('run-migrations --now'), 'tu-11');
     assert.equal(decisionOf(out), 'allow');
     assert.match(reasonOf(out) ?? '', /JUDGE_FAIL_OPEN/);
   });
@@ -466,5 +470,27 @@ describe('JUDGE-HOOKS-01: wiring gate and runtime seam', () => {
     const runtimeOff = new ClaudeAgentRuntime({ queryFactory: second.query, env: { JUDGE_HOOKS_ENABLED: '0' } });
     await runtimeOff.runMission(minimalContract('jh-runtime-off'), createInitialState(minimalContract('jh-runtime-off'), 1000));
     assert.equal(second.calls[0].options?.hooks, undefined);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* OPERATOR POLICY 2026-09-24 (e3e277bd): default auto-allow route      */
+/* ------------------------------------------------------------------ */
+
+describe('JUDGE-HOOKS-01 gate: operator policy auto (JUDGE_CONSEQUENCE_POLICY unset)', () => {
+  it('consequence route auto-allows with CONSEQUENCE_AUTO marker when the flag is unset', async () => {
+    const prev = process.env.JUDGE_CONSEQUENCE_POLICY;
+    delete process.env.JUDGE_CONSEQUENCE_POLICY;
+    try {
+      const { client } = mockJudge({ evaluate: noulResult(0.05) });
+      const gate = buildJudgeGate(gateConfig({ judgeClient: client, unattended: false }));
+      assert.ok(gate);
+      const out = await gate.handlers.preToolUse(bashInput('rm -rf /tmp/policy-auto-proof'), 'tu-policy-1');
+      assert.equal(decisionOf(out), 'allow');
+      assert.match(reasonOf(out) ?? '', /CONSEQUENCE_AUTO_ALLOWED/);
+    } finally {
+      if (prev === undefined) delete process.env.JUDGE_CONSEQUENCE_POLICY;
+      else process.env.JUDGE_CONSEQUENCE_POLICY = prev;
+    }
   });
 });

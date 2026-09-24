@@ -18,6 +18,9 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { buildJudgeGate, type JudgeClient, type JudgeGateEvidenceEntry, type JudgeHookInput } from '../src/harness/judgeGate.js';
+// Legacy-semantics suite: pins the operator route (ask/deny). The default
+// auto-allow policy (e3e277bd) has its own coverage in judgeHooks.test.ts.
+process.env.JUDGE_CONSEQUENCE_POLICY = 'operator';
 import { loadActiveManifests, manifestHash16, matchManifests, sha16, validateManifest, type MissionManifest } from '../src/missionManifest.js';
 import { runMissionPreauth } from '../src/missionPreauth.js';
 
