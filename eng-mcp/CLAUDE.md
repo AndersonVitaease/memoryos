@@ -68,3 +68,21 @@ This project is indexed by GitNexus as **memoryos** (2374 symbols, 6229 relation
 **Stop hook exige evidência (JUDGE_HOOK_STOP_EVIDENCE):** o bloqueio de "done prematuro" só é confiável com um arquivo de evidência da sessão (resultados de teste/deploy/artefatos) em `JUDGE_HOOK_STOP_EVIDENCE=<arquivo>`. Sem ele, o gate usa a própria mensagem final como evidência (circular) e o juiz tende a ALL_SUPPORTED → `{}` (provado em HOOKS-VPS-01 t6). Com evidência contrária → `decision: block` (HAS_CONTRADICTIONS).
 
 **Pré-autorização por manifesto (AUTO-RUN-01A):** `engineering.mission.preauth` — o operador aprova UMA vez o plano da missão ({mission, windowMinutes ≤1440, operations:[{id, pattern (âncora; `*` = 1 token), fileScope (globs absolutos)}]}); PLAN é default (zero mutação), execute+approval grava `/data/manifests/{mission}.json` 0600 com hash16/TTL. Consequência NUNCA entra (rm/dd/push/deploy/pipeline/credential/registry/Caddyfile/.env + band-3 do gate + metacaracteres → manifesto inteiro REFUSED); no hook, band 3 é avaliada ANTES do manifesto e o match é no comando REAL (drift/escopo = fora). Expirado/revogado/corrompido = sem manifesto (fail-closed). `JUDGE_HOOK_MISSION=<missão>` restringe o hook ao manifesto de UMA missão (default: todos os ativos). Revogar: `action: revoke` + execute+approval.
+
+# Verificação em 3 camadas + ledger de estado verificado (VERIFY-01, 2026-09-24)
+
+Só convenção — nenhuma tool nova, nada server-side (catálogo continua 108).
+
+**Camada 0 — aceitação por autoverificação (toda missão):** o relatório de fechamento lista as claims etiquetadas (`id` + texto + etiqueta `[consequência]` quando a claim afirma deploy/push/merge/restart/credencial/registry/efeito em produção) e passa por `engineering.judge.verify` (claims × artefatos reais: saídas de comando, hashes, contagens). Gray-zones declaradas explicitamente (o que NÃO foi verificado e por quê). Claim contradita ou uncertain → corrigir e re-verificar antes de entregar.
+
+**Camada 1 — spot-check dirigido (1–2 chamadas):** o supervisor confere 1–2 claims contra o estado real com tools read-only existentes (ex.: `git.log`/`git.inspect_commit`, `mcp.catalog`, `test.status`, `deploy.status`). **OBRIGATÓRIO em toda claim `[consequência]`**; nas demais, por amostragem.
+
+**Camada 2 — deep-verify:** re-verificação completa (reproduzir testes/typecheck/inspeção de artefatos) SOMENTE quando: spot-check da camada 1 falha, `judge.verify` retorna contradição (HAS_CONTRADICTIONS/MIXED), ou a missão é de alta consequência.
+
+**Ledger no fechamento:** todo fechamento grava no `engineering.memory.capture` EXISTENTE (projectId `memoryos` — nunca outro; partição errada = capture invisível), dentro do `summary`, a linha `FINGERPRINT <json-compacto>` com `{missionId, head (SHA de 40 hex verificado), registrySha16, verdicts, ts}`:
+- `head` = HEAD que a missão verificou (`git.log` limit 1 / `git.inspect_commit`).
+- `registrySha16` = 16 primeiros hex do sha256 dos BYTES do token registry — mesma função do `registrySha16Before` que o PLAN de `engineering.registry.scope.grant`/`registry.entry.*` já devolve (PLAN = zero mutação); nunca registro nem credencial.
+- `verdicts` = resultado do `judge.verify` da camada 0 (`aggregate` + `counts`) e resultado das camadas 1/2 quando rodaram.
+- `ts` = ISO-8601 do fechamento.
+
+**O "1 probe" de re-verificação** = `engineering.memory.search` (query = missionId) ou `engineering.memory.context` para achar a linha FINGERPRINT; comparar `head`/`registrySha16` com o estado atual (camada 1). Igual → não re-verificar; divergente → re-verificar só o que moveu. `ts` nunca entra na comparação.
