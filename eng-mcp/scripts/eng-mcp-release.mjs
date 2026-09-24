@@ -433,8 +433,18 @@ function extractReleaseTestFailures(evidence) {
     const file = /(?:file|location):\s*'([^']+)'/m.exec(block) ?? /([A-Za-z0-9_./-]+\.test\.ts)/.exec(block);
     const safeFile = file === null ? undefined : releaseTestSafeField(file[1].replace(/:\d+(?::\d+)?$/, ""));
     if (safeFile !== undefined) failure.file = safeFile;
-    const message = /error:\s*'([^'\n]+)/.exec(block);
-    const safeMessage = message === null ? undefined : releaseTestSafeField(message[1].trim().slice(0, RELEASE_TEST_FAILURE_MESSAGE_LIMIT));
+    // STORE-MIG-01: o TAP emite `error: |-` (bloco multilinha) quando a mensagem
+    // tem quebra de linha — a captura single-quoted perdia a mensagem inteira.
+    // Fallback: quando assertStateSafe recusa a mensagem crua (conteúdo sensível),
+    // aplica o sanitizador de smoke (redação por padrão + hash hex longo) em vez
+    // de descartar — o gate segue sem valor cru, mas o diagnóstico sobrevive.
+    const message = /error:\s*'([^'\n]+)/.exec(block) ?? /error:\s*\|[+-]?\s*\n\s+([^\n]+)/.exec(block);
+    let safeMessage = message === null ? undefined : releaseTestSafeField(message[1].trim().slice(0, RELEASE_TEST_FAILURE_MESSAGE_LIMIT));
+    if (safeMessage === undefined && message !== null) {
+      const redacted = sanitizeSmokeFailureMessage(message[1].trim().slice(0, RELEASE_TEST_FAILURE_MESSAGE_LIMIT));
+      const hardened = redacted === null ? null : redacted.replace(/[A-Fa-f0-9]{32,}/g, "[REDACTED]");
+      safeMessage = hardened === null ? undefined : releaseTestSafeField(hardened);
+    }
     if (safeMessage !== undefined) failure.message = safeMessage;
     return failure;
   });

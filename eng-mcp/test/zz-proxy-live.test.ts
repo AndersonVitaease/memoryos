@@ -37,6 +37,13 @@ async function call(base: string, secret: string | null, method: string, params:
 }
 
 test("LIVE /mcp-proxy: read-only call succeeds, mutation refused with the scope code", { timeout: 30_000 }, async () => {
+  if (existsSync("/.dockerenv")) {
+    // STORE-MIG-01: inside the suite container neither the loopback port nor the
+    // Caddy route is the production path — the LIVE proof runs in file-mode on
+    // the VPS host (no /.dockerenv there).
+    console.log("[zz-proxy-live] SKIP: suite container (live proof is file-mode on the VPS)");
+    return;
+  }
   if (!existsSync(SECRET_FILE)) {
     console.log("[zz-proxy-live] SKIP: no channel secret file in this environment");
     return;
