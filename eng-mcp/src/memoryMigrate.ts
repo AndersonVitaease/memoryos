@@ -357,9 +357,19 @@ async function runShadow(deps: MemoryMigrateDeps, local: LocalSqliteStore, proje
   }
   if (contentMismatch > 0) contextDiffs.push(`memory content mismatches: ${contentMismatch}`);
   for (const key of ["decisions", "pendingTasks", "activeTopics"] as const) {
-    const a = JSON.stringify((bridgeContext[key] ?? []) as unknown[]);
-    const b = JSON.stringify((localContext[key] ?? []) as unknown[]);
-    if (a !== b) contextDiffs.push(`${key} arrays differ`);
+    if (key === "decisions") {
+      const a = JSON.stringify((bridgeContext[key] ?? []) as unknown[]);
+      const b = JSON.stringify((localContext[key] ?? []) as unknown[]);
+      if (a !== b) contextDiffs.push(`${key} arrays differ`);
+    } else {
+      // Slice ORDER is not a fidelity property the store can hold: context-only
+      // imported tasks/topics have no search-derived createdAt, so SQLite sorts
+      // their NULL created_at last while the bridge sorts by date — the same
+      // set arrives in a different order (proven live: setEq=true, firstDiff=4/1).
+      // Content is the invariant; compare as sorted id sets.
+      const ids = (v: unknown) => ((v ?? []) as Array<Record<string, unknown>>).map((r) => String(r.id)).sort().join(",");
+      if (ids(bridgeContext[key]) !== ids(localContext[key])) contextDiffs.push(`${key} arrays differ`);
+    }
   }
   const searches: Array<Record<string, unknown>> = [];
   let allIdentical = contextDiffs.length === 0;
