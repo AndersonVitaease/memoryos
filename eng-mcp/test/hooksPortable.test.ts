@@ -95,7 +95,10 @@ describe('HOOKS-VPS-01 portable hook (child process, real stdin/stdout contract)
     const r = await runHook(pre('git status'), mockUrl);
     assert.equal(r.code, 0);
     assert.equal(r.out.hookSpecificOutput?.permissionDecision, 'allow');
-    assert.match(r.out.hookSpecificOutput?.permissionDecisionReason ?? '', /BAND1_TRIVIAL/);
+    // HOOKS-CALIBRATION-01: `git status` now fires the deterministic allowlist
+    // (band-1 label evolved from BAND1_TRIVIAL; behavior unchanged: allow,
+    // zero judge calls).
+    assert.match(r.out.hookSpecificOutput?.permissionDecisionReason ?? '', /BAND1_ALLOWLIST_MATCH/);
     assert.deepEqual(calls, []);
   });
 
