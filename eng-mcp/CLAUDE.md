@@ -64,3 +64,5 @@ This project is indexed by GitNexus as **memoryos** (2374 symbols, 6229 relation
 
 
 **Hooks do Jev numa máquina nova (HOOKS-VPS-01):** `node scripts/hooks-install.mjs` registra `.claude/hooks/judge-hook.mjs` no `~/.claude/settings.json` do cliente (idempotente, NO_OP se presente; `--remove` desinstala; URL do MCP lida do `memoryos-engmcp` em `~/.claude.json`; requer Node ≥ 22.18). Fail-open visível em `~/.claude/judge-hooks.jsonl`.
+
+**Stop hook exige evidência (JUDGE_HOOK_STOP_EVIDENCE):** o bloqueio de "done prematuro" só é confiável com um arquivo de evidência da sessão (resultados de teste/deploy/artefatos) em `JUDGE_HOOK_STOP_EVIDENCE=<arquivo>`. Sem ele, o gate usa a própria mensagem final como evidência (circular) e o juiz tende a ALL_SUPPORTED → `{}` (provado em HOOKS-VPS-01 t6). Com evidência contrária → `decision: block` (HAS_CONTRADICTIONS).
