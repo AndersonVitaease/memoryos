@@ -1,0 +1,111 @@
+{
+  "_provenance": {
+    "recordedAt": "2026-09-24T16:50:39.711Z",
+    "source": "REAL runOcrRead inside the OCR-01 release-recipe container image (node:24.19.0-bookworm + apt tesseract/poppler + /opt/ocr-venv)",
+    "imageId": "sha256:4f62ed64816c19c2e2d4c9a1161d1a6003d9170da9dea8ffa20d2bdf8a4b0deb",
+    "input": "test/fixtures/ocr/clean.png via base64",
+    "note": "bytes emitted by the real engine, unedited"
+  },
+  "envelope": {
+    "tool": "engineering.ocr.read",
+    "status": "OK",
+    "text": "Painel de Operacoes MemoryOS\nStatus: HEALTHY Deploys hoje: 14\nLatency p95 812 ms Error rate 0.4%\n\nUltima release candidate v108 aprovada",
+    "blocks": [
+      {
+        "page": 1,
+        "text": "Painel de Operacoes MemoryOS\nStatus: HEALTHY Deploys hoje: 14\nLatency p95 812 ms Error rate 0.4%",
+        "bbox": {
+          "x": 41,
+          "y": 48,
+          "width": 449,
+          "height": 145
+        },
+        "confidence": 93.98
+      },
+      {
+        "page": 1,
+        "text": "Ultima release candidate v108 aprovada",
+        "bbox": {
+          "x": 43,
+          "y": 228,
+          "width": 502,
+          "height": 25
+        },
+        "confidence": 94.2
+      }
+    ],
+    "lang": "por+eng",
+    "orientation": {
+      "rotationApplied": 0,
+      "osdRotation": 0,
+      "osdConfidence": 4.89,
+      "source": "osd"
+    },
+    "pages": [
+      {
+        "page": 1,
+        "text": "Painel de Operacoes MemoryOS\nStatus: HEALTHY Deploys hoje: 14\nLatency p95 812 ms Error rate 0.4%\n\nUltima release candidate v108 aprovada",
+        "blocks": [
+          {
+            "text": "Painel de Operacoes MemoryOS\nStatus: HEALTHY Deploys hoje: 14\nLatency p95 812 ms Error rate 0.4%",
+            "bbox": {
+              "x": 41,
+              "y": 48,
+              "width": 449,
+              "height": 145
+            },
+            "confidence": 93.98
+          },
+          {
+            "text": "Ultima release candidate v108 aprovada",
+            "bbox": {
+              "x": 43,
+              "y": 228,
+              "width": 502,
+              "height": 25
+            },
+            "confidence": 94.2
+          }
+        ],
+        "orientation": {
+          "rotationApplied": 0,
+          "osdRotation": 0,
+          "osdConfidence": 4.89,
+          "source": "osd"
+        },
+        "skewDeg": 0,
+        "meanConfidence": 94.04,
+        "wordCount": 21,
+        "steps": [
+          "denoise_nlm",
+          "clahe",
+          "upscale"
+        ],
+        "frame": {
+          "width": 1000,
+          "height": 400
+        }
+      }
+    ],
+    "pageCount": 1,
+    "sourcePageCount": 1,
+    "truncated": false,
+    "format": "png",
+    "granularity": "block",
+    "preprocess": true,
+    "engine": {
+      "tesseract": "tesseract 5.3.0",
+      "preprocess": "ocr-pre-v2",
+      "oem": 1,
+      "psm": 3,
+      "pdfDpi": null
+    },
+    "input": {
+      "kind": "base64",
+      "bytes": 25460,
+      "sha16": "36d43ae63dc4e26e"
+    },
+    "chars": 136,
+    "durationMs": 1280
+  }
+}

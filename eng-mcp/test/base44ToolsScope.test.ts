@@ -40,10 +40,10 @@ function resultText(result: unknown): string {
 
 const PROBE_CTX = { mcpReq: { requestState: () => undefined } };
 
-test("tools/list carries both base44 tools (catalog 108)", async () => {
+test("tools/list carries both base44 tools (catalog 109)", async () => {
   const { list } = buildServer(SUBJECT_WITH);
   const names = await listNames(list);
-  assert.equal(names.length, 108);
+  assert.equal(names.length, 109);
   assert.ok(names.includes("engineering.base44.secret.write"));
   assert.ok(names.includes("engineering.base44.function.deploy"));
 });
