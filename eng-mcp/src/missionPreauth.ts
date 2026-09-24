@@ -20,6 +20,8 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { isTrivialCommand, matchDenylist } from './harness/judgeGate.js';
+import { EngineeringError } from './policy.js';
+import { isOperatorSubject } from './registryScopeGrant.js';
 import {
   MANIFEST_MAX_OPERATIONS,
   MANIFEST_MAX_WINDOW_MINUTES,
@@ -28,6 +30,7 @@ import {
   classifyOperation,
   loadActiveManifests,
   manifestHash16,
+  sha16,
   validateManifest,
   type ManifestOperation,
   type MissionManifest,
@@ -44,7 +47,17 @@ export interface MissionPreauthInput {
   approval?: { approved: boolean };
 }
 
+/** PREAUTH-SCOPE-01: dedicated operator scope required for CREATE (PLAN and execute). */
+export const MISSION_PREAUTH_SCOPE = 'engineering:mission:preauth';
+
+export interface MissionPreauthCaller {
+  subject: string;
+  scopes: readonly string[];
+}
+
 export interface MissionPreauthDeps {
+  /** The authenticated caller. Absent = fail-closed for create/revoke. */
+  caller?: MissionPreauthCaller;
   manifestDir?: string;
   auditFile?: string;
   now?: () => number;
@@ -107,17 +120,31 @@ export function runMissionPreauth(input: MissionPreauthInput, deps: MissionPreau
       current = null;
     }
     if (!current) return { tool: 'engineering.mission.preauth', status: 'NOT_FOUND', mutationPerformed: false, mission, path };
+    // Revoke: the creator (subject hash match) OR any operator-* subject — rollback never breaks for operators.
+    const caller = deps.caller;
+    const isCreator = caller !== undefined && typeof current.createdBySubjectHash16 === 'string' && current.createdBySubjectHash16 === sha16(caller.subject);
+    if (!caller || (!isCreator && !isOperatorSubject(caller.subject))) {
+      audit(auditFile, { event: 'revoke_refused', mission, hash16: current.hash16, subjectHash16: caller ? sha16(caller.subject) : null, reason: 'REVOKE_NOT_AUTHORIZED' });
+      throw new EngineeringError('AUTHORIZATION_SCOPE_REQUIRED', 'REVOKE_NOT_AUTHORIZED: only the manifest creator or an operator-* subject may revoke');
+    }
     const plan = { tool: 'engineering.mission.preauth', mission, path, hash16: current.hash16, alreadyRevoked: Boolean(current.revokedAt) };
     if (current.revokedAt) return { ...plan, status: 'NO_OP', mutationPerformed: false };
     if (input.execute !== true) return { ...plan, status: 'PLAN', mutationPerformed: false, requires: ['execute=true + approval.approved=true'] };
     if (input.approval?.approved !== true) return { ...plan, status: 'APPROVAL_REQUIRED', mutationPerformed: false };
     const revokedAt = new Date(now).toISOString();
     writeAtomic0600(path, JSON.stringify({ ...current, revokedAt }, null, 2) + '\n');
-    audit(auditFile, { event: 'revoke', mission, hash16: current.hash16 });
+    audit(auditFile, { event: 'revoke', mission, hash16: current.hash16, subjectHash16: sha16(caller.subject), byCreator: isCreator });
     return { ...plan, status: 'REVOKED', mutationPerformed: true, revokedAt };
   }
 
   if (action !== 'create') return fail('ACTION_INVALID');
+  // PREAUTH-SCOPE-01: server-side, fail-closed — engineering:write alone never creates a manifest.
+  const caller = deps.caller;
+  if (!caller || !caller.scopes.includes(MISSION_PREAUTH_SCOPE)) {
+    audit(auditFile, { event: 'create_refused', mission, subjectHash16: caller ? sha16(caller.subject) : null, reason: 'AUTHORIZATION_SCOPE_REQUIRED', requiredScope: MISSION_PREAUTH_SCOPE });
+    throw new EngineeringError('AUTHORIZATION_SCOPE_REQUIRED', `AUTHORIZATION_SCOPE_REQUIRED: mission.preauth create requires ${MISSION_PREAUTH_SCOPE} (operator-issued)`);
+  }
+  const subjectHash16 = sha16(caller.subject);
   const windowMinutes = input.windowMinutes ?? 60;
   if (!Number.isInteger(windowMinutes) || windowMinutes < 1 || windowMinutes > MANIFEST_MAX_WINDOW_MINUTES) return fail('WINDOW_INVALID', `1..${MANIFEST_MAX_WINDOW_MINUTES} minutes`);
   const operations = input.operations ?? [];
@@ -141,6 +168,7 @@ export function runMissionPreauth(input: MissionPreauthInput, deps: MissionPreau
     expiresAt: new Date(now + windowMinutes * 60_000).toISOString(),
     operations: normalized,
     approvedBy,
+    createdBySubjectHash16: subjectHash16,
   };
   const manifest: MissionManifest = { ...draftBody, hash16: manifestHash16(draftBody) };
   const report = {
@@ -154,7 +182,7 @@ export function runMissionPreauth(input: MissionPreauthInput, deps: MissionPreau
   };
 
   if (refused.length > 0) {
-    audit(auditFile, { event: input.execute === true ? 'refused' : 'plan_refused', mission, operations: operations.length, refused: refused.map((r) => ({ id: r.id, reason: r.reason })) });
+    audit(auditFile, { event: input.execute === true ? 'refused' : 'plan_refused', mission, subjectHash16, approvedByHash16: sha16(approvedBy), operations: operations.length, refused: refused.map((r) => ({ id: r.id, reason: r.reason })) });
     return { ...report, status: 'REFUSED', mutationPerformed: false, note: 'class-3 operations never enter a manifest; the whole manifest is refused — consequences stay with the operator' };
   }
   if (input.execute !== true) {
@@ -173,6 +201,6 @@ export function runMissionPreauth(input: MissionPreauthInput, deps: MissionPreau
     }
   }
   writeAtomic0600(path, JSON.stringify(manifest, null, 2) + '\n');
-  audit(auditFile, { event: 'create', mission, hash16: manifest.hash16, operations: operations.length, operationIds: normalized.map((o) => o.id), bands: classifications.map((c) => c.band), expiresAt: manifest.expiresAt });
+  audit(auditFile, { event: 'create', mission, hash16: manifest.hash16, subjectHash16, approvedByHash16: sha16(approvedBy), operations: operations.length, operationIds: normalized.map((o) => o.id), bands: classifications.map((c) => c.band), expiresAt: manifest.expiresAt });
   return { ...report, status: 'CREATED', mutationPerformed: true, hash16: manifest.hash16, expiresAt: manifest.expiresAt };
 }
