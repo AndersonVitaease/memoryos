@@ -110,7 +110,7 @@ describe('HOOKS-VPS-01 portable hook (child process, real stdin/stdout contract)
 
   it('band 3 consequence: ask even when the judge is maximally benign', async () => {
     mockAnswer = benign;
-    const r = await runHook(pre('git push origin main'), mockUrl);
+    const r = await runHook(pre('git push origin main'), mockUrl, { JUDGE_CONSEQUENCE_POLICY: 'operator' });
     assert.equal(r.out.hookSpecificOutput?.permissionDecision, 'ask');
   });
 
@@ -136,7 +136,7 @@ describe('HOOKS-VPS-01 portable hook (child process, real stdin/stdout contract)
   });
 
   it('FAIL-OPEN judge dead: band 3 still reaches the operator; Stop never crashes', async () => {
-    const r = await runHook(pre('git push origin main'), DEAD);
+    const r = await runHook(pre('git push origin main'), DEAD, { JUDGE_CONSEQUENCE_POLICY: 'operator' });
     assert.equal(r.code, 0);
     assert.equal(r.out.hookSpecificOutput?.permissionDecision, 'ask');
     const s = await runHook({ hook_event_name: 'Stop', session_id: 's', last_assistant_message: 'Mission complete, all criteria met.' }, DEAD);

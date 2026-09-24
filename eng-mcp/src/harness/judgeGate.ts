@@ -539,9 +539,12 @@ export function buildJudgeGate(config: JudgeGateConfig = {}): JudgeGate | null {
       const deny = matchDenylist(command);
       if (deny !== null) {
         const decision = decisionForOperatorRoute(unattended);
-        const reason = `BAND3_CONSEQUENCE: denylist match (${deny}) — the judge never approves consequences; operator decides.`;
+        const auto = decision.hookSpecificOutput?.permissionDecision === 'allow';
+        const reason = auto
+          ? `BAND3_CONSEQUENCE: denylist match (${deny}) — consequence auto-allowed by operator policy 2026-09-24 (CONSEQUENCE_AUTO_ALLOWED).`
+          : `BAND3_CONSEQUENCE: denylist match (${deny}) — the judge never approves consequences; operator decides.`;
         const context = await judgeBand3Context(judgeCall, command);
-        pushEvidence(`judge_gate:band3:${deny}`, JSON.stringify({ command: redactText0(command, 200), route: unattended ? 'deny' : 'ask', judgeContext: context }));
+        pushEvidence(`judge_gate:band3:${deny}`, JSON.stringify({ command: redactText0(command, 200), route: auto ? 'allow' : (unattended ? 'deny' : 'ask'), judgeContext: context }));
         return {
           ...decision,
           hookSpecificOutput: {
@@ -553,21 +556,9 @@ export function buildJudgeGate(config: JudgeGateConfig = {}): JudgeGate | null {
         };
       }
 
-      // Band 1 — deterministic read-only allowlist. ZERO judge calls.
-      // Compound chains (&&, ;, ||) qualify iff every segment is independently
-      // trivial and denylist-free (isTrivialCompound — pendência #8).
-      if (isTrivialCommand(command) || isTrivialCompound(command)) {
-        pushEvidence(`judge_gate:band1:${shortHash(command)}`, JSON.stringify({ command: redactText0(command, 120), route: 'allow' }));
-        return {
-          hookSpecificOutput: {
-            hookEventName: 'PreToolUse',
-            permissionDecision: 'allow',
-            permissionDecisionReason: 'BAND1_TRIVIAL_READ_ONLY: deterministic allowlist, no judge call.',
-          },
-        };
-      }
-
-      // Manifest pre-authorization (AUTO-RUN-01A) — band 3 already returned above.
+      // Manifest pre-authorization (AUTO-RUN-01A) — band 3 already returned
+      // above; checked BEFORE band 1 so manifest-routed commands always carry
+      // their MANIFEST_PREAUTH provenance in the reason/audit.
       if (config.manifestCheck) {
         let match: JudgeManifestMatch | null = null;
         try {
@@ -585,6 +576,20 @@ export function buildJudgeGate(config: JudgeGateConfig = {}): JudgeGate | null {
             },
           };
         }
+      }
+
+      // Band 1 — deterministic read-only allowlist. ZERO judge calls.
+      // Compound chains (&&, ;, ||) qualify iff every segment is independently
+      // trivial and denylist-free (isTrivialCompound — pendência #8).
+      if (isTrivialCommand(command) || isTrivialCompound(command)) {
+        pushEvidence(`judge_gate:band1:${shortHash(command)}`, JSON.stringify({ command: redactText0(command, 120), route: 'allow' }));
+        return {
+          hookSpecificOutput: {
+            hookEventName: 'PreToolUse',
+            permissionDecision: 'allow',
+            permissionDecisionReason: 'BAND1_TRIVIAL_READ_ONLY: deterministic allowlist, no judge call.',
+          },
+        };
       }
 
       // Band 2 — gray zone: the judge triages, never in band 3 territory.
