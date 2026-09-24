@@ -178,10 +178,15 @@ const TRIVIAL_FIRST_TOKENS = new Set([
   'ls', 'cat', 'head', 'tail', 'grep', 'rg', 'find', 'pwd', 'whoami', 'hostname',
   'uname', 'date', 'wc', 'diff', 'stat', 'file', 'du', 'df', 'ps', 'id', 'free',
   'tree', 'less', 'echo', 'uptime', 'nproc', 'which', 'md5sum', 'sha256sum',
-  'realpath', 'readlink', 'basename', 'dirname',
+  'realpath', 'readlink', 'basename', 'dirname', 'mkdir', 'touch',
 ]);
 
-const TRIVIAL_GIT_SUBCOMMANDS = new Set(['status', 'log', 'diff', 'show', 'branch', 'remote', 'rev-parse', 'config']);
+const TRIVIAL_GIT_SUBCOMMANDS = new Set([
+  // read-only inventory
+  'status', 'log', 'diff', 'show', 'branch', 'remote', 'rev-parse', 'config',
+  // local-reversible writes (push/merge/reset/clean stay denylist → operator)
+  'add', 'commit', 'stash', 'tag',
+]);
 
 const TRIVIAL_DOCKER_SUBCOMMANDS = new Set(['inspect', 'ps', 'logs', 'stats', 'top', 'version']);
 
