@@ -12,5 +12,6 @@ RUN npm install
 COPY tsconfig.json ./
 COPY src ./src
 COPY test ./test
+COPY .claude ./.claude
 
 CMD node --import tsx src/main.ts
