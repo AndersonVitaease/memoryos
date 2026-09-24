@@ -59,7 +59,7 @@ export const KNOWN_REGISTRY_SCOPES: readonly string[] = [
   "engineering:read", "engineering:write", "engineering:verify", "engineering:git", "engineering:release",
   "engineering:distribution:publish", "engineering:notify:hermes",
   "engineering:github:read", "engineering:git:push", "engineering:git:fetch", "engineering:git:merge",
-  "engineering:judge:read",
+  "engineering:judge:read", "engineering:ocr:read",
   "engineering:vps:application:redeploy", "engineering:vps:runner:restart", "engineering:vps:diagnostics:read",
   "engineering:vps:container:probe", "engineering:vps:secret:write", "engineering:vps:systemd:credential",
   "engineering:registry:scope:grant", "engineering:mission:preauth", "base44:secret:write", "base44:function:deploy"

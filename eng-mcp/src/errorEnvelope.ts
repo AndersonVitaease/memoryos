@@ -124,6 +124,12 @@ export const ERROR_TAXONOMY: Readonly<Record<string, Taxonomy>> = {
   SBW_TARGET_NOT_MATERIALIZED: { category: "validation", retryable: false, remediation: "Materialize the repository file into the sandbox before writing to it." },
   SBW_INVALID_CONTENT: { category: "validation", retryable: false, remediation: "Content exceeds the 128 KiB per-op cap; split or trim before writing." },
   SBW_VALIDATION_REQUIRED: { category: "validation", retryable: true, remediation: "Run the validate action before sync; validation is a required gate." },
+  // ---- OCR-01 (engineering.ocr.read) ----
+  UNSUPPORTED_FORMAT: { category: "validation", retryable: false, remediation: "engineering.ocr.read accepts png, jpeg, webp, tiff or pdf (decided by magic bytes); convert the file, then retry." },
+  OCR_INPUT_TOO_LARGE: { category: "validation", retryable: false, remediation: "OCR input is capped at 20MB; downscale/split the file (or lower the PDF page range), then retry." },
+  OCR_ENGINE_FAILED: { category: "dependency", retryable: false, remediation: "The local OCR engine could not process the input (corrupt/undecodable image or engine fault); verify the file opens in an image viewer, then retry with a valid file." },
+  PDF_RENDER_FAILED: { category: "dependency", retryable: false, remediation: "poppler could not render the PDF (encrypted, corrupt or empty); supply an unencrypted valid PDF, then retry." },
+  OCR_TIMEOUT: { category: "dependency", retryable: true, remediation: "The OCR run exceeded its budget; lower maxPages or split the document, then retry." },
   // ---- state ----
   FILE_VERSION_CONFLICT: { category: "state", retryable: true, remediation: "Re-read the file (its current hash becomes the new baseHash) and re-apply the patch." },
   INDEX_VERSION_CONFLICT: { category: "state", retryable: true, remediation: "Re-read git status/index fingerprint and re-stage against the fresh index." },
