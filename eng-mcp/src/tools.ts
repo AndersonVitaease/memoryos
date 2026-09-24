@@ -12,6 +12,7 @@ import { AgentMemoryClient } from "./memory.ts";
 // STORE-MIG-01: local SQLite memory store (same bridge interface) + migration orchestrator.
 import { createMemoryStore } from "./memoryStore.ts";
 import { runMemoryMigrate } from "./memoryMigrate.ts";
+import { runMissionPreauth } from "./missionPreauth.ts";
 import { SupervisedMissionClient } from "./supervised.ts";
 // MEMORY-GATE-01: admission gate for memory.capture — triage (dedupe + calibrated Jev screen)
 // before the Base44 KB bridge; refusal throws MEMORY_GATE_REFUSED (curated taxonomy entry).
@@ -788,6 +789,26 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
     // never to the store swap below — the local store is only ever written by the
     // governed import path inside runMemoryMigrate.
     return response(await runMemoryMigrate(input, { bridge: new AgentMemoryClient() }));
+  }));
+
+  register("engineering.mission.preauth", "write", (name) => server.registerTool(name, {
+    description: "AUTO-RUN-01A: pre-authorization by MANIFEST (mission-OAuth model) — the operator approves ONE plan, the judge gate matches every real Bash command against it at apply-time. action=create (default) is PLAN (zero mutation): deterministic classification (NO LLM) of each proposed operation {id, pattern (anchored; * = one shell-safe token), fileScope (absolute globs)} into band 1/2/3; ANY class-3 operation (fixed denylist rm/dd/push/deploy/pipeline/credential/registry/Caddyfile/.env, the gate band-3 denylist, or shell metacharacters) REFUSES the whole manifest. execute=true AND approval.approved=true re-classifies (TOCTOU) and writes /data/manifests/{mission}.json 0600 atomically with hash16, holder=mission, TTL=windowMinutes (max 1440); an active manifest for the mission must be revoked first. action=status lists active/rejected manifests (metadata only); action=revoke (PLAN by default) stamps revokedAt. Apply-time: band 3 is evaluated BEFORE the manifest, so a manifest can never approve a consequence; corrupt/expired/revoked/hash-mismatched/insecure-mode manifests are treated as absent (fail-closed). The preauth never substitutes tier 3. Audit /data/audit/manifests.jsonl metadata-only (never command patterns).",
+    inputSchema: z.object({
+      action: z.enum(["create", "status", "revoke"]).optional(),
+      mission: z.string().min(3).max(64).optional(),
+      windowMinutes: z.number().int().min(1).max(1440).optional(),
+      operations: z.array(z.object({
+        id: z.string().min(1).max(48),
+        pattern: z.string().min(1).max(300),
+        fileScope: z.array(z.string().min(1).max(300)).max(10).optional()
+      }).strict()).min(1).max(20).optional(),
+      approvedBy: z.string().min(1).max(200).optional(),
+      execute: z.boolean().optional(),
+      approval: z.object({ approved: z.boolean() }).optional()
+    }).strict()
+  }, async (input) => {
+    requireWrite();
+    return response(runMissionPreauth(input));
   }));
 
   register("engineering.memoryos.sync_files", "write", (name) => server.registerTool(name, {
