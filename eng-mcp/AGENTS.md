@@ -42,3 +42,12 @@ This project is indexed by GitNexus as **memoryos** (2374 symbols, 6229 relation
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus-cli/SKILL.md` |
 
 <!-- gitnexus:end -->
+
+# 3-layer verification + verified-state ledger (VERIFY-01, 2026-09-24)
+
+Convention only — no new tool, nothing server-side (catalog stays 108).
+
+- **Layer 0 — acceptance by self-verification (every mission):** the close report lists tagged claims (`id` + text + `[consequence]` tag for deploy/push/merge/restart/credential/registry/production-effect claims), runs them through `engineering.judge.verify` against real artifacts, and declares gray-zones (what was NOT verified and why). Contradicted/uncertain claim → fix and re-verify before delivering.
+- **Layer 1 — directed spot-check (1–2 calls):** supervisor checks 1–2 claims against live state with existing read-only tools. **MANDATORY for every `[consequence]` claim**; sampled otherwise.
+- **Layer 2 — deep-verify:** full re-verification ONLY on failed spot-check, `judge.verify` contradiction (HAS_CONTRADICTIONS/MIXED), or high-consequence mission.
+- **Close ledger:** every close writes, in the EXISTING `engineering.memory.capture` summary (projectId `memoryos` only), the line `FINGERPRINT <compact-json>` = `{missionId, head (verified 40-hex SHA), registrySha16 (first 16 hex of sha256 of the registry BYTES — same as `registrySha16Before` from the registry.* PLAN, zero mutation), verdicts (judge.verify aggregate+counts, layer 1/2 results), ts}`. Re-verification probe = `engineering.memory.search`/`memory.context` for the FINGERPRINT line, then compare `head`/`registrySha16` with live state; `ts` is never compared.
