@@ -143,7 +143,22 @@ export interface JudgeGateConfig {
   evidenceSink?: (entry: JudgeGateEvidenceEntry) => void;
   /** Test seam — replaces the HTTP judge client entirely. */
   judgeClient?: JudgeClient;
+  /**
+   * AUTO-RUN-01A — mission manifest pre-authorization seam. Consulted ONLY
+   * after band 3 (denylist, structural: a manifest can never approve a
+   * consequence) and band 1, BEFORE the band-2 judge call, with the REAL
+   * command at apply-time. A match auto-allows with audit; null (no/expired/
+   * corrupt manifest) keeps the unchanged band-2 flow. Throwing = null.
+   */
+  manifestCheck?: (command: string, cwd: string) => JudgeManifestMatch | null;
   env?: NodeJS.ProcessEnv;
+}
+
+export interface JudgeManifestMatch {
+  mission: string;
+  patternId: string;
+  hash16: string;
+  expiresAt: string;
 }
 
 export interface JudgeGate {
@@ -501,6 +516,26 @@ export function buildJudgeGate(config: JudgeGateConfig = {}): JudgeGate | null {
             permissionDecisionReason: 'BAND1_TRIVIAL_READ_ONLY: deterministic allowlist, no judge call.',
           },
         };
+      }
+
+      // Manifest pre-authorization (AUTO-RUN-01A) — band 3 already returned above.
+      if (config.manifestCheck) {
+        let match: JudgeManifestMatch | null = null;
+        try {
+          match = config.manifestCheck(command, typeof input.cwd === 'string' ? input.cwd : process.cwd());
+        } catch {
+          match = null;
+        }
+        if (match) {
+          pushEvidence(`judge_gate:manifest:${match.mission}:${match.patternId}`, JSON.stringify({ command: redactText0(command, 120), manifest: match.mission, patternId: match.patternId, hash16: match.hash16, route: 'allow' }));
+          return {
+            hookSpecificOutput: {
+              hookEventName: 'PreToolUse',
+              permissionDecision: 'allow',
+              permissionDecisionReason: `MANIFEST_PREAUTH: manifest=${match.mission} pattern=${match.patternId} hash16=${match.hash16} (operator-approved plan, apply-time match, expires ${match.expiresAt}).`,
+            },
+          };
+        }
       }
 
       // Band 2 — gray zone: the judge triages, never in band 3 territory.

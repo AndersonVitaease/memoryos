@@ -38,6 +38,43 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 process.removeAllListeners('warning');
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_GATE = resolve(HERE, '..', '..', 'src', 'harness', 'judgeGate.ts');
+const DEFAULT_MANIFEST_MODULE = resolve(HERE, '..', '..', 'src', 'missionManifest.ts');
+const HOST_MANIFEST_DIR = '/opt/eng-mcp-release-data/production/manifests';
+
+function manifestDir(env) {
+  if (env.ENG_MCP_MANIFEST_DIR) return env.ENG_MCP_MANIFEST_DIR;
+  return existsSync('/data/manifests') ? '/data/manifests' : HOST_MANIFEST_DIR;
+}
+
+/**
+ * AUTO-RUN-01A — apply-time manifest check for the gate's manifestCheck seam.
+ * Fail-closed: any load/parse/validation failure returns null (never allow).
+ * A match is audited metadata-only (mission, pattern id, hash16, command hash).
+ */
+async function buildManifestCheck(env, base) {
+  let mm;
+  try {
+    mm = await import(pathToFileURL(argValue('--manifest-module') || DEFAULT_MANIFEST_MODULE).href);
+  } catch (error) {
+    logLine({ ...base, status: 'unavailable', code: 'MANIFEST_MODULE_LOAD_FAILED', error: short(error?.message ?? error) });
+    return undefined;
+  }
+  const dir = manifestDir(env);
+  const auditFile = env.ENG_MCP_MANIFEST_AUDIT || join(dirname(dir), 'audit', 'manifests.jsonl');
+  return (command, cwd) => {
+    const loaded = mm.loadActiveManifests(dir, Date.now(), env.JUDGE_HOOK_MISSION || undefined);
+    const match = mm.matchManifests(command, cwd, loaded.active);
+    if (match) {
+      try {
+        mkdirSync(dirname(auditFile), { recursive: true });
+        appendFileSync(auditFile, JSON.stringify({ at: new Date().toISOString(), tool: 'judge-hook', event: 'match', manifest: match.mission, patternId: match.patternId, hash16: match.hash16, commandSha16: mm.sha16(command), session: base.session }) + '\n');
+      } catch {
+        /* audit failure never widens the decision */
+      }
+    }
+    return match;
+  };
+}
 
 let emitted = false;
 function emit(out) {
@@ -147,7 +184,8 @@ async function main() {
     if (!result.ok) failures.push({ tool, error: short(result.error) });
     return result;
   };
-  const gate = mod.buildJudgeGate({ unattended: false, token, serverUrl, judgeClient, env });
+  const manifestCheck = event === 'PreToolUse' ? await buildManifestCheck(env, base) : undefined;
+  const gate = mod.buildJudgeGate({ unattended: false, token, serverUrl, judgeClient, env, manifestCheck });
   if (!gate) return emit({});
 
   const toolUseID = typeof input.tool_use_id === 'string' ? input.tool_use_id : undefined;
