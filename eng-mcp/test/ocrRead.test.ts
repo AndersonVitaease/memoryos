@@ -9,7 +9,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
-import { mkdtemp, mkdir, rm, symlink, truncate, writeFile, copyFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, symlink, truncate, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
@@ -19,7 +19,9 @@ import { buildErrorEnvelope } from "../src/errorEnvelope.ts";
 import { EngineeringError } from "../src/policy.ts";
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "ocr");
-const fixture = (name: string) => readFileSync(path.join(FIXTURES, name));
+// Fixtures are stored as base64 text (<name>.b64): the release runner's whitespace check
+// reads every tracked file as UTF-8, so raw binaries could trip it.
+const fixture = (name: string) => Buffer.from(readFileSync(path.join(FIXTURES, `${name}.b64`), "utf8"), "base64");
 const SECRET_TEXT = "SEGREDO-OCR-7f3a9 conteudo extraido";
 
 async function sandbox() {
@@ -102,7 +104,7 @@ test("success via path and base64: shape, staged temp destroyed, audit metadata-
   const record: { staged?: string } = {};
   const deps = { inboxRoot: s.inbox, auditFile: s.auditFile, runEngine: fakeRunner(record), subject: "ocr-probe" };
   try {
-    await copyFile(path.join(FIXTURES, "clean.png"), path.join(s.inbox, "clean.png"));
+    await writeFile(path.join(s.inbox, "clean.png"), fixture("clean.png"));
     const viaPath = await runOcrRead({ path: `${s.inbox}/clean.png` }, deps);
     assert.equal(viaPath.status, "OK");
     assert.equal(viaPath.text, SECRET_TEXT, "text goes to the caller");
@@ -187,7 +189,7 @@ const realTest = (name: string, fn: () => Promise<void>) => test(name, { timeout
 realTest("REAL engine: png screenshot keywords, deterministic across runs", async () => {
   const s = await sandbox();
   try {
-    await copyFile(path.join(FIXTURES, "clean.png"), path.join(s.inbox, "clean.png"));
+    await writeFile(path.join(s.inbox, "clean.png"), fixture("clean.png"));
     const deps = { inboxRoot: s.inbox, auditFile: s.auditFile, subject: "ocr-real" };
     const first = await runOcrRead({ path: `${s.inbox}/clean.png` }, deps);
     const second = await runOcrRead({ path: `${s.inbox}/clean.png` }, deps);

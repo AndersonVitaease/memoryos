@@ -67,7 +67,7 @@ test("OCR-01 live: a fresh REAL run parses and reproduces the golden (determinis
     t.skip("OCR engine not installed on this host (runs inside the release container)");
     return;
   }
-  const bytes = readFileSync(join(testDir, "fixtures", "ocr", "clean.png"));
+  const bytes = Buffer.from(readFileSync(join(testDir, "fixtures", "ocr", "clean.png.b64"), "utf8"), "base64");
   const fresh = await runOcrRead({ base64: bytes.toString("base64") }, { auditFile: null });
   const parsed = ocrReadResultSchema.safeParse(fresh);
   assert.equal(parsed.success, true, JSON.stringify(parsed.error?.issues ?? []));
