@@ -177,7 +177,8 @@ export interface JudgeGate {
 const TRIVIAL_FIRST_TOKENS = new Set([
   'ls', 'cat', 'head', 'tail', 'grep', 'rg', 'find', 'pwd', 'whoami', 'hostname',
   'uname', 'date', 'wc', 'diff', 'stat', 'file', 'du', 'df', 'ps', 'id', 'free',
-  'tree', 'less',
+  'tree', 'less', 'echo', 'uptime', 'nproc', 'which', 'md5sum', 'sha256sum',
+  'realpath', 'readlink', 'basename', 'dirname',
 ]);
 
 const TRIVIAL_GIT_SUBCOMMANDS = new Set(['status', 'log', 'diff', 'show', 'branch', 'remote', 'rev-parse', 'config']);
@@ -219,16 +220,44 @@ export function isTrivialCommand(command: string): boolean {
   if (cmd.length === 0 || cmd.includes('\n')) return false;
   if (UNSAFE_METACHARS.test(cmd)) return false;
   if (TRIVIAL_EXACT_COMMANDS.has(cmd)) return true;
-  const first = cmd.split(/\s+/)[0];
+  const tokens = cmd.split(/\s+/);
+  const first = tokens[0];
   if (first.startsWith('./') || first.startsWith('/') || first.includes('=')) return false;
   if (TRIVIAL_FIRST_TOKENS.has(first)) return true;
   if (first === 'git' || first === 'docker') {
-    const sub = cmd.split(/\s+/)[1];
+    let i = 1;
+    // git -C <path> <sub>: skip global -C path pairs before the subcommand.
+    if (first === 'git') {
+      while (tokens[i] === '-C' && i + 2 < tokens.length) i += 2;
+    }
+    const sub = tokens[i];
     if (!sub) return false;
     if (first === 'git') return TRIVIAL_GIT_SUBCOMMANDS.has(sub);
     return TRIVIAL_DOCKER_SUBCOMMANDS.has(sub);
   }
   return false;
+}
+
+/**
+ * Band 1 for COMPOUND commands (pendência #8 / AUTO-RUN-01B): a chain joined by
+ * `&&`, `;` or `||` is trivial iff EVERY segment is independently trivial and
+ * denylist-free. Segments keep the deterministic property: no LLM, no judgment.
+ * Anything carrying `<`/`>`/backtick/`$` (redirection/substitution) is rejected
+ * outright — segments cannot be trusted around those.
+ */
+export function isTrivialCompound(command: string): boolean {
+  const cmd = command.trim();
+  if (cmd.length === 0 || cmd.includes('\n')) return false;
+  // Neutralize the only redirects a read-only chain may carry: sink-to-void
+  // (2>&1, >/dev/null, 2>/dev/null, >>/dev/null). Anything else with <, >,
+  // backtick or $ is rejected outright — segments cannot be trusted around them.
+  const stripped = cmd
+    .replace(/2>&1/g, ' ')
+    .replace(/2?\s*>>?\s*\/dev\/null/g, ' ');
+  if (/[<>`$]/.test(stripped)) return false;
+  const segments = stripped.split(/[;&|]+/).map((s) => s.trim()).filter((s) => s.length > 0);
+  if (segments.length < 2) return false;
+  return segments.every((seg) => matchDenylist(seg) === null && isTrivialCommand(seg));
 }
 
 /** Band 3 classifier: returns the matched denylist label, or null. */
@@ -507,7 +536,9 @@ export function buildJudgeGate(config: JudgeGateConfig = {}): JudgeGate | null {
       }
 
       // Band 1 — deterministic read-only allowlist. ZERO judge calls.
-      if (isTrivialCommand(command)) {
+      // Compound chains (&&, ;, ||) qualify iff every segment is independently
+      // trivial and denylist-free (isTrivialCompound — pendência #8).
+      if (isTrivialCommand(command) || isTrivialCompound(command)) {
         pushEvidence(`judge_gate:band1:${shortHash(command)}`, JSON.stringify({ command: redactText0(command, 120), route: 'allow' }));
         return {
           hookSpecificOutput: {
