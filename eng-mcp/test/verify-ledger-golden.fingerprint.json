@@ -1,0 +1,9 @@
+{
+  "missionId": "VERIFY-01",
+  "head": "7bc5390f360e8a352b7d8a7ca4f5c38d50d974c7",
+  "registrySha16": "2655b039037d4013",
+  "suite": "PASS",
+  "deploy": "n/a",
+  "verdicts": { "aggregate": "ALL_SUPPORTED", "supported": 6, "total": 6 },
+  "ts": "2026-09-24T21:30:00.000Z"
+}
