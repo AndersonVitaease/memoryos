@@ -112,7 +112,10 @@ describe('JUDGE-HOOKS-01 gate: band classification', () => {
     assert.ok(gate);
     const out = await gate.handlers.preToolUse(bashInput('ls /tmp/judge-hooks-e2e'), 'tu-1');
     assert.equal(decisionOf(out), 'allow');
-    assert.match(reasonOf(out) ?? '', /BAND1_TRIVIAL_READ_ONLY/);
+    // HOOKS-CALIBRATION-01: the calibrated allowlist fires FIRST and answers
+    // with the rule that matched (auditable).
+    assert.match(reasonOf(out) ?? '', /BAND1_ALLOWLIST_MATCH: rule=readonly-inspect/);
+    assert.match(reasonOf(out) ?? '', /band1-allowlist-v1/);
     assert.equal(calls.length, 0); // zero judge calls for band 1 — the core guarantee
     assert.ok(sink.some((e) => e.key.startsWith('judge_gate:band1:')));
   });
