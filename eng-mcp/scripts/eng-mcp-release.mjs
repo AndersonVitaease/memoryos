@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { access, mkdir, readFile, readdir, rm, stat, symlink, writeFile, rename } from "node:fs/promises";
+import { access, appendFile, mkdir, readFile, readdir, rm, stat, symlink, writeFile, rename } from "node:fs/promises";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -878,7 +878,70 @@ async function rollbackAction(config) {
   await saveState(config, next); return next;
 }
 
-async function deployAction(config) {
+// SHIP-LOCK-01 camada 2 (runner-side, intencionalmente independente de
+// src/shipLock.ts): o deploy recusa enquanto existir ship-phase lock no caminho
+// de produção. SOMENTE o marker armed do próprio gate (lock escrito pela tool
+// engineering.release.pipeline via gate) passa. Qualquer outra presença — ativa
+// sem marker, expirada, ilegível — recusa nomeando holder + revoke path.
+// Presença NUNCA permite: expiração nunca auto-libera. Audit metadata-only
+// JSONL, fail-soft.
+export const SHIP_LOCK_FILE_DEFAULT = "/opt/eng-mcp-release-data/production/ship.lock";
+
+function shipLockSha16(text) {
+  return createHash("sha256").update(text, "utf8").digest("hex").slice(0, 16);
+}
+
+async function shipLockAudit(entry) {
+  try {
+    await appendFile(process.env.ENG_MCP_SHIP_LOCK_AUDIT_FILE ?? "/data/audit/ship-lock.jsonl", `${JSON.stringify({ at: new Date().toISOString(), ...entry })}\n`, "utf8");
+  } catch {
+    // fail-soft: problemas de audit nunca gateiam ou desgateiam um ship
+  }
+}
+
+export async function classifyShipLock(lockPath, nowMs = Date.now()) {
+  let raw;
+  try {
+    raw = await readFile(lockPath, "utf8");
+  } catch {
+    return { present: false, status: "absent", record: null, rawSha16: null };
+  }
+  const rawSha16 = shipLockSha16(raw);
+  let record = null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) record = parsed;
+  } catch {
+    record = null;
+  }
+  if (!record) return { present: true, status: "unreadable", record: null, rawSha16 };
+  const expiresAt = Date.parse(String(record.expiresAt ?? ""));
+  if (!Number.isFinite(expiresAt) || expiresAt <= nowMs) return { present: true, status: "expired", record, rawSha16 };
+  return { present: true, status: "active", record, rawSha16 };
+}
+
+export async function assertNoShipLock({ lockPath = process.env.ENG_MCP_SHIP_LOCK_FILE ?? SHIP_LOCK_FILE_DEFAULT } = {}) {
+  const view = await classifyShipLock(lockPath);
+  if (!view.present) return { present: false, status: "absent", record: null, rawSha16: null };
+  if (view.status === "active" && view.record?.pipelineArmed === true) return view;
+  const revoke = `operator revoke path: rm ${lockPath}`;
+  const holder = String(view.record?.holder ?? "unknown");
+  if (view.status === "expired") {
+    await shipLockAudit({ event: "refuse", tool: "deploy", reason: "SHIP_LOCK_EXPIRED", holderHash16: shipLockSha16(String(view.record?.holder ?? "unknown")) });
+    throw new Error(`SHIP_LOCK_EXPIRED: ship lock at ${lockPath} held by holder=${holder} is expired; presence never grants and expiry never auto-releases; ${revoke}`);
+  }
+  if (view.status === "unreadable") {
+    await shipLockAudit({ event: "refuse", tool: "deploy", reason: "SHIP_LOCK_UNREADABLE", holderHash16: null });
+    throw new Error(`SHIP_LOCK_UNREADABLE: ship lock at ${lockPath} is not a valid lock record; presence never grants; ${revoke}`);
+  }
+  await shipLockAudit({ event: "refuse", tool: "deploy", reason: "SHIP_LOCK_ACTIVE", holderHash16: shipLockSha16(String(view.record?.holder ?? "unknown")) });
+  const acquiredAt = Date.parse(String(view.record?.acquiredAt ?? ""));
+  const ageMs = Number.isFinite(acquiredAt) ? Math.max(0, Date.now() - acquiredAt) : 0;
+  throw new Error(`SHIP_LOCK_ACTIVE: ship lock at ${lockPath} held by holder=${holder} mission=${view.record?.mission ?? null} ageMs=${ageMs}; one ship at a time; ${revoke}`);
+}
+
+export async function deployAction(config) {
+  await assertNoShipLock(); // SHIP-LOCK-01 camada 2: PRIMEIRA ação — recusa enquanto existir ship lock
   smokeTelemetrySink = null;
   let state = await loadState(config);
   let sourceHash;

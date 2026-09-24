@@ -11,6 +11,8 @@ import { handleAuthSessionRequest } from "./authSession.ts";
 import { handleDeployRequest } from "./deployEntry.ts";
 import { createMcpClientCallTransport, DOKPLOY_SERVER_ID_DEFAULT, DEFAULT_MEMORY_ENDPOINT } from "./vpsChangeSafe.ts";
 import { ensureProxySecret, handleMcpProxyRequest } from "./memoryProxy.ts";
+// SHIP-LOCK-01: layer 1 — deterministic ship-phase lock gate (fail-safe, tier-1 refusals only).
+import { shipPhaseGatedServer } from "./shipLock.ts";
 
 export type EngineeringServerOptions = { repositoryId: string; configuredRoot: string; tokenRegistry: TokenRecord[] };
 
@@ -46,7 +48,10 @@ export async function createEngineeringHttpServer(options: EngineeringServerOpti
   const buildMcpHandler = (subject: AuthenticatedSubject) =>
     createMcpHandler(() => {
       const mcp = new McpServer(ENGINEERING_SERVER_INFO);
-      registerEngineeringTools(mcp, repository, subject, options.repositoryId);
+      // SHIP-LOCK-01: a gate de ship-phase envolve as tools de ship (tier-1:
+      // recusa enquanto outro ship segura o lock; presença nunca permite).
+      const gated = shipPhaseGatedServer(mcp, subject);
+      registerEngineeringTools(gated, repository, subject, options.repositoryId);
       installToolAliasCompatibility(mcp.server);
       // ERROR-01: envelope canônico de erro em TODAS as tools (choke point tools/call).
       installErrorEnvelopeCompatibility(mcp.server);
