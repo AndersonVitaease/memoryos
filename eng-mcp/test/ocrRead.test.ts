@@ -271,7 +271,14 @@ realTest("REAL engine: ocr-pre-v3 gate — low-confidence OSD never applies a bl
   assert.ok(pre.text.includes("Hermes"), "text is readable (not mirrored)");
   assert.ok(!pre.text.includes("sawuaH"), "the mirrored artifact is gone");
   assert.ok((pre.pages[0]?.meanConfidence ?? 0) >= 75, `meanConfidence ${pre.pages[0]?.meanConfidence} >= 75`);
-  assert.ok(pre.pages[0]?.steps.includes("best_of_4"), `steps: ${pre.pages[0]?.steps.join(",")}`);
+  // Marker contract: measurement always appends a best_of_4* step — "best_of_4" when a
+  // rotation wins, "best_of_4_kept_0" when the 0° baseline won (the exact anti-incident
+  // outcome here; pinned by ocr-read-result.golden test). Version-robust: pin that the
+  // MEASUREMENT happened, not which orientation won.
+  assert.ok(
+    pre.pages[0]?.steps.some((s) => s.startsWith("best_of_4")),
+    `steps: ${pre.pages[0]?.steps.join(",")}`,
+  );
 });
 
 realTest("REAL engine: ocr-pre-v3 gate picks the best measured rotation (rot90)", async () => {
