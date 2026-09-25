@@ -22,12 +22,12 @@ import subprocess
 import sys
 import tempfile
 
-PREPROCESS_VERSION = "ocr-pre-v2"  # v2: deskew is kept only when it does not lower the page mean confidence
+PREPROCESS_VERSION = "ocr-pre-v3"  # v3: deskew AND rotation are kept only when they do not lower the page mean confidence
 LANGS = "por+eng"
 TESSERACT_ARGS = ["--oem", "1", "--psm", "3", "-c", "preserve_interword_spaces=1"]
 PDF_DPI = 300
 PAGE_TIMEOUT_S = 90
-OSD_MIN_CONFIDENCE = 2.0
+OSD_MIN_CONFIDENCE = 8.0  # below this the OSD rotation is a guess — best_of_4 decides by measurement
 UPSCALE_BELOW_PX = 1600
 NLM_MAX_PIXELS = 3_000_000  # NLM protects fine UI text; above this (300dpi pages, photos) median3 is ~instant
 MAX_SIDE_PX = 5000
@@ -123,7 +123,7 @@ def render_pdf(path, max_pages, workdir):
     return pages, total
 
 
-# ---------- preprocessing (ocr-pre-v2, fixed order; deskew guard in ocr_page) ----------
+# ---------- preprocessing (ocr-pre-v3, fixed order; rotation fallback + deskew guard in ocr_page) ----------
 
 def to_gray(img):
     rgb = img.convert("RGB")
@@ -213,6 +213,10 @@ def preprocess(gray, workdir):
         gray = rotate_bound(gray, -float(rotation), 255)
         applied_rotation = rotation
         steps.append("rotate")
+    elif source != "osd" or confidence is None or confidence < OSD_MIN_CONFIDENCE:
+        # ocr-pre-v3: a low-confidence (or unavailable) OSD never applies a blind
+        # rotation — ocr_page measures the discrete orientations and keeps the best.
+        source = "best_of_4"
     skew = estimate_skew(gray)
     orientation = {"rotationApplied": applied_rotation, "osdRotation": rotation, "osdConfidence": confidence, "source": source}
     return gray, scale, orientation, skew, steps
@@ -331,8 +335,25 @@ def ocr_page(img, index, do_preprocess, granularity, workdir):
             orientation = {"rotationApplied": 0, "osdRotation": None, "osdConfidence": None, "source": "disabled"}
             skew, steps = 0.0, (["downscale"] if scale != 1.0 else [])
         text, blocks, mean_conf, word_count = parse_tsv(tesseract_tsv(processed, page_dir), granularity, scale)
+        if orientation["source"] == "best_of_4":
+            # ocr-pre-v3 best_of_4 (the 0° run above is the baseline candidate):
+            # measure the 3 remaining discrete orientations and keep the page with
+            # the highest mean confidence. Strict-greater keeps 0° on ties; a page
+            # with no words at any orientation stays at 0° — never crashes, and the
+            # result is never worse than the unrotated baseline by construction.
+            best = (text, blocks, mean_conf, word_count)
+            for deg in (90, 180, 270):
+                candidate = rotate_bound(processed, -float(deg), 255)
+                c_text, c_blocks, c_conf, c_count = parse_tsv(tesseract_tsv(candidate, page_dir), granularity, scale)
+                if c_conf is not None and (best[2] is None or c_conf > best[2]):
+                    processed, best = candidate, (c_text, c_blocks, c_conf, c_count)
+                    orientation = {**orientation, "rotationApplied": deg}
+            text, blocks, mean_conf, word_count = best
+            steps.append("best_of_4" if orientation["rotationApplied"] else "best_of_4_kept_0")
+            if orientation["rotationApplied"]:
+                skew = estimate_skew(processed)  # skew of the unrotated image is invalid after rotation
         if skew != 0.0:
-            # ocr-pre-v2 guard: projection-profile skew over-rotates perspective-distorted photos
+            # ocr-pre-v2 guard (kept in v3): projection-profile skew over-rotates perspective-distorted photos
             # (page border / scrollbars bias the profile). Keep the deskew only if the page
             # mean confidence does not drop; ties keep the deskew. Deterministic, one extra pass.
             deskewed = rotate_bound(processed, skew, 255)

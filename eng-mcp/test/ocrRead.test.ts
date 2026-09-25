@@ -37,7 +37,7 @@ function fakeRunner(record: { staged?: string } = {}): OcrEngineRunner {
     assert.ok(existsSync(request.input), "the staged input exists while the engine runs");
     return {
       ok: true,
-      engine: { tesseract: "tesseract 5.3.0", preprocess: "ocr-pre-v2", oem: 1, psm: 3, pdfDpi: null },
+      engine: { tesseract: "tesseract 5.3.0", preprocess: "ocr-pre-v3", oem: 1, psm: 3, pdfDpi: null },
       lang: "por+eng",
       format: request.format,
       sourcePageCount: 1,
@@ -195,7 +195,7 @@ realTest("REAL engine: png screenshot keywords, deterministic across runs", asyn
     const second = await runOcrRead({ path: `${s.inbox}/clean.png` }, deps);
     for (const keyword of ["Painel", "MemoryOS", "HEALTHY", "Deploys", "812", "v108", "aprovada"]) assert.ok(first.text.includes(keyword), `keyword ${keyword}`);
     assert.equal(first.lang, "por+eng");
-    assert.equal(first.engine.preprocess, "ocr-pre-v2");
+    assert.equal(first.engine.preprocess, "ocr-pre-v3");
     assert.deepEqual({ ...first, durationMs: 0 }, { ...second, durationMs: 0 }, "idempotent + deterministic");
     assert.ok(first.blocks.every((block) => block.confidence > 50 && block.bbox.width > 0));
   } finally { await rm(s.dir, { recursive: true, force: true }); }
@@ -225,7 +225,7 @@ realTest("REAL engine: preprocessing beats raw on rotated and skewed inputs", as
   assert.ok(skewPre.pages[0]?.steps.includes("deskew"));
 });
 
-realTest("REAL engine: ocr-pre-v2 deskew guard — a perspective photo is never made worse than raw", async () => {
+realTest("REAL engine: ocr-pre-v3 deskew guard — a perspective photo is never made worse than raw", async () => {
   // Acceptance regression (OCR-01 E2E c): on this phone-photo simulation the projection
   // profile estimates -4.5 deg (true tilt ~3 deg + perspective); v1 applied it and fell
   // below raw. v2 keeps the deskew only when page mean confidence does not drop.
@@ -236,8 +236,12 @@ realTest("REAL engine: ocr-pre-v2 deskew guard — a perspective photo is never 
   assert.ok((pre.pages[0]?.meanConfidence ?? 0) > (raw.pages[0]?.meanConfidence ?? 0), "preprocessing beats raw confidence");
   for (const keyword of ["Pesquisar", "Programas", "Início", "História", "Aparência"]) {
     assert.ok(pre.text.includes(keyword), `keyword ${keyword} recovered by preprocessing`);
-    assert.ok(!raw.text.includes(keyword), `keyword ${keyword} is missed by raw (fixture still discriminates)`);
   }
+  // Fixture-discrimination precondition, tolerant to tesseract version variance:
+  // raw OCR must MISS at least one keyword (tesseract 5.3.4 happens to find "Pesquisar",
+  // the release container's 5.3.0 misses it — the raw baseline is still clearly degraded).
+  const missedByRaw = ["Pesquisar", "Programas", "Início", "História", "Aparência"].filter((k) => !raw.text.includes(k));
+  assert.ok(missedByRaw.length >= 1, `fixture no longer discriminates: raw finds all keywords (missed: ${missedByRaw.join(",")})`);
 });
 
 realTest("REAL engine: corrupt image -> OCR_ENGINE_FAILED; missing path -> PATH_NOT_FOUND", async () => {
@@ -248,4 +252,41 @@ realTest("REAL engine: corrupt image -> OCR_ENGINE_FAILED; missing path -> PATH_
     assert.match(corrupt.message, /reason: decode_failed/);
     assert.equal((await codeOf(runOcrRead({ path: `${s.inbox}/nope.png` }, { inboxRoot: s.inbox, auditFile: null }))).code, "PATH_NOT_FOUND");
   } finally { await rm(s.dir, { recursive: true, force: true }); }
+});
+
+// ---------------- ocr-pre-v3 rotation gate (OCR-BRIDGE-FIX-01 fix b) ----------------
+// Contract: a low-confidence OSD never applies a blind 180°. Below OSD_MIN_CONFIDENCE (8.0)
+// the engine MEASURES 0/90/180/270 and keeps the highest-mean-confidence orientation
+// (source "best_of_4"), never worse than the 0° baseline. Thresholds, not exact values:
+// tesseract 5.3.4 (host) and 5.3.0 (container) differ slightly in scores.
+
+realTest("REAL engine: ocr-pre-v3 gate — low-confidence OSD never applies a blind 180° (specimen)", async () => {
+  // The real incident: v2 OSD "detected" 180° at confidence 5.37 and applied it anyway,
+  // mirroring the text ("sawuaH" = "Hermes" mirrored). v3 must measure instead.
+  const pre = await runOcrRead({ base64: fixture("specimen.png").toString("base64") }, { auditFile: null });
+  const orientation = pre.pages[0]?.orientation ?? pre.orientation;
+  assert.equal(orientation.source, "best_of_4");
+  assert.ok((orientation.osdConfidence ?? 0) < 8, `osd confidence ${orientation.osdConfidence} is below the gate`);
+  assert.notEqual(orientation.rotationApplied, 180, "a blind 180° is never applied on weak OSD");
+  assert.ok(pre.text.includes("Hermes"), "text is readable (not mirrored)");
+  assert.ok(!pre.text.includes("sawuaH"), "the mirrored artifact is gone");
+  assert.ok((pre.pages[0]?.meanConfidence ?? 0) >= 75, `meanConfidence ${pre.pages[0]?.meanConfidence} >= 75`);
+  assert.ok(pre.pages[0]?.steps.includes("best_of_4"), `steps: ${pre.pages[0]?.steps.join(",")}`);
+});
+
+realTest("REAL engine: ocr-pre-v3 gate picks the best measured rotation (rot90)", async () => {
+  // A 90°-rotated synthetic: OSD is unreliable here too, so the gate measures and 90° wins.
+  const pre = await runOcrRead({ base64: fixture("rot90.png").toString("base64") }, { auditFile: null });
+  const orientation = pre.pages[0]?.orientation ?? pre.orientation;
+  assert.equal(orientation.rotationApplied, 90);
+  assert.ok(pre.text.includes("MemoryOS"), "measured rotation recovers the keyword");
+});
+
+realTest("REAL engine: ocr-pre-v3 gate — text-free image keeps 0° without crashing", async () => {
+  const pre = await runOcrRead({ base64: fixture("blank.png").toString("base64") }, { auditFile: null });
+  const page = pre.pages[0];
+  assert.equal(page?.orientation.rotationApplied, 0, "no words -> baseline orientation");
+  assert.ok(page?.steps.includes("best_of_4_kept_0"), `steps: ${page?.steps.join(",")}`);
+  assert.equal(page?.wordCount, 0);
+  assert.equal(page?.meanConfidence, null);
 });

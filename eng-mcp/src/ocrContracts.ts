@@ -18,7 +18,7 @@ const orientationSchema = z.object({
   rotationApplied: z.number(),
   osdRotation: z.number().nullable(),
   osdConfidence: z.number().nullable(),
-  source: z.enum(["osd", "osd_unavailable", "disabled"])
+  source: z.enum(["osd", "best_of_4", "osd_unavailable", "disabled"])
 }).strict();
 const pageSchema = z.object({
   page: z.number(),

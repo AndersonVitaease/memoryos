@@ -71,5 +71,11 @@ test("OCR-01 live: a fresh REAL run parses and reproduces the golden (determinis
   const fresh = await runOcrRead({ base64: bytes.toString("base64") }, { auditFile: null });
   const parsed = ocrReadResultSchema.safeParse(fresh);
   assert.equal(parsed.success, true, JSON.stringify(parsed.error?.issues ?? []));
-  assert.deepEqual({ ...fresh, durationMs: 0 }, { ...envelope, durationMs: 0 });
+  // durationMs and the engine's tesseract version string are environmental, not part of
+  // the contract (golden may be recorded on a different tesseract minor than the run).
+  const strip = (e: Record<string, any>) => {
+    const { durationMs: _d, ...rest } = e as Record<string, any>;
+    return { ...rest, engine: { ...rest.engine, tesseract: "tesseract" } };
+  };
+  assert.deepEqual(strip(fresh as Record<string, any>), strip(envelope));
 });

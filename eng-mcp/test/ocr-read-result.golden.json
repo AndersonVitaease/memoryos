@@ -1,7 +1,7 @@
 {
   "_provenance": {
-    "recordedAt": "2026-09-24T16:50:39.711Z",
-    "source": "REAL runOcrRead inside the OCR-01 release-recipe container image (node:24.19.0-bookworm + apt tesseract/poppler + /opt/ocr-venv)",
+    "recordedAt": "2026-09-24T22:56:43.484Z",
+    "source": "REAL runOcrRead on the ocr-bridge-fix-01 worktree host (tesseract 5.3.4 + /opt/ocr-venv); container runs 5.3.0 — live determinism test masks engine.tesseract",
     "imageId": "sha256:4f62ed64816c19c2e2d4c9a1161d1a6003d9170da9dea8ffa20d2bdf8a4b0deb",
     "input": "test/fixtures/ocr/clean.png via base64",
     "note": "bytes emitted by the real engine, unedited"
@@ -39,7 +39,7 @@
       "rotationApplied": 0,
       "osdRotation": 0,
       "osdConfidence": 4.89,
-      "source": "osd"
+      "source": "best_of_4"
     },
     "pages": [
       {
@@ -71,7 +71,7 @@
           "rotationApplied": 0,
           "osdRotation": 0,
           "osdConfidence": 4.89,
-          "source": "osd"
+          "source": "best_of_4"
         },
         "skewDeg": 0,
         "meanConfidence": 94.04,
@@ -79,7 +79,8 @@
         "steps": [
           "denoise_nlm",
           "clahe",
-          "upscale"
+          "upscale",
+          "best_of_4_kept_0"
         ],
         "frame": {
           "width": 1000,
@@ -94,8 +95,8 @@
     "granularity": "block",
     "preprocess": true,
     "engine": {
-      "tesseract": "tesseract 5.3.0",
-      "preprocess": "ocr-pre-v2",
+      "tesseract": "tesseract 5.3.4",
+      "preprocess": "ocr-pre-v3",
       "oem": 1,
       "psm": 3,
       "pdfDpi": null
@@ -106,6 +107,6 @@
       "sha16": "36d43ae63dc4e26e"
     },
     "chars": 136,
-    "durationMs": 1280
+    "durationMs": 2476
   }
 }
