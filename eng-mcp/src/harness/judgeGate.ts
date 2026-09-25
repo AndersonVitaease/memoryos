@@ -22,6 +22,17 @@
  *     auto-executed. The judge may attach explanation context ONLY — its
  *     answer never enters the decision path.
  *
+ * HOOKS-CALIBRATION-01: band 1 is a versioned deterministic ALLOWLIST
+ * (ALLOWLIST_VERSION) — a match answers BAND1_ALLOWLIST_MATCH with the rule
+ * that fired (git read inventory, local-reversible writes, read-only output
+ * redirected to /tmp, name-only `env | cut` pipelines, compound chains of
+ * inert segments). The Stop hook NEVER blocks a message whose close asks the
+ * operator a question (awaitsOperatorInput — the false-positive fixed by the
+ * 2026-09-24 calibration). Band 2 auto-threshold drops to
+ * JUDGE_BAND2_READ_ONLY_FLOOR (0.6) for commands whose deterministic
+ * classification is already read-only (isReadOnlyIndicative). Tier-3
+ * governance (denylist → operator) is untouched by any of this.
+ *
  * REGRA INVIOLÁVEL (also stated in CLAUDE.md): the judge NEVER approves a
  * consequence. It triages, explains and accelerates. Texto adversário pode
  * argumentar pela própria aprovação — NOT A SECURITY BOUNDARY: no band-3
@@ -213,11 +224,18 @@ const DENYLIST_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /\bnpm\b\s+(publish|unpublish)/, label: 'registry-publish' },
   { pattern: /\bssh\b|\bscp\b|\brsync\b/, label: 'remote-execution-or-transfer' },
   { pattern: /\b>\b|>>|<\(/, label: 'shell-redirection-or-substitution' },
-  { pattern: /\/data\/credentials\/|\/run\/secrets\/|tokens\.json|openrouter|api[_-]?key|authorization:\s*bearer|\.ssh\/|id_rsa|\.env\b/, label: 'credential-access' },
+  // HOOKS-CALIBRATION-01: `*.token.json` added to the credential denylist —
+  // the repo carries credential FILES named `src/auth-session.token.json` /
+  // `src/imageEdit.token.json`, and the plural-only `tokens.json` pattern let
+  // `cat src/auth-session.token.json > /tmp/dump.txt` classify as band-1.
+  { pattern: /\/data\/credentials\/|\/run\/secrets\/|tokens\.json|\.token\.json|openrouter|api[_-]?key|authorization:\s*bearer|\.ssh\/|id_rsa|\.env\b/, label: 'credential-access' },
 ];
 
 /** Shell metacharacters that make a first-token allowlist match unsafe for band 1. */
 const UNSAFE_METACHARS = /[;|&<>`$]/;
+
+/** HOOKS-CALIBRATION-01: `find` flags that mutate or execute — a `find` carrying one is never band-1 eligible (security fix: `find . -name x -delete` used to pass as trivial). */
+const FIND_UNSAFE_FLAGS = new Set(['-delete', '-exec', '-execdir', '-ok', '-okdir', '-fprintf', '-fprint', '-fprint0', '-fls']);
 
 /** Band 1: deterministic read-only allowlist, zero judge calls by construction. */
 export function isTrivialCommand(command: string): boolean {
@@ -228,7 +246,10 @@ export function isTrivialCommand(command: string): boolean {
   const tokens = cmd.split(/\s+/);
   const first = tokens[0];
   if (first.startsWith('./') || first.startsWith('/') || first.includes('=')) return false;
-  if (TRIVIAL_FIRST_TOKENS.has(first)) return true;
+  if (TRIVIAL_FIRST_TOKENS.has(first)) {
+    if (first === 'find' && tokens.some((t) => FIND_UNSAFE_FLAGS.has(t))) return false;
+    return true;
+  }
   if (first === 'git' || first === 'docker') {
     let i = 1;
     // git -C <path> <sub>: skip global -C path pairs before the subcommand.
@@ -272,6 +293,209 @@ export function matchDenylist(command: string): string | null {
     if (pattern.test(cmd)) return label;
   }
   return null;
+}
+
+/* ------------------------------------------------------------------ */
+/* HOOKS-CALIBRATION-01 — versioned deterministic band-1 allowlist,    */
+/* stop-question check and band-2 read-only floor. Zero LLM: every     */
+/* decision here is pure code, versioned and contract-tested.         */
+/* ------------------------------------------------------------------ */
+
+/** Version of the calibrated allowlist — appears in every BAND1_ALLOWLIST_MATCH reason (audit trail). */
+export const ALLOWLIST_VERSION = 'band1-allowlist-v1';
+
+/**
+ * Band-2 auto-execute floor for commands whose DETERMINISTIC classification
+ * is already read-only (isReadOnlyIndicative): they must not land in the
+ * blocking gray zone — only genuinely ambiguous commands reach the operator.
+ */
+export const JUDGE_BAND2_READ_ONLY_FLOOR = 0.6;
+
+/**
+ * Strip the only redirects an inert command may carry: sink to /tmp (output
+ * never returns to the repo) or to /dev/null, plus `2>&1`. Returns the
+ * command with the redirect tokens removed, or null when anything with
+ * `<`/`>`/backtick/`$` remains (untrusted redirection/substitution).
+ */
+function stripTmpRedirects(segment: string): string | null {
+  const s = segment
+    .replace(/\s+2>&1/g, ' ')
+    .replace(/\s*2?\s*>>?\s*\/tmp\/[A-Za-z0-9._/-]+/g, ' ')
+    .replace(/\s*2?\s*>>?\s*\/dev\/null/g, ' ');
+  if (/[<>`$]/.test(s)) return null;
+  const out = s.trim();
+  return out.length > 0 ? out : null;
+}
+
+const READONLY_FIRST_TOKENS = new Set([
+  // pure readers (the legacy TRIVIAL_FIRST_TOKENS set, plus pure filters)
+  'ls', 'cat', 'head', 'tail', 'grep', 'rg', 'pwd', 'whoami', 'hostname',
+  'uname', 'date', 'wc', 'diff', 'stat', 'file', 'du', 'df', 'ps', 'id', 'free',
+  'tree', 'less', 'echo', 'uptime', 'nproc', 'which', 'md5sum', 'sha256sum',
+  'sha1sum', 'sha512sum', 'cksum', 'realpath', 'readlink', 'basename', 'dirname',
+  // pipeline filters (read-only by construction)
+  'sort', 'cut', 'uniq', 'tr', 'tac', 'comm', 'nl', 'column', 'xxd', 'od', 'strings', 'jq',
+  // local-reversible writes
+  'mkdir', 'touch',
+  // guarded readers (find/sort/env have their own guards below)
+  'find',
+]);
+
+const GIT_READ_SUBCOMMANDS = new Set(['status', 'log', 'diff', 'show', 'branch', 'remote', 'rev-parse']);
+const GIT_LOCAL_WRITE_SUBCOMMANDS = new Set(['add', 'commit', 'stash', 'tag', 'config']);
+const DOCKER_READ_SUBCOMMANDS = new Set(['inspect', 'ps', 'logs', 'stats', 'top', 'version']);
+const DOCKER_READ_NESTED = new Set(['image', 'container', 'network', 'volume']);
+
+/** `sort -o <file>` overwrites: the target must be a sink (/tmp or /dev/null). */
+function sortOutputSafe(tokens: string[]): boolean {
+  for (let i = 1; i < tokens.length; i += 1) {
+    if (tokens[i] === '-o' || tokens[i] === '--output') {
+      const target = tokens[i + 1] ?? '';
+      if (!/^\/tmp\//.test(target) && target !== '/dev/null') return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Classify ONE command segment (no pipes, no `;`/`&`) against the calibrated
+ * read-only allowlist. `allowEnvNames` admits bare `env` (name listing) only
+ * as the HEAD of a pipeline that later reduces it to names — a bare `env`
+ * printed to the terminal or written alone is a value dump (gray zone).
+ */
+function classifySegment(segment: string, allowEnvNames: boolean): string | null {
+  const raw = segment.trim();
+  if (raw.length === 0) return null;
+  // env/printenv are EXCLUDED from the /tmp-redirect rule (an env dump could
+  // expose secret values even to /tmp): bare `env` is admitted only for
+  // name-only pipelines; env-with-args and printenv stay in the gray zone.
+  if (/^(env|printenv)\b/.test(raw)) {
+    return raw === 'env' && allowEnvNames ? 'env-names-only' : null;
+  }
+  const stripped = stripTmpRedirects(raw);
+  if (stripped === null) return null;
+  // Ordering guarantee: a matched rule implies a denylist-FREE base, so
+  // `git push > /tmp/x` never reaches band 1 — the base is denylisted and
+  // the original still falls to the band-3 denylist check.
+  if (matchDenylist(stripped) !== null) return null;
+  return classifyReadOnlySingle(stripped);
+}
+
+/** First-token read-only classification of a stripped, denylist-free command. */
+function classifyReadOnlySingle(cmd: string): string | null {
+  const tokens = cmd.split(/\s+/);
+  const first = tokens[0];
+  if (first.startsWith('./') || first.startsWith('/') || first.includes('=')) return null;
+  if (TRIVIAL_EXACT_COMMANDS.has(cmd)) return 'version-query';
+  if (first === 'git' || first === 'docker') {
+    let i = 1;
+    // git -C <path> <sub>: skip global -C path pairs before the subcommand.
+    if (first === 'git') {
+      while (tokens[i] === '-C' && i + 2 < tokens.length) i += 2;
+    }
+    const sub = tokens[i];
+    if (!sub) return null;
+    if (first === 'git') {
+      if (GIT_READ_SUBCOMMANDS.has(sub)) return 'git-read-inventory';
+      if (GIT_LOCAL_WRITE_SUBCOMMANDS.has(sub)) return 'git-local-write';
+      return null;
+    }
+    if (DOCKER_READ_SUBCOMMANDS.has(sub)) return 'docker-read';
+    if (DOCKER_READ_NESTED.has(sub) && ['ls', 'list', 'inspect'].includes(tokens[i + 1] ?? '')) return 'docker-read';
+    return null;
+  }
+  if (!READONLY_FIRST_TOKENS.has(first)) return null;
+  if (first === 'find') {
+    if (tokens.some((t) => FIND_UNSAFE_FLAGS.has(t))) return null;
+    return 'find-read';
+  }
+  if (first === 'sort' && !sortOutputSafe(tokens)) return null;
+  if (first === 'mkdir' || first === 'touch') return 'local-reversible-write';
+  return 'readonly-inspect';
+}
+
+/**
+ * HOOKS-CALIBRATION-01 — calibrated band-1 allowlist. Returns the NAME of the
+ * rule that fired (auditable in BAND1_ALLOWLIST_MATCH) or null when the
+ * command is not provably inert. Pure code: no LLM, no prompt, no judge.
+ */
+export function classifyAllowlist(command: string): string | null {
+  // `2>&1` must be removed BEFORE the compound split: its `&` is not a chain
+  // separator, and splitting on it would leave an orphan segment (`1`) that
+  // never classifies. Safe: the preToolUse denylist check already ran on the
+  // ORIGINAL command, and classifySegment re-checks the denylist per segment.
+  const cmd = command.trim().replace(/\s+2>&1/g, ' ');
+  if (cmd.length === 0 || cmd.includes('\n')) return null;
+  if (TRIVIAL_EXACT_COMMANDS.has(cmd)) return 'version-query';
+  // Compound chains (&&, ;, ||): every segment must classify on its own.
+  if (/[;&]/.test(cmd)) {
+    const segments = cmd.split(/[;&]+/).map((s) => s.trim()).filter((s) => s.length > 0);
+    if (segments.length < 2) return null;
+    for (const seg of segments) {
+      if (classifySegment(seg, false) === null) return null;
+    }
+    return 'compound-allowlist';
+  }
+  // Pipelines (|): every stage must be read-only and denylist-free.
+  if (cmd.includes('|')) {
+    const stages = cmd.split('|').map((s) => s.trim()).filter((s) => s.length > 0);
+    if (stages.length < 2) return null;
+    const rules = stages.map((s, i) => classifySegment(s, i === 0));
+    if (rules.some((r) => r === null)) return null;
+    if (rules.includes('env-names-only')) {
+      // `env` (value dump) only as the HEAD, and only when a later stage
+      // reduces it to NAMES (cut -d… -f1). Anything else is a value dump.
+      if (rules.indexOf('env-names-only') !== 0) return null;
+      const hasNameCut = stages.some((s, i) => i > 0 && /\bcut\b/.test(s) && /-f\s*1\b/.test(s) && /-d/.test(s));
+      if (!hasNameCut) return null;
+    }
+    return 'read-only-pipeline';
+  }
+  return classifySegment(cmd, false);
+}
+
+/** Extra deterministic read-only signals for the band-2 floor (not yet allowlist rules). */
+export function isReadOnlyIndicative(command: string): boolean {
+  const cmd = command.trim();
+  if (cmd.length === 0 || cmd.includes('\n')) return false;
+  if (matchDenylist(cmd) !== null) return false;
+  if (classifyAllowlist(cmd) !== null) return true;
+  const stripped = stripTmpRedirects(cmd);
+  if (stripped === null) return false;
+  if (matchDenylist(stripped) !== null) return false;
+  const tokens = stripped.split(/\s+/);
+  const first = tokens[0];
+  const second = tokens[1] ?? '';
+  if (first === 'npm' && ['ls', 'list', 'outdated', 'view', 'search', 'info', 'audit'].includes(second)) return true;
+  if ((first === 'pip' || first === 'pip3') && ['list', 'show', 'freeze', 'check'].includes(second)) return true;
+  // tar: `-t` may be combined with other short flags (`-tf`, `-tvf`).
+  if (first === 'tar' && (tokens.some((t) => /^-[a-z]*t/.test(t)) || tokens.includes('--list'))) return true;
+  if (first === 'unzip' && (tokens.includes('-l') || tokens.includes('-Z'))) return true;
+  if (first === 'zipinfo') return true;
+  if (first === 'docker' && DOCKER_READ_NESTED.has(second) && ['ls', 'list', 'inspect'].includes(tokens[2] ?? '')) return true;
+  return false;
+}
+
+/** Sentence openers that signal "the operator must answer" (deterministic, word-boundary guarded). */
+const OPERATOR_INPUT_OPENERS: RegExp[] = [
+  // `quer(?! dizer)`: "quer dizer" ("that is / I mean") is a discourse marker,
+  // not a request — without the lookahead it would false-positive.
+  /^(quer(?!\s+dizer)|queres|posso|podemos|pode|poderia|devo|devemos|decida|decide|escolha|prefere|aguardo|aguardando|aprova|autoriza|confirma|confirme)\b/i,
+  /^(do you want|should i|may i|please (decide|approve|confirm)|awaiting|waiting for (your|the))\b/i,
+];
+
+/**
+ * HOOKS-CALIBRATION-01 — true when the message CLOSES with a question or an
+ * explicit request for operator input. Such a close is not a completion
+ * claim: the Stop hook must not block it. Pure regex/structure, no LLM.
+ */
+export function awaitsOperatorInput(message: string): boolean {
+  const text = message.trim();
+  if (text.length === 0) return false;
+  if (text.endsWith('?') || text.endsWith('？')) return true;
+  const sentences = text.split(/(?<=[.!?…])\s+|\n+/).map((s) => s.trim()).filter((s) => s.length > 0);
+  const last = sentences.length > 0 ? sentences[sentences.length - 1] : text;
+  return OPERATOR_INPUT_OPENERS.some((re) => re.test(last));
 }
 
 /* ------------------------------------------------------------------ */
@@ -578,11 +802,28 @@ export function buildJudgeGate(config: JudgeGateConfig = {}): JudgeGate | null {
         }
       }
 
-      // Band 1 — deterministic read-only allowlist. ZERO judge calls.
-      // Compound chains (&&, ;, ||) qualify iff every segment is independently
-      // trivial and denylist-free (isTrivialCompound — pendência #8).
+      // Band 1 — HOOKS-CALIBRATION-01: versioned deterministic ALLOWLIST.
+      // ZERO judge calls. A match answers with the RULE that fired. The
+      // classification internally guarantees a denylist-free base, so this
+      // can never absorb a tier-3 command (`git push > /tmp/x` classifies
+      // null and still falls to the band-3 denylist above).
+      const allowlistRule = classifyAllowlist(command);
+      if (allowlistRule !== null) {
+        pushEvidence(`judge_gate:band1:${shortHash(command)}`, JSON.stringify({ command: redactText0(command, 120), route: 'allow', rule: allowlistRule, version: ALLOWLIST_VERSION }));
+        return {
+          hookSpecificOutput: {
+            hookEventName: 'PreToolUse',
+            permissionDecision: 'allow',
+            permissionDecisionReason: `BAND1_ALLOWLIST_MATCH: rule=${allowlistRule} (version ${ALLOWLIST_VERSION}) — deterministic, no judge call.`,
+          },
+        };
+      }
+
+      // Band 1 (legacy) — kept as a safety net behind the calibrated
+      // allowlist and for the contract consumed by missionPreauth /
+      // missionManifest (isTrivialCommand/isTrivialCompound).
       if (isTrivialCommand(command) || isTrivialCompound(command)) {
-        pushEvidence(`judge_gate:band1:${shortHash(command)}`, JSON.stringify({ command: redactText0(command, 120), route: 'allow' }));
+        pushEvidence(`judge_gate:band1:${shortHash(command)}`, JSON.stringify({ command: redactText0(command, 120), route: 'allow', rule: 'legacy-trivial' }));
         return {
           hookSpecificOutput: {
             hookEventName: 'PreToolUse',
@@ -612,12 +853,22 @@ export function buildJudgeGate(config: JudgeGateConfig = {}): JudgeGate | null {
       }
       const { safeScore, probabilities } = judgeSafeScore(evaluated.data);
       pushEvidence(`judge_gate:band2:${shortHash(command)}`, JSON.stringify({ command: redactText0(command, 120), safeScore: Number(safeScore.toFixed(4)), probabilities }));
-      if (safeScore > JUDGE_AUTO_SAFE_THRESHOLD) {
+      // HOOKS-CALIBRATION-01: a command whose DETERMINISTIC classification is
+      // already read-only must not land in the blocking gray zone — its auto
+      // threshold drops to JUDGE_BAND2_READ_ONLY_FLOOR. Only the genuinely
+      // ambiguous keep the full 0.9 threshold. Tier-3 is untouched (this code
+      // only runs AFTER the denylist returned null).
+      const readOnly = isReadOnlyIndicative(command);
+      const autoThreshold = readOnly ? JUDGE_BAND2_READ_ONLY_FLOOR : JUDGE_AUTO_SAFE_THRESHOLD;
+      if (safeScore > autoThreshold) {
+        const thresholdNote = readOnly
+          ? `read-only floor ${JUDGE_BAND2_READ_ONLY_FLOOR} (deterministic read-only indication)`
+          : `auto threshold ${JUDGE_AUTO_SAFE_THRESHOLD}`;
         return {
           hookSpecificOutput: {
             hookEventName: 'PreToolUse',
             permissionDecision: 'allow',
-            permissionDecisionReason: `BAND2_GRAY_AUTO: judge safeScore ${safeScore.toFixed(3)} > ${JUDGE_AUTO_SAFE_THRESHOLD} — auto-executed with audit.`,
+            permissionDecisionReason: `BAND2_GRAY_AUTO: judge safeScore ${safeScore.toFixed(3)} > ${thresholdNote} — auto-executed with audit.`,
           },
         };
       }
@@ -726,6 +977,10 @@ export function buildJudgeGate(config: JudgeGateConfig = {}): JudgeGate | null {
       if (input.stop_hook_active === true) return {};
       const message = typeof input.last_assistant_message === 'string' ? input.last_assistant_message : '';
       if (!message || !COMPLETION_LIKE.test(message)) return {};
+      // HOOKS-CALIBRATION-01: a message whose CLOSE asks the operator a
+      // question / requests input is not a completion claim — blocking it was
+      // the false positive fixed by this calibration. Zero judge calls here.
+      if (awaitsOperatorInput(message)) return {};
       const claims = completionClaims(message);
       let evidence = config.stopEvidence?.() ?? '';
       const evidenceFile = env.JUDGE_HOOK_STOP_EVIDENCE;
