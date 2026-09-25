@@ -1,1 +1,44 @@
-{}
+{
+  "permissions": {
+    "allow": [
+      "Edit(.claude/**)",
+      "Write(.claude/**)",
+      "Read(.claude/**)"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /opt/memoryos/eng-mcp/.claude/hooks/notify-hook.mjs",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /opt/memoryos/eng-mcp/.claude/hooks/notify-hook.mjs",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /opt/memoryos/eng-mcp/.claude/hooks/notify-hook.mjs",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "_doc": "Subscriber-as-data (ADENDO 1). Adicionar consumidor novo = 1 entrada aqui, zero c\u00f3digo (ver RUNBOOK.md). filters \u00e9 opcional; vazio = recebe tudo.",
+  "subscribers": [
+    {
+      "name": "supervisor",
+      "enabled": true,
+      "channel": "supervisor-session",
+      "target_id": "20260925_012625_73a703",
+      "filters": {}
+    },
+    {
+      "name": "notifybus-test",
+      "enabled": false,
+      "channel": "supervisor-session",
+      "target_id": "notifybus-test-01",
+      "filters": {},
+      "_note": "Sess\u00e3o fantasma para provas P6 (ningu\u00e9m responde l\u00e1). Habilitar s\u00f3 durante testes."
+    }
+  ]
+}

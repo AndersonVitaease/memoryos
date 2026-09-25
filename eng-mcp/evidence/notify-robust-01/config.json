@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "poll_interval_s": 1.0,
+  "notify_max_per_min": 8,
+  "http_timeout_s": 25,
+  "max_attempts": 8,
+  "backoff_s": [
+    1,
+    5,
+    20,
+    60,
+    120,
+    300
+  ],
+  "verify_delays_s": [
+    2,
+    5,
+    10,
+    20
+  ],
+  "ack_check_delay_s": 25,
+  "ack_check_max": 4,
+  "re_alert_after_s": 600,
+  "re_alert_max": 2,
+  "prune_delivered_keep": 500,
+  "event_ttl_s": 86400,
+  "timeout_backoff_s": 180
+}
