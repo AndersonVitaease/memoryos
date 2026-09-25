@@ -96,7 +96,11 @@ export type GenerationRequest = { prompt: string; width?: number; height?: numbe
 export type GenerationResult = { bytes: Buffer; contentType: string; model: string };
 export async function generateWithProvider(credential: ImageCreateCredential, request: GenerationRequest): Promise<GenerationResult> {
   const model = request.model ?? DEFAULT_PROVIDER_MODEL;
-  const url = PROVIDER_RUN_URL.replace("{account}", encodeURIComponent(credential.accountId)).replace("{model}", encodeURIComponent(model));
+  // PHOTOPEA-UX-01/D3b: the model id carries literal slashes ("@cf/black-forest-labs/flux-1-schnell").
+  // encodeURIComponent(model) encodes them as %2F and the Cloudflare router answers
+  // "No route for that URI". Encode each path segment instead — slashes stay literal.
+  const modelPath = model.split("/").map((segment) => encodeURIComponent(segment)).join("/");
+  const url = PROVIDER_RUN_URL.replace("{account}", encodeURIComponent(credential.accountId)).replace("{model}", modelPath);
   const payload: Record<string, unknown> = { prompt: request.prompt, steps: 4 };
   // PHOTOPEA-UX-01/D3: flux-1-schnell on this account rejects width/height in its input
   // schema (error 5006 "Additional or unevaluated properties '/width, /height' not allowed").
