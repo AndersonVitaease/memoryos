@@ -10,8 +10,10 @@
 // png / jpeg / webp / tiff (multi-frame) / pdf (poppler pdftoppm @300dpi).
 // The bytes are copied into a private 0700 temp dir and handed to the Python
 // worker (src/ocr/ocr_engine.py: Pillow + OpenCV + tesseract CLI, por+eng,
-// OEM 1 / PSM 3, pipeline ocr-pre-v2: polarity, denoise, CLAHE, scale, OSD
-// rotation, projection-profile deskew kept only if it does not lower page confidence). The temp dir is destroyed in finally.
+// OEM 1 / PSM 3, pipeline ocr-pre-v3: polarity, denoise, CLAHE, scale, OSD
+// rotation gated at confidence >= 8 (below it the 0/90/180/270 orientations are
+// measured and the highest-confidence one kept — never a blind 180°),
+// projection-profile deskew kept only if it does not lower page confidence). The temp dir is destroyed in finally.
 //
 // LEAK SURFACE (inviolable): the extracted text goes ONLY to the caller.
 // Audit (/data/audit/ocr.jsonl) is metadata + hash16 only; every error message
@@ -55,7 +57,7 @@ export type OcrFormat = "png" | "jpeg" | "webp" | "tiff" | "pdf";
 export type OcrBBox = { x: number; y: number; width: number; height: number };
 export type OcrBlock = { text: string; bbox: OcrBBox; confidence: number };
 export type OcrPositionedBlock = { page: number; text: string; bbox: OcrBBox; confidence: number };
-export type OcrOrientation = { rotationApplied: number; osdRotation: number | null; osdConfidence: number | null; source: "osd" | "osd_unavailable" | "disabled" };
+export type OcrOrientation = { rotationApplied: number; osdRotation: number | null; osdConfidence: number | null; source: "osd" | "best_of_4" | "osd_unavailable" | "disabled" };
 export type OcrPage = {
   page: number;
   text: string;
