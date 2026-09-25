@@ -98,8 +98,13 @@ export async function generateWithProvider(credential: ImageCreateCredential, re
   const model = request.model ?? DEFAULT_PROVIDER_MODEL;
   const url = PROVIDER_RUN_URL.replace("{account}", encodeURIComponent(credential.accountId)).replace("{model}", encodeURIComponent(model));
   const payload: Record<string, unknown> = { prompt: request.prompt, steps: 4 };
-  if (request.width !== undefined) payload.width = request.width;
-  if (request.height !== undefined) payload.height = request.height;
+  // PHOTOPEA-UX-01/D3: flux-1-schnell on this account rejects width/height in its input
+  // schema (error 5006 "Additional or unevaluated properties '/width, /height' not allowed").
+  // Dimensions are NOT sent to the provider — the returned image is provider-default sized
+  // and the editor (open → export, generateDeliverExport) does any sizing.
+  // request.width/height stay accepted and locally validated (256..1024, multiple of 8)
+  // for API compatibility, but no longer shape the provider call.
+  void request.width; void request.height;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), GENERATION_TIMEOUT_MS);
   try {
@@ -109,7 +114,18 @@ export async function generateWithProvider(credential: ImageCreateCredential, re
       body: JSON.stringify(payload),
       signal: controller.signal
     });
-    if (!res.ok) throw new ImageCreateError("GENERATION_FAILED", `generation provider rejected the request (HTTP ${res.status})`);
+    if (!res.ok) {
+      // PHOTOPEA-UX-01/D3: surface the provider's own error message (never the credential)
+      // so future provider rejections are diagnosable instead of a bare "HTTP 400".
+      const providerBody = await res.text().catch(() => "");
+      const providerMessage = (() => {
+        try {
+          const parsed = JSON.parse(providerBody) as { errors?: Array<{ message?: string }> };
+          return parsed.errors?.map((e) => e.message ?? "").filter(Boolean).join("; ");
+        } catch { return providerBody.slice(0, 200); }
+      })();
+      throw new ImageCreateError("GENERATION_FAILED", `generation provider rejected the request (HTTP ${res.status})${providerMessage ? `: ${providerMessage}` : ""}`);
+    }
     const body = await res.json().catch(() => null) as { result?: { image?: unknown } } | null;
     const encoded = body?.result?.image;
     if (typeof encoded !== "string" || encoded.length < 100) throw new ImageCreateError("GENERATION_FAILED", "generation provider returned no usable image payload");
