@@ -62,7 +62,10 @@ export const KNOWN_REGISTRY_SCOPES: readonly string[] = [
   "engineering:judge:read", "engineering:ocr:read", "engineering:image:edit",
   "engineering:vps:application:redeploy", "engineering:vps:runner:restart", "engineering:vps:diagnostics:read",
   "engineering:vps:container:probe", "engineering:vps:secret:write", "engineering:vps:systemd:credential",
-  "engineering:registry:scope:grant", "engineering:mission:preauth", "base44:secret:write", "base44:function:deploy"
+  "engineering:registry:scope:grant", "engineering:mission:preauth", "base44:secret:write", "base44:function:deploy",
+  // GWS-TOOLS-01: Google Workspace tiers — T1 read (OR engineering:read), T2 write
+  // (OR engineering:write), T3 manage (NO OR — never implied by read/write).
+  "engineering:google:read", "engineering:google:write", "engineering:google:manage"
 ];
 
 const REGISTRY_BYTES_LIMIT = 2 * 1024 * 1024;

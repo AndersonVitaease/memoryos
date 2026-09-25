@@ -37,7 +37,9 @@ export const BASE44_FUNCTION_DEPLOY_STATUSES = ["PLAN", "NO_OP", "BLOCKED", "DEP
 export type Base44FunctionDeployStatus = (typeof BASE44_FUNCTION_DEPLOY_STATUSES)[number];
 
 export const BASE44_FUNCTION_DEPLOY_DEFAULTS = {
-  functionNames: ["agentMemoryBridge"] as readonly string[],
+  // GWS-TOOLS-01: googleWorkspaceApi is the Google Workspace bridge function
+  // (OAuth refresh lives server-side; eng-mcp only ever POSTs {op, params}).
+  functionNames: ["agentMemoryBridge", "googleWorkspaceApi"] as readonly string[],
   auditFile: "/data/audit/base44-function.jsonl",
   diffMaxLines: 200,
 } as const;

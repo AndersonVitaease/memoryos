@@ -65,6 +65,10 @@ import { notifyHermesInputSchema, runNotifyHermes } from "./notifyHermes.ts";
 import { getTestJobStore, createSuiteJob, finishSuiteJobFromRunner, finishSuiteJobInfra } from "./testJobs.js";
 // ERROR-01: canonical structured-error envelope for every tools/call failure.
 import { buildErrorEnvelope, isCanonicalEnvelope, writeErrorAudit, type ErrorEnvelope } from "./errorEnvelope.ts";
+// GWS-TOOLS-01: Google Workspace tools over the base44 bridge function
+// googleWorkspaceApi (OAuth tokens live server-side; strict per-op schemas,
+// T2/T3 dryRun-capable, tier map drives the scope gates below).
+import { runGws, GWS_SCHEMAS, type GwsOp } from "./gws.ts";
 
 export const ENGINEERING_SERVER_INFO = { name: "memoryos-eng-mcp", version: "0.1.0" } as const;
 export type ToolCatalogEntry = { name: string; access: "read" | "write" };
@@ -417,6 +421,17 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   // OCR-01: local deterministic OCR has its own operator-issued read scope — granted
   // only to the operator pair and the Hermes read-only entry, never implied by engineering:read.
   const requireOcrRead = () => { if (!subject.scopes.includes("engineering:ocr:read")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
+
+  // GWS-TOOLS-01: Google Workspace tiers. T1 read accepts the dedicated scope OR
+  // engineering:read (existing read subjects keep working); T2 write accepts
+  // engineering:google:write OR engineering:write (PLAN gate belongs to the caller:
+  // supervisor proposes, operator approves in chat — docs/gws-runbook.md); T3
+  // external/destructive accepts engineering:google:manage ONLY — no OR, so no
+  // existing read/write subject can ever reach sendExternal/deletes without an
+  // explicit operator-issued manage grant.
+  const requireGwsRead = () => { if (!subject.scopes.includes("engineering:read") && !subject.scopes.includes("engineering:google:read")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
+  const requireGwsWrite = () => { if (!subject.scopes.includes("engineering:write") && !subject.scopes.includes("engineering:google:write")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
+  const requireGwsManage = () => { if (!subject.scopes.includes("engineering:google:manage")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
 
   const observability = new ObservabilityClient();
   // STORE-MIG-01 PARTE A: memory tools read/write through the swappable store
@@ -1433,5 +1448,72 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
     requireNotifyHermes();
     return response(await runNotifyHermes(input));
   }));
+
+  // GWS-TOOLS-01: 15 Google Workspace tools in 3 governance tiers (docs/gws-runbook.md
+  // in this repo documents which tier every action belongs to). Zero LLM in the tool
+  // path: each tool is ONE strict-schema validated call into runGws — the base44
+  // bridge function googleWorkspaceApi (OAuth tokens server-side; responses
+  // secret-redacted and size-capped in src/gws.ts). T2/T3 support dryRun=true
+  // (backend preview, no side effect on Google — the DUMMY-test path); real T2/T3
+  // execution is the caller's PLAN gate: supervisor proposes, operator approves in chat.
+  const gwsSchemaFor = (op: GwsOp): z.ZodType => (GWS_SCHEMAS as unknown as Record<GwsOp, z.ZodType>)[op];
+  const registerGwsTool = (name: string, op: GwsOp, access: ToolCatalogEntry["access"], description: string, gate: () => void) => register(name, access, (registeredName) => server.registerTool(registeredName, {
+    description,
+    inputSchema: gwsSchemaFor(op)
+  }, async (input) => {
+    gate();
+    return response(await runGws(op, input));
+  }));
+
+  // ---- T1 — read (autonomous): engineering:google:read OR engineering:read ----
+  registerGwsTool("engineering.google.gmail.list", "gmail.list", "read",
+    "Google Workspace Gmail read (T1): list messages of the connected Google account (OAuth handled server-side; default account borecomba@gmail.com). Returns {email, count, messages:[{id, from, subject, date, snippet}], nextPageToken}. Optional query (Gmail search syntax), labelIds, maxResults (1-25). Strict schema, fail-closed, zero LLM in the tool path. Requires bearer scope engineering:google:read or engineering:read.",
+    requireGwsRead);
+  registerGwsTool("engineering.google.gmail.get", "gmail.get", "read",
+    "Google Workspace Gmail read (T1): read ONE message by messageId — full {email, id, threadId, from, to, subject, date, snippet, body}. Requires bearer scope engineering:google:read or engineering:read.",
+    requireGwsRead);
+  registerGwsTool("engineering.google.calendar.list", "calendar.list", "read",
+    "Google Workspace Calendar read (T1): list events of the connected account in a time window — server defaults timeMin=yesterday, timeMax=+30 days, singleEvents=true, orderBy=startTime. Optional timeMin/timeMax (RFC3339 or date), query filter, maxResults (1-50). Returns {email, count, events:[{id, summary, start, end, location, htmlLink, status}]}. Requires bearer scope engineering:google:read or engineering:read.",
+    requireGwsRead);
+  registerGwsTool("engineering.google.drive.list", "drive.list", "read",
+    "Google Workspace Drive read (T1): list/search Drive files with optional Google Drive query syntax (q) and maxResults (1-50). Returns {email, count, files, nextPageToken}. Requires bearer scope engineering:google:read or engineering:read.",
+    requireGwsRead);
+  registerGwsTool("engineering.google.contacts.list", "contacts.list", "read",
+    "Google Workspace Contacts read (T1): list contacts via the People API ({email, count, connections}). CAVEAT: the connector's granted OAuth scopes do NOT include the People API scope — this call fails honestly with the upstream 403 until that scope is consented; the tool never fabricates contacts. Requires bearer scope engineering:google:read or engineering:read.",
+    requireGwsRead);
+
+  // ---- T2 — write (caller PLAN gate; dryRun=true = no-side-effect preview) ----
+  registerGwsTool("engineering.google.gmail.send", "gmail.send", "write",
+    "Google Workspace Gmail write (T2): send an email FROM the connected account via the Gmail API. dryRun=true returns the RFC preview + tier warning WITHOUT any side effect (the DUMMY-test path); omitting dryRun performs the real send. Real (non-dryRun) execution is the caller's PLAN responsibility — supervisor proposes, operator approves in chat (docs/gws-runbook.md). Requires bearer scope engineering:google:write or engineering:write.",
+    requireGwsWrite);
+  registerGwsTool("engineering.google.gmail.reply", "gmail.reply", "write",
+    "Google Workspace Gmail write (T2): reply to the LAST message of a thread (threadId) with proper threading headers. dryRun=true previews without sending; omitting dryRun performs the real reply (same PLAN gate as gmail.send). Requires bearer scope engineering:google:write or engineering:write.",
+    requireGwsWrite);
+  registerGwsTool("engineering.google.calendar.createEvent", "calendar.createEvent", "write",
+    "Google Workspace Calendar write (T2): create an event (summary, start, end, optional description; timeZone defaults America/Sao_Paulo). Returns {email, eventId, htmlLink}. dryRun=true previews without creating; real creation follows the caller PLAN gate (docs/gws-runbook.md). Requires bearer scope engineering:google:write or engineering:write.",
+    requireGwsWrite);
+  registerGwsTool("engineering.google.drive.upload", "drive.upload", "write",
+    "Google Workspace Drive write (T2): upload a text file (name, mimeType, content; multipart/related). Returns {email, fileId, name, webViewLink}. dryRun=true previews without uploading; real upload follows the caller PLAN gate. Requires bearer scope engineering:google:write or engineering:write.",
+    requireGwsWrite);
+  registerGwsTool("engineering.google.drive.update", "drive.update", "write",
+    "Google Workspace Drive write (T2): replace the content of an existing file (fileId, content; PATCH media upload). dryRun=true previews without writing; real update follows the caller PLAN gate. Requires bearer scope engineering:google:write or engineering:write.",
+    requireGwsWrite);
+  registerGwsTool("engineering.google.docs.create", "docs.create", "write",
+    "Google Workspace Docs write (T2): create a Google Doc via Drive mimeType. CAVEAT: creates an EMPTY document — the connector's granted scopes do not include the Documents API, so content must be added by another path; the tool reports the caveat honestly. dryRun=true previews without creating. Requires bearer scope engineering:google:write or engineering:write.",
+    requireGwsWrite);
+  registerGwsTool("engineering.google.docs.append", "docs.append", "write",
+    "Google Workspace Docs write (T2): append text to an existing Google Doc (documentId, content). CAVEAT: fails honestly with DOCUMENTS_SCOPE_NOT_CONSENTED until the Documents API scope is consented in the Google connector (fail-closed, never fabricated). dryRun=true previews without writing. Requires bearer scope engineering:google:write or engineering:write.",
+    requireGwsWrite);
+
+  // ---- T3 — external/destructive (engineering:google:manage ONLY; no OR) ----
+  registerGwsTool("engineering.google.gmail.sendExternal", "gmail.sendExternal", "write",
+    "Google Workspace Gmail EXTERNAL send (T3): send an email to a recipient OUTSIDE the trusted domain. NOT covered by the T2 write scope — requires the operator-issued engineering:google:manage scope (no OR: no existing read/write subject reaches it) AND explicit operator approval in chat. Irreversibility explicit: a sent message cannot be un-sent. dryRun=true previews (DUMMY path) without sending.",
+    requireGwsManage);
+  registerGwsTool("engineering.google.calendar.deleteEvent", "calendar.deleteEvent", "write",
+    "Google Workspace Calendar DESTRUCTIVE (T3): delete an event (eventId; an upstream 410 is tolerated as already-deleted). NOT covered by the T2 write scope — requires the operator-issued engineering:google:manage scope (no OR) AND explicit operator approval in chat. dryRun=true previews without deleting.",
+    requireGwsManage);
+  registerGwsTool("engineering.google.drive.delete", "drive.delete", "write",
+    "Google Workspace Drive DESTRUCTIVE (T3): move a file to trash (default; reversible for ~30 days) or PERMANENTLY delete it (permanent:true — hard DELETE, tolerates 404 as already-gone; NOT reversible). NOT covered by the T2 write scope — requires the operator-issued engineering:google:manage scope (no OR) AND explicit operator approval in chat. dryRun=true previews without deleting.",
+    requireGwsManage);
 
 }
