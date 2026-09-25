@@ -28,6 +28,7 @@ import {
   type JudgeGateEvidenceEntry,
   type JudgeHookInput,
   type JudgeHookJSONOutput,
+  type JudgeManifestMatch,
 } from '../src/harness/judgeGate.js';
 import { ClaudeAgentRuntime, type ClaudeQueryOptions, type QueryFn } from '../src/harness/ClaudeAgentRuntime.js';
 import { createInitialState, type MissionContract } from '../src/harness/missionTypes.js';
@@ -495,5 +496,227 @@ describe('JUDGE-HOOKS-01 gate: operator policy auto (JUDGE_CONSEQUENCE_POLICY un
       if (prev === undefined) delete process.env.JUDGE_CONSEQUENCE_POLICY;
       else process.env.JUDGE_CONSEQUENCE_POLICY = prev;
     }
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* AUTO-RUN-01B/C — C1 manifest GO/NO-GO, out-of-manifest HOLD (proof  */
+/* 1), band-3 notify (C2), B1 signature sink. Judge remains triage.    */
+/* ------------------------------------------------------------------ */
+
+const manifestMatch = (mission = 'auto-run-test'): JudgeManifestMatch => ({
+  mission,
+  patternId: 'op-1',
+  hash16: 'a1b2c3d4e5f60718',
+  expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+});
+
+const holdSink = () => {
+  const holds: Array<{ kind: string; mission: string | null; command: string; safeScore: number | null; reasons: string[]; session: string | null }> = [];
+  const holdNotifier = (input: { kind: string; mission: string | null; command: string; safeScore: number | null; reasons: string[]; session: string | null }) => {
+    holds.push(input);
+    return { delivered: false, outcome: 'sent' };
+  };
+  return { holds, holdNotifier };
+};
+
+describe('AUTO-RUN-01B/C gate: C1 manifest judge triage + out-of-manifest HOLD', () => {
+  it('C1 GO: manifest match + judge safeScore >= 0.6 allows with MANIFEST_PREAUTH_GO provenance', async () => {
+    const { client, calls } = mockJudge({ evaluate: noulResult(0.05) }); // safe 0.95
+    const gate = buildJudgeGate(gateConfig({
+      judgeClient: client,
+      unattended: true,
+      manifestCheck: () => manifestMatch(),
+    }));
+    const out = await gate.handlers.preToolUse(bashInput('npm run build'), 'tu-c1-go');
+    assert.equal(decisionOf(out), 'allow');
+    assert.match(reasonOf(out) ?? '', /MANIFEST_PREAUTH_GO/);
+    assert.match(reasonOf(out) ?? '', /safeScore=/);
+    assert.equal(calls.filter((c) => c.tool === 'engineering.judge.evaluate').length, 1);
+  });
+
+  it('C1 NO-GO (proof 2): manifest match + judge safeScore < 0.6 HOLDs EVEN pre-approved', async () => {
+    const { holds, holdNotifier } = holdSink();
+    const { client } = mockJudge({ evaluate: noulResult(0.9) }); // safe 0.1
+    const gate = buildJudgeGate(gateConfig({
+      judgeClient: client,
+      unattended: true,
+      manifestCheck: () => manifestMatch(),
+      holdNotifier,
+    }));
+    const out = await gate.handlers.preToolUse(bashInput('npm run build'), 'tu-c1-nogo');
+    assert.equal(decisionOf(out), 'deny', 'pre-approved manifest NO-GO denies when unattended');
+    assert.match(reasonOf(out) ?? '', /MANIFEST_HOLD_NOGO/);
+    assert.equal(holds.length, 1);
+    assert.equal(holds[0].kind, 'manifest_nogo');
+  });
+
+  it('C1 NO-GO attended: manifest match + NO-GO asks the operator (HOLD reachable in-session)', async () => {
+    const { holds, holdNotifier } = holdSink();
+    const { client } = mockJudge({ evaluate: noulResult(0.9) });
+    const gate = buildJudgeGate(gateConfig({
+      judgeClient: client,
+      unattended: false,
+      manifestCheck: () => manifestMatch(),
+      holdNotifier,
+    }));
+    const out = await gate.handlers.preToolUse(bashInput('npm run build'), 'tu-c1-nogo-att');
+    assert.equal(decisionOf(out), 'ask');
+    assert.match(reasonOf(out) ?? '', /MANIFEST_HOLD_NOGO/);
+    assert.equal(holds.length, 1);
+  });
+
+  it('C1 judge error on the manifest path: HOLD (fail-closed, scoped to the manifest path)', async () => {
+    const { holds, holdNotifier } = holdSink();
+    const { client } = mockJudge({}); // no evaluate handler -> { ok:false, error }
+    const gate = buildJudgeGate(gateConfig({
+      judgeClient: client,
+      unattended: true,
+      manifestCheck: () => manifestMatch(),
+      holdNotifier,
+    }));
+    const out = await gate.handlers.preToolUse(bashInput('npm run build'), 'tu-c1-jerr');
+    assert.equal(decisionOf(out), 'deny');
+    assert.match(reasonOf(out) ?? '', /MANIFEST_HOLD_NOGO.*judge unavailable/);
+    assert.equal(holds[0]?.kind, 'manifest_nogo');
+  });
+
+  it('proof 1: command OUTSIDE the active manifest HOLDs and does not execute (attended ask)', async () => {
+    const { holds, holdNotifier } = holdSink();
+    const { client, calls } = mockJudge({ evaluate: noulResult(0.05) }); // safe 0.95 — score is CONTEXT only
+    const gate = buildJudgeGate(gateConfig({
+      judgeClient: client,
+      unattended: false,
+      manifestCheck: () => null, // matches nothing
+      missionContext: () => ({ active: true, mission: 'auto-run-test' }),
+      holdNotifier,
+    }));
+    const out = await gate.handlers.preToolUse(bashInput('tar -cf /tmp/a.tar /tmp/b'), 'tu-oom-1');
+    assert.equal(decisionOf(out), 'ask');
+    assert.match(reasonOf(out) ?? '', /HOLD_OUT_OF_MANIFEST/);
+    assert.equal(holds.length, 1);
+    assert.equal(holds[0].kind, 'manifest_out_of_scope');
+    assert.equal(holds[0].mission, 'auto-run-test');
+    // The judge ran (context only) — one evaluate call, and its answer did NOT flip the route.
+    assert.equal(calls.filter((c) => c.tool === 'engineering.judge.evaluate').length, 1);
+  });
+
+  it('proof 1 (unattended): out-of-manifest deviation denies even at safeScore 0.95', async () => {
+    const { holds, holdNotifier } = holdSink();
+    const { client } = mockJudge({ evaluate: noulResult(0.05) });
+    const gate = buildJudgeGate(gateConfig({
+      judgeClient: client,
+      unattended: true,
+      manifestCheck: () => null,
+      missionContext: () => ({ active: true, mission: 'auto-run-test' }),
+      holdNotifier,
+    }));
+    const out = await gate.handlers.preToolUse(bashInput('tar -cf /tmp/a.tar /tmp/b'), 'tu-oom-2');
+    assert.equal(decisionOf(out), 'deny');
+    assert.match(reasonOf(out) ?? '', /HOLD_OUT_OF_MANIFEST/);
+    assert.equal(holds[0].kind, 'manifest_out_of_scope');
+  });
+
+  it('proof 1 (judge down): out-of-manifest HOLD survives a judge outage — deviation is deterministic', async () => {
+    const { holds, holdNotifier } = holdSink();
+    const { client } = mockJudge({}); // judge unavailable
+    const gate = buildJudgeGate(gateConfig({
+      judgeClient: client,
+      unattended: true,
+      manifestCheck: () => null,
+      missionContext: () => ({ active: true, mission: 'auto-run-test' }),
+      holdNotifier,
+    }));
+    const out = await gate.handlers.preToolUse(bashInput('tar -cf /tmp/a.tar /tmp/b'), 'tu-oom-2');
+    assert.equal(decisionOf(out), 'deny', 'fail-open does NOT apply when a mission manifest is active');
+    assert.match(reasonOf(out) ?? '', /HOLD_OUT_OF_MANIFEST/);
+    assert.equal(holds[0].kind, 'manifest_out_of_scope');
+  });
+
+  it('no mission active: gray fail-open contract unchanged (no HOLD, no notify)', async () => {
+    const { holds, holdNotifier } = holdSink();
+    const { client } = mockJudge({ evaluate: noulResult(0.05) });
+    const gate = buildJudgeGate(gateConfig({
+      judgeClient: client,
+      unattended: true,
+      manifestCheck: () => null,
+      missionContext: () => ({ active: false, mission: null }),
+      holdNotifier,
+    }));
+    const out = await gate.handlers.preToolUse(bashInput('tar -cf /tmp/a.tar /tmp/b'), 'tu-nomission');
+    assert.equal(decisionOf(out), 'allow'); // safe 0.95 > 0.9 → BAND2_GRAY_AUTO as before
+    assert.match(reasonOf(out) ?? '', /BAND2_GRAY_AUTO/);
+    assert.equal(holds.length, 0);
+  });
+
+  it('C2 band-3: operator-routed consequence fires holdNotifier with kind band3 (CONSEQUENCE_AUTO allow does not)', async () => {
+    const { holds, holdNotifier } = holdSink();
+    const { client } = mockJudge({ evaluate: bandDispatcher(noulResult(0.05), choiceResult('production_mutation', 0.9)) });
+    const gate = buildJudgeGate(gateConfig({
+      judgeClient: client,
+      unattended: false,
+      holdNotifier,
+    }));
+    const out = await gate.handlers.preToolUse(bashInput('git push origin main'), 'tu-band3-notify');
+    assert.equal(decisionOf(out), 'ask');
+    assert.equal(holds.length, 1);
+    assert.equal(holds[0].kind, 'band3');
+    assert.match(holds[0].reasons[0] ?? '', /denylist:/);
+  });
+});
+
+describe('AUTO-RUN-01B B1: promotion signature sink', () => {
+  it('BAND2_GRAY_AUTO decision records a signature with mission/session context', async () => {
+    const signed: Array<{ command: string; category: string; mission: string | null; session: string | null }> = [];
+    const { client } = mockJudge({ evaluate: noulResult(0.05) }); // safe 0.95 → AUTO
+    const gate = buildJudgeGate(gateConfig({
+      judgeClient: client,
+      unattended: true,
+      signatureSink: (input) => signed.push(input),
+      missionContext: () => ({ active: false, mission: 'sig-mission' }),
+    }));
+    await gate.handlers.preToolUse(bashInput('run-migrations --now'), 'tu-sig-1');
+    assert.equal(signed.length, 1);
+    assert.equal(signed[0].category, 'BAND2_GRAY_AUTO');
+    assert.equal(signed[0].mission, 'sig-mission');
+    assert.ok(signed[0].command.length > 0);
+  });
+
+  it('operator-routed gray (MEDIUM/LOW) also records a signature', async () => {
+    const signed: Array<{ category: string }> = [];
+    const { client } = mockJudge({ evaluate: noulResult(0.3) }); // safe 0.7 → MEDIUM
+    const gate = buildJudgeGate(gateConfig({
+      judgeClient: client,
+      unattended: true,
+      signatureSink: (input) => signed.push(input),
+    }));
+    await gate.handlers.preToolUse(bashInput('tar -cf /tmp/a.tar /tmp/b'), 'tu-sig-2');
+    assert.equal(signed.length, 1);
+    assert.equal(signed[0].category, 'BAND2_GRAY_MEDIUM');
+  });
+
+  it('band 1 (allowlist) records NO signature — signatures are gray-zone only', async () => {
+    const signed: Array<{ category: string }> = [];
+    const { client, calls } = mockJudge({});
+    const gate = buildJudgeGate(gateConfig({
+      judgeClient: client,
+      unattended: true,
+      signatureSink: (input) => signed.push(input),
+    }));
+    await gate.handlers.preToolUse(bashInput('ls /tmp/judge-hooks-e2e'), 'tu-sig-2');
+    assert.equal(signed.length, 0);
+    assert.equal(calls.filter((c) => c.tool === 'engineering.judge.evaluate').length, 0);
+  });
+
+  it('signature sink throwing NEVER affects the decision (fail-open audit)', async () => {
+    const { client } = mockJudge({ evaluate: noulResult(0.3) });
+    const gate = buildJudgeGate(gateConfig({
+      judgeClient: client,
+      unattended: true,
+      signatureSink: () => { throw new Error('sink exploded'); },
+    }));
+    const out = await gate.handlers.preToolUse(bashInput('tar -cf /tmp/a.tar /tmp/b'), 'tu-sig-3');
+    assert.equal(decisionOf(out), 'deny'); // operator route (unattended) unchanged
+    assert.match(reasonOf(out) ?? '', /BAND2_GRAY_MEDIUM/);
   });
 });

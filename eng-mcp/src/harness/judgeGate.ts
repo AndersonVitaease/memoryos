@@ -127,7 +127,11 @@ export interface JudgeGateEvidenceEntry {
   source: string;
 }
 
-export type JudgeToolName = 'engineering.judge.verify' | 'engineering.judge.evaluate';
+export type JudgeToolName =
+  | 'engineering.judge.verify'
+  | 'engineering.judge.evaluate'
+  /** AUTO-RUN-01B/C (C2): HOLD escalation loop — notify-only, never authorizes. */
+  | 'engineering.notify.hermes';
 
 export type JudgeClient = (
   tool: JudgeToolName,
@@ -162,6 +166,36 @@ export interface JudgeGateConfig {
    * corrupt manifest) keeps the unchanged band-2 flow. Throwing = null.
    */
   manifestCheck?: (command: string, cwd: string) => JudgeManifestMatch | null;
+  /**
+   * AUTO-RUN-01B/C (out-of-manifest HOLD, proof 1) — when a mission manifest
+   * is ACTIVE for this session, a command that matches NEITHER the manifest
+   * NOR band 1 is a deviation from the operator-approved plan and HOLDs
+   * unconditionally (attended = ask, unattended = deny) regardless of the
+   * judge score — the approved plan IS the manifest. Null/absent keeps the
+   * unchanged band-2 flow. Throwing = absent (fail-open for the seam itself;
+   * the HOLD decision only depends on `active`).
+   */
+  missionContext?: () => { active: boolean; mission: string | null } | null;
+  /**
+   * AUTO-RUN-01B (B1) — deterministic promotion-signature sink for every
+   * band-2 gray decision (AUTO or operator route). The gate passes an
+   * ALREADY-REDACTED command (redactText0). The hook composes the trail line.
+   * Sink failures never affect the decision.
+   */
+  signatureSink?: (input: { command: string; category: 'BAND2_GRAY_AUTO' | 'BAND2_GRAY_MEDIUM' | 'BAND2_GRAY_LOW'; mission: string | null; session: string | null }) => void;
+  /**
+   * AUTO-RUN-01B/C (C2) — HOLD escalation notifier. Awaited (the hook process
+   * is short-lived) with its own internal timeout; any throw/timeout is
+   * swallowed — a notification failure never changes the gate decision.
+   */
+  holdNotifier?: (input: {
+    kind: 'band3' | 'manifest_nogo' | 'manifest_out_of_scope';
+    mission: string | null;
+    command: string;
+    safeScore: number | null;
+    reasons: string[];
+    session: string | null;
+  }) => Promise<unknown> | unknown;
   env?: NodeJS.ProcessEnv;
 }
 
@@ -748,6 +782,48 @@ export function buildJudgeGate(config: JudgeGateConfig = {}): JudgeGate | null {
     }
   };
 
+  /* ---------------- AUTO-RUN-01B/C helpers ---------------- */
+  /** Out-of-manifest HOLD decision — DELIBERATE fail-closed exception scoped
+   * to the manifest path: the operator-approved plan IS the manifest, so a
+   * deviation never takes the CONSEQUENCE_AUTO allow. Attended = ask,
+   * unattended = deny. */
+  const holdDecisionFor = (): JudgeHookJSONOutput => ({
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      permissionDecision: unattended ? 'deny' : 'ask',
+      permissionDecisionReason: 'HOLD_OUT_OF_MANIFEST: command is outside the operator-approved mission plan — escalation required (judge triage is context-only, never authorizing).',
+    },
+  });
+
+  const tryMissionContext = (): { active: boolean; mission: string | null } | null => {
+    try {
+      return config.missionContext?.() ?? null;
+    } catch {
+      return null;
+    }
+  };
+
+  /** C2 — notify the HOLD event. Awaited (hook process is short-lived);
+   * any failure is swallowed: the notification never affects the decision. */
+  const fireHoldNotify = (input: { kind: 'band3' | 'manifest_nogo' | 'manifest_out_of_scope'; mission: string | null; command: string; safeScore: number | null; reasons: string[]; session: string | null }): Promise<void> =>
+    Promise.resolve(config.holdNotifier?.(input)).then(
+      () => undefined,
+      () => undefined,
+    );
+
+  /** B1 — deterministic promotion signature for a band-2 gray decision.
+   * Redaction applied here so the trail never carries credential shapes. */
+  const recordSignature = (category: 'BAND2_GRAY_AUTO' | 'BAND2_GRAY_MEDIUM' | 'BAND2_GRAY_LOW', rawCommand: string, mission: string | null, session: string | null): void => {
+    try {
+      config.signatureSink?.({ command: redactText0(rawCommand, 200), category, mission, session });
+    } catch {
+      /* signature failure never affects the decision */
+    }
+  };
+
+  /** Mission identity for B1/C2 trails: missionContext first, then env. */
+  const currentMission = (): string | null => tryMissionContext()?.mission ?? env.JUDGE_HOOK_MISSION ?? null;
+
   /* ---------------- PreToolUse: 3-band policy ---------------- */
   const preToolUse = async (input: JudgeHookInput, _toolUseID?: string, opts?: { signal?: AbortSignal }): Promise<JudgeHookJSONOutput> => {
     try {
@@ -756,6 +832,7 @@ export function buildJudgeGate(config: JudgeGateConfig = {}): JudgeGate | null {
         ? (input.tool_input as { command: string }).command
         : null;
       if (command === null) return {};
+      const session = typeof (input as { session_id?: unknown }).session_id === 'string' ? ((input as unknown as { session_id: string }).session_id).slice(0, 12) : null;
 
       // Band 3 — denylist match routes DIRECTLY to the operator. The judge
       // is consulted for explanation context only, AFTER the decision is
@@ -769,6 +846,18 @@ export function buildJudgeGate(config: JudgeGateConfig = {}): JudgeGate | null {
           : `BAND3_CONSEQUENCE: denylist match (${deny}) — the judge never approves consequences; operator decides.`;
         const context = await judgeBand3Context(judgeCall, command);
         pushEvidence(`judge_gate:band3:${deny}`, JSON.stringify({ command: redactText0(command, 200), route: auto ? 'allow' : (unattended ? 'deny' : 'ask'), judgeContext: context }));
+        // C2 — HOLD escalation on the operator-routed consequence (ask/deny
+        // only; CONSEQUENCE_AUTO allow needs no notification).
+        if (!auto) {
+          await fireHoldNotify({
+            kind: 'band3',
+            mission: currentMission(),
+            command: redactText0(command, 80),
+            safeScore: null,
+            reasons: [`denylist:${deny}`],
+            session,
+          });
+        }
         return {
           ...decision,
           hookSpecificOutput: {
@@ -791,12 +880,65 @@ export function buildJudgeGate(config: JudgeGateConfig = {}): JudgeGate | null {
           match = null;
         }
         if (match) {
-          pushEvidence(`judge_gate:manifest:${match.mission}:${match.patternId}`, JSON.stringify({ command: redactText0(command, 120), manifest: match.mission, patternId: match.patternId, hash16: match.hash16, route: 'allow' }));
+          // C1 (AUTO-RUN-01B/C): the manifest authorizes the command CLASS;
+          // the judge still triages — GO (safeScore >= JUDGE_ESCALATE_THRESHOLD)
+          // lets the manifest allow stand; NO-GO (<0.6) or judge error HOLDs
+          // EVEN pre-approved (fail-closed, scoped to this manifest path; the
+          // band-3 CONSEQUENCE_AUTO policy is untouched — it governs only the
+          // denylist route above). The judge triages/explains/accelerates; it
+          // never authorizes — the manifest does.
+          let evaluated: { ok: true; data: unknown } | { ok: false; error: string };
+          try {
+            evaluated = await judgeCall('engineering.judge.evaluate', {
+              state: { tool: 'Bash', command: redactText0(command, 2000) },
+              questions: BAND2_QUESTIONS,
+            });
+          } catch (error) {
+            evaluated = { ok: false, error: error instanceof Error ? error.message : String(error) };
+          }
+          if (!evaluated.ok) {
+            pushEvidence(`judge_gate:manifest-nogo:${match.mission}:${match.patternId}`, JSON.stringify({ command: redactText0(command, 120), manifest: match.mission, patternId: match.patternId, hash16: match.hash16, route: 'hold', cause: `judge_error:${evaluated.error}` }));
+            await fireHoldNotify({
+              kind: 'manifest_nogo',
+              mission: match.mission,
+              command: redactText0(command, 80),
+              safeScore: null,
+              reasons: [`judge_error:${evaluated.error.slice(0, 80)}`],
+              session,
+            });
+            return {
+              hookSpecificOutput: {
+                hookEventName: 'PreToolUse',
+                permissionDecision: unattended ? 'deny' : 'ask',
+                permissionDecisionReason: `MANIFEST_HOLD_NOGO: judge unavailable (${evaluated.error}) — manifest ${match.mission} pattern=${match.patternId} holds even pre-approved (fail-closed).`,
+              },
+            };
+          }
+          const { safeScore, probabilities } = judgeSafeScore(evaluated.data);
+          if (safeScore >= JUDGE_ESCALATE_THRESHOLD) {
+            pushEvidence(`judge_gate:manifest-go:${match.mission}:${match.patternId}`, JSON.stringify({ command: redactText0(command, 120), manifest: match.mission, patternId: match.patternId, hash16: match.hash16, route: 'allow', safeScore: Number(safeScore.toFixed(4)) }));
+            return {
+              hookSpecificOutput: {
+                hookEventName: 'PreToolUse',
+                permissionDecision: 'allow',
+                permissionDecisionReason: `MANIFEST_PREAUTH_GO: manifest=${match.mission} pattern=${match.patternId} hash16=${match.hash16} safeScore=${safeScore.toFixed(3)} (operator-approved plan, judge GO, expires ${match.expiresAt}).`,
+              },
+            };
+          }
+          pushEvidence(`judge_gate:manifest-nogo:${match.mission}:${match.patternId}`, JSON.stringify({ command: redactText0(command, 120), manifest: match.mission, patternId: match.patternId, hash16: match.hash16, route: 'hold', safeScore: Number(safeScore.toFixed(4)), probabilities }));
+          await fireHoldNotify({
+            kind: 'manifest_nogo',
+            mission: match.mission,
+            command: redactText0(command, 80),
+            safeScore,
+            reasons: BAND2_QUESTIONS.map((q) => `${q.id}=${probabilities[q.id]?.toFixed(3) ?? 'n/a'}`),
+            session,
+          });
           return {
             hookSpecificOutput: {
               hookEventName: 'PreToolUse',
-              permissionDecision: 'allow',
-              permissionDecisionReason: `MANIFEST_PREAUTH: manifest=${match.mission} pattern=${match.patternId} hash16=${match.hash16} (operator-approved plan, apply-time match, expires ${match.expiresAt}).`,
+              permissionDecision: unattended ? 'deny' : 'ask',
+              permissionDecisionReason: `MANIFEST_HOLD_NOGO: judge safeScore ${safeScore.toFixed(3)} < ${JUDGE_ESCALATE_THRESHOLD} — manifest ${match.mission} pattern=${match.patternId} holds even pre-approved.`,
             },
           };
         }
@@ -838,7 +980,17 @@ export function buildJudgeGate(config: JudgeGateConfig = {}): JudgeGate | null {
         state: { tool: 'Bash', command: redactText0(command, 2000) },
         questions: BAND2_QUESTIONS,
       });
+      const missionCtx = tryMissionContext();
       if (!evaluated.ok) {
+        // Out-of-manifest HOLD (proof 1): with an ACTIVE mission manifest, a
+        // command matching neither the manifest nor band 1 is a deviation from
+        // the operator-approved plan — it HOLDs even with the judge down (the
+        // deviation is deterministic; the judge is context-only).
+        if (missionCtx?.active) {
+          pushEvidence(`judge_gate:manifest_out_of_scope:${shortHash(command)}`, JSON.stringify({ command: redactText0(command, 120), mission: missionCtx.mission, route: 'hold', cause: `judge_error:${evaluated.error}` }));
+          await fireHoldNotify({ kind: 'manifest_out_of_scope', mission: missionCtx.mission, command: redactText0(command, 80), safeScore: null, reasons: [`judge_error:${evaluated.error.slice(0, 80)}`], session });
+          return holdDecisionFor();
+        }
         // Fail-open: an unavailable judge NEVER blocks the mission.
         if (unattended) {
           return {
@@ -852,6 +1004,15 @@ export function buildJudgeGate(config: JudgeGateConfig = {}): JudgeGate | null {
         return {};
       }
       const { safeScore, probabilities } = judgeSafeScore(evaluated.data);
+      // Out-of-manifest HOLD (proof 1): the approved plan IS the manifest —
+      // a deviation escalates regardless of the score (even 0.99). Judge
+      // score/reasons ride along as CONTEXT for the operator only.
+      if (missionCtx?.active) {
+        const reasons = BAND2_QUESTIONS.map((q) => `${q.id}=${probabilities[q.id]?.toFixed(3) ?? 'n/a'}`);
+        pushEvidence(`judge_gate:manifest_out_of_scope:${shortHash(command)}`, JSON.stringify({ command: redactText0(command, 120), mission: missionCtx.mission, route: 'hold', safeScore: Number(safeScore.toFixed(4)), probabilities }));
+        await fireHoldNotify({ kind: 'manifest_out_of_scope', mission: missionCtx.mission, command: redactText0(command, 80), safeScore, reasons, session });
+        return holdDecisionFor();
+      }
       pushEvidence(`judge_gate:band2:${shortHash(command)}`, JSON.stringify({ command: redactText0(command, 120), safeScore: Number(safeScore.toFixed(4)), probabilities }));
       // HOOKS-CALIBRATION-01: a command whose DETERMINISTIC classification is
       // already read-only must not land in the blocking gray zone — its auto
@@ -864,6 +1025,8 @@ export function buildJudgeGate(config: JudgeGateConfig = {}): JudgeGate | null {
         const thresholdNote = readOnly
           ? `read-only floor ${JUDGE_BAND2_READ_ONLY_FLOOR} (deterministic read-only indication)`
           : `auto threshold ${JUDGE_AUTO_SAFE_THRESHOLD}`;
+        // B1 — record the deterministic promotion signature (AUTO variant).
+        recordSignature('BAND2_GRAY_AUTO', command, currentMission(), session);
         return {
           hookSpecificOutput: {
             hookEventName: 'PreToolUse',
@@ -874,6 +1037,9 @@ export function buildJudgeGate(config: JudgeGateConfig = {}): JudgeGate | null {
       }
       // 0.6–0.9: operator route with score and reasons attached; <0.6: operator.
       const band = safeScore >= JUDGE_ESCALATE_THRESHOLD ? 'BAND2_GRAY_MEDIUM' : 'BAND2_GRAY_LOW';
+      // B1 — record the deterministic promotion signature (operator-route
+      // variants; every gray decision is signed, auto or ask alike).
+      recordSignature(band, command, currentMission(), session);
       const decision = decisionForOperatorRoute(unattended);
       const reasons = BAND2_QUESTIONS.map((q) => `${q.id}=${probabilities[q.id]?.toFixed(3) ?? 'n/a'}`).join(' ');
       return {

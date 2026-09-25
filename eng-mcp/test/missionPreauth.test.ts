@@ -3,7 +3,7 @@
  *
  * Hermetic: temp manifest dir + temp audit file, mocked judge client (zero
  * network), real classification/matching code. Proves the mission's E2E set:
- *   (a) 3 benign manifest operations execute with ZERO asks/judge calls, audited;
+ *   (a) 3 benign manifest operations execute with judge GO (C1), audited;
  *   (b) a command outside the patterns keeps the normal band-2 flow;
  *   (c) expired / corrupt / tampered / insecure / revoked manifests auto-approve nothing;
  *   (d) a manifest carrying a denylist command is REFUSED at creation;
@@ -109,17 +109,18 @@ describe('AUTO-RUN-01A admission (engineering.mission.preauth)', () => {
 });
 
 describe('AUTO-RUN-01A apply-time check (gate manifestCheck seam)', () => {
-  it('(a) 3 benign manifest operations are allowed with ZERO judge calls, evidence carries manifest + pattern id', async () => {
+  it('(a) 3 benign manifest operations get judge GO (C1) and are allowed, evidence carries manifest + pattern id', async () => {
     const sb = sandbox();
     create(sb);
     const { gate, calls, evidence } = gateWith(sb);
     for (const [cmd, id] of [[`node --check ${WORK}/a.mjs`, 'syntax-check'], ['node -e "console.log(1)"', 'eval-probe'], [`mkdir -p ${WORK}/sub`, 'mkdir-work']]) {
       const out = await gate.handlers.preToolUse(pre(cmd));
       assert.equal(out.hookSpecificOutput?.permissionDecision, 'allow', cmd);
-      assert.match(out.hookSpecificOutput?.permissionDecisionReason ?? '', new RegExp(`MANIFEST_PREAUTH: manifest=AUTO-RUN-01A-TEST pattern=${id}`));
+      assert.match(out.hookSpecificOutput?.permissionDecisionReason ?? '', new RegExp(`MANIFEST_PREAUTH_GO: manifest=AUTO-RUN-01A-TEST pattern=${id}`), cmd);
     }
-    assert.deepEqual(calls, [], 'no judge call, no ask');
-    assert.equal(evidence.filter((e) => e.key.startsWith('judge_gate:manifest:AUTO-RUN-01A-TEST:')).length, 3);
+    assert.deepEqual(calls, ['engineering.judge.evaluate', 'engineering.judge.evaluate', 'engineering.judge.evaluate'], 'C1: one judge triage per manifest match (GO/NO-GO)');
+    assert.equal(evidence.filter((e) => e.key.startsWith('judge_gate:manifest-go:AUTO-RUN-01A-TEST:')).length, 3);
+    assert.ok(evidence.every((e) => e.key.startsWith('judge_gate:manifest-go:') && JSON.parse(e.value).route === 'allow'), 'all 3 benign matches route allow (GO)');
   });
 
   it('(b) a command outside the patterns keeps the normal band-2 flow (judge + ask on medium)', async () => {
@@ -212,7 +213,7 @@ describe('AUTO-RUN-01A apply-time check (gate manifestCheck seam)', () => {
 });
 
 describe('AUTO-RUN-01A through the portable hook (child process)', () => {
-  it('benign manifest op → MANIFEST_PREAUTH via judge-hook.mjs; audit match line written', async () => {
+  it('benign manifest op → MANIFEST_PREAUTH_GO via judge-hook.mjs; audit match line written', async () => {
     const sb = sandbox();
     create(sb);
     const cred = join(sb.dir, '..', 'cred');
@@ -229,8 +230,10 @@ describe('AUTO-RUN-01A through the portable hook (child process)', () => {
       child.stdin.end(JSON.stringify({ ...pre(`node --check ${WORK}/x.mjs`), session_id: 'autorun-test' }));
     });
     const parsed = JSON.parse(out.trim()) as { hookSpecificOutput?: { permissionDecision?: string; permissionDecisionReason?: string } };
-    assert.equal(parsed.hookSpecificOutput?.permissionDecision, 'allow');
-    assert.match(parsed.hookSpecificOutput?.permissionDecisionReason ?? '', /MANIFEST_PREAUTH: manifest=AUTO-RUN-01A-TEST pattern=syntax-check/);
+    // C1 fail-closed: the child hook runs against a DEAD judge → the manifest
+    // path HOLDs even pre-approved (prova 2 at the hook level).
+    assert.equal(parsed.hookSpecificOutput?.permissionDecision, 'ask');
+    assert.match(parsed.hookSpecificOutput?.permissionDecisionReason ?? '', /MANIFEST_HOLD_NOGO: judge unavailable .* AUTO-RUN-01A-TEST pattern=syntax-check holds even pre-approved/);
     assert.match(readFileSync(sb.auditFile, 'utf8'), /"event":"match","manifest":"AUTO-RUN-01A-TEST","patternId":"syntax-check"/);
   });
 });
