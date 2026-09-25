@@ -154,6 +154,92 @@ export const IMAGE_EDIT_PRESETS: readonly ImageEditPreset[] = [
       { action: "document", with: { document: { op: "open", path: "{{source}}" } } },
       { action: "export", with: { output: { path: "{{dest}}", format: "png", quality: 95 } } }
     ]
+  },
+  // ---------------------------------------------------------------
+  // PHOTOPEA-UX-01/D4 — presets de campanha de viagem (3 formatos).
+  // Layout: imagem de fundo full-canvas ({{bg}} esticado exatamente para as
+  // dimensões do documento — gerar a imagem de fundo com AS MESMAS dimensões
+  // para não distorcer) + faixa inferior escura + headline/sub/preço/CTA.
+  // Notas do engine (canvasEngine.mjs): document.create ignora o parâmetro
+  // background (sempre branco) — daí a faixa em vez de fundo colorido; texto é
+  // SEM quebra de linha (1 linha por texto); y do texto = TOPO do bloco
+  // aparado; peso da fonte vem do sufixo do nome ("Montserrat Bold").
+  // Fontes OFL instaladas no executor VPS: Montserrat (Regular/SemiBold/Bold),
+  // Inter (Regular/SemiBold/Bold).
+  {
+    name: "campanha-feed",
+    description: "PHOTOPEA-UX-01/D4: peça de campanha 1080x1080 (feed) — fundo {{bg}} full-canvas, faixa escura inferior com headline/sub/preço, botão CTA âmbar e marca no topo. Gere {{bg}} em 1080x1080; textos de 1 linha.",
+    params: { bg: "caminho/URL da imagem de fundo (gerar em 1080x1080)", headline: "titulo principal (1 linha)", sub: "subtitulo (1 linha)", price: "preço (1 linha)", cta: "texto do botão CTA (curto)", brand: "marca/logotipo textual no topo", out: "caminho de destino do PNG exportado" },
+    example: { bg: "/root/.hermes/images/campanha-feed-fundo.png", headline: "PUNTA DEL ESTE", sub: "7 noites com all inclusive aéreo incluso", price: "a partir de R$ 1.899", cta: "Reserve agora", brand: "VIAGENS MEMORIA", out: "/root/.hermes/images/campanha-feed.png" },
+    steps: [
+      { action: "document", with: { document: { op: "create", width: 1080, height: 1080 } } },
+      {
+        action: "compose",
+        with: {
+          elements: [
+            { type: "image", name: "fundo", path: "{{bg}}", width: 1080, height: 1080, position: { x: 0, y: 0 } },
+            { type: "shape", name: "faixa", shape: "rectangle", color: "#101828", position: { x: 0, y: 800 }, width: 1080, height: 280 },
+            { type: "text", name: "marca", text: "{{brand}}", font: "Inter SemiBold", fontSize: 24, color: "#ffffff", position: { x: 60, y: 36 } },
+            { type: "text", name: "titulo", text: "{{headline}}", font: "Montserrat Bold", fontSize: 54, color: "#ffffff", position: { x: 60, y: 830 } },
+            { type: "text", name: "subtitulo", text: "{{sub}}", font: "Inter Regular", fontSize: 28, color: "#d0d5dd", position: { x: 60, y: 912 } },
+            { type: "text", name: "preco", text: "{{price}}", font: "Montserrat Bold", fontSize: 44, color: "#ffffff", position: { x: 60, y: 958 } },
+            { type: "shape", name: "botao", shape: "rectangle", color: "#f59e0b", position: { x: 700, y: 950 }, width: 320, height: 74 },
+            { type: "text", name: "cta", text: "{{cta}}", font: "Montserrat Bold", fontSize: 30, color: "#101828", position: { x: 730, y: 968 } }
+          ]
+        }
+      },
+      { action: "export", with: { output: { path: "{{out}}", format: "png", overwrite: true } } }
+    ]
+  },
+  {
+    name: "campanha-story",
+    description: "PHOTOPEA-UX-01/D4: peça de campanha 1080x1920 (story/vertical) — fundo {{bg}} full-canvas, faixa escura inferior com headline/sub/preço, botão CTA âmbar e marca no topo. Gere {{bg}} em 1080x1920; textos de 1 linha.",
+    params: { bg: "caminho/URL da imagem de fundo (gerar em 1080x1920)", headline: "titulo principal (1 linha)", sub: "subtitulo (1 linha)", price: "preço (1 linha)", cta: "texto do botão CTA (curto)", brand: "marca/logotipo textual no topo", out: "caminho de destino do PNG exportado" },
+    example: { bg: "/root/.hermes/images/campanha-story-fundo.png", headline: "PUNTA DEL ESTE", sub: "7 noites com all inclusive aéreo incluso", price: "a partir de R$ 1.899", cta: "Reserve agora", brand: "VIAGENS MEMORIA", out: "/root/.hermes/images/campanha-story.png" },
+    steps: [
+      { action: "document", with: { document: { op: "create", width: 1080, height: 1920 } } },
+      {
+        action: "compose",
+        with: {
+          elements: [
+            { type: "image", name: "fundo", path: "{{bg}}", width: 1080, height: 1920, position: { x: 0, y: 0 } },
+            { type: "shape", name: "faixa", shape: "rectangle", color: "#101828", position: { x: 0, y: 1560 }, width: 1080, height: 360 },
+            { type: "text", name: "marca", text: "{{brand}}", font: "Inter SemiBold", fontSize: 26, color: "#ffffff", position: { x: 60, y: 44 } },
+            { type: "text", name: "titulo", text: "{{headline}}", font: "Montserrat Bold", fontSize: 60, color: "#ffffff", position: { x: 60, y: 1600 } },
+            { type: "text", name: "subtitulo", text: "{{sub}}", font: "Inter Regular", fontSize: 30, color: "#d0d5dd", position: { x: 60, y: 1700 } },
+            { type: "text", name: "preco", text: "{{price}}", font: "Montserrat Bold", fontSize: 48, color: "#ffffff", position: { x: 60, y: 1762 } },
+            { type: "shape", name: "botao", shape: "rectangle", color: "#f59e0b", position: { x: 60, y: 1840 }, width: 420, height: 64 },
+            { type: "text", name: "cta", text: "{{cta}}", font: "Montserrat Bold", fontSize: 28, color: "#101828", position: { x: 90, y: 1854 } }
+          ]
+        }
+      },
+      { action: "export", with: { output: { path: "{{out}}", format: "png", overwrite: true } } }
+    ]
+  },
+  {
+    name: "campanha-whats",
+    description: "PHOTOPEA-UX-01/D4: peça de campanha 1200x675 (WhatsApp/link) — fundo {{bg}} full-canvas, faixa escura inferior com headline/sub, preço sobre a imagem, botão CTA âmbar à direita e marca no topo. Gere {{bg}} em 1200x675; textos de 1 linha.",
+    params: { bg: "caminho/URL da imagem de fundo (gerar em 1200x675)", headline: "titulo principal (1 linha)", sub: "subtitulo (1 linha)", price: "preço (1 linha, sobre a imagem)", cta: "texto do botão CTA (curto)", brand: "marca/logotipo textual no topo", out: "caminho de destino do PNG exportado" },
+    example: { bg: "/root/.hermes/images/campanha-whats-fundo.png", headline: "PUNTA DEL ESTE", sub: "7 noites com all inclusive aéreo", price: "a partir de R$ 1.899", cta: "Reserve agora", brand: "VIAGENS MEMORIA", out: "/root/.hermes/images/campanha-whats.png" },
+    steps: [
+      { action: "document", with: { document: { op: "create", width: 1200, height: 675 } } },
+      {
+        action: "compose",
+        with: {
+          elements: [
+            { type: "image", name: "fundo", path: "{{bg}}", width: 1200, height: 675, position: { x: 0, y: 0 } },
+            { type: "shape", name: "faixa", shape: "rectangle", color: "#101828", position: { x: 0, y: 525 }, width: 1200, height: 150 },
+            { type: "text", name: "marca", text: "{{brand}}", font: "Inter SemiBold", fontSize: 20, color: "#ffffff", position: { x: 50, y: 30 } },
+            { type: "text", name: "preco", text: "{{price}}", font: "Montserrat Bold", fontSize: 32, color: "#ffffff", position: { x: 50, y: 465 } },
+            { type: "text", name: "titulo", text: "{{headline}}", font: "Montserrat Bold", fontSize: 40, color: "#ffffff", position: { x: 50, y: 545 } },
+            { type: "text", name: "subtitulo", text: "{{sub}}", font: "Inter Regular", fontSize: 22, color: "#d0d5dd", position: { x: 50, y: 608 } },
+            { type: "shape", name: "botao", shape: "rectangle", color: "#f59e0b", position: { x: 910, y: 570 }, width: 240, height: 60 },
+            { type: "text", name: "cta", text: "{{cta}}", font: "Montserrat Bold", fontSize: 24, color: "#101828", position: { x: 935, y: 585 } }
+          ]
+        }
+      },
+      { action: "export", with: { output: { path: "{{out}}", format: "png", overwrite: true } } }
+    ]
   }
 ];
 
