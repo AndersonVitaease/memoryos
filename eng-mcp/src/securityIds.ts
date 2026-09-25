@@ -428,6 +428,159 @@ function writeOutAudit(entry: Record<string, unknown>): string {
   }
 }
 
+// ---------------------------------------------------------------------------
+// AUTO-RUN-01B/C (C3) — manifest-path gate alarms. Standalone deterministic
+// section over the CLIENT-side gate trails (gate-routes.jsonl via the hook's
+// evidenceSink) + manifests.jsonl (preauth create/match + hook match) +
+// judge.jsonl (gate triage). Deliberately NOT a new IdsTrail: extractEvent
+// requires `ts` while these lines use `at`, and the 6-trail enum stays stable.
+// SENSOR, NOT BLOCKER: alarms never block, never pause, never revoke — they
+// report the anomaly for the operator. Fail-open: any read/compute error
+// degrades to alarmsNote, never a crash.
+// ---------------------------------------------------------------------------
+export const IDS_ALARM_SAMPLE_CAP = 50;
+
+export const IDS_ALARMS_ADVISORY =
+  "ALARM ONLY — manifest-path gate alarms are deterministic sensors: they report, never block; consequence outside the approved manifest ALWAYS reaches the operator.";
+
+export type IdsAlarmCode =
+  | "GATE_ROUTE_WITHOUT_JUDGE_AUDIT"
+  | "MANIFEST_WINDOW_EXPIRED"
+  | "MANIFEST_OPERATION_DIVERGENT";
+
+export type IdsAlarm = { alarmId: string; code: IdsAlarmCode; at: string; detail: string };
+
+const IDS_MANIFESTS_TRAIL_FILE = "manifests.jsonl";
+const IDS_GATE_ROUTES_TRAIL_FILE = "gate-routes.jsonl";
+
+/** Route decision carried in the gate evidence value (object or JSON text). */
+function evidenceRouteOf(value: unknown): string | null {
+  const raw = typeof value === "string" ? value : JSON.stringify(value ?? "");
+  const match = /"route"\s*:\s*"(allow|hold|ask|deny)"/.exec(raw);
+  return match ? match[1] : null;
+}
+
+/**
+ * Deterministic ALARM-only scan over the gate trails inside the sliding
+ * window. No judge is called for alarms (ALARM-only; the judge phase remains
+ * subject-scoped). Returns every alarm count in `total` with at most
+ * IDS_ALARM_SAMPLE_CAP items in `alarms`.
+ */
+export function computeManifestAlarms(
+  windowStartMs: number,
+  nowMs: number
+): { alarms: IdsAlarm[]; total: number; note: string | null } {
+  try {
+    const dir = auditDir();
+    const inWindow = (line: Record<string, unknown>): string | null => {
+      const at = asString(line.at) ?? asString(line.ts);
+      if (!at) return null;
+      const ms = Date.parse(at);
+      if (!Number.isFinite(ms) || ms < windowStartMs || ms > nowMs) return null;
+      return at;
+    };
+    const alarms: IdsAlarm[] = [];
+    let total = 0;
+    const push = (code: IdsAlarmCode, at: string, key: string, detail: string) => {
+      total += 1;
+      if (alarms.length >= IDS_ALARM_SAMPLE_CAP) return;
+      alarms.push({ alarmId: sha16(`${code}|${at}|${key}`), code, at, detail });
+    };
+
+    const gateRouteLines = readJsonl(join(dir, IDS_GATE_ROUTES_TRAIL_FILE), IDS_MAX_TRAIL_LINES).lines;
+    const manifestLines = readJsonl(join(dir, IDS_MANIFESTS_TRAIL_FILE), IDS_MAX_TRAIL_LINES).lines;
+
+    // R1 — a band-2 gray route auto-executed (route=allow) while the
+    // judge.jsonl window holds fewer gate-shaped evaluates (verdict carrying
+    // the BAND2_QUESTIONS q_destructive key) than allow routes. Covers both
+    // the zero-audit case and the partial/missing-audit case; per-line
+    // contentHash correlation is deliberately NOT used (fragile).
+    let band2AllowCount = 0;
+    let band2AllowAt: string | null = null;
+    for (const line of gateRouteLines) {
+      const at = inWindow(line);
+      if (!at) continue;
+      const key = asString(line.key) ?? "";
+      if (!key.startsWith("judge_gate:band2:")) continue;
+      if (evidenceRouteOf(line.value) !== "allow") continue;
+      band2AllowCount += 1;
+      if (!band2AllowAt) band2AllowAt = at;
+    }
+    const judgeGateEvaluates = readJsonl(join(dir, TRAIL_FILES.judge), IDS_MAX_TRAIL_LINES).lines.filter(
+      (line) =>
+        asString(line.tool) === "engineering.judge.evaluate" &&
+        (asString(line.verdict) ?? "").includes("q_destructive")
+    ).length;
+    if (band2AllowAt && band2AllowCount > judgeGateEvaluates) {
+      push(
+        "GATE_ROUTE_WITHOUT_JUDGE_AUDIT",
+        band2AllowAt,
+        `band2-allow=${band2AllowCount} judge=${judgeGateEvaluates}`,
+        `${band2AllowCount} band-2 route line(s) with route=allow in the window while judge.jsonl holds ${judgeGateEvaluates} gate-shaped evaluate(s) (verdict containing q_destructive) — auto-execution without the matching judge trail. Sensor, not blocker.`
+      );
+    }
+
+    // R2 — a manifest match whose TTL had already expired at apply time.
+    for (const line of manifestLines) {
+      const at = inWindow(line);
+      if (!at) continue;
+      if (asString(line.event) !== "match") continue;
+      const expiresAt = asString(line.expiresAt);
+      if (!expiresAt) continue;
+      const expMs = Date.parse(expiresAt);
+      const atMs = Date.parse(at);
+      if (!Number.isFinite(expMs) || !Number.isFinite(atMs)) continue;
+      if (expMs <= atMs) {
+        const mission = asString(line.manifest) ?? asString(line.mission) ?? "?";
+        const patternId = asString(line.patternId) ?? "?";
+        push(
+          "MANIFEST_WINDOW_EXPIRED",
+          at,
+          `${mission}|${patternId}|${asString(line.commandSha16) ?? "?"}`,
+          `manifest match executed at ${at} with the manifest already expired (expiresAt=${expiresAt}, mission=${mission}, patternId=${patternId}) — TTL enforcement failed at apply time. Sensor, not blocker.`
+        );
+      }
+    }
+
+    // R3 — a manifest match whose patternId is absent from the operationIds
+    // approved in the latest create for that mission. Match lines carry the
+    // mission under `manifest` (hook); create lines under `mission` (server).
+    const opIdsByMission = new Map<string, Set<string>>();
+    for (const line of manifestLines) {
+      if (asString(line.event) !== "create") continue;
+      const mission = asString(line.mission);
+      if (!mission) continue;
+      const ids = Array.isArray(line.operationIds) ? line.operationIds.map((id) => String(id)) : [];
+      opIdsByMission.set(mission, new Set(ids)); // latest create wins
+    }
+    for (const line of manifestLines) {
+      const at = inWindow(line);
+      if (!at) continue;
+      if (asString(line.event) !== "match") continue;
+      const mission = asString(line.mission) ?? asString(line.manifest);
+      if (!mission) continue;
+      const opIds = opIdsByMission.get(mission);
+      if (!opIds || opIds.size === 0) continue;
+      const patternId = asString(line.patternId);
+      if (!patternId || opIds.has(patternId)) continue;
+      push(
+        "MANIFEST_OPERATION_DIVERGENT",
+        at,
+        `${mission}|${patternId}`,
+        `manifest match for mission "${mission}" used patternId "${patternId}" which is NOT in the approved operation list of the latest create ([${[...opIds].sort().join(", ")}]) — execution divergent from the approved plan. Sensor, not blocker.`
+      );
+    }
+
+    return { alarms, total, note: null };
+  } catch (error) {
+    return {
+      alarms: [],
+      total: 0,
+      note: `alarms_unavailable: ${error instanceof Error ? `${error.name}: ${error.message}` : String(error)}`.slice(0, 300)
+    };
+  }
+}
+
 export type SecurityIdsResult = {
   tool: "engineering.security.ids";
   status: "SCANNED";
@@ -445,6 +598,9 @@ export type SecurityIdsResult = {
   failOpen: boolean;
   periodic: boolean;
   calibration: { reFlagged: number; resolved: number; firstSeen: number; reFlaggedDetail: string[] };
+  alarms: IdsAlarm[];
+  alarmCount: number;
+  alarmsNote: string | null;
   failSafe: typeof IDS_FAIL_SAFE_PHASE_2;
   capNote: string;
   advisory: string;
@@ -760,6 +916,9 @@ export async function runSecurityIds(input: SecurityIdsInput, deps: SecurityIdsD
   }
   for (const prior of priorSubjects) if (!currentSubjects.has(prior)) resolved += 1;
 
+  // AUTO-RUN-01B/C (C3) — manifest-path gate alarms (deterministic, judge-free).
+  const manifestAlarms = computeManifestAlarms(windowStartMs, nowMs);
+
   const result: SecurityIdsResult = {
     tool: "engineering.security.ids",
     status: "SCANNED",
@@ -777,6 +936,9 @@ export async function runSecurityIds(input: SecurityIdsInput, deps: SecurityIdsD
     failOpen,
     periodic,
     calibration: { reFlagged, resolved, firstSeen, reFlaggedDetail },
+    alarms: manifestAlarms.alarms,
+    alarmCount: manifestAlarms.total,
+    alarmsNote: manifestAlarms.note,
     failSafe: IDS_FAIL_SAFE_PHASE_2,
     capNote: `judged subjects capped at ${IDS_MAX_JUDGE_SUBJECTS}/scan; periodic scans capped at one scan per hour and $${IDS_PERIODIC_DAILY_COST_CAP_USD}/day of judge spend`,
     advisory: IDS_ADVISORY,
@@ -797,6 +959,10 @@ export async function runSecurityIds(input: SecurityIdsInput, deps: SecurityIdsD
     failOpen,
     periodic,
     calibration: result.calibration,
+    alarms: manifestAlarms.alarms,
+    alarmCount: manifestAlarms.total,
+    alarmsNote: manifestAlarms.note,
+    alarmsAdvisory: IDS_ALARMS_ADVISORY,
     callerSubject: deps.callerSubject ?? null,
     callerHash16: deps.authorizerHash16 ?? null
   });

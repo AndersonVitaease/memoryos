@@ -27,8 +27,18 @@
  *       --gate <path>        override the gate module (tests)
  * Env:  JUDGE_HOOK_TOKEN_CREDENTIAL_FILE, JUDGE_HOOK_STOP_EVIDENCE,
  *       JUDGE_HOOKS_ENABLED=0 (escape hatch), JUDGE_HOOK_LOG (log file),
- *       JUDGE_HOOK_WATCHDOG_MS (hard ceiling, default 4000).
+ *       JUDGE_HOOK_WATCHDOG_MS (hard ceiling, default 4000),
+ *       JUDGE_HOOK_MISSION (restricts to ONE mission manifest),
+ *       ENG_MCP_GATE_AUDIT_DIR (client-side gate trails dir override).
+ *
+ * AUTO-RUN-01B/C wiring (all fail-open, metadata-only): evidenceSink →
+ * gate-routes.jsonl (every gate route decision, feeds IDS), signatureSink →
+ * promotion-signatures.jsonl (B1 deterministic promotion signatures),
+ * holdNotifier → hold-notifications.jsonl + engineering.notify.hermes (C2,
+ * idempotent per holdKey), missionContext → out-of-manifest HOLD when a
+ * mission manifest is active (C1/proof 1 — the approved plan IS the manifest).
  */
+import { createHash } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { register } from 'node:module';
 import { homedir } from 'node:os';
@@ -39,7 +49,14 @@ process.removeAllListeners('warning');
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_GATE = resolve(HERE, '..', '..', 'src', 'harness', 'judgeGate.ts');
 const DEFAULT_MANIFEST_MODULE = resolve(HERE, '..', '..', 'src', 'missionManifest.ts');
+const DEFAULT_PROMOTION_MODULE = resolve(HERE, '..', '..', 'src', 'harness', 'promotionSignatures.ts');
+const DEFAULT_HOLD_MODULE = resolve(HERE, '..', '..', 'src', 'harness', 'holdNotifier.ts');
 const HOST_MANIFEST_DIR = '/opt/eng-mcp-release-data/production/manifests';
+
+/** sha256 hex16 — same shape as missionManifest.sha16 (metadata-only). */
+function sha16Of(text) {
+  return createHash('sha256').update(text).digest('hex').slice(0, 16);
+}
 
 function manifestDir(env) {
   if (env.ENG_MCP_MANIFEST_DIR) return env.ENG_MCP_MANIFEST_DIR;
@@ -49,16 +66,11 @@ function manifestDir(env) {
 /**
  * AUTO-RUN-01A — apply-time manifest check for the gate's manifestCheck seam.
  * Fail-closed: any load/parse/validation failure returns null (never allow).
- * A match is audited metadata-only (mission, pattern id, hash16, command hash).
+ * A match is audited metadata-only (mission, pattern id, hash16, command hash,
+ * expiresAt — feeds IDS MANIFEST_WINDOW_EXPIRED).
  */
-async function buildManifestCheck(env, base) {
-  let mm;
-  try {
-    mm = await import(pathToFileURL(argValue('--manifest-module') || DEFAULT_MANIFEST_MODULE).href);
-  } catch (error) {
-    logLine({ ...base, status: 'unavailable', code: 'MANIFEST_MODULE_LOAD_FAILED', error: short(error?.message ?? error) });
-    return undefined;
-  }
+async function buildManifestCheck(env, base, mm) {
+  if (!mm) return undefined;
   const dir = manifestDir(env);
   const auditFile = env.ENG_MCP_MANIFEST_AUDIT || join(dirname(dir), 'audit', 'manifests.jsonl');
   return (command, cwd) => {
@@ -67,13 +79,80 @@ async function buildManifestCheck(env, base) {
     if (match) {
       try {
         mkdirSync(dirname(auditFile), { recursive: true });
-        appendFileSync(auditFile, JSON.stringify({ at: new Date().toISOString(), tool: 'judge-hook', event: 'match', manifest: match.mission, patternId: match.patternId, hash16: match.hash16, commandSha16: mm.sha16(command), session: base.session }) + '\n');
+        appendFileSync(auditFile, JSON.stringify({ at: new Date().toISOString(), tool: 'judge-hook', event: 'match', manifest: match.mission, patternId: match.patternId, hash16: match.hash16, expiresAt: match.expiresAt, commandSha16: mm.sha16(command), session: base.session }) + '\n');
       } catch {
         /* audit failure never widens the decision */
       }
     }
     return match;
   };
+}
+
+/**
+ * AUTO-RUN-01B/C — gate wiring extras (ALL fail-open; a load or sink failure
+ * leaves the seam undefined/absent and the gate behaves exactly as before).
+ * @returns {{evidenceSink?, signatureSink?, holdNotifier?, missionContext?}}
+ */
+async function buildGateExtras(env, base, judgeCallForNotify) {
+  const extras = {};
+  const auditDir = env.ENG_MCP_GATE_AUDIT_DIR || join(dirname(manifestDir(env)), 'audit');
+  const appendTrail = (file, line) => {
+    try {
+      mkdirSync(dirname(file), { recursive: true });
+      appendFileSync(file, JSON.stringify(line) + '\n');
+    } catch {
+      /* trail failure never affects the decision */
+    }
+  };
+  // evidenceSink — every gate route becomes a client-side trail line (IDS
+  // watches the auto-executed set). Metadata only (the gate already redacts).
+  const gateRoutesFile = env.ENG_MCP_GATE_ROUTES_AUDIT || join(auditDir, 'gate-routes.jsonl');
+  extras.evidenceSink = (entry) => {
+    appendTrail(gateRoutesFile, { at: entry.timestamp ?? new Date().toISOString(), ...entry });
+  };
+  // B1 — deterministic promotion signature sink.
+  let ps;
+  try {
+    ps = await import(pathToFileURL(DEFAULT_PROMOTION_MODULE).href);
+  } catch (error) {
+    logLine({ ...base, status: 'unavailable', code: 'PROMOTION_MODULE_LOAD_FAILED', error: short(error?.message ?? error) });
+  }
+  if (ps) {
+    extras.signatureSink = (input) => {
+      const line = ps.buildPromotionSignatureLine({
+        command: input.command,
+        category: input.category,
+        mission: input.mission,
+        session: input.session ?? base.session,
+      });
+      appendTrail(join(auditDir, ps.PROMOTION_TRAIL_FILE), line);
+    };
+  }
+  // C2 — HOLD notifier: engineering.notify.hermes via the same judge client
+  // path, idempotent per holdKey with state persisted in the trail itself.
+  let hold;
+  try {
+    hold = await import(pathToFileURL(DEFAULT_HOLD_MODULE).href);
+  } catch (error) {
+    logLine({ ...base, status: 'unavailable', code: 'HOLD_MODULE_LOAD_FAILED', error: short(error?.message ?? error) });
+  }
+  if (hold) {
+    extras.holdNotifier = (input) => hold.notifyHold(
+      { notifyClient: judgeCallForNotify, trailFile: join(auditDir, hold.HOLD_TRAIL_FILE), commandSha16: sha16Of(input.command) },
+      input,
+    );
+  }
+  // Out-of-manifest HOLD — mission context from the ACTIVE manifests. A
+  // throwing context = absent (the gate treats null as no mission).
+  const mission = env.JUDGE_HOOK_MISSION || undefined;
+  extras.missionContext = () => {
+    try {
+      return mission ? { active: true, mission } : null;
+    } catch {
+      return null;
+    }
+  };
+  return extras;
 }
 
 let emitted = false;
@@ -178,14 +257,42 @@ async function main() {
   }
 
   const serverUrl = argValue('--server-url') || env.ENG_MCP_SERVER_URL || undefined;
+  const gateServerUrl = serverUrl ?? 'https://memoryos-engmcp.2-25-96-245.nip.io/mcp';
   const failures = [];
   const judgeClient = async (tool, args, signal) => {
-    const result = await mod.defaultJudgeClient({ serverUrl: serverUrl ?? 'https://memoryos-engmcp.2-25-96-245.nip.io/mcp', token }, tool, args, signal);
+    const result = await mod.defaultJudgeClient({ serverUrl: gateServerUrl, token }, tool, args, signal);
     if (!result.ok) failures.push({ tool, error: short(result.error) });
     return result;
   };
-  const manifestCheck = event === 'PreToolUse' ? await buildManifestCheck(env, base) : undefined;
-  const gate = mod.buildJudgeGate({ unattended: false, token, serverUrl, judgeClient, env, manifestCheck });
+  // C2 — dedicated notify client: NOT pushed into failures[] (a notify
+  // failure is recorded honestly in hold-notifications.jsonl by the module
+  // itself; surfacing it as JUDGE_UNAVAILABLE would mislabel every HOLD).
+  const notifyClient = async (tool, args, signal) =>
+    mod.defaultJudgeClient({ serverUrl: gateServerUrl, token }, tool, args, signal);
+  // AUTO-RUN-01A — manifest module loaded ONCE, shared by manifestCheck and
+  // missionContext. Fail-open: on load failure both seams stay undefined.
+  let mm;
+  try {
+    mm = await import(pathToFileURL(argValue('--manifest-module') || DEFAULT_MANIFEST_MODULE).href);
+  } catch (error) {
+    logLine({ ...base, status: 'unavailable', code: 'MANIFEST_MODULE_LOAD_FAILED', error: short(error?.message ?? error) });
+  }
+  const manifestCheck = event === 'PreToolUse' ? await buildManifestCheck(env, base, mm) : undefined;
+  const gateExtras = event === 'PreToolUse' ? await buildGateExtras(env, base, notifyClient) : {};
+  if (mm && event === 'PreToolUse') {
+    // missionContext — mission active when the manifest dir yields at least
+    // one active manifest (restricting to JUDGE_HOOK_MISSION when set).
+    const dir = manifestDir(env);
+    gateExtras.missionContext = () => {
+      try {
+        const loaded = mm.loadActiveManifests(dir, Date.now(), env.JUDGE_HOOK_MISSION || undefined);
+        return { active: loaded.active.length > 0, mission: env.JUDGE_HOOK_MISSION || (loaded.active[0]?.mission ?? null) };
+      } catch {
+        return null;
+      }
+    };
+  }
+  const gate = mod.buildJudgeGate({ unattended: false, token, serverUrl, judgeClient, env, manifestCheck, ...gateExtras });
   if (!gate) return emit({});
 
   const toolUseID = typeof input.tool_use_id === 'string' ? input.tool_use_id : undefined;
