@@ -574,31 +574,38 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
     inputSchema: z.object({}).strict()
   }, async () => { requireRead(); requireGitFetch(); return response(await repository.gitFetch(subject.subject)); }));
 
-  // GIT-MERGE-01: governed layered merge — the third leg of fetch → merge → push.
-  // The layer is decided by the REAL repo state and never escalated beyond it:
+  // GIT-MERGE-01/02: governed layered merge — the third leg of fetch → merge →
+  // push, extended by GIT-MERGE-02 with the local-merge form (one LOCAL branch
+  // merged into another LOCAL branch of the same repo — worktree → main). The
+  // layer is decided by the REAL repo state and never escalated beyond it:
   // AUTO_FF (strictly behind → git merge --ff-only, no merge commit), NATIVE
   // (divergent with DISJOINT changed paths → one automatic merge commit with a
   // deterministic message, post-validated by parents/tree sha/predicted-vs-actual
   // paths, restored via reset --hard on ANY postcheck failure), ASSISTED (any
   // overlapping path → NEVER executes, not even with approval — structured
   // conflict list + recommendation, zero mutation; a conflicting merge is an
-  // operator decision). PLAN is the default and read-only; execution requires
-  // execute=true + approval.approved=true + acknowledgeMerge=true; a non-main
-  // branch requires passing `branch` explicitly and being checked out. Blockers
-  // (uncommitted changes, detached HEAD, branch not checked out, missing
-  // origin/<branch>) report BLOCKED and are never bypassed; NOTHING_TO_MERGE
-  // covers 0/0 and ahead-only (recommending engineering.git.push). Zero mutation
-  // outside the target is snapshot-proven (porcelain byte-identical, tags and all
-  // other refs unchanged; HEAD moves only for a performed merge). Purely local:
-  // no credential, no network, no origin URL in any output. Audit line in
-  // /data/audit/git-merge.jsonl.
+  // operator decision). The same layers/postchecks apply to EVERY pair. PLAN is
+  // the default and read-only; execution requires mode="execute" (or execute=true)
+  // + approval.approved=true + acknowledgeMerge=true. The local-merge target must
+  // be a LOCAL branch checked out at the repo root; a source checked out in
+  // another worktree is fine (only the target ref moves). Optional cleanup
+  // (execute only, default off): deleteBranch removes the fully-merged LOCAL
+  // source branch (never main, never checked-out), removeWorktree removes a
+  // registered, fully clean worktree. NON-GOALS: the target is always a LOCAL
+  // branch (writing a remote is the push tool's domain); engineering.git.push
+  // remains main-only; no squash merges; no cross-repository merges. Audit line
+  // in /data/audit/git-merge.jsonl (mode sync vs local-merge).
   register("engineering.git.merge", "write", (name) => server.registerTool(name, {
-    description: "Governed layered merge of origin/<branch> into the checked-out branch (GIT-MERGE-01): the layer is decided by the real repo state and never escalated beyond it. LAYER 1 AUTO_FF: branch strictly behind origin → one `git merge --ff-only` fast-forward, no merge commit. LAYER 2 NATIVE: divergent (ahead>0 AND behind>0) with DISJOINT changed-path sets relative to the merge base → one automatic merge commit with a deterministic single-line message, post-validated by parents, tree sha, predicted-vs-actual changed paths and a clean porcelain; ANY postcheck failure restores the pre-merge head (git reset --hard) and reports RESTORED. LAYER 3 ASSISTED: any overlapping changed path (or unrelated histories) → the merge is NEVER executed, not even with approval - a structured conflict list (path + local/remote change kind + nature + recommendation) is returned and the call stops with zero mutation. Default call is a read-only PLAN. Execution requires execute=true AND approval.approved=true AND acknowledgeMerge=true; merging a branch other than main requires passing `branch` explicitly (the declaration itself) and that branch being checked out. Blockers (UNCOMMITTED_CHANGES, MERGE_DETACHED_HEAD, BRANCH_NOT_CHECKED_OUT, MERGE_REMOTE_REF_MISSING, MERGE_REPOSITORY_UNAVAILABLE) report status BLOCKED and are never bypassed; NOTHING_TO_MERGE covers both 0/0 and ahead-only (the latter recommends engineering.git.push). Zero mutation outside the target is snapshot-proven (zeroMutationProof: worktreeStatusIdentical, tagsUnchanged, otherRefsUnchanged, headUnchanged for non-mutating outcomes). Purely local: no credential, no network, no origin URL anywhere in the output. Typed errors: MERGE_INPUT_FORBIDDEN, MERGE_BLOCKED, MERGE_ACKNOWLEDGMENT_REQUIRED, MERGE_APPROVAL_REQUIRED, MERGE_EXECUTION_FAILED, MERGE_POSTCHECK_FAILED, MERGE_RESTORE_FAILED, MERGE_TIMEOUT. Requires bearer scope engineering:git:merge (operator-issued; the agent cannot self-authorize). Audit line in /data/audit/git-merge.jsonl.",
+    description: "Governed layered merge (GIT-MERGE-01 sync + GIT-MERGE-02 local-merge): the layer is decided by the real repo state and never escalated beyond it. LAYER 1 AUTO_FF: target strictly behind source → one `git merge --ff-only` fast-forward, no merge commit. LAYER 2 NATIVE: divergent (ahead>0 AND behind>0) with DISJOINT changed-path sets relative to the merge base → one automatic merge commit with a deterministic single-line message, post-validated by parents, tree sha, predicted-vs-actual changed paths and a clean porcelain; ANY postcheck failure restores the pre-merge head (git reset --hard) and reports RESTORED. LAYER 3 ASSISTED: any overlapping changed path (or unrelated histories) → the merge is NEVER executed, not even with approval - a structured conflict list (path + local/remote change kind + nature + recommendation) is returned and the call stops with zero mutation. TWO FORMS, same layers: (1) sync (GIT-MERGE-01, legacy byte-compatible): pass only `branch` → merges origin/<branch> into the same-named checked-out branch; merging a branch other than main requires passing `branch` explicitly (the declaration itself) and that branch being checked out. (2) local-merge (GIT-MERGE-02): pass sourceBranch (+ optional into, default main) → merges one LOCAL branch into another LOCAL branch of the same repository (worktree → main included). sourceBranch may be a plain local branch name (refs/heads/<x>, preferred) or remote-tracking origin/<x> (refs/remotes/origin/<x>), auto-resolved by ref existence; an explicit 'origin/' prefix resolves ONLY the remote-tracking ref. `into` must be a LOCAL branch checked out at the repo root — the merge runs on the target checkout; a source checked out in another worktree is fine (only the target ref moves, the source worktree is never touched). Default call is a read-only PLAN. Execution requires mode=\"execute\" (or execute=true) AND approval.approved=true AND acknowledgeMerge=true. Blockers (TARGET_DIRTY (uncommitted tracked changes in the target checkout; untracked ?? tolerated), UNCOMMITTED_CHANGES (sync form), MERGE_DETACHED_HEAD, BRANCH_NOT_CHECKED_OUT, MERGE_REMOTE_REF_MISSING, MERGE_REPOSITORY_UNAVAILABLE) report status BLOCKED and are never bypassed; NOTHING_TO_MERGE covers both 0/0 and ahead-only. New typed errors: BRANCH_NOT_FOUND (source/into unresolvable), MERGE_NO_OP (source === into), TARGET_DIRTY. Optional cleanup (local-merge, execute only, default off): cleanup.deleteBranch deletes the LOCAL source branch with `git branch -d` semantics (only when fully merged — never main, never a checked-out branch) with typed refusals CLEANUP_SOURCE_NOT_LOCAL, CLEANUP_PROTECTED_REF, CLEANUP_BRANCH_CHECKED_OUT, CLEANUP_NOT_FULLY_MERGED, CLEANUP_REMOVE_FAILED; cleanup.removeWorktree removes a registered worktree ONLY if fully clean with typed refusals CLEANUP_WORKTREE_NOT_REGISTERED, CLEANUP_WORKTREE_DIRTY, CLEANUP_WORKTREE_REMOVE_FAILED; cleanup runs AFTER the merge and AFTER its zero-mutation proof (declared in findings + its own audit lines mode local-merge-cleanup). NON-GOALS (by design): the target is always a LOCAL branch (writing to a remote is the push tool's domain); engineering.git.push remains main-only; no squash merges (merge commits preserve mission provenance); no cross-repository merges. Zero mutation outside the target is snapshot-proven (zeroMutationProof: worktreeStatusIdentical, tagsUnchanged, otherRefsUnchanged, headUnchanged for non-mutating outcomes). Purely local: no credential, no network, no origin URL anywhere in the output. Typed errors: MERGE_INPUT_FORBIDDEN, MERGE_BLOCKED, MERGE_ACKNOWLEDGMENT_REQUIRED, MERGE_APPROVAL_REQUIRED, MERGE_EXECUTION_FAILED, MERGE_POSTCHECK_FAILED, MERGE_RESTORE_FAILED, MERGE_TIMEOUT, BRANCH_NOT_FOUND, MERGE_NO_OP, TARGET_DIRTY. Requires bearer scope engineering:git:merge (operator-issued; the agent cannot self-authorize). Audit line in /data/audit/git-merge.jsonl.",
     inputSchema: z.object({
       branch: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._/-]{0,63}$/).optional(),
+      sourceBranch: z.string().regex(/^(origin\/)?[A-Za-z0-9][A-Za-z0-9._/-]{0,63}$/).optional(),
+      into: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._/-]{0,63}$/).optional(),
+      mode: z.enum(["plan", "execute"]).optional(),
       execute: z.boolean().optional(),
       approval: z.object({ approved: z.boolean() }).optional(),
-      acknowledgeMerge: z.literal(true).optional()
+      acknowledgeMerge: z.literal(true).optional(),
+      cleanup: z.object({ deleteBranch: z.boolean().optional(), removeWorktree: z.string().min(1).optional() }).optional()
     }).strict()
   }, async (input) => { requireRead(); requireGitMerge(); return response(await repository.gitMerge(input, subject.subject)); }));
 
