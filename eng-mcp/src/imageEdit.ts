@@ -98,7 +98,19 @@ export function attachImageRelay(server: Server): void {
       send: (data: string) => { try { socket.write(encodeText(data)); } catch { /* closing */ } },
       close: (code = 1000) => { try { const b = Buffer.alloc(2); b.writeUInt16BE(code); socket.write(Buffer.concat([Buffer.from([0x88, 2]), b])); } catch { } socket.end(); }
     };
-    session = { ws, connectedAt: Date.now() };
+    // Single-slot, last-connect-wins: evict the previous holder (e.g. the headless
+    // executor when the operator's panel bridge takes over). The eviction closes the
+    // old socket with 4001 — the executor treats that as "yield and re-arm", never a
+    // hot reconnect that would steal the slot back from the panel. Pending requests
+    // issued to the evicted holder fail fast so the supervisor can re-route.
+    const mine = { ws, connectedAt: Date.now() };
+    if (session) {
+      const prev = session;
+      session = null;
+      failPending("RELAY_EVICTED");
+      try { prev.ws.close(4001); } catch { /* already dead */ }
+    }
+    session = mine;
     lastRelayError = null;
     ws.send(JSON.stringify({ type: "session", ok: true, protocol: "engineering.image.edit/1" }));
     socket.on("data", (chunk: Buffer) => {
@@ -116,7 +128,9 @@ export function attachImageRelay(server: Server): void {
         }
       }
     });
-    const drop = () => { if (session) { session = null; failPending("RELAY_DISCONNECTED"); } };
+    // drop only clears the slot if it is STILL this connection's slot — a zombie
+    // close of an evicted holder must never null out the active session.
+    const drop = () => { if (session === mine) { session = null; failPending("RELAY_DISCONNECTED"); } };
     socket.on("close", drop);
     socket.on("error", drop);
   });
