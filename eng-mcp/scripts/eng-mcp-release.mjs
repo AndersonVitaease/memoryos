@@ -119,7 +119,10 @@ export async function deriveExpectedCatalog(source) {
   const catalogMatch = source.match(/export const CANONICAL_TOOL_CATALOG: readonly ToolCatalogEntry\[\] = (\[[\s\S]*?\])/);
   if (!catalogMatch) {
     // Fallback para regex de register (mantido para compatibilidade)
-    const registerMatches = [...source.matchAll(/register\("([^"]+)"/g)];
+    // GWS-TOOLS-01: match every register-style helper (register(\"…\", registerGwsTool(\"…\")) —
+    // helper-scoped registrations were missed by the literal regex, drifting the derived
+    // catalog from the real tools/list (109 vs 124 -> TOOL_CATALOG_MISMATCH).
+    const registerMatches = [...source.matchAll(/register[A-Za-z]*\("([^"]+)"/g)];
     let tools = [...new Set(registerMatches.map(m => m[1]))];
     tools.sort();
     const count = tools.length;
