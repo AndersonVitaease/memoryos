@@ -86,15 +86,19 @@ export const SEC_LEGACY_FILE_REGEX = /\.(?:bak|backup|old|orig|rej)$|\.sb01-base
 export const SEC_SKIP_DIRS = new Set([".git", "node_modules", "dist", ".claude", "coverage", ".cache", ".next", "jobs", "__pycache__"]);
 
 // Output contamination guard — name-only in errors (no substring of the match).
+// NO leading \b: the live VPS leak (SECURITY-SCAN-01 proof phase) was a PAT
+// embedded AFTER a filename prefix ("github-patgithub_pat_...") — the word
+// boundary between "t" and "g" never exists there, so a leading \b made the
+// guard miss a real secret. Fail-closed bias: over-match is safe, a miss is not.
 export const SEC_OUTPUT_GUARD: { kind: string; regex: RegExp }[] = [
-  { kind: "github-finegrained-token", regex: /\bgithub_pat_[A-Za-z0-9_]{22,}\b/ },
-  { kind: "github-classic-token", regex: /\bgh[pousr]_[A-Za-z0-9]{20,}\b/ },
-  { kind: "openai-style-key", regex: /\bsk-(?:proj-)?[A-Za-z0-9_-]{20,}\b/ },
-  { kind: "openai-secret-key", regex: /\bsk_(?:live|test)_[A-Za-z0-9]{20,}\b/ },
-  { kind: "base44-key", regex: /\bb44k_[A-Za-z0-9_-]{16,}\b/ },
-  { kind: "slack-token", regex: /\bxox[baprs]-[A-Za-z0-9-]{10,}\b/ },
-  { kind: "aws-access-key", regex: /\bAKIA[0-9A-Z]{16}\b/ },
-  { kind: "google-api-key", regex: /\bAIza[0-9A-Za-z_-]{35}\b/ },
-  { kind: "jwt", regex: /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/ },
+  { kind: "github-finegrained-token", regex: /github_pat_[A-Za-z0-9_]{22,}/ },
+  { kind: "github-classic-token", regex: /gh[pousr]_[A-Za-z0-9]{20,}/ },
+  { kind: "openai-style-key", regex: /sk-(?:proj-)?[A-Za-z0-9_-]{20,}/ },
+  { kind: "openai-secret-key", regex: /sk_(?:live|test)_[A-Za-z0-9]{20,}/ },
+  { kind: "base44-key", regex: /b44k_[A-Za-z0-9_-]{16,}/ },
+  { kind: "slack-token", regex: /xox[baprs]-[A-Za-z0-9-]{10,}/ },
+  { kind: "aws-access-key", regex: /AKIA[0-9A-Z]{16}/ },
+  { kind: "google-api-key", regex: /AIza[0-9A-Za-z_-]{35}/ },
+  { kind: "jwt", regex: /eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/ },
   { kind: "pem-private-key", regex: /-----BEGIN [^-]*PRIVATE KEY-----/ }
 ];

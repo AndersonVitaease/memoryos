@@ -515,7 +515,9 @@ function mapHostProbe(state: ScanState, body: unknown): void {
   }
   for (const proc of asArray(root.procs).map(asRecord)) {
     const pid = asNumber(proc?.pid) ?? 0;
-    const argv0 = asString(proc?.argv0) ?? "unknown";
+    // argv0 is RAW cmdline text — redact secret-shaped material before it ever
+    // lands in a finding local (the probe only hashes classified hits, not argv0).
+    const argv0 = redactSecretText(asString(proc?.argv0) ?? "unknown");
     for (const hit of asArray(proc?.hits).map(mapProbeHit)) {
       if (!hit) continue;
       addFinding(state, SEC_CHECKS["SEC-008"], {
@@ -779,6 +781,33 @@ function buildCard(state: ScanState, drift: { closed: SecurityScanResult["drift"
 
 // ---- output contamination guard (fails closed) ----------------------------------
 
+// Replace any guard-regex match with a kind-labeled redaction marker. Used as a
+// PRE-pass (defense in depth before the fail-closed guard): token-shaped material
+// that arrives inside free-text fields (filenames, argv0, readError paths) is
+// redacted in place instead of leaking into output, drift snapshots, judge
+// payloads or the audit trail.
+function redactSecretText(text: string): string {
+  let redacted = text;
+  for (const guard of SEC_OUTPUT_GUARD) {
+    redacted = redacted.replace(new RegExp(guard.regex.source, "g"), `[sec-redacted:${guard.kind}]`);
+  }
+  return redacted;
+}
+
+function sanitizeState(state: ScanState): void {
+  for (const finding of state.findings.values()) {
+    finding.local = redactSecretText(finding.local);
+    finding.reasons = finding.reasons.map(redactSecretText);
+  }
+  for (const entry of state.checksRun) {
+    if (entry.note !== undefined) entry.note = redactSecretText(entry.note);
+  }
+  for (const readError of state.readErrors) {
+    readError.path = redactSecretText(readError.path);
+    readError.error = redactSecretText(readError.error);
+  }
+}
+
 function assertNoSecretInOutput(result: SecurityScanResult): void {
   const serialized = JSON.stringify(result);
   for (const guard of SEC_OUTPUT_GUARD) {
@@ -861,13 +890,16 @@ export async function runSecurityScan(input: SecurityScanInput, deps: SecuritySc
   if (state.modulesRun.has("registry") && target.kind !== "path") {
     registryInventory = scanRegistry(state, registryFile, `${dataDir}/credentials`, idsAuditFile, nowMs);
   }
+  // sanitize BEFORE drift/judge/audit: the snapshot, the judge payload and the
+  // audit record all embed finding locals — nothing secret-shaped may reach them.
+  sanitizeState(state);
   const driftInfo = mode === "scan" ? applyDrift(state, driftDir, now) : { snapshot: "skipped_plan", previousAt: null, closed: [] as SecurityScanResult["drift"]["closed"] };
   const triage = await triageWithJudge(state, mode, deps);
   const card = buildCard(state, driftInfo);
   const result: SecurityScanResult = {
     tool: "engineering.security.scan",
     status: mode === "plan" ? "PLAN" : "SCANNED",
-    target,
+    target: { ...target, root: redactSecretText(target.root) },
     modulesRun: [...state.modulesRun],
     checksRun: state.checksRun,
     findings: [...state.findings.values()],
