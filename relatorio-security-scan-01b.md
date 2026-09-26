@@ -95,3 +95,28 @@ sha256 de `/data/tokens.json`, `/etc/caddy/Caddyfile`, `/opt/memoryos/eng-mcp/sr
 - Envelope de erro canônico (recusa `/tmp` tipada).
 - transcript-400 → não ocorreu.
 - Judge: 4 calls live, custo total ≈ US$ 0.0005, fail-open documentado.
+
+---
+
+## 7. STATUS FINAL DAS PROVAS P1–P7 (honesto)
+
+| Prova | Status | O que rodou / o que não rodou |
+|---|---|---|
+| P1 baseline 6 achados | **PARCIAL — 3/6 + 3 ausências documentadas** | Detectados: Caddyfile 3 keys (SEC-009), /data/tokens.json (SEC-010 ×2), PAT filename (SEC-004). Não detectados com prova: Notion (processo encerrado — ps sem hits); senha 422 (exposição REAL persiste host-side, sensor cego por ProtectHome=true do runner); LibreChat (sem processo/arquivo vivo). **O item 5 é exposição real não detectável pelo sensor hoje.** |
+| P2 FP plantado → noise | **VERDE** | Dummy plantado e scanado ao vivo: SEC-001+SEC-003 dispararam, judge noise p=0.09. Recusa /tmp tipada, zero LLM. |
+| P3 target parametrizado | **VERDE COM LIMITAÇÃO** | Path target (worktree eng-mcp) rodou com o mesmo motor. NÃO rodou: /opt/gpu-orchestrator (não montado no container do servidor — follow-up runner-side). |
+| P4 zero mutação | **VERDE** | Hashes sha256 idênticos antes/depois de 4 scans live (evidence/p4-hashes-before/after). |
+| P5 sem valor de secret | **RED AO VIVO → FIX PRONTO, PENDENTE DEPLOY** | Scan vps r1 materializou o PAT bruto no campo local (token está no NOME do arquivo; guard antigo exigia \b inicial inexistente na junção). Grep adversarial: 0 hits nos outputs P2/P3, 2 linhas no audit de produção + 1 no drift snapshot carregam o valor (artefatos 0600). Fix commitado (bafbd2f6): guard sem leading-\b + redação sec-redacted em local/reasons/notes/readErrors/argv0/root. 15/15 testes + 2 regressões novas. **NÃO deployado nesta sessão (contrato: zero deploy/push) — scan vps com secrets segue vazando até o deploy.** |
+| P6 zero LLM determinístico | **VERDE** | Único ponto LLM é a triagem (fail-open, audit metadata-only); /tmp recusado com judgeCalls=0; modo plan sem judge (contrato testado). 4 judge calls live (~US$0.0005). |
+| P7 2 rodadas + capture + relatório | **VERDE** | 2 rodadas vps (r1: 44 new; r2: 44 recurring/2 new, previousAt set); judge re-triou nas 2 (4 Caddyfile "judged real" p 0.60–0.71 em ambas). Memory capture admitido (gate 0.88). Este relatório. |
+
+**Não rodou / não feito nesta sessão:** deploy do fix P5 (contrato); M5 CVEs de lockfile (fase 2 opcional); correlação IDS composta; probe path-target runner-side (apps /opt/* externos); ingest de transcripts (decisão de operator).
+
+**Findings reais atuais da VPS (card r2): score 0/100 — 7 critical / 33 warn / 6 info; registry 24 entradas (17 ativas).**
+Top findings reais para o operator (NUNCA aplicados por esta tool/sessão — remediation é relatório):
+1. PAT GitHub real como NOME de arquivo em /opt/eng-mcp-secrets/ (mode 644) — rotate + purgar.
+2. Caddyfile: 3 keys inline + 1 basic_auth high-entropy (judge real p 0.60–0.71).
+3. UFW desabilitado (ufw.conf ENABLED=no) — habilitar ou documentar security group.
+4. 4 registry entries expiradas NÃO revogadas: candidate, operator-publish-e2e, experimento-a, operator-systemd-uc-2026-09-19.
+5. 2 privilege creep: scope grant em não-operator (release-runner-2026-09-19) + scope "write" fora do catálogo.
+6. Transcripts: senha de dashboard real persiste em transcript host-side; sensor cego por ProtectHome=true do runner — ReadWritePaths (com trade-off) ou ponto cego assumido.
