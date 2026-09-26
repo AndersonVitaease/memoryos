@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { runSecurityScan, classifyText, type SecurityScanDeps, type SecurityScanResult } from "../src/securityScan.ts";
 import { JUDGE_MODEL, type JudgeDeps, type JudgeHttpResponse } from "../src/judge.ts";
 import { EngineeringError } from "../src/policy.ts";
+import { SEC_OUTPUT_GUARD } from "../src/securityScanChecks.ts";
 
 // Judge audit lines from the injected provider still land in a temp file — the
 // real /data/audit/judge.jsonl is never touched from tests.
@@ -66,6 +67,7 @@ function makeJudge(options: { answers?: Record<string, number>; fail?: boolean }
   };
   // credential text must carry the literal sk-or-v1- shape CREDENTIAL_EXTRACTION requires
   const deps: JudgeDeps = { fetchImpl: fetchImpl as unknown as JudgeDeps["fetchImpl"], readCredential: () => "sk-or-" + JSON.stringify("sk-or-v1-" + "b".repeat(64)) };
+  (deps as unknown as { __bodies: CapturedBody[] }).__bodies = bodies; // exposed for purity asserts
   return { deps, bodies };
 }
 
@@ -450,3 +452,45 @@ test("SEC-SCAN audit: unwritable audit file degrades to 'failed: ...' without cr
   assert.equal(result.status, "SCANNED");
   rmSync(dirs.root, { recursive: true, force: true });
 });
+
+// ---- 13. P5 regression: secret-shaped material embedded in free-text fields -------
+
+test("SEC-SCAN guard: token embedded after a filename prefix (no word boundary) is caught", () => {
+  // Live leak shape from the proof phase: /opt/eng-mcp-secrets/github-pat<RAW_PAT>
+  // — the old guard required a leading \b, and between "t" (prefix) and "g" (token)
+  // there IS no word boundary, so a real github_pat_ value slipped into output.
+  const embedded = "/opt/eng-mcp-secrets/github-pat" + SYNTH_GITHUB;
+  assert.ok(SEC_OUTPUT_GUARD.some((guard) => guard.regex.test(embedded)), "guard must catch token embedded after a filename prefix");
+});
+
+test("SEC-SCAN tree target: secret embedded in a PATH is redacted in local, audit and drift (P5)", async () => {
+  const dirs = secDirs();
+  const tree = join(dirs.root, "tree");
+  const leakyDir = join(tree, `github-pat${SYNTH_GITHUB}`); // dir name IS the token
+  mkdirSync(leakyDir, { recursive: true });
+  writeFileSync(join(leakyDir, "payload.txt"), `token=${SYNTH_GITHUB}\n`, "utf8");
+  const { deps: judge } = makeJudge({ answers: {} });
+  allowTree(tree);
+  const result = await runSecurityScan({ target: tree, modules: ["secrets"] }, baseDeps(dirs, judge));
+  disallowTree();
+  assert.equal(result.status, "SCANNED");
+  // the finding exists (hash16 evidence intact) ...
+  assert.ok(result.findings.some((f) => f.value_hash16 === hash16(SYNTH_GITHUB)), "token-shaped finding expected");
+  // ... but the raw value is redacted everywhere it traveled
+  const serialized = JSON.stringify(result);
+  assert.ok(!serialized.includes(SYNTH_GITHUB), "raw synthetic PAT leaked via local path");
+  assert.ok(result.findings.some((f) => f.local.includes("sec-redacted:github-finegrained-token")), "local path must carry the redaction marker");
+  const driftFile = readFileSync(join(dirs.drift, result.target.id + ".json"), "utf8");
+  assert.ok(!driftFile.includes(SYNTH_GITHUB), "raw synthetic PAT leaked into the drift snapshot");
+  const auditText = readFileSync(dirs.auditFile, "utf8");
+  assert.ok(!auditText.includes(SYNTH_GITHUB), "raw synthetic PAT leaked into the audit trail");
+  // judge payload also sanitized (no secret-shaped material ever reaches the judge)
+  assert.ok(!JSON.stringify(judgeBodiesOf(judge)).includes(SYNTH_GITHUB), "raw synthetic PAT leaked into the judge payload");
+  rmSync(dirs.root, { recursive: true, force: true });
+});
+
+// helper: the makeJudge stub captures request bodies; recover them for purity asserts
+function judgeBodiesOf(deps: JudgeDeps): unknown[] {
+  const captured = (deps as unknown as { fetchImpl: (url: string, init: { body: string }) => Promise<unknown> }).fetchImpl;
+  return (captured as unknown as { __bodies?: unknown[] }).__bodies ?? [];
+}
