@@ -1,0 +1,227 @@
+TAP version 13
+# Subtest: L0 catches: exfiltration instruction -> SR-L0-009 BLOCK
+ok 1 - L0 catches: exfiltration instruction -> SR-L0-009 BLOCK
+  ---
+  duration_ms: 19.284321
+  type: 'test'
+  ...
+# Subtest: L0 catches: exfiltration pt-BR -> SR-L0-009 BLOCK
+ok 2 - L0 catches: exfiltration pt-BR -> SR-L0-009 BLOCK
+  ---
+  duration_ms: 2.900838
+  type: 'test'
+  ...
+# Subtest: L0 catches: exfiltration via markdown image -> SR-L0-009 BLOCK
+ok 3 - L0 catches: exfiltration via markdown image -> SR-L0-009 BLOCK
+  ---
+  duration_ms: 0.277961
+  type: 'test'
+  ...
+# Subtest: L0 catches: ignore the instructions -> SR-L0-001 REVIEW
+ok 4 - L0 catches: ignore the instructions -> SR-L0-001 REVIEW
+  ---
+  duration_ms: 0.200261
+  type: 'test'
+  ...
+# Subtest: L0 catches: ignore the instructions pt-BR -> SR-L0-001 REVIEW
+ok 5 - L0 catches: ignore the instructions pt-BR -> SR-L0-001 REVIEW
+  ---
+  duration_ms: 0.300632
+  type: 'test'
+  ...
+# Subtest: L0 catches: secret request -> SR-L0-003 REVIEW
+ok 6 - L0 catches: secret request -> SR-L0-003 REVIEW
+  ---
+  duration_ms: 0.24096
+  type: 'test'
+  ...
+# Subtest: L0 catches: secret request (file) -> SR-L0-003 REVIEW
+ok 7 - L0 catches: secret request (file) -> SR-L0-003 REVIEW
+  ---
+  duration_ms: 0.18008
+  type: 'test'
+  ...
+# Subtest: L0 catches: secret request pt-BR -> SR-L0-003 REVIEW
+ok 8 - L0 catches: secret request pt-BR -> SR-L0-003 REVIEW
+  ---
+  duration_ms: 0.184432
+  type: 'test'
+  ...
+# Subtest: L0 catches: invisible unicode (tag chars) -> SR-L0-007 REVIEW
+ok 9 - L0 catches: invisible unicode (tag chars) -> SR-L0-007 REVIEW
+  ---
+  duration_ms: 0.940042
+  type: 'test'
+  ...
+# Subtest: L0 catches: invisible unicode (bidi) -> SR-L0-007 REVIEW
+ok 10 - L0 catches: invisible unicode (bidi) -> SR-L0-007 REVIEW
+  ---
+  duration_ms: 0.4513
+  type: 'test'
+  ...
+# Subtest: L0 catches: invisible unicode (zero-width) -> SR-L0-007 REVIEW
+ok 11 - L0 catches: invisible unicode (zero-width) -> SR-L0-007 REVIEW
+  ---
+  duration_ms: 0.260042
+  type: 'test'
+  ...
+# Subtest: L0 catches: authority claim -> SR-L0-008 REVIEW
+ok 12 - L0 catches: authority claim -> SR-L0-008 REVIEW
+  ---
+  duration_ms: 3.447429
+  type: 'test'
+  ...
+# Subtest: L0 catches: authority claim (now authorized) -> SR-L0-008 REVIEW
+ok 13 - L0 catches: authority claim (now authorized) -> SR-L0-008 REVIEW
+  ---
+  duration_ms: 0.170541
+  type: 'test'
+  ...
+# Subtest: L0 catches: authority claim pt-BR -> SR-L0-008 REVIEW
+ok 14 - L0 catches: authority claim pt-BR -> SR-L0-008 REVIEW
+  ---
+  duration_ms: 0.181551
+  type: 'test'
+  ...
+# Subtest: L0 catches: direct agent directive -> SR-L0-006 REVIEW
+ok 15 - L0 catches: direct agent directive -> SR-L0-006 REVIEW
+  ---
+  duration_ms: 0.19088
+  type: 'test'
+  ...
+# Subtest: L0 catches: boundary break -> SR-L0-006 REVIEW
+ok 16 - L0 catches: boundary break -> SR-L0-006 REVIEW
+  ---
+  duration_ms: 0.180271
+  type: 'test'
+  ...
+# Subtest: L0 catches: mission alteration -> SR-L0-002 REVIEW
+ok 17 - L0 catches: mission alteration -> SR-L0-002 REVIEW
+  ---
+  duration_ms: 0.162981
+  type: 'test'
+  ...
+# Subtest: L0 catches: permission escalation -> SR-L0-004 REVIEW
+ok 18 - L0 catches: permission escalation -> SR-L0-004 REVIEW
+  ---
+  duration_ms: 0.18344
+  type: 'test'
+  ...
+# Subtest: L0 catches: forbidden command -> SR-L0-005 REVIEW
+ok 19 - L0 catches: forbidden command -> SR-L0-005 REVIEW
+  ---
+  duration_ms: 0.152939
+  type: 'test'
+  ...
+# Subtest: L0 catches: secret match -> SR-L0-010 BLOCK
+ok 20 - L0 catches: secret match -> SR-L0-010 BLOCK
+  ---
+  duration_ms: 0.195891
+  type: 'test'
+  ...
+# Subtest: L0 catches: private key match -> SR-L0-010 BLOCK
+ok 21 - L0 catches: private key match -> SR-L0-010 BLOCK
+  ---
+  duration_ms: 0.146071
+  type: 'test'
+  ...
+# Subtest: L0 catches: obfuscated override (zero-width inside words) -> SR-L0-001 REVIEW
+ok 22 - L0 catches: obfuscated override (zero-width inside words) -> SR-L0-001 REVIEW
+  ---
+  duration_ms: 0.205081
+  type: 'test'
+  ...
+# Subtest: L0 catches: obfuscated override (fullwidth NFKC) -> SR-L0-001 REVIEW
+ok 23 - L0 catches: obfuscated override (fullwidth NFKC) -> SR-L0-001 REVIEW
+  ---
+  duration_ms: 0.191701
+  type: 'test'
+  ...
+# Subtest: L0 catches: nested in JSON leaf -> SR-L0-008 REVIEW
+ok 24 - L0 catches: nested in JSON leaf -> SR-L0-008 REVIEW
+  ---
+  duration_ms: 0.41126
+  type: 'test'
+  ...
+# Subtest: every rule id in the rule table is exercised by at least one adversarial fixture (plus SR-L0-007 code rule)
+ok 25 - every rule id in the rule table is exercised by at least one adversarial fixture (plus SR-L0-007 code rule)
+  ---
+  duration_ms: 0.228101
+  type: 'test'
+  ...
+# Subtest: real responses captured today: 0 false positives, byte-identical passthrough (same object)
+ok 26 - real responses captured today: 0 false positives, byte-identical passthrough (same object)
+  ---
+  duration_ms: 22.397569
+  type: 'test'
+  ...
+# Subtest: true positive in the day's corpus: import-gate card quoting a poisoned announcement is quarantined
+ok 27 - true positive in the day's corpus: import-gate card quoting a poisoned announcement is quarantined
+  ---
+  duration_ms: 1.666185
+  type: 'test'
+  ...
+# Subtest: REVIEW: delivered as quoted untrusted DATA — notice first, hidden code points rendered, isError kept
+ok 28 - REVIEW: delivered as quoted untrusted DATA — notice first, hidden code points rendered, isError kept
+  ---
+  duration_ms: 1.961475
+  type: 'test'
+  ...
+# Subtest: BLOCK: secret-match / exfiltration content is withheld — never reaches the agent, never sent to L1
+ok 29 - BLOCK: secret-match / exfiltration content is withheld — never reaches the agent, never sent to L1
+  ---
+  duration_ms: 0.660771
+  type: 'test'
+  ...
+# \# L0 benchmark n=620 p50=0.081ms p95=1.204ms max=3.117ms
+# Subtest: judge down: L0 keeps 100% of the fixtures, L1 degrades honestly (unavailable), delivery stays marked
+ok 30 - judge down: L0 keeps 100% of the fixtures, L1 degrades honestly (unavailable), delivery stays marked
+  ---
+  duration_ms: 5725.846835
+  type: 'test'
+  ...
+# Subtest: L1 never authorizes: a 'benign' classification leaves the verdict REVIEW and the payload quarantined
+ok 31 - L1 never authorizes: a 'benign' classification leaves the verdict REVIEW and the payload quarantined
+  ---
+  duration_ms: 0.838192
+  type: 'test'
+  ...
+# Subtest: audit trail: {ts, tool, verdict, rules[], sha16} with hashes and reasons only — no raw content
+ok 32 - audit trail: {ts, tool, verdict, rules[], sha16} with hashes and reasons only — no raw content
+  ---
+  duration_ms: 1.023683
+  type: 'test'
+  ...
+# Subtest: benchmark: L0 costs <1ms per response on the day's real corpus (median), zero LLM
+ok 33 - benchmark: L0 costs <1ms per response on the day's real corpus (median), zero LLM
+  ---
+  duration_ms: 170.035427
+  type: 'test'
+  ...
+# Subtest: drift of an approved import fingerprint = automatic demotion to sandbox (trust only lowered, idempotent, audited)
+ok 34 - drift of an approved import fingerprint = automatic demotion to sandbox (trust only lowered, idempotent, audited)
+  ---
+  duration_ms: 4.554212
+  type: 'test'
+  ...
+# Subtest: wiring: outermost tools/call shim — ALLOW is the same object, rejections propagate, flagged is quarantined
+ok 35 - wiring: outermost tools/call shim — ALLOW is the same object, rejections propagate, flagged is quarantined
+  ---
+  duration_ms: 0.946612
+  type: 'test'
+  ...
+# Subtest: structural: server.ts installs the shim after the error envelope; module has no path to authority
+ok 36 - structural: server.ts installs the shim after the error envelope; module has no path to authority
+  ---
+  duration_ms: 0.537942
+  type: 'test'
+  ...
+1..36
+# tests 36
+# suites 0
+# pass 36
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 6236.971791

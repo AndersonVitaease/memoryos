@@ -1,0 +1,18 @@
+production image: eng-mcp-candidate:candidate-20260928223337572-4f4f57219a50
+worktree sourceHash (runner algorithm, /tmp/seclayer-b/srchash.mjs): 4f4f57219a50bdf11fc7c8980b330781fe05772b4b728e5b607ac246bb7e63d5
+HEAD: 23fc1933fdf00eb4bcffd9aab170a0954c52a365
+tracked diff vs HEAD:
+ eng-mcp/verify-github-app-bootstrap-01.json |  3 +-
+ eng-mcp/verify.json                         | 60 +++++++++++++++++------------
+ 2 files changed, 36 insertions(+), 27 deletions(-)
+my commits ancestors of HEAD:
+ ea534dec yes
+ dd20d873 yes
+ dc7d8f66 yes
+container /app securityResponse.ts sha256:
+248fe4eea92a94ee1af3acd6ee3af6198e2b0530e6b0672ec2671585d12d8525  /app/src/securityResponse.ts
+repo:
+248fe4eea92a94ee1af3acd6ee3af6198e2b0530e6b0672ec2671585d12d8525  src/securityResponse.ts
+248fe4eea92a94ee1af3acd6ee3af6198e2b0530e6b0672ec2671585d12d8525  -
+2
+active

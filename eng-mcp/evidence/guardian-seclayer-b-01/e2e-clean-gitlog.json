@@ -1,0 +1,16 @@
+{
+ "latencyMs": 511,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"commits\":[{\"hash\":\"23fc1933fdf00eb4bcffd9aab170a0954c52a365\",\"shortHash\":\"23fc1933\",\"authorName\":\"Claude\",\"authorEmail\":\"claude@example.com\",\"date\":\"2026-09-28T19:31:41-03:00\",\"subject\":\"UPSTREAM-SYNC-01: engineering.upstream supertool — 4 verbs (check/plan/apply/rollback) over N config targets (catalog 130)\",\"parents\":[\"dc7d8f66b4a4bcc14fcb0a8a6181f5b90776dd77\"]},{\"hash\":\"dc7d8f66b4a4bcc14fcb0a8a6181f5b90776dd77\",\"shortHash\":\"dc7d8f66\",\"authorName\":\"Claude\",\"authorEmail\":\"claude@example.com\",\"date\":\"2026-09-28T19:29:37-03:00\",\"subject\":\"GUARDIAN-SECLAYER-B-01: strip trailing whitespace from github-app-bootstrap-01 evidence (suite.txt, test-runner hint lines) — release runner whitespaceCheck DIFF_CHECK_FAILED blocked the pipeline; content otherwise unchanged (same precedent as 7e9d19e5)\",\"parents\":[\"dd20d873ebde339854be2a896f7ae423c4cd819e\"]},{\"hash\":\"dd20d873ebde339854be2a896f7ae423c4cd819e\",\"shortHash\":\"dd20d873\",\"authorName\":\"Claude\",\"authorEmail\":\"claude@example.com\",\"date\":\"2026-09-28T19:28:41-03:00\",\"subject\":\"GUARDIAN-SECLAYER-B-01: E2E planted-payload fixtures (quarantine + block) for the production proof via engineering.file.read\",\"parents\":[\"ea534dec9ddb567a0fd4dc78779776ccb351ecfd\"]}],\"truncated\":true}"
+    }
+   ]
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}

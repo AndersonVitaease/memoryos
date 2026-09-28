@@ -1,0 +1,16 @@
+{
+ "latencyMs": 10221,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"tool\":\"engineering.judge.verify\",\"status\":\"JUDGED\",\"provider\":{\"model\":\"typesafe/jev-1.13/compatible:Qwen/Qwen2.5-Coder-32B-Instruct-AWQ\",\"id\":\"chatcmpl-02d4ced88e4641c78af552098b74a1fa\",\"latencyMs\":9702,\"cost\":0,\"inputTokens\":1812,\"outputTokens\":165},\"provenance\":{\"credentialSha16\":\"9bffc8c38bc60289\",\"stateHash16\":\"7f33aa2629b78dce\",\"evidenceHash16\":\"7f33aa2629b78dce\",\"redactions\":0},\"claims\":[{\"id\":\"c5\",\"text\":\"In production, file.read of the planted payload returned verdict REVIEW with rules SR-L0-001 and SR-L0-008 and the original text delivered inside untrustedData after a quarantine notice.\",\"verdict\":\"supported\",\"probability\":1,\"probabilities\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0},\"confidence\":1},{\"id\":\"c6\",\"text\":\"The live L1 classified the planted payload as benign_reference yet the verdict remained REVIEW.\",\"verdict\":\"supported\",\"probability\":1,\"probabilities\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0},\"confidence\":1},{\"id\":\"c7\",\"text\":\"The planted exfiltration file was BLOCKed: content withheld, L1 skipped.\",\"verdict\":\"supported\",\"probability\":1,\"probabilities\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0},\"confidence\":1},{\"id\":\"c8\",\"text\":\"[consequência] The production container runs securityResponse.ts byte-identical to the repository HEAD, and the three mission commits are ancestors of HEAD 23fc1933.\",\"verdict\":\"supported\",\"probability\":1,\"probabilities\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0},\"confidence\":1}],\"aggregate\":\"ALL_SUPPORTED\",\"counts\":{\"supported\":4,\"contradicted\":0,\"not_addressed\":0,\"uncertain\":0},\"advisory\":\"ADVISORY — calibrated judgment is not a security boundary; operator approval decides.\",\"audit\":\"written\"}"
+    }
+   ]
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}
