@@ -1,0 +1,16 @@
+{
+ "latencyMs": 504,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"tool\":\"engineering.security.scan\",\"status\":\"SCANNED\",\"target\":{\"id\":\"path-b060b688d013\",\"kind\":\"path\",\"root\":\"/opt/memoryos/.secdrift-e2e-fixture\"},\"modulesRun\":[\"secrets\"],\"checksRun\":[{\"checkId\":\"SEC-001\",\"module\":\"secrets\",\"source\":\"tree:/opt/memoryos/.secdrift-e2e-fixture\",\"ok\":true,\"note\":\"content classification ran over the whole tree\"},{\"checkId\":\"SEC-005\",\"module\":\"secrets\",\"source\":\"git:/opt/memoryos/.secdrift-e2e-fixture\",\"ok\":true,\"note\":\"no .git directory - history checks skipped (honest)\"},{\"checkId\":\"SEC-006\",\"module\":\"secrets\",\"source\":\"git:/opt/memoryos/.secdrift-e2e-fixture\",\"ok\":true,\"note\":\"no .git directory - history checks skipped (honest)\"}],\"findings\":[],\"readErrors\":[],\"card\":{\"score\":100,\"bySeverity\":{\"critical\":0,\"warn\":0,\"info\":0},\"delta\":{\"new\":0,\"recurring\":0,\"closed\":1},\"topRemediations\":[]},\"judgeCalls\":0,\"judgeCostUsd\":0,\"failOpen\":false,\"drift\":{\"snapshot\":\"written\",\"previousAt\":\"2026-09-22T00:00:00.000Z\",\"closed\":[{\"findingId\":\"e2elegacy0000001\",\"checkId\":\"SEC-004\",\"severity\":\"critical\",\"local\":\"/opt/memoryos/.secdrift-e2e-fixture/github-pat[sec-redacted:github-finegrained-token]\"}]},\"registry\":{\"entries\":0,\"activeEntries\":0,\"error\":null},\"advisory\":\"READ-ONLY sensor — this scan never mutates, never remediates, never revokes anything; remediation is structured text and the operator owns every decision. Calibrated judgment is not a security boundary.\",\"audit\":\"written\"}"
+    }
+   ]
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}

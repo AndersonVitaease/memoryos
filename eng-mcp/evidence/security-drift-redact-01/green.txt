@@ -1,0 +1,19 @@
+ok 1 - SEC-SCAN classifyText: token formats are hashed with kind+entropy, raw value never in the hit
+ok 2 - SEC-SCAN classifyText: high-entropy needs context on the same line; sha256-like hex is NOT flagged
+ok 3 - SEC-SCAN tree target: finds token in content + .env filename + legacy .bak, output is hash16-only
+ok 4 - SEC-SCAN drift: second scan marks recurring and closes absent findings with proof
+ok 5 - SEC-SCAN judge triage: p>=0.6 judged, p<0.6 noise; fail-open marks unavailable
+ok 6 - SEC-SCAN vps target: probe maps to SEC-007/008/009/011/020/021/030/040-adjacent findings, readErrors surface
+ok 7 - SEC-SCAN vps target: missing runner channel degrades to readErrors RUNNER_CHANNEL_UNAVAILABLE, no crash
+ok 8 - SEC-SCAN registry: expired-active entry + revoked credential file + unknown scope
+ok 9 - SEC-SCAN plan mode: no judge call, no drift write, verdicts=plan
+ok 10 - SEC-SCAN path target: root override allows a tmp external path; other tmp path refused
+ok 11 - SEC-SCAN golden baseline: the 8 real-shaped findings are all found in one synthetic tree (regra de ouro 1)
+ok 12 - SEC-SCAN input: relative target refused, unknown module refused
+ok 13 - SEC-SCAN audit: unwritable audit file degrades to 'failed: ...' without crashing the scan
+ok 14 - SEC-SCAN guard: token embedded after a filename prefix (no word boundary) is caught
+ok 15 - SEC-SCAN tree target: secret embedded in a PATH is redacted in local, audit and drift (P5)
+ok 16 - SEC-SCAN drift.closed: raw secret in a PRIOR snapshot local is redacted, never echoed (DRIFT-REDACT-01)
+# tests 16
+# pass 16
+# fail 0

@@ -1,0 +1,16 @@
+{
+ "latencyMs": 2082,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"tool\":\"engineering.security.scan\",\"status\":\"SCANNED\",\"target\":{\"id\":\"path-b060b688d013\",\"kind\":\"path\",\"root\":\"/opt/memoryos/.secdrift-e2e-fixture\"},\"modulesRun\":[\"secrets\"],\"checksRun\":[{\"checkId\":\"SEC-001\",\"module\":\"secrets\",\"source\":\"tree:/opt/memoryos/.secdrift-e2e-fixture\",\"ok\":true,\"note\":\"content classification ran over the whole tree\"},{\"checkId\":\"SEC-005\",\"module\":\"secrets\",\"source\":\"git:/opt/memoryos/.secdrift-e2e-fixture\",\"ok\":true,\"note\":\"no .git directory - history checks skipped (honest)\"},{\"checkId\":\"SEC-006\",\"module\":\"secrets\",\"source\":\"git:/opt/memoryos/.secdrift-e2e-fixture\",\"ok\":true,\"note\":\"no .git directory - history checks skipped (honest)\"}],\"findings\":[{\"findingId\":\"d643b913dc88032f\",\"checkId\":\"SEC-001\",\"module\":\"secrets\",\"kind\":\"token-format-in-content\",\"local\":\"github-pat[sec-redacted:github-finegrained-token]/payload.txt\",\"line\":1,\"entropy\":4.85,\"value_hash16\":\"4407ef5cd352ca91\",\"severity\":\"critical\",\"verdict\":\"judged\",\"drift\":\"new\",\"reasons\":[\"content_github-finegrained-token\",\"context_token\",\"judge_real_p_0.80\"],\"remediation\":\"Rotate/revoke the credential immediately and purge it from the file; keep credentials in 0600 files under /data/credentials or systemd LoadCredential, never in tree content.\",\"fpNote\":\"Synthetic test fixtures and regex-literal pattern strings in source can hit; judge triage flags them as noise.\",\"probability\":0.8},{\"findingId\":\"1b6319bc9e7af5bd\",\"checkId\":\"SEC-003\",\"module\":\"secrets\",\"kind\":\"high-entropy-string\",\"local\":\"github-pat[sec-redacted:github-finegrained-token]/payload.txt\",\"line\":1,\"entropy\":5.01,\"value_hash16\":\"cb6e7746a310d625\",\"severity\":\"warn\",\"verdict\":\"noise\",\"drift\":\"new\",\"reasons\":[\"content_high-entropy-string\",\"context_unavailable\",\"judge_noise_p_0.30\"],\"remediation\":\"Move the high-entropy value into a credential store (LoadCredential/0600 file) and reference it by path.\",\"fpNote\":\"Long hex hashes (sha256) never pass the 4.5-bit threshold; base64 literals in code may hit — judge triages.\",\"probability\":0.3}],\"readErrors\":[],\"card\":{\"score\":78,\"bySeverity\":{\"critical\":1,\"warn\":1,\"info\":0},\"delta\":{\"new\":2,\"recurring\":0,\"closed\":0},\"topRemediations\":[\"Rotate/revoke the credential immediately and purge it from the file; keep credentials in 0600 files under /data/credentials or systemd LoadCredential, never in tree content.\",\"Move the high-entropy value into a credential store (LoadCredential/0600 file) and reference it by path.\"]},\"judgeCalls\":1,\"judgeCostUsd\":0,\"failOpen\":false,\"drift\":{\"snapshot\":\"written\",\"previousAt\":null,\"closed\":[]},\"registry\":{\"entries\":0,\"activeEntries\":0,\"error\":null},\"advisory\":\"READ-ONLY sensor — this scan never mutates, never remediates, never revokes anything; remediation is structured text and the operator owns every decision. Calibrated judgment is not a security boundary.\",\"audit\":\"written\"}"
+    }
+   ]
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}

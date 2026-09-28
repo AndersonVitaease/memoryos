@@ -1,0 +1,8 @@
+synthetic sha16 4407ef5cd352ca91
+ok no-raw scan1
+targetId path-b060b688d013
+ok scan1 finding redacted
+ok no-raw scan2
+ok drift.closed redacted
+ok no-raw snapshot-rewritten
+PASS
