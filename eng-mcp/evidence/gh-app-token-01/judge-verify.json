@@ -1,0 +1,16 @@
+{
+ "latencyMs": 8978,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"tool\":\"engineering.judge.verify\",\"status\":\"JUDGED\",\"provider\":{\"model\":\"typesafe/jev-1.13/compatible:Qwen/Qwen2.5-Coder-32B-Instruct-AWQ\",\"id\":\"chatcmpl-c5471c56ea664e6a985db11ad0672094\",\"latencyMs\":8458,\"cost\":0,\"inputTokens\":2189,\"outputTokens\":210},\"provenance\":{\"credentialSha16\":\"9bffc8c38bc60289\",\"stateHash16\":\"646ef66c67bdd8c6\",\"evidenceHash16\":\"0d5c57d21ae46875\",\"redactions\":1},\"claims\":[{\"id\":\"c1\",\"text\":\"Without the githubRead wiring, 4 of the 6 new tests fail (a,b,c2,d) and 2 pass (c,e); with the wiring all 6 pass.\",\"verdict\":\"supported\",\"probability\":1,\"probabilities\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0},\"confidence\":1},{\"id\":\"c2\",\"text\":\"githubAppAuth.test.ts plus githubRead.test.ts: 28 pass, 0 fail.\",\"verdict\":\"contradicted\",\"probability\":1,\"probabilities\":{\"supported\":0,\"contradicted\":1,\"not_addressed\":0},\"confidence\":1},{\"id\":\"c3\",\"text\":\"tsc reports 41 errors, none in github-related files.\",\"verdict\":\"supported\",\"probability\":1,\"probabilities\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0},\"confidence\":1},{\"id\":\"c4\",\"text\":\"Full npm test: 1486 tests, 1480 pass, 1 fail (zz-proxy-live LIVE test got 403 Forbidden from production), 5 skipped.\",\"verdict\":\"supported\",\"probability\":1,\"probabilities\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0},\"confidence\":1},{\"id\":\"c5\",\"text\":\"Commit d4ea66f9 touches only src/githubAppAuth.ts, src/githubRead.ts, src/errorEnvelope.ts, test/githubAppAuth.test.ts and scripts/github-app-{verify.ts,verify.sh,bootstrap.md}; no deploy, no push.\",\"verdict\":\"contradicted\",\"probability\":1,\"probabilities\":{\"supported\":0,\"contradicted\":1,\"not_addressed\":0},\"confidence\":1}],\"aggregate\":\"HAS_CONTRADICTIONS\",\"counts\":{\"supported\":3,\"contradicted\":2,\"not_addressed\":0,\"uncertain\":0},\"advisory\":\"ADVISORY — calibrated judgment is not a security boundary; operator approval decides.\",\"audit\":\"written\"}"
+    }
+   ]
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}

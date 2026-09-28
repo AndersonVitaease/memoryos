@@ -1,0 +1,41 @@
+src/appProvision.ts(207,57): error TS2322: Type '"EXECUTED_ACCEPTED" | "EXECUTED_FAILED" | "UPSTREAM_ERROR"' is not assignable to type '"EXECUTED_FAILED" | "UPSTREAM_ERROR" | "REUSED" | "CREATED" | "READ_FAILED"'.
+src/appProvision.ts(247,61): error TS2322: Type '"EXECUTED_ACCEPTED" | "EXECUTED_FAILED" | "UPSTREAM_ERROR"' is not assignable to type '"EXECUTED_FAILED" | "UPSTREAM_ERROR" | "REUSED" | "CREATED" | "READ_FAILED"'.
+src/complianceAssess.ts(134,40): error TS18047: 'child.stdin' is possibly 'null'.
+src/complianceAssess.ts(137,5): error TS18047: 'child.stdout' is possibly 'null'.
+src/complianceAssess.ts(138,5): error TS18047: 'child.stderr' is possibly 'null'.
+src/distributionPrepare.ts(149,110): error TS2339: Property 'status' does not exist on type '{ published: boolean; evidence: string[]; durationMs: number; channel: "dev"; authenticated: boolean; editorReady: boolean; titleApplied: boolean; bodyApplied: boolean; tagsRequested: boolean; ... 5 more ...; finalState: string | null; }'.
+src/gitMerge.ts(303,7): error TS2741: Property 'branch' is missing in type '{}' but required in type '{ path?: string | undefined; branch: string | null; }'.
+src/guardianAppDeploy.ts(133,3): error TS2322: Type '{ ok: boolean; status: GuardianAppDeployStatus; tool: "guardian.app.deploy"; name: string; detection: NodeAppDetectorResult | null; missing: string[]; plan: { primitive: "application-create"; startCommand: string; port: number | null; portStrategy: string; envKeys: string[]; provisioning: { mode: string; projectName...' is not assignable to type 'GuardianAppDeployResult'.
+src/guardianAppDeploy.ts(321,18): error TS2322: Type '"EXECUTED"' is not assignable to type '"NOT_EXECUTED" | "SUCCESS_PROVEN" | "FAILURE_PROVEN" | "INDETERMINATE"'.
+src/guardianAppDeploy.ts(321,67): error TS2322: Type '"MUTATION_ACCEPTED_PROVEN"' is not assignable to type '"NONE_PROVEN" | "OCCURRED" | "UNDETERMINED"'.
+src/guardianAppDeploy.ts(324,18): error TS2322: Type '"EXECUTED"' is not assignable to type '"NOT_EXECUTED" | "SUCCESS_PROVEN" | "FAILURE_PROVEN" | "INDETERMINATE"'.
+src/guardianAppDeploy.ts(324,67): error TS2322: Type '"MUTATION_ACCEPTED_PROVEN"' is not assignable to type '"NONE_PROVEN" | "OCCURRED" | "UNDETERMINED"'.
+src/guardianAppDeploy.ts(502,11): error TS2322: Type '(intent: GuardianAppDeployIntent) => Promise<BindOutcome<GuardianAppDeployProposal>>' is not assignable to type '(intent: GuardianAppDeployIntent) => BindOutcome<Record<string, never>> | Promise<BindOutcome<Record<string, never>>>'.
+src/guardianDistributionAdapter.ts(109,11): error TS2322: Type '(intent: DistributionIntent) => Promise<{ outcome: "NOT_EXECUTED"; stage: "ELIGIBILITY" | "OBSERVATION" | "COMPATIBILITY"; refusal: "BLOCKED" | "UNDETERMINED"; effect: Occurrence; reasons: string[]; } | { ...; } | { ...; } | { ...; } | { ...; }>' is not assignable to type '(intent: DistributionIntent) => BindOutcome<DistributionProposal> | Promise<BindOutcome<DistributionProposal>>'.
+src/imageAdapt.ts(135,12): error TS2339: Property 'code' does not exist on type 'StepResult'.
+src/imageAdapt.ts(135,129): error TS2339: Property 'message' does not exist on type 'StepResult'.
+src/imageAdapt.ts(136,106): error TS2339: Property 'code' does not exist on type 'StepResult'.
+src/imageAdapt.ts(136,120): error TS2339: Property 'message' does not exist on type 'StepResult'.
+src/imageAdapt.ts(138,36): error TS2339: Property 'code' does not exist on type 'StepResult'.
+src/imageAdapt.ts(138,151): error TS2339: Property 'code' does not exist on type 'StepResult'.
+src/imageAdapt.ts(138,165): error TS2339: Property 'message' does not exist on type 'StepResult'.
+src/imageAdapt.ts(140,74): error TS2339: Property 'code' does not exist on type 'StepResult'.
+src/imageAdapt.ts(140,88): error TS2339: Property 'message' does not exist on type 'StepResult'.
+src/imageEdit.ts(95,12): error TS2339: Property 'setNoDelay' does not exist on type 'Duplex'.
+src/imageEdit.ts(118,50): error TS2322: Type 'Buffer<ArrayBufferLike>' is not assignable to type 'Buffer<ArrayBuffer>'.
+src/main.ts(43,51): error TS2769: No overload matches this call.
+src/main.ts(43,89): error TS7006: Parameter 'error' implicitly has an 'any' type.
+src/main.ts(80,51): error TS2769: No overload matches this call.
+src/main.ts(80,89): error TS7006: Parameter 'error' implicitly has an 'any' type.
+src/main.ts(121,51): error TS2769: No overload matches this call.
+src/main.ts(121,89): error TS7006: Parameter 'error' implicitly has an 'any' type.
+src/main.ts(161,51): error TS2769: No overload matches this call.
+src/main.ts(161,89): error TS7006: Parameter 'error' implicitly has an 'any' type.
+src/tools.ts(243,109): error TS7006: Parameter 'block' implicitly has an 'any' type.
+src/tools.ts(1261,7): error TS2322: Type '(recoverInput: unknown) => Promise<VpsRecoverResult>' is not assignable to type '(input: unknown) => Promise<SupervisorResult>'.
+src/vpsGuardian.ts(189,62): error TS2322: Type 'Promise<VpsRecoverResult> | Promise<SupervisorResult>' is not assignable to type 'Promise<SupervisorResult>'.
+src/vpsGuardian.ts(235,40): error TS2322: Type 'Promise<VpsRecoverResult> | Promise<SupervisorResult>' is not assignable to type 'Promise<SupervisorResult>'.
+src/webConnector.ts(343,5): error TS2322: Type 'unknown[]' is not assignable to type 'Record<string, unknown>[]'.
+src/webConnector.ts(513,29): error TS2304: Cannot find name 'AuthSessionSlotPaths'.
+src/webConnector.ts(525,103): error TS2339: Property 'status' does not exist on type '{ evidence: string[]; durationMs: number; }'.
+src/webConnector.ts(525,148): error TS2339: Property 'stepsExecuted' does not exist on type '{ evidence: string[]; durationMs: number; }'.

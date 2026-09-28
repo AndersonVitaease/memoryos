@@ -1,0 +1,16 @@
+{
+ "latencyMs": 4743,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"tool\":\"engineering.judge.verify\",\"status\":\"JUDGED\",\"provider\":{\"model\":\"typesafe/jev-1.13/compatible:Qwen/Qwen2.5-Coder-32B-Instruct-AWQ\",\"id\":\"chatcmpl-848802230f3b4d239d2331ffebdf1694\",\"latencyMs\":4169,\"cost\":0,\"inputTokens\":569,\"outputTokens\":85},\"provenance\":{\"credentialSha16\":\"9bffc8c38bc60289\",\"stateHash16\":\"72c65ddc25212b8c\",\"evidenceHash16\":\"72c65ddc25212b8c\",\"redactions\":0},\"claims\":[{\"id\":\"c2\",\"text\":\"The green run of githubAppAuth.test.ts plus githubRead.test.ts reports '# pass 28' and '# fail 0'.\",\"verdict\":\"not_addressed\",\"probability\":1,\"probabilities\":{\"supported\":0,\"contradicted\":0,\"not_addressed\":1},\"confidence\":1},{\"id\":\"c5\",\"text\":\"The commit changes exactly these 7 files: eng-mcp/src/githubAppAuth.ts, eng-mcp/src/githubRead.ts, eng-mcp/src/errorEnvelope.ts, eng-mcp/test/githubAppAuth.test.ts, eng-mcp/scripts/github-app-verify.ts, eng-mcp/scripts/github-app-verify.sh, eng-mcp/scripts/github-app-bootstrap.md.\",\"verdict\":\"supported\",\"probability\":1,\"probabilities\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0},\"confidence\":1}],\"aggregate\":\"MIXED\",\"counts\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":1,\"uncertain\":0},\"advisory\":\"ADVISORY — calibrated judgment is not a security boundary; operator approval decides.\",\"audit\":\"written\"}"
+    }
+   ]
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}

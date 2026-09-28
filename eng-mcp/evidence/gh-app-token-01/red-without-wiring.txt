@@ -1,0 +1,8 @@
+not ok 1 - (a) App configured: RS256 JWT with correct claims+signature, installation token used for the API call
+not ok 2 - (b) cache: second call inside TTL reuses the token; near expiry it renews by itself
+ok 3 - (c) App absent: PAT fallback exactly as before, zero exchange
+not ok 4 - (c2) partial App config fails closed — never silently degrades to the PAT
+not ok 5 - (d) scrub: exchange error echoing JWT/PEM/token leaks nothing; identifiers reported as sha16
+ok 6 - (e) bootstrap verify script: GREEN against a fake GitHub, prints no secret; RED on 0644 key
+# pass 2
+# fail 4
