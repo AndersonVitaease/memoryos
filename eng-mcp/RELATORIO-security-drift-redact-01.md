@@ -46,4 +46,4 @@
 ## 7. Artefatos
 `evidence/security-drift-redact-01/`: red, green, suite, pipeline-call-1/2/resume-1, pre/post-image, pre-deploy-ready, e2e-drift.sh/.txt, e2e-scan1/2, e2e-synthetic.sha16, smoke-p5.sh/.txt, selfcheck-payload/response, camada1-inspect, mcpcall.mjs. O verify.json está na raiz, com probes resistentes a deploys futuros: checam o fix no container em vez da tag da imagem.
 
-FINGERPRINT {"missionId":"security-drift-redact-01","head":"<ver capture>","registrySha16":"65b52f52c998ba91","verdicts":{"camada0":{"aggregate":"ALL_SUPPORTED","counts":{"supported":6,"contradicted":0},"note":"c6 controle falso aceito — FP do juiz"},"camada1":"PASS"},"ts":"2026-09-28T18:00:00Z"}
+FINGERPRINT {"missionId":"security-drift-redact-01","head":"5f3625be06f4dcdf0cf91aa16146448f98a96527","registrySha16":"65b52f52c998ba91","verdicts":{"camada0":{"aggregate":"ALL_SUPPORTED","counts":{"supported":6,"contradicted":0},"note":"c6 controle falso aceito — FP do juiz"},"camada1":"PASS"},"ts":"2026-09-28T17:58:39Z"}
