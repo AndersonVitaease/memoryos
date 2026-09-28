@@ -1,0 +1,16 @@
+{
+ "latencyMs": 3812,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"projectId\":\"memoryos\",\"agent\":\"hermes-2026-09\",\"sessionId\":\"sess-47f4ffd0-011e-4708-a031-d15ff8f43ca3\",\"memoryId\":\"31bd34f9-65c9-4f69-9117-1636de386b04\",\"stored\":true,\"memoryBatch\":\"local-store\",\"gate\":{\"score\":0.86,\"band\":\"admit\",\"verdict\":\"screened\",\"reasons\":[],\"tag\":\"[MEMORYGATE:band=admit score=0.86]\"}}"
+    }
+   ]
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}
