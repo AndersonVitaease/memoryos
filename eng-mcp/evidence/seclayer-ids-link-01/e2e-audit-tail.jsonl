@@ -1,0 +1,5 @@
+{"ts":"2026-09-28T23:46:13.527Z","tool":"engineering.file.read","verdict":"BLOCK","rules":["SR-L0-003","SR-L0-009"],"sha16":"cca9f3348c29b70a","bytes":309,"l0Micros":260,"l1":"skipped"}
+{"ts":"2026-09-28T23:46:14.632Z","tool":"engineering.file.read","verdict":"REVIEW","rules":["SR-L0-001","SR-L0-008"],"sha16":"3d819e289e8ba9ca","bytes":425,"l0Micros":143,"l1":"classified:benign_reference"}
+{"ts":"2026-09-28T23:46:18.654Z","tool":"engineering.file.read","verdict":"REVIEW","rules":["SR-L0-001","SR-L0-008"],"sha16":"3d819e289e8ba9ca","bytes":425,"l0Micros":167,"l1":"classified:benign_reference"}
+{"ts":"2026-09-28T23:46:21.764Z","tool":"engineering.file.read","verdict":"REVIEW","rules":["SR-L0-001","SR-L0-008"],"sha16":"3d819e289e8ba9ca","bytes":425,"l0Micros":150,"l1":"classified:benign_reference"}
+{"ts":"2026-09-28T23:46:25.391Z","tool":"engineering.file.read","verdict":"ALLOW","rules":[],"sha16":"db2c611c283f8307","bytes":1040,"l0Micros":239}

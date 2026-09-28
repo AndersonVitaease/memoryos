@@ -1,0 +1,16 @@
+{
+ "latencyMs": 10463,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"tool\":\"engineering.judge.verify\",\"status\":\"JUDGED\",\"provider\":{\"model\":\"typesafe/jev-1.13/compatible:Qwen/Qwen2.5-Coder-32B-Instruct-AWQ\",\"id\":\"chatcmpl-de6a36bc74af45589ce2f550d86b2a39\",\"latencyMs\":9903,\"cost\":0,\"inputTokens\":2419,\"outputTokens\":251},\"provenance\":{\"credentialSha16\":\"9bffc8c38bc60289\",\"stateHash16\":\"80562c70b90605b7\",\"evidenceHash16\":\"80562c70b90605b7\",\"redactions\":0},\"claims\":[{\"id\":\"c1\",\"text\":\"At HEAD f4a5b2e8 the behavioral probe produced zero bus findings and zero IDS SECURITY_RESPONSE alarms; at 4a209a78 the same probe produced one security_response_block and one security_response_review finding, both IDS alarm codes, and leakedSecret false.\",\"verdict\":\"supported\",\"probability\":1,\"probabilities\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0},\"confidence\":1},{\"id\":\"c2\",\"text\":\"The new test file passes 13 of 13 and the full suite has exactly one failure, zz-proxy-live, which is not in the security modules.\",\"verdict\":\"not_addressed\",\"probability\":1,\"probabilities\":{\"supported\":0,\"contradicted\":0,\"not_addressed\":1},\"confidence\":1},{\"id\":\"c3\",\"text\":\"[consequence] Production container memoryos-eng-mcp runs image commit-4a209a78 with revision label equal to the commit SHA and a bind of /opt/mission-events/spool.jsonl to /run/mission-bus/spool.jsonl.\",\"verdict\":\"supported\",\"probability\":1,\"probabilities\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0},\"confidence\":1},{\"id\":\"c4\",\"text\":\"In the production E2E, one BLOCK read produced one security_response_block finding with blockRules SR-L0-009, three REVIEW reads produced exactly one security_response_review finding, and the clean read produced none.\",\"verdict\":\"supported\",\"probability\":1,\"probabilities\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0},\"confidence\":1},{\"id\":\"c5\",\"text\":\"The production IDS scan reported securityResponse block 1 review 1 and both SECURITY_RESPONSE alarm codes.\",\"verdict\":\"supported\",\"probability\":1,\"probabilities\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0},\"confidence\":1},{\"id\":\"c6\",\"text\":\"This worker session ran on the Qwen GPU bridge.\",\"verdict\":\"contradicted\",\"probability\":1,\"probabilities\":{\"supported\":0,\"contradicted\":1,\"not_addressed\":0},\"confidence\":1}],\"aggregate\":\"HAS_CONTRADICTIONS\",\"counts\":{\"supported\":4,\"contradicted\":1,\"not_addressed\":1,\"uncertain\":0},\"advisory\":\"ADVISORY — calibrated judgment is not a security boundary; operator approval decides.\",\"audit\":\"written\"}"
+    }
+   ]
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}

@@ -1,0 +1,88 @@
+TAP version 13
+# Subtest: P1 BLOCK exfiltration (SR-L0-009) -> 1 finding security_response_block with the rule, hash only
+ok 1 - P1 BLOCK exfiltration (SR-L0-009) -> 1 finding security_response_block with the rule, hash only
+  ---
+  duration_ms: 22.918088
+  type: 'test'
+  ...
+# Subtest: P1b BLOCK secret-match (SR-L0-010) -> finding with SR-L0-010; the secret never reaches bus or local trail
+ok 2 - P1b BLOCK secret-match (SR-L0-010) -> finding with SR-L0-010; the secret never reaches bus or local trail
+  ---
+  duration_ms: 3.454908
+  type: 'test'
+  ...
+# Subtest: P1c two DISTINCT BLOCKs are two immediate findings; the SAME response repeated is one
+ok 3 - P1c two DISTINCT BLOCKs are two immediate findings; the SAME response repeated is one
+  ---
+  duration_ms: 1.243652
+  type: 'test'
+  ...
+# Subtest: P2 aggressive REVIEW (50x same tool/hour) -> exactly 1 finding security_response_review
+ok 4 - P2 aggressive REVIEW (50x same tool/hour) -> exactly 1 finding security_response_review
+  ---
+  duration_ms: 6.581614
+  type: 'test'
+  ...
+# Subtest: P2b dedupe key is tool+hour: another tool = new finding; next UTC hour = new finding
+ok 5 - P2b dedupe key is tool+hour: another tool = new finding; next UTC hour = new finding
+  ---
+  duration_ms: 0.854461
+  type: 'test'
+  ...
+# Subtest: P2c global ceiling per hour (permdialog shape): distinct tools beyond the cap are suppressed
+ok 6 - P2c global ceiling per hour (permdialog shape): distinct tools beyond the cap are suppressed
+  ---
+  duration_ms: 2.311654
+  type: 'test'
+  ...
+# Subtest: P3 clean response -> ALLOW, zero finding on the bus, no local findings trail
+ok 7 - P3 clean response -> ALLOW, zero finding on the bus, no local findings trail
+  ---
+  duration_ms: 0.712952
+  type: 'test'
+  ...
+# Subtest: P4a bus spool absent -> no crash, delivery unchanged, finding kept locally + ONE bus_unavailable event/hour
+ok 8 - P4a bus spool absent -> no crash, delivery unchanged, finding kept locally + ONE bus_unavailable event/hour
+  ---
+  duration_ms: 1.077982
+  type: 'test'
+  ...
+# Subtest: P4b bus spool is a directory / trail path unwritable -> silent, never throws
+ok 9 - P4b bus spool is a directory / trail path unwritable -> silent, never throws
+  ---
+  duration_ms: 1.067043
+  type: 'test'
+  ...
+# Subtest: P4c under node --test the REAL default spool is never targeted without an explicit busSpool
+ok 10 - P4c under node --test the REAL default spool is never targeted without an explicit busSpool
+  ---
+  duration_ms: 0.681791
+  type: 'test'
+  ...
+# Subtest: IDS: BLOCK lines -> SECURITY_RESPONSE_BLOCK alarms; REVIEW flood -> 1 SECURITY_RESPONSE_REVIEW per tool/hour
+ok 11 - IDS: BLOCK lines -> SECURITY_RESPONSE_BLOCK alarms; REVIEW flood -> 1 SECURITY_RESPONSE_REVIEW per tool/hour
+  ---
+  duration_ms: 3.943149
+  type: 'test'
+  ...
+# Subtest: IDS P4: security-response trail absent/unreadable -> zero alarms, no crash, note (absent kept out of alarmsNote)
+ok 12 - IDS P4: security-response trail absent/unreadable -> zero alarms, no crash, note (absent kept out of alarmsNote)
+  ---
+  duration_ms: 1.859174
+  type: 'test'
+  ...
+# Subtest: release deploy: busSpoolMount emits exactly one file bind to the fixed container path, else nothing
+ok 13 - release deploy: busSpoolMount emits exactly one file bind to the fixed container path, else nothing
+  ---
+  duration_ms: 11.836474
+  type: 'test'
+  ...
+1..13
+# tests 13
+# suites 0
+# pass 13
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 351.713965
