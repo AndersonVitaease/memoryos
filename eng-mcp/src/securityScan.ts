@@ -755,7 +755,12 @@ function applyDrift(state: ScanState, driftDir: string, now: () => Date): { snap
   for (const finding of state.findings.values()) {
     finding.drift = previous !== null && previous.findings.some((prior) => prior.findingId === finding.findingId) ? "recurring" : "new";
   }
-  const closed = previous === null ? [] : previous.findings.filter((prior) => !currentIds.has(prior.findingId)).map((prior) => ({ findingId: prior.findingId, checkId: prior.checkId, severity: prior.severity, local: prior.local }));
+  // The PRIOR snapshot is untrusted input: it may predate sanitization (or be
+  // hand-edited), so every echoed field goes through the same redaction as the
+  // live findings — a closed finding must never re-materialize a raw secret
+  // (SECURITY-DRIFT-REDACT-01).
+  const echo = (value: unknown): string => redactSecretText(String(value ?? ""));
+  const closed = previous === null ? [] : previous.findings.filter((prior) => !currentIds.has(prior.findingId)).map((prior) => ({ findingId: echo(prior.findingId), checkId: echo(prior.checkId), severity: echo(prior.severity), local: echo(prior.local) }));
   const snapshotRecord: DriftSnapshot = {
     ts: now().toISOString(),
     findings: [...state.findings.values()].map((finding) => ({ findingId: finding.findingId, checkId: finding.checkId, kind: finding.kind, severity: finding.severity, local: finding.local }))
