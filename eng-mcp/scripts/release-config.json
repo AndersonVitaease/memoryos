@@ -24,6 +24,7 @@
     "tokenRegistryFile": "/data/tokens.json",
     "deployEnvironmentId": "Fh6ebljpJ2Mq65-_OxnTH",
     "deployServerId": "LXzm3ZifF7EPwLaBUXt4H",
+    "busSpoolMount": "/opt/mission-events/spool.jsonl:/run/mission-bus/spool.jsonl",
     "readOnlyMounts": [
       "/usr/local/lib/hermes-agent:/usr/local/lib/hermes-agent:ro"
     ]

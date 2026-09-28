@@ -24,6 +24,7 @@ import { dirname } from "node:path";
 import { countHiddenCodePoints, renderHiddenCodePoints, sha16 } from "./mcpImportScan.ts";
 import { defaultJudgeDeps, runJudgeEvaluate, type JudgeDeps } from "./judge.ts";
 import { demoteDriftedEntryToSandbox, type McpImportDeps } from "./mcpImport.ts";
+import { linkSecurityResponseRecordToBus, type BusLinkDeps } from "./securityResponseBus.ts";
 
 export const SECURITY_RESPONSE_AUDIT_FILE_DEFAULT = "/data/audit/security-response.jsonl";
 export const SECURITY_RESPONSE_L1_TIMEOUT_MS = 4000;
@@ -166,6 +167,8 @@ export type SecurityResponseDeps = {
   l1TimeoutMs?: number;
   l1Enabled?: boolean;
   mcpImportDeps?: McpImportDeps;
+  /** SECLAYER-IDS-LINK-01: bus link (BLOCK/REVIEW -> mission bus findings); tests inject spool/state. */
+  busLink?: BusLinkDeps;
   now?: () => Date;
 };
 async function runL1(tool: string, l0: L0Result, deps: SecurityResponseDeps): Promise<L1Result> {
@@ -203,8 +206,12 @@ async function runL1(tool: string, l0: L0Result, deps: SecurityResponseDeps): Pr
 // ---- audit -----------------------------------------------------------------------------------------------------
 export function writeSecurityResponseAudit(record: Record<string, unknown>, deps: SecurityResponseDeps = {}): string {
   const file = deps.auditFile ?? process.env.ENG_MCP_SECURITY_RESPONSE_AUDIT_FILE ?? SECURITY_RESPONSE_AUDIT_FILE_DEFAULT;
-  try { mkdirSync(dirname(file), { recursive: true }); appendFileSync(file, `${JSON.stringify(record)}\n`, "utf8"); return "written"; }
-  catch (error) { return `failed:${error instanceof Error ? error.message.slice(0, 80) : String(error)}`; }
+  let status: string;
+  try { mkdirSync(dirname(file), { recursive: true }); appendFileSync(file, `${JSON.stringify(record)}\n`, "utf8"); status = "written"; }
+  catch (error) { status = `failed:${error instanceof Error ? error.message.slice(0, 80) : String(error)}`; }
+  // SECLAYER-IDS-LINK-01 hook on the writer: BLOCK/REVIEW -> bus finding (deterministic, never throws).
+  linkSecurityResponseRecordToBus(record, file, deps.busLink ?? {});
+  return status;
 }
 
 // ---- L2: quarantine / block / drift demotion -------------------------------------------------------------------
