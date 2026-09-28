@@ -1,0 +1,16 @@
+{
+ "latencyMs": 8196,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"tool\":\"engineering.judge.verify\",\"status\":\"JUDGED\",\"provider\":{\"model\":\"typesafe/jev-1.13/compatible:Qwen/Qwen2.5-Coder-32B-Instruct-AWQ\",\"id\":\"chatcmpl-8ced3063b1934975880cd95a6e3bd8cd\",\"latencyMs\":7678,\"cost\":0,\"inputTokens\":3004,\"outputTokens\":167},\"provenance\":{\"credentialSha16\":\"9bffc8c38bc60289\",\"stateHash16\":\"8ba15f53de8d924f\",\"evidenceHash16\":\"c85e3606cd87b58c\",\"redactions\":5},\"claims\":[{\"id\":\"c1\",\"text\":\"With the tier-3 gate disabled (mutant M1) at least one test fails, and the original code passes 15 of 15 tests.\",\"verdict\":\"supported\",\"probability\":1,\"probabilities\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0},\"confidence\":1},{\"id\":\"c2\",\"text\":\"With the rug-pull detector blinded (mutant M2) the plan/rug-pull test fails.\",\"verdict\":\"supported\",\"probability\":1,\"probabilities\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0},\"confidence\":1},{\"id\":\"c3\",\"text\":\"Removing the snapshot before merge (mutant M3) makes the apply/rollback test fail.\",\"verdict\":\"supported\",\"probability\":1,\"probabilities\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0},\"confidence\":1},{\"id\":\"c4\",\"text\":\"The release pipeline test stage ran 1572 tests with 0 failures and expected 130 tools.\",\"verdict\":\"contradicted\",\"probability\":1,\"probabilities\":{\"supported\":0,\"contradicted\":1,\"not_addressed\":0},\"confidence\":1}],\"aggregate\":\"HAS_CONTRADICTIONS\",\"counts\":{\"supported\":3,\"contradicted\":1,\"not_addressed\":0,\"uncertain\":0},\"advisory\":\"ADVISORY — calibrated judgment is not a security boundary; operator approval decides.\",\"audit\":\"written\"}"
+    }
+   ]
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}

@@ -1,0 +1,16 @@
+{
+ "latencyMs": 464,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"tool\":\"engineering.upstream\",\"verb\":\"apply\",\"status\":\"REFUSED\",\"code\":\"AUTHORIZATION_SCOPE_REQUIRED\",\"message\":\"apply is tier-3: requires bearer scope engineering:upstream:apply (operator-issued, never implied by engineering:write)\",\"target\":\"hermes-agent\",\"mutationPerformed\":false,\"audit\":\"/data/audit/upstream-sync.jsonl\"}"
+    }
+   ]
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}

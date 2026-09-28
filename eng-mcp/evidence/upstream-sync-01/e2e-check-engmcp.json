@@ -1,0 +1,16 @@
+{
+ "latencyMs": 906,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"tool\":\"engineering.upstream\",\"verb\":\"check\",\"status\":\"CHECKED\",\"mutationPerformed\":false,\"advisory\":\"READ-ONLY: check never applies anything (cron-able sweep; findings land in the audit trail)\",\"summary\":{\"total\":1,\"updateAvailable\":0,\"unreachable\":0},\"results\":[{\"target\":\"engmcp\",\"kind\":\"git\",\"status\":\"UP_TO_DATE\",\"current\":{\"sha\":\"23fc1933fdf00eb4bcffd9aab170a0954c52a365\",\"branch\":\"main\",\"dirtyTrackedFiles\":2},\"available\":{\"sha\":\"1f9324c914945c73f75f8d4a07ab7d1ee09d5224\",\"ref\":\"upstream/main\",\"upstreamTip\":\"1f9324c914945c73f75f8d4a07ab7d1ee09d5224\"},\"ahead\":35,\"behind\":0,\"mergeBase\":\"1f9324c914945c73f75f8d4a07ab7d1ee09d5224\",\"commits\":[],\"commitsTruncated\":false,\"lockfileDiff\":[],\"riskNotes\":[\"TARGET_DIRTY: 2 tracked file(s) modified locally — apply is BLOCKED until the tree is clean (merge never runs over uncommitted changes)\",\"LOCAL_CARRIED_COMMITS: 35 local commit(s) not upstream — merge will be NATIVE or ASSISTED, never a plain fast-forward\"],\"zeroMutation\":{\"headUnchanged\":true,\"statusUnchanged\":true,\"refsUnchanged\":true,\"cacheRepo\":\"/data/upstream/cache/engmcp.git\",\"note\":\"fetched into a private cache repo (alternates) — the target's refs/worktree/index are never written\"},\"durationMs\":411,\"audit\":\"/data/audit/upstream-sync.jsonl\"}]}"
+    }
+   ]
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}

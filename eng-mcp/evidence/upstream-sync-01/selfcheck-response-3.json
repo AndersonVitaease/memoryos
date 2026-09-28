@@ -1,0 +1,16 @@
+{
+ "latencyMs": 5267,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"tool\":\"engineering.judge.verify\",\"status\":\"JUDGED\",\"provider\":{\"model\":\"typesafe/jev-1.13/compatible:Qwen/Qwen2.5-Coder-32B-Instruct-AWQ\",\"id\":\"chatcmpl-d00eb2d7103f4efeb472eddcc10329e1\",\"latencyMs\":4733,\"cost\":0,\"inputTokens\":2488,\"outputTokens\":41},\"provenance\":{\"credentialSha16\":\"9bffc8c38bc60289\",\"stateHash16\":\"8ba15f53de8d924f\",\"evidenceHash16\":\"c85e3606cd87b58c\",\"redactions\":5},\"claims\":[{\"id\":\"c4b\",\"text\":\"The release pipeline test stage counted 1572 tests: 1566 passed and 0 failed (the remainder skipped), with 130 expected tools.\",\"verdict\":\"supported\",\"probability\":0.9,\"probabilities\":{\"supported\":0.9,\"contradicted\":0.05,\"not_addressed\":0.05},\"confidence\":0.8}],\"aggregate\":\"ALL_SUPPORTED\",\"counts\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0,\"uncertain\":0},\"advisory\":\"ADVISORY — calibrated judgment is not a security boundary; operator approval decides.\",\"audit\":\"written\"}"
+    }
+   ]
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}

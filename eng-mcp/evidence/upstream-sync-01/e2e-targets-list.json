@@ -1,0 +1,16 @@
+{
+ "latencyMs": 514,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"tool\":\"engineering.upstream\",\"verb\":\"targets\",\"action\":\"list\",\"status\":\"LISTED\",\"source\":\"bootstrap\",\"registrySha16\":\"bootstrap\",\"file\":\"/data/upstream-targets.json\",\"targets\":[{\"id\":\"hermes-agent\",\"kind\":\"git\",\"source\":{\"url\":\"https://github.com/NousResearch/hermes-agent.git\",\"branch\":\"main\"},\"localPath\":\"/usr/local/lib/hermes-agent\",\"container\":null,\"adapter\":{\"rebuild\":null,\"restart\":{\"kind\":\"systemd\",\"unit\":\"hermes-gateway.service\"},\"smoke\":{\"commands\":[{\"argv\":[\"hermes\",\"--version\"],\"expectStdoutRegex\":\"Hermes Agent v\"}],\"health\":null},\"contractRef\":null},\"snapshotPolicy\":\"git-tag\",\"tier3Owner\":\"operator\",\"configSha16\":\"068d3d12023c7143\"},{\"id\":\"engmcp\",\"kind\":\"git\",\"source\":{\"url\":\"https://github.com/AndersonVitaease/memoryos.git\",\"branch\":\"main\"},\"localPath\":\"/opt/memoryos\",\"container\":null,\"adapter\":{\"rebuild\":null,\"restart\":{\"kind\":\"pipeline\"},\"smoke\":{\"commands\":[],\"health\":{\"url\":\"http://127.0.0.1:8787/mcp\",\"method\":\"POST\",\"expectStatus\":[401]}},\"contractRef\":null},\"snapshotPolicy\":\"git-tag\",\"tier3Owner\":\"operator\",\"configSha16\":\"6ecc86e95cf85aad\"}]}"
+    }
+   ]
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}
