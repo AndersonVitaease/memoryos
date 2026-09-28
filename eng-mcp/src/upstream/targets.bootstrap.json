@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "targets": [
+    {
+      "id": "hermes-agent",
+      "kind": "git",
+      "source": {
+        "url": "https://github.com/NousResearch/hermes-agent.git",
+        "branch": "main"
+      },
+      "localPath": "/usr/local/lib/hermes-agent",
+      "credential": null,
+      "lockfiles": [
+        "uv.lock",
+        "pyproject.toml",
+        "package.json",
+        "flake.lock",
+        "web/package.json",
+        "ui-tui/package.json",
+        "apps/desktop/package.json",
+        "scripts/whatsapp-bridge/package.json"
+      ],
+      "adapter": {
+        "rebuild": null,
+        "restart": {
+          "kind": "systemd",
+          "unit": "hermes-gateway.service"
+        },
+        "smoke": {
+          "commands": [
+            {
+              "argv": [
+                "hermes",
+                "--version"
+              ],
+              "expectStdoutRegex": "Hermes Agent v"
+            }
+          ],
+          "health": null
+        },
+        "contractRef": null
+      },
+      "snapshotPolicy": "git-tag",
+      "tier3Owner": "operator",
+      "note": "Hermes git-installed (auto-update derrubou o chat 4x em 24/09). check = read-only (repo montado :ro no container do eng-mcp); apply exige adaptador de host (systemd) — nunca executado a partir do container."
+    },
+    {
+      "id": "engmcp",
+      "kind": "git",
+      "source": {
+        "url": "https://github.com/AndersonVitaease/memoryos.git",
+        "branch": "main"
+      },
+      "localPath": "/opt/memoryos",
+      "credential": "git-credentials",
+      "lockfiles": [
+        "eng-mcp/package.json",
+        "eng-mcp/package-lock.json"
+      ],
+      "adapter": {
+        "rebuild": null,
+        "restart": {
+          "kind": "pipeline"
+        },
+        "smoke": {
+          "commands": [],
+          "health": {
+            "url": "http://127.0.0.1:8787/mcp",
+            "method": "POST",
+            "expectStatus": [
+              401
+            ]
+          }
+        },
+        "contractRef": null
+      },
+      "snapshotPolicy": "git-tag",
+      "tier3Owner": "operator",
+      "note": "2a entrada de prova: o proprio eng-mcp. Atualizacao real = pipeline oficial commit -> test -> build -> deploy (adaptador pipeline: apply recusa e aponta engineering.release.pipeline)."
+    }
+  ]
+}

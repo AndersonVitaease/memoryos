@@ -67,7 +67,9 @@ export const KNOWN_REGISTRY_SCOPES: readonly string[] = [
   // (OR engineering:write), T3 manage (NO OR — never implied by read/write).
   "engineering:google:read", "engineering:google:write", "engineering:google:manage",
   // MCP-IMPORT-GATE-01: tier-3 import approval/revocation (operator-issued, never implied by write)
-  "engineering:mcp:import:approve"
+  "engineering:mcp:import:approve",
+  // UPSTREAM-SYNC-01: tier-3 dependency apply/rollback/targets-write (operator-issued, never implied by write)
+  "engineering:upstream:apply"
 ];
 
 const REGISTRY_BYTES_LIMIT = 2 * 1024 * 1024;

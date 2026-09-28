@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "note": "Rug-pull detector (OWASP MCP08) — regras deterministicas sobre as LINHAS ADICIONADAS do diff upstream (base..alvo). Regra nova = entrada de config, nunca codigo. Um match e ALARME com reason; o operador decide.",
+  "rules": [
+    { "id": "UP-PERM-001", "category": "permission", "severity": "high", "pattern": "\\b(sudo|setuid|setcap|chmod\\s+[0-7]*7[0-7]*|chown\\s+root|CAP_SYS_ADMIN|privileged\\s*[:=]\\s*true|NoNewPrivileges\\s*=\\s*false)\\b", "reason": "privilege escalation primitive added" },
+    { "id": "UP-PERM-002", "category": "permission", "severity": "medium", "pattern": "\\b(child_process|subprocess\\.(Popen|run|call)|os\\.system|execSync|spawnSync|shell\\s*=\\s*True)\\b", "reason": "new process-execution primitive added" },
+    { "id": "UP-PERM-003", "category": "permission", "severity": "high", "pattern": "\"?(scopes?|permissions?)\"?\\s*[:=]\\s*[\\[{\"'][^\\n]*(\\*|admin|write:all|repo\\b|full_access)", "reason": "wider permission/scope declaration added" },
+    { "id": "UP-CRED-001", "category": "credential", "severity": "high", "pattern": "(\\.ssh/|id_rsa|\\.aws/credentials|\\.netrc|\\.git-credentials|/run/secrets|\\.token\\.json|auth\\.json|keychain|os\\.environ\\s*\\[\\s*['\"][A-Z_]*(TOKEN|KEY|SECRET)|process\\.env\\.[A-Z_]*(TOKEN|KEY|SECRET))", "reason": "new credential / secret access path added" },
+    { "id": "UP-TELE-001", "category": "telemetry", "severity": "high", "pattern": "\\b(posthog|segment\\.(io|com)|mixpanel|amplitude|sentry_sdk|@sentry/|datadog|dd-trace|opentelemetry|otel_exporter|google-analytics|gtag\\(|telemetry)\\b", "flags": "i", "reason": "new telemetry / analytics sink added" },
+    { "id": "UP-NET-001", "category": "network", "severity": "medium", "pattern": "https?://(?!(localhost|127\\.0\\.0\\.1|github\\.com|example\\.com|docs\\.))[a-z0-9.-]+\\.[a-z]{2,}", "flags": "i", "reason": "new outbound network destination added (review the host)" },
+    { "id": "UP-HOOK-001", "category": "install-hook", "severity": "high", "pattern": "\"(preinstall|install|postinstall|prepare)\"\\s*:", "reason": "package lifecycle install hook added (runs code at install time)" },
+    { "id": "UP-AUTO-001", "category": "self-update", "severity": "high", "pattern": "\\b(auto[-_ ]?update|self[-_ ]?update|git\\s+pull|pip\\s+install\\s+-U|npm\\s+(i|install)\\s+-g)\\b", "flags": "i", "reason": "self-update / auto-install behavior added (the 24/09 failure mode)" },
+    { "id": "UP-OBF-001", "category": "obfuscation", "severity": "high", "pattern": "(eval\\(|new Function\\(|base64\\.b64decode\\(|atob\\(|exec\\(compile\\()", "reason": "dynamic code evaluation / decoding added" }
+  ]
+}
