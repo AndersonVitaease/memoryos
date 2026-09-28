@@ -6,12 +6,16 @@
 import * as z from "zod/v4";
 
 export const SECURITY_SCAN_MODULES = ["secrets", "exposure", "hygiene", "registry"] as const;
-export type SecurityScanModule = (typeof SECURITY_SCAN_MODULES)[number];
+// MCP-IMPORT-GATE-01: M6 "mcp-import-scan" is OPT-IN — never part of the default
+// module set (a scan without `modules` behaves exactly as before M6 existed).
+export const SECURITY_SCAN_OPT_IN_MODULES = ["mcp-import-scan"] as const;
+export const SECURITY_SCAN_ALL_MODULES = [...SECURITY_SCAN_MODULES, ...SECURITY_SCAN_OPT_IN_MODULES] as const;
+export type SecurityScanModule = (typeof SECURITY_SCAN_ALL_MODULES)[number];
 
 export const securityScanInputSchema = z
   .object({
     target: z.string().min(1).max(200),
-    modules: z.array(z.enum(SECURITY_SCAN_MODULES)).max(SECURITY_SCAN_MODULES.length).optional(),
+    modules: z.array(z.enum(SECURITY_SCAN_ALL_MODULES)).max(SECURITY_SCAN_ALL_MODULES.length).optional(),
     mode: z.enum(["scan", "plan"]).optional()
   })
   .strict();
@@ -51,6 +55,12 @@ export const SEC_CHECKS: Record<string, SecCheckMeta> = {
   "SEC-040": { checkId: "SEC-040", module: "registry", kind: "registry-expired-active", severity: "warn", remediation: "Revoke the expired registry entry (expiresAt passed, revokedAt still empty) via engineering.registry.entry.revoke.", fpNote: "Entries revoked in the same second as expiry are normal." },
   "SEC-041": { checkId: "SEC-041", module: "registry", kind: "credential-of-revoked-subject", severity: "warn", remediation: "Remove the 0600 credential file of the revoked subject after confirming nothing authenticates with it.", fpNote: "A file kept for forensic provenance is a documented exception." },
   "SEC-042": { checkId: "SEC-042", module: "registry", kind: "registry-unknown-scope", severity: "warn", remediation: "Align the entry scopes with KNOWN_REGISTRY_SCOPES — catalog drift or a typo in a grant.", fpNote: "New scopes are added by operator decision; the catalog test guards drift." },
+  "SEC-060": { checkId: "SEC-060", module: "mcp-import-scan", kind: "mcp-tool-poisoning", severity: "critical", remediation: "Do NOT import/run this MCP server: tool metadata carries hidden or boundary-breaking instructions. Only an operator tier-3 sandbox-profile approval (engineering.mcp.import.approve) can even consider it.", fpNote: "Legitimate descriptions quoting prompt-engineering text can hit TD00x/GH-MCP-00x; review the neutralized text (hidden code points are never a false positive)." },
+  "SEC-061": { checkId: "SEC-061", module: "mcp-import-scan", kind: "mcp-dangerous-capability", severity: "warn", remediation: "Review the flagged capability (shell/eval/spawn/destructive) before import; grade < B forces the sandbox profile.", fpNote: "stdio servers legitimately spawn; engine rule text is heuristic." },
+  "SEC-062": { checkId: "SEC-062", module: "mcp-import-scan", kind: "mcp-data-exfiltration", severity: "critical", remediation: "Treat as hostile until reviewed: credential-file access / env harvesting / exfil endpoints in MCP server code.", fpNote: "Config loaders reading their own env var are not harvesting; verify the flagged line." },
+  "SEC-063": { checkId: "SEC-063", module: "mcp-import-scan", kind: "mcp-supply-chain", severity: "warn", remediation: "Review install hooks / obfuscated blobs / shipped credential files / wildcard permissions before import.", fpNote: "Build tooling hooks and bundled assets can hit." },
+  "SEC-064": { checkId: "SEC-064", module: "mcp-import-scan", kind: "mcp-scanner-incomplete", severity: "critical", remediation: "The audited scanner engine failed or its integrity check did not match: restore the pinned engine (engine registry) — the gate fails closed until then.", fpNote: "Never a false positive: an uncertified scan is not a clean scan." },
+  "SEC-065": { checkId: "SEC-065", module: "mcp-import-scan", kind: "mcp-grade-below-b", severity: "warn", remediation: "Grade below B: the sandbox profile is mandatory for this server (MCP-IMPORT-GATE-01 contract 5).", fpNote: "Grade is a severity-weighted heuristic; the findings carry the evidence." },
   "SEC-043": { checkId: "SEC-043", module: "registry", kind: "ids-degraded", severity: "info", remediation: "Investigate the IDS trail/judge availability before trusting the behavior-based security layer.", fpNote: "IDS unavailability is fail-open by design; this is a hygiene signal, not an exposure." }
 };
 

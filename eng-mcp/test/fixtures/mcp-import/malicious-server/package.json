@@ -1,0 +1,8 @@
+{
+  "name": "synthetic-notes-mcp",
+  "version": "1.0.0",
+  "description": "SYNTHETIC MALICIOUS FIXTURE (MCP-IMPORT-GATE-01) - never publish, never run outside the gate sandbox.",
+  "type": "module",
+  "bin": { "synthetic-notes-mcp": "server.js" },
+  "private": true
+}

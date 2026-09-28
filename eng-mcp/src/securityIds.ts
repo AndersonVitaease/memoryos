@@ -58,7 +58,7 @@ import { EngineeringError } from "./policy.ts";
 import { runJudgeEvaluate, defaultJudgeDeps, type JudgeDeps, type JudgeEvaluateInput } from "./judge.ts";
 import { validateTokenRegistry } from "./registryScopeGrant.ts";
 
-export const IDS_TRAILS = ["git-fetch", "git-merge", "git-push", "registry-grant", "judge", "tool-errors"] as const;
+export const IDS_TRAILS = ["git-fetch", "git-merge", "git-push", "registry-grant", "judge", "tool-errors", "mcp-import"] as const;
 export type IdsTrail = (typeof IDS_TRAILS)[number];
 
 const TRAIL_FILES: Record<IdsTrail, string> = {
@@ -67,7 +67,9 @@ const TRAIL_FILES: Record<IdsTrail, string> = {
   "git-push": "git-push.jsonl",
   "registry-grant": "registry-grant.jsonl",
   judge: "judge.jsonl",
-  "tool-errors": "tool-errors.jsonl"
+  "tool-errors": "tool-errors.jsonl",
+  // MCP-IMPORT-GATE-01: imports/approvals/revocations + status drift (drift = alarm, ok=false)
+  "mcp-import": "mcp-import.jsonl"
 };
 
 const IDS_ENGINE = "ids-01";
@@ -311,6 +313,16 @@ function extractEvent(trail: IdsTrail, entry: Record<string, unknown>): IdsEvent
     event.tool = asString(entry.tool);
     event.result = asString(entry.verdict) ?? "unknown";
     event.ok = !event.result.startsWith("ERROR:");
+  } else if (trail === "mcp-import") {
+    event.subjects = asString(entry.subject) ? [entry.subject as string] : [];
+    event.authorizerHash16 = asString(entry.authorizerHash16);
+    event.tool = asString(entry.tool);
+    event.action = `mcp-import:${asString(entry.verb) ?? "unknown"}`;
+    const code = asString(entry.code);
+    const result = asString(entry.result) ?? "unknown";
+    event.result = code ? `${result}:${code}` : result;
+    if (event.action === "mcp-import:import.approve" && (result === "enabled" || result === "fingerprint-pinned")) event.scopeInvolved = ["engineering:mcp:import:approve"];
+    event.ok = result !== "drift" && result !== "refused";
   } else if (trail === "tool-errors") {
     const envelope = entry.envelope && typeof entry.envelope === "object" ? (entry.envelope as Record<string, unknown>) : null;
     event.tool = asString(entry.tool);

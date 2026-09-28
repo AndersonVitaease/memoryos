@@ -1,0 +1,8 @@
+{
+  "name": "synthetic-notes-mcp",
+  "version": "1.0.0",
+  "description": "SYNTHETIC BENIGN FIXTURE (the revert of the malicious one) (MCP-IMPORT-GATE-01) - never publish.",
+  "type": "module",
+  "bin": { "synthetic-notes-mcp": "server.js" },
+  "private": true
+}

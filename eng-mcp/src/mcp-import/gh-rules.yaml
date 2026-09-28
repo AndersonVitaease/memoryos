@@ -1,0 +1,80 @@
+# MCP-IMPORT-GATE-01 — GH complement rules (Barrier 1). Applied BY the gate on
+# top of every registered StaticScanEngine: they cover what the audited engine
+# (mcpguard 0.1.0) does not — bidi overrides, instruction-boundary breaks,
+# authority claims (external content declaring approval/permission), schema
+# poisoning in inputSchema descriptions and the GH denylist (*.token.json,
+# wildcard permissions). Adding a rule = one YAML entry, never a code change.
+#
+# context:
+#   tool-text  — tool name, tool description AND every nested inputSchema
+#                description/title (schema poisoning is the same attack surface)
+#   file-path  — relative path of every file of the materialized candidate
+#   code       — every line of every source file (extensions filter optional)
+# severity: critical | high | medium | low   (grading = same weights as mcpguard)
+# owaspMcp:  OWASP MCP Top 10 (2025) id
+rules:
+  - id: GH-MCP-001
+    name: bidi-override
+    category: tool-poisoning
+    severity: critical
+    owaspMcp: MCP03
+    context: tool-text
+    caseSensitive: true
+    description: Bidirectional override/isolate control characters (Trojan-Source) hide or reorder instruction text the operator cannot see.
+    pattern: "[\\u202A-\\u202E\\u2066-\\u2069\\u200E\\u200F\\u061C]"
+
+  - id: GH-MCP-002
+    name: invisible-unicode-extended
+    category: tool-poisoning
+    severity: critical
+    owaspMcp: MCP03
+    context: tool-text
+    caseSensitive: true
+    description: Invisible/format Unicode (zero-width, word joiner, invisible operators, tag characters, Mongolian vowel separator) — the carrier of hidden tool-poisoning payloads.
+    pattern: "[\\u200B-\\u200D\\u2060-\\u2064\\uFEFF\\u180E\\u00AD\\u034F\\u115F\\u1160\\u3164]|[\\u{E0000}-\\u{E007F}]"
+
+  - id: GH-MCP-003
+    name: instruction-boundary-break
+    category: tool-poisoning
+    severity: critical
+    owaspMcp: MCP03
+    context: tool-text
+    description: Text tries to close the data context and open an instruction context (fake closing tags, chat-template tokens, fake section terminators).
+    pattern: "<\\s*/\\s*(tool[_ -]?(description|result|output)|description|data|context|document)\\s*>|<\\s*/?\\s*(system|assistant|instructions?|developer)\\s*>|<\\|\\s*(im_start|im_end|system|endoftext|eot_id|start_header_id)\\s*\\|>|\\[\\s*/?\\s*INST\\s*\\]|end\\s+of\\s+(the\\s+)?(tool\\s+)?(description|data|context)|new\\s+(system\\s+)?instructions\\s*:"
+
+  - id: GH-MCP-004
+    name: authority-claim
+    category: tool-poisoning
+    severity: critical
+    owaspMcp: MCP02
+    context: tool-text
+    description: External content declares approval, authorization or elevated permission — only the Guardian trust chain can grant authority; data never does.
+    pattern: "(the\\s+)?(user|operator|admin(istrator)?|owner)\\s+(has\\s+)?(already\\s+)?(approved|authori[sz]ed|consented|confirmed)|you\\s+(are|have\\s+been)\\s+(now\\s+)?(authori[sz]ed|granted|permitted|allowed)\\s+to|(grant(ed)?|give|elevate)\\s+(yourself\\s+|you\\s+)?(full|admin|root|unrestricted)\\s+(access|permissions?|privileges?)|no\\s+(approval|confirmation|permission)\\s+(is\\s+)?(needed|required)|skip\\s+(the\\s+)?(approval|confirmation|review)"
+
+  - id: GH-MCP-005
+    name: agent-directive-to-other-context
+    category: tool-poisoning
+    severity: high
+    owaspMcp: MCP06
+    context: tool-text
+    description: Description addresses the model/assistant directly with imperative behavior changes (instruction, not data).
+    pattern: "(as\\s+an?\\s+)?(ai|assistant|model|agent|llm)\\s*,?\\s+(you\\s+)?(must|should|shall|will)\\s+(always|never|now|first|secretly|silently)"
+
+  - id: GH-MCP-006
+    name: credential-token-file
+    category: supply-chain
+    severity: high
+    owaspMcp: MCP01
+    context: file-path
+    description: Candidate ships a credential-shaped file (*.token.json / .env / private key) — GH denylist.
+    pattern: "(\\.token\\.json$|(^|/)tokens\\.json$|(^|/)\\.env(\\.[^/]+)?$|\\.(pem|p12|pfx)$|(^|/)id_(rsa|ed25519)$|(^|/)\\.npmrc$|(^|/)\\.git-credentials$)"
+
+  - id: GH-MCP-007
+    name: wildcard-permissions
+    category: privilege
+    severity: high
+    owaspMcp: MCP02
+    context: code
+    extensions: [".json", ".yaml", ".yml", ".toml"]
+    description: Manifest declares wildcard permissions/scopes — GH denylist (scope creep by construction).
+    pattern: "\"?(permissions?|scopes?|capabilities|allow(ed)?[_-]?(tools|hosts|paths)?)\"?\\s*[:=]\\s*\\[?\\s*[\"']\\*[\"']"
