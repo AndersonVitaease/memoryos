@@ -30,6 +30,7 @@ import { runJudgeEvaluate, defaultJudgeDeps, type JudgeDeps } from "./judge.ts";
 import { validateTokenRegistry, KNOWN_REGISTRY_SCOPES } from "./registryScopeGrant.ts";
 import { SEC_CHECKS, SEC_FILENAME_PATTERNS, SEC_HIGH_ENTROPY_CONTEXT, SEC_HIGH_ENTROPY_MIN_BITS, SEC_HIGH_ENTROPY_REGEX, SEC_LEGACY_FILE_REGEX, SEC_OUTPUT_GUARD, SEC_PEM_REGEX, SEC_SKIP_DIRS, SEC_TOKEN_RULES, SECURITY_SCAN_MODULES } from "./securityScanChecks.ts";
 import { securityScanInputSchema } from "./securityScanChecks.ts";
+import { runStaticScan, type StaticScanDeps } from "./mcpImportScan.ts";
 export { securityScanInputSchema };
 import type { SecurityScanInput, SecurityScanModule, SecCheckMeta, SecSeverity } from "./securityScanChecks.ts";
 
@@ -61,6 +62,8 @@ export interface SecurityScanDeps {
   runRunner?: (operation: SecurityScanRunnerOperation, jobId?: string, params?: Record<string, unknown>) => Promise<SecurityScanRunnerResponse>;
   runGit?: (args: string[], cwd: string) => Promise<{ stdout: string; stderr: string; code: number }>;
   auditDir?: string; auditFile?: string; driftDir?: string; dataDir?: string; registryFile?: string; idsAuditFile?: string;
+  /** M6 mcp-import-scan (MCP-IMPORT-GATE-01): engine/rules registry overrides. */
+  mcpImportScan?: StaticScanDeps;
 }
 
 export type SecurityScanFinding = {
@@ -95,6 +98,7 @@ export type SecurityScanResult = {
   failOpen: boolean;
   drift: { snapshot: string; previousAt: string | null; closed: { findingId: string; checkId: string; severity: string; local: string }[] };
   registry: { entries: number; activeEntries: number; error: string | null };
+  mcpImport?: { grade: string; score: number; engines: string[]; failClosed: boolean; reasons: string[] };
   advisory: string;
   audit: string;
 };
@@ -274,6 +278,32 @@ function mapProbeHit(hit: unknown): SecHit | null {
   const hash = asString(record.hash16);
   if (!hash) return null;
   return { line: asNumber(record.line), kind: asString(record.kind) ?? "unknown", hash16: hash, entropy: asNumber(record.entropy), context: asString(record.context) };
+}
+
+// ---- M6 mcp-import-scan (MCP-IMPORT-GATE-01 Barrier 1) ----------------------
+// Runs the audited engines of the engine registry + the GH YAML rules over the
+// target tree (static — nothing of the target is executed). Engine findings are
+// mapped by category onto SEC-060..063; an engine that fails or does not match
+// its audited hash is SEC-064 (fail closed, never "clean"); grade < B is SEC-065.
+
+const MCP_CATEGORY_CHECK: Record<string, string> = { "tool-poisoning": "SEC-060", "dangerous-capability": "SEC-061", "data-exfiltration": "SEC-062" };
+
+async function scanMcpImport(state: ScanState, root: string, deps: StaticScanDeps | undefined): Promise<SecurityScanResult["mcpImport"]> {
+  try {
+    const report = await runStaticScan({ root, tools: [] }, deps);
+    check(state, "SEC-060", `mcp-import-scan:${root}`, !report.failClosed, `grade ${report.grade} · engines ${report.engineRegistry.engines.join(",")} · GH rules ${report.ghRules.rules}`);
+    for (const finding of report.findings) {
+      const checkId = MCP_CATEGORY_CHECK[finding.category] ?? "SEC-063";
+      addFinding(state, SEC_CHECKS[checkId], { local: `${finding.file ?? "-"}#${finding.rule}`, line: finding.line, hash16: finding.evidenceHash16, reasons: [`${finding.engine}:${finding.rule}`, `severity_${finding.severity}`, finding.owaspMcp] });
+    }
+    for (const reason of report.reasons) addFinding(state, SEC_CHECKS["SEC-064"], { local: `mcp-import-scan:${reason.slice(0, 80)}`, reasons: [reason.slice(0, 200)] });
+    if (report.grade !== "A" && report.grade !== "B") addFinding(state, SEC_CHECKS["SEC-065"], { local: `mcp-import-scan:grade`, reasons: [`grade_${report.grade}`, `score_${report.score}`] });
+    return { grade: report.grade, score: report.score, engines: report.engineRegistry.engines, failClosed: report.failClosed, reasons: report.reasons };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    addFinding(state, SEC_CHECKS["SEC-064"], { local: "mcp-import-scan:unavailable", reasons: [message.slice(0, 200)] });
+    return { grade: "F", score: 0, engines: [], failClosed: true, reasons: [message.slice(0, 200)] };
+  }
 }
 
 // ---- filesystem tree scan (repo / path / data targets) ---------------------
@@ -891,6 +921,8 @@ export async function runSecurityScan(input: SecurityScanInput, deps: SecuritySc
       }
     }
   }
+  let mcpImport: SecurityScanResult["mcpImport"];
+  if (state.modulesRun.has("mcp-import-scan")) mcpImport = await scanMcpImport(state, target.root, deps.mcpImportScan);
   let registryInventory: { entries: RegistryEntry[]; error: string | null } = { entries: [], error: null };
   if (state.modulesRun.has("registry") && target.kind !== "path") {
     registryInventory = scanRegistry(state, registryFile, `${dataDir}/credentials`, idsAuditFile, nowMs);
@@ -915,6 +947,7 @@ export async function runSecurityScan(input: SecurityScanInput, deps: SecuritySc
     failOpen: triage.failOpen,
     drift: { snapshot: driftInfo.snapshot, previousAt: driftInfo.previousAt, closed: driftInfo.closed },
     registry: { entries: registryInventory.entries.length, activeEntries: registryInventory.entries.filter((entry) => entry.active).length, error: registryInventory.error },
+    ...(mcpImport ? { mcpImport } : {}),
     advisory: SEC_ADVISORY,
     audit: "pending"
   };

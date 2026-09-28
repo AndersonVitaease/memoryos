@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "engines": [
+    {
+      "id": "mcpguard",
+      "enabled": true,
+      "kind": "node-cli",
+      "format": "mcpguard-json",
+      "package": "@arunmm8335/mcpguard",
+      "version": "0.1.0",
+      "integrity": "sha512-v/ZRT8jhNOsgBbrW9q9zQ57N6mp+8RyIJFNrVnv6FWjGt+SiHKtp3j34qjsHr6boMfN3tMO5QZWHABaiHuuYMQ==",
+      "contentSha256": "3782da49865faa3d92c3426d61725de79887e10659377d6ae49a6a8732a3ce68",
+      "closure": {
+        "commander": "13.1.0",
+        "picocolors": "1.1.1",
+        "yaml": "2.9.1"
+      },
+      "entry": "dist/cli.js",
+      "args": [
+        "scan",
+        "{root}",
+        "--json",
+        "--fail-on",
+        "Z"
+      ],
+      "timeoutMs": 60000,
+      "owaspMap": {
+        "tool-poisoning": "MCP03",
+        "dangerous-capability": "MCP05",
+        "data-exfiltration": "MCP01",
+        "obfuscation": "MCP04",
+        "supply-chain": "MCP04",
+        "MC005": "MCP10",
+        "MC012": "MCP10"
+      },
+      "owaspDefault": "MCP04",
+      "audit": {
+        "auditedAt": "2026-09-28",
+        "auditedBy": "mcp-import-gate-01",
+        "notes": "Full read of dist/*.js (31.7 KB) + rules/*.yaml (9 tool-poisoning + 16 code rules). Static: no code of the scanned target is executed. The only network/child_process path is dist/resolve.js (npm pack / git clone) and the gate never reaches it: the engine is always invoked on a gate-materialized local directory (regular files only, symlinks refused). Known gaps covered by gh-rules.yaml: bidi overrides, instruction-boundary breaks, authority claims, inputSchema description poisoning. Runs as subprocess with minimal env (no credential variables)."
+      }
+    },
+    {
+      "id": "dummy-sarif",
+      "enabled": true,
+      "kind": "node-cli",
+      "format": "sarif",
+      "path": "./dummy-engine",
+      "version": "0.0.1",
+      "contentSha256": "37b06e9b1c328b224deebfe9d06a6078f3cde7b545ff2b52e7843590f0bd73f4",
+      "entry": "engine.mjs",
+      "args": [
+        "{root}"
+      ],
+      "timeoutMs": 20000,
+      "owaspDefault": "MCP04",
+      "audit": {
+        "auditedAt": "2026-09-28",
+        "auditedBy": "mcp-import-gate-01",
+        "notes": "TEST-ONLY dummy engine proving contract 2 (engine = config entry, zero gate diff)."
+      }
+    }
+  ]
+}

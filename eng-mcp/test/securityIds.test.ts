@@ -225,7 +225,7 @@ test("trails subset: unrequested trails report zeros even with files on disk", a
   writeTrail(dir, "judge", [{ ts: IN_WINDOW, tool: "engineering.judge.evaluate", verdict: "ERROR:JUDGE_TIMEOUT", authorizerHash16: hash16("bearer-judge-caller") }]);
   const result = await runSecurityIds({ windowHours: 24, trails: ["judge"] }, idsDeps(NOW_MS, makeJudge().deps));
 
-  assert.equal(result.trails.length, 6);
+  assert.equal(result.trails.length, 7);
   assert.equal(result.trails.filter((trail) => trail.requested).length, 1);
   const fetch = trailReport(result, "git-fetch");
   assert.deepEqual(
