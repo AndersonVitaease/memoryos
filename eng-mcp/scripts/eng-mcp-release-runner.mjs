@@ -5,6 +5,8 @@ import { mkdir, open, readFile, readdir, rename, rm, writeFile, chmod, stat } fr
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+export const COMMIT_OPERATIONS = new Set(["test", "build", "candidate", "deploy"]);
+export const COMMIT_REQUIRED_OPERATIONS = new Set(["build", "candidate", "deploy"]);
 export const OPERATIONS = Object.freeze(["status", "test", "build", "candidate", "deploy", "smoke", "rollback", "inspect", "restart", "container_probe", "unit_credential", "security_probe"]);
 const ASYNC = new Set(["deploy", "rollback"]);
 const TIMEOUTS = Object.freeze({ status: 30_000, test: 1_200_000, build: 120_000, candidate: 600_000, deploy: 180_000, smoke: 300_000, rollback: 120_000, inspect: 30_000, restart: 30_000, container_probe: 90_000, unit_credential: 90_000, security_probe: 60_000 });
@@ -112,7 +114,7 @@ export function runPipeline(job, options = {}) {
       // the runner env (systemd drop-in) into the sanitized child env; absent = no-op.
       if (process.env.ENG_MCP_HERMES_SESSION_ID) environment.ENG_MCP_HERMES_SESSION_ID = process.env.ENG_MCP_HERMES_SESSION_ID;
       // Pass commit as environment variable if present
-      if (job.commit) environment.ENG_MCP_COMMIT = job.commit;
+      if (job.commit) { environment.ENG_MCP_COMMIT = job.commit; environment.ENG_MCP_JOB_ID = job.jobId; }
       // ITEM-2: thread probe params as flat ENG_MCP_PROBE_* environment variables
       // (bounded primitives only; the release action re-validates authoritatively).
       if (job.operation === "container_probe" && job.params && typeof job.params === "object") {
@@ -452,13 +454,14 @@ export function createReleaseRunner(options = {}) {
       const allowedKeys = input.operation === "container_probe" ? ["operation", "image", "probe", "path", "maxBytes"] : input.operation === "unit_credential" ? ["operation", "unit", "credentialId", "unitPath", "execute", "approval"] : input.operation === "security_probe" ? ["operation"] : ["operation", "jobId", "commit"];
       if (keys.some((key) => !allowedKeys.includes(key))) throw new Error("INPUT_INVALID");
       if (!OPERATIONS.includes(input.operation)) throw new Error("RELEASE_ACTION_INVALID"); if (input.jobId !== undefined && input.operation !== "status") throw new Error("RELEASE_JOB_ID_NOT_ALLOWED");
-      // Validate commit parameter
+      // DEPLOY-COMMIT-PIN-01: the pipeline compiles a declared commit, never a tree.
+      // commit is accepted only on the pipeline stages and REQUIRED on build/candidate/
+      // deploy (fail-closed); test without commit stays the deploy-free working-tree test.
       if (input.commit !== undefined) {
-        // Commit is only valid for test operation
-        if (input.operation !== "test") throw new Error("COMMIT_ONLY_ALLOWED_FOR_TEST");
-        // Validate SHA format
-        if (!/^[a-f0-9]{40}$/.test(input.commit)) throw new Error("COMMIT_SHA_INVALID");
+        if (!COMMIT_OPERATIONS.has(input.operation)) throw new Error("COMMIT_NOT_ALLOWED_FOR_OPERATION");
+        if (typeof input.commit !== "string" || !/^[a-f0-9]{40}$/.test(input.commit)) throw new Error("COMMIT_SHA_INVALID");
       }
+      if (COMMIT_REQUIRED_OPERATIONS.has(input.operation) && input.commit === undefined) throw new Error("DEPLOY_COMMIT_REQUIRED");
       // ITEM-2: shape-only validation for container_probe (bounded primitives). The
       // semantic allowlist (image prefix, path grammar, sensitive denylist) lives
       // authoritatively in the release action; the runner only enforces types so

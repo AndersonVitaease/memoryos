@@ -298,7 +298,7 @@ test("T7: wiring - smokeAction is wrapped by the grace window; rollback trigger 
   assert.ok(runnerSource.includes("state.smokeRecoveredOnAttempt = null;"));
   assert.ok(runnerSource.includes("smokeTelemetrySink = null;"));
   // candidateAction must NOT use the grace window (isolation preserved)
-  const candidateStart = runnerSource.indexOf("async function candidateAction(config)");
+  const candidateStart = runnerSource.indexOf("async function candidateAction(config, options = {})");
   const helpersStart = runnerSource.indexOf("// ERF-01 RELEASE SMOKE GRACE WINDOW");
   assert.ok(candidateStart > 0);
   assert.ok(helpersStart > candidateStart);

@@ -21,7 +21,6 @@ const TEST_OUTPUT_LIMIT = 8 * OUTPUT_LIMIT;
 // Rabo do TAP embutido no TESTS_FAILED (o runner relay só 128 KB de stdout+stderr).
 const RELEASE_TEST_EVIDENCE_TAIL = 100_000;
 const COMMAND_TIMEOUT = 180_000;
-const WORKTREE_ROOT = "/opt/eng-mcp-release-data/worktrees";
 
 // Determina o repository root de forma determinística
 async function resolveRepositoryRoot(config) {
@@ -115,8 +114,8 @@ export function parseCliWithOptions(argv) {
   const options = {};
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (arg === "--targetCommit" && args[i + 1]) {
-      options.targetCommit = args[i + 1];
+    if (arg === "--commit" && args[i + 1]) {
+      options.commit = args[i + 1];
       i++;
     } else if (arg === "--jobId" && args[i + 1]) {
       options.jobId = args[i + 1];
@@ -330,26 +329,18 @@ async function hashTree(root, directory, hash) {
   }
 }
 
-async function calculateCommitHash(repositoryPath, commit) {
-  const hash = createHash("sha256");
-  const archive = await mustRun("git", ["-C", repositoryPath, "archive", "--format=tar", commit]);
-  hash.update(archive.stdout);
-  return hash.digest("hex");
-}
-
-async function whitespaceCheck(root) {
-  for (const file of await sourceFiles(root)) {
+async function whitespaceCheck(root, files) {
+  for (const file of files ?? await sourceFiles(root)) {
     const value = await readFile(file.absolute, "utf8");
     const bad = value.split(/\r?\n/).findIndex((line) => /[ \t]+$/.test(line));
     if (bad >= 0) throw new Error(`DIFF_CHECK_FAILED:${file.relative}:${bad + 1}`);
   }
 }
 
-async function expectedCatalog(config) {
-  // Usar canonicalSource diretamente para localizar tools.ts
+async function expectedCatalog(config, sourceRoot = config.canonicalSource) {
+  // Usar canonicalSource (ou a árvore extraída do commit) para localizar tools.ts
   // repositoryRoot pode ser pai de canonicalSource (ex: /opt/memoryos vs /opt/memoryos/eng-mcp)
-  const canonicalSource = path.resolve(config.canonicalSource);
-  const toolsPath = path.join(canonicalSource, "src/tools.ts");
+  const toolsPath = path.join(path.resolve(sourceRoot), "src/tools.ts");
   const toolsSource = await readFile(toolsPath, "utf8");
 
   const catalog = await deriveExpectedCatalog(toolsSource);
@@ -357,91 +348,274 @@ async function expectedCatalog(config) {
   return catalog;
 }
 
-async function validateCommit(commit) {
-  if (!/^[a-f0-9]{40}$/.test(commit)) throw new Error("COMMIT_SHA_INVALID");
-  return commit;
+// ---------------------------------------------------------------------------
+// DEPLOY-COMMIT-PIN-01: o pipeline não compila árvore — compila commit.
+// build/candidate/deploy exigem um commitSha declarado (40 hex). Em TODO estágio
+// a working tree canônica precisa estar limpa nos caminhos do deploy (tracked
+// modificado OU untracked não-ignorado = DEPLOY_DIRTY_TREE, fail-closed, com a
+// lista de arquivos). O stage test extrai o SHA com git archive numa árvore
+// isolada (nunca a working tree) e é DELA que a imagem nasce, com a label OCI
+// revision = commitSha e a tag eng-mcp-candidate:commit-<sha40> (uma imagem por
+// commit, para sempre: tag existente é reusada, nunca reescrita). Cada deploy/
+// rollback grava uma linha de proveniência {commitSha, imageTag, treeClean,
+// builtFrom} no audit. Determinístico: só git/tar/docker, zero LLM, zero rede.
+export const DEPLOY_PATHS = Object.freeze(["src", "test", "scripts", ".claude", "package.json", "package-lock.json", "tsconfig.json", "Dockerfile", ".dockerignore"]);
+export const COMMIT_IMAGE_REVISION_LABEL = "org.opencontainers.image.revision";
+export const COMMIT_IMAGE_BUILT_FROM_LABEL = "io.memoryos.eng-mcp.built-from";
+const COMMIT_SHA_PATTERN = /^[a-f0-9]{40}$/;
+const DIRTY_LIST_LIMIT = 50;
+
+function commitTreeRoot() { return process.env.ENG_MCP_COMMIT_TREE_ROOT ?? "/opt/eng-mcp-release-data/worktrees"; }
+export function deployProvenanceFile() { return process.env.ENG_MCP_DEPLOY_PROVENANCE_FILE ?? "/opt/eng-mcp-release-data/production/audit/deploy-provenance.jsonl"; }
+
+function deployError(code, detail) {
+  const error = new Error(detail ? `${code}: ${detail}` : code);
+  error.code = code;
+  return error;
 }
 
-async function fetchCommit(repositoryPath, commit) {
-  const remote = "origin";
-  await mustRun("git", ["-C", repositoryPath, "fetch", remote]);
-  const catFileResult = await runProcess("git", ["-C", repositoryPath, "cat-file", "-t", commit]);
-  if (catFileResult.exitCode !== 0) throw new Error("TARGET_COMMIT_NOT_FOUND");
-  if (catFileResult.stdout.trim() !== "commit") throw new Error("TARGET_COMMIT_NOT_A_COMMIT");
+export function commitImageTag(repository, commit) {
+  if (typeof commit !== "string" || !COMMIT_SHA_PATTERN.test(commit)) throw deployError("DEPLOY_COMMIT_INVALID", "commitSha must be 40 lowercase hex");
+  return `${repository}:commit-${commit}`;
 }
 
-async function resolveCommit(repositoryPath, commit) {
-  const catFileResult = await runProcess("git", ["-C", repositoryPath, "cat-file", "-t", commit]);
-  if (catFileResult.exitCode !== 0) throw new Error("COMMIT_NOT_FOUND");
-  if (catFileResult.stdout.trim() !== "commit") throw new Error("COMMIT_NOT_A_COMMIT");
-
-  const revParseResult = await mustRun("git", ["-C", repositoryPath, "rev-parse", `${commit}^{commit}`]);
-  const resolvedCommit = revParseResult.stdout.trim();
-  if (resolvedCommit !== commit) throw new Error("COMMIT_RESOLUTION_MISMATCH");
-
-  return resolvedCommit;
+async function projectLayout(root) {
+  const top = (await mustRun("git", ["-C", root, "rev-parse", "--show-toplevel"])).stdout.trim();
+  const prefix = path.relative(top, path.resolve(root)).replaceAll(path.sep, "/");
+  return { top, prefix };
 }
 
-async function createWorktree(repositoryPath, resolvedCommit, jobId) {
-  const worktreePath = path.join(WORKTREE_ROOT, jobId);
-  await mkdir(path.dirname(worktreePath), { recursive: true, mode: 0o700 });
-
-  await mustRun("git", ["-C", repositoryPath, "worktree", "add", "--detach", worktreePath, resolvedCommit]);
-
-  const verifyResult = await mustRun("git", ["-C", worktreePath, "rev-parse", "HEAD"]);
-  const worktreeCommit = verifyResult.stdout.trim();
-  if (worktreeCommit !== resolvedCommit) throw new Error("WORKTREE_COMMIT_MISMATCH");
-
-  return worktreePath;
-}
-
-async function cleanupWorktree(repositoryPath, worktreePath) {
-  try {
-    await runProcess("git", ["-C", repositoryPath, "worktree", "remove", "--force", worktreePath]);
-  } catch {
-    await rm(worktreePath, { recursive: true, force: true });
+// git status -z: "XY path\0", renames/copies "XY new\0orig\0". Paths come back
+// repo-relative; the list is reported relative to the canonical source.
+export async function listDirtyDeployFiles(root) {
+  const { top, prefix } = await projectLayout(root);
+  const specs = DEPLOY_PATHS.map((entry) => (prefix ? `${prefix}/${entry}` : entry));
+  const result = await mustRun("git", ["-C", top, "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", ...specs]);
+  const tokens = result.stdout.split("\0");
+  const dirty = new Set();
+  for (let index = 0; index < tokens.length; index++) {
+    const token = tokens[index];
+    if (token.length < 4) continue;
+    const status = token.slice(0, 2);
+    const file = token.slice(3);
+    dirty.add(prefix && file.startsWith(`${prefix}/`) ? file.slice(prefix.length + 1) : file);
+    if (status[0] === "R" || status[0] === "C") index++;
   }
-  await runProcess("git", ["-X", repositoryPath, "worktree", "prune"]);
+  return [...dirty].sort();
 }
 
-async function testCommitAction(config, commit, jobId) {
-  await validateCommit(commit);
-  const resolvedCommit = await resolveCommit(config.canonicalSource, commit);
+export async function assertCleanDeployTree(root) {
+  const dirty = await listDirtyDeployFiles(root);
+  if (dirty.length > 0) {
+    const shown = dirty.slice(0, DIRTY_LIST_LIMIT).join(", ");
+    const more = dirty.length > DIRTY_LIST_LIMIT ? ` (+${dirty.length - DIRTY_LIST_LIMIT} more)` : "";
+    const error = deployError("DEPLOY_DIRTY_TREE", `${dirty.length} file(s) not committed in deploy paths — commit or stash them; the pipeline never deploys a working tree: ${shown}${more}`);
+    error.dirtyFiles = dirty;
+    throw error;
+  }
+  return { treeClean: true };
+}
 
-  let worktreePath;
+export async function resolveDeployCommit(root, commit) {
+  if (typeof commit !== "string" || !COMMIT_SHA_PATTERN.test(commit)) throw deployError("DEPLOY_COMMIT_INVALID", "commitSha must be 40 lowercase hex");
+  const { top } = await projectLayout(root);
+  const type = await runProcess("git", ["-C", top, "cat-file", "-t", commit]);
+  if (type.exitCode !== 0 || type.stdout.trim() !== "commit") throw deployError("DEPLOY_COMMIT_NOT_FOUND", commit);
+  const resolved = (await mustRun("git", ["-C", top, "rev-parse", `${commit}^{commit}`])).stdout.trim();
+  if (resolved !== commit) throw deployError("DEPLOY_COMMIT_NOT_FOUND", commit);
+  const ancestry = await runProcess("git", ["-C", top, "merge-base", "--is-ancestor", commit, "HEAD"]);
+  if (ancestry.exitCode === 1) throw deployError("DEPLOY_COMMIT_NOT_IN_HISTORY", `${commit} is not HEAD nor an ancestor of HEAD`);
+  if (ancestry.exitCode !== 0) throw deployError("DEPLOY_COMMIT_NOT_FOUND", commit);
+  const treeSha = (await mustRun("git", ["-C", top, "rev-parse", `${commit}^{tree}`])).stdout.trim();
+  const headSha = (await mustRun("git", ["-C", top, "rev-parse", "HEAD"])).stdout.trim();
+  return { commit, treeSha, headSha };
+}
+
+// Same enumeration as gitTrackedFiles/calculateSourceHash (tracked blobs, symlinks
+// skipped, byte-sorted paths) but read from the COMMIT, never from the working tree.
+async function commitProjectEntries(root, commit) {
+  const { top, prefix } = await projectLayout(root);
+  const listed = await mustRun("git", ["-C", top, "ls-tree", "-r", "-z", commit, "--", prefix || "."]);
+  const entries = [];
+  for (const record of listed.stdout.split("\0")) {
+    if (!record) continue;
+    const tab = record.indexOf("\t");
+    const [mode, type] = record.slice(0, tab).split(" ");
+    const file = record.slice(tab + 1);
+    if (type !== "blob" || mode === "120000") continue;
+    entries.push(prefix ? file.slice(prefix.length + 1) : file);
+  }
+  return entries.sort((left, right) => Buffer.compare(Buffer.from(left), Buffer.from(right)));
+}
+
+export async function extractCommitTree(root, commit, destination) {
+  const { top, prefix } = await projectLayout(root);
+  await mkdir(destination, { recursive: true, mode: 0o700 });
+  const archive = path.join(destination, "commit.tar");
+  await mustRun("git", ["-C", top, "archive", "--format=tar", `--output=${archive}`, commit, "--", prefix || "."]);
+  const tree = path.join(destination, "tree");
+  await mkdir(tree, { recursive: true, mode: 0o700 });
+  await mustRun("tar", ["-xf", archive, "-C", tree]);
+  await rm(archive, { force: true });
+  return prefix ? path.join(tree, prefix) : tree;
+}
+
+export async function calculateCommitSourceHash(projectDir, entries) {
+  const hash = createHash("sha256");
+  for (const relative of entries) hash.update(relative).update("\0").update(await readFile(path.join(projectDir, relative))).update("\0");
+  return hash.digest("hex");
+}
+
+async function imageLabels(reference) {
+  const inspected = await runProcess("docker", ["image", "inspect", "--format", "{{.Id}}|{{json .Config.Labels}}", reference]);
+  if (inspected.exitCode !== 0) return null;
+  const line = inspected.stdout.trim();
+  const separator = line.indexOf("|");
+  let labels = {};
+  try { labels = JSON.parse(line.slice(separator + 1)) ?? {}; } catch { labels = {}; }
+  return { id: line.slice(0, separator), labels };
+}
+
+// One image per commit, forever: an existing commit tag is reused (never
+// re-tagged) and must carry revision == commit; anything else is a conflict.
+async function existingCommitImage(tag, commit) {
+  const found = await imageLabels(tag);
+  if (!found) return null;
+  if (found.labels[COMMIT_IMAGE_REVISION_LABEL] !== commit) throw deployError("IMAGE_TAG_COMMIT_CONFLICT", `${tag} exists with revision ${found.labels[COMMIT_IMAGE_REVISION_LABEL] ?? "none"}`);
+  return found.id;
+}
+
+async function assertImageRevision(reference, commit, imageId) {
+  const found = await imageLabels(reference);
+  if (!found || found.labels[COMMIT_IMAGE_REVISION_LABEL] !== commit || (imageId && found.id !== imageId)) throw deployError("DEPLOY_IMAGE_PROVENANCE_MISMATCH", `${reference} is not the image built from ${commit}`);
+  return found;
+}
+
+// Shared by build/candidate/deploy: commit declared, tree clean NOW, commit
+// resolvable in history and bound to what the test stage actually built.
+async function assertCommitStage(config, state, commit) {
+  if (commit === undefined || commit === null || commit === "") throw deployError("DEPLOY_COMMIT_REQUIRED", "build/candidate/deploy compile a declared commitSha, never the working tree");
+  const root = path.resolve(config.canonicalSource);
+  const { treeClean } = await assertCleanDeployTree(root);
+  const resolved = await resolveDeployCommit(root, commit);
+  if (state.builtFrom !== "commit" || state.commitSha !== commit || state.commitTreeSha !== resolved.treeSha) {
+    throw deployError("DEPLOY_COMMIT_STATE_MISMATCH", `release state was tested from ${state.builtFrom === "commit" ? state.commitSha : "the working tree"}; requested ${commit} — run the pipeline test stage for this commit`);
+  }
+  return { ...resolved, treeClean };
+}
+
+export async function appendDeployProvenance(entry, file = deployProvenanceFile()) {
+  await mkdir(path.dirname(file), { recursive: true, mode: 0o750 });
+  await appendFile(file, `${JSON.stringify({ ts: new Date().toISOString(), ...entry })}\n`, { encoding: "utf8", mode: 0o640 });
+}
+
+async function appendDeployProvenanceSoft(entry) {
+  try { await appendDeployProvenance(entry); } catch { /* post-mutation lines are fail-soft; the pre-mutation line is fail-closed */ }
+}
+
+async function provenanceCommitForImage(imageTag, file = deployProvenanceFile()) {
+  let text;
+  try { text = await readFile(file, "utf8"); } catch { return null; }
+  for (const line of text.split("\n").filter(Boolean).reverse()) {
+    try {
+      const record = JSON.parse(line);
+      if (record.imageTag === imageTag && COMMIT_SHA_PATTERN.test(record.commitSha ?? "")) return record.commitSha;
+    } catch { /* skip malformed line */ }
+  }
+  return null;
+}
+
+// Commit currently in production: image label (commit-built) > state binding >
+// provenance trail (incl. the retroactive records of working-tree deploys) > null.
+async function productionCommit(current, state) {
+  if (COMMIT_SHA_PATTERN.test(current.revision ?? "")) return current.revision;
+  if (state.currentRelease === current.image && COMMIT_SHA_PATTERN.test(state.currentCommitSha ?? "")) return state.currentCommitSha;
+  return provenanceCommitForImage(current.image);
+}
+
+function errorCode(error) {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return (error && typeof error.code === "string" && error.code) || (message.match(/^[A-Z][A-Z0-9_]{3,}/) ?? ["DEPLOY_FAILED"])[0];
+}
+
+// Token-hash files (sha256 only, never raw credentials) used to be baked into the
+// image from the untracked working tree. A commit build never carries them, so the
+// deploy points the runtime at the host copies through the identity repository mount.
+const TOKEN_HASH_FILES = Object.freeze([["ENG_MCP_AUTH_SESSION_TOKEN_FILE", "src/auth-session.token.json"], ["ENG_MCP_IMAGE_RELAY_TOKEN_FILE", "src/imageEdit.token.json"]]);
+export function tokenHashFileArgs(config, exists = existsSyncFs) {
+  const [source, destination] = String(config.production?.repositoryMount ?? "").split(":");
+  if (!source || !destination || !config.canonicalSource) return [];
+  const args = [];
+  for (const [variable, relative] of TOKEN_HASH_FILES) {
+    const host = path.join(path.resolve(config.canonicalSource), relative);
+    if (!host.startsWith(path.resolve(source) + path.sep) || !exists(host)) continue;
+    args.push("-e", `${variable}=${path.join(destination, path.relative(path.resolve(source), host))}`);
+  }
+  return args;
+}
+
+const TAP_FAIL_MARKER = /^[ \t]*not ok \d+ - /m;
+
+// Shared tail of both test flavors: parse the TAP, persist the state, and on
+// failure persist sanitized failures and raise the official TESTS_FAILED.
+async function recordSuite(config, suite, base) {
+  const tests = Number(/^.*\btests (\d+)\s*$/m.exec(suite.stdout)?.[1] ?? 0);
+  const passed = Number(/^.*\bpass (\d+)\s*$/m.exec(suite.stdout)?.[1] ?? 0);
+  const failed = Number(/^.*\bfail (\d+)\s*$/m.exec(suite.stdout)?.[1] ?? -1);
+  const state = { ...base, testStatus: suite.exitCode === 0 && failed === 0 ? "PASS" : "FAIL", tests, passed, failed, testedAt: new Date().toISOString() };
+  await saveState(config, state);
+  if (state.testStatus !== "PASS") {
+    // RELEASE-TEST-DIAGNOSTICS-04: extrai os failures reais do TAP, aplica a
+    // sanitização existente e persiste failures no release-state.json pelo
+    // saveState já existente, com conteúdo limitado, antes de propagar o erro
+    // oficial TESTS_FAILED intacto para o runner.
+    const marker = "TESTS_FAILED:";
+    const rawEvidence = TAP_FAIL_MARKER.test(suite.stdout) ? suite.stdout : TAP_FAIL_MARKER.test(suite.stderr) ? suite.stderr : (suite.stderr || suite.stdout || "");
+    const evidence = rawEvidence.includes(marker) ? rawEvidence.slice(rawEvidence.indexOf(marker) + marker.length) : rawEvidence;
+    const failures = extractReleaseTestFailures(evidence);
+    await saveState(config, { ...state, failures });
+    // STORE-MIG-01: embuta o RABO do TAP (sumário + falhas tardias) — stderr-first
+    // escondia o stdout inteiro e o cap de 128 KB do runner só consegue relayar o rabo.
+    const tailEvidence = evidence.length > RELEASE_TEST_EVIDENCE_TAIL ? evidence.slice(-RELEASE_TEST_EVIDENCE_TAIL) : evidence;
+    throw new Error(`TESTS_FAILED:${tailEvidence}`);
+  }
+  return state;
+}
+
+const COMMIT_BINDING_KEYS = Object.freeze(["builtFrom", "commitSha", "commitTreeSha", "treeClean", "testedHeadSha"]);
+function withoutCommitBinding(state) {
+  const next = { ...state };
+  for (const key of COMMIT_BINDING_KEYS) delete next[key];
+  return next;
+}
+
+async function commitTestAction(config, commit) {
+  const root = path.resolve(config.canonicalSource);
+  const { treeClean } = await assertCleanDeployTree(root);
+  const resolved = await resolveDeployCommit(root, commit);
+  const workDir = path.join(commitTreeRoot(), `commit-${commit.slice(0, 12)}-${Date.now()}-${randomBytes(3).toString("hex")}`);
   try {
-    worktreePath = await createWorktree(config.canonicalSource, resolvedCommit, jobId);
-    const sourceHash = await calculateSourceHash(worktreePath);
-    const catalog = await expectedCatalog(config);
-    const diff = await runProcess("git", ["-C", worktreePath, "diff", "--check"]);
-    if (diff.exitCode !== 0) throw new Error(`DIFF_CHECK_FAILED:${diff.stderr || diff.stdout}`);
-    await whitespaceCheck(worktreePath);
-    const built = await mustRun("docker", ["build", "-q", worktreePath], { timeoutMs: 600_000 });
-    const testImageId = built.stdout.trim().split(/\s+/).at(-1);
+    const projectDir = await extractCommitTree(root, commit, workDir);
+    const entries = await commitProjectEntries(root, commit);
+    const sourceHash = await calculateCommitSourceHash(projectDir, entries);
+    const catalog = await expectedCatalog(config, projectDir);
+    await whitespaceCheck(projectDir, entries.map((relative) => ({ relative, absolute: path.join(projectDir, relative) })));
+    const tag = commitImageTag(config.imageRepository, commit);
+    let testImageId = await existingCommitImage(tag, commit);
+    if (!testImageId) {
+      const built = await mustRun("docker", ["build", "-q", "--label", `${COMMIT_IMAGE_REVISION_LABEL}=${commit}`, "--label", `${COMMIT_IMAGE_BUILT_FROM_LABEL}=commit`, projectDir], { timeoutMs: 600_000 });
+      testImageId = built.stdout.trim().split(/\s+/).at(-1);
+    }
     if (!/^sha256:[a-f0-9]{64}$/.test(testImageId)) throw new Error("TEST_IMAGE_ID_INVALID");
-    const suite = await runProcess("docker", ["run", "--rm", "-v", `${path.join(worktreePath, "scripts")}:/app/scripts:ro`, testImageId, "node", "--test", "--test-force-exit", "test/*.test.ts"], { timeoutMs: testTimeoutMs() });
-    const tests = Number(/(?:^|\n)â„¹ tests (\d+)/.exec(suite.stdout)?.[1] ?? 0);
-    const passed = Number(/(?:^|\n)â„¹ pass (\d+)/.exec(suite.stdout)?.[1] ?? 0);
-    const failed = Number(/(?:^|\n)â„¹ fail (\d+)/.exec(suite.stdout)?.[1] ?? -1);
-    const result = {
-      requestedCommit: commit,
-      resolvedCommit,
-      sourceHash,
-      testImageId,
-      tests,
-      passed,
-      failed,
-      expectedToolCount: catalog.count,
-      expectedTools: catalog.tools,
-      testedAt: new Date().toISOString(),
-      status: suite.exitCode === 0 && failed === 0 ? "PASS" : "FAIL"
-    };
-    if (result.status !== "PASS") throw new Error(`TESTS_FAILED:${suite.stderr || suite.stdout}`);
-    return result;
+    const suite = await runProcess("docker", ["run", "--rm", "-v", `${path.join(projectDir, "scripts")}:/app/scripts:ro`, testImageId, "npm", "test"], { timeoutMs: testTimeoutMs(), outputLimit: TEST_OUTPUT_LIMIT });
+    const base = { ...invalidateDownstreamState(withoutCommitBinding(await loadState(config))), testSourceHash: sourceHash, testImageId, expectedToolCount: catalog.count, expectedTools: catalog.tools, builtFrom: "commit", commitSha: commit, commitTreeSha: resolved.treeSha, treeClean, testedHeadSha: resolved.headSha };
+    delete base.testSuiteInputsHash;
+    return await recordSuite(config, suite, base);
   } finally {
-    if (worktreePath) await cleanupWorktree(config.canonicalSource, worktreePath);
+    await rm(workDir, { recursive: true, force: true });
   }
 }
+
 
 async function getRepositoryRoot(config) {
   return resolveRepositoryRoot(config);
@@ -508,48 +682,22 @@ async function testAction(config) {
   // STORE-MIG-01: capture o TAP INTEIRO (cap antigo de 256 KB truncava o fim, onde
   // moram o sumário e as falhas tardias — o gate ficava FAIL com counters 0/0/-1).
   const suite = await runProcess("docker", ["run", "--rm", "-v", `${path.join(canonicalSource, "scripts")}:/app/scripts:ro`, testImageId, "npm", "test"], { timeoutMs: testTimeoutMs(), outputLimit: TEST_OUTPUT_LIMIT });
-  const tests = Number(/^.*\btests (\d+)\s*$/m.exec(suite.stdout)?.[1] ?? 0);
-  const passed = Number(/^.*\bpass (\d+)\s*$/m.exec(suite.stdout)?.[1] ?? 0);
-  const failed = Number(/^.*\bfail (\d+)\s*$/m.exec(suite.stdout)?.[1] ?? -1);
-  const state = { ...invalidateDownstreamState(await loadState(config)), testStatus: suite.exitCode === 0 && failed === 0 ? "PASS" : "FAIL", testSourceHash: sourceHash, testSuiteInputsHash: suiteInputsHash, testImageId, tests, passed, failed, expectedToolCount: catalog.count, expectedTools: catalog.tools, testedAt: new Date().toISOString() };
-  await saveState(config, state);
-  if (state.testStatus !== "PASS") {
-    // RELEASE-TEST-DIAGNOSTICS-04: extrai os failures reais do TAP, aplica a
-    // sanitização existente e persiste failures no release-state.json pelo
-    // saveState já existente, com conteúdo limitado, antes de propagar o erro
-    // oficial TESTS_FAILED intacto para o runner.
-    const marker = "TESTS_FAILED:";
-    const tapPresent = /^[ \t]*not ok \d+ - /m;
-    const rawEvidence = tapPresent.test(suite.stdout) ? suite.stdout : tapPresent.test(suite.stderr) ? suite.stderr : (suite.stderr || suite.stdout || "");
-    const evidence = rawEvidence.includes(marker) ? rawEvidence.slice(rawEvidence.indexOf(marker) + marker.length) : rawEvidence;
-    const failures = extractReleaseTestFailures(evidence);
-    await saveState(config, { ...state, failures });
-    // STORE-MIG-01: embuta o RABO do TAP (sumário + falhas tardias) — stderr-first
-    // escondia o stdout inteiro e o cap de 128 KB do runner só consegue relayar o rabo.
-    const tailEvidence = evidence.length > RELEASE_TEST_EVIDENCE_TAIL ? evidence.slice(-RELEASE_TEST_EVIDENCE_TAIL) : evidence;
-    throw new Error(`TESTS_FAILED:${tailEvidence}`);
-  }
-  return state;
+  // DEPLOY-COMMIT-PIN-01: a working-tree test is a TEST only — it never binds a
+  // commit, so build/candidate/deploy refuse it (DEPLOY_COMMIT_STATE_MISMATCH).
+  const base = { ...invalidateDownstreamState(withoutCommitBinding(await loadState(config))), builtFrom: "working-tree", testSourceHash: sourceHash, testSuiteInputsHash: suiteInputsHash, testImageId, expectedToolCount: catalog.count, expectedTools: catalog.tools };
+  return recordSuite(config, suite, base);
 }
 
-async function buildAction(config) {
+async function buildAction(config, options = {}) {
   const state = await loadState(config);
-  let sourceHash;
-  if (state.requestedCommit) {
-    sourceHash = await calculateCommitHash(config.canonicalSource, state.requestedCommit);
-    if (sourceHash !== state.testSourceHash) throw new Error("SOURCE_COMMIT_MISMATCH");
-  } else {
-    sourceHash = await calculateSourceHash(config.canonicalSource);
-  }
-  if (!canBuild(state, sourceHash)) throw new Error("BUILD_BLOCKED_BY_TEST_STATE");
-  const tag = candidateTag(config.imageRepository, new Date().toISOString(), sourceHash);
-  const existing = await runProcess("docker", ["image", "inspect", tag]);
-  if (existing.exitCode === 0) throw new Error("IMMUTABLE_IMAGE_TAG_EXISTS");
-  await mustRun("docker", ["tag", state.testImageId, tag]);
-  const inspected = await mustRun("docker", ["image", "inspect", "--format", "{{.Id}}", tag]);
-  const imageId = inspected.stdout.trim();
-  if (imageId !== state.testImageId) throw new Error("BUILT_IMAGE_MISMATCH");
-  const next = { ...state, sourceHash, imageTag: tag, imageId, buildStatus: "PASS", builtAt: new Date().toISOString() };
+  const pin = await assertCommitStage(config, state, options.commit);
+  if (!canBuild(state, state.testSourceHash)) throw new Error("BUILD_BLOCKED_BY_TEST_STATE");
+  const tag = commitImageTag(config.imageRepository, pin.commit);
+  const existing = await imageLabels(tag);
+  if (existing && existing.id !== state.testImageId) throw deployError("IMAGE_TAG_COMMIT_CONFLICT", `${tag} already points to another image`);
+  if (!existing) await mustRun("docker", ["tag", state.testImageId, tag]);
+  const built = await assertImageRevision(tag, pin.commit, state.testImageId);
+  const next = { ...state, sourceHash: state.testSourceHash, imageTag: tag, imageId: built.id, buildStatus: "PASS", builtAt: new Date().toISOString() };
   await saveState(config, next); return next;
 }
 
@@ -594,16 +742,10 @@ function candidateFailureTelemetry(error) {
   return { candidateFailureCode: code ?? "CANDIDATE_FAILURE_UNKNOWN", candidateFailureMessage: sanitizeSmokeFailureMessage(text) ?? null };
 }
 
-async function candidateAction(config) {
+async function candidateAction(config, options = {}) {
   const state = await loadState(config);
-  let sourceHash;
-  if (state.requestedCommit) {
-    sourceHash = await calculateCommitHash(config.canonicalSource, state.requestedCommit);
-    if (sourceHash !== state.sourceHash) throw new Error("SOURCE_COMMIT_MISMATCH");
-  } else {
-    sourceHash = await calculateSourceHash(config.canonicalSource);
-  }
-  if (state.buildStatus !== "PASS" || state.sourceHash !== sourceHash || !state.imageTag) throw new Error("CANDIDATE_BLOCKED_BY_BUILD_STATE");
+  const pin = await assertCommitStage(config, state, options.commit);
+  if (state.buildStatus !== "PASS" || state.sourceHash !== state.testSourceHash || state.imageTag !== commitImageTag(config.imageRepository, pin.commit)) throw new Error("CANDIDATE_BLOCKED_BY_BUILD_STATE");
   const id = `${Date.now()}-${randomBytes(4).toString("hex")}`; const name = `eng-mcp-candidate-${id}`;
   const candidateRoot = path.join(config.candidate.dataRoot, id); const fixture = path.join(candidateRoot, "fixture"); const data = path.join(candidateRoot, "data");
   if (!path.resolve(candidateRoot).startsWith(path.resolve(config.candidate.dataRoot) + path.sep)) throw new Error("CANDIDATE_PATH_INVALID");
@@ -665,7 +807,11 @@ async function productionInspect(config) {
   const result = await mustRun("docker", ["inspect", "--format", "{{.Id}}|{{.Config.Image}}|{{.Image}}|{{.State.Running}}|{{json .Mounts}}", config.production.containerName]);
   const [containerId, image, imageId, running, mountsJson] = result.stdout.trim().split("|");
   const mounts = mountsJson ? JSON.parse(mountsJson) : [];
-  return { containerId, image, imageId, running: running === "true", mounts };
+  // DEPLOY-COMMIT-PIN-01: the commit label travels with the image into the container.
+  const labels = await runProcess("docker", ["inspect", "--format", "{{json .Config.Labels}}", config.production.containerName]);
+  let revision = null;
+  try { revision = JSON.parse(labels.stdout.trim() || "null")?.[COMMIT_IMAGE_REVISION_LABEL] ?? null; } catch { revision = null; }
+  return { containerId, image, imageId, running: running === "true", mounts, revision };
 }
 
 export function validateRunnerMount(mounts, expectedMount) {
@@ -906,8 +1052,14 @@ async function rollbackAction(config) {
   await runProcess(plan[0][0], plan[0][1]);
   await mustRun(plan[1][0], plan[1][1]);
   await mustRun(plan[2][0], plan[2][1]);
-  const next = { ...state, rollbackStatus: "PASS", currentRelease: state.previousImage, rolledBackAt: new Date().toISOString() };
-  await saveState(config, next); return next;
+  // DEPLOY-COMMIT-PIN-01: rollback keeps referencing the SHA — production goes back
+  // to the previous image AND its commit, and the trail records both sides.
+  const rolledBackFromCommitSha = state.deployingCommitSha ?? state.currentCommitSha ?? null;
+  const next = { ...state, rollbackStatus: "PASS", currentRelease: state.previousImage, currentCommitSha: state.previousCommitSha ?? null, rolledBackAt: new Date().toISOString() };
+  delete next.deployingCommitSha;
+  await saveState(config, next);
+  await appendDeployProvenanceSoft({ event: "rollback", commitSha: state.previousCommitSha ?? null, imageTag: state.previousImage, imageId: state.previousImageId ?? null, treeClean: null, builtFrom: COMMIT_SHA_PATTERN.test(state.previousCommitSha ?? "") ? "commit-reference" : "unknown", rolledBackFromCommitSha, rolledBackFromImageTag: state.imageTag ?? null });
+  return next;
 }
 
 // SHIP-LOCK-01 camada 2 (runner-side, intencionalmente independente de
@@ -972,28 +1124,33 @@ export async function assertNoShipLock({ lockPath = process.env.ENG_MCP_SHIP_LOC
   throw new Error(`SHIP_LOCK_ACTIVE: ship lock at ${lockPath} held by holder=${holder} mission=${view.record?.mission ?? null} ageMs=${ageMs}; one ship at a time; ${revoke}`);
 }
 
-export async function deployAction(config) {
+export async function deployAction(config, options = {}) {
   await assertNoShipLock(); // SHIP-LOCK-01 camada 2: PRIMEIRA ação — recusa enquanto existir ship lock
   smokeTelemetrySink = null;
   let state = await loadState(config);
-  let sourceHash;
-  if (state.requestedCommit) {
-    sourceHash = await calculateCommitHash(config.canonicalSource, state.requestedCommit);
-    if (sourceHash !== state.sourceHash) throw new Error("SOURCE_COMMIT_MISMATCH");
-  } else {
-    sourceHash = await calculateSourceHash(config.canonicalSource);
-  }
-  if (!canDeploy(state, sourceHash)) throw new Error("DEPLOY_BLOCKED_BY_CANDIDATE_STATE");
+  // DEPLOY-COMMIT-PIN-01: commit declarado + árvore limpa AGORA + imagem com
+  // revision == commit, tudo ANTES de qualquer mutação; a linha deploy_started do
+  // audit é fail-closed (sem trilha, sem deploy).
+  const pin = await assertCommitStage(config, state, options.commit);
+  if (!canDeploy(state, state.testSourceHash)) throw new Error("DEPLOY_BLOCKED_BY_CANDIDATE_STATE");
+  if (state.imageTag !== commitImageTag(config.imageRepository, pin.commit)) throw deployError("DEPLOY_IMAGE_PROVENANCE_MISMATCH", `${state.imageTag} is not the commit tag of ${pin.commit}`);
+  await assertImageRevision(state.imageTag, pin.commit, state.imageId);
   const current = await productionInspect(config); const previousContainer = `${config.production.containerName}-rollback-${Date.now()}`;
-  state = { ...state, previousContainer, previousImage: current.image, previousImageId: current.imageId, deployStatus: "IN_PROGRESS" }; await saveState(config, state);
+  const previousCommitSha = await productionCommit(current, state);
+  const provenance = { commitSha: pin.commit, imageTag: state.imageTag, imageId: state.imageId, treeClean: pin.treeClean, builtFrom: "commit", commitTreeSha: pin.treeSha, headSha: pin.headSha, sourceHash: state.sourceHash, previousImageTag: current.image, previousCommitSha, jobId: options.jobId ?? null };
+  await appendDeployProvenance({ event: "deploy_started", ...provenance });
+  state = { ...state, previousContainer, previousImage: current.image, previousImageId: current.imageId, previousCommitSha, deployingCommitSha: pin.commit, deployStatus: "IN_PROGRESS" }; await saveState(config, state);
   await mustRun("docker", ["rename", config.production.containerName, previousContainer]); await mustRun("docker", ["stop", previousContainer]);
   const p = config.production;
   try {
-    await mustRun("docker", ["run", "-d", "--name", p.containerName, "--network", p.network, "--restart", p.restart, "-v", p.repositoryMount, "-v", p.dataMount, "-v", p.runnerMount, ...(p.credentialsMount ? ["-v", p.credentialsMount] : []), ...readOnlyMountArgs(p), "-e", `ENG_MCP_REPOSITORY_ROOT=${p.repositoryRoot}`, "-e", `ENG_MCP_REPOSITORY_ID=${p.repositoryId}`, "-e", `ENG_MCP_TOKEN_REGISTRY_FILE=${p.tokenRegistryFile}`, "-e", `ENG_MCP_HOST=${p.host}`, "-e", `ENG_MCP_PORT=${p.port}`, "-e", `ENG_MCP_DEPLOY_ENVIRONMENT_ID=${p.deployEnvironmentId}`, "-e", `ENG_MCP_DEPLOY_SERVER_ID=${p.deployServerId}`, ...(process.env.ENG_MCP_RUNTIME_OBSERVABILITY_CREDENTIAL_FILE ? ["-v", `${process.env.ENG_MCP_RUNTIME_OBSERVABILITY_CREDENTIAL_FILE}:/run/secrets/runtime-observability-secret:ro`, "-e", "ENG_MCP_RUNTIME_OBSERVABILITY_CREDENTIAL_FILE=/run/secrets/runtime-observability-secret"] : []), ...(process.env.MCP_BATCH_EXECUTE_CREDENTIAL_FILE ? ["-v", `${process.env.MCP_BATCH_EXECUTE_CREDENTIAL_FILE}:/run/secrets/mcp-batch-execute-secret:ro`, "-e", "MCP_BATCH_EXECUTE_CREDENTIAL_FILE=/run/secrets/mcp-batch-execute-secret", "-e", "ENG_MCP_SUPERVISED_MISSION_CREDENTIAL_FILE=/run/secrets/mcp-batch-execute-secret"] : []), ...(process.env.ENG_MCP_AGENT_MEMORY_CREDENTIAL_FILE ? ["-v", `${process.env.ENG_MCP_AGENT_MEMORY_CREDENTIAL_FILE}:/run/secrets/agent-memory-secret:ro`, "-e", "ENG_MCP_AGENT_MEMORY_CREDENTIAL_FILE=/run/secrets/agent-memory-secret"] : []), ...(process.env.ENG_MCP_RUNTIME_TOKEN_CREDENTIAL_FILE ? ["-v", `${process.env.ENG_MCP_RUNTIME_TOKEN_CREDENTIAL_FILE}:/run/secrets/runtime-token:ro`, "-e", "ENG_MCP_RUNTIME_TOKEN_CREDENTIAL_FILE=/run/secrets/runtime-token"] : []), ...(process.env.E2B_API_KEY_FILE ? ["-v", `${process.env.E2B_API_KEY_FILE}:/run/secrets/e2b-api-key:ro`, "-e", "E2B_API_KEY_FILE=/run/secrets/e2b-api-key"] : []), ...(process.env.GITHUB_TOKEN_FILE ? ["-v", `${process.env.GITHUB_TOKEN_FILE}:/run/secrets/github-pat:ro`, "-e", "GITHUB_TOKEN_FILE=/run/secrets/github-pat"] : []), ...githubAppDockerArgs(process.env), ...(process.env.GIT_CREDENTIALS_FILE ? ["-v", `${process.env.GIT_CREDENTIALS_FILE}:/run/secrets/git-credentials:ro`, "-e", "GIT_CREDENTIALS_FILE=/run/secrets/git-credentials"] : []), ...(process.env.ENG_MCP_HERMES_NOTIFY_CREDENTIAL_FILE ? ["-v", `${process.env.ENG_MCP_HERMES_NOTIFY_CREDENTIAL_FILE}:/run/secrets/hermes-notify-api-key:ro`, "-e", "ENG_MCP_HERMES_NOTIFY_CREDENTIAL_FILE=/run/secrets/hermes-notify-api-key"] : []), ...(process.env.ENG_MCP_HERMES_SESSION_ID ? ["-e", `ENG_MCP_HERMES_SESSION_ID=${process.env.ENG_MCP_HERMES_SESSION_ID}`] : []), state.imageTag]);
+    await mustRun("docker", ["run", "-d", "--name", p.containerName, "--network", p.network, "--restart", p.restart, "-v", p.repositoryMount, "-v", p.dataMount, "-v", p.runnerMount, ...(p.credentialsMount ? ["-v", p.credentialsMount] : []), ...readOnlyMountArgs(p), "-e", `ENG_MCP_REPOSITORY_ROOT=${p.repositoryRoot}`, "-e", `ENG_MCP_REPOSITORY_ID=${p.repositoryId}`, "-e", `ENG_MCP_TOKEN_REGISTRY_FILE=${p.tokenRegistryFile}`, "-e", `ENG_MCP_HOST=${p.host}`, "-e", `ENG_MCP_PORT=${p.port}`, "-e", `ENG_MCP_DEPLOY_ENVIRONMENT_ID=${p.deployEnvironmentId}`, "-e", `ENG_MCP_DEPLOY_SERVER_ID=${p.deployServerId}`, ...(process.env.ENG_MCP_RUNTIME_OBSERVABILITY_CREDENTIAL_FILE ? ["-v", `${process.env.ENG_MCP_RUNTIME_OBSERVABILITY_CREDENTIAL_FILE}:/run/secrets/runtime-observability-secret:ro`, "-e", "ENG_MCP_RUNTIME_OBSERVABILITY_CREDENTIAL_FILE=/run/secrets/runtime-observability-secret"] : []), ...(process.env.MCP_BATCH_EXECUTE_CREDENTIAL_FILE ? ["-v", `${process.env.MCP_BATCH_EXECUTE_CREDENTIAL_FILE}:/run/secrets/mcp-batch-execute-secret:ro`, "-e", "MCP_BATCH_EXECUTE_CREDENTIAL_FILE=/run/secrets/mcp-batch-execute-secret", "-e", "ENG_MCP_SUPERVISED_MISSION_CREDENTIAL_FILE=/run/secrets/mcp-batch-execute-secret"] : []), ...(process.env.ENG_MCP_AGENT_MEMORY_CREDENTIAL_FILE ? ["-v", `${process.env.ENG_MCP_AGENT_MEMORY_CREDENTIAL_FILE}:/run/secrets/agent-memory-secret:ro`, "-e", "ENG_MCP_AGENT_MEMORY_CREDENTIAL_FILE=/run/secrets/agent-memory-secret"] : []), ...(process.env.ENG_MCP_RUNTIME_TOKEN_CREDENTIAL_FILE ? ["-v", `${process.env.ENG_MCP_RUNTIME_TOKEN_CREDENTIAL_FILE}:/run/secrets/runtime-token:ro`, "-e", "ENG_MCP_RUNTIME_TOKEN_CREDENTIAL_FILE=/run/secrets/runtime-token"] : []), ...(process.env.E2B_API_KEY_FILE ? ["-v", `${process.env.E2B_API_KEY_FILE}:/run/secrets/e2b-api-key:ro`, "-e", "E2B_API_KEY_FILE=/run/secrets/e2b-api-key"] : []), ...(process.env.GITHUB_TOKEN_FILE ? ["-v", `${process.env.GITHUB_TOKEN_FILE}:/run/secrets/github-pat:ro`, "-e", "GITHUB_TOKEN_FILE=/run/secrets/github-pat"] : []), ...githubAppDockerArgs(process.env), ...(process.env.GIT_CREDENTIALS_FILE ? ["-v", `${process.env.GIT_CREDENTIALS_FILE}:/run/secrets/git-credentials:ro`, "-e", "GIT_CREDENTIALS_FILE=/run/secrets/git-credentials"] : []), ...(process.env.ENG_MCP_HERMES_NOTIFY_CREDENTIAL_FILE ? ["-v", `${process.env.ENG_MCP_HERMES_NOTIFY_CREDENTIAL_FILE}:/run/secrets/hermes-notify-api-key:ro`, "-e", "ENG_MCP_HERMES_NOTIFY_CREDENTIAL_FILE=/run/secrets/hermes-notify-api-key"] : []), ...(process.env.ENG_MCP_HERMES_SESSION_ID ? ["-e", `ENG_MCP_HERMES_SESSION_ID=${process.env.ENG_MCP_HERMES_SESSION_ID}`] : []), ...tokenHashFileArgs(config), state.imageTag]);
     await waitForPort(p.port);
-    state = { ...state, deployStatus: "PASS", currentRelease: state.imageTag, deployedAt: new Date().toISOString() }; await saveState(config, state);
-    return await smokeAction(config);
+    state = { ...state, deployStatus: "PASS", currentRelease: state.imageTag, currentCommitSha: pin.commit, deployedAt: new Date().toISOString() }; await saveState(config, state);
+    const smoked = await smokeAction(config);
+    await appendDeployProvenanceSoft({ event: "deploy_succeeded", ...provenance });
+    return smoked;
   } catch (error) {
+    await appendDeployProvenanceSoft({ event: "deploy_failed", ...provenance, errorCode: errorCode(error) });
     const failed = smokeFailureTransition(state);
     if (smokeTelemetrySink) {
       failed.smokeTransientRetries = smokeTelemetrySink.smokeTransientRetries ?? 0;
@@ -1397,20 +1554,13 @@ async function unitCredentialAction() {
 
 export async function execute(action, configFile = DEFAULT_CONFIG, options = {}) {
   const config = await loadConfig(configFile);
-  const targetCommit = options.targetCommit;
-  if (targetCommit) {
-    await fetchCommit(config.canonicalSource, targetCommit);
-  }
-  if (action === "test") {
-    if (options.commit || targetCommit) {
-      const commit = options.commit || targetCommit;
-      return testCommitAction(config, commit, options.jobId || `commit-${Date.now()}`);
-    }
-    return testAction(config);
-  }
-  if (action === "build") return buildAction(config);
-  if (action === "candidate") return candidateAction(config);
-  if (action === "deploy") return deployAction(config);
+  // DEPLOY-COMMIT-PIN-01: the runner threads the declared commit as ENG_MCP_COMMIT.
+  const commit = options.commit ?? (process.env.ENG_MCP_COMMIT || undefined);
+  const jobId = options.jobId ?? (process.env.ENG_MCP_JOB_ID || undefined);
+  if (action === "test") return commit ? commitTestAction(config, commit) : testAction(config);
+  if (action === "build") return buildAction(config, { commit });
+  if (action === "candidate") return candidateAction(config, { commit });
+  if (action === "deploy") return deployAction(config, { commit, jobId });
   if (action === "smoke") return smokeAction(config);
   if (action === "rollback") return rollbackAction(config);
   if (action === "status") return statusAction(config);
