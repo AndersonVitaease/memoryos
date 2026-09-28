@@ -2284,22 +2284,22 @@ ok 338 - GH-07/P9 — waves largas: 10 ações independentes ficam todas na wave
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitfetch-VEz7xe/origin.git
 #  * [new branch]      main -> main
@@ -2313,22 +2313,22 @@ ok 338 - GH-07/P9 — waves largas: 10 ações independentes ficam todas na wave
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitfetch-VIe6Dn/origin.git
 #  * [new branch]      main -> main
@@ -2352,22 +2352,22 @@ ok 339 - git.fetch refuses callers without the engineering:git:fetch scope
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitfetch-NSc1di/origin.git
 #  * [new branch]      main -> main
@@ -2386,44 +2386,44 @@ ok 340 - E2E: fetch refreshes remote-tracking refs and reports main-first ahead/
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitfetch-nioAAL/origin.git
 #  * [new branch]      main -> main
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitfetch-6DJrSV/origin.git
 #  * [new branch]      main -> main
@@ -2447,88 +2447,88 @@ ok 342 - input hygiene: any caller-supplied key is structurally forbidden
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitfetch-keVGsf/origin.git
 #  * [new branch]      main -> main
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitfetch-I4aVkP/origin.git
 #  * [new branch]      main -> main
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitfetch-YsVHxN/origin.git
 #  * [new branch]      main -> main
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitfetch-uBrxB6/origin.git
 #  * [new branch]      main -> main
@@ -2565,22 +2565,22 @@ ok 347 - fail-closed: a fetched origin without a main remote-tracking ref is ref
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitmerge-3JmpQW/origin.git
 #  * [new branch]      main -> main
@@ -2594,22 +2594,22 @@ ok 347 - fail-closed: a fetched origin without a main remote-tracking ref is ref
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitmerge-SZevmf/origin.git
 #  * [new branch]      main -> main
@@ -2631,22 +2631,22 @@ ok 348 - git.merge refuses callers without the engineering:git:merge scope
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitmerge-UxIZvG/origin.git
 #  * [new branch]      main -> main
@@ -2663,22 +2663,22 @@ ok 349 - git.merge fast-forwards through the MCP HTTP layer (layer 1 AUTO_FF)
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitmerge-pMoK5E/origin.git
 #  * [new branch]      main -> main
@@ -2695,22 +2695,22 @@ ok 350 - PLAN reports layer AUTO_FF read-only for a strictly-behind branch
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitmerge-ImSdXD/origin.git
 #  * [new branch]      main -> main
@@ -2727,22 +2727,22 @@ ok 351 - execute requires acknowledgment then approval
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitmerge-M7Hlsi/origin.git
 #  * [new branch]      main -> main
@@ -2759,22 +2759,22 @@ ok 352 - layer 1 AUTO_FF executes a pure fast-forward with snapshot proofs
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitmerge-pTFewY/origin.git
 #  * [new branch]      main -> main
@@ -2791,22 +2791,22 @@ ok 353 - layer 2 NATIVE merges disjoint divergences into one merge commit
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitmerge-gMzVCb/origin.git
 #  * [new branch]      main -> main
@@ -2819,44 +2819,44 @@ ok 354 - layer 3 ASSISTED stops on overlapping paths with zero mutation — neve
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitmerge-viMMWH/origin.git
 #  * [new branch]      main -> main
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitmerge-XfsZBl/origin.git
 #  * [new branch]      main -> main
@@ -2873,22 +2873,22 @@ ok 355 - NOTHING_TO_MERGE covers 0/0 and ahead-only (recommends push)
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitmerge-5eePLO/origin.git
 #  * [new branch]      main -> main
@@ -2903,44 +2903,44 @@ ok 356 - blockers: uncommitted changes refuse PLAN and execute without mutating
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitmerge-EA2kqY/origin.git
 #  * [new branch]      main -> main
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitmerge-kBMDY6/origin.git
 #  * [new branch]      main -> main
@@ -2977,22 +2977,22 @@ ok 361 - audit trail records layer and status; nothing to merge still audits
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitmerge-local-V5ch4w/origin.git
 #  * [new branch]      main -> main
@@ -3000,22 +3000,22 @@ ok 361 - audit trail records layer and status; nothing to merge still audits
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitmerge-local-Gmagvm/origin.git
 #  * [new branch]      main -> main
@@ -3029,22 +3029,22 @@ ok 362 - (a) local→local AUTO_FF: PLAN read-only then execute fast-forwards in
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitmerge-local-qrpHrT/origin.git
 #  * [new branch]      main -> main
@@ -3058,22 +3058,22 @@ ok 363 - (b) local→local NATIVE: merge commit with validated parents, tree and
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitmerge-local-EL53Ns/origin.git
 #  * [new branch]      main -> main
@@ -3086,22 +3086,22 @@ ok 364 - (c) local→local ASSISTED: conflicting file stops the merge with zero 
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitmerge-local-vpC8PV/origin.git
 #  * [new branch]      main -> main
@@ -3114,22 +3114,22 @@ ok 365 - (d) unknown source or into branches are typed BRANCH_NOT_FOUND
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitmerge-local-1pLuTV/origin.git
 #  * [new branch]      main -> main
@@ -3149,22 +3149,22 @@ ok 366 - (e) sourceBranch equal to into is rejected as MERGE_NO_OP
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitmerge-local-auypRV/origin.git
 #  * [new branch]      main -> main
@@ -3184,22 +3184,22 @@ ok 367 - (f) legacy sync form without into is unchanged (regression)
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitmerge-local-oPDcjH/origin.git
 #  * [new branch]      main -> main
@@ -3213,22 +3213,22 @@ ok 368 - (h) remote-tracking source auto-detection and explicit origin/ prefix
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitmerge-local-Ih9c2k/origin.git
 #  * [new branch]      main -> main
@@ -3242,22 +3242,22 @@ ok 369 - (j) dirty target checkout is refused as TARGET_DIRTY in PLAN and execut
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitmerge-local-uqGQ3q/origin.git
 #  * [new branch]      main -> main
@@ -3271,22 +3271,22 @@ ok 370 - (i) cleanup happy path: worktree removed and fully-merged source branch
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitmerge-local-djdTdd/origin.git
 #  * [new branch]      main -> main
@@ -3300,22 +3300,22 @@ ok 371 - (i) cleanup guard: source still checked out in a worktree → CLEANUP_B
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitmerge-local-K2aRjo/origin.git
 #  * [new branch]      main -> main
@@ -3336,22 +3336,22 @@ ok 373 - (i) cleanup refuses a not-fully-merged source (CLEANUP_NOT_FULLY_MERGED
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitmerge-local-md2oWM/origin.git
 #  * [new branch]      main -> main
@@ -3365,44 +3365,44 @@ ok 374 - (i) cleanup worktree guards: CLEANUP_WORKTREE_DIRTY and CLEANUP_WORKTRE
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitmerge-local-kmZRV9/origin.git
 #  * [new branch]      main -> main
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitmerge-local-uhNeqn/origin.git
 #  * [new branch]      main -> main
@@ -3436,22 +3436,22 @@ ok 377 - git.merge local-merge form through the MCP HTTP layer (PLAN + EXECUTE)
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitpush-ndboT8/origin.git
 #  * [new branch]      main -> main
@@ -3465,22 +3465,22 @@ ok 377 - git.merge local-merge form through the MCP HTTP layer (PLAN + EXECUTE)
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitpush-xdmfvp/origin.git
 #  * [new branch]      main -> main
@@ -3498,22 +3498,22 @@ ok 378 - git.push refuses callers without the engineering:git:push scope
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitpush-gL8EqX/origin.git
 #  * [new branch]      main -> main
@@ -3535,22 +3535,22 @@ ok 379 - PLAN is read-only and reports a fast-forward ahead state
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitpush-xVwQzq/origin.git
 #  * [new branch]      main -> main
@@ -3569,22 +3569,22 @@ ok 380 - PLAN classifies a diverged remote as blocked
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitpush-wzcYTR/origin.git
 #  * [new branch]      main -> main
@@ -3606,22 +3606,22 @@ ok 381 - execute without approval or acknowledge is refused before any mutation
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitpush-CQb1Lx/origin.git
 #  * [new branch]      main -> main
@@ -3646,22 +3646,22 @@ ok 382 - execute blocks a diverged remote with the origin untouched
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitpush-H6V6ap/origin.git
 #  * [new branch]      main -> main
@@ -3679,22 +3679,22 @@ ok 383 - execute blocks a known non-fast-forward with the origin untouched
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitpush-ECF1Az/origin.git
 #  * [new branch]      main -> main
@@ -3714,22 +3714,22 @@ ok 384 - execute pushes exactly the refspec, lands the head, and audits it
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitpush-lFAyRj/origin.git
 #  * [new branch]      main -> main
@@ -3747,22 +3747,22 @@ ok 385 - after the push lands, execute and PLAN report nothing-to-push
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitpush-3o7Swz/origin.git
 #  * [new branch]      main -> main
@@ -3786,176 +3786,176 @@ ok 386 - a stale expectedHead is refused with PUSH_HEAD_MISMATCH
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitpush-2z24XP/origin.git
 #  * [new branch]      main -> main
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitpush-zRt34o/origin.git
 #  * [new branch]      main -> main
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitpush-9GEfSS/origin.git
 #  * [new branch]      main -> main
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitpush-Xeykk5/origin.git
 #  * [new branch]      main -> main
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitpush-F391mP/origin.git
 #  * [new branch]      main -> main
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitpush-gQuMMJ/origin.git
 #  * [new branch]      main -> main
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitpush-z9NYCj/origin.git
 #  * [new branch]      main -> main
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitpush-m6cXj3/origin.git
 #  * [new branch]      main -> main
@@ -4010,22 +4010,22 @@ ok 394 - runner timeout and precheck failures surface as typed errors
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitpush-TNqwIk/origin.git
 #  * [new branch]      main -> main
@@ -4038,44 +4038,44 @@ ok 395 - postcheck refuses to claim success when the remote head does not move
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitpush-lP6QTr/origin.git
 #  * [new branch]      main -> main
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # To /tmp/eng-mcp-gitpush-Z14e0n/origin.git
 #  * [new branch]      main -> main
@@ -4105,12 +4105,12 @@ ok 398 - the MCP schema itself rejects caller-supplied remote input
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # Subtest: T1 inspect_commit: ref valida resolve (hash completo e curto)
 ok 399 - T1 inspect_commit: ref valida resolve (hash completo e curto)
@@ -4121,12 +4121,12 @@ ok 399 - T1 inspect_commit: ref valida resolve (hash completo e curto)
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # Subtest: T2 inspect_commit: refs invalidas/ausentes falham fechado
 ok 400 - T2 inspect_commit: refs invalidas/ausentes falham fechado
@@ -4137,12 +4137,12 @@ ok 400 - T2 inspect_commit: refs invalidas/ausentes falham fechado
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # Subtest: T3 inspect_commit mode=meta: metadados + pais, sem files/patch
 ok 401 - T3 inspect_commit mode=meta: metadados + pais, sem files/patch
@@ -4153,12 +4153,12 @@ ok 401 - T3 inspect_commit mode=meta: metadados + pais, sem files/patch
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # Subtest: T4 inspect_commit mode=stat: arquivos + stat agregado, sem patch
 ok 402 - T4 inspect_commit mode=stat: arquivos + stat agregado, sem patch
@@ -4169,12 +4169,12 @@ ok 402 - T4 inspect_commit mode=stat: arquivos + stat agregado, sem patch
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # Subtest: T5 inspect_commit mode=patch: diff presente, subject suprimido, rename e binario
 ok 403 - T5 inspect_commit mode=patch: diff presente, subject suprimido, rename e binario
@@ -4185,12 +4185,12 @@ ok 403 - T5 inspect_commit mode=patch: diff presente, subject suprimido, rename 
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # Subtest: T6 inspect_commit mode=file: conteudo historico do path + PATH_REQUIRED sem path
 ok 404 - T6 inspect_commit mode=file: conteudo historico do path + PATH_REQUIRED sem path
@@ -4201,12 +4201,12 @@ ok 404 - T6 inspect_commit mode=file: conteudo historico do path + PATH_REQUIRED
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # Subtest: T7 inspect_commit: path filter deterministico (com e sem barra final)
 ok 405 - T7 inspect_commit: path filter deterministico (com e sem barra final)
@@ -4217,12 +4217,12 @@ ok 405 - T7 inspect_commit: path filter deterministico (com e sem barra final)
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # Subtest: T8 inspect_commit: patch limitado por maxPatchBytes com truncated honesto
 ok 406 - T8 inspect_commit: patch limitado por maxPatchBytes com truncated honesto
@@ -4233,12 +4233,12 @@ ok 406 - T8 inspect_commit: patch limitado por maxPatchBytes com truncated hones
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # Subtest: T9 inspect_commit: conteudo sensivel no historico falha fechado (gate)
 ok 407 - T9 inspect_commit: conteudo sensivel no historico falha fechado (gate)
@@ -4249,12 +4249,12 @@ ok 407 - T9 inspect_commit: conteudo sensivel no historico falha fechado (gate)
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # Subtest: T10 inspect_commit: injecao via ref/path e negada
 ok 408 - T10 inspect_commit: injecao via ref/path e negada
@@ -4265,12 +4265,12 @@ ok 408 - T10 inspect_commit: injecao via ref/path e negada
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # Subtest: T11 inspect_commit: nenhuma mutacao no repositorio
 ok 409 - T11 inspect_commit: nenhuma mutacao no repositorio
@@ -4281,12 +4281,12 @@ ok 409 - T11 inspect_commit: nenhuma mutacao no repositorio
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # Subtest: T12 inspect_changes: worktree limpo
 ok 410 - T12 inspect_changes: worktree limpo
@@ -4297,12 +4297,12 @@ ok 410 - T12 inspect_changes: worktree limpo
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # Subtest: T13 inspect_changes: mudancas staged
 ok 411 - T13 inspect_changes: mudancas staged
@@ -4313,12 +4313,12 @@ ok 411 - T13 inspect_changes: mudancas staged
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # Subtest: T14 inspect_changes: mudancas unstaged
 ok 412 - T14 inspect_changes: mudancas unstaged
@@ -4329,12 +4329,12 @@ ok 412 - T14 inspect_changes: mudancas unstaged
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # Subtest: T15 inspect_changes: arquivos untracked (contados no stat)
 ok 413 - T15 inspect_changes: arquivos untracked (contados no stat)
@@ -4345,12 +4345,12 @@ ok 413 - T15 inspect_changes: arquivos untracked (contados no stat)
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # Switched to a new branch 'feature'
 # Switched to branch 'master'
@@ -4363,12 +4363,12 @@ ok 414 - T16 inspect_changes: estado de conflito de merge
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # Subtest: T17/T18 inspect_changes: changedFiles uniao + stat numstat correto
 ok 415 - T17/T18 inspect_changes: changedFiles uniao + stat numstat correto
@@ -4379,12 +4379,12 @@ ok 415 - T17/T18 inspect_changes: changedFiles uniao + stat numstat correto
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # Subtest: T19 inspect_changes: includePatch ausente/false nao retorna patch
 ok 416 - T19 inspect_changes: includePatch ausente/false nao retorna patch
@@ -4395,12 +4395,12 @@ ok 416 - T19 inspect_changes: includePatch ausente/false nao retorna patch
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # Subtest: T20 inspect_changes: includePatch=true retorna patch limitado e truncado honesto
 ok 417 - T20 inspect_changes: includePatch=true retorna patch limitado e truncado honesto
@@ -4411,12 +4411,12 @@ ok 417 - T20 inspect_changes: includePatch=true retorna patch limitado e truncad
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # Preparing worktree (new branch 'git01-wt')
 # Subtest: T21 inspect_changes: linked worktree (.git FILE) e suportado
@@ -4428,12 +4428,12 @@ ok 418 - T21 inspect_changes: linked worktree (.git FILE) e suportado
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # Subtest: T22 inspect_changes: nenhuma mutacao no worktree
 ok 419 - T22 inspect_changes: nenhuma mutacao no worktree
@@ -4444,12 +4444,12 @@ ok 419 - T22 inspect_changes: nenhuma mutacao no worktree
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # Subtest: T23-T25 batchOrchestrate aceita as duas super tools e paraleliza sem mutacao
 ok 420 - T23-T25 batchOrchestrate aceita as duas super tools e paraleliza sem mutacao
@@ -9315,12 +9315,12 @@ ok 1089 - 19 security: the controlled change supertool is never imported/compose
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # Subtest: T1+T3+T7 file profile runs a real passing test and readback returns the persisted verdict
 ok 1090 - T1+T3+T7 file profile runs a real passing test and readback returns the persisted verdict
@@ -9331,12 +9331,12 @@ ok 1090 - T1+T3+T7 file profile runs a real passing test and readback returns th
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # Subtest: T2 related profile executes an explicit selection of real files
 ok 1091 - T2 related profile executes an explicit selection of real files
@@ -9347,12 +9347,12 @@ ok 1091 - T2 related profile executes an explicit selection of real files
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # Subtest: T4+T7 file profile classifies assertion failures with bounded summaries
 ok 1092 - T4+T7 file profile classifies assertion failures with bounded summaries
@@ -9369,12 +9369,12 @@ ok 1093 - T5 createSuiteJob persists a RUNNING async job with a unique execution
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # Subtest: T6 status RUNNING is never an error
 ok 1094 - T6 status RUNNING is never an error
@@ -9385,12 +9385,12 @@ ok 1094 - T6 status RUNNING is never an error
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # Subtest: T8 unknown execution id raises the typed TEST_JOB_NOT_FOUND
 ok 1095 - T8 unknown execution id raises the typed TEST_JOB_NOT_FOUND
@@ -9419,12 +9419,12 @@ ok 1098 - T11 reconcileSuiteJob reconciles only from strictly-newer persisted ev
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # Subtest: T12 reconnect readback reconciles a RUNNING suite job from the persisted release-state.json
 ok 1099 - T12 reconnect readback reconciles a RUNNING suite job from the persisted release-state.json
@@ -9441,12 +9441,12 @@ ok 1100 - T12 finishSuiteJob* completes async jobs with no live client
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # Subtest: T13+T17 an in-run worktree mutation is infrastructure (RUNNER_ERROR), never a test verdict
 ok 1101 - T13+T17 an in-run worktree mutation is infrastructure (RUNNER_ERROR), never a test verdict
@@ -9463,12 +9463,12 @@ ok 1102 - T14 failure summaries are bounded and never leak sensitive content
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # Subtest: T15 path validation blocks escapes, absolute paths and non-test targets
 ok 1103 - T15 path validation blocks escapes, absolute paths and non-test targets
@@ -9479,12 +9479,12 @@ ok 1103 - T15 path validation blocks escapes, absolute paths and non-test target
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # Subtest: T16 no arbitrary command: extra input is ignored and non-sync profiles are refused at the repository layer
 ok 1104 - T16 no arbitrary command: extra input is ignored and non-sync profiles are refused at the repository layer
@@ -9495,12 +9495,12 @@ ok 1104 - T16 no arbitrary command: extra input is ignored and non-sync profiles
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # Subtest: T18 concurrent status reads are consistent
 ok 1105 - T18 concurrent status reads are consistent
@@ -9542,12 +9542,12 @@ ok 1109 - GH-03: canonical dotted names keep working and unknown names still fai
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -9590,12 +9590,12 @@ ok 1111 - engineering.test.run suite profile starts a persisted job without wait
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -9610,12 +9610,12 @@ ok 1112 - typecheck requires engineering:verify independently of read and write
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -9633,12 +9633,12 @@ ok 1113 - typecheck.run rejects arbitrary command arguments
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -9653,12 +9653,12 @@ ok 1114 - lint requires engineering:verify independently of read and write
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -9673,12 +9673,12 @@ ok 1115 - catalog requires engineering:read
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -9693,12 +9693,12 @@ ok 1116 - sync_files A: existing allowed file -> backup created, content replace
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -9713,12 +9713,12 @@ ok 1117 - sync_files B: new allowed file -> created, hash validated
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -9733,12 +9733,12 @@ ok 1118 - sync_files C: ../ traversal -> DENIED
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -9753,12 +9753,12 @@ ok 1119 - sync_files D: absolute path -> DENIED
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -9773,12 +9773,12 @@ ok 1120 - sync_files E: path outside src/lib/** -> DENIED
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -9793,12 +9793,12 @@ ok 1121 - sync_files F: eng-mcp/** path -> DENIED
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -9813,12 +9813,12 @@ ok 1122 - sync_files G: more than 10 files -> DENIED
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -9833,12 +9833,12 @@ ok 1123 - sync_files H: partial failure -> structured result, not hidden
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -9854,12 +9854,12 @@ ok 1124 - engineering.distribution.publish requires the operator-issued engineer
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -9875,12 +9875,12 @@ ok 1125 - engineering.vps.change.safe requires the operator-issued engineering:v
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -9897,12 +9897,12 @@ ok 1126 - engineering.vps.change.safe accepts a token holding engineering:vps:ap
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -9918,12 +9918,12 @@ ok 1127 - engineering.vps.guardian requires engineering:vps:application:redeploy
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -9940,12 +9940,12 @@ ok 1128 - engineering.vps.guardian read-only classification stays reachable with
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -9961,12 +9961,12 @@ ok 1129 - engineering.vps.runner.restart requires the operator-issued engineerin
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP image relay enabled=true path=/relay
@@ -9982,12 +9982,12 @@ ok 1130 - engineering.vps.runner.restart plan-only is reachable with the granted
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -10003,12 +10003,12 @@ ok 1131 - engineering.vps.runner.restart mutation with the granted scope stays f
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -10024,12 +10024,12 @@ ok 1132 - engineering.vps.secret.write requires the operator-issued engineering:
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -10045,12 +10045,12 @@ ok 1133 - engineering.vps.secret.write with the granted scope stays read-only in
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -10066,12 +10066,12 @@ ok 1134 - engineering.vps.systemd.credential requires the operator-issued engine
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -10087,12 +10087,12 @@ ok 1135 - engineering.vps.systemd.credential with the granted scope opens the ga
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -10108,12 +10108,12 @@ ok 1136 - engineering.vps.diagnostics requires the operator-issued engineering:v
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -10129,12 +10129,12 @@ ok 1137 - engineering.vps.container.probe requires the operator-issued engineeri
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP image relay enabled=true path=/relay
@@ -10150,12 +10150,12 @@ ok 1138 - engineering.vps.container.probe file_stat OK: forwards bounded params 
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -10171,12 +10171,12 @@ ok 1139 - engineering.github.read requires the operator-issued engineering:githu
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -10192,12 +10192,12 @@ ok 1140 - engineering.judge.verify requires the operator-issued judge:read scope
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -10213,12 +10213,12 @@ ok 1141 - engineering.github.read fails closed with GITHUB_CREDENTIAL_MISSING wh
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -10234,12 +10234,12 @@ ok 1142 - engineering.github.read get_repo happy path: live URL, Bearer auth, qu
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -10255,12 +10255,12 @@ ok 1143 - engineering.vps.diagnostics unit view: inspect+status projection with 
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -11923,9 +11923,9 @@ not ok 1368 - LIVE /mcp-proxy: read-only call succeeds, mutation refused with th
   failureType: 'testCodeFailure'
   error: |-
     read-only call must be 200: {"error":"Forbidden"}
-    
+
     403 !== 200
-    
+
   code: 'ERR_ASSERTION'
   name: 'AssertionError'
   expected: 200
