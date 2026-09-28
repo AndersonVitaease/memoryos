@@ -1,0 +1,30 @@
+ok 1 - (a) App configured: RS256 JWT with correct claims+signature, installation token used for the API call
+ok 2 - (b) cache: second call inside TTL reuses the token; near expiry it renews by itself
+ok 3 - (c) App absent: PAT fallback exactly as before, zero exchange
+ok 4 - (c2) partial App config fails closed — never silently degrades to the PAT
+ok 5 - (d) scrub: exchange error echoing JWT/PEM/token leaks nothing; identifiers reported as sha16
+ok 6 - (e) bootstrap verify script: GREEN against a fake GitHub, prints no secret; RED on 0644 key
+ok 7 - get_repo happy path: exact URL, Bearer auth, mapped fields, quota block
+ok 8 - identical get_repo within TTL is served from cache (1 upstream call)
+ok 9 - compare: default base resolves default_branch, then live ahead/behind
+ok 10 - compare: explicit base hits compare/<base>...<head> directly
+ok 11 - get_commit: default omits patch; includePatch bounds patch at 32KB with honest flag
+ok 12 - list_commits: since mode builds query params and maps commits
+ok 13 - list_commits: sinceSha mode uses the compare range endpoint
+ok 14 - get_branch_head: resolves branch sha and commit date
+ok 15 - get_pr: pulls + reviews + check-runs + status fan-out
+ok 16 - list_action_runs and list_refs: tags vs releases shapes
+ok 17 - get_file: decodes base64, maps size/sha/bytes; ref goes into the query
+ok 18 - get_file: backslash, traversal and sensitive-path denials happen BEFORE any fetch
+ok 19 - get_file: refuses oversize, refuses >1MB-omitted content, refuses binary
+ok 20 - status mapping: 401 AUTH_REJECTED, 403+rem0 RATE_EXCEEDED, 403+quota FORBIDDEN
+ok 21 - status mapping: 404 NOT_FOUND with private-repo hint, 422 VALIDATION_FAILED
+ok 22 - network failure surfaces as GITHUB_UNREACHABLE; slow upstream aborts as GITHUB_TIMEOUT
+ok 23 - credential: missing token fails closed; GITHUB_TOKEN_FILE is read per call
+ok 24 - local rate floor: remaining below floor refuses BEFORE the upstream call
+ok 25 - token NEVER leaks: error detail redacted, payload clean
+ok 26 - allowlist: foreign/malformed repos refused; ENG_MCP_GITHUB_REPO re-points default
+ok 27 - get_rate_limit: free meter — never cached, two calls two fetches
+ok 28 - schema: unknown operation, bad maxBytes, bad number and missing ref are GITHUB_VALIDATION_FAILED
+# pass 28
+# fail 0
