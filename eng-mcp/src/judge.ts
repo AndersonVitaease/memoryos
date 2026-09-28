@@ -24,7 +24,15 @@ export class JudgeError extends Error {
   }
 }
 
-export const JUDGE_ENDPOINT = "https://openrouter.ai/api/alpha/decisions";
+// JUDGE-GATE-01: OpenRouter /alpha/decisions mudou de contrato server-side (503 com credencial
+// valida, 401 sem) e derrubava a camada judge inteira em fail-open. Endpoint default agora e o
+// adapter Jev local no gpu-bridge (:8102), que coage a saida do Qwen ao contrato do validateJudgeOutput.
+// Override por env (ENG_MCP_JUDGE_ENDPOINT) avaliado por chamada.
+export const JUDGE_ENDPOINT = "http://127.0.0.1:8102/alpha/decisions";
+function judgeEndpoint(): string {
+  const raw = process.env.ENG_MCP_JUDGE_ENDPOINT;
+  return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : JUDGE_ENDPOINT;
+}
 export const JUDGE_MODEL = "typesafe/jev-1.13";
 export const JUDGE_DECISION_THRESHOLD = 0.6;
 export const JUDGE_MAX_STATE_CHARS = 32000;
@@ -211,7 +219,7 @@ async function judgeFetchDecisions(
   const timeout = setTimeout(() => controller.abort(), judgeTimeoutMs(deps));
   const started = Date.now();
   try {
-    const response = await deps.fetchImpl(JUDGE_ENDPOINT, {
+    const response = await deps.fetchImpl(judgeEndpoint(), {
       method: "POST",
       headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify(body),
