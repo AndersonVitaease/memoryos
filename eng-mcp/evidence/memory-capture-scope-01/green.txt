@@ -283,12 +283,12 @@ ok 45 - advisory contract: advice-only constants attached to every scan; quiet s
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -331,12 +331,12 @@ ok 47 - engineering.test.run suite profile starts a persisted job without waitin
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -351,12 +351,12 @@ ok 48 - typecheck requires engineering:verify independently of read and write
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -374,12 +374,12 @@ ok 49 - typecheck.run rejects arbitrary command arguments
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -394,12 +394,12 @@ ok 50 - lint requires engineering:verify independently of read and write
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -414,12 +414,12 @@ ok 51 - catalog requires engineering:read
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -434,12 +434,12 @@ ok 52 - sync_files A: existing allowed file -> backup created, content replaced,
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -454,12 +454,12 @@ ok 53 - sync_files B: new allowed file -> created, hash validated
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -474,12 +474,12 @@ ok 54 - sync_files C: ../ traversal -> DENIED
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -494,12 +494,12 @@ ok 55 - sync_files D: absolute path -> DENIED
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -514,12 +514,12 @@ ok 56 - sync_files E: path outside src/lib/** -> DENIED
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -534,12 +534,12 @@ ok 57 - sync_files F: eng-mcp/** path -> DENIED
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -554,12 +554,12 @@ ok 58 - sync_files G: more than 10 files -> DENIED
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -574,12 +574,12 @@ ok 59 - sync_files H: partial failure -> structured result, not hidden
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -595,12 +595,12 @@ ok 60 - engineering.distribution.publish requires the operator-issued engineerin
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -616,12 +616,12 @@ ok 61 - engineering.vps.change.safe requires the operator-issued engineering:vps
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -638,12 +638,12 @@ ok 62 - engineering.vps.change.safe accepts a token holding engineering:vps:appl
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -659,12 +659,12 @@ ok 63 - engineering.vps.guardian requires engineering:vps:application:redeploy o
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -681,12 +681,12 @@ ok 64 - engineering.vps.guardian read-only classification stays reachable withou
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -702,12 +702,12 @@ ok 65 - engineering.vps.runner.restart requires the operator-issued engineering:
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -723,12 +723,12 @@ ok 66 - engineering.vps.runner.restart plan-only is reachable with the granted s
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP image relay enabled=true path=/relay
@@ -744,12 +744,12 @@ ok 67 - engineering.vps.runner.restart mutation with the granted scope stays fai
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -765,12 +765,12 @@ ok 68 - engineering.vps.secret.write requires the operator-issued engineering:vp
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -786,12 +786,12 @@ ok 69 - engineering.vps.secret.write with the granted scope stays read-only in P
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -807,12 +807,12 @@ ok 70 - engineering.vps.systemd.credential requires the operator-issued engineer
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -828,12 +828,12 @@ ok 71 - engineering.vps.systemd.credential with the granted scope opens the gate
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -849,12 +849,12 @@ ok 72 - engineering.vps.diagnostics requires the operator-issued engineering:vps
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -870,12 +870,12 @@ ok 73 - engineering.vps.container.probe requires the operator-issued engineering
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP image relay enabled=true path=/relay
@@ -891,12 +891,12 @@ ok 74 - engineering.vps.container.probe file_stat OK: forwards bounded params to
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -912,12 +912,12 @@ ok 75 - engineering.github.read requires the operator-issued engineering:github:
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -933,12 +933,12 @@ ok 76 - engineering.judge.verify requires the operator-issued judge:read scope
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -954,12 +954,12 @@ ok 77 - engineering.github.read fails closed with GITHUB_CREDENTIAL_MISSING when
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -975,12 +975,12 @@ ok 78 - engineering.github.read get_repo happy path: live URL, Bearer auth, quot
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
@@ -996,12 +996,12 @@ ok 79 - engineering.vps.diagnostics unit view: inspect+status projection with cr
 # hint: Using 'master' as the name for the initial branch. This default branch name
 # hint: is subject to change. To configure the initial branch name to use in all
 # hint: of your new repositories, which will suppress this warning, call:
-# hint: 
+# hint:
 # hint: \\tgit config --global init.defaultBranch <name>
-# hint: 
+# hint:
 # hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
 # hint: 'development'. The just-created branch can be renamed via this command:
-# hint: 
+# hint:
 # hint: \\tgit branch -m <name>
 # [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
 # ENG-MCP memory store mode=bridge source=default
