@@ -1,0 +1,1 @@
+{"content":[{"type":"text","text":"{\"code\":\"PATH_NOT_FOUND\",\"category\":\"validation\",\"retryable\":false,\"remediation\":\"Verify the file exists in the authorized repository, then retry.\",\"message\":\"PATH_NOT_FOUND\",\"evidenceRefs\":[],\"tool\":\"engineering.file.read\"}"}],"isError":true}

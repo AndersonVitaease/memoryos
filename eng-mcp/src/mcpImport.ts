@@ -656,3 +656,19 @@ export async function runMcpImportStatus(input: z.infer<typeof mcpImportStatusIn
     audit: trail
   };
 }
+
+// GUARDIAN-SECLAYER-B-01: automatic demotion on fingerprint drift. Called by the runtime security layer
+// (securityResponse.ts) when engineering.mcp.import.status reports DRIFT — never by the tool handler itself.
+// It can only LOWER trust (production -> sandbox); it never enables, approves or promotes. Idempotent;
+// TOCTOU-checked write (registry sha16); audited in the mcp-import trail (IDS).
+export function demoteDriftedEntryToSandbox(candidateId: string, reasons: readonly string[], deps: McpImportDeps = {}): { result: "demoted" | "already-sandbox" | "not-found" | "not-active"; registrySha16Before: string; registrySha16After: string | null; audit: string } {
+  const file = registryPath(deps);
+  const { registry, sha16: before } = readMcpRegistry(file);
+  const entry = registry.entries.find((e) => e.id === candidateId) ?? null;
+  if (!entry) return { result: "not-found", registrySha16Before: before, registrySha16After: null, audit: "skipped" };
+  if (entry.status === "revoked") return { result: "not-active", registrySha16Before: before, registrySha16After: null, audit: "skipped" };
+  if (entry.profile === "sandbox") return { result: "already-sandbox", registrySha16Before: before, registrySha16After: null, audit: audit(deps, { tool: "security-response", verb: "drift.demote", candidateId, result: "already-sandbox", fingerprintSha16: entry.fingerprintSha16 }) };
+  const next = { ...registry, entries: registry.entries.map((e) => (e.id === candidateId ? { ...e, profile: "sandbox" as const } : e)) };
+  const after = writeMcpRegistry(file, next, before);
+  return { result: "demoted", registrySha16Before: before, registrySha16After: after, audit: audit(deps, { tool: "security-response", verb: "drift.demote", candidateId, result: "demoted-to-sandbox", fingerprintSha16: entry.fingerprintSha16, fromProfile: "production", toProfile: "sandbox", reasons: reasons.slice(0, 10).map((r) => neutralizeUntrusted(r, 200)) }) };
+}

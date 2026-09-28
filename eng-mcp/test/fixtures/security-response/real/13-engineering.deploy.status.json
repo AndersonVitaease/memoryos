@@ -1,0 +1,1 @@
+{"content":[{"type":"text","text":"{\"status\":\"UNKNOWN\",\"deploymentState\":{\"application\":null,\"active\":0,\"queued\":0,\"lastStatus\":null},\"summary\":\"Estado de deployment indeterminado: nenhuma aplicação alvo resolvida deterministicamente; nada inventado.\",\"findings\":[],\"checkedAt\":\"2026-09-28T22:17:43.669Z\"}"}]}
