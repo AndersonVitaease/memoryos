@@ -1,0 +1,16 @@
+{
+ "latencyMs": 556,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"tool\":\"engineering.registry.scope.grant\",\"status\":\"NO_OP\",\"mutationPerformed\":false,\"changed\":false,\"subject\":\"hermes-2026-09\",\"scopes\":[\"engineering:read\"],\"justification\":\"FINGERPRINT registrySha16 probe (PLAN only, no execute) — deploy-commit-pin-01\",\"entryIndex\":22,\"scopesBefore\":[\"engineering:read\",\"engineering:verify\",\"engineering:github:read\",\"engineering:git:fetch\",\"engineering:ocr:read\",\"engineering:google:read\",\"engineering:image:edit\",\"engineering:judge:read\",\"engineering:memory:capture\"],\"scopesAdded\":[],\"scopesAfter\":[\"engineering:read\",\"engineering:verify\",\"engineering:github:read\",\"engineering:git:fetch\",\"engineering:ocr:read\",\"engineering:google:read\",\"engineering:image:edit\",\"engineering:judge:read\",\"engineering:memory:capture\"],\"registrySha16Before\":\"238f49e973e32521\",\"registrySha16After\":\"238f49e973e32521\",\"blockers\":[],\"findings\":[],\"code\":\"REGISTRY_GRANT_NO_OP\",\"detail\":\"every requested scope is already present — zero writes, no backup\",\"audit\":\"written\",\"activation\":{\"registryReload\":\"the :8787 server reads the token registry ONCE at boot (loadOperationalConfig); a runner restart does NOT reload it\",\"reloadPath\":\"one engineering.release.pipeline deploy reboots the container and reloads the registry (declared, separate step)\",\"effectiveImmediately\":false}}"
+    }
+   ]
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}
