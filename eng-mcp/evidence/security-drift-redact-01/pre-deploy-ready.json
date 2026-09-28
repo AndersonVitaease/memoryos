@@ -1,0 +1,16 @@
+{
+ "latencyMs": 4526,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"status\":\"READY\",\"ready\":true,\"blockers\":[],\"doctorStatus\":\"HEALTHY\",\"deploymentState\":{\"active\":0,\"queued\":0,\"lastStatus\":null},\"release\":{\"deployStatus\":\"PASS\",\"smokeStatus\":\"PASS\"},\"reconcile\":{\"status\":\"IN_SYNC\",\"findings\":[]},\"findings\":[],\"checkedAt\":\"2026-09-28T17:51:04.377Z\",\"summary\":\"Estado observado permite considerar o ambiente pronto: Doctor HEALTHY, sem atividade de deployment, release PASS/PASS. Nada é executado, aprovado ou deployado por esta tool.\"}"
+    }
+   ]
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}

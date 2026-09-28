@@ -1,0 +1,17 @@
+{
+ "latencyMs": 845,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"code\":\"ENGINEERING_TOOL_ERROR\",\"category\":\"internal\",\"retryable\":false,\"remediation\":\"No typed code matched the failure text; inspect the message and, if it recurs, add the code to the ERROR-01 taxonomy.\",\"message\":\"{\\\"success\\\":false,\\\"failedOperation\\\":\\\"test\\\",\\\"error\\\":\\\"RELEASE_RUNNER_REJECTED\\\",\\\"evidence\\\":[{\\\"operation\\\":\\\"test\\\",\\\"httpStatus\\\":502,\\\"body\\\":{\\\"operation\\\":\\\"test\\\",\\\"success\\\":false,\\\"exitCode\\\":1,\\\"durationMs\\\":293,\\\"stdout\\\":\\\"\\\",\\\"stderr\\\":\\\"DIFF_CHECK_FAILED:evidence/memory-capture-scope-01/green.txt:286\\\\n\\\",\\\"truncated\\\":false,\\\"timedOut\\\":false,\\\"job\\\":{\\\"jobId\\\":\\\"47d88aa9-3343-4653-8489-f7cd17a62cac\\\",\\\"operation\\\":\\\"test\\\",\\\"status\\\":\\\"failed\\\",\\\"createdAt\\\":\\\"2026-09-28T17:51:11.682Z\\\",\\\"startedAt\\\":\\\"2026-09-28T17:51:11.683Z\\\",\\\"finishe…[TRUNCATED]\",\"evidenceRefs\":[],\"tool\":\"engineering.release.pipeline\"}"
+    }
+   ],
+   "isError": true
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}

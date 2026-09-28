@@ -1,0 +1,5 @@
+not ok 1 - SEC-SCAN drift.closed: raw secret in a PRIOR snapshot local is redacted, never echoed (DRIFT-REDACT-01)
+  error: 'scan output materialized a secret-shaped value (guard kind: github-finegrained-token); failing closed - raw values must never leave the scanner'
+  code: 'SEC_OUTPUT_CONTAMINATION'
+# pass 0
+# fail 1
