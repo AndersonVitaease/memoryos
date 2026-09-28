@@ -1,0 +1,10 @@
+# RED: detection removed (ENG_MCP_MCP_IMPORT_ENGINES_FILE=dummy-only, ENG_MCP_MCP_IMPORT_RULES_FILE=inert) — the poisoned fixture must FAIL the red-then-green contract
+✖ MCP-IMPORT RED-THEN-GREEN: planted tool poisoning (invisible Unicode tags + boundary break + authority claim) is refused/marked; the revert is green (252.465151ms)
+ℹ pass 0
+ℹ fail 1
+✖ failing tests:
+✖ MCP-IMPORT RED-THEN-GREEN: planted tool poisoning (invisible Unicode tags + boundary break + authority claim) is refused/marked; the revert is green (252.465151ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+    actual: 'A',
+    expected: 'F',
+exit=1

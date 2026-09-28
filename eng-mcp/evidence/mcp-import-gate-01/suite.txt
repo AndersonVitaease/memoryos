@@ -1,0 +1,5 @@
+not ok 1390 - LIVE /mcp-proxy: read-only call succeeds, mutation refused with the scope code
+# tests 1513
+# pass 1507
+# fail 1
+# skipped 5

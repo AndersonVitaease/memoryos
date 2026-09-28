@@ -1,0 +1,16 @@
+{
+ "latencyMs": 7633,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"tool\":\"engineering.judge.verify\",\"status\":\"JUDGED\",\"provider\":{\"model\":\"typesafe/jev-1.13/compatible:Qwen/Qwen2.5-Coder-32B-Instruct-AWQ\",\"id\":\"chatcmpl-0378be8507b04f3b8c4ec350e80a73d3\",\"latencyMs\":7131,\"cost\":0,\"inputTokens\":1387,\"outputTokens\":169},\"provenance\":{\"credentialSha16\":\"9bffc8c38bc60289\",\"stateHash16\":\"56c3d4942e0c4b19\",\"evidenceHash16\":\"56c3d4942e0c4b19\",\"redactions\":0},\"claims\":[{\"id\":\"c1\",\"text\":\"Red-then-green: with the detection removed the poisoned fixture graded A and the contract test failed; with the audited barriers restored the full mcpImport suite passed 21/21.\",\"verdict\":\"not_addressed\",\"probability\":1,\"probabilities\":{\"supported\":0,\"contradicted\":0,\"not_addressed\":1},\"confidence\":1},{\"id\":\"c2\",\"text\":\"[consequência] The release pipeline test passed 1513 tests with 0 failures and 128 expected tools, and the deploy job succeeded with smoke PASS; production runs a new candidate image.\",\"verdict\":\"contradicted\",\"probability\":1,\"probabilities\":{\"supported\":0,\"contradicted\":1,\"not_addressed\":0},\"confidence\":1},{\"id\":\"c3\",\"text\":\"Live discover of the public HTTP MCP server DeepWiki returned its 3 tools via remote-direct streamable-http with grade A and zero registry mutation.\",\"verdict\":\"supported\",\"probability\":1,\"probabilities\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0},\"confidence\":1},{\"id\":\"c4\",\"text\":\"import.check of DeepWiki returned CHECKED, grade A, recommendation PRODUCTION_ELIGIBLE, with the mcpguard engine run ok.\",\"verdict\":\"supported\",\"probability\":1,\"probabilities\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0},\"confidence\":1}],\"aggregate\":\"HAS_CONTRADICTIONS\",\"counts\":{\"supported\":2,\"contradicted\":1,\"not_addressed\":1,\"uncertain\":0},\"advisory\":\"ADVISORY — calibrated judgment is not a security boundary; operator approval decides.\",\"audit\":\"written\"}"
+    }
+   ]
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}

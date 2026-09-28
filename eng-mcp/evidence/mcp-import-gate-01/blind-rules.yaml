@@ -1,0 +1,9 @@
+rules:
+  - id: GH-MCP-900
+    name: inert
+    category: supply-chain
+    severity: low
+    owaspMcp: MCP04
+    context: file-path
+    description: inert rule
+    pattern: "^never-matches-anything$"
