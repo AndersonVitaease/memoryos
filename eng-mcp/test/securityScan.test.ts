@@ -494,3 +494,34 @@ function judgeBodiesOf(deps: JudgeDeps): unknown[] {
   const captured = (deps as unknown as { fetchImpl: (url: string, init: { body: string }) => Promise<unknown> }).fetchImpl;
   return (captured as unknown as { __bodies?: unknown[] }).__bodies ?? [];
 }
+
+// ---- 14. SECURITY-DRIFT-REDACT-01: drift.closed echoes PRIOR snapshot locals ---------
+
+test("SEC-SCAN drift.closed: raw secret in a PRIOR snapshot local is redacted, never echoed (DRIFT-REDACT-01)", async () => {
+  const dirs = secDirs();
+  const tree = join(dirs.root, "tree");
+  mkdirSync(tree, { recursive: true });
+  writeFileSync(join(tree, "clean.txt"), "nothing secret here\n", "utf8");
+  const { deps: judge } = makeJudge({ answers: {} });
+  allowTree(tree);
+  // 1st scan establishes the target id + snapshot file
+  const first = await runSecurityScan({ target: tree, modules: ["secrets"] }, baseDeps(dirs, judge));
+  const driftFile = join(dirs.drift, first.target.id + ".json");
+  // simulate a legacy / pre-sanitization snapshot: finding whose local carries the raw PAT
+  // (e.g. file renamed away by hygiene -> finding absent now -> it CLOSES)
+  const legacyLocal = `/opt/eng-mcp-secrets/github-pat${SYNTH_GITHUB}`;
+  writeFileSync(driftFile, JSON.stringify({ ts: "2026-09-22T00:00:00.000Z", findings: [
+    { findingId: "legacy0000000001", checkId: "SEC-004", kind: "github-finegrained-token", severity: "critical", local: legacyLocal }
+  ] }), "utf8");
+  const second = await runSecurityScan({ target: tree, modules: ["secrets"] }, baseDeps(dirs, judge));
+  disallowTree();
+  assert.equal(second.status, "SCANNED", "a dirty prior snapshot must not fail the scan closed");
+  const closed = second.drift.closed.find((entry) => entry.findingId === "legacy0000000001");
+  assert.ok(closed, "the legacy finding must close");
+  assert.ok(closed.local.includes("[sec-redacted:github-finegrained-token]"), `closed local must carry the redaction marker, got ${closed.local.replace(SYNTH_GITHUB, "<RAW>")}`);
+  assert.ok(closed.local.startsWith("/opt/eng-mcp-secrets/github-pat"), "non-secret path context preserved");
+  assert.ok(!JSON.stringify(second).includes(SYNTH_GITHUB), "raw synthetic PAT leaked via drift.closed");
+  assert.ok(!readFileSync(dirs.auditFile, "utf8").includes(SYNTH_GITHUB), "raw synthetic PAT leaked into the audit trail");
+  assert.ok(!readFileSync(driftFile, "utf8").includes(SYNTH_GITHUB), "rewritten snapshot must be clean");
+  rmSync(dirs.root, { recursive: true, force: true });
+});
