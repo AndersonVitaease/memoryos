@@ -1,0 +1,16 @@
+{
+ "latencyMs": 506,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"tool\":\"engineering.registry.scope.grant\",\"status\":\"PLAN\",\"mutationPerformed\":false,\"changed\":false,\"subject\":\"hermes-2026-09\",\"scopes\":[\"engineering:memory:capture\"],\"justification\":\"MEMORY-CAPTURE-SCOPE-01: autorizacao do operador 28/09 ~17:15Z; scope cirurgico para memory.capture do bearer de missao hermes (sem engineering:write)\",\"entryIndex\":22,\"scopesBefore\":[\"engineering:read\",\"engineering:verify\",\"engineering:github:read\",\"engineering:git:fetch\",\"engineering:ocr:read\",\"engineering:google:read\",\"engineering:image:edit\",\"engineering:judge:read\"],\"scopesAdded\":[\"engineering:memory:capture\"],\"scopesAfter\":[\"engineering:read\",\"engineering:verify\",\"engineering:github:read\",\"engineering:git:fetch\",\"engineering:ocr:read\",\"engineering:google:read\",\"engineering:image:edit\",\"engineering:judge:read\",\"engineering:memory:capture\"],\"registrySha16Before\":\"edf5b504a6937a6c\",\"registrySha16After\":\"65b52f52c998ba91\",\"blockers\":[],\"findings\":[],\"activation\":{\"registryReload\":\"the :8787 server reads the token registry ONCE at boot (loadOperationalConfig); a runner restart does NOT reload it\",\"reloadPath\":\"one engineering.release.pipeline deploy reboots the container and reloads the registry (declared, separate step)\",\"effectiveImmediately\":false},\"requires\":[\"execute=true\",\"approval.approved=true\",\"acknowledgeGrant=true\"]}"
+    }
+   ]
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}

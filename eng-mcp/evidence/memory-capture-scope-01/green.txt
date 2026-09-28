@@ -1,0 +1,1027 @@
+TAP version 13
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# (node:663451) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: engineering:image:edit is in the single scope catalog
+ok 1 - engineering:image:edit is in the single scope catalog
+  ---
+  duration_ms: 0.694231
+  type: 'test'
+  ...
+# Subtest: read-only bearer is refused at the boundary before any relay work
+ok 2 - read-only bearer is refused at the boundary before any relay work
+  ---
+  duration_ms: 76.683422
+  type: 'test'
+  ...
+# Subtest: existing read+write bearer keeps passing the gate (zero regression)
+ok 3 - existing read+write bearer keeps passing the gate (zero regression)
+  ---
+  duration_ms: 52.729687
+  type: 'test'
+  ...
+# Subtest: read + dedicated engineering:image:edit bearer passes the gate (hermes-grade path)
+ok 4 - read + dedicated engineering:image:edit bearer passes the gate (hermes-grade path)
+  ---
+  duration_ms: 53.95496
+  type: 'test'
+  ...
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# (node:663452) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: engineering:memory:capture is in the single scope catalog
+ok 5 - engineering:memory:capture is in the single scope catalog
+  ---
+  duration_ms: 0.672592
+  type: 'test'
+  ...
+# Subtest: predicate: memory:capture OR write authorizes; nothing / read / judge:read does not
+ok 6 - predicate: memory:capture OR write authorizes; nothing / read / judge:read does not
+  ---
+  duration_ms: 0.16545
+  type: 'test'
+  ...
+# Subtest: read-only bearer is refused at the boundary with AUTHORIZATION_SCOPE_REQUIRED
+ok 7 - read-only bearer is refused at the boundary with AUTHORIZATION_SCOPE_REQUIRED
+  ---
+  duration_ms: 76.149689
+  type: 'test'
+  ...
+# Subtest: read+judge:read bearer is refused at the boundary with AUTHORIZATION_SCOPE_REQUIRED
+ok 8 - read+judge:read bearer is refused at the boundary with AUTHORIZATION_SCOPE_REQUIRED
+  ---
+  duration_ms: 64.782094
+  type: 'test'
+  ...
+# Subtest: structural: memory.capture handler gates on canCaptureMemory (not bare requireWrite)
+ok 9 - structural: memory.capture handler gates on canCaptureMemory (not bare requireWrite)
+  ---
+  duration_ms: 1.148223
+  type: 'test'
+  ...
+# Subtest: PLAN returns the exact entry diff with zero mutation (no writes, no backup, no audit)
+ok 10 - PLAN returns the exact entry diff with zero mutation (no writes, no backup, no audit)
+  ---
+  duration_ms: 5.033862
+  type: 'test'
+  ...
+# Subtest: refuses an unknown subject (BLOCKED, zero mutation)
+ok 11 - refuses an unknown subject (BLOCKED, zero mutation)
+  ---
+  duration_ms: 1.569163
+  type: 'test'
+  ...
+# Subtest: refuses an ambiguous subject (two entries sharing it) instead of guessing
+ok 12 - refuses an ambiguous subject (two entries sharing it) instead of guessing
+  ---
+  duration_ms: 1.114442
+  type: 'test'
+  ...
+# Subtest: self-grant is refused by subject AND by the caller's own tokenHash16
+ok 13 - self-grant is refused by subject AND by the caller's own tokenHash16
+  ---
+  duration_ms: 1.050242
+  type: 'test'
+  ...
+# Subtest: refuses scopes outside the catalog, naming them
+ok 14 - refuses scopes outside the catalog, naming them
+  ---
+  duration_ms: 0.784252
+  type: 'test'
+  ...
+# Subtest: duplicate scopes in the request are an input error
+ok 15 - duplicate scopes in the request are an input error
+  ---
+  duration_ms: 0.882323
+  type: 'test'
+  ...
+# Subtest: missing registry file and corrupt registries fail closed with typed codes
+ok 16 - missing registry file and corrupt registries fail closed with typed codes
+  ---
+  duration_ms: 1.137461
+  type: 'test'
+  ...
+# Subtest: a record failing the boot rules is refused (REGISTRY_RECORD_INVALID)
+ok 17 - a record failing the boot rules is refused (REGISTRY_RECORD_INVALID)
+  ---
+  duration_ms: 0.880062
+  type: 'test'
+  ...
+# Subtest: execute grants: file rewritten, backup kept, audit line written, other entries byte-identical, no token leak
+ok 18 - execute grants: file rewritten, backup kept, audit line written, other entries byte-identical, no token leak
+  ---
+  duration_ms: 5.172972
+  type: 'test'
+  ...
+# Subtest: re-executing the same grant is a NO_OP with zero writes (idempotent)
+ok 19 - re-executing the same grant is a NO_OP with zero writes (idempotent)
+  ---
+  duration_ms: 4.95962
+  type: 'test'
+  ...
+# Subtest: an expired target grants with an inert-token finding
+ok 20 - an expired target grants with an inert-token finding
+  ---
+  duration_ms: 4.079299
+  type: 'test'
+  ...
+# Subtest: ATOMIC CASE: a torn write is detected by post-validation and RESTORED from the backup
+ok 21 - ATOMIC CASE: a torn write is detected by post-validation and RESTORED from the backup
+  ---
+  duration_ms: 2.075815
+  type: 'test'
+  ...
+# Subtest: ATOMIC CASE: TOCTOU drift is refused BEFORE the rename (zero mutation)
+ok 22 - ATOMIC CASE: TOCTOU drift is refused BEFORE the rename (zero mutation)
+  ---
+  duration_ms: 4.263498
+  type: 'test'
+  ...
+# Subtest: execute without approval stays a PLAN; missing acknowledgeGrant is a schema error
+ok 23 - execute without approval stays a PLAN; missing acknowledgeGrant is a schema error
+  ---
+  duration_ms: 5.029731
+  type: 'test'
+  ...
+# Subtest: validateTokenRegistry keeps the exact boot rules (shared with loadOperationalConfig)
+ok 24 - validateTokenRegistry keeps the exact boot rules (shared with loadOperationalConfig)
+  ---
+  duration_ms: 0.308831
+  type: 'test'
+  ...
+# Subtest: scope catalog drift guard: every scope string in the source gates is in KNOWN_REGISTRY_SCOPES
+ok 25 - scope catalog drift guard: every scope string in the source gates is in KNOWN_REGISTRY_SCOPES
+  ---
+  duration_ms: 2.151925
+  type: 'test'
+  ...
+# Subtest: OPERATOR-PAIR-01: an operator authorizer grants to the paired operator entry, both directions
+ok 26 - OPERATOR-PAIR-01: an operator authorizer grants to the paired operator entry, both directions
+  ---
+  duration_ms: 11.507915
+  type: 'test'
+  ...
+# Subtest: OPERATOR-PAIR-01: a service authorizer is refused for an operator target, in PLAN and execute, zero mutation
+ok 27 - OPERATOR-PAIR-01: a service authorizer is refused for an operator target, in PLAN and execute, zero mutation
+  ---
+  duration_ms: 1.325942
+  type: 'test'
+  ...
+# Subtest: OPERATOR-PAIR-01: an operator authorizer may still grant to a service entry (one-way guard)
+ok 28 - OPERATOR-PAIR-01: an operator authorizer may still grant to a service entry (one-way guard)
+  ---
+  duration_ms: 3.306408
+  type: 'test'
+  ...
+# Subtest: OPERATOR-PAIR-01: the self-grant guard still binds an operator to its own entry
+ok 29 - OPERATOR-PAIR-01: the self-grant guard still binds an operator to its own entry
+  ---
+  duration_ms: 0.845011
+  type: 'test'
+  ...
+# Subtest: OPERATOR-PAIR-01: isOperatorSubject classifies exactly the operator- prefix
+ok 30 - OPERATOR-PAIR-01: isOperatorSubject classifies exactly the operator- prefix
+  ---
+  duration_ms: 0.21464
+  type: 'test'
+  ...
+# Subtest: input schema: strict bounds on windowHours/trails/extra keys
+ok 31 - input schema: strict bounds on windowHours/trails/extra keys
+  ---
+  duration_ms: 3.214807
+  type: 'test'
+  ...
+# Subtest: legacy detector: bare release-runner + dated substitute + legacy hash16 used in window (the 97e485f7 scenario)
+ok 32 - legacy detector: bare release-runner + dated substitute + legacy hash16 used in window (the 97e485f7 scenario)
+  ---
+  duration_ms: 7.254786
+  type: 'test'
+  ...
+# Subtest: window filter: out-of-window lines count as linesRead but never become events; malformed lines are skipped
+ok 33 - window filter: out-of-window lines count as linesRead but never become events; malformed lines are skipped
+  ---
+  duration_ms: 2.123424
+  type: 'test'
+  ...
+# Subtest: trails subset: unrequested trails report zeros even with files on disk
+ok 34 - trails subset: unrequested trails report zeros even with files on disk
+  ---
+  duration_ms: 1.546504
+  type: 'test'
+  ...
+# Subtest: first-time use: fires with history depth 5; the cold-start guard skips below it
+ok 35 - first-time use: fires with history depth 5; the cold-start guard skips below it
+  ---
+  duration_ms: 6.042963
+  type: 'test'
+  ...
+# Subtest: off-hours: an in-window UTC hour never seen in the baseline fires the signal (guard satisfied)
+ok 36 - off-hours: an in-window UTC hour never seen in the baseline fires the signal (guard satisfied)
+  ---
+  duration_ms: 1.854173
+  type: 'test'
+  ...
+# Subtest: grants: in-window grants counted with scopes and results; mutual ring detected; no self-loop for grant authorizers
+ok 37 - grants: in-window grants counted with scopes and results; mutual ring detected; no self-loop for grant authorizers
+  ---
+  duration_ms: 1.929955
+  type: 'test'
+  ...
+# Subtest: bands: the severityScore formula drives info/warn/critical deterministically in code
+ok 38 - bands: the severityScore formula drives info/warn/critical deterministically in code
+  ---
+  duration_ms: 4.68157
+  type: 'test'
+  ...
+# Subtest: fail-open: a dead judge degrades to verdict unavailable with raw features, zero crash, audit still written
+ok 39 - fail-open: a dead judge degrades to verdict unavailable with raw features, zero crash, audit still written
+  ---
+  duration_ms: 1.620363
+  type: 'test'
+  ...
+# Subtest: cost cap: judged subjects capped at 8/scan; the overflow keeps verdict unjudged_cost_cap
+ok 40 - cost cap: judged subjects capped at 8/scan; the overflow keeps verdict unjudged_cost_cap
+  ---
+  duration_ms: 3.546658
+  type: 'test'
+  ...
+# Subtest: periodic gates: one scan per hour and $0.01/day of judge spend; on-demand scans are never gated
+ok 41 - periodic gates: one scan per hour and $0.01/day of judge spend; on-demand scans are never gated
+  ---
+  duration_ms: 2.516786
+  type: 'test'
+  ...
+# Subtest: own audit + calibration: first scan is firstSeen, the re-scan is reFlagged
+ok 42 - own audit + calibration: first scan is firstSeen, the re-scan is reFlagged
+  ---
+  duration_ms: 2.633776
+  type: 'test'
+  ...
+# Subtest: audit failure is fail-open: the scan still returns SCANNED with the full result
+ok 43 - audit failure is fail-open: the scan still returns SCANNED with the full result
+  ---
+  duration_ms: 1.166882
+  type: 'test'
+  ...
+# Subtest: hash join: judge lines resolve subjects through the registry; unknown hashes become unmatched:* findings
+ok 44 - hash join: judge lines resolve subjects through the registry; unknown hashes become unmatched:* findings
+  ---
+  duration_ms: 1.217403
+  type: 'test'
+  ...
+# Subtest: advisory contract: advice-only constants attached to every scan; quiet scans never call the judge
+ok 45 - advisory contract: advice-only constants attached to every scan; quiet scans never call the judge
+  ---
+  duration_ms: 0.919203
+  type: 'test'
+  ...
+# (node:663460) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# Subtest: authenticated MCP endpoint exposes exactly the approved tools
+ok 46 - authenticated MCP endpoint exposes exactly the approved tools
+  ---
+  duration_ms: 1482.515612
+  type: 'test'
+  ...
+# Subtest: engineering.test.run suite profile starts a persisted job without waiting (skips where the release runner socket exists)
+ok 47 - engineering.test.run suite profile starts a persisted job without waiting (skips where the release runner socket exists)
+  ---
+  duration_ms: 0.537391
+  type: 'test'
+  ...
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# Subtest: typecheck requires engineering:verify independently of read and write
+ok 48 - typecheck requires engineering:verify independently of read and write
+  ---
+  duration_ms: 131.853762
+  type: 'test'
+  ...
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# Subtest: typecheck.run rejects arbitrary command arguments
+ok 49 - typecheck.run rejects arbitrary command arguments
+  ---
+  duration_ms: 233.87441
+  type: 'test'
+  ...
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# Subtest: lint requires engineering:verify independently of read and write
+ok 50 - lint requires engineering:verify independently of read and write
+  ---
+  duration_ms: 102.706208
+  type: 'test'
+  ...
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# Subtest: catalog requires engineering:read
+ok 51 - catalog requires engineering:read
+  ---
+  duration_ms: 98.91794
+  type: 'test'
+  ...
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# Subtest: sync_files A: existing allowed file -> backup created, content replaced, hash validated
+ok 52 - sync_files A: existing allowed file -> backup created, content replaced, hash validated
+  ---
+  duration_ms: 124.675707
+  type: 'test'
+  ...
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# Subtest: sync_files B: new allowed file -> created, hash validated
+ok 53 - sync_files B: new allowed file -> created, hash validated
+  ---
+  duration_ms: 111.761149
+  type: 'test'
+  ...
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# Subtest: sync_files C: ../ traversal -> DENIED
+ok 54 - sync_files C: ../ traversal -> DENIED
+  ---
+  duration_ms: 106.669207
+  type: 'test'
+  ...
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# Subtest: sync_files D: absolute path -> DENIED
+ok 55 - sync_files D: absolute path -> DENIED
+  ---
+  duration_ms: 119.232525
+  type: 'test'
+  ...
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# Subtest: sync_files E: path outside src/lib/** -> DENIED
+ok 56 - sync_files E: path outside src/lib/** -> DENIED
+  ---
+  duration_ms: 127.332143
+  type: 'test'
+  ...
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# Subtest: sync_files F: eng-mcp/** path -> DENIED
+ok 57 - sync_files F: eng-mcp/** path -> DENIED
+  ---
+  duration_ms: 104.793634
+  type: 'test'
+  ...
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# Subtest: sync_files G: more than 10 files -> DENIED
+ok 58 - sync_files G: more than 10 files -> DENIED
+  ---
+  duration_ms: 107.575969
+  type: 'test'
+  ...
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# Subtest: sync_files H: partial failure -> structured result, not hidden
+ok 59 - sync_files H: partial failure -> structured result, not hidden
+  ---
+  duration_ms: 133.675357
+  type: 'test'
+  ...
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# Subtest: engineering.distribution.publish requires the operator-issued engineering:distribution:publish scope
+ok 60 - engineering.distribution.publish requires the operator-issued engineering:distribution:publish scope
+  ---
+  duration_ms: 142.382867
+  type: 'test'
+  ...
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# Subtest: engineering.vps.change.safe requires the operator-issued engineering:vps:application:redeploy scope
+ok 61 - engineering.vps.change.safe requires the operator-issued engineering:vps:application:redeploy scope
+  ---
+  duration_ms: 145.081282
+  type: 'test'
+  ...
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# {"event":"engineering.vps.change.safe","subject":"tester","mode":"plan","outcome":"UPSTREAM_ERROR","executed":false,"durationMs":609,"primitives":["application-one"]}
+# Subtest: engineering.vps.change.safe accepts a token holding engineering:vps:application:redeploy (plan-only; fails closed downstream, never on scope)
+ok 62 - engineering.vps.change.safe accepts a token holding engineering:vps:application:redeploy (plan-only; fails closed downstream, never on scope)
+  ---
+  duration_ms: 754.223837
+  type: 'test'
+  ...
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# Subtest: engineering.vps.guardian requires engineering:vps:application:redeploy only for approved mutation requests
+ok 63 - engineering.vps.guardian requires engineering:vps:application:redeploy only for approved mutation requests
+  ---
+  duration_ms: 153.475312
+  type: 'test'
+  ...
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# {"event":"engineering.vps.doctor","subject":"tester","outcome":"UPSTREAM_ERROR","status":"UNKNOWN","mutationPerformed":false,"durationMs":248,"primitives":["server-all"]}
+# Subtest: engineering.vps.guardian read-only classification stays reachable without the mutation scope
+ok 64 - engineering.vps.guardian read-only classification stays reachable without the mutation scope
+  ---
+  duration_ms: 392.975225
+  type: 'test'
+  ...
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# Subtest: engineering.vps.runner.restart requires the operator-issued engineering:vps:runner:restart scope
+ok 65 - engineering.vps.runner.restart requires the operator-issued engineering:vps:runner:restart scope
+  ---
+  duration_ms: 142.100736
+  type: 'test'
+  ...
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# Subtest: engineering.vps.runner.restart plan-only is reachable with the granted scope and never mutates
+ok 66 - engineering.vps.runner.restart plan-only is reachable with the granted scope and never mutates
+  ---
+  duration_ms: 159.860076
+  type: 'test'
+  ...
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# Subtest: engineering.vps.runner.restart mutation with the granted scope stays fail-closed when the runner itself refuses (jobs in flight)
+ok 67 - engineering.vps.runner.restart mutation with the granted scope stays fail-closed when the runner itself refuses (jobs in flight)
+  ---
+  duration_ms: 138.280308
+  type: 'test'
+  ...
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# Subtest: engineering.vps.secret.write requires the operator-issued engineering:vps:secret:write scope
+ok 68 - engineering.vps.secret.write requires the operator-issued engineering:vps:secret:write scope
+  ---
+  duration_ms: 158.538573
+  type: 'test'
+  ...
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# Subtest: engineering.vps.secret.write with the granted scope stays read-only in PLAN mode and refuses outside the allowlist
+ok 69 - engineering.vps.secret.write with the granted scope stays read-only in PLAN mode and refuses outside the allowlist
+  ---
+  duration_ms: 128.024955
+  type: 'test'
+  ...
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# Subtest: engineering.vps.systemd.credential requires the operator-issued engineering:vps:systemd:credential scope
+ok 70 - engineering.vps.systemd.credential requires the operator-issued engineering:vps:systemd:credential scope
+  ---
+  duration_ms: 130.3849
+  type: 'test'
+  ...
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# Subtest: engineering.vps.systemd.credential with the granted scope opens the gate and degrades honestly when the runner socket is unreachable
+ok 71 - engineering.vps.systemd.credential with the granted scope opens the gate and degrades honestly when the runner socket is unreachable
+  ---
+  duration_ms: 130.191861
+  type: 'test'
+  ...
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# Subtest: engineering.vps.diagnostics requires the operator-issued engineering:vps:diagnostics:read scope
+ok 72 - engineering.vps.diagnostics requires the operator-issued engineering:vps:diagnostics:read scope
+  ---
+  duration_ms: 127.636075
+  type: 'test'
+  ...
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# Subtest: engineering.vps.container.probe requires the operator-issued engineering:vps:container:probe scope
+ok 73 - engineering.vps.container.probe requires the operator-issued engineering:vps:container:probe scope
+  ---
+  duration_ms: 150.637026
+  type: 'test'
+  ...
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# Subtest: engineering.vps.container.probe file_stat OK: forwards bounded params to the runner and reports the security block
+ok 74 - engineering.vps.container.probe file_stat OK: forwards bounded params to the runner and reports the security block
+  ---
+  duration_ms: 158.071741
+  type: 'test'
+  ...
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# Subtest: engineering.github.read requires the operator-issued engineering:github:read scope
+ok 75 - engineering.github.read requires the operator-issued engineering:github:read scope
+  ---
+  duration_ms: 166.707031
+  type: 'test'
+  ...
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# Subtest: engineering.judge.verify requires the operator-issued judge:read scope
+ok 76 - engineering.judge.verify requires the operator-issued judge:read scope
+  ---
+  duration_ms: 199.664226
+  type: 'test'
+  ...
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# Subtest: engineering.github.read fails closed with GITHUB_CREDENTIAL_MISSING when no PAT is provisioned
+ok 77 - engineering.github.read fails closed with GITHUB_CREDENTIAL_MISSING when no PAT is provisioned
+  ---
+  duration_ms: 162.028001
+  type: 'test'
+  ...
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# Subtest: engineering.github.read get_repo happy path: live URL, Bearer auth, quota block, PAT never echoed
+ok 78 - engineering.github.read get_repo happy path: live URL, Bearer auth, quota block, PAT never echoed
+  ---
+  duration_ms: 151.290077
+  type: 'test'
+  ...
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# Subtest: engineering.vps.diagnostics unit view: inspect+status projection with crossCheck and security block
+ok 79 - engineering.vps.diagnostics unit view: inspect+status projection with crossCheck and security block
+  ---
+  duration_ms: 153.992344
+  type: 'test'
+  ...
+# hint: Using 'master' as the name for the initial branch. This default branch name
+# hint: is subject to change. To configure the initial branch name to use in all
+# hint: of your new repositories, which will suppress this warning, call:
+# hint: 
+# hint: \\tgit config --global init.defaultBranch <name>
+# hint: 
+# hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+# hint: 'development'. The just-created branch can be renamed via this command:
+# hint: 
+# hint: \\tgit branch -m <name>
+# [ENG-MCP-PROXY] secret ready file=/data/credentials/hermes-proxy-secret hash16=525876e9a22033d5 created=false
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP image relay enabled=true path=/relay
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# ENG-MCP memory store mode=bridge source=default
+# Subtest: engineering.vps.diagnostics: runner-token canary is redacted, journal and docker views surface their sections
+ok 80 - engineering.vps.diagnostics: runner-token canary is redacted, journal and docker views surface their sections
+  ---
+  duration_ms: 245.749258
+  type: 'test'
+  ...
+1..80
+# tests 80
+# suites 0
+# pass 80
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 7889.598125

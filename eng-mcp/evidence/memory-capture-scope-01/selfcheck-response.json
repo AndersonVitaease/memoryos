@@ -1,0 +1,16 @@
+{
+ "latencyMs": 9813,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"tool\":\"engineering.judge.verify\",\"status\":\"JUDGED\",\"provider\":{\"model\":\"typesafe/jev-1.13/compatible:Qwen/Qwen2.5-Coder-32B-Instruct-AWQ\",\"id\":\"chatcmpl-bd5ccb53a8b3499d86249cd675ea2570\",\"latencyMs\":9287,\"cost\":0,\"inputTokens\":1808,\"outputTokens\":237},\"provenance\":{\"credentialSha16\":\"9bffc8c38bc60289\",\"stateHash16\":\"458d2a5630c421b5\",\"evidenceHash16\":\"3e618162f3d2c9e5\",\"redactions\":1},\"claims\":[{\"id\":\"c1\",\"text\":\"The new test failed before the implementation because canCaptureMemory was not exported, and passed after (80/80 in the related suites).\",\"verdict\":\"supported\",\"probability\":0.9,\"probabilities\":{\"supported\":0.9,\"contradicted\":0.05,\"not_addressed\":0.05},\"confidence\":0.8},{\"id\":\"c2\",\"text\":\"[consequência] The engineering:memory:capture scope was granted to hermes-2026-09 with registry sha16 changing edf5b504a6937a6c -> 65b52f52c998ba91 and judge:read preserved.\",\"verdict\":\"supported\",\"probability\":0.9,\"probabilities\":{\"supported\":0.9,\"contradicted\":0.05,\"not_addressed\":0.05},\"confidence\":0.8},{\"id\":\"c3\",\"text\":\"[consequência] Production container memoryos-eng-mcp runs image candidate-20260928171657168-47f9965d60ea after the deploy via the official pipeline, whose in-container tests passed with 0 failed.\",\"verdict\":\"supported\",\"probability\":0.9,\"probabilities\":{\"supported\":0.9,\"contradicted\":0.05,\"not_addressed\":0.05},\"confidence\":0.8},{\"id\":\"c4\",\"text\":\"memory.capture via the hermes bearer was accepted and stored memoryId 31bd34f9-65c9-4f69-9117-1636de386b04.\",\"verdict\":\"supported\",\"probability\":0.9,\"probabilities\":{\"supported\":0.9,\"contradicted\":0.05,\"not_addressed\":0.05},\"confidence\":0.8},{\"id\":\"c5\",\"text\":\"judge.verify via the hermes bearer still returns JUDGED.\",\"verdict\":\"supported\",\"probability\":0.9,\"probabilities\":{\"supported\":0.9,\"contradicted\":0.05,\"not_addressed\":0.05},\"confidence\":0.8},{\"id\":\"c6\",\"text\":\"The smoke of deploy 2 was verified PASS.\",\"verdict\":\"supported\",\"probability\":0.9,\"probabilities\":{\"supported\":0.9,\"contradicted\":0.05,\"not_addressed\":0.05},\"confidence\":0.8}],\"aggregate\":\"ALL_SUPPORTED\",\"counts\":{\"supported\":6,\"contradicted\":0,\"not_addressed\":0,\"uncertain\":0},\"advisory\":\"ADVISORY — calibrated judgment is not a security boundary; operator approval decides.\",\"audit\":\"written\"}"
+    }
+   ]
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}

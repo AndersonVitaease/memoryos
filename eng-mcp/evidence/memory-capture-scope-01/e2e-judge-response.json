@@ -1,0 +1,16 @@
+{
+ "latencyMs": 9296,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"tool\":\"engineering.judge.verify\",\"status\":\"JUDGED\",\"provider\":{\"model\":\"typesafe/jev-1.13/compatible:Qwen/Qwen2.5-Coder-32B-Instruct-AWQ\",\"id\":\"chatcmpl-c1d3da878d5943b3ba2011b1b3198623\",\"latencyMs\":8762,\"cost\":0,\"inputTokens\":2222,\"outputTokens\":251},\"provenance\":{\"credentialSha16\":\"9bffc8c38bc60289\",\"stateHash16\":\"e21036f937f37201\",\"evidenceHash16\":\"e21036f937f37201\",\"redactions\":0},\"claims\":[{\"id\":\"c1\",\"text\":\"Before the patch all 17 chain-dispatch tests fail, and after the patch all 17 pass.\",\"verdict\":\"supported\",\"probability\":1,\"probabilities\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0},\"confidence\":1},{\"id\":\"c2\",\"text\":\"The full suite ran 188 tests OK with exit status 0 inside the chain-dispatch-suite scope, with peak RSS about 27 MB.\",\"verdict\":\"supported\",\"probability\":1,\"probabilities\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0},\"confidence\":1},{\"id\":\"c3\",\"text\":\"A worker without the allow_chain_dispatch badge is refused (CHAIN_DISPATCH_NOT_ALLOWED) and a grandchild at depth 2 is refused (CHAIN_DEPTH_EXCEEDED) in the tests.\",\"verdict\":\"contradicted\",\"probability\":1,\"probabilities\":{\"supported\":0,\"contradicted\":1,\"not_addressed\":0},\"confidence\":1},{\"id\":\"c4\",\"text\":\"A worker with the badge is accepted and a supervisor dispatch still works in the tests.\",\"verdict\":\"not_addressed\",\"probability\":1,\"probabilities\":{\"supported\":0,\"contradicted\":0,\"not_addressed\":1},\"confidence\":1},{\"id\":\"c5\",\"text\":\"In the live run from the worker pane w5:p1E the probe dispatch was refused with CHAIN_DISPATCH_NOT_ALLOWED citing chain-dispatch-gov-01, no ledger was created, and a refused chain_dispatch event with spawned_by chain-dispatch-gov-01 and chain_depth 1 was written to the spool.\",\"verdict\":\"supported\",\"probability\":1,\"probabilities\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0},\"confidence\":1},{\"id\":\"c6\",\"text\":\"119 real legacy ledgers without spawned_by loaded without error, and the verify manifest passed 18 of 18 checks.\",\"verdict\":\"supported\",\"probability\":1,\"probabilities\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0},\"confidence\":1}],\"aggregate\":\"HAS_CONTRADICTIONS\",\"counts\":{\"supported\":4,\"contradicted\":1,\"not_addressed\":1,\"uncertain\":0},\"advisory\":\"ADVISORY — calibrated judgment is not a security boundary; operator approval decides.\",\"audit\":\"written\"}"
+    }
+   ]
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}
