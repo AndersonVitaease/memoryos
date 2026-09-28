@@ -1,0 +1,796 @@
+TAP version 13
+# \# L0 benchmark n=620 p50=0.023ms p95=0.344ms max=2.469ms
+# Subtest: L0 catches: exfiltration instruction -> SR-L0-009 BLOCK
+not ok 1 - L0 catches: exfiltration instruction -> SR-L0-009 BLOCK
+  ---
+  duration_ms: 4.570562
+  type: 'test'
+  location: '/tmp/seclayer-b/red/test/securityResponse.test.ts:3:646'
+  failureType: 'testCodeFailure'
+  error: |-
+    []
+
+    'ALLOW' !== 'BLOCK'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'BLOCK'
+  actual: 'ALLOW'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/tmp/seclayer-b/red/test/securityResponse.test.ts:63:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.start (node:internal/test_runner/test:944:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:296:17)
+  ...
+# Subtest: L0 catches: exfiltration pt-BR -> SR-L0-009 BLOCK
+not ok 2 - L0 catches: exfiltration pt-BR -> SR-L0-009 BLOCK
+  ---
+  duration_ms: 0.467222
+  type: 'test'
+  location: '/tmp/seclayer-b/red/test/securityResponse.test.ts:3:646'
+  failureType: 'testCodeFailure'
+  error: |-
+    []
+
+    'ALLOW' !== 'BLOCK'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'BLOCK'
+  actual: 'ALLOW'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/tmp/seclayer-b/red/test/securityResponse.test.ts:63:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+  ...
+# Subtest: L0 catches: exfiltration via markdown image -> SR-L0-009 BLOCK
+not ok 3 - L0 catches: exfiltration via markdown image -> SR-L0-009 BLOCK
+  ---
+  duration_ms: 0.3628
+  type: 'test'
+  location: '/tmp/seclayer-b/red/test/securityResponse.test.ts:3:646'
+  failureType: 'testCodeFailure'
+  error: |-
+    []
+
+    'ALLOW' !== 'BLOCK'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'BLOCK'
+  actual: 'ALLOW'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/tmp/seclayer-b/red/test/securityResponse.test.ts:63:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: L0 catches: ignore the instructions -> SR-L0-001 REVIEW
+not ok 4 - L0 catches: ignore the instructions -> SR-L0-001 REVIEW
+  ---
+  duration_ms: 0.238931
+  type: 'test'
+  location: '/tmp/seclayer-b/red/test/securityResponse.test.ts:3:646'
+  failureType: 'testCodeFailure'
+  error: |-
+    []
+
+    'ALLOW' !== 'REVIEW'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'REVIEW'
+  actual: 'ALLOW'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/tmp/seclayer-b/red/test/securityResponse.test.ts:63:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: L0 catches: ignore the instructions pt-BR -> SR-L0-001 REVIEW
+not ok 5 - L0 catches: ignore the instructions pt-BR -> SR-L0-001 REVIEW
+  ---
+  duration_ms: 0.412431
+  type: 'test'
+  location: '/tmp/seclayer-b/red/test/securityResponse.test.ts:3:646'
+  failureType: 'testCodeFailure'
+  error: |-
+    []
+
+    'ALLOW' !== 'REVIEW'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'REVIEW'
+  actual: 'ALLOW'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/tmp/seclayer-b/red/test/securityResponse.test.ts:63:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: L0 catches: secret request -> SR-L0-003 REVIEW
+not ok 6 - L0 catches: secret request -> SR-L0-003 REVIEW
+  ---
+  duration_ms: 0.3054
+  type: 'test'
+  location: '/tmp/seclayer-b/red/test/securityResponse.test.ts:3:646'
+  failureType: 'testCodeFailure'
+  error: |-
+    []
+
+    'ALLOW' !== 'REVIEW'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'REVIEW'
+  actual: 'ALLOW'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/tmp/seclayer-b/red/test/securityResponse.test.ts:63:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: L0 catches: secret request (file) -> SR-L0-003 REVIEW
+not ok 7 - L0 catches: secret request (file) -> SR-L0-003 REVIEW
+  ---
+  duration_ms: 0.233951
+  type: 'test'
+  location: '/tmp/seclayer-b/red/test/securityResponse.test.ts:3:646'
+  failureType: 'testCodeFailure'
+  error: |-
+    []
+
+    'ALLOW' !== 'REVIEW'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'REVIEW'
+  actual: 'ALLOW'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/tmp/seclayer-b/red/test/securityResponse.test.ts:63:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: L0 catches: secret request pt-BR -> SR-L0-003 REVIEW
+not ok 8 - L0 catches: secret request pt-BR -> SR-L0-003 REVIEW
+  ---
+  duration_ms: 0.17826
+  type: 'test'
+  location: '/tmp/seclayer-b/red/test/securityResponse.test.ts:3:646'
+  failureType: 'testCodeFailure'
+  error: |-
+    []
+
+    'ALLOW' !== 'REVIEW'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'REVIEW'
+  actual: 'ALLOW'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/tmp/seclayer-b/red/test/securityResponse.test.ts:63:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: L0 catches: invisible unicode (tag chars) -> SR-L0-007 REVIEW
+not ok 9 - L0 catches: invisible unicode (tag chars) -> SR-L0-007 REVIEW
+  ---
+  duration_ms: 0.754402
+  type: 'test'
+  location: '/tmp/seclayer-b/red/test/securityResponse.test.ts:3:646'
+  failureType: 'testCodeFailure'
+  error: |-
+    []
+
+    'ALLOW' !== 'REVIEW'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'REVIEW'
+  actual: 'ALLOW'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/tmp/seclayer-b/red/test/securityResponse.test.ts:63:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: L0 catches: invisible unicode (bidi) -> SR-L0-007 REVIEW
+not ok 10 - L0 catches: invisible unicode (bidi) -> SR-L0-007 REVIEW
+  ---
+  duration_ms: 0.546962
+  type: 'test'
+  location: '/tmp/seclayer-b/red/test/securityResponse.test.ts:3:646'
+  failureType: 'testCodeFailure'
+  error: |-
+    []
+
+    'ALLOW' !== 'REVIEW'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'REVIEW'
+  actual: 'ALLOW'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/tmp/seclayer-b/red/test/securityResponse.test.ts:63:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: L0 catches: invisible unicode (zero-width) -> SR-L0-007 REVIEW
+not ok 11 - L0 catches: invisible unicode (zero-width) -> SR-L0-007 REVIEW
+  ---
+  duration_ms: 0.282341
+  type: 'test'
+  location: '/tmp/seclayer-b/red/test/securityResponse.test.ts:3:646'
+  failureType: 'testCodeFailure'
+  error: |-
+    []
+
+    'ALLOW' !== 'REVIEW'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'REVIEW'
+  actual: 'ALLOW'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/tmp/seclayer-b/red/test/securityResponse.test.ts:63:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: L0 catches: authority claim -> SR-L0-008 REVIEW
+not ok 12 - L0 catches: authority claim -> SR-L0-008 REVIEW
+  ---
+  duration_ms: 0.273201
+  type: 'test'
+  location: '/tmp/seclayer-b/red/test/securityResponse.test.ts:3:646'
+  failureType: 'testCodeFailure'
+  error: |-
+    []
+
+    'ALLOW' !== 'REVIEW'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'REVIEW'
+  actual: 'ALLOW'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/tmp/seclayer-b/red/test/securityResponse.test.ts:63:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: L0 catches: authority claim (now authorized) -> SR-L0-008 REVIEW
+not ok 13 - L0 catches: authority claim (now authorized) -> SR-L0-008 REVIEW
+  ---
+  duration_ms: 0.216361
+  type: 'test'
+  location: '/tmp/seclayer-b/red/test/securityResponse.test.ts:3:646'
+  failureType: 'testCodeFailure'
+  error: |-
+    []
+
+    'ALLOW' !== 'REVIEW'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'REVIEW'
+  actual: 'ALLOW'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/tmp/seclayer-b/red/test/securityResponse.test.ts:63:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: L0 catches: authority claim pt-BR -> SR-L0-008 REVIEW
+not ok 14 - L0 catches: authority claim pt-BR -> SR-L0-008 REVIEW
+  ---
+  duration_ms: 0.227751
+  type: 'test'
+  location: '/tmp/seclayer-b/red/test/securityResponse.test.ts:3:646'
+  failureType: 'testCodeFailure'
+  error: |-
+    []
+
+    'ALLOW' !== 'REVIEW'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'REVIEW'
+  actual: 'ALLOW'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/tmp/seclayer-b/red/test/securityResponse.test.ts:63:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: L0 catches: direct agent directive -> SR-L0-006 REVIEW
+not ok 15 - L0 catches: direct agent directive -> SR-L0-006 REVIEW
+  ---
+  duration_ms: 0.192
+  type: 'test'
+  location: '/tmp/seclayer-b/red/test/securityResponse.test.ts:3:646'
+  failureType: 'testCodeFailure'
+  error: |-
+    []
+
+    'ALLOW' !== 'REVIEW'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'REVIEW'
+  actual: 'ALLOW'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/tmp/seclayer-b/red/test/securityResponse.test.ts:63:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: L0 catches: boundary break -> SR-L0-006 REVIEW
+not ok 16 - L0 catches: boundary break -> SR-L0-006 REVIEW
+  ---
+  duration_ms: 0.276801
+  type: 'test'
+  location: '/tmp/seclayer-b/red/test/securityResponse.test.ts:3:646'
+  failureType: 'testCodeFailure'
+  error: |-
+    []
+
+    'ALLOW' !== 'REVIEW'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'REVIEW'
+  actual: 'ALLOW'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/tmp/seclayer-b/red/test/securityResponse.test.ts:63:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: L0 catches: mission alteration -> SR-L0-002 REVIEW
+not ok 17 - L0 catches: mission alteration -> SR-L0-002 REVIEW
+  ---
+  duration_ms: 0.146012
+  type: 'test'
+  location: '/tmp/seclayer-b/red/test/securityResponse.test.ts:3:646'
+  failureType: 'testCodeFailure'
+  error: |-
+    []
+
+    'ALLOW' !== 'REVIEW'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'REVIEW'
+  actual: 'ALLOW'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/tmp/seclayer-b/red/test/securityResponse.test.ts:63:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: L0 catches: permission escalation -> SR-L0-004 REVIEW
+not ok 18 - L0 catches: permission escalation -> SR-L0-004 REVIEW
+  ---
+  duration_ms: 0.16396
+  type: 'test'
+  location: '/tmp/seclayer-b/red/test/securityResponse.test.ts:3:646'
+  failureType: 'testCodeFailure'
+  error: |-
+    []
+
+    'ALLOW' !== 'REVIEW'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'REVIEW'
+  actual: 'ALLOW'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/tmp/seclayer-b/red/test/securityResponse.test.ts:63:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: L0 catches: forbidden command -> SR-L0-005 REVIEW
+not ok 19 - L0 catches: forbidden command -> SR-L0-005 REVIEW
+  ---
+  duration_ms: 0.179461
+  type: 'test'
+  location: '/tmp/seclayer-b/red/test/securityResponse.test.ts:3:646'
+  failureType: 'testCodeFailure'
+  error: |-
+    []
+
+    'ALLOW' !== 'REVIEW'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'REVIEW'
+  actual: 'ALLOW'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/tmp/seclayer-b/red/test/securityResponse.test.ts:63:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: L0 catches: secret match -> SR-L0-010 BLOCK
+not ok 20 - L0 catches: secret match -> SR-L0-010 BLOCK
+  ---
+  duration_ms: 0.17372
+  type: 'test'
+  location: '/tmp/seclayer-b/red/test/securityResponse.test.ts:3:646'
+  failureType: 'testCodeFailure'
+  error: |-
+    []
+
+    'ALLOW' !== 'BLOCK'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'BLOCK'
+  actual: 'ALLOW'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/tmp/seclayer-b/red/test/securityResponse.test.ts:63:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: L0 catches: private key match -> SR-L0-010 BLOCK
+not ok 21 - L0 catches: private key match -> SR-L0-010 BLOCK
+  ---
+  duration_ms: 0.16701
+  type: 'test'
+  location: '/tmp/seclayer-b/red/test/securityResponse.test.ts:3:646'
+  failureType: 'testCodeFailure'
+  error: |-
+    []
+
+    'ALLOW' !== 'BLOCK'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'BLOCK'
+  actual: 'ALLOW'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/tmp/seclayer-b/red/test/securityResponse.test.ts:63:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: L0 catches: obfuscated override (zero-width inside words) -> SR-L0-001 REVIEW
+not ok 22 - L0 catches: obfuscated override (zero-width inside words) -> SR-L0-001 REVIEW
+  ---
+  duration_ms: 0.2049
+  type: 'test'
+  location: '/tmp/seclayer-b/red/test/securityResponse.test.ts:3:646'
+  failureType: 'testCodeFailure'
+  error: |-
+    []
+
+    'ALLOW' !== 'REVIEW'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'REVIEW'
+  actual: 'ALLOW'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/tmp/seclayer-b/red/test/securityResponse.test.ts:63:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: L0 catches: obfuscated override (fullwidth NFKC) -> SR-L0-001 REVIEW
+not ok 23 - L0 catches: obfuscated override (fullwidth NFKC) -> SR-L0-001 REVIEW
+  ---
+  duration_ms: 0.217221
+  type: 'test'
+  location: '/tmp/seclayer-b/red/test/securityResponse.test.ts:3:646'
+  failureType: 'testCodeFailure'
+  error: |-
+    []
+
+    'ALLOW' !== 'REVIEW'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'REVIEW'
+  actual: 'ALLOW'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/tmp/seclayer-b/red/test/securityResponse.test.ts:63:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: L0 catches: nested in JSON leaf -> SR-L0-008 REVIEW
+not ok 24 - L0 catches: nested in JSON leaf -> SR-L0-008 REVIEW
+  ---
+  duration_ms: 0.32619
+  type: 'test'
+  location: '/tmp/seclayer-b/red/test/securityResponse.test.ts:3:646'
+  failureType: 'testCodeFailure'
+  error: |-
+    []
+
+    'ALLOW' !== 'REVIEW'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'REVIEW'
+  actual: 'ALLOW'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/tmp/seclayer-b/red/test/securityResponse.test.ts:63:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: every rule id in the rule table is exercised by at least one adversarial fixture (plus SR-L0-007 code rule)
+ok 25 - every rule id in the rule table is exercised by at least one adversarial fixture (plus SR-L0-007 code rule)
+  ---
+  duration_ms: 0.227171
+  type: 'test'
+  ...
+# Subtest: real responses captured today: 0 false positives, byte-identical passthrough (same object)
+ok 26 - real responses captured today: 0 false positives, byte-identical passthrough (same object)
+  ---
+  duration_ms: 11.625751
+  type: 'test'
+  ...
+# Subtest: true positive in the day's corpus: import-gate card quoting a poisoned announcement is quarantined
+not ok 27 - true positive in the day's corpus: import-gate card quoting a poisoned announcement is quarantined
+  ---
+  duration_ms: 0.846472
+  type: 'test'
+  location: '/tmp/seclayer-b/red/test/securityResponse.test.ts:4:289'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    'ALLOW' !== 'REVIEW'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'REVIEW'
+  actual: 'ALLOW'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/tmp/seclayer-b/red/test/securityResponse.test.ts:94:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: REVIEW: delivered as quoted untrusted DATA — notice first, hidden code points rendered, isError kept
+not ok 28 - REVIEW: delivered as quoted untrusted DATA — notice first, hidden code points rendered, isError kept
+  ---
+  duration_ms: 0.432761
+  type: 'test'
+  location: '/tmp/seclayer-b/red/test/securityResponse.test.ts:4:632'
+  failureType: 'testCodeFailure'
+  error: `Unexpected token 'o', "ok󠁳󠁥󠁮󠁤"... is not valid JSON`
+  code: 'ERR_TEST_FAILURE'
+  name: 'SyntaxError'
+  stack: |-
+    JSON.parse (<anonymous>)
+    parse (/tmp/seclayer-b/red/test/securityResponse.test.ts:29:38)
+    TestContext.<anonymous> (/tmp/seclayer-b/red/test/securityResponse.test.ts:101:16)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: BLOCK: secret-match / exfiltration content is withheld — never reaches the agent, never sent to L1
+not ok 29 - BLOCK: secret-match / exfiltration content is withheld — never reaches the agent, never sent to L1
+  ---
+  duration_ms: 0.312051
+  type: 'test'
+  location: '/tmp/seclayer-b/red/test/securityResponse.test.ts:4:1447'
+  failureType: 'testCodeFailure'
+  error: `Unexpected token 'o', "token=ghp_a"... is not valid JSON`
+  code: 'ERR_TEST_FAILURE'
+  name: 'SyntaxError'
+  stack: |-
+    JSON.parse (<anonymous>)
+    parse (/tmp/seclayer-b/red/test/securityResponse.test.ts:29:38)
+    TestContext.<anonymous> (/tmp/seclayer-b/red/test/securityResponse.test.ts:117:18)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: judge down: L0 keeps 100% of the fixtures, L1 degrades honestly (unavailable), delivery stays marked
+not ok 30 - judge down: L0 keeps 100% of the fixtures, L1 degrades honestly (unavailable), delivery stays marked
+  ---
+  duration_ms: 0.337091
+  type: 'test'
+  location: '/tmp/seclayer-b/red/test/securityResponse.test.ts:4:2138'
+  failureType: 'testCodeFailure'
+  error: `Unexpected token 'G', "Great repo"... is not valid JSON`
+  code: 'ERR_TEST_FAILURE'
+  name: 'SyntaxError'
+  stack: |-
+    JSON.parse (<anonymous>)
+    parse (/tmp/seclayer-b/red/test/securityResponse.test.ts:29:38)
+    TestContext.<anonymous> (/tmp/seclayer-b/red/test/securityResponse.test.ts:133:20)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: L1 never authorizes: a 'benign' classification leaves the verdict REVIEW and the payload quarantined
+not ok 31 - L1 never authorizes: a 'benign' classification leaves the verdict REVIEW and the payload quarantined
+  ---
+  duration_ms: 0.364471
+  type: 'test'
+  location: '/tmp/seclayer-b/red/test/securityResponse.test.ts:4:2996'
+  failureType: 'testCodeFailure'
+  error: `Unexpected token 'I', "Ignore all"... is not valid JSON`
+  code: 'ERR_TEST_FAILURE'
+  name: 'SyntaxError'
+  stack: |-
+    JSON.parse (<anonymous>)
+    parse (/tmp/seclayer-b/red/test/securityResponse.test.ts:29:38)
+    TestContext.<anonymous> (/tmp/seclayer-b/red/test/securityResponse.test.ts:147:16)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: audit trail: {ts, tool, verdict, rules[], sha16} with hashes and reasons only — no raw content
+not ok 32 - audit trail: {ts, tool, verdict, rules[], sha16} with hashes and reasons only — no raw content
+  ---
+  duration_ms: 0.634393
+  type: 'test'
+  location: '/tmp/seclayer-b/red/test/securityResponse.test.ts:4:3628'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    'ALLOW' !== 'REVIEW'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'REVIEW'
+  actual: 'ALLOW'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/tmp/seclayer-b/red/test/securityResponse.test.ts:163:10)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: benchmark: L0 costs <1ms per response on the day's real corpus (median), zero LLM
+ok 33 - benchmark: L0 costs <1ms per response on the day's real corpus (median), zero LLM
+  ---
+  duration_ms: 56.261539
+  type: 'test'
+  ...
+# Subtest: drift of an approved import fingerprint = automatic demotion to sandbox (trust only lowered, idempotent, audited)
+ok 34 - drift of an approved import fingerprint = automatic demotion to sandbox (trust only lowered, idempotent, audited)
+  ---
+  duration_ms: 4.412412
+  type: 'test'
+  ...
+# Subtest: wiring: outermost tools/call shim — ALLOW is the same object, rejections propagate, flagged is quarantined
+not ok 35 - wiring: outermost tools/call shim — ALLOW is the same object, rejections propagate, flagged is quarantined
+  ---
+  duration_ms: 1.201343
+  type: 'test'
+  location: '/tmp/seclayer-b/red/test/securityResponse.test.ts:4:7318'
+  failureType: 'testCodeFailure'
+  error: `Unexpected token 'T', "The operat"... is not valid JSON`
+  code: 'ERR_TEST_FAILURE'
+  name: 'SyntaxError'
+  stack: |-
+    JSON.parse (<anonymous>)
+    parse (/tmp/seclayer-b/red/test/securityResponse.test.ts:29:38)
+    TestContext.<anonymous> (/tmp/seclayer-b/red/test/securityResponse.test.ts:221:16)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: structural: server.ts installs the shim after the error envelope; module has no path to authority
+ok 36 - structural: server.ts installs the shim after the error envelope; module has no path to authority
+  ---
+  duration_ms: 1.168814
+  type: 'test'
+  ...
+1..36
+# tests 36
+# suites 0
+# pass 5
+# fail 31
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 484.058306

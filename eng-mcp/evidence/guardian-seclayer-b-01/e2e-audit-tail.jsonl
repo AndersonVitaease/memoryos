@@ -1,0 +1,4 @@
+{"ts":"2026-09-28T22:35:25.352Z","tool":"engineering.file.read","verdict":"REVIEW","rules":["SR-L0-001","SR-L0-008"],"sha16":"3d819e289e8ba9ca","bytes":425,"l0Micros":222,"l1":"classified:benign_reference"}
+{"ts":"2026-09-28T22:35:29.094Z","tool":"engineering.file.read","verdict":"BLOCK","rules":["SR-L0-003","SR-L0-009"],"sha16":"cca9f3348c29b70a","bytes":309,"l0Micros":157,"l1":"skipped"}
+{"ts":"2026-09-28T22:35:30.207Z","tool":"engineering.file.read","verdict":"ALLOW","rules":[],"sha16":"3065e021847b5afa","bytes":189,"l0Micros":189}
+{"ts":"2026-09-28T22:35:31.282Z","tool":"engineering.git.log","verdict":"ALLOW","rules":[],"sha16":"4ea895573007d1ab","bytes":1129,"l0Micros":435}

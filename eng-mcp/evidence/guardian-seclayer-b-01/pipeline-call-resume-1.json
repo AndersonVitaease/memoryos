@@ -1,0 +1,17 @@
+{
+ "latencyMs": 588,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"code\":\"ENGINEERING_TOOL_ERROR\",\"category\":\"internal\",\"retryable\":false,\"remediation\":\"No typed code matched the failure text; inspect the message and, if it recurs, add the code to the ERROR-01 taxonomy.\",\"message\":\"SHIP_LOCK_ACTIVE: ship lock at /opt/eng-mcp-release-data/production/ship.lock held by holder=operator-2026-09-20 mission=null ageMs=3965; one ship at a time — wait for the holder to finish or, if confirmed stale, operator revoke path: rm /opt/eng-mcp-release-data/production/ship.lock\",\"evidenceRefs\":[],\"tool\":\"engineering.release.pipeline\"}"
+    }
+   ],
+   "isError": true
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}

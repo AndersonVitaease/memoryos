@@ -1,0 +1,17 @@
+{
+ "latencyMs": 1481,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"code\":\"ENGINEERING_TOOL_ERROR\",\"category\":\"internal\",\"retryable\":false,\"remediation\":\"No typed code matched the failure text; inspect the message and, if it recurs, add the code to the ERROR-01 taxonomy.\",\"message\":\"{\\\"success\\\":false,\\\"failedOperation\\\":\\\"test\\\",\\\"error\\\":\\\"RELEASE_RUNNER_REJECTED\\\",\\\"evidence\\\":[{\\\"operation\\\":\\\"test\\\",\\\"httpStatus\\\":502,\\\"body\\\":{\\\"operation\\\":\\\"test\\\",\\\"success\\\":false,\\\"exitCode\\\":1,\\\"durationMs\\\":440,\\\"stdout\\\":\\\"\\\",\\\"stderr\\\":\\\"DIFF_CHECK_FAILED:evidence/github-app-bootstrap-01/suite.txt:2287\\\\n\\\",\\\"truncated\\\":false,\\\"timedOut\\\":false,\\\"job\\\":{\\\"jobId\\\":\\\"5025ea6d-202e-40d3-af71-cd9b24550ac8\\\",\\\"operation\\\":\\\"test\\\",\\\"status\\\":\\\"failed\\\",\\\"createdAt\\\":\\\"2026-09-28T22:29:04.916Z\\\",\\\"startedAt\\\":\\\"2026-09-28T22:29:04.917Z\\\",\\\"finish…[TRUNCATED]\",\"evidenceRefs\":[],\"tool\":\"engineering.release.pipeline\"}"
+    }
+   ],
+   "isError": true
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}

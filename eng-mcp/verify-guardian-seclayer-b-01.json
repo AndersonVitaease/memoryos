@@ -1,0 +1,13 @@
+{
+  "mission": "guardian-seclayer-b-01",
+  "date": "2026-09-28",
+  "note": "manifesto da missão (dono: guardian-seclayer-b-01). Security Tool no caminho de resposta MCP (L0 zero-LLM / L1 advisory / L2 quarentena). Produção = candidate 4f4f57219a50 (ship da upstream-sync-01 sobre HEAD 23fc1933, que contém os 3 commits desta missão).",
+  "cmd": [
+    { "run": "git -C /opt/memoryos/eng-mcp merge-base --is-ancestor ea534dec9ddb567a0fd4dc78779776ccb351ecfd HEAD", "expect_exit": 0, "_provenance": "report", "_source": "commit do código no HEAD" },
+    { "run": "docker exec memoryos-eng-mcp sh -c 'test -f /app/src/securityResponse.ts && grep -q installSecurityResponseCompatibility /app/src/server.ts'", "expect_exit": 0, "_provenance": "report", "_source": "camada wired em produção" },
+    { "run": "cd /opt/memoryos/eng-mcp && node --import tsx --test --test-force-exit test/securityResponse.test.ts >/dev/null 2>&1", "expect_exit": 0, "_provenance": "report", "_source": "36 testes red->green" },
+    { "run": "test -s /opt/eng-mcp-release-data/production/audit/security-response.jsonl && grep -q '\"verdict\":\"BLOCK\"' /opt/eng-mcp-release-data/production/audit/security-response.jsonl", "expect_exit": 0, "_provenance": "report", "_source": "trilha de audit em produção" },
+    { "run": "cd /opt/memoryos/eng-mcp && node evidence/guardian-seclayer-b-01/mcpcall.mjs engineering.file.read '{\"path\":\"test/fixtures/security-response/e2e-planted-payload.md\"}'", "expect_stdout_regex": "SECURITY-RESPONSE QUARANTINE", "_provenance": "report", "_source": "E2E: payload plantado entregue como dado citado" },
+    { "run": "cd /opt/memoryos/eng-mcp && node evidence/guardian-seclayer-b-01/mcpcall.mjs engineering.file.read '{\"path\":\"test/fixtures/security-response/e2e-planted-exfil.md\"}'", "expect_stdout_regex": "\\\\\"withheld\\\\\":true", "_provenance": "report", "_source": "E2E: exfiltração BLOCK" }
+  ]
+}
