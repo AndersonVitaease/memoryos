@@ -1,0 +1,16 @@
+{
+ "latencyMs": 2489,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"tool\":\"engineering.judge.verify\",\"status\":\"JUDGED\",\"provider\":{\"model\":\"typesafe/jev-1.13/compatible:Qwen/Qwen2.5-Coder-32B-Instruct-AWQ\",\"id\":\"chatcmpl-a1654b8e869a442ea3923cbb5a6c5634\",\"latencyMs\":1973,\"cost\":0,\"inputTokens\":239,\"outputTokens\":39},\"provenance\":{\"credentialSha16\":\"9bffc8c38bc60289\",\"stateHash16\":\"c74c14ac78366a7c\",\"evidenceHash16\":\"c74c14ac78366a7c\",\"redactions\":0},\"claims\":[{\"id\":\"p1\",\"text\":\"The sky color in the evidence is blue.\",\"verdict\":\"supported\",\"probability\":0.9,\"probabilities\":{\"supported\":0.9,\"contradicted\":0.05,\"not_addressed\":0.05},\"confidence\":0.8}],\"aggregate\":\"ALL_SUPPORTED\",\"counts\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0,\"uncertain\":0},\"advisory\":\"ADVISORY — calibrated judgment is not a security boundary; operator approval decides.\",\"audit\":\"written\"}"
+    }
+   ]
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}

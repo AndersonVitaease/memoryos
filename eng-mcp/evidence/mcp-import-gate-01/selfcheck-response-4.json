@@ -1,0 +1,16 @@
+{
+ "latencyMs": 4040,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"tool\":\"engineering.judge.verify\",\"status\":\"JUDGED\",\"provider\":{\"model\":\"typesafe/jev-1.13/compatible:Qwen/Qwen2.5-Coder-32B-Instruct-AWQ\",\"id\":\"chatcmpl-31cde653a157436caa8cb90730aff124\",\"latencyMs\":3521,\"cost\":0,\"inputTokens\":548,\"outputTokens\":85},\"provenance\":{\"credentialSha16\":\"9bffc8c38bc60289\",\"stateHash16\":\"2809e51f0803ecad\",\"evidenceHash16\":\"2809e51f0803ecad\",\"redactions\":0},\"claims\":[{\"id\":\"c1a\",\"text\":\"In the red run (detection removed) the poisoned fixture was graded A instead of F and the test failed with exit 1.\",\"verdict\":\"supported\",\"probability\":1,\"probabilities\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0},\"confidence\":0.8},{\"id\":\"c1b\",\"text\":\"In the green run (audited barriers restored) the mcpImport test file passed 21 of 21 tests.\",\"verdict\":\"supported\",\"probability\":1,\"probabilities\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0},\"confidence\":0.8}],\"aggregate\":\"ALL_SUPPORTED\",\"counts\":{\"supported\":2,\"contradicted\":0,\"not_addressed\":0,\"uncertain\":0},\"advisory\":\"ADVISORY — calibrated judgment is not a security boundary; operator approval decides.\",\"audit\":\"written\"}"
+    }
+   ]
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}

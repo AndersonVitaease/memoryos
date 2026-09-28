@@ -1,0 +1,16 @@
+{
+ "latencyMs": 5755,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"tool\":\"engineering.judge.verify\",\"status\":\"JUDGED\",\"provider\":{\"model\":\"typesafe/jev-1.13/compatible:Qwen/Qwen2.5-Coder-32B-Instruct-AWQ\",\"id\":\"chatcmpl-329b05e803834b1882363e1766661488\",\"latencyMs\":5254,\"cost\":0,\"inputTokens\":1072,\"outputTokens\":126},\"provenance\":{\"credentialSha16\":\"9bffc8c38bc60289\",\"stateHash16\":\"a1e497725ad7b424\",\"evidenceHash16\":\"a1e497725ad7b424\",\"redactions\":0},\"claims\":[{\"id\":\"c1\",\"text\":\"Red-then-green: with the detection removed the poisoned fixture graded A and the contract test failed; with the audited barriers restored the full mcpImport suite passed 21/21.\",\"verdict\":\"contradicted\",\"probability\":1,\"probabilities\":{\"supported\":0,\"contradicted\":1,\"not_addressed\":0},\"confidence\":1},{\"id\":\"c2\",\"text\":\"[consequência] The release test executed 1513 tests with 1507 passed and 0 failed and 128 expected tools; the deploy job succeeded with smoke PASS and production now runs a different candidate image than before.\",\"verdict\":\"supported\",\"probability\":1,\"probabilities\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0},\"confidence\":1},{\"id\":\"c6\",\"text\":\"The malicious stdio fixture was discovered inside an E2B sandbox whose egress was set to deny-all before the handshake, the sandbox was destroyed, and the result was grade F with recommendation DO_NOT_IMPORT.\",\"verdict\":\"supported\",\"probability\":1,\"probabilities\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0},\"confidence\":1}],\"aggregate\":\"HAS_CONTRADICTIONS\",\"counts\":{\"supported\":2,\"contradicted\":1,\"not_addressed\":0,\"uncertain\":0},\"advisory\":\"ADVISORY — calibrated judgment is not a security boundary; operator approval decides.\",\"audit\":\"written\"}"
+    }
+   ]
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}

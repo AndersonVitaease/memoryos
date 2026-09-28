@@ -1,0 +1,16 @@
+{
+ "latencyMs": 525,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"tool\":\"engineering.mcp.import.approve\",\"status\":\"REFUSED\",\"code\":\"AUTHORIZATION_SCOPE_REQUIRED\",\"message\":\"approve/revoke is tier-3: requires bearer scope engineering:mcp:import:approve (operator-issued)\",\"audit\":\"written\"}"
+    }
+   ]
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}

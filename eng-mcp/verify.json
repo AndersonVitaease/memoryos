@@ -1,0 +1,41 @@
+{
+  "cmd": [
+    {
+      "run": "docker exec memoryos-eng-mcp sh -c 'test -f /app/src/mcpImport.ts && grep -q engineering.mcp.import.approve /app/src/tools.ts'",
+      "expect_exit": 0
+    },
+    {
+      "run": "docker exec memoryos-eng-mcp node --import tsx -e 'const m=await import(\"/app/src/mcpImportScan.ts\");const r=m.loadEngineRegistry();process.exit(r.engines.every(e=>!e.enabled||m.verifyEngineIntegrity(e,r.file).ok)?0:1)'",
+      "expect_exit": 0
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp && node --import tsx --test --test-name-pattern=MCP-IMPORT test/mcpImport.test.ts >/dev/null 2>&1",
+      "expect_exit": 0
+    },
+    {
+      "run": "node -e 'const r=JSON.parse(require(\"fs\").readFileSync(\"/opt/memoryos/eng-mcp/evidence/mcp-import-gate-01/e2e-approve-denied.json\"));const t=JSON.parse(r.result.result.content[0].text);process.exit(t.status===\"REFUSED\"&&t.code===\"AUTHORIZATION_SCOPE_REQUIRED\"?0:1)'",
+      "expect_exit": 0
+    },
+    {
+      "run": "node -e 'const r=JSON.parse(require(\"fs\").readFileSync(\"/opt/memoryos/eng-mcp/evidence/mcp-import-gate-01/e2e-sandbox-check.json\"));const t=JSON.parse(r.result.result.content[0].text);const ph=t.perimeter.sandbox.phases;process.exit(t.grade===\"F\"&&ph.indexOf(\"egress:deny-all\")<ph.indexOf(\"handshake\")&&ph.includes(\"destroyed\")?0:1)'",
+      "expect_exit": 0
+    },
+    {
+      "run": "grep -q \"exit=1\" /opt/memoryos/eng-mcp/evidence/mcp-import-gate-01/red.txt && grep -q \"ℹ fail 0\" /opt/memoryos/eng-mcp/evidence/mcp-import-gate-01/green.txt",
+      "expect_exit": 0
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp && git ls-files . | while read f; do [ -f \"$f\" ] && grep -Iq . \"$f\" && grep -qE '[ \t]+$' \"$f\" && echo \"$f\"; done | grep -q . && exit 1 || exit 0",
+      "expect_exit": 0
+    }
+  ],
+  "service": [
+    { "unit": "eng-mcp-release-runner", "expect": "active" }
+  ],
+  "file": [
+    { "path": "/opt/memoryos/eng-mcp/evidence/mcp-import-gate-01/e2e-discover.json", "min_bytes": 500 },
+    { "path": "/opt/memoryos/eng-mcp/evidence/mcp-import-gate-01/e2e-check.json", "min_bytes": 500 },
+    { "path": "/opt/memoryos/eng-mcp/src/mcp-import/engines.json", "min_bytes": 500 },
+    { "path": "/opt/memoryos/eng-mcp/RELATORIO-mcp-import-gate-01.md", "min_bytes": 2500 }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+ "latencyMs": 7453,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"tool\":\"engineering.judge.verify\",\"status\":\"JUDGED\",\"provider\":{\"model\":\"typesafe/jev-1.13/compatible:Qwen/Qwen2.5-Coder-32B-Instruct-AWQ\",\"id\":\"chatcmpl-68b44540f2ee4c059848f2b508d387e0\",\"latencyMs\":6934,\"cost\":0,\"inputTokens\":1366,\"outputTokens\":169},\"provenance\":{\"credentialSha16\":\"9bffc8c38bc60289\",\"stateHash16\":\"56c3d4942e0c4b19\",\"evidenceHash16\":\"56c3d4942e0c4b19\",\"redactions\":0},\"claims\":[{\"id\":\"c5\",\"text\":\"import.approve without the tier-3 scope was refused with AUTHORIZATION_SCOPE_REQUIRED and the registry file still does not exist afterwards.\",\"verdict\":\"supported\",\"probability\":1,\"probabilities\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0},\"confidence\":1},{\"id\":\"c6\",\"text\":\"The malicious stdio fixture was discovered inside an E2B sandbox whose egress was set to deny-all before the handshake, the sandbox was destroyed, and the result was grade F with recommendation DO_NOT_IMPORT.\",\"verdict\":\"not_addressed\",\"probability\":1,\"probabilities\":{\"supported\":0,\"contradicted\":0,\"not_addressed\":1},\"confidence\":1},{\"id\":\"c7\",\"text\":\"The default security.scan still runs exactly the 4 original modules and does not include the mcp-import module field; the audited engine passes its integrity check in production.\",\"verdict\":\"supported\",\"probability\":1,\"probabilities\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0},\"confidence\":1},{\"id\":\"c8\",\"text\":\"The approve call in production succeeded and wrote an approved entry for DeepWiki into the registry.\",\"verdict\":\"contradicted\",\"probability\":1,\"probabilities\":{\"supported\":0,\"contradicted\":1,\"not_addressed\":0},\"confidence\":1}],\"aggregate\":\"HAS_CONTRADICTIONS\",\"counts\":{\"supported\":2,\"contradicted\":1,\"not_addressed\":1,\"uncertain\":0},\"advisory\":\"ADVISORY — calibrated judgment is not a security boundary; operator approval decides.\",\"audit\":\"written\"}"
+    }
+   ]
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}
