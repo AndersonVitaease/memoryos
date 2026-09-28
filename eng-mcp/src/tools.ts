@@ -290,14 +290,23 @@ async function startReleaseTestJob(profile: "suite" | "full") {
   return { executionId: job.executionId, status: "RUNNING" as const, profile, executor: "release-runner" as const, selection: [] as string[], note: "Async job started on the official release runner. Poll engineering.test.status with this executionId for the persisted result; readback survives client disconnects." };
 }
 
-export async function runOfficialReleasePipeline(deployJobId?: string) {
+// DEPLOY-COMMIT-PIN-01: the pipeline compiles a DECLARED commit, never the working
+// tree. A fresh run requires commitSha (40 hex) and threads it to test/build/candidate/
+// deploy; the runner refuses build/candidate/deploy without it and refuses a dirty
+// canonical tree (DEPLOY_DIRTY_TREE, listing the files) in every stage. The resume
+// path (deployJobId) is already bound: the deploy job carries its commit.
+const COMMIT_SHA = /^[a-f0-9]{40}$/;
+export async function runOfficialReleasePipeline(deployJobId?: string, commitSha?: string) {
   const evidence: Array<{ operation: ReleaseOperation; httpStatus: number; body: any }> = [];
+  if (!deployJobId && (typeof commitSha !== "string" || !COMMIT_SHA.test(commitSha)))
+    return { success: false, error: "DEPLOY_COMMIT_REQUIRED", detail: "engineering.release.pipeline deploys a declared commitSha (40 lowercase hex, committed in the canonical repo); the working tree is never deployed.", evidence };
   if (releasePipelineBusy) return { success: false, error: "RELEASE_PIPELINE_BUSY", evidence };
   releasePipelineBusy = true;
   let operation: ReleaseOperation = deployJobId ? "status" : "test";
   const call = async (next: ReleaseOperation, jobId?: string) => {
     operation = next;
-    const result = await callReleaseRunner(next, jobId);
+    const pinned = !jobId && commitSha !== undefined && (next === "test" || next === "build" || next === "candidate" || next === "deploy");
+    const result = await callReleaseRunner(next, jobId, pinned ? { commit: commitSha } : undefined);
     evidence.push({ operation: next, ...result });
     if (result.httpStatus < 200 || result.httpStatus >= 300 || result.body?.operation !== next)
       throw new Error("RELEASE_RUNNER_REJECTED");
@@ -315,7 +324,7 @@ export async function runOfficialReleasePipeline(deployJobId?: string) {
         throw new Error("RELEASE_DEPLOY_NOT_ACCEPTED");
       // Deploy stops this container. Return the durable runner ID before replacement.
       // Resume this same tool with deployJobId; queued is never reported as success.
-      return { success: false, pending: true, deployJobId: accepted.jobId, nextAction: "Call engineering.release.pipeline with this deployJobId after reconnecting.", evidence };
+      return { success: false, pending: true, deployJobId: accepted.jobId, commitSha, nextAction: "Call engineering.release.pipeline with this deployJobId after reconnecting.", evidence };
     }
     if (!/^[a-f0-9-]{16,64}$/i.test(deployJobId)) throw new Error("RELEASE_JOB_ID_INVALID");
     const deadline = Date.now() + 240_000;
@@ -327,14 +336,16 @@ export async function runOfficialReleasePipeline(deployJobId?: string) {
       if (job.status === "success") {
         if (job.exitCode !== 0) throw new Error("RELEASE_DEPLOY_FAILED");
         completed(await call("smoke"), "smoke");
-        return { success: true, deployJobId, evidence };
+        return { success: true, deployJobId, commitSha: job.commit ?? null, evidence };
       }
       if (job.status !== "queued" && job.status !== "running") throw new Error("RELEASE_DEPLOY_FAILED");
       await new Promise((resolve) => setTimeout(resolve, 5_000));
     }
     throw new Error("RELEASE_DEPLOY_TIMEOUT");
   } catch (error) {
-    return { success: false, failedOperation: operation, deployJobId, error: error instanceof Error ? error.message : "RELEASE_FAILED", evidence };
+    const refused = evidence.at(-1)?.body?.job?.error ?? evidence.at(-1)?.body?.error;
+    const typed = typeof refused === "string" ? /\b(DEPLOY_[A-Z_]+|IMAGE_TAG_COMMIT_CONFLICT|COMMIT_[A-Z_]+)\b/.exec(refused)?.[1] : undefined;
+    return { success: false, failedOperation: operation, deployJobId, ...(commitSha ? { commitSha } : {}), error: error instanceof Error ? error.message : "RELEASE_FAILED", ...(typed ? { refusal: typed } : {}), evidence };
   } finally { releasePipelineBusy = false; }
 }
 
@@ -721,11 +732,11 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   register("engineering.mcp.catalog", "read", (name) => server.registerTool(name, { description: "Return the deterministic catalog of tools exposed by this ENG-MCP server.", inputSchema: z.object({}).strict() }, async () => { requireRead(); return response(createToolCatalog(toolMetadata, repositoryId)); }));
   register("engineering.release.run", "write", (name) => server.registerTool(name, { description: "Run an allowlisted Release Pipeline V1 operation through the durable local runner.", inputSchema: z.object({ jobId: z.string().optional(), operation: z.enum(["deploy", "verify", "clean"]) }).strict() }, async (input) => { requireRead(); requireWrite(); return response(await repository.releaseRun(subject.subject, input)); }));
   register("engineering.release.pipeline", "write", (name) => server.registerTool(name, {
-    description: "Run official test, build, candidate, deploy. Reconnect and resume with the returned deployJobId for bounded status polling and smoke. Never treats queued deployment as success.",
-    inputSchema: z.object({ acknowledgeRelease: z.literal(true), deployJobId: z.string().regex(/^[a-f0-9-]{16,64}$/i).optional() }).strict()
+    description: "Run official test, build, candidate, deploy of a DECLARED commit (DEPLOY-COMMIT-PIN-01): commitSha (40 hex, HEAD or an ancestor) is required on a fresh run; the runner builds the image from that commit extracted into an isolated tree (tag eng-mcp-candidate:commit-<sha>, OCI revision label), refuses a dirty canonical tree in deploy paths with DEPLOY_DIRTY_TREE listing the files (fail-closed, never deploys anyway), and records {commitSha, imageTag, treeClean, builtFrom} provenance per deploy/rollback in /data/audit/deploy-provenance.jsonl. Reconnect and resume with the returned deployJobId for bounded status polling and smoke. Never treats queued deployment as success.",
+    inputSchema: z.object({ acknowledgeRelease: z.literal(true), commitSha: z.string().regex(/^[a-f0-9]{40}$/).optional(), deployJobId: z.string().regex(/^[a-f0-9-]{16,64}$/i).optional() }).strict()
   }, async (input) => {
     requireRead(); requireWrite(); requireRelease();
-    const result = await runOfficialReleasePipeline(input.deployJobId);
+    const result = await runOfficialReleasePipeline(input.deployJobId, input.commitSha);
     return { ...response(result), ...(!result.success && !("pending" in result) ? { isError: true } : {}) };
   }));
 
