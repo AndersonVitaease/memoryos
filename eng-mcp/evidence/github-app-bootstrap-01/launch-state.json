@@ -1,0 +1,26 @@
+{
+  "state": "406bd11bd1662dea7b3e10ffbdbe634c",
+  "stateSha16": "771fac48b1592034",
+  "manifestSha16": "739140c7f51dd601",
+  "generatedAt": "2026-09-28T21:46:46.734Z",
+  "manifest": {
+    "name": "memoryos-eng-mcp-ro",
+    "url": "https://github.com/AndersonVitaease/memoryos",
+    "description": "MemoryOS eng-mcp read-only GitHub access (installation token, self-rotating).",
+    "public": false,
+    "redirect_url": "http://127.0.0.1:65535/github-app-manifest-callback",
+    "hook_attributes": {
+      "url": "https://github.com/AndersonVitaease/memoryos",
+      "active": false
+    },
+    "default_permissions": {
+      "contents": "read",
+      "metadata": "read",
+      "pull_requests": "read",
+      "actions": "read",
+      "checks": "read"
+    },
+    "default_events": [],
+    "request_oauth_on_install": false
+  }
+}

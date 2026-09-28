@@ -1,0 +1,8 @@
+OK   config — appId sha16=3adf1b97c60ad102 installationId sha16=7cea26ba98eecb26
+OK   key file mode — 600
+OK   private key — RSA, public fingerprint sha16=463aef5c9d83fda7
+OK   jwt — alg=RS256
+OK   installation token — sha16=71932add930e65ce expiresAt=2026-09-28T22:53:47.000Z permissions=actions:read,checks:read,contents:read,metadata:read,pull_requests:read selection=selected
+OK   least privilege — read-only
+OK   GET /repos/AndersonVitaease/memoryos — full_name=AndersonVitaease/memoryos private=false
+RESULT GREEN

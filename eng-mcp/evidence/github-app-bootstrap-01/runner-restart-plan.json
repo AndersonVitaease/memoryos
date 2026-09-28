@@ -1,0 +1,16 @@
+{
+ "latencyMs": 627,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"status\":\"PLAN\",\"mutationPerformed\":false,\"precheck\":{\"runnerReachable\":true,\"draining\":false,\"pid\":464251,\"unit\":{\"restart\":\"on-failure\",\"successExitStatus\":[\"42\"],\"restartForceExitStatus\":[\"42\"]},\"unitBlockers\":[],\"blockers\":[]},\"plan\":{\"action\":\"restart\",\"possible\":true,\"requires\":[\"execute=true\",\"approval.approved=true\"],\"mechanism\":\"self-exit+systemd (runner exits with code 42; unit requires Restart=on-failure|always + SuccessExitStatus=42 + RestartForceExitStatus=42)\"},\"findings\":[]}"
+    }
+   ]
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}

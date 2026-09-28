@@ -1,0 +1,16 @@
+{
+ "latencyMs": 5427,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"status\":\"RESTARTED\",\"mutationPerformed\":true,\"precheck\":{\"runnerReachable\":true,\"draining\":false,\"pid\":464251,\"unit\":{\"restart\":\"on-failure\",\"successExitStatus\":[\"42\"],\"restartForceExitStatus\":[\"42\"]},\"unitBlockers\":[],\"blockers\":[]},\"plan\":{\"action\":\"restart\",\"possible\":true,\"requires\":[\"execute=true\",\"approval.approved=true\"],\"mechanism\":\"self-exit+systemd (runner exits with code 42; unit requires Restart=on-failure|always + SuccessExitStatus=42 + RestartForceExitStatus=42)\"},\"findings\":[{\"code\":\"RESTART_COMPLETED\",\"severity\":\"info\",\"detail\":\"runner recycled: pid 464251 -> 907387, intent completed with zero orphaned jobs\"}],\"execution\":{\"accepted\":true,\"restartId\":\"8897e0ad-f97c-4440-a667-db54117e3b5a\",\"status\":\"pending\",\"idempotent\":false},\"restartId\":\"8897e0ad-f97c-4440-a667-db54117e3b5a\",\"postcheck\":{\"attempts\":2,\"criteria\":{\"runnerReachable\":true,\"pidChanged\":true,\"lastRestartIdMatches\":true,\"lastRestartOutcomeCompleted\":true,\"zeroOrphans\":true},\"runnerMeta\":{\"pid\":907387,\"uptime\":1.439684908,\"startedAt\":\"2026-09-28T21:54:14.532Z\",\"draining\":false,\"lastRestartId\":\"8897e0ad-f97c-4440-a667-db54117e3b5a\",\"lastRestartOutcome\":\"completed\",\"lastRecoveryMarked\":0,\"unit\":{\"restart\":\"on-failure\",\"successExitStatus\":[\"42\"],\"restartForceExitStatus\":[\"42\"]}}}}"
+    }
+   ]
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}
