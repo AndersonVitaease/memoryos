@@ -349,6 +349,10 @@ export function createToolCatalog(entries: readonly ToolCatalogEntry[], reposito
   };
 }
 
+// MEMORY-CAPTURE-SCOPE-01: pure predicate for the memory.capture gate (exported for tests).
+export const canCaptureMemory = (scopes: readonly string[]): boolean =>
+  scopes.includes("engineering:memory:capture") || scopes.includes("engineering:write");
+
 export function registerEngineeringTools(server: McpServer, repository: RepositoryAdapter, subject: AuthenticatedSubject, repositoryId: string): void {
   const toolMetadata: ToolCatalogEntry[] = [];
   const register = (name: string, access: ToolCatalogEntry["access"], configure: (registeredName: string) => void) => { toolMetadata.push({ name, access }); configure(name); const alias = name.replaceAll(".", "_"); if (alias !== name && !SANITIZED_TOOL_ALIASES.has(alias)) SANITIZED_TOOL_ALIASES.set(alias, name); };
@@ -377,6 +381,11 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   // KNOWN_REGISTRY_SCOPES in src/registryScopeGrant.ts (drift-guarded by
   // test/registryScopeGrant.test.ts); operator-issued via ENG_MCP_TOKEN_SCOPES.
   const requireImageEditOrWrite = () => { if (!subject.scopes.includes("engineering:write") && !subject.scopes.includes("engineering:image:edit")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
+  // MEMORY-CAPTURE-SCOPE-01 (operator-authorized 2026-09-28): dedicated surgical scope
+  // for memory.capture — accepts engineering:memory:capture OR the broad engineering:write
+  // (compat, zero regression). Lets mission bearers (hermes) close missions in the ledger
+  // without holding write. Grant-only via registry.scope.grant (self-grant refused).
+  const requireMemoryCaptureOrWrite = () => { if (!canCaptureMemory(subject.scopes)) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
 
   // ITEM-3: host diagnostics read the runner service's systemd/journal/docker
   // state — outside the repository boundary, so the read-only scope is
@@ -725,7 +734,7 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
       force: z.boolean().optional()
     }).strict()
   }, async (input) => {
-    requireWrite();
+    requireMemoryCaptureOrWrite();
     const pid = input.projectId ?? repositoryId;
     const agentName = input.agent ?? subject.subject;
     // MEMORY-GATE-01: triage BEFORE the bridge — dedupe + calibrated Jev screen;
