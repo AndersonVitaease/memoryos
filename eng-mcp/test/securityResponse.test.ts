@@ -228,7 +228,11 @@ test("structural: server.ts installs the shim after the error envelope; module h
   assert.ok(envelopeAt > 0 && securityAt > envelopeAt, "security shim must be the outermost tools/call wrapper");
   const src = readFileSync(join(import.meta.dirname, "..", "src", "securityResponse.ts"), "utf8");
   const imports = [...src.matchAll(/from "\.\/([\w]+)\.ts"/g)].map((m) => m[1]).sort();
-  assert.deepEqual(imports, ["judge", "mcpImport", "mcpImportScan"]);
+  assert.deepEqual(imports, ["judge", "mcpImport", "mcpImportScan", "securityResponseBus"]);
+  // SECLAYER-IDS-LINK-01: the bus link is leaf-only — node:fs/node:path, no module of this repo, no LLM, no authority.
+  const bus = readFileSync(join(import.meta.dirname, "..", "src", "securityResponseBus.ts"), "utf8");
+  assert.deepEqual([...bus.matchAll(/^import .* from "([^"]+)";$/gm)].map((m) => m[1]).sort(), ["node:fs", "node:path"]);
+  assert.doesNotMatch(bus, /fetch\(|judge|policy|registry|manifest|approv/i);
   assert.doesNotMatch(src, /policy\.ts|registryScopeGrant|missionPreauth|missionManifest|manifestEdit|registryEntryLifecycle/);
   assert.equal(countHiddenCodePoints(src), 0, "security layer source carries no hidden code points");
   // The only registry mutation reachable is the demotion (production -> sandbox).

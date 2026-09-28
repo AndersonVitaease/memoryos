@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { access, appendFile, mkdir, readFile, readdir, rm, stat, symlink, writeFile, rename } from "node:fs/promises";
-import { existsSync as existsSyncFs } from "node:fs";
+import { existsSync as existsSyncFs, statSync as statSyncFs } from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -106,6 +106,20 @@ export function readOnlyMountArgs(production, exists = existsSyncFs) {
     args.push("-v", spec);
   }
   return args;
+}
+
+// SECLAYER-IDS-LINK-01: optional write bind of the mission bus spool FILE (config:
+// production.busSpoolMount = "<abs host path>/spool.jsonl:/run/mission-bus/spool.jsonl").
+// Exactly ONE file, append target of the security-response bus link; the destination is fixed,
+// the source must already exist as a regular file (never a docker-created empty dir) and carry
+// no "..": anything else emits nothing. No other bus file (state, subscribers) is ever mounted.
+export const BUS_SPOOL_CONTAINER_PATH = "/run/mission-bus/spool.jsonl";
+export function busSpoolMountArgs(production, isFile = (p) => { try { return statSyncFs(p).isFile(); } catch { return false; } }) {
+  const spec = production?.busSpoolMount;
+  const m = typeof spec === "string" ? /^(\/[^:,\0]+\/spool\.jsonl):(\/[^:,\0]+)$/.exec(spec) : null;
+  if (!m || m[2] !== BUS_SPOOL_CONTAINER_PATH || m[1].split("/").includes("..")) return [];
+  if (!isFile(m[1])) return [];
+  return ["-v", `${m[1]}:${BUS_SPOOL_CONTAINER_PATH}`];
 }
 
 export function parseCliWithOptions(argv) {
@@ -1143,7 +1157,7 @@ export async function deployAction(config, options = {}) {
   await mustRun("docker", ["rename", config.production.containerName, previousContainer]); await mustRun("docker", ["stop", previousContainer]);
   const p = config.production;
   try {
-    await mustRun("docker", ["run", "-d", "--name", p.containerName, "--network", p.network, "--restart", p.restart, "-v", p.repositoryMount, "-v", p.dataMount, "-v", p.runnerMount, ...(p.credentialsMount ? ["-v", p.credentialsMount] : []), ...readOnlyMountArgs(p), "-e", `ENG_MCP_REPOSITORY_ROOT=${p.repositoryRoot}`, "-e", `ENG_MCP_REPOSITORY_ID=${p.repositoryId}`, "-e", `ENG_MCP_TOKEN_REGISTRY_FILE=${p.tokenRegistryFile}`, "-e", `ENG_MCP_HOST=${p.host}`, "-e", `ENG_MCP_PORT=${p.port}`, "-e", `ENG_MCP_DEPLOY_ENVIRONMENT_ID=${p.deployEnvironmentId}`, "-e", `ENG_MCP_DEPLOY_SERVER_ID=${p.deployServerId}`, ...(process.env.ENG_MCP_RUNTIME_OBSERVABILITY_CREDENTIAL_FILE ? ["-v", `${process.env.ENG_MCP_RUNTIME_OBSERVABILITY_CREDENTIAL_FILE}:/run/secrets/runtime-observability-secret:ro`, "-e", "ENG_MCP_RUNTIME_OBSERVABILITY_CREDENTIAL_FILE=/run/secrets/runtime-observability-secret"] : []), ...(process.env.MCP_BATCH_EXECUTE_CREDENTIAL_FILE ? ["-v", `${process.env.MCP_BATCH_EXECUTE_CREDENTIAL_FILE}:/run/secrets/mcp-batch-execute-secret:ro`, "-e", "MCP_BATCH_EXECUTE_CREDENTIAL_FILE=/run/secrets/mcp-batch-execute-secret", "-e", "ENG_MCP_SUPERVISED_MISSION_CREDENTIAL_FILE=/run/secrets/mcp-batch-execute-secret"] : []), ...(process.env.ENG_MCP_AGENT_MEMORY_CREDENTIAL_FILE ? ["-v", `${process.env.ENG_MCP_AGENT_MEMORY_CREDENTIAL_FILE}:/run/secrets/agent-memory-secret:ro`, "-e", "ENG_MCP_AGENT_MEMORY_CREDENTIAL_FILE=/run/secrets/agent-memory-secret"] : []), ...(process.env.ENG_MCP_RUNTIME_TOKEN_CREDENTIAL_FILE ? ["-v", `${process.env.ENG_MCP_RUNTIME_TOKEN_CREDENTIAL_FILE}:/run/secrets/runtime-token:ro`, "-e", "ENG_MCP_RUNTIME_TOKEN_CREDENTIAL_FILE=/run/secrets/runtime-token"] : []), ...(process.env.E2B_API_KEY_FILE ? ["-v", `${process.env.E2B_API_KEY_FILE}:/run/secrets/e2b-api-key:ro`, "-e", "E2B_API_KEY_FILE=/run/secrets/e2b-api-key"] : []), ...(process.env.GITHUB_TOKEN_FILE ? ["-v", `${process.env.GITHUB_TOKEN_FILE}:/run/secrets/github-pat:ro`, "-e", "GITHUB_TOKEN_FILE=/run/secrets/github-pat"] : []), ...githubAppDockerArgs(process.env), ...(process.env.GIT_CREDENTIALS_FILE ? ["-v", `${process.env.GIT_CREDENTIALS_FILE}:/run/secrets/git-credentials:ro`, "-e", "GIT_CREDENTIALS_FILE=/run/secrets/git-credentials"] : []), ...(process.env.ENG_MCP_HERMES_NOTIFY_CREDENTIAL_FILE ? ["-v", `${process.env.ENG_MCP_HERMES_NOTIFY_CREDENTIAL_FILE}:/run/secrets/hermes-notify-api-key:ro`, "-e", "ENG_MCP_HERMES_NOTIFY_CREDENTIAL_FILE=/run/secrets/hermes-notify-api-key"] : []), ...(process.env.ENG_MCP_HERMES_SESSION_ID ? ["-e", `ENG_MCP_HERMES_SESSION_ID=${process.env.ENG_MCP_HERMES_SESSION_ID}`] : []), ...tokenHashFileArgs(config), state.imageTag]);
+    await mustRun("docker", ["run", "-d", "--name", p.containerName, "--network", p.network, "--restart", p.restart, "-v", p.repositoryMount, "-v", p.dataMount, "-v", p.runnerMount, ...(p.credentialsMount ? ["-v", p.credentialsMount] : []), ...readOnlyMountArgs(p), ...busSpoolMountArgs(p), "-e", `ENG_MCP_REPOSITORY_ROOT=${p.repositoryRoot}`, "-e", `ENG_MCP_REPOSITORY_ID=${p.repositoryId}`, "-e", `ENG_MCP_TOKEN_REGISTRY_FILE=${p.tokenRegistryFile}`, "-e", `ENG_MCP_HOST=${p.host}`, "-e", `ENG_MCP_PORT=${p.port}`, "-e", `ENG_MCP_DEPLOY_ENVIRONMENT_ID=${p.deployEnvironmentId}`, "-e", `ENG_MCP_DEPLOY_SERVER_ID=${p.deployServerId}`, ...(process.env.ENG_MCP_RUNTIME_OBSERVABILITY_CREDENTIAL_FILE ? ["-v", `${process.env.ENG_MCP_RUNTIME_OBSERVABILITY_CREDENTIAL_FILE}:/run/secrets/runtime-observability-secret:ro`, "-e", "ENG_MCP_RUNTIME_OBSERVABILITY_CREDENTIAL_FILE=/run/secrets/runtime-observability-secret"] : []), ...(process.env.MCP_BATCH_EXECUTE_CREDENTIAL_FILE ? ["-v", `${process.env.MCP_BATCH_EXECUTE_CREDENTIAL_FILE}:/run/secrets/mcp-batch-execute-secret:ro`, "-e", "MCP_BATCH_EXECUTE_CREDENTIAL_FILE=/run/secrets/mcp-batch-execute-secret", "-e", "ENG_MCP_SUPERVISED_MISSION_CREDENTIAL_FILE=/run/secrets/mcp-batch-execute-secret"] : []), ...(process.env.ENG_MCP_AGENT_MEMORY_CREDENTIAL_FILE ? ["-v", `${process.env.ENG_MCP_AGENT_MEMORY_CREDENTIAL_FILE}:/run/secrets/agent-memory-secret:ro`, "-e", "ENG_MCP_AGENT_MEMORY_CREDENTIAL_FILE=/run/secrets/agent-memory-secret"] : []), ...(process.env.ENG_MCP_RUNTIME_TOKEN_CREDENTIAL_FILE ? ["-v", `${process.env.ENG_MCP_RUNTIME_TOKEN_CREDENTIAL_FILE}:/run/secrets/runtime-token:ro`, "-e", "ENG_MCP_RUNTIME_TOKEN_CREDENTIAL_FILE=/run/secrets/runtime-token"] : []), ...(process.env.E2B_API_KEY_FILE ? ["-v", `${process.env.E2B_API_KEY_FILE}:/run/secrets/e2b-api-key:ro`, "-e", "E2B_API_KEY_FILE=/run/secrets/e2b-api-key"] : []), ...(process.env.GITHUB_TOKEN_FILE ? ["-v", `${process.env.GITHUB_TOKEN_FILE}:/run/secrets/github-pat:ro`, "-e", "GITHUB_TOKEN_FILE=/run/secrets/github-pat"] : []), ...githubAppDockerArgs(process.env), ...(process.env.GIT_CREDENTIALS_FILE ? ["-v", `${process.env.GIT_CREDENTIALS_FILE}:/run/secrets/git-credentials:ro`, "-e", "GIT_CREDENTIALS_FILE=/run/secrets/git-credentials"] : []), ...(process.env.ENG_MCP_HERMES_NOTIFY_CREDENTIAL_FILE ? ["-v", `${process.env.ENG_MCP_HERMES_NOTIFY_CREDENTIAL_FILE}:/run/secrets/hermes-notify-api-key:ro`, "-e", "ENG_MCP_HERMES_NOTIFY_CREDENTIAL_FILE=/run/secrets/hermes-notify-api-key"] : []), ...(process.env.ENG_MCP_HERMES_SESSION_ID ? ["-e", `ENG_MCP_HERMES_SESSION_ID=${process.env.ENG_MCP_HERMES_SESSION_ID}`] : []), ...tokenHashFileArgs(config), state.imageTag]);
     await waitForPort(p.port);
     state = { ...state, deployStatus: "PASS", currentRelease: state.imageTag, currentCommitSha: pin.commit, deployedAt: new Date().toISOString() }; await saveState(config, state);
     const smoked = await smokeAction(config);

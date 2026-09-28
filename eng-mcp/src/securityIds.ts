@@ -458,7 +458,10 @@ export const IDS_ALARMS_ADVISORY =
 export type IdsAlarmCode =
   | "GATE_ROUTE_WITHOUT_JUDGE_AUDIT"
   | "MANIFEST_WINDOW_EXPIRED"
-  | "MANIFEST_OPERATION_DIVERGENT";
+  | "MANIFEST_OPERATION_DIVERGENT"
+  // SECLAYER-IDS-LINK-01 — security-response trail (kinds security_response_block / security_response_review on the bus)
+  | "SECURITY_RESPONSE_BLOCK"
+  | "SECURITY_RESPONSE_REVIEW";
 
 export type IdsAlarm = { alarmId: string; code: IdsAlarmCode; at: string; detail: string };
 
@@ -593,6 +596,67 @@ export function computeManifestAlarms(
   }
 }
 
+// ---------------------------------------------------------------------------
+// SECLAYER-IDS-LINK-01 — security-response trail alarms. Deterministic, judge-free,
+// hashes + rule ids only (the trail carries no response content). BLOCK lines
+// (SR-L0-009/010) raise one alarm each; REVIEW lines aggregate to ONE alarm per
+// tool per UTC hour (same dedupe as the bus finding). Fail-open: a missing or
+// unreadable trail = zero alarms + a note, never a crash.
+// ---------------------------------------------------------------------------
+export const IDS_SECURITY_RESPONSE_TRAIL_FILE = "security-response.jsonl";
+export const IDS_SECURITY_RESPONSE_KIND_BY_CODE = {
+  SECURITY_RESPONSE_BLOCK: "security_response_block",
+  SECURITY_RESPONSE_REVIEW: "security_response_review"
+} as const;
+
+export function computeSecurityResponseAlarms(
+  windowStartMs: number,
+  nowMs: number
+): { alarms: IdsAlarm[]; total: number; block: number; review: number; note: string | null } {
+  try {
+    const file = join(auditDir(), IDS_SECURITY_RESPONSE_TRAIL_FILE);
+    let text: string;
+    try { text = readFileSync(file, "utf8"); }
+    catch (error) {
+      const code = (error as { code?: string })?.code ?? "ERR";
+      return { alarms: [], total: 0, block: 0, review: 0, note: code === "ENOENT" ? "security_response_trail_absent" : `security_response_trail_unreadable:${code}` };
+    }
+    const alarms: IdsAlarm[] = [];
+    let total = 0; let block = 0; let review = 0;
+    const reviewBuckets = new Map<string, { at: string; rules: Set<string>; count: number; sha16: string | null }>();
+    for (const raw of text.split("\n")) {
+      if (!raw.trim()) continue;
+      let line: Record<string, unknown>;
+      try { const parsed: unknown = JSON.parse(raw); if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) continue; line = parsed as Record<string, unknown>; }
+      catch { continue; }
+      const at = asString(line.ts);
+      const ms = at ? Date.parse(at) : Number.NaN;
+      if (!at || !Number.isFinite(ms) || ms < windowStartMs || ms > nowMs) continue;
+      const verdict = asString(line.verdict);
+      const tool = asString(line.tool) ?? "unknown";
+      const rules = Array.isArray(line.rules) ? line.rules.filter((r): r is string => typeof r === "string") : [];
+      const hash = asString(line.sha16);
+      if (verdict === "BLOCK") {
+        block += 1; total += 1;
+        if (alarms.length < IDS_ALARM_SAMPLE_CAP) alarms.push({ alarmId: sha16(`SECURITY_RESPONSE_BLOCK|${at}|${tool}|${hash ?? ""}`), code: "SECURITY_RESPONSE_BLOCK", at, detail: `security_response_block: tool=${tool} rules=[${rules.join(",")}] sha16=${hash ?? "null"} — response content withheld at delivery (hash + rule ids only). Sensor, not blocker.` });
+      } else if (verdict === "REVIEW") {
+        const key = `${tool}|${at.slice(0, 13)}`;
+        const bucket = reviewBuckets.get(key) ?? { at, rules: new Set<string>(), count: 0, sha16: hash };
+        bucket.count += 1; for (const r of rules) bucket.rules.add(r);
+        reviewBuckets.set(key, bucket);
+      }
+    }
+    for (const [key, bucket] of reviewBuckets) {
+      review += 1; total += 1;
+      const [tool, hour] = key.split("|");
+      if (alarms.length < IDS_ALARM_SAMPLE_CAP) alarms.push({ alarmId: sha16(`SECURITY_RESPONSE_REVIEW|${key}`), code: "SECURITY_RESPONSE_REVIEW", at: bucket.at, detail: `security_response_review: tool=${tool} hour=${hour}Z reviews=${bucket.count} rules=[${[...bucket.rules].sort().join(",")}] first_sha16=${bucket.sha16 ?? "null"} — delivered as quoted untrusted data (aggregated 1/tool/hour). Sensor, not blocker.` });
+    }
+    return { alarms, total, block, review, note: null };
+  } catch (error) {
+    return { alarms: [], total: 0, block: 0, review: 0, note: `security_response_alarms_unavailable: ${error instanceof Error ? error.message : String(error)}`.slice(0, 300) };
+  }
+}
+
 export type SecurityIdsResult = {
   tool: "engineering.security.ids";
   status: "SCANNED";
@@ -613,6 +677,7 @@ export type SecurityIdsResult = {
   alarms: IdsAlarm[];
   alarmCount: number;
   alarmsNote: string | null;
+  securityResponse: { block: number; review: number; note: string | null };
   failSafe: typeof IDS_FAIL_SAFE_PHASE_2;
   capNote: string;
   advisory: string;
@@ -930,6 +995,12 @@ export async function runSecurityIds(input: SecurityIdsInput, deps: SecurityIdsD
 
   // AUTO-RUN-01B/C (C3) — manifest-path gate alarms (deterministic, judge-free).
   const manifestAlarms = computeManifestAlarms(windowStartMs, nowMs);
+  // SECLAYER-IDS-LINK-01 — security-response trail alarms merged into the same alarm channel.
+  const responseAlarms = computeSecurityResponseAlarms(windowStartMs, nowMs);
+  const mergedAlarms = [...manifestAlarms.alarms, ...responseAlarms.alarms].slice(0, IDS_ALARM_SAMPLE_CAP);
+  const mergedAlarmTotal = manifestAlarms.total + responseAlarms.total;
+  const mergedAlarmsNote = [manifestAlarms.note, responseAlarms.note === "security_response_trail_absent" ? null : responseAlarms.note].filter((n): n is string => typeof n === "string").join("; ") || null;
+  const securityResponse = { block: responseAlarms.block, review: responseAlarms.review, note: responseAlarms.note };
 
   const result: SecurityIdsResult = {
     tool: "engineering.security.ids",
@@ -948,9 +1019,10 @@ export async function runSecurityIds(input: SecurityIdsInput, deps: SecurityIdsD
     failOpen,
     periodic,
     calibration: { reFlagged, resolved, firstSeen, reFlaggedDetail },
-    alarms: manifestAlarms.alarms,
-    alarmCount: manifestAlarms.total,
-    alarmsNote: manifestAlarms.note,
+    alarms: mergedAlarms,
+    alarmCount: mergedAlarmTotal,
+    alarmsNote: mergedAlarmsNote,
+    securityResponse,
     failSafe: IDS_FAIL_SAFE_PHASE_2,
     capNote: `judged subjects capped at ${IDS_MAX_JUDGE_SUBJECTS}/scan; periodic scans capped at one scan per hour and $${IDS_PERIODIC_DAILY_COST_CAP_USD}/day of judge spend`,
     advisory: IDS_ADVISORY,
@@ -971,9 +1043,10 @@ export async function runSecurityIds(input: SecurityIdsInput, deps: SecurityIdsD
     failOpen,
     periodic,
     calibration: result.calibration,
-    alarms: manifestAlarms.alarms,
-    alarmCount: manifestAlarms.total,
-    alarmsNote: manifestAlarms.note,
+    alarms: mergedAlarms,
+    alarmCount: mergedAlarmTotal,
+    alarmsNote: mergedAlarmsNote,
+    securityResponse,
     alarmsAdvisory: IDS_ALARMS_ADVISORY,
     callerSubject: deps.callerSubject ?? null,
     callerHash16: deps.authorizerHash16 ?? null
