@@ -58,6 +58,17 @@ export function redactChildStdout(text) {
 function safeError(error) { return redact(error instanceof Error ? error.message : "RELEASE_RUNNER_FAILED").slice(0, 2_048); }
 function publicJob(job) { return { jobId: job.jobId, operation: job.operation, status: job.status, createdAt: job.createdAt, ...(job.startedAt ? { startedAt: job.startedAt } : {}), ...(job.finishedAt ? { finishedAt: job.finishedAt } : {}), ...(job.releaseId ? { releaseId: job.releaseId } : {}), ...(job.imageId ? { imageId: job.imageId } : {}), ...(job.commit ? { commit: job.commit } : {}), ...(job.exitCode !== undefined ? { exitCode: job.exitCode } : {}), ...(job.error ? { error: job.error } : {}), ...(job.params ? { params: job.params } : {}) }; }
 
+// GITHUB-APP-BOOTSTRAP-01: github-app.env holds only GITHUB_APP_ID / GITHUB_INSTALLATION_ID
+// (numeric, non-secret). Anything else in the file is ignored.
+export function parseGithubAppEnv(text) {
+  const ids = {};
+  for (const line of String(text).split("\n")) {
+    const match = /^(GITHUB_APP_ID|GITHUB_INSTALLATION_ID)=(\d{1,20})$/.exec(line.trim());
+    if (match) ids[match[1]] = match[2];
+  }
+  return ids;
+}
+
 export function runPipeline(job, options = {}) {
   const pipeline = options.pipeline ?? DEFAULTS.pipeline; const timeoutMs = TIMEOUTS[job.operation];
   return new Promise((resolve) => {
@@ -71,6 +82,10 @@ export function runPipeline(job, options = {}) {
     const githubPatCredential = process.env.CREDENTIALS_DIRECTORY ? path.join(process.env.CREDENTIALS_DIRECTORY, "github-pat") : null;
     const gitCredentialsCredential = process.env.CREDENTIALS_DIRECTORY ? path.join(process.env.CREDENTIALS_DIRECTORY, "git-credentials") : null;
     const hermesNotifyCredential = process.env.CREDENTIALS_DIRECTORY ? path.join(process.env.CREDENTIALS_DIRECTORY, "hermes-notify-api-key") : null;
+    // GITHUB-APP-BOOTSTRAP-01: GitHub App key + non-secret IDs, both optional
+    // LoadCredentials (absent = PAT path, unchanged). Only numeric IDs are forwarded.
+    const githubAppKeyCredential = process.env.CREDENTIALS_DIRECTORY ? path.join(process.env.CREDENTIALS_DIRECTORY, "github-app-private-key") : null;
+    const githubAppEnvCredential = process.env.CREDENTIALS_DIRECTORY ? path.join(process.env.CREDENTIALS_DIRECTORY, "github-app-env") : null;
     const start = async () => {
       const environment = { PATH: process.env.PATH, HOME: process.env.HOME, LANG: process.env.LANG };
       if (credential) { try { environment.ENG_MCP_RELEASE_BEARER = (await readFile(credential, "utf8")).trim(); } catch { /* status/test/build/candidate do not require it */ } }
@@ -82,6 +97,17 @@ export function runPipeline(job, options = {}) {
       if (githubPatCredential) { environment.GITHUB_TOKEN_FILE = githubPatCredential; }
       if (gitCredentialsCredential) { environment.GIT_CREDENTIALS_FILE = gitCredentialsCredential; }
       if (hermesNotifyCredential) { environment.ENG_MCP_HERMES_NOTIFY_CREDENTIAL_FILE = hermesNotifyCredential; }
+      if (githubAppKeyCredential && githubAppEnvCredential) {
+        try {
+          const ids = parseGithubAppEnv(await readFile(githubAppEnvCredential, "utf8"));
+          await stat(githubAppKeyCredential); // existence only — the key is never read by the runner
+          if (ids.GITHUB_APP_ID && ids.GITHUB_INSTALLATION_ID) {
+            environment.GITHUB_APP_ID = ids.GITHUB_APP_ID;
+            environment.GITHUB_INSTALLATION_ID = ids.GITHUB_INSTALLATION_ID;
+            environment.GITHUB_APP_PRIVATE_KEY_FILE = githubAppKeyCredential;
+          }
+        } catch { /* App credentials not loaded: PAT path stays */ }
+      }
       // Experimento A (main-session notifications): forward the fixed session id from
       // the runner env (systemd drop-in) into the sanitized child env; absent = no-op.
       if (process.env.ENG_MCP_HERMES_SESSION_ID) environment.ENG_MCP_HERMES_SESSION_ID = process.env.ENG_MCP_HERMES_SESSION_ID;

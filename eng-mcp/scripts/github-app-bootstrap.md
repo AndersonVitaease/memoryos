@@ -84,3 +84,28 @@ errado / App não instalado), `key file mode FAIL` (`chmod 600` no .pem).
 Com GREEN, avise o supervisor: o deploy governado (wiring do .pem + IDs no
 container) é missão separada. **Não revogue a PAT antiga ainda** — só depois do
 smoke em produção via App.
+
+## Manifest flow (GITHUB-APP-BOOTSTRAP-01) — preferred path, 1 click + 1 code
+
+1. `engineering.github.app.bootstrap` (read-only) returns `launcherDataUrl` / `launcherHtml`: a self-submitting
+   form POST to `https://github.com/settings/apps/new?state=<csrf>` carrying a read-only manifest
+   (contents/metadata/pull_requests/actions/checks = read; webhook inactive; loopback redirect_url).
+2. Operator opens it, checks every permission is Read-only, clicks **Create GitHub App**, then copies the URL from
+   the address bar (`http://127.0.0.1:65535/...?code=...&state=...` — the page itself fails to load, by design).
+   The code is valid 1h and single-use. Then **Install App** → only the `memoryos` repository.
+3. Host: `printf '%s' '<URL>' | GITHUB_APP_LAUNCH_STATE_FILE=<launch-state.json> node --import tsx scripts/github-app-convert.ts`
+   → PEM 0600 at `/opt/eng-mcp-secrets/github-app.private-key.pem`, IDs 0600 at `github-app.env`
+   (`PENDING_INSTALL` exit 3 if not installed yet → install, then `--resolve-installation`).
+4. Wire into the runner: `LoadCredential=github-app-private-key:/opt/eng-mcp-secrets/github-app.private-key.pem`
+   and `LoadCredential=github-app-env:/opt/eng-mcp-secrets/github-app.env` (governed: `engineering.vps.systemd.credential`),
+   runner restart, redeploy. The runner forwards only the numeric IDs + the key path; `githubAppDockerArgs`
+   mounts the key read-only at `/run/secrets/github-app-key` (all-or-nothing — partial config = PAT path).
+5. E2E: `scripts/github-app-verify.sh` GREEN + `engineering.github.read get_repo` in production.
+
+## PEM rotation
+
+`scripts/github-app-rotate.ts`: new key from GitHub UI → `github-app.private-key.pem.new` (0600) → the script proves
+GitHub accepts the NEW key (`GET /app`) before swapping (old kept as `.prev`; `--rollback`) → runner restart +
+redeploy (LoadCredential copies are taken at unit start) → the installation-token cache is keyed by the key file
+identity (inode/mtime/size), so the next call mints with the new key → E2E → operator deletes the old key in the
+GitHub UI using the printed `oldKeyGithubFingerprint`.

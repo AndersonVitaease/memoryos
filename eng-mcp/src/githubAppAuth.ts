@@ -21,7 +21,7 @@
 // Fail-closed errors never carry the PEM, the JWT or any token: every detail
 // passes through scrubGitHubAppSecrets and identifiers are reported as sha16.
 import { createHash, createPrivateKey, createPublicKey, createSign, type KeyObject } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 
 export const DEFAULT_GITHUB_APP_PRIVATE_KEY_FILE = "/opt/eng-mcp-secrets/github-app.private-key.pem";
 const REFRESH_MARGIN_MS = 5 * 60_000;
@@ -166,8 +166,15 @@ async function exchange(config: GitHubAppConfig): Promise<InstallationToken> {
 let cached: { key: string; value: InstallationToken } | null = null;
 let inFlight: { key: string; promise: Promise<InstallationToken> } | null = null;
 
+// GITHUB-APP-BOOTSTRAP-01: the key file's identity (inode/mtime/size) is part of
+// the cache key, so a PEM rotation (file swapped) drops the cached installation
+// token and the next call mints with the new key — no restart of the module needed.
+function keyFileIdentity(file: string): string {
+  try { const st = statSync(file); return `${st.ino}:${st.mtimeMs}:${st.size}`; } catch { return "absent"; }
+}
+
 function cacheKey(config: GitHubAppConfig): string {
-  return `${config.appId}:${config.installationId}:${config.privateKeyFile}`;
+  return `${config.appId}:${config.installationId}:${config.privateKeyFile}:${keyFileIdentity(config.privateKeyFile)}`;
 }
 
 export async function getInstallationToken(config: GitHubAppConfig, nowMs: () => number = Date.now): Promise<InstallationToken> {
