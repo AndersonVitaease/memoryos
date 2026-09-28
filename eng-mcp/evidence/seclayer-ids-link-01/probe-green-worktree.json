@@ -1,0 +1,1 @@
+{"tree":"/opt/memoryos/eng-mcp","auditLines":22,"busFindings":[{"kind":"security_response_block","tool":"probe.block","rules":["SR-L0-010"]},{"kind":"security_response_review","tool":"probe.review","rules":["SR-L0-001"]}],"idsSecurityResponseAlarms":["SECURITY_RESPONSE_BLOCK","SECURITY_RESPONSE_REVIEW"],"leakedSecret":false}

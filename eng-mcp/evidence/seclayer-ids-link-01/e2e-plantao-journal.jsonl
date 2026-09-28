@@ -1,0 +1,2 @@
+{"ts": "2026-09-28T23:46:13.527Z", "event": "finding", "kind": "security_response_block", "level": "warn", "source": "eng-mcp:security-response", "tool": "engineering.file.read", "rules": ["SR-L0-003", "SR-L0-009"], "blockRules": ["SR-L0-009"], "sha16": "cca9f
+{"ts": "2026-09-28T23:46:14.632Z", "event": "finding", "kind": "security_response_review", "level": "info", "source": "eng-mcp:security-response", "tool": "engineering.file.read", "rules": ["SR-L0-001", "SR-L0-008"], "sha16": "3d819e289e8ba9ca", "hour": "2026-

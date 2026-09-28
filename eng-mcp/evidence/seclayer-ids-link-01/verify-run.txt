@@ -1,0 +1,13 @@
+ 1 PASS commit do código no HEAD
+ 2 PASS P1-P4 + IDS + mount 13/13 green
+ 3 PASS suítes vizinhas sem regressão
+ 4 PASS red comportamental em f4a5b2e8: zero finding, zero alarme
+ 5 PASS green comportamental
+ 6 PASS produção compilada do commit
+ 7 PASS bind do spool (só o arquivo)
+ 8 PASS E2E: finding BLOCK real no bus
+ 9 PASS E2E: 3 REVIEW -> 1 finding
+10 PASS trilha do plantão recebeu os 2 findings
+11 PASS IDS de produção vê os alarmes
+12 PASS nenhum conteúdo cru no bus nem na trilha local
+12/12

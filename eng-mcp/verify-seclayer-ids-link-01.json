@@ -1,0 +1,20 @@
+{
+  "mission": "seclayer-ids-link-01",
+  "date": "2026-09-28",
+  "owner": "seclayer-ids-link-01",
+  "note": "manifesto da missão (dono: seclayer-ids-link-01). Trilha security-response -> findings no bus (security_response_block imediato / security_response_review 1 por tool/hora, teto 40/h) + alarmes SECURITY_RESPONSE_* no IDS. Código em 4a209a78; produção = eng-mcp-candidate:commit-4a209a78 com bind de arquivo /opt/mission-events/spool.jsonl -> /run/mission-bus/spool.jsonl. § engine=gpu NÃO cumprido: este worker rodou em cloud (OpenRouter, Opus 5.5).",
+  "cmd": [
+    { "run": "git -C /opt/memoryos merge-base --is-ancestor 4a209a78d27b9293e45ad75052b087753015f072 HEAD", "expect_exit": 0, "_provenance": "report", "_source": "commit do código no HEAD" },
+    { "run": "cd /opt/memoryos/eng-mcp && node --import tsx --test --test-force-exit test/securityResponseBus.test.ts >/dev/null 2>&1", "expect_exit": 0, "_provenance": "report", "_source": "P1-P4 + IDS + mount 13/13 green" },
+    { "run": "cd /opt/memoryos/eng-mcp && node --import tsx --test --test-force-exit test/securityResponse.test.ts test/securityIds.test.ts test/securityIdsManifestAlarms.test.ts test/upstreamSync.test.ts >/dev/null 2>&1", "expect_exit": 0, "_provenance": "report", "_source": "suítes vizinhas sem regressão" },
+    { "run": "cat /opt/memoryos/eng-mcp/evidence/seclayer-ids-link-01/probe-red-HEAD.json", "expect_stdout_regex": "\"busFindings\":\\[\\],\"idsSecurityResponseAlarms\":\\[\\]", "_provenance": "report", "_source": "red comportamental em f4a5b2e8: zero finding, zero alarme" },
+    { "run": "cat /opt/memoryos/eng-mcp/evidence/seclayer-ids-link-01/probe-green-worktree.json", "expect_stdout_regex": "security_response_block.*security_response_review.*SECURITY_RESPONSE_BLOCK\",\"SECURITY_RESPONSE_REVIEW\"\\],\"leakedSecret\":false", "_provenance": "report", "_source": "green comportamental" },
+    { "run": "docker inspect memoryos-eng-mcp --format '{{index .Config.Labels \"org.opencontainers.image.revision\"}}'", "expect_stdout_regex": "^4a209a78d27b9293e45ad75052b087753015f072$", "_provenance": "report", "_source": "produção compilada do commit" },
+    { "run": "docker inspect memoryos-eng-mcp --format '{{range .Mounts}}{{.Source}}:{{.Destination}}:{{.RW}} {{end}}'", "expect_stdout_regex": "/opt/mission-events/spool.jsonl:/run/mission-bus/spool.jsonl:true", "_provenance": "report", "_source": "bind do spool (só o arquivo)" },
+    { "run": "grep -c 'security_response_block' /opt/mission-events/spool.jsonl", "expect_stdout_regex": "^[1-9][0-9]*$", "_provenance": "report", "_source": "E2E: finding BLOCK real no bus" },
+    { "run": "grep -c 'security_response_review' /opt/memoryos/eng-mcp/evidence/seclayer-ids-link-01/e2e-bus-findings.jsonl", "expect_stdout_regex": "^1$", "_provenance": "report", "_source": "E2E: 3 REVIEW -> 1 finding" },
+    { "run": "grep -c 'security_response' /opt/memoryos/eng-mcp/evidence/seclayer-ids-link-01/e2e-plantao-journal.jsonl", "expect_stdout_regex": "^2$", "_provenance": "report", "_source": "trilha do plantão recebeu os 2 findings" },
+    { "run": "grep -o 'SECURITY_RESPONSE_[A-Z]*' /opt/memoryos/eng-mcp/evidence/seclayer-ids-link-01/e2e-ids.json | sort -u | tr '\\n' ' '", "expect_stdout_regex": "SECURITY_RESPONSE_BLOCK SECURITY_RESPONSE_REVIEW", "_provenance": "report", "_source": "IDS de produção vê os alarmes" },
+    { "run": "grep -c 'ghp_\\|collector.example.net' /opt/mission-events/spool.jsonl /opt/eng-mcp-release-data/production/audit/security-findings.jsonl | grep -v ':0$' | wc -l", "expect_stdout_regex": "^0$", "_provenance": "report", "_source": "nenhum conteúdo cru no bus nem na trilha local" }
+  ]
+}

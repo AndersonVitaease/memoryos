@@ -1,0 +1,17 @@
+{
+ "latencyMs": 10707,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"code\":\"ENGINEERING_TOOL_ERROR\",\"category\":\"internal\",\"retryable\":false,\"remediation\":\"No typed code matched the failure text; inspect the message and, if it recurs, add the code to the ERROR-01 taxonomy.\",\"message\":\"JUDGE_TIMEOUT:provider call aborted by timeout\",\"evidenceRefs\":[],\"tool\":\"engineering.judge.verify\"}"
+    }
+   ],
+   "isError": true
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}
