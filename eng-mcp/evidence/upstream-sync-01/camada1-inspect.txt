@@ -1,0 +1,5 @@
+image=eng-mcp-candidate:candidate-20260928223337572-4f4f57219a50 started=2026-09-28T22:33:51.095631295Z running=true
+src/upstreamSync.ts commit=0c880a1942b01d5a prod=0c880a1942b01d5a
+src/tools.ts commit=e7ffb169bb02d633 prod=e7ffb169bb02d633
+/usr/local/lib/hermes-agent /usr/local/lib/hermes-agent False
+active

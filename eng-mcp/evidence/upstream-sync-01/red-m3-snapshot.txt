@@ -1,0 +1,18 @@
+MUTANT M3: snapshot not taken before merge
+ok 1 - check detects a pending upstream update (commits + lockfile diff) with ZERO mutation of the target
+ok 2 - check reports local carried commits and dirty tree as riskNotes; untrusted commit subjects are neutralized
+ok 3 - plan: rug-pull detector alarms (telemetry, install hook, credential, contract removed/renamed/schema) + judge advisory + fail-open
+ok 4 - apply is TIER-3: no scope / non-operator / no execute / no approval / stale plan hash — all without mutation
+not ok 5 - apply with approval: snapshot BEFORE merge, AUTO_FF, restart, smoke; rollback returns byte-identical
+ok 6 - git-tag+tar policy restores the tree after a NATIVE merge (local carried commit) — tar + tag byte-identical
+ok 7 - overlapping changes = ASSISTED: never merged, snapshot aborted, target untouched
+ok 8 - smoke failure after apply = automatic rollback to the snapshot
+ok 9 - host (systemd) and pipeline adapters are refused before ANY mutation
+ok 10 - one lock per target: a held lock refuses, a different target syncs in parallel
+ok 11 - targets registry = config: bootstrap list, tier-3 upsert PLAN/approval with sha precondition, invalid entry refused
+ok 12 - bootstrap entries: hermes-agent (git, systemd, :ro) and engmcp (pipeline) validate; the URL is never reported with userinfo
+ok 13 - rug-pull unit: added-lines scanner ignores removed lines; contract diff detects rename by schema
+ok 14 - docker: registry digest via anonymous bearer challenge; check/apply/rollback through the docker port
+ok 15 - release deploy: read-only upstream mounts only when :ro, absolute and existing
+# pass 14
+# fail 1

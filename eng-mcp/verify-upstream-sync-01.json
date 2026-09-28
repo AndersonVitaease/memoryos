@@ -1,0 +1,24 @@
+{
+  "mission": "upstream-sync-01",
+  "date": "2026-09-28",
+  "note": "manifesto da missão (dono: upstream-sync-01). engineering.upstream em produção (catálogo 130); check read-only no hermes-agent real; apply só em fixture; scope tier-3 não concedido (consequência do operator).",
+  "cmd": [
+    { "run": "git -C /opt/memoryos/eng-mcp cat-file -e 23fc1933^{commit}", "expect_exit": 0, "_provenance": "report", "_source": "commit do código" },
+    { "run": "docker exec memoryos-eng-mcp sh -c 'test -f /app/src/upstreamSync.ts && grep -q \"engineering.upstream\" /app/src/tools.ts'", "expect_exit": 0, "_provenance": "report", "_source": "tool em produção" },
+    { "run": "docker inspect -f '{{.Config.Image}}' memoryos-eng-mcp", "expect_stdout_regex": "candidate-20260928223337572-4f4f57219a50", "_provenance": "report", "_source": "deploy job 36d95f78" },
+    { "run": "cd /opt/memoryos/eng-mcp && node --import tsx --test --test-force-exit test/upstreamSync.test.ts >/dev/null 2>&1", "expect_exit": 0, "_provenance": "report", "_source": "15/15 red->green" },
+    { "run": "grep -c '^not ok' /opt/memoryos/eng-mcp/evidence/upstream-sync-01/red-m1-tier3.txt", "expect_stdout_regex": "^[1-9]", "_provenance": "report", "_source": "mutante M1 vermelho" },
+    { "run": "grep -c '^not ok' /opt/memoryos/eng-mcp/evidence/upstream-sync-01/red-m2-detector.txt", "expect_stdout_regex": "^[1-9]", "_provenance": "report", "_source": "mutante M2 vermelho" },
+    { "run": "grep -c '^not ok' /opt/memoryos/eng-mcp/evidence/upstream-sync-01/red-m3-snapshot.txt", "expect_stdout_regex": "^[1-9]", "_provenance": "report", "_source": "mutante M3 vermelho" },
+    { "run": "docker inspect -f '{{range .Mounts}}{{if eq .Source \"/usr/local/lib/hermes-agent\"}}{{.RW}}{{end}}{{end}}' memoryos-eng-mcp", "expect_stdout_regex": "^false", "_provenance": "report", "_source": "hermes-agent montado :ro" },
+    { "run": "cmp /opt/memoryos/eng-mcp/evidence/upstream-sync-01/e2e-hermes-before.txt /opt/memoryos/eng-mcp/evidence/upstream-sync-01/e2e-hermes-after.txt", "expect_exit": 0, "_provenance": "report", "_source": "E2E zero mutação do hermes-agent" },
+    { "run": "grep -q 'UPDATE_AVAILABLE' /opt/memoryos/eng-mcp/evidence/upstream-sync-01/e2e-check-hermes.json", "expect_exit": 0, "_provenance": "report", "_source": "E2E check real" },
+    { "run": "grep -q 'AUTHORIZATION_SCOPE_REQUIRED' /opt/memoryos/eng-mcp/evidence/upstream-sync-01/e2e-apply-hermes-refused.json", "expect_exit": 0, "_provenance": "report", "_source": "apply tier-3 recusado" },
+    { "run": "grep -q '\"verb\":\"check\",\"target\":\"hermes-agent\"' /opt/eng-mcp-release-data/production/audit/upstream-sync.jsonl", "expect_exit": 0, "_provenance": "report", "_source": "audit upstream-sync.jsonl" }
+  ],
+  "file": [
+    { "path": "/opt/memoryos/eng-mcp/RELATORIO-upstream-sync-01.md", "min_bytes": 2000, "_provenance": "prompt", "_source": "contrato" },
+    { "path": "/opt/memoryos/eng-mcp/src/upstream/targets.bootstrap.json", "min_bytes": 500, "_provenance": "report", "_source": "registro = config" },
+    { "path": "/opt/memoryos/eng-mcp/src/upstream/rugpull-rules.json", "min_bytes": 500, "_provenance": "report", "_source": "regras rug-pull = config" }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+ "latencyMs": 8901,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"tool\":\"engineering.judge.verify\",\"status\":\"JUDGED\",\"provider\":{\"model\":\"typesafe/jev-1.13/compatible:Qwen/Qwen2.5-Coder-32B-Instruct-AWQ\",\"id\":\"chatcmpl-8c4f5ebc40e343e8924d166fc1141872\",\"latencyMs\":8409,\"cost\":0,\"inputTokens\":2981,\"outputTokens\":167},\"provenance\":{\"credentialSha16\":\"9bffc8c38bc60289\",\"stateHash16\":\"8ba15f53de8d924f\",\"evidenceHash16\":\"c85e3606cd87b58c\",\"redactions\":5},\"claims\":[{\"id\":\"c5\",\"text\":\"The production upstream check on hermes-agent reported UPDATE_AVAILABLE with 2268 commits behind and 2 ahead.\",\"verdict\":\"supported\",\"probability\":1,\"probabilities\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0},\"confidence\":1},{\"id\":\"c6\",\"text\":\"The hermes-agent repository HEAD, status hash and refs hash were identical before and after the production check.\",\"verdict\":\"supported\",\"probability\":1,\"probabilities\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0},\"confidence\":1},{\"id\":\"c7\",\"text\":\"An apply on hermes-agent in production was refused with AUTHORIZATION_SCOPE_REQUIRED.\",\"verdict\":\"supported\",\"probability\":1,\"probabilities\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0},\"confidence\":1},{\"id\":\"c8\",\"text\":\"The hermes-agent directory is mounted read-write in the production container.\",\"verdict\":\"contradicted\",\"probability\":1,\"probabilities\":{\"supported\":0,\"contradicted\":1,\"not_addressed\":0},\"confidence\":1}],\"aggregate\":\"HAS_CONTRADICTIONS\",\"counts\":{\"supported\":3,\"contradicted\":1,\"not_addressed\":0,\"uncertain\":0},\"advisory\":\"ADVISORY — calibrated judgment is not a security boundary; operator approval decides.\",\"audit\":\"written\"}"
+    }
+   ]
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}
