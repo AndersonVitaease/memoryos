@@ -1,0 +1,88 @@
+{
+  "mission": "github-app-bootstrap-01",
+  "date": "2026-09-28",
+  "note": "manifesto da missão (dono: github-app-bootstrap-01). App ativo em produção (mode app); rotação E2E real pendente de 2ª chave do operator.",
+  "cmd": [
+    {
+      "run": "git -C /opt/memoryos/eng-mcp cat-file -e 2872e21d0ef79021f795b8385a98f01ec4423b39",
+      "expect_exit": 0,
+      "_provenance": "report",
+      "_source": "commit do código"
+    },
+    {
+      "run": "docker exec memoryos-eng-mcp sh -c 'test -f /app/src/githubAppBootstrap.ts && grep -q engineering.github.app.bootstrap /app/src/tools.ts'",
+      "expect_exit": 0,
+      "_provenance": "report",
+      "_source": "verbo bootstrap em produção"
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp && node --import tsx --test --test-force-exit test/githubAppBootstrap.test.ts test/githubAppAuth.test.ts >/dev/null 2>&1",
+      "expect_exit": 0,
+      "_provenance": "report",
+      "_source": "14 testes"
+    },
+    {
+      "run": "docker inspect -f '{{.Config.Image}}' memoryos-eng-mcp",
+      "expect_stdout_regex": "candidate-20260928215521583-a583c303ca9c",
+      "_provenance": "report",
+      "_source": "redeploy job 9e13cfc0 com App"
+    },
+    {
+      "run": "bash /opt/memoryos/eng-mcp/scripts/github-app-verify.sh",
+      "expect_stdout_regex": "RESULT GREEN",
+      "_provenance": "report",
+      "_source": "App GREEN"
+    },
+    {
+      "run": "stat -c %a /opt/eng-mcp-secrets/github-app.private-key.pem /opt/eng-mcp-secrets/github-app.env",
+      "expect_stdout_regex": "^600\\n600",
+      "_provenance": "report",
+      "_source": "higiene 0600"
+    },
+    {
+      "run": "docker exec memoryos-eng-mcp sh -c 'test -n \"$GITHUB_APP_ID\" && test -n \"$GITHUB_INSTALLATION_ID\" && test -r \"$GITHUB_APP_PRIVATE_KEY_FILE\" && test -r \"$GITHUB_TOKEN_FILE\"'",
+      "expect_exit": 0,
+      "_provenance": "report",
+      "_source": "App ligado + PAT fallback montado"
+    },
+    {
+      "run": "docker exec -w /app memoryos-eng-mcp node --import tsx --input-type=module -e 'const a=await import(\"/app/src/githubAppAuth.ts\");const f=await import(\"node:fs\");const r=await a.resolveGithubAuth(()=>f.readFileSync(process.env.GITHUB_TOKEN_FILE,\"utf8\").trim());console.log(r.mode)'",
+      "expect_stdout_regex": "^app",
+      "_provenance": "report",
+      "_source": "authMode app em produção"
+    }
+  ],
+  "file": [
+    {
+      "path": "/opt/memoryos/eng-mcp/RELATORIO-github-app-bootstrap-01.md",
+      "min_bytes": 2000,
+      "_provenance": "prompt",
+      "_source": "contrato"
+    },
+    {
+      "path": "/opt/memoryos/eng-mcp/evidence/github-app-bootstrap-01/launcher-dataurl.txt",
+      "min_bytes": 500,
+      "_provenance": "report",
+      "_source": "Passo 0"
+    },
+    {
+      "path": "/opt/memoryos/eng-mcp/scripts/github-app-convert.ts",
+      "min_bytes": 1000,
+      "_provenance": "report",
+      "_source": "troca do código"
+    },
+    {
+      "path": "/opt/memoryos/eng-mcp/scripts/github-app-rotate.ts",
+      "min_bytes": 1000,
+      "_provenance": "report",
+      "_source": "rotação"
+    },
+    {
+      "path": "/etc/systemd/system/eng-mcp-release-runner.service.d/github-app.conf",
+      "min_bytes": 100,
+      "_provenance": "report",
+      "_source": "LoadCredential do App"
+    }
+  ],
+  "owner": "github-app-bootstrap-01"
+}

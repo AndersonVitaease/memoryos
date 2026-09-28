@@ -1,0 +1,10 @@
+{"operation":"get_branch_head","ref":"ma ERR {"code":"TOOL_INPUT_INVALID","category":"validation","retryable":false,"remediation":"Fix the tool arguments against the tool's declared input schema (field nam
+{"operation":"list_commits","limit":2} ERR {"code":"TOOL_INPUT_INVALID","category":"validation","retryable":false,"remediation":"Fix the tool arguments against the tool's declared input schema (field nam
+{"operation":"list_action_runs","limit": ERR {"code":"TOOL_INPUT_INVALID","category":"validation","retryable":false,"remediation":"Fix the tool arguments against the tool's declared input schema (field nam
+{"operation":"list_refs","kind":"tags"} OK {"operation":"list_refs","repo":"AndersonVitaease/memoryos","kind":"tags","items":[],"truncated":false,"rateLimit":{"limit":5000,"remaining":4999,"resetAt":"202
+{"operation":"get_rate_limit"} OK {"operation":"get_rate_limit","core":{"limit":5000,"used":1,"remaining":4999,"resetAt":"2026-09-28T22:57:02.000Z"},"rateLimit":{"limit":5000,"remaining":4999,"r
+{"operation":"get_branch_head","branch":"main OK {"operation":"get_branch_head","repo":"AndersonVitaease/memoryos","branch":"main","sha":"1f9324c914945c73f75f8d4a07ab7d1ee09d5224","commitDa
+{"operation":"list_commits","maxCount":2} OK {"operation":"list_commits","repo":"AndersonVitaease/memoryos","mode":"since","ref":null,"since":null,"commits":[{"sha":"1f9324c914945c73f75
+{"operation":"list_action_runs","maxCount":2} OK {"operation":"list_action_runs","repo":"AndersonVitaease/memoryos","branch":null,"totalCount":0,"runs":[],"truncated":false,"rateLimit":{"li
+{"operation":"get_file","path":"README.md"} OK {"operation":"get_file","repo":"AndersonVitaease/memoryos","path":"README.md","ref":null,"size":2377,"sha":"d6b5ca8d97f3a89e6dc5721709e8e7ce
+PAT used after ops: 0

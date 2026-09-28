@@ -1,0 +1,16 @@
+{
+ "latencyMs": 553,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"tool\":\"engineering.registry.scope.grant\",\"status\":\"NO_OP\",\"mutationPerformed\":false,\"changed\":false,\"subject\":\"trueforge\",\"scopes\":[\"engineering:mcp:import:approve\"],\"justification\":\"github-app-bootstrap-01 FINGERPRINT: PLAN only for registrySha16\",\"entryIndex\":9,\"scopesBefore\":[\"engineering:read\",\"engineering:write\",\"engineering:mcp:import:approve\"],\"scopesAdded\":[],\"scopesAfter\":[\"engineering:read\",\"engineering:write\",\"engineering:mcp:import:approve\"],\"registrySha16Before\":\"885b121e1151e6d4\",\"registrySha16After\":\"885b121e1151e6d4\",\"blockers\":[],\"findings\":[],\"code\":\"REGISTRY_GRANT_NO_OP\",\"detail\":\"every requested scope is already present — zero writes, no backup\",\"audit\":\"written\",\"activation\":{\"registryReload\":\"the :8787 server reads the token registry ONCE at boot (loadOperationalConfig); a runner restart does NOT reload it\",\"reloadPath\":\"one engineering.release.pipeline deploy reboots the container and reloads the registry (declared, separate step)\",\"effectiveImmediately\":false}}"
+    }
+   ]
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}

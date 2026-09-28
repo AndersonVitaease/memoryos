@@ -1,0 +1,16 @@
+{
+ "latencyMs": 1065,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"operation\":\"get_repo\",\"repo\":\"AndersonVitaease/memoryos\",\"fullName\":\"AndersonVitaease/memoryos\",\"private\":false,\"visibility\":\"public\",\"defaultBranch\":\"main\",\"pushedAt\":\"2026-09-25T03:19:58Z\",\"htmlUrl\":\"https://github.com/AndersonVitaease/memoryos\",\"description\":\"Base44 App: MemoryOS\",\"rateLimit\":{\"limit\":5000,\"remaining\":4998,\"resetAt\":\"2026-09-28T22:53:47.000Z\"}}"
+    }
+   ]
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}
