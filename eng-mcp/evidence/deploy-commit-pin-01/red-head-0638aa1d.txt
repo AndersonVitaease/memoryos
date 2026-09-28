@@ -1,0 +1,263 @@
+TAP version 13
+# (node:1025447) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: P1: dirty deploy paths -> DEPLOY_DIRTY_TREE listing every dirty file; ignored and non-deploy files never count; zero build
+not ok 1 - P1: dirty deploy paths -> DEPLOY_DIRTY_TREE listing every dirty file; ignored and non-deploy files never count; zero build
+  ---
+  duration_ms: 84.205329
+  type: 'test'
+  location: '/tmp/pin-red/eng-mcp/test/deployCommitPin.test.ts:4:1797'
+  failureType: 'testCodeFailure'
+  error: 'MISSING_EXPORT_listDirtyDeployFiles'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    <anonymous> (/tmp/pin-red/eng-mcp/test/deployCommitPin.test.ts:19:63)
+    TestContext.<anonymous> (/tmp/pin-red/eng-mcp/test/deployCommitPin.test.ts:103:28)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async startSubtestAfterBootstrap (node:internal/test_runner/harness:296:3)
+  ...
+# Subtest: P1: only non-deploy files dirty (verify.json) -> tree counts as clean
+not ok 2 - P1: only non-deploy files dirty (verify.json) -> tree counts as clean
+  ---
+  duration_ms: 71.565203
+  type: 'test'
+  location: '/tmp/pin-red/eng-mcp/test/deployCommitPin.test.ts:4:3094'
+  failureType: 'testCodeFailure'
+  error: 'MISSING_EXPORT_listDirtyDeployFiles'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    <anonymous> (/tmp/pin-red/eng-mcp/test/deployCommitPin.test.ts:19:63)
+    TestContext.<anonymous> (/tmp/pin-red/eng-mcp/test/deployCommitPin.test.ts:120:28)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: P2: clean commit -> image built from the ISOLATED commit tree; imageTag == commit tag; revision label == sha; one image per commit
+not ok 3 - P2: clean commit -> image built from the ISOLATED commit tree; imageTag == commit tag; revision label == sha; one image per commit
+  ---
+  duration_ms: 126.465572
+  type: 'test'
+  location: '/tmp/pin-red/eng-mcp/test/deployCommitPin.test.ts:4:3532'
+  failureType: 'testCodeFailure'
+  error: |-
+    RELEASE_COMMAND_FAILED:git:fatal: empty string is not a valid pathspec. please use . instead if you meant to match all paths
+
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    mustRun (file:///tmp/pin-red/eng-mcp/scripts/eng-mcp-release.mjs:260:36)
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async gitTrackedFiles (file:///tmp/pin-red/eng-mcp/scripts/eng-mcp-release.mjs:58:18)
+    async sourceFiles (file:///tmp/pin-red/eng-mcp/scripts/eng-mcp-release.mjs:285:19)
+    async calculateSourceHash (file:///tmp/pin-red/eng-mcp/scripts/eng-mcp-release.mjs:298:22)
+    async testCommitAction (file:///tmp/pin-red/eng-mcp/scripts/eng-mcp-release.mjs:414:24)
+    async TestContext.<anonymous> (/tmp/pin-red/eng-mcp/test/deployCommitPin.test.ts:133:20)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: P2: build/candidate/deploy without a commit -> DEPLOY_COMMIT_REQUIRED; working-tree test never binds a commit
+not ok 4 - P2: build/candidate/deploy without a commit -> DEPLOY_COMMIT_REQUIRED; working-tree test never binds a commit
+  ---
+  duration_ms: 83.306427
+  type: 'test'
+  location: '/tmp/pin-red/eng-mcp/test/deployCommitPin.test.ts:4:5252'
+  failureType: 'testCodeFailure'
+  error: |-
+    The input did not match the regular expression /^Error: DEPLOY_COMMIT_REQUIRED\b/. Input:
+
+    'Error: BUILD_BLOCKED_BY_TEST_STATE'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual:
+  error: 'BUILD_BLOCKED_BY_TEST_STATE'
+  stack: |-
+    buildAction (file:///tmp/pin-red/eng-mcp/scripts/eng-mcp-release.mjs:544:43)
+    async waitForActual (node:assert:644:5)
+    async Function.rejects (node:assert:767:25)
+    async TestContext.<anonymous> (/tmp/pin-red/eng-mcp/test/deployCommitPin.test.ts:164:59)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  operator: 'rejects'
+  stack: |-
+    async TestContext.<anonymous> (/tmp/pin-red/eng-mcp/test/deployCommitPin.test.ts:164:59)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: P2: an existing commit tag with another revision is a conflict, never overwritten
+not ok 5 - P2: an existing commit tag with another revision is a conflict, never overwritten
+  ---
+  duration_ms: 123.331596
+  type: 'test'
+  location: '/tmp/pin-red/eng-mcp/test/deployCommitPin.test.ts:4:6364'
+  failureType: 'testCodeFailure'
+  error: |-
+    The input did not match the regular expression /^Error: IMAGE_TAG_COMMIT_CONFLICT\b/. Input:
+
+    'Error: RELEASE_COMMAND_FAILED:git:fatal: empty string is not a valid pathspec. please use . instead if you meant to match all paths\n'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual:
+  error: |-
+    RELEASE_COMMAND_FAILED:git:fatal: empty string is not a valid pathspec. please use . instead if you meant to match all paths
+
+  stack: |-
+    mustRun (file:///tmp/pin-red/eng-mcp/scripts/eng-mcp-release.mjs:260:36)
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async gitTrackedFiles (file:///tmp/pin-red/eng-mcp/scripts/eng-mcp-release.mjs:58:18)
+    async sourceFiles (file:///tmp/pin-red/eng-mcp/scripts/eng-mcp-release.mjs:285:19)
+    async calculateSourceHash (file:///tmp/pin-red/eng-mcp/scripts/eng-mcp-release.mjs:298:22)
+    async testCommitAction (file:///tmp/pin-red/eng-mcp/scripts/eng-mcp-release.mjs:414:24)
+    async waitForActual (node:assert:644:5)
+    async Function.rejects (node:assert:767:25)
+    async TestContext.<anonymous> (/tmp/pin-red/eng-mcp/test/deployCommitPin.test.ts:184:5)
+    async Test.run (node:internal/test_runner/test:1054:7)
+  operator: 'rejects'
+  stack: |-
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async TestContext.<anonymous> (/tmp/pin-red/eng-mcp/test/deployCommitPin.test.ts:184:5)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: P3+P4: deploy writes provenance BEFORE mutation; a failed deploy rolls back and the trail + state keep referencing the SHA
+not ok 6 - P3+P4: deploy writes provenance BEFORE mutation; a failed deploy rolls back and the trail + state keep referencing the SHA
+  ---
+  duration_ms: 126.432093
+  type: 'test'
+  location: '/tmp/pin-red/eng-mcp/test/deployCommitPin.test.ts:4:6926'
+  failureType: 'testCodeFailure'
+  error: |-
+    RELEASE_COMMAND_FAILED:git:fatal: empty string is not a valid pathspec. please use . instead if you meant to match all paths
+
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    mustRun (file:///tmp/pin-red/eng-mcp/scripts/eng-mcp-release.mjs:260:36)
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async gitTrackedFiles (file:///tmp/pin-red/eng-mcp/scripts/eng-mcp-release.mjs:58:18)
+    async sourceFiles (file:///tmp/pin-red/eng-mcp/scripts/eng-mcp-release.mjs:285:19)
+    async calculateSourceHash (file:///tmp/pin-red/eng-mcp/scripts/eng-mcp-release.mjs:298:22)
+    async testCommitAction (file:///tmp/pin-red/eng-mcp/scripts/eng-mcp-release.mjs:414:24)
+    async TestContext.<anonymous> (/tmp/pin-red/eng-mcp/test/deployCommitPin.test.ts:192:5)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: P1+P3: tree dirtied between candidate and deploy -> DEPLOY_DIRTY_TREE with zero production mutation and no deploy line
+not ok 7 - P1+P3: tree dirtied between candidate and deploy -> DEPLOY_DIRTY_TREE with zero production mutation and no deploy line
+  ---
+  duration_ms: 104.144108
+  type: 'test'
+  location: '/tmp/pin-red/eng-mcp/test/deployCommitPin.test.ts:4:8655'
+  failureType: 'testCodeFailure'
+  error: |-
+    RELEASE_COMMAND_FAILED:git:fatal: empty string is not a valid pathspec. please use . instead if you meant to match all paths
+
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    mustRun (file:///tmp/pin-red/eng-mcp/scripts/eng-mcp-release.mjs:260:36)
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async gitTrackedFiles (file:///tmp/pin-red/eng-mcp/scripts/eng-mcp-release.mjs:58:18)
+    async sourceFiles (file:///tmp/pin-red/eng-mcp/scripts/eng-mcp-release.mjs:285:19)
+    async calculateSourceHash (file:///tmp/pin-red/eng-mcp/scripts/eng-mcp-release.mjs:298:22)
+    async testCommitAction (file:///tmp/pin-red/eng-mcp/scripts/eng-mcp-release.mjs:414:24)
+    async TestContext.<anonymous> (/tmp/pin-red/eng-mcp/test/deployCommitPin.test.ts:224:5)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: provenance audit unwritable -> deploy refused before any production mutation (fail-closed)
+not ok 8 - provenance audit unwritable -> deploy refused before any production mutation (fail-closed)
+  ---
+  duration_ms: 116.626252
+  type: 'test'
+  location: '/tmp/pin-red/eng-mcp/test/deployCommitPin.test.ts:4:9493'
+  failureType: 'testCodeFailure'
+  error: |-
+    RELEASE_COMMAND_FAILED:git:fatal: empty string is not a valid pathspec. please use . instead if you meant to match all paths
+
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    mustRun (file:///tmp/pin-red/eng-mcp/scripts/eng-mcp-release.mjs:260:36)
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async gitTrackedFiles (file:///tmp/pin-red/eng-mcp/scripts/eng-mcp-release.mjs:58:18)
+    async sourceFiles (file:///tmp/pin-red/eng-mcp/scripts/eng-mcp-release.mjs:285:19)
+    async calculateSourceHash (file:///tmp/pin-red/eng-mcp/scripts/eng-mcp-release.mjs:298:22)
+    async testCommitAction (file:///tmp/pin-red/eng-mcp/scripts/eng-mcp-release.mjs:414:24)
+    async TestContext.<anonymous> (/tmp/pin-red/eng-mcp/test/deployCommitPin.test.ts:240:5)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: token-hash files are pointed at through the identity repository mount (never baked into the image)
+not ok 9 - token-hash files are pointed at through the identity repository mount (never baked into the image)
+  ---
+  duration_ms: 0.545931
+  type: 'test'
+  location: '/tmp/pin-red/eng-mcp/test/deployCommitPin.test.ts:4:10107'
+  failureType: 'testCodeFailure'
+  error: 'MISSING_EXPORT_tokenHashFileArgs'
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    <anonymous> (/tmp/pin-red/eng-mcp/test/deployCommitPin.test.ts:19:63)
+    TestContext.<anonymous> (/tmp/pin-red/eng-mcp/test/deployCommitPin.test.ts:252:20)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: runner: build/candidate/deploy without commit -> 400 DEPLOY_COMMIT_REQUIRED; commit threaded to the job; commit refused off the pipeline stages
+not ok 10 - runner: build/candidate/deploy without commit -> 400 DEPLOY_COMMIT_REQUIRED; commit threaded to the job; commit refused off the pipeline stages
+  ---
+  duration_ms: 20.822393
+  type: 'test'
+  location: '/tmp/pin-red/eng-mcp/test/deployCommitPin.test.ts:4:11395'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    200 !== 400
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 400
+  actual: 200
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/tmp/pin-red/eng-mcp/test/deployCommitPin.test.ts:280:14)
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: MCP pipeline: fresh run without commitSha -> DEPLOY_COMMIT_REQUIRED with ZERO runner calls; with commitSha every pipeline stage carries it
+not ok 11 - MCP pipeline: fresh run without commitSha -> DEPLOY_COMMIT_REQUIRED with ZERO runner calls; with commitSha every pipeline stage carries it
+  ---
+  duration_ms: 6.834733
+  type: 'test'
+  location: '/tmp/pin-red/eng-mcp/test/deployCommitPin.test.ts:4:13262'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+
+    + undefined
+    - 'DEPLOY_COMMIT_REQUIRED'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'DEPLOY_COMMIT_REQUIRED'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (/tmp/pin-red/eng-mcp/test/deployCommitPin.test.ts:317:50)
+    process.processTicksAndRejections (node:internal/process/task_queues:103:5)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 0
+# fail 11
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1824.16796

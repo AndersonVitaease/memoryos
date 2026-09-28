@@ -1,0 +1,15 @@
+== c1a red (worktree 0638aa1d)
+# tests 11
+# pass 0
+# fail 11
+== c1b green (HEAD f2a6ae6f)
+# tests 11
+# pass 11
+# fail 0
+== c2 runner
+MainPID=1041976
+ActiveState=active
+SubState=running
+RESTARTED pre 907387 post 1041976 {"runnerReachable":true,"pidChanged":true,"lastRestartIdMatches":true,"lastRestartOutcomeCompleted":true,"zeroOrphans":true}
+== production image
+eng-mcp-candidate:candidate-20260928223337572-4f4f57219a50

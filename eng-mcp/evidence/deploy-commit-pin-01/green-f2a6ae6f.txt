@@ -1,0 +1,463 @@
+TAP version 13
+# (node:1072360) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: P1: dirty deploy paths -> DEPLOY_DIRTY_TREE listing every dirty file; ignored and non-deploy files never count; zero build
+ok 1 - P1: dirty deploy paths -> DEPLOY_DIRTY_TREE listing every dirty file; ignored and non-deploy files never count; zero build
+  ---
+  duration_ms: 143.020285
+  type: 'test'
+  ...
+# Subtest: P1: only non-deploy files dirty (verify.json) -> tree counts as clean
+ok 2 - P1: only non-deploy files dirty (verify.json) -> tree counts as clean
+  ---
+  duration_ms: 289.937757
+  type: 'test'
+  ...
+# Subtest: P2: clean commit -> image built from the ISOLATED commit tree; imageTag == commit tag; revision label == sha; one image per commit
+ok 3 - P2: clean commit -> image built from the ISOLATED commit tree; imageTag == commit tag; revision label == sha; one image per commit
+  ---
+  duration_ms: 780.224417
+  type: 'test'
+  ...
+# Subtest: P2: build/candidate/deploy without a commit -> DEPLOY_COMMIT_REQUIRED; working-tree test never binds a commit
+ok 4 - P2: build/candidate/deploy without a commit -> DEPLOY_COMMIT_REQUIRED; working-tree test never binds a commit
+  ---
+  duration_ms: 164.337839
+  type: 'test'
+  ...
+# Subtest: P2: an existing commit tag with another revision is a conflict, never overwritten
+ok 5 - P2: an existing commit tag with another revision is a conflict, never overwritten
+  ---
+  duration_ms: 163.981948
+  type: 'test'
+  ...
+# Subtest: P3+P4: deploy writes provenance BEFORE mutation; a failed deploy rolls back and the trail + state keep referencing the SHA
+ok 6 - P3+P4: deploy writes provenance BEFORE mutation; a failed deploy rolls back and the trail + state keep referencing the SHA
+  ---
+  duration_ms: 887.040129
+  type: 'test'
+  ...
+# Subtest: P1+P3: tree dirtied between candidate and deploy -> DEPLOY_DIRTY_TREE with zero production mutation and no deploy line
+ok 7 - P1+P3: tree dirtied between candidate and deploy -> DEPLOY_DIRTY_TREE with zero production mutation and no deploy line
+  ---
+  duration_ms: 419.479305
+  type: 'test'
+  ...
+# Subtest: provenance audit unwritable -> deploy refused before any production mutation (fail-closed)
+ok 8 - provenance audit unwritable -> deploy refused before any production mutation (fail-closed)
+  ---
+  duration_ms: 573.275132
+  type: 'test'
+  ...
+# Subtest: token-hash files are pointed at through the identity repository mount (never baked into the image)
+ok 9 - token-hash files are pointed at through the identity repository mount (never baked into the image)
+  ---
+  duration_ms: 0.705161
+  type: 'test'
+  ...
+# Subtest: runner: build/candidate/deploy without commit -> 400 DEPLOY_COMMIT_REQUIRED; commit threaded to the job; commit refused off the pipeline stages
+ok 10 - runner: build/candidate/deploy without commit -> 400 DEPLOY_COMMIT_REQUIRED; commit threaded to the job; commit refused off the pipeline stages
+  ---
+  duration_ms: 433.963885
+  type: 'test'
+  ...
+# Subtest: MCP pipeline: fresh run without commitSha -> DEPLOY_COMMIT_REQUIRED with ZERO runner calls; with commitSha every pipeline stage carries it
+ok 11 - MCP pipeline: fresh run without commitSha -> DEPLOY_COMMIT_REQUIRED with ZERO runner calls; with commitSha every pipeline stage carries it
+  ---
+  duration_ms: 6.000782
+  type: 'test'
+  ...
+# (node:1072361) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: REGRESSION: the real callReleaseRunner body satisfies the real runner HTTP contract for container_probe (flat primitives reach the operation layer)
+ok 12 - REGRESSION: the real callReleaseRunner body satisfies the real runner HTTP contract for container_probe (flat primitives reach the operation layer)
+  ---
+  duration_ms: 26.870365
+  type: 'test'
+  ...
+# Subtest: GUARD: the pre-fix nested {params} body shape is refused 400 INPUT_INVALID by the real runner HTTP layer and never reaches the operation layer
+ok 13 - GUARD: the pre-fix nested {params} body shape is refused 400 INPUT_INVALID by the real runner HTTP layer and never reaches the operation layer
+  ---
+  duration_ms: 3.385727
+  type: 'test'
+  ...
+# Subtest: readUnitDirectives merges the main unit and drop-ins (last occurrence wins) and fails closed on a missing unit
+ok 14 - readUnitDirectives merges the main unit and drop-ins (last occurrence wins) and fails closed on a missing unit
+  ---
+  duration_ms: 20.590302
+  type: 'test'
+  ...
+# Subtest: evaluateRestartPrecheck is fail-closed on busy state, lock, in-flight jobs, missing directives, pending intent and cooldown
+ok 15 - evaluateRestartPrecheck is fail-closed on busy state, lock, in-flight jobs, missing directives, pending intent and cooldown
+  ---
+  duration_ms: 0.901891
+  type: 'test'
+  ...
+# Subtest: restart is refused over HTTP with JOBS_IN_FLIGHT and draining is reset
+ok 16 - restart is refused over HTTP with JOBS_IN_FLIGHT and draining is reset
+  ---
+  duration_ms: 19.79499
+  type: 'test'
+  ...
+# [release-runner] controlled restart restartId=58998246-47ee-4550-a31f-f42a7800eaf0 oldPid=1072362 exitCode=42 (SuccessExitStatus+RestartForceExitStatus=42 force the supervisor recycle)
+# Subtest: accepted restart persists the intent, drains, blocks new jobs, is idempotent and self-exits with the protocol code via the injected hooks
+ok 17 - accepted restart persists the intent, drains, blocks new jobs, is idempotent and self-exits with the protocol code via the injected hooks
+  ---
+  duration_ms: 16.402105
+  type: 'test'
+  ...
+# Subtest: restart is refused during the cooldown of a completed intent
+ok 18 - restart is refused during the cooldown of a completed intent
+  ---
+  duration_ms: 5.264971
+  type: 'test'
+  ...
+# Subtest: the next generation's recover() completes a pending intent left by the previous pid
+ok 19 - the next generation's recover() completes a pending intent left by the previous pid
+  ---
+  duration_ms: 4.183759
+  type: 'test'
+  ...
+# (node:1072368) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: flat unit_credential primitives reach the operation layer and absent unitPath stays absent
+ok 20 - flat unit_credential primitives reach the operation layer and absent unitPath stays absent
+  ---
+  duration_ms: 22.285366
+  type: 'test'
+  ...
+# Subtest: runner-side approval collapse: params.execute is true only for execute=true AND approval.approved=true
+ok 21 - runner-side approval collapse: params.execute is true only for execute=true AND approval.approved=true
+  ---
+  duration_ms: 4.927929
+  type: 'test'
+  ...
+# Subtest: shape validation refuses malformed unit_credential params with 400 INPUT_INVALID before the operation layer
+ok 22 - shape validation refuses malformed unit_credential params with 400 INPUT_INVALID before the operation layer
+  ---
+  duration_ms: 7.246214
+  type: 'test'
+  ...
+# Subtest: single-flight: a concurrent unit_credential is refused 409 UNIT_CREDENTIAL_BUSY
+ok 23 - single-flight: a concurrent unit_credential is refused 409 UNIT_CREDENTIAL_BUSY
+  ---
+  duration_ms: 3.956267
+  type: 'test'
+  ...
+# Subtest: real runPipeline threads unit_credential params as flat ENG_MCP_UC_* child environment variables
+ok 24 - real runPipeline threads unit_credential params as flat ENG_MCP_UC_* child environment variables
+  ---
+  duration_ms: 90.145985
+  type: 'test'
+  ...
+# Subtest: regression: runPipeline keeps LoadCredential=<id>:/path stdout valid JSON (v93 UC_RESULT_UNPARSEABLE)
+ok 25 - regression: runPipeline keeps LoadCredential=<id>:/path stdout valid JSON (v93 UC_RESULT_UNPARSEABLE)
+  ---
+  duration_ms: 43.194308
+  type: 'test'
+  ...
+# Subtest: redactChildStdout scrubs secret-shaped values inside structured stdout and falls back to the text scrub
+ok 26 - redactChildStdout scrubs secret-shaped values inside structured stdout and falls back to the text scrub
+  ---
+  duration_ms: 0.512902
+  type: 'test'
+  ...
+# Subtest: UNIT_CREDENTIAL_STATUSES covers the five honest outcomes
+ok 27 - UNIT_CREDENTIAL_STATUSES covers the five honest outcomes
+  ---
+  duration_ms: 1.881914
+  type: 'test'
+  ...
+# Subtest: PLAN is strictly read-only: full envelope, baseline verify once, zero writes
+ok 28 - PLAN is strictly read-only: full envelope, baseline verify once, zero writes
+  ---
+  duration_ms: 30.625143
+  type: 'test'
+  ...
+# Subtest: APPLY writes the exact drop-in atomically, verifies twice and reloads the daemon without touching the unit's active state
+ok 29 - APPLY writes the exact drop-in atomically, verifies twice and reloads the daemon without touching the unit's active state
+  ---
+  duration_ms: 19.30738
+  type: 'test'
+  ...
+# Subtest: NO_OP: byte-identical drop-in means zero mutation — no write, no daemon-reload, mtime preserved
+ok 30 - NO_OP: byte-identical drop-in means zero mutation — no write, no daemon-reload, mtime preserved
+  ---
+  duration_ms: 10.104951
+  type: 'test'
+  ...
+# Subtest: UC_ALREADY_PRESENT is informational when name+source match, and the apply still lands byte-identical
+ok 31 - UC_ALREADY_PRESENT is informational when name+source match, and the apply still lands byte-identical
+  ---
+  duration_ms: 13.075207
+  type: 'test'
+  ...
+# Subtest: UC_NAME_CONFLICT is reported when the same unit path is registered with a different source
+ok 32 - UC_NAME_CONFLICT is reported when the same unit path is registered with a different source
+  ---
+  duration_ms: 5.477852
+  type: 'test'
+  ...
+# Subtest: unitPath overrides the credential id inside the directive
+ok 33 - unitPath overrides the credential id inside the directive
+  ---
+  duration_ms: 3.412347
+  type: 'test'
+  ...
+# Subtest: post-write verify failure rolls back fail-closed BEFORE daemon-reload (new drop-in)
+ok 34 - post-write verify failure rolls back fail-closed BEFORE daemon-reload (new drop-in)
+  ---
+  duration_ms: 5.496412
+  type: 'test'
+  ...
+# Subtest: post-write verify failure restores the previous drop-in content (overwrite path)
+ok 35 - post-write verify failure restores the previous drop-in content (overwrite path)
+  ---
+  duration_ms: 36.690495
+  type: 'test'
+  ...
+# Subtest: a pre-existing verify failure blocks the apply and never writes
+ok 36 - a pre-existing verify failure blocks the apply and never writes
+  ---
+  duration_ms: 5.596971
+  type: 'test'
+  ...
+# Subtest: credential hardening: EMPTY (github-pat lesson), MODE_INSECURE, NOT_REGULAR and NOT_FOUND all block
+ok 37 - credential hardening: EMPTY (github-pat lesson), MODE_INSECURE, NOT_REGULAR and NOT_FOUND all block
+  ---
+  duration_ms: 11.347094
+  type: 'test'
+  ...
+# Subtest: UC_UNIT_NOT_FOUND blocks the apply; the baseline verify is skipped for a missing unit
+ok 38 - UC_UNIT_NOT_FOUND blocks the apply; the baseline verify is skipped for a missing unit
+  ---
+  duration_ms: 6.376023
+  type: 'test'
+  ...
+# Subtest: grammar refusals return a slim BLOCKED envelope before touching the filesystem
+ok 39 - grammar refusals return a slim BLOCKED envelope before touching the filesystem
+  ---
+  duration_ms: 5.488221
+  type: 'test'
+  ...
+# Subtest: a file blocking the drop-in directory yields UC_DROPIN_WRITE_FAILED with mutationPerformed=false
+ok 40 - a file blocking the drop-in directory yields UC_DROPIN_WRITE_FAILED with mutationPerformed=false
+  ---
+  duration_ms: 3.392387
+  type: 'test'
+  ...
+# Subtest: daemon-reload failure maps to FAILED while the write honestly reports mutationPerformed=true
+ok 41 - daemon-reload failure maps to FAILED while the write honestly reports mutationPerformed=true
+  ---
+  duration_ms: 7.090224
+  type: 'test'
+  ...
+# Subtest: critical unit: the restart note points at engineering.vps.runner.restart and never restarts anything
+ok 42 - critical unit: the restart note points at engineering.vps.runner.restart and never restarts anything
+  ---
+  duration_ms: 3.015066
+  type: 'test'
+  ...
+# Subtest: T0: grace window constants (attempts <= 8, total backoff <= 30s hard deadline)
+ok 43 - T0: grace window constants (attempts <= 8, total backoff <= 30s hard deadline)
+  ---
+  duration_ms: 0.954132
+  type: 'test'
+  ...
+# Subtest: T1: MCP_HTTP_502 transient then success -> PASS
+ok 44 - T1: MCP_HTTP_502 transient then success -> PASS
+  ---
+  duration_ms: 0.988981
+  type: 'test'
+  ...
+# Subtest: T2: MCP_HTTP_503 transient twice then success -> PASS
+ok 45 - T2: MCP_HTTP_503 transient twice then success -> PASS
+  ---
+  duration_ms: 0.251401
+  type: 'test'
+  ...
+# Subtest: T3: persistent transient exhausts the grace window and FAILS
+ok 46 - T3: persistent transient exhausts the grace window and FAILS
+  ---
+  duration_ms: 0.46141
+  type: 'test'
+  ...
+# Subtest: T3-hard-deadline: graceDeadlineMs=0 forbids any second attempt
+ok 47 - T3-hard-deadline: graceDeadlineMs=0 forbids any second attempt
+  ---
+  duration_ms: 0.244861
+  type: 'test'
+  ...
+# Subtest: T3b: connection reset/refused via cause chain is transient and exhausts
+ok 48 - T3b: connection reset/refused via cause chain is transient and exhausts
+  ---
+  duration_ms: 0.509021
+  type: 'test'
+  ...
+# Subtest: ERF-02 T1b: 502 persists >15s and recovers before 30s -> PASS
+ok 49 - ERF-02 T1b: 502 persists >15s and recovers before 30s -> PASS
+  ---
+  duration_ms: 0.414621
+  type: 'test'
+  ...
+# Subtest: ERF-02 T2b: 503 persists >15s and recovers on the last allowed attempt -> PASS
+ok 50 - ERF-02 T2b: 503 persists >15s and recovers on the last allowed attempt -> PASS
+  ---
+  duration_ms: 0.246021
+  type: 'test'
+  ...
+# Subtest: ERF-02 T3c: transient failure beyond 30s fails fast at the deadline
+ok 51 - ERF-02 T3c: transient failure beyond 30s fails fast at the deadline
+  ---
+  duration_ms: 0.3914
+  type: 'test'
+  ...
+# Subtest: ERF-02 T7b: telemetry counts retries, dedups codes, marks recovery attempt
+ok 52 - ERF-02 T7b: telemetry counts retries, dedups codes, marks recovery attempt
+  ---
+  duration_ms: 0.913171
+  type: 'test'
+  ...
+# Subtest: T4: functional failures fail fast (no retry, no backoff)
+ok 53 - T4: functional failures fail fast (no retry, no backoff)
+  ---
+  duration_ms: 0.542522
+  type: 'test'
+  ...
+# Subtest: T5: tool catalog / tool count failure fails fast
+ok 54 - T5: tool catalog / tool count failure fails fast
+  ---
+  duration_ms: 0.248791
+  type: 'test'
+  ...
+# Subtest: T6: rollback semantics intact - smokeFailureTransition shape is exact
+ok 55 - T6: rollback semantics intact - smokeFailureTransition shape is exact
+  ---
+  duration_ms: 0.44441
+  type: 'test'
+  ...
+# Subtest: T6b: exhausted retry rethrows the ORIGINAL transient error (official rollback trigger preserved)
+ok 56 - T6b: exhausted retry rethrows the ORIGINAL transient error (official rollback trigger preserved)
+  ---
+  duration_ms: 0.24026
+  type: 'test'
+  ...
+# Subtest: T7: wiring - smokeAction is wrapped by the grace window; rollback trigger unchanged; candidate untouched
+ok 57 - T7: wiring - smokeAction is wrapped by the grace window; rollback trigger unchanged; candidate untouched
+  ---
+  duration_ms: 0.37011
+  type: 'test'
+  ...
+# Subtest: SFFF T1: unauth probe failure persists step, code and sanitized message
+ok 58 - SFFF T1: unauth probe failure persists step, code and sanitized message
+  ---
+  duration_ms: 0.542232
+  type: 'test'
+  ...
+# Subtest: SFFF T2: catalog mismatch maps to catalog-validation; catalog-shape codes map to tools-list
+ok 59 - SFFF T2: catalog mismatch maps to catalog-validation; catalog-shape codes map to tools-list
+  ---
+  duration_ms: 0.235471
+  type: 'test'
+  ...
+# Subtest: SFFF T3: engineering.test.run failure maps to test-run step and code
+ok 60 - SFFF T3: engineering.test.run failure maps to test-run step and code
+  ---
+  duration_ms: 0.14046
+  type: 'test'
+  ...
+# Subtest: SFFF T4: read failure maps to read step; runner-service and production covered
+ok 61 - SFFF T4: read failure maps to read step; runner-service and production covered
+  ---
+  duration_ms: 0.22397
+  type: 'test'
+  ...
+# Subtest: SFFF T5: success keeps failure fields null (sanitizer null-safe)
+ok 62 - SFFF T5: success keeps failure fields null (sanitizer null-safe)
+  ---
+  duration_ms: 0.18923
+  type: 'test'
+  ...
+# Subtest: SFFF T6: transient retry path still works and never sets functional failure fields
+ok 63 - SFFF T6: transient retry path still works and never sets functional failure fields
+  ---
+  duration_ms: 0.2701
+  type: 'test'
+  ...
+# Subtest: SFFF T7: wiring - deployAction persists failure fields; rollback trigger untouched
+ok 64 - SFFF T7: wiring - deployAction persists failure fields; rollback trigger untouched
+  ---
+  duration_ms: 0.23673
+  type: 'test'
+  ...
+# (node:1072387) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: sends exactly {operation:'test'} to POST /v1/release and propagates the official response
+ok 65 - sends exactly {operation:'test'} to POST /v1/release and propagates the official response
+  ---
+  duration_ms: 20.984633
+  type: 'test'
+  ...
+# Subtest: cannot send any operation other than test (hardcoded, zero-argument)
+ok 66 - cannot send any operation other than test (hardcoded, zero-argument)
+  ---
+  duration_ms: 5.690842
+  type: 'test'
+  ...
+# Subtest: rejects runner responses whose operation is not test
+ok 67 - rejects runner responses whose operation is not test
+  ---
+  duration_ms: 3.321787
+  type: 'test'
+  ...
+# Subtest: returns structured FAIL diagnostics for an official suite failure (HTTP 502)
+ok 68 - returns structured FAIL diagnostics for an official suite failure (HTTP 502)
+  ---
+  duration_ms: 5.005621
+  type: 'test'
+  ...
+# Subtest: preserves multiple failing tests in order with names and messages
+ok 69 - preserves multiple failing tests in order with names and messages
+  ---
+  duration_ms: 3.907698
+  type: 'test'
+  ...
+# Subtest: never invents file or message when the TAP does not provide them
+ok 70 - never invents file or message when the TAP does not provide them
+  ---
+  duration_ms: 2.690855
+  type: 'test'
+  ...
+# Subtest: fails safely when the failure body carries no details at all
+ok 71 - fails safely when the failure body carries no details at all
+  ---
+  duration_ms: 2.993427
+  type: 'test'
+  ...
+# Subtest: never propagates secrets from the failure evidence (official sanitizer)
+ok 72 - never propagates secrets from the failure evidence (official sanitizer)
+  ---
+  duration_ms: 2.769816
+  type: 'test'
+  ...
+# Subtest: propagates malformed runner response
+ok 73 - propagates malformed runner response
+  ---
+  duration_ms: 4.284609
+  type: 'test'
+  ...
+# Subtest: wire format admits no mutation keys (deploy/rollback/execute/approval impossible)
+ok 74 - wire format admits no mutation keys (deploy/rollback/execute/approval impossible)
+  ---
+  duration_ms: 3.487518
+  type: 'test'
+  ...
+1..74
+# tests 74
+# suites 0
+# pass 74
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4529.806437

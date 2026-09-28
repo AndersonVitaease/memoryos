@@ -1,0 +1,16 @@
+{
+ "latencyMs": 10112,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"tool\":\"engineering.judge.verify\",\"status\":\"JUDGED\",\"provider\":{\"model\":\"typesafe/jev-1.13/compatible:Qwen/Qwen2.5-Coder-32B-Instruct-AWQ\",\"id\":\"chatcmpl-0fccc137fcc24eaea956ed2d279844b4\",\"latencyMs\":9587,\"cost\":0,\"inputTokens\":2541,\"outputTokens\":253},\"provenance\":{\"credentialSha16\":\"9bffc8c38bc60289\",\"stateHash16\":\"c742423e8350290e\",\"evidenceHash16\":\"c742423e8350290e\",\"redactions\":0},\"claims\":[{\"id\":\"c1\",\"text\":\"On the old code (0638aa1d) the new test file fails 11/11; on f2a6ae6f it passes 11/11.\",\"verdict\":\"contradicted\",\"probability\":1,\"probabilities\":{\"supported\":0,\"contradicted\":1,\"not_addressed\":0},\"confidence\":1},{\"id\":\"c2\",\"text\":\"[consequência] The production release runner was restarted through the governed tool: RESTARTED, pid changed from 907387 to 1041976, all postcheck criteria true.\",\"verdict\":\"not_addressed\",\"probability\":1,\"probabilities\":{\"supported\":0,\"contradicted\":0,\"not_addressed\":1},\"confidence\":1},{\"id\":\"c3\",\"text\":\"The production runner refuses build and deploy without a commit with DEPLOY_COMMIT_REQUIRED, and refuses a dirty tree with DEPLOY_DIRTY_TREE listing src/__deploy_pin_probe.ts.\",\"verdict\":\"supported\",\"probability\":1,\"probabilities\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0},\"confidence\":1},{\"id\":\"c4\",\"text\":\"Retroactive records: current production deploy 36d95f78 maps to commit 23fc1933; deploy bcc0f546 is not reproducible and carried uncommitted code files.\",\"verdict\":\"supported\",\"probability\":1,\"probabilities\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0},\"confidence\":1},{\"id\":\"c5\",\"text\":\"[consequência] The dogfood production deploy of f2a6ae6f was performed and production now runs a commit-built image.\",\"verdict\":\"contradicted\",\"probability\":1,\"probabilities\":{\"supported\":0,\"contradicted\":1,\"not_addressed\":0},\"confidence\":1},{\"id\":\"c6\",\"text\":\"The verify manifest verify-deploy-commit-pin-01.json passes 11/11.\",\"verdict\":\"supported\",\"probability\":1,\"probabilities\":{\"supported\":1,\"contradicted\":0,\"not_addressed\":0},\"confidence\":1}],\"aggregate\":\"HAS_CONTRADICTIONS\",\"counts\":{\"supported\":3,\"contradicted\":2,\"not_addressed\":1,\"uncertain\":0},\"advisory\":\"ADVISORY — calibrated judgment is not a security boundary; operator approval decides.\",\"audit\":\"written\"}"
+    }
+   ]
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}
