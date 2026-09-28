@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { access, appendFile, mkdir, readFile, readdir, rm, stat, symlink, writeFile, rename } from "node:fs/promises";
+import { existsSync as existsSyncFs } from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -90,6 +91,22 @@ export function githubAppDockerArgs(env) {
   if (!keyFile || !/^\d{1,20}$/.test(appId ?? "") || !/^\d{1,20}$/.test(installationId ?? "")) return [];
   if (!path.isAbsolute(keyFile) || /[,:]/.test(keyFile)) return [];
   return ["-v", `${keyFile}:/run/secrets/github-app-key:ro`, "-e", "GITHUB_APP_PRIVATE_KEY_FILE=/run/secrets/github-app-key", "-e", `GITHUB_APP_ID=${appId}`, "-e", `GITHUB_INSTALLATION_ID=${installationId}`];
+}
+
+// UPSTREAM-SYNC-01: optional READ-ONLY bind mounts of upstream-sync targets (config:
+// production.readOnlyMounts in release-config.json). Only absolute "src:dest:ro" specs whose
+// source exists are emitted — a missing source adds nothing (never a docker-created empty dir),
+// and anything not ending in :ro is refused, so a config entry can never grant write access.
+export function readOnlyMountArgs(production, exists = existsSyncFs) {
+  const specs = Array.isArray(production?.readOnlyMounts) ? production.readOnlyMounts : [];
+  const args = [];
+  for (const spec of specs) {
+    const m = typeof spec === "string" ? /^(\/[^:,\0]+):(\/[^:,\0]+):ro$/.exec(spec) : null;
+    if (!m || m[1].split("/").includes("..") || m[2].split("/").includes("..")) continue;
+    if (!exists(m[1])) continue;
+    args.push("-v", spec);
+  }
+  return args;
 }
 
 export function parseCliWithOptions(argv) {
@@ -972,7 +989,7 @@ export async function deployAction(config) {
   await mustRun("docker", ["rename", config.production.containerName, previousContainer]); await mustRun("docker", ["stop", previousContainer]);
   const p = config.production;
   try {
-    await mustRun("docker", ["run", "-d", "--name", p.containerName, "--network", p.network, "--restart", p.restart, "-v", p.repositoryMount, "-v", p.dataMount, "-v", p.runnerMount, ...(p.credentialsMount ? ["-v", p.credentialsMount] : []), "-e", `ENG_MCP_REPOSITORY_ROOT=${p.repositoryRoot}`, "-e", `ENG_MCP_REPOSITORY_ID=${p.repositoryId}`, "-e", `ENG_MCP_TOKEN_REGISTRY_FILE=${p.tokenRegistryFile}`, "-e", `ENG_MCP_HOST=${p.host}`, "-e", `ENG_MCP_PORT=${p.port}`, "-e", `ENG_MCP_DEPLOY_ENVIRONMENT_ID=${p.deployEnvironmentId}`, "-e", `ENG_MCP_DEPLOY_SERVER_ID=${p.deployServerId}`, ...(process.env.ENG_MCP_RUNTIME_OBSERVABILITY_CREDENTIAL_FILE ? ["-v", `${process.env.ENG_MCP_RUNTIME_OBSERVABILITY_CREDENTIAL_FILE}:/run/secrets/runtime-observability-secret:ro`, "-e", "ENG_MCP_RUNTIME_OBSERVABILITY_CREDENTIAL_FILE=/run/secrets/runtime-observability-secret"] : []), ...(process.env.MCP_BATCH_EXECUTE_CREDENTIAL_FILE ? ["-v", `${process.env.MCP_BATCH_EXECUTE_CREDENTIAL_FILE}:/run/secrets/mcp-batch-execute-secret:ro`, "-e", "MCP_BATCH_EXECUTE_CREDENTIAL_FILE=/run/secrets/mcp-batch-execute-secret", "-e", "ENG_MCP_SUPERVISED_MISSION_CREDENTIAL_FILE=/run/secrets/mcp-batch-execute-secret"] : []), ...(process.env.ENG_MCP_AGENT_MEMORY_CREDENTIAL_FILE ? ["-v", `${process.env.ENG_MCP_AGENT_MEMORY_CREDENTIAL_FILE}:/run/secrets/agent-memory-secret:ro`, "-e", "ENG_MCP_AGENT_MEMORY_CREDENTIAL_FILE=/run/secrets/agent-memory-secret"] : []), ...(process.env.ENG_MCP_RUNTIME_TOKEN_CREDENTIAL_FILE ? ["-v", `${process.env.ENG_MCP_RUNTIME_TOKEN_CREDENTIAL_FILE}:/run/secrets/runtime-token:ro`, "-e", "ENG_MCP_RUNTIME_TOKEN_CREDENTIAL_FILE=/run/secrets/runtime-token"] : []), ...(process.env.E2B_API_KEY_FILE ? ["-v", `${process.env.E2B_API_KEY_FILE}:/run/secrets/e2b-api-key:ro`, "-e", "E2B_API_KEY_FILE=/run/secrets/e2b-api-key"] : []), ...(process.env.GITHUB_TOKEN_FILE ? ["-v", `${process.env.GITHUB_TOKEN_FILE}:/run/secrets/github-pat:ro`, "-e", "GITHUB_TOKEN_FILE=/run/secrets/github-pat"] : []), ...githubAppDockerArgs(process.env), ...(process.env.GIT_CREDENTIALS_FILE ? ["-v", `${process.env.GIT_CREDENTIALS_FILE}:/run/secrets/git-credentials:ro`, "-e", "GIT_CREDENTIALS_FILE=/run/secrets/git-credentials"] : []), ...(process.env.ENG_MCP_HERMES_NOTIFY_CREDENTIAL_FILE ? ["-v", `${process.env.ENG_MCP_HERMES_NOTIFY_CREDENTIAL_FILE}:/run/secrets/hermes-notify-api-key:ro`, "-e", "ENG_MCP_HERMES_NOTIFY_CREDENTIAL_FILE=/run/secrets/hermes-notify-api-key"] : []), ...(process.env.ENG_MCP_HERMES_SESSION_ID ? ["-e", `ENG_MCP_HERMES_SESSION_ID=${process.env.ENG_MCP_HERMES_SESSION_ID}`] : []), state.imageTag]);
+    await mustRun("docker", ["run", "-d", "--name", p.containerName, "--network", p.network, "--restart", p.restart, "-v", p.repositoryMount, "-v", p.dataMount, "-v", p.runnerMount, ...(p.credentialsMount ? ["-v", p.credentialsMount] : []), ...readOnlyMountArgs(p), "-e", `ENG_MCP_REPOSITORY_ROOT=${p.repositoryRoot}`, "-e", `ENG_MCP_REPOSITORY_ID=${p.repositoryId}`, "-e", `ENG_MCP_TOKEN_REGISTRY_FILE=${p.tokenRegistryFile}`, "-e", `ENG_MCP_HOST=${p.host}`, "-e", `ENG_MCP_PORT=${p.port}`, "-e", `ENG_MCP_DEPLOY_ENVIRONMENT_ID=${p.deployEnvironmentId}`, "-e", `ENG_MCP_DEPLOY_SERVER_ID=${p.deployServerId}`, ...(process.env.ENG_MCP_RUNTIME_OBSERVABILITY_CREDENTIAL_FILE ? ["-v", `${process.env.ENG_MCP_RUNTIME_OBSERVABILITY_CREDENTIAL_FILE}:/run/secrets/runtime-observability-secret:ro`, "-e", "ENG_MCP_RUNTIME_OBSERVABILITY_CREDENTIAL_FILE=/run/secrets/runtime-observability-secret"] : []), ...(process.env.MCP_BATCH_EXECUTE_CREDENTIAL_FILE ? ["-v", `${process.env.MCP_BATCH_EXECUTE_CREDENTIAL_FILE}:/run/secrets/mcp-batch-execute-secret:ro`, "-e", "MCP_BATCH_EXECUTE_CREDENTIAL_FILE=/run/secrets/mcp-batch-execute-secret", "-e", "ENG_MCP_SUPERVISED_MISSION_CREDENTIAL_FILE=/run/secrets/mcp-batch-execute-secret"] : []), ...(process.env.ENG_MCP_AGENT_MEMORY_CREDENTIAL_FILE ? ["-v", `${process.env.ENG_MCP_AGENT_MEMORY_CREDENTIAL_FILE}:/run/secrets/agent-memory-secret:ro`, "-e", "ENG_MCP_AGENT_MEMORY_CREDENTIAL_FILE=/run/secrets/agent-memory-secret"] : []), ...(process.env.ENG_MCP_RUNTIME_TOKEN_CREDENTIAL_FILE ? ["-v", `${process.env.ENG_MCP_RUNTIME_TOKEN_CREDENTIAL_FILE}:/run/secrets/runtime-token:ro`, "-e", "ENG_MCP_RUNTIME_TOKEN_CREDENTIAL_FILE=/run/secrets/runtime-token"] : []), ...(process.env.E2B_API_KEY_FILE ? ["-v", `${process.env.E2B_API_KEY_FILE}:/run/secrets/e2b-api-key:ro`, "-e", "E2B_API_KEY_FILE=/run/secrets/e2b-api-key"] : []), ...(process.env.GITHUB_TOKEN_FILE ? ["-v", `${process.env.GITHUB_TOKEN_FILE}:/run/secrets/github-pat:ro`, "-e", "GITHUB_TOKEN_FILE=/run/secrets/github-pat"] : []), ...githubAppDockerArgs(process.env), ...(process.env.GIT_CREDENTIALS_FILE ? ["-v", `${process.env.GIT_CREDENTIALS_FILE}:/run/secrets/git-credentials:ro`, "-e", "GIT_CREDENTIALS_FILE=/run/secrets/git-credentials"] : []), ...(process.env.ENG_MCP_HERMES_NOTIFY_CREDENTIAL_FILE ? ["-v", `${process.env.ENG_MCP_HERMES_NOTIFY_CREDENTIAL_FILE}:/run/secrets/hermes-notify-api-key:ro`, "-e", "ENG_MCP_HERMES_NOTIFY_CREDENTIAL_FILE=/run/secrets/hermes-notify-api-key"] : []), ...(process.env.ENG_MCP_HERMES_SESSION_ID ? ["-e", `ENG_MCP_HERMES_SESSION_ID=${process.env.ENG_MCP_HERMES_SESSION_ID}`] : []), state.imageTag]);
     await waitForPort(p.port);
     state = { ...state, deployStatus: "PASS", currentRelease: state.imageTag, deployedAt: new Date().toISOString() }; await saveState(config, state);
     return await smokeAction(config);

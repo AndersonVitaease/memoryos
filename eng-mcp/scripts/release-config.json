@@ -23,7 +23,10 @@
     "repositoryId": "memoryos",
     "tokenRegistryFile": "/data/tokens.json",
     "deployEnvironmentId": "Fh6ebljpJ2Mq65-_OxnTH",
-    "deployServerId": "LXzm3ZifF7EPwLaBUXt4H"
+    "deployServerId": "LXzm3ZifF7EPwLaBUXt4H",
+    "readOnlyMounts": [
+      "/usr/local/lib/hermes-agent:/usr/local/lib/hermes-agent:ro"
+    ]
   },
   "requiredTools": [
     "engineering.mcp.catalog",
