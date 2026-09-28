@@ -1,6 +1,6 @@
 # RELATÓRIO — deploy-commit-pin-01 (deploy só de commit declarado)
 
-**Status:** código e regra ativos no runner de produção. **Deploy dogfood PENDENTE do operador** (negado pelo classificador de permissão; ver §5). Produção não foi tocada: continua em `4f4f5721` = `23fc1933`.
+**Status:** CONCLUÍDA. Regra ativa no runner e no MCP de produção. O primeiro deploy fixado por commit está em produção (`commit-4a209a78`, revision label == SHA, trilha `builtFrom:"commit"`, `treeClean:true`), feito pelo pipeline corrigido (ver §5).
 
 ## 1. Entrega
 
@@ -73,26 +73,29 @@ Foram anexados 9 `retroactive_record` (os deploys de 28/09) em `/opt/eng-mcp-rel
 - **8 de 9 reproduzíveis.** Produção atual `36d95f78` → **`23fc1933`**: código idêntico. Extras só untracked não-código: hashes de token, skills gitnexus, `.rg-debug.log` e o `tsconfig.json`, que é byte-idêntico ao agora versionado.
 - **`bcc0f546` (GUARDIAN-SECLAYER-B, imagem `3220c552`) → `commitSha:null`, `reproducible:false`.** A imagem carregou **10 arquivos nunca commitados** em `dc7d8f66`: `src/upstreamSync.ts`, `src/tools.ts`, `src/registryScopeGrant.ts`, `src/upstream/*.json` e 6 testes. É o defeito §8.1 provado arquivo a arquivo.
 
-## 5. O que ficou pendente — AÇÃO DO OPERADOR
+## 5. Deploy com o pipeline corrigido (item 5) — FEITO
 
-O deploy dogfood (`runOfficialReleasePipeline(undefined, f2a6ae6f…)`, executado no host pelo socket oficial) foi **negado pelo classificador de permissão (Production Deploy)**. Não tentei nenhum caminho alternativo.
+Meu deploy dogfood foi negado pelo classificador de permissão (Production Deploy), e não tentei nenhum caminho alternativo. O **primeiro deploy fixado por commit** foi feito depois, pelo pipeline corrigido, na missão seguinte (SECLAYER-IDS-LINK-01). O commit `4a209a78` contém `f2a6ae6f`. Conferi tudo por leitura (`prod-*.json/txt`, `prod-provenance-deploy-lines.jsonl`):
 
-**Consequência operacional (importante):** o runner já exige commit, mas o MCP de produção roda o `tools.ts` antigo, sem `commitSha`. **Até `f2a6ae6f` ir para produção, `engineering.release.pipeline` recusa qualquer deploy de qualquer missão** (fail-closed, `DEPLOY_COMMIT_REQUIRED`). Seguro, mas bloqueia shipping.
-
-Para destravar, o operador roda:
-```
-! cd /opt/memoryos/eng-mcp && node --import tsx evidence/deploy-commit-pin-01/dogfood.ts f2a6ae6ffed959de2be3cce13511adcec09a51a8
-! cd /opt/memoryos/eng-mcp && node --import tsx evidence/deploy-commit-pin-01/dogfood.ts --resume <deployJobId devolvido>
-```
-Esperado: imagem `eng-mcp-candidate:commit-f2a6ae6f…`, label revision == SHA, e as linhas `deploy_started`/`deploy_succeeded` com `builtFrom:"commit"`. Daí em diante, o próprio `engineering.release.pipeline {acknowledgeRelease, commitSha}` funciona via MCP.
-
-**Rollback da regra, se preferir não deployar agora:** `git revert f2a6ae6f`, depois restart do runner.
+- **Job `a08a37f0`:** deploy `success`, exit 0, `commit=4a209a78d27b9293e45ad75052b087753015f072`.
+- **Container de produção** (P2 em produção):
+  - imagem `eng-mcp-candidate:commit-4a209a78d27b9293e45ad75052b087753015f072`;
+  - labels `org.opencontainers.image.revision=4a209a78…` e `io.memoryos.eng-mcp.built-from=commit`;
+  - portanto imageTag == SHA esperado;
+  - `/mcp` sem auth → 401.
+- **Trilha** (P3 em produção): `deploy_started` (23:45:08Z, **antes** da troca do container, 23:45:19Z) e depois `deploy_succeeded` (23:45:26Z, após o smoke). Ambos com `{commitSha:4a209a78…, imageTag:commit-4a209a78…, treeClean:true, builtFrom:"commit"}`.
+- **Rollback continua referenciando o SHA** (P4 em produção, parte de referência): `previousImage=candidate-…4f4f5721`, `previousCommitSha=23fc1933`.
+  - Esse SHA veio dos **meus registros retroativos** (§4), o que prova a compat do item 3 no primeiro uso real.
+  - O `release-state` tem `currentCommitSha=4a209a78`, `deployStatus`/`smokeStatus` PASS.
+- **MCP de produção:** `engineering.release.pipeline` expõe `commitSha` (catálogo 130). Sem `commitSha` → `DEPLOY_COMMIT_REQUIRED` com **zero chamadas ao runner** (`evidence: []`).
+- **Fica sem prova em produção:** a *execução* de um rollback. Nenhum deploy falhou, então P4 execução segue provado só em fixture.
+- **Cosmético:** o wrapper ERROR-01 não conhece `DEPLOY_COMMIT_REQUIRED` ("No typed code matched"). A mensagem e o código chegam corretos; incluir o código na taxonomia é trabalho futuro.
 
 ## 6. Gray-zones
 
 - O **processo do runner** carrega `scripts/` da working tree canônica. A regra protege a *imagem*, não o runner. Com a árvore limpa, o runner = commit.
-- `.claude/skills/gitnexus-*` e os hashes de token deixam de entrar na imagem, porque o build de commit não os carrega. Nada em `src/` usa as skills; os tokens seguem pelo mount. **Só será confirmado de fato no primeiro deploy de commit.**
-- P2/P3/P4 foram provados em fixture, **não em produção**: dependem do deploy pendente.
+- `.claude/skills/gitnexus-*` e os hashes de token deixam de entrar na imagem. O primeiro deploy de commit passou no smoke, com os tokens vindo do mount.
+- Em produção estão provados P1, P2, P3 e a referência de SHA do P4. A *execução* de rollback só foi provada em fixture.
 - `verify.json` e `verify-github-app-bootstrap-01.json` estavam modificados por outra sessão e ficaram de fora dos commits. O segundo perdeu o campo `owner`; convém o dono conferir.
 - Não houve push. Não mexi em gpu-watchdog, mission-ops/deliver-verify, mission-supervisor, guardian-compute nem fast/shadow-router.
 

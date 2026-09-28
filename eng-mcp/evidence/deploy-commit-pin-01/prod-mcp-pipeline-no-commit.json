@@ -1,0 +1,17 @@
+{
+ "latencyMs": 530,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"code\":\"ENGINEERING_TOOL_ERROR\",\"category\":\"internal\",\"retryable\":false,\"remediation\":\"No typed code matched the failure text; inspect the message and, if it recurs, add the code to the ERROR-01 taxonomy.\",\"message\":\"{\\\"success\\\":false,\\\"error\\\":\\\"DEPLOY_COMMIT_REQUIRED\\\",\\\"detail\\\":\\\"engineering.release.pipeline deploys a declared commitSha (40 lowercase hex, committed in the canonical repo); the working tree is never deployed.\\\",\\\"evidence\\\":[]}\",\"evidenceRefs\":[],\"tool\":\"engineering.release.pipeline\"}"
+    }
+   ],
+   "isError": true
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}
