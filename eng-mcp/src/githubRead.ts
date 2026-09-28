@@ -17,6 +17,7 @@ import { readFileSync } from "node:fs";
 import * as z from "zod/v4";
 import { assertNoSensitiveContent, isSensitivePath } from "./policy.ts";
 import { redactSensitive } from "./vpsTransport.ts";
+import { GitHubAppAuthError, invalidateInstallationToken, resolveGithubAuth } from "./githubAppAuth.ts";
 
 export class GitHubReadError extends Error {
   constructor(readonly code: string, readonly detail?: string) {
@@ -102,7 +103,15 @@ function timeoutMs(): number {
 const GITHUB_API_BASE = "https://api.github.com";
 
 async function githubFetchJson(pathname: string): Promise<{ body: unknown; rateLimit: RateLimit }> {
-  const token = resolveGithubToken();
+  // GH-APP-TOKEN-01: GitHub App installation token when the App is configured
+  // (self-rotating, memory-only), else the operator PAT exactly as before.
+  let auth: Awaited<ReturnType<typeof resolveGithubAuth>>;
+  try { auth = await resolveGithubAuth(resolveGithubToken); }
+  catch (error) {
+    if (error instanceof GitHubAppAuthError) throw new GitHubReadError(error.code, error.detail);
+    throw error;
+  }
+  const { token, mode } = auth;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs());
   let response: Response;
@@ -128,6 +137,7 @@ async function githubFetchJson(pathname: string): Promise<{ body: unknown; rateL
   }
   if (response.status === 200 || response.status === 201) return { body, rateLimit };
   const message = isRecord(body) && typeof body.message === "string" ? body.message : "(no message)";
+  if (response.status === 401 && mode === "app") invalidateInstallationToken();
   if (response.status === 401) throw new GitHubReadError("GITHUB_AUTH_REJECTED", `token rejected by GitHub (invalid, revoked or expired): ${message}`);
   if (response.status === 403 || response.status === 429) {
     if ((response.headers.get("x-ratelimit-remaining") ?? "1") === "0") throw new GitHubReadError("GITHUB_RATE_LIMIT_EXCEEDED", `upstream quota exhausted, resets at ${rateLimit?.resetAt ?? "unknown"}`);
