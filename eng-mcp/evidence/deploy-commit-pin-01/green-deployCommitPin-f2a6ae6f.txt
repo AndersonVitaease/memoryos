@@ -1,0 +1,78 @@
+TAP version 13
+# (node:1080646) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# Subtest: P1: dirty deploy paths -> DEPLOY_DIRTY_TREE listing every dirty file; ignored and non-deploy files never count; zero build
+ok 1 - P1: dirty deploy paths -> DEPLOY_DIRTY_TREE listing every dirty file; ignored and non-deploy files never count; zero build
+  ---
+  duration_ms: 136.423452
+  type: 'test'
+  ...
+# Subtest: P1: only non-deploy files dirty (verify.json) -> tree counts as clean
+ok 2 - P1: only non-deploy files dirty (verify.json) -> tree counts as clean
+  ---
+  duration_ms: 295.799313
+  type: 'test'
+  ...
+# Subtest: P2: clean commit -> image built from the ISOLATED commit tree; imageTag == commit tag; revision label == sha; one image per commit
+ok 3 - P2: clean commit -> image built from the ISOLATED commit tree; imageTag == commit tag; revision label == sha; one image per commit
+  ---
+  duration_ms: 759.867942
+  type: 'test'
+  ...
+# Subtest: P2: build/candidate/deploy without a commit -> DEPLOY_COMMIT_REQUIRED; working-tree test never binds a commit
+ok 4 - P2: build/candidate/deploy without a commit -> DEPLOY_COMMIT_REQUIRED; working-tree test never binds a commit
+  ---
+  duration_ms: 179.30382
+  type: 'test'
+  ...
+# Subtest: P2: an existing commit tag with another revision is a conflict, never overwritten
+ok 5 - P2: an existing commit tag with another revision is a conflict, never overwritten
+  ---
+  duration_ms: 170.265201
+  type: 'test'
+  ...
+# Subtest: P3+P4: deploy writes provenance BEFORE mutation; a failed deploy rolls back and the trail + state keep referencing the SHA
+ok 6 - P3+P4: deploy writes provenance BEFORE mutation; a failed deploy rolls back and the trail + state keep referencing the SHA
+  ---
+  duration_ms: 885.063312
+  type: 'test'
+  ...
+# Subtest: P1+P3: tree dirtied between candidate and deploy -> DEPLOY_DIRTY_TREE with zero production mutation and no deploy line
+ok 7 - P1+P3: tree dirtied between candidate and deploy -> DEPLOY_DIRTY_TREE with zero production mutation and no deploy line
+  ---
+  duration_ms: 465.413173
+  type: 'test'
+  ...
+# Subtest: provenance audit unwritable -> deploy refused before any production mutation (fail-closed)
+ok 8 - provenance audit unwritable -> deploy refused before any production mutation (fail-closed)
+  ---
+  duration_ms: 714.228618
+  type: 'test'
+  ...
+# Subtest: token-hash files are pointed at through the identity repository mount (never baked into the image)
+ok 9 - token-hash files are pointed at through the identity repository mount (never baked into the image)
+  ---
+  duration_ms: 0.972502
+  type: 'test'
+  ...
+# Subtest: runner: build/candidate/deploy without commit -> 400 DEPLOY_COMMIT_REQUIRED; commit threaded to the job; commit refused off the pipeline stages
+ok 10 - runner: build/candidate/deploy without commit -> 400 DEPLOY_COMMIT_REQUIRED; commit threaded to the job; commit refused off the pipeline stages
+  ---
+  duration_ms: 440.0001
+  type: 'test'
+  ...
+# Subtest: MCP pipeline: fresh run without commitSha -> DEPLOY_COMMIT_REQUIRED with ZERO runner calls; with commitSha every pipeline stage carries it
+ok 11 - MCP pipeline: fresh run without commitSha -> DEPLOY_COMMIT_REQUIRED with ZERO runner calls; with commitSha every pipeline stage carries it
+  ---
+  duration_ms: 6.589584
+  type: 'test'
+  ...
+1..11
+# tests 11
+# suites 0
+# pass 11
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4555.988207

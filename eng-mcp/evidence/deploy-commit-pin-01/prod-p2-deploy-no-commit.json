@@ -1,0 +1,9 @@
+{
+ "request": {
+  "operation": "deploy"
+ },
+ "httpStatus": 400,
+ "body": {
+  "error": "DEPLOY_COMMIT_REQUIRED"
+ }
+}

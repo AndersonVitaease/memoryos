@@ -1,0 +1,10 @@
+{
+ "request": {
+  "operation": "status",
+  "commit": "f2a6ae6ffed959de2be3cce13511adcec09a51a8"
+ },
+ "httpStatus": 400,
+ "body": {
+  "error": "COMMIT_NOT_ALLOWED_FOR_OPERATION"
+ }
+}

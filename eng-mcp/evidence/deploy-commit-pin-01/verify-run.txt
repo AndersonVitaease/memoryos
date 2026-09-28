@@ -1,0 +1,12 @@
+PASS commit do código no HEAD
+PASS P1-P4 11/11 green
+PASS testes de release vizinhos sem regressão
+PASS red 11/11 em 0638aa1d
+PASS runner de produção recusa build sem commit
+PASS runner de produção recusa deploy sem commit
+PASS P1 em produção: árvore suja recusada com lista
+PASS 9 registros retroativos dos deploys de 28/09
+PASS produção atual rastreável a 23fc1933
+PASS deploy da árvore suja (seclayer) registrado como não-reproduzível
+PASS *.token.json de fato ignorado
+11/11

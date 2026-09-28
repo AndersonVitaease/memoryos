@@ -1,0 +1,28 @@
+{
+ "request": {
+  "operation": "test",
+  "commit": "f2a6ae6ffed959de2be3cce13511adcec09a51a8"
+ },
+ "httpStatus": 502,
+ "body": {
+  "operation": "test",
+  "success": false,
+  "exitCode": 1,
+  "durationMs": 58,
+  "stdout": "",
+  "stderr": "DEPLOY_DIRTY_TREE: 1 file(s) not committed in deploy paths — commit or stash them; the pipeline never deploys a working tree: src/__deploy_pin_probe.ts\n",
+  "truncated": false,
+  "timedOut": false,
+  "job": {
+   "jobId": "612fff3b-23f1-4c5b-ab9c-51be294623aa",
+   "operation": "test",
+   "status": "failed",
+   "createdAt": "2026-09-28T23:20:26.821Z",
+   "startedAt": "2026-09-28T23:20:26.822Z",
+   "finishedAt": "2026-09-28T23:20:26.881Z",
+   "commit": "f2a6ae6ffed959de2be3cce13511adcec09a51a8",
+   "exitCode": 1,
+   "error": "RELEASE_RUNNER_FAILED"
+  }
+ }
+}
