@@ -128,6 +128,12 @@ export function neutralizeUntrusted(text: unknown, max = 300): string {
 
 export const countHiddenCodePoints = (text: string): number => (text.match(UNTRUSTED_HIDDEN) ?? []).length;
 
+/** Same hidden-code-point set as neutralizeUntrusted, but layout-preserving (no whitespace collapse, no truncation) —
+ *  shared with the runtime security layer (securityResponse.ts) so both barriers render invisible text identically. */
+export function renderHiddenCodePoints(text: string): string {
+  return text.replace(UNTRUSTED_HIDDEN, (ch) => `⟦U+${(ch.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, "0")}⟧`);
+}
+
 const asRecord = (value: unknown): Record<string, unknown> | null => (value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null);
 const asArray = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 const asStr = (value: unknown): string | null => (typeof value === "string" ? value : null);

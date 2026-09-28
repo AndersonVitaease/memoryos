@@ -13,6 +13,8 @@ import { createMcpClientCallTransport, DOKPLOY_SERVER_ID_DEFAULT, DEFAULT_MEMORY
 import { ensureProxySecret, handleMcpProxyRequest } from "./memoryProxy.ts";
 // SHIP-LOCK-01: layer 1 — deterministic ship-phase lock gate (fail-safe, tier-1 refusals only).
 import { shipPhaseGatedServer } from "./shipLock.ts";
+// GUARDIAN-SECLAYER-B-01: runtime Security Tool on every tools/call response (outermost shim).
+import { installSecurityResponseCompatibility } from "./securityResponse.ts";
 
 export type EngineeringServerOptions = { repositoryId: string; configuredRoot: string; tokenRegistry: TokenRecord[] };
 
@@ -55,6 +57,8 @@ export async function createEngineeringHttpServer(options: EngineeringServerOpti
       installToolAliasCompatibility(mcp.server);
       // ERROR-01: envelope canônico de erro em TODAS as tools (choke point tools/call).
       installErrorEnvelopeCompatibility(mcp.server);
+      // GUARDIAN-SECLAYER-B-01: L0 zero-LLM on every response, L1 advisory on signal, L2 quarantine/block.
+      installSecurityResponseCompatibility(mcp.server);
       return mcp;
     }, { legacy: "stateless" });
   // STORE-MIG-01 PARTE B: secret do canal do proxy — NOVO, gerado na VPS no
