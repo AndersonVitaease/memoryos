@@ -2,18 +2,97 @@
   "mission": "deploy-commit-pin-01",
   "date": "2026-09-28",
   "owner": "deploy-commit-pin-01",
-  "note": "manifesto da missão (dono: deploy-commit-pin-01). Pipeline compila commit declarado, nunca working tree. Código em f2a6ae6f; runner reiniciado (pid 1041976) já aplica a regra. Deploy dogfood NÃO executado (negado pelo classificador de permissão — pendente do operador); produção segue em 4f4f5721 = 23fc1933.",
+  "note": "manifesto da missão (dono: deploy-commit-pin-01). Pipeline compila commit declarado. Código f2a6ae6f; runner pid 1041976; primeiro deploy fixado por commit em produção: job a08a37f0, commit 4a209a78 (contém f2a6ae6f).",
   "cmd": [
-    { "run": "git -C /opt/memoryos merge-base --is-ancestor f2a6ae6ffed959de2be3cce13511adcec09a51a8 HEAD", "expect_exit": 0, "_provenance": "report", "_source": "commit do código no HEAD" },
-    { "run": "cd /opt/memoryos/eng-mcp && node --import tsx --test --test-force-exit test/deployCommitPin.test.ts >/dev/null 2>&1", "expect_exit": 0, "_provenance": "report", "_source": "P1-P4 11/11 green" },
-    { "run": "cd /opt/memoryos/eng-mcp && node --import tsx --test --test-force-exit test/release-smoke-grace.test.ts test/release-test.test.ts test/release-runner-*.test.ts >/dev/null 2>&1", "expect_exit": 0, "_provenance": "report", "_source": "testes de release vizinhos sem regressão" },
-    { "run": "grep -c '^not ok' /opt/memoryos/eng-mcp/evidence/deploy-commit-pin-01/red-head-0638aa1d.txt", "expect_stdout_regex": "^11$", "_provenance": "report", "_source": "red 11/11 em 0638aa1d" },
-    { "run": "cd /opt/memoryos/eng-mcp && node evidence/deploy-commit-pin-01/runner-call.mjs '{\"operation\":\"build\"}'", "expect_stdout_regex": "DEPLOY_COMMIT_REQUIRED", "_provenance": "report", "_source": "runner de produção recusa build sem commit" },
-    { "run": "cd /opt/memoryos/eng-mcp && node evidence/deploy-commit-pin-01/runner-call.mjs '{\"operation\":\"deploy\"}'", "expect_stdout_regex": "DEPLOY_COMMIT_REQUIRED", "_provenance": "report", "_source": "runner de produção recusa deploy sem commit" },
-    { "run": "grep -q 'DEPLOY_DIRTY_TREE: 1 file(s).*src/__deploy_pin_probe.ts' /opt/memoryos/eng-mcp/evidence/deploy-commit-pin-01/prod-p1-dirty-tree.json", "expect_exit": 0, "_provenance": "report", "_source": "P1 em produção: árvore suja recusada com lista" },
-    { "run": "test $(grep -c '\"event\":\"retroactive_record\"' /opt/eng-mcp-release-data/production/audit/deploy-provenance.jsonl) -ge 9", "expect_exit": 0, "_provenance": "report", "_source": "9 registros retroativos dos deploys de 28/09" },
-    { "run": "grep '\"deployJobId\":\"36d95f78-8898-46af-b5ed-aa5bd3d5cffc\"' /opt/eng-mcp-release-data/production/audit/deploy-provenance.jsonl", "expect_stdout_regex": "\"commitSha\":\"23fc1933", "_provenance": "report", "_source": "produção atual rastreável a 23fc1933" },
-    { "run": "grep '\"deployJobId\":\"bcc0f546-9195-4979-b4d3-7cb672153bab\"' /opt/eng-mcp-release-data/production/audit/deploy-provenance.jsonl", "expect_stdout_regex": "\"commitSha\":null.*\"reproducible\":false", "_provenance": "report", "_source": "deploy da árvore suja (seclayer) registrado como não-reproduzível" },
-    { "run": "git -C /opt/memoryos check-ignore -q eng-mcp/src/auth-session.token.json", "expect_exit": 0, "_provenance": "report", "_source": "*.token.json de fato ignorado" }
+    {
+      "run": "git -C /opt/memoryos merge-base --is-ancestor f2a6ae6ffed959de2be3cce13511adcec09a51a8 HEAD",
+      "expect_exit": 0,
+      "_provenance": "report",
+      "_source": "commit do código no HEAD"
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp && node --import tsx --test --test-force-exit test/deployCommitPin.test.ts >/dev/null 2>&1",
+      "expect_exit": 0,
+      "_provenance": "report",
+      "_source": "P1-P4 11/11 green"
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp && node --import tsx --test --test-force-exit test/release-smoke-grace.test.ts test/release-test.test.ts test/release-runner-*.test.ts >/dev/null 2>&1",
+      "expect_exit": 0,
+      "_provenance": "report",
+      "_source": "testes de release vizinhos sem regressão"
+    },
+    {
+      "run": "grep -c '^not ok' /opt/memoryos/eng-mcp/evidence/deploy-commit-pin-01/red-head-0638aa1d.txt",
+      "expect_stdout_regex": "^11$",
+      "_provenance": "report",
+      "_source": "red 11/11 em 0638aa1d"
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp && node evidence/deploy-commit-pin-01/runner-call.mjs '{\"operation\":\"build\"}'",
+      "expect_stdout_regex": "DEPLOY_COMMIT_REQUIRED",
+      "_provenance": "report",
+      "_source": "runner de produção recusa build sem commit"
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp && node evidence/deploy-commit-pin-01/runner-call.mjs '{\"operation\":\"deploy\"}'",
+      "expect_stdout_regex": "DEPLOY_COMMIT_REQUIRED",
+      "_provenance": "report",
+      "_source": "runner de produção recusa deploy sem commit"
+    },
+    {
+      "run": "grep -q 'DEPLOY_DIRTY_TREE: 1 file(s).*src/__deploy_pin_probe.ts' /opt/memoryos/eng-mcp/evidence/deploy-commit-pin-01/prod-p1-dirty-tree.json",
+      "expect_exit": 0,
+      "_provenance": "report",
+      "_source": "P1 em produção: árvore suja recusada com lista"
+    },
+    {
+      "run": "test $(grep -c '\"event\":\"retroactive_record\"' /opt/eng-mcp-release-data/production/audit/deploy-provenance.jsonl) -ge 9",
+      "expect_exit": 0,
+      "_provenance": "report",
+      "_source": "9 registros retroativos dos deploys de 28/09"
+    },
+    {
+      "run": "grep '\"deployJobId\":\"36d95f78-8898-46af-b5ed-aa5bd3d5cffc\"' /opt/eng-mcp-release-data/production/audit/deploy-provenance.jsonl",
+      "expect_stdout_regex": "\"commitSha\":\"23fc1933",
+      "_provenance": "report",
+      "_source": "produção atual rastreável a 23fc1933"
+    },
+    {
+      "run": "grep '\"deployJobId\":\"bcc0f546-9195-4979-b4d3-7cb672153bab\"' /opt/eng-mcp-release-data/production/audit/deploy-provenance.jsonl",
+      "expect_stdout_regex": "\"commitSha\":null.*\"reproducible\":false",
+      "_provenance": "report",
+      "_source": "deploy da árvore suja (seclayer) registrado como não-reproduzível"
+    },
+    {
+      "run": "git -C /opt/memoryos check-ignore -q eng-mcp/src/auth-session.token.json",
+      "expect_exit": 0,
+      "_provenance": "report",
+      "_source": "*.token.json de fato ignorado"
+    },
+    {
+      "run": "docker inspect --format \"{{.Config.Image}} {{index .Config.Labels \\\"org.opencontainers.image.revision\\\"}}\" memoryos-eng-mcp",
+      "expect_stdout_regex": "^eng-mcp-candidate:commit-([a-f0-9]{40}) \\1$",
+      "_provenance": "report",
+      "_source": "P2 produção: imageTag == revision label == SHA"
+    },
+    {
+      "run": "grep \"\\\"event\\\":\\\"deploy_succeeded\\\"\" /opt/eng-mcp-release-data/production/audit/deploy-provenance.jsonl | tail -1",
+      "expect_stdout_regex": "\"treeClean\":true,\"builtFrom\":\"commit\"",
+      "_provenance": "report",
+      "_source": "P3 produção: proveniência builtFrom commit"
+    },
+    {
+      "run": "grep \"a08a37f0-52dd-4b1a-b799-fffb7abebfcf\" /opt/eng-mcp-release-data/production/audit/deploy-provenance.jsonl | head -1",
+      "expect_stdout_regex": "\"previousCommitSha\":\"23fc1933",
+      "_provenance": "report",
+      "_source": "P4 produção: rollback referencia o SHA anterior"
+    },
+    {
+      "run": "git -C /opt/memoryos merge-base --is-ancestor f2a6ae6ffed959de2be3cce13511adcec09a51a8 4a209a78d27b9293e45ad75052b087753015f072",
+      "expect_exit": 0,
+      "_provenance": "report",
+      "_source": "commit em produção contém a regra"
+    }
   ]
 }

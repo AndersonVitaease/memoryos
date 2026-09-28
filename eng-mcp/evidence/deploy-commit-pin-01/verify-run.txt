@@ -9,4 +9,8 @@ PASS 9 registros retroativos dos deploys de 28/09
 PASS produção atual rastreável a 23fc1933
 PASS deploy da árvore suja (seclayer) registrado como não-reproduzível
 PASS *.token.json de fato ignorado
-11/11
+PASS P2 produção: imageTag == revision label == SHA
+PASS P3 produção: proveniência builtFrom commit
+PASS P4 produção: rollback referencia o SHA anterior
+PASS commit em produção contém a regra
+15/15

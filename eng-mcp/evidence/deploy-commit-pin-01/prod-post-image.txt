@@ -1,0 +1,1 @@
+eng-mcp-candidate:commit-4a209a78d27b9293e45ad75052b087753015f072 {"io.memoryos.eng-mcp.built-from":"commit","org.opencontainers.image.revision":"4a209a78d27b9293e45ad75052b087753015f072"} true 2026-09-28T23:45:19.250048858Z
