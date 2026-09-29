@@ -17,14 +17,28 @@ import time
 import urllib.request
 
 MISSION_STATE = "/root/.hermes/mission-state"
-CRED_FILE = "/opt/eng-mcp-release-data/credentials/openrouter-judge"
+# SCALE-01 (29/09): credencial em múltiplos paths (host vs container eng-mcp, que monta
+# em /data/credentials). Ordem: env > host > container.
+import os as _os
+CRED_CANDIDATES = [
+    _os.environ.get("JEV_CRED_FILE", ""),
+    "/opt/eng-mcp-release-data/credentials/openrouter-judge",
+    "/data/credentials/openrouter-judge",
+]
+CRED_FILE = next((p for p in CRED_CANDIDATES if p and _os.path.isfile(p)), CRED_CANDIDATES[1])
 URL = "https://openrouter.ai/api/alpha/decisions"
 MODEL = "typesafe/jev-1.13"
 TIMEOUT_S = 3.0
 
 
 def jev_key():
-    raw = open(CRED_FILE, encoding="utf-8").read().strip()
+    # HERDR-VERIFY-BADGE-02: leitura de credencial NUNCA derruba o gate —
+    # falha de arquivo/permissão vira "" e o main responde NAO honesto (fail→NAO),
+    # em vez de crash com traceback (exit != 0 → "Command failed" no close).
+    try:
+        raw = open(CRED_FILE, encoding="utf-8").read().strip()
+    except Exception:
+        return ""
     m = re.search(r"sk-or-v1-[A-Za-z0-9]{20,}", raw)
     return m.group(0) if m else (raw if raw.startswith("sk-or-") else "")
 
