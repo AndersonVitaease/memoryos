@@ -1,8 +1,12 @@
 import { ExecutionOrchestrator } from "@/lib/runtime-engine/ExecutionOrchestrator";
 import type { ExecutionOutcome } from "../ExecutionTypes";
-import type { AdaptiveProcess, AdaptiveProcessContext, AdaptiveRunState, InitialMissionPlan, ResearchStep } from "./AdaptiveProcess";
+import type { AdaptiveProcess, AdaptiveProcessContext, AdaptiveRunState, InitialMissionPlan, Reflection, ResearchStep } from "./AdaptiveProcess";
 import { resolveResourcePolicies } from "@/lib/runtime-engine/ResourcePolicyResolver";
 import { getSupervisedEngineeringProcess } from "./SupervisedEngineeringProcess";
+
+// Local (mesma constante de SupervisedEngineeringProcess/DeepResearchProcess) —
+// corrige referência solta que quebrava o compile deste arquivo.
+const SUFFICIENCY_THRESHOLD = 0.75;
 
 // ── ADV-01: Initial Mission Plan capture ─────────────────────────────────────
 

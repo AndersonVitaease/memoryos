@@ -59,7 +59,7 @@ import { distributionCampaignInputSchema, runDistributionCampaign } from "./dist
 import { imageEditRoutedInputSchema, runImageEditRouted } from "./imageEditFast.ts";
 // ENG-MCP-MISSION-01/02: mission-* determinísticas (wraps do plugin mission-ops;
 // gate JEV no close). Fonte única: handlers puros do plugin via subprocesso python.
-import { missionDispatchInputSchema, missionStatusInputSchema, missionReadInputSchema, missionWatchInputSchema, missionRecoverInputSchema, missionCloseInputSchema, missionLedgerFixInputSchema, runMissionDispatch, runMissionStatus, runMissionRead, runMissionWatch, runMissionRecover, runMissionClose, runMissionLedgerFix } from "./missionOps.ts";
+import { missionDispatchInputSchema, missionStatusInputSchema, missionReadInputSchema, missionWatchInputSchema, missionRecoverInputSchema, missionCloseInputSchema, missionLedgerFixInputSchema, runMissionDispatch, runMissionStatus, runMissionRead, runMissionWatch, runMissionRecover, runMissionClose, runMissionLedgerFix, missionNudgeInputSchema, runMissionNudge } from "./missionOps.ts";
 import { imageCreateInputSchema, runImageCreate } from "./imageCreate.ts";
 import { imageAdaptInputSchema, runImageAdapt } from "./imageAdapt.ts";
 import { visionInspectInputSchema, runVisionInspect } from "./visionInspect.ts";
@@ -1624,5 +1624,9 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
     description: "Correção manual de ledger (paneId/tabId/status) para casos fora da auto-correção do status.",
     inputSchema: missionLedgerFixInputSchema
   }, async (input) => { requireMissionOps(); return response(await runMissionLedgerFix(input)); }));
+  register("engineering.mission.nudge", "write", (name) => server.registerTool(name, {
+    description: "Intervenção do supervisor no worker: nudge atômico CHECK->SEND->VERIFY (recusa turno ativo sem force, dedupe 60s, envia com sender no audit, verifica engajamento no pane). Zero LLM, sem gate JEV por desenho (estado mecânico, não prova). Nunca fecha missão nem despacha prompt.",
+    inputSchema: missionNudgeInputSchema
+  }, async (input) => { requireMissionOps(); return response(await runMissionNudge(input)); }));
 
 }

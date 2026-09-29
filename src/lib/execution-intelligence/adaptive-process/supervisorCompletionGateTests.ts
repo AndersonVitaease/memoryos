@@ -62,29 +62,29 @@ export async function runSupervisorCompletionGateTests(): Promise<TestResult[]> 
   const results: TestResult[] = [];
 
   // A. Agent/Worker may claim DONE, but an unverified required requirement blocks PASS.
-  results.push(await run("A — worker DONE does not override unverified evidence", () => {
+  results.push(await run("A — worker DONE does not override unverified evidence", async () => {
     const reflection = reflectionFor([
       requirement("implementation", "completed"),
       requirement("verification", "unverified"),
     ]);
 
     assert(reflection.completion?.requiredComplete === false, "requiredComplete must be false");
-    assert(supervisor.stop(reflection) === false, "supervisor must not accept mission as complete");
+    assert(await supervisor.stop(reflection) === false, "supervisor must not accept mission as complete");
   }));
 
   // B. A mandatory test that was not proven/executed is represented as unverified and blocks PASS.
-  results.push(await run("B — mandatory unverified test blocks mission PASS", () => {
+  results.push(await run("B — mandatory unverified test blocks mission PASS", async () => {
     const reflection = reflectionFor([
       requirement("code-change", "completed"),
       requirement("mandatory-test", "unverified"),
     ]);
 
     assert(reflection.gaps.includes("mandatory-test"), "missing mandatory test must remain a gap");
-    assert(supervisor.stop(reflection) === false, "unverified mandatory test must block completion");
+    assert(await supervisor.stop(reflection) === false, "unverified mandatory test must block completion");
   }));
 
   // C. Only when every required requirement is completed may the supervisor accept the mission.
-  results.push(await run("C — all required requirements completed allows PASS", () => {
+  results.push(await run("C — all required requirements completed allows PASS", async () => {
     const reflection = reflectionFor([
       requirement("implementation", "completed"),
       requirement("mandatory-test", "completed"),
@@ -92,7 +92,7 @@ export async function runSupervisorCompletionGateTests(): Promise<TestResult[]> 
     ]);
 
     assert(reflection.completion?.requiredComplete === true, "requiredComplete must be true");
-    assert(supervisor.stop(reflection) === true, "supervisor must accept completed required contract");
+    assert(await supervisor.stop(reflection) === true, "supervisor must accept completed required contract");
   }));
 
   return results;

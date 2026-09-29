@@ -31,6 +31,10 @@ export interface CompletionRequirement {
   readonly id: string;
   readonly description: string;
   readonly required?: boolean;
+  /** SUP-01 (29/09): estado avaliado do requisito — evidence-based completion gate.
+   * Opcional para backward-compat com a interface podada: ausente = "unverified". */
+  readonly status?: CompletionRequirementStatus;
+  readonly evidence?: readonly string[];
 }
 
 /** Reflection sobre uma wave executada. */
