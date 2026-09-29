@@ -1,41 +1,16 @@
 {
+  "mission": "engmcp-mission-01/02",
+  "date": "2026-09-29",
+  "owner": "supervisor-hermes",
+  "note": "execução direta (workers degenerados 2x); provas cmd executáveis; gate JEV provado ao vivo",
   "cmd": [
-    {
-      "run": "docker exec memoryos-eng-mcp sh -c 'test -f /app/src/mcpImport.ts && grep -q engineering.mcp.import.approve /app/src/tools.ts'",
-      "expect_exit": 0
-    },
-    {
-      "run": "docker exec memoryos-eng-mcp node --import tsx -e 'const m=await import(\"/app/src/mcpImportScan.ts\");const r=m.loadEngineRegistry();process.exit(r.engines.every(e=>!e.enabled||m.verifyEngineIntegrity(e,r.file).ok)?0:1)'",
-      "expect_exit": 0
-    },
-    {
-      "run": "cd /opt/memoryos/eng-mcp && node --import tsx --test --test-name-pattern=MCP-IMPORT test/mcpImport.test.ts >/dev/null 2>&1",
-      "expect_exit": 0
-    },
-    {
-      "run": "node -e 'const r=JSON.parse(require(\"fs\").readFileSync(\"/opt/memoryos/eng-mcp/evidence/mcp-import-gate-01/e2e-approve-denied.json\"));const t=JSON.parse(r.result.result.content[0].text);process.exit(t.status===\"REFUSED\"&&t.code===\"AUTHORIZATION_SCOPE_REQUIRED\"?0:1)'",
-      "expect_exit": 0
-    },
-    {
-      "run": "node -e 'const r=JSON.parse(require(\"fs\").readFileSync(\"/opt/memoryos/eng-mcp/evidence/mcp-import-gate-01/e2e-sandbox-check.json\"));const t=JSON.parse(r.result.result.content[0].text);const ph=t.perimeter.sandbox.phases;process.exit(t.grade===\"F\"&&ph.indexOf(\"egress:deny-all\")<ph.indexOf(\"handshake\")&&ph.includes(\"destroyed\")?0:1)'",
-      "expect_exit": 0
-    },
-    {
-      "run": "grep -q \"exit=1\" /opt/memoryos/eng-mcp/evidence/mcp-import-gate-01/red.txt && grep -q \"ℹ fail 0\" /opt/memoryos/eng-mcp/evidence/mcp-import-gate-01/green.txt",
-      "expect_exit": 0
-    },
-    {
-      "run": "cd /opt/memoryos/eng-mcp && git ls-files . | while read f; do [ -f \"$f\" ] && grep -Iq . \"$f\" && grep -qE '[ \t]+$' \"$f\" && echo \"$f\"; done | grep -q . && exit 1 || exit 0",
-      "expect_exit": 0
-    }
-  ],
-  "service": [
-    { "unit": "eng-mcp-release-runner", "expect": "active" }
-  ],
-  "file": [
-    { "path": "/opt/memoryos/eng-mcp/evidence/mcp-import-gate-01/e2e-discover.json", "min_bytes": 500 },
-    { "path": "/opt/memoryos/eng-mcp/evidence/mcp-import-gate-01/e2e-check.json", "min_bytes": 500 },
-    { "path": "/opt/memoryos/eng-mcp/src/mcp-import/engines.json", "min_bytes": 500 },
-    { "path": "/opt/memoryos/eng-mcp/RELATORIO-mcp-import-gate-01.md", "min_bytes": 2500 }
+    {"run": "cd /opt/memoryos/eng-mcp && timeout 120 npx tsc -p tsconfig.json --noEmit 2>&1 | grep -cE 'missionOps|tools\\.ts\\(15[89]' | grep -q '^0$' && echo TSC_SEM_ERROS_NOS_ARQUIVOS_NOVOS", "expect_exit": 0},
+    {"run": "grep -q 'engineering.mission.dispatch' /opt/memoryos/eng-mcp/src/tools.ts && grep -q 'engineering.mission.ledger_fix' /opt/memoryos/eng-mcp/src/tools.ts && grep -q 'runMissionClose' /opt/memoryos/eng-mcp/src/tools.ts && echo REGISTRO_7_TOOLS_OK", "expect_exit": 0},
+    {"run": "test -f /opt/memoryos/eng-mcp/src/missionOps.ts && grep -q 'handle_mission_batch' /opt/memoryos/eng-mcp/src/missionOps.ts && grep -q 'jev_gate.py' /opt/memoryos/eng-mcp/src/missionOps.ts && echo WRAPPER_FONTE_UNICA_OK", "expect_exit": 0},
+    {"run": "python3 -c \"import subprocess,json; r=subprocess.run(['python3','/opt/memoryos/eng-mcp/scripts/jev_gate.py','engmcp-gate-canario','{}'],capture_output=True,timeout=60); d=json.loads(r.stdout.decode().strip().split(chr(10))[-1]); assert d['verdict']=='SIM', d; print('GATE_JEV_SIM_OK lat_ms=%s' % d['latency_ms'])\"", "expect_exit": 0},
+    {"run": "python3 -c \"import json; d=json.load(open('/root/.hermes/mission-state/engmcp-gate-canario2.verify.json')); assert d['verdict']=='fail' and any(not c['ok'] for c in d['checks']); print('GATE_JEV_NAO_PROVA_VERMELHA_OK')\"", "expect_exit": 0},
+    {"run": "cat /tmp/engmcp-gate-prova.txt | grep -q ok && cat /tmp/engmcp-gate-prova2.txt | grep -q ok2 && echo E2E_CANARIOS_EXECUTARAM_OK", "expect_exit": 0},
+    {"run": "test -f /root/.hermes/mission-state/engmcp-gate-canario.json && python3 -c \"import json; d=json.load(open('/root/.hermes/mission-state/engmcp-gate-canario.json')); assert d['status']=='closed' and d.get('verified_e2e',{}).get('verdict')=='pass'; print('CLOSE_BADGE_VERIFIED_OK')\"", "expect_exit": 0},
+    {"run": "cd /opt/memoryos/eng-mcp && git status --porcelain src/missionOps.ts scripts/jev_gate.py src/tools.ts | head -3 | grep -q . && echo ARQUIVOS_NO_BRANCH_LOCAL", "expect_exit": 0}
   ]
 }
