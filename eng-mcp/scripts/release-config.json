@@ -31,7 +31,8 @@
       "/root/.local/bin:/root/.local/bin:ro",
       "/usr/local/bin/herdr:/usr/local/bin/herdr:ro",
       "/usr/local/bin/herdr-broadcast:/usr/local/bin/herdr-broadcast:ro",
-      "/usr/local/bin/herdr-health:/usr/local/bin/herdr-health:ro"
+      "/usr/local/bin/herdr-health:/usr/local/bin/herdr-health:ro",
+      "/opt/deliver-verify:/opt/deliver-verify:ro"
     ],
     "missionStateMount": "/root/.hermes/mission-state:/root/.hermes/mission-state",
     "extraRwMounts": [
