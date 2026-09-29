@@ -24,11 +24,12 @@ export class JudgeError extends Error {
   }
 }
 
-// JUDGE-GATE-01: OpenRouter /alpha/decisions mudou de contrato server-side (503 com credencial
-// valida, 401 sem) e derrubava a camada judge inteira em fail-open. Endpoint default agora e o
-// adapter Jev local no gpu-bridge (:8102), que coage a saida do Qwen ao contrato do validateJudgeOutput.
-// Override por env (ENG_MCP_JUDGE_ENDPOINT) avaliado por chamada.
-export const JUDGE_ENDPOINT = "http://127.0.0.1:8102/alpha/decisions";
+// JUDGE-GATE-01 + GPU-EXIT-01 (29/09): endpoint era o adapter Jev no gpu-bridge (:8102),
+// MORTO desde o encerramento da GPU (ordem operator: operação 100% OpenRouter) — o smoke
+// judge-contract de TODO deploy falhava (JUDGE_PROVIDER_ERROR) e o rollback derrubava o
+// release. Default agora: OpenRouter /alpha/decisions DIRETO (mesmo contrato de body;
+// credencial /data/credentials/openrouter-judge já é a da decis API). Override por env mantido.
+export const JUDGE_ENDPOINT = "https://openrouter.ai/api/alpha/decisions";
 function judgeEndpoint(): string {
   const raw = process.env.ENG_MCP_JUDGE_ENDPOINT;
   return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : JUDGE_ENDPOINT;
