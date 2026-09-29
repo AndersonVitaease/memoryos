@@ -33,11 +33,12 @@
       "/usr/local/bin/herdr-broadcast:/usr/local/bin/herdr-broadcast:ro",
       "/usr/local/bin/herdr-health:/usr/local/bin/herdr-health:ro",
       "/opt/deliver-verify:/opt/deliver-verify:ro",
-      "/opt/mission-events:/opt/mission-events:ro"
+      "/opt/gpu-bridge:/opt/gpu-bridge:ro"
     ],
     "missionStateMount": "/root/.hermes/mission-state:/root/.hermes/mission-state",
     "extraRwMounts": [
-      "/root/.config/herdr:/root/.config/herdr"
+      "/root/.config/herdr:/root/.config/herdr",
+      "/opt/mission-events:/opt/mission-events"
     ]
   },
   "requiredTools": [
