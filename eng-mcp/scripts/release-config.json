@@ -28,7 +28,8 @@
     "readOnlyMounts": [
       "/usr/local/lib/hermes-agent:/usr/local/lib/hermes-agent:ro",
       "/root/.hermes/plugins/mission-ops:/root/.hermes/plugins/mission-ops:ro"
-    ]
+    ],
+    "missionStateMount": "/root/.hermes/mission-state:/root/.hermes/mission-state"
   },
   "requiredTools": [
     "engineering.mcp.catalog",
