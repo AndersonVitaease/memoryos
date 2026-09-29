@@ -27,9 +27,16 @@
     "busSpoolMount": "/opt/mission-events/spool.jsonl:/run/mission-bus/spool.jsonl",
     "readOnlyMounts": [
       "/usr/local/lib/hermes-agent:/usr/local/lib/hermes-agent:ro",
-      "/root/.hermes/plugins/mission-ops:/root/.hermes/plugins/mission-ops:ro"
+      "/root/.hermes/plugins/mission-ops:/root/.hermes/plugins/mission-ops:ro",
+      "/root/.local/bin:/root/.local/bin:ro",
+      "/usr/local/bin/herdr:/usr/local/bin/herdr:ro",
+      "/usr/local/bin/herdr-broadcast:/usr/local/bin/herdr-broadcast:ro",
+      "/usr/local/bin/herdr-health:/usr/local/bin/herdr-health:ro"
     ],
-    "missionStateMount": "/root/.hermes/mission-state:/root/.hermes/mission-state"
+    "missionStateMount": "/root/.hermes/mission-state:/root/.hermes/mission-state",
+    "extraRwMounts": [
+      "/root/.config/herdr:/root/.config/herdr"
+    ]
   },
   "requiredTools": [
     "engineering.mcp.catalog",
