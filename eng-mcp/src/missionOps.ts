@@ -59,22 +59,74 @@ export const missionCloseInputSchema = z.object({
 export const missionLedgerFixInputSchema = z.object({
   missionId: z.string().min(1), paneId: z.string().optional(), tabId: z.string().optional(),
 }).strict();
+// ENG-MCP-MISSION-NUDGE (29/09): intervenção do supervisor — CHECK->SEND->VERIFY
+// atômico do plugin (handler puro, zero LLM). Sem gate JEV por desenho: não há
+// prova a julgar, só estado mecânico do pane (decisão registrada 29/09).
+export const missionNudgeInputSchema = z.object({
+  missionId: z.string().min(1), message: z.string().min(1),
+  sender: z.string().optional(), force: z.boolean().optional(),
+  verifySeconds: z.number().int().min(0).max(600).optional(),
+}).strict();
 
-// ---- GHOST-CLEAN-01 (proteção 2): dispatch fecha ZUMBI da MESMA missão antes de criar aba
-async function closeDuplicateTabs(missionId: string): Promise<string[]> {
+// ---- DISPATCHER-DUPFIX-01: dispatch fecha TODA aba órfã da MESMA missão.
+// Antes (GHOST-CLEAN-01) rodava ANTES do dispatch com igualdade exata de label e
+// sem mapeamento tab↔pane — abas órfãs de ledger cancelled/done/start_timeout
+// sobreviviam. Agora roda DEPOIS do dispatch: fecha toda aba cujo label CONTÉM
+// "MISSION:<id>" e cujo pane NÃO é o recém-criado (independente do status do
+// ledger — a aba antiga é órfã por definição quando a missão é re-despachada).
+const HERDR_LIST = "H=$(ls /usr/local/bin/herdr* 2>/dev/null | head -1); $H";
+type HerdrRunner = (cmd: string) => Promise<string>; // stdout cru do CLI
+
+const defaultRunner: HerdrRunner = (cmd) =>
+  execFileP("bash", ["-lc", `${HERDR_LIST} ${cmd}`], { timeout: 15_000 })
+    .then((r) => r.stdout);
+
+async function herdrJson(run: HerdrRunner, cmd: string): Promise<Record<string, unknown>> {
+  return JSON.parse(await run(cmd)) as Record<string, unknown>;
+}
+
+// Ponto de injeção p/ testes (padrão makeBase44CliRunner): runner falso responde
+// os comandos herdr sem tocar no herdr real.
+export function makeCloseDuplicateTabsRunner(
+  responses: Record<string, string>, run?: HerdrRunner,
+): { calls: string[]; run: HerdrRunner } {
+  const calls: string[] = [];
+  return {
+    calls,
+    run: async (cmd: string) => {
+      calls.push(cmd);
+      const impl = run ?? (async () => responses[cmd] ?? "{}");
+      return impl(cmd);
+    },
+  };
+}
+
+export async function closeDuplicateTabs(
+  missionId: string, keepPaneId?: string, runner: HerdrRunner = defaultRunner,
+): Promise<string[]> {
   const closed: string[] = [];
+  const needle = `MISSION:${missionId}`;
   try {
-    const { stdout } = await execFileP("bash", ["-lc",
-      "H=$(ls /usr/local/bin/herdr* 2>/dev/null | head -1); $H tab list"], { timeout: 15_000 });
-    const tabs = JSON.parse(stdout).result?.tabs ?? [];
-    const mine = tabs.filter((t: { label?: string; tab_id?: string }) =>
-      t.label === `MISSION:${missionId}`);
-    for (const t of mine) {
+    const tabs = ((await herdrJson(runner, "tab list")) as { result?: { tabs?: unknown[] } })
+      .result?.tabs ?? [];
+    // mapear tab↔pane: o tab list não traz pane_id; vem do pane list (p.tab_id).
+    let paneByTab = new Map<string, string>();
+    try {
+      const panes = ((await herdrJson(runner, "pane list")) as { result?: { panes?: unknown[] } })
+        .result?.panes ?? [];
+      paneByTab = new Map(panes
+        .filter((p): p is { pane_id: string; tab_id: string } =>
+          typeof (p as { pane_id?: unknown })?.pane_id === "string"
+          && typeof (p as { tab_id?: unknown })?.tab_id === "string")
+        .map((p) => [p.tab_id, p.pane_id]));
+    } catch { /* sem pane list: fecha por label, sem exclusão por pane */ }
+    for (const t of tabs as { label?: string; tab_id?: string }[]) {
+      if (typeof t.tab_id !== "string" || !(t.label ?? "").includes(needle)) continue;
+      const pane = paneByTab.get(t.tab_id);
+      if (keepPaneId && (pane === keepPaneId || t.tab_id === keepPaneId)) continue;
       try {
-        await execFileP("bash", ["-lc",
-          `H=$(ls /usr/local/bin/herdr* 2>/dev/null | head -1); $H tab close ${t.tab_id}`],
-          { timeout: 15_000 });
-        closed.push(String(t.tab_id));
+        await runner(`tab close ${t.tab_id}`);
+        closed.push(t.tab_id);
       } catch { /* aba pode já ter ido */ }
     }
   } catch { /* herdr indisponível: dispatch decide */ }
@@ -82,7 +134,6 @@ async function closeDuplicateTabs(missionId: string): Promise<string[]> {
 }
 
 export async function runMissionDispatch(input: z.infer<typeof missionDispatchInputSchema>) {
-  const zombies = await closeDuplicateTabs(input.missionId);
   const handler = input.batch ? "handle_mission_batch" : "handle_mission_dispatch";
   const args = input.batch
     ? { missions: [{ missionId: input.missionId, promptFile: input.promptFile,
@@ -90,6 +141,11 @@ export async function runMissionDispatch(input: z.infer<typeof missionDispatchIn
         spawnedBy: input.spawnedBy }, ...input.batch] }
     : { ...input };
   const result = await callHandler(handler, args);
+  // DUPFIX-01: fecha órfãs DEPOIS do dispatch, preservando o pane recém-criado
+  // (result.paneId). Antes rodava antes do dispatch — aba órfã de ledger
+  // cancelled/done/start_timeout sobrevivia e virava duplicata.
+  const zombies = await closeDuplicateTabs(input.missionId,
+    typeof result.paneId === "string" ? result.paneId : undefined);
   return { ...result, zombiesClosed: zombies };
 }
 
@@ -112,6 +168,11 @@ export async function runMissionRecover(input: z.infer<typeof missionRecoverInpu
 
 export async function runMissionLedgerFix(input: z.infer<typeof missionLedgerFixInputSchema>) {
   return callHandler("handle_mission_ledger_fix", input, 30_000);
+}
+
+export async function runMissionNudge(input: z.infer<typeof missionNudgeInputSchema>) {
+  const verifyMs = (input.verifySeconds ?? 30) * 1000;
+  return callHandler("handle_mission_nudge", input, verifyMs + 60_000);
 }
 
 // ENG-MCP-MISSION-02: close com GATE JEV (fim do fail-open).

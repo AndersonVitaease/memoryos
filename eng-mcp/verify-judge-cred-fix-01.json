@@ -1,0 +1,36 @@
+{
+  "mission": "judge-cred-fix-01",
+  "date": "2026-09-29",
+  "cmd": [
+    {
+      "run": "docker exec memoryos-eng-mcp sh -c 'curl -s -o /dev/null -w \"%{http_code}\" -H \"Authorization: Bearer $(cat /data/credentials/openrouter-judge)\" https://openrouter.ai/api/v1/key'",
+      "expect_exit": 0
+    },
+    {
+      "run": "docker exec memoryos-eng-mcp sh -c 'curl -s -o /dev/null -w \"%{http_code}\" -X POST -H \"Authorization: Bearer $(cat /data/credentials/openrouter-judge)\" -H \"Content-Type: application/json\" -d @/dev/stdin https://openrouter.ai/api/alpha/decisions'",
+      "expect_exit": 0
+    },
+    {
+      "run": "git -C /opt/memoryos/eng-mcp status --short -- src/judge.ts",
+      "expect_exit": 0
+    },
+    {
+      "run": "sha256sum /opt/gpu-watchdog/.openrouter-key /opt/eng-mcp-release-data/credentials/openrouter-judge | awk '{print substr($1,1,16)}' | uniq -d",
+      "expect_exit": 0
+    }
+  ],
+  "file": [
+    {
+      "path": "/opt/memoryos/eng-mcp/RELATORIO-judge-cred-fix-01.md",
+      "expect": "exists"
+    },
+    {
+      "path": "/opt/eng-mcp-release-data/credentials/openrouter-judge",
+      "expect": "mode 0600, chave da ponte (200 em /api/v1/key)"
+    },
+    {
+      "path": "/opt/eng-mcp-release-data/credentials/openrouter-judge.bak-dead-20260929",
+      "expect": "backup da credencial morta (401), rollback disponível"
+    }
+  ]
+}

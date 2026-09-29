@@ -26,7 +26,8 @@
     "deployServerId": "LXzm3ZifF7EPwLaBUXt4H",
     "busSpoolMount": "/opt/mission-events/spool.jsonl:/run/mission-bus/spool.jsonl",
     "readOnlyMounts": [
-      "/usr/local/lib/hermes-agent:/usr/local/lib/hermes-agent:ro"
+      "/usr/local/lib/hermes-agent:/usr/local/lib/hermes-agent:ro",
+      "/root/.hermes/plugins/mission-ops:/root/.hermes/plugins/mission-ops:ro"
     ]
   },
   "requiredTools": [

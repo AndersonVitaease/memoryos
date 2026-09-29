@@ -55,9 +55,14 @@ scopes read/write), `scripts/jev_gate.py` (helper JEV). Nenhum handler do plugin
 | "Verificar missão" | 5-6 turnos, 2-3min | 1 chamada ~5s (0,06s sem herdr lento) |
 | Fechar com provas | turno + fail-open silencioso | badge honesto (pass ou JEV) |
 
-## Ativação
-- O serviço eng-mcp (8787) roda código em memória — restart necessário para as 7 tools
-  aparecerem no catálogo. Feito pelo supervisor no fim desta missão + health check.
+## Ativação — FEITA (29/09 ~13:48)
+- Deploy via engineering.release.pipeline do commit 7cfbe891 (JUDGE-ENDPOINT-OR-01: judge.ts saiu da
+  ponte 8102 morta → OpenRouter /alpha/decisions direto — era a causa do deploy_failed 13:38 e teria
+  bloqueado TODO deploy futuro da era sem-GPU; ship.lock vazado do runner morto removido pelo
+  caminho de revogação do próprio erro).
+- Pipeline: test PASS (1590/0) → build PASS → candidate PASS (137 tools) → deploy_succeeded 13:47:52.
+- **Catálogo AO VISO em produção: eng-mcp-tools-v137, actualToolCount 137**, com as 7 mission.*
+  (dispatch, status, read, watch, recover, close, ledger_fix) — prova via engineering.mcp.catalog.
 - Rollback: git checkout dos 3 arquivos (tools.ts, missionOps.ts novo, tests) — zero
   handler de plugin alterado; sem migration; sem credencial nova.
 
