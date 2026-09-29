@@ -57,6 +57,9 @@ import { distributionCampaignInputSchema, runDistributionCampaign } from "./dist
 // deterministic preset catalog (pure data entries) + Jev composition (glm-5.3-flash,
 // advisory, schema-validated) + single-call batch planning for multi-step presets.
 import { imageEditRoutedInputSchema, runImageEditRouted } from "./imageEditFast.ts";
+// ENG-MCP-MISSION-01/02: mission-* determinísticas (wraps do plugin mission-ops;
+// gate JEV no close). Fonte única: handlers puros do plugin via subprocesso python.
+import { missionDispatchInputSchema, missionStatusInputSchema, missionReadInputSchema, missionWatchInputSchema, missionRecoverInputSchema, missionCloseInputSchema, missionLedgerFixInputSchema, runMissionDispatch, runMissionStatus, runMissionRead, runMissionWatch, runMissionRecover, runMissionClose, runMissionLedgerFix } from "./missionOps.ts";
 import { imageCreateInputSchema, runImageCreate } from "./imageCreate.ts";
 import { imageAdaptInputSchema, runImageAdapt } from "./imageAdapt.ts";
 import { visionInspectInputSchema, runVisionInspect } from "./visionInspect.ts";
@@ -1586,5 +1589,40 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   registerGwsTool("engineering.google.drive.delete", "drive.delete", "write",
     "Google Workspace Drive DESTRUCTIVE (T3): move a file to trash (default; reversible for ~30 days) or PERMANENTLY delete it (permanent:true — hard DELETE, tolerates 404 as already-gone; NOT reversible). NOT covered by the T2 write scope — requires the operator-issued engineering:google:manage scope (no OR) AND explicit operator approval in chat. dryRun=true previews without deleting.",
     requireGwsManage);
+
+  // ENG-MCP-MISSION-01/02 (29/09): mission-* determinísticas sobre os handlers puros do
+  // plugin mission-ops (fonte única — o wrapper chama python e recebe JSON; zero LLM no
+  // caminho exceto o gate JEV do close: typesafe/jev-1.13 /alpha/decisions, timeout 3s,
+  // decide APENAS suficiência de provas, nunca autoriza consequência). Provas de
+  // performance do caminho: dispatch individual 6,9s; lote 2 = 25,5s; status ~5s.
+  const requireMissionOps = () => { if (!subject.scopes.includes("engineering:write")) throw new EngineeringError("AUTHORIZATION_SCOPE_REQUIRED"); };
+  register("engineering.mission.dispatch", "write", (name) => server.registerTool(name, {
+    description: "Despacha missão no herdr (aba + claude + prompt + supervisor) OU lote de 2-6 numa chamada. Wraps determinístico do plugin mission-ops (fail-fast 45s sem ponte, anti-fantasma, idempotente, gate de cadeia). Anti-zumbi: fecha abas duplicadas MISSION:<id> antes de criar. Zero LLM.",
+    inputSchema: missionDispatchInputSchema
+  }, async (input) => { requireMissionOps(); return response(await runMissionDispatch(input)); }));
+  register("engineering.mission.status", "read", (name) => server.registerTool(name, {
+    description: "Estado verdadeiro da missão em 1 chamada: ledger + pane REAL + verdict (OK|PANEID_OBSOLETO|FANTASMA|INTERROMPIDA|AGUARDANDO_OPERATOR|DESPACHANDO|DESCONHECIDO) com auto-correção de paneId obsoleto e cancelamento de fantasma. Tolerante a typo (difflib ≥0.8). Zero LLM.",
+    inputSchema: missionStatusInputSchema
+  }, async (input) => { requireRead(); return response(await runMissionStatus(input)); }));
+  register("engineering.mission.read", "read", (name) => server.registerTool(name, {
+    description: "Lê o pane do worker (texto recente ou completo). I/O puro.",
+    inputSchema: missionReadInputSchema
+  }, async (input) => { requireRead(); return response(await runMissionRead(input)); }));
+  register("engineering.mission.watch", "read", (name) => server.registerTool(name, {
+    description: "Watchdog orientado a evento do pane (8 detectores: interrupted, palette, relatório final, pane virou shell, ready_regex_error, pane_closed, turn_done, waiting_operator).",
+    inputSchema: missionWatchInputSchema
+  }, async (input) => { requireRead(); return response(await runMissionWatch(input)); }));
+  register("engineering.mission.recover", "write", (name) => server.registerTool(name, {
+    description: "Escada de recuperação do pane (enter → nudge → re-entrega de prompt) com guard anti-falso-positivo.",
+    inputSchema: missionRecoverInputSchema
+  }, async (input) => { requireMissionOps(); return response(await runMissionRecover(input)); }));
+  register("engineering.mission.close", "write", (name) => server.registerTool(name, {
+    description: "Fecha missão (supervisor stop → claude exit → tab close → notify). GATE JEV: se o fechamento sair fail-open/verify_required, o JEV (typesafe/jev-1.13, 250ms) decide suficiência das provas — SIM fecha com badge jev-verificado, NÃO devolve verify_required honesto, JEV indisponível mantém fail-open atual (degraded). JEV decide APENAS provas, nunca consequência.",
+    inputSchema: missionCloseInputSchema
+  }, async (input) => { requireMissionOps(); return response(await runMissionClose(input)); }));
+  register("engineering.mission.ledger_fix", "write", (name) => server.registerTool(name, {
+    description: "Correção manual de ledger (paneId/tabId/status) para casos fora da auto-correção do status.",
+    inputSchema: missionLedgerFixInputSchema
+  }, async (input) => { requireMissionOps(); return response(await runMissionLedgerFix(input)); }));
 
 }
