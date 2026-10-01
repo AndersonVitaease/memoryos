@@ -53,8 +53,23 @@ export const missionWatchInputSchema = z.object({
 export const missionRecoverInputSchema = z.object({
   missionId: z.string().optional(), paneId: z.string().optional(), pattern: z.string().optional(),
 }).strict();
+// ENG-MCP-TOOLS-FIX-02: resolução missionId XOR paneId XOR fragment (contrato do
+// handler): 0 resolvedores = INVALID_MISSION_ID (compatibilidade com callers antigos),
+// 2+ = INVALID_INPUT; fragment = substring case-insensitive, ≥2 matches = AMBIGUOUS.
 export const missionCloseInputSchema = z.object({
-  missionId: z.string().min(1), acceptUnverified: z.string().optional(),
+  missionId: z.string().optional(), paneId: z.string().optional(),
+  fragment: z.string().optional(),
+  acceptUnverified: z.string().optional(),
+  cancel: z.boolean().optional(), force: z.boolean().optional(),
+  keepPane: z.boolean().optional(), dryRun: z.boolean().optional(),
+  expectBadge: z.boolean().optional(), decisionNote: z.string().optional(),
+}).strict();
+// ENG-MCP-TOOLS-FIX-02: verify read-only (runner zero-LLM) — mesmo resolvedor do close.
+export const missionVerifyInputSchema = z.object({
+  missionId: z.string().optional(), paneId: z.string().optional(),
+  fragment: z.string().optional(), manifest: z.string().optional(),
+  timeoutMs: z.number().int().optional(),
+  checks: z.array(z.string().min(1)).optional(),
 }).strict();
 export const missionLedgerFixInputSchema = z.object({
   missionId: z.string().min(1), paneId: z.string().optional(), tabId: z.string().optional(),
@@ -179,20 +194,31 @@ export async function runMissionNudge(input: z.infer<typeof missionNudgeInputSch
 
 // ENG-MCP-MISSION-02: close com GATE JEV (fim do fail-open).
 // Caminho: 1) close normal. 2) se saiu fail-open (verify estourou 35s) ou reabriu
-// verify_required, pergunta ao JEV (3s timeout) se as provas registradas são suficientes;
+// verify_required, pergunta ao JEV (8s timeout) se as provas registradas são suficientes;
 // SIM → fecha com badge jev-verificado; NÃO → devolve verify_required honesto;
 // JEV indisponível → mantém o comportamento atual (fail-open), degraded=true.
+// ENG-MCP-TOOLS-FIX-02: recusas determinísticas do handler (BADGE_REQUIRED/
+// WORKER_ACTIVE/CANCEL_REASON_REQUIRED/CLOSE_BUSY/... ) NÃO passam pelo gate —
+// são estado mecânico, não prova; missionId pode vir resolvido (paneId/fragment).
+const DETERMINISTIC_REFUSALS = new Set([
+  "BADGE_REQUIRED", "WORKER_ACTIVE", "CANCEL_REASON_REQUIRED", "CLOSE_BUSY",
+  "INVALID_INPUT", "INVALID_MISSION_ID", "MISSION_NOT_FOUND", "AMBIGUOUS",
+]);
 export async function runMissionClose(input: z.infer<typeof missionCloseInputSchema>) {
-  const first = await callHandler("handle_mission_close", input);
+  const first = await callHandler("handle_mission_close", input, 90_000);
   const stepsJson = JSON.stringify(first.steps ?? []);
-  const needsGate = first.ok === false
-    || stepsJson.includes("fail-open") || stepsJson.includes("reopenedByDeliverVerify");
+  const isDeterministicRefusal = first.ok === false
+    && typeof first.error === "string" && DETERMINISTIC_REFUSALS.has(first.error);
+  const needsGate = !isDeterministicRefusal && (first.ok === false
+    || stepsJson.includes("fail-open") || stepsJson.includes("reopenedByDeliverVerify"));
   if (!needsGate) return { ...first, jevGate: "not-needed" };
 
-  const acceptReason = input.acceptUnverified ?? "";
+  const resolvedId = typeof first.missionId === "string" && first.missionId
+    ? first.missionId : (input.missionId ?? "");
+  const acceptReason = input.acceptUnverified ?? input.decisionNote ?? "";
   let jev: { verdict?: string; motivo?: string; latency_ms?: number; degraded?: boolean } = {};
   try {
-    const { stdout } = await execFileP("python3", [JEV_GATE_SCRIPT, input.missionId,
+    const { stdout } = await execFileP("python3", [JEV_GATE_SCRIPT, resolvedId,
       JSON.stringify({ acceptReason, first: JSON.stringify(first).slice(0, 2000) })],
       { timeout: 8_000, maxBuffer: 1024 * 1024 });
     jev = JSON.parse(stdout.trim().split("\n").pop() || "{}");
@@ -201,10 +227,16 @@ export async function runMissionClose(input: z.infer<typeof missionCloseInputSch
   }
   if (jev.verdict === "SIM") {
     const second = await callHandler("handle_mission_close", {
-      missionId: input.missionId,
+      ...input,
+      missionId: resolvedId,
       acceptUnverified: `jev-gate-verified: ${jev.motivo ?? "provas suficientes"}`,
-    });
+    }, 90_000);
     return { ...second, jevGate: "jev-verificado", jevLatency_ms: jev.latency_ms };
   }
   return { ...first, jevGate: "verify_required", jevMotivo: jev.motivo, jevLatency_ms: jev.latency_ms };
+}
+
+// ENG-MCP-TOOLS-FIX-02: verify read-only (40s budget — runner 35s + margem).
+export async function runMissionVerify(input: z.infer<typeof missionVerifyInputSchema>) {
+  return callHandler("handle_mission_verify", input, 40_000);
 }
