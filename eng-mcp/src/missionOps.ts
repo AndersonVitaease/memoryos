@@ -3,7 +3,7 @@
 // eng-mcp NÃO duplica lógica; chama python e recebe JSON).
 // Andar 1 (regex/IO) para tudo; JEV (250ms, /alpha/decisions) só no gate do close.
 import { execFile } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod/v4";
@@ -39,7 +39,6 @@ function readWorkerFromTranscript(sessionId: string): string | null {
   const claudeConfigDir = "/opt/memoryos/eng-mcp/.claude-config/projects";
   let transcriptPath: string | null = null;
   try {
-    const { readdirSync } = await import("node:fs");
     const projectsDir = readdirSync(claudeConfigDir);
     for (const project of projectsDir) {
       const candidate = join(claudeConfigDir, project, `${sessionId}.jsonl`);
