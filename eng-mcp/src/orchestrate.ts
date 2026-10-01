@@ -36,6 +36,11 @@ export interface OrchestrateDeps {
   /** Run a probe command; stdout string or null on failure/timeout. */
   exec?(command: string, args: string[]): string | null;
   now?(): number;
+  /** HERMÉTICO-FIX-01: I/O opcional do lock (injetável nos testes; fs real como fallback). */
+  existsSync?(path: string): boolean;
+  writeText?(path: string, data: string): void;
+  appendFile?(path: string, data: string): void;
+  unlink?(path: string): void;
   loadavgPath?: string;
   meminfoPath?: string;
   missionStateDir?: string;
@@ -108,13 +113,21 @@ function parseFrontmatterClass(raw: string | null): string | null {
 function acquireLock(d: OrchestrateDeps): boolean {
   const lockPath = d.consumerLockPath!;
   const now = d.now!();
+  // HERMÉTICO-FIX-01: o lock deve respeitar os deps injetados (testes fake) com
+  // fallback para o fs real quando os deps não cobrem a operação. Fs real puro
+  // quebra o gate hermético (writeFileSync em dir inexistente → "lock held").
   try {
-    if (existsSync(lockPath)) {
-      const raw = readFileSync(lockPath, "utf8");
-      const lock = JSON.parse(raw);
+    if (d.existsSync ? d.existsSync(lockPath) : existsSync(lockPath)) {
+      const raw = d.readText ? d.readText(lockPath) : readFileSync(lockPath, "utf8");
+      const lock = JSON.parse(raw ?? "{}");
       if (now - lock.acquiredAt < CONSUMER_LOCK_TTL_MS) return false;
     }
-    writeFileSync(lockPath, JSON.stringify({ acquiredAt: now, pid: process.pid }), "utf8");
+    const payload = JSON.stringify({ acquiredAt: now, pid: process.pid });
+    if (d.writeText) {
+      d.writeText(lockPath, payload);
+      return true;
+    }
+    writeFileSync(lockPath, payload, "utf8");
     return true;
   } catch {
     return false;
@@ -122,7 +135,10 @@ function acquireLock(d: OrchestrateDeps): boolean {
 }
 
 function releaseLock(d: OrchestrateDeps): void {
-  try { unlinkSync(d.consumerLockPath!); } catch { /* ignore */ }
+  try {
+    if (d.unlink) d.unlink(d.consumerLockPath!);
+    else unlinkSync(d.consumerLockPath!);
+  } catch { /* ignore */ }
 }
 
 function readConsumerState(d: OrchestrateDeps): OrchestratorConsumerState {
