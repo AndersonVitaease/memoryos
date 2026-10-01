@@ -59,9 +59,11 @@ import { distributionCampaignInputSchema, runDistributionCampaign } from "./dist
 import { imageEditRoutedInputSchema, runImageEditRouted } from "./imageEditFast.ts";
 // ENG-MCP-MISSION-01/02: mission-* determinísticas (wraps do plugin mission-ops;
 // gate JEV no close). Fonte única: handlers puros do plugin via subprocesso python.
-import { missionDispatchInputSchema, missionStatusInputSchema, missionReadInputSchema, missionWatchInputSchema, missionRecoverInputSchema, missionCloseInputSchema, missionLedgerFixInputSchema, runMissionDispatch, runMissionStatus, runMissionRead, runMissionWatch, runMissionRecover, runMissionClose, runMissionLedgerFix, missionNudgeInputSchema, runMissionNudge } from "./missionOps.ts";
+import { missionDispatchInputSchema, missionStatusInputSchema, missionReadInputSchema, missionWatchInputSchema, missionRecoverInputSchema, missionCloseInputSchema, missionVerifyInputSchema, missionLedgerFixInputSchema, runMissionDispatch, runMissionStatus, runMissionRead, runMissionWatch, runMissionRecover, runMissionVerify, runMissionClose, runMissionLedgerFix, missionNudgeInputSchema, runMissionNudge } from "./missionOps.ts";
 // ROSTER-01: inventário auditável de sessões/turnos/missões (read-only, zero-LLM, LGPD metadata-only).
 import { getRoster } from "./sessionRoster.ts";
+
+
 import { imageCreateInputSchema, runImageCreate } from "./imageCreate.ts";
 import { imageAdaptInputSchema, runImageAdapt } from "./imageAdapt.ts";
 import { visionInspectInputSchema, runVisionInspect } from "./visionInspect.ts";
@@ -1618,8 +1620,12 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
     description: "Escada de recuperação do pane (enter → nudge → re-entrega de prompt) com guard anti-falso-positivo.",
     inputSchema: missionRecoverInputSchema
   }, async (input) => { requireMissionOps(); return response(await runMissionRecover(input)); }));
+  register("engineering.mission.verify", "read", (name) => server.registerTool(name, {
+    description: "Verificação determinística de entrega (runner /opt/deliver-verify/verify.py, zero LLM) sobre o manifesto verify.json do cwd da missão. Resolução por missionId OU paneId OU fragment (0 resolvedores=INVALID_MISSION_ID, 2+=INVALID_INPUT, fragment ≥2 matches=AMBIGUOUS). Missão inexistente=MISSION_NOT_FOUND (nunca inventa estado). Sem verify.json -> warning NO_MANIFEST (bateria inferida não é prova). Runner quebrado -> verdict runner_error retryable. Filtro checks[] devolve subconjunto com partial:true (nunca 'pass' com provas parciais). Read-only: sem lock, retorno traz ledgerStatus e agentStatus do pane.",
+    inputSchema: missionVerifyInputSchema
+  }, async (input) => { requireRead(); return response(await runMissionVerify(input)); }));
   register("engineering.mission.close", "write", (name) => server.registerTool(name, {
-    description: "Fecha missão (supervisor stop → claude exit → tab close → notify). GATE JEV: se o fechamento sair fail-open/verify_required, o JEV (typesafe/jev-1.13, 250ms) decide suficiência das provas — SIM fecha com badge jev-verificado, NÃO devolve verify_required honesto, JEV indisponível mantém fail-open atual (degraded). JEV decide APENAS provas, nunca consequência.",
+    description: "Fecha missão. Fluxo: gate WORKER_ACTIVE (turno vivo recusa, /exit confirmado é a exceção) → pre_close → deliver-verify (verde=badge verified_e2e; vermelho real=REABRE com nudge+evento deliver_verify_red; runner quebrado=fail-open honesto fecha sem badge) → guarda de consequência (verify.json ou acceptUnverified, senão reabre verify_required) → /exit → tab close (keepPane=true preserva a aba) → worktree cleanup → ledger closed + evento bus + notify. Idempotente com lock: já closed → ok:true idempotent:true (corrida=CLOSE_BUSY). Flags: dryRun (plano de passos + veredito, ZERO mutação), expectBadge (recusa BADGE_REQUIRED se fecharia sem badge), cancel=true (exige acceptUnverified ou decisionNote; evento mission_cancelled), decisionNote (trilha auditável no ledger), force (worktree remove --force). GATE JEV apenas no fail-open path (typesafe/jev-1.13): decide APENAS suficiência de provas, nunca consequência; recusas determinísticas não passam pelo gate.",
     inputSchema: missionCloseInputSchema
   }, async (input) => { requireMissionOps(); return response(await runMissionClose(input)); }));
   register("engineering.mission.ledger_fix", "write", (name) => server.registerTool(name, {
