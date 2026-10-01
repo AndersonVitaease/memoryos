@@ -1,10 +1,10 @@
 # Best Practices
 ## MemoryOS Operational Knowledge Base v1.0
 
-**ID:** BP-001  
-**Category:** OPERATIONAL_KNOWLEDGE  
-**Status:** ACTIVE  
-**Authority:** ENGINEERING  
+**ID:** BP-001
+**Category:** OPERATIONAL_KNOWLEDGE
+**Status:** ACTIVE
+**Authority:** ENGINEERING
 **Last Updated:** 2026-07-18
 
 ---

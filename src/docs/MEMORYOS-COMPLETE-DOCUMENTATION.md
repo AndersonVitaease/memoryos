@@ -331,26 +331,26 @@ Certificação dos 14 módulos EF fundacionais com 329 cenários totais.
 
 ### Sprints de Auditoria Arquitetural
 
-**ARC-01:** Estratégia de unificação de pipelines documentada  
-**ARC-02:** Validação arquitetural completa + risk register  
-**SPR-ADR-01:** 7 ADRs formais produzidas (ADR-001 a ADR-007)  
+**ARC-01:** Estratégia de unificação de pipelines documentada
+**ARC-02:** Validação arquitetural completa + risk register
+**SPR-ADR-01:** 7 ADRs formais produzidas (ADR-001 a ADR-007)
 **SPR-FREEZE-01:** Architecture Freeze v2.0 declarada
 
 ### Sprints de Conectores (Sprint 7.x)
 
-**Phase700/Phase710:** GWS Foundation — Google Workspace base  
-**Phase711:** Gmail GWS Integration  
-**Phase712:** Google Drive Integration  
-**Phase713:** Google Calendar Integration  
-**Phase714:** Multi-Connector  
+**Phase700/Phase710:** GWS Foundation — Google Workspace base
+**Phase711:** Gmail GWS Integration
+**Phase712:** Google Drive Integration
+**Phase713:** Google Calendar Integration
+**Phase714:** Multi-Connector
 
 ### Sprints de Engineering First avançado (Sprint 8.x)
 
-**Sprint811/812:** Unified Context Builder / Knowledge Fusion Engine  
-**SprintC022-C040:** Connector Runtime consolidações  
-**SprintP011A/B/C:** Planning Intelligence A/B/C  
-**SprintEF63x:** EF-63 series  
-**SprintEF640-670:** EF-64 a EF-67 series  
+**Sprint811/812:** Unified Context Builder / Knowledge Fusion Engine
+**SprintC022-C040:** Connector Runtime consolidações
+**SprintP011A/B/C:** Planning Intelligence A/B/C
+**SprintEF63x:** EF-63 series
+**SprintEF640-670:** EF-64 a EF-67 series
 
 ### Sprints EF-39 a EF-44 (Foco em Runtime Context e Verified Execution)
 
@@ -487,8 +487,8 @@ Goal (background)
 
 ## ADR-001 — Intent Layer: Estratégia de Classificação
 
-**Status:** Proposed  
-**Sprint:** SPR-ADR-01 (2026-07-11)  
+**Status:** Proposed
+**Sprint:** SPR-ADR-01 (2026-07-11)
 **DAP:** DAP-01
 
 **Problema:** A Intent Layer (EF-22) usa LLM para classificar intenção. A arquitetura EF propõe determinístico.
@@ -498,14 +498,14 @@ Goal (background)
 - B: Híbrida (determinística + fallback LLM)
 - C: LLM com cache
 
-**Recomendação:** Alternativa A — Determinística Pura  
+**Recomendação:** Alternativa A — Determinística Pura
 **Decisão humana:** PENDENTE
 
 ---
 
 ## ADR-002 — Goal Runtime: Promoção v0.1 → v1.0
 
-**Status:** Proposed  
+**Status:** Proposed
 **Sprint:** SPR-ADR-01 (2026-07-11)
 
 **Problema:** Goal Runtime tem 21 cenários (padrão EF: 28). Módulos dependentes têm mais cenários que a fundação.
@@ -515,14 +515,14 @@ Goal (background)
 - B: Integrar v0.1 e promover em paralelo
 - C: Integrar e nunca promover
 
-**Recomendação:** Alternativa A  
+**Recomendação:** Alternativa A
 **Decisão humana:** PENDENTE
 
 ---
 
 ## ADR-003 — Semântica de "Plano"
 
-**Status:** Proposed  
+**Status:** Proposed
 **Sprint:** SPR-ADR-01 (2026-07-11)
 
 **Problema:** Dois objetos chamados `plan` com semânticas incompatíveis: analytics (`{goal, skills, sourcesCount}`) vs ExecutionPlan (`{steps[], complexity, estimatedMs}`).
@@ -532,14 +532,14 @@ Goal (background)
 - B: Dois objetos coexistindo com nomes distintos
 - C: Substituição total
 
-**Recomendação:** Alternativa A  
+**Recomendação:** Alternativa A
 **Decisão humana:** PENDENTE
 
 ---
 
 ## ADR-004 — Capability Runtime: Certificação
 
-**Status:** Proposed  
+**Status:** Proposed
 **Sprint:** SPR-ADR-01 (2026-07-11)
 
 **Problema:** `testCount=0` no auditor automático. Violação arquitetural: Capability Runtime usa Registry interno em vez de EF-14 oficial.
@@ -549,14 +549,14 @@ Goal (background)
 - B: Implementar do zero
 - C: Completar adicionando o que falta
 
-**Recomendação:** Alternativa A + Declarar EF-14 como canonical imediatamente  
+**Recomendação:** Alternativa A + Declarar EF-14 como canonical imediatamente
 **Decisão humana:** PENDENTE
 
 ---
 
 ## ADR-005 — Connector Registry: Consolidação
 
-**Status:** Proposed  
+**Status:** Proposed
 **Sprint:** SPR-ADR-01 (2026-07-11)
 
 **Problema:** 5 implementações de Connector Registry sem canonical declarado.
@@ -574,14 +574,14 @@ Goal (background)
 - C: Implementar EF-16 imediatamente
 - D: Canonical temporário agora + EF-16 depois (recomendada)
 
-**Recomendação:** Alternativa D  
+**Recomendação:** Alternativa D
 **Decisão humana:** PENDENTE
 
 ---
 
 ## ADR-006 — Memory Engine Legado: Deprecação
 
-**Status:** Proposed  
+**Status:** Proposed
 **Sprint:** SPR-ADR-01 (2026-07-11)
 
 **Problema:** `src/lib/memory-engine/` — 47 arquivos JavaScript coexistindo com `src/lib/memory-engine-v1/` (EF-12 oficial). O produto não usa nenhum dos dois.
@@ -591,14 +591,14 @@ Goal (background)
 - B: Aguardar INT-06
 - C: Arquivar em `_deprecated/`
 
-**Recomendação:** Alternativa A, Fase 1 imediatamente  
+**Recomendação:** Alternativa A, Fase 1 imediatamente
 **Decisão humana:** PENDENTE
 
 ---
 
 ## ADR-007 — Reasoning Engine: Módulo ou Distribuído
 
-**Status:** Proposed  
+**Status:** Proposed
 **Sprint:** SPR-ADR-01 (2026-07-11)
 
 **Problema:** Após migrações INT-02 a INT-07, `src/lib/reasoning/` fica vazio exceto pelo Conversation Engine. Não existe responsabilidade de raciocínio não coberta por módulos EF existentes.
@@ -608,7 +608,7 @@ Goal (background)
 - B: Manter como módulo EF separado com meta-cognição
 - C: Renomear diretório sem mudar responsabilidades
 
-**Recomendação:** Alternativa A — responsabilidade distribuída  
+**Recomendação:** Alternativa A — responsabilidade distribuída
 **Decisão humana:** PENDENTE
 
 **NOTA:** ADR-007 afeta diretamente TARGET-ARCHITECTURE.md e BLOQ-01 do ARCHITECTURE-FREEZE-CHECKLIST.
@@ -1229,8 +1229,8 @@ const _pipelineConnCtx = Object.freeze({
 
 ## EF-39 — Memory Store
 
-**Objetivo:** Implementação e certificação do Memory Store oficial.  
-**Arquivo principal:** `src/lib/knowledge-store/memory/MemoryStore.ts`  
+**Objetivo:** Implementação e certificação do Memory Store oficial.
+**Arquivo principal:** `src/lib/knowledge-store/memory/MemoryStore.ts`
 **Status:** Done
 
 Subsprints:
@@ -1360,11 +1360,11 @@ ResponseCandidate com resposta real
 **Subsprints:**
 
 ### EF-43A — RuntimeContext globalThis Singleton
-**Problema:** `ExecutionIntentManager.consume()` não conseguia acessar `RuntimeContextLayer` sem importação circular.  
+**Problema:** `ExecutionIntentManager.consume()` não conseguia acessar `RuntimeContextLayer` sem importação circular.
 **Solução:** Acesso via `(globalThis as any)["__RUNTIME_CONTEXT_LAYER__"]` — bypassa importação estática.
 
 ### EF-43B — RuntimeContext como Fonte de Verdade
-**Problema:** Duas fontes de verdade: LLM inferia status de conectores (incorreto) vs RuntimeContext (correto).  
+**Problema:** Duas fontes de verdade: LLM inferia status de conectores (incorreto) vs RuntimeContext (correto).
 **Solução:** Adicionado `runtime.connector.status` capability que lê diretamente do `ConversationStore`.
 
 ### EF-43C — ExecutionResultSet Preservation Fix
@@ -1453,84 +1453,84 @@ REGRAS OBRIGATORIAS (EF-44 — Verified Execution Layer):
 
 ## DT-01 — Duplicação de ConnectorRegistry (5 implementações)
 
-**Origem:** Crescimento orgânico sem canonical declarado  
-**Impacto:** Alto — desenvolvedores podem usar implementação errada  
-**Prioridade:** Alta  
+**Origem:** Crescimento orgânico sem canonical declarado
+**Impacto:** Alto — desenvolvedores podem usar implementação errada
+**Prioridade:** Alta
 **Recomendação:** ADR-005 Alternativa D — declarar canonical temporário + EF-16 futuro
 
 ---
 
 ## DT-02 — Memory Engine Legado (47 arquivos JS)
 
-**Origem:** Implementação pré-EF que nunca foi integrada ao produto  
-**Impacto:** Médio — bundle desnecessário + confusão semântica  
-**Prioridade:** Média  
+**Origem:** Implementação pré-EF que nunca foi integrada ao produto
+**Impacto:** Médio — bundle desnecessário + confusão semântica
+**Prioridade:** Média
 **Recomendação:** ADR-006 — Deprecar Fase 1 imediatamente
 
 ---
 
 ## DT-03 — Goal Runtime v0.1 (21 cenários, precisa de 28)
 
-**Origem:** Implementado antes do padrão EF formal  
-**Impacto:** Médio — fundação sub-certificada para 4 módulos downstream  
-**Prioridade:** Alta  
+**Origem:** Implementado antes do padrão EF formal
+**Impacto:** Médio — fundação sub-certificada para 4 módulos downstream
+**Prioridade:** Alta
 **Recomendação:** ADR-002 — Promover para v1.0 antes de INT-03
 
 ---
 
 ## DT-04 — Intent Layer ainda usa LLM
 
-**Origem:** Implementação pré-EF em `memoryPipeline.js`  
-**Impacto:** Alto — latência + custo não-determinístico  
-**Prioridade:** Alta  
+**Origem:** Implementação pré-EF em `memoryPipeline.js`
+**Impacto:** Alto — latência + custo não-determinístico
+**Prioridade:** Alta
 **Recomendação:** ADR-001 — Implementar EF-22 Determinístico
 
 ---
 
 ## DT-05 — Semântica dupla de "plan"
 
-**Origem:** Dois objetos com nome `plan` e semânticas incompatíveis  
-**Impacto:** Alto — risco de confusão em INT-03  
-**Prioridade:** Alta  
+**Origem:** Dois objetos com nome `plan` e semânticas incompatíveis
+**Impacto:** Alto — risco de confusão em INT-03
+**Prioridade:** Alta
 **Recomendação:** ADR-003 — Renomear analytics para `executionMetrics`
 
 ---
 
 ## DT-06 — Capability Runtime usa Registry interno em vez de EF-14
 
-**Origem:** Implementação isolada antes da consolidação de registries  
-**Impacto:** Alto — triplicação de Capability Registry  
-**Prioridade:** Alta  
+**Origem:** Implementação isolada antes da consolidação de registries
+**Impacto:** Alto — triplicação de Capability Registry
+**Prioridade:** Alta
 **Recomendação:** ADR-004 — Auditar + substituir pelo EF-14 oficial
 
 ---
 
 ## DT-07 — ConversationStore acesso direto por múltiplos componentes
 
-**Origem:** Crescimento orgânico antes do RuntimeContextLayer  
-**Impacto:** Médio — estado distribuído sem fonte única de verdade  
-**Prioridade:** Média  
+**Origem:** Crescimento orgânico antes do RuntimeContextLayer
+**Impacto:** Médio — estado distribuído sem fonte única de verdade
+**Prioridade:** Média
 **Recomendação:** Migrar gradualmente para RuntimeContextLayer como única interface
 
 ---
 
 ## DT-08 — Two classes `ConnectorRegistry` com mesmo nome em paths diferentes
 
-**Origem:** Identificado na Auditoria EOA 2026-07-21  
-**Arquivos:**  
-- `src/lib/connector-router/ConnectorRegistry.ts`  
-- `src/lib/connector-runtime/ConnectorRegistry.ts`  
-**Impacto:** Médio — risco de importação incorreta  
-**Prioridade:** Baixa  
+**Origem:** Identificado na Auditoria EOA 2026-07-21
+**Arquivos:**
+- `src/lib/connector-router/ConnectorRegistry.ts`
+- `src/lib/connector-runtime/ConnectorRegistry.ts`
+**Impacto:** Médio — risco de importação incorreta
+**Prioridade:** Baixa
 **Recomendação:** Renomear uma das duas (ex: `UCRConnectorRegistry`)
 
 ---
 
 ## DT-09 — workspaceId multi-workspace não implementado
 
-**Origem:** ACTIVE_WORKSPACE_ID é fixo em "default"  
-**Impacto:** Baixo hoje — bloqueante para multi-workspace real  
-**Prioridade:** Baixa (fora do escopo atual)  
+**Origem:** ACTIVE_WORKSPACE_ID é fixo em "default"
+**Impacto:** Baixo hoje — bloqueante para multi-workspace real
+**Prioridade:** Baixa (fora do escopo atual)
 **Recomendação:** Documentar como limitação conhecida; não resolver agora
 
 ---

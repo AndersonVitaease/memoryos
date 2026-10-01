@@ -2,7 +2,7 @@
  * OpenRouterConnector.ts — conector para OpenRouter (chat completions
  * e listagem de modelos de IA via API externa).
  *
- * Segue o mesmo padrão do GmailConnector/GoogleCalendarConnector: 
+ * Segue o mesmo padrão do GmailConnector/GoogleCalendarConnector:
  * implementa IConnector, delega toda chamada HTTP sensível (com a chave
  * de API) para funções de backend seguras (base44/functions), nunca
  * expõe a chave no navegador.

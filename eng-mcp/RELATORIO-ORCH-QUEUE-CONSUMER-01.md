@@ -1,8 +1,8 @@
 # RELATÓRIO — ORCH-QUEUE-CONSUMER-01
 
-**Missão:** Consumidor automático da fila do orquestrador (zero-LLM, determinístico).  
-**Branch:** `orch-queue-consumer-01` (worktree próprio, NÃO toca arquivos da ORCH-ROLE-BADGE-01).  
-**Data:** 2026-10-01  
+**Missão:** Consumidor automático da fila do orquestrador (zero-LLM, determinístico).
+**Branch:** `orch-queue-consumer-01` (worktree próprio, NÃO toca arquivos da ORCH-ROLE-BADGE-01).
+**Data:** 2026-10-01
 **Idioma:** pt-BR
 
 ---

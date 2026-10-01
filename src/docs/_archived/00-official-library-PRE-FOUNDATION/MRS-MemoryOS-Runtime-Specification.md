@@ -1,10 +1,10 @@
 # MRS — MemoryOS Runtime Specification
 ## Runtime Architecture & Execution Lifecycle
 
-**Versão:** 1.0  
-**Status:** Documento Oficial de Engenharia — Aprovado  
-**Data:** 2026-07-10  
-**Tipo:** Especificação de Runtime  
+**Versão:** 1.0
+**Status:** Documento Oficial de Engenharia — Aprovado
+**Data:** 2026-07-10
+**Tipo:** Especificação de Runtime
 **Complementa:** MV · MPS · MAS · MDS 1.0–1.6 · MDS Architectural Principles · Sprint 17
 
 ---
@@ -21,7 +21,7 @@ Este documento define oficialmente **como o MemoryOS funciona durante sua execu�
 | **MDS** | Como implementá-lo |
 | **MRS** | Como todos os componentes trabalham juntos em tempo de execução |
 
-**Não altera:** Core · Roadmap · Arquitetura  
+**Não altera:** Core · Roadmap · Arquitetura
 **Formaliza:** O comportamento do sistema em toda execução.
 
 Este documento é **referência obrigatória** para todos os motores da plataforma.
@@ -978,5 +978,5 @@ Garante:
 
 ---
 
-**MRS — MemoryOS Runtime Specification v1.0**  
+**MRS — MemoryOS Runtime Specification v1.0**
 **Data:** 2026-07-10 · **Complementa:** MV · MPS · MAS · MDS 1.0–1.6 · MDS Arch. Principles · Sprint 17

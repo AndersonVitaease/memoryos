@@ -1,10 +1,10 @@
 # MDS — Architectural Principles Expansion
 ## Complemento Arquitetural Oficial do MemoryOS
 
-**Versão:** 1.0  
-**Status:** Aprovado — Complemento Oficial  
-**Data:** 2026-07-10  
-**Tipo:** Princípios Arquiteturais Obrigatórios  
+**Versão:** 1.0
+**Status:** Aprovado — Complemento Oficial
+**Data:** 2026-07-10
+**Tipo:** Princípios Arquiteturais Obrigatórios
 **Alinhamento:** MAS 1.0 · MPS · MCF · MCIS · MGIS · MES · MDS 1.0–1.6 · Sprint 17
 
 ---
@@ -13,8 +13,8 @@
 
 Este documento consolida os princípios arquiteturais descobertos durante a evolução do MemoryOS.
 
-**Não cria novos motores.**  
-**Não altera o Roadmap.**  
+**Não cria novos motores.**
+**Não altera o Roadmap.**
 **Não modifica o Core.**
 
 Seu objetivo é complementar oficialmente a arquitetura com conceitos que passaram a fazer parte da filosofia do MemoryOS.
@@ -31,7 +31,7 @@ Todos os princípios descritos aqui são **obrigatórios** nas próximas impleme
 
 O MemoryOS é orientado por **Jornadas**.
 
-A conversa deixa de ser o elemento principal.  
+A conversa deixa de ser o elemento principal.
 A **Jornada** passa a ser o elemento principal.
 
 **Estrutura obrigatória de uma Jornada:**
@@ -92,7 +92,7 @@ O MemoryOS deverá lembrar automaticamente:
 
 ### 3. Identity Context
 
-O usuário possui uma única conta.  
+O usuário possui uma única conta.
 Mas pode operar em múltiplos **Contextos de Identidade**.
 
 **Exemplos de contextos:**
@@ -112,7 +112,7 @@ Mas pode operar em múltiplos **Contextos de Identidade**.
 - Conectores próprios
 - Auditoria própria
 
-**Regra:** Contextos **nunca** devem ser misturados.  
+**Regra:** Contextos **nunca** devem ser misturados.
 Toda operação deve declarar explicitamente o contexto de identidade ativo.
 
 ---
@@ -134,7 +134,7 @@ Toda resposta deve adaptar-se ao perfil do usuário.
 | `MEDICO` | Terminologia clínica e científica |
 | `EXECUTIVO` | Resumo objetivo, foco em decisão |
 
-**Regra:** A **informação permanece a mesma**.  
+**Regra:** A **informação permanece a mesma**.
 Apenas a **forma de comunicação** se adapta.
 
 ---
@@ -155,7 +155,7 @@ Apresentar a PRÓXIMA ETAPA.
 
 Jamais apresentar dezenas de etapas desnecessariamente.
 
-**Impacto no Planner:**  
+**Impacto no Planner:**
 O Planner deve expor ao usuário apenas a etapa imediata, mesmo que o plano interno contenha dezenas de steps.
 
 ---
@@ -172,7 +172,7 @@ O MemoryOS deve detectar automaticamente o estado da conversa:
 | `PAUSED` | Pausa detectada (inatividade) |
 | `SPEAKER_CHANGED` | Mudança de interlocutor detectada |
 
-**Regra:** Detecção deve ocorrer **sem depender de integrações específicas**.  
+**Regra:** Detecção deve ocorrer **sem depender de integrações específicas**.
 Comportamento detectado por análise de conteúdo e timing.
 
 ---
@@ -218,7 +218,7 @@ Evento detectado
 └───────────────────────────────┘
 ```
 
-**Regra:** Nenhum motor deve depender de polling.  
+**Regra:** Nenhum motor deve depender de polling.
 Toda reação deve ser orientada por evento.
 
 ---
@@ -237,7 +237,7 @@ Event Bus distribui
 Consumidores interessados reagem
 ```
 
-**Regra:** Nenhum motor deve depender diretamente de outro.  
+**Regra:** Nenhum motor deve depender diretamente de outro.
 O acoplamento ocorre **apenas via eventos**.
 
 ```typescript
@@ -290,7 +290,7 @@ O nível de confirmação humana é proporcional ao impacto da ação.
 
 **Regra:** Toda ação com `requiresApproval=true` no Execution Engine deve bloquear até aprovação explícita.
 
-**Integração com Execution Engine (Sprint 17):**  
+**Integração com Execution Engine (Sprint 17):**
 O `ApprovalEngine` do `SecurityGate` implementa este princípio.
 
 ---
@@ -333,7 +333,7 @@ O MemoryOS deve estar preparado para auxiliar cidadãos, empresas e profissionai
 
 ### 14. Knowledge Translation
 
-O MemoryOS não apenas consulta informações.  
+O MemoryOS não apenas consulta informações.
 Ele **traduz conhecimento**.
 
 ```
@@ -347,8 +347,8 @@ Linguagem original (técnica / jurídica / burocrática)
 
 **Regra:** Toda resposta que contenha linguagem técnica, jurídica ou burocrática deve oferecer uma versão traduzida adaptada ao modo de comunicação do usuário (Princípio 4).
 
-**Integração:**  
-O Adaptive Communication Mode (Princípio 4) define **como** traduzir.  
+**Integração:**
+O Adaptive Communication Mode (Princípio 4) define **como** traduzir.
 O Knowledge Translation define **o que** traduzir.
 
 ---
@@ -474,13 +474,13 @@ Estes 15 princípios passam a integrar oficialmente a arquitetura do MemoryOS.
 
 São **obrigatórios** em todas as Sprints futuras.
 
-Não alteram o Roadmap.  
-Não modificam o Core.  
+Não alteram o Roadmap.
+Não modificam o Core.
 Não criam novos motores.
 
 São a **filosofia** que orienta como os motores são usados, combinados e evoluídos.
 
 ---
 
-**MDS — Architectural Principles Expansion**  
+**MDS — Architectural Principles Expansion**
 **Data:** 2026-07-10 · **Alinhamento:** MAS · MPS · MCF · MCIS · MGIS · MES · MDS 1.0–1.6 · Sprint 17

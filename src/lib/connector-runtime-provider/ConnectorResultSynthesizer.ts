@@ -390,10 +390,10 @@ function _buildSynthesisPrompt(
     if (!output || typeof output !== "object") {
       return item;
     }
-    
+
     const hasHandle = output.rawContentHandle !== undefined;
     const hasContent = output.content !== undefined;
-    
+
     if (hasHandle && hasContent) {
       // Binary file: keep metadata + handle, remove content
       const { content, encoding, ...safeOutput } = output;
@@ -405,7 +405,7 @@ function _buildSynthesisPrompt(
         },
       };
     }
-    
+
     return item;
   });
 
@@ -538,7 +538,7 @@ function _formatRawData(
         lines.push(`   Tamanho: ${mb > 0.01 ? mb.toFixed(2) + " MB" : (Number(out["sizeBytes"]) / 1024).toFixed(2) + " KB"}`);
       }
       if (out["strategy"]) lines.push(`   Estratégia: ${out["strategy"]}`);
-      
+
       // Preview conteúdo
       const content = (out["content"] as string);
       const isText = (out["encoding"] === "text" || out["mimeType"]?.toString().includes("text"));

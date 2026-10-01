@@ -1,7 +1,7 @@
 # MDS-Platform — Frontend, Voice, Enterprise, Specialists, Testes, DevOps e Segurança
 
-**Versão:** 1.0  
-**Status:** Oficial  
+**Versão:** 1.0
+**Status:** Oficial
 **Parte:** 3 de 4 do MDS
 
 ---
@@ -648,6 +648,6 @@ OWASP TOP 10 — ENDEREÇAMENTO:
 
 ---
 
-**Documento Oficial:** MDS-Platform  
-**Versão:** 1.0 · **Status:** Aprovado  
+**Documento Oficial:** MDS-Platform
+**Versão:** 1.0 · **Status:** Aprovado
 **Parte:** 3 de 4 do MDS

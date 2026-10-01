@@ -1,7 +1,7 @@
 # MemoryOS — Transition Declaration
 
-**Status:** Official  
-**Foundation:** v1.0  
+**Status:** Official
+**Foundation:** v1.0
 **Data:** 2026-07-11
 
 ---
@@ -102,7 +102,7 @@ Accepted  |  Absorvida  |  Descartada
 
 O sucesso do MemoryOS será medido pela sua capacidade de resolver problemas reais utilizando os princípios definidos pela Foundation.
 
-O foco deixa de ser produzir documentação.  
+O foco deixa de ser produzir documentação.
 O foco passa a ser produzir uma plataforma **funcional, confiável, auditável e continuamente evolutiva**.
 
 ---

@@ -1,6 +1,6 @@
 # 🔍 VALIDAÇÃO DE INTEGRAÇÃO — read-01
 
-**Data:** 25 de julho de 2026  
+**Data:** 25 de julho de 2026
 **Status:** ⚠️ PARCIALMENTE INTEGRADA
 
 ---
@@ -189,11 +189,11 @@ import { ConnectorRuntime } from "../connector-runtime/ConnectorRuntime";
 
 export async function initializePlatform(): Promise<void> {
   // ... existing code ...
-  
+
   // Nova seção:
   const connectorRuntime = new ConnectorRuntime();
   const capabilityRuntime = new CapabilityRuntime(connectorRuntime);
-  
+
   const { count, errors } = await bootstrapCapabilities(capabilityRuntime, connectorRuntime);
   console.log(`Capabilities bootstrapped: ${count} registered, ${errors.length} errors`);
 }
@@ -201,7 +201,7 @@ export async function initializePlatform(): Promise<void> {
 
 ### Falta 3: Conectar ao RuntimeEngine
 
-Atualmente, `RuntimeEngine` usa `MockCapabilityExecutor`.  
+Atualmente, `RuntimeEngine` usa `MockCapabilityExecutor`.
 Deveria usar um executor real que:
 
 ```typescript
@@ -213,13 +213,13 @@ class ConnectorRouterExecutor implements ICapabilityExecutor {
 
   async execute(input: DispatchInput): Promise<StepExecutionOutput> {
     const { step, executionId, connectorCtx } = input;
-    
+
     // Tenta resolver via Capability
     const capability = this.capabilityRuntime.getCapability(step.capability);
     if (capability) {
       return await capability.execute(...);
     }
-    
+
     // Fallback para Connector direto
     const result = await this.connectorRuntime.execute(
       step.connector,
@@ -227,7 +227,7 @@ class ConnectorRouterExecutor implements ICapabilityExecutor {
       step.parameters,
       { ...connectorCtx, executionId }
     );
-    
+
     return { status: "completed", output: result.data, ... };
   }
 }

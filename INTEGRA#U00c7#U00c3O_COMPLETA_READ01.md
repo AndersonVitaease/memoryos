@@ -1,7 +1,7 @@
 # ✅ INTEGRAÇÃO COMPLETA — read-01 (GoogleDriveReadCapability)
 
-**Status:** INTEGRADA E OPERACIONAL  
-**Build:** SUCESSO (0 erros TypeScript)  
+**Status:** INTEGRADA E OPERACIONAL
+**Build:** SUCESSO (0 erros TypeScript)
 **Data:** 25 de julho de 2026
 
 ---
@@ -242,7 +242,7 @@ ConnectorRouterExecutor.execute(CapabilityExecutorInput)
 ## ✨ PONTOS-CHAVE DA INTEGRAÇÃO
 
 ### 1. **Dependency Inversion**
-RuntimeEngine depende de `ICapabilityExecutor` interface, não de implementação concreta.  
+RuntimeEngine depende de `ICapabilityExecutor` interface, não de implementação concreta.
 ConnectorRouterExecutor é substituível por mock ou outra implementação.
 
 ### 2. **Fallback Pattern**
@@ -270,7 +270,7 @@ Para adicionar nova capability v1.1 (read-02, nav-01, etc):
 
 ### Inicialização (app startup)
 ```typescript
-import { 
+import {
   initializePlatformCapabilities,
   CapabilityRuntime,
   ConnectorRuntime

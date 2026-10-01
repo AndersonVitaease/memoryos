@@ -1,13 +1,13 @@
 # MEB — MemoryOS Engineering Backlog
 ## Official Master Engineering Backlog
 
-**Version:** 1.0  
-**Status:** Engineering Reference  
-**Foundation:** v1.0.0  
-**Date:** 2026-07-10  
+**Version:** 1.0
+**Status:** Engineering Reference
+**Foundation:** v1.0.0
+**Date:** 2026-07-10
 
-> Este documento marca oficialmente o início da fase de engenharia do MemoryOS.  
-> Toda evolução ocorre através das Tasks aqui definidas, mantendo a Foundation como referência permanente.  
+> Este documento marca oficialmente o início da fase de engenharia do MemoryOS.
+> Toda evolução ocorre através das Tasks aqui definidas, mantendo a Foundation como referência permanente.
 > Refs: MAS · MRS · MCS · MPAR · MREM · MQCCS · MPEGS
 
 ---
@@ -306,44 +306,44 @@ EPIC (domínio de implementação)
 
 ### EPIC-003 FEAT-010 — Working Memory
 
-**STORY-001**  
-Como ExecutionEngine, quero armazenar resultados intermediários em WorkingMemory com TTL para que dados não persitam indefinidamente.  
+**STORY-001**
+Como ExecutionEngine, quero armazenar resultados intermediários em WorkingMemory com TTL para que dados não persitam indefinidamente.
 _AC: store() aceita WorkingMemoryItem; get() retorna null após TTL_
 
-**STORY-002**  
-Como qualquer engine, quero que WorkingMemory isole dados por identityContext para que usuários nunca vejam dados de outros usuários.  
+**STORY-002**
+Como qualquer engine, quero que WorkingMemory isole dados por identityContext para que usuários nunca vejam dados de outros usuários.
 _AC: getByContext(ctx1) nunca retorna items de ctx2_
 
-**STORY-003**  
-Como WorkingMemory, quero fazer eviction de itens LOW priority quando MAX_CAPACITY atingido para que memória seja gerenciada automaticamente.  
+**STORY-003**
+Como WorkingMemory, quero fazer eviction de itens LOW priority quando MAX_CAPACITY atingido para que memória seja gerenciada automaticamente.
 _AC: após MAX_CAPACITY, novo store remove item de menor prioridade_
 
 ---
 
 ### EPIC-007 FEAT-020 — Event Bus
 
-**STORY-010**  
-Como ExecutionEngine, quero publicar eventos com prioridade para que componentes críticos sejam notificados antes de componentes de background.  
+**STORY-010**
+Como ExecutionEngine, quero publicar eventos com prioridade para que componentes críticos sejam notificados antes de componentes de background.
 _AC: CRITICAL entregue antes de NORMAL no mesmo ciclo_
 
-**STORY-011**  
-Como qualquer componente, quero subscrever com wildcard "execution.*" para monitorar todos os eventos de um domínio.  
+**STORY-011**
+Como qualquer componente, quero subscrever com wildcard "execution.*" para monitorar todos os eventos de um domínio.
 _AC: subscribe("execution.*") recebe execution.started E execution.completed_
 
-**STORY-012**  
-Como operador, quero inspecionar DLQ e reprocessar eventos falhados para garantir que nenhum evento se perca permanentemente.  
+**STORY-012**
+Como operador, quero inspecionar DLQ e reprocessar eventos falhados para garantir que nenhum evento se perca permanentemente.
 _AC: getDLQ() retorna eventos com ≥3 falhas; replayDLQ() re-entrega_
 
 ---
 
 ### EPIC-008 FEAT-050 — Security
 
-**STORY-020**  
-Como ExecutionEngine, quero que SecurityGate avalie toda ação antes de executar para que nenhuma ação não autorizada ocorra.  
+**STORY-020**
+Como ExecutionEngine, quero que SecurityGate avalie toda ação antes de executar para que nenhuma ação não autorizada ocorra.
 _AC: sem security.evaluate() → step não executa_
 
-**STORY-021**  
-Como SecurityGate, quero pausar Journey automaticamente quando riskLevel=HIGH para garantir aprovação humana antes de ações irreversíveis.  
+**STORY-021**
+Como SecurityGate, quero pausar Journey automaticamente quando riskLevel=HIGH para garantir aprovação humana antes de ações irreversíveis.
 _AC: riskLevel=HIGH + isReversible=false → Journey.pause("awaiting_approval")_
 
 ---

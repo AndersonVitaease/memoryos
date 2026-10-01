@@ -1,8 +1,8 @@
 # MCF-Security — Permissões, Autenticação, Assinatura, Sandbox e Auditoria
 
-**Versão:** 1.0  
-**Status:** Oficial  
-**Parte:** 3 de 5 do MCF  
+**Versão:** 1.0
+**Status:** Oficial
+**Parte:** 3 de 5 do MCF
 **Referência:** MES §24 — Segurança, MAS §4.6 — Policy Engine
 
 ---
@@ -36,25 +36,25 @@
 enum PermissionLevel {
   // Leitura básica — dados não sensíveis
   READ_BASIC = "READ_BASIC",
-  
+
   // Leitura completa — inclui dados sensíveis
   READ_FULL = "READ_FULL",
-  
+
   // Escrita — criação e modificação
   WRITE = "WRITE",
-  
+
   // Exclusão — remoção de dados
   DELETE = "DELETE",
-  
+
   // Admin — operações administrativas
   ADMIN = "ADMIN",
-  
+
   // Webhook — receber notificações externas
   WEBHOOK = "WEBHOOK",
-  
+
   // Financeiro — transações monetárias
   FINANCIAL = "FINANCIAL",
-  
+
   // Dados pessoais — PII
   PII_ACCESS = "PII_ACCESS",
 }
@@ -278,7 +278,7 @@ Todo Connector executa em um ambiente isolado (Sandbox).
 interface SandboxConstraints {
   // Isolamento de memória
   memoryIsolated: true;           // Sem acesso à memória do usuário diretamente
-  
+
   // Rede
   networkPolicy: {
     allowedHosts: string[];       // Apenas hosts declarados no manifesto
@@ -286,20 +286,20 @@ interface SandboxConstraints {
     tlsRequired: true;            // Apenas HTTPS/TLS
     maxConcurrentConnections: 10;
   };
-  
+
   // CPU e tempo
   executionTimeoutMs: 30000;      // 30 segundos por request
   cpuLimitPercent: 25;            // Máximo 25% da CPU disponível
-  
+
   // Armazenamento
   localStorageAccess: false;       // Sem acesso ao filesystem
   tempStorageMaxMb: 50;           // Storage temporário máximo
-  
+
   // Comunicação
   canCallOtherConnectors: false;  // Via Connector Manager apenas
   canCallInternalAPIs: false;     // Sem acesso direto ao Core
   canModifyUserMemory: false;     // Via MemoryUpdateProposal apenas
-  
+
   // Código
   allowEval: false;               // Sem execução dinâmica de código
   allowDynamicImport: false;      // Sem importações em runtime
@@ -362,14 +362,14 @@ interface AuditEntry {
   requestId: string;
   action: string;
   status: ConnectorResponseStatus;
-  
+
   // Dados do request (sem dados sensíveis)
   requestSummary: {
     action: string;
     payloadHash: string;        // SHA-256 do payload, nunca o payload real
     payloadSize: number;
   };
-  
+
   // Dados da resposta
   responseSummary: {
     status: string;
@@ -377,7 +377,7 @@ interface AuditEntry {
     resultHash?: string;        // SHA-256 do result
     errorCode?: string;
   };
-  
+
   // Contexto de segurança
   security: {
     permissionsUsed: string[];
@@ -385,7 +385,7 @@ interface AuditEntry {
     tokenScopes: string[];      // Scopes OAuth utilizados
     sandboxViolations: string[];
   };
-  
+
   // Rastreabilidade
   correlationId: string;
   parentRequestId?: string;     // Para chamadas em cadeia
@@ -452,19 +452,19 @@ interface DataPrivacyPolicy {
   // Quais dados o Connector processa
   processesPersonalData: boolean;
   dataCategories: DataCategory[];
-  
+
   // Retenção
   maxRetentionDays: number;
   autoDeleteOnRevoke: boolean;
-  
+
   // Direitos do usuário
   supportsDataExport: boolean;    // Portabilidade
   supportsDataDeletion: boolean;  // Direito ao esquecimento
-  
+
   // Legalidade
   legalBasis: LegalBasis;        // "CONSENT" | "CONTRACT" | "LEGITIMATE_INTEREST"
   dataProcessingAgreement: boolean; // DPA assinado com o sistema externo
-  
+
   // Transferência internacional
   dataResidency?: string;         // Ex: "BR", "EU"
   crossBorderTransfer: boolean;
@@ -495,7 +495,7 @@ interface DataPrivacyPolicy {
 
 ---
 
-**Documento Oficial:** MCF-Security  
-**Versão:** 1.0  
-**Status:** Aprovado  
+**Documento Oficial:** MCF-Security
+**Versão:** 1.0
+**Status:** Aprovado
 **Parte:** 3 de 5 do MemoryOS Connector Framework

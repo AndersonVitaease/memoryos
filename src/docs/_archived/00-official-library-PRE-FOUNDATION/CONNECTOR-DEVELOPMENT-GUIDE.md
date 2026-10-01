@@ -1,13 +1,13 @@
 # Connector Development Guide
 ## MemoryOS Official Library v1.0
 
-**ID:** CDG-001  
-**Version:** 1.0  
-**Status:** FROZEN  
-**Authority:** OFFICIAL  
-**Category:** DEVELOPMENT  
-**ADRs:** ADR-004, ADR-006  
-**RFCs:** RFC-003  
+**ID:** CDG-001
+**Version:** 1.0
+**Status:** FROZEN
+**Authority:** OFFICIAL
+**Category:** DEVELOPMENT
+**ADRs:** ADR-004, ADR-006
+**RFCs:** RFC-003
 
 ---
 

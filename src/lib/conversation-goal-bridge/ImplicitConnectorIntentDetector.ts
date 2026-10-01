@@ -114,7 +114,7 @@ class ImplicitConnectorIntentDetectorImpl {
 
     // ── 1. Normalize ──────────────────────────────────────────────────────────
     const norm = normalize(trimmed);
-    
+
     // ✅ CORREÇÃO ADICIONADA: Se for uma saudação ou frase social, NUNCA ative conector.
     if (norm.isSocialPhrase)   return none("social_phrase");
     if (!norm.entity.trim())   return none("empty_entity");

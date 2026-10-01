@@ -1,9 +1,9 @@
 # Implementação Completa: Google Drive Connector — Binary Handling (EF-44)
 
-**Status**: ✅ IMPLEMENTADO E COMPILADO  
-**Commit**: Mudanças prontas para commit  
-**Build**: ✅ npm run build passou  
-**TypeScript**: ✅ Sem erros nos arquivos modificados  
+**Status**: ✅ IMPLEMENTADO E COMPILADO
+**Commit**: Mudanças prontas para commit
+**Build**: ✅ npm run build passou
+**TypeScript**: ✅ Sem erros nos arquivos modificados
 
 ---
 
@@ -68,7 +68,7 @@ export interface DownloadSuccess {
 **Antes** (linhas ~462-480):
 ```typescript
 if (isBinaryOnly) {
-  // ... 
+  // ...
   return {
     ok: true,
     content: downloadRaw.content,      // ← 9MB para MP4!
@@ -117,10 +117,10 @@ function _buildSynthesisPrompt(...) {
     if (!output || typeof output !== "object") {
       return item;
     }
-    
+
     const hasHandle = output.rawContentHandle !== undefined;
     const hasContent = output.content !== undefined;
-    
+
     if (hasHandle && hasContent) {
       // Binary file: keep metadata + handle, remove content
       const { content, encoding, ...safeOutput } = output;
@@ -132,7 +132,7 @@ function _buildSynthesisPrompt(...) {
         },
       };
     }
-    
+
     return item;
   });
 

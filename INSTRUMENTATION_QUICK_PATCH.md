@@ -1,6 +1,6 @@
 /**
  * MAPA DE MODIFICAÇÕES MÍNIMAS PARA INSTRUMENTAÇÃO
- * 
+ *
  * Arquivo: QUICK_PATCH_GUIDE.md
  * Objetivo: Mostrar EXATAMENTE onde adicionar console.log em cada arquivo
  */
@@ -44,7 +44,7 @@ return goal;
 
 ## 🔧 MODIFICAÇÃO 2A: Entity Extraction - Filename
 
-**Arquivo:** `src/lib/google-drive/GoogleDriveCapabilityExecutor.ts`  
+**Arquivo:** `src/lib/google-drive/GoogleDriveCapabilityExecutor.ts`
 **Função:** `extractExplicitFileNameHint()`
 
 Localize o return da função. Adicione:
@@ -64,7 +64,7 @@ return result;
 
 ## 🔧 MODIFICAÇÃO 2B: Entity Extraction - Type Inference
 
-**Arquivo:** `src/lib/google-drive/GoogleDriveCapabilityExecutor.ts`  
+**Arquivo:** `src/lib/google-drive/GoogleDriveCapabilityExecutor.ts`
 **Função:** `inferFileTypeFromExplicitFileName()`
 
 Localize o return da função. Adicione:
@@ -88,7 +88,7 @@ return inferredType;
 
 ## 🔧 MODIFICAÇÃO 3: Query Builder
 
-**Arquivo:** `src/lib/google-drive/GoogleDriveCapabilityExecutor.ts`  
+**Arquivo:** `src/lib/google-drive/GoogleDriveCapabilityExecutor.ts`
 **Função:** `buildDriveQuery()`
 
 Localize o ponto antes de retornar a query. Adicione:
@@ -111,7 +111,7 @@ return finalQuery;
 
 ## 🔧 MODIFICAÇÃO 4: Google Drive API
 
-**Arquivo:** `src/lib/google-drive/GoogleDriveConnector.ts`  
+**Arquivo:** `src/lib/google-drive/GoogleDriveConnector.ts`
 **Função:** `searchFiles()` ou `listFiles()`
 
 Logo após receber o resultado da API, adicione:
@@ -120,10 +120,10 @@ Logo após receber o resultado da API, adicione:
 const result = await drive.files.list({ q: query, ... });
 
 if (query.includes("pdf") || query.includes("video") || query.includes("mp4")) {
-  const filesList = (result.data?.files || []).map(f => 
+  const filesList = (result.data?.files || []).map(f =>
     `${f.name} (ID: ${f.id}, MIME: ${f.mimeType})`
   ).join(" | ");
-  
+
   console.log(
     `%c[4-API]%c Count: ${result.data?.files?.length || 0} | Files: ${filesList || "(none)"}`,
     "background: #FFE66D; color: #000; padding: 2px 4px; border-radius: 2px; font-weight: bold",
@@ -138,7 +138,7 @@ return result;
 
 ## 🔧 MODIFICAÇÃO 5: File Selection
 
-**Arquivo:** `src/lib/google-drive/GoogleDriveCapabilityExecutor.ts`  
+**Arquivo:** `src/lib/google-drive/GoogleDriveCapabilityExecutor.ts`
 **Função:** `executeDriveCapability()` case `"drive.openDocument"`
 
 Quando um arquivo for selecionado, adicione:
@@ -160,7 +160,7 @@ console.log(
 
 ## 🔧 MODIFICAÇÃO 6: Download Executor Call
 
-**Arquivo:** `src/lib/google-drive/GoogleDriveCapabilityExecutor.ts`  
+**Arquivo:** `src/lib/google-drive/GoogleDriveCapabilityExecutor.ts`
 **Função:** `executeDriveCapability()` case `"drive.openDocument"`
 
 Logo ANTES de chamar `DriveDownloadExecutor`, adicione:
@@ -179,7 +179,7 @@ const downloadResult = await executeDriveDownload(...);
 
 ## 🔧 MODIFICAÇÃO 7: Processing Type
 
-**Arquivo:** `src/lib/google-drive/DriveDownloadExecutor.ts`  
+**Arquivo:** `src/lib/google-drive/DriveDownloadExecutor.ts`
 **Função:** `download()` ou `execute()`
 
 No ponto onde você decide se processa com `DocumentProcessingEngine`, adicione:
@@ -206,7 +206,7 @@ if (isBinaryOnly(mimeType)) {
 
 ## 🔧 MODIFICAÇÃO 8: Final Response
 
-**Arquivo:** `src/lib/connector-runtime-provider/ConnectorResultSynthesizer.ts`  
+**Arquivo:** `src/lib/connector-runtime-provider/ConnectorResultSynthesizer.ts`
 **Função:** Final da síntese
 
 Logo antes de retornar a resposta, adicione:

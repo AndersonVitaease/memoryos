@@ -1,10 +1,10 @@
 # MDIS — MemoryOS Decision Intelligence Specification
 ## Decision Architecture, Reasoning & Cognitive Orchestration
 
-**Versão:** 1.0  
-**Status:** Documento Oficial da Inteligência do MemoryOS — Aprovado  
-**Data:** 2026-07-10  
-**Tipo:** Especificação de Inteligência Decisória  
+**Versão:** 1.0
+**Status:** Documento Oficial da Inteligência do MemoryOS — Aprovado
+**Data:** 2026-07-10
+**Tipo:** Especificação de Inteligência Decisória
 **Complementa:** MV · MPS · MAS · MDS 1.0–1.6 · MRS · MCS · MDS Arch. Principles
 
 ---
@@ -23,7 +23,7 @@ Este documento define oficialmente **como o MemoryOS toma decisões**.
 | **MCS** | O que é o Core e seus limites |
 | **MDIS** | Como a plataforma raciocina, decide e escolhe estratégias |
 
-**Não altera:** Arquitetura · Roadmap · Runtime  
+**Não altera:** Arquitetura · Roadmap · Runtime
 **Formaliza:** O comportamento decisório do MemoryOS.
 
 ---
@@ -874,5 +874,5 @@ SE QUALQUER ITEM ESTIVER DESMARCADO → REVISAR ANTES DE APROVAR A PR.
 
 ---
 
-**MDIS — MemoryOS Decision Intelligence Specification v1.0**  
+**MDIS — MemoryOS Decision Intelligence Specification v1.0**
 **Data:** 2026-07-10 · **Complementa:** MV · MPS · MAS · MDS 1.0–1.6 · MRS · MCS · MDS Arch. Principles

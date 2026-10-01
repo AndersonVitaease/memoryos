@@ -1,12 +1,12 @@
 # RFC-NNN — [Título da RFC]
 
-**Status:** Draft | Under Discussion | Approved | Rejected | Implemented  
-**Categoria:** Core | Runtime | SDK | Connector | Specialist | Governance | Platform  
-**Prioridade:** Low | Medium | High | Critical  
-**Autor:** [Nome]  
-**Versão:** 1.0  
-**Data:** YYYY-MM-DD  
-**Revisão:** YYYY-MM-DD  
+**Status:** Draft | Under Discussion | Approved | Rejected | Implemented
+**Categoria:** Core | Runtime | SDK | Connector | Specialist | Governance | Platform
+**Prioridade:** Low | Medium | High | Critical
+**Autor:** [Nome]
+**Versão:** 1.0
+**Data:** YYYY-MM-DD
+**Revisão:** YYYY-MM-DD
 
 ---
 

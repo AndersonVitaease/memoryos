@@ -547,7 +547,7 @@ export default async function (req) {
         // Aumentado de 6s para 10s (conectores precisam inicializar)
         try { await callMcp('browser_wait_for', { time: 10 }); } catch (e) { /* best-effort */ }
         history.push({ step: 0.8, action: 'browser_navigate', description: 'Navigated to ' + chatUrl });
-        
+
         // CRITICAL: Aguarda os conectores inicializarem antes de enviar perguntas.
         try {
           const connReady = await withTimeout(waitForConnectors(30000), 35000, 'waitForConnectors');
@@ -572,7 +572,7 @@ export default async function (req) {
           if (cleanId && cleanId !== 'null' && cleanId !== 'undefined' && cleanId !== '') {
             capturedSessionId = cleanId;
             history.push({ step: 0.9, action: 'capture_session', description: 'Captured chat session_id: ' + capturedSessionId });
-        
+
         // Aguardar conectores novamente (mesmo se é resume — conectores precisam estar prontos)
         try {
           const connReady = await withTimeout(waitForConnectors(15000), 20000, 'waitForConnectors-resume');

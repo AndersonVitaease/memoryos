@@ -1,13 +1,13 @@
 # MREM — MemoryOS Reference Execution Model
 ## Official Runtime Execution Flow
 
-**Version:** 1.0  
-**Status:** Official Reference  
-**Foundation:** v1.0.0  
-**Date:** 2026-07-10  
+**Version:** 1.0
+**Status:** Official Reference
+**Foundation:** v1.0.0
+**Date:** 2026-07-10
 
-> **Nota:** Este documento explica COMO o sistema executa uma jornada completa.  
-> Para arquitetura: MAS. Para runtime spec: MRS. Para core boundaries: MCS.  
+> **Nota:** Este documento explica COMO o sistema executa uma jornada completa.
+> Para arquitetura: MAS. Para runtime spec: MRS. Para core boundaries: MCS.
 > Para APIs públicas: MPAR. Para engineering: MDH. Para governança: MPEGS.
 
 ---

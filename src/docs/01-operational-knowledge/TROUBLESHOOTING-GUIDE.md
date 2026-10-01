@@ -1,10 +1,10 @@
 # Troubleshooting Guide
 ## MemoryOS Operational Knowledge Base v1.0
 
-**ID:** TG-001  
-**Category:** OPERATIONAL_KNOWLEDGE  
-**Status:** ACTIVE  
-**Authority:** ENGINEERING  
+**ID:** TG-001
+**Category:** OPERATIONAL_KNOWLEDGE
+**Status:** ACTIVE
+**Authority:** ENGINEERING
 **Last Updated:** 2026-07-18
 
 ---

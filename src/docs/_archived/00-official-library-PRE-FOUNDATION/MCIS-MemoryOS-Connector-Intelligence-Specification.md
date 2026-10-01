@@ -1,10 +1,10 @@
 # MemoryOS Connector Intelligence Specification (MCIS)
 
-**Versão:** 1.0  
-**Status:** Oficial  
-**Tipo:** Documento Arquitetural — Connector Intelligence  
-**Posição na Biblioteca:** MV → MPS → MAS → MES → MCF → **MCIS** → MDS  
-**Alinhamento:** MV 1.0 · MAS 1.0 · MES 1.0 · MCF 1.0  
+**Versão:** 1.0
+**Status:** Oficial
+**Tipo:** Documento Arquitetural — Connector Intelligence
+**Posição na Biblioteca:** MV → MPS → MAS → MES → MCF → **MCIS** → MDS
+**Alinhamento:** MV 1.0 · MAS 1.0 · MES 1.0 · MCF 1.0
 **Referência Cruzada:** MCIS-Registry · MCIS-Contracts · MCIS-Intelligence
 
 ---
@@ -15,7 +15,7 @@ Este documento define a **camada de inteligência** dos Connectors do MemoryOS.
 
 Enquanto o MCF define *como* um Connector é construído, autenticado e executado, o MCIS define *como* um Connector **se descreve**, **se registra**, **é descoberto** e **é selecionado automaticamente** pelo Core sem que nenhum código específico precisc conhecer a existência de nenhum Connector particular.
 
-O MCIS não altera nenhuma decisão arquitetural do MAS, MES ou MCF.  
+O MCIS não altera nenhuma decisão arquitetural do MAS, MES ou MCF.
 Ele formaliza a **inteligência declarativa** que transforma um Connector de um executor passivo em um participante ativo e autodescritivo do ecossistema MemoryOS.
 
 > **Princípio Central:** O Core nunca conhece o Gmail. Ele conhece capacidades. O MCIS é o contrato que torna isso possível em escala.
@@ -48,9 +48,9 @@ Core → "Preciso enviar um e-mail" → [busca manual em código] → GmailConne
 
 Um Connector **com** Connector Intelligence:
 ```
-Core → "Preciso enviar uma mensagem de texto para João" 
+Core → "Preciso enviar uma mensagem de texto para João"
      → [consulta Capability Registry por inteligência]
-     → encontra: GmailConnector(SEND_EMAIL), 
+     → encontra: GmailConnector(SEND_EMAIL),
                  WhatsAppConnector(SEND_MESSAGE),
                  SlackConnector(POST_MESSAGE)
      → seleciona baseado em: contexto + permissões + desempenho + histórico
@@ -451,6 +451,6 @@ INTELIGÊNCIA
 
 ---
 
-**Documento Oficial:** MCIS — MemoryOS Connector Intelligence Specification  
-**Versão:** 1.0 · **Status:** Aprovado  
+**Documento Oficial:** MCIS — MemoryOS Connector Intelligence Specification
+**Versão:** 1.0 · **Status:** Aprovado
 **Parte:** 1 de 4 — Fundamentos, Conceitos, Ontologia, Self-Description

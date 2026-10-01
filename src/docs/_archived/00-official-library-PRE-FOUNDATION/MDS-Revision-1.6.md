@@ -1,9 +1,9 @@
 # MDS v1.6 — Memory Architecture — Arquitetura Definitiva de Memória
 
-**Versão:** 1.6  
-**Status:** Revisão Oficial — Adenda ao MDS v1.5  
-**Data:** 2026-07-09  
-**Tipo:** Arquitetura Definitiva do Domínio de Memória  
+**Versão:** 1.6
+**Status:** Revisão Oficial — Adenda ao MDS v1.5
+**Data:** 2026-07-09
+**Tipo:** Arquitetura Definitiva do Domínio de Memória
 **Alinhamento:** MAS 1.0 · MCF 1.0 · MCIS 1.0 · MGIS 1.0 · MDS 1.0 · v1.1 · v1.2 · v1.3 · v1.4 · v1.5
 
 ---
@@ -1982,5 +1982,5 @@ A arquitetura de memória permanece **totalmente desacoplada do Knowledge Graph,
 
 ---
 
-**MDS v1.6 — Memory Architecture — Arquitetura Definitiva de Memória**  
+**MDS v1.6 — Memory Architecture — Arquitetura Definitiva de Memória**
 **Data:** 2026-07-09 · **Adenda ao:** MDS v1.5 · **Série:** MDS v1.0 → v1.1 → v1.2 → v1.3 → v1.4 → v1.5 → v1.6

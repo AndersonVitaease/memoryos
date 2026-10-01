@@ -1,10 +1,10 @@
 # Known Issues
 ## MemoryOS Operational Knowledge Base v1.0
 
-**ID:** KI-001  
-**Category:** OPERATIONAL_KNOWLEDGE  
-**Status:** ACTIVE  
-**Authority:** ENGINEERING  
+**ID:** KI-001
+**Category:** OPERATIONAL_KNOWLEDGE
+**Status:** ACTIVE
+**Authority:** ENGINEERING
 **Last Updated:** 2026-07-18
 
 ---

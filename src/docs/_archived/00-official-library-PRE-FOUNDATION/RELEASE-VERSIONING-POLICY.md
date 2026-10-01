@@ -1,13 +1,13 @@
 # Release & Versioning Policy
 ## MemoryOS Official Library v1.0
 
-**ID:** RVP-001  
-**Version:** 1.0  
-**Status:** FROZEN  
-**Authority:** OFFICIAL  
-**Category:** DEVELOPMENT  
-**ADRs:** ADR-001, ADR-003  
-**RFCs:** RFC-001  
+**ID:** RVP-001
+**Version:** 1.0
+**Status:** FROZEN
+**Authority:** OFFICIAL
+**Category:** DEVELOPMENT
+**ADRs:** ADR-001, ADR-003
+**RFCs:** RFC-001
 
 ---
 

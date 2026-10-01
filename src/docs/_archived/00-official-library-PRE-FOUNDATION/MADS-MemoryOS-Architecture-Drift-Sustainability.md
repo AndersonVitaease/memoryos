@@ -1,10 +1,10 @@
 # MADS — MemoryOS Architecture Drift & Sustainability
 ## Official Architecture Drift Detection & Engineering Sustainability
 
-**Version:** 1.0  
-**Status:** Official Engineering Process  
-**Foundation:** v1.0  
-**Declared:** 2026-07-10  
+**Version:** 1.0
+**Status:** Official Engineering Process
+**Foundation:** v1.0
+**Declared:** 2026-07-10
 **Authority:** Foundation Committee
 
 ---

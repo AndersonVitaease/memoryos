@@ -1,10 +1,10 @@
 # MDPS — MemoryOS Developer Platform Specification
 ## Official SDK, Extension Platform & Ecosystem Specification
 
-**Versão:** 1.0  
-**Status:** Documento Oficial da Plataforma de Desenvolvimento — Aprovado  
-**Data:** 2026-07-10  
-**Tipo:** Especificação de Ecossistema  
+**Versão:** 1.0
+**Status:** Documento Oficial da Plataforma de Desenvolvimento — Aprovado
+**Data:** 2026-07-10
+**Tipo:** Especificação de Ecossistema
 **Complementa:** MV · MPS · MAS · MDS 1.0–1.6 · MRS · MCS · MDIS · MIES · MCF · MDS Arch. Principles
 
 ---
@@ -25,7 +25,7 @@ Este documento define oficialmente **como desenvolvedores externos expandem o Me
 | **MIES** | Como a inteligência evolui continuamente |
 | **MDPS** | Como terceiros desenvolvem para o MemoryOS |
 
-**Não altera:** Core · Runtime · Roadmap · Arquitetura  
+**Não altera:** Core · Runtime · Roadmap · Arquitetura
 **Define:** O ecossistema oficial de desenvolvimento.
 
 ---
@@ -1101,5 +1101,5 @@ MDPS  → Como desenvolvedores externos expandem o MemoryOS  ← este documento
 
 ---
 
-**MDPS — MemoryOS Developer Platform Specification v1.0**  
+**MDPS — MemoryOS Developer Platform Specification v1.0**
 **Data:** 2026-07-10 · **Complementa:** MV · MPS · MAS · MDS 1.0–1.6 · MRS · MCS · MDIS · MIES · MCF

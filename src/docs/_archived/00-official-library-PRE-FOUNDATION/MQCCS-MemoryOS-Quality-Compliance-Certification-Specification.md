@@ -1,7 +1,7 @@
 # MQCCS — MemoryOS Quality, Compliance & Certification Specification
 
-**Versão:** 1.0  
-**Status:** Documento Oficial de Garantia de Qualidade e Certificação  
+**Versão:** 1.0
+**Status:** Documento Oficial de Garantia de Qualidade e Certificação
 **Tipo:** Especificação de Qualidade
 
 ---
@@ -25,7 +25,7 @@ Enquanto:
 
 **O MQCCS define como verificar automaticamente que qualquer implementação está em conformidade com toda a arquitetura oficial.**
 
-Este documento **não altera**: Core, Runtime, Arquitetura, SDKs, Roadmap.  
+Este documento **não altera**: Core, Runtime, Arquitetura, SDKs, Roadmap.
 Ele apenas estabelece como validar a qualidade da plataforma.
 
 ---

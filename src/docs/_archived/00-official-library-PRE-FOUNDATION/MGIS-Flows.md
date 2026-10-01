@@ -1,7 +1,7 @@
 # MGIS-Flows — UML, C4, Diagramas de Sequência e Casos Reais
 
-**Versão:** 1.0  
-**Status:** Oficial  
+**Versão:** 1.0
+**Status:** Oficial
 **Parte:** 4 de 4 do MGIS
 
 ---
@@ -521,12 +521,12 @@ interface GoalPlanHandoff {
 
 ## 25. Declaração Arquitetural Oficial
 
-> **O usuário descreve um objetivo.**  
-> **O MemoryOS compreende a intenção.**  
-> **O MGIS estrutura o objetivo.**  
-> **O Planner cria o plano.**  
-> **O MCIS descobre as capacidades.**  
-> **Os Connectors executam.**  
+> **O usuário descreve um objetivo.**
+> **O MemoryOS compreende a intenção.**
+> **O MGIS estrutura o objetivo.**
+> **O Planner cria o plano.**
+> **O MCIS descobre as capacidades.**
+> **Os Connectors executam.**
 > **A Memória aprende continuamente.**
 
 Esta declaração representa a síntese arquitetural completa do pipeline de inteligência do MemoryOS, do qual o MGIS ocupa a posição central de **compreensão e estruturação de objetivos humanos** — a camada que transforma a ambiguidade natural da linguagem humana em intenções estruturadas, priorizadas e prontas para execução determinística.
@@ -567,12 +567,12 @@ Esta declaração representa a síntese arquitetural completa do pipeline de int
 
 ---
 
-**Documento Oficial:** MGIS-Flows  
-**Versão:** 1.0 · **Status:** Aprovado  
+**Documento Oficial:** MGIS-Flows
+**Versão:** 1.0 · **Status:** Aprovado
 **Parte:** 4 de 4 do MGIS
 
 ---
 
-**MGIS — MemoryOS Goal Intelligence Specification**  
-**Versão:** 1.0 · **Status:** Aprovado · **Data:** 2026-07-08  
+**MGIS — MemoryOS Goal Intelligence Specification**
+**Versão:** 1.0 · **Status:** Aprovado · **Data:** 2026-07-08
 **Documentos:** MGIS · MGIS-Engine · MGIS-Lifecycle · MGIS-Flows

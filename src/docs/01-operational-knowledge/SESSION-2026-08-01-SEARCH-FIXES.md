@@ -1,6 +1,6 @@
 # SESSION LOG — 2026-08-01 — Search Pipeline Fixes
 
-**Data:** 2026-08-01 (21:00–21:15 BRT)  
+**Data:** 2026-08-01 (21:00–21:15 BRT)
 **Foco:** Corrigir o pipeline de pesquisa web para entregar respostas sintetizadas e úteis.
 
 ---
@@ -19,7 +19,7 @@ O agente apresentava três falhas encadeadas ao realizar pesquisas:
 
 ### Fix 1 — System Prompt: proibir respostas vazias (`contextBuilder.js`)
 
-**Arquivo:** `src/lib/reasoning/contextBuilder.js`  
+**Arquivo:** `src/lib/reasoning/contextBuilder.js`
 **Mudança:** Adicionadas duas novas regras no `buildSystemPrompt()`:
 
 ```
@@ -35,7 +35,7 @@ O agente apresentava três falhas encadeadas ao realizar pesquisas:
 
 ### Fix 2 — Detecção de ação curta (`capabilityDetector.js`)
 
-**Arquivo:** `src/lib/reasoning/capabilityDetector.js`  
+**Arquivo:** `src/lib/reasoning/capabilityDetector.js`
 **Mudança:** Adicionado array `SHORT_ACTION_TRIGGERS` que força `web_search=true` para mensagens curtas de acompanhamento:
 
 ```js
@@ -54,7 +54,7 @@ let explicitlyRequested = webMatch.length > 0 || isShortActionFollowUp;
 
 ### Fix 3 — Otimização de query de busca (`capabilityExecutor.js`)
 
-**Arquivo:** `src/lib/reasoning/capabilityExecutor.js`  
+**Arquivo:** `src/lib/reasoning/capabilityExecutor.js`
 **Mudança:** Nova função `buildSearchQuery()` que detecta mensagens vagas (< 40 chars ou verbos de ação isolados) e usa Gemini Flash para gerar uma query otimizada em inglês baseada no contexto da conversa:
 
 ```js
@@ -74,7 +74,7 @@ async function buildSearchQuery(userMessage, conversationContext) {
 
 ### Fix 4 — SearchEngine não retorna mais direto ao usuário (`memoryReasoningPlanner.js`)
 
-**Arquivo:** `src/lib/reasoning/memoryReasoningPlanner.js`  
+**Arquivo:** `src/lib/reasoning/memoryReasoningPlanner.js`
 **Mudança:** Removido o `return` antecipado que entregava `formatSearchResultAsResponse()` direto ao usuário. Os resultados agora são injetados em `_searchEngineGroundingNote` como contexto para o LLM:
 
 ```js

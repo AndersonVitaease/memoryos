@@ -1,9 +1,9 @@
 # MDS v1.4 — Learning Engine — Arquitetura Definitiva
 
-**Versão:** 1.4  
-**Status:** Revisão Oficial — Adenda ao MDS v1.3  
-**Data:** 2026-07-09  
-**Tipo:** Arquitetura Definitiva do Learning Engine  
+**Versão:** 1.4
+**Status:** Revisão Oficial — Adenda ao MDS v1.3
+**Data:** 2026-07-09
+**Tipo:** Arquitetura Definitiva do Learning Engine
 **Alinhamento:** MAS 1.0 · MCF 1.0 · MCIS 1.0 · MGIS 1.0 · MDS 1.0 · v1.1 · v1.2 · v1.3
 
 ---
@@ -1729,5 +1729,5 @@ Todos os componentes permanecem **desacoplados, orientados a eventos, altamente 
 
 ---
 
-**MDS v1.4 — Learning Engine — Arquitetura Definitiva**  
+**MDS v1.4 — Learning Engine — Arquitetura Definitiva**
 **Data:** 2026-07-09 · **Adenda ao:** MDS v1.3 · **Série:** MDS v1.0 → v1.1 → v1.2 → v1.3 → v1.4

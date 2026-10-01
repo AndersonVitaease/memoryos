@@ -1,7 +1,7 @@
 # MGIS-Engine — Goal Graph Engine, Registry, Lifecycle, Contexto e Memória
 
-**Versão:** 1.0  
-**Status:** Oficial  
+**Versão:** 1.0
+**Status:** Oficial
 **Parte:** 2 de 4 do MGIS
 
 ---
@@ -510,9 +510,9 @@ DEPOIS (MGIS + MCIS):
   Conector anuncia: "Posso resolver o Goal TRAVEL.SEARCH_FLIGHTS
                     no contexto de: turismo pessoal, viagem executiva,
                     reserva corporativa, emergência médica..."
-                    
+
   E adicionalmente:
-    "Quando o usuário quer 'viajar para [destino]', 
+    "Quando o usuário quer 'viajar para [destino]',
      posso contribuir com subgoals:
        - Pesquisa de voos
        - Verificação de disponibilidade
@@ -552,6 +552,6 @@ interface GoalCapabilityAnnouncement {
 
 ---
 
-**Documento Oficial:** MGIS-Engine  
-**Versão:** 1.0 · **Status:** Aprovado  
+**Documento Oficial:** MGIS-Engine
+**Versão:** 1.0 · **Status:** Aprovado
 **Parte:** 2 de 4 do MGIS

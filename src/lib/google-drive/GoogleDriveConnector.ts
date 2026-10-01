@@ -446,7 +446,7 @@ export async function uploadFile(
   // Build multipart body
   const boundary = "memoryos_upload_boundary_" + Date.now();
   const metadata = { name: fileName, mimeType, parents: [folderId] };
-  
+
   // Convert fileContent to Uint8Array if needed
   let contentBytes: Uint8Array;
   if (typeof fileContent === "string") {
@@ -467,11 +467,11 @@ export async function uploadFile(
   const metadataBytes = new TextEncoder().encode(metadataPart);
   const contentHeaderBytes = new TextEncoder().encode(contentHeaderPart);
   const endBytes = new TextEncoder().encode(endPart);
-  
+
   const totalLength = metadataBytes.length + contentHeaderBytes.length + contentBytes.length + endBytes.length;
   const body = new Uint8Array(totalLength);
   let offset = 0;
-  
+
   body.set(metadataBytes, offset);
   offset += metadataBytes.length;
   body.set(contentHeaderBytes, offset);
@@ -498,7 +498,7 @@ export async function deleteFile(
   fileId: string,
 ): Promise<void> {
   await ensureValidToken(WS);
-  
+
   await _driveRequest<void>(
     "drive.deleteFile",
     `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}`,

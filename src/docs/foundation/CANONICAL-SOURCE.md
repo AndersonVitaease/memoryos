@@ -1,8 +1,8 @@
 # MemoryOS — Canonical Source of Code
 
-**Status:** Official  
-**Foundation:** v1.0  
-**Fase:** Engineering First  
+**Status:** Official
+**Foundation:** v1.0
+**Fase:** Engineering First
 **Data:** 2026-07-11
 
 ---

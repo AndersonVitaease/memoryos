@@ -115,11 +115,11 @@ test(10, "Complete integration path validated", () => {
   const connectorPath = "c:\\Users\\Cliente\\Documents\\memoryos\\src\\lib\\connector-runtime\\connectors\\GoogleDriveConnector.ts";
   const executorPath = "c:\\Users\\Cliente\\Documents\\memoryos\\src\\lib\\google-drive\\DriveDeleteExecutor.ts";
   const foundationPath = "c:\\Users\\Cliente\\Documents\\memoryos\\src\\lib\\google-drive\\GoogleDriveConnector.ts";
-  
+
   const connectorContent = readFileSync(connectorPath, "utf-8");
   const executorContent = readFileSync(executorPath, "utf-8");
   const foundationContent = readFileSync(foundationPath, "utf-8");
-  
+
   return connectorContent.includes("executeDriveDelete") &&
          executorContent.includes("export async function executeDriveDelete") &&
          foundationContent.includes("export async function deleteFile");

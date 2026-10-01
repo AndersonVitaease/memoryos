@@ -1,8 +1,8 @@
 # MCF-Lifecycle — Ciclo de Vida, Estrutura e Descoberta de Capacidades
 
-**Versão:** 1.0  
-**Status:** Oficial  
-**Parte:** 2 de 5 do MCF  
+**Versão:** 1.0
+**Status:** Oficial
+**Parte:** 2 de 5 do MCF
 **Referência:** MCF §4 — Ciclo de Vida Completo
 
 ---
@@ -106,19 +106,19 @@ A instalação não é responsabilidade do Connector em si, mas do **Connector M
 interface AuthFlow {
   // Tipo de autenticação suportado pelo Connector
   authType: AuthType;
-  
+
   // Iniciação do fluxo de autenticação
   initiateAuth(params: AuthInitParams): Promise<AuthInitResult>;
-  
+
   // Conclusão após callback/code exchange
   completeAuth(params: AuthCompleteParams): Promise<AuthCredentials>;
-  
+
   // Refresh automático de token expirado
   refreshAuth(credentials: AuthCredentials): Promise<AuthCredentials>;
-  
+
   // Revogação de acesso
   revokeAuth(credentials: AuthCredentials): Promise<void>;
-  
+
   // Verificação de validade das credenciais
   validateAuth(credentials: AuthCredentials): Promise<AuthValidationResult>;
 }
@@ -192,28 +192,28 @@ interface InitResult {
 async function initialize(config: ConnectorConfig): Promise<InitResult> {
   // 1. Validar configuração recebida
   validateConfig(config);
-  
+
   // 2. Carregar hooks registrados
   hookManager.load(config.hooks);
-  
+
   // 3. Executar hook beforeInitialize
   await hookManager.run("beforeInitialize", config);
-  
+
   // 4. Verificar compatibilidade de SDK
   checkSdkCompatibility(manifest.sdkCompatibility, SDK_VERSION);
-  
+
   // 5. Descobrir capacidades disponíveis
   const capabilities = await discoverCapabilities(config);
-  
+
   // 6. Registrar no CRE com capacidades atualizadas
   // (via Connector Manager — nunca diretamente)
-  
+
   // 7. Executar hook afterInitialize
   await hookManager.run("afterInitialize", { config, capabilities });
-  
+
   // 8. Transicionar estado: CREATED → INITIALIZED
   lifecycleManager.transition("INITIALIZED");
-  
+
   return buildInitResult({ capabilities });
 }
 ```
@@ -524,7 +524,7 @@ interface RecoveryPolicy {
   autoReconnect: boolean;
   maxReconnectAttempts: number;   // Padrão: 5
   reconnectBackoff: BackoffStrategy;
-  
+
   // Circuit Breaker
   circuitBreaker: {
     enabled: boolean;
@@ -532,7 +532,7 @@ interface RecoveryPolicy {
     successThreshold: number;     // Nº de sucessos para CLOSE
     openDurationMs: number;       // Tempo em OPEN antes de HALF-OPEN
   };
-  
+
   // Fallback
   fallback: {
     enabled: boolean;
@@ -583,7 +583,7 @@ minimumMemoryOSVersion: "1.5.0"  → Requer MemoryOS 1.5.0 ou superior
 
 ---
 
-**Documento Oficial:** MCF-Lifecycle  
-**Versão:** 1.0  
-**Status:** Aprovado  
+**Documento Oficial:** MCF-Lifecycle
+**Versão:** 1.0
+**Status:** Aprovado
 **Parte:** 2 de 5 do MemoryOS Connector Framework

@@ -1,7 +1,7 @@
 # SESSION-2026-08-02 — Watch Engine: Email Agendado via Gmail OAuth
 
-**Data:** 2026-08-02  
-**Horário:** ~13:00 → 15:25 BRT  
+**Data:** 2026-08-02
+**Horário:** ~13:00 → 15:25 BRT
 **Status Geral:** ✅ Funcional com ressalvas conhecidas
 
 ---

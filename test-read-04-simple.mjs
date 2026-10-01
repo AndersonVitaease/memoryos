@@ -2,9 +2,9 @@
 
 /**
  * test-read-04-simple.mjs
- * 
+ *
  * Functional validation of read-04 (drive.extractSections) capability
- * 
+ *
  * Checks:
  * 1. GoogleDriveExtractCapability.ts created
  * 2. GoogleDriveExtractCapability exported from capability-runtime/index.ts

@@ -1,13 +1,13 @@
 # Connector Certification Standard
 ## MemoryOS Official Library v1.0
 
-**ID:** CCS-001  
-**Version:** 1.0  
-**Status:** FROZEN  
-**Authority:** OFFICIAL  
-**Category:** OPERATIONS  
-**ADRs:** ADR-004, ADR-006  
-**RFCs:** RFC-003, RFC-004  
+**ID:** CCS-001
+**Version:** 1.0
+**Status:** FROZEN
+**Authority:** OFFICIAL
+**Category:** OPERATIONS
+**ADRs:** ADR-004, ADR-006
+**RFCs:** RFC-003, RFC-004
 
 ---
 
@@ -107,7 +107,7 @@ A connector is **REJECTED** when:
 
 ## 10. Certificate Lifecycle
 
-`DRAFT → IN_REVIEW → APPROVED → PRODUCTION`  
+`DRAFT → IN_REVIEW → APPROVED → PRODUCTION`
 `PRODUCTION → DEPRECATED → RETIRED`
 
 Certificates expire after 90 days and must be renewed via re-certification.

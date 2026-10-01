@@ -172,43 +172,43 @@ class BrowserPoolManager {
   async getOrCreateBrowser(userId: string, siteId: string) {
     // 1. Procura browser disponível
     let browser = this.findAvailable();
-    
+
     // 2. Se nenhum disponível e < max, cria novo
     if (!browser && this.pool.size < this.maxBrowsers) {
       browser = await this.createBrowser();
     }
-    
+
     // 3. Se ainda sem browser, aguarda liberar
     if (!browser) {
       browser = await this.waitForAvailable(30000);  // timeout 30s
     }
-    
+
     return browser;
   }
 
   async executeAction(sessionId: string, action: Action) {
     const session = await this.sessionManager.get(sessionId);
     const browser = this.pool.get(session.browserId);
-    
+
     // Executa ação
     const result = await this.executeInBrowser(browser, action);
-    
+
     // Atualiza audit log
     await this.auditLog(sessionId, action, result);
-    
+
     return result;
   }
 
   async closeSession(sessionId: string) {
     const session = await this.sessionManager.get(sessionId);
     const browser = this.pool.get(session.browserId);
-    
+
     // Limpa cookies/storage
     await browser.clearCookies();
-    
+
     // Marca como disponível
     this.markAvailable(session.browserId);
-    
+
     // Registra na auditoria
     await this.auditLog(sessionId, 'close_session', { success: true });
   }
@@ -291,10 +291,10 @@ logger.info(`User logged in`, {
 // Cada usuário/site tem contexto isolado
 async executeAction(userId, siteId, action) {
   const session = await this.getSessionForUser(userId, siteId);
-  
+
   // ✅ Browser isolado por usuário
   const browser = await this.getBrowserFor(session);
-  
+
   // ✅ Cookies não vazam entre sessões
   // ✅ LocalStorage isolado
   // ✅ Cada aba tem seu contexto

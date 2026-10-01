@@ -309,7 +309,7 @@ class ConversationPipeline {
         executionId,
         conversationStore.state.streamSession?.tokensPerSecond
       );
-      
+
       // OIE Orchestrator: dispara analises (Fases 2-5) em background (fire-and-forget)
       const session = conversationStore.session;
       if (session) {

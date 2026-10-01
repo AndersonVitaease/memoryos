@@ -718,13 +718,13 @@ import { OIEOrchestrator } from "@/lib/operational-intelligence/OIEOrchestrator"
   conversationRecovery.safeReset(executionId);
   this._currentExecutionId = null;
   const metrics = conversationMetrics.finalize(executionId, ...);
-  
+
   // OIE Orchestrator: dispara análises (Fases 2-5) em background (fire-and-forget)
   const session = conversationStore.session;
   if (session) {
     OIEOrchestrator.orchestrate(session.id, executionId).catch(() => { /* shadow mode */ });
   }
-  
+
   conversationStore.emit({ type: "PIPELINE_DONE", executionId, payload: { metrics } });
 }
 ```
@@ -1000,21 +1000,21 @@ Princípio mantido: **Consultivo, nunca autônomo.**
 
 ## 🚨 2026-08-09 00:18 — BUG HUNTER TRAVAMENTO (Session Capture Failure)
 
-**Run:** `bugHunter_1786234481104`  
-**Status:** STOPPED (stuck after 22 questions)  
-**Duration:** ~3m 23s  
-**Transcript:** EMPTY (critical!)  
-**Chat Session ID:** "" (not captured!)  
+**Run:** `bugHunter_1786234481104`
+**Status:** STOPPED (stuck after 22 questions)
+**Duration:** ~3m 23s
+**Transcript:** EMPTY (critical!)
+**Chat Session ID:** "" (not captured!)
 
 ### Problema Identificado:
 
 Após 12 patches de otimização:
 - ✅ Timeouts aumentados (240s)
-- ✅ Anti-loop retry (break após 2 falhas)  
+- ✅ Anti-loop retry (break após 2 falhas)
 - ✅ Stall detection (para se >90s sem resposta)
 - ✅ **waitForConnectors() aguarda connectionsMounted === true**
 
-**O bugHunterRun consegue enviar perguntas (22 enviadas)**  
+**O bugHunterRun consegue enviar perguntas (22 enviadas)**
 **MAS não consegue capturar respostas (transcript vazio, session_id vazio)**
 
 ### Histórico Terminal:
@@ -1048,9 +1048,9 @@ O chat não está respondendo ao LLM — ou conectores não inicializam, ou LLM 
 **Raiz:** `DECISION_SCHEMA` declara `next_action.text` como OPCIONAL → LLM não priorizava preenchê-lo
 
 **Solução Implementada:**
-1. **Reforço na instrução LLM:** Adicionou `CRITICAL RULES` exigindo preenchimento: 
+1. **Reforço na instrução LLM:** Adicionou `CRITICAL RULES` exigindo preenchimento:
    ```
-   *** FOR browser_type WITH NEXT_ACTION.TOOL="browser_type": YOU MUST ALWAYS FILL NEXT_ACTION.TEXT. 
+   *** FOR browser_type WITH NEXT_ACTION.TOOL="browser_type": YOU MUST ALWAYS FILL NEXT_ACTION.TEXT.
    If you do not provide text, the action is SKIPPED and nothing happens. NEVER send browser_type without text. ***
    ```
 
@@ -1061,7 +1061,7 @@ O chat não está respondendo ao LLM — ou conectores não inicializam, ou LLM 
      na.tool = 'none';  // força 'none' para not executar sem texto
    }
    ```
-   
+
 3. **Benefício:** Próximo run capturará EXATAMENTE onde o LLM está falhando (veremos `browser_type_skipped` no history)
 
 **Arquivos alterados:**
@@ -1080,7 +1080,7 @@ O chat não está respondendo ao LLM — ou conectores não inicializam, ou LLM 
 
 **Achado:** bugHunterRun com `continuous: true` + credenciais:
 - ✅ Envia 1 pergunta
-- ✅ Recebe 1 resposta  
+- ✅ Recebe 1 resposta
 - ❌ Para após 1 pergunta (finaliza como "completed")
 
 **Causa Raiz:**

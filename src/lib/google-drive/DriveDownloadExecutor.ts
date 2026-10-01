@@ -601,7 +601,7 @@ export async function executeDriveDownload(
   // ── Step 6: Check if file is binary-only (media) ──────────────────────────
   // Skip DocumentProcessingEngine for pure binary formats (video, audio, images, archives)
   // that have no extractable text layer.
-  
+
   const isBinaryOnly = (
     meta.mimeType.startsWith("video/") ||
     meta.mimeType.startsWith("audio/") ||

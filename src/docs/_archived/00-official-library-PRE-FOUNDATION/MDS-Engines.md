@@ -1,7 +1,7 @@
 # MDS-Engines — Motores, Modelagem, Banco de Dados e Comunicação
 
-**Versão:** 1.0  
-**Status:** Oficial  
+**Versão:** 1.0
+**Status:** Oficial
 **Parte:** 2 de 4 do MDS
 
 ---
@@ -903,6 +903,6 @@ const DEFAULT_CB_CONFIG: CircuitBreakerConfig = {
 
 ---
 
-**Documento Oficial:** MDS-Engines  
-**Versão:** 1.0 · **Status:** Aprovado  
+**Documento Oficial:** MDS-Engines
+**Versão:** 1.0 · **Status:** Aprovado
 **Parte:** 2 de 4 do MDS

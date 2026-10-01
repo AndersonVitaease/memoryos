@@ -1,11 +1,11 @@
 # RFC-001 — MemoryOS Foundation v1.0 Baseline Declaration
 
-**Status:** Approved  
-**Categoria:** Platform Governance  
-**Prioridade:** Critical  
-**Autor:** MemoryOS Core Team  
-**Versão:** 1.0  
-**Data:** 2026-07-10  
+**Status:** Approved
+**Categoria:** Platform Governance
+**Prioridade:** Critical
+**Autor:** MemoryOS Core Team
+**Versão:** 1.0
+**Data:** 2026-07-10
 
 ---
 
@@ -64,9 +64,9 @@ Continuar produzindo novas especificações estruturais indefinidamente aumenta:
 Declarar oficialmente:
 
 > **MemoryOS Foundation v1.0**
-> 
-> Baseline arquitetural oficial da plataforma.  
-> Data de declaração: 2026-07-10  
+>
+> Baseline arquitetural oficial da plataforma.
+> Data de declaração: 2026-07-10
 > Status: Estável
 
 Estabelecer que toda evolução futura deverá ocorrer através do processo obrigatório:

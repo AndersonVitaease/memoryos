@@ -1,9 +1,9 @@
 # MDS v1.5 — Knowledge Architecture — Arquitetura Definitiva do Conhecimento
 
-**Versão:** 1.5  
-**Status:** Revisão Oficial — Adenda ao MDS v1.4  
-**Data:** 2026-07-09  
-**Tipo:** Arquitetura Definitiva do Domínio de Conhecimento  
+**Versão:** 1.5
+**Status:** Revisão Oficial — Adenda ao MDS v1.4
+**Data:** 2026-07-09
+**Tipo:** Arquitetura Definitiva do Domínio de Conhecimento
 **Alinhamento:** MAS 1.0 · MCF 1.0 · MCIS 1.0 · MGIS 1.0 · MDS 1.0 · v1.1 · v1.2 · v1.3 · v1.4
 
 ---
@@ -1820,5 +1820,5 @@ Todos os componentes permanecem **desacoplados, orientados a eventos, altamente 
 
 ---
 
-**MDS v1.5 — Knowledge Architecture — Arquitetura Definitiva do Conhecimento**  
+**MDS v1.5 — Knowledge Architecture — Arquitetura Definitiva do Conhecimento**
 **Data:** 2026-07-09 · **Adenda ao:** MDS v1.4 · **Série:** MDS v1.0 → v1.1 → v1.2 → v1.3 → v1.4 → v1.5
