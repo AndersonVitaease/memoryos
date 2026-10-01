@@ -1,28 +1,28 @@
 {
-  "mission": "roster-01",
-  "owner": "roster-01",
-  "date": "2026-09-30",
-  "note": "engineering.session.roster — read-only, zero-LLM, LGPD metadata-only. Provas: roster no estado real, latencia p95 20 runs, suite completa (falha unica zz-proxy-live ambiental), LGPD-grep do codigo, arquivos entregues.",
+  "mission": "roster-01-fim",
+  "owner": "roster-01-fim",
+  "date": "2026-10-01",
+  "note": "Fecho da continuacao ROSTER-01-FIM: commit e165024a (contagem 138->139 nos 4 testes de registro + secao de fecho no relatorio), restauracao dos package files clobbered por experimento jest fora do escopo, suite npm test verde com baseline (zz-proxy-live ambiental), sessionRoster.test.ts 8 pass / 0 fail. Provas reais executadas antes de gravar; sem /tmp (saida em /root/.hermes).",
   "cmd": [
     {
-      "run": "cd /opt/memoryos/eng-mcp-wt-roster-01/eng-mcp && node --import tsx -e 'import(\"./src/sessionRoster.ts\").then(m=>{const r=m.getRoster();const j=JSON.stringify(r);if(!r.missions||!r.panes||!r.sessions||!r.summary)process.exit(1);if(r.summary.total_missions<1)process.exit(2);if(/transcript|message|content|text/i.test(j))process.exit(3);console.log(\"roster-ok missions=\"+r.summary.total_missions+\" panes=\"+r.summary.panes_alive+\" sessions=\"+r.summary.sessions_alive)})'",
+      "run": "cd /opt/memoryos/eng-mcp-wt-roster-01 && git merge-base --is-ancestor e165024afa3ce6de1c11861efcfee7b0742815c3 HEAD && test \"$(git show --name-only --format= e165024afa3ce6de1c11861efcfee7b0742815c3 | grep -c '^eng-mcp/test/')\" = 4",
       "expect_exit": 0,
-      "timeout": 30
+      "timeout": 15
     },
     {
-      "run": "cd /opt/memoryos/eng-mcp-wt-roster-01/eng-mcp && node --import tsx --test --test-name-pattern 'latency' test/sessionRoster.test.ts",
+      "run": "cd /opt/memoryos/eng-mcp-wt-roster-01 && ! git status --porcelain | grep -E 'package(-lock)?\\.json$'",
       "expect_exit": 0,
-      "timeout": 60
+      "timeout": 15
     },
     {
-      "run": "cd /opt/memoryos/eng-mcp-wt-roster-01/eng-mcp && npm test --silent > /tmp/roster-suite-verify.txt 2>&1; test \"$(grep -c '^not ok' /tmp/roster-suite-verify.txt)\" = 1 && grep -q 'LIVE /mcp-proxy' /tmp/roster-suite-verify.txt",
+      "run": "cd /opt/memoryos/eng-mcp-wt-roster-01/eng-mcp && npm test --silent > /root/.hermes/roster-01-fim-suite.txt 2>&1; test \"$(grep -c '^not ok' /root/.hermes/roster-01-fim-suite.txt)\" = 1 && grep -q 'LIVE /mcp-proxy' /root/.hermes/roster-01-fim-suite.txt",
       "expect_exit": 0,
       "timeout": 300
     },
     {
-      "run": "cd /opt/memoryos/eng-mcp-wt-roster-01/eng-mcp && grep -nE 'transcript|\\.jsonl|conversation' src/sessionRoster.ts",
-      "expect_exit": 1,
-      "timeout": 10
+      "run": "cd /opt/memoryos/eng-mcp-wt-roster-01/eng-mcp && node --import tsx --test test/sessionRoster.test.ts > /root/.hermes/roster-01-fim-tool.txt 2>&1; grep -q '^# pass 8' /root/.hermes/roster-01-fim-tool.txt && grep -q '^# fail 0' /root/.hermes/roster-01-fim-tool.txt",
+      "expect_exit": 0,
+      "timeout": 120
     }
   ],
   "file": [
@@ -32,6 +32,10 @@
     },
     {
       "path": "/opt/memoryos/eng-mcp-wt-roster-01/eng-mcp/test/sessionRoster.test.ts",
+      "min_bytes": 1000
+    },
+    {
+      "path": "/opt/memoryos/eng-mcp-wt-roster-01/RELATORIO-roster-01.md",
       "min_bytes": 1000
     }
   ]
