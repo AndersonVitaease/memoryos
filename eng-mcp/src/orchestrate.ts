@@ -8,6 +8,7 @@
 // (dispatching blind while unable to see in-flight missions would be optimistic).
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, appendFileSync, writeFileSync, unlinkSync } from "node:fs";
+import path from "node:path";
 import * as z from "zod/v4";
 
 export const DEFAULT_PATHS = {
@@ -21,6 +22,8 @@ export const DEFAULT_PATHS = {
   consumerLockPath: "/opt/mission-events/orchestrator-consumer.lock",
   spoolPath: "/opt/mission-events/spool.jsonl",
   missionOpsDir: "/root/.hermes/plugins/mission-ops",
+  priceTablePath: "/opt/mission-events/orchestrator-price-table.json",
+  claudeConfigDir: "/opt/memoryos/eng-mcp/.claude-config/projects",
 } as const;
 
 export type OrchestrateVerdict = "GO" | "THROTTLE" | "BLOCK";
@@ -28,6 +31,8 @@ export type OrchestrateVerdict = "GO" | "THROTTLE" | "BLOCK";
 export interface OrchestrateDeps {
   /** Read a UTF-8 text file; null when missing/unreadable (fail-open). */
   readText?(path: string): string | null;
+  /** List directory entries; empty array when missing/unreadable (fail-open). */
+  readdir?(path: string): string[] | null;
   /** Run a probe command; stdout string or null on failure/timeout. */
   exec?(command: string, args: string[]): string | null;
   now?(): number;
@@ -41,6 +46,8 @@ export interface OrchestrateDeps {
   consumerLockPath?: string;
   spoolPath?: string;
   missionOpsDir?: string;
+  priceTablePath?: string;
+  claudeConfigDir?: string;
   /** Dispatch a mission via the mission-ops handler. Returns {ok, error?}. */
   dispatchMission?(input: { missionId: string; promptFile: string; worktree?: string; priority?: number }): Promise<{ ok: boolean; error?: string }>;
 }
@@ -355,9 +362,10 @@ function defaultExec(command: string, args: string[]): string | null {
   }
 }
 
-function resolveDeps(deps?: OrchestrateDeps): Required<Pick<OrchestrateDeps, "readText" | "exec" | "now">> & OrchestrateDeps {
+function resolveDeps(deps?: OrchestrateDeps): Required<Pick<OrchestrateDeps, "readText" | "readdir" | "exec" | "now">> & OrchestrateDeps {
   return {
     readText: deps?.readText ?? defaultReadText,
+    readdir: deps?.readdir ?? defaultReaddir,
     exec: deps?.exec ?? defaultExec,
     now: deps?.now ?? (() => Date.now()),
     loadavgPath: deps?.loadavgPath ?? DEFAULT_PATHS.loadavg,
@@ -375,11 +383,15 @@ function resolveDeps(deps?: OrchestrateDeps): Required<Pick<OrchestrateDeps, "re
   };
 }
 
+function defaultReaddir(path: string): string[] | null {
+  try { return readdirSync(path); } catch { return null; }
+}
+
 function readMissions(d: ReturnType<typeof resolveDeps>): MissionSnapshot {
   const snapshot: MissionSnapshot = { active: 0, byStatus: {}, recoverInFlight: 0, stuckNoRecover: 0, readable: false };
   let files: string[];
   try {
-    files = readdirSync(d.missionStateDir!);
+    files = d.readdir!(d.missionStateDir!) ?? [];
   } catch {
     return snapshot; // unreadable → readable=false (honest: caller must not dispatch blind)
   }
@@ -755,7 +767,7 @@ export function runOrchestrateSpend(
   const claudeConfigDir = d.claudeConfigDir!;
 
   let files: string[];
-  try { files = readdirSync(stateDir); } catch {
+  try { files = d.readdir!(stateDir) ?? []; } catch {
     return { missionId: input.missionId ?? null, missions: [], totalCostUsd: 0, totalTokens: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0 }, priceTableSource: null, computedAt: new Date().toISOString() };
   }
 
