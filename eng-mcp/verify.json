@@ -1,16 +1,47 @@
 {
-  "mission": "engmcp-mission-01/02",
-  "date": "2026-09-29",
-  "owner": "supervisor-hermes",
-  "note": "execução direta (workers degenerados 2x); provas cmd executáveis; gate JEV provado ao vivo",
+  "mission": "roster-01-fim",
+  "owner": "roster-01-fim",
+  "date": "2026-10-01",
+  "note": "Fecho da continuacao ROSTER-01-FIM: commit e165024a (contagem 138->139 nos 4 testes de registro + secao de fecho no relatorio), restauracao dos package files clobbered por experimento jest fora do escopo, sessionRoster.test.ts 8 pass / 0 fail com reporter TAP forcado. Suíte completa em assertion NOMINAL da baseline: qualquer linha 'not ok' deve casar por nome com as 2 falhas conhecidas ('LIVE /mcp-proxy' = zz-proxy-live ambiental, sempre falha; 'GLGPD-02 fixture proof' = teste com dependencia externa viva — rede OSV API + binarios gitleaks — intrinsicamente nao-deterministico, falha standalone e sob carga, variando por run; NAO e regressao deste entregavel, finding separado fora do escopo) — qualquer falha NOVA quebra a prova. P6 substituida: prova estavel do diff de e165024a (8 linhas +139 / 8 linhas -138 nos 4 testes), sem depender da GLGPD-02. Provas reais executadas antes de gravar; sem /tmp (saida em /root/.hermes).",
   "cmd": [
-    {"run": "cd /opt/memoryos/eng-mcp && timeout 120 npx tsc -p tsconfig.json --noEmit 2>&1 | grep -cE 'missionOps|tools\\.ts\\(15[89]' | grep -q '^0$' && echo TSC_SEM_ERROS_NOS_ARQUIVOS_NOVOS", "expect_exit": 0},
-    {"run": "grep -q 'engineering.mission.dispatch' /opt/memoryos/eng-mcp/src/tools.ts && grep -q 'engineering.mission.ledger_fix' /opt/memoryos/eng-mcp/src/tools.ts && grep -q 'runMissionClose' /opt/memoryos/eng-mcp/src/tools.ts && echo REGISTRO_7_TOOLS_OK", "expect_exit": 0},
-    {"run": "test -f /opt/memoryos/eng-mcp/src/missionOps.ts && grep -q 'handle_mission_batch' /opt/memoryos/eng-mcp/src/missionOps.ts && grep -q 'jev_gate.py' /opt/memoryos/eng-mcp/src/missionOps.ts && echo WRAPPER_FONTE_UNICA_OK", "expect_exit": 0},
-    {"run": "python3 -c \"import subprocess,json; r=subprocess.run(['python3','/opt/memoryos/eng-mcp/scripts/jev_gate.py','engmcp-gate-canario','{}'],capture_output=True,timeout=60); d=json.loads(r.stdout.decode().strip().split(chr(10))[-1]); assert d['verdict']=='SIM', d; print('GATE_JEV_SIM_OK lat_ms=%s' % d['latency_ms'])\"", "expect_exit": 0},
-    {"run": "python3 -c \"import json; d=json.load(open('/root/.hermes/mission-state/engmcp-gate-canario2.verify.json')); assert d['verdict']=='fail' and any(not c['ok'] for c in d['checks']); print('GATE_JEV_NAO_PROVA_VERMELHA_OK')\"", "expect_exit": 0},
-    {"run": "cat /tmp/engmcp-gate-prova.txt | grep -q ok && cat /tmp/engmcp-gate-prova2.txt | grep -q ok2 && echo E2E_CANARIOS_EXECUTARAM_OK", "expect_exit": 0},
-    {"run": "test -f /root/.hermes/mission-state/engmcp-gate-canario.json && python3 -c \"import json; d=json.load(open('/root/.hermes/mission-state/engmcp-gate-canario.json')); assert d['status']=='closed' and d.get('verified_e2e',{}).get('verdict')=='pass'; print('CLOSE_BADGE_VERIFIED_OK')\"", "expect_exit": 0},
-    {"run": "cd /opt/memoryos/eng-mcp && git status --porcelain src/missionOps.ts scripts/jev_gate.py src/tools.ts | head -3 | grep -q . && echo ARQUIVOS_NO_BRANCH_LOCAL", "expect_exit": 0}
+    {
+      "run": "cd /opt/memoryos/eng-mcp-wt-roster-01 && git merge-base --is-ancestor e165024afa3ce6de1c11861efcfee7b0742815c3 HEAD && test \"$(git show --name-only --format= e165024afa3ce6de1c11861efcfee7b0742815c3 | grep -c '^eng-mcp/test/')\" = 4",
+      "expect_exit": 0,
+      "timeout": 15
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp-wt-roster-01 && ! git status --porcelain | grep -E 'package(-lock)?\\.json$'",
+      "expect_exit": 0,
+      "timeout": 15
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp-wt-roster-01/eng-mcp && node --import tsx --test --test-force-exit --test-concurrency=1 --test-reporter=tap test/*.test.ts > /root/.hermes/roster-01-fim-suite-serial.txt 2>&1; test \"$(grep '^not ok' /root/.hermes/roster-01-fim-suite-serial.txt | grep -vcE 'GLGPD-02 fixture proof|LIVE /mcp-proxy')\" = 0 && grep '^not ok' /root/.hermes/roster-01-fim-suite-serial.txt | grep -q 'LIVE /mcp-proxy'",
+      "expect_exit": 0,
+      "timeout": 400
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp-wt-roster-01/eng-mcp && node --import tsx --test --test-reporter=tap test/sessionRoster.test.ts > /root/.hermes/roster-01-fim-tool.txt 2>&1; grep -q '^# pass 8' /root/.hermes/roster-01-fim-tool.txt && grep -q '^# fail 0' /root/.hermes/roster-01-fim-tool.txt",
+      "expect_exit": 0,
+      "timeout": 120
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp-wt-roster-01 && test \"$(git show e165024afa3ce6de1c11861efcfee7b0742815c3 -- eng-mcp/test/ | grep -cE '^\\+.*(^|[^0-9])139([^0-9]|$)')\" = 8 && test \"$(git show e165024afa3ce6de1c11861efcfee7b0742815c3 -- eng-mcp/test/ | grep -cE '^-.*(^|[^0-9])138([^0-9]|$)')\" = 8",
+      "expect_exit": 0,
+      "timeout": 15
+    }
+  ],
+  "file": [
+    {
+      "path": "/opt/memoryos/eng-mcp-wt-roster-01/eng-mcp/src/sessionRoster.ts",
+      "min_bytes": 1000
+    },
+    {
+      "path": "/opt/memoryos/eng-mcp-wt-roster-01/eng-mcp/test/sessionRoster.test.ts",
+      "min_bytes": 1000
+    },
+    {
+      "path": "/opt/memoryos/eng-mcp-wt-roster-01/RELATORIO-roster-01.md",
+      "min_bytes": 1000
+    }
   ]
 }

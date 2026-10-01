@@ -60,6 +60,8 @@ import { imageEditRoutedInputSchema, runImageEditRouted } from "./imageEditFast.
 // ENG-MCP-MISSION-01/02: mission-* determinísticas (wraps do plugin mission-ops;
 // gate JEV no close). Fonte única: handlers puros do plugin via subprocesso python.
 import { missionDispatchInputSchema, missionStatusInputSchema, missionReadInputSchema, missionWatchInputSchema, missionRecoverInputSchema, missionCloseInputSchema, missionLedgerFixInputSchema, runMissionDispatch, runMissionStatus, runMissionRead, runMissionWatch, runMissionRecover, runMissionClose, runMissionLedgerFix, missionNudgeInputSchema, runMissionNudge } from "./missionOps.ts";
+// ROSTER-01: inventário auditável de sessões/turnos/missões (read-only, zero-LLM, LGPD metadata-only).
+import { getRoster } from "./sessionRoster.ts";
 import { imageCreateInputSchema, runImageCreate } from "./imageCreate.ts";
 import { imageAdaptInputSchema, runImageAdapt } from "./imageAdapt.ts";
 import { visionInspectInputSchema, runVisionInspect } from "./visionInspect.ts";
@@ -1629,4 +1631,8 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
     inputSchema: missionNudgeInputSchema
   }, async (input) => { requireMissionOps(); return response(await runMissionNudge(input)); }));
 
+  register("engineering.session.roster", "read", (name) => server.registerTool(name, {
+    description: "Inventário auditável e LGPD-safe de sessões/turnos/missões do ecossistema em 1 chamada: missões (ledger /root/.hermes/mission-state), panes herdr vivos (tab list), sessões claude (NOMES e mtimes apenas — ZERO conteúdo de conversa) e resumo com staleness_flags (>15min dispatched/working). Read-only, zero-LLM.",
+    inputSchema: z.object({}).strict()
+  }, async () => { requireRead(); return response(getRoster()); }));
 }
