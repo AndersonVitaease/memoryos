@@ -384,6 +384,11 @@ function resolveDeps(deps?: OrchestrateDeps): Required<Pick<OrchestrateDeps, "re
     readdir: deps?.readdir ?? defaultReaddir,
     exec: deps?.exec ?? defaultExec,
     now: deps?.now ?? (() => Date.now()),
+    // HERMÉTICO-FIX-01: passthrough do I/O opcional do lock (injetável nos testes).
+    existsSync: deps?.existsSync,
+    writeText: deps?.writeText,
+    appendFile: deps?.appendFile,
+    unlink: deps?.unlink,
     loadavgPath: deps?.loadavgPath ?? DEFAULT_PATHS.loadavg,
     meminfoPath: deps?.meminfoPath ?? DEFAULT_PATHS.meminfo,
     missionStateDir: deps?.missionStateDir ?? DEFAULT_PATHS.missionStateDir,
