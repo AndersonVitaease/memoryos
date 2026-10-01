@@ -93,16 +93,24 @@ export function githubAppDockerArgs(env) {
 }
 
 // UPSTREAM-SYNC-01: optional READ-ONLY bind mounts of upstream-sync targets (config:
-// production.readOnlyMounts in release-config.json). Only absolute "src:dest:ro" specs whose
-// source exists are emitted — a missing source adds nothing (never a docker-created empty dir),
-// and anything not ending in :ro is refused, so a config entry can never grant write access.
+// production.readOnlyMounts in release-config.json). Only absolute "src:dest:ro" specs are
+// emitted, and anything not ending in :ro is refused, so a config entry can never grant write access.
+// DEPLOY-MOUNTS-REFUSE-01: a declared spec whose source is missing REFUSES the deploy
+// (DEPLOY_MOUNT_SOURCE_MISSING, spec + reason in the message) instead of being dropped silently
+// (ProtectHome hid /root and the container shipped without mission-ops). A spec prefixed with "?"
+// ("?/src:/dest:ro") is explicitly optional: a missing source adds nothing (never a docker-created empty dir).
 export function readOnlyMountArgs(production, exists = existsSyncFs) {
   const specs = Array.isArray(production?.readOnlyMounts) ? production.readOnlyMounts : [];
   const args = [];
-  for (const spec of specs) {
+  for (const declared of specs) {
+    const optional = typeof declared === "string" && declared.startsWith("?");
+    const spec = optional ? declared.slice(1) : declared;
     const m = typeof spec === "string" ? /^(\/[^:,\0]+):(\/[^:,\0]+):ro$/.exec(spec) : null;
     if (!m || m[1].split("/").includes("..") || m[2].split("/").includes("..")) continue;
-    if (!exists(m[1])) continue;
+    if (!exists(m[1])) {
+      if (optional) continue;
+      throw deployError("DEPLOY_MOUNT_SOURCE_MISSING", `readOnlyMounts spec ${spec}: source ${m[1]} does not exist (or is hidden from the runner, e.g. systemd ProtectHome); mark it "?${spec}" if it is optional`);
+    }
     args.push("-v", spec);
   }
   return args;
@@ -1147,6 +1155,7 @@ export async function deployAction(config, options = {}) {
   // audit é fail-closed (sem trilha, sem deploy).
   const pin = await assertCommitStage(config, state, options.commit);
   if (!canDeploy(state, state.testSourceHash)) throw new Error("DEPLOY_BLOCKED_BY_CANDIDATE_STATE");
+  readOnlyMountArgs(config.production); // DEPLOY-MOUNTS-REFUSE-01: missing declared ro source refuses BEFORE any mutation
   if (state.imageTag !== commitImageTag(config.imageRepository, pin.commit)) throw deployError("DEPLOY_IMAGE_PROVENANCE_MISMATCH", `${state.imageTag} is not the commit tag of ${pin.commit}`);
   await assertImageRevision(state.imageTag, pin.commit, state.imageId);
   const current = await productionInspect(config); const previousContainer = `${config.production.containerName}-rollback-${Date.now()}`;
