@@ -48,3 +48,29 @@ Manifesto tipado em `/opt/memoryos/eng-mcp-wt-roster-01/verify.json` (owner `ros
 - `herdr tab list` executa CLI a cada chamada (~50ms) — incluso no orçamento p95 <100ms (passou com folga no host atual).
 
 **Veredito: PASS**
+
+## Fecho da continuação (ROSTER-01-FIM, 2026-10-01)
+
+A sessão anterior terminou no shell (pane fallback) com os 4 testes de contagem
+do catálogo (138→139) modificados mas NÃO commitados — o commit `7ce05b5d` só
+incluiu `src/sessionRoster.ts`, `src/tools.ts` e `test/sessionRoster.test.ts`.
+Esta continuação fechou o ciclo:
+
+1. **Commit complementar** — `test/tool-alias-compat.test.ts`,
+   `test/base44ToolsScope.test.ts`, `test/shiplock.test.ts`,
+   `test/tools.integration.test.ts` (contagens 138→139 documentadas acima,
+   agora no histórico) + esta seção do relatório.
+2. **Restauração de dano fora do escopo** — a sessão quebrada anterior havia
+   SOBRESCRITO `package.json` e `package-lock.json` da RAIZ do worktree
+   (projeto base44-app) com uma config jest de 1 linha, e adicionado deps jest
+   ao `eng-mcp/package.json` (script `npm test` usa `node --test`, não jest;
+   a config clobbered referenciava `test/setup.ts`/`global-setup.js`/
+   `custom-sequencer.js` que não existem). Os 4 arquivos foram restaurados do
+   git (`git checkout HEAD --`); cópia do conteúdo clobbered preservada em
+   `../.jest/package.json.clobbered-backup.json`. Nenhum commit de código
+   incluiu esses artefatos.
+3. **Prova fresca pós-restauração** — `npm test` completo: **1481 ok, 1 not ok
+   = `zz-proxy-live` (403 no proxy vivo, falha ambiental da baseline), 5
+   skipped**; `test/sessionRoster.test.ts` direto: **8 pass, 0 fail**.
+
+Branch `roster-01` deixada pronta, **zero push/deploy**.
