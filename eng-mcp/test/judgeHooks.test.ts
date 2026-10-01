@@ -422,7 +422,7 @@ describe('JUDGE-HOOKS-01: wiring gate and runtime seam', () => {
     assert.equal(gate.hooks.PreToolUse?.[0]?.matcher, 'Bash');
     assert.equal(gate.hooks.PostToolUse?.[0]?.matcher, '*');
     assert.equal(gate.hooks.Stop?.[0]?.matcher, undefined);
-    assert.equal(gate.hooks.PreToolUse?.[0]?.timeout, 3); // ceil(2000/1000)+1
+    assert.equal(gate.hooks.PreToolUse?.[0]?.timeout, 6); // ceil(4500/1000)+1 (JUDGE-TIMEOUT-FIX-01 default)
     assert.equal(typeof gate.hooks.PreToolUse?.[0]?.hooks[0], 'function');
   });
 
