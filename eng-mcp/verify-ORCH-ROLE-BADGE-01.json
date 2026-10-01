@@ -1,170 +1,48 @@
 {
-  "missionId": "ORCH-ROLE-BADGE-01",
-  "source": "manifest",
-  "verdict": "pass",
-  "llm_calls": 0,
-  "checks": [
+  "mission": "ORCH-ROLE-BADGE-01",
+  "cmd": [
     {
-      "id": "manifest-owner",
-      "type": "owner",
-      "ok": true,
-      "evidence": {
-        "manifest": "/opt/memoryos/eng-mcp/verify.json",
-        "resolved_by": "arg",
-        "declared_mission": "ORCH-ROLE-BADGE-01",
-        "expected_mission": "ORCH-ROLE-BADGE-01"
-      },
-      "error": null
+      "run": "cd /opt/memoryos/eng-mcp && node --import tsx --test --test-force-exit --test-concurrency=1 --test-reporter=tap test/missionControl.test.ts test/missionMemory.test.ts test/missionPreauth.test.ts test/ucmeMissionMemory.test.ts > /tmp/orch-role-badge-suite.txt 2>&1; ! grep -q 'not ok' /tmp/orch-role-badge-suite.txt",
+      "expect_exit": 0,
+      "timeout": 60
     },
     {
-      "id": "P1-date",
-      "type": "date",
-      "ok": true,
-      "evidence": {
-        "date": "2026-10-01"
-      },
-      "error": null
+      "run": "cd /opt/memoryos/eng-mcp && grep -q 'roles' src/missionOps.ts && grep -q 'enrichLedgerWithRoles' src/missionOps.ts && grep -q 'readWorkerFromTranscript' src/missionOps.ts && grep -q 'readRolesFromAudit' src/missionOps.ts && grep -q 'readCanonicalWorker' src/missionOps.ts && grep -q 'MissionRoles' src/missionOps.ts",
+      "expect_exit": 0
     },
     {
-      "id": "P2-cmd-1",
-      "type": "cmd",
-      "ok": true,
-      "evidence": {
-        "run": "cd /opt/memoryos/eng-mcp && node --import tsx --test --test-force-exit --test-concurrency=4 --test-reporter=tap test/*.test.ts > /tmp/orch-role-badge-suite.txt 2>&1; grep -c 'not ok' /tmp/orch-role-badge-suite.txt",
-        "exit": 0,
-        "expect": 0,
-        "tail": "23\n"
-      },
-      "error": null
+      "run": "cd /opt/memoryos/eng-mcp && grep -q 'roles' src/orchestrate.ts && grep -q 'enriched' src/orchestrate.ts",
+      "expect_exit": 0
     },
     {
-      "id": "P3-cmd-2",
-      "type": "cmd",
-      "ok": true,
-      "evidence": {
-        "run": "cd /opt/memoryos/eng-mcp && grep -q 'roles' src/missionOps.ts && grep -q 'enrichLedgerWithRoles' src/missionOps.ts && grep -q 'readWorkerFromTranscript' src/missionOps.ts && grep -q 'readRolesFromAudit' src/missionOps.ts && grep -q 'readCanonicalWorker' src/missionOps.ts && grep -q 'MissionRoles' src/missionOps.ts",
-        "exit": 0,
-        "expect": 0,
-        "tail": ""
-      },
-      "error": null
+      "run": "cd /opt/memoryos/eng-mcp && grep -q 'roles' src/tools.ts",
+      "expect_exit": 0
     },
     {
-      "id": "P4-cmd-3",
-      "type": "cmd",
-      "ok": true,
-      "evidence": {
-        "run": "cd /opt/memoryos/eng-mcp && grep -q 'roles' src/orchestrate.ts && grep -q 'enriched' src/orchestrate.ts",
-        "exit": 0,
-        "expect": 0,
-        "tail": ""
-      },
-      "error": null
+      "run": "cd /opt/memoryos/eng-mcp && grep -q 'worker.*transcript' src/missionOps.ts && grep -q 'nunca banner' src/missionOps.ts",
+      "expect_exit": 0
     },
     {
-      "id": "P5-cmd-4",
-      "type": "cmd",
-      "ok": true,
-      "evidence": {
-        "run": "cd /opt/memoryos/eng-mcp && grep -q 'roles' src/tools.ts",
-        "exit": 0,
-        "expect": 0,
-        "tail": ""
-      },
-      "error": null
+      "run": "cd /opt/memoryos/eng-mcp && grep -q 'judge.*jev-1.13' src/missionOps.ts",
+      "expect_exit": 0
     },
     {
-      "id": "P6-cmd-5",
-      "type": "cmd",
-      "ok": true,
-      "evidence": {
-        "run": "cd /opt/memoryos/eng-mcp && grep -q 'worker.*transcript' src/missionOps.ts && grep -q 'nunca banner' src/missionOps.ts",
-        "exit": 0,
-        "expect": 0,
-        "tail": ""
-      },
-      "error": null
+      "run": "cd /opt/memoryos/eng-mcp && grep -q 'herdr.*tab rename' src/missionOps.ts && grep -q 'worker.*canonical' src/missionOps.ts",
+      "expect_exit": 0
     },
     {
-      "id": "P7-cmd-6",
-      "type": "cmd",
-      "ok": true,
-      "evidence": {
-        "run": "cd /opt/memoryos/eng-mcp && grep -q 'judge.*jev-1.13' src/missionOps.ts",
-        "exit": 0,
-        "expect": 0,
-        "tail": ""
-      },
-      "error": null
+      "run": "cd /opt/memoryos/eng-mcp && grep -q 'enrichLedgerWithRoles' src/missionOps.ts && grep -B20 -A2 'enrichLedgerWithRoles' src/missionOps.ts | grep -q 'runMissionDispatch' && grep -B20 -A5 'enrichLedgerWithRoles' src/missionOps.ts | grep -q 'runMissionStatus'",
+      "expect_exit": 0
     },
     {
-      "id": "P8-cmd-7",
-      "type": "cmd",
-      "ok": true,
-      "evidence": {
-        "run": "cd /opt/memoryos/eng-mcp && grep -q 'herdr.*tab rename' src/missionOps.ts && grep -q 'worker.*canonical' src/missionOps.ts",
-        "exit": 0,
-        "expect": 0,
-        "tail": ""
-      },
-      "error": null
-    },
-    {
-      "id": "P9-cmd-8",
-      "type": "cmd",
-      "ok": true,
-      "evidence": {
-        "run": "cd /opt/memoryos/eng-mcp && grep -q 'enrichLedgerWithRoles' src/missionOps.ts && grep -B20 -A2 'enrichLedgerWithRoles' src/missionOps.ts | grep -q 'runMissionDispatch' && grep -B20 -A5 'enrichLedgerWithRoles' src/missionOps.ts | grep -q 'runMissionStatus'",
-        "exit": 0,
-        "expect": 0,
-        "tail": ""
-      },
-      "error": null
-    },
-    {
-      "id": "P10-file-1",
-      "type": "file",
-      "ok": true,
-      "evidence": {
-        "path": "/opt/memoryos/eng-mcp/src/missionOps.ts",
-        "bytes": 19030,
-        "min_bytes": 500
-      },
-      "error": null
-    },
-    {
-      "id": "P11-file-2",
-      "type": "file",
-      "ok": true,
-      "evidence": {
-        "path": "/opt/memoryos/eng-mcp/src/orchestrate.ts",
-        "bytes": 34182,
-        "min_bytes": 500
-      },
-      "error": null
-    },
-    {
-      "id": "P12-file-3",
-      "type": "file",
-      "ok": true,
-      "evidence": {
-        "path": "/opt/memoryos/eng-mcp/src/tools.ts",
-        "bytes": 190304,
-        "min_bytes": 500
-      },
-      "error": null
+      "run": "test -f /opt/memoryos/eng-mcp/RELATORIO-ORCH-ROLE-BADGE-01.md",
+      "expect_exit": 0
     }
   ],
-  "ts": "2026-10-01T15:30:26Z",
-  "durationMs": 54784,
-  "warnings": [
-    "cmd[0]: sem evidence_tail — prova sem rehearsal (formato não comparado)",
-    "cmd[1]: sem evidence_tail — prova sem rehearsal (formato não comparado)",
-    "cmd[2]: sem evidence_tail — prova sem rehearsal (formato não comparado)",
-    "cmd[3]: sem evidence_tail — prova sem rehearsal (formato não comparado)",
-    "cmd[4]: sem evidence_tail — prova sem rehearsal (formato não comparado)",
-    "cmd[5]: sem evidence_tail — prova sem rehearsal (formato não comparado)",
-    "cmd[6]: sem evidence_tail — prova sem rehearsal (formato não comparado)",
-    "cmd[7]: sem evidence_tail — prova sem rehearsal (formato não comparado)"
+  "file": [
+    {
+      "path": "/opt/memoryos/eng-mcp/RELATORIO-ORCH-ROLE-BADGE-01.md",
+      "min_bytes": 1
+    }
   ]
 }
