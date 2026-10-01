@@ -10,6 +10,7 @@
     "start": "node src/main.ts",
     "token:create": "node src/token-create.ts",
     "test:boot": "node --test test/sdk-boot.test.ts",
+    "test:orchestrate": "node --import tsx --test --test-force-exit --test-reporter=tap test/orchestratePlan.test.ts test/orchestrateEnqueue.test.ts",
     "test": "node --import tsx --test --test-force-exit --test-concurrency=4 --test-reporter=tap test/*.test.ts"
   },
   "dependencies": {
