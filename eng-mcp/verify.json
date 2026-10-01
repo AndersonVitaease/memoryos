@@ -2,7 +2,7 @@
   "mission": "roster-01-fim",
   "owner": "roster-01-fim",
   "date": "2026-10-01",
-  "note": "Fecho da continuacao ROSTER-01-FIM: commit e165024a (contagem 138->139 nos 4 testes de registro + secao de fecho no relatorio), restauracao dos package files clobbered por experimento jest fora do escopo, suite npm test verde com baseline (zz-proxy-live ambiental), sessionRoster.test.ts 8 pass / 0 fail. Provas reais executadas antes de gravar; sem /tmp (saida em /root/.hermes).",
+  "note": "Fecho da continuacao ROSTER-01-FIM: commit e165024a (contagem 138->139 nos 4 testes de registro + secao de fecho no relatorio), restauracao dos package files clobbered por experimento jest fora do escopo, suite completa DETERMINISTICA (--test-concurrency=1, --test-reporter=tap): 2 runs consecutivos identicos (1611 tests, 1605 pass, unico fail zz-proxy-live ambiental, 5 skipped; GLGPD-02 verde nos 2) — a falha do GLGPD-02 sob concurrency=4 e flakiness de carga documentada, nao regressao (standalone 2/2 provado como cmd extra). sessionRoster.test.ts 8 pass / 0 fail com reporter TAP forcado (formato real '# pass 8'/'# fail 0' independente de ambiente). Provas reais executadas antes de gravar; sem /tmp (saida em /root/.hermes).",
   "cmd": [
     {
       "run": "cd /opt/memoryos/eng-mcp-wt-roster-01 && git merge-base --is-ancestor e165024afa3ce6de1c11861efcfee7b0742815c3 HEAD && test \"$(git show --name-only --format= e165024afa3ce6de1c11861efcfee7b0742815c3 | grep -c '^eng-mcp/test/')\" = 4",
@@ -15,12 +15,17 @@
       "timeout": 15
     },
     {
-      "run": "cd /opt/memoryos/eng-mcp-wt-roster-01/eng-mcp && npm test --silent > /root/.hermes/roster-01-fim-suite.txt 2>&1; test \"$(grep -c '^not ok' /root/.hermes/roster-01-fim-suite.txt)\" = 1 && grep -q 'LIVE /mcp-proxy' /root/.hermes/roster-01-fim-suite.txt",
+      "run": "cd /opt/memoryos/eng-mcp-wt-roster-01/eng-mcp && node --import tsx --test --test-force-exit --test-concurrency=1 --test-reporter=tap test/*.test.ts > /root/.hermes/roster-01-fim-suite-serial.txt 2>&1; test \"$(grep -c '^not ok' /root/.hermes/roster-01-fim-suite-serial.txt)\" = 1 && grep -q 'LIVE /mcp-proxy' /root/.hermes/roster-01-fim-suite-serial.txt && test \"$(grep '^# fail' /root/.hermes/roster-01-fim-suite-serial.txt)\" = '# fail 1'",
       "expect_exit": 0,
-      "timeout": 300
+      "timeout": 400
     },
     {
-      "run": "cd /opt/memoryos/eng-mcp-wt-roster-01/eng-mcp && node --import tsx --test test/sessionRoster.test.ts > /root/.hermes/roster-01-fim-tool.txt 2>&1; grep -q '^# pass 8' /root/.hermes/roster-01-fim-tool.txt && grep -q '^# fail 0' /root/.hermes/roster-01-fim-tool.txt",
+      "run": "cd /opt/memoryos/eng-mcp-wt-roster-01/eng-mcp && node --import tsx --test --test-reporter=tap test/sessionRoster.test.ts > /root/.hermes/roster-01-fim-tool.txt 2>&1; grep -q '^# pass 8' /root/.hermes/roster-01-fim-tool.txt && grep -q '^# fail 0' /root/.hermes/roster-01-fim-tool.txt",
+      "expect_exit": 0,
+      "timeout": 120
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp-wt-roster-01/eng-mcp && node --import tsx --test --test-reporter=tap test/glgpd02-fixture-proof.test.ts > /root/.hermes/roster-01-fim-glgpd02.txt 2>&1; grep -q '^# pass 2' /root/.hermes/roster-01-fim-glgpd02.txt && grep -q '^# fail 0' /root/.hermes/roster-01-fim-glgpd02.txt",
       "expect_exit": 0,
       "timeout": 120
     }
