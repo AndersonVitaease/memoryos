@@ -39,10 +39,12 @@
     "missionStateMount": "/root/.hermes/mission-state:/root/.hermes/mission-state",
     "extraRwMounts": [
       "/root/.config/herdr:/root/.config/herdr",
-      "/opt/mission-events/orchestrator-queue.jsonl:/opt/mission-events/orchestrator-queue.jsonl",
-      "/opt/mission-events/orchestrator-consumer.lock:/opt/mission-events/orchestrator-consumer.lock",
-      "/opt/mission-events/orchestrator-consumer.state.json:/opt/mission-events/orchestrator-consumer.state.json",
-      "/opt/mission-events/spool.jsonl:/opt/mission-events/spool.jsonl"
+      "/opt/mission-events/orchestrator-queue.jsonl:/opt/mission-events/orchestrator-queue.jsonl"
+    ],
+    "consumerEnv": [
+      "ENG_MCP_CONSUMER_STATE_PATH=/run/mission-bus/consumer.state.json",
+      "ENG_MCP_CONSUMER_LOCK_PATH=/run/mission-bus/consumer.lock",
+      "ENG_MCP_SPOOL_PATH=/run/mission-bus/spool.jsonl"
     ]
   },
   "requiredTools": [

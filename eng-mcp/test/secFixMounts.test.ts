@@ -26,3 +26,13 @@ test("only the orchestrator queue file stays writable under /opt/mission-events"
   const under = rwSpecs.filter((s) => s.split(":")[1].startsWith("/opt/mission-events/"));
   assert.deepEqual(under, ["/opt/mission-events/orchestrator-queue.jsonl:/opt/mission-events/orchestrator-queue.jsonl"]);
 });
+
+test("consumer runtime files live in /run/mission-bus via env (dir stays ro)", () => {
+  const envs: string[] = (p as { consumerEnv?: string[] }).consumerEnv ?? [];
+  for (const key of ["ENG_MCP_CONSUMER_STATE_PATH", "ENG_MCP_CONSUMER_LOCK_PATH", "ENG_MCP_SPOOL_PATH"]) {
+    const hit = envs.find((e) => e.startsWith(key + "="));
+    assert.ok(hit, key + " deve estar definido no consumerEnv");
+    assert.ok(hit!.split("=")[1].startsWith("/run/mission-bus/"), key + " deve apontar para /run/mission-bus");
+  }
+  assert.ok(!envs.some((e) => e.includes("/opt/mission-events")), "nenhum path do consumidor em /opt/mission-events");
+});

@@ -378,6 +378,14 @@ function defaultExec(command: string, args: string[]): string | null {
   }
 }
 
+// HERMÉTICO-FIX-02: paths do consumidor com override por env (deploy injeta
+// ENG_MCP_CONSUMER_*/ENG_MCP_SPOOL_PATH apontando para /run/mission-bus, rw no
+// container — a monta /opt/mission-events é ro por contrato SEC-FIX).
+const envPath = (name: string): string | undefined => {
+  const v = process.env[name];
+  return v && v.trim().length > 0 ? v.trim() : undefined;
+};
+
 function resolveDeps(deps?: OrchestrateDeps): Required<Pick<OrchestrateDeps, "readText" | "readdir" | "exec" | "now">> & OrchestrateDeps {
   return {
     readText: deps?.readText ?? defaultReadText,
@@ -389,18 +397,18 @@ function resolveDeps(deps?: OrchestrateDeps): Required<Pick<OrchestrateDeps, "re
     writeText: deps?.writeText,
     appendFile: deps?.appendFile,
     unlink: deps?.unlink,
-    loadavgPath: deps?.loadavgPath ?? DEFAULT_PATHS.loadavg,
-    meminfoPath: deps?.meminfoPath ?? DEFAULT_PATHS.meminfo,
-    missionStateDir: deps?.missionStateDir ?? DEFAULT_PATHS.missionStateDir,
-    budgetPath: deps?.budgetPath ?? DEFAULT_PATHS.budgetPath,
-    agentsPath: deps?.agentsPath ?? DEFAULT_PATHS.agentsPath,
-    queuePath: deps?.queuePath ?? DEFAULT_PATHS.queuePath,
-    consumerStatePath: deps?.consumerStatePath ?? DEFAULT_PATHS.consumerStatePath,
-    consumerLockPath: deps?.consumerLockPath ?? DEFAULT_PATHS.consumerLockPath,
-    spoolPath: deps?.spoolPath ?? DEFAULT_PATHS.spoolPath,
-    missionOpsDir: deps?.missionOpsDir ?? DEFAULT_PATHS.missionOpsDir,
-    priceTablePath: deps?.priceTablePath ?? DEFAULT_PATHS.priceTablePath,
-    claudeConfigDir: deps?.claudeConfigDir ?? DEFAULT_PATHS.claudeConfigDir,
+    loadavgPath: deps?.loadavgPath ?? envPath("ENG_MCP_LOADAVG_PATH") ?? DEFAULT_PATHS.loadavg,
+    meminfoPath: deps?.meminfoPath ?? envPath("ENG_MCP_MEMINFO_PATH") ?? DEFAULT_PATHS.meminfo,
+    missionStateDir: deps?.missionStateDir ?? envPath("ENG_MCP_MISSION_STATE_DIR") ?? DEFAULT_PATHS.missionStateDir,
+    budgetPath: deps?.budgetPath ?? envPath("ENG_MCP_BUDGET_PATH") ?? DEFAULT_PATHS.budgetPath,
+    agentsPath: deps?.agentsPath ?? envPath("ENG_MCP_AGENTS_PATH") ?? DEFAULT_PATHS.agentsPath,
+    queuePath: deps?.queuePath ?? envPath("ENG_MCP_QUEUE_PATH") ?? DEFAULT_PATHS.queuePath,
+    consumerStatePath: deps?.consumerStatePath ?? envPath("ENG_MCP_CONSUMER_STATE_PATH") ?? DEFAULT_PATHS.consumerStatePath,
+    consumerLockPath: deps?.consumerLockPath ?? envPath("ENG_MCP_CONSUMER_LOCK_PATH") ?? DEFAULT_PATHS.consumerLockPath,
+    spoolPath: deps?.spoolPath ?? envPath("ENG_MCP_SPOOL_PATH") ?? DEFAULT_PATHS.spoolPath,
+    missionOpsDir: deps?.missionOpsDir ?? envPath("ENG_MCP_MISSION_OPS_DIR") ?? DEFAULT_PATHS.missionOpsDir,
+    priceTablePath: deps?.priceTablePath ?? envPath("ENG_MCP_PRICE_TABLE_PATH") ?? DEFAULT_PATHS.priceTablePath,
+    claudeConfigDir: deps?.claudeConfigDir ?? envPath("ENG_MCP_CLAUDE_CONFIG_DIR") ?? DEFAULT_PATHS.claudeConfigDir,
   };
 }
 
