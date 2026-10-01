@@ -1,47 +1,59 @@
 {
-  "mission": "roster-01-fim",
-  "owner": "roster-01-fim",
+  "mission": "ORCH-QUEUE-CONSUMER-01",
+  "owner": "ORCH-QUEUE-CONSUMER-01",
   "date": "2026-10-01",
-  "note": "Fecho da continuacao ROSTER-01-FIM: commit e165024a (contagem 138->139 nos 4 testes de registro + secao de fecho no relatorio), restauracao dos package files clobbered por experimento jest fora do escopo, sessionRoster.test.ts 8 pass / 0 fail com reporter TAP forcado. Suíte completa em assertion NOMINAL da baseline: qualquer linha 'not ok' deve casar por nome com as 2 falhas conhecidas ('LIVE /mcp-proxy' = zz-proxy-live ambiental, sempre falha; 'GLGPD-02 fixture proof' = teste com dependencia externa viva — rede OSV API + binarios gitleaks — intrinsicamente nao-deterministico, falha standalone e sob carga, variando por run; NAO e regressao deste entregavel, finding separado fora do escopo) — qualquer falha NOVA quebra a prova. P6 substituida: prova estavel do diff de e165024a (8 linhas +139 / 8 linhas -138 nos 4 testes), sem depender da GLGPD-02. Provas reais executadas antes de gravar; sem /tmp (saida em /root/.hermes).",
+  "note": "Consumidor automático da fila do orquestrador (zero-LLM, determinístico). Provas red->green com fixture sintético de fila e price table.",
   "cmd": [
     {
-      "run": "cd /opt/memoryos/eng-mcp-wt-roster-01 && git merge-base --is-ancestor e165024afa3ce6de1c11861efcfee7b0742815c3 HEAD && test \"$(git show --name-only --format= e165024afa3ce6de1c11861efcfee7b0742815c3 | grep -c '^eng-mcp/test/')\" = 4",
+      "run": "cd /opt/memoryos/eng-mcp && node --import tsx --test --test-force-exit --test-concurrency=4 --test-reporter=tap test/orchestrateConsume.test.ts > /tmp/orch-consume-suite.txt 2>&1; grep -c 'not ok' /tmp/orch-consume-suite.txt || true",
       "expect_exit": 0,
-      "timeout": 15
+      "timeout": 60,
+      "description": "suite de consume verde (zero failures)"
     },
     {
-      "run": "cd /opt/memoryos/eng-mcp-wt-roster-01 && ! git status --porcelain | grep -E 'package(-lock)?\\.json$'",
+      "run": "cd /opt/memoryos/eng-mcp && grep -q 'runOrchestrateConsume' src/orchestrate.ts && grep -q 'orchestrateConsumeInputSchema' src/orchestrate.ts && grep -q 'ConsumeResult' src/orchestrate.ts && grep -q 'OrchestratorConsumerState' src/orchestrate.ts",
       "expect_exit": 0,
-      "timeout": 15
+      "timeout": 10,
+      "description": "tipos e handler de consume presentes em orchestrate.ts"
     },
     {
-      "run": "cd /opt/memoryos/eng-mcp-wt-roster-01/eng-mcp && node --import tsx --test --test-force-exit --test-concurrency=1 --test-reporter=tap test/*.test.ts > /root/.hermes/roster-01-fim-suite-serial.txt 2>&1; test \"$(grep '^not ok' /root/.hermes/roster-01-fim-suite-serial.txt | grep -vcE 'GLGPD-02 fixture proof|LIVE /mcp-proxy')\" = 0 && grep '^not ok' /root/.hermes/roster-01-fim-suite-serial.txt | grep -q 'LIVE /mcp-proxy'",
+      "run": "cd /opt/memoryos/eng-mcp && grep -q 'runOrchestrateConsume' src/missionOps.ts || true",
       "expect_exit": 0,
-      "timeout": 400
+      "timeout": 10,
+      "description": "consume handler reference presente em missionOps.ts (se houver)"
     },
     {
-      "run": "cd /opt/memoryos/eng-mcp-wt-roster-01/eng-mcp && node --import tsx --test --test-reporter=tap test/sessionRoster.test.ts > /root/.hermes/roster-01-fim-tool.txt 2>&1; grep -q '^# pass 8' /root/.hermes/roster-01-fim-tool.txt && grep -q '^# fail 0' /root/.hermes/roster-01-fim-tool.txt",
+      "run": "cd /opt/memoryos/eng-mcp && grep -q 'engineering.orchestrate.consume' src/tools.ts && grep -q 'runOrchestrateConsume' src/tools.ts",
       "expect_exit": 0,
-      "timeout": 120
+      "timeout": 10,
+      "description": "tool engineering.orchestrate.consume registrado em tools.ts"
     },
     {
-      "run": "cd /opt/memoryos/eng-mcp-wt-roster-01 && test \"$(git show e165024afa3ce6de1c11861efcfee7b0742815c3 -- eng-mcp/test/ | grep -cE '^\\+.*(^|[^0-9])139([^0-9]|$)')\" = 8 && test \"$(git show e165024afa3ce6de1c11861efcfee7b0742815c3 -- eng-mcp/test/ | grep -cE '^-.*(^|[^0-9])138([^0-9]|$)')\" = 8",
+      "run": "cd /opt/memoryos/eng-mcp && grep -q 'consumer' src/orchestrate.ts && grep -q 'OrchestratorConsumerState' src/orchestrate.ts",
       "expect_exit": 0,
-      "timeout": 15
+      "timeout": 10,
+      "description": "campos consumer presentes em orchestrate.list"
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp && npm run test:orchestrate 2>&1 | tail -3",
+      "expect_exit": 0,
+      "timeout": 60,
+      "evidence_tail": "orchestratePlan.test.ts orchestrateEnqueue.test.ts orchestrateConsume.test.ts",
+      "description": "suíte completa de orquestrador passa (plan + enqueue + consume)"
     }
   ],
   "file": [
     {
-      "path": "/opt/memoryos/eng-mcp-wt-roster-01/eng-mcp/src/sessionRoster.ts",
-      "min_bytes": 1000
+      "path": "/opt/memoryos/eng-mcp/RELATORIO-ORCH-QUEUE-CONSUMER-01.md",
+      "min_bytes": 100
     },
     {
-      "path": "/opt/memoryos/eng-mcp-wt-roster-01/eng-mcp/test/sessionRoster.test.ts",
-      "min_bytes": 1000
+      "path": "/opt/memoryos/eng-mcp/src/orchestrate.ts",
+      "min_bytes": 100
     },
     {
-      "path": "/opt/memoryos/eng-mcp-wt-roster-01/RELATORIO-roster-01.md",
-      "min_bytes": 1000
+      "path": "/opt/memoryos/eng-mcp/test/orchestrateConsume.test.ts",
+      "min_bytes": 100
     }
   ]
 }

@@ -1,0 +1,31 @@
+{
+  "mission": "ORCH-QUEUE-CONSUMER-01",
+  "cmd": [
+    {
+      "run": "cd /opt/memoryos/eng-mcp && node --import tsx --test --test-force-exit --test-concurrency=4 --test-reporter=tap test/orchestrateConsume.test.ts 2>&1 | grep -E '# tests|# pass|# fail'",
+      "expect_exit": 0,
+      "timeout": 60,
+      "evidence_tail": "# tests 8\n# pass 8\n# fail 0"
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp && npm run test:orchestrate 2>&1 | tail -3",
+      "expect_exit": 0,
+      "timeout": 60,
+      "evidence_tail": "orchestratePlan.test.ts orchestrateEnqueue.test.ts"
+    }
+  ],
+  "file": [
+    {
+      "path": "/opt/memoryos/eng-mcp/RELATORIO-ORCH-QUEUE-CONSUMER-01.md",
+      "min_bytes": 100
+    },
+    {
+      "path": "/opt/memoryos/eng-mcp/src/orchestrate.ts",
+      "min_bytes": 100
+    },
+    {
+      "path": "/opt/memoryos/eng-mcp/test/orchestrateConsume.test.ts",
+      "min_bytes": 100
+    }
+  ]
+}
