@@ -310,6 +310,17 @@ test("docker: registry digest via anonymous bearer challenge; check/apply/rollba
 
 test("release deploy: read-only upstream mounts only when :ro, absolute and existing", async () => {
   const m = await import("../scripts/eng-mcp-release.mjs");
-  const args = m.readOnlyMountArgs({ readOnlyMounts: ["/src/a:/src/a:ro", "/missing:/missing:ro", "/rw:/rw", "/x/../y:/y:ro", "rel:/r:ro"] }, (p: string) => p !== "/missing");
+  const args = m.readOnlyMountArgs({ readOnlyMounts: ["/src/a:/src/a:ro", "?/missing:/missing:ro", "/rw:/rw", "/x/../y:/y:ro", "rel:/r:ro"] }, (p: string) => p !== "/missing");
   assert.deepEqual(args, ["-v", "/src/a:/src/a:ro"]);
+});
+
+test("DEPLOY-MOUNTS-REFUSE-01: declared ro mount with missing source refuses typed; '?' spec is optional", async () => {
+  const m = await import("../scripts/eng-mcp-release.mjs");
+  const spec = "/root/.hermes/plugins/mission-ops:/root/.hermes/plugins/mission-ops:ro";
+  assert.throws(() => m.readOnlyMountArgs({ readOnlyMounts: ["/src/a:/src/a:ro", spec] }, (p: string) => p === "/src/a"),
+    (e: any) => e.code === "DEPLOY_MOUNT_SOURCE_MISSING" && e.message.includes(spec) && e.message.includes("does not exist"));
+  assert.deepEqual(m.readOnlyMountArgs({ readOnlyMounts: ["/src/a:/src/a:ro", `?${spec}`] }, (p: string) => p === "/src/a"), ["-v", "/src/a:/src/a:ro"]);
+  assert.deepEqual(m.readOnlyMountArgs({ readOnlyMounts: ["/src/a:/src/a:ro", `?${spec}`] }, () => true), ["-v", "/src/a:/src/a:ro", "-v", spec]);
+  assert.deepEqual(m.readOnlyMountArgs({ readOnlyMounts: ["/a:/a:ro", "/b:/b:ro"] }, () => true), ["-v", "/a:/a:ro", "-v", "/b:/b:ro"]);
+  assert.deepEqual(m.readOnlyMountArgs({}), []);
 });
