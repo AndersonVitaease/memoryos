@@ -3,13 +3,178 @@
 // eng-mcp NÃO duplica lógica; chama python e recebe JSON).
 // Andar 1 (regex/IO) para tudo; JEV (250ms, /alpha/decisions) só no gate do close.
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod/v4";
+import { runOrchestrateSpend } from "./orchestrate.ts";
 
 const execFileP = promisify(execFile);
 const PLUGIN_DIR = "/root/.hermes/plugins/mission-ops";
 const JEV_GATE_SCRIPT = "/opt/memoryos/eng-mcp/scripts/jev_gate.py";
+const AUDIT_PATH = "/opt/gpu-bridge/audit.jsonl";
+const ROLES_CANONICAL_PATH = "/opt/gpu-bridge/roles.json";
+const JUDGE_MODEL = "jev-1.13";
+
+export interface MissionRoles {
+  readonly worker: string | null;
+  readonly advisor: string | null;
+  readonly supervisor: string | null;
+  readonly judge: string;
+}
+
+function readCanonicalWorker(): string | null {
+  try {
+    const raw = readFileSync(ROLES_CANONICAL_PATH, "utf8");
+    if (raw == null) return null;
+    const parsed = JSON.parse(raw) as { worker?: string };
+    return typeof parsed.worker === "string" ? parsed.worker : null;
+  } catch {
+    return null;
+  }
+}
+
+function readWorkerFromTranscript(sessionId: string): string | null {
+  if (!sessionId) return null;
+  const claudeConfigDir = "/opt/memoryos/eng-mcp/.claude-config/projects";
+  let transcriptPath: string | null = null;
+  try {
+    const { readdirSync } = await import("node:fs");
+    const projectsDir = readdirSync(claudeConfigDir);
+    for (const project of projectsDir) {
+      const candidate = join(claudeConfigDir, project, `${sessionId}.jsonl`);
+      if (existsSync(candidate)) {
+        transcriptPath = candidate;
+        break;
+      }
+    }
+  } catch {
+    return null;
+  }
+  if (!transcriptPath) return null;
+
+  try {
+    const raw = readFileSync(transcriptPath, "utf8");
+    if (raw == null) return null;
+    for (const line of raw.split("\n")) {
+      const trimmed = line.trim();
+      if (trimmed.length === 0) continue;
+      try {
+        const obj = JSON.parse(trimmed);
+        if (obj.type === "assistant" && obj.message && typeof obj.message.model === "string") {
+          return obj.message.model;
+        }
+      } catch {
+        // malformed line: skip
+      }
+    }
+  } catch {
+    // transcript unreadable
+  }
+  return null;
+}
+
+function readRolesFromAudit(): { advisor: string | null; supervisor: string | null } {
+  let raw: string | null = null;
+  try {
+    raw = readFileSync(AUDIT_PATH, "utf8");
+  } catch {
+    return { advisor: null, supervisor: null };
+  }
+  if (raw == null) return { advisor: null, supervisor: null };
+
+  let advisor: string | null = null;
+  let supervisor: string | null = null;
+  for (const line of raw.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) continue;
+    try {
+      const obj = JSON.parse(trimmed);
+      if (obj.event === "role_call" && typeof obj.role === "string") {
+        if (obj.role === "advisor" && !advisor && typeof obj.model === "string") {
+          advisor = obj.model;
+        }
+        if (obj.role === "supervisor" && !supervisor && typeof obj.model === "string") {
+          supervisor = obj.model;
+        }
+      }
+    } catch {
+      // malformed line: skip
+    }
+    if (advisor && supervisor) break;
+  }
+  return { advisor, supervisor };
+}
+
+/**
+ * Enriches the mission ledger with a roles block:
+ * - worker: from transcript (first assistant message.model), null if not yet available
+ * - advisor: from audit.jsonl role_call, null if not found
+ * - supervisor: from audit.jsonl role_call, null if not found
+ * - judge: fixed "jev-1.13"
+ *
+ * Also renames the herdr tab to add a suffix when worker diverges from canonical.
+ * Deterministic, zero-LLM. Fail-open on all I/O errors.
+ */
+async function enrichLedgerWithRoles(missionId: string): Promise<void> {
+  const ledgerPath = `/root/.hermes/mission-state/${missionId}.json`;
+  if (!existsSync(ledgerPath)) return;
+  let raw: string;
+  try {
+    raw = readFileSync(ledgerPath, "utf8");
+  } catch {
+    return;
+  }
+  let ledger: Record<string, unknown>;
+  try {
+    ledger = JSON.parse(raw);
+  } catch {
+    return;
+  }
+
+  const sessionId = (ledger.resumeSessionId ?? ledger.sessionId) as string | null;
+  const worker = readWorkerFromTranscript(sessionId ?? "");
+  const { advisor, supervisor } = readRolesFromAudit();
+
+  const roles: MissionRoles = {
+    worker,
+    advisor,
+    supervisor,
+    judge: JUDGE_MODEL,
+  };
+
+  // Only update if roles changed (avoid unnecessary writes)
+  const existing = ledger.roles as MissionRoles | undefined;
+  if (existing && existing.worker === roles.worker && existing.advisor === roles.advisor
+      && existing.supervisor === roles.supervisor && existing.judge === roles.judge) {
+    return;
+  }
+
+  ledger.roles = roles;
+
+  // Rename herdr tab if worker diverges from canonical
+  const tabId = ledger.tabId as string | undefined;
+  const canonicalWorker = readCanonicalWorker();
+  if (tabId && worker && canonicalWorker && worker !== canonicalWorker) {
+    const newLabel = `MISSION:${missionId} [worker=${worker.split("/").pop() ?? worker}!]`;
+    try {
+      const herdrBin = (await import("node:child_process")).execFileSync;
+      const herdrList = "H=$(ls /usr/local/bin/herdr* 2>/dev/null | head -1); $H";
+      herdrBin("bash", ["-lc", `${herdrList} tab rename ${tabId} "${newLabel}"`], { timeout: 10_000 });
+    } catch {
+      // herdr unavailable or rename failed — non-critical
+    }
+  }
+
+  try {
+    const tmpPath = `${ledgerPath}.tmp-${Date.now()}`;
+    writeFileSync(tmpPath, JSON.stringify(ledger, null, 2), "utf8");
+    const { renameSync } = await import("node:fs");
+    renameSync(tmpPath, ledgerPath);
+  } catch {
+    // fail-open: never block dispatch for roles enrichment
+  }
+}
 
 async function callHandler(handler: string, args: Record<string, unknown>, timeoutMs = 300_000): Promise<Record<string, unknown>> {
   // ENG-MCP-VERIFY-PYFIX-03: sem o plugin montado (ex.: container hermético do release
@@ -170,12 +335,31 @@ export async function runMissionDispatch(input: z.infer<typeof missionDispatchIn
   // cancelled/done/start_timeout sobrevivia e virava duplicata.
   const zombies = await closeDuplicateTabs(input.missionId,
     typeof result.paneId === "string" ? result.paneId : undefined);
+  // ORCH-ROLE-BADGE-01: enriquece ledger com roles (worker/advisor/supervisor/judge)
+  await enrichLedgerWithRoles(input.missionId);
   return { ...result, zombiesClosed: zombies };
 }
 
 // ENG-MCP-MISSION-01: status = snapshot completo (verdict + auto-correção) do plugin
 export async function runMissionStatus(input: z.infer<typeof missionStatusInputSchema>) {
-  return callHandler("handle_mission_snapshot", input, 60_000);
+  const result = await callHandler("handle_mission_snapshot", input, 60_000);
+  // ORCH-ROLE-BADGE-01: snapshot nao traz roles do ledger — enriquece com o
+  // worker real do transcript (fonte verdade, nunca banner/settings).
+  const missionId = typeof result.missionId === "string" ? result.missionId
+    : (input.missionId ?? "");
+  if (missionId) {
+    await enrichLedgerWithRoles(missionId);
+    const ledgerPath = `/root/.hermes/mission-state/${missionId}.json`;
+    if (existsSync(ledgerPath)) {
+      try {
+        const ledger = JSON.parse(readFileSync(ledgerPath, "utf8")) as Record<string, unknown>;
+        if (ledger.roles && !result.roles) {
+          result.roles = ledger.roles;
+        }
+      } catch { /* fail-open */ }
+    }
+  }
+  return result;
 }
 
 export async function runMissionRead(input: z.infer<typeof missionReadInputSchema>) {
