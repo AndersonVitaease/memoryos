@@ -43,7 +43,7 @@ const PROBE_CTX = { mcpReq: { requestState: () => undefined } };
 test("tools/list carries both base44 tools (catalog 128)", async () => {
   const { list } = buildServer(SUBJECT_WITH);
   const names = await listNames(list);
-  assert.equal(names.length, 139);
+  assert.equal(names.length, 140);
   assert.ok(names.includes("engineering.base44.secret.write"));
   assert.ok(names.includes("engineering.base44.function.deploy"));
 });
