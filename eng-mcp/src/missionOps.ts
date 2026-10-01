@@ -58,6 +58,8 @@ export const missionCloseInputSchema = z.object({
 }).strict();
 export const missionLedgerFixInputSchema = z.object({
   missionId: z.string().min(1), paneId: z.string().optional(), tabId: z.string().optional(),
+  // ENG-MCP-GOVERN-FIX-01: correção manual de status do ledger (mesmo enum do handler)
+  status: z.enum(["dispatched", "working", "interrupted", "delivered", "cancelled", "closed", "failed", "recover"]).optional(),
 }).strict();
 // ENG-MCP-MISSION-NUDGE (29/09): intervenção do supervisor — CHECK->SEND->VERIFY
 // atômico do plugin (handler puro, zero LLM). Sem gate JEV por desenho: não há
