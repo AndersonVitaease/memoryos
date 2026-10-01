@@ -1,7 +1,7 @@
 # MCIS-Registry — Registries, Grafos, Taxonomia e Discovery Automático
 
-**Versão:** 1.0  
-**Status:** Oficial  
+**Versão:** 1.0
+**Status:** Oficial
 **Parte:** 2 de 4 do MCIS
 
 ---
@@ -17,18 +17,18 @@ interface CapabilityRegistry {
   // Registro
   register(capability: ConnectorCapabilityDescriptor): void;
   unregister(capabilityId: string): void;
-  
+
   // Busca
   findBySemanticVerb(verb: SemanticVerb): ConnectorCapabilityDescriptor[];
   findByOntologyDomain(domain: OntologyDomain): ConnectorCapabilityDescriptor[];
   findByNaturalQuery(query: string): RankedCapability[];
   findSimilar(capabilityId: string): SimilarCapability[];
-  
+
   // Composição
   findComposable(
     capabilityIds: string[]
   ): ComposabilityResult;
-  
+
   // Compatibilidade
   checkCompatibility(
     capabilityA: string,
@@ -41,31 +41,31 @@ interface ConnectorCapabilityDescriptor {
   connectorId: string;
   name: string;                   // Ex: "SEND_EMAIL"
   displayName: string;            // Ex: "Enviar E-mail"
-  
+
   // Ontologia
   ontologyDomain: OntologyDomain;
   semanticVerb: SemanticVerb;
   semanticObject: string;         // O que o verbo age sobre: "EMAIL_MESSAGE"
-  
+
   // Composição
   composableWith: string[];       // IDs de capabilities compativeis
   requiresCapabilities: string[]; // Capabilities que devem existir antes
   producesCapabilities: string[]; // Capabilities que este habilita
-  
+
   // Contratos
   inputContract: InputContract;
   outputContract: OutputContract;
-  
+
   // Restrições
   constraints: CapabilityConstraint[];
-  
+
   // Métricas
   metrics: CapabilityMetrics;
-  
+
   // Semântica
   keywords: string[];
   synonyms: string[];             // Ex: ["enviar email", "mandar mensagem", "reply"]
-  
+
   // Cache e performance
   cacheable: boolean;
   estimatedCostMs: number;
@@ -158,7 +158,7 @@ SHOPIFY.GET_ORDER ──PRODUCES──► order_data
                                              to: order.customer_email,
                                              attachment: invoice_pdf
                                            )
-                                           
+
 Workflow descoberto automaticamente:
   "Processar pedido e enviar NF-e ao cliente"
   Steps: GET_ORDER → CREATE_INVOICE → SEND_EMAIL
@@ -188,13 +188,13 @@ interface ConnectorEntityDescriptor {
   entityName: string;             // Ex: "EmailMessage"
   ontologyType: string;           // Ex: "COMMUNICATION.MESSAGING.EMAIL_MESSAGE"
   schema: JSONSchema;             // Schema completo da entidade
-  
+
   // Operações suportadas sobre esta entidade
   operations: EntityOperation[];  // CREATE, READ, UPDATE, DELETE, SEARCH, LIST
-  
+
   // Relacionamentos com outras entidades
   relationships: EntityRelationship[];
-  
+
   // Mapeamento para entidades de outros Connectors
   equivalentEntities: EquivalentEntity[];
   // Ex: EmailMessage ↔ SlackMessage (ambos são "mensagens")
@@ -219,22 +219,22 @@ interface ConnectorActionDescriptor {
   connectorId: string;
   name: string;                   // Ex: "SEND_EMAIL"
   semanticVerb: SemanticVerb;
-  
+
   // Contratos formais (ver MCIS-Contracts)
   inputContract: InputContract;
   outputContract: OutputContract;
-  
+
   // Comportamento
   idempotent: boolean;
   transactional: boolean;
   reversible: boolean;
   reverseAction?: string;         // Ex: SEND_EMAIL não tem; DELETE_EMAIL → RESTORE_EMAIL
-  
+
   // Restrições
   requiresAuth: boolean;
   requiredPermissions: string[];
   rateLimitPerMinute?: number;
-  
+
   // Composição
   canRunInParallel: boolean;
   dependsOn: string[];            // Actions que devem rodar antes
@@ -262,16 +262,16 @@ interface ConnectorEventDescriptor {
   connectorId: string;
   eventType: string;              // Ex: "connector.gmail.email_received"
   ontologyDomain: OntologyDomain;
-  
+
   // Quando este evento é emitido
   trigger: string;                // Descrição do trigger
-  
+
   // Payload do evento
   payloadSchema: JSONSchema;
-  
+
   // Entidades relacionadas
   relatedEntities: string[];      // IDs de entidades no EntityRegistry
-  
+
   // Workflows que este evento pode iniciar
   canTriggerWorkflows: string[];
 }
@@ -362,7 +362,7 @@ interface ConnectorConstraintDescriptor {
   constraintId: string;
   connectorId: string;
   type: ConstraintType;
-  
+
   // Ex de tipos:
   // RATE_LIMIT: maxCalls por minuto/hora/dia
   // TIME_WINDOW: só pode ser chamado em horários específicos
@@ -370,7 +370,7 @@ interface ConnectorConstraintDescriptor {
   // GEO_RESTRICTION: só pode ser usado em certas regiões
   // DEPENDENCY: só pode rodar após outro connector
   // MUTUAL_EXCLUSION: não pode rodar junto com X
-  
+
   value: unknown;
   severity: "HARD" | "SOFT";     // HARD = bloqueia; SOFT = avisa
   message: string;                // Mensagem ao Core quando violada
@@ -393,17 +393,17 @@ interface DependencyRegistry {
 
 interface ConnectorDependencyDescriptor {
   connectorId: string;
-  
+
   // Outros Connectors que devem estar disponíveis
   requiredConnectors: ConnectorDependency[];
-  
+
   // Capacidades que devem existir (independente do Connector)
   requiredCapabilities: CapabilityDependency[];
-  
+
   // Serviços internos do MemoryOS necessários
   requiredServices: ServiceDependency[];
   // Ex: ["MEMORY_ENGINE", "POLICY_ENGINE", "EVENT_BUS"]
-  
+
   // Versão mínima de dependências
   versionConstraints: VersionConstraint[];
 }
@@ -418,12 +418,12 @@ interface ContextRequirements {
   // Dados de contexto que o Connector precisa receber para funcionar
   requiredContextFields: ContextField[];
   // Ex: GmailConnector requer: userId, userEmail, sessionId
-  
+
   optionalContextFields: ContextField[];
-  
+
   // O Connector pode operar sem usuário? (modo sistema)
   supportsSystemContext: boolean;
-  
+
   // Requer contexto de projeto específico?
   requiresProjectContext: boolean;
 }
@@ -432,13 +432,13 @@ interface MemoryRequirements {
   // O Connector precisa ler algo da memória do usuário antes de executar?
   readsFromMemory: MemoryReadRequirement[];
   // Ex: GmailConnector pode precisar do email do usuário armazenado
-  
+
   // O Connector propõe atualizações de memória após execução?
   writesToMemory: MemoryWriteRequirement[];
-  
+
   // Qual camada de memória?
   memoryTier: "ACTIVE" | "HISTORICAL" | "ARCHIVED" | "ANY";
-  
+
   // TTL dos dados em memória (para controle do Memory Engine)
   retentionPolicy: MemoryRetentionPolicy;
 }
@@ -554,17 +554,17 @@ interface AutoValidation {
   validateStructure(
     description: ConnectorSelfDescription
   ): ValidationResult;
-  
+
   // Validação semântica
   validateSemantics(
     description: ConnectorSelfDescription
   ): SemanticValidationResult;
-  
+
   // Validação de contratos
   validateContracts(
     description: ConnectorSelfDescription
   ): ContractValidationResult;
-  
+
   // Validação de segurança (MCF-Security)
   validateSecurity(
     description: ConnectorSelfDescription,
@@ -577,12 +577,12 @@ interface AutoCertification {
   runCertificationSuite(
     connector: MemoryOSConnector
   ): Promise<CertificationResult>;
-  
+
   // Verifica compliance com MCIS
   checkMCISCompliance(
     description: ConnectorSelfDescription
   ): ComplianceResult;
-  
+
   // Verifica compliance com MCF
   checkMCFCompliance(
     connector: MemoryOSConnector
@@ -601,13 +601,13 @@ interface VersionNegotiation {
     requiredVersion: string,       // ">=1.0.0"
     availableVersions: string[]    // ["1.0.0", "1.2.0", "2.0.0"]
   ): NegotiationResult;
-  
+
   // Seleciona melhor versão disponível
   selectBest(
     constraint: string,
     available: ConnectorVersion[]
   ): ConnectorVersion;
-  
+
   // Verifica se há breaking changes
   hasBreakingChanges(
     fromVersion: string,
@@ -654,6 +654,6 @@ Resultado: RESOLVED ✅
 
 ---
 
-**Documento Oficial:** MCIS-Registry  
-**Versão:** 1.0 · **Status:** Aprovado  
+**Documento Oficial:** MCIS-Registry
+**Versão:** 1.0 · **Status:** Aprovado
 **Parte:** 2 de 4 do MCIS

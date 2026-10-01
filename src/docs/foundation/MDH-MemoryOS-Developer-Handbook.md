@@ -1,10 +1,10 @@
 # MDH — MemoryOS Developer Handbook
 ## Official Engineering Guide
 
-**Version:** 1.0  
-**Status:** Official Handbook  
-**Date:** 2026-07-10  
-**Foundation:** v1.0.0  
+**Version:** 1.0
+**Status:** Official Handbook
+**Date:** 2026-07-10
+**Foundation:** v1.0.0
 
 ---
 

@@ -1,9 +1,9 @@
 # MDS v1.2 — Capability Negotiation Engine — Especificação Completa
 
-**Versão:** 1.2  
-**Status:** Revisão Oficial — Adenda ao MDS v1.1  
-**Data:** 2026-07-09  
-**Tipo:** Aprofundamento Arquitetural (complementa, não substitui, não remove)  
+**Versão:** 1.2
+**Status:** Revisão Oficial — Adenda ao MDS v1.1
+**Data:** 2026-07-09
+**Tipo:** Aprofundamento Arquitetural (complementa, não substitui, não remove)
 **Alinhamento:** MAS 1.0 · MCF 1.0 · MCIS 1.0 · MGIS 1.0 · MDS 1.0 · MDS v1.1
 
 ---
@@ -12,9 +12,9 @@
 
 Esta revisão aprofunda o **Capability Negotiation Engine** introduzido no MDS v1.1, consolidando seus contratos internos, modelos, interfaces, métricas e políticas com o mesmo nível de profundidade do restante do Manual Oficial de Engenharia.
 
-**Não remove** nenhuma seção.  
-**Não altera** nenhuma decisão existente.  
-**Não modifica** MAS, MPS, MCF, MCIS, MGIS, MES.  
+**Não remove** nenhuma seção.
+**Não altera** nenhuma decisão existente.
+**Não modifica** MAS, MPS, MCF, MCIS, MGIS, MES.
 **Apenas complementa e aprofunda** a arquitetura já definida.
 
 ---
@@ -1795,5 +1795,5 @@ Todos os contratos permanecem **desacoplados, orientados a eventos, compatíveis
 
 ---
 
-**MDS v1.2 — Capability Negotiation Engine — Especificação Completa**  
+**MDS v1.2 — Capability Negotiation Engine — Especificação Completa**
 **Data:** 2026-07-09 · **Adenda ao:** MDS v1.1 · **Série:** MDS v1.0, v1.1, v1.2

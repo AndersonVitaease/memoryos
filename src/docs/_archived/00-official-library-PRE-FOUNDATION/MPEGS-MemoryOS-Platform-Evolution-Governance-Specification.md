@@ -1,7 +1,7 @@
 # MPEGS — MemoryOS Platform Evolution Governance Specification
 
-**Versão:** 1.0  
-**Status:** Documento Oficial de Governança da Evolução da Plataforma  
+**Versão:** 1.0
+**Status:** Documento Oficial de Governança da Evolução da Plataforma
 **Tipo:** Especificação de Governança da Evolução
 
 ---
@@ -26,7 +26,7 @@ Enquanto:
 
 **O MPEGS define como qualquer evolução oficial da plataforma deverá ocorrer.**
 
-Este documento **não altera**: Core, Runtime, Arquitetura, SDKs, Roadmap.  
+Este documento **não altera**: Core, Runtime, Arquitetura, SDKs, Roadmap.
 Ele apenas formaliza o processo oficial de evolução.
 
 ---

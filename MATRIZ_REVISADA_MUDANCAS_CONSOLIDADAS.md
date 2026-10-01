@@ -1,7 +1,7 @@
 # 🔄 MATRIZ REVISADA v1.0 - MUDANÇAS CONSOLIDADAS
 
-**Data:** 25 de julho de 2026  
-**Ação:** Documento definitivo com todas as mudanças necessárias  
+**Data:** 25 de julho de 2026
+**Ação:** Documento definitivo com todas as mudanças necessárias
 **Status:** Pronto para atualização da matriz oficial
 
 ---
@@ -289,7 +289,7 @@ Por status v1.0:
 Por implementação:
   Implementadas: 13 (8-10 verificadas)
   Não implementadas: 14
-  
+
 Por prioridade:
   ESSENCIAL: 11 (incluindo org-02, share-02, upload-01)
   IMPORTANTE: 12
@@ -302,25 +302,25 @@ Por prioridade:
 
 ### FASE 1 - ESSENCIAL (4 capabilities)
 
-**Semana 1-2:** Organização  
+**Semana 1-2:** Organização
 ✅ **org-02** - Mover arquivo para pasta
 - Complexidade: BAIXA
 - Dependência: GWS moveFile()
 - Impacto: Alto para workflow
 
-**Semana 2-3:** Compartilhamento (Parte 1)  
+**Semana 2-3:** Compartilhamento (Parte 1)
 ✅ **share-02** - Compartilhar arquivo
 - Complexidade: MÉDIA
 - Dependência: GWS addPermission()
 - Impacto: Crítico para colaboração
 
-**Semana 3-4:** Upload (paralelo a share-02)  
-✅ **upload-01** - Upload/Atualizar arquivo  
+**Semana 3-4:** Upload (paralelo a share-02)
+✅ **upload-01** - Upload/Atualizar arquivo
 - Complexidade: ALTA
 - Dependência: GWS uploadFile()
 - Impacto: Crítico - sem upload é read-only
 
-**Semana 4:** Busca  
+**Semana 4:** Busca
 ✅ **search-03** - Busca avançada
 - Complexidade: MÉDIA
 - Dependência: Query Builder simples (Google Drive API já suporta)
@@ -362,7 +362,7 @@ cp GOOGLE_DRIVE_CAPABILITY_MATRIX_v1.0.md \
 
 ### Passo 2: Atualizar roadmap
 ```
-FASE 1: 
+FASE 1:
   1. org-02 ← novo
   2. share-02 ← novo
   3. upload-01 ← redirecionado (era upload-01 + upload-02)

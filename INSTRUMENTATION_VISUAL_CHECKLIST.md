@@ -120,7 +120,7 @@ AT [4-API]:
 - [2-ENTITY-A]: ✅/❌
 - [2-ENTITY-B]: ✅/❌
 - [3-QUERY]: ✅/❌
-- [4-API]: ✅/❌ Count: ___ 
+- [4-API]: ✅/❌ Count: ___
 - [5-SELECTION]: ✅/❌
 - [6-DOWNLOAD]: ✅/❌
 - [7-PROCESSING]: ✅/❌
@@ -208,7 +208,7 @@ When collecting logs, pay special attention to:
 
 **Example diagnosis:**
 ```
-"The flow diverges at [4-API]. 
+"The flow diverges at [4-API].
 For PDF, Count: 1 (file found).
 For VIDEO, Count: 0 (file not found).
 The query for video might be: trashed=false and mimeType contains 'video/' and name contains 'fabrica.mp4'

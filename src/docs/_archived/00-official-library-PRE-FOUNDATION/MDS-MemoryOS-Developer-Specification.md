@@ -1,10 +1,10 @@
 # MemoryOS Developer Specification (MDS)
 
-**Versão:** 1.0  
-**Status:** Manual Oficial de Engenharia  
-**Tipo:** Especificação Técnica de Implementação  
-**Posição:** MV → MPS → MAS → MES → MCF → MCIS → MGIS → **MDS**  
-**Alinhamento:** MV 1.0 · MAS 1.0 · MES 1.0 · MCF 1.0 · MCIS 1.0 · MGIS 1.0  
+**Versão:** 1.0
+**Status:** Manual Oficial de Engenharia
+**Tipo:** Especificação Técnica de Implementação
+**Posição:** MV → MPS → MAS → MES → MCF → MCIS → MGIS → **MDS**
+**Alinhamento:** MV 1.0 · MAS 1.0 · MES 1.0 · MCF 1.0 · MCIS 1.0 · MGIS 1.0
 **Referência Cruzada:** MDS-Engines · MDS-Platform · MDS-Connectors
 
 ---
@@ -15,7 +15,7 @@ O MDS é o **Manual Oficial de Engenharia do MemoryOS**.
 
 Ele transforma toda a arquitetura conceitual definida em MV, MPS, MAS, MES, MCF, MCIS e MGIS em **especificações técnicas completas e implementáveis**, servindo como guia definitivo para toda equipe de engenharia construir, manter e evoluir o MemoryOS.
 
-O MDS **não altera** nenhuma decisão arquitetural anterior.  
+O MDS **não altera** nenhuma decisão arquitetural anterior.
 Onde houver inconsistência detectada, ela é registrada como **Observação Arquitetural** — nunca como alteração.
 
 > Toda implementação futura do MemoryOS deverá seguir rigorosamente esta especificação.
@@ -590,6 +590,6 @@ class ModuleRegistry {
 
 ---
 
-**Documento Oficial:** MDS — MemoryOS Developer Specification  
-**Versão:** 1.0 · **Status:** Manual Oficial de Engenharia  
+**Documento Oficial:** MDS — MemoryOS Developer Specification
+**Versão:** 1.0 · **Status:** Manual Oficial de Engenharia
 **Parte:** 1 de 4 — Organização da Solução

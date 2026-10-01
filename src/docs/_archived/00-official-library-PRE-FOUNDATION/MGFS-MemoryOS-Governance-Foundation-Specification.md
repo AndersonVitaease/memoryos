@@ -1,10 +1,10 @@
 # MGFS — MemoryOS Governance & Foundation Specification
 ## Platform Governance, Standards & Long-Term Evolution
 
-**Versão:** 1.0  
-**Status:** Documento Oficial de Governança da Plataforma — Aprovado  
-**Data:** 2026-07-10  
-**Tipo:** Especificação de Governança  
+**Versão:** 1.0
+**Status:** Documento Oficial de Governança da Plataforma — Aprovado
+**Data:** 2026-07-10
+**Tipo:** Especificação de Governança
 **Complementa:** Todos os documentos da Biblioteca Oficial
 
 ---
@@ -26,7 +26,7 @@ Este documento define oficialmente **como o MemoryOS será governado durante tod
 | **MDPS** | Como desenvolvedores externos expandem o MemoryOS |
 | **MGFS** | Como todo esse conjunto evolui de forma organizada e sustentável |
 
-**Não altera:** Core · Runtime · Produto · Arquitetura  
+**Não altera:** Core · Runtime · Produto · Arquitetura
 **Estabelece:** As regras permanentes de governança da plataforma.
 
 ---
@@ -1120,5 +1120,5 @@ FRAMEWORKS (transversais)
 
 ---
 
-**MGFS — MemoryOS Governance & Foundation Specification v1.0**  
+**MGFS — MemoryOS Governance & Foundation Specification v1.0**
 **Data:** 2026-07-10 · **Define governança de:** Todos os documentos da Biblioteca Oficial

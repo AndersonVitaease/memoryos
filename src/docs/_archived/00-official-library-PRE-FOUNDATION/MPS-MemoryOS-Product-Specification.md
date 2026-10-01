@@ -1,10 +1,10 @@
 # MPS — MemoryOS Product Specification
 ## Product Vision & Product Principles
 
-**Versão:** 1.0  
-**Status:** Documento Oficial do Produto — Aprovado  
-**Data:** 2026-07-10  
-**Tipo:** Especificação de Produto  
+**Versão:** 1.0
+**Status:** Documento Oficial do Produto — Aprovado
+**Data:** 2026-07-10
+**Tipo:** Especificação de Produto
 **Complementa:** MAS · MDS 1.0–1.6 · MDS Architectural Principles
 
 ---
@@ -19,7 +19,7 @@ Este documento define oficialmente **o que é o MemoryOS como produto**.
 | **MDS** | COMO implementá-lo (engenharia e especificações) |
 | **MPS** | O QUE o produto representa para seus usuários |
 
-Este documento **não substitui** o MAS, o MDS nem o MASS.  
+Este documento **não substitui** o MAS, o MDS nem o MASS.
 Ele **complementa** todos eles.
 
 ---
@@ -28,7 +28,7 @@ Ele **complementa** todos eles.
 
 O **MemoryOS** é uma plataforma de **Inteligência Contextual** capaz de acompanhar pessoas e organizações durante jornadas completas, preservando contexto, conhecimento, memória, decisões e progresso até que seus objetivos sejam alcançados.
 
-**O foco da plataforma não é responder perguntas.**  
+**O foco da plataforma não é responder perguntas.**
 **O foco da plataforma é ajudar pessoas a concluir objetivos.**
 
 ---
@@ -217,7 +217,7 @@ Saúde · Governo · Cidadãos · Compliance
 Educação · Logística · Indústria · Financeiro
 ```
 
-**Todos utilizando exatamente a mesma arquitetura.**  
+**Todos utilizando exatamente a mesma arquitetura.**
 A especialização ocorre via **Connectors** e **Specialists**, não no Core.
 
 ---
@@ -337,5 +337,5 @@ Independentemente da evolução tecnológica ou dos mercados atendidos.
 
 ---
 
-**MPS — MemoryOS Product Specification v1.0**  
+**MPS — MemoryOS Product Specification v1.0**
 **Data:** 2026-07-10 · **Complementa:** MAS · MDS 1.0–1.6 · MDS Architectural Principles

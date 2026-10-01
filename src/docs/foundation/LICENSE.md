@@ -11,23 +11,23 @@ A MemoryOS Foundation é disponibilizada sob os seguintes termos:
 
 ### Permissões
 
-✅ Uso comercial  
-✅ Modificação (via RFC)  
-✅ Distribuição  
-✅ Uso privado  
-✅ Uso em sublicenças  
+✅ Uso comercial
+✅ Modificação (via RFC)
+✅ Distribuição
+✅ Uso privado
+✅ Uso em sublicenças
 
 ### Condições
 
-📋 Preservar avisos de copyright  
-📋 Incluir esta licença em distribuições  
-📋 Documentar modificações  
-📋 Seguir o processo RFC para alterações arquiteturais  
+📋 Preservar avisos de copyright
+📋 Incluir esta licença em distribuições
+📋 Documentar modificações
+📋 Seguir o processo RFC para alterações arquiteturais
 
 ### Limitações
 
-❌ Responsabilidade  
-❌ Garantia  
+❌ Responsabilidade
+❌ Garantia
 
 ---
 

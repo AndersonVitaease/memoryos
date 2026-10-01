@@ -1,8 +1,8 @@
 # MCF-Operations — Comunicação, Resiliência, Filas, Cache, Telemetria
 
-**Versão:** 1.0  
-**Status:** Oficial  
-**Parte:** 4 de 5 do MCF  
+**Versão:** 1.0
+**Status:** Oficial
+**Parte:** 4 de 5 do MCF
 **Referência:** MES §21 — Eventos, §22 — Observabilidade, §23 — Auditoria
 
 ---
@@ -89,12 +89,12 @@ interface InboundEventHandler {
     signature: string,
     secret: string
   ): boolean;
-  
+
   // Normalizar evento externo → evento interno MemoryOS
   normalizeInboundEvent(
     rawEvent: unknown
   ): ConnectorEvent;
-  
+
   // Processar e publicar no UEB
   handleInboundEvent(
     rawEvent: unknown,
@@ -228,13 +228,13 @@ Connector Manager orquestra:
 interface ConnectorContextManager {
   // Contexto de sessão — ativo apenas durante a execução
   getSessionContext(userId: string, sessionId: string): SessionContext;
-  
+
   // O Connector não armazena contexto permanente
   // Toda persistência ocorre via MemoryUpdateProposal
-  
+
   // Contexto de configuração — carregado na inicialização
   getConfig(): ConnectorConfig;
-  
+
   // Contexto de autenticação — gerenciado pelo AuthManager
   getAuthContext(userId: string): AuthContext;
 }
@@ -254,7 +254,7 @@ interface MemoryUpdateProposal {
   connectorId: string;
   requestId: string;
   userId: string;
-  
+
   updates: {
     type: "ENTITY" | "FACT" | "EVENT" | "PREFERENCE";
     operation: "CREATE" | "UPDATE" | "DELETE";
@@ -262,7 +262,7 @@ interface MemoryUpdateProposal {
     confidence: number;  // 0.0 a 1.0
     source: string;      // Ex: "GMAIL_EMAIL_READ"
   }[];
-  
+
   // A Memory Engine decide se aceita, rejeita ou modifica a proposta
 }
 ```
@@ -368,36 +368,36 @@ interface ConnectorMetrics {
   connectorId: string;
   period: string;               // "1h" | "24h" | "7d" | "30d"
   collectedAt: string;
-  
+
   // Volume
   totalRequests: number;
   successfulRequests: number;
   failedRequests: number;
   retriedRequests: number;
   cachedRequests: number;
-  
+
   // Latência
   p50LatencyMs: number;
   p95LatencyMs: number;
   p99LatencyMs: number;
   maxLatencyMs: number;
   avgLatencyMs: number;
-  
+
   // Disponibilidade
   uptimePercent: number;
   circuitOpenCount: number;
-  
+
   // Erros
   errorsByCategory: Record<ErrorCategory, number>;
   topErrors: { code: string; count: number }[];
-  
+
   // Uso por ação
   requestsByAction: Record<string, number>;
-  
+
   // Autenticação
   tokenRefreshCount: number;
   authFailureCount: number;
-  
+
   // Cache
   cacheHitRate: number;
   cacheSize: number;
@@ -494,16 +494,16 @@ Exemplo (baseDelay=500ms, multiplier=2):
 interface ConcurrencyControl {
   // Máximo de execuções simultâneas por Connector
   maxConcurrentRequests: number;   // Padrão: 50
-  
+
   // Máximo por usuário
   maxConcurrentPerUser: number;    // Padrão: 10
-  
+
   // Máximo por ação
   maxConcurrentPerAction?: Record<string, number>;
-  
+
   // Comportamento quando limite atingido
   overflowBehavior: "QUEUE" | "REJECT" | "WAIT";
-  
+
   // Mutex para operações não-idempotentes
   mutexEnabled: boolean;           // Para escritas e exclusões
   mutexTimeoutMs: number;          // Padrão: 5000ms
@@ -518,20 +518,20 @@ interface ConcurrencyControl {
 interface QueuePolicy {
   // Fila por Connector
   maxQueueSize: number;           // Padrão: 1000 requests
-  
+
   // Prioridades na fila
   priorityLevels: {
     HIGH: number;                 // % da fila reservada: 40%
     NORMAL: number;               // % da fila reservada: 50%
     LOW: number;                  // % da fila reservada: 10%
   };
-  
+
   // Expiração de requests na fila
   requestTtlMs: number;           // Padrão: 60000ms
-  
+
   // Comportamento quando fila cheia
   fullQueueBehavior: "REJECT_LOW" | "REJECT_ALL";
-  
+
   // Dead Letter Queue para requests não processados
   dlqEnabled: boolean;
   dlqRetentionMs: number;         // Padrão: 3600000ms (1h)
@@ -549,13 +549,13 @@ type RequestPriority = "HIGH" | "NORMAL" | "LOW";
 const PRIORITY_RULES = {
   // Interação direta do usuário = HIGH
   userInitiated: "HIGH",
-  
+
   // Tasks automáticas em background = NORMAL
   scheduledTask: "NORMAL",
-  
+
   // Analytics e telemetria = LOW
   analytics: "LOW",
-  
+
   // Retry de requests falhos = prioridade original
   retry: "inherit"
 };
@@ -572,13 +572,13 @@ const PRIORITY_RULES = {
 interface ParallelExecution {
   // Máximo de execuções paralelas neste grupo
   maxParallel: number;
-  
+
   // Estratégia de agregação dos resultados
   aggregationStrategy: "ALL" | "FIRST_SUCCESS" | "FASTEST";
-  
+
   // Timeout geral do grupo
   groupTimeoutMs: number;
-  
+
   // Comportamento se algum falha
   failureBehavior: "FAIL_ALL" | "IGNORE_PARTIAL" | "RETURN_PARTIAL";
 }
@@ -665,7 +665,7 @@ Nova instância adicionada ao pool após 3 health checks bem-sucedidos.
 
 ---
 
-**Documento Oficial:** MCF-Operations  
-**Versão:** 1.0  
-**Status:** Aprovado  
+**Documento Oficial:** MCF-Operations
+**Versão:** 1.0
+**Status:** Aprovado
 **Parte:** 4 de 5 do MemoryOS Connector Framework

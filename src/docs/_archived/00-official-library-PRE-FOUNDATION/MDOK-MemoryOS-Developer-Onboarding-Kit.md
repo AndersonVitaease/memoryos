@@ -1,10 +1,10 @@
 # MDOK — MemoryOS Developer Onboarding Kit
 ## Official Developer Onboarding & Engineering Environment
 
-**Version:** 1.0  
-**Status:** Official Engineering Operations  
-**Foundation:** v1.0  
-**Declared:** 2026-07-10  
+**Version:** 1.0
+**Status:** Official Engineering Operations
+**Foundation:** v1.0
+**Declared:** 2026-07-10
 **Authority:** Foundation Committee
 
 ---

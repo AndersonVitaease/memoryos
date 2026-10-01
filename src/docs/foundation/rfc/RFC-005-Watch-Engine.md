@@ -1,11 +1,11 @@
 # RFC-005 — Watch Engine (Proactive Monitoring Layer)
 
-**Status:** Accepted  
-**Categoria:** New Epic  
-**Prioridade:** High  
-**Foundation:** v1.0  
-**Data:** 2026-08-02  
-**Autor:** MemoryOS Engineering  
+**Status:** Accepted
+**Categoria:** New Epic
+**Prioridade:** High
+**Foundation:** v1.0
+**Data:** 2026-08-02
+**Autor:** MemoryOS Engineering
 **Rastreabilidade:** MES §21 (Eventos), MES §12 (Policy Engine), MES §4 (Pipeline Oficial), MEB EPIC-017
 
 ---
@@ -37,8 +37,8 @@ Esses casos exigem:
 
 ## Princípio
 
-> O Watch Engine **observa** o mundo externo em nome do usuário.  
-> Ele nunca interpreta intenção — apenas verifica condições e notifica.  
+> O Watch Engine **observa** o mundo externo em nome do usuário.
+> Ele nunca interpreta intenção — apenas verifica condições e notifica.
 > Todo disparo é rastreável, auditável e idempotente.
 
 ---

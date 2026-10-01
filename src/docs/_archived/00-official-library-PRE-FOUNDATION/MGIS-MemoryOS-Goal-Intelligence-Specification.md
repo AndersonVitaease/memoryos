@@ -1,10 +1,10 @@
 # MemoryOS Goal Intelligence Specification (MGIS)
 
-**Versão:** 1.0  
-**Status:** Oficial  
-**Tipo:** Documento Arquitetural — Goal Intelligence  
-**Posição na Biblioteca:** MV → MPS → MAS → MES → MCF → MCIS → **MGIS** → MDS  
-**Alinhamento:** MV 1.0 · MAS 1.0 · MES 1.0 · MCF 1.0 · MCIS 1.0  
+**Versão:** 1.0
+**Status:** Oficial
+**Tipo:** Documento Arquitetural — Goal Intelligence
+**Posição na Biblioteca:** MV → MPS → MAS → MES → MCF → MCIS → **MGIS** → MDS
+**Alinhamento:** MV 1.0 · MAS 1.0 · MES 1.0 · MCF 1.0 · MCIS 1.0
 **Referência Cruzada:** MGIS-Engine · MGIS-Lifecycle · MGIS-Flows
 
 ---
@@ -15,7 +15,7 @@ Este documento define a **camada de compreensão de objetivos** do MemoryOS.
 
 O MGIS é posicionado entre o Intent Understanding e o Planner. Ele recebe intenções humanas brutas e as transforma em objetivos estruturados, decompostos, hierarquizados, contextualizados e priorizados — prontos para serem planejados e executados.
 
-O MGIS **não executa**. Não escolhe Connectors. Não chama APIs.  
+O MGIS **não executa**. Não escolhe Connectors. Não chama APIs.
 Ele apenas compreende e estrutura objetivos.
 
 > **Princípio Central:** O usuário descreve um objetivo. O MemoryOS compreende a intenção. O **MGIS estrutura o objetivo**. O Planner cria o plano. O MCIS descobre as capacidades. Os Connectors executam. A Memória aprende continuamente.
@@ -600,6 +600,6 @@ interface GoalPlan {
 
 ---
 
-**Documento Oficial:** MGIS — MemoryOS Goal Intelligence Specification  
-**Versão:** 1.0 · **Status:** Aprovado  
+**Documento Oficial:** MGIS — MemoryOS Goal Intelligence Specification
+**Versão:** 1.0 · **Status:** Aprovado
 **Parte:** 1 de 4 — Filosofia, Definições, Goal Graph, Decomposição, Hierarquia

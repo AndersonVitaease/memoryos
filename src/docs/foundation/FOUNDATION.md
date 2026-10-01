@@ -142,8 +142,8 @@ Rastreabilidade oficial de toda evolução:
 
 Esta Foundation foi oficialmente declarada pela:
 
-> **RFC-000 — MemoryOS Foundation v1.0 Baseline Declaration**  
-> Aprovada em: 2026-07-10  
+> **RFC-000 — MemoryOS Foundation v1.0 Baseline Declaration**
+> Aprovada em: 2026-07-10
 > Autor: MemoryOS Core Team
 
 ---

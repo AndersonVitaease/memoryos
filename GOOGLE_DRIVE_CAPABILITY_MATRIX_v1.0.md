@@ -1,8 +1,8 @@
 # MATRIZ OFICIAL DE CAPABILITIES - GOOGLE DRIVE CONNECTOR
 
-**Versão:** 1.0  
-**Data:** 25 de julho de 2026  
-**Status:** CONGELADA (Não alterar sem revisão formal)  
+**Versão:** 1.0
+**Data:** 25 de julho de 2026
+**Status:** CONGELADA (Não alterar sem revisão formal)
 
 ---
 
@@ -199,8 +199,8 @@
 - search-03 (Busca avançada)
 - search-04 (Busca por conteúdo)
 
-**Complexidade:** Média  
-**Impacto:** Alto (bloqueia 2 capabilities)  
+**Complexidade:** Média
+**Impacto:** Alto (bloqueia 2 capabilities)
 **Ação:** Criar antes de iniciar Fase 1
 
 ---
@@ -212,8 +212,8 @@
 **Requerido por:**
 - org-02 (Mover arquivo para pasta)
 
-**Complexidade:** Baixa  
-**Impacto:** Alto (case de uso crítico)  
+**Complexidade:** Baixa
+**Impacto:** Alto (case de uso crítico)
 **Ação:** Implementar antes de Fase 1
 
 ---
@@ -227,8 +227,8 @@
 - upload-02 (Atualizar arquivo)
 - upload-03 (Batch upload)
 
-**Complexidade:** Alta (multipart, resumable upload)  
-**Impacto:** Muito Alto (bloqueia 3 capabilities)  
+**Complexidade:** Alta (multipart, resumable upload)
+**Impacto:** Muito Alto (bloqueia 3 capabilities)
 **Ação:** Implementar antes de Fase 1
 
 ---
@@ -243,8 +243,8 @@
 **Requerido por:**
 - share-02, share-03, share-04 (Compartilhamento)
 
-**Complexidade:** Média  
-**Impacto:** Alto (bloqueia Fase 2)  
+**Complexidade:** Média
+**Impacto:** Alto (bloqueia Fase 2)
 **Ação:** Implementar antes de Fase 2
 
 ---
@@ -258,10 +258,10 @@
 - read-03 (Resumir documento) - ✅ FUNCIONA
 - read-04 (Extrair dados estruturados) - ❌ PRECISA MELHORAR
 
-**Status atual:** Suporta TXT, PDF (via PDF.js), DOCX (básico)  
-**Melhorias necessárias:** Estruturação melhor de tabelas, formulários, OCR para imagens  
-**Complexidade:** Média  
-**Impacto:** Médio (read-04 é lower priority)  
+**Status atual:** Suporta TXT, PDF (via PDF.js), DOCX (básico)
+**Melhorias necessárias:** Estruturação melhor de tabelas, formulários, OCR para imagens
+**Complexidade:** Média
+**Impacto:** Médio (read-04 é lower priority)
 **Ação:** Melhorar antes de Fase 3
 
 ---
@@ -396,6 +396,6 @@ monitor-03 (Histórico):
 
 ---
 
-**Documento aprovado em: 25 de julho de 2026**  
-**Próxima revisão: Sprint 8 ou a pedido**  
+**Documento aprovado em: 25 de julho de 2026**
+**Próxima revisão: Sprint 8 ou a pedido**
 **Responsável: Google Drive Connector Team**

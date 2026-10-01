@@ -8,8 +8,8 @@ Formato: [Semver](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ## [1.0.0] — 2026-07-10 — Foundation Baseline
 
-**Status:** Frozen Baseline  
-**RFC:** RFC-000  
+**Status:** Frozen Baseline
+**RFC:** RFC-000
 **Fase:** Engineering First
 
 ### Adicionado
@@ -54,7 +54,7 @@ Formato: [Semver](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ## [0.9.0] — 2026-07-09 — Pre-Foundation RC
 
-**Status:** Release Candidate  
+**Status:** Release Candidate
 **Fase:** Definição Arquitetural
 
 ### Adicionado
@@ -70,7 +70,7 @@ Formato: [Semver](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ## [0.8.0] — 2026-07-08 — Core Engines
 
-**Status:** Development  
+**Status:** Development
 **Fase:** Implementação de Referência
 
 ### Adicionado
@@ -86,7 +86,7 @@ Formato: [Semver](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ## [0.5.0] — 2026-07-05 — Specification Complete
 
-**Status:** Development  
+**Status:** Development
 **Fase:** Documentação Arquitetural
 
 ### Adicionado
@@ -105,7 +105,7 @@ Formato: [Semver](https://semver.org) — `MAJOR.MINOR.PATCH`
 
 ## [0.1.0] — 2026-07-01 — Initial Vision
 
-**Status:** Development  
+**Status:** Development
 **Fase:** Visão e Produto
 
 ### Adicionado

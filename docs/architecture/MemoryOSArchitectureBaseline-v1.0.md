@@ -1,10 +1,10 @@
 # MemoryOS Architecture Baseline v1.0
 
-> **Status:** OFFICIALLY FROZEN  
-> **Version:** 1.0.0  
-> **Date:** 2026-07-18  
-> **Phase:** Engineering First — COMPLETE | Beta — APPROVED  
-> **Author:** MemoryOS Engineering Team  
+> **Status:** OFFICIALLY FROZEN
+> **Version:** 1.0.0
+> **Date:** 2026-07-18
+> **Phase:** Engineering First — COMPLETE | Beta — APPROVED
+> **Author:** MemoryOS Engineering Team
 
 ---
 
@@ -1105,6 +1105,6 @@ Durante toda a fase Beta:
 
 ---
 
-*Este documento e a Single Source of Truth arquitetural do MemoryOS.*  
-*Qualquer mudanca neste documento deve ser acompanhada de um ADR e incremento de versao.*  
+*Este documento e a Single Source of Truth arquitetural do MemoryOS.*
+*Qualquer mudanca neste documento deve ser acompanhada de um ADR e incremento de versao.*
 *Versao 1.0.0 — FROZEN — 2026-07-18*

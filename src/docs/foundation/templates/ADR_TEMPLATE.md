@@ -1,9 +1,9 @@
 # ADR-NNN — [Título da Decisão]
 
-**Status:** Proposed | Accepted | Implemented | Deprecated | Rejected  
-**Data:** YYYY-MM-DD  
-**RFC:** RFC-NNN  
-**Autor:** [Nome]  
+**Status:** Proposed | Accepted | Implemented | Deprecated | Rejected
+**Data:** YYYY-MM-DD
+**RFC:** RFC-NNN
+**Autor:** [Nome]
 
 ---
 

@@ -1,9 +1,9 @@
 # MemoryOS Connector Framework (MCF)
 
-**Versão:** 1.0  
-**Status:** Oficial  
-**Tipo:** Documento de Arquitetura — Connector Framework  
-**Alinhamento:** MV 1.0 · MAS 1.0 · MES 1.0 · MPS 1.0  
+**Versão:** 1.0
+**Status:** Oficial
+**Tipo:** Documento de Arquitetura — Connector Framework
+**Alinhamento:** MV 1.0 · MAS 1.0 · MES 1.0 · MPS 1.0
 **Referência Cruzada:** MCF-Architecture · MCF-Lifecycle · MCF-Security · MCF-Operations · MCF-Catalog
 
 ---
@@ -559,7 +559,7 @@ Um Connector é **conforme** ao MCF quando:
 
 ---
 
-**Documento Oficial:** MCF — MemoryOS Connector Framework  
-**Versão:** 1.0  
-**Status:** Aprovado  
+**Documento Oficial:** MCF — MemoryOS Connector Framework
+**Versão:** 1.0
+**Status:** Aprovado
 **Parte:** 1 de 5 — Fundamentos, Conceitos, Interface Padrão

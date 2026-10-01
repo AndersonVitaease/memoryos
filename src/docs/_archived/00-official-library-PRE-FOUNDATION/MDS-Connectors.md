@@ -1,7 +1,7 @@
 # MDS-Connectors — Connectors Oficiais, Marketplace, Sprint Zero e Declaração Final
 
-**Versão:** 1.0  
-**Status:** Oficial  
+**Versão:** 1.0
+**Status:** Oficial
 **Parte:** 4 de 4 do MDS
 
 ---
@@ -787,6 +787,6 @@ Qualquer equipe de engenharia que seguir o MDS em conjunto com toda a Biblioteca
 
 ---
 
-**MDS — MemoryOS Developer Specification**  
-**Versão:** 1.0 · **Status:** Manual Oficial de Engenharia · **Data:** 2026-07-08  
+**MDS — MemoryOS Developer Specification**
+**Versão:** 1.0 · **Status:** Manual Oficial de Engenharia · **Data:** 2026-07-08
 **Documentos:** MDS · MDS-Engines · MDS-Platform · MDS-Connectors

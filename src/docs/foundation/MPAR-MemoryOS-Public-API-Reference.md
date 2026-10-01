@@ -1,13 +1,13 @@
 # MPAR — MemoryOS Public API Reference
 ## Official Public API Documentation
 
-**Version:** 1.0  
-**Status:** Official Reference  
-**Foundation:** v1.0.0  
-**Date:** 2026-07-10  
+**Version:** 1.0
+**Status:** Official Reference
+**Foundation:** v1.0.0
+**Date:** 2026-07-10
 
-> **Nota:** Este documento documenta COMO utilizar as APIs públicas.  
-> Para arquitetura, consulte MAS. Para runtime, consulte MRS. Para core boundaries, consulte MCS.  
+> **Nota:** Este documento documenta COMO utilizar as APIs públicas.
+> Para arquitetura, consulte MAS. Para runtime, consulte MRS. Para core boundaries, consulte MCS.
 > Para SDK spec, consulte MDPS. Para qualidade, consulte MQCCS. Para engineering, consulte MDH.
 
 ---
@@ -31,7 +31,7 @@ A API pública do MemoryOS segue os seguintes princípios imutáveis:
 
 Toda interface documentada neste documento é **API pública estável** do MemoryOS.
 
-Mudanças somente ocorrem via: RFC → ADR → Implementação → MQCCS → Release  
+Mudanças somente ocorrem via: RFC → ADR → Implementação → MQCCS → Release
 (Ver MPEGS Capítulo 3 para o processo completo)
 
 ---
@@ -40,7 +40,7 @@ Mudanças somente ocorrem via: RFC → ADR → Implementação → MQCCS → Rel
 
 ### WorkingMemoryEngine
 
-**Responsabilidade:** Memória de trabalho de sessão. Armazena dados temporários com TTL e isolamento por identityContext.  
+**Responsabilidade:** Memória de trabalho de sessão. Armazena dados temporários com TTL e isolamento por identityContext.
 **Ciclo de vida:** Instanciado uma vez por Runtime; persiste entre requests da mesma sessão.
 
 ```typescript
@@ -93,7 +93,7 @@ type MemoryPriority = "CRITICAL" | "HIGH" | "NORMAL" | "LOW";
 
 ### ExecutionEngine
 
-**Responsabilidade:** Executa sequências de steps (PlanStep[]) com rollback, segurança e auditoria.  
+**Responsabilidade:** Executa sequências de steps (PlanStep[]) com rollback, segurança e auditoria.
 **Ciclo de vida:** Stateless por execução; cada `execute()` cria um ExecutionContext isolado.
 
 ```typescript
@@ -170,7 +170,7 @@ interface ExecutionContext {
 
 ### JourneyManager
 
-**Responsabilidade:** Gerencia o ciclo de vida de Journeys — unidade primária de experiência do usuário.  
+**Responsabilidade:** Gerencia o ciclo de vida de Journeys — unidade primária de experiência do usuário.
 **Referência:** MRS Capítulo 4, ADR-005.
 
 ```typescript
@@ -218,7 +218,7 @@ interface JourneyEvent {
 
 ### EventBus
 
-**Responsabilidade:** Comunicação assíncrona entre engines via eventos tipados com prioridade.  
+**Responsabilidade:** Comunicação assíncrona entre engines via eventos tipados com prioridade.
 **Referência:** ADR-004, RFC-004.
 
 ```typescript
@@ -268,7 +268,7 @@ interface EventFilter {
 
 ### AuditTrail
 
-**Responsabilidade:** Registro imutável de todas as ações do sistema.  
+**Responsabilidade:** Registro imutável de todas as ações do sistema.
 **Referência:** ADR-006.
 
 ```typescript
@@ -312,7 +312,7 @@ interface AuditFilter {
 
 ### SecurityGate
 
-**Responsabilidade:** Avaliação de risco, permissões e políticas antes de toda ação externa.  
+**Responsabilidade:** Avaliação de risco, permissões e políticas antes de toda ação externa.
 **Referência:** ADR-002, RFC-002.
 
 ```typescript

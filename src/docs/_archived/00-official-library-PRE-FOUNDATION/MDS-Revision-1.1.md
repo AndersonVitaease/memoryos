@@ -1,9 +1,9 @@
 # MDS v1.1 — Revisão Arquitetural Oficial
 
-**Versão:** 1.1  
-**Status:** Revisão Oficial — Adenda ao MDS v1.0  
-**Data:** 2026-07-09  
-**Tipo:** Enriquecimento Arquitetural (não substitui, não remove conteúdo do MDS v1.0)  
+**Versão:** 1.1
+**Status:** Revisão Oficial — Adenda ao MDS v1.0
+**Data:** 2026-07-09
+**Tipo:** Enriquecimento Arquitetural (não substitui, não remove conteúdo do MDS v1.0)
 **Alinhamento:** MV 1.0 · MAS 1.0 · MES 1.0 · MCF 1.0 · MCIS 1.0 · MGIS 1.0 · MDS 1.0
 
 ---
@@ -12,9 +12,9 @@
 
 Esta revisão incorpora refinamentos arquiteturais identificados durante a revisão técnica do MDS v1.0.
 
-**Não remove** nenhuma seção existente.  
-**Não simplifica** nenhum conteúdo.  
-**Não altera** nenhuma decisão de MV, MPS, MAS, MES, MCF, MCIS ou MGIS.  
+**Não remove** nenhuma seção existente.
+**Não simplifica** nenhum conteúdo.
+**Não altera** nenhuma decisão de MV, MPS, MAS, MES, MCF, MCIS ou MGIS.
 **Apenas enriquece** o Manual Oficial de Engenharia com três novos motores e as atualizações correspondentes.
 
 ### Novos Motores Introduzidos
@@ -1564,6 +1564,6 @@ Esta revisão consolida a **arquitetura definitiva do Manual Oficial de Engenhar
 
 ---
 
-**MDS v1.1 — Revisão Arquitetural Oficial**  
-**Data:** 2026-07-09 · **Adenda ao:** MDS v1.0  
+**MDS v1.1 — Revisão Arquitetural Oficial**
+**Data:** 2026-07-09 · **Adenda ao:** MDS v1.0
 **Novos Motores:** GoalValidationEngine · CapabilityNegotiationEngine · LearningEngine

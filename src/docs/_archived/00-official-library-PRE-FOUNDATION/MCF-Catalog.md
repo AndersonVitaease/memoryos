@@ -1,8 +1,8 @@
 # MCF-Catalog — SDK, Marketplace, Templates, Fluxos e Exemplos
 
-**Versão:** 1.0  
-**Status:** Oficial  
-**Parte:** 5 de 5 do MCF  
+**Versão:** 1.0
+**Status:** Oficial
+**Parte:** 5 de 5 do MCF
 **Referência:** MCF §41-50 — SDK, Templates, Fluxos, Exemplos
 
 ---
@@ -383,7 +383,7 @@ Memory Update: { type: "FACT", data: "Produto X atualizado para R$149,90 no ML" 
 ### 4.6 Sabre + Amadeus + Galileo — Sistema GDS de Viagens
 
 ```
-Usuário: "Pesquise passagens de São Paulo para Nova York para 3 pessoas, ida e volta, 
+Usuário: "Pesquise passagens de São Paulo para Nova York para 3 pessoas, ida e volta,
           15 a 22 de agosto, classe econômica."
        │
        ▼
@@ -779,9 +779,9 @@ SECURITY_EVENTS:  { AUTH_FAILED, PERMISSION_DENIED, ... }    // MCF-Security §5
 
 ---
 
-**Documento Oficial:** MCF-Catalog  
-**Versão:** 1.0  
-**Status:** Aprovado  
+**Documento Oficial:** MCF-Catalog
+**Versão:** 1.0
+**Status:** Aprovado
 **Parte:** 5 de 5 do MemoryOS Connector Framework
 
 ---
@@ -802,6 +802,6 @@ Esta é a garantia de que o MemoryOS permanecerá arquiteturalmente íntegro, es
 
 ---
 
-**MCF — MemoryOS Connector Framework**  
-**Versão:** 1.0 · **Status:** Aprovado · **Data:** 2026-07-08  
+**MCF — MemoryOS Connector Framework**
+**Versão:** 1.0 · **Status:** Aprovado · **Data:** 2026-07-08
 **Documentos:** MCF · MCF-Lifecycle · MCF-Security · MCF-Operations · MCF-Catalog

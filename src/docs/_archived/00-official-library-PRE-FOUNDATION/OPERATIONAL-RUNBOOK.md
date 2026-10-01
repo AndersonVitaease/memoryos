@@ -1,13 +1,13 @@
 # Operational Runbook
 ## MemoryOS Official Library v1.0
 
-**ID:** ORB-001  
-**Version:** 1.0  
-**Status:** FROZEN  
-**Authority:** OFFICIAL  
-**Category:** OPERATIONS  
-**ADRs:** ADR-001, ADR-003  
-**RFCs:** RFC-001, RFC-002  
+**ID:** ORB-001
+**Version:** 1.0
+**Status:** FROZEN
+**Authority:** OFFICIAL
+**Category:** OPERATIONS
+**ADRs:** ADR-001, ADR-003
+**RFCs:** RFC-001, RFC-002
 
 ---
 

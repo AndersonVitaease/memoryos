@@ -1,8 +1,8 @@
 # 🔐 ESPECIFICAÇÃO OFICIAL - GOOGLE DRIVE CONNECTOR v1.0
 
-**Data de Emissão:** 25 de julho de 2026  
-**Data de Congelamento:** 25 de julho de 2026  
-**Status:** ✅ APROVADO E CONGELADO  
+**Data de Emissão:** 25 de julho de 2026
+**Data de Congelamento:** 25 de julho de 2026
+**Status:** ✅ APROVADO E CONGELADO
 **Validade:** Até revisão formal ou término de Fase 1
 
 ---
@@ -502,10 +502,10 @@ MELHORIA:
 
 ## 📄 DOCUMENTO OFICIAL
 
-**Especificação Nome:** GOOGLE_DRIVE_CONNECTOR_v1.0_OFICIAL.md  
-**Data de Emissão:** 25 de julho de 2026  
-**Data de Congelamento:** 25 de julho de 2026  
-**Versão:** 1.0 FINAL  
+**Especificação Nome:** GOOGLE_DRIVE_CONNECTOR_v1.0_OFICIAL.md
+**Data de Emissão:** 25 de julho de 2026
+**Data de Congelamento:** 25 de julho de 2026
+**Versão:** 1.0 FINAL
 **Status:** ✅ CONGELADO E APROVADO
 
 **Responsáveis:**
@@ -513,7 +513,7 @@ MELHORIA:
 - Arquitetura: Google Drive Connector Team
 - Validação: Copilot Analyzer
 
-**Aprovado por:** [Assinatura digital]  
+**Aprovado por:** [Assinatura digital]
 **Data de Aprovação:** 25 de julho de 2026
 
 ---

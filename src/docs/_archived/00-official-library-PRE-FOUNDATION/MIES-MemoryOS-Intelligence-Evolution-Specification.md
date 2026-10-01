@@ -1,10 +1,10 @@
 # MIES — MemoryOS Intelligence Evolution Specification
 ## Collective Intelligence, Discovery & Continuous Evolution
 
-**Versão:** 1.0  
-**Status:** Documento Oficial da Evolução Cognitiva do MemoryOS — Aprovado  
-**Data:** 2026-07-10  
-**Tipo:** Especificação de Evolução Contínua  
+**Versão:** 1.0
+**Status:** Documento Oficial da Evolução Cognitiva do MemoryOS — Aprovado
+**Data:** 2026-07-10
+**Tipo:** Especificação de Evolução Contínua
 **Complementa:** MV · MPS · MAS · MDS 1.0–1.6 · MRS · MCS · MDIS · MDS Arch. Principles
 
 ---
@@ -24,7 +24,7 @@ Este documento define oficialmente **como a inteligência do MemoryOS evolui con
 | **MDIS** | Como a plataforma raciocina e decide |
 | **MIES** | Como a inteligência da plataforma evolui ao longo do tempo |
 
-**Não altera:** Core · Runtime · Roadmap  
+**Não altera:** Core · Runtime · Roadmap
 **Formaliza:** A evolução contínua da inteligência da plataforma.
 
 ---
@@ -647,26 +647,26 @@ interface IntelligenceMetrics {
   // PRECISÃO
   decisionAccuracy:        number;  // % de decisões que atingiram o objetivo  meta: > 90%
   goalCompletionRate:      number;  // % de jornadas concluídas com sucesso     meta: > 85%
-  
+
   // DESCOBERTA
   patternsDiscoveredWeekly:number;  // novos padrões validados por semana       meta: > 5
   anomaliesDetected:       number;  // anomalias detectadas antes de impacto    meta: > 95% proativo
-  
+
   // REUTILIZAÇÃO
   memoryReuseRate:         number;  // % de respostas com memória reutilizada   meta: > 70%
   knowledgeHitRate:        number;  // % de queries resolvidas pelo KG          meta: > 60%
-  
+
   // QUALIDADE
   retaskRate:              number;  // % de tarefas refeitas em < 1h            meta: < 5%
   feedbackPositiveRate:    number;  // % de feedback explícito positivo         meta: > 80%
-  
+
   // PERFORMANCE
   avgResolutionTimeMs:     number;  // tempo médio de resolução de objetivo     meta: < 2000ms
-  
+
   // EVOLUÇÃO
   learningConsolidationRate: number; // % de candidatos que passam pela gate    meta: > 40%
   knowledgeFreshnessAvg:    number; // frescor médio do knowledge graph        meta: > 0.75
-  
+
   // SATISFAÇÃO
   userRetentionRate:       number;  // % de usuários que retornam em 7 dias     meta: > 80%
   netPromoterSignal:       number;  // proxy de NPS interno                     meta: > 50
@@ -812,5 +812,5 @@ MIES  → Como a inteligência evolui continuamente  ← este documento
 
 ---
 
-**MIES — MemoryOS Intelligence Evolution Specification v1.0**  
+**MIES — MemoryOS Intelligence Evolution Specification v1.0**
 **Data:** 2026-07-10 · **Complementa:** MV · MPS · MAS · MDS 1.0–1.6 · MRS · MCS · MDIS · MDS Arch. Principles

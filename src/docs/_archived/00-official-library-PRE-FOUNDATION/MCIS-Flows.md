@@ -1,7 +1,7 @@
 # MCIS-Flows — Fluxos Completos, UML, Diagramas e Exemplos
 
-**Versão:** 1.0  
-**Status:** Oficial  
+**Versão:** 1.0
+**Status:** Oficial
 **Parte:** 4 de 4 do MCIS
 
 ---
@@ -133,7 +133,7 @@ MCIS Discovery:
     1. READ_EMAIL (parsing de convite) → Gmail
     2. SEND_EMAIL (resposta) → Gmail
     3. CREATE_CALENDAR_EVENT → Google Calendar
-  
+
   Capability Graph path descoberto automaticamente:
     READ_EMAIL.output[invite_data] ──FEEDS──► CREATE_CALENDAR_EVENT.input
     READ_EMAIL.output[reply_to]   ──FEEDS──► SEND_EMAIL.input[to]
@@ -141,7 +141,7 @@ MCIS Discovery:
 FLUXO:
   Step 1: GmailConnector.SEARCH_EMAILS { subject: "convite", from: "joao*" }
           → { emailId, subject, icalData, from, replyTo }
-          
+
   Step 2: [PARALELO]
     2a: GmailConnector.SEND_EMAIL {
           to: email.replyTo,
@@ -155,11 +155,11 @@ FLUXO:
           location: icalData.location,
           attendees: icalData.attendees
         }
-  
+
   Memory Updates (propostos automaticamente via OutputContract):
     - FACT: "Reunião com João confirmada em [data]"
     - EVENT: "[data] - Reunião João - [local]"
-    
+
   Resposta ao usuário: "Confirmei presença e adicionei ao seu calendário."
 ```
 
@@ -173,32 +173,32 @@ Evento: ShopifyConnector.ORDER_CREATED (webhook INBOUND)
 MCIS Workflow Registry encontra automaticamente:
   Workflow: "Processar Pedido Completo"
   Detectado por: padrão de uso (12x na última semana)
-  
+
   Steps (com mapeamento automático de dados via OutputContract.feedsInto):
-  
+
   Step 1: ShopifyConnector.GET_ORDER { orderId: event.orderId }
           output: { order: { id, customer, items, total, shippingAddress } }
-  
+
   Step 2: BlingConnector.CREATE_INVOICE {
             customer: order.customer,        ← auto-mapped
             items: order.items,              ← auto-mapped
             total: order.total               ← auto-mapped
           }
           output: { invoice: { id, pdfUrl, nfeKey } }
-  
+
   Step 3: GmailConnector.SEND_EMAIL {
             to: order.customer.email,        ← auto-mapped
             subject: "Pedido #" + order.id + " confirmado",
             body: "...",
             attachment: invoice.pdfUrl       ← auto-mapped
           }
-  
+
   Step 4: ShopifyConnector.UPDATE_ORDER_STATUS {
             orderId: order.id,
             status: "invoiced",
             nfeKey: invoice.nfeKey           ← auto-mapped
           }
-  
+
   Execução: Steps 2, 3 em paralelo (CapabilityGraph.canRunInParallel = true)
   Estimativa: 4.1 segundos | Workflow automático: SIM
 ```
@@ -212,7 +212,7 @@ Usuário: "Sincronize os pedidos de hoje do Mercado Livre com o ERP"
 
 MCIS Selection:
   COMMERCE.ECOMMERCE.MARKETPLACE → MercadoLivreConnector
-  COMMERCE.FINANCIAL.ERP_FINANCIAL → BlingConnector  
+  COMMERCE.FINANCIAL.ERP_FINANCIAL → BlingConnector
   ENTERPRISE.ERP → TOTVSConnector
 
 MCIS Dependency Resolution:
@@ -226,19 +226,19 @@ FLUXO:
             status: "paid"
           }
           output: { orders: [{ id, buyer, items, total }] }
-  
+
   Step 2: [BATCH paralelo para cada pedido]
           BlingConnector.CREATE_INVOICE { ...order_data } → invoice
-          
+
   Step 3: [BATCH paralelo para cada pedido]
           TOTVSConnector.CREATE_ORDER {
             mlOrderId: order.id,
             invoice: invoice,
             items: order.items    ← mapeamento automático ML → TOTVS schema
           }
-  
+
   Memory Update: "37 pedidos ML sincronizados com TOTVS (2026-07-08)"
-  
+
   Sugestão gerada pelo MCIS:
     "Este workflow ocorreu 18 vezes. Deseja automatizar diariamente às 23h?"
 ```
@@ -252,10 +252,10 @@ Usuário: "Pesquise a melhor passagem GRU→LHR para 10 pessoas, executivo, agos
 
 MCIS Multi-Connector Selection:
   TRAVEL.GDS → [SabreConnector, AmadeusConnector, GalileoConnector]
-  
+
   Strategy: PARALLEL_ALL (buscar nos 3 simultaneamente)
   Aggregation: MERGE + DEDUPLICATE + RANK_BY_PRICE
-  
+
   Capability Graph:
     SEARCH_FLIGHTS (Sabre)  ──EQUIVALENT──► SEARCH_FLIGHTS (Amadeus)
     SEARCH_FLIGHTS (Sabre)  ──EQUIVALENT──► SEARCH_FLIGHTS (Galileo)
@@ -281,7 +281,7 @@ FLUXO PARALELO:
     - Remove duplicatas (mesmo voo, múltiplos GDS)
     - Rankeia por: preço, conexões, tempo de voo
     - Marca disponibilidade em tempo real
-    
+
   Resultado: Lista unificada + Specialist de Viagem analisa
   Memory Update: "Pesquisa GRU→LHR executivo 10pax agosto 2026"
 ```
@@ -297,7 +297,7 @@ MCIS Discovery:
   BLOCKCHAIN.ORACLE    → ChainlinkConnector (preço ETH/SOL)
   BLOCKCHAIN.BRIDGE    → LayerZeroConnector (ETH → Solana)
   BLOCKCHAIN.WALLET    → PhantomConnector (Solana wallet)
-  
+
   Capability Graph path:
     Chainlink.GET_PRICE → informa slippage estimado
     LayerZero.BRIDGE_TOKENS → usa preço para calcular mínimo recebido
@@ -425,11 +425,11 @@ MCIS Discovery:
 FLUXO:
   Step 1: GmailConnector.LIST_MESSAGES { limit: 50, unread: true }
           → [{ id, from, subject, snippet, date }]
-  
+
   Step 2: [BATCH paralelo — 10 por vez, max paralelo = 5]
           GmailConnector.READ_EMAIL { messageId: email.id }
           → { body, attachments, thread }
-  
+
   Step 3: InvokeLLM {
             model: "gemini_3_flash",
             prompt: "Analise estes e-mails e classifique por:
@@ -438,7 +438,7 @@ FLUXO:
             input: emails_full_content
           }
           → { urgent: [...], important: [...], informational: [...] }
-  
+
   MCIS coordena automaticamente:
     - Paginação em batch (evitar rate limit Gmail)
     - Seleção do modelo IA baseada em custo vs. qualidade
@@ -649,6 +649,6 @@ Esta é a garantia arquitetural de que o MemoryOS pode crescer para suportar mil
 
 ---
 
-**MCIS — MemoryOS Connector Intelligence Specification**  
-**Versão:** 1.0 · **Status:** Aprovado · **Data:** 2026-07-08  
+**MCIS — MemoryOS Connector Intelligence Specification**
+**Versão:** 1.0 · **Status:** Aprovado · **Data:** 2026-07-08
 **Documentos:** MCIS · MCIS-Registry · MCIS-Intelligence · MCIS-Flows

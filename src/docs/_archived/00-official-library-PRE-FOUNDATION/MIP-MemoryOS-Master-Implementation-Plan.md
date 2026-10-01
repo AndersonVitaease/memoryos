@@ -1,10 +1,10 @@
 # MIP — MemoryOS Master Implementation Plan
 ## Official Product Implementation Plan
 
-**Version:** 1.0  
-**Status:** Engineering Execution  
-**Foundation:** v1.0  
-**Declared:** 2026-07-10  
+**Version:** 1.0
+**Status:** Engineering Execution
+**Foundation:** v1.0
+**Declared:** 2026-07-10
 **Authority:** Foundation Committee
 
 ---
@@ -410,8 +410,8 @@ Toda evolução deverá utilizar este plano como referência para priorização 
 
 ## Capítulo 11 — UX Evolution Layer (Sprint 8.1)
 
-**Declarado em:** 2026-08-03  
-**Status:** Engineering Execution — Fase 1 em andamento  
+**Declarado em:** 2026-08-03
+**Status:** Engineering Execution — Fase 1 em andamento
 **Princípio:** Aditivo e não-destrutivo. Camada de observabilidade que consome EventBuses existentes sem reescrever o motor de processamento.
 
 ### Motivação

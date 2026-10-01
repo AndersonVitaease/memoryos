@@ -144,11 +144,11 @@ test(10, "Complete integration path validated", () => {
   const connectorPath = "c:\\Users\\Cliente\\Documents\\memoryos\\src\\lib\\connector-runtime\\connectors\\GoogleDriveConnector.ts";
   const executorPath = "c:\\Users\\Cliente\\Documents\\memoryos\\src\\lib\\google-drive\\DriveUploadExecutor.ts";
   const foundationPath = "c:\\Users\\Cliente\\Documents\\memoryos\\src\\lib\\google-drive\\GoogleDriveConnector.ts";
-  
+
   const connectorContent = readFileSync(connectorPath, "utf-8");
   const executorContent = readFileSync(executorPath, "utf-8");
   const foundationContent = readFileSync(foundationPath, "utf-8");
-  
+
   return connectorContent.includes("executeDriveUpload") &&
          executorContent.includes("export async function executeDriveUpload") &&
          foundationContent.includes("export async function uploadFile");

@@ -1,10 +1,10 @@
 # Engineering Journal
 ## MemoryOS Operational Knowledge Base v1.0
 
-**ID:** EJ-001  
-**Category:** OPERATIONAL_KNOWLEDGE  
-**Status:** ACTIVE  
-**Authority:** ENGINEERING  
+**ID:** EJ-001
+**Category:** OPERATIONAL_KNOWLEDGE
+**Status:** ACTIVE
+**Authority:** ENGINEERING
 **Last Updated:** 2026-07-18
 
 ---
@@ -16,7 +16,7 @@
 
 ## EJ-001 — Sprint 1: Working Memory Engine Foundation
 
-**Date:** Early development  
+**Date:** Early development
 **Sprint:** Sprint 1 (WME)
 
 **Summary:** Established the Working Memory Engine as the first core component. Defined TTL-based memory tiers, eviction policies, and the IWorkingMemoryEngine interface.
@@ -35,7 +35,7 @@
 
 ## EJ-002 — Sprint 17: Execution Engine Foundation
 
-**Date:** Sprint 17  
+**Date:** Sprint 17
 **Sprint:** Sprint 17
 
 **Summary:** Implemented the core Execution Engine with sequential and parallel step execution, rollback capability, and Security Gate integration.
@@ -55,7 +55,7 @@
 
 ## EJ-003 — Sprint OL-01/02: Official Library Consolidation
 
-**Date:** 2026-07-18  
+**Date:** 2026-07-18
 **Sprint:** Sprint OL-01, OL-02
 
 **Summary:** Consolidated all core specifications into the Official Library. Created ingestion registries for Batch 01–04. Established Knowledge Graph cross-references.
@@ -75,7 +75,7 @@
 
 ## EJ-004 — Sprint P-01.11B: Architecture Freeze Hardening
 
-**Date:** Sprint P-01.11B  
+**Date:** Sprint P-01.11B
 **Sprint:** P-01.11B
 
 **Summary:** Hardened the core architecture. Replaced global mutable state with frozen factory pattern. Split responsibilities across focused classes. Implemented ArchitectureCertificationSuite with 28+ rules.
@@ -99,7 +99,7 @@
 
 ## EJ-005 — Sprint KB-01: Operational Knowledge Base Foundation
 
-**Date:** 2026-07-18  
+**Date:** 2026-07-18
 **Sprint:** KB-01
 
 **Summary:** Created the first Operational Knowledge Base layer. Structured operational knowledge separate from the Official Library to preserve library authority while capturing engineering experience.

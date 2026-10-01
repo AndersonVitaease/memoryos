@@ -1,10 +1,10 @@
 # MERS — MemoryOS Engineering Review System
 ## Official Engineering Review & Quality Gate
 
-**Version:** 1.0  
-**Status:** Official Foundation Process  
-**Foundation:** v1.0  
-**Declared:** 2026-07-10  
+**Version:** 1.0
+**Status:** Official Foundation Process
+**Foundation:** v1.0
+**Declared:** 2026-07-10
 **Authority:** Foundation Committee
 
 ---
@@ -302,10 +302,10 @@ O Sprint pode ser aprovado com ressalvas quando:
 
 ### Identidade
 
-**Nome:** Engineering Review Specialist  
-**Tipo:** Internal Specialist  
-**Scope:** Platform-wide  
-**Authority:** Quality Gate  
+**Nome:** Engineering Review Specialist
+**Tipo:** Internal Specialist
+**Scope:** Platform-wide
+**Authority:** Quality Gate
 
 ### Responsabilidades
 

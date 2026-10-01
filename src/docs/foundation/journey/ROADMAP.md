@@ -5,7 +5,7 @@
 
 ## Fase Atual: Engineering First
 
-**Início:** 2026-07-10  
+**Início:** 2026-07-10
 **Objetivo:** Transformar a Foundation v1.0 em implementação real e funcional.
 
 ---

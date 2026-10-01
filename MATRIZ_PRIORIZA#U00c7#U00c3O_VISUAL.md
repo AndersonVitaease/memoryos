@@ -1,7 +1,7 @@
 # 📊 MATRIZ DE PRIORIZAÇÃO - GOOGLE DRIVE CONNECTOR v1.0
 
-**Data:** 25 de julho de 2026  
-**Status:** Validação de prioridades de negócio - FINALIZADA  
+**Data:** 25 de julho de 2026
+**Status:** Validação de prioridades de negócio - FINALIZADA
 **Recomendação:** 13 capabilities para v1.0 REAL (vs. 27 anteriores)
 
 ---

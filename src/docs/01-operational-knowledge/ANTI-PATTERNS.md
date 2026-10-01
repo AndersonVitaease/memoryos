@@ -1,10 +1,10 @@
 # Anti-Patterns
 ## MemoryOS Operational Knowledge Base v1.0
 
-**ID:** AP-001  
-**Category:** OPERATIONAL_KNOWLEDGE  
-**Status:** ACTIVE  
-**Authority:** ENGINEERING  
+**ID:** AP-001
+**Category:** OPERATIONAL_KNOWLEDGE
+**Status:** ACTIVE
+**Authority:** ENGINEERING
 **Last Updated:** 2026-07-18
 
 ---

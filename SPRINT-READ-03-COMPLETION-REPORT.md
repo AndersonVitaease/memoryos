@@ -6,9 +6,9 @@
 
 Sprint read-03 (Resumir documento) foi implementada com sucesso. O sistema agora pode processar intenções do usuário como "Resuma o documento relatorio-financeiro.pdf" e retornar resumos estruturados via LLM.
 
-**Entrega Date:** 2026-07-26  
-**Duration:** ~4 horas (design + implementation + testing)  
-**Build Status:** ✅ SUCCESS (0 TypeScript errors)  
+**Entrega Date:** 2026-07-26
+**Duration:** ~4 horas (design + implementation + testing)
+**Build Status:** ✅ SUCCESS (0 TypeScript errors)
 **Test Status:** ✅ 10/10 functional criteria passed + 1/1 integration test passed
 
 ---
@@ -584,6 +584,6 @@ The sprint delivers a complete, tested implementation of document summarization 
 
 ---
 
-**Report Generated:** 2026-07-26T21:06:21Z  
-**Sprint Duration:** ~4 hours  
+**Report Generated:** 2026-07-26T21:06:21Z
+**Sprint Duration:** ~4 hours
 **Status:** ✅ COMPLETE

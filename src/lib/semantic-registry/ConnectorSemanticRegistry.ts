@@ -88,20 +88,20 @@ export const ConnectorSemanticRegistry: ConnectorSemanticRegistryClass = (
 /**
  * Atenção: O ImplicitConnectorIntentDetector utiliza a função listAll()
  * para obter a lista de conectores registrados.
- * 
+ *
  * Se você deseja que o sistema pare de tentar usar conectores como Gmail/GitHub
  * automaticamente para qualquer pergunta, você deve garantir que o registro
  * desses conectores NÃO seja feito neste arquivo (ele geralmente é feito em
  * outro lugar, como um arquivo de inicialização index.ts ou main.ts).
- * 
+ *
  * Caso os conectores estejam sendo registrados em outro lugar, este arquivo
  * permanece intacto e atua apenas como um container.
- * 
+ *
  * Se você deseja adicionar um "Conector de Conversa" (OpenRouter) para que
- * o sistema entenda que existe uma opção de "general.conversation" ou 
+ * o sistema entenda que existe uma opção de "general.conversation" ou
  * "general.webSearch", procure o arquivo onde os conectores são registrados
  * e adicione uma linha como:
- * 
+ *
  * ConnectorSemanticRegistry.register({
  *   connectorId: "openrouter",
  *   detect: (lower, norm) => ({

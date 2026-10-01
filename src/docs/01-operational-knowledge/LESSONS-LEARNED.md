@@ -1,10 +1,10 @@
 # Lessons Learned
 ## MemoryOS Operational Knowledge Base v1.0
 
-**ID:** LL-001  
-**Category:** OPERATIONAL_KNOWLEDGE  
-**Status:** ACTIVE  
-**Authority:** ENGINEERING  
+**ID:** LL-001
+**Category:** OPERATIONAL_KNOWLEDGE
+**Status:** ACTIVE
+**Authority:** ENGINEERING
 **Last Updated:** 2026-07-18
 
 ---
@@ -19,16 +19,16 @@
 
 ```
 ### LL-NNN — [Title]
-- **Sprint:** 
-- **Date:** 
-- **Problem:** 
-- **Context:** 
-- **Initial Hypothesis:** 
-- **Root Cause:** 
-- **Solution Applied:** 
-- **Result:** 
-- **How to Avoid:** 
-- **References:** 
+- **Sprint:**
+- **Date:**
+- **Problem:**
+- **Context:**
+- **Initial Hypothesis:**
+- **Root Cause:**
+- **Solution Applied:**
+- **Result:**
+- **How to Avoid:**
+- **References:**
 ```
 
 ---

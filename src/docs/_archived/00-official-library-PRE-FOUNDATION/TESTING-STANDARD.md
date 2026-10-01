@@ -1,13 +1,13 @@
 # Testing Standard
 ## MemoryOS Official Library v1.0
 
-**ID:** TST-001  
-**Version:** 1.0  
-**Status:** FROZEN  
-**Authority:** OFFICIAL  
-**Category:** DEVELOPMENT  
-**ADRs:** ADR-001, ADR-005  
-**RFCs:** RFC-004  
+**ID:** TST-001
+**Version:** 1.0
+**Status:** FROZEN
+**Authority:** OFFICIAL
+**Category:** DEVELOPMENT
+**ADRs:** ADR-001, ADR-005
+**RFCs:** RFC-004
 
 ---
 

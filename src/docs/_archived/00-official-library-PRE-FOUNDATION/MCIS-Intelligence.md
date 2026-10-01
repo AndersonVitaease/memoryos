@@ -1,7 +1,7 @@
 # MCIS-Intelligence — Seleção, Contratos, Aprendizado e Integrações
 
-**Versão:** 1.0  
-**Status:** Oficial  
+**Versão:** 1.0
+**Status:** Oficial
 **Parte:** 3 de 4 do MCIS
 
 ---
@@ -15,24 +15,24 @@ O Input Contract define formalmente o que um Connector aceita como entrada para 
 ```typescript
 interface InputContract {
   actionId: string;
-  
+
   // Schema JSON formal (validação automática)
   schema: JSONSchema;
-  
+
   // Campos obrigatórios
   required: string[];
-  
+
   // Exemplos canônicos
   examples: InputExample[];
-  
+
   // Mapeamento semântico de campos
   semanticMapping: FieldSemanticMapping[];
   // Ex: campo "to" → ontologia "EMAIL_ADDRESS" ou "PERSON_IDENTIFIER"
-  
+
   // Transformações aceitas automaticamente
   autoTransformations: AutoTransformation[];
   // Ex: PERSON_NAME → busca email na memória → EMAIL_ADDRESS
-  
+
   // Validações específicas do domínio
   domainValidations: DomainValidation[];
 }
@@ -61,7 +61,7 @@ GmailConnector.SEND_EMAIL requer:
 
 Auto-Mapping:
   PERSON_ENTITY → extrair campo email → EMAIL_ADDRESS → "joao@empresa.com"
-  
+
 Resultado: Core não precisa saber que GmailConnector precisa de email.
            O Auto-Mapping resolve automaticamente.
 ```
@@ -73,20 +73,20 @@ Resultado: Core não precisa saber que GmailConnector precisa de email.
 ```typescript
 interface OutputContract {
   actionId: string;
-  
+
   // Schema da resposta normalizada
   schema: JSONSchema;
-  
+
   // Mapeamento semântico da saída
   semanticMapping: FieldSemanticMapping[];
-  
+
   // O que este output pode alimentar (para composição de workflows)
   feedsInto: FeedDefinition[];
   // Ex: SEARCH_EMAILS output → pode alimentar READ_EMAIL input
-  
+
   // Propostas de memória que este output gera
   memoryProposals: MemoryProposalTemplate[];
-  
+
   // Dados que nunca devem aparecer na resposta normalizada
   strippedFields: string[];
   // Ex: internal_token, raw_auth_header
@@ -120,15 +120,15 @@ interface SelectionGoal {
 interface SelectionContext {
   userId: string;
   sessionId: string;
-  
+
   // Histórico de uso (Camada de Aprendizado)
   preferredConnectors: string[];
   successHistory: ConnectorSuccessRecord[];
-  
+
   // Contexto atual
   projectId?: string;
   activeConnectors: string[];       // Já autenticados nesta sessão
-  
+
   // Preferências do usuário
   userPreferences: UserConnectorPreferences;
 }
@@ -140,7 +140,7 @@ interface SelectionConstraints {
   availabilityWeight: number;   // 0.0 a 1.0 — prioridade de disponibilidade
   securityWeight: number;       // 0.0 a 1.0 — prioridade de segurança
   preferenceWeight: number;     // 0.0 a 1.0 — prioridade de preferência do usuário
-  
+
   maxLatencyMs?: number;
   maxCost?: number;
   requiredPermissions?: string[];
@@ -154,13 +154,13 @@ interface SelectionConstraints {
 interface CostModel {
   // Custo computacional (latência estimada em ms)
   computationalCostMs: number;
-  
+
   // Custo de créditos MemoryOS
   creditCost: number;
-  
+
   // Custo de quota (impacto no rate limit)
   quotaImpact: number;            // 0.0 = sem impacto, 1.0 = alta utilização
-  
+
   // Custo financeiro real (para Connectors pagos)
   financialCost?: {
     amount: number;
@@ -180,14 +180,14 @@ interface PerformanceModel {
   p99LatencyMs: number;
   uptimePercent: number;
   errorRatePercent: number;
-  
+
   // Velocidade de resposta do sistema externo
   externalSystemP50Ms: number;
-  
+
   // Suporte a execução em lote
   supportsBatch: boolean;
   batchMaxSize?: number;
-  
+
   // Suporte a streaming
   supportsStreaming: boolean;
 }
@@ -202,10 +202,10 @@ interface AvailabilityModel {
   circuitBreakerState: "CLOSED" | "OPEN" | "HALF_OPEN";
   lastHealthCheckAt: string;
   scheduledMaintenanceWindow?: MaintenanceWindow;
-  
+
   // Cobertura geográfica
   availableRegions: string[];
-  
+
   // SLA do sistema externo
   externalSLA: {
     uptimePercent: number;
@@ -222,13 +222,13 @@ interface SecurityModel {
   sandboxed: boolean;
   signatureValid: boolean;
   lastSecurityAuditAt?: string;
-  
+
   // Compliance
   lgpdCompliant: boolean;
   gdprCompliant: boolean;
   soc2Certified: boolean;
   pciDssCompliant: boolean;       // Para Connectors financeiros
-  
+
   // Dados processados
   processesPII: boolean;
   processesFinancialData: boolean;
@@ -241,7 +241,7 @@ interface SecurityModel {
 ```
 Algoritmo de Seleção por Pontuação:
 
-score(connector) = 
+score(connector) =
   (1/costMs × costWeight) +
   (uptimePercent × availabilityWeight) +
   (1/p95Latency × performanceWeight) +
@@ -269,14 +269,14 @@ Resultado final:
 interface ConnectorUsageLearning {
   // Registrado a cada execução
   recordUsage(record: UsageRecord): void;
-  
+
   // Análise de padrões
   analyzePatterns(userId: string): UsagePattern[];
-  
+
   // Sugestões automáticas
   suggestWorkflows(userId: string): WorkflowSuggestion[];
   suggestConnectors(userId: string): ConnectorSuggestion[];
-  
+
   // Feedback
   recordOutcome(requestId: string, outcome: ExecutionOutcome): void;
 }
@@ -305,18 +305,18 @@ PADRÃO 1 — Sequência recorrente:
     1. Consulta pedidos Shopify
     2. Gera NF-e no Bling
     3. Envia NF-e por Gmail
-  
+
   → MCIS sugere: "Criar workflow automático para toda segunda-feira"
 
 PADRÃO 2 — Connector substituível:
   Quando GmailConnector está lento (>3s),
   o usuário frequentemente escolhe OutlookConnector
-  
+
   → MCIS aprende: usar Outlook como fallback automático quando Gmail > 3s
 
 PADRÃO 3 — Combinação frequente:
   ShopifyConnector + MercadoLivreConnector são sempre usados juntos
-  
+
   → MCIS sugere: "Sincronização automática entre Shopify e Mercado Livre"
 ```
 
@@ -326,26 +326,26 @@ PADRÃO 3 — Combinação frequente:
 interface ConnectorUsageStatistics {
   connectorId: string;
   period: StatisticsPeriod;
-  
+
   // Volume
   totalCalls: number;
   uniqueUsers: number;
   callsPerAction: Record<string, number>;
-  
+
   // Qualidade
   successRate: number;
   avgLatencyMs: number;
   p95LatencyMs: number;
-  
+
   // Seleção
   autoSelectedCount: number;       // Vezes selecionado pelo MCIS
   manualSelectedCount: number;     // Vezes selecionado pelo usuário
   overrideRate: number;            // % das vezes que usuário substituiu
-  
+
   // Composição
   mostComposedWith: ConnectorCompositionStat[];
   workflowParticipation: number;   // % das chamadas dentro de workflows
-  
+
   // Tendências
   growthRate: number;              // % crescimento vs período anterior
   trendDirection: "UP" | "STABLE" | "DOWN";
@@ -360,22 +360,22 @@ interface ConnectorUsageStatistics {
 interface WorkflowSuggestion {
   suggestionId: string;
   confidence: number;             // 0.0 a 1.0
-  
+
   // Descrição em linguagem natural
   title: string;                  // Ex: "Automatizar NF-e semanal"
   description: string;
-  
+
   // Workflow sugerido
   workflow: ConnectorWorkflowDescriptor;
-  
+
   // Por que foi sugerido
   rationale: string;
   basedOn: SuggestionBasis;
   // Ex: { type: "USAGE_PATTERN", frequency: 12, lastOccurrence: "..." }
-  
+
   // Como ativar
   activationInstructions: string;
-  
+
   // Economia estimada
   estimatedTimeSavedMinutes: number;
   estimatedCallsAutomated: number;
@@ -389,20 +389,20 @@ interface WorkflowSuggestion {
 ```typescript
 interface ConnectorSuggestion {
   suggestionId: string;
-  
+
   // O que o usuário está tentando fazer que não consegue
   unmetCapability: string;
   // Ex: "Integrar com sistema de ERP legado da empresa"
-  
+
   // Connectors sugeridos do marketplace
   suggestedConnectors: MarketplaceSuggestion[];
-  
+
   // Capacidade de desenvolvimento próprio
   developmentTemplate?: ConnectorTemplateSuggestion;
-  
+
   // Prioridade
   priority: "HIGH" | "MEDIUM" | "LOW";
-  
+
   // Frequência com que este gap foi detectado
   gapFrequency: number;
 }
@@ -422,7 +422,7 @@ Fluxo:
   Agente ativo → goal: "monitorar e-mails críticos e responder automaticamente"
        │
        ▼
-  MCIS.discover(goal) → retorna: GmailConnector(READ_EMAIL) + 
+  MCIS.discover(goal) → retorna: GmailConnector(READ_EMAIL) +
                                   GmailConnector(SEND_EMAIL)
        │
        ▼
@@ -440,17 +440,17 @@ REGRA: O Agente nunca conhece "Gmail".
 
 ```
 Specialist de Viagem precisa verificar disponibilidade de voos:
-  
+
   Specialist → MCIS.findByOntologyDomain("TRAVEL.GDS")
              → retorna: [SabreConnector, AmadeusConnector, GalileoConnector]
              → cada um com: capabilities, cost, performance, availability
-  
+
   Specialist informa ao Core:
     "Capacidades de busca de voos disponíveis: 3 Connectors"
     "Recomendação: Amadeus (melhor cobertura para rotas Sul-Americanas)"
-  
+
   Core → Planner → Execution Planner → AmadeusConnector.SEARCH_FLIGHTS()
-  
+
   Specialist NUNCA chama o Connector diretamente.
   Ele fornece conhecimento. O pipeline decide e executa.
 ```
@@ -462,15 +462,15 @@ Specialist de Viagem precisa verificar disponibilidade de voos:
 interface PlannerMCISIntegration {
   // Verificar se um goal pode ser resolvido com Connectors disponíveis
   canResolve(goal: string): CapabilityResolvabilityResult;
-  
+
   // Obter o melhor conjunto de Connectors para um plano
   planConnectors(
     plan: ExecutionPlan
   ): ConnectorAssignment[];
-  
+
   // Estimar custo e tempo do plano
   estimatePlan(plan: ExecutionPlan): PlanEstimate;
-  
+
   // Detectar dependências e ordenar steps
   orderSteps(
     steps: PlanStep[]
@@ -533,7 +533,7 @@ Memory Engine usa MCIS para:
 
 2. PROCESSAR PROPOSTAS APÓS EXECUÇÃO
    OutputContract.memoryProposals → Memory Engine decide aceitar ou rejeitar
-   
+
 3. CONTROLE DE RETENÇÃO
    MemoryRequirements.retentionPolicy → configurar TTL automaticamente
 
@@ -552,10 +552,10 @@ Exemplo — GmailConnector:
 interface MCISEventBusIntegration {
   // Publicar eventos conforme EventRegistry
   publishEvent(eventType: string, payload: unknown): void;
-  
+
   // Escutar eventos que podem disparar capabilities
   subscribeToTriggers(): void;
-  
+
   // Registrar handlers conforme consumedEvents
   registerConsumedEvents(): void;
 }
@@ -591,19 +591,19 @@ interface EnterpriseGovernanceIntegration {
     organizationId: string,
     period: Period
   ): EnterpriseAuditReport;
-  
+
   // Políticas corporativas sobre Connectors
   enforcePolicy(
     policy: EnterpriseConnectorPolicy
   ): PolicyEnforcementResult;
   // Ex: "Apenas Connectors CERTIFIED podem ser usados nesta organização"
-  
+
   // Controle de Connectors por departamento
   setDepartmentPermissions(
     departmentId: string,
     allowedConnectors: string[]
   ): void;
-  
+
   // Relatório de conformidade
   getComplianceReport(
     organizationId: string
@@ -689,7 +689,7 @@ GARANTIAS DE BACKWARD COMPATIBILITY DO MCIS:
 5. Algoritmo de seleção é plugável:
    SelectionEngine é uma interface
    Novas estratégias podem ser adicionadas sem alterar o contrato
-   
+
 6. MCIS vs. MCF:
    MCF define o executor (como fazer)
    MCIS define a inteligência (o que pode ser feito)
@@ -700,6 +700,6 @@ GARANTIAS DE BACKWARD COMPATIBILITY DO MCIS:
 
 ---
 
-**Documento Oficial:** MCIS-Intelligence  
-**Versão:** 1.0 · **Status:** Aprovado  
+**Documento Oficial:** MCIS-Intelligence
+**Versão:** 1.0 · **Status:** Aprovado
 **Parte:** 3 de 4 do MCIS

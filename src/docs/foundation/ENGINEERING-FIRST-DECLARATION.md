@@ -1,7 +1,7 @@
 # Engineering First — Declaração Oficial
 
-**Data:** 2026-07-11  
-**Foundation:** v1.0  
+**Data:** 2026-07-11
+**Foundation:** v1.0
 **Status:** ATIVO — Princípio Permanente
 
 ---

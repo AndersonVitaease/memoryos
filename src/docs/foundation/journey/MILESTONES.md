@@ -4,7 +4,7 @@
 ---
 
 ## M1 — Foundation v1.0 ✅
-**Data:** 2026-07-10  
+**Data:** 2026-07-10
 **Status:** Completed
 
 - 13 especificações oficiais aprovadas
@@ -16,7 +16,7 @@
 ---
 
 ## M2 — Core Complete
-**Previsão:** Q3 2026  
+**Previsão:** Q3 2026
 **Status:** In Progress
 
 - Todos os engines do Core implementados
@@ -26,7 +26,7 @@
 ---
 
 ## M3 — SDK v1.0
-**Previsão:** Q3 2026  
+**Previsão:** Q3 2026
 **Status:** Planned
 
 - Core SDK publicado
@@ -37,7 +37,7 @@
 ---
 
 ## M4 — First Connectors
-**Previsão:** Q4 2026  
+**Previsão:** Q4 2026
 **Status:** Planned
 
 - 5 Connectors oficiais certificados
@@ -46,7 +46,7 @@
 ---
 
 ## M5 — Beta
-**Previsão:** Q1 2027  
+**Previsão:** Q1 2027
 **Status:** Planned
 
 - 100 usuários beta

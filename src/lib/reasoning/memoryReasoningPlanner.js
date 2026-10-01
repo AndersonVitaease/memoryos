@@ -272,7 +272,7 @@ export async function runReasoningPlan({ userMsg, session, historyMessages = [],
   // explicitas (nome, propósito, "é você"). Janela 60->40 pra nao pegar "vc"
   // longe do inicio.
   const _IDENTITY_BYPASS = /^(qual|quem|como|o que|me diga|me fale|oi|olá|ola|bom dia|boa tarde|boa noite)\b.{0,40}(nome|propósito|objetivo|funcao|função|se chama|és|é você|é voce|é vc)\b/i;
-  const _isIdentityQuery = _IDENTITY_BYPASS.test(userMsg.trim()) || 
+  const _isIdentityQuery = _IDENTITY_BYPASS.test(userMsg.trim()) ||
     /^(qual (é |e )?(o |seu |o seu )?(nome|propósito|objetivo|função|funcao))/i.test(userMsg.trim());
 
   // === PRÉ-ETAPA 0.1: RESPOSTA DIRETA PARA PERGUNTAS DE IDENTIDADE ===

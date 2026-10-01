@@ -2,9 +2,9 @@
 
 /**
  * test-read-03-simple.mjs
- * 
+ *
  * Functional validation of read-03 (drive.summarizeDocument) capability
- * 
+ *
  * Checks:
  * 1. GoogleDriveSummarizeCapability.ts created
  * 2. GoogleDriveSummarizeCapability exported from capability-runtime/index.ts

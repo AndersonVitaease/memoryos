@@ -1,11 +1,11 @@
 # Evidence Standard
 ## MemoryOS Operational Knowledge Base v1.0
 
-**ID:** ES-001  
-**Category:** OPERATIONAL_KNOWLEDGE  
-**Status:** ACTIVE  
-**Authority:** ENGINEERING  
-**Sprint:** KB-02  
+**ID:** ES-001
+**Category:** OPERATIONAL_KNOWLEDGE
+**Status:** ACTIVE
+**Authority:** ENGINEERING
+**Sprint:** KB-02
 **Last Updated:** 2026-07-18
 
 ---

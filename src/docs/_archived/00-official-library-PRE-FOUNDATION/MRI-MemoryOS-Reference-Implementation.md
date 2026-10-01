@@ -1,10 +1,10 @@
 # MRI — MemoryOS Reference Implementation
 ## Official Engineering Validation & First End-to-End Implementation
 
-**Versão:** 1.0  
-**Status:** Documento Oficial de Implementação de Referência — Aprovado  
-**Data:** 2026-07-10  
-**Tipo:** Especificação de Implementação de Referência  
+**Versão:** 1.0
+**Status:** Documento Oficial de Implementação de Referência — Aprovado
+**Data:** 2026-07-10
+**Tipo:** Especificação de Implementação de Referência
 **Complementa:** Todos os documentos da Biblioteca Oficial
 
 ---
@@ -34,7 +34,7 @@ Este documento inaugura a **segunda grande fase do projeto MemoryOS**.
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Não altera:** MV · MPS · MAS · MDS · MRS · MCS · MDIS · MIES · MDPS · MGFS  
+**Não altera:** MV · MPS · MAS · MDS · MRS · MCS · MDIS · MIES · MDPS · MGFS
 **Demonstra:** Como todos esses documentos são aplicados na prática.
 
 ---
@@ -909,5 +909,5 @@ LEGENDA: ✓ implementado · ~ parcial · ○ planejado
 
 ---
 
-**MRI — MemoryOS Reference Implementation v1.0**  
+**MRI — MemoryOS Reference Implementation v1.0**
 **Data:** 2026-07-10 · **Inaugura:** Fase 2 — Validação da Arquitetura

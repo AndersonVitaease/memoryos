@@ -1,10 +1,10 @@
 
 # SPRINT-ORG-02-COMPLETION-REPORT.md
 
-**Sprint ID:** org-02  
-**Sprint Name:** Mover arquivo para pasta (Move File to Folder)  
-**Status:** ✅ COMPLETO  
-**Date:** 2024-07-25  
+**Sprint ID:** org-02
+**Sprint Name:** Mover arquivo para pasta (Move File to Folder)
+**Status:** ✅ COMPLETO
+**Date:** 2024-07-25
 **Classification:** TIPO A (Core Functionality)
 
 ---
@@ -99,7 +99,7 @@ Sprint **org-02** foi completamente implementado com sucesso.
 3. **CapabilityBootstrap.ts**
    ```
    Arquivo: src/lib/capability-runtime/CapabilityBootstrap.ts
-   Mudança: 
+   Mudança:
      - Adicionada import: GoogleDriveMoveCapability
      - Adicionada factory: new GoogleDriveMoveCapability()
      - Atualizado comentário: Phase 1 now includes org-02

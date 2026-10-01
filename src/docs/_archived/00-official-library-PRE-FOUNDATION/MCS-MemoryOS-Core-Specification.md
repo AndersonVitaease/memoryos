@@ -1,10 +1,10 @@
 # MCS — MemoryOS Core Specification
 ## Core Architecture Boundaries & Responsibilities
 
-**Versão:** 1.0  
-**Status:** Documento Oficial da Arquitetura — Aprovado  
-**Data:** 2026-07-10  
-**Tipo:** Especificação do Core  
+**Versão:** 1.0
+**Status:** Documento Oficial da Arquitetura — Aprovado
+**Data:** 2026-07-10
+**Tipo:** Especificação do Core
 **Complementa:** MV · MPS · MAS · MDS 1.0–1.6 · MRS · MDS Architectural Principles
 
 ---
@@ -24,7 +24,7 @@ Este documento define oficialmente **o que pertence ao Core permanente do Memory
 
 **Objetivo:** Preservar a estabilidade, reutilização e escalabilidade do MemoryOS durante muitos anos.
 
-**Não altera:** Roadmap · Arquitetura · Runtime  
+**Não altera:** Roadmap · Arquitetura · Runtime
 **Estabelece:** Limites claros entre o Core e os demais componentes.
 
 ---
@@ -471,7 +471,7 @@ Nova funcionalidade identificada
 
 ## Regra
 
-> Nunca modifique o Core para atender a um novo mercado.  
+> Nunca modifique o Core para atender a um novo mercado.
 > Crie um Connector, Specialist ou Provider Adapter.
 
 ---
@@ -767,5 +767,5 @@ MCS  → O que é o Core e seus limites  ← este documento
 
 ---
 
-**MCS — MemoryOS Core Specification v1.0**  
+**MCS — MemoryOS Core Specification v1.0**
 **Data:** 2026-07-10 · **Complementa:** MV · MPS · MAS · MDS 1.0–1.6 · MRS · MDS Arch. Principles

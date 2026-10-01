@@ -1,7 +1,7 @@
 # MGIS-Lifecycle — Aprendizado, Predição, Composição, Ontologia e Specialists
 
-**Versão:** 1.0  
-**Status:** Oficial  
+**Versão:** 1.0
+**Status:** Oficial
 **Parte:** 3 de 4 do MGIS
 
 ---
@@ -59,7 +59,7 @@ O Policy Engine (MAS §4.6) é acionado pelo MGIS antes de qualquer Goal transit
 EXEMPLO 1 — Empresa com threshold de aprovação:
   Goal: "Pagar fornecedor R$120.000"
   Policy: Pagamentos > R$50.000 → aprovação CFO
-  
+
   MGIS ação:
     1. Goal "Pagar fornecedor" → BLOCKED
     2. Goal Derivado criado: "Solicitar aprovação CFO"
@@ -73,7 +73,7 @@ EXEMPLO 1 — Empresa com threshold de aprovação:
 EXEMPLO 2 — Menor tentando compra de bebida alcoólica:
   Goal: "Comprar cerveja"
   Policy: idade < 18 → HARD_BLOCK
-  
+
   MGIS ação:
     1. Goal → CANCELLED imediatamente
     2. Motivo: "Não autorizado por restrição de idade"
@@ -86,7 +86,7 @@ EXEMPLO 3 — Horário fora do expediente:
   Goal: "Aprovar pedido de compra urgente"
   Context: 23:47, sábado
   Policy: Aprovações manuais → horário comercial apenas
-  
+
   MGIS ação:
     1. Goal → WAITING (até horário comercial)
     2. Alerta agendado para segunda-feira 08:00
@@ -98,7 +98,7 @@ EXEMPLO 4 — Restrição de departamento:
   Goal: "Acessar dados financeiros da empresa"
   User: Estagiário de Marketing
   Policy: Dados financeiros → apenas Financeiro + Diretoria
-  
+
   MGIS ação:
     1. Goal → BLOCKED
     2. Motivo: "Permissão insuficiente para dados financeiros"
@@ -216,18 +216,18 @@ Agentes Permanentes são entidades autônomas que operam em background. O MGIS f
 ```
 Agente: "FinanceMonitorAgent"
   Background Goal: MONITOR_CASH_FLOW (PERMANENT)
-  
+
   MGIS detecta automaticamente:
     Toda sexta-feira às 17h → o usuário historicamente:
       1. Emite NF-e das vendas da semana → BlingConnector
       2. Gera relatório financeiro → BlingConnector
       3. Envia relatório para sócios → GmailConnector
       4. Atualiza previsão do mês → BlingConnector
-  
+
   MGIS propõe ao usuário:
     "Detectei que você executa o mesmo processo toda sexta.
      Deseja que eu automatize isso como Goal Recorrente?"
-  
+
   Se aprovado:
     GoalTemplate criado e salvo
     Agente executa autonomamente toda sexta
@@ -357,16 +357,16 @@ Perfil aprendido do usuário (empresário):
   SEGUNDA-FEIRA:
     08:00 → Verificar e-mails não lidos (GmailConnector)
     09:00 → Revisar pipeline de vendas (CRM Connector)
-  
+
   SEXTA-FEIRA:
     17:00 → Gerar relatório financeiro (BlingConnector)
     17:30 → Emitir NF-e pendentes (BlingConnector)
     18:00 → Enviar resumo semanal para sócios (GmailConnector)
-  
+
   DIA 5 DE CADA MÊS:
     → Pagar fornecedores (BlingConnector)
     → Verificar fluxo de caixa mensal
-  
+
   QUANDO DETECTA E-MAIL DE CLIENTE GRANDE:
     → Priorizar resposta imediatamente
 
@@ -418,7 +418,7 @@ GOAL COMPOSTO: "Abrir empresa no Brasil"
     FASE 2 aguarda conclusão de FASE 1
     FASE 3 aguarda conclusão de FASE 2
     FASE 4 pode iniciar parcialmente com FASE 3
-    
+
   Estimativa total: 30-60 dias (humanos) + automação máxima possível
 ```
 
@@ -428,33 +428,33 @@ GOAL COMPOSTO: "Abrir empresa no Brasil"
 GOAL: "Quero vender mais"
   ↓
 MGIS Goal Discovery — detecta dimensões implícitas:
-  
+
   DIMENSÃO 1 — PRODUTO
   ├── Otimizar precificação
   ├── Expandir catálogo
   └── Melhorar imagens e descrições (ML, Shopify)
-  
+
   DIMENSÃO 2 — ALCANCE
   ├── SEO e presença orgânica
   ├── Marketplace: Mercado Livre, Amazon
   └── Social commerce: TikTok, Instagram
-  
+
   DIMENSÃO 3 — MARKETING
   ├── Campanhas Meta Ads
   ├── Google Ads
   ├── Afiliados
   └── E-mail marketing
-  
+
   DIMENSÃO 4 — CONVERSÃO
   ├── CRM: follow-up de leads
   ├── Checkout otimizado
   └── Programa de fidelidade
-  
+
   DIMENSÃO 5 — PÓS-VENDA
   ├── Suporte e atendimento
   ├── Logística e prazo de entrega
   └── Reviews e reputação
-  
+
   MGIS apresenta ao usuário:
     "Detectei 5 dimensões para 'vender mais'.
      Por onde prefere começar? Ou posso criar um plano integrado."
@@ -590,6 +590,6 @@ MGIS aprende esta evolução e:
 
 ---
 
-**Documento Oficial:** MGIS-Lifecycle  
-**Versão:** 1.0 · **Status:** Aprovado  
+**Documento Oficial:** MGIS-Lifecycle
+**Versão:** 1.0 · **Status:** Aprovado
 **Parte:** 3 de 4 do MGIS

@@ -1,9 +1,9 @@
 # MDS v1.3 — Capability Intelligence Layer — Especificação Completa
 
-**Versão:** 1.3  
-**Status:** Revisão Oficial — Adenda ao MDS v1.2  
-**Data:** 2026-07-09  
-**Tipo:** Inteligência de Decisão (complementa, não substitui)  
+**Versão:** 1.3
+**Status:** Revisão Oficial — Adenda ao MDS v1.2
+**Data:** 2026-07-09
+**Tipo:** Inteligência de Decisão (complementa, não substitui)
 **Alinhamento:** MAS 1.0 · MCF 1.0 · MCIS 1.0 · MGIS 1.0 · MDS 1.0 · MDS v1.1 · MDS v1.2
 
 ---
@@ -12,9 +12,9 @@
 
 Esta revisão transforma o Capability Negotiation Engine em um **mecanismo inteligente de tomada de decisão**, adicionando capacidades de avaliação, explicação, simulação, predição e recomendação automática.
 
-**Não remove** nenhuma seção.  
-**Não altera** nenhuma decisão existente.  
-**Não modifica** MAS, MPS, MCF, MCIS, MGIS, MES, MDS v1.0/v1.1/v1.2.  
+**Não remove** nenhuma seção.
+**Não altera** nenhuma decisão existente.
+**Não modifica** MAS, MPS, MCF, MCIS, MGIS, MES, MDS v1.0/v1.1/v1.2.
 **Apenas complementa** com a Capability Intelligence Layer.
 
 ### Novos Componentes Introduzidos
@@ -1946,5 +1946,5 @@ Todos os componentes permanecem **desacoplados, orientados a eventos, compatíve
 
 ---
 
-**MDS v1.3 — Capability Intelligence Layer**  
+**MDS v1.3 — Capability Intelligence Layer**
 **Data:** 2026-07-09 · **Adenda ao:** MDS v1.2 · **Série:** MDS v1.0 → v1.1 → v1.2 → v1.3
