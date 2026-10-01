@@ -1,16 +1,38 @@
 {
-  "mission": "engmcp-mission-01/02",
-  "date": "2026-09-29",
-  "owner": "supervisor-hermes",
-  "note": "execução direta (workers degenerados 2x); provas cmd executáveis; gate JEV provado ao vivo",
+  "mission": "roster-01",
+  "owner": "roster-01",
+  "date": "2026-09-30",
+  "note": "engineering.session.roster — read-only, zero-LLM, LGPD metadata-only. Provas: roster no estado real, latencia p95 20 runs, suite completa (falha unica zz-proxy-live ambiental), LGPD-grep do codigo, arquivos entregues.",
   "cmd": [
-    {"run": "cd /opt/memoryos/eng-mcp && timeout 120 npx tsc -p tsconfig.json --noEmit 2>&1 | grep -cE 'missionOps|tools\\.ts\\(15[89]' | grep -q '^0$' && echo TSC_SEM_ERROS_NOS_ARQUIVOS_NOVOS", "expect_exit": 0},
-    {"run": "grep -q 'engineering.mission.dispatch' /opt/memoryos/eng-mcp/src/tools.ts && grep -q 'engineering.mission.ledger_fix' /opt/memoryos/eng-mcp/src/tools.ts && grep -q 'runMissionClose' /opt/memoryos/eng-mcp/src/tools.ts && echo REGISTRO_7_TOOLS_OK", "expect_exit": 0},
-    {"run": "test -f /opt/memoryos/eng-mcp/src/missionOps.ts && grep -q 'handle_mission_batch' /opt/memoryos/eng-mcp/src/missionOps.ts && grep -q 'jev_gate.py' /opt/memoryos/eng-mcp/src/missionOps.ts && echo WRAPPER_FONTE_UNICA_OK", "expect_exit": 0},
-    {"run": "python3 -c \"import subprocess,json; r=subprocess.run(['python3','/opt/memoryos/eng-mcp/scripts/jev_gate.py','engmcp-gate-canario','{}'],capture_output=True,timeout=60); d=json.loads(r.stdout.decode().strip().split(chr(10))[-1]); assert d['verdict']=='SIM', d; print('GATE_JEV_SIM_OK lat_ms=%s' % d['latency_ms'])\"", "expect_exit": 0},
-    {"run": "python3 -c \"import json; d=json.load(open('/root/.hermes/mission-state/engmcp-gate-canario2.verify.json')); assert d['verdict']=='fail' and any(not c['ok'] for c in d['checks']); print('GATE_JEV_NAO_PROVA_VERMELHA_OK')\"", "expect_exit": 0},
-    {"run": "cat /tmp/engmcp-gate-prova.txt | grep -q ok && cat /tmp/engmcp-gate-prova2.txt | grep -q ok2 && echo E2E_CANARIOS_EXECUTARAM_OK", "expect_exit": 0},
-    {"run": "test -f /root/.hermes/mission-state/engmcp-gate-canario.json && python3 -c \"import json; d=json.load(open('/root/.hermes/mission-state/engmcp-gate-canario.json')); assert d['status']=='closed' and d.get('verified_e2e',{}).get('verdict')=='pass'; print('CLOSE_BADGE_VERIFIED_OK')\"", "expect_exit": 0},
-    {"run": "cd /opt/memoryos/eng-mcp && git status --porcelain src/missionOps.ts scripts/jev_gate.py src/tools.ts | head -3 | grep -q . && echo ARQUIVOS_NO_BRANCH_LOCAL", "expect_exit": 0}
+    {
+      "run": "cd /opt/memoryos/eng-mcp-wt-roster-01/eng-mcp && node --import tsx -e 'import(\"./src/sessionRoster.ts\").then(m=>{const r=m.getRoster();const j=JSON.stringify(r);if(!r.missions||!r.panes||!r.sessions||!r.summary)process.exit(1);if(r.summary.total_missions<1)process.exit(2);if(/transcript|message|content|text/i.test(j))process.exit(3);console.log(\"roster-ok missions=\"+r.summary.total_missions+\" panes=\"+r.summary.panes_alive+\" sessions=\"+r.summary.sessions_alive)})'",
+      "expect_exit": 0,
+      "timeout": 30
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp-wt-roster-01/eng-mcp && node --import tsx --test --test-name-pattern 'latency' test/sessionRoster.test.ts",
+      "expect_exit": 0,
+      "timeout": 60
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp-wt-roster-01/eng-mcp && npm test --silent > /tmp/roster-suite-verify.txt 2>&1; test \"$(grep -c '^not ok' /tmp/roster-suite-verify.txt)\" = 1 && grep -q 'LIVE /mcp-proxy' /tmp/roster-suite-verify.txt",
+      "expect_exit": 0,
+      "timeout": 300
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp-wt-roster-01/eng-mcp && grep -nE 'transcript|\\.jsonl|conversation' src/sessionRoster.ts",
+      "expect_exit": 1,
+      "timeout": 10
+    }
+  ],
+  "file": [
+    {
+      "path": "/opt/memoryos/eng-mcp-wt-roster-01/eng-mcp/src/sessionRoster.ts",
+      "min_bytes": 1000
+    },
+    {
+      "path": "/opt/memoryos/eng-mcp-wt-roster-01/eng-mcp/test/sessionRoster.test.ts",
+      "min_bytes": 1000
+    }
   ]
 }
