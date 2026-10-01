@@ -68,8 +68,23 @@ export const JUDGE_AUTO_SAFE_THRESHOLD = 0.9;
 export const JUDGE_ESCALATE_THRESHOLD = 0.6;
 /** Stop hook: every completion claim must be supported at >= this probability. */
 export const JUDGE_STOP_MIN_SUPPORT = 0.6;
-/** Hard fail-open budget for the WHOLE judge round trip (mission never stalls). */
-export const JUDGE_HOOK_TIMEOUT_MS = 2000;
+/**
+ * Default hard fail-open budget for the WHOLE judge round trip (mission never
+ * stalls). 4500 = 2× the worst measured hook cycle (2237–2968ms) + margin; the
+ * old 2000 aborted ~75 calls/day (JUDGE-TIMEOUT-FIX-01). Override with env
+ * JUDGE_HOOK_TIMEOUT_MS (see resolveJudgeHookTimeoutMs).
+ */
+export const JUDGE_HOOK_TIMEOUT_MS = 4500;
+/** Smallest accepted JUDGE_HOOK_TIMEOUT_MS override; anything below → default. */
+export const JUDGE_HOOK_TIMEOUT_MIN_MS = 1000;
+
+/** env JUDGE_HOOK_TIMEOUT_MS: plain integer >= 1000, else (missing/invalid) the 4500 default. */
+export function resolveJudgeHookTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.JUDGE_HOOK_TIMEOUT_MS?.trim();
+  if (!raw || !/^\d+$/.test(raw)) return JUDGE_HOOK_TIMEOUT_MS;
+  const ms = Number(raw);
+  return Number.isSafeInteger(ms) && ms >= JUDGE_HOOK_TIMEOUT_MIN_MS ? ms : JUDGE_HOOK_TIMEOUT_MS;
+}
 
 export const JUDGE_GATE_SOURCE = 'judge-gate';
 export const DEFAULT_JUDGE_CREDENTIAL_PATHS = [
@@ -752,7 +767,7 @@ export function buildJudgeGate(config: JudgeGateConfig = {}): JudgeGate | null {
   const token = resolveCredential(config, env);
   if (!token) return null;
   const serverUrl = config.serverUrl ?? env.ENG_MCP_SERVER_URL ?? 'https://memoryos-engmcp.2-25-96-245.nip.io/mcp';
-  const timeoutMs = config.timeoutMs ?? JUDGE_HOOK_TIMEOUT_MS;
+  const timeoutMs = config.timeoutMs ?? resolveJudgeHookTimeoutMs(env);
   const unattended = config.unattended ?? true;
   const client = config.judgeClient ?? ((tool, args, signal) => defaultJudgeClient({ serverUrl, token }, tool, args, signal));
   const now = () => new Date().toISOString();
