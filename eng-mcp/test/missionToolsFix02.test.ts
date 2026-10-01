@@ -8,6 +8,7 @@
 // handler exec that is read-only by construction.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { McpServer } from "@modelcontextprotocol/server";
 import { ENGINEERING_SERVER_INFO, installToolAliasCompatibility, registerEngineeringTools } from "../src/tools.ts";
 import { missionVerifyInputSchema, missionCloseInputSchema } from "../src/missionOps.ts";
@@ -69,5 +70,8 @@ test("engineering.mission.verify is READ and round-trips the real handler (MISSI
     params: { name: "engineering.mission.verify", arguments: { missionId: "toolsfix02-no-such-mission" } },
   }, PROBE_CTX);
   assert.ok(!resultText(result).includes("AUTHORIZATION_SCOPE_REQUIRED"), "read bearer must pass the verify gate");
-  assert.ok(resultText(result).includes("MISSION_NOT_FOUND"), `unknown mission must be refused honestly, got: ${resultText(result).slice(0, 200)}`);
+  // ENG-MCP-VERIFY-PYFIX-03: o release gate roda num container hermético sem o plugin
+  // montado — lá a recusa honesta é MISSION_OPS_UNAVAILABLE; com o plugin, round-trip real.
+  const expected = existsSync("/root/.hermes/plugins/mission-ops/__init__.py") ? "MISSION_NOT_FOUND" : "MISSION_OPS_UNAVAILABLE";
+  assert.ok(resultText(result).includes(expected), `unknown mission must be refused honestly (${expected}), got: ${resultText(result).slice(0, 200)}`);
 });

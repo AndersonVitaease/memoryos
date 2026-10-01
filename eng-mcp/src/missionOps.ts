@@ -3,6 +3,7 @@
 // eng-mcp NÃO duplica lógica; chama python e recebe JSON).
 // Andar 1 (regex/IO) para tudo; JEV (250ms, /alpha/decisions) só no gate do close.
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import { promisify } from "node:util";
 import { z } from "zod/v4";
 
@@ -11,6 +12,12 @@ const PLUGIN_DIR = "/root/.hermes/plugins/mission-ops";
 const JEV_GATE_SCRIPT = "/opt/memoryos/eng-mcp/scripts/jev_gate.py";
 
 async function callHandler(handler: string, args: Record<string, unknown>, timeoutMs = 300_000): Promise<Record<string, unknown>> {
+  // ENG-MCP-VERIFY-PYFIX-03: sem o plugin montado (ex.: container hermético do release
+  // gate) o execFile com cwd inexistente estoura "spawn python3 ENOENT" — erro enganoso
+  // (python3 existe na imagem). Recusa honesta e determinística, sem inventar estado.
+  if (!existsSync(`${PLUGIN_DIR}/__init__.py`)) {
+    return { ok: false, error: "MISSION_OPS_UNAVAILABLE", pluginDir: PLUGIN_DIR, handler };
+  }
   const code = `
 import sys, json, importlib.util, time
 spec = importlib.util.spec_from_file_location("mission_ops", "${PLUGIN_DIR}/__init__.py", submodule_search_locations=["${PLUGIN_DIR}"])
