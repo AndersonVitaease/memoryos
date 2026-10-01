@@ -3,7 +3,7 @@
 // eng-mcp NÃO duplica lógica; chama python e recebe JSON).
 // Andar 1 (regex/IO) para tudo; JEV (250ms, /alpha/decisions) só no gate do close.
 import { execFile } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync, appendFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod/v4";
@@ -394,6 +394,42 @@ const DETERMINISTIC_REFUSALS = new Set([
   "BADGE_REQUIRED", "WORKER_ACTIVE", "CANCEL_REASON_REQUIRED", "CLOSE_BUSY",
   "INVALID_INPUT", "INVALID_MISSION_ID", "MISSION_NOT_FOUND", "AMBIGUOUS",
 ]);
+/**
+ * Writes spend telemetry to the mission ledger deterministically (zero-LLM).
+ * Fail-open: if spend calculation fails, ledger is not modified.
+ * Uses atomic write (tmp + rename) to avoid corruption.
+ */
+export async function writeMissionSpend(missionId: string): Promise<void> {
+  const ledgerPath = `/root/.hermes/mission-state/${missionId}.json`;
+  if (!existsSync(ledgerPath)) return;
+  let raw: string;
+  try { raw = readFileSync(ledgerPath, "utf8"); } catch { return; }
+  let ledger: Record<string, unknown>;
+  try { ledger = JSON.parse(raw); } catch { return; }
+
+  const spend = runOrchestrateSpend({ missionId });
+  const missionSpend = spend.missions[0] ?? null;
+  if (!missionSpend) return;
+
+  ledger.spend = {
+    tokens: missionSpend.tokens,
+    costUsd: missionSpend.costUsd,
+    model: missionSpend.model,
+    transcriptFound: missionSpend.transcriptFound,
+    computedAt: spend.computedAt,
+    note: missionSpend.note,
+  };
+
+  try {
+    const tmpPath = `${ledgerPath}.tmp-${Date.now()}`;
+    writeFileSync(tmpPath, JSON.stringify(ledger, null, 2), "utf8");
+    const { renameSync } = await import("node:fs");
+    renameSync(tmpPath, ledgerPath);
+  } catch {
+    // fail-open: never block close for spend telemetry
+  }
+}
+
 export async function runMissionClose(input: z.infer<typeof missionCloseInputSchema>) {
   const first = await callHandler("handle_mission_close", input, 90_000);
   const stepsJson = JSON.stringify(first.steps ?? []);
@@ -401,7 +437,11 @@ export async function runMissionClose(input: z.infer<typeof missionCloseInputSch
     && typeof first.error === "string" && DETERMINISTIC_REFUSALS.has(first.error);
   const needsGate = !isDeterministicRefusal && (first.ok === false
     || stepsJson.includes("fail-open") || stepsJson.includes("reopenedByDeliverVerify"));
-  if (!needsGate) return { ...first, jevGate: "not-needed" };
+  if (!needsGate) {
+    // Write spend telemetry on close (deterministic, zero-LLM, fail-open)
+    if (typeof first.missionId === "string") await writeMissionSpend(first.missionId);
+    return { ...first, jevGate: "not-needed" };
+  }
 
   const resolvedId = typeof first.missionId === "string" && first.missionId
     ? first.missionId : (input.missionId ?? "");
@@ -421,6 +461,8 @@ export async function runMissionClose(input: z.infer<typeof missionCloseInputSch
       missionId: resolvedId,
       acceptUnverified: `jev-gate-verified: ${jev.motivo ?? "provas suficientes"}`,
     }, 90_000);
+    // Write spend telemetry on JEV-verified close (deterministic, zero-LLM, fail-open)
+    await writeMissionSpend(resolvedId);
     return { ...second, jevGate: "jev-verificado", jevLatency_ms: jev.latency_ms };
   }
   return { ...first, jevGate: "verify_required", jevMotivo: jev.motivo, jevLatency_ms: jev.latency_ms };
