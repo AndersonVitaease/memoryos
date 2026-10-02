@@ -722,6 +722,15 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
     }).strict()
   }, async (input) => { requireRead(); requireGitMerge(); return response(await repository.gitMerge(input, subject.subject)); }));
 
+  // GIT-CHECKOUT-01: governed checkout of a branch into a worktree. PLAN is
+  // read-only (default); execution requires execute=true + acknowledgeCheckout=true.
+  // The worktree is created under WT_ROOT/mission-<branch> via `git worktree add`;
+  // a branch already checked out in another worktree is refused with a typed error.
+  register("engineering.git.checkout", "write", (name) => server.registerTool(name, {
+    description: "Governed checkout of a branch into a worktree (GIT-CHECKOUT-01). The worktree is created under /opt/memoryos/mission-<branch> via `git worktree add -b <branch> <path>` from the current HEAD — never raw `git checkout` at the repo root. Default call is a read-only PLAN: verifies the branch exists, is not already checked out elsewhere, and the credential is mounted. Execution requires execute=true AND acknowledgeCheckout=true. A branch already checked out in another worktree is REFUSED with CHECKOUT_BRANCH_IN_OTHER_WORKTREE (no silent reuse). Typed errors: CHECKOUT_INPUT_FORBIDDEN, CHECKOUT_BRANCH_NOT_FOUND, CHECKOUT_BRANCH_IN_OTHER_WORKTREE, CHECKOUT_CREDENTIAL_MISSING, CHECKOUT_ACKNOWLEDGMENT_REQUIRED, CHECKOUT_WORKTREE_CREATE_FAILED, CHECKOUT_WORKTREE_NOT_REGISTERED, CHECKOUT_TIMEOUT, CHECKOUT_EXECUTION_FAILED. Requires bearer scope engineering:git (operator-issued; the agent cannot self-authorize). Audit line in /data/audit/git-checkout.jsonl.",
+    inputSchema: z.object({ branch: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._/-]{0,63}$/), execute: z.boolean().optional(), acknowledgeCheckout: z.literal(true).optional() }).strict()
+  }, async (input) => { requireRead(); requireGit(); return response(await repository.gitCheckout(input, subject.subject)); }));
+
   // REGISTRY-GRANT-01: governed, grant-only scope edit of the token registry (the
   // anchor of trust). PLAN = exact entry diff, zero mutation; mutation requires
   // execute+approval and is atomic (automatic backup, tmp+fsync+rename, TOCTOU drift

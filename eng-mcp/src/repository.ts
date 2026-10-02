@@ -9,6 +9,7 @@ import { runGithubRead } from "./githubRead.ts";
 import { runGitPush, type GitPushInput } from "./gitPush.ts";
 import { runGitFetch } from "./gitFetch.ts";
 import { runGitMerge, type GitMergeInput } from "./gitMerge.ts";
+import { runGitCheckout, type GitCheckoutInput } from "./gitCheckout.ts";
 import { getTestJobStore, createTestExecutionId, parseTapSummary, parseTapFailures, classifySyncRunOutcome, classifyInfraError, reconcileSuiteJob, boundedJobView, type TestJob } from "./testJobs.js";
 
 export type CommandResult = { stdout: string; stderr: string; truncated: boolean };
@@ -624,6 +625,12 @@ async references(subject: string, symbol: string, maxResults = 100) {
   // approval?, acknowledgeMerge?} and the core decides the layer from real state.
   async gitMerge(input: GitMergeInput, subject?: string | null) {
     return runGitMerge(input, { repoRoot: this.policy.authorizedRoot, withLock: (work) => this.withGitLock(work), subject: subject ?? null });
+  }
+
+  // GIT-CHECKOUT-01: governed checkout of a branch into a worktree. Delegates
+  // to the standalone core; the authorized root and git lock are wired here.
+  async gitCheckout(input: GitCheckoutInput, subject?: string | null) {
+    return runGitCheckout(input, { repoRoot: this.policy.authorizedRoot, withLock: (work) => this.withGitLock(work), subject: subject ?? null });
   }
 
   private async analysisFiles(requestedPath?: string): Promise<{ items: Array<{ path: string; text: string }>; partial: boolean }> {
