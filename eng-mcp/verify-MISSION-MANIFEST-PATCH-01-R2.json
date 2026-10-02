@@ -1,0 +1,47 @@
+{
+  "mission": "MISSION-MANIFEST-PATCH-01-R2",
+  "owner": "MISSION-MANIFEST-PATCH-01-R2",
+  "date": "2026-10-02",
+  "note": "R2: fix EACCES/ENOENT no append do audit (mkdirSync do dirname antes de ap() em runMissionManifestPatch, src/missionManifestPatch.ts:258) + guard de index-token. Suíte 8/8 esperada.",
+  "cmd": [
+    {
+      "run": "cd /opt/memoryos/eng-mcp-wt-manifest-patch-01/eng-mcp && npx tsx --test test/mission-manifest-patch.test.ts 2>&1 | tail -15",
+      "expect_exit": 0,
+      "timeout": 120,
+      "evidence_tail": "pass 8/8",
+      "description": "suíte mission-manifest-patch verde (8 testes, zero failures)"
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp-wt-manifest-patch-01/eng-mcp && grep -q 'mkdirSync(dirname(auditPath)' src/missionManifestPatch.ts",
+      "expect_exit": 0,
+      "timeout": 10,
+      "evidence_tail": "mkdirSync presente antes do append do audit",
+      "description": "fix de diretório do audit presente"
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp-wt-manifest-patch-01/eng-mcp && grep -q 'isIndexToken' src/missionManifestPatch.ts",
+      "expect_exit": 0,
+      "timeout": 10,
+      "evidence_tail": "isIndexToken presente",
+      "description": "guard de index-token presente"
+    }
+  ],
+  "file": [
+    {
+      "path": "/opt/memoryos/eng-mcp-wt-manifest-patch-01/eng-mcp/RELATORIO-eng-mcp-wt-manifest-patch-01.md",
+      "min_bytes": 100
+    },
+    {
+      "path": "/opt/memoryos/eng-mcp-wt-manifest-patch-01/eng-mcp/src/missionManifestPatch.ts",
+      "min_bytes": 100
+    },
+    {
+      "path": "/opt/memoryos/eng-mcp-wt-manifest-patch-01/eng-mcp/test/mission-manifest-patch.test.ts",
+      "min_bytes": 100
+    },
+    {
+      "path": "/opt/memoryos/eng-mcp-wt-manifest-patch-01/eng-mcp/verify-MISSION-MANIFEST-PATCH-01-R2.json",
+      "min_bytes": 100
+    }
+  ]
+}
