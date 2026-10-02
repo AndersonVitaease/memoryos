@@ -378,7 +378,7 @@ export async function runMissionLedgerFix(input: z.infer<typeof missionLedgerFix
 }
 
 export async function runMissionNudge(input: z.infer<typeof missionNudgeInputSchema>) {
-  const verifyMs = (input.verifySeconds ?? 30) * 1000;
+  const verifyMs = (input.verifySeconds ?? 20) * 1000; // TOOL-FAST-01: 30→20
   return callHandler("handle_mission_nudge", input, verifyMs + 60_000);
 }
 
