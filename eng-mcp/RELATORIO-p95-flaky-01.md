@@ -29,3 +29,5 @@ Subteste reescrito em `eng-mcp/test/sessionRoster.test.ts` (describe `performanc
 - Só `eng-mcp/test/sessionRoster.test.ts` foi alterado. Nada em `src/`, nada em OpenRouter/roles.json.
 - Commit contém apenas código de teste + este relatório; verify manifest fora do commit.
 - Sem push/deploy.
+## ADENDO 03 — intervenção do supervisor (02/10 ~19:10 BRT, autorização "b" do operator)
+O campo "mission": "P95-FLAKY-01" foi gravado pelo supervisor nas 2 cópias do manifesto (backups .bak-supervisor-20261002) porque o classifier fora impediu o Edit do worker (loop de Update negado provado no pane). A entrega em si (suíte 8/8 ×2, commit 4a465266, relatório) é 100% do worker; a intervenção cobre apenas metadata de dono. Provas re-executadas pelo close (gate do runner).
