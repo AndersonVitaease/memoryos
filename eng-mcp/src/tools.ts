@@ -61,7 +61,7 @@ import { distributionCampaignInputSchema, runDistributionCampaign } from "./dist
 import { imageEditRoutedInputSchema, runImageEditRouted } from "./imageEditFast.ts";
 // ENG-MCP-MISSION-01/02: mission-* determinísticas (wraps do plugin mission-ops;
 // gate JEV no close). Fonte única: handlers puros do plugin via subprocesso python.
-import { missionDispatchInputSchema, missionStatusInputSchema, missionReadInputSchema, missionWatchInputSchema, missionRecoverInputSchema, missionCloseInputSchema, missionVerifyInputSchema, missionLedgerFixInputSchema, runMissionDispatch, runMissionStatus, runMissionRead, runMissionWatch, runMissionRecover, runMissionVerify, runMissionClose, runMissionLedgerFix, missionNudgeInputSchema, runMissionNudge } from "./missionOps.ts";
+import { missionDispatchInputSchema, missionStatusInputSchema, missionReadInputSchema, missionWatchInputSchema, missionRecoverInputSchema, missionCloseInputSchema, missionVerifyInputSchema, missionLedgerFixInputSchema, runMissionDispatch, runMissionStatus, runMissionRead, runMissionWatch, runMissionRecover, runMissionVerify, runMissionClose, runMissionLedgerFix, missionNudgeInputSchema, runMissionNudge, runMissionSnapshot } from "./missionOps.ts";
 // ROSTER-01: inventário auditável de sessões/turnos/missões (read-only, zero-LLM, LGPD metadata-only).
 import { getRoster } from "./sessionRoster.ts";
 
@@ -1646,6 +1646,10 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
     description: "Estado verdadeiro da missão em 1 chamada: ledger + pane REAL + verdict (OK|PANEID_OBSOLETO|FANTASMA|INTERROMPIDA|AGUARDANDO_OPERATOR|DESPACHANDO|DESCONHECIDO) com auto-correção de paneId obsoleto e cancelamento de fantasma. Inclui roles (worker/advisor/supervisor/judge) — worker lido do transcript (fonte verdade, nunca banner/settings). Zero LLM.",
     inputSchema: missionStatusInputSchema
   }, async (input) => { requireRead(); return response(await runMissionStatus(input)); }));
+  register("engineering.mission.snapshot", "read", (name) => server.registerTool(name, {
+    description: "SNAPSHOT-FAST-01: estado VERDADEIRO da missão em 1 chamada (zero LLM, ~1 tab list + 1 pane list): ledger + pane REAL (existe? agent/agent_status? cwd? label) + verdict OK|PANEID_OBSOLETO|FANTASMA|INTERROMPIDA (+ DESPACHANDO/DESCONHECIDO) + remédio. AUTO-CORREÇÃO só no ledger: pane inexistente + aba MISSION:<id> viva -> re-sincroniza paneId/tabId; sem aba -> cancela o fantasma. Nunca escreve em pane nem fecha aba. Inclui roles (worker/advisor/supervisor/judge) — worker lido do transcript. Retorno: {missions[], fixed[], ghosts[], summary{fixed,ghosts,ok}}. Use para 'verifique a missão X' no lugar de status+read+pane get.",
+    inputSchema: missionStatusInputSchema
+  }, async (input) => { requireRead(); return response(await runMissionSnapshot(input)); }));
   register("engineering.mission.read", "read", (name) => server.registerTool(name, {
     description: "Lê o pane do worker (texto recente ou completo). I/O puro.",
     inputSchema: missionReadInputSchema
