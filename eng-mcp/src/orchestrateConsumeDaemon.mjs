@@ -5,6 +5,7 @@
 import { statSync, writeFileSync, unlinkSync, appendFileSync } from "node:fs";
 import os from "node:os";
 import { runOrchestrateConsume } from "./orchestrate.ts";
+import { runMissionDispatch } from "./missionOps.ts";  // ORCH-PREAUTH-01: caminho governado do despacho
 
 // Lock/estado em tmpdir do SO (nunca em /opt/mission-events — área de produção).
 export const LOCK_PATH = `${os.tmpdir()}/orchestrator-consumer.daemon.lock`;
@@ -40,7 +41,28 @@ export async function runDaemonCycle({ maxPromotions = 2 } = {}) {
     if (!approval) {
       return { ok: true, mode: "plan", plan, executed: null, note: "promovíveis aguardam approval (ORCH_DAEMON_APPROVED=1)" };
     }
-    const executed = await runOrchestrateConsume({ maxPromotions, execute: true, approval });
+    // ORCH-PREAUTH-01 (elo final): o daemon injeta o MESMO caminho governado do
+    // tools.ts (runMissionDispatch) — antes ele chamava execute sem handler e o
+    // fail-closed bloqueava TODAS as intents ("sem handler de dispatch configurado").
+    const executed = await runOrchestrateConsume({
+      maxPromotions, execute: true, approval,
+    }, {
+      dispatchMission: async (i) => {
+        try {
+          const result = await runMissionDispatch({
+            missionId: i.missionId,
+            promptFile: i.promptFile,
+            cwd: i.worktree, // worktree da intent → cwd do dispatch (o handler valida existência)
+            spawnedBy: "orchestrator",
+          });
+          if (result && result && result.ok === true) return { ok: true };
+          const err = result ?? {};
+          return { ok: false, error: `${String(err.error ?? "dispatch refused")}: ${String(err.detail ?? "")}`.trimEnd() };
+        } catch (error) {
+          return { ok: false, error: error instanceof Error ? error.message : String(error) };
+        }
+      },
+    });
     return { ok: true, mode: "execute", plan, executed };
   } catch (err) {
     return { ok: false, reason: err instanceof Error ? err.message : String(err) };
