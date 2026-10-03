@@ -377,6 +377,12 @@ export async function runMissionLedgerFix(input: z.infer<typeof missionLedgerFix
   return callHandler("handle_mission_ledger_fix", input, 30_000);
 }
 
+// SNAPSHOT-WRAP-01: snapshot = o mesmo handler handle_mission_snapshot do status
+// (dedup deliberado — mesmo verdict + anti-ghost + auto-correção de ledger).
+export async function runMissionSnapshot(input: z.infer<typeof missionStatusInputSchema>) {
+  return runMissionStatus(input);
+}
+
 export async function runMissionNudge(input: z.infer<typeof missionNudgeInputSchema>) {
   const verifyMs = (input.verifySeconds ?? 20) * 1000; // TOOL-FAST-01: 30→20
   return callHandler("handle_mission_nudge", input, verifyMs + 60_000);
