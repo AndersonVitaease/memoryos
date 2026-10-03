@@ -1,0 +1,38 @@
+{
+  "mission": "ORCH-SPEND-LEDGER-01",
+  "cmd": [
+    {
+      "id": "eng-mcp-spend-suites",
+      "run": "cd /opt/memoryos/eng-mcp && PATH=/usr/local/bin:/usr/bin:/bin node --import tsx --test --test-force-exit --test-reporter=tap test/orchestrateMissionSpend.test.ts test/orchestrateSpend.test.ts 2>&1 | tail -8",
+      "expect_exit": 0,
+      "timeout": 120
+    },
+    {
+      "id": "plugin-main-suite",
+      "run": "cd /root/.hermes/plugins/mission-ops && PATH=/usr/local/bin:/usr/bin:/bin python3 test_mission_ops.py 2>&1 | tail -4",
+      "expect_exit": 0,
+      "timeout": 120
+    },
+    {
+      "id": "plugin-new-suite",
+      "run": "cd /root/.hermes/plugins/mission-ops && PATH=/usr/local/bin:/usr/bin:/bin python3 test_orch_spend_ledger.py 2>&1 | tail -4",
+      "expect_exit": 0,
+      "timeout": 60
+    },
+    {
+      "id": "e2e-close-records-real-cost",
+      "run": "cd /opt/memoryos/eng-mcp && PATH=/usr/local/bin:/usr/bin:/bin python3 e2e-ORCH-SPEND-LEDGER-01.py",
+      "expect_exit": 0,
+      "timeout": 120
+    }
+  ],
+  "file": [
+    { "id": "relatorio", "path": "/opt/memoryos/eng-mcp/RELATORIO-ORCH-SPEND-LEDGER-01.md", "min_bytes": 2000 },
+    { "id": "e2e-proof-json", "path": "/opt/memoryos/eng-mcp/e2e-ORCH-SPEND-LEDGER-01.json", "min_bytes": 200 },
+    { "id": "eng-mcp-impl", "path": "/opt/memoryos/eng-mcp/src/orchestrate.ts" },
+    { "id": "eng-mcp-tool", "path": "/opt/memoryos/eng-mcp/src/tools.ts" },
+    { "id": "eng-mcp-tests", "path": "/opt/memoryos/eng-mcp/test/orchestrateMissionSpend.test.ts" },
+    { "id": "e2e-script", "path": "/opt/memoryos/eng-mcp/e2e-ORCH-SPEND-LEDGER-01.py" },
+    { "id": "plugin-new-tests", "path": "/root/.hermes/plugins/mission-ops/test_orch_spend_ledger.py" }
+  ]
+}
