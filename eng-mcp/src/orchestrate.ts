@@ -1199,6 +1199,73 @@ export function runOrchestrateSpend(
   return { missionId: input.missionId ?? null, missions, totalCostUsd, totalTokens, priceTableSource, computedAt: new Date().toISOString() };
 }
 
+// ---- ORCH-SPEND-LEDGER-01: custo REAL de UMA missão (mission_close grava no ledger) ----
+// Mesmo cálculo do orchestrate.spend (price table + transcripts), exposto por missionId
+// para o mission-ops conectar o passo mission_cost ao valor real. Falha é HONESTA:
+// costUsd null + reason tipado ("no-session-id" | "no-transcript" | note do cálculo) —
+// nunca custo inventado. Zero-LLM, determinístico, fail-open.
+
+export const orchestrateMissionSpendInputSchema = z.object({
+  missionId: z.string().min(1),
+  priceTablePath: z.string().optional(),
+  missionStateDir: z.string().optional(),
+  claudeConfigDir: z.string().optional(),
+}).strict();
+
+export interface MissionSpendResult {
+  missionId: string;
+  costUsd: number | null;
+  tokensIn: number | null;
+  tokensOut: number | null;
+  source: string | null;
+  reason: string | null;
+  sessionId: string | null;
+  model: string | null;
+}
+
+export function runOrchestrateMissionSpend(
+  input: { missionId: string; priceTablePath?: string; missionStateDir?: string; claudeConfigDir?: string },
+  deps?: OrchestrateDeps,
+): MissionSpendResult {
+  const d = resolveDeps(deps);
+  const missionId = input.missionId;
+  const base: MissionSpendResult = { missionId, costUsd: null, tokensIn: null, tokensOut: null, source: null, reason: null, sessionId: null, model: null };
+
+  let ledgerRaw: string | null = null;
+  try { ledgerRaw = d.readText!(path.join(d.missionStateDir!, `${missionId}.json`)); } catch { ledgerRaw = null; }
+  if (ledgerRaw == null) return { ...base, reason: "no-ledger" };
+
+  let sessionId: string | null = null;
+  try {
+    const ledger = JSON.parse(ledgerRaw) as { missionId?: string; resumeSessionId?: string; sessionId?: string };
+    if (ledger.missionId && ledger.missionId !== missionId) return { ...base, reason: "ledger-mission-mismatch" };
+    sessionId = ledger.resumeSessionId ?? ledger.sessionId ?? null;
+  } catch {
+    return { ...base, reason: "ledger-unparseable" };
+  }
+  if (!sessionId) return { ...base, reason: "no-session-id" };
+
+  const transcriptPath = findTranscriptPath(d.claudeConfigDir!, sessionId);
+  if (!transcriptPath) return { ...base, reason: "no-transcript", sessionId };
+
+  try {
+    const priceTableRaw = readPriceTable(d);
+    const usage = readTranscriptUsage(transcriptPath, priceTableRaw.models ?? {});
+    const tokensIn = usage.tokens.inputTokens;
+    const tokensOut = usage.tokens.outputTokens;
+    if (usage.costUsd != null) {
+      const source = priceTableRaw.models
+        ? "orchestrate.spend:transcript+price-table"
+        : "orchestrate.spend:transcript-cost-state";
+      return { missionId, costUsd: usage.costUsd, tokensIn, tokensOut, source, reason: null, sessionId, model: usage.model };
+    }
+    // Transcript lido, custo impossível: tokens medidos valem, custo null com motivo.
+    return { missionId, costUsd: null, tokensIn, tokensOut, source: null, reason: usage.note ?? "cost-unavailable", sessionId, model: usage.model };
+  } catch (error) {
+    return { ...base, reason: `spend-error: ${error instanceof Error ? error.message : String(error)}`.slice(0, 300), sessionId };
+  }
+}
+
 // Update orchestrateList to include spend aggregates per mission + consumer state
 // + roles enrichment per mission (ORCH-ROLE-BADGE-01): reads each mission's
 // ledger at missionStateDir and attaches the roles block (worker/advisor/supervisor/judge).

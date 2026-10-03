@@ -1,0 +1,176 @@
+{
+  "mission": "ORCH-SPEND-LEDGER-01",
+  "chain": "mission_close → engineering_call(HTTP MCP) → orchestrate.mission_spend → ledger['cost']",
+  "a_measured": {
+    "close_ok": true,
+    "close_steps": [
+      {
+        "step": "close_commit_guard",
+        "ok": true,
+        "verdict": "not-git",
+        "note": "cwd do ledger não é repo git — guard não se aplica"
+      },
+      {
+        "step": "operator_channel_proof",
+        "ok": null,
+        "skipped": true,
+        "note": "sem operatorChannel declarado — prova do canal não se aplica"
+      },
+      {
+        "step": "tab_close",
+        "ok": true,
+        "note": "sem tabId conhecido — nada a fechar"
+      },
+      {
+        "step": "mission_cost",
+        "ok": true,
+        "emitted": true,
+        "cost_usd": 3.691948,
+        "final": true,
+        "tokens_in": 5380301,
+        "tokens_out": 535345,
+        "source": "orchestrate.spend:transcript+price-table"
+      },
+      {
+        "step": "notify_mission_completed",
+        "ok": true,
+        "emitted": true,
+        "error": null
+      },
+      {
+        "step": "memory_capture",
+        "ok": null,
+        "deduped": false,
+        "error": "exit 2: unknown command: mcp\nrun 'herdr --help' for usage"
+      }
+    ],
+    "close_warnings": [
+      {
+        "code": "relatorio_nao_entregado_chat",
+        "detail": "RELATORIO-E2E-SPEND-A.md ausente ou vazio em /opt/e2e-spend-ledger-01-cwd/RELATORIO-E2E-SPEND-A.md — conteúdo integral não pode ir ao chat"
+      }
+    ],
+    "step_mission_cost": {
+      "step": "mission_cost",
+      "ok": true,
+      "emitted": true,
+      "cost_usd": 3.691948,
+      "final": true,
+      "tokens_in": 5380301,
+      "tokens_out": 535345,
+      "source": "orchestrate.spend:transcript+price-table"
+    },
+    "ledger_cost": {
+      "missionId": "E2E-SPEND-A",
+      "source": "orchestrate.spend:transcript+price-table",
+      "final": true,
+      "cost_usd": 3.691948,
+      "tokens_in": 5380301,
+      "tokens_out": 535345,
+      "model": "z-ai/glm-5.3-flash",
+      "session_id": "209e525f-8986-4cc8-8255-3609e6ce2eb9"
+    },
+    "cost_usd_positive": true
+  },
+  "b_no_session": {
+    "close_ok": true,
+    "close_steps": [
+      {
+        "step": "close_commit_guard",
+        "ok": true,
+        "verdict": "not-git",
+        "note": "cwd do ledger não é repo git — guard não se aplica"
+      },
+      {
+        "step": "operator_channel_proof",
+        "ok": null,
+        "skipped": true,
+        "note": "sem operatorChannel declarado — prova do canal não se aplica"
+      },
+      {
+        "step": "tab_close",
+        "ok": true,
+        "note": "sem tabId conhecido — nada a fechar"
+      },
+      {
+        "step": "mission_cost",
+        "ok": true,
+        "emitted": true,
+        "final": true,
+        "cost_unmeasured": "spend_no-session-id",
+        "source": null
+      },
+      {
+        "step": "notify_mission_completed",
+        "ok": true,
+        "emitted": true,
+        "error": null
+      },
+      {
+        "step": "memory_capture",
+        "ok": null,
+        "deduped": false,
+        "error": "exit 2: unknown command: mcp\nrun 'herdr --help' for usage"
+      }
+    ],
+    "ledger_cost": {
+      "missionId": "E2E-SPEND-B",
+      "source": null,
+      "final": true,
+      "cost_unmeasured": "spend_no-session-id",
+      "tokens_unmeasured": "cost_unmeasured"
+    },
+    "null_with_reason": true
+  },
+  "c_dead_server": {
+    "close_ok": true,
+    "close_steps": [
+      {
+        "step": "close_commit_guard",
+        "ok": true,
+        "verdict": "not-git",
+        "note": "cwd do ledger não é repo git — guard não se aplica"
+      },
+      {
+        "step": "operator_channel_proof",
+        "ok": null,
+        "skipped": true,
+        "note": "sem operatorChannel declarado — prova do canal não se aplica"
+      },
+      {
+        "step": "tab_close",
+        "ok": true,
+        "note": "sem tabId conhecido — nada a fechar"
+      },
+      {
+        "step": "mission_cost",
+        "ok": true,
+        "emitted": true,
+        "final": true,
+        "cost_unmeasured": "spend_call_failed: mcp_http_failed: URLError",
+        "source": null
+      },
+      {
+        "step": "notify_mission_completed",
+        "ok": true,
+        "emitted": true,
+        "error": null
+      },
+      {
+        "step": "memory_capture",
+        "ok": null,
+        "deduped": false,
+        "error": "exit 2: unknown command: mcp\nrun 'herdr --help' for usage"
+      }
+    ],
+    "ledger_cost": {
+      "missionId": "E2E-SPEND-C",
+      "source": null,
+      "final": true,
+      "cost_unmeasured": "spend_call_failed: mcp_http_failed: URLError",
+      "tokens_unmeasured": "cost_unmeasured"
+    },
+    "typed_reason": true
+  },
+  "verdict": "PASS"
+}
