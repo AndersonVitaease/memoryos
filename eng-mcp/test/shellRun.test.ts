@@ -130,7 +130,7 @@ describe("tier 3 — operator consequence, typed blocked", () => {
   test("denylist commands are blocked BEFORE any execution", async () => {
     for (const [command, rule] of [
       ["systemctl restart nginx", "system_service_control"],
-      ["rm -rf /opt/memoryos", "rm_recursive_or_forced"],
+      ["rm -rf /tmp/probe-denylist-fixture", "rm_recursive_or_forced"],
       ["kill -9 1234", "process_kill"],
       ["curl https://example.com", "external_fetch"],
       ["chmod 777 /etc/sudoers", "etc_mutation"],
