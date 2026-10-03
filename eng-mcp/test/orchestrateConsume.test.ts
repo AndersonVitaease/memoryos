@@ -243,6 +243,29 @@ test("dedupe idempotente: intent já promovida → NO_OP tipado, nunca re-despac
   assert.ok(second.results[0].reason.includes("promovida"));
 });
 
+test("ORCH-CLOSED-NOOP-01: missão fechada no ledger → noop, nunca re-despacha", async () => {
+  const deps = makeDeps();
+  let dispatches = 0;
+  const ledger = JSON.stringify({ status: "closed" });
+  enqueue(deps.queue, "c1", "mission_dispatch", { missionId: "closed-m", promptFile: PROMPT_FILE });
+  enqueue(deps.queue, "c2", "mission_dispatch", { missionId: "closed-m", promptFile: PROMPT_FILE });
+  const result = await runOrchestrateConsume({ execute: true, approval: { approved: true } }, {
+    ...deps,
+    readText: (path: string) => {
+      if (path.endsWith("/closed-m.json")) return ledger;
+      if (path.endsWith("orchestrator-queue.jsonl")) return deps.queue.length > 0 ? deps.queue.join("\n") : null;
+      if (path.endsWith("orchestrator-consumer.state.json")) return JSON.stringify(deps.state);
+      return null;
+    },
+    dispatchMission: async () => { dispatches += 1; return { ok: true }; },
+  } as any);
+  assert.equal(result.consumed, 2);
+  assert.equal(dispatches, 0); // NUNCA re-despacha missão fechada
+  assert.equal(result.results[0].action, "noop");
+  assert.equal(result.results[1].action, "noop");
+  assert.ok(result.results[0].reason.includes("closed"));
+});
+
 test("execute audita cada decisão em /data/audit (trilha com decision + motivo)", async () => {
   const deps = makeDeps();
   enqueue(deps.queue, "aud-1", "mission_dispatch", { missionId: "aud", promptFile: PROMPT_FILE });
