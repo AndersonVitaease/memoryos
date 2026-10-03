@@ -58,6 +58,10 @@ export interface OrchestrateDeps {
   missionOpsDir?: string;
   priceTablePath?: string;
   claudeConfigDir?: string;
+  /** ORCH-BREAKER-01: PSI de I/O (/proc/pressure/io) — gate de swap/iowait do plan. */
+  psiPath?: string;
+  /** ORCH-BREAKER-01: estado do breaker (breaker:{stage,paused,since} no plan/list). */
+  breakerStatePath?: string;
   /** Dispatch a mission via the mission-ops handler. Returns {ok, error?}. */
   dispatchMission?(input: { missionId: string; promptFile: string; worktree?: string; priority?: number }): Promise<{ ok: boolean; error?: string }>;
 }
@@ -118,7 +122,9 @@ export const orchestrateConsumeInputSchema = z.object({
 
 const CONSUMER_LOCK_TTL_MS = 30_000;
 
-function parseFrontmatterClass(raw: string | null): string | null {
+// ORCH-BREAKER-01: exportado para o breaker reusar o MESMO parser de classe
+// (financeiro/aprovação no frontmatter = camada nunca interceptável).
+export function parseFrontmatterClass(raw: string | null): string | null {
   if (!raw) return null;
   const m = raw.match(/^---\s*\n[\s\S]*?class:\s*(\S+)\s*\n[\s\S]*?^---/m);
   return m ? m[1] : null;
@@ -504,6 +510,11 @@ export interface OrchestratePlanResult {
     memAvailableGb: number | null;
     diskFreeGb: number | null;
     failedUnits: number | null;
+    /** ORCH-BREAKER-01: pressão de swap (%) — null = sem swap configurado. */
+    swapUsedPct: number | null;
+    /** ORCH-BREAKER-01: PSI io avg60 (%) — janela sustentada (null = PSI indisponível). */
+    iowaitSomeAvg60: number | null;
+    iowaitFullAvg60: number | null;
   };
   missions: MissionSnapshot;
   budget: { usedTodayUsd: number; ceilingUsd: number; usedPct: number } | null;
@@ -512,6 +523,8 @@ export interface OrchestratePlanResult {
   blockReasons: string[];
   throttleReasons: string[];
   degraded: boolean;
+  /** ORCH-BREAKER-01: estado do breaker (null = breaker nunca rodou). */
+  breaker: { stage: number; paused: string[]; since: string | null } | null;
 }
 
 function defaultReadText(path: string): string | null {
@@ -566,6 +579,9 @@ function resolveDeps(deps?: OrchestrateDeps): Required<Pick<OrchestrateDeps, "re
     missionOpsDir: deps?.missionOpsDir ?? envPath("ENG_MCP_MISSION_OPS_DIR") ?? DEFAULT_PATHS.missionOpsDir,
     priceTablePath: deps?.priceTablePath ?? envPath("ENG_MCP_PRICE_TABLE_PATH") ?? DEFAULT_PATHS.priceTablePath,
     claudeConfigDir: deps?.claudeConfigDir ?? envPath("ENG_MCP_CLAUDE_CONFIG_DIR") ?? DEFAULT_PATHS.claudeConfigDir,
+    // ORCH-BREAKER-01: PSI de I/O + estado do breaker (overrides por env, padrão HERMÉTICO-FIX-02).
+    psiPath: deps?.psiPath ?? envPath("ENG_MCP_PSI_IO_PATH") ?? "/proc/pressure/io",
+    breakerStatePath: deps?.breakerStatePath ?? envPath("ENG_MCP_BREAKER_STATE_PATH") ?? "/opt/mission-events/orchestrator-breaker.state.json",
   };
 }
 
@@ -652,6 +668,46 @@ function readMemAvailableGb(d: ReturnType<typeof resolveDeps>): number | null {
   return Number.isFinite(kb) ? kb / (1024 * 1024) : null;
 }
 
+// ORCH-BREAKER-01: pressão de swap — (SwapTotal-SwapFree)/SwapTotal. Sem swap
+// configurado (SwapTotal ausente/0) → null: sem swap não há pressão de swap.
+function readSwapUsedPct(d: ReturnType<typeof resolveDeps>): number | null {
+  const raw = d.readText!(d.meminfoPath!);
+  if (raw == null) return null;
+  const kb = (key: string): number | null => {
+    const line = raw.split("\n").find((l) => l.startsWith(`${key}:`));
+    if (!line) return null;
+    const v = Number(line.trim().split(/\s+/)[1]);
+    return Number.isFinite(v) ? v : null;
+  };
+  const total = kb("SwapTotal");
+  const free = kb("SwapFree");
+  if (total == null || total <= 0 || free == null) return null;
+  return ((total - free) / total) * 100;
+}
+
+// ORCH-BREAKER-01: iowait sustentado via PSI (/proc/pressure/io) — janela avg60
+// (sustentada por definição; avg10 é transiente). "some" = qualquer tarefa parada
+// por I/O; "full" = TODAS as tarefas não-idle paradas simultaneamente.
+interface IowaitPressure { someAvg60: number | null; fullAvg60: number | null }
+function readIowaitPressure(d: ReturnType<typeof resolveDeps>): IowaitPressure | null {
+  const raw = d.readText!(d.psiPath!);
+  if (raw == null) return null;
+  const out: IowaitPressure = { someAvg60: null, fullAvg60: null };
+  for (const line of raw.split("\n")) {
+    const m = line.match(/^(some|full)\s+avg10=\S+\s+avg60=([\d.]+)/);
+    if (m) {
+      const v = Number(m[2]);
+      if (Number.isFinite(v)) {
+        // m[1] é "some"|"full"; as chaves do objeto são someAvg60/fullAvg60.
+        if (m[1] === "some") out.someAvg60 = v;
+        else out.fullAvg60 = v;
+      }
+    }
+  }
+  if (out.someAvg60 == null && out.fullAvg60 == null) return null;
+  return out;
+}
+
 function readDiskFreeGb(d: ReturnType<typeof resolveDeps>): number | null {
   // POSIX df -kP / → line 2 field 4 = Available (KiB). Fail-open → null.
   const out = d.exec!("df", ["-kP", "/"]);
@@ -679,13 +735,22 @@ function readFailedUnits(d: ReturnType<typeof resolveDeps>): number | null {
   }).length;
 }
 
+// ORCH-BREAKER-01: limiares do gate de pressão do plan (§2). Constantes LOCAIS de
+// propósito — orchestrateBreaker.ts importa ESTE módulo (parseFrontmatterClass);
+// importar de volta criaria ciclo. Valores espelham BREAKER_THRESHOLDS.planSwapPct.
+const BREAKER_PLAN_SWAP_PCT = 50;
+const BREAKER_PLAN_IOWAIT_FULL_AVG60 = 10;
+const BREAKER_PLAN_IOWAIT_SOME_AVG60 = 30;
+
 // ORCH-CAPACITY-DYNAMIC-01: teto EFETIVO dinâmico — o sistema decide pelo momento.
 // agents.json max_parallel é SEMPRE teto de segurança, nunca o teto efetivo.
 export interface CapacityFactors {
   mem: number | null;   // maxPorMem = floor(memAvailableGb / 2.5)
-  load: number | null;  // maxPorLoad = max(0, floor(nproc - load1m - 1))
+  load: number | null;  // maxPorLoad = max(0, floor(nproc-load1m-1))
   disk: number | null;  // maxPorDisco = diskFreeGb < 20 ? 1 : null (sem limite próprio)
   budget: number | null; // maxPorOrcamento = usedPct>=90 ? 0 : usedPct>=70 ? 1 : null
+  swap: number | null;  // ORCH-BREAKER-01: maxPorSwap = swapUsedPct > 50 ? 0 : null
+  iowait: number | null; // ORCH-BREAKER-01: maxPorIowait = iowait sustentado ? 0 : null
 }
 
 function computeDynamicCapacity(
@@ -694,6 +759,8 @@ function computeDynamicCapacity(
   diskFreeGb: number | null,
   budget: { usedPct: number } | null,
   safetyCap: number | null,
+  swapUsedPct: number | null = null,
+  iowaitSustained: boolean = false,
 ): { maxDynamic: number | null; factors: CapacityFactors; limiting: string[] } {
   const nproc = os.availableParallelism();
   const maxPorMem = memAvailableGb != null ? Math.floor(memAvailableGb / 2.5) : null;
@@ -701,12 +768,16 @@ function computeDynamicCapacity(
   const maxPorDisco = diskFreeGb != null && diskFreeGb < 20 ? 1 : null;
   const usedPct = budget?.usedPct ?? null;
   const maxPorOrcamento = usedPct != null ? (usedPct >= 90 ? 0 : usedPct >= 70 ? 1 : null) : null;
+  // ORCH-BREAKER-01: pressão de swap/iowait ⇒ slots de mission = 0 (§2 do breaker).
+  // swap null = sem swap configurado — não gatilha (fail-open honesto).
+  const maxPorSwap = swapUsedPct != null && swapUsedPct > BREAKER_PLAN_SWAP_PCT ? 0 : null;
+  const maxPorIowait = iowaitSustained ? 0 : null;
 
-  const factors: CapacityFactors = { mem: maxPorMem, load: maxPorLoad, disk: maxPorDisco, budget: maxPorOrcamento };
-  const candidates = [maxPorMem, maxPorLoad, maxPorDisco, maxPorOrcamento, safetyCap].filter((v): v is number => v != null);
+  const factors: CapacityFactors = { mem: maxPorMem, load: maxPorLoad, disk: maxPorDisco, budget: maxPorOrcamento, swap: maxPorSwap, iowait: maxPorIowait };
+  const candidates = [maxPorMem, maxPorLoad, maxPorDisco, maxPorOrcamento, maxPorSwap, maxPorIowait, safetyCap].filter((v): v is number => v != null);
   // Sem nenhum sinal legível → sem teto conhecido (null): plan não bloqueia às cegas (fail-open).
   const maxDynamic = candidates.length > 0 ? Math.min(...candidates) : null;
-  const labels: Record<string, string> = { mem: "mem", load: "load", disk: "disco", budget: "orçamento" };
+  const labels: Record<string, string> = { mem: "mem", load: "load", disk: "disco", budget: "orçamento", swap: "swap", iowait: "iowait" };
   const limiting: string[] = [];
   for (const [key, value] of Object.entries(factors)) {
     if (value != null && value === maxDynamic) limiting.push(labels[key] ?? key);
@@ -737,9 +808,15 @@ export function runOrchestratePlan(input: { type?: string }, deps?: OrchestrateD
   const budget = readBudget(d);
   const maxParallel = readMaxParallel(d, type);
   const running = missions.active; // in-flight (dispatched/working/recover) consomem slot
+  // ORCH-BREAKER-01: pressão de swap/iowait (§2) + estado do breaker (§3).
+  const swapUsedPct = readSwapUsedPct(d);
+  const iowait = readIowaitPressure(d);
+  const iowaitSustainedFlag = (iowait?.fullAvg60 != null && iowait.fullAvg60 >= BREAKER_PLAN_IOWAIT_FULL_AVG60)
+    || (iowait?.someAvg60 != null && iowait.someAvg60 >= BREAKER_PLAN_IOWAIT_SOME_AVG60);
+  const breakerState = readBreakerStateLite(d);
 
   // ORCH-CAPACITY-DYNAMIC-01: teto efetivo = min(fatores do momento, teto de segurança)
-  const dyn = computeDynamicCapacity(load, memAvailableGb, diskFreeGb, budget, maxParallel);
+  const dyn = computeDynamicCapacity(load, memAvailableGb, diskFreeGb, budget, maxParallel, swapUsedPct, iowaitSustainedFlag);
   const maxDynamic = dyn.maxDynamic;
 
   const degraded = [load, memAvailableGb, diskFreeGb, failedUnits].every((v) => v == null) && !missions.readable;
@@ -750,6 +827,10 @@ export function runOrchestratePlan(input: { type?: string }, deps?: OrchestrateD
 
   if (budget != null && budget.usedPct >= 70 && budget.usedPct <= 90) throttleReasons.push(`budget ${budget.usedPct.toFixed(0)}% consumido`);
   if (load != null && load > 4) throttleReasons.push(`load ${load.toFixed(2)} > 4`);
+  // ORCH-BREAKER-01 §2: o motivo cita swap/iowait quando um dos dois é o gatilho.
+  if (swapUsedPct != null && swapUsedPct > BREAKER_PLAN_SWAP_PCT) throttleReasons.push(`pressão de swap ${swapUsedPct.toFixed(0)}% > ${BREAKER_PLAN_SWAP_PCT}% — slots de mission = 0`);
+  if (iowait?.fullAvg60 != null && iowait.fullAvg60 >= BREAKER_PLAN_IOWAIT_FULL_AVG60) throttleReasons.push(`iowait sustentado (io full avg60 ${iowait.fullAvg60.toFixed(0)}% ≥ ${BREAKER_PLAN_IOWAIT_FULL_AVG60}%) — slots de mission = 0`);
+  else if (iowait?.someAvg60 != null && iowait.someAvg60 >= BREAKER_PLAN_IOWAIT_SOME_AVG60) throttleReasons.push(`iowait sustentado (io some avg60 ${iowait.someAvg60.toFixed(0)}% ≥ ${BREAKER_PLAN_IOWAIT_SOME_AVG60}%) — slots de mission = 0`);
   if (maxDynamic != null && running >= maxDynamic) throttleReasons.push(`slots de "${type}" esgotados (${running}/${maxDynamic} — teto dinâmico; limitado por: ${dyn.limiting.join(", ")})`);
   if (missions.recoverInFlight >= 1) throttleReasons.push(`${missions.recoverInFlight} recover em curso`);
   if (!missions.readable) throttleReasons.push(`mission-state ilegível em ${d.missionStateDir} — fail-open conservador`);
@@ -761,7 +842,7 @@ export function runOrchestratePlan(input: { type?: string }, deps?: OrchestrateD
     : [...blockReasons, ...throttleReasons].join("; ");
 
   return {
-    system: { load1m: load, memAvailableGb, diskFreeGb, failedUnits },
+    system: { load1m: load, memAvailableGb, diskFreeGb, failedUnits, swapUsedPct, iowaitSomeAvg60: iowait?.someAvg60 ?? null, iowaitFullAvg60: iowait?.fullAvg60 ?? null },
     missions,
     budget,
     capacity: { type, running, max: maxDynamic, canDispatch, reason, safetyCap: maxParallel, factors: dyn.factors, limiting: dyn.limiting },
@@ -769,7 +850,29 @@ export function runOrchestratePlan(input: { type?: string }, deps?: OrchestrateD
     blockReasons,
     throttleReasons,
     degraded,
+    breaker: breakerState,
   };
+}
+
+// ORCH-BREAKER-01: leitura leve do estado do breaker para exposição no plan/list.
+// Local para evitar ciclo orchestrate.ts → orchestrateBreaker.ts. Estado ausente,
+// corrompido ou nunca rodado (stage 0 + sem pausas + sem updatedAt) → null.
+function readBreakerStateLite(d: ReturnType<typeof resolveDeps>): { stage: number; paused: string[]; since: string | null } | null {
+  try {
+    const raw = d.readText!(d.breakerStatePath!);
+    if (raw == null) return null;
+    const parsed = JSON.parse(raw) as { stage?: unknown; paused?: unknown; since?: unknown; updatedAt?: unknown };
+    const stage = parsed.stage === 1 || parsed.stage === 2 ? parsed.stage : 0;
+    const paused = Array.isArray(parsed.paused)
+      ? parsed.paused.filter((p): p is string => p != null && typeof p === "object" && typeof (p as { missionId?: unknown }).missionId === "string")
+        .map((p) => (p as { missionId: string }).missionId)
+      : [];
+    const since = typeof parsed.since === "string" ? parsed.since : null;
+    if (stage === 0 && paused.length === 0 && parsed.updatedAt == null) return null;
+    return { stage, paused, since };
+  } catch {
+    return null;
+  }
 }
 
 // ---- engineering.orchestrate.enqueue (F1: grava + lista; promoção é do cron futuro) ----
@@ -1065,12 +1168,13 @@ export function runOrchestrateSpend(
 // Update orchestrateList to include spend aggregates per mission + consumer state
 // + roles enrichment per mission (ORCH-ROLE-BADGE-01): reads each mission's
 // ledger at missionStateDir and attaches the roles block (worker/advisor/supervisor/judge).
-export function orchestrateList(deps?: OrchestrateDeps): { count: number; entries: QueueEntry[]; spend: SpendResult; consumer: OrchestratorConsumerState } {
+export function orchestrateList(deps?: OrchestrateDeps): { count: number; entries: QueueEntry[]; spend: SpendResult; consumer: OrchestratorConsumerState; breaker: { stage: number; paused: string[]; since: string | null } | null } {
   const d = resolveDeps(deps);
   const raw = d.readText!(d.queuePath!);
   const entries = parseQueue(raw);
   const spend = runOrchestrateSpend({}, deps);
   const consumer = readConsumerState(d);
+  const breaker = readBreakerStateLite(d); // ORCH-BREAKER-01: estado consultável no list
   // ORCH-ROLE-BADGE-01: enrich entries with roles from mission ledgers
   const enriched = entries.map((entry) => {
     const missionId = (entry.payload?.missionId ?? entry.payload?.mission) as string | undefined;
@@ -1087,5 +1191,5 @@ export function orchestrateList(deps?: OrchestrateDeps): { count: number; entrie
     } catch { /* malformed ledger: skip enrichment */ }
     return entry;
   });
-  return { count: enriched.length, entries: enriched, spend, consumer };
+  return { count: enriched.length, entries: enriched, spend, consumer, breaker };
 }
