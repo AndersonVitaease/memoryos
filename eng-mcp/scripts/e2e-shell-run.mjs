@@ -12,7 +12,7 @@ console.log(`E2E1 tier=${suite.tier} status=${suite.status} exit=${suite.exitCod
 assert.equal(suite.status, "executed");
 assert.equal(suite.tier, 1);
 assert.equal(suite.exitCode, 0);
-assert.match(suite.stdout, /# pass 17/);
+assert.match(suite.stdout, /pass 17/);
 
 // E2E 2 — tier 3: operator consequence, typed blocked, never executed.
 const blocked = await runShellRun({ command: "systemctl restart nginx" });
