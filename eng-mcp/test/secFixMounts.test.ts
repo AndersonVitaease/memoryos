@@ -29,10 +29,18 @@ test("only the orchestrator queue file stays writable under /opt/mission-events"
 
 test("consumer runtime files live in /run/mission-bus via env (dir stays ro)", () => {
   const envs: string[] = (p as { consumerEnv?: string[] }).consumerEnv ?? [];
-  for (const key of ["ENG_MCP_CONSUMER_STATE_PATH", "ENG_MCP_CONSUMER_LOCK_PATH", "ENG_MCP_SPOOL_PATH"]) {
+  // SPOOL-RO-01: MISSION_BUS_JOURNAL cobre o journal do bus_guard no plugin.
+  for (const key of ["ENG_MCP_CONSUMER_STATE_PATH", "ENG_MCP_CONSUMER_LOCK_PATH", "ENG_MCP_SPOOL_PATH", "MISSION_BUS_JOURNAL"]) {
     const hit = envs.find((e) => e.startsWith(key + "="));
     assert.ok(hit, key + " deve estar definido no consumerEnv");
     assert.ok(hit!.split("=")[1].startsWith("/run/mission-bus/"), key + " deve apontar para /run/mission-bus");
   }
   assert.ok(!envs.some((e) => e.includes("/opt/mission-events")), "nenhum path do consumidor em /opt/mission-events");
+});
+
+test("SPOOL-RO-01: spool do bus entra pelo bind único, nunca por rw de dir", () => {
+  // o único rw sob /opt/mission-events continua sendo a fila; o spool do bus
+  // é atendido pelo file-bind busSpoolMount (host spool.jsonl -> /run/mission-bus).
+  assert.ok(!p.busSpoolMount.includes("/opt/mission-events/spool.jsonl:/opt/mission-events/"), "spool não pode ser rw no lado ro");
+  assert.equal(p.busSpoolMount, "/opt/mission-events/spool.jsonl:/run/mission-bus/spool.jsonl");
 });
