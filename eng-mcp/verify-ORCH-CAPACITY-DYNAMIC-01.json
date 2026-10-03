@@ -1,0 +1,25 @@
+{
+  "mission": "ORCH-CAPACITY-DYNAMIC-01",
+  "cmd": [
+    {
+      "run": "cd /opt/memoryos/eng-mcp && node --import tsx --test test/orchestratePlan.test.ts",
+      "expect_exit": 0,
+      "timeout": 180
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp && node --import tsx --test test/orchestrateConsumeDaemon.test.mjs",
+      "expect_exit": 0,
+      "timeout": 120
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp && git log --oneline -1 | grep -q ORCH-CAPACITY-DYNAMIC-01",
+      "expect_exit": 0,
+      "timeout": 30
+    }
+  ],
+  "file": [
+    {
+      "path": "/opt/memoryos/eng-mcp/RELATORIO-ORCH-CAPACITY-DYNAMIC-01.md"
+    }
+  ]
+}
