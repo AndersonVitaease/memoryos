@@ -1,0 +1,15 @@
+== git-credentials hosts (sem segredos) ==
+https://[REDACTED]@github.com
+== /data/audit ==
+total 8220
+drwxr-xr-x 2 root root    4096 Oct  3 13:54 .
+drwxr-xr-x 5 root root    4096 Sep 23 15:05 ..
+-rw-r--r-- 1 root root  315750 Oct  3 09:24 git-merge.jsonl
+-rw------- 1 root root     538 Sep 26 08:34 gws-bridge.jsonl
+-rw------- 1 root root  122616 Oct  3 09:24 gws.jsonl
+-rw-r--r-- 1 root root  250695 Oct  3 09:24 ids.jsonl
+-rw-r--r-- 1 root root   80183 Oct  3 09:24 image-edit-fast.jsonl
+-rw-r--r-- 1 root root     242 Sep 26 14:55 judge.jsonl
+-rw------- 1 root root   77784 Oct  3 09:24 memory-store.jsonl
+== eng-mcp-suite-tap ==
+full.tap

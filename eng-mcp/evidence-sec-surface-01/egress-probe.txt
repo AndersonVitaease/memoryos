@@ -1,0 +1,8 @@
+== egress hosts (curl HEAD) ==
+https://api.github.com -> 200
+https://api.anthropic.com -> 404
+https://api.openai.com -> 421
+https://e2b.dev -> 200
+https://models.dev -> 200
+https://registry.npmjs.org -> 200
+https://pypi.org -> 200

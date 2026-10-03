@@ -1,0 +1,38 @@
+== eng-mcp endpoints (routes) ==
+== hermes notify egress ==
+http://127.0.0.1
+http://localhost
+https://abacus.ai
+https://above.dev
+https://agent.pioneer.ai
+https://agentrouter.org
+https://agnes-ai.com
+https://ai-gateway.helicone.ai
+https://ai-router.dev
+https://ai.google.dev
+https://ai.zenifra.com
+https://ainetcafe.com
+https://aki.io
+https://alipaytbox.yuque.com
+https://ambient.xyz
+https://api-docs.deepseek.com
+https://api-gateway.merge.dev
+https://api-gw.klok.ipaas.se
+https://api-inference.modelscope.cn
+https://api-sherlock.cloudferro.com
+== alloy endpoints ==
+url            = "https://fleet-management-prod-015.grafana.net"
+url = "https://prometheus-prod-40-prod-sa-east-1.grafana.net/api/prom/push"
+url = "https://logs-prod-024.grafana.net/loki/api/v1/push"
+== hermes egress hosts (count) ==
+370
+== alloy ==
+https://fleet-management-prod-015.grafana.net
+https://logs-prod-024.grafana.net
+https://prometheus-prod-40-prod-sa-east-1.grafana.net
+== hermes egress hosts (contagem) ==
+370
+== alloy ==
+https://fleet-management-prod-015.grafana.net
+https://logs-prod-024.grafana.net
+https://prometheus-prod-40-prod-sa-east-1.grafana.net
