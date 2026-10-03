@@ -297,11 +297,10 @@ export async function runShellRun(input: ShellRunInput, deps: ShellRunDeps = {})
     // Malformed envelope = fail-closed: empty answers => every question unknown => max risk => refused.
     judgeAnswers = Array.isArray(judgeEnvelope?.answers) ? judgeEnvelope.answers : [];
   } catch (error) {
-    const reason = `judge unavailable — fail-closed: ${error instanceof Error ? error.message : String(error)}`;
     const result: ShellRunResult = {
       status: "refused", tier: 2, ...base, cwd,
       exitCode: null, timedOut: false, durationMs: 0, stdout: "", stderr: "", truncated: false,
-      reason: tier2Reason, code: "SHELL_RUN_JUDGE_UNAVAILABLE",
+      reason: `${tier2Reason}; judge unavailable — fail-closed: ${error instanceof Error ? error.message : String(error)}`, code: "SHELL_RUN_JUDGE_UNAVAILABLE",
       audit: writeShellRunAudit(auditFile, { ...base, tier: 2, status: "refused", rule: classified.rule, code: "SHELL_RUN_JUDGE_UNAVAILABLE" })
     };
     return result;
