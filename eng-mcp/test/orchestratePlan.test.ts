@@ -147,3 +147,71 @@ test("mission-state ilegível → THROTTLE honesto (não despachar às cegas)", 
   assert.equal(plan.verdict, "THROTTLE");
   assert.ok(plan.throttleReasons.some((r) => r.includes("ilegível")));
 });
+// ORCH-CAPACITY-DYNAMIC-01 — teto dinâmico: failed-units transientes não bloqueiam;
+// unidade real failed bloqueia; teto efetivo = min(fatores do momento, teto de segurança).
+const SYSTEMCTL_TRANSIENT = "run-u4542.service loaded failed failed /tmp/run-u4542.sh\n";
+const SYSTEMCTL_REAL = "orch-daemon-consume.service loaded failed failed daemon\n";
+const SYSTEMCTL_DAEMON = "orch-daemon-consume.service loaded failed failed daemon\n";
+
+test("failed-units: transiente run-u*.service NÃO bloqueia o plan", () => {
+  const files = { "A.json": ledger("A", "closed") };
+  const deps = makePlanDeps(files, { exec: (cmd: string, args: string[]) =>
+    cmd === "systemctl" && args.includes("--failed") ? SYSTEMCTL_TRANSIENT : null });
+  const plan = runOrchestratePlan({}, deps as any);
+  assert.equal(plan.system.failedUnits, 0);
+  assert.equal(plan.verdict, "GO");
+});
+
+test("failed-units: orch-daemon-consume.service failed BLOQUEIA o plan", () => {
+  const files = { "A.json": ledger("A", "closed") };
+  const deps = makePlanDeps(files, { exec: (cmd: string, args: string[]) =>
+    cmd === "systemctl" && args.includes("--failed") ? SYSTEMCTL_REAL : null });
+  const plan = runOrchestratePlan({}, deps as any);
+  assert.equal(plan.system.failedUnits, 1);
+  assert.equal(plan.verdict, "BLOCK");
+  assert.ok(plan.blockReasons.some((r) => r.includes("failed")));
+});
+
+test("teto dinâmico: mem 3Gb → max 1 (floor(3/2.5)) mesmo com max_parallel=2", () => {
+  const files = { "A.json": ledger("A", "closed") };
+  const deps = makePlanDeps(files, {
+    readText: (path: string) => {
+      const base = path.split("/").pop() ?? "";
+      if (base === "agents.json") return JSON.stringify([{ type: "mission", max_parallel: 2 }]);
+      if (base === "meminfo") return "MemAvailable:       3072 kB\n".replace("3072 kB", `${3 * 1024 * 1024} kB`);
+      return base in files ? files[base] : null;
+    },
+    exec: (cmd: string, args: string[]) => {
+      if (cmd === "df" && args.includes("-k")) return `Filesystem 1024-blocks Used Available\n/dev 100 10 ${40 * 1024 * 1024}`;
+      return null;
+    },
+  });
+  const plan = runOrchestratePlan({}, deps as any);
+  assert.equal(plan.capacity.safetyCap, 2);
+  assert.equal(plan.capacity.max, 1);
+  assert.ok(plan.capacity.limiting.includes("mem"));
+});
+
+test("teto dinâmico: orçamento >=90% → max 0 (THROTTLE mesmo com slot livre)", () => {
+  const files = { "A.json": ledger("A", "closed") };
+  const deps = makePlanDeps(files, {
+    readText: (path: string) => {
+      const base = path.split("/").pop() ?? "";
+      if (base === "agents.json") return JSON.stringify([{ type: "mission", max_parallel: 2 }]);
+      if (base === "orchestrator-budget.json") return JSON.stringify({ used_today_usd: 9.5, ceiling_usd: 10 });
+      return base in files ? files[base] : null;
+    },
+  });
+  const plan = runOrchestratePlan({}, deps as any);
+  assert.equal(plan.capacity.max, 0);
+  // Semântica decidida pelo supervisor (03/10): orçamento >=90% = parada DURA
+  // (BLOCK — re-tentar no ciclo não muda nada até a janela resetar), não THROTTLE.
+  assert.equal(plan.verdict, "BLOCK");
+});
+
+test("teto dinâmico: sem sinais → teto null (GO, fail-open)", () => {
+  const files = { "A.json": ledger("A", "closed") };
+  const plan = runOrchestratePlan({}, makePlanDeps(files) as any);
+  assert.equal(plan.capacity.max, null);
+  assert.equal(plan.verdict, "GO");
+});
