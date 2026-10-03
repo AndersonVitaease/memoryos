@@ -1,0 +1,105 @@
+{
+  "mission": "ORCH-ROLE-ROUTER-01",
+  "cmd": [
+    {
+      "run": "grep -q 'routingTablePath' /opt/memoryos/eng-mcp-wt-router-01/eng-mcp/src/orchestrate.ts",
+      "expect_exit": 0,
+      "timeout": 10
+    },
+    {
+      "run": "grep -q 'divergence\\|detectDivergence\\|orch_route_divergence' /opt/memoryos/eng-mcp-wt-router-01/eng-mcp/src/orchestrate.ts",
+      "expect_exit": 0,
+      "timeout": 10
+    },
+    {
+      "run": "grep -q 'loadRoutingTable' /opt/memoryos/eng-mcp-wt-router-01/eng-mcp/src/orchestrate.ts",
+      "expect_exit": 0,
+      "timeout": 10,
+      "description": "routing vive no orchestrate.ts (contrato: roteamento no despacho)"
+    },
+    {
+      "run": "grep -q 'getRoutedWorker' /opt/memoryos/eng-mcp-wt-router-01/eng-mcp/src/orchestrate.ts",
+      "expect_exit": 0,
+      "timeout": 10
+    },
+    {
+      "run": "grep -q 'writeSettingsPin' /opt/memoryos/eng-mcp-wt-router-01/eng-mcp/src/orchestrate.ts",
+      "expect_exit": 0,
+      "timeout": 10
+    },
+    {
+      "run": "grep -q 'orch_route_divergence' /opt/memoryos/eng-mcp-wt-router-01/eng-mcp/src/orchestrate.ts",
+      "expect_exit": 0,
+      "timeout": 10
+    },
+    {
+      "run": "grep -q 'trindadeLine\\|TRINDADE\\|generateTrindadeLine' /opt/memoryos/eng-mcp-wt-router-01/eng-mcp/src/missionOps.ts",
+      "expect_exit": 0,
+      "timeout": 10
+    },
+    {
+      "run": "grep -q 'enrichLedgerWithRoles' /opt/memoryos/eng-mcp-wt-router-01/eng-mcp/src/missionOps.ts",
+      "expect_exit": 0,
+      "timeout": 10
+    },
+    {
+      "run": "grep -q 'writeSettingsJsonPin' /opt/memoryos/eng-mcp-wt-router-01/eng-mcp/src/missionOps.ts",
+      "expect_exit": 0,
+      "timeout": 10
+    },
+    {
+      "run": "test -f /opt/mission-events/orchestrator-model-routing.json",
+      "expect_exit": 0,
+      "timeout": 10
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp-wt-router-01/eng-mcp && npx tsx --test test/orchestrate.test.ts test/orchestrateSpend.test.ts test/orchestrateConsume.test.ts 2>&1 | tail -4",
+      "expect_exit": 0,
+      "timeout": 300
+    },
+    {
+      "run": "! grep -q 'TODO.*routing\\|FIXME.*routing\\|HACK.*routing' /opt/memoryos/eng-mcp-wt-router-01/eng-mcp/src/orchestrate.ts",
+      "expect_exit": 0,
+      "timeout": 10
+    },
+    {
+      "run": "! grep -q 'TODO.*trindade\\|FIXME.*trindade' /opt/memoryos/eng-mcp-wt-router-01/eng-mcp/src/missionOps.ts",
+      "expect_exit": 0,
+      "timeout": 10
+    },
+    {
+      "run": "grep -q 'parseFrontmatterClass' /opt/memoryos/eng-mcp-wt-router-01/eng-mcp/src/orchestrate.ts",
+      "expect_exit": 0,
+      "timeout": 10
+    },
+    {
+      "run": "grep -q 'loadRoutingTable' /opt/memoryos/eng-mcp-wt-router-01/eng-mcp/src/orchestrate.ts",
+      "expect_exit": 0,
+      "timeout": 10
+    },
+    {
+      "run": "npm run build --prefix /opt/memoryos/eng-mcp-wt-router-01 2>&1 | tail -3",
+      "expect_exit": 0,
+      "timeout": 60
+    }
+  ],
+  "file": [
+    {
+      "path": "/opt/memoryos/eng-mcp-wt-router-01/eng-mcp/src/orchestrate.ts",
+      "min_bytes": 5000
+    },
+    {
+      "path": "/opt/memoryos/eng-mcp-wt-router-01/eng-mcp/src/missionOps.ts",
+      "min_bytes": 5000
+    },
+    {
+      "path": "/opt/mission-events/orchestrator-model-routing.json",
+      "min_bytes": 100
+    },
+    {
+      "path": "/opt/memoryos/eng-mcp-wt-router-01/verify-ORCH-ROLE-ROUTER-01.json",
+      "min_bytes": 500
+    }
+  ],
+  "note": "Executable verify manifest for ORCH-ROLE-ROUTER-01: routing table wired into consume, settings pin, divergence detection, trindade in close"
+}
