@@ -1,0 +1,51 @@
+{
+  "missionId": "P95-FLAKY-01",
+  "owner": "P95-FLAKY-01",
+  "generatedAt": "2025-10-02T18:47:00Z",
+  "proofs": [
+    {
+      "type": "cmd",
+      "note": "Suíte sessionRoster completa (8 testes, incl. subteste p95 relativo em blocos) — run normal, host-side, VERDE 8/8",
+      "cmd": [
+        {
+          "run": "cd /opt/memoryos/eng-mcp-wt-p95-flaky-01/eng-mcp && node --import tsx --test --test-force-exit --test-reporter=tap test/sessionRoster.test.ts",
+          "expect_exit": 0,
+          "timeout": 120
+        }
+      ],
+      "evidence_tail": "# p95 latency (relativo, best-of-3 blocos):\n#   bloco 1: p95 50.7ms / baseline 45.6ms = 1.11x\n# pass 8\n# fail 0"
+    },
+    {
+      "type": "cmd",
+      "note": "Suíte sob carga sintética: 4 busy-loops Node em paralelo durante o run — VERDE 8/8, bloco 1 ratio 1.19x",
+      "cmd": [
+        {
+          "run": "cd /opt/memoryos/eng-mcp-wt-p95-flaky-01/eng-mcp && for i in 1 2 3 4; do node -e \"const end=Date.now()+9000; let x=0; while(Date.now()<end){x+=Math.sqrt($i)}\" & done; sleep 0.3; node --import tsx --test --test-force-exit --test-reporter=tap test/sessionRoster.test.ts; wait",
+          "expect_exit": 0,
+          "timeout": 120
+        }
+      ],
+      "evidence_tail": "# p95 latency (relativo, best-of-3 blocos):\n#   bloco 1: p95 59.8ms / baseline 50.3ms = 1.19x\n# pass 8\n# fail 0"
+    },
+    {
+      "type": "file",
+      "note": "Relatório pt-BR com justificativa da opção (a) p95 relativo",
+      "file": [
+        {
+          "path": "/opt/memoryos/eng-mcp-wt-p95-flaky-01/eng-mcp/RELATORIO-p95-flaky-01.md"
+        }
+      ],
+      "evidence_tail": "## Opção escolhida: (a) p95 relativo ao MESMO run"
+    },
+    {
+      "type": "file",
+      "note": "Subteste p95 reescrito: 3 blocos de 30 iterações; em cada bloco baseline = mediana das primeiras 10; gate best-of-3 p95 ≤ 3× baseline + teto de segurança 500ms",
+      "file": [
+        {
+          "path": "/opt/memoryos/eng-mcp-wt-p95-flaky-01/eng-mcp/test/sessionRoster.test.ts"
+        }
+      ],
+      "evidence_tail": "it('latency p95 should not degrade beyond 3x same-run baseline', () => {"
+    }
+  ]
+}
