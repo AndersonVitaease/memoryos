@@ -6,6 +6,7 @@ import { statSync, writeFileSync, unlinkSync, appendFileSync } from "node:fs";
 import os from "node:os";
 import { execFileSync } from "node:child_process";
 import { runOrchestrateConsume } from "./orchestrate.ts";
+import { runOrchestrateQueueCompaction } from "./orchestrateCompaction.ts";  // ORCH-QUEUE-COMPACT-01: arquivamento no fim de todo ciclo
 import { runMissionDispatch, runMissionRecover, runMissionNudge } from "./missionOps.ts";  // ORCH-PREAUTH-01: caminho governado do despacho
 import { runNotifyHermes } from "./notifyHermes.ts";
 import { runBreakerTick, PAUSADO_MESSAGE, RESUMO_MESSAGE_PREFIX } from "./orchestrateBreaker.ts";  // ORCH-BREAKER-01: breaker de pressão integrado ao ciclo
@@ -85,6 +86,25 @@ export async function runBreakerCycle(deps) {
   });
 }
 
+// ORCH-QUEUE-COMPACT-01: compactação/arquivamento da fila no fim de TODO ciclo do
+// daemon (plan ou execute — é o "fim do ciclo do consume" do contrato; em execute a
+// compactação já rodou dentro do runOrchestrateConsume, aqui vira passagem de prova).
+// Fail-open: qualquer falha NUNCA trava o ciclo. ORCH_QUEUE_COMPACT=0 desliga
+// (escape hatch de suítes locais; produção sem a var = ligada).
+function maybeCompactQueue(executed) {
+  if (executed && typeof executed.compacted === "number") {
+    return { ok: true, via: "consume-execute", moved: executed.compacted };
+  }
+  if (process.env.ORCH_QUEUE_COMPACT === "0") {
+    return { ok: true, via: "disabled", reason: "ORCH_QUEUE_COMPACT=0", moved: 0 };
+  }
+  try {
+    return { ...runOrchestrateQueueCompaction({}), via: "daemon-cycle" };
+  } catch (error) {
+    return { ok: false, via: "daemon-cycle", error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 export async function runDaemonCycle({ maxPromotions = 2, breakerDeps } = {}) {
   if (!acquireLock()) {
     return { ok: false, reason: "lock held by another daemon cycle" };
@@ -103,14 +123,14 @@ export async function runDaemonCycle({ maxPromotions = 2, breakerDeps } = {}) {
     // PLAN: dryRun — decisão sem efeito.
     const plan = await runOrchestrateConsume({ dryRun: true, maxPromotions });
     if (!plan || plan.promoted === 0) {
-      return { ok: true, mode: "plan", plan, executed: null, breaker };
+      return { ok: true, mode: "plan", plan, executed: null, breaker, compaction: maybeCompactQueue(null) };
     }
     // EXECUTE: despacho real pelo caminho governado (mesma runMissionDispatch).
     // ORCH-DAEMON-01 FIX: execute exige approval.approved=true (guard de governança).
     // Sem approval explícito, o daemon permanece em PLAN (fail-safe, nunca falha o ciclo).
     const approval = process.env.ORCH_DAEMON_APPROVED === "1" ? { approved: true } : undefined;
     if (!approval) {
-      return { ok: true, mode: "plan", plan, executed: null, note: "promovíveis aguardam approval (ORCH_DAEMON_APPROVED=1)", breaker };
+      return { ok: true, mode: "plan", plan, executed: null, note: "promovíveis aguardam approval (ORCH_DAEMON_APPROVED=1)", breaker, compaction: maybeCompactQueue(null) };
     }
     // ORCH-PREAUTH-01 (elo final): o daemon injeta o MESMO caminho governado do
     // tools.ts (runMissionDispatch) — antes ele chamava execute sem handler e o
@@ -134,7 +154,7 @@ export async function runDaemonCycle({ maxPromotions = 2, breakerDeps } = {}) {
         }
       },
     });
-    return { ok: true, mode: "execute", plan, executed, breaker };
+    return { ok: true, mode: "execute", plan, executed, breaker, compaction: maybeCompactQueue(executed) };
   } catch (err) {
     return { ok: false, reason: err instanceof Error ? err.message : String(err) };
   } finally {
