@@ -64,6 +64,8 @@ import { imageEditRoutedInputSchema, runImageEditRouted } from "./imageEditFast.
 import { missionDispatchInputSchema, missionStatusInputSchema, missionReadInputSchema, missionWatchInputSchema, missionRecoverInputSchema, missionCloseInputSchema, missionVerifyInputSchema, missionLedgerFixInputSchema, runMissionDispatch, runMissionStatus, runMissionRead, runMissionWatch, runMissionRecover, runMissionVerify, runMissionClose, runMissionLedgerFix, missionNudgeInputSchema, runMissionNudge, runMissionSnapshot } from "./missionOps.ts";
 // ROSTER-01: inventário auditável de sessões/turnos/missões (read-only, zero-LLM, LGPD metadata-only).
 import { getRoster } from "./sessionRoster.ts";
+// WORKER-SHELL-PROPRIA-01: shell própria do worker (roteador 3-andares allowlist/jev/operator).
+import { runShellRun, shellRunInputSchema } from "./shellRun.ts";
 
 
 import { imageCreateInputSchema, runImageCreate } from "./imageCreate.ts";
@@ -1683,4 +1685,19 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
     description: "Inventário auditável e LGPD-safe de sessões/turnos/missões do ecossistema em 1 chamada: missões (ledger /root/.hermes/mission-state), panes herdr vivos (tab list), sessões claude (NOMES e mtimes apenas — ZERO conteúdo de conversa) e resumo com staleness_flags (>15min dispatched/working). Read-only, zero-LLM.",
     inputSchema: z.object({}).strict()
   }, async () => { requireRead(); return response(getRoster()); }));
+
+  // WORKER-SHELL-PROPRIA-01 (03/10): shell própria do worker — o Bash do claude sai do
+  // caminho crítico (classifier de auto-mode de terceiro caía e travava TODAS as missões).
+  // Roteador 3-andares: (1) allowlist regex custo-zero de provas de missão — executa direto,
+  // zero LLM; (2) fora da allowlist — Jev classifica seguro/inseguro (4 perguntas band-2,
+  // safeScore >= 0.9 executa, abaixo recusa com motivo; judge indisponível = fail-closed);
+  // (3) destrutivo/consequência externa (rm -rf, systemctl, curl externo, kill, chmod /etc,
+  // /data/manifests, git push, docker...) — DENYLIST avaliada ANTES da allowlist, resultado
+  // `blocked` tipado com o comando, NUNCA auto-executa. Guardas: timeout (default 120s,
+  // máx 600s, SIGKILL), output head+tail 50KB, cwd fixo sob /opt ou /root/.hermes, log
+  // auditável por chamada (andar, veredito, comando, exit) em /data/audit/shell-run.jsonl.
+  register("engineering.shell.run", "write", (name) => server.registerTool(name, {
+    description: "WORKER-SHELL-PROPRIA-01: executa comando no host com roteamento 3-andares. Andar 1 (allowlist custo-zero): provas de missão (pytest, python3 -m unittest, node --test / --import tsx --test, npm test, git status/diff/log/add/commit/branch, ls, cat, python3 script.py com paths em /opt e /root/.hermes) executam direto, sem LLM. Andar 2: comando fora da allowlist → Jev classifica seguro/inseguro → executa (safeScore >= 0.9) ou recusa com motivo; judge indisponível = fail-closed. Andar 3 (denylist ANTES da allowlist): destrutivo/consequência externa (rm -rf, systemctl, kill, curl externo, chmod /etc, /data/manifests, git push, docker...) → resultado `blocked` tipado com o comando — NUNCA auto-executa. Guardas: timeout default 120s (máx 600s, SIGKILL), output truncado head+tail 50KB, cwd fixo do worker sob /opt ou /root/.hermes, log auditável por chamada em /data/audit/shell-run.jsonl.",
+    inputSchema: shellRunInputSchema
+  }, async (input) => { requireWrite(); return response(await runShellRun(input)); }));
 }

@@ -54,6 +54,7 @@
     "engineering.file.read",
     "engineering.git.status",
     "engineering.release.run",
+    "engineering.shell.run",
     "engineering.test.run",
     "engineering.typecheck.run"
   ],
