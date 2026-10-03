@@ -124,6 +124,9 @@ export const ERROR_TAXONOMY: Readonly<Record<string, Taxonomy>> = {
   SBW_TARGET_NOT_MATERIALIZED: { category: "validation", retryable: false, remediation: "Materialize the repository file into the sandbox before writing to it." },
   SBW_INVALID_CONTENT: { category: "validation", retryable: false, remediation: "Content exceeds the 128 KiB per-op cap; split or trim before writing." },
   SBW_VALIDATION_REQUIRED: { category: "validation", retryable: true, remediation: "Run the validate action before sync; validation is a required gate." },
+  // ---- WORKER-SHELL-PROPRIA-01 (engineering.shell.run) ----
+  SHELL_RUN_BLOCKED: { category: "validation", retryable: false, remediation: "The command is tier-3 operator consequence (denylist) and is NEVER auto-executed; ask the operator to run/approve it explicitly." },
+  SHELL_RUN_JUDGE_REFUSED: { category: "validation", retryable: false, remediation: "The tier-2 judge scored the command unsafe (safeScore < 0.9); rework the command or ask the operator." },
   // ---- OCR-01 (engineering.ocr.read) ----
   UNSUPPORTED_FORMAT: { category: "validation", retryable: false, remediation: "engineering.ocr.read accepts png, jpeg, webp, tiff or pdf (decided by magic bytes); convert the file, then retry." },
   OCR_INPUT_TOO_LARGE: { category: "validation", retryable: false, remediation: "OCR input is capped at 20MB; downscale/split the file (or lower the PDF page range), then retry." },

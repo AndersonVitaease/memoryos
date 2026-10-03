@@ -42,7 +42,7 @@ const PROBE_CTX = { mcpReq: { requestState: () => undefined } };
 test("GH-03 alias map: every canonical tool resolves its sanitized alias, aliases are unique and never listed", async () => {
   const { list } = buildServer();
   const names = await listNames(list);
-  assert.equal(names.length, 147);  const aliases = names.map((name) => name.replaceAll(".", "_"));
+  assert.equal(names.length, 148);  const aliases = names.map((name) => name.replaceAll(".", "_"));
   assert.equal(new Set(aliases).size, aliases.length, "sanitized aliases must be collision-free");
   for (let i = 0; i < names.length; i++) assert.equal(resolveToolAlias(aliases[i]), names[i]);
   assert.equal(names.filter((name) => resolveToolAlias(name) !== null).length, 0, "canonical names must never be treated as aliases");
@@ -52,7 +52,7 @@ test("GH-03 alias map: every canonical tool resolves its sanitized alias, aliase
 test("GH-03 same-session stability: 24 alternating sanitized calls, zero Tool not found, catalog unchanged", async () => {
   const { call, list } = buildServer();
   const namesBefore = await listNames(list);
-  assert.equal(namesBefore.length, 147);  const targets = ["engineering.git.status", "engineering.file.read", "engineering.code.search"];
+  assert.equal(namesBefore.length, 148);  const targets = ["engineering.git.status", "engineering.file.read", "engineering.code.search"];
   const sanitized = targets.map((name) => name.replaceAll(".", "_"));
   const validArgs: Record<string, Record<string, unknown>> = { "engineering.git.status": {}, "engineering.file.read": { path: "src/tools.ts" }, "engineering.code.search": { query: "AgentRuntime" } };
   for (let i = 0; i < 24; i++) {
@@ -62,7 +62,7 @@ test("GH-03 same-session stability: 24 alternating sanitized calls, zero Tool no
     assert.ok(resultText(result).length > 0, `call ${i} must return content`);
   }
   const namesAfter = await listNames(list);
-  assert.equal(namesAfter.length, 147, "catalog size must stay stable within the same session");  assert.deepEqual([...namesAfter].sort(), [...namesBefore].sort());
+  assert.equal(namesAfter.length, 148, "catalog size must stay stable within the same session");  assert.deepEqual([...namesAfter].sort(), [...namesBefore].sort());
 });
 
 test("GH-03: canonical dotted names keep working and unknown names still fail closed", async () => {
