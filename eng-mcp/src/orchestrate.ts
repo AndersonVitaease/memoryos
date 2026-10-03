@@ -21,6 +21,8 @@ export const DEFAULT_PATHS = {
   consumerStatePath: "/opt/mission-events/orchestrator-consumer.state.json",
   consumerLockPath: "/opt/mission-events/orchestrator-consumer.lock",
   spoolPath: "/opt/mission-events/spool.jsonl",
+  // ORCH-QUEUE-PROMOTE-01: trilha auditável da promoção (execute apenas; PLAN é read-only).
+  consumeAuditPath: "/data/audit/orchestrate-consume.jsonl",
   missionOpsDir: "/root/.hermes/plugins/mission-ops",
   priceTablePath: "/opt/mission-events/orchestrator-price-table.json",
   claudeConfigDir: "/opt/memoryos/eng-mcp/.claude-config/projects",
@@ -50,6 +52,8 @@ export interface OrchestrateDeps {
   consumerStatePath?: string;
   consumerLockPath?: string;
   spoolPath?: string;
+  /** ORCH-QUEUE-PROMOTE-01: trilha auditável da promoção (default /data/audit/orchestrate-consume.jsonl). */
+  consumeAuditPath?: string;
   missionOpsDir?: string;
   priceTablePath?: string;
   claudeConfigDir?: string;
@@ -76,11 +80,13 @@ export interface OrchestratorConsumerState {
   requeuedCount: number;
   deadLetteredCount: number;
   updatedAt: string | null;
+  /** ORCH-QUEUE-PROMOTE-01: ids de intent já promovidas (dedupe idempotente; cap 200). */
+  promotedIds?: string[];
 }
 
 export interface ConsumeEntryResult {
   entryId: string;
-  action: "promoted" | "skipped" | "blocked" | "throttled" | "operator_required" | "dead_letter";
+  action: "promoted" | "skipped" | "blocked" | "throttled" | "operator_required" | "dead_letter" | "noop" | "deferred";
   reason: string;
   missionId?: string;
 }
@@ -94,12 +100,19 @@ export interface ConsumeResult {
   operatorRequired: number;
   deadLettered: number;
   requeued: number;
+  noop: number;
+  deferred: number;
+  /** ORCH-QUEUE-PROMOTE-01: "plan" = read-only (o que promoveria e por quê); "execute" = despacho real. */
+  mode: "plan" | "execute";
   results: ConsumeEntryResult[];
 }
 
 export const orchestrateConsumeInputSchema = z.object({
   dryRun: z.boolean().optional(),
   maxPromotions: z.number().int().min(1).max(10).optional(),
+  // ORCH-QUEUE-PROMOTE-01: PLAN é o default (read-only); execute=true + approval promove de fato.
+  execute: z.boolean().optional(),
+  approval: z.object({ approved: z.boolean() }).optional(),
 }).strict();
 
 const CONSUMER_LOCK_TTL_MS = 30_000;
@@ -141,36 +154,81 @@ function releaseLock(d: OrchestrateDeps): void {
   } catch { /* ignore */ }
 }
 
+function emptyConsumerState(): OrchestratorConsumerState {
+  return { status: "stopped", lastPromotion: null, lastPromotionId: null, promotedCount: 0, skippedCount: 0, blockedCount: 0, requeuedCount: 0, deadLetteredCount: 0, updatedAt: null, promotedIds: [] };
+}
+
 function readConsumerState(d: OrchestrateDeps): OrchestratorConsumerState {
   const raw = d.readText!(d.consumerStatePath!);
-  if (raw == null) return { status: "stopped", lastPromotion: null, lastPromotionId: null, promotedCount: 0, skippedCount: 0, blockedCount: 0, requeuedCount: 0, deadLetteredCount: 0, updatedAt: null };
+  if (raw == null) return emptyConsumerState();
   try {
     const parsed = JSON.parse(raw) as OrchestratorConsumerState;
-    if (parsed && typeof parsed.status === "string") return parsed;
+    if (parsed && typeof parsed.status === "string") {
+      return { ...emptyConsumerState(), ...parsed, promotedIds: Array.isArray(parsed.promotedIds) ? parsed.promotedIds : [] };
+    }
   } catch { /* ignore */ }
-  return { status: "stopped", lastPromotion: null, lastPromotionId: null, promotedCount: 0, skippedCount: 0, blockedCount: 0, requeuedCount: 0, deadLetteredCount: 0, updatedAt: null };
+  return emptyConsumerState();
 }
 
 function writeConsumerState(d: OrchestrateDeps, state: OrchestratorConsumerState): void {
-  try { writeFileSync(d.consumerStatePath!, JSON.stringify(state, null, 2), "utf8"); } catch { /* fail-open */ }
+  try {
+    if (d.writeText) d.writeText(d.consumerStatePath!, JSON.stringify(state, null, 2));
+    else writeFileSync(d.consumerStatePath!, JSON.stringify(state, null, 2), "utf8");
+  } catch { /* fail-open */ }
 }
 
-function spoolEvent(d: OrchestrateDeps, kind: string, missionId: string, msg: string): void {
+// ORCH-QUEUE-PROMOTE-01: append injetável (padrão HERMÉTICO-FIX-01) — os testes
+// roteiam via d.appendFile; produção sem dep usa o fs real.
+const appendReal = (filePath: string, data: string): void => appendFileSync(filePath, data, "utf8");
+
+function spoolEvent(d: ReturnType<typeof resolveDeps>, kind: string, missionId: string, msg: string): void {
   const line = JSON.stringify({ ts: new Date(d.now!()).toISOString(), event: kind, missionId, msg: msg.slice(0, 200), source: "orchestrator-consumer" });
-  try { appendFileSync(d.spoolPath!, line + "\n", "utf8"); } catch { /* fail-open */ }
+  try { (d.appendFile ?? appendReal)(d.spoolPath!, line + "\n"); } catch { /* fail-open */ }
+}
+
+// ORCH-QUEUE-PROMOTE-01: trilha auditável da promoção em /data/audit/orchestrate-consume.jsonl.
+// Uma linha por decisão (execute apenas — PLAN é read-only e não audita). Fail-open: a trilha
+// nunca trava a promoção nem inventa prova.
+type ConsumeDecision = "PROMOTED" | "DEFERRED" | "BLOCKED" | "THROTTLED" | "SKIPPED" | "OPERATOR_REQUIRED" | "NOOP" | "DEAD_LETTER" | "REQUEUED";
+
+function auditConsume(d: ReturnType<typeof resolveDeps>, record: { mode: "plan" | "execute"; entryId: string; missionId: string | null; decision: ConsumeDecision; reason: string }): void {
+  const line = JSON.stringify({ ts: new Date(d.now!()).toISOString(), ...record, reason: record.reason.slice(0, 400), source: "orchestrate-consume" });
+  try {
+    if (d.appendFile) {
+      d.appendFile(d.consumeAuditPath!, line + "\n");
+    } else {
+      try { mkdirSync(d.consumeAuditPath!.replace(/\/[^/]+$/, ""), { recursive: true }); } catch { /* dir pode já existir */ }
+      appendReal(d.consumeAuditPath!, line + "\n");
+    }
+  } catch { /* fail-open */ }
 }
 
 /**
- * Consume the orchestrator queue deterministically (zero-LLM).
- * Applies promotion rules, dispatches missions, handles failures with backoff.
+ * ORCH-QUEUE-PROMOTE-01: consome a fila de intents deterministicamente (zero-LLM).
+ * PLAN é o default (read-only: lista o que promoveria e por quê — nada despacha,
+ * nada grava). execute=true + approval.approved=true promove de fato pelo caminho
+ * JÁ governado mission.dispatch (wiring em tools.ts). Regras por intent, nesta ordem:
+ * (1) dedupe idempotente — intent já promovida (id no estado do consumidor) → NO_OP;
+ * (2) promptFile inexistente → skip; (3) class=pesada → operador; (4) matriz de
+ * conflito — intents do mesmo componente/worktree serializam (deferred); (5) probe
+ * de recursos via orchestrate.plan — GO obrigatório antes de cada despacho;
+ * (6) despacho com requeue 2^n (max 3) e dead letter. Em execute, toda decisão vai
+ * para /data/audit/orchestrate-consume.jsonl + spool; a fila é append-only — entradas
+ * nunca são removidas, o dedupe é pelo estado (promotedIds, cap 200).
  */
 export async function runOrchestrateConsume(
-  input: { dryRun?: boolean; maxPromotions?: number },
+  input: { dryRun?: boolean; maxPromotions?: number; execute?: boolean; approval?: { approved: boolean } },
   deps?: OrchestrateDeps,
 ): Promise<ConsumeResult> {
   const d = resolveDeps(deps);
   const maxPromotions = input.maxPromotions ?? 5;
-  const dryRun = input.dryRun ?? false;
+  // ORCH-QUEUE-PROMOTE-01: execute é o gatilho de mutação; dryRun vira alias legado
+  // de plan mode (nunca despacha). Sem execute → modo seguro por default.
+  const execute = input.execute === true;
+  const mode: "plan" | "execute" = execute ? "execute" : "plan";
+  if (execute && input.approval?.approved !== true) {
+    throw new Error("ORCH_CONSUME_APPROVAL_REQUIRED: execute=true exige approval.approved=true (PLAN é o default)");
+  }
 
   const raw = d.readText!(d.queuePath!);
   const entries: QueueEntry[] = [];
@@ -185,14 +243,31 @@ export async function runOrchestrateConsume(
     }
   }
 
+  // (a) ordem da fila: priority (1=mais alta), depois FIFO
   entries.sort((a, b) => (a.priority ?? 5) - (b.priority ?? 5) || a.enqueuedAt.localeCompare(b.enqueuedAt));
 
-  const result: ConsumeResult = { consumed: entries.length, promoted: 0, skipped: 0, blocked: 0, throttled: 0, operatorRequired: 0, deadLettered: 0, requeued: 0, results: [] };
+  const result: ConsumeResult = { consumed: entries.length, promoted: 0, skipped: 0, blocked: 0, throttled: 0, operatorRequired: 0, deadLettered: 0, requeued: 0, noop: 0, deferred: 0, mode, results: [] };
   let promotedCount = 0;
+  // (b) matriz de conflito: componente declarado no payload (ou worktree como proxy
+  // de arquivos) — intents do mesmo componente serializam dentro do ciclo.
+  const busyComponents = new Set<string>();
+
+  // (d) dedupe idempotente: intents já promovidas ficam no estado do consumidor
+  const state = readConsumerState(d);
+  const promotedIds = new Set(state.promotedIds ?? []);
 
   if (!acquireLock(d)) {
     return { ...result, results: [{ entryId: "lock", action: "skipped", reason: "promotion lock held by another cycle" }] };
   }
+
+  // Registra a decisão no resultado; em execute também audita + spool (PLAN: read-only).
+  const decide = (entryId: string, missionId: string, action: ConsumeEntryResult["action"], reason: string, decision: ConsumeDecision): void => {
+    result.results.push({ entryId, action, reason, missionId });
+    if (mode === "execute") {
+      auditConsume(d, { mode, entryId, missionId, decision, reason });
+      spoolEvent(d, action === "skipped" ? "orch_skip" : `orch_${action}`, missionId, reason);
+    }
+  };
 
   try {
     for (const entry of entries) {
@@ -203,102 +278,117 @@ export async function runOrchestrateConsume(
       const promptFile = (payload.prompt ?? payload.promptFile) as string | undefined;
       const worktree = payload.worktree as string | undefined;
       const priority = entry.priority ?? 5;
+      const component = typeof payload.component === "string" ? payload.component
+        : typeof payload.componente === "string" ? payload.componente
+        : typeof payload.worktree === "string" ? `worktree:${payload.worktree}` : null;
 
-      // Rule: intent with promptFile inexistent → skip with orch_skip
-      if (!promptFile || !existsSync(promptFile)) {
-        spoolEvent(d, "orch_skip", missionId, `promptFile inexistente: ${promptFile ?? "(nenhum)"}`);
-        result.results.push({ entryId: entry.id, action: "skipped", reason: "promptFile inexistente", missionId });
+      // (1) dedupe idempotente: intent já promovida → NO_OP tipado
+      if (promotedIds.has(entry.id)) {
+        decide(entry.id, missionId, "noop", "intent já promovida (dedupe idempotente)", "NOOP");
+        result.noop += 1;
+        continue;
+      }
+
+      // (2) intent com promptFile inexistente → skip (d.existsSync injetável — hermético)
+      if (!promptFile || !(d.existsSync ?? existsSync)(promptFile)) {
+        decide(entry.id, missionId, "skipped", `promptFile inexistente: ${promptFile ?? "(nenhum)"}`, "SKIPPED");
         result.skipped += 1;
         continue;
       }
 
-      // Rule: heavy class (frontmatter) → never promote without operator
+      // (3) missão class=pesada → nunca promove sem operador
       try {
         const promptRaw = readFileSync(promptFile, "utf8");
         const frontmatterClass = parseFrontmatterClass(promptRaw);
         if (frontmatterClass === "pesada") {
-          spoolEvent(d, "orch_operator_required", missionId, "missão class=pesada exige operador");
-          result.results.push({ entryId: entry.id, action: "operator_required", reason: "class=pesada requer operador", missionId });
+          decide(entry.id, missionId, "operator_required", "missão class=pesada exige operador", "OPERATOR_REQUIRED");
           result.operatorRequired += 1;
           continue;
         }
       } catch { /* promptFile unreadable — already checked exists */ }
 
-      // Rule: pre-flight orchestrate.plan = GO required
+      // (4) matriz de conflito: mesmo componente/worktree serializa
+      if (component != null && busyComponents.has(component)) {
+        decide(entry.id, missionId, "deferred", `conflito de componente: "${component}" já em despacho neste ciclo (serialização)`, "DEFERRED");
+        result.deferred += 1;
+        continue;
+      }
+
+      // (5) probe de recursos: orchestrate.plan = GO obrigatório antes de cada despacho
       const plan = runOrchestratePlan({ type: "mission" }, d);
 
       if (plan.verdict === "BLOCK") {
-        spoolEvent(d, "orch_blocked", missionId, `plan BLOCK: ${plan.blockReasons.join("; ")}`);
-        result.results.push({ entryId: entry.id, action: "blocked", reason: "plan BLOCK", missionId });
+        decide(entry.id, missionId, "blocked", `plan BLOCK: ${plan.blockReasons.join("; ")}`, "BLOCKED");
         result.blocked += 1;
         break;
       }
 
       if (plan.verdict === "THROTTLE") {
-        spoolEvent(d, "orch_throttled", missionId, `plan THROTTLE: ${plan.throttleReasons.join("; ")}`);
-        result.results.push({ entryId: entry.id, action: "throttled", reason: "plan THROTTLE", missionId });
+        decide(entry.id, missionId, "throttled", `plan THROTTLE: ${plan.throttleReasons.join("; ")}`, "THROTTLED");
         result.throttled += 1;
         continue;
       }
 
-      // GO → dispatch
-      if (dryRun) {
-        spoolEvent(d, "orch_promoted", missionId, `dry-run: despacho simulado (GO)`);
-        result.results.push({ entryId: entry.id, action: "promoted", reason: "plan GO (dry run)", missionId });
+      if (mode === "plan") {
+        // PLAN: computa a decisão e NÃO executa nada (read-only por contrato)
+        decide(entry.id, missionId, "promoted", "plan GO (plan mode: nada despachado)", "PROMOTED");
         result.promoted += 1;
         promotedCount += 1;
+        if (component != null) busyComponents.add(component);
         continue;
       }
 
-      // Real dispatch via mission-ops handler
+      // (6) execute: despacho real — APENAS pelo caminho mission.dispatch. Sem handler
+      // configurado é fail-closed (nunca fake-promover).
       const dispatchFn = d.dispatchMission;
-      if (dispatchFn) {
-        try {
-          const dispatchResult = await dispatchFn({ missionId, promptFile, worktree, priority });
-          if (dispatchResult.ok) {
-            spoolEvent(d, "orch_promoted", missionId, `despachado via handle_mission_dispatch`);
-            result.results.push({ entryId: entry.id, action: "promoted", reason: "plan GO", missionId });
-            result.promoted += 1;
-            promotedCount += 1;
-          } else {
-            await handleDispatchFailure(d, entry, missionId, promptFile, worktree, priority, dispatchResult.error ?? "unknown", result);
-          }
-        } catch (err) {
-          await handleDispatchFailure(d, entry, missionId, promptFile, worktree, priority, String(err), result);
+      if (!dispatchFn) {
+        decide(entry.id, missionId, "blocked", "sem handler de dispatch configurado (fail-closed)", "BLOCKED");
+        result.blocked += 1;
+        continue;
+      }
+
+      try {
+        const dispatchResult = await dispatchFn({ missionId, promptFile, worktree, priority });
+        if (dispatchResult.ok) {
+          decide(entry.id, missionId, "promoted", "plan GO → despachado via mission.dispatch", "PROMOTED");
+          result.promoted += 1;
+          promotedCount += 1;
+          if (component != null) busyComponents.add(component);
+          promotedIds.add(entry.id);
+        } else {
+          await handleDispatchFailure(d, entry, missionId, promptFile, worktree, priority, dispatchResult.error ?? "unknown", result, mode);
         }
-      } else {
-        // No dispatch handler configured — simulate success for testing
-        spoolEvent(d, "orch_promoted", missionId, `dispatch handler not configured`);
-        result.results.push({ entryId: entry.id, action: "promoted", reason: "plan GO (no dispatch handler)", missionId });
-        result.promoted += 1;
-        promotedCount += 1;
+      } catch (err) {
+        await handleDispatchFailure(d, entry, missionId, promptFile, worktree, priority, String(err), result, mode);
       }
     }
   } finally {
     releaseLock(d);
   }
 
-  // Update consumer state
-  const state = readConsumerState(d);
-  state.status = "alive";
-  state.updatedAt = new Date(d.now!()).toISOString();
-  state.promotedCount += result.promoted;
-  state.skippedCount += result.skipped;
-  state.blockedCount += result.blocked;
-  state.requeuedCount += result.requeued;
-  state.deadLetteredCount += result.deadLettered;
-  if (result.results.length > 0) {
-    const last = result.results[result.results.length - 1];
-    state.lastPromotion = state.updatedAt;
-    state.lastPromotionId = last.entryId;
+  // Update consumer state (execute apenas — PLAN é read-only)
+  if (mode === "execute") {
+    state.status = "alive";
+    state.updatedAt = new Date(d.now!()).toISOString();
+    state.promotedCount += result.promoted;
+    state.skippedCount += result.skipped;
+    state.blockedCount += result.blocked;
+    state.requeuedCount += result.requeued;
+    state.deadLetteredCount += result.deadLettered;
+    state.promotedIds = Array.from(promotedIds).slice(-200);
+    if (result.results.length > 0) {
+      const last = result.results[result.results.length - 1];
+      state.lastPromotion = state.updatedAt;
+      state.lastPromotionId = last.entryId;
+    }
+    writeConsumerState(d, state);
   }
-  writeConsumerState(d, state);
 
   return result;
 }
 
 async function handleDispatchFailure(
-  d: OrchestrateDeps,
+  d: ReturnType<typeof resolveDeps>,
   entry: QueueEntry,
   missionId: string,
   promptFile: string,
@@ -306,28 +396,40 @@ async function handleDispatchFailure(
   priority: number,
   error: string,
   result: ConsumeResult,
+  mode: "plan" | "execute" = "execute",
 ): Promise<void> {
   const payload = entry.payload ?? {};
   const attemptCount = ((payload._attemptCount as number | undefined) ?? 0) + 1;
 
   if (attemptCount >= 3) {
-    spoolEvent(d, "orch_dead_letter", missionId, `3 tentativas falhas: ${error.slice(0, 200)}`);
+    if (mode === "execute") {
+      auditConsume(d, { mode, entryId: entry.id, missionId, decision: "DEAD_LETTER", reason: `3 tentativas falhas: ${error}` });
+      spoolEvent(d, "orch_dead_letter", missionId, `3 tentativas falhas: ${error.slice(0, 200)}`);
+    }
     result.results.push({ entryId: entry.id, action: "dead_letter", reason: error.slice(0, 200), missionId });
     result.deadLettered += 1;
   } else {
     const updatedPayload = { ...payload, _attemptCount: attemptCount };
     const updatedEntry = { ...entry, payload: updatedPayload };
-    try { appendFileSync(d.queuePath!, `${JSON.stringify(updatedEntry)}\n`, "utf8"); } catch { /* fail-open */ }
+    try { (d.appendFile ?? appendReal)(d.queuePath!, `${JSON.stringify(updatedEntry)}\n`); } catch { /* fail-open */ }
     const backoff = Math.pow(2, attemptCount);
-    spoolEvent(d, "orch_requeue", missionId, `re-enfileirado (tentativa ${attemptCount}, backoff ${backoff}s): ${error.slice(0, 200)}`);
+    if (mode === "execute") {
+      auditConsume(d, { mode, entryId: entry.id, missionId, decision: "REQUEUED", reason: `tentativa ${attemptCount}, backoff ${backoff}s: ${error}` });
+      spoolEvent(d, "orch_requeue", missionId, `re-enfileirado (tentativa ${attemptCount}, backoff ${backoff}s): ${error.slice(0, 200)}`);
+    }
     result.results.push({ entryId: entry.id, action: "dead_letter", reason: `requeued attempt ${attemptCount}`, missionId });
     result.requeued += 1;
   }
 }
 
 // Update orchestrateList to include spend aggregates per mission + consumer state
-const TERMINAL_STATUSES = new Set(["closed", "delivered", "cancelled", "failed"]);
-const IN_FLIGHT_STATUSES = new Set(["dispatched", "working", "recover"]);
+// ORCH-QUEUE-PROMOTE-01 (higiene do planner): a capacidade conta SOMENTE status
+// "dispatched" como slot ocupado. A transição de reopen (deliver-verify vermelho)
+// devolve a missão para "dispatched" (mission_core.py), logo "dispatched" cobre
+// despachadas E reabertas. Registros "unknown"/sem status (ex.: *.verify.json e
+// nudges.json no mission-state) NUNCA contam como ativos — são classificados em
+// unknownCount/unknownFiles para proposta de limpeza separada (nada é apagado aqui).
+const ACTIVE_SLOT_STATUSES = new Set(["dispatched"]);
 
 export interface MissionSnapshot {
   active: number;
@@ -335,6 +437,10 @@ export interface MissionSnapshot {
   recoverInFlight: number;
   stuckNoRecover: number;
   readable: boolean;
+  /** ORCH-QUEUE-PROMOTE-01: registros sem campo status (legado/evidência — ex. *.verify.json). NUNCA contam como ativos; limpeza é missão separada. */
+  unknownCount: number;
+  /** Até 10 nomes de arquivo unknown (ordem de leitura) para a proposta de limpeza. */
+  unknownFiles: string[];
 }
 
 export interface CapacitySlot {
@@ -397,6 +503,9 @@ function resolveDeps(deps?: OrchestrateDeps): Required<Pick<OrchestrateDeps, "re
     writeText: deps?.writeText,
     appendFile: deps?.appendFile,
     unlink: deps?.unlink,
+    // ORCH-QUEUE-PROMOTE-01: handler de despacho injetável (tests passam fake;
+    // produção: tools.ts injeta o caminho governado runMissionDispatch).
+    dispatchMission: deps?.dispatchMission,
     loadavgPath: deps?.loadavgPath ?? envPath("ENG_MCP_LOADAVG_PATH") ?? DEFAULT_PATHS.loadavg,
     meminfoPath: deps?.meminfoPath ?? envPath("ENG_MCP_MEMINFO_PATH") ?? DEFAULT_PATHS.meminfo,
     missionStateDir: deps?.missionStateDir ?? envPath("ENG_MCP_MISSION_STATE_DIR") ?? DEFAULT_PATHS.missionStateDir,
@@ -406,6 +515,7 @@ function resolveDeps(deps?: OrchestrateDeps): Required<Pick<OrchestrateDeps, "re
     consumerStatePath: deps?.consumerStatePath ?? envPath("ENG_MCP_CONSUMER_STATE_PATH") ?? DEFAULT_PATHS.consumerStatePath,
     consumerLockPath: deps?.consumerLockPath ?? envPath("ENG_MCP_CONSUMER_LOCK_PATH") ?? DEFAULT_PATHS.consumerLockPath,
     spoolPath: deps?.spoolPath ?? envPath("ENG_MCP_SPOOL_PATH") ?? DEFAULT_PATHS.spoolPath,
+    consumeAuditPath: deps?.consumeAuditPath ?? envPath("ENG_MCP_CONSUME_AUDIT_PATH") ?? DEFAULT_PATHS.consumeAuditPath,
     missionOpsDir: deps?.missionOpsDir ?? envPath("ENG_MCP_MISSION_OPS_DIR") ?? DEFAULT_PATHS.missionOpsDir,
     priceTablePath: deps?.priceTablePath ?? envPath("ENG_MCP_PRICE_TABLE_PATH") ?? DEFAULT_PATHS.priceTablePath,
     claudeConfigDir: deps?.claudeConfigDir ?? envPath("ENG_MCP_CLAUDE_CONFIG_DIR") ?? DEFAULT_PATHS.claudeConfigDir,
@@ -417,10 +527,12 @@ function defaultReaddir(path: string): string[] | null {
 }
 
 function readMissions(d: ReturnType<typeof resolveDeps>): MissionSnapshot {
-  const snapshot: MissionSnapshot = { active: 0, byStatus: {}, recoverInFlight: 0, stuckNoRecover: 0, readable: false };
+  const snapshot: MissionSnapshot = { active: 0, byStatus: {}, recoverInFlight: 0, stuckNoRecover: 0, readable: false, unknownCount: 0, unknownFiles: [] };
   let files: string[];
   try {
-    files = d.readdir!(d.missionStateDir!) ?? [];
+    const listed = d.readdir!(d.missionStateDir!);
+    if (listed == null) return snapshot; // readdir null = dir ilegível → readable=false (honesto: nunca GO às cegas)
+    files = listed;
   } catch {
     return snapshot; // unreadable → readable=false (honest: caller must not dispatch blind)
   }
@@ -433,9 +545,14 @@ function readMissions(d: ReturnType<typeof resolveDeps>): MissionSnapshot {
       const parsed = JSON.parse(raw) as { status?: unknown };
       const status = typeof parsed.status === "string" ? parsed.status : "unknown";
       snapshot.byStatus[status] = (snapshot.byStatus[status] ?? 0) + 1;
-      if (!TERMINAL_STATUSES.has(status)) snapshot.active += 1;
+      // ORCH-QUEUE-PROMOTE-01: só dispatched ocupa slot — unknown/evidência nunca contam
+      if (ACTIVE_SLOT_STATUSES.has(status)) snapshot.active += 1;
       if (status === "recover") snapshot.recoverInFlight += 1;
       if (status === "interrupted") snapshot.stuckNoRecover += 1;
+      if (status === "unknown") {
+        snapshot.unknownCount += 1;
+        if (snapshot.unknownFiles.length < 10) snapshot.unknownFiles.push(file);
+      }
     } catch {
       // malformed state file: skip, never fail the whole plan
     }
