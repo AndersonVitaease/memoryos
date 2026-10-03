@@ -124,6 +124,34 @@ function parseFrontmatterClass(raw: string | null): string | null {
   return m ? m[1] : null;
 }
 
+// ---- ORCH-CLOSED-NOOP-01: missão fechada nunca re-despacha ----
+
+/** Statuses de ledger que encerram a missão: re-despacho proibido. */
+const CLOSED_MISSION_STATUSES = new Set(["closed", "cancelled", "interrupted"]);
+
+/**
+ * Lê o ledger da missão e retorna true se status ∈ CLOSED_MISSION_STATUSES.
+ * Ledger ausente/ilegível → false (fail-open: só bloqueia com prova de fechamento).
+ * Cache por ciclo de consume (uma leitura por missão, não por entry).
+ */
+function isMissionClosed(d: OrchestrateDeps, missionId: string, cache: Map<string, boolean>): boolean {
+  const cached = cache.get(missionId);
+  if (cached !== undefined) return cached;
+  let closed = false;
+  try {
+    const ledgerPath = `${d.missionStateDir!}/${missionId}.json`;
+    const raw = d.readText ? d.readText(ledgerPath) : readFileSync(ledgerPath, "utf8");
+    if (raw != null) {
+      const ledger = JSON.parse(raw) as { status?: unknown };
+      closed = typeof ledger.status === "string" && CLOSED_MISSION_STATUSES.has(ledger.status);
+    }
+  } catch {
+    closed = false; // fail-open
+  }
+  cache.set(missionId, closed);
+  return closed;
+}
+
 function acquireLock(d: OrchestrateDeps): boolean {
   const lockPath = d.consumerLockPath!;
   const now = d.now!();
@@ -257,6 +285,9 @@ export async function runOrchestrateConsume(
   const state = readConsumerState(d);
   const promotedIds = new Set(state.promotedIds ?? []);
 
+  // ORCH-CLOSED-NOOP-01: cache de ledgers fechados por ciclo (1 leitura por missão).
+  const closedMissionCache = new Map<string, boolean>();
+
   if (!acquireLock(d)) {
     return { ...result, results: [{ entryId: "lock", action: "skipped", reason: "promotion lock held by another cycle" }] };
   }
@@ -286,6 +317,15 @@ export async function runOrchestrateConsume(
       // (1) dedupe idempotente: intent já promovida → NO_OP tipado
       if (promotedIds.has(entry.id)) {
         decide(entry.id, missionId, "noop", "intent já promovida (dedupe idempotente)", "NOOP");
+        result.noop += 1;
+        continue;
+      }
+
+      // (1b) ORCH-CLOSED-NOOP-01: missão com ledger fechado nunca re-despacha.
+      // status closed/cancelled/interrupted → NOOP tipado, independente de dedupe por id
+      // (2 entries de ids diferentes e mesmo missionId fechado → ambas noop).
+      if (missionId && isMissionClosed(d, missionId, closedMissionCache)) {
+        decide(entry.id, missionId, "noop", `missão ${missionId} com ledger closed/cancelled/interrupted (nunca re-despachar)`, "NOOP");
         result.noop += 1;
         continue;
       }
