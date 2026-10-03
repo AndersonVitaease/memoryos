@@ -1,0 +1,43 @@
+== caddy endpoints ==
+2-25-96-245.nip.io {
+    reverse_proxy 127.0.0.1:3000
+memoryos-pwmcp.duckdns.org {
+    @haskey header X-Api-Key 4115942a516f92e6f7b1791d35a29555f2c96d7a22ba1493a9b5c5a0189782d6
+    handle @haskey {
+        reverse_proxy localhost:8931 {
+memoryos-webconnector.duckdns.org {
+    @haskey header X-Api-Key f213fe9a4f3749b8722f0cb3dbd519fa79350903db7cc20f465c0ff9b43b17ab
+    handle @haskey {
+        reverse_proxy localhost:8932 {
+memoryos-launcher.duckdns.org {
+    @haskey header X-Api-Key d1cf1dda186459515998bfc878e164bc126e62c5a5446485d648050fb0067371
+    handle @haskey {
+        reverse_proxy localhost:8941
+memoryos-novnc.duckdns.org {
+    reverse_proxy localhost:7900
+memoryos-engmcp.2-25-96-245.nip.io {
+    reverse_proxy 127.0.0.1:8787
+memoryos-grafana-mcp.2-25-96-245.nip.io {
+    reverse_proxy 127.0.0.1:8000
+app-bypass-redundant-bus-djf8xv-ee4193-2-25-96-245.sslip.io {
+    reverse_proxy https://127.0.0.1:8443 {
+app-calculate-auxiliary-capacitor-vvq113-c4ba2f-2-25-96-245.sslip.io {
+    reverse_proxy https://127.0.0.1:8443 {
+app-hack-1080p-application-gj9jy1-5c3310-2-25-96-245.sslip.io {
+    reverse_proxy https://127.0.0.1:8443 {
+guardian-cloud-mvp.2-25-96-245.nip.io {
+    reverse_proxy 127.0.0.1:8940
+app-parse-primary-firewall-mlqanv-0e4f36-2-25-96-245.sslip.io {
+    reverse_proxy https://127.0.0.1:8443 {
+https:// {
+	reverse_proxy https://127.0.0.1:8443 {
+memoryos-hermes.2-25-96-245.nip.io {
+    @voice path /voice /voice/*
+    handle @voice {
+        reverse_proxy 127.0.0.1:3016
+    @voicechat path /voice-chat /voice-chat/*
+    handle @voicechat {
+        reverse_proxy 127.0.0.1:3017
+    reverse_proxy 127.0.0.1:9119
+== caddy sites raw count ==
+15

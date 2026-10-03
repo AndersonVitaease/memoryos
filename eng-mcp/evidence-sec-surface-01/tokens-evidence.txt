@@ -1,0 +1,153 @@
+== tokens.json perms ==
+600 root /data/tokens.json
+700 root /data/credentials
+== sha16 ==
+2655b039037d4013
+== env HERMES_ENG_MCP_LOCAL procs ==
+/usr/bin/bash: line 1: /proc/100/environ: No such process
+/usr/bin/bash: line 1: /proc/104/environ: No such process
+/usr/bin/bash: line 1: /proc/105/environ: No such process
+/proc/1055969 hermes
+/usr/bin/bash: line 1: /proc/106/environ: No such process
+/usr/bin/bash: line 1: /proc/107/environ: No such process
+/usr/bin/bash: line 1: /proc/1091/environ: No such process
+/usr/bin/bash: line 1: /proc/114/environ: No such process
+/usr/bin/bash: line 1: /proc/118/environ: No such process
+/usr/bin/bash: line 1: /proc/12/environ: No such process
+/usr/bin/bash: line 1: /proc/123/environ: No such process
+/usr/bin/bash: line 1: /proc/124/environ: No such process
+/usr/bin/bash: line 1: /proc/13/environ: No such process
+/usr/bin/bash: line 1: /proc/134/environ: No such process
+/usr/bin/bash: line 1: /proc/14/environ: No such process
+/usr/bin/bash: line 1: /proc/15/environ: No such process
+/usr/bin/bash: line 1: /proc/16/environ: No such process
+/usr/bin/bash: line 1: /proc/161/environ: No such process
+/usr/bin/bash: line 1: /proc/162/environ: No such process
+/usr/bin/bash: line 1: /proc/17/environ: No such process
+/usr/bin/bash: line 1: /proc/174/environ: No such process
+/usr/bin/bash: line 1: /proc/175/environ: No such process
+/usr/bin/bash: line 1: /proc/18/environ: No such process
+/proc/1847681 node-MainThread
+/proc/1847708 python3
+/usr/bin/bash: line 1: /proc/19/environ: No such process
+/usr/bin/bash: line 1: /proc/2/environ: No such process
+/usr/bin/bash: line 1: /proc/20/environ: No such process
+/usr/bin/bash: line 1: /proc/21/environ: No such process
+/usr/bin/bash: line 1: /proc/22/environ: No such process
+/usr/bin/bash: line 1: /proc/2259143/environ: No such process
+/usr/bin/bash: line 1: /proc/2261661/environ: No such process
+/usr/bin/bash: line 1: /proc/2276894/environ: No such process
+/usr/bin/bash: line 1: /proc/2277708/environ: No such process
+/usr/bin/bash: line 1: /proc/2277847/environ: No such process
+/usr/bin/bash: line 1: /proc/2281101/environ: No such process
+/usr/bin/bash: line 1: /proc/2283268/environ: No such process
+/usr/bin/bash: line 1: /proc/2285573/environ: No such process
+/usr/bin/bash: line 1: /proc/2285723/environ: No such process
+/usr/bin/bash: line 1: /proc/2287266/environ: No such process
+/usr/bin/bash: line 1: /proc/2287883/environ: No such process
+/usr/bin/bash: line 1: /proc/2288946/environ: No such process
+/usr/bin/bash: line 1: /proc/2289624/environ: No such process
+/usr/bin/bash: line 1: /proc/2290116/environ: No such process
+/usr/bin/bash: line 1: /proc/2290994/environ: No such process
+/usr/bin/bash: line 1: /proc/2291423/environ: No such process
+/usr/bin/bash: line 1: /proc/2292860/environ: No such process
+/usr/bin/bash: line 1: /proc/2294089/environ: No such process
+/usr/bin/bash: line 1: /proc/2294231/environ: No such process
+/usr/bin/bash: line 1: /proc/2294233/environ: No such process
+/usr/bin/bash: line 1: /proc/2294234/environ: No such process
+/usr/bin/bash: line 1: /proc/2294889/environ: No such process
+/usr/bin/bash: line 1: /proc/2296626/environ: No such process
+/usr/bin/bash: line 1: /proc/2296627/environ: No such process
+/proc/2297092 bash
+/usr/bin/bash: line 1: /proc/2297602/environ: No such process
+/usr/bin/bash: line 1: /proc/2297603/environ: No such process
+/usr/bin/bash: line 1: /proc/2297604/environ: No such process
+/usr/bin/bash: line 1: /proc/2297605/environ: No such process
+/usr/bin/bash: line 1: /proc/2297606/environ: No such process
+/usr/bin/bash: line 1: /proc/2298028/environ: No such process
+/usr/bin/bash: line 1: /proc/2298030/environ: No such process
+/proc/2298198 sleep
+/usr/bin/bash: line 1: /proc/23/environ: No such process
+/usr/bin/bash: line 1: /proc/24/environ: No such process
+/usr/bin/bash: line 1: /proc/249/environ: No such process
+/usr/bin/bash: line 1: /proc/26/environ: No such process
+/usr/bin/bash: line 1: /proc/27/environ: No such process
+/usr/bin/bash: line 1: /proc/28/environ: No such process
+/usr/bin/bash: line 1: /proc/29/environ: No such process
+/usr/bin/bash: line 1: /proc/295/environ: No such process
+/usr/bin/bash: line 1: /proc/296/environ: No such process
+/usr/bin/bash: line 1: /proc/3/environ: No such process
+/usr/bin/bash: line 1: /proc/30/environ: No such process
+/usr/bin/bash: line 1: /proc/32/environ: No such process
+/usr/bin/bash: line 1: /proc/33/environ: No such process
+/usr/bin/bash: line 1: /proc/34/environ: No such process
+/usr/bin/bash: line 1: /proc/35/environ: No such process
+/usr/bin/bash: line 1: /proc/36/environ: No such process
+/usr/bin/bash: line 1: /proc/3606303/environ: No such process
+/usr/bin/bash: line 1: /proc/38/environ: No such process
+/usr/bin/bash: line 1: /proc/39/environ: No such process
+/usr/bin/bash: line 1: /proc/4/environ: No such process
+/usr/bin/bash: line 1: /proc/40/environ: No such process
+/usr/bin/bash: line 1: /proc/41/environ: No such process
+/usr/bin/bash: line 1: /proc/42/environ: No such process
+/usr/bin/bash: line 1: /proc/44/environ: No such process
+/usr/bin/bash: line 1: /proc/45/environ: No such process
+/usr/bin/bash: line 1: /proc/46/environ: No such process
+/usr/bin/bash: line 1: /proc/463960/environ: No such process
+/usr/bin/bash: line 1: /proc/464940/environ: No such process
+/usr/bin/bash: line 1: /proc/47/environ: No such process
+/usr/bin/bash: line 1: /proc/48/environ: No such process
+/usr/bin/bash: line 1: /proc/5/environ: No such process
+/usr/bin/bash: line 1: /proc/50/environ: No such process
+/usr/bin/bash: line 1: /proc/51/environ: No such process
+/usr/bin/bash: line 1: /proc/52/environ: No such process
+/usr/bin/bash: line 1: /proc/53/environ: No such process
+/usr/bin/bash: line 1: /proc/530/environ: No such process
+/usr/bin/bash: line 1: /proc/531/environ: No such process
+/usr/bin/bash: line 1: /proc/54/environ: No such process
+/usr/bin/bash: line 1: /proc/56/environ: No such process
+/usr/bin/bash: line 1: /proc/57/environ: No such process
+/usr/bin/bash: line 1: /proc/58/environ: No such process
+/usr/bin/bash: line 1: /proc/59/environ: No such process
+/usr/bin/bash: line 1: /proc/6/environ: No such process
+/usr/bin/bash: line 1: /proc/60/environ: No such process
+/usr/bin/bash: line 1: /proc/62/environ: No such process
+/usr/bin/bash: line 1: /proc/63/environ: No such process
+/usr/bin/bash: line 1: /proc/64/environ: No such process
+/usr/bin/bash: line 1: /proc/6409/environ: No such process
+/usr/bin/bash: line 1: /proc/65/environ: No such process
+/usr/bin/bash: line 1: /proc/66/environ: No such process
+/usr/bin/bash: line 1: /proc/68/environ: No such process
+/usr/bin/bash: line 1: /proc/7/environ: No such process
+/usr/bin/bash: line 1: /proc/70/environ: No such process
+/usr/bin/bash: line 1: /proc/71/environ: No such process
+/usr/bin/bash: line 1: /proc/72/environ: No such process
+/usr/bin/bash: line 1: /proc/73/environ: No such process
+/usr/bin/bash: line 1: /proc/74/environ: No such process
+/usr/bin/bash: line 1: /proc/75/environ: No such process
+/usr/bin/bash: line 1: /proc/76/environ: No such process
+/usr/bin/bash: line 1: /proc/77/environ: No such process
+/usr/bin/bash: line 1: /proc/80/environ: No such process
+/usr/bin/bash: line 1: /proc/81/environ: No such process
+/usr/bin/bash: line 1: /proc/82/environ: No such process
+/usr/bin/bash: line 1: /proc/83/environ: No such process
+/usr/bin/bash: line 1: /proc/84/environ: No such process
+/usr/bin/bash: line 1: /proc/85/environ: No such process
+/usr/bin/bash: line 1: /proc/86/environ: No such process
+/usr/bin/bash: line 1: /proc/88/environ: No such process
+/usr/bin/bash: line 1: /proc/89/environ: No such process
+/usr/bin/bash: line 1: /proc/9/environ: No such process
+/usr/bin/bash: line 1: /proc/90/environ: No such process
+/usr/bin/bash: line 1: /proc/91/environ: No such process
+/usr/bin/bash: line 1: /proc/92/environ: No such process
+/usr/bin/bash: line 1: /proc/93/environ: No such process
+/usr/bin/bash: line 1: /proc/95/environ: No such process
+/usr/bin/bash: line 1: /proc/96/environ: No such process
+/usr/bin/bash: line 1: /proc/97/environ: No such process
+/usr/bin/bash: line 1: /proc/98/environ: No such process
+/usr/bin/bash: line 1: /proc/99/environ: No such process
+== git credential store ==
+store
+/root/.git-credentials
+== run secrets ==
+ls: cannot access '/run/secrets': No such file or directory

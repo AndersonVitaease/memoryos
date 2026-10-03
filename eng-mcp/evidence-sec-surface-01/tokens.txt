@@ -1,0 +1,15 @@
+== tokens.json perms ==
+600 root /data/tokens.json
+== sha16 ==
+2655b039037d4013
+== credentials dir ==
+total 12
+drwx------ 2 root root 4096 Sep 23 12:56 .
+drwxr-xr-x 5 root root 4096 Sep 23 15:05 ..
+-rw------- 1 root root   65 Sep 23 12:56 hermes-proxy-secret
+== env HERMES_ENG_MCP_LOCAL procs ==
+== git credential store ==
+store
+/root/.git-credentials
+== run secrets ==
+ls: cannot access '/run/secrets': No such file or directory

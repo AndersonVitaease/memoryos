@@ -1,0 +1,27 @@
+== e2b api-key presente? ==
+sim
+== git-credentials host:port apenas ==
+https://***@github.com
+== outbound ssh known_hosts ==
+github.com
+|1|+1dHU1xU84swB/bbkX+VM+rlhC8=|E6sB54YtK7J5N16BMuiyTvxYuHA=
+|1|+n2BBMjhPkz3G37JPsCqllT62d8=|E63IPyEdizOjiOZKX4+5ASc4tOA=
+|1|0BLYadnp0TkuYx52IKvvvbatkRw=|qO35fI44yZiJpM3MMICLVeZw6/Y=
+|1|0TbtgqtgiwHmx8M31AdsovJYCys=|WplZBDDwtRvk9sjY7zbOWTr1umM=
+|1|2CY2C6iy7Ij+F9s9lPBtZnJEWAg=|iGIK1Zh36g6BfLfJtgAeCl3CEnk=
+|1|2Sqh49H7/iJlcZElXwmlTSCmX4s=|RGY0auKxvgMSXX4QhDI7qgXxvjw=
+|1|2Xwte8DCeNd6agxc+bWRG3j30Ys=|9DRaEdq9vAVtudsMXhgDnQ5aua0=
+|1|5+c+yjVy+tfQ0gjP4KHtjXRi+ik=|tVvUI9gaZSbkwMXhny/KGsnvL7M=
+|1|5Cd32nAM1KSfOnrKzMohaY2nonU=|K576HswSxK+4WGCSC7m7GVGYS/4=
+|1|63Gn6HKijeVKWdxi0Fb5RSmjRNk=|zf7VD7E8C3fYExB6P+rcN/U8rF0=
+|1|6j+gGK5iGKsgQ3Y/YSkoQi7k4e8=|6SfZFvQQjmZPRZBqwK1zHfo39vk=
+|1|77IGuf0AlS+1TlWEqa/LS1xHcOU=|dscvK97DI1R0Rdd3hpFIMVU9Hg0=
+|1|7acCxMqCoTFjbpEqmtzrB5ZORBA=|6Q9IwnIUikkkNSo363eaTZGYV8I=
+|1|B4jzkVUreG09angJ71yac+LdwCw=|uFZ2m4rM7d6i62u3pmhrg+6uVsY=
+|1|CgVSmDeCqDkgPloqhzXxqFTHDMU=|YO0+xOze9S/J214PmV4dKEWfXN0=
+|1|Ch8Jhsf3+SavKObR6PDjeUjEbIY=|dwi9/PrMWGVTNLay7RfzOpGAyT4=
+|1|DNei5kmdY8WH4kBWsboldxZriZ8=|0nPOpY1WFTDILux0Wv08ZcCrlWI=
+|1|DOnJLfVn0++Bu+nn9tWKEEBjArU=|13NpWq/GhnfYIiR0TvVwiP6IBfo=
+|1|EKvXkDwGVgUwjx+BD3bnCyNZz2s=|R846XCgEE6m2JKHmKeq9bSgzAZo=
+== crontab ==
+13 4 * * * /usr/bin/python3 /root/.hermes/tools/prune-request-dumps.py --apply >> /root/.hermes/logs/dump-retention-cron.log 2>&1

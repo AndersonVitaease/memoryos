@@ -1,0 +1,14 @@
+== UFW ==
+Status: inactive
+== systemd failed ==
+== docker mounts eng-mcp ==
+memoryos-eng-mcp
+dokploy-monitoring.1.gwijssnzn5hmjyubp2be42bbe
+app-parse-primary-firewall-mlqanv.1.jn7qdpsvhh7712jn9a4p72kfy
+app-synthesize-mobile-hard-drive-ga1vmt.1.rkuhmw2kjt97ybqy2uzdhgg27
+app-bypass-redundant-bus-djf8xv.1.ie7cblr9d6wgw7w57o11ei3ru
+app-calculate-auxiliary-capacitor-vvq113.1.vksshcmlremoj5gm7ptphvct2
+app-hack-1080p-application-gj9jy1.1.if1ypu4qelo0umd9w01hadmr0
+app-calculate-wireless-alarm-5142vg.1.q3z0yw62h7sgk28evwdbuo1md
+playwright-web-connector
+playwright-mcp
