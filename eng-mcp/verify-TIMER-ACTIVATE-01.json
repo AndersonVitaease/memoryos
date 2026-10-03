@@ -1,0 +1,31 @@
+{
+  "mission": "TIMER-ACTIVATE-01",
+  "cmd": [
+    {
+      "run": "cd /opt/memoryos/eng-mcp && node --import tsx --test test/orchestrateConsumeDaemon.test.mjs 2>&1 | grep -E '^ℹ (pass|fail)'",
+      "expect_exit": 0,
+      "timeout": 60
+    },
+    {
+      "run": "systemctl is-active orch-daemon-consume.timer && systemctl list-timers --all | grep orch-daemon-consume",
+      "expect_exit": 0,
+      "timeout": 30
+    },
+    {
+      "run": "journalctl -u orch-daemon-consume.service --since '-10 min' --no-pager | grep -c 'Finished orch-daemon'",
+      "expect_exit": 0,
+      "timeout": 30
+    }
+  ],
+  "file": [
+    {
+      "path": "/opt/memoryos/eng-mcp/RELATORIO-TIMER-ACTIVATE-01.md"
+    },
+    {
+      "path": "/etc/systemd/system/orch-daemon-consume.timer"
+    },
+    {
+      "path": "/etc/systemd/system/orch-daemon-consume.service"
+    }
+  ]
+}
