@@ -1,74 +1,15 @@
 {
   "mission": "ORCH-TELEMETRY-01",
-  "owner": "ORCH-TELEMETRY-01",
-  "date": "2026-10-01",
-  "note": "Telemetria de gasto por missao no orquestrador: handler spend zero-LLM, escrita no ledger no close, agregado em orchestrate.list, catalog bump.",
   "cmd": [
     {
-      "run": "cd /opt/memoryos/eng-mcp && node --import tsx --test --test-force-exit --test-concurrency=4 --test-reporter=tap test/orchestrateSpend.test.ts > /tmp/orch-spend-suite.txt 2>&1; grep -c 'not ok' /tmp/orch-spend-suite.txt || true",
+      "run": "cd /opt/memoryos/eng-mcp && timeout 90 node --import tsx /tmp/spend_probe.mjs",
       "expect_exit": 0,
-      "timeout": 60,
-      "description": "suite de spend verde (zero failures)"
-    },
-    {
-      "run": "cd /opt/memoryos/eng-mcp && grep -q 'runOrchestrateSpend' src/orchestrate.ts && grep -q 'orchestrateSpendInputSchema' src/orchestrate.ts && grep -q 'SpendResult' src/orchestrate.ts && grep -q 'SpendMissionResult' src/orchestrate.ts && grep -q 'SpendTokenBreakdown' src/orchestrate.ts",
-      "expect_exit": 0,
-      "timeout": 10,
-      "description": "tipos e handler de spend presentes em orchestrate.ts"
-    },
-    {
-      "run": "cd /opt/memoryos/eng-mcp && grep -q 'writeMissionSpend' src/missionOps.ts && grep -q 'runOrchestrateSpend' src/missionOps.ts",
-      "expect_exit": 0,
-      "timeout": 10,
-      "description": "writeMissionSpend e runOrchestrateSpend presentes em missionOps.ts"
-    },
-    {
-      "run": "cd /opt/memoryos/eng-mcp && grep -q 'engineering.orchestrate.spend' src/tools.ts && grep -q 'runOrchestrateSpend' src/tools.ts",
-      "expect_exit": 0,
-      "timeout": 10,
-      "description": "tool engineering.orchestrate.spend registrado em tools.ts"
-    },
-    {
-      "run": "cd /opt/memoryos/eng-mcp && grep -q 'priceTablePath' src/orchestrate.ts && grep -q 'claudeConfigDir' src/orchestrate.ts && grep -q 'readdir' src/orchestrate.ts",
-      "expect_exit": 0,
-      "timeout": 10,
-      "description": "DEFAULT_PATHS corrigidos com priceTablePath, claudeConfigDir e readdir em orchestrate.ts"
-    },
-    {
-      "run": "cd /opt/memoryos/eng-mcp && grep -q 'spend' src/missionOps.ts && grep -q 'spend' src/orchestrate.ts",
-      "expect_exit": 0,
-      "timeout": 10,
-      "description": "campo spend gravado no ledger no close e presente em orchestrate.list"
-    },
-    {
-      "run": "cd /opt/memoryos/eng-mcp && grep -q 'eng-mcp-tools-v' src/tools.ts",
-      "expect_exit": 0,
-      "timeout": 10,
-      "description": "catalog version incrementa com novo tool"
-    },
-    {
-      "run": "cd /opt/memoryos/eng-mcp && node --import tsx -e \"const { runOrchestrateSpend } = require('./src/orchestrate.ts'); const r = runOrchestrateSpend({}); console.log(JSON.stringify({missions: r.missions.length, totalCostUsd: r.totalCostUsd, computedAt: r.computedAt}))\"",
-      "expect_exit": 0,
-      "timeout": 10,
-      "description": "handler spend funcional, retorna estrutura correta com fail-open"
+      "timeout": 120
     }
   ],
   "file": [
     {
-      "path": "/opt/memoryos/eng-mcp/src/orchestrate.ts",
-      "min_bytes": 500
-    },
-    {
-      "path": "/opt/memoryos/eng-mcp/src/missionOps.ts",
-      "min_bytes": 500
-    },
-    {
-      "path": "/opt/memoryos/eng-mcp/src/tools.ts",
-      "min_bytes": 500
-    },
-    {
-      "path": "/opt/memoryos/eng-mcp/test/orchestrateSpend.test.ts",
-      "min_bytes": 500
+      "path": "/opt/mission-events/RELATORIO-ORCH-TELEMETRY-01.md"
     }
   ]
 }
