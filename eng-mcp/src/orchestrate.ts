@@ -10,6 +10,7 @@ import { execFileSync } from "node:child_process";
 import os from "node:os";
 import { existsSync, mkdirSync, readFileSync, readdirSync, appendFileSync, writeFileSync, unlinkSync } from "node:fs";
 import path from "node:path";
+import { runOrchestrateQueueCompaction } from "./orchestrateCompaction.ts";  // ORCH-QUEUE-COMPACT-01: arquivamento no fim do ciclo
 import * as z from "zod/v4";
 
 export const DEFAULT_PATHS = {
@@ -87,6 +88,8 @@ export interface OrchestratorConsumerState {
   updatedAt: string | null;
   /** ORCH-QUEUE-PROMOTE-01: ids de intent já promovidas (dedupe idempotente; cap 200). */
   promotedIds?: string[];
+  /** ORCH-QUEUE-COMPACT-01: último ciclo com compactação da fila (fail-open). */
+  lastCompactionAt?: string | null;
 }
 
 export interface ConsumeEntryResult {
@@ -110,6 +113,8 @@ export interface ConsumeResult {
   /** ORCH-QUEUE-PROMOTE-01: "plan" = read-only (o que promoveria e por quê); "execute" = despacho real. */
   mode: "plan" | "execute";
   results: ConsumeEntryResult[];
+  /** ORCH-QUEUE-COMPACT-01: linhas movidas para o archive no fim do ciclo (execute; 0 em plan). */
+  compacted?: number;
 }
 
 export const orchestrateConsumeInputSchema = z.object({
@@ -429,6 +434,35 @@ export async function runOrchestrateConsume(
       state.lastPromotionId = last.entryId;
     }
     writeConsumerState(d, state);
+  } else {
+    // ORCH-QUEUE-COMPACT-01: PLAN é read-only por contrato — nenhuma compactação.
+    result.compacted = 0;
+  }
+
+  if (mode === "execute") {
+    // ORCH-QUEUE-COMPACT-01: arquivamento no fim do ciclo (após avaliação, mesmo ciclo
+    // do estado) — fail-open: qualquer falha NUNCA trava o consume nem muda contagens.
+    try {
+      const compaction = runOrchestrateQueueCompaction({}, {
+        queuePath: d.queuePath,
+        consumerStatePath: d.consumerStatePath,
+        missionStateDir: d.missionStateDir,
+        readText: d.readText,
+        writeText: d.writeText,
+        appendFile: d.appendFile,
+        existsSync: d.existsSync,
+        now: d.now,
+      });
+      result.compacted = compaction.moved;
+      if (compaction.moved > 0) {
+        spoolEvent(d, "orch_compact", "queue", `compactação: ${compaction.moved} linha(s) → archive (${compaction.archivedIntents} intents, dedup p/ ${compaction.archivedLines} linhas)`);
+      }
+      if (!compaction.ok) {
+        spoolEvent(d, "orch_compact_failed", "queue", `compaction fail-closed: ${compaction.error}`);
+      }
+    } catch (err) {
+      spoolEvent(d, "orch_compact_failed", "queue", `compaction exceção (fail-open): ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   return result;
