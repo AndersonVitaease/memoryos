@@ -7,6 +7,7 @@
 // honest downgrade is THROTTLE when the mission state dir cannot be read at all
 // (dispatching blind while unable to see in-flight missions would be optimistic).
 import { execFileSync } from "node:child_process";
+import os from "node:os";
 import { existsSync, mkdirSync, readFileSync, readdirSync, appendFileSync, writeFileSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import * as z from "zod/v4";
@@ -446,9 +447,15 @@ export interface MissionSnapshot {
 export interface CapacitySlot {
   type: string;
   running: number;
-  max: number;
+  max: number | null;
   canDispatch: boolean;
   reason: string;
+  /** ORCH-CAPACITY-DYNAMIC-01: teto de segurança de agents.json (sempre respeitado). */
+  safetyCap: number | null;
+  /** Fatores do momento: mem (floor(Gb/2.5)), load (floor(nproc-load-1)), disco (<20Gb→1), orçamento (>=90→0, >=70→1). */
+  factors: CapacityFactors;
+  /** Quais fatores estão limitando o teto efetivo agora. */
+  limiting: string[];
 }
 
 export interface OrchestratePlanResult {
@@ -616,10 +623,56 @@ function readDiskFreeGb(d: ReturnType<typeof resolveDeps>): number | null {
   return Number.isFinite(kb) ? kb / (1024 * 1024) : null;
 }
 
+// ORCH-CAPACITY-DYNAMIC-01: transientes `run-u*.service` (sondas de teste de workers)
+// NÃO são falhas reais do sistema — contá-las bloqueava o orquestrador inteiro (2x em 03/10).
+// Só unidades nomeadas (service/timer reais, incl. orch-daemon-consume.service) contam.
+const FAILED_UNITS_TRANSIENT = /^run-u\d+\.service$/;
+
 function readFailedUnits(d: ReturnType<typeof resolveDeps>): number | null {
   const out = d.exec!("systemctl", ["--failed", "--no-legend"]);
   if (out == null) return null;
-  return out.trim().length === 0 ? 0 : out.trim().split("\n").length;
+  const trimmed = out.trim();
+  if (trimmed.length === 0) return 0;
+  return trimmed.split("\n").filter((line) => {
+    const unit = line.trim().split(/\s+/)[0] ?? "";
+    return unit.length > 0 && !FAILED_UNITS_TRANSIENT.test(unit);
+  }).length;
+}
+
+// ORCH-CAPACITY-DYNAMIC-01: teto EFETIVO dinâmico — o sistema decide pelo momento.
+// agents.json max_parallel é SEMPRE teto de segurança, nunca o teto efetivo.
+export interface CapacityFactors {
+  mem: number | null;   // maxPorMem = floor(memAvailableGb / 2.5)
+  load: number | null;  // maxPorLoad = max(0, floor(nproc - load1m - 1))
+  disk: number | null;  // maxPorDisco = diskFreeGb < 20 ? 1 : null (sem limite próprio)
+  budget: number | null; // maxPorOrcamento = usedPct>=90 ? 0 : usedPct>=70 ? 1 : null
+}
+
+function computeDynamicCapacity(
+  load: number | null,
+  memAvailableGb: number | null,
+  diskFreeGb: number | null,
+  budget: { usedPct: number } | null,
+  safetyCap: number | null,
+): { maxDynamic: number | null; factors: CapacityFactors; limiting: string[] } {
+  const nproc = os.availableParallelism();
+  const maxPorMem = memAvailableGb != null ? Math.floor(memAvailableGb / 2.5) : null;
+  const maxPorLoad = load != null && nproc != null ? Math.max(0, Math.floor(nproc - load - 1)) : null;
+  const maxPorDisco = diskFreeGb != null && diskFreeGb < 20 ? 1 : null;
+  const usedPct = budget?.usedPct ?? null;
+  const maxPorOrcamento = usedPct != null ? (usedPct >= 90 ? 0 : usedPct >= 70 ? 1 : null) : null;
+
+  const factors: CapacityFactors = { mem: maxPorMem, load: maxPorLoad, disk: maxPorDisco, budget: maxPorOrcamento };
+  const candidates = [maxPorMem, maxPorLoad, maxPorDisco, maxPorOrcamento, safetyCap].filter((v): v is number => v != null);
+  // Sem nenhum sinal legível → sem teto conhecido (null): plan não bloqueia às cegas (fail-open).
+  const maxDynamic = candidates.length > 0 ? Math.min(...candidates) : null;
+  const labels: Record<string, string> = { mem: "mem", load: "load", disk: "disco", budget: "orçamento" };
+  const limiting: string[] = [];
+  for (const [key, value] of Object.entries(factors)) {
+    if (value != null && value === maxDynamic) limiting.push(labels[key] ?? key);
+  }
+  if (safetyCap != null && safetyCap === maxDynamic) limiting.push("teto de segurança");
+  return { maxDynamic, factors, limiting };
 }
 
 /**
@@ -645,6 +698,10 @@ export function runOrchestratePlan(input: { type?: string }, deps?: OrchestrateD
   const maxParallel = readMaxParallel(d, type);
   const running = missions.active; // in-flight (dispatched/working/recover) consomem slot
 
+  // ORCH-CAPACITY-DYNAMIC-01: teto efetivo = min(fatores do momento, teto de segurança)
+  const dyn = computeDynamicCapacity(load, memAvailableGb, diskFreeGb, budget, maxParallel);
+  const maxDynamic = dyn.maxDynamic;
+
   const degraded = [load, memAvailableGb, diskFreeGb, failedUnits].every((v) => v == null) && !missions.readable;
 
   if (budget != null && budget.usedPct > 90) blockReasons.push(`budget ${budget.usedPct.toFixed(0)}% consumido (teto ${budget.ceilingUsd} US$)`);
@@ -653,21 +710,21 @@ export function runOrchestratePlan(input: { type?: string }, deps?: OrchestrateD
 
   if (budget != null && budget.usedPct >= 70 && budget.usedPct <= 90) throttleReasons.push(`budget ${budget.usedPct.toFixed(0)}% consumido`);
   if (load != null && load > 4) throttleReasons.push(`load ${load.toFixed(2)} > 4`);
-  if (maxParallel != null && running >= maxParallel) throttleReasons.push(`slots de "${type}" esgotados (${running}/${maxParallel} em voo)`);
+  if (maxDynamic != null && running >= maxDynamic) throttleReasons.push(`slots de "${type}" esgotados (${running}/${maxDynamic} — teto dinâmico; limitado por: ${dyn.limiting.join(", ")})`);
   if (missions.recoverInFlight >= 1) throttleReasons.push(`${missions.recoverInFlight} recover em curso`);
   if (!missions.readable) throttleReasons.push(`mission-state ilegível em ${d.missionStateDir} — fail-open conservador`);
 
   const verdict: OrchestrateVerdict = blockReasons.length > 0 ? "BLOCK" : throttleReasons.length > 0 ? "THROTTLE" : "GO";
   const canDispatch = verdict === "GO";
   const reason = canDispatch
-    ? `slot livre (${running}/${maxParallel ?? "?"}) + sistema ok + orçamento ok`
+    ? `slot livre (${running}/${maxDynamic ?? "sem teto conhecido"} — teto dinâmico) + sistema ok + orçamento ok`
     : [...blockReasons, ...throttleReasons].join("; ");
 
   return {
     system: { load1m: load, memAvailableGb, diskFreeGb, failedUnits },
     missions,
     budget,
-    capacity: { type, running, max: maxParallel ?? 0, canDispatch, reason },
+    capacity: { type, running, max: maxDynamic, canDispatch, reason, safetyCap: maxParallel, factors: dyn.factors, limiting: dyn.limiting },
     verdict,
     blockReasons,
     throttleReasons,
