@@ -1,0 +1,58 @@
+{
+  "mission": "SPOOL-RO-01",
+  "owner": "SPOOL-RO-01",
+  "date": "2026-10-03",
+  "note": "Fix secFixMounts das escritas de runtime do container eng-mcp: spool do bus (notify.py) e journal do bus_guard.py viram candidatos env-overridable (MISSION_BUS_SPOOL|ENG_MCP_SPOOL_PATH; MISSION_BUS_JOURNAL) com fallback /run/mission-bus — nenhum novo rw sob /opt/mission-events. release-config.json consumerEnv += MISSION_BUS_JOURNAL; pinos novos em test/secFixMounts.test.ts (5/5). Prova E2E stdlib host+container (probe_e2e.py na quarantine da missao): zero EROFS, emit ok:true. Suíte eng-mcp 1674 pass (zz-proxy-live 403 = LIVE sem credencial, igual na baseline via stash). Suíte do plugin: test_spool_ro_01 11/11 + test_bus_guard 12/12 verdes; falhas restantes pre-existentes (comprovadas identicas no backup pre-fix).",
+  "cmd": [
+    {
+      "run": "cd /root/.hermes/plugins/mission-ops && python3 test_spool_ro_01.py 2>&1 | tail -1",
+      "expect_exit": 0,
+      "timeout": 31,
+      "evidence_tail": "OK"
+    },
+    {
+      "run": "cd /root/.hermes/plugins/mission-ops && python3 test_bus_guard.py 2>&1 | tail -1",
+      "expect_exit": 0,
+      "timeout": 31,
+      "evidence_tail": "OK"
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp && node --test test/secFixMounts.test.ts 2>&1 | tail -5",
+      "expect_exit": 0,
+      "timeout": 31,
+      "evidence_tail": "# pass 5\n# fail 0"
+    },
+    {
+      "run": "grep -c MISSION_BUS_JOURNAL /opt/memoryos/eng-mcp/scripts/release-config.json",
+      "expect_exit": 0,
+      "timeout": 10,
+      "evidence_tail": "1"
+    },
+    {
+      "run": "python3 /opt/mission-events/quarantine-spool-ro-01/probe_e2e.py 2>&1 | tail -2",
+      "expect_exit": 0,
+      "timeout": 10,
+      "evidence_tail": "SPOOL_RO_01_E2E_OK"
+    },
+    {
+      "run": "docker exec -i -e ENG_MCP_SPOOL_PATH=/run/mission-bus/spool.jsonl -e MISSION_BUS_JOURNAL=/run/mission-bus/journal.json -e SPOOL_RO_01_TAG=VERIFY memoryos-eng-mcp python3 - < /opt/mission-events/quarantine-spool-ro-01/probe_e2e.py 2>&1 | tail -2",
+      "expect_exit": 0,
+      "timeout": 30,
+      "evidence_tail": "SPOOL_RO_01_E2E_OK"
+    }
+  ],
+  "file": [
+    {
+      "path": "/opt/memoryos/eng-mcp/RELATORIO-spool-ro-01.md",
+      "min_bytes": 3000
+    },
+    {
+      "path": "/root/.hermes/plugins/mission-ops/test_spool_ro_01.py",
+      "min_bytes": 3000
+    },
+    {
+      "path": "/opt/mission-events/quarantine-spool-ro-01/probe_e2e.py",
+      "min_bytes": 500
+    }
+  ]
+}

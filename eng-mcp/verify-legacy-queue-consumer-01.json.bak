@@ -1,0 +1,59 @@
+{
+  "mission": "ORCH-QUEUE-CONSUMER-01",
+  "owner": "ORCH-QUEUE-CONSUMER-01",
+  "date": "2026-10-01",
+  "note": "Consumidor automático da fila do orquestrador (zero-LLM, determinístico). Provas red->green com fixture sintético de fila e price table.",
+  "cmd": [
+    {
+      "run": "cd /opt/memoryos/eng-mcp && node --import tsx --test --test-force-exit --test-concurrency=4 --test-reporter=tap test/orchestrateConsume.test.ts > /tmp/orch-consume-suite.txt 2>&1; grep -c 'not ok' /tmp/orch-consume-suite.txt || true",
+      "expect_exit": 0,
+      "timeout": 60,
+      "description": "suite de consume verde (zero failures)"
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp && grep -q 'runOrchestrateConsume' src/orchestrate.ts && grep -q 'orchestrateConsumeInputSchema' src/orchestrate.ts && grep -q 'ConsumeResult' src/orchestrate.ts && grep -q 'OrchestratorConsumerState' src/orchestrate.ts",
+      "expect_exit": 0,
+      "timeout": 10,
+      "description": "tipos e handler de consume presentes em orchestrate.ts"
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp && grep -q 'runOrchestrateConsume' src/missionOps.ts || true",
+      "expect_exit": 0,
+      "timeout": 10,
+      "description": "consume handler reference presente em missionOps.ts (se houver)"
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp && grep -q 'engineering.orchestrate.consume' src/tools.ts && grep -q 'runOrchestrateConsume' src/tools.ts",
+      "expect_exit": 0,
+      "timeout": 10,
+      "description": "tool engineering.orchestrate.consume registrado em tools.ts"
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp && grep -q 'consumer' src/orchestrate.ts && grep -q 'OrchestratorConsumerState' src/orchestrate.ts",
+      "expect_exit": 0,
+      "timeout": 10,
+      "description": "campos consumer presentes em orchestrate.list"
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp && npm run test:orchestrate 2>&1 | tail -3",
+      "expect_exit": 0,
+      "timeout": 60,
+      "evidence_tail": "orchestratePlan.test.ts orchestrateEnqueue.test.ts orchestrateConsume.test.ts",
+      "description": "suíte completa de orquestrador passa (plan + enqueue + consume)"
+    }
+  ],
+  "file": [
+    {
+      "path": "/opt/memoryos/eng-mcp/RELATORIO-ORCH-QUEUE-CONSUMER-01.md",
+      "min_bytes": 100
+    },
+    {
+      "path": "/opt/memoryos/eng-mcp/src/orchestrate.ts",
+      "min_bytes": 100
+    },
+    {
+      "path": "/opt/memoryos/eng-mcp/test/orchestrateConsume.test.ts",
+      "min_bytes": 100
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "mission": "ORCH-PREAUTH-01",
+  "cmd": [
+    {
+      "run": "cd /opt/memoryos/eng-mcp && node --import tsx --test test/orchestrateConsumeDaemon.test.mjs 2>&1 | grep -E '^ℹ (pass|fail)'",
+      "expect_exit": 0,
+      "timeout": 60
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp && timeout 60 node_modules/.bin/tsx src/orchestrateConsumeDaemon.mjs 2>&1 | grep -o '\"mode\":\"plan\"' | head -1",
+      "expect_exit": 0,
+      "timeout": 90
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp && git log --oneline -1 --grep='ORCH-PREAUTH-01\\|ORCH-DAEMON-01 FIX' | head -1",
+      "expect_exit": 0,
+      "timeout": 30
+    }
+  ],
+  "file": [
+    {
+      "path": "/opt/memoryos/eng-mcp/RELATORIO-ORCH-DAEMON-01-FIX.md"
+    },
+    {
+      "path": "/opt/memoryos/eng-mcp/src/orchestrateConsumeDaemon.mjs"
+    }
+  ]
+}

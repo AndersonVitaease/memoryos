@@ -1,0 +1,41 @@
+{
+  "mission": "CLAUDE-MD-DIET-01",
+  "owner": "CLAUDE-MD-DIET-01",
+  "date": "2026-10-02",
+  "note": "Dieta do /opt/memoryos/CLAUDE.md: 104166 -> 3861 bytes. Histórico datado (linhas 33-1299, 21 seções '### AAAA-MM-DD') arquivado em /opt/memoryos/CLAUDE.md.archive-2026-10/ (1 arquivo por seção + README.md índice + backup integral). Cabeçalho no CLAUDE.md aponta para o arquivo. Escopo respeitado: nenhum arquivo de missão em voo tocado.",
+  "cmd": [
+    {
+      "run": "test $(wc -c < /opt/memoryos/CLAUDE.md) -lt 5000",
+      "expect_exit": 0
+    },
+    {
+      "run": "cd /opt/memoryos && tail -n +2 /opt/memoryos/CLAUDE.md | tail -c +2 > /tmp/diet-now.txt && head -c 3664 /opt/memoryos/CLAUDE.md.archive-2026-10/CLAUDE.md.original-2026-10-02.bak > /tmp/diet-orig.txt && cmp /tmp/diet-now.txt /tmp/diet-orig.txt",
+      "expect_exit": 0,
+      "timeout": 10,
+      "_provenance": "report",
+      "_source": "preâmbulo original preservado byte a byte após cabeçalho (sh-puro)"
+    },
+    {
+      "run": "test $(ls /opt/memoryos/CLAUDE.md.archive-2026-10/2*.md | wc -l) -eq 21",
+      "expect_exit": 0
+    },
+    {
+      "run": "test -f /opt/memoryos/CLAUDE.md.archive-2026-10/README.md",
+      "expect_exit": 0
+    },
+    {
+      "run": "grep -q 'CLAUDE.md.archive-2026-10' /opt/memoryos/CLAUDE.md",
+      "expect_exit": 0
+    }
+  ],
+  "file": [
+    {
+      "path": "/opt/memoryos/CLAUDE.md.archive-2026-10/CLAUDE.md.original-2026-10-02.bak",
+      "min_bytes": 100000
+    },
+    {
+      "path": "/opt/memoryos/CLAUDE.md.archive-2026-10/README.md",
+      "min_bytes": 200
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "mission": "ORCH-QUEUE-PROMOTE-01",
+  "owner": "ORCH-QUEUE-PROMOTE-01",
+  "date": "2026-10-02",
+  "note": "runOrchestrateConsume promove intents via mission.dispatch: PLAN read-only default; execute governado (ORCH_CONSUME_APPROVAL_REQUIRED); ordem priority→FIFO; conflito por componente/worktree serializa; dedupe promotedIds → NOOP nunca re-despacha; audit /data/audit/orchestrate-consume.jsonl só em execute; fail-closed sem handler. Higiene do planner: só dispatched ocupa slot (reopen→dispatched); 53 unknowns (*.verify.json/nudges.json) NUNCA contam — unknownCount/unknownFiles; readdir null = ilegível → THROTTLE honesto. Provas: contratos 27/27; suíte completa sem LIVE 1673/0/5 (LIVE zz-proxy-live 403 provado idêntico na baseline main 47567591); typecheck diff normalizado = só deslocamento de linha.",
+  "cmd": [
+    {
+      "run": "cd /opt/memoryos/eng-mcp-wt-orch-queue-promote-01/eng-mcp && node --import tsx --test --test-force-exit test/orchestrateConsume.test.ts test/orchestratePlan.test.ts",
+      "expect_exit": 0,
+      "timeout": 130,
+      "evidence_tail": "# tests 27\n# pass 27\n# fail 0"
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp-wt-orch-queue-promote-01/eng-mcp && node --import tsx --test --test-force-exit --test-concurrency=4 $(ls test/*.test.ts | grep -v zz-proxy-live)",
+      "expect_exit": 0,
+      "timeout": 240,
+      "evidence_tail": "# pass 1673\n# fail 0\n# skipped 5"
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp-wt-orch-queue-promote-01/eng-mcp && git log --oneline -2 && git diff --stat main..HEAD | tail -1",
+      "expect_exit": 0,
+      "timeout": 60,
+      "evidence_tail": "4d59268c orchestrate: ORCH-QUEUE-PROMOTE-01 — relatório pt-BR da missão\n8dc78381 orchestrate: ORCH-QUEUE-PROMOTE-01 — consume promove de verdade via mission.dispatch\n 4 files changed, 589 insertions(+), 139 deletions(-)"
+    }
+  ],
+  "file": [
+    {
+      "path": "/opt/memoryos/eng-mcp-wt-orch-queue-promote-01/eng-mcp/RELATORIO-orch-queue-promote-01.md",
+      "min_bytes": 1
+    },
+    {
+      "path": "/opt/memoryos/eng-mcp-wt-orch-queue-promote-01/eng-mcp/src/orchestrate.ts",
+      "min_bytes": 1
+    },
+    {
+      "path": "/opt/memoryos/eng-mcp-wt-orch-queue-promote-01/eng-mcp/test/orchestratePlan.test.ts",
+      "min_bytes": 1
+    }
+  ]
+}
