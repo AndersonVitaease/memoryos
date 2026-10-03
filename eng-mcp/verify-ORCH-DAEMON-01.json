@@ -1,0 +1,12 @@
+{
+  "mission": "ORCH-DAEMON-01",
+  "date": "2026-10-03",
+  "problem": "orch-daemon-consume.service failed a cada ciclo: runOrchestrateConsume({execute:true}) sem approval.approved → guard ORCH_CONSUME_APPROVAL_REQUIRED rejeitava, exit != 0, systemd failed, plan BLOCK em cascata (systemd com 1 unidade failed).",
+  "fix": "src/orchestrateConsumeDaemon.mjs: daemon roda PLAN (dryRun) por default; execute só com ORCH_DAEMON_APPROVED=1 (approval explícita via env). Sem approval: ok:true mode:plan, exit 0 — fail-safe.",
+  "proof": {
+    "tests": "node --import tsx --test test/orchestrateConsumeDaemon.test.mjs → 5/5 pass",
+    "live_cycle": "{\"ok\":true,\"mode\":\"plan\",\"plan\":{\"consumed\":9,\"promoted\":2,\"blocked\":0},\"executed\":null,\"note\":\"promovíveis aguardam approval (ORCH_DAEMON_APPROVED=1)\"}",
+    "commit": "64d1e12d"
+  },
+  "residual": "systemd unit orch-daemon-consume segue failed até próximo tick do timer (mutação systemctl requer aprovação do operador); 2 intents promovíveis aguardam ORCH_DAEMON_APPROVED=1 para despacho real."
+}
