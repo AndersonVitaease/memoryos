@@ -34,7 +34,13 @@ export async function runDaemonCycle({ maxPromotions = 2 } = {}) {
       return { ok: true, mode: "plan", plan, executed: null };
     }
     // EXECUTE: despacho real pelo caminho governado (mesma runMissionDispatch).
-    const executed = await runOrchestrateConsume({ maxPromotions, execute: true });
+    // ORCH-DAEMON-01 FIX: execute exige approval.approved=true (guard de governança).
+    // Sem approval explícito, o daemon permanece em PLAN (fail-safe, nunca falha o ciclo).
+    const approval = process.env.ORCH_DAEMON_APPROVED === "1" ? { approved: true } : undefined;
+    if (!approval) {
+      return { ok: true, mode: "plan", plan, executed: null, note: "promovíveis aguardam approval (ORCH_DAEMON_APPROVED=1)" };
+    }
+    const executed = await runOrchestrateConsume({ maxPromotions, execute: true, approval });
     return { ok: true, mode: "execute", plan, executed };
   } catch (err) {
     return { ok: false, reason: err instanceof Error ? err.message : String(err) };
