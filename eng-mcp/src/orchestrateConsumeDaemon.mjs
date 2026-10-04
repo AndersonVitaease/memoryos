@@ -10,6 +10,7 @@ import { runOrchestrateQueueCompaction } from "./orchestrateCompaction.ts";  // 
 import { runMissionDispatch, runMissionRecover, runMissionNudge } from "./missionOps.ts";  // ORCH-PREAUTH-01: caminho governado do despacho
 import { runNotifyHermes } from "./notifyHermes.ts";
 import { runBreakerTick, PAUSADO_MESSAGE, RESUMO_MESSAGE_PREFIX } from "./orchestrateBreaker.ts";  // ORCH-BREAKER-01: breaker de pressão integrado ao ciclo
+import { runHygieneTrigger } from "./orchestrateHygiene.ts";  // ORCH-HYGIENE-01: gatilho leve no fim do ciclo
 
 // Lock/estado em tmpdir do SO (nunca em /opt/mission-events — área de produção).
 export const LOCK_PATH = `${os.tmpdir()}/orchestrator-consumer.daemon.lock`;
@@ -105,6 +106,23 @@ function maybeCompactQueue(executed) {
   }
 }
 
+// ORCH-HYGIENE-01 (Modo 2): gatilho automático LEVE no fim de todo ciclo do daemon —
+// se há worktree limpa com branch ahead de main (merge pendente), roda 1 ciclo de
+// higiene: dryRun é o default (fail-closed); execute só com ORCH_HYGIENE_APPROVED=1
+// no drop-in (mesmo padrão de aprovação do ORCH-DAEMON-01). Fail-open: qualquer
+// falha NUNCA trava o ciclo do consume. ORCH_HYGIENE=0 desliga (escape hatch de
+// suítes locais; produção sem a var = ligado).
+async function maybeHygieneCycle() {
+  if (process.env.ORCH_HYGIENE === "0") {
+    return { triggered: false, reason: "ORCH_HYGIENE=0", cycle: null };
+  }
+  try {
+    return await runHygieneTrigger();
+  } catch (error) {
+    return { triggered: false, reason: `hygiene fail-open: ${error instanceof Error ? error.message : String(error)}`, cycle: null };
+  }
+}
+
 export async function runDaemonCycle({ maxPromotions = 2, breakerDeps } = {}) {
   if (!acquireLock()) {
     return { ok: false, reason: "lock held by another daemon cycle" };
@@ -123,14 +141,16 @@ export async function runDaemonCycle({ maxPromotions = 2, breakerDeps } = {}) {
     // PLAN: dryRun — decisão sem efeito.
     const plan = await runOrchestrateConsume({ dryRun: true, maxPromotions });
     if (!plan || plan.promoted === 0) {
-      return { ok: true, mode: "plan", plan, executed: null, breaker, compaction: maybeCompactQueue(null) };
+      const hygiene = await maybeHygieneCycle();
+      return { ok: true, mode: "plan", plan, executed: null, breaker, compaction: maybeCompactQueue(null), hygiene };
     }
     // EXECUTE: despacho real pelo caminho governado (mesma runMissionDispatch).
     // ORCH-DAEMON-01 FIX: execute exige approval.approved=true (guard de governança).
     // Sem approval explícito, o daemon permanece em PLAN (fail-safe, nunca falha o ciclo).
     const approval = process.env.ORCH_DAEMON_APPROVED === "1" ? { approved: true } : undefined;
     if (!approval) {
-      return { ok: true, mode: "plan", plan, executed: null, note: "promovíveis aguardam approval (ORCH_DAEMON_APPROVED=1)", breaker, compaction: maybeCompactQueue(null) };
+      const hygiene = await maybeHygieneCycle();
+      return { ok: true, mode: "plan", plan, executed: null, note: "promovíveis aguardam approval (ORCH_DAEMON_APPROVED=1)", breaker, compaction: maybeCompactQueue(null), hygiene };
     }
     // ORCH-PREAUTH-01 (elo final): o daemon injeta o MESMO caminho governado do
     // tools.ts (runMissionDispatch) — antes ele chamava execute sem handler e o
@@ -154,7 +174,8 @@ export async function runDaemonCycle({ maxPromotions = 2, breakerDeps } = {}) {
         }
       },
     });
-    return { ok: true, mode: "execute", plan, executed, breaker, compaction: maybeCompactQueue(executed) };
+    const hygiene = await maybeHygieneCycle();
+    return { ok: true, mode: "execute", plan, executed, breaker, compaction: maybeCompactQueue(executed), hygiene };
   } catch (err) {
     return { ok: false, reason: err instanceof Error ? err.message : String(err) };
   } finally {
