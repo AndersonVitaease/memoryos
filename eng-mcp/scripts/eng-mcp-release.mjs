@@ -351,9 +351,15 @@ async function hashTree(root, directory, hash) {
   }
 }
 
-async function whitespaceCheck(root, files) {
+export async function whitespaceCheck(root, files) {
   for (const file of files ?? await sourceFiles(root)) {
-    const value = await readFile(file.absolute, "utf8");
+    // SHIP-ENG-MCP-04 ( classe OCR-01 ): binário trackeado (ex: .glgpd/bin/gitleaks
+    // ELF) não é texto — ler como utf8 fabrica "linhas" falsas com trailing
+    // whitespace e bloqueia todo pipeline. Heurística do git: NUL nos primeiros
+    // 8000 bytes => binário, skip do check.
+    const raw = await readFile(file.absolute);
+    if (raw.subarray(0, 8000).includes(0)) continue;
+    const value = raw.toString("utf8");
     const bad = value.split(/\r?\n/).findIndex((line) => /[ \t]+$/.test(line));
     if (bad >= 0) throw new Error(`DIFF_CHECK_FAILED:${file.relative}:${bad + 1}`);
   }
