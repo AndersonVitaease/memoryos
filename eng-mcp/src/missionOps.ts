@@ -206,6 +206,9 @@ export const missionDispatchInputSchema = z.object({
   cwd: z.string().optional(), consequence: z.boolean().optional(),
   paneTitle: z.string().optional(), engine: z.string().optional(),
   spawnedBy: z.string().default("operator"),
+  // ORCH-CHAIN-CWD-01: consume despacha com "payload" — pai da cadeia lido
+  // EXCLUSIVAMENTE do spawnedBy declarado; ambiente (pane) nunca decide.
+  chainBasis: z.enum(["auto", "payload"]).default("auto"),
   batch: z.array(z.object({
     missionId: z.string(), promptFile: z.string(), cwd: z.string().optional(),
     consequence: z.boolean().optional(), paneTitle: z.string().optional(),

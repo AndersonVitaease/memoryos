@@ -147,11 +147,64 @@ export function resolveCycleApproval(env = process.env) {
   return { approval: null, approvalSource: "none", preauth };
 }
 
+// ORCH-CHAIN-CWD-01 (item 3): o preauth do daemon tem TTL e expira em silêncio — no
+// início de TODO ciclo, manifesto preauth ATIVO do unit (status valid, subject/mission
+// = orch-daemon-conume validado pelo leitor) com expiração < 2h emite alerta tipado:
+// spool orch_preauth_expiring + evento no bus (o bus consome o spool) com mission/
+// hash16/expiresAt no corpo e na msg (msg é o campo que o bus entrega ao subscriber).
+// RE-GRANT NUNCA automático — a concessão é do operator; o daemon só LE e alerta
+// (anti-self-approve intocado). Alerta por ciclo (o bus dedupa/rate-limita a entrega).
+export const PREAUTH_EXPIRY_WARN_MS = 2 * 60 * 60 * 1000;
+export const PREAUTH_UNIT = "orch-daemon-consume";
+
+export function emitPreauthExpiryAlert(reading, { spoolPath, nowMs = Date.now(), appendFile = appendFileSync, warnWindowMs = PREAUTH_EXPIRY_WARN_MS } = {}) {
+  if (!reading || reading.status !== "valid" || !reading.expiresAt) {
+    return { alerted: false, reason: `preauth não ativo (status=${reading?.status ?? "null"})` };
+  }
+  const expMs = Date.parse(reading.expiresAt);
+  if (!Number.isFinite(expMs)) {
+    return { alerted: false, reason: `expiresAt não-parseável: ${reading.expiresAt}` };
+  }
+  const remainingMs = expMs - nowMs;
+  if (remainingMs >= warnWindowMs) {
+    return { alerted: false, reason: `expiração fora da janela (${Math.round(remainingMs / 60_000)}min restantes ≥ ${Math.round(warnWindowMs / 60_000)}min)` };
+  }
+  const line = {
+    ts: new Date(nowMs).toISOString(),
+    event: "orch_preauth_expiring",
+    kind: "orch_preauth_expiring",
+    mission: PREAUTH_UNIT,
+    hash16: reading.hash16,
+    expiresAt: reading.expiresAt,
+    remainingMinutes: Math.max(0, Math.round(remainingMs / 60_000)),
+    msg: `preauth do unit ${PREAUTH_UNIT} (hash16 ${reading.hash16 ?? "?"}) expira em ${Math.max(0, Math.round(remainingMs / 60_000))}min (${reading.expiresAt}) — re-grant NUNCA automático, concessão é do operator`,
+    source: "orchestrator-daemon",
+  };
+  const target = spoolPath ?? (process.env.ENG_MCP_SPOOL_PATH || "/opt/mission-events/spool.jsonl");
+  try {
+    appendFile(target, JSON.stringify(line) + "\n");
+  } catch (error) {
+    // fail-open: alerta nunca trava o ciclo
+    return { alerted: false, reason: `spool fail-open: ${error instanceof Error ? error.message : String(error)}` };
+  }
+  return { alerted: true, mission: PREAUTH_UNIT, hash16: reading.hash16, expiresAt: reading.expiresAt, remainingMinutes: line.remainingMinutes };
+}
+
 export async function runDaemonCycle({ maxPromotions = 2, breakerDeps, consumeDeps } = {}) {
   if (!acquireLock()) {
     return { ok: false, reason: "lock held by another daemon cycle" };
   }
   try {
+    // ORCH-CHAIN-CWD-01: alerta de expiração do preauth no INÍCIO de todo ciclo —
+    // manifesto ativo do unit com expiração < 2h → spool orch_preauth_expiring + bus.
+    // Fail-open: qualquer falha NUNCA trava o ciclo. Re-grant NUNCA automático.
+    let preauthAlert = { alerted: false, reason: "não avaliado" };
+    try {
+      const startReading = readPreauthArtifact(orchPreauthPath());
+      preauthAlert = emitPreauthExpiryAlert(startReading, { spoolPath: consumeDeps?.spoolPath });
+    } catch (error) {
+      preauthAlert = { alerted: false, reason: `fail-open: ${error instanceof Error ? error.message : String(error)}` };
+    }
     // ORCH-BREAKER-01: breaker de pressão roda ANTES do consume — amostra o host
     // (load/swap/PSI), pausa workers em voo sob pressão sustentada, detecta herdr
     // irresponsável. Fail-open: qualquer falha do breaker NUNCA trava o consume.
@@ -170,7 +223,7 @@ export async function runDaemonCycle({ maxPromotions = 2, breakerDeps, consumeDe
     const plan = await runOrchestrateConsume({ dryRun: true, maxPromotions }, consumeDeps);
     if (!plan || plan.promoted === 0) {
       const hygiene = await maybeHygieneCycle();
-      return { ok: true, mode: "plan", plan, executed: null, approvalSource, preauth, breaker, compaction: maybeCompactQueue(null), hygiene };
+      return { ok: true, mode: "plan", plan, executed: null, approvalSource, preauth, preauthAlert, breaker, compaction: maybeCompactQueue(null), hygiene };
     }
     // EXECUTE: despacho real pelo caminho governado (mesma runMissionDispatch).
     // ORCH-DAEMON-01 FIX: execute exige approval.approved=true (guard de governança).
@@ -179,7 +232,7 @@ export async function runDaemonCycle({ maxPromotions = 2, breakerDeps, consumeDe
     // nenhuma das duas, o ciclo permanece em PLAN/awaiting_approval (fail-closed).
     if (!approval) {
       const hygiene = await maybeHygieneCycle();
-      return { ok: true, mode: "plan", plan, executed: null, note: "promovíveis aguardam approval (artefato preauth ausente/expirado/revogado e ORCH_DAEMON_APPROVED indefinido)", approvalSource, preauth, breaker, compaction: maybeCompactQueue(null), hygiene };
+      return { ok: true, mode: "plan", plan, executed: null, note: "promovíveis aguardam approval (artefato preauth ausente/expirado/revogado e ORCH_DAEMON_APPROVED indefinido)", approvalSource, preauth, preauthAlert, breaker, compaction: maybeCompactQueue(null), hygiene };
     }
     // ORCH-PREAUTH-01 (elo final): o daemon injeta o MESMO caminho governado do
     // tools.ts (runMissionDispatch) — antes ele chamava execute sem handler e o
@@ -193,13 +246,20 @@ export async function runDaemonCycle({ maxPromotions = 2, breakerDeps, consumeDe
       // ORCH-TOOLS-01: handler de tool_call in-processo (tiers 1/2) — MESMO executor
       // do tools.ts (sem provider de catálogo: o daemon não constrói catálogo).
       toolCallHandler: createToolCallHandler(),
-      dispatchMission: async (i) => {
+      // ORCH-CHAIN-CWD-01: despacho injetável para provas E2E herméticas (recorder) —
+      // produção segue SEMPRE no caminho real governado (runMissionDispatch).
+      dispatchMission: consumeDeps?.dispatchMission ?? (async (i) => {
         try {
+          // ORCH-CHAIN-CWD-01: cwd/spawnedBy propagados do payload do intent (o consume
+          // já resolveu os defaults documentados — /opt/mission-events e "operator") e
+          // chainBasis="payload": o gate do plugin lê o pai da cadeia EXCLUSIVAMENTE da
+          // declaração do payload; ambiente (pane do daemon) NUNCA decide.
           const result = await runMissionDispatch({
             missionId: i.missionId,
             promptFile: i.promptFile,
-            cwd: i.worktree, // worktree da intent → cwd do dispatch (o handler valida existência)
-            spawnedBy: "orchestrator",
+            cwd: i.cwd, // cwd do payload → ledger nasce fiel ao intent
+            spawnedBy: i.spawnedBy,
+            chainBasis: i.chainBasis,
           });
           if (result && result && result.ok === true) return { ok: true };
           const err = result ?? {};
@@ -207,10 +267,10 @@ export async function runDaemonCycle({ maxPromotions = 2, breakerDeps, consumeDe
         } catch (error) {
           return { ok: false, error: error instanceof Error ? error.message : String(error) };
         }
-      },
+      }),
     });
     const hygiene = await maybeHygieneCycle();
-    return { ok: true, mode: "execute", plan, executed, approvalSource, preauth, breaker, compaction: maybeCompactQueue(executed), hygiene };
+    return { ok: true, mode: "execute", plan, executed, approvalSource, preauth, preauthAlert, breaker, compaction: maybeCompactQueue(executed), hygiene };
   } catch (err) {
     return { ok: false, reason: err instanceof Error ? err.message : String(err) };
   } finally {

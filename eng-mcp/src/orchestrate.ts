@@ -33,6 +33,30 @@ export const DEFAULT_PATHS = {
 
 export type OrchestrateVerdict = "GO" | "THROTTLE" | "BLOCK";
 
+// ORCH-CHAIN-CWD-01: origem do cwd do despacho — payload declarou | default do contrato.
+export type CwdSource = "payload" | "default";
+/** Default documentado do contrato quando o payload não declara cwd (nunca herdar
+ * silenciosamente o cwd do consumidor — a ausência vira cwd_source=default no audit). */
+export const DEFAULT_DISPATCH_CWD = "/opt/mission-events";
+/** Default documentado do pai da cadeia quando o chamador não declara (enqueue embute). */
+export const DEFAULT_SPAWNED_BY = "operator";
+
+/**
+ * ORCH-CHAIN-CWD-01: leitura EXCLUSIVA do payload — pai da cadeia (spawnedBy) e cwd
+ * do despacho. Ambiente nunca decide (nem pane, nem cwd do consumidor). spawnedBy
+ * ausente → "operator" (default documentado; o enqueue embute o mesmo default).
+ * cwd ausente → /opt/mission-events com cwd_source=default (registrado no audit).
+ */
+export function resolveChainDispatch(payload: Record<string, unknown>): { spawnedBy: string; cwd: string; cwdSource: CwdSource } {
+  const sb = typeof payload.spawnedBy === "string" ? payload.spawnedBy.trim() : "";
+  const cw = typeof payload.cwd === "string" ? payload.cwd.trim() : "";
+  return {
+    spawnedBy: sb.length > 0 ? sb : DEFAULT_SPAWNED_BY,
+    cwd: cw.length > 0 ? cw : DEFAULT_DISPATCH_CWD,
+    cwdSource: cw.length > 0 ? "payload" : "default",
+  };
+}
+
 export interface OrchestrateDeps {
   /** Read a UTF-8 text file; null when missing/unreadable (fail-open). */
   readText?(path: string): string | null;
@@ -65,7 +89,7 @@ export interface OrchestrateDeps {
   /** ORCH-BREAKER-01: estado do breaker (breaker:{stage,paused,since} no plan/list). */
   breakerStatePath?: string;
   /** Dispatch a mission via the mission-ops handler. Returns {ok, error?}. */
-  dispatchMission?(input: { missionId: string; promptFile: string; worktree?: string; priority?: number }): Promise<{ ok: boolean; error?: string }>;
+  dispatchMission?(input: { missionId: string; promptFile: string; worktree?: string; priority?: number; spawnedBy?: string; cwd?: string; cwdSource?: CwdSource; chainBasis?: "payload" | "auto" }): Promise<{ ok: boolean; error?: string }>;
   /** ORCH-TOOLS-01: handler in-processo para intents tool_call (tier-1 leitura + tier-2 escrita governada). */
   toolCallHandler?(tool: string, args: Record<string, unknown>): Promise<{ ok: boolean; result?: unknown; error?: string }>;
   /** ORCH-TOOLS-01: leitura do artefato preauth (injetável p/ testes; default: readPreauthArtifact(orchPreauthPath())). */
@@ -311,7 +335,7 @@ function toolResultSummary(value: unknown): string {
   try { return JSON.stringify(value).slice(0, 120); } catch { return String(value).slice(0, 120); }
 }
 
-function auditConsume(d: ReturnType<typeof resolveDeps>, record: { mode: "plan" | "execute"; entryId: string; missionId: string | null; decision: ConsumeDecision; reason: string }): void {
+function auditConsume(d: ReturnType<typeof resolveDeps>, record: { mode: "plan" | "execute"; entryId: string; missionId: string | null; decision: ConsumeDecision; reason: string; cwd?: string; cwd_source?: CwdSource; spawned_by?: string }): void {
   const line = JSON.stringify({ ts: new Date(d.now!()).toISOString(), ...record, reason: record.reason.slice(0, 400), source: "orchestrate-consume" });
   try {
     if (d.appendFile) {
@@ -401,10 +425,11 @@ export async function runOrchestrateConsume(
   }
 
   // Registra a decisão no resultado; em execute também audita + spool (PLAN: read-only).
-  const decide = (entryId: string, missionId: string, action: ConsumeEntryResult["action"], reason: string, decision: ConsumeDecision): void => {
+  // ORCH-CHAIN-CWD-01: extra carrega cwd/cwd_source/spawned_by do despacho no audit.
+  const decide = (entryId: string, missionId: string, action: ConsumeEntryResult["action"], reason: string, decision: ConsumeDecision, extra?: { cwd?: string; cwd_source?: CwdSource; spawned_by?: string }): void => {
     result.results.push({ entryId, action, reason, missionId });
     if (mode === "execute") {
-      auditConsume(d, { mode, entryId, missionId, decision, reason });
+      auditConsume(d, { mode, entryId, missionId, decision, reason, ...extra });
       spoolEvent(d, action === "skipped" ? "orch_skip" : `orch_${action}`, missionId, reason);
     }
   };
@@ -417,6 +442,9 @@ export async function runOrchestrateConsume(
       const missionId = (payload.missionId ?? entry.id) as string;
       const promptFile = (payload.prompt ?? payload.promptFile) as string | undefined;
       const worktree = payload.worktree as string | undefined;
+      // ORCH-CHAIN-CWD-01: pai da cadeia (spawnedBy) e cwd do despacho vêm
+      // EXCLUSIVAMENTE do payload — ambiente (pane/cwd do consumidor) nunca decide.
+      const chainDispatch = resolveChainDispatch(payload);
       const priority = entry.priority ?? 5;
       const component = typeof payload.component === "string" ? payload.component
         : typeof payload.componente === "string" ? payload.componente
@@ -600,6 +628,8 @@ export async function runOrchestrateConsume(
 
       // (6) execute: despacho real — APENAS pelo caminho mission.dispatch. Sem handler
       // configurado é fail-closed (nunca fake-promover).
+      // ORCH-CHAIN-CWD-01: cwd/spawnedBy propagados do payload (chainBasis=payload faz o
+      // gate do plugin ler o pai EXCLUSIVAMENTE da declaração; audit registra cwd_source).
       const dispatchFn = d.dispatchMission;
       if (!dispatchFn) {
         decide(entry.id, missionId, "blocked", "sem handler de dispatch configurado (fail-closed)", "BLOCKED");
@@ -608,19 +638,19 @@ export async function runOrchestrateConsume(
       }
 
       try {
-        const dispatchResult = await dispatchFn({ missionId, promptFile, worktree, priority });
+        const dispatchResult = await dispatchFn({ missionId, promptFile, worktree, priority, spawnedBy: chainDispatch.spawnedBy, cwd: chainDispatch.cwd, cwdSource: chainDispatch.cwdSource, chainBasis: "payload" });
         if (dispatchResult.ok) {
-          decide(entry.id, missionId, "promoted", "plan GO → despachado via mission.dispatch", "PROMOTED");
+          decide(entry.id, missionId, "promoted", `plan GO → despachado via mission.dispatch (cwd=${chainDispatch.cwd}, cwd_source=${chainDispatch.cwdSource}, spawnedBy=${chainDispatch.spawnedBy})`, "PROMOTED", { cwd: chainDispatch.cwd, cwd_source: chainDispatch.cwdSource, spawned_by: chainDispatch.spawnedBy });
           result.promoted += 1;
           promotedCount += 1;
           if (component != null) busyComponents.add(component);
           busyMissions.add(missionId);
           promotedIds.add(entry.id);
         } else {
-          await handleDispatchFailure(d, entry, missionId, promptFile, worktree, priority, dispatchResult.error ?? "unknown", result, mode);
+          await handleDispatchFailure(d, entry, missionId, promptFile, worktree, priority, dispatchResult.error ?? "unknown", result, mode, chainDispatch);
         }
       } catch (err) {
-        await handleDispatchFailure(d, entry, missionId, promptFile, worktree, priority, String(err), result, mode);
+        await handleDispatchFailure(d, entry, missionId, promptFile, worktree, priority, String(err), result, mode, chainDispatch);
       }
     }
   } finally {
@@ -693,13 +723,16 @@ async function handleDispatchFailure(
   error: string,
   result: ConsumeResult,
   mode: "plan" | "execute" = "execute",
+  chainDispatch?: { cwd: string; cwdSource: CwdSource; spawnedBy: string },
 ): Promise<void> {
   const payload = entry.payload ?? {};
   const attemptCount = ((payload._attemptCount as number | undefined) ?? 0) + 1;
+  // ORCH-CHAIN-CWD-01: cwd/cwd_source/spawned_by do payload ficam no audit de falha também.
+  const cd = chainDispatch ?? resolveChainDispatch(payload);
 
   if (attemptCount >= 3) {
     if (mode === "execute") {
-      auditConsume(d, { mode, entryId: entry.id, missionId, decision: "DEAD_LETTER", reason: `3 tentativas falhas: ${error}` });
+      auditConsume(d, { mode, entryId: entry.id, missionId, decision: "DEAD_LETTER", reason: `3 tentativas falhas: ${error}`, cwd: cd.cwd, cwd_source: cd.cwdSource, spawned_by: cd.spawnedBy });
       spoolEvent(d, "orch_dead_letter", missionId, `3 tentativas falhas: ${error.slice(0, 200)}`);
     }
     result.results.push({ entryId: entry.id, action: "dead_letter", reason: error.slice(0, 200), missionId });
@@ -710,7 +743,7 @@ async function handleDispatchFailure(
     try { (d.appendFile ?? appendReal)(d.queuePath!, `${JSON.stringify(updatedEntry)}\n`); } catch { /* fail-open */ }
     const backoff = Math.pow(2, attemptCount);
     if (mode === "execute") {
-      auditConsume(d, { mode, entryId: entry.id, missionId, decision: "REQUEUED", reason: `tentativa ${attemptCount}, backoff ${backoff}s: ${error}` });
+      auditConsume(d, { mode, entryId: entry.id, missionId, decision: "REQUEUED", reason: `tentativa ${attemptCount}, backoff ${backoff}s: ${error}`, cwd: cd.cwd, cwd_source: cd.cwdSource, spawned_by: cd.spawnedBy });
       spoolEvent(d, "orch_requeue", missionId, `re-enfileirado (tentativa ${attemptCount}, backoff ${backoff}s): ${error.slice(0, 200)}`);
     }
     // ORCH-PREAUTH-ARTIFACT-01 (achado no E2E): requeue NÃO é dead_letter — o label
@@ -1160,6 +1193,12 @@ function parseQueue(raw: string | null): QueueEntry[] {
  * Append-only em orchestrator-queue.jsonl com dedupe (regra anti-thrash §4:
  * reentrância proibida — mesma {type,payload} nunca duas na fila). F1 não consome:
  * promoção/consumo é do cron externo futuro.
+ *
+ * ORCH-CHAIN-CWD-01: todo intent sai daqui com spawnedBy embutido — declarado pelo
+ * chamador, ou o default documentado "operator" quando ausente (spawnedBySource
+ * registra a origem). spawnedBy presente mas não-string/vazio = erro tipado (fail-closed
+ * na entrada, antes de a intent malformada chegar ao consume). O consume lê o pai da
+ * cadeia EXCLUSIVAMENTE deste campo (ambiente nunca decide).
  */
 export function runOrchestrateEnqueue(
   input: { type: string; payload: Record<string, unknown>; priority?: number },
@@ -1175,15 +1214,32 @@ export function runOrchestrateEnqueue(
       throw new Error("ORCHESTRATE_ENQUEUE_INVALID_TOOL_CALL: payload.tool é obrigatório (string não-vazia)");
     }
   }
-  const payloadKey = JSON.stringify(input.payload);
-  const existing = entries.find((e) => e.type === input.type && JSON.stringify(e.payload) === payloadKey);
+  // ORCH-CHAIN-CWD-01: spawnedBy obrigatório no intent — default documentado "operator".
+  const declaredSpawnedBy = (input.payload ?? {}).spawnedBy;
+  if (declaredSpawnedBy !== undefined && (typeof declaredSpawnedBy !== "string" || declaredSpawnedBy.trim().length === 0)) {
+    throw new Error("ORCHESTRATE_ENQUEUE_INVALID_SPAWNED_BY: payload.spawnedBy, quando declarado, é string não-vazia (operator | supervisor:hermes | orchestrator | <missionId> do despachante)");
+  }
+  const spawnedBy = typeof declaredSpawnedBy === "string" ? declaredSpawnedBy.trim() : DEFAULT_SPAWNED_BY;
+  const spawnedBySource = typeof declaredSpawnedBy === "string" ? "declared" : "default";
+  // Dedupe sobre o payload EMBUTIDO — re-enfileirar o mesmo intent com/sem spawnedBy
+  // explícito deduplica consistentemente (o default operator é idempotente).
+  // spawnedBySource é METADATA de auditoria, não identidade do intent: sai da chave de
+  // dedupe (com/sem spawnedBy explícito = o MESMO intent; valor diferente de spawnedBy
+  // = pai da cadeia diferente = intent diferente).
+  const embeddedPayload: Record<string, unknown> = { ...(input.payload ?? {}), spawnedBy, spawnedBySource };
+  const dedupeKey = (p: Record<string, unknown>): string => {
+    const clone = { ...p };
+    delete clone.spawnedBySource;
+    return JSON.stringify(clone);
+  };
+  const existing = entries.find((e) => e.type === input.type && dedupeKey(e.payload) === dedupeKey(embeddedPayload));
   if (existing) return { id: existing.id, enqueued: false, duplicate: true, queueCount: entries.length };
 
   const id = `orch-${d.now!()}-${Math.random().toString(16).slice(2, 6)}`;
   const entry: QueueEntry = {
     id,
     type: input.type,
-    payload: input.payload,
+    payload: embeddedPayload,
     priority: input.priority ?? 5,
     enqueuedAt: new Date(d.now!()).toISOString(),
   };

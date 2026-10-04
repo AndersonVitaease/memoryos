@@ -1,0 +1,67 @@
+{
+  "mission": "ORCH-CHAIN-CWD-01",
+  "at": "2026-10-04T14:16:38.720Z",
+  "ok": true,
+  "checks": {
+    "a_primeira_tentativa_aceita": {
+      "verdict": true,
+      "detail": "mode=execute promoted=1 requeued=0 deadLettered=0"
+    },
+    "a_pai_da_cadeia_do_payload": {
+      "verdict": true,
+      "detail": "captured={\"missionId\":\"CHAIN-E2E-A\",\"promptFile\":\"/opt/memoryos/eng-mcp/.e2e-ORCH-CHAIN-CWD-01/prompt-fixture.md\",\"priority\":5,\"spawnedBy\":\"PAI-EXPLICITO-01\",\"cwd\":\"/opt/memoryos/eng-mcp\",\"cwdSource\":\"payload\",\"chainBasis\":\"payload\"}"
+    },
+    "a_cwd_do_payload": {
+      "verdict": true,
+      "detail": "cwd=/opt/memoryos/eng-mcp cwdSource=payload"
+    },
+    "areal_wiring_real_intacto": {
+      "verdict": true,
+      "detail": "audit REQUEUED com motivo INVALID_CWD (plugin governado recusa cwd inexistente ANTES de pane — zero efeito)"
+    },
+    "areal_sem_dead_letter_na_1a": {
+      "verdict": true,
+      "detail": "deadLettered=0"
+    },
+    "b_cwd_payload_verbatim": {
+      "verdict": true,
+      "detail": "captured={\"missionId\":\"CHAIN-E2E-B\",\"promptFile\":\"/opt/memoryos/eng-mcp/.e2e-ORCH-CHAIN-CWD-01/prompt-fixture.md\",\"priority\":5,\"spawnedBy\":\"operator\",\"cwd\":\"/opt/memoryos/eng-mcp\",\"cwdSource\":\"payload\",\"chainBasis\":\"payload\"}"
+    },
+    "b_audit_cwd_source_payload": {
+      "verdict": true,
+      "detail": "audit={\"ts\":\"2026-10-04T14:15:35.338Z\",\"mode\":\"execute\",\"entryId\":\"e2e-chain-cwd-ciclo-3\",\"missionId\":\"CHAIN-E2E-B\",\"decision\":\"PROMOTED\",\"reason\":\"plan GO → despachado via mission.dispatch (cwd=/opt/memoryos/eng-mcp, cwd_source=payload, spawnedBy=operator)\",\"cwd\":\"/opt/memoryos/eng-mcp\",\"cwd_source\":\"payload\",\"spawned_by\":\"operator\",\"source\":\"orchestrate-consume\"}"
+    },
+    "c_cwd_default_documentado": {
+      "verdict": true,
+      "detail": "captured={\"missionId\":\"CHAIN-E2E-C\",\"promptFile\":\"/opt/memoryos/eng-mcp/.e2e-ORCH-CHAIN-CWD-01/prompt-fixture.md\",\"priority\":5,\"spawnedBy\":\"operator\",\"cwd\":\"/opt/mission-events\",\"cwdSource\":\"default\",\"chainBasis\":\"payload\"}"
+    },
+    "c_audit_cwd_source_default": {
+      "verdict": true,
+      "detail": "audit={\"ts\":\"2026-10-04T14:15:35.340Z\",\"mode\":\"execute\",\"entryId\":\"e2e-chain-cwd-ciclo-4\",\"missionId\":\"CHAIN-E2E-C\",\"decision\":\"PROMOTED\",\"reason\":\"plan GO → despachado via mission.dispatch (cwd=/opt/mission-events, cwd_source=default, spawnedBy=operator)\",\"cwd\":\"/opt/mission-events\",\"cwd_source\":\"default\",\"spawned_by\":\"operator\",\"source\":\"orchestrate-consume\"}"
+    },
+    "d_alerta_tipado_no_ciclo": {
+      "verdict": true,
+      "detail": "preauthAlert={\"alerted\":true,\"mission\":\"orch-daemon-consume\",\"hash16\":\"b33506d17f665d2c\",\"expiresAt\":\"2026-10-04T15:15:35.138Z\",\"remainingMinutes\":60} spool=1"
+    },
+    "d_alerta_mission_hash16_expiresat": {
+      "verdict": true,
+      "detail": "ev={\"mission\":\"orch-daemon-consume\",\"hash16\":\"b33506d17f665d2c\",\"expiresAt\":\"2026-10-04T15:15:35.138Z\"}"
+    },
+    "d_sem_regrant_artefato_intocado": {
+      "verdict": true,
+      "detail": "bytes do artefato idênticos após o ciclo (re-grant NUNCA automático; daemon só lê)"
+    },
+    "d2_sem_alerta_fora_da_janela": {
+      "verdict": true,
+      "detail": "preauthAlert={\"alerted\":false,\"reason\":\"expiração fora da janela (360min restantes ≥ 120min)\"}"
+    },
+    "e_suite_completa_ambient_extra_0": {
+      "verdict": true,
+      "detail": "SUITE NOTOK=1 AMBIENT_EXTRA=0 PASS=1822"
+    }
+  },
+  "suite": {
+    "tap": "/opt/memoryos/eng-mcp/e2e-ORCH-CHAIN-CWD-01.tap",
+    "tail": "SUITE NOTOK=1 AMBIENT_EXTRA=0 PASS=1822"
+  }
+}
