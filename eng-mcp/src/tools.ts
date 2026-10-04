@@ -14,6 +14,7 @@ import { ObservabilityClient } from "./observability.ts";
 import { AgentMemoryClient } from "./memory.ts";
 // STORE-MIG-01: local SQLite memory store (same bridge interface) + migration orchestrator.
 import { createMemoryStore } from "./memoryStore.ts";
+import { registerMissionMemoryStore } from "./missionMemoryCapture.ts";
 import { runMemoryMigrate } from "./memoryMigrate.ts";
 import { runMissionPreauth } from "./missionPreauth.ts";
 import { SupervisedMissionClient } from "./supervised.ts";
@@ -483,6 +484,8 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   // (local SQLite behind the same interface, or the Base44 bridge while the
   // MEMORY_STORE flag says bridge — default until the governed switch).
   const agentMemory = createMemoryStore();
+  // RD-EV-03: o capture automático do close usa o MESMO store (mode único no processo).
+  registerMissionMemoryStore(agentMemory);
   const supervisedMission = new SupervisedMissionClient();
 
   register("engineering.supervised_mission", "write", (name) => server.registerTool(name, {

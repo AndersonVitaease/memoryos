@@ -8,6 +8,17 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod/v4";
 import { runOrchestrateSpend } from "./orchestrate.ts";
+import { captureMissionMemoryAuto, type MissionMemoryCaptureResult } from "./missionMemoryCapture.ts";
+
+// RD-EV-03: automatic memory capture (telemetry, fail-open) attached to both
+// success branches of runMissionClose — never throws, never fails a close.
+function skippedMemoryResult(value: MissionMemoryCaptureResult["value"]): MissionMemoryCaptureResult {
+  return { value, deduped: false, projectId: null, memoryId: null, cause: null, gate: null };
+}
+async function closeMemoryCapture(missionId: string | undefined): Promise<MissionMemoryCaptureResult> {
+  if (typeof missionId !== "string" || !missionId) return skippedMemoryResult("skipped:no-mission-id");
+  return captureMissionMemoryAuto(missionId);
+}
 
 const execFileP = promisify(execFile);
 const PLUGIN_DIR = "/root/.hermes/plugins/mission-ops";
@@ -489,7 +500,10 @@ export async function runMissionClose(input: z.infer<typeof missionCloseInputSch
   if (!needsGate) {
     // Write spend telemetry on close (deterministic, zero-LLM, fail-open)
     if (typeof first.missionId === "string") await writeMissionSpend(first.missionId);
-    return { ...first, jevGate: "not-needed" };
+    // RD-EV-03: capture automático de memória (fail-open, idempotente) — depois
+    // do spend, nunca falha o close. Só o ponto de capture (restrição do contrato).
+    const mem = await closeMemoryCapture(first.missionId);
+    return { ...first, jevGate: "not-needed", memoryCaptured: mem.value, memoryCapturedDetail: mem };
   }
 
   const resolvedId = typeof first.missionId === "string" && first.missionId
@@ -512,7 +526,9 @@ export async function runMissionClose(input: z.infer<typeof missionCloseInputSch
     }, 90_000, guardEnv);
     // Write spend telemetry on JEV-verified close (deterministic, zero-LLM, fail-open)
     await writeMissionSpend(resolvedId);
-    return { ...second, jevGate: "jev-verificado", jevLatency_ms: jev.latency_ms };
+    // RD-EV-03: capture automático na 2ª branch de sucesso (JEV-verificado).
+    const mem2 = await closeMemoryCapture(resolvedId);
+    return { ...second, jevGate: "jev-verificado", jevLatency_ms: jev.latency_ms, memoryCaptured: mem2.value, memoryCapturedDetail: mem2 };
   }
   return { ...first, jevGate: "verify_required", jevMotivo: jev.motivo, jevLatency_ms: jev.latency_ms };
 }

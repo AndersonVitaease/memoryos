@@ -1,0 +1,18 @@
+{
+  "_comment": "RD-EV-03: mapa cwd->projectId para capture automatico no mission_close. Longest-prefix match sobre o cwd normalizado (trailing '/' removido). Fallback: hermes-config. Editavel - este arquivo e a fonte unica (compartilhada com o helper memory_capture do plugin via ENG_MCP_MEMORY_PROJECT_MAP).",
+  "_version": 1,
+  "fallback": "hermes-config",
+  "map": {
+    "/opt/memoryos/eng-mcp": "eng-mcp",
+    "/opt/memoryos": "memoryos",
+    "/root/.hermes/plugins/mission-ops": "mission-ops",
+    "/root/.hermes": "hermes-config",
+    "/opt/mission-events": "mission-events",
+    "/opt/mission-supervisor": "mission-supervisor",
+    "/opt/gpu-bridge": "gpu-bridge",
+    "/opt/gpu-orchestrator": "gpu-orchestrator",
+    "/opt/gpu-watchdog": "gpu-watchdog",
+    "/opt/oom-sentinel": "oom-sentinel",
+    "/opt/hermes-worktrees": "eng-mcp"
+  }
+}
