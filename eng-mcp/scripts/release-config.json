@@ -45,7 +45,8 @@
       "ENG_MCP_CONSUMER_STATE_PATH=/run/mission-bus/consumer.state.json",
       "ENG_MCP_CONSUMER_LOCK_PATH=/run/mission-bus/consumer.lock",
       "ENG_MCP_SPOOL_PATH=/run/mission-bus/spool.jsonl",
-      "MISSION_BUS_JOURNAL=/run/mission-bus/journal.json"
+      "MISSION_BUS_JOURNAL=/run/mission-bus/journal.json",
+      "ENG_MCP_GIT_CRED_MODE=app-only"
     ]
   },
   "requiredTools": [
