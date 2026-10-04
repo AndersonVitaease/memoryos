@@ -99,11 +99,15 @@ const approvalSchema = z.object({
   observedAt: z.number().int().positive(),
 }).strict();
 
-// Strict input: ONLY the data-only approval artifact. No approved/execute/publish
-// booleans, no content fields, no refs/selectors/toolName/steps/urls — caller-
-// supplied authority is structurally impossible.
+// Strict input: ONLY the data-only approval artifact + operatorOrder (GUARD-
+// SUPERVISOR-READONLY-01: única exceção de campo — referência da ordem do
+// operator quando o chamador é supervisor; a identidade é resolvida server-side
+// do token bearer, nunca deste campo). No approved/execute/publish booleans, no
+// content fields, no refs/selectors/toolName/steps/urls — caller-supplied
+// authority is structurally impossible.
 export const distributionPublishInputSchema = z.object({
   approval: approvalSchema,
+  operatorOrder: z.string().optional(),
 }).strict();
 
 export type DistributionPublishDeps = {

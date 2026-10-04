@@ -3,6 +3,9 @@ import { request as httpRequest } from "node:http";
 import { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
 import { EngineeringError, type AuthenticatedSubject, assertNoSensitiveContent } from "./policy.js";
+// GUARD-SUPERVISOR-READONLY-01: guarda determinística das tools de mutação/ship
+// quando o chamador autenticado é supervisor sem operatorOrder.
+import { assertSupervisorMutationAllowed } from "./supervisorGuard.ts";
 import type { RepositoryAdapter } from "./repository.js";
 import { runRegistryScopeGrant, registryScopeGrantInputSchema } from "./registryScopeGrant.ts";
 import { runRegistryEntryCreate, runRegistryEntryRevoke, registryEntryCreateInputSchema, registryEntryRevokeInputSchema } from "./registryEntryLifecycle.ts";
@@ -578,7 +581,11 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   register("engineering.distribution.publish", "write", (name) => server.registerTool(name, {
     description: "Guardian-gated publish boundary (v1, channel \"dev\" only): publishes EXACTLY ONE previously-approved DEV draft. Input is ONLY a data-only state-bound approval artifact {version, action:\"publish_draft\", channel:\"dev\", draftUrl, account, title, bodyProbe, tags, mediaRefs, fingerprint(sha256 over full content), approvedBy(provenance), observedAt}. Governed by frozen Guardian Core v0.1.0 via a thin Distribution Adapter: bind (read-only eligibility), apply (in-session live revalidation: draft exists, still UNPUBLISHED, same account, title/bodyProbe/tags match, fingerprint shape; ANY mismatch -> NOT_EXECUTED zero mutation), then EXACTLY ONE click on the internally-resolved Publish control, then read-only postvalidation. No approved/execute/publish booleans, no content fields, no refs/selectors/toolName/steps/URLs from the caller. No automatic mutation retry (maxPublishClicks=1); occurrence reported honestly as SUCCESS_PROVEN / NOT_EXECUTED / NONE_PROVEN / INDETERMINATE; no atomicity claim (residual race window declared). Requires bearer scope engineering:distribution:publish (operator-issued; the agent cannot self-authorize).",
     inputSchema: distributionPublishInputSchema
-  }, async (input) => { requireRead(); requireWrite(); requireDistributionPublish(); return response(await runDistributionPublish(name, input, {})); }));
+  }, async (input) => {
+    // GUARD-SUPERVISOR-READONLY-01: publicação é mutação externa — supervisor
+    // sem operatorOrder é recusado ANTES de qualquer execução (nada publicado).
+    assertSupervisorMutationAllowed("engineering.distribution.publish", subject.subject, input);
+    requireRead(); requireWrite(); requireDistributionPublish(); return response(await runDistributionPublish(name, input, {})); }));
   register("engineering.distribution.campaign", "write", (name) => server.registerTool(name, {
     description: "REAL multichannel distribution supertool (v1, PREPARE-ONLY, channels dev+reddit): ONE high-level call coordinates preparation of the SAME canonical content ({campaign:{title,body,media?}}) across the explicitly requested channels — dev reuses engineering.distribution.prepare verbatim (authenticated editor, tags/media, Save Draft, Unpublished proof) and reddit composes engineering.web.connector read-only gates (auth fail-closed: block/login markers -> that channel FAILED, no login flow, no CAPTCHA/2FA bypass) then mounts title+body in the composer with ZERO click steps (target pre-selected via the /r/{target}/submit URL) and reports PREPARED_NOT_PERSISTED with persisted:false (no persistent Reddit web draft is claimed). Strict schema at every level: mode must be the literal \"prepare\"; publish flags, raw refs/selectors/toolNames/steps/code, approval artifacts and tokens are structurally impossible. Channels run sequentially in caller order; a channel failure never rolls back another channel's result and never publishes as a fallback (global SUCCESS/PARTIAL/FAIL). published:false is structural on every result; Guardian is NOT integrated (publication stays Guardian-gated in engineering.distribution.publish); no campaign.publish exists.",
     inputSchema: distributionCampaignInputSchema
@@ -732,8 +739,13 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   // requires approval.approved=true + acknowledgePush=true and re-runs the precheck fresh.
   register("engineering.git.push", "write", (name) => server.registerTool(name, {
     description: "Governed push of the authorized git repository to origin (GIT-PUSH-01). Default call is a read-only PLAN: branch (main only, MVP), local HEAD, LIVE remote head via github.read get_branch_head (never the stale refs/remotes/*), ahead/behind classification, pending commits, uncommitted counts, credential-store state (existence only - the credential content is never read) and blockers; zero mutation. execute=true requires approval.approved=true AND acknowledgePush=true, re-runs the full precheck fresh (TOCTOU) and pushes EXACTLY refs/heads/main:refs/heads/main - no --force, no --tags, no deletes, no refspec redirection; hooks always run (never --no-verify). Divergence (remote head absent locally) and non-fast-forward are BLOCKED with typed errors - reconciliation (fetch/rebase/merge) is operator work and is never attempted. The credential is the operator's git credential-store FILE mounted read-only (GIT_CREDENTIALS_FILE, default /run/secrets/git-credentials); no token/URL/remote/credential/refspec can ever be passed as input (strict schema; remote is always the repository's own origin; no token in argv - credential.helper is explicitly reset then pointed at the mounted store). Postcheck re-reads the branch head FRESH (cache-bypassing) and must equal the pushed sha (bounded retries); success is never taken from git stdout. Typed errors: PUSH_STATE_DIVERGED, PUSH_NON_FAST_FORWARD_BLOCKED, PUSH_NOTHING_TO_PUSH, PUSH_HEAD_MISMATCH, PUSH_CREDENTIAL_MISSING, PUSH_AUTH_REJECTED, PUSH_FORBIDDEN, PUSH_BRANCH_NOT_FOUND, PUSH_REMOTE_MISSING, PUSH_PRECHECK_UNAVAILABLE, PUSH_TIMEOUT, PUSH_EXECUTION_FAILED, PUSH_POSTCHECK_FAILED, PUSH_IN_FLIGHT, PUSH_APPROVAL_REQUIRED, PUSH_INPUT_FORBIDDEN. Requires bearer scope engineering:git:push (operator-issued; the agent cannot self-authorize).",
-    inputSchema: z.object({ execute: z.boolean().optional(), approval: z.object({ approved: z.boolean() }).optional(), expectedHead: z.string().regex(/^[0-9a-f]{40}$/).optional(), acknowledgePush: z.literal(true).optional() }).strict()
-  }, async (input) => { requireGitPush(); return response(await repository.gitPush(input, subject.subject)); }));
+    inputSchema: z.object({ execute: z.boolean().optional(), approval: z.object({ approved: z.boolean() }).optional(), expectedHead: z.string().regex(/^[0-9a-f]{40}$/).optional(), acknowledgePush: z.literal(true).optional(), operatorOrder: z.string().optional() }).strict()
+  }, async (input) => {
+    // GUARD-SUPERVISOR-READONLY-01: supervisor sem operatorOrder → recusa tipada
+    // determinística ANTES de qualquer execução (inclui o PLAN de leitura — a
+    // guarda aponta a identidade do chamador, não o payload).
+    assertSupervisorMutationAllowed("engineering.git.push", subject.subject, input);
+    requireGitPush(); return response(await repository.gitPush(input, subject.subject)); }));
 
   // GIT-FETCH-01: governed read-only fetch — refreshes remote-tracking refs ONLY
   // and reports ahead/behind per compared branch; the reconciliation prerequisite
@@ -774,9 +786,14 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
       execute: z.boolean().optional(),
       approval: z.object({ approved: z.boolean() }).optional(),
       acknowledgeMerge: z.literal(true).optional(),
-      cleanup: z.object({ deleteBranch: z.boolean().optional(), removeWorktree: z.string().min(1).optional() }).optional()
+      cleanup: z.object({ deleteBranch: z.boolean().optional(), removeWorktree: z.string().min(1).optional() }).optional(),
+      operatorOrder: z.string().optional() // GUARD-SUPERVISOR-READONLY-01
     }).strict()
-  }, async (input) => { requireRead(); requireGitMerge(); return response(await repository.gitMerge(input, subject.subject)); }));
+  }, async (input) => {
+    // GUARD-SUPERVISOR-READONLY-01: supervisor sem operatorOrder → recusa tipada
+    // determinística ANTES de qualquer execução (PLAN incluso).
+    assertSupervisorMutationAllowed("engineering.git.merge", subject.subject, input);
+    requireRead(); requireGitMerge(); return response(await repository.gitMerge(input, subject.subject)); }));
 
   // GIT-CHECKOUT-01: governed checkout of a branch into a worktree. PLAN is
   // read-only (default); execution requires execute=true + acknowledgeCheckout=true.
@@ -812,11 +829,17 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   // caminhos HIGH_IMPACT mantêm o bloqueio total em policy.resolveWritable.
   register("engineering.manifest.edit", "write", (name) => server.registerTool(name, { description: "Governed bind/apply path for the three root manifests (package.json, package-lock.json, Dockerfile): propose returns the exact proposed diff with zero mutation, refuse permanently blocks the proposal, apply executes only after an explicit operator approval artifact with matching fingerprint and hash revalidated at mutation time.", inputSchema: manifestEditInputSchema }, async (input) => { requireRead(); return response(await runManifestEdit(input, { repository, repositoryId, scopes: { write: subject.scopes.includes("engineering:write"), git: subject.scopes.includes("engineering:git") } })); }));
   register("engineering.mcp.catalog", "read", (name) => server.registerTool(name, { description: "Return the deterministic catalog of tools exposed by this ENG-MCP server.", inputSchema: z.object({}).strict() }, async () => { requireRead(); return response(createToolCatalog(toolMetadata, repositoryId)); }));
-  register("engineering.release.run", "write", (name) => server.registerTool(name, { description: "Run an allowlisted Release Pipeline V1 operation through the durable local runner.", inputSchema: z.object({ jobId: z.string().optional(), operation: z.enum(["deploy", "verify", "clean"]) }).strict() }, async (input) => { requireRead(); requireWrite(); return response(await repository.releaseRun(subject.subject, input)); }));
+  register("engineering.release.run", "write", (name) => server.registerTool(name, { description: "Run an allowlisted Release Pipeline V1 operation through the durable local runner.", inputSchema: z.object({ jobId: z.string().optional(), operation: z.enum(["deploy", "verify", "clean"]), operatorOrder: z.string().optional() }).strict() }, async (input) => {
+    // GUARD-SUPERVISOR-READONLY-01: ship/release por supervisor exige operatorOrder.
+    assertSupervisorMutationAllowed("engineering.release.run", subject.subject, input);
+    requireRead(); requireWrite(); return response(await repository.releaseRun(subject.subject, input)); }));
   register("engineering.release.pipeline", "write", (name) => server.registerTool(name, {
     description: "Run official test, build, candidate, deploy of a DECLARED commit (DEPLOY-COMMIT-PIN-01): commitSha (40 hex, HEAD or an ancestor) is required on a fresh run; the runner builds the image from that commit extracted into an isolated tree (tag eng-mcp-candidate:commit-<sha>, OCI revision label), refuses a dirty canonical tree in deploy paths with DEPLOY_DIRTY_TREE listing the files (fail-closed, never deploys anyway), and records {commitSha, imageTag, treeClean, builtFrom} provenance per deploy/rollback in /data/audit/deploy-provenance.jsonl. Reconnect and resume with the returned deployJobId for bounded status polling and smoke. Never treats queued deployment as success.",
-    inputSchema: z.object({ acknowledgeRelease: z.literal(true), commitSha: z.string().regex(/^[a-f0-9]{40}$/).optional(), deployJobId: z.string().regex(/^[a-f0-9-]{16,64}$/i).optional() }).strict()
+    inputSchema: z.object({ acknowledgeRelease: z.literal(true), commitSha: z.string().regex(/^[a-f0-9]{40}$/).optional(), deployJobId: z.string().regex(/^[a-f0-9-]{16,64}$/i).optional(), operatorOrder: z.string().optional() }).strict()
   }, async (input) => {
+    // GUARD-SUPERVISOR-READONLY-01: pipeline de release (build/candidate/deploy)
+    // por supervisor exige operatorOrder — recusa ANTES do runner.
+    assertSupervisorMutationAllowed("engineering.release.pipeline", subject.subject, input);
     requireRead(); requireWrite(); requireRelease();
     const result = await runOfficialReleasePipeline(input.deployJobId, input.commitSha);
     return { ...response(result), ...(!result.success && !("pending" in result) ? { isError: true } : {}) };
@@ -833,8 +856,11 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   // the engineering:release scope). No production mutation; never a release.
   register("engineering.release.test", "write", (name) => server.registerTool(name, {
     description: "Run ONLY the official test-only operation of the release runner (POST /v1/release {operation:'test'} over the official Unix socket, reusing the engineering.release.pipeline channel). Synchronous and deploy-free: the operation is hardcoded to 'test'; build/candidate/deploy/rollback/status/smoke can never be sent; no caller-supplied operation, URL, socket path, command or headers are accepted. The runner's official testAction may build the ephemeral test image (official test mechanism, not a production deploy). No production mutation; never triggers a release.",
-    inputSchema: z.object({}).strict()
-  }, async () => {
+    inputSchema: z.object({ operatorOrder: z.string().optional() }).strict()
+  }, async (input) => {
+    // GUARD-SUPERVISOR-READONLY-01: mesmo deploy-free, o runner de release sob
+    // supervisor exige operatorOrder (pode construir imagem efêmera de teste).
+    assertSupervisorMutationAllowed("engineering.release.test", subject.subject, input);
     requireRead();
     requireWrite();
     return response(await runReleaseTestOnly());
@@ -1443,9 +1469,13 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
       }).optional(),
       env: z.record(z.string(), z.string()).optional(),
       approved: z.boolean().optional(),
-      execute: z.boolean().optional()
+      execute: z.boolean().optional(),
+      operatorOrder: z.string().optional() // GUARD-SUPERVISOR-READONLY-01
     }).strict()
   }, async (input) => {
+    // GUARD-SUPERVISOR-READONLY-01: deploy de aplicação por supervisor exige
+    // operatorOrder — recusa ANTES de qualquer chamada ao Guardian/transport.
+    assertSupervisorMutationAllowed("engineering.guardian.app.deploy", subject.subject, input);
     requireRead();
     requireWrite();
     return response(await runGuardianAppDeploy(input, {
@@ -1512,6 +1542,9 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
     description: "Governed Base44 single-function deployer (PLAN/execute) for repo backend functions (/opt/memoryos/base44/functions/<name>): PLAN pulls the LIVE source into a throwaway temp dir and diffs it against the repo copy (exact per-file diff + previous live sha16, no deploy); execute applies the optional structured patch (same baseHash optimistic-concurrency semantics as file.patch, one allowlisted file) and deploys EXACTLY ONE allowlisted named function via 'base44 functions deploy <name>' — deploy-all and --force are structurally unreachable. App id comes from deps or explicit input — never implicit. NO_OP refuses execution on identical sources. External SaaS: no transactional rollback — PLAN records previous live source hashes; reversal is a re-deploy of the previous source (functions pull). Post-deploy probe (wired for agentMemoryBridge): failure is reported as DEPLOYED_PROBE_FAILED, never silenced, never auto-retried. Audit /data/audit/base44-function.jsonl records {function, app_id, diff_sha16, result} — ZERO source content. Requires scope base44:function:deploy (operator-issued).",
     inputSchema: base44FunctionDeployInputSchema
   }, async (input) => {
+    // GUARD-SUPERVISOR-READONLY-01: deploy de função externa por supervisor
+    // exige operatorOrder — recusa ANTES de qualquer spawn do CLI.
+    assertSupervisorMutationAllowed("engineering.base44.function.deploy", subject.subject, input);
     requireRead();
     requireWrite();
     requireBase44FunctionDeploy();
@@ -1698,7 +1731,7 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   register("engineering.mission.recover", "write", (name) => server.registerTool(name, {
     description: "Escada de recuperação do pane (enter → nudge → re-entrega de prompt) com guard anti-falso-positivo.",
     inputSchema: missionRecoverInputSchema
-  }, async (input) => { requireMissionOps(); return response(await runMissionRecover(input)); }));
+  }, async (input) => { requireMissionOps(); return response(await runMissionRecover(input, subject.subject)); }));
   register("engineering.mission.verify", "read", (name) => server.registerTool(name, {
     description: "Verificação determinística de entrega (runner /opt/deliver-verify/verify.py, zero LLM) sobre o manifesto verify.json do cwd da missão. Resolução por missionId OU paneId OU fragment (0 resolvedores=INVALID_MISSION_ID, 2+=INVALID_INPUT, fragment ≥2 matches=AMBIGUOUS). Missão inexistente=MISSION_NOT_FOUND (nunca inventa estado). Sem verify.json -> warning NO_MANIFEST (bateria inferida não é prova). Runner quebrado -> verdict runner_error retryable. Filtro checks[] devolve subconjunto com partial:true (nunca 'pass' com provas parciais). Read-only: sem lock, retorno traz ledgerStatus e agentStatus do pane.",
     inputSchema: missionVerifyInputSchema
@@ -1706,7 +1739,7 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   register("engineering.mission.close", "write", (name) => server.registerTool(name, {
     description: "Fecha missão. Fluxo: gate WORKER_ACTIVE (turno vivo recusa, /exit confirmado é a exceção) → pre_close → deliver-verify (verde=badge verified_e2e; vermelho real=REABRE com nudge+evento deliver_verify_red; runner quebrado=fail-open honesto fecha sem badge) → guarda de consequência (verify.json ou acceptUnverified, senão reabre verify_required) → /exit → tab close (keepPane=true preserva a aba) → worktree cleanup → ledger closed + evento bus + notify. Idempotente com lock: já closed → ok:true idempotent:true (corrida=CLOSE_BUSY). Flags: dryRun (plano de passos + veredito, ZERO mutação), expectBadge (recusa BADGE_REQUIRED se fecharia sem badge), cancel=true (exige acceptUnverified ou decisionNote; evento mission_cancelled), decisionNote (trilha auditável no ledger), force (worktree remove --force). GATE JEV apenas no fail-open path (typesafe/jev-1.13): decide APENAS suficiência de provas, nunca consequência; recusas determinísticas não passam pelo gate.",
     inputSchema: missionCloseInputSchema
-  }, async (input) => { requireMissionOps(); return response(await runMissionClose(input)); }));
+  }, async (input) => { requireMissionOps(); return response(await runMissionClose(input, subject.subject)); }));
   register("engineering.mission.ledger_fix", "write", (name) => server.registerTool(name, {
     description: "Correção manual de ledger (paneId/tabId/status) para casos fora da auto-correção do status.",
     inputSchema: missionLedgerFixInputSchema
@@ -1714,7 +1747,7 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   register("engineering.mission.nudge", "write", (name) => server.registerTool(name, {
     description: "Intervenção do supervisor no worker: nudge atômico CHECK->SEND->VERIFY (recusa turno ativo sem force, dedupe 60s, envia com sender no audit, verifica engajamento no pane). Zero LLM, sem gate JEV por desenho (estado mecânico, não prova). Nunca fecha missão nem despacha prompt.",
     inputSchema: missionNudgeInputSchema
-  }, async (input) => { requireMissionOps(); return response(await runMissionNudge(input)); }));
+  }, async (input) => { requireMissionOps(); return response(await runMissionNudge(input, subject.subject)); }));
 
   register("engineering.session.roster", "read", (name) => server.registerTool(name, {
     description: "Inventário auditável e LGPD-safe de sessões/turnos/missões do ecossistema em 1 chamada: missões (ledger /root/.hermes/mission-state), panes herdr vivos (tab list), sessões claude (NOMES e mtimes apenas — ZERO conteúdo de conversa) e resumo com staleness_flags (>15min dispatched/working). Read-only, zero-LLM.",

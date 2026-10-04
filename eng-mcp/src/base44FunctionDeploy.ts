@@ -60,6 +60,9 @@ export const base44FunctionDeployInputSchema = z.object({
   execute: z.boolean().optional(),
   approval: z.object({ approved: z.boolean() }).strict().optional(),
   acknowledgeWrite: z.literal(true),
+  // GUARD-SUPERVISOR-READONLY-01: referência da ordem do operator quando o
+  // chamador é supervisor (identidade resolvida server-side do token bearer).
+  operatorOrder: z.string().optional(),
 }).strict();
 export type Base44FunctionDeployInput = z.infer<typeof base44FunctionDeployInputSchema>;
 

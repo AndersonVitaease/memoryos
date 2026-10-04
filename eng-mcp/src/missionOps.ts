@@ -175,7 +175,7 @@ async function enrichLedgerWithRoles(missionId: string): Promise<void> {
   }
 }
 
-async function callHandler(handler: string, args: Record<string, unknown>, timeoutMs = 300_000): Promise<Record<string, unknown>> {
+async function callHandler(handler: string, args: Record<string, unknown>, timeoutMs = 300_000, childEnv?: Record<string, string>): Promise<Record<string, unknown>> {
   // ENG-MCP-VERIFY-PYFIX-03: sem o plugin montado (ex.: container hermético do release
   // gate) o execFile com cwd inexistente estoura "spawn python3 ENOENT" — erro enganoso
   // (python3 existe na imagem). Recusa honesta e determinística, sem inventar estado.
@@ -194,6 +194,9 @@ print(json.dumps({"_latency_ms": int((time.time()-t0)*1000), "result": json.load
 `;
   const { stdout } = await execFileP("python3", ["-c", code, JSON.stringify(args)], {
     timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024, cwd: PLUGIN_DIR,
+    // GUARD-SUPERVISOR-READONLY-01: identidade do chamador HTTP autenticada
+    // server-side e repassada ao plugin VIA ENV (nunca lida do payload).
+    env: childEnv ? { ...process.env, ...childEnv } : process.env,
   });
   const line = stdout.trim().split("\n").filter(Boolean).pop() || "{}";
   const parsed = JSON.parse(line) as { _latency_ms: number; result: Record<string, unknown> };
@@ -226,6 +229,9 @@ export const missionWatchInputSchema = z.object({
 }).strict();
 export const missionRecoverInputSchema = z.object({
   missionId: z.string().optional(), paneId: z.string().optional(), pattern: z.string().optional(),
+  // GUARD-SUPERVISOR-READONLY-01: referência explícita da ordem do operator
+  // (missionId do contrato SHIP vigente ou token de ordem) — guard no plugin.
+  operatorOrder: z.string().optional(),
 }).strict();
 // ENG-MCP-TOOLS-FIX-02: resolução missionId XOR paneId XOR fragment (contrato do
 // handler): 0 resolvedores = INVALID_MISSION_ID (compatibilidade com callers antigos),
@@ -237,6 +243,9 @@ export const missionCloseInputSchema = z.object({
   cancel: z.boolean().optional(), force: z.boolean().optional(),
   keepPane: z.boolean().optional(), dryRun: z.boolean().optional(),
   expectBadge: z.boolean().optional(), decisionNote: z.string().optional(),
+  // GUARD-SUPERVISOR-READONLY-01: ordem do operator para close de supervisor
+  // (guard no plugin; fechos de gate/verify interno não são bloqueados).
+  operatorOrder: z.string().optional(),
 }).strict();
 // ENG-MCP-TOOLS-FIX-02: verify read-only (runner zero-LLM) — mesmo resolvedor do close.
 export const missionVerifyInputSchema = z.object({
@@ -257,6 +266,9 @@ export const missionNudgeInputSchema = z.object({
   missionId: z.string().min(1), message: z.string().min(1),
   sender: z.string().optional(), force: z.boolean().optional(),
   verifySeconds: z.number().int().min(0).max(600).optional(),
+  // GUARD-SUPERVISOR-READONLY-01: nudge de supervisor NUNCA é isento — exige
+  // operatorOrder quando o chamador é supervisor (guard no plugin).
+  operatorOrder: z.string().optional(),
 }).strict();
 
 // ---- DISPATCHER-DUPFIX-01: dispatch fecha TODA aba órfã da MESMA missão.
@@ -372,8 +384,8 @@ export async function runMissionWatch(input: z.infer<typeof missionWatchInputSch
   return callHandler("handle_mission_watch", input, 660_000);
 }
 
-export async function runMissionRecover(input: z.infer<typeof missionRecoverInputSchema>) {
-  return callHandler("handle_mission_recover", input, 60_000);
+export async function runMissionRecover(input: z.infer<typeof missionRecoverInputSchema>, callerSubject?: string) {
+  return callHandler("handle_mission_recover", input, 60_000, guardChildEnv(callerSubject));
 }
 
 export async function runMissionLedgerFix(input: z.infer<typeof missionLedgerFixInputSchema>) {
@@ -386,9 +398,18 @@ export async function runMissionSnapshot(input: z.infer<typeof missionStatusInpu
   return runMissionStatus(input);
 }
 
-export async function runMissionNudge(input: z.infer<typeof missionNudgeInputSchema>) {
+export async function runMissionNudge(input: z.infer<typeof missionNudgeInputSchema>, callerSubject?: string) {
   const verifyMs = (input.verifySeconds ?? 20) * 1000; // TOOL-FAST-01: 30→20
-  return callHandler("handle_mission_nudge", input, verifyMs + 60_000);
+  return callHandler("handle_mission_nudge", input, verifyMs + 60_000, guardChildEnv(callerSubject));
+}
+
+// GUARD-SUPERVISOR-READONLY-01: subject autenticado server-side repassado ao
+// plugin via env do processo filho (canal "http" + subject). Sem subject
+// conhecido (daemon/breaker do consume) NADA é setado — o plugin resolve o
+// canal default (direct) e NUNCA considera supervisor (compat worker/daemon).
+function guardChildEnv(callerSubject?: string): Record<string, string> | undefined {
+  if (!callerSubject) return undefined;
+  return { MISSION_OPS_GUARD_CHANNEL: "http", MISSION_OPS_GUARD_SUBJECT: callerSubject };
 }
 
 // ENG-MCP-MISSION-02: close com GATE JEV (fim do fail-open).
@@ -402,6 +423,9 @@ export async function runMissionNudge(input: z.infer<typeof missionNudgeInputSch
 const DETERMINISTIC_REFUSALS = new Set([
   "BADGE_REQUIRED", "WORKER_ACTIVE", "CANCEL_REASON_REQUIRED", "CLOSE_BUSY",
   "INVALID_INPUT", "INVALID_MISSION_ID", "MISSION_NOT_FOUND", "AMBIGUOUS",
+  // GUARD-SUPERVISOR-READONLY-01: recusa determinística do guard de supervisor —
+  // nunca passa pelo gate JEV (o gate julga provas, não ordens do operator).
+  "SUPERVISOR_ACTION_NEEDS_ORDER",
 ]);
 /**
  * Writes spend telemetry to the mission ledger deterministically (zero-LLM).
@@ -441,8 +465,9 @@ export async function writeMissionSpend(missionId: string): Promise<void> {
   }
 }
 
-export async function runMissionClose(input: z.infer<typeof missionCloseInputSchema>) {
-  const first = await callHandler("handle_mission_close", input, 90_000);
+export async function runMissionClose(input: z.infer<typeof missionCloseInputSchema>, callerSubject?: string) {
+  const guardEnv = guardChildEnv(callerSubject);
+  const first = await callHandler("handle_mission_close", input, 90_000, guardEnv);
   const stepsJson = JSON.stringify(first.steps ?? []);
   const isDeterministicRefusal = first.ok === false
     && typeof first.error === "string" && DETERMINISTIC_REFUSALS.has(first.error);
@@ -471,7 +496,7 @@ export async function runMissionClose(input: z.infer<typeof missionCloseInputSch
       ...input,
       missionId: resolvedId,
       acceptUnverified: `jev-gate-verified: ${jev.motivo ?? "provas suficientes"}`,
-    }, 90_000);
+    }, 90_000, guardEnv);
     // Write spend telemetry on JEV-verified close (deterministic, zero-LLM, fail-open)
     await writeMissionSpend(resolvedId);
     return { ...second, jevGate: "jev-verificado", jevLatency_ms: jev.latency_ms };
