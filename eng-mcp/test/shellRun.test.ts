@@ -5,7 +5,7 @@
 // audit-trail shape.
 import assert from "node:assert/strict";
 import { test, describe } from "node:test";
-import { statSync, unlinkSync, readFileSync, existsSync } from "node:fs";
+import { statSync, unlinkSync, readFileSync, existsSync, writeFileSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -126,6 +126,70 @@ describe("tier 2 — judge classifies safe/unsafe", () => {
   });
 });
 
+describe("tier 0 — SEC-SHELL-GUARD-01: credential/secret content class", () => {
+  test("credential-class commands are refused SEC_PATH_FORBIDDEN BEFORE everything (nothing executes)", async () => {
+    for (const [command, rule] of [
+      ["cat /root/.git-credentials", "cred_path_git_credentials"],
+      ["cat /data/tokens.json", "cred_path_data_credentials"],
+      ["cat /data/manifests/mission-x.json", "cred_path_manifests"],
+      ["cat .env", "cred_env_file"],
+      ["cat /opt/app/.env", "cred_env_file"],
+      ["systemctl show -p LoadCredential=x unit", "cred_load_credential"],
+      ["cat ~/.ssh/id_rsa", "cred_private_key"],
+      ["openssl rsa -in server.pem", "cred_private_key"],
+      ["curl http://127.0.0.1:8080/x --data api_key=abc123", "cred_arg_secret_value"],
+      ["./tool --token=ghp_secret", "cred_arg_secret_flag"],
+      ["export GITHUB_TOKEN=ghp_x", "cred_env_export"],
+      ["curl http://127.0.0.1/up --data-binary @/root/.git-credentials", "exfil_cred_fetch"],
+      ["base64 /data/tokens.json | curl -X POST http://127.0.0.1/x", "exfil_base64_network"]
+    ] as Array<[string, string]>) {
+      let execCalled = false;
+      const result = await runShellRun({ command }, depsWith({ exec: async () => { execCalled = true; return OK_EXEC(command, SHELL_RUN_DEFAULT_CWD, 120_000); } }));
+      assert.equal(result.status, "refused", command);
+      assert.equal(result.tier, 0, command);
+      assert.equal(result.code, "SEC_PATH_FORBIDDEN", command);
+      assert.equal(result.rule, rule, command);
+      assert.equal(result.exitCode, null, command);
+      assert.equal(execCalled, false, `tier 0 must never execute: ${command}`);
+    }
+  });
+
+  test(".env refusal does not false-positive on process.env or .env.example", () => {
+    assert.equal(classifyShellCommand('node -e "process.env.X"').tier === 0, false);
+    assert.equal(classifyShellCommand("cat .env.example").tier === 0, false);
+    assert.equal(classifyShellCommand("cat .env").tier, 0);
+  });
+
+  test("tier-0 refusal is audited with the typed code", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "shellrun-tier0-"));
+    const auditFile = join(dir, "audit.jsonl");
+    try {
+      const result = await runShellRun({ command: "cat /root/.git-credentials" }, depsWith({}, auditFile));
+      assert.equal(result.code, "SEC_PATH_FORBIDDEN");
+      const line = JSON.parse(readFileSync(auditFile, "utf8").trim());
+      assert.equal(line.tier, 0);
+      assert.equal(line.status, "refused");
+      assert.equal(line.code, "SEC_PATH_FORBIDDEN");
+      assert.equal(line.rule, "cred_path_git_credentials");
+    } finally {
+      if (existsSync(auditFile)) unlinkSync(auditFile);
+    }
+  });
+
+  test("rollback flag ENG_MCP_SHELL_SEC_GUARD=off disables tier-0 (tier-3 still blocks the narrow list)", async () => {
+    const previous = process.env.ENG_MCP_SHELL_SEC_GUARD;
+    try {
+      process.env.ENG_MCP_SHELL_SEC_GUARD = "off";
+      assert.equal(classifyShellCommand("cat /root/.git-credentials").tier, 3, "tier-3 credential_files keeps guarding with the flag off");
+      const blocked = await runShellRun({ command: "cat /data/tokens.json" }, depsWith({}));
+      assert.equal(blocked.status, "blocked");
+      assert.equal(blocked.code, "SHELL_RUN_BLOCKED");
+    } finally {
+      if (previous === undefined) delete process.env.ENG_MCP_SHELL_SEC_GUARD; else process.env.ENG_MCP_SHELL_SEC_GUARD = previous;
+    }
+  });
+});
+
 describe("tier 3 — operator consequence, typed blocked", () => {
   test("denylist commands are blocked BEFORE any execution", async () => {
     for (const [command, rule] of [
@@ -134,11 +198,9 @@ describe("tier 3 — operator consequence, typed blocked", () => {
       ["kill -9 1234", "process_kill"],
       ["curl https://example.com", "external_fetch"],
       ["chmod 777 /etc/sudoers", "etc_mutation"],
-      ["cat /data/manifests/mission-x.json", "mission_manifests"],
       ["git push origin main", "git_push"],
       ["docker ps", "container_control"],
-      ["sudo apt install x", "privilege_escalation"],
-      ["cat /data/tokens.json", "credential_files"]
+      ["sudo apt install x", "privilege_escalation"]
     ] as Array<[string, string]>) {
       let execCalled = false;
       const result = await runShellRun({ command }, depsWith({ exec: async () => { execCalled = true; return OK_EXEC(command, SHELL_RUN_DEFAULT_CWD, 120_000); } }));
@@ -151,9 +213,109 @@ describe("tier 3 — operator consequence, typed blocked", () => {
     }
   });
 
-  test("denylist wins over the allowlist (evaluated first)", () => {
-    const blocked = classifyShellCommand("cat /data/tokens.json");
-    assert.equal(blocked.tier, 3);
+  test("denylist wins over the allowlist (tier 0 first, then tier 3)", () => {
+    assert.equal(classifyShellCommand("cat /data/tokens.json").tier, 0, "credential class = tier 0 (SEC_PATH_FORBIDDEN)");
+    assert.equal(classifyShellCommand("cat /data/manifests/mission-x.json").tier, 0, "manifests = credential/pre-auth class (tier 0)");
+    assert.equal(classifyShellCommand("docker ps").tier, 3);
+  });
+});
+
+describe("SEC-SHELL-GUARD-01 — component allowlist catalog (policy as data)", () => {
+  const CATALOG_DIR = mkdtempSync(join(tmpdir(), "shell-allowlist-"));
+  const COMPONENT = "testcomp";
+  const writeCatalog = (body: unknown): void => {
+    writeFileSync(join(CATALOG_DIR, `shell-allowlist-${COMPONENT}.json`), typeof body === "string" ? body : JSON.stringify(body), "utf8");
+  };
+
+  test("catalog rule executes tier-1 with catalog provenance (rule + sha16 in result AND audit)", async () => {
+    writeCatalog({
+      component: COMPONENT, version: 1,
+      rules: [{ id: "echo_proof", pattern: "^echo catalog-proof$" }]
+    });
+    process.env.ENG_MCP_SHELL_ALLOWLIST_DIR = CATALOG_DIR;
+    try {
+      let judgeCalls = 0;
+      const auditFile = join(CATALOG_DIR, "audit-provenance.jsonl");
+      const result = await runShellRun({ command: "echo catalog-proof", component: COMPONENT }, depsWith({
+        judge: async () => { judgeCalls += 1; return SAFE_ANSWERS; }
+      }, auditFile));
+      assert.equal(judgeCalls, 0, "catalog match must be zero-cost tier 1");
+      assert.equal(result.tier, 1);
+      assert.equal(result.status, "executed");
+      assert.equal(result.rule, "catalog:echo_proof");
+      assert.equal(result.component, COMPONENT);
+      assert.match(result.allowlist?.catalog ?? "", /shell-allowlist-testcomp\.json$/);
+      assert.match(result.allowlist?.catalogSha16 ?? "", /^[a-f0-9]{16}$/);
+      const line = JSON.parse(readFileSync(auditFile, "utf8").trim());
+      assert.equal(line.allowlistComponent, COMPONENT);
+      assert.equal(line.allowlistCatalogSha16, result.allowlist?.catalogSha16);
+    } finally {
+      delete process.env.ENG_MCP_SHELL_ALLOWLIST_DIR;
+    }
+  });
+
+  test("unknown command still goes to tier-2 judge (behavior preserved with catalog present)", async () => {
+    process.env.ENG_MCP_SHELL_ALLOWLIST_DIR = CATALOG_DIR;
+    try {
+      let judgeCalls = 0;
+      const result = await runShellRun({ command: "echo something-unlisted", component: COMPONENT }, depsWith({
+        judge: async () => { judgeCalls += 1; return SAFE_ANSWERS; }
+      }));
+      assert.equal(judgeCalls, 1);
+      assert.equal(result.tier, 2);
+      assert.equal(result.status, "executed");
+    } finally {
+      delete process.env.ENG_MCP_SHELL_ALLOWLIST_DIR;
+    }
+  });
+
+  test("tier-3 denylist wins over catalog rules (never overridden)", async () => {
+    writeCatalog({
+      component: COMPONENT, version: 2,
+      rules: [{ id: "docker_probe", pattern: "^docker ps$" }]
+    });
+    process.env.ENG_MCP_SHELL_ALLOWLIST_DIR = CATALOG_DIR;
+    try {
+      const result = await runShellRun({ command: "docker ps", component: COMPONENT }, depsWith({}));
+      assert.equal(result.status, "blocked");
+      assert.equal(result.tier, 3);
+    } finally {
+      delete process.env.ENG_MCP_SHELL_ALLOWLIST_DIR;
+    }
+  });
+
+  test("meta characters keep catalog matches out of tier 1", () => {
+    process.env.ENG_MCP_SHELL_ALLOWLIST_DIR = CATALOG_DIR;
+    try {
+      const cls = classifyShellCommand("echo catalog-proof | tee /opt/x", {});
+      assert.equal(cls.tier, 2, "catalog rule must not bypass the meta-characters guard");
+    } finally {
+      delete process.env.ENG_MCP_SHELL_ALLOWLIST_DIR;
+    }
+  });
+
+  test("invalid catalog is ignored with allowlistError in the audit (builtin flow preserved)", async () => {
+    writeCatalog({ component: COMPONENT, version: 3, rules: [{ id: "bad", pattern: "^echo ([bad$" }] });
+    process.env.ENG_MCP_SHELL_ALLOWLIST_DIR = CATALOG_DIR;
+    try {
+      const auditFile = join(CATALOG_DIR, "audit-invalid.jsonl");
+      const result = await runShellRun({ command: "echo catalog-proof", component: COMPONENT }, depsWith({
+        judge: async () => SAFE_ANSWERS
+      }, auditFile));
+      assert.equal(result.tier, 2, "invalid catalog must not grant tier-1");
+      const line = JSON.parse(readFileSync(auditFile, "utf8").trim());
+      assert.match(line.allowlistError, /does not compile/);
+    } finally {
+      delete process.env.ENG_MCP_SHELL_ALLOWLIST_DIR;
+    }
+  });
+
+  test("component without catalog: builtin only, audit allowlistCatalog=null", async () => {
+    const result = await runShellRun({ command: "git status --short", component: "nocatalog" }, depsWith({}));
+    assert.equal(result.status, "executed");
+    assert.equal(result.tier, 1);
+    assert.equal(result.component, "nocatalog");
+    assert.equal(result.allowlist?.catalog, null);
   });
 });
 

@@ -69,8 +69,10 @@ import { imageEditRoutedInputSchema, runImageEditRouted } from "./imageEditFast.
 import { missionDispatchInputSchema, missionStatusInputSchema, missionReadInputSchema, missionWatchInputSchema, missionRecoverInputSchema, missionCloseInputSchema, missionVerifyInputSchema, missionLedgerFixInputSchema, runMissionDispatch, runMissionStatus, runMissionRead, runMissionWatch, runMissionRecover, runMissionVerify, runMissionClose, runMissionLedgerFix, missionNudgeInputSchema, runMissionNudge, runMissionSnapshot } from "./missionOps.ts";
 // ROSTER-01: inventário auditável de sessões/turnos/missões (read-only, zero-LLM, LGPD metadata-only).
 import { getRoster } from "./sessionRoster.ts";
-// WORKER-SHELL-PROPRIA-01: shell própria do worker (roteador 3-andares allowlist/jev/operator).
+// WORKER-SHELL-PROPRIA-01: shell própria do worker (roteador 4-andares tier-0/tier-1/jev/operator).
 import { runShellRun, shellRunInputSchema } from "./shellRun.ts";
+// SEC-SHELL-GUARD-01: allowlist por componente como dado (catálogo versionado + mutação auditada).
+import { runShellAllowlist, shellAllowlistInputSchema } from "./shellAllowlist.ts";
 
 
 import { imageCreateInputSchema, runImageCreate } from "./imageCreate.ts";
@@ -1754,18 +1756,37 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
     inputSchema: z.object({}).strict()
   }, async () => { requireRead(); return response(getRoster()); }));
 
-  // WORKER-SHELL-PROPRIA-01 (03/10): shell própria do worker — o Bash do claude sai do
-  // caminho crítico (classifier de auto-mode de terceiro caía e travava TODAS as missões).
-  // Roteador 3-andares: (1) allowlist regex custo-zero de provas de missão — executa direto,
-  // zero LLM; (2) fora da allowlist — Jev classifica seguro/inseguro (4 perguntas band-2,
-  // safeScore >= 0.9 executa, abaixo recusa com motivo; judge indisponível = fail-closed);
-  // (3) destrutivo/consequência externa (rm -rf, systemctl, curl externo, kill, chmod /etc,
-  // /data/manifests, git push, docker...) — DENYLIST avaliada ANTES da allowlist, resultado
-  // `blocked` tipado com o comando, NUNCA auto-executa. Guardas: timeout (default 120s,
-  // máx 600s, SIGKILL), output head+tail 50KB, cwd fixo sob /opt ou /root/.hermes, log
-  // auditável por chamada (andar, veredito, comando, exit) em /data/audit/shell-run.jsonl.
+  // WORKER-SHELL-PROPRIA-01 (03/10) + SEC-SHELL-GUARD-01 (04/10): shell própria do
+  // worker — o Bash do claude sai do caminho crítico (classifier de auto-mode de
+  // terceiro caía e travava TODAS as missões). Roteador 4-andares: (0) classe
+  // credencial/secret/exfil recusada ANTES de tudo (SEC_PATH_FORBIDDEN tipado,
+  // desligável por flag); (1) allowlist regex custo-zero de provas de missão +
+  // catálogo por componente (hash no audit de cada decisão) — executa direto,
+  // zero LLM; (2) fora da allowlist — Jev classifica seguro/inseguro (4 perguntas
+  // band-2, safeScore >= 0.9 executa, abaixo recusa com motivo; judge indisponível
+  // = fail-closed); (3) destrutivo/consequência externa (rm -rf, systemctl, curl
+  // externo, kill, chmod /etc, git push, docker...) — DENYLIST avaliada ANTES da
+  // allowlist, resultado `blocked` tipado com o comando, NUNCA auto-executa.
+  // Guardas: timeout (default 120s, máx 600s, SIGKILL), output head+tail 50KB,
+  // cwd fixo sob /opt ou /root/.hermes, log auditável por chamada (andar,
+  // veredito, comando, exit) em /data/audit/shell-run.jsonl.
   register("engineering.shell.run", "write", (name) => server.registerTool(name, {
-    description: "WORKER-SHELL-PROPRIA-01: executa comando no host com roteamento 3-andares. Andar 1 (allowlist custo-zero): provas de missão (pytest, python3 -m unittest, node --test / --import tsx --test, npm test, git status/diff/log/add/commit/branch, ls, cat, python3 script.py com paths em /opt e /root/.hermes) executam direto, sem LLM. Andar 2: comando fora da allowlist → Jev classifica seguro/inseguro → executa (safeScore >= 0.9) ou recusa com motivo; judge indisponível = fail-closed. Andar 3 (denylist ANTES da allowlist): destrutivo/consequência externa (rm -rf, systemctl, kill, curl externo, chmod /etc, /data/manifests, git push, docker...) → resultado `blocked` tipado com o comando — NUNCA auto-executa. Guardas: timeout default 120s (máx 600s, SIGKILL), output truncado head+tail 50KB, cwd fixo do worker sob /opt ou /root/.hermes, log auditável por chamada em /data/audit/shell-run.jsonl.",
+    description: "WORKER-SHELL-PROPRIA-01 + SEC-SHELL-GUARD-01: executa comando no host com roteamento 4-andares. Andar 0 (SEC-SHELL-GUARD-01, ANTES de tudo): classe credencial/secret/exfil (paths de credencial, .env, chaves id_rsa/*.pem, tokens/API keys em argumentos, curl/wget de credencial, base64 de secret para rede) → recusa tipada `refused` com code SEC_PATH_FORBIDDEN, nada executado (desligável por env ENG_MCP_SHELL_SEC_GUARD=off). Andar 1 (allowlist custo-zero): provas de missão (pytest, python3 -m unittest, node --test / --import tsx --test, npm test, git status/diff/log/add/commit/branch, ls, cat, python3 script.py com paths em /opt e /root/.hermes) executam direto, sem LLM — MAIS as regras do catálogo por componente (/data/audit/shell-allowlist-<componente>.json, campo component, default eng-mcp; hash do catálogo vai ao audit de cada decisão). Andar 2: comando fora da allowlist → Jev classifica seguro/inseguro → executa (safeScore >= 0.9) ou recusa com motivo; judge indisponível = fail-closed. Andar 3 (denylist ANTES da allowlist): destrutivo/consequência externa (rm -rf, systemctl, kill, curl externo, chmod /etc, git push, docker...) → resultado `blocked` tipado com o comando — NUNCA auto-executa. Guardas: timeout default 120s (máx 600s, SIGKILL), output truncado head+tail 50KB, cwd fixo do worker sob /opt ou /root/.hermes, log auditável por chamada em /data/audit/shell-run.jsonl.",
     inputSchema: shellRunInputSchema
   }, async (input) => { requireWrite(); return response(await runShellRun(input)); }));
+
+  // SEC-SHELL-GUARD-01: allowlist por componente como DADO — get lê o catálogo
+  // versionado (/data/audit/shell-allowlist-<componente>.json) com sha16; put é
+  // MUTAÇÃO AUDITADA (validação estrita, gravação atômica, trilha em
+  // shell-allowlist-mutations.jsonl). Put de supervisor passa pelo guard
+  // GUARD-SUPERVISOR-READONLY-01 (operatorOrder obrigatório); worker/daemon
+  // passam sem guard (compat).
+  register("engineering.shell.allowlist", "write", (name) => server.registerTool(name, {
+    description: "SEC-SHELL-GUARD-01: política de shell por componente como dado. op=get: lê o catálogo /data/audit/shell-allowlist-<componente>.json (regras tier-1 adicionais do roteador engineering.shell.run + sha16). op=put: MUTAÇÃO AUDITADA da política — valida o catálogo (schema estrito, regex compilável, ids únicos), grava atomicamente e apenda a mutação em /data/audit/shell-allowlist-mutations.jsonl (ts, component, version, ruleCount, sha16, operatorOrder); chamador supervisor exige operatorOrder (GUARD-SUPERVISOR-READONLY-01).",
+    inputSchema: shellAllowlistInputSchema
+  }, async (input) => {
+    requireWrite();
+    if (input.op === "put") assertSupervisorMutationAllowed("engineering.shell.allowlist", subject.subject, input);
+    return response(await Promise.resolve(runShellAllowlist(input)));
+  }));
 }

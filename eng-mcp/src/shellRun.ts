@@ -4,11 +4,20 @@
  * auto-mode classifier (a third-party model that has fallen over 20+ times in
  * a single day and freezes every running mission with it).
  *
- * Router doctrine (operator, 25/09 + mission contract 03/10):
+ * Router doctrine (operator, 25/09 + mission contract 03/10; SEC-SHELL-GUARD-01 04/10):
+ * - TIER 0 (SEC-SHELL-GUARD-01, regex puro ANTES de tudo): negação por CLASSE
+ *   de conteúdo — credencial/secret/exfil (paths de credencial, .env, chaves,
+ *   tokens em argumentos, curl/wget de credencial, base64 para rede) → recusa
+ *   tipada `refused` com code SEC_PATH_FORBIDDEN, nada executado. Desligável
+ *   por env ENG_MCP_SHELL_SEC_GUARD=off (rollback; tier-3 segue valendo).
  * - TIER 1 (zero-cost regex allowlist): mission proof commands — pytest,
  *   python3 -m unittest, node --test / --import tsx --test, npm test,
  *   git status/diff/log/add/commit/branch, ls, cat, python3 script.py with
  *   paths inside /opt and /root/.hermes — executes DIRECTLY, no LLM call.
+ *   PLUS regras ADICIONAIS do catálogo por componente
+ *   /data/audit/shell-allowlist-<componente>.json (shellAllowlist.ts), cujo
+ *   sha16 entra no audit de cada decisão; mudança de allowlist é mutação
+ *   auditada (engineering.shell.allowlist + shell-allowlist-mutations.jsonl).
  * - TIER 2 (local Jev judge): command outside the allowlist → the calibrated
  *   judge classifies safe/unsafe (4 band-2 risk questions, same rubric as the
  *   judge hooks) → executes at safeScore >= 0.9, refuses with reasons below.
@@ -17,7 +26,7 @@
  *   systemctl, external curl, kill, chmod on /etc, anything under
  *   /data/manifests, git push, docker, ...) → typed `blocked` result with the
  *   command — NEVER auto-executes, and no tier-1/2 rule can override it: the
- *   denylist is evaluated BEFORE the allowlist.
+ *   denylist is evaluated BEFORE the allowlist (tier-0 antes do tier-3).
  *
  * Guards: per-command timeout (default 120s, max 600s, SIGKILL), output
  * truncation (head+tail 50KB with a grep-able marker), fixed default working
@@ -32,6 +41,7 @@ import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import * as z from "zod/v4";
 import { runJudgeEvaluate } from "./judge.ts";
+import { loadAllowlistCatalog, type LoadedAllowlist } from "./shellAllowlist.ts";
 
 export const SHELL_RUN_TOOL = "engineering.shell.run";
 export const SHELL_RUN_DEFAULT_TIMEOUT_MS = 120_000;
@@ -55,7 +65,11 @@ export const shellRunInputSchema = z
   .object({
     command: z.string().min(1).max(4000),
     cwd: z.string().max(512).optional(),
-    timeoutMs: z.number().int().min(1000).max(SHELL_RUN_MAX_TIMEOUT_MS).optional()
+    timeoutMs: z.number().int().min(1000).max(SHELL_RUN_MAX_TIMEOUT_MS).optional(),
+    // SEC-SHELL-GUARD-01: componente dono da política (catálogo
+    // /data/audit/shell-allowlist-<componente>.json). Default: env
+    // ENG_MCP_SHELL_COMPONENT, senão "eng-mcp".
+    component: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,31}$/).optional()
   })
   .strict();
 export type ShellRunInput = z.infer<typeof shellRunInputSchema>;
@@ -67,6 +81,36 @@ export const SHELL_RUN_TIER2_QUESTIONS: ReadonlyArray<{ id: string; instructions
   { id: "q_touches_credentials", instructions: "Does this shell command read, copy, move or expose credentials, tokens, keys or secret files? noul means it touches credentials." },
   { id: "q_large_blast_radius", instructions: "If this shell command misbehaves, would the impact extend beyond this working session (shared services, remote state, other users)? noul means yes." }
 ];
+
+/**
+ * TIER 0 — SEC-SHELL-GUARD-01: negação por CLASSE de conteúdo (credencial/
+ * secret/exfil), avaliada ANTES de tudo (tier 3 incluído). O gate por regra
+ * existente recusa comandos específicos; o tier-0 recusa a classe inteira com
+ * código tipado SEC_PATH_FORBIDDEN — barato (regex puro), auditado com code
+ * próprio, e desligável por env ENG_MCP_SHELL_SEC_GUARD=off se gerar falso
+ * positivo em produção (rollback do contrato; tier-3 credential_files/
+ * mission_manifests continuam valendo com a flag off).
+ */
+export const TIER0_SEC_RULES: ReadonlyArray<{ id: string; pattern: RegExp; reason: string }> = [
+  { id: "exfil_cred_fetch", pattern: /\b(curl|wget)\b[^;&]{0,120}(credential|tokens?\.json|id_rsa|id_ed25519|\.pem\b|\.ssh\b|secret)/, reason: "curl/wget over a credential path — exfil class" },
+  { id: "exfil_base64_network", pattern: /\bbase64\b[^;&]{0,120}\b(curl|wget|nc\b|netcat\b|ssh\b|scp\b)|\b(curl|wget|nc\b|netcat\b|ssh\b|scp\b)[^;&]{0,120}\bbase64\b/, reason: "base64 of secret piped toward the network — exfil class" },
+  { id: "cred_path_git_credentials", pattern: /\/root\/\.git-credentials\b/, reason: "git credential store path — credential class" },
+  { id: "cred_path_manifests", pattern: /\/data\/manifests\b/, reason: "/data/manifests is operator-owned pre-authorization state" },
+  { id: "cred_path_data_credentials", pattern: /\/data\/(credentials\b|tokens\.json\b|auth-session\.token\.json)/, reason: "credential/token file path — credential class" },
+  { id: "cred_load_credential", pattern: /\bLoadCredential\b/, reason: "systemd LoadCredential reads secret files — credential class" },
+  { id: "cred_env_file", pattern: /(?<![\w.])\.env\b(?!\.(example|sample|template))/, reason: ".env file holds secrets — credential class" },
+  { id: "cred_private_key", pattern: /\bid_(rsa|ed25519|ecdsa|dsa)\b|\.pem\b|\bauthorized_keys\b/, reason: "private key / key material path — credential class" },
+  { id: "cred_ssh_tree", pattern: /\/\.ssh\b/, reason: ".ssh tree holds keys and agent sockets — credential class" },
+  { id: "cred_arg_secret_value", pattern: /\b(api[_-]?key|apikey|access[_-]?token|auth[_-]?token|client[_-]?secret|private[_-]?key)\b\s*[=:]\s*\S/, reason: "secret value passed as command argument — credential class" },
+  { id: "cred_arg_secret_flag", pattern: /(^|\s)--(api-key|apikey|token|access-token|password|secret)([=\s]\S|$)/, reason: "secret passed via CLI flag — credential class" },
+  { id: "cred_env_export", pattern: /\bexport\s+[A-Za-z0-9_]*(TOKEN|SECRET|API_KEY|APIKEY|PASSWORD|PASSWD|CREDENT)[A-Za-z0-9_]*=/, reason: "exporting a secret-valued env var in shell — credential class" }
+];
+
+/** Rollback do contrato: recusas tier-0 desligáveis por flag de config. */
+export function secGuardEnabled(): boolean {
+  const value = process.env.ENG_MCP_SHELL_SEC_GUARD;
+  return !(value === "off" || value === "0" || value === "false");
+}
 
 /** TIER 3 — operator consequence. Evaluated FIRST; never auto-executes. */
 export const TIER3_RULES: ReadonlyArray<{ id: string; pattern: RegExp; reason: string }> = [
@@ -100,15 +144,31 @@ export const TIER1_RULES: ReadonlyArray<{ id: string; pattern: RegExp }> = [
 /** Shell meta characters keep a command OUT of tier 1 (tier 2 judges it). */
 export const TIER1_META_TOKENS: readonly string[] = [";", "|", "&", "`", "$(", ">", "<", "\n", "\r"];
 
-export type ShellCommandClass = { tier: 1 | 2 | 3; rule?: string; reason?: string };
+export type ShellCommandClass = { tier: 0 | 1 | 2 | 3; rule?: string; reason?: string; code?: string };
 
-export function classifyShellCommand(command: string): ShellCommandClass {
+export type ClassifyOptions = {
+  /** Regras tier-1 ADICIONAIS do catálogo do componente (SEC-SHELL-GUARD-01). */
+  extraRules?: ReadonlyArray<{ id: string; regex: RegExp }>;
+  /** Default: secGuardEnabled() (env ENG_MCP_SHELL_SEC_GUARD). */
+  secGuard?: boolean;
+};
+
+export function classifyShellCommand(command: string, options: ClassifyOptions = {}): ShellCommandClass {
+  const secGuard = options.secGuard ?? secGuardEnabled();
+  if (secGuard) {
+    for (const rule of TIER0_SEC_RULES) {
+      if (rule.pattern.test(command)) return { tier: 0, rule: rule.id, reason: rule.reason, code: "SEC_PATH_FORBIDDEN" };
+    }
+  }
   for (const rule of TIER3_RULES) {
     if (rule.pattern.test(command)) return { tier: 3, rule: rule.id, reason: rule.reason };
   }
   if (TIER1_META_TOKENS.some((token) => command.includes(token))) return { tier: 2, rule: "meta_characters" };
   for (const rule of TIER1_RULES) {
     if (rule.pattern.test(command)) return { tier: 1, rule: rule.id };
+  }
+  for (const rule of options.extraRules ?? []) {
+    if (rule.regex.test(command)) return { tier: 1, rule: `catalog:${rule.id}` };
   }
   return { tier: 2, rule: "outside_allowlist" };
 }
@@ -137,7 +197,7 @@ export type ShellExecOutcome = {
 export type ShellRunResult = {
   tool: string;
   status: "executed" | "refused" | "blocked";
-  tier: 1 | 2 | 3;
+  tier: 0 | 1 | 2 | 3;
   command: string;
   commandSha16: string;
   cwd: string;
@@ -151,6 +211,8 @@ export type ShellRunResult = {
   rule?: string;
   reason?: string;
   code?: string;
+  component: string;
+  allowlist?: { catalog: string | null; catalogSha16: string | null; error?: string };
   judge?: { safeScore: number; probabilities: Record<string, number> };
   audit: string;
 };
@@ -244,22 +306,52 @@ function writeShellRunAudit(file: string, entry: Record<string, unknown>): strin
 export async function runShellRun(input: ShellRunInput, deps: ShellRunDeps = {}): Promise<ShellRunResult> {
   const command = input.command.trim();
   const timeoutMs = input.timeoutMs ?? SHELL_RUN_DEFAULT_TIMEOUT_MS;
-  const cwdResolved = resolveCwd(input.cwd?.trim() || SHELL_RUN_DEFAULT_CWD);
+  const component = input.component ?? process.env.ENG_MCP_SHELL_COMPONENT ?? "eng-mcp";
+  // SEC-SHELL-GUARD-01: catálogo do componente carregado a cada decisão — o
+  // sha16 do arquivo vai ao audit de TODAS as decisões (mudança de política
+  // fica visível na trilha). Catálogo ausente = null; inválido = ignorado com
+  // erro no audit (builtin tier-1 segue valendo).
+  const allowlist: LoadedAllowlist = loadAllowlistCatalog(component);
   const commandSha16 = createHash("sha256").update(command).digest("hex").slice(0, 16);
   const auditFile = deps.auditFile ?? process.env.ENG_MCP_SHELL_RUN_AUDIT_FILE ?? SHELL_RUN_AUDIT_FILE_DEFAULT;
   const now = deps.now ?? (() => new Date());
-  const classified = classifyShellCommand(command);
+  const classified = classifyShellCommand(command, {
+    extraRules: allowlist && allowlist.ok ? allowlist.rules : undefined
+  });
   const base = {
     tool: SHELL_RUN_TOOL,
     command,
     commandSha16,
     timeoutMs,
-    ts: now().toISOString()
+    ts: now().toISOString(),
+    allowlistComponent: component,
+    allowlistCatalog: allowlist && allowlist.ok ? allowlist.path : (allowlist ? allowlist.path : null),
+    allowlistCatalogSha16: allowlist && allowlist.ok ? allowlist.sha16 : null,
+    ...(allowlist && !allowlist.ok && allowlist.error ? { allowlistError: allowlist.error } : {})
+  };
+  const allowlistResult = {
+    catalog: allowlist && allowlist.ok ? allowlist.path : (allowlist ? allowlist.path : null),
+    catalogSha16: allowlist && allowlist.ok ? allowlist.sha16 : null,
+    ...(allowlist && !allowlist.ok && allowlist.error ? { error: allowlist.error } : {})
   };
 
+  // TIER 0 — classe credencial/secret/exfil: recusa tipada ANTES de tudo
+  // (nada executa, nem cwd stat), audit com code próprio.
+  if (classified.tier === 0) {
+    const result: ShellRunResult = {
+      status: "refused", tier: 0, ...base, component, allowlist: allowlistResult,
+      cwd: input.cwd?.trim() || SHELL_RUN_DEFAULT_CWD,
+      exitCode: null, timedOut: false, durationMs: 0, stdout: "", stderr: "", truncated: false,
+      rule: classified.rule, reason: classified.reason, code: "SEC_PATH_FORBIDDEN",
+      audit: writeShellRunAudit(auditFile, { ...base, tier: 0, status: "refused", rule: classified.rule, code: "SEC_PATH_FORBIDDEN" })
+    };
+    return result;
+  }
+
+  const cwdResolved = resolveCwd(input.cwd?.trim() || SHELL_RUN_DEFAULT_CWD);
   if (!cwdResolved.ok) {
     const result: ShellRunResult = {
-      status: "refused", tier: classified.tier, ...base,
+      status: "refused", tier: classified.tier, ...base, component, allowlist: allowlistResult,
       cwd: input.cwd?.trim() || SHELL_RUN_DEFAULT_CWD,
       exitCode: null, timedOut: false, durationMs: 0, stdout: "", stderr: "", truncated: false,
       code: cwdResolved.code, reason: cwdResolved.reason,
@@ -272,7 +364,7 @@ export async function runShellRun(input: ShellRunInput, deps: ShellRunDeps = {})
   // TIER 3 — typed blocked, never executed, never overridable.
   if (classified.tier === 3) {
     const result: ShellRunResult = {
-      status: "blocked", tier: 3, ...base, cwd,
+      status: "blocked", tier: 3, ...base, component, allowlist: allowlistResult, cwd,
       exitCode: null, timedOut: false, durationMs: 0, stdout: "", stderr: "", truncated: false,
       rule: classified.rule, reason: classified.reason, code: "SHELL_RUN_BLOCKED",
       audit: writeShellRunAudit(auditFile, { ...base, tier: 3, status: "blocked", rule: classified.rule, code: "SHELL_RUN_BLOCKED" })
@@ -286,7 +378,7 @@ export async function runShellRun(input: ShellRunInput, deps: ShellRunDeps = {})
     const stdout = truncateShellOutput(outcome.stdout);
     const stderr = truncateShellOutput(outcome.stderr);
     const result: ShellRunResult = {
-      status: "executed", tier: 1, ...base, cwd,
+      status: "executed", tier: 1, ...base, component, allowlist: allowlistResult, cwd,
       exitCode: outcome.exitCode, timedOut: outcome.timedOut, durationMs: outcome.durationMs,
       stdout: stdout.text, stderr: stderr.text, truncated: stdout.truncated || stderr.truncated,
       rule: classified.rule,
@@ -307,7 +399,7 @@ export async function runShellRun(input: ShellRunInput, deps: ShellRunDeps = {})
     judgeAnswers = Array.isArray(judgeEnvelope?.answers) ? judgeEnvelope.answers : [];
   } catch (error) {
     const result: ShellRunResult = {
-      status: "refused", tier: 2, ...base, cwd,
+      status: "refused", tier: 2, ...base, component, allowlist: allowlistResult, cwd,
       exitCode: null, timedOut: false, durationMs: 0, stdout: "", stderr: "", truncated: false,
       reason: `${tier2Reason}; judge unavailable — fail-closed: ${error instanceof Error ? error.message : String(error)}`, code: "SHELL_RUN_JUDGE_UNAVAILABLE",
       audit: writeShellRunAudit(auditFile, { ...base, tier: 2, status: "refused", rule: classified.rule, code: "SHELL_RUN_JUDGE_UNAVAILABLE" })
@@ -326,7 +418,7 @@ export async function runShellRun(input: ShellRunInput, deps: ShellRunDeps = {})
   if (safeScore < SHELL_RUN_JUDGE_THRESHOLD) {
     const reasons = SHELL_RUN_TIER2_QUESTIONS.map((question) => `${question.id}=${probabilities[question.id].toFixed(3)}`).join(" ");
     const result: ShellRunResult = {
-      status: "refused", tier: 2, ...base, cwd,
+      status: "refused", tier: 2, ...base, component, allowlist: allowlistResult, cwd,
       exitCode: null, timedOut: false, durationMs: 0, stdout: "", stderr: "", truncated: false,
       reason: `${tier2Reason}; judge refused (safeScore ${safeScore.toFixed(3)} < ${SHELL_RUN_JUDGE_THRESHOLD}): ${reasons}`,
       code: "SHELL_RUN_JUDGE_REFUSED",
@@ -339,7 +431,7 @@ export async function runShellRun(input: ShellRunInput, deps: ShellRunDeps = {})
   const stdout = truncateShellOutput(outcome.stdout);
   const stderr = truncateShellOutput(outcome.stderr);
   const result: ShellRunResult = {
-    status: "executed", tier: 2, ...base, cwd,
+    status: "executed", tier: 2, ...base, component, allowlist: allowlistResult, cwd,
     exitCode: outcome.exitCode, timedOut: outcome.timedOut, durationMs: outcome.durationMs,
     stdout: stdout.text, stderr: stderr.text, truncated: stdout.truncated || stderr.truncated,
     judge: { safeScore, probabilities },
