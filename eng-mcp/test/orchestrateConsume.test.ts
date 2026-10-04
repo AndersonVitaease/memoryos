@@ -353,14 +353,16 @@ test("ConsumeResult has all required fields (incl. ORCH-QUEUE-PROMOTE-01)", () =
   assert.equal(typeof r.results, "object");
 });
 
-test("ConsumeEntryResult has valid action types (incl. noop/deferred)", () => {
-  const validActions = ["promoted", "skipped", "blocked", "throttled", "operator_required", "dead_letter", "noop", "deferred"];
+test("ConsumeEntryResult has valid action types (incl. noop/deferred/requeued)", () => {
+  const validActions = ["promoted", "skipped", "blocked", "throttled", "operator_required", "dead_letter", "noop", "deferred", "executed", "awaiting_approval", "requeued"];
   const r: ConsumeEntryResult = { entryId: "test", action: "promoted", reason: "ok" };
   assert.ok(validActions.includes(r.action));
   const noop: ConsumeEntryResult = { entryId: "test", action: "noop", reason: "já promovida" };
   const deferred: ConsumeEntryResult = { entryId: "test", action: "deferred", reason: "conflito" };
+  const requeued: ConsumeEntryResult = { entryId: "test", action: "requeued", reason: "requeued attempt 1" };
   assert.ok(validActions.includes(noop.action));
   assert.ok(validActions.includes(deferred.action));
+  assert.ok(validActions.includes(requeued.action)); // ORCH-PREAUTH-ARTIFACT-01: requeue deixou de ser rotulado dead_letter
 });
 
 test("OrchestratorConsumerState has valid status values", () => {

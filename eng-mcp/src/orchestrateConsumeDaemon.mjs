@@ -12,6 +12,7 @@ import { runNotifyHermes } from "./notifyHermes.ts";
 import { runBreakerTick, PAUSADO_MESSAGE, RESUMO_MESSAGE_PREFIX } from "./orchestrateBreaker.ts";  // ORCH-BREAKER-01: breaker de pressão integrado ao ciclo
 import { runHygieneTrigger } from "./orchestrateHygiene.ts";  // ORCH-HYGIENE-01: gatilho leve no fim do ciclo
 import { createToolCallHandler } from "./orchToolHandlers.ts";  // ORCH-TOOLS-01: executor in-processo de tool_call
+import { readPreauthArtifact, orchPreauthPath, assertPreauthArtifactAccess } from "./orchPreauthArtifact.ts";  // ORCH-PREAUTH-ARTIFACT-01: leitor do artefato preauth (SÓ leitura)
 
 // Lock/estado em tmpdir do SO (nunca em /opt/mission-events — área de produção).
 export const LOCK_PATH = `${os.tmpdir()}/orchestrator-consumer.daemon.lock`;
@@ -124,6 +125,28 @@ async function maybeHygieneCycle() {
   }
 }
 
+// ORCH-PREAUTH-ARTIFACT-01: fonte da approval do EXECUTE — o ARTEFATO preauth
+// operador-concedido (leitor read-only; forma do contrato OU manifesto do
+// engineering.mission.preauth) com fallback compatível ao env ORCH_DAEMON_APPROVED=1
+// (mantido até o operador revogar). O ciclo carrega approvalSource (artifact|env|none)
+// + o estado do artefato — log honesto de qual fonte valeu. ANTI-SELF-APPROVE: o
+// daemon NUNCA cria/escreve o artefato (guarda explícita no módulo dono do caminho;
+// aqui a única operação usada é "read"). Fail-closed: artefato ausente/expirado/
+// revogado/hash divergente/corrompido NUNCA libera execute — sem env, o ciclo fica
+// em awaiting_approval (PLAN, exit 0).
+export function resolveCycleApproval(env = process.env) {
+  assertPreauthArtifactAccess("read", orchPreauthPath(env));
+  const reading = readPreauthArtifact(orchPreauthPath(env));
+  const preauth = { path: reading.path, status: reading.status, reason: reading.reason, hash16: reading.hash16, expiresAt: reading.expiresAt, source: reading.source };
+  if (reading.status === "valid") {
+    return { approval: { approved: true }, approvalSource: "artifact", preauth };
+  }
+  if (env.ORCH_DAEMON_APPROVED === "1") {
+    return { approval: { approved: true }, approvalSource: "env", preauth };
+  }
+  return { approval: null, approvalSource: "none", preauth };
+}
+
 export async function runDaemonCycle({ maxPromotions = 2, breakerDeps, consumeDeps } = {}) {
   if (!acquireLock()) {
     return { ok: false, reason: "lock held by another daemon cycle" };
@@ -141,18 +164,22 @@ export async function runDaemonCycle({ maxPromotions = 2, breakerDeps, consumeDe
     }
     // PLAN: dryRun — decisão sem efeito. consumeDeps (ORCH-TOOLS-01) permite provas
     // E2E herméticas (paths isolados) sem tocar produção.
+    // ORCH-PREAUTH-ARTIFACT-01: o artefato é validado em TODO ciclo (o resultado do
+    // ciclo sempre carrega preauth + approvalSource — auditoria por ciclo no state jsonl).
+    const { approval, approvalSource, preauth } = resolveCycleApproval();
     const plan = await runOrchestrateConsume({ dryRun: true, maxPromotions }, consumeDeps);
     if (!plan || plan.promoted === 0) {
       const hygiene = await maybeHygieneCycle();
-      return { ok: true, mode: "plan", plan, executed: null, breaker, compaction: maybeCompactQueue(null), hygiene };
+      return { ok: true, mode: "plan", plan, executed: null, approvalSource, preauth, breaker, compaction: maybeCompactQueue(null), hygiene };
     }
     // EXECUTE: despacho real pelo caminho governado (mesma runMissionDispatch).
     // ORCH-DAEMON-01 FIX: execute exige approval.approved=true (guard de governança).
-    // Sem approval explícito, o daemon permanece em PLAN (fail-safe, nunca falha o ciclo).
-    const approval = process.env.ORCH_DAEMON_APPROVED === "1" ? { approved: true } : undefined;
+    // ORCH-PREAUTH-ARTIFACT-01: a approval vem do artefato preauth (approvalSource
+    // "artifact") ou, em fallback, do env ORCH_DAEMON_APPROVED=1 ("env") — sem
+    // nenhuma das duas, o ciclo permanece em PLAN/awaiting_approval (fail-closed).
     if (!approval) {
       const hygiene = await maybeHygieneCycle();
-      return { ok: true, mode: "plan", plan, executed: null, note: "promovíveis aguardam approval (ORCH_DAEMON_APPROVED=1)", breaker, compaction: maybeCompactQueue(null), hygiene };
+      return { ok: true, mode: "plan", plan, executed: null, note: "promovíveis aguardam approval (artefato preauth ausente/expirado/revogado e ORCH_DAEMON_APPROVED indefinido)", approvalSource, preauth, breaker, compaction: maybeCompactQueue(null), hygiene };
     }
     // ORCH-PREAUTH-01 (elo final): o daemon injeta o MESMO caminho governado do
     // tools.ts (runMissionDispatch) — antes ele chamava execute sem handler e o
@@ -183,7 +210,7 @@ export async function runDaemonCycle({ maxPromotions = 2, breakerDeps, consumeDe
       },
     });
     const hygiene = await maybeHygieneCycle();
-    return { ok: true, mode: "execute", plan, executed, breaker, compaction: maybeCompactQueue(executed), hygiene };
+    return { ok: true, mode: "execute", plan, executed, approvalSource, preauth, breaker, compaction: maybeCompactQueue(executed), hygiene };
   } catch (err) {
     return { ok: false, reason: err instanceof Error ? err.message : String(err) };
   } finally {

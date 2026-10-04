@@ -156,7 +156,7 @@ export interface OrchestratorConsumerState {
 
 export interface ConsumeEntryResult {
   entryId: string;
-  action: "promoted" | "skipped" | "blocked" | "throttled" | "operator_required" | "dead_letter" | "noop" | "deferred" | "executed" | "awaiting_approval";
+  action: "promoted" | "skipped" | "blocked" | "throttled" | "operator_required" | "dead_letter" | "noop" | "deferred" | "executed" | "awaiting_approval" | "requeued";
   reason: string;
   missionId?: string;
   /** ORCH-TOOLS-01: metadados de tool_call. */
@@ -713,7 +713,10 @@ async function handleDispatchFailure(
       auditConsume(d, { mode, entryId: entry.id, missionId, decision: "REQUEUED", reason: `tentativa ${attemptCount}, backoff ${backoff}s: ${error}` });
       spoolEvent(d, "orch_requeue", missionId, `re-enfileirado (tentativa ${attemptCount}, backoff ${backoff}s): ${error.slice(0, 200)}`);
     }
-    result.results.push({ entryId: entry.id, action: "dead_letter", reason: `requeued attempt ${attemptCount}`, missionId });
+    // ORCH-PREAUTH-ARTIFACT-01 (achado no E2E): requeue NÃO é dead_letter — o label
+// trocado emitia "dead_letter" com reason "requeued attempt N" (o contador
+// result.requeued já estava certo; o JSON auditável é que mentia).
+result.results.push({ entryId: entry.id, action: "requeued", reason: `requeued attempt ${attemptCount}`, missionId });
     result.requeued += 1;
   }
 }
