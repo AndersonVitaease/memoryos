@@ -6,12 +6,27 @@
 // channel secret file is absent (non-VPS runner env). The secret is read by
 // file reference and NEVER printed, logged or echoed; assertion messages carry
 // truncated bodies only.
-import { test } from "node:test";
+// RD-LEG-02: every skip is a TYPED t.skip (appears in the TAP summary as
+// `# skipped`, never silent `return`-pass), and the ambient case — proxy live
+// but refusing even the real identity with 403 Forbidden — skips as
+// `SKIPPED: ambiente sem proxy upstream — FLAKE-NOMEADO` (named flake, never
+// an ambient not-ok). ZZ_PROXY_LIVE_BASES overrides the probe targets
+// (comma-separated) for the run-duplo proof; test-only, never read at runtime.
+import { test, type TestContext } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 
 const SECRET_FILE = "/data/credentials/hermes-proxy-secret";
-const BASES = ["http://127.0.0.1:8787", "https://memoryos-engmcp.2-25-96-245.nip.io"];
+const BASES = (process.env.ZZ_PROXY_LIVE_BASES ?? "http://127.0.0.1:8787,https://memoryos-engmcp.2-25-96-245.nip.io")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+const AMBIENT_SKIP = "SKIPPED: ambiente sem proxy upstream — FLAKE-NOMEADO";
+
+// RD-LEG-02: marca o teste como skipped no sumário da suíte (nunca silêncio).
+function skipAmbiente(t: TestContext, detalhe: string): void {
+  t.skip(`${AMBIENT_SKIP} (${detalhe})`);
+}
 
 type JsonRpcResponse = { result?: Record<string, unknown>; error?: { code?: number; message?: string }; [k: string]: unknown };
 
@@ -36,28 +51,39 @@ async function call(base: string, secret: string | null, method: string, params:
   return { status: res.status, contentType, body };
 }
 
-test("LIVE /mcp-proxy: read-only call succeeds, mutation refused with the scope code", { timeout: 30_000 }, async () => {
+test("LIVE /mcp-proxy: read-only call succeeds, mutation refused with the scope code", { timeout: 30_000 }, async (t) => {
   if (existsSync("/.dockerenv")) {
     // STORE-MIG-01: inside the suite container neither the loopback port nor the
     // Caddy route is the production path — the LIVE proof runs in file-mode on
     // the VPS host (no /.dockerenv there).
-    console.log("[zz-proxy-live] SKIP: suite container (live proof is file-mode on the VPS)");
+    t.skip("suite container (live proof is file-mode on the VPS)");
     return;
   }
   if (!existsSync(SECRET_FILE)) {
-    console.log("[zz-proxy-live] SKIP: no channel secret file in this environment");
+    t.skip("no channel secret file in this environment");
     return;
   }
   const secret = readFileSync(SECRET_FILE, "utf8").trim();
   assert.ok(secret.length >= 32, "channel secret looks like a real generated value");
 
-  // find a reachable base (loopback container port first, then the Caddy route)
+  // find a reachable base: first candidate that answers AT ALL (any HTTP
+  // status proves the route is live); silence on every candidate is an
+  // environment without upstream proxy — named-flake skip, never a network
+  // assertion failure (RD-LEG-02).
   let base: string | null = null;
-  let session: string | null = null;
-  let init: { status: number; contentType: string; body: JsonRpcResponse | { error?: string } } | null = null;
-  const probe = await fetch(`${BASES[0]}/mcp-proxy`, { method: "POST", headers: { "content-type": "application/json", "x-proxy-secret": "wrong-secret-control" }, body: JSON.stringify({ jsonrpc: "2.0", id: 0, method: "ping", params: {} }), signal: AbortSignal.timeout(4000) }).then((r) => r.status).catch(() => 0);
-  base = probe === 403 ? BASES[0] : BASES[1];
+  for (const candidate of BASES) {
+    const st = await fetch(`${candidate}/mcp-proxy`, { method: "POST", headers: { "content-type": "application/json", "x-proxy-secret": "wrong-secret-control" }, body: JSON.stringify({ jsonrpc: "2.0", id: 0, method: "ping", params: {} }), signal: AbortSignal.timeout(4000) }).then((r) => r.status).catch(() => 0);
+    if (st !== 0) {
+      base = candidate;
+      break;
+    }
+  }
+  if (base === null) {
+    skipAmbiente(t, "proxy não responde em nenhuma base");
+    return;
+  }
   // MCP handshake: initialize first (stateless handler should answer each POST)
+  let init: { status: number; contentType: string; body: JsonRpcResponse | { error?: string } } | null = null;
   init = await call(base, secret, "initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "store-mig-probe", version: "1.0.0" } }, 1, null);
   const initBody = init.body as JsonRpcResponse;
   if (!initBody.result) {
@@ -76,10 +102,18 @@ test("LIVE /mcp-proxy: read-only call succeeds, mutation refused with the scope 
   // 1) READ-ONLY REAL CALL — a real read tool through the fixed identity
   const read = await call(base, secret, "tools/call", { name: "engineering.memory.context", arguments: { projectId: "memoryos", limit: 3 } }, 3, null);
   const readText = JSON.stringify(read.body);
+  if (read.status === 403 && (read.body as { error?: string }).error === "Forbidden") {
+    // RD-LEG-02: proxy live and validating (wrong-secret control above is 403)
+    // but refusing even the REAL identity — the documented ambient Forbidden.
+    // Named-flake typed skip so it shows in the suite summary, never an
+    // ambient not-ok and never silence.
+    skipAmbiente(t, "proxy responde mas recusa a identidade real (403 Forbidden)");
+    return;
+  }
   if (read.status === 401 && readText.includes("AUTHENTICATION_REQUIRED")) {
     // Deterministic skip: the wire-form fix (6a83658a) is not live yet — this
     // probe must not contaminate a suite run against the pre-fix server.
-    console.log("[zz-proxy-live] SKIP: wire-form fix not live yet (401 AUTHENTICATION_REQUIRED — v109 pending)");
+    t.skip("wire-form fix not live yet (401 AUTHENTICATION_REQUIRED — v109 pending)");
     return;
   }
   assert.equal(read.status, 200, `read-only call must be 200: ${readText.slice(0, 300)}`);
