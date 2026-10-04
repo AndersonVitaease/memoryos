@@ -88,3 +88,7 @@ Só convenção — nenhuma tool nova, nada server-side (catálogo continua 108)
 - `ts` = ISO-8601 do fechamento.
 
 **O "1 probe" de re-verificação** = `engineering.memory.search` (query = missionId) ou `engineering.memory.context` para achar a linha FINGERPRINT; comparar `head`/`registrySha16` com o estado atual (camada 1). Igual → não re-verificar; divergente → re-verificar só o que moveu. `ts` nunca entra na comparação.
+
+# Convenção — mutex de suíte (SUITE-LOCK-01, 2026-10-04)
+
+Suítes que tocam estado compartilhado do host (ports/locks/CPU — ex.: `test_mission_ops.py` e suítes de plugin) rodam sob o mutex: `python3 /opt/deliver-verify/suite_lock.py acquire --holder <id>` antes da suíte e `python3 /opt/deliver-verify/suite_lock.py release --holder <id>` depois (ou wrapper `SuiteLock` do próprio módulo; o `verify.py` já aplica o lock nas provas de suíte). Resposta `busy` (exit 3) = suíte irmã em voo no host — espere e repita, nunca waive silencioso. Kill switch de emergência: `SUITE_LOCK=off` (nota honesta no audit, nunca silencioso).
