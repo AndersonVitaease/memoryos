@@ -23,6 +23,9 @@ const PATHS = {
   spoolPath: "/tmp/orch-queue-promote-test/spool.jsonl",
   consumeAuditPath: "/tmp/orch-queue-promote-test/orchestrate-consume-audit.jsonl",
   missionStateDir: "/tmp/orch-queue-promote-test/state",
+  // RD-ORCH-FILA-01: opt-out hermético do scan roadmap — path inexistente →
+  // fail-open "roadmap-ausente" (o scan NUNCA lê o ROADMAP real de produção).
+  roadmapPath: "/tmp/orch-queue-promote-test/ROADMAP-ausente.md",
 };
 
 function makeDeps(overrides: Record<string, unknown> = {}) {

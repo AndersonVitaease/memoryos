@@ -109,6 +109,10 @@ function hermeticDeps(): CycleDeps {
     spoolPath: join(tmp, "spool.jsonl"),
     consumeAuditPath: join(tmp, "consume-audit.jsonl"),
     missionStateDir: join(tmp, "mission-state"),
+    // RD-ORCH-FILA-01: opt-out hermético do scan roadmap — path inexistente →
+    // fail-open "roadmap-ausente" (o ciclo do teste NUNCA lê o ROADMAP real de
+    // produção nem enfileira linhas reais na fila fake do fixture).
+    roadmapPath: join(tmp, "ROADMAP-ausente.md"),
     // ZERO-EFEITO ESTRUTURAL (pós-ORCH-CHAIN-CWD-01 em voo): o spy substitui o
     // handler real de despacho — um teste de gate NUNCA pode criar pane real, nem
     // quando o comportamento de recusa (INVALID_CWD) muda por WIP de missão irmã.

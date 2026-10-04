@@ -30,6 +30,8 @@ const PATHS = {
   spoolPath: "/tmp/orch-chain-cwd-test/spool.jsonl",
   consumeAuditPath: "/tmp/orch-chain-cwd-test/orchestrate-consume-audit.jsonl",
   missionStateDir: "/tmp/orch-chain-cwd-test/state",
+  // RD-ORCH-FILA-01: opt-out hermético do scan roadmap (fail-open roadmap-ausente).
+  roadmapPath: "/tmp/orch-chain-cwd-test/ROADMAP-ausente.md",
 };
 
 interface DispatchInput { missionId: string; promptFile?: string; worktree?: string; priority?: number; spawnedBy?: string; cwd?: string; cwdSource?: string; chainBasis?: string }

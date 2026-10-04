@@ -26,6 +26,8 @@ const PATHS = {
   spoolPath: "/tmp/orch-tools-01-test/spool.jsonl",
   consumeAuditPath: "/tmp/orch-tools-01-test/orchestrate-consume-audit.jsonl",
   missionStateDir: "/tmp/orch-tools-01-test/state",
+  // RD-ORCH-FILA-01: opt-out hermético do scan roadmap (fail-open roadmap-ausente).
+  roadmapPath: "/tmp/orch-tools-01-test/ROADMAP-ausente.md",
 };
 
 function makeDeps(overrides: Record<string, unknown> = {}) {
