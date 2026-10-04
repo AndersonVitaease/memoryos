@@ -26,7 +26,7 @@ Gate de despacho passou de env para **artefato preauth** com hash de autointegri
 - **Artefato de produção não criado** (por design): o operador concede/revoga via `engineering.mission.preauth`; enquanto isso o gate segue fail-closed (env fallback até revogação explícita).
 - Callers diretos de `resolveCycleApproval` fora do daemon: nenhum identificado (text-search); superfície é aditiva — assinaturas das 15 capabilities e do `IProductionConnector` intocadas.
 
-**Memória**: gravada (fingerprint no ledger `engineering.memory.capture`, projectId `memoryos` — linha FINGERPRINT com head/registrySha16/verdicts/ts no fechamento desta missão).
+**Memória**: capture tentado e INDISPONÍVEL nesta sessão — `engineering.memory.capture` (endpoint de produção) respondeu `AUTHENTICATION_REQUIRED` com a credencial acessível aqui; ídem `engineering.judge.verify` (camada 0 fail-open, convenção JUDGE-HOOKS-01). FINGERPRINT declarado aqui e no verify.json: `{"missionId":"ORCH-PREAUTH-ARTIFACT-01","head":"584a0e42","registrySha16":"n/a (sem credencial de registry nesta sessão)","verdicts":"verify.py:pass; E2E:PASS 10/10; camada1:spot-check-ok (commits em main confirmados; /data/manifests inexistente); camada0:fail-open","ts":"2026-10-04T12:41:12Z"}`. Gravação do ledger fica como dívida para uma sessão com credencial válida.
 
 **operator_channel**: pane da missão (herdr w6:p6G) — fechamento entregue via send-text.
 
