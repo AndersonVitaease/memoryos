@@ -88,6 +88,8 @@ test("mission with sessionId+transcript+price table → costUsd > 0 and typed so
 });
 
 test("ledger without sessionId → costUsd null + reason no-session-id (nunca inventa)", () => {
+  // RD-OPS-03-SPEND-01: env pinada → lookup multi-root sem scan do FS real (hermético).
+  process.env.ENG_MCP_CLAUDE_CONFIG_DIRS = "fixture-claude-config-dirs-no-scan";
   const deps = makeDeps({
     missionStateDir: "/root/.hermes/mission-state",
     claudeConfigDir: "fixture-claude-projects-no-session",
@@ -108,6 +110,7 @@ test("ledger without sessionId → costUsd null + reason no-session-id (nunca in
 });
 
 test("sessionId without transcript on disk → reason no-transcript", () => {
+  process.env.ENG_MCP_CLAUDE_CONFIG_DIRS = "fixture-claude-config-dirs-no-scan";
   const deps = makeDeps({
     missionStateDir: "/root/.hermes/mission-state",
     claudeConfigDir: "fixture-claude-projects-no-transcript",
@@ -284,5 +287,121 @@ test("menção TARDIA ao missionId (depois do 1º assistant) NÃO atribui — ou
     assert.equal(res.sessionSource, null);
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+// ---- RD-OPS-03-SPEND-01: lookup multi-root (eng-mcp + panes herdr) + forma do contrato ----
+// Os panes herdr rodam claude com CLAUDE_CONFIG_DIR=/opt/mission-events/.claude-config —
+// o transcript do worker vive num SEGUNDO root que o lookup antigo não varria (causa real
+// dos `spend_no-transcript` de 04/10). Root secundário aqui = fixture tmp (nunca FS real).
+
+import { createHash } from "node:crypto";
+import { spendClaudeConfigDirs } from "../src/orchestrate.ts";
+
+test("spendClaudeConfigDirs: env unset → par default (eng-mcp + panes herdr); env set → primary + lista", () => {
+  const prev = process.env.ENG_MCP_CLAUDE_CONFIG_DIRS;
+  try {
+    delete process.env.ENG_MCP_CLAUDE_CONFIG_DIRS;
+    const roots = spendClaudeConfigDirs("/opt/memoryos/eng-mcp/.claude-config/projects");
+    assert.deepEqual(roots, [
+      "/opt/memoryos/eng-mcp/.claude-config/projects",
+      "/opt/mission-events/.claude-config/projects",
+    ]);
+    process.env.ENG_MCP_CLAUDE_CONFIG_DIRS = "/root/x:/root/y";
+    const withEnv = spendClaudeConfigDirs("/primary");
+    assert.deepEqual(withEnv, ["/primary", "/root/x", "/root/y"]);
+    // dedupe: primary repetido na env não duplica
+    process.env.ENG_MCP_CLAUDE_CONFIG_DIRS = "/primary:/root/x";
+    assert.deepEqual(spendClaudeConfigDirs("/primary"), ["/primary", "/root/x"]);
+  } finally {
+    if (prev === undefined) delete process.env.ENG_MCP_CLAUDE_CONFIG_DIRS;
+    else process.env.ENG_MCP_CLAUDE_CONFIG_DIRS = prev;
+  }
+});
+
+test("sessionId com transcript NO root herdr (2º root) → costUsd > 0 via ledger-session-id", () => {
+  const sessionId = "sess-herdr-root-01";
+  const root1 = mkdtempSync(path.join(tmpdir(), "spend-root1-")); // vazio (só eng-mcp)
+  const root2 = mkdtempSync(path.join(tmpdir(), "spend-root2-")); // layout herdr
+  const projectDir = path.join(root2, "-opt-mission-events");
+  mkdirSync(projectDir, { recursive: true });
+  const lines = [
+    JSON.stringify({ type: "assistant", message: { model: "inclusionai/ling-3.0-flash", usage: { input_tokens: 2000, output_tokens: 1000, cache_creation_input_tokens: 0, cache_read_input_tokens: 4000 } } }),
+  ];
+  const transcriptPath = path.join(projectDir, `${sessionId}.jsonl`);
+  writeFileSync(transcriptPath, lines.join("\n") + "\n");
+  try {
+    const deps = makeDeps({
+      missionStateDir: "/root/.hermes/mission-state",
+      priceTablePath: "/opt/mission-events/orchestrator-price-table.json",
+      claudeConfigDir: root1,
+      readText: (filePath: string) => {
+        if (filePath.endsWith("E2E-HERDR-ROOT.json")) {
+          return JSON.stringify({ missionId: "E2E-HERDR-ROOT", resumeSessionId: sessionId, status: "dispatched" });
+        }
+        if (filePath.endsWith("orchestrator-price-table.json")) return PRICE_TABLE;
+        return null;
+      },
+    });
+    process.env.ENG_MCP_CLAUDE_CONFIG_DIRS = root2;
+    try {
+      const res = runOrchestrateMissionSpend({ missionId: "E2E-HERDR-ROOT" }, deps);
+      assert.equal(res.reason, null);
+      assert.ok(res.costUsd != null && res.costUsd > 0, `costUsd>0, got ${res.costUsd}`);
+      assert.equal(res.sessionSource, "ledger-session-id");
+      // forma do contrato: breakdown completo + fonte citada (path + sha256-16)
+      assert.equal(res.cacheReadTokens, 4000);
+      assert.equal(res.transcriptPath, transcriptPath);
+      const expectedSha = createHash("sha256").update(
+        // mesmo conteúdo gravado: linhas + \n final
+        lines.join("\n") + "\n",
+      ).digest("hex").slice(0, 16);
+      assert.equal(res.transcriptSha16, expectedSha);
+    } finally {
+      if (process.env.ENG_MCP_CLAUDE_CONFIG_DIRS === root2) delete process.env.ENG_MCP_CLAUDE_CONFIG_DIRS;
+    }
+  } finally {
+    rmSync(root1, { recursive: true, force: true });
+    rmSync(root2, { recursive: true, force: true });
+  }
+});
+
+test("fallback por promptFile NO root herdr (sem sessionId no ledger) → costUsd > 0", () => {
+  const root1 = mkdtempSync(path.join(tmpdir(), "spend-fb1-"));
+  const root2 = mkdtempSync(path.join(tmpdir(), "spend-fb2-"));
+  const projectDir = path.join(root2, "-opt-mission-events");
+  mkdirSync(projectDir, { recursive: true });
+  const promptBase = "missao-e2e-fallback-herdr.md";
+  const lines = [
+    JSON.stringify({ type: "user", message: { content: `leia /opt/mission-events/${promptBase} e execute.` } }),
+    JSON.stringify({ type: "assistant", message: { model: "inclusionai/ling-3.0-flash", usage: { input_tokens: 500, output_tokens: 250, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } } }),
+  ];
+  const sessionId = "sess-fallback-herdr-01";
+  writeFileSync(path.join(projectDir, `${sessionId}.jsonl`), lines.join("\n") + "\n");
+  try {
+    const deps = makeDeps({
+      missionStateDir: "/root/.hermes/mission-state",
+      priceTablePath: "/opt/mission-events/orchestrator-price-table.json",
+      claudeConfigDir: root1,
+      readText: (filePath: string) => {
+        if (filePath.endsWith("E2E-FB-HERDR.json")) {
+          return JSON.stringify({ missionId: "E2E-FB-HERDR", status: "dispatched", cwd: "/opt/mission-events", promptFile: `/opt/mission-events/${promptBase}` });
+        }
+        if (filePath.endsWith("orchestrator-price-table.json")) return PRICE_TABLE;
+        return null;
+      },
+    });
+    process.env.ENG_MCP_CLAUDE_CONFIG_DIRS = root2;
+    try {
+      const res = runOrchestrateMissionSpend({ missionId: "E2E-FB-HERDR" }, deps);
+      assert.equal(res.reason, null);
+      assert.ok(res.costUsd != null && res.costUsd > 0, `costUsd>0, got ${res.costUsd}`);
+      assert.equal(res.sessionSource, "fallback-prompt-file");
+      assert.equal(res.sessionId, sessionId);
+    } finally {
+      if (process.env.ENG_MCP_CLAUDE_CONFIG_DIRS === root2) delete process.env.ENG_MCP_CLAUDE_CONFIG_DIRS;
+    }
+  } finally {
+    rmSync(root1, { recursive: true, force: true });
+    rmSync(root2, { recursive: true, force: true });
   }
 });

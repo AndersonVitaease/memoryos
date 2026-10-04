@@ -49,6 +49,16 @@ function priceTableFile(): string {
   });
 }
 
+// RD-OPS-03-SPEND-01: o lookup multi-root (eng-mcp + panes herdr) varre o FS real
+// quando o root primário existe — testes que exigem AUSÊNCIA de match pinam a env
+// ENG_MCP_CLAUDE_CONFIG_DIRS num path inexistente (nenhum root real é escaneado).
+function pinNoScanEnv(): void {
+  process.env.ENG_MCP_CLAUDE_CONFIG_DIRS = "fixture-claude-config-dirs-no-scan";
+}
+function unpinEnv(): void {
+  delete process.env.ENG_MCP_CLAUDE_CONFIG_DIRS;
+}
+
 test("orchestrateSpendInputSchema validates missionId as optional non-empty string", () => {
   assert.ok(orchestrateSpendInputSchema.safeParse({}).success);
   assert.ok(orchestrateSpendInputSchema.safeParse({ missionId: "test-mission" }).success);
@@ -69,6 +79,7 @@ test("runOrchestrateSpend: returns empty result when mission-state dir is unread
 });
 
 test("runOrchestrateSpend: returns null costUsd when transcript not found", () => {
+  pinNoScanEnv();
   const missionId = "ORCH-TELEMETRY-01";
   const sessionId = "session-abc";
   const deps = makeDeps({
@@ -91,6 +102,7 @@ test("runOrchestrateSpend: returns null costUsd when transcript not found", () =
 });
 
 test("runOrchestrateSpend: fail-open when price table missing", () => {
+  pinNoScanEnv();
   const sessionId = "session-no-price-01";
   const missionId = "ORCH-TELEMETRY-01";
   const ledger = ledgerFile(missionId, sessionId);
@@ -153,6 +165,7 @@ test("runOrchestrateSpend: fail-open when readdir returns null", () => {
 });
 
 test("runOrchestrateSpend: ledger without sessionId returns null costUsd", () => {
+  pinNoScanEnv();
   const missionId = "ORCH-TELEMETRY-01";
   const deps = makeDeps({
     readText: (filePath: string) => {

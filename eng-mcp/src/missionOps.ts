@@ -447,7 +447,20 @@ export async function writeMissionSpend(missionId: string): Promise<void> {
   ledger.spend = {
     tokens: missionSpend.tokens,
     costUsd: missionSpend.costUsd,
+    // RD-OPS-03-SPEND-01: forma do contrato no ledger.spend — tokens por categoria +
+    // custo estimado + fonte citada (transcript path + sha256-16). Chaves antigas
+    // preservadas (compatibilidade com consultas existentes).
+    inputTokens: missionSpend.tokens?.inputTokens ?? null,
+    outputTokens: missionSpend.tokens?.outputTokens ?? null,
+    cacheReadTokens: missionSpend.tokens?.cacheReadTokens ?? null,
+    costUsdEstimate: missionSpend.costUsd,
     model: missionSpend.model,
+    source: missionSpend.transcriptPath
+      ? `transcript ${missionSpend.transcriptPath}` +
+        (missionSpend.transcriptSha16 ? ` sha256-16=${missionSpend.transcriptSha16}` : "") +
+        (missionSpend.model ? ` model=${missionSpend.model}` : "") +
+        (spend.priceTableSource ? ` price-table=${spend.priceTableSource}` : "")
+      : null,
     transcriptFound: missionSpend.transcriptFound,
     sessionId: missionSpend.sessionId,
     sessionSource: missionSpend.sessionSource,  // ORCH-SPEND-SESSIONID-01

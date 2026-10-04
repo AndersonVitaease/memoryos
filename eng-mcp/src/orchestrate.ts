@@ -7,6 +7,7 @@
 // honest downgrade is THROTTLE when the mission state dir cannot be read at all
 // (dispatching blind while unable to see in-flight missions would be optimistic).
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";  // RD-OPS-03-SPEND-01: sha256-16 do transcript na fonte do ledger
 import os from "node:os";
 import { existsSync, mkdirSync, readFileSync, readdirSync, appendFileSync, writeFileSync, unlinkSync, openSync, readSync, closeSync, statSync } from "node:fs";
 import path from "node:path";
@@ -30,7 +31,29 @@ export const DEFAULT_PATHS = {
   missionOpsDir: "/root/.hermes/plugins/mission-ops",
   priceTablePath: "/opt/mission-events/orchestrator-price-table.json",
   claudeConfigDir: "/opt/memoryos/eng-mcp/.claude-config/projects",
+  // RD-OPS-03-SPEND-01: segundo root de transcript — os panes herdr rodam claude com
+  // CLAUDE_CONFIG_DIR=/opt/mission-events/.claude-config (layout dos panes), onde os
+  // jsonl das missões vivem de fato (prova: resumes de RD-MOPS-01/ROADMAP-CONSOLIDADO-01/
+  // GUARDIAN-MOBILE-01/SELFTEST-LEAK-01 todos em projects/-opt-mission-events). O lookup
+  // de spend varre TODOS os roots (spendClaudeConfigDirs abaixo).
+  claudeConfigDirHerdr: "/opt/mission-events/.claude-config/projects",
 } as const;
+
+/** RD-OPS-03-SPEND-01: roots de transcript para o lookup de spend. Primary = deps
+ * claudeConfigDir (sempre presente, 1º na ordem). Env ENG_MCP_CLAUDE_CONFIG_DIRS
+ * (":"-separada) substitui o root herdr default por uma lista de roots extras
+ * (deploy sem rebuild); sem env, o par default de DEFAULT_PATHS (eng-mcp + panes
+ * herdr). Dedupe preservando ordem; nunca vazio. */
+export function spendClaudeConfigDirs(claudeConfigDir: string): string[] {
+  const primary = claudeConfigDir || DEFAULT_PATHS.claudeConfigDir;
+  const env = process.env.ENG_MCP_CLAUDE_CONFIG_DIRS;
+  const list: string[] = env && env.trim()
+    ? env.split(":").map((s) => s.trim()).filter(Boolean)
+    : [DEFAULT_PATHS.claudeConfigDirHerdr];
+  const roots: string[] = [primary];
+  for (const r of list) if (r && !roots.includes(r)) roots.push(r);
+  return roots;
+}
 
 export type OrchestrateVerdict = "GO" | "THROTTLE" | "BLOCK";
 
@@ -1281,6 +1304,9 @@ export interface SpendMissionResult {
   messageModelFound: boolean;
   note: string | null;
   sessionSource: string | null;
+  // RD-OPS-03-SPEND-01: fonte citada — path + sha256-16 do transcript que fundou o cálculo.
+  transcriptPath?: string | null;
+  transcriptSha16?: string | null;
 }
 
 export interface SpendResult {
@@ -1321,19 +1347,28 @@ function readPriceTable(d: ReturnType<typeof resolveDeps>): {
   }
 }
 
+// RD-OPS-03-SPEND-01: assinatura multi-root — `claudeConfigDir` aceita string única
+// (compatibilidade com chamadores existentes/testes) OU lista de roots (eng-mcp +
+// panes herdr). Ordem da lista = prioridade do lookup.
+function asConfigDirs(claudeConfigDir: string | string[]): string[] {
+  return Array.isArray(claudeConfigDir) ? claudeConfigDir : [claudeConfigDir];
+}
+
 function findTranscriptPath(
-  claudeConfigDir: string,
+  claudeConfigDir: string | string[],
   sessionId: string,
 ): string | null {
-  if (!existsSync(claudeConfigDir)) return null;
-  try {
-    const projectsDir = readdirSync(claudeConfigDir);
-    for (const project of projectsDir) {
-      const candidate = path.join(claudeConfigDir, project, `${sessionId}.jsonl`);
-      if (existsSync(candidate)) return candidate;
+  for (const root of asConfigDirs(claudeConfigDir)) {
+    if (!root || !existsSync(root)) continue;
+    try {
+      const projectsDir = readdirSync(root);
+      for (const project of projectsDir) {
+        const candidate = path.join(root, project, `${sessionId}.jsonl`);
+        if (existsSync(candidate)) return candidate;
+      }
+    } catch {
+      // ignore — próximo root
     }
-  } catch {
-    // ignore
   }
   return null;
 }
@@ -1402,59 +1437,66 @@ function transcriptSignalInPrefix(
 }
 
 function findTranscriptByMissionContent(
-  claudeConfigDir: string,
+  claudeConfigDir: string | string[],
   missionId: string,
   cwd: string | null,
   promptFile: string | null,
 ): TranscriptFallbackMatch | null {
-  if (!missionId || !existsSync(claudeConfigDir)) return null;
+  const roots = asConfigDirs(claudeConfigDir).filter((r) => r && existsSync(r));
+  if (!missionId || roots.length === 0) return null;
   const promptBase = promptFile ? path.basename(promptFile) : null;
-  let projectDirs: string[];
-  try {
-    const all = readdirSync(claudeConfigDir, { withFileTypes: true })
-      .filter((e) => e.isDirectory())
-      .map((e) => e.name);
-    // O projeto do cwd da missão vem primeiro (transcripts de outras raízes são ruído).
-    const slug = cwd ? cwd.replace(/\//g, "-") : null;
-    projectDirs = slug && all.includes(slug) ? [slug, ...all.filter((p) => p !== slug)] : all;
-  } catch {
-    return null;
-  }
   let missionWinner: TranscriptFallbackMatch | null = null;
-  for (const project of projectDirs) {
-    const dir = path.join(claudeConfigDir, project);
-    let files: { file: string; mtimeMs: number }[];
+  // RD-OPS-03-SPEND-01: raízes em ordem — a primeira raiz com missionWinner vence
+  // (mesma regra de ruído do projeto do cwd: prioridade ao root declarado antes).
+  for (const claudeConfigDir of roots) {
+    let projectDirs: string[];
     try {
-      files = readdirSync(dir)
-        .filter((f) => f.endsWith(".jsonl"))
-        .map((f) => {
-          try { return { file: f, mtimeMs: statSync(path.join(dir, f)).mtimeMs }; }
-          catch { return { file: f, mtimeMs: 0 }; }
-        });
+      const all = readdirSync(claudeConfigDir, { withFileTypes: true })
+        .filter((e) => e.isDirectory())
+        .map((e) => e.name);
+      // O projeto do cwd da missão vem primeiro (transcripts de outras raízes são ruído).
+      const slug = cwd ? cwd.replace(/\//g, "-") : null;
+      projectDirs = slug && all.includes(slug) ? [slug, ...all.filter((p) => p !== slug)] : all;
     } catch {
-      continue;
+      continue; // root ilegível — próximo root
     }
-    files.sort((a, b) => b.mtimeMs - a.mtimeMs);
-    for (const { file, mtimeMs } of files.slice(0, FALLBACK_MAX_FILES)) {
-      const filePath = path.join(dir, file);
-      const cacheKey = `${filePath}|${mtimeMs}|${promptBase ?? ""}|${missionId}`;
-      let sig = fallbackSignalCache.get(cacheKey);
-      if (!sig) {
-        const prefix = readTranscriptPrefix(filePath, FALLBACK_PREFIX_BYTES);
-        if (!prefix) continue;
-        sig = transcriptSignalInPrefix(prefix, promptBase, missionId);
-        if (fallbackSignalCache.size > 1024) fallbackSignalCache.clear();
-        fallbackSignalCache.set(cacheKey, sig);
+    missionWinner = null;
+    for (const project of projectDirs) {
+      const dir = path.join(claudeConfigDir, project);
+      let files: { file: string; mtimeMs: number }[];
+      try {
+        files = readdirSync(dir)
+          .filter((f) => f.endsWith(".jsonl"))
+          .map((f) => {
+            try { return { file: f, mtimeMs: statSync(path.join(dir, f)).mtimeMs }; }
+            catch { return { file: f, mtimeMs: 0 }; }
+          });
+      } catch {
+        continue;
       }
-      if (sig.prompt && promptBase) {
-        // tier 1 do fallback: promptFile é único do dispatch desta missão — vence na hora.
-        return { path: filePath, sessionId: file.replace(/\.jsonl$/, ""), matchedBy: "prompt-file" };
+      files.sort((a, b) => b.mtimeMs - a.mtimeMs);
+      for (const { file, mtimeMs } of files.slice(0, FALLBACK_MAX_FILES)) {
+        const filePath = path.join(dir, file);
+        const cacheKey = `${filePath}|${mtimeMs}|${promptBase ?? ""}|${missionId}`;
+        let sig = fallbackSignalCache.get(cacheKey);
+        if (!sig) {
+          const prefix = readTranscriptPrefix(filePath, FALLBACK_PREFIX_BYTES);
+          if (!prefix) continue;
+          sig = transcriptSignalInPrefix(prefix, promptBase, missionId);
+          if (fallbackSignalCache.size > 1024) fallbackSignalCache.clear();
+          fallbackSignalCache.set(cacheKey, sig);
+        }
+        if (sig.prompt && promptBase) {
+          // tier 1 do fallback: promptFile é único do dispatch desta missão — vence na hora.
+          return { path: filePath, sessionId: file.replace(/\.jsonl$/, ""), matchedBy: "prompt-file" };
+        }
+        if (sig.mission && !missionWinner) {
+          missionWinner = { path: filePath, sessionId: file.replace(/\.jsonl$/, ""), matchedBy: "mission-id" };
+        }
       }
-      if (sig.mission && !missionWinner) {
-        missionWinner = { path: filePath, sessionId: file.replace(/\.jsonl$/, ""), matchedBy: "mission-id" };
-      }
+      if (missionWinner) break; // projeto do cwd já respondeu; outros dirs só aumentam ruído
     }
-    if (missionWinner) break; // projeto do cwd já respondeu; outros dirs só aumentam ruído
+    if (missionWinner) break; // RD-OPS-03-SPEND-01: primeiro root com match vence
   }
   return missionWinner;
 }
@@ -1552,7 +1594,8 @@ export function runOrchestrateSpend(
   const priceTable = priceTableRaw.models;
   const priceTableSource = priceTableRaw.source;
   const stateDir = d.missionStateDir!;
-  const claudeConfigDir = d.claudeConfigDir!;
+  // RD-OPS-03-SPEND-01: lookup multi-root (eng-mcp + panes herdr) no agregado também.
+  const claudeConfigDir = spendClaudeConfigDirs(d.claudeConfigDir!);
 
   let files: string[];
   try { files = d.readdir!(stateDir) ?? []; } catch {
@@ -1599,6 +1642,10 @@ export function runOrchestrateSpend(
         const usage = readTranscriptUsage(transcriptPath, priceTable ?? {});
         spend.model = usage.model; spend.tokens = usage.tokens; spend.costUsd = usage.costUsd;
         spend.costStateFound = usage.costStateFound; spend.messageModelFound = usage.messageModelFound; spend.note = usage.note;
+        // RD-OPS-03-SPEND-01: fonte citada no agregado também (writeMissionSpend grava no ledger).
+        spend.transcriptPath = transcriptPath;
+        try { spend.transcriptSha16 = createHash("sha256").update(readFileSync(transcriptPath)).digest("hex").slice(0, 16); }
+        catch { spend.transcriptSha16 = null; }
         if (usage.costUsd != null) {
           totalCostUsd += usage.costUsd;
           totalTokens.inputTokens += usage.tokens.inputTokens;
@@ -1635,6 +1682,12 @@ export interface MissionSpendResult {
   costUsd: number | null;
   tokensIn: number | null;
   tokensOut: number | null;
+  // RD-OPS-03-SPEND-01: breakdown completo no payload (o ledger grava a forma do
+  // contrato {inputTokens, outputTokens, cacheReadTokens, costUsdEstimate, source}).
+  cacheReadTokens: number | null;
+  // RD-OPS-03-SPEND-01: fonte citada — transcript path + sha256-16 do arquivo.
+  transcriptPath: string | null;
+  transcriptSha16: string | null;
   source: string | null;
   reason: string | null;
   sessionId: string | null;
@@ -1648,7 +1701,7 @@ export function runOrchestrateMissionSpend(
 ): MissionSpendResult {
   const d = resolveDeps(deps);
   const missionId = input.missionId;
-  const base: MissionSpendResult = { missionId, costUsd: null, tokensIn: null, tokensOut: null, source: null, reason: null, sessionId: null, model: null, sessionSource: null };
+  const base: MissionSpendResult = { missionId, costUsd: null, tokensIn: null, tokensOut: null, cacheReadTokens: null, transcriptPath: null, transcriptSha16: null, source: null, reason: null, sessionId: null, model: null, sessionSource: null };
 
   let ledgerRaw: string | null = null;
   try { ledgerRaw = d.readText!(path.join(d.missionStateDir!, `${missionId}.json`)); } catch { ledgerRaw = null; }
@@ -1667,31 +1720,38 @@ export function runOrchestrateMissionSpend(
     return { ...base, reason: "ledger-unparseable" };
   }
 
-  // ORCH-SPEND-SESSIONID-01: direto pelo resumeSessionId/sessionId; sem jsonl (ou sem
+  // ORCH-SPEND-SESSIONID-01 + RD-OPS-03-SPEND-01: direto pelo resumeSessionId/sessionId
+  // em TODOS os roots de transcript (eng-mcp + panes herdr); sem jsonl (ou sem
   // sessionId no ledger), fallback por conteúdo — promptFile do dispatch e, como piso,
   // missionId na região pré-assistant do transcript, mais novo por mtime.
-  let transcriptPath = sessionId ? findTranscriptPath(d.claudeConfigDir!, sessionId) : null;
+  const configDirs = spendClaudeConfigDirs(d.claudeConfigDir!);
+  let transcriptPath = sessionId ? findTranscriptPath(configDirs, sessionId) : null;
   let sessionSource: string | null = transcriptPath ? "ledger-session-id" : null;
   if (!transcriptPath) {
-    const fb = findTranscriptByMissionContent(d.claudeConfigDir!, missionId, ledgerCwd, ledgerPromptFile);
+    const fb = findTranscriptByMissionContent(configDirs, missionId, ledgerCwd, ledgerPromptFile);
     if (fb) { transcriptPath = fb.path; sessionId = fb.sessionId; sessionSource = `fallback-${fb.matchedBy}`; }
   }
   if (!transcriptPath) return { ...base, reason: sessionId ? "no-transcript" : "no-session-id", sessionId };
+
+  // RD-OPS-03-SPEND-01: fonte citada — sha256-16 do transcript que fundou o cálculo.
+  let transcriptSha16: string | null = null;
+  try { transcriptSha16 = createHash("sha256").update(readFileSync(transcriptPath)).digest("hex").slice(0, 16); } catch { transcriptSha16 = null; }
 
   try {
     const priceTableRaw = readPriceTable(d);
     const usage = readTranscriptUsage(transcriptPath, priceTableRaw.models ?? {});
     const tokensIn = usage.tokens.inputTokens;
     const tokensOut = usage.tokens.outputTokens;
+    const cacheReadTokens = usage.tokens.cacheReadTokens;
     if (usage.costUsd != null) {
       const srcBase = sessionSource === "ledger-session-id" ? "transcript" : sessionSource;
       const source = priceTableRaw.models
         ? `orchestrate.spend:${srcBase}+price-table`
         : `orchestrate.spend:${srcBase}-cost-state`;
-      return { missionId, costUsd: usage.costUsd, tokensIn, tokensOut, source, reason: null, sessionId, model: usage.model, sessionSource };
+      return { missionId, costUsd: usage.costUsd, tokensIn, tokensOut, cacheReadTokens, transcriptPath, transcriptSha16, source, reason: null, sessionId, model: usage.model, sessionSource };
     }
     // Transcript lido, custo impossível: tokens medidos valem, custo null com motivo.
-    return { missionId, costUsd: null, tokensIn, tokensOut, source: null, reason: usage.note ?? "cost-unavailable", sessionId, model: usage.model, sessionSource };
+    return { missionId, costUsd: null, tokensIn, tokensOut, cacheReadTokens, transcriptPath, transcriptSha16, source: null, reason: usage.note ?? "cost-unavailable", sessionId, model: usage.model, sessionSource };
   } catch (error) {
     return { ...base, reason: `spend-error: ${error instanceof Error ? error.message : String(error)}`.slice(0, 300), sessionId, sessionSource };
   }
