@@ -48,6 +48,7 @@ import { base44FunctionDeployInputSchema, runBase44FunctionDeploy } from "./base
 import { runVpsHealth, runVpsWhyDown, runDeployStatus, runVpsCapacity, runVpsWhatChanged, runAppHealth, runVpsIncidentSummary, runDeployReady, runDockerHealth, runLogsExplain } from "./simpleTools.ts";
 // ORCHESTRATOR-F1-01: zero-LLM pre-flight planner (plan) + append-only dispatch queue (enqueue) + consumer (consume).
 import { runOrchestratePlan, runOrchestrateEnqueue, runOrchestrateConsume, orchestrateList, orchestratePlanInputSchema, orchestrateEnqueueInputSchema, orchestrateConsumeInputSchema, runOrchestrateSpend, orchestrateSpendInputSchema, runOrchestrateMissionSpend, orchestrateMissionSpendInputSchema, type OrchestrateDeps } from "./orchestrate.ts";
+import { runOrchestrateHygieneCycle, runHygieneTrigger, type HygieneDeps, type HygieneSnapshotResult } from "./orchestrateHygiene.ts";  // ORCH-HYGIENE-01
 import { codeImpactInputSchema, runCodeImpact } from "./codeImpact.ts";
 import { codeUnderstandInputSchema, runCodeUnderstand } from "./codeUnderstand.ts";
 import { bugTraceInputSchema, runBugTrace } from "./bugTrace.ts";
@@ -525,6 +526,27 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
   register("engineering.orchestrate.mission_spend", "read", (name) => server.registerTool(name, { description: "Deterministic LLM spend for ONE mission by missionId (ORCH-SPEND-LEDGER-01): same calculation as orchestrate.spend (price table + session transcript) but returns the per-mission payload {costUsd, tokensIn, tokensOut, source, reason, sessionId, model} that mission_close records into the ledger's cost field. Fail-open honest: missing session/transcript or unpriced model → costUsd null with a typed reason (no-session-id | no-transcript | note), never an invented cost. Read-only, zero-LLM.", inputSchema: orchestrateMissionSpendInputSchema }, async (input) => { requireRead(); return response(await runOrchestrateMissionSpend(input, orchestrateDeps)); }));
   // ORCH-QUEUE-PROMOTE-01: promoção da fila → despacho governado (PLAN default, execute governado).
   register("engineering.orchestrate.consume", "write", (name) => server.registerTool(name, { description: "Deterministic queue consumer: reads /opt/mission-events/orchestrator-queue.jsonl and evaluates promotion in order (priority then FIFO): dedupe idempotent (already-promoted intent → typed NOOP), promptFile existence, class=pesada operator gate, component/worktree conflict matrix (same-component intents serialize), and a resource probe via orchestrate.plan (GO required before each dispatch; capacity counts ONLY dispatched/reopened ledgers, never unknown). PLAN mode is the default and is READ-ONLY (lists what it would promote and why); execute=true + approval.approved=true promotes through the governed mission.dispatch path (never bypassed), with 2^n backoff (max 3 attempts), dead letter after the 3rd failure, spool events (orch_promoted/skip/blocked/throttled/noop/deferred/requeue/dead_letter/operator_required) and an audit trail at /data/audit/orchestrate-consume.jsonl (execute only). Returns consumed/promoted/skipped/blocked/throttled/operatorRequired/deadLettered/noop/deferred counts and mode.", inputSchema: orchestrateConsumeInputSchema }, async (input) => { requireWrite(); return response(await runOrchestrateConsume(input, orchestrateDeps)); }));
+  // ORCH-HYGIENE-01: ciclo de higiene do sistema (estado-máquina determinístico, zero-LLM):
+  // CLEANUP (worktrees mergeadas+limpas removidas com prova; dirty NUNCA descartado;
+  // containers rollback Exited(137) >7d com os 3 mais recentes sempre retidos; ledgers
+  // órfãos >48h sem pane/aba marcados hygiene_orphan — nunca apagados; panes fantasma
+  // via anti-ghost REUSADO do mission_snapshot) → MERGE (fila serial ff-only de branches
+  // ahead de main; divergência = skip registrado, nunca force) → DEPLOY_WINDOW (janela
+  // segura: 0 missões host em voo E mem sob teto do plano E swap < 50% via probe do
+  // breaker; sem janela = adiar, atraso >4h com deploy pendente = needs_operator; o
+  // deploy em si é do ship) → IDLE (trilha append-only em /opt/mission-events/hygiene/).
+  // dryRun (DEFAULT) = projeção read-only, zero escrita; execute só com dryRun=false.
+  // Idempotente: estado limpo = no-op com evidência.
+  const hygieneDeps: HygieneDeps = {
+    runSnapshot: async () => await runMissionSnapshot({}) as HygieneSnapshotResult,
+    notify: async (summary, status) => {
+      try {
+        const r = await runNotifyHermes({ summary, status: status ?? "blocked" });
+        return { delivered: r?.delivered === true };
+      } catch { return { delivered: false }; }
+    },
+  };
+  register("engineering.hygiene.cycle", "write", (name) => server.registerTool(name, { description: "One deterministic hygiene cycle (zero-LLM state machine, ORCH-HYGIENE-01): CLEANUP (worktrees merged+clean removed with per-item proof — dirty ones are NEVER discarded, only recorded; rollback containers Exited(137) older than 7d removed keeping the 3 most recent; orphan ledgers >48h without pane/tab marked hygiene_orphan in the ledger — never deleted; ghost panes via the mission_snapshot anti-ghost REUSED by call) → MERGE (serial ff-only queue of clean branches ahead of main; divergence = registered skip, never force, never parallel) → DEPLOY_WINDOW (safe window: 0 host missions in flight AND memory under the plan ceiling AND swap < 50% via the breaker probe; no window = defer, deferral > 4h with proven pending deploy emits needs_operator — never silent spin; the deploy itself belongs to the ship mission) → IDLE (append-only trail at /opt/mission-events/hygiene/ciclo-<ts>.json). dryRun (DEFAULT) is a read-only projection with zero writes; execute requires dryRun=false. Idempotent: a clean system yields a no-op with evidence.", inputSchema: z.object({ dryRun: z.boolean().optional() }).strict() }, async (input) => { requireWrite(); return response(await runOrchestrateHygieneCycle(input, hygieneDeps)); }));
   register("engineering.code.impact", "read", (name) => server.registerTool(name, {
     description: "Composed read-only pre-change impact (GitNexus-backed): GitNexus context resolves the target (ambiguity stops the flow, no auto-selection), GitNexus impact computes blast radius/risk/epistemic/depths/processes, at most one conditional trace explains a relevant path, and at most 2 ENG-MCP file.read anchors validate critical points against the authorized source. Preserves UNKNOWN/PARTIAL honestly; absence of relations is never a safety claim; zero mutation.",
     inputSchema: codeImpactInputSchema
