@@ -12,6 +12,7 @@ import os from "node:os";
 import { existsSync, mkdirSync, readFileSync, readdirSync, appendFileSync, writeFileSync, unlinkSync, openSync, readSync, closeSync, statSync } from "node:fs";
 import path from "node:path";
 import { runOrchestrateQueueCompaction } from "./orchestrateCompaction.ts";  // ORCH-QUEUE-COMPACT-01: arquivamento no fim do ciclo
+import { scanRoadmapQueue, type RoadmapScanResult } from "./orchestrateRoadmap.ts";  // RD-ORCH-FILA-01: ROADMAP.md como fonte secundária de fila
 import { hostOpsSocketState } from "./hostSystemd.ts";  // ENG-HOST-GOVERNED-OPS-01: liveness honesta do socket host-ops no list
 import { readPreauthArtifact, orchPreauthPath, orchPreauthAllowsTier2, type OrchPreauthReading } from "./orchPreauthArtifact.ts";  // ORCH-TOOLS-01: artefato preauth para tier-2
 import * as z from "zod/v4";
@@ -37,6 +38,9 @@ export const DEFAULT_PATHS = {
   // GUARDIAN-MOBILE-01/SELFTEST-LEAK-01 todos em projects/-opt-mission-events). O lookup
   // de spend varre TODOS os roots (spendClaudeConfigDirs abaixo).
   claudeConfigDirHerdr: "/opt/mission-events/.claude-config/projects",
+  // RD-ORCH-FILA-01: fonte secundária de fila (ROADMAP.md) + dir dos contratos gerados.
+  roadmapPath: "/opt/mission-events/ROADMAP.md",
+  roadmapContractDir: "/opt/mission-events",
 } as const;
 
 /** RD-OPS-03-SPEND-01: roots de transcript para o lookup de spend. Primary = deps
@@ -108,6 +112,9 @@ export interface OrchestrateDeps {
   missionOpsDir?: string;
   priceTablePath?: string;
   claudeConfigDir?: string;
+  /** RD-ORCH-FILA-01: ROADMAP.md (fonte secundária de fila) + dir dos contratos gerados por template. */
+  roadmapPath?: string;
+  roadmapContractDir?: string;
   /** ORCH-BREAKER-01: PSI de I/O (/proc/pressure/io) — gate de swap/iowait do plan. */
   psiPath?: string;
   /** ORCH-BREAKER-01: estado do breaker (breaker:{stage,paused,since} no plan/list). */
@@ -232,6 +239,8 @@ export interface ConsumeResult {
   results: ConsumeEntryResult[];
   /** ORCH-QUEUE-COMPACT-01: linhas movidas para o archive no fim do ciclo (execute; 0 em plan). */
   compacted?: number;
+  /** RD-ORCH-FILA-01: resultado do scan do ROADMAP.md como fonte secundária de fila. */
+  roadmap?: RoadmapScanResult;
 }
 
 export const orchestrateConsumeInputSchema = z.object({
@@ -446,6 +455,34 @@ export async function runOrchestrateConsume(
 
   if (!acquireLock(d)) {
     return { ...result, results: [{ entryId: "lock", action: "skipped", reason: "promotion lock held by another cycle" }] };
+  }
+
+  // RD-ORCH-FILA-01: ROADMAP.md como fonte secundária de fila (zero-LLM, determinístico).
+  // Scan ANTES do loop da fila: execute enfileira intents das linhas fila:sim+pendente
+  // (contrato existente reusado; ausente → template determinístico, spawnedBy=roadmap-fila)
+  // e as entradas entram no MESMO ciclo, sujeitas a TODOS os guards existentes (dedupe por
+  // ledger, promptFile, class=pesada, serialização por componente, plan GO). gate-operator
+  // e aguarda-operator NUNCA geram intent (fronteira aprovada; prova negativa). PLAN é
+  // read-only (decisões computadas, nada escrito, nada spoolado). Fail-open TOTAL: falha
+  // do scan nunca derruba o ciclo (evento tipado orch_roadmap_failed no spool).
+  let roadmapScan: RoadmapScanResult | undefined;
+  try {
+    roadmapScan = scanRoadmapQueue(d, {
+      mode,
+      queueEntries: entries,
+      spool: (kind, missionId, msg) => {
+        if (mode === "execute") spoolEvent(d, kind, missionId, msg);
+      },
+    });
+    for (const dec of roadmapScan.decisions) {
+      if (dec.entry) entries.push(dec.entry);
+    }
+    entries.sort((a, b) => (a.priority ?? 5) - (b.priority ?? 5) || a.enqueuedAt.localeCompare(b.enqueuedAt));
+    if (roadmapScan.decisions.length > 0 || roadmapScan.error) result.roadmap = roadmapScan;
+  } catch (err) {
+    if (mode === "execute") {
+      try { spoolEvent(d, "orch_roadmap_failed", "", `roadmap scan fail-open: ${err instanceof Error ? err.message : String(err)}`.slice(0, 200)); } catch { /* fail-open */ }
+    }
   }
 
   // Registra a decisão no resultado; em execute também audita + spool (PLAN: read-only).
@@ -891,6 +928,9 @@ function resolveDeps(deps?: OrchestrateDeps): Required<Pick<OrchestrateDeps, "re
     missionOpsDir: deps?.missionOpsDir ?? envPath("ENG_MCP_MISSION_OPS_DIR") ?? DEFAULT_PATHS.missionOpsDir,
     priceTablePath: deps?.priceTablePath ?? envPath("ENG_MCP_PRICE_TABLE_PATH") ?? DEFAULT_PATHS.priceTablePath,
     claudeConfigDir: deps?.claudeConfigDir ?? envPath("ENG_MCP_CLAUDE_CONFIG_DIR") ?? DEFAULT_PATHS.claudeConfigDir,
+    // RD-ORCH-FILA-01: fonte secundária de fila + dir de contratos (overrides por env).
+    roadmapPath: deps?.roadmapPath ?? envPath("ENG_MCP_ROADMAP_PATH") ?? DEFAULT_PATHS.roadmapPath,
+    roadmapContractDir: deps?.roadmapContractDir ?? envPath("ENG_MCP_ROADMAP_CONTRACT_DIR") ?? DEFAULT_PATHS.roadmapContractDir,
     // ORCH-BREAKER-01: PSI de I/O + estado do breaker (overrides por env, padrão HERMÉTICO-FIX-02).
     psiPath: deps?.psiPath ?? envPath("ENG_MCP_PSI_IO_PATH") ?? "/proc/pressure/io",
     breakerStatePath: deps?.breakerStatePath ?? envPath("ENG_MCP_BREAKER_STATE_PATH") ?? "/opt/mission-events/orchestrator-breaker.state.json",
