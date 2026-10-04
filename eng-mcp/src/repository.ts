@@ -741,7 +741,11 @@ async references(subject: string, symbol: string, maxResults = 100) {
         // CONSERVATIVE EXCLUSION: Skip known artifact directories before ANY expensive operations
         // Only exclude if it's a directory AND matches our exclusion list
         if (entry.isDirectory()) {
-          const excludePatterns = ["node_modules", ".git", "coverage", ".next", "dist", "build"];
+          // SHIP-ENG-MCP-04: .claude-config é runtime da ferramenta (caches/sessões,
+          // 136MB de extensões permitidas e mutando a cada turno) — nunca conteúdo do
+          // repo (0 arquivos trackeados); no walk ele estoura o limite de 16MB do
+          // baseline() e falseia UNEXPECTED_WORKTREE_CHANGE entre stage e commit.
+          const excludePatterns = ["node_modules", ".git", "coverage", ".next", "dist", "build", ".claude-config"];
           if (excludePatterns.some(pattern => entry.name === pattern)) {
             continue;
           }
