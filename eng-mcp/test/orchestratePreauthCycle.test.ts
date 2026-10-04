@@ -96,11 +96,12 @@ test("R7. artefato válido tem precedência sobre o env (approvalSource artifact
 
 // ---- ciclo real do daemon (consumeDeps herméticos) ----
 
-interface CycleDeps { consumeDeps: Record<string, string>; breakerDeps: Record<string, unknown>; queuePath: string; }
+interface CycleDeps { consumeDeps: Record<string, string>; breakerDeps: Record<string, unknown>; queuePath: string; dispatchCalls: unknown[]; }
 
 function hermeticDeps(): CycleDeps {
   const tmp = mkdtempSync(join(tmpdir(), "preauth-cycle-e2e-"));
   const queuePath = join(tmp, "queue.jsonl");
+  const dispatchCalls: unknown[] = [];
   const consumeDeps = {
     queuePath,
     consumerStatePath: join(tmp, "consumer-state.json"),
@@ -108,6 +109,13 @@ function hermeticDeps(): CycleDeps {
     spoolPath: join(tmp, "spool.jsonl"),
     consumeAuditPath: join(tmp, "consume-audit.jsonl"),
     missionStateDir: join(tmp, "mission-state"),
+    // ZERO-EFEITO ESTRUTURAL (pós-ORCH-CHAIN-CWD-01 em voo): o spy substitui o
+    // handler real de despacho — um teste de gate NUNCA pode criar pane real, nem
+    // quando o comportamento de recusa (INVALID_CWD) muda por WIP de missão irmã.
+    // A recusa real pelo caminho governado foi provada NESTA missão na entrega
+    // (audit REQUEUED/INVALID_CWD, cabeça d749a291 e anteriores) e permanece
+    // provada em HEAD; o que este teste prova é o GATE (approval por artefato).
+    dispatchMission: async (input: unknown) => { dispatchCalls.push(input); return { ok: true }; },
   };
   // O plan THROTTLE se mission-state for ilegível (fail-open conservador) — fixture existe.
   mkdirSync(consumeDeps.missionStateDir, { recursive: true });
@@ -135,7 +143,7 @@ function hermeticDeps(): CycleDeps {
     pauseMission: async () => ({ ok: true }), resumeMission: async () => ({ ok: true }),
     notify: async () => ({ delivered: true }),
   };
-  return { consumeDeps: consumeDepsExec as unknown as Record<string, string>, breakerDeps, queuePath };
+  return { consumeDeps: consumeDepsExec as unknown as Record<string, string>, breakerDeps, queuePath, dispatchCalls };
 }
 
 // Intent mission_dispatch com prompt REAL e worktree INEXISTENTE: o despacho segue
@@ -168,13 +176,13 @@ async function cycleWithRetry(opts: { consumeDeps: Record<string, string>; break
   return last!;
 }
 
-test("C1. ciclo: artefato válido → EXECUTE (despacho tentado pelo caminho governado, approvalSource artifact)", async () => {
+test("C1. ciclo: artefato válido → EXECUTE (gate aprova pelo artefato; despacho via SPY — zero efeito)", async () => {
   await withEnv({ ORCH_PREAUTH_PATH: VALID, ORCH_DAEMON_APPROVED: undefined, ORCH_QUEUE_COMPACT: "0", ORCH_HYGIENE: "0" }, async () => {
-    const { consumeDeps, breakerDeps, queuePath } = hermeticDeps();
+    const { consumeDeps, breakerDeps, queuePath, dispatchCalls } = hermeticDeps();
     const prompt = join(DIR, "prompt-fixture.md");
-    writeFileSync(prompt, "# E2E ORCH-PREAUTH-ARTIFACT-01\n\nFixture de prova — o handler recusa o cwd inexistente.\n");
+    writeFileSync(prompt, "# E2E ORCH-PREAUTH-ARTIFACT-01\n\nFixture de prova — despacho via spy, nunca handler real.\n");
     const worktreeInexistente = join(DIR, "nao-existe", "worktree");
-    writeFileSync(queuePath, JSON.stringify({ id: "e2e-c1", type: "mission_dispatch", payload: { missionId: "PREAUTH-CYCLE-E2E-01", prompt, worktree: worktreeInexistente }, priority: 5, enqueuedAt: new Date().toISOString() }) + "\n");
+    writeFileSync(queuePath, JSON.stringify({ id: "e2e-c1", type: "mission_dispatch", payload: { missionId: "PREAUTH-CYCLE-E2E-01", prompt, cwd: worktreeInexistente }, priority: 5, enqueuedAt: new Date().toISOString() }) + "\n");
     const cycle = await cycleWithRetry({ consumeDeps, breakerDeps });
     assert.equal(cycle.ok, true);
     assert.equal(cycle.mode, "execute");
@@ -183,10 +191,9 @@ test("C1. ciclo: artefato válido → EXECUTE (despacho tentado pelo caminho gov
     assert.ok(cycle.executed, "execute rodou (não ficou em awaiting_approval)");
     const dec = (cycle.executed.results ?? []).find((r: { entryId: string }) => r.entryId === "e2e-c1");
     assert.ok(dec, "intent foi avaliada no execute");
-    assert.equal(dec.action, "requeued", "despacho falhou e foi reenfileirado (tentativa 1)");
-    const queueAfter = readFileSync(consumeDeps.consumeAuditPath, "utf8");
-    assert.match(queueAfter, /REQUEUED/, "recusa registrada no audit do ciclo (caminho governado)");
-    assert.match(queueAfter, /INVALID_CWD/, "motivo da recusa do handler no audit (cwd inexistente, zero pane)");
+    assert.equal(dec.action, "promoted", "despacho via spy ok (promoted) — NENHANDLER real, NENHUMA pane");
+    assert.equal(dispatchCalls.length, 1, "exatamente 1 chamada de despacho (spy)");
+    assert.equal((dispatchCalls[0] as { missionId?: string }).missionId, "PREAUTH-CYCLE-E2E-01");
   });
 });
 
@@ -195,7 +202,7 @@ test("C2. ciclo: artefato expirado → PLAN (awaiting_approval fail-closed, appr
     const { consumeDeps, breakerDeps, queuePath } = hermeticDeps();
     const prompt = join(DIR, "prompt-fixture-2.md");
     writeFileSync(prompt, "# E2E ORCH-PREAUTH-ARTIFACT-01 (expirado)\n");
-    writeFileSync(queuePath, JSON.stringify({ id: "e2e-c2", type: "mission_dispatch", payload: { missionId: "PREAUTH-CYCLE-E2E-02", prompt, worktree: join(DIR, "nao-existe", "worktree") }, priority: 5, enqueuedAt: new Date().toISOString() }) + "\n");
+    writeFileSync(queuePath, JSON.stringify({ id: "e2e-c2", type: "mission_dispatch", payload: { missionId: "PREAUTH-CYCLE-E2E-02", prompt, cwd: join(DIR, "nao-existe", "worktree") }, priority: 5, enqueuedAt: new Date().toISOString() }) + "\n");
     const cycle = await cycleWithRetry({ consumeDeps, breakerDeps });
     assert.equal(cycle.ok, true); // fail-closed é exit 0 (modo plan), nunca crash
     assert.equal(cycle.mode, "plan");
@@ -211,7 +218,7 @@ test("C3. ciclo: ANTI-SELF-APPROVE — artefato com bytes idênticos após ciclo
     const { consumeDeps, breakerDeps, queuePath } = hermeticDeps();
     const prompt = join(DIR, "prompt-fixture-3.md");
     writeFileSync(prompt, "# E2E ORCH-PREAUTH-ARTIFACT-01 (anti-self-approve)\n");
-    writeFileSync(queuePath, JSON.stringify({ id: "e2e-c3", type: "mission_dispatch", payload: { missionId: "PREAUTH-CYCLE-E2E-03", prompt, worktree: join(DIR, "nao-existe", "worktree") }, priority: 5, enqueuedAt: new Date().toISOString() }) + "\n");
+    writeFileSync(queuePath, JSON.stringify({ id: "e2e-c3", type: "mission_dispatch", payload: { missionId: "PREAUTH-CYCLE-E2E-03", prompt, cwd: join(DIR, "nao-existe", "worktree") }, priority: 5, enqueuedAt: new Date().toISOString() }) + "\n");
     const before = readFileSync(VALID);
     await runDaemonCycle({ consumeDeps, breakerDeps });
     assert.equal(readFileSync(VALID).equals(before), true, "o ciclo NUNCA altera o artefato (só lê)");
