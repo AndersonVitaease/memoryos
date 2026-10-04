@@ -12,18 +12,24 @@
 // pane vivo (pane fabricado "perdido" → nudge devolve pane_lost sem envio).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync, chmodSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/server";
 import { ENGINEERING_SERVER_INFO, installToolAliasCompatibility, registerEngineeringTools } from "../src/tools.ts";
 import { assertSupervisorMutationAllowed, supervisorSubjects, operatorOrderOf } from "../src/supervisorGuard.ts";
+import { canonicalJson } from "../src/orchPreauthArtifact.js";
 import { EngineeringError, type AuthenticatedSubject } from "../src/policy.js";
 import type { RepositoryAdapter } from "../src/repository.ts";
 
 // ---- env isolation (save/restore; tests in one file run sequentially) ----
 const ENV_KEYS = [
   "ENG_MCP_GUARD_AUDIT_FILE", "ENG_MCP_ROLES_FILE", "ENG_MCP_SUPERVISOR_SUBJECTS",
+  "ENG_MCP_OPERATOR_TOKEN_FILE", "ENG_MCP_OPERATOR_ALLOWLIST_FILE",
+  "ENG_MCP_ORDER_ORIGIN_PLATFORM", "ENG_MCP_ORDER_ORIGIN_CHAT_ID",
+  "MISSION_OPS_OPERATOR_TOKEN_FILE", "MISSION_OPS_OPERATOR_ALLOWLIST_FILE",
+  "MISSION_OPS_ORDER_ORIGIN_PLATFORM", "MISSION_OPS_ORDER_ORIGIN_CHAT_ID",
   "MISSION_OPS_STATE_DIR", "MISSION_OPS_GUARD_SPOOL_FILE",
   "MISSION_OPS_GUARD_CHANNEL", "MISSION_OPS_GUARD_SUBJECT",
   "MISSION_OPS_ROLES_FILE", "MISSION_OPS_SUPERVISOR_SUBJECTS",
@@ -50,9 +56,38 @@ function tempDir(): string {
   return mkdtempSync(join(tmpdir(), "supguard-"));
 }
 
+// ---- fixtures SEC-OPERATOR-IDENTITY-01 (token de ordem + binding Telegram) ----
+const GUARD_TOKEN = "ordem-token-SEC-OPERATOR-IDENTITY-01-9f2c";
+
+function selfHash16(body: Record<string, unknown>): string {
+  const { hash16, ...rest } = body as { hash16?: string };
+  return createHash("sha256").update(canonicalJson(rest)).digest("hex").slice(0, 16);
+}
+
+function writeTokenFixture(dir: string, extra: Record<string, unknown> = {}, name = "operator-order-token"): string {
+  const { hash16, ...rest } = extra as { hash16?: string };
+  const body = { version: 1, tokenHash: createHash("sha256").update(GUARD_TOKEN).digest("hex"), ...rest };
+  const path = join(dir, `${name}.json`);
+  writeFileSync(path, JSON.stringify({ ...body, hash16: hash16 ?? selfHash16(body) }, null, 2) + "\n", "utf8");
+  chmodSync(path, 0o600);
+  return path;
+}
+
+function writeAllowlistFixture(dir: string): string {
+  const body = { version: 1, telegram: { chatIds: [{ chatId: "424242", label: "operator" }] } };
+  const path = join(dir, "operator-allowlist.json");
+  writeFileSync(path, JSON.stringify({ ...body, hash16: selfHash16(body) }, null, 2) + "\n", "utf8");
+  chmodSync(path, 0o600);
+  return path;
+}
+
 function readSpool(path: string): Array<Record<string, unknown>> {
   if (!existsSync(path)) return [];
   return readFileSync(path, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l) as Record<string, unknown>);
+}
+
+function pluginSpoolHas(path: string, event: string): boolean {
+  return readSpool(path).some((l) => l.event === event);
 }
 
 // ---- unit: resolução de subjects + operatorOrder ----
@@ -110,15 +145,79 @@ test("supervisor without operatorOrder is refused with audit BEFORE any executio
   }).finally(() => rmSync(dir, { recursive: true, force: true }));
 });
 
-test("supervisor with a valid operatorOrder passes and the pass is audited", () => {
+test("supervisor with a VALID TOKEN order passes and the pass is audited (operator_order_verified + hash16, nunca o token)", () => {
   const dir = tempDir();
   const spool = join(dir, "spool.jsonl");
-  return withEnv({ ENG_MCP_GUARD_AUDIT_FILE: spool, ENG_MCP_ROLES_FILE: undefined, ENG_MCP_SUPERVISOR_SUBJECTS: undefined }, () => {
-    assert.doesNotThrow(() => assertSupervisorMutationAllowed("engineering.git.merge", "supervisor", { operatorOrder: "SHIP-ENG-MCP-04" }));
+  return withEnv({ ENG_MCP_GUARD_AUDIT_FILE: spool, ENG_MCP_ROLES_FILE: undefined, ENG_MCP_SUPERVISOR_SUBJECTS: undefined, ENG_MCP_OPERATOR_TOKEN_FILE: writeTokenFixture(dir) }, () => {
+    assert.doesNotThrow(() => assertSupervisorMutationAllowed("engineering.git.merge", "supervisor", { operatorOrder: GUARD_TOKEN }));
     const lines = readSpool(spool);
-    assert.equal(lines.length, 1);
-    assert.equal(lines[0].event, "supervisor_mutation_allowed_by_order");
-    assert.equal(lines[0].operatorOrder, "SHIP-ENG-MCP-04");
+    const verified = lines.find((l) => l.event === "operator_order_verified");
+    assert.ok(verified, "operator_order_verified must be audited");
+    assert.equal(verified.basis, "token");
+    assert.match(String(verified.tokenHash16), /^[0-9a-f]{16}$/);
+    const legacy = lines.find((l) => l.event === "supervisor_mutation_allowed_by_order");
+    assert.ok(legacy, "legacy allowed_by_order event preserved");
+    assert.ok(!JSON.stringify(lines).includes(GUARD_TOKEN), "token value must never be audited");
+  }).finally(() => rmSync(dir, { recursive: true, force: true }));
+});
+
+test("supervisor with TEXTUAL operatorOrder (sem token): OPERATOR_ORDER_UNVERIFIED, nada executado, audit", () => {
+  const dir = tempDir();
+  const spool = join(dir, "spool.jsonl");
+  // hermético: token file fixado como AUSENTE (default /data/manifests pode ter placeholder do operator)
+  return withEnv({ ENG_MCP_GUARD_AUDIT_FILE: spool, ENG_MCP_ROLES_FILE: undefined, ENG_MCP_SUPERVISOR_SUBJECTS: undefined, ENG_MCP_OPERATOR_TOKEN_FILE: join(dir, "absent-token.json") }, () => {
+    assert.throws(
+      () => assertSupervisorMutationAllowed("engineering.git.push", "supervisor", { operatorOrder: "SHIP-ENG-MCP-04" }),
+      (e: unknown) => e instanceof EngineeringError && e.code === "OPERATOR_ORDER_UNVERIFIED",
+    );
+    const lines = readSpool(spool);
+    const unverified = lines.find((l) => l.event === "operator_order_unverified");
+    assert.ok(unverified, "operator_order_unverified must be audited");
+    assert.equal(unverified.tokenStatus, "absent");
+    assert.ok(String(unverified.channelNote).includes("inactive"), "honest note: channel layer inactive (no binding configured)");
+    assert.ok(!lines.some((l) => l.event === "supervisor_mutation_forbidden"), "no-order legacy event must NOT fire when an order was presented");
+  }).finally(() => rmSync(dir, { recursive: true, force: true }));
+});
+
+test("token inválido/expirado/revogado: recusa tipada OPERATOR_ORDER_UNVERIFIED com status preservado", () => {
+  const dir = tempDir();
+  const spool = join(dir, "spool.jsonl");
+  const expired = writeTokenFixture(dir, { expiresAt: "2020-01-01T00:00:00Z" }, "expired");
+  const revoked = writeTokenFixture(dir, { revoked: true }, "revoked");
+  return withEnv({ ENG_MCP_GUARD_AUDIT_FILE: spool, ENG_MCP_ROLES_FILE: undefined, ENG_MCP_SUPERVISOR_SUBJECTS: undefined }, () => {
+    for (const [file, status] of [[expired, "expired"], [revoked, "revoked"]] as const) {
+      process.env.ENG_MCP_OPERATOR_TOKEN_FILE = file;
+      assert.throws(
+        () => assertSupervisorMutationAllowed("engineering.git.push", "supervisor", { operatorOrder: GUARD_TOKEN }),
+        (e: unknown) => e instanceof EngineeringError && e.code === "OPERATOR_ORDER_UNVERIFIED",
+      );
+      const lines = readSpool(spool).filter((l) => l.event === "operator_order_unverified");
+      assert.ok(lines.some((l) => l.tokenStatus === status), `status ${status} must reach the audit`);
+    }
+  }).finally(() => rmSync(dir, { recursive: true, force: true }));
+});
+
+test("camada 2: origem telegram allowlistada resolve como token; binding ausente = inativa (fail-closed)", () => {
+  const dir = tempDir();
+  const spool = join(dir, "spool.jsonl");
+  return withEnv({ ENG_MCP_GUARD_AUDIT_FILE: spool, ENG_MCP_ROLES_FILE: undefined, ENG_MCP_SUPERVISOR_SUBJECTS: undefined, ENG_MCP_OPERATOR_TOKEN_FILE: join(dir, "absent-token.json"), ENG_MCP_OPERATOR_ALLOWLIST_FILE: writeAllowlistFixture(dir), ENG_MCP_ORDER_ORIGIN_PLATFORM: "telegram", ENG_MCP_ORDER_ORIGIN_CHAT_ID: "424242" }, () => {
+    assert.doesNotThrow(() => assertSupervisorMutationAllowed("engineering.git.push", "supervisor", { operatorOrder: "SHIP-ENG-MCP-04" }));
+    const lines = readSpool(spool);
+    const verified = lines.find((l) => l.event === "operator_order_verified");
+    assert.ok(verified && verified.basis === "telegram-binding");
+    assert.match(String(verified.chatHash16), /^[0-9a-f]{16}$/);
+  }).finally(() => rmSync(dir, { recursive: true, force: true }));
+});
+
+test("camada 2: allowlist presente mas origem estranha NÃO resolve (fail-closed)", () => {
+  const dir = tempDir();
+  const spool = join(dir, "spool.jsonl");
+  return withEnv({ ENG_MCP_GUARD_AUDIT_FILE: spool, ENG_MCP_ROLES_FILE: undefined, ENG_MCP_SUPERVISOR_SUBJECTS: undefined, ENG_MCP_OPERATOR_TOKEN_FILE: join(dir, "absent-token.json"), ENG_MCP_OPERATOR_ALLOWLIST_FILE: writeAllowlistFixture(dir), ENG_MCP_ORDER_ORIGIN_PLATFORM: "telegram", ENG_MCP_ORDER_ORIGIN_CHAT_ID: "999999" }, () => {
+    assert.throws(
+      () => assertSupervisorMutationAllowed("engineering.git.push", "supervisor", { operatorOrder: "SHIP-ENG-MCP-04" }),
+      (e: unknown) => e instanceof EngineeringError && e.code === "OPERATOR_ORDER_UNVERIFIED",
+    );
+    assert.ok(readSpool(spool).some((l) => l.event === "operator_order_unverified"));
   }).finally(() => rmSync(dir, { recursive: true, force: true }));
 });
 
@@ -178,15 +277,27 @@ test("git.push by supervisor WITHOUT operatorOrder: typed refusal, gitPush never
   }).finally(() => rmSync(dir, { recursive: true, force: true }));
 });
 
-test("git.push by supervisor WITH operatorOrder: guard passes and the execution boundary is reached", () => {
+test("git.push by supervisor WITH valid TOKEN order: guard passes and the execution boundary is reached", () => {
+  const dir = tempDir();
+  return withEnv({ ENG_MCP_GUARD_AUDIT_FILE: join(dir, "spool.jsonl"), ENG_MCP_ROLES_FILE: join(dir, "absent.json"), ENG_MCP_SUPERVISOR_SUBJECTS: undefined, ENG_MCP_OPERATOR_TOKEN_FILE: writeTokenFixture(dir) }, async () => {
+    const { call, accessed } = buildSpyServer(SUP_PUSH);
+    const result = await call({ method: "tools/call", params: { name: "engineering.git.push", arguments: { operatorOrder: GUARD_TOKEN } } }, PROBE_CTX);
+    assert.ok(!(result as { isError?: boolean }).isError, `unexpected refusal: ${resultText(result).slice(0, 300)}`);
+    assert.ok(accessed.includes("gitPush"), "with the verified token the handler proceeds to the governed push path (PLAN spy)");
+    const lines = readSpool(join(dir, "spool.jsonl"));
+    assert.ok(lines.some((l) => l.event === "operator_order_verified"));
+  }).finally(() => rmSync(dir, { recursive: true, force: true }));
+});
+
+test("git.push by supervisor with TEXTUAL order (sem token): OPERATOR_ORDER_UNVERIFIED, gitPush never accessed", () => {
   const dir = tempDir();
   return withEnv({ ENG_MCP_GUARD_AUDIT_FILE: join(dir, "spool.jsonl"), ENG_MCP_ROLES_FILE: join(dir, "absent.json"), ENG_MCP_SUPERVISOR_SUBJECTS: undefined }, async () => {
     const { call, accessed } = buildSpyServer(SUP_PUSH);
     const result = await call({ method: "tools/call", params: { name: "engineering.git.push", arguments: { operatorOrder: "SHIP-ENG-MCP-04" } } }, PROBE_CTX);
-    assert.ok(!(result as { isError?: boolean }).isError, `unexpected refusal: ${resultText(result).slice(0, 300)}`);
-    assert.ok(accessed.includes("gitPush"), "with the order the handler proceeds to the governed push path (PLAN spy)");
-    const lines = readSpool(join(dir, "spool.jsonl"));
-    assert.ok(lines.some((l) => l.event === "supervisor_mutation_allowed_by_order"));
+    assert.ok((result as { isError?: boolean }).isError);
+    assert.ok(resultText(result).includes("OPERATOR_ORDER_UNVERIFIED"), `expected typed token refusal, got: ${resultText(result).slice(0, 300)}`);
+    assert.ok(!accessed.includes("gitPush"), "nothing executed: textual order no longer authorizes mutation");
+    assert.ok(readSpool(join(dir, "spool.jsonl")).some((l) => l.event === "operator_order_unverified"));
   }).finally(() => rmSync(dir, { recursive: true, force: true }));
 });
 
@@ -252,7 +363,28 @@ test("E2E: engineering.mission.close by supervisor WITHOUT order -> SUPERVISOR_A
   }).finally(() => rmSync(dir, { recursive: true, force: true }));
 });
 
-test("E2E: engineering.mission.nudge by supervisor WITH operatorOrder passes the guard (handler reached, pane_lost)", () => {
+test("E2E: engineering.mission.nudge by supervisor WITH valid TOKEN passes the guard (handler reached, pane_lost)", () => {
+  if (!PLUGIN_PRESENT) return;
+  const dir = tempDir();
+  fabricateLedger(dir, "guard-e2e-probe");
+  return withEnv({
+    ENG_MCP_GUARD_AUDIT_FILE: join(dir, "spool.jsonl"),
+    ENG_MCP_OPERATOR_TOKEN_FILE: writeTokenFixture(dir, {}, "engmcp-token-fixture"),
+    MISSION_OPS_OPERATOR_TOKEN_FILE: writeTokenFixture(dir, {}, "plugin-token-fixture"),
+    MISSION_OPS_STATE_DIR: join(dir, "state"),
+    MISSION_OPS_GUARD_SPOOL_FILE: join(dir, "plugin-spool.jsonl"),
+  }, async () => {
+    const { call } = buildSpyServer(SUP_WRITE);
+    const result = await call({ method: "tools/call", params: { name: "engineering.mission.nudge", arguments: { missionId: "guard-e2e-probe", message: "probe", operatorOrder: GUARD_TOKEN } } }, PROBE_CTX);
+    const text = resultText(result);
+    assert.ok(!text.includes("SUPERVISOR_ACTION_NEEDS_ORDER") && !text.includes("OPERATOR_ORDER_UNVERIFIED"), `token must pass the guard, got: ${text.slice(0, 300)}`);
+    assert.ok(text.includes("pane_lost") || text.includes("refused_busy"), `handler must be reached (fabricated pane is lost), got: ${text.slice(0, 300)}`);
+    const pluginLines = readSpool(join(dir, "plugin-spool.jsonl"));
+    assert.ok(pluginLines.some((l) => l.event === "operator_order_verified"), "pass with verified token is audited by the plugin guard");
+  }).finally(() => rmSync(dir, { recursive: true, force: true }));
+});
+
+test("E2E: engineering.mission.nudge by supervisor with TEXTUAL order -> OPERATOR_ORDER_UNVERIFIED (ledger intocado)", () => {
   if (!PLUGIN_PRESENT) return;
   const dir = tempDir();
   fabricateLedger(dir, "guard-e2e-probe");
@@ -264,10 +396,8 @@ test("E2E: engineering.mission.nudge by supervisor WITH operatorOrder passes the
     const { call } = buildSpyServer(SUP_WRITE);
     const result = await call({ method: "tools/call", params: { name: "engineering.mission.nudge", arguments: { missionId: "guard-e2e-probe", message: "probe", operatorOrder: "SHIP-ENG-MCP-04" } } }, PROBE_CTX);
     const text = resultText(result);
-    assert.ok(!text.includes("SUPERVISOR_ACTION_NEEDS_ORDER"), `order must pass the guard, got: ${text.slice(0, 300)}`);
-    assert.ok(text.includes("pane_lost") || text.includes("refused_busy"), `handler must be reached (fabricated pane is lost), got: ${text.slice(0, 300)}`);
-    const pluginLines = readSpool(join(dir, "plugin-spool.jsonl"));
-    assert.ok(pluginLines.some((l) => l.event === "supervisor_action_allowed_by_order"), "pass with order is audited by the plugin guard");
+    assert.ok(text.includes("OPERATOR_ORDER_UNVERIFIED"), `textual order must NOT authorize mutation, got: ${text.slice(0, 300)}`);
+    assert.ok(pluginSpoolHas(join(dir, "plugin-spool.jsonl"), "operator_order_unverified"), "unverified refusal audited by the plugin guard");
   }).finally(() => rmSync(dir, { recursive: true, force: true }));
 });
 

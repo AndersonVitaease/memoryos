@@ -54,7 +54,13 @@ export function orchPreauthPath(env: NodeJS.ProcessEnv = process.env): string {
   return env.ORCH_PREAUTH_PATH || ORCH_PREAUTH_DEFAULT_PATH;
 }
 
-/** Canonical JSON (chaves ordenadas, undefined descartado) — hash é sobre conteúdo. */
+/** Canonical JSON (chaves ordenadas, undefined descartado) — hash é sobre conteúdo.
+ * Exportado também para os artefatos irmãos (SEC-OPERATOR-IDENTITY-01: token de
+ * ordem e allowlist do operator usam a MESMA canonicalização). */
+export function canonicalJson(value: unknown): string {
+  return canonical(value);
+}
+
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
   if (value && typeof value === 'object') {
