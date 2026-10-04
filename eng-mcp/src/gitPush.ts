@@ -22,6 +22,15 @@ import { spawn } from "node:child_process";
 import { accessSync, appendFileSync, constants as fsConstants, mkdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { fetchBranchHeadFresh, redactGitHubSecrets } from "./githubRead.ts";
+// GIT-PUSH-APP-AUTH-01: the credential SOURCE is resolved centrally — the GitHub
+// App installation token (self-rotating, minted per push, reused from the
+// githubAppAuth cache while >5min of life remains) is primary; the operator
+// credential-store FILE is the fallback only when the App is not configured and
+// ENG_MCP_GIT_CRED_MODE allows it (default app-with-fallback). The module still
+// never reads credential content: the App token is materialized as a transient
+// 0600 credential-store file (gitCredSource) and the PAT path keeps the
+// stat-only discipline; no token reaches argv, env or logs either way.
+import { planGitCredential, resolveGitCredential, GitCredSourceError, type GitCredMode, type GitCredPlan, type GitCredSource, type GitCredentialResolution, type PatWarning } from "./gitCredSource.ts";
 
 export class GitPushError extends Error {
   constructor(readonly code: string, readonly detail?: string) {
@@ -61,7 +70,7 @@ export type GitPushReport = {
   aheadCount: number | null;
   pendingCommits: string[];
   uncommitted: { modified: number; untracked: number };
-  credential: { state: "mounted" | "missing"; path: string; detail?: string };
+  credential: { state: "mounted" | "missing"; path: string; detail?: string; credSource: GitCredSource | null; warning?: PatWarning };
   hooks: "enabled";
   refspec: string;
   expectedHead: string | null;
@@ -74,7 +83,39 @@ export type GitPushReport = {
 
 type GitRunner = NonNullable<GitPushDeps["executeGit"]>;
 type RemoteHead = { sha: string; commitDate: string | null };
-type PushAudit = { result: "pushed" | "failed" | "postcheck-failed"; code: string | null; remoteHeadBefore: string | null; pushedSha: string | null; aheadCount: number | null };
+// GIT-PUSH-APP-AUTH-01: every audit line names the credential SOURCE actually
+// used (github-app | pat-fallback) and the configured mode; a PAT fallback in
+// app-with-fallback mode is never silent (typed warning github_app_fallback_pat).
+type PushAudit = { result: "pushed" | "failed" | "postcheck-failed"; code: string | null; remoteHeadBefore: string | null; pushedSha: string | null; aheadCount: number | null; credSource: GitCredSource | null; credMode: GitCredMode | null; warning?: PatWarning };
+
+function credentialPlan(): GitCredPlan {
+  try { return planGitCredential(); } catch (error) {
+    const code = error instanceof GitCredSourceError ? error.code : "GIT_CRED_MODE_INVALID";
+    throw new GitPushError(code, error instanceof Error ? error.message : String(error));
+  }
+}
+
+// The origin URL is read ONLY to shape the credential-store entry for the App
+// token (it must match the remote for git to consult it) and is never surfaced
+// in a report, an audit line or an error — it may embed a username.
+async function readOriginUrl(git: GitRunner, timeoutMs: number): Promise<string | null> {
+  try {
+    const result = await git(["remote", "get-url", "origin"], timeoutMs);
+    const url = result.stdout.trim();
+    return result.exitCode === 0 && url ? url : null;
+  } catch { return null; }
+}
+
+function wrapCredResolution(error: unknown): GitPushError {
+  const code = error instanceof GitCredSourceError ? error.code : "GIT_CRED_RESOLUTION_FAILED";
+  return new GitPushError(code, error instanceof Error ? error.message : String(error));
+}
+
+function pushArgv(helperFile: string): string[] {
+  return ["-c", "credential.helper=", "-c", `credential.helper=store --file=${helperFile}`, "push", "origin", refspec(PUSH_BRANCH)];
+}
+
+const AUTH_REJECTED_STDERR = /could not read Username|Authentication failed|401|Invalid username or password|terminal prompts disabled/i;
 
 function assertSafeInput(input: GitPushInput): void {
   const keys = Object.keys(input ?? {});
@@ -89,7 +130,9 @@ function resolveCredentialPath(deps: GitPushDeps): string {
   return deps.credentialFile ?? process.env.GIT_CREDENTIALS_FILE ?? CREDENTIAL_FILE_DEFAULT;
 }
 
-function credentialState(deps: GitPushDeps): GitPushReport["credential"] {
+type CredentialFileState = { state: "mounted" | "missing"; path: string; detail?: string };
+
+function credentialState(deps: GitPushDeps): CredentialFileState {
   const target = resolveCredentialPath(deps);
   try {
     const stats = statSync(target);
@@ -179,6 +222,7 @@ function refspec(branch: string): string {
 
 async function planPush(deps: GitPushDeps, input: GitPushInput, timeoutMs: number): Promise<GitPushReport> {
   const git = deps.executeGit ?? defaultExecuteGit(deps.repoRoot);
+  const plan = credentialPlan();
   const credential = credentialState(deps);
   const localHead = await localBranchHead(git, PUSH_BRANCH, timeoutMs);
   const remoteHead = await fetchRemoteHead(deps, PUSH_BRANCH);
@@ -188,11 +232,15 @@ async function planPush(deps: GitPushDeps, input: GitPushInput, timeoutMs: numbe
   if (relation === "diverged") blockers.push("PUSH_STATE_DIVERGED");
   if (relation === "non-fast-forward") blockers.push("PUSH_NON_FAST_FORWARD_BLOCKED");
   if (relation === "up-to-date") blockers.push("PUSH_NOTHING_TO_PUSH");
-  if (credential.state !== "mounted") blockers.push("PUSH_CREDENTIAL_MISSING");
+  // GIT-PUSH-APP-AUTH-01: the credential FILE is only required when the planned
+  // source is the PAT fallback — with the App configured the file is irrelevant.
+  if (plan.source === null) blockers.push("GIT_CRED_MODE_NO_APP");
+  if (plan.source === "pat-fallback" && credential.state !== "mounted") blockers.push("PUSH_CREDENTIAL_MISSING");
   if (input.expectedHead && input.expectedHead !== localHead) blockers.push("PUSH_HEAD_MISMATCH");
   return {
     status: "PLAN", mutationPerformed: false, branch: PUSH_BRANCH, localHead, remoteHead,
-    relation, aheadCount, pendingCommits: commits, uncommitted, credential,
+    relation, aheadCount, pendingCommits: commits, uncommitted,
+    credential: { ...credential, credSource: plan.source, ...(plan.warning ? { warning: plan.warning } : {}) },
     hooks: "enabled", refspec: refspec(PUSH_BRANCH), expectedHead: input.expectedHead ?? null, blockers,
   };
 }
@@ -223,38 +271,55 @@ async function executePush(deps: GitPushDeps, input: GitPushInput, timeoutMs: nu
   const git = deps.executeGit ?? defaultExecuteGit(deps.repoRoot);
   const localHead = await localBranchHead(git, PUSH_BRANCH, timeoutMs);
   if (input.expectedHead && input.expectedHead !== localHead) throw new GitPushError("PUSH_HEAD_MISMATCH", `expectedHead ${input.expectedHead} != local HEAD ${localHead} — refuse instead of pushing an unexpected state`);
-  const credential = credentialState(deps);
-  if (credential.state !== "mounted") throw new GitPushError("PUSH_CREDENTIAL_MISSING", credential.detail ?? `credential file ${credential.path} is not a readable file`);
-  const remoteHead = await fetchRemoteHead(deps, PUSH_BRANCH);
-  const { relation, aheadCount } = await classifyRelation(git, localHead, remoteHead.sha, timeoutMs);
-  if (relation === "diverged") throw new GitPushError("PUSH_STATE_DIVERGED", `remote ${PUSH_BRANCH} head ${remoteHead.sha} is absent from the local object database — reconciliation (fetch) is operator work; this tool never fetches`);
-  if (relation === "non-fast-forward") throw new GitPushError("PUSH_NON_FAST_FORWARD_BLOCKED", `local ${PUSH_BRANCH} is ${aheadCount} ahead but remote head ${remoteHead.sha} is not an ancestor — a push would be rejected non-fast-forward; reconciliation is operator work`);
-  if (relation === "up-to-date") throw new GitPushError("PUSH_NOTHING_TO_PUSH", `local ${localHead} already equals the remote head`);
-  const argv = ["-c", "credential.helper=", "-c", `credential.helper=store --file=${credential.path}`, "push", "origin", refspec(PUSH_BRANCH)];
-  const push = await git(argv, timeoutMs);
-  if (push.exitCode !== 0) {
-    const failure = mapPushFailure(push.stderr, push.exitCode);
-    await writeAudit(deps, { result: "failed", code: failure.code, remoteHeadBefore: remoteHead.sha, pushedSha: null, aheadCount });
-    throw failure;
-  }
-  // Postcheck: the LIVE remote head must equal the pushed sha — bounded
-  // retries absorb brief upstream lag; success is NEVER taken from git stdout.
-  let remoteHeadAfter: GitPushHead | null = null;
-  for (let attempt = 1; attempt <= PUSH_POSTCHECK_ATTEMPTS; attempt += 1) {
-    remoteHeadAfter = await fetchRemoteHead(deps, PUSH_BRANCH);
-    if (remoteHeadAfter.sha === localHead) {
-      const audit = await writeAudit(deps, { result: "pushed", code: null, remoteHeadBefore: remoteHead.sha, pushedSha: localHead, aheadCount });
-      return {
-        status: "PUSHED", mutationPerformed: true, branch: PUSH_BRANCH, localHead, remoteHead,
-        relation: "fast-forward", aheadCount, pendingCommits: [], uncommitted: await uncommittedCounts(git, timeoutMs),
-        credential, hooks: "enabled", refspec: refspec(PUSH_BRANCH), expectedHead: input.expectedHead ?? null,
-        blockers: [], pushedSha: localHead, remoteHeadAfter, durationMs: Date.now() - started, audit,
-      };
+  const plan = credentialPlan();
+  if (plan.source === null) throw new GitPushError("GIT_CRED_MODE_NO_APP", "ENG_MCP_GIT_CRED_MODE=app-only but the GitHub App is not configured (GITHUB_APP_ID + GITHUB_INSTALLATION_ID missing) — refusing the PAT fallback");
+  const patState = plan.source === "pat-fallback" ? credentialState(deps) : null;
+  if (plan.source === "pat-fallback" && patState && patState.state !== "mounted") throw new GitPushError("PUSH_CREDENTIAL_MISSING", patState.detail ?? `credential file ${patState.path} is not a readable file`);
+  const credential: GitPushReport["credential"] = { ...(plan.source === "pat-fallback" && patState ? patState : { state: "mounted" as const, path: "(github-app installation token — transient 0600 credential file)" }), credSource: plan.source, ...(plan.warning ? { warning: plan.warning } : {}) };
+  const remoteUrl = await readOriginUrl(git, timeoutMs);
+  let resolution: GitCredentialResolution;
+  try { resolution = await resolveGitCredential(plan.mode, remoteUrl, resolveCredentialPath(deps)); } catch (error) { throw wrapCredResolution(error); }
+  try {
+    const remoteHead = await fetchRemoteHead(deps, PUSH_BRANCH);
+    const { relation, aheadCount } = await classifyRelation(git, localHead, remoteHead.sha, timeoutMs);
+    if (relation === "diverged") throw new GitPushError("PUSH_STATE_DIVERGED", `remote ${PUSH_BRANCH} head ${remoteHead.sha} is absent from the local object database — reconciliation (fetch) is operator work; this tool never fetches`);
+    if (relation === "non-fast-forward") throw new GitPushError("PUSH_NON_FAST_FORWARD_BLOCKED", `local ${PUSH_BRANCH} is ${aheadCount} ahead but remote head ${remoteHead.sha} is not an ancestor — a push would be rejected non-fast-forward; reconciliation is operator work`);
+    if (relation === "up-to-date") throw new GitPushError("PUSH_NOTHING_TO_PUSH", `local ${localHead} already equals the remote head`);
+    let push = await git(pushArgv(resolution.helperFile), timeoutMs);
+    // One renewal retry on auth rejection: a cached installation token may have
+    // been revoked or expired server-side despite local TTL math — drop it, mint
+    // a fresh one and try again exactly once (never a blind retry loop).
+    if (push.exitCode !== 0 && resolution.credSource === "github-app" && AUTH_REJECTED_STDERR.test(push.stderr)) {
+      resolution.cleanup();
+      try { resolution = await resolveGitCredential(plan.mode, remoteUrl, resolveCredentialPath(deps)); } catch (error) { throw wrapCredResolution(error); }
+      push = await git(pushArgv(resolution.helperFile), timeoutMs);
     }
-    if (attempt < PUSH_POSTCHECK_ATTEMPTS) await new Promise((resolve) => setTimeout(resolve, PUSH_POSTCHECK_DELAY_MS));
+    if (push.exitCode !== 0) {
+      const failure = mapPushFailure(push.stderr, push.exitCode);
+      await writeAudit(deps, { result: "failed", code: failure.code, remoteHeadBefore: remoteHead.sha, pushedSha: null, aheadCount, credSource: resolution.credSource, credMode: plan.mode, ...(resolution.credSource === "pat-fallback" && resolution.warning ? { warning: resolution.warning } : {}) });
+      throw failure;
+    }
+    // Postcheck: the LIVE remote head must equal the pushed sha — bounded
+    // retries absorb brief upstream lag; success is NEVER taken from git stdout.
+    let remoteHeadAfter: GitPushHead | null = null;
+    for (let attempt = 1; attempt <= PUSH_POSTCHECK_ATTEMPTS; attempt += 1) {
+      remoteHeadAfter = await fetchRemoteHead(deps, PUSH_BRANCH);
+      if (remoteHeadAfter.sha === localHead) {
+        const audit = await writeAudit(deps, { result: "pushed", code: null, remoteHeadBefore: remoteHead.sha, pushedSha: localHead, aheadCount, credSource: resolution.credSource, credMode: plan.mode, ...(resolution.credSource === "pat-fallback" && resolution.warning ? { warning: resolution.warning } : {}) });
+        return {
+          status: "PUSHED", mutationPerformed: true, branch: PUSH_BRANCH, localHead, remoteHead,
+          relation: "fast-forward", aheadCount, pendingCommits: [], uncommitted: await uncommittedCounts(git, timeoutMs),
+          credential, hooks: "enabled", refspec: refspec(PUSH_BRANCH), expectedHead: input.expectedHead ?? null,
+          blockers: [], pushedSha: localHead, remoteHeadAfter, durationMs: Date.now() - started, audit,
+        };
+      }
+      if (attempt < PUSH_POSTCHECK_ATTEMPTS) await new Promise((resolve) => setTimeout(resolve, PUSH_POSTCHECK_DELAY_MS));
+    }
+    await writeAudit(deps, { result: "postcheck-failed", code: "PUSH_POSTCHECK_FAILED", remoteHeadBefore: remoteHead.sha, pushedSha: localHead, aheadCount, credSource: resolution.credSource, credMode: plan.mode, ...(resolution.credSource === "pat-fallback" && resolution.warning ? { warning: resolution.warning } : {}) });
+    throw new GitPushError("PUSH_POSTCHECK_FAILED", `postcheck: remote head is ${remoteHeadAfter?.sha ?? "unknown"} after ${PUSH_POSTCHECK_ATTEMPTS} fresh reads, expected ${localHead}`);
+  } finally {
+    resolution.cleanup();
   }
-  await writeAudit(deps, { result: "postcheck-failed", code: "PUSH_POSTCHECK_FAILED", remoteHeadBefore: remoteHead.sha, pushedSha: localHead, aheadCount });
-  throw new GitPushError("PUSH_POSTCHECK_FAILED", `postcheck: remote head is ${remoteHeadAfter?.sha ?? "unknown"} after ${PUSH_POSTCHECK_ATTEMPTS} fresh reads, expected ${localHead}`);
 }
 
 export async function runGitPush(input: GitPushInput, deps: GitPushDeps): Promise<GitPushReport> {

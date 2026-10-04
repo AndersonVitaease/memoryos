@@ -20,6 +20,11 @@ import { spawn } from "node:child_process";
 import { accessSync, appendFileSync, constants as fsConstants, mkdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { redactGitHubSecrets } from "./githubRead.ts";
+// GIT-PUSH-APP-AUTH-01: same credential-source treatment as git.push — the
+// GitHub App installation token (transient 0600 credential file, minted per
+// fetch) is primary; the credential-store FILE is the fallback only when the
+// App is not configured and the mode allows it (never silent: warning field).
+import { planGitCredential, resolveGitCredential, GitCredSourceError, type GitCredMode, type GitCredPlan, type GitCredSource, type GitCredentialResolution, type PatWarning } from "./gitCredSource.ts";
 
 export class GitFetchError extends Error {
   constructor(readonly code: string, readonly detail?: string) {
@@ -65,7 +70,7 @@ export type GitFetchReport = {
   mutationPerformed: false;
   boundary: string;
   remote: string;
-  credential: { state: "mounted" | "missing"; path: string; detail?: string };
+  credential: { state: "mounted" | "missing"; path: string; detail?: string; credSource: GitCredSource | null; warning?: PatWarning };
   fetch: {
     exitCode: number;
     remoteTrackingRefs: { updated: number; added: number; removed: number; changes: GitFetchRefChange[] };
@@ -89,7 +94,9 @@ function resolveCredentialPath(deps: GitFetchDeps): string {
   return deps.credentialFile ?? process.env.GIT_CREDENTIALS_FILE ?? CREDENTIAL_FILE_DEFAULT;
 }
 
-function credentialState(deps: GitFetchDeps): GitFetchReport["credential"] {
+type CredentialFileState = { state: "mounted" | "missing"; path: string; detail?: string };
+
+function credentialState(deps: GitFetchDeps): CredentialFileState {
   const target = resolveCredentialPath(deps);
   try {
     const stats = statSync(target);
@@ -219,7 +226,19 @@ function mapFetchFailure(stderr: string, exitCode: number): GitFetchError {
   return new GitFetchError("FETCH_EXECUTION_FAILED", `git fetch exit ${exitCode}: ${detail}`);
 }
 
-type FetchAudit = { result: "fetched" | "failed"; code: string | null; ahead: number | null; behind: number | null; remoteTrackingChanged: boolean };
+type FetchAudit = { result: "fetched" | "failed"; code: string | null; ahead: number | null; behind: number | null; remoteTrackingChanged: boolean; credSource: GitCredSource | null; credMode: GitCredMode | null; warning?: PatWarning };
+
+function credentialPlan(): GitCredPlan {
+  try { return planGitCredential(); } catch (error) {
+    const code = error instanceof GitCredSourceError ? error.code : "GIT_CRED_MODE_INVALID";
+    throw new GitFetchError(code, error instanceof Error ? error.message : String(error));
+  }
+}
+
+function wrapCredResolution(error: unknown): GitFetchError {
+  const code = error instanceof GitCredSourceError ? error.code : "GIT_CRED_RESOLUTION_FAILED";
+  return new GitFetchError(code, error instanceof Error ? error.message : String(error));
+}
 
 async function writeAudit(deps: GitFetchDeps, entry: FetchAudit): Promise<string> {
   const file = deps.auditFile ?? process.env.GIT_FETCH_AUDIT_FILE ?? AUDIT_FILE_DEFAULT;
@@ -237,19 +256,33 @@ export async function runGitFetch(input: GitFetchInput, deps: GitFetchDeps): Pro
   assertNoInput(input);
   const started = Date.now();
   const timeoutMs = FETCH_TIMEOUT_MS;
-  const credential = credentialState(deps);
-  if (credential.state !== "mounted") throw new GitFetchError("FETCH_CREDENTIAL_MISSING", credential.detail ?? `credential file ${credential.path} is not a readable file`);
   const git = deps.executeGit ?? defaultExecuteGit(deps.repoRoot);
-  let audit: FetchAudit = { result: "failed", code: null, ahead: null, behind: null, remoteTrackingChanged: false };
+  let audit: FetchAudit = { result: "failed", code: null, ahead: null, behind: null, remoteTrackingChanged: false, credSource: null, credMode: null };
+  let resolution: GitCredentialResolution | null = null;
   try {
     // Remote existence is prechecked read-only (and the URL is deliberately never read
     // into a report — it may embed credentials; only the fixed NAME is ever reported).
+    // GIT-PUSH-APP-AUTH-01: the URL is additionally read in-process to shape the
+    // credential-store entry for the App token (never surfaced anywhere).
     const remote = await git(["remote", "get-url", REMOTE], timeoutMs);
     if (remote.exitCode !== 0) throw mapFetchFailure(remote.stderr || `git remote get-url ${REMOTE} exited ${remote.exitCode}`, remote.exitCode);
+    const remoteUrl = remote.stdout.trim();
+    const plan = credentialPlan();
+    let credential: GitFetchReport["credential"];
+    if (plan.source === null) throw new GitFetchError("GIT_CRED_MODE_NO_APP", "ENG_MCP_GIT_CRED_MODE=app-only but the GitHub App is not configured (GITHUB_APP_ID + GITHUB_INSTALLATION_ID missing) — refusing the PAT fallback");
+    if (plan.source === "pat-fallback") {
+      const state = credentialState(deps);
+      if (state.state !== "mounted") throw new GitFetchError("FETCH_CREDENTIAL_MISSING", state.detail ?? `credential file ${state.path} is not a readable file`);
+      credential = { ...state, credSource: "pat-fallback", ...(plan.warning ? { warning: plan.warning } : {}) };
+    } else {
+      credential = { state: "mounted", path: "(github-app installation token — transient 0600 credential file)", credSource: "github-app" };
+    }
+    try { resolution = await resolveGitCredential(plan.mode, remoteUrl, resolveCredentialPath(deps)); } catch (error) { throw wrapCredResolution(error); }
+    audit = { result: "failed", code: null, ahead: null, behind: null, remoteTrackingChanged: false, credSource: resolution.credSource, credMode: plan.mode, ...(resolution.credSource === "pat-fallback" && resolution.warning ? { warning: resolution.warning } : {}) };
     const before = await snapshot(git, timeoutMs);
     // The ONLY mutation boundary of this tool: remote-tracking refs. --no-tags keeps
     // auto-followed tags out of refs/tags; --prune stays off so nothing is ever deleted.
-    const argv = ["-c", "credential.helper=", "-c", `credential.helper=store --file=${credential.path}`, "fetch", "--no-tags", REMOTE];
+    const argv = ["-c", "credential.helper=", "-c", `credential.helper=store --file=${resolution.helperFile}`, "fetch", "--no-tags", REMOTE];
     const fetched = await git(argv, timeoutMs);
     if (fetched.exitCode !== 0) throw mapFetchFailure(fetched.stderr, fetched.exitCode);
     const after = await snapshot(git, timeoutMs);
@@ -257,7 +290,7 @@ export async function runGitFetch(input: GitFetchInput, deps: GitFetchDeps): Pro
     const remoteTrackingRefs = diffRemoteRefs(before.remoteRefs, after.remoteRefs);
     const comparison = await compareBranches(git, after, timeoutMs);
     const main = comparison.find((entry) => entry.branch === MAIN_BRANCH) ?? null;
-    audit = { result: "fetched", code: null, ahead: main?.ahead ?? null, behind: main?.behind ?? null, remoteTrackingChanged: remoteTrackingRefs.updated + remoteTrackingRefs.added > 0 };
+    audit = { result: "fetched", code: null, ahead: main?.ahead ?? null, behind: main?.behind ?? null, remoteTrackingChanged: remoteTrackingRefs.updated + remoteTrackingRefs.added > 0, credSource: resolution.credSource, credMode: plan.mode, ...(resolution.credSource === "pat-fallback" && resolution.warning ? { warning: resolution.warning } : {}) };
     return {
       status: "FETCHED", mutationPerformed: false,
       boundary: "remote-tracking refs only (refs/remotes/origin/*); the working tree, HEAD, local branches and tags are snapshot-proven unchanged",
@@ -276,5 +309,7 @@ export async function runGitFetch(input: GitFetchInput, deps: GitFetchDeps): Pro
     const code = error instanceof GitFetchError ? error.code : "FETCH_EXECUTION_FAILED";
     await writeAudit(deps, { ...audit, result: "failed", code });
     throw error;
+  } finally {
+    resolution?.cleanup();
   }
 }
