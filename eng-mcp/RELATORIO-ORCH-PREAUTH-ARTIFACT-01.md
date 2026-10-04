@@ -28,6 +28,9 @@ Gate de despacho passou de env para **artefato preauth** com hash de autointegri
 
 **Memória**: capture tentado e INDISPONÍVEL nesta sessão — `engineering.memory.capture` (endpoint de produção) respondeu `AUTHENTICATION_REQUIRED` com a credencial acessível aqui; ídem `engineering.judge.verify` (camada 0 fail-open, convenção JUDGE-HOOKS-01). FINGERPRINT declarado aqui e no verify.json: `{"missionId":"ORCH-PREAUTH-ARTIFACT-01","head":"dab245c3","registrySha16":"n/a (sem credencial de registry nesta sessão)","verdicts":"verify.py:pass; E2E:PASS 10/10; camada1:spot-check-ok (commits em main confirmados; /data/manifests inexistente); camada0:fail-open","ts":"2026-10-04T12:41:12Z"}`. Gravação do ledger fica como dívida para uma sessão com credencial válida.
 
+## Apendice — escre fora do escopo de repo (a pedido explicito do operator, 2026-10-04)
+`/opt/mission-events/preauth-orch-daemon-consume.json` foi gravado por instrucao DIRETA do operator ("grave o manifesto JSON exato ... no arquivo ... e PARE — o supervisor le o arquivo e executa o create"): veiculo de handoff do payload `engineering.mission.preauth` (create, mission orch-daemon-consume, windowMinutes 1440, execute+approval, ops mission-dispatch `python3 -c * *` com fileScope /opt/mission-events/** + /opt/memoryos/** e tool-call-tier2 simbolico). Nao e edicao de producao (o create em /data/manifests continua sendo do operator/supervisor); o watchdog marcou DESVIO DE ESCOPO; registrado aqui conforme a clausula ("Se o contrato realmente exige isso, registre no relatorio e siga").
+
 **operator_channel**: pane da missão (herdr w6:p6G) — fechamento entregue via send-text.
 
 PASS
