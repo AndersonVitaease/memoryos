@@ -113,10 +113,20 @@ function hermeticDeps(): CycleDeps {
   mkdirSync(consumeDeps.missionStateDir, { recursive: true });
   // Probes de execução herméticos: systemctl --failed → vazio (0 unidades failed —
   // o bloqueio "systemd com N unidade(s) failed" é estado AMBIENTAL do host, não do
-  // gate sob prova); demais probes de exec (df) → null (não bloqueia). Load/mem/swap
-  // seguem lendo o host real (a máquina calma não bloqueia).
+  // gate sob prova); demais probes de exec (df) → null (não bloqueia). Probes de
+  // pressão (load/mem/psi/budget/agents) apontam para paths INEXISTENTES do fixture —
+  // null não bloqueia; o gate sob prova é a approval por artefato, não a pressão do host.
   const exec = (cmd: string) => (cmd === "systemctl" ? "" : null);
-  const consumeDepsExec = { ...consumeDeps, exec };
+  const probeInexistente = join(tmp, "probe-inexistente");
+  const consumeDepsExec = {
+    ...consumeDeps,
+    exec,
+    loadavgPath: probeInexistente,
+    meminfoPath: probeInexistente,
+    psiPath: probeInexistente,
+    budgetPath: probeInexistente,
+    agentsPath: probeInexistente,
+  } as unknown as Record<string, string>;
   const breakerDeps = {
     readText: () => null, readdir: () => [], existsSync: () => false,
     spoolPath: join(tmp, "breaker-spool.jsonl"), breakerStatePath: join(tmp, "breaker.json"),
@@ -144,6 +154,20 @@ function withEnv(env: Record<string, string | undefined>, fn: () => Promise<void
   });
 }
 
+// Lock do daemon é COMPARTILHADO com o timer de produção (tmpdir, 30s de frescor) —
+// quando o ciclo de produção o segura, runDaemonCycle devolve ok:false "lock held".
+// Mesma tolerância do E2E: re-tentar até 5x (25s) antes de falhar — o gate sob prova
+// não é o lock, é a approval por artefato.
+async function cycleWithRetry(opts: { consumeDeps: Record<string, string>; breakerDeps: Record<string, unknown> }): Promise<Awaited<ReturnType<typeof runDaemonCycle>>> {
+  let last: Awaited<ReturnType<typeof runDaemonCycle>> | null = null;
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    last = await runDaemonCycle(opts);
+    if (!(last.ok === false && /lock/.test(String(last.reason ?? "")))) return last;
+    await new Promise((r) => setTimeout(r, 5_000));
+  }
+  return last!;
+}
+
 test("C1. ciclo: artefato válido → EXECUTE (despacho tentado pelo caminho governado, approvalSource artifact)", async () => {
   await withEnv({ ORCH_PREAUTH_PATH: VALID, ORCH_DAEMON_APPROVED: undefined, ORCH_QUEUE_COMPACT: "0", ORCH_HYGIENE: "0" }, async () => {
     const { consumeDeps, breakerDeps, queuePath } = hermeticDeps();
@@ -151,7 +175,7 @@ test("C1. ciclo: artefato válido → EXECUTE (despacho tentado pelo caminho gov
     writeFileSync(prompt, "# E2E ORCH-PREAUTH-ARTIFACT-01\n\nFixture de prova — o handler recusa o cwd inexistente.\n");
     const worktreeInexistente = join(DIR, "nao-existe", "worktree");
     writeFileSync(queuePath, JSON.stringify({ id: "e2e-c1", type: "mission_dispatch", payload: { missionId: "PREAUTH-CYCLE-E2E-01", prompt, worktree: worktreeInexistente }, priority: 5, enqueuedAt: new Date().toISOString() }) + "\n");
-    const cycle = await runDaemonCycle({ consumeDeps, breakerDeps });
+    const cycle = await cycleWithRetry({ consumeDeps, breakerDeps });
     assert.equal(cycle.ok, true);
     assert.equal(cycle.mode, "execute");
     assert.equal(cycle.approvalSource, "artifact");
@@ -172,7 +196,7 @@ test("C2. ciclo: artefato expirado → PLAN (awaiting_approval fail-closed, appr
     const prompt = join(DIR, "prompt-fixture-2.md");
     writeFileSync(prompt, "# E2E ORCH-PREAUTH-ARTIFACT-01 (expirado)\n");
     writeFileSync(queuePath, JSON.stringify({ id: "e2e-c2", type: "mission_dispatch", payload: { missionId: "PREAUTH-CYCLE-E2E-02", prompt, worktree: join(DIR, "nao-existe", "worktree") }, priority: 5, enqueuedAt: new Date().toISOString() }) + "\n");
-    const cycle = await runDaemonCycle({ consumeDeps, breakerDeps });
+    const cycle = await cycleWithRetry({ consumeDeps, breakerDeps });
     assert.equal(cycle.ok, true); // fail-closed é exit 0 (modo plan), nunca crash
     assert.equal(cycle.mode, "plan");
     assert.equal(cycle.executed, null);
@@ -197,7 +221,7 @@ test("C3. ciclo: ANTI-SELF-APPROVE — artefato com bytes idênticos após ciclo
 test("C4. ciclo: fila sem promovíveis → modo plan, approvalSource/preauth ainda auditados (validação a cada ciclo)", async () => {
   await withEnv({ ORCH_PREAUTH_PATH: VALID, ORCH_QUEUE_COMPACT: "0", ORCH_HYGIENE: "0" }, async () => {
     const { consumeDeps, breakerDeps } = hermeticDeps();
-    const cycle = await runDaemonCycle({ consumeDeps, breakerDeps });
+    const cycle = await cycleWithRetry({ consumeDeps, breakerDeps });
     assert.equal(cycle.ok, true);
     assert.equal(cycle.mode, "plan");
     assert.equal(cycle.approvalSource, "artifact");

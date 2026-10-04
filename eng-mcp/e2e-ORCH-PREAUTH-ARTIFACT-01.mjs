@@ -58,6 +58,14 @@ function cycleFixtures(n) {
     spoolPath: join(dir, "spool.jsonl"),
     consumeAuditPath: join(dir, "consume-audit.jsonl"),
     missionStateDir: join(dir, "mission-state"),
+    // Probes herméticos (determinismo da prova): pressão do host → null (paths
+    // inexistentes), systemctl/df → fake. O gate sob prova é a approval, não a pressão.
+    loadavgPath: join(dir, "probe-inexistente"),
+    meminfoPath: join(dir, "probe-inexistente"),
+    psiPath: join(dir, "probe-inexistente"),
+    budgetPath: join(dir, "probe-inexistente"),
+    agentsPath: join(dir, "probe-inexistente"),
+    exec: execProbe,
   };
 }
 
