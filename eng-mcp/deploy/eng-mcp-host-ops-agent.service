@@ -1,0 +1,40 @@
+# ENG-HOST-GOVERNED-OPS-01 (04/10) — agente mínimo NO HOST: ponte governada
+# container→host para operações systemd (eng-mcp não enxerga o systemd do host).
+# Unix socket sob /data/host-ops/agent.sock (o container já monta /data rw —
+# NUNCA socket de rede TCP). Defesa em profundidade: o agente valida CADA
+# request contra a própria catálogo (/data/audit/host-ops-agent-catalog.json)
+# e executa systemctl por argv exato (zero shell); mutação via sudo
+# allowlistado por comando exato (sudoers-eng-mcp-host-ops) — SEM root genérico.
+# Anti-frágil: Restart=on-failure (watchdog do contrato). Sem NoNewPrivileges/
+# RestrictSUIDSGID porque o sudo de mutação exige setuid — a superfície é
+# controlada pelo usuário dedicado + sudoers exato + ProtectSystem.
+# Rollback (aditivo): systemctl disable --now eng-mcp-host-ops-agent &&
+# rm /etc/systemd/system/eng-mcp-host-ops-agent.service && daemon-reload &&
+# rm -rf /data/host-ops (socket é aditivo; nada existente é alterado).
+[Unit]
+Description=ENG-MCP host ops agent (ENG-HOST-GOVERNED-OPS-01) — governed systemd bridge for the eng-mcp container
+After=network.target
+
+[Service]
+Type=simple
+User=eng-mcp-host-ops
+Group=eng-mcp-release
+WorkingDirectory=/opt/memoryos/eng-mcp
+ExecStart=/usr/bin/node --import tsx src/hostOpsAgent.ts
+Restart=on-failure
+RestartSec=2
+UMask=0007
+Environment=HOME=/tmp
+Environment=NODE_ENV=production
+ProtectSystem=full
+ProtectHome=read-only
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+LockPersonality=true
+RestrictNamespaces=yes
+
+[Install]
+WantedBy=multi-user.target

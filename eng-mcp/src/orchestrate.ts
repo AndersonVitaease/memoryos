@@ -11,6 +11,7 @@ import os from "node:os";
 import { existsSync, mkdirSync, readFileSync, readdirSync, appendFileSync, writeFileSync, unlinkSync, openSync, readSync, closeSync, statSync } from "node:fs";
 import path from "node:path";
 import { runOrchestrateQueueCompaction } from "./orchestrateCompaction.ts";  // ORCH-QUEUE-COMPACT-01: arquivamento no fim do ciclo
+import { hostOpsSocketState } from "./hostSystemd.ts";  // ENG-HOST-GOVERNED-OPS-01: liveness honesta do socket host-ops no list
 import { readPreauthArtifact, orchPreauthPath, orchPreauthAllowsTier2, type OrchPreauthReading } from "./orchPreauthArtifact.ts";  // ORCH-TOOLS-01: artefato preauth para tier-2
 import * as z from "zod/v4";
 
@@ -1722,5 +1723,8 @@ export function orchestrateList(deps?: OrchestrateDeps): { count: number; entrie
     } catch { /* malformed ledger: skip enrichment */ }
     return entry;
   });
-  return { count: enriched.length, entries: enriched, spend, consumer, breaker };
+  // ENG-HOST-GOVERNED-OPS-01: liveness honesta do socket host-ops (presença
+  // do arquivo socket — presença ≠ vivo; o round-trip real é op=ping da tool).
+  const hostOps = hostOpsSocketState();
+  return { count: enriched.length, entries: enriched, spend, consumer, breaker, hostOps };
 }

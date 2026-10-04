@@ -1,0 +1,15 @@
+# ENG-HOST-GOVERNED-OPS-01 (04/10) — unit de PROVA para mutação governada:
+# oneshot inofensivo (ExecStart=/bin/true, RemainAfterExit) usada nas provas
+# restart-with-order / restart-without-order do engineering.host.systemd —
+# mutação REAL via socket + sudo, com blast-radius zero. Rollback: disable
+# --now + rm do arquivo + daemon-reload (aditivo).
+[Unit]
+Description=ENG-MCP host-ops probe (ENG-HOST-GOVERNED-OPS-01) — harmless oneshot for governed mutation proofs
+
+[Service]
+Type=oneshot
+ExecStart=/bin/true
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -71,6 +71,8 @@ import { missionDispatchInputSchema, missionStatusInputSchema, missionReadInputS
 import { getRoster } from "./sessionRoster.ts";
 // WORKER-SHELL-PROPRIA-01: shell própria do worker (roteador 4-andares tier-0/tier-1/jev/operator).
 import { runShellRun, shellRunInputSchema } from "./shellRun.ts";
+// ENG-HOST-GOVERNED-OPS-01: operações systemd do host via ponte governada (agente no host + unix socket).
+import { runHostSystemd, hostSystemdInputSchema } from "./hostSystemd.ts";
 // SEC-SHELL-GUARD-01: allowlist por componente como dado (catálogo versionado + mutação auditada).
 import { runShellAllowlist, shellAllowlistInputSchema } from "./shellAllowlist.ts";
 
@@ -1788,5 +1790,28 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
     requireWrite();
     if (input.op === "put") assertSupervisorMutationAllowed("engineering.shell.allowlist", subject.subject, input);
     return response(await Promise.resolve(runShellAllowlist(input)));
+  }));
+
+  // ENG-HOST-GOVERNED-OPS-01: operações systemd do HOST governadas — ponte
+  // container→host via agente mínimo no host (unit dedicada +
+  // eng-mcp-host-ops-agent.service, unix socket sob /data, NUNCA rede TCP).
+  // Roteador 4-andares espelha o shell.run: (0) units críticas/verbos nunca
+  // expostos recusam HOST_OPS_FORBIDDEN ANTES de tudo (operatorOrder não
+  // vence); (1) catálogo por componente /data/audit/host-ops-allowlist-<comp>.
+  // json — leitura (status/show/is-active/is-enabled/list-units) executa direto
+  // via socket, mutação (restart/reload/daemon-reload) só para units em
+  // mutationUnits e SEMPRE com operatorOrder verificado (guard
+  // GUARD-SUPERVISOR-READONLY-01 p/ supervisor + token SEC-OPERATOR-IDENTITY-01);
+  // (2) leitura fora do catálogo → Jev, fail-closed; (3) operador — order
+  // verificada encaminha ao agente, que ainda aplica a PRÓPRIA catálogo (o
+  // guard do MCP não é a única barreira). Audit de toda decisão em
+  // /data/audit/host-ops.jsonl; socket ausente/parado → HOST_AGENT_UNAVAILABLE
+  // tipado (nunca finge execução); op=ping = liveness real do socket.
+  register("engineering.host.systemd", "write", (name) => server.registerTool(name, {
+    description: "ENG-HOST-GOVERNED-OPS-01: operações systemd do HOST via ponte governada container→host (agente mínimo no host, unix socket, defesa em profundidade). op=ping: liveness real (round-trip no socket). op=exec (default): verb+unit(+args) com roteador 4-andares — TIER 0: units críticas (sshd, docker, o próprio agente, orquestrador, systemd core) e verbos nunca expostos (disable/mask/kill/reset-failed/edit/power lifecycle) recusam HOST_OPS_FORBIDDEN ANTES de tudo, operatorOrder NÃO vence; TIER 1: catálogo por componente /data/audit/host-ops-allowlist-<componente>.json — leitura (status/show/is-active/is-enabled/list-units) executa direto via socket (sha16 do catálogo no audit), mutação (restart/reload/daemon-reload) só para units em mutationUnits e SEMPRE exige operatorOrder VERIFICADO (supervisor: guard GUARD-SUPERVISOR-READONLY-01; todos: token de ordem 0600, SEC-OPERATOR-IDENTITY-01); TIER 2: leitura fora do catálogo → Jev classifica (safeScore >= 0.9), fail-closed se o judge cair; TIER 3: consequência de operador — order verificada encaminha ao agente, que aplica a PRÓPRIA catálogo em nível de sistema (recusa HOST_AGENT_REFUSED fora dela). Execução por argv exato, zero shell, no host; audit de toda decisão (executada/recusada, dois lados) em /data/audit/host-ops.jsonl; socket ausente/parado/mudo → HOST_AGENT_UNAVAILABLE tipado, NUNCA finge execução.",
+    inputSchema: hostSystemdInputSchema
+  }, async (input) => {
+    requireWrite();
+    return response(await runHostSystemd(input, { subject: subject.subject }));
   }));
 }

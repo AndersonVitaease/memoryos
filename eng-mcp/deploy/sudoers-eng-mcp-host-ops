@@ -1,0 +1,8 @@
+# ENG-HOST-GOVERNED-OPS-01 (04/10) — sudo allowlistado POR COMANDO EXATO para
+# o agente host-ops (usuário eng-mcp-host-ops). Leitura roda SEM sudo
+# (unprivileged: status/show/is-active/is-enabled/list-units). Mutação: apenas
+# estes comandos exatos — unit fora da lista é recusada pelo sudo (barreira
+# adicional atrás da catálogo do agente). Instalar com modo 0440 em
+# /etc/sudoers.d/eng-mcp-host-ops (visudo -c antes de ativar).
+Defaults:eng-mcp-host-ops !requiretty
+eng-mcp-host-ops ALL=(root) NOPASSWD: /usr/bin/systemctl restart eng-mcp-host-ops-probe.service, /usr/bin/systemctl reload eng-mcp-host-ops-probe.service, /usr/bin/systemctl restart eng-mcp-release-runner.service, /usr/bin/systemctl reload eng-mcp-release-runner.service, /usr/bin/systemctl daemon-reload
