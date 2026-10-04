@@ -41,11 +41,12 @@
  * orchestrate.list (presença do socket) + op=ping com resposta real.
  *
  * NOTA DE INTEGRAÇÃO (SEC-OPERATOR-IDENTITY-01, irmã em voo): a verificação do
- * operatorOrder é replicada AQUI (verifyOperatorOrderLocal) contra a MESMA
- * interface (operatorOrder + arquivo de hash 0600, semântica idêntica ao
- * operatorToken.ts da irmã — modo 0600, revoked/disabled, version 1, TTL,
- * hash16 de autointegridade sobre corpo canônico). Quando a irmã pousar em
- * main, trocar por import do verificador dela (fonte única).
+ * operatorOrder consome o verificador COMPARTILHADO da irmã
+ * SEC-OPERATOR-IDENTITY-01 (operatorToken.ts, commit 1b6f6e3f — aterrissou em
+ * main ANTES deste commit): mesma interface (operatorOrder + arquivo de hash
+ * 0600 — modo 0600, revoked/disabled, version 1, TTL, hash16 de
+ * autointegridade sobre corpo canônico). verifyOperatorOrderLocal é wrapper de
+ * delegação (nome preservado para deps.verifyToken e testes).
  */
 import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
@@ -54,6 +55,7 @@ import { connect as netConnect } from "node:net";
 import * as z from "zod/v4";
 import { EngineeringError } from "./policy.js";
 import { assertSupervisorMutationAllowed } from "./supervisorGuard.ts";
+import { verifyOperatorOrderToken, operatorTokenPath, type OperatorOrderVerdict } from "./operatorToken.ts";
 
 export const HOST_SYSTEMD_TOOL = "engineering.host.systemd";
 /** Socket unix da ponte container→host (sob /data: o bind mount do container
@@ -283,84 +285,23 @@ export function classifyHostOp(
 }
 
 // ---------------------------------------------------------------------------
-// Verificação de operatorOrder (mesma interface/interface de arquivo da irmã
-// SEC-OPERATOR-IDENTITY-01; trocar pelo verificador dela quando pousar)
+// Verificação de operatorOrder (interface de arquivo da irmã
+// SEC-OPERATOR-IDENTITY-01; verificador COMPARTILHADO consumido por delegação)
 // ---------------------------------------------------------------------------
 
-/** canonicalJson idêntico ao orchPreauthArtifact.ts da irmã (corpo canônico do token). */
-export function canonicalJsonHostOps(value: unknown): string {
-  const canonical = (v: unknown): string => {
-    if (Array.isArray(v)) return `[${v.map(canonical).join(",")}]`;
-    if (v && typeof v === "object") {
-      const obj = v as Record<string, unknown>;
-      return `{${Object.keys(obj).sort().filter((k) => obj[k] !== undefined).map((k) => `${JSON.stringify(k)}:${canonical(obj[k])}`).join(",")}}`;
-    }
-    return JSON.stringify(v);
-  };
-  return canonical(value);
-}
+/** canonicalJson do corpo canônico do token — ÚNICA fonte: orchPreauthArtifact.ts (irmã). */
+export { canonicalJson as canonicalJsonHostOps } from "./orchPreauthArtifact.ts";
 
-const HEX64 = /^[0-9a-f]{64}$/;
-const HEX16 = /^[0-9a-f]{16}$/;
-
-export type HostOpsOrderVerdict = {
-  verified: boolean;
-  status: "valid" | "disabled" | "absent" | "expired" | "revoked" | "hash_mismatch" | "invalid";
-  reason: string | null;
-  tokenHash16: string | null;
-  presentedHash16: string;
-};
+export type HostOpsOrderVerdict = OperatorOrderVerdict;
 
 /**
- * Réplica da semântica de verifyOperatorOrderToken (operatorToken.ts da irmã,
- * WIP em voo): modo 0600 → JSON → revoked/revokedAt → disabled → version 1 →
- * tokenHash hex64 → TTL → hash16 de autointegridade (canonicalJson sem o
- * próprio campo) → comparação sha256. Fail-closed em TODOS os estados
- * desconhecidos; nunca loga o token (só hash16).
+ * Delegação ao verificador compartilhado (operatorToken.ts da irmã, commit
+ * 1b6f6e3f — aterrissou ANTES deste commit, então o contrato manda CONSUMIR o
+ * verificador dela em vez de replicar). Fail-closed em TODOS os estados;
+ * nunca loga o token (só hash16).
  */
-export function verifyOperatorOrderLocal(candidate: string, path: string = process.env.ENG_MCP_OPERATOR_TOKEN_FILE ?? "/data/manifests/operator-order-token.json", now: number = Date.now()): HostOpsOrderVerdict {
-  const presentedHash16 = createHash("sha256").update(String(candidate)).digest("hex").slice(0, 16);
-  let st;
-  try {
-    st = statSync(path);
-  } catch {
-    return { verified: false, status: "absent", reason: "ABSENT", tokenHash16: null, presentedHash16 };
-  }
-  if (!st.isFile()) return { verified: false, status: "invalid", reason: "NOT_A_FILE", tokenHash16: null, presentedHash16 };
-  if ((st.mode & 0o077) !== 0) return { verified: false, status: "invalid", reason: "INSECURE_MODE", tokenHash16: null, presentedHash16 };
-  let art: Record<string, unknown>;
-  try {
-    art = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
-  } catch {
-    return { verified: false, status: "invalid", reason: "UNREADABLE_OR_CORRUPT", tokenHash16: null, presentedHash16 };
-  }
-  if (!art || typeof art !== "object" || Array.isArray(art)) return { verified: false, status: "invalid", reason: "NOT_AN_OBJECT", tokenHash16: null, presentedHash16 };
-  if (art.revoked === true || (typeof art.revokedAt === "string" && art.revokedAt.length > 0)) {
-    return { verified: false, status: "revoked", reason: "REVOKED", tokenHash16: null, presentedHash16 };
-  }
-  if (art.disabled === true) return { verified: false, status: "disabled", reason: "PLACEHOLDER_DISABLED", tokenHash16: null, presentedHash16 };
-  if (art.version !== 1) return { verified: false, status: "invalid", reason: "UNSUPPORTED_VERSION", tokenHash16: null, presentedHash16 };
-  const tokenHash = typeof art.tokenHash === "string" ? art.tokenHash.toLowerCase() : null;
-  if (tokenHash === null || !HEX64.test(tokenHash)) return { verified: false, status: "invalid", reason: "INVALID_TOKEN_HASH", tokenHash16: null, presentedHash16 };
-  if (typeof art.expiresAt === "string" && art.expiresAt.length > 0) {
-    const exp = Date.parse(art.expiresAt);
-    if (!Number.isFinite(exp)) return { verified: false, status: "invalid", reason: "INVALID_EXPIRES_AT", tokenHash16: tokenHash.slice(0, 16), presentedHash16 };
-    if (exp <= now) return { verified: false, status: "expired", reason: "EXPIRED", tokenHash16: tokenHash.slice(0, 16), presentedHash16 };
-  }
-  const hash16 = typeof art.hash16 === "string" ? art.hash16.toLowerCase() : null;
-  if (!HEX16.test(hash16 ?? "")) return { verified: false, status: "invalid", reason: "MISSING_SELF_HASH", tokenHash16: tokenHash.slice(0, 16), presentedHash16 };
-  const body: Record<string, unknown> = { ...art };
-  delete body.hash16;
-  const computed = createHash("sha256").update(canonicalJsonHostOps(body)).digest("hex").slice(0, 16);
-  if (hash16 !== computed) return { verified: false, status: "hash_mismatch", reason: "HASH_MISMATCH", tokenHash16: tokenHash.slice(0, 16), presentedHash16 };
-  const verified = createHash("sha256").update(String(candidate)).digest("hex") === tokenHash;
-  return {
-    verified,
-    status: verified ? "valid" : "invalid",
-    reason: verified ? null : "TOKEN_HASH_MISMATCH",
-    tokenHash16: tokenHash.slice(0, 16),
-    presentedHash16
-  };
+export function verifyOperatorOrderLocal(candidate: string, path: string = operatorTokenPath(), now: number = Date.now()): HostOpsOrderVerdict {
+  return verifyOperatorOrderToken(candidate, path, now);
 }
 
 // ---------------------------------------------------------------------------
