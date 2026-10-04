@@ -26,8 +26,9 @@
  * (tier, verdict, command, exit) in /data/audit/shell-run.jsonl.
  */
 import { spawn } from "node:child_process";
-import { appendFileSync, mkdirSync, statSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, statSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import * as z from "zod/v4";
 import { runJudgeEvaluate } from "./judge.ts";
@@ -37,9 +38,17 @@ export const SHELL_RUN_DEFAULT_TIMEOUT_MS = 120_000;
 export const SHELL_RUN_MAX_TIMEOUT_MS = 600_000;
 export const SHELL_RUN_HEAD_CHARS = 25_000;
 export const SHELL_RUN_TAIL_CHARS = 25_000;
-export const SHELL_RUN_DEFAULT_CWD = "/opt/memoryos/eng-mcp";
-/** Working-dir and path roots: mission cwd + the plugin/hermes tree. */
-export const SHELL_RUN_ROOTS: readonly string[] = ["/opt/", "/root/.hermes/"];
+// SHIP-ENG-MCP-04: o default cwd hardcoded /opt/memoryos/eng-mcp não existe no
+// container de build/test (árvore do commit extraída em /app) nem na imagem de
+// produção — o statSync do resolveCwd recusava TODA chamada (SHELL_RUN_CWD_NOT_FOUND)
+// e a suíte shellRun inteira falhava no estágio de teste do pipeline. Derivação:
+// env override > host repo (se existir) > repo root derivado do próprio módulo;
+// o repo root derivado entra nas raízes permitidas (a doutrina é "repository root").
+export const SHELL_RUN_REPO_ROOT = resolve(fileURLToPath(import.meta.url), "../..");
+export const SHELL_RUN_DEFAULT_CWD = process.env.ENG_MCP_SHELL_RUN_DEFAULT_CWD
+  ?? (existsSync("/opt/memoryos/eng-mcp") ? "/opt/memoryos/eng-mcp" : SHELL_RUN_REPO_ROOT);
+/** Working-dir and path roots: mission cwd + the plugin/hermes tree + repo root derivado. */
+export const SHELL_RUN_ROOTS: readonly string[] = ["/opt/", "/root/.hermes/", SHELL_RUN_REPO_ROOT];
 export const SHELL_RUN_AUDIT_FILE_DEFAULT = "/data/audit/shell-run.jsonl";
 
 export const shellRunInputSchema = z

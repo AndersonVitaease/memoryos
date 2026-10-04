@@ -5,14 +5,14 @@
 // audit-trail shape.
 import assert from "node:assert/strict";
 import { test, describe } from "node:test";
-import { unlinkSync, readFileSync, existsSync } from "node:fs";
+import { statSync, unlinkSync, readFileSync, existsSync } from "node:fs";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   classifyShellCommand, tier1PathsSafe, truncateShellOutput, runShellRun,
   shellRunInputSchema,
-  SHELL_RUN_DEFAULT_CWD, SHELL_RUN_TIER2_QUESTIONS,
+  SHELL_RUN_DEFAULT_CWD, SHELL_RUN_ROOTS, SHELL_RUN_TIER2_QUESTIONS,
   type ShellRunDeps, type ShellExecOutcome
 } from "../src/shellRun.ts";
 
@@ -197,10 +197,19 @@ describe("guards", () => {
     const denied = await runShellRun({ command: "git status", cwd: "/etc" }, depsWith({}, AUDIT_SINK));
     assert.equal(denied.status, "refused");
     assert.equal(denied.code, "SHELL_RUN_CWD_DENIED");
-    const missing = await runShellRun({ command: "git status", cwd: "/opt/memoryos/eng-mcp/no-such-dir" }, depsWith({}, AUDIT_SINK));
+    const missing = await runShellRun({ command: "git status", cwd: `${SHELL_RUN_DEFAULT_CWD}/no-such-dir` }, depsWith({}, AUDIT_SINK));
     assert.equal(missing.code, "SHELL_RUN_CWD_NOT_FOUND");
-    const accepted = await runShellRun({ command: "git status", cwd: "/opt/memoryos/eng-mcp" }, depsWith({}, AUDIT_SINK));
+    const accepted = await runShellRun({ command: "git status", cwd: SHELL_RUN_DEFAULT_CWD }, depsWith({}, AUDIT_SINK));
     assert.equal(accepted.status, "executed");
+  });
+
+  test("default cwd existe no ambiente de execução (host E container de build/test)", () => {
+    // SHIP-ENG-MCP-04: o default era hardcoded /opt/memoryos/eng-mcp — path que
+    // não existe no container (árvore extraída em /app) e o statSync do
+    // resolveCwd recusava toda chamada. O default derivado TEM que existir
+    // ondequer que a suíte rode; o teste roda no host E no container.
+    assert.equal(statSync(SHELL_RUN_DEFAULT_CWD).isDirectory(), true);
+    assert.equal(SHELL_RUN_ROOTS.some((root) => SHELL_RUN_DEFAULT_CWD.startsWith(root) || SHELL_RUN_DEFAULT_CWD === root.replace(/\/$/, "")), true);
   });
 
   test("schema bounds: command cap and timeout cap", () => {
