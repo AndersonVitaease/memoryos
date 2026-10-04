@@ -218,7 +218,7 @@ test("full MCP stack: engineering.release.run goes through the gate and proceeds
   const list = handlers._getRequestHandler("tools/list");
   const call = handlers._getRequestHandler("tools/call");
   const listed = (await list({ method: "tools/list", params: {} }, {})) as { tools: Array<{ name: string }> };
-  assert.equal(listed.tools.length, 151, "the gate adds no tool to the catalog"); // SEC-SHELL-GUARD-01: catalogo base 151
+  assert.equal(listed.tools.length, 152, "the gate adds no tool to the catalog"); // SEC-SHELL-GUARD-01: base 151; ENG-HOST-GOVERNED-OPS-01: 152 (+engineering.host.systemd)
   const result = await call({ method: "tools/call", params: { name: "engineering.release.run", arguments: { operation: "verify" } } }, PROBE_CTX);
   assert.ok(!(result as { isError?: boolean }).isError, `gate must release after the handler: ${((result as { content?: Array<{ text?: string }> }).content?.[0]?.text ?? "").slice(0, 400)}`);
   assert.equal((await readShipLock(lockPath)).present, false, "lock must be released after the ship tool completes");

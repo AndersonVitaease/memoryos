@@ -41,10 +41,11 @@ function resultText(result: unknown): string {
 const PROBE_CTX = { mcpReq: { requestState: () => undefined } };
 
 // SEC-SHELL-GUARD-01: catalogo 150 -> 151 (+engineering.shell.allowlist)
-test("tools/list carries both base44 tools (catalog 151)", async () => {
+// ENG-HOST-GOVERNED-OPS-01: catalogo 151 -> 152 (+engineering.host.systemd)
+test("tools/list carries both base44 tools (catalog 152)", async () => {
   const { list } = buildServer(SUBJECT_WITH);
   const names = await listNames(list);
-  assert.equal(names.length, 151);  assert.ok(names.includes("engineering.base44.secret.write"));
+  assert.equal(names.length, 152);  assert.ok(names.includes("engineering.base44.secret.write"));
   assert.ok(names.includes("engineering.base44.function.deploy"));
 });
 
