@@ -11,6 +11,7 @@ import os from "node:os";
 import { existsSync, mkdirSync, readFileSync, readdirSync, appendFileSync, writeFileSync, unlinkSync } from "node:fs";
 import path from "node:path";
 import { runOrchestrateQueueCompaction } from "./orchestrateCompaction.ts";  // ORCH-QUEUE-COMPACT-01: arquivamento no fim do ciclo
+import { readPreauthArtifact, orchPreauthPath, orchPreauthAllowsTier2, type OrchPreauthReading } from "./orchPreauthArtifact.ts";  // ORCH-TOOLS-01: artefato preauth para tier-2
 import * as z from "zod/v4";
 
 export const DEFAULT_PATHS = {
@@ -65,6 +66,65 @@ export interface OrchestrateDeps {
   breakerStatePath?: string;
   /** Dispatch a mission via the mission-ops handler. Returns {ok, error?}. */
   dispatchMission?(input: { missionId: string; promptFile: string; worktree?: string; priority?: number }): Promise<{ ok: boolean; error?: string }>;
+  /** ORCH-TOOLS-01: handler in-processo para intents tool_call (tier-1 leitura + tier-2 escrita governada). */
+  toolCallHandler?(tool: string, args: Record<string, unknown>): Promise<{ ok: boolean; result?: unknown; error?: string }>;
+  /** ORCH-TOOLS-01: leitura do artefato preauth (injetável p/ testes; default: readPreauthArtifact(orchPreauthPath())). */
+  readPreauth?(): OrchPreauthReading;
+}
+
+// ---- ORCH-TOOLS-01: matriz de tiers para intents tool_call (zero-LLM, determinística) ----
+
+export type ToolCallTier = 1 | 2 | 3;
+
+/** Tier 1 (auto, zero-LLM): leitura/determinísticas — executadas in-processo, NÃO contam no teto. */
+export const ORCH_TIER1_TOOLS: ReadonlySet<string> = new Set([
+  "engineering.test.run",
+  "engineering.typecheck.run",
+  "engineering.lint.run",
+  "engineering.code.search",
+  "engineering.code.references",
+  "engineering.repo.structure",
+  "engineering.file.read",
+  "engineering.mcp.catalog",
+  "engineering.session.roster",
+  "engineering.git.status",
+  "engineering.git.diff",
+  "engineering.git.log",
+  "engineering.git.branches",
+  "engineering.git.worktrees",
+  "engineering.git.inspect_commit",
+  "engineering.git.inspect_changes",
+]);
+
+/** Tier 2 (escritas governadas): executadas SOMENTE com artefato preauth válido; contam no teto. */
+export const ORCH_TIER2_TOOLS: ReadonlySet<string> = new Set([
+  "engineering.git.stage",
+  "engineering.git.commit",
+  "engineering.git.push",
+  "engineering.file.create",
+  "engineering.file.patch",
+]);
+
+/** Tier 3 (NUNCA auto): consequência externa — blocked tipado, artefato NENHUM aprova (avaliado ANTES do artefato, mesmo modelo do gate band-3). */
+const ORCH_TIER3_PREFIXES = ["engineering.release.", "engineering.vps.", "engineering.registry.", "engineering.upstream."];
+const ORCH_TIER3_MARKER = /deploy|credential|secret/i;
+
+/**
+ * Classificação determinística de tiers para tool_call (o consume usa; UNKNOWN = fora
+ * da matriz → blocked fail-closed, nunca auto-executado).
+ */
+export function classifyToolTier(tool: string): { tier: 0 | ToolCallTier; reason: string } {
+  const t = String(tool ?? "").trim();
+  if (ORCH_TIER1_TOOLS.has(t) || t.startsWith("engineering.runtime.")) {
+    return { tier: 1, reason: "tier1_readonly_deterministic" };
+  }
+  if (ORCH_TIER2_TOOLS.has(t)) {
+    return { tier: 2, reason: "tier2_write_requires_valid_preauth_artifact" };
+  }
+  if (ORCH_TIER3_PREFIXES.some((p) => t.startsWith(p)) || ORCH_TIER3_MARKER.test(t)) {
+    return { tier: 3, reason: "tier3_external_consequence_operator_path" };
+  }
+  return { tier: 0, reason: "tool_outside_tier_matrix_fail_closed" };
 }
 
 export const orchestratePlanInputSchema = z.object({ type: z.string().min(1).max(64).optional() }).strict();
@@ -90,13 +150,18 @@ export interface OrchestratorConsumerState {
   promotedIds?: string[];
   /** ORCH-QUEUE-COMPACT-01: último ciclo com compactação da fila (fail-open). */
   lastCompactionAt?: string | null;
+  /** ORCH-TOOLS-01: evidência das últimas tool_call executadas (cap 50). */
+  toolResults?: Array<{ entryId: string; tool: string; ok: boolean; at: string; summary: string }>;
 }
 
 export interface ConsumeEntryResult {
   entryId: string;
-  action: "promoted" | "skipped" | "blocked" | "throttled" | "operator_required" | "dead_letter" | "noop" | "deferred";
+  action: "promoted" | "skipped" | "blocked" | "throttled" | "operator_required" | "dead_letter" | "noop" | "deferred" | "executed" | "awaiting_approval";
   reason: string;
   missionId?: string;
+  /** ORCH-TOOLS-01: metadados de tool_call. */
+  tool?: string;
+  tier?: number;
 }
 
 export interface ConsumeResult {
@@ -110,6 +175,10 @@ export interface ConsumeResult {
   requeued: number;
   noop: number;
   deferred: number;
+  /** ORCH-TOOLS-01: tool_calls tier-1 executadas no ciclo (não contam no teto). */
+  toolCallsExecuted: number;
+  /** ORCH-TOOLS-01: tool_calls tier-2 aguardando artefato preauth válido. */
+  awaitingApproval: number;
   /** ORCH-QUEUE-PROMOTE-01: "plan" = read-only (o que promoveria e por quê); "execute" = despacho real. */
   mode: "plan" | "execute";
   results: ConsumeEntryResult[];
@@ -229,7 +298,18 @@ function spoolEvent(d: ReturnType<typeof resolveDeps>, kind: string, missionId: 
 // ORCH-QUEUE-PROMOTE-01: trilha auditável da promoção em /data/audit/orchestrate-consume.jsonl.
 // Uma linha por decisão (execute apenas — PLAN é read-only e não audita). Fail-open: a trilha
 // nunca trava a promoção nem inventa prova.
-type ConsumeDecision = "PROMOTED" | "DEFERRED" | "BLOCKED" | "THROTTLED" | "SKIPPED" | "OPERATOR_REQUIRED" | "NOOP" | "DEAD_LETTER" | "REQUEUED";
+type ConsumeDecision = "PROMOTED" | "DEFERRED" | "BLOCKED" | "THROTTLED" | "SKIPPED" | "OPERATOR_REQUIRED" | "NOOP" | "DEAD_LETTER" | "REQUEUED" | "EXECUTED" | "AWAITING_APPROVAL";
+
+/**
+ * ORCH-TOOLS-01: resumo determinístico do resultado de uma tool_call para o
+ * toolResults do estado do consumidor (nunca inventa sucesso — erro tipado vira
+ * "erro: ..."; objetos viram JSON truncado).
+ */
+function toolResultSummary(value: unknown): string {
+  if (value == null) return "sem resultado";
+  if (typeof value === "string") return value.slice(0, 120);
+  try { return JSON.stringify(value).slice(0, 120); } catch { return String(value).slice(0, 120); }
+}
 
 function auditConsume(d: ReturnType<typeof resolveDeps>, record: { mode: "plan" | "execute"; entryId: string; missionId: string | null; decision: ConsumeDecision; reason: string }): void {
   const line = JSON.stringify({ ts: new Date(d.now!()).toISOString(), ...record, reason: record.reason.slice(0, 400), source: "orchestrate-consume" });
@@ -255,6 +335,15 @@ function auditConsume(d: ReturnType<typeof resolveDeps>, record: { mode: "plan" 
  * (6) despacho com requeue 2^n (max 3) e dead letter. Em execute, toda decisão vai
  * para /data/audit/orchestrate-consume.jsonl + spool; a fila é append-only — entradas
  * nunca são removidas, o dedupe é pelo estado (promotedIds, cap 200).
+ *
+ * ORCH-TOOLS-01: intents type="tool_call" (payload {tool, args, mission?}) seguem
+ * fluxo próprio ANTES das checagens de despacho — matriz de tiers: tier-1
+ * (leitura/determinística) executa in-processo via handler injetado e NÃO consome
+ * teto; tier-2 (escrita: git.stage/commit/push, file.create/patch) exige artefato
+ * preauth válido (orchPreauthAllowsTier2) e consome teto compartilhado; tier-3/0
+ * (release/vps/registry/deploy/credential/secret e desconhecidas) = blocked SEMPRE,
+ * avaliado ANTES de qualquer artefato. Sem preauth, tier-2 fica awaiting_approval
+ * (permanece na fila). Falha de execução é decisão final em toolResults (sem retry).
  */
 export async function runOrchestrateConsume(
   input: { dryRun?: boolean; maxPromotions?: number; execute?: boolean; approval?: { approved: boolean } },
@@ -286,11 +375,19 @@ export async function runOrchestrateConsume(
   // (a) ordem da fila: priority (1=mais alta), depois FIFO
   entries.sort((a, b) => (a.priority ?? 5) - (b.priority ?? 5) || a.enqueuedAt.localeCompare(b.enqueuedAt));
 
-  const result: ConsumeResult = { consumed: entries.length, promoted: 0, skipped: 0, blocked: 0, throttled: 0, operatorRequired: 0, deadLettered: 0, requeued: 0, noop: 0, deferred: 0, mode, results: [] };
+  const result: ConsumeResult = { consumed: entries.length, promoted: 0, skipped: 0, blocked: 0, throttled: 0, operatorRequired: 0, deadLettered: 0, requeued: 0, noop: 0, deferred: 0, toolCallsExecuted: 0, awaitingApproval: 0, mode, results: [] };
   let promotedCount = 0;
   // (b) matriz de conflito: componente declarado no payload (ou worktree como proxy
   // de arquivos) — intents do mesmo componente serializam dentro do ciclo.
   const busyComponents = new Set<string>();
+  // ORCH-TOOLS-01: serialização por missão — um mission_dispatch promovido no ciclo
+  // marca a missão; tool_call com `mission` declarada defere (fila única por missão).
+  const busyMissions = new Set<string>();
+  // ORCH-TOOLS-01: toolResults do ciclo (merged no estado do consumidor em execute).
+  const toolResults: NonNullable<OrchestratorConsumerState["toolResults"]> = [];
+  // ORCH-TOOLS-01: leitura do artefato preauth é lazy — 1 leitura por ciclo, só se
+  // houver intent tier-2 (nunca é lida para tier-1/tier-3).
+  let preauthReading: OrchPreauthReading | null = null;
 
   // (d) dedupe idempotente: intents já promovidas ficam no estado do consumidor
   const state = readConsumerState(d);
@@ -329,6 +426,116 @@ export async function runOrchestrateConsume(
       if (promotedIds.has(entry.id)) {
         decide(entry.id, missionId, "noop", "intent já promovida (dedupe idempotente)", "NOOP");
         result.noop += 1;
+        continue;
+      }
+
+      // ORCH-TOOLS-01: intents tool_call (payload {tool, args, mission?}) — fluxo
+      // PRÓPRIO, antes das checagens de despacho (não há promptFile/ledger aqui).
+      // Matriz de tiers: (1) leitura/determinística → executada in-processo, NÃO
+      // consome teto; (2) escrita → exige artefato preauth válido, consome teto;
+      // (3/0) consequência externa/desconhecida → blocked SEMPRE, avaliado ANTES de
+      // qualquer artefato (nenhum preauth autoriza tier-3 — mesmo modelo do band-3).
+      if (entry.type === "tool_call") {
+        const tool = typeof payload.tool === "string" ? payload.tool : "";
+        const toolMission = typeof payload.mission === "string" && payload.mission.length > 0 ? payload.mission : null;
+        const toolEntryMission = toolMission ?? entry.id;
+        const toolComponent = component ?? (toolMission != null ? `mission:${toolMission}` : null);
+        const tierClass = classifyToolTier(tool);
+
+        // (t1) tier-3/unknown: fail-closed estrutural — decisão final (id vai para o
+        // dedupe; a intent não re-avalia a cada ciclo).
+        if (tierClass.tier !== 1 && tierClass.tier !== 2) {
+          decide(entry.id, toolEntryMission, "blocked", `tool_call ${tool}: ${tierClass.reason}`, "BLOCKED");
+          result.results[result.results.length - 1].tool = tool;
+          result.results[result.results.length - 1].tier = tierClass.tier;
+          result.blocked += 1;
+          promotedIds.add(entry.id);
+          continue;
+        }
+
+        // (t2) serialização: mesmo componente (matriz existente) e mesma missão.
+        if (toolComponent != null && busyComponents.has(toolComponent)) {
+          decide(entry.id, toolEntryMission, "deferred", `conflito de componente: "${toolComponent}" já em execução neste ciclo (serialização)`, "DEFERRED");
+          result.results[result.results.length - 1].tool = tool;
+          result.results[result.results.length - 1].tier = tierClass.tier;
+          result.deferred += 1;
+          continue;
+        }
+        if (toolMission != null && busyMissions.has(toolMission)) {
+          decide(entry.id, toolEntryMission, "deferred", `missão ${toolMission} já em despacho neste ciclo (serialização)`, "DEFERRED");
+          result.results[result.results.length - 1].tool = tool;
+          result.results[result.results.length - 1].tier = tierClass.tier;
+          result.deferred += 1;
+          continue;
+        }
+
+        // (t3) tier-2: gate do artefato preauth (lido no máx. 1× por ciclo). Sem
+        // artefato válido → awaiting_approval fail-closed; a intent PERMANECE na fila
+        // (não vai ao dedupe) e re-avalia no próximo ciclo.
+        if (tierClass.tier === 2) {
+          preauthReading ??= (d.readPreauth ? d.readPreauth() : readPreauthArtifact(orchPreauthPath()));
+          if (!orchPreauthAllowsTier2(preauthReading)) {
+            decide(entry.id, toolEntryMission, "awaiting_approval", `tool_call ${tool} (tier-2): artefato preauth ${preauthReading.status}${preauthReading.reason ? ` (${preauthReading.reason})` : ""} — fail-closed, nada executado`, "AWAITING_APPROVAL");
+            result.results[result.results.length - 1].tool = tool;
+            result.results[result.results.length - 1].tier = 2;
+            result.awaitingApproval += 1;
+            continue;
+          }
+        }
+
+        // (t4) PLAN: decisão computada sem efeito. tier-2 conta no teto (compartilhado
+        // com missões); tier-1 NÃO consome teto.
+        if (mode === "plan") {
+          const reason = tierClass.tier === 1
+            ? `plan GO (tier-1: executaria in-processo no execute; não consome teto)`
+            : `plan GO (tier-2 autorizado por preauth ${preauthReading?.hash16 ?? "?"}; nada executado no plan)`;
+          decide(entry.id, toolEntryMission, "promoted", reason, "PROMOTED");
+          result.results[result.results.length - 1].tool = tool;
+          result.results[result.results.length - 1].tier = tierClass.tier;
+          result.promoted += 1;
+          if (tierClass.tier === 2) promotedCount += 1;
+          if (toolComponent != null) busyComponents.add(toolComponent);
+          if (toolMission != null) busyMissions.add(toolMission);
+          continue;
+        }
+
+        // (t5) execute: execução in-processo APENAS via handler injetado — sem
+        // handler é fail-closed (nunca fake-executar).
+        const toolHandler = d.toolCallHandler;
+        if (!toolHandler) {
+          decide(entry.id, toolEntryMission, "blocked", `tool_call ${tool}: sem handler de tool configurado (fail-closed)`, "BLOCKED");
+          result.results[result.results.length - 1].tool = tool;
+          result.results[result.results.length - 1].tier = tierClass.tier;
+          result.blocked += 1;
+          promotedIds.add(entry.id);
+          continue;
+        }
+        const toolArgs = (payload.args && typeof payload.args === "object" && !Array.isArray(payload.args)
+          ? payload.args
+          : {}) as Record<string, unknown>;
+        const call = await toolHandler(tool, toolArgs);
+        const callSummary = call.ok
+          ? `ok: ${toolResultSummary(call.result)}`
+          : `erro: ${String(call.error ?? "unknown").slice(0, 200)}`;
+        toolResults.push({ entryId: entry.id, tool, ok: call.ok, at: new Date(d.now!()).toISOString(), summary: callSummary.slice(0, 200) });
+        if (call.ok) {
+          // ORCH-TOOLS-01: tier-2 consome o teto compartilhado com missões (tier-1 não).
+          if (tierClass.tier === 2) promotedCount += 1;
+          const preauthProof = tierClass.tier === 2 ? `, preauth ${preauthReading?.hash16 ?? "?"}` : "";
+          decide(entry.id, toolEntryMission, "executed", `tool_call ${tool} (tier-${tierClass.tier}${preauthProof}) executada in-processo: ${callSummary}`, "EXECUTED");
+          result.results[result.results.length - 1].tool = tool;
+          result.results[result.results.length - 1].tier = tierClass.tier;
+          result.toolCallsExecuted += 1;
+        } else {
+          // Falha de execução: decisão final (sem retry-loop; prova fica em toolResults).
+          decide(entry.id, toolEntryMission, "blocked", `tool_call ${tool} (tier-${tierClass.tier}) falhou: ${callSummary}`, "BLOCKED");
+          result.results[result.results.length - 1].tool = tool;
+          result.results[result.results.length - 1].tier = tierClass.tier;
+          result.blocked += 1;
+        }
+        promotedIds.add(entry.id);
+        if (toolComponent != null) busyComponents.add(toolComponent);
+        if (toolMission != null) busyMissions.add(toolMission);
         continue;
       }
 
@@ -387,6 +594,7 @@ export async function runOrchestrateConsume(
         result.promoted += 1;
         promotedCount += 1;
         if (component != null) busyComponents.add(component);
+        busyMissions.add(missionId);
         continue;
       }
 
@@ -406,6 +614,7 @@ export async function runOrchestrateConsume(
           result.promoted += 1;
           promotedCount += 1;
           if (component != null) busyComponents.add(component);
+          busyMissions.add(missionId);
           promotedIds.add(entry.id);
         } else {
           await handleDispatchFailure(d, entry, missionId, promptFile, worktree, priority, dispatchResult.error ?? "unknown", result, mode);
@@ -422,12 +631,18 @@ export async function runOrchestrateConsume(
   if (mode === "execute") {
     state.status = "alive";
     state.updatedAt = new Date(d.now!()).toISOString();
-    state.promotedCount += result.promoted;
+    // ORCH-TOOLS-01: promotedCount do estado = promoções que consomem teto
+    // (missões + tier-2); result.promoted também inclui tier-1 (não-consumidoras).
+    state.promotedCount += promotedCount;
     state.skippedCount += result.skipped;
     state.blockedCount += result.blocked;
     state.requeuedCount += result.requeued;
     state.deadLetteredCount += result.deadLettered;
     state.promotedIds = Array.from(promotedIds).slice(-200);
+    // ORCH-TOOLS-01: resultados de tool_call persistem no estado (cap 50).
+    if (toolResults.length > 0) {
+      state.toolResults = [...(state.toolResults ?? []), ...toolResults].slice(-50);
+    }
     if (result.results.length > 0) {
       const last = result.results[result.results.length - 1];
       state.lastPromotion = state.updatedAt;
@@ -600,6 +815,9 @@ function resolveDeps(deps?: OrchestrateDeps): Required<Pick<OrchestrateDeps, "re
     // ORCH-QUEUE-PROMOTE-01: handler de despacho injetável (tests passam fake;
     // produção: tools.ts injeta o caminho governado runMissionDispatch).
     dispatchMission: deps?.dispatchMission,
+    // ORCH-TOOLS-01: handler de tool_call + leitor de artefato preauth (injetáveis).
+    toolCallHandler: deps?.toolCallHandler,
+    readPreauth: deps?.readPreauth,
     loadavgPath: deps?.loadavgPath ?? envPath("ENG_MCP_LOADAVG_PATH") ?? DEFAULT_PATHS.loadavg,
     meminfoPath: deps?.meminfoPath ?? envPath("ENG_MCP_MEMINFO_PATH") ?? DEFAULT_PATHS.meminfo,
     missionStateDir: deps?.missionStateDir ?? envPath("ENG_MCP_MISSION_STATE_DIR") ?? DEFAULT_PATHS.missionStateDir,
@@ -946,6 +1164,14 @@ export function runOrchestrateEnqueue(
 ): { id: string; enqueued: boolean; duplicate: boolean; queueCount: number } {
   const d = resolveDeps(deps);
   const entries = parseQueue(d.readText!(d.queuePath!));
+  // ORCH-TOOLS-01: payload de tool_call exige tool (string não-vazia) — fail-closed
+  // na entrada, antes de a intent malformada chegar ao consume.
+  if (input.type === "tool_call") {
+    const t = (input.payload ?? {}) as Record<string, unknown>;
+    if (typeof t.tool !== "string" || t.tool.trim().length === 0) {
+      throw new Error("ORCHESTRATE_ENQUEUE_INVALID_TOOL_CALL: payload.tool é obrigatório (string não-vazia)");
+    }
+  }
   const payloadKey = JSON.stringify(input.payload);
   const existing = entries.find((e) => e.type === input.type && JSON.stringify(e.payload) === payloadKey);
   if (existing) return { id: existing.id, enqueued: false, duplicate: true, queueCount: entries.length };

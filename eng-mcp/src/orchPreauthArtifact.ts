@@ -45,6 +45,8 @@ export interface OrchPreauthReading {
   issuer: string | null;
   /** Forma reconhecida do artefato. */
   source: 'artifact' | 'preauth-manifest';
+  /** ORCH-TOOLS-01: escopos declarados (forma A) — usados para autorizar tool_call tier-2. */
+  scope: string[] | null;
 }
 
 /** Override por env (provas E2E usam caminho de fixture); default é produção. */
@@ -70,7 +72,16 @@ export function artifactHash16(body: Record<string, unknown>): string {
 }
 
 function reading(path: string, source: OrchPreauthReading['source'], status: OrchPreauthStatus, reason: string | null, extra: Partial<OrchPreauthReading> = {}): OrchPreauthReading {
-  return { path, status, reason, hash16: null, expiresAt: null, issuer: null, source, ...extra };
+  return { path, status, reason, hash16: null, expiresAt: null, issuer: null, source, scope: null, ...extra };
+}
+
+/** ORCH-TOOLS-01: um artefato preauth autoriza tool_call tier-2 quando é VÁLIDO e
+ * (a) é um manifesto preauth (forma B — a concessão do operador cobre as intents do
+ * daemon), ou (b) declara explicitamente o escopo "tool_call:tier2" (forma A). */
+export function orchPreauthAllowsTier2(r: OrchPreauthReading): boolean {
+  if (r.status !== 'valid') return false;
+  if (r.source === 'preauth-manifest') return true;
+  return Array.isArray(r.scope) && r.scope.includes('tool_call:tier2');
 }
 
 /**
@@ -139,7 +150,7 @@ export function readPreauthArtifact(path: string = orchPreauthPath(), now: numbe
     if (art.hash !== computed) {
       return reading(path, 'artifact', 'hash_mismatch', 'HASH_MISMATCH', { hash16: String(art.hash), expiresAt: art.expiresAt });
     }
-    return reading(path, 'artifact', 'valid', null, { hash16: computed, expiresAt: art.expiresAt, issuer: art.issuer });
+    return reading(path, 'artifact', 'valid', null, { hash16: computed, expiresAt: art.expiresAt, issuer: art.issuer, scope: Array.isArray(art.scope) ? (art.scope as string[]).filter((s): s is string => typeof s === 'string') : null });
   }
 
   return reading(path, 'artifact', 'invalid', 'UNKNOWN_SHAPE');

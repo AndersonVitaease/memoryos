@@ -11,6 +11,7 @@ import { runMissionDispatch, runMissionRecover, runMissionNudge } from "./missio
 import { runNotifyHermes } from "./notifyHermes.ts";
 import { runBreakerTick, PAUSADO_MESSAGE, RESUMO_MESSAGE_PREFIX } from "./orchestrateBreaker.ts";  // ORCH-BREAKER-01: breaker de pressão integrado ao ciclo
 import { runHygieneTrigger } from "./orchestrateHygiene.ts";  // ORCH-HYGIENE-01: gatilho leve no fim do ciclo
+import { createToolCallHandler } from "./orchToolHandlers.ts";  // ORCH-TOOLS-01: executor in-processo de tool_call
 
 // Lock/estado em tmpdir do SO (nunca em /opt/mission-events — área de produção).
 export const LOCK_PATH = `${os.tmpdir()}/orchestrator-consumer.daemon.lock`;
@@ -123,7 +124,7 @@ async function maybeHygieneCycle() {
   }
 }
 
-export async function runDaemonCycle({ maxPromotions = 2, breakerDeps } = {}) {
+export async function runDaemonCycle({ maxPromotions = 2, breakerDeps, consumeDeps } = {}) {
   if (!acquireLock()) {
     return { ok: false, reason: "lock held by another daemon cycle" };
   }
@@ -138,8 +139,9 @@ export async function runDaemonCycle({ maxPromotions = 2, breakerDeps } = {}) {
       breaker = { ok: false, error: error instanceof Error ? error.message : String(error) };
       console.error("[breaker] tick falhou (fail-open):", breaker.error);
     }
-    // PLAN: dryRun — decisão sem efeito.
-    const plan = await runOrchestrateConsume({ dryRun: true, maxPromotions });
+    // PLAN: dryRun — decisão sem efeito. consumeDeps (ORCH-TOOLS-01) permite provas
+    // E2E herméticas (paths isolados) sem tocar produção.
+    const plan = await runOrchestrateConsume({ dryRun: true, maxPromotions }, consumeDeps);
     if (!plan || plan.promoted === 0) {
       const hygiene = await maybeHygieneCycle();
       return { ok: true, mode: "plan", plan, executed: null, breaker, compaction: maybeCompactQueue(null), hygiene };
@@ -158,6 +160,12 @@ export async function runDaemonCycle({ maxPromotions = 2, breakerDeps } = {}) {
     const executed = await runOrchestrateConsume({
       maxPromotions, execute: true, approval,
     }, {
+      // ORCH-TOOLS-01: consumeDeps herméticos (provas E2E) passam TAMBÉM ao execute —
+      // sem isso o execute cairia nos paths de produção.
+      ...consumeDeps,
+      // ORCH-TOOLS-01: handler de tool_call in-processo (tiers 1/2) — MESMO executor
+      // do tools.ts (sem provider de catálogo: o daemon não constrói catálogo).
+      toolCallHandler: createToolCallHandler(),
       dispatchMission: async (i) => {
         try {
           const result = await runMissionDispatch({

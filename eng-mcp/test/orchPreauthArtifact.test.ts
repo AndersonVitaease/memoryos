@@ -13,6 +13,7 @@ import {
   orchPreauthPath,
   artifactHash16,
   assertPreauthArtifactAccess,
+  orchPreauthAllowsTier2,
   ORCH_PREAUTH_SUBJECT,
   ORCH_PREAUTH_DEFAULT_PATH,
 } from "../src/orchPreauthArtifact.ts";
@@ -144,4 +145,36 @@ test("12. o leitor é só-leitura: artefato inalterado após N leituras (bytes i
   const before = readFileSync(path);
   for (let i = 0; i < 3; i += 1) readPreauthArtifact(path);
   assert.equal(readFileSync(path).equals(before), true);
+});
+// ---- ORCH-TOOLS-01: gate tier-2 do artefato preauth ----
+
+test("13. ORCH-TOOLS-01: orchPreauthAllowsTier2 — forma A exige escopo tool_call:tier2; forma B (manifesto) autoriza", () => {
+  const formaA = readPreauthArtifact(fixture("forma-a-tier2.json", contractArtifact()));
+  assert.equal(formaA.status, "valid");
+  assert.equal(orchPreauthAllowsTier2(formaA), true);
+
+  const semEscopo = readPreauthArtifact(fixture("forma-a-sem-escopo.json", contractArtifact({ scope: ["mission_dispatch"] })));
+  assert.equal(semEscopo.status, "valid");
+  assert.equal(orchPreauthAllowsTier2(semEscopo), false);
+
+  for (const status of ["absent", "expired", "revoked", "hash_mismatch", "invalid"] as const) {
+    const r = { ...formaA, status } as typeof formaA;
+    assert.equal(orchPreauthAllowsTier2(r), false, `status ${status} nunca autoriza`);
+  }
+
+  // Forma B (manifesto preauth válido) autoriza tier-2 por construção (o operador
+  // concedeu o manifesto para o subject do daemon).
+  const body = {
+    version: 1,
+    mission: ORCH_PREAUTH_SUBJECT,
+    holder: ORCH_PREAUTH_SUBJECT,
+    createdAt: new Date(Date.now() - 60_000).toISOString(),
+    expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+    operations: [{ id: "dispatch", pattern: "node src/orchestrateConsumeDaemon.mjs" }],
+    approvedBy: "operator",
+  };
+  const manifesto = readPreauthArtifact(fixture("manifesto-valido-tier2.json", { ...body, hash16: manifestHash16(body) }));
+  assert.equal(manifesto.status, "valid");
+  assert.equal(manifesto.source, "preauth-manifest");
+  assert.equal(orchPreauthAllowsTier2(manifesto), true);
 });
