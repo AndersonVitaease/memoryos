@@ -11,7 +11,7 @@
  */
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -38,6 +38,15 @@ before(async () => {
   dir = await mkdtemp(join(tmpdir(), 'hooks-vps-01-'));
   cred = join(dir, 'cred');
   await writeFile(cred, 'test-bearer-not-real\n', { mode: 0o600 });
+  // ORCH-PREAUTH-ARTIFACT-01: hermeticidade quanto ao estado do HOST — com o
+  // artefato preauth do orquestrador ativo em /data/manifests, o hook (que lê
+  // manifestos do dir default) passa a aplicar o HOLD out-of-manifest do
+  // AUTO-RUN-01B/C a todo comando gray não coberto, e estes subtests de
+  // contrato band-1/2/fail-open virariam 'ask' por poluição do host. O dir de
+  // manifestos do filho aponta para um fixture VAZIO (comportamento pré-grant,
+  // sem manifesto ativo); o HOLD com manifesto ativo é coberto pelos testes do
+  // gate (judgeGate/manifest) e pelo E2E do daemon.
+  await mkdir(join(dir, 'manifestos-vazio'), { recursive: true });
   server = createServer((req, res) => {
     let body = '';
     req.on('data', (c) => (body += c));
@@ -67,7 +76,7 @@ function runHook(input: object, serverUrl: string, extraEnv: Record<string, stri
   const log = join(dir, `log-${Math.random().toString(36).slice(2)}.jsonl`);
   return new Promise((done, fail) => {
     const child = spawn(process.execPath, [HOOK, '--server-url', serverUrl], {
-      env: { PATH: process.env.PATH ?? '', HOME: dir, JUDGE_HOOK_TOKEN_CREDENTIAL_FILE: cred, JUDGE_HOOK_LOG: log, ...extraEnv },
+      env: { PATH: process.env.PATH ?? '', HOME: dir, JUDGE_HOOK_TOKEN_CREDENTIAL_FILE: cred, JUDGE_HOOK_LOG: log, ENG_MCP_MANIFEST_DIR: join(dir, 'manifestos-vazio'), ...extraEnv },
     });
     let stdout = '';
     child.stdout.on('data', (c) => (stdout += c));
