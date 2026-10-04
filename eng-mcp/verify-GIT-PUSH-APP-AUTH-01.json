@@ -1,0 +1,63 @@
+{
+  "mission": "GIT-PUSH-APP-AUTH-01",
+  "date": "2026-10-04",
+  "owner": "GIT-PUSH-APP-AUTH-01",
+  "note": "GIT-PUSH-APP-AUTH-01: push/fetch via GitHub App installation token (fonte primária), PAT vira fallback auditado (warning tipado github_app_fallback_pat), modo ENG_MCP_GIT_CRED_MODE (app-only|app-with-fallback|pat-only, fail-closed). E2E REAL: push do próprio commit da missão (f5b3b10f) via tool runGitPush com a App — audit grava credSource=github-app/credMode=app-with-fallback; origin/main avançou c711a07c→9e676f7e (fast-forward, sem force). gitMerge.ts intocado por decisão técnica (purely local). Todos os comandos rodados de verdade antes de gravar; timeouts >= 2x a duracao medida (suítes 1-11s, daemon ~10s, tsc ~15s). Paths file ABSOLUTOS (cwd do runner do close é externo ao repo). 6 falhas pré-existentes na suíte COMPLETA são dívida de baseline de outras missões (4x contagem de catálogo do commit 4e584e87/mission_spend, shiplock 149!=148, zz-proxy-live 403 ambiental) — provadas idênticas com e sem o WIP desta missão via A/B por stash; por isso as provas de suíte aqui são as ALVO (git + daemon + nova suíte), que fecham o escopo da missão.",
+  "cmd": [
+    {
+      "run": "cd /opt/memoryos/eng-mcp && PATH=\"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\" bash -c 'node --import tsx --test --test-force-exit --test-reporter=tap test/git-push-app-auth.test.ts > .gpa01-p1.tap 2>&1; rc=$?; grep -aE \"^# (tests|pass|fail|skipped)\" .gpa01-p1.tap; rm -f .gpa01-p1.tap; exit $rc'",
+      "expect_exit": 0,
+      "timeout": 120,
+      "evidence_tail": "# tests 5\n# pass 5\n# fail 0\n# skipped 0"
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp && PATH=\"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\" bash -c 'node --import tsx --test --test-force-exit --test-reporter=tap test/git-push-governed.test.ts test/git-fetch-governed.test.ts test/git-merge-governed.test.ts test/git-merge-local.test.ts test/githubAppAuth.test.ts > .gpa01-p2.tap 2>&1; rc=$?; grep -aE \"^# (tests|pass|fail|skipped)\" .gpa01-p2.tap; rm -f .gpa01-p2.tap; exit $rc'",
+      "expect_exit": 0,
+      "timeout": 180,
+      "evidence_tail": "# tests 66\n# pass 66\n# fail 0\n# skipped 0"
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp && PATH=\"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\" bash -c 'node --import tsx --test --test-force-exit --test-reporter=tap test/orchestrateConsumeDaemon.test.mjs > .gpa01-p3.tap 2>&1; rc=$?; grep -aE \"^# (tests|pass|fail|skipped)\" .gpa01-p3.tap; rm -f .gpa01-p3.tap; exit $rc'",
+      "expect_exit": 0,
+      "timeout": 120,
+      "evidence_tail": "# tests 5\n# pass 5\n# fail 0\n# skipped 0"
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp && PATH=\"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\" npx tsc --noEmit 2>&1 | grep -cE \"src/(gitPush|gitFetch|gitCredSource)\\.ts\" | awk '$1==0{print \"TSC-CLEAN mission scope\"; exit 0} $1>0{print $1\" errors\"; exit 1}'",
+      "expect_exit": 0,
+      "timeout": 240,
+      "evidence_tail": "TSC-CLEAN mission scope"
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp && grep '\"subject\":\"GIT-PUSH-APP-AUTH-01' /data/audit/git-push.jsonl | grep '\"result\":\"pushed\"' | grep -c '\"credSource\":\"github-app\"' | awk '$1>=1{print \"AUDIT-PROVED github-app pushes:\", $1; exit 0} $1==0{exit 1}'",
+      "expect_exit": 0,
+      "timeout": 10,
+      "evidence_tail": "AUDIT-PROVED github-app pushes: 1\n(linha real de 2026-10-04T00:38:40Z: subject=GIT-PUSH-APP-AUTH-01-e2e, result=pushed, pushedSha=9e676f7e…, credSource=github-app, credMode=app-with-fallback)"
+    },
+    {
+      "run": "cd /opt/memoryos && git merge-base --is-ancestor f5b3b10f0178b22a07909948a835114e66c32218 refs/heads/main && echo COMMIT-IN-MAIN",
+      "expect_exit": 0,
+      "timeout": 10,
+      "evidence_tail": "COMMIT-IN-MAIN"
+    },
+    {
+      "run": "cd /opt/memoryos && git merge-base --is-ancestor f5b3b10f0178b22a07909948a835114e66c32218 refs/remotes/origin/main && echo COMMIT-ON-ORIGIN",
+      "expect_exit": 0,
+      "timeout": 10,
+      "evidence_tail": "COMMIT-ON-ORIGIN"
+    },
+    {
+      "run": "cd /opt/memoryos && git log --oneline -2 && git status --porcelain -- eng-mcp/src/gitCredSource.ts eng-mcp/src/gitPush.ts eng-mcp/src/gitFetch.ts eng-mcp/test/git-push-app-auth.test.ts && echo MISSION-FILES-CLEAN",
+      "expect_exit": 0,
+      "timeout": 10,
+      "evidence_tail": "9e676f7e ORCH-HYGIENE-01: ciclo de higiene determinístico zero-LLM — engineering.hygiene.cycle (IDLE→CLEANUP→MERGE→DEPLOY_WINDOW→IDLE)\nf5b3b10f GIT-PUSH-APP-AUTH-01: push/fetch usam installation token da GitHub App (fonte primária); PAT vira fallback auditado\nMISSION-FILES-CLEAN\n(main pode avançar sobre o commit da missão — a prova de ancestralidade é a P6/P7, não a posição do log)"
+    }
+  ],
+  "file": [
+    { "path": "/opt/memoryos/eng-mcp/src/gitCredSource.ts", "min_bytes": 3000 },
+    { "path": "/opt/memoryos/eng-mcp/src/gitPush.ts", "min_bytes": 10000 },
+    { "path": "/opt/memoryos/eng-mcp/src/gitFetch.ts", "min_bytes": 5000 },
+    { "path": "/opt/memoryos/eng-mcp/test/git-push-app-auth.test.ts", "min_bytes": 5000 },
+    { "path": "/opt/memoryos/eng-mcp/RELATORIO-GIT-PUSH-APP-AUTH-01.md", "min_bytes": 3000 }
+  ]
+}
