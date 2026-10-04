@@ -22,6 +22,26 @@ async function closeMemoryCapture(missionId: string | undefined): Promise<Missio
 
 const execFileP = promisify(execFile);
 const PLUGIN_DIR = "/root/.hermes/plugins/mission-ops";
+// RD-CLOSE-TIMEOUT-01: teto do wrapper para o subprocesso que executa o handler de
+// engineering.mission.close (real e dryRun). O close REAL leva 68-139s quando o
+// deliver-verify re-executa provas de ~99s — teto de 90s estourava SEM código tipado.
+// 300s cobre o pior caso observado com folga; estouro vira GATE_TIMEOUT (ERROR-01,
+// retryable) — nunca o genérico ENGINEERING_TOOL_ERROR.
+export const MISSION_CLOSE_HANDLER_TIMEOUT_MS = 300_000;
+
+// RD-CLOSE-TIMEOUT-01: execFile com timeout mata o filho com SIGTERM/SIGKILL
+// (err.killed=true ou err.signal setado) — distingue o estouro do wrapper de
+// qualquer outra falha do spawn (ENOENT, etc., que passam intocadas).
+export function isWrapperTimeoutError(error: unknown): boolean {
+  const e = error as { killed?: unknown; signal?: unknown } | null;
+  if (!e) return false;
+  return e.killed === true || /SIGKILL|SIGTERM/.test(String(e.signal ?? ""));
+}
+
+export function gateTimeoutError(handler: string, timeoutMs: number, cause: unknown): Error {
+  const detail = cause instanceof Error ? cause.message : String(cause ?? "").slice(0, 120);
+  return new Error(`GATE_TIMEOUT: handler ${handler} exceeded its ${timeoutMs}ms wrapper budget (${detail}); retry the close — fresh verify-<missionId>.json reuse makes the retry fast`);
+}
 const JEV_GATE_SCRIPT = "/opt/memoryos/eng-mcp/scripts/jev_gate.py";
 const AUDIT_PATH = "/opt/gpu-bridge/audit.jsonl";
 const ROLES_CANONICAL_PATH = "/opt/gpu-bridge/roles.json";
@@ -186,7 +206,7 @@ async function enrichLedgerWithRoles(missionId: string): Promise<void> {
   }
 }
 
-async function callHandler(handler: string, args: Record<string, unknown>, timeoutMs = 300_000, childEnv?: Record<string, string>): Promise<Record<string, unknown>> {
+export async function callHandler(handler: string, args: Record<string, unknown>, timeoutMs = 300_000, childEnv?: Record<string, string>): Promise<Record<string, unknown>> {
   // ENG-MCP-VERIFY-PYFIX-03: sem o plugin montado (ex.: container hermético do release
   // gate) o execFile com cwd inexistente estoura "spawn python3 ENOENT" — erro enganoso
   // (python3 existe na imagem). Recusa honesta e determinística, sem inventar estado.
@@ -203,12 +223,21 @@ t0 = time.time()
 raw = fn(json.loads(sys.argv[1]))
 print(json.dumps({"_latency_ms": int((time.time()-t0)*1000), "result": json.loads(raw)}))
 `;
-  const { stdout } = await execFileP("python3", ["-c", code, JSON.stringify(args)], {
-    timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024, cwd: PLUGIN_DIR,
-    // GUARD-SUPERVISOR-READONLY-01: identidade do chamador HTTP autenticada
-    // server-side e repassada ao plugin VIA ENV (nunca lida do payload).
-    env: childEnv ? { ...process.env, ...childEnv } : process.env,
-  });
+  let stdout: string;
+  try {
+    ({ stdout } = await execFileP("python3", ["-c", code, JSON.stringify(args)], {
+      timeout: timeoutMs, maxBuffer: 16 * 1024 * 1024, cwd: PLUGIN_DIR,
+      // GUARD-SUPERVISOR-READONLY-01: identidade do chamador HTTP autenticada
+      // server-side e repassada ao plugin VIA ENV (nunca lida do payload).
+      env: childEnv ? { ...process.env, ...childEnv } : process.env,
+    }));
+  } catch (e) {
+    // RD-CLOSE-TIMEOUT-01: estouro do teto do wrapper vira erro tipado (a mensagem
+    // carrega o token GATE_TIMEOUT — o envelope ERROR-01 deriva o código dele),
+    // nunca o genérico ENGINEERING_TOOL_ERROR.
+    if (isWrapperTimeoutError(e)) throw gateTimeoutError(handler, timeoutMs, e);
+    throw e;
+  }
   const line = stdout.trim().split("\n").filter(Boolean).pop() || "{}";
   const parsed = JSON.parse(line) as { _latency_ms: number; result: Record<string, unknown> };
   return { ...parsed.result, tool_latency_ms: parsed._latency_ms };
@@ -491,7 +520,7 @@ export async function writeMissionSpend(missionId: string): Promise<void> {
 
 export async function runMissionClose(input: z.infer<typeof missionCloseInputSchema>, callerSubject?: string) {
   const guardEnv = guardChildEnv(callerSubject);
-  const first = await callHandler("handle_mission_close", input, 90_000, guardEnv);
+  const first = await callHandler("handle_mission_close", input, MISSION_CLOSE_HANDLER_TIMEOUT_MS, guardEnv);
   const stepsJson = JSON.stringify(first.steps ?? []);
   const isDeterministicRefusal = first.ok === false
     && typeof first.error === "string" && DETERMINISTIC_REFUSALS.has(first.error);
@@ -523,7 +552,7 @@ export async function runMissionClose(input: z.infer<typeof missionCloseInputSch
       ...input,
       missionId: resolvedId,
       acceptUnverified: `jev-gate-verified: ${jev.motivo ?? "provas suficientes"}`,
-    }, 90_000, guardEnv);
+    }, MISSION_CLOSE_HANDLER_TIMEOUT_MS, guardEnv);
     // Write spend telemetry on JEV-verified close (deterministic, zero-LLM, fail-open)
     await writeMissionSpend(resolvedId);
     // RD-EV-03: capture automático na 2ª branch de sucesso (JEV-verificado).

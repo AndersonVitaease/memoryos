@@ -228,6 +228,9 @@ export const ERROR_TAXONOMY: Readonly<Record<string, Taxonomy>> = {
   DEPENDENCY_UNAVAILABLE: { category: "dependency", retryable: true, remediation: "A required local tool (git/ripgrep/tsc) is missing or broken; fix the environment, then retry." },
   COMMAND_FAILED: { category: "dependency", retryable: true, remediation: "The underlying command exited non-zero; inspect its cause, fix the environment, then retry." },
   COMMAND_TIMEOUT: { category: "dependency", retryable: true, remediation: "The command exceeded its timeout; retry or raise the timeout." },
+  // RD-CLOSE-TIMEOUT-01: wrapper de mission.close (handler do plugin) estourou o teto —
+  // retry é seguro: o reuso de verify-<missionId>.json fresco torna a repetição rápida.
+  GATE_TIMEOUT: { category: "dependency", retryable: true, remediation: "The mission_close handler subprocess exceeded its wrapper budget; retry the close (fresh verify-<missionId>.json reuse makes the retry fast) or inspect plugin latency." },
   GIT_OUTPUT_INVALID: { category: "dependency", retryable: false, remediation: "Git emitted unexpected output; inspect repo state before retrying." },
   GIT_POLICY_UNSUPPORTED: { category: "dependency", retryable: false, remediation: "Repo git config sets hooksPath/commit.template/signing; operator aligns the git policy." },
   // ---- internal ----
