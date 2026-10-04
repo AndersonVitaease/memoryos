@@ -8,7 +8,7 @@
 // (dispatching blind while unable to see in-flight missions would be optimistic).
 import { execFileSync } from "node:child_process";
 import os from "node:os";
-import { existsSync, mkdirSync, readFileSync, readdirSync, appendFileSync, writeFileSync, unlinkSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, appendFileSync, writeFileSync, unlinkSync, openSync, readSync, closeSync, statSync } from "node:fs";
 import path from "node:path";
 import { runOrchestrateQueueCompaction } from "./orchestrateCompaction.ts";  // ORCH-QUEUE-COMPACT-01: arquivamento no fim do ciclo
 import { readPreauthArtifact, orchPreauthPath, orchPreauthAllowsTier2, type OrchPreauthReading } from "./orchPreauthArtifact.ts";  // ORCH-TOOLS-01: artefato preauth para tier-2
@@ -1223,6 +1223,7 @@ export interface SpendMissionResult {
   costStateFound: boolean;
   messageModelFound: boolean;
   note: string | null;
+  sessionSource: string | null;
 }
 
 export interface SpendResult {
@@ -1278,6 +1279,127 @@ function findTranscriptPath(
     // ignore
   }
   return null;
+}
+
+// ---- ORCH-SPEND-SESSIONID-01: fallback de atribuição de sessão por conteúdo ----
+// O ledger nem sempre tem resumeSessionId (own_session_id pode não cravar a sessão no
+// dispatch — caso real ORCH-TOOLS-01) e o jsonl apontado pode não existir (caso
+// ORCH-TELEMETRY-01). O transcript PRÓPRIO da missão começa com o prompt entregue no
+// dispatch ("leia <promptFile> e execute"), então o basename do promptFile — e, sempre
+// que ocorrer, o próprio missionId — aparece na região ANTES da primeira linha
+// assistant. Menção TARDIA (depois do 1º assistant) NÃO atribui: é outra sessão
+// (ex.: o chat da própria eng-mcp) apenas comentando a missão. Novo por mtime, com
+// prioridade ao match por promptFile (único da missão) sobre o por missionId.
+const FALLBACK_MAX_FILES = 30;
+const FALLBACK_PREFIX_BYTES = 65536;
+
+// Cache do sinal por (arquivo, mtime, missão): orchestrateList re-scanearia os mesmos
+// transcripts a cada chamada; mtime na chave invalida sozinho quando o jsonl cresce.
+const fallbackSignalCache = new Map<string, { prompt: boolean; mission: boolean }>();
+
+export interface TranscriptFallbackMatch {
+  path: string;
+  sessionId: string;
+  matchedBy: "prompt-file" | "mission-id";
+}
+
+function readTranscriptPrefix(filePath: string, bytes: number): string {
+  let fd: number | null = null;
+  try {
+    fd = openSync(filePath, "r");
+    const buf = Buffer.alloc(bytes);
+    const read = readSync(fd, buf, 0, bytes, 0);
+    return buf.toString("utf8", 0, read);
+  } catch {
+    return "";
+  } finally {
+    if (fd != null) { try { closeSync(fd); } catch { /* ignore */ } }
+  }
+}
+
+function transcriptSignalInPrefix(
+  prefix: string,
+  promptBase: string | null,
+  missionId: string,
+): { prompt: boolean; mission: boolean } {
+  const res = { prompt: false, mission: false };
+  for (const line of prefix.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) continue;
+    let obj: { type?: string; message?: { content?: unknown } } | null = null;
+    try { obj = JSON.parse(trimmed) as { type?: string; message?: { content?: unknown } }; } catch { obj = null; }
+    if (obj?.type === "assistant") return res; // região pré-assistant terminou
+    if (obj?.type !== "user") continue;
+    const content = obj.message?.content;
+    const text = typeof content === "string"
+      ? content
+      : Array.isArray(content)
+        ? content.map((c) => (c && typeof c === "object" && "text" in (c as Record<string, unknown>))
+          ? String((c as { text: unknown }).text)
+          : "").join("\n")
+        : "";
+    if (promptBase && text.includes(promptBase)) res.prompt = true;
+    if (text.includes(missionId)) res.mission = true;
+  }
+  return res;
+}
+
+function findTranscriptByMissionContent(
+  claudeConfigDir: string,
+  missionId: string,
+  cwd: string | null,
+  promptFile: string | null,
+): TranscriptFallbackMatch | null {
+  if (!missionId || !existsSync(claudeConfigDir)) return null;
+  const promptBase = promptFile ? path.basename(promptFile) : null;
+  let projectDirs: string[];
+  try {
+    const all = readdirSync(claudeConfigDir, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name);
+    // O projeto do cwd da missão vem primeiro (transcripts de outras raízes são ruído).
+    const slug = cwd ? cwd.replace(/\//g, "-") : null;
+    projectDirs = slug && all.includes(slug) ? [slug, ...all.filter((p) => p !== slug)] : all;
+  } catch {
+    return null;
+  }
+  let missionWinner: TranscriptFallbackMatch | null = null;
+  for (const project of projectDirs) {
+    const dir = path.join(claudeConfigDir, project);
+    let files: { file: string; mtimeMs: number }[];
+    try {
+      files = readdirSync(dir)
+        .filter((f) => f.endsWith(".jsonl"))
+        .map((f) => {
+          try { return { file: f, mtimeMs: statSync(path.join(dir, f)).mtimeMs }; }
+          catch { return { file: f, mtimeMs: 0 }; }
+        });
+    } catch {
+      continue;
+    }
+    files.sort((a, b) => b.mtimeMs - a.mtimeMs);
+    for (const { file, mtimeMs } of files.slice(0, FALLBACK_MAX_FILES)) {
+      const filePath = path.join(dir, file);
+      const cacheKey = `${filePath}|${mtimeMs}|${promptBase ?? ""}|${missionId}`;
+      let sig = fallbackSignalCache.get(cacheKey);
+      if (!sig) {
+        const prefix = readTranscriptPrefix(filePath, FALLBACK_PREFIX_BYTES);
+        if (!prefix) continue;
+        sig = transcriptSignalInPrefix(prefix, promptBase, missionId);
+        if (fallbackSignalCache.size > 1024) fallbackSignalCache.clear();
+        fallbackSignalCache.set(cacheKey, sig);
+      }
+      if (sig.prompt && promptBase) {
+        // tier 1 do fallback: promptFile é único do dispatch desta missão — vence na hora.
+        return { path: filePath, sessionId: file.replace(/\.jsonl$/, ""), matchedBy: "prompt-file" };
+      }
+      if (sig.mission && !missionWinner) {
+        missionWinner = { path: filePath, sessionId: file.replace(/\.jsonl$/, ""), matchedBy: "mission-id" };
+      }
+    }
+    if (missionWinner) break; // projeto do cwd já respondeu; outros dirs só aumentam ruído
+  }
+  return missionWinner;
 }
 
 function readTranscriptUsage(
@@ -1392,34 +1514,44 @@ export function runOrchestrateSpend(
     try {
       const raw = d.readText!(path.join(stateDir, file));
       if (raw == null) continue;
-      const ledger = JSON.parse(raw) as { missionId?: string; resumeSessionId?: string; status?: string; sessionId?: string };
-      const sessionId = ledger.resumeSessionId ?? ledger.sessionId ?? null;
+      const ledger = JSON.parse(raw) as { missionId?: string; resumeSessionId?: string; status?: string; sessionId?: string; cwd?: string; promptFile?: string };
+      const sessionId = (ledger.resumeSessionId ?? ledger.sessionId ?? null) || null;
 
-      let spend: SpendMissionResult = {
+      const spend: SpendMissionResult = {
         missionId, sessionId, model: null,
         tokens: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0 },
         costUsd: null, priceTableUsed: priceTableSource,
         transcriptFound: false, costStateFound: false, messageModelFound: false,
-        note: "sem sessionId no ledger",
+        note: "sem sessionId no ledger", sessionSource: null,
       };
 
-      if (sessionId) {
-        const transcriptPath = findTranscriptPath(claudeConfigDir, sessionId);
-        if (transcriptPath) {
-          spend.transcriptFound = true;
-          const usage = readTranscriptUsage(transcriptPath, priceTable ?? {});
-          spend.model = usage.model; spend.tokens = usage.tokens; spend.costUsd = usage.costUsd;
-          spend.costStateFound = usage.costStateFound; spend.messageModelFound = usage.messageModelFound; spend.note = usage.note;
-          if (usage.costUsd != null) {
-            totalCostUsd += usage.costUsd;
-            totalTokens.inputTokens += usage.tokens.inputTokens;
-            totalTokens.outputTokens += usage.tokens.outputTokens;
-            totalTokens.cacheReadTokens += usage.tokens.cacheReadTokens;
-            totalTokens.cacheCreationTokens += usage.tokens.cacheCreationTokens;
-          }
-        } else {
-          spend.note = "transcript nao encontrado para sessionId";
+      let transcriptPath = sessionId ? findTranscriptPath(claudeConfigDir, sessionId) : null;
+      if (transcriptPath) spend.sessionSource = "ledger-session-id";
+
+      // ORCH-SPEND-SESSIONID-01: sem sessionId no ledger, ou o jsonl dele sumiu — o
+      // transcript próprio da missão ainda é achável pelo conteúdo (promptFile/missionId
+      // na região pré-assistant, mais novo por mtime). Ledgers .verify são agregados,
+      // não sessões: sem fallback.
+      if (!transcriptPath && !missionId.endsWith(".verify")) {
+        const fb = findTranscriptByMissionContent(claudeConfigDir, missionId, ledger.cwd ?? null, ledger.promptFile ?? null);
+        if (fb) { transcriptPath = fb.path; spend.sessionId = fb.sessionId; spend.sessionSource = `fallback-${fb.matchedBy}`; }
+      }
+
+      if (transcriptPath) {
+        spend.transcriptFound = true;
+        const usage = readTranscriptUsage(transcriptPath, priceTable ?? {});
+        spend.model = usage.model; spend.tokens = usage.tokens; spend.costUsd = usage.costUsd;
+        spend.costStateFound = usage.costStateFound; spend.messageModelFound = usage.messageModelFound; spend.note = usage.note;
+        if (usage.costUsd != null) {
+          totalCostUsd += usage.costUsd;
+          totalTokens.inputTokens += usage.tokens.inputTokens;
+          totalTokens.outputTokens += usage.tokens.outputTokens;
+          totalTokens.cacheReadTokens += usage.tokens.cacheReadTokens;
+          totalTokens.cacheCreationTokens += usage.tokens.cacheCreationTokens;
         }
+      } else if (sessionId !== null) {
+        // sessionId apontado mas nem direto nem por conteúdo — omissão honesta.
+        spend.note = "transcript nao encontrado para sessionId";
       }
       missions.push(spend);
     } catch { /* malformed ledger: skip */ }
@@ -1450,6 +1582,7 @@ export interface MissionSpendResult {
   reason: string | null;
   sessionId: string | null;
   model: string | null;
+  sessionSource: string | null;
 }
 
 export function runOrchestrateMissionSpend(
@@ -1458,24 +1591,35 @@ export function runOrchestrateMissionSpend(
 ): MissionSpendResult {
   const d = resolveDeps(deps);
   const missionId = input.missionId;
-  const base: MissionSpendResult = { missionId, costUsd: null, tokensIn: null, tokensOut: null, source: null, reason: null, sessionId: null, model: null };
+  const base: MissionSpendResult = { missionId, costUsd: null, tokensIn: null, tokensOut: null, source: null, reason: null, sessionId: null, model: null, sessionSource: null };
 
   let ledgerRaw: string | null = null;
   try { ledgerRaw = d.readText!(path.join(d.missionStateDir!, `${missionId}.json`)); } catch { ledgerRaw = null; }
   if (ledgerRaw == null) return { ...base, reason: "no-ledger" };
 
   let sessionId: string | null = null;
+  let ledgerCwd: string | null = null;
+  let ledgerPromptFile: string | null = null;
   try {
-    const ledger = JSON.parse(ledgerRaw) as { missionId?: string; resumeSessionId?: string; sessionId?: string };
+    const ledger = JSON.parse(ledgerRaw) as { missionId?: string; resumeSessionId?: string; sessionId?: string; cwd?: string; promptFile?: string };
     if (ledger.missionId && ledger.missionId !== missionId) return { ...base, reason: "ledger-mission-mismatch" };
-    sessionId = ledger.resumeSessionId ?? ledger.sessionId ?? null;
+    sessionId = (ledger.resumeSessionId ?? ledger.sessionId ?? null) || null;
+    ledgerCwd = typeof ledger.cwd === "string" ? ledger.cwd : null;
+    ledgerPromptFile = typeof ledger.promptFile === "string" ? ledger.promptFile : null;
   } catch {
     return { ...base, reason: "ledger-unparseable" };
   }
-  if (!sessionId) return { ...base, reason: "no-session-id" };
 
-  const transcriptPath = findTranscriptPath(d.claudeConfigDir!, sessionId);
-  if (!transcriptPath) return { ...base, reason: "no-transcript", sessionId };
+  // ORCH-SPEND-SESSIONID-01: direto pelo resumeSessionId/sessionId; sem jsonl (ou sem
+  // sessionId no ledger), fallback por conteúdo — promptFile do dispatch e, como piso,
+  // missionId na região pré-assistant do transcript, mais novo por mtime.
+  let transcriptPath = sessionId ? findTranscriptPath(d.claudeConfigDir!, sessionId) : null;
+  let sessionSource: string | null = transcriptPath ? "ledger-session-id" : null;
+  if (!transcriptPath) {
+    const fb = findTranscriptByMissionContent(d.claudeConfigDir!, missionId, ledgerCwd, ledgerPromptFile);
+    if (fb) { transcriptPath = fb.path; sessionId = fb.sessionId; sessionSource = `fallback-${fb.matchedBy}`; }
+  }
+  if (!transcriptPath) return { ...base, reason: sessionId ? "no-transcript" : "no-session-id", sessionId };
 
   try {
     const priceTableRaw = readPriceTable(d);
@@ -1483,15 +1627,16 @@ export function runOrchestrateMissionSpend(
     const tokensIn = usage.tokens.inputTokens;
     const tokensOut = usage.tokens.outputTokens;
     if (usage.costUsd != null) {
+      const srcBase = sessionSource === "ledger-session-id" ? "transcript" : sessionSource;
       const source = priceTableRaw.models
-        ? "orchestrate.spend:transcript+price-table"
-        : "orchestrate.spend:transcript-cost-state";
-      return { missionId, costUsd: usage.costUsd, tokensIn, tokensOut, source, reason: null, sessionId, model: usage.model };
+        ? `orchestrate.spend:${srcBase}+price-table`
+        : `orchestrate.spend:${srcBase}-cost-state`;
+      return { missionId, costUsd: usage.costUsd, tokensIn, tokensOut, source, reason: null, sessionId, model: usage.model, sessionSource };
     }
     // Transcript lido, custo impossível: tokens medidos valem, custo null com motivo.
-    return { missionId, costUsd: null, tokensIn, tokensOut, source: null, reason: usage.note ?? "cost-unavailable", sessionId, model: usage.model };
+    return { missionId, costUsd: null, tokensIn, tokensOut, source: null, reason: usage.note ?? "cost-unavailable", sessionId, model: usage.model, sessionSource };
   } catch (error) {
-    return { ...base, reason: `spend-error: ${error instanceof Error ? error.message : String(error)}`.slice(0, 300), sessionId };
+    return { ...base, reason: `spend-error: ${error instanceof Error ? error.message : String(error)}`.slice(0, 300), sessionId, sessionSource };
   }
 }
 

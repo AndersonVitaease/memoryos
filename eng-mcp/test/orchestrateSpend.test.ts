@@ -4,6 +4,9 @@
 // Uses dependency injection (OrchestrateDeps) to fake all file I/O.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import {
   runOrchestrateSpend,
   orchestrateSpendInputSchema,
@@ -74,6 +77,9 @@ test("runOrchestrateSpend: returns null costUsd when transcript not found", () =
       return null;
     },
     readdir: (dirPath: string) => [`${missionId}.json`],
+    // ORCH-SPEND-SESSIONID-01: claudeConfigDir inexistente — o fallback por conteúdo
+    // nunca escaneia o FS real do host (determinismo da suíte).
+    claudeConfigDir: "fixture-claude-projects-no-transcript",
   });
   const result = runOrchestrateSpend({ missionId }, deps);
   assert.equal(result.missions.length, 1);
@@ -95,6 +101,7 @@ test("runOrchestrateSpend: fail-open when price table missing", () => {
       return null;
     },
     readdir: (dirPath: string) => [`${missionId}.json`],
+    claudeConfigDir: "fixture-claude-projects-no-price-table",
   });
 
   const result = runOrchestrateSpend({ missionId }, deps);
@@ -113,6 +120,7 @@ test("runOrchestrateSpend: filters by missionId when specified", () => {
       return null;
     },
     readdir: (dirPath: string) => ["OTHER-MISSION.json"],
+    claudeConfigDir: "fixture-claude-projects-filter",
   });
 
   const result = runOrchestrateSpend({ missionId: "ORCH-TELEMETRY-01" }, deps);
@@ -127,6 +135,7 @@ test("runOrchestrateSpend: includes all missions when no missionId filter", () =
       return null;
     },
     readdir: (dirPath: string) => ["MISSION-A.json", "MISSION-B.json"],
+    claudeConfigDir: "fixture-claude-projects-all",
   });
 
   const result = runOrchestrateSpend({}, deps);
@@ -151,6 +160,7 @@ test("runOrchestrateSpend: ledger without sessionId returns null costUsd", () =>
       return null;
     },
     readdir: (dirPath: string) => [`${missionId}.json`],
+    claudeConfigDir: "fixture-claude-projects-no-session",
   });
 
   const result = runOrchestrateSpend({ missionId }, deps);
@@ -158,6 +168,71 @@ test("runOrchestrateSpend: ledger without sessionId returns null costUsd", () =>
   assert.equal(mission.transcriptFound, false);
   assert.equal(mission.costUsd, null);
   assert.equal(mission.note, "sem sessionId no ledger");
+});
+
+// ORCH-SPEND-SESSIONID-01 — fallback por conteúdo: transcript próprio achado pelo
+// promptFile do dispatch (região pré-assistant) mesmo sem resumeSessionId no ledger.
+function makeFallbackFixture(transcriptLines: string[], projectSlug = "-opt-memoryos-eng-mcp"): string {
+  const dir = mkdtempSync(path.join(tmpdir(), "spend-fallback-"));
+  mkdirSync(path.join(dir, projectSlug), { recursive: true });
+  writeFileSync(path.join(dir, projectSlug, "sess-fb-own.jsonl"), transcriptLines.join("\n") + "\n");
+  return dir;
+}
+
+test("runOrchestrateSpend: fallback prompt-file finds own transcript without sessionId (costUsd > 0)", () => {
+  const missionId = "FB-TOOLS-LIKE-01";
+  const promptFile = "/opt/mission-events/missao-fb-tools-like.md";
+  const userLine = JSON.stringify({ type: "user", message: { content: `leia ${promptFile} e execute. Regras de condução.` } });
+  const asstLine = JSON.stringify({ type: "assistant", message: { model: "inception/mercury-2.5", usage: { input_tokens: 1000, output_tokens: 500, cache_read_input_tokens: 2000, cache_creation_input_tokens: 0 } } });
+  const claudeConfigDir = makeFallbackFixture([userLine, asstLine]);
+  try {
+    const deps = makeDeps({
+      readText: (filePath: string) => {
+        if (filePath.endsWith(`${missionId}.json`)) {
+          return JSON.stringify({ missionId, resumeSessionId: null, status: "closed", cwd: "/opt/memoryos/eng-mcp", promptFile });
+        }
+        return priceTableFile();
+      },
+      readdir: (dirPath: string) => [`${missionId}.json`],
+      claudeConfigDir,
+    });
+    const result = runOrchestrateSpend({ missionId }, deps);
+    const mission = result.missions[0];
+    assert.equal(mission.transcriptFound, true);
+    assert.equal(mission.sessionId, "sess-fb-own");
+    assert.equal(mission.sessionSource, "fallback-prompt-file");
+    assert.ok(mission.costUsd != null && mission.costUsd > 0, `costUsd>0, got ${mission.costUsd}`);
+    assert.equal(mission.model, "inception/mercury-2.5");
+    assert.equal(result.totalCostUsd, mission.costUsd);
+  } finally {
+    rmSync(claudeConfigDir, { recursive: true, force: true });
+  }
+});
+
+test("runOrchestrateSpend: mention of the mission AFTER the first assistant line does not attribute (outro chat)", () => {
+  const missionId = "FB-LATE-MENTION-01";
+  const asstLine = JSON.stringify({ type: "assistant", message: { model: "inception/mercury-2.5", usage: { input_tokens: 10, output_tokens: 5 } } });
+  const userLate = JSON.stringify({ type: "user", message: { content: `o resultado do ${missionId} foi bom` } });
+  const claudeConfigDir = makeFallbackFixture([asstLine, userLate]);
+  try {
+    const deps = makeDeps({
+      readText: (filePath: string) => {
+        if (filePath.endsWith(`${missionId}.json`)) {
+          return JSON.stringify({ missionId, resumeSessionId: null, status: "closed", cwd: "/opt/memoryos/eng-mcp" });
+        }
+        return priceTableFile();
+      },
+      readdir: (dirPath: string) => [`${missionId}.json`],
+      claudeConfigDir,
+    });
+    const result = runOrchestrateSpend({ missionId }, deps);
+    const mission = result.missions[0];
+    assert.equal(mission.transcriptFound, false);
+    assert.equal(mission.costUsd, null);
+    assert.equal(mission.note, "sem sessionId no ledger");
+  } finally {
+    rmSync(claudeConfigDir, { recursive: true, force: true });
+  }
 });
 
 test("writeMissionSpend is exported from missionOps", async () => {

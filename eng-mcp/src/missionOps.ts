@@ -422,6 +422,8 @@ export async function writeMissionSpend(missionId: string): Promise<void> {
     costUsd: missionSpend.costUsd,
     model: missionSpend.model,
     transcriptFound: missionSpend.transcriptFound,
+    sessionId: missionSpend.sessionId,
+    sessionSource: missionSpend.sessionSource,  // ORCH-SPEND-SESSIONID-01
     computedAt: spend.computedAt,
     note: missionSpend.note,
   };
