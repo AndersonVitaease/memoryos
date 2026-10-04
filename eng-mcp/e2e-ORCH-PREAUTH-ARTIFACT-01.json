@@ -1,10 +1,10 @@
 {
   "mission": "ORCH-PREAUTH-ARTIFACT-01",
-  "at": "2026-10-04T12:36:57.569Z",
+  "at": "2026-10-04T16:43:54.004Z",
   "kind": "e2e no runner: ciclo REAL do daemon (runDaemonCycle) com artefato de teste em caminho override (env ORCH_PREAUTH_PATH)",
   "hermetic": {
     "fixtures": "/opt/memoryos/eng-mcp/.e2e-ORCH-PREAUTH-ARTIFACT-01",
-    "nota": "fila/estado/spool/audit sob o cwd (montado no runner); despacho recusado por INVALID_CWD (worktree inexistente) — zero pane, zero efeito em produção; breaker no-op; probe systemctl hermético; compactação/higiene desligadas"
+    "nota": "fila/estado/spool/audit sob o cwd (montado no runner); ciclos 1 e 3 recusados por INVALID_CWD (payload.cwd inexistente — handler recusa ANTES de criar pane) — zero pane, zero efeito em produção; breaker no-op; probe systemctl hermético; compactação/higiene desligadas"
   },
   "checks": {
     "ciclo1_mode_execute": {
@@ -17,7 +17,7 @@
     },
     "ciclo1_preauth_valid": {
       "verdict": true,
-      "detail": "{\"path\":\"/opt/memoryos/eng-mcp/.e2e-ORCH-PREAUTH-ARTIFACT-01/valido.json\",\"status\":\"valid\",\"reason\":null,\"hash16\":\"de4cba27ff46d09a\",\"expiresAt\":\"2026-10-04T13:06:57.168Z\",\"source\":\"artifact\"}"
+      "detail": "{\"path\":\"/opt/memoryos/eng-mcp/.e2e-ORCH-PREAUTH-ARTIFACT-01/valido.json\",\"status\":\"valid\",\"reason\":null,\"hash16\":\"db9e3da1b1a262f1\",\"expiresAt\":\"2026-10-04T17:13:40.797Z\",\"source\":\"artifact\"}"
     },
     "ciclo1_despacho_governado_recusado": {
       "verdict": true,
@@ -33,7 +33,7 @@
     },
     "ciclo2_awaiting_approval_none": {
       "verdict": true,
-      "detail": "approvalSource=none preauth={\"path\":\"/opt/memoryos/eng-mcp/.e2e-ORCH-PREAUTH-ARTIFACT-01/expirado.json\",\"status\":\"expired\",\"reason\":\"EXPIRED\",\"hash16\":null,\"expiresAt\":\"2026-10-04T12:35:57.169Z\",\"source\":\"artifact\"}"
+      "detail": "approvalSource=none preauth={\"path\":\"/opt/memoryos/eng-mcp/.e2e-ORCH-PREAUTH-ARTIFACT-01/expirado.json\",\"status\":\"expired\",\"reason\":\"EXPIRED\",\"hash16\":null,\"expiresAt\":\"2026-10-04T16:42:40.798Z\",\"source\":\"artifact\"}"
     },
     "ciclo3_env_fallback_execute": {
       "verdict": true,
@@ -41,7 +41,7 @@
     },
     "ciclo3_log_honesto_preauth_expirado": {
       "verdict": true,
-      "detail": "preauth={\"path\":\"/opt/memoryos/eng-mcp/.e2e-ORCH-PREAUTH-ARTIFACT-01/expirado.json\",\"status\":\"expired\",\"reason\":\"EXPIRED\",\"hash16\":null,\"expiresAt\":\"2026-10-04T12:35:57.169Z\",\"source\":\"artifact\"} (o ciclo carrega o estado REAL do artefato mesmo com fallback do env)"
+      "detail": "preauth={\"path\":\"/opt/memoryos/eng-mcp/.e2e-ORCH-PREAUTH-ARTIFACT-01/expirado.json\",\"status\":\"expired\",\"reason\":\"EXPIRED\",\"hash16\":null,\"expiresAt\":\"2026-10-04T16:42:40.798Z\",\"source\":\"artifact\"} (o ciclo carrega o estado REAL do artefato mesmo com fallback do env)"
     },
     "artefato_tem_precedencia_sobre_env": {
       "verdict": true,

@@ -19,11 +19,11 @@
     "transport_error": null,
     "sessionId": "764cbdad-9cae-4f40-bf45-7b8efb77d051",
     "sessionSource": "ledger-session-id",
-    "costUsd": 1.8771513700000002,
+    "costUsd": 2.8106688899999996,
     "tokens": {
-      "inputTokens": 3062677,
-      "outputTokens": 248219,
-      "cacheReadTokens": 43121344,
+      "inputTokens": 5319175,
+      "outputTokens": 361008,
+      "cacheReadTokens": 61076288,
       "cacheCreationTokens": 0
     },
     "model": "z-ai/glm-5.3-flash",
@@ -87,10 +87,10 @@
         "step": "mission_cost",
         "ok": true,
         "emitted": true,
-        "cost_usd": 0.941221,
+        "cost_usd": 1.870232,
         "final": true,
-        "tokens_in": 869207,
-        "tokens_out": 194103,
+        "tokens_in": 4540224,
+        "tokens_out": 292289,
         "source": "orchestrate.spend:fallback-prompt-file+price-table"
       },
       {
@@ -111,18 +111,22 @@
       {
         "code": "relatorio_nao_entregado_chat",
         "detail": "RELATORIO-E2E-SPEND-FB.md ausente ou vazio em /opt/e2e-spend-sessionid-01-cwd/RELATORIO-E2E-SPEND-FB.md — conteúdo integral não pode ir ao chat"
+      },
+      {
+        "code": "relatorio_integra_missing",
+        "detail": "RELATORIO-INTEGRA: cole o RELATORIO-E2E-SPEND-FB.md INTEGRAL no chat (mission_read + conteúdo literal) e registre com mission_report_ack(missionId='E2E-SPEND-FB')"
       }
     ],
     "ledger_cost": {
       "missionId": "E2E-SPEND-FB",
       "source": "orchestrate.spend:fallback-prompt-file+price-table",
       "final": true,
-      "cost_usd": 0.941221,
-      "costUsd": 0.941221,
-      "tokens_in": 869207,
-      "tokens_out": 194103,
-      "tokensIn": 869207,
-      "tokensOut": 194103,
+      "cost_usd": 1.870232,
+      "costUsd": 1.870232,
+      "tokens_in": 4540224,
+      "tokens_out": 292289,
+      "tokensIn": 4540224,
+      "tokensOut": 292289,
       "model": "z-ai/glm-5.3-flash",
       "session_id": "a187dcf7-9552-4bb3-8998-9f5c62447de9",
       "sessionId": "a187dcf7-9552-4bb3-8998-9f5c62447de9"

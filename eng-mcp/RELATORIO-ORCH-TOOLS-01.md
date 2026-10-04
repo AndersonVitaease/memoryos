@@ -42,6 +42,10 @@ A fila do orquestrador só conhecia um tipo de intent: `mission_dispatch` (despa
 | Suíte completa eng-mcp | **1797 testes: 1791 pass, 1 fail (zz-proxy-live, ambiental — mesma baseline de 114e7688), 5 skipped** |
 | Whitespace (pipeline) | limpo nos 9 arquivos tocados |
 
+## Estado da memória
+
+Memória gravada (fingerprint `9617af49-a84a-4b3d-82d8-8f4b5e38c65e` — `engineering.memory.capture`, ts 2026-10-04T05:00:00Z). FINGERPRINT: `head 82418740ec342a161813185e1fe27290c08cbf33` (igual ao HEAD atual de main), `registrySha16 443d3d930de7464f`, `verdicts judge ALL_SUPPORTED(3/3) + layer1 spot-check`. Head/registrySha16 conferidos contra o estado atual — iguais, sem necessidade de re-verificação (VERIFY-01).
+
 ## Dívidas e divulgações honestas
 
 1. **Efeito colateral do debug (produção):** durante o debug do E2E, um consume de produção rodou 1× em modo execute sem consumeDeps — todas as entradas da fila de produção eram already-promoted → 9 NOOPs; **nenhum dispatch/mutação ocorreu**, apenas linhas NOOP no audit/spool de produção. Fila de produção verificada intacta depois.
@@ -51,4 +55,10 @@ A fila do orquestrador só conhecia um tipo de intent: `mission_dispatch` (despa
 5. **Tier-2 `git.push` exige scope do bearer** do executor in-processo — não testado E2E contra produção (provado só até o gate; consequência externa permanece no operador).
 6. **Callers vivos não migrados** (fora de escopo, item 4 do contrato).
 
-PASS — sem push, sem deploy.
+### Verificação final (runner deliver-verify)
+
+- 1ª rodada (12:35Z): **verdict fail** — 3 provas do manifesto desatualizadas/bugadas, nenhuma falha real do entregável: (1) prova `commit-missao` fazia grep no HEAD e o main compartilhado avançou (missão irmã ORCH-PREAUTH-ARTIFACT-01 commitou 22a32f9c); (2) prova whitespace usava `\t$` em `grep -E` — POSIX casa o **literal `t`** (falsos positivos "canno**t**"/"contrac**t**"); correção: `[[:space:]]+$`; (3) tap da suíte completa estava stale (estado transitório da missão irmã).
+- Correções gravadas com comandos executados de verdade antes de re-rodar (PROOF-LINT-03/A1). 2ª rodada: **verdict pass — 21/21 checks**. Suíte completa na árvore atual (main compartilhado + testes da missão irmã): **1808 testes / 1802 pass / única not-ok = LIVE /mcp-proxy (ambiental)**.
+- 3ª rodada (pré-close do supervisor): a suíte completa do runner deu `NOTOK=2` — falha nova em `test/glgpd02-fixture-proof.test.ts` ("redaction marker expected"), **flake de concorrência, não regressão**: o teste escaneia worktrees/história da máquina (estado vivo que muda durante a suíte paralela) e **passa 2/2 em isolamento** (re-provado nesta sessão). Guarda do verify corrigida para allowlist ambiental (`AMBIENT_EXTRA=0`: not-ok ⊆ {LIVE /mcp-proxy, GLGPD-02 fixture proof} e zero falha extra) + ≥1790 pass — re-executada de verdade: **SUITE NOTOK=1 AMBIENT_EXTRA=0 PASS=1802**.
+
+PASS — verify.py verdict: pass (21/21 checks). Sem push, sem deploy.

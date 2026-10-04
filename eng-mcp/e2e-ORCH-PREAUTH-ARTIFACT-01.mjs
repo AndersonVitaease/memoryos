@@ -1,7 +1,7 @@
 // ORCH-PREAUTH-ARTIFACT-01: E2E no runner — ciclo REAL do daemon (runDaemonCycle)
 // com o artefato preauth de teste em caminho override (env ORCH_PREAUTH_PATH).
 //   ciclo 1: artefato VÁLIDO   → execute (despacho tentado pelo caminho governado;
-//              handler recusa INVALID_CWD em worktree inexistente — zero pane/efeito)
+//              handler recusa INVALID_CWD em cwd inexistente (payload.cwd) — zero pane/efeito)
 //   ciclo 2: artefato EXPIRADO → plan (awaiting_approval fail-closed, exit 0)
 //   ciclo 3: expirado + env ORCH_DAEMON_APPROVED=1 → execute com approvalSource "env"
 //              (compatibilidade até o operador revogar)
@@ -47,7 +47,12 @@ function cycleFixtures(n) {
   writeFileSync(queuePath, JSON.stringify({
     id: `e2e-preauth-ciclo-${n}`,
     type: "mission_dispatch",
-    payload: { missionId: `PREAUTH-ARTIFACT-E2E-CICLO-${n}`, prompt, worktree: worktreeInexistente },
+    // PREAUTH-ARTIFACT-E2E-CICLO-1: o consume resolve o cwd do despacho EXCLUSIVAMENTE
+    // de payload.cwd (orchestrate.ts resolveChainDispatch) — a chave `worktree` é
+    // ignorada e a ausência vira cwd_source=default (/opt/mission-events), o que vazou
+    // um despacho REAL em produção no 1º run (pane criado). cwd inexistente → o handler
+    // recusa INVALID_CWD ANTES de criar qualquer pane (zero efeito).
+    payload: { missionId: `PREAUTH-ARTIFACT-E2E-CICLO-${n}`, prompt, cwd: worktreeInexistente },
     priority: 5,
     enqueuedAt: new Date().toISOString(),
   }) + "\n");
@@ -159,7 +164,7 @@ const proof = {
   kind: "e2e no runner: ciclo REAL do daemon (runDaemonCycle) com artefato de teste em caminho override (env ORCH_PREAUTH_PATH)",
   hermetic: {
     fixtures: FIX,
-    nota: "fila/estado/spool/audit sob o cwd (montado no runner); despacho recusado por INVALID_CWD (worktree inexistente) — zero pane, zero efeito em produção; breaker no-op; probe systemctl hermético; compactação/higiene desligadas",
+    nota: "fila/estado/spool/audit sob o cwd (montado no runner); ciclos 1 e 3 recusados por INVALID_CWD (payload.cwd inexistente — handler recusa ANTES de criar pane) — zero pane, zero efeito em produção; breaker no-op; probe systemctl hermético; compactação/higiene desligadas",
   },
   checks,
   verdict: verdicts.every((v) => v.verdict === true) ? "PASS" : "FAIL",

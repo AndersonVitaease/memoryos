@@ -1,6 +1,6 @@
 {
   "mission": "ORCH-CHAIN-CWD-01",
-  "at": "2026-10-04T14:16:38.720Z",
+  "at": "2026-10-04T15:13:10.054Z",
   "ok": true,
   "checks": {
     "a_primeira_tentativa_aceita": {
@@ -29,7 +29,7 @@
     },
     "b_audit_cwd_source_payload": {
       "verdict": true,
-      "detail": "audit={\"ts\":\"2026-10-04T14:15:35.338Z\",\"mode\":\"execute\",\"entryId\":\"e2e-chain-cwd-ciclo-3\",\"missionId\":\"CHAIN-E2E-B\",\"decision\":\"PROMOTED\",\"reason\":\"plan GO → despachado via mission.dispatch (cwd=/opt/memoryos/eng-mcp, cwd_source=payload, spawnedBy=operator)\",\"cwd\":\"/opt/memoryos/eng-mcp\",\"cwd_source\":\"payload\",\"spawned_by\":\"operator\",\"source\":\"orchestrate-consume\"}"
+      "detail": "audit={\"ts\":\"2026-10-04T15:12:29.195Z\",\"mode\":\"execute\",\"entryId\":\"e2e-chain-cwd-ciclo-3\",\"missionId\":\"CHAIN-E2E-B\",\"decision\":\"PROMOTED\",\"reason\":\"plan GO → despachado via mission.dispatch (cwd=/opt/memoryos/eng-mcp, cwd_source=payload, spawnedBy=operator)\",\"cwd\":\"/opt/memoryos/eng-mcp\",\"cwd_source\":\"payload\",\"spawned_by\":\"operator\",\"source\":\"orchestrate-consume\"}"
     },
     "c_cwd_default_documentado": {
       "verdict": true,
@@ -37,15 +37,15 @@
     },
     "c_audit_cwd_source_default": {
       "verdict": true,
-      "detail": "audit={\"ts\":\"2026-10-04T14:15:35.340Z\",\"mode\":\"execute\",\"entryId\":\"e2e-chain-cwd-ciclo-4\",\"missionId\":\"CHAIN-E2E-C\",\"decision\":\"PROMOTED\",\"reason\":\"plan GO → despachado via mission.dispatch (cwd=/opt/mission-events, cwd_source=default, spawnedBy=operator)\",\"cwd\":\"/opt/mission-events\",\"cwd_source\":\"default\",\"spawned_by\":\"operator\",\"source\":\"orchestrate-consume\"}"
+      "detail": "audit={\"ts\":\"2026-10-04T15:12:29.197Z\",\"mode\":\"execute\",\"entryId\":\"e2e-chain-cwd-ciclo-4\",\"missionId\":\"CHAIN-E2E-C\",\"decision\":\"PROMOTED\",\"reason\":\"plan GO → despachado via mission.dispatch (cwd=/opt/mission-events, cwd_source=default, spawnedBy=operator)\",\"cwd\":\"/opt/mission-events\",\"cwd_source\":\"default\",\"spawned_by\":\"operator\",\"source\":\"orchestrate-consume\"}"
     },
     "d_alerta_tipado_no_ciclo": {
       "verdict": true,
-      "detail": "preauthAlert={\"alerted\":true,\"mission\":\"orch-daemon-consume\",\"hash16\":\"b33506d17f665d2c\",\"expiresAt\":\"2026-10-04T15:15:35.138Z\",\"remainingMinutes\":60} spool=1"
+      "detail": "preauthAlert={\"alerted\":true,\"mission\":\"orch-daemon-consume\",\"hash16\":\"a1e6665fff5c0115\",\"expiresAt\":\"2026-10-04T16:12:29.005Z\",\"remainingMinutes\":60} spool=1"
     },
     "d_alerta_mission_hash16_expiresat": {
       "verdict": true,
-      "detail": "ev={\"mission\":\"orch-daemon-consume\",\"hash16\":\"b33506d17f665d2c\",\"expiresAt\":\"2026-10-04T15:15:35.138Z\"}"
+      "detail": "ev={\"mission\":\"orch-daemon-consume\",\"hash16\":\"a1e6665fff5c0115\",\"expiresAt\":\"2026-10-04T16:12:29.005Z\"}"
     },
     "d_sem_regrant_artefato_intocado": {
       "verdict": true,
@@ -57,11 +57,11 @@
     },
     "e_suite_completa_ambient_extra_0": {
       "verdict": true,
-      "detail": "SUITE NOTOK=1 AMBIENT_EXTRA=0 PASS=1822"
+      "detail": "SUITE NOTOK=2 AMBIENT_EXTRA=0 PASS=1812"
     }
   },
   "suite": {
     "tap": "/opt/memoryos/eng-mcp/e2e-ORCH-CHAIN-CWD-01.tap",
-    "tail": "SUITE NOTOK=1 AMBIENT_EXTRA=0 PASS=1822"
+    "tail": "SUITE NOTOK=2 AMBIENT_EXTRA=0 PASS=1812"
   }
 }
