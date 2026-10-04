@@ -1,0 +1,12 @@
+[Unit]
+Description=Mission Workers Slice — cgroups v2 memory-isolated mission execution
+Documentation=man:systemd.slice(5)
+After=system.slice
+Before=multi-user.target
+
+[Slice]
+# Per-worker limits are set dynamically at dispatch time via
+# systemd-run --property=MemoryHigh=... --property=MemoryMax=...
+# The slice itself acts as the parent container grouping all mission workers.
+MemoryHigh=80%
+MemoryMax=90%
