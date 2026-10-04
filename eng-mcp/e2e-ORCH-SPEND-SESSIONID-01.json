@@ -1,0 +1,157 @@
+{
+  "mission": "ORCH-SPEND-SESSIONID-01",
+  "chain": "mission_close → engineering_call(HTTP MCP :8791, código novo) → orchestrate.mission_spend (fallback) → ledger['cost']",
+  "p1_orch_tools_01_fallback": {
+    "transport_error": null,
+    "sessionId": "470aa7c0-25ad-4ca0-b636-830b65d01441",
+    "sessionSource": "fallback-prompt-file",
+    "costUsd": 1.04115705,
+    "tokens": {
+      "inputTokens": 6643637,
+      "outputTokens": 89223,
+      "cacheReadTokens": 0,
+      "cacheCreationTokens": 0
+    },
+    "model": "z-ai/glm-5.3-flash",
+    "cost_positive_via_fallback": true
+  },
+  "p2_orch_preauth_artifact_01_direct": {
+    "transport_error": null,
+    "sessionId": "764cbdad-9cae-4f40-bf45-7b8efb77d051",
+    "sessionSource": "ledger-session-id",
+    "costUsd": 1.8771513700000002,
+    "tokens": {
+      "inputTokens": 3062677,
+      "outputTokens": 248219,
+      "cacheReadTokens": 43121344,
+      "cacheCreationTokens": 0
+    },
+    "model": "z-ai/glm-5.3-flash",
+    "cost_positive_via_ledger_session": true
+  },
+  "a_close_measured_contract_shape": {
+    "close_ok": true,
+    "ledger_cost": {
+      "missionId": "E2E-SPEND-A",
+      "source": "orchestrate.spend:transcript+price-table",
+      "final": true,
+      "cost_usd": 3.691948,
+      "costUsd": 3.691948,
+      "tokens_in": 5380301,
+      "tokens_out": 535345,
+      "tokensIn": 5380301,
+      "tokensOut": 535345,
+      "model": "z-ai/glm-5.3-flash",
+      "session_id": "209e525f-8986-4cc8-8255-3609e6ce2eb9",
+      "sessionId": "209e525f-8986-4cc8-8255-3609e6ce2eb9"
+    },
+    "costUsd_positive": true,
+    "has_tokensIn": true,
+    "has_tokensOut": true,
+    "has_sessionId": true,
+    "has_source": true
+  },
+  "b_close_fallback_prompt_file": {
+    "close_ok": true,
+    "close_steps": [
+      {
+        "step": "close_commit_guard",
+        "ok": true,
+        "verdict": "not-git",
+        "note": "cwd do ledger não é repo git — guard não se aplica"
+      },
+      {
+        "step": "consequence_guard",
+        "ok": true,
+        "verdict": "closed_unverified_consequence",
+        "source": "heuristic",
+        "matches": [
+          "produção",
+          "/opt/",
+          "deploy"
+        ],
+        "warning": "FECHADA SEM VERIFICAÇÃO E2E em missão de consequência (escopo heuristic: produção, /opt/, deploy) — sem verify.json no cwd"
+      },
+      {
+        "step": "operator_channel_proof",
+        "ok": null,
+        "skipped": true,
+        "note": "sem operatorChannel declarado — prova do canal não se aplica"
+      },
+      {
+        "step": "tab_close",
+        "ok": true,
+        "note": "sem tabId conhecido — nada a fechar"
+      },
+      {
+        "step": "mission_cost",
+        "ok": true,
+        "emitted": true,
+        "cost_usd": 0.941221,
+        "final": true,
+        "tokens_in": 869207,
+        "tokens_out": 194103,
+        "source": "orchestrate.spend:fallback-prompt-file+price-table"
+      },
+      {
+        "step": "notify_mission_completed",
+        "ok": true,
+        "emitted": true,
+        "error": null
+      },
+      {
+        "step": "memory_capture",
+        "ok": null,
+        "deduped": false,
+        "error": "exit 2: unknown command: mcp\nrun 'herdr --help' for usage"
+      }
+    ],
+    "close_warnings": [
+      "FECHADA SEM VERIFICAÇÃO E2E em missão de consequência (escopo heuristic: produção, /opt/, deploy) — sem verify.json no cwd",
+      {
+        "code": "relatorio_nao_entregado_chat",
+        "detail": "RELATORIO-E2E-SPEND-FB.md ausente ou vazio em /opt/e2e-spend-sessionid-01-cwd/RELATORIO-E2E-SPEND-FB.md — conteúdo integral não pode ir ao chat"
+      }
+    ],
+    "ledger_cost": {
+      "missionId": "E2E-SPEND-FB",
+      "source": "orchestrate.spend:fallback-prompt-file+price-table",
+      "final": true,
+      "cost_usd": 0.941221,
+      "costUsd": 0.941221,
+      "tokens_in": 869207,
+      "tokens_out": 194103,
+      "tokensIn": 869207,
+      "tokensOut": 194103,
+      "model": "z-ai/glm-5.3-flash",
+      "session_id": "a187dcf7-9552-4bb3-8998-9f5c62447de9",
+      "sessionId": "a187dcf7-9552-4bb3-8998-9f5c62447de9"
+    },
+    "costUsd_positive_via_fallback": true
+  },
+  "c_close_null_with_reason": {
+    "close_ok": true,
+    "ledger_cost": {
+      "missionId": "E2E-SPEND-C",
+      "source": null,
+      "final": true,
+      "cost_unmeasured": "spend_no-session-id",
+      "costUsd": null,
+      "tokens_unmeasured": "cost_unmeasured"
+    },
+    "null_with_reason": true
+  },
+  "d_dead_server_fail_open": {
+    "close_ok": true,
+    "ledger_cost": {
+      "missionId": "E2E-SPEND-D",
+      "source": null,
+      "final": true,
+      "cost_unmeasured": "spend_call_failed: mcp_http_failed: URLError",
+      "costUsd": null,
+      "tokens_unmeasured": "cost_unmeasured"
+    },
+    "typed_reason": true
+  },
+  "verdict": "PASS"
+}
