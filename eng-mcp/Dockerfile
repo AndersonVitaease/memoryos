@@ -16,6 +16,10 @@ RUN npm install
 COPY tsconfig.json ./
 COPY src ./src
 COPY test ./test
+# RD-SHIPGATE-FIX-01: deploy/ (sudoers-eng-mcp-host-ops + units) entra na imagem —
+# test/hostOpsAgent.test.ts (RD-HOST-02, teste D) lê ../deploy/sudoers-eng-mcp-host-ops
+# e o estágio test do release runner morria com ENOENT em /app/deploy/.
+COPY deploy ./deploy
 COPY .claude ./.claude
 
 CMD node --import tsx src/main.ts
