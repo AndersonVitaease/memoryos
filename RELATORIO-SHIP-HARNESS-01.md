@@ -71,3 +71,7 @@ Depois: re-run `python3 /opt/deliver-verify/verify.py --mission SHIP-HARNESS-01`
 ## Veredito final
 
 **FAIL** (honesto, este run) — backup externo NÃO concluído: push bloqueado no agente por hard block de exfiltration (bulk cross-repo), mesmo com autorização do operator; sem contorno de mecanismo. Estado local completo e reversível: branch órfã `operator-harness` (`5aadcd18…`) pronta, segredos limpos, token transitório removido, comandos pendentes exatos entregues para o supervisor host-side fechar (D1→D2→D3).
+
+## Nota do supervisor (13:52 BRT)
+
+Push host-side executado (opção 3 do worker; branch 5aadcd1 no remote, prova ls-remote). Guard CLOSE-COMMIT-01 exigiu commit do paperwork (RELATORIO/verify/prova) -> branch evoluiu para b13a954; verify re-run PASS 9/9 (manifest atualizado p/ SHA novo, conteúdo entregue inalterado).
