@@ -1,0 +1,14 @@
+{
+  "ts": "2026-10-05T04:19:20Z",
+  "transcripts": [
+    "fc46188f-02fb-4956-9f98-393ef077ca62.jsonl"
+  ],
+  "eventos_assistant_com_usage": 363,
+  "input": 2468894,
+  "output": 256364,
+  "cache_read": 36061184,
+  "cache_write": 0,
+  "modelo": "z-ai/glm-5.3-flash (tabela orchestrator-price-table.json 2026-10-01)",
+  "custo_formula": "(in*0.15 + out*0.5 + (cache_read+cache_write)*0.03)/1e6",
+  "custo_usd": 1.5804
+}

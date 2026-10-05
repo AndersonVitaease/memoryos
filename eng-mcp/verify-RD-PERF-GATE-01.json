@@ -1,0 +1,46 @@
+{
+  "mission": "RD-PERF-GATE-01",
+  "date": "2026-10-05",
+  "owner": "rd-perf-gate-01",
+  "note": "Gate de capture: batch único provado + cache TTL do context de dedupe + p-valores no audit; cache de projectId por sessão no fast-router. Provas: suíte eng-mcp completa, suítes do plugin, E2E hermético fresh-vs-cacheado contra ponte e Jev reais.",
+  "cmd": [
+    {
+      "run": "cd /opt/memoryos/eng-mcp && PATH=/usr/local/bin:/usr/bin:/bin timeout 300 node --import tsx --test --test-force-exit --test-reporter=tap test/*.test.ts 2>&1 | tail -5",
+      "expect_exit": 0,
+      "timeout": 300,
+      "evidence_tail": "# tests 1771\n# pass 1771\n# fail 0\n# skipped 6\n# duration_ms 52014.588347"
+    },
+    {
+      "run": "cd /root/.hermes/plugins/fast-router && PATH=/usr/local/bin:/usr/bin:/bin timeout 120 python3 test_rd_perf_gate01.py",
+      "expect_exit": 0,
+      "timeout": 120,
+      "evidence_tail": "OK  P1 2ª frase: HIT do cache — Jev NÃO chamado de novo | judge_calls=0\nOK  P1 trilha declara cached:true + projectId do cache\nOK  P2 tema explícito -> tier-0 direto (mapa), sem Jev\nOK  P3 sessão nova: Jev re-classificado (cache é POR SESSÃO)\nOK  P4 fallback não entra no cache: 2ª frase volta a chamar o Jev\nOK  P5 TTL expirado -> Jev re-classificado (cached=false)\nOK  P6 kill switch: 2ª frase TAMBÉM chama o Jev (sempre fresco)\nSUITE GREEN"
+    },
+    {
+      "run": "cd /root/.hermes/plugins/fast-router && PATH=/usr/local/bin:/usr/bin:/bin timeout 120 python3 test_rd_ev04.py",
+      "expect_exit": 0,
+      "timeout": 120,
+      "evidence_tail": "OK  G6 allow_long é SÓ da rota de memória (outras rotas seguem no teto de 90)\nOK  G7 rota legada intacta: 'verifique as missoes' -> missions_snapshot\nSUITE GREEN"
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp && PATH=/usr/local/bin:/usr/bin:/bin timeout 300 node --import tsx prova-rd-perf-gate-01-e2e.mjs",
+      "expect_exit": 0,
+      "timeout": 300,
+      "evidence_tail": " \"p50_fresh_ms\": 1945,\n \"p50_cached_ms\": 1095,\n \"decisao_idêntica\": true,\n \"recusa_idêntica\": true,\n \"cached_flags\": [false, true, true, true, true],\n \"projecao_producao\": { \"baseline_p50_capture_ms\": 3469, \"leitura_dedupe_salva_ms\": 850, \"p50_projetado_ms\": 2619, \"queda_pct\": 43.7 }"
+    },
+    {
+      "run": "cd /opt/memoryos/eng-mcp && PATH=/usr/local/bin:/usr/bin:/bin timeout 60 python3 prova-rd-perf-gate-01-e2e-check.py",
+      "expect_exit": 0,
+      "timeout": 60,
+      "evidence_tail": "OK   p50 cacheada < 1500ms | p50_cached_ms=1095\nOK   queda p50 >= 40% | queda=43.7% (fresh=1945ms cached=1095ms)\nOK   decisão idêntica (MESMO input fresh vs cacheado)\nOK   recusa idêntica (MESMO repeat fresh vs cacheado)\nOK   hits do cache presentes (dedupe_cached=true) | hits=4 de 5\nOK   todas as capturas ok"
+    }
+  ],
+  "file": [
+    { "path": "/opt/memoryos/eng-mcp/prova-rd-perf-gate-01-e2e.json" },
+    { "path": "/opt/memoryos/eng-mcp/prova-rd-perf-gate-01-baseline.json" },
+    { "path": "/opt/memoryos/eng-mcp/prova-rd-perf-gate-01-e2e.mjs" },
+    { "path": "/opt/memoryos/eng-mcp/prova-rd-perf-gate-01-e2e-check.py" },
+    { "path": "/root/.hermes/plugins/fast-router/test_rd_perf_gate01.py" },
+    { "path": "/root/.hermes/plugins/fast-router/__init__.py.bak-RD-PERF-GATE-01" }
+  ]
+}
