@@ -447,7 +447,12 @@ export function startHostOpsAgent(options: { socketPath?: string; deps?: AgentDe
     server.on("error", rejectPromise);
     server.listen(socketPath, () => {
       try {
-        chmodSync(socketPath, 0o660);
+        // RD-SEC-SURFACE-01: 0600 (não 0660) — o bit de grupo abria rota lateral
+        // de ESCRITA no socket para qualquer membro de eng-mcp-release; o único
+        // cliente legítimo é o gate MCP do servidor (container root, que passa
+        // por CAP_DAC_OVERRIDE de qualquer forma). Owner fica eng-mcp-host-ops
+        // (unit User=), group eng-mcp-release (unit Group=) só como metadado.
+        chmodSync(socketPath, 0o600);
       } catch {
         // chmod best-effort (donos diferentes de fs)
       }

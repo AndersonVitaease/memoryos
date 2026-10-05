@@ -4,6 +4,12 @@
 # estes comandos exatos — unit fora da lista é recusada pelo sudo (barreira
 # adicional atrás da catálogo do agente). Instalar com modo 0440 em
 # /etc/sudoers.d/eng-mcp-host-ops (visudo -c antes de ativar).
+# RD-SEC-SURFACE-01 (05/10) — DENY-ALL IMPLÍCITO: este arquivo é a allowlist
+# COMPLETA do sudo para eng-mcp-host-ops (sem ALL=(ALL), sem wildcards, sem
+# grupos de comando). Qualquer comando/variação fora das DUAS linhas exatas
+# abaixo é recusado pelo sudo (barreira final atrás do catálogo do agente —
+# prova comportamental em verify-RD-SEC-SURFACE-01.json). Manter as linhas
+# EXATAMENTE como estão; alterações exigem re-instalação host-side com visudo -c.
 Defaults:eng-mcp-host-ops !requiretty
 eng-mcp-host-ops ALL=(root) NOPASSWD: /usr/bin/systemctl restart eng-mcp-host-ops-probe.service, /usr/bin/systemctl reload eng-mcp-host-ops-probe.service, /usr/bin/systemctl restart eng-mcp-release-runner.service, /usr/bin/systemctl reload eng-mcp-release-runner.service, /usr/bin/systemctl daemon-reload
 # RD-HOST-02 (04/10) — o agente (não-root) precisa LER o token de ordem para
