@@ -91,14 +91,28 @@ export function runPipeline(job, options = {}) {
     const start = async () => {
       const environment = { PATH: process.env.PATH, HOME: process.env.HOME, LANG: process.env.LANG };
       if (credential) { try { environment.ENG_MCP_RELEASE_BEARER = (await readFile(credential, "utf8")).trim(); } catch { /* status/test/build/candidate do not require it */ } }
-      if (runtimeObservabilityCredential) { environment.ENG_MCP_RUNTIME_OBSERVABILITY_CREDENTIAL_FILE = runtimeObservabilityCredential; }
-      if (mcpBatchExecuteCredential) { environment.MCP_BATCH_EXECUTE_CREDENTIAL_FILE = mcpBatchExecuteCredential; }
-      if (agentMemoryCredential) { environment.ENG_MCP_AGENT_MEMORY_CREDENTIAL_FILE = agentMemoryCredential; }
-      if (runtimeTokenCredential) { environment.ENG_MCP_RUNTIME_TOKEN_CREDENTIAL_FILE = runtimeTokenCredential; }
-      if (e2bApiKeyCredential) { environment.E2B_API_KEY_FILE = e2bApiKeyCredential; }
-      if (githubPatCredential) { environment.GITHUB_TOKEN_FILE = githubPatCredential; }
-      if (gitCredentialsCredential) { environment.GIT_CREDENTIALS_FILE = gitCredentialsCredential; }
-      if (hermesNotifyCredential) { environment.ENG_MCP_HERMES_NOTIFY_CREDENTIAL_FILE = hermesNotifyCredential; }
+      // DEPLOY-OPTIONAL-CRED-01: a LoadCredential listed in the unit can disappear
+      // (source file removed -> /run/credentials/<unit>/<id> absent after restart).
+      // Spreading the *_FILE env unconditionally makes deployAction bind-mount a
+      // nonexistent source path and docker refuses the container with
+      // "mkdir ...: read-only file system" (EROFS on the systemd credentials mount),
+      // failing every deploy until the credential is restored. Existence-gate each
+      // optional credential file env: absent file = env omitted = mount omitted —
+      // the same stat-before-spread pattern the github-app block below already uses.
+      const setOptionalCredentialEnv = async (name, value) => {
+        if (!value) return;
+        try { await stat(value); environment[name] = value; } catch { /* credential absent: no env, no mount */ }
+      };
+      await Promise.all([
+        setOptionalCredentialEnv("ENG_MCP_RUNTIME_OBSERVABILITY_CREDENTIAL_FILE", runtimeObservabilityCredential),
+        setOptionalCredentialEnv("MCP_BATCH_EXECUTE_CREDENTIAL_FILE", mcpBatchExecuteCredential),
+        setOptionalCredentialEnv("ENG_MCP_AGENT_MEMORY_CREDENTIAL_FILE", agentMemoryCredential),
+        setOptionalCredentialEnv("ENG_MCP_RUNTIME_TOKEN_CREDENTIAL_FILE", runtimeTokenCredential),
+        setOptionalCredentialEnv("E2B_API_KEY_FILE", e2bApiKeyCredential),
+        setOptionalCredentialEnv("GITHUB_TOKEN_FILE", githubPatCredential),
+        setOptionalCredentialEnv("GIT_CREDENTIALS_FILE", gitCredentialsCredential),
+        setOptionalCredentialEnv("ENG_MCP_HERMES_NOTIFY_CREDENTIAL_FILE", hermesNotifyCredential),
+      ]);
       if (githubAppKeyCredential && githubAppEnvCredential) {
         try {
           const ids = parseGithubAppEnv(await readFile(githubAppEnvCredential, "utf8"));
