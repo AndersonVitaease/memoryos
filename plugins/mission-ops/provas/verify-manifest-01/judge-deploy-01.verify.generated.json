@@ -1,0 +1,27 @@
+{
+  "cmd": [
+    {"run": "cd /opt/memoryos/eng-mcp && git log --oneline -3", "expect_exit": 0, "_provenance": "report", "_source": "relatorio-judge-deploy-01.md:10"},
+    {"run": "/opt/memoryos/eng-mcp/evidence/judge-deploy-01/smoke-judge.sh", "expect_exit": 0, "_provenance": "report", "_source": "relatorio-judge-deploy-01.md:33"},
+    {"run": "cd /opt/memoryos/eng-mcp && o=$(docker inspect memoryos-eng-mcp 2>&1) && printf '%s' \"$o\" | grep -qF -- true && printf '%s' \"$o\" | grep -qF -- eng-mcp-candidate:candidate-20260928142849307-7ae70943a081", "expect_exit": 0, "_provenance": "report", "_source": "relatorio-judge-deploy-01.md:50"},
+    {"run": "cd /opt/memoryos/eng-mcp && git -C /opt/memoryos/eng-mcp log --oneline -3", "expect_exit": 0, "_provenance": "prompt", "_source": "missao-judge-deploy-01.md:12"},
+    {"run": "cd /opt/memoryos/eng-mcp && git status", "expect_exit": 0, "_provenance": "prompt", "_source": "missao-judge-deploy-01.md:12"}
+  ],
+  "service": [
+    {"unit": "eng-mcp-release-runner", "expect": "active", "_provenance": "report", "_source": "relatorio-judge-deploy-01.md:42"}
+  ],
+  "file": [
+    {"path": "/opt/memoryos/eng-mcp/evidence/judge-deploy-01/smoke-judge.sh", "min_bytes": 500, "_provenance": "report", "_source": "relatorio-judge-deploy-01.md:33"},
+    {"path": "/data/audit/judge.jsonl", "min_bytes": 242, "_provenance": "report", "_source": "relatorio-judge-deploy-01.md:34"},
+    {"path": "/opt/memoryos/eng-mcp/evidence/judge-deploy-01/pre-deploy-status.json", "min_bytes": 471, "_provenance": "report", "_source": "relatorio-judge-deploy-01.md:37"},
+    {"path": "/opt/memoryos/eng-mcp/evidence/judge-deploy-01/pre-deploy-ready.json", "min_bytes": 500, "_provenance": "report", "_source": "relatorio-judge-deploy-01.md:37"},
+    {"path": "/opt/memoryos/eng-mcp/evidence/judge-deploy-01/pipeline-call-1.json", "min_bytes": 500, "_provenance": "report", "_source": "relatorio-judge-deploy-01.md:37"},
+    {"path": "/opt/memoryos/eng-mcp/evidence/judge-deploy-01/pipeline-call-resume-1.json", "min_bytes": 500, "_provenance": "report", "_source": "relatorio-judge-deploy-01.md:37"},
+    {"path": "/opt/memoryos/eng-mcp/evidence/judge-deploy-01/smoke-payload.json", "min_bytes": 174, "_provenance": "report", "_source": "relatorio-judge-deploy-01.md:37"},
+    {"path": "/opt/memoryos/eng-mcp/evidence/judge-deploy-01/smoke-response.json", "min_bytes": 500, "_provenance": "report", "_source": "relatorio-judge-deploy-01.md:37"},
+    {"path": "/opt/memoryos/eng-mcp/evidence/judge-deploy-01/judge-audit-tail.jsonl", "min_bytes": 500, "_provenance": "report", "_source": "relatorio-judge-deploy-01.md:37"},
+    {"path": "/opt/memoryos/eng-mcp/evidence/judge-deploy-01/mcpcall.mjs", "min_bytes": 500, "_provenance": "report", "_source": "relatorio-judge-deploy-01.md:37"},
+    {"path": "/opt/memoryos/eng-mcp/src/judge.ts", "min_bytes": 500, "_provenance": "report", "_source": "relatorio-judge-deploy-01.md:40"},
+    {"path": "/opt/memoryos/eng-mcp/evidence/judge-deploy-01/selfcheck-response.json", "min_bytes": 500, "_provenance": "report", "_source": "relatorio-judge-deploy-01.md:49"},
+    {"path": "/opt/memoryos/eng-mcp/relatorio-judge-deploy-01.md", "min_bytes": 500, "_provenance": "prompt", "_source": "missao-judge-deploy-01.md:30"}
+  ]
+}

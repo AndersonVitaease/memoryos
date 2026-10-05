@@ -1,0 +1,71 @@
+.................................................................................2026-10-01T11:47:26 p1 warn/transitional: transitional: re-check 2 (+30s) verde após (chat FAIL 502 10ms http 502 'Bad Gateway' | messages FAIL 502 9ms http 502 'Bad Gateway')
+2026-10-01T11:47:26 cycle verdict=warn p5_memory=ok(avail=stub) p1_llm=ok(transitional: re-check 2 (+30s) verde após (chat FAIL 502 10ms http 502 'Bad Gateway' | messages FAIL 502 9ms http 502 'Bad Gateway')) p3_crashloop=ok(NRestarts=0) p4_barrier_noise=ok(barrier_refused=0/1h)
+.2026-10-01T11:47:27 p1 warn/transitional: pending 0s (<180s), 3 rodadas falhas: chat FAIL 502 11ms http 502 'Bad Gateway' | messages FAIL 502 11ms http 502 'Bad Gateway'
+2026-10-01T11:47:27 cycle verdict=warn p5_memory=ok(avail=stub) p1_llm=RED(pending 0s (<180s), 3 rodadas falhas: chat FAIL 502 11ms http 502 'Bad Gateway' | messages FAIL 502 11ms http 502 'Bad Gateway') p3_crashloop=ok(NRestarts=0) p4_barrier_noise=ok(barrier_refused=0/1h)
+2026-10-01T11:47:27 cycle verdict=red p5_memory=ok(avail=stub) p1_llm=RED(RED sustentado 185s, 3 rodadas falhas: chat FAIL 502 8ms http 502 'Bad Gateway' | messages FAIL 502 10ms http 502 'Bad Gateway') p2_state=ok(stub coerente) heal_vllm=RED(stub) p3_crashloop=ok(NRestarts=0) p4_barrier_noise=ok(barrier_refused=0/1h)
+.2026-10-01T11:47:27 p1 warn/transitional: sinal misto (rota verde numa rodada) — WARN, nunca RED: chat ok 200 11ms 'Ok' finish=stop | messages FAIL 502 12ms http 502 'Bad Gateway'
+2026-10-01T11:47:27 cycle verdict=warn p5_memory=ok(avail=stub) p1_llm=RED(sinal misto (rota verde numa rodada) — WARN, nunca RED: chat ok 200 11ms 'Ok' finish=stop | messages FAIL 502 12ms http 502 'Bad Gateway') p3_crashloop=ok(NRestarts=0) p4_barrier_noise=ok(barrier_refused=0/1h)
+2026-10-01T11:47:27 p1 warn/transitional: sinal misto (rota verde numa rodada) — WARN, nunca RED: chat ok 200 11ms 'Ok' finish=stop | messages FAIL 502 12ms http 502 'Bad Gateway'
+2026-10-01T11:47:27 cycle verdict=warn p5_memory=ok(avail=stub) p1_llm=RED(sinal misto (rota verde numa rodada) — WARN, nunca RED: chat ok 200 11ms 'Ok' finish=stop | messages FAIL 502 12ms http 502 'Bad Gateway') p3_crashloop=ok(NRestarts=0) p4_barrier_noise=ok(barrier_refused=0/1h)
+2026-10-01T11:47:27 p1 warn/transitional: sinal misto (rota verde numa rodada) — WARN, nunca RED: chat ok 200 12ms 'Ok' finish=stop | messages FAIL 502 10ms http 502 'Bad Gateway'
+2026-10-01T11:47:27 cycle verdict=warn p5_memory=ok(avail=stub) p1_llm=RED(sinal misto (rota verde numa rodada) — WARN, nunca RED: chat ok 200 12ms 'Ok' finish=stop | messages FAIL 502 10ms http 502 'Bad Gateway') p3_crashloop=ok(NRestarts=0) p4_barrier_noise=ok(barrier_refused=0/1h)
+.2026-10-01T11:47:27 cycle verdict=red p5_memory=ok(avail=stub) p1_llm=RED(RED sustentado 10000s, 3 rodadas falhas: chat FAIL 502 8ms http 502 'Bad Gateway' | messages FAIL 502 9ms http 502 'Bad Gateway') p2_state=ok(stub coerente) p3_crashloop=ok(NRestarts=0) p4_barrier_noise=ok(barrier_refused=0/1h)
+2026-10-01T11:47:27 cycle verdict=red p5_memory=ok(avail=stub) p1_llm=RED(RED sustentado 10000s, 3 rodadas falhas: chat FAIL 503 9ms http 503 'x' | messages FAIL 503 9ms http 503 'x') p2_state=ok(stub coerente) p3_crashloop=ok(NRestarts=0) p4_barrier_noise=ok(barrier_refused=0/1h)
+2026-10-01T11:47:27 cycle verdict=red p5_memory=ok(avail=stub) p1_llm=RED(RED sustentado 10000s, 3 rodadas falhas: chat FAIL 500 7ms http 500 'x' | messages FAIL 500 11ms http 500 'x') p2_state=ok(stub coerente) p3_crashloop=ok(NRestarts=0) p4_barrier_noise=ok(barrier_refused=0/1h)
+.2026-10-01T11:47:27 cycle verdict=red p5_memory=ok(avail=stub) p1_llm=RED(RED sustentado 10000s, 3 rodadas falhas: chat FAIL 502 8ms http 502 'Bad Gateway' | messages FAIL 502 9ms http 502 'Bad Gateway') p2_state=ok(stub coerente) p3_crashloop=ok(NRestarts=0) p4_barrier_noise=ok(barrier_refused=0/1h)
+2026-10-01T11:47:27 cycle verdict=ok p5_memory=ok(avail=stub) p1_llm=ok(recovered: 2 rodadas verdes: chat ok 200 10ms 'Ok' finish=stop | messages ok 200 11ms 'Ok' stop=end_turn) p3_crashloop=ok(NRestarts=0) p4_barrier_noise=ok(barrier_refused=0/1h)
+2026-10-01T11:47:27 cycle verdict=ok p5_memory=ok(avail=stub) p1_llm=ok(chat ok 200 10ms 'Ok' finish=stop | messages ok 200 12ms 'Ok' stop=end_turn) p3_crashloop=ok(NRestarts=0) p4_barrier_noise=ok(barrier_refused=0/1h)
+.2026-10-01T11:47:27 cycle verdict=red p5_memory=ok(avail=stub) p1_llm=RED(RED sustentado 10000s, 3 rodadas falhas: chat FAIL 502 9ms http 502 'Bad Gateway' | messages FAIL 502 8ms http 502 'Bad Gateway') p2_state=ok(stub coerente) p3_crashloop=ok(NRestarts=0) p4_barrier_noise=ok(barrier_refused=0/1h)
+2026-10-01T11:47:27 p1 warn/transitional: flap: RED ativo, rodada 1 verde mas confirmação falhou: chat FAIL 502 8ms http 502 'Bad Gateway' | messages FAIL 502 7ms http 502 'Bad Gateway'
+2026-10-01T11:47:27 cycle verdict=warn p5_memory=ok(avail=stub) p1_llm=ok(flap: RED ativo, rodada 1 verde mas confirmação falhou: chat FAIL 502 8ms http 502 'Bad Gateway' | messages FAIL 502 7ms http 502 'Bad Gateway') p3_crashloop=ok(NRestarts=0) p4_barrier_noise=ok(barrier_refused=0/1h)
+.2026-10-01T11:47:27 cycle verdict=red p5_memory=ok(avail=stub) p1_llm=RED(RED sustentado 10000s, 3 rodadas falhas: chat FAIL 502 10ms http 502 'Bad Gateway' | messages FAIL 502 10ms http 502 'Bad Gateway') p2_state=ok(stub coerente) p3_crashloop=ok(NRestarts=0) p4_barrier_noise=ok(barrier_refused=0/1h)
+2026-10-01T11:47:27 cycle verdict=ok p5_memory=ok(avail=stub) p1_llm=ok(recovered: 2 rodadas verdes: chat ok 200 8ms 'Ok' finish=stop | messages ok 200 9ms 'Ok' stop=end_turn) p3_crashloop=ok(NRestarts=0) p4_barrier_noise=ok(barrier_refused=0/1h)
+2026-10-01T11:47:27 cycle verdict=red p5_memory=ok(avail=stub) p1_llm=RED(RED sustentado 10000s, 3 rodadas falhas: chat FAIL 502 9ms http 502 'Bad Gateway' | messages FAIL 502 8ms http 502 'Bad Gateway') p2_state=ok(stub coerente) p3_crashloop=ok(NRestarts=0) p4_barrier_noise=ok(barrier_refused=0/1h)
+.2026-10-01T11:47:27 cycle verdict=red p5_memory=ok(avail=stub) p1_llm=ok(chat ok 200 10ms 'Ok' finish=stop | messages ok 200 10ms 'Ok' stop=end_turn) p3_crashloop=RED(NRestarts=31) p4_barrier_noise=ok(barrier_refused=0/1h)
+2026-10-01T11:47:27 cycle verdict=red p5_memory=ok(avail=stub) p1_llm=ok(chat ok 200 9ms 'Ok' finish=stop | messages ok 200 9ms 'Ok' stop=end_turn) p3_crashloop=RED(NRestarts=31) p4_barrier_noise=ok(barrier_refused=0/1h)
+2026-10-01T11:47:27 cycle verdict=red p5_memory=ok(avail=stub) p1_llm=ok(chat ok 200 9ms 'Ok' finish=stop | messages ok 200 10ms 'Ok' stop=end_turn) p3_crashloop=RED(NRestarts=31) p4_barrier_noise=ok(barrier_refused=0/1h)
+2026-10-01T11:47:27 cycle verdict=ok p5_memory=ok(avail=stub) p1_llm=ok(chat ok 200 9ms 'Ok' finish=stop | messages ok 200 9ms 'Ok' stop=end_turn) p3_crashloop=ok(NRestarts=31) p4_barrier_noise=ok(barrier_refused=0/1h)
+2026-10-01T11:47:27 cycle verdict=ok p5_memory=ok(avail=stub) p1_llm=ok(chat ok 200 10ms 'Ok' finish=stop | messages ok 200 9ms 'Ok' stop=end_turn) p3_crashloop=ok(NRestarts=31) p4_barrier_noise=ok(barrier_refused=0/1h)
+..FF2026-10-01T11:47:28 p1 warn/transitional: transitional: re-check 2 (+30s) verde após (chat FAIL 502 10ms http 502 'Bad Gateway' | messages FAIL 502 9ms http 502 'Bad Gateway')
+2026-10-01T11:47:28 cycle verdict=warn p5_memory=ok(avail=stub) p1_llm=ok(transitional: re-check 2 (+30s) verde após (chat FAIL 502 10ms http 502 'Bad Gateway' | messages FAIL 502 9ms http 502 'Bad Gateway')) p3_crashloop=ok(NRestarts=0) p4_barrier_noise=ok(barrier_refused=0/1h)
+.2026-10-01T11:47:28 cycle verdict=ok p5_memory=ok(avail=stub) p1_llm=ok(chat ok 200 10ms 'Ok' finish=stop | messages ok 200 9ms 'Ok' stop=end_turn) p3_crashloop=ok(NRestarts=0) p4_barrier_noise=ok(barrier_refused=0/1h)
+2026-10-01T11:47:28 p1 warn/transitional: pending 0s (<180s), 3 rodadas falhas: chat FAIL 502 8ms http 502 'Bad Gateway' | messages FAIL 502 10ms http 502 'Bad Gateway'
+2026-10-01T11:47:28 cycle verdict=warn p5_memory=ok(avail=stub) p1_llm=RED(pending 0s (<180s), 3 rodadas falhas: chat FAIL 502 8ms http 502 'Bad Gateway' | messages FAIL 502 10ms http 502 'Bad Gateway') p3_crashloop=ok(NRestarts=0) p4_barrier_noise=ok(barrier_refused=0/1h)
+2026-10-01T11:47:28 cycle verdict=ok (gpu-down) p5_memory=ok(avail=stub)
+.2026-10-01T11:47:28 cycle verdict=ok (gpu-down-passive) p5_memory=ok(avail=stub) p1_llm=ok(passivo: chat ok 200 10ms 'Ok' finish=stop | messages ok 200 9ms 'Ok' stop=end_turn)
+.2026-10-01T11:47:28 cycle verdict=ok (gpu-down-passive) p5_memory=ok(avail=stub) p1_llm=FAIL-passivo(passivo: chat FAIL 502 10ms http 502 'Bad Gateway' | messages FAIL 502 9ms http 502 'Bad Gateway')
+2026-10-01T11:47:28 cycle verdict=ok (gpu-down-passive) p5_memory=ok(avail=stub) p1_llm=FAIL-passivo(passivo: chat FAIL 502 10ms http 502 'Bad Gateway' | messages FAIL 502 9ms http 502 'Bad Gateway')
+2026-10-01T11:47:28 cycle verdict=ok (gpu-down-passive) p5_memory=ok(avail=stub) p1_llm=FAIL-passivo(passivo: chat FAIL 502 10ms http 502 'Bad Gateway' | messages FAIL 502 10ms http 502 'Bad Gateway')
+2026-10-01T11:47:28 cycle verdict=ok (gpu-down-passive) p5_memory=ok(avail=stub) p1_llm=FAIL-passivo(passivo: chat FAIL 502 9ms http 502 'Bad Gateway' | messages FAIL 502 10ms http 502 'Bad Gateway')
+.2026-10-01T11:47:28 cycle verdict=ok (gpu-down-passive) p5_memory=ok(avail=stub) p1_llm=ok(passivo: chat ok 200 10ms 'Ok' finish=stop | messages ok 200 9ms 'Ok' stop=end_turn)
+.2026-10-01T11:47:28 cycle verdict=ok (gpu-down) p5_memory=ok(avail=stub)
+.2026-10-01T11:47:28 cycle verdict=ok (gpu-down) p5_memory=ok(avail=stub)
+.2026-10-01T11:47:28 cycle verdict=ok p5_memory=ok(avail=stub) p1_llm=ok(chat ok 200 10ms 'Ok' finish=stop | messages ok 200 7ms 'Ok' stop=end_turn) p3_crashloop=ok(NRestarts=0) p4_barrier_noise=ok(barrier_refused=0/1h)
+.2026-10-01T11:47:28 p1 warn/transitional: pending 0s (<180s), 3 rodadas falhas: chat FAIL 502 8ms http 502 'Bad Gateway' | messages FAIL 502 7ms http 502 'Bad Gateway'
+2026-10-01T11:47:28 cycle verdict=warn p5_memory=ok(avail=stub) p1_llm=RED(pending 0s (<180s), 3 rodadas falhas: chat FAIL 502 8ms http 502 'Bad Gateway' | messages FAIL 502 7ms http 502 'Bad Gateway') p3_crashloop=ok(NRestarts=0) p4_barrier_noise=ok(barrier_refused=0/1h)
+2026-10-01T11:47:28 cycle verdict=red p5_memory=ok(avail=stub) p1_llm=RED(RED sustentado 181s, 3 rodadas falhas: chat FAIL 502 8ms http 502 'Bad Gateway' | messages FAIL 502 9ms http 502 'Bad Gateway') p2_state=ok(stub coerente) p3_crashloop=ok(NRestarts=0) p4_barrier_noise=ok(barrier_refused=0/1h)
+....................................................................................................
+======================================================================
+FAIL: test_c1_payload_minimo (test_health_sentinel_02.C_Structural.test_c1_payload_minimo)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/opt/gpu-watchdog/test_health_sentinel_02.py", line 229, in test_c1_payload_minimo
+    self.assertLessEqual(hs.P1_MAX_TOKENS, 32)
+AssertionError: 512 not less than or equal to 32
+
+======================================================================
+FAIL: test_c2_post_real_ponte_viva_verde_estrutural (test_health_sentinel_02.C_Structural.test_c2_post_real_ponte_viva_verde_estrutural)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/opt/gpu-watchdog/test_health_sentinel_02.py", line 238, in test_c2_post_real_ponte_viva_verde_estrutural
+    self.assertTrue(rd["ok"], rd)
+AssertionError: False is not true : {'ts': '2026-10-01T14:47:28Z', 'ok': False, 'mixed': False, 'routes': [{'route': 'chat', 'ts': '2026-10-01T14:47:28Z', 'ok': False, 'http': 0, 'latency_ms': 8, 'finish': None, 'detail': "http 0 ''"}, {'route': 'messages', 'ts': '2026-10-01T14:47:28Z', 'ok': False, 'http': 0, 'latency_ms': 8, 'finish': None, 'detail': "http 0 ''"}]}
+
+----------------------------------------------------------------------
+Ran 200 tests in 16.584s
+
+FAILED (failures=2)
+
+LIVE P1: {"ts": "2026-10-01T14:47:28Z", "ok": false, "mixed": false, "routes": [{"route": "chat", "ts": "2026-10-01T14:47:28Z", "ok": false, "http": 0, "latency_ms": 8, "finish": null, "detail": "http 0 ''"}, {"route": "messages", "ts": "2026-10-01T14:47:28Z", "ok": false, "http": 0, "latency_ms": 8, "finish": null, "detail": "http 0 ''"}]}
+RESULT 200 run 2 failures 0 errors
+== watchdog /opt/gpu-watchdog

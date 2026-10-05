@@ -1,0 +1,8 @@
+......................................................................................................................................
+----------------------------------------------------------------------
+Ran 134 tests in 33.886s
+
+OK
+EXCLUIDO: test_mission_ops.TestDispatch.test_start_timeout_records_state
+RESULT 134 run 0 failures 0 errors
+== mission-ops /root/.hermes/plugins/mission-ops

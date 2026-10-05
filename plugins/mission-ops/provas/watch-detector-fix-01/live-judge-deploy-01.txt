@@ -1,0 +1,2 @@
+{"missionId": "judge-deploy-01", "ok": true, "event": "no_event", "verdict": "closed", "status": "closed", "note": "missão closed — snapshot não supervisiona (sem flag)", "mode": "snapshot"}
+turn_done_epoch 14:33 -> 1790605980.0 14:33

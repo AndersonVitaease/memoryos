@@ -1,0 +1,38 @@
+{
+  "mission": "CLOSE-COMMIT-01",
+  "owner": "CLOSE-COMMIT-01",
+  "date": "2026-10-02",
+  "note": "Guard de close contra entrega não-commitada (classe MISSION-MANIFEST-PATCH-01-R2): suíte completa do plugin (263 tests, systemd-run --scope isolado) + prova red-then-green explícita (untracked em deploy path bloqueia badge/closeWarning; commit dos artefatos fecha verde) + saneamento do manifesto.",
+  "cmd": [
+    {
+      "run": "cd /root/.hermes/plugins/mission-ops && PATH=/usr/local/bin:/usr/bin:/bin python3 -m unittest test_mission_ops test_lane2 test_mission_list_compacto test_gpu_cost_coerce test_verify_json_ghost test_ledger_hygiene test_watch_detector test_verify_author test_chain_dispatch test_mission_batch test_close_verify_path test_trinity_wire test_close_commit_guard 2>&1",
+      "expect_exit": 0,
+      "timeout": 180,
+      "evidence_tail": "Ran 263 tests in 60.343s\nOK (skipped=2)"
+    },
+    {
+      "run": "cd /root/.hermes/plugins/mission-ops && PATH=/usr/local/bin:/usr/bin:/bin python3 -m unittest test_close_commit_guard.TestCloseWiring.test_green_commit_the_artifacts_then_close test_close_commit_guard.TestCloseWiring.test_red_untracked_deploy_path_blocks_badge_and_warns -v 2>&1",
+      "expect_exit": 0,
+      "timeout": 60,
+      "evidence_tail": "test_green_commit_the_artifacts_then_close ... ok\ntest_red_untracked_deploy_path_blocks_badge_and_warns ... ok\nRan 2 tests in 0.142s\nOK"
+    }
+  ],
+  "file": [
+    {
+      "path": "/root/.hermes/plugins/mission-ops/close_commit_guard.py",
+      "min_bytes": 2000
+    },
+    {
+      "path": "/root/.hermes/plugins/mission-ops/test_close_commit_guard.py",
+      "min_bytes": 10000
+    },
+    {
+      "path": "/root/.hermes/plugins/mission-ops/provas/close-commit-01/suite-full.txt",
+      "min_bytes": 200
+    },
+    {
+      "path": "/root/.hermes/plugins/mission-ops/provas/close-commit-01/red-green.txt",
+      "min_bytes": 100
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "mission": "dispatch-fast-03",
+  "date": "2026-09-29",
+  "owner": "worker dispatch-fast-03 (pane w6:p5)",
+  "note": "Regressão + sonda E2E + relaunch 8103. A linha do canário (collect_canary.py) fica VERMELHA até o supervisor/operator despachar dispatch-fast03-canario-01: o gate de cadeia recusa despacho a partir deste pane (CHAIN_DISPATCH_NOT_ALLOWED). Ver RELATORIO-dispatch-fast-03.md §4.",
+  "cmd": [
+    {"run": "cd /root/.hermes/plugins/mission-ops && timeout 900 python3 -m unittest discover -p 'test_*.py' 2>&1 | tail -1", "expect_stdout": "OK", "timeout": 960, "_provenance": "prompt", "_source": "entregável 1: regressão completa"},
+    {"run": "cd /root/.hermes/plugins/mission-ops && timeout 120 python3 -m unittest test_dispatch_fast03 test_mission_resume 2>&1 | tail -1", "expect_stdout": "OK", "timeout": 150, "_provenance": "report", "_source": "RELATORIO §2 testes novos"},
+    {"run": "cd /root/.hermes/plugins/mission-ops && python3 -c \"import sys,importlib.util,urllib.request as u,json;s=importlib.util.spec_from_file_location('mission_ops','__init__.py',submodule_search_locations=['.']);m=importlib.util.module_from_spec(s);sys.modules['mission_ops']=m;s.loader.exec_module(m);up=json.loads(u.urlopen('http://127.0.0.1:8102/health',timeout=2).read())['upstream']\ntry: r=u.urlopen(up+'/v1/models',timeout=2).status==200\nexcept Exception: r=False\nprint('COERENTE' if m._qwen_bridge_alive()==r else 'DIVERGE')\"", "expect_stdout": "COERENTE", "timeout": 30, "_provenance": "report", "_source": "RELATORIO §1: sonda nova == estado real do upstream"},
+    {"run": "systemctl is-active or-worker-bridge", "expect_stdout": "active", "_provenance": "prompt", "_source": "guarda: 8103 é produção"},
+    {"run": "python3 /root/.hermes/plugins/mission-ops/provas/dispatch-fast-03/collect_canary.py", "expect_exit": 0, "timeout": 30, "_provenance": "prompt", "_source": "entregável 2: canário E2E (a..d) — PENDENTE de despacho autorizado"}
+  ],
+  "file": [
+    {"path": "/root/.hermes/plugins/mission-ops/RELATORIO-dispatch-fast-03.md", "min_bytes": 1500, "_provenance": "prompt", "_source": "entregável 3"},
+    {"path": "/root/.hermes/plugins/mission-ops/provas/dispatch-fast-03/suite-full.txt", "min_bytes": 50, "_provenance": "report", "_source": "suíte 236/236"},
+    {"path": "/root/.hermes/plugins/mission-ops/provas/dispatch-fast-03/probe-live.txt", "min_bytes": 100, "_provenance": "report", "_source": "red→green ao vivo da sonda"},
+    {"path": "/root/.hermes/plugins/mission-ops/test_dispatch_fast03.py", "min_bytes": 1500, "_provenance": "report", "_source": "testes novos"}
+  ]
+}

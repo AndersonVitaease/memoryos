@@ -1,0 +1,10 @@
+{
+  "mission": "snapshot-fast-01",
+  "canary": "snapshot-fast-01-canario",
+  "startedAt": "2026-09-29T12:49:06Z",
+  "caller_pane": "w6:pN",
+  "blocked": true,
+  "refused": "CHAIN_DISPATCH_NOT_ALLOWED: missão de origem 'snapshot-fast-01' não declara `allow_chain_dispatch: true` no prompt — worker não despacha sub-missão sem o badge. Peça ao supervisor para despachar 'snapshot-fast-01-canario'.",
+  "note": "gate de cadeia recusou — rode do supervisor/operator",
+  "finishedAt": "2026-09-29T12:49:06Z"
+}

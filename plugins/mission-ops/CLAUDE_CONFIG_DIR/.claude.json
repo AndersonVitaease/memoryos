@@ -1,0 +1,11 @@
+{
+ "mcpServers": {
+  "roles": {
+   "command": "node",
+   "args": [
+    "/opt/gpu-bridge/roles-mcp.mjs"
+   ]
+  }
+ },
+ "bypassPermissionsModeAccepted": true
+}

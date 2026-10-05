@@ -1,0 +1,15 @@
+direct run1 rc=0 Ran 17 tests in 3.420s OK
+direct run2 rc=0 Ran 17 tests in 3.336s OK
+direct run3 rc=0 Ran 17 tests in 3.551s OK
+direct run4 rc=0 Ran 17 tests in 4.007s OK
+direct run5 rc=0 Ran 17 tests in 3.524s OK
+direct run6 rc=0 Ran 17 tests in 3.490s OK
+direct run7 rc=0 Ran 17 tests in 3.394s OK
+direct run8 rc=0 Ran 17 tests in 3.378s OK
+direct run9 rc=0 Ran 17 tests in 3.448s OK
+direct run10 rc=0 Ran 17 tests in 3.412s OK
+hostile VASTAI_BIN=real rc=0 OK
+hostile PATH+venv real rc=0 OK
+auth ausente/bogus rc=0 OK
+tudo hostil rc=0 OK
+ESTADO REAL INTACTO (6 rodadas)

@@ -1,0 +1,267 @@
+test_each_event (__main__.TestClassification.test_each_event) ... ok
+test_mcp_prompt_patterns (__main__.TestClassificationExtra.test_mcp_prompt_patterns) ... ok
+test_ready_regex_error_patterns (__main__.TestClassificationExtra.test_ready_regex_error_patterns) ... ok
+test_lock_fd_released_after_reopen_and_reclose (__main__.TestCloseLockFdReleased.test_lock_fd_released_after_reopen_and_reclose) ... ok
+test_close_common_mission_without_verify_unchanged (__main__.TestConsequenceGuard.test_close_common_mission_without_verify_unchanged) ... ok
+test_close_consequence_with_green_verify_gets_badge (__main__.TestConsequenceGuard.test_close_consequence_with_green_verify_gets_badge) ... ok
+test_close_declared_consequence_override_closes_with_warning (__main__.TestConsequenceGuard.test_close_declared_consequence_override_closes_with_warning) ... ok
+test_close_declared_consequence_without_verify_reopens (__main__.TestConsequenceGuard.test_close_declared_consequence_without_verify_reopens) ... ok
+test_close_heuristic_consequence_closes_with_event (__main__.TestConsequenceGuard.test_close_heuristic_consequence_closes_with_event) ... ok
+test_detection_patterns_and_declaration (__main__.TestConsequenceGuard.test_detection_patterns_and_declaration) ... ok
+test_dispatch_records_consequence_on_ledger (__main__.TestConsequenceGuard.test_dispatch_records_consequence_on_ledger) ... /root/.hermes/plugins/mission-ops/mission_core.py:787: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-fa4ttq6h/missions/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:766: ResourceWarning: unclosed file <_io.TextIOWrapper name='/opt/gpu-bridge/roles.json' mode='r' encoding='UTF-8'>
+  roles = json.load(open("/opt/gpu-bridge/roles.json"))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:793: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-fa4ttq6h/missions/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_all_attempts_stuck_fails (__main__.TestDeliverPrompt.test_all_attempts_stuck_fails) ... ok
+test_retry_after_stuck_text (__main__.TestDeliverPrompt.test_retry_after_stuck_text) ... ok
+test_send_text_transport_failure (__main__.TestDeliverPrompt.test_send_text_transport_failure) ... ok
+test_wrong_owner_verify_reopens (__main__.TestDeliverVerifyRedReal.test_wrong_owner_verify_reopens) ... ok
+test_happy_path (__main__.TestDispatch.test_happy_path) ... /root/.hermes/plugins/mission-ops/mission_core.py:787: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-euyxj0q2/missions/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:766: ResourceWarning: unclosed file <_io.TextIOWrapper name='/opt/gpu-bridge/roles.json' mode='r' encoding='UTF-8'>
+  roles = json.load(open("/opt/gpu-bridge/roles.json"))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:793: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-euyxj0q2/missions/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_herdr_failure_is_clean (__main__.TestDispatch.test_herdr_failure_is_clean) ... ok
+test_idempotent_no_op (__main__.TestDispatch.test_idempotent_no_op) ... ok
+test_invalid_inputs (__main__.TestDispatch.test_invalid_inputs) ... ok
+test_prompt_failed_retries_same_pane (__main__.TestDispatch.test_prompt_failed_retries_same_pane) ... ok
+test_ready_error_detected (__main__.TestDispatch.test_ready_error_detected) ... /root/.hermes/plugins/mission-ops/mission_core.py:787: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-ftitpiwt/missions/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:793: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-ftitpiwt/missions/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_ready_error_inline (__main__.TestDispatch.test_ready_error_inline) ... /root/.hermes/plugins/mission-ops/mission_core.py:787: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-ieci3u06/missions/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:793: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-ieci3u06/missions/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_split_fallback (__main__.TestDispatch.test_split_fallback) ... ok
+test_start_timeout_records_state (__main__.TestDispatch.test_start_timeout_records_state) ... /root/.hermes/plugins/mission-ops/mission_core.py:787: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-2zr617x3/missions/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:793: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-2zr617x3/missions/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_tab_create_failure_no_source (__main__.TestDispatch.test_tab_create_failure_no_source) ... ok
+test_tab_create_payload_without_pane_id_falls_back_to_pane_list (__main__.TestDispatch.test_tab_create_payload_without_pane_id_falls_back_to_pane_list) ... /root/.hermes/plugins/mission-ops/mission_core.py:787: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/x/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_terminal_status_re_dispatches (__main__.TestDispatch.test_terminal_status_re_dispatches)
+25/09 (prova d): delivered/closed + pane VIVO = NO_OP com pointer — sem isso ... /root/.hermes/plugins/mission-ops/mission_core.py:787: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-q3wdmwwt/missions/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:793: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-q3wdmwwt/missions/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_bad_base_time_no_metric (__main__.TestDispatchMetric.test_bad_base_time_no_metric) ... ok
+test_exact_90s_is_finding_not_fast (__main__.TestDispatchMetric.test_exact_90s_is_finding_not_fast) ... ok
+test_fast_badge_under_90s (__main__.TestDispatchMetric.test_fast_badge_under_90s) ... ok
+test_no_working_at_no_metric (__main__.TestDispatchMetric.test_no_working_at_no_metric) ... ok
+test_slow_badge_over_90s (__main__.TestDispatchMetric.test_slow_badge_over_90s) ... ok
+test_watch_first_working_marks_working_at (__main__.TestDispatchMetric.test_watch_first_working_marks_working_at) ... ok
+test_watch_working_over_90s_plants_finding (__main__.TestDispatchMetric.test_watch_working_over_90s_plants_finding) ... ok
+test_all_dispatch_sites_use_template (__main__.TestDispatchTemplateAntiStopAsk.test_all_dispatch_sites_use_template) ... ok
+test_template_contains_anti_stopask_clauses (__main__.TestDispatchTemplateAntiStopAsk.test_template_contains_anti_stopask_clauses) ... ok
+test_template_contains_typed_verify_format (__main__.TestDispatchTemplateAntiStopAsk.test_template_contains_typed_verify_format) ... ok
+test_template_empty_promptfile (__main__.TestDispatchTemplateAntiStopAsk.test_template_empty_promptfile) ... ok
+test_template_rejects_colagem_request (__main__.TestDispatchTemplateAntiStopAsk.test_template_rejects_colagem_request) ... ok
+test_close_exits_tab_and_closes_ledger (__main__.TestExpandedScope.test_close_exits_tab_and_closes_ledger) ... ok
+test_close_requires_target (__main__.TestExpandedScope.test_close_requires_target) ... ok
+test_list_joins_ledgers_with_panes_and_tabs (__main__.TestExpandedScope.test_list_joins_ledgers_with_panes_and_tabs) ... ok
+test_list_reports_herdr_warnings (__main__.TestExpandedScope.test_list_reports_herdr_warnings) ... ok
+test_read_by_mission_truncates_tail (__main__.TestExpandedScope.test_read_by_mission_truncates_tail) ... ok
+test_read_requires_pane_or_mission (__main__.TestExpandedScope.test_read_requires_pane_or_mission) ... ok
+test_worktree_add_and_remove_roundtrip (__main__.TestExpandedScope.test_worktree_add_and_remove_roundtrip) ... ok
+test_worktree_remove_never_blind (__main__.TestExpandedScope.test_worktree_remove_never_blind) ... ok
+test_copy_creates_target_and_is_idempotent (__main__.TestGoldenConfig.test_copy_creates_target_and_is_idempotent) ... /root/.hermes/plugins/mission-ops/mission_core.py:793: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpgy24mync/mission-cwd/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:787: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpgy24mync/mission-cwd/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_copy_failure_fails_open (__main__.TestGoldenConfig.test_copy_failure_fails_open) ... ok
+test_tab_create_copies_golden_config (__main__.TestGoldenConfig.test_tab_create_copies_golden_config) ... /root/.hermes/plugins/mission-ops/mission_core.py:793: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp8poh65qy/cwd/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_gpu_down_detail_separates_verdict_from_stderr (__main__.TestGpuDownFix01.test_gpu_down_detail_separates_verdict_from_stderr) ... ok
+test_green_destroy_unverified_exit4_ledgers_extra (__main__.TestGpuDownFix01.test_green_destroy_unverified_exit4_ledgers_extra) ... ok
+test_green_full_path_mixed_types (__main__.TestGpuDownFix01.test_green_full_path_mixed_types) ... ok
+test_green_garfo_defers_on_recent_iso_updatedat (__main__.TestGpuDownFix01.test_green_garfo_defers_on_recent_iso_updatedat) ... ok
+test_green_garfo_skips_own_recent_mission (__main__.TestGpuDownFix01.test_green_garfo_skips_own_recent_mission) ... ok
+test_green_missing_and_none_fields (__main__.TestGpuDownFix01.test_green_missing_and_none_fields) ... ok
+test_mission_close_gpu_down_step_uses_stdout_verdict (__main__.TestGpuDownFix01.test_mission_close_gpu_down_step_uses_stdout_verdict) ... ok
+test_red_prefix_final_cost_str_in_ledger (__main__.TestGpuDownFix01.test_red_prefix_final_cost_str_in_ledger) ... ok
+test_red_prefix_garfo_float_minus_str (__main__.TestGpuDownFix01.test_red_prefix_garfo_float_minus_str) ... ok
+test_01_card_resumo_tipado_e_keyboard (__main__.TestGuardianMobile01.test_01_card_resumo_tipado_e_keyboard) ... ok
+test_02_create_valida_campos_e_nao_grava (__main__.TestGuardianMobile01.test_02_create_valida_campos_e_nao_grava) ... ok
+test_03_create_intent_0600_canal_inactive_honesto_ledger (__main__.TestGuardianMobile01.test_03_create_intent_0600_canal_inactive_honesto_ledger) ... ok
+test_04_create_idempotente_mesma_missao_acao (__main__.TestGuardianMobile01.test_04_create_idempotente_mesma_missao_acao) ... ok
+test_05_aprovar_injeta_ordem_intent_e_ledger_sem_chat_em_claro (__main__.TestGuardianMobile01.test_05_aprovar_injeta_ordem_intent_e_ledger_sem_chat_em_claro) ... ok
+test_06_toque_fora_da_allowlist_recusa_tipada (__main__.TestGuardianMobile01.test_06_toque_fora_da_allowlist_recusa_tipada) ... ok
+test_07_cancelar_tipado_com_evidencia_e_idempotente (__main__.TestGuardianMobile01.test_07_cancelar_tipado_com_evidencia_e_idempotente) ... ok
+test_08_toque_apos_ttl_recusado_e_permanece_pendente (__main__.TestGuardianMobile01.test_08_toque_apos_ttl_recusado_e_permanece_pendente) ... ok
+test_09_sem_toque_permanece_pendente_com_nota_honesta (__main__.TestGuardianMobile01.test_09_sem_toque_permanece_pendente_com_nota_honesta) ... ok
+test_10_texto_sem_token_sem_binding_unverified_com_token_status (__main__.TestGuardianMobile01.test_10_texto_sem_token_sem_binding_unverified_com_token_status) ... ok
+test_11_texto_com_token_valido_aprova_por_token (__main__.TestGuardianMobile01.test_11_texto_com_token_valido_aprova_por_token) ... ok
+test_12_texto_nao_ordem_retorna_none (__main__.TestGuardianMobile01.test_12_texto_nao_ordem_retorna_none) ... ok
+test_13_guard_aceita_aprovacao_do_card_na_janela (__main__.TestGuardianMobile01.test_13_guard_aceita_aprovacao_do_card_na_janela) ... ok
+test_14_guard_recusa_aprovacao_fora_da_janela (__main__.TestGuardianMobile01.test_14_guard_recusa_aprovacao_fora_da_janela) ... ok
+test_15_guard_recusa_acao_diferente_da_aprovada (__main__.TestGuardianMobile01.test_15_guard_recusa_acao_diferente_da_aprovada) ... ok
+test_16_factory_registra_handlers_com_prefixo_exclusivo (__main__.TestGuardianMobile01.test_16_factory_registra_handlers_com_prefixo_exclusivo) ... ok
+test_17_entrega_do_card_e2e_ptb_falso (__main__.TestGuardianMobile01.test_17_entrega_do_card_e2e_ptb_falso) ... ok
+test_18_callback_toque_e2e_ptb_falso (__main__.TestGuardianMobile01.test_18_callback_toque_e2e_ptb_falso) ... ok
+test_19_status_por_missao (__main__.TestGuardianMobile01.test_19_status_por_missao) ... ok
+test_list_ledgers_skips_non_records (__main__.TestLoadLedgerFix.test_list_ledgers_skips_non_records) ... ok
+test_status_and_list_survive_poisoned_dir (__main__.TestLoadLedgerFix.test_status_and_list_survive_poisoned_dir) ... ok
+test_dispatch_dismisses_and_delivers (__main__.TestMcpPromptRecipe.test_dispatch_dismisses_and_delivers) ... /root/.hermes/plugins/mission-ops/mission_core.py:787: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-1m6620cq/missions/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:766: ResourceWarning: unclosed file <_io.TextIOWrapper name='/opt/gpu-bridge/roles.json' mode='r' encoding='UTF-8'>
+  roles = json.load(open("/opt/gpu-bridge/roles.json"))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:793: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-1m6620cq/missions/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_ready_error_recipe_redirects_to_mcp (__main__.TestMcpPromptRecipe.test_ready_error_recipe_redirects_to_mcp) ... ok
+test_recipe_enters_and_redelivers (__main__.TestMcpPromptRecipe.test_recipe_enters_and_redelivers) ... ok
+test_recipe_no_redelivery_when_dispatched (__main__.TestMcpPromptRecipe.test_recipe_no_redelivery_when_dispatched) ... ok
+test_lote_anti_fantasma (__main__.TestMissionBatch.test_lote_anti_fantasma) ... ok
+test_lote_happy_path (__main__.TestMissionBatch.test_lote_happy_path) ... ok
+test_lote_tolera_falha_individual (__main__.TestMissionBatch.test_lote_tolera_falha_individual) ... ok
+test_lote_valida_tamanho_e_duplicado (__main__.TestMissionBatch.test_lote_valida_tamanho_e_duplicado) ... ok
+test_ready_dance_cobre_banner_billing (__main__.TestMissionBatch.test_ready_dance_cobre_banner_billing) ... ok
+test_close_alive_channel_proceeds (__main__.TestOperatorChannelGate.test_close_alive_channel_proceeds) ... ok
+test_close_dead_channel_reopens (__main__.TestOperatorChannelGate.test_close_dead_channel_reopens) ... ok
+test_close_without_channel_sets_close_warning (__main__.TestOperatorChannelGate.test_close_without_channel_sets_close_warning) ... ok
+test_dispatch_accepts_string_channel (__main__.TestOperatorChannelGate.test_dispatch_accepts_string_channel) ... /root/.hermes/plugins/mission-ops/mission_core.py:787: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-fr01s11q/missions/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:793: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-fr01s11q/missions/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_dispatch_persists_operator_channel (__main__.TestOperatorChannelGate.test_dispatch_persists_operator_channel) ... /root/.hermes/plugins/mission-ops/mission_core.py:787: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-w81g992o/missions/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:793: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-w81g992o/missions/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_mission_verify_rejects_invalid_id (__main__.TestOperatorChannelGate.test_mission_verify_rejects_invalid_id) ... ok
+test_mission_verify_structured_output (__main__.TestOperatorChannelGate.test_mission_verify_structured_output) ... ok
+test_api_key_dialog_maps_enter (__main__.TestReadyDance.test_api_key_dialog_maps_enter) ... ok
+test_auto_mode_banner_maps_enter (__main__.TestReadyDance.test_auto_mode_banner_maps_enter) ... ok
+test_dispatch_dance_exhausts_to_timeout (__main__.TestReadyDance.test_dispatch_dance_exhausts_to_timeout) ... /root/.hermes/plugins/mission-ops/mission_core.py:787: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-bl8f90ev/missions/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:793: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-bl8f90ev/missions/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_dispatch_dances_dialog_and_reaches_ready (__main__.TestReadyDance.test_dispatch_dances_dialog_and_reaches_ready) ... /root/.hermes/plugins/mission-ops/mission_core.py:787: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-5cn1p2id/missions/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:793: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-5cn1p2id/missions/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_no_dialog_returns_none (__main__.TestReadyDance.test_no_dialog_returns_none) ... ok
+test_trust_folder_maps_down_enter (__main__.TestReadyDance.test_trust_folder_maps_down_enter) ... ok
+test_welcome_theme_maps_enter (__main__.TestReadyDance.test_welcome_theme_maps_enter) ... ok
+test_recipe_relaunches_and_redelivers (__main__.TestReadyErrorRecipe.test_recipe_relaunches_and_redelivers) ... ok
+test_recipe_requires_cwd (__main__.TestReadyErrorRecipe.test_recipe_requires_cwd) ... ok
+test_recipe_requires_ledger (__main__.TestReadyErrorRecipe.test_recipe_requires_ledger) ... ok
+test_legacy_markers_kept (__main__.TestReadyRegexExtended.test_legacy_markers_kept) ... ok
+test_welcome_theme_screen_is_ready (__main__.TestReadyRegexExtended.test_welcome_theme_screen_is_ready) ... ok
+test_autocompact_marks_only (__main__.TestRecipes.test_autocompact_marks_only) ... ok
+test_delivered_is_not_a_recipe (__main__.TestRecipes.test_delivered_is_not_a_recipe) ... ok
+test_interrupted_positive (__main__.TestRecipes.test_interrupted_positive) ... ok
+test_palette_esc_only_never_quit (__main__.TestRecipes.test_palette_esc_only_never_quit) ... ok
+test_shell_fallback_uses_ledger_resume (__main__.TestRecipes.test_shell_fallback_uses_ledger_resume) ... ok
+test_shell_fallback_without_resume_id_starts_fresh (__main__.TestRecipes.test_shell_fallback_without_resume_id_starts_fresh) ... ok
+test_transcript400_fresh_session_never_resumes_poisoned (__main__.TestRecipes.test_transcript400_fresh_session_never_resumes_poisoned) ... ok
+test_transcript400_without_ledger (__main__.TestRecipes.test_transcript400_without_ledger) ... ok
+test_unknown_pattern_no_mutation (__main__.TestRecipes.test_unknown_pattern_no_mutation) ... ok
+test_found_by_pane_scan (__main__.TestRecoverHandler.test_found_by_pane_scan) ... ok
+test_requires_pane_and_pattern (__main__.TestRecoverHandler.test_requires_pane_and_pattern) ... ok
+test_unknown_gives_needs_supervisor (__main__.TestRecoverHandler.test_unknown_gives_needs_supervisor) ... ok
+test_counts_bash_vs_shell_run_per_mission (__main__.TestShellAdoption.test_counts_bash_vs_shell_run_per_mission) ... ok
+test_metadata_only_never_reads_command_content (__main__.TestShellAdoption.test_metadata_only_never_reads_command_content) ... ok
+test_missing_transcript_is_reported_not_crash (__main__.TestShellAdoption.test_missing_transcript_is_reported_not_crash) ... ok
+test_mission_without_shell_commands_is_none (__main__.TestShellAdoption.test_mission_without_shell_commands_is_none) ... ok
+test_template_instructs_shell_run_default (__main__.TestShellGuardDispatchClause.test_template_instructs_shell_run_default) ... ok
+test_template_with_clause_still_inline (__main__.TestShellGuardDispatchClause.test_template_with_clause_still_inline) ... ok
+test_one_and_all_and_empty (__main__.TestStatus.test_one_and_all_and_empty) ... ok
+test_close_cancel_requires_reason_and_records_note (__main__.TestToolsFix02Close.test_close_cancel_requires_reason_and_records_note) ... /usr/lib/python3.12/asyncio/base_events.py:726: ResourceWarning: unclosed event loop <_UnixSelectorEventLoop running=False closed=False debug=False>
+  _warn(f"unclosed event loop {self!r}", ResourceWarning, source=self)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_close_dry_run_preview_red_reopens (__main__.TestToolsFix02Close.test_close_dry_run_preview_red_reopens) ... ok
+test_close_dry_run_zero_mutation (__main__.TestToolsFix02Close.test_close_dry_run_zero_mutation) ... ok
+test_close_expect_badge_required (__main__.TestToolsFix02Close.test_close_expect_badge_required) ... ok
+test_close_idempotent_and_lock (__main__.TestToolsFix02Close.test_close_idempotent_and_lock) ... ok
+test_close_keep_pane_preserves_tab (__main__.TestToolsFix02Close.test_close_keep_pane_preserves_tab) ... ok
+test_close_worker_active_refused (__main__.TestToolsFix02Close.test_close_worker_active_refused) ... ok
+test_resolve_fragment_and_ambiguity (__main__.TestToolsFix02Close.test_resolve_fragment_and_ambiguity) ... ok
+test_verify_checks_filter_partial (__main__.TestToolsFix02Verify.test_verify_checks_filter_partial) ... ok
+test_verify_fragment_resolution (__main__.TestToolsFix02Verify.test_verify_fragment_resolution) ... ok
+test_verify_invalid_inputs (__main__.TestToolsFix02Verify.test_verify_invalid_inputs) ... ok
+test_verify_no_manifest_warning (__main__.TestToolsFix02Verify.test_verify_no_manifest_warning) ... ok
+test_ledger_and_events (__main__.TestValidation.test_ledger_and_events) ... ok
+test_mission_id (__main__.TestValidation.test_mission_id) ... ok
+test_prompt_file (__main__.TestValidation.test_prompt_file) ... ok
+test_bare_vastai_resolves_tripwire_never_real (__main__.TestVastSandboxGuard.test_bare_vastai_resolves_tripwire_never_real) ... ok
+test_bash_script_citing_real_vastai_refused (__main__.TestVastSandboxGuard.test_bash_script_citing_real_vastai_refused) ... ok
+test_env_vastai_bin_real_refused (__main__.TestVastSandboxGuard.test_env_vastai_bin_real_refused) ... ok
+test_every_vast_touching_test_file_is_guarded (__main__.TestVastSandboxGuard.test_every_vast_touching_test_file_is_guarded) ... ok
+test_popen_real_vastai_absolute_refused (__main__.TestVastSandboxGuard.test_popen_real_vastai_absolute_refused) ... ok
+test_sandbox_lib_resolves_fake_even_with_hostile_invoker_env (__main__.TestVastSandboxGuard.test_sandbox_lib_resolves_fake_even_with_hostile_invoker_env) ... ok
+test_seal_catches_existing_vastai_on_invoker_path (__main__.TestVastSandboxGuard.test_seal_catches_existing_vastai_on_invoker_path) ... ok
+test_seal_path_independent_no_false_positive_on_comment (__main__.TestVastSandboxGuard.test_seal_path_independent_no_false_positive_on_comment) ... ok
+test_seal_refuses_unneutralized_script (__main__.TestVastSandboxGuard.test_seal_refuses_unneutralized_script) ... ok
+test_shell_string_real_vastai_refused (__main__.TestVastSandboxGuard.test_shell_string_real_vastai_refused) ... ok
+test_all_mode_empty (__main__.TestWatch.test_all_mode_empty) ... ok
+test_all_mode_snapshot_no_blocking_wait (__main__.TestWatch.test_all_mode_snapshot_no_blocking_wait)
+25/09: modo all = SNAPSHOT (cobrança do operador: 50s de vigília não é ... /root/.hermes/plugins/mission-ops/notify.py:219: ResourceWarning: unclosed file <_io.TextIOWrapper name='/opt/gpu-orchestrator/state.json' mode='r' encoding='UTF-8'>
+  data = state if state is not None else json.load(open(gpu_state_path))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_delivered_sets_status (__main__.TestWatch.test_delivered_sets_status) ... ok
+test_herdr_failure_clean (__main__.TestWatch.test_herdr_failure_clean) ... ok
+test_interrupted_auto_recipe (__main__.TestWatch.test_interrupted_auto_recipe) ... ok
+test_liveness_idle_vs_working (__main__.TestWatch.test_liveness_idle_vs_working)
+25/09 (teste do OPERADOR: PHOTOPEA-EXEC-01 estava PARADA e o snapshot ... ok
+test_no_event (__main__.TestWatch.test_no_event) ... ok
+test_pane_became_shell (__main__.TestWatch.test_pane_became_shell) ... ok
+test_single_snapshot_arg (__main__.TestWatch.test_single_snapshot_arg) ... ok
+test_transcript400_marks_without_recipe (__main__.TestWatch.test_transcript400_marks_without_recipe) ... ok
+test_pane_closed_with_tab_alive (__main__.TestWatchClosed.test_pane_closed_with_tab_alive) ... ok
+test_process_info_nested_payload_real_shape (__main__.TestWatchClosed.test_process_info_nested_payload_real_shape)
+25/09: payload REAL do herdr = result.process_info.foreground_processes ... ok
+test_tab_closed (__main__.TestWatchClosed.test_tab_closed) ... ok
+
+----------------------------------------------------------------------
+Ran 165 tests in 32.805s
+
+OK

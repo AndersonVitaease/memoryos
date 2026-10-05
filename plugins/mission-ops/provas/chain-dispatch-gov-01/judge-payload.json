@@ -1,0 +1,29 @@
+{
+ "claims": [
+  {
+   "id": "c1",
+   "text": "Before the patch all 17 chain-dispatch tests fail, and after the patch all 17 pass."
+  },
+  {
+   "id": "c2",
+   "text": "The full suite ran 188 tests OK with exit status 0 inside the chain-dispatch-suite scope, with peak RSS about 27 MB."
+  },
+  {
+   "id": "c3",
+   "text": "A worker without the allow_chain_dispatch badge is refused (CHAIN_DISPATCH_NOT_ALLOWED) and a grandchild at depth 2 is refused (CHAIN_DEPTH_EXCEEDED) in the tests."
+  },
+  {
+   "id": "c4",
+   "text": "A worker with the badge is accepted and a supervisor dispatch still works in the tests."
+  },
+  {
+   "id": "c5",
+   "text": "In the live run from the worker pane w5:p1E the probe dispatch was refused with CHAIN_DISPATCH_NOT_ALLOWED citing chain-dispatch-gov-01, no ledger was created, and a refused chain_dispatch event with spawned_by chain-dispatch-gov-01 and chain_depth 1 was written to the spool."
+  },
+  {
+   "id": "c6",
+   "text": "119 real legacy ledgers without spawned_by loaded without error, and the verify manifest passed 18 of 18 checks."
+  }
+ ],
+ "evidence": "== red.txt (HEAD 8edc0d9, antes do patch)\ntest_declared_spawned_by_mission_refused ... ERROR\ntest_self_grant_after_dispatch_does_not_count ... ERROR\ntest_unknown_declared_parent_refused ... ERROR\ntest_worker_cannot_spoof_supervisor ... ERROR\ntest_worker_pane_refused_with_trail ... ERROR\ntest_badge_accepted_and_recorded ... ERROR\ntest_badge_recorded_on_ledger_at_dispatch ... ERROR\ntest_config_parser ... ERROR\ntest_depth_configurable ... ERROR\ntest_depth_zero_blocks_any_worker ... ERROR\ntest_grandchild_refused_by_default ... ERROR\ntest_idempotent_no_op_keeps_working ... ERROR\ntest_non_mission_pane_is_operator ... ERROR\ntest_operator_declared ... ERROR\ntest_supervisor_default_no_pane ... ERROR\ntest_supervisor_unaffected_by_depth_zero ... ERROR\ntest_legacy_ledger_loads_and_is_depth_zero ... ERROR\nRan 17 tests in 0.008s\nFAILED (errors=17)\n== green.txt (depois do patch)\ntest_declared_spawned_by_mission_refused ... ok\ntest_self_grant_after_dispatch_does_not_count ... ok\ntest_unknown_declared_parent_refused ... ok\ntest_worker_cannot_spoof_supervisor ... ok\ntest_worker_pane_refused_with_trail ... ok\ntest_badge_accepted_and_recorded ... ok\ntest_badge_recorded_on_ledger_at_dispatch ... ok\ntest_config_parser ... ok\ntest_depth_configurable ... ok\ntest_depth_zero_blocks_any_worker ... ok\ntest_grandchild_refused_by_default ... ok\ntest_idempotent_no_op_keeps_working ... ok\ntest_non_mission_pane_is_operator ... ok\ntest_operator_declared ... ok\ntest_supervisor_default_no_pane ... ok\ntest_supervisor_unaffected_by_depth_zero ... ok\ntest_legacy_ledger_loads_and_is_depth_zero ... ok\nRan 17 tests in 0.038s\nOK\n== suite-full.txt\nRunning as unit: chain-dispatch-suite.scope; invocation ID: 3906c35f2957460fb7dd007fccf68d4c\n0::/system.slice/chain-dispatch-suite.scope\nRan 188 tests in 33.565s\nOK\nMaximum resident set size (kbytes): 27368\nExit status: 0\n== selftest-live.txt (python do gateway, estado real, pane de worker w5:p1E)\npython 3.14.7 | yaml disponível: False\nimports OK; CONFIG_PATH /root/.hermes/config.yaml | chain_depth_max = 1\nHERDR_PANE_ID w5:p1E\nresolve (pane real): {'declared': None, 'spawned_by': 'chain-dispatch-gov-01', 'kind': 'worker', 'basis': 'pane w5:p1E'}\nresolve (gateway, sem pane): {'declared': None, 'spawned_by': 'supervisor:hermes', 'kind': 'supervisor', 'basis': 'no pane'}\nledgers reais carregados: 119 | legados sem spawned_by: 119\nDISPATCH (worker real sem badge): {\"ok\": false, \"error\": \"CHAIN_DISPATCH_NOT_ALLOWED\", \"detail\": \"missão de origem 'chain-dispatch-gov-01' não declara `allow_chain_dispatch: true` no prompt — worker não despacha sub-missão sem o badge. Peça ao supervisor para despachar 'chain-gov-live-probe-01'.\"}\nledger da sonda existe? False\n== live-spool-event.jsonl\n{\"ts\": \"2026-09-28T15:29:04Z\", \"event\": \"finding\", \"kind\": \"chain_dispatch\", \"mission_id\": \"chain-gov-live-probe-01\", \"spawned_by\": \"chain-dispatch-gov-01\", \"chain_depth\": 1, \"chain_depth_max\": 1, \"verdict\": \"refused\", \"reason\": \"CHAIN_DISPATCH_NOT_ALLOWED\", \"dispatcher_kind\": \"worker\", \"basis\": \"pane w5:p1E\", \"declared\": null, \"detail\": \"missão de origem 'chain-dispatch-gov-01' não declara `allow_chain_dispatch: true` no prompt — worker não despacha sub-missão sem o badge. Peça ao supervisor para despachar 'chain-gov-live-probe-01'.\", \"source\": \"mission-ops:chain\"}\n\n== verify-final.json\nverdict=pass checks 18/18 ok; cmd check-chain-gov.sh tail: CHAIN-GOV OK 17"
+}

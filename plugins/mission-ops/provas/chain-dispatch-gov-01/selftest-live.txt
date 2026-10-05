@@ -1,0 +1,8 @@
+python 3.14.7 | yaml disponível: False
+imports OK; CONFIG_PATH /root/.hermes/config.yaml | chain_depth_max = 1
+HERDR_PANE_ID w5:p1E
+resolve (pane real): {'declared': None, 'spawned_by': 'chain-dispatch-gov-01', 'kind': 'worker', 'basis': 'pane w5:p1E'}
+resolve (gateway, sem pane): {'declared': None, 'spawned_by': 'supervisor:hermes', 'kind': 'supervisor', 'basis': 'no pane'}
+ledgers reais carregados: 119 | legados sem spawned_by: 119
+DISPATCH (worker real sem badge): {"ok": false, "error": "CHAIN_DISPATCH_NOT_ALLOWED", "detail": "missão de origem 'chain-dispatch-gov-01' não declara `allow_chain_dispatch: true` no prompt — worker não despacha sub-missão sem o badge. Peça ao supervisor para despachar 'chain-gov-live-probe-01'."}
+ledger da sonda existe? False

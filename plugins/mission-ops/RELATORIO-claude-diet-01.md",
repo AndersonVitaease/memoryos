@@ -1,0 +1,24 @@
+# RELATÓRIO – CLAUDE‑DIET‑01
+
+**Tamanho original**: 245 719 bytes
+**Tamanho após dieta**: 104 191 bytes (≈ 42 % do original)
+
+## O que foi arquivado
+- Todo o conteúdo a partir do byte 100 001 foi movido para `docs/CLAUDE-archive-20260929.md` (preservado).
+- Backup completo está em `CLAUDE.md.bak-pre-diet-245k-20260929`.
+
+## Como reverter
+```bash
+cp /opt/memoryos/CLAUDE.md.bak-pre-diet-245k-20260929 /opt/memoryos/CLAUDE.md
+```
+
+## Verificação (verify.json)
+```json
+{
+  "original_size": 245719,
+  "new_size": 104191,
+  "backup_exists": true,
+  "archive_exists": true,
+  "warning_absent": true
+}
+```

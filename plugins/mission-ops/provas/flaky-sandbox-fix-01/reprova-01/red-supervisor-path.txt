@@ -1,0 +1,138 @@
+.FFFFF.FF
+======================================================================
+FAIL: test_green_destroy_unverified_exit4_ledgers_extra (test_mission_ops.TestGpuDownFix01.test_green_destroy_unverified_exit4_ledgers_extra)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_mission_ops.py", line 1763, in test_green_destroy_unverified_exit4_ledgers_extra
+    out = self._run(self.FIXED, GPU_FAKE_VAST_ROWS='[{"id": %d}]' % self.CID)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.hermes/plugins/mission-ops/test_mission_ops.py", line 1689, in _run
+    return self.sb.run(self._script(src), GPU_SKIP_MISSION="model-swap-01", **env)
+                       ^^^^^^^^^^^^^^^^^
+  File "/root/.hermes/plugins/mission-ops/test_mission_ops.py", line 1669, in _script
+    return self.sb.script(src)  # assert estático: nenhum caminho/vastai real sobrou
+           ^^^^^^^^^^^^^^^^^^^
+  File "/root/.hermes/plugins/mission-ops/vast_sandbox.py", line 225, in script
+    self.assert_sealed(p.read_text())
+  File "/root/.hermes/plugins/mission-ops/vast_sandbox.py", line 215, in assert_sealed
+    raise RealVastaiError("%s: sandbox cita %s" % (MSG, real))
+vast_sandbox.RealVastaiError: teste tentou vastai real: sandbox cita /bin/vastai
+
+======================================================================
+FAIL: test_green_full_path_mixed_types (test_mission_ops.TestGpuDownFix01.test_green_full_path_mixed_types)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_mission_ops.py", line 1716, in test_green_full_path_mixed_types
+    out = self._run(self.FIXED)
+          ^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.hermes/plugins/mission-ops/test_mission_ops.py", line 1689, in _run
+    return self.sb.run(self._script(src), GPU_SKIP_MISSION="model-swap-01", **env)
+                       ^^^^^^^^^^^^^^^^^
+  File "/root/.hermes/plugins/mission-ops/test_mission_ops.py", line 1669, in _script
+    return self.sb.script(src)  # assert estático: nenhum caminho/vastai real sobrou
+           ^^^^^^^^^^^^^^^^^^^
+  File "/root/.hermes/plugins/mission-ops/vast_sandbox.py", line 225, in script
+    self.assert_sealed(p.read_text())
+  File "/root/.hermes/plugins/mission-ops/vast_sandbox.py", line 215, in assert_sealed
+    raise RealVastaiError("%s: sandbox cita %s" % (MSG, real))
+vast_sandbox.RealVastaiError: teste tentou vastai real: sandbox cita /bin/vastai
+
+======================================================================
+FAIL: test_green_garfo_defers_on_recent_iso_updatedat (test_mission_ops.TestGpuDownFix01.test_green_garfo_defers_on_recent_iso_updatedat)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_mission_ops.py", line 1746, in test_green_garfo_defers_on_recent_iso_updatedat
+    out = self._run(self.FIXED)
+          ^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.hermes/plugins/mission-ops/test_mission_ops.py", line 1689, in _run
+    return self.sb.run(self._script(src), GPU_SKIP_MISSION="model-swap-01", **env)
+                       ^^^^^^^^^^^^^^^^^
+  File "/root/.hermes/plugins/mission-ops/test_mission_ops.py", line 1669, in _script
+    return self.sb.script(src)  # assert estático: nenhum caminho/vastai real sobrou
+           ^^^^^^^^^^^^^^^^^^^
+  File "/root/.hermes/plugins/mission-ops/vast_sandbox.py", line 225, in script
+    self.assert_sealed(p.read_text())
+  File "/root/.hermes/plugins/mission-ops/vast_sandbox.py", line 215, in assert_sealed
+    raise RealVastaiError("%s: sandbox cita %s" % (MSG, real))
+vast_sandbox.RealVastaiError: teste tentou vastai real: sandbox cita /bin/vastai
+
+======================================================================
+FAIL: test_green_garfo_skips_own_recent_mission (test_mission_ops.TestGpuDownFix01.test_green_garfo_skips_own_recent_mission)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_mission_ops.py", line 1756, in test_green_garfo_skips_own_recent_mission
+    out = self._run(self.FIXED)
+          ^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.hermes/plugins/mission-ops/test_mission_ops.py", line 1689, in _run
+    return self.sb.run(self._script(src), GPU_SKIP_MISSION="model-swap-01", **env)
+                       ^^^^^^^^^^^^^^^^^
+  File "/root/.hermes/plugins/mission-ops/test_mission_ops.py", line 1669, in _script
+    return self.sb.script(src)  # assert estático: nenhum caminho/vastai real sobrou
+           ^^^^^^^^^^^^^^^^^^^
+  File "/root/.hermes/plugins/mission-ops/vast_sandbox.py", line 225, in script
+    self.assert_sealed(p.read_text())
+  File "/root/.hermes/plugins/mission-ops/vast_sandbox.py", line 215, in assert_sealed
+    raise RealVastaiError("%s: sandbox cita %s" % (MSG, real))
+vast_sandbox.RealVastaiError: teste tentou vastai real: sandbox cita /bin/vastai
+
+======================================================================
+FAIL: test_green_missing_and_none_fields (test_mission_ops.TestGpuDownFix01.test_green_missing_and_none_fields)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_mission_ops.py", line 1734, in test_green_missing_and_none_fields
+    out = self._run(self.FIXED)
+          ^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.hermes/plugins/mission-ops/test_mission_ops.py", line 1689, in _run
+    return self.sb.run(self._script(src), GPU_SKIP_MISSION="model-swap-01", **env)
+                       ^^^^^^^^^^^^^^^^^
+  File "/root/.hermes/plugins/mission-ops/test_mission_ops.py", line 1669, in _script
+    return self.sb.script(src)  # assert estático: nenhum caminho/vastai real sobrou
+           ^^^^^^^^^^^^^^^^^^^
+  File "/root/.hermes/plugins/mission-ops/vast_sandbox.py", line 225, in script
+    self.assert_sealed(p.read_text())
+  File "/root/.hermes/plugins/mission-ops/vast_sandbox.py", line 215, in assert_sealed
+    raise RealVastaiError("%s: sandbox cita %s" % (MSG, real))
+vast_sandbox.RealVastaiError: teste tentou vastai real: sandbox cita /bin/vastai
+
+======================================================================
+FAIL: test_red_prefix_final_cost_str_in_ledger (test_mission_ops.TestGpuDownFix01.test_red_prefix_final_cost_str_in_ledger)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_mission_ops.py", line 1705, in test_red_prefix_final_cost_str_in_ledger
+    out = self._run(self.PREFIX)
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.hermes/plugins/mission-ops/test_mission_ops.py", line 1689, in _run
+    return self.sb.run(self._script(src), GPU_SKIP_MISSION="model-swap-01", **env)
+                       ^^^^^^^^^^^^^^^^^
+  File "/root/.hermes/plugins/mission-ops/test_mission_ops.py", line 1669, in _script
+    return self.sb.script(src)  # assert estático: nenhum caminho/vastai real sobrou
+           ^^^^^^^^^^^^^^^^^^^
+  File "/root/.hermes/plugins/mission-ops/vast_sandbox.py", line 225, in script
+    self.assert_sealed(p.read_text())
+  File "/root/.hermes/plugins/mission-ops/vast_sandbox.py", line 215, in assert_sealed
+    raise RealVastaiError("%s: sandbox cita %s" % (MSG, real))
+vast_sandbox.RealVastaiError: teste tentou vastai real: sandbox cita /bin/vastai
+
+======================================================================
+FAIL: test_red_prefix_garfo_float_minus_str (test_mission_ops.TestGpuDownFix01.test_red_prefix_garfo_float_minus_str)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_mission_ops.py", line 1699, in test_red_prefix_garfo_float_minus_str
+    out = self._run(self.PREFIX)
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.hermes/plugins/mission-ops/test_mission_ops.py", line 1689, in _run
+    return self.sb.run(self._script(src), GPU_SKIP_MISSION="model-swap-01", **env)
+                       ^^^^^^^^^^^^^^^^^
+  File "/root/.hermes/plugins/mission-ops/test_mission_ops.py", line 1669, in _script
+    return self.sb.script(src)  # assert estático: nenhum caminho/vastai real sobrou
+           ^^^^^^^^^^^^^^^^^^^
+  File "/root/.hermes/plugins/mission-ops/vast_sandbox.py", line 225, in script
+    self.assert_sealed(p.read_text())
+  File "/root/.hermes/plugins/mission-ops/vast_sandbox.py", line 215, in assert_sealed
+    raise RealVastaiError("%s: sandbox cita %s" % (MSG, real))
+vast_sandbox.RealVastaiError: teste tentou vastai real: sandbox cita /bin/vastai
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.017s
+
+FAILED (failures=7)

@@ -1,0 +1,51 @@
+{
+ "ts": "2026-10-01T13:06:14Z",
+ "right_cwd": "/root/.hermes/scratch/mission-ops-guard-01/e2e/eng-mcp-wt-guard-e2e/eng-mcp",
+ "wrong_cwd": "/root/.hermes/scratch/mission-ops-guard-01/e2e/wrong-cwd",
+ "tab": "w6:t3W",
+ "pane": "w6:p41",
+ "shell_cwd_before": "/root/.hermes/scratch/mission-ops-guard-01/e2e/wrong-cwd",
+ "recover": {
+  "result": {
+   "recipe": "shell_fallback",
+   "resumed": true,
+   "freshSessionId": "3a217904-dce3-4bb6-a57d-509dcd0da8cd"
+  },
+  "error": null
+ },
+ "claude_pid": 4114578,
+ "claude_proc_cwd": "/root/.hermes/scratch/mission-ops-guard-01/e2e/eng-mcp-wt-guard-e2e/eng-mcp",
+ "F2_cwd_ok": true,
+ "ledger_resumeSessionId": "3a217904-dce3-4bb6-a57d-509dcd0da8cd",
+ "resume_turn_done": true,
+ "box_dirty_before": [
+  "❯ /0000"
+ ],
+ "nudge": {
+  "status": "engage_failed",
+  "paneStateBefore": "interrupted",
+  "paneStateAfter": "idle",
+  "error": null
+ },
+ "nudge_screen_tail": [
+  "● GUARD-RESUME-OK",
+  "",
+  "✻ Sautéed for 10s · done 10:06 AM",
+  "",
+  "❯ Responda apenas: GUARD-NUDGE-CLEAN",
+  "",
+  "● GUARD-NUDGE-CLEAN",
+  "",
+  "✻ Crunched for 2s · done 10:06 AM",
+  "",
+  "───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+  "❯",
+  "───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────",
+  "  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents                                                                            Ctrl+Y to paste deleted text"
+ ],
+ "F3_unknown_command": false,
+ "F3_garbage_echo": false,
+ "F3_clean_ok": true,
+ "tab_close": null,
+ "PASS": true
+}

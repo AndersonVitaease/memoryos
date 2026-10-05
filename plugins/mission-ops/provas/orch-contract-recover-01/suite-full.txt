@@ -1,0 +1,221 @@
+......................................................................................./root/.hermes/plugins/mission-ops/mission_core.py:805: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-antv74et/missions/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:784: ResourceWarning: unclosed file <_io.TextIOWrapper name='/opt/gpu-bridge/roles.json' mode='r' encoding='UTF-8'>
+  roles = json.load(open("/opt/gpu-bridge/roles.json"))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:811: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-antv74et/missions/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./root/.hermes/plugins/mission-ops/mission_core.py:805: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-om608o1x/missions/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:811: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-om608o1x/missions/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+........................................................../root/.hermes/plugins/mission-ops/mission_core.py:805: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-5ksq_f_g/b1/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:784: ResourceWarning: unclosed file <_io.TextIOWrapper name='/opt/gpu-bridge/roles.json' mode='r' encoding='UTF-8'>
+  roles = json.load(open("/opt/gpu-bridge/roles.json"))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:811: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-5ksq_f_g/b1/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:805: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-5ksq_f_g/b2/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:811: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-5ksq_f_g/b2/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+.../root/.hermes/plugins/mission-ops/mission_core.py:805: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-yh69_bch/b1/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:811: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-yh69_bch/b1/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:805: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-yh69_bch/b2/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:811: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-yh69_bch/b2/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:805: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-yh69_bch/b3/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:811: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-yh69_bch/b3/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+...../root/.hermes/plugins/mission-ops/mission_core.py:805: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-e0bxygrw/m1/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:811: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-e0bxygrw/m1/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./root/.hermes/plugins/mission-ops/mission_core.py:805: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-536b4tih/m1/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:811: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-536b4tih/m1/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+............................./root/.hermes/plugins/mission-ops/mission_core.py:805: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-qxd5cpvs/missions/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:784: ResourceWarning: unclosed file <_io.TextIOWrapper name='/opt/gpu-bridge/roles.json' mode='r' encoding='UTF-8'>
+  roles = json.load(open("/opt/gpu-bridge/roles.json"))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:811: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-qxd5cpvs/missions/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+...../root/.hermes/plugins/mission-ops/mission_core.py:805: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-1p_8s8ju/missions/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:784: ResourceWarning: unclosed file <_io.TextIOWrapper name='/opt/gpu-bridge/roles.json' mode='r' encoding='UTF-8'>
+  roles = json.load(open("/opt/gpu-bridge/roles.json"))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:811: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-1p_8s8ju/missions/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+...../root/.hermes/plugins/mission-ops/mission_core.py:805: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-1qzptwk_/missions/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:811: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-1qzptwk_/missions/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./root/.hermes/plugins/mission-ops/mission_core.py:805: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-r506ryz9/missions/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:811: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-r506ryz9/missions/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+../root/.hermes/plugins/mission-ops/mission_core.py:805: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-5uyx4ldf/missions/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:811: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-5uyx4ldf/missions/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+../root/.hermes/plugins/mission-ops/mission_core.py:805: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/x/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./root/.hermes/plugins/mission-ops/mission_core.py:805: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-_gnzqrn9/missions/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:811: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-_gnzqrn9/missions/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+...................../root/.hermes/plugins/mission-ops/mission_core.py:811: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpry_fvure/mission-cwd/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:805: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpry_fvure/mission-cwd/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+../root/.hermes/plugins/mission-ops/mission_core.py:811: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp5_wktpw4/cwd/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+............/root/.hermes/plugins/mission-ops/mission_core.py:805: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-zua2o0am/missions/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:784: ResourceWarning: unclosed file <_io.TextIOWrapper name='/opt/gpu-bridge/roles.json' mode='r' encoding='UTF-8'>
+  roles = json.load(open("/opt/gpu-bridge/roles.json"))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:811: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-zua2o0am/missions/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+............/root/.hermes/plugins/mission-ops/mission_core.py:805: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-9_34d1q5/missions/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:811: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-9_34d1q5/missions/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./root/.hermes/plugins/mission-ops/mission_core.py:805: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-yf_y2jn_/missions/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:811: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-yf_y2jn_/missions/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+...../root/.hermes/plugins/mission-ops/mission_core.py:805: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-x3td67qa/missions/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:811: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-x3td67qa/missions/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./root/.hermes/plugins/mission-ops/mission_core.py:805: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-krjr4yv7/missions/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:811: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-krjr4yv7/missions/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+................................................/root/.hermes/plugins/mission-ops/notify.py:217: ResourceWarning: unclosed file <_io.TextIOWrapper name='/opt/gpu-orchestrator/state.json' mode='r' encoding='UTF-8'>
+  data = state if state is not None else json.load(open(gpu_state_path))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+............/root/.hermes/plugins/mission-ops/mission_core.py:805: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-is8belh1/missions/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:784: ResourceWarning: unclosed file <_io.TextIOWrapper name='/opt/gpu-bridge/roles.json' mode='r' encoding='UTF-8'>
+  roles = json.load(open("/opt/gpu-bridge/roles.json"))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:811: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-is8belh1/missions/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./root/.hermes/plugins/mission-ops/mission_core.py:805: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-xrwu2jt5/missions/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:811: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-xrwu2jt5/missions/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./root/.hermes/plugins/mission-ops/mission_core.py:805: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-j6sose6m/missions/.claude-config/settings.json' mode='r' encoding='UTF-8'>
+  sj = json.load(open(sp))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/root/.hermes/plugins/mission-ops/mission_core.py:811: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/mission-ops-test-j6sose6m/missions/.claude-config/settings.json' mode='w' encoding='UTF-8'>
+  json.dump(sj, open(sp, "w"), indent=2)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+................/root/.hermes/plugins/mission-ops/test_mission_resume.py:49: ResourceWarning: unclosed file <_io.TextIOWrapper name='/root/.hermes/plugins/mission-ops/__init__.py' mode='r' encoding='utf-8'>
+  encoding="utf-8").read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+........................................................----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 58030)
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/socketserver.py", line 318, in _handle_request_noblock
+    self.process_request(request, client_address)
+  File "/usr/lib/python3.12/socketserver.py", line 349, in process_request
+    self.finish_request(request, client_address)
+  File "/usr/lib/python3.12/socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/lib/python3.12/socketserver.py", line 761, in __init__
+    self.handle()
+  File "/usr/lib/python3.12/http/server.py", line 436, in handle
+    self.handle_one_request()
+  File "/usr/lib/python3.12/http/server.py", line 424, in handle_one_request
+    method()
+  File "/root/.hermes/plugins/mission-ops/test_trinity_wire.py", line 286, in do_POST
+    self.wfile.write(b'{"ok": true}')
+  File "/usr/lib/python3.12/socketserver.py", line 840, in write
+    self._sock.sendall(b)
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+....----------------------------------------
+Exception occurred during processing of request from ('127.0.0.1', 55748)
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/socketserver.py", line 318, in _handle_request_noblock
+    self.process_request(request, client_address)
+  File "/usr/lib/python3.12/socketserver.py", line 349, in process_request
+    self.finish_request(request, client_address)
+  File "/usr/lib/python3.12/socketserver.py", line 362, in finish_request
+    self.RequestHandlerClass(request, client_address, self)
+  File "/usr/lib/python3.12/socketserver.py", line 761, in __init__
+    self.handle()
+  File "/usr/lib/python3.12/http/server.py", line 436, in handle
+    self.handle_one_request()
+  File "/usr/lib/python3.12/http/server.py", line 424, in handle_one_request
+    method()
+  File "/root/.hermes/plugins/mission-ops/test_trinity_wire.py", line 286, in do_POST
+    self.wfile.write(b'{"ok": true}')
+  File "/usr/lib/python3.12/socketserver.py", line 840, in write
+    self._sock.sendall(b)
+BrokenPipeError: [Errno 32] Broken pipe
+----------------------------------------
+..................ss....................................
+----------------------------------------------------------------------
+Ran 448 tests in 94.814s
+
+OK (skipped=2)

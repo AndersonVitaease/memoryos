@@ -1,0 +1,12 @@
+test_existing_manifest_refused_without_force_and_untouched (test_verify_author.TestJudgeDeployFixture.test_existing_manifest_refused_without_force_and_untouched) ... ok
+test_generation_matches_hand_authored_manifest (test_verify_author.TestJudgeDeployFixture.test_generation_matches_hand_authored_manifest) ... ok
+test_inferred_fallback_for_uncited_report (test_verify_author.TestProvenance.test_inferred_fallback_for_uncited_report) ... ok
+Dogfood (relatório desta missão): menções em prosa viravam cmd e davam vermelho falso. ... ok
+test_provenance_and_safety (test_verify_author.TestProvenance.test_provenance_and_safety) ... ok
+Manifesto gerado roda no runner logo após gravar: prova falsa = check vermelho. ... ok
+test_dry_run_does_not_write (test_verify_author.TestRefusals.test_dry_run_does_not_write) ... ok
+test_no_ledger_no_cwd (test_verify_author.TestRefusals.test_no_ledger_no_cwd) ... ok
+test_no_report_refused_nothing_written (test_verify_author.TestRefusals.test_no_report_refused_nothing_written) ... ok
+test_overwrite_requires_force (test_verify_author.TestRefusals.test_overwrite_requires_force) ... ok
+Ran 10 tests in 0.405s
+OK

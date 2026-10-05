@@ -1,0 +1,209 @@
+{
+ "missionId": "chain-dispatch-gov-01",
+ "source": "manifest",
+ "verdict": "pass",
+ "llm_calls": 0,
+ "checks": [
+  {
+   "id": "P1-cmd-1",
+   "type": "cmd",
+   "ok": true,
+   "evidence": {
+    "run": "/root/.hermes/plugins/mission-ops/evidence/chain-dispatch-gov-01/check-chain-gov.sh",
+    "exit": 0,
+    "expect": 0,
+    "tail": "CHAIN-GOV OK 17\n"
+   },
+   "error": null
+  },
+  {
+   "id": "P2-file-1",
+   "type": "file",
+   "ok": true,
+   "evidence": {
+    "path": "/root/.hermes/plugins/mission-ops/mission_core.py",
+    "bytes": 47758,
+    "min_bytes": 500
+   },
+   "error": null
+  },
+  {
+   "id": "P3-file-2",
+   "type": "file",
+   "ok": true,
+   "evidence": {
+    "path": "/root/.hermes/plugins/mission-ops/__init__.py",
+    "bytes": 88576,
+    "min_bytes": 500
+   },
+   "error": null
+  },
+  {
+   "id": "P4-file-3",
+   "type": "file",
+   "ok": true,
+   "evidence": {
+    "path": "/root/.hermes/plugins/mission-ops/test_mission_ops.py",
+    "bytes": 94364,
+    "min_bytes": 500
+   },
+   "error": null
+  },
+  {
+   "id": "P5-file-4",
+   "type": "file",
+   "ok": true,
+   "evidence": {
+    "path": "/root/.hermes/plugins/mission-ops/test_chain_dispatch.py",
+    "bytes": 12296,
+    "min_bytes": 500
+   },
+   "error": null
+  },
+  {
+   "id": "P6-file-5",
+   "type": "file",
+   "ok": true,
+   "evidence": {
+    "path": "/opt/mission-events/spool.jsonl",
+    "bytes": 1575473,
+    "min_bytes": 500
+   },
+   "error": null
+  },
+  {
+   "id": "P7-file-6",
+   "type": "file",
+   "ok": true,
+   "evidence": {
+    "path": "/root/.hermes/plugins/mission-ops/provas/chain-dispatch-gov-01/red.txt",
+    "bytes": 17814,
+    "min_bytes": 500
+   },
+   "error": null
+  },
+  {
+   "id": "P8-file-7",
+   "type": "file",
+   "ok": true,
+   "evidence": {
+    "path": "/root/.hermes/plugins/mission-ops/provas/chain-dispatch-gov-01/green.txt",
+    "bytes": 2157,
+    "min_bytes": 500
+   },
+   "error": null
+  },
+  {
+   "id": "P9-file-8",
+   "type": "file",
+   "ok": true,
+   "evidence": {
+    "path": "/root/.hermes/plugins/mission-ops/provas/chain-dispatch-gov-01/suite-full.txt",
+    "bytes": 1663,
+    "min_bytes": 500
+   },
+   "error": null
+  },
+  {
+   "id": "P10-file-9",
+   "type": "file",
+   "ok": true,
+   "evidence": {
+    "path": "/root/.hermes/plugins/mission-ops/test_mission_resume.py",
+    "bytes": 1259,
+    "min_bytes": 500
+   },
+   "error": null
+  },
+  {
+   "id": "P11-file-10",
+   "type": "file",
+   "ok": true,
+   "evidence": {
+    "path": "/root/.hermes/tools/python-3.14.7+20260901-linux-x64/bin/python3.14",
+    "bytes": 115747328,
+    "min_bytes": 500
+   },
+   "error": null
+  },
+  {
+   "id": "P12-file-11",
+   "type": "file",
+   "ok": true,
+   "evidence": {
+    "path": "/root/.hermes/plugins/mission-ops/provas/chain-dispatch-gov-01/selftest-live.txt",
+    "bytes": 775,
+    "min_bytes": 500
+   },
+   "error": null
+  },
+  {
+   "id": "P13-file-12",
+   "type": "file",
+   "ok": true,
+   "evidence": {
+    "path": "/root/.hermes/plugins/mission-ops/provas/chain-dispatch-gov-01/live-spool-event.jsonl",
+    "bytes": 580,
+    "min_bytes": 500
+   },
+   "error": null
+  },
+  {
+   "id": "P14-file-13",
+   "type": "file",
+   "ok": true,
+   "evidence": {
+    "path": "/root/.hermes/plugins/mission-ops/provas/chain-dispatch-gov-01/selftest-load.txt",
+    "bytes": 76,
+    "min_bytes": 76
+   },
+   "error": null
+  },
+  {
+   "id": "P15-file-14",
+   "type": "file",
+   "ok": true,
+   "evidence": {
+    "path": "/root/.hermes/plugins/mission-ops/provas/chain-dispatch-gov-01/smoke.txt",
+    "bytes": 9,
+    "min_bytes": 9
+   },
+   "error": null
+  },
+  {
+   "id": "P16-file-15",
+   "type": "file",
+   "ok": true,
+   "evidence": {
+    "path": "/root/.hermes/plugins/mission-ops/smoke_mission_ops.py",
+    "bytes": 4884,
+    "min_bytes": 500
+   },
+   "error": null
+  },
+  {
+   "id": "P17-file-16",
+   "type": "file",
+   "ok": true,
+   "evidence": {
+    "path": "/root/.hermes/plugins/mission-ops/evidence/chain-dispatch-gov-01/check-chain-gov.sh",
+    "bytes": 776,
+    "min_bytes": 500
+   },
+   "error": null
+  },
+  {
+   "id": "P18-file-17",
+   "type": "file",
+   "ok": true,
+   "evidence": {
+    "path": "/root/.hermes/plugins/mission-ops/RELATORIO-chain-dispatch-gov-01.md",
+    "bytes": 10058,
+    "min_bytes": 500
+   },
+   "error": null
+  }
+ ],
+ "ts": "2026-09-28T15:31:31Z",
+ "durationMs": 183
+}

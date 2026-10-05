@@ -1,0 +1,13 @@
+pane w6:p3A (esta missao, turno em curso)
+busy=True idle_at_prompt=False evento=None
+
+--- tail real ---
+cess.run(['herdr','pane','read','w6:p3A','--source','recent…
+
+✻ Roosting… (20m 43s · ↓ 8.5k tokens)
+  ⎿  Tip: Use /btw to ask a quick side question without interrupting Claude's current work
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ /afaf<35;34;12M
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ accept edits on (shift+tab to cycle) · install gh for PR status

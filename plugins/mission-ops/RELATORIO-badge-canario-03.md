@@ -1,0 +1,1 @@
+canario SCALE-02 ok

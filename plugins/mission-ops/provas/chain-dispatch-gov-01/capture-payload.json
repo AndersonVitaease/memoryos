@@ -1,0 +1,21 @@
+{
+ "projectId": "memoryos",
+ "agent": "claude-code",
+ "summary": "CHAIN-DISPATCH-GOV-01: governança de despacho em cadeia no plugin mission-ops. mission_dispatch grava spawned_by (missionId do worker | operator | supervisor:hermes) e chain_depth no ledger. Emissor = HERDR_PANE_ID do chamador casado com paneId de ledger vivo (vence spawnedBy declarado, anti-spoof) > spawnedBy > pane não-missão=operator > sem pane (gateway)=supervisor:hermes. Worker só despacha com `allow_chain_dispatch: true` no prompt DELE, gravado no ledger no despacho (auto-concessão posterior não vale), e até mission.chain_depth_max do /root/.hermes/config.yaml (default 1; parser próprio, gateway py3.14 sem PyYAML). Recusa tier-1 antes de herdr/ledger: CHAIN_DISPATCH_NOT_ALLOWED / CHAIN_DEPTH_EXCEEDED / CHAIN_PARENT_UNKNOWN. Trilha kind=chain_dispatch no /opt/mission-events/spool.jsonl + events.jsonl em todo despacho. red 17/17 -> green 17/17; suíte 188/188 em systemd-run scope MemoryMax=2G (pico 27MB). Prova viva: pane worker w5:p1E recusado, 119 ledgers legados carregam. verify.json via mission_verify_author pass 18/18. Commit 11f8a55. Ativação no gateway = restart pelo supervisor. Limite: worker chamando o gateway por API sem pane/spawnedBy é visto como supervisor. judge.verify BLOQUEADO: AUTHORIZATION_SCOPE_REQUIRED no bearer do engmcp-local (grant engineering:* é do operator).",
+ "outcome": "PASS",
+ "files": [
+  "/root/.hermes/plugins/mission-ops/RELATORIO-chain-dispatch-gov-01.md",
+  "/root/.hermes/plugins/mission-ops/mission_core.py",
+  "/root/.hermes/plugins/mission-ops/__init__.py",
+  "/root/.hermes/plugins/mission-ops/test_chain_dispatch.py",
+  "/root/.hermes/plugins/mission-ops/test_mission_ops.py",
+  "/root/.hermes/plugins/mission-ops/verify.json",
+  "/root/.hermes/plugins/mission-ops/evidence/chain-dispatch-gov-01/check-chain-gov.sh"
+ ],
+ "nextSteps": [
+  "Supervisor: restart do gateway Hermes para a governança valer nas chamadas via gateway",
+  "Operator: conceder scope engineering:* (judge.verify) ao bearer do engmcp-local e reexecutar a autoverificação",
+  "Missões que podem despachar sub-missão: declarar `allow_chain_dispatch: true` no prompt antes do despacho",
+  "Propagar identidade do chamador pelo gateway (worker via API sem pane é visto como supervisor)"
+ ]
+}

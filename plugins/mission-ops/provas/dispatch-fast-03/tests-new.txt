@@ -1,0 +1,23 @@
+test_dead_bridge_skips_gpu_up_and_falls_back_to_8103 (test_dispatch_fast03.TestDispatchFailFast.test_dead_bridge_skips_gpu_up_and_falls_back_to_8103) ... ok
+test_live_bridge_runs_gpu_up_normally (test_dispatch_fast03.TestDispatchFailFast.test_live_bridge_runs_gpu_up_normally)
+QUANDO A GPU VOLTAR: health 2s positivo → gpu-up normal, claude no 8102. ... ok
+test_bridge_down_is_dead (test_dispatch_fast03.TestQwenBridgeProbe.test_bridge_down_is_dead) ... ok
+test_full_chain_alive (test_dispatch_fast03.TestQwenBridgeProbe.test_full_chain_alive) ... ok
+test_health_non200_is_dead (test_dispatch_fast03.TestQwenBridgeProbe.test_health_non200_is_dead) ... ok
+test_health_ok_but_upstream_dead_is_dead (test_dispatch_fast03.TestQwenBridgeProbe.test_health_ok_but_upstream_dead_is_dead)
+Caso real 29/09: proxy node vivo, túnel ssh escutando, vast morto. ... ok
+test_upstream_5xx_is_dead (test_dispatch_fast03.TestQwenBridgeProbe.test_upstream_5xx_is_dead) ... ok
+test_openrouter_engines_relaunch_on_8103 (test_dispatch_fast03.TestRelaunchFollowsEngine.test_openrouter_engines_relaunch_on_8103) ... ok
+test_claude_working_is_no_op (test_mission_resume.TestMissionResume.test_claude_working_is_no_op) ... ok
+test_pane_not_found (test_mission_resume.TestMissionResume.test_pane_not_found) ... ok
+test_stub_not_wired_to_plugin_handlers (test_mission_resume.TestMissionResume.test_stub_not_wired_to_plugin_handlers)
+Guarda do estado real: nenhum handler do plugin chama o stub (mr.*). ... /root/.hermes/plugins/mission-ops/test_mission_resume.py:49: ResourceWarning: unclosed file <_io.TextIOWrapper name='/root/.hermes/plugins/mission-ops/__init__.py' mode='r' encoding='utf-8'>
+  encoding="utf-8").read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_terminal_state_refused (test_mission_resume.TestMissionResume.test_terminal_state_refused) ... ok
+
+----------------------------------------------------------------------
+Ran 12 tests in 1.048s
+
+OK

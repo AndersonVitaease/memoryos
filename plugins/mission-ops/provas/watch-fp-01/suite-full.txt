@@ -1,0 +1,339 @@
+test_journal_append_and_replay (test_bus_guard.TestJournalFallback.test_journal_append_and_replay) ... ok
+test_journal_corrupt_file_recovers (test_bus_guard.TestJournalFallback.test_journal_corrupt_file_recovers) ... ok
+test_cleanup_expired (test_bus_guard.TestLeaseTTL.test_cleanup_expired) ... ok
+test_lease_expires (test_bus_guard.TestLeaseTTL.test_lease_expires) ... ok
+test_register_then_live (test_bus_guard.TestLeaseTTL.test_register_then_live) ... ok
+test_ttl_is_30s (test_bus_guard.TestLeaseTTL.test_ttl_is_30s) ... ok
+test_expired_lease_journals_not_injects (test_bus_guard.TestNeverResurrect.test_expired_lease_journals_not_injects) ... ok
+test_guard_off_passthrough (test_bus_guard.TestNeverResurrect.test_guard_off_passthrough)
+Guard OFF (default): behavior identical to legacy deliver_prompt. ... ok
+test_live_lease_injects (test_bus_guard.TestNeverResurrect.test_live_lease_injects) ... ok
+test_no_lease_journals_not_injects (test_bus_guard.TestNeverResurrect.test_no_lease_journals_not_injects) ... ok
+test_nudge_with_lease_injects (test_bus_guard.TestNudgeWiring.test_nudge_with_lease_injects) ... ok
+test_nudge_without_lease_journals (test_bus_guard.TestNudgeWiring.test_nudge_without_lease_journals) ... ok
+test_declared_spawned_by_mission_refused (test_chain_dispatch.TestA_WorkerWithoutBadge.test_declared_spawned_by_mission_refused) ... ok
+test_self_grant_after_dispatch_does_not_count (test_chain_dispatch.TestA_WorkerWithoutBadge.test_self_grant_after_dispatch_does_not_count) ... ok
+test_unknown_declared_parent_refused (test_chain_dispatch.TestA_WorkerWithoutBadge.test_unknown_declared_parent_refused) ... ok
+test_worker_cannot_spoof_supervisor (test_chain_dispatch.TestA_WorkerWithoutBadge.test_worker_cannot_spoof_supervisor) ... ok
+test_worker_pane_refused_with_trail (test_chain_dispatch.TestA_WorkerWithoutBadge.test_worker_pane_refused_with_trail) ... ok
+test_badge_accepted_and_recorded (test_chain_dispatch.TestB_WorkerWithBadge.test_badge_accepted_and_recorded) ... ok
+test_badge_recorded_on_ledger_at_dispatch (test_chain_dispatch.TestB_WorkerWithBadge.test_badge_recorded_on_ledger_at_dispatch) ... ok
+test_config_parser (test_chain_dispatch.TestC_DepthLimit.test_config_parser) ... ok
+test_depth_configurable (test_chain_dispatch.TestC_DepthLimit.test_depth_configurable) ... ok
+test_depth_zero_blocks_any_worker (test_chain_dispatch.TestC_DepthLimit.test_depth_zero_blocks_any_worker) ... ok
+test_grandchild_refused_by_default (test_chain_dispatch.TestC_DepthLimit.test_grandchild_refused_by_default) ... ok
+test_idempotent_no_op_keeps_working (test_chain_dispatch.TestD_SupervisorOperator.test_idempotent_no_op_keeps_working) ... ok
+test_non_mission_pane_is_operator (test_chain_dispatch.TestD_SupervisorOperator.test_non_mission_pane_is_operator) ... ok
+test_operator_declared (test_chain_dispatch.TestD_SupervisorOperator.test_operator_declared) ... ok
+test_supervisor_default_no_pane (test_chain_dispatch.TestD_SupervisorOperator.test_supervisor_default_no_pane) ... ok
+test_supervisor_unaffected_by_depth_zero (test_chain_dispatch.TestD_SupervisorOperator.test_supervisor_unaffected_by_depth_zero) ... ok
+test_legacy_ledger_loads_and_is_depth_zero (test_chain_dispatch.TestE_LegacyLedger.test_legacy_ledger_loads_and_is_depth_zero) ... ok
+test_dead_bridge_skips_gpu_up_and_falls_back_to_8103 (test_dispatch_fast03.TestDispatchFailFast.test_dead_bridge_skips_gpu_up_and_falls_back_to_8103) ... ok
+test_live_bridge_runs_gpu_up_normally (test_dispatch_fast03.TestDispatchFailFast.test_live_bridge_runs_gpu_up_normally)
+QUANDO A GPU VOLTAR: health 2s positivo → gpu-up normal, claude no 8102. ... ok
+test_bridge_down_is_dead (test_dispatch_fast03.TestQwenBridgeProbe.test_bridge_down_is_dead) ... ok
+test_full_chain_alive (test_dispatch_fast03.TestQwenBridgeProbe.test_full_chain_alive) ... ok
+test_health_non200_is_dead (test_dispatch_fast03.TestQwenBridgeProbe.test_health_non200_is_dead) ... ok
+test_health_ok_but_upstream_dead_is_dead (test_dispatch_fast03.TestQwenBridgeProbe.test_health_ok_but_upstream_dead_is_dead)
+Caso real 29/09: proxy node vivo, túnel ssh escutando, vast morto. ... ok
+test_upstream_5xx_is_dead (test_dispatch_fast03.TestQwenBridgeProbe.test_upstream_5xx_is_dead) ... ok
+test_openrouter_engines_relaunch_on_8103 (test_dispatch_fast03.TestRelaunchFollowsEngine.test_openrouter_engines_relaunch_on_8103) ... ok
+test_dispatch_prompt_contains_quality_clauses (test_dispatch_qa.TestDispatchQAClauses.test_dispatch_prompt_contains_quality_clauses) ... ok
+test_iso_readyat_and_string_dph_runtime (test_gpu_cost_coerce.TestGpuCostCoerce.test_iso_readyat_and_string_dph_runtime) ... ok
+test_ledger_string_costs_summed_garbage_ignored (test_gpu_cost_coerce.TestGpuCostCoerce.test_ledger_string_costs_summed_garbage_ignored) ... ok
+test_missing_file_still_none (test_gpu_cost_coerce.TestGpuCostCoerce.test_missing_file_still_none) ... ok
+test_mission_completed_accepts_string_cost (test_gpu_cost_coerce.TestGpuCostCoerce.test_mission_completed_accepts_string_cost) ... ok
+test_numeric_state_unchanged (test_gpu_cost_coerce.TestGpuCostCoerce.test_numeric_state_unchanged) ... ok
+test_close_fake_gpu_mission_no_typeerror (test_gpu_cost_coerce.TestMissionCloseGpuStringCost.test_close_fake_gpu_mission_no_typeerror) ... ok
+test_close_measured_same_number_everywhere (test_gpu_cost_trail.TestCloseTrail.test_close_measured_same_number_everywhere) ... ok
+test_close_non_gpu_has_no_cost_step (test_gpu_cost_trail.TestCloseTrail.test_close_non_gpu_has_no_cost_step) ... ok
+test_close_noop_destroyed_before_mission (test_gpu_cost_trail.TestCloseTrail.test_close_noop_destroyed_before_mission) ... ok
+test_final_cost_and_tokens_in_window (test_gpu_cost_trail.TestMeasured.test_final_cost_and_tokens_in_window) ... ok
+test_running_segment_from_billed_to (test_gpu_cost_trail.TestMeasured.test_running_segment_from_billed_to) ... ok
+test_destroyed_before_mission (test_gpu_cost_trail.TestNoOpHonest.test_destroyed_before_mission) ... ok
+test_gpu_up_failed (test_gpu_cost_trail.TestNoOpHonest.test_gpu_up_failed) ... ok
+test_record_dedupe (test_gpu_cost_trail.TestSpoolTrail.test_record_dedupe) ... ok
+test_pre_fix_expression_raises_typeerror (test_gpu_cost_trail.TestTypeErrorRepro.test_pre_fix_expression_raises_typeerror) ... ok
+test_record_with_iso_and_str_fields_no_crash (test_gpu_cost_trail.TestTypeErrorRepro.test_record_with_iso_and_str_fields_no_crash) ... ok
+test_budget_probe_str_cost_no_typeerror (test_gpu_cost_trail.TestUnmeasured.test_budget_probe_str_cost_no_typeerror) ... ok
+test_down_without_destroyed_at (test_gpu_cost_trail.TestUnmeasured.test_down_without_destroyed_at) ... ok
+test_ledger_entry_garbage (test_gpu_cost_trail.TestUnmeasured.test_ledger_entry_garbage) ... ok
+test_ledger_entry_none_and_missing (test_gpu_cost_trail.TestUnmeasured.test_ledger_entry_none_and_missing) ... ok
+test_running_dph_none (test_gpu_cost_trail.TestUnmeasured.test_running_dph_none) ... ok
+test_running_no_start (test_gpu_cost_trail.TestUnmeasured.test_running_no_start) ... ok
+test_state_missing (test_gpu_cost_trail.TestUnmeasured.test_state_missing) ... ok
+test_list_compact (test_lane2.TestCompactStatus.test_list_compact) ... ok
+test_schema_exposes_compact (test_lane2.TestCompactStatus.test_schema_exposes_compact) ... ok
+test_status_compact_small_and_counts (test_lane2.TestCompactStatus.test_status_compact_small_and_counts) ... ok
+test_status_compact_string_true (test_lane2.TestCompactStatus.test_status_compact_string_true) ... ok
+test_status_single_mission_ignores_compact_filter (test_lane2.TestCompactStatus.test_status_single_mission_ignores_compact_filter) ... ok
+test_absent_agent_shell_launches_without_exit (test_lane2.TestRelaunchRecipe.test_absent_agent_shell_launches_without_exit) ... ok
+test_api_error_exit_poll_ready_fresh_config_resume (test_lane2.TestRelaunchRecipe.test_api_error_exit_poll_ready_fresh_config_resume) ... ok
+test_exit_never_returns_to_shell_fails_without_launch (test_lane2.TestRelaunchRecipe.test_exit_never_returns_to_shell_fails_without_launch) ... ok
+test_exit_swallowed_once_is_retried (test_lane2.TestRelaunchRecipe.test_exit_swallowed_once_is_retried) ... ok
+test_first_run_dialog_is_danced_before_prompt (test_lane2.TestRelaunchRecipe.test_first_run_dialog_is_danced_before_prompt) ... ok
+test_gpu_engine_keeps_bridge_env (test_lane2.TestRelaunchRecipe.test_gpu_engine_keeps_bridge_env) ... ok
+test_never_ready_is_honest_failure (test_lane2.TestRelaunchRecipe.test_never_ready_is_honest_failure) ... ok
+test_no_cwd_refuses (test_lane2.TestRelaunchRecipe.test_no_cwd_refuses) ... ok
+test_smoke_script_green (test_lane2.TestSmoke.test_smoke_script_green) ... ok
+test_recover_transcript400_uses_exit_not_ctrl_c (test_lane2.TestTranscript400Replaced.test_recover_transcript400_uses_exit_not_ctrl_c) ... ok
+test_invalid_status_never_written (test_ledger_fix_status.TestHandleMissionLedgerFix.test_invalid_status_never_written)
+Status inválido é rejeitado por enum, nunca escrito no ledger ... ok
+test_invalid_status_rejected (test_ledger_fix_status.TestHandleMissionLedgerFix.test_invalid_status_rejected)
+Status inválido "FOO" -> ok=false listando os 8 permitidos ... ok
+test_no_status_in_request_no_change (test_ledger_fix_status.TestHandleMissionLedgerFix.test_no_status_in_request_no_change)
+Sem status em ledger consistente -> ok=true "nada a corrigir" ... ok
+test_valid_status_update (test_ledger_fix_status.TestHandleMissionLedgerFix.test_valid_status_update)
+Status válido em ledger sintético -> ok=true com changes.status/before.status ... ok
+test_affine_copies_do_not_duplicate (test_ledger_hygiene.TestLedgerHygiene.test_affine_copies_do_not_duplicate) ... ok
+test_full_true_byte_identical_minus_ghosts (test_ledger_hygiene.TestLedgerHygiene.test_full_true_byte_identical_minus_ghosts) ... ok
+test_history_keeps_non_canonical_files (test_ledger_hygiene.TestLedgerHygiene.test_history_keeps_non_canonical_files) ... ok
+test_one_line_per_mission_in_views (test_ledger_hygiene.TestLedgerHygiene.test_one_line_per_mission_in_views) ... ok
+test_dispatching_without_pane_only_ghost_when_stale (test_mission_batch.TestBatchDispatch.test_dispatching_without_pane_only_ghost_when_stale) ... ok
+test_ghost_statuses_dispatching_and_failed (test_mission_batch.TestBatchDispatch.test_ghost_statuses_dispatching_and_failed) ... ok
+test_item_exception_does_not_abort_batch (test_mission_batch.TestBatchDispatch.test_item_exception_does_not_abort_batch) ... ok
+test_live_or_unknown_pane_is_not_a_ghost (test_mission_batch.TestBatchDispatch.test_live_or_unknown_pane_is_not_a_ghost)
+interrupted de pane VIVO = missão real (no_op); herdr desconhecido = não adivinha. ... ok
+test_three_missions_sequential_one_failure_one_ghost (test_mission_batch.TestBatchDispatch.test_three_missions_sequential_one_failure_one_ghost) ... ok
+test_duplicate_and_bad_items (test_mission_batch.TestBatchManifest.test_duplicate_and_bad_items) ... ok
+test_json_and_yaml_files_and_text (test_mission_batch.TestBatchManifest.test_json_and_yaml_files_and_text) ... ok
+test_size_bounds (test_mission_batch.TestBatchManifest.test_size_bounds) ... ok
+test_tool_in_catalog (test_mission_batch.TestBatchRegistered.test_tool_in_catalog) ... ok
+test_dead_bridge_ready_deadline_45s (test_mission_batch.TestReadyFailFast.test_dead_bridge_ready_deadline_45s) ... ok
+test_live_bridge_keeps_180s (test_mission_batch.TestReadyFailFast.test_live_bridge_keeps_180s) ... ok
+test_compact_true_identical_tool_vs_handler (test_mission_list_compact_default.TestConsumersStable.test_compact_true_identical_tool_vs_handler) ... ok
+test_direct_python_default_stays_full (test_mission_list_compact_default.TestConsumersStable.test_direct_python_default_stays_full) ... ok
+test_fast_router_chat_snapshot_stable (test_mission_list_compact_default.TestConsumersStable.test_fast_router_chat_snapshot_stable) ... ok
+test_default_under_8kb_with_10_missions_3_tabs (test_mission_list_compact_default.TestDefaultSize.test_default_under_8kb_with_10_missions_3_tabs) ... ok
+test_list_verbose_equals_full (test_mission_list_compact_default.TestVerboseOptIn.test_list_verbose_equals_full) ... ok
+test_schema_exposes_verbose (test_mission_list_compact_default.TestVerboseOptIn.test_schema_exposes_verbose) ... ok
+test_status_verbose_equals_full (test_mission_list_compact_default.TestVerboseOptIn.test_status_verbose_equals_full) ... ok
+test_verbose_beats_compact (test_mission_list_compact_default.TestVerboseOptIn.test_verbose_beats_compact) ... ok
+test_verbose_false_is_default (test_mission_list_compact_default.TestVerboseOptIn.test_verbose_false_is_default) ... ok
+test_list_herdr_failure_is_unknown_not_dead (test_mission_list_compacto.TestChatDefault.test_list_herdr_failure_is_unknown_not_dead) ... ok
+test_list_tool_default_compact_small (test_mission_list_compacto.TestChatDefault.test_list_tool_default_compact_small) ... ok
+test_status_tool_default_compact_small (test_mission_list_compacto.TestChatDefault.test_status_tool_default_compact_small) ... ok
+test_status_tool_single_mission_is_full_record (test_mission_list_compacto.TestChatDefault.test_status_tool_single_mission_is_full_record) ... ok
+test_compact_true_keeps_watchdog_format (test_mission_list_compacto.TestFullIdentical.test_compact_true_keeps_watchdog_format) ... ok
+test_direct_python_call_stays_full (test_mission_list_compacto.TestFullIdentical.test_direct_python_call_stays_full) ... ok
+test_full_beats_compact (test_mission_list_compacto.TestFullIdentical.test_full_beats_compact) ... ok
+test_list_full_true_equals_current (test_mission_list_compacto.TestFullIdentical.test_list_full_true_equals_current) ... ok
+test_schema_exposes_full (test_mission_list_compacto.TestFullIdentical.test_schema_exposes_full) ... ok
+test_status_full_true_equals_current (test_mission_list_compacto.TestFullIdentical.test_status_full_true_equals_current) ... ok
+test_each_event (test_mission_ops.TestClassification.test_each_event) ... ok
+test_mcp_prompt_patterns (test_mission_ops.TestClassificationExtra.test_mcp_prompt_patterns) ... ok
+test_ready_regex_error_patterns (test_mission_ops.TestClassificationExtra.test_ready_regex_error_patterns) ... ok
+test_close_common_mission_without_verify_unchanged (test_mission_ops.TestConsequenceGuard.test_close_common_mission_without_verify_unchanged) ... ok
+test_close_consequence_with_green_verify_gets_badge (test_mission_ops.TestConsequenceGuard.test_close_consequence_with_green_verify_gets_badge) ... ok
+test_close_declared_consequence_override_closes_with_warning (test_mission_ops.TestConsequenceGuard.test_close_declared_consequence_override_closes_with_warning) ... ok
+test_close_declared_consequence_without_verify_reopens (test_mission_ops.TestConsequenceGuard.test_close_declared_consequence_without_verify_reopens) ... ok
+test_close_heuristic_consequence_closes_with_event (test_mission_ops.TestConsequenceGuard.test_close_heuristic_consequence_closes_with_event) ... ok
+test_detection_patterns_and_declaration (test_mission_ops.TestConsequenceGuard.test_detection_patterns_and_declaration) ... ok
+test_dispatch_records_consequence_on_ledger (test_mission_ops.TestConsequenceGuard.test_dispatch_records_consequence_on_ledger) ... ok
+test_all_attempts_stuck_fails (test_mission_ops.TestDeliverPrompt.test_all_attempts_stuck_fails) ... ok
+test_retry_after_stuck_text (test_mission_ops.TestDeliverPrompt.test_retry_after_stuck_text) ... ok
+test_send_text_transport_failure (test_mission_ops.TestDeliverPrompt.test_send_text_transport_failure) ... ok
+test_happy_path (test_mission_ops.TestDispatch.test_happy_path) ... ok
+test_herdr_failure_is_clean (test_mission_ops.TestDispatch.test_herdr_failure_is_clean) ... ok
+test_idempotent_no_op (test_mission_ops.TestDispatch.test_idempotent_no_op) ... ok
+test_invalid_inputs (test_mission_ops.TestDispatch.test_invalid_inputs) ... ok
+test_prompt_failed_retries_same_pane (test_mission_ops.TestDispatch.test_prompt_failed_retries_same_pane) ... ok
+test_ready_error_detected (test_mission_ops.TestDispatch.test_ready_error_detected) ... ok
+test_ready_error_inline (test_mission_ops.TestDispatch.test_ready_error_inline) ... ok
+test_split_fallback (test_mission_ops.TestDispatch.test_split_fallback) ... ok
+test_start_timeout_records_state (test_mission_ops.TestDispatch.test_start_timeout_records_state) ... ok
+test_tab_create_failure_no_source (test_mission_ops.TestDispatch.test_tab_create_failure_no_source) ... ok
+test_tab_create_payload_without_pane_id_falls_back_to_pane_list (test_mission_ops.TestDispatch.test_tab_create_payload_without_pane_id_falls_back_to_pane_list) ... ok
+test_terminal_status_re_dispatches (test_mission_ops.TestDispatch.test_terminal_status_re_dispatches)
+25/09 (prova d): delivered/closed + pane VIVO = NO_OP com pointer — sem isso ... ok
+test_bad_base_time_no_metric (test_mission_ops.TestDispatchMetric.test_bad_base_time_no_metric) ... ok
+test_exact_90s_is_finding_not_fast (test_mission_ops.TestDispatchMetric.test_exact_90s_is_finding_not_fast) ... ok
+test_fast_badge_under_90s (test_mission_ops.TestDispatchMetric.test_fast_badge_under_90s) ... ok
+test_no_working_at_no_metric (test_mission_ops.TestDispatchMetric.test_no_working_at_no_metric) ... ok
+test_slow_badge_over_90s (test_mission_ops.TestDispatchMetric.test_slow_badge_over_90s) ... ok
+test_watch_first_working_marks_working_at (test_mission_ops.TestDispatchMetric.test_watch_first_working_marks_working_at) ... ok
+test_watch_working_over_90s_plants_finding (test_mission_ops.TestDispatchMetric.test_watch_working_over_90s_plants_finding) ... ok
+test_all_dispatch_sites_use_template (test_mission_ops.TestDispatchTemplateAntiStopAsk.test_all_dispatch_sites_use_template) ... ok
+test_template_contains_anti_stopask_clauses (test_mission_ops.TestDispatchTemplateAntiStopAsk.test_template_contains_anti_stopask_clauses) ... ok
+test_template_contains_typed_verify_format (test_mission_ops.TestDispatchTemplateAntiStopAsk.test_template_contains_typed_verify_format) ... ok
+test_template_empty_promptfile (test_mission_ops.TestDispatchTemplateAntiStopAsk.test_template_empty_promptfile) ... ok
+test_template_rejects_colagem_request (test_mission_ops.TestDispatchTemplateAntiStopAsk.test_template_rejects_colagem_request) ... ok
+test_close_exits_tab_and_closes_ledger (test_mission_ops.TestExpandedScope.test_close_exits_tab_and_closes_ledger) ... ok
+test_close_requires_target (test_mission_ops.TestExpandedScope.test_close_requires_target) ... ok
+test_list_joins_ledgers_with_panes_and_tabs (test_mission_ops.TestExpandedScope.test_list_joins_ledgers_with_panes_and_tabs) ... ok
+test_list_reports_herdr_warnings (test_mission_ops.TestExpandedScope.test_list_reports_herdr_warnings) ... ok
+test_read_by_mission_truncates_tail (test_mission_ops.TestExpandedScope.test_read_by_mission_truncates_tail) ... ok
+test_read_requires_pane_or_mission (test_mission_ops.TestExpandedScope.test_read_requires_pane_or_mission) ... ok
+test_worktree_add_and_remove_roundtrip (test_mission_ops.TestExpandedScope.test_worktree_add_and_remove_roundtrip) ... ok
+test_worktree_remove_never_blind (test_mission_ops.TestExpandedScope.test_worktree_remove_never_blind) ... ok
+test_copy_creates_target_and_is_idempotent (test_mission_ops.TestGoldenConfig.test_copy_creates_target_and_is_idempotent) ... ok
+test_copy_failure_fails_open (test_mission_ops.TestGoldenConfig.test_copy_failure_fails_open) ... ok
+test_tab_create_copies_golden_config (test_mission_ops.TestGoldenConfig.test_tab_create_copies_golden_config) ... ok
+test_gpu_down_detail_separates_verdict_from_stderr (test_mission_ops.TestGpuDownFix01.test_gpu_down_detail_separates_verdict_from_stderr) ... ok
+test_green_destroy_unverified_exit4_ledgers_extra (test_mission_ops.TestGpuDownFix01.test_green_destroy_unverified_exit4_ledgers_extra) ... ok
+test_green_full_path_mixed_types (test_mission_ops.TestGpuDownFix01.test_green_full_path_mixed_types) ... ok
+test_green_garfo_defers_on_recent_iso_updatedat (test_mission_ops.TestGpuDownFix01.test_green_garfo_defers_on_recent_iso_updatedat) ... ok
+test_green_garfo_skips_own_recent_mission (test_mission_ops.TestGpuDownFix01.test_green_garfo_skips_own_recent_mission) ... ok
+test_green_missing_and_none_fields (test_mission_ops.TestGpuDownFix01.test_green_missing_and_none_fields) ... ok
+test_mission_close_gpu_down_step_uses_stdout_verdict (test_mission_ops.TestGpuDownFix01.test_mission_close_gpu_down_step_uses_stdout_verdict) ... ok
+test_red_prefix_final_cost_str_in_ledger (test_mission_ops.TestGpuDownFix01.test_red_prefix_final_cost_str_in_ledger) ... ok
+test_red_prefix_garfo_float_minus_str (test_mission_ops.TestGpuDownFix01.test_red_prefix_garfo_float_minus_str) ... ok
+test_list_ledgers_skips_non_records (test_mission_ops.TestLoadLedgerFix.test_list_ledgers_skips_non_records) ... ok
+test_status_and_list_survive_poisoned_dir (test_mission_ops.TestLoadLedgerFix.test_status_and_list_survive_poisoned_dir) ... ok
+test_dispatch_dismisses_and_delivers (test_mission_ops.TestMcpPromptRecipe.test_dispatch_dismisses_and_delivers) ... ok
+test_ready_error_recipe_redirects_to_mcp (test_mission_ops.TestMcpPromptRecipe.test_ready_error_recipe_redirects_to_mcp) ... ok
+test_recipe_enters_and_redelivers (test_mission_ops.TestMcpPromptRecipe.test_recipe_enters_and_redelivers) ... ok
+test_recipe_no_redelivery_when_dispatched (test_mission_ops.TestMcpPromptRecipe.test_recipe_no_redelivery_when_dispatched) ... ok
+test_lote_anti_fantasma (test_mission_ops.TestMissionBatch.test_lote_anti_fantasma) ... ok
+test_lote_happy_path (test_mission_ops.TestMissionBatch.test_lote_happy_path) ... ok
+test_lote_tolera_falha_individual (test_mission_ops.TestMissionBatch.test_lote_tolera_falha_individual) ... ok
+test_lote_valida_tamanho_e_duplicado (test_mission_ops.TestMissionBatch.test_lote_valida_tamanho_e_duplicado) ... ok
+test_ready_dance_cobre_banner_billing (test_mission_ops.TestMissionBatch.test_ready_dance_cobre_banner_billing) ... ok
+test_close_alive_channel_proceeds (test_mission_ops.TestOperatorChannelGate.test_close_alive_channel_proceeds) ... ok
+test_close_dead_channel_reopens (test_mission_ops.TestOperatorChannelGate.test_close_dead_channel_reopens) ... ok
+test_close_without_channel_sets_close_warning (test_mission_ops.TestOperatorChannelGate.test_close_without_channel_sets_close_warning) ... ok
+test_dispatch_accepts_string_channel (test_mission_ops.TestOperatorChannelGate.test_dispatch_accepts_string_channel) ... ok
+test_dispatch_persists_operator_channel (test_mission_ops.TestOperatorChannelGate.test_dispatch_persists_operator_channel) ... ok
+test_mission_verify_rejects_invalid_id (test_mission_ops.TestOperatorChannelGate.test_mission_verify_rejects_invalid_id) ... ok
+test_mission_verify_structured_output (test_mission_ops.TestOperatorChannelGate.test_mission_verify_structured_output) ... ok
+test_api_key_dialog_maps_enter (test_mission_ops.TestReadyDance.test_api_key_dialog_maps_enter) ... ok
+test_auto_mode_banner_maps_enter (test_mission_ops.TestReadyDance.test_auto_mode_banner_maps_enter) ... ok
+test_dispatch_dance_exhausts_to_timeout (test_mission_ops.TestReadyDance.test_dispatch_dance_exhausts_to_timeout) ... ok
+test_dispatch_dances_dialog_and_reaches_ready (test_mission_ops.TestReadyDance.test_dispatch_dances_dialog_and_reaches_ready) ... ok
+test_no_dialog_returns_none (test_mission_ops.TestReadyDance.test_no_dialog_returns_none) ... ok
+test_trust_folder_maps_down_enter (test_mission_ops.TestReadyDance.test_trust_folder_maps_down_enter) ... ok
+test_welcome_theme_maps_enter (test_mission_ops.TestReadyDance.test_welcome_theme_maps_enter) ... ok
+test_recipe_relaunches_and_redelivers (test_mission_ops.TestReadyErrorRecipe.test_recipe_relaunches_and_redelivers) ... ok
+test_recipe_requires_cwd (test_mission_ops.TestReadyErrorRecipe.test_recipe_requires_cwd) ... ok
+test_recipe_requires_ledger (test_mission_ops.TestReadyErrorRecipe.test_recipe_requires_ledger) ... ok
+test_legacy_markers_kept (test_mission_ops.TestReadyRegexExtended.test_legacy_markers_kept) ... ok
+test_welcome_theme_screen_is_ready (test_mission_ops.TestReadyRegexExtended.test_welcome_theme_screen_is_ready) ... ok
+test_autocompact_marks_only (test_mission_ops.TestRecipes.test_autocompact_marks_only) ... ok
+test_delivered_is_not_a_recipe (test_mission_ops.TestRecipes.test_delivered_is_not_a_recipe) ... ok
+test_interrupted_positive (test_mission_ops.TestRecipes.test_interrupted_positive) ... ok
+test_palette_esc_only_never_quit (test_mission_ops.TestRecipes.test_palette_esc_only_never_quit) ... ok
+test_shell_fallback_uses_ledger_resume (test_mission_ops.TestRecipes.test_shell_fallback_uses_ledger_resume) ... ok
+test_shell_fallback_without_resume_id_starts_fresh (test_mission_ops.TestRecipes.test_shell_fallback_without_resume_id_starts_fresh) ... ok
+test_transcript400_fresh_session_never_resumes_poisoned (test_mission_ops.TestRecipes.test_transcript400_fresh_session_never_resumes_poisoned) ... ok
+test_transcript400_without_ledger (test_mission_ops.TestRecipes.test_transcript400_without_ledger) ... ok
+test_unknown_pattern_no_mutation (test_mission_ops.TestRecipes.test_unknown_pattern_no_mutation) ... ok
+test_found_by_pane_scan (test_mission_ops.TestRecoverHandler.test_found_by_pane_scan) ... ok
+test_requires_pane_and_pattern (test_mission_ops.TestRecoverHandler.test_requires_pane_and_pattern) ... ok
+test_unknown_gives_needs_supervisor (test_mission_ops.TestRecoverHandler.test_unknown_gives_needs_supervisor) ... ok
+test_one_and_all_and_empty (test_mission_ops.TestStatus.test_one_and_all_and_empty) ... ok
+test_ledger_and_events (test_mission_ops.TestValidation.test_ledger_and_events) ... ok
+test_mission_id (test_mission_ops.TestValidation.test_mission_id) ... ok
+test_prompt_file (test_mission_ops.TestValidation.test_prompt_file) ... ok
+test_bare_vastai_resolves_tripwire_never_real (test_mission_ops.TestVastSandboxGuard.test_bare_vastai_resolves_tripwire_never_real) ... ok
+test_bash_script_citing_real_vastai_refused (test_mission_ops.TestVastSandboxGuard.test_bash_script_citing_real_vastai_refused) ... ok
+test_env_vastai_bin_real_refused (test_mission_ops.TestVastSandboxGuard.test_env_vastai_bin_real_refused) ... ok
+test_every_vast_touching_test_file_is_guarded (test_mission_ops.TestVastSandboxGuard.test_every_vast_touching_test_file_is_guarded) ... ok
+test_popen_real_vastai_absolute_refused (test_mission_ops.TestVastSandboxGuard.test_popen_real_vastai_absolute_refused) ... ok
+test_sandbox_lib_resolves_fake_even_with_hostile_invoker_env (test_mission_ops.TestVastSandboxGuard.test_sandbox_lib_resolves_fake_even_with_hostile_invoker_env) ... ok
+test_seal_catches_existing_vastai_on_invoker_path (test_mission_ops.TestVastSandboxGuard.test_seal_catches_existing_vastai_on_invoker_path) ... ok
+test_seal_path_independent_no_false_positive_on_comment (test_mission_ops.TestVastSandboxGuard.test_seal_path_independent_no_false_positive_on_comment) ... ok
+test_seal_refuses_unneutralized_script (test_mission_ops.TestVastSandboxGuard.test_seal_refuses_unneutralized_script) ... ok
+test_shell_string_real_vastai_refused (test_mission_ops.TestVastSandboxGuard.test_shell_string_real_vastai_refused) ... ok
+test_all_mode_empty (test_mission_ops.TestWatch.test_all_mode_empty) ... ok
+test_all_mode_snapshot_no_blocking_wait (test_mission_ops.TestWatch.test_all_mode_snapshot_no_blocking_wait)
+25/09: modo all = SNAPSHOT (cobrança do operador: 50s de vigília não é ... /root/.hermes/plugins/mission-ops/notify.py:186: ResourceWarning: unclosed file <_io.TextIOWrapper name='/opt/gpu-orchestrator/state.json' mode='r' encoding='UTF-8'>
+  data = state if state is not None else json.load(open(gpu_state_path))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_delivered_sets_status (test_mission_ops.TestWatch.test_delivered_sets_status) ... ok
+test_herdr_failure_clean (test_mission_ops.TestWatch.test_herdr_failure_clean) ... ok
+test_interrupted_auto_recipe (test_mission_ops.TestWatch.test_interrupted_auto_recipe) ... ok
+test_liveness_idle_vs_working (test_mission_ops.TestWatch.test_liveness_idle_vs_working)
+25/09 (teste do OPERADOR: PHOTOPEA-EXEC-01 estava PARADA e o snapshot ... ok
+test_no_event (test_mission_ops.TestWatch.test_no_event) ... ok
+test_pane_became_shell (test_mission_ops.TestWatch.test_pane_became_shell) ... ok
+test_single_snapshot_arg (test_mission_ops.TestWatch.test_single_snapshot_arg) ... ok
+test_transcript400_marks_without_recipe (test_mission_ops.TestWatch.test_transcript400_marks_without_recipe) ... ok
+test_pane_closed_with_tab_alive (test_mission_ops.TestWatchClosed.test_pane_closed_with_tab_alive) ... ok
+test_process_info_nested_payload_real_shape (test_mission_ops.TestWatchClosed.test_process_info_nested_payload_real_shape)
+25/09: payload REAL do herdr = result.process_info.foreground_processes ... ok
+test_tab_closed (test_mission_ops.TestWatchClosed.test_tab_closed) ... ok
+test_claude_working_is_no_op (test_mission_resume.TestMissionResume.test_claude_working_is_no_op) ... ok
+test_pane_not_found (test_mission_resume.TestMissionResume.test_pane_not_found) ... ok
+test_stub_not_wired_to_plugin_handlers (test_mission_resume.TestMissionResume.test_stub_not_wired_to_plugin_handlers)
+Guarda do estado real: nenhum handler do plugin chama o stub (mr.*). ... /root/.hermes/plugins/mission-ops/test_mission_resume.py:49: ResourceWarning: unclosed file <_io.TextIOWrapper name='/root/.hermes/plugins/mission-ops/__init__.py' mode='r' encoding='utf-8'>
+  encoding="utf-8").read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_terminal_state_refused (test_mission_resume.TestMissionResume.test_terminal_state_refused) ... ok
+test_batch_ghost_pattern_unchanged (test_mission_snapshot.TestMissionSnapshot.test_batch_ghost_pattern_unchanged) ... ok
+test_closed_mission_is_ok_without_touching_ledger (test_mission_snapshot.TestMissionSnapshot.test_closed_mission_is_ok_without_touching_ledger) ... ok
+test_dispatching_young_without_pane_is_left_alone (test_mission_snapshot.TestMissionSnapshot.test_dispatching_young_without_pane_is_left_alone) ... ok
+test_duplicate_tabs_reported_not_closed (test_mission_snapshot.TestMissionSnapshot.test_duplicate_tabs_reported_not_closed) ... ok
+test_fragment_ranks_active_then_most_recent (test_mission_snapshot.TestMissionSnapshot.test_fragment_ranks_active_then_most_recent) ... ok
+test_fragment_typo_matches_right_mission (test_mission_snapshot.TestMissionSnapshot.test_fragment_typo_matches_right_mission) ... ok
+test_herdr_down_is_unknown_and_never_guesses (test_mission_snapshot.TestMissionSnapshot.test_herdr_down_is_unknown_and_never_guesses) ... ok
+test_no_args_lists_all_active_with_verdict (test_mission_snapshot.TestMissionSnapshot.test_no_args_lists_all_active_with_verdict) ... ok
+test_pane_alive_but_shell_is_interrupted (test_mission_snapshot.TestMissionSnapshot.test_pane_alive_but_shell_is_interrupted) ... ok
+test_stale_paneid_ambiguous_tabs_only_suggests (test_mission_snapshot.TestMissionSnapshot.test_stale_paneid_ambiguous_tabs_only_suggests) ... ok
+test_stale_paneid_with_real_tab_is_resynced (test_mission_snapshot.TestMissionSnapshot.test_stale_paneid_with_real_tab_is_resynced) ... ok
+test_stale_paneid_without_tab_is_ghost_cancelled (test_mission_snapshot.TestMissionSnapshot.test_stale_paneid_without_tab_is_ghost_cancelled) ... ok
+test_unknown_mission_suggests_fuzzy (test_mission_snapshot.TestMissionSnapshot.test_unknown_mission_suggests_fuzzy) ... ok
+test_apply_recipe_and_recover (test_upstream_idle.TestUpstreamIdleRecipe.test_apply_recipe_and_recover)
+Caso feliz: erro de rede seguido por continue → claude volta a trabalhar. ... ok
+test_no_mission_still_applies_continue (test_upstream_idle.TestUpstreamIdleRecipe.test_no_mission_still_applies_continue)
+A receita pode ser aplicada mesmo sem ledger (só envia continue). ... ok
+test_persistent_error_escapes_to_supervisor (test_upstream_idle.TestUpstreamIdleRecipe.test_persistent_error_escapes_to_supervisor)
+Erro persistente após continue → escala para needs_supervisor. ... ok
+test_existing_manifest_refused_without_force_and_untouched (test_verify_author.TestJudgeDeployFixture.test_existing_manifest_refused_without_force_and_untouched) ... ok
+test_generation_matches_hand_authored_manifest (test_verify_author.TestJudgeDeployFixture.test_generation_matches_hand_authored_manifest) ... ok
+test_inferred_fallback_for_uncited_report (test_verify_author.TestProvenance.test_inferred_fallback_for_uncited_report) ... ok
+test_prose_fragments_never_become_cmd (test_verify_author.TestProvenance.test_prose_fragments_never_become_cmd)
+Dogfood (relatório desta missão): menções em prosa viravam cmd e davam vermelho falso. ... ok
+test_provenance_and_safety (test_verify_author.TestProvenance.test_provenance_and_safety) ... ok
+test_red_natural_when_claim_false (test_verify_author.TestProvenance.test_red_natural_when_claim_false)
+Manifesto gerado roda no runner logo após gravar: prova falsa = check vermelho. ... ok
+test_dry_run_does_not_write (test_verify_author.TestRefusals.test_dry_run_does_not_write) ... ok
+test_no_ledger_no_cwd (test_verify_author.TestRefusals.test_no_ledger_no_cwd) ... ok
+test_no_report_refused_nothing_written (test_verify_author.TestRefusals.test_no_report_refused_nothing_written) ... ok
+test_overwrite_requires_force (test_verify_author.TestRefusals.test_overwrite_requires_force) ... ok
+test_compact_total_ignores_reports (test_verify_json_ghost.TestVerifyJsonGhost.test_compact_total_ignores_reports) ... ok
+test_full_true_intact_with_reports (test_verify_json_ghost.TestVerifyJsonGhost.test_full_true_intact_with_reports) ... ok
+test_mission_id_with_dot_verify_is_still_a_ledger (test_verify_json_ghost.TestVerifyJsonGhost.test_mission_id_with_dot_verify_is_still_a_ledger) ... ok
+test_report_not_listed_nor_skipped (test_verify_json_ghost.TestVerifyJsonGhost.test_report_not_listed_nor_skipped) ... ok
+test_closed_between_list_and_read_all_mode (test_watch_detector.TestFP1ClosedNeverFlagged.test_closed_between_list_and_read_all_mode)
+Corrida real: mission_close grava closed DEPOIS do list_ledgers do snapshot. ... ok
+test_closed_single_watch_no_needs_supervisor (test_watch_detector.TestFP1ClosedNeverFlagged.test_closed_single_watch_no_needs_supervisor) ... ok
+test_only_separators_is_empty (test_watch_detector.TestFP2SeparatorLines.test_only_separators_is_empty) ... ok
+test_separators_skipped (test_watch_detector.TestFP2SeparatorLines.test_separators_skipped) ... ok
+test_text_with_rule_chars_kept (test_watch_detector.TestFP2SeparatorLines.test_text_with_rule_chars_kept) ... ok
+test_turn_done_report_verify_is_awaiting_close (test_watch_detector.TestFP3TurnDoneConcluded.test_turn_done_report_verify_is_awaiting_close) ... ok
+test_turn_done_without_report_still_needs_supervisor (test_watch_detector.TestFP3TurnDoneConcluded.test_turn_done_without_report_still_needs_supervisor) ... ok
+test_turn_done_without_verify_still_needs_supervisor (test_watch_detector.TestFP3TurnDoneConcluded.test_turn_done_without_verify_still_needs_supervisor) ... ok
+test_event_after_intervention_needs_supervisor (test_watch_detector.TestFP4StaleSnapshot.test_event_after_intervention_needs_supervisor) ... ok
+test_event_older_than_intervention_is_stale (test_watch_detector.TestFP4StaleSnapshot.test_event_older_than_intervention_is_stale) ... ok
+test_no_intervention_needs_supervisor (test_watch_detector.TestFP4StaleSnapshot.test_no_intervention_needs_supervisor) ... ok
+test_same_minute_is_not_stale (test_watch_detector.TestFP4StaleSnapshot.test_same_minute_is_not_stale)
+Rodapé tem granularidade de minuto: turno no MESMO minuto do nudge não é stale. ... ok
+test_a_between_turns_without_done_footer_not_waiting_operator (test_watch_fp_operator.TestClassifyStructuralGuard.test_a_between_turns_without_done_footer_not_waiting_operator)
+Caso real do probe vivo 01/10: turno EM CURSO renderiza tail sem spinner entre ... ok
+test_a_busy_without_spinner_words_esc_to_interrupt (test_watch_fp_operator.TestClassifyStructuralGuard.test_a_busy_without_spinner_words_esc_to_interrupt)
+(c) rodapé 'esc to interrupt' é sinal estrutural de turno em andamento. ... ok
+test_a_spinner_working_never_waiting_operator (test_watch_fp_operator.TestClassifyStructuralGuard.test_a_spinner_working_never_waiting_operator)
+(a) spinner + frase do template no tail de TRABALHO → nunca waiting_operator. ... ok
+test_a_token_flow_is_working_signal (test_watch_fp_operator.TestClassifyStructuralGuard.test_a_token_flow_is_working_signal)
+(b) fluxo de tokens ("↓ 35.7k tokens") = trabalho em andamento, mesmo sem ... ok
+test_b_boot_banner_with_phrase_not_waiting_operator (test_watch_fp_operator.TestClassifyStructuralGuard.test_b_boot_banner_with_phrase_not_waiting_operator)
+(b) boot: frase no INPUT BOX + banner, sem spinner → não é pergunta legítima. ... ok
+test_b_idle_legit_question_still_fires (test_watch_fp_operator.TestClassifyStructuralGuard.test_b_idle_legit_question_still_fires)
+Comportamento desejado (MISSION-NOTIFY-01 preservado): pane OCIOSO no prompt ... ok
+test_b_idle_without_phrase_does_not_fire (test_watch_fp_operator.TestClassifyStructuralGuard.test_b_idle_without_phrase_does_not_fire)
+Ocioso sem frase-gatilho → None (grep da frase continua obrigatório). ... ok
+test_delivered_unchanged (test_watch_fp_operator.TestClassifyStructuralGuard.test_delivered_unchanged) ... ok
+test_permdialog_unchanged (test_watch_fp_operator.TestClassifyStructuralGuard.test_permdialog_unchanged)
+Casa própria: dialog de permissão segue permission_prompt (não waiting_operator). ... ok
+test_boot_banner_no_push (test_watch_fp_operator.TestWatchEndToEnd.test_boot_banner_no_push) ... ok
+test_idle_legit_question_pushes (test_watch_fp_operator.TestWatchEndToEnd.test_idle_legit_question_pushes)
+Pergunta legítima (pane ocioso): transição waiting_operator + notify + status. ... ok
+test_working_spinner_no_event_no_push (test_watch_fp_operator.TestWatchEndToEnd.test_working_spinner_no_event_no_push)
+Tail de TRABALHO com a frase do template: no_event, ledger intocado, ... ok
+
+----------------------------------------------------------------------
+Ran 298 tests in 36.100s
+
+OK

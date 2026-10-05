@@ -1,0 +1,47 @@
+{
+  "mission": "RD-GUARD-CLOSE-STATE-01",
+  "cmd": [
+    {
+      "run": "cd /root/.hermes/plugins/mission-ops && python3 prova_rd_guard_close_state_01.py",
+      "expect_exit": 0,
+      "timeout": 90,
+      "env": {"PATH": "/root/.hermes/tools/python-3.14.7+20260901-linux-x64/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/root/.local/bin"},
+      "note": "E2E deterministico do contrato: turn_done -> ledger.awaitingClose=true -> close de supervisor mockado SEM token executa; sem turn_done -> SUPERVISOR_ACTION_NEEDS_ORDER com ledger intocado"
+    },
+    {
+      "run": "cd /root/.hermes/plugins/mission-ops && python3 test_rd_guard_close_state_01.py",
+      "expect_exit": 0,
+      "timeout": 90,
+      "env": {"PATH": "/root/.hermes/tools/python-3.14.7+20260901-linux-x64/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/root/.local/bin"},
+      "note": "suite nova: (a) turn_done -> awaitingClose no ledger; (b) close com flag passa sem token; (c) sem flag recusa mantida; (d) report_ack isento com delivered:true / recusa sem entrega"
+    },
+    {
+      "run": "cd /root/.hermes/plugins/mission-ops && python3 test_supervisor_guard.py",
+      "expect_exit": 0,
+      "timeout": 240,
+      "env": {"PATH": "/root/.hermes/tools/python-3.14.7+20260901-linux-x64/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/root/.local/bin"},
+      "note": "regressao do guard: recusas tipadas e isensoes pre-existentes inalteradas"
+    },
+    {
+      "run": "cd /root/.hermes/plugins/mission-ops && python3 test_watch_detector.py",
+      "expect_exit": 0,
+      "timeout": 120,
+      "env": {"PATH": "/root/.hermes/tools/python-3.14.7+20260901-linux-x64/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/root/.local/bin"},
+      "note": "regressao do watcher: veredito awaiting_close/needs_supervisor inalterado"
+    },
+    {
+      "run": "cd /root/.hermes/plugins/mission-ops && python3 test_mission_ops.py",
+      "expect_exit": 0,
+      "timeout": 180,
+      "env": {"PATH": "/root/.hermes/tools/python-3.14.7+20260901-linux-x64/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/root/.local/bin"},
+      "note": "suite inteira do plugin (~33s reais; timeout 180s >= 2x)"
+    }
+  ],
+  "file": [
+    {"path": "/root/.hermes/plugins/mission-ops/supervisor_guard.py", "min_bytes": 19000},
+    {"path": "/root/.hermes/plugins/mission-ops/__init__.py", "min_bytes": 181000},
+    {"path": "/root/.hermes/plugins/mission-ops/test_rd_guard_close_state_01.py", "min_bytes": 7000},
+    {"path": "/root/.hermes/plugins/mission-ops/prova_rd_guard_close_state_01.py", "min_bytes": 4000},
+    {"path": "/root/.hermes/plugins/mission-ops/verify-RD-GUARD-CLOSE-STATE-01.json", "min_bytes": 1000}
+  ]
+}

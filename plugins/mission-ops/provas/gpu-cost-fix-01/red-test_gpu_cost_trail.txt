@@ -1,0 +1,172 @@
+E.EEEEEE.EEEEEEEE
+======================================================================
+ERROR: test_close_measured_same_number_everywhere (test_gpu_cost_trail.TestCloseTrail.test_close_measured_same_number_everywhere)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_gpu_cost_trail.py", line 264, in test_close_measured_same_number_everywhere
+    out, rows, led = self._close(ts, p, {"dispatchedAt": _iso(MSTART), "gpuUpOk": True})
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.hermes/plugins/mission-ops/test_gpu_cost_trail.py", line 234, in _close
+    with mock.patch.object(mc, "run_herdr", track), \
+  File "/usr/lib/python3.12/unittest/mock.py", line 1458, in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1431, in get_original
+    raise AttributeError(
+AttributeError: <module 'mission_ops.notify' from '/root/.hermes/plugins/mission-ops/notify.py'> does not have the attribute 'GPU_AUDIT'
+
+======================================================================
+ERROR: test_close_noop_destroyed_before_mission (test_gpu_cost_trail.TestCloseTrail.test_close_noop_destroyed_before_mission)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_gpu_cost_trail.py", line 249, in test_close_noop_destroyed_before_mission
+    out, rows, led = self._close(ts, p, {"dispatchedAt": _iso(TEND + 3600)})
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.hermes/plugins/mission-ops/test_gpu_cost_trail.py", line 234, in _close
+    with mock.patch.object(mc, "run_herdr", track), \
+  File "/usr/lib/python3.12/unittest/mock.py", line 1458, in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1431, in get_original
+    raise AttributeError(
+AttributeError: <module 'mission_ops.notify' from '/root/.hermes/plugins/mission-ops/notify.py'> does not have the attribute 'GPU_AUDIT'
+
+======================================================================
+ERROR: test_final_cost_and_tokens_in_window (test_gpu_cost_trail.TestMeasured.test_final_cost_and_tokens_in_window)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_gpu_cost_trail.py", line 148, in test_final_cost_and_tokens_in_window
+    rec = nf.mission_cost_record(_ledger(), gpu_state_path=p, audit_path=audit,
+          ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'mission_ops.notify' has no attribute 'mission_cost_record'
+
+======================================================================
+ERROR: test_running_segment_from_billed_to (test_gpu_cost_trail.TestMeasured.test_running_segment_from_billed_to)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_gpu_cost_trail.py", line 162, in test_running_segment_from_billed_to
+    rec = nf.mission_cost_record(_ledger(), gpu_state_path=p,
+          ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'mission_ops.notify' has no attribute 'mission_cost_record'
+
+======================================================================
+ERROR: test_destroyed_before_mission (test_gpu_cost_trail.TestNoOpHonest.test_destroyed_before_mission)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_gpu_cost_trail.py", line 179, in test_destroyed_before_mission
+    rec = nf.mission_cost_record(led, gpu_state_path=p,
+          ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'mission_ops.notify' has no attribute 'mission_cost_record'
+
+======================================================================
+ERROR: test_gpu_up_failed (test_gpu_cost_trail.TestNoOpHonest.test_gpu_up_failed)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_gpu_cost_trail.py", line 188, in test_gpu_up_failed
+    rec = nf.mission_cost_record(_ledger(gpuUpOk=False), gpu_state_path=p,
+          ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'mission_ops.notify' has no attribute 'mission_cost_record'
+
+======================================================================
+ERROR: test_record_dedupe (test_gpu_cost_trail.TestSpoolTrail.test_record_dedupe)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_gpu_cost_trail.py", line 203, in test_record_dedupe
+    r1 = nf.record_mission_cost(rec, spool=spool, signatures_path=sigs)
+         ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'mission_ops.notify' has no attribute 'record_mission_cost'
+
+======================================================================
+ERROR: test_record_with_iso_and_str_fields_no_crash (test_gpu_cost_trail.TestTypeErrorRepro.test_record_with_iso_and_str_fields_no_crash)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_gpu_cost_trail.py", line 78, in test_record_with_iso_and_str_fields_no_crash
+    rec = nf.mission_cost_record(_ledger(), gpu_state_path=p,
+          ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'mission_ops.notify' has no attribute 'mission_cost_record'
+
+======================================================================
+ERROR: test_budget_probe_str_cost_no_typeerror (test_gpu_cost_trail.TestUnmeasured.test_budget_probe_str_cost_no_typeerror)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_gpu_cost_trail.py", line 127, in test_budget_probe_str_cost_no_typeerror
+    self.assertIsNone(nf.probe_budget_alert("m", mission_cost_usd="lixo"))
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.hermes/plugins/mission-ops/notify.py", line 221, in probe_budget_alert
+    if mission_cost_usd > limit_mission:
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: '>' not supported between instances of 'str' and 'float'
+
+======================================================================
+ERROR: test_down_without_destroyed_at (test_gpu_cost_trail.TestUnmeasured.test_down_without_destroyed_at)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_gpu_cost_trail.py", line 123, in test_down_without_destroyed_at
+    rec = self._rec(destroyedAt=None)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.hermes/plugins/mission-ops/test_gpu_cost_trail.py", line 93, in _rec
+    return nf.mission_cost_record(_ledger(), gpu_state_path=_state(self.tmp, **state_over),
+           ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'mission_ops.notify' has no attribute 'mission_cost_record'
+
+======================================================================
+ERROR: test_ledger_entry_garbage (test_gpu_cost_trail.TestUnmeasured.test_ledger_entry_garbage)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_gpu_cost_trail.py", line 97, in test_ledger_entry_garbage
+    rec = self._rec(cost_ledger=[{"cost_usd": "0.1"}, {"cost_usd": "lixo"}])
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.hermes/plugins/mission-ops/test_gpu_cost_trail.py", line 93, in _rec
+    return nf.mission_cost_record(_ledger(), gpu_state_path=_state(self.tmp, **state_over),
+           ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'mission_ops.notify' has no attribute 'mission_cost_record'
+
+======================================================================
+ERROR: test_ledger_entry_none_and_missing (test_gpu_cost_trail.TestUnmeasured.test_ledger_entry_none_and_missing)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_gpu_cost_trail.py", line 103, in test_ledger_entry_none_and_missing
+    rec = self._rec(cost_ledger=[bad])
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.hermes/plugins/mission-ops/test_gpu_cost_trail.py", line 93, in _rec
+    return nf.mission_cost_record(_ledger(), gpu_state_path=_state(self.tmp, **state_over),
+           ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'mission_ops.notify' has no attribute 'mission_cost_record'
+
+======================================================================
+ERROR: test_running_dph_none (test_gpu_cost_trail.TestUnmeasured.test_running_dph_none)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_gpu_cost_trail.py", line 108, in test_running_dph_none
+    rec = self._rec(status="up", destroyedAt=None, billed_to=None, cost_ledger=[],
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.hermes/plugins/mission-ops/test_gpu_cost_trail.py", line 93, in _rec
+    return nf.mission_cost_record(_ledger(), gpu_state_path=_state(self.tmp, **state_over),
+           ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'mission_ops.notify' has no attribute 'mission_cost_record'
+
+======================================================================
+ERROR: test_running_no_start (test_gpu_cost_trail.TestUnmeasured.test_running_no_start)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_gpu_cost_trail.py", line 113, in test_running_no_start
+    rec = self._rec(status="up", destroyedAt=None, billed_to=None, cost_ledger=[],
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/.hermes/plugins/mission-ops/test_gpu_cost_trail.py", line 93, in _rec
+    return nf.mission_cost_record(_ledger(), gpu_state_path=_state(self.tmp, **state_over),
+           ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'mission_ops.notify' has no attribute 'mission_cost_record'
+
+======================================================================
+ERROR: test_state_missing (test_gpu_cost_trail.TestUnmeasured.test_state_missing)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_gpu_cost_trail.py", line 118, in test_state_missing
+    rec = nf.mission_cost_record(_ledger(), gpu_state_path=os.path.join(self.tmp, "x"),
+          ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'mission_ops.notify' has no attribute 'mission_cost_record'
+
+----------------------------------------------------------------------
+Ran 17 tests in 0.017s
+
+FAILED (errors=15)

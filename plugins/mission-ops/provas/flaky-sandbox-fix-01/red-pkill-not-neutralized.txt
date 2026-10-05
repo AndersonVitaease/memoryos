@@ -1,0 +1,2 @@
+98:  ssh -i $SSH_KEY -p "$SSH_PORT" -o StrictHostKeyChecking=no -o ConnectTimeout=8 root@"$SSH_HOST" 'pkill -f "vllm serve" 2>/dev/null; true' >/dev/null 2>&1 || true
+163:pkill -f "ssh -N -L ${ORCH_LOCAL_PORT}:localhost:${ORCH_REMOTE_PORT}" 2>/dev/null || true

@@ -1,0 +1,86 @@
+2026-09-28T11:59:13.573Z P0 inicio deploy (autorizado pelo operator)
+-rw-r--r-- 1 root root 1194 Sep 28 02:59 /root/.hermes/backups-plugin-prod-01-config.json
+14fcabc5b38d4e4b4e3d568941d4144f08fea8d3b10399d2349e6137b14b6608  /opt/gpu-watchdog/config.json
+2026-09-28T11:59:13.586Z P0 rollback refs: plugin=gpu-vast-tfa-fix-01@a36c879 watchdog-baseline=f1b579a (processo atual pré-lane2, start 02:59:35; HEAD disco=c414bc6)
+2026-09-28T11:59:13.592Z P0 watchdog: systemd gpu-watchdog.service MainPID=344622 ; gateway MainPID=336483
+2026-09-28T11:59:13.609Z P1 colisão untracked x master:
+  (fim)
+2026-09-28T11:59:13.706Z P1 tracked limpo no checkout vivo
+2026-09-28T11:59:13.715Z P1 worktree plugin-prod-01 destacado (master livre)
+2026-09-28T11:59:48.926Z P2 último ciclo antes do stop: 2026-09-28T11:59:48.221Z cycle 1534: watched=['judge-restore
+2026-09-28T11:59:48.943Z P2 watchdog PARADO: inactive (pid 344622 vivo? nao)
+2026-09-28T11:59:48.966Z P2 checkout vivo -> master@acf44f2
+cost_coerce.py
+herdr_stub.py
+relaunch.py
+smoke_mission_ops.py
+test_verify_json_ghost.py
+0
+11:                   with CLAUDE_CONFIG_DIR (NEVER ctrl+c; NEVER resume the
+182:        # WATCHDOG-LANE2-01: a receita ctrl+c x2 (quebrada: 1º ctrl+c só avisa, o probe
+274:        # 25/09 (RED->GREEN): o trust prompt responde ao PRIMEIRO ctrl+c com
+275:        # "Press Ctrl-C again to exit" — sair exige mais de um ctrl+c, e o probe de
+279:            mc.send_keys(pane_id, "ctrl+c")
+284:            return {}, "pane did not return to a shell prompt after ctrl+c"
+2026-09-28T12:00:43.793Z P2v smoke manual (SMOKE_ROLLBACK=0, /usr/bin/python3, cwd=/opt/gpu-watchdog)
+SMOKE OK
+2026-09-28T12:00:44.102Z P2v smoke rc=0
+P2v recipes from /root/.hermes/plugins/mission-ops/recipes.py | transcript400 usa relaunch: True | ctrl+c no ramo: False
+P2v ledgers 104 unicos 104 skipped []
+14fcabc5b38d4e4b4e3d568941d4144f08fea8d3b10399d2349e6137b14b6608  /opt/gpu-watchdog/config.json
+2026-09-28T12:01:14.100Z P3 watchdog START pid=433645 Mon 2026-09-28 12:01:14 UTC active 
+2026-09-28T12:02:54.113Z P3 pós-ciclo: pid=433645 state=active NRestarts=0
+2458:2026-09-28T11:57:17.985Z cycle 1532: watched=['judge-restore-01', 'plugin-prod-01'] skipped=[] judge=unknown cycle_ms=108
+2459:2026-09-28T11:58:33.110Z cycle 1533: watched=['judge-restore-01', 'plugin-prod-01'] skipped=[] judge=unknown cycle_ms=123
+2460:2026-09-28T11:59:48.221Z cycle 1534: watched=['judge-restore-01', 'plugin-prod-01'] skipped=[] judge=unknown cycle_ms=108
+2461:2026-09-28T12:01:14.149Z daemon start pid=433645 cycle_s=75 test_only=False
+2462:2026-09-28T12:01:14.266Z cycle 1535: watched=['judge-restore-01', 'plugin-prod-01'] skipped=[] judge=unknown cycle_ms=115
+2463:2026-09-28T12:02:29.658Z cycle 1536: watched=['judge-restore-01', 'plugin-prod-01'] skipped=[] judge=unknown cycle_ms=114
+-- spool pós-start:
+{"ts": "2026-09-28T12:01:14.149Z", "event": "watchdog_start", "kind": "watchdog_start", "msg": "daemon iniciado pid=433645 test_only=False", "source": "gpu-watchdog"}
+{"ts": "2026-09-28T12:01:14.265Z", "event": "watchdog_heartbeat", "kind": "watchdog_heartbeat", "msg": "alive; watched=2 skipped=0 judge=unknown", "source": "gpu-watchdog"}
+{"ts": "2026-09-28T12:02:21.792Z", "event": "heartbeat", "kind": "guardian_compute", "msg": "tick=7561 tick_ms=518.01 qwen-coder-standby=UNDECLARED_STATE qwen-coder=ONLINE", "level": "info", "source": "guardian-compute"}
+{"ts": "2026-09-28T12:02:29.657Z", "event": "watchdog_heartbeat", "kind": "watchdog_heartbeat", "msg": "alive; watched=2 skipped=0 judge=unknown", "source": "gpu-watchdog"}
+14fcabc5b38d4e4b4e3d568941d4144f08fea8d3b10399d2349e6137b14b6608  /opt/gpu-watchdog/config.json
+ M config.json
+test_watchdog_lane2.py
+Ran 27 tests in 0.047s
+
+OK
+2026-09-28T12:03:26.621Z P3p watchdog lane2 rc=0
+test_absent_agent_shell_launches_without_exit (test_lane2.TestRelaunchRecipe.test_absent_agent_shell_launches_without_exit) ... ok
+test_api_error_exit_poll_ready_fresh_config_resume (test_lane2.TestRelaunchRecipe.test_api_error_exit_poll_ready_fresh_config_resume) ... ok
+test_exit_never_returns_to_shell_fails_without_launch (test_lane2.TestRelaunchRecipe.test_exit_never_returns_to_shell_fails_without_launch) ... ok
+test_exit_swallowed_once_is_retried (test_lane2.TestRelaunchRecipe.test_exit_swallowed_once_is_retried) ... ok
+test_first_run_dialog_is_danced_before_prompt (test_lane2.TestRelaunchRecipe.test_first_run_dialog_is_danced_before_prompt) ... ok
+test_gpu_engine_keeps_bridge_env (test_lane2.TestRelaunchRecipe.test_gpu_engine_keeps_bridge_env) ... ok
+test_never_ready_is_honest_failure (test_lane2.TestRelaunchRecipe.test_never_ready_is_honest_failure) ... ok
+test_no_cwd_refuses (test_lane2.TestRelaunchRecipe.test_no_cwd_refuses) ... ok
+test_recover_transcript400_uses_exit_not_ctrl_c (test_lane2.TestTranscript400Replaced.test_recover_transcript400_uses_exit_not_ctrl_c) ... ok
+Ran 15 tests in 0.307s
+OK
+2026-09-28T12:03:27.046Z P3p mission-ops test_lane2 (checkout vivo)
+2026-09-28T12:03:59.725Z P4 gateway antes: pid=336483
+2026-09-28T12:04:01.072Z P4 restart rc=0
+2026-09-28T12:04:21.076Z P4 gateway depois: pid=434134 0 Mon 2026-09-28 12:04:01 UTC active running 
+Sep 28 12:04:01 srv1882271 systemd[1]: Started hermes-gateway.service - Hermes Agent Gateway - Messaging Platform Integration.
+Sep 28 12:04:05 srv1882271 hermes[434134]: │           ☤ Hermes Gateway Starting...                 │
+2026-09-28T12:07:10.950Z P4p prova tools (python do Hermes, plugin do checkout vivo)
+mission_list(tool, default): view=compact total=104 bytes=522 ms=19 ativas=2
+mission_status(full=true): missions=104 unicos=104 skipped=[]
+2026-09-28T12:07:34.015Z P5 pós-restart:
+  pid 403143 vivo Mon Sep 28 09:58:07 2026
+  pid 403135 vivo Mon Sep 28 09:58:06 2026
+  pid 359857 vivo Mon Sep 28 04:03:41 2026
+  watchdog pid=433645 active NRestarts=0
+2026-09-28T12:05:00.486Z cycle 1538: watched=['judge-restore-01', 'plugin-prod-01'] skipped=[] judge=unknown cycle_ms=137
+2026-09-28T12:06:15.904Z cycle 1539: watched=['judge-restore-01', 'plugin-prod-01'] skipped=[] judge=unknown cycle_ms=114
+2026-09-28T12:07:31.305Z cycle 1540: watched=['judge-restore-01', 'plugin-prod-01'] skipped=[] judge=unknown cycle_ms=118
+  smoke_red total no spool: 0
+  smoke_red|cycle_exception|lane2 desde 12:01: 0
+2026-09-28 12:04:00,262 WARNING gateway.run: Shutdown context: signal=SIGTERM under_systemd=yes parent_pid=1 parent_name=systemd loadavg_1m=0.07
+2026-09-28 12:04:05,252 WARNING hermes.security_audit: Security posture audit found 1 issue(s) — review your deployment:
+2026-09-28 12:04:05,252 WARNING hermes.security_audit:   [security 1/1] Running as ROOT. The agent's terminal/file tools execute with full root privileges — a single prompt-injection or exposed endp
+2026-09-28 12:04:11,790 WARNING agent.auxiliary_client: Auxiliary client: PAID lane engaged for auxiliary task — OpenRouter fallback model 'z-ai/glm-5.3-flash' is not a :free SKU and may incur real 
+14fcabc5b38d4e4b4e3d568941d4144f08fea8d3b10399d2349e6137b14b6608  /opt/gpu-watchdog/config.json
+2026-09-28T12:07:34.119Z P5 fim deploy

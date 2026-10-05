@@ -1,0 +1,67 @@
+FFFFF....F.F
+======================================================================
+FAIL: test_a_between_turns_without_done_footer_not_waiting_operator (__main__.TestClassifyStructuralGuard.test_a_between_turns_without_done_footer_not_waiting_operator)
+Caso real do probe vivo 01/10: turno EM CURSO renderiza tail sem spinner entre
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/mo-red/test_watch_fp_operator.py", line 121, in test_a_between_turns_without_done_footer_not_waiting_operator
+    self.assertNotEqual(rc.classify_text(text), "waiting_operator")
+AssertionError: 'waiting_operator' == 'waiting_operator'
+
+======================================================================
+FAIL: test_a_busy_without_spinner_words_esc_to_interrupt (__main__.TestClassifyStructuralGuard.test_a_busy_without_spinner_words_esc_to_interrupt)
+(c) rodapé 'esc to interrupt' é sinal estrutural de turno em andamento.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/mo-red/test_watch_fp_operator.py", line 127, in test_a_busy_without_spinner_words_esc_to_interrupt
+    self.assertNotEqual(rc.classify_text(text), "waiting_operator")
+AssertionError: 'waiting_operator' == 'waiting_operator'
+
+======================================================================
+FAIL: test_a_spinner_working_never_waiting_operator (__main__.TestClassifyStructuralGuard.test_a_spinner_working_never_waiting_operator)
+(a) spinner + frase do template no tail de TRABALHO → nunca waiting_operator.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/mo-red/test_watch_fp_operator.py", line 105, in test_a_spinner_working_never_waiting_operator
+    self.assertNotEqual(rc.classify_text(text), "waiting_operator", repr(spinner))
+AssertionError: 'waiting_operator' == 'waiting_operator' : '✻ Waiting… (5s · esc to interrupt)'
+
+======================================================================
+FAIL: test_a_token_flow_is_working_signal (__main__.TestClassifyStructuralGuard.test_a_token_flow_is_working_signal)
+(b) fluxo de tokens ("↓ 35.7k tokens") = trabalho em andamento, mesmo sem
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/mo-red/test_watch_fp_operator.py", line 112, in test_a_token_flow_is_working_signal
+    self.assertNotEqual(rc.classify_text(text), "waiting_operator")
+AssertionError: 'waiting_operator' == 'waiting_operator'
+
+======================================================================
+FAIL: test_b_boot_banner_with_phrase_not_waiting_operator (__main__.TestClassifyStructuralGuard.test_b_boot_banner_with_phrase_not_waiting_operator)
+(b) boot: frase no INPUT BOX + banner, sem spinner → não é pergunta legítima.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/mo-red/test_watch_fp_operator.py", line 131, in test_b_boot_banner_with_phrase_not_waiting_operator
+    self.assertNotEqual(rc.classify_text(BOOT_TAIL), "waiting_operator")
+AssertionError: 'waiting_operator' == 'waiting_operator'
+
+======================================================================
+FAIL: test_boot_banner_no_push (__main__.TestWatchEndToEnd.test_boot_banner_no_push)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/mo-red/test_watch_fp_operator.py", line 187, in test_boot_banner_no_push
+    self.assertNotEqual(res.get("event"), "waiting_operator")
+AssertionError: 'waiting_operator' == 'waiting_operator'
+
+======================================================================
+FAIL: test_working_spinner_no_event_no_push (__main__.TestWatchEndToEnd.test_working_spinner_no_event_no_push)
+Tail de TRABALHO com a frase do template: no_event, ledger intocado,
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/mo-red/test_watch_fp_operator.py", line 176, in test_working_spinner_no_event_no_push
+    self.assertNotEqual(res.get("event"), "waiting_operator")
+AssertionError: 'waiting_operator' == 'waiting_operator'
+
+----------------------------------------------------------------------
+Ran 12 tests in 0.009s
+
+FAILED (failures=7)

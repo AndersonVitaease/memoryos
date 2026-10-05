@@ -1,0 +1,422 @@
+{
+  "ok": true,
+  "missionId": "verify-manifest-01",
+  "manifestPath": "/root/.hermes/plugins/mission-ops/verify.json",
+  "report": "/root/.hermes/plugins/mission-ops/RELATORIO-verify-manifest-01.md",
+  "prompt": "/root/.hermes/plugins/mission-ops/missao-verify-manifest-01.md",
+  "provenance": {
+    "report": 19,
+    "prompt": 1
+  },
+  "skipped": [
+    {
+      "candidate": "min_bytes = min(tamanho, 500)",
+      "reason": "fora da allowlist read-only: min_bytes",
+      "source": "RELATORIO-verify-manifest-01.md:12"
+    },
+    {
+      "candidate": "active",
+      "reason": "unit inexistente no systemd",
+      "source": "RELATORIO-verify-manifest-01.md:13"
+    },
+    {
+      "candidate": "inactive",
+      "reason": "unit inexistente no systemd",
+      "source": "RELATORIO-verify-manifest-01.md:13"
+    },
+    {
+      "candidate": "min_bytes 500",
+      "reason": "fora da allowlist read-only: min_bytes",
+      "source": "RELATORIO-verify-manifest-01.md:15"
+    },
+    {
+      "candidate": "curl -X/-d",
+      "reason": "comando com efeito colateral/metacaractere",
+      "source": "RELATORIO-verify-manifest-01.md:16"
+    },
+    {
+      "candidate": ".claude.json",
+      "reason": "não resolvido em cwd/diretórios citados",
+      "source": "RELATORIO-verify-manifest-01.md:16"
+    },
+    {
+      "candidate": "skipped",
+      "reason": "unit inexistente no systemd",
+      "source": "RELATORIO-verify-manifest-01.md:16"
+    },
+    {
+      "candidate": "token",
+      "reason": "unit inexistente no systemd",
+      "source": "RELATORIO-verify-manifest-01.md:16"
+    },
+    {
+      "candidate": "secret",
+      "reason": "unit inexistente no systemd",
+      "source": "RELATORIO-verify-manifest-01.md:16"
+    },
+    {
+      "candidate": ".claude.json",
+      "reason": "unit inexistente no systemd",
+      "source": "RELATORIO-verify-manifest-01.md:16"
+    },
+    {
+      "candidate": ".env",
+      "reason": "unit inexistente no systemd",
+      "source": "RELATORIO-verify-manifest-01.md:16"
+    },
+    {
+      "candidate": "rm",
+      "reason": "unit inexistente no systemd",
+      "source": "RELATORIO-verify-manifest-01.md:16"
+    },
+    {
+      "candidate": "sudo",
+      "reason": "unit inexistente no systemd",
+      "source": "RELATORIO-verify-manifest-01.md:16"
+    },
+    {
+      "candidate": "post-release-state.json",
+      "reason": "não resolvido em cwd/diretórios citados",
+      "source": "RELATORIO-verify-manifest-01.md:31"
+    },
+    {
+      "candidate": "engmcp",
+      "reason": "unit inexistente no systemd",
+      "source": "RELATORIO-verify-manifest-01.md:31"
+    },
+    {
+      "candidate": "post-release-state.json",
+      "reason": "unit inexistente no systemd",
+      "source": "RELATORIO-verify-manifest-01.md:31"
+    },
+    {
+      "candidate": "/dev/null",
+      "reason": "inexistente",
+      "source": "RELATORIO-verify-manifest-01.md:35"
+    },
+    {
+      "candidate": "rm -rf",
+      "reason": "comando com efeito colateral/metacaractere",
+      "source": "RELATORIO-verify-manifest-01.md:36"
+    },
+    {
+      "candidate": "/tool",
+      "reason": "inexistente",
+      "source": "RELATORIO-verify-manifest-01.md:36"
+    },
+    {
+      "candidate": "curl -s -o",
+      "reason": "comando com efeito colateral/metacaractere",
+      "source": "RELATORIO-verify-manifest-01.md:39"
+    },
+    {
+      "candidate": "sha256sum -c",
+      "reason": "fragmento: sha256sum sem operando de arquivo (leria stdin)",
+      "source": "RELATORIO-verify-manifest-01.md:39"
+    },
+    {
+      "candidate": "herdr-server.service",
+      "reason": "sem estado declarado na linha (não inventa expect)",
+      "source": "RELATORIO-verify-manifest-01.md:46"
+    },
+    {
+      "candidate": "from .mission_resume import",
+      "reason": "fora da allowlist read-only: from",
+      "source": "RELATORIO-verify-manifest-01.md:55"
+    },
+    {
+      "candidate": "smoke-judge.sh",
+      "reason": "não resolvido em cwd/diretórios citados",
+      "source": "RELATORIO-verify-manifest-01.md:60"
+    },
+    {
+      "candidate": "src/judge.ts",
+      "reason": "não resolvido em cwd/diretórios citados",
+      "source": "RELATORIO-verify-manifest-01.md:62"
+    },
+    {
+      "candidate": "smokeJudgeModel …",
+      "reason": "fora da allowlist read-only: smokeJudgeModel",
+      "source": "RELATORIO-verify-manifest-01.md:63"
+    },
+    {
+      "candidate": "/root/.claude.json",
+      "reason": "caminho de segredo",
+      "source": "RELATORIO-verify-manifest-01.md:63"
+    },
+    {
+      "candidate": "pre-release-state.json",
+      "reason": "não resolvido em cwd/diretórios citados",
+      "source": "RELATORIO-verify-manifest-01.md:63"
+    },
+    {
+      "candidate": "cmd",
+      "reason": "unit inexistente no systemd",
+      "source": "RELATORIO-verify-manifest-01.md:63"
+    },
+    {
+      "candidate": "service",
+      "reason": "unit inexistente no systemd",
+      "source": "RELATORIO-verify-manifest-01.md:63"
+    },
+    {
+      "candidate": "memoryos-eng-mcp",
+      "reason": "unit inexistente no systemd",
+      "source": "RELATORIO-verify-manifest-01.md:63"
+    },
+    {
+      "candidate": "pre-release-state.json",
+      "reason": "unit inexistente no systemd",
+      "source": "RELATORIO-verify-manifest-01.md:63"
+    },
+    {
+      "candidate": "grep -q '127.0.0.1:8102/alpha/decisions' src/judge.ts",
+      "reason": "fragmento: operando inexistente a partir do cwd: 127.0.0.1:8102/alpha/decisions",
+      "source": "RELATORIO-verify-manifest-01.md:65"
+    },
+    {
+      "candidate": "grep -q SUCESSO",
+      "reason": "fragmento: grep sem operando de arquivo (leria stdin)",
+      "source": "RELATORIO-verify-manifest-01.md:87"
+    },
+    {
+      "candidate": "grep … src/judge.ts",
+      "reason": "fragmento: operando inexistente a partir do cwd: src/judge.ts",
+      "source": "RELATORIO-verify-manifest-01.md:88"
+    }
+  ],
+  "diff": "--- /root/.hermes/plugins/mission-ops/verify.json\n+++ /root/.hermes/plugins/mission-ops/verify.json (proposto)\n@@ -1,7 +1,7 @@\n {\n   \"cmd\": [\n-    {\"run\": \"cd /root/.hermes/plugins/mission-ops && git status\", \"expect_exit\": 0, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:54\"},\n-    {\"run\": \"cd /root/.hermes/plugins/mission-ops && docker inspect memoryos-eng-mcp\", \"expect_exit\": 0, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:59\"}\n+    {\"run\": \"cd /root/.hermes/plugins/mission-ops && git status\", \"expect_exit\": 0, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:55\"},\n+    {\"run\": \"cd /root/.hermes/plugins/mission-ops && docker inspect memoryos-eng-mcp\", \"expect_exit\": 0, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:60\"}\n   ],\n   \"service\": [\n     {\"unit\": \"eng-mcp-release-runner\", \"expect\": \"active\", \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:31\"}\n@@ -12,15 +12,17 @@\n     {\"path\": \"/root/.hermes/plugins/mission-ops/__init__.py\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:6\"},\n     {\"path\": \"/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/red.txt\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:25\"},\n     {\"path\": \"/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/green.txt\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:26\"},\n-    {\"path\": \"/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/suite-full.txt\", \"min_bytes\": 280, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:52\"},\n-    {\"path\": \"/root/.hermes/plugins/mission-ops/test_mission_resume.py\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:54\"},\n-    {\"path\": \"/opt/memoryos/eng-mcp/verify.json\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:57\"},\n-    {\"path\": \"/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/live-refusal.json\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:57\"},\n-    {\"path\": \"/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/judge-deploy-01.verify.generated.json\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:58\"},\n-    {\"path\": \"/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/live-verify-generated.json\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:63\"},\n-    {\"path\": \"/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/selftest-load.txt\", \"min_bytes\": 112, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:69\"},\n-    {\"path\": \"/root/.hermes/plugins/mission-ops/smoke_mission_ops.py\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:70\"},\n-    {\"path\": \"/root/.hermes/plugins/mission-ops/test_verify_author.py\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:76\"},\n+    {\"path\": \"/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/red-fragments.txt\", \"min_bytes\": 329, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:26\"},\n+    {\"path\": \"/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/suite-full.txt\", \"min_bytes\": 280, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:53\"},\n+    {\"path\": \"/root/.hermes/plugins/mission-ops/test_mission_resume.py\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:55\"},\n+    {\"path\": \"/opt/memoryos/eng-mcp/verify.json\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:58\"},\n+    {\"path\": \"/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/live-refusal.json\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:58\"},\n+    {\"path\": \"/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/judge-deploy-01.verify.generated.json\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:59\"},\n+    {\"path\": \"/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/live-verify-generated.json\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:64\"},\n+    {\"path\": \"/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/selftest-load.txt\", \"min_bytes\": 112, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:70\"},\n+    {\"path\": \"/root/.hermes/plugins/mission-ops/smoke_mission_ops.py\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:71\"},\n+    {\"path\": \"/root/.hermes/plugins/mission-ops/test_verify_author.py\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:77\"},\n+    {\"path\": \"/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/dogfood-author.json\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:94\"},\n     {\"path\": \"/root/.hermes/plugins/mission-ops/RELATORIO-verify-manifest-01.md\", \"min_bytes\": 500, \"_provenance\": \"prompt\", \"_source\": \"missao-verify-manifest-01.md:30\"}\n   ]\n }\n",
+  "written": true,
+  "verify": {
+    "missionId": "verify-manifest-01",
+    "source": "manifest",
+    "verdict": "pass",
+    "llm_calls": 0,
+    "checks": [
+      {
+        "id": "P1-cmd-1",
+        "type": "cmd",
+        "ok": true,
+        "evidence": {
+          "run": "cd /root/.hermes/plugins/mission-ops && git status",
+          "exit": 0,
+          "expect": 0,
+          "tail": "e-verify-guard-01.md\n\trelatorio-closer-madrugada-01.md\n\ttest_mission_ops.py.bak-20260927-gpu-down-fix\n\ttest_mission_resume.py\n\tvenv/\n\nno changes added to commit (use \"git add\" and/or \"git commit -a\")\n"
+        },
+        "error": null
+      },
+      {
+        "id": "P2-cmd-2",
+        "type": "cmd",
+        "ok": true,
+        "evidence": {
+          "run": "cd /root/.hermes/plugins/mission-ops && docker inspect memoryos-eng-mcp",
+          "exit": 0,
+          "expect": 0,
+          "tail": "un/secrets/git-credentials\",\n                \"ENG_MCP_REPOSITORY_ID=memoryos\",\n                \"ENG_MCP_HOST=127.0.0.1\",\n                \"ENG_MCP_DEPLOY_SERVER_ID=LXzm3ZifF7EPwLaBUXt4H\",\n             "
+        },
+        "error": null
+      },
+      {
+        "id": "P3-service-1",
+        "type": "service",
+        "ok": true,
+        "evidence": {
+          "unit": "eng-mcp-release-runner",
+          "is-active": "active",
+          "is-enabled": "enabled"
+        },
+        "error": null
+      },
+      {
+        "id": "P4-file-1",
+        "type": "file",
+        "ok": true,
+        "evidence": {
+          "path": "/opt/deliver-verify/verify.py",
+          "bytes": 17029,
+          "min_bytes": 500
+        },
+        "error": null
+      },
+      {
+        "id": "P5-file-2",
+        "type": "file",
+        "ok": true,
+        "evidence": {
+          "path": "/root/.hermes/plugins/mission-ops/verify_author.py",
+          "bytes": 16089,
+          "min_bytes": 500
+        },
+        "error": null
+      },
+      {
+        "id": "P6-file-3",
+        "type": "file",
+        "ok": true,
+        "evidence": {
+          "path": "/root/.hermes/plugins/mission-ops/__init__.py",
+          "bytes": 85945,
+          "min_bytes": 500
+        },
+        "error": null
+      },
+      {
+        "id": "P7-file-4",
+        "type": "file",
+        "ok": true,
+        "evidence": {
+          "path": "/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/red.txt",
+          "bytes": 1453,
+          "min_bytes": 500
+        },
+        "error": null
+      },
+      {
+        "id": "P8-file-5",
+        "type": "file",
+        "ok": true,
+        "evidence": {
+          "path": "/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/green.txt",
+          "bytes": 1152,
+          "min_bytes": 500
+        },
+        "error": null
+      },
+      {
+        "id": "P9-file-6",
+        "type": "file",
+        "ok": true,
+        "evidence": {
+          "path": "/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/red-fragments.txt",
+          "bytes": 329,
+          "min_bytes": 329
+        },
+        "error": null
+      },
+      {
+        "id": "P10-file-7",
+        "type": "file",
+        "ok": true,
+        "evidence": {
+          "path": "/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/suite-full.txt",
+          "bytes": 280,
+          "min_bytes": 280
+        },
+        "error": null
+      },
+      {
+        "id": "P11-file-8",
+        "type": "file",
+        "ok": true,
+        "evidence": {
+          "path": "/root/.hermes/plugins/mission-ops/test_mission_resume.py",
+          "bytes": 1259,
+          "min_bytes": 500
+        },
+        "error": null
+      },
+      {
+        "id": "P12-file-9",
+        "type": "file",
+        "ok": true,
+        "evidence": {
+          "path": "/opt/memoryos/eng-mcp/verify.json",
+          "bytes": 803,
+          "min_bytes": 500
+        },
+        "error": null
+      },
+      {
+        "id": "P13-file-10",
+        "type": "file",
+        "ok": true,
+        "evidence": {
+          "path": "/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/live-refusal.json",
+          "bytes": 6652,
+          "min_bytes": 500
+        },
+        "error": null
+      },
+      {
+        "id": "P14-file-11",
+        "type": "file",
+        "ok": true,
+        "evidence": {
+          "path": "/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/judge-deploy-01.verify.generated.json",
+          "bytes": 3295,
+          "min_bytes": 500
+        },
+        "error": null
+      },
+      {
+        "id": "P15-file-12",
+        "type": "file",
+        "ok": true,
+        "evidence": {
+          "path": "/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/live-verify-generated.json",
+          "bytes": 6025,
+          "min_bytes": 500
+        },
+        "error": null
+      },
+      {
+        "id": "P16-file-13",
+        "type": "file",
+        "ok": true,
+        "evidence": {
+          "path": "/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/selftest-load.txt",
+          "bytes": 112,
+          "min_bytes": 112
+        },
+        "error": null
+      },
+      {
+        "id": "P17-file-14",
+        "type": "file",
+        "ok": true,
+        "evidence": {
+          "path": "/root/.hermes/plugins/mission-ops/smoke_mission_ops.py",
+          "bytes": 4884,
+          "min_bytes": 500
+        },
+        "error": null
+      },
+      {
+        "id": "P18-file-15",
+        "type": "file",
+        "ok": true,
+        "evidence": {
+          "path": "/root/.hermes/plugins/mission-ops/test_verify_author.py",
+          "bytes": 13351,
+          "min_bytes": 500
+        },
+        "error": null
+      },
+      {
+        "id": "P19-file-16",
+        "type": "file",
+        "ok": true,
+        "evidence": {
+          "path": "/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/dogfood-author.json",
+          "bytes": 12875,
+          "min_bytes": 500
+        },
+        "error": null
+      },
+      {
+        "id": "P20-file-17",
+        "type": "file",
+        "ok": true,
+        "evidence": {
+          "path": "/root/.hermes/plugins/mission-ops/RELATORIO-verify-manifest-01.md",
+          "bytes": 10084,
+          "min_bytes": 500
+        },
+        "error": null
+      }
+    ],
+    "ts": "2026-09-28T15:10:04Z",
+    "durationMs": 42
+  }
+}

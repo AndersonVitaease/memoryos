@@ -1,0 +1,20 @@
+{
+  "mission": "mission-batch-01",
+  "date": "2026-09-29",
+  "owner": "worker mission-batch-01 (pane w6:pA)",
+  "note": "mission_batch + ready fail-fast 45s. A linha do E2E (collect_e2e.py) fica VERMELHA até o supervisor/operator rodar provas/mission-batch-01/run_e2e.py: o gate de cadeia recusa despacho a partir deste pane (CHAIN_DISPATCH_NOT_ALLOWED, provado em provas/mission-batch-01/e2e-run-from-worker-pane.txt). Ver RELATORIO-mission-batch-01.md §4.",
+  "cmd": [
+    {"run": "cd /root/.hermes/plugins/mission-ops && timeout 120 python3 -m unittest test_mission_batch 2>&1 | tail -1", "expect_stdout": "OK", "timeout": 150, "_provenance": "prompt", "_source": "entregável 3: unit do batch (lote de 3, 1 falha, 1 fantasma) + ready 45s"},
+    {"run": "cd /root/.hermes/plugins/mission-ops && timeout 900 python3 -m unittest discover -p 'test_*.py' 2>&1 | tail -1", "expect_stdout": "OK", "timeout": 960, "_provenance": "prompt", "_source": "entregável 3: suíte completa verde (236 + 11)"},
+    {"run": "grep -q 'FAILED (failures=2, errors=9)' /root/.hermes/plugins/mission-ops/provas/mission-batch-01/red.txt && grep -q 'Ran 11 tests' /root/.hermes/plugins/mission-ops/provas/mission-batch-01/green.txt", "expect_exit": 0, "_provenance": "report", "_source": "RELATORIO §3: red 11/11 -> green 11/11"},
+    {"run": "systemctl is-active or-worker-bridge", "expect_stdout": "active", "_provenance": "prompt", "_source": "guarda: 8103 é produção"},
+    {"run": "python3 /root/.hermes/plugins/mission-ops/provas/mission-batch-01/collect_e2e.py", "expect_exit": 0, "timeout": 30, "_provenance": "prompt", "_source": "entregável 3: E2E lote real (2 canários, tempos no resumo) — PENDENTE de run_e2e.py pelo supervisor"}
+  ],
+  "file": [
+    {"path": "/root/.hermes/plugins/mission-ops/RELATORIO-mission-batch-01.md", "min_bytes": 2000, "_provenance": "prompt", "_source": "entregável 4"},
+    {"path": "/root/.hermes/plugins/mission-ops/test_mission_batch.py", "min_bytes": 3000, "_provenance": "report", "_source": "testes novos"},
+    {"path": "/root/.hermes/plugins/mission-ops/provas/mission-batch-01/suite-full.txt", "min_bytes": 50, "_provenance": "report", "_source": "suíte 247/247"},
+    {"path": "/root/.hermes/plugins/mission-ops/provas/mission-batch-01/run_e2e.py", "min_bytes": 1500, "_provenance": "report", "_source": "runner do E2E (1 comando)"},
+    {"path": "/root/.hermes/plugins/mission-ops/provas/mission-batch-01/credits-before.json", "min_bytes": 20, "_provenance": "prompt", "_source": "custos: credits ANTES"}
+  ]
+}

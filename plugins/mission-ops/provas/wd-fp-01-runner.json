@@ -1,0 +1,83 @@
+{
+  "missionId": "WD-FP-01",
+  "source": "manifest",
+  "verdict": "pass",
+  "llm_calls": 0,
+  "checks": [
+    {
+      "id": "manifest-owner",
+      "type": "owner",
+      "ok": true,
+      "evidence": {
+        "manifest": "/root/.hermes/plugins/mission-ops/verify.json",
+        "resolved_by": "cwd-legacy",
+        "declared_mission": "WD-FP-01",
+        "expected_mission": "WD-FP-01"
+      },
+      "error": null
+    },
+    {
+      "id": "P1-cmd-1",
+      "type": "cmd",
+      "ok": true,
+      "evidence": {
+        "run": "cd /root/.hermes/plugins/mission-ops && PATH=/usr/local/bin:/usr/bin:/bin python3 test_mission_ops.py 2>&1",
+        "exit": 0,
+        "expect": 0,
+        "tail": "_ledger_resume (__main__.TestRecipes.test_shell_fallback_uses_ledger_resume) ... ok\ntest_shell_fallback_without_resume_id_starts_fresh (__main__.TestRecipes.test_shell_fallback_without_resume_id_start"
+      },
+      "error": null
+    },
+    {
+      "id": "P2-cmd-2",
+      "type": "cmd",
+      "ok": true,
+      "evidence": {
+        "run": "cd /opt/gpu-watchdog && PATH=/usr/local/bin:/usr/bin:/bin python3 test_watchdog_wd_fp_01.py 2>&1",
+        "exit": 0,
+        "expect": 0,
+        "tail": "sion_name_case_insensitive (__main__.TestForeignUnit.test_same_mission_name_case_insensitive) ... ok\n\n----------------------------------------------------------------------\nRan 13 tests in 0.007s\n\nOK\n"
+      },
+      "error": null
+    },
+    {
+      "id": "P3-file-1",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/root/.hermes/plugins/mission-ops/RELATORIO-WD-FP-01.md",
+        "bytes": 4697,
+        "min_bytes": 1
+      },
+      "error": null
+    },
+    {
+      "id": "P4-file-2",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/opt/gpu-watchdog/test_watchdog_wd_fp_01.py",
+        "bytes": 9783,
+        "min_bytes": 1
+      },
+      "error": null
+    },
+    {
+      "id": "P5-file-3",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/opt/gpu-watchdog/watchdog.py.bak-WD-FP-01",
+        "bytes": 147567,
+        "min_bytes": 1
+      },
+      "error": null
+    }
+  ],
+  "ts": "2026-10-01T14:50:08Z",
+  "durationMs": 32868,
+  "warnings": [
+    "/root/.hermes/plugins/mission-ops/test_mission_ops.py:1650: unlink/remove de arquivo em path de produção /root/.hermes/mission-state/%s.verify.json (via report) (warning)",
+    "/root/.hermes/plugins/mission-ops/test_mission_ops.py:2288: unlink/remove de arquivo em path de produção /root/.hermes/mission-state/%s.verify.json (warning)"
+  ]
+}

@@ -1,0 +1,17 @@
+test_dryrun_kill_switch_reexecutes_runner (__main__.TestRdCloseTimeout01.test_dryrun_kill_switch_reexecutes_runner)
+Kill switch env: dryRun re-executa o runner (caminho pré-missão preservado). ... ok
+test_dryrun_reuse_does_not_run_runner (__main__.TestRdCloseTimeout01.test_dryrun_reuse_does_not_run_runner)
+dryRun com verify fresco: verdict pass + reuse-fresh + evidence, e o runner ... ok
+test_helper_fallback_cases (__main__.TestRdCloseTimeout01.test_helper_fallback_cases)
+Ausente, vermelho, owner divergente, velho, corrompido, sem cwd/mission -> None. ... ok
+test_helper_fresh_pass_owner (__main__.TestRdCloseTimeout01.test_helper_fresh_pass_owner)
+Fresco + verdict=pass + owner==missionId -> evidência com path/mtime/age_s. ... ok
+test_helper_kill_switch_env (__main__.TestRdCloseTimeout01.test_helper_kill_switch_env)
+MISSION_CLOSE_VERIFY_REUSE=0/off/false desliga o reuso (kill switch). ... ok
+test_manifest_without_verdict_never_reuses (__main__.TestRdCloseTimeout01.test_manifest_without_verdict_never_reuses)
+Manifesto sem campo verdict (formato legado da suíte existente) nunca reusa: ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.101s
+
+OK

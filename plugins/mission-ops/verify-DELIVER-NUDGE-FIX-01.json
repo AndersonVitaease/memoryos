@@ -1,0 +1,16 @@
+{
+  "mission": "DELIVER-NUDGE-FIX-01",
+  "cmd": [
+    {
+      "run": "cd /root/.hermes/plugins/mission-ops && python3 -m unittest test_mission_ops -v",
+      "expect_exit": 0,
+      "timeout": 120
+    }
+  ],
+  "file": [
+    {
+      "path": "/root/.hermes/plugins/mission-ops/RELATORIO-deliver-nudge-fix-01.md",
+      "min_bytes": 800
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+ledger: 141 missões · 4 abas · 4 panes
+mission_list    default (sem arg)      723 B    20.0 ms
+mission_list    full=true            35996 B    15.4 ms
+mission_list    verbose=true         35996 B    16.0 ms
+mission_list    compact=true          1378 B    13.8 ms
+mission_list    verbose==full: True
+mission_status  default (sem arg)      646 B    11.3 ms
+mission_status  full=true            50566 B   858.4 ms
+mission_status  verbose=true         50566 B   888.8 ms
+mission_status  compact=true          1596 B   986.4 ms
+mission_status  verbose==full: True
+default view=compact ativas=4 closed=137
+   mcp-import-gate-01 | dispatched | prompt_sent há 10m | pane viva/working | pend: close exige verify
+   mission-list-compact-default-01 | dispatched | prompt_sent há 3m | pane viva/working | pend: -
+   verify-collision-fix-01 | dispatched | prompt_sent há 3m | pane viva/working | pend: -
+   volume-cache-awq-01 | dispatched | turn_done há 14m | pane viva/idle | pend: close exige verify

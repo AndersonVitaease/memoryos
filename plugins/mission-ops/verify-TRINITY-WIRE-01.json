@@ -1,0 +1,32 @@
+{
+  "mission": "TRINITY-WIRE-01",
+  "cmd": [
+    {
+      "run": "cd /root/.hermes/plugins/mission-ops && PATH=/usr/local/bin:/usr/bin:/bin python3 test_trinity_wire.py 2>&1",
+      "expect_exit": 0,
+      "timeout": 90,
+      "evidence_tail": "test_advisor_down_fail_open (__main__.TestConsultAdvisor.test_advisor_down_fail_open) ... ok\ntest_advisor_timeout_5s (__main__.TestConsultAdvisor.test_advisor_timeout_5s) ... ok\ntest_class_mecanica (__main__.TestMissionClass.test_class_mecanica) ... ok\ntest_class_media (__main__.TestMissionClass.test_class_media) ... ok\ntest_zero_calls_explicit (__main__.TestLedgerRoles.test_zero_calls_explicit) ... ok"
+    },
+    {
+      "run": "cd /root/.hermes/plugins/mission-ops && PATH=/usr/local/bin:/usr/bin:/bin python3 -c \"import trinity_wire; print('import ok')\" 2>&1",
+      "expect_exit": 0,
+      "timeout": 5
+    },
+    {
+      "run": "cd /root/.hermes/plugins/mission-ops && PATH=/usr/local/bin:/usr/bin:/bin python3 -c \"\nimport json, sys\nd=json.load(open('verify-TRINITY-WIRE-01.json'))\nassert d['mission']=='TRINITY-WIRE-01', 'wrong mission'\nassert len(d['cmd'])>=2, 'need at least 2 cmds'\nfor c in d['cmd']:\n    assert 'run' in c and 'expect_exit' in c, 'cmd missing fields'\n    assert c['run'].startswith('cd '), 'cmd must use absolute path via cd'\nprint('manifest ok')\n\" 2>&1",
+      "expect_exit": 0,
+      "timeout": 5
+    }
+  ],
+  "file": [
+    {
+      "path": "/root/.hermes/plugins/mission-ops/trinity_wire.py"
+    },
+    {
+      "path": "/root/.hermes/plugins/mission-ops/test_trinity_wire.py"
+    },
+    {
+      "path": "/root/.hermes/plugins/mission-ops/verify-TRINITY-WIRE-01.json"
+    }
+  ]
+}

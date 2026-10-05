@@ -1,0 +1,1 @@
+RESOLVERIA: /opt/guardian-compute/venv/bin/vastai

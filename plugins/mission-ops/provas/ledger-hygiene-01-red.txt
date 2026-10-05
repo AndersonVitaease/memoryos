@@ -1,0 +1,40 @@
+EFEF
+======================================================================
+ERROR: test_affine_copies_do_not_duplicate (test_ledger_hygiene.TestLedgerHygiene.test_affine_copies_do_not_duplicate)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_ledger_hygiene.py", line 34, in test_affine_copies_do_not_duplicate
+    self.assertEqual([(l["missionId"], l["status"]) for l in ledgers], [("m1", "closed")])
+                                       ~^^^^^^^^^^
+KeyError: 'status'
+
+======================================================================
+ERROR: test_history_keeps_non_canonical_files (test_ledger_hygiene.TestLedgerHygiene.test_history_keeps_non_canonical_files)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_ledger_hygiene.py", line 43, in test_history_keeps_non_canonical_files
+    self.assertEqual(mc.ledger_history(), {
+                     ^^^^^^^^^^^^^^^^^
+AttributeError: module 'mission_ops.mission_core' has no attribute 'ledger_history'
+
+======================================================================
+FAIL: test_full_true_byte_identical_minus_ghosts (test_ledger_hygiene.TestLedgerHygiene.test_full_true_byte_identical_minus_ghosts)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_ledger_hygiene.py", line 76, in test_full_true_byte_identical_minus_ghosts
+    self.assertEqual(tools()["mission_list"][1]({"full": True}), before_list)
+AssertionError: '{"ok[51 chars]Id": null, "tabId": null, "creation": null, "s[25319 chars] []}' != '{"ok[51 chars]Id": "w1:pL0", "tabId": "w1:tL0", "creation": [24544 chars] []}'
+Diff is 99775 characters long. Set self.maxDiff to None to see it.
+
+======================================================================
+FAIL: test_one_line_per_mission_in_views (test_ledger_hygiene.TestLedgerHygiene.test_one_line_per_mission_in_views)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_ledger_hygiene.py", line 58, in test_one_line_per_mission_in_views
+    self.assertEqual(len(ids), 105)
+AssertionError: 108 != 105
+
+----------------------------------------------------------------------
+Ran 4 tests in 3.726s
+
+FAILED (failures=2, errors=2)

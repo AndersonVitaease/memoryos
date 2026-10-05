@@ -1,0 +1,52 @@
+.FF.FF...
+======================================================================
+FAIL: test_green_destroy_unverified_exit4_ledgers_extra (test_mission_ops.TestGpuDownFix01.test_green_destroy_unverified_exit4_ledgers_extra)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_mission_ops.py", line 1782, in test_green_destroy_unverified_exit4_ledgers_extra
+    self.assertEqual(out.returncode, 4, out.stdout + out.stderr)
+AssertionError: 5 != 4 : [gpu-down] ERRO: destroy NÃO emitido (vastai exit 5) — instância 52953260 segue de pé e COBRANDO; intervenção manual
+/tmp/tmp5f8nmsre/sandbox-gpu-down.sh: line 15: /tmp/tmp5f8nmsre/orch/ports.env: No such file or directory
+/tmp/tmp5f8nmsre/sandbox-gpu-down.sh: line 20: /tmp/tmp5f8nmsre/orch/lib-vastai.sh: No such file or directory
+/tmp/tmp5f8nmsre/sandbox-gpu-down.sh: line 86: resolve_vastai: command not found
+
+
+======================================================================
+FAIL: test_green_full_path_mixed_types (test_mission_ops.TestGpuDownFix01.test_green_full_path_mixed_types)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_mission_ops.py", line 1735, in test_green_full_path_mixed_types
+    self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+AssertionError: 5 != 0 : [gpu-down] ERRO: destroy NÃO emitido (vastai exit 5) — instância 52953260 segue de pé e COBRANDO; intervenção manual
+/tmp/tmp0qmuczqy/sandbox-gpu-down.sh: line 15: /tmp/tmp0qmuczqy/orch/ports.env: No such file or directory
+/tmp/tmp0qmuczqy/sandbox-gpu-down.sh: line 20: /tmp/tmp0qmuczqy/orch/lib-vastai.sh: No such file or directory
+/tmp/tmp0qmuczqy/sandbox-gpu-down.sh: line 86: resolve_vastai: command not found
+
+
+======================================================================
+FAIL: test_green_garfo_skips_own_recent_mission (test_mission_ops.TestGpuDownFix01.test_green_garfo_skips_own_recent_mission)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_mission_ops.py", line 1775, in test_green_garfo_skips_own_recent_mission
+    self.assertEqual(out.returncode, 0, out.stderr)
+AssertionError: 5 != 0 : /tmp/tmp54rqdzue/sandbox-gpu-down.sh: line 15: /tmp/tmp54rqdzue/orch/ports.env: No such file or directory
+/tmp/tmp54rqdzue/sandbox-gpu-down.sh: line 20: /tmp/tmp54rqdzue/orch/lib-vastai.sh: No such file or directory
+/tmp/tmp54rqdzue/sandbox-gpu-down.sh: line 86: resolve_vastai: command not found
+
+
+======================================================================
+FAIL: test_green_missing_and_none_fields (test_mission_ops.TestGpuDownFix01.test_green_missing_and_none_fields)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_mission_ops.py", line 1753, in test_green_missing_and_none_fields
+    self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+AssertionError: 5 != 0 : [gpu-down] ERRO: destroy NÃO emitido (vastai exit 5) — instância 52953260 segue de pé e COBRANDO; intervenção manual
+/tmp/tmp_jxou5kz/sandbox-gpu-down.sh: line 15: /tmp/tmp_jxou5kz/orch/ports.env: No such file or directory
+/tmp/tmp_jxou5kz/sandbox-gpu-down.sh: line 20: /tmp/tmp_jxou5kz/orch/lib-vastai.sh: No such file or directory
+/tmp/tmp_jxou5kz/sandbox-gpu-down.sh: line 86: resolve_vastai: command not found
+
+
+----------------------------------------------------------------------
+Ran 9 tests in 2.139s
+
+FAILED (failures=4)

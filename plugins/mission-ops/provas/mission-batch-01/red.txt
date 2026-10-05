@@ -1,0 +1,112 @@
+EEEEEEEEFFE
+======================================================================
+ERROR: test_dispatching_without_pane_only_ghost_when_stale (test_mission_batch.TestBatchDispatch.test_dispatching_without_pane_only_ghost_when_stale)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/mb01-before/test_mission_batch.py", line 154, in test_dispatching_without_pane_only_ghost_when_stale
+    self.assertIsNotNone(PKG._batch_ghost_check("b1")[0])
+                         ^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'mission_ops' has no attribute '_batch_ghost_check'
+
+======================================================================
+ERROR: test_ghost_statuses_dispatching_and_failed (test_mission_batch.TestBatchDispatch.test_ghost_statuses_dispatching_and_failed)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/mb01-before/test_mission_batch.py", line 123, in test_ghost_statuses_dispatching_and_failed
+    res, _ = self._run([b1, b2], script,
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/mb01-before/test_mission_batch.py", line 72, in _run
+    res = json.loads(PKG.handle_mission_batch({"missions": missions}))
+                     ^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'mission_ops' has no attribute 'handle_mission_batch'. Did you mean: 'handle_mission_watch'?
+
+======================================================================
+ERROR: test_item_exception_does_not_abort_batch (test_mission_batch.TestBatchDispatch.test_item_exception_does_not_abort_batch)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/mb01-before/test_mission_batch.py", line 170, in test_item_exception_does_not_abort_batch
+    res = json.loads(PKG.handle_mission_batch({"missions": [b1, b2]}))
+                     ^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'mission_ops' has no attribute 'handle_mission_batch'. Did you mean: 'handle_mission_watch'?
+
+======================================================================
+ERROR: test_live_or_unknown_pane_is_not_a_ghost (test_mission_batch.TestBatchDispatch.test_live_or_unknown_pane_is_not_a_ghost)
+interrupted de pane VIVO = missão real (no_op); herdr desconhecido = não adivinha.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/mb01-before/test_mission_batch.py", line 138, in test_live_or_unknown_pane_is_not_a_ghost
+    res, _ = self._run([b1, b2], {}, pane_alive={"w1:pLIVE": True})  # pUNK -> None
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/mb01-before/test_mission_batch.py", line 72, in _run
+    res = json.loads(PKG.handle_mission_batch({"missions": missions}))
+                     ^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'mission_ops' has no attribute 'handle_mission_batch'. Did you mean: 'handle_mission_watch'?
+
+======================================================================
+ERROR: test_three_missions_sequential_one_failure_one_ghost (test_mission_batch.TestBatchDispatch.test_three_missions_sequential_one_failure_one_ghost)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/mb01-before/test_mission_batch.py", line 87, in test_three_missions_sequential_one_failure_one_ghost
+    res, seq = self._run([b1, b2, b3], script, pane_alive={"w1:pDEAD": False})
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/tmp/mb01-before/test_mission_batch.py", line 72, in _run
+    res = json.loads(PKG.handle_mission_batch({"missions": missions}))
+                     ^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'mission_ops' has no attribute 'handle_mission_batch'. Did you mean: 'handle_mission_watch'?
+
+======================================================================
+ERROR: test_duplicate_and_bad_items (test_mission_batch.TestBatchManifest.test_duplicate_and_bad_items)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/mb01-before/test_mission_batch.py", line 189, in test_duplicate_and_bad_items
+    res = json.loads(PKG.handle_mission_batch({"missions": [a, dict(a)]}))
+                     ^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'mission_ops' has no attribute 'handle_mission_batch'. Did you mean: 'handle_mission_watch'?
+
+======================================================================
+ERROR: test_json_and_yaml_files_and_text (test_mission_batch.TestBatchManifest.test_json_and_yaml_files_and_text)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/mb01-before/test_mission_batch.py", line 208, in test_json_and_yaml_files_and_text
+    got, err = PKG._batch_load_manifest({"manifest": src})
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'mission_ops' has no attribute '_batch_load_manifest'
+
+======================================================================
+ERROR: test_size_bounds (test_mission_batch.TestBatchManifest.test_size_bounds)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/mb01-before/test_mission_batch.py", line 183, in test_size_bounds
+    res = json.loads(PKG.handle_mission_batch({"missions": self._items(ts, n)}))
+                     ^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: module 'mission_ops' has no attribute 'handle_mission_batch'. Did you mean: 'handle_mission_watch'?
+
+======================================================================
+ERROR: test_live_bridge_keeps_180s (test_mission_batch.TestReadyFailFast.test_live_bridge_keeps_180s)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/mb01-before/test_mission_batch.py", line 265, in test_live_bridge_keeps_180s
+    self.assertEqual(led["readyDeadlineS"], 180)
+                     ~~~^^^^^^^^^^^^^^^^^^
+KeyError: 'readyDeadlineS'
+
+======================================================================
+FAIL: test_tool_in_catalog (test_mission_batch.TestBatchRegistered.test_tool_in_catalog)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/mb01-before/test_mission_batch.py", line 219, in test_tool_in_catalog
+    self.assertIn("mission_batch", reg)
+AssertionError: 'mission_batch' not found in {'mission_dispatch': ('mission-ops', {'name': 'mission_dispatch', 'description': 'Cria ABA PRÓPRIA no herdr (tab create + rename MISSION:<id>), abre claude no cwd escolhido e entrega o prompt com retry (deliver_prompt: send-text + enter + verificação de aceitação). Grava ledger. Idempotente: missão ativa -> no_op; status prompt_failed -> re-tenta a entrega no pane existente. Split do sourcePaneId só como fallback (tab create falho).', 'parameters': {'type': 'object', 'properties': {'missionId': {'type': 'string'}, 'promptFile': {'type': 'string', 'description': 'caminho absoluto do prompt em arquivo'}, 'cwd': {'type': 'string', 'description': 'diretório de trabalho do claude (default: pasta do promptFile; passe o projeto com config quando exigido)'}, 'paneTitle': {'type': 'string'}, 'direction': {'type': 'string', 'description': 'só usado no fallback de split: right|down'}, 'sourcePaneId': {'type': 'string', 'description': 'deprecated — só para fallback'}, 'engine': {'type': 'string', 'description': 'gpu = GPU elástica: gpu-up antes do pane (fail-open), claude apontado na ponte Qwen 8102, gpu-down no mission_close (garfo anti-thrash)', 'enum': ['gpu']}, 'consequence': {'type': 'boolean', 'description': 'escopo de infra de consequência (systemd/produção/deploy). true = mission_close EXIGE verify.json (sem ele reabre com verify_required); false = desliga a heurística. Omitido: `consequence: true|false` no prompt, senão heurística regex (só warning)'}, 'spawnedBy': {'type': 'string', 'description': 'emissor: operator | supervisor:hermes (default no gateway) | <missionId> do worker despachante. Pane do chamador = pane de missão viva vence a declaração. Worker só despacha com `allow_chain_dispatch: true` no prompt dele e até mission.chain_depth_max (config.yaml, default 1) — senão recusa CHAIN_DISPATCH_NOT_ALLOWED/CHAIN_DEPTH_EXCEEDED'}}, 'required': ['missionId', 'promptFile']}}, <function handle_mission_dispatch at 0x76e66021fd80>), 'mission_watch': ('mission-ops', {'name': 'mission_watch', 'description': "Watchdog orientado a evento (herdr pane wait-output — nunca polling). Detecta: Interrupted, API Error 400, palette aberta, 'Relatório final'/FINGERPRINT, pane virou shell, ready_regex_error (claude parou em tela de erro/trust), pane_closed/tab_closed (missão encerrada de fora). Cada evento atualiza ledger + events.jsonl e aplica receita quando segura (interrupted/palette).", 'parameters': {'type': 'object', 'properties': {'missionId': {'type': 'string'}, 'all': {'type': 'string', 'description': 'true = todas as missões ativas'}, 'timeoutMs': {'type': 'integer', 'description': 'single: tempo de espera do evento (default 60000, max 600000)'}, 'perPaneTimeoutMs': {'type': 'integer', 'description': 'all: timeout por pane (default 10000)'}}, 'required': []}}, <function handle_mission_watch at 0x76e66021fe20>), 'mission_recover': ('mission-ops', {'name': 'mission_recover', 'description': 'Receitas DETERMINÍSTICAS (zero LLM): interrupted (Esc+continue+Enter), palette (Esc), transcript400 (sessão nova enxuta — nunca retomar a envenenada), shell_fallback (claude --resume do ledger ou nova sessão), autocompact (só marca), ready_regex_error (relança claude no cwd correto e re-entrega o prompt; cwd do arg prevalece sobre o ledger). Desconhecido -> needs_supervisor.', 'parameters': {'type': 'object', 'properties': {'paneId': {'type': 'string'}, 'pattern': {'type': 'string'}, 'missionId': {'type': 'string'}, 'cwd': {'type': 'string', 'description': 'ready_regex_error: cwd com config do projeto (prevalece sobre o ledger)'}}, 'required': ['paneId', 'pattern']}}, <function handle_mission_recover at 0x76e6602142c0>), 'mission_status': ('mission-ops', {'name': 'mission_status', 'description': "Estado da missão em 1 chamada (resposta a 'onde estávamos', sobrevive a restart do chat): {missionId, paneId, tabId, status, lastEventAt, resumeSessionId, cwd}. Sem missionId = todas, em modo COMPACTO por default: 1 linha por missão ativa (id | status | último evento + idade | pendência) + resumo das encerradas (contagem + últimas 5). full=true (ou verbose=true): ledger completo. compact=true: formato do watchdog (só não-closed + contadores). Com missionId: registro completo.", 'parameters': {'type': 'object', 'properties': {'missionId': {'type': 'string'}, 'full': {'type': 'boolean', 'description': 'ledger completo de todas as missões'}, 'verbose': {'type': 'boolean', 'description': 'alias de full=true'}, 'compact': {'type': 'boolean', 'description': 'formato watchdog: só não-closed + contadores (opt-in)'}}, 'required': []}}, <function register.<locals>.<lambda> at 0x76e660213740>), 'mission_read': ('mission-ops', {'name': 'mission_read', 'description': 'pane read com tail/bytes (substitui o herdr manual de verificação). Resolve pane via missionId ou paneId direto. lines clamp 1..2000; source: visible|recent|recent-unwrapped|detection; maxBytes corta a CAUDA (mantém o fim) e marca truncated.', 'parameters': {'type': 'object', 'properties': {'missionId': {'type': 'string'}, 'paneId': {'type': 'string'}, 'lines': {'type': 'integer'}, 'source': {'type': 'string'}, 'maxBytes': {'type': 'integer'}}, 'required': []}}, <function handle_mission_read at 0x76e6602147c0>), 'mission_nudge': ('mission-ops', {'name': 'mission_nudge', 'description': 'MISSION-NUDGE-01: intervenção do SUPERVISOR — nudge atômico CHECK->SEND->VERIFY. CHECK: lê o pane e recusa em working ATIVO sem force (não interrompe turno em curso) e recusa 2º nudge <60s sem force (dedupe). SEND: send-text+enter com sender declarado (default supervisor:hermes, logado no audit de pane-writes). VERIFY: espera verifySeconds (default 30) e re-lê o pane — engatou working ? nudged : engage_failed com o texto do pane, SEM reenvio. Nunca fecha missão, nunca envia em pane de missão sem ledger. Nunca substitui o watchdog (decisão de curso do supervisor, não patologia).', 'parameters': {'type': 'object', 'properties': {'missionId': {'type': 'string'}, 'message': {'type': 'string'}, 'sender': {'type': 'string', 'description': 'identidade do emissor no audit'}, 'force': {'type': 'boolean', 'description': 'bypassa recusa busy/dedupe'}, 'verifySeconds': {'type': 'integer'}}, 'required': ['missionId', 'message']}}, <function handle_mission_nudge at 0x76e660214720>), 'mission_list': ('mission-ops', {'name': 'mission_list', 'description': 'Superfície completa do herdr + ledgers numa resposta só: tab list + pane list + todas as missões registradas com liveness (pane vivo? agent_status? label da aba?). Falhas parciais do herdr viram warnings sem derrubar a resposta. Default COMPACTO: 1 linha por missão ativa (id | status | último evento + idade | pane viva/MORTA/? | pendência) + resumo das encerradas (contagem + últimas 5). full=true (ou verbose=true): resposta completa (tabs/panes/todas as missões). compact=true: formato do watchdog.', 'parameters': {'type': 'object', 'properties': {'full': {'type': 'boolean', 'description': 'resposta completa (todas as missões + totais herdr)'}, 'verbose': {'type': 'boolean', 'description': 'alias de full=true'}, 'compact': {'type': 'boolean', 'description': 'formato watchdog: só não-closed + contadores (opt-in)'}}, 'required': []}}, <function register.<locals>.<lambda> at 0x76e6602137e0>), 'mission_close': ('mission-ops', {'name': 'mission_close', 'description': 'Encerramento limpo da missão: DELIVER-VERIFY (se o cwd da missão tem verify.json, roda o runner determinístico; VERDE grava badge verified_e2e, VERMELHO reabre a missão com evento deliver_verify_red no bus) -> /exit no claude (confirmado) -> tab close -> worktree cleanup (só se gravado no ledger) -> ledger status closed. GUARDA DE CONSEQUÊNCIA: missão com consequence declarada e sem verify.json é reaberta (verify_required); consequência só heurística fecha com evento closed_unverified_consequence + warning. Resolve por missionId ou paneId.', 'parameters': {'type': 'object', 'properties': {'missionId': {'type': 'string'}, 'paneId': {'type': 'string'}, 'acceptUnverified': {'type': 'string', 'description': 'motivo auditável para fechar missão de consequência declarada SEM verify.json (vira closed_unverified_consequence)'}, 'force': {'type': 'string', 'description': 'passa --force no worktree remove'}}, 'required': []}}, <function handle_mission_close at 0x76e660214900>), 'mission_verify': ('mission-ops', {'name': 'mission_verify', 'description': 'SUPERVISOR-VERIFY-01/DELIVER-VERIFY-01: verificação determinística (zero LLM) da entrega — roda /opt/deliver-verify/verify.py (manifesto verify.json do cwd da missão ou bateria inferida por tipo de entrega). Somente leitura fora do relatório. Retorno: JSON {missionId, source, verdict, checks[]}.', 'parameters': {'type': 'object', 'properties': {'missionId': {'type': 'string'}, 'manifest': {'type': 'string', 'description': 'verify.json alternativo (default: cwd da missão)'}}, 'required': ['missionId']}}, <function handle_mission_verify at 0x76e660214b80>), 'mission_verify_author': ('mission-ops', {'name': 'mission_verify_author', 'description': 'VERIFY-MANIFEST-01: GERA o verify.json da missão a partir de prova REAL — relatório no cwd (RELATORIO-<id>.md/relatorio-<id>.md: comandos read-only, arquivos e units citados que existem) > aceite do prompt missao-<id>.md > fallback do runner. Cada item leva _provenance (report|prompt|inferred) e _source; nunca inventa spec. Sem relatório: recusa (NO_REPORT). verify.json existente: recusa sem force (VERIFY_JSON_EXISTS). Resposta traz o diff do proposto; após gravar roda mission_verify no manifesto novo.', 'parameters': {'type': 'object', 'properties': {'missionId': {'type': 'string'}, 'force': {'type': 'boolean', 'description': 'sobrescreve verify.json existente'}, 'dryRun': {'type': 'boolean', 'description': 'só mostra diff/proposto, não grava'}, 'cwd': {'type': 'string', 'description': 'cwd alternativo (default: cwd do ledger)'}}, 'required': ['missionId']}}, <function handle_mission_verify_author at 0x76e660214c20>), 'mission_worktree_add': ('mission-ops', {'name': 'mission_worktree_add', 'description': 'herdr worktree create ligado ao ciclo da missão (branch obrigatório; grava worktreePath/Branch/WorkspaceId no ledger). Recusa se o ledger já grava outro worktree.', 'parameters': {'type': 'object', 'properties': {'missionId': {'type': 'string'}, 'branch': {'type': 'string'}, 'path': {'type': 'string'}, 'base': {'type': 'string'}, 'label': {'type': 'string'}}, 'required': ['missionId', 'branch']}}, <function handle_mission_worktree_add at 0x76e6602149a0>), 'mission_worktree_remove': ('mission-ops', {'name': 'mission_worktree_remove', 'description': 'herdr worktree remove APENAS do worktree gravado no ledger (nunca remove às cegas). force=true passa --force.', 'parameters': {'type': 'object', 'properties': {'missionId': {'type': 'string'}, 'force': {'type': 'string'}}, 'required': ['missionId']}}, <function handle_mission_worktree_remove at 0x76e660214a40>)}
+
+======================================================================
+FAIL: test_dead_bridge_ready_deadline_45s (test_mission_batch.TestReadyFailFast.test_dead_bridge_ready_deadline_45s)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/mb01-before/test_mission_batch.py", line 255, in test_dead_bridge_ready_deadline_45s
+    self.assertIn("45s", res["detail"])
+AssertionError: '45s' not found in 'claude abriu mas não sinalizou pronto em 180s; pane registrado no ledger — mission_watch para observar, mission_recover shell_fallback se virou shell'
+
+----------------------------------------------------------------------
+Ran 11 tests in 0.038s
+
+FAILED (failures=2, errors=9)

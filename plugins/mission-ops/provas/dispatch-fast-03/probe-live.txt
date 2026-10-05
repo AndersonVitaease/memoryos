@@ -1,0 +1,5 @@
+2026-09-29T08:32:45.967451 8102 /health = {'ok': True, 'upstream': 'http://127.0.0.1:8101', 'model': 'Qwen/Qwen2.5-Coder-32B-Instruct-AWQ', 'or': False}
+upstream /v1/models = ConnectionResetError(104, 'Connection reset by peer')
+sonda ANTIGA (/health 200) = True   <- falso-positivo
+sonda NOVA _qwen_bridge_alive() = False
+probe False 0.157s

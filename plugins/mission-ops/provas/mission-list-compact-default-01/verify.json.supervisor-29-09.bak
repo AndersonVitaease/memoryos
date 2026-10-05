@@ -1,0 +1,39 @@
+{
+  "mission": "mission-list-compact-default-01",
+  "date": "2026-09-28",
+  "note": "manifesto escrito pelo supervisor (o verify.json do cwd era o da flaky-sandbox-fix-01 — colisão, 4ª do dia). Provas rodadas ao vivo antes de fechar.",
+  "cmd": [
+    {
+      "run": "cd /root/.hermes/plugins/mission-ops && python3 -m unittest test_mission_ops.TestGpuDownFix01 2>&1 | tail -1",
+      "expect_stdout": "OK",
+      "_provenance": "report",
+      "_source": "RELATORIO:224/224"
+    },
+    {
+      "run": "git -C /root/.hermes/plugins/mission-ops log --oneline -1",
+      "expect_stdout_regex": "c2a7d7c",
+      "_provenance": "report",
+      "_source": "RELATORIO header"
+    },
+    {
+      "run": "git -C /root/.hermes/plugins/mission-ops status --porcelain | grep -E 'deliver_prompt|nudge' | wc -l",
+      "expect_stdout": "0",
+      "_provenance": "prompt",
+      "_source": "restrição: deliver_prompt/nudge intocados"
+    }
+  ],
+  "file": [
+    {
+      "path": "/root/.hermes/plugins/mission-ops/RELATORIO-mission-list-compact-default-01.md",
+      "min_bytes": 500,
+      "_provenance": "prompt",
+      "_source": "contrato"
+    },
+    {
+      "path": "/root/.hermes/plugins/mission-ops/provas/mission-list-compact-default-01/medicao-viva.txt",
+      "min_bytes": 100,
+      "_provenance": "report",
+      "_source": "provas"
+    }
+  ]
+}

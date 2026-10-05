@@ -1,0 +1,26 @@
+supervisor-std-bin run1 rc=0 Ran 9 tests in 3.237s OK
+supervisor-std-bin run2 rc=0 Ran 9 tests in 3.291s OK
+supervisor-std-bin run3 rc=0 Ran 9 tests in 3.306s OK
+supervisor-std-bin run4 rc=0 Ran 9 tests in 3.384s OK
+supervisor-std-bin run5 rc=0 Ran 9 tests in 3.290s OK
+minimal run1 rc=0 Ran 9 tests in 3.277s OK
+minimal run2 rc=0 Ran 9 tests in 3.378s OK
+minimal run3 rc=0 Ran 9 tests in 3.375s OK
+minimal run4 rc=0 Ran 9 tests in 3.337s OK
+minimal run5 rc=0 Ran 9 tests in 3.319s OK
+sessao run1 rc=0 Ran 9 tests in 3.644s OK
+sessao run2 rc=0 Ran 9 tests in 3.474s OK
+sessao run3 rc=0 Ran 9 tests in 3.315s OK
+sessao run4 rc=0 Ran 9 tests in 3.329s OK
+sessao run5 rc=0 Ran 9 tests in 3.319s OK
+hostil-venv-real run1 rc=0 Ran 9 tests in 3.306s OK
+hostil-venv-real run2 rc=0 Ran 9 tests in 3.255s OK
+hostil-venv-real run3 rc=0 Ran 9 tests in 3.289s OK
+hostil-venv-real run4 rc=0 Ran 9 tests in 3.328s OK
+hostil-venv-real run5 rc=0 Ran 9 tests in 3.344s OK
+env-i+noauth+VASTAI_BIN-real run1 rc=0 Ran 9 tests in 3.337s OK
+env-i+noauth+VASTAI_BIN-real run2 rc=0 Ran 9 tests in 3.244s OK
+env-i+noauth+VASTAI_BIN-real run3 rc=0 Ran 9 tests in 3.287s OK
+env-i+noauth+VASTAI_BIN-real run4 rc=0 Ran 9 tests in 3.397s OK
+env-i+noauth+VASTAI_BIN-real run5 rc=0 Ran 9 tests in 3.217s OK
+ESTADO REAL INTACTO

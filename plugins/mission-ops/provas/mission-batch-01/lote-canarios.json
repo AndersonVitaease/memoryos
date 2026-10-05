@@ -1,0 +1,4 @@
+{"missions": [
+  {"missionId": "mission-batch-01-canario-a", "promptFile": "/tmp/mb01-canarios/a/canario-a.md", "cwd": "/tmp/mb01-canarios/a", "consequence": false},
+  {"missionId": "mission-batch-01-canario-b", "promptFile": "/tmp/mb01-canarios/b/canario-b.md", "cwd": "/tmp/mb01-canarios/b", "consequence": false}
+]}

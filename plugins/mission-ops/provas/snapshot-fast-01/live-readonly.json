@@ -1,0 +1,271 @@
+{
+ "{\"missionId\": \"snapshot-fast-01\"}": {
+  "wallSeconds": 0.015,
+  "ledgersUnchanged": true,
+  "result": {
+   "ok": true,
+   "missions": [
+    {
+     "missionId": "snapshot-fast-01",
+     "status": "dispatched",
+     "paneId": "w6:pN",
+     "tabId": "w6:tH",
+     "cwd": "/root/.hermes/plugins/mission-ops",
+     "lastEvent": "prompt_sent",
+     "lastEventAt": "2026-09-29T12:40:39Z",
+     "pane": {
+      "exists": true,
+      "paneId": "w6:pN",
+      "tabId": "w6:tH",
+      "agent": "claude",
+      "agent_status": "working",
+      "cwd": "/root/.hermes/plugins/mission-ops",
+      "tabLabel": "MISSION:snapshot-fast-01"
+     },
+     "duplicateTabs": [
+      {
+       "tabId": "w6:tG",
+       "paneId": "w6:pM"
+      }
+     ],
+     "verdict": "OK",
+     "remedy": {
+      "applied": false,
+      "note": "1 aba(s) duplicada(s) com MISSION:snapshot-fast-01 — não fechadas (só o mission_close fecha aba)"
+     }
+    }
+   ],
+   "fixed": [],
+   "ghosts": [],
+   "summary": {
+    "fixed": [],
+    "ghosts": [],
+    "ok": [
+     "snapshot-fast-01"
+    ]
+   },
+   "seconds": 0.01
+  }
+ },
+ "{\"fragment\": \"watchhdog\"}": {
+  "wallSeconds": 0.13,
+  "ledgersUnchanged": true,
+  "result": {
+   "ok": true,
+   "missions": [
+    {
+     "missionId": "supervisor-watchdog-01",
+     "status": "closed",
+     "paneId": "w3:p23",
+     "tabId": "w3:t1X",
+     "cwd": "/opt/memoryos/eng-mcp",
+     "lastEvent": "mission_closed",
+     "lastEventAt": "2026-09-26T16:32:25Z",
+     "verdict": "OK",
+     "pane": null,
+     "remedy": {
+      "applied": false,
+      "note": "missão closed — nada a fazer"
+     },
+     "match": {
+      "fragment": "watchhdog",
+      "score": 0.941
+     }
+    },
+    {
+     "missionId": "watchdog-02",
+     "status": "closed",
+     "paneId": "w4:p3",
+     "tabId": "w4:t3",
+     "cwd": "/opt/gpu-watchdog",
+     "lastEvent": "mission_closed",
+     "lastEventAt": "2026-09-26T23:22:23Z",
+     "verdict": "OK",
+     "pane": null,
+     "remedy": {
+      "applied": false,
+      "note": "missão closed — nada a fazer"
+     },
+     "match": {
+      "fragment": "watchhdog",
+      "score": 0.941
+     }
+    },
+    {
+     "missionId": "watchdog-02b",
+     "status": "closed",
+     "paneId": "w5:pA",
+     "tabId": "w5:tA",
+     "cwd": "/opt/gpu-watchdog",
+     "lastEvent": "mission_closed",
+     "lastEventAt": "2026-09-27T20:25:14Z",
+     "verdict": "OK",
+     "pane": null,
+     "remedy": {
+      "applied": false,
+      "note": "missão closed — nada a fazer"
+     },
+     "match": {
+      "fragment": "watchhdog",
+      "score": 0.941
+     }
+    },
+    {
+     "missionId": "watchdog-d9-catloop-01",
+     "status": "closed",
+     "paneId": "w5:pG",
+     "tabId": "w5:tG",
+     "cwd": "/opt/gpu-watchdog",
+     "lastEvent": "mission_closed",
+     "lastEventAt": "2026-09-28T00:10:46Z",
+     "verdict": "OK",
+     "pane": null,
+     "remedy": {
+      "applied": false,
+      "note": "missão closed — nada a fazer"
+     },
+     "match": {
+      "fragment": "watchhdog",
+      "score": 0.941
+     }
+    },
+    {
+     "missionId": "watchdog-judge-probe-01",
+     "status": "closed",
+     "paneId": "w5:p14",
+     "tabId": "w5:t14",
+     "cwd": "/opt/gpu-watchdog",
+     "lastEvent": "mission_closed",
+     "lastEventAt": "2026-09-28T13:48:37Z",
+     "verdict": "OK",
+     "pane": null,
+     "remedy": {
+      "applied": false,
+      "note": "missão closed — nada a fazer"
+     },
+     "match": {
+      "fragment": "watchhdog",
+      "score": 0.941
+     }
+    },
+    {
+     "missionId": "watchdog-lane2-01",
+     "status": "closed",
+     "paneId": "w5:pQ",
+     "tabId": "w5:tQ",
+     "cwd": "/opt/gpu-watchdog",
+     "lastEvent": "mission_closed",
+     "lastEventAt": "2026-09-28T10:08:45Z",
+     "verdict": "OK",
+     "pane": null,
+     "remedy": {
+      "applied": false,
+      "note": "missão closed — nada a fazer"
+     },
+     "match": {
+      "fragment": "watchhdog",
+      "score": 0.941
+     }
+    },
+    {
+     "missionId": "watchdog-permdialog-01",
+     "status": "closed",
+     "paneId": "w5:p1R",
+     "tabId": "w5:t1R",
+     "cwd": "/opt/gpu-watchdog",
+     "lastEvent": "mission_closed",
+     "lastEventAt": "2026-09-28T17:41:45Z",
+     "verdict": "OK",
+     "pane": null,
+     "remedy": {
+      "applied": false,
+      "note": "missão closed — nada a fazer"
+     },
+     "match": {
+      "fragment": "watchhdog",
+      "score": 0.941
+     }
+    },
+    {
+     "missionId": "watchdog-permdialog-01b",
+     "status": "closed",
+     "paneId": "w5:p21",
+     "tabId": "w5:t10",
+     "cwd": "/opt/gpu-watchdog",
+     "lastEvent": "mission_closed",
+     "lastEventAt": "2026-09-28T20:02:20Z",
+     "verdict": "OK",
+     "pane": null,
+     "remedy": {
+      "applied": false,
+      "note": "missão closed — nada a fazer"
+     },
+     "match": {
+      "fragment": "watchhdog",
+      "score": 0.941
+     }
+    },
+    {
+     "missionId": "watchdog-permdialog-01c",
+     "status": "closed",
+     "paneId": "w5:p28",
+     "tabId": "w5:t26",
+     "cwd": "/opt/gpu-watchdog",
+     "lastEvent": "mission_closed",
+     "lastEventAt": "2026-09-28T21:06:31Z",
+     "verdict": "OK",
+     "pane": null,
+     "remedy": {
+      "applied": false,
+      "note": "missão closed — nada a fazer"
+     },
+     "match": {
+      "fragment": "watchhdog",
+      "score": 0.941
+     }
+    },
+    {
+     "missionId": "watchdog02-detectores-01",
+     "status": "closed",
+     "paneId": "w5:p2M",
+     "tabId": "w5:t2H",
+     "cwd": "/opt/gpu-watchdog",
+     "lastEvent": "closed_unverified_consequence",
+     "lastEventAt": "2026-09-29T02:14:01Z",
+     "verdict": "OK",
+     "pane": null,
+     "remedy": {
+      "applied": false,
+      "note": "missão closed — nada a fazer"
+     },
+     "match": {
+      "fragment": "watchhdog",
+      "score": 0.941
+     }
+    }
+   ],
+   "fixed": [],
+   "ghosts": [],
+   "summary": {
+    "fixed": [],
+    "ghosts": [],
+    "ok": [
+     "supervisor-watchdog-01",
+     "watchdog-02",
+     "watchdog-02b",
+     "watchdog-d9-catloop-01",
+     "watchdog-judge-probe-01",
+     "watchdog-lane2-01",
+     "watchdog-permdialog-01",
+     "watchdog-permdialog-01b",
+     "watchdog-permdialog-01c",
+     "watchdog02-detectores-01"
+    ]
+   },
+   "seconds": 0.13,
+   "warnings": [
+    "11 missões casam 'watchhdog' — mostrando 10"
+   ]
+  }
+ }
+}

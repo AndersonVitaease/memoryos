@@ -1,0 +1,15 @@
+{
+  "mission": "ledger-fix-tests-02",
+  "cmd": [
+    {
+      "run": "cd /root/.hermes/plugins/mission-ops && ./venv/bin/python -m unittest test_ledger_fix_status -q",
+      "expect_exit": 0
+    }
+  ],
+  "file": [
+    {
+      "path": "/root/.hermes/plugins/mission-ops/RELATORIO-ledger-fix-tests-02.md",
+      "min_bytes": 800
+    }
+  ]
+}

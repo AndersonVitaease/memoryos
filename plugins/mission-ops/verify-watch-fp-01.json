@@ -1,0 +1,37 @@
+{
+  "mission": "watch-fp-01",
+  "date": "2026-10-01",
+  "note": "Fix FP do mission.watch é no plugin Python mission-ops (fora do repo); provas cmd rodam a suíte do plugin. P3 com timeout 300s — a suíte real demora ~36s e o default de 30s dava exit 124 (SUP-VERIFY-WATCH-FP).",
+  "cmd": [
+    {
+      "run": "PATH=/usr/local/bin:/usr/bin:/bin; cd /root/.hermes/plugins/mission-ops && python3 test_watch_fp_operator.py",
+      "expect_exit": 0
+    },
+    {
+      "run": "PATH=/usr/local/bin:/usr/bin:/bin; cd /root/.hermes/plugins/mission-ops && python3 test_watch_detector.py",
+      "expect_exit": 0
+    },
+    {
+      "run": "PATH=/usr/local/bin:/usr/bin:/bin; cd /root/.hermes/plugins/mission-ops && python3 -m unittest $(ls test_*.py | sed 's/\\.py$//' | tr '\\n' ' ') > provas/watch-fp-01/suite-full-verify.txt 2>&1",
+      "expect_exit": 0,
+      "timeout": 300
+    },
+    {
+      "run": "PATH=/usr/local/bin:/usr/bin:/bin; cd /root/.hermes/plugins/mission-ops && SMOKE_ROLLBACK=0 python3 smoke_mission_ops.py",
+      "expect_exit": 0,
+      "timeout": 120
+    }
+  ],
+  "file": [
+    { "path": "/root/.hermes/plugins/mission-ops/recipes.py" },
+    { "path": "/root/.hermes/plugins/mission-ops/mission_core.py" },
+    { "path": "/root/.hermes/plugins/mission-ops/test_watch_fp_operator.py" },
+    { "path": "/root/.hermes/plugins/mission-ops/provas/watch-fp-01/red.txt" },
+    { "path": "/root/.hermes/plugins/mission-ops/provas/watch-fp-01/green.txt" },
+    { "path": "/root/.hermes/plugins/mission-ops/provas/watch-fp-01/suite-full.txt" },
+    { "path": "/root/.hermes/plugins/mission-ops/provas/watch-fp-01/suite-full-verify.txt" },
+    { "path": "/root/.hermes/plugins/mission-ops/provas/watch-fp-01/smoke.txt" },
+    { "path": "/root/.hermes/plugins/mission-ops/provas/watch-fp-01/live-probe.txt" },
+    { "path": "/opt/memoryos/eng-mcp-wt-watch-fp-01/RELATORIO-watch-fp-01.md" }
+  ]
+}

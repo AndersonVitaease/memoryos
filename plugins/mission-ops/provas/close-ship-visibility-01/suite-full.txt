@@ -1,0 +1,34 @@
+test_batch_e2e.py:   batch-e2e-canario-02 -> erro None pane=None tab=None CHAIN_DISPATCH_NOT_ALLOWED
+test_bus_guard.py: OK
+test_chain_dispatch.py: OK
+test_close_commit_guard.py: OK
+test_close_ship.py: OK
+test_close_verify_path.py: OK
+test_contract_recover.py: FAILED (failures=8, errors=6)
+test_dispatch_fast03.py: OK
+test_dispatch_qa.py: OK
+test_gpu_cost_coerce.py: OK
+test_gpu_cost_trail.py: OK
+test_lane2.py: OK
+test_ledger_fix_status.py: OK
+test_ledger_hygiene.py: OK
+test_memory_capture.py: OK
+test_mission_batch.py: OK
+test_mission_list_compact_default.py: OK
+test_mission_list_compacto.py: OK
+test_mission_ops.py: OK
+test_mission_ops_guard.py: OK
+test_mission_resume.py: OK
+test_mission_snapshot.py: OK
+test_orch_autoclose.py: OK
+test_proof_lint03_plugin.py: OK
+test_spool_ro_01.py: OK
+test_template_ptbr01.py: OK
+test_trinity_wire.py: OK
+test_upstream_idle.py: OK
+test_upstream_idle_runner.py: OK
+test_verify_author.py: OK (skipped=2)
+test_verify_json_ghost.py: OK
+test_watch_detector.py: OK
+test_watch_fp_operator.py: OK
+SUITE_FAIL=1

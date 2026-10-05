@@ -1,0 +1,7 @@
+{
+  "_comment": "ROLES-09 v6 (02/10, ordem operator): worker qwen3-coder -> z-ai/glm-5.3-flash (metade do custo, fix mais esperto no bench, Together estavel). advisor=glm-5.3-flash, supervisor=nex-n2.5-pro, classifier=glm-5.3-flash. Rollback: roles.json.bak-20261002-worker-glm53flash.",
+  "worker": "z-ai/glm-5.3-flash",
+  "advisor": "z-ai/glm-5.3-flash",
+  "supervisor": "nex-agi/nex-n2.5-pro",
+  "classifier": "z-ai/glm-5.3-flash"
+}

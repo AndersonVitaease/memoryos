@@ -1,0 +1,17 @@
+test_dispatching_without_pane_only_ghost_when_stale (test_mission_batch.TestBatchDispatch.test_dispatching_without_pane_only_ghost_when_stale) ... ok
+test_ghost_statuses_dispatching_and_failed (test_mission_batch.TestBatchDispatch.test_ghost_statuses_dispatching_and_failed) ... ok
+test_item_exception_does_not_abort_batch (test_mission_batch.TestBatchDispatch.test_item_exception_does_not_abort_batch) ... ok
+test_live_or_unknown_pane_is_not_a_ghost (test_mission_batch.TestBatchDispatch.test_live_or_unknown_pane_is_not_a_ghost)
+interrupted de pane VIVO = missão real (no_op); herdr desconhecido = não adivinha. ... ok
+test_three_missions_sequential_one_failure_one_ghost (test_mission_batch.TestBatchDispatch.test_three_missions_sequential_one_failure_one_ghost) ... ok
+test_duplicate_and_bad_items (test_mission_batch.TestBatchManifest.test_duplicate_and_bad_items) ... ok
+test_json_and_yaml_files_and_text (test_mission_batch.TestBatchManifest.test_json_and_yaml_files_and_text) ... ok
+test_size_bounds (test_mission_batch.TestBatchManifest.test_size_bounds) ... ok
+test_tool_in_catalog (test_mission_batch.TestBatchRegistered.test_tool_in_catalog) ... ok
+test_dead_bridge_ready_deadline_45s (test_mission_batch.TestReadyFailFast.test_dead_bridge_ready_deadline_45s) ... ok
+test_live_bridge_keeps_180s (test_mission_batch.TestReadyFailFast.test_live_bridge_keeps_180s) ... ok
+
+----------------------------------------------------------------------
+Ran 11 tests in 0.040s
+
+OK

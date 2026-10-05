@@ -1,0 +1,32 @@
+{
+  "mission": "SUP-OBEY-01",
+  "owner": "SUP-OBEY-01",
+  "date": "2026-10-03",
+  "note": "Guardas de obediência (SUP-OBEY-01): OBRIGACOES.md no boot, close→chatDeliverable, ship direto→violation do dia, despacho supervisor-side→warning. Provas cmd via systemd-run --scope isolado (suítes pesadas nunca no cgroup herdr). test_contract_recover/test_batch_e2e FORA da prova: falham no HEAD limpo também (preexistentes, provado via stash).",
+  "cmd": [
+    {
+      "run": "cd /root/.hermes/plugins/mission-ops && systemd-run --scope --unit=supobey-a-$(date +%s) -- bash -c 'cd /root/.hermes/plugins/mission-ops && python3 -m unittest test_mission_ops 2>&1' | tail -3",
+      "expect_exit": 0,
+      "timeout": 300,
+      "evidence_tail": "Ran 139 tests in 32.619s\n\nOK"
+    },
+    {
+      "run": "cd /root/.hermes/plugins/mission-ops && systemd-run --scope --unit=supobey-b-$(date +%s) -- bash -c 'cd /root/.hermes/plugins/mission-ops && python3 -m unittest test_sup_obey_01 test_close_verify_path test_close_ship 2>&1' | tail -3",
+      "expect_exit": 0,
+      "timeout": 180,
+      "evidence_tail": "Ran 40 tests in 1.498s\n\nOK"
+    },
+    {
+      "run": "cd /root/.hermes/plugins/mission-ops && grep -n 'relatorio_nao_entregado_chat\\|direct_ship_violation\\|dispatch_not_orchestrator\\|obrigacoes_boot' __init__.py | head -5",
+      "expect_exit": 0,
+      "timeout": 30,
+      "expect_tail": "obrigacoes_boot"
+    }
+  ],
+  "file": [
+    {"path": "/root/.hermes/plugins/mission-ops/obedience.py"},
+    {"path": "/root/.hermes/plugins/mission-ops/OBRIGACOES.md"},
+    {"path": "/root/.hermes/plugins/mission-ops/test_sup_obey_01.py"},
+    {"path": "/root/.hermes/plugins/mission-ops/RELATORIO-SUP-OBEY-01.md"}
+  ]
+}

@@ -1,0 +1,17 @@
+{
+ "latencyMs": 513,
+ "status": 200,
+ "result": {
+  "result": {
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"code\":\"AUTHORIZATION_SCOPE_REQUIRED\",\"category\":\"scope\",\"retryable\":false,\"remediation\":\"Ask the operator to grant the required engineering:* scope to the calling bearer (grants are operator-issued).\",\"message\":\"AUTHORIZATION_SCOPE_REQUIRED\",\"evidenceRefs\":[],\"tool\":\"engineering.memory.capture\"}"
+    }
+   ],
+   "isError": true
+  },
+  "jsonrpc": "2.0",
+  "id": 2
+ }
+}

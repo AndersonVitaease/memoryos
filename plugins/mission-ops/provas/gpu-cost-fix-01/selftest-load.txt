@@ -1,0 +1,2 @@
+python 3.14.7 | import OK; tools registradas: 12
+notify API: True
