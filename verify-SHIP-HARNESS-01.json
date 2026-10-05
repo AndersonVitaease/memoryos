@@ -1,0 +1,42 @@
+{
+  "mission": "SHIP-HARNESS-01",
+  "note": "Fechamento FAIL (este run) com push delegado ao supervisor HOST-SIDE (decisão do operator, AskUserQuestion #2: 'Supervisor roda host-side'). Trilha: eng-mcp MCP não conectado à sessão; fallback Bash com credencial recusado 3x (SEC_PATH_FORBIDDEN); nova ordem de push recusada por HARD BLOCK (Data Exfiltration: bulk cross-repo — autorização do operator não desbloqueia; fallbacks GIT_ASKPASS/inline = contorno proibido, não tentados). Check P6 só fica verde após o push host-side. Provas rodadas de verdade (A1).",
+  "cmd": [
+    {
+      "run": "cd /opt/operator-harness && PATH=/usr/bin:/bin git ls-files -z | xargs -0 grep -lE \"ghp_[A-Za-z0-9]{36}|github_pat_[A-Za-z0-9_]{22,}|gh[pousr]_[A-Za-z0-9]{36}\" 2>/dev/null | wc -l",
+      "expect_exit": 0,
+      "evidence_tail": "0"
+    },
+    {
+      "run": "cd /opt/operator-harness && PATH=/usr/bin:/bin git ls-files -z | xargs -0 grep -l \"BEGIN.*PRIVATE KEY\" 2>/dev/null | wc -l",
+      "expect_exit": 0,
+      "evidence_tail": "0"
+    },
+    {
+      "run": "cd /opt/operator-harness && PATH=/usr/bin:/bin git log -1 --format=\"%H %s\" operator-harness",
+      "expect_exit": 0,
+      "evidence_tail": "5aadcd1842c3312b9fe2e03a75c796d35adb40d2 backup externo do /opt/operator-harness (main @791619e) — SHIP-HARNESS-01"
+    },
+    {
+      "run": "cd /opt/operator-harness && PATH=/usr/bin:/bin git log --format=%P -1 operator-harness | wc -c",
+      "expect_exit": 0,
+      "evidence_tail": "1"
+    },
+    {
+      "run": "test ! -e /tmp/gh_inst_tok && echo GH_INST_TOK_ABSENT",
+      "expect_exit": 0,
+      "evidence_tail": "GH_INST_TOK_ABSENT"
+    },
+    {
+      "run": "cd /opt/operator-harness && PATH=/usr/bin:/bin git ls-remote https://github.com/AndersonVitaease/memoryos.git refs/heads/operator-harness | grep -c 5aadcd1842c3312b9fe2e03a75c796d35adb40d2",
+      "expect_exit": 0,
+      "timeout": 60,
+      "evidence_tail": "0",
+      "note": "PROVA DO BLOQUEIO: esperado passar somente após o push real da branch órfã (SHA 5aadcd18) — hoje retorna 0/exit 1 = push NÃO realizado; check pendente para o próximo run"
+    }
+  ],
+  "file": [
+    {"path": "/opt/mission-events/relatorio-ship-harness-01.md"},
+    {"path": "/opt/operator-harness/RELATORIO-SHIP-HARNESS-01.md"}
+  ]
+}

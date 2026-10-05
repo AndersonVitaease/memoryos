@@ -1,0 +1,26 @@
+{
+  "mission": "RD-GUARDIAN-MT-DESIGN-01",
+  "date": "2026-10-05",
+  "note": "manifesto da missão RD-GUARDIAN-MT-DESIGN-01 — design Guardian multi-tenant + layout Hermes agent (provas estruturais do documento; zero código de produção)",
+  "cmd": [
+    {
+      "id": "design-estrutura",
+      "run": "cd /opt/operator-harness && PATH=/usr/local/bin:/usr/bin:/bin python3 prova_design_mt_01.py",
+      "expect_exit": 0,
+      "timeout": 30,
+      "evidence_tail": "TODOS OS CHECKS OK"
+    },
+    {
+      "id": "custo-transcript",
+      "run": "cd /opt/operator-harness && PATH=/usr/local/bin:/usr/bin:/bin python3 prova_custo_rd_guardian_mt_design_01.py",
+      "expect_exit": 0,
+      "timeout": 30,
+      "evidence_tail": "\"cost_usd\": 0.13323"
+    }
+  ],
+  "file": [
+    {"id": "design", "path": "/opt/operator-harness/doctrine/DESIGN-guardian-mt-01.md", "min_bytes": 8000},
+    {"id": "prova-estrutura", "path": "/opt/operator-harness/prova_design_mt_01.py", "min_bytes": 1500},
+    {"id": "prova-custo", "path": "/opt/operator-harness/prova_custo_rd_guardian_mt_design_01.py", "min_bytes": 1200}
+  ]
+}
