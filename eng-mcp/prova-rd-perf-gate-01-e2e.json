@@ -1,0 +1,146 @@
+{
+  "ts": "2026-10-05T04:02:39.690Z",
+  "server": "live:984a4504",
+  "projectId": "rd-perf-gate-01-e2e",
+  "store": "production-server (capture de referência Y via MCP)",
+  "fresh": [
+    {
+      "ms": 2077,
+      "i": 0,
+      "ok": true,
+      "band": "needsReview",
+      "verdict": "screened",
+      "score": 0.6525
+    },
+    {
+      "ms": 1909,
+      "i": 1,
+      "ok": true,
+      "band": "needsReview",
+      "verdict": "screened",
+      "score": 0.6465
+    },
+    {
+      "ms": 1996,
+      "i": 2,
+      "ok": true,
+      "band": "needsReview",
+      "verdict": "screened",
+      "score": 0.646
+    },
+    {
+      "ms": 1934,
+      "i": 3,
+      "ok": true,
+      "band": "needsReview",
+      "verdict": "screened",
+      "score": 0.6525
+    },
+    {
+      "ms": 1945,
+      "i": 4,
+      "ok": true,
+      "band": "needsReview",
+      "verdict": "screened",
+      "score": 0.642
+    }
+  ],
+  "cached": [
+    {
+      "ms": 1894,
+      "i": 0,
+      "ok": true,
+      "band": "needsReview",
+      "verdict": "screened",
+      "score": 0.6795,
+      "dedupeCached": false
+    },
+    {
+      "ms": 1062,
+      "i": 1,
+      "ok": true,
+      "band": "needsReview",
+      "verdict": "screened",
+      "score": 0.6745,
+      "dedupeCached": true
+    },
+    {
+      "ms": 1101,
+      "i": 2,
+      "ok": true,
+      "band": "needsReview",
+      "verdict": "screened",
+      "score": 0.666,
+      "dedupeCached": true
+    },
+    {
+      "ms": 1068,
+      "i": 3,
+      "ok": true,
+      "band": "needsReview",
+      "verdict": "screened",
+      "score": 0.6685,
+      "dedupeCached": true
+    },
+    {
+      "ms": 1095,
+      "i": 4,
+      "ok": true,
+      "band": "needsReview",
+      "verdict": "screened",
+      "score": 0.6725,
+      "dedupeCached": true
+    }
+  ],
+  "decisions": {
+    "fresh": {
+      "ok": true,
+      "band": "admit",
+      "verdict": "screened",
+      "score": 0.7885,
+      "dedupeCached": false
+    },
+    "cached": {
+      "ok": true,
+      "band": "admit",
+      "verdict": "screened",
+      "score": 0.7925,
+      "dedupeCached": true,
+      "ms": 1145
+    }
+  },
+  "refusals": {
+    "Y_store": {
+      "ok": false,
+      "err": "tool_error: {\"code\":\"MEMORY_GATE_REFUSED\",\"category\":\"validation\",\"retryable\":false,\"remediation\":\"Capture refused by the memory admission gate (MEMORY-GATE-01): rewrite it with durable, artifact-backed content and re-send - the judge never edits or deletes text. Operator override: pass force=true (audit-marked",
+      "memoryId_sha16": null
+    },
+    "fresh": {
+      "ok": false,
+      "refusalMessage": "MEMORY_GATE_REFUSED: score=n/a band=refuse reasons=duplicate_of_recent_capture — dedupe. Reescreva a captura com conteúdo durável rastreável a artefatos e reenvie (o juiz nunca edita nem apaga texto). Override do operador: force=true (audit-marked).",
+      "dedupeCached": false,
+      "reasons": [
+        "duplicate_of_recent_capture"
+      ]
+    },
+    "cached": {
+      "ok": false,
+      "refusalMessage": "MEMORY_GATE_REFUSED: score=n/a band=refuse reasons=duplicate_of_recent_capture — dedupe. Reescreva a captura com conteúdo durável rastreável a artefatos e reenvie (o juiz nunca edita nem apaga texto). Override do operador: force=true (audit-marked).",
+      "dedupeCached": true,
+      "reasons": [
+        "duplicate_of_recent_capture"
+      ],
+      "ms": 0
+    }
+  },
+  "p50_fresh_ms": 1945,
+  "p50_cached_ms": 1095,
+  "decisao_idêntica": true,
+  "recusa_idêntica": true,
+  "projecao_producao": {
+    "baseline_p50_capture_ms": 3469,
+    "leitura_dedupe_salva_ms": 850,
+    "p50_projetado_ms": 2619,
+    "queda_pct": 43.7
+  }
+}
