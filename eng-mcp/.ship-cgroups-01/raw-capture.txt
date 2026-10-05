@@ -1,0 +1,3 @@
+event: message
+data: {"result":{"content":[{"type":"text","text":"{\"projectId\":\"memoryos\",\"agent\":\"SHIP-CGROUPS-01\",\"sessionId\":\"sess-981624dc-acee-488a-8461-39571d336623\",\"memoryId\":\"7a5e7ad9-0bac-4b6b-a702-36bac93aa250\",\"stored\":true,\"memoryBatch\":\"local-store\",\"gate\":{\"score\":0.7525,\"band\":\"admit\",\"verdict\":\"screened\",\"reasons\":[\"claims_unsupported(p=0.58)\"],\"tag\":\"[MEMORYGATE:band=admit score=0.75 reasons=claims_unsupported(p=0.58)]\"}}"}]},"jsonrpc":"2.0","id":1}
+

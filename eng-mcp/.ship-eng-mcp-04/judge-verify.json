@@ -1,0 +1,142 @@
+{
+ "tool": "engineering.judge.verify",
+ "status": "JUDGED",
+ "provider": {
+  "model": "typesafe/jev-1.13-20260917",
+  "id": "gen-dec-1791085834-2RXiF0x6Hx4LLQIymE7k",
+  "latencyMs": 194,
+  "cost": 8.3748e-05,
+  "inputTokens": 1994,
+  "outputTokens": 208
+ },
+ "provenance": {
+  "credentialSha16": "701a9c2b508397b3",
+  "stateHash16": "4f7277a4b40b6e28",
+  "evidenceHash16": "4f7277a4b40b6e28",
+  "redactions": 0
+ },
+ "claims": [
+  {
+   "id": "c1",
+   "text": "Producao eng-mcp roda o commit 9ad21732ae2ea51d78d9f7c6963d6ddf3133f7bb (label revision da imagem do container memoryos-eng-mcp e remoteHead de origin/main).",
+   "verdict": "supported",
+   "probability": 0.87,
+   "probabilities": {
+    "supported": 0.87,
+    "not_addressed": 0.13,
+    "contradicted": 0
+   },
+   "confidence": 0.8
+  },
+  {
+   "id": "c2",
+   "text": "O catalogo de producao e eng-mcp-tools-v150 com 150 tools, incluindo engineering.shell.run.",
+   "verdict": "uncertain",
+   "probability": 0.57,
+   "probabilities": {
+    "supported": 0.57,
+    "not_addressed": 0.41,
+    "contradicted": 0.02
+   },
+   "confidence": 0.35
+  },
+  {
+   "id": "c3",
+   "text": "O pipeline de release rodou a suíte completa dentro do container de teste: 1773 testes, 0 falhas, testStatus PASS, treeClean true, commitSha 9ad21732 (release-state.json).",
+   "verdict": "supported",
+   "probability": 0.74,
+   "probabilities": {
+    "supported": 0.74,
+    "not_addressed": 0.15,
+    "contradicted": 0.11
+   },
+   "confidence": 0.61
+  },
+  {
+   "id": "c4",
+   "text": "Smoke do engineering.shell.run em produção: tier-1 git status --short executado (rule git_read_or_stage, zero LLM); tier-2 whoami recusado pelo juiz Jev real (safeScore 0.89, SHELL_RUN_JUDGE_REFUSED); tier-3 systemctl restart nginx bloqueado (SHELL_RUN_BLOCKED, nunca executado).",
+   "verdict": "uncertain",
+   "probability": 0.39,
+   "probabilities": {
+    "supported": 0.39,
+    "not_addressed": 0.33,
+    "contradicted": 0.28
+   },
+   "confidence": 0.08
+  },
+  {
+   "id": "c5",
+   "text": "4 blockers de pipeline corrigidos e commitados durante a ship: whitespaceCheck binário (114e7688), baseline .claude-config (114e7688), trailing whitespace em evidências (01e6a974), SHELL_RUN_DEFAULT_CWD derivado (9ad21732); suíte shellRun 18/18 verde dentro da imagem de teste e9d929f e 22/22 no host.",
+   "verdict": "supported",
+   "probability": 0.78,
+   "probabilities": {
+    "supported": 0.78,
+    "not_addressed": 0.09,
+    "contradicted": 0.13
+   },
+   "confidence": 0.68
+  }
+ ],
+ "aggregate": "MIXED",
+ "counts": {
+  "supported": 3,
+  "contradicted": 0,
+  "not_addressed": 0,
+  "uncertain": 2
+ },
+ "advisory": "ADVISORY — calibrated judgment is not a security boundary; operator approval decides.",
+ "audit": "written",
+ "reverify": {
+  "tool": "engineering.judge.verify",
+  "status": "JUDGED",
+  "provider": {
+   "model": "typesafe/jev-1.13-20260917",
+   "id": "gen-dec-1791085853-ZeAlnc3MuicPbfdrDVq4",
+   "latencyMs": 241,
+   "cost": 5.0484e-05,
+   "inputTokens": 1202,
+   "outputTokens": 85
+  },
+  "provenance": {
+   "credentialSha16": "701a9c2b508397b3",
+   "stateHash16": "92b63891d542c1c5",
+   "evidenceHash16": "92b63891d542c1c5",
+   "redactions": 0
+  },
+  "claims": [
+   {
+    "id": "c2",
+    "text": "O catalogo de producao e eng-mcp-tools-v150 com 150 tools, incluindo engineering.shell.run.",
+    "verdict": "supported",
+    "probability": 0.97,
+    "probabilities": {
+     "contradicted": 0.01,
+     "not_addressed": 0.02,
+     "supported": 0.97
+    },
+    "confidence": 0.96
+   },
+   {
+    "id": "c4",
+    "text": "Smoke do engineering.shell.run em produção: tier-1 git status --short executado (rule git_read_or_stage, zero LLM); tier-2 whoami recusado pelo juiz Jev real (safeScore<0.9, SHELL_RUN_JUDGE_REFUSED); tier-3 systemctl restart nginx bloqueado (SHELL_RUN_BLOCKED, nunca executado).",
+    "verdict": "supported",
+    "probability": 0.6,
+    "probabilities": {
+     "contradicted": 0.1,
+     "not_addressed": 0.3,
+     "supported": 0.6
+    },
+    "confidence": 0.4
+   }
+  ],
+  "aggregate": "ALL_SUPPORTED",
+  "counts": {
+   "supported": 2,
+   "contradicted": 0,
+   "not_addressed": 0,
+   "uncertain": 0
+  },
+  "advisory": "ADVISORY — calibrated judgment is not a security boundary; operator approval decides.",
+  "audit": "written"
+ }
+}
