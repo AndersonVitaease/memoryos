@@ -1,0 +1,40 @@
+....FEFF.
+======================================================================
+ERROR: test_schema_exposes_verbose (test_mission_list_compact_default.TestVerboseOptIn.test_schema_exposes_verbose)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_mission_list_compact_default.py", line 65, in test_schema_exposes_verbose
+    self.assertEqual(props["verbose"]["type"], "boolean")
+                     ~~~~~^^^^^^^^^^^
+KeyError: 'verbose'
+
+======================================================================
+FAIL: test_list_verbose_equals_full (test_mission_list_compact_default.TestVerboseOptIn.test_list_verbose_equals_full)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_mission_list_compact_default.py", line 36, in test_list_verbose_equals_full
+    self.assertEqual(tools()["mission_list"][1]({"verbose": v}), before)
+AssertionError: '{"ok": true, "view": "compact", "total": 105, "counts":[591 chars]to"}' != '{"ok": true, "missions": [{"missionId": "live-0", "pane[24606 chars] []}'
+Diff is 25322 characters long. Set self.maxDiff to None to see it.
+
+======================================================================
+FAIL: test_status_verbose_equals_full (test_mission_list_compact_default.TestVerboseOptIn.test_status_verbose_equals_full)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_mission_list_compact_default.py", line 43, in test_status_verbose_equals_full
+    self.assertEqual(tools()["mission_status"][1]({"verbose": v}), before)
+AssertionError: '{"ok": true, "view": "compact", "total": 105, "counts":[495 chars]to"}' != '{"ok": true, "missions": [{"missionId": "live-0", "pane[33343 chars] []}'
+Diff is 33963 characters long. Set self.maxDiff to None to see it.
+
+======================================================================
+FAIL: test_verbose_beats_compact (test_mission_list_compact_default.TestVerboseOptIn.test_verbose_beats_compact)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_mission_list_compact_default.py", line 50, in test_verbose_beats_compact
+    self.assertNotIn("compact", j)
+AssertionError: 'compact' unexpectedly found in {'ok': True, 'compact': True, 'total': 8, 'counts': {'dispatched': 4, 'closed': 3, 'needs_recovery': 1}, 'missions': [{'missionId': 'live-0', 'paneId': 'w1:pL0', 'tabId': 'w1:tL0', 'creation': 'tab', 'status': 'dispatched', 'cwd': '/opt/live-0', 'live': True, 'agentStatus': 'idle', 'paneCwd': '/opt/live-0', 'tabLabel': 'live-0', 'updatedAt': '2026-09-28T11:00:00Z'}, {'missionId': 'live-1', 'paneId': 'w1:pL1', 'tabId': 'w1:tL1', 'creation': 'tab', 'status': 'dispatched', 'cwd': '/opt/live-1', 'live': True, 'agentStatus': 'working', 'paneCwd': '/opt/live-1', 'tabLabel': 'live-1', 'updatedAt': '2026-09-28T11:00:00Z'}, {'missionId': 'live-2', 'paneId': 'w1:pL2', 'tabId': 'w1:tL2', 'creation': 'tab', 'status': 'dispatched', 'cwd': '/opt/live-2', 'live': True, 'agentStatus': 'idle', 'paneCwd': '/opt/live-2', 'tabLabel': 'live-2', 'updatedAt': '2026-09-28T11:00:00Z'}, {'missionId': 'live-3', 'paneId': 'w1:pL3', 'tabId': 'w1:tL3', 'creation': 'tab', 'status': 'dispatched', 'cwd': '/opt/live-3', 'live': True, 'agentStatus': 'idle', 'paneCwd': '/opt/live-3', 'tabLabel': 'live-3', 'updatedAt': '2026-09-28T11:00:00Z'}, {'missionId': 'rec-1', 'paneId': 'w1:pR', 'tabId': None, 'creation': None, 'status': 'needs_recovery', 'cwd': '/opt/rec', 'live': False, 'agentStatus': None, 'paneCwd': None, 'tabLabel': None, 'updatedAt': None}]}
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.149s
+
+FAILED (failures=3, errors=1)

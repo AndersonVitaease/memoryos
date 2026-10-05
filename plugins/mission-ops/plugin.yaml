@@ -1,0 +1,9 @@
+name: mission-ops
+version: "1.0"
+description: "MISSION-OPS-01 — mission lifecycle orchestration for the Hermes supervisor: dispatch (prompt-in-file pane), event-driven watch (wait-output, zero polling), deterministic recovery recipes (zero LLM) and state ledger that survives chat restarts"
+provides_tools:
+  - mission_dispatch
+  - mission_watch
+  - mission_recover
+  - mission_status
+  - mission_batch

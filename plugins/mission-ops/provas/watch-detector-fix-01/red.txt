@@ -1,0 +1,111 @@
+FFFFFFFFFFFF
+======================================================================
+FAIL: test_closed_between_list_and_read_all_mode (__main__.TestFP1ClosedNeverFlagged.test_closed_between_list_and_read_all_mode)
+Corrida real: mission_close grava closed DEPOIS do list_ledgers do snapshot.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_watch_detector.py", line 86, in test_closed_between_list_and_read_all_mode
+    self.assertNotEqual(m.get("note"), "needs_supervisor")
+AssertionError: 'needs_supervisor' == 'needs_supervisor'
+
+======================================================================
+FAIL: test_closed_single_watch_no_needs_supervisor (__main__.TestFP1ClosedNeverFlagged.test_closed_single_watch_no_needs_supervisor)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_watch_detector.py", line 67, in test_closed_single_watch_no_needs_supervisor
+    self.assertNotEqual(res.get("note"), "needs_supervisor")
+AssertionError: 'needs_supervisor' == 'needs_supervisor'
+
+======================================================================
+FAIL: test_only_separators_is_empty (__main__.TestFP2SeparatorLines.test_only_separators_is_empty)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_watch_detector.py", line 103, in test_only_separators_is_empty
+    self.assertEqual(self.W.last_content_line("──────\n━━━━\n════"), "")
+AssertionError: '════' != ''
+- ════
+
+
+======================================================================
+FAIL: test_separators_skipped (__main__.TestFP2SeparatorLines.test_separators_skipped)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_watch_detector.py", line 99, in test_separators_skipped
+    self.assertEqual(W.last_content_line(txt), "Missão concluída; relatório em disco.",
+AssertionError: '────────────────────────────────────────' != 'Missão concluída; relatório em disco.'
+- ────────────────────────────────────────
++ Missão concluída; relatório em disco.
+ : '────────────────────────────────────────'
+
+======================================================================
+FAIL: test_text_with_rule_chars_kept (__main__.TestFP2SeparatorLines.test_text_with_rule_chars_kept)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_watch_detector.py", line 106, in test_text_with_rule_chars_kept
+    self.assertEqual(self.W.last_content_line("fase ─ 2 ok\n──────"), "fase ─ 2 ok")
+AssertionError: '──────' != 'fase ─ 2 ok'
+- ──────
++ fase ─ 2 ok
+
+
+======================================================================
+FAIL: test_turn_done_report_verify_is_awaiting_close (__main__.TestFP3TurnDoneConcluded.test_turn_done_report_verify_is_awaiting_close)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_watch_detector.py", line 130, in test_turn_done_report_verify_is_awaiting_close
+    self.assertEqual(res.get("verdict"), "awaiting_close")
+AssertionError: None != 'awaiting_close'
+
+======================================================================
+FAIL: test_turn_done_without_report_still_needs_supervisor (__main__.TestFP3TurnDoneConcluded.test_turn_done_without_report_still_needs_supervisor)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_watch_detector.py", line 144, in test_turn_done_without_report_still_needs_supervisor
+    self.assertEqual(res.get("verdict"), "needs_supervisor")
+AssertionError: None != 'needs_supervisor'
+
+======================================================================
+FAIL: test_turn_done_without_verify_still_needs_supervisor (__main__.TestFP3TurnDoneConcluded.test_turn_done_without_verify_still_needs_supervisor)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_watch_detector.py", line 138, in test_turn_done_without_verify_still_needs_supervisor
+    self.assertEqual(res.get("verdict"), "needs_supervisor")
+AssertionError: None != 'needs_supervisor'
+
+======================================================================
+FAIL: test_event_after_intervention_needs_supervisor (__main__.TestFP4StaleSnapshot.test_event_after_intervention_needs_supervisor)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_watch_detector.py", line 170, in test_event_after_intervention_needs_supervisor
+    self.assertEqual(res.get("verdict"), "needs_supervisor")
+AssertionError: None != 'needs_supervisor'
+
+======================================================================
+FAIL: test_event_older_than_intervention_is_stale (__main__.TestFP4StaleSnapshot.test_event_older_than_intervention_is_stale)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_watch_detector.py", line 163, in test_event_older_than_intervention_is_stale
+    self.assertEqual(res.get("verdict"), "stale")
+AssertionError: None != 'stale'
+
+======================================================================
+FAIL: test_no_intervention_needs_supervisor (__main__.TestFP4StaleSnapshot.test_no_intervention_needs_supervisor)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_watch_detector.py", line 182, in test_no_intervention_needs_supervisor
+    self.assertEqual(res.get("verdict"), "needs_supervisor")
+AssertionError: None != 'needs_supervisor'
+
+======================================================================
+FAIL: test_same_minute_is_not_stale (__main__.TestFP4StaleSnapshot.test_same_minute_is_not_stale)
+Rodapé tem granularidade de minuto: turno no MESMO minuto do nudge não é stale.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_watch_detector.py", line 177, in test_same_minute_is_not_stale
+    self.assertEqual(res.get("verdict"), "needs_supervisor")
+AssertionError: None != 'needs_supervisor'
+
+----------------------------------------------------------------------
+Ran 12 tests in 0.018s
+
+FAILED (failures=12)

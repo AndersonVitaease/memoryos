@@ -1,0 +1,28 @@
+test_close_measured_same_number_everywhere (test_gpu_cost_trail.TestCloseTrail.test_close_measured_same_number_everywhere) ... ok
+test_close_non_gpu_has_no_cost_step (test_gpu_cost_trail.TestCloseTrail.test_close_non_gpu_has_no_cost_step) ... ok
+test_close_noop_destroyed_before_mission (test_gpu_cost_trail.TestCloseTrail.test_close_noop_destroyed_before_mission) ... ok
+test_final_cost_and_tokens_in_window (test_gpu_cost_trail.TestMeasured.test_final_cost_and_tokens_in_window) ... ok
+test_running_segment_from_billed_to (test_gpu_cost_trail.TestMeasured.test_running_segment_from_billed_to) ... ok
+test_destroyed_before_mission (test_gpu_cost_trail.TestNoOpHonest.test_destroyed_before_mission) ... ok
+test_gpu_up_failed (test_gpu_cost_trail.TestNoOpHonest.test_gpu_up_failed) ... ok
+test_record_dedupe (test_gpu_cost_trail.TestSpoolTrail.test_record_dedupe) ... ok
+test_pre_fix_expression_raises_typeerror (test_gpu_cost_trail.TestTypeErrorRepro.test_pre_fix_expression_raises_typeerror) ... ok
+test_record_with_iso_and_str_fields_no_crash (test_gpu_cost_trail.TestTypeErrorRepro.test_record_with_iso_and_str_fields_no_crash) ... ok
+test_budget_probe_str_cost_no_typeerror (test_gpu_cost_trail.TestUnmeasured.test_budget_probe_str_cost_no_typeerror) ... ok
+test_down_without_destroyed_at (test_gpu_cost_trail.TestUnmeasured.test_down_without_destroyed_at) ... ok
+test_ledger_entry_garbage (test_gpu_cost_trail.TestUnmeasured.test_ledger_entry_garbage) ... ok
+test_ledger_entry_none_and_missing (test_gpu_cost_trail.TestUnmeasured.test_ledger_entry_none_and_missing) ... ok
+test_running_dph_none (test_gpu_cost_trail.TestUnmeasured.test_running_dph_none) ... ok
+test_running_no_start (test_gpu_cost_trail.TestUnmeasured.test_running_no_start) ... ok
+test_state_missing (test_gpu_cost_trail.TestUnmeasured.test_state_missing) ... ok
+test_iso_readyat_and_string_dph_runtime (test_gpu_cost_coerce.TestGpuCostCoerce.test_iso_readyat_and_string_dph_runtime) ... ok
+test_ledger_string_costs_summed_garbage_ignored (test_gpu_cost_coerce.TestGpuCostCoerce.test_ledger_string_costs_summed_garbage_ignored) ... ok
+test_missing_file_still_none (test_gpu_cost_coerce.TestGpuCostCoerce.test_missing_file_still_none) ... ok
+test_mission_completed_accepts_string_cost (test_gpu_cost_coerce.TestGpuCostCoerce.test_mission_completed_accepts_string_cost) ... ok
+test_numeric_state_unchanged (test_gpu_cost_coerce.TestGpuCostCoerce.test_numeric_state_unchanged) ... ok
+test_close_fake_gpu_mission_no_typeerror (test_gpu_cost_coerce.TestMissionCloseGpuStringCost.test_close_fake_gpu_mission_no_typeerror) ... ok
+
+----------------------------------------------------------------------
+Ran 23 tests in 0.017s
+
+OK

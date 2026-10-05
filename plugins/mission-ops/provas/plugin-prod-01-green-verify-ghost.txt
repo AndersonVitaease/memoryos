@@ -1,0 +1,10 @@
+test_compact_total_ignores_reports (test_verify_json_ghost.TestVerifyJsonGhost.test_compact_total_ignores_reports) ... ok
+test_full_true_intact_with_reports (test_verify_json_ghost.TestVerifyJsonGhost.test_full_true_intact_with_reports) ... ok
+test_mission_id_with_dot_verify_is_still_a_ledger (test_verify_json_ghost.TestVerifyJsonGhost.test_mission_id_with_dot_verify_is_still_a_ledger) ... ok
+test_report_not_listed_nor_skipped (test_verify_json_ghost.TestVerifyJsonGhost.test_report_not_listed_nor_skipped) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 0.080s
+
+OK
+EXIT=0

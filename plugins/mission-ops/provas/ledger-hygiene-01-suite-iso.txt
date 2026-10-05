@@ -1,0 +1,11 @@
+Scope command line contains environment variable, which is not expanded by default for now, but will be expanded by default in the future. Use --expand-environment=yes/no to explicitly control it as needed.
+Running as unit: ledger-hygiene-suite-iso.scope; invocation ID: 1d2eed5936f74afd95e3f93a2ca7ae73
+................................................................................................../root/.hermes/plugins/mission-ops/notify.py:176: ResourceWarning: unclosed file <_io.TextIOWrapper name='/opt/gpu-orchestrator/state.json' mode='r' encoding='UTF-8'>
+  data = state if state is not None else json.load(open(gpu_state_path))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+...............................................
+----------------------------------------------------------------------
+Ran 145 tests in 213.588s
+
+OK
+EXIT=0

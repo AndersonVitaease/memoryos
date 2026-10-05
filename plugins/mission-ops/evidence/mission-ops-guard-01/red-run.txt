@@ -1,0 +1,20 @@
+green: a sessão nascida NESTE lançamento é a gravada (não a alheia mais velha). ... FAIL
+Fixture real: watch-fp-01 (ledger resumeSessionId=null!) com sessão VIVA no ... FAIL
+test_dispatch_skips_session_claimed_by_other_ledger ... ok
+prova E2E 01/10: o jsonl nasce ~1s DEPOIS do prompt e o slug do claude troca ... ERROR
+regressão: sessão própria (sem outro dono, sem processo vivo) segue retomável. ... ERROR
+test_shell_fallback_idempotent_when_claude_alive_in_pane ... FAIL
+test_shell_fallback_refuses_resume_of_other_missions_session ... FAIL
+test_ready_regex_error_invalid_arg_falls_back_to_ledger ... FAIL
+test_recover_cwd_rules ... ERROR
+prova E2E 01/10: worktree do ledger abre em trust + 'Security notes' — o recover ... ERROR
+test_shell_fallback_relaunches_in_ledger_worktree_cwd ... FAIL
+test_transcript400_relaunch_uses_ledger_cwd ... ok
+test_nudge_delivers_clean_text_on_dirty_pane ... FAIL
+test_prefix_detector_real_strings ... ERROR
+test_residue_arriving_mid_send_is_detected_and_retried_once ... FAIL
+  test_residue_in_box_is_cleared_before_send (garbage='/0000') ... FAIL
+  test_residue_in_box_is_cleared_before_send (garbage='/afaf<35;34;12M') ... FAIL
+  test_residue_in_box_is_cleared_before_send (garbage='db') ... FAIL
+Ran 16 tests in 0.039s
+FAILED (failures=11, errors=5)

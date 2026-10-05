@@ -1,0 +1,22 @@
+test_diverged_branch (__main__.TestClassifyShip.test_diverged_branch) ... ok
+test_mainline_delivery_not_applicable (__main__.TestClassifyShip.test_mainline_delivery_not_applicable) ... ok
+test_merged_branch (__main__.TestClassifyShip.test_merged_branch) ... ok
+test_not_a_repo (__main__.TestClassifyShip.test_not_a_repo) ... ok
+test_unmerged_branch (__main__.TestClassifyShip.test_unmerged_branch) ... ok
+test_dependent_flight_warned_in_prompt (__main__.TestCloseWiring.test_dependent_flight_warned_in_prompt) ... ok
+test_duplicate_ship_is_no_op (__main__.TestCloseWiring.test_duplicate_ship_is_no_op) ... ok
+test_e2e_flight_holds_ship_in_window (__main__.TestCloseWiring.test_e2e_flight_holds_ship_in_window) ... ok
+test_merged_close_no_ship (__main__.TestCloseWiring.test_merged_close_no_ship) ... ok
+test_tier3_without_preauth_prompt_order (__main__.TestCloseWiring.test_tier3_without_preauth_prompt_order) ... ok
+test_unshipped_close_shipState_and_ship_dispatched (__main__.TestCloseWiring.test_unshipped_close_shipState_and_ship_dispatched) ... ok
+test_unshipped_e2e_real_dispatch (__main__.TestCloseWiring.test_unshipped_e2e_real_dispatch) ... ok
+test_window_opens_when_flight_lands (__main__.TestCloseWiring.test_window_opens_when_flight_lands) ... ok
+test_dependents_in_repo (__main__.TestShipHelpers.test_dependents_in_repo) ... ok
+test_e2e_in_flight_last_event (__main__.TestShipHelpers.test_e2e_in_flight_last_event) ... ok
+test_prompt_contract (__main__.TestShipHelpers.test_prompt_contract) ... ok
+test_ship_target_sanitize (__main__.TestShipHelpers.test_ship_target_sanitize) ... ok
+
+----------------------------------------------------------------------
+Ran 17 tests in 1.066s
+
+OK

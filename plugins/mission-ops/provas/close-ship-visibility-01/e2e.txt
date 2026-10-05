@@ -1,0 +1,7 @@
+test_unshipped_e2e_real_dispatch (__main__.TestCloseWiring.test_unshipped_e2e_real_dispatch) ... ok
+test_window_opens_when_flight_lands (__main__.TestCloseWiring.test_window_opens_when_flight_lands) ... ok
+
+----------------------------------------------------------------------
+Ran 2 tests in 0.210s
+
+OK

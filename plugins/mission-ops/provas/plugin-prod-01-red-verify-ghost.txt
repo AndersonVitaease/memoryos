@@ -1,0 +1,38 @@
+FF.F
+======================================================================
+FAIL: test_compact_total_ignores_reports (test_verify_json_ghost.TestVerifyJsonGhost.test_compact_total_ignores_reports)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/worktrees/plugin-prod-01/test_verify_json_ghost.py", line 68, in test_compact_total_ignores_reports
+    self.assertEqual(j["total"], 105)
+AssertionError: 106 != 105
+
+======================================================================
+FAIL: test_full_true_intact_with_reports (test_verify_json_ghost.TestVerifyJsonGhost.test_full_true_intact_with_reports)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/worktrees/plugin-prod-01/test_verify_json_ghost.py", line 55, in test_full_true_intact_with_reports
+    self.assertEqual(tools()["mission_list"][1]({"full": True}), before_list)
+AssertionError: '{"ok[284 chars]live-0", "paneId": null, "tabId": null, "creat[25086 chars] []}' != '{"ok[284 chars]live-1", "paneId": "w1:pL1", "tabId": "w1:tL1"[24311 chars] []}'
+Diff is 99896 characters long. Set self.maxDiff to None to see it.
+
+======================================================================
+FAIL: test_report_not_listed_nor_skipped (test_verify_json_ghost.TestVerifyJsonGhost.test_report_not_listed_nor_skipped)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/worktrees/plugin-prod-01/test_verify_json_ghost.py", line 35, in test_report_not_listed_nor_skipped
+    self.assertEqual([l["missionId"] for l in ledgers], ["m1"])
+AssertionError: Lists differ: ['m1', 'm1', 'orphan-01'] != ['m1']
+
+First list contains 2 additional elements.
+First extra element 1:
+'m1'
+
+- ['m1', 'm1', 'orphan-01']
++ ['m1']
+
+----------------------------------------------------------------------
+Ran 4 tests in 3.908s
+
+FAILED (failures=3)
+EXIT=1

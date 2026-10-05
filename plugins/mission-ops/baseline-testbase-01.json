@@ -1,0 +1,260 @@
+[
+ {
+  "file": "test_batch_e2e.py",
+  "exit": 1,
+  "secs": 0.1,
+  "tail": "  batch-e2e-canario-02 -> erro None pane=None tab=None CHAIN_DISPATCH_NOT_ALLOWED"
+ },
+ {
+  "file": "test_bus_guard.py",
+  "exit": 0,
+  "secs": 0.2,
+  "tail": ""
+ },
+ {
+  "file": "test_chain_dispatch.py",
+  "exit": 0,
+  "secs": 0.2,
+  "tail": ""
+ },
+ {
+  "file": "test_close_commit_guard.py",
+  "exit": 0,
+  "secs": 0.6,
+  "tail": ""
+ },
+ {
+  "file": "test_close_ship.py",
+  "exit": 0,
+  "secs": 1.2,
+  "tail": ""
+ },
+ {
+  "file": "test_close_verify_path.py",
+  "exit": 0,
+  "secs": 0.4,
+  "tail": ""
+ },
+ {
+  "file": "test_dispatch_fast03.py",
+  "exit": 0,
+  "secs": 0.7,
+  "tail": ""
+ },
+ {
+  "file": "test_dispatch_qa.py",
+  "exit": 0,
+  "secs": 0.1,
+  "tail": ""
+ },
+ {
+  "file": "test_gpu_cost_coerce.py",
+  "exit": 0,
+  "secs": 0.1,
+  "tail": ""
+ },
+ {
+  "file": "test_gpu_cost_trail.py",
+  "exit": 0,
+  "secs": 0.2,
+  "tail": ""
+ },
+ {
+  "file": "test_lane2.py",
+  "exit": 0,
+  "secs": 0.6,
+  "tail": ""
+ },
+ {
+  "file": "test_ledger_fix_status.py",
+  "exit": 0,
+  "secs": 0.1,
+  "tail": ""
+ },
+ {
+  "file": "test_ledger_hygiene.py",
+  "exit": 0,
+  "secs": 0.2,
+  "tail": ""
+ },
+ {
+  "file": "test_memory_capture.py",
+  "exit": 0,
+  "secs": 0.1,
+  "tail": ""
+ },
+ {
+  "file": "test_mission_batch.py",
+  "exit": 0,
+  "secs": 0.2,
+  "tail": ""
+ },
+ {
+  "file": "test_mission_debt.py",
+  "exit": 1,
+  "secs": 0.1,
+  "tail": ""
+ },
+ {
+  "file": "test_mission_list_compact_default.py",
+  "exit": 0,
+  "secs": 0.3,
+  "tail": ""
+ },
+ {
+  "file": "test_mission_list_compacto.py",
+  "exit": 0,
+  "secs": 0.2,
+  "tail": ""
+ },
+ {
+  "file": "test_mission_ops.py",
+  "exit": 0,
+  "secs": 5.1,
+  "tail": "SUITE PARALELA: OK em 4.9s (2 shards)"
+ },
+ {
+  "file": "test_mission_ops_guard.py",
+  "exit": 0,
+  "secs": 0.2,
+  "tail": ""
+ },
+ {
+  "file": "test_mission_resume.py",
+  "exit": 0,
+  "secs": 0.1,
+  "tail": ""
+ },
+ {
+  "file": "test_mission_snapshot.py",
+  "exit": 0,
+  "secs": 0.2,
+  "tail": ""
+ },
+ {
+  "file": "test_orch_autoclose.py",
+  "exit": 0,
+  "secs": 0.2,
+  "tail": ""
+ },
+ {
+  "file": "test_orch_spend_ledger.py",
+  "exit": 0,
+  "secs": 0.4,
+  "tail": ""
+ },
+ {
+  "file": "test_osc_wire_01.py",
+  "exit": 0,
+  "secs": 0.1,
+  "tail": ""
+ },
+ {
+  "file": "test_proof_lint03_plugin.py",
+  "exit": 1,
+  "secs": 0.3,
+  "tail": ""
+ },
+ {
+  "file": "test_rd_close_timeout_01.py",
+  "exit": 0,
+  "secs": 0.3,
+  "tail": ""
+ },
+ {
+  "file": "test_rd_guard_close_state_01.py",
+  "exit": 0,
+  "secs": 1.6,
+  "tail": ""
+ },
+ {
+  "file": "test_rd_ops_spend_01.py",
+  "exit": 0,
+  "secs": 0.1,
+  "tail": ""
+ },
+ {
+  "file": "test_rd_perf_verify_01.py",
+  "exit": 0,
+  "secs": 0.2,
+  "tail": ""
+ },
+ {
+  "file": "test_roadmap_feedback.py",
+  "exit": 0,
+  "secs": 0.1,
+  "tail": ""
+ },
+ {
+  "file": "test_ship_clause.py",
+  "exit": 0,
+  "secs": 0.1,
+  "tail": ""
+ },
+ {
+  "file": "test_spool_ro_01.py",
+  "exit": 0,
+  "secs": 0.1,
+  "tail": ""
+ },
+ {
+  "file": "test_sup_obey_01.py",
+  "exit": 0,
+  "secs": 0.4,
+  "tail": ""
+ },
+ {
+  "file": "test_supervisor_guard.py",
+  "exit": 0,
+  "secs": 0.4,
+  "tail": ""
+ },
+ {
+  "file": "test_template_ptbr01.py",
+  "exit": 0,
+  "secs": 0.1,
+  "tail": ""
+ },
+ {
+  "file": "test_trinity_wire.py",
+  "exit": 0,
+  "secs": 21.2,
+  "tail": ""
+ },
+ {
+  "file": "test_upstream_idle.py",
+  "exit": 0,
+  "secs": 0.1,
+  "tail": ""
+ },
+ {
+  "file": "test_upstream_idle_runner.py",
+  "exit": 0,
+  "secs": 0.1,
+  "tail": ""
+ },
+ {
+  "file": "test_verify_author.py",
+  "exit": 0,
+  "secs": 0.2,
+  "tail": ""
+ },
+ {
+  "file": "test_verify_json_ghost.py",
+  "exit": 0,
+  "secs": 0.2,
+  "tail": ""
+ },
+ {
+  "file": "test_watch_detector.py",
+  "exit": 0,
+  "secs": 17.7,
+  "tail": ""
+ },
+ {
+  "file": "test_watch_fp_operator.py",
+  "exit": 0,
+  "secs": 0.1,
+  "tail": ""
+ }
+]

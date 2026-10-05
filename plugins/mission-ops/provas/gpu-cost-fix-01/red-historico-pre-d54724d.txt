@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "<stdin>", line 8, in <module>
+TypeError: unsupported operand type(s) for -: 'float' and 'str'
+pré-d54724d notify.mission_gpu_cost_usd (corpo sem o try que engolia):
+=> o try externo convertia isso em custo None silencioso (custo sumia do close).

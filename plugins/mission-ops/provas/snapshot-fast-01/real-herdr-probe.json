@@ -1,0 +1,97 @@
+{
+  "stateDir": "/tmp/sf01-probe-bdejfgpp/state",
+  "tab": {
+    "tabId": "w6:tJ",
+    "paneId": "w6:pP",
+    "error": null
+  },
+  "1_stale": {
+    "callSeconds": 0.012,
+    "verdict": "PANEID_OBSOLETO",
+    "pane": {
+      "exists": true,
+      "paneId": "w6:pP",
+      "tabId": "w6:tJ",
+      "agent": null,
+      "agent_status": "unknown",
+      "cwd": "/tmp",
+      "tabLabel": "MISSION:sf01-probe"
+    },
+    "remedy": {
+      "applied": true,
+      "action": "ledger re-sincronizado",
+      "detail": "paneId obsoleto w6:pSTALE/w6:tSTALE -> w6:pP/w6:tJ (aba MISSION:sf01-probe viva)",
+      "from": {
+        "paneId": "w6:pSTALE",
+        "tabId": "w6:tSTALE"
+      }
+    },
+    "fixed": [
+      "sf01-probe"
+    ],
+    "ghosts": []
+  },
+  "1_ledger": {
+    "paneId": "w6:pP",
+    "tabId": "w6:tJ",
+    "paneResync": {
+      "at": "2026-09-29T12:49:31Z",
+      "by": "mission_snapshot",
+      "from": {
+        "paneId": "w6:pSTALE",
+        "tabId": "w6:tSTALE"
+      }
+    }
+  },
+  "2_shell": {
+    "callSeconds": 0.006,
+    "verdict": "INTERROMPIDA",
+    "pane": {
+      "exists": true,
+      "paneId": "w6:pP",
+      "tabId": "w6:tJ",
+      "agent": null,
+      "agent_status": "unknown",
+      "cwd": "/tmp",
+      "tabLabel": "MISSION:sf01-probe"
+    },
+    "remedy": {
+      "applied": false,
+      "suggested": "pane virou shell: mission_recover(paneId=w6:pP, pattern=shell_fallback, missionId=sf01-probe)"
+    },
+    "fixed": [],
+    "ghosts": []
+  },
+  "kill": {
+    "error": null,
+    "paneGone": true
+  },
+  "3_dead": {
+    "callSeconds": 0.006,
+    "verdict": "FANTASMA",
+    "pane": {
+      "exists": false
+    },
+    "remedy": {
+      "applied": true,
+      "action": "cancelado",
+      "detail": "mission_snapshot anti-fantasma: dispatched com pane w6:pP inexistente e sem aba MISSION:sf01-probe — cancelado (re-despache com mission_dispatch se ainda devida)",
+      "previousStatus": "dispatched"
+    },
+    "fixed": [],
+    "ghosts": [
+      "sf01-probe"
+    ]
+  },
+  "3_ledger": {
+    "status": "cancelled",
+    "cancelledBy": "mission_snapshot",
+    "cancelReason": "mission_snapshot anti-fantasma: dispatched com pane w6:pP inexistente e sem aba MISSION:sf01-probe — cancelado (re-despache com mission_dispatch se ainda devida)",
+    "previousStatus": "dispatched"
+  },
+  "events": [
+    "snapshot_pane_resync",
+    "snapshot_ghost_cancelled"
+  ],
+  "proved": true
+}

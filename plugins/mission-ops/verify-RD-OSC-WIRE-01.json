@@ -1,0 +1,49 @@
+{
+  "mission": "RD-OSC-WIRE-01",
+  "date": "2026-10-05",
+  "note": "Wiring dos 2 difs do guard OSC (RD-HERDR-OSC-01 seção 5) no mission-ops + provas unit/lab/wiring-live/suíte. Commit ddc850b na main.",
+  "cmd": [
+    {
+      "run": "cd /opt/operator-harness/plugins/mission-ops && export PATH=/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin && python3 test_osc_wire_01.py",
+      "expect_exit": 0,
+      "timeout": 60,
+      "evidence_tail": "Ran 6 tests in 0.001s\n\nOK"
+    },
+    {
+      "run": "cd /opt/operator-harness/plugins/mission-ops && export PATH=/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin && python3 test_mission_ops.py",
+      "expect_exit": 0,
+      "timeout": 120,
+      "evidence_tail": "SUITE PARALELA: OK"
+    },
+    {
+      "run": "cd /opt/operator-harness/plugins/mission-ops && export PATH=/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin && python3 prova_rd_osc_wire_01.py",
+      "expect_exit": 0,
+      "timeout": 240,
+      "evidence_tail": "PROVA WIRING: PASS"
+    },
+    {
+      "run": "cd /opt/mission-supervisor && export PATH=/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin && python3 tests/test_osc_injection.py lab",
+      "expect_exit": 0,
+      "timeout": 400,
+      "evidence_tail": "lab: PASS"
+    },
+    {
+      "run": "cd /opt/operator-harness && git log --oneline -1 main",
+      "expect_exit": 0,
+      "timeout": 30,
+      "evidence_tail": "RD-OSC-WIRE-01"
+    }
+  ],
+  "file": [
+    {
+      "path": "/opt/operator-harness/plugins/mission-ops/RELATORIO-RD-OSC-WIRE-01.md",
+      "min_bytes": 200
+    },
+    {
+      "path": "/opt/operator-harness/plugins/mission-ops/recipes.py"
+    },
+    {
+      "path": "/opt/operator-harness/plugins/mission-ops/mission_core.py"
+    }
+  ]
+}

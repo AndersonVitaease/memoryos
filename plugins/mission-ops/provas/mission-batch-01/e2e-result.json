@@ -1,0 +1,82 @@
+{
+  "mission": "mission-batch-01",
+  "startedAt": "2026-09-29T12:16:09Z",
+  "manifest": "/root/.hermes/plugins/mission-ops/provas/mission-batch-01/lote-canarios.json",
+  "caller_pane": null,
+  "credits_before": {
+    "at": "2026-09-29T12:16:09Z",
+    "file": "/root/.hermes/plugins/mission-ops/provas/mission-batch-01/credits-e2e-before.json",
+    "line": "total_credits=1026 total_usage=1005.3082"
+  },
+  "batch_call_seconds": 25.52,
+  "summary": {
+    "ok": true,
+    "total": 2,
+    "despachadas": 2,
+    "falhas": 0,
+    "fantasmasLimpos": 0,
+    "tempoTotalS": 25.52,
+    "tempoPorMissao": {
+      "mission-batch-01-canario-a": 12.92,
+      "mission-batch-01-canario-b": 12.6
+    },
+    "itens": [
+      {
+        "missionId": "mission-batch-01-canario-a",
+        "seconds": 12.92,
+        "result": "ok",
+        "status": "dispatched",
+        "paneId": "w6:pH",
+        "tabId": "w6:tD"
+      },
+      {
+        "missionId": "mission-batch-01-canario-b",
+        "seconds": 12.6,
+        "result": "ok",
+        "status": "dispatched",
+        "paneId": "w6:pJ",
+        "tabId": "w6:tE"
+      }
+    ],
+    "note": "sequencial (herdr single-writer); supervisione com mission_watch"
+  },
+  "observed": {
+    "mission-batch-01-canario-a": {
+      "paneId": "w6:pH",
+      "alive": true,
+      "statuses": [
+        "done"
+      ],
+      "answer": true,
+      "answerAt": "2026-09-29T12:16:35Z"
+    },
+    "mission-batch-01-canario-b": {
+      "paneId": "w6:pJ",
+      "alive": true,
+      "statuses": [
+        "working",
+        "done"
+      ],
+      "answer": true,
+      "answerAt": "2026-09-29T12:16:41Z"
+    }
+  },
+  "close": {
+    "mission-batch-01-canario-a": {
+      "ok": true,
+      "status": "closed",
+      "error": null
+    },
+    "mission-batch-01-canario-b": {
+      "ok": true,
+      "status": "closed",
+      "error": null
+    }
+  },
+  "credits_after": {
+    "at": "2026-09-29T12:16:44Z",
+    "file": "/root/.hermes/plugins/mission-ops/provas/mission-batch-01/credits-e2e-after.json",
+    "line": "total_credits=1026 total_usage=1005.3155"
+  },
+  "finishedAt": "2026-09-29T12:16:44Z"
+}

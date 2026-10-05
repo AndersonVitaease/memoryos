@@ -1,0 +1,5 @@
+"""
+MISSION-OPS-02 — plugin mission-ops do Hermes (lado Hermes).
+
+This file makes mission-ops a proper Python package.
+"""

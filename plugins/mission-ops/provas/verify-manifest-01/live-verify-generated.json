@@ -1,0 +1,224 @@
+{
+  "missionId": "judge-deploy-01",
+  "source": "manifest",
+  "verdict": "pass",
+  "llm_calls": 0,
+  "checks": [
+    {
+      "id": "P1-cmd-1",
+      "type": "cmd",
+      "ok": true,
+      "evidence": {
+        "run": "cd /opt/memoryos/eng-mcp && git log --oneline -3",
+        "exit": 0,
+        "expect": 0,
+        "tail": "ia hermes mcp test), 000 foi transitório do OOM; nada reconstruído, 8787 intocado\n8c8e422a SECURITY-SCAN-01b: seção 7 — status honesto das provas P1-P7 + findings reais consolidados (relatório final)\n"
+      },
+      "error": null
+    },
+    {
+      "id": "P2-cmd-2",
+      "type": "cmd",
+      "ok": true,
+      "evidence": {
+        "run": "/opt/memoryos/eng-mcp/evidence/judge-deploy-01/smoke-judge.sh",
+        "exit": 0,
+        "expect": 0,
+        "tail": "{\"ok\": true, \"verdicts\": {\"c1\": \"contradicted\", \"c2\": \"supported\"}, \"aggregate\": \"HAS_CONTRADICTIONS\", \"model\": \"typesafe/jev-1.13/compatible:Qwen/Qwen2.5-Coder-32B-Instruct-AWQ\", \"latencyMs\": 3853}\n"
+      },
+      "error": null
+    },
+    {
+      "id": "P3-cmd-3",
+      "type": "cmd",
+      "ok": true,
+      "evidence": {
+        "run": "cd /opt/memoryos/eng-mcp && o=$(docker inspect memoryos-eng-mcp 2>&1) && printf '%s' \"$o\" | grep -qF -- true && printf '%s' \"$o\" | grep -qF -- eng-mcp-candidate:candidate-20260928142849307-7ae70943a081",
+        "exit": 0,
+        "expect": 0,
+        "tail": ""
+      },
+      "error": null
+    },
+    {
+      "id": "P4-cmd-4",
+      "type": "cmd",
+      "ok": true,
+      "evidence": {
+        "run": "cd /opt/memoryos/eng-mcp && git -C /opt/memoryos/eng-mcp log --oneline -3",
+        "exit": 0,
+        "expect": 0,
+        "tail": "ia hermes mcp test), 000 foi transitório do OOM; nada reconstruído, 8787 intocado\n8c8e422a SECURITY-SCAN-01b: seção 7 — status honesto das provas P1-P7 + findings reais consolidados (relatório final)\n"
+      },
+      "error": null
+    },
+    {
+      "id": "P5-cmd-5",
+      "type": "cmd",
+      "ok": true,
+      "evidence": {
+        "run": "cd /opt/memoryos/eng-mcp && git status",
+        "exit": 0,
+        "expect": 0,
+        "tail": ".token.json\n\tsrc/imageEdit.token.json\n\ttsconfig.json\n\tverify.json\n\t../grafana-mcp/\n\t../librechat/\n\t../playwright-staging/\n\nnothing added to commit but untracked files present (use \"git add\" to track)\n"
+      },
+      "error": null
+    },
+    {
+      "id": "P6-service-1",
+      "type": "service",
+      "ok": true,
+      "evidence": {
+        "unit": "eng-mcp-release-runner",
+        "is-active": "active",
+        "is-enabled": "enabled"
+      },
+      "error": null
+    },
+    {
+      "id": "P7-file-1",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/opt/memoryos/eng-mcp/evidence/judge-deploy-01/smoke-judge.sh",
+        "bytes": 684,
+        "min_bytes": 500
+      },
+      "error": null
+    },
+    {
+      "id": "P8-file-2",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/data/audit/judge.jsonl",
+        "bytes": 242,
+        "min_bytes": 242
+      },
+      "error": null
+    },
+    {
+      "id": "P9-file-3",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/opt/memoryos/eng-mcp/evidence/judge-deploy-01/pre-deploy-status.json",
+        "bytes": 471,
+        "min_bytes": 471
+      },
+      "error": null
+    },
+    {
+      "id": "P10-file-4",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/opt/memoryos/eng-mcp/evidence/judge-deploy-01/pre-deploy-ready.json",
+        "bytes": 695,
+        "min_bytes": 500
+      },
+      "error": null
+    },
+    {
+      "id": "P11-file-5",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/opt/memoryos/eng-mcp/evidence/judge-deploy-01/pipeline-call-1.json",
+        "bytes": 20998,
+        "min_bytes": 500
+      },
+      "error": null
+    },
+    {
+      "id": "P12-file-6",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/opt/memoryos/eng-mcp/evidence/judge-deploy-01/pipeline-call-resume-1.json",
+        "bytes": 8144,
+        "min_bytes": 500
+      },
+      "error": null
+    },
+    {
+      "id": "P13-file-7",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/opt/memoryos/eng-mcp/evidence/judge-deploy-01/smoke-payload.json",
+        "bytes": 174,
+        "min_bytes": 174
+      },
+      "error": null
+    },
+    {
+      "id": "P14-file-8",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/opt/memoryos/eng-mcp/evidence/judge-deploy-01/smoke-response.json",
+        "bytes": 1243,
+        "min_bytes": 500
+      },
+      "error": null
+    },
+    {
+      "id": "P15-file-9",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/opt/memoryos/eng-mcp/evidence/judge-deploy-01/judge-audit-tail.jsonl",
+        "bytes": 661,
+        "min_bytes": 500
+      },
+      "error": null
+    },
+    {
+      "id": "P16-file-10",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/opt/memoryos/eng-mcp/evidence/judge-deploy-01/mcpcall.mjs",
+        "bytes": 1457,
+        "min_bytes": 500
+      },
+      "error": null
+    },
+    {
+      "id": "P17-file-11",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/opt/memoryos/eng-mcp/src/judge.ts",
+        "bytes": 25761,
+        "min_bytes": 500
+      },
+      "error": null
+    },
+    {
+      "id": "P18-file-12",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/opt/memoryos/eng-mcp/evidence/judge-deploy-01/selfcheck-response.json",
+        "bytes": 1665,
+        "min_bytes": 500
+      },
+      "error": null
+    },
+    {
+      "id": "P19-file-13",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/opt/memoryos/eng-mcp/relatorio-judge-deploy-01.md",
+        "bytes": 4284,
+        "min_bytes": 500
+      },
+      "error": null
+    }
+  ],
+  "ts": "2026-09-28T15:08:48Z",
+  "durationMs": 4508
+}

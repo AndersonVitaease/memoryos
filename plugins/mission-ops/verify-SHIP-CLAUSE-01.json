@@ -1,0 +1,49 @@
+{
+  "mission": "SHIP-CLAUSE-01",
+  "cmd": [
+    {
+      "run": "cd /root/.hermes/plugins/mission-ops && python3 test_ship_clause.py -v",
+      "expect_exit": 0,
+      "timeout": 120,
+      "evidence_tail": "Ran 3 tests in 0.000s\n\nOK"
+    },
+    {
+      "run": "cd /root/.hermes/plugins/mission-ops && python3 test_mission_ops.py",
+      "expect_exit": 0,
+      "timeout": 120,
+      "evidence_tail": "Ran 139 tests in 32.667s\n\nOK"
+    },
+    {
+      "run": "cd /root/.hermes/plugins/mission-ops && python3 -m unittest tests.test_template_protocol_01",
+      "expect_exit": 0,
+      "timeout": 120,
+      "evidence_tail": "Ran 12 tests in 5.173s\n\nOK"
+    },
+    {
+      "run": "cd /root/.hermes/plugins/mission-ops && python3 provas_ship_clause_01.py",
+      "expect_exit": 0,
+      "timeout": 60,
+      "evidence_tail": "len(body)=4265 limit=4400 idx_anchor=4046\nANCHOR-OK"
+    },
+    {
+      "run": "cd /root/.hermes/plugins/mission-ops && git log --oneline -1 --grep=SHIP-CLAUSE-01",
+      "expect_exit": 0,
+      "timeout": 30,
+      "evidence_tail": "23714db SHIP-CLAUSE-01: cláusula REPORT-SHIP-02 no DISPATCH_TEMPLATE (worker nasce sabendo: entregável sem merge/SHIP despachada = FAIL) + headroom 4265/4400 via encurtamento CLOSE-VERIFY-PATH-01 (id preservado); testes de contrato 3/3, regressão 139 verde, âncora provada no body renderizado"
+    }
+  ],
+  "file": [
+    {
+      "path": "/root/.hermes/plugins/mission-ops/RELATORIO-SHIP-CLAUSE-01.md"
+    },
+    {
+      "path": "/root/.hermes/plugins/mission-ops/test_ship_clause.py"
+    },
+    {
+      "path": "/root/.hermes/plugins/mission-ops/provas_ship_clause_01.py"
+    },
+    {
+      "path": "/root/.hermes/plugins/mission-ops/verify-SHIP-CLAUSE-01.json"
+    }
+  ]
+}

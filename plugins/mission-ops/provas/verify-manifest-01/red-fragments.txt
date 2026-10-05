@@ -1,0 +1,4 @@
+Dogfood (relatório desta missão): menções em prosa viravam cmd e davam vermelho falso. ... FAIL
+AssertionError: Lists differ: ['cd [26 chars]q && curl -X/-d', 'cd /tmp/verify-author-m5e_t[261 chars]tus'] != ['cd [26 chars]q && grep -q ok /tmp/verify-author-m5e_ty9q/ou[50 chars]tus']
+Ran 1 test in 0.003s
+FAILED (failures=1)

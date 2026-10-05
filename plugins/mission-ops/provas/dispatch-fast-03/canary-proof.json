@@ -1,0 +1,27 @@
+{
+  "missionId": "dispatch-fast03-canario-01",
+  "a_gpu_up_skipped": [
+    {
+      "ts": "2026-09-29T11:34:44Z",
+      "event": "finding",
+      "kind": "gpu_up_skipped",
+      "mission_id": "dispatch-fast03-canario-01",
+      "detail": "ponte 8102 morta (era sem-GPU) — fail-fast, sem gpu-up de 720s",
+      "source": "mission-ops:gpu"
+    }
+  ],
+  "a_gpu_up_ran": [],
+  "b_engine": "openrouter-fallback",
+  "gpuUpOk": false,
+  "c_createdAt": "2026-09-29T11:34:44Z",
+  "c_dispatchedAt": "2026-09-29T11:34:56Z",
+  "c_seconds": 12.0,
+  "d_file": "2026-09-29T08:36:22-03:00",
+  "status": "closed",
+  "verdict": {
+    "a": true,
+    "b": true,
+    "c": true,
+    "d": true
+  }
+}

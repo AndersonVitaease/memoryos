@@ -1,0 +1,19 @@
+test_closed_between_list_and_read_all_mode (test_watch_detector.TestFP1ClosedNeverFlagged.test_closed_between_list_and_read_all_mode)
+Corrida real: mission_close grava closed DEPOIS do list_ledgers do snapshot. ... ok
+test_closed_single_watch_no_needs_supervisor (test_watch_detector.TestFP1ClosedNeverFlagged.test_closed_single_watch_no_needs_supervisor) ... ok
+test_only_separators_is_empty (test_watch_detector.TestFP2SeparatorLines.test_only_separators_is_empty) ... ok
+test_separators_skipped (test_watch_detector.TestFP2SeparatorLines.test_separators_skipped) ... ok
+test_text_with_rule_chars_kept (test_watch_detector.TestFP2SeparatorLines.test_text_with_rule_chars_kept) ... ok
+test_turn_done_report_verify_is_awaiting_close (test_watch_detector.TestFP3TurnDoneConcluded.test_turn_done_report_verify_is_awaiting_close) ... ok
+test_turn_done_without_report_still_needs_supervisor (test_watch_detector.TestFP3TurnDoneConcluded.test_turn_done_without_report_still_needs_supervisor) ... ok
+test_turn_done_without_verify_still_needs_supervisor (test_watch_detector.TestFP3TurnDoneConcluded.test_turn_done_without_verify_still_needs_supervisor) ... ok
+test_event_after_intervention_needs_supervisor (test_watch_detector.TestFP4StaleSnapshot.test_event_after_intervention_needs_supervisor) ... ok
+test_event_older_than_intervention_is_stale (test_watch_detector.TestFP4StaleSnapshot.test_event_older_than_intervention_is_stale) ... ok
+test_no_intervention_needs_supervisor (test_watch_detector.TestFP4StaleSnapshot.test_no_intervention_needs_supervisor) ... ok
+test_same_minute_is_not_stale (test_watch_detector.TestFP4StaleSnapshot.test_same_minute_is_not_stale)
+Rodapé tem granularidade de minuto: turno no MESMO minuto do nudge não é stale. ... ok
+
+----------------------------------------------------------------------
+Ran 12 tests in 0.029s
+
+OK

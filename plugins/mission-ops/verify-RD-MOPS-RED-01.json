@@ -1,0 +1,84 @@
+{
+ "mission": "RD-MOPS-RED-01",
+ "date": "2026-10-05",
+ "note": "Suíte do mission-ops 100% verde: 10 falhas reais (2 suítes irmãs em WIP do RD-OBEY-02 + 3 suítes irmãs quebradas pelo canônico verify-<id>.json no state dir do RD-LOOP-01 d95aba9) rastreadas a 3 causas raiz e corrigidas no lugar certo (só testes/fixture — zero linhas de código de produção). Bateria file-based 45/45 + serial 165/165 + paralelo 10/10 + alvos TESTBASE verdes + commit na main.",
+ "cmd": [
+  {
+   "run": "cd /opt/operator-harness/plugins/mission-ops && export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin && python3 run_all_rd_mops_red_01.py",
+   "expect_exit": 0,
+   "timeout": 300,
+   "evidence_tail": "ARQUIVOS: 45 | VERMELHOS: 0 | json: rerun-RD-MOPS-RED-01.json"
+  },
+  {
+   "run": "cd /opt/operator-harness/plugins/mission-ops && export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin && python3 test_mission_ops.py",
+   "expect_exit": 0,
+   "timeout": 120,
+   "evidence_tail": "SUITE PARALELA: OK em 5.0s (2 shards)"
+  },
+  {
+   "run": "cd /opt/operator-harness/plugins/mission-ops && export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin && MISSION_OPS_SUITE_SHARDS=1 python3 test_mission_ops.py",
+   "expect_exit": 0,
+   "timeout": 120,
+   "evidence_tail": "Ran 165 tests in 7.843s\n\nOK"
+  },
+  {
+   "run": "cd /opt/operator-harness/plugins/mission-ops && export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin && python3 test_proof_lint03_plugin.py",
+   "expect_exit": 0,
+   "timeout": 120,
+   "evidence_tail": "OK"
+  },
+  {
+   "run": "cd /opt/operator-harness/plugins/mission-ops && export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin && python3 test_batch_e2e.py",
+   "expect_exit": 0,
+   "timeout": 60,
+   "evidence_tail": "SKIP TIPADO (RD-TESTBASE-01): CHAIN_DISPATCH_NOT_ALLOWED"
+  },
+  {
+   "run": "cd /opt/operator-harness && export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin && git log --oneline -1 main",
+   "expect_exit": 0,
+   "timeout": 30,
+   "evidence_tail": "54899a8 RD-MOPS-RED-01: suíte file-based 45/45 verde — 10 falhas com causa raiz"
+  }
+ ],
+ "file": [
+  {
+   "path": "/opt/operator-harness/plugins/mission-ops/run_all_rd_mops_red_01.py",
+   "min_bytes": 800
+  },
+  {
+   "path": "/opt/operator-harness/plugins/mission-ops/rerun-RD-MOPS-RED-01.json",
+   "min_bytes": 2000
+  },
+  {
+   "path": "/opt/operator-harness/plugins/mission-ops/test_rd_obey_02.py",
+   "min_bytes": 1000
+  },
+  {
+   "path": "/opt/operator-harness/plugins/mission-ops/test_mission_debt.py",
+   "min_bytes": 1000
+  },
+  {
+   "path": "/opt/operator-harness/plugins/mission-ops/test_close_commit_guard.py",
+   "min_bytes": 1000
+  },
+  {
+   "path": "/opt/operator-harness/plugins/mission-ops/test_close_ship.py",
+   "min_bytes": 1000
+  },
+  {
+   "path": "/opt/operator-harness/plugins/mission-ops/test_rd_close_timeout_01.py",
+   "min_bytes": 1000
+  },
+  {
+   "path": "/opt/operator-harness/plugins/mission-ops/RELATORIO-RD-MOPS-RED-01.md",
+   "min_bytes": 200
+  },
+  {
+   "path": "/opt/operator-harness/plugins/mission-ops/verify-RD-MOPS-RED-01.json"
+  },
+  {
+   "path": "/root/.hermes/mission-state/verify-RD-MOPS-RED-01.json",
+   "min_bytes": 500
+  }
+ ]
+}

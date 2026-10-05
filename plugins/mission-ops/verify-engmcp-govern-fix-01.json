@@ -1,0 +1,34 @@
+{
+  "missionId": "engmcp-govern-fix-01",
+  "relatorio": "/opt/memoryos/eng-mcp/relatorio-engmcp-govern-fix-01.md",
+  "checks": [
+    {
+      "id": "schema-status-ts",
+      "type": "probe",
+      "ok": true,
+      "evidence": "safeParse {missionId:'probe-e2e', status:'working'} success=true; status:'FOO' rejeitado; sem status aceito — executado no processo vivo do container (tsx /app/src/missionOps.ts)"
+    },
+    {
+      "id": "handler-ledger-fix-e2e",
+      "type": "probe",
+      "ok": true,
+      "evidence": "runMissionLedgerFix em ledger sintético: {ok:true, changes:{paneId:'new:pane',status:'working'}, before:{paneId:'old:pane',status:'dispatched'}} — diff e persistência provados; ledger probe removido"
+    },
+    {
+      "id": "tab-close-idempotente",
+      "type": "file",
+      "ok": true,
+      "evidence": "__init__.py:1771-1773 — tab_not_found tratado como step ok=true 'aba já fechada — idempotente' (já implementado pelo worker; verificado por leitura)"
+    },
+    {
+      "id": "tsc-sem-novos-erros",
+      "type": "file",
+      "ok": true,
+      "evidence": "npx tsc -p tsconfig.json --noEmit: erros apenas em src/webConnector.ts (pré-existentes, fora do escopo); missionOps.ts limpo"
+    }
+  ],
+  "findings": [
+    "Deploy exigiu docker cp manual + restart: imagem eng-mcp-candidate:commit-571425 não reconstruída pelo release pipeline (server roda de /app/src, não do bind-mount). Pendência: rebuild governado para alinhar imagem↔repositório."
+  ],
+  "verdict": "pass"
+}

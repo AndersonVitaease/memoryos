@@ -1,0 +1,33 @@
+Running as unit: chain-dispatch-suite.scope; invocation ID: 3906c35f2957460fb7dd007fccf68d4c
+0::/system.slice/chain-dispatch-suite.scope
+................................................................................................../root/.hermes/plugins/mission-ops/notify.py:176: ResourceWarning: unclosed file <_io.TextIOWrapper name='/opt/gpu-orchestrator/state.json' mode='r' encoding='UTF-8'>
+  data = state if state is not None else json.load(open(gpu_state_path))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+..........................................................................................
+----------------------------------------------------------------------
+Ran 188 tests in 33.565s
+
+OK
+	Command being timed: "python3 -m unittest test_mission_ops test_lane2 test_mission_list_compacto test_gpu_cost_coerce test_verify_json_ghost test_ledger_hygiene test_watch_detector test_verify_author test_chain_dispatch"
+	User time (seconds): 3.13
+	System time (seconds): 1.86
+	Percent of CPU this job got: 14%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:33.68
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 27368
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 0
+	Minor (reclaiming a frame) page faults: 232081
+	Voluntary context switches: 1030
+	Involuntary context switches: 119
+	Swaps: 0
+	File system inputs: 0
+	File system outputs: 14056
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 0

@@ -1,0 +1,18 @@
+test_i_insumo_proprio_nao_interrompe (__main__.TestDerivaCycle.test_i_insumo_proprio_nao_interrompe) ... ok
+test_ii_b_alheia_ativa_so_por_ledger_vivo_interrompe (__main__.TestDerivaCycle.test_ii_b_alheia_ativa_so_por_ledger_vivo_interrompe) ... ok
+test_ii_prompt_alheio_ativo_interrompe (__main__.TestDerivaCycle.test_ii_prompt_alheio_ativo_interrompe) ... ok
+test_iii_segunda_no_mesmo_turno_nao_reinterrompe (__main__.TestDerivaCycle.test_iii_segunda_no_mesmo_turno_nao_reinterrompe) ... ok
+test_active_missions_inclui_aba_mission (__main__.TestForeignUnit.test_active_missions_inclui_aba_mission) ... ok
+test_alheia_ativa_mesmo_em_extradirs_e_violacao (__main__.TestForeignUnit.test_alheia_ativa_mesmo_em_extradirs_e_violacao) ... ok
+test_alheia_ativa_no_cwd_compartilhado_e_violacao (__main__.TestForeignUnit.test_alheia_ativa_no_cwd_compartilhado_e_violacao) ... ok
+test_fora_de_tudo_continua_violacao (__main__.TestForeignUnit.test_fora_de_tudo_continua_violacao) ... ok
+test_insumo_citado_no_prompt_nao_e_alheio (__main__.TestForeignUnit.test_insumo_citado_no_prompt_nao_e_alheio) ... ok
+test_insumo_em_extradirs_nao_e_alheio (__main__.TestForeignUnit.test_insumo_em_extradirs_nao_e_alheio) ... ok
+test_insumo_no_cwd_relativo_nao_e_alheio (__main__.TestForeignUnit.test_insumo_no_cwd_relativo_nao_e_alheio) ... ok
+test_proprio_contrato_case_insensitive (__main__.TestForeignUnit.test_proprio_contrato_case_insensitive) ... ok
+test_same_mission_name_case_insensitive (__main__.TestForeignUnit.test_same_mission_name_case_insensitive) ... ok
+
+----------------------------------------------------------------------
+Ran 13 tests in 0.007s
+
+OK

@@ -1,0 +1,10 @@
+................................................................................................../root/.hermes/plugins/mission-ops/notify.py:176: ResourceWarning: unclosed file <_io.TextIOWrapper name='/opt/gpu-orchestrator/state.json' mode='r' encoding='UTF-8'>
+  data = state if state is not None else json.load(open(gpu_state_path))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+...............................................................
+----------------------------------------------------------------------
+Ran 161 tests in 32.788s
+
+OK
+EXIT=0
+PEAK=43499520

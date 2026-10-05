@@ -1,0 +1,4 @@
+import OK; tools registradas: 12
+True mission-ops
+schema required: ['missionId']
+self-test NO_REPORT: NO_REPORT

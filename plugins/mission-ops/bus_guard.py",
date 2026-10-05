@@ -1,0 +1,102 @@
+"""
+Guard for the event bus – enforces the BUS‑DELIVERY‑GUARD‑01 contract.
+
+Rules (exactly as defined in missao‑bus‑delivery‑guard‑01.md):
+1. **Session lease (TTL ~30 s)**
+   - A subscriber is registered with a lease timestamp.
+   - Lease is refreshed on any activity from that session.
+   - When the lease expires the subscriber is removed and receives no events.
+
+2. **Never resurrect**
+   - Events are injected only into sessions that have a *live* lease.
+   - If a session is not live, the event is NOT used to create or revive it.
+
+3. **Fallback = journal**
+   - When no live lease exists, the event is persisted to the journal
+     (`/root/.hermes/plugins/mission-ops/journal.json` – created if missing).
+   - Nothing is lost; the journal can be replayed later by the plantão.
+"""
+
+import json
+import time
+from pathlib import Path
+from threading import Lock
+
+# ---------------------------------------------------------------------------
+# Lease management
+# ---------------------------------------------------------------------------
+_LEASE_TTL = 30.0                     # seconds
+_LEASES: dict[str, float] = {}        # session_id -> expiry timestamp
+_LEASE_LOCK = Lock()
+
+def _now() -> float:
+    """Current monotonic time (seconds)."""
+    return time.monotonic()
+
+def register_lease(session_id: str) -> None:
+    """Create or refresh a lease for *session_id*."""
+    with _LEASE_LOCK:
+        _LEASES[session_id] = _now() + _LEASE_TTL
+
+def has_live_lease(session_id: str) -> bool:
+    """True if *session_id* currently has a non‑expired lease."""
+    with _LEASE_LOCK:
+        expiry = _LEASES.get(session_id)
+        if expiry is None:
+            return False
+        if expiry < _now():
+            # lease expired – clean up
+            del _LEASES[session_id]
+            return False
+        return True
+
+def cleanup_expired() -> None:
+    """Remove all expired leases – safe to call periodically."""
+    with _LEASE_LOCK:
+        now = _now()
+        expired = [sid for sid, exp in _LEASES.items() if exp < now]
+        for sid in expired:
+            del _LEASES[sid]
+
+# ---------------------------------------------------------------------------
+# Journal handling
+# ---------------------------------------------------------------------------
+_JOURNAL_PATH = Path("/root/.hermes/plugins/mission-ops/journal.json")
+_JOURNAL_LOCK = Lock()
+
+def _ensure_journal() -> None:
+    """Create an empty journal file if it does not exist."""
+    if not _JOURNAL_PATH.exists():
+        with _JOURNAL_LOCK, _JOURNAL_PATH.open("w") as f:
+            json.dump([], f)
+
+def append_to_journal(event: dict) -> None:
+    """Append *event* (JSON‑serialisable) to the journal."""
+    _ensure_journal()
+    with _JOURNAL_LOCK, _JOURNAL_PATH.open("r+") as f:
+        try:
+            data = json.load(f)
+        except json.JSONDecodeError:
+            data = []
+        data.append(event)
+        f.seek(0)
+        json.dump(data, f, indent=2)
+        f.truncate()
+
+# ---------------------------------------------------------------------------
+# Public delivery API
+# ---------------------------------------------------------------------------
+def deliver(event: dict, session_id: str, deliver_fn) -> None:
+    """Guarded delivery of *event* to *session_id*.
+
+    *deliver_fn* is a callable that actually injects the event into the
+    runtime (e.g. the existing bus implementation).  It is invoked only when
+    the lease is live.  Otherwise the event is written to the journal.
+    """
+    if has_live_lease(session_id):
+        # Lease is still valid – refresh it before delivery.
+        register_lease(session_id)
+        deliver_fn(event, session_id)
+    else:
+        # No live lease → fallback to journal.
+        append_to_journal(event)

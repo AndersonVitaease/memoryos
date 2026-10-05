@@ -1,0 +1,67 @@
+{
+  "ok": false,
+  "missionId": "judge-deploy-01",
+  "manifestPath": "/opt/memoryos/eng-mcp/verify.json",
+  "report": "/opt/memoryos/eng-mcp/relatorio-judge-deploy-01.md",
+  "prompt": "/opt/memoryos/eng-mcp/missao-judge-deploy-01.md",
+  "provenance": {
+    "report": 16,
+    "prompt": 3
+  },
+  "skipped": [
+    {
+      "candidate": "/root/.claude.json",
+      "reason": "caminho de segredo",
+      "source": "relatorio-judge-deploy-01.md:37"
+    },
+    {
+      "candidate": "/opt/memoryos/eng-mcp/evidence/judge-deploy-01/pre-release-state.json",
+      "reason": "permissão restrita (possível segredo)",
+      "source": "relatorio-judge-deploy-01.md:37"
+    },
+    {
+      "candidate": "/opt/memoryos/eng-mcp/evidence/judge-deploy-01/post-release-state.json",
+      "reason": "permissão restrita (possível segredo)",
+      "source": "relatorio-judge-deploy-01.md:37"
+    },
+    {
+      "candidate": "service",
+      "reason": "unit inexistente no systemd",
+      "source": "relatorio-judge-deploy-01.md:42"
+    },
+    {
+      "candidate": "engmcp",
+      "reason": "unit inexistente no systemd",
+      "source": "relatorio-judge-deploy-01.md:42"
+    },
+    {
+      "candidate": "memoryos-eng-mcp",
+      "reason": "unit inexistente no systemd",
+      "source": "relatorio-judge-deploy-01.md:42"
+    },
+    {
+      "candidate": "cmd",
+      "reason": "unit inexistente no systemd",
+      "source": "relatorio-judge-deploy-01.md:42"
+    },
+    {
+      "candidate": "smokeJudgeModel typesafe/jev-1.13-20260917",
+      "reason": "fora da allowlist read-only: smokeJudgeModel",
+      "source": "relatorio-judge-deploy-01.md:46"
+    },
+    {
+      "candidate": "unit",
+      "reason": "unit inexistente no systemd",
+      "source": "missao-judge-deploy-01.md:18"
+    },
+    {
+      "candidate": "expect_exit",
+      "reason": "unit inexistente no systemd",
+      "source": "missao-judge-deploy-01.md:18"
+    }
+  ],
+  "diff": "--- /opt/memoryos/eng-mcp/verify.json\n+++ /opt/memoryos/eng-mcp/verify.json (proposto)\n@@ -1,15 +1,27 @@\n {\n   \"cmd\": [\n-    {\"run\": \"/opt/memoryos/eng-mcp/evidence/judge-deploy-01/smoke-judge.sh\", \"expect_exit\": 0},\n-    {\"run\": \"docker inspect -f '{{.State.Running}} {{.Config.Image}}' memoryos-eng-mcp | grep -q '^true eng-mcp-candidate:candidate-20260928142849307-7ae70943a081$'\", \"expect_exit\": 0},\n-    {\"run\": \"grep -q '127.0.0.1:8102/alpha/decisions' /opt/memoryos/eng-mcp/src/judge.ts\", \"expect_exit\": 0}\n+    {\"run\": \"cd /opt/memoryos/eng-mcp && git log --oneline -3\", \"expect_exit\": 0, \"_provenance\": \"report\", \"_source\": \"relatorio-judge-deploy-01.md:10\"},\n+    {\"run\": \"/opt/memoryos/eng-mcp/evidence/judge-deploy-01/smoke-judge.sh\", \"expect_exit\": 0, \"_provenance\": \"report\", \"_source\": \"relatorio-judge-deploy-01.md:33\"},\n+    {\"run\": \"cd /opt/memoryos/eng-mcp && o=$(docker inspect memoryos-eng-mcp 2>&1) && printf '%s' \\\"$o\\\" | grep -qF -- true && printf '%s' \\\"$o\\\" | grep -qF -- eng-mcp-candidate:candidate-20260928142849307-7ae70943a081\", \"expect_exit\": 0, \"_provenance\": \"report\", \"_source\": \"relatorio-judge-deploy-01.md:50\"},\n+    {\"run\": \"cd /opt/memoryos/eng-mcp && git -C /opt/memoryos/eng-mcp log --oneline -3\", \"expect_exit\": 0, \"_provenance\": \"prompt\", \"_source\": \"missao-judge-deploy-01.md:12\"},\n+    {\"run\": \"cd /opt/memoryos/eng-mcp && git status\", \"expect_exit\": 0, \"_provenance\": \"prompt\", \"_source\": \"missao-judge-deploy-01.md:12\"}\n   ],\n   \"service\": [\n-    {\"unit\": \"eng-mcp-release-runner\", \"expect\": \"active\"}\n+    {\"unit\": \"eng-mcp-release-runner\", \"expect\": \"active\", \"_provenance\": \"report\", \"_source\": \"relatorio-judge-deploy-01.md:42\"}\n   ],\n   \"file\": [\n-    {\"path\": \"/opt/memoryos/eng-mcp/evidence/judge-deploy-01/smoke-response.json\", \"min_bytes\": 500},\n-    {\"path\": \"/opt/memoryos/eng-mcp/evidence/judge-deploy-01/pipeline-call-resume-1.json\", \"min_bytes\": 500},\n-    {\"path\": \"/opt/memoryos/eng-mcp/relatorio-judge-deploy-01.md\", \"min_bytes\": 500}\n+    {\"path\": \"/opt/memoryos/eng-mcp/evidence/judge-deploy-01/smoke-judge.sh\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"relatorio-judge-deploy-01.md:33\"},\n+    {\"path\": \"/data/audit/judge.jsonl\", \"min_bytes\": 242, \"_provenance\": \"report\", \"_source\": \"relatorio-judge-deploy-01.md:34\"},\n+    {\"path\": \"/opt/memoryos/eng-mcp/evidence/judge-deploy-01/pre-deploy-status.json\", \"min_bytes\": 471, \"_provenance\": \"report\", \"_source\": \"relatorio-judge-deploy-01.md:37\"},\n+    {\"path\": \"/opt/memoryos/eng-mcp/evidence/judge-deploy-01/pre-deploy-ready.json\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"relatorio-judge-deploy-01.md:37\"},\n+    {\"path\": \"/opt/memoryos/eng-mcp/evidence/judge-deploy-01/pipeline-call-1.json\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"relatorio-judge-deploy-01.md:37\"},\n+    {\"path\": \"/opt/memoryos/eng-mcp/evidence/judge-deploy-01/pipeline-call-resume-1.json\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"relatorio-judge-deploy-01.md:37\"},\n+    {\"path\": \"/opt/memoryos/eng-mcp/evidence/judge-deploy-01/smoke-payload.json\", \"min_bytes\": 174, \"_provenance\": \"report\", \"_source\": \"relatorio-judge-deploy-01.md:37\"},\n+    {\"path\": \"/opt/memoryos/eng-mcp/evidence/judge-deploy-01/smoke-response.json\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"relatorio-judge-deploy-01.md:37\"},\n+    {\"path\": \"/opt/memoryos/eng-mcp/evidence/judge-deploy-01/judge-audit-tail.jsonl\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"relatorio-judge-deploy-01.md:37\"},\n+    {\"path\": \"/opt/memoryos/eng-mcp/evidence/judge-deploy-01/mcpcall.mjs\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"relatorio-judge-deploy-01.md:37\"},\n+    {\"path\": \"/opt/memoryos/eng-mcp/src/judge.ts\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"relatorio-judge-deploy-01.md:40\"},\n+    {\"path\": \"/opt/memoryos/eng-mcp/evidence/judge-deploy-01/selfcheck-response.json\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"relatorio-judge-deploy-01.md:49\"},\n+    {\"path\": \"/opt/memoryos/eng-mcp/relatorio-judge-deploy-01.md\", \"min_bytes\": 500, \"_provenance\": \"prompt\", \"_source\": \"missao-judge-deploy-01.md:30\"}\n   ]\n }\n",
+  "written": false,
+  "error": "VERIFY_JSON_EXISTS",
+  "detail": "verify.json já existe em /opt/memoryos/eng-mcp — não sobrescrevo sem force=true (diff do proposto em 'diff')"
+}

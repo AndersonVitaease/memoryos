@@ -1,0 +1,137 @@
+{
+  "missionId": "watch-detector-fix-01",
+  "source": "manifest",
+  "verdict": "pass",
+  "llm_calls": 0,
+  "checks": [
+    {
+      "id": "P1-cmd-1",
+      "type": "cmd",
+      "ok": true,
+      "evidence": {
+        "run": "cd /root/.hermes/plugins/mission-ops && /usr/bin/python3 test_watch_detector.py",
+        "exit": 0,
+        "expect": 0,
+        "tail": ""
+      },
+      "error": null
+    },
+    {
+      "id": "P2-cmd-2",
+      "type": "cmd",
+      "ok": true,
+      "evidence": {
+        "run": "cd /root/.hermes/plugins && /usr/bin/python3 -c \"import importlib; m=importlib.import_module('mission-ops'); assert callable(m._supervisor_verdict) and callable(m._turn_done_epoch) and callable(m._final_report_on_disk); print('plugin import OK')\"",
+        "exit": 0,
+        "expect": 0,
+        "tail": "plugin import OK\n"
+      },
+      "error": null
+    },
+    {
+      "id": "P3-cmd-3",
+      "type": "cmd",
+      "ok": true,
+      "evidence": {
+        "run": "/usr/bin/python3 -c \"import sys; sys.path.insert(0,'/opt/gpu-watchdog'); import watchdog as W; assert W.last_content_line('recap ok\\n' + chr(0x2500)*20 + '\\n' + chr(0x2550)*20) == 'recap ok'; print('watchdog OK')\"",
+        "exit": 0,
+        "expect": 0,
+        "tail": "watchdog OK\n"
+      },
+      "error": null
+    },
+    {
+      "id": "P4-cmd-4",
+      "type": "cmd",
+      "ok": true,
+      "evidence": {
+        "run": "cd /opt/gpu-watchdog && /usr/bin/python3 test_watchdog_02.py",
+        "exit": 0,
+        "expect": 0,
+        "tail": ""
+      },
+      "error": null
+    },
+    {
+      "id": "P5-cmd-5",
+      "type": "cmd",
+      "ok": true,
+      "evidence": {
+        "run": "cd /root/.hermes/plugins/mission-ops && SMOKE_ROLLBACK=0 /usr/bin/python3 smoke_mission_ops.py",
+        "exit": 0,
+        "expect": 0,
+        "tail": "SMOKE OK\n"
+      },
+      "error": null
+    },
+    {
+      "id": "P6-cmd-6",
+      "type": "cmd",
+      "ok": true,
+      "evidence": {
+        "run": "grep -q 'Ran 161 tests' /root/.hermes/plugins/mission-ops/provas/watch-detector-fix-01/suite-full.txt && grep -q '^EXIT=0' /root/.hermes/plugins/mission-ops/provas/watch-detector-fix-01/suite-full.txt",
+        "exit": 0,
+        "expect": 0,
+        "tail": ""
+      },
+      "error": null
+    },
+    {
+      "id": "P7-service-1",
+      "type": "service",
+      "ok": true,
+      "evidence": {
+        "unit": "gpu-watchdog",
+        "is-active": "active",
+        "is-enabled": "enabled"
+      },
+      "error": null
+    },
+    {
+      "id": "P8-file-1",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/root/.hermes/plugins/mission-ops/RELATORIO-watch-detector-fix-01.md",
+        "bytes": 7503,
+        "min_bytes": 1500
+      },
+      "error": null
+    },
+    {
+      "id": "P9-file-2",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/root/.hermes/plugins/mission-ops/test_watch_detector.py",
+        "bytes": 8259,
+        "min_bytes": 3000
+      },
+      "error": null
+    },
+    {
+      "id": "P10-file-3",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/root/.hermes/plugins/mission-ops/provas/watch-detector-fix-01/red.txt",
+        "bytes": 7171,
+        "min_bytes": 500
+      },
+      "error": null
+    },
+    {
+      "id": "P11-file-4",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/root/.hermes/plugins/mission-ops/provas/watch-detector-fix-01/green.txt",
+        "bytes": 1854,
+        "min_bytes": 500
+      },
+      "error": null
+    }
+  ],
+  "ts": "2026-09-28T14:52:00Z",
+  "durationMs": 658
+}

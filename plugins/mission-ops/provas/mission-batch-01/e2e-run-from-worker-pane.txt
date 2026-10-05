@@ -1,0 +1,12 @@
+{
+  "mission": "mission-batch-01",
+  "startedAt": "2026-09-29T12:07:33Z",
+  "manifest": "/root/.hermes/plugins/mission-ops/provas/mission-batch-01/lote-canarios.json",
+  "caller_pane": "w6:pA",
+  "blocked": true,
+  "refused": {
+    "mission-batch-01-canario-a": "CHAIN_DISPATCH_NOT_ALLOWED: missão de origem 'mission-batch-01' não declara `allow_chain_dispatch: true` no prompt — worker não despacha sub-missão sem o badge. Peça ao supervisor para despachar 'mission-batch-01-canario-a'.",
+    "mission-batch-01-canario-b": "CHAIN_DISPATCH_NOT_ALLOWED: missão de origem 'mission-batch-01' não declara `allow_chain_dispatch: true` no prompt — worker não despacha sub-missão sem o badge. Peça ao supervisor para despachar 'mission-batch-01-canario-b'."
+  },
+  "note": "gate de cadeia recusou — rode do supervisor/operator"
+}

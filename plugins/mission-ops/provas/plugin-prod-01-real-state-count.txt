@@ -1,0 +1,2 @@
+mission-ops STATE_DIR= /root/.hermes/mission-state ledgers= 111 unique= 104 dups= ['guardian-compute-recovery-01', 'guardian-compute-v11-01', 'guardian-compute-v11-ship-01', 'merge-lane2-01', 'watchdog-02b', 'watchdog-d9-catloop-01', 'watchdog-lane2-01'] skipped= []
+plugin-prod-01 STATE_DIR= /root/.hermes/mission-state ledgers= 104 unique= 104 dups= [] skipped= []

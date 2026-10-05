@@ -1,0 +1,48 @@
+{
+ "mission": "RD-DEBT-01",
+ "date": "2026-10-05",
+ "note": "DEBT-SWEEP-01: ciclo de vida das dívidas herdadas — módulo mission_debts.py + tool mission_debt + passo debt_sweep no mission_close. Suíte própria 22/22, suíte principal verde, commit na main.",
+ "cmd": [
+  {
+   "run": "cd /opt/operator-harness/plugins/mission-ops && export PATH=/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin && python3 test_mission_debt.py",
+   "expect_exit": 0,
+   "timeout": 60,
+   "evidence_tail": "Ran 22 tests in 0.148s\n\nOK"
+  },
+  {
+   "run": "cd /opt/operator-harness/plugins/mission-ops && export PATH=/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin && python3 test_mission_ops.py",
+   "expect_exit": 0,
+   "timeout": 120,
+   "evidence_tail": "SUITE PARALELA: OK"
+  },
+  {
+   "run": "cd /opt/operator-harness/plugins/mission-ops && export PATH=/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin && python3 -m py_compile mission_debts.py __init__.py",
+   "expect_exit": 0,
+   "timeout": 30,
+   "evidence_tail": ""
+  },
+  {
+   "run": "cd /opt/operator-harness && git log --oneline -1 main",
+   "expect_exit": 0,
+   "timeout": 30,
+   "evidence_tail": "RD-DEBT-01"
+  }
+ ],
+ "file": [
+  {
+   "path": "/opt/operator-harness/plugins/mission-ops/mission_debts.py",
+   "min_bytes": 1000
+  },
+  {
+   "path": "/opt/operator-harness/plugins/mission-ops/test_mission_debt.py",
+   "min_bytes": 1000
+  },
+  {
+   "path": "/opt/operator-harness/plugins/mission-ops/RELATORIO-RD-DEBT-01.md",
+   "min_bytes": 200
+  },
+  {
+   "path": "/opt/operator-harness/plugins/mission-ops/verify-RD-DEBT-01.json"
+  }
+ ]
+}

@@ -1,0 +1,31 @@
+{
+  "mission": "TEMPLATE-PROTOCOL-01",
+  "cmd": [
+    {
+      "run": "cd /root/.hermes/plugins/mission-ops && python3 -m unittest tests.test_template_protocol_01 -v",
+      "expect_exit": 0,
+      "timeout": 120
+    },
+    {
+      "run": "cd /root/.hermes/plugins/mission-ops && git log --oneline -1 --grep=TEMPLATE-PROTOCOL-01",
+      "expect_exit": 0,
+      "timeout": 30
+    },
+    {
+      "run": "cd /root/.hermes/plugins/mission-ops && python3 -m unittest test_mission_ops test_mission_ops_guard test_close_verify_path test_close_commit_guard test_proof_lint03_plugin test_verify_author 2>&1 | tail -1",
+      "expect_exit": 0,
+      "timeout": 120
+    }
+  ],
+  "file": [
+    {
+      "path": "/root/.hermes/plugins/mission-ops/RELATORIO-TEMPLATE-PROTOCOL-01.md"
+    },
+    {
+      "path": "/root/.hermes/plugins/mission-ops/tests/test_template_protocol_01.py"
+    },
+    {
+      "path": "/root/.hermes/plugins/mission-ops/verify-TEMPLATE-PROTOCOL-01.json"
+    }
+  ]
+}

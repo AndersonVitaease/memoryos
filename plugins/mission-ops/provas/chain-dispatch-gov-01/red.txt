@@ -1,0 +1,294 @@
+test_declared_spawned_by_mission_refused (test_chain_dispatch.TestA_WorkerWithoutBadge.test_declared_spawned_by_mission_refused) ... ERROR
+test_self_grant_after_dispatch_does_not_count (test_chain_dispatch.TestA_WorkerWithoutBadge.test_self_grant_after_dispatch_does_not_count) ... ERROR
+test_unknown_declared_parent_refused (test_chain_dispatch.TestA_WorkerWithoutBadge.test_unknown_declared_parent_refused) ... ERROR
+test_worker_cannot_spoof_supervisor (test_chain_dispatch.TestA_WorkerWithoutBadge.test_worker_cannot_spoof_supervisor) ... ERROR
+test_worker_pane_refused_with_trail (test_chain_dispatch.TestA_WorkerWithoutBadge.test_worker_pane_refused_with_trail) ... ERROR
+test_badge_accepted_and_recorded (test_chain_dispatch.TestB_WorkerWithBadge.test_badge_accepted_and_recorded) ... ERROR
+test_badge_recorded_on_ledger_at_dispatch (test_chain_dispatch.TestB_WorkerWithBadge.test_badge_recorded_on_ledger_at_dispatch) ... ERROR
+test_config_parser (test_chain_dispatch.TestC_DepthLimit.test_config_parser) ... ERROR
+test_depth_configurable (test_chain_dispatch.TestC_DepthLimit.test_depth_configurable) ... ERROR
+test_depth_zero_blocks_any_worker (test_chain_dispatch.TestC_DepthLimit.test_depth_zero_blocks_any_worker) ... ERROR
+test_grandchild_refused_by_default (test_chain_dispatch.TestC_DepthLimit.test_grandchild_refused_by_default) ... ERROR
+test_idempotent_no_op_keeps_working (test_chain_dispatch.TestD_SupervisorOperator.test_idempotent_no_op_keeps_working) ... ERROR
+test_non_mission_pane_is_operator (test_chain_dispatch.TestD_SupervisorOperator.test_non_mission_pane_is_operator) ... ERROR
+test_operator_declared (test_chain_dispatch.TestD_SupervisorOperator.test_operator_declared) ... ERROR
+test_supervisor_default_no_pane (test_chain_dispatch.TestD_SupervisorOperator.test_supervisor_default_no_pane) ... ERROR
+test_supervisor_unaffected_by_depth_zero (test_chain_dispatch.TestD_SupervisorOperator.test_supervisor_unaffected_by_depth_zero) ... ERROR
+test_legacy_ledger_loads_and_is_depth_zero (test_chain_dispatch.TestE_LegacyLedger.test_legacy_ledger_loads_and_is_depth_zero) ... ERROR
+
+======================================================================
+ERROR: test_declared_spawned_by_mission_refused (test_chain_dispatch.TestA_WorkerWithoutBadge.test_declared_spawned_by_mission_refused)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_chain_dispatch.py", line 44, in setUp
+    p.start()
+  File "/usr/lib/python3.12/unittest/mock.py", line 1606, in start
+    result = self.__enter__()
+             ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1458, in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1431, in get_original
+    raise AttributeError(
+AttributeError: <module 'mission_ops' from '/root/.hermes/plugins/mission-ops/__init__.py'> does not have the attribute '_MISSION_SPOOL'
+
+======================================================================
+ERROR: test_self_grant_after_dispatch_does_not_count (test_chain_dispatch.TestA_WorkerWithoutBadge.test_self_grant_after_dispatch_does_not_count)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_chain_dispatch.py", line 44, in setUp
+    p.start()
+  File "/usr/lib/python3.12/unittest/mock.py", line 1606, in start
+    result = self.__enter__()
+             ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1458, in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1431, in get_original
+    raise AttributeError(
+AttributeError: <module 'mission_ops' from '/root/.hermes/plugins/mission-ops/__init__.py'> does not have the attribute '_MISSION_SPOOL'
+
+======================================================================
+ERROR: test_unknown_declared_parent_refused (test_chain_dispatch.TestA_WorkerWithoutBadge.test_unknown_declared_parent_refused)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_chain_dispatch.py", line 44, in setUp
+    p.start()
+  File "/usr/lib/python3.12/unittest/mock.py", line 1606, in start
+    result = self.__enter__()
+             ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1458, in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1431, in get_original
+    raise AttributeError(
+AttributeError: <module 'mission_ops' from '/root/.hermes/plugins/mission-ops/__init__.py'> does not have the attribute '_MISSION_SPOOL'
+
+======================================================================
+ERROR: test_worker_cannot_spoof_supervisor (test_chain_dispatch.TestA_WorkerWithoutBadge.test_worker_cannot_spoof_supervisor)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_chain_dispatch.py", line 44, in setUp
+    p.start()
+  File "/usr/lib/python3.12/unittest/mock.py", line 1606, in start
+    result = self.__enter__()
+             ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1458, in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1431, in get_original
+    raise AttributeError(
+AttributeError: <module 'mission_ops' from '/root/.hermes/plugins/mission-ops/__init__.py'> does not have the attribute '_MISSION_SPOOL'
+
+======================================================================
+ERROR: test_worker_pane_refused_with_trail (test_chain_dispatch.TestA_WorkerWithoutBadge.test_worker_pane_refused_with_trail)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_chain_dispatch.py", line 44, in setUp
+    p.start()
+  File "/usr/lib/python3.12/unittest/mock.py", line 1606, in start
+    result = self.__enter__()
+             ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1458, in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1431, in get_original
+    raise AttributeError(
+AttributeError: <module 'mission_ops' from '/root/.hermes/plugins/mission-ops/__init__.py'> does not have the attribute '_MISSION_SPOOL'
+
+======================================================================
+ERROR: test_badge_accepted_and_recorded (test_chain_dispatch.TestB_WorkerWithBadge.test_badge_accepted_and_recorded)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_chain_dispatch.py", line 44, in setUp
+    p.start()
+  File "/usr/lib/python3.12/unittest/mock.py", line 1606, in start
+    result = self.__enter__()
+             ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1458, in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1431, in get_original
+    raise AttributeError(
+AttributeError: <module 'mission_ops' from '/root/.hermes/plugins/mission-ops/__init__.py'> does not have the attribute '_MISSION_SPOOL'
+
+======================================================================
+ERROR: test_badge_recorded_on_ledger_at_dispatch (test_chain_dispatch.TestB_WorkerWithBadge.test_badge_recorded_on_ledger_at_dispatch)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_chain_dispatch.py", line 44, in setUp
+    p.start()
+  File "/usr/lib/python3.12/unittest/mock.py", line 1606, in start
+    result = self.__enter__()
+             ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1458, in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1431, in get_original
+    raise AttributeError(
+AttributeError: <module 'mission_ops' from '/root/.hermes/plugins/mission-ops/__init__.py'> does not have the attribute '_MISSION_SPOOL'
+
+======================================================================
+ERROR: test_config_parser (test_chain_dispatch.TestC_DepthLimit.test_config_parser)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_chain_dispatch.py", line 44, in setUp
+    p.start()
+  File "/usr/lib/python3.12/unittest/mock.py", line 1606, in start
+    result = self.__enter__()
+             ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1458, in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1431, in get_original
+    raise AttributeError(
+AttributeError: <module 'mission_ops' from '/root/.hermes/plugins/mission-ops/__init__.py'> does not have the attribute '_MISSION_SPOOL'
+
+======================================================================
+ERROR: test_depth_configurable (test_chain_dispatch.TestC_DepthLimit.test_depth_configurable)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_chain_dispatch.py", line 44, in setUp
+    p.start()
+  File "/usr/lib/python3.12/unittest/mock.py", line 1606, in start
+    result = self.__enter__()
+             ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1458, in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1431, in get_original
+    raise AttributeError(
+AttributeError: <module 'mission_ops' from '/root/.hermes/plugins/mission-ops/__init__.py'> does not have the attribute '_MISSION_SPOOL'
+
+======================================================================
+ERROR: test_depth_zero_blocks_any_worker (test_chain_dispatch.TestC_DepthLimit.test_depth_zero_blocks_any_worker)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_chain_dispatch.py", line 44, in setUp
+    p.start()
+  File "/usr/lib/python3.12/unittest/mock.py", line 1606, in start
+    result = self.__enter__()
+             ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1458, in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1431, in get_original
+    raise AttributeError(
+AttributeError: <module 'mission_ops' from '/root/.hermes/plugins/mission-ops/__init__.py'> does not have the attribute '_MISSION_SPOOL'
+
+======================================================================
+ERROR: test_grandchild_refused_by_default (test_chain_dispatch.TestC_DepthLimit.test_grandchild_refused_by_default)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_chain_dispatch.py", line 44, in setUp
+    p.start()
+  File "/usr/lib/python3.12/unittest/mock.py", line 1606, in start
+    result = self.__enter__()
+             ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1458, in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1431, in get_original
+    raise AttributeError(
+AttributeError: <module 'mission_ops' from '/root/.hermes/plugins/mission-ops/__init__.py'> does not have the attribute '_MISSION_SPOOL'
+
+======================================================================
+ERROR: test_idempotent_no_op_keeps_working (test_chain_dispatch.TestD_SupervisorOperator.test_idempotent_no_op_keeps_working)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_chain_dispatch.py", line 44, in setUp
+    p.start()
+  File "/usr/lib/python3.12/unittest/mock.py", line 1606, in start
+    result = self.__enter__()
+             ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1458, in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1431, in get_original
+    raise AttributeError(
+AttributeError: <module 'mission_ops' from '/root/.hermes/plugins/mission-ops/__init__.py'> does not have the attribute '_MISSION_SPOOL'
+
+======================================================================
+ERROR: test_non_mission_pane_is_operator (test_chain_dispatch.TestD_SupervisorOperator.test_non_mission_pane_is_operator)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_chain_dispatch.py", line 44, in setUp
+    p.start()
+  File "/usr/lib/python3.12/unittest/mock.py", line 1606, in start
+    result = self.__enter__()
+             ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1458, in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1431, in get_original
+    raise AttributeError(
+AttributeError: <module 'mission_ops' from '/root/.hermes/plugins/mission-ops/__init__.py'> does not have the attribute '_MISSION_SPOOL'
+
+======================================================================
+ERROR: test_operator_declared (test_chain_dispatch.TestD_SupervisorOperator.test_operator_declared)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_chain_dispatch.py", line 44, in setUp
+    p.start()
+  File "/usr/lib/python3.12/unittest/mock.py", line 1606, in start
+    result = self.__enter__()
+             ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1458, in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1431, in get_original
+    raise AttributeError(
+AttributeError: <module 'mission_ops' from '/root/.hermes/plugins/mission-ops/__init__.py'> does not have the attribute '_MISSION_SPOOL'
+
+======================================================================
+ERROR: test_supervisor_default_no_pane (test_chain_dispatch.TestD_SupervisorOperator.test_supervisor_default_no_pane)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_chain_dispatch.py", line 44, in setUp
+    p.start()
+  File "/usr/lib/python3.12/unittest/mock.py", line 1606, in start
+    result = self.__enter__()
+             ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1458, in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1431, in get_original
+    raise AttributeError(
+AttributeError: <module 'mission_ops' from '/root/.hermes/plugins/mission-ops/__init__.py'> does not have the attribute '_MISSION_SPOOL'
+
+======================================================================
+ERROR: test_supervisor_unaffected_by_depth_zero (test_chain_dispatch.TestD_SupervisorOperator.test_supervisor_unaffected_by_depth_zero)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_chain_dispatch.py", line 44, in setUp
+    p.start()
+  File "/usr/lib/python3.12/unittest/mock.py", line 1606, in start
+    result = self.__enter__()
+             ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1458, in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1431, in get_original
+    raise AttributeError(
+AttributeError: <module 'mission_ops' from '/root/.hermes/plugins/mission-ops/__init__.py'> does not have the attribute '_MISSION_SPOOL'
+
+======================================================================
+ERROR: test_legacy_ledger_loads_and_is_depth_zero (test_chain_dispatch.TestE_LegacyLedger.test_legacy_ledger_loads_and_is_depth_zero)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/root/.hermes/plugins/mission-ops/test_chain_dispatch.py", line 44, in setUp
+    p.start()
+  File "/usr/lib/python3.12/unittest/mock.py", line 1606, in start
+    result = self.__enter__()
+             ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1458, in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/unittest/mock.py", line 1431, in get_original
+    raise AttributeError(
+AttributeError: <module 'mission_ops' from '/root/.hermes/plugins/mission-ops/__init__.py'> does not have the attribute '_MISSION_SPOOL'
+
+----------------------------------------------------------------------
+Ran 17 tests in 0.008s
+
+FAILED (errors=17)

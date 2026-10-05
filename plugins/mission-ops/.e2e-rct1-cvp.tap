@@ -1,0 +1,22 @@
+test_badge_via_legacy_verify_json_still_works (__main__.TestCloseVerifyPath.test_badge_via_legacy_verify_json_still_works)
+NÃO-QUEBRA: verify.json legado (owner=mission) no cwd segue fechando com badge. ... ok
+test_badge_via_verify_mission_named_manifest (__main__.TestCloseVerifyPath.test_badge_via_verify_mission_named_manifest)
+Manifesto verify-<missionId>.json (nome específico) fecha com badge. ... ok
+test_close_without_verify_keeps_warning (__main__.TestCloseVerifyPath.test_close_without_verify_keeps_warning)
+Close sem manifesto em lugar algum (escopo heurístico) → warning mantido. ... ok
+test_manifest_of_other_owner_found_in_extra_dir (__main__.TestCloseVerifyPath.test_manifest_of_other_owner_found_in_extra_dir)
+Mesma resolução do verify: verify.json no cwd de OUTRA missão (colisão) não ... ok
+test_recent_verify_pass_helper (__main__.TestCloseVerifyPath.test_recent_verify_pass_helper) ... ok
+test_recent_verify_pass_prevents_unverified_consequence (__main__.TestCloseVerifyPath.test_recent_verify_pass_prevents_unverified_consequence)
+Gate fail-open AGORA (timeout do runner) + verify PASSOU minutos antes ... ok
+test_recent_verify_pass_prevents_verify_required_reopen (__main__.TestCloseVerifyPath.test_recent_verify_pass_prevents_verify_required_reopen)
+Escopo DECLARADO + sem manifesto em lugar algum, MAS verify passou há minutos ... ok
+test_stale_verify_pass_does_not_prove (__main__.TestCloseVerifyPath.test_stale_verify_pass_does_not_prove)
+Relatório > 30 min NÃO é prova: fail-open + relatório velho → warning mantido. ... ok
+test_template_tells_correct_manifest_name (__main__.TestCloseVerifyPath.test_template_tells_correct_manifest_name)
+O wrapper de dispatch não pode mais dizer que verify-<missionId>.json NÃO fecha. ... ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.281s
+
+OK

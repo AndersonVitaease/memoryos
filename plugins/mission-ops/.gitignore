@@ -1,0 +1,10 @@
+__pycache__/
+__pycache__
+*.pyc
+venv/
+__pycache__/
+*.pyc
+journal.json
+notify-signatures.json
+*.bak-*
+.bak-*

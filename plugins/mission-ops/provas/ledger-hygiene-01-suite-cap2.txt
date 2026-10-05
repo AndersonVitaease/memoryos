@@ -1,0 +1,3 @@
+Scope command line contains environment variable, which is not expanded by default for now, but will be expanded by default in the future. Use --expand-environment=yes/no to explicitly control it as needed.
+Running as unit: ledger-hygiene-suite-cap2.scope; invocation ID: dd57c89a82c446a3977cb0221cd6862a
+.....................

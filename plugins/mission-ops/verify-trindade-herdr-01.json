@@ -1,0 +1,41 @@
+{
+  "mission": "trindade-herdr-01",
+  "cmd": [
+    {
+      "run": "curl -s -m 30 -X POST http://127.0.0.1:8103/v1/advisor -H 'content-type: application/json' -d '{\"question\":\"teste de vida\"}'",
+      "expect_exit": 0,
+      "expect_contains": "content",
+      "timeout": 35000
+    },
+    {
+      "run": "curl -s -m 30 -X POST http://127.0.0.1:8103/v1/judge -H 'content-type: application/json' -d '{\"prompt\":\"42 e par? SIM ou NAO\"}'",
+      "expect_exit": 0,
+      "expect_contains": "supported",
+      "timeout": 35000
+    },
+    {
+      "run": "printf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}' | node /opt/gpu-bridge/roles-mcp.mjs",
+      "expect_exit": 0,
+      "expect_contains": "ask_advisor",
+      "timeout": 20000
+    },
+    {
+      "run": "curl -s -m 5 http://127.0.0.1:8103/health",
+      "expect_exit": 0,
+      "expect_contains": "ok",
+      "timeout": 10000
+    },
+    {
+      "run": "curl -s -m 40 -X POST http://127.0.0.1:8103/v1/supervisor -H 'content-type: application/json' -d '{\"question\":\"proximo passo?\"}'",
+      "expect_exit": 0,
+      "expect_contains": "content",
+      "timeout": 45000
+    }
+  ],
+  "file": [
+    {
+      "path": "/root/.hermes/plugins/mission-ops/RELATORIO-trindade-herdr-01.md",
+      "min_bytes": 1500
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "mission": "MEMORY-CAPTURE-01",
+  "cmd": [
+    {
+      "run": "cd /root/.hermes/plugins/mission-ops && python3 -m unittest test_memory_capture 2>&1 | tail -1",
+      "expect_exit": 0,
+      "timeout": 60
+    },
+    {
+      "run": "cd /root/.hermes/plugins/mission-ops && git log --oneline -1 --grep='MEMORY-CAPTURE\\|reconciliacao\\|reconciliação' | head -1",
+      "expect_exit": 0,
+      "timeout": 30
+    },
+    {
+      "run": "cd /root/.hermes/plugins/mission-ops && python3 -m unittest test_mission_ops 2>&1 | tail -1",
+      "expect_exit": 0,
+      "timeout": 120
+    }
+  ],
+  "file": [
+    {
+      "path": "/root/.hermes/plugins/mission-ops/RELATORIO-MEMORY-CAPTURE-01-FIM.md"
+    },
+    {
+      "path": "/root/.hermes/plugins/mission-ops/test_memory_capture.py"
+    }
+  ]
+}

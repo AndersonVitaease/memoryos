@@ -1,0 +1,8 @@
+0::/system.slice/herdr-server.service
+test_green_commit_the_artifacts_then_close (test_close_commit_guard.TestCloseWiring.test_green_commit_the_artifacts_then_close) ... ok
+test_red_untracked_deploy_path_blocks_badge_and_warns (test_close_commit_guard.TestCloseWiring.test_red_untracked_deploy_path_blocks_badge_and_warns) ... ok
+
+----------------------------------------------------------------------
+Ran 2 tests in 0.142s
+
+OK

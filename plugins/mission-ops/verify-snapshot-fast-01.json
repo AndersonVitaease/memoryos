@@ -1,0 +1,21 @@
+{
+  "mission": "snapshot-fast-01",
+  "date": "2026-09-29",
+  "owner": "worker snapshot-fast-01 (pane w6:pN)",
+  "note": "tool mission_snapshot + auto-correção só de ledger. A linha do E2E com canário (collect_e2e.py) fica VERMELHA até o supervisor/operator rodar provas/snapshot-fast-01/run_e2e.py: o gate de cadeia recusa despacho deste pane (CHAIN_DISPATCH_NOT_ALLOWED, provado em provas/snapshot-fast-01/e2e-run-from-worker-pane.txt). O caminho herdr REAL (resync -> shell -> fantasma) já está provado sem canário em real-herdr-probe.json. Suíte roda sem test_batch_e2e.py (script E2E não rastreado, pré-existente, falha no import também no baseline). Ver RELATORIO-snapshot-fast-01.md.",
+  "cmd": [
+    {"run": "cd /root/.hermes/plugins/mission-ops && timeout 120 python3 -m unittest test_mission_snapshot 2>&1 | tail -1", "expect_stdout": "OK", "timeout": 150, "_provenance": "prompt", "_source": "provas 4: unit snapshot (typo, resync, fantasma, todas ativas, fechada ok)"},
+    {"run": "cd /root/.hermes/plugins/mission-ops && timeout 900 python3 -m unittest $(ls test_*.py | grep -v '^test_batch_e2e.py$' | sed 's/\\.py$//') 2>&1 | tail -1", "expect_stdout": "OK", "timeout": 960, "_provenance": "prompt", "_source": "provas 4: suíte completa verde (252 + 13)"},
+    {"run": "grep -q 'FAILED (errors=11)' /root/.hermes/plugins/mission-ops/provas/snapshot-fast-01/unit-red.txt && grep -q 'Ran 13 tests' /root/.hermes/plugins/mission-ops/provas/snapshot-fast-01/unit-green.txt", "expect_exit": 0, "_provenance": "report", "_source": "RELATORIO: red 11/12 (baseline) -> green 13/13"},
+    {"run": "python3 -c \"import json;r=json.load(open('/root/.hermes/plugins/mission-ops/provas/snapshot-fast-01/real-herdr-probe.json'));raise SystemExit(0 if r['proved'] else 1)\"", "expect_exit": 0, "_provenance": "report", "_source": "RELATORIO: herdr real — PANEID_OBSOLETO resync -> INTERROMPIDA -> FANTASMA"},
+    {"run": "systemctl is-active or-worker-bridge", "expect_stdout": "active", "_provenance": "prompt", "_source": "guarda: 8103 é produção"},
+    {"run": "python3 /root/.hermes/plugins/mission-ops/provas/snapshot-fast-01/collect_e2e.py", "expect_exit": 0, "timeout": 30, "_provenance": "prompt", "_source": "provas 4: E2E real canário vivo -> OK; pane morto -> FANTASMA — PENDENTE de run_e2e.py pelo supervisor"}
+  ],
+  "file": [
+    {"path": "/root/.hermes/plugins/mission-ops/RELATORIO-snapshot-fast-01.md", "min_bytes": 2000, "_provenance": "prompt", "_source": "entregável 5"},
+    {"path": "/root/.hermes/plugins/mission-ops/test_mission_snapshot.py", "min_bytes": 3000, "_provenance": "report", "_source": "testes novos"},
+    {"path": "/root/.hermes/plugins/mission-ops/provas/snapshot-fast-01/suite-full.txt", "min_bytes": 20, "_provenance": "report", "_source": "suíte 265/265"},
+    {"path": "/root/.hermes/plugins/mission-ops/provas/snapshot-fast-01/run_e2e.py", "min_bytes": 1500, "_provenance": "report", "_source": "runner do E2E (1 comando)"},
+    {"path": "/root/.hermes/plugins/mission-ops/provas/snapshot-fast-01/live-readonly.json", "min_bytes": 500, "_provenance": "report", "_source": "snapshot ao vivo sem mutação (ledgers com hash igual)"}
+  ]
+}

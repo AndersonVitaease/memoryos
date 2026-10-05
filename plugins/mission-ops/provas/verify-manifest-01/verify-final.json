@@ -1,0 +1,232 @@
+{
+  "missionId": "verify-manifest-01",
+  "source": "manifest",
+  "verdict": "pass",
+  "llm_calls": 0,
+  "checks": [
+    {
+      "id": "P1-cmd-1",
+      "type": "cmd",
+      "ok": true,
+      "evidence": {
+        "run": "cd /root/.hermes/plugins/mission-ops && git status",
+        "exit": 0,
+        "expect": 0,
+        "tail": "ard-01.md\n\trelatorio-closer-madrugada-01.md\n\ttest_mission_ops.py.bak-20260927-gpu-down-fix\n\ttest_mission_resume.py\n\tvenv/\n\nnothing added to commit but untracked files present (use \"git add\" to track)\n"
+      },
+      "error": null
+    },
+    {
+      "id": "P2-cmd-2",
+      "type": "cmd",
+      "ok": true,
+      "evidence": {
+        "run": "cd /root/.hermes/plugins/mission-ops && docker inspect memoryos-eng-mcp",
+        "exit": 0,
+        "expect": 0,
+        "tail": "un/secrets/git-credentials\",\n                \"ENG_MCP_REPOSITORY_ID=memoryos\",\n                \"ENG_MCP_HOST=127.0.0.1\",\n                \"ENG_MCP_DEPLOY_SERVER_ID=LXzm3ZifF7EPwLaBUXt4H\",\n             "
+      },
+      "error": null
+    },
+    {
+      "id": "P3-service-1",
+      "type": "service",
+      "ok": true,
+      "evidence": {
+        "unit": "eng-mcp-release-runner",
+        "is-active": "active",
+        "is-enabled": "enabled"
+      },
+      "error": null
+    },
+    {
+      "id": "P4-file-1",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/opt/deliver-verify/verify.py",
+        "bytes": 17029,
+        "min_bytes": 500
+      },
+      "error": null
+    },
+    {
+      "id": "P5-file-2",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/root/.hermes/plugins/mission-ops/verify_author.py",
+        "bytes": 16089,
+        "min_bytes": 500
+      },
+      "error": null
+    },
+    {
+      "id": "P6-file-3",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/root/.hermes/plugins/mission-ops/__init__.py",
+        "bytes": 85945,
+        "min_bytes": 500
+      },
+      "error": null
+    },
+    {
+      "id": "P7-file-4",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/red.txt",
+        "bytes": 1453,
+        "min_bytes": 500
+      },
+      "error": null
+    },
+    {
+      "id": "P8-file-5",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/green.txt",
+        "bytes": 1152,
+        "min_bytes": 500
+      },
+      "error": null
+    },
+    {
+      "id": "P9-file-6",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/red-fragments.txt",
+        "bytes": 329,
+        "min_bytes": 329
+      },
+      "error": null
+    },
+    {
+      "id": "P10-file-7",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/suite-full.txt",
+        "bytes": 280,
+        "min_bytes": 280
+      },
+      "error": null
+    },
+    {
+      "id": "P11-file-8",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/root/.hermes/plugins/mission-ops/test_mission_resume.py",
+        "bytes": 1259,
+        "min_bytes": 500
+      },
+      "error": null
+    },
+    {
+      "id": "P12-file-9",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/opt/memoryos/eng-mcp/verify.json",
+        "bytes": 803,
+        "min_bytes": 500
+      },
+      "error": null
+    },
+    {
+      "id": "P13-file-10",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/live-refusal.json",
+        "bytes": 6652,
+        "min_bytes": 500
+      },
+      "error": null
+    },
+    {
+      "id": "P14-file-11",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/judge-deploy-01.verify.generated.json",
+        "bytes": 3295,
+        "min_bytes": 500
+      },
+      "error": null
+    },
+    {
+      "id": "P15-file-12",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/live-verify-generated.json",
+        "bytes": 6025,
+        "min_bytes": 500
+      },
+      "error": null
+    },
+    {
+      "id": "P16-file-13",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/selftest-load.txt",
+        "bytes": 112,
+        "min_bytes": 112
+      },
+      "error": null
+    },
+    {
+      "id": "P17-file-14",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/root/.hermes/plugins/mission-ops/smoke_mission_ops.py",
+        "bytes": 4884,
+        "min_bytes": 500
+      },
+      "error": null
+    },
+    {
+      "id": "P18-file-15",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/root/.hermes/plugins/mission-ops/test_verify_author.py",
+        "bytes": 13351,
+        "min_bytes": 500
+      },
+      "error": null
+    },
+    {
+      "id": "P19-file-16",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/dogfood-author.json",
+        "bytes": 17916,
+        "min_bytes": 500
+      },
+      "error": null
+    },
+    {
+      "id": "P20-file-17",
+      "type": "file",
+      "ok": true,
+      "evidence": {
+        "path": "/root/.hermes/plugins/mission-ops/RELATORIO-verify-manifest-01.md",
+        "bytes": 11122,
+        "min_bytes": 500
+      },
+      "error": null
+    }
+  ],
+  "ts": "2026-09-28T15:10:53Z",
+  "durationMs": 45
+}

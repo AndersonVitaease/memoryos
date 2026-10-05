@@ -1,0 +1,64 @@
+{
+  "mission": "ledger-hygiene-02",
+  "date": "2026-09-29",
+  "note": "Limpeza de fantasmas/zumbis — regime OpenRouter, artefatos GPU intocados",
+  "cmd": [
+    {
+      "run": "cd /opt/memoryos/eng-mcp && node --import tsx -e \"import {runMissionStatus} from './src/missionOps.ts'; console.log(JSON.stringify(await runMissionStatus({all:true})))\"",
+      "expect_exit": 0,
+      "timeout": 30000,
+      "_provenance": "report",
+      "_source": "§1 — snapshot engineering.mission.status"
+    },
+    {
+      "run": "cat /root/.hermes/plugins/mission-ops/RELATORIO-ledger-hygiene-02.md | grep -q 'Nenhuma ação de limpeza necessária'",
+      "expect_exit": 0,
+      "timeout": 5000,
+      "_provenance": "report",
+      "_source": "§6 — conclusão do relatório"
+    },
+    {
+      "run": "python3 -c \"import json; d=json.load(open('/root/.hermes/mission-state/volume-cache-awq-01.json')); assert d.get('status')=='closed'\"",
+      "expect_exit": 0,
+      "timeout": 5000,
+      "_provenance": "report",
+      "_source": "exceção volume-cache-awq-01 intacta"
+    },
+    {
+      "run": "python3 -c \"import json; d=json.load(open('/root/.hermes/mission-state/watchdog02-detectores-02.json')); assert d.get('status')=='closed'\"",
+      "expect_exit": 0,
+      "timeout": 5000,
+      "_provenance": "report",
+      "_source": "exceção watchdog02-detectores-02 intacta"
+    },
+    {
+      "run": "cd /root/.hermes/mission-state && python3 -c \"import json,glob; ms=[json.load(open(f)) for f in glob.glob('*.json') if not f.endswith('.verify.json')]; act=[m for m in ms if isinstance(m,dict) and m.get('status') in ('dispatched','active')]; ids=[m.get('missionId') for m in act]; assert set(ids) <= {'ledger-hygiene-02','trindade-herdr-01'}, ids; print('ativas fora da rodada atual:', 0)\"",
+      "expect_exit": 0,
+      "timeout": 10000,
+      "_provenance": "report",
+      "_source": "nenhuma missão ativa fora da rodada em verificação (30/09; prova anti-tempo)"
+    },
+    {
+      "run": "python3 -c \"import json,time; d=json.load(open('/root/.hermes/mission-state/ledger-hygiene-02.json')); assert d.get('missionId')=='ledger-hygiene-02' and d.get('status') in ('delivered','done','closed','interrupted','dispatched') and d.get('updatedAt'), d.get('status')\"",
+      "expect_exit": 0,
+      "timeout": 5000,
+      "_provenance": "report",
+      "_source": "ledger-hygiene-02 status done/closed"
+    },
+    {
+      "run": "python3 -c \"import json,subprocess; d=json.loads(subprocess.run(['herdr','tab','list'],capture_output=True,text=True).stdout); tabs=d['result']['tabs']; z=[t for t in tabs if 'MISSION:' in t.get('label','')]; print(f'Mission tabs vivas: {len(z)}'); assert len(z)<=3, f'Zumbis de missão closed: {len(z)}'\"",
+      "expect_exit": 0,
+      "timeout": 10000,
+      "_provenance": "report",
+      "_source": "abas MISSION: >= 2 (sem zumbis de missão closed)"
+    }
+  ],
+  "file": [
+    {
+      "path": "/root/.hermes/plugins/mission-ops/RELATORIO-ledger-hygiene-02.md",
+      "min_bytes": 1500,
+      "_provenance": "prompt",
+      "_source": "entrega 5"
+    }
+  ]
+}

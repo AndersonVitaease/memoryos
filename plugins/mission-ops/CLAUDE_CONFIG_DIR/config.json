@@ -1,0 +1,13 @@
+{
+  "auto_mode": true,
+  "api_key": "http://localhost:8102/8080",
+  "skip_welcome": true,
+  "mcpServers": {
+    "roles": {
+      "command": "node",
+      "args": [
+        "/opt/gpu-bridge/roles-mcp.mjs"
+      ]
+    }
+  }
+}

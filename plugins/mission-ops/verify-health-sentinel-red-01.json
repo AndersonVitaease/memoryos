@@ -1,0 +1,8 @@
+{
+  "mission": "health-sentinel-red-01",
+  "cmd": [
+    {"run": "python3 -c \"import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8103/health',timeout=10)); assert d.get('ok')==True and d.get('or')==True, d; print('bridge health ok', d.get('model'))\"", "expect_exit": 0},
+    {"run": "python3 -c \"import socket; s=socket.create_connection(('127.0.0.1',8103),timeout=5); s.close(); print('porta 8103 atendendo')\"", "expect_exit": 0}
+  ],
+  "file": [{"path": "/opt/memoryos/eng-mcp/RELATORIO-health-sentinel-fix-01.md"}]
+}

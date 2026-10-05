@@ -1,0 +1,10 @@
+c10dffd8dbe60b597199ba421f785eceeb75c24cb4c3143f6673733e1a9bd4ec  /opt/gpu-orchestrator/state.json
+orch-spool 30
+audit-gpu_down 18
+total 20
+drwxr-xr-x  2 root root 4096 2026-09-28 12:14:18.388324226 -0300 .
+drwx------ 14 root root 4096 2026-09-27 22:48:14.070657015 -0300 ..
+-rw-------  1 root root   64 2026-09-27 17:36:46.666801899 -0300 vast_api_key
+-rw-r--r--  1 root root    6 2026-09-26 09:56:42.458814856 -0300 vast_role
+-rw-------  1 root root   64 2026-09-28 12:14:18.388324226 -0300 vast_tfa_key
+tunnels 3

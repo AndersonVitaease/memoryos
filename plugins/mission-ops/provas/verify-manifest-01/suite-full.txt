@@ -1,0 +1,7 @@
+Running as unit: verify-manifest-suite.scope; invocation ID: 6e8f3225c0f548abbcb3ae4442a67102
+0::/system.slice/verify-manifest-suite.scope
+Ran 171 tests in 33.225s
+OK
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 0:33.33
+	Maximum resident set size (kbytes): 27108
+	Exit status: 0

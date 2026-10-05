@@ -1,0 +1,9 @@
+2e50d109bdbefff8cd0de022151ac8ea6f631d722d6ffa8bad346597025a5720  /root/.hermes/mission-state/events.jsonl
+129
+===
+----------------------------------------------------------------------
+Ran 145 tests in 323.380s
+
+OK
+
+[exited with code 0]

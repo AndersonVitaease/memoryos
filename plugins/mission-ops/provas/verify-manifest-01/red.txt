@@ -1,0 +1,20 @@
+test_existing_manifest_refused_without_force_and_untouched (test_verify_author.TestJudgeDeployFixture.test_existing_manifest_refused_without_force_and_untouched) ... ERROR
+test_generation_matches_hand_authored_manifest (test_verify_author.TestJudgeDeployFixture.test_generation_matches_hand_authored_manifest) ... ERROR
+test_inferred_fallback_for_uncited_report (test_verify_author.TestProvenance.test_inferred_fallback_for_uncited_report) ... ERROR
+test_provenance_and_safety (test_verify_author.TestProvenance.test_provenance_and_safety) ... ERROR
+Manifesto gerado roda no runner logo após gravar: prova falsa = check vermelho. ... ERROR
+test_dry_run_does_not_write (test_verify_author.TestRefusals.test_dry_run_does_not_write) ... ERROR
+test_no_ledger_no_cwd (test_verify_author.TestRefusals.test_no_ledger_no_cwd) ... ERROR
+test_no_report_refused_nothing_written (test_verify_author.TestRefusals.test_no_report_refused_nothing_written) ... ERROR
+test_overwrite_requires_force (test_verify_author.TestRefusals.test_overwrite_requires_force) ... ERROR
+KeyError: 'mission_verify_author'
+KeyError: 'mission_verify_author'
+AttributeError: 'NoneType' object has no attribute 'author'
+AttributeError: 'NoneType' object has no attribute 'author'
+KeyError: 'mission_verify_author'
+KeyError: 'mission_verify_author'
+KeyError: 'mission_verify_author'
+KeyError: 'mission_verify_author'
+KeyError: 'mission_verify_author'
+Ran 9 tests in 0.009s
+FAILED (errors=9)

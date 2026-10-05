@@ -1,0 +1,17 @@
+{
+  "mission": "TOOL-FAST-01",
+  "date": "2026-10-02",
+  "note": "Default verifySeconds 30->20 (plugin + eng-mcp src/dist) + telemetria de latencia por tool em /opt/mission-events/tool-latency.jsonl",
+  "cmd": [
+    {"run": "python3 -c \"import sys; sys.path.insert(0,'/root/.hermes/plugins/mission-ops'); import mission_core as mc; assert mc.NUDGE_VERIFY_S_DEFAULT==20; print('OK')\"", "expect_exit": 0},
+    {"run": "grep -c 'verifySeconds ?? 20' /opt/memoryos/eng-mcp/src/missionOps.ts /opt/memoryos/eng-mcp/dist/missionOps.js", "expect_exit": 0},
+    {"run": "grep -q mission_nudge /opt/mission-events/tool-latency.jsonl", "expect_exit": 0},
+    {"run": "/root/.hermes/plugins/mission-ops/venv/bin/python -m pytest /root/.hermes/plugins/mission-ops/test_mission_ops.py -q", "expect_exit": 0, "timeout": 120}
+  ],
+  "file": [
+    {"path": "/opt/mission-events/RELATORIO-tool-fast-01.md", "min_bytes": 800},
+    {"path": "/opt/mission-events/tool-latency.jsonl"},
+    {"path": "/root/.hermes/plugins/mission-ops/mission_core.py.bak-TOOL-FAST-01"},
+    {"path": "/root/.hermes/plugins/mission-ops/__init__.py.bak-TOOL-FAST-01"}
+  ]
+}

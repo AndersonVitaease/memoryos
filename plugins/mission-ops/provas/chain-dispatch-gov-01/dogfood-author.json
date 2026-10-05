@@ -1,0 +1,309 @@
+{
+ "ok": true,
+ "missionId": "chain-dispatch-gov-01",
+ "manifestPath": "/root/.hermes/plugins/mission-ops/verify.json",
+ "report": "/root/.hermes/plugins/mission-ops/RELATORIO-chain-dispatch-gov-01.md",
+ "prompt": "/root/.hermes/plugins/mission-ops/missao-chain-dispatch-gov-01.md",
+ "provenance": {
+  "report": 17,
+  "prompt": 1
+ },
+ "skipped": [
+  {
+   "candidate": "gateway run",
+   "reason": "fora da allowlist read-only: gateway",
+   "source": "RELATORIO-chain-dispatch-gov-01.md:12"
+  },
+  {
+   "candidate": "/root/.hermes/config.yaml",
+   "reason": "permissão restrita (possível segredo)",
+   "source": "RELATORIO-chain-dispatch-gov-01.md:16"
+  },
+  {
+   "candidate": "events.jsonl",
+   "reason": "não resolvido em cwd/diretórios citados",
+   "source": "RELATORIO-chain-dispatch-gov-01.md:21"
+  },
+  {
+   "candidate": "yaml disponível: False",
+   "reason": "fora da allowlist read-only: yaml",
+   "source": "RELATORIO-chain-dispatch-gov-01.md:65"
+  },
+  {
+   "candidate": "chain_depth_max = 1",
+   "reason": "fora da allowlist read-only: chain_depth_max",
+   "source": "RELATORIO-chain-dispatch-gov-01.md:66"
+  },
+  {
+   "candidate": "chain_depth 1/1",
+   "reason": "fora da allowlist read-only: chain_depth",
+   "source": "RELATORIO-chain-dispatch-gov-01.md:72"
+  },
+  {
+   "candidate": "basis \"pane w5:p1E\"",
+   "reason": "fora da allowlist read-only: basis",
+   "source": "RELATORIO-chain-dispatch-gov-01.md:72"
+  },
+  {
+   "candidate": "/opt/vast-volume-watch.",
+   "reason": "inexistente",
+   "source": "RELATORIO-chain-dispatch-gov-01.md:90"
+  },
+  {
+   "candidate": "provas/chain-dispatch-gov-01/dogfood-author.json",
+   "reason": "não resolvido em cwd/diretórios citados",
+   "source": "RELATORIO-chain-dispatch-gov-01.md:95"
+  },
+  {
+   "candidate": "provas/chain-dispatch-gov-01/verify-final.json",
+   "reason": "não resolvido em cwd/diretórios citados",
+   "source": "RELATORIO-chain-dispatch-gov-01.md:98"
+  },
+  {
+   "candidate": "judge-response.json",
+   "reason": "não resolvido em cwd/diretórios citados",
+   "source": "RELATORIO-chain-dispatch-gov-01.md:98"
+  },
+  {
+   "candidate": "capture-response.json",
+   "reason": "não resolvido em cwd/diretórios citados",
+   "source": "RELATORIO-chain-dispatch-gov-01.md:98"
+  },
+  {
+   "candidate": "cmd",
+   "reason": "unit inexistente no systemd",
+   "source": "missao-chain-dispatch-gov-01.md:16"
+  },
+  {
+   "candidate": "service",
+   "reason": "unit inexistente no systemd",
+   "source": "missao-chain-dispatch-gov-01.md:16"
+  },
+  {
+   "candidate": "file",
+   "reason": "unit inexistente no systemd",
+   "source": "missao-chain-dispatch-gov-01.md:16"
+  },
+  {
+   "candidate": "expect_exit",
+   "reason": "unit inexistente no systemd",
+   "source": "missao-chain-dispatch-gov-01.md:16"
+  },
+  {
+   "candidate": "mission_verify_author",
+   "reason": "unit inexistente no systemd",
+   "source": "missao-chain-dispatch-gov-01.md:16"
+  }
+ ],
+ "diff": "--- /root/.hermes/plugins/mission-ops/verify.json\n+++ /root/.hermes/plugins/mission-ops/verify.json (proposto)\n@@ -1,28 +1,24 @@\n {\n   \"cmd\": [\n-    {\"run\": \"cd /root/.hermes/plugins/mission-ops && git status\", \"expect_exit\": 0, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:55\"},\n-    {\"run\": \"cd /root/.hermes/plugins/mission-ops && docker inspect memoryos-eng-mcp\", \"expect_exit\": 0, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:60\"}\n-  ],\n-  \"service\": [\n-    {\"unit\": \"eng-mcp-release-runner\", \"expect\": \"active\", \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:31\"}\n+    {\"run\": \"/root/.hermes/plugins/mission-ops/evidence/chain-dispatch-gov-01/check-chain-gov.sh\", \"expect_exit\": 0, \"_provenance\": \"report\", \"_source\": \"RELATORIO-chain-dispatch-gov-01.md:93\"}\n   ],\n   \"file\": [\n-    {\"path\": \"/opt/deliver-verify/verify.py\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:3\"},\n-    {\"path\": \"/root/.hermes/plugins/mission-ops/verify_author.py\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:6\"},\n-    {\"path\": \"/root/.hermes/plugins/mission-ops/__init__.py\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:6\"},\n-    {\"path\": \"/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/red.txt\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:25\"},\n-    {\"path\": \"/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/green.txt\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:26\"},\n-    {\"path\": \"/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/red-fragments.txt\", \"min_bytes\": 329, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:26\"},\n-    {\"path\": \"/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/suite-full.txt\", \"min_bytes\": 280, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:53\"},\n-    {\"path\": \"/root/.hermes/plugins/mission-ops/test_mission_resume.py\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:55\"},\n-    {\"path\": \"/opt/memoryos/eng-mcp/verify.json\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:58\"},\n-    {\"path\": \"/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/live-refusal.json\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:58\"},\n-    {\"path\": \"/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/judge-deploy-01.verify.generated.json\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:59\"},\n-    {\"path\": \"/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/live-verify-generated.json\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:64\"},\n-    {\"path\": \"/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/selftest-load.txt\", \"min_bytes\": 112, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:70\"},\n-    {\"path\": \"/root/.hermes/plugins/mission-ops/smoke_mission_ops.py\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:71\"},\n-    {\"path\": \"/root/.hermes/plugins/mission-ops/test_verify_author.py\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:77\"},\n-    {\"path\": \"/root/.hermes/plugins/mission-ops/provas/verify-manifest-01/dogfood-author.json\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-verify-manifest-01.md:94\"},\n-    {\"path\": \"/root/.hermes/plugins/mission-ops/RELATORIO-verify-manifest-01.md\", \"min_bytes\": 500, \"_provenance\": \"prompt\", \"_source\": \"missao-verify-manifest-01.md:30\"}\n+    {\"path\": \"/root/.hermes/plugins/mission-ops/mission_core.py\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-chain-dispatch-gov-01.md:6\"},\n+    {\"path\": \"/root/.hermes/plugins/mission-ops/__init__.py\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-chain-dispatch-gov-01.md:6\"},\n+    {\"path\": \"/root/.hermes/plugins/mission-ops/test_mission_ops.py\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-chain-dispatch-gov-01.md:6\"},\n+    {\"path\": \"/root/.hermes/plugins/mission-ops/test_chain_dispatch.py\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-chain-dispatch-gov-01.md:6\"},\n+    {\"path\": \"/opt/mission-events/spool.jsonl\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-chain-dispatch-gov-01.md:21\"},\n+    {\"path\": \"/root/.hermes/plugins/mission-ops/provas/chain-dispatch-gov-01/red.txt\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-chain-dispatch-gov-01.md:25\"},\n+    {\"path\": \"/root/.hermes/plugins/mission-ops/provas/chain-dispatch-gov-01/green.txt\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-chain-dispatch-gov-01.md:25\"},\n+    {\"path\": \"/root/.hermes/plugins/mission-ops/provas/chain-dispatch-gov-01/suite-full.txt\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-chain-dispatch-gov-01.md:60\"},\n+    {\"path\": \"/root/.hermes/plugins/mission-ops/test_mission_resume.py\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-chain-dispatch-gov-01.md:62\"},\n+    {\"path\": \"/root/.hermes/tools/python-3.14.7+20260901-linux-x64/bin/python3.14\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-chain-dispatch-gov-01.md:65\"},\n+    {\"path\": \"/root/.hermes/plugins/mission-ops/provas/chain-dispatch-gov-01/selftest-live.txt\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-chain-dispatch-gov-01.md:65\"},\n+    {\"path\": \"/root/.hermes/plugins/mission-ops/provas/chain-dispatch-gov-01/live-spool-event.jsonl\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-chain-dispatch-gov-01.md:72\"},\n+    {\"path\": \"/root/.hermes/plugins/mission-ops/provas/chain-dispatch-gov-01/selftest-load.txt\", \"min_bytes\": 76, \"_provenance\": \"report\", \"_source\": \"RELATORIO-chain-dispatch-gov-01.md:78\"},\n+    {\"path\": \"/root/.hermes/plugins/mission-ops/provas/chain-dispatch-gov-01/smoke.txt\", \"min_bytes\": 9, \"_provenance\": \"report\", \"_source\": \"RELATORIO-chain-dispatch-gov-01.md:79\"},\n+    {\"path\": \"/root/.hermes/plugins/mission-ops/smoke_mission_ops.py\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-chain-dispatch-gov-01.md:79\"},\n+    {\"path\": \"/root/.hermes/plugins/mission-ops/evidence/chain-dispatch-gov-01/check-chain-gov.sh\", \"min_bytes\": 500, \"_provenance\": \"report\", \"_source\": \"RELATORIO-chain-dispatch-gov-01.md:93\"},\n+    {\"path\": \"/root/.hermes/plugins/mission-ops/RELATORIO-chain-dispatch-gov-01.md\", \"min_bytes\": 500, \"_provenance\": \"prompt\", \"_source\": \"missao-chain-dispatch-gov-01.md:28\"}\n   ]\n }\n",
+ "written": true,
+ "verify": {
+  "missionId": "chain-dispatch-gov-01",
+  "source": "manifest",
+  "verdict": "pass",
+  "llm_calls": 0,
+  "checks": [
+   {
+    "id": "P1-cmd-1",
+    "type": "cmd",
+    "ok": true,
+    "evidence": {
+     "run": "/root/.hermes/plugins/mission-ops/evidence/chain-dispatch-gov-01/check-chain-gov.sh",
+     "exit": 0,
+     "expect": 0,
+     "tail": "CHAIN-GOV OK 17\n"
+    },
+    "error": null
+   },
+   {
+    "id": "P2-file-1",
+    "type": "file",
+    "ok": true,
+    "evidence": {
+     "path": "/root/.hermes/plugins/mission-ops/mission_core.py",
+     "bytes": 47758,
+     "min_bytes": 500
+    },
+    "error": null
+   },
+   {
+    "id": "P3-file-2",
+    "type": "file",
+    "ok": true,
+    "evidence": {
+     "path": "/root/.hermes/plugins/mission-ops/__init__.py",
+     "bytes": 88576,
+     "min_bytes": 500
+    },
+    "error": null
+   },
+   {
+    "id": "P4-file-3",
+    "type": "file",
+    "ok": true,
+    "evidence": {
+     "path": "/root/.hermes/plugins/mission-ops/test_mission_ops.py",
+     "bytes": 94364,
+     "min_bytes": 500
+    },
+    "error": null
+   },
+   {
+    "id": "P5-file-4",
+    "type": "file",
+    "ok": true,
+    "evidence": {
+     "path": "/root/.hermes/plugins/mission-ops/test_chain_dispatch.py",
+     "bytes": 12296,
+     "min_bytes": 500
+    },
+    "error": null
+   },
+   {
+    "id": "P6-file-5",
+    "type": "file",
+    "ok": true,
+    "evidence": {
+     "path": "/opt/mission-events/spool.jsonl",
+     "bytes": 1575473,
+     "min_bytes": 500
+    },
+    "error": null
+   },
+   {
+    "id": "P7-file-6",
+    "type": "file",
+    "ok": true,
+    "evidence": {
+     "path": "/root/.hermes/plugins/mission-ops/provas/chain-dispatch-gov-01/red.txt",
+     "bytes": 17814,
+     "min_bytes": 500
+    },
+    "error": null
+   },
+   {
+    "id": "P8-file-7",
+    "type": "file",
+    "ok": true,
+    "evidence": {
+     "path": "/root/.hermes/plugins/mission-ops/provas/chain-dispatch-gov-01/green.txt",
+     "bytes": 2157,
+     "min_bytes": 500
+    },
+    "error": null
+   },
+   {
+    "id": "P9-file-8",
+    "type": "file",
+    "ok": true,
+    "evidence": {
+     "path": "/root/.hermes/plugins/mission-ops/provas/chain-dispatch-gov-01/suite-full.txt",
+     "bytes": 1663,
+     "min_bytes": 500
+    },
+    "error": null
+   },
+   {
+    "id": "P10-file-9",
+    "type": "file",
+    "ok": true,
+    "evidence": {
+     "path": "/root/.hermes/plugins/mission-ops/test_mission_resume.py",
+     "bytes": 1259,
+     "min_bytes": 500
+    },
+    "error": null
+   },
+   {
+    "id": "P11-file-10",
+    "type": "file",
+    "ok": true,
+    "evidence": {
+     "path": "/root/.hermes/tools/python-3.14.7+20260901-linux-x64/bin/python3.14",
+     "bytes": 115747328,
+     "min_bytes": 500
+    },
+    "error": null
+   },
+   {
+    "id": "P12-file-11",
+    "type": "file",
+    "ok": true,
+    "evidence": {
+     "path": "/root/.hermes/plugins/mission-ops/provas/chain-dispatch-gov-01/selftest-live.txt",
+     "bytes": 775,
+     "min_bytes": 500
+    },
+    "error": null
+   },
+   {
+    "id": "P13-file-12",
+    "type": "file",
+    "ok": true,
+    "evidence": {
+     "path": "/root/.hermes/plugins/mission-ops/provas/chain-dispatch-gov-01/live-spool-event.jsonl",
+     "bytes": 580,
+     "min_bytes": 500
+    },
+    "error": null
+   },
+   {
+    "id": "P14-file-13",
+    "type": "file",
+    "ok": true,
+    "evidence": {
+     "path": "/root/.hermes/plugins/mission-ops/provas/chain-dispatch-gov-01/selftest-load.txt",
+     "bytes": 76,
+     "min_bytes": 76
+    },
+    "error": null
+   },
+   {
+    "id": "P15-file-14",
+    "type": "file",
+    "ok": true,
+    "evidence": {
+     "path": "/root/.hermes/plugins/mission-ops/provas/chain-dispatch-gov-01/smoke.txt",
+     "bytes": 9,
+     "min_bytes": 9
+    },
+    "error": null
+   },
+   {
+    "id": "P16-file-15",
+    "type": "file",
+    "ok": true,
+    "evidence": {
+     "path": "/root/.hermes/plugins/mission-ops/smoke_mission_ops.py",
+     "bytes": 4884,
+     "min_bytes": 500
+    },
+    "error": null
+   },
+   {
+    "id": "P17-file-16",
+    "type": "file",
+    "ok": true,
+    "evidence": {
+     "path": "/root/.hermes/plugins/mission-ops/evidence/chain-dispatch-gov-01/check-chain-gov.sh",
+     "bytes": 776,
+     "min_bytes": 500
+    },
+    "error": null
+   },
+   {
+    "id": "P18-file-17",
+    "type": "file",
+    "ok": true,
+    "evidence": {
+     "path": "/root/.hermes/plugins/mission-ops/RELATORIO-chain-dispatch-gov-01.md",
+     "bytes": 10058,
+     "min_bytes": 500
+    },
+    "error": null
+   }
+  ],
+  "ts": "2026-09-28T15:31:31Z",
+  "durationMs": 183
+ }
+}

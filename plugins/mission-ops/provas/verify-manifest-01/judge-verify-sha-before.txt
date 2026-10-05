@@ -1,0 +1,1 @@
+5d2461585ed470ba382f9a8a71c0988b24fda8543cd7fda3554a69a84ae367a9  /opt/memoryos/eng-mcp/verify.json

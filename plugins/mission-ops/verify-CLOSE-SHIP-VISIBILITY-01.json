@@ -1,0 +1,34 @@
+{
+  "mission": "CLOSE-SHIP-VISIBILITY-01",
+  "owner": "CLOSE-SHIP-VISIBILITY-01",
+  "date": "2026-10-03",
+  "note": "Guard 'merged?' (classify_ship) + auto-despacho SHIP consciente de voos. Suítes pesadas via systemd-run --scope isolado (nunca no cgroup herdr). Suítes test_batch_e2e/test_contract_recover ficam FORA da prova: falham no HEAD limpo também (preexistentes, provado via worktree temporário; dívida documentada no RELATORIO).",
+  "cmd": [
+    {
+      "run": "cd /root/.hermes/plugins/mission-ops && systemd-run --scope --unit=cs-verify-a-$(date +%s) -- bash -c 'cd /root/.hermes/plugins/mission-ops && python3 -m unittest test_close_ship test_close_commit_guard 2>&1' | tail -3",
+      "expect_exit": 0,
+      "timeout": 180,
+      "evidence_tail": "Ran 33 tests in 1.560s\n\nOK"
+    },
+    {
+      "run": "cd /root/.hermes/plugins/mission-ops && systemd-run --scope --unit=cs-verify-b-$(date +%s) -- bash -c 'cd /root/.hermes/plugins/mission-ops && python3 -m unittest test_mission_ops test_mission_ops_guard test_close_verify_path 2>&1' | tail -3",
+      "expect_exit": 0,
+      "timeout": 300,
+      "evidence_tail": "Ran 164 tests in 32.834s\n\nOK"
+    },
+    {
+      "run": "cd /root/.hermes/plugins/mission-ops && systemd-run --scope --unit=cs-verify-c-$(date +%s) -- bash -c 'cd /root/.hermes/plugins/mission-ops && python3 test_close_ship.py TestCloseWiring.test_unshipped_e2e_real_dispatch TestCloseWiring.test_window_opens_when_flight_lands 2>&1' | tail -3",
+      "expect_exit": 0,
+      "timeout": 120,
+      "evidence_tail": "Ran 2 tests in 0.210s\n\nOK"
+    }
+  ],
+  "file": [
+    { "path": "/root/.hermes/plugins/mission-ops/close_ship.py", "min_bytes": 4000 },
+    { "path": "/root/.hermes/plugins/mission-ops/test_close_ship.py", "min_bytes": 8000 },
+    { "path": "/root/.hermes/plugins/mission-ops/provas/close-ship-visibility-01/suite-close-ship.txt", "min_bytes": 200 },
+    { "path": "/root/.hermes/plugins/mission-ops/provas/close-ship-visibility-01/e2e.txt", "min_bytes": 100 },
+    { "path": "/root/.hermes/plugins/mission-ops/provas/close-ship-visibility-01/suite-full.txt", "min_bytes": 800 },
+    { "path": "/root/.hermes/plugins/mission-ops/RELATORIO-CLOSE-SHIP-VISIBILITY-01.md", "min_bytes": 1500 }
+  ]
+}

@@ -1,0 +1,12 @@
+E2E-RD-OBEY-02 (A): violação forçada — close sem relatório entregável
+  [OK] 1. finding tipado na resposta ['violates-obligation-O1']
+  [OK] 2. finding `violates-obligation-O1` no bus 
+  [OK] 3. dívida tipada obedience {"debtId": "DEBT-6870d98d", "tipo": "obedience", "prio": 1, "status": "queued"}
+  [OK] 4. intent dispatch_mission AUTOMÁTICO na fila priority=1
+  [OK] 5. score desce (violacoesPorOrdem O1:1, ordensCumpridas 4/5) {"violacoesPorOrdem": {"O1": 1}, "ordensCumpridas": 4, "pctOrdensCumpridas": 80.0}
+  [OK] 6. dedupe: 1 dívida, 1 intent (nada de spam na fila) 
+E2E-RD-OBEY-02 (B): caminho feliz — ack de sessão nova + zero violação = 100%
+  [OK] 7. sup_ack com hash (sem obligation_stale) hash=90ac83209f5531c5
+  [OK] 8. score 100% (ordensCumpridas 5/5, violações 0) 
+  [OK] 9. ack/stale no payload do score (painel do operator) 
+E2E-RD-OBEY-02: 9/9 checks — TODOS OK

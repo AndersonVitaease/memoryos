@@ -1,0 +1,16 @@
+{
+  "mission": "mission-list-compact-default-01",
+  "date": "2026-09-28",
+  "note": "manifesto por missão (padrão verify-<missionId>.json); não substitui o verify.json de outra missão no cwd",
+  "cmd": [
+    {"run": "/root/.hermes/plugins/mission-ops/evidence/mission-list-compact-default-01/check-compact-default.sh", "expect_exit": 0, "timeout": 120, "_provenance": "report", "_source": "RELATORIO-mission-list-compact-default-01.md §3"},
+    {"run": "cd /root/.hermes/plugins/mission-ops && git merge-base --is-ancestor c2a7d7c HEAD", "expect_exit": 0, "_provenance": "report", "_source": "commit c2a7d7c"},
+    {"run": "grep -q '224 tests' /root/.hermes/plugins/mission-ops/provas/mission-list-compact-default-01/suite-full.txt && grep -qx OK /root/.hermes/plugins/mission-ops/provas/mission-list-compact-default-01/suite-full.txt", "expect_exit": 0, "_provenance": "report", "_source": "suíte 224/224"}
+  ],
+  "file": [
+    {"path": "/root/.hermes/plugins/mission-ops/RELATORIO-mission-list-compact-default-01.md", "min_bytes": 1500, "_provenance": "prompt", "_source": "entrega 5"},
+    {"path": "/root/.hermes/plugins/mission-ops/test_mission_list_compact_default.py", "min_bytes": 1500, "_provenance": "report", "_source": "testes novos"},
+    {"path": "/root/.hermes/plugins/mission-ops/provas/mission-list-compact-default-01/medicao-viva.txt", "min_bytes": 300, "_provenance": "prompt", "_source": "entrega 2"},
+    {"path": "/root/.hermes/plugins/mission-ops/provas/mission-list-compact-default-01/red.txt", "min_bytes": 200, "_provenance": "report", "_source": "red"}
+  ]
+}

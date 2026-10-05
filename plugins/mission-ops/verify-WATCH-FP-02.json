@@ -1,0 +1,15 @@
+{
+  "mission": "WATCH-FP-02",
+  "cmd": [
+    {"run": "cd /opt/gpu-watchdog && PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin timeout 60 python3 test_watchdog_watch_fp_02.py", "timeout": 60, "expect_exit": 0},
+    {"run": "cd /opt/gpu-watchdog && PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin timeout 300 python3 -m unittest test_watchdog_02 test_watchdog_02b test_watchdog_d9 test_watchdog_infra test_orchestrator_gate_reval_01 test_watchdog_permdialog test_watchdog_permdialog_01c test_watchdog_detectores_02 test_watchdog_banner_guard_02 test_watchdog_pause_01 test_watchdog_wd_fp_01", "timeout": 300, "expect_exit": 0},
+    {"run": "cd /root/.hermes/plugins/mission-ops && PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin timeout 120 python3 test_mission_ops.py", "timeout": 120, "expect_exit": 0},
+    {"run": "cd /root/.hermes/plugins/mission-ops && PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin md5sum .claude-config/projects/-root--hermes-plugins-mission-ops/memory/watch-fp-02-stall-progress.md", "timeout": 30, "expect_exit": 0}
+  ],
+  "file": [
+    {"path": "/opt/gpu-watchdog/watchdog.py", "min_bytes": 150000},
+    {"path": "/opt/gpu-watchdog/watchdog.py.bak-WATCH-FP-02", "min_bytes": 150000},
+    {"path": "/opt/gpu-watchdog/test_watchdog_watch_fp_02.py", "min_bytes": 5000},
+    {"path": "/root/.hermes/plugins/mission-ops/RELATORIO-WATCH-FP-02.md", "min_bytes": 1000}
+  ]
+}

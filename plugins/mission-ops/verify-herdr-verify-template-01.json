@@ -1,0 +1,26 @@
+{
+  "mission": "herdr-verify-template-01",
+  "date": "2026-09-29",
+  "note": "Cláusula de verify.json tipado no DISPATCH_TEMPLATE + teste de render. Suíte verde.",
+  "cmd": [
+    {
+      "run": "cd /root/.hermes/plugins/mission-ops && python3 test_mission_ops.py",
+      "expect_exit": 0,
+      "timeout": 120
+    },
+    {
+      "run": "grep -c 'mission_verify' /root/.hermes/plugins/mission-ops/mission_core.py",
+      "expect_exit": 0
+    },
+    {
+      "run": "grep -c '\"run\"' /root/.hermes/plugins/mission-ops/mission_core.py",
+      "expect_exit": 0
+    }
+  ],
+  "file": [
+    {
+      "path": "/root/.hermes/plugins/mission-ops/RELATORIO-herdr-verify-template-01.md",
+      "min_bytes": 200
+    }
+  ]
+}

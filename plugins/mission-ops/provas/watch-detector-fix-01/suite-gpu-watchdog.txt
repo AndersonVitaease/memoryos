@@ -1,0 +1,22 @@
+FF.................................................................................
+======================================================================
+FAIL: test_detector_error_repetition (test_gpu_watchdog.TestGPUDetectors.test_detector_error_repetition)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/opt/gpu-watchdog/test_gpu_watchdog.py", line 27, in test_detector_error_repetition
+    self.assertIn(b'Sending nudge for error repetition: Error writing file', stdout)
+AssertionError: b'Sending nudge for error repetition: Error writing file' not found in b''
+
+======================================================================
+FAIL: test_detector_idle (test_gpu_watchdog.TestGPUDetectors.test_detector_idle)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/opt/gpu-watchdog/test_gpu_watchdog.py", line 17, in test_detector_idle
+    self.assertIn(b'Sending nudge for mission example_mission_id:', stdout)
+AssertionError: b'Sending nudge for mission example_mission_id:' not found in b''
+
+----------------------------------------------------------------------
+Ran 83 tests in 9.621s
+
+FAILED (failures=2)
+EXIT=1

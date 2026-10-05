@@ -1,0 +1,12 @@
+== estado real (snapshot 2026-09-28T12:48:00Z de /root/.hermes/mission-state, backup sha256 7cc77769...) ==
+old(df446c4|HEAD|fix) old registros=118 unicos=110 dupes=8 compact_list=836B compact_status=736B
+cur(df446c4|HEAD|fix) cur registros=110 unicos=110 dupes=0 compact_list=806B compact_status=706B
+new(df446c4|HEAD|fix) new registros=110 unicos=110 dupes=0 compact_list=806B compact_status=706B
+== full=true: pré-fix rodado SEM os 8 .verify.json vs fix rodado COM eles ==
+status_full BYTE-IGUAL sha256=c2259319e752e7e4ca973ed3ef86eb8deab7bfdb0a828d841dd985652da9ae3c
+list_full BYTE-IGUAL sha256=6b7f4a53408592ad9557809205134dcc65a9dbdded707d46c5c7bb69d4f91c43
+== afim (<id>.bak.json) no estado real ==
+HEAD cur registros=111 unicos=110 dupes=1 compact_list=806B compact_status=706B
+fix  new registros=110 unicos=110 dupes=0 compact_list=806B compact_status=706B
+== ledger_history() no estado real ==
+8 {"guardian-compute-recovery-01": ["guardian-compute-recovery-01.verify.json"], "guardian-compute-v11-01": ["guardian-compute-v11-01.verify.json"], "guardian-compute-v11-ship-01": ["guardian-compute-v11-ship-01.verify.json"], "judge-restore-01": ["judge-restore-01.verify.json"], "merge-lane2-01": ["merge-lane2-01.verify.json"], "watchdog-02b": ["watchdog-02b.verify.json"], "watchdog-d9-catloop-01": ["watchdog-d9-catloop-01.verify.json"], "watchdog-lane2-01": ["watchdog-lane2-01.verify.json"]}
