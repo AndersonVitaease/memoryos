@@ -7,7 +7,7 @@
 // JSON) with the REAL server + REAL unix socket.
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, existsSync, readFileSync, rmSync, writeFileSync, chmodSync } from "node:fs";
+import { mkdtempSync, existsSync, readFileSync, rmSync, writeFileSync, chmodSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
@@ -399,6 +399,24 @@ describe("socket integration — REAL server, REAL unix socket", () => {
         await server.close();
       }
       assert.equal(existsSync(server.socketPath), false, "socket file is removed on close");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("socket integrado nasce 0600 (RD-SEC-SURFACE-01: sem bit de grupo)", async () => {
+    const dir = tmp();
+    try {
+      const server = await startHostOpsAgent({
+        socketPath: join(dir, "agent.sock"),
+        deps: { catalog: { ok: true, catalog: AGENT_CATALOG, sha16: "d".repeat(16) }, auditFile: join(dir, "agent-audit.jsonl") }
+      });
+      try {
+        const mode = statSync(server.socketPath).mode & 0o777;
+        assert.equal(mode, 0o600, "socket deve ser 0600 owner eng-mcp-host-ops — sem rota lateral de grupo");
+      } finally {
+        await server.close();
+      }
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
