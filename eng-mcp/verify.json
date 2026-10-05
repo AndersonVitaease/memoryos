@@ -1,0 +1,11 @@
+{
+  "file": [
+    {"path": "/opt/mission-events/ship-8d9ec634-test.json", "min_bytes": 500, "_provenance": "report", "_source": "RELATORIO-SHIP-ENG-MCP-8D9EC634-01.md:16"},
+    {"path": "/opt/mission-events/ship-8d9ec634-build.json", "min_bytes": 500, "_provenance": "report", "_source": "RELATORIO-SHIP-ENG-MCP-8D9EC634-01.md:17"},
+    {"path": "/opt/mission-events/ship-8d9ec634-candidate.json", "min_bytes": 500, "_provenance": "report", "_source": "RELATORIO-SHIP-ENG-MCP-8D9EC634-01.md:18"},
+    {"path": "/opt/mission-events/ship-8d9ec634-deploy.json", "min_bytes": 103, "_provenance": "report", "_source": "RELATORIO-SHIP-ENG-MCP-8D9EC634-01.md:19"},
+    {"path": "/opt/mission-events/ship-8d9ec634-status.json", "min_bytes": 315, "_provenance": "report", "_source": "RELATORIO-SHIP-ENG-MCP-8D9EC634-01.md:20"},
+    {"path": "/opt/mission-events/ship-8d9ec634-smoke.json", "min_bytes": 500, "_provenance": "report", "_source": "RELATORIO-SHIP-ENG-MCP-8D9EC634-01.md:21"},
+    {"path": "/opt/memoryos/eng-mcp/RELATORIO-SHIP-ENG-MCP-8D9EC634-01.md", "min_bytes": 500, "_provenance": "inferred", "_source": "runner:relatorio"}
+  ]
+}
