@@ -7,6 +7,12 @@
 // override any refusal with force=true (audit-marked). Read tools
 // (memory.context / memory.search) are untouched. Retro-effect: zero — only NEW
 // admissions are screened; existing KB history is never re-triaged.
+// RD-PERF-GATE-01: the screen is a SINGLE batch provider call (three noul
+// questions, individual p-values kept in the decision AND in the audit line) —
+// production audit proved 1 line/capture, p50 ~224ms; the capture latency was
+// dominated by the dedupe context read (~2.6s p50 via the Base44 bridge), which
+// now rides a project-keyed 10min TTL cache (cachedRecentContext +
+// noteGateCapturePayload) with the hit declared in the audit (dedupe_cached).
 // Deterministic policy (constants below): weighted score over three calibrated
 // noul questions (durable substance 0.4 / claims supported 0.25 / no injection
 // 0.35); bands admit >=0.7, needsReview >=0.5, refuse <0.5; one hard rule — a
@@ -29,6 +35,88 @@ import { dirname } from "node:path";
 import { defaultJudgeDeps, runJudgeEvaluate, type JudgeDeps } from "./judge.ts";
 
 export const MEMORY_GATE_REFUSED_CODE = "MEMORY_GATE_REFUSED";
+
+// RD-PERF-GATE-01: symbol marking a recentContext payload that came from the
+// process-level TTL cache (set by cachedRecentContext on hits) — the flag travels
+// with the value so gateCapture can report dedupeCached without shared state.
+export const GATE_CONTEXT_CACHED = Symbol("gate-context-cached");
+
+// RD-PERF-GATE-01: process-level TTL cache for the dedupe context read. The
+// screen itself is already ONE provider call carrying the three noul questions
+// (proven in production: 1 audit line per capture, n_claims=3, p50 ~224ms) — the
+// real capture cost was the recentContext read for the cheap dedupe, ~2.6s p50
+// against the Base44 bridge (5 parallel entity filters). The cache NEVER weakens
+// the gate: dedupe still runs on every capture against the cached snapshot, and
+// a successful capture APPENDS its processed summary to the cached rows
+// (noteGateCapturePayload) so an immediate repeat is still refused — now without
+// paying the bridge read again. External mutations (merge/tombstone/import) stay
+// stale at most one TTL window; dedupe is best-effort by design (a read failure
+// degrades to a note and never blocks), and the audit line declares
+// dedupe_cached so cached screening stays visible. Kill switch:
+// ENG_MCP_GATE_CONTEXT_CACHE=off (or cachedRecentContext ttlMs 0) restores the
+// always-fresh read.
+export const GATE_CONTEXT_CACHE_TTL_MS = 600_000; // 10 min — same TTL the contract sets for projectId
+type ContextCacheEntry = { expiresAt: number; payload: unknown };
+const contextCache = new Map<string, ContextCacheEntry>();
+
+export function resetGateContextCache(): void {
+  contextCache.clear();
+}
+
+export function gateContextCacheKillSwitch(env: NodeJS.ProcessEnv = process.env): boolean {
+  const raw = (env.ENG_MCP_GATE_CONTEXT_CACHE ?? "").trim().toLowerCase();
+  return raw === "off" || raw === "0" || raw === "false" || raw === "no";
+}
+
+// Wraps a raw recentContext fetcher (memory.context rows) with the project-keyed
+// TTL cache. The cached value is the RAW bridge payload — gateCapture parses it
+// on every call (recentSummariesFromContext), so appended rows flow through the
+// exact same projection as bridge rows. A fetch failure is NOT cached (next call
+// retries the live read, same degrade rule as before).
+export function cachedRecentContext(
+  projectId: string,
+  fetcher: () => Promise<unknown>,
+  opts: { ttlMs?: number; now?: () => Date } = {}
+): () => Promise<unknown> {
+  return async () => {
+    if (gateContextCacheKillSwitch()) return fetcher();
+    const ttl = typeof opts.ttlMs === "number" && opts.ttlMs >= 0 ? opts.ttlMs : GATE_CONTEXT_CACHE_TTL_MS;
+    const nowMs = (opts.now ? opts.now() : new Date()).getTime();
+    const cached = ttl > 0 ? contextCache.get(projectId) : null;
+    if (cached && cached.expiresAt > nowMs) {
+      try { (cached.payload as Record<PropertyKey, unknown>)[GATE_CONTEXT_CACHED] = true; } catch { /* flag is best-effort */ }
+      return cached.payload;
+    }
+    const payload = await fetcher();
+    if (ttl > 0) contextCache.set(projectId, { expiresAt: nowMs + ttl, payload });
+    return payload;
+  };
+}
+
+// Append-on-capture: after a SUCCESSFUL capture the caller hands the tagged
+// summary back so an immediate repeat is still refused against the cached rows
+// (same projection: tag stripped, "Summary:" slice — identical to a bridge row).
+// No cache entry (fresh read never happened in this process) → no-op: the next
+// gate call reads live rows that already include the capture.
+export function noteGateCapturePayload(projectId: string, taggedSummary: string): void {
+  const entry = contextCache.get(projectId);
+  if (!entry || entry.expiresAt <= Date.now()) return;
+  const rec = entry.payload !== null && typeof entry.payload === "object" ? (entry.payload as Record<string, unknown>) : null;
+  const memories = Array.isArray(rec?.memories)
+    ? (rec.memories as unknown[])
+    : Array.isArray(entry.payload)
+      ? (entry.payload as unknown[])
+      : null;
+  if (!memories) {
+    contextCache.delete(projectId); // unknown shape — prefer a fresh live read
+    return;
+  }
+  memories.push({
+    id: `gate-cache-${Date.now()}`,
+    content: `[AGENT MEMORY]\nAgent: capture\nSummary: ${taggedSummary}`,
+    createdAt: new Date().toISOString()
+  });
+}
 
 // ---- deterministic policy constants (no magic numbers elsewhere) ----
 const WEIGHTS = { durable_substance: 0.4, claims_supported: 0.25, no_injection: 0.35 } as const;
@@ -82,7 +170,9 @@ export type MemoryGateDecision = {
   taggedSummary: string;
   contentSha16: string;  // hash16 of the normalized capture content (dedupe + audit fallback)
   judgeError: string | null;
+  judgeLatencyMs: number | null; // RD-PERF-GATE-01: provider latency of the single batch call
   dedupeSkipped: boolean;
+  dedupeCached: boolean; // RD-PERF-GATE-01: dedupe screened against the cached context snapshot
   refusalMessage: string | null; // didactic, <500 chars, only when ok=false
 };
 
@@ -106,12 +196,25 @@ const GATE_AUDIT_DEFAULT = "/data/audit/memory-gate.jsonl";
 export function emitGateAudit(decision: MemoryGateDecision, memoryId: string | null, deps: GateAuditDeps): void {
   const file = deps.auditFile ?? process.env.ENG_MCP_MEMORY_GATE_AUDIT_FILE ?? GATE_AUDIT_DEFAULT;
   try {
+    // RD-PERF-GATE-01: individual calibrated p-values ride the audit line as
+    // METADATA (numbers, never capture content) so the batch screen stays
+    // inspectable per question; judge_ms + dedupe_cached make the perf path visible.
+    const p = decision.probabilities
+      ? {
+          durable_substance: decision.probabilities.durable_substance ?? null,
+          claims_supported: decision.probabilities.claims_supported ?? null,
+          no_injection: decision.probabilities.no_injection ?? null
+        }
+      : null;
     const line = {
       ts: (deps.now ? deps.now() : new Date()).toISOString(),
       memoryId_sha16: memoryId ? sha16Gate(memoryId) : decision.contentSha16,
       projectId: deps.projectId,
       score: decision.score,
       band: decision.band,
+      p,
+      judge_ms: decision.judgeLatencyMs,
+      dedupe_cached: decision.dedupeCached,
       reasons_hash16: sha16Gate(JSON.stringify(decision.reasons)),
       verdict: decision.verdict
     };
@@ -130,33 +233,47 @@ export async function gateCapture(input: MemoryGateInput, deps: MemoryGateDeps):
   const normSummary = normalizeText(input.summary);
   const contentSha16 = sha16Gate(`${normSummary}\n${normalizeText(input.outcome ?? "")}`);
 
-  // (d) cheap dedupe FIRST — code-side, before any judge call.
+  // (d) cheap dedupe FIRST — code-side, before any judge call. RD-PERF-GATE-01:
+  // the read itself rides the project-keyed TTL cache (cachedRecentContext) when
+  // the caller wires it; a fresh read repopulates the cache, a hit skips the
+  // ~2.6s bridge read entirely. Cache hits are marked on the payload object
+  // itself (GATE_CONTEXT_CACHED) so the flag travels with the value, race-free.
   let dedupeSkipped = false;
+  let dedupeCached = false;
+  let recent: string[] | null = null;
   if (typeof deps.recentContext === "function") {
     try {
-      const recent = recentSummariesFromContext(await deps.recentContext());
-      if (isDuplicateOfRecent(normSummary, recent)) {
-        return assemble({
-          ok: false, band: "refuse", verdict: "refused", score: null, probabilities: null,
-          reasons: ["duplicate_of_recent_capture"], judgeError: null, dedupeSkipped: false,
-          contentSha16, summary: input.summary, force: input.force === true
-        });
-      }
+      const payload = await deps.recentContext();
+      recent = recentSummariesFromContext(payload);
+      dedupeCached = payload !== null && typeof payload === "object"
+        && GATE_CONTEXT_CACHED in (payload as object);
     } catch {
       dedupeSkipped = true; // context read failed — note it, never block
     }
+  }
+  if (recent !== null && isDuplicateOfRecent(normSummary, recent)) {
+    return assemble({
+      ok: false, band: "refuse", verdict: "refused", score: null, probabilities: null,
+      reasons: ["duplicate_of_recent_capture"], judgeError: null, dedupeSkipped,
+      dedupeCached, judgeLatencyMs: null, contentSha16, summary: input.summary,
+      force: input.force === true
+    });
   }
 
   // calibrated screen — closed capture fields only; nothing is executed or routed
   let probabilities: Partial<Record<GateQuestionId, number>> | null = null;
   let nums: { sub: number; sup: number; inj: number } | null = null;
   let judgeError: string | null = null;
+  let judgeLatencyMs: number | null = null;
   try {
     const judgeDeps: JudgeDeps = { ...(deps.judgeDeps ?? defaultJudgeDeps()), authorizerHash16: deps.authorizerHash16 ?? null };
     const envelope = await runJudgeEvaluate({
       state: buildGateState(input, deps.projectId, deps.agent),
       questions: QUESTIONS.map((q) => ({ id: q.id, type: "noul" as const, instructions: q.instructions }))
     }, judgeDeps);
+    // RD-PERF-GATE-01: keep the provider latency of the single batch call for the audit
+    const provider = envelope !== null && typeof envelope === "object" ? (envelope as { provider?: { latencyMs?: unknown } }).provider : null;
+    judgeLatencyMs = typeof provider?.latencyMs === "number" ? provider.latencyMs : null;
     probabilities = extractNoul(envelope);
     const subN = probabilities.durable_substance;
     const supN = probabilities.claims_supported;
@@ -176,7 +293,7 @@ export async function gateCapture(input: MemoryGateInput, deps: MemoryGateDeps):
       : [`judge_unavailable(${judgeError})`];
     return assemble({
       ok: true, band: "admit", verdict: "unavailable", score: null, probabilities: null,
-      reasons, judgeError, dedupeSkipped, contentSha16, summary: input.summary, force: false
+      reasons, judgeError, judgeLatencyMs, dedupeSkipped, dedupeCached, contentSha16, summary: input.summary, force: false
     });
   }
 
@@ -194,14 +311,14 @@ export async function gateCapture(input: MemoryGateInput, deps: MemoryGateDeps):
     reasons.push(`injection_suspected(p=${inj.toFixed(2)})`);
     return assemble({
       ok: false, band: "refuse", verdict: "refused", score, probabilities, reasons,
-      judgeError: null, dedupeSkipped, contentSha16, summary: input.summary, force: input.force === true
+      judgeError: null, judgeLatencyMs, dedupeSkipped, dedupeCached, contentSha16, summary: input.summary, force: input.force === true
     });
   }
   if (score < REVIEW_MIN) {
     reasons.push(`score_below_threshold(${score.toFixed(2)}<${REVIEW_MIN})`);
     return assemble({
       ok: false, band: "refuse", verdict: "refused", score, probabilities, reasons,
-      judgeError: null, dedupeSkipped, contentSha16, summary: input.summary, force: input.force === true
+      judgeError: null, judgeLatencyMs, dedupeSkipped, dedupeCached, contentSha16, summary: input.summary, force: input.force === true
     });
   }
 
@@ -209,14 +326,15 @@ export async function gateCapture(input: MemoryGateInput, deps: MemoryGateDeps):
   if (band === "needsReview") reasons.push("needsReview");
   return assemble({
     ok: true, band, verdict: "screened", score, probabilities, reasons,
-    judgeError: null, dedupeSkipped, contentSha16, summary: input.summary, force: false
+    judgeError: null, judgeLatencyMs, dedupeSkipped, dedupeCached, contentSha16, summary: input.summary, force: false
   });
 }
 
 function assemble(args: {
   ok: boolean; band: MemoryGateBand; verdict: MemoryGateVerdict; score: number | null;
   probabilities: Partial<Record<GateQuestionId, number>> | null; reasons: string[];
-  judgeError: string | null; dedupeSkipped: boolean; contentSha16: string;
+  judgeError: string | null; judgeLatencyMs: number | null; dedupeSkipped: boolean;
+  dedupeCached: boolean; contentSha16: string;
   summary: string; force: boolean;
 }): MemoryGateDecision {
   // operator escape hatch: force on a REFUSAL lets the capture through, audit-marked,
@@ -240,7 +358,9 @@ function assemble(args: {
     taggedSummary: `${tag} ${summaryText}`.trimEnd(),
     contentSha16: args.contentSha16,
     judgeError: args.judgeError,
+    judgeLatencyMs: args.judgeLatencyMs,
     dedupeSkipped: args.dedupeSkipped,
+    dedupeCached: args.dedupeCached,
     refusalMessage: ok ? null : buildRefusalMessage(args.score, args.probabilities, reasons)
   };
 }

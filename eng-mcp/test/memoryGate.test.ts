@@ -11,8 +11,11 @@ import { join } from "node:path";
 import { classifyErrorCode } from "../src/errorEnvelope.ts";
 import { JUDGE_MODEL, type JudgeDeps, type JudgeHttpResponse } from "../src/judge.ts";
 import {
+  cachedRecentContext,
   emitGateAudit,
   gateCapture,
+  noteGateCapturePayload,
+  resetGateContextCache,
   sha16Gate,
   type MemoryGateDecision,
   type MemoryGateDeps
@@ -236,4 +239,173 @@ test("MEMORY_GATE_REFUSED is a curated taxonomy entry wired to the canonical env
   assert.equal(entry.category, "validation");
   assert.equal(entry.retryable, false);
   assert.ok(entry.remediation.includes("force=true"));
+});
+
+// ---- RD-PERF-GATE-01: batch audit metadata + project-keyed context cache ----
+
+test("RD-PERF-GATE-01: audit line carries the individual p-values, judge_ms and dedupe_cached", async () => {
+  const dir = join(tmpdir(), "memory-gate-test-" + process.pid + "-audit-perf");
+  const auditFile = join(dir, "memory-gate.jsonl");
+  const calls: CapturedBody[] = [];
+  const d = await gateCapture(GOOD_INPUT, deps({ judgeDeps: judgeDepsFor(GOOD_ANSWERS, calls) }));
+  emitGateAudit(d, "mem-perf-1", { projectId: "memoryos", auditFile });
+  const line = JSON.parse(readFileSync(auditFile, "utf8").trim()) as Record<string, unknown>;
+  // batch único: uma chamada com exatamente as 3 questões noul
+  assert.equal(calls.length, 1);
+  assert.deepEqual(Object.keys((calls[0] as CapturedBody).questions),
+    ["durable_substance", "claims_supported", "no_injection"]);
+  // p-valores individuais preservados como METADADO (números, sem conteúdo)
+  assert.deepEqual(line.p, { durable_substance: 0.9, claims_supported: 0.8, no_injection: 0.95 });
+  assert.equal(typeof line.judge_ms, "number");
+  assert.equal(line.dedupe_cached, false); // sem recentContext → leitura não cacheada
+  const raw = readFileSync(auditFile, "utf8");
+  assert.ok(!raw.includes("gate de admissão")); // conteúdo nunca entra no audit
+});
+
+test("RD-PERF-GATE-01: context cache hit — 2ª captura do mesmo projeto não re-ler a ponte (dedupe_cached=true)", async () => {
+  resetGateContextCache();
+  let reads = 0;
+  const wrapped = cachedRecentContext("cache-hit-proj", async () => {
+    reads += 1;
+    return { projectId: "cache-hit-proj", memories: [], counts: { memories: 0 } };
+  });
+  const mk = () => gateCapture({ summary: "Cache hit RD-PERF-GATE-01: dedupe contra snapshot TTL" }, deps({
+    judgeDeps: judgeDepsFor(GOOD_ANSWERS),
+    recentContext: wrapped
+  }));
+  const first = await mk();
+  assert.equal(first.ok, true);
+  assert.equal(first.dedupeCached, false); // leitura fresca repopula o cache
+  const second = await mk();
+  assert.equal(second.ok, true);
+  assert.equal(second.dedupeCached, true); // hit: mesma decisão, zero re-leitura
+  assert.equal(reads, 1);
+  assert.equal(second.band, first.band);
+  assert.equal(second.verdict, first.verdict);
+});
+
+test("RD-PERF-GATE-01: repetição imediata continua recusada VIA CACHE, antes do judge (append-on-capture)", async () => {
+  resetGateContextCache();
+  const calls: CapturedBody[] = [];
+  let reads = 0;
+  const summary = "Repetição imediata RD-PERF-GATE-01: dedupe contra cache com append";
+  const wrapped = cachedRecentContext("cache-append-proj", async () => {
+    reads += 1;
+    return { projectId: "cache-append-proj", memories: [], counts: { memories: 0 } };
+  });
+  const dd = deps({ judgeDeps: judgeDepsFor(GOOD_ANSWERS, calls), recentContext: wrapped });
+  const first = await gateCapture({ summary }, dd);
+  assert.equal(first.ok, true);
+  assert.equal(calls.length, 1); // 1º capture: judge chamado 1× (batch de 3 questões)
+  noteGateCapturePayload("cache-append-proj", first.taggedSummary); // o caller faz isso APÓS o store OK
+  const second = await gateCapture({ summary }, dd);
+  assert.equal(second.ok, false);
+  assert.equal(second.band, "refuse");
+  assert.ok(second.reasons.includes("duplicate_of_recent_capture"));
+  assert.equal(second.dedupeCached, true); // recusa servida do snapshot cacheado
+  assert.equal(calls.length, 1);           // judge NEM é chamado de novo no dedupe
+  assert.equal(reads, 1);                  // ponte lida UMA vez
+  // recusa idêntica ao caminho com leitura fresca (mesma mensagem canônica)
+  const fresh = await gateCapture({ summary }, deps({
+    judgeDeps: judgeDepsFor(GOOD_ANSWERS, []),
+    recentContext: async () => ({
+      projectId: "fresh",
+      memories: [{ id: "m", content: "[AGENT MEMORY]\nSummary: [MEMORYGATE:band=admit score=0.89] " + summary }]
+    })
+  }));
+  assert.equal(fresh.ok, false);
+  assert.equal(fresh.refusalMessage, second.refusalMessage);
+  assert.equal(second.dedupeCached, true);
+  assert.equal(fresh.dedupeCached, false);
+});
+
+test("RD-PERF-GATE-01: cache expira por TTL — leitura volta a ser fresca (dedupe_cached=false)", async () => {
+  resetGateContextCache();
+  let clock = 1_000_000;
+  let reads = 0;
+  const wrapped = cachedRecentContext("cache-ttl-proj", async () => {
+    reads += 1;
+    return { projectId: "cache-ttl-proj", memories: [], counts: { memories: 0 } };
+  }, { ttlMs: 100, now: () => new Date(clock) });
+  const mk = () => gateCapture({ summary: "Cache TTL RD-PERF-GATE-01: expiração volta a ler fresco" }, deps({
+    judgeDeps: judgeDepsFor(GOOD_ANSWERS),
+    recentContext: wrapped
+  }));
+  await mk();
+  clock += 50;
+  const warm = await mk();
+  assert.equal(warm.dedupeCached, true);
+  clock += 200; // > ttl 100ms
+  const expired = await mk();
+  assert.equal(expired.dedupeCached, false);
+  assert.equal(reads, 2);
+});
+
+test("RD-PERF-GATE-01: kill switch ENG_MCP_GATE_CONTEXT_CACHE=off restaura leitura sempre fresca", async () => {
+  resetGateContextCache();
+  const saved = process.env.ENG_MCP_GATE_CONTEXT_CACHE;
+  process.env.ENG_MCP_GATE_CONTEXT_CACHE = "off";
+  try {
+    let reads = 0;
+    const wrapped = cachedRecentContext("cache-off-proj", async () => {
+      reads += 1;
+      return { projectId: "cache-off-proj", memories: [], counts: { memories: 0 } };
+    });
+    const mk = () => gateCapture({ summary: "Kill switch RD-PERF-GATE-01: leitura sempre fresca" }, deps({
+      judgeDeps: judgeDepsFor(GOOD_ANSWERS),
+      recentContext: wrapped
+    }));
+    await mk();
+    const second = await mk();
+    assert.equal(second.dedupeCached, false);
+    assert.equal(reads, 2);
+  } finally {
+    if (saved === undefined) delete process.env.ENG_MCP_GATE_CONTEXT_CACHE;
+    else process.env.ENG_MCP_GATE_CONTEXT_CACHE = saved;
+  }
+});
+
+test("RD-PERF-GATE-01: falha de leitura NÃO é cacheada — próxima chamada re-tenta o vivo", async () => {
+  resetGateContextCache();
+  let reads = 0;
+  let fail = true;
+  const wrapped = cachedRecentContext("cache-err-proj", async () => {
+    reads += 1;
+    if (fail) throw new Error("AGENT_MEMORY_FAILED:boom");
+    return { projectId: "cache-err-proj", memories: [], counts: { memories: 0 } };
+  });
+  const dd = deps({ judgeDeps: judgeDepsFor(GOOD_ANSWERS), recentContext: wrapped });
+  const first = await gateCapture(GOOD_INPUT, dd);
+  assert.equal(first.dedupeSkipped, true); // degrada para nota, nunca bloqueia
+  assert.equal(first.dedupeCached, false);
+  assert.equal(first.ok, true);
+  fail = false;
+  const second = await gateCapture(GOOD_INPUT, dd);
+  assert.equal(second.dedupeSkipped, false);
+  assert.equal(second.dedupeCached, false); // fresca (re-tentou)
+  assert.equal(second.ok, true);
+  assert.equal(reads, 2);
+});
+
+test("RD-PERF-GATE-01: note sem entrada de cache é no-op; shape desconhecido invalida a entrada", async () => {
+  resetGateContextCache();
+  // sem cache: no-op silencioso (caller capturou antes de qualquer leitura cacheada)
+  noteGateCapturePayload("cache-noop-proj", "[MEMORYGATE:band=admit score=0.90] x");
+  // shape desconhecido (não tem memories[]): entrada é invalidada → próxima leitura é fresca
+  let reads = 0;
+  const wrapped = cachedRecentContext("cache-shape-proj", async () => {
+    reads += 1;
+    return { unexpected: "shape" };
+  }, { ttlMs: 60_000 });
+  await gateCapture({ summary: "Cache shape RD-PERF-GATE-01: payload sem memories" }, deps({
+    judgeDeps: judgeDepsFor(GOOD_ANSWERS),
+    recentContext: wrapped
+  }));
+  assert.equal(reads, 1);
+  noteGateCapturePayload("cache-shape-proj", "[MEMORYGATE:band=admit score=0.90] y");
+  await gateCapture({ summary: "Cache shape RD-PERF-GATE-01: payload sem memories" }, deps({
+    judgeDeps: judgeDepsFor(GOOD_ANSWERS),
+    recentContext: wrapped
+  }));
+  assert.equal(reads, 2, "entrada com shape desconhecido foi invalidada");
 });

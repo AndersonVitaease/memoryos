@@ -20,7 +20,7 @@ import { runMissionPreauth } from "./missionPreauth.ts";
 import { SupervisedMissionClient } from "./supervised.ts";
 // MEMORY-GATE-01: admission gate for memory.capture — triage (dedupe + calibrated Jev screen)
 // before the Base44 KB bridge; refusal throws MEMORY_GATE_REFUSED (curated taxonomy entry).
-import { emitGateAudit, gateCapture } from "./memoryGate.ts";
+import { cachedRecentContext, emitGateAudit, gateCapture, noteGateCapturePayload } from "./memoryGate.ts";
 // MEMORY-DEDUPE-01: interior KB hygiene — read-only semantic dedupe scan over
 // memory pairs + calibrated re-ranking of memory.search; fail-open, advisory only.
 import { dedupeScan, rerankSearchPayload } from "./memoryDedupe.ts";
@@ -921,7 +921,10 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
       projectId: pid,
       agent: agentName,
       authorizerHash16: subject.tokenHash16,
-      recentContext: () => agentMemory.call("context", { projectId: pid, limit: 20 })
+      // RD-PERF-GATE-01: the ~2.6s bridge context read rides a project-keyed TTL
+      // cache; a successful capture appends its summary so immediate repeats stay
+      // refused (audit declares dedupe_cached). Kill switch ENG_MCP_GATE_CONTEXT_CACHE.
+      recentContext: cachedRecentContext(pid, () => agentMemory.call("context", { projectId: pid, limit: 20 }))
     });
     if (!gate.ok) {
       emitGateAudit(gate, null, { projectId: pid });
@@ -940,6 +943,7 @@ export function registerEngineeringTools(server: McpServer, repository: Reposito
       files: input.files,
       nextSteps: input.nextSteps
     }) as { stored?: boolean; memoryId?: string } & Record<string, unknown>;
+    noteGateCapturePayload(pid, gate.taggedSummary);
     emitGateAudit(gate, typeof captured.memoryId === "string" ? captured.memoryId : null, { projectId: pid });
     return response({
       ...captured,

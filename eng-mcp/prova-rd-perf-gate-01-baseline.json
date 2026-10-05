@@ -1,0 +1,149 @@
+{
+  "ts": "2026-10-05T03:36:06Z",
+  "server": "live:984a4504",
+  "projectId": "rd-perf-gate-01-baseline",
+  "context": [
+    {
+      "ms": 2657.5,
+      "ok": true,
+      "err": null
+    },
+    {
+      "ms": 2615.8,
+      "ok": true,
+      "err": null
+    },
+    {
+      "ms": 2684.2,
+      "ok": true,
+      "err": null
+    },
+    {
+      "ms": 2579.3,
+      "ok": true,
+      "err": null
+    },
+    {
+      "ms": 2596.3,
+      "ok": true,
+      "err": null
+    }
+  ],
+  "captures": [
+    {
+      "ms": 3561.6,
+      "ok": true,
+      "err": null,
+      "gate": {
+        "score": 0.605,
+        "band": "needsReview",
+        "verdict": "screened",
+        "reasons": [
+          "claims_unsupported(p=0.11)",
+          "needsReview"
+        ],
+        "tag": "[MEMORYGATE:band=needsReview score=0.60 reasons=claims_unsupported(p=0.11)]"
+      },
+      "memoryId_sha16": null
+    },
+    {
+      "ms": 3529.4,
+      "ok": true,
+      "err": null,
+      "gate": {
+        "score": 0.6135,
+        "band": "needsReview",
+        "verdict": "screened",
+        "reasons": [
+          "claims_unsupported(p=0.11)",
+          "needsReview"
+        ],
+        "tag": "[MEMORYGATE:band=needsReview score=0.61 reasons=claims_unsupported(p=0.11)]"
+      },
+      "memoryId_sha16": null
+    },
+    {
+      "ms": 3584.9,
+      "ok": true,
+      "err": null,
+      "gate": {
+        "score": 0.611,
+        "band": "needsReview",
+        "verdict": "screened",
+        "reasons": [
+          "claims_unsupported(p=0.11)",
+          "needsReview"
+        ],
+        "tag": "[MEMORYGATE:band=needsReview score=0.61 reasons=claims_unsupported(p=0.11)]"
+      },
+      "memoryId_sha16": null
+    },
+    {
+      "ms": 3469.0,
+      "ok": true,
+      "err": null,
+      "gate": {
+        "score": 0.603,
+        "band": "needsReview",
+        "verdict": "screened",
+        "reasons": [
+          "claims_unsupported(p=0.11)",
+          "needsReview"
+        ],
+        "tag": "[MEMORYGATE:band=needsReview score=0.60 reasons=claims_unsupported(p=0.11)]"
+      },
+      "memoryId_sha16": null
+    },
+    {
+      "ms": 3452.2,
+      "ok": true,
+      "err": null,
+      "gate": {
+        "score": 0.6065,
+        "band": "needsReview",
+        "verdict": "screened",
+        "reasons": [
+          "claims_unsupported(p=0.11)",
+          "needsReview"
+        ],
+        "tag": "[MEMORYGATE:band=needsReview score=0.61 reasons=claims_unsupported(p=0.11)]"
+      },
+      "memoryId_sha16": null
+    },
+    {
+      "ms": 3430.9,
+      "ok": true,
+      "err": null,
+      "gate": {
+        "score": 0.61,
+        "band": "needsReview",
+        "verdict": "screened",
+        "reasons": [
+          "claims_unsupported(p=0.11)",
+          "needsReview"
+        ],
+        "tag": "[MEMORYGATE:band=needsReview score=0.61 reasons=claims_unsupported(p=0.11)]"
+      },
+      "memoryId_sha16": null
+    },
+    {
+      "ms": 3256.2,
+      "ok": true,
+      "err": null,
+      "gate": {
+        "score": 0.5985,
+        "band": "needsReview",
+        "verdict": "screened",
+        "reasons": [
+          "claims_unsupported(p=0.11)",
+          "needsReview"
+        ],
+        "tag": "[MEMORYGATE:band=needsReview score=0.60 reasons=claims_unsupported(p=0.11)]"
+      },
+      "memoryId_sha16": null
+    }
+  ],
+  "p50_context_ms": 2615.8,
+  "p50_capture_ms": 3469.0,
+  "n_ok_capture": 7
+}

@@ -25,8 +25,10 @@
 import { existsSync, readFileSync, writeFileSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import {
-  gateCapture,
+  cachedRecentContext,
   emitGateAudit,
+  gateCapture,
+  noteGateCapturePayload,
   type MemoryGateBand,
   type MemoryGateVerdict,
 } from "./memoryGate.ts";
@@ -261,7 +263,14 @@ async function captureMissionMemoryAutoInner(
       projectId,
       agent: AGENT_NAME,
       judgeDeps: opts.judgeDeps,
-      recentContext: () => store.call("context", { projectId, limit: 20 }),
+      // RD-PERF-GATE-01: same project-keyed TTL cache as the memory.capture tool —
+      // the ~2.6s bridge context read is the capture's dominant cost; a successful
+      // capture appends its summary (audit declares dedupe_cached).
+      recentContext: cachedRecentContext(
+        projectId,
+        () => store.call("context", { projectId, limit: 20 }),
+        { now: opts.now }
+      ),
       now: opts.now,
     }
   );

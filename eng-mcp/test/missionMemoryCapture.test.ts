@@ -19,6 +19,7 @@ import {
   resolveProjectForCwd,
   registerMissionMemoryStore,
 } from "../src/missionMemoryCapture.ts";
+import { resetGateContextCache } from "../src/memoryGate.ts";
 import { LocalSqliteStore } from "../src/memoryStore.ts";
 
 function tempRoot(): string {
@@ -70,6 +71,10 @@ after(() => { for (const s of storesToClose) { try { s.close(); } catch { /* noo
 
 function setup(map: Record<string, string> = {}): TestCtx {
   const root = tempRoot();
+  // RD-PERF-GATE-01: the gate's project-keyed context cache is process-global —
+  // each test uses its own temp store under the SAME project ids, so a cached
+  // snapshot from a previous test would leak across tests. Reset per test.
+  resetGateContextCache();
   const stateDir = join(root, "state");
   mkdirSync(stateDir, { recursive: true });
   const mapFile = join(root, "project-map.json");
