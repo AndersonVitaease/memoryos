@@ -55,7 +55,7 @@ import { connect as netConnect } from "node:net";
 import * as z from "zod/v4";
 import { EngineeringError } from "./policy.js";
 import { assertSupervisorMutationAllowed } from "./supervisorGuard.ts";
-import { verifyOperatorOrderToken, operatorTokenPath, type OperatorOrderVerdict } from "./operatorToken.ts";
+import { verifyOperatorOrderToken, operatorTokenPath, type OperatorOrderVerdict, type OperatorTokenFileReader } from "./operatorToken.ts";
 
 export const HOST_SYSTEMD_TOOL = "engineering.host.systemd";
 /** Socket unix da ponte container→host (sob /data: o bind mount do container
@@ -300,8 +300,8 @@ export type HostOpsOrderVerdict = OperatorOrderVerdict;
  * verificador dela em vez de replicar). Fail-closed em TODOS os estados;
  * nunca loga o token (só hash16).
  */
-export function verifyOperatorOrderLocal(candidate: string, path: string = operatorTokenPath(), now: number = Date.now()): HostOpsOrderVerdict {
-  return verifyOperatorOrderToken(candidate, path, now);
+export function verifyOperatorOrderLocal(candidate: string, path: string = operatorTokenPath(), now: number = Date.now(), reader?: OperatorTokenFileReader): HostOpsOrderVerdict {
+  return verifyOperatorOrderToken(candidate, path, now, reader);
 }
 
 // ---------------------------------------------------------------------------

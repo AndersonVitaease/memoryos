@@ -12,6 +12,10 @@
  *     /data/manifests/operator-order-token.json (0600) — MESMA interface e
  *     MESMA semântica do verificador compartilhado (verifyOperatorOrderLocal;
  *     quando SEC-OPERATOR-IDENTITY-01 pousar, a fonte única substitui).
+ *     RD-HOST-02: o arquivo é lido via `sudo -n /usr/bin/cat` (argv exato,
+ *     allowlist no sudoers) porque 0600 root:root é ilegível para o uid do
+ *     agente; fallback leitura direta (root/container) + kill switch
+ *     HOST_OPS_TOKEN_VIA_SUDO=0.
  *
  * ZERO-LLM POR DESENHO: o tier-2 (Jev) vive na tool, no container — dentro de
  * um daemon privilegiado no host não há modelo; o agente é determinístico e
@@ -30,10 +34,11 @@
  * lados fica no mesmo arquivo (o container monta /data).
  */
 import { createServer, type Socket } from "node:net";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync, unlinkSync, chmodSync } from "node:fs";
 import { dirname } from "node:path";
 import { createHash } from "node:crypto";
+import type { OperatorTokenFileReader } from "./operatorToken.ts";
 import {
   HOST_OPS_READ_VERBS, HOST_OPS_MUTATION_VERBS, TIER0_FORBIDDEN_UNITS, TIER0_FORBIDDEN_VERBS,
   isValidUnitName, normalizeUnitName, verifyOperatorOrderLocal,
@@ -131,8 +136,80 @@ export type AgentDeps = {
   now?: () => Date;
   catalog?: LoadedAgentCatalog;
   tokenPath?: string;
+  tokenReader?: OperatorTokenFileReader;
   auditFile?: string;
 };
+
+// ---------------------------------------------------------------------------
+// RD-HOST-02 (04/10) — leitura do token de ordem pelo agente NÃO-ROOT:
+// o arquivo é 0600 root:root (exigência dos leitores root: (mode & 0o077)==0)
+// e a leitura direta do uid do agente é EACCES — toda mutação recusava
+// OPERATOR_ORDER_UNVERIFIED com token íntegro. O leitor injetado busca os
+// bytes via `sudo -n /usr/bin/cat <path>` (argv exato, zero shell — linha
+// allowlistada no sudoers por comando exato; o arquivo contém SÓ hashes).
+// Fallback: leitura direta (processo root — container de teste). Kill switch:
+// HOST_OPS_TOKEN_VIA_SUDO=0 desativa o sudo (leitura direta apenas).
+// ---------------------------------------------------------------------------
+
+export const HOST_OPS_TOKEN_SUDO_ARGV_PREFIX = ["/usr/bin/sudo", "-n", "/usr/bin/cat"] as const;
+export const HOST_OPS_TOKEN_SUDO_TIMEOUT_MS = 5_000;
+
+export type HostOpsSudoCatOutcome = { exitCode: number | null; stdout: string };
+
+function defaultSudoCatSpawn(argv: readonly string[]): HostOpsSudoCatOutcome {
+  const result = spawnSync(argv[0]!, argv.slice(1) as string[], { encoding: "utf8", timeout: HOST_OPS_TOKEN_SUDO_TIMEOUT_MS, shell: false });
+  if (result.error) throw result.error;
+  return { exitCode: result.status, stdout: result.stdout ?? "" };
+}
+
+export type HostOpsTokenReadVia = "sudo" | "direct" | "none";
+
+export type HostOpsTokenReader = OperatorTokenFileReader & { readVia: () => HostOpsTokenReadVia };
+
+/**
+ * Leitor do arquivo do token: sudo cat primeiro (agente não-root), fallback
+ * leitura direta (processo root). Fail-closed preservado: se AMBAS falharem
+ * (EACCES), a exceção sobe e o verificador mapeia para UNREADABLE_OR_CORRUPT —
+ * exatamente o comportamento pré-RD-HOST-02 para leitor sem permissão.
+ */
+export function createHostOpsTokenReader(options: { sudoSpawn?: (argv: readonly string[]) => HostOpsSudoCatOutcome; env?: NodeJS.ProcessEnv } = {}): HostOpsTokenReader {
+  const sudoSpawn = options.sudoSpawn ?? defaultSudoCatSpawn;
+  const env = options.env ?? process.env;
+  let lastVia: HostOpsTokenReadVia = "none";
+  let cachedPath: string | null = null;
+  let cachedContent: string | null = null;
+  const readDirect = (path: string): string => {
+    const content = readFileSync(path, "utf8");
+    lastVia = "direct";
+    return content;
+  };
+  return {
+    stat: (path) => statSync(path),
+    readFile: (path) => {
+      if (path === cachedPath && cachedContent !== null) return cachedContent;
+      let content: string;
+      if (env.HOST_OPS_TOKEN_VIA_SUDO === "0") {
+        content = readDirect(path);
+      } else {
+        try {
+          const out = sudoSpawn([...HOST_OPS_TOKEN_SUDO_ARGV_PREFIX, path]);
+          if (out.exitCode === 0 && out.stdout.length > 0) {
+            content = out.stdout;
+            lastVia = "sudo";
+          } else {
+            content = readDirect(path); // sudo recusou/sem sudoers → fallback (root)
+          }
+        } catch {
+          content = readDirect(path); // sudo indisponível → fallback (container de teste)
+        }
+      }
+      cachedPath = path;
+      cachedContent = content;
+      return content;
+    },
+    readVia: () => lastVia
+  };
+}
 
 function truncateAgentOutput(text: string): { text: string; truncated: boolean } {
   const length = Buffer.byteLength(text, "utf8");
@@ -260,6 +337,7 @@ export async function handleAgentRequest(request: unknown, deps: AgentDeps = {})
 
   const isMutation = HOST_OPS_MUTATION_VERBS.includes(verb);
   let verifiedOrderHash16: string | null = null;
+  let verifiedTokenVia: string | null = null;
   const unitAuthorized = unit !== null && (
     catalog.readOnlyUnits.some((entry) => normalizeUnitName(entry) === normalizeUnitName(unit)) ||
     catalog.mutationUnits.some((m) => normalizeUnitName(m.unit) === normalizeUnitName(unit))
@@ -280,12 +358,18 @@ export async function handleAgentRequest(request: unknown, deps: AgentDeps = {})
       audit({ ...fields, decision: "refused", code: "HOST_OPS_ORDER_REQUIRED" });
       return { ok: false, code: "HOST_OPS_ORDER_REQUIRED", reason: "mutation requires operatorOrder", agentCatalogSha16: catalogSha16, agentVersion: HOST_OPS_AGENT_VERSION };
     }
-    const verdict = verifyOperatorOrderLocal(order, deps.tokenPath ?? process.env.ENG_MCP_OPERATOR_TOKEN_FILE ?? "/data/manifests/operator-order-token.json", now().getTime());
+    // RD-HOST-02: o leitor busca o arquivo via sudo cat (agente não-root);
+    // deps.tokenReader injeta leitor próprio (testes).
+    const tokenReaderBundle = deps.tokenReader
+      ? { reader: deps.tokenReader, via: () => "injected" as const }
+      : (() => { const reader = createHostOpsTokenReader(); return { reader, via: () => reader.readVia() }; })();
+    const verdict = verifyOperatorOrderLocal(order, deps.tokenPath ?? process.env.ENG_MCP_OPERATOR_TOKEN_FILE ?? "/data/manifests/operator-order-token.json", now().getTime(), tokenReaderBundle.reader);
     if (!verdict.verified) {
-      audit({ ...fields, decision: "refused", code: "OPERATOR_ORDER_UNVERIFIED", tokenStatus: verdict.status, orderHash16: verdict.presentedHash16 });
+      audit({ ...fields, decision: "refused", code: "OPERATOR_ORDER_UNVERIFIED", tokenStatus: verdict.status, orderHash16: verdict.presentedHash16, tokenVia: tokenReaderBundle.via() });
       return { ok: false, code: "OPERATOR_ORDER_UNVERIFIED", reason: `operatorOrder did not verify (status ${verdict.status})`, agentCatalogSha16: catalogSha16, agentVersion: HOST_OPS_AGENT_VERSION };
     }
     verifiedOrderHash16 = verdict.presentedHash16;
+    verifiedTokenVia = tokenReaderBundle.via();
   } else if (verb !== "list-units" && !unitAuthorized) {
     audit({ ...fields, decision: "refused", code: "AGENT_REFUSED", rule: "unit-not-in-agent-catalog" });
     return { ok: false, code: "AGENT_REFUSED", reason: `unit '${unit}' is not in the agent catalog`, agentCatalogSha16: catalogSha16, agentVersion: HOST_OPS_AGENT_VERSION };
@@ -299,7 +383,7 @@ export async function handleAgentRequest(request: unknown, deps: AgentDeps = {})
     ...fields, decision: outcome.timedOut ? "timeout" : "executed", argv: argv.join(" "),
     exitCode: outcome.exitCode, timedOut: outcome.timedOut, durationMs: outcome.durationMs,
     truncated: stdout.truncated || stderr.truncated, isRoot,
-    ...(isMutation ? { orderHash16: verifiedOrderHash16 } : {})
+    ...(isMutation ? { orderHash16: verifiedOrderHash16, tokenVia: verifiedTokenVia } : {})
   });
   return {
     ok: true, exitCode: outcome.exitCode, stdout: stdout.text, stderr: stderr.text,

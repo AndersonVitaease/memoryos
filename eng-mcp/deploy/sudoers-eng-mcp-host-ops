@@ -6,3 +6,9 @@
 # /etc/sudoers.d/eng-mcp-host-ops (visudo -c antes de ativar).
 Defaults:eng-mcp-host-ops !requiretty
 eng-mcp-host-ops ALL=(root) NOPASSWD: /usr/bin/systemctl restart eng-mcp-host-ops-probe.service, /usr/bin/systemctl reload eng-mcp-host-ops-probe.service, /usr/bin/systemctl restart eng-mcp-release-runner.service, /usr/bin/systemctl reload eng-mcp-release-runner.service, /usr/bin/systemctl daemon-reload
+# RD-HOST-02 (04/10) — o agente (não-root) precisa LER o token de ordem para
+# verificar operatorOrder: o arquivo é 0600 root:root (ilegível para uid 994;
+# ACL/grupo viraria INSECURE_MODE para os leitores root). Concessão POR COMANDO
+# EXATO: apenas `sudo -n /usr/bin/cat /data/manifests/operator-order-token.json`
+# — arquivo único contendo SÓ hashes (nunca o valor bruto do token).
+eng-mcp-host-ops ALL=(root) NOPASSWD: /usr/bin/cat /data/manifests/operator-order-token.json

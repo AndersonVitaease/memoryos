@@ -56,6 +56,24 @@ export interface OperatorOrderVerdict {
   presentedHash16: string;
 }
 
+/**
+ * RD-HOST-02 (04/10) — leitor do arquivo do token INJETÁVEL. Default (fs
+ * direto) preserva 100% o comportamento atual. O agente host-ops (não-root)
+ * injeta um leitor que busca os bytes via `sudo -n /usr/bin/cat` (mesma
+ * semântica de verificação, outra fonte de leitura — o arquivo é 0600
+ * root:root e a leitura direta do uid do agente é EACCES).
+ */
+export interface OperatorTokenFileReader {
+  stat: (path: string) => { isFile: () => boolean; mode: number };
+  readFile: (path: string) => string;
+}
+
+/** Leitor default: fs direto (statSync/readFileSync) — comportamento existente. */
+export const directOperatorTokenReader: OperatorTokenFileReader = {
+  stat: statSync,
+  readFile: (path: string) => readFileSync(path, "utf8")
+};
+
 export interface OperatorAllowlistReading {
   path: string;
   status: OperatorChannelStatus;
@@ -94,10 +112,10 @@ const HEX16 = /^[0-9a-f]{16}$/;
  * Ordem fail-closed: existência → arquivo → modo (0600 owner-only) → JSON →
  * objeto → revogado → placeholder disabled → versão → tokenHash → TTL → hash16.
  */
-export function readOperatorTokenFile(path: string = operatorTokenPath(), now: number = Date.now()): OperatorTokenReading {
+export function readOperatorTokenFile(path: string = operatorTokenPath(), now: number = Date.now(), reader: OperatorTokenFileReader = directOperatorTokenReader): OperatorTokenReading {
   let st;
   try {
-    st = statSync(path);
+    st = reader.stat(path);
   } catch {
     return reading(path, "absent", "ABSENT");
   }
@@ -107,7 +125,7 @@ export function readOperatorTokenFile(path: string = operatorTokenPath(), now: n
   if ((st.mode & 0o077) !== 0) return reading(path, "invalid", "INSECURE_MODE");
   let parsed: unknown;
   try {
-    parsed = JSON.parse(readFileSync(path, "utf8"));
+    parsed = JSON.parse(reader.readFile(path));
   } catch {
     return reading(path, "invalid", "UNREADABLE_OR_CORRUPT");
   }
@@ -147,16 +165,16 @@ export function readOperatorTokenFile(path: string = operatorTokenPath(), now: n
  * Estados inválidos do arquivo (absente/expirado/revogado/disabled/violado)
  * NUNCA verificam — fail-closed. Nunca retorna nem loga o token em claro.
  */
-export function verifyOperatorOrderToken(candidate: string, path: string = operatorTokenPath(), now: number = Date.now()): OperatorOrderVerdict {
+export function verifyOperatorOrderToken(candidate: string, path: string = operatorTokenPath(), now: number = Date.now(), reader: OperatorTokenFileReader = directOperatorTokenReader): OperatorOrderVerdict {
   const presentedHash16 = operatorTokenHash16Of(candidate);
-  const file = readOperatorTokenFile(path, now);
+  const file = readOperatorTokenFile(path, now, reader);
   if (file.status !== "valid") {
     return { verified: false, status: file.status, reason: file.reason, tokenHash16: file.tokenHash16, presentedHash16 };
   }
   // arquivo válido carrega os 64 hex do tokenHash (tokenHash16 é só a fração
   // de 16 para audit) — a comparação é sempre contra o hash completo
   const computed = createHash("sha256").update(String(candidate)).digest("hex");
-  const art = JSON.parse(readFileSync(path, "utf8")) as { tokenHash?: string };
+  const art = JSON.parse(reader.readFile(path)) as { tokenHash?: string };
   const full = typeof art.tokenHash === "string" ? art.tokenHash.toLowerCase() : null;
   const verified = full !== null && HEX64.test(full) && computed === full;
   return {
