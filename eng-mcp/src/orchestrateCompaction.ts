@@ -103,11 +103,21 @@ interface QueueEntryLike {
   [key: string]: unknown;
 }
 
+// RD-ORCH-ENV-01: mesmos overrides por env de resolveDeps (orchestrate.ts) — o daemon
+// host-side sobrepõe ENG_MCP_QUEUE_PATH/ENG_MCP_CONSUMER_STATE_PATH via drop-in systemd
+// (a fila real do host é /opt/mission-events/orchestrator-queue.jsonl; o container fica
+// no default /data). Duplicar o helper aqui de propósito: importar de orchestrate.ts
+// criaria dependência circular.
+const envPath = (name: string): string | undefined => {
+  const v = process.env[name];
+  return v && v.trim().length > 0 ? v.trim() : undefined;
+};
+
 function resolveDeps(deps?: QueueCompactionDeps): Required<Pick<QueueCompactionDeps, "queuePath" | "archivePath" | "consumerStatePath" | "missionStateDir" | "readText" | "writeText" | "appendFile" | "existsSync" | "rename" | "statSize" | "now" | "maxLines" | "rotateBytes">> {
   return {
-    queuePath: deps?.queuePath ?? DEFAULT_QUEUE_PATH,
+    queuePath: deps?.queuePath ?? envPath("ENG_MCP_QUEUE_PATH") ?? DEFAULT_QUEUE_PATH,
     archivePath: deps?.archivePath ?? DEFAULT_ARCHIVE_PATH,
-    consumerStatePath: deps?.consumerStatePath ?? DEFAULT_CONSUMER_STATE_PATH,
+    consumerStatePath: deps?.consumerStatePath ?? envPath("ENG_MCP_CONSUMER_STATE_PATH") ?? DEFAULT_CONSUMER_STATE_PATH,
     missionStateDir: deps?.missionStateDir ?? DEFAULT_MISSION_STATE_DIR,
     readText: deps?.readText ?? ((p: string) => { try { return readFileSync(p, "utf8"); } catch { return null; } }),
     writeText: deps?.writeText ?? ((p: string, data: string) => { writeFileSync(p, data, "utf8"); }),

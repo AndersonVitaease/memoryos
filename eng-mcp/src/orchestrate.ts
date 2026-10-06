@@ -195,7 +195,9 @@ export const orchestrateEnqueueInputSchema = z.object({
 // ---- ORCHESTRATOR QUEUE CONSUMER (ORCH-QUEUE-CONSUMER-01) ----
 
 export interface OrchestratorConsumerState {
-  status: "alive" | "stopped";
+  /** RD-ORCH-ENV-01: "degraded" = última leitura da fila falhou (presente mas ilegível)
+   * — honesto: estado anterior não é sobrescrito por "alive" de PLAN/execute com fila vazia. */
+  status: "alive" | "stopped" | "degraded";
   lastPromotion: string | null;
   lastPromotionId: string | null;
   promotedCount: number;
@@ -210,6 +212,11 @@ export interface OrchestratorConsumerState {
   lastCompactionAt?: string | null;
   /** ORCH-TOOLS-01: evidência das últimas tool_call executadas (cap 50). */
   toolResults?: Array<{ entryId: string; tool: string; ok: boolean; at: string; summary: string }>;
+  /** RD-ORCH-ENV-01: motivo tipado do DEGRADED (escrito na falha de leitura da fila). */
+  degradedAt?: string | null;
+  degradedReason?: string | null;
+  /** RD-ORCH-ENV-01: recuperação — primeira leitura bem-sucedida após um DEGRADED. */
+  degradedClearedAt?: string | null;
 }
 
 export interface ConsumeEntryResult {
@@ -900,6 +907,20 @@ const envPath = (name: string): string | undefined => {
   const v = process.env[name];
   return v && v.trim().length > 0 ? v.trim() : undefined;
 };
+
+// RD-ORCH-ENV-01: resolução única dos paths que divergem host×container — o daemon
+// host-side (systemd) sobrepõe via drop-in `Environment=ENG_MCP_QUEUE_PATH=...`
+// (a fila real do host é /opt/mission-events/orchestrator-queue.jsonl); o container
+// fica no default /data (bind rw do MESMO arquivo). Exportado para o daemon usar o
+// MESMO default da resolução do consume (nunca duplicar o default fora daqui).
+export function effectiveQueuePath(e: NodeJS.ProcessEnv = process.env): string {
+  const v = e.ENG_MCP_QUEUE_PATH;
+  return v && v.trim().length > 0 ? v.trim() : DEFAULT_PATHS.queuePath;
+}
+export function effectiveConsumerStatePath(e: NodeJS.ProcessEnv = process.env): string {
+  const v = e.ENG_MCP_CONSUMER_STATE_PATH;
+  return v && v.trim().length > 0 ? v.trim() : DEFAULT_PATHS.consumerStatePath;
+}
 
 function resolveDeps(deps?: OrchestrateDeps): Required<Pick<OrchestrateDeps, "readText" | "readdir" | "exec" | "now">> & OrchestrateDeps {
   return {

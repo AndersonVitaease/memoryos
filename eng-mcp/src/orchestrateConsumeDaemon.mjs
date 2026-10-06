@@ -5,7 +5,8 @@
 import { statSync, writeFileSync, unlinkSync, appendFileSync } from "node:fs";
 import os from "node:os";
 import { execFileSync } from "node:child_process";
-import { runOrchestrateConsume } from "./orchestrate.ts";
+import { runOrchestrateConsume, effectiveQueuePath, effectiveConsumerStatePath } from "./orchestrate.ts";
+import { probeQueueReadFailure, markQueueDegraded, clearQueueDegraded } from "./orchestrQueueHealth.ts";  // RD-ORCH-ENV-01: falha honesta
 import { runOrchestrateQueueCompaction } from "./orchestrateCompaction.ts";  // ORCH-QUEUE-COMPACT-01: arquivamento no fim de todo ciclo
 import { runMissionDispatch, runMissionRecover, runMissionNudge } from "./missionOps.ts";  // ORCH-PREAUTH-01: caminho governado do despacho
 import { runNotifyHermes } from "./notifyHermes.ts";
@@ -190,11 +191,42 @@ export function emitPreauthExpiryAlert(reading, { spoolPath, nowMs = Date.now(),
   return { alerted: true, mission: PREAUTH_UNIT, hash16: reading.hash16, expiresAt: reading.expiresAt, remainingMinutes: line.remainingMinutes };
 }
 
-export async function runDaemonCycle({ maxPromotions = 2, breakerDeps, consumeDeps } = {}) {
+export async function runDaemonCycle({ maxPromotions = 2, breakerDeps, consumeDeps, queueHealthDeps } = {}) {
   if (!acquireLock()) {
     return { ok: false, reason: "lock held by another daemon cycle" };
   }
   try {
+    // RD-ORCH-ENV-01 (item 4): falha honesta ANTES do consume — fila presente mas
+    // ilegível no daemon NUNCA é "consumed=0" silencioso: log CRITICAL (stderr →
+    // journal) + estado DEGRADED no state file + evento orch_degraded no bus spool.
+    // Fail-open: a sonda/escrita NUNCA trava o ciclo (o consume segue; fila
+    // ilegível → readText null → consumed=0 tipado, agora com a causa visível).
+    let degraded = null;
+    try {
+      // Paths de health: consumeDeps hermético isola por default (provas E2E nunca
+      // tocam produção); sem consumeDeps, env/default — a MESMA resolução do consume.
+      const healthOpts = {
+        queuePath: queueHealthDeps?.queuePath ?? consumeDeps?.queuePath ?? effectiveQueuePath(),
+        consumerStatePath: queueHealthDeps?.consumerStatePath ?? consumeDeps?.consumerStatePath ?? effectiveConsumerStatePath(),
+        spoolPath: queueHealthDeps?.spoolPath ?? consumeDeps?.spoolPath,
+      };
+      const failure = (queueHealthDeps?.probe ?? probeQueueReadFailure)({ queuePath: healthOpts.queuePath });
+      if (failure) {
+        console.error(`[CRITICAL] RD-ORCH-ENV-01: ${failure.reason} — ciclo em DEGRADED`);
+        degraded = { ...(queueHealthDeps?.mark ?? markQueueDegraded)({
+          ...healthOpts,
+          reason: failure.reason,
+          ...(queueHealthDeps?.markOpts ?? {}),
+        }), reason: failure.reason };
+      } else {
+        const cleared = (queueHealthDeps?.clear ?? clearQueueDegraded)({
+          consumerStatePath: healthOpts.consumerStatePath,
+        });
+        if (cleared.cleared) degraded = { cleared: true };
+      }
+    } catch (healthErr) {
+      degraded = { ok: false, error: healthErr instanceof Error ? healthErr.message : String(healthErr) };
+    }
     // ORCH-CHAIN-CWD-01: alerta de expiração do preauth no INÍCIO de todo ciclo —
     // manifesto ativo do unit com expiração < 2h → spool orch_preauth_expiring + bus.
     // Fail-open: qualquer falha NUNCA trava o ciclo. Re-grant NUNCA automático.
@@ -223,7 +255,7 @@ export async function runDaemonCycle({ maxPromotions = 2, breakerDeps, consumeDe
     const plan = await runOrchestrateConsume({ dryRun: true, maxPromotions }, consumeDeps);
     if (!plan || plan.promoted === 0) {
       const hygiene = await maybeHygieneCycle();
-      return { ok: true, mode: "plan", plan, executed: null, approvalSource, preauth, preauthAlert, breaker, compaction: maybeCompactQueue(null), hygiene };
+      return { ok: true, mode: "plan", plan, executed: null, approvalSource, preauth, preauthAlert, breaker, compaction: maybeCompactQueue(null), hygiene, degraded };
     }
     // EXECUTE: despacho real pelo caminho governado (mesma runMissionDispatch).
     // ORCH-DAEMON-01 FIX: execute exige approval.approved=true (guard de governança).
@@ -232,7 +264,7 @@ export async function runDaemonCycle({ maxPromotions = 2, breakerDeps, consumeDe
     // nenhuma das duas, o ciclo permanece em PLAN/awaiting_approval (fail-closed).
     if (!approval) {
       const hygiene = await maybeHygieneCycle();
-      return { ok: true, mode: "plan", plan, executed: null, note: "promovíveis aguardam approval (artefato preauth ausente/expirado/revogado e ORCH_DAEMON_APPROVED indefinido)", approvalSource, preauth, preauthAlert, breaker, compaction: maybeCompactQueue(null), hygiene };
+      return { ok: true, mode: "plan", plan, executed: null, note: "promovíveis aguardam approval (artefato preauth ausente/expirado/revogado e ORCH_DAEMON_APPROVED indefinido)", approvalSource, preauth, preauthAlert, breaker, compaction: maybeCompactQueue(null), hygiene, degraded };
     }
     // ORCH-PREAUTH-01 (elo final): o daemon injeta o MESMO caminho governado do
     // tools.ts (runMissionDispatch) — antes ele chamava execute sem handler e o
@@ -270,9 +302,9 @@ export async function runDaemonCycle({ maxPromotions = 2, breakerDeps, consumeDe
       }),
     });
     const hygiene = await maybeHygieneCycle();
-    return { ok: true, mode: "execute", plan, executed, approvalSource, preauth, preauthAlert, breaker, compaction: maybeCompactQueue(executed), hygiene };
+    return { ok: true, mode: "execute", plan, executed, approvalSource, preauth, preauthAlert, breaker, compaction: maybeCompactQueue(executed), hygiene, degraded };
   } catch (err) {
-    return { ok: false, reason: err instanceof Error ? err.message : String(err) };
+    return { ok: false, reason: err instanceof Error ? err.message : String(err), degraded };
   } finally {
     releaseLock();
   }

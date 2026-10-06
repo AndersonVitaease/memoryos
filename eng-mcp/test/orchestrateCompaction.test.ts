@@ -7,6 +7,9 @@
 // fail-closed pós-escrita com rollback, estado lastCompactionAt.
 import test from "node:test";
 import assert from "node:assert/strict";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   runOrchestrateQueueCompaction,
   QUEUE_ARCHIVE_ROTATE_BYTES,
@@ -277,4 +280,26 @@ test("stateError: falha ao gravar estado é fail-open (trilha preservada, ok:tru
   assert.match(r.stateError ?? "", /disk full/);
   assert.equal(queueLines(files).length, 0); // trilha: movida está no archive
   assert.equal(archiveLines(files).length, 1);
+});
+// ---- RD-ORCH-ENV-01: compaction lê a fila do env (ENG_MCP_QUEUE_PATH) sem deps ----
+// A simulação usa fila contendo só linha malformada (nunca elegível → nada movido);
+// beforeQueueLines=1 PROVA a leitura do path do env (e não do default /data).
+test("RD-ORCH-ENV-01: compaction resolve fila via ENG_MCP_QUEUE_PATH sem deps", () => {
+  const tmp = mkdtempSync(join(tmpdir(), "orch-compaction-env-"));
+  const queuePath = join(tmp, "queue.jsonl");
+  writeFileSync(queuePath, "linha-malformada-não-json\n");
+  const prevState = process.env.ENG_MCP_CONSUMER_STATE_PATH;
+  const prevQueue = process.env.ENG_MCP_QUEUE_PATH;
+  try {
+    process.env.ENG_MCP_QUEUE_PATH = queuePath;
+    process.env.ENG_MCP_CONSUMER_STATE_PATH = join(tmp, "state.json");
+    const result = runOrchestrateQueueCompaction({});
+    assert.equal(result.ok, true);
+    assert.equal(result.beforeQueueLines, 1);   // leu o path do env
+    assert.equal(result.moved, 0);              // linha malformada nunca é movida
+    assert.equal(result.afterQueueLines, 1);
+  } finally {
+    if (prevQueue === undefined) delete process.env.ENG_MCP_QUEUE_PATH; else process.env.ENG_MCP_QUEUE_PATH = prevQueue;
+    if (prevState === undefined) delete process.env.ENG_MCP_CONSUMER_STATE_PATH; else process.env.ENG_MCP_CONSUMER_STATE_PATH = prevState;
+  }
 });
