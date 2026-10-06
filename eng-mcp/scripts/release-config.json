@@ -39,7 +39,7 @@
     "missionStateMount": "/root/.hermes/mission-state:/root/.hermes/mission-state",
     "extraRwMounts": [
       "/root/.config/herdr:/root/.config/herdr",
-      "/opt/mission-events/orchestrator-queue.jsonl:/opt/mission-events/orchestrator-queue.jsonl"
+      "/opt/mission-events/orchestrator-queue.jsonl:/data/orchestrator-queue.jsonl"
     ],
     "consumerEnv": [
       "ENG_MCP_CONSUMER_STATE_PATH=/run/mission-bus/consumer.state.json",

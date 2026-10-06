@@ -44,7 +44,7 @@ export const QUEUE_ARCHIVE_MAX_LINES_PER_CYCLE = 200;
 
 // Defaults de produção (mesmos paths de DEFAULT_PATHS em orchestrate.ts — duplicados
 // aqui de propósito: importar de orchestrate.ts criaria dependência circular).
-const DEFAULT_QUEUE_PATH = "/opt/mission-events/orchestrator-queue.jsonl";
+const DEFAULT_QUEUE_PATH = "/data/orchestrator-queue.jsonl";  // RD-QUEUE-MOUNT-01: mesmo path de DEFAULT_PATHS.queuePath (bind em /data, fora do dir ro)
 const DEFAULT_ARCHIVE_PATH = "/opt/mission-events/orchestrator-queue.archive.jsonl";
 const DEFAULT_CONSUMER_STATE_PATH = "/opt/mission-events/orchestrator-consumer.state.json";
 const DEFAULT_MISSION_STATE_DIR = "/root/.hermes/mission-state";

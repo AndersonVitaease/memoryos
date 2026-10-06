@@ -1,5 +1,7 @@
 // SEC-FIX-01: the eng-mcp container must not get a writable /opt/mission-events
-// (host code like jev_ack.py lives there). Only the orchestrator queue file is rw.
+// (host code like jev_ack.py lives there). RD-QUEUE-MOUNT-01: the queue file itself
+// is bound rw at /data/orchestrator-queue.jsonl (same host file) — a file bind nested
+// under a ro-mounted dir fails at runc ("make mountpoint: read-only file system").
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -22,9 +24,26 @@ test("no rw mount exposes the whole /opt/mission-events directory", () => {
   }
 });
 
-test("only the orchestrator queue file stays writable under /opt/mission-events", () => {
-  const under = rwSpecs.filter((s) => s.split(":")[1].startsWith("/opt/mission-events/"));
-  assert.deepEqual(under, ["/opt/mission-events/orchestrator-queue.jsonl:/opt/mission-events/orchestrator-queue.jsonl"]);
+test("RD-QUEUE-MOUNT-01: the queue file bind keeps the same host file, mounted at /data (outside the ro dir)", () => {
+  const queueBind = rwSpecs.find((s) => s.startsWith("/opt/mission-events/orchestrator-queue.jsonl:"));
+  assert.ok(queueBind, "bind da fila ausente (extraRwMounts)");
+  assert.equal(queueBind, "/opt/mission-events/orchestrator-queue.jsonl:/data/orchestrator-queue.jsonl");
+});
+
+test("RD-QUEUE-MOUNT-01: no rw mount destination is nested under a read-only mount destination", () => {
+  const roDsts: string[] = p.readOnlyMounts.map((s) => s.split(":")[1]);
+  for (const spec of rwSpecs) {
+    const dst = spec.split(":")[1];
+    for (const ro of roDsts) {
+      const under = dst === ro || dst.startsWith(ro.endsWith("/") ? ro : ro + "/");
+      assert.ok(!under, `rw mount aninhado sob dir montado ro: ${spec} (dst sob ${ro})`);
+    }
+  }
+});
+
+test("RD-QUEUE-MOUNT-01: the /data dir mount precedes the queue file bind (later -v wins, bind overlays the dir)", () => {
+  const queueBindIndex = rwSpecs.indexOf("/opt/mission-events/orchestrator-queue.jsonl:/data/orchestrator-queue.jsonl");
+  assert.ok(rwSpecs.indexOf(p.dataMount) < queueBindIndex, "dataMount (/data) deve vir antes do bind do arquivo da fila");
 });
 
 test("consumer runtime files live in /run/mission-bus via env (dir stays ro)", () => {

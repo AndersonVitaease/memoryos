@@ -23,7 +23,10 @@ export const DEFAULT_PATHS = {
   missionStateDir: "/root/.hermes/mission-state",
   budgetPath: "/opt/mission-events/orchestrator-budget.json",
   agentsPath: "/opt/mission-events/agents.json",
-  queuePath: "/opt/mission-events/orchestrator-queue.jsonl",
+  // RD-QUEUE-MOUNT-01: bind de arquivo aninhado sob dir montado ro falha no runc
+  // (EROFS "make mountpoint") — a fila é bindada em /data (rw, já montado), MESMO
+  // arquivo do host (/opt/mission-events/orchestrator-queue.jsonl não muda no host).
+  queuePath: "/data/orchestrator-queue.jsonl",
   consumerStatePath: "/opt/mission-events/orchestrator-consumer.state.json",
   consumerLockPath: "/opt/mission-events/orchestrator-consumer.lock",
   spoolPath: "/opt/mission-events/spool.jsonl",
