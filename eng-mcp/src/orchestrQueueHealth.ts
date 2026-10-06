@@ -80,7 +80,7 @@ export function markQueueDegraded(opts: MarkQueueDegradedOpts): MarkQueueDegrade
   state.degradedAt = now;
   state.degradedReason = String(opts.reason).slice(0, 200);
   state.updatedAt = now;
-  const out = { ok: true, stateWritten: false, spooled: false };
+  const out: MarkQueueDegradedResult = { ok: true, stateWritten: false, spooled: false };
   try {
     if (opts.writeText) {
       opts.writeText(opts.consumerStatePath, JSON.stringify(state, null, 2));
